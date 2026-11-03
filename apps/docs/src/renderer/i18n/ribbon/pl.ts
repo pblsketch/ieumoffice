@@ -947,10 +947,21 @@ export const pl = {
   ribbonMailingsOutput: 'Wynik korespondencji',
   ribbonMailingsOutputPerRecord: 'Jeden dokument na rekord',
   ribbonMailingsOutputSingle: 'Jeden dokument dla wszystkich rekordów',
+  ribbonMailingsOutputLabels: 'Arkusz etykiet',
+  ribbonMailingsOutputEnvelopes: 'Koperty',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'Własna siatka',
+  ribbonMailingsLabelColumns: 'Kolumny',
+  ribbonMailingsLabelRows: 'Wiersze',
+  ribbonMailingsEnvelopeSize: 'Rozmiar koperty',
   ribbonMailingsNamePattern: 'Nazwa pliku',
   ribbonMailingsNamePatternPh: 'Puste: użyj pierwszego pola',
   ribbonMailingsFinish: 'Zakończ i scal',
   ribbonMailingsMerged: 'Scalono dokumentów: {n}',
   ribbonMailingsMergeFailed: 'Scalanie nie powiodło się',
   ribbonMailingsClose: 'Zamknij',
+  ribbonMailingsEnvelopeNote:
+    'Koperty drukują ten dokument bez zmian na papierze kopertowym; blok adresu pozostaje przy lewym górnym marginesie (kreator kopert Worda centruje adres dostawy).',
+  ribbonMailingsLabelsDroppedHint:
+    'Arkusz etykiet zawiera tylko akapity: {n} bloków szablonu (tabele, obrazy) zostanie pominiętych.',
 } satisfies Record<keyof typeof zh, string>
