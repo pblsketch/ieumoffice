@@ -5,6 +5,7 @@ import { PdfLoadError } from '@genoffice/pdf2docx'
 import { assertOptionValues, flagBool, flagString, type ParsedArgs } from '../args'
 import { csvToXlsx, sheetNameFromStem } from '../formats/csv'
 import { convertLegacyDoc } from '../formats/legacy-doc'
+import { convertLegacyPpt } from '../formats/legacy-ppt'
 import { convertPdf, type PdfTarget } from '../formats/pdf'
 import { convertLegacyWorkbook, sheetToCsv } from '../formats/xlsx'
 import { exportViaApp, type AppExportTarget } from '../formats/app-export'
@@ -50,6 +51,7 @@ const NODE_ROUTES: Record<string, readonly string[]> = {
   ods: ['xlsx'],
   doc: ['docx'],
   dot: ['docx'],
+  ppt: ['pptx'],
   md: ['docx', 'html'],
   markdown: ['docx', 'html'],
   docx: ['md'],
@@ -263,6 +265,10 @@ async function run(
   if (to === 'md') return docxToMarkdown(readInput(input), ctx)
   if (from === 'doc' || from === 'dot') {
     const r = await convertLegacyDoc(readInput(input))
+    return { bytes: r.bytes, detail: r.detail }
+  }
+  if (from === 'ppt') {
+    const r = await convertLegacyPpt(readInput(input))
     return { bytes: r.bytes, detail: r.detail }
   }
   const r = await convertLegacyWorkbook(input, output)
