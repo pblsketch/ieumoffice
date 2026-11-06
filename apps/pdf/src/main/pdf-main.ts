@@ -17,6 +17,7 @@ import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContent
 import type { WebContents } from 'electron'
 import {
   buildPrintableHtml,
+  configuredAuthorName,
   configuredDefaultSaveDir,
   confirmOverwriteIfConflicted,
   contextMenuLabels,
@@ -1483,13 +1484,7 @@ function registerPdfIpc(): void {
     return recovery.resolveOnOpen(e.sender, path).then(() => path)
   })
 
-  ipcMain.handle(PDF_CHANNELS.getUsername, () => {
-    try {
-      return userInfo().username
-    } catch {
-      return ''
-    }
-  })
+  ipcMain.handle(PDF_CHANNELS.getUsername, (): string => configuredAuthorName(app))
 
   ipcMain.handle(PDF_CHANNELS.readFile, async (e, path: unknown) => {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
