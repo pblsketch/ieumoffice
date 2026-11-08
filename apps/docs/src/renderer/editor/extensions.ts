@@ -1,4 +1,5 @@
 import { ScriptFonts } from './script-fonts'
+import { CrossCellDrag } from './cross-cell-drag'
 import { Editor, Extension, Node } from '@tiptap/core'
 import { SHAPE_INLINE_WRAP } from './floating-z-order'
 import { StreamingTailGuardExtension } from './streaming-tail-guard'
@@ -7159,6 +7160,10 @@ export const editorExtensions = [
   ResolvedCommentsExtension,
   FieldCodesExtension,
   NativeTableSupport,
+  // after NativeTableSupport on purpose: its border drags (column resize,
+  // row height) preventDefault on their mousedown, so the chain stops before
+  // the cross-cell drag can arm over them (genspark-ai/genoffice#2329)
+  CrossCellDrag,
   TableHandle,
   TrackChangesExtension,
   LineFactorExtension,
