@@ -142,7 +142,14 @@ import {
   pageTargets,
 } from './page-selection'
 import type { PageSelection } from './page-selection'
-import { rowOfVisIdx, spreadRows, stepPage } from './spread'
+import {
+  rowOfVisIdx,
+  spreadAnchorScrollTop,
+  spreadRows,
+  spreadSwitchAnchor,
+  stepPage,
+} from './spread'
+import type { SpreadAnchor, SpreadSwitch } from './spread'
 import {
   captureViewState,
   captureZoomAnchor,
@@ -1187,6 +1194,9 @@ export default function App() {
   const [documentDamaged, setDocumentDamaged] = useState(false)
   /** opened from a crash-recovery copy and not saved since: unsaved with no pending edit */
   const [restoredUnsaved, setRestoredUnsaved] = useState(false)
+  /** another program changed or removed the open file since this view read it (issue #405) */
+  const [diskChange, setDiskChange] = useState<'changed' | 'missing' | null>(null)
+  const [diskReloading, setDiskReloading] = useState(false)
   /** false until a password-protected document has been opened for editing by the
       session's own decryptor (pdf.js accepting the password is not the same claim) */
   const [sessionUnlocked, setSessionUnlocked] = useState(false)
@@ -1803,6 +1813,10 @@ export default function App() {
         })
       }
       setDoc(loaded)
+      // the view shows these bytes now: an earlier change notice is answered, and
+      // the watch compares later changes against what was just read
+      setDiskChange(null)
+      void window.pdfApi.watchDiskFile?.(path)
       if (renderedPages) await renderedPages
       if (!saved) {
         setAiSelection(null)
@@ -2319,20 +2333,21 @@ export default function App() {
     slots: bilingualActions.slots,
   })
 
-  const recomputeFit = useCallback(() => {
-    const mode = fitModeRef.current
-    const el = scrollRef.current
-    if (!mode || !el || rows.length === 0) return
-    const dims = rows.map((r) => rowSize(r))
-    const maxW = Math.max(...dims.map((s) => s.width))
-    // The comments margin sits beside the pages and must fit inside the same viewport
-    const availW =
-      el.clientWidth -
-      SCROLL_PAD * 2 -
-      (noteMarginOn ? NOTE_MARGIN_W + PAGE_GAP : 0) -
-      bilingual.extraWidth
-    const next =
-      mode === 'width'
+  /** Scale the current fit mode gives `forRows`, or null with no fit mode */
+  const fitScaleFor = useCallback(
+    (forRows: number[][]): number | null => {
+      const mode = fitModeRef.current
+      const el = scrollRef.current
+      if (!mode || !el || forRows.length === 0) return null
+      const dims = forRows.map((r) => rowSize(r))
+      const maxW = Math.max(...dims.map((s) => s.width))
+      // The comments margin sits beside the pages and must fit inside the same viewport
+      const availW =
+        el.clientWidth -
+        SCROLL_PAD * 2 -
+        (noteMarginOn ? NOTE_MARGIN_W + PAGE_GAP : 0) -
+        bilingual.extraWidth
+      return mode === 'width'
         ? clampScale(availW / maxW)
         : clampScale(
             Math.min(
@@ -2340,9 +2355,15 @@ export default function App() {
               (el.clientHeight - PAGE_GAP * 2) / Math.max(...dims.map((s) => s.height)),
             ),
           )
+    },
+    [rowSize, noteMarginOn, bilingual.extraWidth],
+  )
+  const recomputeFit = useCallback(() => {
+    const next = fitScaleFor(rows)
+    if (next === null) return
     anchorZoomScroll(next)
     setScale(next)
-  }, [rows, rowSize, anchorZoomScroll, noteMarginOn, bilingual.extraWidth])
+  }, [rows, fitScaleFor, anchorZoomScroll])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -2447,6 +2468,53 @@ export default function App() {
     const target = Math.min(Math.max(1, n), pageCount)
     el.scrollTop = rowTop(rowOfVis(target - 1)) - PAGE_GAP / 2
   }
+
+  /** Reading spot captured just before a single ↔ two-page switch, written back by
+   *  the layout effect below once the re-paired rows are committed (issue #404). */
+  const spreadAnchorRef = useRef<SpreadAnchor | null>(null)
+  /** Row heights as laid out: pages are drawn at floored pixel sizes, so the
+   *  computed `rowSize × scale` drifts from the DOM by a fraction of a pixel per
+   *  row — a whole row by page ~100 at some zooms */
+  const renderedRowHeights = (el: HTMLElement) =>
+    [...el.querySelectorAll<HTMLElement>('.pdf-row')].map(
+      (row) => row.getBoundingClientRect().height,
+    )
+  /** Where the last switch left the view, so switching straight back returns to
+   *  the same page rather than to the first page of its pair */
+  const lastSpreadSwitchRef = useRef<SpreadSwitch | null>(null)
+  /** Every view-mode button goes through here: the same scrollTop means a different
+   *  page once the rows are re-paired, so the spot is carried as a page instead. */
+  const applyViewMode = (next: { spread: 1 | 2; bilingual: boolean }) => {
+    const el = scrollRef.current
+    if (next.spread !== spread && el) {
+      spreadAnchorRef.current = spreadSwitchAnchor({
+        last: lastSpreadSwitchRef.current,
+        scrollTop: el.scrollTop,
+        rowHeights: renderedRowHeights(el),
+        gap: PAGE_GAP,
+        spread,
+        pageCount,
+      })
+      // Fit to the new rows in the same commit: the fit recompute would otherwise
+      // move the spot through the zoom anchor, which works on unfloored sizes and
+      // drifts tens of px by page ~250
+      const fit = fitScaleFor(spreadRows(visList, next.spread))
+      if (fit !== null) setScale(fit)
+    }
+    setSpread(next.spread)
+    setBilingualOn(next.bilingual)
+  }
+  // A layout effect, so the spot is back before the first paint of the new rows
+  useLayoutEffect(() => {
+    const anchor = spreadAnchorRef.current
+    if (!anchor) return
+    spreadAnchorRef.current = null
+    const el = scrollRef.current
+    if (!el || rows.length === 0) return
+    el.scrollTop = spreadAnchorScrollTop(anchor, renderedRowHeights(el), PAGE_GAP, spread)
+    // read back: the document end may have clamped the write
+    lastSpreadSwitchRef.current = { anchor, spread, scrollTop: el.scrollTop }
+  }, [spread, rows])
 
   // ---- presentation (F5 / Ctrl+F5): the viewer alone in fullscreen ----
 
@@ -6128,6 +6196,8 @@ export default function App() {
     () =>
       autoSave &&
       ordinaryDirty &&
+      // a save now would overwrite the other program's change before the person chose
+      diskChange === null &&
       saveInFlightRef.current === null &&
       filePath !== '' &&
       !untitledCopyRef.current &&
@@ -8327,7 +8397,7 @@ export default function App() {
    * anyway); their normal autosave still follows the toggle.
    */
   const autoSaveAfterAiRun = async () => {
-    if (!autoSave || !filePath || readOnly) return
+    if (!autoSave || !filePath || readOnly || diskChange !== null) return
     try {
       if (!(await window.pdfApi.isUntitled(filePath))) return
     } catch {
@@ -8928,6 +8998,58 @@ export default function App() {
 
   // renamed / moved from the shell: keep saving to the file's new location
   useEffect(() => window.pdfApi.onFileRenamed((next) => setFilePath(next)), [])
+
+  // ── Another program changed the open file (issue #405) ──
+  const diskPathRef = useRef(filePath)
+  diskPathRef.current = filePath
+  useEffect(
+    () =>
+      window.pdfApi.onDiskFileChanged?.((change) => {
+        // a notice for the file this view showed before a rename or reopen is stale
+        if (change.path !== diskPathRef.current) return
+        setDiskChange(change.kind === 'unchanged' ? null : change.kind)
+      }),
+    [],
+  )
+
+  /** Read the file again where the reader is: same page and spot, unsaved edits dropped */
+  const reloadFromDisk = async () => {
+    if (diskReloading || !filePath || !doc) return
+    setDiskReloading(true)
+    const el = scrollRef.current
+    const visPos = new Map(visList.map((origIdx, i) => [origIdx, i]))
+    const here =
+      el && rows.length > 0
+        ? captureViewState({
+            scrollTop: el.scrollTop,
+            rowHeights: rows.map((row) => rowSize(row).height * scale),
+            rowPages: rows.map((row) => (visPos.get(row[0]!) ?? 0) + 1),
+            gap: PAGE_GAP,
+            scale,
+            fitMode: fitModeRef.current,
+            zoomChosen,
+          })
+        : null
+    // set before the reload: the restore effect runs as soon as the new pages lay out
+    pendingViewRestoreRef.current = here
+    try {
+      // a view restored from a recovery copy would otherwise read the copy again
+      if (restoredUnsaved) await window.pdfApi.discardForDiskReload?.(filePath)
+      await loadDoc(filePath, doc)
+      setRestoredUnsaved(false)
+      // loadDoc leaves the text index and hits alone; both hold the old text
+      searchIndexCache.clear()
+      setSearchMatches([])
+      setSearchCur(0)
+    } catch (err) {
+      pendingViewRestoreRef.current = null
+      showNotice(
+        t('diskReloadFailed', { detail: err instanceof Error ? err.message : String(err) }),
+      )
+    } finally {
+      setDiskReloading(false)
+    }
+  }
 
   // Re-read the signatures whenever the document on screen is (re)loaded: a save rewrites the
   // file, which is exactly when an old signature stops matching
@@ -9554,11 +9676,7 @@ export default function App() {
         <button
           className={`rb-big${spread === 2 ? ' active' : ''}`}
           data-tip={spread === 2 ? t('singlePage') : t('twoPage')}
-          onClick={() => {
-            const next = toggleSpread(spread === 1 ? 2 : 1, bilingualOn)
-            setSpread(next.spread)
-            setBilingualOn(next.bilingual)
-          }}
+          onClick={() => applyViewMode(toggleSpread(spread === 1 ? 2 : 1, bilingualOn))}
         >
           <span className="rb-big-icon">{spread === 2 ? <IconSinglePage /> : <IconSpread />}</span>
           <span>{spread === 2 ? t('singlePage') : t('twoPage')}</span>
@@ -9567,11 +9685,7 @@ export default function App() {
           className={`rb-big${bilingualOn ? ' active' : ''}`}
           data-tip={t('blToggleTip')}
           aria-pressed={bilingualOn}
-          onClick={() => {
-            const next = toggleBilingual(!bilingualOn, spread)
-            setSpread(next.spread)
-            setBilingualOn(next.bilingual)
-          }}
+          onClick={() => applyViewMode(toggleBilingual(!bilingualOn, spread))}
         >
           <span className="rb-big-icon">
             <IconAiTranslate />
@@ -10744,6 +10858,29 @@ export default function App() {
           />
         </div>
         <div className="app-content">
+          {diskChange !== null && status === 'ready' && (
+            <div className="pdf-disk-change-bar" role="alert">
+              <span>
+                {diskChange === 'missing'
+                  ? t('diskMissing')
+                  : dirty
+                    ? t('diskChangedUnsaved')
+                    : t('diskChanged')}
+              </span>
+              {diskChange === 'changed' && (
+                <button
+                  className="pdf-modal-btn primary"
+                  disabled={diskReloading}
+                  onClick={() => void reloadFromDisk()}
+                >
+                  {t('diskReload')}
+                </button>
+              )}
+              <button className="pdf-modal-btn" onClick={() => setDiskChange(null)}>
+                {diskChange === 'missing' ? t('diskDismiss') : t('diskIgnore')}
+              </button>
+            </div>
+          )}
           {digitalSignatures.length > 0 && (
             <div className={`pdf-sig-banner ${overallSignatureStatus(digitalSignatures)}`}>
               <IconSignatures />
