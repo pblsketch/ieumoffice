@@ -40,6 +40,11 @@
 - `convert <file.doc|.dot> --to docx`만 받는다. 앱을 띄우지 않고 `@genoffice/doc2docx`로 바꾼다. `.doc`로 다시 쓰는 길은 없다.
 - 바꾸며 빠지거나 바뀐 것은 파일을 쓰고 `detail.warnings`에 적는다. 암호가 걸린 문서, Word 97보다 오래된 판, 깨진 파일은 종료 코드 3으로 끝나고, `detail.reason`에 `doc2docx`의 이유 코드(`encrypted`, `unsupported_version`, `not_cfb`, `corrupt` 등)가 온다.
 
+**옛 파워포인트 문서(`.ppt`).**
+
+- `convert <file.ppt> --to pptx`만 받는다. 앱을 띄우지 않고 `@genoffice/ppt2pptx`로 바꾼다. 지금은 글상자의 글자만 원래 슬라이드 순서와 크기로 옮기고, 모양·서식·그림은 빠진다. 빠진 것은 `detail.warnings`에, 슬라이드 수는 `detail.slides`에 온다. `.ppt`로 다시 쓰는 길은 없다.
+- 암호가 걸린 문서, PowerPoint 97보다 오래된 판, 깨진 파일은 종료 코드 3으로 끝나고, `detail.reason`에 `ppt2pptx`의 이유 코드(`encrypted`, `unsupported_version`, `not_cfb`, `corrupt` 등)가 온다.
+
 **엑셀 외부 연결(`sheet links`).**
 
 - `sheet links <file.xlsx>`는 수식이 `[n]`으로 가리키는 다른 통합 문서 목록을 읽기만 한다. `detail.links[]`의 `index`가 수식의 `[n]`, `source`가 푼 경로, `reachable`이 그 파일이 있는지다.
