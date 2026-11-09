@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { copyFile, open, readFile, stat, writeFile } from 'node:fs/promises'
-import { tmpdir, userInfo } from 'node:os'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
 import type { WebContents } from 'electron'
