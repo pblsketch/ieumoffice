@@ -7,7 +7,9 @@
 //! `escher`), and the print settings — page setup, margins, header/footer,
 //! manual breaks, print area and titles (see `xls_print`). Charts and
 //! conditional formats are not carried over — the converted file is a fresh
-//! workbook, not a byte-preserving edit.
+//! workbook, not a byte-preserving edit. ODF arrives in its own reference
+//! dialect, so formulas go through `odf::translate_formula` first and any
+//! that cannot be proven correct keep only their cached result.
 
 use std::collections::HashMap;
 use std::fs::File;
