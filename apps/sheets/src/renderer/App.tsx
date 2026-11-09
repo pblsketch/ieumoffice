@@ -473,6 +473,7 @@ import { installCopyAnimationIdle } from './copy-animation-idle'
 import { installNumberAsTextAlertSeverity } from './number-as-text-alert'
 import { installFormulaStreamHold } from './formula-stream-hold'
 import { installRichTextBidiFix } from './rich-text-bidi-fix'
+import { installImeInputGuard } from './ime-input-guard'
 import { installRtlTextDirectionFix } from './rtl-text-fix'
 import { installRtlGridMirror } from './rtl-grid-mirror'
 import { installVertAlignRender } from './vert-align-render'
@@ -2141,6 +2142,10 @@ export function App({
         (!document.documentElement.hasAttribute('data-theme') && prefersDark.matches)
       )
     }
+    // Windows Korean IME's Hanja picker commits the consonant and then sends a
+    // plain input event with the same text; the guard must be installed before
+    // Univer creates the hidden editor whose handlers it wraps.
+    installImeInputGuard()
     const runtime = createUniver({
       // green selection/highlight instead of Univer's default blue
       theme: greenTheme,
