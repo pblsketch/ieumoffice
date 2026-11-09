@@ -40,6 +40,9 @@ function fixture() {
     aboutMenuItem: () => ({}),
     app: { name: 'Synthetic' },
     extraFileMenuItems: [],
+    // this fork's File and Help menus add their own items (none here)
+    documentLinkMenuItems: null,
+    helpCheckUpdatesItems: () => [],
     shellHooks: null,
     activeViewMenuState: () => ({}),
     Menu: { buildFromTemplate: (template: unknown) => template, setApplicationMenu: installMenu },
