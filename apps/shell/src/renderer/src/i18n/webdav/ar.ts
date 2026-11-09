@@ -1,0 +1,50 @@
+import type { zh } from './zh'
+
+export const ar = {
+  webdavNav: 'WebDAV',
+  webdavDesc:
+    'اربط خادم WebDAV (مثل Nextcloud أو Synology NAS) لفتح ملفاته هنا. عند الحفظ تعود التغييرات إلى الخادم.',
+  webdavNoServers: 'لا توجد خوادم متصلة بعد.',
+  webdavAdd: 'إضافة خادم',
+  webdavFieldName: 'الاسم',
+  webdavFieldUrl: 'عنوان الخادم',
+  webdavFieldUser: 'اسم المستخدم',
+  webdavFieldPassword: 'كلمة المرور أو كلمة مرور التطبيق',
+  webdavUserHint: 'اترك اسم المستخدم فارغًا إذا كان الخادم لا يطلب تسجيل الدخول.',
+  webdavInsecureWarn: 'هذا اتصال HTTP غير مشفّر. تمر كلمة المرور والملفات عبر الشبكة بشكل مقروء.',
+  webdavInsecureConfirm: 'أفهم المخاطر وأريد استخدام HTTP',
+  webdavSave: 'اتصال',
+  webdavCancel: 'إلغاء',
+  webdavChecking: 'جارٍ التحقق من الاتصال…',
+  webdavRemove: 'إزالة الخادم',
+  webdavRemoveConfirm:
+    'هل تريد إزالة اتصال هذا الخادم من هذا الكمبيوتر؟ لن يتم حذف الملفات الموجودة على الخادم.',
+  webdavRemoveYes: 'إزالة',
+  webdavNeedPassword: 'تعذّر على هذا الكمبيوتر حفظ كلمة المرور مشفّرة. أدخلها مرة أخرى.',
+  webdavNotPersisted:
+    'لا يستطيع هذا الكمبيوتر حفظ كلمة المرور مشفّرة، لذا ستدخلها مجددًا بعد إغلاق التطبيق.',
+  webdavPrivacy:
+    'تبقى كلمة المرور على هذا الكمبيوتر مشفّرة بواسطة النظام. تنتقل الملفات فقط بين هذا الكمبيوتر والخادم الذي أدخلته عند فتحها أو حفظها.',
+  webdavEmptyTitle: 'لا يوجد خادم WebDAV متصل',
+  webdavEmptyBody: 'أضف خادمًا من الإعدادات ← التكاملات، ثم تصفّح ملفاته وافتحها هنا.',
+  webdavOpenSettings: 'فتح الإعدادات',
+  webdavRoot: 'الجذر',
+  webdavFolderEmpty: 'هذا المجلد فارغ.',
+  webdavLoading: 'جارٍ التحميل…',
+  webdavRefresh: 'تحديث',
+  webdavUnsupported: 'لا يستطيع التطبيق فتح هذا التنسيق',
+  webdavOpening: 'جارٍ الفتح…',
+  webdavServer: 'الخادم',
+  webdavErrUrl: 'العنوان غير صالح. أدخل العنوان الكامل الذي يبدأ بـ https:// أو http://.',
+  webdavErrInsecure: 'فعّل خانة التأكيد قبل استخدام اتصال HTTP غير مشفّر.',
+  webdavErrAuth:
+    'رفض الخادم تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور (كثير من الخدمات تتطلب كلمة مرور تطبيق).',
+  webdavErrNotFound: 'هذا المجلد أو الملف غير موجود على الخادم.',
+  webdavErrForbidden: 'هذا الحساب غير مسموح له بذلك.',
+  webdavErrNetwork: 'تعذّر الوصول إلى الخادم. تحقق من العنوان والشبكة.',
+  webdavErrLimit: 'يمكنك ربط ما يصل إلى 10 خوادم.',
+  webdavErrTooLarge: 'الملف أكبر من أن يُفتح.',
+  webdavErrRateLimit: 'طلب الخادم إعادة المحاولة لاحقًا.',
+  webdavErrLocked: 'قام شخص آخر بقفل الملف.',
+  webdavErrDisk: 'تعذّر حفظ الملف على هذا الكمبيوتر.',
+} satisfies Record<keyof typeof zh, string>
