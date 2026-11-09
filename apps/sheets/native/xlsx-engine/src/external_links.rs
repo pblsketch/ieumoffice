@@ -387,7 +387,7 @@ pub fn read_external_link_statuses(
 /// The link list without touching any source: no `is_file()` on the targets,
 /// nothing is opened, nothing is evaluated. This is what the editor's links
 /// panel reads when it opens; the explicit update answers reachability.
-pub(crate) fn list_external_link_statuses(
+pub fn list_external_link_statuses(
     workbook: &Path,
 ) -> Result<ExternalLinksListing, SidecarError> {
     Ok(ExternalLinksListing {
