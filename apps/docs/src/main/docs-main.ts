@@ -254,6 +254,7 @@ import {
 import { copyImageDisplaySize, validCopyImageDataUrl } from './copy-image-guard'
 import {
   printJobOptions,
+  printPaperOption,
   printScaleOption,
   validPrintGeometry,
   validPrintPaper,
@@ -6073,6 +6074,10 @@ export function registerDocsIpc(): void {
       margins: { marginType: 'none' as const },
       ...printScale(scale),
       ...printJobOptions(job),
+      // the document's own paper: Chromium prints on Letter unless the job
+      // states one, and an A4 sheet on Letter is taller than the paper — it
+      // splits in two, so the printed page loses its bottom (genoffice#2563)
+      ...printPaperOption(paper),
     }
     // A named printer prints silently, and Chromium's silent print on macOS
     // can drop the job outright — no queue entry, no callback error
