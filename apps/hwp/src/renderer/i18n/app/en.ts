@@ -6,6 +6,7 @@ export const en = {
   openFailed: 'The document could not be opened.',
   pdfImportCancelled: 'The PDF import was cancelled. You can close this tab.',
   saveFailed: 'The document could not be saved.',
+  fileOpen: 'Open…',
   fileSave: 'Save',
   fileSaveAs: 'Save As…',
   fileImportPdf: 'Import PDF…',

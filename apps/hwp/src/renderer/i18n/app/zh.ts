@@ -5,6 +5,7 @@ export const zh = {
   openFailed: '无法打开文档。',
   pdfImportCancelled: '已取消 PDF 导入。可以关闭此标签页。',
   saveFailed: '无法保存文档。',
+  fileOpen: '打开…',
   fileSave: '保存',
   fileSaveAs: '另存为…',
   fileImportPdf: '导入 PDF…',

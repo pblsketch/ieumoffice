@@ -6,6 +6,7 @@ export const he = {
   openFailed: 'לא ניתן היה לפתוח את המסמך.',
   pdfImportCancelled: 'ייבוא ה-PDF בוטל. אפשר לסגור את הכרטיסייה הזו.',
   saveFailed: 'לא ניתן היה לשמור את המסמך.',
+  fileOpen: 'פתיחה…',
   fileSave: 'שמירה',
   fileSaveAs: 'שמירה בשם…',
   fileImportPdf: 'ייבוא PDF…',

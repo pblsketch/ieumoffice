@@ -6,6 +6,7 @@ export const hi = {
   openFailed: 'दस्तावेज़ खोला नहीं जा सका।',
   pdfImportCancelled: 'PDF आयात रद्द कर दिया गया। आप यह टैब बंद कर सकते हैं।',
   saveFailed: 'दस्तावेज़ सहेजा नहीं जा सका।',
+  fileOpen: 'खोलें…',
   fileSave: 'सहेजें',
   fileSaveAs: 'इस रूप में सहेजें…',
   fileImportPdf: 'PDF आयात करें…',

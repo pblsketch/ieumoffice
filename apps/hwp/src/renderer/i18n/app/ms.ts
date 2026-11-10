@@ -6,6 +6,7 @@ export const ms = {
   openFailed: 'Dokumen tidak dapat dibuka.',
   pdfImportCancelled: 'Import PDF dibatalkan. Anda boleh menutup tab ini.',
   saveFailed: 'Dokumen tidak dapat disimpan.',
+  fileOpen: 'Buka…',
   fileSave: 'Simpan',
   fileSaveAs: 'Simpan Sebagai…',
   fileImportPdf: 'Import PDF…',

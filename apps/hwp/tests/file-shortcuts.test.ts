@@ -342,3 +342,34 @@ describe('keys that are Hangul table keys where the caret is', () => {
     expect(goHome).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('the Open item of the editor File menu', () => {
+  it('asks the shell to open a file, as Ctrl+O does, and only for a Hangul view', async () => {
+    const { ipcMain } = await import('electron')
+    const view = createHwpView()
+    const registered = vi
+      .mocked(ipcMain.on)
+      .mock.calls.find(([channel]) => channel === 'hwp:file-command')
+    const onFileCommand = registered?.[1] as unknown as (event: unknown, command: unknown) => void
+    expect(onFileCommand).toBeTypeOf('function')
+
+    onFileCommand({ sender: view.webContents }, 'open')
+    expect(openFileDialog).toHaveBeenCalledTimes(1)
+
+    // a sender that is not one of this module's views is not answered
+    onFileCommand({ sender: { id: -1 } }, 'open')
+    expect(openFileDialog).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing when the shell passed no action', async () => {
+    const { ipcMain } = await import('electron')
+    configureHwpRuntime({ preloadPath: '' })
+    const view = createHwpView()
+    const registered = vi
+      .mocked(ipcMain.on)
+      .mock.calls.find(([channel]) => channel === 'hwp:file-command')
+    const onFileCommand = registered?.[1] as unknown as (event: unknown, command: unknown) => void
+    expect(() => onFileCommand({ sender: view.webContents }, 'open')).not.toThrow()
+    expect(openFileDialog).not.toHaveBeenCalled()
+  })
+})
