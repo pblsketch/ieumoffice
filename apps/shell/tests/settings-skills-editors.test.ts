@@ -82,6 +82,7 @@ function bridge(views: UserSkillView[], fileEditors?: string[]) {
     checkName: vi.fn(async () => ({ ok: true })),
     save: vi.fn(async () => ({ ok: true, id: 'app:deck' })),
     openFolder: vi.fn(async () => ({ ok: true })),
+    versions: vi.fn(async () => ({ ok: true, versions: [] })),
     onChanged: vi.fn(() => () => undefined),
     onDropped: vi.fn(() => () => undefined),
     takeDropped: vi.fn(async () => ({ ok: true, preview: null })),

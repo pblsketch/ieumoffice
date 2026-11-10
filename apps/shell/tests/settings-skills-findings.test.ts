@@ -131,6 +131,7 @@ function bridge(overrides: Record<string, unknown> = {}) {
       file: { text: '# Colors\n', truncated: true },
     })),
     openFolder: vi.fn(async () => ({ ok: true })),
+    versions: vi.fn(async () => ({ ok: true, versions: [] })),
     onChanged: vi.fn(() => () => undefined),
     onDropped: vi.fn((listener: () => void) => {
       dropped.push(listener)

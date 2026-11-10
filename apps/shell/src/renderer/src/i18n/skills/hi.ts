@@ -183,4 +183,28 @@ export const hi = {
     'नीचे दिए निर्देश वह टेक्स्ट हैं जो AI को दिया जाता है। यह जैसा लिखा है वैसा ही दिखता है, इसलिए अंग्रेज़ी में हो सकता है',
   pasteUnclosed:
     'बंद करने वाली --- पंक्ति नहीं है। हो सकता है टेक्स्ट बीच में कट गया हो; इसे शुरू से अंत तक दोबारा कॉपी करें।',
+  versionsTitle: 'पिछले संस्करण',
+  versionsNone:
+    'अभी कोई पिछला संस्करण नहीं है। जब आप इस कौशल को संपादित करते, बदलते या अपडेट करते हैं, तो उससे पहले का संस्करण यहाँ रखा जाता है।',
+  versionsTotal: '{n} रखे गए, कुल {size}। जब तक आप हटाते नहीं, ये बने रहते हैं।',
+  versionReasonEdit: 'संपादन से पहले',
+  versionReasonReplace: 'बदले जाने से पहले',
+  versionReasonUpdate: 'अपडेट से पहले',
+  versionReasonRestore: 'वापस जाने से पहले',
+  versionCompare: 'अंतर देखें',
+  versionRestore: 'इस संस्करण पर वापस जाएँ',
+  versionRestoreNote: 'अभी का संस्करण भी यहाँ रखा जाता है, इसलिए आप उस पर लौट सकते हैं।',
+  versionRestoreUnsaved:
+    'कुछ बदलाव सहेजे नहीं गए हैं। पहले उन्हें सहेजें या रद्द करें, फिर वापस जाएँ।',
+  versionRemove: 'हटाएँ',
+  versionRemoveAsk: 'यह संस्करण हटाएँ? इसे वापस नहीं लाया जा सकेगा।',
+  versionSame: 'इसमें वही है जो अभी के संस्करण में है।',
+  versionDiffLegend: '+ पंक्तियाँ जो लौट आएँगी, − पंक्तियाँ जो वापस जाने पर हट जाएँगी',
+  versionDiffGap: '{n} पंक्तियाँ जस की तस',
+  versionFileAdded: 'लौट आएगी',
+  versionFileRemoved: 'हट जाएगी',
+  versionFileModified: 'बदल जाएगी',
+  versionRestored: 'पिछले संस्करण पर वापस आ गए',
+  replacedKept:
+    'जो संस्करण बदला जा रहा है, वह इस कौशल के "पिछले संस्करण" में रखा जाता है, और आप उस पर लौट सकते हैं।',
 } satisfies Record<keyof typeof zh, string>

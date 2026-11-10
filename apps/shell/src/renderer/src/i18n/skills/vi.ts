@@ -183,4 +183,27 @@ export const vi = {
     'Phần hướng dẫn bên dưới là văn bản đưa cho AI, hiển thị nguyên văn nên có thể bằng tiếng Anh',
   pasteUnclosed:
     'Thiếu dòng --- đóng phần đầu. Văn bản có thể đã bị cắt; hãy sao chép lại từ đầu đến cuối.',
+  versionsTitle: 'Phiên bản trước',
+  versionsNone:
+    'Chưa có phiên bản trước. Khi bạn sửa, thay thế hoặc cập nhật kỹ năng này, phiên bản trước đó được giữ lại ở đây.',
+  versionsTotal: 'Đã giữ {n}, tổng cộng {size}. Chúng còn đó cho đến khi bạn xóa.',
+  versionReasonEdit: 'Trước khi sửa',
+  versionReasonReplace: 'Trước khi bị thay thế',
+  versionReasonUpdate: 'Trước khi cập nhật',
+  versionReasonRestore: 'Trước khi quay lại',
+  versionCompare: 'Xem khác biệt',
+  versionRestore: 'Quay lại phiên bản này',
+  versionRestoreNote: 'Phiên bản hiện tại cũng được giữ ở đây, nên bạn có thể quay lại.',
+  versionRestoreUnsaved: 'Bạn có thay đổi chưa lưu. Hãy lưu hoặc hủy trước, rồi mới quay lại.',
+  versionRemove: 'Xóa',
+  versionRemoveAsk: 'Xóa phiên bản này? Không thể lấy lại.',
+  versionSame: 'Nội dung giống với phiên bản hiện tại.',
+  versionDiffLegend: '+ dòng sẽ trở lại, − dòng sẽ mất nếu bạn quay lại phiên bản này',
+  versionDiffGap: '{n} dòng không đổi',
+  versionFileAdded: 'sẽ trở lại',
+  versionFileRemoved: 'sẽ mất',
+  versionFileModified: 'sẽ thay đổi',
+  versionRestored: 'Đã quay lại phiên bản trước',
+  replacedKept:
+    'Phiên bản bị thay thế được giữ trong "Phiên bản trước" của kỹ năng này, và bạn có thể quay lại.',
 } satisfies Record<keyof typeof zh, string>

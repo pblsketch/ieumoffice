@@ -65,6 +65,7 @@ beforeEach(() => {
   } as unknown as HomeApi
   ;(window as unknown as { aiOfficeUserSkills?: unknown }).aiOfficeUserSkills = {
     list: vi.fn(async () => [brief]),
+    versions: vi.fn(async () => ({ ok: true, versions: [] })),
     onChanged: vi.fn(() => () => undefined),
     onDropped: vi.fn(() => () => undefined),
     takeDropped: vi.fn(async () => ({ ok: true, preview: null })),

@@ -183,4 +183,27 @@ export const pl = {
     'Instrukcje poniżej to tekst przekazywany AI, pokazany bez zmian, dlatego może być po angielsku',
   pasteUnclosed:
     'Brakuje zamykającego wiersza ---. Tekst mógł zostać ucięty; skopiuj go jeszcze raz od początku do końca.',
+  versionsTitle: 'Wcześniejsze wersje',
+  versionsNone:
+    'Nie ma jeszcze wcześniejszych wersji. Gdy edytujesz, zastąpisz lub zaktualizujesz tę umiejętność, poprzednia wersja zostanie tutaj.',
+  versionsTotal: 'Zachowane: {n}, razem {size}. Pozostają, dopóki ich nie usuniesz.',
+  versionReasonEdit: 'Przed edycją',
+  versionReasonReplace: 'Przed zastąpieniem',
+  versionReasonUpdate: 'Przed aktualizacją',
+  versionReasonRestore: 'Przed przywróceniem',
+  versionCompare: 'Pokaż różnice',
+  versionRestore: 'Wróć do tej wersji',
+  versionRestoreNote: 'Obecna wersja też tu zostaje, więc można do niej wrócić.',
+  versionRestoreUnsaved: 'Masz niezapisane zmiany. Najpierw je zapisz lub anuluj.',
+  versionRemove: 'Usuń',
+  versionRemoveAsk: 'Usunąć tę wersję? Nie da się jej odzyskać.',
+  versionSame: 'Zawiera to samo co obecna wersja.',
+  versionDiffLegend: '+ wiersze, które wrócą, − wiersze, które znikną po powrocie do tej wersji',
+  versionDiffGap: 'Wiersze bez zmian: {n}',
+  versionFileAdded: 'wróci',
+  versionFileRemoved: 'zniknie',
+  versionFileModified: 'zmieni się',
+  versionRestored: 'Przywrócono wcześniejszą wersję',
+  replacedKept:
+    'Zastępowana wersja zostaje we „Wcześniejszych wersjach” tej umiejętności i można do niej wrócić.',
 } satisfies Record<keyof typeof zh, string>

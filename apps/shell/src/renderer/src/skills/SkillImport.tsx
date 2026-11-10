@@ -588,7 +588,9 @@ export function SkillImportPreviewDialog({
                         {s(choice === 'replace' ? 'collisionReplace' : 'collisionSkip')}
                       </button>
                     ))}
-                    <span className="set-field-desc skl-collision-note">{s('collisionKeeps')}</span>
+                    <span className="set-field-desc skl-collision-note">
+                      {s('collisionKeeps')} {s('replacedKept')}
+                    </span>
                   </div>
                 )}
               </div>

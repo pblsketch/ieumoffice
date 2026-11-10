@@ -184,4 +184,28 @@ export const it = {
     'Le istruzioni qui sotto sono il testo dato all’IA, mostrato così com’è: per questo può essere in inglese',
   pasteUnclosed:
     'Manca la riga --- di chiusura. Il testo potrebbe essere stato tagliato: copialo di nuovo dall’inizio alla fine.',
+  versionsTitle: 'Versioni precedenti',
+  versionsNone:
+    'Non ci sono ancora versioni precedenti. Quando modifichi, sostituisci o aggiorni questa abilità, la versione di prima resta qui.',
+  versionsTotal: '{n} conservate, {size} in tutto. Restano finché non le elimini.',
+  versionReasonEdit: 'Prima di una modifica',
+  versionReasonReplace: 'Prima della sostituzione',
+  versionReasonUpdate: 'Prima di un aggiornamento',
+  versionReasonRestore: 'Prima di tornare indietro',
+  versionCompare: 'Vedi differenze',
+  versionRestore: 'Torna a questa versione',
+  versionRestoreNote: 'Anche la versione attuale resta qui, quindi puoi tornarci.',
+  versionRestoreUnsaved:
+    'Ci sono modifiche non salvate. Salvale o annullale prima di tornare indietro.',
+  versionRemove: 'Elimina',
+  versionRemoveAsk: 'Eliminare questa versione? Non si potrà recuperare.',
+  versionSame: 'Ha lo stesso contenuto della versione attuale.',
+  versionDiffLegend: '+ righe che tornano, − righe che spariscono se torni a questa versione',
+  versionDiffGap: '{n} righe invariate',
+  versionFileAdded: 'torna',
+  versionFileRemoved: 'sparisce',
+  versionFileModified: 'cambia',
+  versionRestored: 'Tornato alla versione precedente',
+  replacedKept:
+    'La versione sostituita resta in «Versioni precedenti» di questa abilità e puoi tornarci.',
 } satisfies Record<keyof typeof zh, string>
