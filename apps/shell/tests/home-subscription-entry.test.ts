@@ -265,6 +265,7 @@ describe('the word Settings on the home entry', () => {
   it('is in sight beside the AI connection, whatever that connection is', async () => {
     await renderHome(statuses({ state: 'ready', planName: 'max' }, { state: 'signed-out' }))
     expect(label()).toBe('Settings')
+    expect(host.querySelector('.account-settings svg[aria-hidden="true"]')).toBeTruthy()
     // the connection it shows is still there
     expect(entryText('.account-name')).toBe('Claude')
     expect(entryText('.account-sub')).toBe('Connected · max')

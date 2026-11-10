@@ -993,23 +993,18 @@ function AccountEntry({
           <span className="account-name">{label}</span>
           {stateText && <span className="account-sub">{stateText}</span>}
         </span>
-        <span className="account-settings">{t('settings')}</span>
-        <svg
-          className="account-chevron"
-          width="14"
-          height="14"
-          viewBox="0 0 16 16"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M5 6.2 8 3.4l3 2.8M5 9.8l3 2.8 3-2.8"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <span className="account-settings">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M6.6 1.8h2.8l.4 1.7 1.2.7 1.7-.5 1.4 2.4-1.3 1.2v1.4l1.3 1.2-1.4 2.4-1.7-.5-1.2.7-.4 1.7H6.6l-.4-1.7-1.2-.7-1.7.5-1.4-2.4 1.3-1.2V7.3L1.9 6.1l1.4-2.4 1.7.5 1.2-.7z"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+            />
+            <circle cx="8" cy="8" r="2.1" stroke="currentColor" strokeWidth="1.3" />
+          </svg>
+          {t('settings')}
+        </span>
       </button>
     </div>
   )
