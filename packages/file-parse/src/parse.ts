@@ -1,6 +1,7 @@
 import { open, readFile, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { OdtNotTextError, isOdtOpenError } from '@genoffice/odt-engine'
+import { PLAIN_TEXT_EXTS } from './attachable'
 import { diagramFormatOf, readDiagramText } from './diagram'
 import { docToText } from './doc'
 import { docxToText } from './docx'
@@ -36,20 +37,6 @@ const IMAGE_MIMES: Record<string, string> = {
   webp: 'image/webp',
 }
 
-const TEXT_EXTS = new Set([
-  'txt',
-  'md',
-  'markdown',
-  'csv',
-  'tsv',
-  'json',
-  'xml',
-  'html',
-  'htm',
-  'log',
-  'py',
-])
-
 /**
  * Formats whose own editor can withhold a span from a model: the text is handed
  * over with each withheld span as its `{{label}}` marker. These throw on a mark
@@ -80,6 +67,20 @@ function isUtf32BomDeclared(bytes: Buffer | Uint8Array): boolean {
   if (bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 0xfe && bytes[3] === 0xff) return true // UTF-32BE
   if (bytes[0] === 0xff && bytes[1] === 0xfe && bytes[2] === 0 && bytes[3] === 0) return true // UTF-32LE
   return false
+}
+
+/**
+ * Whether these bytes are binary data under a plain-text extension (e.g. an
+ * MPEG transport stream saved as `.ts`, which is also the TypeScript
+ * extension): a NUL byte with no UTF-16 BOM. UTF-16 text legitimately has a
+ * NUL byte in every ASCII code unit's other half, so a BOM-declared UTF-16
+ * file is never checked here; everything else that decodes as UTF-8 or
+ * windows-1252 should not contain one.
+ */
+function looksLikeBinary(bytes: Buffer): boolean {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return false // UTF-16LE BOM (UTF-32LE caught separately)
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return false // UTF-16BE BOM
+  return bytes.includes(0)
 }
 
 /**
@@ -245,14 +246,25 @@ export async function parseFileToText(
   const imageMime = IMAGE_MIMES[ext]
   if (imageMime) return { ok: true, kind: 'image', mime: imageMime }
   try {
-    if (TEXT_EXTS.has(ext)) {
+    if (PLAIN_TEXT_EXTS.has(ext)) {
       const bytes = await readFile(filePath)
-      const text =
-        ext === 'csv' || ext === 'tsv'
-          ? isUtf32BomDeclared(bytes)
-            ? null
-            : decodeCsvBuffer(bytes)
-          : decodeTextBytes(bytes)
+      if (isUtf32BomDeclared(bytes)) {
+        return {
+          ok: false,
+          kind: 'text',
+          error:
+            'Unsupported text encoding: BOM-declared UTF-32 cannot be decoded (UTF-8 and UTF-16 are supported)',
+        }
+      }
+      if (looksLikeBinary(bytes)) {
+        return {
+          ok: false,
+          kind: 'text',
+          error: `Content mismatch: .${ext} file looks like binary data (a NUL byte with no UTF-16 byte order mark)`,
+        }
+      }
+      const text = ext === 'csv' || ext === 'tsv' ? decodeCsvBuffer(bytes) : decodeTextBytes(bytes)
+      // decodeTextBytes only returns null for a BOM-declared UTF-32 file, already ruled out above
       if (text === null) {
         return {
           ok: false,

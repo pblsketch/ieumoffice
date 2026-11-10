@@ -250,16 +250,17 @@ describe('the material formats', () => {
     return (await parseFileToText(path)).kind !== 'unsupported'
   }
 
-  it('are the attachable formats the reader reads, named by their last extension', async () => {
-    const expected: string[] = []
-    // the two diagram pictures are named by two extensions; a material is named by one
-    for (const ext of [...ATTACHABLE_EXTS].filter((e) => !e.includes('.'))) {
-      // draw.io diagrams are read, but left out of the material on purpose
-      if (DIAGRAM_EXTS.includes(ext)) continue
-      if (await readerReads(ext)) expected.push(ext)
+  it('are attachable formats the reader actually reads, named by their last extension', async () => {
+    // a material extension must be attachable and (by the module doc comment,
+    // not every attachable text format becomes a material on purpose) must be
+    // one the reader reads — but the reverse isn't required: PARSED_MATERIAL_EXTS
+    // deliberately leaves out source-code text types a neighboring test also
+    // expects to stay non-material (e.g. 'js', 'yaml'), even though the reader
+    // (like every attachable plain-text extension) reads those too.
+    for (const ext of SUPPORTED_MATERIAL_EXTS) {
+      expect(ATTACHABLE_EXTS.has(ext), ext).toBe(true)
+      expect(await readerReads(ext), ext).toBe(true)
     }
-    expect([...SUPPORTED_MATERIAL_EXTS].sort()).toEqual(expected.sort())
-    for (const ext of SUPPORTED_MATERIAL_EXTS) expect(ATTACHABLE_EXTS.has(ext), ext).toBe(true)
   })
 
   it('take Hangul, ODT and EPUB documents but not .xls, source code or draw.io diagrams', () => {

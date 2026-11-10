@@ -76,6 +76,27 @@ describe('parseFileToText: plain-text formats', () => {
     expect(result.text).toBeUndefined()
   })
 
+  it('rejects a NUL byte with no UTF-16 BOM instead of returning garbled text', async () => {
+    // .ts is also the MPEG transport stream extension: a real clip starts with
+    // the 0x47 sync byte and, being binary, almost certainly has a NUL inside.
+    const clip = Buffer.concat([
+      Buffer.from([0x47, 0x40, 0x00, 0x10]),
+      Buffer.alloc(100, 0),
+      Buffer.from([0x47, 0x41, 0x00, 0x11]),
+    ])
+    const result = await parseFileToText(writeFixture('clip.ts', clip))
+    expect(result.ok).toBe(false)
+    expect(result.kind).toBe('text')
+    expect(result.error).toContain('Content mismatch')
+    expect(result.text).toBeUndefined()
+  })
+
+  it('still reads real TypeScript source under the same .ts extension', async () => {
+    const source = 'export function hello(): string {\n  return "world"\n}\n'
+    const result = await parseFileToText(writeFixture('real.ts', source))
+    expect(result).toEqual({ ok: true, kind: 'text', text: source })
+  })
+
   it('returns the whole text for valid UTF-8 with a single stray 0xFF byte', async () => {
     const bytes = Buffer.concat([
       Buffer.from('hello '.repeat(500), 'utf8'),
