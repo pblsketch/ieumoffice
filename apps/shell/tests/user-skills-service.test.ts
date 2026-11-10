@@ -199,20 +199,21 @@ describe('removing and copying', () => {
     expect(await service.copyToMine('codex:mine', false)).toEqual({ ok: false, reason: 'exists' })
     expect(trash).not.toHaveBeenCalled()
     expect(await service.copyToMine('codex:mine', true)).toMatchObject({ ok: true })
-    expect(trash).toHaveBeenCalledTimes(1)
+    // the overwritten skill stays in the app as an earlier version, not in the OS trash
+    expect(trash).not.toHaveBeenCalled()
+    expect(await service.versions('app:mine')).toMatchObject({
+      ok: true,
+      versions: [{ reason: 'replace' }],
+    })
     const text = readFileSync(join(appDir(), 'mine', 'SKILL.md'), 'utf8')
     expect(parseSkillMd(text)!.description).toBe('Codex copy')
   })
 
-  it('keeps the own skill when it cannot go to the trash, and says why', async () => {
+  it('keeps the own skill when its earlier version cannot be kept', async () => {
     skill(join(home, '.agents', 'skills', 'mine'), 'mine', 'Codex copy')
-    trash.mockImplementation(async () => {
-      throw new Error('no trash here')
-    })
-    expect(await service.copyToMine('codex:mine', true)).toEqual({
-      ok: false,
-      reason: 'trash-failed',
-    })
+    // a file where the versions folder would be: nothing can be kept there
+    writeFileSync(join(home, '.ieumoffice', 'skill-history'), 'in the way')
+    expect(await service.copyToMine('codex:mine', true)).toEqual({ ok: false, reason: 'failed' })
     expect(
       parseSkillMd(readFileSync(join(appDir(), 'mine', 'SKILL.md'), 'utf8'))!.description,
     ).toBe('My own')

@@ -62,6 +62,10 @@ const service = {
   readImportedFile: vi.fn(async () => ({ ok: true, file: { text: 'f', truncated: false } })),
   exportBundleTo: vi.fn(async () => ({ ok: true, path: 'p' })),
   exportInfo: vi.fn(async () => ({ ok: true, fileName: 'a.zip', includesTemplate: false })),
+  versions: vi.fn(async () => ({ ok: true, versions: [] })),
+  compareVersion: vi.fn(async () => ({ ok: true, diff: { same: true, skillMd: [], files: [] } })),
+  restoreVersion: vi.fn(async () => ({ ok: true, id: 'app:a' })),
+  removeVersion: vi.fn(async () => ({ ok: true })),
 }
 
 const { registerUserSkillsIpc } = await import('../src/main/user-skills/user-skills-ipc')
@@ -122,6 +126,45 @@ describe('who may do what', () => {
     expect(await call(C.setState, settings, 'app:a', { enabled: false })).toEqual({ ok: true })
     expect(service.setState).toHaveBeenCalledWith('app:a', { enabled: false })
     expect(mocks.sent.map((entry) => entry.channel)).toEqual([C.changed, C.changed])
+  })
+
+  it('keeps the earlier versions of a skill to the settings screen', async () => {
+    const version = '20261110T093000000Z-edit'
+    for (const other of [editor, agent]) {
+      expect(await call(C.versions, other, 'app:a')).toMatchObject({ reason: 'not-allowed' })
+      expect(await call(C.compareVersion, other, 'app:a', version)).toMatchObject({
+        reason: 'not-allowed',
+      })
+      expect(await call(C.restoreVersion, other, 'app:a', version)).toMatchObject({
+        reason: 'not-allowed',
+      })
+      expect(await call(C.removeVersion, other, 'app:a', version)).toMatchObject({
+        reason: 'not-allowed',
+      })
+    }
+    expect(service.versions).not.toHaveBeenCalled()
+    expect(service.restoreVersion).not.toHaveBeenCalled()
+    expect(service.removeVersion).not.toHaveBeenCalled()
+
+    expect(await call(C.versions, settings, 'app:a')).toEqual({ ok: true, versions: [] })
+    expect(await call(C.compareVersion, settings, 'app:a', version)).toMatchObject({ ok: true })
+    expect(await call(C.removeVersion, settings, 'app:a', version)).toEqual({ ok: true })
+    expect(mocks.sent).toEqual([])
+    // going back changes the skill: every window reads the list again
+    expect(await call(C.restoreVersion, settings, 'app:a', version)).toEqual({
+      ok: true,
+      id: 'app:a',
+    })
+    expect(service.restoreVersion).toHaveBeenCalledWith('app:a', version)
+    expect(mocks.sent.map((entry) => entry.channel)).toEqual([C.changed, C.changed])
+
+    expect(await call(C.restoreVersion, settings, 'app:a', 7)).toMatchObject({
+      reason: 'invalid',
+    })
+    expect(await call(C.restoreVersion, settings, 'app:a', 'x'.repeat(65))).toMatchObject({
+      reason: 'invalid',
+    })
+    expect(service.restoreVersion).toHaveBeenCalledTimes(1)
   })
 
   it('lets any window save a card and read for the AI', async () => {

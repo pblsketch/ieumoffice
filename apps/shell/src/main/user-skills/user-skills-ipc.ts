@@ -72,6 +72,11 @@ export const DROPPED_SKILLS_MAX = 20
 /** Most same-named skills one delete may turn back on (one per other source is the usual) */
 const REMOVE_TURN_ON_MAX = 50
 
+/** A kept version's identifier as a window sends it; the store judges its form */
+function versionIdOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 64 ? value : undefined
+}
+
 /** Longest bundle name a window may suggest; the core cuts it to a file name */
 const BUNDLE_NAME_MAX_CHARS = 300
 
@@ -425,6 +430,29 @@ export function registerUserSkillsIpc(deps: UserSkillsIpcDeps): UserSkillsIpc {
       await service.dispose(entry.value.check.update)
     }
     return { ok: true }
+  })
+
+  manage(C.versions, (_event, id: unknown) => {
+    const skillId = skillIdOf(id)
+    return skillId ? service.versions(skillId) : invalid
+  })
+
+  manage(C.compareVersion, (_event, id: unknown, version: unknown) => {
+    const skillId = skillIdOf(id)
+    const versionId = versionIdOf(version)
+    return skillId && versionId ? service.compareVersion(skillId, versionId) : invalid
+  })
+
+  manage(C.restoreVersion, (_event, id: unknown, version: unknown) => {
+    const skillId = skillIdOf(id)
+    const versionId = versionIdOf(version)
+    return skillId && versionId ? changing(service.restoreVersion(skillId, versionId)) : invalid
+  })
+
+  manage(C.removeVersion, (_event, id: unknown, version: unknown) => {
+    const skillId = skillIdOf(id)
+    const versionId = versionIdOf(version)
+    return skillId && versionId ? service.removeVersion(skillId, versionId) : invalid
   })
 
   manage(C.exportInfo, (_event, id: unknown) => {
