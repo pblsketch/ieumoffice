@@ -438,9 +438,9 @@ describe('Settings → Skills screen', () => {
     expect(api.setState).toHaveBeenCalledWith(mine.id, { invoke: 'manual' })
   })
 
-  it('offers the auto/manual choice only for an enabled skill', async () => {
+  it('keeps the auto/manual choice on a skill that is off', async () => {
     await renderPane(bridge([claude]))
-    expect(buttonWithText(ko('invokeAuto'), row(claude.id))).toBeUndefined()
+    expect(buttonWithText(ko('invokeAuto'), row(claude.id))).toBeTruthy()
   })
 
   it('offers the more-menu items each source allows', async () => {

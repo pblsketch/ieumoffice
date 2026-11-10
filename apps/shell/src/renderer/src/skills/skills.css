@@ -165,6 +165,11 @@
   background: var(--bg-hover);
 }
 
+/* a skill that is off keeps its choice, shown as not in effect */
+.skl-invoke.off {
+  opacity: 0.55;
+}
+
 .skl-invoke-option {
   height: 24px;
   padding: 0 8px;

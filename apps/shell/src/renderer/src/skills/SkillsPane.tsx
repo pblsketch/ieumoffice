@@ -640,8 +640,12 @@ function SkillRow({
           )}
         </div>
         <div className="skl-row-controls">
-          {view.enabled && !unreadable && (
-            <div className="skl-invoke" role="group" aria-label={text('invokeLabel', { title })}>
+          {!unreadable && (
+            <div
+              className={`skl-invoke${view.enabled ? '' : ' off'}`}
+              role="group"
+              aria-label={text('invokeLabel', { title })}
+            >
               {(['auto', 'manual'] as const).map((invoke) => (
                 <button
                   key={invoke}

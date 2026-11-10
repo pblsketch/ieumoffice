@@ -163,3 +163,29 @@ describe('deleting an own skill whose name another source carries', () => {
     expect(api.remove).toHaveBeenCalledWith('app:deck', [])
   })
 })
+
+describe('when a skill is used, on a skill that is off', () => {
+  it('stays on the row, marked as not in effect, and can still be changed', async () => {
+    const api = bridge([
+      view({ id: 'app:deck', enabled: false, invoke: 'manual' }),
+      view({ id: 'app:weekly' }),
+    ])
+    await renderPane(api)
+
+    const choice = row('app:deck')?.querySelector<HTMLElement>('.skl-invoke')
+    expect(choice).toBeTruthy()
+    expect(choice!.classList.contains('off')).toBe(true)
+    expect(row('app:weekly')?.querySelector('.skl-invoke')?.classList.contains('off')).toBe(false)
+    expect(buttonWithText(ko('invokeManual'), choice!)?.getAttribute('aria-pressed')).toBe('true')
+
+    await click(buttonWithText(ko('invokeAuto'), choice!))
+    expect(api.setState).toHaveBeenCalledWith('app:deck', { invoke: 'auto' })
+  })
+
+  it('is left out for a skill that cannot be read', async () => {
+    const api = bridge([view({ id: 'user:broken', enabled: false, unreadable: 'no-frontmatter' })])
+    await renderPane(api)
+    expect(row('user:broken')).toBeTruthy()
+    expect(row('user:broken')?.querySelector('.skl-invoke')).toBeNull()
+  })
+})
