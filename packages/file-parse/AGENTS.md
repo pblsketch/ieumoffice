@@ -59,6 +59,7 @@
 - pptx의 슬라이드 순서는 파일 이름이 아니라 `presentation.xml`의 슬라이드 목록을 따른다. 목록에 없는 슬라이드 파트는 빼고, 목록 파일이 없을 때만 파일 번호순으로 읽는다.
 - 글자가 없고 그림만 있는 슬라이드와 시트는 제목만 남기지 않고 그림 수와 함께 추출할 글자가 없다는 표시를 넣는다. 표시가 없으면 모델과 사용자가 내용이 전달되지 않은 슬라이드를 읽힌 것으로 여긴다.
 - 텍스트 파일은 BOM을 보고 UTF-8과 UTF-16을 풀고, UTF-8로 읽히지 않으면 windows-1252로 읽는다. BOM이 UTF-32라고 알리는 파일만 거부한다.
+- HTML은 BOM 다음으로 엄격한 UTF-8을 먼저 시도한다(편집기가 늘 UTF-8로 저장하므로, 가져오기 때 남은 낡은 선언보다 우선한다). 둘 다 안 되면 그제서야 `<meta charset>`·http-equiv 선언을 본다. 선언이 UTF-16 계열이거나 WHATWG "replacement" 인코딩으로 가면 그 선언은 없는 것으로 치고(BOM 없이 진짜 UTF-16일 수 없고, replacement는 항상 대체문자 하나로만 풀리므로) windows-1252로 넘어간다. 이 `decodeHtmlBytes`는 `packages/cli`의 HTML 읽기도 가져다 쓴다.
 - 설치본에서만 깨지는 문제를 막는 우회가 두 군데 있고, 개발 실행에서는 드러나지 않으므로 지우지 않는다. pdfjs는 `DOMMatrix`가 없으면 import 단계에서 죽어서 순수 JS 대체 구현을 먼저 설치하고, 워커 모듈을 글자 그대로의 경로로 import해 번들에 넣는다. `ppt-to-text`는 의존성을 번들러가 따라가지 못하는 require 뒤에 숨기므로 `globalThis.CFB`와 `cptable`을 먼저 채운 뒤 지연 import한다.
 - 옛 PPT의 글자 디코딩은 코드페이지 1200(UTF-16LE)만 지원한다.
 - zip으로 된 문서가 `WHOLE_ZIP_READ_MAX_BYTES`(50MB)를 넘으면 `readZipTextParts`로 글이 든 파트(XML·관계·JSON·HTML·평문, 확장자 없는 파트)만 디스크에서 압축된 채 옮겨 작은 zip을 만들고, 나머지 파트는 이름만 남겨 내용을 비운다. 형식별 읽기와 zip 관문은 그 작은 zip에 그대로 돈다. 그 이하는 통째로 읽는다. 읽은 글은 통째로 읽을 때와 같아야 한다(`tests/large-documents.test.ts`). zip64는 거절한다(결정 0091).

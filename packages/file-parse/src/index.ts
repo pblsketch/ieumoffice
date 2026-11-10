@@ -1,4 +1,5 @@
 export {
+  decodeHtmlBytes,
   parseFileToText,
   type ParsedFile,
   type ParsedFileKind,

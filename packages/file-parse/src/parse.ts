@@ -117,6 +117,84 @@ const PDF_HEADER_WINDOW = 1024
 /** The stream an encrypted OOXML package lives in (OLE2 directory names are UTF-16LE). */
 const ENCRYPTED_PACKAGE_STREAM = Buffer.from('EncryptedPackage', 'utf16le')
 
+function markupCharset(bytes: Buffer): string | undefined {
+  // declarations are ASCII; any single-byte reading finds them in the first kilobytes
+  const head = bytes.subarray(0, 4096).toString('latin1')
+  return (
+    /<meta\b[^>]*\bcharset\s*=\s*["']?\s*([a-z0-9_:.+-]+)/i.exec(head)?.[1] ??
+    /<meta\b[^>]*http-equiv\s*=\s*["']?content-type["']?[^>]*\bcontent\s*=\s*["'][^"']*charset\s*=\s*([a-z0-9_:.+-]+)/i.exec(
+      head,
+    )?.[1]
+  )
+}
+
+/**
+ * WHATWG Encoding spec labels declared equivalent to UTF-16LE/BE. A <meta
+ * charset> cannot genuinely declare UTF-16: if the file really were UTF-16,
+ * its BOM would already have been caught before this label is even
+ * consulted, since the HTML parser could not otherwise have found an
+ * ASCII-readable meta tag at all. The spec's own fix for this ("if encoding
+ * is UTF-16BE/LE, set encoding to UTF-8") is applied here by treating the
+ * label as absent rather than substituting it, so the fallback chain below
+ * still ends in windows-1252 instead of a lossy non-fatal UTF-8 decode.
+ */
+const UTF16_LABELS = new Set([
+  'csunicode',
+  'iso-10646-ucs-2',
+  'ucs-2',
+  'unicode',
+  'unicodefeff',
+  'utf-16',
+  'utf-16le',
+  'unicodefffe',
+  'utf-16be',
+])
+
+/**
+ * WHATWG Encoding spec labels that resolve to the "replacement" encoding,
+ * which only ever decodes to a single U+FFFD -- never a usable charset.
+ */
+const REPLACEMENT_LABELS = new Set([
+  'csiso2022kr',
+  'hz-gb-2312',
+  'iso-2022-cn',
+  'iso-2022-cn-ext',
+  'iso-2022-kr',
+  'replacement',
+])
+
+/**
+ * HTML bytes as text: a byte order mark first (as for any text file, and
+ * see `UTF16_LABELS` above for why that makes a declared UTF-16 moot past
+ * this point). Then strict UTF-8, since the HTML editor itself always reads
+ * and writes UTF-8, so a page it saved decodes correctly even past a stale
+ * charset declaration left over from an import. Only once both fail does
+ * the page's own declared charset get a turn, and windows-1252 is the last
+ * resort, same as `decodeTextBytes`. null only for a BOM-declared UTF-32
+ * file (matching `decodeTextBytes`). Exported so `packages/cli`'s own HTML
+ * decoding can delegate here instead of keeping a second implementation;
+ * accepts `Uint8Array` too since that's what a CLI caller may hand in.
+ */
+export function decodeHtmlBytes(input: Buffer | Uint8Array): string | null {
+  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input)
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeTextBytes(bytes) // UTF-16LE/UTF-32LE BOM
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeTextBytes(bytes) // UTF-16BE/UTF-32BE BOM
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return decodeTextBytes(bytes) // UTF-8 BOM
+  try {
+    return FATAL_UTF8_DECODER.decode(bytes)
+  } catch {
+    const label = markupCharset(bytes)?.toLowerCase()
+    if (label && !UTF16_LABELS.has(label) && !REPLACEMENT_LABELS.has(label)) {
+      try {
+        return new TextDecoder(label).decode(bytes)
+      } catch {
+        // unknown or unsupported label: fall through to the ordinary decoder
+      }
+    }
+    return decodeTextBytes(bytes)
+  }
+}
+
 function sniffBinary(bytes: Buffer): BinaryKind {
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return 'zip'
   if (bytes.subarray(0, PDF_HEADER_WINDOW).includes(Buffer.from('%PDF-'))) return 'pdf'
@@ -252,7 +330,9 @@ export async function parseFileToText(
           ? isUtf32BomDeclared(bytes)
             ? null
             : decodeCsvBuffer(bytes)
-          : decodeTextBytes(bytes)
+          : ext === 'html' || ext === 'htm'
+            ? decodeHtmlBytes(bytes)
+            : decodeTextBytes(bytes)
       if (text === null) {
         return {
           ok: false,
