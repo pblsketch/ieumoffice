@@ -47,6 +47,7 @@ export const en = {
   hiddenFooter: '{n} hidden built-in skills',
   unhide: 'Show again',
   confirmRemove: 'Move the skill "{title}" to the trash? You can restore it from there.',
+  removeTurnOn: 'Turn the skill {name} ({source}) back on',
   confirmHide:
     'Hide the built-in skill "{title}"? A hidden skill is turned off; you can show it again at the bottom of the list.',
   cancel: 'Cancel',

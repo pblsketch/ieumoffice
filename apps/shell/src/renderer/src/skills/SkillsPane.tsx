@@ -26,6 +26,7 @@ import {
   groupSkills,
   hiddenBuiltinCount,
   listedCount,
+  sameNameOffSkills,
   skillActionLabel,
   skillDisplayDesc,
   skillDisplayTitle,
@@ -53,7 +54,12 @@ type Dialog =
   | { kind: 'update'; view: UserSkillView; check: ChangedUpdate }
 
 /** a question asked under a row before a change goes through */
-type RowConfirm = { id: string; kind: 'remove' | 'hide' | 'export' | 'overwrite' }
+interface RowConfirm {
+  id: string
+  kind: 'remove' | 'hide' | 'export' | 'overwrite'
+  /** a delete: the same-named skills of other sources that are turned back on with it */
+  turnOn?: readonly string[]
+}
 
 const CONFIRM_BUTTON: Record<RowConfirm['kind'], SkillsStringKey> = {
   remove: 'actRemove',
@@ -253,6 +259,13 @@ export function SkillsPane({
         })
         return
       case 'remove':
+        setNotice(null)
+        setConfirm({
+          id: view.id,
+          kind: action,
+          turnOn: sameNameOffSkills(views ?? [], view).map((other) => other.id),
+        })
+        return
       case 'hide':
         setNotice(null)
         setConfirm({ id: view.id, kind: action })
@@ -260,7 +273,7 @@ export function SkillsPane({
     }
   }
 
-  const confirmRow = async (view: UserSkillView, kind: RowConfirm['kind']) => {
+  const confirmRow = async (view: UserSkillView, { kind, turnOn }: RowConfirm) => {
     if (kind === 'export') {
       await exportZip(view)
       return
@@ -270,7 +283,8 @@ export function SkillsPane({
       return
     }
     setConfirm(null)
-    const answer = kind === 'remove' ? await api.remove(view.id) : await api.hideBuiltin(view.id)
+    const answer =
+      kind === 'remove' ? await api.remove(view.id, turnOn) : await api.hideBuiltin(view.id)
     if (!answer.ok) fail(answer.reason)
     void refresh()
   }
@@ -433,7 +447,25 @@ export function SkillsPane({
                         text: confirmText(view, confirm.kind),
                         button: s(CONFIRM_BUTTON[confirm.kind]),
                         danger: confirm.kind === 'remove' || confirm.kind === 'overwrite',
-                        onConfirm: () => void confirmRow(view, confirm.kind),
+                        options:
+                          confirm.kind === 'remove'
+                            ? sameNameOffSkills(views ?? [], view).map((other) => ({
+                                id: other.id,
+                                label: s('removeTurnOn', {
+                                  name: other.name,
+                                  source: sourceLabel(other, s),
+                                }),
+                                checked: confirm.turnOn?.includes(other.id) === true,
+                              }))
+                            : [],
+                        onOption: (id, checked) =>
+                          setConfirm({
+                            ...confirm,
+                            turnOn: checked
+                              ? [...(confirm.turnOn ?? []), id]
+                              : (confirm.turnOn ?? []).filter((other) => other !== id),
+                          }),
+                        onConfirm: () => void confirmRow(view, confirm),
                         onCancel: () => setConfirm(null),
                       }
                     : undefined
@@ -519,6 +551,9 @@ interface RowConfirmProps {
   text: string
   button: string
   danger: boolean
+  /** choices that go with the answer, each a checkbox line under the question */
+  options: Array<{ id: string; label: string; checked: boolean }>
+  onOption: (id: string, checked: boolean) => void
   onConfirm: () => void
   onCancel: () => void
 }
@@ -655,7 +690,20 @@ function SkillRow({
       </div>
       {confirm && (
         <div className="skl-confirm" role="group">
-          <span className="set-field-desc">{confirm.text}</span>
+          <div className="skl-confirm-text">
+            <span className="set-field-desc">{confirm.text}</span>
+            {confirm.options.map((option) => (
+              <label key={option.id} className="skl-confirm-option">
+                <input
+                  type="checkbox"
+                  className="skl-check"
+                  checked={option.checked}
+                  onChange={(event) => confirm.onOption(option.id, event.target.checked)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
           <div className="skl-confirm-actions">
             <button type="button" className="set-btn" onClick={confirm.onCancel}>
               {text('cancel')}

@@ -47,6 +47,7 @@ export const id = {
   hiddenFooter: '{n} skill bawaan disembunyikan',
   unhide: 'Tampilkan lagi',
   confirmRemove: 'Pindahkan skill "{title}" ke tempat sampah? Anda dapat memulihkannya dari sana.',
+  removeTurnOn: 'Nyalakan lagi skill {name} ({source})',
   confirmHide:
     'Sembunyikan skill bawaan "{title}"? Skill yang disembunyikan akan dinonaktifkan; Anda dapat menampilkannya lagi di bagian bawah daftar.',
   cancel: 'Batal',

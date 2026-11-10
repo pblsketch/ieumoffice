@@ -47,6 +47,7 @@ export const pl = {
   hiddenFooter: 'Ukryte wbudowane umiejętności: {n}',
   unhide: 'Pokaż ponownie',
   confirmRemove: 'Przenieść umiejętność „{title}” do kosza? Możesz ją stamtąd przywrócić.',
+  removeTurnOn: 'Włącz ponownie umiejętność {name} ({source})',
   confirmHide:
     'Ukryć wbudowaną umiejętność „{title}”? Ukryta umiejętność zostaje wyłączona; możesz ją ponownie pokazać na dole listy.',
   cancel: 'Anuluj',

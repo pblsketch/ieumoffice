@@ -477,7 +477,7 @@ describe('Settings → Skills screen', () => {
     expect(api.remove).not.toHaveBeenCalled()
     expect(host.textContent).toContain(ko('confirmRemove', { title: '가정통신문' }))
     await click(buttonWithText(ko('actRemove'), row(mine.id)))
-    expect(api.remove).toHaveBeenCalledWith(mine.id)
+    expect(api.remove).toHaveBeenCalledWith(mine.id, [])
   })
 
   it('asks before hiding a builtin and shows hidden builtins at the bottom', async () => {

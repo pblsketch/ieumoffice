@@ -47,6 +47,7 @@ export const zhTW = {
   hiddenFooter: '已隱藏的內建技能 {n} 個',
   unhide: '重新顯示',
   confirmRemove: '要將技能「{title}」移到資源回收筒嗎？可以從資源回收筒還原。',
+  removeTurnOn: '重新啟用技能 {name}（{source}）',
   confirmHide: '要隱藏內建技能「{title}」嗎？隱藏後會關閉，可在清單底部重新顯示。',
   cancel: '取消',
   close: '關閉',

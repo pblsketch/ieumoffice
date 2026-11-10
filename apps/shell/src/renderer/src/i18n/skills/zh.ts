@@ -45,6 +45,7 @@ export const zh = {
   hiddenFooter: '已隐藏的内置技能 {n} 个',
   unhide: '重新显示',
   confirmRemove: '要把技能“{title}”移到回收站吗？可以从回收站恢复。',
+  removeTurnOn: '重新启用技能 {name}（{source}）',
   confirmHide: '要隐藏内置技能“{title}”吗？隐藏后会关闭，可在列表底部重新显示。',
   cancel: '取消',
   close: '关闭',

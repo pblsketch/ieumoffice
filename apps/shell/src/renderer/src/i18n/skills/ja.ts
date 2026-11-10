@@ -47,6 +47,7 @@ export const ja = {
   hiddenFooter: '非表示の標準スキル {n} 件',
   unhide: '再表示',
   confirmRemove: 'スキル「{title}」をごみ箱に移動しますか？ごみ箱から元に戻せます。',
+  removeTurnOn: 'スキル {name}（{source}）をもう一度オンにする',
   confirmHide:
     '標準スキル「{title}」を非表示にしますか？非表示のスキルはオフになり、一覧のいちばん下から再表示できます。',
   cancel: 'キャンセル',

@@ -863,18 +863,37 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
       return { ok: true }
     },
 
-    /** An own skill to the OS trash; any other source is refused */
-    async remove(id: string): Promise<UserSkillsResult> {
+    /**
+     * An own skill to the OS trash; any other source is refused. `turnOn` are
+     * skills of other sources with the same name that are off, which the
+     * person chose to turn back on now that the own skill no longer stands in
+     * their place; any other identifier in it is passed over.
+     */
+    async remove(id: string, turnOn: readonly string[] = []): Promise<UserSkillsResult> {
       const skill = await find(id)
       if (!skill) return fail('not-found')
       const dir = await ownedDir(skill)
       if (!dir) return fail('not-owned')
+      const back = (await resolved()).filter(
+        (other) =>
+          turnOn.includes(other.id) &&
+          other.source !== 'app' &&
+          sameName(other.name, skill.name) &&
+          !other.enabled &&
+          !other.hidden &&
+          !other.unreadable,
+      )
       try {
         await deps.trash(dir)
       } catch {
         return fail('failed')
       }
-      changeSettings((settings) => clearState(settings, skill.id))
+      changeSettings((settings) => {
+        clearState(settings, skill.id)
+        for (const other of back) {
+          setStateValue(settings, other.id, other.source, { enabled: true })
+        }
+      })
       return { ok: true }
     },
 

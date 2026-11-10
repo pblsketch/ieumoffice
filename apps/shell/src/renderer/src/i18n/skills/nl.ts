@@ -48,6 +48,7 @@ export const nl = {
   unhide: 'Weer tonen',
   confirmRemove:
     'De vaardigheid "{title}" naar de prullenbak verplaatsen? Je kunt hem daar terugzetten.',
+  removeTurnOn: 'Vaardigheid {name} ({source}) weer inschakelen',
   confirmHide:
     'De ingebouwde vaardigheid "{title}" verbergen? Een verborgen vaardigheid wordt uitgeschakeld; je kunt hem onderaan de lijst weer tonen.',
   cancel: 'Annuleren',

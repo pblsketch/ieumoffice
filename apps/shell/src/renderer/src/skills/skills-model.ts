@@ -92,6 +92,26 @@ export function sourceLabel(
   }
 }
 
+/**
+ * The skills of other sources that carry an own skill's name and are off but
+ * could be on: deleting the own skill offers to turn each back on.
+ */
+export function sameNameOffSkills(
+  views: readonly UserSkillView[],
+  own: Pick<UserSkillView, 'id' | 'name'>,
+): UserSkillView[] {
+  const name = own.name.toLowerCase()
+  return views.filter(
+    (view) =>
+      view.id !== own.id &&
+      view.source !== 'app' &&
+      view.name.toLowerCase() === name &&
+      !view.enabled &&
+      !view.hidden &&
+      !view.unreadable,
+  )
+}
+
 function isListed(view: UserSkillView): view is UserSkillView & { source: SkillGroupId } {
   return (SKILL_GROUPS as readonly string[]).includes(view.source)
 }

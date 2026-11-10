@@ -40,7 +40,11 @@ export interface UserSkillsBridge {
   /** show hidden builtins again in their initial state; all of them without names */
   unhideBuiltins(names?: string[]): Promise<UserSkillsResult>
   /** an own skill to the OS trash */
-  remove(id: string): Promise<UserSkillsResult>
+  /**
+   * An own skill to the OS trash. `turnOn` are the off skills of other sources
+   * with the same name that the person chose to turn back on.
+   */
+  remove(id: string, turnOn?: readonly string[]): Promise<UserSkillsResult>
   /** copy a builtin or another program's skill into the app's folder and turn the original off */
   copyToMine(id: string, overwrite?: boolean): Promise<UserSkillsResult<{ id: string }>>
   /** a free name for a new skill made from its title */
@@ -148,7 +152,7 @@ export function userSkillsBridge(): UserSkillsBridge {
     setState: (id, patch) => result(C.setState, String(id), patch),
     hideBuiltin: (id) => result(C.hideBuiltin, String(id)),
     unhideBuiltins: (names) => result(C.unhideBuiltins, names),
-    remove: (id) => result(C.remove, String(id)),
+    remove: (id, turnOn) => result(C.remove, String(id), turnOn ? [...turnOn].map(String) : []),
     copyToMine: (id, overwrite) => result(C.copyToMine, String(id), overwrite === true),
     suggestName: async (title) => {
       const name: unknown = await ipcRenderer.invoke(C.suggestName, String(title)).catch(() => '')
