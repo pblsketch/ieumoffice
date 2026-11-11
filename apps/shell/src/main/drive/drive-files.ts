@@ -203,14 +203,17 @@ export class DriveFiles {
     }
   }
 
-  /** Copies not opened for a month and holding nothing unsent are removed */
+  /**
+   * Copies not opened for a month and holding nothing unsent are removed. A
+   * copy kept "on this PC only" holds changes Drive never got, so it stays.
+   */
   private async prune(): Promise<void> {
     const cutoff = this.now() - PRUNE_AFTER_MS
     for (const entry of [...this.entries.values()]) {
       const exists = existsSync(entry.localPath)
       const stale = entry.openedAt < cutoff && !this.deps.isOpen(entry.localPath)
       if (exists && !stale) continue
-      if (exists && (await this.localSha(entry)) !== entry.syncedSha && !entry.detached) continue
+      if (exists && (await this.localSha(entry)) !== entry.syncedSha) continue
       this.entries.delete(entry.sourceId)
       await rm(dirname(entry.localPath), { recursive: true, force: true }).catch(() => {})
     }
