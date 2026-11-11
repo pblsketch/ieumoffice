@@ -6,6 +6,7 @@ export const vi = {
   openFailed: 'Không thể mở tài liệu.',
   pdfImportCancelled: 'Đã hủy nhập PDF. Bạn có thể đóng thẻ này.',
   saveFailed: 'Không thể lưu tài liệu.',
+  fileOpen: 'Mở…',
   fileSave: 'Lưu',
   fileSaveAs: 'Lưu dưới dạng…',
   fileImportPdf: 'Nhập PDF…',

@@ -118,6 +118,7 @@ export const FILE_COMMAND_EVENT = 'ieum:file-command'
 export const DIRTY_EVENT = 'ieum:dirty-changed'
 /** The File menu items, top to bottom: the command the app runs, and the shortcut shown. */
 const FILE_MENU = [
+  { command: 'open', id: 'ext:ieum-open', shortcut: 'Ctrl+O' },
   { command: 'save', id: 'ext:ieum-save', shortcut: 'Ctrl+S' },
   { command: 'saveAs', id: 'ext:ieum-save-as', shortcut: 'Ctrl+Shift+S' },
   { command: 'importPdf', id: 'ext:ieum-import-pdf' },
@@ -7295,12 +7296,14 @@ export const agentPlugin = {
       }),
 
       /**
-       * Put Save, Save As, Import PDF, Export as PDF, Print Preview and Print at the top of the
-       * editor's File menu. The embedded editor leaves out its own (the app owns the file),
-       * which left the menu with no way to save, and no way to its PDF import (its Open is
-       * off too). Each item fires FILE_COMMAND_EVENT on the editor's window and the app does
-       * the rest. `labels` holds the six names in the app's language, by command. A second
-       * call puts the items back where they were; the names stay the first ones.
+       * Put Open, Save, Save As, Import PDF, Export as PDF, Print Preview and Print at the top
+       * of the editor's File menu. The embedded editor leaves out its own (the app owns the
+       * file), which left the menu with no way to open or save, and no way to its PDF import.
+       * Open is the app's: it asks for a file and opens it in a tab of its own, as Ctrl+O
+       * does, and never swaps the document inside this editor. Each item fires
+       * FILE_COMMAND_EVENT on the editor's window and the app does the rest. `labels` holds
+       * the seven names in the app's language, by command. A second call puts the items back
+       * where they were; the names stay the first ones.
        */
       installFileMenu: guarded((labels) => {
         for (const item of FILE_MENU) {

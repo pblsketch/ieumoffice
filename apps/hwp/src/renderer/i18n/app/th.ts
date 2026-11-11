@@ -6,6 +6,7 @@ export const th = {
   openFailed: 'ไม่สามารถเปิดเอกสารได้',
   pdfImportCancelled: 'ยกเลิกการนำเข้า PDF แล้ว ปิดแท็บนี้ได้',
   saveFailed: 'ไม่สามารถบันทึกเอกสารได้',
+  fileOpen: 'เปิด…',
   fileSave: 'บันทึก',
   fileSaveAs: 'บันทึกเป็น…',
   fileImportPdf: 'นำเข้า PDF…',

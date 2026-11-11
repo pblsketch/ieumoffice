@@ -6,6 +6,7 @@ export const ru = {
   openFailed: 'Не удалось открыть документ.',
   pdfImportCancelled: 'Импорт PDF отменён. Эту вкладку можно закрыть.',
   saveFailed: 'Не удалось сохранить документ.',
+  fileOpen: 'Открыть…',
   fileSave: 'Сохранить',
   fileSaveAs: 'Сохранить как…',
   fileImportPdf: 'Импортировать PDF…',

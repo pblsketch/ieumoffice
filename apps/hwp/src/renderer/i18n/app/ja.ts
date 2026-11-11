@@ -6,6 +6,7 @@ export const ja = {
   openFailed: '文書を開けませんでした。',
   pdfImportCancelled: 'PDF の取り込みを取り消しました。このタブは閉じてかまいません。',
   saveFailed: '文書を保存できませんでした。',
+  fileOpen: '開く…',
   fileSave: '保存',
   fileSaveAs: '名前を付けて保存…',
   fileImportPdf: 'PDF を取り込む…',

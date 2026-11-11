@@ -6,6 +6,7 @@ export const cs = {
   openFailed: 'Dokument se nepodařilo otevřít.',
   pdfImportCancelled: 'Import PDF byl zrušen. Tuto kartu můžete zavřít.',
   saveFailed: 'Dokument se nepodařilo uložit.',
+  fileOpen: 'Otevřít…',
   fileSave: 'Uložit',
   fileSaveAs: 'Uložit jako…',
   fileImportPdf: 'Importovat PDF…',

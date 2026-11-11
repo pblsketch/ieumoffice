@@ -6,6 +6,7 @@ export const es = {
   openFailed: 'No se pudo abrir el documento.',
   pdfImportCancelled: 'Se canceló la importación del PDF. Puede cerrar esta pestaña.',
   saveFailed: 'No se pudo guardar el documento.',
+  fileOpen: 'Abrir…',
   fileSave: 'Guardar',
   fileSaveAs: 'Guardar como…',
   fileImportPdf: 'Importar PDF…',

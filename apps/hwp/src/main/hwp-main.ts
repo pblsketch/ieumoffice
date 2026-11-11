@@ -843,6 +843,7 @@ function registerHwpIpc(): void {
     else if (command === 'preview') requestHwpPreview(e.sender, 'open')
     else if (command === 'print') requestHwpPreview(e.sender, 'print')
     else if (command === 'importPdf' && hwpViews.has(e.sender.id)) runtime.importPdf?.()
+    else if (command === 'open' && hwpViews.has(e.sender.id)) runtime.openFileDialog?.()
   })
 
   ipcMain.on(HWP_CHANNELS.abortSave, (e) => {

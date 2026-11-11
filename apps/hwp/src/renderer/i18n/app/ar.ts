@@ -6,6 +6,7 @@ export const ar = {
   openFailed: 'تعذّر فتح المستند.',
   pdfImportCancelled: 'تم إلغاء استيراد PDF. يمكنك إغلاق علامة التبويب هذه.',
   saveFailed: 'تعذّر حفظ المستند.',
+  fileOpen: 'فتح…',
   fileSave: 'حفظ',
   fileSaveAs: 'حفظ باسم…',
   fileImportPdf: 'استيراد PDF…',
