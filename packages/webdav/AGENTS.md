@@ -1,6 +1,6 @@
 # packages/webdav (`@genoffice/webdav`)
 
-WebDAV 연결의 뒷단(main) 코드다. 사용자가 입력한 서버 주소 확인, Basic·Digest 로그인, 폴더 목록(PROPFIND), 내려받기(GET), 조건부 올리기(PUT)를 담는다.
+WebDAV 연결의 뒷단(main) 코드다. 사용자가 입력한 서버 주소 확인, Basic·Digest 로그인, 폴더 목록(PROPFIND), 내려받기(GET), 조건부 올리기(PUT)를 담는다. 결정 기록 73604129.
 
 ## 맡은 범위
 

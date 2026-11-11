@@ -529,7 +529,7 @@ metadata:
 
 빌드: `GENOFFICE_GOOGLE_CLIENT_ID`(`….apps.googleusercontent.com`)와 `GENOFFICE_GOOGLE_CLIENT_SECRET`이 껍데기 앱을 빌드하는 환경에 있을 때만 드라이브가 들어간다. 없으면 상태는 `unavailable`이고 화면에 드라이브가 나오지 않는다.
 
-## WebDAV
+## WebDAV (결정 73604129)
 
 데이터 폴더의 파일:
 

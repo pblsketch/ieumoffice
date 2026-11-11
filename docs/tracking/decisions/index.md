@@ -125,3 +125,4 @@
 | [0124](0124-hwp-engine-batch-lays-out-once.md)                | 한글 엔진의 일괄 처리가 문단 모양·스타일·개체 편집도 끝에서 한 번 배치하고, 변환은 한 구역에 쓴다    | 2026-11-10 |
 | [0125](0125-sheets-quick-access-alt-digits.md)                | 엑셀 편집기의 빠른 실행 도구 모음을 고를 수 있게 하고, Alt+숫자로 그 순서의 단추를 실행한다          | 2026-11-10 |
 | [0126](0126-calamine-ahead-of-upstream.md)                    | 옛 .xls 한글이 깨지지 않게 calamine을 원본보다 먼저 0.38로 올린다                                    | 2026-11-10 |
+| [73604129](73604129-webdav-connection.md)                     | WebDAV 서버 여러 개를 연결해 파일을 열고 저장한다(제안: Claude로 작업하며 붙인 번호)                 | 2026-11-09 |
