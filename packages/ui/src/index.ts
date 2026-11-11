@@ -135,6 +135,13 @@ export {
   type SkillProposalCardProps,
 } from './SkillProposalCard'
 export {
+  SkillEditorsChooser,
+  skillEditorName,
+  skillEditorsSummary,
+  type SkillEditorsDraft,
+} from './SkillEditorsChooser'
+export { skillEditorsText, type SkillEditorsStringKey } from './strings-skill-editors'
+export {
   panelUserSkills,
   useSkillProposals,
   type PanelUserSkillsOptions,
@@ -277,7 +284,20 @@ export {
   type RibbonDensity,
 } from './ribbon-collapse'
 export { AiReplyProgress, AiTypingIndicator } from './AiTypingIndicator'
-export { IconSend, IconStop, type IconProps } from './icons'
+export {
+  IconArrowDown,
+  IconArrowLeft,
+  IconArrowUp,
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconClose,
+  IconPicture,
+  IconSend,
+  IconStop,
+  IconTable,
+  type IconProps,
+} from './icons'
 export { AiMark, type AiMarkProps } from './AiMark'
 export { Markdown, type MarkdownNav } from './Markdown'
 export { FILE_NAV_SCHEME, createFileNav, fileNavHref, parseFileNavHref } from './file-nav'

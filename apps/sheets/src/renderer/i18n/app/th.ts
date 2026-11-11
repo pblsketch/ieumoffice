@@ -529,6 +529,9 @@ export const th = {
   appCsvExportNeedsFullLoad: 'การส่งออก CSV ต้องรอให้เวิร์กบุ๊กโหลดเต็มก่อน — รอให้โหลดเสร็จ',
   appCsvExportTooLarge: 'ชีตใหญ่เกินไป ส่งออกเป็น CSV ไม่ได้',
   appCsvExportCanceled: 'ยกเลิกการส่งออก CSV แล้ว',
+  appOdsExported: 'ส่งออก {path} แล้ว',
+  appOdsExportCanceled: 'ยกเลิกการส่งออก ODS แล้ว',
+  appOdsExportFailed: 'ส่งออก ODS ล้มเหลว',
   appCsvExported: 'ส่งออก {path} แล้ว',
   appCsvExportedActiveOnly:
     'ไฟล์ CSV มีได้เพียงชีตเดียว — ส่งออกชีตที่ใช้งานอยู่ “{name}” ไปยัง {path} แล้ว',
@@ -670,6 +673,12 @@ export const th = {
   appSaveAs: 'บันทึกเป็น',
   appUndo: 'เลิกทำ',
   appRedo: 'ทำซ้ำ',
+  appQuickAccessCustomize: 'กำหนดแถบเครื่องมือด่วนเอง',
+  appQuickAccessHint: 'กด Alt พร้อมปุ่มตัวเลขเพื่อเรียกใช้ปุ่มในตำแหน่งนั้นโดยนับจากซ้าย',
+  appQuickAccessMoveEarlier: 'ย้ายไปข้างหน้า',
+  appQuickAccessMoveLater: 'ย้ายไปข้างหลัง',
+  appQuickAccessReset: 'คืนค่าเริ่มต้น',
+  appQuickAccessFull: 'แถบเครื่องมือวางปุ่มได้สูงสุด 10 ปุ่ม',
   appUnsavedEditOne: '● การแก้ไข {count} รายการยังไม่บันทึก',
   appUnsavedEditMany: '● การแก้ไข {count} รายการยังไม่บันทึก',
   appSavedState: 'บันทึกแล้ว',
@@ -1523,4 +1532,8 @@ export const th = {
   appSpellUnavailable: 'การตรวจการสะกดไม่พร้อมใช้งานในหน้าต่างนี้',
   appSpellReplaceAll: 'แทนที่ทั้งหมดด้วย "{suggestion}"',
   appSpellChangedAll: 'แก้ไขแล้ว {count} เซลล์ของ "{word}"',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'เปิด ODS เป็นสำเนา xlsx การบันทึกจะเขียนไฟล์ xlsx',
+  appOdsFormulasDropped: 'เก็บไว้เฉพาะค่าใน {count} สูตร',
 } satisfies Record<keyof typeof zh, string>

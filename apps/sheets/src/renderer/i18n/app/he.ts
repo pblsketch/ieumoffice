@@ -510,6 +510,9 @@ export const he = {
   appCsvExportNeedsFullLoad: 'ייצוא CSV דורש חוברת עבודה טעונה במלואה — המתן לסיום הטעינה.',
   appCsvExportTooLarge: 'הגיליון גדול מדי לייצוא כ-CSV.',
   appCsvExportCanceled: 'ייצוא ה-CSV בוטל.',
+  appOdsExported: '{path} יוצא.',
+  appOdsExportCanceled: 'ייצוא ODS בוטל.',
+  appOdsExportFailed: 'ייצוא ODS נכשל.',
   appCsvExported: '{path} יוצא.',
   appCsvExportedActiveOnly:
     'קובצי CSV מכילים גיליון אחד בלבד — הגיליון הפעיל "{name}" יוצא אל {path}.',
@@ -648,6 +651,12 @@ export const he = {
   appSaveAs: 'שמירה בשם',
   appUndo: 'בטל',
   appRedo: 'בצע שוב',
+  appQuickAccessCustomize: 'התאמה אישית של סרגל הכלים לגישה מהירה',
+  appQuickAccessHint: 'הקישו Alt וספרה כדי להפעיל את הלחצן שבמיקום הזה, בספירה מתחילת הסרגל.',
+  appQuickAccessMoveEarlier: 'הזזה קדימה',
+  appQuickAccessMoveLater: 'הזזה אחורה',
+  appQuickAccessReset: 'איפוס לברירת המחדל',
+  appQuickAccessFull: 'בסרגל הכלים יש מקום ל־10 לחצנים לכל היותר.',
   appUnsavedEditOne: '● {count} עריכה שלא נשמרה',
   appUnsavedEditMany: '● {count} עריכות שלא נשמרו',
   appSavedState: 'נשמר',
@@ -1500,4 +1509,8 @@ export const he = {
   appSpellUnavailable: 'בדיקת האיות אינה זמינה בחלון זה.',
   appSpellReplaceAll: 'החלף הכול ב־«{suggestion}»',
   appSpellChangedAll: 'תוקנו {count} תאים של «{word}».',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'קובץ ה-ODS נפתח כעותק xlsx. השמירה תכתוב קובץ xlsx.',
+  appOdsFormulasDropped: 'ב-{count} נוסחאות נשמרו הערכים בלבד.',
 } satisfies Record<keyof typeof zh, string>

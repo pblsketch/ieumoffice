@@ -614,6 +614,9 @@ export const fr = {
     "L'export CSV nécessite un classeur entièrement chargé — attendez la fin du chargement.",
   appCsvExportTooLarge: 'La feuille est trop grande pour être exportée en CSV.',
   appCsvExportCanceled: 'Export CSV annulé.',
+  appOdsExported: '{path} exporté.',
+  appOdsExportCanceled: 'Export ODS annulé.',
+  appOdsExportFailed: 'L’export ODS a échoué.',
   appCsvExported: '{path} exporté.',
   appCsvExportedActiveOnly:
     "Les fichiers CSV ne contiennent qu'une seule feuille — la feuille active « {name} » a été exportée vers {path}.",
@@ -770,6 +773,13 @@ export const fr = {
   appSaveAs: 'Enregistrer sous',
   appUndo: 'Annuler',
   appRedo: 'Rétablir',
+  appQuickAccessCustomize: 'Personnaliser la barre d’outils Accès rapide',
+  appQuickAccessHint:
+    'Appuyez sur Alt et un chiffre pour exécuter le bouton situé à cette position en partant de la gauche.',
+  appQuickAccessMoveEarlier: 'Déplacer vers le début',
+  appQuickAccessMoveLater: 'Déplacer vers la fin',
+  appQuickAccessReset: 'Rétablir les valeurs par défaut',
+  appQuickAccessFull: 'La barre d’outils contient au maximum 10 boutons.',
   appUnsavedEditOne: '● {count} modification non enregistrée',
   appUnsavedEditMany: '● {count} modifications non enregistrées',
   appSavedState: 'Enregistré',
@@ -1636,4 +1646,9 @@ export const fr = {
   appSpellUnavailable: "La correction orthographique n'est pas disponible dans cette fenêtre.",
   appSpellReplaceAll: 'Tout remplacer par « {suggestion} »',
   appSpellChangedAll: '{count} cellules de « {word} » corrigées.',
+
+  // ── ODS import ──
+  appOdsImportNotice:
+    "L'ODS a été ouvert en tant que copie xlsx. L'enregistrement écrira un fichier xlsx.",
+  appOdsFormulasDropped: 'Seules les valeurs de {count} formules ont été conservées.',
 } satisfies Record<keyof typeof zh, string>

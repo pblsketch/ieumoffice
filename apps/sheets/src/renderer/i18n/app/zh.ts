@@ -500,6 +500,9 @@ export const zh = {
   appCsvExportNeedsFullLoad: 'CSV 导出需要工作簿完整加载——请等待加载完成。',
   appCsvExportTooLarge: '工作表太大,无法导出 CSV。',
   appCsvExportCanceled: 'CSV 导出已取消。',
+  appOdsExported: '已导出 {path}。',
+  appOdsExportCanceled: '已取消 ODS 导出。',
+  appOdsExportFailed: 'ODS 导出失败。',
   appCsvExported: '已导出 {path}。',
   appCsvExportedActiveOnly: 'CSV 只包含一张工作表——已导出当前工作表“{name}”到 {path}。',
   appCsvExportFailed: '无法导出 CSV。',
@@ -632,6 +635,12 @@ export const zh = {
   appSaveAs: '另存为',
   appUndo: '撤销',
   appRedo: '重做',
+  appQuickAccessCustomize: '自定义快速访问工具栏',
+  appQuickAccessHint: '按 Alt 加数字键，可执行从左数相应位置的按钮。',
+  appQuickAccessMoveEarlier: '前移',
+  appQuickAccessMoveLater: '后移',
+  appQuickAccessReset: '恢复默认',
+  appQuickAccessFull: '工具栏最多可放 10 个按钮。',
   appUnsavedEditOne: '● {count} 处未保存的编辑',
   appUnsavedEditMany: '● {count} 处未保存的编辑',
   appSavedState: '已保存',
@@ -1495,4 +1504,8 @@ export const zh = {
   appSpellUnavailable: '此窗口无法使用拼写检查。',
   appSpellReplaceAll: '全部替换为“{suggestion}”',
   appSpellChangedAll: '已更正 {count} 处“{word}”。',
+
+  // ── ODS import ──
+  appOdsImportNotice: '已将 ODS 作为 xlsx 副本打开。保存时将保存为 xlsx 文件。',
+  appOdsFormulasDropped: '有 {count} 个公式仅保留了值。',
 }

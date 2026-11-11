@@ -22,18 +22,22 @@ Skill adalah sekumpulan petunjuk kerja untuk AI. Tuliskan sekali saja hal yang A
 - Skill bawaan tidak dihapus, melainkan disembunyikan: pilih **Sembunyikan**. **Tampilkan lagi** di bagian bawah daftar mengembalikannya seperti semula.
 - Untuk mengubah skill bawaan atau skill dari program lain, pilih **Salin ke skill saya**. Salinannya muncul di skill saya dan skill aslinya dinonaktifkan.
 - Saat skill yang memiliki templat diekspor, dokumen templatnya ikut masuk ke file zip. Pastikan dokumen itu tidak berisi informasi pribadi sebelum Anda mengekspornya.
+- **Ekspor beberapa** di bagian atas halaman memasukkan skill yang Anda centang ke satu file zip, satu folder per skill. Penerima zip itu menambahkannya dengan cara yang sama seperti zip skill lain, dan bisa memilih skill mana di dalamnya yang akan dipasang.
 
 ## Menambahkan skill
 
 1. Di **Pengaturan ▸ Skill**, klik **Tambah**.
-2. Pilih **Dari folder**, **Dari file zip**, atau **Dari tautan GitHub**. Untuk GitHub, masukkan alamat repositori publik atau `owner/repo`, lalu klik **Cari**.
-3. Periksa skill yang ditemukan di pratinjau. Pratinjau menampilkan jumlah dan ukuran file, ada tidaknya skrip, alamat web di dalam teks, dan file lisensi.
+2. Pilih **Dari folder**, **Dari file zip**, **Dari teks yang ditempel**, atau **Dari tautan GitHub**. Untuk teks yang ditempel, tempel seluruh `SKILL.md` mulai dari baris `---` pertamanya, lalu klik **Pratinjau**. Untuk GitHub, masukkan alamat repositori publik, `owner/repo`, atau halaman skill di skills.sh, lalu klik **Cari**.
+3. Periksa skill yang ditemukan di pratinjau. Pratinjau menampilkan jumlah dan ukuran file, ada tidaknya skrip, alamat web di dalam teks, file lisensi, dan baris yang perlu dibaca sebelum memasang.
 4. Centang hanya skill yang ingin dipasang, lalu klik **Pasang**. Skill yang dipasang langsung aktif.
 
 Di bawah pratinjau selalu tertulis: "Pasang skill hanya dari sumber yang Anda percayai. Skill memberi AI instruksi, dan di jendela agen skill dapat menjalankan skrip." Baca dulu skill dari sumber yang tidak dikenal sebelum memasangnya.
 
 - Jika skill saya sudah memiliki skill dengan nama yang sama, pilih **Ganti** atau **Lewati** pada baris tersebut.
+- Anda juga bisa melepas file zip skill atau file `SKILL.md` ke jendela GenOffice mana pun. **Pengaturan ▸ Skill** terbuka dengan pratinjau yang sama. Zip dianggap skill jika `SKILL.md` ada di tingkat teratasnya atau setiap folder teratas berisi satu `SKILL.md`; zip lain dibiarkan. File `SKILL.md` masuk sendirian: masukkan skill yang punya file lain ke dalam zip.
+- **Baris yang perlu dibaca sebelum memasang** adalah baris yang meminta AI mengabaikan instruksi sebelumnya, menyembunyikan sesuatu dari Anda, atau mengambil instruksi dari alamat luar, serta jalur `../` yang menunjuk ke luar folder skill. Masing-masing menampilkan file dan barisnya. Baris ini tidak menghentikan pemasangan, dan skill tanpa baris seperti ini belum tentu aman.
 - Saat mengunduh dari GitHub, GenOffice hanya terhubung ke `github.com`, `api.github.com`, dan `codeload.github.com`, dan tidak mengirim data login apa pun. Jika arsipnya terlalu besar atau tidak lolos pemeriksaan keamanan, tidak ada yang dipasang.
+- Halaman skill di skills.sh (`https://skills.sh/owner/repo/skill`) dibaca sebagai skill tersebut di repositori GitHub `owner/repo`. GenOffice tidak terhubung ke skills.sh.
 - **Skill baru** membuka editor kosong tempat Anda menulis sendiri nama, deskripsi, dan petunjuknya.
 
 ## Memeriksa pembaruan
@@ -72,6 +76,16 @@ Di bawah pratinjau selalu tertulis: "Pasang skill hanya dari sumber yang Anda pe
 - Tidak ada file yang ditulis sebelum Anda mengeklik **Simpan**. Jika Anda mengeklik **Batal**, percakapan hanya menyimpannya sebagai "Usulan skill yang tidak disimpan".
 - Anda juga bisa meminta agar skill yang sudah ada diubah, misalnya "Ubah skill notulen rapat sesuai cara kita bekerja". Kartunya lalu berjudul **Ubah skill**. Skill saya ditimpa dengan **Ganti**; skill bawaan atau skill dari program lain disimpan sebagai salinan di skill saya dan skill aslinya dinonaktifkan.
 
+## Memilih tempat skill dipakai
+
+Skill yang hanya cocok untuk satu jenis dokumen, misalnya menata slide atau merapikan spreadsheet, bisa ditampilkan hanya di panel AI editor itu. Di editor lain, daftar `/` dan daftar skill yang dipakai AI sendiri jadi lebih pendek, sehingga AI lebih sering memilih skill yang tepat.
+
+- Untuk skill saya, buka **Edit** lalu pilih **Semua editor** atau **Hanya editor ini** di **Tempat dipakai**. Editor yang dipilih ditulis di berkas skill, jadi ikut terbawa saat skill diekspor atau dipindah ke program lain.
+- Untuk skill bawaan dan skill dari program lain, ubah di **Tempat dipakai** pada **Lihat isi**. Pilihan ini hanya disimpan di pengaturan PC ini; berkas skill tidak berubah.
+- Skill yang tidak dipakai di semua editor menyebutkannya di barisnya, misalnya "Dipakai di: Presentasi".
+- Saat AI membuat skill yang hanya cocok untuk satu format, AI juga mengusulkan tempat dipakainya; jika tidak, skill tetap untuk semua editor. Anda bisa mengubahnya di **Tempat dipakai** pada kartu sebelum menyimpan.
+- Tanya AI di Beranda dan jendela agen memakai semua skill yang aktif, di mana pun skill itu diatur untuk dipakai.
+
 ## Menambahkan dokumen sebagai templat
 
 Saat Anda membuat skill di panel AI sebuah editor, dokumen yang sedang terbuka bisa ikut disertakan sebagai templat. Centang **Simpan juga dokumen ini sebagai templat** di kartu, dan tombolnya menjadi dua.
@@ -85,6 +99,7 @@ Saat Anda membuat skill di panel AI sebuah editor, dokumen yang sedang terbuka b
 - Skill yang memiliki templat ditandai **Ada templat** di daftar.
 - Panggil skill itu sebagai chip lalu kirim, dan salinan templatnya terbuka sebagai dokumen baru tanpa judul; AI di tab itu melanjutkan permintaan Anda. Panel semula menampilkan "Bekerja dengan templat di tab baru" dan **Buka tab**.
 - Saat AI sendiri yang memilih skill bertemplat, tab tidak langsung terbuka. Sebagai gantinya, percakapan menampilkan tombol **Buka dokumen baru dari templat ini**.
+- Bila dipanggil di dokumen yang sudah berisi, ia bertanya di mana harus bekerja alih-alih langsung membuka tab. **Kerjakan di dokumen ini** mengubah dokumen saat ini sesuai keterampilan tanpa tab baru (file templat tidak dibuka). **Dokumen baru dari templat (lampirkan dokumen ini)** membuka salinan templat di tab baru dan mengirim dokumen saat ini ke panel AI tab itu sebagai lampiran. Agar bisa dilampirkan, dokumen saat ini harus sudah disimpan. Jika belum pernah disimpan atau ada perubahan yang belum disimpan, panel memberi tahu, dan **Buka tanpa melampirkan** membuka salinan tanpa dokumen itu. Tombol yang muncul saat AI sendiri memakai keterampilan bertemplat juga melampirkan dokumen yang berisi. Editor Markdown dan PDF tidak menerima lampiran, jadi templat yang terbuka di sana tidak mendapat lampiran.
 - Biasanya Anda menentukan lokasi dokumen baru itu saat pertama kali menyimpannya. Editor Markdown dan HTML menyimpan ke folder bawaan seperti biasa. File templatnya sendiri tetap seperti semula.
 
 ## Skill yang memiliki skrip

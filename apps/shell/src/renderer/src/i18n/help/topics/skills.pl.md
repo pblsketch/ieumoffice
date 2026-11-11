@@ -22,18 +22,22 @@ Umiejętność to zestaw instrukcji roboczych dla AI. Zapisz raz to, co robisz w
 - Wbudowanej umiejętności się nie usuwa, tylko ukrywa: wybierz **Ukryj**. **Pokaż ponownie** na dole listy przywraca ją w stanie początkowym.
 - Aby zmienić umiejętność wbudowaną lub pochodzącą z innego programu, wybierz **Kopiuj do moich umiejętności**. Kopia pojawia się w moich umiejętnościach, a oryginał zostaje wyłączony.
 - Gdy eksportujesz umiejętność z szablonem, do pliku zip trafia też dokument szablonu. Przed eksportem sprawdź, czy dokument nie zawiera danych osobowych.
+- **Eksportuj kilka** u góry strony umieszcza zaznaczone umiejętności w jednym pliku zip, każdą w osobnym folderze. Odbiorca dodaje ten zip tak samo jak każdy inny zip z umiejętnością i może wybrać, które z jego umiejętności zainstalować.
 
 ## Dodawanie umiejętności
 
 1. W **Ustawienia ▸ Umiejętności** kliknij **Dodaj**.
-2. Wybierz **Z folderu**, **Z pliku zip** lub **Z linku GitHub**. W przypadku GitHub wpisz adres publicznego repozytorium albo `owner/repo` i kliknij **Znajdź**.
-3. Sprawdź w podglądzie znalezione umiejętności. Podgląd pokazuje liczbę i rozmiar plików, to, czy są skrypty, adresy internetowe w tekście oraz plik licencji.
+2. Wybierz **Z folderu**, **Z pliku zip**, **Z wklejonego tekstu** lub **Z linku GitHub**. W przypadku wklejonego tekstu wklej cały `SKILL.md` od jego pierwszego wiersza `---` i kliknij **Podgląd**. W przypadku GitHub wpisz adres publicznego repozytorium, `owner/repo` albo stronę umiejętności w skills.sh i kliknij **Znajdź**.
+3. Sprawdź w podglądzie znalezione umiejętności. Podgląd pokazuje liczbę i rozmiar plików, to, czy są skrypty, adresy internetowe w tekście, plik licencji oraz wiersze warte przeczytania przed instalacją.
 4. Zaznacz tylko te umiejętności, które chcesz zainstalować, i kliknij **Zainstaluj**. Zainstalowane umiejętności są od razu włączone.
 
 Pod podglądem zawsze widnieje: „Instaluj umiejętności tylko z zaufanych źródeł. Umiejętność przekazuje AI instrukcje, a w oknie agenta może uruchamiać skrypty”. Umiejętność z nieznanego źródła przeczytaj, zanim ją zainstalujesz.
 
 - Jeśli w moich umiejętnościach jest już jedna o tej samej nazwie, wybierz w tym wierszu **Zastąp** lub **Pomiń**.
+- Możesz też upuścić plik zip umiejętności lub plik `SKILL.md` na dowolne okno GenOffice. Otworzy się **Ustawienia ▸ Umiejętności** z tym samym podglądem. Zip jest traktowany jako umiejętność, gdy `SKILL.md` leży na jego najwyższym poziomie albo każdy folder najwyższego poziomu zawiera taki plik; każdy inny zip zostaje pominięty. Plik `SKILL.md` trafia sam: umiejętność z dodatkowymi plikami spakuj do zipa.
+- **Wiersze warte przeczytania przed instalacją** to wiersze, które proszą AI o zignorowanie wcześniejszych instrukcji, ukrycie czegoś przed tobą lub pobranie instrukcji z zewnętrznego adresu, a także ścieżki `../` wskazujące poza folder umiejętności. Przy każdym widać plik i numer wiersza. Nie blokują instalacji, a umiejętność bez takich wierszy nie jest przez to bezpieczna.
 - Przy pobieraniu z GitHub GenOffice łączy się tylko z `github.com`, `api.github.com` i `codeload.github.com` i nie wysyła żadnych danych logowania. Jeśli archiwum jest za duże albo nie przejdzie kontroli bezpieczeństwa, nic nie zostanie zainstalowane.
+- Strona umiejętności w skills.sh (`https://skills.sh/owner/repo/skill`) jest odczytywana jako ta umiejętność w repozytorium GitHub `owner/repo`. GenOffice nie łączy się ze skills.sh.
 - **Nowa umiejętność** otwiera pusty edytor, w którym sam wpisujesz nazwę, opis i instrukcje.
 
 ## Sprawdzanie aktualizacji
@@ -72,6 +76,16 @@ Pod podglądem zawsze widnieje: „Instaluj umiejętności tylko z zaufanych źr
 - Żaden plik nie zostanie zapisany, dopóki nie klikniesz **Zapisz**. Jeśli klikniesz **Anuluj**, rozmowa zachowa ją tylko jako „Niezapisana propozycja umiejętności”.
 - Możesz też poprosić o zmianę istniejącej umiejętności, na przykład „Zmień umiejętność protokołu tak, jak to u nas wygląda”. Karta ma wtedy tytuł **Zmień umiejętność**. Jedna z moich umiejętności zostaje nadpisana przez **Zastąp**; umiejętność wbudowana lub z innego programu jest zapisywana jako kopia w moich umiejętnościach, a oryginał zostaje wyłączony.
 
+## Wybór, gdzie używać umiejętności
+
+Umiejętność pasującą tylko do jednego rodzaju dokumentu, na przykład do stylizowania slajdów albo porządkowania arkusza, można pokazywać tylko w panelu AI tego edytora. W pozostałych edytorach lista `/` i lista umiejętności, których AI używa samo, są krótsze, więc AI częściej wybiera właściwą umiejętność.
+
+- Dla mojej umiejętności otwórz **Edytuj** i w sekcji **Gdzie używać** wybierz **Wszystkie edytory** albo **Tylko te edytory**. Wybrane edytory są zapisywane w pliku umiejętności, więc idą za nią przy eksporcie i przeniesieniu do innego programu.
+- Dla umiejętności wbudowanej lub z innego programu zmień to w sekcji **Gdzie używać** w **Pokaż zawartość**. Wybór jest zapisywany tylko w ustawieniach tego komputera; plik umiejętności się nie zmienia.
+- Umiejętność, która nie jest używana we wszystkich edytorach, pokazuje to w swoim wierszu, na przykład „Używana w: Prezentacja”.
+- Gdy AI tworzy umiejętność pasującą tylko do jednego formatu, proponuje też, gdzie jej używać; w przeciwnym razie zostawia wszystkie edytory. Przed zapisaniem możesz to zmienić w sekcji **Gdzie używać** na karcie.
+- Zapytaj AI na stronie głównej i okno agenta używają wszystkich włączonych umiejętności, niezależnie od ustawienia, gdzie ich używać.
+
 ## Dodawanie dokumentu jako szablonu
 
 Gdy tworzysz umiejętność w panelu AI edytora, bieżący dokument może dołączyć do niej jako szablon. Zaznacz na karcie **Zapisz też ten dokument jako szablon**, a przycisk zamieni się w dwa.
@@ -85,6 +99,7 @@ Gdy tworzysz umiejętność w panelu AI edytora, bieżący dokument może dołą
 - Umiejętność z szablonem ma na liście oznaczenie **Zawiera szablon**.
 - Wywołaj ją jako etykietę i wyślij, a kopia szablonu otworzy się jako nowy dokument bez tytułu; AI w tej karcie zajmie się twoją prośbą. W pierwotnym panelu zostaje „Praca z szablonem trwa w nowej karcie” i **Przejdź do karty**.
 - Gdy AI samo wybierze umiejętność z szablonem, karta nie otwiera się od razu. Zamiast tego rozmowa pokazuje przycisk **Otwórz nowy dokument z tego szablonu**.
+- Wywołana w dokumencie, który ma już treść, najpierw pyta, gdzie pracować, zamiast od razu otwierać kartę. **Zrób to w tym dokumencie** zmienia bieżący dokument według umiejętności bez nowej karty (plik szablonu nie jest otwierany). **Nowy dokument z szablonu (dołącz ten)** otwiera kopię szablonu w nowej karcie i wysyła bieżący dokument do panelu AI tej karty jako załącznik. Żeby go dołączyć, bieżący dokument musi być zapisany. Jeśli nigdy nie był zapisany albo ma niezapisane zmiany, panel o tym mówi, a **Otwórz bez dołączania** otwiera kopię bez niego. Przycisk, który pojawia się, gdy AI sama użyje umiejętności z szablonem, także dołącza dokument z treścią. Edytory Markdown i PDF nie przyjmują załączników, więc do szablonu otwieranego w nich nic nie jest dołączane.
 - Miejsce nowego dokumentu zwykle wybierasz przy pierwszym zapisie. Edytory Markdown i HTML zapisują jednak jak dotąd do folderu domyślnego. Sam plik szablonu pozostaje bez zmian.
 
 ## Umiejętności ze skryptami

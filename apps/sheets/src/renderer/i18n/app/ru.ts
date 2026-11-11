@@ -570,6 +570,9 @@ export const ru = {
     'Экспорт в CSV требует полностью загруженной книги — дождитесь завершения загрузки.',
   appCsvExportTooLarge: 'Лист слишком большой для экспорта в CSV.',
   appCsvExportCanceled: 'Экспорт в CSV отменён.',
+  appOdsExported: 'Экспортировано: {path}.',
+  appOdsExportCanceled: 'Экспорт в ODS отменён.',
+  appOdsExportFailed: 'Не удалось экспортировать в ODS.',
   appCsvExported: 'Экспортировано: {path}.',
   appCsvExportedActiveOnly:
     'Файлы CSV содержат только один лист — активный лист «{name}» экспортирован в {path}.',
@@ -723,6 +726,12 @@ export const ru = {
   appSaveAs: 'Сохранить как',
   appUndo: 'Отменить',
   appRedo: 'Вернуть',
+  appQuickAccessCustomize: 'Настроить панель быстрого доступа',
+  appQuickAccessHint: 'Нажмите Alt и цифру, чтобы выполнить кнопку на этой позиции, считая слева.',
+  appQuickAccessMoveEarlier: 'Переместить ближе к началу',
+  appQuickAccessMoveLater: 'Переместить ближе к концу',
+  appQuickAccessReset: 'Вернуть по умолчанию',
+  appQuickAccessFull: 'На панели помещается не более 10 кнопок.',
   appUnsavedEditOne: '● Несохранённых изменений: {count}',
   appUnsavedEditMany: '● Несохранённых изменений: {count}',
   appSavedState: 'Сохранено',
@@ -1582,4 +1591,8 @@ export const ru = {
   appSpellUnavailable: 'Проверка орфографии недоступна в этом окне.',
   appSpellReplaceAll: 'Заменить все на «{suggestion}»',
   appSpellChangedAll: 'Исправлено {count} ячеек со словом «{word}».',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Файл ODS открыт как копия xlsx. При сохранении будет записан файл xlsx.',
+  appOdsFormulasDropped: 'В {count} формулах остались только значения.',
 } satisfies Record<keyof typeof zh, string>

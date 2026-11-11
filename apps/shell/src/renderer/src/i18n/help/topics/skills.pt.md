@@ -22,18 +22,22 @@ Uma habilidade é um conjunto de instruções de trabalho para a IA. Registe uma
 - Uma habilidade integrada é ocultada em vez de removida: escolha **Ocultar**. **Mostrar de novo**, no fim da lista, traz a habilidade de volta tal como era no início.
 - Para alterar uma habilidade integrada ou de outro programa, escolha **Copiar para minhas habilidades**. A cópia aparece em minhas habilidades e a original é desativada.
 - Ao exportar uma habilidade com modelo, o documento de modelo também vai no zip. Verifique se o documento não contém informações pessoais antes de exportar.
+- **Exportar várias**, no topo da página, coloca as habilidades que marcar num único ficheiro zip, com uma pasta por habilidade. Quem recebe o zip adiciona-o da mesma forma que qualquer zip de habilidade e pode escolher quais das suas habilidades instalar.
 
 ## Adicionar uma habilidade
 
 1. Em **Configurações ▸ Habilidades**, clique em **Adicionar**.
-2. Escolha **De uma pasta**, **De um arquivo zip** ou **De um link do GitHub**. Para o GitHub, escreva o endereço de um repositório público ou `owner/repo` e clique em **Buscar**.
-3. Reveja na pré-visualização as habilidades encontradas. Ela mostra o número e o tamanho dos ficheiros, se há scripts, os endereços web citados no texto e o ficheiro de licença.
+2. Escolha **De uma pasta**, **De um arquivo zip**, **De um texto colado** ou **De um link do GitHub**. Para texto colado, cole o `SKILL.md` inteiro, a partir da primeira linha `---`, e clique em **Pré-visualizar**. Para o GitHub, escreva o endereço de um repositório público, `owner/repo` ou a página de uma habilidade no skills.sh e clique em **Buscar**.
+3. Reveja na pré-visualização as habilidades encontradas. Ela mostra o número e o tamanho dos ficheiros, se há scripts, os endereços web citados no texto, o ficheiro de licença e as linhas para ler antes de instalar.
 4. Marque só as habilidades que quer instalar e clique em **Instalar**. As habilidades instaladas já começam ativadas.
 
 Por baixo da pré-visualização aparece sempre: «Instale habilidades somente de fontes confiáveis. Uma habilidade dá instruções à IA e, na janela do agente, pode executar scripts.» Leia uma habilidade de origem desconhecida antes de a instalar.
 
 - Se minhas habilidades já tiver uma com o mesmo nome, escolha **Substituir** ou **Pular** nessa linha.
+- Também pode largar o ficheiro zip de uma habilidade ou um ficheiro `SKILL.md` em qualquer janela do GenOffice. Abre-se **Configurações ▸ Habilidades** com a mesma pré-visualização. Um zip conta como habilidade quando `SKILL.md` está no nível de topo ou cada pasta de topo tem um; qualquer outro zip é deixado como está. Um ficheiro `SKILL.md` entra sozinho: ponha num zip uma habilidade que tenha mais ficheiros.
+- **Linhas para ler antes de instalar** são linhas que pedem à IA que ignore as instruções anteriores, que esconda algo de si ou que siga instruções de um endereço externo, e caminhos `../` que apontam para fora da pasta da habilidade. Cada uma mostra o seu ficheiro e a sua linha. Não impedem a instalação, e uma habilidade sem estas linhas não é, por isso, segura.
 - Ao transferir do GitHub, o GenOffice liga-se apenas a `github.com`, `api.github.com` e `codeload.github.com`, e não envia nenhum dado de início de sessão. Se o pacote for grande demais ou não passar nas verificações de segurança, nada é instalado.
+- A página de uma habilidade no skills.sh (`https://skills.sh/owner/repo/skill`) é lida como essa habilidade no repositório do GitHub `owner/repo`. O GenOffice não se liga ao skills.sh.
 - **Nova habilidade** abre um editor vazio onde escreve o nome, a descrição e as instruções.
 
 ## Verificar atualizações
@@ -72,6 +76,16 @@ Por baixo da pré-visualização aparece sempre: «Instale habilidades somente d
 - Nenhum ficheiro é gravado até clicar em **Salvar**. Se clicar em **Cancelar**, a conversa guarda-a apenas como «Proposta de habilidade não salva».
 - Também pode pedir para alterar uma habilidade existente, por exemplo «Altera a habilidade de atas para a nossa maneira de trabalhar». O cartão passa a chamar-se **Alterar habilidade**. Uma das minhas habilidades é substituída com **Substituir**; uma habilidade integrada ou de outro programa é guardada como cópia em minhas habilidades e a original é desativada.
 
+## Escolher onde uma habilidade é usada
+
+Uma habilidade que só serve para um tipo de documento, como estilizar slides ou organizar uma planilha, pode aparecer apenas no painel de IA desse editor. Nos outros editores, a lista `/` e a lista de habilidades que a IA usa por conta própria ficam mais curtas, e a IA acerta mais a habilidade certa.
+
+- Para uma das minhas habilidades, abra **Editar** e escolha **Todos os editores** ou **Somente estes editores** em **Onde é usada**. Os editores escolhidos ficam gravados no arquivo da habilidade e a acompanham quando você a exporta ou a leva para outro programa.
+- Para uma habilidade integrada ou de outro programa, mude em **Onde é usada** dentro de **Ver conteúdo**. Isso fica guardado apenas nas configurações deste PC; o arquivo da habilidade não muda.
+- Uma habilidade que não é usada em todos os editores mostra isso na sua linha, por exemplo "Usada em: Apresentação".
+- Quando a IA cria uma habilidade que só serve para um formato, ela também propõe onde usá-la; caso contrário, deixa todos os editores. Você pode mudar em **Onde é usada** no cartão antes de salvar.
+- Perguntar à IA no Início e a janela do agente usam todas as habilidades ativadas, onde quer que estejam definidas para uso.
+
 ## Adicionar um documento como modelo
 
 Quando cria uma habilidade no painel de IA de um editor, o documento atual pode ir junto como modelo. Marque **Salvar também este documento como modelo** no cartão, e o botão divide-se em dois.
@@ -85,6 +99,7 @@ Quando cria uma habilidade no painel de IA de um editor, o documento atual pode 
 - Uma habilidade com modelo mostra **Tem modelo** na lista.
 - Chame-a como chip e envie: uma cópia do modelo abre-se como um novo documento sem título, e a IA desse separador continua o seu pedido. O painel original mantém «O trabalho com o modelo continua numa nova aba» e **Ir para a aba**.
 - Quando a IA escolhe sozinha uma habilidade com modelo, nenhum separador se abre de imediato. Em vez disso, a conversa mostra um botão **Abrir um novo documento com este modelo**.
+- Chamada num documento que já tem conteúdo, ela pergunta onde trabalhar em vez de abrir uma guia na hora. **Fazer neste documento** altera o documento atual conforme a habilidade, sem guia nova (o arquivo de modelo não é aberto). **Novo documento a partir do modelo (anexar este)** abre a cópia do modelo numa nova guia e envia o documento atual ao painel de IA dessa guia como anexo. Para anexá-lo, o documento atual precisa estar salvo. Se nunca foi salvo ou tem alterações não salvas, o painel avisa, e **Abrir sem anexar** abre a cópia sem ele. O botão que aparece quando a IA usa sozinha uma habilidade com modelo também anexa um documento com conteúdo. Os editores de Markdown e PDF não aceitam anexos, então um modelo que abre neles não recebe nada.
 - Normalmente escolhe onde fica o novo documento na primeira vez que o guarda. Os editores de Markdown e HTML guardam na pasta predefinida, como sempre. O ficheiro de modelo em si continua como estava.
 
 ## Habilidades com scripts

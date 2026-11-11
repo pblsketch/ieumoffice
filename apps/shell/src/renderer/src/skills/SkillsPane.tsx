@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Lang } from '@genoffice/i18n'
+import { skillEditorsOf } from '@genoffice/agent-core/skill-editors'
+import { skillEditorsSummary } from '@genoffice/ui'
 import type {
   UserSkillImportPreview,
   UserSkillInvokeValue,
@@ -10,7 +12,13 @@ import { useI18n } from '../locale'
 import { skillsText, type SkillsStringKey } from '../i18n/strings-skills'
 import { MenuButton } from './SkillDialog'
 import { SkillEditor, type SkillEditorMode } from './SkillEditor'
-import { GitHubImportDialog, SkillImportPreviewDialog, type SkillsNotice } from './SkillImport'
+import { SkillBundleExportDialog } from './SkillBundleExport'
+import {
+  GitHubImportDialog,
+  PasteImportDialog,
+  SkillImportPreviewDialog,
+  type SkillsNotice,
+} from './SkillImport'
 import { SkillUpdateDialog, type ChangedUpdate } from './SkillUpdate'
 import {
   actionLabelKey,
@@ -38,6 +46,8 @@ type Text = (key: SkillsStringKey, params?: Record<string, string | number>) => 
 type Dialog =
   | { kind: 'editor'; mode: SkillEditorMode; view?: UserSkillView }
   | { kind: 'github' }
+  | { kind: 'paste' }
+  | { kind: 'bundle' }
   | { kind: 'preview'; preview: UserSkillImportPreview }
   | { kind: 'update'; view: UserSkillView; check: ChangedUpdate }
 
@@ -71,6 +81,8 @@ export function SkillsPane({
   const [busyKey, setBusyKey] = useState<SkillsStringKey | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [confirm, setConfirm] = useState<RowConfirm | null>(null)
+  /** counts the main process's word that a skill file was dropped on a window */
+  const [droppedTick, setDroppedTick] = useState(0)
   const alive = useRef(true)
 
   const refresh = useCallback(async () => {
@@ -83,11 +95,44 @@ export function SkillsPane({
     alive.current = true
     void refresh()
     const off = userSkillsApi()?.onChanged(() => void refresh())
+    const offDropped = userSkillsApi()?.onDropped(() => setDroppedTick((n) => n + 1))
     return () => {
       alive.current = false
       off?.()
+      offDropped?.()
     }
   }, [refresh])
+
+  // A skill file dropped on any window waits in the main process; take it into
+  // the one preview whenever no other dialog is open (on opening, on word of a
+  // drop, and when a dialog closes, which picks up the next of several)
+  const idle = dialog === null
+  const dialogOpen = useRef(false)
+  dialogOpen.current = !idle
+  useEffect(() => {
+    const bridge = userSkillsApi()
+    if (!idle || !bridge) return
+    void bridge.takeDropped().then((answer) => {
+      if (!alive.current) {
+        if (answer.ok && answer.preview) void bridge.cancelImport(answer.preview.token)
+        return
+      }
+      if (!answer.ok) {
+        const key = failureKey(answer.reason, 'import')
+        if (key) setNotice({ tone: 'error', text: skillsText(lang, key) })
+        return
+      }
+      if (!answer.preview) return
+      // a dialog the person opened meanwhile keeps its place
+      if (dialogOpen.current) {
+        void bridge.cancelImport(answer.preview.token)
+        return
+      }
+      setNotice(null)
+      setDialog({ kind: 'preview', preview: answer.preview })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lang is read when the answer comes
+  }, [idle, droppedTick])
 
   const say = (tone: SkillsNotice['tone'], text: string) => {
     if (alive.current) setNotice({ tone, text })
@@ -246,6 +291,7 @@ export function SkillsPane({
   }
 
   const groups = views ? groupSkills(views, query, lang) : []
+  const exportable = views?.filter((v) => v.can.export && !v.unreadable) ?? []
   const hidden = views ? hiddenBuiltinCount(views) : 0
 
   const confirmText = (view: UserSkillView, kind: RowConfirm['kind']) => {
@@ -267,11 +313,31 @@ export function SkillsPane({
       <div className="set-pane-head">
         <h3 className="set-pane-title">{s('navLabel')}</h3>
         <div className="set-pane-actions">
+          {exportable.length > 0 && (
+            <button
+              type="button"
+              className="set-btn"
+              onClick={() => {
+                setNotice(null)
+                setDialog({ kind: 'bundle' })
+              }}
+            >
+              {s('exportSeveral')}
+            </button>
+          )}
           <MenuButton
             label={s('add')}
             items={[
               { key: 'folder', label: s('addFolder'), onPick: () => void importFrom('folder') },
               { key: 'zip', label: s('addZip'), onPick: () => void importFrom('zip') },
+              {
+                key: 'paste',
+                label: s('addPaste'),
+                onPick: () => {
+                  setNotice(null)
+                  setDialog({ kind: 'paste' })
+                },
+              },
               {
                 key: 'github',
                 label: s('addGitHub'),
@@ -392,6 +458,23 @@ export function SkillsPane({
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog?.kind === 'paste' && (
+        <PasteImportDialog
+          api={api}
+          lang={lang}
+          onPreview={(preview) => setDialog({ kind: 'preview', preview })}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'bundle' && (
+        <SkillBundleExportDialog
+          api={api}
+          views={exportable}
+          lang={lang}
+          onDone={finishDialog}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog?.kind === 'preview' && (
         <SkillImportPreviewDialog
           api={api}
@@ -453,6 +536,7 @@ function SkillRow({
   if (view.hasScripts) badges.push('badgeScripts')
   if (view.agentOnly) badges.push('badgeAgentOnly')
   const mcpServers = skillMcpServersNeeded(view, usableMcpServers)
+  const usedIn = skillEditorsSummary(lang, skillEditorsOf(view.editors))
 
   return (
     <div
@@ -476,6 +560,7 @@ function SkillRow({
               {text('unreadableNote', { reason: text(unreadableKey(unreadable)) })}
             </div>
           )}
+          {usedIn && <div className="set-field-desc skl-row-editors">{usedIn}</div>}
           {(badges.length > 0 || mcpServers.length > 0) && (
             <div className="skl-badges">
               {badges.map((key) => (

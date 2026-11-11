@@ -593,6 +593,9 @@ export const pt = {
     'A exportação de CSV requer a pasta de trabalho totalmente carregada — aguarde o carregamento terminar.',
   appCsvExportTooLarge: 'A planilha é grande demais para exportar como CSV.',
   appCsvExportCanceled: 'Exportação de CSV cancelada.',
+  appOdsExported: '{path} exportado.',
+  appOdsExportCanceled: 'Exportação para ODS cancelada.',
+  appOdsExportFailed: 'Falha ao exportar em ODS.',
   appCsvExported: '{path} exportado.',
   appCsvExportedActiveOnly:
     'Arquivos CSV contêm apenas uma planilha — a planilha ativa “{name}” foi exportada para {path}.',
@@ -743,6 +746,13 @@ export const pt = {
   appSaveAs: 'Salvar Como',
   appUndo: 'Desfazer',
   appRedo: 'Refazer',
+  appQuickAccessCustomize: 'Personalizar a Barra de Ferramentas de Acesso Rápido',
+  appQuickAccessHint:
+    'Pressione Alt e um número para executar o botão nessa posição, contando a partir da esquerda.',
+  appQuickAccessMoveEarlier: 'Mover para o início',
+  appQuickAccessMoveLater: 'Mover para o fim',
+  appQuickAccessReset: 'Restaurar padrão',
+  appQuickAccessFull: 'A barra comporta até 10 botões.',
   appUnsavedEditOne: '● {count} edição não salva',
   appUnsavedEditMany: '● {count} edições não salvas',
   appSavedState: 'Salvo',
@@ -1607,4 +1617,8 @@ export const pt = {
   appSpellUnavailable: 'A verificação ortográfica não está disponível nesta janela.',
   appSpellReplaceAll: 'Substituir tudo por "{suggestion}"',
   appSpellChangedAll: 'Corrigidas {count} células de "{word}".',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'O ODS foi aberto como uma cópia xlsx. Salvar gravará um arquivo xlsx.',
+  appOdsFormulasDropped: 'Em {count} fórmulas, apenas os valores foram mantidos.',
 } satisfies Record<keyof typeof zh, string>

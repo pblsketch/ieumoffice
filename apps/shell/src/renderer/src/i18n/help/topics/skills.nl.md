@@ -22,18 +22,22 @@ Een vaardigheid is een set werkinstructies voor de AI. Leg iets wat je steeds op
 - Een ingebouwde vaardigheid wordt verborgen in plaats van verwijderd: kies **Verbergen**. **Weer tonen** onderaan de lijst haalt hem terug zoals hij in het begin was.
 - Wil je een ingebouwde vaardigheid of een vaardigheid uit een ander programma aanpassen, kies dan **Kopiëren naar mijn vaardigheden**. De kopie verschijnt bij mijn vaardigheden en het origineel gaat uit.
 - Exporteer je een vaardigheid met een sjabloon, dan gaat het sjabloondocument ook mee in de zip. Controleer vóór het exporteren dat het document geen persoonsgegevens bevat.
+- **Meerdere exporteren** boven aan de pagina zet de vaardigheden die je aanvinkt in één zip-bestand, een map per vaardigheid. Wie de zip krijgt, voegt die toe zoals elke andere vaardigheids-zip en kan kiezen welke vaardigheden eruit te installeren.
 
 ## Een vaardigheid toevoegen
 
 1. Klik in **Instellingen ▸ Vaardigheden** op **Toevoegen**.
-2. Kies **Uit een map**, **Uit een zip-bestand** of **Via een GitHub-link**. Voor GitHub vul je het adres van een openbare repository of `owner/repo` in en klik je op **Zoeken**.
-3. Bekijk de gevonden vaardigheden in het voorbeeld. Je ziet het aantal en de grootte van de bestanden, of er scripts in zitten, de webadressen in de tekst en het licentiebestand.
+2. Kies **Uit een map**, **Uit een zip-bestand**, **Uit geplakte tekst** of **Via een GitHub-link**. Voor geplakte tekst plak je de hele `SKILL.md`, vanaf de eerste regel `---`, en klik je op **Voorbeeld**. Voor GitHub vul je het adres van een openbare repository, `owner/repo` of de pagina van een vaardigheid op skills.sh in en klik je op **Zoeken**.
+3. Bekijk de gevonden vaardigheden in het voorbeeld. Je ziet het aantal en de grootte van de bestanden, of er scripts in zitten, de webadressen in de tekst, het licentiebestand en de regels om te lezen voordat je installeert.
 4. Vink alleen de vaardigheden aan die je wilt installeren en klik op **Installeren**. Geïnstalleerde vaardigheden staan meteen aan.
 
 Onder het voorbeeld staat altijd: "Installeer alleen vaardigheden uit bronnen die je vertrouwt. Een vaardigheid geeft de AI instructies en kan in het agentvenster scripts uitvoeren". Lees een vaardigheid uit een onbekende bron door voordat je hem installeert.
 
 - Staat er bij mijn vaardigheden al een met dezelfde naam, kies dan op die rij **Vervangen** of **Overslaan**.
+- Je kunt het zip-bestand van een vaardigheid of een `SKILL.md`-bestand ook op een willekeurig GenOffice-venster neerzetten. **Instellingen ▸ Vaardigheden** opent dan met hetzelfde voorbeeld. Een zip telt als vaardigheid als `SKILL.md` op het hoogste niveau staat of elke map op het hoogste niveau er een bevat; met elke andere zip gebeurt niets. Een `SKILL.md`-bestand komt alleen binnen: zet een vaardigheid met meer bestanden in een zip.
+- **Regels om te lezen voordat je installeert** zijn regels die de AI vragen eerdere instructies te negeren, iets voor je verborgen te houden of instructies van een extern adres te halen, en `../`-paden die buiten de vaardigheidsmap wijzen. Bij elke regel staan het bestand en het regelnummer. Ze houden de installatie niet tegen, en een vaardigheid zonder zulke regels is daarom nog niet veilig.
 - Bij het downloaden van GitHub maakt GenOffice alleen verbinding met `github.com`, `api.github.com` en `codeload.github.com`, en stuurt het geen aanmeldgegevens mee. Is het archief te groot of komt het niet door de veiligheidscontroles, dan wordt er niets geïnstalleerd.
+- De pagina van een vaardigheid op skills.sh (`https://skills.sh/owner/repo/skill`) wordt gelezen als die vaardigheid in de GitHub-repository `owner/repo`. GenOffice maakt geen verbinding met skills.sh.
 - **Nieuwe vaardigheid** opent een lege editor waarin je zelf de naam, beschrijving en instructies schrijft.
 
 ## Op updates controleren
@@ -72,6 +76,16 @@ Onder het voorbeeld staat altijd: "Installeer alleen vaardigheden uit bronnen di
 - Er wordt geen bestand geschreven tot je op **Opslaan** klikt. Klik je op **Annuleren**, dan bewaart het gesprek hem alleen als "Niet-opgeslagen voorstel voor een vaardigheid".
 - Je kunt ook vragen een bestaande vaardigheid aan te passen, bijvoorbeeld "Pas de notulenvaardigheid aan aan hoe wij het doen". De kaart heet dan **Vaardigheid wijzigen**. Een van mijn vaardigheden wordt overschreven met **Vervangen**; een ingebouwde vaardigheid of een uit een ander programma wordt als kopie bij mijn vaardigheden opgeslagen en het origineel gaat uit.
 
+## Kiezen waar een skill wordt gebruikt
+
+Een skill die maar bij één soort document past, zoals dia’s opmaken of een spreadsheet opruimen, kan alleen in het AI-paneel van die editor verschijnen. In de andere editors worden de `/`-lijst en de lijst met skills die de AI zelf gebruikt korter, zodat de AI vaker de juiste skill kiest.
+
+- Open bij een van mijn skills **Bewerken** en kies onder **Waar gebruikt** **Alle editors** of **Alleen deze editors**. De gekozen editors worden in het bestand van de skill geschreven en gaan mee als u de skill exporteert of naar een ander programma brengt.
+- Bij een ingebouwde skill of een skill van een ander programma wijzigt u het onder **Waar gebruikt** in **Inhoud bekijken**. Dit wordt alleen in de instellingen van deze pc bewaard; het bestand van de skill blijft gelijk.
+- Een skill die niet in alle editors wordt gebruikt, laat dat zien in zijn rij, bijvoorbeeld "Gebruikt in: Presentatie".
+- Als de AI een skill maakt die maar bij één formaat past, stelt hij ook voor waar die wordt gebruikt; anders blijft het alle editors. Vóór het opslaan kunt u het op de kaart wijzigen onder **Waar gebruikt**.
+- AI vragen op de startpagina en het agentvenster gebruiken alle ingeschakelde skills, waar ze ook voor zijn ingesteld.
+
 ## Een document als sjabloon toevoegen
 
 Maak je een vaardigheid in het AI-paneel van een editor, dan kan het huidige document als sjabloon meegaan. Vink op de kaart **Dit document ook als sjabloon opslaan** aan en de knop wordt er twee.
@@ -85,6 +99,7 @@ Maak je een vaardigheid in het AI-paneel van een editor, dan kan het huidige doc
 - Een vaardigheid met een sjabloon toont **Met sjabloon** in de lijst.
 - Roep hem aan als chip en verstuur: een kopie van het sjabloon opent als nieuw naamloos document en de AI in dat tabblad gaat verder met je verzoek. In het oorspronkelijke paneel blijven "Er wordt in een nieuw tabblad met de sjabloon gewerkt" en **Naar het tabblad** staan.
 - Kiest de AI zelf een vaardigheid met sjabloon, dan opent er niet meteen een tabblad. Het gesprek toont in plaats daarvan de knop **Nieuw document openen met deze sjabloon**.
+- Roep je hem aan in een document dat al inhoud heeft, dan vraagt hij eerst waar hij moet werken in plaats van meteen een tabblad te openen. **In dit document doen** past het huidige document aan volgens de vaardigheid, zonder nieuw tabblad (het sjabloonbestand wordt niet geopend). **Nieuw document uit de sjabloon (dit document bijvoegen)** opent de kopie van de sjabloon in een nieuw tabblad en stuurt het huidige document als bijlage naar het AI-paneel van dat tabblad. Om het bij te voegen moet het huidige document opgeslagen zijn. Is het nooit opgeslagen of zijn er niet-opgeslagen wijzigingen, dan zegt het paneel dat, en **Openen zonder bijlage** opent de kopie zonder. Ook de knop die verschijnt als de AI zelf een vaardigheid met sjabloon gebruikt, voegt een document met inhoud bij. De Markdown- en PDF-editor accepteren geen bijlagen, dus een sjabloon die daar opent krijgt niets bijgevoegd.
 - Waar het nieuwe document komt, kies je meestal de eerste keer dat je het opslaat. De Markdown- en HTML-editor slaan zoals altijd op in de standaardmap. Het sjabloonbestand zelf blijft zoals het was.
 
 ## Vaardigheden met scripts

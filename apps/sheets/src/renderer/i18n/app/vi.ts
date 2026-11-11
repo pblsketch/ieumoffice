@@ -548,6 +548,9 @@ export const vi = {
   appCsvExportNeedsFullLoad: 'Xuất CSV cần sổ làm việc được tải đầy đủ — vui lòng đợi tải xong.',
   appCsvExportTooLarge: 'Trang tính quá lớn để xuất dưới dạng CSV.',
   appCsvExportCanceled: 'Đã hủy xuất CSV.',
+  appOdsExported: 'Đã xuất {path}.',
+  appOdsExportCanceled: 'Đã hủy xuất ODS.',
+  appOdsExportFailed: 'Xuất ODS thất bại.',
   appCsvExported: 'Đã xuất {path}.',
   appCsvExportedActiveOnly:
     'CSV chỉ chứa một trang tính đơn — đã xuất trang tính hiện hoạt "{name}" ra {path}.',
@@ -696,6 +699,12 @@ export const vi = {
   appSaveAs: 'Lưu dưới dạng',
   appUndo: 'Hoàn tác',
   appRedo: 'Làm lại',
+  appQuickAccessCustomize: 'Tùy chỉnh Thanh công cụ Truy nhập Nhanh',
+  appQuickAccessHint: 'Nhấn Alt và một phím số để chạy nút ở vị trí đó, tính từ bên trái.',
+  appQuickAccessMoveEarlier: 'Chuyển lên trước',
+  appQuickAccessMoveLater: 'Chuyển ra sau',
+  appQuickAccessReset: 'Đặt lại về mặc định',
+  appQuickAccessFull: 'Thanh công cụ chứa tối đa 10 nút.',
   appUnsavedEditOne: '● {count} chỉnh sửa chưa lưu',
   appUnsavedEditMany: '● {count} chỉnh sửa chưa lưu',
   appSavedState: 'Đã lưu',
@@ -1553,4 +1562,8 @@ export const vi = {
   appSpellUnavailable: 'Kiểm tra chính tả không khả dụng trong cửa sổ này.',
   appSpellReplaceAll: 'Thay tất cả bằng "{suggestion}"',
   appSpellChangedAll: 'Đã sửa {count} ô chứa "{word}".',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Đã mở ODS dưới dạng bản sao xlsx. Khi lưu sẽ ghi tệp xlsx.',
+  appOdsFormulasDropped: 'Chỉ giữ lại giá trị của {count} công thức.',
 } satisfies Record<keyof typeof zh, string>

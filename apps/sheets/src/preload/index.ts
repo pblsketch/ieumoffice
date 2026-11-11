@@ -488,6 +488,53 @@ const desktopApi: DesktopApi = {
     return result as
       { canceled: true; saveAsXlsxInstead?: boolean } | { canceled: false; path: string }
   },
+  async exportOds(request) {
+    if (
+      !isRecord(request) ||
+      typeof request.sessionId !== 'string' ||
+      !isUuid(request.sessionId) ||
+      (request.targetPath !== undefined &&
+        (typeof request.targetPath !== 'string' || request.targetPath.length === 0)) ||
+      (request.workbook !== undefined && !isRecord(request.workbook))
+    ) {
+      throw new Error('Invalid ODS export request.')
+    }
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.exportOds, request)
+    if (!isRecord(result) || typeof result.canceled !== 'boolean') {
+      throw new Error('Invalid ODS export response.')
+    }
+    if (result.canceled === false) {
+      if (
+        typeof result.path !== 'string' ||
+        typeof result.sheets !== 'number' ||
+        typeof result.cells !== 'number' ||
+        typeof result.formulasDropped !== 'number' ||
+        !isOdsDroppedCounts(result.dropped)
+      ) {
+        throw new Error('Invalid ODS export response.')
+      }
+      return result as {
+        canceled: false
+        path: string
+        sheets: number
+        cells: number
+        formulasDropped: number
+        dropped: {
+          charts: number
+          images: number
+          conditionalFormats: number
+          validations: number
+          pivots: number
+          comments: number
+          macros: number
+          shapes: number
+          slicers: number
+          sparklines: number
+        }
+      }
+    }
+    return result as { canceled: true }
+  },
   async confirmCsvSave() {
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.csvSaveConfirm)
     if (result !== 'csv' && result !== 'xlsx' && result !== 'cancel') {
@@ -549,6 +596,7 @@ const desktopApi: DesktopApi = {
         action === 'print' ||
         action === 'export-pdf' ||
         action === 'export-csv' ||
+        action === 'export-ods' ||
         action === 'undo' ||
         action === 'redo'
       )
@@ -909,6 +957,8 @@ function parseWorkbookFile(input: unknown): WorkbookFile {
     definedNames,
     readOnly,
     needsSaveAs,
+    odsConverted,
+    formulasDropped,
     csvPath,
     emptyCsv,
     restoredFromRecovery,
@@ -928,6 +978,8 @@ function parseWorkbookFile(input: unknown): WorkbookFile {
     !Array.isArray(definedNames) ||
     typeof readOnly !== 'boolean' ||
     (needsSaveAs !== undefined && typeof needsSaveAs !== 'boolean') ||
+    (odsConverted !== undefined && odsConverted !== true) ||
+    (formulasDropped !== undefined && !isNonnegativeInteger(formulasDropped)) ||
     (csvPath !== undefined && (typeof csvPath !== 'string' || csvPath.length === 0)) ||
     (emptyCsv !== undefined && typeof emptyCsv !== 'boolean') ||
     (restoredFromRecovery !== undefined && typeof restoredFromRecovery !== 'boolean')
@@ -1234,6 +1286,8 @@ function parseWorkbookFile(input: unknown): WorkbookFile {
     definedNames: parsedDefinedNames,
     readOnly,
     ...(needsSaveAs === undefined ? {} : { needsSaveAs }),
+    ...(odsConverted === true ? { odsConverted } : {}),
+    ...(formulasDropped === undefined ? {} : { formulasDropped }),
     ...(csvPath === undefined ? {} : { csvPath }),
     ...(emptyCsv === undefined ? {} : { emptyCsv }),
     ...(restoredFromRecovery === undefined ? {} : { restoredFromRecovery }),
@@ -3056,6 +3110,12 @@ function parseSaveResult(input: unknown): WorkbookSaveResult {
       }
       return { canceled: true, pdfSaveAsPath: input.pdfSaveAsPath }
     }
+    if (input.odsSaveAsPath !== undefined) {
+      if (typeof input.odsSaveAsPath !== 'string' || input.odsSaveAsPath.length === 0) {
+        throw new Error('Invalid workbook save response.')
+      }
+      return { canceled: true, odsSaveAsPath: input.odsSaveAsPath }
+    }
     return { canceled: true }
   }
   if (
@@ -4059,6 +4119,23 @@ function isUuid(input: unknown): input is string {
   return (
     typeof input === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input)
+  )
+}
+
+/** The dropped-feature counts of an ODS export; every field must be a count. */
+function isOdsDroppedCounts(input: unknown): boolean {
+  if (!isRecord(input)) return false
+  return (
+    isNonnegativeInteger(input.charts) &&
+    isNonnegativeInteger(input.images) &&
+    isNonnegativeInteger(input.conditionalFormats) &&
+    isNonnegativeInteger(input.validations) &&
+    isNonnegativeInteger(input.pivots) &&
+    isNonnegativeInteger(input.comments) &&
+    isNonnegativeInteger(input.macros) &&
+    isNonnegativeInteger(input.shapes) &&
+    isNonnegativeInteger(input.slicers) &&
+    isNonnegativeInteger(input.sparklines)
   )
 }
 

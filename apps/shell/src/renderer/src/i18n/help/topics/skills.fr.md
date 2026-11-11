@@ -22,18 +22,22 @@ Une compétence est un ensemble d’instructions de travail pour l’IA. Notez u
 - Une compétence intégrée se masque au lieu d’être supprimée : choisissez **Masquer**. **Afficher à nouveau**, en bas de la liste, la rétablit telle qu’elle était au départ.
 - Pour modifier une compétence intégrée ou issue d’un autre programme, choisissez **Copier dans mes compétences**. La copie apparaît dans mes compétences et l’original est désactivé.
 - Quand vous exportez une compétence qui a un modèle, le document modèle est aussi placé dans le zip. Vérifiez qu’il ne contient aucune information personnelle avant de l’exporter.
+- **Exporter plusieurs**, en haut de la page, place les compétences que vous cochez dans un seul fichier zip, avec un dossier par compétence. La personne qui reçoit le zip l’ajoute comme n’importe quel zip de compétence et peut choisir lesquelles installer.
 
 ## Ajouter une compétence
 
 1. Dans **Paramètres ▸ Compétences**, cliquez sur **Ajouter**.
-2. Choisissez **Depuis un dossier**, **Depuis un fichier zip** ou **Depuis un lien GitHub**. Pour GitHub, saisissez l’adresse d’un dépôt public ou `owner/repo`, puis cliquez sur **Rechercher**.
-3. Vérifiez les compétences trouvées dans l’aperçu. Il indique le nombre et la taille des fichiers, la présence éventuelle de scripts, les adresses web citées dans le texte et le fichier de licence.
+2. Choisissez **Depuis un dossier**, **Depuis un fichier zip**, **Depuis un texte collé** ou **Depuis un lien GitHub**. Pour un texte collé, collez tout le `SKILL.md`, à partir de sa première ligne `---`, puis cliquez sur **Aperçu**. Pour GitHub, saisissez l’adresse d’un dépôt public, `owner/repo` ou la page d’une compétence sur skills.sh, puis cliquez sur **Rechercher**.
+3. Vérifiez les compétences trouvées dans l’aperçu. Il indique le nombre et la taille des fichiers, la présence éventuelle de scripts, les adresses web citées dans le texte, le fichier de licence et les lignes à lire avant d’installer.
 4. Cochez uniquement les compétences à installer et cliquez sur **Installer**. Les compétences installées sont activées d’emblée.
 
 Sous l’aperçu figure toujours ce message : « N’installez que des compétences provenant de sources de confiance. Une compétence donne des instructions à l’IA et, dans la fenêtre de l’agent, elle peut exécuter des scripts. » Lisez une compétence d’origine inconnue avant de l’installer.
 
 - Si mes compétences en contient déjà une du même nom, choisissez **Remplacer** ou **Ignorer** sur cette ligne.
+- Vous pouvez aussi déposer le fichier zip d’une compétence ou un fichier `SKILL.md` sur n’importe quelle fenêtre de GenOffice. **Paramètres ▸ Compétences** s’ouvre avec le même aperçu. Un zip compte comme une compétence lorsque `SKILL.md` se trouve à sa racine ou que chaque dossier de premier niveau en contient un ; tout autre zip est laissé de côté. Un fichier `SKILL.md` arrive seul : mettez dans un zip une compétence qui a d’autres fichiers.
+- **Lignes à lire avant d’installer** : ce sont les lignes qui demandent à l’IA d’ignorer les instructions précédentes, de vous cacher quelque chose ou de suivre des instructions venant d’une adresse extérieure, ainsi que les chemins `../` qui pointent hors du dossier de la compétence. Chacune indique son fichier et sa ligne. Elles n’empêchent pas l’installation, et une compétence sans ces lignes n’est pas sûre pour autant.
 - Pour télécharger depuis GitHub, GenOffice se connecte uniquement à `github.com`, `api.github.com` et `codeload.github.com`, et n’envoie aucune donnée de connexion. Si l’archive est trop volumineuse ou échoue aux contrôles de sécurité, rien n’est installé.
+- La page d’une compétence sur skills.sh (`https://skills.sh/owner/repo/skill`) est lue comme cette compétence dans le dépôt GitHub `owner/repo`. GenOffice ne se connecte pas à skills.sh.
 - **Nouvelle compétence** ouvre un éditeur vide où vous rédigez vous-même le nom, la description et les instructions.
 
 ## Rechercher des mises à jour
@@ -72,6 +76,16 @@ Sous l’aperçu figure toujours ce message : « N’installez que des compéten
 - Aucun fichier n’est écrit tant que vous n’avez pas cliqué sur **Enregistrer**. Si vous cliquez sur **Annuler**, la conversation la garde seulement comme « Proposition de compétence non enregistrée ».
 - Vous pouvez aussi demander à modifier une compétence existante, par exemple « Adapte la compétence de compte rendu à notre façon de faire ». La carte s’intitule alors **Modifier la compétence**. Une de mes compétences est écrasée avec **Remplacer** ; une compétence intégrée ou issue d’un autre programme est enregistrée comme copie dans mes compétences et l’original est désactivé.
 
+## Choisir où utiliser une compétence
+
+Une compétence qui ne convient qu’à un type de document, comme la mise en forme de diapositives ou le rangement d’un tableur, peut n’apparaître que dans le panneau IA de cet éditeur. Dans les autres éditeurs, la liste `/` et la liste des compétences que l’IA utilise d’elle-même raccourcissent, et l’IA choisit plus souvent la bonne compétence.
+
+- Pour une de mes compétences, ouvrez **Modifier** et choisissez **Tous les éditeurs** ou **Seulement ces éditeurs** sous **Où l’utiliser**. Les éditeurs choisis sont écrits dans le fichier de la compétence et la suivent quand vous l’exportez ou la passez à un autre programme.
+- Pour une compétence intégrée ou celle d’un autre programme, changez-le sous **Où l’utiliser** dans **Voir le contenu**. Ce choix est enregistré uniquement dans les réglages de ce PC ; le fichier de la compétence ne change pas.
+- Une compétence qui n’est pas utilisée dans tous les éditeurs l’indique sur sa ligne, par exemple « Utilisée dans : Présentation ».
+- Quand l’IA crée une compétence qui ne convient qu’à un format, elle propose aussi où l’utiliser ; sinon elle laisse tous les éditeurs. Vous pouvez le changer sous **Où l’utiliser** sur la carte avant d’enregistrer.
+- Demander à l’IA sur l’accueil et la fenêtre agent utilisent toutes les compétences activées, quel que soit l’endroit choisi.
+
 ## Joindre un document comme modèle
 
 Quand vous créez une compétence dans le panneau IA d’un éditeur, le document en cours peut l’accompagner comme modèle. Cochez **Enregistrer aussi ce document comme modèle** sur la carte : le bouton se dédouble.
@@ -85,6 +99,7 @@ Quand vous créez une compétence dans le panneau IA d’un éditeur, le documen
 - Une compétence qui a un modèle affiche **Contient un modèle** dans la liste.
 - Appelez-la sous forme de pastille et envoyez : une copie du modèle s’ouvre comme nouveau document sans titre, et l’IA de cet onglet poursuit votre demande. Le panneau d’origine garde « Travail avec le modèle dans un nouvel onglet » et **Aller à l’onglet**.
 - Quand l’IA choisit d’elle-même une compétence avec modèle, aucun onglet ne s’ouvre tout de suite. La conversation affiche à la place un bouton **Ouvrir un nouveau document à partir de ce modèle**.
+- Appelée dans un document qui a déjà du contenu, elle demande où travailler au lieu d’ouvrir un onglet tout de suite. **Le faire dans ce document** modifie le document actuel selon la compétence, sans nouvel onglet (le fichier modèle n’est pas ouvert). **Nouveau document à partir du modèle (joindre celui-ci)** ouvre la copie du modèle dans un nouvel onglet et envoie le document actuel au panneau IA de cet onglet en pièce jointe. Pour le joindre, le document actuel doit être enregistré. S’il ne l’a jamais été ou a des modifications non enregistrées, le panneau le signale, et **Ouvrir sans joindre** ouvre la copie sans lui. Le bouton affiché quand l’IA choisit elle-même une compétence à modèle joint lui aussi un document qui a du contenu. Les éditeurs Markdown et PDF n’acceptent pas de pièces jointes : un modèle qui s’y ouvre ne reçoit rien.
 - Vous choisissez généralement l’emplacement du nouveau document lors du premier enregistrement. Les éditeurs Markdown et HTML enregistrent comme toujours dans le dossier par défaut. Le fichier modèle lui-même reste inchangé.
 
 ## Compétences avec scripts

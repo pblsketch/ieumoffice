@@ -515,6 +515,7 @@ export function AiPanel({
   /** the skills called with `/` or `$`: the list, the chips and the text a request gets */
   const skills = useComposerSkills({
     lang,
+    editor: 'slides',
     usableMcpServers: mcpWindow.state?.usableServers(),
     // a chip whose skill has a template runs in a new tab (spec 5.7)
     onTemplateSkill: (request) => skillTemplatesRef.current.onTemplateSkill(request),
@@ -543,6 +544,14 @@ export function AiPanel({
     cards: skillCards,
     busy,
     send: (text, use) => runWith(text, undefined, undefined, use),
+    // a template skill called in a deck with content asks where to run
+    hasContent: () => deckEmpty === false,
+    // a template copy that brought the asking document: it goes in as an attachment
+    attach: async (paths) => {
+      const added = await window.desktop.addAttachmentPaths(paths)
+      mergeAttachments(added)
+      return (added?.accepted.length ?? 0) > 0
+    },
     onTaken: () => {
       if (!open) onExpand?.()
     },
@@ -1666,6 +1675,7 @@ export function AiPanel({
         createFilesSkill(availableAttachments, (path) => readAttachmentPathsRef.current.add(path)),
         // the person's skills: use_skill, read_skill_file, propose_skill (app-run tools)
         ...panelUserSkills({
+          editor: 'slides',
           lang: () => langRef.current,
           messages: () => loopRef.current?.messages ?? [],
           // a template skill the model used offers its new document (spec 5.7)

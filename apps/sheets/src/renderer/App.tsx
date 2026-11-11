@@ -535,6 +535,11 @@ import {
   type PageLayoutContext,
 } from './page-layout-actions'
 import { handleExportCsv as handleExportCsvImpl, type CsvExportContext } from './csv-export'
+import {
+  handleExportOds as handleExportOdsImpl,
+  saveThenExportOds,
+  type OdsExportContext,
+} from './ods-export'
 import { effectivePageBreaks, installPageBreakPreview } from './page-break-preview'
 import { mapProtectedRanges } from './protected-ranges'
 import {
@@ -593,6 +598,7 @@ import { planStillMatches } from './lazy-plan'
 import { lastSurvivingScreenLine, netAxisDelta, screenToFile } from './view-transform'
 import { selectionFormatEquals, toSelectionFormat, type SelectionFormat } from './selection-format'
 import { ExcelShell, type SelectedShapeRibbon } from './ExcelShell'
+import { odsConversionNoticeOf, type OdsConversionNotice } from './ods-import'
 import { ToastHost } from './toast'
 import { showToast } from './toast-bus'
 import { AdvancedFilterDialog, type AdvancedFilterColumn } from './AdvancedFilterDialog'
@@ -883,6 +889,10 @@ export function App({
       new URLSearchParams(window.location.search).get('openingWorkbook') === '1',
   )
   const [emptyCsvNotice, setEmptyCsvNotice] = useState(false)
+  /// A document opened from an .ods copy keeps this line for its life: saving
+  /// writes an .xlsx. Separate from `message`, so a command's transient status
+  /// never clears it; only opening another document replaces it.
+  const [odsNotice, setOdsNotice] = useState<OdsConversionNotice | null>(null)
   /// Zoom of the active sheet in percent, echoed by the status-bar slider.
   const [zoomPercent, setZoomPercent] = useState(100)
   /** F5: the grid alone in fullscreen (presentation) */
@@ -1030,7 +1040,7 @@ export function App({
   /// menuActionRef, so the interval closure never goes stale).
   const handleSaveRef = useRef<
     (
-      mode: 'save' | 'save-as' | 'recovery' | 'template',
+      mode: 'save' | 'save-as' | 'recovery' | 'template' | 'ods',
       quiet?: boolean,
       explicitTarget?: { path: string; overwrite: boolean },
     ) => Promise<SaveOutcome>
@@ -1211,6 +1221,14 @@ export function App({
     }
   }
 
+  function odsExportContext(): OdsExportContext {
+    return {
+      lazyWorkbookRef,
+      setMessage,
+      pendingEdits: async () => (await handleSaveRef.current('ods')).request ?? null,
+    }
+  }
+
   function saveContext(): SaveContext {
     return {
       univerRef,
@@ -1377,6 +1395,14 @@ export function App({
     ready: !!workbookFile,
     send: (text, use) => {
       handleSend(text, undefined, undefined, use)
+    },
+    // a template skill called in a workbook with content asks where to run
+    hasContent: () => sheetHasContent,
+    // a template copy that brought the asking document: it goes in as an attachment
+    attach: async (paths) => {
+      const added = await window.desktopApi.addAttachmentPaths([...paths])
+      mergeAttachments(added)
+      return (added?.accepted.length ?? 0) > 0
     },
     onTaken: () => setOpenAiRequest((n) => n + 1),
     setComposer: setPrompt,
@@ -1736,6 +1762,7 @@ export function App({
         ),
         // the person's skills: use_skill, read_skill_file, propose_skill (app-run tools)
         ...panelUserSkills({
+          editor: 'sheets',
           lang: getLang,
           messages: () => agentLoopRef.current?.messages ?? [],
           // a template skill the model used offers its new document (spec 5.7)
@@ -5092,6 +5119,7 @@ export function App({
         return
       }
       setEmptyCsvNotice(selected.emptyCsv === true)
+      setOdsNotice(odsConversionNoticeOf(selected))
       setMessage(selected.emptyCsv ? '' : t('appOpened', { name: selected.name }))
     } catch (error: unknown) {
       setMessage(error instanceof Error ? stripIpcErrorWrapper(error.message) : t('appOpenFailed'))
@@ -5100,7 +5128,7 @@ export function App({
   }
 
   async function handleSave(
-    mode: 'save' | 'save-as' | 'recovery' | 'template',
+    mode: 'save' | 'save-as' | 'recovery' | 'template' | 'ods',
     quiet = false,
     explicitTarget?: { path: string; overwrite: boolean },
   ): Promise<SaveOutcome> {
@@ -5108,10 +5136,16 @@ export function App({
     // written beside a real save would outlive it as a phantom Restore prompt.
     const gate = saveGateRef.current
     if (mode === 'recovery' && gate.busy) return { ok: false }
-    return gate.run(async () => {
-      if (!(await commitActiveEditor())) return { ok: false }
-      return handleSaveImpl(saveContext(), mode, quiet, explicitTarget)
-    })
+    // A Save As that ends on the ODS format exports after the gate has let
+    // the save go (see saveThenExportOds).
+    return saveThenExportOds(
+      () =>
+        gate.run(async (): Promise<SaveOutcome> => {
+          if (!(await commitActiveEditor())) return { ok: false }
+          return handleSaveImpl(saveContext(), mode, quiet, explicitTarget)
+        }),
+      (targetPath) => handleExportOdsImpl(odsExportContext(), targetPath),
+    )
   }
   closeSaveRef.current = async () => {
     if (!(await commitActiveEditor())) {
@@ -5152,6 +5186,8 @@ export function App({
       void handleExportPdfImpl(pageLayoutContext())
     } else if (action === 'export-csv') {
       void handleExportCsvImpl(csvExportContext())
+    } else if (action === 'export-ods') {
+      void handleExportOdsImpl(odsExportContext())
     } else if (action === 'undo' || action === 'redo') {
       // The shell's own text fields (AI prompt, dialog inputs) keep native
       // text undo; everywhere else ⌘Z means workbook history.
@@ -5588,6 +5624,7 @@ export function App({
         formatPainterActive={formatPainterActive}
         statusMessage={openingWorkbook ? t('appOpeningWorkbook') : message}
         emptyCsvNotice={emptyCsvNotice}
+        odsNotice={odsNotice}
         onOpenWorkbook={() => void handleInspectWorkbook()}
         onDismissEmptyCsvNotice={() => setEmptyCsvNotice(false)}
         recoveryNotice={recoveryNotice}

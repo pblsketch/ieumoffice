@@ -22,18 +22,22 @@ Dovednost je sada pracovních pokynů pro AI. Jednou si zapište, co děláte st
 - Vestavěná dovednost se neodstraňuje, ale skrývá: zvolte **Skrýt**. **Znovu zobrazit** dole v seznamu ji vrátí do původního stavu.
 - Chcete-li změnit vestavěnou dovednost nebo dovednost z jiného programu, zvolte **Kopírovat do mých dovedností**. Kopie se objeví v mých dovednostech a originál se vypne.
 - Při exportu dovednosti se šablonou se do zipu přibalí i dokument šablony. Před exportem zkontrolujte, že dokument neobsahuje osobní údaje.
+- **Exportovat více** nahoře na stránce uloží zaškrtnuté dovednosti do jednoho souboru zip, každou do vlastní složky. Kdo zip dostane, přidá ho stejně jako jakýkoli zip s dovedností a může si vybrat, které z jeho dovedností nainstaluje.
 
 ## Přidání dovednosti
 
 1. V **Nastavení ▸ Dovednosti** klikněte na **Přidat**.
-2. Zvolte **Ze složky**, **Ze souboru zip** nebo **Z odkazu na GitHub**. U GitHubu zadejte adresu veřejného repozitáře nebo `owner/repo` a klikněte na **Najít**.
-3. V náhledu zkontrolujte nalezené dovednosti. Náhled ukazuje počet a velikost souborů, zda obsahují skripty, webové adresy v textu a soubor s licencí.
+2. Zvolte **Ze složky**, **Ze souboru zip**, **Z vloženého textu** nebo **Z odkazu na GitHub**. U vloženého textu vložte celý `SKILL.md` od jeho prvního řádku `---` a klikněte na **Náhled**. U GitHubu zadejte adresu veřejného repozitáře, `owner/repo` nebo stránku dovednosti na skills.sh a klikněte na **Najít**.
+3. V náhledu zkontrolujte nalezené dovednosti. Náhled ukazuje počet a velikost souborů, zda obsahují skripty, webové adresy v textu, soubor s licencí a řádky, které stojí za přečtení před instalací.
 4. Zaškrtněte jen dovednosti, které chcete nainstalovat, a klikněte na **Nainstalovat**. Nainstalované dovednosti jsou hned zapnuté.
 
 Pod náhledem je vždy uvedeno: „Instalujte dovednosti jen ze zdrojů, kterým důvěřujete. Dovednost dává AI pokyny a v okně agenta může spouštět skripty“. Dovednost z neznámého zdroje si před instalací přečtěte.
 
 - Pokud už mezi mými dovednostmi je jedna se stejným názvem, zvolte na tom řádku **Nahradit** nebo **Přeskočit**.
+- Soubor zip s dovedností nebo soubor `SKILL.md` můžete také přetáhnout na kterékoli okno GenOffice. Otevře se **Nastavení ▸ Dovednosti** se stejným náhledem. Zip se bere jako dovednost, když `SKILL.md` leží na jeho nejvyšší úrovni nebo ho obsahuje každá složka nejvyšší úrovně; jakýkoli jiný zip zůstane bez povšimnutí. Soubor `SKILL.md` přijde sám: dovednost s dalšími soubory dejte do zipu.
+- **Řádky, které stojí za přečtení před instalací**, jsou řádky, které žádají AI, aby ignorovala dřívější pokyny, před vámi něco skrývala nebo přebírala pokyny z vnější adresy, a cesty `../`, které vedou mimo složku dovednosti. U každého je uveden soubor a řádek. Instalaci nezastaví a dovednost bez takových řádků tím ještě není bezpečná.
 - Při stahování z GitHubu se GenOffice připojuje jen k `github.com`, `api.github.com` a `codeload.github.com` a neposílá žádné přihlašovací údaje. Pokud je archiv příliš velký nebo neprojde bezpečnostními kontrolami, nic se nenainstaluje.
+- Stránka dovednosti na skills.sh (`https://skills.sh/owner/repo/skill`) se čte jako tato dovednost v repozitáři GitHub `owner/repo`. GenOffice se ke skills.sh nepřipojuje.
 - **Nová dovednost** otevře prázdný editor, do kterého sami napíšete jméno, popis a pokyny.
 
 ## Kontrola aktualizací
@@ -72,6 +76,16 @@ Pod náhledem je vždy uvedeno: „Instalujte dovednosti jen ze zdrojů, kterým
 - Dokud nekliknete na **Uložit**, žádný soubor se nezapíše. Pokud kliknete na **Zrušit**, rozhovor ji ponechá jen jako „Neuložený návrh dovednosti“.
 - Můžete také požádat o změnu existující dovednosti, například „Uprav dovednost pro zápisy tak, jak to děláme my“. Karta se pak jmenuje **Změnit dovednost**. Jedna z mých dovedností se přepíše tlačítkem **Nahradit**; vestavěná dovednost nebo dovednost z jiného programu se uloží jako kopie do mých dovedností a originál se vypne.
 
+## Volba, kde se dovednost používá
+
+Dovednost, která se hodí jen pro jeden druh dokumentu, třeba úprava vzhledu snímků nebo uklizení tabulky, může být vidět jen v panelu AI daného editoru. V ostatních editorech se seznam `/` i seznam dovedností, které AI používá sama, zkrátí a AI častěji vybere tu správnou.
+
+- U mé dovednosti otevřete **Upravit** a v části **Kde se používá** zvolte **Všechny editory** nebo **Jen tyto editory**. Vybrané editory se zapíší do souboru dovednosti, takže ji provázejí i při exportu nebo přenesení do jiného programu.
+- U vestavěné dovednosti nebo dovednosti jiného programu to změníte v části **Kde se používá** v **Zobrazit obsah**. Volba se ukládá jen do nastavení tohoto počítače; soubor dovednosti se nemění.
+- Dovednost, která se nepoužívá ve všech editorech, to ukazuje ve svém řádku, například „Používá se v: Prezentace“.
+- Když AI vytváří dovednost, která se hodí jen pro jeden formát, navrhne i to, kde se má používat; jinak ponechá všechny editory. Před uložením to můžete změnit v části **Kde se používá** na kartě.
+- Zeptat se AI na domovské stránce a okno agenta používají všechny zapnuté dovednosti bez ohledu na to, kde se mají používat.
+
 ## Přidání dokumentu jako šablony
 
 Když vytváříte dovednost v panelu AI editoru, může s ní jako šablona jít i aktuální dokument. Zaškrtněte na kartě **Uložit i tento dokument jako šablonu** a z tlačítka budou dvě.
@@ -85,6 +99,7 @@ Když vytváříte dovednost v panelu AI editoru, může s ní jako šablona jí
 - Dovednost se šablonou má v seznamu označení **Obsahuje šablonu**.
 - Vyvolejte ji jako štítek a odešlete: kopie šablony se otevře jako nový dokument bez názvu a AI na té kartě pokračuje ve vaší žádosti. V původním panelu zůstane „Práce se šablonou pokračuje na nové kartě“ a **Přejít na kartu**.
 - Když AI vybere dovednost se šablonou samo, karta se hned neotevře. Rozhovor místo toho ukáže tlačítko **Otevřít nový dokument z této šablony**.
+- Když ji zavoláte v dokumentu, který už má obsah, nejdřív se zeptá, kde pracovat, místo aby hned otevřela kartu. **Udělat v tomto dokumentu** upraví aktuální dokument podle dovednosti bez nové karty (soubor šablony se neotevře). **Nový dokument ze šablony (přiložit tento)** otevře kopii šablony v nové kartě a pošle aktuální dokument panelu AI té karty jako přílohu. Aby ho šlo přiložit, musí být aktuální dokument uložený. Pokud nikdy uložen nebyl nebo má neuložené změny, panel to oznámí a **Otevřít bez přílohy** otevře kopii bez něj. Tlačítko, které se zobrazí, když AI sama použije dovednost se šablonou, také přiloží dokument s obsahem. Editory Markdown a PDF přílohy nepřijímají, takže k šabloně otevřené v nich se nic nepřikládá.
 - Kam se nový dokument uloží, obvykle zvolíte při prvním uložení. Editory Markdown a HTML ale ukládají do výchozí složky jako vždy. Samotný soubor šablony zůstává beze změny.
 
 ## Dovednosti se skripty

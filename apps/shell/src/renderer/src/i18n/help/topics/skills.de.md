@@ -22,18 +22,22 @@ Ein Skill ist eine Arbeitsanleitung für die KI. Schreiben Sie einmal auf, was S
 - Ein integrierter Skill wird ausgeblendet statt entfernt: Wählen Sie **Ausblenden**. **Wieder einblenden** unten in der Liste holt ihn im ursprünglichen Zustand zurück.
 - Um einen integrierten Skill oder einen aus einem anderen Programm zu ändern, wählen Sie **In meine Skills kopieren**. Die Kopie erscheint unter meinen Skills, und das Original wird ausgeschaltet.
 - Wenn Sie einen Skill mit Vorlage exportieren, kommt das Vorlagendokument mit in die zip-Datei. Prüfen Sie vor dem Export, dass das Dokument keine persönlichen Daten enthält.
+- **Mehrere exportieren** oben auf der Seite packt die angehakten Skills in eine zip-Datei, einen Ordner pro Skill. Wer die zip-Datei erhält, fügt sie wie jede andere Skill-zip-Datei hinzu und kann auswählen, welche ihrer Skills installiert werden.
 
 ## Einen Skill hinzufügen
 
 1. Klicken Sie unter **Einstellungen ▸ Skills** auf **Hinzufügen**.
-2. Wählen Sie **Aus einem Ordner**, **Aus einer zip-Datei** oder **Über einen GitHub-Link**. Geben Sie für GitHub die Adresse eines öffentlichen Repositorys oder `owner/repo` ein und klicken Sie auf **Suchen**.
-3. Prüfen Sie die gefundenen Skills in der Vorschau. Sie zeigt Anzahl und Größe der Dateien, ob Skripte enthalten sind, die Webadressen im Text und die Lizenzdatei.
+2. Wählen Sie **Aus einem Ordner**, **Aus einer zip-Datei**, **Aus eingefügtem Text** oder **Über einen GitHub-Link**. Fügen Sie für eingefügten Text die ganze `SKILL.md` ab ihrer ersten Zeile `---` ein und klicken Sie auf **Vorschau**. Geben Sie für GitHub die Adresse eines öffentlichen Repositorys, `owner/repo` oder die Seite eines Skills auf skills.sh ein und klicken Sie auf **Suchen**.
+3. Prüfen Sie die gefundenen Skills in der Vorschau. Sie zeigt Anzahl und Größe der Dateien, ob Skripte enthalten sind, die Webadressen im Text, die Lizenzdatei und die Zeilen, die Sie vor der Installation lesen sollten.
 4. Haken Sie nur die Skills an, die installiert werden sollen, und klicken Sie auf **Installieren**. Installierte Skills sind sofort eingeschaltet.
 
 Unter der Vorschau steht immer: „Installieren Sie Skills nur aus Quellen, denen Sie vertrauen. Ein Skill gibt der KI Anweisungen und kann im Agent-Fenster Skripte ausführen.“ Lesen Sie einen Skill aus unbekannter Quelle, bevor Sie ihn installieren.
 
 - Gibt es unter meinen Skills schon einen mit demselben Namen, wählen Sie in dieser Zeile **Ersetzen** oder **Überspringen**.
+- Sie können die zip-Datei eines Skills oder eine `SKILL.md`-Datei auch auf ein beliebiges GenOffice-Fenster ziehen. **Einstellungen ▸ Skills** öffnet sich mit derselben Vorschau. Eine zip-Datei gilt als Skill, wenn `SKILL.md` auf ihrer obersten Ebene liegt oder jeder Ordner der obersten Ebene eine enthält; jede andere zip-Datei bleibt unberührt. Eine `SKILL.md`-Datei kommt allein: Packen Sie einen Skill mit weiteren Dateien in eine zip-Datei.
+- **Zeilen, die Sie vor der Installation lesen sollten**, sind Zeilen, die die KI auffordern, frühere Anweisungen zu ignorieren, etwas vor Ihnen zu verbergen oder Anweisungen von einer externen Adresse zu holen, sowie `../`-Pfade, die aus dem Skill-Ordner hinauszeigen. Bei jeder stehen Datei und Zeile. Sie verhindern die Installation nicht, und ein Skill ohne solche Zeilen ist deshalb noch nicht sicher.
 - Beim Herunterladen von GitHub verbindet sich GenOffice nur mit `github.com`, `api.github.com` und `codeload.github.com` und sendet keine Anmeldedaten. Ist das Archiv zu groß oder besteht es die Sicherheitsprüfungen nicht, wird nichts installiert.
+- Die Seite eines Skills auf skills.sh (`https://skills.sh/owner/repo/skill`) wird als dieser Skill im GitHub-Repository `owner/repo` gelesen. GenOffice verbindet sich nicht mit skills.sh.
 - **Neuer Skill** öffnet einen leeren Editor, in dem Sie Name, Beschreibung und Anleitung selbst schreiben.
 
 ## Nach Updates suchen
@@ -72,6 +76,16 @@ Unter der Vorschau steht immer: „Installieren Sie Skills nur aus Quellen, dene
 - Bis Sie auf **Speichern** klicken, wird keine Datei geschrieben. Klicken Sie auf **Abbrechen**, behält der Chat ihn nur als „Nicht gespeicherter Skill-Vorschlag“.
 - Sie können auch darum bitten, einen vorhandenen Skill zu ändern, etwa „Passe den Protokoll-Skill an unsere Arbeitsweise an“. Die Karte heißt dann **Skill ändern**. Einer meiner Skills wird mit **Ersetzen** überschrieben; ein integrierter Skill oder einer aus einem anderen Programm wird als Kopie unter meinen Skills gespeichert, und das Original wird ausgeschaltet.
 
+## Festlegen, wo ein Skill genutzt wird
+
+Ein Skill, der nur zu einer Art Dokument passt, etwa Folien gestalten oder eine Tabelle aufräumen, kann nur im KI-Bereich dieses Editors erscheinen. In den anderen Editoren werden die `/`-Liste und die Liste der Skills, die die KI selbst nutzt, kürzer, und die KI wählt öfter den passenden Skill.
+
+- Für einen meiner Skills öffnen Sie **Bearbeiten** und wählen unter **Wo sie genutzt wird** **Alle Editoren** oder **Nur diese Editoren**. Die gewählten Editoren stehen in der Datei des Skills und gehen mit, wenn Sie ihn exportieren oder in ein anderes Programm übernehmen.
+- Für einen integrierten Skill oder einen aus einem anderen Programm ändern Sie es unter **Wo sie genutzt wird** in **Inhalt ansehen**. Das wird nur in den Einstellungen dieses PCs gespeichert; die Datei des Skills bleibt unverändert.
+- Ein Skill, der nicht in allen Editoren genutzt wird, zeigt das in seiner Zeile, zum Beispiel „Genutzt in: Präsentation“.
+- Wenn die KI einen Skill erstellt, der nur zu einem Format passt, schlägt sie auch vor, wo er genutzt wird; sonst bleibt es bei allen Editoren. Vor dem Speichern können Sie es auf der Karte unter **Wo sie genutzt wird** ändern.
+- „KI fragen“ auf der Startseite und das Agentenfenster nutzen alle eingeschalteten Skills, egal wo sie genutzt werden sollen.
+
 ## Ein Dokument als Vorlage mitgeben
 
 Wenn Sie im KI-Bereich eines Editors einen Skill erstellen, kann das aktuelle Dokument als Vorlage mitgehen. Haken Sie auf der Karte **Dieses Dokument als Vorlage mitspeichern** an, dann werden aus der Schaltfläche zwei.
@@ -85,6 +99,7 @@ Wenn Sie im KI-Bereich eines Editors einen Skill erstellen, kann das aktuelle Do
 - Ein Skill mit Vorlage zeigt in der Liste **Mit Vorlage**.
 - Rufen Sie ihn als Chip auf und senden Sie, öffnet sich eine Kopie der Vorlage als neues, unbenanntes Dokument; die KI in diesem Tab arbeitet Ihre Anfrage weiter ab. Im ursprünglichen Bereich bleiben „Die Vorlage wird in einem neuen Tab bearbeitet“ und **Zum Tab** stehen.
 - Wählt die KI einen Skill mit Vorlage von selbst, öffnet sich nicht sofort ein Tab. Stattdessen zeigt der Chat die Schaltfläche **Neues Dokument aus dieser Vorlage öffnen**.
+- In einem Dokument mit Inhalt aufgerufen, fragt der Skill zuerst, wo er arbeiten soll, statt sofort einen Tab zu öffnen. **In diesem Dokument ausführen** ändert das aktuelle Dokument nach dem Skill, ohne neuen Tab (die Vorlagendatei wird nicht geöffnet). **Neues Dokument aus der Vorlage (dieses anhängen)** öffnet die Kopie der Vorlage in einem neuen Tab und schickt das aktuelle Dokument als Anhang an den KI-Bereich dieses Tabs. Dafür muss das aktuelle Dokument gespeichert sein. Wurde es nie gespeichert oder hat es ungespeicherte Änderungen, sagt der Bereich das, und **Ohne Anhang öffnen** öffnet die Kopie ohne es. Auch die Schaltfläche, die erscheint, wenn die KI selbst einen Skill mit Vorlage nutzt, hängt ein Dokument mit Inhalt an. Die Markdown- und PDF-Editoren nehmen keine Anhänge an; eine Vorlage, die dort öffnet, bekommt nichts angehängt.
 - Wo das neue Dokument abgelegt wird, bestimmen Sie meist beim ersten Speichern. Die Markdown- und HTML-Editoren speichern wie gewohnt im Standardordner. Die Vorlagendatei selbst bleibt, wie sie war.
 
 ## Skills mit Skripten

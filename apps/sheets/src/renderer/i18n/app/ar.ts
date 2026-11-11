@@ -531,6 +531,9 @@ export const ar = {
   appCsvExportNeedsFullLoad: 'يتطلب تصدير CSV مصنفًا محمّلاً بالكامل — انتظر حتى ينتهي التحميل.',
   appCsvExportTooLarge: 'الورقة كبيرة جدًا ولا يمكن تصديرها بتنسيق CSV.',
   appCsvExportCanceled: 'أُلغي تصدير CSV.',
+  appOdsExported: 'تم التصدير: {path}.',
+  appOdsExportCanceled: 'أُلغي تصدير ODS.',
+  appOdsExportFailed: 'فشل تصدير ODS.',
   appCsvExported: 'تم التصدير: {path}.',
   appCsvExportedActiveOnly:
     'ملفات CSV تحتوي على ورقة واحدة فقط — تم تصدير الورقة النشطة «{name}» إلى {path}.',
@@ -671,6 +674,12 @@ export const ar = {
   appSaveAs: 'حفظ باسم',
   appUndo: 'تراجع',
   appRedo: 'إعادة',
+  appQuickAccessCustomize: 'تخصيص شريط أدوات الوصول السريع',
+  appQuickAccessHint: 'اضغط Alt مع رقم لتشغيل الزر الموجود في ذلك الموضع بالعدّ من بداية الشريط.',
+  appQuickAccessMoveEarlier: 'نقل إلى الأمام',
+  appQuickAccessMoveLater: 'نقل إلى الخلف',
+  appQuickAccessReset: 'استعادة الإعدادات الافتراضية',
+  appQuickAccessFull: 'يتسع الشريط لعشرة أزرار كحد أقصى.',
   appUnsavedEditOne: '● {count} تعديل غير محفوظ',
   appUnsavedEditMany: '● {count} تعديلات غير محفوظة',
   appSavedState: 'تم الحفظ',
@@ -1524,4 +1533,8 @@ export const ar = {
   appSpellUnavailable: 'التدقيق الإملائي غير متاح في هذه النافذة.',
   appSpellReplaceAll: 'استبدال الكل بـ «{suggestion}»',
   appSpellChangedAll: 'تم تصحيح {count} خلية تحتوي على «{word}».',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'تم فتح ملف ODS كنسخة xlsx. سيؤدي الحفظ إلى حفظ ملف xlsx.',
+  appOdsFormulasDropped: 'تم الاحتفاظ بقيم {count} من الصيغ فقط دون صيغها.',
 } satisfies Record<keyof typeof zh, string>

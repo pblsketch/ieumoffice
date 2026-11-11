@@ -22,18 +22,22 @@ Kỹ năng là một bộ hướng dẫn làm việc dành cho AI. Hãy viết r
 - Kỹ năng có sẵn không bị xóa mà được ẩn đi: hãy chọn **Ẩn**. **Hiện lại** ở cuối danh sách sẽ đưa nó trở lại như ban đầu.
 - Để thay đổi một kỹ năng có sẵn hoặc kỹ năng từ chương trình khác, hãy chọn **Sao chép vào kỹ năng của tôi**. Bản sao xuất hiện trong kỹ năng của tôi và bản gốc bị tắt.
 - Khi xuất một kỹ năng có mẫu, tài liệu mẫu cũng được đưa vào tệp zip. Hãy kiểm tra để chắc rằng tài liệu đó không chứa thông tin cá nhân trước khi xuất.
+- **Xuất nhiều kỹ năng** ở đầu trang đưa các kỹ năng bạn đánh dấu vào một tệp zip, mỗi kỹ năng một thư mục. Người nhận thêm tệp zip đó giống như mọi tệp zip kỹ năng khác và có thể chọn cài những kỹ năng nào trong đó.
 
 ## Thêm kỹ năng
 
 1. Trong **Cài đặt ▸ Kỹ năng**, nhấn **Thêm**.
-2. Chọn **Từ thư mục**, **Từ tệp zip** hoặc **Từ liên kết GitHub**. Với GitHub, hãy nhập địa chỉ của một kho lưu trữ công khai hoặc `owner/repo` rồi nhấn **Tìm**.
-3. Kiểm tra các kỹ năng tìm thấy trong bản xem trước. Bản xem trước cho biết số lượng và kích thước tệp, có tập lệnh hay không, các địa chỉ web trong nội dung và tệp giấy phép.
+2. Chọn **Từ thư mục**, **Từ tệp zip**, **Từ văn bản dán vào** hoặc **Từ liên kết GitHub**. Với văn bản dán vào, hãy dán toàn bộ `SKILL.md` từ dòng `---` đầu tiên rồi nhấn **Xem trước**. Với GitHub, hãy nhập địa chỉ của một kho lưu trữ công khai, `owner/repo` hoặc trang của một kỹ năng trên skills.sh rồi nhấn **Tìm**.
+3. Kiểm tra các kỹ năng tìm thấy trong bản xem trước. Bản xem trước cho biết số lượng và kích thước tệp, có tập lệnh hay không, các địa chỉ web trong nội dung, tệp giấy phép và các dòng nên đọc trước khi cài.
 4. Chỉ đánh dấu những kỹ năng muốn cài rồi nhấn **Cài đặt**. Kỹ năng đã cài ở trạng thái bật ngay từ đầu.
 
 Bên dưới bản xem trước luôn có dòng: "Chỉ cài kỹ năng từ nguồn bạn tin cậy. Kỹ năng đưa chỉ dẫn cho AI và có thể chạy tập lệnh trong cửa sổ tác tử." Hãy đọc kỹ một kỹ năng từ nguồn lạ trước khi cài.
 
 - Nếu kỹ năng của tôi đã có một kỹ năng trùng tên, hãy chọn **Thay thế** hoặc **Bỏ qua** trên hàng đó.
+- Bạn cũng có thể thả tệp zip của một kỹ năng hoặc tệp `SKILL.md` vào bất kỳ cửa sổ GenOffice nào. **Cài đặt ▸ Kỹ năng** sẽ mở ra với cùng bản xem trước. Một tệp zip được coi là kỹ năng khi `SKILL.md` nằm ở cấp trên cùng của nó hoặc mỗi thư mục cấp trên cùng đều có một tệp như vậy; mọi tệp zip khác được để nguyên. Tệp `SKILL.md` chỉ được đưa vào một mình: hãy đóng gói kỹ năng có thêm tệp khác thành zip.
+- **Các dòng nên đọc trước khi cài** là những dòng yêu cầu AI bỏ qua các chỉ dẫn trước đó, giấu bạn điều gì đó hoặc nhận chỉ dẫn từ một địa chỉ bên ngoài, và các đường dẫn `../` trỏ ra ngoài thư mục kỹ năng. Mỗi dòng đều cho biết tệp và số dòng. Chúng không ngăn việc cài đặt, và kỹ năng không có những dòng như vậy cũng không vì thế mà an toàn.
 - Khi tải xuống từ GitHub, GenOffice chỉ kết nối tới `github.com`, `api.github.com` và `codeload.github.com`, và không gửi bất kỳ dữ liệu đăng nhập nào. Nếu tệp nén quá lớn hoặc không qua được các bước kiểm tra an toàn, sẽ không có gì được cài.
+- Trang của một kỹ năng trên skills.sh (`https://skills.sh/owner/repo/skill`) được đọc là kỹ năng đó trong kho GitHub `owner/repo`. GenOffice không kết nối tới skills.sh.
 - **Kỹ năng mới** mở một trình soạn thảo trống để bạn tự viết tên, mô tả và hướng dẫn.
 
 ## Kiểm tra cập nhật
@@ -72,6 +76,16 @@ Bên dưới bản xem trước luôn có dòng: "Chỉ cài kỹ năng từ ngu
 - Không có tệp nào được ghi cho đến khi bạn nhấn **Lưu**. Nếu bạn nhấn **Hủy**, cuộc trò chuyện chỉ giữ lại nó dưới dạng "Đề xuất kỹ năng chưa lưu".
 - Bạn cũng có thể nhờ sửa một kỹ năng sẵn có, chẳng hạn "Sửa kỹ năng biên bản cuộc họp theo cách chúng ta vẫn làm". Khi đó thẻ có tiêu đề **Sửa kỹ năng**. Một kỹ năng của tôi sẽ bị ghi đè bằng **Thay thế**; kỹ năng có sẵn hoặc kỹ năng từ chương trình khác được lưu thành một bản sao trong kỹ năng của tôi và bản gốc bị tắt.
 
+## Chọn nơi dùng kỹ năng
+
+Kỹ năng chỉ hợp với một loại tài liệu, như trang trí trang chiếu hay sắp xếp bảng tính, có thể chỉ hiện trong bảng AI của trình soạn thảo đó. Danh sách `/` và danh sách kỹ năng AI tự dùng ở các trình soạn thảo khác ngắn lại, nên AI chọn đúng kỹ năng hơn.
+
+- Với kỹ năng của tôi, mở **Chỉnh sửa** và chọn **Mọi trình soạn thảo** hoặc **Chỉ các trình soạn thảo đã chọn** ở **Nơi dùng**. Các trình soạn thảo đã chọn được ghi vào tệp của kỹ năng, nên vẫn đi theo khi bạn xuất kỹ năng hay chuyển sang chương trình khác.
+- Với kỹ năng có sẵn và kỹ năng của chương trình khác, đổi ở **Nơi dùng** trong **Xem nội dung**. Lựa chọn này chỉ lưu trong cài đặt của máy này; tệp của kỹ năng giữ nguyên.
+- Kỹ năng không dùng ở mọi trình soạn thảo sẽ ghi rõ trên dòng của nó, ví dụ "Dùng trong: Bản trình bày".
+- Khi AI tạo một kỹ năng chỉ hợp với một định dạng, AI đề xuất luôn nơi dùng; nếu không, kỹ năng dùng ở mọi trình soạn thảo. Bạn có thể đổi ở **Nơi dùng** trên thẻ trước khi lưu.
+- Hỏi AI ở Trang chủ và cửa sổ tác tử dùng mọi kỹ năng đang bật, bất kể nơi dùng.
+
 ## Thêm tài liệu làm mẫu
 
 Khi bạn tạo kỹ năng trong bảng AI của một trình soạn thảo, tài liệu hiện tại có thể được lưu kèm làm mẫu. Đánh dấu **Lưu kèm tài liệu này làm mẫu** trên thẻ, và nút sẽ tách thành hai.
@@ -85,6 +99,7 @@ Khi bạn tạo kỹ năng trong bảng AI của một trình soạn thảo, tà
 - Kỹ năng có mẫu sẽ hiện **Có mẫu** trong danh sách.
 - Gọi nó thành thẻ nhỏ rồi gửi, một bản sao của mẫu sẽ mở ra như một tài liệu mới chưa có tên; AI trong thẻ đó tiếp tục thực hiện yêu cầu của bạn. Bảng ban đầu giữ dòng "Đang làm việc với mẫu trong một thẻ mới" và nút **Đến thẻ**.
 - Khi AI tự chọn một kỹ năng có mẫu, sẽ không có thẻ nào mở ra ngay. Thay vào đó, cuộc trò chuyện hiện nút **Mở tài liệu mới từ mẫu này**.
+- Khi gọi trong tài liệu đã có nội dung, kỹ năng sẽ hỏi làm ở đâu thay vì mở thẻ ngay. **Làm trong tài liệu này** sửa tài liệu hiện tại theo kỹ năng mà không mở thẻ mới (không mở tệp mẫu). **Tài liệu mới từ mẫu (đính kèm tài liệu này)** mở bản sao của mẫu trong thẻ mới và gửi tài liệu hiện tại cho bảng AI của thẻ đó dưới dạng tệp đính kèm. Để đính kèm, tài liệu hiện tại phải được lưu. Nếu chưa từng lưu hoặc có thay đổi chưa lưu, bảng sẽ báo, và **Mở mà không đính kèm** mở bản sao mà không có nó. Nút hiện ra khi AI tự dùng kỹ năng có mẫu cũng đính kèm tài liệu có nội dung. Trình soạn thảo Markdown và PDF không nhận tệp đính kèm, nên mẫu mở ở đó không được đính kèm gì.
 - Thường thì bạn chọn nơi lưu tài liệu mới vào lần lưu đầu tiên. Riêng trình soạn thảo Markdown và HTML vẫn lưu vào thư mục mặc định như trước nay. Bản thân tệp mẫu vẫn giữ nguyên.
 
 ## Kỹ năng có tập lệnh

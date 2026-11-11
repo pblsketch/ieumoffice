@@ -22,18 +22,22 @@ A skill is a set of working instructions for the AI. Write down something you do
 - A built-in skill is hidden instead of removed: choose **Hide**. **Show again** at the bottom of the list brings it back as it was at first.
 - To change a built-in skill or one from another program, choose **Copy to my skills**. The copy appears in my skills and the original is turned off.
 - Exporting a skill with a template puts the template document in the zip too. Check the document holds no personal information before you export it.
+- **Export several** at the top of the page puts the skills you tick into one zip file, a folder per skill. Whoever gets the zip adds it the same way as any skill zip, and can pick which of its skills to install.
 
 ## Adding a skill
 
 1. In **Settings ▸ Skills**, click **Add**.
-2. Choose **From a folder**, **From a zip file** or **From a GitHub link**. For GitHub, enter the address of a public repository or `owner/repo` and click **Find**.
-3. Check the skills found in the preview. It shows the number and size of the files, whether there are scripts, the web addresses in the text, and the license file.
+2. Choose **From a folder**, **From a zip file**, **From pasted text** or **From a GitHub link**. For pasted text, paste the whole `SKILL.md`, from its first `---` line, and click **Preview**. For GitHub, enter the address of a public repository, `owner/repo`, or a skill's page on skills.sh, and click **Find**.
+3. Check the skills found in the preview. It shows the number and size of the files, whether there are scripts, the web addresses in the text, the license file, and the lines worth reading before you install.
 4. Tick only the skills to install and click **Install**. Installed skills start turned on.
 
 Below the preview it always says: "Install skills only from sources you trust. A skill gives the AI instructions, and in the agent window it can run scripts." Read a skill from an unknown source before you install it.
 
 - If my skills already have one with the same name, choose **Replace** or **Skip** on that row.
+- You can also drop a skill's zip file or a `SKILL.md` file onto any GenOffice window. **Settings ▸ Skills** opens with the same preview. A zip counts as a skill when `SKILL.md` sits at its top or every top folder holds one; any other zip is left alone. A `SKILL.md` file comes in alone: put a skill with more files in a zip.
+- **Lines worth reading** are lines that ask the AI to ignore earlier instructions, to keep something from you, or to take instructions from an outside address, and `../` paths that point outside the skill folder. Each shows its file and line. They do not stop the install, and a skill with no such lines is not therefore safe.
 - When it downloads from GitHub, GenOffice connects only to `github.com`, `api.github.com` and `codeload.github.com`, and sends no sign-in data. If the archive is too large or fails the safety checks, nothing is installed.
+- A skill's page on skills.sh (`https://skills.sh/owner/repo/skill`) is read as that skill in the GitHub repository `owner/repo`. GenOffice does not connect to skills.sh.
 - **New skill** opens an empty editor where you write the name, description and instructions yourself.
 
 ## Checking for updates
@@ -72,6 +76,16 @@ Below the preview it always says: "Install skills only from sources you trust. A
 - No file is written until you click **Save**. If you click **Cancel**, the chat keeps it only as an "Unsaved skill proposal".
 - You can also ask to change an existing skill, such as "Change the meeting minutes skill to the way we do it". The card is then titled **Change skill**. One of my skills is overwritten with **Replace**; a built-in skill or one from another program is saved as a copy in my skills and the original is turned off.
 
+## Choosing where a skill is used
+
+A skill that fits only one kind of document, such as styling slides or tidying a spreadsheet, can be shown only in that editor's AI panel. The `/` list and the list of skills the AI uses on its own get shorter in the other editors, so the AI picks the right skill more often.
+
+- For one of my skills, open **Edit** and choose **Every editor** or **Only these editors** under **Where it is used**. The editors you choose are written in the skill's file, so they go along when you export the skill or move it to another program.
+- For a built-in skill or one from another program, change it under **Where it is used** in **View contents**. This is kept in this PC's settings only; the skill's file stays as it is.
+- A skill not used in every editor says so on its row, for example "Used in: Slides".
+- When the AI makes a skill that fits only one format, it proposes where to use it; otherwise it leaves every editor. You can change it under **Where it is used** on the card before you save.
+- Ask AI on Home and the agent window use every skill that is on, wherever it is set to be used.
+
 ## Adding a document as a template
 
 When you make a skill in an editor's AI panel, the current document can go along as a template. Tick **Save this document along as a template** on the card, and the button becomes two.
@@ -85,6 +99,7 @@ When you make a skill in an editor's AI panel, the current document can go along
 - A skill with a template shows **Has a template** in the list.
 - Call it as a chip and send, and a copy of the template opens as a new untitled document; the AI in that tab carries on with your request. The original panel keeps "Working with the template in a new tab" and **Go to the tab**.
 - When the AI picks a template skill by itself, no tab opens at once. The chat shows an **Open a new document from this template** button instead.
+- Called in a document that already has content, it asks where to work instead of opening a tab at once. **Do it in this document** edits the current document by the skill without a new tab (the template file is not opened). **New document from the template (attach this one)** opens the template copy in a new tab and sends the current document to that tab's AI panel as an attachment. To attach it, the current document must be saved. If it was never saved or has unsaved changes, the panel says so, and **Open without attaching** opens the copy without it. The button shown when the AI picks a template skill by itself also attaches a document that has content. The markdown and PDF editors take no attachments, so a template that opens there gets nothing attached.
 - You usually choose where the new document goes the first time you save it. The Markdown and HTML editors save to the default folder as they always do. The template file itself stays as it was.
 
 ## Skills with scripts

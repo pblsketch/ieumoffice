@@ -100,6 +100,8 @@ const FILE_ICONS: Record<string, string> = {
   odt: iconDocx,
   xlsx: iconXlsx,
   xlsm: iconXlsx,
+  // ODS opens as a converted .xlsx copy in the spreadsheet tab, so it wears that tile
+  ods: iconXlsx,
   pptx: iconPptx,
   pdf: iconPdf,
   md: iconMd,
@@ -123,7 +125,7 @@ const FILE_ICONS: Record<string, string> = {
    width, so it ellipsizes and a hover ScreenTip carries the full list. Keep in
    sync with the main-process open-dialog filter (OPEN_DIALOG_EXTENSIONS). */
 const OPEN_LOCAL_EXTENSIONS =
-  '.docx / .odt / .xlsx / .xlsm / .xls / .csv / .tsv / .pptx / .pdf / .md / .html / .xmind / .mm / .hwp / .hwpx / .epub / .drawio / .dio / .drawio.svg / .drawio.png / .vsdx'
+  '.docx / .odt / .xlsx / .xlsm / .xls / .csv / .tsv / .ods / .pptx / .pdf / .md / .html / .xmind / .mm / .hwp / .hwpx / .epub / .drawio / .dio / .drawio.svg / .drawio.png / .vsdx'
 
 /** drag payload of home file/folder rows (JSON array of absolute paths) */
 const DRAG_PATHS_MIME = 'application/x-genoffice-paths'
@@ -324,7 +326,7 @@ const FILTERS: { key: string; label: StringKey }[] = [
 /** sidebar filter keys that stand for a family of extensions (mirrors recent-files.ts) */
 const FILTER_FAMILY: Record<string, readonly string[]> = {
   docx: ['docx', 'doc', 'odt'],
-  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'],
+  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'],
   pptx: ['pptx', 'ppt'],
   md: ['md', 'markdown', 'txt', 'json'],
   html: ['html', 'htm'],
@@ -1927,7 +1929,10 @@ export function Home({
               <span className="quick-text">
                 <span className="quick-title-row">
                   <span className="quick-title">{t(HOME_KIND_LABEL[kind].title)}</span>
-                  <span className="ai-chip">AI</span>
+                  {/* "AI Docs" already says it; the chip is for titles that do not */}
+                  {!/\bAI\b/.test(t(HOME_KIND_LABEL[kind].title)) && (
+                    <span className="ai-chip">AI</span>
+                  )}
                 </span>
                 <span className="quick-sub">{HOME_KIND_LABEL[kind].sub}</span>
               </span>

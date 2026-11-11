@@ -22,18 +22,22 @@ Un'abilità è un insieme di istruzioni di lavoro per l'IA. Scrivi una volta sol
 - Un'abilità integrata non si elimina, si nasconde: scegli **Nascondi**. **Mostra di nuovo** in fondo all'elenco la riporta com'era all'inizio.
 - Per cambiare un'abilità integrata o una che viene da un altro programma, scegli **Copia nelle mie abilità**. La copia compare tra le mie abilità e l'originale viene disattivato.
 - Se esporti un'abilità con un modello, nello zip finisce anche il documento modello. Prima di esportarla, controlla che il documento non contenga dati personali.
+- **Esporta più abilità**, in cima alla pagina, mette le abilità che selezioni in un unico file zip, una cartella per abilità. Chi riceve lo zip lo aggiunge come qualsiasi zip di abilità e può scegliere quali delle sue abilità installare.
 
 ## Aggiungere un'abilità
 
 1. In **Impostazioni ▸ Abilità**, fai clic su **Aggiungi**.
-2. Scegli **Da una cartella**, **Da un file zip** o **Da un link GitHub**. Per GitHub, inserisci l'indirizzo di un repository pubblico oppure `owner/repo` e fai clic su **Cerca**.
-3. Controlla nell'anteprima le abilità trovate. L'anteprima mostra il numero e la dimensione dei file, se ci sono script, gli indirizzi web presenti nel testo e il file della licenza.
+2. Scegli **Da una cartella**, **Da un file zip**, **Da testo incollato** o **Da un link GitHub**. Per il testo incollato, incolla l'intero `SKILL.md` dalla sua prima riga `---` e fai clic su **Anteprima**. Per GitHub, inserisci l'indirizzo di un repository pubblico, `owner/repo` oppure la pagina di un'abilità su skills.sh e fai clic su **Cerca**.
+3. Controlla nell'anteprima le abilità trovate. L'anteprima mostra il numero e la dimensione dei file, se ci sono script, gli indirizzi web presenti nel testo, il file della licenza e le righe da leggere prima di installare.
 4. Spunta solo le abilità da installare e fai clic su **Installa**. Le abilità installate partono attive.
 
 Sotto l'anteprima compare sempre: «Installa abilità solo da fonti affidabili. Un'abilità dà istruzioni all'IA e nella finestra dell'agente può eseguire script». Prima di installare un'abilità di provenienza sconosciuta, leggila.
 
 - Se tra le mie abilità ce n'è già una con lo stesso nome, scegli **Sostituisci** o **Salta** su quella riga.
+- Puoi anche trascinare il file zip di un'abilità o un file `SKILL.md` su qualsiasi finestra di GenOffice. Si apre **Impostazioni ▸ Abilità** con la stessa anteprima. Uno zip conta come abilità quando `SKILL.md` si trova al suo livello principale o ogni cartella di primo livello ne contiene uno; qualsiasi altro zip viene lasciato com'è. Un file `SKILL.md` arriva da solo: metti in uno zip un'abilità con altri file.
+- **Righe da leggere prima di installare**: sono righe che chiedono all'IA di ignorare le istruzioni precedenti, di nasconderti qualcosa o di prendere istruzioni da un indirizzo esterno, e percorsi `../` che puntano fuori dalla cartella dell'abilità. Per ognuna sono indicati il file e la riga. Non bloccano l'installazione, e un'abilità senza righe di questo tipo non è per questo sicura.
 - Quando scarica da GitHub, GenOffice si collega solo a `github.com`, `api.github.com` e `codeload.github.com` e non invia alcun dato di accesso. Se l'archivio è troppo grande o non supera i controlli di sicurezza, non viene installato nulla.
+- La pagina di un'abilità su skills.sh (`https://skills.sh/owner/repo/skill`) viene letta come quell'abilità nel repository GitHub `owner/repo`. GenOffice non si collega a skills.sh.
 - **Nuova abilità** apre un editor vuoto in cui scrivi tu nome, descrizione e istruzioni.
 
 ## Cercare aggiornamenti
@@ -72,6 +76,16 @@ Sotto l'anteprima compare sempre: «Installa abilità solo da fonti affidabili. 
 - Nessun file viene scritto finché non fai clic su **Salva**. Se fai clic su **Annulla**, la chat la conserva solo come «Proposta di abilità non salvata».
 - Puoi anche chiedere di cambiare un'abilità esistente, per esempio «Cambia l'abilità dei verbali come facciamo noi». In quel caso la scheda si intitola **Modifica abilità**. Una delle mie abilità viene sovrascritta con **Sostituisci**; un'abilità integrata o di un altro programma viene salvata come copia tra le mie abilità e l'originale viene disattivato.
 
+## Scegliere dove si usa una skill
+
+Una skill adatta a un solo tipo di documento, come curare l’aspetto delle diapositive o riordinare un foglio di calcolo, può comparire solo nel pannello IA di quell’editor. Negli altri editor l’elenco `/` e l’elenco delle skill che l’IA usa da sola si accorciano, e l’IA sceglie più spesso la skill giusta.
+
+- Per una delle mie skill, apri **Modifica** e scegli **Tutti gli editor** o **Solo questi editor** in **Dove si usa**. Gli editor scelti vengono scritti nel file della skill e la seguono quando la esporti o la porti in un altro programma.
+- Per una skill integrata o di un altro programma, cambialo in **Dove si usa** dentro **Vedi contenuto**. La scelta resta solo nelle impostazioni di questo PC; il file della skill non cambia.
+- Una skill che non si usa in tutti gli editor lo indica nella sua riga, per esempio "Usata in: Presentazione".
+- Quando l’IA crea una skill adatta a un solo formato, propone anche dove usarla; altrimenti lascia tutti gli editor. Puoi cambiarlo in **Dove si usa** sulla scheda prima di salvare.
+- Chiedi all’IA nella Home e la finestra dell’agente usano tutte le skill attive, ovunque siano impostate.
+
 ## Aggiungere un documento come modello
 
 Quando crei un'abilità nel pannello IA di un editor, il documento attuale può accompagnarla come modello. Spunta **Salva anche questo documento come modello** sulla scheda e il pulsante si sdoppia.
@@ -85,6 +99,7 @@ Quando crei un'abilità nel pannello IA di un editor, il documento attuale può 
 - Un'abilità con un modello mostra **Con modello** nell'elenco.
 - Richiamala come chip e invia: una copia del modello si apre come nuovo documento senza titolo e l'IA di quella scheda prosegue con la tua richiesta. Nel pannello di partenza restano «Si lavora con il modello in una nuova scheda» e **Vai alla scheda**.
 - Quando l'IA sceglie da sola un'abilità con modello, nessuna scheda si apre subito. La chat mostra invece il pulsante **Apri un nuovo documento da questo modello**.
+- Se la richiami in un documento che ha già dei contenuti, chiede dove lavorare invece di aprire subito una scheda. **Farlo in questo documento** modifica il documento attuale secondo la skill, senza nuova scheda (il file del modello non viene aperto). **Nuovo documento dal modello (allega questo)** apre la copia del modello in una nuova scheda e invia il documento attuale al pannello IA di quella scheda come allegato. Per allegarlo, il documento attuale deve essere salvato. Se non è mai stato salvato o ha modifiche non salvate, il pannello lo dice, e **Apri senza allegare** apre la copia senza di esso. Anche il pulsante che compare quando l’IA usa da sola una skill con modello allega un documento con contenuti. Gli editor Markdown e PDF non accettano allegati, quindi a un modello che si apre lì non viene allegato nulla.
 - Di solito scegli dove va il nuovo documento la prima volta che lo salvi. Gli editor Markdown e HTML salvano come sempre nella cartella predefinita. Il file modello resta com'era.
 
 ## Abilità con script

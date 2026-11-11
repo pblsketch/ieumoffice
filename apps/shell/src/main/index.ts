@@ -87,6 +87,7 @@ import {
   parseHeadlessExportArgv,
   setHeadlessMode,
   setOpenFilesSource,
+  fileHasUnsavedChanges,
   setOpenPathProbe,
   type HeadlessArgvParse,
   showOpenDialogWithMemory,
@@ -153,7 +154,7 @@ import {
 import { createDocList } from './doc-picker/doc-list'
 import { resolveDocAsker } from './doc-picker/doc-asker'
 import { createDocPicker } from './doc-picker/doc-picker-window'
-import { handleDroppedFiles } from './dropped-files'
+import { handleDroppedFiles, type DroppedFilesDeps } from './dropped-files'
 import { collectLaunchPaths } from './launch-paths'
 
 import {
@@ -434,7 +435,8 @@ import {
 } from '@genoffice/ai-provider/subscription'
 import { showErrorDialog } from './error-dialog'
 import { startRendererWatchdog } from './renderer-watchdog'
-import { memoryFigures, startCrashWatch, startLowMemoryWatch } from './crash-watch'
+import { crashLogPath, memoryFigures, startCrashWatch, startLowMemoryWatch } from './crash-watch'
+import { startHeartbeat, type HeartbeatHandle } from './crash-heartbeat'
 import {
   capStatPaths,
   matchesExtFamily,
@@ -568,7 +570,12 @@ import {
   startCodexAgentSession,
 } from '@genoffice/ai-provider/agent-session'
 import { normalizeAgentPrefs } from '../shared/agent-api'
-import { normalizeAiSettings, setAiSecretCodec, type AiSettings } from '@genoffice/ai-provider'
+import {
+  droppedSkillSourceOf,
+  normalizeAiSettings,
+  setAiSecretCodec,
+  type AiSettings,
+} from '@genoffice/ai-provider'
 import {
   REVEAL_FLAG,
   fileSearchHoldsPlainKeys,
@@ -864,6 +871,7 @@ configureHwpRuntime({
   openFileDialog: () => void openFileViaDialog(),
   goHome: () => tabManager?.openHomeTab(),
   newDocument: () => newHwpTab(),
+  importPdf: () => void importPdfAsHwp(),
   newDocumentDir: (id) => newDocumentFolderFor(id),
 })
 configureEpubRuntime({
@@ -969,13 +977,19 @@ function liveDocumentContents(tabId: string): Promise<WebContents | undefined> {
  * no save prompt, every editor writes its copies now, nothing deletes them,
  * and the next run treats this exit as abnormal (spec 4).
  */
+/** the main process's heartbeat (crash-heartbeat.ts); normal runs only */
+let mainHeartbeat: HeartbeatHandle | null = null
+
 const endForOsSession = createOsSessionEnd({
   markShuttingDown: () => {
     appQuitting = true
     markSheetsShuttingDown()
     markAppShuttingDown()
   },
-  markSessionOsEnd,
+  markSessionOsEnd: () => {
+    markSessionOsEnd()
+    mainHeartbeat?.markEnded('os')
+  },
   editors: () => recoveryEditors(),
   finish: () => {
     stopSheetsSidecar()
@@ -1173,6 +1187,7 @@ const tMain = createI18n({
     menuNewDiagram: '图表',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: '导入 PDF…',
     menuExportPdf: '导出为 PDF…',
     menuExportImages: '导出为图片…',
     menuExportHtml: '导出为单文件 HTML…',
@@ -1332,6 +1347,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagram',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Import PDF…',
     menuExportPdf: 'Export as PDF…',
     menuExportImages: 'Export as Images…',
     menuExportHtml: 'Export as Single-File HTML…',
@@ -1491,6 +1507,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Sơ đồ',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Nhập PDF…',
     menuExportPdf: 'Xuất dưới dạng PDF…',
     menuExportImages: 'Xuất dưới dạng hình ảnh…',
     menuExportHtml: 'Xuất dưới dạng HTML một tệp…',
@@ -1655,6 +1672,7 @@ const tMain = createI18n({
     menuNewDiagram: 'ダイアグラム',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF を取り込む…',
     menuExportPdf: 'PDF として書き出す…',
     menuExportImages: '画像としてエクスポート…',
     menuExportHtml: '単一ファイル HTML として書き出す…',
@@ -1820,6 +1838,7 @@ const tMain = createI18n({
     menuNewDiagram: '다이어그램',
     menuNewHwp: 'AI 한글',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF 가져오기…',
     menuExportPdf: 'PDF로 내보내기…',
     menuExportImages: '이미지로 내보내기…',
     menuExportHtml: '단일 파일 HTML로 내보내기…',
@@ -1983,6 +2002,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagramme',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importer un PDF…',
     menuExportPdf: 'Exporter en PDF…',
     menuExportImages: 'Exporter en images…',
     menuExportHtml: 'Exporter en HTML (fichier unique)…',
@@ -2149,6 +2169,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagramm',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF importieren…',
     menuExportPdf: 'Als PDF exportieren…',
     menuExportImages: 'Als Bilder exportieren…',
     menuExportHtml: 'Als Einzeldatei-HTML exportieren…',
@@ -2315,6 +2336,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagrama',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importar PDF…',
     menuExportPdf: 'Exportar como PDF…',
     menuExportImages: 'Exportar como imágenes…',
     menuExportHtml: 'Exportar como HTML de archivo único…',
@@ -2480,6 +2502,7 @@ const tMain = createI18n({
     menuNewDiagram: 'ไดอะแกรม',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'นำเข้า PDF…',
     menuExportPdf: 'ส่งออกเป็น PDF…',
     menuExportImages: 'ส่งออกเป็นรูปภาพ…',
     menuExportHtml: 'ส่งออกเป็น HTML ไฟล์เดียว…',
@@ -2641,6 +2664,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagram',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Impor PDF…',
     menuExportPdf: 'Ekspor sebagai PDF…',
     menuExportImages: 'Ekspor sebagai gambar…',
     menuExportHtml: 'Ekspor sebagai HTML satu file…',
@@ -2806,6 +2830,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Диаграмма',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Импортировать PDF…',
     menuExportPdf: 'Экспортировать в PDF…',
     menuExportImages: 'Экспорт в изображения…',
     menuExportHtml: 'Экспортировать в один файл HTML…',
@@ -2970,6 +2995,7 @@ const tMain = createI18n({
     menuNewDiagram: 'مخطط',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'استيراد PDF…',
     menuExportPdf: 'تصدير بتنسيق PDF…',
     menuExportImages: 'تصدير كصور…',
     menuExportHtml: 'تصدير كملف HTML واحد…',
@@ -3131,6 +3157,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagrama',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importar PDF…',
     menuExportPdf: 'Exportar como PDF…',
     menuExportImages: 'Exportar como imagens…',
     menuExportHtml: 'Exportar como HTML de arquivo único…',
@@ -3296,6 +3323,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagramma',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importa PDF…',
     menuExportPdf: 'Esporta come PDF…',
     menuExportImages: 'Esporta come immagini…',
     menuExportHtml: 'Esporta come HTML a file singolo…',
@@ -3461,6 +3489,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagram',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importuj PDF…',
     menuExportPdf: 'Eksportuj jako PDF…',
     menuExportImages: 'Eksportuj jako obrazy…',
     menuExportHtml: 'Eksportuj jako pojedynczy plik HTML…',
@@ -3625,6 +3654,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagram',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importovat PDF…',
     menuExportPdf: 'Exportovat jako PDF…',
     menuExportImages: 'Exportovat jako obrázky…',
     menuExportHtml: 'Exportovat jako samostatné HTML…',
@@ -3788,6 +3818,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Diagram',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF importeren…',
     menuExportPdf: 'Exporteren als PDF…',
     menuExportImages: 'Exporteren als afbeeldingen…',
     menuExportHtml: 'Exporteren als één HTML-bestand…',
@@ -3954,6 +3985,7 @@ const tMain = createI18n({
     menuNewDiagram: 'Rajah',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Import PDF…',
     menuExportPdf: 'Eksport sebagai PDF…',
     menuExportImages: 'Eksport sebagai imej…',
     menuExportHtml: 'Eksport sebagai HTML fail tunggal…',
@@ -4117,6 +4149,7 @@ const tMain = createI18n({
     menuNewDiagram: 'תרשים',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'ייבוא PDF…',
     menuExportPdf: 'ייצוא כ-PDF…',
     menuExportImages: 'ייצוא כתמונות…',
     menuExportHtml: 'ייצוא כ-HTML בקובץ יחיד…',
@@ -4279,6 +4312,7 @@ const tMain = createI18n({
     menuNewDiagram: 'आरेख',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF आयात करें…',
     menuExportPdf: 'PDF के रूप में निर्यात…',
     menuExportImages: 'छवियों के रूप में निर्यात…',
     menuExportHtml: 'एकल-फ़ाइल HTML के रूप में निर्यात…',
@@ -4443,6 +4477,7 @@ const tMain = createI18n({
     menuNewDiagram: '圖表',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: '匯入 PDF…',
     menuExportPdf: '匯出為 PDF…',
     menuExportImages: '匯出為圖片…',
     menuExportHtml: '匯出為單檔 HTML…',
@@ -4771,7 +4806,7 @@ function ensureFileIndexer(): FileIndexer | null {
 
 const SEARCH_EXT_FAMILY: Record<string, readonly string[]> = {
   docx: ['docx', 'doc', 'odt'],
-  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'],
+  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'],
   pptx: ['pptx', 'ppt'],
   md: ['md', 'markdown', 'txt', 'json'],
   html: ['html', 'htm'],
@@ -5498,6 +5533,7 @@ const OPEN_DIALOG_EXTENSIONS = [
   'xls',
   'csv',
   'tsv',
+  'ods',
   'pptx',
   'ppt',
   'pdf',
@@ -5541,18 +5577,24 @@ function showAppWarning(message: string, detail?: string): void {
  * Files dropped from the OS into any renderer arrive via installDropOpenBridge
  * and route through the normal File > Open pipeline; detached editor windows
  * can host the drop target, so the shell must reveal itself after opening.
+ * A skill file (a SKILL.md, a skill zip) goes to Settings ▸ Skills' preview.
  */
-const droppedFilesDeps = () => ({
+const droppedFilesDeps = (): DroppedFilesDeps => ({
   openDocumentPath,
   revealShellWindow,
   showWarning: showAppWarning,
   unsupportedMessage: (exts: string[]) => tm('errUnsupportedExt', { ext: exts.join(', ') }),
+  skillSourceOf: (path) => droppedSkillSourceOf(path, homedir()),
+  importSkills: (source) => {
+    userSkillsIpc.queueDropped(source)
+    openSkillsSettings()
+  },
 })
 
 function registerDroppedFilesIpc(): void {
-  ipcMain.on(DROP_OPEN_CHANNEL, (_event, raw: unknown) =>
-    handleDroppedFiles(raw, droppedFilesDeps()),
-  )
+  ipcMain.on(DROP_OPEN_CHANNEL, (_event, raw: unknown) => {
+    void handleDroppedFiles(raw, droppedFilesDeps())
+  })
 }
 
 /** the single router: extension decides which module owns the file; false = nothing opened */
@@ -6457,7 +6499,7 @@ function registerHomeIpc(): void {
         { name: tm('filterSupported'), extensions: OPEN_DIALOG_EXTENSIONS },
         { name: tm('filterWord'), extensions: ['docx', 'doc'] },
         { name: tm('filterOdt'), extensions: ['odt'] },
-        { name: tm('filterExcel'), extensions: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'] },
+        { name: tm('filterExcel'), extensions: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'] },
         { name: tm('filterPpt'), extensions: ['pptx', 'ppt'] },
         { name: tm('filterPdf'), extensions: ['pdf'] },
         { name: tm('filterMarkdown'), extensions: ['md', 'markdown', 'txt', 'json'] },
@@ -6858,7 +6900,7 @@ function registerHomeIpc(): void {
       const root = addFolderRoot(path)
       if (root) added.push(root)
     }
-    if (files.length > 0) handleDroppedFiles(files, droppedFilesDeps())
+    if (files.length > 0) void handleDroppedFiles(files, droppedFilesDeps())
     return added
   })
 
@@ -8224,6 +8266,7 @@ function buildHwpMenu(): void {
           accelerator: 'CmdOrCtrl+O',
           click: () => void openFileViaDialog(),
         },
+        { label: tm('menuImportPdf'), click: () => void importPdfAsHwp() },
         { type: 'separator' },
         {
           label: tm('backToHome'),
@@ -9279,13 +9322,19 @@ async function openPdfAsHwp(): Promise<void> {
   const tab = activePdfTarget()
   if (!tab?.filePath || !tabManager) return
   if (!(await flushPdfSave(tab.webContents, true))) return
+  openPdfCopyAsHwp(tab.filePath)
+}
+
+/** The copy of `pdfPath` as a new, untitled Hangul tab that imports it; the copy goes with the tab. */
+function openPdfCopyAsHwp(pdfPath: string): void {
+  if (!tabManager) return
   const dir = join(app.getPath('temp'), 'ieumoffice-pdf-imports', randomUUID())
-  const baseName = basename(tab.filePath).replace(/\.pdf$/i, '')
+  const baseName = basename(pdfPath).replace(/\.pdf$/i, '')
   let tabId: string
   try {
     mkdirSync(dir, { recursive: true })
-    const copy = join(dir, basename(tab.filePath))
-    copyFileSync(tab.filePath, copy)
+    const copy = join(dir, basename(pdfPath))
+    copyFileSync(pdfPath, copy)
     tabId = tabManager.openHwpTab(copy, { untitledCopy: { title: baseName, importedPdf: true } })
   } catch (err) {
     rmSync(dir, { recursive: true, force: true })
@@ -9294,6 +9343,29 @@ async function openPdfAsHwp(): Promise<void> {
   const contents = tabManager.webContentsForTab(tabId)
   if (contents) contents.once('destroyed', () => rmSync(dir, { recursive: true, force: true }))
   else rmSync(dir, { recursive: true, force: true })
+}
+
+/**
+ * Hangul editor › File › Import PDF (decision 0116): the same conversion started from
+ * the Hangul side. The embedded editor's own Open is off, so the shell asks for the PDF
+ * and opens it as the converter does: a new, untitled Hangul tab imports a copy, and the
+ * document of the tab the menu was used in stays as it is. The PDF on disk is what is
+ * read, as with any file picked in Open.
+ */
+async function importPdfAsHwp(): Promise<void> {
+  const win = shellWindow ?? BrowserWindow.getFocusedWindow()
+  if (!win || !tabManager) return
+  const result = await showOpenDialogWithMemory(dialog, win, {
+    filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+    properties: ['openFile'],
+  })
+  const pdfPath = result.canceled ? undefined : result.filePaths[0]
+  if (!pdfPath) return
+  try {
+    openPdfCopyAsHwp(pdfPath)
+  } catch (err) {
+    dialog.showErrorBox(basename(pdfPath), err instanceof Error ? err.message : String(err))
+  }
 }
 
 function openThirdPartyNotices(): Promise<string> {
@@ -9487,7 +9559,17 @@ const userSkills = createUserSkillsService({
   // Node's fetch: no browser cookies; the core sets no-redirect and no-credentials per request
   fetch: (url, init) => fetch(url, init),
 })
-registerUserSkillsIpc({
+/** Bring the main window forward with the settings open on the skills page */
+function openSkillsSettings(): void {
+  const win = shellWindow
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  tabManager?.openHomeTab()
+  win.webContents.send(HOME_CHANNELS.openSettings, { section: 'skills' })
+}
+const userSkillsIpc = registerUserSkillsIpc({
   service: userSkills,
   // the settings screen; the agent window only for the install preview a session proposed
   canManage: userSkillsManageGate({
@@ -9495,15 +9577,7 @@ registerUserSkillsIpc({
       !!shellWindow && !shellWindow.isDestroyed() && sender === shellWindow.webContents,
     isAgentWindow: (sender) => isAgentWindowContents(sender),
   }),
-  openSettings: () => {
-    const win = shellWindow
-    if (!win || win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-    tabManager?.openHomeTab()
-    win.webContents.send(HOME_CHANNELS.openSettings, { section: 'skills' })
-  },
+  openSettings: openSkillsSettings,
   agentNoticeDue: () => agentSkillNoticeDue(APP_SETTINGS_PATH()),
   markAgentNoticeSeen: () => markAgentSkillNoticeSeen(APP_SETTINGS_PATH()),
 })
@@ -9526,6 +9600,15 @@ const templateTabs = createTemplateTabs({
   // a skill template's copy follows the project of the panel that asked (spec 6)
   copyOpenedFor: (contents, openerId) =>
     followOpenerProject(contents, { kind: 'window', webContentsId: openerId }),
+  // "Open a new document from the template" in a document with content: the
+  // asking tab's file goes along only when it is saved without unsaved changes
+  // (docs/security.md "저장하지 않은 파일은 읽지 않는다")
+  currentDocumentOf: async (openerId) => {
+    const filePath =
+      tabManager?.describeWebContents(openerId)?.filePath ?? detachedDocumentFor(openerId)?.filePath
+    if (!filePath) return 'unsaved'
+    return (await fileHasUnsavedChanges(filePath)) ? 'unsaved' : { path: filePath }
+  },
   focusTab: (tabId) => {
     const manager = tabManager
     if (!manager || !manager.list().some((tab) => tab.id === tabId)) return false
@@ -10171,8 +10254,17 @@ app.whenReady().then(async () => {
     },
     t: (key, params) => tm(key, params),
   })
-  // a PC that runs short of memory during an AI request leaves a line too
-  startLowMemoryWatch({ aiStreams: activeAiStreamCount, memory: crashMemory })
+  // a PC (or the main process's heap) that runs short of memory leaves a line too
+  startLowMemoryWatch({ memory: crashMemory })
+  // a main process that dies leaves no line of its own: its last heartbeat
+  // is reported at the next launch (headless exports are short and unattended)
+  if (headlessArgv.kind === 'none') {
+    mainHeartbeat = startHeartbeat({
+      userDataDir: app.getPath('userData'),
+      logPath: crashLogPath(),
+      memory: crashMemory,
+    })
+  }
   // resource watchdog: a renderer that stays hot for minutes gets diagnostics
   // recorded and the user an offer to close the document (headless exports
   // are short-lived and unattended)
@@ -10276,6 +10368,7 @@ app.on('will-quit', () => {
   // reads the same request to start the installer.
   if (updateRestartRequested()) markSessionUpdateRestart()
   else markSessionCleanExit()
+  mainHeartbeat?.markEnded('quit')
   releaseAppResources()
 })
 

@@ -39,6 +39,7 @@ import {
   UndoIcon,
 } from './ribbon-icons'
 import { sheetContextMenuAction } from './sheet-context-menu'
+import { odsConversionNoticeText, type OdsConversionNotice } from './ods-import'
 import { useAiDock } from './ai/use-ai-dock'
 
 import { ColorDropdown } from './ColorDropdown'
@@ -133,6 +134,21 @@ import type { SelectedTableRibbon } from './table-design-actions'
 import type { TableOptionKey } from './table-design'
 import { builtinTablePalette, tableStyleNames, type TableStyleFamily } from './table-styles'
 import { STATUS_BAR_FUNCS, type StatusBarFunc } from './status-bar-stats'
+import {
+  DEFAULT_QUICK_ACCESS,
+  QUICK_ACCESS_CATALOG,
+  QUICK_ACCESS_MAX_ITEMS,
+  QUICK_ACCESS_STORAGE_KEY,
+  moveQuickAccess,
+  parseQuickAccess,
+  quickAccessDigit,
+  quickAccessItem,
+  quickAccessSlotForKey,
+  readQuickAccess,
+  toggleQuickAccess,
+  writeQuickAccess,
+  type QuickAccessBuiltin,
+} from './quick-access'
 import { SHEET_ZOOM_MAX, SHEET_ZOOM_MIN, clampZoomPercent } from './zoom-range'
 import { ZoomDialog } from './ZoomDialog'
 
@@ -327,6 +343,9 @@ interface ExcelShellProps {
   /// Left side of the status bar (ready / streaming / AI progress messages).
   readonly statusMessage: string
   readonly emptyCsvNotice: boolean
+  /// The open document came from an .ods copy: the footer keeps saying that
+  /// saving writes an .xlsx and how many formulas were kept as values.
+  readonly odsNotice?: OdsConversionNotice | null
   readonly onOpenWorkbook: () => void
   readonly onDismissEmptyCsvNotice: () => void
   /// The open workbook keeps no recovery copy (password protected): shown once per tab.
@@ -587,6 +606,7 @@ export function ExcelShell({
   openingWorkbook,
   statusMessage,
   emptyCsvNotice,
+  odsNotice,
   onOpenWorkbook,
   onDismissEmptyCsvNotice,
   recoveryNotice,
@@ -620,6 +640,9 @@ export function ExcelShell({
   onGetFillSeriesContext,
 }: ExcelShellProps): React.JSX.Element {
   const { t } = useI18n()
+  // The .ods import line: the same value for the life of the document, so a
+  // command's transient status message never hides or replaces it.
+  const odsNoticeText = odsNotice ? odsConversionNoticeText(odsNotice, t) : null
   const [activeTab, setActiveTab] = useState<RibbonTab>('Home')
   const collapse = useRibbonCollapse('ai-sheets-ribbon-collapsed', {
     collapse: t('appRibbonCollapse'),
@@ -723,6 +746,21 @@ export function ExcelShell({
   const [pasteSpecialSource, setPasteSpecialSource] = useState<PasteSpecialSource | null>(null)
   const [showZoomDialog, setShowZoomDialog] = useState(false)
   const [statsMenuAt, setStatsMenuAt] = useState<{ x: number; y: number } | null>(null)
+  // The quick-access row is a per-PC choice; another sheet tab changing it
+  // reaches this one through the storage event.
+  const [quickAccess, setQuickAccess] = useState(() => readQuickAccess(globalThis.localStorage))
+  const [quickAccessMenuAt, setQuickAccessMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const changeQuickAccess = (next: string[]): void => {
+    setQuickAccess(next)
+    writeQuickAccess(globalThis.localStorage, next)
+  }
+  useEffect(() => {
+    const onStorage = (event: StorageEvent): void => {
+      if (event.key === QUICK_ACCESS_STORAGE_KEY) setQuickAccess(parseQuickAccess(event.newValue))
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
   const openStatsMenu = (event: { clientX: number; clientY: number; preventDefault(): void }) => {
     event.preventDefault()
     setStatsMenuAt({ x: event.clientX, y: event.clientY })
@@ -795,6 +833,8 @@ export function ExcelShell({
   }
   const dispatchCommandRef = useRef(dispatchCommand)
   dispatchCommandRef.current = dispatchCommand
+  const quickAccessRef = useRef(quickAccess)
+  const runQuickAccessRef = useRef<(index: number) => void>(() => {})
   useEffect(() => {
     setContextMenuCommandSink((command) => dispatchCommandRef.current(command))
     const unregisterFx = registerFxButtonOpener(() =>
@@ -823,7 +863,16 @@ export function ExcelShell({
         currencySymbol: ribbonCurrencySymbol(getLang()),
         datePattern: ribbonDatePattern(getLang()),
       })
-      if (!action) return
+      if (!action) {
+        // Alt+digit runs the Nth quick-access button; same gate as the
+        // table's `sheet` rows, since most of these write to the range
+        const slot = quickAccessSlotForKey(event, IS_MAC)
+        if (slot === null || slot >= quickAccessRef.current.length) return
+        if (isModalOpen() || onIsCellEditingRef.current() || !isGridKeyTarget(event.target)) return
+        event.preventDefault()
+        runQuickAccessRef.current(slot)
+        return
+      }
       event.preventDefault()
       if (action.kind === 'dialog') {
         if (action.dialog === 'formatCells') setShowFormatCells(true)
@@ -930,6 +979,25 @@ export function ExcelShell({
     ...(selectedVisualKind === 'image' ? (['Picture Format'] as const) : []),
   ]
   const saveAsTitle = `${t('appSaveAs')} (${platformShortcuts('⇧⌘S')})`
+  const quickAccessBuiltins: Record<
+    QuickAccessBuiltin,
+    { title: string; icon: React.JSX.Element; disabled: boolean; run: () => void }
+  > = {
+    save: { title: t('appSaveTitle'), icon: <SaveIcon />, disabled: !canSave, run: onSave },
+    'save-as': { title: saveAsTitle, icon: <SaveAsIcon />, disabled: !canSaveAs, run: onSaveAs },
+    undo: { title: t('appUndo'), icon: <UndoIcon />, disabled: !canUndo, run: () => onUndo() },
+    redo: { title: t('appRedo'), icon: <RedoIcon />, disabled: !canRedo, run: onRedo },
+  }
+  const runQuickAccess = (index: number): void => {
+    const item = quickAccessItem(quickAccess[index] ?? '')
+    if (!item) return
+    if (item.builtin) {
+      const builtin = quickAccessBuiltins[item.builtin]
+      if (!builtin.disabled) builtin.run()
+    } else if (item.command) dispatchCommand(item.command)
+  }
+  quickAccessRef.current = quickAccess
+  runQuickAccessRef.current = runQuickAccess
 
   return (
     <main
@@ -939,49 +1007,45 @@ export function ExcelShell({
     >
       <header className={`excel-header ${collapse.rootClass}`} ref={collapse.rootRef}>
         <nav
-          className={`ribbon-tabs ${IN_TAB ? '' : IS_MAC ? 'ribbon-tabs-mac' : 'ribbon-tabs-win'}`}
+          // a row longer than the default gives the tabs their room back in a
+          // narrow window (styles.css)
+          className={`ribbon-tabs ${IN_TAB ? '' : IS_MAC ? 'ribbon-tabs-mac' : 'ribbon-tabs-win'}${quickAccess.length > DEFAULT_QUICK_ACCESS.length ? ' qa-crowded' : ''}`}
           aria-label={t('appScopeWorkbook')}
           onDoubleClick={collapse.onTabsDoubleClick}
         >
+          {quickAccess.map((id, index) => {
+            const item = quickAccessItem(id)
+            if (!item) return null
+            const builtin = item.builtin ? quickAccessBuiltins[item.builtin] : null
+            const digit = IS_MAC ? null : quickAccessDigit(index)
+            const title = `${builtin ? builtin.title : t(item.labelKey)}${digit ? ` (Alt+${digit})` : ''}`
+            return (
+              <button
+                type="button"
+                className="qa-btn"
+                key={id}
+                data-tip={title}
+                aria-label={title}
+                disabled={builtin?.disabled ?? false}
+                onClick={() => runQuickAccess(index)}
+              >
+                {builtin ? builtin.icon : <ToolSymbol symbol={item.symbol ?? ''} />}
+              </button>
+            )
+          })}
           <button
             type="button"
-            className="qa-btn"
-            data-tip={t('appSaveTitle')}
-            aria-label={t('appSaveTitle')}
-            disabled={!canSave}
-            onClick={onSave}
+            className="qa-btn qa-customize"
+            data-tip={t('appQuickAccessCustomize')}
+            aria-label={t('appQuickAccessCustomize')}
+            aria-haspopup="menu"
+            aria-expanded={quickAccessMenuAt !== null}
+            onClick={(event) => {
+              const box = event.currentTarget.getBoundingClientRect()
+              setQuickAccessMenuAt((at) => (at ? null : { x: box.left, y: box.bottom + 2 }))
+            }}
           >
-            <SaveIcon />
-          </button>
-          <button
-            type="button"
-            className="qa-btn"
-            data-tip={saveAsTitle}
-            aria-label={saveAsTitle}
-            disabled={!canSaveAs}
-            onClick={onSaveAs}
-          >
-            <SaveAsIcon />
-          </button>
-          <button
-            type="button"
-            className="qa-btn"
-            data-tip={t('appUndo')}
-            aria-label={t('appUndo')}
-            disabled={!canUndo}
-            onClick={() => onUndo()}
-          >
-            <UndoIcon />
-          </button>
-          <button
-            type="button"
-            className="qa-btn"
-            data-tip={t('appRedo')}
-            aria-label={t('appRedo')}
-            disabled={!canRedo}
-            onClick={onRedo}
-          >
-            <RedoIcon />
+            <CaretIcon />
           </button>
           <label
             className={`autosave-toggle ${autoSave ? 'on' : ''}`}
@@ -1145,6 +1209,14 @@ export function ExcelShell({
                   {t('appShowingFormulasActive')}
                 </span>
               )}
+              {/* The document was opened from an .ods copy: saving writes an
+                  .xlsx. A document fact, so it stays beside the shared status
+                  chip, in its own value that command messages never clear. */}
+              {odsNoticeText && (
+                <span className="status-flag status-ods" role="status" title={odsNoticeText}>
+                  {odsNoticeText}
+                </span>
+              )}
               <span className="status-msg">{statusMessage}</span>
             </div>
             <div className="status-right">
@@ -1214,6 +1286,16 @@ export function ExcelShell({
               </button>
             </div>
           </footer>
+          {quickAccessMenuAt && (
+            <QuickAccessMenu
+              at={quickAccessMenuAt}
+              ids={quickAccess}
+              showDigits={!IS_MAC}
+              builtinTitle={(builtin) => quickAccessBuiltins[builtin].title}
+              onChange={changeQuickAccess}
+              onClose={() => setQuickAccessMenuAt(null)}
+            />
+          )}
           {statsMenuAt && (
             <StatusBarStatsMenu
               at={statsMenuAt}
@@ -4291,6 +4373,119 @@ function StatusBarStatsMenu({
           {t(STAT_LABEL[func])}
         </button>
       ))}
+    </div>
+  )
+}
+
+/// The quick-access row's customize dropdown: the buttons on the row first,
+/// in their Alt+digit order, then the rest of the catalog to tick.
+function QuickAccessMenu({
+  at,
+  ids,
+  showDigits,
+  builtinTitle,
+  onChange,
+  onClose,
+}: {
+  readonly at: { x: number; y: number }
+  readonly ids: readonly string[]
+  /** Alt+digit exists on Windows and Linux only */
+  readonly showDigits: boolean
+  readonly builtinTitle: (builtin: QuickAccessBuiltin) => string
+  readonly onChange: (next: string[]) => void
+  readonly onClose: () => void
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const ref = useRef<HTMLDivElement>(null)
+  useEscapeClose(true, onClose)
+  useEffect(() => {
+    const onPress = (event: MouseEvent): void => {
+      const target = event.target as Element
+      // the trigger toggles the menu itself
+      if (ref.current?.contains(target) || target.closest?.('.qa-customize')) return
+      onClose()
+    }
+    window.addEventListener('mousedown', onPress)
+    return () => window.removeEventListener('mousedown', onPress)
+  }, [onClose])
+  const full = ids.length >= QUICK_ACCESS_MAX_ITEMS
+  const label = (id: string): string => {
+    const item = quickAccessItem(id)
+    if (!item) return id
+    return item.builtin ? builtinTitle(item.builtin) : t(item.labelKey)
+  }
+  const style: React.CSSProperties = {
+    left: Math.max(8, Math.min(at.x, window.innerWidth - 300)),
+    top: at.y,
+    maxHeight: Math.max(160, window.innerHeight - at.y - 12),
+  }
+  return (
+    <div
+      ref={ref}
+      className="status-stats-menu quick-access-menu"
+      role="menu"
+      aria-label={t('appQuickAccessCustomize')}
+      style={style}
+    >
+      {showDigits && <p className="quick-access-hint">{t('appQuickAccessHint')}</p>}
+      {ids.map((id, index) => (
+        <div className="quick-access-row" key={id}>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={true}
+            onClick={() => onChange(toggleQuickAccess(ids, id))}
+          >
+            <i className="check-box">✓</i>
+            <span className="quick-access-label">{label(id)}</span>
+            {showDigits && <kbd>Alt+{quickAccessDigit(index)}</kbd>}
+          </button>
+          <button
+            type="button"
+            className="quick-access-move"
+            aria-label={t('appQuickAccessMoveEarlier')}
+            data-tip={t('appQuickAccessMoveEarlier')}
+            disabled={index === 0}
+            onClick={() => onChange(moveQuickAccess(ids, id, -1))}
+          >
+            <ToolSymbol symbol="↑" />
+          </button>
+          <button
+            type="button"
+            className="quick-access-move"
+            aria-label={t('appQuickAccessMoveLater')}
+            data-tip={t('appQuickAccessMoveLater')}
+            disabled={index === ids.length - 1}
+            onClick={() => onChange(moveQuickAccess(ids, id, 1))}
+          >
+            <ToolSymbol symbol="↓" />
+          </button>
+        </div>
+      ))}
+      <hr />
+      {full && <p className="quick-access-hint">{t('appQuickAccessFull')}</p>}
+      {QUICK_ACCESS_CATALOG.filter((item) => !ids.includes(item.id)).map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={false}
+          disabled={full}
+          onClick={() => onChange(toggleQuickAccess(ids, item.id))}
+        >
+          <i className="check-box" />
+          <span className="quick-access-label">{label(item.id)}</span>
+        </button>
+      ))}
+      <hr />
+      <button
+        type="button"
+        role="menuitem"
+        className="quick-access-reset"
+        onClick={() => onChange([...DEFAULT_QUICK_ACCESS])}
+      >
+        {t('appQuickAccessReset')}
+      </button>
     </div>
   )
 }

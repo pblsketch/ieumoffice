@@ -578,6 +578,9 @@ export const pl = {
     'Eksport do CSV wymaga w pełni załadowanego skoroszytu — poczekaj na zakończenie ładowania.',
   appCsvExportTooLarge: 'Arkusz jest za duży, aby wyeksportować go do CSV.',
   appCsvExportCanceled: 'Anulowano eksport do CSV.',
+  appOdsExported: 'Wyeksportowano {path}.',
+  appOdsExportCanceled: 'Anulowano eksport do ODS.',
+  appOdsExportFailed: 'Eksport do ODS nie powiódł się.',
   appCsvExported: 'Wyeksportowano {path}.',
   appCsvExportedActiveOnly:
     'Pliki CSV zawierają tylko jeden arkusz — aktywny arkusz „{name}” wyeksportowano do {path}.',
@@ -729,6 +732,13 @@ export const pl = {
   appSaveAs: 'Zapisz jako',
   appUndo: 'Cofnij',
   appRedo: 'Wykonaj ponownie',
+  appQuickAccessCustomize: 'Dostosuj pasek narzędzi Szybki dostęp',
+  appQuickAccessHint:
+    'Naciśnij Alt i cyfrę, aby uruchomić przycisk na tej pozycji, licząc od lewej.',
+  appQuickAccessMoveEarlier: 'Przesuń bliżej początku',
+  appQuickAccessMoveLater: 'Przesuń bliżej końca',
+  appQuickAccessReset: 'Przywróć domyślne',
+  appQuickAccessFull: 'Pasek mieści najwyżej 10 przycisków.',
   appUnsavedEditOne: '● {count} niezapisana zmiana',
   appUnsavedEditMany: '● {count} niezapisanych zmian',
   appSavedState: 'Zapisano',
@@ -1590,4 +1600,8 @@ export const pl = {
   appSpellUnavailable: 'Sprawdzanie pisowni jest niedostępne w tym oknie.',
   appSpellReplaceAll: 'Zamień wszystkie na „{suggestion}”',
   appSpellChangedAll: 'Poprawiono {count} komórek ze słowem „{word}”.',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Plik ODS otwarto jako kopię xlsx. Zapis utworzy plik xlsx.',
+  appOdsFormulasDropped: 'W {count} formułach zachowano tylko wartości.',
 } satisfies Record<keyof typeof zh, string>

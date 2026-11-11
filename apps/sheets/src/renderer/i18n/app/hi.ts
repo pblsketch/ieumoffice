@@ -557,6 +557,9 @@ export const hi = {
     'CSV निर्यात के लिए पूरी तरह लोड की गई कार्यपुस्तिका चाहिए — लोडिंग पूरी होने तक प्रतीक्षा करें।',
   appCsvExportTooLarge: 'शीट बहुत बड़ी है, CSV के रूप में निर्यात नहीं की जा सकती।',
   appCsvExportCanceled: 'CSV निर्यात रद्द किया गया।',
+  appOdsExported: '{path} निर्यात किया गया।',
+  appOdsExportCanceled: 'ODS निर्यात रद्द किया गया।',
+  appOdsExportFailed: 'ODS निर्यात विफल।',
   appCsvExported: '{path} निर्यात किया गया।',
   appCsvExportedActiveOnly:
     'CSV फ़ाइलों में केवल एक शीट होती है — सक्रिय शीट “{name}” को {path} पर निर्यात किया गया।',
@@ -705,6 +708,12 @@ export const hi = {
   appSaveAs: 'इस रूप में सहेजें',
   appUndo: 'पूर्ववत करें',
   appRedo: 'फिर से करें',
+  appQuickAccessCustomize: 'त्वरित पहुँच टूलबार अनुकूलित करें',
+  appQuickAccessHint: 'Alt और कोई अंक दबाएँ, तो बाईं ओर से उस स्थान का बटन चलता है।',
+  appQuickAccessMoveEarlier: 'आगे ले जाएँ',
+  appQuickAccessMoveLater: 'पीछे ले जाएँ',
+  appQuickAccessReset: 'डिफ़ॉल्ट पर रीसेट करें',
+  appQuickAccessFull: 'टूलबार में अधिकतम 10 बटन रखे जा सकते हैं।',
   appUnsavedEditOne: '● {count} असहेजा संपादन',
   appUnsavedEditMany: '● {count} असहेजे संपादन',
   appSavedState: 'सहेजा गया',
@@ -1563,4 +1572,8 @@ export const hi = {
   appSpellUnavailable: 'इस विंडो में वर्तनी जाँच उपलब्ध नहीं है।',
   appSpellReplaceAll: 'सबको "{suggestion}" से बदलें',
   appSpellChangedAll: '"{word}" वाले {count} सेल ठीक किए गए।',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'ODS को xlsx प्रति के रूप में खोला गया। सहेजने पर xlsx फ़ाइल लिखी जाएगी।',
+  appOdsFormulasDropped: '{count} सूत्रों में केवल मान रखे गए।',
 } satisfies Record<keyof typeof zh, string>
