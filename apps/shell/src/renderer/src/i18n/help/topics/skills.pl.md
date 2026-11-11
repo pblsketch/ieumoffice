@@ -15,11 +15,11 @@ Umiejętność to zestaw instrukcji roboczych dla AI. Zapisz raz to, co robisz w
 | **Folder umiejętności Codex**  | Umiejętności z `~/.agents/skills`                                       | Wyłączone   |
 
 - Przełącznik włącza lub wyłącza umiejętność. To samo ustawienie obowiązuje w panelu AI każdego edytora, w Ask AI na stronie głównej i w oknie agenta.
-- Dla włączonej umiejętności wybierz **Decyduje AI** lub **Tylko na wezwanie**. Na początku ustawione jest Decyduje AI. Przy Tylko na wezwanie umiejętność jest używana tylko wtedy, gdy sam ją wywołasz.
+- Dla włączonej umiejętności wybierz **Decyduje AI** lub **Tylko na wezwanie**. Na początku ustawione jest Decyduje AI. Przy Tylko na wezwanie umiejętność jest używana tylko wtedy, gdy sam ją wywołasz. Przy wyłączonej umiejętności ten wybór zostaje, przygaszony, więc można go ustawić przed ponownym włączeniem.
 - Umiejętności z różnych źródeł mogą mieć tę samą nazwę. Rozróżnisz je po etykiecie pochodzenia w każdym wierszu. Gdy dwie umiejętności o tej samej nazwie są włączone, na liście `/` widać i używana jest tylko jedna: pierwsza w kolejności Moje umiejętności, Wbudowane, Folder umiejętności Claude, Folder umiejętności Codex, Wtyczki Claude. W wierszu drugiej jest podane, która umiejętność jest używana zamiast niej.
 - W menu dodatkowych opcji są **Pokaż zawartość**, **Edytuj** (tylko moje umiejętności), **Eksportuj (zip)** (tylko moje umiejętności) i **Otwórz folder**. Wbudowane umiejętności nie mają pozycji **Otwórz folder**. **Gdzie używać** otwiera od razu miejsce wyboru edytorów, w których umiejętność jest używana.
 - Moje umiejętności znajdują się w folderze `~/.ieumoffice/skills`. W systemie Windows jest to `C:\Users\<nazwa użytkownika>\.ieumoffice\skills`. **Otwórz folder** w menu dodatkowych opcji otwiera folder umiejętności.
-- **Przenieś do kosza** przenosi jedną z moich umiejętności do systemowego kosza, skąd można ją przywrócić.
+- **Przenieś do kosza** przenosi jedną z moich umiejętności do systemowego kosza, skąd można ją przywrócić. Jeśli umiejętność o tej samej nazwie z innego źródła jest wyłączona, potwierdzenie pokazuje zaznaczone pole do jej ponownego włączenia. Odznacz je, aby pozostała wyłączona.
 - Wbudowanej umiejętności się nie usuwa, tylko ukrywa: wybierz **Ukryj**. **Pokaż ponownie** na dole listy przywraca ją w stanie początkowym.
 - Aby zmienić umiejętność wbudowaną lub pochodzącą z innego programu, wybierz **Kopiuj do moich umiejętności**. Kopia pojawia się w moich umiejętnościach, a oryginał zostaje wyłączony.
 - Gdy eksportujesz umiejętność z szablonem, do pliku zip trafia też dokument szablonu. Przed eksportem sprawdź, czy dokument nie zawiera danych osobowych.

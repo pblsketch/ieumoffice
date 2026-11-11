@@ -15,11 +15,11 @@ A skill is a set of working instructions for the AI. Write down something you do
 | **Codex skills folder**  | The skills in `~/.agents/skills`                  | Off      |
 
 - The switch turns a skill on or off. The same setting applies to the AI panel of every editor, Ask AI on Home, and the agent window.
-- For a skill that is on, choose **AI decides** or **Only when called**. It starts as AI decides. With Only when called, the skill is used only when you call it yourself.
+- For a skill that is on, choose **AI decides** or **Only when called**. It starts as AI decides. With Only when called, the skill is used only when you call it yourself. A skill that is off keeps this choice, dimmed, so you can set it before you turn the skill back on.
 - Skills from different sources can share a name. The source label on each row tells them apart. When two skills of one name are both on, only one is listed under `/` and used: the first in the order My skills, Built-in, Claude skills folder, Codex skills folder, Claude plugins. The row of the other says which skill is used instead.
 - The more menu has **View contents**, **Edit** (my skills only), **Export (zip)** (my skills only) and **Open folder**. Built-in skills have no **Open folder**. **Where it is used** opens straight on the place where you choose the editors the skill is used in.
 - My skills are kept in the `~/.ieumoffice/skills` folder. On Windows that is `C:\Users\<your user name>\.ieumoffice\skills`. **Open folder** in the more menu opens the skill’s folder.
-- **Move to trash** moves one of my skills to the system trash, where you can restore it.
+- **Move to trash** moves one of my skills to the system trash, where you can restore it. If a skill of the same name from another source is off, the confirmation shows a checked box to turn it back on. Clear the box to leave it off.
 - A built-in skill is hidden instead of removed: choose **Hide**. **Show again** at the bottom of the list brings it back as it was at first.
 - To change a built-in skill or one from another program, choose **Copy to my skills**. The copy appears in my skills and the original is turned off.
 - Exporting a skill with a template puts the template document in the zip too. Check the document holds no personal information before you export it.
