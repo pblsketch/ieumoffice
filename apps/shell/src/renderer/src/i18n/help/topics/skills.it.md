@@ -48,6 +48,16 @@ Sotto l'anteprima compare sempre: «Installa abilità solo da fonti affidabili. 
 - Se hai modificato l'abilità dopo averla installata, compare anche «Le tue modifiche andranno perse».
 - L'aggiornamento conserva lo stato attivo/disattivo dell'abilità, la scelta tra Decide l'IA e Solo se richiamata e dove si usa.
 
+## Tornare a una versione precedente
+
+Quando modifichi una delle tue abilità, ne installi un’altra con lo stesso nome al suo posto o la aggiorni, la versione di prima viene conservata. Non finisce nel cestino.
+
+- **Versioni precedenti**, in fondo a **Vedi contenuto** o a **Modifica**, elenca le versioni conservate, dalla più recente, con quando e perché è stata conservata ciascuna e la sua dimensione.
+- **Vedi differenze** mostra quali righe di `SKILL.md` tornerebbero, quali sparirebbero e quali altri file cambierebbero.
+- **Torna a questa versione** rimette i file di quella versione esattamente com’erano. Anche la versione attuale viene conservata, quindi puoi tornarci. Se l’abilità è attiva e quando viene usata restano come li hai impostati.
+- Le versioni conservate restano finché non le elimini. **Elimina** ne elimina una definitivamente.
+- Le versioni si trovano nella cartella `~/.ieumoffice/skill-history`. **Sposta nel cestino** su un’abilità sposta nel cestino anche le sue versioni conservate.
+
 ## Richiamare un'abilità nel pannello IA
 
 1. Digita `/` o `$` all'inizio della casella di input dell'IA o subito dopo uno spazio. Compare l'elenco delle abilità attive.

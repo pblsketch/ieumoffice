@@ -48,6 +48,16 @@ Di bawah pratinjau selalu tertulis: "Pasang skill hanya dari sumber yang Anda pe
 - Jika Anda sendiri sudah mengedit skill itu setelah memasangnya, akan muncul juga "Suntingan Anda sendiri akan hilang".
 - Pembaruan tetap mempertahankan status aktif/nonaktif skill, pilihan AI yang menentukan / Hanya saat dipanggil, dan tempat dipakai.
 
+## Kembali ke versi sebelumnya
+
+Saat Anda mengedit skill milik Anda, memasang skill lain bernama sama di tempatnya, atau memperbaruinya, versi sebelumnya disimpan. Versi itu tidak masuk ke tempat sampah.
+
+- **Versi sebelumnya** di bagian bawah **Lihat isi** atau **Edit** menampilkan versi yang disimpan, dari yang terbaru, beserta kapan dan mengapa masing-masing disimpan dan ukurannya.
+- **Lihat perbedaan** menunjukkan baris `SKILL.md` mana yang akan kembali, mana yang akan hilang, dan berkas lain mana yang akan berubah.
+- **Kembali ke versi ini** mengembalikan berkas versi itu persis seperti semula. Versi yang sekarang juga disimpan, jadi Anda bisa kembali lagi. Apakah skill menyala dan kapan digunakan tetap seperti yang Anda atur.
+- Versi yang disimpan tetap ada sampai Anda menghapusnya. **Hapus** menghapus satu versi untuk selamanya.
+- Versi-versi itu berada di folder `~/.ieumoffice/skill-history`. **Pindahkan ke tempat sampah** pada sebuah skill juga memindahkan versi tersimpannya ke tempat sampah.
+
 ## Memanggil skill di panel AI
 
 1. Ketik `/` atau `$` di awal kotak input AI atau tepat setelah spasi. Daftar skill yang aktif akan muncul.

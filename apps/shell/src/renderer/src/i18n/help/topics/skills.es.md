@@ -48,6 +48,16 @@ Debajo de la vista previa siempre se lee: «Instala habilidades solo de fuentes 
 - Si usted editó la habilidad después de instalarla, también aparece «Se perderán tus propios cambios».
 - Al actualizar se conservan el estado activado o desactivado de la habilidad, la elección entre Decide la IA y Solo cuando se llama y dónde se usa.
 
+## Volver a una versión anterior
+
+Cuando editas una de tus habilidades, instalas otra con el mismo nombre en su lugar o la actualizas, la versión anterior se conserva. No va a la papelera.
+
+- **Versiones anteriores**, al final de **Ver contenido** o de **Editar**, enumera las versiones guardadas, de la más reciente a la más antigua, con cuándo y por qué se guardó cada una y su tamaño.
+- **Ver diferencias** muestra qué líneas de `SKILL.md` volverían, cuáles desaparecerían y qué otros archivos cambiarían.
+- **Volver a esta versión** vuelve a poner los archivos de esa versión tal como estaban. La versión actual también se guarda, así que puedes volver a ella. Si la habilidad está activada y cuándo se usa quedan como los dejaste.
+- Las versiones guardadas permanecen hasta que las eliminas. **Eliminar** elimina una definitivamente.
+- Las versiones están en la carpeta `~/.ieumoffice/skill-history`. **Mover a la papelera** en una habilidad envía también sus versiones guardadas a la papelera.
+
 ## Llamar a una habilidad en el panel de IA
 
 1. Escriba `/` o `$` al principio del cuadro de entrada de la IA o justo después de un espacio. Aparece la lista de habilidades activadas.

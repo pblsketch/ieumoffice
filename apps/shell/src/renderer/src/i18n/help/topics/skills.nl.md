@@ -48,6 +48,16 @@ Onder het voorbeeld staat altijd: "Installeer alleen vaardigheden uit bronnen di
 - Heb je de vaardigheid na het installeren zelf bewerkt, dan verschijnt ook "Je eigen wijzigingen gaan verloren".
 - Bijwerken houdt de aan/uit-stand van de vaardigheid, de keuze tussen AI beslist en Alleen bij aanroepen en waar ze wordt gebruikt ongewijzigd.
 
+## Teruggaan naar een eerdere versie
+
+Als je een van je eigen vaardigheden bewerkt, er een andere met dezelfde naam overheen installeert of ze bijwerkt, blijft de versie van daarvoor bewaard. Ze gaat niet naar de prullenbak.
+
+- **Eerdere versies** onderaan **Inhoud bekijken** of **Bewerken** toont de bewaarde versies, de nieuwste eerst, met wanneer en waarom elke versie is bewaard en hoe groot ze is.
+- **Verschillen bekijken** laat zien welke regels van `SKILL.md` zouden terugkomen, welke zouden verdwijnen en welke andere bestanden zouden veranderen.
+- **Terug naar deze versie** zet de bestanden van die versie precies terug zoals ze waren. De huidige versie blijft ook bewaard, dus je kunt ernaar terug. Of de vaardigheid aan staat en wanneer ze wordt gebruikt, blijft zoals je het had ingesteld.
+- Bewaarde versies blijven tot je ze verwijdert. **Verwijderen** verwijdert er één definitief.
+- De versies staan in de map `~/.ieumoffice/skill-history`. **Naar prullenbak** bij een vaardigheid verplaatst ook de bewaarde versies ervan naar de prullenbak.
+
 ## Een vaardigheid aanroepen in het AI-paneel
 
 1. Typ `/` of `$` aan het begin van het invoervak van de AI of direct na een spatie. De lijst met vaardigheden die aanstaan verschijnt.
