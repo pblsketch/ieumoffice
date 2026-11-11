@@ -186,4 +186,27 @@ export const nl = {
     'De instructies hieronder zijn de tekst die de AI krijgt, getoond zoals die is geschreven; daarom kan die in het Engels zijn',
   pasteUnclosed:
     'De afsluitende regel --- ontbreekt. De tekst is misschien afgekapt; kopieer hem opnieuw van begin tot eind.',
+  versionsTitle: 'Eerdere versies',
+  versionsNone:
+    'Nog geen eerdere versies. Als je deze vaardigheid bewerkt, vervangt of bijwerkt, blijft de versie van daarvoor hier bewaard.',
+  versionsTotal: '{n} bewaard, {size} in totaal. Ze blijven tot je ze verwijdert.',
+  versionReasonEdit: 'Vóór een bewerking',
+  versionReasonReplace: 'Vóór het vervangen',
+  versionReasonUpdate: 'Vóór een update',
+  versionReasonRestore: 'Vóór het terugzetten',
+  versionCompare: 'Verschillen bekijken',
+  versionRestore: 'Terug naar deze versie',
+  versionRestoreNote: 'De huidige versie blijft hier ook bewaard, dus je kunt ernaar terug.',
+  versionRestoreUnsaved: 'Je hebt niet-opgeslagen wijzigingen. Sla ze eerst op of annuleer ze.',
+  versionRemove: 'Verwijderen',
+  versionRemoveAsk: 'Deze versie verwijderen? Ze kan niet worden teruggehaald.',
+  versionSame: 'De inhoud is gelijk aan de huidige versie.',
+  versionDiffLegend: '+ regels die terugkomen, − regels die verdwijnen als je teruggaat',
+  versionDiffGap: '{n} ongewijzigde regels',
+  versionFileAdded: 'komt terug',
+  versionFileRemoved: 'verdwijnt',
+  versionFileModified: 'verandert',
+  versionRestored: 'Teruggezet naar de eerdere versie',
+  replacedKept:
+    'De vervangen versie blijft bewaard onder ‘Eerdere versies’ van deze vaardigheid, en je kunt ernaar terug.',
 } satisfies Record<keyof typeof zh, string>

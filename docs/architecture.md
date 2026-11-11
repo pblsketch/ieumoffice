@@ -155,7 +155,7 @@ EPUB 편집기 화면 ── epub:read-chapter·apply-edits·save 등 ──→ 
 ```
 설정 → 스킬(화면) ─┐                         ┌─ @genoffice/ai-provider user-skills
 편집기 AI 창·홈 AI 질문 ─ aiOfficeUserSkills ─┼→ 껍데기 앱 뒷단 user-skills/ ─┤  출처 읽기·판정, 가져오기·업데이트·내보내기
-에이전트 창(일부) ──────┘   (preload 다리)     │  (쓰기는 ~/.ieumoffice/skills 하나) └─ 깃허브 세 주소
+에이전트 창(일부) ──────┘   (preload 다리)     │  (쓰기는 ~/.ieumoffice/skills와 skill-history) └─ 깃허브 세 주소
                                               └→ app-settings.json의 skills 값
 ```
 

@@ -48,6 +48,16 @@ Pod náhledem je vždy uvedeno: „Instalujte dovednosti jen ze zdrojů, kterým
 - Pokud jste dovednost po instalaci sami upravili, zobrazí se také „Vaše úpravy budou ztraceny“.
 - Aktualizace zachová zapnutí či vypnutí dovednosti, volbu mezi Rozhoduje AI a Jen na vyvolání i to, kde se používá.
 
+## Návrat k dřívější verzi
+
+Když upravíte vlastní dovednost, nainstalujete místo ní jinou se stejným názvem nebo ji aktualizujete, předchozí verze zůstane uložená. Nejde do koše.
+
+- **Dřívější verze** dole v okně **Zobrazit obsah** nebo **Upravit** vypisuje uložené verze od nejnovější, u každé kdy a proč byla uložena a jak je velká.
+- **Zobrazit rozdíly** ukáže, které řádky `SKILL.md` by se vrátily, které by zmizely a které další soubory by se změnily.
+- **Vrátit se k této verzi** vrátí soubory té verze přesně tak, jak byly. Současná verze zůstane také uložená, takže se k ní můžete vrátit. Zda je dovednost zapnutá a kdy se používá, zůstává podle vašeho nastavení.
+- Uložené verze zůstávají, dokud je nesmažete. **Smazat** jednu smaže natrvalo.
+- Verze jsou ve složce `~/.ieumoffice/skill-history`. **Přesunout do koše** u dovednosti přesune do koše i její uložené verze.
+
 ## Vyvolání dovednosti v panelu AI
 
 1. Napište `/` nebo `$` na začátek vstupního pole AI nebo hned za mezeru. Objeví se seznam zapnutých dovedností.

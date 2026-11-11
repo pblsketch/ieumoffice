@@ -4,9 +4,10 @@
  * writes, imports, GitHub updates, export, and the AI's reads. No Electron
  * here; the IPC layer adds dialogs, the OS trash and who may ask.
  *
- * Writes go only to the app's skills folder (`~/.ieumoffice/skills`); other
- * sources are read only. Imports and update checks also use their own
- * temporary folder under the OS temp folder.
+ * Writes go only to the app's skills folder (`~/.ieumoffice/skills`) and the
+ * folder of its earlier versions (`~/.ieumoffice/skill-history`); other
+ * sources are read only. Imports, update checks and version comparisons also
+ * use their own temporary folder under the OS temp folder.
  */
 import { randomBytes } from 'node:crypto'
 import {
@@ -40,12 +41,15 @@ import {
   applyGitHubSkillUpdate,
   checkGitHubSkillUpdate,
   commitSkillInstall,
+  createSkillHistory,
+  diffSkillVersion,
   disposeSkillImport,
   exportSkillBundleZip,
   exportSkillZip,
   initialUserSkillState,
   installImportedSkills,
   isInsideDir,
+  isValidUserSkillName,
   listSkillFolderFiles,
   listUserSkills,
   mcpServersOfSkillMd,
@@ -57,7 +61,9 @@ import {
   readListedSkillMd,
   renderSkillMd,
   resolveUserSkillStates,
+  sameSkillFolderBytes,
   skillExportInfo,
+  skillHistoryDirOf,
   suggestUserSkillName,
   userSkillId,
   validateNewUserSkillName,
@@ -66,6 +72,7 @@ import {
   type GitHubSkillUpdateCheck,
   type ResolvedUserSkill,
   type SkillFetch,
+  type SkillHistoryReason,
   type SkillImport,
   type SkillImportCandidate,
   type SkillImportSource,
@@ -88,6 +95,8 @@ import {
   type UserSkillSaveInput,
   type UserSkillStatePatch,
   type UserSkillTemplateInput,
+  type UserSkillVersionDiff,
+  type UserSkillVersionView,
   type UserSkillView,
   type UserSkillsFail,
   type UserSkillsFailReason,
@@ -133,9 +142,9 @@ export interface UserSkillsServiceDeps {
   builtinDir: () => string | undefined
   /** userData/app-settings.json */
   settingsPath: () => string
-  /** where imports and update checks make their temporary folders */
+  /** where imports, update checks and version comparisons make their temporary folders */
   tempDir: () => string
-  /** moves a folder to the OS trash */
+  /** moves a folder to the OS trash (a deleted skill and its earlier versions) */
   trash: (path: string) => Promise<void>
   /** GitHub requests (the core allows only the three GitHub hosts) */
   fetch: SkillFetch
@@ -447,6 +456,44 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
   const appSkillsDir = () => appSkillsDirOf(deps.homeDir())
   const settingsPath = () => deps.settingsPath()
   const aiFileMax = deps.aiFileMaxBytes ?? AI_SKILL_FILE_MAX_BYTES
+  const history = () =>
+    createSkillHistory({ dir: skillHistoryDirOf(deps.homeDir()), tempDir: deps.tempDir() })
+
+  /**
+   * Keep own skill folders as earlier versions before something takes their
+   * place. Returns how to take those versions away again, for when what
+   * follows fails and the folders stay as they were.
+   */
+  async function keepVersions(
+    dirs: readonly string[],
+    name: string,
+    reason: SkillHistoryReason,
+  ): Promise<() => Promise<void>> {
+    const store = history()
+    const kept: string[] = []
+    const undo = async () => {
+      for (const id of kept) await store.remove(name, id).catch(() => undefined)
+    }
+    try {
+      for (const dir of dirs) {
+        const version = await store.keep(dir, name, reason)
+        if (version) kept.push(version.id)
+      }
+    } catch (error) {
+      await undo()
+      throw error
+    }
+    return undo
+  }
+
+  /** A skill's saved state under its new identifier after a rename */
+  function moveState(settings: UserSkillSettings, oldId: string, newId: string): void {
+    if (newId === oldId) return
+    const kept = settings.states[oldId]
+    clearState(settings, oldId)
+    clearState(settings, newId)
+    if (kept) settings.states[newId] = kept
+  }
 
   async function resolved(projectRoot?: string): Promise<ResolvedUserSkill[]> {
     const skills = await listUserSkills({
@@ -627,14 +674,18 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
 
   /**
    * Put a finished folder into the app's skills folder under `name`, replacing
-   * the given folders (they go to the OS trash).
+   * the given folders (each is kept as an earlier version first).
    */
   async function place(work: string, name: string, replaceDirs: string[]): Promise<void> {
-    await commitSkillInstall(
-      appSkillsDir(),
-      [{ candidate: stagedCandidate(work, name), folderName: name, replaceDirs }],
-      { discardReplaced: (dir) => deps.trash(dir) },
-    )
+    const undoKept = await keepVersions(replaceDirs, name, 'replace')
+    try {
+      await commitSkillInstall(appSkillsDir(), [
+        { candidate: stagedCandidate(work, name), folderName: name, replaceDirs },
+      ])
+    } catch (error) {
+      await undoKept()
+      throw error
+    }
   }
 
   async function writeSkill(request: WriteRequest): Promise<UserSkillsResult<{ id: string }>> {
@@ -682,7 +733,10 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
         },
         base,
       )
+      let undoKept = async () => {}
       try {
+        // a save that changes no file keeps no earlier version
+        if (text !== base || template) undoKept = await keepVersions([dir], target.name, 'edit')
         if (template) {
           await mkdir(join(dir, 'assets'), { recursive: true })
           await writeFileAtomic(join(dir, 'assets', template.fileName), template.bytes)
@@ -693,8 +747,13 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
           await rename(dir, join(appSkillsDir(), name))
         }
       } catch (error) {
+        await undoKept()
         return failureOf(error)
       }
+      if (name !== target.name)
+        await history()
+          .follow(target.name, name)
+          .catch(() => undefined)
       const newId = userSkillId('app', name)
       changeSettings((settings) => {
         const kept = settings.states[target.id]
@@ -864,7 +923,8 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
     },
 
     /**
-     * An own skill to the OS trash; any other source is refused. `turnOn` are
+     * An own skill to the OS trash, its earlier versions with it (a folder of
+     * their own there); any other source is refused. `turnOn` are
      * skills of other sources with the same name that are off, which the
      * person chose to turn back on now that the own skill no longer stands in
      * their place; any other identifier in it is passed over.
@@ -884,6 +944,9 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
           !other.unreadable,
       )
       try {
+        // its earlier versions go first: a skill is never left gone with its versions behind
+        const versions = history().folderOf(skill.name)
+        if (await stat(versions).catch(() => undefined)) await deps.trash(versions)
         await deps.trash(dir)
       } catch {
         return fail('failed')
@@ -900,7 +963,7 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
     /**
      * Copy a builtin or another program's skill into the app's folder under
      * the same name and turn the original off. A taken name needs `overwrite`
-     * (the own skill it replaces goes to the OS trash).
+     * (the own skill it replaces is kept as an earlier version).
      */
     async copyToMine(id: string, overwrite: boolean): Promise<UserSkillsResult<{ id: string }>> {
       const skill = await find(id)
@@ -1018,7 +1081,8 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
     /**
      * Install the checked skills of a previewed import. A new skill starts on,
      * used on its own; one that replaces an own skill of the same name keeps
-     * that skill's settings (`keepAcrossReplace`).
+     * that skill's settings (`keepAcrossReplace`), and the replaced skill stays
+     * as an earlier version.
      */
     async install(
       imported: SkillImport,
@@ -1028,18 +1092,28 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
     > {
       try {
         const replacedByKey = new Map<string, ReplacedSkill>()
-        for (const candidate of imported.candidates) {
-          if (!request.selected.includes(candidate.key)) continue
-          if (request.onCollision[candidate.key] !== 'replace') continue
-          const old = await replacedSkillOf(userSkillId('app', candidate.name))
-          if (old) replacedByKey.set(candidate.key, old)
+        const taken = await takenNames()
+        const undoKept: Array<() => Promise<void>> = []
+        let done: Awaited<ReturnType<typeof installImportedSkills>>
+        try {
+          for (const candidate of imported.candidates) {
+            if (!request.selected.includes(candidate.key)) continue
+            if (request.onCollision[candidate.key] !== 'replace') continue
+            const old = await replacedSkillOf(userSkillId('app', candidate.name))
+            if (old) replacedByKey.set(candidate.key, old)
+            // the folders this install takes the place of, kept before the swap
+            const dirs = taken.get(candidate.name.toLowerCase()) ?? []
+            undoKept.push(await keepVersions(dirs, candidate.name, 'replace'))
+          }
+          done = await installImportedSkills(imported, {
+            appSkillsDir: appSkillsDir(),
+            selected: request.selected,
+            onCollision: request.onCollision,
+          })
+        } catch (error) {
+          for (const undo of undoKept) await undo()
+          throw error
         }
-        const done = await installImportedSkills(imported, {
-          appSkillsDir: appSkillsDir(),
-          selected: request.selected,
-          onCollision: request.onCollision,
-          discardReplaced: (dir) => deps.trash(dir),
-        })
         const installed: Array<{ key: string; id: string }> = []
         for (const skill of done.installed) {
           const id = userSkillId('app', skill.name)
@@ -1128,7 +1202,10 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
       }
     },
 
-    /** Apply a found update; the skill's settings stay as they were (`keepAcrossReplace`) */
+    /**
+     * Apply a found update; the skill's settings stay as they were
+     * (`keepAcrossReplace`) and the version it replaces is kept
+     */
     async applyUpdate(
       id: string,
       check: Extract<GitHubSkillUpdateCheck, { status: 'changed' }>,
@@ -1141,14 +1218,136 @@ export function createUserSkillsService(deps: UserSkillsServiceDeps) {
       }
       try {
         const old = await replacedSkillOf(skill.id)
-        const done = await applyGitHubSkillUpdate(check, {
-          appSkillsDir: appSkillsDir(),
-          skillDir: dir,
-          discardReplaced: (replaced) => deps.trash(replaced),
-        })
+        let undoKept = async () => {}
+        let done: Awaited<ReturnType<typeof applyGitHubSkillUpdate>>
+        try {
+          undoKept = await keepVersions([dir], skill.name, 'update')
+        } catch (error) {
+          await disposeSkillImport(check.update)
+          throw error
+        }
+        try {
+          done = await applyGitHubSkillUpdate(check, {
+            appSkillsDir: appSkillsDir(),
+            skillDir: dir,
+          })
+        } catch (error) {
+          await undoKept()
+          throw error
+        }
+        if (!sameName(done.name, skill.name)) {
+          await history()
+            .follow(skill.name, done.name)
+            .catch(() => undefined)
+        }
         const newId = userSkillId('app', done.name)
         await keepAcrossReplace(old ?? { id: skill.id, editorsText: undefined }, newId, done.dir)
         return { ok: true, id: newId }
+      } catch (error) {
+        return failureOf(error)
+      }
+    },
+
+    /** The earlier versions kept of an own skill, newest first */
+    async versions(id: string): Promise<UserSkillsResult<{ versions: UserSkillVersionView[] }>> {
+      const skill = await find(id)
+      if (!skill) return fail('not-found')
+      if (!(await ownedDir(skill))) return fail('not-owned')
+      try {
+        return { ok: true, versions: await history().list(skill.name) }
+      } catch (error) {
+        return failureOf(error)
+      }
+    },
+
+    /** What going back to a kept version would change in the skill as it is now */
+    async compareVersion(
+      id: string,
+      versionId: string,
+    ): Promise<UserSkillsResult<{ diff: UserSkillVersionDiff }>> {
+      const skill = await find(id)
+      if (!skill) return fail('not-found')
+      const dir = await ownedDir(skill)
+      if (!dir) return fail('not-owned')
+      await mkdir(deps.tempDir(), { recursive: true })
+      const opened = join(deps.tempDir(), `skill-compare-${randomBytes(6).toString('hex')}`)
+      try {
+        await history().extract(skill.name, versionId, opened)
+        const diff = await diffSkillVersion(dir, opened)
+        return { ok: true, diff: { ...diff, same: await sameSkillFolderBytes(dir, opened) } }
+      } catch (error) {
+        return failureOf(error)
+      } finally {
+        await rm(opened, { recursive: true, force: true }).catch(() => undefined)
+      }
+    },
+
+    /**
+     * Put a kept version back, byte for byte, after keeping the skill as it is
+     * now. The person's settings stay with the skill; what the version's file
+     * says (its name, where it is used) is what holds afterwards. A version
+     * from before a rename brings the old name back, unless another own skill
+     * has taken it.
+     */
+    async restoreVersion(id: string, versionId: string): Promise<UserSkillsResult<{ id: string }>> {
+      const skill = await find(id)
+      if (!skill) return fail('not-found')
+      const dir = await ownedDir(skill)
+      if (!dir) return fail('not-owned')
+      const store = history()
+      const work = await makeWorkDir()
+      try {
+        const incoming = join(work, 'version')
+        await store.extract(skill.name, versionId, incoming)
+        if (await sameSkillFolderBytes(dir, incoming)) return { ok: true, id: skill.id }
+
+        const text = await readSkillMdText(incoming)
+        const written = text === undefined ? undefined : parseSkillMd(text)?.name?.trim()
+        const name = written && isValidUserSkillName(written) ? written : skill.name
+        const renamed = !sameName(name, skill.name)
+        // an own skill's folder carries its name; one that already does stays where it is
+        const target = renamed && !sameName(basename(dir), name) ? join(appSkillsDir(), name) : dir
+        if (renamed) {
+          const others = ((await takenNames()).get(name.toLowerCase()) ?? []).filter(
+            (other) => !isInsideDir(other, dir),
+          )
+          const inTheWay = target !== dir && (await stat(target).catch(() => undefined))
+          if (others.length > 0 || inTheWay) return fail('name-taken', name)
+        }
+
+        const undoKept = await keepVersions([dir], skill.name, 'restore')
+        const aside = join(work, 'current')
+        try {
+          await rename(dir, aside)
+          try {
+            await rename(incoming, target)
+          } catch (error) {
+            await rename(aside, dir)
+            throw error
+          }
+        } catch (error) {
+          await undoKept()
+          return failureOf(error)
+        }
+        if (renamed) await store.follow(skill.name, name).catch(() => undefined)
+        const newId = userSkillId('app', name)
+        changeSettings((settings) => moveState(settings, skill.id, newId))
+        return { ok: true, id: newId }
+      } catch (error) {
+        return failureOf(error)
+      } finally {
+        await rm(work, { recursive: true, force: true }).catch(() => undefined)
+      }
+    },
+
+    /** Take one kept version of an own skill away for good */
+    async removeVersion(id: string, versionId: string): Promise<UserSkillsResult> {
+      const skill = await find(id)
+      if (!skill) return fail('not-found')
+      if (!(await ownedDir(skill))) return fail('not-owned')
+      try {
+        await history().remove(skill.name, versionId)
+        return { ok: true }
       } catch (error) {
         return failureOf(error)
       }

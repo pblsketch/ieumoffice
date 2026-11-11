@@ -185,4 +185,27 @@ export const pt = {
     'As instruções abaixo são o texto entregue à IA, mostrado como foi escrito; por isso pode estar em inglês',
   pasteUnclosed:
     'Falta a linha --- de fechamento. O texto pode ter sido cortado; copie-o de novo do início ao fim.',
+  versionsTitle: 'Versões anteriores',
+  versionsNone:
+    'Ainda não há versões anteriores. Quando você editar, substituir ou atualizar esta habilidade, a versão anterior ficará guardada aqui.',
+  versionsTotal: '{n} guardadas, {size} no total. Ficam até você excluí-las.',
+  versionReasonEdit: 'Antes de uma edição',
+  versionReasonReplace: 'Antes de ser substituída',
+  versionReasonUpdate: 'Antes de uma atualização',
+  versionReasonRestore: 'Antes de voltar atrás',
+  versionCompare: 'Ver diferenças',
+  versionRestore: 'Voltar a esta versão',
+  versionRestoreNote: 'A versão atual também fica guardada aqui, então você pode voltar a ela.',
+  versionRestoreUnsaved: 'Há alterações não salvas. Salve ou cancele primeiro e depois volte.',
+  versionRemove: 'Excluir',
+  versionRemoveAsk: 'Excluir esta versão? Não será possível recuperá-la.',
+  versionSame: 'Tem o mesmo conteúdo da versão atual.',
+  versionDiffLegend: '+ linhas que voltam, − linhas que somem se você voltar a esta versão',
+  versionDiffGap: '{n} linhas sem alteração',
+  versionFileAdded: 'volta',
+  versionFileRemoved: 'some',
+  versionFileModified: 'muda',
+  versionRestored: 'Voltou à versão anterior',
+  replacedKept:
+    'A versão substituída fica em "Versões anteriores" desta habilidade, e você pode voltar a ela.',
 } satisfies Record<keyof typeof zh, string>

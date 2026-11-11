@@ -495,6 +495,7 @@ export function SkillsPane({
           locale={dateLocale}
           onClose={() => setDialog(null)}
           onSaved={() => finishDialog({ tone: 'ok', text: s('saved') })}
+          onRestored={() => finishDialog({ tone: 'ok', text: s('versionRestored') })}
         />
       )}
       {dialog?.kind === 'github' && (

@@ -182,4 +182,27 @@ export const ja = {
   builtinBodyNote: '下の本文は AI に渡す指示文です。書かれたまま表示するため、英語の場合があります',
   pasteUnclosed:
     '前書きを閉じる --- の行がありません。途中で切れている可能性があります。最初から最後までコピーし直してください。',
+  versionsTitle: '以前の版',
+  versionsNone:
+    '以前の版はまだありません。このスキルを編集、置き換え、更新すると、その前の版がここに残ります。',
+  versionsTotal: '{n} 件、合計 {size}。削除するまで残ります。',
+  versionReasonEdit: '編集の前',
+  versionReasonReplace: '置き換えの前',
+  versionReasonUpdate: '更新の前',
+  versionReasonRestore: '戻す前',
+  versionCompare: '違いを見る',
+  versionRestore: 'この版に戻す',
+  versionRestoreNote: '今の版も以前の版に残るので、また戻せます。',
+  versionRestoreUnsaved:
+    '保存していない内容があります。保存するかキャンセルしてから戻してください。',
+  versionRemove: '削除',
+  versionRemoveAsk: 'この版を削除しますか？削除すると元に戻せません。',
+  versionSame: '今の版と内容が同じです。',
+  versionDiffLegend: '+ 戻すと復活する行、− 戻すと消える行',
+  versionDiffGap: '変更のない {n} 行',
+  versionFileAdded: '戻すと復活',
+  versionFileRemoved: '戻すと消える',
+  versionFileModified: '戻すと変わる',
+  versionRestored: '以前の版に戻しました',
+  replacedKept: '置き換えられる前の版はこのスキルの「以前の版」に残り、戻せます。',
 } satisfies Record<keyof typeof zh, string>

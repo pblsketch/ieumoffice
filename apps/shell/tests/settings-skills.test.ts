@@ -214,6 +214,7 @@ function bridge(views: UserSkillView[]): Bridge {
     openSettings: vi.fn(),
     agentNotice: vi.fn(),
     markAgentNoticeSeen: vi.fn(),
+    versions: vi.fn(async () => ({ ok: true, versions: [] })),
     onChanged: vi.fn((listener: () => void) => {
       listeners.push(listener)
       return () => undefined

@@ -183,4 +183,28 @@ export const ms = {
     'Arahan di bawah ialah teks yang diberikan kepada AI, dipaparkan seperti yang ditulis, jadi mungkin dalam bahasa Inggeris',
   pasteUnclosed:
     'Baris --- penutup tiada. Teks mungkin terpotong; salin semula dari awal hingga akhir.',
+  versionsTitle: 'Versi terdahulu',
+  versionsNone:
+    'Belum ada versi terdahulu. Apabila anda menyunting, menggantikan atau mengemas kini kemahiran ini, versi sebelumnya disimpan di sini.',
+  versionsTotal: '{n} disimpan, {size} semuanya. Kekal sehingga anda memadamnya.',
+  versionReasonEdit: 'Sebelum disunting',
+  versionReasonReplace: 'Sebelum digantikan',
+  versionReasonUpdate: 'Sebelum dikemas kini',
+  versionReasonRestore: 'Sebelum dikembalikan',
+  versionCompare: 'Lihat perbezaan',
+  versionRestore: 'Kembali ke versi ini',
+  versionRestoreNote: 'Versi sekarang juga disimpan di sini, jadi anda boleh kembali kepadanya.',
+  versionRestoreUnsaved:
+    'Ada perubahan yang belum disimpan. Simpan atau batalkan dahulu, kemudian kembali.',
+  versionRemove: 'Padam',
+  versionRemoveAsk: 'Padam versi ini? Ia tidak boleh dipulihkan.',
+  versionSame: 'Kandungannya sama dengan versi sekarang.',
+  versionDiffLegend: '+ baris yang kembali, − baris yang hilang jika anda kembali ke versi ini',
+  versionDiffGap: '{n} baris tidak berubah',
+  versionFileAdded: 'kembali',
+  versionFileRemoved: 'hilang',
+  versionFileModified: 'berubah',
+  versionRestored: 'Dikembalikan ke versi terdahulu',
+  replacedKept:
+    'Versi yang digantikan disimpan di bawah "Versi terdahulu" kemahiran ini, dan anda boleh kembali kepadanya.',
 } satisfies Record<keyof typeof zh, string>

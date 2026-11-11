@@ -48,6 +48,16 @@ Sous l’aperçu figure toujours ce message : « N’installez que des compéten
 - Si vous avez vous-même modifié la compétence après l’avoir installée, « Vos propres modifications seront perdues » s’affiche aussi.
 - La mise à jour conserve l’état activé ou désactivé de la compétence, le choix L’IA décide / Seulement sur appel et où l’utiliser.
 
+## Revenir à une version précédente
+
+Quand vous modifiez l’une de vos compétences, en installez une autre du même nom à sa place ou la mettez à jour, la version d’avant est conservée. Elle ne va pas à la corbeille.
+
+- **Versions précédentes**, en bas de **Voir le contenu** ou de **Modifier**, liste les versions conservées, de la plus récente à la plus ancienne, avec la date, la raison et la taille de chacune.
+- **Voir les différences** montre quelles lignes de `SKILL.md` reviendraient, lesquelles disparaîtraient et quels autres fichiers changeraient.
+- **Revenir à cette version** remet les fichiers de cette version tels qu’ils étaient. La version actuelle est conservée elle aussi : vous pourrez y revenir. L’état activé ou non et le moment d’utilisation restent tels que vous les avez réglés.
+- Les versions conservées restent tant que vous ne les supprimez pas. **Supprimer** en supprime une définitivement.
+- Les versions se trouvent dans le dossier `~/.ieumoffice/skill-history`. **Mettre à la corbeille** sur une compétence envoie aussi ses versions conservées à la corbeille.
+
 ## Appeler une compétence dans le panneau IA
 
 1. Tapez `/` ou `$` au début de la zone de saisie de l’IA ou juste après une espace. La liste des compétences activées s’affiche.

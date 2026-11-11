@@ -16,6 +16,7 @@ import type {
 } from '@genoffice/electron-utils/user-skills-channels'
 import { skillsText, type SkillsStringKey } from '../i18n/strings-skills'
 import { SkillDialog } from './SkillDialog'
+import { SkillVersions } from './SkillVersions'
 import {
   failureKey,
   formatSkillSize,
@@ -67,6 +68,8 @@ function sameDraft(a: SkillDraft, b: SkillDraft): boolean {
  * before they throw away something typed or changed. A builtin's view shows
  * its description in the UI language, as the list does; its body is the text
  * the AI is given, as written. `toWhereUsed` opens on the where-used chooser.
+ * An own skill's view and edit end with its earlier versions; going back to
+ * one closes the dialog through `onRestored`.
  */
 export function SkillEditor({
   api,
@@ -77,6 +80,7 @@ export function SkillEditor({
   locale,
   onClose,
   onSaved,
+  onRestored,
 }: {
   api: UserSkillsBridge
   mode: SkillEditorMode
@@ -87,6 +91,8 @@ export function SkillEditor({
   locale: string
   onClose: () => void
   onSaved: () => void
+  /** the skill went back to an earlier version */
+  onRestored: () => void
 }) {
   const s = (key: SkillsStringKey, params?: Record<string, string | number>) =>
     skillsText(lang, key, params)
@@ -453,6 +459,17 @@ export function SkillEditor({
                 </div>
               )}
             </div>
+          )}
+
+          {mode !== 'new' && view?.owned && (
+            <SkillVersions
+              api={api}
+              skillId={view.id}
+              lang={lang}
+              locale={locale}
+              blocked={unsaved}
+              onRestored={onRestored}
+            />
           )}
         </>
       )}

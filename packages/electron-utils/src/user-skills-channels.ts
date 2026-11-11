@@ -38,6 +38,14 @@ export const USER_SKILLS_CHANNELS = {
   checkUpdate: 'skills:check-update',
   applyUpdate: 'skills:apply-update',
   cancelUpdate: 'skills:cancel-update',
+  /** the earlier versions kept of an own skill, newest first */
+  versions: 'skills:versions',
+  /** what going back to a kept version would change */
+  compareVersion: 'skills:compare-version',
+  /** put a kept version back (the current one is kept first) */
+  restoreVersion: 'skills:restore-version',
+  /** take one kept version away for good */
+  removeVersion: 'skills:remove-version',
   exportInfo: 'skills:export-info',
   exportZip: 'skills:export-zip',
   /** several own skills as one zip, a folder per skill */
@@ -324,6 +332,33 @@ export interface UserSkillImportContent {
 }
 
 export type UserSkillCollisionChoice = 'replace' | 'skip'
+
+/** Why an earlier version was kept: what was about to take its place */
+export type UserSkillVersionReason = 'edit' | 'replace' | 'update' | 'restore'
+
+/** One kept earlier version of an own skill */
+export interface UserSkillVersionView {
+  /** names the version in the calls about it */
+  id: string
+  /** when it was kept (ISO 8601, UTC) */
+  at: string
+  reason: UserSkillVersionReason
+  /** the size it takes on disk */
+  bytes: number
+}
+
+/** What going back to a kept version would change in the skill as it is now */
+export interface UserSkillVersionDiff {
+  /** the kept version holds exactly what the skill holds now */
+  same: boolean
+  /**
+   * SKILL.md line by line: `added` lines come back, `removed` lines go away,
+   * `gap` stands for unchanged lines left out (its text is how many)
+   */
+  skillMd: Array<{ kind: 'same' | 'added' | 'removed' | 'gap'; text: string }>
+  /** the other files that differ, as going back would change them */
+  files: Array<{ rel: string; change: 'added' | 'removed' | 'modified' }>
+}
 
 export interface UserSkillInstallRequest {
   token: string

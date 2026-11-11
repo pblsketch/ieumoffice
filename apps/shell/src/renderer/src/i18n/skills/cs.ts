@@ -183,4 +183,27 @@ export const cs = {
     'Pokyny níže jsou text, který dostává AI. Zobrazují se beze změny, proto mohou být v angličtině',
   pasteUnclosed:
     'Chybí uzavírající řádek ---. Text mohl být oříznut; zkopírujte ho znovu od začátku do konce.',
+  versionsTitle: 'Dřívější verze',
+  versionsNone:
+    'Zatím tu nejsou žádné dřívější verze. Když tuto dovednost upravíte, nahradíte nebo aktualizujete, předchozí verze zůstane zde.',
+  versionsTotal: 'Uloženo: {n}, celkem {size}. Zůstávají, dokud je nesmažete.',
+  versionReasonEdit: 'Před úpravou',
+  versionReasonReplace: 'Před nahrazením',
+  versionReasonUpdate: 'Před aktualizací',
+  versionReasonRestore: 'Před návratem',
+  versionCompare: 'Zobrazit rozdíly',
+  versionRestore: 'Vrátit se k této verzi',
+  versionRestoreNote: 'Současná verze tu zůstane také, takže se k ní můžete vrátit.',
+  versionRestoreUnsaved: 'Máte neuložené změny. Nejdřív je uložte nebo zrušte.',
+  versionRemove: 'Smazat',
+  versionRemoveAsk: 'Smazat tuto verzi? Nepůjde ji obnovit.',
+  versionSame: 'Obsahuje totéž co současná verze.',
+  versionDiffLegend: '+ řádky, které se vrátí, − řádky, které po návratu zmizí',
+  versionDiffGap: 'Řádky beze změny: {n}',
+  versionFileAdded: 'vrátí se',
+  versionFileRemoved: 'zmizí',
+  versionFileModified: 'změní se',
+  versionRestored: 'Vráceno k dřívější verzi',
+  replacedKept:
+    'Nahrazená verze zůstane v části „Dřívější verze“ této dovednosti a můžete se k ní vrátit.',
 } satisfies Record<keyof typeof zh, string>

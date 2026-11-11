@@ -48,6 +48,16 @@ Pod podglądem zawsze widnieje: „Instaluj umiejętności tylko z zaufanych źr
 - Jeśli po instalacji sam edytowałeś umiejętność, pojawia się też „Twoje zmiany zostaną utracone”.
 - Aktualizacja zachowuje stan włączenia umiejętności, wybór między Decyduje AI a Tylko na wezwanie oraz to, gdzie jest używana.
 
+## Powrót do wcześniejszej wersji
+
+Gdy edytujesz własną umiejętność, instalujesz w jej miejsce inną o tej samej nazwie albo ją aktualizujesz, poprzednia wersja zostaje zachowana. Nie trafia do kosza.
+
+- **Wcześniejsze wersje** na dole okna **Pokaż zawartość** lub **Edytuj** pokazuje zachowane wersje, od najnowszej, wraz z tym, kiedy i dlaczego każdą zachowano, oraz jej rozmiarem.
+- **Pokaż różnice** pokazuje, które wiersze `SKILL.md` wróciłyby, które by zniknęły i które inne pliki by się zmieniły.
+- **Wróć do tej wersji** przywraca pliki tej wersji dokładnie takie, jakie były. Obecna wersja też zostaje zachowana, więc można do niej wrócić. To, czy umiejętność jest włączona i kiedy jest używana, pozostaje bez zmian.
+- Zachowane wersje pozostają, dopóki ich nie usuniesz. **Usuń** usuwa jedną na stałe.
+- Wersje znajdują się w folderze `~/.ieumoffice/skill-history`. **Przenieś do kosza** dla umiejętności przenosi do kosza także jej zachowane wersje.
+
 ## Wywoływanie umiejętności w panelu AI
 
 1. Wpisz `/` lub `$` na początku pola wpisywania AI albo zaraz po spacji. Pojawi się lista włączonych umiejętności.

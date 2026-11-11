@@ -187,4 +187,29 @@ export const de = {
     'Die Anleitung unten ist der Text, den die KI erhält. Er wird unverändert gezeigt und kann daher englisch sein',
   pasteUnclosed:
     'Die schließende Zeile --- fehlt. Der Text wurde vielleicht abgeschnitten; kopieren Sie ihn noch einmal von Anfang bis Ende.',
+  versionsTitle: 'Frühere Versionen',
+  versionsNone:
+    'Noch keine früheren Versionen. Wenn Sie diesen Skill bearbeiten, ersetzen oder aktualisieren, bleibt die Version davor hier erhalten.',
+  versionsTotal: '{n} aufbewahrt, insgesamt {size}. Sie bleiben, bis Sie sie löschen.',
+  versionReasonEdit: 'Vor einer Bearbeitung',
+  versionReasonReplace: 'Vor dem Ersetzen',
+  versionReasonUpdate: 'Vor einer Aktualisierung',
+  versionReasonRestore: 'Vor dem Zurücksetzen',
+  versionCompare: 'Unterschiede ansehen',
+  versionRestore: 'Zu dieser Version zurückkehren',
+  versionRestoreNote:
+    'Die jetzige Version bleibt hier ebenfalls erhalten, Sie können zu ihr zurückkehren.',
+  versionRestoreUnsaved:
+    'Es gibt ungespeicherte Änderungen. Speichern oder verwerfen Sie sie zuerst.',
+  versionRemove: 'Löschen',
+  versionRemoveAsk: 'Diese Version löschen? Sie lässt sich nicht wiederherstellen.',
+  versionSame: 'Sie enthält dasselbe wie die jetzige Version.',
+  versionDiffLegend: '+ Zeilen, die zurückkommen, − Zeilen, die beim Zurückkehren verschwinden',
+  versionDiffGap: '{n} unveränderte Zeilen',
+  versionFileAdded: 'kommt zurück',
+  versionFileRemoved: 'verschwindet',
+  versionFileModified: 'ändert sich',
+  versionRestored: 'Zur früheren Version zurückgekehrt',
+  replacedKept:
+    'Die ersetzte Version bleibt unter „Frühere Versionen“ dieses Skills erhalten, Sie können zu ihr zurückkehren.',
 } satisfies Record<keyof typeof zh, string>

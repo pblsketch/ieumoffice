@@ -474,6 +474,107 @@
   color: var(--text-secondary);
 }
 
+.skl-versions {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skl-version {
+  padding: 6px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.skl-version-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.skl-version-when {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.skl-version-why {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.skl-version-size {
+  flex-shrink: 0;
+}
+
+.skl-version-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.skl-version-file {
+  font-size: 12px;
+}
+
+.skl-diff {
+  max-height: 260px;
+  padding: 6px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-y: auto;
+}
+
+.skl-diff-line {
+  display: flex;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--text-primary);
+}
+
+.skl-diff-line[data-kind='added'] {
+  background: var(--success-bg);
+}
+
+.skl-diff-line[data-kind='removed'] {
+  background: var(--danger-bg);
+}
+
+.skl-diff-line[data-kind='gap'] {
+  color: var(--text-secondary);
+}
+
+.skl-diff-mark {
+  flex-shrink: 0;
+  width: 1ch;
+  user-select: none;
+}
+
+.skl-diff-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.skl-version-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.skl-version-actions .set-field-desc {
+  flex: 1;
+  min-width: 0;
+}
+
 .skl-files-actions {
   display: flex;
   align-items: center;

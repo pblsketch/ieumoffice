@@ -183,4 +183,27 @@ export const en = {
   builtinBodyNote: 'The instructions below are the text given to the AI, shown as written',
   pasteUnclosed:
     'The closing --- line is missing. The text may have been cut off; copy it again from start to end.',
+  versionsTitle: 'Earlier versions',
+  versionsNone:
+    'No earlier versions yet. When you edit, replace or update this skill, the version before is kept here.',
+  versionsTotal: '{n} kept, {size} in all. They stay until you delete them.',
+  versionReasonEdit: 'Before an edit',
+  versionReasonReplace: 'Before it was replaced',
+  versionReasonUpdate: 'Before an update',
+  versionReasonRestore: 'Before going back',
+  versionCompare: 'See what differs',
+  versionRestore: 'Go back to this version',
+  versionRestoreNote: 'The version you have now is kept here too, so you can come back to it.',
+  versionRestoreUnsaved: 'You have unsaved changes. Save or cancel them first, then go back.',
+  versionRemove: 'Delete',
+  versionRemoveAsk: 'Delete this version? It cannot be brought back.',
+  versionSame: 'It holds the same as the version you have now.',
+  versionDiffLegend: '+ lines that come back, − lines that go away if you go back',
+  versionDiffGap: '{n} unchanged lines',
+  versionFileAdded: 'comes back',
+  versionFileRemoved: 'goes away',
+  versionFileModified: 'changes',
+  versionRestored: 'Went back to the earlier version',
+  replacedKept:
+    'The version it replaces is kept under this skill’s “Earlier versions”, and you can go back to it.',
 } satisfies Record<keyof typeof zh, string>

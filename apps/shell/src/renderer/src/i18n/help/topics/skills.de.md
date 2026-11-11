@@ -48,6 +48,16 @@ Unter der Vorschau steht immer: „Installieren Sie Skills nur aus Quellen, dene
 - Haben Sie den Skill nach der Installation selbst bearbeitet, erscheint zusätzlich „Ihre eigenen Änderungen gehen verloren“.
 - Beim Aktualisieren bleiben der Ein/Aus-Zustand des Skills, die Wahl zwischen KI entscheidet und Nur auf Aufruf sowie die Angabe, wo er genutzt wird, erhalten.
 
+## Zu einer früheren Version zurückkehren
+
+Wenn Sie einen eigenen Skill bearbeiten, einen anderen gleichen Namens darüber installieren oder ihn aktualisieren, bleibt die Version davor erhalten. Sie landet nicht im Papierkorb.
+
+- **Frühere Versionen** ganz unten in **Inhalt ansehen** oder **Bearbeiten** listet die aufbewahrten Versionen auf, die neueste zuerst, jeweils mit Zeitpunkt, Grund und Größe.
+- **Unterschiede ansehen** zeigt, welche Zeilen von `SKILL.md` zurückkämen, welche verschwänden und welche anderen Dateien sich änderten.
+- **Zu dieser Version zurückkehren** stellt die Dateien dieser Version genau so wieder her. Die jetzige Version bleibt ebenfalls erhalten, Sie können also zu ihr zurückkehren. Ob der Skill eingeschaltet ist und wann er verwendet wird, bleibt wie eingestellt.
+- Aufbewahrte Versionen bleiben, bis Sie sie löschen. **Löschen** löscht eine endgültig.
+- Die Versionen liegen im Ordner `~/.ieumoffice/skill-history`. **In den Papierkorb** bei einem Skill verschiebt auch seine aufbewahrten Versionen in den Papierkorb.
+
 ## Einen Skill im KI-Bereich aufrufen
 
 1. Tippen Sie `/` oder `$` am Anfang des KI-Eingabefelds oder direkt nach einem Leerzeichen. Die Liste der eingeschalteten Skills erscheint.

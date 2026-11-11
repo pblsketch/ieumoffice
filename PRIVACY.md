@@ -1,6 +1,6 @@
 # IeumOffice Privacy
 
-Last updated: November 2, 2026
+Last updated: November 11, 2026
 
 IeumOffice opens, edits and saves documents on your own PC. The project runs
 no server of its own: nothing is sent to IeumOffice or to its maintainers, and
@@ -551,6 +551,11 @@ Nothing in this list is uploaded by the app.
   A skill exported as a zip carries its template documents with it. Removing
   a skill moves it to the system trash. Which skills are on is kept in
   `app-settings.json` in the data folder.
+- **Earlier versions of your skills** (`~/.ieumoffice/skill-history`): when
+  you edit one of your skills, install another over it or update it, the
+  version before is kept here as a zip (template documents included) so you
+  can go back to it. They stay until you delete them in Settings ▸ Skills;
+  removing a skill moves its earlier versions to the system trash with it.
 - **The command-line audit log** (`~/.ieumoffice/cli-audit.jsonl`): one line
   per `ieumoffice` command with the time, the arguments, the result and the
   output path. Set `GENOFFICE_AUDIT_LOG=off` to disable it.

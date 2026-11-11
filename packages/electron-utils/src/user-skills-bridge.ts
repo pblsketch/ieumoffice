@@ -24,6 +24,8 @@ import {
   type UserSkillStatePatch,
   type UserSkillTemplateOpenInput,
   type UserSkillUpdateCheck,
+  type UserSkillVersionDiff,
+  type UserSkillVersionView,
   type UserSkillView,
   type UserSkillsResult,
 } from './user-skills-channels'
@@ -39,7 +41,6 @@ export interface UserSkillsBridge {
   hideBuiltin(id: string): Promise<UserSkillsResult>
   /** show hidden builtins again in their initial state; all of them without names */
   unhideBuiltins(names?: string[]): Promise<UserSkillsResult>
-  /** an own skill to the OS trash */
   /**
    * An own skill to the OS trash. `turnOn` are the off skills of other sources
    * with the same name that the person chose to turn back on.
@@ -87,6 +88,17 @@ export interface UserSkillsBridge {
   applyUpdate(token: string): Promise<UserSkillsResult<{ id: string }>>
   cancelUpdate(token: string): Promise<void>
   /** before the save dialog: the zip name and whether a template goes in */
+  /** the earlier versions kept of an own skill, newest first */
+  versions(id: string): Promise<UserSkillsResult<{ versions: UserSkillVersionView[] }>>
+  /** what going back to a kept version would change in the skill as it is now */
+  compareVersion(
+    id: string,
+    versionId: string,
+  ): Promise<UserSkillsResult<{ diff: UserSkillVersionDiff }>>
+  /** put a kept version back; the skill as it is now is kept first */
+  restoreVersion(id: string, versionId: string): Promise<UserSkillsResult<{ id: string }>>
+  /** take one kept version away for good */
+  removeVersion(id: string, versionId: string): Promise<UserSkillsResult>
   exportInfo(id: string): Promise<UserSkillsResult<{ fileName: string; includesTemplate: boolean }>>
   /** asks where to save, then writes the zip */
   exportZip(id: string): Promise<UserSkillsResult<{ path: string }>>
@@ -199,6 +211,10 @@ export function userSkillsBridge(): UserSkillsBridge {
     cancelUpdate: async (token) => {
       await ipcRenderer.invoke(C.cancelUpdate, String(token)).catch(() => undefined)
     },
+    versions: (id) => result(C.versions, String(id)),
+    compareVersion: (id, versionId) => result(C.compareVersion, String(id), String(versionId)),
+    restoreVersion: (id, versionId) => result(C.restoreVersion, String(id), String(versionId)),
+    removeVersion: (id, versionId) => result(C.removeVersion, String(id), String(versionId)),
     exportInfo: (id) => result(C.exportInfo, String(id)),
     exportZip: (id) => result(C.exportZip, String(id)),
     exportBundle: (ids, suggestedName) =>

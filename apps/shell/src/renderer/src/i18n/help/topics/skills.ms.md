@@ -48,6 +48,16 @@ Di bawah pratonton sentiasa tertulis: "Pasang kemahiran hanya daripada sumber ya
 - Jika anda sendiri telah menyunting kemahiran itu selepas memasangnya, "Suntingan anda sendiri akan hilang" turut dipaparkan.
 - Kemas kini mengekalkan keadaan hidup/mati kemahiran itu, pilihan AI tentukan / Hanya apabila dipanggil serta tempat digunakan.
 
+## Kembali ke versi terdahulu
+
+Apabila anda menyunting kemahiran sendiri, memasang kemahiran lain dengan nama yang sama di tempatnya, atau mengemas kininya, versi sebelumnya disimpan. Ia tidak masuk ke tong sampah.
+
+- **Versi terdahulu** di bahagian bawah **Lihat kandungan** atau **Sunting** menyenaraikan versi yang disimpan, yang terbaharu dahulu, berserta bila dan mengapa setiap satu disimpan dan saiznya.
+- **Lihat perbezaan** menunjukkan baris `SKILL.md` yang akan kembali, yang akan hilang, dan fail lain yang akan berubah.
+- **Kembali ke versi ini** meletakkan semula fail versi itu tepat seperti asalnya. Versi sekarang juga disimpan, jadi anda boleh kembali kepadanya. Sama ada kemahiran dihidupkan dan bila ia digunakan kekal seperti yang anda tetapkan.
+- Versi yang disimpan kekal sehingga anda memadamnya. **Padam** memadam satu versi untuk selama-lamanya.
+- Versi-versi itu berada dalam folder `~/.ieumoffice/skill-history`. **Alih ke tong sampah** pada sesuatu kemahiran turut mengalihkan versi simpanannya ke tong sampah.
+
 ## Memanggil kemahiran dalam panel AI
 
 1. Taip `/` atau `$` di awal kotak input AI atau sejurus selepas ruang kosong. Senarai kemahiran yang hidup akan muncul.

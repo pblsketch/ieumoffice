@@ -189,4 +189,30 @@ export const fr = {
     'Les instructions ci-dessous sont le texte donné à l’IA, affiché tel quel ; il peut donc être en anglais',
   pasteUnclosed:
     'La ligne --- de fermeture manque. Le texte a peut-être été coupé ; copiez-le de nouveau du début à la fin.',
+  versionsTitle: 'Versions précédentes',
+  versionsNone:
+    'Aucune version précédente pour l’instant. Quand vous modifiez, remplacez ou mettez à jour cette compétence, la version d’avant est conservée ici.',
+  versionsTotal:
+    '{n} conservées, {size} au total. Elles restent tant que vous ne les supprimez pas.',
+  versionReasonEdit: 'Avant une modification',
+  versionReasonReplace: 'Avant son remplacement',
+  versionReasonUpdate: 'Avant une mise à jour',
+  versionReasonRestore: 'Avant un retour en arrière',
+  versionCompare: 'Voir les différences',
+  versionRestore: 'Revenir à cette version',
+  versionRestoreNote: 'La version actuelle est conservée ici aussi : vous pourrez y revenir.',
+  versionRestoreUnsaved:
+    'Vous avez des modifications non enregistrées. Enregistrez-les ou annulez-les d’abord.',
+  versionRemove: 'Supprimer',
+  versionRemoveAsk: 'Supprimer cette version ? Elle ne pourra pas être récupérée.',
+  versionSame: 'Son contenu est le même que celui de la version actuelle.',
+  versionDiffLegend:
+    '+ lignes qui reviennent, − lignes qui disparaissent si vous revenez à cette version',
+  versionDiffGap: '{n} lignes inchangées',
+  versionFileAdded: 'revient',
+  versionFileRemoved: 'disparaît',
+  versionFileModified: 'change',
+  versionRestored: 'Retour à la version précédente effectué',
+  replacedKept:
+    'La version remplacée est conservée dans les « Versions précédentes » de cette compétence, et vous pouvez y revenir.',
 } satisfies Record<keyof typeof zh, string>

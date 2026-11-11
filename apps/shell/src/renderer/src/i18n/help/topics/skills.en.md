@@ -48,6 +48,16 @@ Below the preview it always says: "Install skills only from sources you trust. A
 - If you edited the skill yourself after installing it, "Your own edits will be lost" is shown as well.
 - Updating keeps the skill's on/off state, its AI decides / Only when called choice and where it is used.
 
+## Going back to an earlier version
+
+When you edit one of your own skills, install another over it under the same name, or update it, the version before is kept. It does not go to the trash.
+
+- **Earlier versions** at the bottom of **View contents** or **Edit** lists the kept versions, newest first, with when and why each was kept and its size.
+- **See what differs** shows which lines of `SKILL.md` would come back and which would go away, and which other files would change.
+- **Go back to this version** puts that version’s files back exactly as they were. The version you have now is kept as well, so you can come back to it. Whether the skill is on and when it is used stay as you set them.
+- Kept versions stay until you delete them. **Delete** deletes one for good.
+- The versions are in the `~/.ieumoffice/skill-history` folder. **Move to trash** on a skill moves its kept versions to the trash too.
+
 ## Calling a skill in the AI panel
 
 1. Type `/` or `$` at the start of the AI input box or right after a space. The list of skills that are on appears.
