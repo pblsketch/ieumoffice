@@ -63,6 +63,28 @@ describe('recordDiskState', () => {
   it('answers null when the path is not a readable file', async () => {
     expect(await recordDiskState(join(dir, 'missing.docx'))).toBeNull()
   })
+
+  it('hashes empty files and content spanning many read chunks with the same snapshot format', async () => {
+    writeFileSync(doc, '')
+    expect(await recordDiskState(doc)).toMatchObject({
+      size: 0,
+      hash: createHash('sha256').digest('hex'),
+    })
+    const bytes = Buffer.alloc(16 * 1024 * 1024 + 19, 0xa5)
+    bytes[1024 * 1024 - 1] = 3
+    bytes[1024 * 1024] = 7
+    bytes[bytes.length - 1] = 11
+    writeFileSync(doc, bytes)
+    const recorded = await recordCurrent()
+    expect(recorded).toMatchObject({
+      size: bytes.length,
+      hash: createHash('sha256').update(bytes).digest('hex'),
+    })
+    expect(await isModifiedSince({ ...recorded, mtimeMs: -1 }, doc)).toBe(false)
+    bytes[bytes.length - 1] = 12
+    writeFileSync(doc, bytes)
+    expect(await isModifiedSince({ ...recorded, mtimeMs: -1 }, doc)).toBe(true)
+  })
 })
 
 describe('isModifiedSince', () => {

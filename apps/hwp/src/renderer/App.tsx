@@ -13,11 +13,13 @@ import {
   type TemplateDocument,
 } from '@genoffice/ui'
 import { HwpAiDock } from './ai/AiDock'
+import { pollWhileVisible, observeViewVisibility } from './visible-poll'
 import { DocCheckPanel } from './check/DocCheckPanel'
 import { createAgentBridge } from './ai/agent-bridge'
 import { afterPrefillTaken, easyWordsRequest, type AiPrefill } from './ai/easy-words'
 import {
   DIRTY_EVENT,
+  VIEW_VISIBILITY_COMMAND,
   EASY_WORDS_EVENT,
   FILE_COMMAND_EVENT,
   MEMO_NOT_COPIED_EVENT,
@@ -302,8 +304,8 @@ export default function App() {
   // entered late, a second try in the editor's own prompt): notice it and go on
   useEffect(() => {
     if (phase !== 'loading' && phase !== 'failed') return
-    const timer = setInterval(() => {
-      void editorRef.current?.commands
+    return pollWhileVisible(async () => {
+      await editorRef.current?.commands
         .context()
         .then((context) => {
           if (context.hasDocument !== true) return
@@ -312,7 +314,6 @@ export default function App() {
         })
         .catch(() => {})
     }, ARRIVAL_POLL_MS)
-    return () => clearInterval(timer)
   }, [phase])
 
   // mirror the editor's unsaved state to the main process, which owns the close prompt: the
@@ -896,7 +897,17 @@ export default function App() {
     [phase],
   )
 
-  // keep the editor's own chrome on the app theme
+  // Release reconstructible pixels on a native tab switch, retaining document and history.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    return observeViewVisibility((visible) => {
+      void editorRef.current?.commands
+        ?.execute(VIEW_VISIBILITY_COMMAND, { visible })
+        .catch(() => {})
+    })
+  }, [phase])
+
+  // Keep theme changes independent of the display-pixel lifecycle.
   useEffect(
     () =>
       window.hwpApi.onThemeChanged((theme) => {

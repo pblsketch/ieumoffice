@@ -11,7 +11,8 @@
     "dev": "npm run studio && electron-vite dev",
     "dev:renderer": "npm run studio && vite --config vite.renderer.config.ts",
     "build": "npm run studio && electron-vite build",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:validation",
+    "test:validation": "node --test ../../tools/hwp-validation/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

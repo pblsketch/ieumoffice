@@ -40,23 +40,34 @@ export async function probePageGeometry(doc: {
   const pages: PageGeometry[] = []
   const failures: PageProbeFailure[] = []
   let lastGood = FALLBACK
-  for (let i = 1; i <= doc.numPages; i++) {
-    try {
-      const page = await doc.getPage(i)
-      // Unrotated size; display size is derived by geom from the total rotation
-      const vp = page.getViewport({ scale: 1, rotation: 0 })
-      const geo: PageGeometry = {
-        width: vp.width,
-        height: vp.height,
-        rotate: page.rotate ?? 0,
-        origin: [page.view[0] ?? 0, page.view[1] ?? 0],
-        userUnit: page.userUnit ?? 1,
+  // Batch worker round trips, while applying results in document order so a
+  // damaged page still inherits the nearest preceding good geometry.
+  for (let start = 1; start <= doc.numPages; start += 16) {
+    const batch = await Promise.allSettled(
+      Array.from({ length: Math.min(16, doc.numPages - start + 1) }, (_, offset) =>
+        Promise.resolve().then(() => doc.getPage(start + offset)),
+      ),
+    )
+    for (const [offset, result] of batch.entries()) {
+      const i = start + offset
+      try {
+        if (result.status === 'rejected') throw result.reason
+        const page = result.value
+        // Unrotated size; display size is derived by geom from the total rotation
+        const vp = page.getViewport({ scale: 1, rotation: 0 })
+        const geo: PageGeometry = {
+          width: vp.width,
+          height: vp.height,
+          rotate: page.rotate ?? 0,
+          origin: [page.view[0] ?? 0, page.view[1] ?? 0],
+          userUnit: page.userUnit ?? 1,
+        }
+        pages.push(geo)
+        lastGood = geo
+      } catch (err) {
+        failures.push({ page: i, message: err instanceof Error ? err.message : String(err) })
+        pages.push(lastGood)
       }
-      pages.push(geo)
-      lastGood = geo
-    } catch (err) {
-      failures.push({ page: i, message: err instanceof Error ? err.message : String(err) })
-      pages.push(lastGood)
     }
   }
   return { pages, failures }

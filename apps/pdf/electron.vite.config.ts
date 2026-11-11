@@ -1,9 +1,10 @@
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import { normalizePath } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import { sparsePdfWorkerPlugin } from './scripts/pdfjs-sparse-worker.mjs'
 
 // Non-embedded CMaps/standard fonts (e.g. CJK) need pdfjs data dirs, shipped with renderer output
 const require = createRequire(import.meta.url)
@@ -14,6 +15,14 @@ const pdfjsDir = (sub: string) => normalizePath(join(pdfjsRoot, 'pdfjs-dist', su
 export default defineConfig({
   // @genoffice/i18n ships as TS source; pdf-lib's package only includes out/** — both must be bundled
   main: {
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          'pdf-view-worker': resolve(__dirname, 'src/main/pdf-view-worker.ts'),
+        },
+      },
+    },
     plugins: [
       externalizeDepsPlugin({
         exclude: [
@@ -31,6 +40,7 @@ export default defineConfig({
   },
   renderer: {
     plugins: [
+      sparsePdfWorkerPlugin(),
       react(),
       viteStaticCopy({
         targets: [

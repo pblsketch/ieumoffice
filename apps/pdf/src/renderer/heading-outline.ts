@@ -1,6 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { OutlineNode } from './OutlinePanel'
 import type { OutlineEntryInput } from '../shared/ipc'
+import type { PageTextContent } from './page-text-cache'
 
 /**
  * Fallback navigation for PDFs without embedded bookmarks: text lines set
@@ -203,13 +204,15 @@ export function outlineFromLines(lines: TextLine[]): OutlineNode[] | null {
 export async function buildHeadingOutline(
   doc: PDFDocumentProxy,
   cancelled: () => boolean = () => false,
+  readText: (pageNo: number) => Promise<PageTextContent> = async (n) =>
+    (await doc.getPage(n)).getTextContent(),
 ): Promise<OutlineNode[] | null> {
   const lines: TextLine[] = []
   const pages = Math.min(doc.numPages, MAX_PAGES)
   for (let n = 1; n <= pages; n++) {
     if (cancelled()) return null
-    const page = await doc.getPage(n)
-    const content = await page.getTextContent()
+    const content = await readText(n)
+    if (cancelled()) return null
     lines.push(...collectLines(content.items as RawTextItem[], n - 1))
   }
   return cancelled() ? null : outlineFromLines(lines)

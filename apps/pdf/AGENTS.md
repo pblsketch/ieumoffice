@@ -1,6 +1,10 @@
 # apps/pdf (`@genoffice/pdf`)
 
-PDF 보기·주석·편집 에디터다. 화면은 PDF.js로 그리고, 저장은 pdf-lib로, 글자 편집과 영구 가림은 PDFium(WASM)으로 한다. AI는 공용 배선 위에 PDF용 skill만 얹은 얇은 구성이다.
+PDF 보기·주석·편집 에디터다. 기본 쪽 비트맵은 별도 Node worker의 PDFium(WASM)이 그리고, PDF.js는 문서·글자·상호작용 계층과 대체 렌더링을 맡는다. 저장은 pdf-lib로, 글자 편집과 영구 가림은 기존 PDFium 경로로 한다. AI는 공용 배선 위에 PDF용 skill만 얹은 구성이다.
+
+일반 문서의 `view-document.ts`는 뷰에 허가된 불변 파일 사본에서 최대 1MiB씩 읽는다. `view-file.ts`가 입력 버전·해시·XFA 표식을 확인하며, 경로와 파일 descriptor는 화면에 넘기지 않는다. PDF.js 자체의 전체 길이 버퍼까지 없앤 설계는 아니다. `view-render-core.ts`는 같은 사본을 PDFium의 파일 콜백으로 읽고 페이지 하나의 평면 픽셀만 보낸다. WASM 준비는 PDF.js의 초기 문서 분석과 겹쳐 실행한다. XFA·지원하지 않는 크기·렌더 실패는 PDF.js로 돌아간다. 암호·손상 쪽 복구는 기존 IPC로 새로 읽으며, 메모리 입력의 `open-document.ts`는 전송한 바이트를 다시 읽지 않는다.
+
+`view-sources.ts`는 소유한 뷰만 범위 읽기·렌더·취소·닫기를 허용한다. `view-render-worker.ts`는 실행 중인 작업 하나와 최대 64개 대기 작업을 관리하고 보이는 쪽을 축소판보다 먼저 처리한다. 닫기 응답 또는 worker 종료를 확인한 뒤 descriptor를 닫는다. `view-render-reply.ts`는 정해진 채널로 픽셀을 직렬화한 직후 독점 전송 버퍼를 해제하며, 취소된 결과도 해제한다. 메타데이터만 반환하는 양식·전자서명 읽기는 `metadata-file.ts`가 임시 원본 버퍼를 해제한다. 복구 자료·공유 Buffer pool·WASM heap은 이 방식으로 해제하지 않는다. 페이지·축소판·OCR의 PDF.js 자원은 `page-resources.ts`의 공유 사용권으로 관리하며, 렌더 취소가 끝나기 전에 같은 canvas를 재사용하거나 픽셀을 지우지 않는다. PDF와 셸의 빌드 설정 모두 `pdf-view-worker` 진입점을 출력해야 한다.
 
 ## 맡은 범위
 
@@ -93,6 +97,8 @@ PDF 보기·주석·편집 에디터다. 화면은 PDF.js로 그리고, 저장�
 - PDF.js의 CMap·표준 글꼴·wasm은 `electron.vite.config.ts`가 렌더러 출력에 복사한다. 임베드되지 않은 한중일 글꼴의 문서가 이것으로 그려진다. 복사 경로는 POSIX 구분자여야 한다(Windows에서 `join`은 깨진다).
 - **글자를 고칠 때 넣을 글꼴은 정해진 순서로 고른다**(`text-edit.ts`의 `resolveRebuildFont`). "원래 글꼴 유지"면 ① 문서에 넣어 둔 부분 글꼴이 새 글자를 모두 가질 때 그것, ② 이름이 같은 설치 글꼴, ③ 비슷한 설치 글꼴(`font-similar.ts`), ④ 글자만 그릴 수 있으면 되는 대체 글꼴(`fallbackFontFor`) 순이다. ③은 원래 글꼴의 문자권(한국어·일본어·중국어·라틴)과 꼴(바탕·고딕·고정폭·붓글씨)을 이름 → 넣어 둔 글꼴의 OS/2(PANOSE) → 글꼴 설명의 Flags 순으로 읽고, `src/shared/font-classes.ts`의 후보 표에서 설치되어 있고 새 글자를 모두 그리는 첫 글꼴을 고른다. 한글을 넣으면 원래 글꼴이 라틴이어도 같은 꼴의 한국어 글꼴로 간다. 넣어 둔 부분 글꼴이 다시 그리는 글자 가운데 일부만 가지면, 그 글자들은 부분 글꼴 그대로 두고 없는 글자만 ②~④로 고른 글꼴로 그린다(`partialEmbeddedCover`, 한 줄에서 낱말 하나를 바꿔도 줄 전체가 바뀌지 않는다). 리본에서 글꼴·크기·굵게·기울임을 편집 전체에 고르면 섞지 않고 모두 고른 글꼴로 그린다. 원래 글꼴이 굵은데 고른 글꼴이 굵지 않으면 획을 그어 굵기를 맞춘다. 화면 미리보기(`doc-font.ts`)도 한국어·일본어 이름에는 같은 표를 쓴다. 후보를 더하거나 순서를 바꿀 때는 이 표 하나만 고친다.
 - OCR은 플랫폼 도우미 실행 파일을 쓴다(Windows는 `Windows.Media.Ocr`). 도우미가 없는 빌드에서는 엔진이 없는 것으로 풀리고 뷰어는 OCR 없이 동작한다.
+- 뷰어의 자동 OCR은 `ocrAvailable`로 도우미 유무를 먼저 확인한다. 없으면 문서 전체의 스캔 판정과 그림 생성을 시작하지 않는다. 있을 때의 판정은 검색 위치 색인 대신 쪽당 작은 상태값을 쓰며, 목차와 최근 8쪽·추정 8MiB의 텍스트를 공유한다. 전체 검색 색인은 검색·편집 소비자가 요청할 때 만든다. 취소된 판정은 다음 쪽을 읽지 않는다.
+- OCR 그림도 `renderViewBitmap`으로 그리며, 저장된 양식 값을 포함하는 축소판 우선순위로 요청한다. 일반 문서에서 PDF.js로 원본 그림을 또 디코딩하지 않는다. XFA·지원 실패의 기존 대체 경로는 유지한다. 뷰어의 `ocr-helper-async.ts`는 보조 프로그램을 비동기로 하나씩 실행하고, 대기 16개·보관 PNG 합계 64MiB, 출력 스트림 각각 64MiB·30초로 제한한다. 탭 종료·렌더러 소멸은 보조 프로그램을 중단하고 종료를 확인한 뒤 자리를 비운다. 변환 패키지의 동기 `OcrEngine`과 출력 규약은 바꾸지 않는다.
 - 다음 넷은 원본에서 받은 기능이다(2026-10-28 받아오기). 원본 동작을 그대로 두고, 고칠 때는 원본의 다음 변경과 부딪히지 않게 좁게 고친다.
   - **OCR 글자 층 저장**(`ocr-bake.ts`): 자동 인식한 쪽은 저장할 때 줄마다 보이지 않는 글자(render mode 3)를 쓴다. 이 대기 중인 굽기는 저장 안 됨 표시에 넣지 않지만(읽기만 한 스캔은 깨끗하게 남는다), 저장을 누르면 쓰인다. 저장 뒤 다시 읽으면 글자 층이 있어 자동 인식이 다시 돌지 않는다. `App.tsx`의 `ocrBakeInserts` 메모는 `pageGeomRef` 선언 아래에 있어야 한다. 원본은 위에 두어, 스캔 PDF의 첫 쪽 인식이 끝나는 순간 렌더가 터져 창이 하얘졌다(0.12.9 신고). 원본을 받아올 때 이 자리를 되돌리지 않는다. `tests/render-order.test.ts`가 렌더 중에 도는 `useMemo`·`useState` 초기화가 아래에 선언된 값을 읽는지 잡는다.
   - **책갈피 편집**(`OutlinePanel.tsx`, `save-pdf.ts`의 `applyOutline`): 고친 저장만 `/Outlines`를 다시 쓰고, 고치지 않은 저장은 바이트 그대로다. 고친 책갈피는 `editsPayload`로 자동 저장과 복구 사본에도 실린다.
@@ -109,6 +115,7 @@ PDF 보기·주석·편집 에디터다. 화면은 PDF.js로 그리고, 저장�
 ## 테스트
 
 - 실행: `npm run test -w @genoffice/pdf`(또는 이 폴더에서 `npx vitest run`), `npm run typecheck -w @genoffice/pdf`. 환경은 `jsdom`이다.
+- 파일·렌더 경로: `view-file`, `view-sources`, `view-document`는 사본·범위 한도·다른 뷰 거절·닫기 경합을 본다. `view-render-core`는 실제 WASM의 회전·RGBA·쪽/축소판 양식 차이를, `view-render-worker`·`view-render-reply`·`view-bitmap`은 대기 한도·취소·전달 후 버퍼 수명·대체 렌더를 본다. `metadata-file`은 압축된 catalog의 양식 자료를 읽고 입력을 해제해도 결과가 남으며 복구 입력은 유지되는지 확인한다. GUI 성능 수치는 빌드·테스트와 동시에 재지 않는다.
 - AI 배선(`tests/ai-connection.test.ts`, `tests/ai-panel-subscription.test.ts`, `tests/subscription-api.test.ts`, `tests/ai-transport.test.ts`): 막힌 실행 판정, 핸들러가 없을 때의 상태, 가용성 답이 깨졌을 때 이미지 도구가 빠지는지, 첫 연결 안내의 문장. 이 모듈의 테스트는 제공자를 부르지 않는다.
 - 새 기능: 변환 창(`convert-dialog`, `convert-ai-fill`, `convert-export-images`, `convert-helpers`, Save As › Markdown의 즉시 변환 포함), 구조 채널의 preload 모양(`structure-api`), AI 페이지 읽기(`ai-page-reading`, `ai-read-pages-structured`, `ai-read-search-tool`), 번역(`document-translation`). 확인 전에 아무것도 보내지 않는지, 한 문서에 작업 하나, 탭이 사라지면 멈추는지, 이어하기 제안이 아무것도 시작하지 않는지, 한도 소진에서 바로 멈추는지는 이 테스트들이 지킨다. 바꾸면 함께 고친다.
 - 읽기 도우미: 단축키(`reading-shortcuts`), 카드와 저장 성공 때 확정(`reading-passage-cards`, `reading-passage-ui`, `reading-note-save`, `reading-save-confirmations`, `reading-ask-routing`), 보관소 채널의 모양(`reading-store-api`, `doc-jobs-reading`), 주석 패널(`annot-panel-*`), 추천 질문·인용·개요(`ai-reading-panel`, `ai-citations`, `ai-insights`), 대역 보기(`bilingual-view`, `bilingual-actions`, 문장 잇기 `bilingual-sentences`, 문장 단위 다시 번역 `bilingual-retranslate-sentences`, 쉬운 풀이 방식은 `bilingual-actions`·`ipc-store-mode`·`doc-jobs-reading`·`document-translation`), AI 핵심 표시(`highlight-*`, `/Subj` 저장의 바이트 비교는 `highlight-save-subject`), 노트(`note-link`, `note-link-handler`, `notes-ui`). 누르기 전에 보내지 않는지, 페이지 번역이 `translate.<언어>` 기록과 번역 메타를 건드리지 않는지, 노트 핸들러가 화면이 보낸 경로를 받지 않는지는 이 테스트들이 지킨다. `highlight-suggestions`는 "모두 받아들이고 저장" 버튼의 개수·비활성·콜백을 본다.

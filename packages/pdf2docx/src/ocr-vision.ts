@@ -12,30 +12,12 @@
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import type { Rect } from './geometry'
 import type { OcrEngine, OcrRecognition } from './ocr'
+import { parseHelperOcrOutput } from './ocr-helper-output'
 
 /** helper output caps: a page render is a few MB, JSON a few hundred KB */
 const HELPER_MAX_BUFFER = 64 * 1024 * 1024
 const HELPER_TIMEOUT_MS = 30_000
-
-interface HelperChar {
-  t: string
-  b: [number, number, number, number]
-}
-interface HelperLine {
-  t: string
-  c: number
-  b: [number, number, number, number]
-  chars?: HelperChar[]
-}
-
-const toRect = (b: [number, number, number, number]): Rect => ({
-  x0: b[0],
-  y0: b[1],
-  x1: b[2],
-  y1: b[3],
-})
 
 /** spawn wrapper shared by the platform engines (protocol is identical) */
 function createHelperOcrEngine(helperPath: string, languages?: string[]): OcrEngine {
@@ -49,24 +31,7 @@ function createHelperOcrEngine(helperPath: string, languages?: string[]): OcrEng
       windowsHide: true,
     })
     if (res.status !== 0 || res.stdout == null) return null
-    let parsed: { lines?: HelperLine[]; paper?: number }
-    try {
-      // defense in depth: .NET Framework consoles can prepend a UTF-8 BOM
-      const text = res.stdout.toString('utf8').replace(/^\uFEFF/, '')
-      parsed = JSON.parse(text) as { lines?: HelperLine[]; paper?: number }
-    } catch {
-      return null
-    }
-    if (!Array.isArray(parsed.lines)) return null
-    return {
-      lines: parsed.lines.map((l) => ({
-        text: l.t,
-        confidence: l.c,
-        box: toRect(l.b),
-        ...(l.chars ? { chars: l.chars.map((c) => ({ text: c.t, box: toRect(c.b) })) } : {}),
-      })),
-      ...(typeof parsed.paper === 'number' ? { paperShare: parsed.paper } : {}),
-    }
+    return parseHelperOcrOutput(res.stdout.toString('utf8'))
   }
 }
 

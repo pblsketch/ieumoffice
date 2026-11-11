@@ -16,6 +16,8 @@
 import { epubMigrationInfo, type EpubBook } from '@genoffice/epub-engine'
 import type { MigrateResult, ResultStore } from '@genoffice/pdf-structure/store'
 import type { EpubBookSession } from './book-session'
+import type { BookFileSource } from './book-file'
+import type { ZipByteSource } from '@genoffice/zip-gate'
 
 /** what the migration needs of the result store */
 export type MigrationStore = Pick<
@@ -41,6 +43,13 @@ export interface MigrationDeps {
 export interface SaveDeps extends MigrationDeps {
   /** writes the whole file atomically; throws when it could not */
   write: (path: string, bytes: Uint8Array) => Promise<void>
+  /** Main supplies private streamed output and the common atomic publisher. */
+  streaming?: {
+    create(
+      produce: (write: (bytes: Uint8Array) => Promise<void>) => Promise<void>,
+    ): Promise<BookFileSource>
+    publish(path: string, source: ZipByteSource): Promise<void>
+  }
   /** the save time for `dcterms:modified` */
   now?: () => Date
 }
@@ -91,17 +100,56 @@ export async function saveBook(
   sameFile: boolean,
   deps: SaveDeps,
 ): Promise<SaveBookOutcome> {
+  return session.withSave(() => saveBookNow(session, target, sameFile, deps))
+}
+
+async function saveBookNow(
+  session: EpubBookSession,
+  target: string,
+  sameFile: boolean,
+  deps: SaveDeps,
+): Promise<SaveBookOutcome> {
+  if (deps.streaming) {
+    const { result, snapshot } = await session.prepareSavePlan(deps.now ? { now: deps.now } : {})
+    if (!result.ok)
+      return { ok: false, error: `epub: the save was refused (${result.reason}): ${result.detail}` }
+    if (!result.changed) {
+      if (sameFile) return { ok: true, written: false, docHash: session.docHash, migration: null }
+      await deps.streaming.publish(target, session.byteSource)
+      return { ok: true, written: true, docHash: session.docHash, migration: null }
+    }
+    const source = await deps.streaming.create((write) => result.write(write))
+    let adopted = false
+    let hashes: { oldDocHash: string; newDocHash: string }
+    try {
+      const commit = await session.prepareFileRebase(source, snapshot)
+      await deps.streaming.publish(target, source)
+      hashes = commit()
+      adopted = true
+    } finally {
+      if (!adopted) await source.close()
+    }
+    return finishSave(session, hashes, deps)
+  }
   const { result, snapshot } = await session.prepareSave(deps.now ? { now: deps.now } : {})
   if (!result.ok) {
     return { ok: false, error: `epub: the save was refused (${result.reason}): ${result.detail}` }
   }
   if (!result.changed) {
     if (sameFile) return { ok: true, written: false, docHash: session.docHash, migration: null }
-    await deps.write(target, session.bytes)
+    await deps.write(target, await session.readBytes())
     return { ok: true, written: true, docHash: session.docHash, migration: null }
   }
   await deps.write(target, result.bytes)
   const hashes = await session.rebase(result.bytes, snapshot)
+  return finishSave(session, hashes, deps)
+}
+
+async function finishSave(
+  session: EpubBookSession,
+  hashes: { oldDocHash: string; newDocHash: string },
+  deps: MigrationDeps,
+): Promise<SaveBookOutcome> {
   let migration: MigrationOutcome | null = null
   try {
     migration = await migrateStoredResults(session.book, hashes, deps)

@@ -8,7 +8,15 @@ export default defineConfig({
   // so externalizing them would break Node ESM resolution at runtime.
   main: {
     // node:sqlite is a Node 22+ builtin the bundler's builtin list may predate
-    build: { rollupOptions: { external: ['node:sqlite'] } },
+    build: {
+      rollupOptions: {
+        external: ['node:sqlite'],
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          'pdf-view-worker': resolve(__dirname, '../pdf/src/main/pdf-view-worker.ts'),
+        },
+      },
+    },
     // the Google client for Drive (decision 0033) comes from the build's
     // environment only; without it the build offers no Drive at all
     define: {

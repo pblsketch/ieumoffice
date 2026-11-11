@@ -56,39 +56,41 @@ export interface TextIndex {
   offsetOf: number[]
 }
 
-const SPACE = /\s/
-
-export function buildTextIndex(root: Node): TextIndex {
+function collectReadingText(root: Node, positions: boolean): TextIndex {
   const index: TextIndex = { text: '', nodes: [], nodeOf: [], offsetOf: [] }
   const parts: string[] = []
   let last = ''
   let pendingBreak = false
 
-  const push = (ch: string, node: number, offset: number): void => {
-    parts.push(ch)
-    index.nodeOf.push(node)
-    index.offsetOf.push(offset)
-    last = ch
+  const push = (text: string, node: number, offset: number): void => {
+    parts.push(text)
+    if (positions) {
+      for (let i = 0; i < text.length; i++) {
+        index.nodeOf.push(node)
+        index.offsetOf.push(offset + i)
+      }
+    }
+    last = text[text.length - 1]!
   }
 
   const visit = (node: Node): void => {
     if (node.nodeType === 3 /* text */) {
       const text = (node as Text).data
       let nodeIndex = -1
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i]!
-        if (SPACE.test(ch)) {
-          if (last !== '' && last !== ' ') pendingBreak = true
-          continue
-        }
-        if (nodeIndex < 0) {
+      let end = 0
+      for (const match of text.matchAll(/\S+/g)) {
+        const start = match.index
+        if (start > end && last !== '') pendingBreak = true
+        if (positions && nodeIndex < 0) {
           nodeIndex = index.nodes.length
           index.nodes.push(node as Text)
         }
-        if (pendingBreak && last !== '' && last !== ' ') push(' ', nodeIndex, i)
+        if (pendingBreak && last !== '') push(' ', nodeIndex, start)
         pendingBreak = false
-        push(ch, nodeIndex, i)
+        push(match[0], nodeIndex, start)
+        end = start + match[0].length
       }
+      if (end < text.length && last !== '') pendingBreak = true
       return
     }
     if (node.nodeType !== 1 /* element */) return
@@ -103,6 +105,15 @@ export function buildTextIndex(root: Node): TextIndex {
   visit(root)
   index.text = parts.join('')
   return index
+}
+
+/** Only the visible chapter needs DOM positions; whole-book search needs text alone. */
+export function readingText(root: Node): string {
+  return collectReadingText(root, false).text
+}
+
+export function buildTextIndex(root: Node): TextIndex {
+  return collectReadingText(root, true)
 }
 
 /** The DOM range of `length` characters of the reading text from `start`; null when out of range. */

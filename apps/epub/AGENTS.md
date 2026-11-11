@@ -4,14 +4,17 @@
 
 ## 맡은 범위
 
+- 큰 책의 원본 보관(`src/main/book-file.ts`): 64MiB 이상 파일은 `book-session.ts`의 `openFile`이 전용 임시 사본으로 열고 범위로 읽는다. 원본의 외부 변경과 열린 책을 분리하며, 진행 중인 읽기가 끝나면 핸들을 닫는다. 처음 읽은 버전의 stat와 문서 해시가 최초 저장 충돌 기준이다. 변경 저장·Save As·번역본 생성은 전체 바이트를 만들 수 있다. 파일 소스는 뷰 폐기·열기 거절·저장 후 교체에서 정리한다.
+
 - 메인 프로세스(`src/main/`). 셸이 상대 경로로 가져와 셸 번들 안에서 돈다.
   - `epub-main.ts`: 보기 만들기(`createEpubView`), 열기와 거절, 저장·다른 이름으로 저장·닫기 확인, 이름 바뀜 따라가기, 메뉴 명령 전달, 링크 열기, `epub-asset://` 등록, 번역 결과 경로 고르기와 결과 책 쓰기, 단독 실행(`startEpubStandalone`). 셸에 내보내는 함수는 `configureEpubRuntime`, `requestEpubSave`, `requestEpubClose`, `epubSaveToPath`, `epubReadText`, `sendEpubMenuCommand`, `epubFileRenamed`, `setEpubFileSavedHook`, `epubIsDirty`, `epubIsTranslationLocked` 등이다.
-  - `book-session.ts`: 보기 하나의 책. 바이트 한 벌, 엔진이 연 책, 읽은 장마다 저장된 글·지금 글·그 사이의 범위 바꾸기. 편집 거절(번역 잠금, 고정 배치, 깨진 장, 지금 판이 아닌 장)도 여기서 한다. 화면이 보낸 범위 바꾸기(`epub:replace-ranges`)는 모든 범위가 블록 안쪽이거나, 결과 글이 그 장이 이번 세션에 가졌던 글(되돌리기·다시 하기)일 때만 받는다. 바이트는 엔진에 넘겨(`takeOwnership`) 한 벌만 두고, 저장은 이미 연 책으로 한다(다시 열지 않는다). 읽던 자리 파일은 한 번만 읽고 바꾸기를 차례로 쓴다(`reading-state.ts`). Electron 없이 돈다.
+  - `book-session.ts`: 보기 하나의 책. 바이트 한 벌과 엔진이 연 책을 쥔다. 한 번도 고치지 않은 장의 XML·블록 지도는 최근 8개·추정 가중치 16MiB 이내로 보관하고 원본에서 다시 만든다. 작업이 사용하는 동안은 내보내지 않으며, 같은 장의 동시 요청은 합치고 항목 해독은 동시에 두 개로 제한한다. 한 번이라도 고친 장은 원래 글로 실행 취소했어도 버전·블록 id·다시 실행 권한과 함께 유지한다. 수정본·이력을 이 캐시 예산으로 버리지 않는다. 편집 거절(번역 잠금, 고정 배치, 깨진 장, 지금 판이 아닌 장)도 여기서 한다. 화면이 보낸 범위 바꾸기(`epub:replace-ranges`)는 모든 범위가 블록 안쪽이거나, 결과 글이 그 장이 이번 세션에 가졌던 글(되돌리기·다시 하기)일 때만 받는다. 바이트는 엔진에 넘겨(`takeOwnership`) 한 벌만 두고, 저장은 이미 연 책으로 한다(다시 열지 않는다). 읽던 자리 파일은 한 번만 읽고 바꾸기를 차례로 쓴다(`reading-state.ts`). Electron 없이 돈다.
   - `asset-protocol.ts`: `epub-asset://<보기 토큰>/<항목 경로>`. 그 보기의 책 zip 항목만, GET·HEAD만, 정해 둔 내용 형식과 `nosniff`, 스크립트와 바깥 연결을 막는 CSP로 내준다. 감춘 글꼴은 풀어서 내준다. 스크립트 항목은 내주지 않는다.
   - `save-pipeline.ts`: 저장과 보관된 번역 옮기기(`ResultStore.migrateDocument` → 셸의 `migrateJobRecords`). `atomic-write.ts`: 원자적 쓰기.
   - `store-handlers.ts`: `epub:store-*` 창구. 번역 작업이 읽고 쓰는 것(번역, `translate` 작업 기록)만, 그 보기가 연(또는 저장한) 책의 해시로만 받는다. 요청마다 선택 `mode`를 받는다. 빼면 번역이고, `easy`면 같은 보관소의 쉬운 풀이(결정 0108)다. 그 밖의 값은 거절한다.
   - `result-paths.ts`: 결과 책을 쓸 수 있는 경로(원본이 아니고, 열린 탭이 아니고, `.epub`).
   - `reading-state.ts`: 읽던 자리와 보기 설정(`<userData>/epub-reading.json`, 최근 1,000권).
+  - `open-trace.ts`: 사본·ZIP/메타데이터·해시 등 열기 단계를 Node User Timing으로 잰다. 정해진 단계마다 마지막 표본만 유지하고 경로·책 내용은 넣지 않는다. 계측 실패는 파일 열기의 결과·오류를 바꾸지 않는다. 느린 시작은 자동화 연결 시점과 iframe 생성 시점도 함께 비교한다.
   - `mcp-queries.ts`: 앱 안 MCP의 읽기(spine 순서의 글, 제목은 `#`). `ai-attachments.ts`: AI 창 첨부(`epub:files-*`). `i18n-main.ts`: 저장 창과 닫기 확인 문구.
 - preload(`src/preload/index.ts`): `window.epubApi`와 공용 AI·구독·첨부·스킬 다리.
 - IPC 계약 `src/shared/ipc.ts`(`epub:` 창구 전부와 주고받는 자료 모양), 자원 주소와 결과 이름 `src/shared/asset-url.ts`, 바깥 링크 규칙 `src/shared/links.ts`.
@@ -77,6 +80,8 @@
 ## 테스트
 
 - 실행: `npm run test -w @genoffice/epub`, `npm run typecheck -w @genoffice/epub`. 환경은 jsdom(`tests/setup.ts`)이다. 시험용 책은 `tests/helpers/book.ts`가 그때그때 만든다. 뒷단을 흉내 내는 것은 `tests/helpers/edit-backend.ts`, `translate-backend.ts`다.
+- 장 캐시(`book-session-cache.test.ts`): 원본 재읽기의 내용·블록 id·버전 유지, 최근 장 재사용, 실행 취소 뒤 원본과 같아진 장의 다시 실행, 저장·재열기, 동시 요청 합치기·해독 상한, 저장 중 원본 교체 경합과 큰 단일 지도의 회수를 확인한다. `e2e/epub-cache-history.spec.ts`는 실제 Chromium의 현재 장을 캐시에서 내보낸 뒤 입력·실행 취소·다시 실행·저장·재열기를 확인한다. 엔진 전용 `tools/profile-epub-session.mjs --retain-clean-models`는 제한만 푼 대조 실험이며 GUI 메모리와 섞지 않는다.
+- 열기 계측(`open-trace.test.ts`)은 결과·오류의 동일성과 단계 상관관계·보관량 상한을 본다. `profile-epub-scroll.mjs`가 읽는 시간은 원본 사본·ZIP 검사·해시의 분리를 위한 것이며, 정상 실행 한 번으로 과거의 긴 시작을 해명하지 않는다.
 - 바꾸면 반드시 테스트하는 것(뒷단): 세션의 편집·잠금·거절(`book-session.test.ts`), 자원 프로토콜의 토큰·경로·CSP·스크립트 거절(`asset-protocol.test.ts`), 저장하지 않음·범위만 다름·보관분 옮기기(`save-pipeline.test.ts`), 보관소 창구의 해시 검사(`store-handlers.test.ts`), 결과 경로 거절(`result-paths.test.ts`), 읽던 자리(`reading-state.test.ts`), 열지 못한 파일에 쓰지 않음과 링크 거절(`main.test.ts`, `translate-main.test.ts`).
 - 바꾸면 반드시 테스트하는 것(읽기): 그리는 사본(`reader-chapter-html.test.ts`), 장 넘기기(`reader-navigation.test.ts`), 링크(`reader-links.test.ts`), 찾기(`reader-search.test.ts`), 보기 설정(`reader-view-prefs.test.ts`), 화면(`reader-app.test.tsx`), 미리보기의 쪽 계산(`reader-preview-pages.test.ts`: Chromium에서 잰 위치)과 화면(`preview-app.test.tsx`).
 - 바꾸면 반드시 테스트하는 것(고치기): 컨트롤러(`edit-controller.test.ts`), 화면 요소 ↔ 표기(`edit-notation.test.ts`), 단축키·바꾸기·저장(`edit-app.test.tsx`).

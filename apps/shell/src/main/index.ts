@@ -110,6 +110,7 @@ import {
   type RecoveryUntitledIdentity,
 } from '@genoffice/electron-utils'
 import { SPLIT_PANE_CHANNELS } from '@genoffice/electron-utils/split-pane-bridge'
+import { VIEW_VISIBILITY_CHANNELS, viewIsVisible } from '@genoffice/electron-utils/view-visibility'
 import {
   agentSkillNoticeDue,
   markAgentSkillNoticeSeen,
@@ -7724,6 +7725,7 @@ function isPathOpenInAnyTab(path: string): boolean {
  * same-document save probe the editors consult before writing.
  */
 function registerSplitIpc(): void {
+  ipcMain.handle(VIEW_VISIBILITY_CHANNELS.get, (event) => viewIsVisible(event.sender))
   ipcMain.handle(SPLIT_TABS_CHANNELS.get, () => tabManager?.splitState() ?? null)
   ipcMain.on(SPLIT_TABS_CHANNELS.setRatio, (_event, ratio: unknown) => {
     if (typeof ratio === 'number' && Number.isFinite(ratio)) tabManager?.setSplitRatio(ratio)

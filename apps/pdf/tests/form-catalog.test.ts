@@ -10,6 +10,44 @@ import {
   type RawFormAnnotation,
 } from '../src/renderer/form-catalog'
 
+describe('batched form reads', () => {
+  it('bounds concurrent page requests and merges fields in page order', async () => {
+    let active = 0
+    let peak = 0
+    const doc = {
+      numPages: 25,
+      async getPage(page: number) {
+        return {
+          async getAnnotations() {
+            active++
+            peak = Math.max(peak, active)
+            await new Promise((done) => setTimeout(done, (9 - (page % 8)) % 4))
+            active--
+            return [
+              {
+                id: `widget-${page}`,
+                subtype: 'Widget',
+                fieldType: 'Tx',
+                fieldName: 'shared',
+                fieldValue: `page ${page}`,
+                rect: [0, 0, 10, 10],
+              },
+            ]
+          },
+        }
+      },
+    } as unknown as PDFDocumentProxy
+    const catalog = await buildFormCatalog(doc)
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(8)
+    expect(active).toBe(0)
+    expect(catalog.widgets.map((widget) => widget.pageIndex)).toEqual(
+      Array.from({ length: 25 }, (_, i) => i),
+    )
+    expect(catalog.fields.get('shared')?.value).toBe('page 1')
+  })
+})
+
 function fakeDoc(
   pages: RawFormAnnotation[][],
   fieldObjects?: Record<string, unknown>,
@@ -227,6 +265,16 @@ describe('form catalog', () => {
   it('detects an XFA catalog marker without decoding the full PDF', () => {
     expect(hasXfaMarker(new TextEncoder().encode('<< /AcroForm << /XFA 12 0 R >> >>'))).toBe(true)
     expect(hasXfaMarker(new TextEncoder().encode('<< /AcroForm 12 0 R >>'))).toBe(false)
+  })
+
+  it('finds a late marker in a large binary view without inspecting bytes outside the view', () => {
+    const bytes = new Uint8Array(16 * 1024 * 1024).fill(0xe7)
+    const marker = new TextEncoder().encode('/XFA ')
+    bytes.set(marker, 0)
+    bytes.set(marker, bytes.length - marker.length)
+    expect(hasXfaMarker(bytes.subarray(5, bytes.length - 5))).toBe(false)
+    expect(hasXfaMarker(bytes.subarray(5))).toBe(true)
+    expect(hasXfaMarker(bytes.subarray(bytes.length - 4))).toBe(false)
   })
 
   it('accepts /XFA after any regular byte but not as a prefix of a longer name', () => {

@@ -8,47 +8,48 @@
  */
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  createVisionOcrEngine,
-  createWindowsOcrEngine,
-} from '../../../../packages/pdf2docx/src/ocr-vision'
-import type { OcrEngine } from '../../../../packages/pdf2docx/src/ocr'
+import { existsSync } from 'node:fs'
+import { recognizeHelperPng } from './ocr-helper-async'
 import type { PdfOcrLine } from '../shared/ipc'
 
-let ocrEngine: OcrEngine | null | undefined
+let ocrHelper: string | null | undefined
 
-function ensureOcrEngine(): OcrEngine | null {
-  if (ocrEngine !== undefined) return ocrEngine
+function ensureOcrHelper(): string | null {
+  if (ocrHelper !== undefined) return ocrHelper
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return (ocrHelper = null)
   const here = dirname(fileURLToPath(import.meta.url))
   const helper = process.platform === 'darwin' ? 'vision-ocr' : 'win-ocr.exe'
-  const create = process.platform === 'darwin' ? createVisionOcrEngine : createWindowsOcrEngine
   const candidates = [
     ...(process.resourcesPath ? [join(process.resourcesPath, 'ocr', helper)] : []),
     join(here, '../../../../packages/pdf2docx/ocr-helper', helper),
   ]
-  ocrEngine = null
+  ocrHelper = null
   for (const path of candidates) {
-    const engine = create(path)
-    if (engine) {
-      ocrEngine = engine
+    if (existsSync(path)) {
+      ocrHelper = path
       break
     }
   }
-  return ocrEngine
+  return ocrHelper
 }
+
+export const hasOcrEngine = (): boolean => ensureOcrHelper() !== null
 
 /** PNG (base64) → OCR lines; null only when the platform has no engine (callers
     stop trying), [] when recognition failed for this image (callers move on) */
-export function ocrPagePng(pngBase64: string): PdfOcrLine[] | null {
-  const engine = ensureOcrEngine()
-  if (!engine) return null
+export async function ocrPagePng(
+  pngBase64: string,
+  signal?: AbortSignal,
+): Promise<PdfOcrLine[] | null> {
+  const helper = ensureOcrHelper()
+  if (!helper) return null
   let png: Uint8Array
   try {
-    png = Uint8Array.from(Buffer.from(pngBase64, 'base64'))
+    png = Buffer.from(pngBase64, 'base64')
   } catch {
     return []
   }
-  const result = engine(png, { widthPt: 0, heightPt: 0 }) // helpers ignore the page size hint
+  const result = await recognizeHelperPng(helper, png, signal)
   if (!result) return []
   return result.lines.map((l) => ({
     text: l.text,

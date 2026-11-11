@@ -15,6 +15,7 @@ import { LocaleProvider } from '../src/renderer/i18n/locale'
 import { HwpAiDock } from '../src/renderer/ai/AiDock'
 import type { AgentBridge } from '../src/renderer/ai/agent-bridge'
 import type { HwpApi } from '../src/shared/ipc'
+import { SELECTION_POLL_MS } from '../src/renderer/ai/selection-scope'
 
 interface FakeSplit {
   getRole: ReturnType<typeof vi.fn>
@@ -85,6 +86,7 @@ let container: HTMLElement
 let root: Root | null = null
 
 beforeEach(() => {
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   Element.prototype.scrollTo = () => undefined
   container = document.createElement('div')
@@ -97,6 +99,8 @@ afterEach(() => {
   container.remove()
   delete (window as { hwpApi?: unknown }).hwpApi
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 async function settle(turns = 8): Promise<void> {
@@ -108,17 +112,27 @@ async function settle(turns = 8): Promise<void> {
 }
 
 /** The dock with its open state held, the way the app holds it. */
-function DockHarness({ initialOpen }: { initialOpen: boolean }): ReactElement {
+function DockHarness({
+  initialOpen,
+  bridge,
+}: {
+  initialOpen: boolean
+  bridge?: AgentBridge
+}): ReactElement {
   const [open, setOpen] = useState(initialOpen)
   return createElement(HwpAiDock, {
     open,
     setOpen,
-    bridge: {} as AgentBridge,
+    bridge: bridge ?? ({} as AgentBridge),
     filePath: null,
   })
 }
 
-async function mountDock(split: FakeSplit, initialOpen: boolean): Promise<void> {
+async function mountDock(
+  split: FakeSplit,
+  initialOpen: boolean,
+  bridge?: AgentBridge,
+): Promise<void> {
   vi.stubGlobal('aiOfficeSplit', split.bridge)
   Object.assign(window, { hwpApi: hwpApiStub() })
   root = createRoot(container)
@@ -126,7 +140,7 @@ async function mountDock(split: FakeSplit, initialOpen: boolean): Promise<void> 
     root!.render(
       createElement(LocaleProvider, {
         initial: 'en',
-        children: createElement(DockHarness, { initialOpen }),
+        children: createElement(DockHarness, { initialOpen, bridge }),
       }),
     )
   })
@@ -137,6 +151,46 @@ const dock = () => container.querySelector<HTMLElement>('.ai-dock')!
 const rail = () => container.querySelector<HTMLButtonElement>('.ai-rail')
 
 describe('the split pane role', () => {
+  it('suspends selection reads while folded and resumes without losing the panel', async () => {
+    const selection = vi.fn(async () => ({
+      ok: true,
+      own: false,
+      segments: [],
+      inTable: false,
+      contiguous: true,
+    }))
+    const split = fakeSplit('secondary')
+    await mountDock(split, true, { selection } as unknown as AgentBridge)
+    // The split role arrives asynchronously; an initial read may precede it.
+    const initialReads = selection.mock.calls.length
+    expect(container.querySelector('.ai-input-box textarea')).not.toBeNull()
+    act(() => split.push('focus'))
+    await settle()
+    expect(selection).toHaveBeenCalledTimes(initialReads + 1)
+    act(() => split.push('secondary'))
+    vi.useFakeTimers()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SELECTION_POLL_MS * 3)
+    })
+    expect(selection).toHaveBeenCalledTimes(initialReads + 1)
+    vi.useRealTimers()
+    act(() => split.push('focus'))
+    await settle()
+    expect(selection).toHaveBeenCalledTimes(initialReads + 2)
+  })
+
+  it('does not queue overlapping selection requests while the editor is slow', async () => {
+    const selection = vi.fn(() => new Promise(() => {}))
+    await mountDock(fakeSplit('focus'), true, { selection } as unknown as AgentBridge)
+    vi.useFakeTimers()
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(SELECTION_POLL_MS * 3)
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(selection).toHaveBeenCalledOnce()
+  })
+
   it('folds the panel to its rail in a secondary pane, and the panel stays mounted', async () => {
     await mountDock(fakeSplit('secondary'), true)
     expect(dock().classList.contains('collapsed')).toBe(true)

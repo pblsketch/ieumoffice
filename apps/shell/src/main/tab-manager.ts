@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs'
 import { BrowserWindow, shell, WebContentsView } from 'electron'
 import type { Rectangle, WebContents } from 'electron'
 import { PRODUCT_NAME } from '@genoffice/i18n'
+import { setViewVisible } from '@genoffice/electron-utils/view-visibility'
 
 import {
   createDocsView,
@@ -294,7 +295,7 @@ export class TabManager {
       // registering the session made the spare the menu-action target
       setActiveSheetsWebContents(active.view?.webContents ?? null)
       this.shellWindow.contentView.addChildView(view)
-      view.setVisible(false)
+      setViewVisible(view, false)
       // the window may be minimized or mid-restore when the spare spawns; a
       // degenerate rect would leave the spare zero-sized until its next layout
       const bounds = this.contentBounds()
@@ -427,21 +428,21 @@ export class TabManager {
     }
     const cover = this.coverTabId()
     if (cover !== null) {
-      for (const t of this.tabs) t.view?.setVisible(t.id === cover)
+      for (const t of this.tabs) if (t.view) setViewVisible(t.view, t.id === cover)
       this.tabById(cover)?.view?.setBounds(this.windowRect())
       return
     }
     const split = this.split
     if (split && (this.activeId === split.aTabId || this.activeId === split.bTabId)) {
       for (const t of this.tabs) {
-        t.view?.setVisible(t.id === split.aTabId || t.id === split.bTabId)
+        if (t.view) setViewVisible(t.view, t.id === split.aTabId || t.id === split.bTabId)
       }
       const rects = paneRects(bounds, split.orientation, split.ratio)
       this.tabById(split.aTabId)?.view?.setBounds(rects.a)
       this.tabById(split.bTabId)?.view?.setBounds(rects.b)
       return
     }
-    for (const t of this.tabs) t.view?.setVisible(t.id === this.activeId)
+    for (const t of this.tabs) if (t.view) setViewVisible(t.view, t.id === this.activeId)
     this.tabById(this.activeId)?.view?.setBounds(bounds)
   }
 
@@ -553,7 +554,7 @@ export class TabManager {
     const view = createHelpView(wanted)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.tabs.push({ id, kind: 'help', view, title: this.untitled('help', `${PRODUCT_NAME} Help`) })
     this.activateTab(id)
     return id
@@ -568,7 +569,7 @@ export class TabManager {
     if (options?.newBlank) markDocsNewBlank(view.webContents.id)
     if (options?.aiContent) queueDocsAiContent(view.webContents.id, options.aiContent)
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -597,7 +598,7 @@ export class TabManager {
     const id = `t${this.nextId++}`
     if (!spare) {
       this.shellWindow.contentView.addChildView(view)
-      view.setVisible(false)
+      setViewVisible(view, false)
     }
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
@@ -616,7 +617,7 @@ export class TabManager {
     const view = createSlidesView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -634,7 +635,7 @@ export class TabManager {
     const view = createPdfView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({ id, kind: 'pdf', view, title: basename(openPath), filePath: openPath })
@@ -655,7 +656,7 @@ export class TabManager {
     const view = createMarkdownView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -673,7 +674,7 @@ export class TabManager {
     const view = createHtmlView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -691,7 +692,7 @@ export class TabManager {
     const view = createMindmapView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -710,7 +711,7 @@ export class TabManager {
     const view = createEpubView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -735,7 +736,7 @@ export class TabManager {
     const view = createDiagramView(openPath)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     const identity = openPath ? diagramTabIdentity(view.webContents.id) : null
@@ -805,7 +806,7 @@ export class TabManager {
     })
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -886,7 +887,7 @@ export class TabManager {
     const view = createHtmlPresentView(owner, title)
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     this.tabs.push({
@@ -1043,7 +1044,7 @@ export class TabManager {
     }
     const { view } = loaded
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     tab.view = view
@@ -1769,7 +1770,7 @@ export class TabManager {
     if (removed.view) {
       // a generate request the tab never took goes with the tab
       dropGenerateHandoff(removed.view.webContents.id)
-      removed.view.setVisible(false)
+      setViewVisible(removed.view, false)
       this.shellWindow.contentView.removeChildView(removed.view)
       if (removed.kind === 'docs') {
         // webContents.close()/.destroy() on a closed docs tab wedges Electron's whole
@@ -1806,7 +1807,7 @@ export class TabManager {
     this.tabs.splice(idx, 1)
     if (this.htmlFullScreenId === id) this.htmlFullScreenId = null
     const view = tab.view
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.shellWindow.contentView.removeChildView(view)
     const split = this.split
     const survivor = split ? splitSurvivor(split, id) : null
@@ -1852,7 +1853,7 @@ export class TabManager {
     const id = `t${this.nextId++}`
     const { view } = record
     this.shellWindow.contentView.addChildView(view)
-    view.setVisible(false)
+    setViewVisible(view, false)
     this.trackHtmlFullScreen(view)
     this.trackPaneFocus(view)
     const slot =

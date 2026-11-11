@@ -14,6 +14,10 @@ import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import {
+  VIEW_VISIBILITY_BRIDGE_KEY,
+  viewVisibilityBridge,
+} from '@genoffice/electron-utils/view-visibility'
 import { AI_CHANNELS, PDF_CHANNELS } from '../shared/ipc'
 import type {
   PdfApi,
@@ -27,6 +31,7 @@ import type {
   UiTheme,
 } from '../shared/ipc'
 import type { SubscriptionApi } from '../shared/subscription-api'
+import { ViewRenderClient } from './view-render-client'
 import {
   AI_TOOL_CAPABILITIES_CHANNEL,
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
@@ -153,10 +158,23 @@ const store: PdfStoreApi = {
     outcome(PDF_CHANNELS.storeTranslationRecency, docHash, ...(mode === undefined ? [] : [mode])),
 }
 
+const viewRenderer = new ViewRenderClient(
+  (ticket, request) => ipcRenderer.send(PDF_CHANNELS.renderViewPage, ticket, request),
+  (receive) => ipcRenderer.on(PDF_CHANNELS.viewRenderResult, (_event, message) => receive(message)),
+)
+
 const api: PdfApi = {
   consumePending: () => ipcRenderer.invoke(PDF_CHANNELS.consumePending),
   openSourcePath: (path: string) => ipcRenderer.invoke('home:open-path', path),
   readFile: (path) => ipcRenderer.invoke(PDF_CHANNELS.readFile, path),
+  openViewSource: (path) => ipcRenderer.invoke(PDF_CHANNELS.openViewSource, path),
+  readViewRange: (sourceId, offset, length) =>
+    ipcRenderer.invoke(PDF_CHANNELS.readViewRange, sourceId, offset, length),
+  renderViewPage: (request) => viewRenderer.render(request),
+  renderViewPageWithReply: (request, receive) => viewRenderer.deliver(request, receive),
+  cancelViewRender: (sourceId, requestId) =>
+    ipcRenderer.invoke(PDF_CHANNELS.cancelViewRender, sourceId, requestId),
+  closeViewSource: (sourceId) => ipcRenderer.invoke(PDF_CHANNELS.closeViewSource, sourceId),
   decryptPdf: (bytes, password) => ipcRenderer.invoke(PDF_CHANNELS.decryptPdf, bytes, password),
   save: (request) => ipcRenderer.invoke(PDF_CHANNELS.save, request),
   pickAttachmentFile: () => ipcRenderer.invoke(PDF_CHANNELS.pickAttachmentFile),
@@ -176,6 +194,7 @@ const api: PdfApi = {
   listPageImages: (path) => ipcRenderer.invoke(PDF_CHANNELS.listPageImages, path),
   listStaticFormFills: (path) => ipcRenderer.invoke(PDF_CHANNELS.listStaticFormFills, path),
   ocrPage: (png) => ipcRenderer.invoke(PDF_CHANNELS.ocrPage, png),
+  ocrAvailable: () => ipcRenderer.invoke(PDF_CHANNELS.ocrAvailable),
   pageImagePng: (request) => ipcRenderer.invoke(PDF_CHANNELS.pageImagePng, request),
   pagePreviewPng: (request) => ipcRenderer.invoke(PDF_CHANNELS.pagePreviewPng, request),
   extractPages: (request) => ipcRenderer.invoke(PDF_CHANNELS.extractPages, request),
@@ -402,6 +421,7 @@ const projectApi = {
 contextBridge.exposeInMainWorld('pdfApi', api)
 // The split-pane role and focus calls the shell drives this pane with
 contextBridge.exposeInMainWorld('aiOfficeSplit', splitPaneBridge(ipcRenderer))
+contextBridge.exposeInMainWorld(VIEW_VISIBILITY_BRIDGE_KEY, viewVisibilityBridge(ipcRenderer))
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())

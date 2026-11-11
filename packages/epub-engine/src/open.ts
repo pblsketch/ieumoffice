@@ -15,10 +15,13 @@
 import {
   assertDeclaredSizesWithinLimits,
   assertZipInflatesWithinLimits,
+  assertZipSourceInflatesWithinLimits,
   DEFAULT_ZIP_LIMITS,
+  type ZipByteSource,
   type ZipLimits,
 } from '@genoffice/zip-gate'
 import JSZip from 'jszip'
+import { sourceArchive } from './archive-source'
 import { decodeEntryText, type DecodedText } from './encoding'
 import {
   ADOBE_FONT_OBFUSCATION,
@@ -64,14 +67,19 @@ export interface EpubOpenOptions {
 }
 
 /** The archive each book this engine opened reads from, for saving it without a reopen. */
-const bookArchives = new WeakMap<EpubBook, JSZip>()
+const bookArchives = new WeakMap<EpubBook, () => Promise<JSZip>>()
+
+/** @internal Check provenance without materializing a file-backed archive. */
+export function hasOpenedArchive(book: EpubBook): boolean {
+  return bookArchives.has(book)
+}
 
 /**
- * @internal The loaded archive of a book `openEpub` gave out (it passed the
- * zip gate then); null for any other object.
+ * @internal The archive of a book opened by the engine (it passed the gate).
+ * Immutable sources provide lazy compressed entries; other objects return null.
  */
-export function openedArchive(book: EpubBook): JSZip | null {
-  return bookArchives.get(book) ?? null
+export async function openedArchive(book: EpubBook): Promise<JSZip | null> {
+  return bookArchives.get(book)?.() ?? null
 }
 
 class Refusal extends Error {
@@ -102,7 +110,11 @@ class Archive {
   readonly names: string[]
   private readonly byLowerCase = new Map<string, string>()
 
-  constructor(private readonly zip: JSZip) {
+  constructor(
+    private readonly zip: JSZip,
+    private readonly readEntry?: (name: string) => Promise<Uint8Array | null>,
+    private readonly streamEntry?: (name: string) => ReadableStream<Uint8Array> | null,
+  ) {
     this.names = Object.values(zip.files)
       .filter((file) => !file.dir)
       .map((file) => file.name)
@@ -123,6 +135,7 @@ class Archive {
   async read(path: string): Promise<Uint8Array | null> {
     const name = this.find(path)
     if (name === null) return null
+    if (this.readEntry) return this.readEntry(name)
     // A copy: JSZip may hand back a view of its own buffer.
     return new Uint8Array(await this.zip.files[name]!.async('uint8array'))
   }
@@ -130,6 +143,21 @@ class Archive {
   async readText(path: string): Promise<DecodedText | null> {
     const bytes = await this.read(path)
     return bytes ? decodeEntryText(bytes) : null
+  }
+
+  async stream(path: string): Promise<ReadableStream<Uint8Array> | null> {
+    const name = this.find(path)
+    if (name === null) return null
+    if (this.streamEntry) return this.streamEntry(name)
+    const bytes = await this.read(name)
+    return bytes
+      ? new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(bytes)
+            c.close()
+          },
+        })
+      : null
   }
 
   declaredParts(): { name: string; usize: number }[] {
@@ -164,7 +192,12 @@ function keyFor(
 
 type FontKeys = Map<string, { algorithm: FontObfuscationAlgorithm; key: Uint8Array }>
 
-function bookFrom(info: EpubBookInfo, zip: JSZip, archive: Archive, fontKeys: FontKeys): EpubBook {
+function bookFrom(
+  info: EpubBookInfo,
+  loadZip: () => Promise<JSZip>,
+  archive: Archive,
+  fontKeys: FontKeys,
+): EpubBook {
   const book: EpubBook = {
     ...info,
     has: (path) => archive.find(path) !== null,
@@ -177,8 +210,26 @@ function bookFrom(info: EpubBookInfo, zip: JSZip, archive: Archive, fontKeys: Fo
       const font = fontKeys.get(name)
       return bytes && font ? obfuscateFontWithKey(bytes, font.algorithm, font.key) : bytes
     },
+    streamForRendering: async (path) => {
+      const name = archive.find(path)
+      if (name === null) return null
+      const body = await archive.stream(name)
+      const font = fontKeys.get(name)
+      if (!body || !font) return body
+      let offset = 0
+      return body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(bytes, controller) {
+            controller.enqueue(
+              offset < 1040 ? obfuscateFontWithKey(bytes, font.algorithm, font.key, offset) : bytes,
+            )
+            offset += bytes.length
+          },
+        }),
+      )
+    },
   }
-  bookArchives.set(book, zip)
+  bookArchives.set(book, loadZip)
   return book
 }
 
@@ -198,6 +249,34 @@ export async function openEpub(
     if (error instanceof NotEpubError) {
       return { ok: false, reason: 'not-epub', detail: error.message }
     }
+    return { ok: false, reason: 'damaged', detail: messageOf(error) }
+  }
+}
+
+/**
+ * Open an immutable random-access archive. The engine performs the full ZIP
+ * gate before reading book metadata. The caller owns the source's lifetime.
+ * Entry reads retain no whole-file buffer; a save loads the original archive
+ * on demand so its untouched compressed data is preserved by the same writer.
+ */
+export async function openEpubSource(
+  source: ZipByteSource,
+  options: Pick<EpubOpenOptions, 'limits'> = {},
+): Promise<EpubOpenResult> {
+  try {
+    let parts
+    try {
+      parts = await assertZipSourceInflatesWithinLimits(source, options.limits ?? EPUB_ZIP_LIMITS)
+    } catch (error) {
+      throw new Refusal(gateReason(error), messageOf(error))
+    }
+    const indexed = await sourceArchive(source, parts)
+    const archive = new Archive(indexed.zip, indexed.read, indexed.stream)
+    return { ok: true, book: await readBook(archive, indexed.loadOriginal) }
+  } catch (error) {
+    if (error instanceof Refusal) return { ok: false, reason: error.reason, detail: error.message }
+    if (error instanceof NotEpubError)
+      return { ok: false, reason: 'not-epub', detail: error.message }
     return { ok: false, reason: 'damaged', detail: messageOf(error) }
   }
 }
@@ -230,6 +309,10 @@ async function openOrRefuse(input: Uint8Array, options: EpubOpenOptions): Promis
     throw new Refusal('too-large', messageOf(error))
   }
 
+  return readBook(archive, async () => zip)
+}
+
+async function readBook(archive: Archive, loadZip: () => Promise<JSZip>): Promise<EpubBook> {
   // 2. container
   const container = await archive.readText(CONTAINER_PATH)
   if (!container) throw new NotEpubError(`the archive has no ${CONTAINER_PATH}`)
@@ -308,7 +391,7 @@ async function openOrRefuse(input: Uint8Array, options: EpubOpenOptions): Promis
     obfuscatedFonts,
     entryNames: [...archive.names],
   }
-  return bookFrom(info, zip, archive, fontKeys)
+  return bookFrom(info, loadZip, archive, fontKeys)
 }
 
 function parseOrNotEpub(decoded: DecodedText, path: string) {

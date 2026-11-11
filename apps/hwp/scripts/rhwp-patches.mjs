@@ -142,6 +142,8 @@ import { CLIPBOARD_HTML_MODULE } from '../studio-plugin/clipboard-html.mjs'
 import { EASY_WORDS_COMMAND } from '../studio-plugin/agent-plugin.mjs'
 import { HANCOM_KEYS_MODULE, studioCommandIds } from '../studio-plugin/hancom-keys.mjs'
 import { PC_FONTS_MODULE } from '../studio-plugin/pc-fonts.mjs'
+import { CAPTION_COMMAND_MODULE } from '../studio-plugin/caption-commands.mjs'
+import { FONT_METADATA_MODULE } from '../studio-plugin/font-metadata.mjs'
 
 /** Must equal RENDERER_SCHEME in packages/electron-utils/src/renderer-scheme.ts. */
 export const APP_SCHEME = 'genoffice-app'
@@ -157,6 +159,8 @@ export { HANCOM_KEYS_MODULE }
 
 /** Module specifier the studio-format-copy patches import; build-studio.mjs aliases it. */
 export const FORMAT_COPY_MODULE = '@ieum/format-copy'
+export { CAPTION_COMMAND_MODULE }
+export { FONT_METADATA_MODULE }
 
 /** Module specifier the studio-clipboard-objects patch imports; build-studio.mjs aliases it. */
 export { CLIPBOARD_HTML_MODULE }
@@ -165,6 +169,172 @@ export { CLIPBOARD_HTML_MODULE }
 export { PC_FONTS_MODULE }
 
 const PATCHES = {
+  'studio-local-font-metadata': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]local-fonts\.ts$/,
+    edits: [
+      {
+        find: "import { REGISTERED_FONTS } from './font-loader.ts';",
+        replace:
+          "import { REGISTERED_FONTS } from './font-loader.ts';\n" +
+          `import { collectionFaceOffset } from '${FONT_METADATA_MODULE}';`,
+      },
+      {
+        find: [
+          '    const header = new DataView(await blob.slice(0, 12).arrayBuffer());',
+          '    if (header.getUint32(0) === 0x74746366) {',
+          '      const selected = matchingCollectionFace(await blob.arrayBuffer(), fontData);',
+          '      return selected ? readSfntFontNames({ ...fontData, blob: async () => new Blob([selected]) }) : emptySfntFontNames();',
+          '    }',
+          '    const tableCount = header.getUint16(4, false);',
+          '    const directoryLength = 12 + tableCount * 16;',
+          '    if (blob.size < directoryLength) return emptySfntFontNames();',
+          '    const directory = new DataView(await blob.slice(0, directoryLength).arrayBuffer());',
+        ].join('\n'),
+        replace: [
+          '    let header = new DataView(await blob.slice(0, 12).arrayBuffer());',
+          '    const faceOffset = header.getUint32(0) === 0x74746366',
+          '      ? await collectionFaceOffset(blob, fontData.postscriptName, parseSfntNameTable, normalizeFontAlias) : 0;',
+          '    if (faceOffset === null) return emptySfntFontNames();',
+          '    if (faceOffset) header = new DataView(await blob.slice(faceOffset, faceOffset + 12).arrayBuffer());',
+          '    const tableCount = header.getUint16(4, false);',
+          '    const directoryLength = 12 + tableCount * 16;',
+          '    if (blob.size < faceOffset + directoryLength) return emptySfntFontNames();',
+          '    const directory = new DataView(await blob.slice(faceOffset, faceOffset + directoryLength).arrayBuffer());',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-scroll-surface-planning': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]page-renderer\.ts$/,
+    edits: [
+      {
+        find: '  getCanvasSurfaceLayerCount(pageIdx: number): number {',
+        replace:
+          '  /** Plan scroll work without materializing an unvisited page tree. */\n' +
+          '  peekCanvasSurfaceLayerCount(pageIdx: number): number {\n' +
+          "    if (this.backend === 'canvaskit') return 1;\n" +
+          '    const cached = this.surfaceLayerCountCache.get(pageIdx);\n' +
+          '    if (cached !== undefined) return cached;\n' +
+          '    const summary = this.layerSummaryCache.get(pageIdx)?.summary;\n' +
+          '    return summary ? this.canvasSurfaceLayerCount(summary) : 5;\n' +
+          '  }\n\n' +
+          '  getCanvasSurfaceLayerCount(pageIdx: number): number {',
+      },
+    ],
+  },
+  'studio-scroll-render-scheduling': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]canvas-view\.ts$/,
+    edits: [
+      {
+        find: '  private scrollContent: HTMLElement;',
+        replace: '  private scrollContent: HTMLElement;\n  private ieumViewVisible = true;',
+      },
+      {
+        find: "      eventBus.on('viewport-scroll', () => {",
+        replace: [
+          "      eventBus.on('ieum-view-visibility', (value) => {",
+          '        const visible = value !== false;',
+          '        if (visible === this.ieumViewVisible) return;',
+          '        this.ieumViewVisible = visible;',
+          "        if (visible) this.updateVisiblePages('strict');",
+          '        else this.releaseAllRenderedPages();',
+          '      }),',
+          "      eventBus.on('viewport-scroll', () => {",
+        ].join('\n'),
+      },
+      {
+        find: "  private updateVisiblePages(reason: VisibilityUpdateReason = 'strict'): void {",
+        replace:
+          "  private updateVisiblePages(reason: VisibilityUpdateReason = 'strict'): void {\n" +
+          "    if (!this.ieumViewVisible && reason !== 'strict') return;",
+      },
+      {
+        find: '          layerCount: this.pageRenderer.getCanvasSurfaceLayerCount(pageIndex),',
+        replace: '          layerCount: this.pageRenderer.peekCanvasSurfaceLayerCount(pageIndex),',
+      },
+      {
+        find: '      isScroll,\n      { yieldAfterVisible: isZoomSettled },',
+        replace:
+          '      false, // Raster work yields to input even when only one page is missing.\n' +
+          '      { yieldAfterVisible: isZoomSettled },',
+      },
+      {
+        find: '    this.currentRetainedPages = prefetchPages;\n    this.updateActivePageSnapshot();',
+        replace:
+          '    this.currentRetainedPages = prefetchPages;\n' +
+          '    this.updateActivePageSnapshot(!isScroll);',
+      },
+      {
+        find: '  private updateActivePageSnapshot(): void {',
+        replace: '  private updateActivePageSnapshot(forceIndicator = true): void {',
+      },
+      {
+        find: "    if (next) {\n      this.eventBus.emit(\n        'current-page-changed',",
+        replace:
+          "    if (next && (snapshotChanged || forceIndicator)) {\n      this.eventBus.emit(\n        'current-page-changed',",
+      },
+    ],
+  },
+  'studio-caption-commands': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]insert\.ts$/,
+    edits: [
+      {
+        find: "import { getObjectProps, setObjectProps, type ObjectPropsRef } from '@/engine/object-props';",
+        replace:
+          "import { getObjectProps, setObjectProps, type ObjectPropsRef } from '@/engine/object-props';\n" +
+          `import { createCaptionCommand } from '${CAPTION_COMMAND_MODULE}';\n` +
+          'function captionCommand(id: string, label: string, position: string): CommandDef {\n' +
+          '  return createCaptionCommand(id, label, position, { getObjectProps, setObjectProps,\n' +
+          '    createPropertyCommand: (ref: ObjectPropsRef, before: Record<string, unknown>, after: Record<string, unknown>) => new SetObjectPropsCommand(ref, before, after) });\n' +
+          '}\n',
+      },
+      ...[
+        ['top', 'captionTop.registryLabel'],
+        ['lt', 'captionLt.registryLabel'],
+        ['lm', 'captionLm.registryLabel'],
+        ['lb', 'captionLb.registryLabel'],
+        ['rt', 'captionRt.registryLabel'],
+        ['rm', 'captionRm.registryLabel'],
+        ['rb', 'captionRb.registryLabel'],
+        ['bottom', 'captionBottom.registryLabel'],
+        ['none', 'captionNone.label'],
+      ].map(([position, key]) => ({
+        find: `stub('insert:caption-${position}', t('command.insert.${key}'))`,
+        replace: `captionCommand('insert:caption-${position}', t('command.insert.${key}'), '${position}')`,
+      })),
+    ],
+  },
+  'studio-caption-context': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]main\.ts$/,
+    edits: [
+      {
+        find: 'function getContext(): EditorContext {',
+        replace: `import { captionTarget } from '${CAPTION_COMMAND_MODULE}';\n\nfunction getContext(): EditorContext & { canEditCaption: boolean } {`,
+      },
+      {
+        find: '    hasDocument: hasDoc,',
+        replace:
+          '    hasDocument: hasDoc,\n    canEditCaption: Boolean(inputHandler && captionTarget(inputHandler)),',
+      },
+    ],
+  },
+  'studio-caption-table-router': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]object-props\.ts$/,
+    edits: [
+      {
+        find: 'export function getObjectProps(wasm: WasmBridge, ref: ObjectPropsRef): Record<string, unknown> {',
+        replace:
+          'export function getObjectProps(wasm: WasmBridge, ref: ObjectPropsRef): Record<string, unknown> {\n' +
+          "  if (ref.type === 'table') return wasm.getTableProperties(ref.sec, ref.ppi, ref.ci) as unknown as Record<string, unknown>;",
+      },
+      {
+        find: '  props: Record<string, unknown>,\n): unknown {',
+        replace:
+          '  props: Record<string, unknown>,\n): unknown {\n' +
+          "  if (ref.type === 'table') return wasm.setTableProperties(ref.sec, ref.ppi, ref.ci, props);",
+      },
+    ],
+  },
   'sdk-scheme': {
     file: /[\\/]@rhwp[\\/]editor[\\/]transport\.js$/,
     find: "if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {",
@@ -1196,6 +1366,12 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-cell-block-paste',
   'studio-pc-fonts',
   'studio-missing-font-marks',
+  'studio-caption-commands',
+  'studio-caption-context',
+  'studio-caption-table-router',
+  'studio-scroll-surface-planning',
+  'studio-scroll-render-scheduling',
+  'studio-local-font-metadata',
 ])
 
 /** Whether a patch is written against this file. */
@@ -1266,10 +1442,17 @@ export const pluginHooks = [
     file: 'src/engine/input-handler.ts',
     needles: [
       'private cursor: CursorState',
+      // Caption commands must resolve the same object before mutation and undo.
+      'getSelectedPictureRef():',
+      'getSelectedTableRef()',
       'updateCaret(',
       'private virtualScroll: VirtualScroll',
       'private emitCursorFormatState(): void',
     ],
+  },
+  {
+    file: 'src/engine/command.ts',
+    needles: ['export class SetObjectPropsCommand implements EditCommand'],
   },
   {
     file: 'src/command/types.ts',

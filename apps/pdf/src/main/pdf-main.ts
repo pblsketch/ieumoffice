@@ -13,6 +13,10 @@ import {
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFile, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir, userInfo } from 'node:os'
+import { PdfViewSources } from './view-sources'
+import { replyViewRender } from './view-render-reply'
+import { readPdfMetadataFile } from './metadata-file'
+import type { PdfViewRenderRequest } from '../shared/view-source'
 import { basename, dirname, join, resolve } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
 import type { WebContents } from 'electron'
@@ -761,6 +765,9 @@ function openGeneratedPdf(path: string): void {
 const openPathByWc = new Map<number, string>()
 /** File paths granted to each view — readFile only allows these */
 const allowedByWc = new Map<number, Set<string>>()
+let viewSources: PdfViewSources | undefined
+const pdfViewSources = () =>
+  (viewSources ??= new PdfViewSources(join(tmpdir(), 'genoffice-pdf-view-sources')))
 /** Unsaved-changes flags mirrored from the renderer; drives the save prompt before closing a tab/window */
 const dirtyByWc = new Set<number>()
 const closeSaveWaiters = new Map<number, (ok: boolean) => void>()
@@ -1106,7 +1113,10 @@ function carriesProtection(request: SavePdfRequest | null | undefined): boolean 
 
 /** The view's own document: a restored recovery copy until it is saved, else the file */
 async function viewDocumentBytes(wcId: number, path: string): Promise<Uint8Array> {
-  return recovery.viewBytes(wcId, path) ?? new Uint8Array(await readFile(path))
+  const restored = recovery.viewBytes(wcId, path)
+  if (restored) return restored
+  const bytes = await readFile(path)
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
 /** OS session end: views asked to write their copy now, answered by the renderer */
@@ -1606,6 +1616,49 @@ function registerPdfIpc(): void {
       : buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
   })
 
+  ipcMain.handle(PDF_CHANNELS.openViewSource, async (e, path: unknown) => {
+    if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path))
+      throw new Error('pdf: path not granted to this view')
+    const manager = pdfViewSources()
+    const { source, file } = await manager.open(
+      e.sender.id,
+      path,
+      recovery.viewBytes(e.sender.id, path) ?? undefined,
+    )
+    try {
+      if (e.sender.isDestroyed()) throw new Error('pdf: view closed while opening')
+      const state = file.diskState ?? (await recordDiskState(path))
+      if (e.sender.isDestroyed()) throw new Error('pdf: view closed while opening')
+      if (state) {
+        const states = docDiskStates.get(e.sender.id) ?? new Map<string, SaveDiskState>()
+        states.set(path, state)
+        docDiskStates.set(e.sender.id, states)
+      }
+      return source
+    } catch (error) {
+      await manager.close(e.sender.id, source.id)
+      throw error
+    }
+  })
+  ipcMain.handle(PDF_CHANNELS.readViewRange, (e, id: unknown, offset: number, length: number) =>
+    pdfViewSources().read(e.sender.id, id, offset, length),
+  )
+  ipcMain.on(PDF_CHANNELS.renderViewPage, (e, ticket: unknown, request: PdfViewRenderRequest) => {
+    if (!e.senderFrame || e.senderFrame !== e.sender.mainFrame) return
+    void replyViewRender(
+      ticket,
+      request,
+      (job) => pdfViewSources().render(e.sender.id, job),
+      (message) => e.reply(PDF_CHANNELS.viewRenderResult, message),
+    )
+  })
+  ipcMain.handle(PDF_CHANNELS.cancelViewRender, (e, id: unknown, requestId: unknown) =>
+    pdfViewSources().cancel(e.sender.id, id, requestId),
+  )
+  ipcMain.handle(PDF_CHANNELS.closeViewSource, (e, id: unknown) =>
+    pdfViewSources().close(e.sender.id, id),
+  )
+
   // the view has read its file: hear when another program changes it (untitled
   // working copies live in the app's temp folder and need no watch)
   ipcMain.handle(PDF_CHANNELS.watchDiskFile, (e, path: unknown): boolean => {
@@ -2064,14 +2117,28 @@ function registerPdfIpc(): void {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
       throw new Error('pdf: path not granted to this view')
     }
-    return readStaticFormFills(await viewDocumentBytes(e.sender.id, path))
+    return readPdfMetadataFile(path, readStaticFormFills, recovery.viewBytes(e.sender.id, path))
   })
 
-  ipcMain.handle(PDF_CHANNELS.ocrPage, async (_e, png: unknown) => {
+  ipcMain.handle(PDF_CHANNELS.ocrAvailable, async () => {
+    const { hasOcrEngine } = await import('./ocr')
+    return hasOcrEngine()
+  })
+  ipcMain.handle(PDF_CHANNELS.ocrPage, async (e, png: unknown) => {
     // bad payload = failed page ([]), never "no engine" (null) — null stops the caller's pass
     if (typeof png !== 'string' || png.length === 0 || png.length > 64 * 1024 * 1024) return []
     const { ocrPagePng } = await import('./ocr')
-    return ocrPagePng(png)
+    const controller = new AbortController()
+    const stop = () => controller.abort()
+    e.sender.once('destroyed', stop)
+    e.sender.once('render-process-gone', stop)
+    if (e.sender.isDestroyed()) stop()
+    try {
+      return await ocrPagePng(png, controller.signal)
+    } finally {
+      e.sender.removeListener('destroyed', stop)
+      e.sender.removeListener('render-process-gone', stop)
+    }
   })
 
   ipcMain.handle(
@@ -2678,7 +2745,11 @@ function registerPdfIpc(): void {
     async (e, path: unknown): Promise<PdfSignatureInfo[]> => {
       if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) return []
       try {
-        return await readPdfSignatures(await viewDocumentBytes(e.sender.id, path))
+        return await readPdfMetadataFile(
+          path,
+          readPdfSignatures,
+          recovery.viewBytes(e.sender.id, path),
+        )
       } catch {
         return []
       }
@@ -2941,8 +3012,12 @@ function grantAndTrack(wc: WebContents, openPath?: string | null): void {
     return { action: 'deny' }
   })
   // a crashed renderer keeps its recovery copy for the reopened tab
-  wc.on('render-process-gone', () => recovery.markCrashed(wcId))
+  wc.on('render-process-gone', () => {
+    recovery.markCrashed(wcId)
+    void viewSources?.closeOwner(wcId).catch(() => {})
+  })
   wc.once('destroyed', () => {
+    void viewSources?.closeOwner(wcId).catch(() => {})
     // before the dirty flag goes: a tab closed with no unsaved changes drops its copy
     recovery.destroyed(wcId, dirtyByWc.has(wcId))
     copyFlushWaiters.get(wcId)?.()
@@ -2966,6 +3041,7 @@ function grantAndTrack(wc: WebContents, openPath?: string | null): void {
   // destroyed handler never runs. A remount discards in-memory edits; the
   // close guard must not still think the tab is dirty.
   wc.on('did-start-loading', () => {
+    void viewSources?.closeOwner(wcId).catch(() => {})
     dirtyByWc.delete(wcId)
     // the remounted renderer watches again once it has read its file
     stopViewWatch(wcId)

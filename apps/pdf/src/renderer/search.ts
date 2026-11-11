@@ -1,5 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { foldCase, isWordChar } from '@genoffice/ui'
+import { createPageTextCache, isScannedContent, type PageTextContent } from './page-text-cache'
+import { waitForViewActivity } from './view-renderer'
 
 /** One hit: original page + PDF user-space rects (multiple when spanning several text items) */
 export interface SearchMatch {
@@ -68,11 +70,14 @@ interface RawTextItem {
 }
 
 /** Concatenate text per page + record each item's char range and PDF-space box (built once, cached per doc by caller) */
-export async function buildSearchIndex(doc: PDFDocumentProxy): Promise<SearchIndex> {
+export async function buildSearchIndex(
+  doc: PDFDocumentProxy,
+  readText: (pageNo: number) => Promise<PageTextContent> = async (n) =>
+    (await doc.getPage(n)).getTextContent(),
+): Promise<SearchIndex> {
   const entries: PageEntry[] = []
   for (let n = 1; n <= doc.numPages; n++) {
-    const page = await doc.getPage(n)
-    const content = await page.getTextContent()
+    const content = await readText(n)
     let text = ''
     const items: IndexedItem[] = []
     for (const it of content.items as RawTextItem[]) {
@@ -110,22 +115,61 @@ export async function buildSearchIndex(doc: PDFDocumentProxy): Promise<SearchInd
 export interface SearchIndexCache {
   /** Base index of `doc`; the same promise for the same document until cleared */
   get(doc: PDFDocumentProxy): Promise<SearchIndex>
+  /** Recent raw text, shared with navigation without retaining every page's objects. */
+  textContent(doc: PDFDocumentProxy, pageNo: number): Promise<PageTextContent>
+  /** Compact scanned flags; null means detection was cancelled before it finished. */
+  scannedPages(doc: PDFDocumentProxy, signal: AbortSignal): Promise<number[] | null>
   /** Drop the cached extraction (a save-reload replaces the document content) */
   clear(): void
 }
 
-/** Building the index walks every page of the document, so it must happen once per
-    loaded document: search, paragraph boxes, the AI tools and the auto-OCR pass all
-    read this cache instead of extracting the text a second time. */
+/** Build the positioned index only on demand. Navigation and automatic scan
+    detection share a bounded recent text window and compact detection flags. */
 export function createSearchIndexCache(): SearchIndexCache {
   let entry: { doc: PDFDocumentProxy; promise: Promise<SearchIndex> } | null = null
+  let detected = new WeakMap<PDFDocumentProxy, Uint8Array>()
+  const texts = createPageTextCache()
+  const flagsOf = (doc: PDFDocumentProxy): Uint8Array => {
+    let flags = detected.get(doc)
+    if (!flags) detected.set(doc, (flags = new Uint8Array(doc.numPages)))
+    return flags
+  }
+  const readText = async (doc: PDFDocumentProxy, n: number): Promise<PageTextContent> => {
+    const flags = flagsOf(doc)
+    const content = await texts.get(doc, n)
+    flags[n - 1] = isScannedContent(content) ? 1 : 2
+    return content
+  }
   return {
     get(doc) {
-      if (entry?.doc !== doc) entry = { doc, promise: buildSearchIndex(doc) }
+      if (entry?.doc !== doc)
+        entry = { doc, promise: buildSearchIndex(doc, (n) => readText(doc, n)) }
       return entry.promise
+    },
+    textContent: readText,
+    async scannedPages(doc, signal) {
+      const flags = flagsOf(doc)
+      const scanned: number[] = []
+      let reads = 0
+      for (let index = 0; index < flags.length; index++) {
+        if (signal.aborted) return null
+        if (flags[index] === 0) {
+          if (!(await waitForViewActivity(doc, signal))) return null
+          const content = await texts.get(doc, index + 1)
+          flags[index] = isScannedContent(content) ? 1 : 2
+          reads++
+          if (signal.aborted) return null
+          // Give input and paint a turn between background extraction batches.
+          if (reads % 8 === 0) await new Promise<void>((done) => setTimeout(done, 0))
+        }
+        if (flags[index] === 1) scanned.push(index)
+      }
+      return signal.aborted ? null : scanned
     },
     clear() {
       entry = null
+      detected = new WeakMap()
+      texts.clear()
     },
   }
 }

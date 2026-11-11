@@ -72,6 +72,7 @@ export function HwpAiDock({
       )}
       <AiPanel
         bridge={bridge}
+        visible={shown}
         filePath={filePath}
         onCollapse={() => setOpen(false)}
         templateDocument={templateDocument}

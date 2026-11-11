@@ -4,6 +4,8 @@ EPUB 책 엔진이다(결정 0066). 원본 프로그램에서 온 것이 아니�
 
 ## 맡은 범위
 
+- 파일 기반 열기(`openEpubSource`, `archive-source.ts`): 불변 `ZipByteSource`를 받고, 전체 ZIP 관문을 통과한 뒤 책을 해석한다. JSZip의 이름 처리를 유지하는 작은 메타데이터 색인과 요청한 항목만 읽고, 저장할 때 원본 archive를 불러 기존 writer를 쓴다. 메타데이터 색인의 임시 표시는 저장하지 않는다. `src/`는 계속 Node 내장 모듈 없이 동작하고, 파일 수명과 경로 권한은 앱이 관리한다.
+
 - 열기(`open.ts`, `package.ts`, `types.ts`): `openEpub`이 정해진 순서로 검사하고 처음 걸린 것을 이유로 거절한다. ① zip 관문(`packages/zip-gate`, 한도 `EPUB_ZIP_LIMITS` = `DEFAULT_ZIP_LIMITS`) → `damaged`·`too-large`, ② `META-INF/container.xml`이 OPF를 가리킴 → `not-epub`, ③ `rights.xml`이 없고 `encryption.xml`에 글꼴 감추기 두 방식만 → `drm`, ④ OPF가 XML이고 manifest·spine이 있음 → `not-epub`. `mimetype` 항목의 순서·압축은 보지 않는다. 열린 책(`EpubBook`)은 책 정보, manifest, spine, 배치(`reflowable`/`pre-paginated`, 항목별 덮어쓰기 포함), 목차, 감춘 글꼴 목록을 담고, 항목은 부를 때만 읽는다.
 - 경로(`paths.ts`): 링크·manifest 경로를 그 항목 기준으로 풀고 `..`는 zip 루트에서 멈춘다. 스킴이 붙거나 `//`로 시작하는 대상은 zip 항목이 아니다.
 - 글꼴 감추기(`fonts.ts`, `sha1.ts`): IDPF·Adobe 방식으로 풀고 다시 감춘다. 둘 다 같은 XOR라 풀기와 감추기가 같은 연산이다.

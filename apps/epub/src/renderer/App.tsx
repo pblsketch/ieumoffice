@@ -45,6 +45,7 @@ import { EpubEditController, type EditState, type ReplaceAllOutcome } from './ed
 import { belongsToField, shortcutOf, type EditCommand } from './edit/shortcuts'
 import {
   buildTextIndex,
+  readingText,
   normalizeQuery,
   rangeOf,
   searchBook,
@@ -160,7 +161,7 @@ function chapterReadingText(chapter: OkChapter, assetBase: string): string {
     baseUrl: epubAssetUrl(assetBase, chapter.path),
   })
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  return buildTextIndex(doc.body).text
+  return readingText(doc.body)
 }
 
 export default function App(): React.JSX.Element {

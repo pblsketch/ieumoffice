@@ -15,6 +15,8 @@ export default tseslint.config(
       '**/release/**',
       '**/target/**',
       '**/coverage/**',
+      // Generated worker bundles and local profiling artifacts (git-ignored).
+      'working_dir/**',
       // dryforge skill worktrees/scratch (docs/workbench), not part of this repo's sources
       '**/.dryforge/**',
       'scripts/drivers/**',

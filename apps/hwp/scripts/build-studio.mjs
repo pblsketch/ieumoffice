@@ -29,8 +29,10 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 import {
   AGENT_PLUGIN_MODULE,
+  CAPTION_COMMAND_MODULE,
   CLIPBOARD_HTML_MODULE,
   FORMAT_COPY_MODULE,
+  FONT_METADATA_MODULE,
   HANCOM_KEYS_MODULE,
   PC_FONTS_MODULE,
   STUDIO_PATCHES,
@@ -94,6 +96,7 @@ const HANCOM_KEYS = join(PLUGIN_DIR, 'hancom-keys.mjs')
 const FORMAT_COPY = join(PLUGIN_DIR, 'format-copy.mjs')
 const CLIPBOARD_HTML = join(PLUGIN_DIR, 'clipboard-html.mjs')
 const PC_FONTS = join(PLUGIN_DIR, 'pc-fonts.mjs')
+const CAPTION_COMMANDS = join(PLUGIN_DIR, 'caption-commands.mjs')
 const HANJA_CACHE = join(APP, 'node_modules', '.cache', 'libhangul-hanja')
 const STAMP = join(OUT, '.stamp')
 
@@ -250,6 +253,8 @@ async function buildStudio() {
         [FORMAT_COPY_MODULE]: FORMAT_COPY,
         [CLIPBOARD_HTML_MODULE]: CLIPBOARD_HTML,
         [PC_FONTS_MODULE]: PC_FONTS,
+        [CAPTION_COMMAND_MODULE]: CAPTION_COMMANDS,
+        [FONT_METADATA_MODULE]: join(PLUGIN_DIR, 'font-metadata.mjs'),
       },
     },
     // upstream registers a service worker for its website build; this build

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { openChapter } from '@genoffice/epub-engine'
 import {
   buildTextIndex,
+  readingText,
   normalizeQuery,
   rangeOf,
   searchBook,
@@ -28,6 +29,24 @@ function drawn(source: string): Document {
 }
 
 describe('the reading text of a chapter', () => {
+  it('keeps plain search text identical without allocating per-character DOM positions', () => {
+    const doc = drawn(
+      xhtml('One', '<p>  A\t<em>B</em>\n C&nbsp;D😀漢字</p><p><ruby>字<rt>じ</rt></ruby></p>'),
+    )
+    const indexed = buildTextIndex(doc.body)
+    expect(readingText(doc.body)).toBe(indexed.text)
+    expect(indexed.text).toBe('A B C D😀漢字 字')
+    const start = indexed.text.indexOf('D😀漢字')
+    expect(rangeOf(doc, indexed, start, 'D😀漢字'.length)?.toString()).toBe('D😀漢字')
+  })
+
+  it('reads a multi-megabyte chapter without constructing character-position arrays', () => {
+    const doc = document.implementation.createHTMLDocument()
+    const text = '한글 문장과 English words. '.repeat(100000)
+    doc.body.appendChild(doc.createTextNode(text))
+    expect(readingText(doc.body)).toBe(text.trimEnd())
+  })
+
   it('collapses white space, separates blocks and leaves out styles and ruby readings', () => {
     const doc = drawn(
       xhtml(

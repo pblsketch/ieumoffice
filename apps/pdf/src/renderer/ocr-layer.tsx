@@ -15,8 +15,12 @@ import { geomDispSize, pdfRectToCss, viewToPdf } from './annotations'
 import type { PageGeom } from './annotations'
 import type { PageEntry } from './search'
 import type { SearchIndexCache } from './search'
+import { isScannedText } from './page-text-cache'
+export { isScannedText } from './page-text-cache'
 import { measurePt } from './text-wrap'
 import { foldCase } from '@genoffice/ui'
+import { releaseCanvasPixels, retainPageResources } from './page-resources'
+import { renderViewBitmap } from './view-bitmap'
 import { isNoSpaceScript, scriptOf } from '../../../../packages/pdf2docx/src/script'
 
 export interface OcrWord {
@@ -162,8 +166,6 @@ export function buildOcrPageData(lines: PdfOcrLine[], geom: PageGeom): OcrPageDa
 
 /** True when a page has effectively no extractable text (scanned candidate).
     Shared with the AI read_pages fallback so both sides agree on what "scanned" means. */
-export const isScannedText = (text: string): boolean => text.replace(/\s/g, '').length < 8
-
 export const isScannedEntry = (entry: PageEntry): boolean => isScannedText(entry.text)
 
 /** Render the page bitmap for recognition (display orientation, ~2k px long edge) */
@@ -174,17 +176,25 @@ export async function renderPageForOcr(
 ): Promise<string | null> {
   const disp = geomDispSize(geom)
   const scale = Math.min(4, Math.max(1.5, 2048 / Math.max(disp.width, disp.height, 1)))
+  const resources = retainPageResources(doc, origIdx + 1)
+  let canvas: HTMLCanvasElement | null = null
   try {
-    const page = await doc.getPage(origIdx + 1)
+    const page = await resources.page
     const viewport = page.getViewport({ scale, rotation: ((geom.rot % 360) + 360) % 360 })
-    const canvas = document.createElement('canvas')
+    canvas = document.createElement('canvas')
     canvas.width = Math.floor(viewport.width)
     canvas.height = Math.floor(viewport.height)
-    await page.render({ canvas, viewport }).promise
+    // OCR includes saved widgets like thumbnails, and yields to visible render jobs.
+    // Reuse the file renderer instead of decoding scanned images in PDF.js as well.
+    const delta = (((geom.rot - (page.rotate ?? 0)) % 360) + 360) % 360
+    await renderViewBitmap(doc, page, origIdx + 1, { canvas, viewport }, delta, true).promise
     const png = canvas.toDataURL('image/png').split(',')[1]
     return png && png.length > 0 ? png : null
   } catch {
     return null
+  } finally {
+    if (canvas) releaseCanvasPixels(canvas)
+    resources.release()
   }
 }
 
@@ -213,14 +223,14 @@ export interface AutoOcrResult {
 }
 
 /** Recognize the document's scanned pages sequentially, in the background.
-    Reads the shared text index (so the document is not extracted a second time),
+    Uses compact shared detection flags without building a positioned search index,
     visits pages from the current one and wraps around, and reports what it did.
     `signal` stops the pass: the renderer wires it to the user's Stop and to the
     teardown of the effect that started it. */
 export async function runAutoOcr(opts: {
   doc: PDFDocumentProxy
   cache: SearchIndexCache
-  /** Original page to start from, read when the index resolves (it takes a while).
+  /** Original page to start from, read when detection finishes (it takes a while).
       Ignored when `pending` continues an earlier pass. */
   fromPage: () => number
   /** The pages an earlier pass left, in its own visit order, as reported by
@@ -237,8 +247,8 @@ export async function runAutoOcr(opts: {
   onProgress: (done: number, total: number) => void
 }): Promise<AutoOcrResult> {
   const limit = opts.limit ?? AUTO_OCR_PAGE_CAP
-  const index = await opts.cache.get(opts.doc)
-  const scanned = index.map((entry, i) => (isScannedEntry(entry) ? i : -1)).filter((i) => i >= 0)
+  const scanned = await opts.cache.scannedPages(opts.doc, opts.signal)
+  if (scanned === null) return { stop: 'cancelled', done: 0, total: 0, remaining: 0, pending: null }
   // A continuation walks the queue it was handed as it stands. A first pass
   // builds one from the whole document, rotating so the pages after the reading
   // position come first; pages that rotation had already walked before the cap

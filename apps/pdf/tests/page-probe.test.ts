@@ -60,4 +60,36 @@ describe('probePageGeometry', () => {
     expect(r.pages).toHaveLength(3)
     expect(r.failures).toHaveLength(3)
   })
+
+  it('bounds concurrent probes and keeps fallback order when replies arrive out of order', async () => {
+    let active = 0
+    let peak = 0
+    const result = await probePageGeometry({
+      numPages: 40,
+      async getPage(n) {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((done) => setTimeout(done, (17 - (n % 16)) % 4))
+        active--
+        if (n === 1 || n === 18) throw new Error(`page ${n}`)
+        return {
+          rotate: 0,
+          view: [n, n],
+          userUnit: 1,
+          getViewport: () => ({ width: n * 10, height: n * 20 }),
+        }
+      },
+    })
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(16)
+    expect(active).toBe(0)
+    expect(result.failures).toEqual([
+      { page: 1, message: 'page 1' },
+      { page: 18, message: 'page 18' },
+    ])
+    expect(result.pages[0]!.width).toBe(595)
+    expect(result.pages[17]).toEqual(result.pages[16])
+    expect(result.pages[18]!.width).toBe(190)
+    expect(result.pages[39]!.origin).toEqual([40, 40])
+  })
 })

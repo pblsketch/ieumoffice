@@ -17,6 +17,8 @@ import {
 import type { LocalTextEdit, LocalTextInsert } from './text-edit-preview'
 import { STROKE_WIDTH } from './view-config'
 import type { StampInput } from '../shared/ipc'
+import { releaseCanvasPixels, retainPageResources } from './page-resources'
+import { renderViewBitmap } from './view-bitmap'
 
 interface RenderTaskHandle {
   promise: Promise<unknown>
@@ -28,11 +30,6 @@ interface RenderedThumb {
   pageNo: number
   rotationDelta: number
   rasterW: number
-}
-
-function releaseCanvasPixels(canvas: HTMLCanvasElement): void {
-  canvas.width = 0
-  canvas.height = 0
 }
 
 /** Thumbnail: rendered once per (doc, page, rotation, raster width) while visible.
@@ -55,12 +52,18 @@ export function PdfThumb({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const renderedRef = useRef<RenderedThumb | null>(null)
   const renderSettledRef = useRef<Promise<void>>(Promise.resolve())
+  const renderGeneration = useRef({ version: 0 }).current
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const version = ++renderGeneration.version
     if (!visible) {
       renderedRef.current = null
-      releaseCanvasPixels(canvas)
+      // Cancellation is asynchronous. Keep the backing store until PDF.js
+      // releases it, and do not clear a render started by a rapid revisit.
+      void renderSettledRef.current.finally(() => {
+        if (renderGeneration.version === version) releaseCanvasPixels(canvas)
+      })
       return
     }
     const rendered = renderedRef.current
@@ -75,6 +78,7 @@ export function PdfThumb({
     renderedRef.current = null
     let disposed = false
     let renderTask: RenderTaskHandle | null = null
+    const resources = retainPageResources(doc, pageNo)
     const previousRenderSettled = renderSettledRef.current
     const renderSettled = (async () => {
       // pdf.js owns the canvas until RenderTask.promise settles, including after
@@ -82,7 +86,7 @@ export function PdfThumb({
       await previousRenderSettled
       if (disposed) return
       try {
-        const page = await doc.getPage(pageNo)
+        const page = await resources.page
         if (disposed) return
         const rotation = (page.rotate + rotationDelta) % 360
         const scale = rasterW / page.getViewport({ scale: 1, rotation }).width
@@ -90,11 +94,18 @@ export function PdfThumb({
         const dpr = Math.min(window.devicePixelRatio || 1, 2)
         canvas.width = Math.floor(viewport.width * dpr)
         canvas.height = Math.floor(viewport.height * dpr)
-        renderTask = page.render({
-          canvas,
-          viewport,
-          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
-        })
+        renderTask = renderViewBitmap(
+          doc,
+          page,
+          pageNo,
+          {
+            canvas,
+            viewport,
+            transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+          },
+          rotationDelta,
+          true,
+        )
         await renderTask.promise
         if (!disposed) renderedRef.current = { doc, pageNo, rotationDelta, rasterW }
       } catch {
@@ -102,21 +113,25 @@ export function PdfThumb({
       } finally {
         renderTask = null
       }
-    })()
+    })().finally(() => resources.release())
     renderSettledRef.current = renderSettled
     return () => {
       disposed = true
       renderTask?.cancel()
     }
-  }, [doc, pageNo, rotationDelta, visible, rasterW])
+  }, [doc, pageNo, rotationDelta, visible, rasterW, renderGeneration])
 
   // Capture the node: React may clear canvasRef before passive unmount cleanup runs.
   useEffect(() => {
     const canvas = canvasRef.current
     return () => {
-      if (canvas) releaseCanvasPixels(canvas)
+      const version = ++renderGeneration.version
+      void renderSettledRef.current.finally(() => {
+        // The generation check also covers StrictMode's effect remount.
+        if (canvas && renderGeneration.version === version) releaseCanvasPixels(canvas)
+      })
     }
-  }, [])
+  }, [renderGeneration])
 
   return <canvas ref={canvasRef} style={{ width: '100%' }} />
 }

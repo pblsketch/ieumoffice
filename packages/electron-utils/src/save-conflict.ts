@@ -20,7 +20,7 @@
  * this module serves the editors that only guard against a sibling pane.
  */
 import { createHash } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
+import { open, stat } from 'node:fs/promises'
 import type { BrowserWindow } from 'electron'
 import { saveConflictLabels } from './save-conflict-labels'
 
@@ -31,14 +31,28 @@ export interface SaveDiskState {
   hash: string
 }
 
-const sha256Hex = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+/** Keep snapshots bounded even while an editor already holds a large document. */
+async function fileHash(path: string): Promise<string> {
+  const hash = createHash('sha256')
+  const file = await open(path, 'r')
+  try {
+    const buffer = Buffer.allocUnsafe(1024 * 1024)
+    for (;;) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, null)
+      if (!bytesRead) break
+      hash.update(buffer.subarray(0, bytesRead))
+    }
+  } finally {
+    await file.close()
+  }
+  return hash.digest('hex')
+}
 
 /** stat + content hash of the file, or null when it is not a readable file. */
 export async function recordDiskState(path: string): Promise<SaveDiskState | null> {
   try {
     const info = await stat(path)
-    const bytes = await readFile(path)
-    return { mtimeMs: info.mtimeMs, size: info.size, hash: sha256Hex(bytes) }
+    return { mtimeMs: info.mtimeMs, size: info.size, hash: await fileHash(path) }
   } catch {
     return null
   }
@@ -63,7 +77,7 @@ export async function isModifiedSince(
   }
   if (current.mtimeMs === recorded.mtimeMs && current.size === recorded.size) return false
   try {
-    return sha256Hex(await readFile(path)) !== recorded.hash
+    return (await fileHash(path)) !== recorded.hash
   } catch {
     return false
   }
