@@ -2,6 +2,7 @@ import { basename } from 'node:path'
 import { BrowserWindow, screen } from 'electron'
 import type { Rectangle, WebContents, WebContentsView } from 'electron'
 import { resumeDiscardedCopies } from '@genoffice/electron-utils'
+import { setViewVisible } from '@genoffice/electron-utils/view-visibility'
 
 import {
   docsQueryDirty,
@@ -556,7 +557,7 @@ export function createDetachedEditorWindow(options: {
     setImmediate(() => layout())
   })
   layout()
-  view.setVisible(true)
+  setViewVisible(view, true)
   if (tearOffAt) {
     const pos = win.getPosition()
     torn = { rec, grabDx: tearOffAt.x - pos[0], grabDy: tearOffAt.y - pos[1] }

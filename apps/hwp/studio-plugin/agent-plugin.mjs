@@ -25,6 +25,7 @@ import { installDialogTheme } from './dialog-theme.mjs'
 import { missingFonts, setMissingFontLabels, whenPcFontsSettled } from './pc-fonts.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
+export const VIEW_VISIBILITY_COMMAND = 'ext:ieum-view-visibility'
 
 /** Matches listed back to the caller when a search is ambiguous. */
 const MAX_LISTED_MATCHES = 20
@@ -4414,6 +4415,17 @@ export const agentPlugin = {
     // when the plugin comes up, not when the AI panel opens: a settings dialog
     // can be opened on a document the panel never touched.
     installDialogTheme()
+    try {
+      host.automation?.registerCommand({
+        id: VIEW_VISIBILITY_COMMAND,
+        label: 'Update view visibility',
+        execute: (services, params) => {
+          services.eventBus.emit('ieum-view-visibility', params?.visible !== false)
+        },
+      })
+    } catch {
+      // A reactivated host may already own the command.
+    }
 
     // the unsaved state as the editor sets it, in the same task as the edit: the app's close
     // prompt reads its copy of this, and a key typed just before closing must be in it

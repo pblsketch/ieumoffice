@@ -16,11 +16,12 @@
  */
 import JSZip from 'jszip'
 import { decodeEntryText, encodeEntryText, type EpubTextEncoding } from './encoding'
-import { openedArchive, openEpub, type EpubOpenOptions } from './open'
+import { hasOpenedArchive, openedArchive, openEpub, type EpubOpenOptions } from './open'
 import { normalizeZipPath } from './paths'
 import { applyReplacements, validateReplacements, type RangeReplacement } from './ranges'
 import type { EpubBook } from './types'
 import { checkWellFormed, parseXml, type XmlElement } from './xml-positions'
+import { writeZipChunks } from './zip-output'
 
 /** Range replacements per entry path, each against that entry's decoded text. */
 export type EpubChapterEdits =
@@ -62,6 +63,17 @@ export type EpubSaveResult =
       path: string | null
       /** English, for the log; not for the screen */
       detail: string
+    }
+
+/** Validated save output. No compressed archive is materialized by preparation. */
+export type EpubSavePlan =
+  | Exclude<EpubSaveResult, { ok: true; changed: true }>
+  | {
+      ok: true
+      changed: true
+      changedChapters: string[]
+      bytes(): Promise<Uint8Array>
+      write(sink: (bytes: Uint8Array) => Promise<void>): Promise<void>
     }
 
 const MIMETYPE = 'mimetype'
@@ -189,7 +201,7 @@ const refusal = (
   reason: EpubSaveRefusalReason,
   path: string | null,
   detail: string,
-): EpubSaveResult => ({ ok: false, reason, path, detail })
+): Extract<EpubSaveResult, { ok: false }> => ({ ok: false, reason, path, detail })
 
 function editEntries(edits: EpubChapterEdits): [string, readonly RangeReplacement[]][] {
   return edits instanceof Map
@@ -216,11 +228,11 @@ function entryName(zip: JSZip, path: string): string | null {
  * archive it reads without opening it again. Neither is ever changed, and
  * both give the same bytes.
  */
-export async function saveEpub(
+export async function prepareEpubSave(
   original: Uint8Array | EpubBook,
   edits: EpubChapterEdits,
   options: EpubSaveOptions = {},
-): Promise<EpubSaveResult> {
+): Promise<EpubSavePlan> {
   let book: EpubBook
   if (ArrayBuffer.isView(original)) {
     const opened = await openEpub(original, options)
@@ -229,13 +241,16 @@ export async function saveEpub(
   } else {
     book = original
   }
-  const zip = openedArchive(book)
+  if (!hasOpenedArchive(book))
+    return refusal('not-opened', null, 'the book was not opened by openEpub')
+  // Merge the edits per archive entry.
+  const requested = editEntries(edits).filter(([, replacements]) => replacements.length > 0)
+  if (requested.length === 0) return { ok: true, changed: false }
+  const zip = await openedArchive(book)
   if (zip === null) return refusal('not-opened', null, 'the book was not opened by openEpub')
 
-  // Merge the edits per archive entry.
   const wanted = new Map<string, RangeReplacement[]>()
-  for (const [path, replacements] of editEntries(edits)) {
-    if (replacements.length === 0) continue
+  for (const [path, replacements] of requested) {
     const name = entryName(zip, path)
     if (name === null) return refusal('unknown-entry', path, `the archive has no entry ${path}`)
     wanted.set(name, [...(wanted.get(name) ?? []), ...replacements])
@@ -284,8 +299,29 @@ export async function saveEpub(
   for (const [name, { text, encoding }] of texts) {
     replaced.set(name, encodeEntryText(text, encoding))
   }
-  const bytes = await writeEpubArchive(zip, replaced, now)
-  return { ok: true, changed: true, bytes, changedChapters }
+  const output = await createEpubArchive(zip, replaced, now)
+  return {
+    ok: true,
+    changed: true,
+    changedChapters,
+    bytes: () => output.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }),
+    write: (sink) => writeZipChunks(output, sink),
+  }
+}
+
+export async function saveEpub(
+  original: Uint8Array | EpubBook,
+  edits: EpubChapterEdits,
+  options: EpubSaveOptions = {},
+): Promise<EpubSaveResult> {
+  const plan = await prepareEpubSave(original, edits, options)
+  if (!plan.ok || !plan.changed) return plan
+  return {
+    ok: true,
+    changed: true,
+    changedChapters: plan.changedChapters,
+    bytes: await plan.bytes(),
+  }
 }
 
 /**
@@ -300,6 +336,17 @@ export async function writeEpubArchive(
   replaced: ReadonlyMap<string, Uint8Array>,
   now: Date,
 ): Promise<Uint8Array> {
+  return (await createEpubArchive(zip, replaced, now)).generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+  })
+}
+
+async function createEpubArchive(
+  zip: JSZip,
+  replaced: ReadonlyMap<string, Uint8Array>,
+  now: Date,
+): Promise<JSZip> {
   const out = new JSZip()
   const mimetype = zip.files[MIMETYPE]
   if (mimetype && !mimetype.dir) {
@@ -327,5 +374,5 @@ export async function writeEpubArchive(
     const data = replaced.get(file.name) ?? (await unchangedData(file))
     out.file(file.name, data, { ...common, compression: compressionOf(file), binary: true })
   }
-  return out.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
+  return out
 }

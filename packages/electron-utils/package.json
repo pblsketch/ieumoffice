@@ -34,6 +34,8 @@
     "./safe-external-url": "./src/safe-external-url.ts",
     "./safe-remote-url": "./src/safe-remote-url.ts",
     "./split-pane-bridge": "./src/split-pane-bridge.ts",
+    "./view-visibility": "./src/view-visibility.ts",
+    "./view-activity": "./src/view-activity.ts",
     "./generate-handoff": "./src/generate-handoff.ts",
     "./unsaved-files": "./src/unsaved-files.ts",
     "./user-skills-bridge": "./src/user-skills-bridge.ts",

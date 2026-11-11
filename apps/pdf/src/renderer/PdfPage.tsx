@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { AnnotationMode, TextLayer } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
+import type { PDFDocumentProxy } from 'pdfjs-dist'
+import { renderViewBitmap, type ViewRenderTask } from './view-bitmap'
 import { pdfRectToCss, quadToRect } from './annotations'
 import type { LocalMarkup, PageGeom } from './annotations'
 import { MAX_PAGE_RENDER_PIXELS } from './view-config'
+import { releaseCanvasPixels, retainPageResources } from './page-resources'
+import { fileViewRenderer } from './view-renderer'
+import { renderViewportTiles } from './view-tiles'
+import { pageRasterCache } from './page-raster-cache'
+const rasterOwners = new WeakMap<HTMLCanvasElement, object>()
 
 /** Which items in the container are within the (expanded) viewport — shared lazy-render basis
     for pages/thumbnails. Rebuild the observer when enabled flips (sidebar toggles unmount/remount the root) */
@@ -69,6 +75,12 @@ export function PdfPage({
     // reload, zoom, rotation), keep the previous canvas visible until its replacement
     // is fully rendered so the page never flashes white between document instances.
     if (!visible) {
+      const source = fileViewRenderer(doc)?.source.id
+      for (const canvas of holder.querySelectorAll('canvas')) {
+        if (source && canvas.dataset.pdfRasterSource === source && canvas.dataset.pdfRasterKey)
+          pageRasterCache.put(doc, canvas.dataset.pdfRasterKey, canvas)
+        else releaseCanvasPixels(canvas)
+      }
       holder.replaceChildren()
       // A page captured by the post-save barrier may scroll out before its replacement
       // renders. Its overlays are no longer mounted, so treat the cleared offscreen page
@@ -80,9 +92,14 @@ export function PdfPage({
     // pages dynamically so global preview cleanup cannot outrun their bitmap swap.
     onRenderState(doc, pageNo, true)
     let cancelled = false
-    let renderTask: RenderTask | null = null
-    void (async () => {
-      const page = await doc.getPage(pageNo)
+    let renderTask: ViewRenderTask | null = null
+    let textLayer: TextLayer | null = null
+    let canvas: HTMLCanvasElement | null = null
+    let surface: HTMLElement | null = null
+    const rasterOwner = {}
+    const resources = retainPageResources(doc, pageNo)
+    const rendering = (async () => {
+      const page = await resources.page
       if (cancelled) return
       const viewport = page.getViewport({ scale, rotation: (page.rotate + rotationDelta) % 360 })
       // Cap at 2x: on hi-dpi screens a 3x-dpr full-page bitmap doubles memory with no visible gain.
@@ -92,19 +109,54 @@ export function PdfPage({
         2,
         Math.sqrt(MAX_PAGE_RENDER_PIXELS / (viewport.width * viewport.height)),
       )
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.floor(viewport.width * dpr)
-      canvas.height = Math.floor(viewport.height * dpr)
-      canvas.style.width = `${Math.floor(viewport.width)}px`
-      canvas.style.height = `${Math.floor(viewport.height)}px`
-      renderTask = page.render({
-        canvas,
-        viewport,
-        // FormLayer renders interactive widgets as HTML. Exclude their saved appearance
-        // streams from the page bitmap or filled values are drawn twice after a reload.
-        annotationMode: AnnotationMode.ENABLE_FORMS,
-        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
-      })
+      if (fileViewRenderer(doc) && viewport.width * viewport.height * dpr * dpr > 4_000_000) {
+        surface = document.createElement('div')
+        surface.dataset.pdfTileSurface = 'true'
+        surface.style.position = 'absolute'
+        surface.style.inset = '0'
+        renderTask = renderViewportTiles(
+          doc,
+          page,
+          pageNo,
+          viewport,
+          dpr,
+          rotationDelta,
+          holder,
+          surface,
+        )
+      } else {
+        const source = fileViewRenderer(doc)?.source.id
+        const key = `${pageNo}:${scale}:${rotationDelta}:${page.rotate}:${dpr}`
+        const cached = source ? pageRasterCache.take(doc, key) : undefined
+        canvas = cached ?? document.createElement('canvas')
+        rasterOwners.set(canvas, rasterOwner)
+        surface = canvas
+        if (source) {
+          canvas.dataset.pdfRasterSource = source
+          canvas.dataset.pdfRasterKey = key
+        }
+        if (cached) renderTask = { promise: Promise.resolve(), cancel() {} }
+        else {
+          canvas.width = Math.floor(viewport.width * dpr)
+          canvas.height = Math.floor(viewport.height * dpr)
+          canvas.style.width = `${Math.floor(viewport.width)}px`
+          canvas.style.height = `${Math.floor(viewport.height)}px`
+          renderTask = renderViewBitmap(
+            doc,
+            page,
+            pageNo,
+            {
+              canvas,
+              viewport,
+              // FormLayer renders interactive widgets as HTML. Exclude their saved appearance
+              // streams from the page bitmap or filled values are drawn twice after a reload.
+              annotationMode: AnnotationMode.ENABLE_FORMS,
+              transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+            },
+            rotationDelta,
+          )
+        }
+      }
       try {
         await renderTask.promise
       } catch {
@@ -113,11 +165,12 @@ export function PdfPage({
       if (cancelled) return
       const textDiv = document.createElement('div')
       textDiv.className = 'textLayer'
-      holder.replaceChildren(canvas, textDiv)
+      for (const old of holder.querySelectorAll('canvas')) releaseCanvasPixels(old)
+      holder.replaceChildren(surface, textDiv)
       // Notify after the bitmap swap, but before the browser paints. A post-save
       // reload uses this to remove the matching edit previews in the same frame.
       onRenderState(doc, pageNo, false)
-      const textLayer = new TextLayer({
+      textLayer = new TextLayer({
         textContentSource: page.streamTextContent(),
         container: textDiv,
         viewport,
@@ -128,11 +181,39 @@ export function PdfPage({
         /* cancelled */
       }
     })()
+      .catch(() => {
+        // A destroyed document or a failed page must not leave the save barrier pending.
+        if (!cancelled) onRenderState(doc, pageNo, false)
+      })
+      // The canvas and text DOM are self-contained once rendering finishes.
+      // Do not retain full-resolution source images merely because a tiny
+      // thumbnail or a completed page remains visible.
+      .finally(() => resources.release())
     return () => {
       cancelled = true
       renderTask?.cancel()
+      textLayer?.cancel()
+      // Do not resize a canvas while PDF.js still owns its render context. Keep a
+      // completed displayed bitmap through zoom/save until its replacement swaps in.
+      void rendering.finally(() => {
+        if (
+          canvas &&
+          rasterOwners.get(canvas) === rasterOwner &&
+          !holder.contains(canvas) &&
+          !pageRasterCache.holds(canvas)
+        )
+          releaseCanvasPixels(canvas)
+        for (const tile of surface?.querySelectorAll('canvas') ?? [])
+          if (!holder.contains(tile)) releaseCanvasPixels(tile)
+      })
     }
   }, [doc, pageNo, scale, rotationDelta, visible, onRenderState])
+  useEffect(() => {
+    const holder = holderRef.current
+    return () => {
+      for (const canvas of holder?.querySelectorAll('canvas') ?? []) releaseCanvasPixels(canvas)
+    }
+  }, [])
   return <div ref={holderRef} className="pdf-page-content" />
 }
 

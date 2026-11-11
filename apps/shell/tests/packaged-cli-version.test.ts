@@ -25,6 +25,7 @@ interface Rebuild {
 function loadConfig(opts: {
   baked: string
   extraMetadataVersion?: string
+  localBuildId?: string
   rebuildApplies?: boolean
 }): {
   config: { beforePack: (context: { electronPlatformName: string }) => Promise<void> }
@@ -36,7 +37,12 @@ function loadConfig(opts: {
   runInNewContext(readFileSync(resolve(shellRoot, 'electron-builder.cjs'), 'utf8'), {
     module: configModule,
     __dirname: shellRoot,
-    process: { platform: 'linux', arch: 'x64', env: {}, execPath: '/usr/bin/node' },
+    process: {
+      platform: 'linux',
+      arch: 'x64',
+      env: opts.localBuildId === undefined ? {} : { IEUM_LOCAL_BUILD_ID: opts.localBuildId },
+      execPath: '/usr/bin/node',
+    },
     require: (id: string) => {
       if (id === './package.json') return shellPackage
       if (id === 'node:child_process') {
@@ -90,6 +96,15 @@ function loadConfig(opts: {
 }
 
 describe('packaged CLI version agreement', () => {
+  it('uses the same metadata version for a local app and its bundled CLI', async () => {
+    const { config, rebuilds } = loadConfig({
+      baked: shellPackage.version,
+      localBuildId: 'check.1',
+    })
+    await config.beforePack({ electronPlatformName: 'linux' })
+    expect(rebuilds[0].appVersion).toBe(`${shellPackage.version}+local.check.1`)
+  })
+
   it('rebuilds the CLI bundle with the app version when the two disagree', async () => {
     const { config, rebuilds } = loadConfig({ baked: '9.9.9' })
     await config.beforePack({ electronPlatformName: 'linux' })

@@ -24,7 +24,6 @@
  */
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, protocol, shell } from 'electron'
 import type { WebContents } from 'electron'
@@ -51,6 +50,7 @@ import { registerEpubAiIpc } from './ai-attachments'
 import { EPUB_ASSET_SCHEME_PRIVILEGE, serveEpubAsset } from './asset-protocol'
 import { atomicWriteFile } from './atomic-write'
 import { EpubBookSession } from './book-session'
+import { createBookFile, publishBookFile } from './book-file'
 import { tm } from './i18n-main'
 import { createReadingState, readPositionOf } from './reading-state'
 import type { ReadingState } from './reading-state'
@@ -167,8 +167,12 @@ function isPathOpenInTab(path: string): boolean {
 // ── Split-copy save guard (decision 0036), as in the other editors ──
 const docDiskStates = new Map<number, Map<string, SaveDiskState>>()
 
-async function rememberDiskState(wcId: number, path: string): Promise<void> {
-  const state = await recordDiskState(path)
+async function rememberDiskState(
+  wcId: number,
+  path: string,
+  openedState?: SaveDiskState,
+): Promise<void> {
+  const state = openedState ?? (await recordDiskState(path))
   if (!state) return
   const states = docDiskStates.get(wcId) ?? new Map<string, SaveDiskState>()
   states.set(path, state)
@@ -473,6 +477,10 @@ async function saveView(contents: WebContents, request: unknown): Promise<EpubSa
   const sameFile = current !== undefined && samePath(current, target)
   const outcome = await saveBook(session, target, sameFile, {
     write: writeAtomically,
+    streaming: {
+      create: (produce) => createBookFile(join(userDataDir(), 'epub-cache'), produce),
+      publish: publishBookFile,
+    },
     store,
     ...(runtime.migrateJobRecords ? { migrateJobRecords: runtime.migrateJobRecords } : {}),
     log: (message) => console.warn(message),
@@ -585,8 +593,8 @@ async function writeTranslated(
   if (docHash !== session.docHash) {
     return { ok: false, error: 'stale', message: 'the book was saved since' }
   }
-  const bytes = session.bytes
   try {
+    const bytes = await session.readBytes()
     const stored = easy
       ? await store().readTranslation(docHash, lang, 'easy')
       : await store().readTranslation(docHash, lang)
@@ -633,24 +641,29 @@ function registerEpubIpc(): void {
     if (held && held.isDirty() && savePathByWc.get(wcId) === path) {
       session = held
     } else {
-      let bytes: Uint8Array
+      let opened: Awaited<ReturnType<typeof EpubBookSession.openFile>>
       try {
-        // the file's own buffer, handed to the session as the one copy of the book
-        const file = await readFile(path)
-        bytes = new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
+        opened = await EpubBookSession.openFile(path, join(userDataDir(), 'epub-cache'))
       } catch {
         refuseWrites(wcId)
         return { status: 'refused', reason: 'unreadable' }
       }
-      const opened = await EpubBookSession.open(bytes)
       if (!opened.ok) {
         console.warn(`[epub] the file did not open (${opened.reason}): ${path}`)
         refuseWrites(wcId)
         return { status: 'refused', reason: opened.reason }
       }
       session = opened.session
+      if (e.sender.isDestroyed() || !contentsByWc.has(wcId)) {
+        await session.dispose()
+        return { status: 'refused', reason: 'unreadable' }
+      }
+      const previous = sessionByWc.get(wcId)
       sessionByWc.set(wcId, session)
-      await rememberDiskState(wcId, path)
+      if (previous !== session) {
+        void previous?.dispose().catch((err) => console.warn('[epub] snapshot cleanup failed', err))
+      }
+      await rememberDiskState(wcId, path, session.initialDiskState ?? undefined)
     }
     // Seen open, here: only now is the path a save target.
     unopenedByWc.delete(wcId)
@@ -859,7 +872,7 @@ function registerEpubIpc(): void {
 function refuseWrites(wcId: number): void {
   unopenedByWc.set(wcId, 'failed')
   savePathByWc.delete(wcId)
-  sessionByWc.delete(wcId)
+  dropSession(wcId)
   rendererDirtyByWc.delete(wcId)
 }
 
@@ -870,7 +883,7 @@ function forgetView(wcId: number): void {
   allowedByWc.delete(wcId)
   savePathByWc.delete(wcId)
   unopenedByWc.delete(wcId)
-  sessionByWc.delete(wcId)
+  dropSession(wcId)
   contentsByWc.delete(wcId)
   rendererDirtyByWc.delete(wcId)
   knownHashesByWc.delete(wcId)
@@ -884,6 +897,12 @@ function forgetView(wcId: number): void {
   saveWaiters.get(wcId)?.(false)
   saveWaiters.delete(wcId)
   saveChainByWc.delete(wcId)
+}
+
+function dropSession(wcId: number): void {
+  const session = sessionByWc.get(wcId)
+  sessionByWc.delete(wcId)
+  void session?.dispose().catch((err) => console.warn('[epub] snapshot cleanup failed', err))
 }
 
 function grantAndTrack(wc: WebContents, openPath?: string | null): void {

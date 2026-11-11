@@ -2,6 +2,8 @@
 
 import type { DocumentProfile } from '@genoffice/doc-rules'
 
+export declare const VIEW_VISIBILITY_COMMAND: 'ext:ieum-view-visibility'
+
 /**
  * What the document is made of, for the format checks of `@genoffice/doc-rules`. The
  * editor does not know the file's extension, so the app fills `format` in.

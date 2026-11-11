@@ -1,0 +1,60 @@
+diff --git a/src/renderer/glyph_fit.rs b/src/renderer/glyph_fit.rs
+index 9c48d91c..26ddf610 100644
+--- a/src/renderer/glyph_fit.rs
++++ b/src/renderer/glyph_fit.rs
+@@ -11,25 +11,29 @@ fn has_positive_source_tracking(style: &TextStyle) -> bool {
+             .is_some_and(|latin| latin.letter_spacing > 0.0)
+ }
+ 
++fn has_source_tracking(style: &TextStyle) -> bool {
++    style.letter_spacing != 0.0
++        || style
++            .ascii_punct_latin
++            .as_ref()
++            .is_some_and(|latin| latin.letter_spacing != 0.0)
++}
++
+ fn intrinsic_style(style: &TextStyle) -> Cow<'_, TextStyle> {
+-    if !has_positive_source_tracking(style) {
++    if !has_source_tracking(style) {
+         return Cow::Borrowed(style);
+     }
+     let mut intrinsic = style.clone();
+-    if intrinsic.letter_spacing > 0.0 {
+-        intrinsic.letter_spacing = 0.0;
+-    }
++    intrinsic.letter_spacing = 0.0;
+     if let Some(latin) = intrinsic.ascii_punct_latin.as_mut() {
+-        if latin.letter_spacing > 0.0 {
+-            latin.letter_spacing = 0.0;
+-        }
++        latin.letter_spacing = 0.0;
+     }
+     Cow::Owned(intrinsic)
+ }
+ 
+ /// 글리프 폭 맞춤(SVG `textLength`, Canvas `scaleX`)에 쓸 문자 경계를 돌려준다.
+ ///
+-/// 원본의 양수 자간·커닝·배분 간격은 글자 원점에만 적용한다. 그 경계로 폭을
++/// 원본의 자간·커닝·배분 간격은 글자 원점에만 적용한다. 그 경계로 폭을
+ /// 맞추면 글리프 윤곽도 늘거나 눌리므로, 같은 측정기에서 원본 자간을 제외한다.
+ /// 기존 음수 간격의 최소 전진폭
+ /// clamp를 역산하지 않고 같은 측정기로 다시 계산하며, 그리는 원점은 보존한다.
+@@ -39,7 +43,7 @@ pub(crate) fn glyph_fit_positions<'a>(
+     layout_positions: Option<&[f64]>,
+     char_positions: &'a [f64],
+ ) -> std::borrow::Cow<'a, [f64]> {
+-    let positive_source_tracking = has_positive_source_tracking(style);
++    let source_tracking = has_source_tracking(style);
+     let intrinsic = intrinsic_style(style);
+     let style = intrinsic.as_ref();
+     if legacy_font_advances::has_fixed_ascii_bold_tracking(style) {
+@@ -67,7 +71,7 @@ pub(crate) fn glyph_fit_positions<'a>(
+             std::borrow::Cow::Owned(layout::compute_glyph_fit_positions(replay_text, &fit_style))
+         }
+     } else if (style.kerning && validated_replay_positions(replay_text, layout_positions).is_some())
+-        || positive_source_tracking
++        || source_tracking
+         || style.extra_char_spacing < 0.0
+         || legacy_font_advances::has_bold_tracking(style)
+     {

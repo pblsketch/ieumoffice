@@ -24,6 +24,15 @@
 import { decompressionStream, streamBytes } from './byte-stream'
 
 export { decompressionStream, streamBytes } from './byte-stream'
+export {
+  assertZipSourceInflatesWithinLimits,
+  readZipSourcePart,
+  streamZipSourcePart,
+  streamZipSourceCompressed,
+  type ZipByteSource,
+  type ZipByteLease,
+  type ZipSourcePart,
+} from './source'
 
 /** What the gates enforce; `DEFAULT_ZIP_LIMITS` is the default policy. */
 export interface ZipLimits {

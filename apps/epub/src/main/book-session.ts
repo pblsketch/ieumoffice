@@ -2,9 +2,9 @@
  * One open book in the main process, Electron-free (the main module binds it
  * to a view; the tests drive it directly).
  *
- * The session holds the only copy of the book's bytes, the book the engine
- * opened from them, and for every chapter read so far its stored text, its
- * current text and the range replacements between the two. Edits arrive as
+ * The session holds the book's bytes in memory or an immutable file snapshot,
+ * the book the engine opened from them, a bounded set of untouched chapter maps,
+ * and every edited chapter's stored/current text and range replacements. Edits arrive as
  * engine block edits or as range replacements; either way the chapter is
  * re-read for its blocks and the replacements are composed against the stored
  * text, so a save rewrites only the edited ranges (spec §6, §12.1).
@@ -16,21 +16,23 @@
  * inner ranges without taking the chapter back to a text it already had in
  * this session (what undo, redo and rollback send).
  *
- * The book reads from the session's bytes themselves (the engine is handed
- * them, not given a copy), and a save writes from the opened book, so the
- * main process holds one copy of each book.
+ * Small books read the session's own bytes without a second copy. Large books
+ * read entries from a file snapshot; only saves and translated output materialize
+ * the whole archive. Both paths use the same original-preserving save writer.
  */
 import { createHash } from 'node:crypto'
+import { readFile, stat } from 'node:fs/promises'
 import {
   applyBlockEdits,
   applyReplacements,
   composeReplacements,
-  epubDocumentHash,
   extractChapterText,
   openChapter,
   openEpub,
+  openEpubSource,
   remapChapter,
   saveEpub,
+  prepareEpubSave,
   validateReplacements,
   type BlockEdit,
   type ChapterMap,
@@ -47,6 +49,9 @@ import type {
   EpubEditResult,
   EpubReadOnlyReason,
 } from '../shared/ipc'
+import { hashBookBytes } from './book-hash'
+import { snapshotBookFile, type BookFileSource } from './book-file'
+import { traceEpubOpen } from './open-trace'
 
 interface ChapterState {
   path: string
@@ -61,6 +66,27 @@ interface ChapterState {
   version: number
   /** digests of every text the chapter has had in this session: where range replacements may take it back */
   seen: Set<string>
+}
+
+const CLEAN_CHAPTER_LIMIT = 8
+const CLEAN_CHAPTER_BUDGET = 16 * 1024 * 1024
+
+/** A conservative cache weight, not a measurement of the JavaScript heap. */
+function chapterWeight(map: ChapterMap): number {
+  let bytes = 2 * map.source.length
+  if (map.broken) return bytes
+  bytes += map.blocks.length * 192
+  const pending = [map.doc.root]
+  while (pending.length) {
+    const element = pending.pop()!
+    bytes += 256 + 2 * element.name.length
+    for (const attr of element.attributes) bytes += 96 + 2 * (attr.name.length + attr.value.length)
+    for (const child of element.children) {
+      if (child.type === 'element') pending.push(child)
+      else bytes += 80 + (child.type === 'text' ? 2 * child.value.length : 0)
+    }
+  }
+  return bytes
 }
 
 /** What a save would write, and the chapter texts it was made from. */
@@ -225,12 +251,28 @@ export function bookSummary(book: EpubBook): EpubBookSummary {
 
 export class EpubBookSession {
   private chapters = new Map<string, ChapterState>()
+  private readonly cleanChapters = new Map<string, number>()
+  private cleanChapterBytes = 0
+  private readonly chapterUsers = new Map<string, number>()
+  private readonly chapterLoads = new Map<
+    string,
+    { book: EpubBook; promise: Promise<ChapterState> }
+  >()
+  private activeChapterReads = 0
+  private readonly chapterReadWaiters: (() => void)[] = []
   private translationLocked = false
+  /** The disk version these bytes came from, rather than a later reread of the path. */
+  private openedDiskState: { mtimeMs: number; size: number; hash: string } | null = null
+  private closing = false
+  private saveQueue: Promise<void> = Promise.resolve()
+  private disposal?: Promise<void>
+  private readonly retiredSources = new Set<Promise<void>>()
 
   private constructor(
-    private currentBytes: Uint8Array,
+    private currentBytes: Uint8Array | null,
     private currentBook: EpubBook,
     private currentDocHash: string,
+    private fileSource?: BookFileSource,
   ) {}
 
   /**
@@ -242,13 +284,105 @@ export class EpubBookSession {
     if (!opened.ok) return { ok: false, reason: opened.reason }
     return {
       ok: true,
-      session: new EpubBookSession(bytes, opened.book, await epubDocumentHash(bytes)),
+      session: new EpubBookSession(bytes, opened.book, await hashBookBytes(bytes)),
     }
+  }
+
+  /** Small books stay in memory; large ones are read from an immutable snapshot. */
+  static async openFile(
+    path: string,
+    cacheDir: string,
+    threshold = 64 * 1024 * 1024,
+  ): Promise<OpenSessionResult> {
+    const trace = traceEpubOpen()
+    return trace<OpenSessionResult>('total', async () => {
+      const before = await trace('stat', () => stat(path))
+      // The payload gate already caps expanded content at 1.5 GiB. Bound the
+      // outer snapshot too, before a padded or unsupported archive fills disk.
+      if (before.size > 2 * 1024 * 1024 * 1024) return { ok: false, reason: 'too-large' }
+      if (before.size < threshold) {
+        const bytes = await trace('read-small-file', () => readFile(path))
+        const after = await stat(path)
+        if (
+          before.dev !== after.dev ||
+          before.ino !== after.ino ||
+          before.size !== after.size ||
+          before.mtimeMs !== after.mtimeMs ||
+          before.ctimeMs !== after.ctimeMs
+        ) {
+          throw new Error('epub: source changed while it was being opened')
+        }
+        const opened = await trace('parse-small-file', () => EpubBookSession.open(bytes))
+        if (opened.ok)
+          opened.session.openedDiskState = {
+            mtimeMs: before.mtimeMs,
+            size: before.size,
+            hash: opened.session.docHash,
+          }
+        return opened
+      }
+      const source = await trace('snapshot', () => snapshotBookFile(path, cacheDir))
+      try {
+        const opened = await trace('zip-and-metadata', () => openEpubSource(source))
+        if (!opened.ok) {
+          await source.close()
+          return { ok: false, reason: opened.reason }
+        }
+        const hash = await trace('document-hash', () => source.docHash())
+        const session = new EpubBookSession(null, opened.book, hash, source)
+        session.openedDiskState = { mtimeMs: source.mtimeMs, size: source.size, hash }
+        return { ok: true, session }
+      } catch (error) {
+        await source.close()
+        throw error
+      }
+    })
   }
 
   /** the bytes the book was opened from or last saved as */
   get bytes(): Uint8Array {
+    if (!this.currentBytes) throw new Error('epub: file-backed bytes must be read asynchronously')
     return this.currentBytes
+  }
+
+  get initialDiskState() {
+    return this.openedDiskState ? { ...this.openedDiskState } : null
+  }
+
+  /** Materialize only for Save As or a translated output; ordinary reading does not. */
+  async readBytes(): Promise<Uint8Array> {
+    if (this.currentBytes) return this.currentBytes
+    if (!this.fileSource) throw new Error('epub: book snapshot is closed')
+    return this.fileSource.read(0, this.fileSource.size)
+  }
+
+  async dispose(): Promise<void> {
+    this.closing = true
+    return (this.disposal ??= (async () => {
+      await this.saveQueue
+      const source = this.fileSource
+      this.fileSource = undefined
+      await source?.close()
+      await Promise.all(this.retiredSources)
+    })())
+  }
+
+  /** Serialize saves and keep their source alive if the view closes mid-save. */
+  withSave<T>(work: () => Promise<T>): Promise<T> {
+    if (this.closing) return Promise.reject(new Error('epub: session is closed'))
+    const result = this.saveQueue.then(work)
+    this.saveQueue = result.then(
+      () => {},
+      () => {},
+    )
+    return result
+  }
+
+  get byteSource(): import('@genoffice/zip-gate').ZipByteSource {
+    if (this.fileSource) return this.fileSource
+    const bytes = this.currentBytes
+    if (!bytes) throw new Error('epub: book snapshot is closed')
+    return { size: bytes.length, read: async (at, length) => bytes.slice(at, at + length) }
   }
 
   get book(): EpubBook {
@@ -277,26 +411,95 @@ export class EpubBookSession {
     return this.currentBook.fixedLayout ? 'fixed-layout-book' : null
   }
 
+  private rememberClean(state: ChapterState): void {
+    if (state.version !== 0) return
+    const weight = this.cleanChapters.get(state.path) ?? chapterWeight(state.map)
+    if (!this.cleanChapters.has(state.path)) this.cleanChapterBytes += weight
+    this.cleanChapters.delete(state.path)
+    this.cleanChapters.set(state.path, weight)
+  }
+
+  private forgetClean(path: string): void {
+    const weight = this.cleanChapters.get(path)
+    if (weight === undefined) return
+    this.cleanChapterBytes -= weight
+    this.cleanChapters.delete(path)
+  }
+
+  private trimCleanChapters(): void {
+    for (const [path] of this.cleanChapters) {
+      if (
+        this.cleanChapters.size <= CLEAN_CHAPTER_LIMIT &&
+        this.cleanChapterBytes <= CLEAN_CHAPTER_BUDGET
+      )
+        break
+      if (this.chapterUsers.has(path)) continue
+      this.forgetClean(path)
+      this.chapters.delete(path)
+    }
+  }
+
+  /** A permit transfers directly to the next waiter, without an acquisition race. */
+  private async readChapterSource(book: EpubBook, path: string) {
+    if (this.activeChapterReads < 2) this.activeChapterReads++
+    else await new Promise<void>((done) => this.chapterReadWaiters.push(done))
+    try {
+      return await book.readText(path)
+    } finally {
+      const next = this.chapterReadWaiters.shift()
+      if (next) next()
+      else this.activeChapterReads--
+    }
+  }
+
+  private async withChapter<T>(
+    path: string,
+    use: (state: ChapterState) => T | Promise<T>,
+  ): Promise<T> {
+    this.chapterUsers.set(path, (this.chapterUsers.get(path) ?? 0) + 1)
+    try {
+      return await use(await this.state(path))
+    } finally {
+      const users = (this.chapterUsers.get(path) ?? 1) - 1
+      if (users) this.chapterUsers.set(path, users)
+      else this.chapterUsers.delete(path)
+      this.trimCleanChapters()
+    }
+  }
+
   private async state(path: string): Promise<ChapterState> {
     const known = this.chapters.get(path)
-    if (known) return known
-    const decoded = await this.currentBook.readText(path)
-    const stored = decoded?.text ?? ''
-    const valid = decoded?.valid ?? false
-    const state: ChapterState = {
-      path,
-      stored,
-      map: openChapter(stored),
-      replacements: [],
-      valid,
-      version: 0,
-      seen: new Set([textDigest(stored)]),
+    if (known) {
+      this.rememberClean(known)
+      return known
     }
-    // a second read may have finished first: keep the one already there
-    const raced = this.chapters.get(path)
-    if (raced) return raced
-    this.chapters.set(path, state)
-    return state
+    const book = this.currentBook
+    const running = this.chapterLoads.get(path)
+    if (running?.book === book) return running.promise
+    const promise = (async () => {
+      const decoded = await this.readChapterSource(book, path)
+      // A save may have replaced the archive while this entry was inflating.
+      if (book !== this.currentBook) return this.state(path)
+      const stored = decoded?.text ?? ''
+      const state: ChapterState = {
+        path,
+        stored,
+        map: openChapter(stored),
+        replacements: [],
+        valid: decoded?.valid ?? false,
+        version: 0,
+        seen: new Set([textDigest(stored)]),
+      }
+      this.chapters.set(path, state)
+      this.rememberClean(state)
+      return state
+    })()
+    this.chapterLoads.set(path, { book, promise })
+    try {
+      return await promise
+    } finally {
+      if (this.chapterLoads.get(path)?.promise === promise) this.chapterLoads.delete(path)
+    }
   }
 
   private readOnlyOf(state: ChapterState): EpubReadOnlyReason | null {
@@ -318,53 +521,59 @@ export class EpubBookSession {
   async readChapter(spineIndex: unknown): Promise<EpubChapterResult> {
     const item = this.spineItem(spineIndex)
     if (!item) return { ok: false, error: 'invalid-request', message: 'no such chapter' }
-    const state = await this.state(item.path)
-    const base = {
-      ok: true as const,
-      spineIndex: item.index,
-      path: item.path,
-      source: state.map.source,
-      version: state.version,
-    }
-    if (state.map.broken) {
-      return { ...base, broken: true, error: state.map.error, readOnly: 'broken-chapter' }
-    }
-    if (!state.valid) {
+    return this.withChapter(item.path, (state): EpubChapterResult => {
+      const base = {
+        ok: true as const,
+        spineIndex: item.index,
+        path: item.path,
+        source: state.map.source,
+        version: state.version,
+      }
+      if (state.map.broken) {
+        return { ...base, broken: true, error: state.map.error, readOnly: 'broken-chapter' }
+      }
+      if (!state.valid) {
+        return {
+          ...base,
+          broken: true,
+          error: 'not valid in its encoding',
+          readOnly: 'broken-chapter',
+        }
+      }
       return {
         ...base,
-        broken: true,
-        error: 'not valid in its encoding',
-        readOnly: 'broken-chapter',
+        broken: false,
+        blocks: blockInfo(state.map),
+        readOnly: this.readOnlyOf(state),
       }
-    }
-    return {
-      ...base,
-      broken: false,
-      blocks: blockInfo(state.map),
-      readOnly: this.readOnlyOf(state),
-    }
+    })
   }
 
-  /** The common refusals of every edit; the chapter's state when it may be edited. */
+  /** Keep the chapter leased through the complete edit and its common refusal checks. */
   private async editable(
     spineIndex: unknown,
-  ): Promise<{ state: ChapterState & { map: OpenChapter }; index: number } | EpubEditResult> {
+    use: (state: ChapterState & { map: OpenChapter }, index: number) => EpubEditResult,
+  ): Promise<EpubEditResult> {
     const item = this.spineItem(spineIndex)
     if (!item) return { ok: false, error: 'invalid-request', message: 'no such chapter' }
     if (this.translationLocked) {
       return { ok: false, error: 'locked', message: 'the book translation of this tab runs' }
     }
-    const state = await this.state(item.path)
-    const readOnly = this.readOnlyOf(state)
-    if (readOnly || state.map.broken) {
-      return {
-        ok: false,
-        error: 'read-only',
-        readOnly: readOnly ?? 'broken-chapter',
-        message: `the chapter is read only (${readOnly ?? 'broken-chapter'})`,
+    return this.withChapter(item.path, (state): EpubEditResult => {
+      if (this.translationLocked) {
+        return { ok: false, error: 'locked', message: 'the book translation of this tab runs' }
       }
-    }
-    return { state: state as ChapterState & { map: OpenChapter }, index: item.index }
+      const readOnly = this.readOnlyOf(state)
+      if (readOnly || state.map.broken) {
+        return {
+          ok: false,
+          error: 'read-only',
+          readOnly: readOnly ?? 'broken-chapter',
+          message: `the chapter is read only (${readOnly ?? 'broken-chapter'})`,
+        }
+      }
+      return use(state as ChapterState & { map: OpenChapter }, item.index)
+    })
   }
 
   private commitEdit(
@@ -376,6 +585,7 @@ export class EpubBookSession {
   ): EpubEditResult {
     const before = state.map.source
     if (replacements.length > 0) {
+      this.forgetClean(state.path)
       state.replacements = composeReplacements(state.stored, state.replacements, replacements)
       state.map = next
       state.version++
@@ -406,25 +616,24 @@ export class EpubBookSession {
       if (!edit) return { ok: false, error: 'invalid-request', message: 'not a block edit' }
       edits.push(edit)
     }
-    const target = await this.editable(spineIndex)
-    if ('ok' in target) return target
-    const { state, index } = target
-    let applied: ReturnType<typeof applyBlockEdits>
-    try {
-      applied = applyBlockEdits(state.map, edits)
-    } catch (err) {
-      return { ok: false, error: 'invalid-request', message: messageOf(err) }
-    }
-    if (!applied.ok) {
-      return {
-        ok: false,
-        error: 'refused',
-        refusal: applied.refusal,
-        index: applied.index,
-        message: applied.refusal.message,
+    return this.editable(spineIndex, (state, index) => {
+      let applied: ReturnType<typeof applyBlockEdits>
+      try {
+        applied = applyBlockEdits(state.map, edits)
+      } catch (err) {
+        return { ok: false, error: 'invalid-request', message: messageOf(err) }
       }
-    }
-    return this.commitEdit(state, index, applied.map, applied.replacements, applied.created)
+      if (!applied.ok) {
+        return {
+          ok: false,
+          error: 'refused',
+          refusal: applied.refusal,
+          index: applied.index,
+          message: applied.refusal.message,
+        }
+      }
+      return this.commitEdit(state, index, applied.map, applied.replacements, applied.created)
+    })
   }
 
   /** Range replacements on one chapter, against the version they were made on. */
@@ -437,43 +646,42 @@ export class EpubBookSession {
     if (!replacements || !Number.isSafeInteger(version)) {
       return { ok: false, error: 'invalid-request', message: 'bad replacements' }
     }
-    const target = await this.editable(spineIndex)
-    if ('ok' in target) return target
-    const { state, index } = target
-    if (version !== state.version) {
-      return { ok: false, error: 'stale', message: `the chapter is at version ${state.version}` }
-    }
-    const source = state.map.source
-    const problem = validateReplacements(replacements, source.length)
-    if (problem) return { ok: false, error: 'invalid-request', message: problem }
-    const text = applyReplacements(source, replacements)
-    if (text === source) {
-      return this.commitEdit(state, index, state.map, [], [])
-    }
-    // The page edits text inside blocks only; anything else must be a way back
-    // (undo, redo, rollback) to a text this chapter has had.
-    if (!insideBlocks(state.map, replacements) && !state.seen.has(textDigest(text))) {
-      return {
-        ok: false,
-        error: 'invalid-request',
-        message: 'the replacements reach outside the blocks',
+    return this.editable(spineIndex, (state, index) => {
+      if (version !== state.version) {
+        return { ok: false, error: 'stale', message: `the chapter is at version ${state.version}` }
       }
-    }
-    const next = remapChapter(state.map, text, replacements)
-    if (next.broken) {
-      return {
-        ok: false,
-        error: 'refused',
-        refusal: {
-          code: 'not-well-formed',
-          message: `the edit would break the chapter: ${next.error}`,
-        },
-        message: 'the edit would break the chapter',
+      const source = state.map.source
+      const problem = validateReplacements(replacements, source.length)
+      if (problem) return { ok: false, error: 'invalid-request', message: problem }
+      const text = applyReplacements(source, replacements)
+      if (text === source) {
+        return this.commitEdit(state, index, state.map, [], [])
       }
-    }
-    const before = new Set(state.map.blocks.map((b) => b.id))
-    const created = next.blocks.filter((b) => !before.has(b.id)).map((b) => b.id)
-    return this.commitEdit(state, index, next, replacements, created)
+      // The page edits text inside blocks only; anything else must be a way back
+      // (undo, redo, rollback) to a text this chapter has had.
+      if (!insideBlocks(state.map, replacements) && !state.seen.has(textDigest(text))) {
+        return {
+          ok: false,
+          error: 'invalid-request',
+          message: 'the replacements reach outside the blocks',
+        }
+      }
+      const next = remapChapter(state.map, text, replacements)
+      if (next.broken) {
+        return {
+          ok: false,
+          error: 'refused',
+          refusal: {
+            code: 'not-well-formed',
+            message: `the edit would break the chapter: ${next.error}`,
+          },
+          message: 'the edit would break the chapter',
+        }
+      }
+      const before = new Set(state.map.blocks.map((b) => b.id))
+      const created = next.blocks.filter((b) => !before.has(b.id)).map((b) => b.id)
+      return this.commitEdit(state, index, next, replacements, created)
+    })
   }
 
   /** Whether any chapter differs from the stored text. */
@@ -506,6 +714,51 @@ export class EpubBookSession {
     return { result, snapshot }
   }
 
+  async prepareSavePlan(options: { now?: () => Date } = {}) {
+    const snapshot = new Map<string, string>()
+    for (const state of this.chapters.values()) snapshot.set(state.path, state.map.source)
+    const result = await prepareEpubSave(this.currentBook, this.editsForSave(), options)
+    return { result, snapshot }
+  }
+
+  /** Validate the private output before publication; adoption itself cannot fail. */
+  async prepareFileRebase(source: BookFileSource, snapshot: ReadonlyMap<string, string>) {
+    const opened = await openEpubSource(source)
+    if (!opened.ok) throw new Error(`the saved book does not open (${opened.reason})`)
+    const newDocHash = await source.docHash()
+    let committed = false
+    return () => {
+      if (committed) throw new Error('epub: saved book was already adopted')
+      committed = true
+      const oldDocHash = this.currentDocHash
+      const previousSource = this.fileSource
+      this.fileSource = source
+      this.currentBytes = null
+      this.currentBook = opened.book
+      this.currentDocHash = newDocHash
+      this.rebaseChapters(snapshot)
+      if (previousSource) {
+        // A slow in-flight response may still own the old source. It must not
+        // hold up publishing the new book, nor lose its remaining body bytes.
+        const cleanup = previousSource.close().catch((error) => {
+          console.warn('[epub] snapshot cleanup failed', error)
+        })
+        this.retiredSources.add(cleanup)
+        void cleanup.finally(() => this.retiredSources.delete(cleanup))
+      }
+      return { oldDocHash, newDocHash }
+    }
+  }
+
+  private rebaseChapters(snapshot: ReadonlyMap<string, string>): void {
+    for (const state of this.chapters.values()) {
+      const stored = snapshot.get(state.path) ?? state.stored
+      state.stored = stored
+      state.replacements =
+        state.map.source === stored ? [] : [diffReplacement(stored, state.map.source)]
+    }
+  }
+
   /**
    * The saved bytes are now the book's (handed over, like the bytes a session
    * opens): the book is opened from them, every
@@ -520,16 +773,18 @@ export class EpubBookSession {
     const opened = await openEpub(saved, { takeOwnership: true })
     if (!opened.ok) throw new Error(`the saved book does not open (${opened.reason})`)
     const oldDocHash = this.currentDocHash
-    const newDocHash = await epubDocumentHash(saved)
+    const newDocHash = await hashBookBytes(saved)
+    const previousSource = this.fileSource
+    this.fileSource = undefined
     this.currentBytes = saved
     this.currentBook = opened.book
     this.currentDocHash = newDocHash
-    for (const state of this.chapters.values()) {
-      const stored = snapshot.get(state.path) ?? state.stored
-      state.stored = stored
-      state.replacements =
-        state.map.source === stored ? [] : [diffReplacement(stored, state.map.source)]
-    }
+    this.rebaseChapters(snapshot)
+    // A cleanup error must not leave the live book on its old bytes after a
+    // successful write. Existing reads finish before the descriptor closes.
+    await previousSource
+      ?.close()
+      .catch((error) => console.warn('[epub] snapshot cleanup failed', error))
     return { oldDocHash, newDocHash }
   }
 
@@ -543,8 +798,9 @@ export class EpubBookSession {
     for (const item of this.currentBook.spine.items) {
       if (seen.has(item.path)) continue
       seen.add(item.path)
-      const state = await this.state(item.path)
-      const text = extractChapterText(state.map.source).trim()
+      const text = await this.withChapter(item.path, (state) =>
+        extractChapterText(state.map.source).trim(),
+      )
       if (text) parts.push(text)
     }
     return parts.join('\n\n')

@@ -32,6 +32,27 @@ function draw(source: string, broken = false, viewCss = ''): Document {
 }
 
 describe('the drawing copy of a chapter', () => {
+  it('marks a long chapter without rewriting its text, and retains equal-offset ordering', () => {
+    const paragraph = '<p>Paragraph &amp; text.</p>'
+    const source = paragraph.repeat(10000)
+    const blocks = Array.from({ length: 10000 }, (_, i) => ({
+      id: `b${i}`,
+      tag: 'p',
+      outer: { start: i * paragraph.length },
+    }))
+    const marked = markBlocks(source, blocks)
+    expect(marked.match(/data-genoffice-epub-block-mark=/g)).toHaveLength(10000)
+    expect(marked.replace(/ data-genoffice-epub-block-mark="b\d+"/g, '')).toBe(source)
+    expect(
+      markBlocks('<p>Text</p>', [
+        { id: 'first', tag: 'p', outer: { start: 0 } },
+        { id: 'second', tag: 'p', outer: { start: 0 } },
+      ]),
+    ).toBe(
+      '<p data-genoffice-epub-block-mark="second" data-genoffice-epub-block-mark="first">Text</p>',
+    )
+  })
+
   it('puts the policy first, then the base at the chapter, then the book styles and the view style', () => {
     const doc = draw(
       xhtml(

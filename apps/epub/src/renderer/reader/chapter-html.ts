@@ -94,9 +94,18 @@ export function markBlocks(source: string, blocks: readonly ChapterBlockRef[]): 
     marks.push({ at, text: ` ${MARK_ATTR}="${escapeAttr(block.id)}"` })
   }
   marks.sort((a, b) => b.at - a.at)
-  let out = source
-  for (const mark of marks) out = out.slice(0, mark.at) + mark.text + out.slice(mark.at)
-  return out
+  // Assemble once in source order. Repeatedly splicing the entire chapter
+  // flattened a long string for every block (quadratic on a long chapter).
+  // Reverse the descending list to retain the old ordering of equal offsets.
+  const parts: string[] = []
+  let from = 0
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const mark = marks[i]!
+    parts.push(source.slice(from, mark.at), mark.text)
+    from = mark.at
+  }
+  parts.push(source.slice(from))
+  return parts.join('')
 }
 
 function hasParserError(doc: Document): boolean {

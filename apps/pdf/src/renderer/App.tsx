@@ -118,7 +118,6 @@ function liveFieldNames(
 import {
   buildFormCatalog,
   documentFormFeatures,
-  hasXfaMarker,
   visibleFormWidgets,
   type FormCatalog,
   type FormField,
@@ -360,7 +359,9 @@ import {
 import type { PageSize, FitMode, DefaultView } from './view-config'
 import { useVisibleSet, PdfPage, MarkupOverlay } from './PdfPage'
 import { probePageGeometry } from './page-probe'
-import { loadPdfForView } from './open-document'
+import { openViewDocument } from './view-document'
+import { disableFileViewRenderer, waitForViewActivity, watchViewActivity } from './view-renderer'
+import { pageRasterCache } from './page-raster-cache'
 import { PdfThumb, ThumbPendingOverlay } from './PdfThumb'
 import type { ThumbMenu } from './PdfThumb'
 import { SignDropOverlay, signPlaceK, imagePlaceK, staticFormFillPlaceK } from './SignDropOverlay'
@@ -1517,6 +1518,11 @@ export default function App() {
     [pageGeom],
   )
 
+  const [viewVisible, setViewVisible] = useState(true)
+  useEffect(() => (doc ? watchViewActivity(doc, setViewVisible) : undefined), [doc])
+  useEffect(() => {
+    if (doc && !viewVisible) pageRasterCache.clear(doc)
+  }, [doc, viewVisible])
   const { visible: visibleRows, setItemRef: setRowRef } = useVisibleSet(
     scrollRef,
     rows.length,
@@ -1577,12 +1583,11 @@ export default function App() {
       saved?: SavedSnapshot,
       waitForPageNos: number[] = [],
     ) => {
-      const data = await window.pdfApi.readFile(path)
-      const bytes = new Uint8Array(data)
-      // getDocument transfers the buffer to its worker, leaving `data` and `bytes`
-      // empty here: take what is needed from them first
-      const byteLength = data.byteLength
-      const xfaMarker = hasXfaMarker(bytes)
+      const { task, byteLength, xfaMarker } = await openViewDocument(
+        window.pdfApi,
+        path,
+        passwordRef.current,
+      )
       setFormHasXfa(xfaMarker)
       if (!saved) {
         setFormCatalog(null)
@@ -1600,7 +1605,6 @@ export default function App() {
         setSelectedFormFieldId(null)
         setFreshFormFieldId(null)
       }
-      const task = loadPdfForView(bytes, passwordRef.current)
       let loaded: PDFDocumentProxy
       try {
         loaded = await task.promise
@@ -1630,7 +1634,8 @@ export default function App() {
           subject: documentInfo.Subject ?? '',
           keywords: documentInfo.Keywords ?? '',
         })
-        const formFeatures = documentFormFeatures(documentInfo, bytes)
+        const formFeatures = documentFormFeatures(documentInfo, xfaMarker)
+        if (formFeatures.hasXfa) disableFileViewRenderer(loaded)
         setFormHasXfa(formFeatures.hasXfa || xfaMarker)
         setDocumentEncrypted(formFeatures.encrypted)
         if (formFeatures.encrypted) {
@@ -2024,7 +2029,11 @@ export default function App() {
           const stale = () => outlineDocRef.current !== loaded
           const generated = embedded
             ? null
-            : await buildHeadingOutline(loaded, stale).catch(() => null)
+            : await buildHeadingOutline(loaded, stale, async (n) => {
+                if (!(await waitForViewActivity(loaded)))
+                  throw new Error('pdf: outline preparation retired')
+                return searchIndexCache.textContent(loaded, n)
+              }).catch(() => null)
           if (stale()) return
           setOutline(embedded ?? generated)
           setOutlineGenerated(!embedded && generated !== null)
@@ -2039,7 +2048,7 @@ export default function App() {
       if (previous && !saved) setDocReloadRev((v) => v + 1)
       return loaded.numPages
     },
-    [],
+    [searchIndexCache],
   )
 
   const openPath = useCallback(
@@ -3089,7 +3098,7 @@ export default function App() {
     revision: docReloadRev,
   })
 
-  // Auto-OCR for scanned pages (issue #119): once the base index shows pages with
+  // Auto-OCR for scanned pages (issue #119): once compact detection flags show pages with
   // no extractable text, recognize them sequentially in the background, starting
   // at the current page. Boxes are stored in PDF space, so later zooms/rotations
   // reproject. The pass runs renderer-side, one page at a time, so the user's
@@ -3161,8 +3170,15 @@ export default function App() {
     setOcrPages(new Map())
     setOcrRun(null)
     if (!doc || sizes.length !== doc.numPages) return
-    startOcrPass(null)
+    let stopped = false
+    void (async () => {
+      const available = window.pdfApi.ocrAvailable
+        ? await window.pdfApi.ocrAvailable().catch(() => true)
+        : true
+      if (!stopped && available) startOcrPass(null)
+    })()
     return () => {
+      stopped = true
       // tears down the pass this effect started, so its teardown still cancels
       ocrAbortRef.current?.abort()
       ocrAbortRef.current = null
@@ -11385,7 +11401,7 @@ export default function App() {
                             doc={doc}
                             pageNo={origIdx + 1}
                             rotationDelta={rotDelta(origIdx)}
-                            visible={visibleThumbs.has(v)}
+                            visible={viewVisible && visibleThumbs.has(v)}
                             rasterW={thumbRasterW}
                           />
                         )}
@@ -11507,7 +11523,7 @@ export default function App() {
               }}
             >
               {rows.map((row, r) => {
-                const rowVisible = visibleRows.has(r)
+                const rowVisible = viewVisible && visibleRows.has(r)
                 // Comments margin geometry: pin anchors relative to the margin column,
                 // which sits one flex gap right of the row's pages
                 const rowWidths = row.map((i) => Math.floor(dispSize(i).width * scale))

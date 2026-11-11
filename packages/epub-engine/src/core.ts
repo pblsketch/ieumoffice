@@ -4,7 +4,7 @@
  * translation machinery, so callers that only read or edit books (attachment
  * parsing, renderers) stay free of it.
  */
-export { openEpub, EPUB_ZIP_LIMITS } from './open'
+export { openEpub, openEpubSource, EPUB_ZIP_LIMITS } from './open'
 export type { EpubOpenOptions } from './open'
 export type {
   EpubBook,
@@ -55,10 +55,11 @@ export {
 } from './notation'
 export * from './edits'
 export * from './text'
-export { formatModifiedTimestamp, modifiedReplacements, saveEpub } from './save'
+export { formatModifiedTimestamp, modifiedReplacements, saveEpub, prepareEpubSave } from './save'
 export type {
   EpubChapterEdits,
   EpubSaveOptions,
   EpubSaveRefusalReason,
   EpubSaveResult,
+  EpubSavePlan,
 } from './save'

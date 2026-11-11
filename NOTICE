@@ -35,6 +35,17 @@ distributed in the python-docx repository (ref/xsd), with one marked local
 amendment (see tools/ooxml-validate/README.md). They are used only by tests
 and development tooling and are not shipped in the application.
 
+HWP validation development tools
+
+tools/hwp-validation adapts the run and layout comparison tools from
+gusdhks-wq/openoffice, branch test/hwp-hwpx-validation, commit
+edb6f0af5895403cc640db13d2fad90b4b196fb8 (Apache License 2.0):
+https://github.com/gusdhks-wq/openoffice/tree/edb6f0af5895403cc640db13d2fad90b4b196fb8/tools/hwp-validation
+
+The local adaptations and validation scope are documented in that folder's
+README.md. These tools are used only for development and are not shipped
+in the application.
+
 IeumOffice brand artwork
 
 The IeumOffice app icon, logo lockup and AI button mark are original

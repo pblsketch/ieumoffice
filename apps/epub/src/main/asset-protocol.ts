@@ -173,14 +173,18 @@ export async function serveEpubAsset(
   const manifest = book.manifest.find((m) => m.path === target.path)
   const contentType = assetContentType(target.path, manifest?.mediaType)
   if (!contentType) return refuse(403)
-  let bytes: Uint8Array | null
+  const headers = assetHeaders(contentType)
+  if (method === 'HEAD') return new Response(null, { status: 200, headers })
   try {
-    bytes = await book.readForRendering(target.path)
+    const body = book.streamForRendering
+      ? await book.streamForRendering(target.path)
+      : await book.readForRendering(target.path)
+    if (!body) return refuse(404)
+    return new Response(body as ReadableStream<Uint8Array<ArrayBuffer>> | Uint8Array<ArrayBuffer>, {
+      status: 200,
+      headers,
+    })
   } catch {
     return refuse(404)
   }
-  if (!bytes) return refuse(404)
-  const headers = assetHeaders(contentType)
-  if (method === 'HEAD') return new Response(null, { status: 200, headers })
-  return new Response(bytes as Uint8Array<ArrayBuffer>, { status: 200, headers })
 }

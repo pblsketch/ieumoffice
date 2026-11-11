@@ -1,3 +1,4 @@
+import { pollWhileVisible } from '../visible-poll'
 import {
   AI_QUEUE_LABELS,
   AiBlockedNotice,
@@ -219,11 +220,14 @@ export function AiPanel({
   onSkillHandoff,
   prefill,
   onPrefillTaken,
+  visible = true,
 }: {
   /** the document operations of the open editor */
   bridge: AgentBridge
   /** the file of the open document: the conversation is kept with it */
   filePath: string | null
+  /** Keep the conversation mounted while the dock is folded, without polling the editor. */
+  visible?: boolean
   onCollapse: () => void
   /** the document while it can go along as a skill's template (spec 5.7) */
   templateDocument?: TemplateDocument | null
@@ -522,9 +526,12 @@ export function AiPanel({
   const [scopePreviewOpen, setScopePreviewOpen] = useState(false)
   useEffect(() => {
     // not during a run: the run's own changes move the editor's selection around
-    if (busy) return
+    if (busy || !visible) return
     let stopped = false
+    let reading = false
     const readSelection = async (): Promise<void> => {
+      if (stopped || reading) return
+      reading = true
       try {
         const result = await bridgeRef.current.selection()
         if (stopped) return
@@ -536,15 +543,16 @@ export function AiPanel({
         setSelected((prev) => (prev?.key === next?.key ? prev : next))
       } catch {
         // the editor is not ready, or is gone
+      } finally {
+        reading = false
       }
     }
-    void readSelection()
-    const timer = window.setInterval(() => void readSelection(), SELECTION_POLL_MS)
+    const stopPolling = pollWhileVisible(readSelection, SELECTION_POLL_MS)
     return () => {
       stopped = true
-      window.clearInterval(timer)
+      stopPolling()
     }
-  }, [busy])
+  }, [busy, visible])
   const scope = selected && selected.key !== scopeCleared ? selected : null
   const scopeRef = useRef(scope)
   scopeRef.current = scope

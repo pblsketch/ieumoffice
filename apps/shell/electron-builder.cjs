@@ -1035,5 +1035,12 @@ config.publish = [
 // CI's "-c.extraMetadata.version=..." CLI override deep-merges with this block,
 // so the version and the packaged name survive together.
 config.extraMetadata = { name: PACKAGED_APP_NAME }
+if (process.env.IEUM_LOCAL_BUILD_ID !== undefined) {
+  const { localBuildVersion } = require(join(__dirname, 'scripts/local-build-version.cjs'))
+  config.extraMetadata.version = localBuildVersion(
+    require('./package.json').version,
+    process.env.IEUM_LOCAL_BUILD_ID,
+  )
+}
 
 module.exports = config

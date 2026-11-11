@@ -1,6 +1,8 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { VISUAL_SIGNATURE_CONTENT_PREFIX } from '../shared/ipc'
 import { dateFormatFromActions } from './date-format'
+import { hasXfaMarker } from '../shared/xfa-marker'
+export { hasXfaMarker } from '../shared/xfa-marker'
 
 export type FormWidgetKind = 'text' | 'checkbox' | 'radio' | 'choice' | 'signature'
 
@@ -200,15 +202,27 @@ export function widgetsFromAnnotations(annots: RawFormAnnotation[], pageIndex = 
     .map(({ widget }) => widget)
 }
 
+/** Bound worker requests without making each page wait for the previous reply. */
+async function* formPages(doc: PDFDocumentProxy) {
+  for (let start = 0; start < doc.numPages; start += 8) {
+    const pages = await Promise.all(
+      Array.from({ length: Math.min(8, doc.numPages - start) }, async (_, offset) => {
+        const pageIndex = start + offset
+        const page = await doc.getPage(pageIndex + 1)
+        return { pageIndex, annotations: (await page.getAnnotations()) as RawFormAnnotation[] }
+      }),
+    )
+    yield* pages
+  }
+}
+
 /** Build the whole-document catalog once so ribbon, FormLayer, and AI share field semantics. */
 export async function buildFormCatalog(doc: PDFDocumentProxy): Promise<FormCatalog> {
   const widgets: FormWidget[] = []
   const fields = new Map<string, FormField>()
   const byPage = new Map<number, FormWidget[]>()
 
-  for (let pageIndex = 0; pageIndex < doc.numPages; pageIndex++) {
-    const page = await doc.getPage(pageIndex + 1)
-    const annotations = (await page.getAnnotations()) as RawFormAnnotation[]
+  for await (const { pageIndex, annotations } of formPages(doc)) {
     const pageWidgets = widgetsFromAnnotations(annotations, pageIndex)
     const visualSignatures = annotations.filter(
       (annotation) =>
@@ -295,47 +309,16 @@ function rectsSubstantiallyOverlap(a: number[], b: number[]): boolean {
   return smallerArea > 0 && intersection / smallerArea >= 0.5
 }
 
-/** Lightweight pre-parse warning for XFA or mixed AcroForm/XFA documents. */
-export function hasXfaMarker(bytes: Uint8Array): boolean {
-  const marker = [0x2f, 0x58, 0x46, 0x41] // /XFA
-  // `/` is itself a PDF delimiter, so any regular byte may precede a name token
-  // (`]/XFA`, `R/XFA`); only what follows tells `/XFA` from `/XFAfoo`: EOF,
-  // whitespace or one of the delimiters ( ) < > [ ] { } / %
-  const endsToken = (b: number): boolean =>
-    b === 0 ||
-    b === 9 ||
-    b === 10 ||
-    b === 12 ||
-    b === 13 ||
-    b === 32 ||
-    b === 0x28 ||
-    b === 0x29 ||
-    b === 0x3c ||
-    b === 0x3e ||
-    b === 0x5b ||
-    b === 0x5d ||
-    b === 0x7b ||
-    b === 0x7d ||
-    b === 0x2f ||
-    b === 0x25
-  outer: for (let index = 0; index <= bytes.length - marker.length; index++) {
-    for (let offset = 0; offset < marker.length; offset++) {
-      if (bytes[index + offset] !== marker[offset]) continue outer
-    }
-    const after = index + marker.length
-    if (after === bytes.length || endsToken(bytes[after]!)) return true
-  }
-  return false
-}
-
 export function documentFormFeatures(
   info: { EncryptFilterName?: string | null; IsXFAPresent?: boolean },
-  bytes: Uint8Array,
+  xfaSource: Uint8Array | boolean,
 ): { encrypted: boolean; hasXfa: boolean } {
   return {
     encrypted: info.EncryptFilterName != null,
     // XFA entries are often compressed, so PDF.js metadata is authoritative.
     // The byte marker remains useful for malformed files with incomplete metadata.
-    hasXfa: info.IsXFAPresent === true || hasXfaMarker(bytes),
+    hasXfa:
+      info.IsXFAPresent === true ||
+      (typeof xfaSource === 'boolean' ? xfaSource : hasXfaMarker(xfaSource)),
   }
 }

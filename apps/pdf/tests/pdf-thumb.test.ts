@@ -30,6 +30,7 @@ function makePdf() {
   const tasks: FakeRenderTask[] = []
   const page = {
     rotate: 0,
+    cleanup: vi.fn(),
     getViewport: vi.fn(({ scale, rotation }: { scale: number; rotation: number }) => ({
       width: 200 * scale,
       height: 100 * scale,
@@ -87,6 +88,38 @@ async function renderThumb(
 }
 
 describe('PdfThumb render lifecycle', () => {
+  it('keeps a cancelling canvas alive and preserves the replacement on a rapid revisit', async () => {
+    const { doc, page, tasks } = makePdf()
+    const canvas = await renderThumb(doc, { visible: true })
+    tasks[0]!.cancel.mockImplementation(() => undefined)
+    await renderThumb(doc, { visible: false })
+    expect(canvas.width).toBe(120)
+    expect(page.cleanup).not.toHaveBeenCalled()
+    await renderThumb(doc, { visible: true, rasterW: 180 })
+    expect(page.render).toHaveBeenCalledTimes(1)
+    await act(async () => tasks[0]!.reject(new Error('cancelled after releasing canvas')))
+    expect(page.render).toHaveBeenCalledTimes(2)
+    expect(canvas.width).toBe(180)
+    expect(page.cleanup).not.toHaveBeenCalled()
+    await act(async () => tasks[1]!.resolve())
+    await renderThumb(doc, { visible: false })
+    expect(canvas.width).toBe(0)
+    expect(page.cleanup).toHaveBeenCalledOnce()
+  })
+
+  it('waits for cancellation to settle before releasing an unmounted canvas', async () => {
+    const { doc, page, tasks } = makePdf()
+    const canvas = await renderThumb(doc, { visible: true })
+    tasks[0]!.cancel.mockImplementation(() => undefined)
+    await act(async () => root!.unmount())
+    root = null
+    expect(canvas.width).toBe(120)
+    expect(page.cleanup).not.toHaveBeenCalled()
+    await act(async () => tasks[0]!.reject(new Error('cancelled after releasing canvas')))
+    expect(canvas.width).toBe(0)
+    expect(canvas.height).toBe(0)
+    expect(page.cleanup).toHaveBeenCalledOnce()
+  })
   it('cancels and releases an offscreen thumbnail, then renders it again when visible', async () => {
     const { doc, page, tasks } = makePdf()
     const canvas = await renderThumb(doc, { visible: true })

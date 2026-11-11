@@ -143,6 +143,8 @@ export interface EpubBook extends EpubBookInfo {
    * stored. Never use this for saving.
    */
   readForRendering(path: string): Promise<Uint8Array | null>
+  /** Bounded body for native protocols. Cancellation releases any source lease. */
+  streamForRendering?(path: string): Promise<ReadableStream<Uint8Array> | null>
 }
 
 export type EpubOpenResult =

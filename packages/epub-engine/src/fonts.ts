@@ -62,13 +62,17 @@ export function obfuscateFontWithKey(
   bytes: Uint8Array,
   algorithm: FontObfuscationAlgorithm,
   key: Uint8Array,
+  offset = 0,
 ): Uint8Array {
   const out = new Uint8Array(bytes)
   const limit = Math.min(
     out.length,
-    algorithm === ADOBE_FONT_OBFUSCATION ? ADOBE_PREFIX_BYTES : IDPF_PREFIX_BYTES,
+    Math.max(
+      0,
+      (algorithm === ADOBE_FONT_OBFUSCATION ? ADOBE_PREFIX_BYTES : IDPF_PREFIX_BYTES) - offset,
+    ),
   )
-  for (let i = 0; i < limit; i++) out[i] = out[i]! ^ key[i % key.length]!
+  for (let i = 0; i < limit; i++) out[i] = out[i]! ^ key[(i + offset) % key.length]!
   return out
 }
 

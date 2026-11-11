@@ -1,3 +1,4 @@
+import type { PdfViewApi } from './view-source'
 import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
@@ -48,6 +49,12 @@ export type PdfToolsHandoffTool = (typeof PDF_TOOLS_HANDOFF)[number]
 export const PDF_CHANNELS = {
   consumePending: 'pdf:consume-pending',
   readFile: 'pdf:read-file',
+  openViewSource: 'pdf:open-view-source',
+  readViewRange: 'pdf:read-view-range',
+  renderViewPage: 'pdf:render-view-page',
+  viewRenderResult: 'pdf:view-render-result',
+  cancelViewRender: 'pdf:cancel-view-render',
+  closeViewSource: 'pdf:close-view-source',
   decryptPdf: 'pdf:decrypt',
   save: 'pdf:save',
   pickAttachmentFile: 'pdf:pick-attachment-file',
@@ -65,6 +72,7 @@ export const PDF_CHANNELS = {
   listStaticFormFills: 'pdf:list-static-form-fills',
   pageImagePng: 'pdf:page-image-png',
   ocrPage: 'pdf:ocr-page',
+  ocrAvailable: 'pdf:ocr-available',
   pagePreviewPng: 'pdf:page-preview-png',
   extractPages: 'pdf:extract-pages',
   insertPdf: 'pdf:insert-pdf',
@@ -1674,7 +1682,7 @@ export interface PdfDiskFileChange {
   kind: 'changed' | 'missing' | 'unchanged'
 }
 
-export interface PdfApi {
+export interface PdfApi extends PdfViewApi {
   /** Take the pdf path pending for this view (queued at tab creation); null if none */
   consumePending(): Promise<string | null>
   /** open any shell-routed document path (an AI answer's filenav citation) */
@@ -1779,6 +1787,8 @@ export interface PdfApi {
   /** System-OCR one rendered page image (PNG, base64); null when no engine is
       available on this platform, [] when recognition failed for this image */
   ocrPage(png: string): Promise<PdfOcrLine[] | null>
+  /** Check before extracting or rendering pages for unavailable system OCR. */
+  ocrAvailable?(): Promise<boolean>
   /** Render one existing image object to PNG (base64) for move/resize ghost previews; null if it can't be matched */
   pageImagePng(request: {
     path: string

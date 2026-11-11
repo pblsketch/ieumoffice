@@ -5,7 +5,7 @@
  * environment-free code.
  */
 import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { open, stat } from 'node:fs/promises'
 
 export {
   ResultStore,
@@ -72,13 +72,35 @@ export function documentHash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-/** documentHash of a file, streamed */
-export function documentHashOfFile(path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
+const pendingHashes = new Map<string, { identity: string; promise: Promise<string> }>()
+
+async function hashFile(path: string): Promise<string> {
+  const file = await open(path, 'r')
+  try {
+    // A reusable buffer avoids thousands of external ArrayBuffer allocations.
+    const buffer = Buffer.allocUnsafe(1024 * 1024)
     const hash = createHash('sha256')
-    createReadStream(path)
-      .on('data', (chunk) => hash.update(chunk))
-      .on('error', reject)
-      .on('end', () => resolve(hash.digest('hex')))
-  })
+    for (;;) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, null)
+      if (!bytesRead) return hash.digest('hex')
+      hash.update(buffer.subarray(0, bytesRead))
+    }
+  } finally {
+    await file.close()
+  }
+}
+
+/** Share simultaneous reads of the same file version; never retain a completed hash. */
+export async function documentHashOfFile(path: string): Promise<string> {
+  const info = await stat(path)
+  const identity = [info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs].join(':')
+  const pending = pendingHashes.get(path)
+  if (pending?.identity === identity) return pending.promise
+  const entry = { identity, promise: hashFile(path) }
+  pendingHashes.set(path, entry)
+  try {
+    return await entry.promise
+  } finally {
+    if (pendingHashes.get(path) === entry) pendingHashes.delete(path)
+  }
 }
