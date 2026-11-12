@@ -30,6 +30,7 @@
 - **실제 화면 확인은 스크립트로 한다.** `e2e/helpers.ts`의 `launchShell`이 빌드된 껍데기 앱을 임시 데이터 폴더로 띄운다. 구독에 로그인된 PC에서는 첫 연결 안내가 설정과 질문 창을 덮으므로, 기본으로 "안내를 봤다"는 설정을 심는다(`subscriptionNoticeSeen: false`로 끌 수 있다). 편집기 화면은 `waitForPageWithUrl(app, '://docs/')`로 잡는다.
 - **한 시험 파일이 통째로 시간 초과로 죽어도 다시 돌려 보라.** vite의 변환 캐시가 찬 상태에서 `apps/sheets/tests/table-design.test.ts` 같은 단위 시험이 기본 5초를 넘겨 `Test timed out`으로 떨어진다(문서화된 부하성 실패). 단독 재실행이나 캐시가 데워진 뒤에는 통과한다.
 - **이 PC에서 화면 시험이 `launchShell`에서 멈춘다.** 창 녹화(Playwright의 Electron 화면 캡처)가 페이지 연결을 붙잡아, 앱이 뜬 뒤 아무 응답이 없다. → `E2E_NO_VIDEO=1`을 붙여 녹화를 끄고 돌린다. 시험 전의 `npm run build:all`은 엑셀 처리 프로그램을 빌드하므로 `cargo`가 PATH에 있어야 한다("빌드와 실행"의 `cargo` 항목).
+- **공용 패키지는 통과했는데 엑셀 편집기 타입 검사가 그 패키지 파일에서 실패한다.** 작업 공간 패키지는 소스(`./src/*.ts`)를 그대로 내보내므로, 엑셀 편집기가 가져온 파일은 엑셀의 더 엄격한 설정(`noUncheckedIndexedAccess`)으로 다시 검사된다. `m[2]`처럼 배열 칸을 그대로 쓰는 코드가 걸린다(`agent-core`의 `hiding-name.ts`·`hiding-memo.ts`에서 겪음). → 여러 편집기가 가져갈 공용 코드는 그 설정에서도 맞게 쓰고(`m[2] ?? ''`), 고친 뒤 `npm run typecheck -w @genoffice/sheets`도 돌린다. 루트 `npm run typecheck`는 첫 실패에서 멈추므로 뒤쪽 작업 공간까지 갔는지 본다.
 - **화면 시험(e2e) 전체는 Windows에서 초록이 아니다.** 경로 구분자를 `/`로 가정하는 시험(`text-source` 등)과 화면 캡처·타이밍에 민감한 시험, 이 PC의 실제 설정을 읽는 시험(CLI 계열)이 **손대지 않은 검사본에서도 똑같이** 실패한다. 판정은 항상 "손대지 않은 사본에서도 실패하는가"로 한다. 같은 시험 파일 묶음을 원본 검사본에서 한 번 돌려 실패 목록을 견주면 된다.
 
 ## 설정 파일
@@ -196,6 +197,8 @@
 - **Ubuntu 24.04에서 deb 설치가 의존성 오류로 멈춘다.** 24.04와 Debian 13은 64비트 time_t 전환으로 여러 라이브러리를 `*t64` 이름으로 다시 지었다(24.04만 봐도 `libgtk-3-0`·`libatspi2.0-0`의 옛 이름은 없다). electron-builder의 기본 `depends`는 옛 이름만 적고, `deb.depends`를 설정하면 기본 목록이 통째로 바뀐다. → `electron-builder.cjs`의 `depends`가 기본 목록을 그대로 적고, 이름이 바뀐 것에는 `libgtk-3-0 | libgtk-3-0t64`처럼 대안을 붙인다. `tests/linux-deb-dependencies.test.ts`와 `linux-build.yml`의 검사가 지킨다.
 - **Ubuntu 20.04에서 앱은 뜨는데 엑셀·CSV 파일이 열리지 않는다(0.12.11까지).** 빌드 기계(Ubuntu 22.04, glibc 2.35)에서 그냥 `cargo build`한 엑셀 처리 프로그램이 그 기계의 glibc에 맞춰 `GLIBC_2.34`를 요구했다. 20.04의 glibc는 2.31이라 프로그램이 뜨지 못하고 모든 열기가 실패한다. Electron 본체는 2.25만 요구해 앱 창은 뜬다. → `linux-build.yml`이 `cargo zigbuild`로 프로그램을 glibc 2.28(`LINUX_GLIBC_FLOOR`) 기준으로 다시 링크해 `target/release`에 덮는다. 같은 워크플로가 묶음 안의 모든 ELF 파일이 기준을 넘지 않는지 보고, Ubuntu 20.04 컨테이너에 deb를 깔아 CSV를 내보내 본다. Linux에서 직접 `npm run build:all`로 만든 프로그램은 그 PC의 glibc를 따른다.
 - **"apt가 libnotify4를 못 찾는다"는 보고는 빈 24.04에서 재현되지 않는다.** 24.04의 t64 패키지가 옛 이름을 `Provides:`로 제공하고 `libnotify4`·`libxtst6`·`libsecret-1-0`은 24.04에 옛 이름 그대로 남아 있어, 지난 배포본도 `sudo apt install ./ieumoffice_버전_amd64.deb`로는 풀린다(`dpkg -i`는 의존성을 스스로 풀지 않으니 실패한다). → 그래도 대안 표기를 유지한다. 24.10 이후 배포판과 32비트 아키텍처에서는 옛 이름이 아예 없을 수 있다.
+
+- **새 studio 패치가 실제 소스 대조 시험에서만 실패한다.** `apps/hwp/tests/rhwp-patches.test.ts`의 "takes every studio patch exactly once"는 패치마다 받아 온 원본 소스에 **혼자** 걸어 본다. 다른 패치가 넣은 줄(예: 메모 패치의 `insert:comment`)을 찾는 패치는 빌드 순서로는 걸리지만 이 시험에서 실패한다. 이 시험은 빌드가 rhwp 소스를 받아 둔 사본에서만 돌고 새 사본에서는 건너뛰므로, 고정 글 시험만 보고 통과로 믿기 쉽다. → 패치는 원본 소스의 글에 기대게 쓴다(`studio-hiding-context-menu`, `studio-easy-words-context-menu`처럼 목록 끝의 원본 줄을 찾는다). 새 패치를 더했으면 `npm run studio -w @genoffice/hwp`로 소스를 받은 사본에서 이 시험을 한 번 돌린다.
 
 ## 작업 사본을 여럿 둘 때
 
