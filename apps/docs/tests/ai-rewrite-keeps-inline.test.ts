@@ -100,6 +100,17 @@ function inventory(editor: Editor) {
   return found
 }
 
+/** comment id → the struck-through (tracked deletion) text it covers */
+function struckCommentText(editor: Editor): Record<string, string> {
+  const out: Record<string, string> = {}
+  editor.state.doc.descendants((node) => {
+    if (!node.isText || !node.marks.some((m) => m.type.name === 'del')) return
+    const comment = node.marks.find((m) => m.type.name === 'comment')
+    if (comment) out[String(comment.attrs.ids)] = (out[String(comment.attrs.ids)] ?? '') + node.text
+  })
+  return out
+}
+
 const ORIGINAL = {
   noteIds: ['1'],
   commentIds: ['c7'],
@@ -129,7 +140,14 @@ describe('an AI rewrite keeps the inline objects of the text it rewrites', () =>
       )
       expect(r.isError, String(r.output)).toBeFalsy()
       expect(editor.state.doc.textContent).toContain('준비 작업')
-      expect(inventory(editor)).toEqual(ORIGINAL)
+      if (!track) {
+        expect(inventory(editor)).toEqual(ORIGINAL)
+        return
+      }
+      // as in Word: the comment stays on the struck original, so accepting removes it
+      expect(inventory(editor)).toEqual({ ...ORIGINAL, commentIds: [] })
+      expect(struckCommentText(editor)).toEqual({ c7: '예산' })
+      expect(String(r.output)).toContain('comments stay on the original (struck-through) text')
     },
   )
 

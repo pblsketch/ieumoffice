@@ -235,9 +235,13 @@ export function rewriteBlocks(
   // the model authored these blocks, so it has seen them
   recordShown(editor, blocksBetween(editor.state.doc, built.inserted.from, built.inserted.to))
   const tally = keepTallyText(inv, restored.used, drop)
+  const tracked =
+    env.track && before.comments.size > 0
+      ? ' As a tracked change, the comments stay on the original (struck-through) text, not on the new text; accepting the change removes them, as in Word.'
+      : ''
   return {
     ok: true,
-    output: `Replaced ${label} with ${restored.nodes.length} block(s); they took the paragraph formatting and base text style of the blocks they replace.${tally ? ` ${tally}` : ''} Block indexes have changed; use get_document_context if needed.`,
+    output: `Replaced ${label} with ${restored.nodes.length} block(s); they took the paragraph formatting and base text style of the blocks they replace.${tally ? ` ${tally}` : ''}${tracked} Block indexes have changed; use get_document_context if needed.`,
   }
 }
 

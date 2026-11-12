@@ -1437,6 +1437,7 @@ export function inheritBlockFormatting(
  * inheritBlockFormatting). With `track`, and when both sides are plain text
  * blocks, this becomes a tracked rewrite instead: the old blocks stay struck
  * through (del) and the new blocks follow with ins marks — accept/reject via Review.
+ * A comment stays on the struck old text only, as in Word.
  */
 export function replaceBlockRange(
   editor: Editor,
@@ -1500,6 +1501,15 @@ function untrackOnceAtoms(
   for (const pos of onceAtomPositions(tr.doc, from, to, once)) tr.removeMark(pos, pos + 1, ins)
 }
 
+/**
+ * Word keeps a comment on the deleted original text of a tracked rewrite
+ * (accepting removes it, rejecting keeps it), and refuses a file whose comment
+ * id has a second range on the inserted text.
+ */
+function stripInsertedComments(tr: Transaction, from: number, to: number): void {
+  tr.removeMark(from, to, tr.doc.type.schema.marks.comment)
+}
+
 /** drop the old copies of the atoms the new text now holds (positions ascending) */
 function deleteOldAtoms(tr: Transaction, positions: number[]): void {
   for (const pos of [...positions].reverse()) tr.delete(pos, pos + 1)
@@ -1547,6 +1557,7 @@ export function blockReplacementTr(
     tr.insert(to, tracked)
     tr.addMark(to, to + inserted, ins.create({ author: track.author, date }))
     untrackOnceAtoms(tr, to, to + inserted, once)
+    stripInsertedComments(tr, to, to + inserted)
     tr.addMark(from, to, del.create({ author: track.author, date }))
     deleteOldAtoms(tr, oldAtoms)
     const at = to - oldAtoms.length
@@ -1591,10 +1602,9 @@ export function blockReplacementTr(
     const tr = editor.state.tr.replaceWith(from, to, [...oldNodes, ...inserted])
     tr.setMeta(TRACK_IGNORE, true)
     const at = from + oldNodes.reduce((size, n) => size + n.nodeSize, 0)
-    return {
-      tr,
-      inserted: { from: at, to: at + inserted.reduce((size, n) => size + n.nodeSize, 0) },
-    }
+    const end = at + inserted.reduce((size, n) => size + n.nodeSize, 0)
+    stripInsertedComments(tr, at, end)
+    return { tr, inserted: { from: at, to: end } }
   }
   const tr = editor.state.tr.replaceWith(from, to, pmNodes)
   return { tr, inserted: { from, to: from + pmNodes.reduce((size, n) => size + n.nodeSize, 0) } }
