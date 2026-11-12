@@ -57,7 +57,7 @@ import {
   type SheetPasswordHash,
 } from '@genoffice/xlsx-gateway/gateway/xlsx-protection-hash'
 import { applyChangePlan, planFromOps, type OpExecutorContext } from './op-executor'
-import { installSheetsMcpBridge, type McpSheetHandlers } from './mcp-bridge'
+import { installLiveSheetsMcpBridge, type McpSheetHandlers } from './mcp-bridge'
 import { renameChartRefsForSheet } from './workbook-ops'
 import {
   proposeOperations as proposeOperationsImpl,
@@ -5341,23 +5341,12 @@ export function App({
     },
     saveTo: async (path, overwrite) => handleSave('save-as', true, { path, overwrite }),
   }
-  useEffect(() => {
-    const handlers = mcpSheetHandlersRef
-    return installSheetsMcpBridge({
-      hasWorkbook: () => handlers.current?.hasWorkbook() ?? false,
-      context: () => handlers.current?.context(),
-      readCells: (addresses, sheetId) => handlers.current?.readCells(addresses, sheetId) ?? {},
-      sheets: () => handlers.current?.sheets() ?? [],
-      focusSheet: (sheetId, address) => handlers.current?.focusSheet(sheetId, address),
-      applyOps: async (ops, dryRun) =>
-        (await handlers.current?.applyOps(ops, dryRun)) ?? { ok: false, reason: 'not ready' },
-      saveTo: async (path, overwrite) =>
-        (await handlers.current?.saveTo(path, overwrite)) ?? {
-          ok: false,
-          error: 'the spreadsheet is not ready',
-        },
-    })
-  }, [])
+  // sensitive-info hiding: MCP reads and edits go through the AI skill's hooks
+  // (readContext only bundles refs, so installing once is enough)
+  useEffect(
+    () => installLiveSheetsMcpBridge(mcpSheetHandlersRef, sheetSkillHiding(readContext)),
+    [],
+  )
   /// Re-renders the floating visuals after a journal mutation (edits and
   /// their undo/redo closures share it).
   function refreshLazyVisuals(state: LazyWorkbookState): void {
@@ -5518,12 +5507,19 @@ export function App({
 
   // genoffice CLI (`open --range`, `selection`): the shell evaluates this hook
   useEffect(() => {
-    ;(window as unknown as Record<string, unknown>).__genofficeControl = (req: ControlRequest) =>
-      handleSheetsControl(
+    ;(window as unknown as Record<string, unknown>).__genofficeControl = async (
+      req: ControlRequest,
+    ) => {
+      // a selection's values are read through the AI skill's hiding hooks
+      const hiding = req.cmd === 'selection' ? sheetSkillHiding(readContext) : null
+      if (hiding) await hiding.prepare()
+      return handleSheetsControl(
         req,
         univerRef.current?.univerAPI.getActiveWorkbook(),
         lazyWorkbookRef.current !== null,
+        hiding?.state(),
       )
+    }
   })
 
   const aiScopeChip = resolveScopeChip(aiRunScope, aiScope, aiScopeDismissed)
