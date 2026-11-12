@@ -12,6 +12,10 @@ import type { SensitiveSpot } from '../src/renderer/ai/sensitive-find'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+// Every test imports the hook afresh (vi.resetModules), so the first one pays the
+// whole transform; on a loaded machine that alone passes the default timeout.
+vi.setConfig({ testTimeout: 60_000 })
+
 type Loc = { piece: number }
 
 let host: HTMLDivElement
@@ -51,8 +55,9 @@ const button = (text: string) =>
 
 beforeEach(() => hide.mockClear())
 afterEach(() => {
-  act(() => root.unmount())
-  host.remove()
+  // a test that timed out before mounting leaves nothing to unmount
+  if (root) act(() => root.unmount())
+  host?.remove()
 })
 
 describe('first-send alert', () => {
