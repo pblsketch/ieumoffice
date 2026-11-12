@@ -187,10 +187,13 @@ async function sheetDependents(
 
 /**
  * The hiding of an .xlsx / .xlsm; null when it has no mark. Throws (closed) on
- * a mark it cannot resolve, and on a package it cannot open: the workbook reader
- * may still open what this one cannot, so its marks are not taken to be none.
+ * a mark it cannot resolve, and on a zip package it cannot open: the workbook
+ * reader may still open what this one cannot, so its marks are not taken to be
+ * none. Bytes that do not even start as a zip are no package at all — no
+ * workbook reader opens them as one, so there is no mark to keep.
  */
 export async function workbookHidingOf(bytes: Uint8Array): Promise<WorkbookHiding | null> {
+  if (!startsAsZip(bytes)) return null
   let zip: JSZip
   try {
     zip = await JSZip.loadAsync(bytes)
@@ -475,4 +478,11 @@ export function concealIssues<
       message: `a finding about a cell the workbook hides from AI; open the workbook in ${PRODUCT_NAME} to see it`,
     } as T
   })
+}
+
+/** a zip local file header: every OOXML package starts with one */
+function startsAsZip(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4
+  )
 }

@@ -7,11 +7,16 @@ import { workbookHidingOf } from '../src/formats/xlsx-hiding'
  * hiding is refused as unreadable rather than skipped.
  */
 describe('workbookHidingOf fails closed', () => {
-  it('a package that is not a readable zip is unsupported, not "no hiding"', async () => {
-    const bytes = new TextEncoder().encode('not a zip at all')
+  it('a zip package it cannot open is unsupported, not "no hiding"', async () => {
+    // a zip local header followed by garbage: a zip, but not one that opens
+    const bytes = new Uint8Array([0x50, 0x4b, 3, 4, ...new TextEncoder().encode('broken')])
     await expect(workbookHidingOf(bytes)).rejects.toMatchObject({
       name: 'CliError',
       reason: 'unsupported',
     })
+  })
+
+  it('bytes that are no zip at all hold no mark', async () => {
+    await expect(workbookHidingOf(new TextEncoder().encode('not a zip at all'))).resolves.toBeNull()
   })
 })

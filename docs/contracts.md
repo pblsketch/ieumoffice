@@ -48,7 +48,7 @@
 
 - 묶음 연산은 지금의 세 방식 그대로이고, 거절된 연산의 실패 항목(`OpFailure`)에 `reason: "hidden_content"`와 `hidden: { reason: "edit", labels: [...] }`가 실린다. 기본(모두 아니면 아무것도)은 쓰지 않고 종료 코드 1이며, 첫 실패가 가리기면 맨 위 `error`가 `hidden_content`이고 맨 위 `detail`에도 `reason`·`labels`가 더해진다. `detail.failures`·`detail.batch`·`detail.results`는 그대로다. `--best-effort`·`--stop-on-error`는 지금처럼 남은 것을 쓰고 `status: "partial"`이며, 거절된 연산은 `detail.failures[]`에 위 모양으로 들어간다.
 - `labels`는 걸린 표시의 이름표이고 처음 나온 순서로 겹치지 않는다. 엑셀은 값별 번호를 뺀 이름표다. 사람이 읽는 `message`·`suggestion`은 "앱에서 열어 사람이 고치라"는 뜻이다.
-- 가리기 표시를 안전하게 읽을 수 없는 파일(자리를 정할 수 없는 표시, 풀리지 않는 엑셀 이름, 압축을 열지 못한 `.xlsx`·`.xlsm`, 읽지 못한 한글 메모 목록)은 아무것도 읽지 않고 종료 코드 2, `error: "unsupported"`로 끝난다.
+- 가리기 표시를 안전하게 읽을 수 없는 파일(자리를 정할 수 없는 표시, 풀리지 않는 엑셀 이름, 압축 파일로 시작하지만 열지 못한 `.xlsx`·`.xlsm`, 읽지 못한 한글 메모 목록)은 아무것도 읽지 않고 종료 코드 2, `error: "unsupported"`로 끝난다.
 - 터미널의 `convert`·`create --from`·`merge`는 거절하지 않는다. 대상 형식에 담을 곳이 있으면 표시를 옮기고(워드·마크다운 → 한글은 영어 머리말의 가리기 메모, 마크다운 → 워드는 워드 표시), 묻지 않는다. 담을 곳이 없는 형식으로 바꾼 결과에는 가린 글이 그대로 들어 있다. 셸을 가진 호출자는 어차피 파일을 직접 읽을 수 있다는 한계다.
 
 **ODT(`.odt`).**
