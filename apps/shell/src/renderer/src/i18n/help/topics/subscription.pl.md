@@ -118,7 +118,7 @@ Gdy subskrypcji można użyć po raz pierwszy, GenOffice jednorazowo pokazuje in
 
 Żądania przez ChatGPT połączony bezpośrednio nie przechodzą przez program Codex; trafiają z tego komputera prosto do OpenAI.
 
-To, co ukryjesz poleceniem **Ukryj zaznaczenie przed AI**, nie jest wysyłane, niezależnie od tego, z którego AI korzystasz.
+To, co ukryjesz poleceniem **Ukryj dane wrażliwe**, nie jest wysyłane, niezależnie od tego, z którego AI korzystasz.
 
 ## Warto wiedzieć
 

@@ -48,13 +48,14 @@ Trong bảng AI của trình soạn thảo Docs, Sheets, Slides, Hangul, HTML v�
 - Bảng của Docs giữ một **danh sách phiên bản**: mỗi lượt một ảnh chụp, quay lui về bất kỳ ảnh nào, và bản thân thao tác quay lui cũng quay lui được bằng Ctrl+Z. Ảnh chụp vẫn còn sau khi mở lại tài liệu.
 - Các chỉnh sửa của AI đi qua đúng quy trình chỉnh sửa như chỉnh sửa thủ công (hoàn tác được, phải qua xác nhận lưu của bạn) — không có gì lách qua bước xác nhận lưu.
 
-## Ẩn vùng chọn khỏi AI
+## Ẩn thông tin nhạy cảm
 
-- Trong Slides, HTML và Markdown, một vùng chọn có thể được giấu khỏi mắt mô hình: chuột phải ▸ **Ẩn vùng chọn khỏi AI**, đặt tên chỗ giữ chỗ, và mô hình đọc `{{tên}}` thay cho chữ. (Markdown bật mục này bằng công tắc mắt-gạch-chéo trên ruy-băng; của HTML nằm ở bảng mã nguồn.)
-- Tệp giữ nguyên văn thật — lưu, xuất và in không bị ảnh hưởng, dấu còn sống qua lần mở lại. Chính mục đó hủy việc ẩn (Markdown có thêm mục riêng **Hiện lại vùng chọn cho AI**).
-- HTML ẩn nội dung phần tử, giá trị thuộc tính và hằng chuỗi trong script; trang đã render không bao giờ đổi.
-- Slides còn ẩn cả hình, video và âm thanh trọn vẹn, và một slide có nội dung ẩn không bao giờ được gửi dạng chụp màn hình: kiểm tra bố cục tự động bỏ qua trang đó và nói rõ.
-- Điều này chỉ dành cho AI trong ứng dụng — CLI, công cụ MCP và xuất headless đọc tệp trực tiếp nên vẫn thấy văn bản.
+- Trong trình soạn thảo Docs, Sheets, Slides, Hangul, Markdown và HTML, bạn có thể giữ một phần tài liệu không cho AI thấy: chọn phần đó, chuột phải ▸ **Ẩn thông tin nhạy cảm** rồi đặt cho nó một nhãn. Dù bạn dùng AI nào, ở chỗ đó AI chỉ đọc được `{{nhãn}}`. (Markdown bật mục này bằng công tắc mắt-gạch-chéo trên ruy-băng; mục của HTML nằm ở bảng mã nguồn; trong Sheets, chuột phải vào tiêu đề cột để ẩn phần cột bên dưới hàng tiêu đề, hoặc vào một vùng ô để chỉ ẩn vùng đó.)
+- Tệp vẫn giữ nguyên văn bản thật — lưu, xuất và in không bị ảnh hưởng, và dấu vẫn còn sau khi mở lại. Cũng chính menu đó dùng để thôi ẩn. Trong Hangul, mỗi phần bị ẩn là một ghi chú ghi `[Ẩn thông tin nhạy cảm] nhãn`, nên người nhận tài liệu cũng thấy ghi chú đó, và không thể ẩn chữ đã có ghi chú. Trong Sheets, dấu là một tên được định nghĩa `IeumHide_nhãn`, hiện trong Trình quản lý tên; AI thấy mỗi ô bị ẩn là `{{nhãn-01}}` (cùng giá trị thì cùng số), và ô có công thức dùng ô bị ẩn cũng bị ẩn theo.
+- **Tìm thông tin nhạy cảm** trong bảng AI liệt kê những gì trông giống họ tên, số điện thoại, địa chỉ e-mail, số đăng ký cư trú, số tài khoản và số thẻ, địa chỉ và những thứ tương tự. Việc tìm chỉ diễn ra trên máy tính này, bằng các mẫu chữ cố định — không dùng AI để tìm hay để ẩn bất cứ thứ gì — và không có gì bị ẩn cho tới khi bạn chọn **Ẩn**. Mục nào đã **Loại trừ** sẽ không quay lại trong tài liệu đó. Những chỗ không thể đặt dấu (đầu trang, ghi chú người trình bày, tên trang tính, …) cũng được liệt kê để bạn tự sửa.
+- Lần đầu bạn gửi trong một thẻ, nếu tài liệu hoặc tệp đính kèm của yêu cầu đó vẫn còn những mục như vậy, bảng sẽ hỏi một lần: **Kiểm tra** không gửi gì và mở danh sách, còn **Vẫn gửi** thì gửi đi.
+- HTML ẩn nội dung phần tử, giá trị thuộc tính và hằng chuỗi trong script, và trang hiển thị không bao giờ đổi. Slides còn ẩn cả hình, video và âm thanh trọn vẹn, và slide có nội dung ẩn không bao giờ được gửi dạng ảnh chụp màn hình.
+- Phần bị ẩn vẫn bị ẩn khi tệp được đính kèm trong trình soạn thảo khác, được hỏi đến ở Trang chủ, được đọc bằng lệnh `ieumoffice` và các công cụ MCP của lệnh này, hoặc được đọc qua máy chủ MCP của ứng dụng. Khi chuyển sang định dạng không có chỗ cho dấu (ODT, CSV, …), ứng dụng sẽ hỏi trước. Việc ẩn không áp dụng cho các tệp mà chương trình ở chế độ tác tử đọc thẳng từ ổ đĩa, và ảnh trang (`render`) hiện văn bản đúng như trong tệp.
 
 ## Quyền riêng tư
 

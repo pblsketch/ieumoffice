@@ -118,7 +118,7 @@ La première fois qu’un abonnement peut être utilisé, GenOffice affiche un a
 
 Les requêtes de ChatGPT connecté directement ne passent pas par le programme Codex ; elles partent de ce PC directement vers OpenAI.
 
-Tout ce que vous avez masqué avec **Masquer la sélection à l'IA** n’est pas envoyé, quelle que soit l’IA utilisée.
+Tout ce que vous avez masqué avec **Masquer les informations sensibles** n’est pas envoyé, quelle que soit l’IA utilisée.
 
 ## Bon à savoir
 

@@ -118,7 +118,7 @@ The first time a subscription can be used, GenOffice shows a notice once. To rea
 
 Requests through ChatGPT connected directly do not go through the Codex program; they go from this PC straight to OpenAI.
 
-Anything you hid with **Hide the selection from AI** is not sent, whichever AI you use.
+Anything you hid with **Hide sensitive info** is not sent, whichever AI you use.
 
 ## Good to know
 

@@ -118,7 +118,7 @@ La prima volta che un abbonamento può essere usato, GenOffice mostra un avviso 
 
 Le richieste tramite ChatGPT collegato direttamente non passano dal programma Codex; vanno da questo PC direttamente a OpenAI.
 
-Tutto ciò che hai nascosto con **Nascondi la selezione all'IA** non viene inviato, qualunque IA tu stia usando.
+Tutto ciò che hai nascosto con **Nascondi informazioni sensibili** non viene inviato, qualunque IA tu stia usando.
 
 ## Buono a sapersi
 

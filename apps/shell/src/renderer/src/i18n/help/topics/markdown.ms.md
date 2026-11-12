@@ -7,7 +7,7 @@ Penyunting Markdown membuka .md / .markdown — dan .txt / .json, terus ke papar
 - **Pratonton**: dipaparkan secara langsung, dengan sumber relatif seperti imej diselesaikan berhampiran dokumen.
 - **Simpanan** mengekalkan setiap bait dengan tepat. Tanda BOM, aksara CRLF, dan kehadiran baris akhir kosong semuanya dikekalkan, dan simpanan tanpa perubahan tidak menulis semula fail.
 - **Cari dan ganti**: ctrl+F mencari dalam sumber, dan Ganti Semua menulis hasilnya ke fail.
-- **AI**: Butang tetapan awal membolehkan pembantu menulis semula, melanjutkan, atau menterjemah dokumen tersebut. Pemilihan boleh disembunyikan daripada AI (lihat bab panel AI).
+- **AI**: Butang tetapan awal membolehkan pembantu menulis semula, melanjutkan, atau menterjemah dokumen tersebut. Pemilihan boleh dihalang daripada sampai kepada AI dengan **Sembunyikan maklumat sensitif** (lihat bab panel AI).
 - **Membuka pautan**: semasa mengedit, Ctrl+klik pautan (⌘ pada Mac) membukanya dalam pelayar; klik biasa meletakkan kursor dalam teks pautan untuk diedit. Dalam mod pembentangan (F5), klik biasa membukanya.
 
 ## Bar alat

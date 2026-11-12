@@ -48,13 +48,14 @@ In the AI panel of the Docs, Sheets, Slides, Hangul, HTML and mind map editors y
 - The Docs panel keeps a **version list**: one snapshot per turn, roll back to any of them, and the rollback itself is Ctrl+Z-able. Snapshots survive reopening the document.
 - AI edits go through the same editing pipeline as manual ones (undoable, save-gated) — nothing bypasses your save confirmation.
 
-## Hiding a selection from the AI
+## Hide sensitive info
 
-- In Slides, HTML and Markdown a selection can be kept out of the model's eyes: right-click it ▸ **Hide the selection from AI**, name the placeholder, and the model reads `{{name}}` in its place. (Markdown arms the item with the eye-off toggle on its ribbon; HTML's item lives in the source panel.)
-- The file keeps the real text — saving, export and print are untouched, and the mark survives reopen. The same item unhides (Markdown gets a separate **Show the selection to AI again** entry).
-- HTML hides element contents, attribute values and script string literals; the rendered page never changes.
-- Slides also hides whole pictures, videos and audio, and a slide with hidden content is never sent as a screenshot: the automatic layout check skips the page and says so.
-- This is for the in-app AI only — the CLI, MCP tools and headless export read the file directly and still see the text.
+- In the Docs, Sheets, Slides, Hangul, Markdown and HTML editors you can keep part of a document from the AI: select it, right-click ▸ **Hide sensitive info**, and give it a label. The AI reads `{{label}}` in its place, whichever AI you use. (Markdown arms the item with the eye-off toggle on its ribbon; HTML's item lives in the source panel; in Sheets, right-click a column header to hide the column below its header row, or a cell range to hide just that range.)
+- The file keeps the real text — saving, export and print are untouched, and the mark survives reopening. The same menu stops hiding. In Hangul each hidden part is a memo reading `[Hide sensitive info] label`, so whoever receives the document sees the memo too, and text that already has a memo cannot be hidden. In Sheets the mark is a defined name `IeumHide_label`, shown in Name Manager; the AI sees each hidden cell as `{{label-01}}` (the same value gets the same number), and a cell whose formula uses hidden cells is hidden as well.
+- **Find sensitive info** in the AI panel lists what looks like names, phone numbers, e-mail addresses, resident registration, account and card numbers, addresses and similar. It looks on this PC with fixed text patterns only — no AI is used to find or to hide anything — and nothing is hidden until you choose **Hide**. **Exclude** keeps a candidate from coming back for that document. Spots that cannot hold a mark (a header, a speaker note, a sheet name, …) are listed so you can edit them yourself.
+- The first time you send in a tab, if the document or the attachments of that request still hold such candidates, the panel asks once: **Review** sends nothing and opens the list, **Send anyway** sends.
+- HTML hides element contents, attribute values and script string literals, and the rendered page never changes. Slides also hides whole pictures, videos and audio, and a slide with hidden content is never sent as a screenshot.
+- Hidden parts stay hidden when the file is attached in another editor, asked about on Home, read by the `ieumoffice` command and its MCP tools, or read through the app's MCP server. Converting to a format with no place for the mark (ODT, CSV, …) asks first. Hiding does not reach files that an agent-mode program reads straight from the disk, and page pictures (`render`) show the text as it is.
 
 ## Privacy
 

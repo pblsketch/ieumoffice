@@ -118,7 +118,7 @@ Když lze předplatné použít poprvé, zobrazí GenOffice jednorázové upozor
 
 Požadavky přes ChatGPT připojený přímo neprocházejí programem Codex; jdou z tohoto počítače přímo do OpenAI.
 
-Co jste skryli příkazem **Skrýt výběr před AI**, se neodesílá, ať už používáte kteroukoli AI.
+Co jste skryli příkazem **Skrýt citlivé údaje**, se neodesílá, ať už používáte kteroukoli AI.
 
 ## Dobré vědět
 

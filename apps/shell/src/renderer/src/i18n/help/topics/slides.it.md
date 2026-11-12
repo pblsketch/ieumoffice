@@ -54,7 +54,7 @@ Il menu cambia in base al punto in cui fai clic destro:
 - La scheda AI Slides di Home: dai un argomento o uno schema e l'IA costruisce la presentazione.
 - Senza la chiave di un provider di immagini l'IA non può generare immagini, e la presentazione usa al loro posto immagini trovate con la ricerca di immagini; vedi [Modelli IA e impostazioni](help://ai-models).
 - Continua a mettere a punto con il pannello IA.
-- Clic destro su una selezione di testo o su un elemento immagine/video/audio ▸ **Nascondi la selezione all'IA** la toglie dagli occhi del modello (dettagli nel capitolo del pannello IA); una diapositiva con contenuto nascosto salta il controllo automatico via screenshot.
+- Clic destro su una selezione di testo o su un elemento immagine/video/audio ▸ **Nascondi informazioni sensibili** la toglie dagli occhi del modello (dettagli nel capitolo del pannello IA); una diapositiva con contenuto nascosto salta il controllo automatico via screenshot.
 
 ## Presentare ed esportare
 
