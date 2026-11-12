@@ -131,12 +131,12 @@ test('a reader can withhold a picture from the model without losing it', async (
     await stage.click({ button: 'right' })
     const menu = page.locator('.ctx-menu')
     await expect(menu).toBeVisible({ timeout: 15_000 })
-    const item = menu.locator('.ctx-item', { hasText: 'Hide the selection from AI' })
+    const item = menu.locator('.ctx-item', { hasText: 'Hide sensitive info' })
     await expect(item).toHaveCount(1)
     await shot('2-context-menu')
     await item.click()
 
-    const dialog = page.locator('.modal', { hasText: 'Hide the selection from AI' })
+    const dialog = page.locator('.modal', { hasText: 'Hide sensitive info' })
     await expect(dialog).toBeVisible({ timeout: 15_000 })
     await shot('3-dialog')
 

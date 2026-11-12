@@ -29,12 +29,12 @@ export const ja = {
   mathPiecewise: '区分関数',
   mathBinomial: '二項係数',
 
-  redactMenuLabel: '選択範囲をAIから隠す',
+  redactMenuLabel: '機密情報を隠す',
   redactDialogDesc:
-    '文章はドキュメントとファイルに残り、AI には下のマーカーしか見えません。名前をつけると、何を表すかAIが理解できます。',
+    '選んだ部分は AI に送りません。ファイルにはそのまま残ります。AI には下のラベルだけが見えます。何を指すか分かるように名前を付けてください。',
   redactDialogScope:
-    'これはこのアプリの AI に限られます。CLI、MCP ツール、GUI なしのエクスポートはファイルを直接読み込むため、これらの文字はまだ見えています。',
-  redactDialogPlaceholder: 'プレースホルダー名（例：顧客電話）',
+    '文書が AI に渡るすべての経路に適用されます。ただし、エージェントモードのプログラムがディスクからファイルを直接読む場合は隠れません。',
+  redactDialogPlaceholder: 'ラベル（例：生徒の名前）',
   redactCancel: 'キャンセル',
   redactInsert: '隠す',
 

@@ -2238,6 +2238,8 @@ function executeSyncTool(
         selection: scope,
         dryRun,
         styles: extras?.styles,
+        // set by the MCP bridge, whose caller never sees withheld words
+        hiddenUnseen: call.input.hiddenUnseen === true,
       })
       if (!outcome.ok) return fail(t('aiSumApplyCommands'), outcome.error ?? 'op execution failed')
       if (dryRun) {

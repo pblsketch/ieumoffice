@@ -470,6 +470,15 @@ export interface DesktopApi {
   openDocx(): Promise<OpenDocxResult>
   openDocxPath(path: string): Promise<OpenDocxResult>
   confirmDocumentReplace(): Promise<boolean>
+  /** a conversion that loses `count` hiding marks: asked once; true = go on (0 never asks) */
+  confirmHidingLoss(count: number): Promise<boolean>
+  /** remember a dismissed sensitive-info candidate of the document at `docPath` (kind + keyed hash only) */
+  sensitiveExclusionAdd(docPath: string, item: { kind: string; value: string }): Promise<boolean>
+  /** for each candidate, whether it was dismissed in the document at `docPath` */
+  sensitiveExclusionCheck(
+    docPath: string,
+    items: { kind: string; value: string }[],
+  ): Promise<boolean[]>
   /** decrypt-and-open a password-protected docx (path from a needsPassword result) */
   openDocxDecrypt(path: string, password: string): Promise<DecryptOpenResult>
   /** w:altChunk HTML rendered through html2docx in a hidden window; null when conversion fails */

@@ -11,6 +11,8 @@ export interface OpFailure {
   supported?: string[]
   usage?: string
   did_you_mean?: string
+  /** with reason `hidden_content`: the op would change, remove or move hidden content */
+  hidden?: { reason: 'edit'; labels: string[] }
 }
 
 /**
@@ -83,6 +85,8 @@ export function opSuggestion(f: OpFailure, domain: 'slides' | 'docs' | 'sheets')
       return f.did_you_mean
         ? `did you mean "${f.did_you_mean}"? (detail.failures[].available lists the ids on that slide), then resend the whole batch`
         : `run \`ieumoffice ${domain} read <file> --json\` for the current ids${f.available ? ' (see detail.failures[].available)' : ''}, then resend the whole batch`
+    case 'hidden_content':
+      return `drop op ${f.index}: it would change, remove or move content the document hides from AI (detail.failures[].hidden.labels); edit only the text around the {{label}} placeholders, then resend the whole batch`
     case 'unsupported':
       return `drop op ${f.index}: this file type keeps that feature off (an .odt can be converted with \`ieumoffice convert <file> --to docx\` to use it), then resend the whole batch`
     default:

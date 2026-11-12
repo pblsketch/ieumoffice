@@ -373,15 +373,17 @@ export const ja = {
   appEasyWords: 'やさしい言葉で説明',
   appEasyWordsPrompt:
     '選択したテキストを、やさしい文章が必要な人(子ども、お年寄り、日本語を学んでいる人)にもわかるように、日本語でかみくだいて説明してください。身近な言葉と短い文を使い、事実・数字・条件はすべて残してください。ドキュメントは変更しないでください：「{text}」',
-  redactMenuLabel: '選択範囲をAIから隠す',
+  redactMenuLabel: '機密情報を隠す',
   redactDialogDesc:
-    '文章はドキュメントとファイルに残り、AI には下のマーカーしか見えません。名前をつけると、何を表すかAIが理解できます。',
+    '選んだ部分は AI に送りません。ファイルにはそのまま残ります。 AI には下のラベルだけが見えます。何を指すか分かるように名前を付けてください。',
   redactDialogScope:
-    'これはこのアプリの AI に限られます。CLI、MCP ツール、GUI なしのエクスポートはファイルを直接読み込むため、これらの文字はまだ見えています。',
-  redactDialogPlaceholder: 'プレースホルダー名（例：顧客電話）',
+    'エージェントモードのプログラムがディスクからファイルを直接読む場合は、隠されません。',
+  redactDialogPlaceholder: 'ラベル（例：生徒の名前）',
   redactCancel: 'キャンセル',
   redactInsert: '隠す',
-  redactShowLabel: '選択範囲をAIにもう一度見せる',
+  redactShowLabel: '隠すのをやめる',
+  sensLocParagraph: '{n} 番目の段落',
+  sensLocTableCell: '表 {n}、{r} 行 {c} 列',
   appLangEnglish: '英語',
   appLangSimplifiedChinese: '簡体字中国語',
   appLangJapanese: '日本語',

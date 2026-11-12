@@ -355,15 +355,17 @@ export const id = {
   appEasyWords: 'Jelaskan dengan kata sederhana',
   appEasyWordsPrompt:
     'Jelaskan teks yang dipilih dalam bahasa Indonesia agar mudah dipahami juga oleh orang yang membutuhkan bacaan mudah (anak-anak, lansia, orang yang sedang belajar bahasa Indonesia). Gunakan kata sehari-hari dan kalimat pendek, serta pertahankan semua fakta, angka, dan syarat. Jangan ubah dokumen: "{text}"',
-  redactMenuLabel: 'Sembunyikan pilihan dari AI',
+  redactMenuLabel: 'Sembunyikan informasi sensitif',
   redactDialogDesc:
-    'Kata-kata tetap ada di dokumen dan berkas; model hanya melihat placeholder di bawah. Beri nama agar model tahu apa yang diwakili.',
+    'Bagian yang dipilih tidak dikirim ke AI. Di file, bagian itu tetap apa adanya. AI hanya melihat label di bawah. Beri nama agar AI tahu artinya.',
   redactDialogScope:
-    'Penyembunyian ini hanya berlaku untuk AI di aplikasi ini. CLI, alat MCP, dan ekspor tanpa antarmuka membaca berkas secara langsung, sehingga kata-kata ini tetap terlihat olehnya.',
-  redactDialogPlaceholder: 'Nama placeholder, mis. telepon pelanggan',
+    'Penyembunyian tidak berlaku saat program dalam mode agen membaca file langsung dari disk.',
+  redactDialogPlaceholder: 'Label, mis. nama siswa',
   redactCancel: 'Batal',
   redactInsert: 'Sembunyikan',
-  redactShowLabel: 'Tampilkan pilihan kepada AI lagi',
+  redactShowLabel: 'Berhenti menyembunyikan',
+  sensLocParagraph: 'Paragraf {n}',
+  sensLocTableCell: 'Tabel {n}, baris {r}, kolom {c}',
   appLangEnglish: 'bahasa Inggris',
   appLangSimplifiedChinese: 'bahasa Tionghoa Sederhana',
   appLangJapanese: 'bahasa Jepang',

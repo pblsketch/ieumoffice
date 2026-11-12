@@ -8,7 +8,7 @@ Editor HTML membuka .html / .htm dengan dua mode: **Pratinjau** (halaman yang su
 - **Mode sumber**: menyunting HTML; ctrl+F untuk mencari, dan Ganti Semua menyimpan penanda yang ditulis ulang.
 - **Menyimpan**: setia byte demi byte (BOM/CRLF/baris baru di akhir file dipertahankan); penyimpanan tanpa perubahan tidak menulis ulang.
 - **Zoom**: ctrl+roda / cubit untuk memperbesar pratinjau; ctrl+Z di dalam pratinjau membatalkan penyuntingan terakhir.
-- **Sembunyikan dari AI**: pada mode sumber, klik kanan sebuah seleksi — isi elemen, nilai atribut, string skrip — dan model melihat penampung; halaman yang dirender tak pernah berubah (rincian di bab panel AI).
+- **Sembunyikan informasi sensitif**: pada mode sumber, pilih yang ingin disembunyikan (isi elemen, nilai atribut, string skrip), klik kanan lalu pilih **Sembunyikan informasi sensitif**, kemudian ketik label dan tekan **Sembunyikan**. Model melihat penampung di tempatnya; halaman yang dirender tak pernah berubah (rincian di bab panel AI).
 
 ## Bilah alat
 

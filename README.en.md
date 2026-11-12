@@ -429,11 +429,15 @@ project easy to take.
 - **Image generation needs a key**, as described above.
 - **Translations.** 20 of the 22 interface languages are machine-translated
   and have not been reviewed by native speakers.
-- **Hiding does not reach everywhere.** Parts you hid from AI in the
-  PowerPoint, Markdown and HTML editors stay hidden when the file is attached
-  in another editor or asked about on the home screen, but hiding marks in
-  Word documents are not recognised, and the terminal command and MCP read
-  files as written. Until they are fixed, hidden text can also reach AI in
+- **Hide sensitive info does not reach everywhere.** Parts you hid in the
+  Word, Excel, PowerPoint, Hangul, Markdown and HTML editors stay hidden when
+  the file is attached in another editor, asked about on the home screen, or
+  read by the terminal command and MCP. They are not hidden when a program in
+  agent mode reads the folder's files straight from the disk, in page pictures
+  from MCP `render` and `slides_render`, or in a copy the terminal's `convert` makes in a format
+  that cannot hold the mark. In Hangul the mark is a memo and in Excel a
+  defined name, so whoever receives the document can see it. Until they are
+  fixed, hidden text can also reach AI in
   these cases: in PowerPoint, hidden text with no character formatting of its
   own can be saved without the mark; in Markdown, inline code inside a hidden
   part is saved outside it; and a Markdown document saved as `.txt` or `.json`

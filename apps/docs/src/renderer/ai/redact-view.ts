@@ -130,6 +130,20 @@ export function redactNode<T extends RedactableNode>(node: T): T {
   return node
 }
 
+/**
+ * The document as a copy on disk keeps it, for an export the reader saves
+ * (never for a request): hidden words stay with their mark, so the copy can
+ * carry the mark in its own format. A hidden picture is still dropped to its
+ * marker, as in the model's view.
+ */
+export function fileViewNode<T extends RedactableNode>(node: T): T {
+  if (isWithheld(node) && isPicture(node)) return redactNode(node)
+  if (Array.isArray(node.content)) {
+    return { ...node, content: node.content.map((c) => fileViewNode(c)) }
+  }
+  return node
+}
+
 /** Every label withheld in a document, for the model's instruction. */
 export function redactLabelsOf(node: RedactableNode): string[] {
   const out: string[] = []

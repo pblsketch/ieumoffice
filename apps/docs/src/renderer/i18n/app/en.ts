@@ -348,15 +348,17 @@ export const en = {
   appEasyWords: 'Explain in plain words',
   appEasyWordsPrompt:
     'Explain the selected text in English so that someone who needs easy reading (a child, an older person, or someone learning English) can understand it. Use everyday words and short sentences, and keep every fact, number and condition. Do not modify the document: "{text}"',
-  redactMenuLabel: 'Hide the selection from AI',
+  redactMenuLabel: 'Hide sensitive info',
   redactDialogDesc:
-    'The words stay in the document and in the file; the model sees the placeholder below instead. Name it so the model knows what it stands for.',
+    'The selected part isn’t sent to the AI. It stays in the file as it is. The AI sees only the label below. Name it so the AI knows what it stands for.',
   redactDialogScope:
-    "Hiding covers this app's AI. The CLI, MCP tools and headless export read the file directly, and they still see these words.",
-  redactDialogPlaceholder: 'Placeholder name, e.g. client phone',
+    'Hiding does not reach a program in agent mode that reads the file straight from the disk.',
+  redactDialogPlaceholder: 'Label, e.g. student name',
   redactCancel: 'Cancel',
   redactInsert: 'Hide',
-  redactShowLabel: 'Show the selection to AI again',
+  redactShowLabel: 'Stop hiding',
+  sensLocParagraph: 'Paragraph {n}',
+  sensLocTableCell: 'Table {n}, row {r}, column {c}',
   appLangEnglish: 'English',
   appLangSimplifiedChinese: 'Simplified Chinese',
   appLangJapanese: 'Japanese',

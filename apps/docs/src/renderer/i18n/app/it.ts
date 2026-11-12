@@ -359,15 +359,17 @@ export const it = {
   appEasyWords: 'Spiega con parole semplici',
   appEasyWordsPrompt:
     "Spiega il testo selezionato in italiano in modo che lo capisca anche chi ha bisogno di un testo facile (bambini, persone anziane, chi sta imparando l'italiano). Usa parole di tutti i giorni e frasi brevi, e mantieni tutti i fatti, i numeri e le condizioni. Non modificare il documento: «{text}»",
-  redactMenuLabel: 'Nascondi la selezione all’IA',
+  redactMenuLabel: 'Nascondi informazioni sensibili',
   redactDialogDesc:
-    'Le parole restano nel documento e nel file; il modello vede solo il segnaposto. Dai un nome perché sappia cosa rappresenta.',
+    'La parte scelta non viene inviata all’IA. Nel file resta com’è. L’IA vede solo l’etichetta qui sotto. Dalle un nome perché l’IA capisca cosa rappresenta.',
   redactDialogScope:
-    'Nascondere vale solo per l’IA di questa app. La CLI, gli strumenti MCP e l’esportazione senza interfaccia leggono direttamente il file e vedono comunque queste parole.',
-  redactDialogPlaceholder: 'Nome del segnaposto, es. telefono del cliente',
+    'Non viene nascosto nulla quando un programma in modalità agente legge il file direttamente dal disco.',
+  redactDialogPlaceholder: 'Etichetta, ad es. nome dello studente',
   redactCancel: 'Annulla',
   redactInsert: 'Nascondi',
-  redactShowLabel: 'Mostra di nuovo la selezione all’IA',
+  redactShowLabel: 'Non nascondere più',
+  sensLocParagraph: 'Paragrafo {n}',
+  sensLocTableCell: 'Tabella {n}, riga {r}, colonna {c}',
   appLangEnglish: 'Inglese',
   appLangSimplifiedChinese: 'Cinese semplificato',
   appLangJapanese: 'Giapponese',

@@ -29,6 +29,14 @@ import { CliError, EXIT, type CommandResult } from '../result'
 import { txnDetail, txnFailure } from './txn'
 import { BATCH_OPTIONS, batchCounts, batchMode, batchResult, failedBatch } from '../batch'
 import type { OpFailure } from '../op-errors'
+import { HIDDEN_SUGGESTION, hiddenContentError, hiddenFailure, withHiddenDetail } from '../hiding'
+import {
+  deckHidingViolation,
+  maskDeck,
+  redactedDeckBytes,
+  slideHiddenLabels,
+  unmaskDeck,
+} from '../formats/pptx-hiding'
 import { emuPer, isReadUnit, READ_UNITS, type ReadUnit } from '../length-units'
 
 export const slidesCommand: CommandDef = {
@@ -170,7 +178,8 @@ async function read(
 ): Promise<CommandResult> {
   const unit = unitsFlag(args)
   const path = resolveInput(file, ctx)
-  const opened = await openDeck(readInput(path))
+  // withheld runs read as their {{label}} everywhere below (no option shows the words)
+  const opened = await openDeck(await redactedDeckBytes(readInput(path)))
   const index = slideFlag(args, opened.deck.slides.length)
   const deck = describeDeck(
     opened,
@@ -220,7 +229,12 @@ async function apply(
   const mode = batchMode(args)
   const { text, source } = readOpsInput(args, ctx)
   const ops = inlineLocalFiles(parseOps(text, source), ctx)
-  const opened = await openDeck(readInput(path))
+  const bytes = readInput(path)
+  let opened = await openDeck(bytes)
+  // withheld runs read as their markers while the ops run (formats/pptx-hiding.ts)
+  let masked = maskDeck(opened)
+  const accepted: typeof ops = []
+  const hiddenFails: OpFailure[] = []
   const dryRun = flagBool(args, 'dry-run')
   // One transaction per op, as `create` does: the executor validates a batch
   // against the pre-transaction deck, so a slide added by op 0 would not exist
@@ -233,8 +247,32 @@ async function apply(
   let applied = 0
   for (const [index, op] of ops.entries()) {
     // the op's own isolation mode, so a per_op failure is not worded as an atomic rollback
-    const r = applyOps(opened, [op], { isolation: mode === 'atomic' ? 'atomic' : 'per_op' })
+    const isolation = mode === 'atomic' ? 'atomic' : 'per_op'
+    const r = applyOps(opened, [op], { isolation })
+    const broke = r.applied && masked ? deckHidingViolation(opened, masked) : null
+    if (broke) {
+      // the op reached hidden content: rebuild the deck as it stood before it, then refuse it
+      const failure = hiddenFailure(index, op.op, broke)
+      if (mode === 'atomic') {
+        throw failedBatch(
+          new CliError(
+            EXIT.usage,
+            `op ${index} (${op.op}) rejected: ${failure.error}`,
+            withHiddenDetail({ failures: [failure] }, failure),
+            { reason: 'hidden_content', suggestion: HIDDEN_SUGGESTION },
+          ),
+          ops.length,
+        )
+      }
+      opened = await openDeck(bytes)
+      masked = maskDeck(opened)
+      for (const done of accepted) applyOps(opened, [done], { isolation })
+      hiddenFails.push(failure)
+      if (mode === 'stop_on_error') break
+      continue
+    }
     if (r.applied) {
+      accepted.push(op)
       applied++
       records.push(...(r.records ?? []))
       const slide = r.records?.[0]?.slideId
@@ -246,12 +284,30 @@ async function apply(
     if (mode === 'stop_on_error') break
   }
   const r: TxnResult = { applied: records.length > 0, records, failures }
-  const counts = batchCounts(ops.length, applied, failures.length)
+  const counts = batchCounts(ops.length, applied, failures.length + hiddenFails.length)
   const finish = (base: CommandResult): CommandResult => {
     const { failures: classified, ...detail } = txnDetail(r)
-    return batchResult({ ...base, detail }, counts, (classified as OpFailure[] | undefined) ?? [])
+    const all = [...((classified as OpFailure[] | undefined) ?? []), ...hiddenFails].sort(
+      (a, b) => a.index - b.index,
+    )
+    return batchResult({ ...base, detail }, counts, all)
   }
-  if (!applied) throw failedBatch(txnFailure(r), ops.length)
+  if (!applied) {
+    const first = [...txnFailureList(r), ...hiddenFails].sort((a, b) => a.index - b.index)[0]
+    if (first?.hidden) {
+      const all = [...txnFailureList(r), ...hiddenFails].sort((a, b) => a.index - b.index)
+      throw failedBatch(
+        new CliError(
+          EXIT.usage,
+          `no ops were applied: op ${first.index} (${first.op}) rejected: ${first.error}`,
+          withHiddenDetail({ failures: all }, first),
+          { reason: 'hidden_content', suggestion: HIDDEN_SUGGESTION },
+        ),
+        ops.length,
+      )
+    }
+    throw failedBatch(txnFailure(r), ops.length)
+  }
   if (dryRun) {
     // the batch ran on the in-memory deck only: nothing is applied to the file
     r.applied = false
@@ -265,6 +321,7 @@ async function apply(
     // in-place edits overwrite by design; --out onto another existing file needs --force
     fresh: flagString(args, 'out') !== undefined,
   })
+  if (masked) unmaskDeck(opened, masked)
   writeOutput(output, await saveDeck(opened))
   return finish({
     summary: `applied ${applied} of ${ops.length} ops to ${basename(output)}`,
@@ -279,7 +336,8 @@ async function audit(
   ctx: CommandContext,
 ): Promise<CommandResult> {
   const path = resolveInput(file, ctx)
-  const bytes = readInput(path)
+  // the findings quote text: withheld runs read as their {{label}}
+  const bytes = await redactedDeckBytes(readInput(path))
   const opened = await openDeck(bytes)
   const index = slideFlag(args, opened.deck.slides.length)
   const pages = await auditDeckBytes(bytes, index)
@@ -429,6 +487,9 @@ async function replace(
   const specPath = resolveInput(specFile, ctx)
   const opened = await openDeck(readInput(path))
   const index = slideFlag(args, opened.deck.slides.length)!
+  // rebuilding the slide would drop what it hides
+  const hidden = slideHiddenLabels(opened, index)
+  if (hidden.length) throw hiddenContentError('edit', hidden)
   const explicit = flagString(args, 'outline')
   const stage = stageContext(
     dirname(specPath),
@@ -483,4 +544,9 @@ async function render(
     outputPath: outDir,
     detail: { files: files.map(({ page, ...f }) => ({ slide: page, ...f })) },
   }
+}
+
+/** The failures of a transaction, classified as the batch reports them. */
+function txnFailureList(r: TxnResult): OpFailure[] {
+  return ((txnDetail(r).failures as OpFailure[] | undefined) ?? []).slice()
 }

@@ -640,7 +640,33 @@ describe('saving a candidate as it is', () => {
   it('is not known for a PDF open in a tab (its pending marks are the editor’s)', async () => {
     expect(await templateRedactionOf('a.pdf', bytes('%PDF'), true)).toBe('unknown')
     expect(await templateRedactionOf('a.pdf', bytes('%PDF'), false)).toBe('none')
-    expect(await templateRedactionOf('a.docx', bytes('x'), true)).toBe('none')
+  })
+
+  it('is blocked by the Word, workbook and Hangul marks, and for such a file that cannot be read', async () => {
+    const word = new JSZip()
+    word.file(
+      'word/document.xml',
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+        '<w:p><w:r><w:rPr><go:redact w:label="x"/></w:rPr><w:t>y</w:t></w:r></w:p></w:body></w:document>',
+    )
+    const markedWord = await word.generateAsync({ type: 'uint8array' })
+    expect(await templateRedactionOf('a.docx', markedWord, false)).toBe('redacted')
+    const sheet = new JSZip()
+    sheet.file(
+      'xl/workbook.xml',
+      '<workbook><definedNames><definedName name="IeumHide_x">S!$A:$A</definedName></definedNames></workbook>',
+    )
+    const markedSheet = await sheet.generateAsync({ type: 'uint8array' })
+    expect(await templateRedactionOf('a.xlsx', markedSheet, false)).toBe('redacted')
+    const plain = new JSZip()
+    plain.file('word/document.xml', '<w:document><w:body/></w:document>')
+    plain.file('xl/workbook.xml', '<workbook/>')
+    const clean = await plain.generateAsync({ type: 'uint8array' })
+    expect(await templateRedactionOf('a.docx', clean, false)).toBe('none')
+    expect(await templateRedactionOf('a.xlsx', clean, false)).toBe('none')
+    for (const name of ['a.docx', 'a.xlsx', 'a.xlsm', 'a.hwp', 'a.hwpx']) {
+      expect(await templateRedactionOf(name, bytes('x'), true), name).toBe('unknown')
+    }
   })
 })
 

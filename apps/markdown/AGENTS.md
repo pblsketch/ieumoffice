@@ -56,6 +56,7 @@ Markdown 에디터다. 일반 `.md` 파일 위에서 TipTap 블록 편집기를 
 - 실행: `npm run test -w @genoffice/markdown`(또는 이 폴더에서 `npx vitest run`), `npm run typecheck -w @genoffice/markdown`. 환경은 `jsdom`이다.
 - 저장 경로를 바꾸면 "고치지 않은 블록의 바이트가 그대로인지"를 테스트한다. 링크 참조 정의, 각주, 원시 HTML 블록, CRLF 파일, BOM이 있는 파일을 포함한다.
 - 가림을 바꾸면 쪼개진 표식, 가려진 범위를 가로지르는 선택, 모르는 노드 형태에서 원문이 모델용 글에 남지 않는지 테스트한다.
+- "민감정보 찾기"(AI 창 입력란 위의 단추, 후보 목록, 탭의 첫 보내기 알림)는 `ai/use-doc-sensitive.tsx`가 잇는다. 글 블록마다 읽고(`editor/sensitive-doc.ts`), 확정은 오른쪽 클릭 대화상자와 같은 `setRedaction`이다. 선택을 먼저 옮긴 뒤 따로 부른다(한 체인으로 부르면 명령이 옮기기 전 선택을 읽는다). 코드 블록처럼 표시를 받지 못하는 블록의 후보는 가릴 수 없는 후보로 보인다. 마크다운 → 한글 내보내기는 표시를 한글 가리기 메모로 옮긴다(`tests/md-to-hwp-hiding.test.ts`). 공용 부분(`ai/sensitive-find.ts`의 찾기·제외 기억, `ai/use-sensitive-info.tsx`의 단추·목록·첫 전송 알림)은 마크다운·HTML·PPT 편집기에 같은 파일로 있다. 고치면 세 곳을 함께 고친다. 제외 기억은 뒷단 `main/sensitive-exclusions.ts`가 앱 데이터 폴더(`sensitive-info/<편집기>-exclusions.json`, 열쇠는 `<편집기>-exclusion-key`)에 문서 경로마다 종류와 해시만 둔다.
 - 노트에 넣기(`tests/note-append.test.ts`, `tests/note-append-editor.test.ts`): 그 노트를 보여 주는 탭만 한 번 가져가는지, 문서 끝에 넣고 바뀜이 되는지, 파일은 그대로인지.
 - Save As › PDF(`tests/save-as-pdf.test.ts`, `tests/save-as-pdf-wiring.test.ts`): 고른 `.pdf`가 PDF로만 쓰이고 Markdown 원본·경로가 그대로인지, 다음 저장이 계속 `.md`로 가는지, 화면에 그릴 문서가 없으면 PDF 선택지를 내놓지 않는지.
 - Save As의 다른 형식(`tests/save-as-formats.test.ts`, `tests/save-as-formats-wiring.test.ts`): 형식 목록과 순서, Word·ODT·쪽 이미지가 허락받은 경로에만 두 번째 창 없이 쓰이는지, 쪽 이미지의 번호 붙은 이름, 문서의 경로·바뀜 상태·복구 사본이 그대로인지.

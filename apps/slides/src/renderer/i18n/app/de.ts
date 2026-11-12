@@ -1,15 +1,16 @@
 import type { zh } from './zh'
 
 export const de = {
-  redactMenuLabel: 'Auswahl vor der KI verbergen',
+  redactMenuLabel: 'Sensible Daten ausblenden',
   redactDialogDesc:
-    'Das Ausgewählte bleibt im Dokument und in der Datei; das Modell sieht nur den Platzhalter. Geben Sie ihm einen Namen.',
+    'Der gewählte Teil wird nicht an die KI gesendet. In der Datei bleibt er unverändert. Die KI sieht nur die Bezeichnung unten. Wählen Sie sie so, dass die KI weiß, wofür sie steht.',
   redactDialogScope:
-    'Das Verbergen gilt nur für die KI dieser App. CLI, MCP-Tools und der Headless-Export lesen die Datei direkt und sehen diese Wörter weiterhin.',
-  redactDialogPlaceholder: 'Name des Platzhalters, z. B. Telefonnummer des Kunden',
+    'Das gilt überall, wo das Dokument an eine KI geht – außer für ein Programm im Agentenmodus, das die Datei direkt von der Festplatte liest.',
+  redactDialogPlaceholder: 'Bezeichnung, z. B. Name der Schülerin',
   redactCancel: 'Abbrechen',
-  redactInsert: 'Verbergen',
-  redactEnable: 'Rechtsklick auf eine Auswahl, um sie vor dem Modell zu verbergen.',
+  redactInsert: 'Ausblenden',
+  redactEnable:
+    'Sensible Daten ausblenden: Rechtsklick auf eine Auswahl blendet sie für die KI aus.',
 
   appPhPromptTitle: 'Titel durch Klicken hinzufügen',
   appPhPromptSubtitle: 'Untertitel durch Klicken hinzufügen',

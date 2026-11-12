@@ -8,7 +8,7 @@ HTML düzenleyici .html / .htm dosyalarını iki modda açar: **önizleme** (iş
 - **Kaynak modu**: HTML’i düzenleyin; Ctrl+F bulur, Tümünü değiştir yeniden yazılan işaretlemeyi kaydeder.
 - **Kaydetme**: bayt düzeyinde birebir (BOM/CRLF/sondaki yeni satır korunur); değişiklik yapılmamış kaydetmeler dosyayı yeniden yazmaz.
 - **Yakınlaştırma**: Ctrl+tekerlek / iki parmakla önizlemeyi ölçekleyin; önizleme içinde Ctrl+Z son düzenlemeyi geri alır.
-- **AI’dan gizleme**: kaynak modunda bir seçime sağ tıklayın — öğe içerikleri, öznitelik değerleri, betik dizeleri — model bunların yerine bir yer tutucu görür; işlenmiş sayfa hiç değişmez (ayrıntılar AI paneli bölümünde).
+- **Hassas bilgileri gizle**: kaynak modunda gizlenecek kısmı seçin (öğe içerikleri, öznitelik değerleri, betik dizeleri), sağ tıklayıp **Hassas bilgileri gizle**’yi seçin, ardından bir etiket yazıp **Gizle**’ye basın. Model o yerde bir yer tutucu görür; işlenmiş sayfa hiç değişmez (ayrıntılar AI paneli bölümünde).
 
 ## Araç çubuğu
 

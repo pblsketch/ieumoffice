@@ -308,4 +308,18 @@ export const pt = {
     'Os caracteres são contados com espaços. Sem espaços: documento inteiro {totalNoSpace}. Como nas informações do documento, cabeçalhos, rodapés, notas de rodapé e notas de fim não são contados.',
   charCountHintSelected:
     'Com espaços: seleção {selected} / documento inteiro {total}. Sem espaços: seleção {selectedNoSpace} / documento inteiro {totalNoSpace}. Como nas informações do documento, cabeçalhos, rodapés, notas de rodapé e notas de fim não são contados.',
+  hidingErrNone: 'Selecione primeiro o texto que quer ocultar.',
+  hidingErrOverlap:
+    'Este texto já tem uma nota e não pode ser ocultado. Mova ou apague essa nota primeiro.',
+  hidingErrPlace:
+    'Não é possível ocultar texto de cabeçalhos, rodapés, notas de rodapé ou de fim nem de objetos.',
+  hidingErrProtected:
+    'Não é possível adicionar notas a este documento, por isso não é possível ocultar.',
+  hidingErrFailed: 'Não foi possível ocultar a seleção.',
+  hidingDone: '{count} lugar(es) ocultado(s). O arquivo mantém o texto; a IA vê só o rótulo.',
+  hidingUnhide: 'Deixar de ocultar',
+  hidingRelabel: 'Alterar rótulo',
+  hidingSendBlocked:
+    'Não foi possível confirmar onde está uma parte ocultada, por isso nada deste documento foi enviado à IA. Verifique no painel de notas as notas “Ocultar informações sensíveis” em cabeçalhos, rodapés ou locais parecidos.',
+  sensitiveFindFailed: 'Não foi possível ler o documento; nada foi procurado.',
 } satisfies Record<keyof typeof zh, string>

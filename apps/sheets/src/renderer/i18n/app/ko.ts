@@ -1437,6 +1437,15 @@ export const ko = {
   appCtxFormatCells: '셀 서식…',
   appCtxPickFromList: '드롭다운 목록에서 선택…',
   appCtxDefineName: '이름 정의…',
+  appCtxSensitiveHide: '민감정보 가리기',
+  appCtxSensitiveUnhide: '민감정보 가리기 풀기',
+  appSensitiveHidden: '{range}을(를) AI에게서 가렸습니다. AI에게는 {marker}로 보입니다.',
+  appSensitiveUnhidden: '{range}의 가리기를 풀었습니다.',
+  appSensitiveNothingHidden: '고른 칸에는 가린 곳이 없습니다.',
+  appSensitiveBroken:
+    'AI에게 보내지 않았습니다. 가리기 표시 {names}가 가리키는 곳이 없습니다(지운 시트나 #REF!). 이름 관리자에서 고치거나 지우세요.',
+  appSensitiveMergeRefused:
+    '합치지 않았습니다. {file}의 가린 칸을 이 통합 문서로 옮길 수 없습니다.',
   appCtxLink: '링크…',
   appCtxInsertFunction: '함수 삽입…',
   appFillUp: '위로 채우기',

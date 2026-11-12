@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
+import { REDACT_NS } from '@genoffice/docx-engine'
 import { FEATURE_LABEL } from '../src/formats/docx-hwp'
 import { run, tempDir } from './helpers'
 
@@ -145,5 +146,49 @@ describe('the published hwp_report ids', () => {
       .map((m) => m[1])
       .filter((id) => id !== 'feature')
     expect(ids).toEqual(Object.keys(FEATURE_LABEL))
+  })
+})
+
+describe('Word hiding marks', () => {
+  it('become hiding memos in the Hangul file, without asking or warning', async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(readFileSync(NOTICE))
+    const xml = await zip.file('word/document.xml')!.async('string')
+    const marked = xml
+      .replace('<w:document ', `<w:document xmlns:go="${REDACT_NS}" `)
+      .replace(
+        /(<w:body>)/,
+        '$1<w:p><w:r><w:t xml:space="preserve">담임 </w:t></w:r><w:r><w:rPr>' +
+          '<w:bdr w:val="single" w:sz="6" w:color="6B4FC0"/><go:redact w:label="학생 이름"/>' +
+          '</w:rPr><w:t>홍길동</w:t></w:r></w:p>',
+      )
+    expect(marked).toContain('<go:redact')
+    zip.file('word/document.xml', marked)
+    const dir = tempDir()
+    const input = join(dir, 'marked.docx')
+    writeFileSync(input, await zip.generateAsync({ type: 'uint8array' }))
+    const r = await run(['convert', input, '--to', 'hwpx', '--json'])
+    expect(r.code).toBe(0)
+    const json = r.json()
+    expect(json.status).toBe('ok')
+    expect(json.warnings).toBeUndefined()
+    expect(json.detail.hwp_report).toEqual([])
+    const doc = new HwpDocument(new Uint8Array(readFileSync(json.output_path)))
+    try {
+      const memos = JSON.parse(doc.getMemoList()) as Array<{
+        text: string
+        author: string
+        paraIndex: number
+        startCharIdx: number
+        endCharIdx: number
+      }>
+      expect(memos.map((m) => [m.text, m.author])).toEqual([
+        ['[Hide sensitive info] 학생 이름', 'IeumOffice'],
+      ])
+      const [memo] = memos
+      expect(doc.getTextRange(0, memo.paraIndex, memo.startCharIdx, 3)).toBe('홍길동')
+    } finally {
+      doc.free()
+    }
   })
 })

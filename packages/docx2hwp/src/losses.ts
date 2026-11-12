@@ -6,6 +6,12 @@
  * separate published contract and are not shared.
  */
 export const LOSS_FEATURES = {
+  /**
+   * a sensitive-info hiding mark the copy could not carry as a hiding memo
+   * (a header, a note, a picture alone, an engine refusal): its words are in
+   * the copy without the mark, so the model can read them there
+   */
+  hiding_mark: 'dropped',
   comment: 'dropped',
   revision: 'dropped',
   equation: 'dropped',

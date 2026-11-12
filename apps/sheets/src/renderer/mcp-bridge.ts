@@ -6,6 +6,15 @@ import {
   type WorkbookOperation,
 } from '@genoffice/xlsx-gateway/domain/workbook-dsl'
 import { normalizeSheetRefs, primaryCellOf, primarySheetId, type SheetRef } from './mcp-sheet-refs'
+import type { WorkbookSkillHiding } from './ai/workbook-skill'
+import {
+  HIDING_UNAVAILABLE,
+  hidingOperationError,
+  maskSheetCell,
+  withoutHiddenHeaders,
+  type ReadCell,
+} from './hiding/skill-guard'
+import type { SheetHidingView } from './hiding/view'
 
 /**
  * Renderer half of the MCP → sheets-grid bridge.
@@ -46,6 +55,82 @@ export interface McpSheetHandlers {
     path: string,
     overwrite: boolean,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
+  /**
+   * 민감정보 가리기 (the AI skill's hooks, `sheetSkillHiding`): with them, cells read
+   * through this bridge are hidden as the in-app AI reads them, and a batch that
+   * would reach hidden cells is refused with `hidden_content` before it runs.
+   */
+  hiding?: WorkbookSkillHiding
+}
+
+/** The refusal prefix MCP clients branch on, the command line's `error` value. */
+export const HIDDEN_CONTENT = 'hidden_content'
+
+/** A cell value the MCP read hands out: model value, rendered text, formula. */
+interface McpCell extends ReadCell {
+  readonly display?: unknown
+}
+
+/** One cell as a model may read it: a hidden or leaning cell loses its rendered text too. */
+function maskMcpCell(
+  view: SheetHidingView,
+  sheetId: string,
+  address: string,
+  cell: McpCell,
+): McpCell {
+  const masked = maskSheetCell(view, sheetId, address, cell)
+  if (masked === cell) return cell
+  const { display: _display, ...rest } = masked
+  return rest
+}
+
+/** The workbook overview with header names of a hidden first row left out. */
+function overviewOf(view: SheetHidingView, context: unknown): unknown {
+  if (!context || typeof context !== 'object') return context
+  const info = context as {
+    sheetId?: unknown
+    selectionColumns?: readonly string[]
+    selectionSheetId?: unknown
+  }
+  if (!info.selectionColumns?.length) return context
+  // an overview that does not say its sheet cannot be checked: its header names are left out
+  if (typeof info.sheetId !== 'string') {
+    const { selectionColumns: _unknown, ...rest } = info
+    return rest
+  }
+  // the names come from the selection's sheet; without it every marked sheet counts
+  const { selectionSheetId, ...rest } = info
+  return withoutHiddenHeaders(view, {
+    ...rest,
+    sheetId: info.sheetId,
+    ...(typeof selectionSheetId === 'string' ? { selectionSheetId } : {}),
+  })
+}
+
+/**
+ * The bridge the editor installs: the live handlers App keeps in a ref (so the
+ * bridge never sees stale closures), with the AI skill's hiding hooks, so the
+ * in-app and session MCP servers read and edit the grid as the in-app AI does.
+ */
+export function installLiveSheetsMcpBridge(
+  live: { readonly current: McpSheetHandlers | null },
+  hiding: WorkbookSkillHiding,
+): () => void {
+  return installSheetsMcpBridge({
+    hasWorkbook: () => live.current?.hasWorkbook() ?? false,
+    context: () => live.current?.context(),
+    readCells: (addresses, sheetId) => live.current?.readCells(addresses, sheetId) ?? {},
+    sheets: () => live.current?.sheets() ?? [],
+    focusSheet: (sheetId, address) => live.current?.focusSheet(sheetId, address),
+    applyOps: async (ops, dryRun) =>
+      (await live.current?.applyOps(ops, dryRun)) ?? { ok: false, reason: 'not ready' },
+    saveTo: async (path, overwrite) =>
+      (await live.current?.saveTo(path, overwrite)) ?? {
+        ok: false,
+        error: 'the spreadsheet is not ready',
+      },
+    hiding,
+  })
 }
 
 export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
@@ -119,6 +204,26 @@ export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
     }
   }
 
+  /**
+   * The hiding view of the open workbook now, or why nothing may be read. Without
+   * hooks the bridge has no hiding to apply (a build that does not wire them).
+   */
+  async function hidingView(): Promise<
+    { ok: true; view: SheetHidingView | null } | { ok: false; error: string }
+  > {
+    const hiding = handlers.hiding
+    if (!hiding) return { ok: true, view: null }
+    await hiding.prepare()
+    const state = hiding.state()
+    if (!state.ok) return { ok: false, error: `${HIDDEN_CONTENT}: ${HIDING_UNAVAILABLE}` }
+    return { ok: true, view: state.view.active ? state.view : null }
+  }
+
+  function activeSheetId(): string | undefined {
+    const info = handlers.context() as { sheetId?: unknown } | undefined
+    return typeof info?.sheetId === 'string' ? info.sheetId : undefined
+  }
+
   async function runCommand(message: McpCommandMessage): Promise<void> {
     const reply = (ok: boolean, result?: unknown, error?: string): void => {
       api.reportMcpResult({
@@ -143,10 +248,30 @@ export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
             reply(false, undefined, resolved.error)
             return
           }
+          const hiding = await hidingView()
+          if (!hiding.ok) {
+            reply(false, undefined, hiding.error)
+            return
+          }
           if (addresses.length > 0) {
-            reply(true, { cells: handlers.readCells(addresses, resolved.sheetId) })
+            const cells = handlers.readCells(addresses, resolved.sheetId) as Record<string, McpCell>
+            const view = hiding.view
+            const sheetId = resolved.sheetId ?? activeSheetId()
+            reply(true, {
+              cells:
+                view && sheetId !== undefined
+                  ? Object.fromEntries(
+                      Object.entries(cells).map(([address, cell]) => [
+                        address,
+                        maskMcpCell(view, sheetId, address, cell),
+                      ]),
+                    )
+                  : cells,
+            })
           } else {
-            reply(true, { context: handlers.context() })
+            // the overview names the selected columns by their first-row text
+            const context = handlers.context()
+            reply(true, { context: hiding.view ? overviewOf(hiding.view, context) : context })
           }
           return
         }
@@ -172,11 +297,25 @@ export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
             reply(false, undefined, describeOpError(named.ops, parsed.error))
             return
           }
+          const hiding = await hidingView()
+          if (!hiding.ok) {
+            reply(false, undefined, hiding.error)
+            return
+          }
+          const view = hiding.view
+          const refused = view
+            ? hidingOperationError(parsed.data, view, handlers.hiding?.operation)
+            : null
+          if (refused) {
+            reply(false, undefined, `${HIDDEN_CONTENT}: ${refused}`)
+            return
+          }
           const sheetId = primarySheetId(parsed.data)
           const dryRun = payload.dryRun === true
           if (sheetId !== undefined && !dryRun)
             handlers.focusSheet(sheetId, primaryCellOf(parsed.data))
-          reply(true, await handlers.applyOps(parsed.data, dryRun))
+          const outcome = await handlers.applyOps(parsed.data, dryRun)
+          reply(true, view ? maskOutcome(view, outcome) : outcome)
           return
         }
         case 'save_sheet': {
@@ -201,5 +340,20 @@ export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
     } catch (error: unknown) {
       reply(false, undefined, error instanceof Error ? error.message : String(error))
     }
+  }
+}
+
+/** The formula values an apply reads back, as a model may read them. */
+function maskOutcome(view: SheetHidingView, outcome: unknown): unknown {
+  if (!outcome || typeof outcome !== 'object') return outcome
+  const values = (outcome as { formulaValues?: unknown }).formulaValues
+  if (!Array.isArray(values)) return outcome
+  return {
+    ...outcome,
+    formulaValues: values.map((cell: McpCell & { sheetId?: unknown; address?: unknown }) =>
+      typeof cell?.sheetId === 'string' && typeof cell.address === 'string'
+        ? maskMcpCell(view, cell.sheetId, cell.address, cell)
+        : cell,
+    ),
   }
 }

@@ -22,7 +22,7 @@ import {
   shell,
   webContents,
 } from 'electron'
-import type { WebContents } from 'electron'
+import type { MessageBoxOptions, WebContents } from 'electron'
 import {
   configuredDefaultSaveDir,
   confirmOverwriteIfConflicted,
@@ -88,6 +88,8 @@ import {
   extensionlessAssetMime,
 } from './asset-mime'
 import { buildPreviewDocument } from './preview-document'
+import { htmlHidingLossAllowed } from './hiding-loss-gate'
+import { registerHtmlSensitiveIpc } from './sensitive-ipc'
 import { confirmOdtReport, exportOdt, odtFilterName } from './odt-export'
 import { inlineImagesForSingleFile, singleFileExportBaseName } from './single-file-html'
 import { registerHtmlHandoffIpc } from './generate-handoff-ipc'
@@ -1162,12 +1164,19 @@ async function renderHtmlDocx(
   }
 }
 
+const showBox = (win: BrowserWindow | undefined, options: MessageBoxOptions) =>
+  win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options)
+
 /** The Word export to a path already chosen (its dialog, Save As or the command line). */
 async function writeHtmlDocx(
   html: string,
   docPath: string | undefined,
   target: string,
 ): Promise<ExportResult> {
+  const win = BrowserWindow.getFocusedWindow() ?? undefined
+  if (!(await htmlHidingLossAllowed(html, isHeadlessMode(), (o) => showBox(win, o)))) {
+    return { ok: true, canceled: true }
+  }
   if (docxExportPrepareHook && !(await docxExportPrepareHook(target))) {
     return { ok: true, canceled: true }
   }
@@ -1192,6 +1201,10 @@ async function writeHtmlOdt(
   pickPath: () => Promise<string | null>,
   skipConfirm: boolean,
 ): Promise<ExportResult> {
+  const headless = skipConfirm || isHeadlessMode()
+  if (!(await htmlHidingLossAllowed(html, headless, (o) => showBox(win, o)))) {
+    return { ok: true, canceled: true }
+  }
   const outcome = await exportOdt({
     pickPath,
     docx: async () => {
@@ -1617,6 +1630,7 @@ function registerHtmlIpc(): void {
   ipcRegistered = true
 
   registerImageProtocol()
+  registerHtmlSensitiveIpc()
   registerPreviewProtocol((wcId) => {
     const text = previewTextByWc.get(wcId)
     if (text === undefined) return null

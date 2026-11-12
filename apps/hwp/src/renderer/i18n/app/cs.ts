@@ -304,4 +304,17 @@ export const cs = {
     'Znaky se počítají včetně mezer. Bez mezer: celý dokument {totalNoSpace}. Stejně jako v informacích o dokumentu se nepočítají záhlaví, zápatí, poznámky pod čarou ani vysvětlivky.',
   charCountHintSelected:
     'Včetně mezer: výběr {selected} / celý dokument {total}. Bez mezer: výběr {selectedNoSpace} / celý dokument {totalNoSpace}. Stejně jako v informacích o dokumentu se nepočítají záhlaví, zápatí, poznámky pod čarou ani vysvětlivky.',
+  hidingErrNone: 'Nejdřív vyberte text, který chcete skrýt.',
+  hidingErrOverlap:
+    'Tento text už má poznámku, takže ho nelze skrýt. Nejdřív tu poznámku přesuňte nebo smažte.',
+  hidingErrPlace:
+    'Text v záhlaví, zápatí, poznámkách pod čarou či vysvětlivkách a v objektech nelze skrýt.',
+  hidingErrProtected: 'Do tohoto dokumentu nelze přidat poznámky, takže nelze nic skrýt.',
+  hidingErrFailed: 'Výběr se nepodařilo skrýt.',
+  hidingDone: 'Skryto míst: {count}. Soubor text zachovává; AI vidí jen označení.',
+  hidingUnhide: 'Zrušit skrytí',
+  hidingRelabel: 'Změnit označení',
+  hidingSendBlocked:
+    'Nepodařilo se ověřit, kde je skrytá část, proto se z tohoto dokumentu nic neposlalo AI. V panelu poznámek zkontrolujte poznámky „Skrýt citlivé údaje“ v záhlaví, zápatí a podobně.',
+  sensitiveFindFailed: 'Dokument se nepodařilo přečíst; nic se nehledalo.',
 } satisfies Record<keyof typeof zh, string>

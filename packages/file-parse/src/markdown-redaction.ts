@@ -1,5 +1,6 @@
 import { placeholderSource } from '@genoffice/agent-core/redact-core'
 import { RedactionMarkError } from './redaction-error'
+import { decodeEntities } from './xml-elements'
 
 /**
  * Withheld spans in a file the markdown editor saves, read as another file's
@@ -226,6 +227,11 @@ function destinationEndsBefore(src: string, i: number, limit: number): boolean {
   return false
 }
 
+/** An attribute value decoded once, as the browser reads it (`&nbsp;` included). */
+function decodeLabel(value: string): string {
+  return decodeEntities(value.replace(/&nbsp;/g, '&#160;'))
+}
+
 /** the text with every withheld span replaced by its `{{label}}` marker */
 export function redactMarkdownSource(source: string): string {
   MARK_NAME_RE.lastIndex = 0
@@ -268,7 +274,9 @@ export function redactMarkdownSource(source: string): string {
     assertClosesHere(source, openEnd, end.index, closeEnd)
 
     const found = LABEL_RE.exec(start[0])
-    const label = (found?.[1] ?? found?.[2] ?? 'private').trim() || 'private'
+    // the editor reads the attribute through the browser, which decodes it once;
+    // the decoded label is cleaned like any other, so it cannot end the marker
+    const label = decodeLabel(found?.[1] ?? found?.[2] ?? 'private').trim() || 'private'
     kept.push([cursor, start.index])
     out.push(source.slice(cursor, start.index), placeholderSource(label))
     cursor = closeEnd

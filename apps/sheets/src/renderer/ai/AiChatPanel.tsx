@@ -369,6 +369,7 @@ export function AiChatPanel({
   onExpand,
   onCollapse,
   project,
+  sensitive,
 }: {
   readonly isOpen: boolean
   /** An explicit AI action focuses the composer, including when already open. */
@@ -442,6 +443,8 @@ export function AiChatPanel({
   readonly onCollapse: () => void
   /** the project folder parts; absent: the panel shows none */
   readonly project?: AiPanelProject | undefined
+  /** "find sensitive info", its candidate list and the first-send alert, above the composer */
+  readonly sensitive?: React.ReactNode
 }): React.JSX.Element {
   const { t, lang } = useI18n()
   // A reply that stopped because its connection cannot go on: the queue is paused, so the next
@@ -994,6 +997,7 @@ export function AiChatPanel({
           )}
         {project?.hint}
         {project?.notices}
+        {sensitive}
         {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
         {/* Above the input card, not inside its footer: the reset time is long and
             would otherwise squeeze the attach/send buttons in a narrow panel. */}

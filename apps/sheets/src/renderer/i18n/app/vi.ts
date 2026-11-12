@@ -1410,6 +1410,15 @@ export const vi = {
   appCtxFormatCells: 'Định dạng ô…',
   appCtxPickFromList: 'Chọn từ danh sách thả xuống…',
   appCtxDefineName: 'Xác định tên…',
+  appCtxSensitiveHide: 'Ẩn thông tin nhạy cảm',
+  appCtxSensitiveUnhide: 'Bỏ ẩn thông tin nhạy cảm',
+  appSensitiveHidden: 'Đã ẩn {range} khỏi AI. AI sẽ thấy {marker} thay vào đó.',
+  appSensitiveUnhidden: 'Đã bỏ ẩn {range}.',
+  appSensitiveNothingHidden: 'Không có gì bị ẩn trong vùng chọn.',
+  appSensitiveBroken:
+    'Chưa gửi cho AI: dấu ẩn {names} trỏ tới các ô không còn tồn tại (trang tính đã xóa hoặc #REF!). Hãy sửa hoặc xóa chúng trong Trình quản lý Tên.',
+  appSensitiveMergeRefused:
+    'Chưa hợp nhất: không thể đưa các ô bị ẩn của {file} vào sổ làm việc này.',
   appCtxLink: 'Liên kết…',
   appCtxInsertFunction: 'Chèn hàm…',
   appFillUp: 'Điền lên',

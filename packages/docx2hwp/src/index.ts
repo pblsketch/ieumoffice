@@ -7,6 +7,7 @@ export {
   docxToHwp,
   Docx2HwpError,
   type Docx2HwpErrorCode,
+  type Docx2HwpOptions,
   type HwpConversion,
   type HwpConversionOptions,
   type HwpFormat,

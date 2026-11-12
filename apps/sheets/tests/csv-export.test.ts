@@ -203,3 +203,27 @@ describe('Export CSV wiring', () => {
     expect(preloadSrc).toContain("action === 'export-csv'")
   })
 })
+
+describe('hiding marks a CSV copy would lose', () => {
+  it('are the IeumHide_ names the engine holds and those only the file keeps', async () => {
+    const { hidingMarkCount } = await import('../src/renderer/hiding-export')
+    const runtime = {
+      univerAPI: {
+        getActiveWorkbook: () => ({
+          getDefinedNames: () =>
+            ['IeumHide_이름', 'Total', 'IeumHide2_이름'].map((n) => ({ getName: () => n })),
+        }),
+      },
+    }
+    const state = { uninstalledDefinedNames: new Set(['ieumhide_전화', 'IeumHide_이름']) }
+    expect(hidingMarkCount(runtime as never, state as never)).toBe(3)
+    expect(hidingMarkCount(null, null)).toBe(0)
+  })
+
+  it('ride the CSV export request', () => {
+    const base = { fileName: 'a.csv', content: 'x', hasFormulas: false }
+    expect(workbookExportCsvRequestSchema.parse({ ...base, hidingMarks: 2 }).hidingMarks).toBe(2)
+    expect(workbookExportCsvRequestSchema.parse(base).hidingMarks).toBeUndefined()
+    expect(() => workbookExportCsvRequestSchema.parse({ ...base, hidingMarks: -1 })).toThrow()
+  })
+})

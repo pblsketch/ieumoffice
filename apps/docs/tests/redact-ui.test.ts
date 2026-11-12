@@ -21,8 +21,8 @@ import { modelTextOf, redactionCount } from '../src/renderer/ai/redact-view'
  * is what it does to the document, not that it renders.
  */
 
-const LABEL = 'Hide the selection from AI'
-const SHOW_LABEL = 'Show the selection to AI again'
+const LABEL = 'Hide sensitive info'
+const SHOW_LABEL = 'Stop hiding'
 
 function createEditor(): Editor {
   return new Editor({

@@ -205,6 +205,8 @@ import { atomicWriteFile } from './atomic-write'
 import { Worker } from 'node:worker_threads'
 import hwpExportWorkerPath from './hwp-export-worker?modulePath'
 import type { HwpConversion, HwpFormat, HwpLook, Loss } from '@genoffice/docx2hwp'
+import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
+import { createSensitiveExclusionStore, isExclusionItem } from './sensitive-exclusions'
 import { convertInWorker, exportHwp, hwpLossMessageBox } from './hwp-export'
 import { createDocsRecovery } from './docs-recovery'
 import {
@@ -3353,7 +3355,7 @@ const tMain = createI18n({
 export const hwpCopy = {
   convert: (docx: Uint8Array, format: HwpFormat, look: HwpLook): Promise<HwpConversion> =>
     convertInWorker(
-      { docx, format, wasmPath: rhwpWasmPath(), look },
+      { docx, format, wasmPath: rhwpWasmPath(), look, hidingLang: getUiLang() },
       () => new Worker(hwpExportWorkerPath),
     ),
   /** asked only when something is lost; false = cancel */
@@ -5061,6 +5063,28 @@ export function registerDocsIpc(): void {
     if (proceed) docsRecovery.settleClosedDocument(event.sender.id, false)
     return proceed
   })
+  ipcMain.handle('docs:confirm-hiding-loss', (event, count: unknown) => {
+    if (tornDownWcIds.has(event.sender.id)) return false
+    const parent = dialogParent(event)
+    return confirmHidingLoss(typeof count === 'number' ? count : 0, (options) =>
+      parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options),
+    )
+  })
+  // dismissed sensitive-info candidates: kind and keyed hash per document path, never the value
+  const sensitiveExclusions = createSensitiveExclusionStore(userDataPath('sensitive-exclusions'))
+  ipcMain.handle(
+    'docs:sensitive-exclusion-add',
+    async (_event, docPath: unknown, item: unknown) => {
+      if (typeof docPath !== 'string' || !docPath || !isExclusionItem(item)) return false
+      await sensitiveExclusions.add(docPath, { kind: item.kind, value: item.value })
+      return true
+    },
+  )
+  ipcMain.handle('docs:sensitive-exclusion-check', (_event, docPath: unknown, items: unknown) => {
+    if (typeof docPath !== 'string' || !docPath || !Array.isArray(items)) return []
+    if (!items.every(isExclusionItem)) return items.map(() => false)
+    return sensitiveExclusions.check(docPath, items)
+  })
   ipcMain.handle('docs:system-locale', () => app.getSystemLocale())
 
   configureMetricsCache(userDataPath('font-metrics'))
@@ -6306,7 +6330,7 @@ export function registerDocsIpc(): void {
           materialize: async (bytes) => (await materializeLazyDocx(Buffer.from(bytes))).bytes,
           convert: (bytes, format) =>
             convertInWorker(
-              { docx: bytes, format, wasmPath: rhwpWasmPath() },
+              { docx: bytes, format, wasmPath: rhwpWasmPath(), hidingLang: getUiLang() },
               () => new Worker(hwpExportWorkerPath),
             ),
           confirm: async (losses, passwordDropped) => {

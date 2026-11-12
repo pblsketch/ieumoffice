@@ -9,6 +9,7 @@ import type { CommandRegistry } from '../registry'
 import type { JsonOk } from '../result'
 import { stopBackgroundJobs } from '../pdf-jobs'
 import { DECK_TOOLS, runDeckTool } from './deck'
+import { sourceRefusal } from './hiding-gate'
 import { loadTypedSchemas, type TypedSchemas } from './op-schemas'
 import { attachOutputs, defaultOut, materializeInputs, urlErrorOutcome } from './remote'
 import {
@@ -190,6 +191,11 @@ async function runTool(
       return urlErrorOutcome(tool, err)
     }
     defaultOut(tool, args, ctx)
+  }
+  if (tool.source) {
+    // a source that hides anything is not made into another file for an MCP client (hiding-gate.ts)
+    const refused = await sourceRefusal(tool.command, args[tool.source], ctx)
+    if (refused) return refused
   }
   const { argv, inline } = buildArgv(tool, args)
   return runWithInline(argv, inline, ctx)

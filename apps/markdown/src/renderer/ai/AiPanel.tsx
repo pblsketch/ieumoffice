@@ -30,7 +30,7 @@ import type {
   AiSubscriptionProviderId,
   AiSubscriptionUsage,
 } from '@genoffice/ai-provider/browser'
-import { localModelCapabilities } from '@genoffice/ai-provider/browser'
+import { localContextLimit, localModelCapabilities } from '@genoffice/ai-provider/browser'
 import {
   AiComposer,
   AiQueueStrip,
@@ -67,6 +67,7 @@ import {
 } from '@genoffice/ui'
 import type { Editor } from '@tiptap/core'
 import { aiLangDirective, t as tGlobal, useI18n } from '../i18n/locale'
+import { useDocSensitiveInfo } from './use-doc-sensitive'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -359,6 +360,19 @@ export function AiPanel({
   const settingsRef = useRef<AiSettings | null>(null)
   /** the settings as last read, for what the panel shows and gates (settingsRef stays the run's own copy) */
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null)
+  /** "Find sensitive info" and the alert before this tab's first send */
+  const sensitive = useDocSensitiveInfo({
+    lang,
+    localAi: aiSettings !== null && localContextLimit(aiSettings) !== undefined,
+    getEditor: () => depsRef.current.getEditor(),
+    filePath: () => filePathRef.current,
+    startWord: () => t('sensLocStart'),
+  })
+  const sensitiveRef = useRef(sensitive)
+  sensitiveRef.current = sensitive
+  /** the first-send question is open; one send let out after the count itself failed */
+  const sensitiveAskingRef = useRef(false)
+  const sensitiveBypassRef = useRef(false)
   const applyAiSettings = (next: AiSettings): void => {
     setAiSettings(next)
   }
@@ -988,6 +1002,31 @@ export function AiPanel({
     const instruction = text.trim()
     const loop = loopRef.current
     if (!instruction || !loop || loop.busy) return false
+    // The tab's first send: what looks like sensitive info in the document is counted once,
+    // and the person chooses before anything goes out. "Review" sends nothing; the text
+    // stays with the caller and the candidate list opens.
+    if (!sensitiveRef.current.settled() && !sensitiveBypassRef.current) {
+      if (sensitiveAskingRef.current) return false
+      sensitiveAskingRef.current = true
+      const again = () => send(text, displayText, retryScope, skillUse)
+      void sensitiveRef.current
+        .beforeSend()
+        .then((answer) => {
+          sensitiveAskingRef.current = false
+          if (answer === 'send') again()
+        })
+        .catch(() => {
+          // the count itself failed: the alert is advice, the hiding is enforced on its own
+          sensitiveAskingRef.current = false
+          sensitiveBypassRef.current = true
+          try {
+            again()
+          } finally {
+            sensitiveBypassRef.current = false
+          }
+        })
+      return false
+    }
     // A request made during a status check or in front of the first-connection notice is
     // held and starts by itself once the way is clear; in front of "not connected" nothing
     // is kept. Either way nothing is sent now and the text stays with the caller.
@@ -1583,6 +1622,8 @@ export function AiPanel({
             onFocus={(qid) => onQueueFocus?.(qid)}
           />
         )}
+        <div className="ai-sens-bar">{sensitive.button}</div>
+        {sensitive.panel}
         {projectPanel.hint}
         {/* Above the input card, not inside its footer: the reset time is long and
             would otherwise squeeze the footer controls in a narrow panel. */}

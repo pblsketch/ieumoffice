@@ -8,7 +8,7 @@ O editor HTML abre .html / .htm com dois modos: **Visualizar** (a página render
 - **Modo de código**: edita o HTML; ctrl+F procura e Substituir guarda a marcação reescrita.
 - **Salvar**: fiel byte a byte (BOM/CRLF/quebra de linha final preservados); um salvamento sem alterações não reescreve.
 - **Zoom**: ctrl+roda/pinça dimensiona a pré-visualização; ctrl+Z dentro da pré-visualização desfaz a última edição.
-- **Ocultar da IA**: no modo código, clique direito numa seleção — conteúdo de elemento, valor de atributo, strings de script — e o modelo vê um espaço reservado; a página renderizada nunca muda (detalhes no capítulo do painel de IA).
+- **Ocultar informações sensíveis**: no modo código, selecione o que quer ocultar (conteúdo de elemento, valor de atributo, strings de script), clique com o botão direito e escolha **Ocultar informações sensíveis**; depois digite um rótulo e clique em **Ocultar**. O modelo vê um espaço reservado no lugar; a página renderizada nunca muda (detalhes no capítulo do painel de IA).
 
 ## A barra de ferramentas
 

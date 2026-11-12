@@ -118,7 +118,7 @@ Saat langganan pertama kali bisa dipakai, GenOffice menampilkan pemberitahuan sa
 
 Permintaan lewat ChatGPT yang terhubung langsung tidak melewati program Codex; permintaan itu dikirim dari PC ini langsung ke OpenAI.
 
-Apa pun yang Anda sembunyikan dengan **Sembunyikan seleksi dari AI** tidak dikirim, AI mana pun yang Anda pakai.
+Apa pun yang Anda sembunyikan dengan **Sembunyikan informasi sensitif** tidak dikirim, AI mana pun yang Anda pakai.
 
 ## Baik untuk diketahui
 

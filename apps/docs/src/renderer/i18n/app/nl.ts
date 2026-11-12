@@ -363,15 +363,17 @@ export const nl = {
   appEasyWords: 'Uitleggen in eenvoudige woorden',
   appEasyWordsPrompt:
     'Leg de geselecteerde tekst in het Nederlands uit, zodat ook mensen die eenvoudige taal nodig hebben hem begrijpen (kinderen, ouderen, mensen die Nederlands leren). Gebruik alledaagse woorden en korte zinnen, en laat alle feiten, getallen en voorwaarden staan. Wijzig het document niet: "{text}"',
-  redactMenuLabel: 'Selectie verbergen voor de AI',
+  redactMenuLabel: 'Gevoelige gegevens verbergen',
   redactDialogDesc:
-    'De woorden blijven in het document en het bestand; het model ziet alleen de placeholder. Geef hem een naam.',
+    'Het gekozen deel wordt niet naar de AI gestuurd. In het bestand blijft het zoals het is. De AI ziet alleen het label hieronder. Geef het een naam zodat de AI weet waar het voor staat.',
   redactDialogScope:
-    'Verbergen geldt alleen voor de AI in deze app. De CLI, MCP-tools en de export zonder venster lezen het bestand rechtstreeks en zien deze woorden nog steeds.',
-  redactDialogPlaceholder: 'Naam van placeholder, bv. telefoonnummer klant',
+    'Verbergen geldt niet als een programma in agentmodus het bestand rechtstreeks van de schijf leest.',
+  redactDialogPlaceholder: 'Label, bijv. naam leerling',
   redactCancel: 'Annuleren',
   redactInsert: 'Verbergen',
-  redactShowLabel: 'Selectie opnieuw aan de AI tonen',
+  redactShowLabel: 'Niet meer verbergen',
+  sensLocParagraph: 'Alinea {n}',
+  sensLocTableCell: 'Tabel {n}, rij {r}, kolom {c}',
   appLangEnglish: 'Engels',
   appLangSimplifiedChinese: 'Vereenvoudigd Chinees',
   appLangJapanese: 'Japans',

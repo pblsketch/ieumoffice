@@ -303,4 +303,16 @@ export const tr = {
     'Karakterler boşluklarla birlikte sayılır. Boşluksuz: tüm belge {totalNoSpace}. Belge Bilgileri’nde olduğu gibi üst bilgiler, alt bilgiler, dipnotlar ve sonnotlar sayılmaz.',
   charCountHintSelected:
     'Boşluklu: seçili {selected} / tüm belge {total}. Boşluksuz: seçili {selectedNoSpace} / tüm belge {totalNoSpace}. Belge Bilgileri’nde olduğu gibi üst bilgiler, alt bilgiler, dipnotlar ve sonnotlar sayılmaz.',
+  hidingErrNone: 'Önce gizlenecek metni seçin.',
+  hidingErrOverlap:
+    'Bu metinde zaten bir not var, bu yüzden gizlenemez. Önce o notu taşıyın ya da silin.',
+  hidingErrPlace: 'Üst bilgi, alt bilgi, dipnot, son not ve nesnelerdeki metin gizlenemez.',
+  hidingErrProtected: 'Bu belgeye not eklenemediği için gizleme yapılamaz.',
+  hidingErrFailed: 'Seçim gizlenemedi.',
+  hidingDone: '{count} yer gizlendi. Dosya metni korur; yapay zekâ yalnızca etiketi görür.',
+  hidingUnhide: 'Gizlemeyi kaldır',
+  hidingRelabel: 'Etiketi değiştir',
+  hidingSendBlocked:
+    'Gizlenen bir bölümün yeri doğrulanamadığı için bu belgeden hiçbir şey yapay zekâya gönderilmedi. Not panelinde üst bilgi, alt bilgi gibi yerlerdeki “Hassas bilgileri gizle” notlarını kontrol edin.',
+  sensitiveFindFailed: 'Belge okunamadı; hiçbir şey aranmadı.',
 } satisfies Record<keyof typeof zh, string>

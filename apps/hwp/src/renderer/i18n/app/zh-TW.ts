@@ -292,4 +292,15 @@ export const zhTW = {
     '字數含空格。不含空格：全文 {totalNoSpace}。 與文件資訊相同，不計頁首、頁尾、註腳和章節附註。',
   charCountHintSelected:
     '含空格：選取 {selected} / 全文 {total}。不含空格：選取 {selectedNoSpace} / 全文 {totalNoSpace}。 與文件資訊相同，不計頁首、頁尾、註腳和章節附註。',
+  hidingErrNone: '請先選取要隱藏的文字。',
+  hidingErrOverlap: '這段文字上已有註解，無法隱藏。請先移動或刪除該註解。',
+  hidingErrPlace: '頁首、頁尾、註腳、章節附註和物件中無法隱藏。',
+  hidingErrProtected: '此文件無法新增註解，因此無法隱藏。',
+  hidingErrFailed: '無法隱藏所選內容。',
+  hidingDone: '已隱藏 {count} 處。檔案中保持原樣，AI 只看到名稱標籤。',
+  hidingUnhide: '取消隱藏',
+  hidingRelabel: '修改名稱標籤',
+  hidingSendBlocked:
+    '無法確認已隱藏部分的位置，因此未將此文件的內容傳送給 AI。請在註解欄檢查位於頁首、頁尾等處的「隱藏敏感資訊」註解。',
+  sensitiveFindFailed: '無法讀取文件，未能尋找敏感資訊。',
 } satisfies Record<keyof typeof zh, string>

@@ -93,3 +93,19 @@ describe('resolveContent', () => {
     expect(resolveContent('"\\41 "', el)).toBe('A')
   })
 })
+
+describe('hidden spans in the HTML copy', () => {
+  it('carry the mark the HTML editor reads, label and words kept', () => {
+    const root = mount(
+      '<p>담임 <span data-redaction="" data-label="학생 &quot;이름&quot;" class="redact-span">홍길동</span> 선생님</p>',
+    )
+    const out = buildStandaloneHtml(root, { title: 'T' })
+    expect(out).toMatch(/<span data-gx-redact="학생 &quot;이름&quot;"[^>]*>홍길동<\/span>/)
+    expect(out).not.toContain('redact-span')
+  })
+
+  it('leave a document without hidden spans as it was', () => {
+    const out = buildStandaloneHtml(mount('<p>plain <span>text</span></p>'), { title: 'T' })
+    expect(out).not.toContain('data-gx-redact')
+  })
+})

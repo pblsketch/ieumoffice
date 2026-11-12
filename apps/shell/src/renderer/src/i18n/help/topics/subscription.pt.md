@@ -118,7 +118,7 @@ Na primeira vez que uma assinatura pode ser usada, o GenOffice mostra um aviso, 
 
 Os pedidos através do ChatGPT conectado diretamente não passam pelo programa Codex; vão deste PC diretamente para a OpenAI.
 
-Tudo o que ocultou com **Ocultar a seleção da IA** não é enviado, seja qual for a IA que use.
+Tudo o que ocultou com **Ocultar informações sensíveis** não é enviado, seja qual for a IA que use.
 
 ## Convém saber
 

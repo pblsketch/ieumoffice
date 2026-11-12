@@ -15,7 +15,13 @@ import { CellValueType, ICommandService } from '@univerjs/core'
 import type { ICellData, IRange, Nullable } from '@univerjs/core'
 import { AddWorksheetMergeCommand, InsertSheetCommand } from '@univerjs/sheets'
 import type { WorkbookFile } from '../shared/desktop-api'
-import { t } from './i18n/locale'
+import { getLang, t } from './i18n/locale'
+import {
+  HidingCarryRefused,
+  checkSourceCarriable,
+  createHidingCarry,
+  sourceHidingMarks,
+} from './hiding/merge-carry'
 import type { LazyWorkbookState, UniverRuntime } from './univer-state'
 import { characterWidthToPixels, toUniverStyle, workbookStructureLocked } from './univer-sync'
 
@@ -212,6 +218,21 @@ export async function mergeSourcesIntoCurrent(
     const taken = new Set<string>(workbook.getSheets().map((sheet) => sheet.getSheetName()))
     const sheetNames: string[] = []
     let importedSheets = 0
+    // sensitive-info hiding: a source's marks come along, or the source is not merged
+    const carries = new Map<WorkbookFile, ReturnType<typeof createHidingCarry>>()
+    for (const file of sources) {
+      try {
+        const marks = sourceHidingMarks(file)
+        if (!marks) continue
+        await checkSourceCarriable(file, marks)
+        carries.set(file, createHidingCarry(runtime, marks, getLang()))
+      } catch (error) {
+        if (error instanceof HidingCarryRefused) {
+          throw new Error(t('appSensitiveMergeRefused', { file: file.name }), { cause: error })
+        }
+        throw error
+      }
+    }
     for (const file of sources) {
       for (const sheetMeta of file.sheets) {
         setMessage(t('appMergeWorkbooksReading', { file: file.name, sheet: sheetMeta.name }))
@@ -231,6 +252,7 @@ export async function mergeSourcesIntoCurrent(
           },
         })
         if (!inserted) throw new Error(t('appMergeWorkbooksInsertFailed', { sheet: name }))
+        carries.get(file)?.sheetAdded(sheetMeta.id, sheetId)
         const bandRows = chunkRowsFor(Math.max(1, imported.columnCount))
         for (const band of matrixBands(imported.matrix, bandRows)) {
           const bounds = boundsOf(band)

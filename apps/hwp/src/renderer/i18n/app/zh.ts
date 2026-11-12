@@ -291,4 +291,15 @@ export const zh = {
     '字数含空格。不含空格：全文 {totalNoSpace}。 与文档信息相同，不计页眉、页脚、脚注和尾注。',
   charCountHintSelected:
     '含空格：所选 {selected} / 全文 {total}。不含空格：所选 {selectedNoSpace} / 全文 {totalNoSpace}。 与文档信息相同，不计页眉、页脚、脚注和尾注。',
+  hidingErrNone: '请先选择要隐藏的文字。',
+  hidingErrOverlap: '这段文字上已有批注，无法隐藏。请先移动或删除该批注。',
+  hidingErrPlace: '页眉、页脚、脚注、尾注和对象中无法隐藏。',
+  hidingErrProtected: '此文档无法添加批注，因此无法隐藏。',
+  hidingErrFailed: '未能隐藏所选内容。',
+  hidingDone: '已隐藏 {count} 处。文件中保持原样，AI 只看到名称标签。',
+  hidingUnhide: '取消隐藏',
+  hidingRelabel: '修改名称标签',
+  hidingSendBlocked:
+    '无法确定已隐藏部分的位置，因此未把此文档的内容发送给 AI。请在批注栏检查位于页眉、页脚等处的“隐藏敏感信息”批注。',
+  sensitiveFindFailed: '无法读取文档，未能查找敏感信息。',
 }

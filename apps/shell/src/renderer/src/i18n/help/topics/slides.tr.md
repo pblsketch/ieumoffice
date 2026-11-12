@@ -54,7 +54,7 @@ Menü sağ tıkladığınız yeri izler:
 - Giriş'teki AI Slides kartı: bir konu ya da anahat verin, AI sunuyu kurar.
 - Görsel sağlayıcı anahtarı yoksa AI resim üretemez ve sunu bunun yerine görsel aramayla bulunan resimleri kullanır; bkz. [AI modelleri ve ayarları](help://ai-models).
 - Sonrasında AI paneliyle ayarlamaya devam edin.
-- Bir metin seçimine ya da bir resim/video/ses öğesine sağ tıklayın ▸ **Seçimi AI'dan gizle** ile onu modelin gözünden uzak tutun (ayrıntılar AI paneli bölümünde); gizli içeriği olan bir slayt otomatik ekran görüntüsü denetimini atlar.
+- Bir metin seçimine ya da bir resim/video/ses öğesine sağ tıklayın ▸ **Hassas bilgileri gizle** ile onu modelin gözünden uzak tutun (ayrıntılar AI paneli bölümünde); gizli içeriği olan bir slayt otomatik ekran görüntüsü denetimini atlar.
 
 ## Sunma ve dışa aktarma
 

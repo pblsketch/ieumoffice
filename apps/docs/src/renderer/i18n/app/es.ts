@@ -359,15 +359,17 @@ export const es = {
   appEasyWords: 'Explicar con palabras sencillas',
   appEasyWordsPrompt:
     'Explica el texto seleccionado en español para que lo entienda también quien necesita un texto fácil (niños, personas mayores o quienes están aprendiendo español). Usa palabras cotidianas y frases cortas, y conserva todos los datos, cifras y condiciones. No modifiques el documento: «{text}»',
-  redactMenuLabel: 'Ocultar la selección a la IA',
+  redactMenuLabel: 'Ocultar información sensible',
   redactDialogDesc:
-    'Las palabras siguen en el documento y en el archivo; el modelo solo ve el marcador. Ponle un nombre para que sepa qué representa.',
+    'La parte elegida no se envía a la IA. En el archivo se queda tal cual. La IA solo ve la etiqueta de abajo. Póngale un nombre para que la IA sepa qué representa.',
   redactDialogScope:
-    'Ocultar solo se aplica a la IA de esta aplicación. La CLI, las herramientas MCP y la exportación headless leen el archivo directamente y siguen viendo estas palabras.',
-  redactDialogPlaceholder: 'Nombre del marcador, p. ej.: teléfono del cliente',
+    'No se oculta nada cuando un programa en modo agente lee el archivo directamente del disco.',
+  redactDialogPlaceholder: 'Etiqueta, p. ej., nombre del alumno',
   redactCancel: 'Cancelar',
   redactInsert: 'Ocultar',
-  redactShowLabel: 'Volver a mostrar la selección a la IA',
+  redactShowLabel: 'Dejar de ocultar',
+  sensLocParagraph: 'Párrafo {n}',
+  sensLocTableCell: 'Tabla {n}, fila {r}, columna {c}',
   appLangEnglish: 'inglés',
   appLangSimplifiedChinese: 'chino simplificado',
   appLangJapanese: 'japonés',

@@ -29,12 +29,12 @@ export const cs = {
   mathPiecewise: 'Funkce po částech',
   mathBinomial: 'Binomický koeficient',
 
-  redactMenuLabel: 'Skrýt výběr před AI',
+  redactMenuLabel: 'Skrýt citlivé údaje',
   redactDialogDesc:
-    'Slova zůstanou v dokumentu i v souboru; model uvidí jen zástupný symbol. Pojmenujte ho, aby věděl, co zastupuje.',
+    'Vybraná část se do AI neposílá. V souboru zůstane beze změny. AI vidí jen štítek níže. Pojmenujte ho tak, aby AI věděla, co znamená.',
   redactDialogScope:
-    'Skrýtí se týká jen AI v této aplikaci. CLI, nástroje MCP a headless export čtou soubor přímo a tato slova stále vidí.',
-  redactDialogPlaceholder: 'Název zástupného symbolu, např. telefon zákazníka',
+    'Platí to pro každou cestu, kterou se dokument dostane k AI, kromě programu v režimu agenta, který čte soubor přímo z disku.',
+  redactDialogPlaceholder: 'Štítek, např. jméno žáka',
   redactCancel: 'Zrušit',
   redactInsert: 'Skrýt',
 

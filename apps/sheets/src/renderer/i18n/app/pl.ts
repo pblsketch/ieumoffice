@@ -1447,6 +1447,15 @@ export const pl = {
   appCtxFormatCells: 'Formatuj komórki…',
   appCtxPickFromList: 'Wybierz z listy rozwijanej…',
   appCtxDefineName: 'Definiuj nazwę…',
+  appCtxSensitiveHide: 'Ukryj dane wrażliwe',
+  appCtxSensitiveUnhide: 'Przestań ukrywać dane wrażliwe',
+  appSensitiveHidden: 'Zakres {range} jest ukryty przed AI. AI widzi zamiast niego {marker}.',
+  appSensitiveUnhidden: 'Zakres {range} nie jest już ukryty.',
+  appSensitiveNothingHidden: 'W zaznaczeniu nic nie jest ukryte.',
+  appSensitiveBroken:
+    'Nie wysłano do AI: znaczniki ukrycia {names} wskazują komórki, które już nie istnieją (usunięty arkusz lub #REF!). Popraw je lub usuń w Menedżerze nazw.',
+  appSensitiveMergeRefused:
+    'Nie scalono: ukrytych komórek z {file} nie da się przenieść do tego skoroszytu.',
   appCtxLink: 'Łącze…',
   appCtxInsertFunction: 'Wstaw funkcję…',
   appFillUp: 'W górę',

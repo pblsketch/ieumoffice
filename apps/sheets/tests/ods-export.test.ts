@@ -664,3 +664,48 @@ describe('ODS export', () => {
     ).toEqual({ canceled: true, odsSaveAsPath: '/tmp/book.ods' })
   })
 })
+
+describe('exports that lose sensitive-info hiding marks', () => {
+  it('CSV: asks once with the count; Cancel writes nothing', async () => {
+    const tab = newTab()
+    const target = join(dir, 'out.csv')
+    messageAnswers.push(1)
+    const result = await call(tab, IPC_CHANNELS.exportCsv, {
+      fileName: 'Budget.csv',
+      content: 'a,b',
+      hasFormulas: false,
+      hidingMarks: 2,
+      targetPath: target,
+    })
+    expect(result).toEqual({ canceled: true })
+    expect(messageBoxes).toHaveLength(1)
+    expect(messageBoxes[0]?.message).toContain('2')
+    expect(messageBoxes[0]?.buttons).toEqual(['Continue', 'Cancel'])
+    expect(existsSync(target)).toBe(false)
+  })
+
+  it('CSV: Continue writes the file; no marks, no question', async () => {
+    const tab = newTab()
+    const marked = join(dir, 'marked.csv')
+    messageAnswers.push(0)
+    expect(
+      await call(tab, IPC_CHANNELS.exportCsv, {
+        fileName: 'Budget.csv',
+        content: 'a,b',
+        hasFormulas: false,
+        hidingMarks: 1,
+        targetPath: marked,
+      }),
+    ).toMatchObject({ canceled: false, path: marked })
+    expect(messageBoxes).toHaveLength(1)
+    const plain = join(dir, 'plain.csv')
+    await call(tab, IPC_CHANNELS.exportCsv, {
+      fileName: 'Budget.csv',
+      content: 'a,b',
+      hasFormulas: false,
+      targetPath: plain,
+    })
+    expect(messageBoxes).toHaveLength(1)
+    expect(existsSync(plain)).toBe(true)
+  })
+})

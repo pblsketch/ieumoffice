@@ -1820,6 +1820,20 @@ html.genoffice-popover-open .ribbon-tabs {
 }
 
 /* Composer floats over the chat scroll area — no top border (agent-shell §4.6) */
+/* "Find sensitive info": the button above the composer, then the list or the first-send alert */
+.ai-sens-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.ai-sens-bar + .gs-sens-list,
+.ai-sens-bar + .gs-sens-alert {
+  max-height: 46vh;
+  margin-bottom: 7px;
+  overflow-y: auto;
+}
+
 .ai-composer {
   border-top: none;
   padding: 8px 12px 12px;

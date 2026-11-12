@@ -27,6 +27,8 @@ export interface HwpExportJob {
   wasmPath: string
   /** 'hangul' when the Word bytes only carry another editor's content (Markdown) */
   look?: HwpLook
+  /** the screen language a hiding mark's memo prefix is written in */
+  hidingLang?: string
 }
 
 export type HwpExportReply =
@@ -145,6 +147,7 @@ type HwpKey = keyof (typeof HWP_EXPORT_STRINGS)['zh']
 
 /** a name for every loss the package reports: a new feature fails the typecheck here */
 const FEATURE_KEY = {
+  hiding_mark: 'featHidingMark',
   comment: 'featComment',
   revision: 'featRevision',
   equation: 'featEquation',

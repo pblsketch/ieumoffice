@@ -1475,6 +1475,15 @@ export const de = {
   appCtxFormatCells: 'Zellen formatieren…',
   appCtxPickFromList: 'Dropdown-Auswahlliste…',
   appCtxDefineName: 'Namen definieren…',
+  appCtxSensitiveHide: 'Sensible Daten ausblenden',
+  appCtxSensitiveUnhide: 'Sensible Daten nicht mehr ausblenden',
+  appSensitiveHidden: '{range} ist für die KI ausgeblendet. Die KI sieht stattdessen {marker}.',
+  appSensitiveUnhidden: '{range} wird nicht mehr ausgeblendet.',
+  appSensitiveNothingHidden: 'In der Auswahl ist nichts ausgeblendet.',
+  appSensitiveBroken:
+    'Nicht an die KI gesendet: Die Ausblende-Markierungen {names} verweisen auf Zellen, die es nicht mehr gibt (gelöschtes Blatt oder #REF!). Korrigieren oder löschen Sie sie im Namens-Manager.',
+  appSensitiveMergeRefused:
+    'Nicht zusammengeführt: Die ausgeblendeten Zellen aus {file} lassen sich nicht in diese Arbeitsmappe übernehmen.',
   appCtxLink: 'Link…',
   appCtxInsertFunction: 'Funktion einfügen…',
   appFillUp: 'Nach oben ausfüllen',

@@ -351,15 +351,17 @@ export const vi = {
   appEasyWords: 'Giải thích bằng lời dễ hiểu',
   appEasyWordsPrompt:
     'Hãy giải thích đoạn văn bản đang chọn bằng tiếng Việt để cả những người cần văn bản dễ đọc (trẻ em, người cao tuổi, người đang học tiếng Việt) cũng hiểu được. Dùng từ ngữ hằng ngày và câu ngắn, giữ nguyên mọi sự kiện, con số và điều kiện. Không sửa đổi tài liệu: "{text}"',
-  redactMenuLabel: 'Ẩn phần đã chọn khỏi AI',
+  redactMenuLabel: 'Ẩn thông tin nhạy cảm',
   redactDialogDesc:
-    'Văn bản vẫn còn trong tài liệu và tệp; mô hình chỉ thấy placeholder bên dưới. Đặt tên để mô hình biết nó đại diện cho điều gì.',
+    'Phần đã chọn không được gửi cho AI. Trong tệp, nó vẫn giữ nguyên. AI chỉ thấy nhãn bên dưới. Hãy đặt tên để AI biết nó đại diện cho gì.',
   redactDialogScope:
-    'Điều này chỉ áp dụng cho AI trong ứng dụng này. CLI, các công cụ MCP và bản xuất không có cửa sổ đều đọc thẳng tệp, nên chúng vẫn thấy những từ này.',
-  redactDialogPlaceholder: 'Tên placeholder, ví dụ: số điện thoại khách hàng',
+    'Không ẩn được khi một chương trình ở chế độ tác tử đọc tệp trực tiếp từ ổ đĩa.',
+  redactDialogPlaceholder: 'Nhãn, ví dụ: tên học sinh',
   redactCancel: 'Hủy',
   redactInsert: 'Ẩn',
-  redactShowLabel: 'Hiển thị lại phần đã chọn cho AI',
+  redactShowLabel: 'Bỏ ẩn',
+  sensLocParagraph: 'Đoạn {n}',
+  sensLocTableCell: 'Bảng {n}, hàng {r}, cột {c}',
   appLangEnglish: 'Tiếng Anh',
   appLangSimplifiedChinese: 'Tiếng Trung giản thể',
   appLangJapanese: 'Tiếng Nhật',

@@ -312,6 +312,20 @@ describe('markdown: a withheld span reads as its marker', () => {
     ).toBe('a {{pin}} b')
   })
 
+  it('shows the label as the editor reads it, with its entities decoded', () => {
+    // the editor writes a quote in the label as &quot; and reads it back through
+    // the browser, so the label the model sees is the decoded one, cleaned the
+    // way every label is (a quote is dropped)
+    expect(redactMarkdownSource(span(SECRET, 'say &quot;hi&quot; &amp; bye'))).toBe(
+      '{{say hi & bye}}',
+    )
+    expect(redactMarkdownSource(span(SECRET, '&#54617;&#xC0DD; name'))).toBe('{{학생 name}}')
+    // decoding happens once: an escaped entity stays an entity
+    expect(redactMarkdownSource(span(SECRET, '&amp;quot;'))).toBe('{{&quot;}}')
+    // a decoded brace cannot end the marker early
+    expect(redactMarkdownSource(span(SECRET, 'a&#125;&#125;b'))).toBe('{{ab}}')
+  })
+
   it('withholds the escaped markup a span carries', () => {
     const out = redactMarkdownSource(span('&lt;b&gt;4111 1111&lt;/b&gt;', 'card'))
     expect(out).toBe('{{card}}')

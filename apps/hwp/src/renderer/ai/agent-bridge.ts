@@ -94,9 +94,28 @@ const METHODS = [
   'showMemoAnchors',
   'selectMemo',
   'setMemoLock',
+  'aiCall',
+  'hidingState',
+  'hidingSelection',
+  'hideRanges',
+  'sensitiveCandidates',
+  'installHiding',
 ] as const satisfies readonly (keyof AgentPluginSurface)[]
 
-export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): AgentBridge {
+/**
+ * `forAi`: every call goes through the plugin's aiCall, so what it answers is what a model
+ * may read (the hidden spans of 민감정보 가리기 as their labels) and its edits may not touch
+ * a hidden span. The AI panel and the document check use this one; the memo panel, the
+ * preview and the save path use the plain one.
+ */
+export interface AgentBridgeOptions {
+  forAi?: boolean
+}
+
+export function createAgentBridge(
+  getEditor: () => AgentBridgeEditor | null,
+  options: AgentBridgeOptions = {},
+): AgentBridge {
   // the plugin is loaded on first use, once per editor
   let loaded: { editor: AgentBridgeEditor; ready: Promise<unknown> } | null = null
 
@@ -112,6 +131,9 @@ export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): Ag
       })
     }
     await loaded.ready
+    if (options.forAi && method !== 'aiCall') {
+      return editor.plugins.invoke(AGENT_PLUGIN_ID, 'aiCall', [method, args])
+    }
     return editor.plugins.invoke(AGENT_PLUGIN_ID, method, args)
   }
 

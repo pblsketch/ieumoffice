@@ -310,4 +310,19 @@ export const es = {
     'Se cuentan los caracteres con espacios. Sin espacios: documento completo {totalNoSpace}. Como en la información del documento, no se cuentan encabezados, pies de página, notas al pie ni notas finales.',
   charCountHintSelected:
     'Con espacios: selección {selected} / documento completo {total}. Sin espacios: selección {selectedNoSpace} / documento completo {totalNoSpace}. Como en la información del documento, no se cuentan encabezados, pies de página, notas al pie ni notas finales.',
+  hidingErrNone: 'Primero selecciona el texto que quieres ocultar.',
+  hidingErrOverlap:
+    'Este texto ya tiene una nota y no se puede ocultar. Mueve o elimina primero esa nota.',
+  hidingErrPlace:
+    'No se puede ocultar texto de encabezados, pies de página, notas al pie o al final ni de objetos.',
+  hidingErrProtected:
+    'A este documento no se le pueden añadir notas, así que no se puede ocultar nada.',
+  hidingErrFailed: 'No se pudo ocultar la selección.',
+  hidingDone:
+    'Se ocultaron {count} lugar(es). El archivo conserva el texto; la IA solo ve la etiqueta.',
+  hidingUnhide: 'Dejar de ocultar',
+  hidingRelabel: 'Cambiar etiqueta',
+  hidingSendBlocked:
+    'No se pudo confirmar dónde está una parte oculta, así que no se envió nada de este documento a la IA. Revisa en el panel de notas las notas «Ocultar información sensible» que estén en un encabezado, un pie de página o similar.',
+  sensitiveFindFailed: 'No se pudo leer el documento; no se buscó nada.',
 } satisfies Record<keyof typeof zh, string>

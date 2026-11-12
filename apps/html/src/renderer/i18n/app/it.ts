@@ -31,12 +31,12 @@ export const it = {
   mathPiecewise: 'Funzione a tratti',
   mathBinomial: 'Coefficiente binomiale',
 
-  redactMenuLabel: 'Nascondi la selezione all’IA',
+  redactMenuLabel: 'Nascondi informazioni sensibili',
   redactDialogDesc:
-    'Le parole restano nel documento e nel file; il modello vede solo il segnaposto. Dai un nome perché sappia cosa rappresenta.',
+    'La parte scelta non viene inviata all’IA. Nel file resta com’è. L’IA vede solo l’etichetta qui sotto. Dalle un nome perché l’IA capisca cosa rappresenta.',
   redactDialogScope:
-    'Nascondere vale solo per l’IA di questa app. La CLI, gli strumenti MCP e l’esportazione senza interfaccia leggono direttamente il file e vedono comunque queste parole.',
-  redactDialogPlaceholder: 'Nome del segnaposto, es. telefono del cliente',
+    'Vale per tutte le vie con cui il documento arriva a un’IA, tranne un programma in modalità agente che legge il file direttamente dal disco.',
+  redactDialogPlaceholder: 'Etichetta, ad es. nome dello studente',
   redactCancel: 'Annulla',
   redactInsert: 'Nascondi',
 

@@ -365,15 +365,17 @@ export const de = {
   appEasyWords: 'In einfachen Worten erklären',
   appEasyWordsPrompt:
     'Erkläre den markierten Text auf Deutsch so, dass ihn auch Menschen verstehen, die einfache Sprache brauchen (Kinder, ältere Menschen, Menschen, die Deutsch lernen). Verwende Alltagswörter und kurze Sätze und behalte alle Fakten, Zahlen und Bedingungen bei. Das Dokument nicht ändern: „{text}“',
-  redactMenuLabel: 'Auswahl vor der KI verbergen',
+  redactMenuLabel: 'Sensible Daten ausblenden',
   redactDialogDesc:
-    'Die Wörter bleiben im Dokument und in der Datei; das Modell sieht nur den Platzhalter. Geben Sie ihm einen Namen.',
+    'Der gewählte Teil wird nicht an die KI gesendet. In der Datei bleibt er unverändert. Die KI sieht nur die Bezeichnung unten. Wählen Sie sie so, dass die KI weiß, wofür sie steht.',
   redactDialogScope:
-    'Das Verbergen gilt nur für die KI dieser App. CLI, MCP-Tools und der Headless-Export lesen die Datei direkt und sehen diese Wörter weiterhin.',
-  redactDialogPlaceholder: 'Name des Platzhalters, z. B. Telefonnummer des Kunden',
+    'Liest ein Programm im Agentenmodus die Datei direkt von der Festplatte, wird nichts ausgeblendet.',
+  redactDialogPlaceholder: 'Bezeichnung, z. B. Name der Schülerin',
   redactCancel: 'Abbrechen',
-  redactInsert: 'Verbergen',
-  redactShowLabel: 'Auswahl der KI wieder anzeigen',
+  redactInsert: 'Ausblenden',
+  redactShowLabel: 'Nicht mehr ausblenden',
+  sensLocParagraph: 'Absatz {n}',
+  sensLocTableCell: 'Tabelle {n}, Zeile {r}, Spalte {c}',
   appLangEnglish: 'Englisch',
   appLangSimplifiedChinese: 'Chinesisch (vereinfacht)',
   appLangJapanese: 'Japanisch',

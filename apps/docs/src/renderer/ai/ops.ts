@@ -1,4 +1,5 @@
 import { checkPlaceholders, placeholderSource, REDACT_MARK } from './redact'
+import { hiddenLabelsInBlocks } from './hidden-guard'
 import type { Editor } from '@tiptap/core'
 import type { Node as PmDocNode, Schema } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state'
@@ -95,7 +96,18 @@ export interface OpContext {
   dryRun?: boolean
   /** style catalog for applyStyle (ids, heading levels, pending define_style entries) */
   styles?: AiStyleAccess
+  /**
+   * The caller never sees withheld words (an MCP client): findReplace and
+   * setMatchedFont do not match inside a withheld span, so hidden words read as
+   * text that is not there rather than as a refusal that confirms them, and
+   * moveBlocks does not move a block that holds one.
+   */
+  hiddenUnseen?: boolean
 }
+
+/** whether a text run is one the caller may not match against */
+const unseen = (ctx: OpContext, node: PmDocNode): boolean =>
+  ctx.hiddenUnseen === true && node.marks.some((m) => m.type.name === REDACT_MARK)
 
 /** the changed-block highlight belongs to AI edits only */
 const wantsAiMark = (ctx: OpContext): boolean => ctx.markAi ?? ctx.source !== 'ui'
@@ -862,7 +874,7 @@ function runFindReplace(op: Op, env: RunEnv): OpResult {
     }
     const blockDeleted = isTrackedDeleted(b.node)
     b.node.forEach((child, offset) => {
-      if (!child.isText || !child.text) return
+      if (!child.isText || !child.text || unseen(ctx, child)) return
       const struck = blockDeleted || child.marks.some((m) => m.type.name === 'del')
       const hay = matchCase ? child.text : child.text.toLowerCase()
       let at = hay.indexOf(needle)
@@ -980,7 +992,7 @@ function runSetMatchedFont(op: Op, env: RunEnv): OpResult {
     const blockDeleted = isTrackedDeleted(b.node)
     const contentFrom = b.pos + 1
     b.node.forEach((child, offset) => {
-      if (!child.isText || !child.text) return
+      if (!child.isText || !child.text || unseen(ctx, child)) return
       const struck = blockDeleted || child.marks.some((m) => m.type.name === 'del')
       const hay = matchCase ? child.text : child.text.toLowerCase()
       let at = hay.indexOf(needle)
@@ -1052,6 +1064,11 @@ function runMoveBlocks(op: Op, env: RunEnv): OpResult {
   }
   if (movedSet.has(afterBlockIndex)) {
     throw new Error('moveBlocks: afterBlockIndex must not be one of the moved blocks')
+  }
+  if (ctx.hiddenUnseen && hiddenLabelsInBlocks(tr.doc, [...movedSet]).length > 0) {
+    throw new Error(
+      'this edit would move private placeholder(s) — those words are withheld from the model, so leave the blocks that hold them where they are',
+    )
   }
 
   // moved blocks keep document order; aiChanged marks the landing highlight

@@ -1,5 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
 import {
+  REDACT_EL,
   BLANK_BULLET_NUM_ID,
   TABLE_HEADER_FILL,
   buildBlankDocx,
@@ -21,6 +22,8 @@ import type {
   TableParagraph,
 } from '@genoffice/docx-engine'
 import { diagramLanguage } from '../editor/diagrams'
+import { countMarkedSpans } from '@genoffice/electron-utils/hiding-loss'
+import { REDACT_MARK } from '../editor/redact'
 import type { DiagramLanguage } from '../editor/diagrams'
 
 /** Resolve an authored image src to embeddable bytes; null → fall back to alt text */
@@ -79,11 +82,35 @@ function runsFromInline(content: JSONContent[] | undefined): Run[] {
       else if (mark.type === 'code') run.font = CODE_FONT
       else if (mark.type === 'link' && typeof mark.attrs?.href === 'string') {
         run.link = { href: mark.attrs.href }
-      }
+      } else if (mark.type === REDACT_MARK) run.rawRPr = hidingRPr(mark.attrs?.label)
     }
     runs.push(run)
   }
   return runs
+}
+
+/**
+ * A hidden span in the Word copy: the run properties the Word editor writes
+ * for its own hiding mark (a character border for the eye, the label in a
+ * custom element the editor and the readers recognise), so the copy stays
+ * hidden from the model wherever it is opened in this app.
+ */
+function hidingRPr(label: unknown): string {
+  const text = typeof label === 'string' && label.trim() ? label.trim() : 'private'
+  const attr = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+  return (
+    '<w:rPr><w:bdr w:val="single" w:sz="6" w:color="6B4FC0"/>' +
+    `<${REDACT_EL} w:label="${attr}"/></w:rPr>`
+  )
+}
+
+/** the hidden spans a copy without hiding marks (ODT) would lose */
+export function hiddenSpanCount(doc: JSONContent): number {
+  return countMarkedSpans(doc, REDACT_MARK)
 }
 
 function plainText(node: JSONContent): string {

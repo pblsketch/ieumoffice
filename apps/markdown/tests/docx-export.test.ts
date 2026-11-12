@@ -241,3 +241,39 @@ describe('legacy HTML content degrades to plain runs in docx export', () => {
     expect(parsed.blocks.every((b) => b.format?.align !== 'center')).toBe(true)
   })
 })
+
+describe('docx export of hidden spans', () => {
+  it('writes the Word hiding mark on the hidden words, with the label', async () => {
+    const json = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: '담임 ' },
+            {
+              type: 'text',
+              text: '홍길동',
+              marks: [{ type: 'bold' }, { type: 'redaction', attrs: { label: '학생 & 이름' } }],
+            },
+            { type: 'text', text: ' 선생님' },
+          ],
+        },
+      ],
+    }
+    const parsed = await parseDocx(await exportDocxBytes(json, noImages))
+    const runs = parsed.blocks.find((b) => b.type === 'paragraph')?.runs ?? []
+    const hidden = runs.find((r) => r.text === '홍길동')
+    expect(hidden?.rawRPr).toContain('<go:redact w:label="학생 &amp; 이름"/>')
+    expect(hidden?.bold).toBe(true)
+    expect(runs.filter((r) => r.rawRPr?.includes('go:redact')).map((r) => r.text)).toEqual([
+      '홍길동',
+    ])
+  })
+
+  it('leaves a document without hidden spans as it was', async () => {
+    const parsed = await exportAndParse('plain **bold** text')
+    const runs = parsed.blocks.find((b) => b.type === 'paragraph')?.runs ?? []
+    expect(runs.some((r) => r.rawRPr?.includes('go:redact'))).toBe(false)
+  })
+})

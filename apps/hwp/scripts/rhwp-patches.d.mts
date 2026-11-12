@@ -15,6 +15,7 @@ export type RhwpPatchName =
   | 'studio-memo-command'
   | 'studio-memo-label-ko'
   | 'studio-memo-label-en'
+  | 'studio-hiding-context-menu'
 
 export declare const APP_SCHEME: string
 export declare const PASSWORD_FLAG: 'passwordProtected'

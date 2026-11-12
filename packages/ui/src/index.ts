@@ -514,6 +514,46 @@ export {
 export { ProviderLogo } from './provider-logos'
 export { useRedactLabelField } from './use-redact-label'
 export type { RedactLabelField } from './use-redact-label'
+export {
+  SENSITIVE_INFO_STRINGS,
+  sensitiveInfoText,
+  sensitiveFeatureName,
+  type SensitiveInfoStringKey,
+} from './strings-sensitive-info'
+export {
+  createSensitiveSendCheck,
+  sensitiveSendCountsOf,
+  type SensitiveSendAnswer,
+  type SensitiveSendAsk,
+  type SensitiveSendCheck,
+  type SensitiveSendCounts,
+} from './sensitive-send-check'
+export {
+  SENSITIVE_CONTEXT_CHARS,
+  hideableCandidateIds,
+  sensitiveCandidateSummary,
+  sensitiveContextOf,
+  type SensitiveCandidateRow,
+  type SensitiveCandidateSummary,
+  type SensitiveUnhideableReason,
+} from './sensitive-candidates'
+export {
+  SensitiveCandidateList,
+  SensitiveFindButton,
+  SensitiveLabelDialog,
+  SensitiveSendAlert,
+  sensitiveMemoNote,
+  sensitiveSendCountText,
+  sensitiveUnhideableText,
+  type SensitiveCandidateListProps,
+  type SensitiveLabelDialogProps,
+  type SensitiveSendAlertProps,
+} from './SensitiveInfo'
+export {
+  useSensitiveSendAlert,
+  type SensitiveSendAlertArgs,
+  type SensitiveSendAlertController,
+} from './use-sensitive-send-alert'
 export { ProjectPicker, projectPickerOptionId, type ProjectPickerProps } from './ProjectPicker'
 export { ProjectChatMenu, projectChatOptionId, type ProjectChatMenuProps } from './ProjectChatMenu'
 export {

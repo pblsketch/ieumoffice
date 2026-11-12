@@ -7,7 +7,7 @@ Editor Markdown membuka .md / .markdown — dan .txt / .json, langsung ke tampil
 - **Pratinjau**: langsung; aset relatif seperti gambar diselesaikan di samping dokumen.
 - **Menyimpan**: setia byte demi byte — BOM, CRLF, dan keberadaan baris baru di akhir file dipertahankan; penyimpanan tanpa perubahan tidak menulis ulang file.
 - **Cari dan ganti**: ctrl+F mencari di sumber; Ganti Semua menuliskan hasilnya kembali.
-- **AI**: tombol siap pakai membiarkan asisten menulis ulang, memperpanjang, atau menerjemahkan dokumen. Seleksi bisa disembunyikan dari AI (lihat bab panel AI).
+- **AI**: tombol siap pakai membiarkan asisten menulis ulang, memperpanjang, atau menerjemahkan dokumen. Seleksi bisa dijaga agar tidak sampai ke AI dengan **Sembunyikan informasi sensitif** (lihat bab panel AI).
 - **Membuka tautan**: saat mengedit, Ctrl+klik tautan (⌘ di Mac) membukanya di browser; klik biasa menempatkan kursor di teks tautan agar dapat diedit. Dalam mode presentasi (F5), klik biasa membukanya.
 
 ## Bilah alat

@@ -1462,6 +1462,15 @@ export const it = {
   appCtxFormatCells: 'Formato celle…',
   appCtxPickFromList: 'Seleziona da elenco a discesa…',
   appCtxDefineName: 'Definisci nome…',
+  appCtxSensitiveHide: 'Nascondi informazioni sensibili',
+  appCtxSensitiveUnhide: 'Non nascondere più le informazioni sensibili',
+  appSensitiveHidden: '{range} è nascosto all’IA. L’IA vede {marker} al suo posto.',
+  appSensitiveUnhidden: '{range} non è più nascosto.',
+  appSensitiveNothingHidden: 'Nella selezione non c’è nulla di nascosto.',
+  appSensitiveBroken:
+    'Non inviato all’IA: i contrassegni di occultamento {names} rimandano a celle che non esistono più (un foglio eliminato o #REF!). Correggili o eliminali in Gestione nomi.',
+  appSensitiveMergeRefused:
+    'Non unito: le celle nascoste di {file} non possono essere portate in questa cartella di lavoro.',
   appCtxLink: 'Collegamento…',
   appCtxInsertFunction: 'Inserisci funzione…',
   appFillUp: 'In alto',

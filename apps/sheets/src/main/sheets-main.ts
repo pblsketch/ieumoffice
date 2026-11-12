@@ -42,11 +42,14 @@ import {
 import type {
   IpcMainInvokeEvent,
   MenuItemConstructorOptions,
+  MessageBoxOptions,
   OpenDialogOptions,
   SaveDialogOptions,
   WebContents,
 } from 'electron'
 import { z } from 'zod'
+import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
+import { createSensitiveExclusionStore, exclusionItemSchema } from './sensitive-exclusions'
 import {
   abortOnDestroyed,
   appMenuLabels,
@@ -3989,9 +3992,44 @@ export async function requestSheetsClose(
 
 let coreIpcRegistered = false
 
+/** The workbook path a session's exclusion memory is kept under; null for a workbook with no file yet. */
+function exclusionDocPath(session: SessionInfo): string | null {
+  if (session.csvSourcePath) return session.csvSourcePath
+  if (session.odsSourcePath) return session.odsSourcePath
+  if (session.restoreTarget) return session.restoreTarget
+  if (session.recoveryOriginalPath) return session.recoveryOriginalPath
+  if (session.unsavedNew || session.importTempDir) return null
+  return session.path
+}
+
+const sensitiveExclusions = createSensitiveExclusionStore(() => app.getPath('userData'))
+const exclusionsFilterSchema = z
+  .object({ sessionId: z.string().uuid(), items: z.array(exclusionItemSchema).max(100_000) })
+  .strict()
+const exclusionAddSchema = z
+  .object({ sessionId: z.string().uuid(), item: exclusionItemSchema })
+  .strict()
+
 export function registerSheetsIpc(): void {
   if (coreIpcRegistered) return
   coreIpcRegistered = true
+
+  ipcMain.handle(IPC_CHANNELS.sensitiveExclusionsFilter, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = exclusionsFilterSchema.parse(input)
+    const session = entry.sessions.get(request.sessionId)
+    const docPath = session ? exclusionDocPath(session) : null
+    if (!docPath) return request.items.map(() => false)
+    return sensitiveExclusions.excluded(docPath, request.items)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sensitiveExclusionAdd, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = exclusionAddSchema.parse(input)
+    const session = entry.sessions.get(request.sessionId)
+    const docPath = session ? exclusionDocPath(session) : null
+    if (docPath) await sensitiveExclusions.add(docPath, request.item)
+  })
 
   ipcMain.handle(IPC_CHANNELS.userDisplayName, (event): string => {
     sessionFor(event)
@@ -4622,6 +4660,12 @@ export function registerSheetsIpc(): void {
     const entry = sessionFor(event)
     const request = workbookExportCsvRequestSchema.parse(input)
     const parent = dialogParent(event)
+    // CSV has no defined names: hiding marks are asked about once, first
+    const showHidingLoss = (options: MessageBoxOptions) =>
+      parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options)
+    if (!(await confirmHidingLoss(request.hidingMarks ?? 0, showHidingLoss))) {
+      return { canceled: true }
+    }
     if (request.hasFormulas) {
       // Excel's CSV warning flow: offer keeping the formulas via .xlsx first.
       const options = {
@@ -4743,6 +4787,10 @@ export function registerSheetsIpc(): void {
         sourcePath,
         targetPath,
         confirmLoss: (losses) => confirmOdsLoss(parent, losses),
+        confirmHidingLoss: (count) =>
+          confirmHidingLoss(count, (options) =>
+            parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options),
+          ),
       })
     } catch (error) {
       outcome = {
@@ -4817,8 +4865,20 @@ export function registerSheetsIpc(): void {
 
   // First Save of a CSV session: Excel's "keep this format?" question. The
   // renderer remembers the answer for the file, so it is asked once.
-  ipcMain.handle(IPC_CHANNELS.csvSaveConfirm, async (event) => {
+  ipcMain.handle(IPC_CHANNELS.csvSaveConfirm, async (event, input: unknown) => {
     sessionFor(event)
+    // CSV has no defined names: a plain Save of a CSV session drops the hiding
+    // marks, so it asks about them first, like the CSV export does
+    const hidingMarks =
+      z.object({ hidingMarks: z.number().int().nonnegative() }).strict().optional().parse(input)
+        ?.hidingMarks ?? 0
+    if (hidingMarks > 0) {
+      const hidingParent = dialogParent(event)
+      const keep = await confirmHidingLoss(hidingMarks, (box) =>
+        hidingParent ? dialog.showMessageBox(hidingParent, box) : dialog.showMessageBox(box),
+      )
+      if (!keep) return 'cancel'
+    }
     const options = {
       type: 'warning' as const,
       message: tm('csvKeepFormatMsg'),

@@ -305,4 +305,17 @@ export const id = {
     'Karakter dihitung termasuk spasi. Tanpa spasi: seluruh dokumen {totalNoSpace}. Seperti di Informasi Dokumen, header, footer, catatan kaki, dan catatan akhir tidak dihitung.',
   charCountHintSelected:
     'Dengan spasi: dipilih {selected} / seluruh dokumen {total}. Tanpa spasi: dipilih {selectedNoSpace} / seluruh dokumen {totalNoSpace}. Seperti di Informasi Dokumen, header, footer, catatan kaki, dan catatan akhir tidak dihitung.',
+  hidingErrNone: 'Pilih dulu teks yang ingin disembunyikan.',
+  hidingErrOverlap:
+    'Teks ini sudah punya memo sehingga tidak bisa disembunyikan. Pindahkan atau hapus memo itu dulu.',
+  hidingErrPlace:
+    'Teks di header, footer, catatan kaki, catatan akhir, atau objek tidak bisa disembunyikan.',
+  hidingErrProtected: 'Memo tidak bisa ditambahkan ke dokumen ini, jadi tidak bisa disembunyikan.',
+  hidingErrFailed: 'Pilihan tidak bisa disembunyikan.',
+  hidingDone: '{count} tempat disembunyikan. File tetap menyimpan teksnya; AI hanya melihat label.',
+  hidingUnhide: 'Tampilkan lagi',
+  hidingRelabel: 'Ubah label',
+  hidingSendBlocked:
+    'Letak bagian yang disembunyikan tidak bisa dipastikan, jadi isi dokumen ini tidak dikirim ke AI. Periksa memo Sembunyikan informasi sensitif di header, footer, atau tempat serupa di panel memo.',
+  sensitiveFindFailed: 'Dokumen tidak bisa dibaca, jadi tidak ada yang dicari.',
 } satisfies Record<keyof typeof zh, string>

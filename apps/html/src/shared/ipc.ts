@@ -37,6 +37,10 @@ export const HTML_CHANNELS = {
   exportRequest: 'html:export-request',
   exportDocx: 'html:export-docx',
   exportOdt: 'html:export-odt',
+  /** invoke(docPath) → the hash key and the excluded sensitive-info candidates of that document */
+  sensitiveExclusionsGet: 'html:sensitive-exclusions-get',
+  /** invoke(docPath, { kind, hash }) → remember one excluded candidate */
+  sensitiveExclusionsAdd: 'html:sensitive-exclusions-add',
   exportPdf: 'html:export-pdf',
   exportHtml: 'html:export-html',
   consumeHeadlessExport: 'html:consume-headless-export',
@@ -347,6 +351,13 @@ export interface HtmlApi {
   exportDocx(request: ExportDocxRequest): Promise<ExportResult>
   /** save dialog (.odt) → the Word export → ODT → confirmation when something changes → write */
   exportOdt(request: ExportOdtRequest): Promise<ExportResult>
+  /** where "exclude" in the sensitive-info list is remembered, per document path (app data, never the file) */
+  sensitiveExclusions: {
+    get(
+      docPath: string,
+    ): Promise<{ key: string; entries: Array<{ kind: string; hash: string }> } | null>
+    add(docPath: string, entry: { kind: string; hash: string }): Promise<boolean>
+  }
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   exportHtml(request: ExportHtmlRequest): Promise<ExportResult>
   /** Shell menu Print → main renders the document and opens the system print dialog */

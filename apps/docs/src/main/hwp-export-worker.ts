@@ -11,7 +11,10 @@ parentPort?.once('message', async (job: HwpExportJob) => {
   let reply: HwpExportReply
   try {
     const engine = await HwpEngine.start(readFileSync(job.wasmPath))
-    const { bytes, losses } = await docxToHwp(job.docx, job.format, engine, { look: job.look })
+    const { bytes, losses } = await docxToHwp(job.docx, job.format, engine, {
+      look: job.look,
+      hidingLang: job.hidingLang,
+    })
     reply = { ok: true, bytes, losses }
   } catch (err) {
     reply = {

@@ -49,6 +49,8 @@ export const PICK_FROM_LIST_COMMAND_ID = 'genoffice.ctx.pick-from-list'
 export const FILTER_MENU_ID = 'genoffice.ctx.filter'
 export const NUMBER_FORMAT_MENU_ID = 'genoffice.ctx.number-format'
 export const CLEAR_FILTER_MENU_ID = 'genoffice.ctx.clear-filter'
+export const SENSITIVE_HIDE_ID = 'genoffice.ctx.sensitive-hide'
+export const SENSITIVE_UNHIDE_ID = 'genoffice.ctx.sensitive-unhide'
 
 export type FilterBy = 'value' | 'fill' | 'font'
 
@@ -99,6 +101,21 @@ export function cellContextMenuLayout(): readonly ContextMenuNode[] {
   })
   return [
     shell('genoffice.ctx.ask-ai', 'aiAskBtn', 'ai-ask-selection', ContextMenuGroup.OTHERS, -1),
+    // sensitive-info hiding: hide the selection from the AI, or stop hiding it
+    shell(
+      SENSITIVE_HIDE_ID,
+      'appCtxSensitiveHide',
+      'sensitive-hide',
+      ContextMenuGroup.OTHERS,
+      -0.9,
+    ),
+    shell(
+      SENSITIVE_UNHIDE_ID,
+      'appCtxSensitiveUnhide',
+      'sensitive-unhide',
+      ContextMenuGroup.OTHERS,
+      -0.8,
+    ),
     {
       id: PASTE_SPECIAL_OPEN_COMMAND_ID,
       title: t('appCtxPasteSpecial'),
@@ -223,7 +240,11 @@ export function cellContextMenuLayout(): readonly ContextMenuNode[] {
   ]
 }
 
-/** Row/column header menus only gain Format Cells…, between Clear and Row Height / Column Width. */
+/**
+ * Row/column header menus gain Format Cells…, between Clear and Row Height /
+ * Column Width, and the two sensitive-info hiding entries (a column header
+ * hides the column below its header row).
+ */
 export function headerContextMenuLayout(): readonly ContextMenuNode[] {
   return [
     shell(
@@ -232,6 +253,14 @@ export function headerContextMenuLayout(): readonly ContextMenuNode[] {
       'format-cells',
       ContextMenuGroup.LAYOUT,
       2.5,
+    ),
+    shell(SENSITIVE_HIDE_ID, 'appCtxSensitiveHide', 'sensitive-hide', ContextMenuGroup.LAYOUT, 2.6),
+    shell(
+      SENSITIVE_UNHIDE_ID,
+      'appCtxSensitiveUnhide',
+      'sensitive-unhide',
+      ContextMenuGroup.LAYOUT,
+      2.7,
     ),
   ]
 }

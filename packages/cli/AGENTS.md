@@ -47,11 +47,12 @@
 - WebAssembly 메모리를 만들 수 없는 환경(가상 메모리 상한 `ulimit -v`)에서는 PDF·한글·네트워크 엔진이 `RangeError`로 실패한다. `src/wasm.ts`의 `wasmMemoryFailure`가 `runCli`의 마지막 catch에서 그 실패를 종료 코드 3, `error: "resource_limit"`, `detail.reason: "virtual_memory"` 봉투로 바꾸고 `ulimit -v`를 올리라는 `suggestion`을 붙인다. `capabilities`의 `detail.wasm`은 `wasmAvailability`로 같은 판단을 미리 알린다. 이 두 곳에서만 판단하고 명령마다 따로 잡지 않는다.
 - 쓰기는 한 곳을 거친다. 출력 경로는 `src/fs.ts`에서 풀고, `GENOFFICE_ALLOWED_ROOTS`를 symlink를 푼 뒤 검사하고, 앱이 탭으로 열어 둔 파일은 `--force` 없이는 덮어쓰지 않는다. 파일은 같은 폴더의 임시 파일에 쓴 뒤 rename한다. rename이 잠금으로 끝내 막혀 제자리 덮어쓰기까지 실패하면 임시 파일을 지우지 않고, 오류(`conversion_failed`)의 `message`와 `detail.rescue_path`에 그 경로를 적는다.
 - 비밀 값은 감사 기록에 남기지 않는다. 기록은 실패해도 명령을 실패시키지 않는다.
+- **가린 내용(민감정보 가리기, 결정 0140)은 어떤 출력에도 원문으로 나가지 않는다.** 문서 글이 든 출력(읽기, `info`, `check`·`audit`의 발견, 결과에 글을 되돌려 주는 연산, 묶음 안의 읽기)은 형식마다 `src/formats/*-hiding.ts`와 `hwpToText`를 지나 가린 자리를 `{{이름표}}`로 낸다. 원문을 꺼내는 옵션을 만들지 않는다. 글로 찾는 연산은 가린 글을 보지 못하고, 가린 내용을 바꾸거나 지우거나 옮기는 연산은 `src/hiding.ts`의 `hiddenContentError`(묶음은 `hiddenFailure`, `withHiddenDetail`)로 거절한다. `error: "hidden_content"`, `detail.reason`(`edit`·`convert`), `detail.labels`, `OpFailure.hidden`의 모양은 바깥 계약이다(`docs/contracts.md`). 가리기를 읽을 수 없는 파일은 `unreadableHiding`(종료 2, `unsupported`)으로 읽지 않는다. 원본 문서로 새 파일을 만드는 MCP 도구(`convert`, `create_pdf`, `from`을 준 `create_docx`·`create_xlsx`, `merge`)만 표시가 있는 원본을 거절하고(`src/mcp/hiding-gate.ts`, 도구 정의의 `source`가 원본 매개변수를 가리킨다), 터미널 명령과 `render`는 막지 않는다. 원본 파일로 새 파일을 쓰는 MCP 도구를 더하면 `source`를 단다. 새 읽기 명령이나 글을 되돌려 주는 연산을 더하면 이 길을 지나게 하고 `tests/hiding-*.test.ts`에 덮는다.
 
 ## 이 모듈의 방식
 
 - 명령은 `CommandDef` 하나다. `defaultRegistry()`에 등록하면 도움말, README 예시, 스킬 문서, MCP 도구가 같은 표에서 나온다. `tests/help-sync.test.ts`가 등록된 명령과 옵션이 `README.md`와 `skills/ieumoffice/SKILL.md`에 모두 나오는지 확인하므로, 옵션을 추가하면 세 곳을 함께 고친다.
-- `slides read --comments`는 저장된 pptx의 클래식 메모를 페이지별 `comments`(`authorId`·`idx`·`작성자`·`시각`·`본문`)와 `hidden`으로 낸다. `--slide`·`--full`과 독립이고, 터미널 읽기는 다른 읽기 명령처럼 가리기를 적용하지 않는다.
+- `slides read --comments`는 저장된 pptx의 클래식 메모를 페이지별 `comments`(`authorId`·`idx`·`작성자`·`시각`·`본문`)와 `hidden`으로 낸다. `--slide`·`--full`과 독립이고, 메모도 다른 읽기처럼 가리기를 적용한 덱에서 읽는다.
 - 스킬 본문을 고치면 `metadata.version`을 올린다. 스킬은 사용자의 에이전트 폴더로 복사되고 버전이 커질 때만 교체되기 때문이다(`npm run check:skill-version`).
 - 스킬 설치 자리 표(`src/agent-skills.ts`의 `AGENTS`)는 줄마다 역할이 있다. `own`(Claude Code, Windsurf)과 `shared`(`agents`, `~/.agents/skills`)만 새로 설치하는 줄이고, `reader`(Codex, Cursor, Gemini CLI, Copilot, OpenCode)는 공용 폴더를 읽는 도구라 자기 폴더에는 이 앱이 예전에 쓴 사본을 맞추거나 지우는 일만 한다. 그 사본을 자동으로 지우는 코드를 넣지 않는다(결정 0095). `mcp`가 도구를 찾을 때는 스킬 줄과 상관없이 `agentPresent`·`agentLabel`·`agentConfigDir`로 각 도구의 자기 폴더를 본다.
 - MCP 도구는 명령의 두 번째 구현이 아니다. 도구 호출을 명령줄 인자로 바꿔(`buildArgv`) 같은 명령을 실행한다. 인라인 값(ops, 명세, Markdown)은 임시 파일에 써서 경로로 넘긴다.

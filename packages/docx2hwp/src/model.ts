@@ -87,7 +87,16 @@ export interface NumberingPlan {
  * Word page break inside a paragraph is its own item, never a character.
  */
 export type Inline =
-  | { readonly kind: 'text'; readonly text: string; readonly chars: CharShape }
+  | {
+      readonly kind: 'text'
+      readonly text: string
+      readonly chars: CharShape
+      /**
+       * the label of the Word hiding mark over this text: written as a hiding
+       * memo anchored on it, one memo per stretch of one label in one paragraph
+       */
+      readonly hide?: string
+    }
   /** header and footer only */
   | { readonly kind: 'field'; readonly field: 'page' | 'pageCount'; readonly chars: CharShape }
   | { readonly kind: 'picture'; readonly picture: Picture }

@@ -7,6 +7,7 @@ import { protectedCellsOf } from '@genoffice/odt-engine'
 import { openPptx } from '@genoffice/pptx-engine'
 import { assertOptionValues, flagString } from '../args'
 import { csvInfo } from '../formats/csv'
+import { redactedDocxBytes } from '../formats/docx-hiding'
 import { hwpInfo } from '../formats/hwp'
 import { openOdtBytes } from '../formats/odt'
 import { pdfInfo } from '../formats/pdf'
@@ -56,7 +57,8 @@ interface Description {
 async function describe(path: string, ext: string, password?: string): Promise<Description> {
   switch (ext) {
     case 'docx':
-      return describeDocx(readInput(path))
+      // headings carry text: hidden runs read as their {{label}}
+      return describeDocx((await redactedDocxBytes(readInput(path))).bytes)
     case 'odt':
       return describeOdt(path)
     case 'pptx':

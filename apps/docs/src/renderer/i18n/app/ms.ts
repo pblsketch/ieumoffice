@@ -357,15 +357,17 @@ export const ms = {
   appEasyWords: 'Terangkan dengan kata mudah',
   appEasyWordsPrompt:
     'Terangkan teks yang dipilih dalam bahasa Melayu supaya mudah difahami juga oleh orang yang memerlukan bacaan mudah (kanak-kanak, warga emas, orang yang sedang belajar bahasa Melayu). Gunakan perkataan harian dan ayat pendek, serta kekalkan semua fakta, nombor dan syarat. Jangan ubah dokumen: "{text}"',
-  redactMenuLabel: 'Sembunyikan pilihan daripada AI',
+  redactMenuLabel: 'Sembunyikan maklumat sensitif',
   redactDialogDesc:
-    'Perkataan kekal dalam dokumen dan fail; model hanya melihat placeholder di bawah. Beri nama supaya model tahu apa yang diwakili.',
+    'Bahagian yang dipilih tidak dihantar kepada AI. Dalam fail, ia kekal seadanya. AI hanya melihat label di bawah. Namakannya supaya AI tahu maksudnya.',
   redactDialogScope:
-    'Penyembunyian ini hanya untuk AI dalam aplikasi ini. CLI, alat MCP dan eksport tanpa antara muka membaca fail secara terus, jadi perkataan ini masih kelihatan kepada mereka.',
-  redactDialogPlaceholder: 'Nama placeholder, cth. telefon pelanggan',
+    'Penyembunyian tidak berlaku apabila program dalam mod ejen membaca fail terus dari cakera.',
+  redactDialogPlaceholder: 'Label, cth. nama pelajar',
   redactCancel: 'Batal',
   redactInsert: 'Sembunyikan',
-  redactShowLabel: 'Tunjukkan pilihan kepada AI sekali lagi',
+  redactShowLabel: 'Berhenti menyembunyikan',
+  sensLocParagraph: 'Perenggan {n}',
+  sensLocTableCell: 'Jadual {n}, baris {r}, lajur {c}',
   appLangEnglish: 'Bahasa Inggeris',
   appLangSimplifiedChinese: 'Bahasa Cina Ringkas',
   appLangJapanese: 'Bahasa Jepun',

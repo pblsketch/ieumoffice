@@ -68,8 +68,6 @@ export const tr = {
   aiEmptyTitle: 'Yazma ve düzenleme işlerinde AI size yardım etsin',
   aiEmptyBody1: 'Bir yönerge verin ya da yalnızca soru sorun;',
   aiEmptyBody2: 'metin seçiliyken yeniden yazma komutları seçime uygulanır.',
-  aiNoHidingNote:
-    'Bu düzenleyici belgenin bazı bölümlerini AI’dan gizleyemez: isteğin kapsadığı içerik yazıldığı gibi gönderilir.',
   aiStarterWeeklyReport: 'Benim için haftalık proje raporu yaz',
   aiStarterLaunchPost: 'Ürün lansmanı duyurusu tasarla',
   aiStarterEventOutline: 'Bir etkinlik planının ana hatlarını oluştur',

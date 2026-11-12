@@ -1383,6 +1383,15 @@ export const ar = {
   appCtxFormatCells: 'تنسيق الخلايا…',
   appCtxPickFromList: 'اختيار من القائمة المنسدلة…',
   appCtxDefineName: 'تعريف اسم…',
+  appCtxSensitiveHide: 'إخفاء المعلومات الحساسة',
+  appCtxSensitiveUnhide: 'إلغاء إخفاء المعلومات الحساسة',
+  appSensitiveHidden:
+    'تم إخفاء {range} عن الذكاء الاصطناعي. يرى الذكاء الاصطناعي {marker} بدلًا منه.',
+  appSensitiveUnhidden: 'تم إلغاء إخفاء {range}.',
+  appSensitiveNothingHidden: 'لا يوجد شيء مخفي في التحديد.',
+  appSensitiveBroken:
+    'لم يُرسل إلى الذكاء الاصطناعي: علامات الإخفاء {names} تشير إلى خلايا لم تعد موجودة (ورقة محذوفة أو #REF!). صحّحها أو احذفها من إدارة الأسماء.',
+  appSensitiveMergeRefused: 'لم يتم الدمج: لا يمكن نقل الخلايا المخفية في {file} إلى هذا المصنف.',
   appCtxLink: 'ارتباط…',
   appCtxInsertFunction: 'إدراج دالة…',
   appFillUp: 'تعبئة لأعلى',

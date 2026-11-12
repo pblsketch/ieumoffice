@@ -69,8 +69,6 @@ export const nl = {
   aiEmptyTitle: 'Laat AI je helpen met schrijven en bewerken',
   aiEmptyBody1: 'Geef een instructie of stel gewoon een vraag;',
   aiEmptyBody2: 'met geselecteerde tekst worden herschrijfopdrachten toegepast op de selectie.',
-  aiNoHidingNote:
-    'In deze editor kun je geen delen van het document voor de AI verbergen: wat een verzoek omvat, wordt ongewijzigd verzonden.',
   aiStarterWeeklyReport: 'Schrijf een wekelijks projectverslag voor mij',
   aiStarterLaunchPost: 'Stel een productlanceringsaankondiging op',
   aiStarterEventOutline: 'Maak een opzet voor een evenementenplan',

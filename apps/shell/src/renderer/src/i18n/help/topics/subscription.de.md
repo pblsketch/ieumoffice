@@ -118,7 +118,7 @@ Wenn ein Abonnement zum ersten Mal genutzt werden kann, zeigt GenOffice einmalig
 
 Anfragen über direkt verbundenes ChatGPT laufen nicht über das Codex-Programm; sie gehen von diesem PC direkt an OpenAI.
 
-Was Sie mit **Auswahl vor der KI verbergen** verborgen haben, wird nicht gesendet, gleich welche KI Sie verwenden.
+Was Sie mit **Sensible Daten ausblenden** ausgeblendet haben, wird nicht gesendet, gleich welche KI Sie verwenden.
 
 ## Gut zu wissen
 

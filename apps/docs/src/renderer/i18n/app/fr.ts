@@ -363,15 +363,17 @@ export const fr = {
   appEasyWords: 'Expliquer en mots simples',
   appEasyWordsPrompt:
     "Expliquez le passage sélectionné en français pour que le comprennent aussi les personnes qui ont besoin d'un texte facile (enfants, personnes âgées, personnes qui apprennent le français). Utilisez des mots courants et des phrases courtes, et conservez tous les faits, chiffres et conditions. Ne modifiez pas le document : « {text} »",
-  redactMenuLabel: 'Masquer la sélection à l’IA',
+  redactMenuLabel: 'Masquer les informations sensibles',
   redactDialogDesc:
-    'Les mots restent dans le document et dans le fichier ; le modèle ne voit que le marqueur ci-dessous. Donnez-lui un nom pour qu’il sache ce qu’il désigne.',
+    'La partie choisie n’est pas envoyée à l’IA. Elle reste telle quelle dans le fichier. L’IA ne voit que l’étiquette ci-dessous. Nommez-la pour que l’IA sache ce qu’elle représente.',
   redactDialogScope:
-    'Le masquage ne concerne que l’IA de cette application. La CLI, les outils MCP et l’exportation sans interface lisent le fichier directement et voient toujours ces mots.',
-  redactDialogPlaceholder: 'Nom du placeholder, ex. : téléphone du client',
+    'Le masquage ne s’applique pas quand un programme en mode agent lit le fichier directement sur le disque.',
+  redactDialogPlaceholder: 'Étiquette, p. ex. nom de l’élève',
   redactCancel: 'Annuler',
   redactInsert: 'Masquer',
-  redactShowLabel: 'Réafficher la sélection à l’IA',
+  redactShowLabel: 'Ne plus masquer',
+  sensLocParagraph: 'Paragraphe {n}',
+  sensLocTableCell: 'Tableau {n}, ligne {r}, colonne {c}',
   appLangEnglish: 'anglais',
   appLangSimplifiedChinese: 'chinois simplifié',
   appLangJapanese: 'japonais',

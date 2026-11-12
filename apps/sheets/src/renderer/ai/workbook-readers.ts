@@ -13,6 +13,7 @@ import { planFileTableRegistrations } from '../file-tables'
 import { toSelectionFormat } from '../selection-format'
 import { lazyCellReader } from '../univer-sync'
 import { lazySheetScreenExtent, type LazyWorkbookState, type UniverRuntime } from '../univer-state'
+import type { SheetHidingView } from '../hiding/view'
 import type { ActiveSheetInfo, FrozenSelection } from './tools'
 
 /** The App refs the readers need; passed per call so they never go stale. */
@@ -24,7 +25,14 @@ export interface WorkbookReadContext {
 
 /// Feature-state report for the AI: what already exists before it edits.
 /// Each section is independent so one facade failure never hides the rest.
-export function readSheetFeatures(ctx: WorkbookReadContext, sheetIdInput?: string): string {
+/// With `hiding`, what the report would quote from hidden cells is hidden:
+/// filter values and rule values keyed on them, their validation lists and
+/// their notes.
+export function readSheetFeatures(
+  ctx: WorkbookReadContext,
+  sheetIdInput?: string,
+  hiding?: SheetHidingView,
+): string {
   const workbook = ctx.univerRef.current?.univerAPI.getActiveWorkbook()
   if (!workbook) return 'No workbook is currently open.'
   const worksheet =
@@ -37,15 +45,18 @@ export function readSheetFeatures(ctx: WorkbookReadContext, sheetIdInput?: strin
   const a1 = (range: IRange): string =>
     `${columnLabel(range.startColumn)}${range.startRow + 1}:${columnLabel(range.endColumn)}${range.endRow + 1}`
   const lines: string[] = [`Feature state of sheet ${worksheet.getSheetName()} (id=${sheetId}):`]
+  const hidden = (range: IRange): boolean =>
+    hiding?.active === true &&
+    (hiding.touchesHidden({ sheetId, ...range }) || hiding.hasDependentIn({ sheetId, ...range }))
 
   const fileMeta = state?.file.sheets.find((sheet) => sheet.id === sheetId)
-  const hidden = state?.editJournal.sheets.hidden.get(sheetId) ?? fileMeta?.hidden ?? false
+  const sheetHidden = state?.editJournal.sheets.hidden.get(sheetId) ?? fileMeta?.hidden ?? false
   const isProtected =
     state?.editJournal.sheetProtection.get(sheetId) ??
     state?.sheetProtections.get(sheetId)?.protected ??
     false
   const status = [
-    fileMeta?.veryHidden ? 'veryHidden (cannot be unhidden)' : hidden ? 'hidden' : 'visible',
+    fileMeta?.veryHidden ? 'veryHidden (cannot be unhidden)' : sheetHidden ? 'hidden' : 'visible',
     isProtected ? 'protected' : 'unprotected',
   ]
   try {
@@ -130,10 +141,13 @@ export function readSheetFeatures(ctx: WorkbookReadContext, sheetIdInput?: strin
         const columnCriteria = filter.getColumnFilterCriteria(column)
         if (!columnCriteria) continue
         const values = (columnCriteria.filters?.filters ?? []) as string[]
+        const keyHidden = hidden({ ...bounds, startColumn: column, endColumn: column })
         criteria.push(
-          values.length > 0
-            ? `${columnLabel(column)} keeps [${values.slice(0, 10).join(', ')}${values.length > 10 ? ', …' : ''}]`
-            : `${columnLabel(column)} has custom criteria`,
+          keyHidden
+            ? `${columnLabel(column)} has criteria on hidden cells`
+            : values.length > 0
+              ? `${columnLabel(column)} keeps [${values.slice(0, 10).join(', ')}${values.length > 10 ? ', …' : ''}]`
+              : `${columnLabel(column)} has custom criteria`,
         )
       }
       lines.push(
@@ -156,7 +170,10 @@ export function readSheetFeatures(ctx: WorkbookReadContext, sheetIdInput?: strin
       )
       for (const rule of rules.slice(0, 20)) {
         const detail = rule.rule as unknown as Record<string, unknown>
-        const summary = ['type', 'subType', 'operator', 'value']
+        const keyed = (rule.ranges ?? []).some(hidden)
+        const summary = (
+          keyed ? ['type', 'subType', 'operator'] : ['type', 'subType', 'operator', 'value']
+        )
           .filter((key) => detail[key] !== undefined)
           .map((key) => `${key}=${JSON.stringify(detail[key])}`)
           .join(' ')
@@ -180,9 +197,12 @@ export function readSheetFeatures(ctx: WorkbookReadContext, sheetIdInput?: strin
           .map((range) => range.getA1Notation())
           .join(',')
         const rule = validation.rule
-        const parts = [rule.type, rule.operator, rule.formula1, rule.formula2].filter(
-          (part) => part !== undefined && part !== '',
-        )
+        const listHidden = validation.getRanges().some((range) => hidden(range.getRange()))
+        const parts = (
+          listHidden
+            ? [rule.type, rule.operator, '(values of hidden cells)']
+            : [rule.type, rule.operator, rule.formula1, rule.formula2]
+        ).filter((part) => part !== undefined && part !== '')
         lines.push(`- ${ranges}: ${parts.join(' ')}`)
       }
     }
@@ -209,7 +229,10 @@ export function readSheetFeatures(ctx: WorkbookReadContext, sheetIdInput?: strin
     if (notes.length > 0) {
       lines.push(`Notes: ${notes.length}:`)
       for (const note of notes.slice(0, 20)) {
-        const text = note.note.length > 80 ? `${note.note.slice(0, 80)}…` : note.note
+        const noteLabel = hiding?.active ? hiding.hiddenLabel(sheetId, note.row, note.col) : null
+        const shown =
+          noteLabel === null ? note.note : (hiding?.placeholder(noteLabel, note.note) ?? '')
+        const text = shown.length > 80 ? `${shown.slice(0, 80)}…` : shown
         lines.push(`- ${columnLabel(note.col)}${note.row + 1}: ${text.replace(/\n/g, ' ')}`)
       }
     }
@@ -326,7 +349,9 @@ export function getActiveSheetInfo(
   const frozenFields = frozenLabel
     ? {
         selectionFrozen: true,
-        ...(frozen?.columns?.length ? { selectionColumns: frozen.columns } : {}),
+        ...(frozen?.columns?.length
+          ? { selectionColumns: frozen.columns, selectionSheetId: frozen.sheetId }
+          : {}),
       }
     : {}
   const state = ctx.lazyWorkbookRef.current

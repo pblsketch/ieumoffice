@@ -66,8 +66,9 @@ by that service's own terms and by your account settings there.
 Every one of these is a direct connection, so the receiving service sees your
 public IP address, as any website you visit does.
 
-Parts of a document that you marked as hidden from AI, in the editors that
-offer that marking, are withheld from the request whichever provider is used.
+Parts of a document that you marked with **Hide sensitive info**, in the
+editors that offer it, are withheld from the request whichever provider is
+used (see **How far hiding reaches** below).
 
 The diagram editor (draw.io files: `.drawio`, `.dio`, `.drawio.svg`,
 `.drawio.png`, and Visio `.vsdx` files it imports) sends nothing off your PC
@@ -91,10 +92,25 @@ address is saved either way.
 
 ## How far hiding reaches
 
-The PowerPoint, Markdown and HTML editors let you hide parts of a document
-from AI. The mark is saved in the file, and it is honoured:
+**Hide sensitive info** lets you keep parts of a document from AI in the Word,
+Excel, PowerPoint, Hangul, Markdown and HTML editors. Right before a request
+leaves, the app puts a label (`{{label}}`) where each hidden part was; the
+file keeps the real words. Hidden parts are never sent, whichever provider
+you use, a local AI included. No AI, model or network is used to hide
+anything or to find candidates.
 
-- in that editor's own AI panel;
+The mark is saved in the file. In a Hangul document it is a memo reading
+`[Hide sensitive info] <label>` (in the screen language it was made in), so
+whoever receives the document sees the memo. In an Excel workbook it is a
+defined name `IeumHide_<label>`, which Excel's Name Manager shows. In the
+other formats it is a mark in the file that other programs do not show.
+
+The mark is honoured:
+
+- in that editor's own AI panel, including tool results, quoted selections
+  and pictures inside a hidden part (they are not sent). In Excel, values
+  worked out from hidden cells (formulas, pivot tables, totals) are hidden
+  too. A document whose marks cannot be read safely sends nothing to the AI;
 - when the file is read inside the app as material for something else: as an
   attachment in another editor's AI panel, by the home screen's Ask (its
   reads and its search excerpts), in the home screen's search index and the
@@ -102,26 +118,44 @@ from AI. The mark is saved in the file, and it is honoured:
   by "Convert without AI". A hidden part is read as its label (`{{label}}`),
   hidden text cannot be found by the home screen's search, and a file whose
   marks cannot be processed is not read at all;
+- by the `ieumoffice` terminal command and its MCP server, the app's own MCP
+  server and an Agent window session's MCP server: every output that carries
+  document text shows hidden parts as their labels, there is no option to
+  get the words back, and the MCP tools that make a new file from a
+  document (`convert`, `create_pdf`, `create_docx` and `create_xlsx` from a
+  file, `merge`) refuse a document with any hidden part;
 - a file open in a tab with unsaved changes is not read for any of these
   until you save it, because a new mark only reaches the file on save.
 
+**Find sensitive info** in an AI panel lists text that looks like a name,
+phone number, resident registration number, account or card number, address
+and the like, by fixed text patterns, on this PC. Nothing is hidden until you
+confirm. The first send in a tab counts what is still unhidden in the
+document and in that request's attachments and asks once before sending.
+When you **Exclude** a candidate, the app remembers it for that document in
+its data folder as the kind and a keyed hash only, never the text; the key
+is kept in a separate file there. Nothing about it is written into the
+document or sent anywhere.
+
 It does **not** reach:
 
-- **Word documents.** The Word editor does not recognise hiding marks, and a
-  `.docx` file read as material (attachment, Ask, search index, "Make") is
-  read as written. A Word document whose parts were hidden in the program
-  this app is based on sends those parts to the AI provider when you use AI
-  on it here. The Word editor's AI panel says it cannot hide anything.
-- **The terminal command, its MCP server and the app's own MCP server.**
-  `ieumoffice` commands and MCP tools read PowerPoint, Markdown and HTML files
-  as written, hidden parts included. What an agent does with that text is
-  up to the agent you run.
-- **Agent mode.** The program reads files of the project folder straight from
-  disk, so hidden parts of those files are sent as they are; so is anything a
-  command you allowed reads. Only documents open in the app, read through the
-  app's own tools, show hidden parts as their labels, and a PowerPoint
-  document with hidden parts is not edited by the agent. The Agent window
-  says this before your first session.
+- **Agent mode reading files itself.** The program reads files of the project
+  folder straight from disk, so hidden parts of those files are sent as they
+  are; so is anything a command you allowed reads. Documents open in the app,
+  read through the app's own tools, show hidden parts as their labels, and a
+  PowerPoint document with hidden parts is not edited by the agent. The Agent
+  window says this before your first session.
+- **Page pictures.** The MCP `render` and `slides_render` tools (and the
+  `render` and `slides render` commands) return pictures of pages, and those
+  show hidden text as it is.
+- **The terminal's `convert`, `create --from` and `merge`.** They are not
+  refused and work as before. Where the target format has a place for the
+  mark it is carried over; otherwise, and for a file made by printing to PDF
+  or filling a template, the new file holds the hidden text unmarked. A
+  program with a shell can read the file directly anyway.
+- **Conversions in the app to a format with no place for the mark** (ODT,
+  ODS, CSV and the like) ask first; if you continue, the copy has the words
+  without the mark.
 - **Three known faults where a mark is lost or not read.** These apply until
   they are fixed:
   - In the PowerPoint editor, if you hide a piece of text that has no
@@ -428,6 +462,10 @@ Nothing in this list is uploaded by the app.
   only to `api.github.com`.
 - **The record that you accepted a login billed by usage**, kept in the same
   folder. It is cleared when the kind of login changes or you sign out.
+- **Candidates you excluded in Find sensitive info**, kept per editor in the
+  data folder for each document path: the kind of each candidate and a keyed
+  hash of it, never its text, with the key in a separate file. A moved or
+  renamed document simply starts again.
 - **The automatic-call ledger**: the times of subscription requests made by
   terminal commands and MCP clients during the last hour, shown as a count by
   the `capabilities` command. It holds no content.

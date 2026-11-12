@@ -12,6 +12,7 @@ import {
   SAVE_EDITS_CHUNK_JSON_MAX,
   SAVE_EDITS_CHUNK_MAX,
 } from './ipc-channels'
+import type { SensitiveKind } from '@genoffice/agent-core/sensitive-kinds'
 import { ADDABLE_SHAPE_TYPES } from '@genoffice/xlsx-gateway/shared/shape-types'
 import {
   PIVOT_AGGREGATIONS,
@@ -2929,6 +2930,9 @@ export const workbookExportCsvRequestSchema = z
     /// The exported sheet carries formulas — CSV keeps their values only, so
     /// the main process offers Save As .xlsx first (Excel's warning flow).
     hasFormulas: z.boolean(),
+    /// Sensitive-info hiding marks (IeumHide_ names) in the workbook. CSV has
+    /// no defined names, so with any the main process asks once first.
+    hidingMarks: z.number().int().min(0).optional(),
     /// Set when the workbook has more sheets than the exported one.
     activeSheetName: z.string().max(255).optional(),
     /// Write straight to this path (from the Save As dialog's CSV pick)
@@ -3197,7 +3201,18 @@ export interface DesktopApi {
   /// Export the whole workbook as an ODS copy; the session stays .xlsx.
   exportOds(request: WorkbookExportOdsRequest): Promise<WorkbookExportOdsResult>
   /// First Save of a CSV session: native "keep this format?" dialog.
-  confirmCsvSave(): Promise<'csv' | 'xlsx' | 'cancel'>
+  /** find sensitive info: whether each candidate was dismissed before in this workbook */
+  sensitiveExclusionsFilter(
+    sessionId: string,
+    items: readonly { kind: SensitiveKind; value: string }[],
+  ): Promise<boolean[]>
+  /** find sensitive info: remember a dismissed candidate (the main process keeps a hash and the kind) */
+  sensitiveExclusionAdd(
+    sessionId: string,
+    item: { kind: SensitiveKind; value: string },
+  ): Promise<void>
+  /** `hidingMarks`: sensitive-info hiding marks a CSV save would drop; asked about first */
+  confirmCsvSave(hidingMarks?: number): Promise<'csv' | 'xlsx' | 'cancel'>
   /// AI create_document: write a new standalone file into the default save
   /// folder (no dialog) and open it in a new tab.
   createDocument(request: WorkbookCreateDocumentRequest): Promise<WorkbookCreateDocumentResult>

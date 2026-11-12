@@ -1,10 +1,12 @@
+import { buildHidingMemoText, isHidingMemoText } from '@genoffice/agent-core/hiding-memo'
 import { parseDocx } from '@genoffice/docx-engine'
+import { PRODUCT_NAME } from '@genoffice/i18n'
 import type { HwpDocument } from '@rhwp/core'
 import { call, exportDocument, withNewDocument, withOpenedDocument, type HwpEngine } from './engine'
 import { hangulLook, wordLook, type HwpLook } from './look'
 import { lowerDocument } from './lower'
 import { LossLedger, type Loss } from './losses'
-import { writePlan } from './write'
+import { writePlan, type HidingMemos } from './write'
 
 export type HwpFormat = 'hwp' | 'hwpx'
 
@@ -40,7 +42,17 @@ export interface HwpConversionOptions {
    * its tables get the look of a document written in Hangul.
    */
   readonly look?: HwpLook
+  /**
+   * The screen language a Word hiding mark's memo is written in: the memo's
+   * bracketed prefix is "hide sensitive info" in this language (every
+   * language's prefix is recognised). English when absent, as the terminal
+   * command speaks.
+   */
+  readonly hidingLang?: string
 }
+
+/** the earlier name of the options, kept for the callers written against it */
+export type Docx2HwpOptions = HwpConversionOptions
 
 /** Word document bytes (lazily served pictures already put back) to a Hangul document. */
 export function docxToHwp(
@@ -49,7 +61,20 @@ export function docxToHwp(
   engine: HwpEngine,
   options: HwpConversionOptions = {},
 ): Promise<HwpConversion> {
-  return convert(docx, format, engine, { batch: true, look: options.look ?? 'word' })
+  return convert(docx, format, engine, {
+    batch: true,
+    look: options.look ?? 'word',
+    hidingLang: options.hidingLang,
+  })
+}
+
+/**
+ * A Word hiding mark becomes a hiding memo anchored on the same words. The
+ * author is the product name whatever the user's name setting, so a reader
+ * of the Hangul file knows where the memo came from.
+ */
+function hidingMemos(lang: string): HidingMemos {
+  return { text: (label) => buildHidingMemoText(label, lang), author: PRODUCT_NAME }
 }
 
 /** docxToHwp with the writing strategy chosen: tests and measurements compare them */
@@ -57,7 +82,7 @@ export async function convert(
   docx: Uint8Array,
   format: HwpFormat,
   engine: HwpEngine,
-  options: { batch: boolean; look?: HwpLook },
+  options: { batch: boolean; look?: HwpLook; hidingLang?: string },
 ): Promise<HwpConversion> {
   let parsed: Awaited<ReturnType<typeof parseDocx>>
   try {
@@ -69,6 +94,8 @@ export async function convert(
   const lowered = lowerDocument(parsed, ledger)
   const plan = options.look === 'hangul' ? hangulLook(lowered) : wordLook(lowered)
   try {
+    const hiding = hidingMemos(options.hidingLang ?? 'en')
+    let memos = 0
     let lost = 0
     const take = (doc: HwpDocument, as: HwpFormat): Uint8Array => {
       const out = exportDocument(doc, as)
@@ -76,7 +103,9 @@ export async function convert(
       return out.bytes
     }
     const written = withNewDocument(engine, (doc) => {
-      const write = () => writePlan(doc, plan, ledger)
+      const write = () => {
+        memos = writePlan(doc, plan, ledger, hiding)
+      }
       if (options.batch) inBatch(doc, write)
       else write()
       if (format === 'hwp' && !hwpReadsBack(doc).same) {
@@ -97,12 +126,24 @@ export async function convert(
     for (let i = 0; i < lost; i++) ledger.note('object', `engine${i}`)
     withOpenedDocument(engine, bytes, (back) => {
       if (back.pageCount() < 1) throw new Docx2HwpError('failed', 'the written file has no pages')
+      if (memos > 0) noteMissingHidingMemos(back, memos, ledger)
     })
     return { bytes, losses: ledger.list() }
   } catch (err) {
     if (err instanceof Docx2HwpError) throw err
     throw new Docx2HwpError('failed', messageOf(err), { cause: err })
   }
+}
+
+/**
+ * The file as written must hold every hiding memo the engine accepted: a
+ * table moved into a cell, or the writer, could lose one, and then its words
+ * would be in the copy unmarked. Each one missing is reported.
+ */
+function noteMissingHidingMemos(back: HwpDocument, written: number, ledger: LossLedger): void {
+  const list = JSON.parse(back.getMemoList()) as Array<{ text?: unknown }>
+  const found = list.filter((m) => typeof m.text === 'string' && isHidingMemoText(m.text)).length
+  for (let i = found; i < written; i++) ledger.note('hiding_mark', `readback${i}`)
 }
 
 /** the engine lays the document out once at the end instead of after every call */

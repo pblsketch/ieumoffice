@@ -159,6 +159,18 @@ describe('an index built before withholding was honoured is rebuilt once', () =>
     expect(store.excerptsFor(paths, 'confirm', 400)).toEqual([])
   })
 
+  it('drops an index built before Word, workbook and Hangul hiding was read (stamp 2)', async () => {
+    const [note] = await writeWithheldFiles()
+    store.upsert(fileMeta(note!), `please call ${SECRET} to confirm`, 'ok')
+    store.close()
+    const db = new DatabaseSync(dbPath)
+    db.exec("UPDATE meta SET value = '2' WHERE key = 'extract'")
+    db.close()
+    store = new FileIndexStore(dbPath)
+    expect(store.count()).toBe(0)
+    expect(store.search(SECRET).total).toBe(0)
+  })
+
   it('does not drop the rebuilt index again on the next start', async () => {
     const [note] = await writeWithheldFiles()
     leaveOldIndex([note!])

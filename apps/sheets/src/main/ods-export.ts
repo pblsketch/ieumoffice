@@ -7,9 +7,13 @@
 /// session throughout — nothing here renames or re-targets it.
 
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdtemp, rm } from 'node:fs/promises'
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
+
+import JSZip from 'jszip'
+
+import { isHidingName } from '@genoffice/agent-core/hiding-name'
 
 import { promoteFileAtomically } from '@genoffice/xlsx-gateway/gateway/xlsx-package-io'
 
@@ -85,7 +89,16 @@ export async function exportWorkbookAsOds(input: {
   sourcePath: string
   targetPath: string
   confirmLoss: (losses: readonly OdsLoss[]) => Promise<boolean>
+  /**
+   * ODS keeps no sensitive-info hiding mark: with `count` of them in the
+   * workbook the person is asked once before converting; false = canceled
+   */
+  confirmHidingLoss?: (count: number) => Promise<boolean>
 }): Promise<OdsExportOutcome> {
+  if (input.confirmHidingLoss) {
+    const count = await hidingNamesInXlsx(input.sourcePath)
+    if (count > 0 && !(await input.confirmHidingLoss(count))) return { status: 'canceled' }
+  }
   const workDir = await mkdtemp(join(tmpdir(), 'genoffice-ods-export-'))
   const tempOds = join(workDir, `${basename(input.targetPath).replace(/\.ods$/i, '')}.ods`)
   const verifyXlsx = join(workDir, 'verify.xlsx')
@@ -120,6 +133,35 @@ export async function exportWorkbookAsOds(input: {
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+
+/**
+ * The workbook's sensitive-info hiding marks: its `IeumHide_` defined names,
+ * read from the package being exported. A package this cannot open counts
+ * none: the spreadsheet engine cannot convert it either, so no ODS is written.
+ */
+export async function hidingNamesInXlsx(path: string): Promise<number> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(await readFile(path))
+  } catch {
+    return 0
+  }
+  const xml = (await zip.file('xl/workbook.xml')?.async('string')) ?? ''
+  let count = 0
+  for (const found of xml.matchAll(/<definedName\b[^>]*?\bname\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    if (isHidingName(unescapeXml(found[1] ?? found[2] ?? ''))) count++
+  }
+  return count
+}
+
+function unescapeXml(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
 }
 
 /** Copy beside the target, then promote: the app's staged-save write order. */

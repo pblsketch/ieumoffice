@@ -77,7 +77,7 @@ import { AiAskPopover } from './components/AiAskPopover'
 import { AiPanel, type AiPreset, type MarkdownAiDeps } from './ai/AiPanel'
 import { EDIT_QUEUE_MAX, selectionForAnchor, type EditQueueItem } from './ai/edit-queue'
 import { addQueueAnchor, clearQueueAnchors, removeQueueAnchors } from './editor/aiQueueAnchors'
-import { DOCX_MAX_IMAGE_PX, exportDocxBytes } from './export/docxExport'
+import { DOCX_MAX_IMAGE_PX, exportDocxBytes, hiddenSpanCount } from './export/docxExport'
 import { decodeImageDataUrl, toDocxImage } from './export/exportImage'
 import { buildPrintHtml } from './export/printHtml'
 import { PrintPreviewDialog } from './print/PrintPreviewDialog'
@@ -989,6 +989,7 @@ export default function App() {
           const result = await window.markdownApi.exportOdt({
             base64: bytesToBase64(bytes),
             suggestedName,
+            hidingMarks: hiddenSpanCount(current.getJSON()),
             ...(saveAsTarget ? { saveAsTarget } : {}),
           })
           if (!result.ok) console.error('[markdown] odt export failed:', result.error)

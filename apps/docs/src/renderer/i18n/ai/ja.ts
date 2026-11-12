@@ -67,8 +67,6 @@ export const ja = {
   aiEmptyTitle: 'AI に文章の作成・編集を任せましょう',
   aiEmptyBody1: '指示を出すことも、そのまま質問することもできます。',
   aiEmptyBody2: 'テキストを選択すると、書き換え系の指示は選択範囲に適用されます。',
-  aiNoHidingNote:
-    'このエディターでは文書の一部を AI から隠せません。依頼の対象となる内容はそのまま送信されます。',
   aiStarterWeeklyReport: 'プロジェクトの週報を書いて',
   aiStarterLaunchPost: '製品リリースのお知らせを書いて',
   aiStarterEventOutline: 'イベント企画のアウトラインを作って',

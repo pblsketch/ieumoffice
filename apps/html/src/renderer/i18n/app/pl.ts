@@ -30,12 +30,12 @@ export const pl = {
   mathPiecewise: 'Funkcja przedziałami',
   mathBinomial: 'Współczynnik dwumianowy',
 
-  redactMenuLabel: 'Ukryj zaznaczenie przed AI',
+  redactMenuLabel: 'Ukryj dane wrażliwe',
   redactDialogDesc:
-    'Słowa zostają w dokumencie i w pliku; model widzi tylko symbol. Nadaj mu nazwę, by wiedział, co oznacza.',
+    'Wybrana część nie jest wysyłana do AI. W pliku zostaje bez zmian. AI widzi tylko etykietę poniżej. Nazwij ją tak, by AI wiedziała, co oznacza.',
   redactDialogScope:
-    'Ukrywanie dotyczy tylko AI w tej aplikacji. CLI, narzędzia MCP i eksport bez okienka czytują plik bezpośrednio i nadal widzą te słowa.',
-  redactDialogPlaceholder: 'Nazwa symbolu, np. telefon klienta',
+    'Dotyczy to każdej drogi, którą dokument trafia do AI, z wyjątkiem programu w trybie agenta, który czyta plik bezpośrednio z dysku.',
+  redactDialogPlaceholder: 'Etykieta, np. imię ucznia',
   redactCancel: 'Anuluj',
   redactInsert: 'Ukryj',
 

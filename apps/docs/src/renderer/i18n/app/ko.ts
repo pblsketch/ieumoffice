@@ -372,15 +372,17 @@ export const ko = {
   appEasyWords: '쉬운 말로 풀기',
   appEasyWordsPrompt:
     '고른 글을 쉬운 글이 필요한 사람(어린이, 어르신, 한국어를 배우는 사람)도 알 수 있게 한국어로 풀어 설명해 주세요. 날마다 쓰는 쉬운 낱말과 짧은 문장으로 쓰고, 사실·숫자·조건은 하나도 빼지 마세요. 문서는 고치지 마세요: "{text}"',
-  redactMenuLabel: '선택한 부분을 AI에서 숨기기',
+  redactMenuLabel: '민감정보 가리기',
   redactDialogDesc:
-    '문서는 그대로 두고 AI에게는 아래 자리표시자만 보냅니다. 이름을 붙이면 AI가 무엇을 뜻하는지 알 수 있습니다.',
+    '고른 부분은 AI에게 보내지 않습니다. 파일에는 그대로 남습니다. AI는 아래 이름표만 봅니다. 무엇인지 알 수 있게 이름을 붙여 주세요.',
   redactDialogScope:
-    '이 앱의 AI에만 적용됩니다. CLI, MCP 도구, 창 없는 내보내기는 파일을 직접 읽으므로 이 단어들은 여전히 보입니다.',
-  redactDialogPlaceholder: '자리표시자 이름, 예: 고객 전화',
+    '에이전트 모드에서 프로그램이 디스크의 파일을 직접 읽을 때는 가려지지 않습니다.',
+  redactDialogPlaceholder: '이름표, 예: 학생 이름',
   redactCancel: '취소',
-  redactInsert: '숨기기',
-  redactShowLabel: '선택 영역을 AI에 다시 표시',
+  redactInsert: '가리기',
+  redactShowLabel: '가리기 풀기',
+  sensLocParagraph: '{n}번째 문단',
+  sensLocTableCell: '표 {n}, {r}행 {c}열',
   appLangEnglish: '영어',
   appLangSimplifiedChinese: '중국어 간체',
   appLangJapanese: '일본어',

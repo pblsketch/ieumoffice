@@ -358,15 +358,16 @@ export const pl = {
   appEasyWords: 'Wyjaśnij prostymi słowami',
   appEasyWordsPrompt:
     'Wyjaśnij zaznaczony fragment po polsku tak, aby zrozumiały go także osoby, które potrzebują prostego tekstu (dzieci, osoby starsze, osoby uczące się polskiego). Używaj codziennych słów i krótkich zdań, zachowaj wszystkie fakty, liczby i warunki. Nie modyfikuj dokumentu: „{text}”',
-  redactMenuLabel: 'Ukryj zaznaczenie przed AI',
+  redactMenuLabel: 'Ukryj dane wrażliwe',
   redactDialogDesc:
-    'Słowa zostają w dokumencie i w pliku; model widzi tylko symbol. Nadaj mu nazwę, by wiedział, co oznacza.',
-  redactDialogScope:
-    'Ukrywanie dotyczy tylko AI w tej aplikacji. CLI, narzędzia MCP i eksport bez okienka czytują plik bezpośrednio i nadal widzą te słowa.',
-  redactDialogPlaceholder: 'Nazwa symbolu, np. telefon klienta',
+    'Wybrana część nie jest wysyłana do AI. W pliku zostaje bez zmian. AI widzi tylko etykietę poniżej. Nazwij ją tak, by AI wiedziała, co oznacza.',
+  redactDialogScope: 'Ukrywanie nie działa, gdy program w trybie agenta czyta plik prosto z dysku.',
+  redactDialogPlaceholder: 'Etykieta, np. imię ucznia',
   redactCancel: 'Anuluj',
   redactInsert: 'Ukryj',
-  redactShowLabel: 'Pokaż zaznaczenie AI ponownie',
+  redactShowLabel: 'Przestań ukrywać',
+  sensLocParagraph: 'Akapit {n}',
+  sensLocTableCell: 'Tabela {n}, wiersz {r}, kolumna {c}',
   appLangEnglish: 'angielski',
   appLangSimplifiedChinese: 'chiński uproszczony',
   appLangJapanese: 'japoński',

@@ -47,6 +47,11 @@ import { applySaveFixes } from './save-fixes'
 import { backupPathFor, bytesMatchFormat, needsBackup } from './save-plan'
 import { saveAsDefaultPath, saveAsFilters, saveAsTarget } from './save-as-formats'
 import { sectionTailsOf } from './section-tails'
+import {
+  createExclusionStore,
+  type ExclusionItem,
+  type ExclusionStore,
+} from './sensitive-exclusions'
 import type { SectionTails } from './section-tails'
 import { newTabsOf } from './tab-widths'
 import { hasTrackedChanges, withoutTrackedChanges } from './tracked-changes'
@@ -578,6 +583,33 @@ function registerHwpIpc(): void {
     return openPathByWc.get(e.sender.id) ?? null
   })
   ipcMain.handle(HWP_CHANNELS.untitledCopy, (e) => untitledCopyByWc.get(e.sender.id) ?? null)
+
+  // 민감정보 찾기: what was dismissed, per document path (the view's own, never one it names)
+  let exclusions: ExclusionStore | null = null
+  const exclusionsOf = () =>
+    (exclusions ??= createExclusionStore(join(app.getPath('userData'), 'hwp-sensitive')))
+  const itemOf = (value: unknown): ExclusionItem | null => {
+    const item = value as { kind?: unknown; value?: unknown } | null
+    return typeof item?.kind === 'string' && typeof item.value === 'string'
+      ? { kind: item.kind, value: item.value }
+      : null
+  }
+  ipcMain.handle(HWP_CHANNELS.sensitiveExcluded, async (e, items: unknown) => {
+    const path = savePathByWc.get(e.sender.id) ?? openPathByWc.get(e.sender.id)
+    const list = Array.isArray(items) ? items.map(itemOf) : []
+    if (!path || !hwpViews.has(e.sender.id)) return list.map(() => false)
+    const known = list.filter((item): item is ExclusionItem => item !== null)
+    const answers = await exclusionsOf().excluded(path, known)
+    let at = 0
+    return list.map((item) => (item === null ? false : (answers[at++] ?? false)))
+  })
+  ipcMain.handle(HWP_CHANNELS.sensitiveExclude, async (e, value: unknown) => {
+    const path = savePathByWc.get(e.sender.id) ?? openPathByWc.get(e.sender.id)
+    const item = itemOf(value)
+    // a document without a file has nowhere to be remembered by: dismissed for now only
+    if (!path || !item || !hwpViews.has(e.sender.id)) return
+    await exclusionsOf().exclude(path, item)
+  })
 
   ipcMain.handle(HWP_CHANNELS.readFile, async (e, path: unknown) => {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {

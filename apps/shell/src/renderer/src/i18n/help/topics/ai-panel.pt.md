@@ -48,13 +48,14 @@ No painel de IA dos editores Docs, Sheets, Slides, Hangul, HTML e mapa mental, v
 - O painel do Docs mantém uma **lista de versões**: um instantâneo por volta, pode voltar a qualquer um deles, e a própria reversão pode ser anulada com Ctrl+Z. Os instantâneos sobrevivem a fechar e reabrir o documento.
 - As edições da IA passam pelo mesmo fluxo de edição das manuais (anuláveis e sujeitas a salvamento) — nada contorna a sua confirmação de salvamento.
 
-## Ocultar uma seleção da IA
+## Ocultar informações sensíveis
 
-- Em Slides, HTML e Markdown uma seleção pode sair da vista do modelo: clique direito ▸ **Ocultar a seleção da IA**, dê nome ao espaço reservado, e o modelo lê `{{nome}}` no lugar. (Markdown arma o item com a chave de olho riscado da faixa; a do HTML vive no painel de código.)
-- O arquivo guarda o texto real — salvar, exportar e imprimir ficam intactos, e a marca sobrevive à reabertura. O mesmo item desfaz (Markdown ganha também **Mostrar a seleção à IA novamente**).
-- HTML oculta conteúdos de elementos, valores de atributos e literais de string dos scripts; a página renderizada nunca muda.
-- Slides também oculta imagens, vídeos e áudios inteiros, e um slide com conteúdo oculto nunca é enviado como captura: a checagem automática de layout pula a página e avisa.
-- Isso vale só para a IA do aplicativo — a CLI, as ferramentas MCP e a exportação headless leem o arquivo diretamente e continuam vendo o texto.
+- Nos editores Docs, Sheets, Slides, Hangul, Markdown e HTML você pode impedir que uma parte do documento chegue à IA: selecione-a, clique direito ▸ **Ocultar informações sensíveis** e dê a ela um rótulo. A IA lê `{{rótulo}}` no lugar, seja qual for a IA que você usa. (Markdown arma o item com a chave de olho riscado da faixa; o do HTML fica no painel de código; no Sheets, clique direito no cabeçalho de uma coluna para ocultar a coluna abaixo da linha de cabeçalho, ou num intervalo de células para ocultar só esse intervalo.)
+- O arquivo guarda o texto real: salvar, imprimir e exportar para PDF ficam intactos, e a marca sobrevive à reabertura. O mesmo menu deixa de ocultar. No Hangul cada parte oculta é um comentário com o texto `[Ocultar informações sensíveis] rótulo`, então quem receber o documento também vê esse comentário, e um texto que já tem comentário não pode ser ocultado. No Sheets a marca é um nome definido `IeumHide_rótulo`, que aparece no Gerenciador de Nomes; a IA vê cada célula oculta como `{{rótulo-01}}` (o mesmo valor recebe o mesmo número), e uma célula cuja fórmula usa células ocultas também fica oculta.
+- **Procurar informações sensíveis**, no painel de IA, lista o que parece nome, número de telefone, endereço de e-mail, número de registro de residente, número de conta e de cartão, endereço e afins. A busca é feita neste PC só com padrões de texto fixos — nenhuma IA é usada para encontrar ou ocultar nada — e nada fica oculto até você escolher **Ocultar**. **Excluir** impede que um candidato volte a aparecer naquele documento. Os lugares que não podem receber uma marca (um cabeçalho, uma anotação do apresentador, um nome de planilha…) aparecem na lista para você mesmo editar.
+- Na primeira vez que você envia algo numa aba, se o documento ou os anexos daquele pedido ainda tiverem candidatos assim, o painel pergunta uma vez: **Conferir** não envia nada e abre a lista; **Enviar mesmo assim** envia.
+- HTML oculta conteúdos de elementos, valores de atributos e literais de string dos scripts, e a página renderizada nunca muda. Slides também oculta imagens, vídeos e áudios inteiros, e um slide com conteúdo oculto nunca é enviado como captura.
+- As partes ocultas continuam ocultas quando o arquivo é anexado em outro editor, quando você pergunta sobre ele no Início, quando o comando `ieumoffice` e suas ferramentas MCP o leem ou quando ele é lido pelo servidor MCP do aplicativo. Converter para um formato sem lugar para a marca (ODT, CSV…) pergunta antes. A ocultação não alcança arquivos que um programa no modo agente lê direto do disco, e as imagens de página (`render`) mostram o texto como está.
 
 ## Privacidade
 

@@ -27,6 +27,7 @@ import {
   toSaveVisualEdits,
 } from './edit-journal'
 import { activeCsvSheet, handleExportCsv, serializeActiveSheetCsv } from './csv-export'
+import { hidingMarkCount } from './hiding-export'
 import type { CellState } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import { verifiedFormulaValues } from './formula-values'
 import { t } from './i18n/locale'
@@ -341,8 +342,10 @@ export async function handleSave(
     // forever ("wait for loading to finish") with the Save-As-.xlsx escape
     // hatch unreachable. Streamed sessions that insist on CSV still get the
     // message (and are asked again next time instead of being remembered).
-    if (!confirmedCsvSaves.has(csvPath)) {
-      const choice = await window.desktopApi.confirmCsvSave()
+    // a CSV keeps no hiding marks: with marks in the workbook every CSV save asks
+    const hidingMarks = hidingMarkCount(ctx.univerRef.current, state)
+    if (!confirmedCsvSaves.has(csvPath) || hidingMarks > 0) {
+      const choice = await window.desktopApi.confirmCsvSave(hidingMarks)
       if (choice === 'cancel') {
         ctx.setMessage(t('appSaveCanceled'))
         return { ok: false }

@@ -8,7 +8,7 @@ Trình soạn thảo HTML mở .html / .htm ở hai chế độ: **Xem trước*
 - **Chế độ mã nguồn**: sửa HTML; ctrl+F để tìm, Thay thế tất cả lưu lại đánh dấu đã viết lại.
 - **Lưu**: trung thành từng byte (giữ BOM/CRLF/dấu xuống dòng cuối); lưu mà không sửa gì sẽ không ghi lại.
 - **Thu phóng**: ctrl+lăn chuột / véo tay để phóng bản xem trước; ctrl+Z bên trong bản xem trước hoàn tác chỉnh sửa gần nhất.
-- **Ẩn khỏi AI**: ở chế độ mã nguồn, chuột phải vào vùng chọn — nội dung phần tử, giá trị thuộc tính, chuỗi script — và mô hình thấy chỗ giữ chỗ; trang đã render không bao giờ đổi (chi tiết ở chương bảng AI).
+- **Ẩn thông tin nhạy cảm**: ở chế độ mã nguồn, chọn phần cần ẩn (nội dung phần tử, giá trị thuộc tính, chuỗi script), nhấp chuột phải rồi chọn **Ẩn thông tin nhạy cảm**, sau đó nhập nhãn và bấm **Ẩn**. Mô hình thấy chỗ giữ chỗ ở vị trí đó; trang đã render không bao giờ đổi (chi tiết ở chương bảng AI).
 
 ## Thanh công cụ
 

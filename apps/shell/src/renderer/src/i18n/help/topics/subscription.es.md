@@ -118,7 +118,7 @@ La primera vez que se puede usar una suscripción, GenOffice muestra un aviso un
 
 Las solicitudes a través de ChatGPT conectado directamente no pasan por el programa Codex; van desde este PC directamente a OpenAI.
 
-Lo que haya ocultado con **Ocultar la selección a la IA** no se envía, sea cual sea la IA que use.
+Lo que haya ocultado con **Ocultar información sensible** no se envía, sea cual sea la IA que use.
 
 ## Conviene saber
 

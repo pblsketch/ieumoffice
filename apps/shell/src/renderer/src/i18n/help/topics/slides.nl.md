@@ -54,7 +54,7 @@ Het menu volgt de plek waar je met de rechtermuisknop klikt:
 - De AI-dia-kaart op Start: geef een onderwerp of een outline en de AI bouwt de presentatie.
 - Zonder sleutel van een afbeeldingsprovider kan de AI geen afbeeldingen genereren, en gebruikt een presentatie in plaats daarvan afbeeldingen die via het zoeken naar afbeeldingen zijn gevonden; zie [AI-modellen en instellingen](help://ai-models).
 - Ga daarna door met het AI-paneel.
-- Rechtsklik op een tekstselectie of een afbeeldings/video/audio-element ▸ **Selectie voor AI verbergen** houdt het uit het zicht van het model (details in het hoofdstuk over het AI-paneel); een dia met verborgen inhoud slaat de automatische screenshotcontrole over.
+- Rechtsklik op een tekstselectie of een afbeeldings/video/audio-element ▸ **Gevoelige gegevens verbergen** houdt het uit het zicht van het model (details in het hoofdstuk over het AI-paneel); een dia met verborgen inhoud slaat de automatische screenshotcontrole over.
 
 ## Presenteren en exporteren
 

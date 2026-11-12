@@ -1488,6 +1488,15 @@ export const fr = {
   appCtxFormatCells: 'Format de cellule…',
   appCtxPickFromList: 'Liste déroulante de choix…',
   appCtxDefineName: 'Définir un nom…',
+  appCtxSensitiveHide: 'Masquer les informations sensibles',
+  appCtxSensitiveUnhide: 'Ne plus masquer les informations sensibles',
+  appSensitiveHidden: '{range} est masqué pour l’IA. L’IA voit {marker} à la place.',
+  appSensitiveUnhidden: '{range} n’est plus masqué.',
+  appSensitiveNothingHidden: 'Rien n’est masqué dans la sélection.',
+  appSensitiveBroken:
+    'Non envoyé à l’IA : les marques de masquage {names} renvoient à des cellules qui n’existent plus (feuille supprimée ou #REF!). Corrigez-les ou supprimez-les dans le Gestionnaire de noms.',
+  appSensitiveMergeRefused:
+    'Non fusionné : les cellules masquées de {file} ne peuvent pas être reprises dans ce classeur.',
   appCtxLink: 'Lien…',
   appCtxInsertFunction: 'Insérer une fonction…',
   appFillUp: 'Vers le haut',

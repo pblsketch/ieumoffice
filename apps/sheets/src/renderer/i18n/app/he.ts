@@ -1359,6 +1359,15 @@ export const he = {
   appCtxFormatCells: 'עיצוב תאים…',
   appCtxPickFromList: 'בחר מרשימה נפתחת…',
   appCtxDefineName: 'הגדר שם…',
+  appCtxSensitiveHide: 'הסתרת מידע רגיש',
+  appCtxSensitiveUnhide: 'ביטול הסתרת מידע רגיש',
+  appSensitiveHidden: '{range} מוסתר מה-AI. ה-AI רואה במקומו {marker}.',
+  appSensitiveUnhidden: 'ההסתרה של {range} בוטלה.',
+  appSensitiveNothingHidden: 'אין שום דבר מוסתר בבחירה.',
+  appSensitiveBroken:
+    'לא נשלח ל-AI: סימני ההסתרה {names} מפנים לתאים שכבר לא קיימים (גיליון שנמחק או #REF!). תקנו או מחקו אותם במנהל השמות.',
+  appSensitiveMergeRefused:
+    'לא מוזג: אי אפשר להעביר את התאים המוסתרים של {file} לחוברת העבודה הזו.',
   appCtxLink: 'קישור…',
   appCtxInsertFunction: 'הוסף פונקציה…',
   appFillUp: 'מילוי למעלה',

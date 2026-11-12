@@ -7,7 +7,7 @@ Edytor Markdown otwiera .md / .markdown — oraz .txt / .json, od razu w widoku 
 - **Podgląd**: na żywo; zasoby względne, takie jak obrazy, rozwiązywane są obok dokumentu.
 - **Zapisywanie**: wierne bajt w bajt — znacznik BOM, znaki CRLF i obecność pustej linii na końcu są zachowywane; zapis bez zmian nie przepisuje pliku.
 - **Znajdź i zamień**: ctrl+F przeszukuje źródło; Zastąp wszystko zapisuje wynik.
-- **AI**: gotowe przyciski pozwalają asystentowi przepisać, rozbudować lub przetłumaczyć dokument. Zaznaczenie można ukryć przed AI (patrz rozdział o panelu AI).
+- **AI**: gotowe przyciski pozwalają asystentowi przepisać, rozbudować lub przetłumaczyć dokument. Zaznaczenia można nie pokazywać AI dzięki poleceniu **Ukryj dane wrażliwe** (patrz rozdział o panelu AI).
 - **Otwieranie linków**: podczas edycji Ctrl+kliknięcie linku (⌘ na Macu) otwiera go w przeglądarce; zwykłe kliknięcie ustawia kursor w tekście linku, aby można go było edytować. W trybie prezentacji (F5) link otwiera zwykłe kliknięcie.
 
 ## Pasek narzędzi

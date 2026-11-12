@@ -1422,6 +1422,15 @@ export const cs = {
   appCtxFormatCells: 'Formát buněk…',
   appCtxPickFromList: 'Vybrat z rozevíracího seznamu…',
   appCtxDefineName: 'Definovat název…',
+  appCtxSensitiveHide: 'Skrýt citlivé údaje',
+  appCtxSensitiveUnhide: 'Přestat skrývat citlivé údaje',
+  appSensitiveHidden: 'Oblast {range} je před AI skrytá. AI místo ní vidí {marker}.',
+  appSensitiveUnhidden: 'Oblast {range} už není skrytá.',
+  appSensitiveNothingHidden: 'Ve výběru není nic skrytého.',
+  appSensitiveBroken:
+    'Neodesláno AI: značky skrytí {names} odkazují na buňky, které už neexistují (odstraněný list nebo #REF!). Opravte je nebo odstraňte ve Správci názvů.',
+  appSensitiveMergeRefused:
+    'Nesloučeno: skryté buňky ze souboru {file} nelze přenést do tohoto sešitu.',
   appCtxLink: 'Odkaz…',
   appCtxInsertFunction: 'Vložit funkci…',
   appFillUp: 'Nahoru',

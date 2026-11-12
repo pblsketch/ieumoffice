@@ -32,12 +32,12 @@ export const fr = {
   mathPiecewise: 'Fonction par morceaux',
   mathBinomial: 'Coefficient binomial',
 
-  redactMenuLabel: 'Masquer la sélection à l’IA',
+  redactMenuLabel: 'Masquer les informations sensibles',
   redactDialogDesc:
-    'Les mots restent dans le document et dans le fichier ; le modèle ne voit que le marqueur ci-dessous. Donnez-lui un nom pour qu’il sache ce qu’il désigne.',
+    'La partie choisie n’est pas envoyée à l’IA. Elle reste telle quelle dans le fichier. L’IA ne voit que l’étiquette ci-dessous. Nommez-la pour que l’IA sache ce qu’elle représente.',
   redactDialogScope:
-    'Le masquage ne concerne que l’IA de cette application. La CLI, les outils MCP et l’exportation sans interface lisent le fichier directement et voient toujours ces mots.',
-  redactDialogPlaceholder: 'Nom du placeholder, ex. : téléphone du client',
+    'Cela s’applique partout où le document est transmis à une IA, sauf à un programme en mode agent qui lit le fichier directement sur le disque.',
+  redactDialogPlaceholder: 'Étiquette, p. ex. nom de l’élève',
   redactCancel: 'Annuler',
   redactInsert: 'Masquer',
 

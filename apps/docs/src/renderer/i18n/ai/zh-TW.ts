@@ -66,7 +66,6 @@ export const zhTW = {
   aiEmptyTitle: '讓 AI 幫你寫作和修改',
   aiEmptyBody1: '可以下達指令,也可以直接提問;',
   aiEmptyBody2: '選取文字後,改寫類指令預設作用於選取範圍。',
-  aiNoHidingNote: '此編輯器無法對 AI 隱藏文件的部分內容：請求涉及的內容會原樣傳送。',
   aiStarterWeeklyReport: '幫我寫一份專案週報',
   aiStarterLaunchPost: '寫一篇產品發布公告',
   aiStarterEventOutline: '列一個活動企劃大綱',

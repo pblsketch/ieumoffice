@@ -282,3 +282,48 @@ describe('markdown ODT export wiring', () => {
     expect(flow.slice(0, docx)).toContain('base64: bytesToBase64(bytes)')
   })
 })
+
+describe('ODT export of a document with hidden spans', () => {
+  const hiddenDoc: JSONContent = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: '담임 ' },
+          {
+            type: 'text',
+            text: '홍길동',
+            marks: [{ type: 'redaction', attrs: { label: '이름' } }],
+          },
+        ],
+      },
+    ],
+  }
+
+  it('asks before converting; Cancel picks, converts and writes nothing', async () => {
+    const { s, written } = steps(await docxOf(hiddenDoc), tempPath('out.odt'))
+    const allowHidingLoss = vi.fn(async () => false)
+    const convert = vi.fn()
+    const outcome = await exportOdt({ ...s, allowHidingLoss }, convert)
+    expect(outcome).toEqual({ ok: true, canceled: true })
+    expect(allowHidingLoss).toHaveBeenCalledTimes(1)
+    expect(s.pickPath).not.toHaveBeenCalled()
+    expect(convert).not.toHaveBeenCalled()
+    expect(written).toEqual([])
+  })
+
+  it('goes on with Continue and writes the ODT', async () => {
+    const path = tempPath('out.odt')
+    const { s, written } = steps(await docxOf(hiddenDoc), path)
+    const outcome = await exportOdt({ ...s, allowHidingLoss: async () => true })
+    expect(outcome).toEqual({ ok: true, path })
+    expect(written).toHaveLength(1)
+  })
+
+  it('counts the hidden spans the renderer sends with the request', async () => {
+    const { hiddenSpanCount } = await import('../src/renderer/export/docxExport')
+    expect(hiddenSpanCount(hiddenDoc)).toBe(1)
+    expect(hiddenSpanCount(createEditor('no marks here').getJSON())).toBe(0)
+  })
+})

@@ -118,7 +118,7 @@ De eerste keer dat een abonnement kan worden gebruikt, toont GenOffice eenmalig 
 
 Verzoeken via rechtstreeks verbonden ChatGPT gaan niet via het Codex-programma; ze gaan van deze pc rechtstreeks naar OpenAI.
 
-Wat je met **Selectie voor AI verbergen** hebt verborgen, wordt niet verzonden, welke AI je ook gebruikt.
+Wat je met **Gevoelige gegevens verbergen** hebt verborgen, wordt niet verzonden, welke AI je ook gebruikt.
 
 ## Goed om te weten
 

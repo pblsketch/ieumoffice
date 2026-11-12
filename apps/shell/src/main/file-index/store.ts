@@ -22,8 +22,9 @@ const TOKENIZER_VERSION = 2
  * scratch. 1: text a file withholds from a model is indexed as its {{label}}
  * marker. An index with no stamp predates that and may hold the withheld words,
  * which search excerpts would quote. 2: pptx comments join the extracted body.
+ * 3: Word marks, workbook hiding names and Hangul hiding memos are honoured too.
  */
-const EXTRACT_VERSION = 2
+const EXTRACT_VERSION = 3
 
 /**
  * `cloud`: indexed by name only because the file is not on this PC and lies in

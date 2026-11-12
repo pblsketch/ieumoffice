@@ -56,7 +56,24 @@ import {
   tableLookBlocks,
   titleBoxCells,
 } from './document-looks.mjs'
+import { detectSensitive } from '@genoffice/agent-core/sensitive-detect'
+import { EASY_WORDS_COMMAND, HIDING_COMMAND } from './command-ids.mjs'
 import { equationSvgForThisPc } from './equation-fonts.mjs'
+import {
+  HIDDEN_UNPLACED,
+  boxKey,
+  brokenHiding,
+  concealDeep,
+  concealRun,
+  concealerOf,
+  hiddenRangesOf,
+  hidingEntriesOf,
+  hidingLabelOf,
+  hidingSignature,
+  hidingSnapshot,
+  rangesByBox,
+  touchesHidden,
+} from './hiding.mjs'
 import { fontOnPc, missingFonts, setMissingFontLabels, whenPcFontsSettled } from './pc-fonts.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
@@ -169,12 +186,52 @@ const COUNT_COMMAND = 'ext:ieum-count-characters'
  * studio-easy-words-context-menu patch puts into the body and table cell menus. The menu
  * shows the command's label, which the app gives in its language (installEasyWords).
  */
-export const EASY_WORDS_COMMAND = 'ext:ieum-easy-words'
+export { EASY_WORDS_COMMAND }
 /**
  * The event that item fires on the editor's window, with the selected text as its detail
  * (`{ text }`): the app asks its AI panel to explain that text in plain words.
  */
 export const EASY_WORDS_EVENT = 'ieum:easy-words'
+/**
+ * The command behind the editor's right-click item 민감정보 가리기, which the
+ * studio-hiding-context-menu patch puts into the body and table cell menus right after 메모.
+ * The menu shows the label the app gives it (installHiding). A click fires HIDING_EVENT;
+ * the app asks for a label and hides the selection (hidingSelection, hideRanges).
+ */
+export { HIDING_COMMAND }
+/** The event that item fires on the editor's window. */
+export const HIDING_EVENT = 'ieum:hide-sensitive'
+/** The command that reads where the selection is, for hidingSelection. */
+const HIDING_PLACE_COMMAND = 'ext:ieum-hiding-place'
+/** Most hidden spans one call of hideRanges puts in. */
+const MAX_HIDE_RANGES = 2000
+/** Characters of context a sensitive-info candidate shows on each side. */
+const CANDIDATE_CONTEXT_CHARS = 12
+/**
+ * Calls the AI panel does not make through aiCall: the memo panel's writes, the hiding
+ * writes, the app's set-up calls, and the print path (pages as drawn, not text for a model).
+ */
+const NOT_FOR_AI = new Set([
+  'aiCall',
+  'insertMemo',
+  'setMemo',
+  'removeMemo',
+  'memoSelection',
+  'showMemoAnchors',
+  'selectMemo',
+  'setMemoLock',
+  'hidingSelection',
+  'hideRanges',
+  'sensitiveCandidates',
+  'installFileMenu',
+  'installEasyWords',
+  'installHiding',
+  'showCharCount',
+  'watchMissingFonts',
+  'printPages',
+  'previewPage',
+  'measureTabs',
+])
 /**
  * The event watchMissingFonts fires on the editor's window once the PC's fonts are known,
  * with the fonts of the document that are not on this PC as its detail (`{ fonts }`).
@@ -233,7 +290,7 @@ const MEMO_UNLOCK_COMMAND = 'ext:ieum-memo-unlock'
 /** Where a memo anchor may be put. */
 const MEMO_PLACES = new Set(['body', 'tableCell', 'textBox'])
 /** Changes the plugin makes for the memo panel: removing the memo is what was asked. */
-const MEMO_CHANGES = new Set(['memo-insert', 'memo-set', 'memo-remove'])
+const MEMO_CHANGES = new Set(['memo-insert', 'memo-set', 'memo-remove', 'hiding-insert'])
 /** The longest memo text the engine takes, in UTF-16 units. */
 const MAX_MEMO_TEXT = 100_000
 const MAX_MEMO_AUTHOR = 64
@@ -1197,6 +1254,13 @@ function segmentsStand(doc, segments) {
     try {
       const { box, k } = segmentBox(doc, segment)
       const whole = box.text(k, box.length(k))
+      // an AI call was handed the run with its hidden spans as their labels
+      const spans = hidingScope?.byBox.get(boxKey(segment.sec, segment.para, segment.path))
+      if (spans) {
+        return (
+          concealRun(whole, segment.offset, segment.offset + segment.length, spans) === segment.text
+        )
+      }
       return engineSlice(whole, segment.offset, segment.offset + segment.length) === segment.text
     } catch {
       return false
@@ -1210,6 +1274,13 @@ const isReplaceable = (hit) => hit.equationControl === undefined
 function contextOf(doc, hit) {
   const start = Math.max(0, hit.charOffset - CONTEXT_CHARS)
   const path = cellPathOf(hit)
+  const hidden = hidingScope?.byBox.get(boxKey(hit.sec, hit.para, path))
+  if (hidden) {
+    // a span the window cuts reads as its label, whole
+    const box = containerOf(doc, hit)
+    const whole = box.text(box.index, box.length(box.index))
+    return concealRun(whole, start, hit.charOffset + hit.length + CONTEXT_CHARS, hidden)
+  }
   if (path) {
     const json = JSON.stringify(path)
     const length = doc.getCellParagraphLengthByPath(hit.sec, hit.para, json)
@@ -1231,7 +1302,7 @@ function beforeOf(doc, hit) {
   const own = box.text(box.index, box.length(box.index))
   const found = own.slice(hit.charOffset, hit.charOffset + hit.length)
   for (let k = box.index - 1; k >= 0 && k >= box.index - BEFORE_LOOKBACK; k--) {
-    const text = squash(box.text(k, box.length(k)))
+    const text = squash(scopedText(doc, box, k))
     if (text && !text.includes(squash(found))) return clip(text, BEFORE_CHARS)
   }
   return ''
@@ -1255,7 +1326,50 @@ function searchAll(doc, find) {
   if (typeof find !== 'string' || find.length === 0) {
     throw fail('BAD_ARGUMENT', 'find must be a non-empty string')
   }
-  return parse(doc.searchAllText(find, true, true))
+  return withoutHidden(doc, parse(doc.searchAllText(find, true, true)))
+}
+
+/**
+ * The hidden spans of the document (민감정보 가리기) by the paragraph they sit in; empty when
+ * it has none. Throws HIDDEN_UNPLACED when a hiding memo cannot be placed.
+ */
+function hiddenByBox(doc) {
+  const hiding = hidingEntriesOf(memoEntriesOf(doc))
+  return hiding.length === 0 ? new Map() : rangesByBox(hiddenRangesOf(doc, hiding))
+}
+
+/**
+ * The matches that do not touch a hidden span. A find over hidden words answers as if they
+ * were not there: a refusal would itself tell that the words are in the document.
+ */
+function withoutHidden(doc, hits) {
+  if (!Array.isArray(hits) || hits.length === 0) return hits
+  const byBox = hidingScope?.byBox ?? hiddenByBox(doc)
+  if (byBox.size === 0) return hits
+  return hits.filter(
+    (hit) =>
+      !touchesHidden(
+        byBox,
+        boxKey(hit.sec, hit.para, cellPathOf(hit)),
+        hit.charOffset,
+        hit.charOffset + Math.max(hit.length, 1),
+      ),
+  )
+}
+
+/**
+ * The hidden spans an AI call works with while it runs (aiCall): the plugin's calls are
+ * synchronous, so one call at a time has a scope. Null outside an AI call.
+ */
+let hidingScope = null
+
+/** Paragraph k of a box as an AI call reads it: its hidden spans as their labels. */
+function scopedText(doc, box, k) {
+  const whole = box.text(k, box.length(k))
+  if (!hidingScope) return whole
+  const place = box.place(k, 0)
+  const hidden = hidingScope.byBox.get(boxKey(place.sec, place.para, place.path))
+  return hidden ? concealRun(whole, 0, Infinity, hidden) : whole
 }
 
 function checkReplacement(replacement) {
@@ -3336,8 +3450,14 @@ const squash = (text) => text.replace(/\s+/g, ' ').trim()
  *
  * A paragraph that holds a click-here field is not compared: the export writes the field's
  * guide into it, so the two never match and the line would come out twice.
+ *
+ * With `hidden` (an AI call's hidden spans, `{ byBox, conceal }`) the text is as a model may
+ * read it: a walked paragraph that holds a hidden span stands in its line with each span as
+ * its `{{label}}`, and every line no walked paragraph accounts for (a text box, a table in a
+ * cell, a click-here field's paragraph) goes through `conceal`, which hides every occurrence
+ * of the hidden words and fails when it cannot.
  */
-function textOf(doc) {
+function textOf(doc, hidden = null) {
   const flat = decodeEntities(parse(doc.getTextFileText()))
   const lines = flat.split(/\r?\n/)
   // where each line of the export is: its places in order, one per occurrence
@@ -3370,13 +3490,21 @@ function textOf(doc) {
   let pointer = -1
   let checks = MAX_CONTAINMENT_CHECKS
   let bare = null
+  /** lines a walked paragraph accounts for, and the ones it stands in with its spans hidden */
+  const matched = new Set()
+  const replaced = new Map()
   const match = (key) => {
     const list = places.get(key)
     const used = taken.get(key) ?? 0
-    if (!list || used >= list.length) return false
+    if (!list || used >= list.length) return -1
     taken.set(key, used + 1)
     pointer = Math.max(pointer, list[used])
-    return true
+    return list[used]
+  }
+  /** a walked paragraph as a model may read it */
+  const shownOf = (text, sec, para, path) => {
+    const spans = hidden?.byBox.get(boxKey(sec, para, path))
+    return spans ? concealRun(text, 0, Infinity, spans) : text
   }
   const add = (text) => {
     const bucket = extras.get(pointer)
@@ -3384,16 +3512,22 @@ function textOf(doc) {
     else extras.set(pointer, [text])
   }
   /** One walked paragraph: found in the export, or put in. */
-  const see = (text) => {
+  const see = (text, shown = text) => {
     const key = squash(text)
-    if (!key || match(key)) return
+    if (!key) return
+    const at = match(key)
+    if (at >= 0) {
+      matched.add(at)
+      if (shown !== text) replaced.set(at, shown.trim())
+      return
+    }
     // part of a longer line of the export (a paragraph with an equation or a note in it)
     if (checks > 0) {
       checks -= 1
       bare ??= flat.replace(/\s+/g, '')
       if (bare.includes(key.replace(/\s+/g, ''))) return
     }
-    add(text.trim())
+    add(shown.trim())
   }
 
   const sections = doc.getSectionCount()
@@ -3401,7 +3535,10 @@ function textOf(doc) {
     const paragraphs = doc.getParagraphCount(sec)
     for (let para = 0; para < paragraphs; para++) {
       const length = doc.getParagraphLength(sec, para)
-      if (length > 0 && !fielded.has(`${sec}/${para}`)) see(doc.getTextRange(sec, para, 0, length))
+      if (length > 0 && !fielded.has(`${sec}/${para}`)) {
+        const raw = doc.getTextRange(sec, para, 0, length)
+        see(raw, shownOf(raw, sec, para, null))
+      }
       const controls = parse(doc.getControlTextPositions(sec, para)).length
       for (let ctrl = 0; ctrl < controls; ctrl++) {
         let dims
@@ -3416,21 +3553,34 @@ function textOf(doc) {
           for (let k = 0; k < count; k++) {
             if (fielded.has(`${sec}/${para}/${ctrl}.${cell}.${k}`)) continue
             const size = doc.getCellParagraphLength(sec, para, ctrl, cell, k)
-            if (size > 0) texts.push(doc.getTextInCell(sec, para, ctrl, cell, k, 0, size))
+            if (size > 0) {
+              const raw = doc.getTextInCell(sec, para, ctrl, cell, k, 0, size)
+              const path = [{ controlIndex: ctrl, cellIndex: cell, cellParaIndex: k }]
+              texts.push({ raw, shown: shownOf(raw, sec, para, path) })
+            }
           }
         }
         // a table the export skipped whole goes in whole: a short cell ("1", "예") would
         // otherwise count as found wherever those characters occur in the document
-        const known = texts.some((text) => {
-          const list = places.get(squash(text))
-          return Boolean(list) && (taken.get(squash(text)) ?? 0) < list.length
+        const known = texts.some(({ raw }) => {
+          const list = places.get(squash(raw))
+          return Boolean(list) && (taken.get(squash(raw)) ?? 0) < list.length
         })
-        for (const text of texts) {
-          if (known) see(text)
-          else if (squash(text)) add(text.trim())
+        for (const { raw, shown } of texts) {
+          if (known) see(raw, shown)
+          else if (squash(raw)) add(shown.trim())
         }
       }
     }
+  }
+  if (hidden) {
+    lines.forEach((line, index) => {
+      lines[index] = replaced.has(index)
+        ? replaced.get(index)
+        : matched.has(index)
+          ? line
+          : hidden.conceal(line)
+    })
   }
   if (extras.size === 0) return lines.join('\n')
   const out = [...(extras.get(-1) ?? [])]
@@ -4605,6 +4755,194 @@ function notesOf(doc) {
   return { notes, elsewhere: Math.max(0, controls.length - notes.length) }
 }
 
+/**
+ * What may be sensitive in the document (민감정보 찾기), found by the shared rules of
+ * @genoffice/agent-core/sensitive-detect over the text in reading order: the body, every
+ * table cell (a cell under a header row with that header), then the places a hidden span
+ * cannot go: footnotes and endnotes, the first section's header and footer, and the words of
+ * ordinary memos. Each candidate says where it is as a memo anchor would, whether it can be
+ * hidden, and why not. A spot already hidden is left out. Runs on this PC only; reads only.
+ */
+function sensitiveCandidatesOf(doc) {
+  const memos = memoEntriesOf(doc)
+  const hiding = hidingEntriesOf(memos)
+  // a hidden span without a place is skipped: the spans that have one are still left out below
+  const byBox = rangesByBox(
+    hiding.flatMap((entry) => {
+      try {
+        return hiddenRangesOf(doc, [entry])
+      } catch {
+        return []
+      }
+    }),
+  )
+  const ordinary = memos.filter((entry) => hidingLabelOf(entry) === null)
+  const protectedDoc = (() => {
+    try {
+      return memoProtected(doc)
+    } catch {
+      return false
+    }
+  })()
+  const pieces = []
+  const placeOf = (sec, para, path) => ({
+    place: path ? 'tableCell' : 'body',
+    sectionIndex: sec,
+    paraIndex: para,
+    path,
+  })
+  const sections = doc.getSectionCount()
+  for (let sec = 0; sec < sections; sec++) {
+    const paragraphs = doc.getParagraphCount(sec)
+    for (let para = 0; para < paragraphs; para++) {
+      const length = doc.getParagraphLength(sec, para)
+      if (length > 0) {
+        pieces.push({
+          text: doc.getTextRange(sec, para, 0, length),
+          location: { at: placeOf(sec, para, null) },
+        })
+      }
+    }
+  }
+  const { tables } = tablesOf(doc)
+  for (const table of tables) {
+    let grid
+    try {
+      grid = gridOf(doc, table)
+    } catch {
+      grid = null
+    }
+    // a header row: the first row's words, by column, for the cells below it
+    const headers = new Map()
+    if (grid) {
+      for (const cell of grid) {
+        if (cell.row !== 0) continue
+        try {
+          const box = cellBox(doc, table, cell.cell)
+          const words = squash(box.text(0, box.length(0)))
+          if (words) headers.set(cell.col, words)
+        } catch {
+          // a cell that cannot be read gives no header
+        }
+      }
+    }
+    for (let cell = 0; cell < table.cells; cell++) {
+      let box
+      try {
+        box = cellBox(doc, table, cell)
+      } catch {
+        continue
+      }
+      const at = grid?.[cell]
+      const header = at && at.row > 0 ? headers.get(at.col) : undefined
+      for (let k = 0; k < box.count(); k++) {
+        const length = box.length(k)
+        if (length === 0) continue
+        const path = cellAt(table.path, cell, k)
+        pieces.push({
+          text: box.text(k, length),
+          location: { at: placeOf(table.sec, table.para, path) },
+          ...(header ? { header } : {}),
+        })
+      }
+    }
+  }
+  try {
+    for (const note of notesOf(doc).notes) {
+      const text = note.lines.join('\n')
+      if (text.trim()) {
+        pieces.push({ text, location: { reason: 'note', sec: note.sec, para: note.para } })
+      }
+    }
+  } catch {
+    // a document whose notes cannot be read: the rest is still looked at
+  }
+  for (const isHeader of [true, false]) {
+    try {
+      const found = parse(doc.getHeaderFooter(0, isHeader, 0))
+      const text = headerTextOf(found.text)
+      if (found.exists === true && text.trim()) {
+        pieces.push({ text, location: { reason: 'header-footer', sec: 0, para: 0 } })
+      }
+    } catch {
+      // no header or footer there
+    }
+  }
+  for (const entry of ordinary) {
+    const text = String(entry.text ?? '')
+    if (text.trim()) {
+      pieces.push({
+        text,
+        location: {
+          reason: 'memo-text',
+          sec: Number.isInteger(entry.sectionIndex) ? entry.sectionIndex : 0,
+          para: Number.isInteger(entry.paraIndex) ? entry.paraIndex : 0,
+        },
+      })
+    }
+  }
+
+  const pages = new Map()
+  const pageOf = (sec, para) => {
+    const key = `${sec}:${para}`
+    if (pages.has(key)) return pages.get(key)
+    let page = 0
+    try {
+      const at = parse(doc.getPageOfPosition(sec, para))
+      if (at.ok && Number.isInteger(at.page)) {
+        const info = parse(doc.getPageInfo(at.page))
+        page = Number.isInteger(info.pageNumber) ? info.pageNumber : at.page + 1
+      }
+    } catch {
+      // no page: the list still names the spot
+    }
+    pages.set(key, page)
+    return page
+  }
+
+  const out = []
+  const pieceOf = new Map(pieces.map((piece) => [piece.location, piece]))
+  for (const found of detectSensitive(pieces)) {
+    const piece = pieceOf.get(found.location)
+    const text = piece ? piece.text : ''
+    const start = engineLength(text.slice(0, found.start))
+    const end = start + engineLength(text.slice(found.start, found.end))
+    const context = {
+      before: text.slice(Math.max(0, found.start - CANDIDATE_CONTEXT_CHARS), found.start),
+      after: text.slice(found.end, found.end + CANDIDATE_CONTEXT_CHARS),
+    }
+    const where = found.location
+    if (!where.at) {
+      out.push({
+        kind: found.kind,
+        value: found.value,
+        ...context,
+        page: pageOf(where.sec, where.para),
+        anchor: null,
+        hideable: false,
+        reason: where.reason,
+      })
+      continue
+    }
+    const { sectionIndex: sec, paraIndex: para, path } = where.at
+    const key = boxKey(sec, para, path)
+    // a spot already hidden is no candidate
+    if (touchesHidden(byBox, key, start, end)) continue
+    const anchor = { ...where.at, startCharIdx: start, endCharIdx: end }
+    const overlap = memoOverlaps(ordinary, `${sec}:${para}:${memoPathKey(path)}`, start, end)
+    out.push({
+      kind: found.kind,
+      value: found.value,
+      ...context,
+      page: pageOf(sec, para),
+      anchor,
+      hideable: !overlap && !protectedDoc,
+      ...(overlap ? { reason: 'memo-overlap' } : protectedDoc ? { reason: 'unsupported' } : {}),
+    })
+  }
+  return out
+}
+
 /** The text in front of a note's mark, cut to a few words. */
 function noteContext(doc, note) {
   const start = Math.max(0, note.offset - NOTE_CONTEXT_CHARS)
@@ -5137,6 +5475,9 @@ export const agentPlugin = {
     let own = false
     // the text is read for every request; it only changes when the document does
     let text = null
+    // the same text as an AI call reads it (hidden spans as their labels), reset with `text`
+    // kept with the hiding it was read under: a memo can come or go without an edit event
+    let aiText = null
     // the pictures of the document, in reading order, as the last listPictures read them
     let pictures = null
     // the places this plugin changed since the panel last cleared them, as they are now
@@ -5296,6 +5637,8 @@ export const agentPlugin = {
     let listedMemos = null
     /** The selection command's answer for the memo panel. */
     let memoAnchorAnswer = null
+    /** The hiding place command's answer: the selection, or why it cannot be hidden. */
+    let hidingPlace = null
 
     /** Whether the current selection (or caret) may carry a memo anchor, and what is there. */
     const memoAnchorSelection = (services) => {
@@ -5544,6 +5887,7 @@ export const agentPlugin = {
 
     onDocumentEdit(host, () => {
       text = null
+      aiText = null
       pictures = null
       if (!own) {
         foreign += 1
@@ -5915,6 +6259,39 @@ export const agentPlugin = {
       // as above
     }
 
+    // where the selection a hiding goes on is: a place a memo cannot go is answered as such
+    try {
+      host.automation.registerCommand({
+        id: HIDING_PLACE_COMMAND,
+        label: 'Read the selection to hide',
+        execute: (services) => {
+          const input = services && services.getInputHandler ? services.getInputHandler() : null
+          const cursor = input ? input.cursor : null
+          if (!cursor) {
+            hidingPlace = null
+            return
+          }
+          try {
+            if (
+              cursor.isInHeaderFooter?.() ||
+              cursor.isInFootnote?.() ||
+              cursor.isInPictureObjectSelection?.() ||
+              cursor.isInTableObjectSelection?.()
+            ) {
+              hidingPlace = { refusal: 'unsupported_place' }
+              return
+            }
+            const picked = cursorSelection(services)
+            hidingPlace = picked ? { picked } : { refusal: 'none' }
+          } catch {
+            hidingPlace = { refusal: 'unsupported_place' }
+          }
+        },
+      })
+    } catch {
+      // as above
+    }
+
     try {
       host.automation.registerCommand({
         id: MEMO_MARK_COMMAND,
@@ -6046,6 +6423,7 @@ export const agentPlugin = {
       // not left to the editor's event alone: a stale text would send the model after
       // words that are no longer there
       text = null
+      aiText = null
       pictures = null
       try {
         let done
@@ -6054,8 +6432,19 @@ export const agentPlugin = {
             tx.deferPagination()
             const doc = tx.doc()
             const before = paragraphCounts(doc)
+            // a hidden span (민감정보 가리기) is the user's: no edit but the memo panel's may
+            // change, cut or remove one, whatever was approved for ordinary memos
+            const hiding = MEMO_CHANGES.has(label) ? null : hidingSnapshot(doc, memoEntriesOf(doc))
             const watched = MEMO_CHANGES.has(label) || allowMemoRemoval ? null : memoEntriesOf(doc)
             const result = fn(doc)
+            if (hiding && hiding.size > 0) {
+              const broken = brokenHiding(hiding, hidingSnapshot(doc, memoEntriesOf(doc)))
+              if (broken.length > 0) {
+                const failure = fail('HIDDEN_CONTENT', 'the change would touch hidden content')
+                failure.labels = broken
+                throw failure
+              }
+            }
             if (watched && watched.length > 0) {
               const left = new Set(memoEntriesOf(doc).map((entry) => entry.id))
               const gone = watched.filter(
@@ -6073,6 +6462,10 @@ export const agentPlugin = {
             return { result, before, after: paragraphCounts(doc) }
           })
         } catch (thrown) {
+          if (thrown && thrown.code === 'HIDDEN_CONTENT') {
+            // the editor rolled the change back; the hidden spans are as they were
+            return { ok: false, reason: 'hidden_content', labels: thrown.labels }
+          }
           if (thrown && thrown.code === 'MEMO_REMOVAL_REQUIRES_APPROVAL') {
             // the editor rolled the change back; the list is what it was
             syncMemos({ notify: false })
@@ -6249,14 +6642,117 @@ export const agentPlugin = {
     const pictureList = () =>
       host.read((doc) => {
         pictures ??= picturesOf(doc)
-        return pictures
+        // a picture inside a hidden span is never handed to a model, nor where it is: an AI
+        // call numbers the pictures without it
+        return hidingScope ? pictures.filter((picture) => !pictureHidden(picture)) : pictures
       })
+
+    /**
+     * Whether a picture sits in a hidden span. A cell picture has no character place here,
+     * so any hidden span in its cell paragraph hides it.
+     */
+    const pictureHidden = (picture) => {
+      const byBox = hidingScope.byBox
+      if (picture.cellPath) {
+        return byBox.has(boxKey(picture.sec, picture.para, picture.cellPath))
+      }
+      const spans = byBox.get(boxKey(picture.sec, picture.para, null))
+      return Boolean(
+        spans?.some((span) => span.start <= picture.offset && picture.offset < span.end),
+      )
+    }
+
+    /**
+     * Run one plugin call for the AI panel (or a caller in its place, the command line's
+     * ops): the document's hidden spans (민감정보 가리기) read as `{{label}}` in everything
+     * the call answers, a find over them answers as if they were not there, and an edit that
+     * would touch one is refused (change()). A document whose hidden spans cannot all be
+     * placed answers nothing: the call fails with HIDDEN_UNPLACED.
+     */
+    const runForAi = (method, args) => {
+      const fn = api[method]
+      if (typeof fn !== 'function' || NOT_FOR_AI.has(method)) {
+        throw fail('BAD_ARGUMENT', `${String(method)} is not a call the AI makes`)
+      }
+      if (method === 'hidingState') {
+        // answers `unplaced` itself rather than failing: the panel shows why it sends nothing
+        const state = fn()
+        return state && state.ok ? { ok: true, count: state.count, labels: state.labels } : state
+      }
+      const ranges = host.read((doc) => {
+        const hiding = hidingEntriesOf(memoEntriesOf(doc))
+        return hiding.length === 0 ? [] : hiddenRangesOf(doc, hiding)
+      })
+      if (ranges.length === 0) return fn(...(Array.isArray(args) ? args : []))
+      const scope = { ranges, byBox: rangesByBox(ranges), conceal: concealerOf(ranges) }
+      const outer = hidingScope
+      hidingScope = scope
+      try {
+        const result = fn(...(Array.isArray(args) ? args : []))
+        return concealResult(method, result, scope)
+      } finally {
+        hidingScope = outer
+      }
+    }
+
+    /** A call's answer as a model may read it. */
+    const concealResult = (method, result, scope) => {
+      if (method === 'readText') return result
+      if (method === 'listMemos' && result && Array.isArray(result.memos)) {
+        // a hiding memo shows its own words (prefix and label) and nothing of its anchor
+        const memos = result.memos.map((memo) =>
+          hidingLabelOf(memo) === null
+            ? memo
+            : {
+                ...memo,
+                sectionIndex: null,
+                paraIndex: null,
+                startCharIdx: null,
+                endCharIdx: null,
+                path: null,
+                page: 0,
+                anchor: null,
+                rects: [],
+                preview: memo.text,
+              },
+        )
+        return concealDeep({ ...result, memos }, scope.conceal)
+      }
+      if (result && Array.isArray(result.segments)) {
+        // runs of a selection are placed: each hidden span in one reads as its label, whole
+        const segments = result.segments.map((segment) => concealSegment(segment, scope))
+        return { ...concealDeep({ ...result, segments: [] }, scope.conceal), segments }
+      }
+      return concealDeep(result, scope.conceal)
+    }
+
+    /** One run of a selection with the hidden spans in it as their labels. */
+    const concealSegment = (segment, scope) => {
+      const spans = scope.byBox.get(boxKey(segment.sec, segment.para, segment.path))
+      if (!spans) return segment
+      const text = host.read((doc) => {
+        const { box, k } = segmentBox(doc, segment)
+        return box.text(k, box.length(k))
+      })
+      return {
+        ...segment,
+        text: concealRun(text, segment.offset, segment.offset + segment.length, spans),
+      }
+    }
 
     const api = {
       foreignChanges: () => foreign,
 
       /** The whole document as plain text, table cells included, in reading order. */
       readText: guarded(() => {
+        if (hidingScope) {
+          const scope = hidingScope
+          const signature = hidingSignature(scope.ranges)
+          if (aiText?.signature !== signature) {
+            aiText = { signature, text: host.read((doc) => textOf(doc, scope)) }
+          }
+          return aiText.text
+        }
         text ??= host.read(textOf)
         return text
       }),
@@ -9155,7 +9651,9 @@ export const agentPlugin = {
             execute: () => {
               let read
               try {
-                read = api.selection()
+                // the words go to the AI panel: hidden spans read as their labels, and none at all
+                // when a hidden span cannot be placed
+                read = runForAi('selection', [])
               } catch {
                 return
               }
@@ -9916,11 +10414,16 @@ export const agentPlugin = {
           }
           try {
             const formatting = formattingOf(other)
-            return {
+            const read = {
               ok: true,
               ...formatting,
               looks: formatting.looks.map(({ id: _id, ...look }) => look),
             }
+            // the other document's own hidden spans (민감정보 가리기) are hidden from what is
+            // read of it too; one that cannot be placed fails the read
+            const hiding = hidingEntriesOf(memoEntriesOf(other))
+            if (hiding.length === 0) return read
+            return concealDeep(read, concealerOf(hiddenRangesOf(other, hiding)))
           } finally {
             other.free?.()
           }
@@ -10171,6 +10674,211 @@ export const agentPlugin = {
       }),
 
       /**
+       * Run another call of this plugin for the AI panel: what it answers has the hidden
+       * spans (민감정보 가리기) as their `{{label}}`, its finds do not see them, and it may not
+       * change them. A document whose hidden spans cannot all be placed answers nothing.
+       */
+      aiCall: guarded((method, args) => runForAi(method, args)),
+
+      /**
+       * The hidden spans of the document: how many and under which labels, or that one of
+       * them cannot be placed (`unplaced`), when nothing of the document may go to a model.
+       * `marks` are the labels with the words they hide, for the app's own use on this PC
+       * (the candidate labels continue their numbers); they never go to a model.
+       */
+      hidingState: guarded(() =>
+        host.read((doc) => {
+          const hiding = hidingEntriesOf(memoEntriesOf(doc))
+          try {
+            const ranges = hiddenRangesOf(doc, hiding)
+            return {
+              ok: true,
+              count: ranges.length,
+              labels: [...new Set(ranges.map((range) => range.label))],
+              marks: ranges.map((range) => ({ label: range.label, value: range.text })),
+            }
+          } catch (thrown) {
+            if (thrown && thrown.code === HIDDEN_UNPLACED) {
+              return { ok: false, reason: 'unplaced', count: hiding.length }
+            }
+            throw thrown
+          }
+        }),
+      ),
+
+      /**
+       * Where the selection could be hidden: one memo anchor for each paragraph it covers
+       * (a run of blanks only is skipped), or why it cannot be. `overlap`: a memo is on part
+       * of it already. `unsupported_place`: a header, a footer, a note, an object.
+       * `protected`: a document whose memos cannot be changed.
+       */
+      hidingSelection: guarded(() => {
+        hidingPlace = null
+        try {
+          host.automation.execute(HIDING_PLACE_COMMAND)
+        } catch {
+          return { ok: false, reason: 'none' }
+        }
+        const seen = hidingPlace
+        if (!seen) return { ok: false, reason: 'none' }
+        if (seen.refusal) return { ok: false, reason: seen.refusal }
+        return host.read((doc) => {
+          if (memoProtected(doc)) return { ok: false, reason: 'protected' }
+          const out = runCollector()
+          const gathered = gatherSelection(doc, seen.picked, out)
+          if (!gathered.ok) return { ok: false, reason: 'unsupported_place' }
+          if (out.tooLong()) return { ok: false, reason: 'too_long' }
+          const entries = memoEntriesOf(doc)
+          const anchors = []
+          for (const segment of out.segments) {
+            if (!segment.text.trim()) continue
+            // the blanks at the ends of a run are not what was meant
+            const chars = engineChars(segment.text)
+            let from = 0
+            let to = chars.length
+            while (from < to && /\s/.test(chars[from])) from += 1
+            while (to > from && /\s/.test(chars[to - 1])) to -= 1
+            const path =
+              Array.isArray(segment.path) && segment.path.length > 0 ? segment.path : null
+            const anchor = {
+              place: path ? 'tableCell' : 'body',
+              sectionIndex: segment.sec,
+              paraIndex: segment.para,
+              startCharIdx: segment.offset + from,
+              endCharIdx: segment.offset + to,
+              path,
+            }
+            const key = `${segment.sec}:${segment.para}:${memoPathKey(path)}`
+            if (memoOverlaps(entries, key, anchor.startCharIdx, anchor.endCharIdx)) {
+              return { ok: false, reason: 'overlap' }
+            }
+            anchors.push(anchor)
+          }
+          if (anchors.length === 0) return { ok: false, reason: 'none' }
+          if (anchors.length > MAX_HIDE_RANGES) return { ok: false, reason: 'too_long' }
+          return { ok: true, anchors }
+        })
+      }),
+
+      /**
+       * Hide spans: a memo `[<prefix>] <label>` (`text`, made by the app) on each anchor, by
+       * `author`, all in one undo step. It is the user's own change, like the memo panel's.
+       * Refused whole when one anchor cannot take a memo.
+       */
+      hideRanges: guarded((anchors, author, text) => {
+        if (!Array.isArray(anchors) || anchors.length === 0 || anchors.length > MAX_HIDE_RANGES) {
+          throw fail('BAD_ARGUMENT', 'anchors must be a list of memo anchors')
+        }
+        if (typeof text !== 'string' || hidingLabelOf({ text }) === null) {
+          throw fail('BAD_ARGUMENT', 'text must be a hiding memo text')
+        }
+        const checked = anchors.map(checkMemoAnchor)
+        const placeOfAnchor = (anchor) => ({
+          sec: anchor.sectionIndex,
+          para: anchor.paraIndex,
+          path: anchor.path,
+          offset: anchor.startCharIdx,
+        })
+        // the last first: a memo put in never moves the place of one still to put in
+        const ordered = [...checked].sort((a, b) =>
+          placeAtOrAfter(placeOfAnchor(a), placeOfAnchor(b)) ? -1 : 1,
+        )
+        const refusal = host.read((doc) => {
+          if (memoProtected(doc)) return { ok: false, reason: 'protected' }
+          const taken = [...memoEntriesOf(doc)]
+          for (const anchor of ordered) {
+            if (anchor.startCharIdx >= anchor.endCharIdx) {
+              return { ok: false, reason: 'memo_invalid_range' }
+            }
+            const box = containerOf(doc, {
+              sec: anchor.sectionIndex,
+              para: anchor.paraIndex,
+              cellPath: anchor.path,
+            })
+            if (box.length(checkedK(anchor)) < anchor.endCharIdx) {
+              return { ok: false, reason: 'memo_invalid_range' }
+            }
+            const key = `${anchor.sectionIndex}:${anchor.paraIndex}:${memoPathKey(anchor.path)}`
+            if (memoOverlaps(taken, key, anchor.startCharIdx, anchor.endCharIdx)) {
+              return { ok: false, reason: 'memo_overlap' }
+            }
+            taken.push(anchor)
+          }
+          return null
+        })
+        if (refusal) return refusal
+        return memoCommand('hiding-insert', undefined, (doc) => {
+          const json = JSON.stringify({ author: memoAuthorOf(author), text })
+          const ids = []
+          for (const anchor of ordered) {
+            const made = parse(
+              anchor.path
+                ? doc.insertMemoByPath(
+                    anchor.sectionIndex,
+                    anchor.paraIndex,
+                    JSON.stringify(anchor.path),
+                    anchor.startCharIdx,
+                    anchor.endCharIdx,
+                    json,
+                  )
+                : doc.insertMemo(
+                    anchor.sectionIndex,
+                    anchor.paraIndex,
+                    anchor.startCharIdx,
+                    anchor.endCharIdx,
+                    json,
+                  ),
+            )
+            if (!made || made.ok !== true) {
+              throw fail('ENGINE_REFUSED', 'the editor refused to add the memo')
+            }
+            ids.push(made.id)
+          }
+          return { ok: true, ids: ids.reverse(), count: ids.length }
+        })
+      }),
+
+      /**
+       * What may be sensitive in the document, found by the shared rules on this PC: each
+       * candidate with its kind, value, the words around it, its page, the memo anchor that
+       * would hide it, and whether it can be hidden (and why not). For the person, not for a
+       * model: it is the document's own text.
+       */
+      sensitiveCandidates: guarded(() => ({ candidates: host.read(sensitiveCandidatesOf) })),
+
+      /**
+       * Name the editor's right-click item 민감정보 가리기 (HIDING_COMMAND) in the app's
+       * language. The item is on while something is selected; a click fires HIDING_EVENT,
+       * and the app tells why when the selection cannot be hidden.
+       */
+      installHiding: guarded((label) => {
+        if (typeof label !== 'string' || !label.trim()) {
+          throw fail('BAD_ARGUMENT', 'label must be a non-empty string')
+        }
+        if (!host.automation.registerCommand) return { ok: false }
+        try {
+          host.automation.unregisterCommand?.(HIDING_COMMAND)
+        } catch {
+          // nothing registered yet
+        }
+        try {
+          host.automation.registerCommand({
+            id: HIDING_COMMAND,
+            label,
+            canExecute: (ctx) =>
+              ctx?.hasDocument === true &&
+              (ctx.hasSelection === true || ctx.inCellSelectionMode === true),
+            execute: () => {
+              globalThis.dispatchEvent?.(new CustomEvent(HIDING_EVENT, { detail: {} }))
+            },
+          })
+        } catch {
+          return { ok: false }
+        }
+        return { ok: true }
+      }),
+
+      /**
        * Undo the last `steps` changes through the editor's own history, but only while
        * `expectedForeign` still equals foreignChanges(): the check and the undo happen here,
        * in one go, so nothing can slip in between them.
@@ -10183,6 +10891,7 @@ export const agentPlugin = {
         let undone = 0
         own = true
         text = null
+        aiText = null
         try {
           for (let i = 0; i < steps; i++) {
             const result = host.automation.execute('edit:undo')

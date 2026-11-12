@@ -7,7 +7,7 @@ O editor Markdown abre .md / .markdown — e .txt / .json, direto na visão de c
 - **Pré-visualização**: em tempo real; os recursos relativos, como imagens, são resolvidos ao lado do documento.
 - **Salvar**: fiel byte a byte — o BOM, o CRLF e a presença de uma quebra de linha no fim do ficheiro são preservados; um salvamento sem alterações não reescreve o ficheiro.
 - **Pesquisar e substituir**: o ctrl+F pesquisa no código; Substituir grava o resultado de volta.
-- **IA**: botões prontos deixam o assistente reescrever, desenvolver ou traduzir o documento. Uma seleção pode ser ocultada da IA (veja o capítulo do painel de IA).
+- **IA**: botões prontos deixam o assistente reescrever, desenvolver ou traduzir o documento. Com **Ocultar informações sensíveis**, uma seleção pode ficar fora do alcance da IA (veja o capítulo do painel de IA).
 - **Abrir links**: ao editar, Ctrl+clique em um link (⌘ no Mac) o abre no navegador; um clique normal coloca o cursor no texto do link para editá-lo. Na apresentação (F5), um clique normal o abre.
 
 ## A barra de ferramentas

@@ -1,7 +1,13 @@
 import type { Editor } from '@tiptap/react'
 import { BLANK_BULLET_NUM_ID, BLANK_ORDERED_NUM_ID } from '@genoffice/docx-engine'
 import type { McpCommandMessage, McpEditorCommand } from '../shared/ipc'
-import { executeTool, markDocSeen } from './ai/tools'
+import { executeTool, markDocSeen, type ToolExecution } from './ai/tools'
+import {
+  hiddenContentChange,
+  hiddenContentOf,
+  hiddenLabelsOf,
+  holdsHiddenContent,
+} from './ai/hidden-guard'
 import { findNumId, type NumIds } from './ai/protocol'
 import { save, type FileActionContext } from './file-actions'
 
@@ -16,6 +22,13 @@ import { save, type FileActionContext } from './file-actions'
  *
  * The executors are the built-in agent's own (`executeTool`), so external edits
  * inherit the same parsing, atomicity, formatting rules and stale-index guard.
+ *
+ * Hidden words (민감정보 가리기): the caller is a program, usually a model, so
+ * it reads a withheld span as its `{{label}}` (`read_document` is the model
+ * view) and its edits follow the in-app AI's rule on top. Text matching never
+ * sees withheld words, and an edit that would change, remove, split, copy or
+ * move a withheld span is refused with an error starting `hidden_content`,
+ * naming the labels, before anything lands (`guardHidden`).
  */
 
 export interface McpBridgeDeps {
@@ -82,6 +95,71 @@ function mcpErrorText(output: string): string {
   return output.replaceAll('get_document_context', 'read_document')
 }
 
+/** The refusal prefix MCP clients branch on, the command line's `error` value. */
+export const HIDDEN_CONTENT = 'hidden_content'
+
+function hiddenRefusal(labels: readonly string[]): Error {
+  return new Error(
+    `${HIDDEN_CONTENT}: this edit would change, remove or move content the document hides from AI (${labels.join(', ')}); nothing was applied. Leave those parts as they are, or ask the person to make this change in the app.`,
+  )
+}
+
+/** an executor refusal that says the edit would overwrite, damage or move a withheld span */
+const PLACEHOLDER_REFUSAL = /private placeholder/i
+
+/**
+ * Run one edit with every transaction it dispatches checked against the
+ * document's withheld content: the first one that would change, remove, split,
+ * copy or reorder a withheld span is dropped, and so is everything after it, so
+ * the document stays as it was. A document that withholds nothing runs as is.
+ *
+ * The edits this wraps run synchronously (`insert_content`, `replace_blocks`,
+ * `apply_ops`), so only their own transactions pass through the check, never
+ * the person's typing. `insert_picture` is not wrapped: it waits for a
+ * download, during which the person keeps editing, and it only ever adds a new
+ * block after an existing one, which reaches no withheld span.
+ */
+async function guardHidden(
+  editor: Editor,
+  payload: unknown,
+  run: () => ToolExecution | Promise<ToolExecution>,
+): Promise<ToolExecution> {
+  const before = hiddenContentOf(editor.state.doc)
+  if (!holdsHiddenContent(before)) return run()
+  const view = editor.view
+  const dispatch = view.dispatch
+  let refused: string[] | null = null
+  view.dispatch = (tr) => {
+    if (refused) return
+    if (tr.docChanged) {
+      const change = hiddenContentChange(hiddenContentOf(view.state.doc), hiddenContentOf(tr.doc))
+      if (change) {
+        refused = change
+        return
+      }
+    }
+    dispatch.call(view, tr)
+  }
+  let outcome: ToolExecution
+  try {
+    outcome = await run()
+  } finally {
+    view.dispatch = dispatch
+  }
+  if (refused) throw hiddenRefusal(refused)
+  if (outcome.isError && PLACEHOLDER_REFUSAL.test(outcome.output)) {
+    throw hiddenRefusal(labelsNamedIn(payload, hiddenLabelsOf(before)))
+  }
+  return outcome
+}
+
+/** The labels whose markers a payload names, or all of them when it names none. */
+function labelsNamedIn(payload: unknown, labels: readonly string[]): string[] {
+  const text = JSON.stringify(payload ?? null)
+  const named = labels.filter((label) => text.includes(`{{${label}}}`))
+  return named.length ? named : [...labels]
+}
+
 async function runCommand(
   deps: McpBridgeDeps,
   command: McpEditorCommand,
@@ -111,10 +189,12 @@ async function runCommand(
           )
         }
       }
-      const outcome = await executeTool(
-        editor,
-        { id: 'mcp', name: 'insert_content', input: { ...input } },
-        numIdsFor(ctx),
+      const outcome = await guardHidden(editor, input, () =>
+        executeTool(
+          editor,
+          { id: 'mcp', name: 'insert_content', input: { ...input } },
+          numIdsFor(ctx),
+        ),
       )
       if (outcome.isError) throw new Error(mcpErrorText(outcome.output))
       clearAiChangedFlags(editor)
@@ -124,10 +204,12 @@ async function runCommand(
     case 'replace_blocks': {
       const input = (payload ?? {}) as ReplaceBlocksInput
       if (typeof input.html !== 'string') throw new Error('replace_blocks requires "html"')
-      const outcome = await executeTool(
-        editor,
-        { id: 'mcp', name: 'replace_blocks', input: { ...input } },
-        numIdsFor(ctx),
+      const outcome = await guardHidden(editor, input, () =>
+        executeTool(
+          editor,
+          { id: 'mcp', name: 'replace_blocks', input: { ...input } },
+          numIdsFor(ctx),
+        ),
       )
       if (outcome.isError) throw new Error(mcpErrorText(outcome.output))
       clearAiChangedFlags(editor)
@@ -140,14 +222,21 @@ async function runCommand(
       // refuses a block-indexed batch after the user edited the document (the
       // stale-index guard) and supplies numbering ids, so an external batch
       // behaves exactly like the built-in agent's.
-      const outcome = await executeTool(
-        editor,
-        {
-          id: 'mcp',
-          name: 'apply_ops',
-          input: { ops: input.ops, ...(input.dryRun === true ? { dryRun: true } : {}) },
-        },
-        numIdsFor(ctx),
+      // hiddenUnseen: findReplace / setMatchedFont never match withheld words
+      const outcome = await guardHidden(editor, input, () =>
+        executeTool(
+          editor,
+          {
+            id: 'mcp',
+            name: 'apply_ops',
+            input: {
+              ops: input.ops,
+              hiddenUnseen: true,
+              ...(input.dryRun === true ? { dryRun: true } : {}),
+            },
+          },
+          numIdsFor(ctx),
+        ),
       )
       if (outcome.isError) throw new Error(mcpErrorText(outcome.output))
       if (input.dryRun !== true) clearAiChangedFlags(editor)
