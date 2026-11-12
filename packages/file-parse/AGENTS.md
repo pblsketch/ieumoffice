@@ -8,11 +8,14 @@
 
 첨부할 수 있는 형식 목록도 여기서 한 벌로 정의한다(`attachable.ts`, 결정 0035). `ATTACHABLE_EXTS`(글자로 읽는 형식과 그림을 합친 한 벌), `ATTACHABLE_IMAGE_EXTS`(그림 확장자), `ATTACHABLE_MAX_BYTES`(50MB)·`ATTACHABLE_IMAGE_MAX_BYTES`(5MB), 형식별 상한 `attachableMaxBytes`(사진이 크기를 차지하는 zip 문서와 PDF는 상한 없음, 결정 0091), 판정 함수 `isAttachableExt`를 내주고, 일곱 편집기(워드·엑셀·PPT·HTML·마인드맵·한글·EPUB)의 메인 프로세스가 이것을 가져다 쓴다. `.epub`도 이 목록에 있다. 다이어그램 네 형식도 이 목록에 있고, `.vsdx`는 없다. 그림 속 다이어그램은 두 겹 확장자(`drawio.svg`·`drawio.png`)로 목록에 든다. 편집기 메인은 첨부의 확장자를 `diagramPictureExtOf(경로) ?? 마지막 확장자`로 정해서, 원본이 든 `.drawio.png`가 그림 길로 새지 않고 글 길로 간다. 화면은 메인이 정한 확장자(`ext`)만 보므로 그림 확장자 목록을 고치지 않는다.
 
-| 형식     | 파일                    | 가리는 자리                                                                                                                                                                                     |
-| -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PPT      | `pptx-redaction.ts`     | 실행(run)의 `<a:rPr>` 안 확장 자리에 표시가 있는 글 구간(필드 포함), 슬라이드 본문과 발표자 노트, 그리고 메모(Comments, Office 365 `txBody` 댓글 포함). 그림의 표시는 글이 없어 모양만 검사한다 |
-| 마크다운 | `markdown-redaction.ts` | 마크다운 편집기가 저장하는 `<span class="redact-span" data-redaction="" data-label="…">` 구간. `.md`, `.markdown`, 그리고 그 편집기가 열고 다른 이름으로 저장하는 `.txt`, `.json`               |
-| HTML     | `html-redaction.ts`     | `data-gx-redact`(요소의 내용), `data-gx-redact-<속성>`(그 속성의 값), `<script>` 안의 `/*gx:redact:이름*/` 뒤 문자열. 색인의 HTML 갈래도 `redactHtmlSource`를 쓴다                              |
+| 형식     | 파일                    | 가리는 자리                                                                                                                                                                                                                                                                                 |
+| -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PPT      | `pptx-redaction.ts`     | 실행(run)의 `<a:rPr>` 안 확장 자리에 표시가 있는 글 구간(필드 포함), 슬라이드 본문과 발표자 노트, 그리고 메모(Comments, Office 365 `txBody` 댓글 포함). 그림의 표시는 글이 없어 모양만 검사한다                                                                                             |
+| 마크다운 | `markdown-redaction.ts` | 마크다운 편집기가 저장하는 `<span class="redact-span" data-redaction="" data-label="…">` 구간. `.md`, `.markdown`, 그리고 그 편집기가 열고 다른 이름으로 저장하는 `.txt`, `.json`                                                                                                           |
+| HTML     | `html-redaction.ts`     | `data-gx-redact`(요소의 내용), `data-gx-redact-<속성>`(그 속성의 값), `<script>` 안의 `/*gx:redact:이름*/` 뒤 문자열. 색인의 HTML 갈래도 `redactHtmlSource`를 쓴다                                                                                                                          |
+| 워드     | `docx-redaction.ts`     | 실행(run)의 `<w:rPr>` 안(변경 추적의 `w:rPrChange` 포함)에 `go:redact`가 있는 실행 전체. 본문·표·각주·미주·머리말·꼬리말·메모 모두. 이웃한 같은 이름표의 실행은 이름표 하나다. 이름표는 `w:label`, 없으면 `private`이다                                                                     |
+| 한글     | `hwp-redaction.ts`      | 메모 글이 `[<머리말>] <이름표>`(`@genoffice/agent-core/hiding-memo`)인 메모의 앵커. 본문 문단·표 칸·글상자. 엔진 평문 내보내기에서 되살린 줄에서도 가린 글을 모두 이름표로 바꾼다                                                                                                           |
+| 엑셀     | `xlsx-redaction.ts`     | `IeumHide[<n>]_<이름표>` 이름 정의가 가리키는 칸 전체(값·빈 칸·수식 글)는 `{{이름표-NN}}`(읽을 때마다 새로 매기는 값별 번호), 그 칸에 기대는 수식·배열 수식·피벗 표는 `{{이름표+이름표}}`. 따라갈 수 없는 수식(`INDIRECT`·`OFFSET`·이름·표·다른 통합 문서)은 모든 표시에 기대는 것으로 친다 |
 
 ## 맡지 않는 것 (경계)
 
@@ -24,7 +27,6 @@
 - 다이어그램의 해석(형식 판정, 원본 꺼내기, 압축 쪽 풀기)과 읽기 표 글은 `packages/drawio-model`이 한다. 여기는 `openDiagram`과 `formatDiagramText`를 부를 뿐이다(`diagram.ts`). `.vsdx`는 읽지 않는다(편집기의 가져오기만 있다).
 - 지도 파일의 해석과 개요 글은 `packages/xmind-engine`이 한다. 여기는 `openXmind`와 `sheetsToOutline`을 부를 뿐이다(`xmind.ts`).
 - EPUB 책의 해석(zip 관문, DRM 판정, 장 글 뽑기)은 `packages/epub-engine`이 한다. 여기는 번역을 싣지 않는 진입점 `@genoffice/epub-engine/core`에서 `openEpub`과 `extractChapterText`를 가져와 부를 뿐이다(`epub.ts`). 패키지 루트를 가져오면 이 패키지를 쓰는 모든 편집기가 `pdf2docx` 소스까지 형 검사하게 된다. 출력 모양을 고치려면 엔진 쪽을 고친다.
-- 워드(`.docx`)의 가리기 표시는 처리하지 않는다. 이 저장소에도 원본의 공개 저장소에도 그 표시를 쓰거나 읽는 코드가 없어 모양을 확인하지 못했고, 확인되기 전에 짐작으로 만들지 않는다.
 - 파일을 읽기 전에 "저장하지 않은 변경이 있는 파일인가"를 묻는 일은 호출자가 한다(`packages/electron-utils`의 `assertFileSaved`·`withoutUnsavedFiles`).
 - 터미널 명령어(`packages/cli`)의 읽기는 이 패키지를 지나지 않고, 가리기를 적용하지 않는다.
 - 한글 문서를 고치거나 저장하지 않는다. 그것은 `apps/hwp`의 편집기가 한다. 여기서는 같은 엔진(`@rhwp/core`)으로 열어 글자만 꺼낸다.
@@ -67,11 +69,13 @@
 - 엔진 WASM(`rhwp_bg.wasm`, 약 12MB)은 한글 문서를 처음 읽을 때 한 번 올린다. 위치는 `GENOFFICE_RHWP_WASM`, `node_modules`의 `@rhwp/core`, 설치본의 `Resources/wasm` 순으로 찾는다. `@rhwp/core`는 패치해 빌드한 `vendor/rhwp-core`를 가리킨다(결정 0050). 연 문서는 반드시 `free()`한다(WASM 메모리는 저절로 풀리지 않는다).
 - `hwpMemosOf(bytes)`는 저장 검증을 위해 메모를 구조(id·index·author·date·text·place·path·page)로 돌려준다. 받은 바이트를 복사해 엔진에 넘기고 `free()`하며, HWPX는 zip 관문을 먼저 거친다. 엔진이 배열이 아닌 값을 주면 빈 배열이다. 엔진이 모델에 담지 못한 원시 기록은 이 함수에 나오지 않으므로, 저장 손실을 세는 쪽은 `hwpxMemoCountOf`와 함께 본다(결정 0072).
 - 암호가 걸린 한글 문서는 읽지 않고 그렇다고 알린다. 암호를 받는 길은 없다.
+- **한글 메모 목록을 읽지 못하면 그 문서를 읽지 않는다.** 가리기 메모가 그 안에 있을 수 있다. 가리기 메모의 앵커를 정확히 놓을 수 없을 때(위치가 없음, 문단 밖, 여러 문단에 걸침, 머리말·꼬리말·각주 같은 읽지 않는 자리)도 같다. 엑셀은 `IeumHide` 이름이 시트 범위로 풀리지 않으면(`#REF!`, 없는 시트, 수식) 읽지 않는다. 워드는 표시가 실행의 속성 밖에 있거나 닫히지 않거나 다른 접두사로 쓰였으면 읽지 않는다.
+- `hidingMarksOf(파일 이름, 바이트)`는 글을 읽지 않고 가리기 표시가 있는지만 `none`·`marked`·`unknown`으로 답한다(여섯 형식). 양식 스킬의 "원래 문서 그대로 저장" 막기가 쓴다. `unknown`은 표시가 있는 것으로 다룬다.
 
 ## 테스트
 
 - `npm run test -w @genoffice/file-parse`, 또는 패키지 폴더에서 `npx vitest run`. 타임아웃은 20초다.
 - OOXML 픽스처는 `tests/helpers/fixtures.ts`가 JSZip으로 그때그때 만들어 임시 폴더에 쓴다. ODT 픽스처는 `tests/odt.test.ts`가 손으로 묶거나(글상자 안 표, 각주, 암호 manifest) docx 픽스처를 `docxToOdt`로 바꿔 만든다. 파일로 들어 있는 것은 옛 형식 두 개(`tests/fixtures/legacy-sample.doc`, `legacy-sample.ppt`)뿐이다. `npm run fixtures`는 필요 없다. 한글 문서는 `tests/hwp.test.ts`가 엔진으로 직접 만든다(문단을 모두 만든 뒤 표를 붙인다. 표가 놓인 문단을 나누면 엔진이 표를 옮긴다).
 - 형식 처리를 바꾸면 정상 추출, 깨진 파일이 던지지 않고 `ok: false`가 되는 경우, 글자 원형 보존(앞자리 0, 런 사이 공백)을 덮는다. zip을 여는 경로를 건드리면 `tests/zip-bomb-gate.test.ts`도 함께 본다.
-- 가리기를 바꾸면 형식마다, 표시 종류마다 "가린 글이 결과에 남지 않는다"와 "표시를 처리하지 못하면 원문이 아니라 실패가 나온다"를 덮는다(`tests/redaction.test.ts`). 마크다운은 "끝을 짐작하지 않는다"와 "표시가 될 수 있는 것만 실패한다"를 함께 본다. 지도 읽기는 `tests/xmind.test.ts`, EPUB 읽기와 DRM·손상·인코딩 거절은 `tests/epub.test.ts`. 다이어그램 네 형식·압축 쪽·깨진 파일·원본 없는 그림·`.vsdx`는 `tests/diagram.test.ts`이고, 시험 파일 `tests/fixtures/out.drawio*`는 `packages/drawio-model/tests/fixtures`에서 복사했다.
+- 가리기를 바꾸면 형식마다, 표시 종류마다 "가린 글이 결과에 남지 않는다"와 "표시를 처리하지 못하면 원문이 아니라 실패가 나온다"를 덮는다(`tests/redaction.test.ts`, 워드·한글·엑셀은 `tests/hiding-docx.test.ts`·`hiding-hwp.test.ts`·`hiding-xlsx.test.ts`, 표시 유무는 `hiding-marks.test.ts`). 표시가 없는 파일의 결과가 그대로인지도 본다. 마크다운은 "끝을 짐작하지 않는다"와 "표시가 될 수 있는 것만 실패한다"를 함께 본다. 지도 읽기는 `tests/xmind.test.ts`, EPUB 읽기와 DRM·손상·인코딩 거절은 `tests/epub.test.ts`. 다이어그램 네 형식·압축 쪽·깨진 파일·원본 없는 그림·`.vsdx`는 `tests/diagram.test.ts`이고, 시험 파일 `tests/fixtures/out.drawio*`는 `packages/drawio-model/tests/fixtures`에서 복사했다.
 - Windows에서 원본 코드 그대로도 실패하는 테스트는 없다.
