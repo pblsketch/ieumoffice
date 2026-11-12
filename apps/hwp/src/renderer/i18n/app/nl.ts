@@ -311,4 +311,19 @@ export const nl = {
     'Tekens worden met spaties geteld. Zonder spaties: heel document {totalNoSpace}. Net als bij Documentinformatie worden kop- en voetteksten, voetnoten en eindnoten niet geteld.',
   charCountHintSelected:
     'Met spaties: selectie {selected} / heel document {total}. Zonder spaties: selectie {selectedNoSpace} / heel document {totalNoSpace}. Net als bij Documentinformatie worden kop- en voetteksten, voetnoten en eindnoten niet geteld.',
+  hidingErrNone: 'Selecteer eerst de tekst die je wilt verbergen.',
+  hidingErrOverlap:
+    'Deze tekst heeft al een notitie en kan niet worden verborgen. Verplaats of verwijder eerst die notitie.',
+  hidingErrPlace:
+    'Tekst in een kop- of voettekst, voet- of eindnoot of object kan niet worden verborgen.',
+  hidingErrProtected:
+    'Aan dit document kunnen geen notities worden toegevoegd, dus er kan niets worden verborgen.',
+  hidingErrFailed: 'De selectie kon niet worden verborgen.',
+  hidingDone:
+    '{count} plek(ken) verborgen. Het bestand houdt de tekst; de AI ziet alleen het label.',
+  hidingUnhide: 'Niet meer verbergen',
+  hidingRelabel: 'Label wijzigen',
+  hidingSendBlocked:
+    'Waar een verborgen deel staat, kon niet worden bevestigd, dus er is niets van dit document naar de AI gestuurd. Controleer in het notitievenster de notities ‘Gevoelige gegevens verbergen’ in een kop- of voettekst of iets dergelijks.',
+  sensitiveFindFailed: 'Het document kon niet worden gelezen; er is niets gezocht.',
 } satisfies Record<keyof typeof zh, string>

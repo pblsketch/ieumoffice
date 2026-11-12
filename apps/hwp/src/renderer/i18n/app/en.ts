@@ -302,4 +302,16 @@ export const en = {
     'Characters are counted with spaces. Without spaces: whole document {totalNoSpace}. As in Document Information, headers, footers, footnotes and endnotes are not counted.',
   charCountHintSelected:
     'With spaces: selected {selected} / whole document {total}. Without spaces: selected {selectedNoSpace} / whole document {totalNoSpace}. As in Document Information, headers, footers, footnotes and endnotes are not counted.',
+  hidingErrNone: 'Select the text to hide first.',
+  hidingErrOverlap:
+    'This text already has a memo, so it cannot be hidden. Move or delete that memo first.',
+  hidingErrPlace: 'Text in a header, footer, footnote, endnote or object cannot be hidden.',
+  hidingErrProtected: 'Memos cannot be added to this document, so it cannot be hidden.',
+  hidingErrFailed: 'The selection could not be hidden.',
+  hidingDone: 'Hid {count} place(s). The file keeps the text; the AI sees only the label.',
+  hidingUnhide: 'Unhide',
+  hidingRelabel: 'Change label',
+  hidingSendBlocked:
+    'Where a hidden part is could not be confirmed, so nothing of this document was sent to the AI. Check the Hide sensitive info memos in a header, footer or the like in the memo panel.',
+  sensitiveFindFailed: 'The document could not be read, so nothing was searched.',
 } satisfies Record<keyof typeof zh, string>

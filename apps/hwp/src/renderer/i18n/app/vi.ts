@@ -302,4 +302,17 @@ export const vi = {
     'Ký tự được đếm kể cả khoảng trắng. Không tính khoảng trắng: toàn bộ tài liệu {totalNoSpace}. Giống như Thông tin tài liệu, đầu trang, chân trang, chú thích cuối trang và chú thích cuối tài liệu không được tính.',
   charCountHintSelected:
     'Kể cả khoảng trắng: đã chọn {selected} / toàn bộ tài liệu {total}. Không tính khoảng trắng: đã chọn {selectedNoSpace} / toàn bộ tài liệu {totalNoSpace}. Giống như Thông tin tài liệu, đầu trang, chân trang, chú thích cuối trang và chú thích cuối tài liệu không được tính.',
+  hidingErrNone: 'Hãy chọn đoạn văn bản cần ẩn trước.',
+  hidingErrOverlap:
+    'Đoạn văn bản này đã có ghi chú nên không thể ẩn. Hãy di chuyển hoặc xóa ghi chú đó trước.',
+  hidingErrPlace:
+    'Không thể ẩn văn bản trong đầu trang, chân trang, chú thích cuối trang, chú thích cuối tài liệu hoặc đối tượng.',
+  hidingErrProtected: 'Không thể thêm ghi chú vào tài liệu này nên không thể ẩn.',
+  hidingErrFailed: 'Không thể ẩn phần đã chọn.',
+  hidingDone: 'Đã ẩn {count} chỗ. Tệp vẫn giữ văn bản; AI chỉ thấy nhãn.',
+  hidingUnhide: 'Bỏ ẩn',
+  hidingRelabel: 'Sửa nhãn',
+  hidingSendBlocked:
+    'Không xác nhận được vị trí của một phần đã ẩn nên không gửi nội dung tài liệu này cho AI. Hãy kiểm tra các ghi chú “Ẩn thông tin nhạy cảm” ở đầu trang, chân trang hoặc chỗ tương tự trong ngăn ghi chú.',
+  sensitiveFindFailed: 'Không đọc được tài liệu nên không tìm được gì.',
 } satisfies Record<keyof typeof zh, string>

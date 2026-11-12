@@ -311,4 +311,18 @@ export const fr = {
     'Les caractères sont comptés espaces compris. Sans les espaces : document entier {totalNoSpace}. Comme dans les informations du document, les en-têtes, pieds de page, notes de bas de page et notes de fin ne sont pas comptés.',
   charCountHintSelected:
     'Espaces compris : sélection {selected} / document entier {total}. Sans les espaces : sélection {selectedNoSpace} / document entier {totalNoSpace}. Comme dans les informations du document, les en-têtes, pieds de page, notes de bas de page et notes de fin ne sont pas comptés.',
+  hidingErrNone: 'Sélectionnez d’abord le texte à masquer.',
+  hidingErrOverlap:
+    'Ce texte a déjà un mémo et ne peut pas être masqué. Déplacez ou supprimez d’abord ce mémo.',
+  hidingErrPlace:
+    'Le texte d’un en-tête, d’un pied de page, d’une note ou d’un objet ne peut pas être masqué.',
+  hidingErrProtected: 'Ce document ne peut pas recevoir de mémos, il ne peut donc pas être masqué.',
+  hidingErrFailed: 'La sélection n’a pas pu être masquée.',
+  hidingDone:
+    '{count} endroit(s) masqué(s). Le fichier garde le texte ; l’IA ne voit que l’étiquette.',
+  hidingUnhide: 'Ne plus masquer',
+  hidingRelabel: 'Modifier l’étiquette',
+  hidingSendBlocked:
+    'L’emplacement d’une partie masquée n’a pas pu être confirmé : rien de ce document n’a été envoyé à l’IA. Vérifiez dans le panneau des mémos les mémos « Masquer les informations sensibles » placés dans un en-tête, un pied de page ou ailleurs.',
+  sensitiveFindFailed: 'Le document n’a pas pu être lu ; aucune recherche n’a été faite.',
 } satisfies Record<keyof typeof zh, string>

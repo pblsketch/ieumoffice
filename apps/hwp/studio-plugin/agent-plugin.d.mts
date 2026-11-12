@@ -898,6 +898,65 @@ export interface AgentEasyWordsDetail {
   text: string
 }
 
+/** The command behind the editor's right-click item 민감정보 가리기. */
+export declare const HIDING_COMMAND: 'ext:ieum-hide-sensitive'
+
+/** The event that item fires on the editor's window; the app reads the selection itself. */
+export declare const HIDING_EVENT: 'ieum:hide-sensitive'
+
+/** The hidden spans (민감정보 가리기) of the document. */
+export type AgentHidingState =
+  | {
+      ok: true
+      count: number
+      labels: string[]
+      /**
+       * each span's label with the words it hides, for the app's own use on this PC (the
+       * labels of new candidates continue their numbers); an AI call never answers these
+       */
+      marks?: { label: string; value: string }[]
+    }
+  /** a hiding memo cannot be placed in the text: nothing of the document may go to a model */
+  | { ok: false; reason: 'unplaced'; count: number }
+
+/** Where the selection could be hidden: an anchor per paragraph, or why not. */
+export type AgentHidingSelection =
+  | { ok: true; anchors: AgentMemoAnchor[] }
+  | {
+      ok: false
+      reason: 'none' | 'overlap' | 'unsupported_place' | 'protected' | 'too_long'
+    }
+
+export type AgentHideRangesResult =
+  { ok: true; ids: number[]; count: number } | { ok: false; reason: string }
+
+/** Why a spot found by 민감정보 찾기 cannot be hidden. */
+export type AgentSensitiveUnhideable =
+  'memo-overlap' | 'header-footer' | 'note' | 'memo-text' | 'unsupported'
+
+/** One spot 민감정보 찾기 found in the document. */
+export interface AgentSensitiveCandidate {
+  kind: import('@genoffice/agent-core/sensitive-kinds').SensitiveKind
+  value: string
+  /** a few characters of the text before and after it */
+  before: string
+  after: string
+  /** the page it is on, as the document numbers its pages; 0 when unknown */
+  page: number
+  /** the memo anchor that would hide it; null where no memo can go */
+  anchor: AgentMemoAnchor | null
+  hideable: boolean
+  reason?: AgentSensitiveUnhideable
+}
+
+/** An AI edit was refused: it would change, cut or remove a hidden span. */
+export interface AgentHiddenContentRefusal {
+  ok: false
+  reason: 'hidden_content'
+  /** the labels of the spans it would have touched */
+  labels: string[]
+}
+
 /** The event watchMissingFonts fires on the editor's window; `detail` is an AgentMissingFontsDetail. */
 export declare const MISSING_FONTS_EVENT: 'ieum:missing-fonts'
 
@@ -1476,6 +1535,21 @@ export interface AgentPluginSurface {
   deleteTable(table: number, options?: AgentChangeOptions): AgentDeleteTableResult
   installFileMenu(labels: Record<AgentFileCommand, string>): { ok: boolean }
   installEasyWords(label: string): { ok: boolean }
+  /** name the right-click item 민감정보 가리기 in the app's language */
+  installHiding(label: string): { ok: boolean }
+  /**
+   * run another call for the AI panel: hidden spans read as their labels, its finds do not
+   * see them, its edits may not touch them; throws when a span cannot be placed
+   */
+  aiCall(method: string, args: unknown[]): unknown
+  /** the hidden spans of the document, or that one cannot be placed */
+  hidingState(): AgentHidingState
+  /** where the selection could be hidden, an anchor per paragraph */
+  hidingSelection(): AgentHidingSelection
+  /** hide spans with one memo each (`text` from buildHidingMemoText), in one undo step */
+  hideRanges(anchors: AgentMemoAnchor[], author: string, text: string): AgentHideRangesResult
+  /** what may be sensitive in the document, found on this PC; for the person, not a model */
+  sensitiveCandidates(): { candidates: AgentSensitiveCandidate[] }
   showCharCount(labels: AgentCharCountLabels): { ok: boolean }
   watchMissingFonts(labels: AgentMissingFontLabels): { ok: boolean }
   reveal(place: AgentPlace): { ok: boolean }

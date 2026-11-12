@@ -312,4 +312,19 @@ export const de = {
     'Gezählt werden Zeichen mit Leerzeichen. Ohne Leerzeichen: gesamtes Dokument {totalNoSpace}. Wie in den Dokumentinformationen werden Kopf- und Fußzeilen, Fuß- und Endnoten nicht gezählt.',
   charCountHintSelected:
     'Mit Leerzeichen: markiert {selected} / gesamtes Dokument {total}. Ohne Leerzeichen: markiert {selectedNoSpace} / gesamtes Dokument {totalNoSpace}. Wie in den Dokumentinformationen werden Kopf- und Fußzeilen, Fuß- und Endnoten nicht gezählt.',
+  hidingErrNone: 'Markieren Sie zuerst den Text, der ausgeblendet werden soll.',
+  hidingErrOverlap:
+    'Dieser Text hat bereits eine Notiz und kann nicht ausgeblendet werden. Verschieben oder löschen Sie zuerst diese Notiz.',
+  hidingErrPlace:
+    'Text in Kopf- oder Fußzeilen, Fuß- oder Endnoten und Objekten kann nicht ausgeblendet werden.',
+  hidingErrProtected:
+    'Diesem Dokument können keine Notizen hinzugefügt werden, daher kann nichts ausgeblendet werden.',
+  hidingErrFailed: 'Die Auswahl konnte nicht ausgeblendet werden.',
+  hidingDone:
+    '{count} Stelle(n) ausgeblendet. Die Datei behält den Text, die KI sieht nur die Bezeichnung.',
+  hidingUnhide: 'Wieder einblenden',
+  hidingRelabel: 'Bezeichnung ändern',
+  hidingSendBlocked:
+    'Die Stelle eines ausgeblendeten Teils ließ sich nicht bestätigen, daher wurde nichts aus diesem Dokument an die KI gesendet. Prüfen Sie im Notizbereich die Notizen „Sensible Daten ausblenden“ in Kopf- oder Fußzeilen und Ähnlichem.',
+  sensitiveFindFailed: 'Das Dokument konnte nicht gelesen werden; es wurde nichts gesucht.',
 } satisfies Record<keyof typeof zh, string>

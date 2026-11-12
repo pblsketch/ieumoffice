@@ -14,13 +14,15 @@
  * tested without a browser or an editor. The component only lays those answers out.
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { PRODUCT_NAME, type Params } from '@genoffice/i18n'
+import { SensitiveFindButton, sensitiveFeatureName } from '@genoffice/ui'
 import type { AgentMemo, AgentMemoAnchor } from '../../studio-plugin/agent-plugin.mjs'
 import { MEMO_NOT_COPIED_EVENT, MEMO_REMOVED_EVENT } from '../../studio-plugin/agent-plugin.mjs'
 import type { AgentBridge } from './ai/agent-bridge'
 import { useI18n, type StringKey } from './i18n/locale'
+import { isHidingMemo } from './sensitive-info'
 
 /** The longest memo body the engine takes, in UTF-16 units (spec 3.3). */
 export const MAX_MEMO_TEXT = 100_000
@@ -321,6 +323,14 @@ export interface MemoPanelProps {
   onModalOpenChange(open: boolean): void
   /** one-time news for the app's notice line */
   onNotice(notice: MemoNotice): void
+  /** 민감정보 가리기: hide the editor's selection (the right-click item does the same) */
+  onHideSelection?: () => void
+  /** 민감정보 찾기: open the candidate list in this column */
+  onFindSensitive?: () => void
+  /** give a hiding memo another label */
+  onRelabelHiding?: (memo: AgentMemo) => void
+  /** shown in place of the memo list while it is there (the candidate list) */
+  overlay?: ReactNode
 }
 
 const closeIcon = '×'
@@ -342,6 +352,10 @@ export function MemoPanel({
   onCollapse,
   onModalOpenChange,
   onNotice,
+  onHideSelection,
+  onFindSensitive,
+  onRelabelHiding,
+  overlay,
 }: MemoPanelProps): ReactElement {
   const { lang, t } = useI18n()
   const rtl = lang === 'ar' || lang === 'he'
@@ -914,9 +928,29 @@ export function MemoPanel({
         >
           <span aria-hidden>+</span> {t('memoAdd')}
         </button>
+        {onHideSelection && (
+          <button
+            type="button"
+            className="memo-button memo-hide-button"
+            disabled={unsupported || opening || busy || foreignOnly}
+            onClick={onHideSelection}
+          >
+            {sensitiveFeatureName(lang)}
+          </button>
+        )}
+        {onFindSensitive && (
+          <SensitiveFindButton
+            lang={lang}
+            className="memo-button"
+            disabled={unsupported || foreignOnly}
+            onClick={onFindSensitive}
+          />
+        )}
       </div>
 
-      <div className="memo-list">
+      {overlay && <div className="memo-overlay">{overlay}</div>}
+
+      <div className="memo-list" hidden={Boolean(overlay)}>
         {!unsupported && loadFailed && (
           <div className="memo-list-error" role="alert">
             {t('memoErrLoad')}
@@ -932,8 +966,12 @@ export function MemoPanel({
             const page = pageOf(memo)
             const date = dateOf(memo)
             const selected = memo.id === selectedId
+            const hiding = isHidingMemo(memo)
             return (
-              <div key={memo.id} className={`memo-card${selected ? ' selected' : ''}`}>
+              <div
+                key={memo.id}
+                className={`memo-card${selected ? ' selected' : ''}${hiding ? ' memo-card-hiding' : ''}`}
+              >
                 <button
                   type="button"
                   className="memo-card-select"
@@ -944,6 +982,9 @@ export function MemoPanel({
                     <span className="memo-card-author">{authorOf(memo)}</span>
                     {page && <span className="memo-card-page">{t('memoPage', page)}</span>}
                     {date && <span className="memo-card-date">{date}</span>}
+                    {hiding && (
+                      <span className="memo-hiding-badge">{sensitiveFeatureName(lang)}</span>
+                    )}
                     {!canEditMemo(memo) && (
                       <span className="memo-readonly-badge">{t('memoReadOnly')}</span>
                     )}
@@ -961,9 +1002,11 @@ export function MemoPanel({
                     className="memo-button memo-card-button"
                     disabled={opening || busy || foreignOnly || !canEditMemo(memo)}
                     title={reason ? t(reason) : undefined}
-                    onClick={() => void beginEdit(memo)}
+                    onClick={() =>
+                      hiding && onRelabelHiding ? onRelabelHiding(memo) : void beginEdit(memo)
+                    }
                   >
-                    {t('memoEdit')}
+                    {hiding && onRelabelHiding ? t('hidingRelabel') : t('memoEdit')}
                   </button>
                   <button
                     type="button"
@@ -971,7 +1014,7 @@ export function MemoPanel({
                     disabled={opening || busy || foreignOnly || !canDeleteMemo(memo)}
                     onClick={() => void remove(memo)}
                   >
-                    {t('memoDelete')}
+                    {hiding ? t('hidingUnhide') : t('memoDelete')}
                   </button>
                 </div>
               </div>

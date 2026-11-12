@@ -310,4 +310,18 @@ export const it = {
     'I caratteri sono contati spazi inclusi. Senza spazi: intero documento {totalNoSpace}. Come nelle informazioni sul documento, intestazioni, piè di pagina, note a piè di pagina e note di chiusura non vengono contati.',
   charCountHintSelected:
     'Spazi inclusi: selezione {selected} / intero documento {total}. Senza spazi: selezione {selectedNoSpace} / intero documento {totalNoSpace}. Come nelle informazioni sul documento, intestazioni, piè di pagina, note a piè di pagina e note di chiusura non vengono contati.',
+  hidingErrNone: 'Seleziona prima il testo da nascondere.',
+  hidingErrOverlap:
+    'Questo testo ha già una nota e non può essere nascosto. Sposta o elimina prima quella nota.',
+  hidingErrPlace:
+    'Non si può nascondere testo in intestazioni, piè di pagina, note a piè di pagina o di chiusura e oggetti.',
+  hidingErrProtected:
+    'A questo documento non si possono aggiungere note, quindi non si può nascondere nulla.',
+  hidingErrFailed: 'Non è stato possibile nascondere la selezione.',
+  hidingDone: '{count} punto/i nascosto/i. Il file conserva il testo; l’IA vede solo l’etichetta.',
+  hidingUnhide: 'Smetti di nascondere',
+  hidingRelabel: 'Cambia etichetta',
+  hidingSendBlocked:
+    'Non è stato possibile confermare dove si trova una parte nascosta, quindi nulla di questo documento è stato inviato all’IA. Controlla nel pannello delle note le note “Nascondi informazioni sensibili” in intestazioni, piè di pagina e simili.',
+  sensitiveFindFailed: 'Non è stato possibile leggere il documento; non è stato cercato nulla.',
 } satisfies Record<keyof typeof zh, string>
