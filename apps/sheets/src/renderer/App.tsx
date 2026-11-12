@@ -299,6 +299,7 @@ import {
 } from './ai/selection-scope'
 import { createAiDocument } from './ai/create-document'
 import { createWorkbookSkill } from './ai/workbook-skill'
+import { sheetSkillHiding } from './hiding/app-hooks'
 import { findWorkbookCells, selectWorkbookRange } from './ai/workbook-search'
 import { traceWorkbookDependents, traceWorkbookPrecedents } from './ai/formula-audit'
 import { createFilesSkill } from './ai/files-skill'
@@ -1726,7 +1727,8 @@ export function App({
           ? localModelCapabilities(aiSettingsRef.current).tools !== false
           : true,
       skill: composeWithDrive('sheets+files', '', () => agentLoopRef.current?.messages ?? [], [
-        createWorkbookSkill(sheetsSkillDeps()),
+        // sensitive-info hiding: every workbook tool reads and writes through it
+        createWorkbookSkill(sheetsSkillDeps(), sheetSkillHiding(readContext)),
         createFilesSkill(availableAttachments),
         createMergeSkill({
           getAttachments: availableAttachments,

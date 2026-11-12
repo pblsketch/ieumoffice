@@ -40,7 +40,7 @@ function cellValueText(value: Exclude<CellScalar, null>): string {
   return typeof value === 'boolean' ? (value ? '1' : '0') : String(value)
 }
 
-function buildMatcher(
+export function buildMatcher(
   options: FindCellsOptions,
 ): { ok: true; test: Matcher } | { ok: false; error: string } {
   if (options.errorsOnly) {
