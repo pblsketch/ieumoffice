@@ -1,5 +1,7 @@
 /** app strings, zh: defines the key set every other locale shard must match. */
 export const zh = {
+  appLegacyPptImported:
+    '已将 .ppt 文件转换为 .pptx 副本打开。原文件保持不变，保存时将写入新的 .pptx 文件。演讲者备注和动画不会转换。',
   redactMenuLabel: '把选中的内容对 AI 隐藏',
   redactDialogDesc:
     '选中的内容会留在文档和文件里，AI 读到的却是下面的标记。给它起个名字，AI 才知道它是什么。',

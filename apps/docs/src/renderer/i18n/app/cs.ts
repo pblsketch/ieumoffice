@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const cs = {
+  appLegacyDocImported:
+    'Soubor .{ext} byl otevřen jako převedená kopie .docx. Původní soubor zůstává beze změny; uložením vznikne nový soubor .docx.',
   appScTitle: 'Klávesové zkratky',
   appScFilter: 'Hledat zkratky',
   appScNone: 'Žádné odpovídající zkratky',

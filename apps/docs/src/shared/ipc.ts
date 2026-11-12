@@ -19,6 +19,11 @@ export interface OpenFileResult {
    * suggests this path (the original's folder and name).
    */
   saveAsDefaultPath?: string
+  /**
+   * The untitled copy was converted from a legacy Word file (`doc`, `dot`):
+   * the tab says so once, since the original stays as it was.
+   */
+  importedFrom?: string
 }
 
 /** Password-protected (ECMA-376 encrypted) docx: the renderer prompts for the

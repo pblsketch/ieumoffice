@@ -37,6 +37,7 @@
 - 에이전트 창의 사용자 MCP 중계(결정 0100, `src/main/agent/agent-mcp-relay.ts`): 세션을 시작할 때 켜진 서버마다 같은 이름의 중계 MCP 서버(루프백, 빈 포트, 세션 토큰)를 열어 허브로 넘기고, `ask` 도구는 에이전트 창의 카드로 묻는다. 세션 지시문의 중계 안내와 받은 내용 지키기 경고는 `agent-sessions.ts`, 문구는 `i18n/strings-agent-mcp.ts`와 `i18n/agent-mcp/<언어>.ts`다.
 - 키 봉인(결정 0063): `src/main/ai-secrets.ts`(safeStorage 코덱, 시작 때 평문 키 옮기기, `--reveal-ai-secrets`). 인터넷 도구 확인 창(결정 0062): `src/main/outbound-confirm.ts`.
 - 에이전트 창의 스킬과 웹(결정 0049): 세션에 실을 스킬과 양식 후보(`src/main/agent/agent-skills.ts`), 스킬 카드·설치 제안(`AgentSkillCard.tsx`, `AgentInstallProposal.tsx`), Codex 웹 검색·명령의 인터넷 접속의 시작 화면 선택과 Claude 웹 허락 표시(`renderer/src/agent/agent-web.ts`, 문구 `i18n/agent-web/`; 프로젝트 폴더별 기억은 `main/app-settings.ts`의 `agentProjectPrefs`를 `agent-window.ts`가 읽고 쓴다). 스킬을 바꾸는 IPC는 메인 창에서 온 요청만 받는데(`canManage`), 에이전트 창에는 깃허브 설치 미리보기에 필요한 `importGitHub`·`readImport`·`readImportFile`·`cancelImport`·`install` 다섯만 더 열려 있다, 이전 사용자 한 번 안내(`i18n/agent-skills/`).
+- 옛 워드·파워포인트 파일 열기(결정 0139, `src/main/legacy-open.ts`): `.doc`·`.dot`·`.ppt`를 `doc2docx`·`ppt2pptx`로 바꿔 `openTemplateCopy`로 이름 없는 새 문서 탭에 연다. 원본은 읽기만 한다. 처음 저장할 때 원본 옆의 같은 이름을 제안하고(`saveAsDefaultPath`), 편집기는 바꾼 사본임을 한 번 알린다(`importedFrom`). 같은 원본을 다시 열면 그 사본 탭으로 간다. 파일 연결에는 넣지 않았다(`LAUNCHABLE_UNCLAIMED_EXTS`).
 
 ## 맡지 않는 것 (경계)
 

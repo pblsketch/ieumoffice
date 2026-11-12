@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const en = {
+  appLegacyPptImported:
+    'Opened the .ppt file as a converted .pptx copy. The original stays as it was; saving writes a new .pptx file. Speaker notes and animations are not carried over.',
   redactMenuLabel: 'Hide the selection from AI',
   redactDialogDesc:
     'The selection stays in the document and in the file; the model sees the placeholder below instead. Name it so the model knows what it stands for.',

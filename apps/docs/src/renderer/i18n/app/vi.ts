@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const vi = {
+  appLegacyDocImported:
+    'Đã mở tệp .{ext} dưới dạng bản sao .docx đã chuyển đổi. Tệp gốc giữ nguyên; khi lưu sẽ ghi ra một tệp .docx mới.',
   appScTitle: 'Phím tắt bàn phím',
   appScFilter: 'Tìm kiếm phím tắt',
   appScNone: 'Không có phím tắt phù hợp',

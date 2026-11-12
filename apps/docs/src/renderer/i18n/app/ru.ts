@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ru = {
+  appLegacyDocImported:
+    'Файл .{ext} открыт как преобразованная копия .docx. Исходный файл не изменяется; при сохранении создаётся новый файл .docx.',
   appScTitle: 'Сочетания клавиш',
   appScFilter: 'Поиск сочетания',
   appScNone: 'Совпадений не найдено',

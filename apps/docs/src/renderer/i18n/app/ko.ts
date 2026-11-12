@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ko = {
+  appLegacyDocImported:
+    '.{ext} 파일을 .docx 사본으로 바꿔 열었습니다. 원본은 그대로 두고, 저장하면 새 .docx 파일로 저장됩니다.',
   appScTitle: '키보드 바로 가기',
   appScFilter: '바로 가기 검색',
   appScNone: '일치하는 바로 가기가 없습니다',

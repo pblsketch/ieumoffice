@@ -480,6 +480,23 @@ export function setSlidesOpenedHook(fn: ((wc: WebContents, path: string) => void
   slidesOpenedHook = fn
 }
 
+/**
+ * Shell hook: a legacy .ppt picked inside a tab opens as a converted copy in a
+ * new tab of its own (the shell converts it); without the hook the tab
+ * explains that it cannot open the file.
+ */
+let slidesLegacyOpenHook: ((path: string) => void) | null = null
+export function setSlidesLegacyOpenHook(fn: ((path: string) => void) | null): void {
+  slidesLegacyOpenHook = fn
+}
+
+/** a .ppt the shell takes over; true when it did */
+function handOffLegacyPpt(path: string): boolean {
+  if (!slidesLegacyOpenHook || !/\.ppt$/i.test(path)) return false
+  slidesLegacyOpenHook(path)
+  return true
+}
+
 /** Detached editor windows (createSlidesWindow), keyed by webContents id — their titles are owned here */
 const standaloneWindows = new Map<number, BrowserWindow>()
 
@@ -1747,6 +1764,7 @@ export function registerSlidesIpc(): void {
     }
     const r = await showOpenDialogWithMemory(dialog, parent, options)
     if (r.canceled || !r.filePaths[0]) return null
+    if (handOffLegacyPpt(r.filePaths[0])) return null
     const prepared = await preparePptxOpen(r.filePaths[0])
     if (prepared === 'rejected') return null
     return openAndBuild(
@@ -1759,6 +1777,7 @@ export function registerSlidesIpc(): void {
 
   ipcMain.handle('slides:open-path', async (e, path: string, fitWidthPx: number) => {
     if (!path || !existsSync(path)) return null
+    if (handOffLegacyPpt(path)) return null
     const prepared = await preparePptxOpen(path)
     if (prepared === 'rejected') return null
     return openAndBuild(e.sender, path, fitWidthPx, prepared === 'plain' ? undefined : prepared)

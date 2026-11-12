@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ja = {
+  appLegacyDocImported:
+    '.{ext} ファイルを .docx のコピーに変換して開きました。元のファイルはそのままで、保存すると新しい .docx ファイルになります。',
   appScTitle: 'キーボードショートカット',
   appScFilter: 'ショートカットを検索',
   appScNone: '一致するショートカットがありません',

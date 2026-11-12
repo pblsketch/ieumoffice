@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const zhTW = {
+  appLegacyDocImported:
+    '已將 .{ext} 檔案轉換為 .docx 副本開啟。原始檔案保持不變，儲存時會寫入新的 .docx 檔案。',
   appScTitle: '鍵盤快速鍵',
   appScFilter: '搜尋快速鍵',
   appScNone: '沒有相符的快速鍵',

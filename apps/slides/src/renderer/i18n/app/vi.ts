@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const vi = {
+  appLegacyPptImported:
+    'Đã mở tệp .ppt dưới dạng bản sao .pptx đã chuyển đổi. Tệp gốc giữ nguyên; khi lưu sẽ ghi ra một tệp .pptx mới. Ghi chú của diễn giả và hiệu ứng động không được chuyển sang.',
   redactMenuLabel: 'Ẩn phần đã chọn khỏi AI',
   redactDialogDesc:
     'Nội dung đã chọn vẫn còn trong tài liệu và tệp; mô hình chỉ thấy placeholder bên dưới. Đặt tên để mô hình biết nó đại diện cho điều gì.',

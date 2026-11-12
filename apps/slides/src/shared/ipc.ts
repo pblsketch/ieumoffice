@@ -97,6 +97,8 @@ export interface OpenResult {
   size: { cx: number; cy: number }
   /** Theme body default font (fallback shown in the font box when the selection has no text element) */
   defaultFont?: string
+  /** the untitled deck was converted from a legacy .ppt: the tab says so once */
+  importedFrom?: string
 }
 
 // ---- Chat attachments (local files fed to the agent via tools; structure copied from apps/docs) ----

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const it = {
+  appLegacyDocImported:
+    'Il file .{ext} è stato aperto come copia .docx convertita. L’originale resta invariato; il salvataggio crea un nuovo file .docx.',
   appScTitle: 'Scelte rapide da tastiera',
   appScFilter: 'Cerca scelta rapida',
   appScNone: 'Nessuna scelta rapida corrispondente',

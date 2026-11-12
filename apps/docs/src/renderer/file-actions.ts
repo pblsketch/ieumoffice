@@ -532,6 +532,8 @@ export async function loadFile(
         ? { saveAsDefaultPath: result.saveAsDefaultPath }
         : {}),
     })
+    // a converted .doc/.dot: the original is untouched and the first save writes a .docx
+    if (result.importedFrom) showToast(t('appLegacyDocImported', { ext: result.importedFrom }))
     ctx.onRevisionsLoaded(blocksHaveRevisions(parsed.blocks))
     // this tab's document was replaced: a password parked for the previous
     // unsaved draft is stale and must not encrypt this document's saves.

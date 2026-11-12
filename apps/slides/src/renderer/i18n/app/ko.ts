@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ko = {
+  appLegacyPptImported:
+    '.ppt 파일을 .pptx 사본으로 바꿔 열었습니다. 원본은 그대로 두고, 저장하면 새 .pptx 파일로 저장됩니다. 슬라이드 노트와 애니메이션은 옮겨지지 않습니다.',
   redactMenuLabel: '선택한 부분을 AI에서 숨기기',
   redactDialogDesc:
     '선택한 내용은 그대로 두고 AI에게는 아래 자리표시자만 보냅니다. 이름을 붙이면 AI가 무엇을 뜻하는지 알 수 있습니다.',

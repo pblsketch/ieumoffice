@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ja = {
+  appLegacyPptImported:
+    '.ppt ファイルを .pptx のコピーに変換して開きました。元のファイルはそのままで、保存すると新しい .pptx ファイルになります。ノートとアニメーションは引き継がれません。',
   redactMenuLabel: '選択範囲をAIから隠す',
   redactDialogDesc:
     '選択した内容はドキュメントとファイルに残り、AI には下のマーカーしか見えません。名前をつけると、何を表すかAIが理解できます。',
