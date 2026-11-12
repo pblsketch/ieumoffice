@@ -142,7 +142,8 @@ describe('an AI rewrite keeps the inline objects of the text it rewrites', () =>
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
     )
     const context = buildDocContext(editor, getSelectionScope(editor))
-    const selected = /<sel>((?:(?!<sel>)[\s\S])*?)<\/sel>/.exec(context)?.[1] ?? ''
+    // the selection HTML, not the "<sel>…</sel>" of the instruction line above it
+    const selected = /<p>[^\n]*?<sel>((?:(?!<sel>)[\s\S])*?)<\/sel>/.exec(context)?.[1] ?? ''
     expect(selected).not.toBe('')
 
     const r = await executeTool(

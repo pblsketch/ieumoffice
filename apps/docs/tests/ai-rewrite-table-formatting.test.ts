@@ -512,6 +512,12 @@ describe('replace_blocks keeps a rewritten table formatted like the table it rep
   it('a range mixing a table and a paragraph formats each from its own kind of block', async () => {
     const { editor } = await open(STYLED_TABLE)
     const [beforeTable, beforePara] = blocks(editor)
+    // the italic paragraph is formatted, so the model reads the range before rewriting it
+    await executeTool(
+      editor,
+      { id: 'r', name: 'read_blocks', input: { startBlockIndex: 0, endBlockIndex: 1 } },
+      NUM_IDS,
+    )
     await replaceBlocks(
       editor,
       0,
