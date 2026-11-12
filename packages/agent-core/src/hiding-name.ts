@@ -55,7 +55,7 @@ export function parseHidingName(name: string): HidingName | null {
   if (!m) return null
   return {
     n: m[1] ? Number.parseInt(m[1], 10) : 1,
-    label: sanitizeLabel(m[2]) || READ_DEFAULT_LABEL,
+    label: sanitizeLabel(m[2] ?? '') || READ_DEFAULT_LABEL,
   }
 }
 
@@ -80,7 +80,7 @@ export function nextHidingName(
   for (const name of existingNames) {
     taken.add(name.toLowerCase())
     const m = HIDING_NAME_PATTERN.exec(name)
-    if (m && m[2].toLowerCase() === wanted) used.add(m[1] ? Number.parseInt(m[1], 10) : 1)
+    if (m && (m[2] ?? '').toLowerCase() === wanted) used.add(m[1] ? Number.parseInt(m[1], 10) : 1)
   }
   for (let n = 1; ; n++) {
     if (used.has(n)) continue
