@@ -11,6 +11,15 @@ import {
   type DateFormatParts,
 } from './xlsx-dates'
 import { decodeXlsxEscapes } from '@genoffice/xlsx-gateway/gateway/xlsx-escapes'
+import { RedactionMarkError } from './redaction-error'
+import {
+  areaOfReference,
+  createXlsxRedactor,
+  formulaReferences,
+  xlsxHidingMarksOf,
+  type XlsxDependent,
+  type XlsxRedactor,
+} from './xlsx-redaction'
 
 function stripNamespacePrefix(name: string): string {
   const separator = name.indexOf(':')
@@ -366,10 +375,11 @@ export async function xlsxToText(bytes: Uint8Array, opts: XlsxTextOptions = {}):
     }
   }
 
+  const hiding = await hidingOf(zip, workbook, sheets, relTargets, maxChars)
   const sections: string[] = []
   let sheetsWithData = 0
   let imageOnlySheets = 0
-  for (const sheet of sheets) {
+  for (const [sheetIndex, sheet] of sheets.entries()) {
     if (used >= maxChars) break
     const path = relTargets.get(relationshipId(sheet))
     const budget = maxChars - used
@@ -386,11 +396,19 @@ export async function xlsxToText(bytes: Uint8Array, opts: XlsxTextOptions = {}):
     for (const row of rows) {
       for (const cell of asArray(row.c as Cell | Cell[])) recordSharedFormula(cell, sharedFormulas)
     }
+    let rowIndex = -1
     for (const row of rows) {
+      rowIndex = rowNumberOf(row, rowIndex)
+      let lastCol = -1
       // Sparse by column; a slot holds several values only when refs collide.
       const slots: string[][] = []
       for (const cell of asArray(row.c as Cell | Cell[])) {
-        const text = cellText(cell, shared, dateStyles, date1904, sharedFormulas)
+        let text = cellText(cell, shared, dateStyles, date1904, sharedFormulas)
+        if (hiding) {
+          const place = cellPlace(cell, rowIndex, lastCol)
+          lastCol = place.col
+          text = hiding.redactor.cell(sheetIndex, place.row, place.col, text)
+        }
         const ref = cell['@_r']
         // A malformed ref (no leading column letters) yields -1; append in
         // document order instead of writing slots[-1] which would drop text.
@@ -406,6 +424,13 @@ export async function xlsxToText(bytes: Uint8Array, opts: XlsxTextOptions = {}):
         else if (slot[slot.length - 1] === '') slot[slot.length - 1] = text
         else slot.push(text)
         if (text.trim()) hasData = true
+      }
+      // a hidden cell that holds nothing reads as a value too: which rows are
+      // empty there is not the model's to know
+      for (let c = 0; hiding && c < (hiding.widths[sheetIndex] ?? 0); c++) {
+        if (!slots[c] && hiding.redactor.hidden(sheetIndex, rowIndex, c)) {
+          slots[c] = [hiding.redactor.cell(sheetIndex, rowIndex, c, '')]
+        }
       }
       const cells: string[] = []
       for (let i = 0; i < slots.length; i++) {
@@ -472,4 +497,181 @@ async function countDrawingPictures(
     return drawingXml ? countElements(parser.parse(drawingXml), 'pic') : 0
   }
   return 0
+}
+
+/** a row's 0-based number: its `r`, or the one after the previous row */
+function rowNumberOf(row: Record<string, unknown>, previous: number): number {
+  const r = Number(row['@_r'])
+  return Number.isInteger(r) && r >= 1 ? r - 1 : previous + 1
+}
+
+/**
+ * Where a cell sits, 0-based: its reference, or the place after the previous
+ * cell of its row when it has none, as a spreadsheet program reads it. A
+ * reference with no column letters names no place, and hiding cannot be
+ * judged for it.
+ */
+function cellPlace(cell: Cell, rowIndex: number, lastCol: number): { row: number; col: number } {
+  const ref = cell['@_r']
+  if (!ref) return { row: rowIndex, col: lastCol + 1 }
+  const col = columnIndex(ref)
+  if (col < 0) throw new RedactionMarkError('a cell in a workbook with hidden cells has no place')
+  const digits = /^[A-Za-z]+(\d+)$/.exec(ref.trim())?.[1]
+  return { row: digits ? Number(digits) - 1 : rowIndex, col }
+}
+
+interface Hiding {
+  redactor: XlsxRedactor
+  /** per sheet: one past the last column any cell takes */
+  widths: number[]
+}
+
+/** the formula cells of one sheet, as what they read */
+function sheetDependents(
+  rows: Array<Record<string, unknown>>,
+  sheetIndex: number,
+  sheetNames: readonly string[],
+  sharedFormulas: SharedFormulas,
+): { dependents: XlsxDependent[]; width: number; lastRow: number } {
+  const dependents: XlsxDependent[] = []
+  let width = 0
+  let rowIndex = -1
+  for (const row of rows) {
+    rowIndex = rowNumberOf(row, rowIndex)
+    let lastCol = -1
+    for (const cell of asArray(row.c as Cell | Cell[])) {
+      const place = cellPlace(cell, rowIndex, lastCol)
+      lastCol = place.col
+      if (place.col < MAX_XLSX_COLS) width = Math.max(width, place.col + 1)
+      if (cell.f === undefined) continue
+      const own = { sheet: sheetIndex, r1: place.row, c1: place.col, r2: place.row, c2: place.col }
+      const attrs =
+        typeof cell.f === 'object' && cell.f !== null ? (cell.f as Record<string, unknown>) : {}
+      const type = String(attrs['@_t'] ?? '')
+      // an array formula and a data table fill every cell of their range
+      const filled =
+        (type === 'array' || type === 'dataTable') && attrs['@_ref'] !== undefined
+          ? (areaOfReference(String(attrs['@_ref']), sheetIndex) ?? own)
+          : own
+      const formula = formulaText(cell, sharedFormulas)
+      const refs =
+        type === 'dataTable' || !formula
+          ? 'unknown'
+          : formulaReferences(formula, sheetIndex, sheetNames)
+      dependents.push({ area: filled, refs })
+    }
+  }
+  return { dependents, width, lastRow: rowIndex }
+}
+
+/** the parts a part's relationships of this type point at */
+async function relatedParts(zip: JSZip, partPath: string, type: string): Promise<string[]> {
+  const relsXml = await zipText(zip, partPath.replace(/([^/]+)$/, '_rels/$1.rels'))
+  if (!relsXml) return []
+  const rels = parser.parse(relsXml) as Record<string, any>
+  return (asArray(rels.Relationships?.Relationship) as Array<Record<string, unknown>>)
+    .filter(
+      (rel) =>
+        String(rel['@_Type'] ?? '').endsWith(`/${type}`) &&
+        String(rel['@_TargetMode'] ?? '').toLowerCase() !== 'external',
+    )
+    .map((rel) => resolveTarget(partPath, String(rel['@_Target'] ?? '')))
+    .filter(Boolean)
+}
+
+/**
+ * The pivot tables of a sheet: the cells each fills, and the range its cache
+ * was built from (unknown when that is a name, a table, another workbook, or
+ * cannot be found). A pivot table whose place cannot be read fails the read.
+ */
+async function sheetPivots(
+  zip: JSZip,
+  sheetPath: string,
+  sheetIndex: number,
+  sheetNames: readonly string[],
+): Promise<XlsxDependent[]> {
+  const out: XlsxDependent[] = []
+  for (const pivotPath of await relatedParts(zip, sheetPath, 'pivotTable')) {
+    const xml = await zipText(zip, pivotPath)
+    const pivot = xml ? (parser.parse(xml) as Record<string, any>).pivotTableDefinition : undefined
+    const location = pivot?.location?.['@_ref']
+    const area = location ? areaOfReference(String(location), sheetIndex) : null
+    if (!area) throw new RedactionMarkError('the place of a pivot table cannot be read')
+    let refs: XlsxDependent['refs'] = 'unknown'
+    const [cachePath] = await relatedParts(zip, pivotPath, 'pivotCacheDefinition')
+    const cacheXml = cachePath ? await zipText(zip, cachePath) : undefined
+    const source = cacheXml
+      ? (parser.parse(cacheXml) as Record<string, any>).pivotCacheDefinition?.cacheSource
+      : undefined
+    const from = source?.worksheetSource as Record<string, unknown> | undefined
+    if (
+      String(source?.['@_type'] ?? '') === 'worksheet' &&
+      from &&
+      from['@_name'] === undefined &&
+      !Object.keys(from).some((key) => /^@_[^:]+:id$/.test(key)) &&
+      from['@_ref'] !== undefined &&
+      from['@_sheet'] !== undefined
+    ) {
+      const wanted = String(from['@_sheet']).toLowerCase()
+      const target = sheetNames.findIndex((name) => name.toLowerCase() === wanted)
+      const range = target >= 0 ? areaOfReference(String(from['@_ref']), target) : null
+      if (range) refs = [range]
+    }
+    out.push({ area, refs })
+  }
+  return out
+}
+
+/**
+ * The hiding of a workbook, or null when it has no hiding mark (the text then
+ * reads exactly as it did before marks existed). Every sheet is read for what
+ * its formulas and pivot tables read, up to the same character budget as the
+ * text, so a cell leaning on hidden cells is found wherever it leans from.
+ */
+async function hidingOf(
+  zip: JSZip,
+  workbook: Record<string, any>,
+  sheets: Array<Record<string, unknown>>,
+  relTargets: Map<string, string>,
+  maxChars: number,
+): Promise<Hiding | null> {
+  const sheetNames = sheets.map((sheet) => String(sheet['@_name'] ?? ''))
+  const names = (asArray(workbook.workbook?.definedNames?.definedName) as unknown[]).map((node) => {
+    const attrs = (typeof node === 'object' && node !== null ? node : {}) as Record<string, unknown>
+    const local = Number(attrs['@_localSheetId'])
+    return {
+      name: String(attrs['@_name'] ?? ''),
+      ref: textOf(node),
+      ...(attrs['@_localSheetId'] !== undefined && Number.isInteger(local)
+        ? { localSheetId: local }
+        : {}),
+    }
+  })
+  const marks = xlsxHidingMarksOf(names, sheetNames)
+  if (marks.length === 0) return null
+  const dependents: XlsxDependent[] = []
+  const widths: number[] = []
+  const lastRows: number[] = []
+  for (const [sheetIndex, sheet] of sheets.entries()) {
+    widths.push(0)
+    lastRows.push(Infinity)
+    const path = relTargets.get(relationshipId(sheet))
+    if (!path) continue
+    const raw = await zipTextPrefix(zip, path, sheetXmlByteLimit(maxChars))
+    if (!raw?.text) continue
+    const sheetXml =
+      maxChars === Infinity ? raw.text : clipSheetXml(raw.text, maxChars, raw.truncated)
+    const worksheet = parser.parse(sheetXml) as Record<string, any>
+    const rows = asArray(worksheet.worksheet?.sheetData?.row) as Array<Record<string, unknown>>
+    const sharedFormulas: SharedFormulas = new Map()
+    for (const row of rows) {
+      for (const cell of asArray(row.c as Cell | Cell[])) recordSharedFormula(cell, sharedFormulas)
+    }
+    const read = sheetDependents(rows, sheetIndex, sheetNames, sharedFormulas)
+    dependents.push(...read.dependents, ...(await sheetPivots(zip, path, sheetIndex, sheetNames)))
+    widths[sheetIndex] = read.width
+    // a sheet cut short by the budget: what lies past its last parsed row is unknown
+    if (raw.truncated || sheetXml !== raw.text) lastRows[sheetIndex] = read.lastRow
+  }
+  return { redactor: createXlsxRedactor(marks, dependents, lastRows), widths }
 }

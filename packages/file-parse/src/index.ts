@@ -29,3 +29,22 @@ export { readZipTextParts } from './zip-text-parts'
 export { redactHtmlSource } from './html-redaction'
 export { redactMarkdownSource } from './markdown-redaction'
 export { RedactionMarkError } from './redaction-error'
+export { hidingMarksOf, type HidingMarks } from './hiding-marks'
+export { docxPartHasMarks, redactDocxPartXml } from './docx-redaction'
+export {
+  hwpHiddenRangesOf,
+  hwpMemoListOf,
+  type HwpCellStep,
+  type HwpHiddenRange,
+  type HwpListedMemo,
+} from './hwp-redaction'
+export {
+  createXlsxRedactor,
+  formulaReferences,
+  xlsxHidingMarksOf,
+  type XlsxArea,
+  type XlsxDefinedName,
+  type XlsxDependent,
+  type XlsxHidingMark,
+  type XlsxRedactor,
+} from './xlsx-redaction'

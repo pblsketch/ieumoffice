@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import { assertZipInflatesWithinLimits, assertZipWithinLimits } from '@genoffice/docx-engine'
+import { redactDocxPartXml } from './docx-redaction'
 import { resolveTarget } from './opc'
 
 export interface DocxTextOptions {
@@ -26,7 +27,7 @@ export async function docxToText(bytes: Uint8Array, opts: DocxTextOptions = {}):
   const dir = docPath!.slice(0, docPath!.lastIndexOf('/') + 1)
   const styleFacts = paragraphStyleFacts(await zip.file(`${dir}styles.xml`)?.async('string'))
   const out = new TextSink(opts.maxChars ?? Infinity)
-  scanBody(documentXml, styleFacts, out)
+  scanBody(redactDocxPartXml(documentXml), styleFacts, out)
   if (!out.lines.some((line) => line.trim()) && out.pictures > 0) {
     const n = out.pictures
     out.lines.length = 0
@@ -56,7 +57,7 @@ function appendStory(
   notes = false,
 ): void {
   const sink = new TextSink(Infinity)
-  scanBody(xml, styleFacts, sink, { notes })
+  scanBody(redactDocxPartXml(xml), styleFacts, sink, { notes })
   if (sink.lines.length === 0) return
   out.push(`## ${title}`)
   for (const line of sink.lines) out.push(line)

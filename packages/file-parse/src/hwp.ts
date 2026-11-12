@@ -2,6 +2,16 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { assertZipInflatesWithinLimits } from '@genoffice/docx-engine'
+import {
+  concealedParagraph,
+  concealerOf,
+  hiddenByParagraph,
+  hiddenKey,
+  hwpHiddenRangesOf,
+  hwpMemoListOf,
+  type HwpHiddenRange,
+} from './hwp-redaction'
+import { RedactionMarkError } from './redaction-error'
 
 /**
  * Hangul word processor documents (HWP 5, HWPX, some HWP 3) to text, read by the
@@ -81,6 +91,22 @@ interface TableCell {
   row: number
   col: number
   paragraphs: string[]
+  /** the paragraphs as written, hidden spans included: what the plain-text export matches */
+  originals: string[]
+}
+
+/** hidden ranges by the walked paragraph they sit in (hwp-redaction.ts) */
+type Hidden = Map<string, HwpHiddenRange[]>
+
+/** a walked paragraph's entry: its text with hidden spans as labels, covering what it was */
+function paragraphEntry(
+  original: string,
+  length: number,
+  ranges: HwpHiddenRange[] | undefined,
+  read: (offset: number, count: number) => string,
+): Entry {
+  if (!ranges) return lineEntry(original)
+  return { text: concealedParagraph(length, ranges, read), covers: coversOf(original) }
 }
 
 /**
@@ -91,7 +117,13 @@ interface TableCell {
  * by " | " like the Word reader does it. A table that lays out a page (one
  * column, or cells that hold running text) comes out as its paragraphs in order.
  */
-function tableEntries(doc: HwpDocument, sec: number, para: number, ctrl: number): Entry[] | null {
+function tableEntries(
+  doc: HwpDocument,
+  sec: number,
+  para: number,
+  ctrl: number,
+  hidden?: Hidden,
+): Entry[] | null {
   let dims: { rowCount: number; colCount: number; cellCount: number }
   try {
     dims = JSON.parse(doc.getTableDimensions(sec, para, ctrl))
@@ -102,16 +134,29 @@ function tableEntries(doc: HwpDocument, sec: number, para: number, ctrl: number)
   for (let cell = 0; cell < dims.cellCount; cell++) {
     const info = JSON.parse(doc.getCellInfo(sec, para, ctrl, cell)) as { row: number; col: number }
     const paragraphs: string[] = []
+    const originals: string[] = []
     const count = doc.getCellParagraphCount(sec, para, ctrl, cell)
     for (let k = 0; k < count; k++) {
       const length = doc.getCellParagraphLength(sec, para, ctrl, cell, k)
-      if (length > 0) paragraphs.push(doc.getTextInCell(sec, para, ctrl, cell, k, 0, length))
+      if (length > 0) {
+        const read = (offset: number, n: number) =>
+          doc.getTextInCell(sec, para, ctrl, cell, k, offset, n)
+        const step = { controlIndex: ctrl, cellIndex: cell, cellParaIndex: k }
+        const original = read(0, length)
+        const ranges = hidden?.get(hiddenKey(sec, para, step))
+        paragraphs.push(paragraphEntry(original, length, ranges, read).text)
+        originals.push(original)
+      }
     }
-    cells.push({ row: info.row, col: info.col, paragraphs })
+    cells.push({ row: info.row, col: info.col, paragraphs, originals })
   }
   const asRows =
     dims.colCount >= 2 && cells.every((cell) => cell.paragraphs.length <= MAX_ROW_CELL_PARAGRAPHS)
-  if (!asRows) return cells.flatMap((cell) => cell.paragraphs.map(lineEntry))
+  if (!asRows) {
+    return cells.flatMap((cell) =>
+      cell.paragraphs.map((text, i) => ({ text, covers: coversOf(cell.originals[i]!) })),
+    )
+  }
 
   // a merged cell sits at its first row and column; the places it spans stay empty,
   // so the columns still line up, but a row does not end in a run of empty places
@@ -123,7 +168,7 @@ function tableEntries(doc: HwpDocument, sec: number, para: number, ctrl: number)
     const row = rows[cell.row]
     if (!row || cell.col >= dims.colCount) continue
     row.cells[cell.col] = cell.paragraphs.map(normalize).filter(Boolean).join(' ')
-    row.covers.push(...cell.paragraphs.flatMap(coversOf))
+    row.covers.push(...cell.originals.flatMap(coversOf))
   }
   return rows
     .filter((row) => row.covers.length > 0)
@@ -146,17 +191,12 @@ interface Memo {
 /**
  * The document's memos as a `### Comments` block, in the document order the engine
  * already sorts them in. A document without memos gets no block, so its text is
- * exactly what it was before memos were read. Memos that cannot be listed are left out
- * rather than failing the read of a body that could be read.
+ * exactly what it was before memos were read. A hiding memo is listed as it is, its
+ * prefix and label: its anchor is what it keeps out. The list is read once by
+ * hwpToText, which refuses a document whose list cannot be read (a hiding memo
+ * could be among the memos it would leave out).
  */
-function commentLines(doc: HwpDocument): string[] {
-  let memos: Memo[]
-  try {
-    const listed = JSON.parse(doc.getMemoList()) as unknown
-    memos = Array.isArray(listed) ? (listed as Memo[]) : []
-  } catch {
-    return []
-  }
+function commentLines(memos: readonly Memo[]): string[] {
   if (memos.length === 0) return []
   const lines = ['### Comments']
   for (const memo of memos) {
@@ -174,17 +214,22 @@ function commentLines(doc: HwpDocument): string[] {
 }
 
 /** The body of the document, paragraph by paragraph, each followed by the tables it holds. */
-function bodyEntries(doc: HwpDocument): Entry[] {
+function bodyEntries(doc: HwpDocument, hidden?: Hidden): Entry[] {
   const entries: Entry[] = []
   const sections = doc.getSectionCount()
   for (let sec = 0; sec < sections; sec++) {
     const paragraphs = doc.getParagraphCount(sec)
     for (let para = 0; para < paragraphs; para++) {
       const length = doc.getParagraphLength(sec, para)
-      if (length > 0) entries.push(lineEntry(doc.getTextRange(sec, para, 0, length)))
+      if (length > 0) {
+        const read = (offset: number, count: number) => doc.getTextRange(sec, para, offset, count)
+        entries.push(
+          paragraphEntry(read(0, length), length, hidden?.get(hiddenKey(sec, para)), read),
+        )
+      }
       const controls = (JSON.parse(doc.getControlTextPositions(sec, para)) as unknown[]).length
       for (let ctrl = 0; ctrl < controls; ctrl++) {
-        const table = tableEntries(doc, sec, para, ctrl)
+        const table = tableEntries(doc, sec, para, ctrl, hidden)
         if (table) entries.push(...table)
       }
     }
@@ -209,7 +254,11 @@ const decodeEntities = (text: string) =>
  * moves. One pass, whatever the size: documents with tens of thousands of table
  * cells exist.
  */
-function withMissingText(entries: Entry[], flat: string): string[] {
+function withMissingText(
+  entries: Entry[],
+  flat: string,
+  conceal?: (line: string) => string,
+): string[] {
   // where each accounted-for line is: its entries in order, one per occurrence
   const places = new Map<string, number[]>()
   entries.forEach((entry, index) => {
@@ -235,7 +284,9 @@ function withMissingText(entries: Entry[], flat: string): string[] {
       continue
     }
     // the cells of a table inside a table cell arrive on one line, tab-separated
-    const text = raw.includes('\t') ? rowText(raw.split('\t').map(normalize)) : raw.trim()
+    const put = raw.includes('\t') ? rowText(raw.split('\t').map(normalize)) : raw.trim()
+    // a line no walked paragraph accounts for can hold hidden words too
+    const text = conceal ? conceal(put) : put
     const bucket = extras.get(pointer)
     if (bucket) bucket.push(text)
     else extras.set(pointer, [text])
@@ -313,7 +364,11 @@ export async function checkedHwpBytes(bytes: Uint8Array, ext: string): Promise<U
   return bytes
 }
 
-/** The text of an HWP / HWPX document: paragraphs as lines, data tables as " | " rows. */
+/**
+ * The text of an HWP / HWPX document: paragraphs as lines, data tables as " | " rows.
+ * The anchor of every hiding memo reads as `{{label}}`; a memo list that cannot be
+ * read, or a hiding memo that cannot be placed, throws a RedactionMarkError.
+ */
 export async function hwpToText(bytes: Uint8Array): Promise<string> {
   // HWPX is a zip, and the engine inflates it itself: the gate the other zip formats
   // pass runs before the engine gets the bytes
@@ -327,10 +382,18 @@ export async function hwpToText(bytes: Uint8Array): Promise<string> {
     throw engineError(thrown)
   }
   try {
+    const memos = hwpMemoListOf(doc)
+    const ranges = hwpHiddenRangesOf(doc, memos)
+    const hidden = ranges.length > 0 ? hiddenByParagraph(ranges) : undefined
     const flat = JSON.parse(doc.getTextFileText()) as string
-    const lines = withMissingText(bodyEntries(doc), flat)
-    return [...lines, ...commentLines(doc)].join('\n')
+    const lines = withMissingText(
+      bodyEntries(doc, hidden),
+      flat,
+      ranges.length > 0 ? concealerOf(ranges) : undefined,
+    )
+    return [...lines, ...commentLines(memos)].join('\n')
   } catch (thrown) {
+    if (thrown instanceof RedactionMarkError) throw thrown
     throw engineError(thrown)
   } finally {
     doc.free()

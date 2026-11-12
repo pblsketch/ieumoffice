@@ -15,6 +15,7 @@ import JSZip from 'jszip'
 import type { SkillProposal } from '@genoffice/agent-core'
 import { REDACT_NS } from '@genoffice/agent-core/redact-range'
 import { skillEditorsOf } from '@genoffice/agent-core/skill-editors'
+import { hidingMarksOf } from '@genoffice/file-parse'
 import {
   IEUM_TEMPLATE_KEY,
   MAX_USER_SKILL_BYTES,
@@ -373,8 +374,11 @@ const PPTX_REDACT_EXT_URI = '{9F1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D}'
  * - PowerPoint: the deck engine's mark in any XML part of the deck;
  * - PDF: its marks are pending redactions held by an open editor, which this
  *   cannot see: a PDF open in a tab is not known, one that is not has none;
- * - Word, Excel, Hangul and mind maps: their editors recognize no mark.
- * A deck that cannot be read is not known. Unknown is never saved as it is.
+ * - Word, Excel and Hangul: the marks `hidingMarksOf` (@genoffice/file-parse)
+ *   finds, the ones a read of the file as material honours;
+ * - mind maps: no mark.
+ * A deck, a Word file, a workbook or a Hangul document that cannot be read is
+ * not known. Unknown is never saved as it is.
  */
 export async function templateRedactionOf(
   fileName: string,
@@ -406,6 +410,15 @@ export async function templateRedactionOf(
       }
     case 'pdf':
       return openInTab ? 'unknown' : 'none'
+    case 'doc':
+    case 'docx':
+    case 'xlsx':
+    case 'xlsm':
+    case 'hwp':
+    case 'hwpx': {
+      const marks = await hidingMarksOf(fileName, bytes)
+      return marks === 'marked' ? 'redacted' : marks
+    }
     default:
       return 'none'
   }
