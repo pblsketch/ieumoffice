@@ -46,7 +46,16 @@ import {
   type OpEntry,
 } from '../op-catalog'
 import { CliError, EXIT } from '../result'
+import { HIDDEN_SUGGESTION, hiddenFailure } from '../hiding'
 import { readImageSource } from './image-source'
+import {
+  hiddenLabelsInBlocks,
+  hidingViolation,
+  maskHidden,
+  unmaskHidden,
+  redactedDocxBytes,
+  type DocxHidingBytes,
+} from './docx-hiding'
 import { imageSize } from './image-size'
 import { applySectionEdits, pageSetupAccess } from './docx-sections'
 import {
@@ -232,6 +241,23 @@ export async function openDocumentFile(path: string): Promise<OpenDocument> {
   const doc = await openDocument(docxBytes)
   doc.odt = origin
   return doc
+}
+
+/**
+ * A .docx as a model may read it: every hidden run is its `{{label}}` in every part
+ * (docx-hiding.ts). An .odt carries no hiding mark and opens as it is.
+ */
+export async function openDocumentForReading(path: string): Promise<OpenDocument> {
+  if (extension(path) === 'odt') return openDocumentFile(path)
+  const { bytes } = await redactedDocxBytes(readInput(path))
+  return openDocument(bytes)
+}
+
+/** The hiding of a .docx about to be edited; an .odt has none. Throws (closed) on an unreadable mark. */
+export async function docxHidingOf(path: string): Promise<DocxHidingBytes | undefined> {
+  if (extension(path) === 'odt') return undefined
+  const hiding = await redactedDocxBytes(readInput(path))
+  return hiding.markedParts.length ? hiding : undefined
 }
 
 export async function blankDocument(): Promise<OpenDocument> {
@@ -803,7 +829,31 @@ export interface ApplyOptions {
   /** record content edits as tracked changes by this author */
   trackAuthor?: string
   mode?: BatchMode
+  /**
+   * The file's hiding (redactedDocxBytes): when it carries marks, hidden spans
+   * are masked while the ops run and an op that would touch one is refused.
+   */
+  hiding?: Pick<DocxHidingBytes, 'markedParts' | 'partLabels'>
 }
+
+/** Side tools and the parts they read or write: refused while such a part hides something. */
+const SIDE_TOOL_PARTS: Record<string, RegExp> = {
+  add_comment: /comments/i,
+  reply_comment: /comments/i,
+  resolve_comment: /comments/i,
+  delete_comment: /comments/i,
+  read_comments: /comments/i,
+  insert_footnote: /(foot|end)notes/i,
+  insert_endnote: /(foot|end)notes/i,
+  delete_note: /(foot|end)notes/i,
+  edit_note: /(foot|end)notes/i,
+  read_notes: /(foot|end)notes/i,
+  set_header_footer: /(header|footer)d*.xml$/i,
+  set_watermark: /headerd*.xml$/i,
+}
+
+/** an executor refusal that says the op would overwrite or damage a withheld span */
+const PLACEHOLDER_REFUSAL = /private placeholder/i
 
 /**
  * Every entry goes through the app's executeTool: apply_ops entries as an
@@ -821,8 +871,6 @@ export async function applyDocOps(
   opts: ApplyOptions = {},
 ): Promise<DocOpsOutcome> {
   const mode = opts.mode ?? 'atomic'
-  const results: DocOpResult[] = []
-  const failures: OpFailure[] = []
   const comments = commentsAccess(doc)
   const hf = headerFooterAccess(doc)
   const pageSetup = pageSetupAccess(doc)
@@ -830,6 +878,56 @@ export async function applyDocOps(
   const notes = notesAccess(doc)
   // a received ODT: protected cells and locked object stand-ins must come out of every op unchanged
   const guard = doc.odt ? new OdtEditGuard(doc.odt.bridge, doc.editor.state.doc) : null
+  // hidden spans of the body read as their markers while the ops run (docx-hiding.ts)
+  const masked = opts.hiding ? maskHidden(doc.editor) : null
+  if (masked) doc.mods.tools.markDocSeen(doc.editor)
+  try {
+    return await runDocOps(doc, ops, opts, mode, {
+      comments,
+      hf,
+      pageSetup,
+      extras,
+      notes,
+      guard,
+      masked,
+    })
+  } finally {
+    if (masked) {
+      unmaskHidden(doc.editor, masked)
+      doc.mods.tools.markDocSeen(doc.editor)
+    }
+  }
+}
+
+interface DocOpsEnv {
+  comments: AiCommentsAccess
+  hf: ReturnType<typeof headerFooterAccess>
+  pageSetup: ReturnType<typeof pageSetupAccess>
+  extras: DocExtras
+  notes: AiNotesAccess
+  guard: OdtEditGuard | null
+  masked: ReturnType<typeof maskHidden>
+}
+
+/** labels of the side parts an op reads or writes, when one of them hides something */
+function sideHiddenLabels(name: string, hiding: ApplyOptions['hiding']): string[] | null {
+  const parts = SIDE_TOOL_PARTS[name]
+  if (!parts || !hiding) return null
+  const marked = hiding.markedParts.filter((part) => parts.test(part))
+  if (!marked.length) return null
+  return [...new Set(marked.flatMap((part) => hiding.partLabels[part] ?? []))]
+}
+
+async function runDocOps(
+  doc: OpenDocument,
+  ops: Record<string, unknown>[],
+  opts: ApplyOptions,
+  mode: BatchMode,
+  env: DocOpsEnv,
+): Promise<DocOpsOutcome> {
+  const { comments, hf, pageSetup, extras, notes, guard, masked } = env
+  const results: DocOpResult[] = []
+  const failures: OpFailure[] = []
   for (const [index, op] of ops.entries()) {
     const name = typeof op?.op === 'string' ? op.op : ''
     // a rejected op left the document as it was: the executor applies each call whole or not at all
@@ -846,6 +944,19 @@ export async function applyDocOps(
       failures.push(failure)
       return true
     }
+    const refusedHidden = (labels: string[]): boolean => {
+      const failure = hiddenFailure(index, name, labels)
+      if (mode === 'atomic') {
+        throw new CliError(
+          EXIT.usage,
+          `op ${index} (${name || '?'}) rejected: ${failure.error}`,
+          { failures: [failure], reason: 'edit', labels: failure.hidden!.labels },
+          { reason: 'hidden_content', suggestion: HIDDEN_SUGGESTION },
+        )
+      }
+      failures.push(failure)
+      return true
+    }
     if (!op || typeof op !== 'object' || Array.isArray(op)) {
       rejected('expected an op object', 'invalid_argument')
       if (mode === 'stop_on_error') {
@@ -854,6 +965,17 @@ export async function applyDocOps(
       continue
     }
     let failed = false
+    const sideHidden = sideHiddenLabels(name, opts.hiding)
+    const movedHidden =
+      masked && op.op === 'moveBlocks' && Array.isArray(op.blockIndexes)
+        ? hiddenLabelsInBlocks(doc.editor, op.blockIndexes as number[])
+        : []
+    if (sideHidden || movedHidden.length) {
+      refusedHidden(sideHidden ?? movedHidden)
+      if (mode === 'stop_on_error') return { results, failures, skipped: ops.length - index - 1 }
+      continue
+    }
+    const hidingBefore = masked ? { state: doc.editor.state, side: copySide(doc.side) } : null
     const odtOff = doc.odt ? odtDisabledFeature(op) : null
     const before = guard?.active
       ? {
@@ -899,7 +1021,17 @@ export async function applyDocOps(
           ? { error: exec.output }
           : { output: exec.output }
     }
-    if (!odtOff) {
+    const hiddenBroke =
+      masked && !outcome.error && !odtOff ? hidingViolation(doc.editor, masked) : null
+    if (hiddenBroke && hidingBefore) {
+      // the op reached hidden content: put the document back as it was, then refuse it
+      doc.editor.view.updateState(hidingBefore.state)
+      Object.assign(doc.side, hidingBefore.side)
+      doc.mods.tools.markDocSeen(doc.editor)
+      failed = refusedHidden(hiddenBroke)
+    } else if (masked && outcome.error && PLACEHOLDER_REFUSAL.test(outcome.error)) {
+      failed = refusedHidden(labelsNamedIn(op, masked.labels))
+    } else if (!odtOff) {
       const broke = before && guard!.violation(before.print, doc.editor.state.doc)
       if (outcome.error) failed = rejected(outcome.error)
       else if (broke) {
@@ -918,6 +1050,13 @@ export async function applyDocOps(
     }
   }
   return { results, failures, skipped: 0 }
+}
+
+/** The labels whose markers an op names, or all of them when it names none. */
+function labelsNamedIn(op: Record<string, unknown>, labels: readonly string[]): string[] {
+  const text = JSON.stringify(op)
+  const named = labels.filter((label) => text.includes(`{{${label}}}`))
+  return named.length ? named : [...labels]
 }
 
 /** The side state an op may touch, copied so a refused op can be undone. */

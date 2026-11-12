@@ -116,6 +116,8 @@ function slidesControl(): { control: SlidesControl; saved: string[] } {
         return { applied: true, records: ops.map((o) => ({ op: o.op })) }
       },
       readDeck: async (wcId) => ({ slides: [{ index: 0, wc: wcId, elements: [] }] }),
+      // the real slides bridge answers this; a deck it cannot check is not edited over MCP
+      deckWithholds: async () => false,
       saveDeck: async (_wcId, path) => {
         saved.push(path)
         return { path }

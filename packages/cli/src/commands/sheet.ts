@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs'
+import { concealIssues, sheetOpHiddenLabels, workbookHidingOf } from '../formats/xlsx-hiding'
+import { HIDDEN_SUGGESTION, hiddenContentError, hiddenFailure, withHiddenDetail } from '../hiding'
 import { basename } from 'node:path'
 import { assertOptionValues, flagBool, flagString } from '../args'
 import {
@@ -131,9 +133,10 @@ type Args = Parameters<CommandDef['run']>[0]
 async function check(file: string | undefined, ctx: CommandContext): Promise<CommandResult> {
   const path = resolveInput(file, ctx)
   const { issues } = await checkWorkbook(readInput(path))
+  const hiding = /.xls[xm]$/i.test(path) ? await workbookHidingOf(readInput(path)) : null
   return checkResult(
     path,
-    issues,
+    hiding ? concealIssues(hiding, issues) : issues,
     SHEET_CHECKS,
     'cached values are read from the file, nothing is recalculated; number_overflow widths are approximate (Calibri metrics)',
   )
@@ -147,7 +150,10 @@ async function read(
   const path = resolveInput(file, ctx)
   const where = readWhere(flagString(args, 'where'))
   const stats = flagBool(args, 'stats')
+  // hidden cells read as {{label-NN}} (no option shows them)
+  const hiding = /.xls[xm]$/i.test(path) ? await workbookHidingOf(readInput(path)) : null
   const { rows, formulas, ...data } = await readSheet(path, {
+    hiding,
     sheet: flagString(args, 'sheet'),
     range: flagString(args, 'range'),
     formats: flagBool(args, 'formats'),
@@ -352,7 +358,7 @@ async function applyOps(
   const ops = readJsonList(spec, '--ops', ctx)
   const source = readFileSync(path)
   const mode = batchMode(args)
-  const { outcome: r, failures, applied } = await runBatch(source, ops, mode, args, ctx, path)
+  const { outcome: r, failures, applied } = await runHidingBatch(source, ops, mode, args, ctx, path)
   const counts = batchCounts(ops.length, applied, failures.length)
   const detail: Record<string, unknown> = {
     plan: r.plan,
@@ -397,6 +403,76 @@ async function applyOps(
     counts,
     failures,
   )
+}
+
+/**
+ * A batch on a workbook that hides cells (민감정보 가리기): an op that would reach
+ * hidden cells (xlsx-hiding.ts `sheetOpHiddenLabels`) is refused with
+ * `hidden_content` before anything runs, the way the DSL refuses an op: atomic
+ * stops the batch, best effort drops that op, stop on error runs the ops before it.
+ */
+async function runHidingBatch(
+  source: Buffer,
+  ops: unknown[],
+  mode: BatchMode,
+  args: Args,
+  ctx: CommandContext,
+  sourcePath: string,
+): Promise<{ outcome: DslOutcome; failures: OpFailure[]; applied: number }> {
+  const hiding = /.xls[xm]$/i.test(sourcePath) ? await workbookHidingOf(source) : null
+  const sheet = flagString(args, 'sheet')
+  const refused = hiding
+    ? ops.flatMap((op, index) => {
+        const labels =
+          op && typeof op === 'object' && !Array.isArray(op)
+            ? sheetOpHiddenLabels(hiding, op as Record<string, unknown>, sheet)
+            : []
+        const name = (op as { op?: unknown } | null)?.op
+        return labels.length
+          ? [hiddenFailure(index, typeof name === 'string' ? name : '', labels)]
+          : []
+      })
+    : []
+  if (!refused.length) return runBatch(source, ops, mode, args, ctx, sourcePath)
+  const first = refused[0]!
+  const refuse = (failures: OpFailure[], applied = 0) =>
+    new CliError(
+      EXIT.usage,
+      `${applied ? '' : 'no ops were applied: '}op ${first.index} (${first.op || '?'}) rejected: ${first.error}`,
+      withHiddenDetail(
+        { failures, batch: batchCounts(ops.length, applied, failures.length) },
+        first,
+      ),
+      { reason: 'hidden_content', suggestion: HIDDEN_SUGGESTION },
+    )
+  if (mode === 'atomic') {
+    // an earlier op's own rejection comes first
+    if (first.index > 0)
+      await runBatch(source, ops.slice(0, first.index), mode, args, ctx, sourcePath)
+    throw refuse([first])
+  }
+  const kept = ops
+    .map((op, index) => ({ op, index }))
+    .filter(({ index }) =>
+      mode === 'stop_on_error' ? index < first.index : !refused.some((f) => f.index === index),
+    )
+  if (!kept.length) throw refuse(mode === 'stop_on_error' ? [first] : refused)
+  const run = await runBatch(
+    source,
+    kept.map((k) => k.op),
+    mode,
+    args,
+    ctx,
+    sourcePath,
+  )
+  const own = run.failures.map((f) => ({ ...f, index: kept[f.index]?.index ?? f.index }))
+  // under stop on error an earlier rejection means the refused op was never reached
+  const hidden =
+    mode === 'stop_on_error' && own.length ? [] : mode === 'stop_on_error' ? [first] : refused
+  return {
+    ...run,
+    failures: [...own, ...hidden].sort((a, b) => a.index - b.index),
+  }
 }
 
 /**
@@ -508,6 +584,18 @@ async function applyCells(
   if (!defaultSheet) throw new CliError(EXIT.conversion, 'workbook has no sheets')
   const known = new Set(summary.sheets.map((s) => s.name))
   const edits = cellEditsFromInputs(inputs as CellInput[], defaultSheet)
+  // a hidden cell's value is the person's (민감정보 가리기): writing it is refused
+  const hiding = /.xls[xm]$/i.test(path) ? await workbookHidingOf(readFileSync(path)) : null
+  if (hiding) {
+    const labels = edits.flatMap((e) =>
+      sheetOpHiddenLabels(
+        hiding,
+        { op: 'set_cell', sheetId: e.sheetName, address: `${columnName(e.column)}${e.row + 1}` },
+        defaultSheet,
+      ),
+    )
+    if (labels.length) throw hiddenContentError('edit', labels)
+  }
   const unknown = edits.find((e) => !known.has(e.sheetName))
   if (unknown) {
     throw new CliError(
@@ -548,3 +636,11 @@ function writeWarnings(w: {
 }
 
 export { SUPPORTED_DSL_OPS }
+
+function columnName(index: number): string {
+  let out = ''
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    out = String.fromCharCode(65 + ((n - 1) % 26)) + out
+  }
+  return out
+}

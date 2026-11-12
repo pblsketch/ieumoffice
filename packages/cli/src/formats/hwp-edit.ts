@@ -16,6 +16,7 @@ import {
 } from '../op-catalog'
 import { classifyOpError, type OpFailure } from '../op-errors'
 import { CliError, EXIT } from '../result'
+import { HIDDEN_SUGGESTION, hiddenFailure, unreadableHiding, withHiddenDetail } from '../hiding'
 import type { BatchMode } from '../batch'
 import { rhwpWasmPath } from '../resources'
 
@@ -90,6 +91,8 @@ export interface HwpEditSession {
   /** tracked changes were dropped on open: the document holds its current text only */
   trackingDropped: boolean
   mods: AppModules
+  /** labels of the hidden spans the plugin refused to touch during the op that runs now */
+  hiddenRefusal: string[] | null
 }
 
 /** The engine throws plain strings, often Korean; a password is the one cause told apart. */
@@ -147,11 +150,35 @@ function headlessHost(doc: HwpDocument): AgentPluginHost {
   return host as unknown as AgentPluginHost
 }
 
-function bridgeOf(surface: AgentPluginSurface): AgentBridge {
+/**
+ * The plugin as the in-app AI panel reaches it: every call through `aiCall`, so what an
+ * op reads shows a hidden span (민감정보 가리기) as its `{{label}}` and an edit that
+ * would touch one is refused (apps/hwp agent-bridge.ts, `forAi`). `refused` hears
+ * the labels of such a refusal.
+ */
+function bridgeOf(surface: AgentPluginSurface, refused: (labels: string[]) => void): AgentBridge {
   const bridge: Record<string, (...args: unknown[]) => Promise<unknown>> = {}
-  for (const [name, method] of Object.entries(surface)) {
-    if (typeof method === 'function') {
-      bridge[name] = async (...args: unknown[]) => (method as (...a: unknown[]) => unknown)(...args)
+  for (const name of Object.keys(surface)) {
+    if (
+      name === 'aiCall' ||
+      typeof (surface as unknown as Record<string, unknown>)[name] !== 'function'
+    )
+      continue
+    bridge[name] = async (...args: unknown[]) => {
+      const answer = surface.aiCall(name, args) as {
+        ok?: unknown
+        reason?: unknown
+        labels?: unknown
+      }
+      if (
+        answer &&
+        typeof answer === 'object' &&
+        answer.ok === false &&
+        answer.reason === 'hidden_content'
+      ) {
+        refused(Array.isArray(answer.labels) ? answer.labels.map(String) : [])
+      }
+      return answer
     }
   }
   return bridge as unknown as AgentBridge
@@ -163,8 +190,17 @@ async function sessionOf(
   extra: Pick<HwpEditSession, 'base' | 'originalHwpx' | 'trackingDropped'>,
 ): Promise<HwpEditSession> {
   const surface = mods.plugin.agentPlugin.activate(headlessHost(doc)) as AgentPluginSurface
+  const session = { hiddenRefusal: null } as { hiddenRefusal: string[] | null }
+  // a hiding memo that cannot be placed: nothing of the document may be read (closed)
+  const hiding = surface.hidingState() as { ok?: boolean; reason?: string } | undefined
+  if (hiding && hiding.ok === false && hiding.reason === 'unplaced') {
+    ;(mods.plugin.agentPlugin as { deactivate?: () => void }).deactivate?.()
+    throw unreadableHiding()
+  }
   const { skill } = mods.skill.createHwpSkill({
-    bridge: bridgeOf(surface),
+    bridge: bridgeOf(surface, (labels) => {
+      session.hiddenRefusal = [...(session.hiddenRefusal ?? []), ...labels]
+    }),
     // activity labels are for the app's panel; the op results carry the model-facing text
     label: (key) => key,
     onChange: () => {},
@@ -172,7 +208,7 @@ async function sessionOf(
     confirmMemoRemoval: async () => false,
     imageGenAvailable: () => false,
   })
-  return { doc, surface, skill, mods, ...extra }
+  return Object.assign(session, { doc, surface, skill, mods, ...extra }) as HwpEditSession
 }
 
 /** Open an `.hwp` / `.hwpx` for editing, as the app's editor tab opens it. */
@@ -409,8 +445,11 @@ export async function applyHwpOps(
       )
     } else {
       const { op: _name, ...input } = entry
+      session.hiddenRefusal = null
       const exec = await session.skill.executeTool({ id: `ieum-${index}`, name, input })
-      if (exec.isError) failure = classifyOpError(index, name, exec.output)
+      const hidden = session.hiddenRefusal as string[] | null
+      if (exec.isError && hidden) failure = hiddenFailure(index, name, hidden)
+      else if (exec.isError) failure = classifyOpError(index, name, exec.output)
       else results.push({ index, op: name, output: exec.output, changed: exec.mutated === true })
     }
     if (!failure) continue
@@ -418,11 +457,12 @@ export async function applyHwpOps(
       throw new CliError(
         EXIT.usage,
         `op ${index} (${name || '?'}) rejected: ${failure.error}`,
-        { failures: [failure] },
+        withHiddenDetail({ failures: [failure] }, failure),
         {
           reason: failure.reason,
-          suggestion:
-            failure.reason === 'unknown_op'
+          suggestion: failure.hidden
+            ? HIDDEN_SUGGESTION
+            : failure.reason === 'unknown_op'
               ? failure.did_you_mean
                 ? `did you mean ${failure.did_you_mean}? \`ieumoffice guide hwp\` lists the ops`
                 : 'run `ieumoffice guide hwp` for the ops'

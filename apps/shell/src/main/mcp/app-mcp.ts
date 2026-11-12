@@ -15,6 +15,7 @@ import {
 } from './tools/session-tools'
 import { createOpenDocumentTools, type OpenDocumentsControl } from './tools/open-documents-tools'
 import { createDiagramTools, type DiagramControl } from './tools/diagram-tools'
+import { withholdingOpenDocuments, withholdingSlides } from './withholding'
 
 /**
  * Main-process wiring for the MCP server.
@@ -138,9 +139,11 @@ function buildTools(): McpToolDefinition[] {
   // buildTools runs once per client session (see the server's toolsFactory), so
   // each connected client gets its own active session rather than sharing one.
   const host = createSessionHost()
+  // hidden content (민감정보 가리기) reads as its labels on this server too (withholding.ts)
+  const slides = deps.slidesControl ? withholdingSlides(deps.slidesControl) : undefined
   const drivers: FamilyDriver[] = [
     ...(deps.docsControl ? [documentDriver(deps.docsControl)] : []),
-    ...(deps.slidesControl ? [slidesDriver(deps.slidesControl)] : []),
+    ...(slides ? [slidesDriver(slides)] : []),
     ...(deps.sheetsControl ? [sheetsDriver(deps.sheetsControl)] : []),
   ]
   const cli = deps.cliRunner
@@ -171,7 +174,7 @@ function buildTools(): McpToolDefinition[] {
       {
         defaultSaveDir: deps.defaultSaveDir,
         background: currentSettings.background,
-        slides: deps.slidesControl,
+        slides,
         ...(cli ? { cli } : {}),
         ...(deps.resolveTarget ? { resolveTarget: deps.resolveTarget } : {}),
       },
@@ -195,7 +198,9 @@ function buildTools(): McpToolDefinition[] {
     // documents the user has open, independent of the session above
     ...createOpenDocumentTools({
       defaultSaveDir: deps.defaultSaveDir,
-      ...(deps.openDocumentsControl ? { control: deps.openDocumentsControl } : {}),
+      ...(deps.openDocumentsControl
+        ? { control: withholdingOpenDocuments(deps.openDocumentsControl) }
+        : {}),
     }),
     // open diagrams: read a page, apply ops as one undo step (no session family)
     ...createDiagramTools({
