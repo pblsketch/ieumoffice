@@ -16,7 +16,9 @@ import {
   listTableStyles,
   listRevisions,
   listStyles,
+  docxHidingOf,
   openDocumentFile,
+  openDocumentForReading,
   saveDocument,
 } from '../formats/docx'
 import { previewChars } from '../preview'
@@ -29,6 +31,7 @@ import { checkResult } from '../check'
 import { CliError, EXIT, type CommandResult } from '../result'
 import { BATCH_OPTIONS, batchCounts, batchMode, batchResult, failedBatch } from '../batch'
 import { opSuggestion } from '../op-errors'
+import { HIDDEN_SUGGESTION, withHiddenDetail } from '../hiding'
 
 export const docsCommand: CommandDef = {
   name: 'docs',
@@ -188,7 +191,8 @@ async function read(
   ctx: CommandContext,
 ): Promise<CommandResult> {
   const path = resolveInput(file, ctx)
-  const doc = await openDocumentFile(path)
+  // hidden runs read as their {{label}} in everything below (no option shows the words)
+  const doc = await openDocumentForReading(path)
   try {
     const count = doc.editor.state.doc.childCount
     const range = parseRange(flagString(args, 'range'), count)
@@ -219,7 +223,7 @@ async function read(
 
 async function check(file: string | undefined, ctx: CommandContext): Promise<CommandResult> {
   const path = resolveInput(file, ctx)
-  const doc = await openDocumentFile(path)
+  const doc = await openDocumentForReading(path)
   try {
     return checkResult(path, checkDocument(doc), DOCS_CHECKS)
   } finally {
@@ -294,6 +298,7 @@ async function apply(
   const mode = batchMode(args)
   const trackAuthor = trackFlag(args)
   assertOdtApply(path, flagString(args, 'out'), trackAuthor !== undefined)
+  const hiding = await docxHidingOf(path)
   const doc = await openDocumentFile(path)
   try {
     let outcome: DocOpsOutcome
@@ -303,6 +308,7 @@ async function apply(
         mode,
         baseDir: source === 'stdin' ? undefined : dirname(source),
         ...(trackAuthor ? { trackAuthor } : {}),
+        ...(hiding ? { hiding } : {}),
       })
     } catch (err) {
       throw err instanceof CliError ? failedBatch(err, ops.length) : err
@@ -314,8 +320,11 @@ async function apply(
       throw new CliError(
         EXIT.usage,
         `no ops were applied: op ${first.index} (${first.op}) rejected: ${first.error}`,
-        { failures, batch: counts },
-        { reason: first.reason, suggestion: opSuggestion(first, 'docs') },
+        withHiddenDetail({ failures, batch: counts }, first),
+        {
+          reason: first.reason,
+          suggestion: first.hidden ? HIDDEN_SUGGESTION : opSuggestion(first, 'docs'),
+        },
       )
     }
     if (dryRun) {

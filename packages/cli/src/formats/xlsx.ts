@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { maskGrid, type WorkbookHiding } from './xlsx-hiding'
 import * as numfmt from 'numfmt'
 import {
   blankXlsxBuffer,
@@ -353,6 +354,8 @@ export interface ReadOptions {
   maxRows?: number
   where?: ReadWhere
   stats?: boolean
+  /** the workbook's hiding (xlsx-hiding.ts): hidden and leaning cells read as their labels */
+  hiding?: WorkbookHiding | null
 }
 
 export interface MatchedCell {
@@ -541,6 +544,17 @@ export async function readSheet(path: string, opts: ReadOptions): Promise<SheetR
         if (rows[r]![k] === null && cell.formatted !== '')
           rows[r]![k] = cell.number ?? cell.formatted
       }
+    }
+    // everything below (rows, formulas, matches, stats) reads the cells as a model may
+    if (opts.hiding) {
+      maskGrid(
+        opts.hiding,
+        meta.name,
+        { row: bounds.startRow, column: bounds.startColumn },
+        rows,
+        formulas,
+        (row, column) => `${columnLabel(column)}${row + 1}`,
+      )
     }
     const rangeLabel = `${columnLabel(bounds.startColumn)}${bounds.startRow + 1}:${columnLabel(bounds.endColumn)}${bounds.endRow + 1}`
     const stats = opts.stats ? sheetStats(wb, meta, result, rows, formulas, rangeLabel) : undefined

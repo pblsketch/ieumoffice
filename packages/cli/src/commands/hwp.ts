@@ -9,6 +9,7 @@ import { readOpsInput } from '../ops-input'
 import { cutIndex, previewChars } from '../preview'
 import type { CommandContext, CommandDef } from '../registry'
 import { CliError, EXIT, type CommandResult } from '../result'
+import { HIDDEN_SUGGESTION, withHiddenDetail } from '../hiding'
 
 export const hwpCommand: CommandDef = {
   name: 'hwp',
@@ -215,8 +216,11 @@ export async function runHwpBatch(
     throw new CliError(
       EXIT.usage,
       `no ops were applied: op ${first.index} (${first.op}) rejected: ${first.error}`,
-      { failures, batch: counts },
-      { reason: first.reason, suggestion: 'run `ieumoffice guide hwp` for the ops' },
+      withHiddenDetail({ failures, batch: counts }, first),
+      {
+        reason: first.reason,
+        suggestion: first.hidden ? HIDDEN_SUGGESTION : 'run `ieumoffice guide hwp` for the ops',
+      },
     )
   }
   if (flagBool(args, 'dry-run')) {
