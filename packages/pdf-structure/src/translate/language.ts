@@ -1,5 +1,5 @@
 /**
- * Target languages (spec §8): the 21 UI languages. The default is the UI
+ * Target languages (spec §8): the 22 UI languages. The default is the UI
  * language, or English when the document is already in the UI language. An
  * easy explanation (`mode` 'easy') defaults to the UI language always, also
  * for a document written in it: it is rewritten in plainer words.
@@ -45,6 +45,7 @@ const LANGUAGE_NAMES: Record<Lang, string> = {
   hi: 'Hindi',
   'zh-TW': 'Traditional Chinese',
   vi: 'Vietnamese',
+  tr: 'Turkish',
 }
 
 /** English name of a target language; the code itself when unknown */

@@ -546,6 +546,30 @@ export const SKILL_TEMPLATE_STRINGS = defineStrings({
       'Trình soạn thảo mở mẫu này không nhận tệp đính kèm nên tài liệu này chưa được đính kèm',
     attachFailed: 'Không đính kèm được tài liệu được chuyển sang nên yêu cầu chưa được gửi',
   },
+  tr: {
+    takenOver: 'Şablonla yeni sekmede çalışılıyor',
+    goToTab: 'Sekmeye git',
+    firstTemplateOnly: '{title} becerisinin şablonu kullanılıyor',
+    templateMissing: '{title} becerisinin şablon dosyası yok',
+    openWithTemplate: 'Bu şablonla yeni belge aç',
+    openFailed: 'Şablon yeni sekmede açılamadı',
+    previewTabTitle: 'Şablon önizlemesi - {title}',
+    previewContinues: 'Şablon önizleme sekmesinde devam edilir',
+    saveThisTab: 'Bu sekmeyi şablon olarak kaydet',
+    asIsRedacted: 'Belgede gizlenmiş bölümler var, bu yüzden olduğu gibi kaydedilemez',
+    clearRequest:
+      'Bu belgeyi yeniden kullanılabilir bir şablona dönüştür. Doldurulmuş değerleri (adlar, tarihler, kişisel bilgiler, yalnızca bu kez kullanılan içerikler) boşalt ve şablonun biçimini (başlıklar, tablolar, maddeler ve biçimlendirme) olduğu gibi bırak.',
+    handoffNotSent: 'Devredilen beceri okunamadı, bu yüzden istek gönderilmedi',
+    documentUnreadable: 'Geçerli belge okunamadı',
+    untitled: 'Başlıksız',
+    chooseWhere: 'Bu belgede zaten içerik var. Beceri nerede çalışsın?',
+    runHere: 'Bu belgede yap',
+    openNewWithCurrent: 'Şablondan yeni belge (bunu ekle)',
+    needsSave: 'Yeni belgeye eklemek için önce bu belgeyi kaydedin, sonra yeniden basın.',
+    openWithoutAttach: 'Eklemeden aç',
+    notAttachedEditor: 'Bu şablonun açıldığı düzenleyici ek almıyor, bu yüzden bu belge eklenmedi',
+    attachFailed: 'Devredilen belge eklenemedi, bu yüzden istek gönderilmedi',
+  },
 })
 
 export type SkillTemplateStringKey = keyof typeof zh

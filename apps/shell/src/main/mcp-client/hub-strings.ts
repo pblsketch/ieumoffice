@@ -245,6 +245,17 @@ export const MCP_HUB_STRINGS = defineStrings({
     problemRuntimeMissing: 'Máy tính này không có chương trình mà máy chủ này cần.',
     problemDidNotStart: 'Máy chủ không khởi động được.',
   } satisfies Keys,
+  tr: {
+    pageDoneTitle: 'Oturum açıldı',
+    pageDoneBody: 'Bu sekmeyi kapatıp GenOffice’e dönebilirsiniz.',
+    pageFailedTitle: 'Oturum açma tamamlanmadı',
+    pageFailedBody: 'GenOffice’e dönüp yeniden deneyin.',
+    problemNeedsCommandWindow: 'Bu komut bir komut penceresi olmadan çalışamaz.',
+    problemEmptyCommand: 'Çalıştırılacak komutu girin.',
+    problemNotAProgram: 'Bu dosya bir program olarak çalıştırılamaz.',
+    problemRuntimeMissing: 'Bu sunucunun ihtiyaç duyduğu program bu bilgisayarda yok.',
+    problemDidNotStart: 'Sunucu başlamadı.',
+  } satisfies Keys,
 })
 
 export type McpHubStringKey = keyof typeof zh

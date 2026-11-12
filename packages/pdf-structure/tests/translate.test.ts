@@ -448,7 +448,7 @@ describe('defaultTargetLanguage', () => {
     expect(defaultTargetLanguage('ko', '12 34')).toBe('ko')
   })
 
-  it('maps a raw UI locale onto the 21 languages', () => {
+  it('maps a raw UI locale onto the 22 languages', () => {
     expect(defaultTargetLanguage('ko-KR', english)).toBe('ko')
     expect(defaultTargetLanguage('zh-Hant', english)).toBe('zh-TW')
   })

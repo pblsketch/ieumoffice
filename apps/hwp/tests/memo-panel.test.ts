@@ -312,7 +312,7 @@ describe('memo events become one-time notices', () => {
   })
 })
 
-describe('memo strings in the 21 app languages', () => {
+describe('memo strings in the 22 app languages', () => {
   const keys = [
     'memoTitle',
     'memoOpen',

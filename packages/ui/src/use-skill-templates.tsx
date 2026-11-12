@@ -419,7 +419,9 @@ export function useSkillTemplates(options: SkillTemplatesOptions): SkillTemplate
       if (!taken || !liveRef.current) return
       optionsRef.current.onTaken?.()
       setHanded(taken)
-      let use: SkillUse = { text: '', chips: [] }
+      // the app's note goes to the model with the request, like a skill's text
+      const note = taken.note ? `\n\n${taken.note}` : ''
+      let use: SkillUse = { text: note, chips: [] }
       if (taken.chips.length > 0) {
         const { skills, missing } = await readSkillsForRequest(
           b,
@@ -437,7 +439,7 @@ export function useSkillTemplates(options: SkillTemplatesOptions): SkillTemplate
           setRunPhase('done')
           return
         }
-        use = { text: built.text, chips: taken.chips.map(chipRefOf) }
+        use = { text: built.text + note, chips: taken.chips.map(chipRefOf) }
       }
       if (taken.attach && taken.attach.length > 0 && optionsRef.current.attach) {
         const added = await optionsRef.current.attach(taken.attach).catch(() => false)

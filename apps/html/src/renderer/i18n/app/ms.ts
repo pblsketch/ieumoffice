@@ -79,7 +79,8 @@ export const ms = {
   slideThumbs: 'Slaid',
   slideThumbGo: 'Pergi ke slaid {n}',
   previewNeedsSave: 'Imej dan gaya relatif akan dipaparkan dalam pratonton selepas fail disimpan',
-  inspectHint: 'Klik elemen dalam pratonton untuk memilih, klik dua kali untuk menyunting teks',
+  inspectHint:
+    'Klik elemen dalam pratonton untuk memilih, klik dua kali untuk menyunting teks, Shift+klik atau {alt}+seret untuk memilih beberapa',
   nodeDynamic:
     'Elemen ini dicipta oleh skrip halaman dan tiada dalam sumber; sunting melalui sumber atau AI',
   nodeDynamicShort: 'dijana skrip',

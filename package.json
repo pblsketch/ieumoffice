@@ -24,6 +24,7 @@
     "check:english-comments": "node tools/check-english-comments.mjs",
     "check:skill-version": "node tools/check-skill-version.mjs",
     "check:help-langs": "node tools/check-help-langs.mjs",
+    "check:lang-count": "node tools/check-lang-count.mjs",
     "check:no-genspark": "node tools/check-no-genspark.mjs",
     "growth": "node tools/track-growth.mjs",
     "growth:report": "node tools/growth-report.mjs",

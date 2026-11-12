@@ -79,7 +79,8 @@ export const en = {
   slideThumbs: 'Slides',
   slideThumbGo: 'Go to slide {n}',
   previewNeedsSave: 'Relative images and styles show in the preview once the file is saved',
-  inspectHint: 'Click an element in the preview to select it, double-click to edit text',
+  inspectHint:
+    'Click an element in the preview to select it, double-click to edit text, Shift+click or {alt}+drag to select several',
   nodeDynamic:
     'This element was created by the page script and has no source; edit through the source or AI',
   nodeDynamicShort: 'script-generated',

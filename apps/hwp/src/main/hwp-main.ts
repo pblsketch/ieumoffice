@@ -52,6 +52,7 @@ import { newTabsOf } from './tab-widths'
 import { hasTrackedChanges, withoutTrackedChanges } from './tracked-changes'
 import { HWP_CHANNELS, MAX_HWP_SAVE_BYTES, hwpFormatOfPath } from '../shared/ipc'
 import type {
+  AttachmentImportResult,
   BeginSaveResult,
   CommitSaveResult,
   HwpFormat,
@@ -89,6 +90,23 @@ interface RuntimePaths {
    * opens in for this view, or null for the default save folder.
    */
   newDocumentDir?: (webContentsId: number) => Promise<string | null>
+  /**
+   * The AI's import_attachment (decision 0135): the shell converts a Markdown
+   * file and opens the result as a new, untitled Hangul document in a tab of
+   * its own, handing `request` (the person's words) to that tab's AI panel.
+   * This view's document is not touched. Without a shell there is no tab to open.
+   */
+  openMarkdownAsDocument?: (
+    webContentsId: number,
+    path: string,
+    request?: string,
+  ) => Promise<AttachmentImportResult>
+  /**
+   * The AI panel's run was stopped by the app's own rule. `stop` is what the
+   * renderer sent, unchecked: the shell keeps the rule and its counts in the
+   * crash record on this PC and nothing else.
+   */
+  noteAiRunStop?: (stop: unknown) => void
 }
 
 let runtime: RuntimePaths = { preloadPath: '' }
@@ -512,7 +530,11 @@ function registerHwpIpc(): void {
   // every view calls this; the channels are registered once, by the first
   if (ipcRegistered) return
   ipcRegistered = true
-  registerHwpAttachmentIpc()
+  registerHwpAttachmentIpc(() => ({
+    ...(runtime.openMarkdownAsDocument
+      ? { openMarkdownAsDocument: runtime.openMarkdownAsDocument }
+      : {}),
+  }))
   // the AI panel's pictures: search result or generated file → bytes for the plugin
   registerHwpImageIpc({
     filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) ?? null,
@@ -526,6 +548,10 @@ function registerHwpIpc(): void {
     headlessTargetByWc.delete(e.sender.id)
     return target
   })
+  ipcMain.on(HWP_CHANNELS.aiRunStop, (_e, stop: unknown) => {
+    runtime.noteAiRunStop?.(stop)
+  })
+
   ipcMain.on(HWP_CHANNELS.headlessExportDone, (e, result: unknown) => {
     const settle = headlessWaiters.get(e.sender.id)
     if (!settle) return

@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createI18n, type Lang } from '@genoffice/i18n'
+import { createI18n, LANGS as UI_LANGS, type Lang } from '@genoffice/i18n'
 import { strings } from '../src/renderer/i18n/strings'
 import { easyWordsRequest } from '../src/renderer/ai/easy-words'
 
@@ -14,8 +14,8 @@ const LANGS = Object.keys(strings) as Lang[]
 const SELECTED = '본인부담금은 소득 하위 30%에 면제한다.\n신청은 3월 31일까지 한다.'
 
 describe('쉬운 말로 풀기 in the screen languages', () => {
-  it('has a name and a request in all 21 languages', () => {
-    expect(LANGS).toHaveLength(21)
+  it('has a name and a request in every UI language', () => {
+    expect(LANGS).toHaveLength(UI_LANGS.length)
     const labels = new Set<string>()
     for (const lang of LANGS) {
       const label = translate(lang, 'easyWordsLabel')

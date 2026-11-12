@@ -64,7 +64,7 @@ import {
   type EditQueueItem,
 } from './ai/edit-queue'
 import { buildProjection } from './ai/redact'
-import { Breadcrumb, type NodeState } from './components/Breadcrumb'
+import { ALT_KEY, Breadcrumb, type NodeState } from './components/Breadcrumb'
 import {
   Ribbon,
   type PresentKind,
@@ -2164,8 +2164,16 @@ export default function App() {
             <div className="status-left">
               {notice ? (
                 <span className="status-item status-notice">{notice}</span>
+              ) : !path ? (
+                <span className="status-item status-hint">{t('previewNeedsSave')}</span>
               ) : (
-                !path && <span className="status-item status-hint">{t('previewNeedsSave')}</span>
+                // the crumbs row that carries this hint is not shown over the preview alone
+                view === 'preview' &&
+                canvasMode === 'edit' && (
+                  <span className="status-item status-hint">
+                    {t('inspectHint', { alt: ALT_KEY })}
+                  </span>
+                )
               )}
             </div>
             <div className="status-right">

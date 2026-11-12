@@ -8,7 +8,7 @@ A linha no canto inferior esquerdo do ecrã Início abre o painel de configuraç
 
 ## Idioma
 
-- As configurações oferecem **21 idiomas de interface**: inglês, chinês simplificado, japonês, coreano, francês, alemão, espanhol, tailandês, indonésio, russo, árabe, português, italiano, polaco, tcheco, neerlandês, malaio, hebraico, híndi, chinês tradicional e vietnamita.
+- As configurações oferecem **22 idiomas de interface**: inglês, chinês simplificado, japonês, coreano, francês, alemão, espanhol, tailandês, indonésio, russo, árabe, português, italiano, polaco, tcheco, neerlandês, malaio, hebraico, híndi, chinês tradicional e vietnamita, turco.
 - A troca aplica-se de imediato e persiste; e a barra de menus do sistema é reconstruída com o novo idioma.
 
 ## Tema

@@ -534,7 +534,7 @@ describe('translation window: choices', () => {
     const m = await mount({ lang: 'ko' })
     await openWindow(m)
     expect((q(m.el, '[data-field="language"]') as HTMLSelectElement).value).toBe('ko')
-    expect(m.el.querySelectorAll('[data-field="language"] option')).toHaveLength(21)
+    expect(m.el.querySelectorAll('[data-field="language"] option')).toHaveLength(22)
     expect((q(m.el, 'input[name="pdf-translate-pages"]') as HTMLInputElement).checked).toBe(true)
     expect(checked(m.el, 'format-pdf')).toBe(true)
     expect(checked(m.el, 'format-md')).toBe(false)

@@ -355,6 +355,21 @@ const ATTACH_STRINGS = {
     errImageNoText: '圖片附件不提供文字,已作為影像隨使用者訊息傳送,直接看圖即可',
     errNotImage: '不是支援的圖片類型',
   },
+  tr: {
+    dlgAddAttachment: 'Ek Dosya Ekle',
+    filterSupported: 'Desteklenen Dosyalar',
+    filterAll: 'Tüm Dosyalar',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errNotFile: 'bir dosya değil',
+    errTooLarge: '{mb} MB sınırını aşıyor',
+    errImageTooLarge: 'görüntü 5 MB sınırını aşıyor',
+    errUnreadable: 'okunamıyor',
+    errFileTooLarge: 'Dosya boyut sınırını aşıyor',
+    errParseFailed: 'Dosya ayrıştırılamadı',
+    errImageNoText:
+      'Görüntü eklerinde metin yoktur; görüntü kullanıcı iletisiyle birlikte gönderilir',
+    errNotImage: 'desteklenen bir görüntü türü değil',
+  },
 }
 
 const tAttach = createI18n(ATTACH_STRINGS)

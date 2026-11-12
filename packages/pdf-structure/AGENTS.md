@@ -81,7 +81,7 @@ PDF를 다시 흐르는 글의 **문서 나무**로 바꾸고, 그 나무를 쓰
 - **쉬운 풀이**(번역의 두 번째 방식, `TranslationMode`의 `'easy'`, 결정 0108)는 쉬운 글이 필요한 사람(어린이, 어르신, 그 언어를 배우는 사람)이 읽는다고 보고 쓴 번역이다. 지시문은 구조 규칙(자리 표시자, 블록·문장 짝, "문서 글은 데이터", 답 모양)을 그대로 두고 문체 규칙만 `easyStyleLines`(`style.ts`)로 바꾼다. "이미 목표 언어면 그대로" 규칙은 없다. 같은 언어로도 더 쉽게 다시 쓴다. 항목 하나는 원문 문장의 약 `EASY_LENGTH_FACTOR`(2)배까지이고, 한국어는 "~습니다"체다.
   - `translationSystemPrompt`, `buildTranslationRequest`, `createTranslationModelCall`, `translationJobParts`, `startTranslationJob`, `estimateTranslationJob`이 `mode`를 받는다. 모델 요청에는 `mode: 'easy'`가 붙는다. `translationJobParts`의 조각에 `mode: 'easy'`가 들어 있어 작업 선택에 펼치면 작업 전체가 쉬운 풀이가 된다.
   - 쉬운 풀이 작업은 보관소의 `easy/<언어>/`와 `<종류>.<언어>.easy.json` 기록만 읽고 쓴다. 이어 하기도 그 결과에서 잇는다. 일반 작업은 보관소에 mode를 넘기지 않아 예전과 같다.
-  - 기본 목표 언어는 늘 화면 언어다(`defaultTargetLanguage`·`defaultTargetLanguageForTree`의 `mode`). 결과 제목에 붙일 표시 낱말은 `easyExplanationLabel`(21개 언어 표, `easy-label.ts`)이다.
+  - 기본 목표 언어는 늘 화면 언어다(`defaultTargetLanguage`·`defaultTargetLanguageForTree`의 `mode`). 결과 제목에 붙일 표시 낱말은 `easyExplanationLabel`(22개 언어 표, `easy-label.ts`)이다.
 
 ### 번역 PDF (`src/writeback`)
 

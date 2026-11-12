@@ -20,6 +20,7 @@ import { he } from './slides-fonts/he'
 import { hi } from './slides-fonts/hi'
 import { zhTW } from './slides-fonts/zh-TW'
 import { vi } from './slides-fonts/vi'
+import { tr } from './slides-fonts/tr'
 
 /**
  * Settings → General "AI slide fonts" field.
@@ -47,6 +48,7 @@ export const slidesFontsStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })
 
 export type SlidesFontsStringKey = keyof typeof zh

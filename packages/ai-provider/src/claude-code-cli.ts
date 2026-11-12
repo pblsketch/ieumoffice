@@ -706,9 +706,11 @@ function isStructuredOutputUse(block: unknown): block is Record<string, unknown>
  * The input of a direct app-tool call, in the shape `parseClaudeCodeTurn`
  * takes. The CLI does not know the tool, so the model guesses the input's
  * shape (seen live): it may wrap the real input as a `toolCalls` item's
- * `"inputJson"` string, or write an array or object field as a JSON string.
- * Both are undone against the tool's schema; numeric strings are left to the
- * loop, which repairs them for every provider.
+ * `"inputJson"` string, or write an array, object or yes/no field as a JSON
+ * string. These are undone against the tool's schema; numeric strings are left
+ * to the loop, which repairs them for every provider. A yes/no left as
+ * `"true"` is refused by the loop every time, and the model, which wrote a
+ * bare `true`, sends the same call again until the run is stopped.
  */
 export function directCallInput(
   tool: AgentToolDef | undefined,
@@ -737,7 +739,8 @@ export function directCallInput(
     }
     const fits =
       (declared.includes('array') && Array.isArray(parsed)) ||
-      (declared.includes('object') && isPlainObject(parsed))
+      (declared.includes('object') && isPlainObject(parsed)) ||
+      (declared.includes('boolean') && typeof parsed === 'boolean')
     if (!fits) continue
     if (out === input) out = { ...input }
     out[field] = parsed

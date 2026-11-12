@@ -82,7 +82,7 @@ export const es = {
   previewNeedsSave:
     'Las imágenes y estilos relativos se mostrarán en la vista previa al guardar el archivo',
   inspectHint:
-    'Haz clic en un elemento de la vista previa para seleccionarlo; doble clic para editar el texto',
+    'Haz clic en un elemento de la vista previa para seleccionarlo; doble clic para editar el texto; Mayús+clic o {alt}+arrastrar para seleccionar varios',
   nodeDynamic:
     'Este elemento fue creado por el script de la página y no existe en el código; edítalo desde el código o con IA',
   nodeDynamicShort: 'generado por script',

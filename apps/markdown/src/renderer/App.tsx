@@ -994,6 +994,16 @@ export default function App() {
           if (!result.ok) console.error('[markdown] odt export failed:', result.error)
           return result.ok && !('canceled' in result)
         }
+        if (format === 'hwp' || format === 'hwpx') {
+          // same Word bytes as the docx export; the main process converts them to Hangul
+          const result = await window.markdownApi.exportHwp({
+            base64: bytesToBase64(bytes),
+            suggestedName,
+            ...(saveAsTarget ? { saveAsTarget } : {}),
+          })
+          if (!result.ok) console.error('[markdown] hwp export failed:', result.error)
+          return result.ok && !('canceled' in result)
+        }
         const result = await window.markdownApi.exportDocx({
           base64: bytesToBase64(bytes),
           suggestedName,

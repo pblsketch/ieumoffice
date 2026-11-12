@@ -53,8 +53,8 @@ const NODE_ROUTES: Record<string, readonly string[]> = {
   doc: ['docx'],
   dot: ['docx'],
   ppt: ['pptx'],
-  md: ['docx', 'html'],
-  markdown: ['docx', 'html'],
+  md: ['docx', 'html', 'hwp', 'hwpx'],
+  markdown: ['docx', 'html', 'hwp', 'hwpx'],
   docx: ['md', 'hwp', 'hwpx'],
   xlsx: ['csv', 'ods'],
   xlsm: ['csv', 'ods'],
@@ -252,7 +252,14 @@ async function run(
     if (to === 'html') {
       return { bytes: Buffer.from(await markdownToHtml(text, title), 'utf-8'), detail: { title } }
     }
-    return { bytes: await markdownToDocx(text, { file: input, ctx }), detail: { title } }
+    const docx = await markdownToDocx(text, { file: input, ctx })
+    if (to === 'hwp' || to === 'hwpx') {
+      // Markdown reaches Hangul through the Word document the docx route writes;
+      // that document has no layout of its own to keep, so the tables get Hangul's
+      const { bytes, hwp_report } = await docxToHangul(docx, to, ctx, 'hangul')
+      return { bytes, detail: { title, hwp_report } }
+    }
+    return { bytes: docx, detail: { title } }
   }
   if (from === 'csv') {
     const sheet = sheetNameFromStem(basename(input, extname(input)))

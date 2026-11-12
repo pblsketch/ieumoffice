@@ -20,6 +20,7 @@ import { he } from './agent-mcp/he'
 import { hi } from './agent-mcp/hi'
 import { zhTW } from './agent-mcp/zh-TW'
 import { vi } from './agent-mcp/vi'
+import { tr } from './agent-mcp/tr'
 
 /**
  * The agent window's strings for the relays of the person's MCP servers (user
@@ -48,6 +49,7 @@ export const agentMcpStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })
 
 export type AgentMcpStringKey = keyof typeof zh

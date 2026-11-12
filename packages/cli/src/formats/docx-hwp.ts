@@ -4,6 +4,7 @@ import {
   HwpEngine,
   docxToHwp,
   type HwpFormat,
+  type HwpLook,
   type Loss,
   type LossFeature,
 } from '@genoffice/docx2hwp'
@@ -76,15 +77,17 @@ function startEngine(): Promise<HwpEngine> {
 /**
  * The Hangul bytes and the loss report. Each loss is also a warning
  * (`hwp_dropped` / `hwp_changed`), the way an ODT conversion reports its own.
+ * `look` is 'hangul' when the Word bytes only carry another format's content.
  */
 export async function docxToHangul(
   docx: Uint8Array,
   format: HwpFormat,
   ctx: Pick<CommandContext, 'warn'>,
+  look: HwpLook = 'word',
 ): Promise<{ bytes: Uint8Array; hwp_report: Loss[] }> {
   let conversion
   try {
-    conversion = await docxToHwp(docx, format, await startEngine())
+    conversion = await docxToHwp(docx, format, await startEngine(), { look })
   } catch (err) {
     throw refusal(err) ?? err
   }

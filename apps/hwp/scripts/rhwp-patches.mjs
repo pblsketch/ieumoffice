@@ -1106,6 +1106,33 @@ const PATCHES = {
       },
     ],
   },
+  // Hancom's equation fonts are written in private code points, which mean nothing in the
+  // font the substitution would put in their place while the PC's fonts are not known yet
+  // or the font is not there. The app's own layer (equation-fonts.mjs) sits under the
+  // substitution: it keeps the font when the PC has it and decodes the run when it has not.
+  'studio-equation-fonts': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
+    edits: [
+      {
+        find: "import { rememberRawCanvasFontDescriptor } from './canvas-font-raw';",
+        replace: [
+          "import { rememberRawCanvasFontDescriptor } from './canvas-font-raw';",
+          `import { installEquationFonts, isEquationGlyphFont } from '${PC_FONTS_MODULE}';`,
+          '',
+          '// before the substitution below wraps the canvas font: it must sit on top of this',
+          'installEquationFonts();',
+        ].join('\n'),
+      },
+      {
+        find: ['  const primary = incoming[0];', '  if (!primary) return cssFont;'].join('\n'),
+        replace: [
+          '  const primary = incoming[0];',
+          '  if (!primary) return cssFont;',
+          '  if (isEquationGlyphFont(primary)) return cssFont;',
+        ].join('\n'),
+      },
+    ],
+  },
   'studio-missing-font-marks': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]toolbar\.ts$/,
     edits: [
@@ -1196,6 +1223,7 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-cell-block-paste',
   'studio-pc-fonts',
   'studio-missing-font-marks',
+  'studio-equation-fonts',
 ])
 
 /** Whether a patch is written against this file. */

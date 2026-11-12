@@ -115,6 +115,24 @@ describe('what a new tab takes over', () => {
     expect(handedRequestOf(null, 'hwp')).toBeNull()
   })
 
+  it('reads the note the app sends with a request, and only a text one', () => {
+    const raw = { id: 'h2', mode: 'skill', target: 'hwp', text: 'tidy it up', chips: [] }
+    expect(
+      handedRequestOf({ ...raw, note: 'The file is already in this document.' }, 'hwp'),
+    ).toEqual({
+      id: 'h2',
+      text: 'tidy it up',
+      chips: [],
+      note: 'The file is already in this document.',
+    })
+    expect(handedRequestOf({ ...raw, note: 7 }, 'hwp')).toEqual({
+      id: 'h2',
+      text: 'tidy it up',
+      chips: [],
+    })
+    expect(handedRequestOf({ ...raw, note: '' }, 'hwp')).not.toHaveProperty('note')
+  })
+
   it('reads the asking document a request brought along, paths only', () => {
     const raw = {
       id: 'h3',
@@ -252,7 +270,7 @@ describe('SKILL_TEMPLATE_STRINGS', () => {
   const NON_LATIN: readonly Lang[] = ['zh', 'ja', 'ko', 'th', 'ru', 'ar', 'he', 'hi', 'zh-TW']
   const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
 
-  it('has every key, non-empty, with the same placeholders, in all 21 languages', () => {
+  it('has every key, non-empty, with the same placeholders, in all 22 languages', () => {
     expect(Object.keys(SKILL_TEMPLATE_STRINGS).sort()).toEqual([...LANGS].sort())
     for (const lang of LANGS) {
       const dict = SKILL_TEMPLATE_STRINGS[lang] as Record<string, string>

@@ -381,6 +381,7 @@ export const th = {
   appLangHindi: 'ภาษาฮินดี',
   appLangTraditionalChinese: 'ภาษาจีนตัวเต็ม',
   appLangVietnamese: 'ภาษาเวียดนาม',
+  appLangTurkish: 'ตุรกี',
   appWrapTextMenu: 'ตัดข้อความ',
   appViewImage: 'ดูรูปภาพ',
   appSaveImageAs: 'บันทึกรูปภาพเป็น…',

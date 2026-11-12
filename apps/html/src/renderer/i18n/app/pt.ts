@@ -81,7 +81,7 @@ export const pt = {
   slideThumbGo: 'Ir para o slide {n}',
   previewNeedsSave: 'Imagens e estilos relativos aparecem na visualização após salvar o arquivo',
   inspectHint:
-    'Clique em um elemento na visualização para selecioná-lo; clique duas vezes para editar o texto',
+    'Clique em um elemento na visualização para selecioná-lo; clique duas vezes para editar o texto; Shift+clique ou {alt}+arrastar para selecionar vários',
   nodeDynamic:
     'Este elemento foi criado pelo script da página e não existe no código; edite pelo código ou pela IA',
   nodeDynamicShort: 'gerado por script',

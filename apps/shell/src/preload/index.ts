@@ -127,6 +127,7 @@ const UI_LANGUAGES: readonly UiLanguage[] = [
   'hi',
   'zh-TW',
   'vi',
+  'tr',
 ]
 
 function isUiLanguage(value: unknown): value is UiLanguage {

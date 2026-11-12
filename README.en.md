@@ -94,8 +94,8 @@ The author's own account, in Korean, is at
 - **Search across your documents** from the home screen, indexed on your PC.
 - **A terminal command (`ieumoffice`), an MCP server and an agent skill**, so a
   coding agent can read, create and edit the same files.
-- **21 interface languages.** Korean and English were written by hand; the
-  other 19 are machine translations.
+- **22 interface languages.** Korean and English were written by hand; the
+  other 20 are machine translations.
 
 Released for **Windows**, with separate **betas for Macs (Apple Silicon and
 Intel) and 64-bit Linux (x64)**. The developer has not been able to check the
@@ -302,8 +302,16 @@ What differs on a Mac:
   Applications. One opened straight from the disk image, or kept in a folder
   you cannot write to, opens the download page instead. Coming from an older
   version without this, install the new dmg over the old app once.
-- The AI connection card has **no install button**. Follow its "official
-  install instructions" link to install Claude Code or Codex.
+- The AI connection card has **no install button**. Install from Terminal
+  instead: `curl -fsSL https://claude.ai/install.sh | bash` for Claude Code,
+  `npm install -g @openai/codex` for Codex. The card's "official install
+  instructions" link says the same.
+- **A PATH set for your terminal does not reach the app.** An app opened from
+  the Dock or Applications never sees what `~/.zshrc` adds to PATH. The app
+  looks in the places the installers and package managers use instead
+  (`~/.local/bin`, Homebrew, MacPorts, nvm/fnm/volta/asdf/mise, the global npm
+  prefix). If it still cannot find the program, you can type its path under
+  **Settings → AI → Advanced**.
 - Signing in finishes in the browser. If the browser asks you to paste a code,
   run `claude auth login` or `codex login` in Terminal yourself.
 
@@ -327,7 +335,8 @@ What differs on Linux:
   when a new version is out and opens the download page.
 - As on a Mac, the AI connection card has **no install button**, and if a
   sign-in page asks you to paste a code, run `claude auth login` or
-  `codex login` in a terminal yourself.
+  `codex login` in a terminal yourself. The install commands, and the places
+  the app looks for the programs, are the same as on a Mac.
 
 To use only the terminal command without the desktop app (a server without a
 screen, or an AI agent's workspace), use the command-line archive
@@ -418,7 +427,7 @@ project easy to take.
   see only the proxy environment variables (`HTTPS_PROXY` and the like), not a
   proxy that is set in Windows alone.
 - **Image generation needs a key**, as described above.
-- **Translations.** 19 of the 21 interface languages are machine-translated
+- **Translations.** 20 of the 22 interface languages are machine-translated
   and have not been reviewed by native speakers.
 - **Hiding does not reach everywhere.** Parts you hid from AI in the
   PowerPoint, Markdown and HTML editors stay hidden when the file is attached
@@ -457,7 +466,8 @@ default, and update checks go to GitHub. When an editor or the app stops
 abnormally, only the time, what stopped, the reason, the editor and the memory
 use at that moment (numbers only) are written to `crash-log.jsonl` in the data
 folder, and the same numbers are written when the PC or the app runs short of
-memory. To tell when the whole app went down, the running app also writes its
+memory. When the app itself stops an AI run that was editing a document, one
+line holds why, as fixed words and counts. To tell when the whole app went down, the running app also writes its
 memory numbers to `crash-heartbeat.json` every 30 seconds; no document text, file names or paths, and it is never sent
 anywhere. The full list is in [PRIVACY.md](PRIVACY.md).
 

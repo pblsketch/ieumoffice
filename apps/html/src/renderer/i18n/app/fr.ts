@@ -83,7 +83,7 @@ export const fr = {
   previewNeedsSave:
     "Les images et styles relatifs apparaîtront dans l'aperçu une fois le fichier enregistré",
   inspectHint:
-    "Cliquez sur un élément de l'aperçu pour le sélectionner, double-cliquez pour modifier le texte",
+    "Cliquez sur un élément de l'aperçu pour le sélectionner, double-cliquez pour modifier le texte, Maj+clic ou {alt}+glisser pour en sélectionner plusieurs",
   nodeDynamic:
     "Cet élément a été créé par le script de la page et n'existe pas dans la source ; modifiez via la source ou l'IA",
   nodeDynamicShort: 'généré par script',

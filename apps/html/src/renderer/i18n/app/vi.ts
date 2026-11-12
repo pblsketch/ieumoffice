@@ -79,7 +79,8 @@ export const vi = {
   slideThumbGo: 'Đi tới trang chiếu {n}',
   previewNeedsSave:
     'Hình ảnh và kiểu dáng có đường dẫn tương đối sẽ hiển thị trong bản xem trước sau khi tệp được lưu',
-  inspectHint: 'Nhấp vào một phần tử trong bản xem trước để chọn, nhấp đúp để chỉnh sửa văn bản',
+  inspectHint:
+    'Nhấp vào một phần tử trong bản xem trước để chọn, nhấp đúp để chỉnh sửa văn bản, Shift+nhấp hoặc {alt}+kéo để chọn nhiều phần tử',
   nodeDynamic:
     'Phần tử này được tạo bởi tập lệnh trang và không có mã nguồn; hãy chỉnh sửa qua mã nguồn hoặc AI',
   nodeDynamicShort: 'tạo bởi tập lệnh',

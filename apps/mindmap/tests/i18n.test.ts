@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The dictionaries: 21 languages, one key set, real translations. A missing
+ * The dictionaries: 22 languages, one key set, real translations. A missing
  * key is a type error already (each shard is checked against `zh`); these
  * tests catch what the types cannot.
  */
@@ -33,7 +33,7 @@ const placeholders = (text: string): string[] => (text.match(/\{\w+\}/g) ?? []).
 const keys = Object.keys(strings.zh) as (keyof typeof strings.zh)[]
 
 describe('the editor dictionaries', () => {
-  it('cover all 21 languages with the same keys and no empty text', () => {
+  it('cover all 22 languages with the same keys and no empty text', () => {
     expect(Object.keys(strings).sort()).toEqual([...LANGS].sort())
     for (const lang of LANGS) {
       expect(Object.keys(strings[lang]).sort(), lang).toEqual([...keys].sort())

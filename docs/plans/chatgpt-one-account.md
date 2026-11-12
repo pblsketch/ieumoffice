@@ -65,9 +65,9 @@ OpenAI는 12월부터 Plus·Pro·Business 요금제에서 ChatGPT와 Codex가 �
 ## 5. 고칠 곳
 
 - `packages/ai-provider`: `selectAiProvider`의 ChatGPT 차례(3절 규칙), 두 길을 묶는 순수 함수(이름 예: `chatGptRouteOf`), 시험.
-- `packages/ui`: `aiContinueOption`의 같은 집안 빼기, `aiProviderPickerGroups`의 구독 묶음, `aiSelectionChoices`, `aiSubscriptionCardView`에 두 길을 담는 카드, 문구 21개 언어, 시험.
+- `packages/ui`: `aiContinueOption`의 같은 집안 빼기, `aiProviderPickerGroups`의 구독 묶음, `aiSelectionChoices`, `aiSubscriptionCardView`에 두 길을 담는 카드, 문구 22개 언어, 시험.
 - `apps/shell`: `SettingsAiSection.tsx`의 카드 배치, 홈 AI 질문의 선택 표시.
-- 문서: `docs/business-rules.md`의 "제공자 선택", "실행 중 막혔을 때", "사용량 표시", 결정 0117, `packages/ui/AGENTS.md`, 도움말 구독 주제 21개 언어, 사이트 `/connect#chatgpt` 절.
+- 문서: `docs/business-rules.md`의 "제공자 선택", "실행 중 막혔을 때", "사용량 표시", 결정 0117, `packages/ui/AGENTS.md`, 도움말 구독 주제 22개 언어, 사이트 `/connect#chatgpt` 절.
 
 ## 6. 시험
 

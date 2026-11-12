@@ -260,4 +260,72 @@ describe('ieumoffice create --type hwp', () => {
     expect(again.code).toBe(2)
     expect(again.json().error).toBe('output_exists')
   })
+
+  it('gives a new document its look with the ops the app has for it', async () => {
+    const dir = tempDir()
+    const out = join(dir, 'plan.hwpx')
+    const title = '현장체험학습 운영 계획'
+    const r = await run([
+      'create',
+      '--type',
+      'hwpx',
+      '--ops',
+      ops(dir, [
+        {
+          op: 'insert_paragraphs',
+          where: 'end',
+          paragraphs: [title, '□ 추진 배경', '○ 교실 밖 배움을 지원함', '□ 세부 일정'],
+        },
+        {
+          op: 'insert_table',
+          where: 'after',
+          anchor: '□ 세부 일정',
+          rows: [
+            ['구분', '일시'],
+            ['1학년', '9. 12.(금)'],
+          ],
+          header: true,
+          look: 'open',
+          column_widths: [1, 3],
+          size: 11,
+        },
+        {
+          op: 'style_paragraphs',
+          styles: [
+            { name: '문서제목', size: 20, bold: true, align: 'center' },
+            { name: '중제목', size: 15, bold: true, indent: -21, space_before: 10 },
+            { name: '본문항목', size: 13, margin_left: 7, indent: -19 },
+          ],
+          apply: [
+            { style: '문서제목', find: title },
+            { style: '중제목', starts_with: '□' },
+            { style: '본문항목', starts_with: '○' },
+          ],
+        },
+        { op: 'insert_title_box', find: title, look: 'bands', color: '#1F3864' },
+        { op: 'set_page_number', position: 'bottom_center' },
+        { op: 'set_header_footer', kind: 'footer', text: '운영 계획 | {page}', size: 9 },
+        { op: 'format_cells', table: 2, borders: [{ sides: 'bottom', line: 'double' }] },
+      ]),
+      '--out',
+      out,
+      '--json',
+    ])
+    expect(r.code, r.stdout).toBe(0)
+    const doc = new HwpDocument(readFileSync(out))
+    try {
+      const styles = (JSON.parse(doc.getStyleList()) as { name: string }[]).map((s) => s.name)
+      expect(styles).toEqual(expect.arrayContaining(['문서제목', '중제목', '본문항목']))
+      // the title sits in a box of three rows now, and the schedule is the second table
+      const controls = JSON.parse(doc.getControls()) as { ctrlId: string }[]
+      expect(controls.filter((control) => control.ctrlId === 'tbl')).toHaveLength(2)
+      expect(JSON.parse(doc.getPageNumberPos(0))).toMatchObject({
+        pageNumber: { position: 5, format: 0, dash: true },
+      })
+      expect(JSON.parse(doc.getHeaderFooter(0, false, 0))).toMatchObject({ exists: true })
+    } finally {
+      doc.free()
+    }
+    expect(textOf(out).join('\n')).toContain(title)
+  })
 })

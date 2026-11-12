@@ -20,6 +20,7 @@ import { he } from './disk-change/he'
 import { hi } from './disk-change/hi'
 import { zhTW } from './disk-change/zh-TW'
 import { vi } from './disk-change/vi'
+import { tr } from './disk-change/tr'
 
 /** Copy for the notice that another program changed the open file (issue #405) */
 export const diskChangeStrings = defineStrings({
@@ -44,4 +45,5 @@ export const diskChangeStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })

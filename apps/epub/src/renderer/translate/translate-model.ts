@@ -54,6 +54,7 @@ const AUTONYMS: Record<Lang, string> = {
   hi: 'हिन्दी',
   'zh-TW': '繁體中文',
   vi: 'Tiếng Việt',
+  tr: 'Türkçe',
 }
 
 /** a target language as the user reads it, in the UI language */

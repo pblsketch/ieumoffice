@@ -686,6 +686,7 @@ export const he = {
   ribbonLangHindi: 'הינדית',
   ribbonLangTraditionalChinese: 'סינית מסורתית',
   ribbonLangVietnamese: 'וייטנאמית',
+  ribbonLangTurkish: 'טורקית',
   ribbonGroupLanguage: 'שפה',
   ribbonNewComment: 'הערה חדשה',
   ribbonNewCommentTip: 'הוסף הערה לקטע הנבחר',

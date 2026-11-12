@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { LANGS } from '@genoffice/i18n'
 
 import { strings } from '../src/renderer/i18n/strings'
 import { odsConversionNoticeOf, odsConversionNoticeText } from '../src/renderer/ods-import'
@@ -49,8 +50,8 @@ describe('the .ods conversion notice', () => {
 describe('the .ods notice strings', () => {
   const languages = Object.keys(strings) as Lang[]
 
-  it('cover all 21 languages', () => {
-    expect(languages).toHaveLength(21)
+  it('cover every UI language', () => {
+    expect(languages).toHaveLength(LANGS.length)
   })
 
   it('every language defines both keys with the count placeholder', () => {

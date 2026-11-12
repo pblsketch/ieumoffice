@@ -2386,7 +2386,10 @@ html.genoffice-popover-open .ribbon-tabs {
 }
 
 .crumbs-empty {
+  display: block;
   font-family: inherit;
+  line-height: 22px;
+  text-overflow: ellipsis;
 }
 
 .crumb-wrap {

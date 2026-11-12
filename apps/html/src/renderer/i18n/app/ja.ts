@@ -79,7 +79,8 @@ export const ja = {
   slideThumbs: 'スライド一覧',
   slideThumbGo: 'スライド {n} に移動',
   previewNeedsSave: 'ファイルを保存すると、相対パスの画像とスタイルがプレビューに表示されます',
-  inspectHint: 'プレビューの要素をクリックして選択、ダブルクリックでテキスト編集',
+  inspectHint:
+    'プレビューの要素をクリックして選択、ダブルクリックでテキスト編集、Shift+クリックか{alt}+ドラッグで複数選択',
   nodeDynamic:
     'この要素はページのスクリプトが生成したものでソースに存在しません。ソースまたは AI で編集してください',
   nodeDynamicShort: 'スクリプト生成',

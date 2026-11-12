@@ -67,7 +67,8 @@ export const cs = {
   slideThumbs: 'Snímky',
   slideThumbGo: 'Přejít na snímek {n}',
   previewNeedsSave: 'Relativní obrázky a styly se v náhledu zobrazí po uložení souboru',
-  inspectHint: 'Klepnutím na prvek v náhledu ho vyberete, poklepáním upravíte text',
+  inspectHint:
+    'Klepnutím na prvek v náhledu ho vyberete, poklepáním upravíte text, Shift+klepnutím nebo tažením s {alt} vyberete více prvků',
   nodeDynamic:
     'Tento prvek vytvořil skript stránky a nemá zdroj; upravte ho přes zdrojový kód nebo AI',
   nodeDynamicShort: 'vytvořeno skriptem',

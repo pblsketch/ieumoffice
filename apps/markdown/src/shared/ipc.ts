@@ -60,6 +60,7 @@ export const MARKDOWN_CHANNELS = {
   exportRequest: 'markdown:export-request',
   exportDocx: 'markdown:export-docx',
   exportOdt: 'markdown:export-odt',
+  exportHwp: 'markdown:export-hwp',
   exportPdf: 'markdown:export-pdf',
   printPreview: 'markdown:print-preview',
   printDocument: 'markdown:print-document',
@@ -282,10 +283,11 @@ export interface SaveMarkdownRequest {
 }
 
 /**
- * Save As › a format the renderer builds with its export code (Word, ODT, page
- * images). The main process only approves the path; nothing is written yet.
+ * Save As › a format the renderer builds with its export code (Word, ODT,
+ * Hangul, page images). The main process only approves the path; nothing is
+ * written yet.
  */
-export type SaveAsExportFormat = 'docx' | 'odt' | 'png'
+export type SaveAsExportFormat = 'docx' | 'odt' | 'hwp' | 'hwpx' | 'png'
 
 export type SaveMarkdownResult =
   | {
@@ -361,7 +363,8 @@ export type ReadUrlResult =
     }
   | { ok: false; error: string; errorCode: string }
 
-export type ExportFormat = 'pdf' | 'docx' | 'docs' | 'png' | 'odt'
+/** 'hwp' from the menu asks for the format (.hwp or .hwpx) in its own dialog */
+export type ExportFormat = 'pdf' | 'docx' | 'docs' | 'png' | 'odt' | 'hwp' | 'hwpx'
 
 export interface ExportDocxRequest {
   /** .docx bytes, base64 */
@@ -381,6 +384,16 @@ export interface ExportOdtRequest {
   /** file name (no extension) suggested in the dialog */
   suggestedName: string
   /** Save As › ODT: the path the save dialog approved (`exportAs`); no second dialog */
+  saveAsTarget?: string
+}
+
+/** Hangul export: the Word export's .docx bytes, converted to .hwp / .hwpx in the main process */
+export interface ExportHwpRequest {
+  /** .docx bytes, base64 (the same bytes the Word export writes) */
+  base64: string
+  /** file name (no extension) suggested in the dialog */
+  suggestedName: string
+  /** Save As › HWP / HWPX: the path the save dialog approved (`exportAs`); no second dialog */
   saveAsTarget?: string
 }
 
@@ -583,6 +596,8 @@ export interface MarkdownApi {
   exportDocx(request: ExportDocxRequest): Promise<ExportResult>
   /** save dialog (.odt) → docx → ODT → confirmation when something changes → write */
   exportOdt(request: ExportOdtRequest): Promise<ExportResult>
+  /** save dialog (.hwp / .hwpx) → docx → Hangul → confirmation when something is lost → write */
+  exportHwp(request: ExportHwpRequest): Promise<ExportResult>
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   /** the PDF the print preview shows; the same options the PDF export uses */
   renderPrintPreview(request: MarkdownPrintPreviewRequest): Promise<MarkdownPrintPreviewResult>

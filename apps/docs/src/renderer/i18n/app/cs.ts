@@ -383,6 +383,7 @@ export const cs = {
   appLangHindi: 'hindi',
   appLangTraditionalChinese: 'tradiční čínština',
   appLangVietnamese: 'vietnamština',
+  appLangTurkish: 'turečtina',
   appWrapTextMenu: 'Obtékání textu',
   appViewImage: 'Zobrazit obrázek',
   appSaveImageAs: 'Uložit obrázek jako…',

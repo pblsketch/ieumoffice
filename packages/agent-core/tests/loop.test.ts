@@ -329,7 +329,11 @@ describe('AgentLoop', () => {
     for (let i = 0; i < 14; i++) await flush()
     // the first turn seeds the signature; three identical repeats abort the run
     expect(transport.requests).toHaveLength(4)
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('kept repeating'))
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('kept repeating'), {
+      kind: 'repeating',
+      executed: 4,
+      mutated: false,
+    })
     expect(onDone).not.toHaveBeenCalled()
     expect(loop.busy).toBe(false)
     // the failed run rolled back out of history
@@ -395,7 +399,11 @@ describe('AgentLoop', () => {
     loop.run('go')
     for (let i = 0; i < 20; i++) await flush()
     expect(transport.requests).toHaveLength(8)
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('Every tool call failed'))
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('Every tool call failed'), {
+      kind: 'tool-errors',
+      executed: 0,
+      mutated: false,
+    })
   })
 
   it('a successful tool call resets the failed-turn streak', async () => {
@@ -1575,8 +1583,61 @@ describe('AgentLoop compaction', () => {
     loop.run('x')
     for (let i = 0; i < 6; i++) await flush()
     expect(onError).toHaveBeenCalledTimes(1)
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('missing required arguments'))
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('missing required arguments'), {
+      kind: 'tool-input',
+      faults: { missing: 3 },
+      tools: ['apply_ops'],
+      executed: 0,
+      mutated: false,
+    })
     expect(transport.requests).toHaveLength(3)
+  })
+
+  it('says what it stopped over: each fault of the streak, the tools named, what the run had done', async () => {
+    const bad = [
+      { id: 'b1', name: 'apply_ops', input: {}, truncated: true },
+      { id: 'b2', name: 'apply_ops', input: {}, inputError: 'Unexpected token' },
+      { id: 'b3', name: 'made_up', input: {}, truncated: true },
+    ]
+    const transport = scriptedTransport([
+      (cb: AgentStreamCallbacks) => {
+        cb.onToolCall({ id: 'ok', name: 'apply_ops', input: { ops: [] } })
+        cb.onDone()
+      },
+      // an unusable turn before a good one is not part of the streak that stops the run
+      (cb: AgentStreamCallbacks) => {
+        cb.onToolCall({ id: 'early', name: 'apply_ops', input: {} })
+        cb.onDone()
+      },
+      (cb: AgentStreamCallbacks) => {
+        cb.onToolCall({ id: 'ok2', name: 'apply_ops', input: { ops: [] } })
+        cb.onDone()
+      },
+      ...bad.map((call) => (cb: AgentStreamCallbacks) => {
+        cb.onToolCall(call)
+        cb.onDone()
+      }),
+    ])
+    const skill = makeSkill(() => ({ output: 'done', summary: 'edit', mutated: true }))
+    skill.tools = [
+      {
+        name: 'apply_ops',
+        description: 'd',
+        inputSchema: { type: 'object', properties: {}, required: ['ops'] },
+      },
+    ]
+    const onError = vi.fn()
+    const loop = new AgentLoop({ transport, skill, events: { onError } })
+    loop.run('x')
+    for (let i = 0; i < 16; i++) await flush()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]![1]).toEqual({
+      kind: 'tool-input',
+      faults: { truncated: 2, unparseable: 1 },
+      tools: ['apply_ops', 'unknown'],
+      executed: 2,
+      mutated: true,
+    })
   })
 
   it('tools without a required list, and optional fields, are not checked', () => {
@@ -1946,6 +2007,37 @@ describe('AgentLoop compaction', () => {
     expect(coerceArgumentFields(undefined, same)).toBe(same)
   })
 
+  it('coerceArgumentFields reads the words true and false in a boolean field', () => {
+    const tool = {
+      name: 'import_attachment',
+      description: 'd',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          attachment: { type: 'string' },
+          continue_request: { type: 'boolean' },
+          either: { type: ['boolean', 'string'] },
+        },
+      },
+    }
+    expect(coerceArgumentFields(tool, { attachment: 'true', continue_request: 'true' })).toEqual({
+      attachment: 'true',
+      continue_request: true,
+    })
+    expect(coerceArgumentFields(tool, { continue_request: ' False ' })).toEqual({
+      continue_request: false,
+    })
+    // any other word is left for invalidArgumentFields to report
+    expect(coerceArgumentFields(tool, { continue_request: 'yes' })).toEqual({
+      continue_request: 'yes',
+    })
+    expect(invalidArgumentFields(tool, { continue_request: 'yes' })).toHaveLength(1)
+    // a field that takes a string keeps the string
+    expect(coerceArgumentFields(tool, { either: 'true' })).toEqual({ either: 'true' })
+    const same = { continue_request: true }
+    expect(coerceArgumentFields(tool, same)).toBe(same)
+  })
+
   it('the loop hands the handler the coerced arguments instead of a retry', async () => {
     const transport = scriptedTransport([
       (cb) => {
@@ -2085,7 +2177,10 @@ describe('AgentLoop compaction', () => {
     for (let i = 0; i < 6; i++) await flush()
     expect(executed).toHaveLength(0)
     expect(transport.requests).toHaveLength(3)
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('retries stopped'))
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining('retries stopped'),
+      expect.objectContaining({ kind: 'tool-input', faults: { unparseable: 3 } }),
+    )
     expect(onDone).not.toHaveBeenCalled()
     expect(loop.busy).toBe(false)
   })

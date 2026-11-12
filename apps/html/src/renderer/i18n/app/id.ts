@@ -79,7 +79,8 @@ export const id = {
   slideThumbs: 'Daftar slide',
   slideThumbGo: 'Buka slide {n}',
   previewNeedsSave: 'Gambar dan gaya relatif akan tampil di pratinjau setelah file disimpan',
-  inspectHint: 'Klik elemen di pratinjau untuk memilih, klik dua kali untuk mengedit teks',
+  inspectHint:
+    'Klik elemen di pratinjau untuk memilih, klik dua kali untuk mengedit teks, Shift+klik atau {alt}+seret untuk memilih beberapa',
   nodeDynamic:
     'Elemen ini dibuat oleh skrip halaman dan tidak ada di sumber; edit lewat sumber atau AI',
   nodeDynamicShort: 'dibuat skrip',

@@ -22,7 +22,42 @@ import {
 } from './char-count.mjs'
 import { documentStats, engineChars, engineLength, engineSlice } from './document-info.mjs'
 import { installDialogTheme } from './dialog-theme.mjs'
-import { missingFonts, setMissingFontLabels, whenPcFontsSettled } from './pc-fonts.mjs'
+import {
+  BORDER_LINES,
+  BREAK_KINDS,
+  CELL_DIAGONALS,
+  CELL_DIAGONAL_LINE,
+  CHAR_WIDTH_PERCENT,
+  DEFAULT_COLUMN_GAP_MM,
+  MIN_TEXT_CONTRAST,
+  LETTER_SPACING_PERCENT,
+  DOCUMENT_FONTS,
+  MAX_COLUMNS,
+  MAX_COLUMN_GAP_MM,
+  MAX_EQUATIONS,
+  MAX_EQUATION_SCRIPT,
+  NUMBERED_MARKS,
+  PAGE_NUMBER_PLACES,
+  PAGE_NUMBER_SHAPES,
+  PICTURE_WIDTH_MM,
+  ROW_HEIGHT_MM,
+  TABLE_LOOKS,
+  TABLE_WIDTH_PERCENT,
+  TITLE_BOX_COLORS,
+  TITLE_BOX_LOOKS,
+  borderRuleOf,
+  cellBorders,
+  contrastRatio,
+  headerPieces,
+  pageNumberOf as pageNumberSettingOf,
+  paragraphBorderOf,
+  standInFont,
+  tabStopsOf,
+  tableLookBlocks,
+  titleBoxCells,
+} from './document-looks.mjs'
+import { equationSvgForThisPc } from './equation-fonts.mjs'
+import { fontOnPc, missingFonts, setMissingFontLabels, whenPcFontsSettled } from './pc-fonts.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
 
@@ -162,7 +197,7 @@ const PRINT_BATCH_MS = 2000
 function printPageOf(doc, page) {
   const info = JSON.parse(doc.getPageInfo(page))
   return {
-    svg: doc.renderPageSvgWithProfile(page, 'print'),
+    svg: equationSvgForThisPc(doc.renderPageSvgWithProfile(page, 'print')),
     width: info.width,
     height: info.height,
   }
@@ -260,6 +295,9 @@ const parse = (json) => JSON.parse(json)
 /** A replacement stays inside one paragraph: no line breaks or other control characters. */
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+/** The control characters a new paragraph may not hold: all of them but the tab. */
+// eslint-disable-next-line no-control-regex -- the tab is let through on purpose
+const PARAGRAPH_CONTROL_CHARS = /[\u0000-\u0008\u000a-\u001f\u007f]/
 
 function fail(code, message) {
   const error = new Error(message)
@@ -1584,6 +1622,18 @@ function formatOf(format, allowParagraph) {
     // no highlight is a white one: the engine has no other way to say it here
     chars.shadeColor = none ? '#ffffff' : format.highlight.toLowerCase()
   }
+  // Hangul's 장평 and 자간, the same for every script of the text
+  for (const [name, key, { min, max }] of [
+    ['charWidth', 'ratios', CHAR_WIDTH_PERCENT],
+    ['letterSpacing', 'spacings', LETTER_SPACING_PERCENT],
+  ]) {
+    if (!given(name)) continue
+    const percent = format[name]
+    if (typeof percent !== 'number' || !(percent >= min && percent <= max)) {
+      throw fail('BAD_ARGUMENT', `${name} must be ${min} to ${max} percent`)
+    }
+    chars[key] = Array(FONT_LANGUAGES).fill(Math.round(percent))
+  }
   let font = null
   if (given('font')) {
     const name = typeof format.font === 'string' ? format.font.trim() : ''
@@ -1593,6 +1643,36 @@ function formatOf(format, allowParagraph) {
     font = name
   }
   const paragraph = {}
+  // a border round the paragraph, or on some of its sides, and a colour behind it.
+  // Neighbours with the same border are drawn as one box.
+  if (given('border')) {
+    try {
+      Object.assign(paragraph, paragraphBorderOf(format.border), { borderConnect: true })
+    } catch (thrown) {
+      throw fail('BAD_ARGUMENT', thrown.message)
+    }
+  }
+  // tab stops: resolveFormat turns them into the engine's, which are measured from the
+  // left edge of the text and so need the width of the page
+  if (given('tabs')) {
+    try {
+      paragraph.tabs = tabStopsOf(format.tabs)
+    } catch (thrown) {
+      throw fail('BAD_ARGUMENT', thrown.message)
+    }
+  }
+  if (given('background')) {
+    const none = format.background === 'none'
+    if (!none && (typeof format.background !== 'string' || !HEX_COLOR.test(format.background))) {
+      throw fail('BAD_ARGUMENT', 'background must look like #RRGGBB, or be "none"')
+    }
+    if (none) paragraph.fillType = 'none'
+    else {
+      paragraph.fillType = 'solid'
+      paragraph.fillColor = format.background.toLowerCase()
+      paragraph.patternType = -1
+    }
+  }
   if (given('align')) {
     if (!ALIGNMENTS.includes(format.align)) {
       throw fail('BAD_ARGUMENT', `align must be one of ${ALIGNMENTS.join(', ')}`)
@@ -1671,7 +1751,7 @@ function formatOf(format, allowParagraph) {
   if (hasParagraph && !allowParagraph) {
     throw fail(
       'BAD_ARGUMENT',
-      'align, lineSpacing, indents, margins, spacing, list and style belong to a whole paragraph',
+      'align, lineSpacing, indents, margins, spacing, border, background, tabs, list and style belong to a whole paragraph',
     )
   }
   if (!hasChars && !hasParagraph) throw fail('BAD_ARGUMENT', 'format names nothing to change')
@@ -1952,7 +2032,18 @@ function resolveFormat(doc, spec) {
  * default numbering; a bullet by its character).
  */
 function paragraphFormatOf(doc, paragraph) {
-  const { list, ...rest } = paragraph
+  const { list, tabs, ...rest } = paragraph
+  if (tabs) {
+    // a stop's place is counted from the left edge of the text, whatever the paragraph's
+    // margins are, in twice the engine's unit; the right edge is the width of a column
+    // less the right margin the same call sets
+    const edge = columnWidthUnits(doc, 0) * 2 - (rest.marginRight ?? 0)
+    rest.tabStops = tabs.map((tab) => ({
+      position: tab.atMm === null ? edge : Math.round(((tab.atMm * 7200) / 25.4) * 2),
+      type: tab.type,
+      fill: tab.fill,
+    }))
+  }
   if (!list) return rest
   if (list.kind === 'none') return { ...rest, headType: 'None' }
   const id =
@@ -2544,7 +2635,8 @@ function checkParagraphs(paragraphs) {
     Array.isArray(paragraphs) &&
     paragraphs.length > 0 &&
     paragraphs.length <= MAX_INSERTED_PARAGRAPHS &&
-    paragraphs.every((text) => typeof text === 'string' && !CONTROL_CHARS.test(text))
+    // a tab is text: it runs to the next tab stop of its paragraph
+    paragraphs.every((text) => typeof text === 'string' && !PARAGRAPH_CONTROL_CHARS.test(text))
   if (!valid) {
     throw fail(
       'BAD_ARGUMENT',
@@ -2612,7 +2704,7 @@ function fontOf(read) {
  * one line, so each cell carries the font of the paragraph the table is put next to and a
  * height that fits a line of it (a cell whose text wraps still grows).
  */
-function tableHtml(table, font, header, shadeHeader) {
+function tableHtml(table, font, header, shadeHeader, columns = null) {
   const height = Math.round((font.points * TABLE_LINE_SPACING + TABLE_CELL_MARGIN_PT) * 10) / 10
   const text = [
     font.family ? `font-family:${font.family};mso-fareast-font-family:${font.family}` : '',
@@ -2620,14 +2712,19 @@ function tableHtml(table, font, header, shadeHeader) {
   ]
     .filter(Boolean)
     .join(';')
-  const box = `${TABLE_CELL_STYLE};height:${height}pt`
-  const cell = (value) =>
-    `<td style="${box}"><span style="${text}">${escapeHtml(value)}</span></td>`
+  // a column's width is what the engine takes from its cells; left out, the columns share the width
+  const box = (col) =>
+    `${TABLE_CELL_STYLE};height:${height}pt${columns?.widths ? `;width:${columns.widths[col]}pt` : ''}`
+  const cell = (value, col) => {
+    const align = columns?.aligns?.[col]
+    const words = `<span style="${text}">${escapeHtml(value)}</span>`
+    return `<td style="${box(col)}">${align ? `<p style="text-align:${align}">${words}</p>` : words}</td>`
+  }
   // a header cell the way Hangul documents usually have it: bold, centred, on light grey;
   // as <th> the engine also marks it as a title cell, which repeats on the next page. The
   // grey is left out where it is put on afterwards (shadeHeaderCells)
-  const head = (value) =>
-    `<th style="${box}${shadeHeader ? `;background-color:${TABLE_HEADER_FILL}` : ''}"><p style="text-align:center">` +
+  const head = (value, col) =>
+    `<th style="${box(col)}${shadeHeader ? `;background-color:${TABLE_HEADER_FILL}` : ''}"><p style="text-align:center">` +
     `<span style="${text};font-weight:bold">${escapeHtml(value)}</span></p></th>`
   const rows = table.map(
     (row, index) => `<tr>${row.map(header && index === 0 ? head : cell).join('')}</tr>`,
@@ -2636,13 +2733,561 @@ function tableHtml(table, font, header, shadeHeader) {
 }
 
 /**
+ * The table just pasted into body paragraph `place`, as the table calls take one (its
+ * section, paragraph, path and counts), or null when no table is there.
+ */
+function pastedTableAt(doc, place) {
+  const controls = parse(doc.getControlTextPositions(place.sec, place.para)).length
+  for (let control = controls - 1; control >= 0; control--) {
+    const path = [{ controlIndex: control, cellIndex: 0, cellParaIndex: 0 }]
+    try {
+      const dims = parse(doc.getTableDimensionsByPath(place.sec, place.para, JSON.stringify(path)))
+      return {
+        sec: place.sec,
+        para: place.para,
+        path,
+        rows: dims.rowCount,
+        cols: dims.colCount,
+        cells: dims.cellCount,
+      }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+/**
+ * Set the lines of a block of cells of a body table (`rect`, zero-based and inclusive) by
+ * border rules. Each cell gets all its changed edges in one call, and a line between two
+ * cells of the block is the same on both: the engine carries a cell's edge over to its
+ * neighbour, so two calls that disagree would leave the later one's line.
+ */
+function setCellBorders(doc, table, grid, rect, rules, more = null) {
+  const control = table.path[0].controlIndex
+  const borders = cellBorders(grid, rect, rules)
+  let count = 0
+  for (const cell of grid) {
+    const inside =
+      cell.row + cell.rowSpan - 1 >= rect.top &&
+      cell.row <= rect.bottom &&
+      cell.col + cell.colSpan - 1 >= rect.left &&
+      cell.col <= rect.right
+    if (!inside) continue
+    const props = { ...(more ?? {}), ...(borders.get(cell.cell) ?? {}) }
+    if (Object.keys(props).length === 0) continue
+    expectOk(
+      doc.setCellProperties(table.sec, table.para, control, cell.cell, JSON.stringify(props)),
+      'format the cell',
+    )
+    count += 1
+  }
+  return count
+}
+
+/** How the body cells of a new table may be aligned. */
+const TABLE_ALIGNS = ['left', 'center', 'right']
+/** Font sizes a new table's text takes, in points. */
+const MIN_TABLE_FONT_PT = 6
+const MAX_TABLE_FONT_PT = 40
+/** The least share of the width a column is given, so that none comes out unusably thin. */
+const MIN_COLUMN_SHARE = 0.04
+
+/**
+ * A look's format with a font this PC has where it names one the PC is known to lack
+ * (standInFont): a look the AI picked is written in fonts the user can see and print.
+ * `used` collects what stood in for what, for the answer.
+ */
+function standInFormat(format, used) {
+  if (!format || typeof format !== 'object' || typeof format.font !== 'string') return format
+  const asked = format.font.trim()
+  const stand = standInFont(asked, fontOnPc)
+  if (!stand) return format
+  if (!used.some((entry) => entry.asked === asked)) used.push({ asked, used: stand.font })
+  return { ...format, font: stand.font, ...(stand.bold ? { bold: true } : {}) }
+}
+
+/**
+ * How a new table is to look, checked. A boolean is the header row alone, as the call took
+ * before it knew looks. `look` is one of TABLE_LOOKS; `headerColor` the fill of the header
+ * row ("none" for no fill); `columnWidths` the columns' shares of the width; `align` the
+ * alignment of the body cells, one for all or one for each column; `size` and `font` the
+ * text of the table, instead of that of the paragraph it is put next to.
+ */
+function tableLookOf(given, cols) {
+  const plain = {
+    header: given === true,
+    look: 'grid',
+    headerColor: null,
+    shares: null,
+    across: false,
+    widthShare: 1,
+    place: null,
+    repeatHeader: false,
+  }
+  if (given === undefined || given === null || typeof given === 'boolean') {
+    return { ...plain, aligns: null, size: null, font: null, standIns: [] }
+  }
+  if (typeof given !== 'object' || Array.isArray(given)) {
+    throw fail('BAD_ARGUMENT', 'the look of the table must be an object')
+  }
+  const look = given.look ?? 'grid'
+  if (!TABLE_LOOKS.includes(look)) {
+    throw fail('BAD_ARGUMENT', `look must be one of ${TABLE_LOOKS.join(', ')}`)
+  }
+  if (
+    given.acrossColumns !== undefined &&
+    given.acrossColumns !== null &&
+    typeof given.acrossColumns !== 'boolean'
+  ) {
+    throw fail('BAD_ARGUMENT', 'acrossColumns must be true or false')
+  }
+  const across = given.acrossColumns === true
+  let widthShare = 1
+  if (given.widthPercent !== undefined && given.widthPercent !== null) {
+    const percent = given.widthPercent
+    const { min, max } = TABLE_WIDTH_PERCENT
+    if (typeof percent !== 'number' || !(percent >= min && percent <= max)) {
+      throw fail('BAD_ARGUMENT', `widthPercent must be ${min} to ${max}`)
+    }
+    widthShare = percent / 100
+  }
+  let place = null
+  if (given.place !== undefined && given.place !== null) {
+    if (!TABLE_ALIGNS.includes(given.place)) {
+      throw fail('BAD_ARGUMENT', `place must be one of ${TABLE_ALIGNS.join(', ')}`)
+    }
+    place = given.place
+  }
+  if (
+    given.repeatHeader !== undefined &&
+    given.repeatHeader !== null &&
+    typeof given.repeatHeader !== 'boolean'
+  ) {
+    throw fail('BAD_ARGUMENT', 'repeatHeader must be true or false')
+  }
+  const repeatHeader = given.repeatHeader === true
+  let headerColor = null
+  if (given.headerColor !== undefined && given.headerColor !== null) {
+    const none = given.headerColor === 'none'
+    if (!none && (typeof given.headerColor !== 'string' || !HEX_COLOR.test(given.headerColor))) {
+      throw fail('BAD_ARGUMENT', 'headerColor must look like #RRGGBB, or be "none"')
+    }
+    headerColor = none ? 'none' : given.headerColor.toLowerCase()
+  }
+  let shares = null
+  if (given.columnWidths !== undefined && given.columnWidths !== null) {
+    const list = given.columnWidths
+    const valid =
+      Array.isArray(list) &&
+      list.length === cols &&
+      list.every((share) => typeof share === 'number' && Number.isFinite(share) && share > 0)
+    if (!valid) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `columnWidths must be ${cols} positive numbers, one for each column`,
+      )
+    }
+    const sum = list.reduce((total, share) => total + share, 0)
+    // a column far thinner than the rest could not hold a character
+    const floored = list.map((share) => Math.max(share / sum, MIN_COLUMN_SHARE))
+    const total = floored.reduce((all, share) => all + share, 0)
+    shares = floored.map((share) => share / total)
+  }
+  let aligns = null
+  if (given.align !== undefined && given.align !== null) {
+    const list = Array.isArray(given.align) ? given.align : Array(cols).fill(given.align)
+    if (list.length !== cols || !list.every((align) => TABLE_ALIGNS.includes(align))) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `align must be one of ${TABLE_ALIGNS.join(', ')}, or a list of ${cols} of them`,
+      )
+    }
+    aligns = list
+  }
+  let size = null
+  if (given.size !== undefined && given.size !== null) {
+    if (
+      typeof given.size !== 'number' ||
+      !(given.size >= MIN_TABLE_FONT_PT && given.size <= MAX_TABLE_FONT_PT)
+    ) {
+      throw fail('BAD_ARGUMENT', `size must be ${MIN_TABLE_FONT_PT} to ${MAX_TABLE_FONT_PT} points`)
+    }
+    size = given.size
+  }
+  const standIns = []
+  let font = null
+  if (given.font !== undefined && given.font !== null) {
+    const name = typeof given.font === 'string' ? given.font.trim() : ''
+    if (!name || name.length > MAX_FONT_NAME || CONTROL_CHARS.test(name)) {
+      throw fail('BAD_ARGUMENT', `font must be a font name of 1 to ${MAX_FONT_NAME} characters`)
+    }
+    // the name goes into a style attribute: nothing that could end it
+    font = standInFormat({ font: name }, standIns).font.replace(/["';<>]/g, '')
+  }
+  return {
+    header: given.header === true,
+    look,
+    headerColor,
+    shares,
+    across,
+    widthShare,
+    place,
+    repeatHeader,
+    aligns,
+    size,
+    font,
+    standIns,
+  }
+}
+
+/** How the text of a cell sits between its top and bottom edge, with the engine's code. */
+const CELL_VERTICAL_ALIGNS = { top: 0, middle: 1, bottom: 2 }
+/** Border rules one call takes at most. */
+const MAX_BORDER_RULES = 12
+
+/**
+ * What a formatCells call changes, checked: the cell properties every named cell takes
+ * (`props`: fill, vertical alignment) and the border rules. A string is a background alone.
+ */
+function cellLookOf(given) {
+  const spec = typeof given === 'string' ? { background: given } : given
+  const nothing =
+    'name what to change: background, borders, verticalAlign, heightMm, diagonal or text'
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw fail('BAD_ARGUMENT', nothing)
+  const props = {}
+  if (spec.background !== undefined && spec.background !== null) {
+    const none = spec.background === 'none'
+    if (!none && (typeof spec.background !== 'string' || !HEX_COLOR.test(spec.background))) {
+      throw fail('BAD_ARGUMENT', 'background must look like #RRGGBB, or be "none"')
+    }
+    if (none) props.fillType = 'none'
+    else {
+      // pattern -1 is none (see shadeHeaderCells)
+      props.fillType = 'solid'
+      props.fillColor = spec.background.toLowerCase()
+      props.patternType = -1
+    }
+  }
+  if (spec.verticalAlign !== undefined && spec.verticalAlign !== null) {
+    if (!Object.hasOwn(CELL_VERTICAL_ALIGNS, spec.verticalAlign)) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `verticalAlign must be one of ${Object.keys(CELL_VERTICAL_ALIGNS).join(', ')}`,
+      )
+    }
+    props.verticalAlign = CELL_VERTICAL_ALIGNS[spec.verticalAlign]
+  }
+  let rules = []
+  if (spec.borders !== undefined && spec.borders !== null) {
+    if (
+      !Array.isArray(spec.borders) ||
+      spec.borders.length === 0 ||
+      spec.borders.length > MAX_BORDER_RULES
+    ) {
+      throw fail('BAD_ARGUMENT', `borders must be 1 to ${MAX_BORDER_RULES} rules`)
+    }
+    rules = spec.borders.map((rule) => {
+      try {
+        return borderRuleOf(rule)
+      } catch (thrown) {
+        throw fail('BAD_ARGUMENT', thrown.message)
+      }
+    })
+  }
+  if (spec.diagonal !== undefined && spec.diagonal !== null) {
+    if (!Object.hasOwn(CELL_DIAGONALS, spec.diagonal)) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `diagonal must be one of ${Object.keys(CELL_DIAGONALS).join(', ')}`,
+      )
+    }
+    Object.assign(props, CELL_DIAGONALS[spec.diagonal], CELL_DIAGONAL_LINE)
+  }
+  if (spec.heightMm !== undefined && spec.heightMm !== null) {
+    const mm = spec.heightMm
+    if (typeof mm !== 'number' || !(mm >= ROW_HEIGHT_MM.min && mm <= ROW_HEIGHT_MM.max)) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `heightMm must be ${ROW_HEIGHT_MM.min} to ${ROW_HEIGHT_MM.max} millimetres`,
+      )
+    }
+    props.height = Math.round((mm * 7200) / 25.4)
+  }
+  // the text of the cells: a format as a style takes it (no style of its own, no list)
+  const standIns = []
+  let text = null
+  if (spec.text !== undefined && spec.text !== null) {
+    text = styleFormatOf(standInFormat(spec.text, standIns), true)
+    if (text?.paragraph?.list) throw fail('BAD_ARGUMENT', 'a list is not set for cells')
+  }
+  if (Object.keys(props).length === 0 && rules.length === 0 && !text) {
+    throw fail('BAD_ARGUMENT', nothing)
+  }
+  return { props, rules, text, standIns }
+}
+
+/**
+ * Give the text of every cell of a block (`rect`, zero-based and inclusive) a format:
+ * each paragraph of each cell takes the paragraph part, and its characters the character
+ * part. An empty paragraph takes the characters too, for what is typed into it later.
+ */
+function formatCellText(doc, table, grid, rect, format) {
+  const control = table.path[0].controlIndex
+  for (const cell of grid) {
+    const inside =
+      cell.row + cell.rowSpan - 1 >= rect.top &&
+      cell.row <= rect.bottom &&
+      cell.col + cell.colSpan - 1 >= rect.left &&
+      cell.col <= rect.right
+    if (!inside) continue
+    const paragraphs = doc.getCellParagraphCount(table.sec, table.para, control, cell.cell)
+    for (let k = 0; k < paragraphs; k++) {
+      if (format.paragraph) {
+        expectOk(
+          doc.applyParaFormatInCell(table.sec, table.para, control, cell.cell, k, format.paragraph),
+          'format the cell text',
+        )
+      }
+      if (format.chars) {
+        const length = doc.getCellParagraphLength(table.sec, table.para, control, cell.cell, k)
+        expectOk(
+          doc.applyCharFormatInCell(
+            table.sec,
+            table.para,
+            control,
+            cell.cell,
+            k,
+            0,
+            length,
+            format.chars,
+          ),
+          'format the cell text',
+        )
+      }
+    }
+  }
+}
+
+/** Styles one styleParagraphs call makes or changes at most, and rules it applies. */
+const MAX_BATCH_STYLES = 12
+const MAX_STYLE_RULES = 40
+/** Longest text a paragraph is told by: how it starts. */
+const MAX_STARTS_WITH = 40
+/** Paragraphs one styleParagraphs call styles at most. */
+const MAX_STYLED_PARAGRAPHS = 5000
+
+/**
+ * A styleParagraphs call, checked: the paragraph styles to make or change (`styles`, each
+ * with its look as formatOf gives it) and the rules that say which paragraphs take which
+ * style (`rules`). A rule names its paragraphs by how they start (`startsWith`, every body
+ * paragraph that starts so, leading spaces aside), by the numbered level they start with
+ * (`numbered`, a key of NUMBERED_MARKS: every "1." "2." … paragraph) or by text one
+ * paragraph contains (`find`, with `occurrence` when the text occurs more than once). A
+ * style's `keepWithNext` keeps its paragraphs on the page of the one after them.
+ */
+function styleBatchOf(spec) {
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+    throw fail('BAD_ARGUMENT', 'name styles to make and paragraphs to apply them to')
+  }
+  const standIns = []
+  const styles = []
+  if (spec.styles !== undefined && spec.styles !== null) {
+    if (!Array.isArray(spec.styles) || spec.styles.length > MAX_BATCH_STYLES) {
+      throw fail('BAD_ARGUMENT', `styles must be a list of at most ${MAX_BATCH_STYLES} styles`)
+    }
+    for (const given of spec.styles) {
+      if (!given || typeof given !== 'object' || Array.isArray(given)) {
+        throw fail('BAD_ARGUMENT', 'each style needs a name and its look')
+      }
+      const name = styleNameOf(given.name, 'the name of a style')
+      if (styles.some((style) => style.name.toLowerCase() === name.toLowerCase())) {
+        throw fail('BAD_ARGUMENT', `the style "${name}" is listed twice`)
+      }
+      const basedOn = given.basedOn == null ? null : styleNameOf(given.basedOn, 'basedOn')
+      const look = styleFormatOf(standInFormat(given.format, standIns), true)
+      const keep = given.keepWithNext
+      if (keep !== undefined && keep !== null && typeof keep !== 'boolean') {
+        throw fail('BAD_ARGUMENT', 'keepWithNext must be true or false')
+      }
+      styles.push({ name, basedOn, look, keepWithNext: keep ?? null })
+    }
+  }
+  const rules = []
+  if (spec.apply !== undefined && spec.apply !== null) {
+    if (!Array.isArray(spec.apply) || spec.apply.length > MAX_STYLE_RULES) {
+      throw fail('BAD_ARGUMENT', `apply must be a list of at most ${MAX_STYLE_RULES} rules`)
+    }
+    for (const given of spec.apply) {
+      if (!given || typeof given !== 'object' || Array.isArray(given)) {
+        throw fail('BAD_ARGUMENT', 'each rule needs a style and startsWith or find')
+      }
+      const style = styleNameOf(given.style, 'the style of a rule')
+      const starts = given.startsWith
+      const find = given.find
+      const numbered = given.numbered
+      const hasStarts = starts !== undefined && starts !== null
+      const hasFind = find !== undefined && find !== null
+      const hasNumbered = numbered !== undefined && numbered !== null
+      if (Number(hasStarts) + Number(hasFind) + Number(hasNumbered) !== 1) {
+        throw fail(
+          'BAD_ARGUMENT',
+          'each rule names its paragraphs by startsWith, by numbered or by find, one of the three',
+        )
+      }
+      if (hasNumbered) {
+        if (typeof numbered !== 'string' || !Object.hasOwn(NUMBERED_MARKS, numbered)) {
+          throw fail(
+            'BAD_ARGUMENT',
+            `numbered must be one of ${Object.keys(NUMBERED_MARKS).join(', ')}`,
+          )
+        }
+        rules.push({ style, startsWith: null, numbered, find: null, occurrence: null })
+        continue
+      }
+      if (hasStarts) {
+        const text = typeof starts === 'string' ? starts.trim() : ''
+        if (!text || text.length > MAX_STARTS_WITH || CONTROL_CHARS.test(text)) {
+          throw fail(
+            'BAD_ARGUMENT',
+            `startsWith must be 1 to ${MAX_STARTS_WITH} characters of one line`,
+          )
+        }
+        rules.push({ style, startsWith: text, numbered: null, find: null, occurrence: null })
+        continue
+      }
+      if (typeof find !== 'string' || !find || CONTROL_CHARS.test(find)) {
+        throw fail('BAD_ARGUMENT', 'find must be text of one paragraph')
+      }
+      rules.push({
+        style,
+        startsWith: null,
+        numbered: null,
+        find,
+        occurrence: Number.isInteger(given.occurrence) ? given.occurrence : null,
+      })
+    }
+  }
+  if (styles.length === 0 && rules.length === 0) {
+    throw fail('BAD_ARGUMENT', 'name styles to make and paragraphs to apply them to')
+  }
+  return { styles, rules, standIns }
+}
+
+/**
+ * A title box call, checked: its look, its colours, and the character formatting the title
+ * takes over the look it has now (null when none was given).
+ */
+function titleBoxOf(spec) {
+  const given = spec ?? {}
+  if (typeof given !== 'object' || Array.isArray(given)) {
+    throw fail('BAD_ARGUMENT', 'the title box must be an object')
+  }
+  const look = given.look ?? 'bands'
+  if (!TITLE_BOX_LOOKS.includes(look)) {
+    throw fail('BAD_ARGUMENT', `look must be one of ${TITLE_BOX_LOOKS.join(', ')}`)
+  }
+  const colorOf = (value, what) => {
+    if (value === undefined || value === null) return null
+    if (typeof value !== 'string' || !HEX_COLOR.test(value)) {
+      throw fail('BAD_ARGUMENT', `${what} must look like #RRGGBB`)
+    }
+    return value.toLowerCase()
+  }
+  const standIns = []
+  const text = {}
+  for (const key of ['font', 'size', 'bold', 'textColor']) {
+    if (given[key] !== undefined && given[key] !== null)
+      text[key === 'textColor' ? 'color' : key] = given[key]
+  }
+  const color = colorOf(given.color, 'color') ?? TITLE_BOX_COLORS[look]
+  // words that cannot be told from what is behind them are no title: bands, lines and a
+  // frame leave the white page behind the words, and a fill may be as pale as the words
+  const behind = look === 'shaded' ? color : '#ffffff'
+  let textColorDropped = false
+  if (
+    typeof text.color === 'string' &&
+    HEX_COLOR.test(text.color) &&
+    contrastRatio(text.color, behind) < MIN_TEXT_CONTRAST
+  ) {
+    delete text.color
+    textColorDropped = true
+  }
+  return {
+    look,
+    color,
+    color2: colorOf(given.color2, 'color2'),
+    text: Object.keys(text).length > 0 ? standInFormat(text, standIns) : null,
+    standIns,
+    textColorDropped,
+  }
+}
+
+/**
+ * Controls that set up the page from the paragraph they sit in (the first one of a
+ * document, usually) without being content of it: the section and column definitions, the
+ * page number, the header and footer, what a page hides, and a new page number.
+ */
+const PAGE_CONTROLS = new Set(['secd', 'cold', 'pgnp', 'head', 'foot', 'pghd', 'nwno'])
+
+/**
+ * Whether body paragraph `box.index` holds an object that is content (a table, a picture, a
+ * note, a field), as opposed to the controls that set up the page. The engine names the
+ * controls of the first section's body by paragraph; in a later section they cannot be told
+ * apart here, so any object counts there.
+ */
+function holdsContentObject(doc, sec, box) {
+  if (box.objectPositions(box.index).length === 0) return false
+  if (sec !== 0) return true
+  try {
+    return parse(doc.getControls()).some(
+      (control) =>
+        control.list === 0 && control.para === box.index && !PAGE_CONTROLS.has(control.ctrlId),
+    )
+  } catch {
+    return true
+  }
+}
+
+/** Longest header or footer text one call writes. */
+const MAX_HEADER_TEXT = 200
+/**
+ * Control characters a header or footer this app wrote may hold: the marks of its page
+ * number fields. Any other (a table, a picture, a line break) means someone laid it out by
+ * hand, and it is left alone.
+ */
+// eslint-disable-next-line no-control-regex
+const HEADER_FIELD_MARKS = /[\u0012\u0015\u0016\u0017]/g
+// eslint-disable-next-line no-control-regex
+const ANY_CONTROL = /[\u0000-\u001f]/g
+/** The controls and spaces a paragraph's text may start with before its words. */
+// eslint-disable-next-line no-control-regex
+const LEADING_CONTROLS = /^[\s\u0000-\u001f]+/
+
+/** Whether a header or footer as the engine reports it is one paragraph of text and fields. */
+function plainHeader(found) {
+  if ((found.paraCount ?? 1) > 1) return false
+  return (
+    String(found.text ?? '')
+      .replace(HEADER_FIELD_MARKS, '')
+      .search(ANY_CONTROL) < 0
+  )
+}
+
+/** A header or footer's text as the model reads it: a field's mark shown as a placeholder. */
+const headerTextOf = (text) =>
+  String(text ?? '')
+    .replace(HEADER_FIELD_MARKS, '{field}')
+    .replace(ANY_CONTROL, ' ')
+
+/**
  * Give the header row of a table just pasted in body paragraph `place` its grey, cell by
  * cell. Pasted with the grey, the engine takes the first cell's border and fill for the
  * table's own, and Hancom Hangul paints a table's own fill behind every cell: the whole
  * table came out grey. Pasted without it, the table's own has no fill, and the engine
  * colours each cell on its own. No table there leaves the paste as it is.
  */
-function shadeHeaderCells(doc, place, cols) {
+function shadeHeaderCells(doc, place, cols, color = TABLE_HEADER_FILL) {
   const controls = parse(doc.getControlTextPositions(place.sec, place.para)).length
   for (let control = controls - 1; control >= 0; control--) {
     try {
@@ -2657,7 +3302,7 @@ function shadeHeaderCells(doc, place, cols) {
     // pattern -1 is none: left out, the engine puts in 0, which Hangul draws as horizontal lines
     const fill = JSON.stringify({
       fillType: 'solid',
-      fillColor: TABLE_HEADER_FILL,
+      fillColor: color,
       patternType: -1,
     })
     for (let cell = 0; cell < cols; cell++) {
@@ -4046,6 +4691,70 @@ function textWidthPt(doc, sec) {
   return Math.max(100, Math.round((width - (page.marginGutter ?? 0)) / 100))
 }
 
+/** The columns of a section's text: how many, and the gap between them in points. */
+function columnsOf(doc, sec) {
+  let def = null
+  try {
+    def = parse(doc.getColumnDef(sec))
+  } catch {
+    // an engine without the call: one column
+  }
+  const count = Number.isInteger(def?.columnCount) && def.columnCount > 1 ? def.columnCount : 1
+  const gapPt = count > 1 && Number.isFinite(def.spacing) ? Math.max(0, def.spacing) / 100 : 0
+  return { count, gapPt }
+}
+
+/**
+ * The width one column of a section takes in the engine's units, not rounded to points:
+ * a tab stop at the right edge must not stand past it.
+ */
+function columnWidthUnits(doc, sec) {
+  const page = parse(doc.getPageDef(sec))
+  const text =
+    (page.landscape ? page.height : page.width) -
+    page.marginLeft -
+    page.marginRight -
+    (page.marginGutter ?? 0)
+  const { count, gapPt } = columnsOf(doc, sec)
+  return Math.max(4000, Math.floor((text - gapPt * 100 * (count - 1)) / count))
+}
+
+/** The width one column of a section takes, in points: the text width when it has one. */
+function columnWidthPt(doc, sec) {
+  const text = textWidthPt(doc, sec)
+  const { count, gapPt } = columnsOf(doc, sec)
+  return count > 1 ? Math.max(40, Math.floor((text - gapPt * (count - 1)) / count)) : text
+}
+
+/**
+ * Take the table of the first paragraph out of the line of text and lay it across the
+ * columns as the head of the page: it hangs from the top of the text area and pushes the
+ * text of every column below it, as the head of a test paper sits over two columns. A table
+ * left in the line would run over the text of the next column. It hangs from the page, not
+ * from its paragraph: the engine lays a table that hangs from the first paragraph too low,
+ * over the text, once that paragraph also holds a page number or a footer.
+ */
+function floatAcrossColumns(doc, sec, para, control) {
+  expectOk(
+    doc.setTableProperties(
+      sec,
+      para,
+      control,
+      JSON.stringify({
+        treatAsChar: false,
+        textWrap: 'TopAndBottom',
+        vertRelTo: 'Page',
+        horzRelTo: 'Page',
+        vertAlign: 'Top',
+        horzAlign: 'Left',
+        vertOffset: 0,
+        horzOffset: 0,
+      }),
+    ),
+    'lay the table across the columns',
+  )
+}
+
 function checkTocEntries(entries) {
   if (!Array.isArray(entries) || entries.length === 0 || entries.length > MAX_TOC_ENTRIES) {
     throw fail('BAD_ARGUMENT', `entries must list 1 to ${MAX_TOC_ENTRIES} headings`)
@@ -5404,18 +6113,34 @@ export const agentPlugin = {
      * engine may carry it into the new paragraph (it depends on the kind of object). So:
      * "before" is only done in a paragraph without objects, and "after" a paragraph whose
      * object sits at its end (a table on a line of its own, typically) adds an empty
-     * paragraph behind it instead of splitting (`plain`).
+     * paragraph behind it instead of splitting (`plain`). The page setup the first
+     * paragraph of a document holds (`onlyPageSetup`) is no such object: it stays in front
+     * when that paragraph is split at its start.
      */
-    const guardObjects = (box, where, count) => {
+    const guardObjects = (box, where, count, onlyPageSetup = false) => {
       const positions = box.objectPositions(box.index)
       if (where === 'before') {
-        return positions.length > 0
+        return positions.length > 0 && !onlyPageSetup
           ? { refusal: { ok: false, reason: 'has_objects', count } }
           : { box }
       }
       const plain = positions.some((position) => position >= box.length(box.index))
       return { box, plain }
     }
+
+    /**
+     * Whether `box` is the one empty paragraph a new document starts with: no text in it,
+     * nothing else in the document, and no control but those that set up the page (the
+     * section and column definitions every first paragraph carries, and a page number or a
+     * header set before any text). Text added at the end of such a document goes into that
+     * paragraph, as typing would, instead of leaving it in front as an empty first line.
+     */
+    const isEmptyDocument = (doc, box) =>
+      !box.inTable &&
+      doc.getSectionCount() === 1 &&
+      doc.getParagraphCount(0) === 1 &&
+      box.length(box.index) === 0 &&
+      parse(doc.getControls()).every((control) => PAGE_CONTROLS.has(control.ctrlId))
 
     /** Make an empty paragraph after paragraph `k` of `box`; its index is k + 1. */
     const openAfter = (box, k, plain) => {
@@ -5483,7 +6208,13 @@ export const agentPlugin = {
           },
         }
       }
-      return guardObjects(containerOf(doc, picked.hit), where, hits.length)
+      const box = containerOf(doc, picked.hit)
+      return guardObjects(
+        box,
+        where,
+        hits.length,
+        where === 'before' && !box.inTable && !holdsContentObject(doc, picked.hit.sec, box),
+      )
     }
 
     /**
@@ -5674,6 +6405,14 @@ export const agentPlugin = {
               const before = objectsOf(doc)
               const texts = [...paragraphs]
               let at = box.index
+              // the first text of a new document is written into its empty paragraph: an
+              // empty line in front would also push a title box or a head table down from
+              // the top of the page
+              const intoEmpty = where === 'end' && isEmptyDocument(doc, box)
+              if (intoEmpty) {
+                const first = texts.shift()
+                if (first) box.insert(at, first)
+              }
               if (where === 'before') {
                 // splitting at the start leaves an empty paragraph in front, formatted like this one
                 box.split(at, 0)
@@ -5691,7 +6430,7 @@ export const agentPlugin = {
                 if (text) box.insert(at, text)
               }
               mustKeep(before, objectsOf(doc))
-              const first = where === 'before' ? box.index : box.index + 1
+              const first = where === 'before' || intoEmpty ? box.index : box.index + 1
               return {
                 ok: true,
                 count: paragraphs.length,
@@ -5783,10 +6522,20 @@ export const agentPlugin = {
       insertTable: guarded((anchor, occurrence, where, rows, header, options) => {
         checkWhere(where)
         const table = tableOf(rows)
+        // `header` is the header row alone (a boolean) or the whole look of the table
+        const look = tableLookOf(header, table[0].length)
         const refusal = host.read((doc) => {
           const { box, refusal: why } = locate(doc, anchor, occurrence, where)
           if (!box) return why
-          return box.inTable ? { ok: false, reason: 'in_table', count: 1 } : null
+          if (box.inTable) return { ok: false, reason: 'in_table', count: 1 }
+          // a table across the columns is the head of the document: it goes in front of
+          // the first paragraph. Anywhere else the text before it would stand in the first
+          // column only, beside the table's place.
+          const { sec } = box.place(box.index, 0)
+          const head = where === 'before' && sec === 0 && box.index === 0
+          return look.across && columnsOf(doc, sec).count > 1 && !head
+            ? { ok: false, reason: 'not_at_start', count: 1 }
+            : null
         })
         if (refusal) return refusal
         return keepingObjects((mustKeep) =>
@@ -5797,17 +6546,112 @@ export const agentPlugin = {
               if (!box) throw fail('CHANGED', 'the document changed mid-call')
               const before = objectsOf(doc)
               let at = box.index
-              // read before the paragraph is split: the table is to look like the text beside it
-              const font = box.font(at)
+              // read before the paragraph is split: the table is to look like the text beside
+              // it, unless the call says what its text looks like
+              const beside = box.font(at)
+              const font = {
+                family: look.font ?? beside.family,
+                points: look.size ?? beside.points,
+              }
               if (where === 'before') box.split(at, 0)
               else {
                 openAfter(box, at, plain)
                 at += 1
               }
+              const place = box.place(at, 0)
+              // where the text runs in columns a table is one column wide, or as wide as
+              // the page when it is to lie across them; in one column the paste shares the
+              // text width by itself
+              const inColumns = box.inTable ? 1 : columnsOf(doc, place.sec).count
+              const across = look.across && inColumns > 1
+              // a table narrower than the text (an approval box, a small list) takes its
+              // share of the width; one across the columns is always as wide as the page
+              const narrow = !across && look.widthShare < 1
+              const room =
+                (across || inColumns === 1
+                  ? textWidthPt(doc, place.sec)
+                  : columnWidthPt(doc, place.sec)) * (across ? 1 : look.widthShare)
+              const shares =
+                look.shares ??
+                (inColumns > 1 || narrow ? Array(table[0].length).fill(1 / table[0].length) : null)
+              const columns =
+                shares || look.aligns
+                  ? {
+                      widths: shares
+                        ? shares.map((share) => Math.round(room * share * 10) / 10)
+                        : null,
+                      aligns: look.aligns,
+                    }
+                  : null
               // in the body the header's grey goes on after the paste, cell by cell (shadeHeaderCells)
-              box.pasteHtml(at, tableHtml(table, font, header === true, box.inTable))
-              if (header === true && !box.inTable)
-                shadeHeaderCells(doc, box.place(at, 0), table[0].length)
+              box.pasteHtml(at, tableHtml(table, font, look.header, box.inTable, columns))
+              if (!box.inTable) {
+                if (look.header && look.headerColor !== 'none') {
+                  shadeHeaderCells(
+                    doc,
+                    place,
+                    table[0].length,
+                    look.headerColor ?? TABLE_HEADER_FILL,
+                  )
+                }
+                // the lines of a look other than the plain grid, over the thin line the paste gave every cell
+                const blocks = tableLookBlocks(look.look, look.header)
+                const made =
+                  blocks.length > 0 || across || look.repeatHeader
+                    ? pastedTableAt(doc, place)
+                    : null
+                // the table stands in its paragraph like a character: the paragraph's
+                // alignment puts a narrow one at the left, in the middle or at the right
+                if (look.place && !across) {
+                  expectOk(
+                    doc.applyParaFormat(
+                      place.sec,
+                      place.para,
+                      JSON.stringify({ alignment: look.place }),
+                    ),
+                    'place the table',
+                  )
+                }
+                if (made && look.repeatHeader) {
+                  expectOk(
+                    doc.setTableProperties(
+                      made.sec,
+                      made.para,
+                      made.path[0].controlIndex,
+                      JSON.stringify({ repeatHeader: true }),
+                    ),
+                    'repeat the header row',
+                  )
+                }
+                if (made && across) {
+                  floatAcrossColumns(doc, made.sec, made.para, made.path[0].controlIndex)
+                  // the empty paragraph the table was made in and the first words become
+                  // one paragraph (they are formatted alike: the one was split off the
+                  // other). Hangul gives a head that sits in an empty paragraph of its own
+                  // a gap as high as the head under it, in the first column.
+                  expectOk(
+                    doc.mergeParagraph(made.sec, made.para + 1),
+                    'join the head and the text',
+                  )
+                }
+                if (made) {
+                  const grid = gridOf(doc, made)
+                  for (const block of blocks) {
+                    setCellBorders(
+                      doc,
+                      made,
+                      grid,
+                      {
+                        top: 0,
+                        left: 0,
+                        bottom: block.header ? 0 : made.rows - 1,
+                        right: made.cols - 1,
+                      },
+                      block.rules,
+                    )
+                  }
+                }
+              }
               const after = objectsOf(doc)
               // the new table is an object of its own; nothing that was there may be gone
               mustKeep(before, { ...after, controls: Math.min(after.controls, before.controls) })
@@ -5816,7 +6660,9 @@ export const agentPlugin = {
                 rows: table.length,
                 cols: table[0].length,
                 inTable: box.inTable,
-                place: box.place(at, 0),
+                place,
+                ...(across ? { acrossColumns: true } : {}),
+                ...(look.standIns.length > 0 ? { standIn: look.standIns } : {}),
               }
             },
             options,
@@ -6296,7 +7142,7 @@ export const agentPlugin = {
             return {
               pageCount,
               page,
-              svg: doc.renderPageSvgWithProfile(page, 'print'),
+              svg: equationSvgForThisPc(doc.renderPageSvgWithProfile(page, 'print')),
               width: info.width,
               height: info.height,
               margins: {
@@ -6507,30 +7353,44 @@ export const agentPlugin = {
       }),
 
       /**
-       * Give cells of table `number` (as listTables numbers them) a background colour, or
-       * take it away with "none". `cells` name them by row and column, from 1; a merged
-       * cell by any of the places it covers. A table inside another table's cell cannot be
-       * coloured: the engine sets cell properties by table and cell number only.
+       * Change how cells of table `number` (as listTables numbers them) look: their
+       * background colour ("none" takes it away), their border lines, and where their text
+       * sits between top and bottom, the height of their rows (`heightMm`) and the format of
+       * the text in them (`text`, as a style's format: bold, size, font, colour, align …).
+       * `cells` names them by row and column, from 1 (a merged
+       * cell by any of the places it covers), or is a block `{ fromRow, fromCol, toRow, toCol }`,
+       * or is left out for the whole table. `look` is a background alone (a string) or
+       * `{ background, borders, verticalAlign }`. A border rule's sides are those of the
+       * block; of a list of cells each one is a block of its own. A table inside another
+       * table's cell cannot be changed: the engine sets cell properties by table and cell
+       * number only.
        */
-      formatCells: guarded((number, cells, background, options) => {
-        if (!Array.isArray(cells) || cells.length === 0 || cells.length > MAX_FORMATTED_CELLS) {
-          throw fail('BAD_ARGUMENT', `cells must be 1 to ${MAX_FORMATTED_CELLS} places`)
-        }
-        for (const cell of cells) {
-          if (!cell || !Number.isInteger(cell.row) || !Number.isInteger(cell.col)) {
-            throw fail('BAD_ARGUMENT', 'each cell needs a row and a col, counted from 1')
+      formatCells: guarded((number, cells, look, options) => {
+        const whole = cells === undefined || cells === null
+        const block = !whole && !Array.isArray(cells) && typeof cells === 'object' ? cells : null
+        if (block) {
+          const corners = [block.fromRow, block.fromCol, block.toRow, block.toCol]
+          if (
+            !corners.every((value) => Number.isInteger(value) && value >= 1) ||
+            block.fromRow > block.toRow ||
+            block.fromCol > block.toCol
+          ) {
+            throw fail(
+              'BAD_ARGUMENT',
+              'a block needs fromRow, fromCol, toRow and toCol, counted from 1, from the top left to the bottom right',
+            )
+          }
+        } else if (!whole) {
+          if (!Array.isArray(cells) || cells.length === 0 || cells.length > MAX_FORMATTED_CELLS) {
+            throw fail('BAD_ARGUMENT', `cells must be 1 to ${MAX_FORMATTED_CELLS} places`)
+          }
+          for (const cell of cells) {
+            if (!cell || !Number.isInteger(cell.row) || !Number.isInteger(cell.col)) {
+              throw fail('BAD_ARGUMENT', 'each cell needs a row and a col, counted from 1')
+            }
           }
         }
-        const none = background === 'none'
-        if (!none && (typeof background !== 'string' || !HEX_COLOR.test(background))) {
-          throw fail('BAD_ARGUMENT', 'background must look like #RRGGBB, or be "none"')
-        }
-        const fill = JSON.stringify(
-          none
-            ? { fillType: 'none' }
-            : // pattern -1 is none (see shadeHeaderCells)
-              { fillType: 'solid', fillColor: background.toLowerCase(), patternType: -1 },
-        )
+        const { props, rules, text, standIns } = cellLookOf(look)
         const plan = (doc) => {
           const { tables } = tablesOf(doc)
           const table = Number.isInteger(number) ? tables[number - 1] : undefined
@@ -6541,7 +7401,40 @@ export const agentPlugin = {
             return { refusal: { ok: false, reason: 'unsupported_place', count: tables.length } }
           }
           const grid = gridOf(doc, table)
-          const targets = new Set()
+          const outside = (missing) => ({
+            refusal: {
+              ok: false,
+              reason: 'no_such_cell',
+              cells: missing,
+              rows: table.rows,
+              cols: table.cols,
+            },
+          })
+          if (whole) {
+            return {
+              table,
+              grid,
+              blocks: [{ top: 0, left: 0, bottom: table.rows - 1, right: table.cols - 1 }],
+            }
+          }
+          if (block) {
+            if (block.toRow > table.rows || block.toCol > table.cols) {
+              return outside([{ row: block.toRow, col: block.toCol }])
+            }
+            return {
+              table,
+              grid,
+              blocks: [
+                {
+                  top: block.fromRow - 1,
+                  left: block.fromCol - 1,
+                  bottom: block.toRow - 1,
+                  right: block.toCol - 1,
+                },
+              ],
+            }
+          }
+          const targets = new Map()
           const missing = []
           for (const want of cells) {
             const place = grid.find(
@@ -6551,21 +7444,21 @@ export const agentPlugin = {
                 want.col - 1 >= cell.col &&
                 want.col - 1 < cell.col + cell.colSpan,
             )
-            if (place) targets.add(place.cell)
+            if (place) targets.set(place.cell, place)
             else missing.push({ row: want.row, col: want.col })
           }
-          if (missing.length > 0) {
-            return {
-              refusal: {
-                ok: false,
-                reason: 'no_such_cell',
-                cells: missing,
-                rows: table.rows,
-                cols: table.cols,
-              },
-            }
+          if (missing.length > 0) return outside(missing)
+          return {
+            table,
+            grid,
+            // each named cell is a block of its own: its edges are its outline
+            blocks: [...targets.values()].map((cell) => ({
+              top: cell.row,
+              left: cell.col,
+              bottom: cell.row + cell.rowSpan - 1,
+              right: cell.col + cell.colSpan - 1,
+            })),
           }
-          return { table, targets: [...targets] }
         }
         const refusal = host.read((doc) => plan(doc).refusal ?? null)
         if (refusal) return refusal
@@ -6573,25 +7466,926 @@ export const agentPlugin = {
           change(
             'format-cells',
             (doc) => {
-              const { table, targets } = plan(doc)
-              if (!targets) throw fail('CHANGED', 'the document changed mid-call')
+              const { table, grid, blocks } = plan(doc)
+              if (!blocks) throw fail('CHANGED', 'the document changed mid-call')
               const before = objectsOf(doc)
-              const control = table.path[0].controlIndex
-              for (const cell of targets) {
-                expectOk(
-                  doc.setCellProperties(table.sec, table.para, control, cell, fill),
-                  'colour the cell',
-                )
+              let count = 0
+              for (const rect of blocks)
+                count += setCellBorders(doc, table, grid, rect, rules, props)
+              if (text) {
+                const format = resolveFormat(doc, text)
+                for (const rect of blocks) formatCellText(doc, table, grid, rect, format)
+                // cells whose text alone changed are counted too
+                if (count === 0) {
+                  count = grid.filter((cell) =>
+                    blocks.some(
+                      (rect) =>
+                        cell.row + cell.rowSpan - 1 >= rect.top &&
+                        cell.row <= rect.bottom &&
+                        cell.col + cell.colSpan - 1 >= rect.left &&
+                        cell.col <= rect.right,
+                    ),
+                  ).length
+                }
               }
               mustKeep(before, objectsOf(doc))
+              // a diagonal runs through the words of its cell: say which cells hold some
+              const crossed = []
+              if (props.diagonalSlash > 0 || props.diagonalBackSlash > 0) {
+                const control = table.path[0].controlIndex
+                for (const cell of grid) {
+                  const inside = blocks.some(
+                    (rect) =>
+                      cell.row + cell.rowSpan - 1 >= rect.top &&
+                      cell.row <= rect.bottom &&
+                      cell.col + cell.colSpan - 1 >= rect.left &&
+                      cell.col <= rect.right,
+                  )
+                  if (!inside) continue
+                  const paragraphs = doc.getCellParagraphCount(
+                    table.sec,
+                    table.para,
+                    control,
+                    cell.cell,
+                  )
+                  let length = 0
+                  for (let k = 0; k < paragraphs && length === 0; k++) {
+                    length += doc.getCellParagraphLength(
+                      table.sec,
+                      table.para,
+                      control,
+                      cell.cell,
+                      k,
+                    )
+                  }
+                  if (length > 0 && crossed.length < MAX_LISTED_MATCHES) {
+                    crossed.push({ row: cell.row + 1, col: cell.col + 1 })
+                  }
+                }
+              }
               return {
                 ok: true,
-                count: targets.length,
+                count,
                 place: { sec: table.sec, para: table.para, offset: 0, length: 0 },
+                ...(standIns.length > 0 ? { standIn: standIns } : {}),
+                ...(crossed.length > 0 ? { crossed } : {}),
               }
             },
             options,
           ),
+        )
+      }),
+
+      /**
+       * Make or change paragraph styles and give them to paragraphs, in one undo step: the
+       * look of a whole document in one call. `spec.styles` are paragraph styles with their
+       * look (made from `basedOn`, 바탕글 when not given; a style the document already has by
+       * that name is changed instead). `spec.apply` are rules: each gives a style to every
+       * body paragraph that starts with `startsWith` (leading spaces aside), or to the one
+       * paragraph `find` occurs in (a table cell too). A paragraph takes the first rule that
+       * names it. A paragraph given a style of this call takes its whole look, also where it
+       * had formatting of its own; one given a style the document already had keeps what it
+       * had set differently, as applying a style does. A font this PC is known to lack is
+       * written as one of the same kind that it has (`standIn` in the answer).
+       */
+      styleParagraphs: guarded((spec, options) => {
+        const wanted = styleBatchOf(spec)
+        const madeHere = new Set(wanted.styles.map((style) => style.name.toLowerCase()))
+        const plan = (doc) => {
+          // a style may start from one made earlier in the same call: they are made in order
+          const earlier = new Set()
+          for (const style of wanted.styles) {
+            const found = styleNamed(doc, style.name, null)
+            if (found && found.type !== PARAGRAPH_STYLE) {
+              return { refusal: { ok: false, reason: 'style_exists' } }
+            }
+            if (
+              !found &&
+              style.basedOn &&
+              !earlier.has(style.basedOn.toLowerCase()) &&
+              !styleNamed(doc, style.basedOn, null)
+            ) {
+              return { refusal: noSuchStyle(doc, null) }
+            }
+            earlier.add(style.name.toLowerCase())
+          }
+          for (const rule of wanted.rules) {
+            if (!madeHere.has(rule.style.toLowerCase()) && styleIdOf(doc, rule.style) === null) {
+              return { refusal: noSuchStyle(doc) }
+            }
+          }
+          const taken = new Set()
+          const targets = []
+          const counts = wanted.rules.map(() => 0)
+          const take = (index, hit, key) => {
+            if (taken.has(key)) return
+            taken.add(key)
+            targets.push({ rule: index, hit })
+            counts[index] += 1
+          }
+          // the rules that name one paragraph first: a paragraph takes the first rule that
+          // names it, and a named paragraph is meant more exactly than one told by its start
+          for (const [index, rule] of wanted.rules.entries()) {
+            if (rule.find === null) continue
+            const hits = searchAll(doc, rule.find)
+            const picked = pickHit(hits, rule.occurrence)
+            const reason = !picked.hit
+              ? picked.reason
+              : !isReplaceable(picked.hit) || !containerOf(doc, picked.hit).applyStyle
+                ? 'unsupported_place'
+                : null
+            if (reason) {
+              return {
+                refusal: {
+                  ok: false,
+                  reason,
+                  find: rule.find,
+                  count: hits.length,
+                  ...(reason === 'ambiguous' ? { matches: listMatches(doc, hits) } : {}),
+                },
+              }
+            }
+            const path = cellPathOf(picked.hit)
+            take(
+              index,
+              { sec: picked.hit.sec, para: picked.hit.para, ...(path ? { cellPath: path } : {}) },
+              JSON.stringify([picked.hit.sec, picked.hit.para, path]),
+            )
+          }
+          const starts = wanted.rules
+            .map((rule, index) => ({
+              index,
+              text: rule.startsWith,
+              mark: rule.numbered ? NUMBERED_MARKS[rule.numbered] : null,
+            }))
+            .filter((rule) => rule.text !== null || rule.mark !== null)
+          if (starts.length > 0) {
+            const sections = doc.getSectionCount()
+            for (let sec = 0; sec < sections; sec++) {
+              const paragraphs = doc.getParagraphCount(sec)
+              for (let para = 0; para < paragraphs; para++) {
+                const length = doc.getParagraphLength(sec, para)
+                if (length <= 0) continue
+                const head = doc
+                  .getTextRange(sec, para, 0, Math.min(length, MAX_STARTS_WITH * 3))
+                  // the controls a paragraph holds (its section definition, a table) come
+                  // before its words without being part of them
+                  .replace(LEADING_CONTROLS, '')
+                const rule = starts.find((candidate) =>
+                  candidate.mark ? candidate.mark.test(head) : head.startsWith(candidate.text),
+                )
+                if (rule) take(rule.index, { sec, para }, JSON.stringify([sec, para, null]))
+                if (targets.length > MAX_STYLED_PARAGRAPHS) {
+                  return {
+                    refusal: { ok: false, reason: 'too_many', limit: MAX_STYLED_PARAGRAPHS },
+                  }
+                }
+              }
+            }
+          }
+          return { targets, counts }
+        }
+        const refusal = host.read((doc) => plan(doc).refusal ?? null)
+        if (refusal) return refusal
+        return keepingObjects((mustKeep) =>
+          change(
+            'style-paragraphs',
+            (doc) => {
+              const before = objectsOf(doc)
+              let made = 0
+              let changed = 0
+              // the styles first: the rules name them
+              const looks = new Map()
+              for (const style of wanted.styles) {
+                const found = styleNamed(doc, style.name, PARAGRAPH_STYLE)
+                let id = found?.id
+                if (found) changed += 1
+                else {
+                  const base = style.basedOn
+                    ? styleNamed(doc, style.basedOn, null)
+                    : parse(doc.getStyleList())[0]
+                  if (!base) throw fail('CHANGED', 'the document changed mid-call')
+                  id = doc.createStyle(
+                    JSON.stringify({
+                      name: style.name,
+                      englishName: '',
+                      type: PARAGRAPH_STYLE,
+                      nextStyleId: 0,
+                      baseParaShapeId: base.paraShapeId,
+                      baseCharShapeId: base.charShapeId,
+                    }),
+                  )
+                  if (!Number.isInteger(id) || id < 0) {
+                    throw fail('ENGINE', 'the style could not be made')
+                  }
+                  if (!doc.updateStyle(id, JSON.stringify({ nextStyleId: id }))) {
+                    throw fail('ENGINE_REFUSED', 'the editor refused to set the next style')
+                  }
+                  made += 1
+                }
+                setStyleLook(doc, id, style.look)
+                if (
+                  style.keepWithNext !== null &&
+                  !doc.updateStyleShapes(
+                    id,
+                    '{}',
+                    JSON.stringify({ keepWithNext: style.keepWithNext }),
+                  )
+                ) {
+                  throw fail('ENGINE_REFUSED', 'the editor refused to change the style')
+                }
+                looks.set(style.name.toLowerCase(), {
+                  id,
+                  format: style.look ? resolveFormat(doc, style.look) : null,
+                })
+              }
+              const { targets, counts } = plan(doc)
+              if (!targets) throw fail('CHANGED', 'the document changed mid-call')
+              let keptOwnLook = 0
+              const marks = []
+              for (const target of targets) {
+                const rule = wanted.rules[target.rule]
+                const own = looks.get(rule.style.toLowerCase())
+                const id = own ? own.id : styleIdOf(doc, rule.style)
+                if (id === null || id === undefined) throw fail('CHANGED', 'the style is gone')
+                const box = containerOf(doc, target.hit)
+                const k = box.index
+                const length = box.length(k)
+                if (!own && keepsOwnLook(doc, box, k) === true) keptOwnLook += 1
+                box.applyStyle(k, id)
+                // a style of this call is its look: what the paragraph had of its own goes
+                if (own?.format) {
+                  if (own.format.paragraph) box.formatParagraph(k, own.format.paragraph)
+                  if (own.format.chars && length > 0) {
+                    box.formatChars(k, 0, length, own.format.chars)
+                  }
+                }
+                marks.push(box.place(k, length))
+              }
+              mustKeep(before, objectsOf(doc))
+              return {
+                ok: true,
+                made,
+                changed,
+                paragraphs: targets.length,
+                rules: wanted.rules.map((rule, index) => ({
+                  style: rule.style,
+                  paragraphs: counts[index],
+                })),
+                ...(marks.length > 0 ? { place: marks[0], marks } : {}),
+                ...(keptOwnLook > 0 ? { keptOwnLook } : {}),
+                ...(wanted.standIns.length > 0 ? { standIn: wanted.standIns } : {}),
+              }
+            },
+            options,
+          ),
+        )
+      }),
+
+      /**
+       * Turn the body paragraph `find` occurs in into a title box: a one-column table as
+       * wide as the text, in that paragraph, holding its words centred. `spec.look` is one
+       * of TITLE_BOX_LOOKS (bands of colour above and below, heavy lines above and below, a
+       * line all round, or a fill), `color` and `color2` its colours, and `font`, `size`,
+       * `bold` and `textColor` the title's look over the one it has now. The table is a new
+       * object of the document; nothing that was there may be gone. One undo step.
+       */
+      insertTitleBox: guarded((find, occurrence, spec, options) => {
+        const wanted = titleBoxOf(spec)
+        const plan = (doc) => {
+          const hits = searchAll(doc, find)
+          const picked = pickHit(hits, occurrence)
+          const refuse = (reason) => ({
+            refusal: {
+              ok: false,
+              reason,
+              count: hits.length,
+              ...(reason === 'ambiguous' ? { matches: listMatches(doc, hits) } : {}),
+            },
+          })
+          if (!picked.hit) return refuse(picked.reason)
+          if (!isReplaceable(picked.hit)) return refuse('unsupported_place')
+          if (cellPathOf(picked.hit)) return refuse('in_table')
+          const box = containerOf(doc, picked.hit)
+          if (holdsContentObject(doc, picked.hit.sec, box)) return refuse('has_objects')
+          const length = box.length(box.index)
+          const text = box.text(box.index, length)
+          if (!text.trim()) return refuse('not_found')
+          return { box, text, length }
+        }
+        const refusal = host.read((doc) => plan(doc).refusal ?? null)
+        if (refusal) return refusal
+        return keepingObjects((mustKeep) =>
+          change(
+            'insert-title-box',
+            (doc) => {
+              const { box, text, length } = plan(doc)
+              if (!box) throw fail('CHANGED', 'the document changed mid-call')
+              const before = objectsOf(doc)
+              const k = box.index
+              const { sec } = box.place(k, 0)
+              // the look the title has now goes into the box with it
+              const now = parse(doc.getCharPropertiesAt(sec, k, 0))
+              const points = Number(now.fontSize) / 100
+              const look = formatOf(
+                {
+                  ...(typeof now.fontFamily === 'string' && now.fontFamily
+                    ? { font: now.fontFamily }
+                    : {}),
+                  ...(points >= MIN_FONT_PT && points <= MAX_FONT_PT ? { size: points } : {}),
+                  bold: now.bold === true,
+                  ...(typeof now.textColor === 'string' && HEX_COLOR.test(now.textColor)
+                    ? { color: now.textColor }
+                    : {}),
+                  ...(wanted.text ?? {}),
+                },
+                false,
+              )
+              const titlePoints = look.chars?.fontSize ? look.chars.fontSize / 100 : points
+              box.deleteText(k, length)
+              const layout = titleBoxCells(wanted.look, wanted.color, wanted.color2)
+              // where the text runs in columns the box is as wide as one of them
+              const inColumns = columnsOf(doc, sec).count > 1
+              const made = parse(
+                doc.createTableEx(
+                  JSON.stringify({
+                    sectionIdx: sec,
+                    paraIdx: k,
+                    charOffset: 0,
+                    rowCount: layout.rows,
+                    colCount: 1,
+                    treatAsChar: true,
+                    ...(inColumns
+                      ? { colWidths: [Math.round(columnWidthPt(doc, sec) * 100)] }
+                      : {}),
+                  }),
+                ),
+              )
+              if (!made || made.ok !== true || !Number.isInteger(made.controlIdx)) {
+                throw fail('ENGINE', 'the title box could not be made')
+              }
+              const control = made.controlIdx
+              layout.cells.forEach((props, cell) => {
+                // a title cell as high as its line and some air; a longer title still grows it
+                const shape =
+                  cell === layout.title
+                    ? { ...props, height: Math.round(titlePoints * 100 * 1.9) }
+                    : props
+                expectOk(
+                  doc.setCellProperties(sec, k, control, cell, JSON.stringify(shape)),
+                  'shape the title box',
+                )
+              })
+              expectOk(
+                doc.insertTextInCell(sec, k, control, layout.title, 0, 0, text),
+                'write the title',
+              )
+              const written = doc.getCellParagraphLength(sec, k, control, layout.title, 0)
+              const { chars } = resolveFormat(doc, look)
+              if (chars && written > 0) {
+                expectOk(
+                  doc.applyCharFormatInCell(sec, k, control, layout.title, 0, 0, written, chars),
+                  'format the title',
+                )
+              }
+              expectOk(
+                doc.applyParaFormatInCell(
+                  sec,
+                  k,
+                  control,
+                  layout.title,
+                  0,
+                  JSON.stringify({ alignment: 'center' }),
+                ),
+                'centre the title',
+              )
+              // a band is as high as its empty paragraph lets it be: make that one tiny
+              for (const cell of layout.bands) {
+                expectOk(
+                  doc.applyCharFormatInCell(
+                    sec,
+                    k,
+                    control,
+                    cell,
+                    0,
+                    0,
+                    0,
+                    JSON.stringify({ fontSize: 100 }),
+                  ),
+                  'shape the band',
+                )
+                expectOk(
+                  doc.applyParaFormatInCell(
+                    sec,
+                    k,
+                    control,
+                    cell,
+                    0,
+                    JSON.stringify({ lineSpacing: 100, lineSpacingType: 'Percent' }),
+                  ),
+                  'shape the band',
+                )
+              }
+              const after = objectsOf(doc)
+              // the box is an object of its own; nothing that was there may be gone
+              mustKeep(before, { ...after, controls: Math.min(after.controls, before.controls) })
+              return {
+                ok: true,
+                look: wanted.look,
+                place: box.place(k, 0),
+                ...(wanted.textColorDropped ? { textColorDropped: true } : {}),
+                ...(wanted.standIns.length > 0 ? { standIn: wanted.standIns } : {}),
+              }
+            },
+            options,
+          ),
+        )
+      }),
+
+      /**
+       * Which of the fonts Korean documents are written in this PC has and lacks, when the
+       * editor knows its fonts (`known`); for the AI to pick a look it can show.
+       */
+      documentFonts: guarded(() => {
+        const onPc = []
+        const missing = []
+        for (const name of DOCUMENT_FONTS) {
+          const has = fontOnPc(name)
+          if (has === true) onPc.push(name)
+          else if (has === false) missing.push(name)
+        }
+        return { known: onPc.length + missing.length > 0, onPc, missing }
+      }),
+
+      /**
+       * The page number, header and footer of the document (its first section): the page
+       * number's place, shape and dashes, and the text of the header and of the footer with
+       * `plain` saying whether setHeaderFooter may rewrite it.
+       */
+      pageLayout: guarded(() =>
+        host.read((doc) => {
+          const read = (isHeader) => {
+            const found = parse(doc.getHeaderFooter(0, isHeader, 0))
+            if (found.exists !== true) return { exists: false }
+            return { exists: true, text: headerTextOf(found.text), plain: plainHeader(found) }
+          }
+          let pageNumber = null
+          try {
+            pageNumber = pageNumberSettingOf(parse(doc.getPageNumberPos(0)).pageNumber)
+          } catch {
+            // an engine without the call: the page number is not known
+          }
+          const columns = columnsOf(doc, 0)
+          let pageBorder = null
+          try {
+            const line = parse(doc.getPageBorderFill(0)).borderTop
+            const name = Object.keys(BORDER_LINES).find((key) => BORDER_LINES[key] === line?.type)
+            pageBorder = name && name !== 'none' ? { line: name, color: line.color } : null
+          } catch {
+            // an engine without the call: the border is not known
+          }
+          return {
+            sections: doc.getSectionCount(),
+            pages: doc.pageCount(),
+            pageBorder,
+            columns: {
+              count: columns.count,
+              gapMm: Math.round(((columns.gapPt * 25.4) / 72) * 10) / 10,
+            },
+            pageNumber,
+            header: read(true),
+            footer: read(false),
+          }
+        }),
+      ),
+
+      /**
+       * Lay the body text out in columns (Hangul's 다단): `spec.count` columns of one width
+       * with `spec.gapMm` between them, in every section; one column takes the columns
+       * away. Tables that are already there keep their width, so it is called before the
+       * tables are made. One undo step.
+       */
+      setColumns: guarded((spec, options) => {
+        const given = spec ?? {}
+        const count = typeof given === 'object' ? given.count : null
+        if (!Number.isInteger(count) || count < 1 || count > MAX_COLUMNS) {
+          throw fail('BAD_ARGUMENT', `count must be a whole number from 1 to ${MAX_COLUMNS}`)
+        }
+        const gapMm = given.gapMm ?? DEFAULT_COLUMN_GAP_MM
+        if (typeof gapMm !== 'number' || !(gapMm >= 0 && gapMm <= MAX_COLUMN_GAP_MM)) {
+          throw fail('BAD_ARGUMENT', `gapMm must be 0 to ${MAX_COLUMN_GAP_MM} millimetres`)
+        }
+        const gap = count > 1 ? Math.round((gapMm * 7200) / 25.4) : 0
+        return change(
+          'set-columns',
+          (doc) => {
+            const sections = doc.getSectionCount()
+            const was = columnsOf(doc, 0).count
+            for (let sec = 0; sec < sections; sec++) {
+              expectOk(doc.setColumnDef(sec, count, 0, 1, gap), 'set the columns')
+            }
+            return { ok: true, count, gapMm: count > 1 ? gapMm : 0, was, sections }
+          },
+          options,
+        )
+      }),
+
+      /**
+       * Draw a line round every page (Hangul's 쪽 테두리), inside the margins, in every
+       * section: a certificate, a cover, a notice to post. `spec` is `{ line, width, color }`
+       * as a cell's border line is told; line "none" takes the border away. One undo step.
+       */
+      setPageBorder: guarded((spec, options) => {
+        const given = spec ?? {}
+        if (typeof given !== 'object' || Array.isArray(given)) {
+          throw fail('BAD_ARGUMENT', 'the page border must be an object: { line, width, color }')
+        }
+        let line
+        try {
+          line = borderRuleOf({ line: given.line, width: given.width, color: given.color }).line
+        } catch (thrown) {
+          throw fail('BAD_ARGUMENT', thrown.message)
+        }
+        const border = JSON.stringify({
+          borderLeft: line,
+          borderRight: line,
+          borderTop: line,
+          borderBottom: line,
+        })
+        return change(
+          'set-page-border',
+          (doc) => {
+            const sections = doc.getSectionCount()
+            for (let sec = 0; sec < sections; sec++) {
+              expectOk(doc.setPageBorderFill(sec, border), 'set the page border')
+            }
+            return { ok: true, sections, drawn: line.type !== BORDER_LINES.none }
+          },
+          options,
+        )
+      }),
+
+      /**
+       * Put equations into the body text (Hangul's 수식): each item names text of the
+       * document (`find`, with `occurrence` when it occurs more than once) and the
+       * equation's script in Hangul's equation language. The equation takes the place of
+       * that text (a placeholder the text was written with) unless `replace` is false, when
+       * it goes right after it. It is as large as the text it stands in. Text in a table
+       * cell is refused: the engine puts equations into body paragraphs. One undo step.
+       */
+      insertEquations: guarded((items, options) => {
+        if (!Array.isArray(items) || items.length === 0 || items.length > MAX_EQUATIONS) {
+          throw fail('BAD_ARGUMENT', `equations must be 1 to ${MAX_EQUATIONS} items`)
+        }
+        const wanted = items.map((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            throw fail('BAD_ARGUMENT', 'each equation needs find and script')
+          }
+          const script = typeof item.script === 'string' ? item.script.trim() : ''
+          if (!script || script.length > MAX_EQUATION_SCRIPT || CONTROL_CHARS.test(script)) {
+            throw fail(
+              'BAD_ARGUMENT',
+              `script must be one line of 1 to ${MAX_EQUATION_SCRIPT} characters`,
+            )
+          }
+          if (typeof item.find !== 'string' || !item.find || CONTROL_CHARS.test(item.find)) {
+            throw fail('BAD_ARGUMENT', 'find must be text of one paragraph')
+          }
+          return {
+            find: item.find,
+            occurrence: Number.isInteger(item.occurrence) ? item.occurrence : null,
+            script,
+            replace: item.replace !== false,
+          }
+        })
+        const plan = (doc) => {
+          const targets = []
+          for (const [index, item] of wanted.entries()) {
+            const hits = searchAll(doc, item.find)
+            const picked = pickHit(hits, item.occurrence)
+            const refuse = (reason) => ({
+              refusal: {
+                ok: false,
+                reason,
+                index,
+                find: item.find,
+                count: hits.length,
+                ...(reason === 'ambiguous' ? { matches: listMatches(doc, hits) } : {}),
+              },
+            })
+            if (!picked.hit) return refuse(picked.reason)
+            if (!isReplaceable(picked.hit)) return refuse('unsupported_place')
+            if (cellPathOf(picked.hit)) return refuse('in_table')
+            targets.push({ item, hit: picked.hit })
+          }
+          return { targets }
+        }
+        const refusal = host.read((doc) => plan(doc).refusal ?? null)
+        if (refusal) return refusal
+        return keepingObjects((mustKeep) =>
+          change(
+            'insert-equations',
+            (doc) => {
+              const { targets } = plan(doc)
+              if (!targets) throw fail('CHANGED', 'the document changed mid-call')
+              const before = objectsOf(doc)
+              // from the end of the document backwards: an equation put in moves nothing
+              // that is still to be done
+              const ordered = [...targets].sort(
+                (a, b) =>
+                  b.hit.sec - a.hit.sec ||
+                  b.hit.para - a.hit.para ||
+                  b.hit.charOffset - a.hit.charOffset,
+              )
+              const marks = []
+              for (const { item, hit } of ordered) {
+                // as large as the text it stands in, in hundredths of a point
+                const chars = parse(doc.getCharPropertiesAt(hit.sec, hit.para, hit.charOffset))
+                const size = Number.isFinite(chars?.fontSize) ? chars.fontSize : 1000
+                let at = hit.charOffset + hit.length
+                if (item.replace) {
+                  expectOk(
+                    doc.deleteText(hit.sec, hit.para, hit.charOffset, hit.length),
+                    'take the placeholder out',
+                  )
+                  at = hit.charOffset
+                }
+                const made = parse(doc.insertEquation(hit.sec, hit.para, at, item.script, size, 0))
+                if (!made || made.ok !== true) {
+                  throw fail('ENGINE', 'the equation could not be made')
+                }
+                marks.push({ sec: hit.sec, para: hit.para, offset: at, length: 1 })
+              }
+              // the equations are objects of their own; nothing that was there may be gone
+              mustKeep({ ...before, controls: before.controls + ordered.length }, objectsOf(doc))
+              return { ok: true, count: ordered.length, place: marks.at(-1), marks }
+            },
+            options,
+          ),
+        )
+      }),
+
+      /**
+       * Give a picture of the body text (its number from listPictures) another width,
+       * its height following so that it keeps its shape. A picture inside a table cell is
+       * refused, and one wider than the text is made as wide as the text. One undo step.
+       */
+      resizePicture: guarded((number, spec, options) => {
+        if (!Number.isInteger(number) || number < 1) {
+          throw fail('BAD_ARGUMENT', 'picture must be a positive integer from listPictures')
+        }
+        const mm = spec?.widthMm
+        const { min, max } = PICTURE_WIDTH_MM
+        if (typeof mm !== 'number' || !(mm >= min && mm <= max)) {
+          throw fail('BAD_ARGUMENT', `widthMm must be ${min} to ${max} millimetres`)
+        }
+        const picture = pictureList()[number - 1]
+        if (!picture) return { ok: false, reason: 'no_such_picture', count: pictureList().length }
+        if (picture.cellPath) return { ok: false, reason: 'unsupported_place', count: 1 }
+        return change(
+          'resize-picture',
+          (doc) => {
+            const now = parse(doc.getPictureProperties(picture.sec, picture.para, picture.control))
+            if (!(now?.width > 0) || !(now?.height > 0)) {
+              throw fail('ENGINE', 'the size of the picture could not be read')
+            }
+            // no wider than the text of its page
+            const room = Math.round(textWidthPt(doc, picture.sec) * 100)
+            const width = Math.min(Math.round((mm * 7200) / 25.4), room)
+            const height = Math.max(1, Math.round((now.height * width) / now.width))
+            expectOk(
+              doc.setPictureProperties(
+                picture.sec,
+                picture.para,
+                picture.control,
+                JSON.stringify({ width, height }),
+              ),
+              'resize the picture',
+            )
+            const toMm = (units) => Math.round(((units * 25.4) / 7200) * 10) / 10
+            return {
+              ok: true,
+              widthMm: toMm(width),
+              heightMm: toMm(height),
+              fitted: width === room && width < Math.round((mm * 7200) / 25.4),
+              place: { sec: picture.sec, para: picture.para, offset: 0, length: 0 },
+            }
+          },
+          options,
+        )
+      }),
+
+      /**
+       * Start the body paragraph `find` occurs in on a new page or in the next column
+       * (`kind`, one of BREAK_KINDS), as Hangul's 쪽 나누기 and 단 나누기 do in front of a
+       * paragraph. A paragraph inside a table, and the first one of the document, cannot
+       * start anew. One undo step.
+       */
+      insertBreak: guarded((find, occurrence, kind, options) => {
+        if (!BREAK_KINDS.includes(kind)) {
+          throw fail('BAD_ARGUMENT', `kind must be one of ${BREAK_KINDS.join(', ')}`)
+        }
+        const plan = (doc) => {
+          const hits = searchAll(doc, find)
+          const picked = pickHit(hits, occurrence)
+          const refuse = (reason) => ({
+            refusal: {
+              ok: false,
+              reason,
+              count: hits.length,
+              ...(reason === 'ambiguous' ? { matches: listMatches(doc, hits) } : {}),
+            },
+          })
+          if (!picked.hit) return refuse(picked.reason)
+          if (!isReplaceable(picked.hit)) return refuse('unsupported_place')
+          if (cellPathOf(picked.hit)) return refuse('in_table')
+          // the first paragraph already starts its page, and holds the page setup
+          if (picked.hit.para === 0) return refuse('at_start')
+          return { hit: picked.hit }
+        }
+        const refusal = host.read((doc) => plan(doc).refusal ?? null)
+        if (refusal) return refusal
+        return keepingObjects((mustKeep) =>
+          change(
+            'insert-break',
+            (doc) => {
+              const { hit } = plan(doc)
+              if (!hit) throw fail('CHANGED', 'the document changed mid-call')
+              const before = objectsOf(doc)
+              const made = parse(
+                kind === 'page'
+                  ? doc.insertPageBreak(hit.sec, hit.para, 0)
+                  : doc.insertColumnBreak(hit.sec, hit.para, 0),
+              )
+              if (!made || made.ok !== true) throw fail('ENGINE', 'the break could not be made')
+              mustKeep(before, objectsOf(doc))
+              const para = Number.isInteger(made.paraIdx) ? made.paraIdx : hit.para
+              return {
+                ok: true,
+                kind,
+                columns: columnsOf(doc, hit.sec).count,
+                place: {
+                  sec: hit.sec,
+                  para,
+                  offset: 0,
+                  length: doc.getParagraphLength(hit.sec, para),
+                },
+              }
+            },
+            options,
+          ),
+        )
+      }),
+
+      /**
+       * Number the pages (Hangul's 쪽 번호 매기기): where the number goes (`position`, a
+       * name of PAGE_NUMBER_PLACES; "none" hides it), its shape (`format`, default digit)
+       * and whether it has dashes around it (`dashes`, default true: - 1 -). Set in the first
+       * section, from where it holds for the document, and in each later section that has a
+       * page number of its own. One undo step.
+       */
+      setPageNumber: guarded((spec, options) => {
+        const given = spec ?? {}
+        if (typeof given !== 'object' || !Object.hasOwn(PAGE_NUMBER_PLACES, given.position)) {
+          throw fail(
+            'BAD_ARGUMENT',
+            `position must be one of ${Object.keys(PAGE_NUMBER_PLACES).join(', ')}`,
+          )
+        }
+        const shape = given.format ?? 'digit'
+        if (!Object.hasOwn(PAGE_NUMBER_SHAPES, shape)) {
+          throw fail(
+            'BAD_ARGUMENT',
+            `format must be one of ${Object.keys(PAGE_NUMBER_SHAPES).join(', ')}`,
+          )
+        }
+        if (
+          given.dashes !== undefined &&
+          given.dashes !== null &&
+          typeof given.dashes !== 'boolean'
+        ) {
+          throw fail('BAD_ARGUMENT', 'dashes must be true or false')
+        }
+        const position = PAGE_NUMBER_PLACES[given.position]
+        const format = PAGE_NUMBER_SHAPES[shape]
+        const dash = given.dashes !== false
+        return change(
+          'set-page-number',
+          (doc) => {
+            const sections = doc.getSectionCount()
+            let set = 0
+            for (let sec = 0; sec < sections; sec++) {
+              if (sec > 0 && parse(doc.getPageNumberPos(sec)).pageNumber == null) continue
+              expectOk(doc.setPageNumberPos(sec, format, position, dash), 'number the pages')
+              set += 1
+            }
+            return {
+              ok: true,
+              sections: set,
+              pageNumber: pageNumberSettingOf({ format, position, dash }),
+            }
+          },
+          options,
+        )
+      }),
+
+      /**
+       * Write the header or the footer of the document (its first section, on every page):
+       * one line of text, in which `{page}` is the page number and `{pages}` the number of
+       * pages. `spec.align` is left, center or right, and `spec.size` the font size in
+       * points. An empty text removes it. A header or footer that holds more than one line
+       * of text and fields (a table, a picture, several paragraphs) was laid out by hand and
+       * is refused (`not_plain`). One undo step.
+       */
+      setHeaderFooter: guarded((kind, spec, options) => {
+        if (kind !== 'header' && kind !== 'footer') {
+          throw fail('BAD_ARGUMENT', 'kind must be "header" or "footer"')
+        }
+        const given = spec ?? {}
+        if (typeof given !== 'object' || typeof given.text !== 'string') {
+          throw fail('BAD_ARGUMENT', 'text must be a string; an empty one removes it')
+        }
+        const text = given.text
+        if (text.length > MAX_HEADER_TEXT || CONTROL_CHARS.test(text)) {
+          throw fail(
+            'BAD_ARGUMENT',
+            `text must be one line of at most ${MAX_HEADER_TEXT} characters`,
+          )
+        }
+        const align = given.align ?? 'center'
+        if (!TABLE_ALIGNS.includes(align)) {
+          throw fail('BAD_ARGUMENT', `align must be one of ${TABLE_ALIGNS.join(', ')}`)
+        }
+        let size = null
+        if (given.size !== undefined && given.size !== null) {
+          if (
+            typeof given.size !== 'number' ||
+            !(given.size >= MIN_FONT_PT && given.size <= MAX_FONT_PT)
+          ) {
+            throw fail('BAD_ARGUMENT', `size must be ${MIN_FONT_PT} to ${MAX_FONT_PT} points`)
+          }
+          size = given.size
+        }
+        const isHeader = kind === 'header'
+        const plan = (doc) => {
+          const found = parse(doc.getHeaderFooter(0, isHeader, 0))
+          const exists = found.exists === true
+          if (exists && !plainHeader(found)) return { refusal: { ok: false, reason: 'not_plain' } }
+          if (!exists && text === '') return { refusal: { ok: false, reason: 'not_there' } }
+          return { exists, old: String(found.text ?? '') }
+        }
+        const refusal = host.read((doc) => plan(doc).refusal ?? null)
+        if (refusal) return refusal
+        return change(
+          'set-header-footer',
+          (doc) => {
+            const { exists, old, refusal: why } = plan(doc)
+            if (why) throw fail('CHANGED', 'the document changed mid-call')
+            if (text === '') {
+              expectOk(doc.deleteHeaderFooter(0, isHeader, 0), `remove the ${kind}`)
+              return { ok: true, kind, removed: true }
+            }
+            if (!exists) expectOk(doc.createHeaderFooter(0, isHeader, 0), `make the ${kind}`)
+            else if (old.length > 0) {
+              expectOk(
+                doc.deleteTextInHeaderFooter(0, isHeader, 0, 0, 0, old.length),
+                `clear the ${kind}`,
+              )
+            }
+            let offset = 0
+            for (const piece of headerPieces(text)) {
+              const done = parse(
+                piece.field
+                  ? doc.insertFieldInHf(0, isHeader, 0, 0, offset, piece.field)
+                  : doc.insertTextInHeaderFooter(0, isHeader, 0, 0, offset, piece.text),
+              )
+              if (!done || done.ok !== true || !Number.isInteger(done.charOffset)) {
+                throw fail('ENGINE_REFUSED', `the editor refused to write the ${kind}`)
+              }
+              offset = done.charOffset
+            }
+            expectOk(
+              doc.applyParaFormatInHf(0, isHeader, 0, 0, JSON.stringify({ alignment: align })),
+              `align the ${kind}`,
+            )
+            if (size !== null && offset > 0) {
+              expectOk(
+                doc.applyCharFormatInHeaderFooter(
+                  0,
+                  isHeader,
+                  0,
+                  0,
+                  0,
+                  0,
+                  offset,
+                  JSON.stringify({ fontSize: Math.round(size * 100) }),
+                ),
+                `format the ${kind}`,
+              )
+            }
+            return { ok: true, kind, removed: false, text }
+          },
+          options,
         )
       }),
 

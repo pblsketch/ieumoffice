@@ -44,6 +44,7 @@ export const AI_MODEL_PICKER_STRINGS: Record<Lang, AiModelPickerStrings> = {
   hi: { title: 'मॉडल', choose: 'मॉडल चुनें', manage: 'मॉडल प्रबंधित करें…' },
   'zh-TW': { title: '模型', choose: '選擇模型', manage: '管理模型…' },
   vi: { title: 'Mô hình', choose: 'Chọn mô hình', manage: 'Quản lý mô hình…' },
+  tr: { title: 'Model', choose: 'Model seç', manage: 'Modelleri yönet…' },
 }
 
 export const AI_EFFORT_STRINGS: Record<Lang, AiEffortStrings> = {
@@ -360,6 +361,21 @@ export const AI_EFFORT_STRINGS: Record<Lang, AiEffortStrings> = {
       high: 'Cao',
       xhigh: 'Rất cao',
       max: 'Tối đa',
+    },
+  },
+  tr: {
+    title: 'Düşünme düzeyi',
+    hint: 'Modelin yanıt vermeden önce ne kadar düşündüğü. Daha yüksek düzey daha yavaştır ve aboneliğinizden ya da API kredinizden daha fazla kullanır.',
+    auto: 'Varsayılan',
+    autoNamed: 'Varsayılan ({level})',
+    levels: {
+      none: 'Yok',
+      minimal: 'En az',
+      low: 'Düşük',
+      medium: 'Orta',
+      high: 'Yüksek',
+      xhigh: 'Çok yüksek',
+      max: 'En yüksek',
     },
   },
 }

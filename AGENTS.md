@@ -4,7 +4,7 @@
 
 AI는 쓰는 사람이 이미 내고 있는 **Claude 또는 ChatGPT 구독**으로 돌아간다. Claude와 Codex는 PC에 설치된 그 회사의 프로그램을 실행해 답 한 차례를 받아 온다. ChatGPT는 앱이 OpenAI의 공식 방식으로 직접 로그인해 그 요금제로 부를 수도 있다(결정 0081). 문서를 고치는 일은 앱이 한다. 요금이 나가는 쪽으로는 사용자가 직접 고르지 않는 한 가지 않는다.
 
-한 사람이 자기 PC에서 쓰는 로컬 프로그램이다. 서버, 회원 계정, 사용 통계가 없다. 오픈소스 GenOffice(Apache-2.0)의 포크이고, 원본의 문서 엔진 개선을 계속 골라 받아온다. 그래서 코드 내부 이름은 원본 그대로이고, 고치는 범위는 필요한 만큼으로 좁게 잡는다. 배포하는 운영체제는 Windows이고, Mac용(Apple Silicon·Intel)과 Linux(x64)용은 베타로 낸다(결정 0031, 0065). Mac과 Linux는 저장소 주인이 직접 확인하지 못하고 사용자들의 보고로 확인한다. 화면 언어는 21개다.
+한 사람이 자기 PC에서 쓰는 로컬 프로그램이다. 서버, 회원 계정, 사용 통계가 없다. 오픈소스 GenOffice(Apache-2.0)의 포크이고, 원본의 문서 엔진 개선을 계속 골라 받아온다. 그래서 코드 내부 이름은 원본 그대로이고, 고치는 범위는 필요한 만큼으로 좁게 잡는다. 배포하는 운영체제는 Windows이고, Mac용(Apple Silicon·Intel)과 Linux(x64)용은 베타로 낸다(결정 0031, 0065). Mac과 Linux는 저장소 주인이 직접 확인하지 못하고 사용자들의 보고로 확인한다. 화면 언어는 22개다.
 
 ## 프로젝트 구조
 
@@ -34,6 +34,7 @@ openoffice/
 │   │   ├── diagram-editor.md      ← 다이어그램(.drawio) 편집기 계획(구현됨, 사람 확인 남음)
 │   │   ├── epub-editor.md         ← EPUB 편집기 계획(구현됨, 사람 확인 남음)
 │   │   ├── hwp-format-copy.md     ← 한글 모양 복사(서식 복사) 분석·설계(1단계 구현됨, 사람 확인 남음)
+│   │   ├── md-to-hwp.md           ← 마크다운을 한글 문서로 옮기기 계획(1~4단계 구현됨, 사람 확인 남음)
 │   │   ├── ods-open-export.md     ← ODS 불러오기·내보내기 계획(1·2단계 구현됨, 사람 확인 남음)
 │   │   ├── pdf-reading-assist.md  ← PDF 읽기 도우미 계획
 │   │   ├── pdf-tools.md           ← PDF 도구 모음 계획(초안)
@@ -69,7 +70,7 @@ openoffice/
 │   ├── electron-utils/AGENTS.md   ← 뒷단 공용 도구
 │   ├── docx-engine/AGENTS.md      ← 워드 문서 엔진
 │   ├── odt-engine/AGENTS.md       ← ODT 열기·되돌려 쓰기·docx → ODT
-│   ├── docx2hwp/AGENTS.md         ← 워드 → 한글(.hwp, .hwpx) 변환
+│   ├── docx2hwp/AGENTS.md         ← 워드 → 한글(.hwp, .hwpx) 변환, 마크다운에서 온 표의 한글 문서 모양
 │   ├── pptx-engine/AGENTS.md      ← 파워포인트 문서 모델
 │   ├── pptx-ops/AGENTS.md         ← 슬라이드 편집 연산
 │   ├── pptx-render/AGENTS.md      ← 슬라이드 그리기
@@ -113,7 +114,7 @@ openoffice/
 | 구독 연동(프로그램 실행, 상태 판정, 환경변수)을 고친다 | `docs/security.md` 전체, `packages/ai-provider/AGENTS.md`, `docs/engineering-notes.md`의 "구독 프로그램" |
 | 제공자 선택이나 AI 창의 보내기·막힘 처리를 고친다      | `docs/business-rules.md`의 "제공자 선택", "보내기 전의 문지기", "실행 중 막혔을 때"                      |
 | 편집기 뒷단(`apps/*/src/main`)이나 preload를 고친다    | `docs/engineering-notes.md`의 "빌드와 실행". 껍데기 앱을 다시 빌드해야 반영된다                          |
-| 화면 문구나 도움말을 더하거나 고친다                   | `docs/standards.md`의 "글과 언어", "제품 이름". 21개 언어 모두 채운다                                    |
+| 화면 문구나 도움말을 더하거나 고친다                   | `docs/standards.md`의 "글과 언어", "제품 이름". 22개 언어(터키어 `tr` 포함) 모두 채운다                  |
 | 화면 스타일을 고친다                                   | `docs/standards.md`의 "화면 색"                                                                          |
 | 아이콘·그림을 더하거나 다른 회사 이름을 화면에 적는다  | `docs/standards.md`의 "상표와 아이콘"(결정 0052)                                                         |
 | 터미널 명령어·MCP·스킬을 고친다                        | `docs/contracts.md`. 출력 구조와 이름은 밖에서 기대고 있다                                               |

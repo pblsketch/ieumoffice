@@ -425,6 +425,11 @@ export const NOTE_DIALOG_TEXT: Record<Lang, Record<NoteDialogKey, string>> = {
     dialogTitle: 'Chọn tệp ghi chú cho PDF này',
     filterMarkdown: 'Tài liệu Markdown',
   },
+  tr: {
+    noteWord: 'Not',
+    dialogTitle: 'Bu PDF için not dosyasını seç',
+    filterMarkdown: 'Markdown belgesi',
+  },
 }
 
 export function noteDialogText(lang: Lang, key: NoteDialogKey): string {

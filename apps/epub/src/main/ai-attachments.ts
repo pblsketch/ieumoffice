@@ -84,6 +84,21 @@ const ATTACH_STRINGS = {
       'Tệp đính kèm hình ảnh không có văn bản; hình ảnh được gửi cùng với tin nhắn của người dùng',
     errNotImage: 'loại hình ảnh không được hỗ trợ',
   },
+  tr: {
+    dlgAddAttachment: 'Ek Dosya Ekle',
+    filterSupported: 'Desteklenen Dosyalar',
+    filterAll: 'Tüm Dosyalar',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errNotFile: 'dosya değil',
+    errTooLarge: '{mb}MB sınırını aşıyor',
+    errImageTooLarge: 'resim 5MB sınırını aşıyor',
+    errUnreadable: 'okunamıyor',
+    errFileTooLarge: 'Dosya boyut sınırını aşıyor',
+    errParseFailed: 'Dosya ayrıştırılamadı',
+    errImageNoText:
+      'Resim eklerinde metin yok; resim, kullanıcı iletisiyle birlikte gönderildiğinden doğrudan resme bakabilirsiniz',
+    errNotImage: 'desteklenen bir resim türü değil',
+  },
   ja: {
     dlgAddAttachment: '添付ファイルの追加',
     filterSupported: 'サポートされているファイル',

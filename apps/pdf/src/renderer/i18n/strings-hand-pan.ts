@@ -20,6 +20,7 @@ import { he } from './hand-pan/he'
 import { hi } from './hand-pan/hi'
 import { zhTW } from './hand-pan/zh-TW'
 import { vi } from './hand-pan/vi'
+import { tr } from './hand-pan/tr'
 
 /** Copy for the hand tool that drags the page view */
 export const handPanStrings = defineStrings({
@@ -44,4 +45,5 @@ export const handPanStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })

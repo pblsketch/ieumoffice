@@ -155,6 +155,36 @@ const tUpd = createI18n({
     updRestartNoteMac:
       'Ứng dụng sẽ đóng, được thay bằng phiên bản mới rồi mở lại cùng các tài liệu bạn đang mở.',
   },
+  tr: {
+    updTitle: 'Yazılım güncellemesi',
+    updHeadline: 'Yeni bir sürüm var',
+    updDesc:
+      'Bu güncelleme performans iyileştirmeleri ve hata düzeltmeleri içerir. Şimdi güncellemenizi öneririz.',
+    updDownload: 'Şimdi güncelle',
+    updLater: 'Küçült',
+    updInstall: 'Yeniden başlat ve yükle',
+    updDownloading: 'Güncelleme indiriliyor…',
+    updFailed: 'Güncelleme indirilemedi. Ağınızı denetleyip tekrar deneyin.',
+    updRetry: 'Yeniden dene',
+    updManual:
+      'Otomatik güncelleme başarısız oldu. Lütfen en yeni sürümü indirme sayfasından alıp elle yükleyin.',
+    updUpToDate: 'En güncel sürümü kullanıyorsunuz (sürüm {version}).',
+    updCheckFailed: 'Güncellemeler denetlenemedi. Ağınızı denetleyip tekrar deneyin.',
+    updOpenDownload: 'İndirme sayfasını aç',
+    updNotesLabel: 'Yenilikler',
+    updNotesOnGitHub: 'Tam notları GitHub üzerinde görüntüle',
+    updNotesTruncated: 'Notların yalnızca bir kısmı gösteriliyor.',
+    updManualMac:
+      'Mac sürümü kendini güncelleyemez. Yeni sürümü indirme sayfasından indirip yükleyin.',
+    updInstallFailed:
+      'Son güncelleme yüklenmedi. Bu kez yükleyici, ilerlemesini görebilmeniz için ayrı bir pencerede açılır.',
+    updVisibleInstall:
+      'Yeniden başlatmanın ardından bir yükleyici penceresi ilerlemeyi gösterir. Windows yönetici onayı isterse Evet seçin. Bittiğinde uygulama ve açık olan belgeleriniz geri gelir.',
+    updRestartNote:
+      'Yeniden başlatmanın ardından bir yükleyici penceresi ilerlemesini gösterir. Bittiğinde uygulama ve açık olan belgeleriniz geri gelir.',
+    updRestartNoteMac:
+      'Uygulama kapanır, yeni sürümle değiştirilir ve açık olan belgelerinizle birlikte yeniden açılır.',
+  },
   ja: {
     updTitle: 'ソフトウェアアップデート',
     updHeadline: '新しいバージョンがあります',

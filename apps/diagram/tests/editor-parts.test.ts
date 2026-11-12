@@ -1,6 +1,6 @@
 // @vitest-environment node
 // The open notice, the print sheets, draw.io's start arguments and
-// configuration, recovery copies, and the 21 languages.
+// configuration, recovery copies, and every UI language.
 import { describe, expect, it, vi } from 'vitest'
 import { LANGS } from '@genoffice/i18n'
 import { hasNotices, scanDiagramNotices } from '../src/shared/notices'
@@ -225,9 +225,9 @@ describe('DiagramCopier', () => {
 })
 
 describe('languages and channels', () => {
-  it('has the same keys in all 21 languages, translated', () => {
+  it('has the same keys in every UI language, translated', () => {
     const keys = Object.keys(appStrings.zh).sort()
-    expect(Object.keys(appStrings)).toHaveLength(21)
+    expect(Object.keys(appStrings)).toHaveLength(LANGS.length)
     for (const lang of LANGS) {
       expect(Object.keys(appStrings[lang]).sort(), lang).toEqual(keys)
       for (const key of keys)

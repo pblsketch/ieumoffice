@@ -746,6 +746,8 @@
         pressed = { x: e.clientX, y: e.clientY, grip: true }
         return
       }
+      // Alt starts a rubber band even on the selection (see the band below)
+      if (e.altKey) return
       const el = targetOf(e.target)
       if (el !== selected || el === document.body || sidOf(el) === null) return
       if (overText(el, e.clientX, e.clientY)) return
@@ -1165,19 +1167,52 @@
     if (editing && e.target === editing.el) finishEdit(true)
   })
 
-  // ---- rubber band: drag from a spot that is neither the selection nor text, and everything
-  // the rectangle fully encloses is selected (the outermost such elements, like a slide editor) ----
+  // ---- rubber band: drag from a spot that is neither the selection nor text (or anywhere with
+  // Alt held), and everything the rectangle fully encloses is selected (the outermost such
+  // elements, like a slide editor). Held at an edge of the viewport, the page keeps scrolling. ----
   let band = null
   const BAND_START = 5
+  const BAND_EDGE = 32
+  /** px per frame toward the edge the pointer rides (0 when it is not near one) */
+  const edgeStep = (pos, size) => {
+    if (pos < BAND_EDGE) return -Math.ceil((Math.min(BAND_EDGE, BAND_EDGE - pos) / BAND_EDGE) * 20)
+    if (pos > size - BAND_EDGE)
+      return Math.ceil((Math.min(BAND_EDGE, pos - (size - BAND_EDGE)) / BAND_EDGE) * 20)
+    return 0
+  }
+  const drawBand = () => {
+    const r = bandRect(band, band.at.x, band.at.y)
+    band.box.style.left = `${r.left}px`
+    band.box.style.top = `${r.top}px`
+    band.box.style.width = `${r.right - r.left}px`
+    band.box.style.height = `${r.bottom - r.top}px`
+  }
+  const bandScroll = () => {
+    if (!band || !band.box) return
+    band.frame = 0
+    const dx = edgeStep(band.at.x, window.innerWidth)
+    const dy = edgeStep(band.at.y, window.innerHeight)
+    if (!dx && !dy) return
+    const before = [window.scrollX, window.scrollY]
+    window.scrollBy(dx, dy)
+    // the page can scroll no further: stop asking every frame
+    if (window.scrollX === before[0] && window.scrollY === before[1]) return
+    drawBand()
+    band.frame = window.requestAnimationFrame(bandScroll)
+  }
+  /** within this of a side of the page, the band reaches that side: a row as wide as the page
+   * can only be enclosed by a band that starts on its very first pixel otherwise */
+  const BAND_SNAP = 16
   const bandRect = (from, x, y) => {
     const x0 = from.x - window.scrollX
     const y0 = from.y - window.scrollY
-    return {
-      left: Math.min(x0, x),
-      top: Math.min(y0, y),
-      right: Math.max(x0, x),
-      bottom: Math.max(y0, y),
-    }
+    // the visible page, without the scrollbar
+    const width = document.documentElement.clientWidth
+    let left = Math.min(x0, x)
+    let right = Math.max(x0, x)
+    if (left < BAND_SNAP) left = Math.min(left, 0)
+    if (width - right < BAND_SNAP) right = Math.max(right, width)
+    return { left, top: Math.min(y0, y), right, bottom: Math.max(y0, y) }
   }
   const enclosedBy = (r) => {
     const out = []
@@ -1186,8 +1221,13 @@
         if (isOwn(el) || out.length >= 200) continue
         const b = el.getBoundingClientRect()
         const sized = b.width > 0 && b.height > 0
+        // half a pixel of slack: a box laid out at a fraction sits on the band's snapped edge
         const inside =
-          sized && b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom
+          sized &&
+          b.left >= r.left - 0.5 &&
+          b.right <= r.right + 0.5 &&
+          b.top >= r.top - 0.5 &&
+          b.bottom <= r.bottom + 0.5
         if (inside && sidOf(el) !== null) out.push(el)
         // a box of no size (display: contents) can still hold boxes that are enclosed
         else if (
@@ -1204,6 +1244,7 @@
     const done = band
     band = null
     if (!done || !done.box) return
+    if (done.frame) window.cancelAnimationFrame(done.frame)
     done.box.remove()
     document.documentElement.removeAttribute(`${MARK}-banding`)
     post({ type: 'gx:drag', active: false })
@@ -1230,15 +1271,23 @@
       // a new press: a click still owed to the last drag never came and must not eat this one
       swallowClick = false
       if (!selecting() || editing || e.button !== 0 || isOwn(e.target)) return
-      const el = targetOf(e.target)
-      // pressing the selection drags it; pressing words is for the text
-      if (el && (el === selected || extras.includes(el))) return
-      if (el && overText(el, e.clientX, e.clientY)) return
+      if (e.altKey) {
+        // Alt: a band from anywhere, so a page made of text and full-width boxes still has a
+        // place to start one. No word selection or native drag starts under it.
+        e.preventDefault()
+      } else {
+        const el = targetOf(e.target)
+        // pressing the selection drags it; pressing words is for the text
+        if (el && (el === selected || extras.includes(el))) return
+        if (el && overText(el, e.clientX, e.clientY)) return
+      }
       band = {
         x: e.clientX + window.scrollX,
         y: e.clientY + window.scrollY,
+        at: { x: e.clientX, y: e.clientY },
         additive: e.shiftKey || e.metaKey || e.ctrlKey,
         box: null,
+        frame: 0,
       }
     },
     true,
@@ -1248,9 +1297,11 @@
     (e) => {
       if (!band) return
       if (!(e.buttons & 1)) return endBand(false)
-      const r = bandRect(band, e.clientX, e.clientY)
       if (!band.box) {
-        if (r.right - r.left < BAND_START && r.bottom - r.top < BAND_START) return
+        // the pointer's own travel, not the band's (a snapped side would start it at once)
+        const dx = Math.abs(e.clientX + window.scrollX - band.x)
+        const dy = Math.abs(e.clientY + window.scrollY - band.y)
+        if (dx < BAND_START && dy < BAND_START) return
         band.box = document.createElement('div')
         band.box.setAttribute(MARK, '')
         band.box.setAttribute(`${MARK}-band`, '')
@@ -1262,10 +1313,9 @@
         post({ type: 'gx:drag', active: true })
       }
       e.preventDefault()
-      band.box.style.left = `${r.left}px`
-      band.box.style.top = `${r.top}px`
-      band.box.style.width = `${r.right - r.left}px`
-      band.box.style.height = `${r.bottom - r.top}px`
+      band.at = { x: e.clientX, y: e.clientY }
+      drawBand()
+      if (!band.frame) bandScroll()
     },
     true,
   )

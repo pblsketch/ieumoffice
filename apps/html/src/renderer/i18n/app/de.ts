@@ -83,7 +83,8 @@ export const de = {
   slideThumbGo: 'Zu Folie {n} wechseln',
   previewNeedsSave:
     'Relative Bilder und Stile erscheinen in der Vorschau, sobald die Datei gespeichert ist',
-  inspectHint: 'Element in der Vorschau anklicken zum Auswählen, Doppelklick zum Textbearbeiten',
+  inspectHint:
+    'Element in der Vorschau anklicken zum Auswählen, Doppelklick zum Textbearbeiten, Umschalt+Klick oder {alt}+Ziehen für mehrere',
   nodeDynamic:
     'Dieses Element wurde vom Seitenskript erzeugt und existiert nicht im Quelltext; über Quelltext oder KI bearbeiten',
   nodeDynamicShort: 'skriptgeneriert',

@@ -52,7 +52,7 @@ const EN: Labels = {
 }
 
 // Shared table, same rationale as context-menu.ts: one copy instead of
-// 15 keys × 20 languages per app dictionary.
+// 15 keys × every UI language in each app dictionary.
 const LABELS: Record<string, Labels> = {
   zh: {
     window: '窗口',
@@ -453,6 +453,27 @@ const LABELS: Record<string, Labels> = {
     about: 'Giới thiệu GenOffice',
     checkUpdates: 'Kiểm tra bản cập nhật…',
     version: 'Phiên bản',
+  },
+  tr: {
+    window: 'Pencere',
+    minimize: 'Simge durumuna küçült',
+    closeWindow: 'Pencereyi kapat',
+    edit: 'Düzenle',
+    undo: 'Geri al',
+    redo: 'Yinele',
+    delete: 'Sil',
+    view: 'Görünüm',
+    reload: 'Yeniden yükle',
+    forceReload: 'Zorla yeniden yükle',
+    toggleDevTools: 'Geliştirici araçlarını aç/kapat',
+    actualSize: 'Gerçek boyut',
+    zoomIn: 'Yakınlaştır',
+    zoomOut: 'Uzaklaştır',
+    fullscreen: 'Tam ekran',
+    help: 'Yardım',
+    about: 'GenOffice hakkında',
+    checkUpdates: 'Güncellemeleri denetle…',
+    version: 'Sürüm',
   },
   'zh-TW': {
     window: '視窗',

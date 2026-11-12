@@ -229,11 +229,34 @@ function isAutoSkill(
 }
 
 /**
+ * What stands over the skills set for the panel's own editor (decision 0136).
+ * A panel's own instructions tell the model how to write a whole document,
+ * map or diagram at once, and with only the general list it did so without
+ * reading the skill written for that work (0 of 6 real requests). The line is
+ * narrow on purpose: whole new work only, never a change to what is there, so
+ * an ordinary edit does not pay for a skill's text.
+ */
+export const EDITOR_SKILLS_HEADING =
+  'Skills written for this editor (id | title | description). Rule: when the person asks ' +
+  'for a whole new piece of work here (a document, map, diagram or page, made from scratch ' +
+  'or from their material), your first tool call is use_skill with the one that fits; only ' +
+  'then use the tools that write. This holds even when you know how to write it: the skill ' +
+  'carries what the result is checked against. It does not apply to a change to work that ' +
+  'is already there, or to a question.'
+
+/** What stands over every other skill the model may pick */
+export const AUTO_SKILLS_HEADING = 'Skills you may use on your own (id | title | description):'
+
+/**
  * The list of skills the model may use on its own: enabled, "used on its
  * own", not agent-only, not pushed back by a skill of the same name, and not
  * attached to this request already. Up to `max` skills carry their
  * description (cut at `descriptionMax`); `namesMax` more keep their id and
  * title only; the rest is left out. Empty when nothing is listed.
+ *
+ * In an editor's panel the skills set for that editor (their scope names it;
+ * a skill for every editor is not one of them) come first, under
+ * `EDITOR_SKILLS_HEADING`. The limits count both groups together.
  */
 export function autoSkillsSection(
   skills: readonly UserSkillEntry[],
@@ -248,18 +271,29 @@ export function autoSkillsSection(
   const max = options.max ?? AUTO_SKILLS_MAX
   const namesMax = options.namesMax ?? AUTO_SKILLS_NAMES_ONLY_MAX
   const attached = new Set(options.attached ?? [])
-  const listed = skills.filter((s) => isAutoSkill(s, skills, options.editor) && !attached.has(s.id))
-  if (listed.length === 0) return ''
+  const auto = skills.filter((s) => isAutoSkill(s, skills, options.editor) && !attached.has(s.id))
+  if (auto.length === 0) return ''
+  // set for this editor: a scope that is not "every editor" (the filter above kept only those naming it)
+  const forEditor = (s: UserSkillEntry) => !!options.editor && !!skillEditorsOf(s.editors)
+  const listed = [...auto.filter(forEditor), ...auto.filter((s) => !forEditor(s))]
   const titleOf = (s: UserSkillEntry) =>
     clip(options.displayTitle?.(s) || s.title || s.name, AUTO_SKILL_TITLE_MAX)
-  const full = listed
-    .slice(0, max)
-    .map((s) => `- ${s.id} | ${titleOf(s)} | ${clip(s.description, descriptionMax)}`)
-  const namesOnly = listed.slice(max, max + namesMax).map((s) => `- ${s.id} | ${titleOf(s)}`)
-  const dropped = listed.length - full.length - namesOnly.length
-  const lines = [...full, ...namesOnly]
+  const lineOf = (s: UserSkillEntry, index: number) =>
+    index < max
+      ? `- ${s.id} | ${titleOf(s)} | ${clip(s.description, descriptionMax)}`
+      : `- ${s.id} | ${titleOf(s)}`
+  const shown = listed.slice(0, max + namesMax)
+  const own = shown.filter(forEditor)
+  const general = shown.slice(own.length)
+  const sections: string[] = []
+  if (own.length > 0) {
+    sections.push(`${EDITOR_SKILLS_HEADING}\n${own.map((s, i) => lineOf(s, i)).join('\n')}`)
+  }
+  const lines = general.map((s, i) => lineOf(s, own.length + i))
+  const dropped = listed.length - shown.length
   if (dropped > 0) lines.push(`(${dropped} more skills are not listed.)`)
-  return `Skills you may use on your own (id | title | description):\n${lines.join('\n')}`
+  if (lines.length > 0) sections.push(`${AUTO_SKILLS_HEADING}\n${lines.join('\n')}`)
+  return sections.join('\n\n')
 }
 
 function escapeAttr(value: string): string {
@@ -329,7 +363,9 @@ function tools(): AgentToolDef[] {
       name: USE_SKILL_TOOL,
       description:
         'Load one of the person’s enabled skills by its id from the skills list: returns its ' +
-        'instructions, the list of its other text files and whether it has a template document.',
+        'instructions, the list of its other text files and whether it has a template document. ' +
+        'Call it first, before any tool that writes, when the person asks for whole new work ' +
+        'and a skill written for this editor fits.',
       inputSchema: {
         type: 'object',
         properties: { id: { type: 'string', description: 'the skill id, e.g. app:home-letter' } },

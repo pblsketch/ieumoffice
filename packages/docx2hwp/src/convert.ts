@@ -1,6 +1,7 @@
 import { parseDocx } from '@genoffice/docx-engine'
 import type { HwpDocument } from '@rhwp/core'
 import { call, exportDocument, withNewDocument, withOpenedDocument, type HwpEngine } from './engine'
+import { hangulLook, wordLook, type HwpLook } from './look'
 import { lowerDocument } from './lower'
 import { LossLedger, type Loss } from './losses'
 import { writePlan } from './write'
@@ -32,13 +33,23 @@ export class Docx2HwpError extends Error {
   }
 }
 
+export interface HwpConversionOptions {
+  /**
+   * 'word' (the default) keeps the layout the Word document has. 'hangul' is
+   * for a Word document that only carries another format's content (Markdown):
+   * its tables get the look of a document written in Hangul.
+   */
+  readonly look?: HwpLook
+}
+
 /** Word document bytes (lazily served pictures already put back) to a Hangul document. */
 export function docxToHwp(
   docx: Uint8Array,
   format: HwpFormat,
   engine: HwpEngine,
+  options: HwpConversionOptions = {},
 ): Promise<HwpConversion> {
-  return convert(docx, format, engine, { batch: true })
+  return convert(docx, format, engine, { batch: true, look: options.look ?? 'word' })
 }
 
 /** docxToHwp with the writing strategy chosen: tests and measurements compare them */
@@ -46,7 +57,7 @@ export async function convert(
   docx: Uint8Array,
   format: HwpFormat,
   engine: HwpEngine,
-  options: { batch: boolean },
+  options: { batch: boolean; look?: HwpLook },
 ): Promise<HwpConversion> {
   let parsed: Awaited<ReturnType<typeof parseDocx>>
   try {
@@ -55,17 +66,35 @@ export async function convert(
     throw new Docx2HwpError('not-docx', messageOf(err), { cause: err })
   }
   const ledger = new LossLedger()
-  const plan = lowerDocument(parsed, ledger)
+  const lowered = lowerDocument(parsed, ledger)
+  const plan = options.look === 'hangul' ? hangulLook(lowered) : wordLook(lowered)
   try {
-    const bytes = withNewDocument(engine, (doc) => {
+    let lost = 0
+    const take = (doc: HwpDocument, as: HwpFormat): Uint8Array => {
+      const out = exportDocument(doc, as)
+      lost += out.contentLoss
+      return out.bytes
+    }
+    const written = withNewDocument(engine, (doc) => {
       const write = () => writePlan(doc, plan, ledger)
       if (options.batch) inBatch(doc, write)
       else write()
-      if (format === 'hwp') assertHwpReadsBack(doc)
-      const out = exportDocument(doc, format)
-      for (let i = 0; i < out.contentLoss; i++) ledger.note('object', `engine${i}`)
-      return out.bytes
+      if (format === 'hwp' && !hwpReadsBack(doc).same) {
+        return { settled: false, bytes: take(doc, 'hwpx') }
+      }
+      return { settled: true, bytes: take(doc, format) }
     })
+    // A table filled inside the batch keeps the height of its empty frame in
+    // the engine's layout, so the pages the engine counts are not the pages of
+    // the file it writes. The file opened again is laid out from what it
+    // holds: that document is the one checked and written as .hwp.
+    const bytes = written.settled
+      ? written.bytes
+      : withOpenedDocument(engine, written.bytes, (fresh) => {
+          assertHwpReadsBack(fresh)
+          return take(fresh, 'hwp')
+        })
+    for (let i = 0; i < lost; i++) ledger.note('object', `engine${i}`)
     withOpenedDocument(engine, bytes, (back) => {
       if (back.pageCount() < 1) throw new Docx2HwpError('failed', 'the written file has no pages')
     })
@@ -90,15 +119,24 @@ function inBatch(doc: HwpDocument, write: () => void): void {
  * The Hangul editor's .hwp save rule: the engine writes the .hwp, reads it
  * back and must find the same page count.
  */
-function assertHwpReadsBack(doc: HwpDocument): void {
+function hwpReadsBack(doc: HwpDocument): { same: boolean; before?: number; after?: number } {
   const verify = call<{ recovered?: boolean; pageCountBefore?: number; pageCountAfter?: number }>(
     'hwp verify',
     () => doc.exportHwpVerify(),
   )
-  if (!verify.recovered || verify.pageCountBefore !== verify.pageCountAfter) {
+  return {
+    same: verify.recovered === true && verify.pageCountBefore === verify.pageCountAfter,
+    before: verify.pageCountBefore,
+    after: verify.pageCountAfter,
+  }
+}
+
+function assertHwpReadsBack(doc: HwpDocument): void {
+  const read = hwpReadsBack(doc)
+  if (!read.same) {
     throw new Docx2HwpError(
       'hwp-readback',
-      `the .hwp reads back with ${verify.pageCountAfter} pages instead of ${verify.pageCountBefore}`,
+      `the .hwp reads back with ${read.after} pages instead of ${read.before}`,
     )
   }
 }

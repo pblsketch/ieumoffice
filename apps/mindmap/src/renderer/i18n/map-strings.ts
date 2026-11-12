@@ -6,7 +6,7 @@ import { translateIn } from './locale'
  * The texts the map itself shows, in one language: the titles new topics and
  * summaries start with, and the drawing library's context menu. The library
  * ships its own menu texts for a handful of languages; all twelve entries are
- * passed from this app's dictionaries instead, so every one of the 21
+ * passed from this app's dictionaries instead, so every one of the 22
  * languages has them.
  */
 export function mapStrings(lang: Lang): MapStrings {

@@ -405,6 +405,26 @@ describe('a template copy that brought the asking document', () => {
     expect(use.text).toContain('earlier document is attached')
   })
 
+  it('sends a request without chips together with the app note, which is not the person text', async () => {
+    const noted = {
+      id: 'h9',
+      mode: 'skill',
+      target: 'hwp',
+      text: 'tidy it up',
+      chips: [],
+      note: 'The file is already in this document.',
+    }
+    const { bridge } = templateBridge({ takeHandoff: vi.fn(async (): Promise<unknown> => noted) })
+    const send = vi.fn((_text: string, _use: SkillUse): boolean => true)
+    renderPanel({ editor: 'hwp', bridge, send })
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+    const [text, use] = send.mock.calls[0]!
+    expect(text).toBe('tidy it up')
+    expect(use.chips).toEqual([])
+    expect(use.text).toBe('\n\nThe file is already in this document.')
+  })
+
   it('sends nothing without it and leaves the request in the composer', async () => {
     const { bridge } = templateBridge({ takeHandoff: vi.fn(async (): Promise<unknown> => handoff) })
     const send = vi.fn()

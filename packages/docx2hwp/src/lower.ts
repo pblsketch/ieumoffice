@@ -924,6 +924,7 @@ function tableOf(
     cells,
     repeatHeader: table.repeatHeaderRows?.[0] === true,
     align: table.align ?? 'left',
+    flow: { kind: 'char' },
   }
 }
 

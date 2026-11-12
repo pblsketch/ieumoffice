@@ -9,8 +9,14 @@ import {
 } from '@genoffice/agent-core'
 import { brandText, type Params } from '@genoffice/i18n'
 import type {
+  AgentBatchStyle,
+  AgentNumberedMark,
+  AgentBorderRule,
+  AgentCellBlock,
+  AgentCellLook,
   AgentCellText,
   AgentChangeOptions,
+  AgentEquation,
   AgentCheckBox,
   AgentMatch,
   AgentMemoRemovalRefusal,
@@ -23,10 +29,15 @@ import type {
   AgentPlaceRefusal,
   AgentReadPictureResult,
   AgentSegment,
+  AgentStandInFont,
   AgentStyleKind,
+  AgentStyleFormat,
+  AgentStyleRule,
   AgentTableCell,
   AgentTableLinesRefusal,
+  AgentTableLook,
   AgentTableSummary,
+  AgentTitleBox,
   AgentTocEntry,
   AgentWhere,
 } from '../../../studio-plugin/agent-plugin.mjs'
@@ -116,6 +127,16 @@ export interface HwpSkillDeps {
   readAttachmentDocument?: (
     name: string,
   ) => Promise<{ ok: true; base64: string } | { ok: false; error: string }>
+  /**
+   * Open a Markdown file attached to this conversation as a new, untitled Hangul document
+   * in a tab of its own (the app converts it; this document is not changed). With
+   * `handOver` the person's request goes on in that tab. Absent where there is no tab to
+   * open (the command line): import_attachment is then not offered.
+   */
+  importAttachment?: (
+    name: string,
+    handOver: boolean,
+  ) => Promise<{ ok: true; title: string; handed: boolean } | { ok: false; error: string }>
 }
 
 export interface HwpSkill {
@@ -137,6 +158,17 @@ export interface HwpSkill {
   beginRun(): void
 }
 
+/** Told to the model where a whole attached file can be opened as a new document. */
+export const IMPORT_ATTACHMENT_NOTE = [
+  '',
+  '',
+  '## Turning an attached file into a Hangul document',
+  '- When the user asks to make a Hangul document out of an attached Markdown file (.md), do not retype it with insert_paragraphs and insert_table: call import_attachment with the name of the file. The app converts it itself, with its headings, lists, tables and bold text, and opens the result as a new, untitled Hangul document in a tab of its own. The document open here is not changed.',
+  '- Pass continue_request true when the request asks for more than the conversion (a look to give it, a form to follow, edits): the request then goes on in the new document, with the assistant of that tab. Do not do the rest of the request in this document.',
+  '- After the call, tell the user in a sentence that the file was opened as a new Hangul document in a new tab, and when the request was handed over, that the work goes on there.',
+  '- Only Markdown files can be brought in this way. For another kind of file, read it with read_attachment and write what the user asked for with the usual tools.',
+].join('\n')
+
 /** Hidden from the tool list while no image provider is reachable (see `createHwpSkill`). */
 export const IMAGE_GEN_OFF_NOTE =
   '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.'
@@ -157,10 +189,14 @@ const SYSTEM_PROMPT = [
   '- Read the memos (comments, 메모) of the document with read_memos: the author, the page and date when the file has them, and the whole text of each.',
   '- Replace a piece of text with another (replace_text, replace_all). The new text takes the formatting of the text it replaces.',
   '- Add new paragraphs next to an existing one, in the body or inside a table cell, or at the end of the document (insert_paragraphs). Remove a paragraph (delete_paragraph).',
-  '- Add a table of plain-text cells, with a header row when the first row names the columns (insert_table).',
+  '- Add a table of plain-text cells, with a header row when the first row names the columns, and with its look: a grid, an open table without side lines or lines between rows only, the colour of the header, the widths of the columns and the size of its text (insert_table).',
   '- Add a picture in a new paragraph after or before an anchor paragraph, or at the end: a real picture found on the web (image_search, then insert_image with its address) or an illustration the app draws (generate_image). A picture is saved inside the document, so it travels with the file. Only insert pictures the user asked for.',
   '- Work on the tables that are already there: list them (list_tables), read one cell by cell (read_table), write text into its cells, many at once (fill_cells), tick the choice boxes of a form (check_boxes), add or remove rows and columns (add_to_table, remove_from_table), and remove a whole table (delete_table). After writing into cells, check that their text fits (check_layout): text that runs past the bottom of a cell is cut off in print.',
-  '- Change formatting: bold, italic, underline, strikethrough, font, font size, text colour, highlight and the character style of a piece of text (format_text); alignment, line spacing, first-line indent, margins, space above and below and the paragraph style of a paragraph, and the character formatting of a whole paragraph (format_paragraph); the background colour of table cells (format_cells).',
+  '- Change formatting: bold, italic, underline, strikethrough, font, font size, text colour, highlight and the character style of a piece of text (format_text); alignment, line spacing, first-line indent, margins, space above and below and the paragraph style of a paragraph, and the character formatting of a whole paragraph (format_paragraph); the background colour, the border lines and the vertical alignment of table cells (format_cells).',
+  '- Give a whole document its look in one call: make paragraph styles and apply each one to every paragraph that starts with a mark such as □ or ○, or to a paragraph you name (style_paragraphs). Turn a title line into a title box: bands of colour, heavy lines, a frame or a fill (insert_title_box).',
+  '- Number the pages, and write a header or a footer of one line (read_page_layout, set_page_number, set_header_footer).',
+  '- Lay the text out in columns, and start a paragraph on a new page or in the next column (set_columns, insert_break).',
+  '- Put equations into the text (insert_equations), draw a line round the pages (set_page_border), set tab stops with a leader of dots (tabs of format_paragraph and of a style), draw a diagonal across a table cell (diagonal of format_cells), and give a picture of the body text another width (resize_picture).',
   '- Use one font instead of another everywhere in the document, body and table cells (replace_font). The format check hands the font names over; without it, ask which font the user means.',
   '- Work with the styles of the document: see what one looks like (read_style), add a paragraph or character style (create_style), and change a style: its name, the style that follows it and its look (edit_style).',
   '- Merge table cells into one (merge_cells; their text goes into it, one cell after another) or split a cell into several, or a merged cell back (split_cell). Read the table first: rows and columns count as read_table shows them.',
@@ -174,7 +210,7 @@ const SYSTEM_PROMPT = [
   '- See the pictures of the document (body text and table cells): list them (list_pictures), then look at one and answer a question about it (analyze_picture). The document text does not show what a picture shows.',
   '',
   '## What they cannot do',
-  '- You cannot change paragraph borders, columns, headers and footers or the page borders, and you cannot move, resize, replace or remove a picture that is already in the document (the user does that in the editor). You can only add a new one. analyze_picture only looks at one. A note cannot be put inside a table cell.',
+  '- You cannot draw a line between columns, a header or footer takes one line of text only (no table or picture in it), and you cannot move, replace or remove a picture that is already in the document (the user does that in the editor): you can add a new one and change the width of one in the body text. analyze_picture only looks at one. A note cannot be put inside a table cell, and neither can an equation.',
   "- A tick box that is a picture or a form control cannot be ticked: only a □ that is the paragraph's bullet or typed into the text can.",
   '- A table inside a cell of another table can be read, filled and removed, but its cells cannot be coloured, merged or split, it cannot get or lose rows and columns, and the alignment, spacing and paragraph style of its paragraphs cannot be changed. Its text can still be formatted, character styles included.',
   '- You cannot remove a style. The user can do that in the style dialog of the editor (F6).',
@@ -219,6 +255,8 @@ const SYSTEM_PROMPT = [
   '',
   '## Page setup and lists',
   '- Change the page setup only when the user asks. Margins and paper are in millimetres; say that pages may break differently afterwards.',
+  '- A page number is set once for the document with set_page_number (its place, its shape, dashes or not); never type a page number into the text. A header or footer is one line with set_header_footer: {page} stands for the page number and {pages} for the number of pages. Read what is there first (read_page_layout): one laid out by hand, with a table or a picture, is left to the user.',
+  '- Columns (set_columns) are for test papers, newsletters and the like. Set them before adding tables: from then on a table is one column wide, and so is a title box. The head of the page, as wide as the page, is one table with across_columns in front of the first paragraph: put the title into it. insert_break starts a paragraph on a new page or in the next column, for example so that a question is not cut in two.',
   '- For numbered or bulleted paragraphs use list on the paragraphs instead of typing 1. or ● into their text. Korean official documents often type their level marks (□, ㅇ, -, 1., 가.) as text: keep that scheme when the document uses it.',
   '',
   "## Copying another document's formatting",
@@ -241,8 +279,26 @@ const SYSTEM_PROMPT = [
   '- Leave the rest of the document alone unless the request clearly asks for more.',
   '- Without that block nothing is selected. If the user then speaks of "the selected part", ask them to select the text in the document first.',
   '',
+  '## The look of a document you write',
+  '- When you write a document from scratch (an empty document, or one whose text is all in the default look) and neither a template nor a skill fixes its look, give it the look that kind of document has, without being asked: a run of default text is not a finished report. Decide the look from what the document is and who reads it, and keep it through the whole document.',
+  '- A report or a plan inside a public office, a school or a company (보고서, 계획서, written in 개조식): a title box; heading lines marked □ in a heavy gothic of 15 to 16 pt with space above; items marked ○ in a serif text face of 13 to 15 pt; sub-items marked - and notes marked ※ a little smaller; line spacing of 160 to 180 percent; each level set further in with margin_left (the top level at 0, where the text of the page starts) and given a negative indent as wide as its mark and the space after it, so that a second line starts under the text and not under the mark; tables with a shaded header row.',
+  '- Numbered levels, when the user asks for them or the organisation writes that way (Ⅰ, 1., 가., 1), 가), (1), (가), ① from the top level down, the order of Korean official documents): type the number as text at the start of each paragraph, and count each level from its first value again under a new parent. Give each level a style of its own and apply it with one rule by numbered ("1." is every 1. 2. 3. … paragraph, "가." every 가. 나. 다. …): the top level heaviest and largest and at margin_left 0, each level below lighter and with a margin_left about two characters larger than the one above, and each with a negative indent as wide as its number so that a second line starts under the text. Bold is for levels that hold short headings: a level whose lines are sentences stays regular.',
+  '- A test paper or a worksheet (시험지, 평가지, 학습지): two columns (set_columns) before anything else; after the text, a head across the columns as a table (insert_table with across_columns, where "before" the first paragraph; no title box) that holds the school and the name of the test, the subject, and blanks for grade, class, number and name; questions numbered 1. 2. 3. in a text face of 10 to 11 pt at about 150 to 160 percent, the question line bold (a style applied by numbered "1.") and starting at the left edge of the column like a passage above it (margin_left 0, a negative indent as wide as the number), each choice ① to ⑤ on a line of its own set in by the width of the question number, the points in brackets at the end of the question, and an empty line between questions. Leave the answers out unless the user asks for them.',
+  '- A notice or a letter to people outside (안내문, 가정통신문): a centred title with a frame or lines, full sentences in one text face of 11 to 12 pt at about 160 percent, the date and the sender centred or right-aligned at the end, and little decoration. A reply slip goes under a cut line: one paragraph of dashes with 절취선 in the middle, centred (type it as "- - - 절취선 - - -": the app writes as many dashes on each side as fit one line), and is a table of plain grid lines with the blanks to fill in.',
+  '- An official letter (공문): no decoration; its fixed parts in one text face of 12 to 13 pt.',
+  '- The Ministry of the Interior and Safety guideline format (행안부 형식), or when the user asks for a plain document: no title box, no shading and no colour, prose paragraphs, fonts every PC has. A skill that says how the document must look is followed before these lines.',
+  '- Anything else (minutes, a proposal, a paper): what such documents usually look like; when unsure, a centred bold title, bold headings and body text of 10 to 11 pt.',
+  '- Build it in this order: set_columns when the look has columns; all the text with insert_paragraphs; the tables with insert_table (look, header_color, column_widths, size); then one style_paragraphs call that makes the styles (those of headings with keep_with_next, so that a heading is not left alone at the foot of a page) and applies each by the mark or the number its lines start with (and the title by find); then insert_title_box when the look has one; then read_page_layout, which says how many pages the document has now, and set_page_number when it runs over one page. A few calls style the whole document: do not format it paragraph by paragraph.',
+  '- Fonts: the context says which document fonts this PC has. Offices write headings in HY헤드라인M and text in 휴먼명조, which come with Hancom Office only: use them when the PC has them. Where it lacks them use a font of the same kind that it has: a gothic in bold (맑은 고딕) for headings, a serif face (함초롬바탕, else 바탕) for text. style_paragraphs, insert_title_box and insert_table make this swap themselves and report it as a stand-in. When the user names a font, use that font.',
+  '- Boxes and lines are paragraph borders: a box round a few lines (the 〈보기〉 of a test, a summary, a note to mind) is border with sides box on each of those paragraphs, with margin_left and margin_right of 6 to 10 pt so that the words do not touch the lines, and a pale background when it should stand out (space above its first paragraph and below its last is room inside the box; room outside it belongs to the paragraphs around it); a line under a heading is border with sides bottom; a note set off from the text is a band at the left (sides left, 1 to 1.5 mm wide) with margin_left 8 to 10 pt and a pale background. Put them into the styles of style_paragraphs. An approval box (결재란) is a small table at the right: insert_table with width_percent 30 to 45 and place right, its first column merged for the word 결재 (merge_cells) and the signing row made high (format_cells row_height_mm). Text in table cells is formatted with format_cells (align, bold, size) on a block, not cell by cell. Narrow or space characters (char_width, letter_spacing) only to fit a line, as official documents do: 90 to 100 percent and 0 to -5.',
+  '- Something at the right end of a line (the page of a contents line you type yourself, the price of an item, the time in a programme, "(인)" after a name) is one paragraph with a tab character between the two parts (written \\t in the text you pass) and a tab stop on it: tabs [{ "leader": "dots" }] puts what follows the tab at the right edge of the text with dots leading up to it, and without leader the way stays empty. Never fill the way with typed dots or spaces. A table of contents of the headings of the document itself is insert_toc, not this.',
+  '- Formulas are equations (insert_equations), not typed characters: in a mathematics or science paper write every expression as an equation, a short one too, so that all of them look alike. Write the text with a placeholder where each one goes, [[1]], [[2]], and put them all in with one call after style_paragraphs, so that each is as large as the text it stands in.',
+  '- A line round the page (set_page_border) is for a certificate, an award, a cover or a notice to post: a double line, or a heavy one in the accent colour. A report, a letter or a test paper has none. The corner cell of a timetable or a cross table that names both its rows and its columns takes a diagonal (format_cells with diagonal down) and no words (pass "" for it in rows), and a cell that does not apply is crossed out with diagonal both.',
+  '- Colour sparingly: one accent colour for the title box and the table header at most (a dark blue or a grey, unless the user or the organisation has its own); body text stays black.',
+  '- Tell the user in a line or two which look you gave the document and which fonts stood in, so that they can ask for another.',
+  '',
   '## Formatting rules',
-  '- Format only what the user asked for. Do not restyle text on your own: a new paragraph already looks like its neighbour, and official documents keep one look throughout.',
+  '- In a document that already has a look (text the user or a template formatted), format only what the user asked for and do not restyle text on your own: a new paragraph already looks like its neighbour, and official documents keep one look throughout.',
   '- When new content needs a look of its own (a heading, an emphasised line), insert the text first, then format it with a second call.',
   '- For emphasis prefer bold. Use colour and highlight only when the user asks for them.',
   '- To take formatting away, pass false (bold, italic, underline, strikethrough) or "none" (highlight, cell background).',
@@ -250,7 +306,7 @@ const SYSTEM_PROMPT = [
   '- A paragraph style (the "Paragraph styles" line of the context) sets the look the document defines for that kind of paragraph; prefer it to setting the same things one by one. A character style (the "Character styles" line) does the same for a piece of text, for example a term or an emphasis; apply it with char_style.',
   '',
   '## Styles',
-  '- Add or change a style only when the user asks for one, or asks for a look to use again across the document. Then make the style and apply it with format_paragraph or format_selection (style), or format_text (char_style).',
+  '- Add or change a style when the user asks for one or for a look to use again across the document, or when you give a document you wrote its look (style_paragraphs). A single style is made with create_style and applied with format_paragraph or format_selection (style), or format_text (char_style).',
   '- A new style starts from the look of based_on (바탕글 when not given): pass only what should differ. Base it on the style of the paragraphs it is for. Give it the name the user uses; a paragraph style is followed by itself unless next_style says otherwise.',
   '- read_style shows what a style looks like before you change it, in the units the format tools take.',
   '- Changing a style changes every paragraph that uses it, in tables, text boxes, headers, footers and notes too. What a paragraph has set differently from its style (for example its alignment) stays, and the rest follows the style, as in Hangul. Changing a character style changes the text it was applied to; that text keeps its look when the style of its paragraph changes.',
@@ -303,6 +359,15 @@ const TEXT_FORMAT_SCHEMA = {
     description: 'highlight colour as #RRGGBB, or "none" to remove a highlight',
   },
   font: { type: 'string', description: 'font name, for example 맑은 고딕' },
+  char_width: {
+    type: 'number',
+    description: 'width of the characters in percent of their own (장평), 50 to 200; 100 is normal',
+  },
+  letter_spacing: {
+    type: 'number',
+    description:
+      'space between characters in percent (자간), -50 to 50; 0 is normal, negative brings them together',
+  },
   char_style: {
     type: 'string',
     description: 'name of a character style of the document; set before the other properties',
@@ -312,12 +377,36 @@ const TEXT_FORMAT_SCHEMA = {
 /** The paragraph formatting a format tool takes, as schema properties. */
 const PARAGRAPH_FORMAT_SCHEMA = {
   align: { type: 'string', enum: ['left', 'center', 'right', 'justify'] },
+  border: {
+    type: 'object',
+    properties: {
+      sides: {
+        type: 'string',
+        enum: ['box', 'top', 'bottom', 'left', 'right', 'top_bottom', 'none'],
+        description: 'default box: all four sides; none takes the border away',
+      },
+      line: { type: 'string', enum: ['solid', 'dashed', 'dotted', 'double'] },
+      width: { type: 'number', description: 'line width in mm, 0.1 to 5; default 0.12' },
+      color: { type: 'string', description: 'line colour as #RRGGBB; default black' },
+    },
+    description:
+      'a border of the paragraph (문단 테두리): a box round it, a line under a heading (bottom), a band at its left. Paragraphs in a row with the same border make one box. The lines stand at the edges of the text column whatever the margins of the paragraph are: margin_left and margin_right move only the words in, which is the room between line and words (6 to 10 pt in a box). space_before and space_after lie inside the box',
+  },
+  background: {
+    type: 'string',
+    description: 'colour behind the whole paragraph as #RRGGBB (문단 배경), or "none"',
+  },
   line_spacing: { type: 'number', description: 'line spacing in percent, for example 160' },
   indent: {
     type: 'number',
-    description: 'first-line indent in points; negative hangs the first line out (-100 to 100)',
+    description:
+      'indent in points (-100 to 100). Positive: the first line starts that much further in. Negative is the hanging indent of Hangul (내어쓰기): the first line stays at margin_left and the lines after it start that much further in. So a mark or a number at the left edge with its text hanging under itself is margin_left 0 and indent minus the width of the mark and its space',
   },
-  margin_left: { type: 'number', description: 'left margin of the paragraph in points (0 to 300)' },
+  margin_left: {
+    type: 'number',
+    description:
+      'left margin of the paragraph in points (0 to 300): where its first line starts, unless indent is positive',
+  },
   margin_right: { type: 'number', description: 'right margin in points (0 to 300)' },
   space_before: { type: 'number', description: 'space above the paragraph in points (0 to 200)' },
   space_after: { type: 'number', description: 'space below the paragraph in points (0 to 200)' },
@@ -329,6 +418,32 @@ const PARAGRAPH_FORMAT_SCHEMA = {
   },
   list_level: { type: 'integer', minimum: 1, maximum: 7, description: 'level of a list paragraph' },
   bullet: { type: 'string', description: 'the bullet character of list bullet, default ●' },
+  tabs: {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        at_mm: {
+          type: 'number',
+          description:
+            'where the stop stands, in millimetres from the left edge of the text; leave out for the right edge of the text',
+        },
+        align: {
+          type: 'string',
+          enum: ['left', 'right', 'center', 'decimal'],
+          description:
+            'how the text after the tab sits at the stop; default right at the right edge, else left',
+        },
+        leader: {
+          type: 'string',
+          enum: ['none', 'dots', 'dashes', 'line'],
+          description: 'what fills the way to the stop; default none',
+        },
+      },
+    },
+    description:
+      'the tab stops of the paragraph (탭 설정), in place of the ones it has: a tab character in its text runs to the next stop. [{ "leader": "dots" }] is one stop at the right edge with dots leading to it, as in a contents line; [] takes the stops away',
+  },
 }
 
 /** Paragraph styles named in the context at most. */
@@ -362,6 +477,29 @@ const NOTE_TEXT_SCHEMA = {
   type: 'string',
   description:
     'the text of the note, without its number; a line break starts a new paragraph of the note',
+}
+
+/** offered only where the app can open a new tab (see `createHwpSkill`) */
+const IMPORT_ATTACHMENT_TOOL: AgentToolDef = {
+  name: 'import_attachment',
+  description:
+    'Turn a Markdown file (.md, .markdown) attached to this chat into a Hangul document: the app converts its headings, lists, tables and bold text and opens the result as a new, untitled document in a tab of its own. The document open here is not changed. Use this instead of retyping the file.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      attachment: {
+        type: 'string',
+        description:
+          'the exact name of the attached Markdown file, as the attachment list shows it',
+      },
+      continue_request: {
+        type: 'boolean',
+        description:
+          'true when the request asks for more than the conversion (a look, a form to follow, edits): the request then goes on in the new document',
+      },
+    },
+    required: ['attachment'],
+  },
 }
 
 const TOOLS: AgentToolDef[] = [
@@ -413,8 +551,25 @@ const TOOLS: AgentToolDef[] = [
   {
     name: 'list_pictures',
     description:
-      'List the pictures in the document (body text and table cells) in reading order: the number analyze_picture takes, the image type, the page, the table it is in, and the text beside each one. The text of the document does not show pictures.',
+      'List the pictures in the document (body text and table cells) in reading order: the number analyze_picture and resize_picture take, the image type, the page, the table it is in, and the text beside each one. The text of the document does not show pictures.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'resize_picture',
+    description:
+      'Give a picture of the body text another width; its height follows, so that it keeps its shape. Call list_pictures first for the number. A picture inside a table cell cannot be resized here, and a picture is never made wider than the text of its page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        picture: {
+          type: 'integer',
+          minimum: 1,
+          description: 'the picture number from list_pictures',
+        },
+        width_mm: { type: 'number', description: 'the new width in millimetres, 5 to 400' },
+      },
+      required: ['picture', 'width_mm'],
+    },
   },
   {
     name: 'analyze_picture',
@@ -521,8 +676,142 @@ const TOOLS: AgentToolDef[] = [
           type: 'boolean',
           description: 'the first row names the columns: it is made bold, centred and shaded',
         },
+        look: {
+          type: 'string',
+          enum: ['grid', 'open', 'rows'],
+          description:
+            'grid: a thin line round every cell (default); open: no line at the left and right edge, a heavier line above and below, a line under the header, as Korean reports draw tables; rows: lines between the rows only',
+        },
+        header_color: {
+          type: 'string',
+          description: 'fill of the header row as #RRGGBB, or "none"; default a light grey',
+        },
+        column_widths: {
+          type: 'array',
+          items: { type: 'number' },
+          description:
+            'the share of the width each column takes, one positive number per column, for example [1, 3, 2]: a column of short labels narrow, one of sentences wide',
+        },
+        align: {
+          type: 'string',
+          enum: ['left', 'center', 'right'],
+          description: 'alignment of the body cells; the header row is centred anyway',
+        },
+        size: {
+          type: 'number',
+          description:
+            'font size of the table text in points; default that of the paragraph it is put next to, so name it when that paragraph is a heading',
+        },
+        font: { type: 'string', description: 'font of the table text; default as for size' },
+        width_percent: {
+          type: 'number',
+          description:
+            'how much of the text width the table takes, 15 to 100; default 100. A small table, such as an approval box (결재란), takes 30 to 45',
+        },
+        place: {
+          type: 'string',
+          enum: ['left', 'center', 'right'],
+          description: 'where a table narrower than the text stands; default left',
+        },
+        repeat_header: {
+          type: 'boolean',
+          description: 'repeat the header row at the top of every page a long table runs over',
+        },
+        across_columns: {
+          type: 'boolean',
+          description:
+            'where the text runs in columns (set_columns): make the table as wide as the page, lying across the columns at the top of the first page, as the head of a test paper does. Only with where "before" and an anchor in the first paragraph of the document. Without it a table there is one column wide',
+        },
       },
       required: ['where', 'rows'],
+    },
+  },
+  {
+    name: 'style_paragraphs',
+    description:
+      'Give paragraphs their look in one call (one undo step): make paragraph styles, or change the ones the document already has by that name, and apply them. Each apply rule gives its style to every body paragraph that starts with starts_with (leading spaces aside; table cells are left alone), or to the one paragraph find occurs in. A paragraph takes the first rule that names it. Use it to style a whole document after writing it: one style for each kind of line, told by the mark the line starts with.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        styles: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'name of the style, for example 중제목' },
+              based_on: {
+                type: 'string',
+                description:
+                  'a style whose look it starts from when it is made: one of the document, or one made earlier in this list; default 바탕글',
+              },
+              keep_with_next: {
+                type: 'boolean',
+                description:
+                  'its paragraphs stay on the page of the paragraph after them: for a heading style',
+              },
+              ...STYLE_LOOK_SCHEMA,
+            },
+            required: ['name'],
+          },
+          description: 'the styles to make or change, each with the properties of its look',
+        },
+        apply: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              style: { type: 'string', description: 'a style of styles, or one the document has' },
+              starts_with: {
+                type: 'string',
+                description: 'the mark the paragraphs start with, for example □ or ○ or -',
+              },
+              numbered: {
+                type: 'string',
+                enum: ['Ⅰ', '1.', '가.', '1)', '가)', '(1)', '(가)', '①'],
+                description:
+                  'the numbered level the paragraphs start with, named by its first number: "1." is every paragraph numbered 1. 2. 3. …, "가)" every 가) 나) 다) …',
+              },
+              find: { type: 'string', description: 'text of the one paragraph to style' },
+              occurrence: { type: 'integer', minimum: 1 },
+            },
+            required: ['style'],
+          },
+          description:
+            'which paragraphs take which style: by starts_with, by numbered or by find, one of the three',
+        },
+      },
+    },
+  },
+  {
+    name: 'insert_title_box',
+    description:
+      'Turn a title paragraph of the body into a title box as wide as the text, with its words centred inside: bands (a band of colour above and below), lines (a heavy line above and below), box (a line all round) or shaded (a fill behind the title). The title keeps the font and size it has unless you pass others. One undo step.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        find: { type: 'string', description: 'text of the title paragraph' },
+        occurrence: { type: 'integer', minimum: 1 },
+        look: {
+          type: 'string',
+          enum: ['bands', 'lines', 'box', 'shaded'],
+          description: 'default bands',
+        },
+        color: {
+          type: 'string',
+          description:
+            'the main colour as #RRGGBB: the bands, the lines, the frame or the fill; default a dark blue for bands, black for lines and box, a pale blue for shaded',
+        },
+        color2: {
+          type: 'string',
+          description:
+            'a second colour as #RRGGBB: the lower band or line, or lines above and below a shaded box',
+        },
+        font: { type: 'string', description: 'font of the title' },
+        size: { type: 'number', description: 'font size of the title in points' },
+        bold: { type: 'boolean' },
+        text_color: { type: 'string', description: 'colour of the title text as #RRGGBB' },
+      },
+      required: ['find'],
     },
   },
   {
@@ -773,7 +1062,7 @@ const TOOLS: AgentToolDef[] = [
   {
     name: 'format_cells',
     description:
-      'Give cells of a table a background colour, or take it away with "none". Cells are named by row and column from 1, as read_table shows them; a merged cell by any place it covers. Not for a table inside another table.',
+      'Change how cells of a table look: their background colour (or "none"), their border lines, a diagonal across them, and where their text sits between top and bottom. Name the cells as a list (cells, by row and column from 1 as read_table shows them; a merged cell by any place it covers), as a block (range), or leave both out for the whole table. A border names the edges it means: of a block or the whole table, outer is its outline and inner the lines between its cells; of a list each cell is on its own. Later borders go over earlier ones. Not for a table inside another table.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -789,9 +1078,73 @@ const TOOLS: AgentToolDef[] = [
             required: ['row', 'col'],
           },
         },
+        range: {
+          type: 'object',
+          properties: {
+            from_row: { type: 'integer', minimum: 1 },
+            from_col: { type: 'integer', minimum: 1 },
+            to_row: { type: 'integer', minimum: 1 },
+            to_col: { type: 'integer', minimum: 1 },
+          },
+          required: ['from_row', 'from_col', 'to_row', 'to_col'],
+          description:
+            'a block of cells from its top left to its bottom right corner, instead of cells',
+        },
         background: { type: 'string', description: 'colour as #RRGGBB, or "none"' },
+        borders: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              sides: {
+                type: 'string',
+                enum: [
+                  'all',
+                  'outer',
+                  'inner',
+                  'top',
+                  'bottom',
+                  'left',
+                  'right',
+                  'inner_horizontal',
+                  'inner_vertical',
+                ],
+                description: 'default all',
+              },
+              line: {
+                type: 'string',
+                enum: ['none', 'solid', 'dashed', 'dotted', 'double'],
+                description: 'default solid; none takes the line away',
+              },
+              width: { type: 'number', description: 'line width in mm, 0.1 to 5; default 0.12' },
+              color: { type: 'string', description: 'line colour as #RRGGBB; default black' },
+            },
+          },
+        },
+        vertical_align: { type: 'string', enum: ['top', 'middle', 'bottom'] },
+        row_height_mm: {
+          type: 'number',
+          description: 'height of the rows of the cells in millimetres, 3 to 250',
+        },
+        diagonal: {
+          type: 'string',
+          enum: ['down', 'up', 'both', 'none'],
+          description:
+            'a line across each of the cells (대각선): down runs from the top left to the bottom right, as in the corner cell of a timetable; up from the bottom left to the top right; both crosses the cell out; none takes the line away. The line runs through the words of its cell, so the cell is left empty',
+        },
+        align: {
+          type: 'string',
+          enum: ['left', 'center', 'right', 'justify'],
+          description: 'how the text of the cells is aligned',
+        },
+        bold: { type: 'boolean' },
+        italic: { type: 'boolean' },
+        underline: { type: 'boolean' },
+        size: { type: 'number', description: 'font size of the cells text in points' },
+        font: { type: 'string', description: 'font of the cells text' },
+        color: { type: 'string', description: 'colour of the cells text as #RRGGBB' },
       },
-      required: ['table', 'cells', 'background'],
+      required: ['table'],
     },
   },
   {
@@ -1129,6 +1482,148 @@ const TOOLS: AgentToolDef[] = [
     },
   },
   {
+    name: 'read_page_layout',
+    description:
+      'Show how many pages the document has, the columns its text runs in, the line round its pages, its page number (place, shape, dashes or not) and the text of its header and footer; plain says whether set_header_footer may rewrite it.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'set_columns',
+    description:
+      'Lay the body text out in columns of one width (다단), in the whole document; count 1 takes the columns away. Call it before adding tables: a table added afterwards is one column wide, and tables that are already there keep their width. A line between the columns cannot be drawn.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        count: { type: 'integer', minimum: 1, maximum: 4, description: 'how many columns' },
+        gap_mm: {
+          type: 'number',
+          description: 'the gap between the columns in millimetres; default 8',
+        },
+      },
+      required: ['count'],
+    },
+  },
+  {
+    name: 'insert_break',
+    description:
+      'Start a paragraph of the body text on a new page (쪽 나누기) or in the next column (단 나누기). The paragraph is the one that contains find.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        find: { type: 'string', description: 'text of the paragraph that is to start anew' },
+        occurrence: { type: 'integer', minimum: 1 },
+        kind: { type: 'string', enum: ['page', 'column'] },
+      },
+      required: ['find', 'kind'],
+    },
+  },
+  {
+    name: 'set_page_border',
+    description:
+      'Draw a line round every page of the document (쪽 테두리), just inside the margins: for a certificate, an award, a cover or a notice to post. line "none" takes it away.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        line: { type: 'string', enum: ['none', 'solid', 'dashed', 'dotted', 'double'] },
+        width: {
+          type: 'number',
+          description: 'line width in mm, 0.1 to 5; default 0.12, for a double line 0.5',
+        },
+        color: { type: 'string', description: 'line colour as #RRGGBB; default black' },
+      },
+      required: ['line'],
+    },
+  },
+  {
+    name: 'insert_equations',
+    description:
+      "Put equations (수식) into the body text, all of them in one call. Write the text first with a short placeholder where each equation goes, for example [[1]] and [[2]]; each item names its placeholder (find) and the equation in the script of Hangul's equation editor, and the equation takes the placeholder's place, as large as the text around it. The script is not LaTeX and has no backslashes: {a} over {b} is a fraction; sqrt {x} a root and root {3} of {x} a cube root; x^2 and x_1 raise and lower, with braces round more than one character (x^{n+1}, a_{ij}); times, div, +-, cdot, le, ge, ne, approx are × ÷ ± · ≤ ≥ ≠ ≈ (not <=, >=, !=); -> is an arrow and inf is ∞; Greek letters by name (alpha, beta, pi, theta, and DELTA for a capital); limits go on with _ and ^: sum _{i=1} ^{n}, int _{a} ^{b}, lim _{x -> 0}; LEFT ( ... RIGHT ) are brackets as tall as what they hold; matrix {a & b # c & d} has & between columns and # between rows (pmatrix with round brackets, dmatrix with bars); cases {x & (x ge 0) # -x & (x < 0)}; vec {a}, bar {x}, overline {AB}; angle A, triangle ABC, 90 DEG; rm makes the next word upright, as a unit is (3 rm cm); ~ is a space (a plain space only separates the words of the script). Text inside a table cell cannot take an equation.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        equations: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              find: {
+                type: 'string',
+                description:
+                  'the placeholder, or other text of the paragraph the equation goes into',
+              },
+              occurrence: { type: 'integer', minimum: 1 },
+              script: { type: 'string', description: 'the equation in equation script, one line' },
+              keep_text: {
+                type: 'boolean',
+                description:
+                  'true: leave find where it is and put the equation right after it; default false: the equation replaces find',
+              },
+            },
+            required: ['find', 'script'],
+          },
+        },
+      },
+      required: ['equations'],
+    },
+  },
+  {
+    name: 'set_page_number',
+    description:
+      'Number the pages of the document (쪽 번호 매기기): where the number goes, its shape, and whether it has dashes around it (- 1 -). position "none" hides it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        position: {
+          type: 'string',
+          enum: [
+            'bottom_center',
+            'bottom_right',
+            'bottom_left',
+            'top_center',
+            'top_right',
+            'top_left',
+            'outside_bottom',
+            'outside_top',
+            'inside_bottom',
+            'inside_top',
+            'none',
+          ],
+        },
+        format: {
+          type: 'string',
+          enum: [
+            'digit',
+            'circledDigit',
+            'upperRoman',
+            'lowerRoman',
+            'upperAlpha',
+            'lowerAlpha',
+            'hangulSyllable',
+            'hanjaDigit',
+          ],
+          description: 'default digit: 1 2 3',
+        },
+        dashes: { type: 'boolean', description: 'default true: - 1 -' },
+      },
+      required: ['position'],
+    },
+  },
+  {
+    name: 'set_header_footer',
+    description:
+      'Write the header or the footer of the document: one line of text on every page. {page} in the text is the page number and {pages} the number of pages. An empty text removes it. One that holds a table, a picture or several lines was laid out by hand and is refused.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['header', 'footer'] },
+        text: { type: 'string', description: 'one line; "" removes the header or footer' },
+        align: { type: 'string', enum: ['left', 'center', 'right'], description: 'default center' },
+        size: { type: 'number', description: 'font size in points' },
+      },
+      required: ['kind', 'text'],
+    },
+  },
+  {
     name: 'read_formatting',
     description:
       'Read how a document is formatted: its page setup, footnote and endnote settings, the styles it uses with their look, and the looks of its body paragraphs grouped (font, size, alignment, line spacing, indents, spacing, list), most used first, with sample text. Without attachment it reads this document, and each look has an id that format_look takes. With attachment it reads an attached HWP / HWPX document, to copy its formatting.',
@@ -1294,6 +1789,54 @@ const isWhere = (value: unknown): value is AgentWhere =>
 const isTextList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'string')
 
+/** What a cut line is drawn with, beside its word: dashes, dots, scissors and spaces. */
+const CUT_LINE_MARKS = String.raw`\s✂✄\-–—‐−·.…‥=_~`
+const CUT_LINE = new RegExp(
+  `^[${CUT_LINE_MARKS}]*((?:절\\s*취\\s*선)|(?:자\\s*르\\s*는\\s*(?:선|곳)))[${CUT_LINE_MARKS}]*$`,
+)
+/** Dashes on each side of the word of a cut line: with it they stay on one line up to 15 pt text. */
+const CUT_LINE_DASHES = 12
+
+/**
+ * A paragraph that is a cut line (dashes around 절취선), written with as many dashes on
+ * each side of the word and few enough to stay on one line. A model cannot count the
+ * dashes it types: a line with more on one side, or one that wraps, puts the word off
+ * the middle of the centred paragraph. Any other text comes back as it is.
+ */
+export function evenCutLine(text: string): string {
+  const found = CUT_LINE.exec(text)
+  if (!found) return text
+  const word = found[1]!
+  // the word alone is a heading, not a line
+  if (text.trim().length - word.length < 3) return text
+  return `${'- '.repeat(CUT_LINE_DASHES)}${word}${' -'.repeat(CUT_LINE_DASHES)}`
+}
+
+/**
+ * An equation script with the spellings the equation editor does not read turned into the
+ * ones it does: limits written `from {…} to {…}` (it takes `_{…} ^{…}`), and <=, >=, !=
+ * (it takes le, ge, ne).
+ */
+export function equationScript(script: string): string {
+  return script
+    .replace(/\bfrom\s*\{/g, '_{')
+    .replace(/\bto\s*\{/g, '^{')
+    .replace(/<=/g, ' le ')
+    .replace(/>=/g, ' ge ')
+    .replace(/!=/g, ' ne ')
+    .trim()
+}
+
+/**
+ * A new paragraph whose tab came as the two characters `\t` (a model that escaped it
+ * twice): the tab itself, which runs to the paragraph's tab stop. A paragraph that names a
+ * Windows path (C:\temp) is left as it is.
+ */
+export function typedTabs(text: string): string {
+  if (!text.includes('\\t') || /[A-Za-z]:\\/.test(text)) return text
+  return text.replaceAll('\\t', '\t')
+}
+
 /**
  * The call with `undoDoubledEscapes` applied to the new text it writes: cell, note and
  * paragraph text, replacements, table rows, field values and a contents title. The text
@@ -1326,6 +1869,11 @@ function withDoubledEscapesUndone(call: AgentToolCall): AgentToolCall {
     case 'insert_paragraphs':
     case 'replace_selection':
       input.paragraphs = undoDoubledEscapesInList(input.paragraphs)
+      if (Array.isArray(input.paragraphs)) {
+        input.paragraphs = input.paragraphs.map((paragraph: unknown) =>
+          typeof paragraph === 'string' ? evenCutLine(typedTabs(paragraph)) : paragraph,
+        )
+      }
       break
     case 'insert_table':
       if (Array.isArray(input.rows)) input.rows = input.rows.map(undoDoubledEscapesInList)
@@ -1395,6 +1943,34 @@ const LIST_LABELS = {
  * is checked by the editor, which answers a bad value with a message the model can act on.
  */
 function formatArgs(call: AgentToolCall): AgentParagraphFormat {
+  return formatOfInput(call.input)
+}
+
+/** What a call says about fonts that stood in for ones this PC lacks, for the model to pass on. */
+const standInNote = (fonts: AgentStandInFont[] | undefined): string =>
+  fonts && fonts.length > 0
+    ? ` This PC does not have ${fonts.map((font) => font.asked).join(', ')}: ${fonts.map((font) => `${font.used} was written for ${font.asked}`).join(', ')}. Tell the user.`
+    : ''
+
+/** The border rules of a format_cells call as the editor takes them; null when one is not an object. */
+function borderArgs(raw: unknown): AgentBorderRule[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const rules: AgentBorderRule[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') return null
+    const { sides, line, width, color } = entry as Record<string, unknown>
+    rules.push({
+      ...(typeof sides === 'string' ? { sides: sides as AgentBorderRule['sides'] } : {}),
+      ...(typeof line === 'string' ? { line: line as AgentBorderRule['line'] } : {}),
+      ...(typeof width === 'number' ? { width } : {}),
+      ...(typeof color === 'string' ? { color } : {}),
+    })
+  }
+  return rules
+}
+
+/** The format properties of a tool input (a call's own, or one style of a list), in the editor's names. */
+function formatOfInput(input: Record<string, unknown>): AgentParagraphFormat {
   const format: Record<string, unknown> = {}
   for (const key of [
     'bold',
@@ -1410,8 +1986,10 @@ function formatArgs(call: AgentToolCall): AgentParagraphFormat {
     'style',
     'list',
     'bullet',
+    'border',
+    'background',
   ]) {
-    const value = call.input[key]
+    const value = input[key]
     if (value !== undefined && value !== null) format[key] = value
   }
   // the model's names, the editor's names
@@ -1423,9 +2001,18 @@ function formatArgs(call: AgentToolCall): AgentParagraphFormat {
     ['space_after', 'spacingAfter'],
     ['char_style', 'charStyle'],
     ['list_level', 'listLevel'],
+    ['char_width', 'charWidth'],
+    ['letter_spacing', 'letterSpacing'],
   ] as const) {
-    const value = call.input[from]
+    const value = input[from]
     if (value !== undefined && value !== null) format[to] = value
+  }
+  if (Array.isArray(input.tabs)) {
+    format.tabs = input.tabs.map((tab: unknown) => {
+      if (!tab || typeof tab !== 'object' || Array.isArray(tab)) return tab
+      const { at_mm: atMm, ...rest } = tab as Record<string, unknown>
+      return atMm === undefined || atMm === null ? rest : { ...rest, atMm }
+    })
   }
   return format as AgentParagraphFormat
 }
@@ -1454,6 +2041,23 @@ function describeFormat(
     parts.push(`${label('aiFmtLineSpacing')} ${format.lineSpacing}%`)
   }
   if (format.font !== undefined) parts.push(`${label('aiFmtFont')} ${format.font}`)
+  if (format.charWidth !== undefined) {
+    parts.push(`${label('aiFmtCharWidth')} ${format.charWidth}%`)
+  }
+  if (format.letterSpacing !== undefined) {
+    parts.push(`${label('aiFmtLetterSpacing')} ${format.letterSpacing}%`)
+  }
+  if (format.border !== undefined) {
+    const name = label('aiFmtBorder')
+    parts.push(format.border.sides === 'none' ? label('aiFmtOff', { name }) : name)
+  }
+  if (format.background !== undefined) {
+    const name = label('aiFmtBackground')
+    parts.push(
+      format.background === 'none' ? label('aiFmtOff', { name }) : `${name} ${format.background}`,
+    )
+  }
+  if (format.tabs !== undefined) parts.push(label('aiFmtTabs'))
   if (format.style !== undefined) parts.push(`${label('aiFmtStyle')} ${format.style}`)
   if (format.charStyle !== undefined) {
     parts.push(`${label('aiFmtCharStyle')} ${format.charStyle}`)
@@ -1938,6 +2542,30 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           summary: label('aiToolFind', { text: quote(text), count: found.count }),
         }
       }
+      case 'import_attachment': {
+        const importer = deps.importAttachment
+        if (!importer) return bad(call, 'unknown tool: import_attachment')
+        const attachment = textArg(call, 'attachment')?.trim() ?? ''
+        if (!attachment) {
+          return bad(call, 'attachment must be the exact name of an attached Markdown file')
+        }
+        if (!/\.(md|markdown)$/i.test(attachment)) {
+          return bad(
+            call,
+            `only a Markdown file (.md, .markdown) can be opened as a Hangul document this way; "${attachment}" is not one. Read it with read_attachment and write what the user asked for with the usual tools.`,
+          )
+        }
+        const result = await importer(attachment, call.input.continue_request === true)
+        if (!result.ok) return bad(call, result.error)
+        const next = result.handed
+          ? 'The request was handed to the assistant of that document, which goes on from there: do nothing more for this request in this document. Tell the user in one sentence that the file opened as a new Hangul document in a new tab and that the work goes on there.'
+          : 'Tell the user in one sentence that the file opened as a new Hangul document in a new tab; to change how it looks they ask in that tab.'
+        return {
+          output: `Opened "${result.title}" as a new, untitled Hangul document in a tab of its own, with the headings, lists and tables of the file. The document open here was not changed. ${next}`,
+          mutated: false,
+          summary: label('aiToolImport', { name: attachment }),
+        }
+      }
       case 'read_url': {
         const url = (textArg(call, 'url') ?? '').trim()
         const host = hostLabel(url)
@@ -1996,6 +2624,45 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             `${lines.join('\n')}\n` +
             'Call analyze_picture with a picture number and a question to learn what it shows.',
           summary: label('aiToolPictures', { count: list.count }),
+        }
+      }
+      case 'resize_picture': {
+        const picture = call.input.picture
+        if (typeof picture !== 'number' || !Number.isInteger(picture) || picture < 1) {
+          return bad(call, 'picture must be a number from list_pictures')
+        }
+        const widthMm = call.input.width_mm
+        if (typeof widthMm !== 'number' || !(widthMm >= 5 && widthMm <= 400)) {
+          return bad(call, 'width_mm must be the new width in millimetres, 5 to 400')
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.resizePicture(picture, { widthMm }),
+          (options) => bridge.resizePicture(picture, { widthMm }, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'no_such_picture') return bad(call, noSuchPicture(result.count))
+          if (result.reason === 'unsupported_place') {
+            return bad(
+              call,
+              'Nothing was changed: that picture sits inside a table cell, and only a picture of the body text can be resized here. The user can drag its corner in the editor.',
+            )
+          }
+          return bad(call, 'Nothing was changed.')
+        }
+        deps.onChange({
+          kind: 'format',
+          from: label('aiPictureName', { picture }),
+          to: `${result.widthMm} × ${result.heightMm} mm`,
+          count: 1,
+          place: result.place,
+        })
+        return {
+          output: `Picture ${picture} is now ${result.widthMm} mm wide and ${result.heightMm} mm high.${result.fitted ? ' That is the width of the text: a picture is not made wider than that.' : ''}`,
+          mutated: true,
+          summary: label('aiToolPictureResize', { picture }),
         }
       }
       case 'analyze_picture': {
@@ -2203,22 +2870,43 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           )
         }
         if (rows.some((row) => row.some(hasLineBreak))) return bad(call, ONE_LINE_HELP)
+        // the header alone, as before, unless the call says more about the look
+        const tableLook: AgentTableLook = { header: call.input.header === true }
+        const lookName = call.input.look
+        if (lookName === 'grid' || lookName === 'open' || lookName === 'rows') {
+          tableLook.look = lookName
+        }
+        if (typeof call.input.header_color === 'string') {
+          tableLook.headerColor = call.input.header_color
+        }
+        if (Array.isArray(call.input.column_widths)) {
+          tableLook.columnWidths = call.input.column_widths as number[]
+        }
+        const cellAlign = call.input.align
+        if (cellAlign === 'left' || cellAlign === 'center' || cellAlign === 'right') {
+          tableLook.align = cellAlign
+        }
+        if (typeof call.input.size === 'number') tableLook.size = call.input.size
+        if (typeof call.input.font === 'string') tableLook.font = call.input.font
+        if (call.input.across_columns === true) tableLook.acrossColumns = true
+        if (typeof call.input.width_percent === 'number') {
+          tableLook.widthPercent = call.input.width_percent
+        }
+        const tablePlace = call.input.place
+        if (tablePlace === 'left' || tablePlace === 'center' || tablePlace === 'right') {
+          tableLook.place = tablePlace
+        }
+        if (call.input.repeat_header === true) tableLook.repeatHeader = true
+        const tableArg = Object.keys(tableLook).length > 1 ? tableLook : tableLook.header === true
         const outcome = await changeWithMemoApproval(
-          () =>
-            bridge.insertTable(
-              place.anchor,
-              place.occurrence,
-              place.where,
-              rows,
-              call.input.header === true,
-            ),
+          () => bridge.insertTable(place.anchor, place.occurrence, place.where, rows, tableArg),
           (options) =>
             bridge.insertTable(
               place.anchor,
               place.occurrence,
               place.where,
               rows,
-              call.input.header === true,
+              tableArg,
               options,
             ),
         )
@@ -2226,7 +2914,14 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
         const result = outcome.result
         if (!result.ok) {
-          return bad(call, result.reason === 'in_table' ? IN_TABLE_HELP : placeRefusal(result))
+          if (result.reason === 'in_table') return bad(call, IN_TABLE_HELP)
+          if (result.reason === 'not_at_start') {
+            return bad(
+              call,
+              'Nothing was changed: a table across the columns is the head of the document. Pass where "before" with an anchor in the first paragraph of the document, or leave across_columns out for a table one column wide.',
+            )
+          }
+          return bad(call, placeRefusal(result))
         }
         deps.onChange({
           kind: 'table',
@@ -2236,7 +2931,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         return {
-          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s).${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: label('aiToolTable', { rows: result.rows, cols: result.cols }),
         }
@@ -2873,18 +3568,74 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (typeof table !== 'number' || !Number.isInteger(table) || table < 1) {
           return bad(call, 'table must be a table number from list_tables')
         }
-        const cells = call.input.cells
-        if (!Array.isArray(cells) || cells.length === 0) {
-          return bad(call, 'cells must list at least one {row, col}')
+        const rawCells = call.input.cells
+        const rawRange = call.input.range as Record<string, unknown> | null | undefined
+        if (rawCells !== undefined && rawCells !== null) {
+          if (!Array.isArray(rawCells) || rawCells.length === 0) {
+            return bad(call, 'cells must list at least one {row, col}')
+          }
         }
+        let cells: { row: number; col: number }[] | AgentCellBlock | null = null
+        if (Array.isArray(rawCells)) cells = rawCells as { row: number; col: number }[]
+        else if (rawRange && typeof rawRange === 'object') {
+          const corners = [rawRange.from_row, rawRange.from_col, rawRange.to_row, rawRange.to_col]
+          if (!corners.every((value) => typeof value === 'number')) {
+            return bad(call, 'range needs from_row, from_col, to_row and to_col, counted from 1')
+          }
+          const [fromRow, fromCol, toRow, toCol] = corners as number[]
+          cells = { fromRow: fromRow!, fromCol: fromCol!, toRow: toRow!, toCol: toCol! }
+        }
+        const look: AgentCellLook = {}
         const background = call.input.background
-        if (typeof background !== 'string') {
-          return bad(call, 'background must be a colour as #RRGGBB, or "none"')
+        if (background !== undefined && background !== null) {
+          if (typeof background !== 'string') {
+            return bad(call, 'background must be a colour as #RRGGBB, or "none"')
+          }
+          look.background = background
         }
+        if (call.input.borders !== undefined && call.input.borders !== null) {
+          const rules = borderArgs(call.input.borders)
+          if (!rules) return bad(call, 'borders must be a list of { sides, line, width, color }')
+          look.borders = rules
+        }
+        const vertical = call.input.vertical_align
+        if (vertical === 'top' || vertical === 'middle' || vertical === 'bottom') {
+          look.verticalAlign = vertical
+        }
+        if (typeof call.input.row_height_mm === 'number') look.heightMm = call.input.row_height_mm
+        const diagonal = call.input.diagonal
+        if (
+          diagonal === 'down' ||
+          diagonal === 'up' ||
+          diagonal === 'both' ||
+          diagonal === 'none'
+        ) {
+          look.diagonal = diagonal
+        }
+        // the text of the cells: what a format tool takes for text, and how it is aligned
+        const cellText: Record<string, unknown> = {}
+        for (const key of ['align', 'bold', 'italic', 'underline', 'size', 'font', 'color']) {
+          const value = call.input[key]
+          if (value !== undefined && value !== null) cellText[key] = value
+        }
+        if (Object.keys(cellText).length > 0) look.text = cellText as AgentStyleFormat
+        if (Object.keys(look).length === 0) {
+          return bad(
+            call,
+            'Name at least one thing to change: background, borders, vertical_align, row_height_mm, diagonal, or the text of the cells (align, bold, size, font, color).',
+          )
+        }
+        const fillOnly =
+          look.borders === undefined &&
+          look.verticalAlign === undefined &&
+          look.heightMm === undefined &&
+          look.diagonal === undefined &&
+          look.text === undefined
+        // a background alone goes as the string the call has always taken
+        const lookArg = fillOnly && look.background !== undefined ? look.background : look
         const outcome = await changeWithMemoApproval(
-          () => bridge.formatCells(table, cells as { row: number; col: number }[], background),
-          (options) =>
-            bridge.formatCells(table, cells as { row: number; col: number }[], background, options),
+          () => bridge.formatCells(table, cells, lookArg),
+          (options) => bridge.formatCells(table, cells, lookArg, options),
         )
         if (outcome.kind !== 'done')
           return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
@@ -2904,17 +3655,42 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           )
         }
         const name = label('aiFmtCellFill')
+        const what = [
+          look.background === undefined
+            ? ''
+            : look.background === 'none'
+              ? label('aiFmtOff', { name })
+              : `${name} ${look.background}`,
+          look.borders ? label('aiFmtCellBorders') : '',
+          look.verticalAlign ? label('aiFmtCellVAlign') : '',
+          look.heightMm !== undefined ? `${label('aiFmtRowHeight')} ${look.heightMm}mm` : '',
+          look.diagonal === undefined
+            ? ''
+            : look.diagonal === 'none'
+              ? label('aiFmtOff', { name: label('aiFmtCellDiagonal') })
+              : label('aiFmtCellDiagonal'),
+          look.text ? label('aiFmtCellText') : '',
+        ].filter(Boolean)
         deps.onChange({
           kind: 'format',
           from: label('aiTableName', { table }),
-          to: background === 'none' ? label('aiFmtOff', { name }) : `${name} ${background}`,
+          to: what.join(' · '),
           count: result.count,
           place: result.place,
         })
         return {
-          output: `Coloured ${result.count} cell(s).`,
+          output:
+            (fillOnly
+              ? `Coloured ${result.count} cell(s).`
+              : `Formatted ${result.count} cell(s).`) +
+            (result.crossed
+              ? ` The diagonal runs through the words of ${result.crossed.map((cell) => `${cell.row}.${cell.col}`).join(', ')}: empty those cells with fill_cells (text "") unless the user wants the words kept.`
+              : ''),
           mutated: true,
-          summary: label('aiToolCellFill', { table, count: result.count }),
+          summary: label(fillOnly ? 'aiToolCellFill' : 'aiToolCellLook', {
+            table,
+            count: result.count,
+          }),
         }
       }
       case 'fill_cells': {
@@ -3534,6 +4310,474 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           summary: label('aiToolPageSetupSet'),
         }
       }
+      case 'style_paragraphs': {
+        const rawStyles = call.input.styles
+        const rawApply = call.input.apply
+        const styles: AgentBatchStyle[] = []
+        if (rawStyles !== undefined && rawStyles !== null) {
+          if (!Array.isArray(rawStyles)) return bad(call, 'styles must be a list of styles')
+          for (const entry of rawStyles) {
+            const input = (entry ?? {}) as Record<string, unknown>
+            if (typeof input.name !== 'string' || !input.name.trim()) {
+              return bad(call, 'each style needs a name')
+            }
+            const format = formatOfInput(input)
+            styles.push({
+              name: input.name,
+              ...(typeof input.based_on === 'string' ? { basedOn: input.based_on } : {}),
+              ...(Object.keys(format).length > 0 ? { format } : {}),
+              ...(typeof input.keep_with_next === 'boolean'
+                ? { keepWithNext: input.keep_with_next }
+                : {}),
+            })
+          }
+        }
+        const rules: AgentStyleRule[] = []
+        if (rawApply !== undefined && rawApply !== null) {
+          if (!Array.isArray(rawApply)) return bad(call, 'apply must be a list of rules')
+          for (const entry of rawApply) {
+            const input = (entry ?? {}) as Record<string, unknown>
+            if (typeof input.style !== 'string' || !input.style.trim()) {
+              return bad(call, 'each rule needs the name of a style')
+            }
+            const starts = typeof input.starts_with === 'string' ? input.starts_with : null
+            const find = typeof input.find === 'string' ? input.find : null
+            const numbered = typeof input.numbered === 'string' ? input.numbered : null
+            if ([starts, find, numbered].filter((given) => given !== null).length !== 1) {
+              return bad(
+                call,
+                'each rule names its paragraphs by starts_with, by numbered or by find, one of the three',
+              )
+            }
+            if (find !== null && hasLineBreak(find)) return bad(call, ONE_LINE_FIND_HELP('find'))
+            rules.push({
+              style: input.style,
+              ...(starts !== null ? { startsWith: starts } : {}),
+              ...(numbered !== null ? { numbered: numbered as AgentNumberedMark } : {}),
+              ...(find !== null ? { find } : {}),
+              ...(typeof input.occurrence === 'number' ? { occurrence: input.occurrence } : {}),
+            })
+          }
+        }
+        if (styles.length === 0 && rules.length === 0) {
+          return bad(
+            call,
+            'Name styles to make (styles) and the paragraphs to give them to (apply).',
+          )
+        }
+        const batch = { styles, apply: rules }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.styleParagraphs(batch),
+          (options) => bridge.styleParagraphs(batch, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) {
+          switch (result.reason) {
+            case 'style_exists':
+              return bad(
+                call,
+                'Nothing was changed: one of those names is a character style of the document. Pick another name for the paragraph style.',
+              )
+            case 'no_such_style':
+              return bad(call, noSuchStyle(result))
+            case 'too_many':
+              return bad(
+                call,
+                `Nothing was changed: the rules name more than ${result.limit} paragraphs. Style the document in parts.`,
+              )
+            case 'has_objects':
+              return bad(call, HAS_OBJECTS_HELP)
+            case 'memo_removal_requires_approval':
+              return bad(call, 'Nothing was changed.')
+            case 'ambiguous':
+              return bad(
+                call,
+                `Nothing was changed: "${result.find}" occurs ${result.count} times. Pass occurrence for that rule, or a longer piece of the paragraph.\n` +
+                  matchLines(result.matches ?? [], result.count),
+              )
+            case 'no_such_occurrence':
+              return bad(
+                call,
+                `Nothing was changed: occurrence for "${result.find}" must be between 1 and ${result.count}.`,
+              )
+            case 'unsupported_place':
+              return bad(
+                call,
+                `Nothing was changed: the paragraph of "${result.find}" cannot take a paragraph style here (it is inside an equation, or in a table inside another table).`,
+              )
+            default:
+              return bad(
+                call,
+                `Nothing was changed: "${result.find}" is not in the document. Copy the text of the paragraph exactly from what you read.`,
+              )
+          }
+        }
+        const applied = result.rules.filter((rule) => rule.paragraphs > 0)
+        const unmatched = result.rules.filter((rule) => rule.paragraphs === 0)
+        deps.onChange({
+          kind: 'format',
+          from: label('aiFmtStyle'),
+          to: changeText(
+            (applied.length > 0
+              ? applied
+              : styles.map((style) => ({ style: style.name, paragraphs: 0 }))
+            )
+              .map((rule) =>
+                rule.paragraphs > 0 ? `${rule.style} ×${rule.paragraphs}` : rule.style,
+              )
+              .join(' · '),
+          ),
+          count: Math.max(1, result.paragraphs),
+          ...(result.place ? { place: result.place } : {}),
+        })
+        return {
+          output:
+            `Made ${result.made} style(s), changed ${result.changed}, and styled ${result.paragraphs} paragraph(s): ${result.rules.map((rule) => `${rule.style} ${rule.paragraphs}`).join(', ') || 'none'}.` +
+            (unmatched.length > 0
+              ? ` No paragraph matched the rule(s) for ${unmatched.map((rule) => rule.style).join(', ')}: check how those lines start (find_text shows the exact characters).`
+              : '') +
+            keptOwnLookNote(result.keptOwnLook) +
+            standInNote(result.standIn),
+          mutated: true,
+          summary: label('aiToolStyleParagraphs', { count: result.paragraphs }),
+        }
+      }
+      case 'insert_title_box': {
+        const find = textArg(call, 'find')
+        if (!find) return bad(call, 'find must be text of the title paragraph')
+        if (hasLineBreak(find)) return bad(call, ONE_LINE_FIND_HELP('find'))
+        const occurrence = typeof call.input.occurrence === 'number' ? call.input.occurrence : null
+        const box: AgentTitleBox = {}
+        const boxLook = call.input.look
+        if (
+          boxLook === 'bands' ||
+          boxLook === 'lines' ||
+          boxLook === 'box' ||
+          boxLook === 'shaded'
+        ) {
+          box.look = boxLook
+        }
+        if (typeof call.input.color === 'string') box.color = call.input.color
+        if (typeof call.input.color2 === 'string') box.color2 = call.input.color2
+        if (typeof call.input.font === 'string') box.font = call.input.font
+        if (typeof call.input.size === 'number') box.size = call.input.size
+        if (typeof call.input.bold === 'boolean') box.bold = call.input.bold
+        if (typeof call.input.text_color === 'string') box.textColor = call.input.text_color
+        const outcome = await changeWithMemoApproval(
+          () => bridge.insertTitleBox(find, occurrence, box),
+          (options) => bridge.insertTitleBox(find, occurrence, box, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) {
+          return bad(
+            call,
+            result.reason === 'in_table'
+              ? 'Nothing was changed: that text is inside a table cell, and a title box is made from a paragraph of the body text.'
+              : placeRefusal(result),
+          )
+        }
+        deps.onChange({
+          kind: 'table',
+          from: changeText(find),
+          to: label('aiTitleBox'),
+          count: 1,
+          place: result.place,
+        })
+        return {
+          output: `Made the title a ${result.look} title box. The title is now in a table: tables after it are numbered one higher.${result.textColorDropped ? ' The text colour was left as it was: the one asked for would not show on what is behind the title (bands, lines and a box leave the white page behind the words; white words need look shaded with a dark color).' : ''}${standInNote(result.standIn)}`,
+          mutated: true,
+          summary: label('aiToolTitleBox'),
+        }
+      }
+      case 'read_page_layout': {
+        const layout = await bridge.pageLayout()
+        return {
+          output: JSON.stringify(layout),
+          summary: label('aiToolLayoutRead'),
+        }
+      }
+      case 'set_columns': {
+        const count = call.input.count
+        if (typeof count !== 'number' || !Number.isInteger(count)) {
+          return bad(call, 'count must be a whole number of columns')
+        }
+        const spec = {
+          count,
+          ...(typeof call.input.gap_mm === 'number' ? { gapMm: call.input.gap_mm } : {}),
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.setColumns(spec),
+          (options) => bridge.setColumns(spec, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) return bad(call, 'Nothing was changed.')
+        deps.onChange({
+          kind: 'format',
+          from: label('aiColumns'),
+          to: String(result.count),
+          count: 1,
+        })
+        return {
+          output:
+            result.count > 1
+              ? `The text now runs in ${result.count} columns with ${result.gapMm} mm between them. A table added from now on is one column wide; pass across_columns for one as wide as the page. Tables that were already there kept their width.`
+              : 'The text runs in one column again.',
+          mutated: true,
+          summary: label('aiToolColumnsSet', { count: result.count }),
+        }
+      }
+      case 'insert_break': {
+        const find = textArg(call, 'find')
+        if (!find) return bad(call, 'find must be text of the paragraph that is to start anew')
+        if (hasLineBreak(find)) return bad(call, ONE_LINE_FIND_HELP('find'))
+        const kind = call.input.kind
+        if (kind !== 'page' && kind !== 'column') {
+          return bad(call, 'kind must be "page" or "column"')
+        }
+        const occurrence = typeof call.input.occurrence === 'number' ? call.input.occurrence : null
+        const outcome = await changeWithMemoApproval(
+          () => bridge.insertBreak(find, occurrence, kind),
+          (options) => bridge.insertBreak(find, occurrence, kind, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) {
+          switch (result.reason) {
+            case 'in_table':
+              return bad(
+                call,
+                'Nothing was changed: that text is inside a table cell, and only a paragraph of the body text starts a page or a column.',
+              )
+            case 'at_start':
+              return bad(
+                call,
+                'Nothing was changed: that is the first paragraph of the document, which starts its page already.',
+              )
+            case 'memo_removal_requires_approval':
+              return bad(call, 'Nothing was changed.')
+            default:
+              return bad(call, placeRefusal(result))
+          }
+        }
+        deps.onChange({
+          kind: 'format',
+          from: changeText(find),
+          to: label(kind === 'page' ? 'aiBreakPage' : 'aiBreakColumn'),
+          count: 1,
+          place: result.place,
+        })
+        return {
+          output:
+            kind === 'page'
+              ? 'That paragraph now starts a new page.'
+              : result.columns > 1
+                ? 'That paragraph now starts the next column.'
+                : 'The break was added, but the text runs in one column, so the paragraph starts a new page. Call set_columns when columns are meant.',
+          mutated: true,
+          summary: label('aiToolBreakInsert'),
+        }
+      }
+      case 'set_page_border': {
+        const line = call.input.line
+        if (typeof line !== 'string') {
+          return bad(call, 'line must be one of none, solid, dashed, dotted, double')
+        }
+        const spec = {
+          line: line as never,
+          ...(typeof call.input.width === 'number' ? { width: call.input.width } : {}),
+          ...(typeof call.input.color === 'string' ? { color: call.input.color } : {}),
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.setPageBorder(spec),
+          (options) => bridge.setPageBorder(spec, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) return bad(call, 'Nothing was changed.')
+        const name = label('aiPageBorder')
+        deps.onChange({
+          kind: 'format',
+          from: name,
+          to: result.drawn
+            ? [line, spec.width === undefined ? '' : `${spec.width}mm`, spec.color ?? '']
+                .filter(Boolean)
+                .join(' · ')
+            : label('aiFmtOff', { name }),
+          count: 1,
+        })
+        return {
+          output: result.drawn
+            ? 'Every page now has that line round it, inside the margins.'
+            : 'The line round the pages was taken away.',
+          mutated: true,
+          summary: label('aiToolPageBorderSet'),
+        }
+      }
+      case 'insert_equations': {
+        const raw = call.input.equations
+        if (!Array.isArray(raw) || raw.length === 0) {
+          return bad(call, 'equations must list at least one { find, script }')
+        }
+        const items: AgentEquation[] = []
+        for (const [index, entry] of raw.entries()) {
+          const item = entry as Record<string, unknown> | null
+          if (
+            !item ||
+            typeof item !== 'object' ||
+            typeof item.find !== 'string' ||
+            !item.find ||
+            typeof item.script !== 'string' ||
+            !item.script.trim()
+          ) {
+            return bad(call, 'each equation needs find (text of the document) and script')
+          }
+          if (hasLineBreak(item.find)) return bad(call, ONE_LINE_FIND_HELP('find'))
+          if (hasLineBreak(item.script)) {
+            return bad(
+              call,
+              `Nothing was changed: the script of equation ${index + 1} has a line break. A script is one line; rows go into matrix {…} or cases {…} with # between them.`,
+            )
+          }
+          // the mark of LaTeX, which the equation editor does not read
+          if (item.script.includes('\\')) {
+            return bad(
+              call,
+              `Nothing was changed: the script of equation ${index + 1} is LaTeX (it has a backslash). Write it in the script of Hangul's equation editor: {a} over {b} for a fraction, sqrt {x}, x^2, x_1, times, le, ge, alpha, sum from {i=1} to {n}, LEFT ( ... RIGHT ).`,
+            )
+          }
+          items.push({
+            find: item.find,
+            script: equationScript(item.script),
+            ...(typeof item.occurrence === 'number' ? { occurrence: item.occurrence } : {}),
+            ...(item.keep_text === true ? { replace: false } : {}),
+          })
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.insertEquations(items),
+          (options) => bridge.insertEquations(items, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) {
+          if (
+            result.reason === 'memo_removal_requires_approval' ||
+            result.reason === 'has_objects'
+          ) {
+            return bad(call, 'Nothing was changed.')
+          }
+          const which = `equation ${result.index + 1} (find "${quote(result.find)}")`
+          if (result.reason === 'in_table') {
+            return bad(
+              call,
+              `Nothing was changed: ${which} is inside a table cell, where an equation cannot be put from here. Leave it as typed text there (x², √2, ½), or tell the user.`,
+            )
+          }
+          return bad(
+            call,
+            `Nothing was changed, because of ${which}. ${placeRefusal({ ok: false, reason: result.reason, count: result.count, ...(result.matches ? { matches: result.matches } : {}) })}`,
+          )
+        }
+        deps.onChange({
+          kind: 'insert',
+          from: '',
+          to: `${label('aiEquation')} × ${result.count}`,
+          count: result.count,
+          place: result.place,
+        })
+        return {
+          output: `Put in ${result.count} equation(s), each where its text was. read_document does not show equations, so their places look empty there: do not put them in again.`,
+          mutated: true,
+          summary: label('aiToolEquationsInsert', { count: result.count }),
+        }
+      }
+      case 'set_page_number': {
+        const position = call.input.position
+        if (typeof position !== 'string')
+          return bad(call, 'position must say where the number goes')
+        const change = {
+          position: position as never,
+          ...(typeof call.input.format === 'string' ? { format: call.input.format as never } : {}),
+          ...(typeof call.input.dashes === 'boolean' ? { dashes: call.input.dashes } : {}),
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.setPageNumber(change),
+          (options) => bridge.setPageNumber(change, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) return bad(call, 'Nothing was changed.')
+        deps.onChange({
+          kind: 'format',
+          from: label('aiPageNumber'),
+          to: result.pageNumber
+            ? `${result.pageNumber.position} · ${result.pageNumber.format}`
+            : label('aiPageNumberOff'),
+          count: 1,
+        })
+        return {
+          output: result.pageNumber
+            ? `The pages are numbered: ${JSON.stringify(result.pageNumber)}.`
+            : 'The page number is hidden.',
+          mutated: true,
+          summary: label('aiToolPageNumberSet'),
+        }
+      }
+      case 'set_header_footer': {
+        const kind = call.input.kind
+        if (kind !== 'header' && kind !== 'footer') {
+          return bad(call, 'kind must be "header" or "footer"')
+        }
+        const text = textArg(call, 'text')
+        if (text === null) return bad(call, 'text must be a string; "" removes it')
+        if (hasLineBreak(text)) {
+          return bad(call, 'Nothing was changed: a header or footer written here is one line.')
+        }
+        const align = call.input.align
+        const change: { text: string; align?: 'left' | 'center' | 'right'; size?: number } = {
+          text,
+        }
+        if (align === 'left' || align === 'center' || align === 'right') change.align = align
+        if (typeof call.input.size === 'number') change.size = call.input.size
+        const outcome = await changeWithMemoApproval(
+          () => bridge.setHeaderFooter(kind, change),
+          (options) => bridge.setHeaderFooter(kind, change, options),
+        )
+        if (outcome.kind !== 'done')
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        const result = outcome.result
+        if (!result.ok) {
+          return bad(
+            call,
+            result.reason === 'not_plain'
+              ? `Nothing was changed: the ${kind} of this document holds a table, a picture or several lines, so it was laid out by hand. Tell the user to change it in the editor.`
+              : result.reason === 'not_there'
+                ? `Nothing to remove: the document has no ${kind}.`
+                : 'Nothing was changed.',
+          )
+        }
+        const name = label(kind === 'header' ? 'aiHeader' : 'aiFooter')
+        deps.onChange({
+          kind: 'format',
+          from: name,
+          to: result.removed ? label('aiHeaderFooterOff', { what: name }) : changeText(text),
+          count: 1,
+        })
+        return {
+          output: result.removed ? `Removed the ${kind}.` : `Wrote the ${kind}.`,
+          mutated: true,
+          summary: label('aiToolHeaderFooterSet', { what: name }),
+        }
+      }
       case 'read_formatting': {
         const attachment = textArg(call, 'attachment')?.trim() ?? ''
         let base64: string | null = null
@@ -3632,12 +4876,13 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           'call insert_image with attachment set to the name',
         )
         let base = SYSTEM_PROMPT + attached
+        if (deps.importAttachment) base += IMPORT_ATTACHMENT_NOTE
         if (!imageGenOn()) base += IMAGE_GEN_OFF_NOTE
         if (!pictureAnalysisOn()) base += PICTURE_ANALYSIS_OFF_NOTE
         return base
       },
       get tools(): AgentToolDef[] {
-        let offered = TOOLS
+        let offered = deps.importAttachment ? [...TOOLS, IMPORT_ATTACHMENT_TOOL] : TOOLS
         if (!imageGenOn()) offered = offered.filter((tool) => tool.name !== 'generate_image')
         if (!pictureAnalysisOn())
           offered = offered.filter((tool) => tool.name !== 'analyze_picture')
@@ -3664,7 +4909,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     },
     refreshContext: async () => {
       try {
-        const [text, fields, tables, notes, styles, memos, pictures] = await Promise.all([
+        const [text, fields, tables, notes, styles, memos, pictures, fonts] = await Promise.all([
           bridge.readText(),
           bridge.listFields(),
           bridge.listTables(),
@@ -3674,6 +4919,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           // only the count goes into the context; a failure leaves the rest of it usable
           bridge.listMemos().catch(() => null),
           bridge.listPictures().catch(() => null),
+          // which document fonts this PC has, for a look the AI picks; unknown says nothing
+          bridge.documentFonts().catch(() => null),
         ])
         const footnotes = notes?.notes.filter((note) => note.kind === 'footnote').length ?? 0
         // numbered: the number is what fill_field takes, and names repeat
@@ -3713,6 +4960,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
                   ([title, names]) =>
                     `${title}: ${names.slice(0, CONTEXT_MAX_STYLES).join(', ')}${names.length > CONTEXT_MAX_STYLES ? ', …' : ''}`,
                 )
+            : []),
+          ...(fonts && fonts.known
+            ? [
+                `Document fonts on this PC: ${fonts.onPc.join(', ') || 'none of the usual ones'}. Not on this PC: ${fonts.missing.join(', ') || 'none'}.`,
+              ]
             : []),
           whole
             ? 'Text (complete):'

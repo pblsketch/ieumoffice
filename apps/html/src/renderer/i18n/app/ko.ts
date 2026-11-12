@@ -79,7 +79,8 @@ export const ko = {
   slideThumbs: '슬라이드 목록',
   slideThumbGo: '{n}번 슬라이드로 이동',
   previewNeedsSave: '파일을 저장하면 상대 경로의 이미지와 스타일이 미리보기에 표시됩니다',
-  inspectHint: '미리보기에서 요소를 클릭해 선택, 더블클릭으로 텍스트 편집',
+  inspectHint:
+    '미리보기에서 요소를 클릭해 선택, 더블클릭으로 텍스트 편집, Shift+클릭이나 {alt}+끌기로 여러 개 선택',
   nodeDynamic:
     '이 요소는 페이지 스크립트가 생성한 것으로 소스에 없습니다. 소스 또는 AI로 편집하세요',
   nodeDynamicShort: '스크립트 생성',

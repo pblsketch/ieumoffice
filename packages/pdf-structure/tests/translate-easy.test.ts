@@ -519,11 +519,10 @@ describe('the default target language', () => {
 })
 
 describe('easyExplanationLabel', () => {
-  it('has words for all 21 languages, each its own', () => {
+  it('has words for every UI language, each its own', () => {
     const labels = LANGS.map((l) => easyExplanationLabel(l))
-    expect(labels).toHaveLength(21)
     for (const label of labels) expect(label.trim()).not.toBe('')
-    expect(new Set(labels).size).toBe(21)
+    expect(new Set(labels).size).toBe(LANGS.length)
     expect(easyExplanationLabel('ko')).toBe('쉬운 풀이')
     expect(easyExplanationLabel('en')).toBe('Plain-language version')
   })

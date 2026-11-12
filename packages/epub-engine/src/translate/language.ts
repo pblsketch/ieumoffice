@@ -29,7 +29,7 @@ export function epubBookLanguage(
 }
 
 /**
- * The default target: the UI language (normalized to one of the 21), or
+ * The default target: the UI language (normalized to one of the 22), or
  * English when the book's language has the same primary subtag. `mode`
  * 'easy': the UI language, whatever the book's language.
  */

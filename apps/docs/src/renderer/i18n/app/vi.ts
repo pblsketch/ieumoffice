@@ -381,6 +381,7 @@ export const vi = {
   appLangHindi: 'Tiếng Hindi',
   appLangTraditionalChinese: 'Tiếng Trung (Phồn thể)',
   appLangVietnamese: 'Tiếng Việt',
+  appLangTurkish: 'tiếng Thổ Nhĩ Kỳ',
   appWrapTextMenu: 'Ngắt dòng văn bản',
   appViewImage: 'Xem hình ảnh',
   appSaveImageAs: 'Lưu hình ảnh thành…',

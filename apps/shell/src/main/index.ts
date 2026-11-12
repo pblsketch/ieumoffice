@@ -192,6 +192,7 @@ import {
   authorizeMcpDocWrite,
   activeAiStreamCount,
   legacyDocumentChatFor,
+  hwpCopy,
 } from '../../../docs/src/main/docs-main'
 import { blankXlsxBuffer } from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { blankPdfBuffer } from '../../../pdf/src/main/blank-pdf'
@@ -304,6 +305,7 @@ import {
   sendMarkdownPrintRequest,
   setMarkdownDocxExportedHook,
   setMarkdownFileSavedHook,
+  setMarkdownHwpExport,
 } from '../../../markdown/src/main/markdown-main'
 import {
   configureHwpRuntime,
@@ -436,6 +438,8 @@ import {
 import { showErrorDialog } from './error-dialog'
 import { startRendererWatchdog } from './renderer-watchdog'
 import { crashLogPath, memoryFigures, startCrashWatch, startLowMemoryWatch } from './crash-watch'
+import { appendCrashLog } from './crash-log'
+import { runStopEntry } from './ai-run-stop-log'
 import { startHeartbeat, type HeartbeatHandle } from './crash-heartbeat'
 import {
   capStatPaths,
@@ -561,6 +565,8 @@ import {
   isAgentWindowContents,
   stopAgentSessions,
 } from './agent/agent-window'
+import { queueSkillHandoffFor } from '@genoffice/electron-utils/generate-handoff'
+import { openMarkdownAsHangul, type MarkdownImportDeps } from './hwp-import'
 import { startAgentMcpServer } from './agent/agent-mcp'
 import { sweepAgentSessionFolders } from './agent/agent-session-folders'
 import { userSkillsManageGate } from './agent/agent-skills'
@@ -873,6 +879,12 @@ configureHwpRuntime({
   newDocument: () => newHwpTab(),
   importPdf: () => void importPdfAsHwp(),
   newDocumentDir: (id) => newDocumentFolderFor(id),
+  openMarkdownAsDocument: (_id, path, request) =>
+    openMarkdownAsHangul(markdownImportDeps, path, request),
+  noteAiRunStop: (stop) => {
+    const entry = runStopEntry('hwp', stop)
+    if (entry) appendCrashLog(crashLogPath(), entry)
+  },
 })
 configureEpubRuntime({
   preloadPath: join(EPUB_OUT, 'preload', 'index.js'),
@@ -1247,6 +1259,7 @@ const tMain = createI18n({
     thirdPartyNotices: '第三方软件声明',
     menuExportDocx: '导出为 Word…',
     menuExportOdt: '导出为 ODT…',
+    menuExportHwp: '导出为 HWP 文档…',
     btnCancel: '取消',
     pdfDocxFailedMsg: '导出为 Word 失败',
     pdfDocxBusyMsg: '正在转换中，请等待当前导出完成。',
@@ -1403,6 +1416,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Third-Party Notices',
     menuExportDocx: 'Export as Word…',
     menuExportOdt: 'Export as ODT…',
+    menuExportHwp: 'Export as HWP Document…',
     btnCancel: 'Cancel',
     pdfDocxFailedMsg: 'Export as Word failed',
     pdfDocxBusyMsg: 'A Word export is already in progress. Please wait for it to finish.',
@@ -1567,6 +1581,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Thông báo của bên thứ ba',
     menuExportDocx: 'Xuất dưới dạng Word…',
     menuExportOdt: 'Xuất dưới dạng ODT…',
+    menuExportHwp: 'Xuất dưới dạng tài liệu HWP…',
     btnCancel: 'Hủy',
     pdfDocxFailedMsg: 'Xuất dưới dạng Word thất bại',
     pdfDocxBusyMsg: 'Một tác vụ xuất Word đang được tiến hành. Vui lòng đợi tác vụ hoàn tất.',
@@ -1615,6 +1630,171 @@ const tMain = createI18n({
     saveDirFallbackMsg: 'Không thể lưu vào thư mục Tài liệu',
     saveDirFallbackDetail:
       'Không thể tạo hoặc ghi vào {blocked}, nên tệp mới sẽ được lưu vào {using}. Nếu "Quyền truy cập thư mục được kiểm soát" của Bảo mật Windows đã chặn, hãy thêm GenOffice vào "Cho phép ứng dụng thông qua quyền truy cập thư mục được kiểm soát" rồi khởi động lại ứng dụng. Bạn cũng có thể chọn thư mục khác trong Cài đặt → Chung → Vị trí lưu.',
+  },
+  tr: {
+    menuTabSave: 'Kaydet',
+    menuTabSaveAs: 'Farklı kaydet…',
+    menuTabPrint: 'Yazdır…',
+    menuTabRename: 'Yeniden adlandır',
+    menuTabDuplicate: 'Kopyasını oluştur (kaydedilmiş dosyayı kopyalar)',
+    menuTabSplitBeside: 'Yan yana böl',
+    menuTabCopyPath: 'Yolu kopyala',
+    menuTabCopyName: 'Dosya adını kopyala',
+    menuTabReveal: 'Klasörde göster',
+    menuTabOpenDefault: 'Varsayılan uygulamayla aç',
+    menuTabMoveLeft: 'Sola taşı',
+    menuTabMoveRight: 'Sağa taşı',
+    menuTabCloseOthers: 'Diğer sekmeleri kapat',
+    menuTabCloseRight: 'Sağdaki sekmeleri kapat',
+    menuTabCloseAll: 'Tüm sekmeleri kapat',
+    menuTabReopen: 'Kapatılan sekmeyi yeniden aç',
+    dlgAddFolderRoot: 'Ana ekrana klasör ekle',
+    watchdogTitle: 'Belge çok fazla kaynak kullanıyor',
+    watchdogBody:
+      '“{title}” birkaç dakikadır çok fazla bellek veya CPU kullanıyor ({memory} MB, CPU %{cpu}). Beklemeye devam edebilir veya belgeyi kapatabilirsiniz (önce kaydedilmemiş değişiklikler sorulur). Tanılama bilgileri kaydedildi.',
+    watchdogWait: 'Beklemeye devam et',
+    watchdogClose: 'Belgeyi kapat',
+    watchdogIgnore: 'Bir Daha Hatırlatma',
+    crashTitle: 'Bir belge beklenmedik şekilde durdu',
+    crashBody:
+      '“{title}” beklenmedik şekilde durdu. Son kaydedildikten sonra yapılan değişiklikler kaybolabilir.',
+    crashReopen: 'Yeniden aç',
+    crashReload: 'Yeniden yükle',
+    crashClose: 'Kapat',
+    crashLater: 'Şimdi değil',
+    errFolderRootUnusable: 'Seçilen klasör okunamıyor',
+    menuFile: 'Dosya',
+    menuSectionNew: 'Yeni',
+    menuView: 'Görünüm',
+    menuUiZoomIn: 'Arayüzü büyüt',
+    menuUiZoomOut: 'Arayüzü küçült',
+    menuUiZoomReset: 'Arayüz yakınlaştırmasını sıfırla',
+    menuOpenInNewWindow: 'Yeni pencerede aç',
+    menuSplitRight: 'Sağa böl',
+    menuSplitDown: 'Aşağıya böl',
+    menuUnsplit: 'Bölmeyi kaldır',
+    menuNewDoc: 'AI Belgeler',
+    menuNewSheet: 'AI E-Tablolar',
+    untitledSheet: 'Başlıksız E-Tablo',
+    untitledDoc: 'Başlıksız Belge',
+    untitledDeck: 'Başlıksız Sunum',
+    untitledMarkdown: 'Başlıksız Markdown',
+    untitledHtml: 'Başlıksız HTML',
+    untitledMindmap: 'Başlıksız Zihin Haritası',
+    untitledDiagram: 'Başlıksız Diyagram',
+    untitledHwp: 'Başlıksız HWP',
+    untitledPdf: 'Başlıksız PDF',
+    menuNewSlide: 'AI Sunumlar',
+    menuNewMarkdown: 'AI Markdown',
+    menuNewHtml: 'AI HTML',
+    menuNewMindmap: 'Zihin Haritası',
+    menuNewDiagram: 'Diyagram',
+    menuNewHwp: 'AI HWP',
+    menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF İçe Aktar…',
+    menuExportPdf: 'PDF olarak dışa aktar…',
+    menuExportImages: 'Görüntü olarak dışa aktar…',
+    menuExportHtml: 'Tek dosyalı HTML olarak dışa aktar…',
+    menuExportMapImage: 'Görüntü olarak dışa aktar (PNG)…',
+    menuExportMapSvg: 'Görüntü Olarak Dışa Aktar (SVG)…',
+    menuExportSvg: 'SVG Olarak Dışa Aktar…',
+    menuZoomFit: 'Pencereye Sığdır',
+    menuExportMapOutline: 'Markdown ana hattı olarak dışa aktar…',
+    menuMakeFromDocument: 'Bundan başka bir belge oluştur',
+    menuDocumentSources: 'Kaynakları görüntüle',
+    menuDerivedDocuments: 'Bundan oluşturulan belgeler',
+    menuOpenInDocs: 'Dönüştür ve Belgelerde aç',
+    menuPrint: 'Yazdır…',
+    menuPreview: 'Baskı Önizleme…',
+    menuOpen: 'Aç…',
+    menuSave: 'Kaydet',
+    menuSaveAs: 'Farklı kaydet…',
+    menuClose: 'Kapat',
+    menuEdit: 'Düzen',
+    menuWindow: 'Pencere',
+    menuHome: 'Ana ekran',
+    backToHome: 'Ana ekrana dön',
+    dlgOpenTitle: 'Dosya aç',
+    filterSupported: 'Desteklenen dosyalar',
+    filterWord: 'Word belgeleri',
+    filterOdt: 'OpenDocument Metni',
+    filterExcel: 'Excel çalışma kitapları',
+    filterPpt: 'PowerPoint sunumları',
+    filterMarkdown: 'Metin dosyaları (Markdown, TXT, JSON)',
+    filterHtml: 'HTML belgeleri',
+    filterMindmap: 'Zihin haritaları (XMind dosyaları)',
+    filterHwp: 'HWP belgeleri (HWP, HWPX)',
+    filterEpub: 'E-kitaplar (EPUB)',
+    filterDiagram: 'Diyagramlar (draw.io, VSDX)',
+    menuFind: 'Bul…',
+    menuReplace: 'Değiştir…',
+    menuTranslateBook: 'Kitabı çevir…',
+    filterPdf: 'PDF belgeleri',
+    filterPdfPageImages: 'PNG Görüntüleri (sayfa başına bir dosya)',
+    errBadArgs: 'Geçersiz bağımsız değişkenler',
+    errBadName: 'Geçersiz dosya adı',
+    errBadExtension: 'Bu uzantı desteklenmiyor ve dosya artık açılamaz',
+    errMissing: 'Dosya bulunamadı',
+    errExists: 'Bu ada sahip bir dosya zaten var',
+    errRenameFailed: 'Yeniden adlandırılamadı',
+    errPdfSaveAsFailed: 'PDF kopyası kaydedilemedi',
+    errNewTabFailed: 'Yeni belge oluşturulamadı',
+    errDuplicateFailed: 'Dosyanın kopyası oluşturulamadı',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    copySuffix: 'kopya',
+    menuHelp: 'Yardım',
+    menuUserGuide: 'Kullanım kılavuzu',
+    thirdPartyNotices: 'Üçüncü taraf bildirimleri',
+    menuExportDocx: 'Word olarak dışa aktar…',
+    menuExportOdt: 'ODT olarak dışa aktar…',
+    menuExportHwp: 'HWP belgesi olarak dışa aktar…',
+    btnCancel: 'İptal',
+    pdfDocxFailedMsg: 'Word olarak dışa aktarma başarısız oldu',
+    pdfDocxBusyMsg: 'Zaten bir Word dışa aktarma işlemi sürüyor. Bitmesini bekleyin.',
+    menuExportPptx: 'PowerPoint olarak dışa aktar…',
+    pdfPptxFailedMsg: 'PowerPoint olarak dışa aktarma başarısız oldu',
+    pdfPptxBusyMsg: 'Zaten bir dışa aktarma işlemi sürüyor. Bitmesini bekleyin.',
+    pdfPptxLocalScannedDetail:
+      'Her sayfa tam sayfa görüntü olarak dışa aktarıldı; slaytlardaki metin düzenlenemez.',
+    menuExportXlsx: 'Excel olarak dışa aktar…',
+    menuExportMd: 'Markdown olarak dışa aktar…',
+    menuExportEpub: 'EPUB olarak dışa aktar…',
+    pdfXlsxFailedMsg: 'Excel olarak dışa aktarma başarısız oldu',
+    pdfXlsxBusyMsg: 'Zaten bir dışa aktarma işlemi sürüyor. Bitmesini bekleyin.',
+    pdfXlsxLocalScannedDetail:
+      'Taranmış sayfalar hücrelere dönüştürülemez; her sayfanın çalışma sayfası bunun yerine bir uyarı satırı taşır.',
+    pdfXlsxLocalSkippedMsg: 'Bazı sayfalar hücrelere dönüştürülemedi',
+    pdfXlsxLocalSkippedDetail:
+      '{pages} sayfası hücrelere dönüştürülemedi; çalışma sayfaları bunun yerine bir uyarı satırı taşıyor.',
+    pdfDocxLocalScannedMsg: 'Taranmış belge algılandı',
+    pdfDocxLocalScannedDetail:
+      'Görünümlerini korumak için sayfalar görüntü olarak dışa aktarıldı; düzenlenebilir metin tanınamadı.',
+    pdfDocxLocalDegradedMsg: 'Bazı sayfalar görüntü olarak dışa aktarıldı',
+    pdfDocxLocalDegradedDetail:
+      '{pages} sayfası güvenilir şekilde yeniden oluşturulamadı ve tam sayfa görüntü olarak dışa aktarıldı.',
+    pdfDocxLocalOcrMsg: 'Taranmış sayfalar düzenlenebilir metne dönüştürüldü',
+    pdfDocxLocalOcrDetail:
+      '{pages} sayfası tarama idi; metinleri cihaz üzerinde OCR ile geri kazanıldı. Lütfen sonucu gözden geçirin.',
+    pdfDocxLocalEncryptedDetail: 'Bu PDF şifreli ve doğru parola olmadan açılamadı.',
+    pdfDocxLocalUnsupportedEncDetail:
+      'Bu PDF sertifika tabanlı veya desteklenmeyen bir şifreleme kullanıyor ve dönüştürülemez.',
+    pdfPwdTitle: 'Parolayı girin',
+    pdfPwdPrompt: 'Bu PDF şifreli. Açmak için parolayı girin:',
+    docPwdPrompt: 'Bu dosya parola korumalı. Açmak için parolayı girin:',
+    pdfPwdRetryPrompt: 'Parola yanlış. Lütfen tekrar deneyin.',
+    pdfPwdOk: 'Tamam',
+    pdfPwdVerifying: 'Parola doğrulanıyor…',
+    pdfPwdLabel: 'Parola',
+    pdfPwdPlaceholder: 'Açma parolasını girin',
+    pdfPwdShow: 'Parolayı göster',
+    pdfPwdHide: 'Parolayı gizle',
+    pdfDocxLocalCorruptDetail: 'Dosya hasarlı veya geçerli bir PDF değil, dönüştürülemez.',
+    dlgPickSaveDir: 'Varsayılan kaydetme konumunu seçin',
+    errSaveDirUnusable:
+      'Seçilen klasör yazılabilir değil ve varsayılan kaydetme konumu olarak kullanılamaz',
+    saveDirFallbackMsg: 'Belgeler klasörüne kaydedilemiyor',
+    saveDirFallbackDetail:
+      'GenOffice {blocked} konumunu oluşturamadı veya oraya yazamadı, bu yüzden yeni dosyalar {using} konumuna kaydediliyor. Bunu Windows Güvenliği’nin "Denetimli klasör erişimi" engellediyse GenOffice’i "Denetimli klasör erişimi üzerinden bir uygulamaya izin ver" altına ekleyip uygulamayı yeniden başlatın. Ayarlar → Genel → Kayıt Konumu bölümünden başka bir klasör de seçebilirsiniz.',
   },
   ja: {
     menuTabSave: '保存',
@@ -1732,6 +1912,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'サードパーティソフトウェアに関する通知',
     menuExportDocx: 'Word として書き出す…',
     menuExportOdt: 'ODT として書き出す…',
+    menuExportHwp: 'HWP 文書としてエクスポート…',
     btnCancel: 'キャンセル',
     pdfDocxFailedMsg: 'Word への書き出しに失敗しました',
     pdfDocxBusyMsg: 'Word への書き出しが進行中です。完了までお待ちください。',
@@ -1898,6 +2079,7 @@ const tMain = createI18n({
     thirdPartyNotices: '타사 소프트웨어 고지',
     menuExportDocx: 'Word로 내보내기…',
     menuExportOdt: 'ODT로 내보내기…',
+    menuExportHwp: '한글 문서로 내보내기…',
     btnCancel: '취소',
     pdfDocxFailedMsg: 'Word로 내보내기 실패',
     pdfDocxBusyMsg: 'Word 내보내기가 이미 진행 중입니다. 완료될 때까지 기다려 주세요.',
@@ -2062,6 +2244,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Mentions relatives aux logiciels tiers',
     menuExportDocx: 'Exporter en Word…',
     menuExportOdt: 'Exporter en ODT…',
+    menuExportHwp: 'Exporter en document HWP…',
     btnCancel: 'Annuler',
     pdfDocxFailedMsg: "Échec de l'export en Word",
     pdfDocxBusyMsg: "Un export en Word est déjà en cours. Veuillez attendre qu'il se termine.",
@@ -2230,6 +2413,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Hinweise zu Drittanbietersoftware',
     menuExportDocx: 'Als Word exportieren…',
     menuExportOdt: 'Als ODT exportieren…',
+    menuExportHwp: 'Als HWP-Dokument exportieren…',
     btnCancel: 'Abbrechen',
     pdfDocxFailedMsg: 'Word-Export fehlgeschlagen',
     pdfDocxBusyMsg: 'Ein Word-Export läuft bereits. Bitte warten Sie, bis er abgeschlossen ist.',
@@ -2396,6 +2580,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Avisos de software de terceros',
     menuExportDocx: 'Exportar como Word…',
     menuExportOdt: 'Exportar como ODT…',
+    menuExportHwp: 'Exportar como documento HWP…',
     btnCancel: 'Cancelar',
     pdfDocxFailedMsg: 'Error al exportar como Word',
     pdfDocxBusyMsg: 'Ya hay una exportación a Word en curso. Espera a que termine.',
@@ -2562,6 +2747,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'ประกาศเกี่ยวกับซอฟต์แวร์ของบุคคลที่สาม',
     menuExportDocx: 'ส่งออกเป็น Word…',
     menuExportOdt: 'ส่งออกเป็น ODT…',
+    menuExportHwp: 'ส่งออกเป็นเอกสาร HWP…',
     btnCancel: 'ยกเลิก',
     pdfDocxFailedMsg: 'ส่งออกเป็น Word ไม่สำเร็จ',
     pdfDocxBusyMsg: 'กำลังส่งออกเป็น Word อยู่ โปรดรอให้เสร็จสิ้นก่อน',
@@ -2724,6 +2910,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Pemberitahuan Perangkat Lunak Pihak Ketiga',
     menuExportDocx: 'Ekspor sebagai Word…',
     menuExportOdt: 'Ekspor sebagai ODT…',
+    menuExportHwp: 'Ekspor sebagai dokumen HWP…',
     btnCancel: 'Batal',
     pdfDocxFailedMsg: 'Gagal mengekspor sebagai Word',
     pdfDocxBusyMsg: 'Ekspor ke Word sedang berlangsung. Harap tunggu hingga selesai.',
@@ -2890,6 +3077,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Уведомления о стороннем ПО',
     menuExportDocx: 'Экспортировать в Word…',
     menuExportOdt: 'Экспортировать в ODT…',
+    menuExportHwp: 'Экспорт в документ HWP…',
     btnCancel: 'Отмена',
     pdfDocxFailedMsg: 'Не удалось экспортировать в Word',
     pdfDocxBusyMsg: 'Экспорт в Word уже выполняется. Дождитесь его завершения.',
@@ -3055,6 +3243,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'إشعارات برامج الجهات الخارجية',
     menuExportDocx: 'تصدير كملف Word…',
     menuExportOdt: 'تصدير كملف ODT…',
+    menuExportHwp: 'تصدير كمستند HWP…',
     btnCancel: 'إلغاء',
     pdfDocxFailedMsg: 'فشل التصدير كملف Word',
     pdfDocxBusyMsg: 'يجري حاليًا تصدير إلى Word. يُرجى الانتظار حتى يكتمل.',
@@ -3217,6 +3406,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Avisos de software de terceiros',
     menuExportDocx: 'Exportar como Word…',
     menuExportOdt: 'Exportar como ODT…',
+    menuExportHwp: 'Exportar como documento HWP…',
     btnCancel: 'Cancelar',
     pdfDocxFailedMsg: 'Falha ao exportar como Word',
     pdfDocxBusyMsg: 'Já há uma exportação para Word em andamento. Aguarde a conclusão.',
@@ -3383,6 +3573,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Note sul software di terze parti',
     menuExportDocx: 'Esporta come Word…',
     menuExportOdt: 'Esporta come ODT…',
+    menuExportHwp: 'Esporta come documento HWP…',
     btnCancel: 'Annulla',
     pdfDocxFailedMsg: 'Esportazione in Word non riuscita',
     pdfDocxBusyMsg: "Un'esportazione in Word è già in corso. Attendi il completamento.",
@@ -3549,6 +3740,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Informacje o oprogramowaniu innych firm',
     menuExportDocx: 'Eksportuj jako Word…',
     menuExportOdt: 'Eksportuj jako ODT…',
+    menuExportHwp: 'Eksportuj jako dokument HWP…',
     btnCancel: 'Anuluj',
     pdfDocxFailedMsg: 'Eksport do formatu Word nie powiódł się',
     pdfDocxBusyMsg: 'Eksport do formatu Word już trwa. Poczekaj na jego zakończenie.',
@@ -3714,6 +3906,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Informace o softwaru třetích stran',
     menuExportDocx: 'Exportovat jako Word…',
     menuExportOdt: 'Exportovat jako ODT…',
+    menuExportHwp: 'Exportovat jako dokument HWP…',
     btnCancel: 'Zrušit',
     pdfDocxFailedMsg: 'Export do Wordu se nezdařil',
     pdfDocxBusyMsg: 'Export do Wordu už probíhá. Počkejte, až se dokončí.',
@@ -3878,6 +4071,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Kennisgevingen over software van derden',
     menuExportDocx: 'Exporteren als Word…',
     menuExportOdt: 'Exporteren als ODT…',
+    menuExportHwp: 'Exporteren als HWP-document…',
     btnCancel: 'Annuleren',
     pdfDocxFailedMsg: 'Exporteren als Word mislukt',
     pdfDocxBusyMsg: 'Er is al een Word-export bezig. Wacht tot deze is voltooid.',
@@ -4045,6 +4239,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'Notis Perisian Pihak Ketiga',
     menuExportDocx: 'Eksport sebagai Word…',
     menuExportOdt: 'Eksport sebagai ODT…',
+    menuExportHwp: 'Eksport sebagai dokumen HWP…',
     btnCancel: 'Batal',
     pdfDocxFailedMsg: 'Gagal mengeksport sebagai Word',
     pdfDocxBusyMsg: 'Eksport ke Word sedang dijalankan. Sila tunggu sehingga selesai.',
@@ -4209,6 +4404,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'הודעות על תוכנות צד שלישי',
     menuExportDocx: 'ייצוא כ-Word…',
     menuExportOdt: 'ייצוא כ-ODT…',
+    menuExportHwp: 'ייצוא כמסמך HWP…',
     btnCancel: 'ביטול',
     pdfDocxFailedMsg: 'הייצוא כ-Word נכשל',
     pdfDocxBusyMsg: 'ייצוא ל-Word כבר מתבצע. נא להמתין לסיומו.',
@@ -4372,6 +4568,7 @@ const tMain = createI18n({
     thirdPartyNotices: 'तृतीय-पक्ष सॉफ़्टवेयर सूचनाएँ',
     menuExportDocx: 'Word के रूप में निर्यात करें…',
     menuExportOdt: 'ODT के रूप में निर्यात करें…',
+    menuExportHwp: 'HWP दस्तावेज़ के रूप में निर्यात करें…',
     btnCancel: 'रद्द करें',
     pdfDocxFailedMsg: 'Word के रूप में निर्यात विफल रहा',
     pdfDocxBusyMsg: 'Word के रूप में निर्यात पहले से चल रहा है। कृपया पूरा होने तक प्रतीक्षा करें।',
@@ -4537,6 +4734,7 @@ const tMain = createI18n({
     thirdPartyNotices: '第三方軟體聲明',
     menuExportDocx: '匯出為 Word…',
     menuExportOdt: '匯出為 ODT…',
+    menuExportHwp: '匯出為 HWP 文件…',
     btnCancel: '取消',
     pdfDocxFailedMsg: '匯出為 Word 失敗',
     pdfDocxBusyMsg: '正在轉換中，請等待目前的匯出完成。',
@@ -5450,6 +5648,12 @@ function createShellWindow(): void {
   // markdown "convert & open in Docs" → route the fresh .docx to a docs tab
   setMarkdownDocxExportedHook((path) => {
     openDocumentPath(path)
+  })
+  // markdown → Hangul: the Word editor's converter with the look of a Hangul
+  // document, since the bytes the Markdown editor hands over have no Word layout
+  setMarkdownHwpExport({
+    convert: (docx, format) => hwpCopy.convert(docx, format, 'hangul'),
+    confirm: hwpCopy.confirm,
   })
   // Word export to a path already open in a docs tab: close that tab before the file is
   // written (its unsaved-changes prompt applies, and a later save of the stale document
@@ -8204,6 +8408,13 @@ function buildMarkdownMenu(): void {
           },
         },
         {
+          label: tm('menuExportHwp'),
+          click: () => {
+            const tab = activeMarkdownTarget()
+            if (tab) sendMarkdownExportRequest(tab.webContents, 'hwp')
+          },
+        },
+        {
           label: tm('menuExportPdf'),
           click: () => {
             const tab = activeMarkdownTarget()
@@ -9328,6 +9539,44 @@ async function openPdfAsHwp(): Promise<void> {
   if (!tab?.filePath || !tabManager) return
   if (!(await flushPdfSave(tab.webContents, true))) return
   openPdfCopyAsHwp(tab.filePath)
+}
+
+/**
+ * The Hangul AI panel's import_attachment (hwp-import.ts): the bundled command
+ * line converts the Markdown file, the copy opens as a new, untitled Hangul tab
+ * and the person's request is queued for that tab's AI panel.
+ */
+const markdownImportDeps: MarkdownImportDeps = {
+  defaultFormat: () => readHwpDefaultFormat(app),
+  makeDir: () => {
+    const dir = join(app.getPath('temp'), 'ieumoffice-hwp-imports', randomUUID())
+    mkdirSync(dir, { recursive: true })
+    return dir
+  },
+  removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
+  convert: async (input, format, out) => {
+    // the command line loads the Markdown editor's parser first: allow it more than the default
+    const outcome = await bundledCliRunner().run(
+      ['convert', input, '--to', format, '--out', out, '--force'],
+      { timeoutMs: 300_000 },
+    )
+    if (outcome.ok && existsSync(out)) return { ok: true }
+    const failed = outcome.json?.status === 'error' ? outcome.json : undefined
+    const reason = failed?.detail?.reason
+    return {
+      ok: false,
+      error: failed?.message ?? (outcome.stderr.trim() || 'the conversion failed'),
+      ...(typeof reason === 'string' ? { reason } : {}),
+    }
+  },
+  openCopy: (path, title) => {
+    if (!tabManager) return null
+    const tabId = tabManager.openHwpTab(path, { untitledCopy: { title } })
+    return tabManager.webContentsForTab(tabId) ?? null
+  },
+  queueHandoff: (contents, handoff) => queueSkillHandoffFor(contents, handoff),
+  newId: () => randomUUID(),
+  now: () => Date.now(),
 }
 
 /** The copy of `pdfPath` as a new, untitled Hangul tab that imports it; the copy goes with the tab. */

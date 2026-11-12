@@ -4,12 +4,12 @@
 
 ## 맡은 범위
 
-- 루프: `AgentLoop`(`src/loop.ts`). 대화 이력, 턴 반복, 도구 인자 검증(`missingRequiredFields`, `invalidArgumentFields`, `coerceArgumentFields`), 이력 압축, 실패한 실행의 되돌림.
+- 루프: `AgentLoop`(`src/loop.ts`). 대화 이력, 턴 반복, 도구 인자 검증(`missingRequiredFields`, `invalidArgumentFields`, `coerceArgumentFields`: 숫자 칸의 숫자 문자열과 참·거짓 칸의 `"true"`·`"false"`는 고쳐 받는다), 이력 압축, 실패한 실행의 되돌림.
 - skill 계약: `AgentSkill`과 `composeSkills`(`src/skill.ts`). 에디터 하나의 능력(system prompt 구역, 도구 목록, 턴마다 붙는 문맥, 도구 실행기)을 묶는 단위다.
 - 전송 계약 `AgentTransport`(`src/types.ts`)와 그 IPC 구현 `createIpcTransport`(`src/electron-transport.ts`). 렌더러에서 돌며, 메인 프로세스가 보낸 스트림 조각(`IpcStreamChunk`)을 루프의 콜백으로 옮긴다.
 - 도구 없이 답 본문이 곧 결과물인 요청 `streamText`(`src/stream-text.ts`), 별표 파일 묶음을 읽는 `createKnowledgeBaseSkill`(`src/knowledge-base-skill.ts`).
 - "AI에게 보이지 않게" 규칙의 공통 부분: 자리 표시 `{{label}}`의 생성·검사(`src/redact-core.ts`), 문서 범위의 모델용 글 만들기와 저장 식별자 `REDACT_NS`·`REDACT_PREFIX`·`REDACT_EL`(`src/redact-range.ts`).
-- 사용자 스킬 능력 `createUserSkillsSkill`·`createBridgedUserSkillsSkill`(`src/user-skills-skill.ts`, 결정 0048): 스스로 쓰기 목록을 지시문에 넣는 구역(`autoSkillsSection`, 설명 300자·100개 상한)과 앱이 정의하고 앱이 실행하는 도구 셋 `use_skill`·`read_skill_file`·`propose_skill`. 스킬 글은 창의 다리(`window.aiOfficeUserSkills`)로 읽고, 스크립트는 실행하지 않으며, `propose_skill`은 카드를 띄울 뿐 파일을 쓰지 않는다. 영어 이름은 꼭 받고, 사람이 쓰는 언어의 제목도 받는다(결정 0128). 능력에 `editor`를 주면 다른 편집기용 스킬을 목록에서 빼고 `use_skill`·`read_skill_file`에서 거절한다.
+- 사용자 스킬 능력 `createUserSkillsSkill`·`createBridgedUserSkillsSkill`(`src/user-skills-skill.ts`, 결정 0048): 스스로 쓰기 목록을 지시문에 넣는 구역(`autoSkillsSection`, 설명 300자·100개 상한)과 앱이 정의하고 앱이 실행하는 도구 셋 `use_skill`·`read_skill_file`·`propose_skill`. 스킬 글은 창의 다리(`window.aiOfficeUserSkills`)로 읽고, 스크립트는 실행하지 않으며, `propose_skill`은 카드를 띄울 뿐 파일을 쓰지 않는다. 영어 이름은 꼭 받고, 사람이 쓰는 언어의 제목도 받는다(결정 0128). 능력에 `editor`를 주면 다른 편집기용 스킬을 목록에서 빼고 `use_skill`·`read_skill_file`에서 거절한다. 그 편집기로 쓰는 곳을 좁힌 스킬은 목록 앞에 따로 묶여 "새 작업물 전체를 만드는 요청이면 첫 도구 호출은 `use_skill`"이라는 머리말(`EDITOR_SKILLS_HEADING`) 아래에 실린다(결정 0136). 머리말과 `use_skill` 도구 설명의 그 문장은 실제 구독으로 맞춘 것이니, 고치면 네 편집기에서 다시 확인한다.
 - 스킬의 쓰는 곳(`src/skill-editors.ts`, 하위 경로 `@genoffice/agent-core/skill-editors`, 가져오는 것 없음, 결정 0122): 편집기 이름 목록 `SKILL_EDITORS`, 적힌 값 읽기 `skillEditorsOf`(모르는 이름은 버리고, 아는 이름이 없으면 모든 편집기), 설정의 선택 읽기 `skillEditorsChoiceOf`, 쓰는 곳 정하기 `skillEditorScope`, 판정 `skillUsedIn`, 이름이 같은 켜진 스킬에 밀렸는지 `skillStandsBack`(뒷단이 정해 둔 `shadowedBy`를 읽는다. 이긴 스킬이 쓰이지 않는 편집기에서는 밀리지 않는다). 목록·도구·설정 화면·뒷단이 모두 이것을 쓴다.
 - 드라이브에서 읽은 내용이 대화에 들어간 뒤의 바깥 호출 차단: `isOutboundCall`·`DRIVE_OUTBOUND_BLOCKED`(`src/drive-skill.ts`). 바깥 도구 목록 `OUTBOUND_TOOLS`(여기에 `read_url`도 있다)는 `src/outbound.ts`에 있다.
 - 인터넷 도구 스위치와 주소 확인(결정 0062): `guardOutbound`·`fetchedAddresses`·`addressInConversation`(`src/outbound-guard.ts`). `composeWithDrive`가 드라이브 차단 바깥에 씌운다. 창의 다리(`window.aiOfficeOutbound`)로 껍데기 앱 뒷단에 스위치 값과 사람의 답을 묻는다.
@@ -32,7 +32,7 @@
 - 루프는 제공자를 고르거나 바꾸지 않는다. 턴이 실패하면 실행을 끝내고 오류를 알린다. 스스로 다시 보내는 경우는 둘뿐이다. 오류 문장에 `(empty stream)`이 있고 그 턴에서 글도 도구 호출도 전달되지 않았을 때(1초, 3초 뒤 두 번), `while sending tool arguments`가 있고 도구 호출이 전달되지 않았을 때(한 번). 두 경우 모두 이력이 그대로라 같은 요청을 다시 보내도 안전하다. 무언가 전달된 턴은 다시 보내지 않는다(같은 편집이 두 번 실행된다).
 - 위 두 문구는 `packages/ai-provider`의 프로토콜·브리지와 맺은 문자열 계약이다. 한쪽만 고치면 재시도가 조용히 사라진다. 이 표식은 `errorCode`가 없는 오류에만 유효하다. `errorCode`가 붙은 조각은 `createIpcTransport`가 번역된 문장으로 바꿔 루프에 넘기므로 표식이 남지 않는다.
 - 모델이 요청한 호출은 검증을 통과해야 실행한다. `inputError`가 달린 호출(JSON이 깨졌거나 앱 도구 목록에 없는 이름), `truncated` 호출, 필수 인자가 빠지거나 `null`인 호출은 실행하지 않고 오류 결과로 모델에게 돌려준다. `null`을 값으로 받는 도구는 스키마에 그렇게 적어야 한다(`schemaAcceptsNull`).
-- 폭주는 일찍 끊는다. 같은 턴이 3번 반복되거나(`MAX_IDENTICAL_TURNS`), 모든 도구 호출이 8턴 연속 실패하거나(`MAX_ALL_ERROR_TURNS`), 쓸 수 없는 인자가 3번 이어지면(`MAX_INPUT_PARSE_RETRIES`) 실행을 끝낸다. 턴 상한(`DEFAULT_MAX_TURNS`)에 닿으면 도구 없이 마무리 턴을 한 번 준다.
+- 폭주는 일찍 끊는다. 같은 턴이 3번 반복되거나(`MAX_IDENTICAL_TURNS`), 모든 도구 호출이 8턴 연속 실패하거나(`MAX_ALL_ERROR_TURNS`), 쓸 수 없는 인자가 3번 이어지면(`MAX_INPUT_PARSE_RETRIES`) 실행을 끝낸다. 이 셋은 `onError`의 둘째 인자로 멈춘 까닭(`AgentRunStop`)을 준다(결정 0135): 어느 규칙인지, 쓸 수 없던 까닭(`truncated`·`unparseable`·`missing`·`invalid`)이 그 연속 안에서 몇 번이었는지, 그 호출이 부른 도구 이름(스킬 목록에 없는 이름은 `unknown`), 실행한 호출 수, 문서를 바꿨는지. 모델이나 문서의 글은 넣지 않는다. 제공자·네트워크 오류에는 둘째 인자가 없다. 턴 상한(`DEFAULT_MAX_TURNS`)에 닿으면 도구 없이 마무리 턴을 한 번 준다.
 - 실패한 실행은 그 사용자 메시지부터 이력에서 걷어 낸다(`rollbackFailedRun`). 남겨 두면 실패한 지시가 다음 실행에서 사용자 모르게 다시 수행된다. 도구만 실행하고 글이 없는 턴은 `COMPLETED_VIA_TOOLS_TEXT`로 채운다(빈 assistant 내용은 다음 턴을 깨뜨린다).
 - `ToolExecution.display`는 화면 전용이다. 모델에게 가는 메시지에 섞지 않는다.
 - 전송은 모르는 조각 종류를 받아도 실행을 죽이지 않는다(이 빌드보다 새 메인 프로세스와 함께 돌 수 있다). 조각이 오면 침묵 감시만 다시 건다.

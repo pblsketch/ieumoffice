@@ -21,8 +21,13 @@
  * from the PC's own list, whether a font is there is not known and nothing is marked.
  */
 
+import { forgetEquationFonts } from './equation-fonts.mjs'
+
 /** Module specifier the studio-pc-fonts patches import; build-studio.mjs aliases it. */
 export const PC_FONTS_MODULE = '@ieum/pc-fonts'
+
+// the studio's canvas font substitution imports these from the same module (equation-fonts.mjs)
+export { installEquationFonts, isEquationGlyphFont } from './equation-fonts.mjs'
 
 /** The studio's names that are not one font: its generic families and its font sets. */
 const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace'])
@@ -125,6 +130,8 @@ async function refresh(studio) {
     const listed = await studio.queryLocalFonts()
     if (listed.length === 0 || sameFaces(listed, studio.records())) return false
     await studio.detect()
+    // the PC's fonts changed: an equation font may have come or gone
+    forgetEquationFonts()
     studio.changed()
     return true
   } catch (error) {

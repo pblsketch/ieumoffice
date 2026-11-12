@@ -546,6 +546,32 @@ const vi: Record<keyof typeof en, string> = {
   ribbonCellMargins: 'Lề ô mặc định',
 }
 
+const tr: Record<keyof typeof en, string> = {
+  ribbonTableStyleOptions: 'Tablo stili seçenekleri',
+  ribbonTableFirstRow: 'Başlık satırı',
+  ribbonTableLastRow: 'Toplam satırı',
+  ribbonTableBandedRows: 'Bantlı satırlar',
+  ribbonTableFirstColumn: 'İlk sütun',
+  ribbonTableLastColumn: 'Son sütun',
+  ribbonTableBandedColumns: 'Bantlı sütunlar',
+  ribbonTablePresetGrid: 'Düz ızgara',
+  ribbonTablePresetBlueHeader: 'Mavi başlık',
+  ribbonTablePresetBlueBanded: 'Mavi bantlı',
+  ribbonTablePresetGrayBanded: 'Gri bantlı',
+  ribbonTablePresetGreenHeader: 'Yeşil başlık',
+  ribbonAutoFit: 'Otomatik sığdır',
+  ribbonAutoFitContents: 'İçeriğe otomatik sığdır',
+  ribbonAutoFitWindow: 'Pencereye otomatik sığdır',
+  ribbonFixedColumnWidth: 'Sabit sütun genişliği',
+  ribbonRepeatHeaderRows: 'Başlık satırlarını yinele',
+  ribbonTableProperties: 'Tablo özellikleri',
+  ribbonTableData: 'Tablo',
+  ribbonHorizontalPosition: 'Yatay konum',
+  ribbonVerticalPosition: 'Dikey konum',
+  ribbonDistanceFromText: 'Metinden uzaklık',
+  ribbonCellMargins: 'Varsayılan hücre kenar boşlukları',
+}
+
 /** Table Design / Table Layout controls; every locale has its own complete key set. */
 export const tableStrings = defineStrings({
   zh,
@@ -569,4 +595,5 @@ export const tableStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })

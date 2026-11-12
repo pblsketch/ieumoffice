@@ -20,6 +20,7 @@ import { he } from './home-kinds/he'
 import { hi } from './home-kinds/hi'
 import { zhTW } from './home-kinds/zh-TW'
 import { vi } from './home-kinds/vi'
+import { tr } from './home-kinds/tr'
 
 /**
  * Settings → General "new documents on Home" row.
@@ -47,6 +48,7 @@ export const homeKindsStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })
 
 export type HomeKindsStringKey = keyof typeof zh

@@ -83,7 +83,7 @@ export const nl = {
   previewNeedsSave:
     'Relatieve afbeeldingen en stijlen verschijnen in het voorbeeld zodra het bestand is opgeslagen',
   inspectHint:
-    'Klik op een element in het voorbeeld om het te selecteren, dubbelklik om tekst te bewerken',
+    'Klik op een element in het voorbeeld om het te selecteren, dubbelklik om tekst te bewerken, Shift+klik of {alt}+slepen om er meerdere te selecteren',
   nodeDynamic:
     'Dit element is door het paginascript gemaakt en bestaat niet in de bron; bewerk via de bron of AI',
   nodeDynamicShort: 'door script gemaakt',

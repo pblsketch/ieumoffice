@@ -1156,6 +1156,7 @@ describe('Claude Code bridge: only the allowed tool, or no run', () => {
           cells: { type: 'array', items: { type: 'object' } },
           note: { type: 'string' },
           options: { type: 'object' },
+          header: { type: 'boolean' },
         },
       },
     }
@@ -1179,10 +1180,17 @@ describe('Claude Code bridge: only the allowed tool, or no run', () => {
         options: { fit: true },
       },
     })
+    // seen live: a yes/no written as a string, which the loop refused three times over
+    expect(directCallInput(fill, { header: 'true', note: 'true' })).toEqual({
+      input: { header: true, note: 'true' },
+    })
+    expect(directCallInput(fill, { header: 'false' })).toEqual({ input: { header: false } })
     // a string that is not the declared shape stays as it is, for the loop to report
     expect(directCallInput(fill, { cells: 'three cells' })).toEqual({
       input: { cells: 'three cells' },
     })
+    expect(directCallInput(fill, { header: 'yes' })).toEqual({ input: { header: 'yes' } })
+    expect(directCallInput(fill, { header: '1' })).toEqual({ input: { header: '1' } })
     expect(directCallInput(fill, 'not an object')).toEqual({ input: {} })
   })
 

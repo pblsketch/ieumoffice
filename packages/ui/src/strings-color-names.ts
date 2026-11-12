@@ -467,6 +467,28 @@ export const COLOR_SWATCH_NAMES: Record<Lang, Readonly<Record<string, string>>> 
     '002060': 'Xanh lam đậm',
     '7030A0': 'Tím',
   },
+  tr: {
+    FFFFFF: 'Beyaz',
+    '000000': 'Siyah',
+    E7E6E6: 'Açık Gri',
+    '0E2841': 'Koyu Mavi-Gri',
+    '156082': 'Mavi',
+    E97132: 'Turuncu',
+    '196B24': 'Yeşil',
+    '0F9ED5': 'Gök Mavisi',
+    A02B93: 'Mor',
+    '4EA72E': 'Açık Yeşil',
+    C00000: 'Koyu Kırmızı',
+    FF0000: 'Kırmızı',
+    FFC000: 'Turuncu',
+    FFFF00: 'Sarı',
+    '92D050': 'Açık Yeşil',
+    '00B050': 'Yeşil',
+    '00B0F0': 'Açık Mavi',
+    '0070C0': 'Mavi',
+    '002060': 'Koyu Mavi',
+    '7030A0': 'Mor',
+  },
 }
 
 /** The swatch's name in `lang`; the English name when the table has no entry for its hex. */

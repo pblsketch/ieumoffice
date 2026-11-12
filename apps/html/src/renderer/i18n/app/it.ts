@@ -83,7 +83,7 @@ export const it = {
   previewNeedsSave:
     "Immagini e stili relativi compaiono nell'anteprima dopo il salvataggio del file",
   inspectHint:
-    "Fai clic su un elemento nell'anteprima per selezionarlo, doppio clic per modificare il testo",
+    "Fai clic su un elemento nell'anteprima per selezionarlo, doppio clic per modificare il testo, Maiusc+clic o {alt}+trascina per selezionarne più di uno",
   nodeDynamic:
     "Questo elemento è stato creato dallo script della pagina e non esiste nel sorgente; modificalo dal sorgente o con l'IA",
   nodeDynamicShort: 'generato da script',

@@ -217,9 +217,9 @@ describe('a run', () => {
 })
 
 describe('the panel strings', () => {
-  it('has the same keys in all 21 languages, filled and translated', () => {
+  it('has the same keys in every UI language, filled and translated', () => {
     const keys = Object.keys(aiStrings.zh).sort()
-    expect(Object.keys(aiStrings)).toHaveLength(21)
+    expect(Object.keys(aiStrings)).toHaveLength(LANGS.length)
     for (const lang of LANGS) {
       expect(Object.keys(aiStrings[lang]).sort(), lang).toEqual(keys)
       for (const key of keys) {

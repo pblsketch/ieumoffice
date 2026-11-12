@@ -2601,6 +2601,7 @@ export function App({
             typeof eventStart.sheetViewStartColumn === 'number'
             ? { row: eventStart.sheetViewStartRow, column: eventStart.sheetViewStartColumn }
             : undefined,
+          true,
         )
         let visible: ReturnType<typeof worksheet.getVisibleRange>
         try {

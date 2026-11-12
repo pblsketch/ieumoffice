@@ -136,7 +136,17 @@ export interface Table {
   readonly repeatHeader: boolean
   /** a Hangul table placed like a character follows its paragraph's alignment */
   readonly align: 'left' | 'center' | 'right'
+  readonly flow: TableFlow
 }
+
+/**
+ * 'char': placed like a character, so the table stays whole on one page.
+ * 'block': between the paragraphs, going on to the next page at a row
+ * boundary; the text keeps `above` and `below` away from it.
+ */
+export type TableFlow =
+  | { readonly kind: 'char' }
+  | { readonly kind: 'block'; readonly above: HwpUnit; readonly below: HwpUnit }
 
 export interface Cell {
   readonly row: number

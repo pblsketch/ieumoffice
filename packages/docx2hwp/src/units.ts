@@ -22,6 +22,11 @@ export const hwpFromHalfPoints = (halfPoints: number): HwpUnit =>
 /** CSS pixels at 96 dpi */
 export const hwpFromPx = (px: number): HwpUnit => Math.round(px * 75) as HwpUnit
 export const ptFromHwp = (value: HwpUnit): number => value / 100
+/** millimetres, the unit Hangul's own dialogs show */
+export const hwpFromMm = (mm: number): HwpUnit => Math.round((mm * 7200) / 25.4) as HwpUnit
+export const hwpFromPt = (pt: number): HwpUnit => Math.round(pt * 100) as HwpUnit
+export const ptFromPara = (value: ParaUnit): number => value / 200
+export const paraFromHwp = (value: HwpUnit): ParaUnit => (value * 2) as ParaUnit
 
 /**
  * Word "auto" line spacing (240 = single) as a Hangul percent. Single spacing

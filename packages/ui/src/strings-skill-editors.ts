@@ -483,6 +483,30 @@ export const SKILL_EDITORS_STRINGS = defineStrings({
     editor_epub: 'EPUB',
     editor_diagram: '圖表',
   },
+  tr: {
+    label: 'Kullanıldığı yer',
+    all: 'Tüm düzenleyiciler',
+    some: 'Yalnızca bu düzenleyiciler',
+    none: 'En az bir düzenleyici seçin',
+    checkAll: 'Tümünü seç',
+    clearAll: 'Tümünü temizle',
+    hintSome:
+      'Diğer düzenleyicilerin AI panelleri bu beceriyi listelemez ve AI onu orada kullanmaz',
+    settingsNote:
+      'Yalnızca bu bilgisayarın ayarlarında tutulur; becerinin dosyası olduğu gibi kalır',
+    summary: 'Kullanıldığı yer: {editors}',
+    changeFailed: 'Kullanıldığı yer değiştirilemedi',
+    editor_docs: 'Belge',
+    editor_sheets: 'E-Tablo',
+    editor_slides: 'Sunum',
+    editor_hwp: 'HWP',
+    editor_pdf: 'PDF',
+    editor_markdown: 'Markdown',
+    editor_html: 'HTML',
+    editor_mindmap: 'Zihin haritası',
+    editor_epub: 'EPUB',
+    editor_diagram: 'Diyagram',
+  },
 })
 
 export type SkillEditorsStringKey = keyof typeof zh

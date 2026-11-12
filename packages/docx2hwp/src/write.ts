@@ -19,8 +19,9 @@ import type {
   ParaShape,
   Story,
   Table,
+  TableFlow,
 } from './model'
-import { ptFromHwp } from './units'
+import { paraFromHwp, ptFromHwp } from './units'
 
 const SECTION = 0
 
@@ -307,9 +308,13 @@ function buildTable(
       doc.setCellProperties(sec, p, control, cellIndex, cellJson(cell, table)),
     )
   }
-  if (table.repeatHeader) {
+  const properties = {
+    ...(table.repeatHeader ? { repeatHeader: true } : {}),
+    ...(table.flow.kind === 'block' ? blockTableJson(table, table.flow) : {}),
+  }
+  if (Object.keys(properties).length > 0) {
     call('table properties', () =>
-      doc.setTableProperties(sec, p, control, JSON.stringify({ repeatHeader: true })),
+      doc.setTableProperties(sec, p, control, JSON.stringify(properties)),
     )
   }
   return { p, control }
@@ -416,6 +421,33 @@ function cellJson(cell: Cell, table: Table): string {
   })
 }
 
+const HORZ_ALIGN = { left: 'Left', center: 'Center', right: 'Right' } as const
+
+/**
+ * A table between the paragraphs: text stays above and below it, and it goes
+ * on to the next page at a row boundary. The paragraph after it starts at its
+ * bottom edge. Hancom Hangul keeps the table's outer margin clear there; the
+ * rhwp engine keeps the space after the table's own paragraph instead
+ * (tableParaJson), so both carry the same figure.
+ */
+function blockTableJson(
+  table: Table,
+  flow: Extract<TableFlow, { kind: 'block' }>,
+): Record<string, unknown> {
+  return {
+    treatAsChar: false,
+    textWrap: 'TopAndBottom',
+    vertRelTo: 'Para',
+    vertAlign: 'Top',
+    horzRelTo: 'Column',
+    horzAlign: HORZ_ALIGN[table.align],
+    // 1 = at a cell boundary: a row is never cut in two
+    pageBreak: 1,
+    outerTop: flow.above,
+    outerBottom: flow.below,
+  }
+}
+
 function tableParaJson(table: Table): string {
   return JSON.stringify({
     alignment: table.align,
@@ -423,7 +455,7 @@ function tableParaJson(table: Table): string {
     marginRight: 0,
     indent: 0,
     spacingBefore: 0,
-    spacingAfter: 0,
+    spacingAfter: table.flow.kind === 'block' ? paraFromHwp(table.flow.below) : 0,
     lineSpacingType: 'Percent',
     lineSpacing: 100,
     pageBreakBefore: false,

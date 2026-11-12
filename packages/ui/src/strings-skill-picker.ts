@@ -374,6 +374,24 @@ export const SKILL_PICKER_STRINGS = defineStrings({
     sourcePlugin: 'Plugin Claude · {plugin}',
     sourceCodex: 'Thư mục kỹ năng Codex',
   },
+  tr: {
+    listLabel: 'Beceriler',
+    manage: 'Becerileri yönet…',
+    template: 'Şablon içerir',
+    scriptsNotice: 'Bu becerinin betikleri normal AI panelinde çalışmaz',
+    mcpServerNeeded: 'MCP sunucusu gerekli: {servers}',
+    tooLarge: 'Beceriler birlikte gönderilemeyecek kadar büyük',
+    missing: 'Kullanılamıyor',
+    missingNotice:
+      'Bir beceri bulunamadı, bu yüzden hiçbir şey gönderilmedi. O beceriyi çıkarıp yeniden gönderin.',
+    removeChip: '{title} becerisini çıkar',
+    sourceBuiltin: 'Yerleşik',
+    sourceApp: 'Becerilerim',
+    sourceAppGitHub: 'Becerilerim · GitHub',
+    sourceUser: 'Claude beceri klasörü',
+    sourcePlugin: 'Claude eklentisi · {plugin}',
+    sourceCodex: 'Codex beceri klasörü',
+  },
 })
 
 export type SkillPickerStringKey = keyof typeof zh

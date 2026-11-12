@@ -13,6 +13,10 @@ import type { AgentProvider } from '../shared/agent-api'
  * heartbeat saw (crash-heartbeat.ts).
  * An `agent-start` line records an agent session that did not start: the
  * program, the failure's code, and the thrown error's class and code.
+ * An `ai-run-stop` line records an AI run the app stopped by its own rule
+ * (ai-run-stop-log.ts): which rule, which faults how often, one tool name
+ * from the app's own list, how many tool calls ran and whether the document
+ * had been changed.
  * Nothing else is accepted — no document text, path, file name, URL or error
  * message (those can carry a path) — and nothing is ever sent anywhere.
  */
@@ -29,6 +33,7 @@ export type CrashKind =
   | 'low-memory'
   | 'main-gone'
   | 'agent-start'
+  | 'ai-run-stop'
 
 /** memory at the time of the entry; whole numbers only */
 export interface CrashMemory {
@@ -66,6 +71,12 @@ export interface CrashEntry extends CrashMemory {
   upMin?: number
   /** main-gone: minutes from that heartbeat to this launch */
   beatAgeMin?: number
+  /** ai-run-stop: a tool the unusable calls named (the app's own tool name) */
+  tool?: string
+  /** ai-run-stop: tool calls the run executed before it was stopped */
+  executed?: number
+  /** ai-run-stop: 1 when the run had already changed the document */
+  changed?: number
 }
 
 // short identifier-like words only: anything else (a message, a path) is dropped
@@ -86,6 +97,8 @@ const COUNT_FIELDS = [
   'heapLimitMB',
   'upMin',
   'beatAgeMin',
+  'executed',
+  'changed',
 ] as const
 
 /** one log line, holding only the allowed fields */
@@ -104,6 +117,8 @@ export function crashLine(entry: CrashEntry, now: Date = new Date()): string {
   if (program) line.program = program
   const cause = safeWord(entry.cause)
   if (cause) line.cause = cause
+  const tool = safeWord(entry.tool)
+  if (tool) line.tool = tool
   for (const key of COUNT_FIELDS) {
     const value = entry[key]
     if (typeof value === 'number' && Number.isInteger(value) && value >= 0) line[key] = value

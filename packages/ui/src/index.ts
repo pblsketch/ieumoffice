@@ -496,6 +496,15 @@ export {
   type AiConnectStepsView,
 } from './connect-guide'
 export { AiBlockedNotice } from './AiBlockedNotice'
+export { AiRunStopNotice } from './AiRunStopNotice'
+export {
+  runContinueNote,
+  runStopCode,
+  runStopNotice,
+  runStopText,
+  type RunStopNotice,
+} from './run-stop'
+export { AI_RUN_STOP_LABELS, type AiRunStopLabels } from './strings-run-stop'
 export { AiSubscriptionUsageLine } from './AiSubscriptionUsageLine'
 export {
   AiCodexNotice,

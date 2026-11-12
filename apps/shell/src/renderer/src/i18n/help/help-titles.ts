@@ -34,6 +34,7 @@ export const HELP_TITLE_LANGS = [
   'he',
   'hi',
   'vi',
+  'tr',
 ] as const
 
 export type HelpTitleLang = (typeof HELP_TITLE_LANGS)[number]
@@ -62,6 +63,7 @@ const GROUP_TITLES: Record<HelpGroupId, Record<HelpTitleLang, string>> = {
     he: 'תחילת העבודה',
     hi: 'शुरुआत',
     vi: 'Bắt đầu',
+    tr: 'Başlarken',
   },
   apps: {
     zh: '应用',
@@ -85,6 +87,7 @@ const GROUP_TITLES: Record<HelpGroupId, Record<HelpTitleLang, string>> = {
     he: 'יישומים',
     hi: 'ऐप्स',
     vi: 'Ứng dụng',
+    tr: 'Uygulamalar',
   },
   ai: {
     zh: 'AI 能力',
@@ -108,6 +111,7 @@ const GROUP_TITLES: Record<HelpGroupId, Record<HelpTitleLang, string>> = {
     he: 'יכולות AI',
     hi: 'AI सुविधाएँ',
     vi: 'Tính năng AI',
+    tr: 'AI özellikleri',
   },
   manage: {
     zh: '文件与设置',
@@ -131,6 +135,7 @@ const GROUP_TITLES: Record<HelpGroupId, Record<HelpTitleLang, string>> = {
     he: 'קבצים והגדרות',
     hi: 'फ़ाइलें और सेटिंग्स',
     vi: 'Tệp và cài đặt',
+    tr: 'Dosyalar ve ayarlar',
   },
 }
 
@@ -159,6 +164,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'התחלה מהירה: הממשק והבסיס',
     hi: 'त्वरित प्रारंभ: इंटरफ़ेस और बुनियादी बातें',
     vi: 'Bắt đầu nhanh: giao diện và những điều cơ bản',
+    tr: 'Hızlı başlangıç: arayüz ve temeller',
   },
   'home-screen': {
     zh: '主屏（Home）：文件都在哪',
@@ -182,6 +188,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'מסך הבית: איפה הקבצים שלך גרים',
     hi: 'होम स्क्रीन: आपकी फ़ाइलें कहाँ हैं',
     vi: 'Màn hình Trang chủ: tập tin của bạn ở đâu',
+    tr: 'Giriş ekranı: dosyalarınız nerede',
   },
   'tabs-and-windows': {
     zh: '标签页与窗口管理',
@@ -205,6 +212,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'כרטיסיות וניהול חלונות',
     hi: 'टैब और विंडो प्रबंधन',
     vi: 'Quản lý thẻ và cửa sổ',
+    tr: 'Sekmeler ve pencere yönetimi',
   },
   shortcuts: {
     zh: '快捷键一览',
@@ -228,6 +236,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'קיצורי מקלדת',
     hi: 'कीबोर्ड शॉर्टकट',
     vi: 'Phím tắt',
+    tr: 'Klavye kısayolları',
   },
   docs: {
     zh: 'Docs：文字处理',
@@ -251,6 +260,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'Docs: עיבוד תמלילים',
     hi: 'Docs: शब्द प्रसंस्करण',
     vi: 'Docs: xử lý văn bản',
+    tr: 'Docs: kelime işlem',
   },
   sheets: {
     zh: 'Sheets：电子表格',
@@ -274,6 +284,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'Sheets: גיליונות',
     hi: 'Sheets: स्प्रेडशीट',
     vi: 'Sheets: bảng tính',
+    tr: 'Sheets: elektronik tablolar',
   },
   slides: {
     zh: 'Slides：演示文稿',
@@ -297,6 +308,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'Slides: מצגות',
     hi: 'Slides: प्रस्तुतियाँ',
     vi: 'Slides: trình chiếu',
+    tr: 'Slides: sunumlar',
   },
   pdf: {
     zh: 'PDF：阅读、注释与涂黑',
@@ -320,6 +332,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'PDF: קריאה, הערות והשחרה',
     hi: 'PDF: पढ़ना, एनोटेट करना और कालापन',
     vi: 'PDF: đọc, chú thích và che nội dung',
+    tr: 'PDF: okuma, açıklama ekleme ve karartma',
   },
   // the PDF tools window's own title (i18n/pdf-tools/*.ts windowTitle)
   'pdf-tools': {
@@ -344,6 +357,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'כלי PDF',
     hi: 'PDF टूल',
     vi: 'Công cụ PDF',
+    tr: 'PDF araçları',
   },
   markdown: {
     zh: 'Markdown 编辑器',
@@ -367,6 +381,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'עורך ה-Markdown',
     hi: 'Markdown एडिटर',
     vi: 'Trình soạn thảo Markdown',
+    tr: 'Markdown düzenleyici',
   },
   html: {
     zh: 'HTML 编辑器',
@@ -390,6 +405,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'עורך ה-HTML',
     hi: 'HTML एडिटर',
     vi: 'Trình soạn thảo HTML',
+    tr: 'HTML düzenleyici',
   },
   epub: {
     zh: 'EPUB 电子书：阅读、编辑与翻译',
@@ -413,6 +429,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'ספרים אלקטרוניים EPUB: קריאה, עריכה ותרגום',
     hi: 'EPUB ई-बुक: पढ़ना, संपादित करना और अनुवाद करना',
     vi: 'Sách điện tử EPUB: đọc, chỉnh sửa và dịch',
+    tr: 'EPUB e-kitaplar: okuma, düzenleme ve çeviri',
   },
   diagram: {
     zh: '图表：绘制和编辑 draw.io 文件',
@@ -436,6 +453,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'תרשימים: ציור ועריכה של קובצי draw.io',
     hi: 'आरेख: draw.io फ़ाइलें बनाना और संपादित करना',
     vi: 'Sơ đồ: vẽ và chỉnh sửa tệp draw.io',
+    tr: 'Diyagramlar: draw.io dosyalarını çizme ve düzenleme',
   },
   'ai-panel': {
     zh: 'AI 助手面板',
@@ -459,6 +477,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'חלונית העוזר AI',
     hi: 'AI सहायक पैनल',
     vi: 'Bảng điều khiển trợ lý AI',
+    tr: 'AI asistan paneli',
   },
   'ai-models': {
     zh: 'AI 模型与设置',
@@ -482,6 +501,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'מודלים של AI והגדרות',
     hi: 'AI मॉडल और सेटिंग्स',
     vi: 'Mô hình AI và cài đặt',
+    tr: 'AI modelleri ve ayarlar',
   },
   // the same words as the section heading in Settings → AI (`setSubTitle`)
   skills: {
@@ -506,6 +526,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'מיומנויות',
     hi: 'कौशल',
     vi: 'Kỹ năng',
+    tr: 'Beceriler',
   },
   projects: {
     zh: '项目',
@@ -529,6 +550,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'פרויקטים',
     hi: 'प्रोजेक्ट',
     vi: 'Dự án',
+    tr: 'Projeler',
   },
   'mcp-servers': {
     zh: '连接 MCP 服务器',
@@ -552,6 +574,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'חיבור שרתי MCP',
     hi: 'MCP सर्वर जोड़ना',
     vi: 'Kết nối máy chủ MCP',
+    tr: 'MCP sunucularını bağlama',
   },
   'agent-mode': {
     zh: '智能体模式',
@@ -575,6 +598,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'מצב סוכן',
     hi: 'एजेंट मोड',
     vi: 'Chế độ tác tử',
+    tr: 'Ajan modu',
   },
   subscription: {
     zh: '订阅连接',
@@ -598,6 +622,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'חיבור מינוי',
     hi: 'सदस्यता कनेक्शन',
     vi: 'Kết nối gói đăng ký',
+    tr: 'Abonelik bağlantısı',
   },
   fonts: {
     zh: '字体：系统字体与安装字体文件',
@@ -621,6 +646,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'גופנים: גופני מערכת והתקנת קובצי גופן',
     hi: 'फ़ॉन्ट: सिस्टम फ़ॉन्ट और फ़ॉन्ट फ़ाइलें इंस्टॉल करना',
     vi: 'Phông chữ: phông hệ thống và cài đặt tệp phông chữ',
+    tr: 'Yazı tipleri: sistem yazı tipleri ve yazı tipi dosyaları kurma',
   },
   'file-ops': {
     zh: '文件操作：重命名、删除、导出',
@@ -644,6 +670,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'פעולות קבצים: שינוי שם, מחיקה, ייצוא',
     hi: 'फ़ाइल कार्रवाइयाँ: नाम बदलना, हटाना, निर्यात',
     vi: 'Thao tác tập tin: đổi tên, xóa, xuất',
+    tr: 'Dosya işlemleri: yeniden adlandırma, silme, dışa aktarma',
   },
   'google-drive': {
     zh: 'Google 云端硬盘',
@@ -667,6 +694,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'Google Drive',
     hi: 'Google Drive',
     vi: 'Google Drive',
+    tr: 'Google Drive',
   },
   'settings-integrations': {
     zh: '设置、语言、主题与 MCP 集成',
@@ -690,6 +718,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'הגדרות, שפה, ערכת נושא ושילובי MCP',
     hi: 'सेटिंग्स, भाषा, थीम और MCP इंटीग्रेशन',
     vi: 'Cài đặt, ngôn ngữ, chủ đề và tích hợp MCP',
+    tr: 'Ayarlar, dil, tema ve MCP entegrasyonları',
   },
   install: {
     zh: '安装 GenOffice',
@@ -713,6 +742,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'התקנת GenOffice',
     hi: 'GenOffice इंस्टॉल करना',
     vi: 'Cài đặt GenOffice',
+    tr: 'GenOffice kurulumu',
   },
   cli: {
     zh: '命令行与智能体',
@@ -736,6 +766,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'שורת פקודות וסוכנים',
     hi: 'कमांड लाइन और एजेंट',
     vi: 'Dòng lệnh và tác nhân',
+    tr: 'Komut satırı ve ajanlar',
   },
   mcp: {
     zh: '连接编程助手',
@@ -759,6 +790,7 @@ const TOPIC_TITLES: Record<string, Record<HelpTitleLang, string>> = {
     he: 'חיבור סוכן לקוד',
     hi: 'कोडिंग एजेंट से कनेक्ट करना',
     vi: 'Kết nối tác nhân lập trình',
+    tr: 'Bir kodlama ajanı bağlama',
   },
 }
 

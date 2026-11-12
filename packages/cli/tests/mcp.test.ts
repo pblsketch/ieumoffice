@@ -286,8 +286,15 @@ describe('mcp server', () => {
     // (about 0.5 KiB, decision 0094); 113 KiB before diagram_read, diagram_apply with its typed
     // ops and create_drawio (about 5.5 KiB); 119 KiB before the HWP note settings, page setup,
     // list, read_formatting and format_look ops (about 1.8 KiB, decision 0106); 121 KiB before
-    // the HWP check_layout op with from_table and from_row (about 0.2 KiB)
-    expect(bytes).toBeLessThanOrEqual(122 * 1024)
+    // the HWP check_layout op with from_table and from_row (about 0.2 KiB); 122 KiB before the
+    // HWP document looks: cell borders, table looks, style_paragraphs, insert_title_box, the
+    // page number, header and footer ops (about 2.8 KiB, decision 0137); 125 KiB before the
+    // HWP building blocks that followed: numbered levels, columns, breaks, a head across the
+    // columns, paragraph borders and background, character width and spacing, cell text and
+    // row height, the width and place of a table (about 4 KiB, decision 0137); 129 KiB before
+    // the HWP equations, tab stops, page border, cell diagonal and picture width (about
+    // 1.7 KiB, decision 0137)
+    expect(bytes).toBeLessThanOrEqual(130 * 1024)
     expect(bytes).toBeGreaterThan(60 * 1024)
   })
 

@@ -20,6 +20,7 @@ import { he } from './mcp-servers/he'
 import { hi } from './mcp-servers/hi'
 import { zhTW } from './mcp-servers/zh-TW'
 import { vi } from './mcp-servers/vi'
+import { tr } from './mcp-servers/tr'
 
 /**
  * Settings → Integrations: the MCP server card (user MCP spec 4). Sharded per
@@ -47,6 +48,7 @@ export const mcpServersUiStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })
 
 export type McpServersStringKey = keyof typeof zh

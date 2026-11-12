@@ -29,11 +29,12 @@ const EASY_EXPLANATION_LABELS: Record<Lang, string> = {
   hi: 'सरल भाषा संस्करण',
   'zh-TW': '淺顯易懂版',
   vi: 'Bản dễ hiểu',
+  tr: 'Sade dilli sürüm',
 }
 
 /**
  * The easy-explanation marker in `lang` (a target language code); a tag that
- * is not one of the 21 is read the way the UI reads a locale (`zh-Hant` →
+ * is not one of the 22 is read the way the UI reads a locale (`zh-Hant` →
  * `zh-TW`, unknown → English).
  */
 export function easyExplanationLabel(lang: string): string {

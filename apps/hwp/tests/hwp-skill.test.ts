@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentToolCall } from '@genoffice/agent-core'
 import type { AgentMemo, AgentMemoRemovalRefusal } from '../studio-plugin/agent-plugin.mjs'
@@ -8,7 +10,11 @@ import {
   READ_PAGE_CHARS,
   createHwpSkill,
   type HwpChange,
+  equationScript,
+  evenCutLine,
+  typedTabs,
 } from '../src/renderer/ai/hwp-skill'
+import type { HwpSkillDeps } from '../src/renderer/ai/hwp-skill'
 
 /** where a change is, as the editor hands it back */
 const PLACE = { sec: 0, para: 1, offset: 0, length: 3 }
@@ -118,6 +124,7 @@ function setup(
   attachmentPath?: (name: string) => string | null,
   attachmentNames?: () => string[],
   pictureAnalysisAvailable?: () => boolean,
+  importAttachment?: HwpSkillDeps['importAttachment'],
 ) {
   const bridge: AgentBridge = {
     foreignChanges: vi.fn(async () => 0),
@@ -306,6 +313,71 @@ function setup(
     setPageSetup: vi.fn(async () => ({ ok: true as const, sections: 1, pageSetup: PAGE_SETUP })),
     formatting: vi.fn(async () => ({ ok: true as const, ...FORMATTING })),
     formatLook: vi.fn(async () => ({ ok: true as const, paragraphs: 12, place: PLACE })),
+    documentFonts: vi.fn(async () => ({ known: false, onPc: [], missing: [] })),
+    styleParagraphs: vi.fn(async () => ({
+      ok: true as const,
+      made: 2,
+      changed: 0,
+      paragraphs: 5,
+      rules: [
+        { style: '중제목', paragraphs: 2 },
+        { style: '본문항목', paragraphs: 3 },
+      ],
+      place: PLACE,
+    })),
+    insertTitleBox: vi.fn(async () => ({ ok: true as const, look: 'bands', place: PLACE })),
+    pageLayout: vi.fn(async () => ({
+      sections: 1,
+      pages: 1,
+      columns: { count: 1, gapMm: 0 },
+      pageBorder: null,
+      pageNumber: null,
+      header: { exists: false as const },
+      footer: { exists: false as const },
+    })),
+    setPageBorder: vi.fn(async (spec: { line: string }) => ({
+      ok: true as const,
+      sections: 1,
+      drawn: spec.line !== 'none',
+    })),
+    insertEquations: vi.fn(async (items: unknown[]) => ({
+      ok: true as const,
+      count: items.length,
+      place: PLACE,
+      marks: [PLACE],
+    })),
+    resizePicture: vi.fn(async (_picture: number, spec: { widthMm: number }) => ({
+      ok: true as const,
+      widthMm: spec.widthMm,
+      heightMm: Math.round(((spec.widthMm * 2) / 3) * 10) / 10,
+      fitted: false,
+      place: PLACE,
+    })),
+    setColumns: vi.fn(async (spec: { count: number; gapMm?: number | null }) => ({
+      ok: true as const,
+      count: spec.count,
+      gapMm: spec.count > 1 ? (spec.gapMm ?? 8) : 0,
+      was: 1,
+      sections: 1,
+    })),
+    insertBreak: vi.fn(
+      async (_find: string, _occurrence: number | null, kind: 'page' | 'column') => ({
+        ok: true as const,
+        kind,
+        columns: 2,
+        place: PLACE,
+      }),
+    ),
+    setPageNumber: vi.fn(async () => ({
+      ok: true as const,
+      sections: 1,
+      pageNumber: { position: 'bottom_center' as const, format: 'digit' as const, dashes: true },
+    })),
+    setHeaderFooter: vi.fn(async () => ({
+      ok: true as const,
+      kind: 'footer' as const,
+      removed: false,
+    })),
     undo: vi.fn(async () => ({ ok: true, undone: 1 })),
     ...overrides,
   }
@@ -320,6 +392,7 @@ function setup(
     ...(attachmentPath ? { attachmentPath } : {}),
     ...(attachmentNames ? { attachmentNames } : {}),
     ...(pictureAnalysisAvailable ? { pictureAnalysisAvailable } : {}),
+    ...(importAttachment ? { importAttachment } : {}),
   })
   const call = (name: string, input: Record<string, unknown> = {}) =>
     skill.executeTool({ id: '1', name, input } satisfies AgentToolCall)
@@ -2274,7 +2347,663 @@ describe('memo anchor removal', () => {
   })
 })
 
+describe('the look of a document', () => {
+  it('passes the borders, the block and the vertical alignment of format_cells on', async () => {
+    const { call, changes, bridge } = setup()
+    const result = await call('format_cells', {
+      table: 1,
+      range: { from_row: 1, from_col: 1, to_row: 1, to_col: 3 },
+      borders: [{ sides: 'bottom', line: 'double', width: 0.5, color: '#1F3864' }],
+      vertical_align: 'middle',
+    })
+    expect(bridge.formatCells).toHaveBeenCalledWith(
+      1,
+      { fromRow: 1, fromCol: 1, toRow: 1, toCol: 3 },
+      {
+        borders: [{ sides: 'bottom', line: 'double', width: 0.5, color: '#1F3864' }],
+        verticalAlign: 'middle',
+      },
+    )
+    expect(result.mutated).toBe(true)
+    expect(result.summary).toBe('aiToolCellLook:{"table":1,"count":1}')
+    expect(changes[0]).toMatchObject({ kind: 'format', to: 'aiFmtCellBorders · aiFmtCellVAlign' })
+  })
+
+  it('formats the whole table when format_cells names no cells', async () => {
+    const { call, bridge } = setup()
+    await call('format_cells', { table: 2, borders: [{ sides: 'outer', line: 'solid' }] })
+    expect(bridge.formatCells).toHaveBeenCalledWith(2, null, {
+      borders: [{ sides: 'outer', line: 'solid' }],
+    })
+  })
+
+  it('refuses a format_cells call that names nothing to change', async () => {
+    const { call, bridge } = setup()
+    const result = await call('format_cells', { table: 1, cells: [{ row: 1, col: 1 }] })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('background, borders, vertical_align, row_height_mm')
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+  })
+
+  it('formats the text of a block of cells and the height of its rows', async () => {
+    const { call, bridge, changes } = setup()
+    const result = await call('format_cells', {
+      table: 1,
+      range: { from_row: 1, from_col: 1, to_row: 3, to_col: 1 },
+      bold: true,
+      align: 'center',
+      size: 12,
+      row_height_mm: 12,
+    })
+    expect(result.isError).toBeFalsy()
+    expect(bridge.formatCells).toHaveBeenCalledWith(
+      1,
+      { fromRow: 1, fromCol: 1, toRow: 3, toCol: 1 },
+      { heightMm: 12, text: { align: 'center', bold: true, size: 12 } },
+    )
+    expect(changes.at(-1)?.to).toBe('aiFmtRowHeight 12mm · aiFmtCellText')
+    expect(result.output).toBe('Formatted 1 cell(s).')
+  })
+
+  it('makes a small table at the right, with its header row repeated', async () => {
+    const { call, bridge } = setup()
+    await call('insert_table', {
+      where: 'end',
+      rows: [
+        ['결재', '담당', '팀장'],
+        ['', '', ''],
+      ],
+      width_percent: 40,
+      place: 'right',
+      repeat_header: true,
+    })
+    expect(bridge.insertTable).toHaveBeenLastCalledWith(
+      '',
+      null,
+      'end',
+      [
+        ['결재', '담당', '팀장'],
+        ['', '', ''],
+      ],
+      { header: false, widthPercent: 40, place: 'right', repeatHeader: true },
+    )
+  })
+
+  it('passes a paragraph border, a background and the width of characters on to the editor', async () => {
+    const { call, bridge, changes } = setup()
+    await call('format_paragraph', {
+      find: '본문',
+      border: { sides: 'box', line: 'solid', width: 0.4 },
+      background: '#F2F2F2',
+    })
+    expect(bridge.formatParagraph).toHaveBeenLastCalledWith('본문', null, {
+      border: { sides: 'box', line: 'solid', width: 0.4 },
+      background: '#F2F2F2',
+    })
+    expect(changes.at(-1)?.to).toBe('aiFmtBorder · aiFmtBackground #F2F2F2')
+    await call('format_text', { find: '본문', char_width: 95, letter_spacing: -5 })
+    expect(bridge.formatText).toHaveBeenLastCalledWith('본문', null, false, {
+      charWidth: 95,
+      letterSpacing: -5,
+    })
+    expect(changes.at(-1)?.to).toBe('aiFmtCharWidth 95% · aiFmtLetterSpacing -5%')
+    // and into the styles of a document's look
+    await call('style_paragraphs', {
+      styles: [{ name: '보기', border: { sides: 'box' }, background: '#F2F2F2', char_width: 97 }],
+    })
+    expect(bridge.styleParagraphs).toHaveBeenLastCalledWith({
+      styles: [
+        {
+          name: '보기',
+          format: { border: { sides: 'box' }, background: '#F2F2F2', charWidth: 97 },
+        },
+      ],
+      apply: [],
+    })
+  })
+
+  it('hands the look of a new table to the editor, and only the header when no look is given', async () => {
+    const { call, bridge } = setup()
+    const rows = [
+      ['구분', '내용'],
+      ['가', '나'],
+    ]
+    await call('insert_table', { where: 'end', rows, header: true })
+    expect(bridge.insertTable).toHaveBeenLastCalledWith('', null, 'end', rows, true)
+    await call('insert_table', {
+      where: 'end',
+      rows,
+      header: true,
+      look: 'open',
+      header_color: '#DCE6F5',
+      column_widths: [1, 3],
+      align: 'center',
+      size: 11,
+    })
+    expect(bridge.insertTable).toHaveBeenLastCalledWith('', null, 'end', rows, {
+      header: true,
+      look: 'open',
+      headerColor: '#DCE6F5',
+      columnWidths: [1, 3],
+      align: 'center',
+      size: 11,
+    })
+  })
+
+  it('makes styles and applies them in one style_paragraphs call', async () => {
+    const { call, changes, bridge } = setup()
+    const result = await call('style_paragraphs', {
+      styles: [
+        {
+          name: '중제목',
+          font: 'HY헤드라인M',
+          size: 15,
+          line_spacing: 180,
+          indent: -21,
+          space_before: 10,
+        },
+        { name: '본문항목', based_on: '바탕글', size: 13, margin_left: 7 },
+      ],
+      apply: [
+        { style: '중제목', starts_with: '□' },
+        { style: '본문항목', starts_with: '○' },
+        { style: '중제목', find: '추진 배경', occurrence: 2 },
+      ],
+    })
+    expect(bridge.styleParagraphs).toHaveBeenCalledWith({
+      styles: [
+        {
+          name: '중제목',
+          format: {
+            font: 'HY헤드라인M',
+            size: 15,
+            indent: -21,
+            lineSpacing: 180,
+            spacingBefore: 10,
+          },
+        },
+        { name: '본문항목', basedOn: '바탕글', format: { size: 13, marginLeft: 7 } },
+      ],
+      apply: [
+        { style: '중제목', startsWith: '□' },
+        { style: '본문항목', startsWith: '○' },
+        { style: '중제목', find: '추진 배경', occurrence: 2 },
+      ],
+    })
+    expect(result.mutated).toBe(true)
+    expect(result.output).toContain('styled 5 paragraph(s)')
+    expect(result.summary).toBe('aiToolStyleParagraphs:{"count":5}')
+    expect(changes[0]).toMatchObject({ kind: 'format', to: '중제목 ×2 · 본문항목 ×3', count: 5 })
+  })
+
+  it('tells the model which rule matched nothing and which font stood in', async () => {
+    const { call } = setup({
+      styleParagraphs: vi.fn(async () => ({
+        ok: true as const,
+        made: 1,
+        changed: 0,
+        paragraphs: 0,
+        rules: [{ style: '중제목', paragraphs: 0 }],
+        standIn: [{ asked: 'HY헤드라인M', used: '맑은 고딕' }],
+      })),
+    })
+    const result = await call('style_paragraphs', {
+      styles: [{ name: '중제목', font: 'HY헤드라인M' }],
+      apply: [{ style: '중제목', starts_with: '■' }],
+    })
+    expect(result.output).toContain('No paragraph matched the rule(s) for 중제목')
+    expect(result.output).toContain('맑은 고딕 was written for HY헤드라인M')
+  })
+
+  it('refuses a style_paragraphs rule that names its paragraphs both ways or neither', async () => {
+    const { call, bridge } = setup()
+    for (const rule of [{ style: '중제목' }, { style: '중제목', starts_with: '□', find: '□' }]) {
+      const result = await call('style_paragraphs', { apply: [rule] })
+      expect(result.isError).toBe(true)
+      expect(result.output).toContain('by starts_with, by numbered or by find')
+    }
+    expect(bridge.styleParagraphs).not.toHaveBeenCalled()
+  })
+
+  it('passes numbered levels and headings that stay with their text on to the editor', async () => {
+    const { call, bridge } = setup()
+    const result = await call('style_paragraphs', {
+      styles: [{ name: '대제목', size: 16, bold: true, keep_with_next: true }],
+      apply: [
+        { style: '대제목', numbered: 'Ⅰ' },
+        { style: '대제목', numbered: '1.' },
+      ],
+    })
+    expect(result.isError).toBeFalsy()
+    expect(bridge.styleParagraphs).toHaveBeenCalledWith({
+      styles: [{ name: '대제목', format: { size: 16, bold: true }, keepWithNext: true }],
+      apply: [
+        { style: '대제목', numbered: 'Ⅰ' },
+        { style: '대제목', numbered: '1.' },
+      ],
+    })
+  })
+
+  it('lays the text out in columns and puts a table across them', async () => {
+    const { call, bridge, changes } = setup()
+    const columns = await call('set_columns', { count: 2 })
+    expect(bridge.setColumns).toHaveBeenCalledWith({ count: 2 })
+    expect(columns.mutated).toBe(true)
+    expect(columns.summary).toBe('aiToolColumnsSet:{"count":2}')
+    expect(columns.output).toContain('2 columns with 8 mm')
+    expect(columns.output).toContain('across_columns')
+    expect(changes.at(-1)).toMatchObject({ from: 'aiColumns', to: '2' })
+    await call('insert_table', {
+      where: 'end',
+      rows: [['학년', '반', '번호', '이름']],
+      across_columns: true,
+    })
+    expect(bridge.insertTable).toHaveBeenLastCalledWith(
+      '',
+      null,
+      'end',
+      [['학년', '반', '번호', '이름']],
+      { header: false, acrossColumns: true },
+    )
+    const one = await call('set_columns', { count: 1 })
+    expect(one.output).toBe('The text runs in one column again.')
+    const misplaced = setup({
+      insertTable: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'not_at_start' as const,
+        count: 1,
+      })),
+    })
+    const refused = await misplaced.call('insert_table', {
+      where: 'end',
+      rows: [['학년', '반']],
+      across_columns: true,
+    })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('head of the document')
+    const bad = await call('set_columns', { count: 'two' })
+    expect(bad.isError).toBe(true)
+  })
+
+  it('starts a paragraph on a new page or in the next column, and says why it could not', async () => {
+    const { call, bridge, changes } = setup()
+    const page = await call('insert_break', { find: '5. 다음 글', kind: 'page' })
+    expect(bridge.insertBreak).toHaveBeenCalledWith('5. 다음 글', null, 'page')
+    expect(page.output).toBe('That paragraph now starts a new page.')
+    expect(page.summary).toBe('aiToolBreakInsert')
+    expect(changes.at(-1)).toMatchObject({ to: 'aiBreakPage' })
+    const column = await call('insert_break', { find: '3. 다음 글', kind: 'column', occurrence: 2 })
+    expect(bridge.insertBreak).toHaveBeenLastCalledWith('3. 다음 글', 2, 'column')
+    expect(column.output).toBe('That paragraph now starts the next column.')
+    expect(changes.at(-1)).toMatchObject({ to: 'aiBreakColumn' })
+    expect((await call('insert_break', { find: '글', kind: 'line' })).isError).toBe(true)
+
+    const first = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'at_start' as const,
+        count: 1,
+      })),
+    })
+    const refused = await first.call('insert_break', { find: '제목', kind: 'page' })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('first paragraph of the document')
+    const single = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: true as const,
+        kind: 'column' as const,
+        columns: 1,
+        place: PLACE,
+      })),
+    })
+    const lone = await single.call('insert_break', { find: '글', kind: 'column' })
+    expect(lone.output).toContain('runs in one column')
+  })
+
+  it('turns a title into a title box', async () => {
+    const { call, changes, bridge } = setup()
+    const result = await call('insert_title_box', {
+      find: '운영 계획',
+      look: 'bands',
+      color: '#1F3864',
+      color2: '#C00000',
+      size: 22,
+      text_color: '#000000',
+    })
+    expect(bridge.insertTitleBox).toHaveBeenCalledWith('운영 계획', null, {
+      look: 'bands',
+      color: '#1F3864',
+      color2: '#C00000',
+      size: 22,
+      textColor: '#000000',
+    })
+    expect(result.mutated).toBe(true)
+    expect(changes[0]).toMatchObject({ kind: 'table', from: '운영 계획', to: 'aiTitleBox' })
+  })
+
+  it('says why a title box could not be made', async () => {
+    const { call } = setup({
+      insertTitleBox: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'in_table' as const,
+        count: 1,
+      })),
+    })
+    const result = await call('insert_title_box', { find: '운영 계획' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('inside a table cell')
+  })
+
+  it('numbers the pages and writes a footer', async () => {
+    const { call, changes, bridge } = setup()
+    const numbered = await call('set_page_number', { position: 'bottom_center', dashes: true })
+    expect(bridge.setPageNumber).toHaveBeenCalledWith({ position: 'bottom_center', dashes: true })
+    expect(numbered.mutated).toBe(true)
+    const footer = await call('set_header_footer', {
+      kind: 'footer',
+      text: '운영 계획 | {page}',
+      align: 'center',
+      size: 9,
+    })
+    expect(bridge.setHeaderFooter).toHaveBeenCalledWith('footer', {
+      text: '운영 계획 | {page}',
+      align: 'center',
+      size: 9,
+    })
+    expect(footer.summary).toBe('aiToolHeaderFooterSet:{"what":"aiFooter"}')
+    expect(changes.map((change) => change.from)).toEqual(['aiPageNumber', 'aiFooter'])
+  })
+
+  it('leaves a header laid out by hand to the user', async () => {
+    const { call } = setup({
+      setHeaderFooter: vi.fn(async () => ({ ok: false as const, reason: 'not_plain' as const })),
+    })
+    const result = await call('set_header_footer', { kind: 'header', text: '새 머리말' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('laid out by hand')
+  })
+
+  it('reads the page number, header and footer', async () => {
+    const { call, bridge } = setup()
+    const result = await call('read_page_layout')
+    expect(bridge.pageLayout).toHaveBeenCalled()
+    expect(JSON.parse(result.output)).toMatchObject({ pageNumber: null, header: { exists: false } })
+  })
+
+  it('tells the model which document fonts this PC has, when that is known', async () => {
+    const known = setup({
+      documentFonts: vi.fn(async () => ({
+        known: true,
+        onPc: ['맑은 고딕', '바탕'],
+        missing: ['HY헤드라인M', '휴먼명조'],
+      })),
+    })
+    await known.refreshContext()
+    const context = known.skill.buildContext!()
+    expect(context).toContain('Document fonts on this PC: 맑은 고딕, 바탕.')
+    expect(context).toContain('Not on this PC: HY헤드라인M, 휴먼명조.')
+    const unknown = setup()
+    await unknown.refreshContext()
+    expect(unknown.skill.buildContext!()).not.toContain('Document fonts on this PC')
+  })
+
+  it('tells the model to give a document it writes its look', () => {
+    const prompt = setup().skill.systemPrompt
+    expect(prompt).toContain('## The look of a document you write')
+    expect(prompt).toContain('style_paragraphs')
+    expect(prompt).toContain('insert_title_box')
+  })
+})
+
+describe('equations, tab stops, a page border, a diagonal and the size of a picture', () => {
+  it('puts equations in with one call, each where its placeholder is', async () => {
+    const { call, bridge, changes } = setup()
+    const result = await call('insert_equations', {
+      equations: [
+        { find: '[[1]]', script: ' {1} over {2} + {1} over {3} ' },
+        { find: '[[2]]', script: 'sum from {i=1} to {n} i^2', occurrence: 2 },
+        { find: '넓이', script: 'pi r^2', keep_text: true },
+      ],
+    })
+    expect(result.isError).toBeFalsy()
+    expect(bridge.insertEquations).toHaveBeenCalledWith([
+      { find: '[[1]]', script: '{1} over {2} + {1} over {3}' },
+      // limits the way the equation editor reads them
+      { find: '[[2]]', script: 'sum _{i=1} ^{n} i^2', occurrence: 2 },
+      { find: '넓이', script: 'pi r^2', replace: false },
+    ])
+    expect(result.mutated).toBe(true)
+    expect(result.summary).toBe('aiToolEquationsInsert:{"count":3}')
+    // the document text does not show equations: the model is told not to add them again
+    expect(result.output).toContain('do not put them in again')
+    expect(changes.at(-1)).toMatchObject({ kind: 'insert', to: 'aiEquation × 3', count: 3 })
+  })
+
+  it('turns LaTeX away with the script to write instead, before anything is changed', async () => {
+    const { call, bridge } = setup()
+    const latex = await call('insert_equations', {
+      equations: [{ find: '[[1]]', script: String.raw`\frac{1}{2}` }],
+    })
+    expect(latex.isError).toBe(true)
+    expect(latex.output).toContain('{a} over {b}')
+    const broken = await call('insert_equations', {
+      equations: [{ find: '[[1]]', script: 'x = 1\ny = 2' }],
+    })
+    expect(broken.isError).toBe(true)
+    expect(broken.output).toContain('one line')
+    expect((await call('insert_equations', { equations: [] })).isError).toBe(true)
+    expect((await call('insert_equations', { equations: [{ find: '[[1]]' }] })).isError).toBe(true)
+    expect(bridge.insertEquations).not.toHaveBeenCalled()
+  })
+
+  it('says which equation could not be placed, and why', async () => {
+    const inTable = setup({
+      insertEquations: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'in_table' as const,
+        index: 1,
+        find: '[[2]]',
+        count: 1,
+      })),
+    })
+    const cell = await inTable.call('insert_equations', {
+      equations: [
+        { find: '[[1]]', script: 'x' },
+        { find: '[[2]]', script: 'y' },
+      ],
+    })
+    expect(cell.isError).toBe(true)
+    expect(cell.output).toContain('equation 2 (find "[[2]]")')
+    expect(cell.output).toContain('table cell')
+    const missing = setup({
+      insertEquations: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'not_found' as const,
+        index: 0,
+        find: '[[9]]',
+        count: 0,
+      })),
+    })
+    const gone = await missing.call('insert_equations', {
+      equations: [{ find: '[[9]]', script: 'x' }],
+    })
+    expect(gone.isError).toBe(true)
+    expect(gone.output).toContain('equation 1 (find "[[9]]")')
+    expect(inTable.changes).toEqual([])
+  })
+
+  it('writes limits and comparison signs the way the equation editor reads them', () => {
+    expect(equationScript('sum from {i=1} to {n} i')).toBe('sum _{i=1} ^{n} i')
+    expect(equationScript('lim from{x -> 0} f(x)')).toBe('lim _{x -> 0} f(x)')
+    expect(equationScript('a <= b >= c != d')).toBe('a  le  b  ge  c  ne  d')
+    // a script that is already right stays as it is
+    for (const script of ['{a} over {b}', 'x^{n+1}', 'int _{a} ^{b} f(x) dx', 'x -> inf']) {
+      expect(equationScript(script)).toBe(script)
+    }
+  })
+
+  it('passes tab stops on under the editor’s names, for a paragraph and for a style', async () => {
+    const { call, bridge, changes } = setup()
+    const result = await call('format_paragraph', {
+      find: '제1장',
+      tabs: [{ leader: 'dots' }, { at_mm: 60, align: 'center' }],
+    })
+    expect(result.isError).toBeFalsy()
+    expect(bridge.formatParagraph).toHaveBeenCalledWith('제1장', null, {
+      tabs: [{ leader: 'dots' }, { align: 'center', atMm: 60 }],
+    })
+    expect(changes.at(-1)).toMatchObject({ kind: 'format', to: 'aiFmtTabs' })
+    await call('style_paragraphs', {
+      styles: [{ name: '차례 줄', tabs: [{ leader: 'dots' }] }],
+      apply: [{ style: '차례 줄', starts_with: '제' }],
+    })
+    expect(bridge.styleParagraphs).toHaveBeenLastCalledWith({
+      styles: [{ name: '차례 줄', format: { tabs: [{ leader: 'dots' }] } }],
+      apply: [{ style: '차례 줄', startsWith: '제' }],
+    })
+  })
+
+  it('takes a tab written as two characters for the tab it means', async () => {
+    expect(typedTabs(String.raw`제1장 추진 배경\t3`)).toBe('제1장 추진 배경\t3')
+    expect(typedTabs('제1장 추진 배경\t3')).toBe('제1장 추진 배경\t3')
+    // a path keeps its backslashes
+    const path = String.raw`저장 위치: C:\temp\test`
+    expect(typedTabs(path)).toBe(path)
+    const { call, bridge } = setup()
+    await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: [String.raw`성명: 홍길동\t(인)`, '부록 1\t21'],
+    })
+    expect(bridge.insertParagraphs).toHaveBeenLastCalledWith('', null, 'end', [
+      '성명: 홍길동\t(인)',
+      '부록 1\t21',
+    ])
+  })
+
+  it('draws a line round the pages and takes it away', async () => {
+    const { call, bridge, changes } = setup()
+    const drawn = await call('set_page_border', { line: 'double', width: 0.7, color: '#1F3864' })
+    expect(bridge.setPageBorder).toHaveBeenCalledWith({
+      line: 'double',
+      width: 0.7,
+      color: '#1F3864',
+    })
+    expect(drawn.mutated).toBe(true)
+    expect(drawn.summary).toBe('aiToolPageBorderSet')
+    expect(changes.at(-1)).toMatchObject({ from: 'aiPageBorder', to: 'double · 0.7mm · #1F3864' })
+    const off = await call('set_page_border', { line: 'none' })
+    expect(off.output).toContain('taken away')
+    expect(changes.at(-1)).toMatchObject({ to: 'aiFmtOff:{"name":"aiPageBorder"}' })
+    expect((await call('set_page_border', {})).isError).toBe(true)
+  })
+
+  it('draws a diagonal across cells', async () => {
+    const { call, bridge, changes } = setup()
+    const result = await call('format_cells', {
+      table: 1,
+      cells: [{ row: 1, col: 1 }],
+      diagonal: 'down',
+    })
+    expect(bridge.formatCells).toHaveBeenCalledWith(1, [{ row: 1, col: 1 }], { diagonal: 'down' })
+    expect(result.summary).toBe('aiToolCellLook:{"table":1,"count":1}')
+    expect(changes.at(-1)).toMatchObject({ to: 'aiFmtCellDiagonal' })
+    await call('format_cells', { table: 1, diagonal: 'none' })
+    expect(changes.at(-1)).toMatchObject({ to: 'aiFmtOff:{"name":"aiFmtCellDiagonal"}' })
+    // a word that is no diagonal names nothing to change
+    expect((await call('format_cells', { table: 1, diagonal: 'zigzag' })).isError).toBe(true)
+    // a line through words is told, with the cells to empty
+    const worded = setup({
+      formatCells: vi.fn(async () => ({
+        ok: true as const,
+        count: 1,
+        place: PLACE,
+        crossed: [{ row: 1, col: 1 }],
+      })),
+    })
+    const through = await worded.call('format_cells', {
+      table: 1,
+      cells: [{ row: 1, col: 1 }],
+      diagonal: 'down',
+    })
+    expect(through.output).toContain('runs through the words of 1.1')
+    expect(result.output).toBe('Formatted 1 cell(s).')
+  })
+
+  it('gives a picture another width and says what it became', async () => {
+    const { call, bridge, changes } = setup()
+    const result = await call('resize_picture', { picture: 2, width_mm: 90 })
+    expect(bridge.resizePicture).toHaveBeenCalledWith(2, { widthMm: 90 })
+    expect(result.output).toContain('90 mm wide and 60 mm high')
+    expect(result.summary).toBe('aiToolPictureResize:{"picture":2}')
+    expect(changes.at(-1)).toMatchObject({
+      kind: 'format',
+      from: 'aiPictureName:{"picture":2}',
+      to: '90 × 60 mm',
+    })
+    expect((await call('resize_picture', { picture: 2, width_mm: 2 })).isError).toBe(true)
+    expect((await call('resize_picture', { picture: 0, width_mm: 50 })).isError).toBe(true)
+
+    const inCell = setup({
+      resizePicture: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'unsupported_place' as const,
+        count: 1,
+      })),
+    })
+    const refused = await inCell.call('resize_picture', { picture: 1, width_mm: 50 })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('table cell')
+    const none = setup({
+      resizePicture: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'no_such_picture' as const,
+        count: 3,
+      })),
+    })
+    expect((await none.call('resize_picture', { picture: 7, width_mm: 50 })).output).toContain(
+      'the document has 3',
+    )
+    const fitted = setup({
+      resizePicture: vi.fn(async () => ({
+        ok: true as const,
+        widthMm: 150,
+        heightMm: 100,
+        fitted: true,
+        place: PLACE,
+      })),
+    })
+    expect((await fitted.call('resize_picture', { picture: 1, width_mm: 300 })).output).toContain(
+      'width of the text',
+    )
+  })
+
+  it('tells the model about the new building blocks and no longer says they cannot be done', () => {
+    const prompt = setup().skill.systemPrompt
+    expect(prompt).toContain('insert_equations')
+    expect(prompt).toContain('set_page_border')
+    expect(prompt).toContain('resize_picture')
+    expect(prompt).not.toContain('cannot change the page borders')
+    expect(prompt).not.toContain('move, resize, replace')
+  })
+})
+
 describe('the skill as the model sees it', () => {
+  it('has every tool the built-in skills for this editor name', () => {
+    // apps/shell/resources/builtin-skills: the skills written for Hangul documents
+    const names = new Set(setup().skill.tools.map((tool) => tool.name))
+    const dir = join(__dirname, '../../shell/resources/builtin-skills')
+    for (const skill of ['hwp-document', 'administration-report', 'administration-report-draft']) {
+      const text = readFileSync(join(dir, skill, 'SKILL.md'), 'utf8')
+      // `words_like_this` in backticks: the way a skill writes a tool
+      const words = [...text.matchAll(/`([a-z]+(?:_[a-z]+)+)`/g)].map((m) => m[1])
+      expect(words.length, skill).toBeGreaterThan(3)
+      for (const word of words) expect(names.has(word!), `${skill}: ${word}`).toBe(true)
+    }
+    const own = readFileSync(join(dir, 'hwp-document', 'SKILL.md'), 'utf8')
+    expect(own).toMatch(/^---\nname: hwp-document\n/)
+    expect(own).toMatch(/\nmetadata:\n {2}ieum-editors: hwp\n---\n/)
+  })
+
   it('offers exactly the tools it can execute', async () => {
     const { skill, call } = setup()
     expect(skill.tools.map((tool) => tool.name)).toEqual([
@@ -2283,12 +3012,15 @@ describe('the skill as the model sees it', () => {
       'find_text',
       'read_url',
       'list_pictures',
+      'resize_picture',
       'analyze_picture',
       'replace_text',
       'replace_all',
       'insert_paragraphs',
       'delete_paragraph',
       'insert_table',
+      'style_paragraphs',
+      'insert_title_box',
       'image_search',
       'insert_image',
       'generate_image',
@@ -2324,6 +3056,13 @@ describe('the skill as the model sees it', () => {
       'set_note_settings',
       'read_page_setup',
       'set_page_setup',
+      'read_page_layout',
+      'set_columns',
+      'insert_break',
+      'set_page_border',
+      'insert_equations',
+      'set_page_number',
+      'set_header_footer',
       'read_formatting',
       'list_paragraph_looks',
       'format_look',
@@ -2739,5 +3478,133 @@ describe('a line break the model escaped twice', () => {
     const result = await call('replace_all', { find: String.raw`\n`, replace: ' ' })
     expect(result.isError).toBeFalsy()
     expect(bridge.replaceAllText).toHaveBeenCalledWith(String.raw`\n`, ' ')
+  })
+})
+
+describe('import_attachment: an attached Markdown file as a new Hangul document', () => {
+  const withImporter = (
+    importer: NonNullable<HwpSkillDeps['importAttachment']> = vi.fn(async () => ({
+      ok: true as const,
+      title: '안내',
+      handed: false,
+    })),
+  ) => ({
+    importer,
+    ...setup({}, undefined, undefined, undefined, undefined, undefined, importer),
+  })
+
+  it('is offered, and explained, only where the app can open a new tab', () => {
+    const without = setup()
+    expect(without.skill.tools.map((tool) => tool.name)).not.toContain('import_attachment')
+    expect(without.skill.systemPrompt).not.toContain('import_attachment')
+
+    const { skill } = withImporter()
+    expect(skill.tools.at(-1)!.name).toBe('import_attachment')
+    expect(skill.tools.at(-1)!.inputSchema.required).toEqual(['attachment'])
+    expect(skill.systemPrompt).toContain('## Turning an attached file into a Hangul document')
+    expect(skill.systemPrompt).toContain('do not retype it with insert_paragraphs')
+  })
+
+  it('opens the file through the app and leaves this document as it is', async () => {
+    const { call, importer, bridge, changes } = withImporter()
+    const result = await call('import_attachment', { attachment: '안내.md' })
+    expect(importer).toHaveBeenCalledWith('안내.md', false)
+    expect(result.isError).toBeFalsy()
+    expect(result.mutated).toBe(false)
+    expect(result.output).toContain('Opened "안내" as a new, untitled Hangul document')
+    expect(result.output).toContain('The document open here was not changed.')
+    expect(result.output).toContain('to change how it looks they ask in that tab')
+    expect(result.summary).toBe('aiToolImport:{"name":"안내.md"}')
+    expect(changes).toEqual([])
+    expect(bridge.insertParagraphs).not.toHaveBeenCalled()
+    expect(bridge.insertTable).not.toHaveBeenCalled()
+  })
+
+  it('hands the request over when asked to, and tells the model to stop here', async () => {
+    const importer = vi.fn(async () => ({ ok: true as const, title: '안내', handed: true }))
+    const { call } = withImporter(importer)
+    const result = await call('import_attachment', {
+      attachment: ' 안내.markdown ',
+      continue_request: true,
+    })
+    expect(importer).toHaveBeenCalledWith('안내.markdown', true)
+    expect(result.output).toContain('The request was handed to the assistant of that document')
+    expect(result.output).toContain('do nothing more for this request in this document')
+  })
+
+  it('refuses a file that is not Markdown without calling the app', async () => {
+    const { call, importer } = withImporter()
+    const result = await call('import_attachment', { attachment: '보고서.docx' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('only a Markdown file')
+    expect(result.output).toContain('read_attachment')
+    expect(importer).not.toHaveBeenCalled()
+    expect((await call('import_attachment', {})).isError).toBe(true)
+  })
+
+  it('passes on why the app could not open it', async () => {
+    const importer = vi.fn(async () => ({
+      ok: false as const,
+      error: 'there is no file named "안내.md" attached to this chat.',
+    }))
+    const { call } = withImporter(importer)
+    const result = await call('import_attachment', { attachment: '안내.md' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toBe('there is no file named "안내.md" attached to this chat.')
+  })
+
+  it('is not a tool at all without the app', async () => {
+    const { call } = setup()
+    const result = await call('import_attachment', { attachment: '안내.md' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('unknown tool')
+  })
+})
+
+describe('a cut line', () => {
+  const even = `${'- '.repeat(12)}절취선${' -'.repeat(12)}`
+
+  it('is written with as many dashes on each side of its word', () => {
+    expect(evenCutLine('✂ - - - - - - - - - - - - - - - - - - - - - - 절취선 - - - - -')).toBe(even)
+    expect(evenCutLine('---------- 절취선 ----------------------------------------')).toBe(even)
+    expect(evenCutLine('· · · · 절 취 선 · · · ·')).toBe(
+      `${'- '.repeat(12)}절 취 선${' -'.repeat(12)}`,
+    )
+    expect(evenCutLine('…………… 자르는 선 ……………')).toBe(
+      `${'- '.repeat(12)}자르는 선${' -'.repeat(12)}`,
+    )
+    // the word in the middle: the same count on both sides
+    const [left, right] = even.split('절취선')
+    expect(left!.trim().split(' ').length).toBe(right!.trim().split(' ').length)
+  })
+
+  it('leaves every other paragraph as it was typed', () => {
+    for (const text of [
+      '절취선',
+      '절취선 아래의 동의서를 제출해 주세요.',
+      '- 절취선은 가위로 자릅니다',
+      '1. 일시: 2026년 10월 16일(금)',
+      '- - - - - - - -',
+      '',
+    ]) {
+      expect(evenCutLine(text), text).toBe(text)
+    }
+  })
+
+  it('is evened out when the model adds it to the document', async () => {
+    const { call, bridge } = setup()
+    await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: [
+        '한빛중학교장',
+        '✂ - - - - - - - - - - - - - - - - - - - 절취선 - - -',
+        '참가 동의서',
+      ],
+    })
+    expect(bridge.insertParagraphs).toHaveBeenLastCalledWith('', null, 'end', [
+      '한빛중학교장',
+      even,
+      '참가 동의서',
+    ])
   })
 })
