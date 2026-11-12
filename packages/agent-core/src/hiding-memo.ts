@@ -81,7 +81,10 @@ const KNOWN_PREFIXES: ReadonlySet<string> = new Set(
 /** The prefix a new hiding memo is written with in this screen language. */
 export function hidingMemoPrefix(lang: string): string {
   const list = HIDING_MEMO_PREFIXES[hidingLangOf(lang)]
-  return list[list.length - 1]
+  const last = list[list.length - 1]
+  // every language ships at least one prefix; the table test pins it
+  if (last === undefined) throw new Error(`no hiding memo prefix for ${lang}`)
+  return last
 }
 
 function labelToStore(label: string, lang: string): string {

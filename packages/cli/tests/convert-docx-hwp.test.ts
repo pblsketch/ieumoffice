@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
+import { REDACT_NS } from '@genoffice/docx-engine'
 import { FEATURE_LABEL } from '../src/formats/docx-hwp'
 import { run, tempDir } from './helpers'
 
@@ -154,10 +155,7 @@ describe('Word hiding marks', () => {
     const zip = await JSZip.loadAsync(readFileSync(NOTICE))
     const xml = await zip.file('word/document.xml')!.async('string')
     const marked = xml
-      .replace(
-        '<w:document ',
-        '<w:document xmlns:go="https://genspark.ai/genoffice/redaction/2026" ',
-      )
+      .replace('<w:document ', `<w:document xmlns:go="${REDACT_NS}" `)
       .replace(
         /(<w:body>)/,
         '$1<w:p><w:r><w:t xml:space="preserve">담임 </w:t></w:r><w:r><w:rPr>' +
