@@ -5451,6 +5451,19 @@ textarea:focus {
   color: var(--sheets-ai-error);
 }
 
+/* sensitive-info hiding: find button, candidate list and send alert above the composer */
+.sheet-sensitive {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+.sheet-sensitive .gs-sens-list {
+  max-height: 320px;
+  overflow: auto;
+}
+
 /* whole-panel drop target highlight */
 .ai-panel-dragover {
   outline: 2px dashed var(--accent);

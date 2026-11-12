@@ -1419,6 +1419,15 @@ export const hi = {
   appCtxFormatCells: 'सेल स्वरूपित करें…',
   appCtxPickFromList: 'ड्रॉप-डाउन सूची से चुनें…',
   appCtxDefineName: 'नाम परिभाषित करें…',
+  appCtxSensitiveHide: 'संवेदनशील जानकारी छिपाएँ',
+  appCtxSensitiveUnhide: 'संवेदनशील जानकारी छिपाना बंद करें',
+  appSensitiveHidden: '{range} को AI से छिपा दिया गया। AI को इसकी जगह {marker} दिखता है।',
+  appSensitiveUnhidden: '{range} को छिपाना बंद कर दिया गया।',
+  appSensitiveNothingHidden: 'चयन में कुछ भी छिपा नहीं है।',
+  appSensitiveBroken:
+    'AI को नहीं भेजा गया: छिपाने के निशान {names} ऐसे सेल की ओर इशारा करते हैं जो अब मौजूद नहीं हैं (हटाई गई शीट या #REF!)। नाम प्रबंधक में इन्हें ठीक करें या हटाएँ।',
+  appSensitiveMergeRefused:
+    'मर्ज नहीं किया गया: {file} के छिपे सेल इस वर्कबुक में नहीं लाए जा सकते।',
   appCtxLink: 'लिंक…',
   appCtxInsertFunction: 'फ़ंक्शन सम्मिलित करें…',
   appFillUp: 'ऊपर भरें',

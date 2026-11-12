@@ -1426,6 +1426,15 @@ export const tr = {
   appCtxFormatCells: 'Hücreleri Biçimlendir…',
   appCtxPickFromList: 'Açılır Listeden Seç…',
   appCtxDefineName: 'Ad Tanımla…',
+  appCtxSensitiveHide: 'Hassas bilgileri gizle',
+  appCtxSensitiveUnhide: 'Hassas bilgileri gizlemeyi kaldır',
+  appSensitiveHidden: '{range} yapay zekâdan gizlendi. Yapay zekâ bunun yerine {marker} görür.',
+  appSensitiveUnhidden: '{range} artık gizlenmiyor.',
+  appSensitiveNothingHidden: 'Seçimde gizlenmiş bir şey yok.',
+  appSensitiveBroken:
+    'Yapay zekâya gönderilmedi: {names} gizleme işaretleri artık var olmayan hücreleri gösteriyor (silinmiş bir sayfa veya #REF!). Ad Yöneticisi’nde düzeltin ya da silin.',
+  appSensitiveMergeRefused:
+    'Birleştirilmedi: {file} dosyasındaki gizli hücreler bu çalışma kitabına taşınamıyor.',
   appCtxLink: 'Bağlantı…',
   appCtxInsertFunction: 'İşlev Ekle…',
   appFillUp: 'Yukarı Doldur',

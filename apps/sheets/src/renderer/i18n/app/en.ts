@@ -1397,6 +1397,15 @@ export const en = {
   appCtxFormatCells: 'Format Cells…',
   appCtxPickFromList: 'Pick From Drop-down List…',
   appCtxDefineName: 'Define Name…',
+  appCtxSensitiveHide: 'Hide sensitive info',
+  appCtxSensitiveUnhide: 'Stop hiding sensitive info',
+  appSensitiveHidden: 'Hid {range} from the AI. The AI sees {marker} instead.',
+  appSensitiveUnhidden: 'Stopped hiding {range}.',
+  appSensitiveNothingHidden: 'Nothing in the selection is hidden.',
+  appSensitiveBroken:
+    'Not sent to the AI: the hiding marks {names} point to cells that no longer exist (a deleted sheet or #REF!). Fix or delete them in Name Manager.',
+  appSensitiveMergeRefused:
+    'Not merged: the hidden cells of {file} can’t be carried into this workbook.',
   appCtxLink: 'Link…',
   appCtxInsertFunction: 'Insert Function…',
   appFillUp: 'Fill Up',

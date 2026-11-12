@@ -1461,6 +1461,15 @@ export const pt = {
   appCtxFormatCells: 'Formatar células…',
   appCtxPickFromList: 'Escolher na lista suspensa…',
   appCtxDefineName: 'Definir nome…',
+  appCtxSensitiveHide: 'Ocultar informações sensíveis',
+  appCtxSensitiveUnhide: 'Deixar de ocultar informações sensíveis',
+  appSensitiveHidden: '{range} foi ocultado da IA. A IA vê {marker} no lugar.',
+  appSensitiveUnhidden: '{range} deixou de ser ocultado.',
+  appSensitiveNothingHidden: 'Não há nada oculto na seleção.',
+  appSensitiveBroken:
+    'Não enviado à IA: as marcas de ocultação {names} apontam para células que não existem mais (planilha excluída ou #REF!). Corrija-as ou exclua-as no Gerenciador de Nomes.',
+  appSensitiveMergeRefused:
+    'Não mesclado: as células ocultas de {file} não podem ser trazidas para esta pasta de trabalho.',
   appCtxLink: 'Link…',
   appCtxInsertFunction: 'Inserir função…',
   appFillUp: 'Para cima',
