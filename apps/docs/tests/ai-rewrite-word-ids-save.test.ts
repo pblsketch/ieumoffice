@@ -211,6 +211,11 @@ describe('an AI rewrite saves a document.xml Word opens', () => {
       { scope, doc: editor.state.doc },
     )
     expect(r.isError, String(r.output)).toBeFalsy()
-    expectOneOfEach(await savedDocumentXml(parsed, editor))
+    const xml = await savedDocumentXml(parsed, editor)
+    expectOneOfEach(xml)
+    // Word's rule for typing over commented text with tracking on: the comment stays on the deleted words
+    expect(xml, 'comment range inside inserted text').not.toMatch(
+      /<w:ins\b[^>]*>(?:(?!<\/w:ins>)[\s\S])*<w:comment(?:RangeStart|RangeEnd|Reference) w:id="0"/,
+    )
   })
 })
