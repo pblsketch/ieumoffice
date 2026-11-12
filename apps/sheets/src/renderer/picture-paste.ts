@@ -5,6 +5,7 @@
  * would otherwise insert a drawing this app never journals or saves, so the
  * window-capture listener claims image-only transfers before it runs.
  */
+import { clipboardPictureIsRendering } from '@genoffice/ui/clipboard-picture'
 import { isGridKeyTarget } from './clear-selection-keyboard'
 export const PICTURE_MAX_BYTES = 20 * 1024 * 1024
 const PICTURE_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif'])
@@ -56,20 +57,17 @@ export function htmlIsFromExcel(html: string): boolean {
   ].some((marker) => marker.test(html))
 }
 
-/// The image to insert when the transfer is a picture rather than cell data:
-/// the engine pastes the file of every transfer that carries one, so the app
-/// claims it too — otherwise the picture lands in the engine's drawing model,
-/// where nothing saves it, and it is gone after the next save.
+/// The image to insert when the transfer is a picture rather than cell data.
+/// A picture that only renders the transfer's cells or text (Excel's copy,
+/// Numbers', and this editor's own range copy, which puts a picture of the
+/// cells next to its table: copy-picture.ts) stays a cell paste. In this fork
+/// the engine's paste drops the files of such a transfer too, so no picture
+/// lands in the engine's drawing model, where nothing would save it
+/// (genoffice#2566). Every other transfer that carries an image is claimed.
 export function pickTransferImage(data: TransferLike): File | null {
   if (!transferHasImage(data)) return null
-  // The engine's Excel markers include the generic Office namespace, and it
-  // pastes such HTML itself, never the file: there only a transfer that is a
-  // picture (no cells, no text of its own) is claimed.
   const html = data.getData('text/html')
-  if (htmlIsFromExcel(html)) {
-    if (/<(table|tr|td|th)\b/i.test(html)) return null
-    if (data.getData('text/plain').trim() && !/<img\b/i.test(html)) return null
-  }
+  if (clipboardPictureIsRendering(html, data.getData('text/plain'))) return null
   for (const item of Array.from(data.items)) {
     if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
     const file = item.getAsFile()
