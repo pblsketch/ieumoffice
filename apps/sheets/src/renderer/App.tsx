@@ -302,6 +302,7 @@ import { createAiDocument } from './ai/create-document'
 import { createWorkbookSkill } from './ai/workbook-skill'
 import { sheetSkillHiding } from './hiding/app-hooks'
 import { HEADER_SCAN_ROWS } from './hiding/actions'
+import { installHidingFollow } from './hiding/follow'
 import { installHidingGridCue } from './hiding/grid-cue'
 import { sheetHidingState } from './hiding/view'
 import { useSheetHiding } from './hiding/use-sheet-hiding'
@@ -2533,6 +2534,8 @@ export function App({
     const hidingCueDisposable = installHidingGridCue(runtime, () =>
       isDarkTheme() ? 'dark' : 'light',
     )
+    // hidden values a person copies, moves or sorts inside the workbook stay hidden
+    const hidingFollowDisposable = installHidingFollow(runtime)
     const threadedCommentDisposable = installThreadedCommentAffordances(runtime, {
       theme: () => (isDarkTheme() ? 'dark' : 'light'),
       onHover: setThreadHover,
@@ -3766,6 +3769,7 @@ export function App({
       dataValidationMarkerDisposable.dispose()
       threadedCommentDisposable.dispose()
       hidingCueDisposable.dispose()
+      hidingFollowDisposable.dispose()
       threadStore.onChange = null
       ruleDetailDisposable()
       lazyFindDisposable.dispose()
