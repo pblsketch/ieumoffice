@@ -68,8 +68,6 @@ export const ms = {
   aiEmptyTitle: 'Biarkan AI membantu anda menulis dan menyunting',
   aiEmptyBody1: 'Beri arahan atau terus ajukan soalan;',
   aiEmptyBody2: 'dengan teks dipilih, perintah tulis semula digunakan pada pilihan.',
-  aiNoHidingNote:
-    'Editor ini tidak boleh menyembunyikan bahagian dokumen daripada AI: kandungan yang diliputi permintaan dihantar seadanya.',
   aiStarterWeeklyReport: 'Tuliskan laporan mingguan projek untuk saya',
   aiStarterLaunchPost: 'Sediakan pengumuman pelancaran produk',
   aiStarterEventOutline: 'Sediakan rangka rancangan acara',

@@ -54,7 +54,8 @@ export function documentToMarkdown(editor: Editor): MarkdownExport {
   }
   let runStart = -1
   const flush = (end: number) => {
-    if (runStart >= 0) parts.push(serializeRangeToHtml(editor, runStart, end, null, image))
+    // the file view: hidden words stay, inside the span the Markdown editor reads as its hiding mark
+    if (runStart >= 0) parts.push(serializeRangeToHtml(editor, runStart, end, null, image, 'file'))
     runStart = -1
   }
   top.forEach((node, _offset, index) => {
@@ -146,16 +147,18 @@ function table(el: Element): string {
   return [line(header), sep, ...rows.slice(1).map(line)].join('\n')
 }
 
-function inline(node: Node): string {
+function inline(node: Node, hidden = false): string {
   let out = ''
   node.childNodes.forEach((child) => {
     if (child.nodeType === Node.TEXT_NODE) {
-      out += escapeText(child.textContent ?? '')
+      out += hidden
+        ? escapeHiddenText(child.textContent ?? '')
+        : escapeText(child.textContent ?? '')
       return
     }
     if (child.nodeType !== Node.ELEMENT_NODE) return
     const el = child as Element
-    const inner = () => inline(el)
+    const inner = () => inline(el, hidden)
     switch (el.tagName.toLowerCase()) {
       case 'br':
         out += '\n'
@@ -181,6 +184,9 @@ function inline(node: Node): string {
       case 'formula':
         out += `$${el.textContent ?? ''}$`
         break
+      case 'span':
+        out += el.hasAttribute('data-redaction') ? hiddenSpan(el) : inner()
+        break
       case 'img': {
         const src = el.getAttribute('src') ?? ''
         if (src) out += `![](${src.replace(/[()\s]/g, encodeURIComponent)})`
@@ -197,6 +203,29 @@ function inline(node: Node): string {
 function wrap(text: string, open: string, close = open): string {
   const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(text)!
   return m[2] ? `${m[1]}${open}${m[2]}${close}${m[3]}` : text
+}
+
+/**
+ * A hidden run, written the way the Markdown editor saves its hiding mark
+ * (`<span class="redact-span" data-redaction="" data-label="…">words</span>`), so
+ * the copy keeps the words and the mark: the Markdown editor reopens it hidden,
+ * and reading the file for an AI replaces it with its marker.
+ */
+function hiddenSpan(el: Element): string {
+  const label = (el.getAttribute('data-label') ?? '') || 'private'
+  return `<span class="redact-span" data-redaction="" data-label="${escapeHtml(label)}">${inline(el, true)}</span>`
+}
+
+/**
+ * Text inside a hidden span: no raw angle bracket may close the span early,
+ * and no backslash may end it, or the reader of the copy refuses the file.
+ */
+function escapeHiddenText(s: string): string {
+  return s
+    .replace(/\\/g, '&#92;')
+    .replace(/[`*_[\]~$]/g, '\\$&')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 function escapeText(s: string): string {

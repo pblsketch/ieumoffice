@@ -341,15 +341,16 @@ export const zhTW = {
   appEasyWords: '用淺白的話解釋',
   appEasyWordsPrompt:
     '請用中文把選取的文字解釋得淺白易懂,讓需要簡單文字的人(兒童、長者、正在學中文的人)也看得懂。用日常用語和短句,所有事實、數字和條件都要保留。不要修改文件:「{text}」',
-  redactMenuLabel: '把選中的內容對 AI 隱藏',
+  redactMenuLabel: '隱藏敏感資訊',
   redactDialogDesc:
-    '這段文字會留在文件裡，AI 讀到的卻是下面的標記。給它起個名字，AI 才知道它是什麼。',
-  redactDialogScope:
-    '這只針對本應用的 AI。命令列、MCP 工具和無介面匯出會直接讀取文件，仍然看得到這些文字。',
-  redactDialogPlaceholder: '佔位名稱，例如：客戶電話',
+    '所選部分不會傳送給 AI，檔案中仍原樣保留。 AI 只看得到下面的標籤。請取個名字，讓 AI 知道它代表什麼。',
+  redactDialogScope: '代理模式下的程式直接從磁碟讀取檔案時，不會被隱藏。',
+  redactDialogPlaceholder: '標籤，例如：學生姓名',
   redactCancel: '取消',
   redactInsert: '隱藏',
-  redactShowLabel: '把選取的內容重新對 AI 顯示',
+  redactShowLabel: '取消隱藏',
+  sensLocParagraph: '第 {n} 段',
+  sensLocTableCell: '表格 {n}，第 {r} 列第 {c} 欄',
   appLangEnglish: '英文',
   appLangSimplifiedChinese: '簡體中文',
   appLangJapanese: '日文',

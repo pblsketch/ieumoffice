@@ -102,6 +102,10 @@ const api: DesktopApi = {
   openDocxPath: (path: string) => ipcRenderer.invoke('docs:open-path', path),
   confirmDocumentReplace: () => ipcRenderer.invoke('docs:confirm-document-replace'),
   confirmHidingLoss: (count: number) => ipcRenderer.invoke('docs:confirm-hiding-loss', count),
+  sensitiveExclusionAdd: (docPath: string, item: { kind: string; value: string }) =>
+    ipcRenderer.invoke('docs:sensitive-exclusion-add', docPath, item),
+  sensitiveExclusionCheck: (docPath: string, items: { kind: string; value: string }[]) =>
+    ipcRenderer.invoke('docs:sensitive-exclusion-check', docPath, items),
   convertAltChunkHtml: (html: string) => ipcRenderer.invoke('docs:altchunk-html-to-docx', html),
   openDocxDecrypt: (path: string, password: string) =>
     ipcRenderer.invoke('docs:open-decrypt', path, password),

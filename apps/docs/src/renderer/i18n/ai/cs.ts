@@ -68,8 +68,6 @@ export const cs = {
   aiEmptyTitle: 'Nechte si od AI pomoci s psaním a úpravami',
   aiEmptyBody1: 'Zadejte pokyn nebo jen položte otázku;',
   aiEmptyBody2: 'při vybraném textu se příkazy k přepsání vztahují na výběr.',
-  aiNoHidingNote:
-    'V tomto editoru nelze skrýt části dokumentu před AI: obsah, kterého se požadavek týká, se odešle tak, jak je.',
   aiStarterWeeklyReport: 'Napište mi týdenní zprávu o projektu',
   aiStarterLaunchPost: 'Připravte oznámení o uvedení produktu',
   aiStarterEventOutline: 'Sestavte osnovu plánu akce',

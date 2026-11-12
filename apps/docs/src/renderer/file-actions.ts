@@ -49,7 +49,7 @@ import { projectPanelText } from '@genoffice/ui'
 import type { AiDocContent, OpenDocxResult } from '../shared/ipc'
 import { docFormatOfPath, type DocFormat, type SaveAsKind } from '../shared/open-file'
 import { numberedExportPaths } from '@genoffice/electron-utils/numbered-export-paths'
-import { allowHidingLoss } from './hiding-loss'
+import { allowHidingLoss, allowOdtSaveHidingLoss, HidingLossDeclined } from './hiding-loss'
 import {
   hfVariantsFromParsed,
   isOdtDoc,
@@ -1290,7 +1290,15 @@ async function saveOnce(
     // docx written back into its ODT (unchanged → the ODT's own bytes)
     let bytes = docx
     const fileBytes = async (): Promise<ArrayBuffer> => {
-      if (isOdtDoc(doc)) bytes = await odtBytesFor(doc.odt, docx)
+      if (isOdtDoc(doc)) {
+        // ODT has no hiding mark: writing it drops the hidden spans, so the
+        // person is asked first (once per document and count; an automatic
+        // save waits for that answer). Declining writes nothing.
+        if (!(await allowOdtSaveHidingLoss(editor, generation, auto))) {
+          throw new HidingLossDeclined()
+        }
+        bytes = await odtBytesFor(doc.odt, docx)
+      }
       return toArrayBuffer(bytes)
     }
     // a pathless snapshot may belong to a document that an earlier queued pass
@@ -1558,6 +1566,11 @@ async function saveOnce(
     if (!auto) showToast(t('appSaved'))
     return true
   } catch (err) {
+    if (err instanceof HidingLossDeclined) {
+      if (!auto) ctx.setStatus('')
+      explicitTarget?.onError?.(err.message)
+      return false
+    }
     ctx.setStatus(t('appSaveFailed', { error: String(err) }))
     if (!auto) showToast(t('appSaveFailed', { error: String(err) }), 'error')
     return false

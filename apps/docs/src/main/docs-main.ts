@@ -206,6 +206,7 @@ import { Worker } from 'node:worker_threads'
 import hwpExportWorkerPath from './hwp-export-worker?modulePath'
 import type { HwpConversion, HwpFormat, HwpLook, Loss } from '@genoffice/docx2hwp'
 import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
+import { createSensitiveExclusionStore, isExclusionItem } from './sensitive-exclusions'
 import { convertInWorker, exportHwp, hwpLossMessageBox } from './hwp-export'
 import { createDocsRecovery } from './docs-recovery'
 import {
@@ -5057,6 +5058,21 @@ export function registerDocsIpc(): void {
     return confirmHidingLoss(typeof count === 'number' ? count : 0, (options) =>
       parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options),
     )
+  })
+  // dismissed sensitive-info candidates: kind and keyed hash per document path, never the value
+  const sensitiveExclusions = createSensitiveExclusionStore(userDataPath('sensitive-exclusions'))
+  ipcMain.handle(
+    'docs:sensitive-exclusion-add',
+    async (_event, docPath: unknown, item: unknown) => {
+      if (typeof docPath !== 'string' || !docPath || !isExclusionItem(item)) return false
+      await sensitiveExclusions.add(docPath, { kind: item.kind, value: item.value })
+      return true
+    },
+  )
+  ipcMain.handle('docs:sensitive-exclusion-check', (_event, docPath: unknown, items: unknown) => {
+    if (typeof docPath !== 'string' || !docPath || !Array.isArray(items)) return []
+    if (!items.every(isExclusionItem)) return items.map(() => false)
+    return sensitiveExclusions.check(docPath, items)
   })
   ipcMain.handle('docs:system-locale', () => app.getSystemLocale())
 

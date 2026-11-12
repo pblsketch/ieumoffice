@@ -97,13 +97,13 @@ test.describe('withholding a span from the model', () => {
       await page.mouse.click(at.x, at.y, { button: 'right' })
 
       const menuItem = page.locator('.ctx-menu .ctx-item', {
-        hasText: 'Hide the selection from AI',
+        hasText: 'Hide sensitive info',
       })
       await expect(menuItem).toHaveCount(1, { timeout: 15_000 })
       await page.screenshot({ path: screenshotPath('docs-2-context-menu') })
       await menuItem.click()
 
-      const dialog = page.locator('.modal', { hasText: 'Hide the selection from AI' })
+      const dialog = page.locator('.modal', { hasText: 'Hide sensitive info' })
       await expect(dialog).toBeVisible()
       const input = dialog.locator('input').first()
       await expect(input).toHaveValue(SECRET.slice(0, 24))

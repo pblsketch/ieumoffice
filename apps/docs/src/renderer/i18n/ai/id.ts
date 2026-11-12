@@ -68,8 +68,6 @@ export const id = {
   aiEmptyTitle: 'Biarkan AI membantu Anda menulis dan mengedit',
   aiEmptyBody1: 'Berikan instruksi atau langsung ajukan pertanyaan;',
   aiEmptyBody2: 'dengan teks terpilih, perintah penulisan ulang berlaku pada pilihan.',
-  aiNoHidingNote:
-    'Editor ini tidak dapat menyembunyikan bagian dokumen dari AI: isi yang dicakup permintaan dikirim apa adanya.',
   aiStarterWeeklyReport: 'Tuliskan laporan mingguan proyek',
   aiStarterLaunchPost: 'Buat pengumuman peluncuran produk',
   aiStarterEventOutline: 'Buat kerangka rencana acara',

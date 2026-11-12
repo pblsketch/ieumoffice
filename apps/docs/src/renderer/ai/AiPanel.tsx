@@ -43,6 +43,9 @@ import {
   useProjectPanel,
   type ProjectPanel,
   type ProjectMemoryLine,
+  SensitiveCandidateList,
+  SensitiveFindButton,
+  useSensitiveSendAlert,
 } from '@genoffice/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
@@ -61,7 +64,7 @@ import {
   toolStepLabel,
 } from '@genoffice/agent-core'
 import type { AiSubscriptionProviderId, AiSubscriptionUsage } from '@genoffice/ai-provider/browser'
-import { localModelCapabilities } from '@genoffice/ai-provider/browser'
+import { localContextLimit, localModelCapabilities } from '@genoffice/ai-provider/browser'
 import type {
   AiSettings,
   AiToolCapabilities,
@@ -142,6 +145,7 @@ import fileDocumentIcon from '../assets/file-document.png'
 import fileGeneralIcon from '../assets/file-general.png'
 import { IconNewChat, IconSidebarCollapse } from '../components/icons'
 import { odtOffProps, useOdtSession } from '../odt-gate'
+import { countAttachmentCandidates, useDocSensitive } from '../sensitive/use-doc-sensitive'
 
 interface ToolActivity {
   name: string
@@ -867,6 +871,41 @@ export function AiPanel({
   docExtrasRef.current = docExtras
   const notesAccessRef = useRef(notesAccess)
   notesAccessRef.current = notesAccess
+  /** "find sensitive info": the list, and the counts the first-send alert needs */
+  const sensitive = useDocSensitive({
+    editor,
+    filePath: filePath ?? null,
+    lang,
+    text: {
+      paragraph: (n) => t('sensLocParagraph', { n }),
+      tableCell: (n, r, c) => t('sensLocTableCell', { n, r, c }),
+      header: t('ribbonHeader'),
+      footer: t('ribbonFooter'),
+      footnote: t('appGoToFootnote'),
+      endnote: t('appGoToEndnote'),
+      comment: t('appGoToComment'),
+    },
+    extras: () => {
+      const hf = hfAccessRef.current?.read()
+      const notes = notesAccessRef.current
+      const texts = (list: (string | null | undefined)[]) =>
+        list.filter((s): s is string => typeof s === 'string' && s !== '')
+      return {
+        headers: hf ? texts([hf.header, hf.headerFirst, hf.headerEven]) : [],
+        footers: hf ? texts([hf.footer, hf.footerFirst, hf.footerEven]) : [],
+        footnotes: notes?.list('footnote').map((n) => n.text) ?? [],
+        endnotes: notes?.list('endnote').map((n) => n.text) ?? [],
+        comments: commentsAccessRef.current?.list().map((c) => c.text) ?? [],
+      }
+    },
+  })
+  const sensitiveRef = useRef(sensitive)
+  sensitiveRef.current = sensitive
+  /** the alert before this document's first send; the panel lives as long as the document */
+  const sendAlert = useSensitiveSendAlert({
+    lang,
+    localAi: localContextLimit(liveSettings) !== undefined,
+  })
 
   /** drop every aiChanged flag; silent = skip undo history (auto-accept path) */
   const clearAiHighlights = (silent = false) => {
@@ -1463,6 +1502,38 @@ export function AiPanel({
     return images
   }
 
+  /**
+   * The document's first send: what looks like sensitive info in it and in the
+   * request's attachments is counted once, before anything goes out. True when
+   * the send is held: "Review" sends nothing, keeps the composer text and opens
+   * the list; "Send anyway" calls `resume`. A count that fails holds the send too.
+   */
+  const firstSendHeld = (
+    attachments: AttachmentMeta[] | undefined,
+    resume: () => void,
+  ): boolean => {
+    if (sendAlert.check.settled) return false
+    const files = (attachments ?? availableAttachments()).filter(
+      (a) => !ATTACHMENT_IMAGE_EXTS.has(a.ext),
+    )
+    void sendAlert
+      .beforeSend(async () => ({
+        documentCount: await sensitiveRef.current.countDocument(),
+        attachmentCount: await countAttachmentCandidates(
+          files.map((a) => a.path),
+          (path, offset, maxChars) => window.desktop.readAttachment(path, offset, maxChars),
+        ),
+      }))
+      .then(
+        (answer) => {
+          if (answer === 'send') resume()
+          else sensitiveRef.current.openList()
+        },
+        () => sensitiveRef.current.openList(),
+      )
+    return true
+  }
+
   const runWith = (
     instruction: string,
     displayInstruction = instruction,
@@ -1474,6 +1545,18 @@ export function AiPanel({
   ) => {
     const loop = loopRef.current
     if (!instruction || !loop || loop.busy || pendingSendRef.current) return
+    if (
+      firstSendHeld(attachmentsOverride, () =>
+        runWithRef.current(
+          instruction,
+          displayInstruction,
+          attachmentsOverride,
+          retryScope,
+          skillUse,
+        ),
+      )
+    )
+      return
     // Nothing can run yet: the composer shows the connect prompt or the notice about what
     // leaves the PC instead of an error, and keeps its text. A request made in front of the
     // notice (or while the status check is still running) is held and starts once the way is
@@ -1583,10 +1666,14 @@ export function AiPanel({
     loopRef.current?.cancel()
   }
 
+  const runWithRef = useRef(runWith)
+  runWithRef.current = runWith
+
   /** submit every still-anchored queued edit as one batch run */
   const sendQueue = () => {
     const loop = loopRef.current
     if (!loop || loop.busy || editQueue.length === 0) return
+    if (firstSendHeld(undefined, () => sendQueueRef.current())) return
     const entries = liveItems(resolveQueue(editorRef.current, editQueue))
     if (entries.length === 0) {
       onQueueClear?.()
@@ -1601,6 +1688,9 @@ export function AiPanel({
     onQueueConsume?.(editQueue.map((item) => item.qid))
     runWith(instruction, display)
   }
+
+  const sendQueueRef = useRef(sendQueue)
+  sendQueueRef.current = sendQueue
 
   const retry = () =>
     runWith(
@@ -1873,6 +1963,12 @@ export function AiPanel({
         </span>
         {project.chatMenu}
         <div className="ai-panel-header-actions">
+          <SensitiveFindButton
+            lang={lang}
+            busy={sensitive.open && sensitive.busy}
+            onClick={sensitive.openList}
+            className="gs-sens-find ai-sens-find"
+          />
           <AiPanelSideButton
             lang={lang}
             onMove={(side) => window.desktop.setAiPanelPrefs({ side })}
@@ -1900,6 +1996,19 @@ export function AiPanel({
         </div>
       </div>
 
+      {sensitive.open && (
+        <div className="ai-sens-pane">
+          <SensitiveCandidateList
+            lang={lang}
+            candidates={sensitive.rows}
+            busy={sensitive.busy}
+            onConfirm={(ids) => void sensitive.confirm(ids)}
+            onExclude={(id) => void sensitive.exclude(id)}
+            onLocate={sensitive.locate}
+            onClose={sensitive.close}
+          />
+        </div>
+      )}
       <div ref={logRef} className="ai-chat" onScroll={onLogScroll}>
         {/* past conversation (read-only transcript, not fed to the model), shown continuously with the current turn */}
         {historicChat.length > 0 && (
@@ -1941,8 +2050,6 @@ export function AiPanel({
               <br />
               {t(docEmpty ? 'aiEmptyDraftBody2' : 'aiEmptyBody2')}
             </div>
-            {/* the other editors honour "hide from AI"; this one sends the text as written (docs/security.md) */}
-            <div className="ai-chat-empty-note">{t('aiNoHidingNote')}</div>
             <div className="ai-starter-list">
               {(docEmpty ? DRAFT_STARTER_PROMPTS : EDIT_STARTER_PROMPTS).map((p) => (
                 <button
@@ -2197,6 +2304,7 @@ export function AiPanel({
         />
         {/* Above the input card, not inside its footer: the reset time is long and
             would otherwise squeeze the attach/send buttons in a narrow panel. */}
+        {sendAlert.alert}
         <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
         <AiComposer
           queueStrip={

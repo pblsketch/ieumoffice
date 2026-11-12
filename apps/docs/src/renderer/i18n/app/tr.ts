@@ -353,15 +353,17 @@ export const tr = {
   appEasyWords: 'Sade sözcüklerle açıkla',
   appEasyWordsPrompt:
     'Seçili metni, kolay okunur metne ihtiyaç duyan birinin (bir çocuk, yaşlı biri veya Türkçe öğrenen biri) anlayabileceği şekilde Türkçe açıkla. Gündelik sözcükler ve kısa cümleler kullan; her olguyu, sayıyı ve koşulu koru. Belgeyi değiştirme: "{text}"',
-  redactMenuLabel: 'Seçimi AI’dan gizle',
+  redactMenuLabel: 'Hassas bilgileri gizle',
   redactDialogDesc:
-    'Sözcükler belgede ve dosyada kalır; model bunun yerine aşağıdaki yer tutucuyu görür. Modelin neyi temsil ettiğini anlaması için ona bir ad verin.',
+    'Seçilen kısım AI’a gönderilmez. Dosyada olduğu gibi kalır. AI yalnızca aşağıdaki etiketi görür. Neyi temsil ettiğini anlaması için bir ad verin.',
   redactDialogScope:
-    'Gizleme bu uygulamanın AI’ını kapsar. CLI, MCP araçları ve penceresiz dışa aktarma dosyayı doğrudan okur ve bu sözcükleri görmeye devam eder.',
-  redactDialogPlaceholder: 'Yer tutucu adı, ör. müşteri telefonu',
+    'Ajan modundaki bir program dosyayı doğrudan diskten okuduğunda gizleme geçerli olmaz.',
+  redactDialogPlaceholder: 'Etiket, ör. öğrenci adı',
   redactCancel: 'İptal',
   redactInsert: 'Gizle',
-  redactShowLabel: 'Seçimi AI’a yeniden göster',
+  redactShowLabel: 'Gizlemeyi kaldır',
+  sensLocParagraph: '{n}. paragraf',
+  sensLocTableCell: 'Tablo {n}, satır {r}, sütun {c}',
   appLangEnglish: 'İngilizce',
   appLangSimplifiedChinese: 'Basitleştirilmiş Çince',
   appLangJapanese: 'Japonca',

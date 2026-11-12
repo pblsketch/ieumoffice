@@ -433,6 +433,89 @@ describe('saving an ODT document', () => {
   })
 })
 
+describe('saving an ODT document with hidden spans', () => {
+  /** hide the first occurrence of `words` with the editor's own command */
+  function hide(editor: Editor, words: string, label: string): void {
+    let at = -1
+    editor.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text?.includes(words)) at = pos + node.text.indexOf(words)
+    })
+    editor
+      .chain()
+      .setTextSelection({ from: at, to: at + words.length })
+      .setRedaction(label)
+      .run()
+  }
+
+  async function markedOdt(path: string) {
+    const ctx = makeCtx()
+    await loadFile(ctx, openResult(path, await blankOdt()))
+    const editor = ctx.editor as Editor
+    setParagraphs(editor, ['담임 홍길동 선생님'])
+    hide(editor, '홍길동', '이름')
+    ctx.dirtyRef.current = true
+    return ctx
+  }
+
+  it('asks before writing; Cancel writes nothing and the document stays as it was', async () => {
+    const ask = vi.fn(async () => false)
+    desktop.confirmHidingLoss = ask
+    const ctx = await markedOdt('/docs/marked.odt')
+    expect(await save(ctx, false)).toBe(false)
+    expect(ask).toHaveBeenCalledWith(1)
+    expect(written).toHaveLength(0)
+    expect(toast).not.toHaveBeenCalled()
+    expect(ctx.dirtyRef.current).toBe(true)
+  })
+
+  it('writes after "go on", and does not ask again for the same document', async () => {
+    const ask = vi.fn(async () => true)
+    desktop.confirmHidingLoss = ask
+    const ctx = await markedOdt('/docs/marked2.odt')
+    expect(await save(ctx, false)).toBe(true)
+    expect(written).toHaveLength(1)
+    expect(isOdtBytes(written[0].bytes)).toBe(true)
+    editParagraph(ctx.editor as Editor, '담임 홍길동 선생님', '담임 홍길동 선생님께')
+    ctx.dirtyRef.current = true
+    expect(await save(ctx, false)).toBe(true)
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(written).toHaveLength(2)
+  })
+
+  it('an automatic save never asks; it waits for a save the person makes', async () => {
+    const ask = vi.fn(async () => true)
+    desktop.confirmHidingLoss = ask
+    const ctx = await markedOdt('/docs/marked3.odt')
+    expect(await save(ctx, false, true)).toBe(false)
+    expect(ask).not.toHaveBeenCalled()
+    expect(written).toHaveLength(0)
+  })
+
+  it('an ODT document without hidden spans saves without asking', async () => {
+    const ask = vi.fn(async () => false)
+    desktop.confirmHidingLoss = ask
+    const ctx = makeCtx()
+    await loadFile(ctx, openResult('/docs/plain.odt', await blankOdt()))
+    setParagraphs(ctx.editor as Editor, ['담임 홍길동 선생님'])
+    ctx.dirtyRef.current = true
+    expect(await save(ctx, false)).toBe(true)
+    expect(ask).not.toHaveBeenCalled()
+    expect(written).toHaveLength(1)
+  })
+
+  it('a .docx document with hidden spans saves without asking (the mark is kept)', async () => {
+    const ask = vi.fn(async () => false)
+    desktop.confirmHidingLoss = ask
+    const ctx = makeCtx()
+    await loadFile(ctx, openResult('/docs/a.docx', await buildBlankDocx({})))
+    setParagraphs(ctx.editor as Editor, ['담임 홍길동 선생님'])
+    hide(ctx.editor as Editor, '홍길동', '이름')
+    ctx.dirtyRef.current = true
+    expect(await save(ctx, false)).toBe(true)
+    expect(ask).not.toHaveBeenCalled()
+  })
+})
+
 describe('Save As with a format change', () => {
   it('docx → ODT asks with the report; cancel writes nothing', async () => {
     const ctx = makeCtx()

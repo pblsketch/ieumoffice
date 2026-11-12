@@ -67,8 +67,6 @@ export const vi = {
   aiEmptyTitle: 'Để AI giúp bạn viết và chỉnh sửa',
   aiEmptyBody1: 'Đưa ra yêu cầu hoặc chỉ cần đặt câu hỏi;',
   aiEmptyBody2: 'khi có văn bản được chọn, các lệnh viết lại sẽ áp dụng cho phần đã chọn.',
-  aiNoHidingNote:
-    'Trình soạn thảo này không thể ẩn một phần tài liệu khỏi AI: nội dung mà yêu cầu liên quan sẽ được gửi nguyên trạng.',
   aiStarterWeeklyReport: 'Viết báo cáo dự án hàng tuần cho tôi',
   aiStarterLaunchPost: 'Soạn thảo thông báo ra mắt sản phẩm',
   aiStarterEventOutline: 'Lập dàn ý kế hoạch sự kiện',
