@@ -22,6 +22,11 @@ export type OdtExportOutcome =
   { ok: true; path: string } | { ok: true; canceled: true } | { ok: false; error: string }
 
 export interface OdtExportSteps {
+  /**
+   * asked first: the document has hidden spans and ODT has no hiding mark;
+   * false = the user canceled (see @genoffice/electron-utils/hiding-loss)
+   */
+  allowHidingLoss?(): Promise<boolean>
   /** the target path (save dialog); null = the user canceled */
   pickPath(): Promise<string | null>
   /** the editor's Word export of the current document */
@@ -41,6 +46,8 @@ export async function exportOdt(
   convert: Convert = (docx) => docxToOdt(docx),
 ): Promise<OdtExportOutcome> {
   try {
+    if (steps.allowHidingLoss && !(await steps.allowHidingLoss()))
+      return { ok: true, canceled: true }
     const path = await steps.pickPath()
     if (!path) return { ok: true, canceled: true }
     const { odtBytes, report } = await convert(await steps.docx())

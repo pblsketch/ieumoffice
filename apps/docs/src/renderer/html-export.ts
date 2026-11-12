@@ -426,6 +426,9 @@ function serializeNode(
     if (v !== null && v !== '') attrs.push(` ${a}="${escHtml(v)}"`)
   }
   if (tag === 'a' && !el.getAttribute('href')) attrs.length = 0
+  // a hidden span keeps its mark in the form the HTML editor stores and reads
+  const hiddenLabel = el.hasAttribute('data-redaction') ? el.getAttribute('data-label') : null
+  if (hiddenLabel !== null) attrs.push(` data-gx-redact="${escHtml(hiddenLabel || 'private')}"`)
   if (tag === 'img') {
     const w = Math.round(parseFloat(cs.width))
     const h = Math.round(parseFloat(cs.height))

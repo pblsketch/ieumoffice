@@ -23,6 +23,9 @@ export default defineConfig({
       '@genoffice/electron-utils/doc-attach-channels': local(
         '../../packages/electron-utils/src/doc-attach-channels.ts',
       ),
+      '@genoffice/electron-utils/hiding-loss': local(
+        '../../packages/electron-utils/src/hiding-loss.ts',
+      ),
       '@genoffice/electron-utils/headless-export': local(
         '../../packages/electron-utils/src/headless-export.ts',
       ),

@@ -37,8 +37,17 @@ const TAB_TYPE = { left: 0, right: 1, center: 2, decimal: 3 } as const
 const TAB_FILL = { none: 0, solid: 1, dot: 2, dash: 3 } as const
 const VERTICAL_ALIGN = { top: 0, center: 1, bottom: 2 } as const
 
+/** How a hiding mark is written: the memo text for a label, and the memo's author. */
+export interface HidingMemos {
+  text(label: string): string
+  readonly author: string
+}
+
 /** document-wide tables the writer fills lazily: one engine id per font, list and style */
 class WriteContext {
+  /** hiding memos the engine accepted */
+  memos = 0
+
   private readonly fonts = new Map<string, number>()
   private readonly numberings = new Map<string, number>()
   private readonly bullets = new Map<string, number>()
@@ -48,6 +57,7 @@ class WriteContext {
     readonly doc: HwpDocument,
     readonly plan: HwpPlan,
     readonly ledger: LossLedger,
+    readonly hiding: HidingMemos | null,
   ) {
     const list = call<Array<{ id: number; name: string }>>('styles', () => doc.getStyleList())
     this.styles = new Map(list.map((s) => [s.name, s.id]))
@@ -92,8 +102,17 @@ class WriteContext {
   }
 }
 
-export function writePlan(doc: HwpDocument, plan: HwpPlan, ledger: LossLedger): void {
-  const cx = new WriteContext(doc, plan, ledger)
+/**
+ * Writes the plan; answers how many hiding memos the engine accepted. Without
+ * `hiding` a marked span is reported as not carried.
+ */
+export function writePlan(
+  doc: HwpDocument,
+  plan: HwpPlan,
+  ledger: LossLedger,
+  hiding: HidingMemos | null = null,
+): number {
+  const cx = new WriteContext(doc, plan, ledger, hiding)
   writePage(cx)
   writeBody(cx, plan.body)
   for (const [header, story] of [
@@ -104,6 +123,7 @@ export function writePlan(doc: HwpDocument, plan: HwpPlan, ledger: LossLedger): 
     call('header or footer', () => doc.createHeaderFooter(SECTION, header, 0))
     writeStory(cx, opsOf(doc, { kind: 'hf', sec: SECTION, header }), story, null)
   }
+  return cx.memos
 }
 
 function writePage(cx: WriteContext): void {
@@ -171,7 +191,8 @@ function shapingOf(styleId: number, json: string): Shaping {
 }
 
 function writePara(cx: WriteContext, ops: PlaceOps, p: number, para: Para): void {
-  let run: Array<{ text: string; chars: CharShape }> = []
+  let run: Array<{ text: string; chars: CharShape; hide?: string }> = []
+  const hidden: HiddenSpan[] = []
   const flush = () => {
     if (run.length === 0) return
     const pieces = run
@@ -182,6 +203,7 @@ function writePara(cx: WriteContext, ops: PlaceOps, p: number, para: Para): void
     for (const piece of pieces) {
       const end = at + codePoints(piece.text)
       ops.applyChars?.(p, at, end, charJson(cx, piece.chars))
+      if (piece.hide !== undefined && end > at) addHiddenSpan(hidden, at, end, piece.hide)
       at = end
     }
   }
@@ -194,6 +216,50 @@ function writePara(cx: WriteContext, ops: PlaceOps, p: number, para: Para): void
     writeObject(cx, ops, p, inline)
   }
   flush()
+  writeHidingMemos(cx, ops, p, hidden)
+}
+
+interface HiddenSpan {
+  from: number
+  to: number
+  label: string
+}
+
+/** pieces of one label that touch are one span, so one memo */
+function addHiddenSpan(spans: HiddenSpan[], from: number, to: number, label: string): void {
+  const last = spans[spans.length - 1]
+  if (last && last.to === from && last.label === label) last.to = to
+  else spans.push({ from, to, label })
+}
+
+/**
+ * One hiding memo per span, after the paragraph's content is all written so
+ * no later insert moves an anchor; from the last span back, so a memo's own
+ * markers cannot shift the offsets of the spans before it. A place without
+ * memos (a header or footer) or an engine refusal is reported.
+ */
+function writeHidingMemos(
+  cx: WriteContext,
+  ops: PlaceOps,
+  p: number,
+  spans: readonly HiddenSpan[],
+): void {
+  const where = `${placeKey(ops.place)}/p${p}`
+  for (let i = spans.length - 1; i >= 0; i--) {
+    const span = spans[i]
+    const insert = ops.insertMemo
+    const hiding = cx.hiding
+    if (!insert || !hiding) {
+      cx.ledger.note('hiding_mark', `${where}/m${i}`)
+      continue
+    }
+    const json = JSON.stringify({ author: hiding.author, text: hiding.text(span.label) })
+    if (refused(() => insert(p, span.from, span.to, json))) {
+      cx.ledger.note('hiding_mark', `${where}/m${i}`)
+    } else {
+      cx.memos++
+    }
+  }
 }
 
 function writeObject(

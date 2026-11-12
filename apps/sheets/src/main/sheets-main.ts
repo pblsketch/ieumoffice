@@ -42,11 +42,13 @@ import {
 import type {
   IpcMainInvokeEvent,
   MenuItemConstructorOptions,
+  MessageBoxOptions,
   OpenDialogOptions,
   SaveDialogOptions,
   WebContents,
 } from 'electron'
 import { z } from 'zod'
+import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
 import {
   abortOnDestroyed,
   appMenuLabels,
@@ -4622,6 +4624,12 @@ export function registerSheetsIpc(): void {
     const entry = sessionFor(event)
     const request = workbookExportCsvRequestSchema.parse(input)
     const parent = dialogParent(event)
+    // CSV has no defined names: hiding marks are asked about once, first
+    const showHidingLoss = (options: MessageBoxOptions) =>
+      parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options)
+    if (!(await confirmHidingLoss(request.hidingMarks ?? 0, showHidingLoss))) {
+      return { canceled: true }
+    }
     if (request.hasFormulas) {
       // Excel's CSV warning flow: offer keeping the formulas via .xlsx first.
       const options = {
@@ -4743,6 +4751,10 @@ export function registerSheetsIpc(): void {
         sourcePath,
         targetPath,
         confirmLoss: (losses) => confirmOdsLoss(parent, losses),
+        confirmHidingLoss: (count) =>
+          confirmHidingLoss(count, (options) =>
+            parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options),
+          ),
       })
     } catch (error) {
       outcome = {

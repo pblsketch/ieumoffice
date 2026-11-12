@@ -101,6 +101,7 @@ const api: DesktopApi = {
   openDocx: () => ipcRenderer.invoke('docs:open'),
   openDocxPath: (path: string) => ipcRenderer.invoke('docs:open-path', path),
   confirmDocumentReplace: () => ipcRenderer.invoke('docs:confirm-document-replace'),
+  confirmHidingLoss: (count: number) => ipcRenderer.invoke('docs:confirm-hiding-loss', count),
   convertAltChunkHtml: (html: string) => ipcRenderer.invoke('docs:altchunk-html-to-docx', html),
   openDocxDecrypt: (path: string, password: string) =>
     ipcRenderer.invoke('docs:open-decrypt', path, password),

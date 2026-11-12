@@ -23,6 +23,7 @@ import { CliError, EXIT } from '../result'
  * English confirmation names them: a new feature fails the typecheck here.
  */
 export const FEATURE_LABEL: Record<LossFeature, string> = {
+  hiding_mark: 'Hide sensitive info marks (the AI may see those words)',
   comment: 'Comments',
   revision: 'Tracked changes',
   equation: 'Equations',

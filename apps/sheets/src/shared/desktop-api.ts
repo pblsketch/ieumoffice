@@ -2929,6 +2929,9 @@ export const workbookExportCsvRequestSchema = z
     /// The exported sheet carries formulas — CSV keeps their values only, so
     /// the main process offers Save As .xlsx first (Excel's warning flow).
     hasFormulas: z.boolean(),
+    /// Sensitive-info hiding marks (IeumHide_ names) in the workbook. CSV has
+    /// no defined names, so with any the main process asks once first.
+    hidingMarks: z.number().int().min(0).optional(),
     /// Set when the workbook has more sheets than the exported one.
     activeSheetName: z.string().max(255).optional(),
     /// Write straight to this path (from the Save As dialog's CSV pick)
