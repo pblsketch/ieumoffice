@@ -66,5 +66,6 @@ PowerPoint 프레젠테이션(.pptx) 에디터다. 파일을 바이트 그대로
 - 열기·저장 경로를 바꾸면 손대지 않은 내용이 바이트 그대로 남는지 왕복 테스트를 붙인다.
 - 해석기를 바꾸면 탈출 시도를 테스트한다. 생성자·프로토타입 체인으로 호스트 함수에 닿으려는 스크립트, 계산된 속성 이름, 끝나지 않는 루프, 재앙적 정규식이 모두 상한 안에서 거절되어야 한다.
 - 가림을 바꾸면 쪼개진 표식, 지어낸 표식, 가려진 미디어의 주소가 모델용 직렬화에 남지 않는지 테스트한다.
+- "민감정보 찾기"(AI 창 입력란 위의 단추, 후보 목록, 탭의 첫 보내기 알림)는 `ai/use-deck-sensitive.tsx`가 잇는다. 덱의 글은 뒷단 `slides:sensitive-text`(`main/sensitive-text.ts`)가 모델에서 읽어 준다(도형·그룹 안 도형·표 칸·발표자 노트·메모). 확정은 `ai/sensitive-deck.ts`가 만든 `setText`·`setTableCell` 연산을 `applyTxn`으로 보내는 것이고, 모든 실행을 원래 실행에 이어 돌려주며 후보가 든 실행만 잘라 표시와 밑줄을 단다. 노트·메모, 필드·수식에 걸친 후보, 그룹 안 그룹과 그룹 안 표는 가릴 수 없는 후보로 보인다. 공용 부분(`ai/sensitive-find.ts`의 찾기·제외 기억, `ai/use-sensitive-info.tsx`의 단추·목록·첫 전송 알림)은 마크다운·HTML·PPT 편집기에 같은 파일로 있다. 고치면 세 곳을 함께 고친다. 제외 기억은 뒷단 `main/sensitive-exclusions.ts`가 앱 데이터 폴더(`sensitive-info/<편집기>-exclusions.json`, 열쇠는 `<편집기>-exclusion-key`)에 문서 경로마다 종류와 해시만 둔다.
 - AI 배선(`tests/ai-stream.test.ts`, `tests/ai-subscription.test.ts`): 연결 없는 요청의 거절과 원인 필드, 가용성 보고가 오기 전의 도구 목록. `claude-code`·`codex`로 가는 테스트는 `AiStreamRun`의 `stream` 주입 지점이나 mock을 써서 실제 프로그램이 뜨지 않게 한다.
 - 캔버스 그리기와 글꼴 측정의 실제 결과는 단위 테스트로 다 확인되지 않는다. 빌드한 앱에서 확인한다.

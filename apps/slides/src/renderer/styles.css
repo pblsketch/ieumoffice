@@ -2926,6 +2926,20 @@ body.vib .slide-list {
   color: var(--slides-ai-error);
 }
 
+/* "Find sensitive info": the button above the composer, then the list or the first-send alert */
+.ai-sens-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.ai-sens-bar + .gs-sens-list,
+.ai-sens-bar + .gs-sens-alert {
+  max-height: 46vh;
+  margin-bottom: 7px;
+  overflow-y: auto;
+}
+
 /* ── AI template picker: gallery and selection display ─────────────────── */
 /* Chrome only; a card's cover is slide content drawn on its own canvas and keeps its colors */
 

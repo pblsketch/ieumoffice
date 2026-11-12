@@ -61,6 +61,10 @@ export const MARKDOWN_CHANNELS = {
   exportDocx: 'markdown:export-docx',
   exportOdt: 'markdown:export-odt',
   exportHwp: 'markdown:export-hwp',
+  /** invoke(docPath) → the hash key and the excluded sensitive-info candidates of that document */
+  sensitiveExclusionsGet: 'markdown:sensitive-exclusions-get',
+  /** invoke(docPath, { kind, hash }) → remember one excluded candidate */
+  sensitiveExclusionsAdd: 'markdown:sensitive-exclusions-add',
   exportPdf: 'markdown:export-pdf',
   printPreview: 'markdown:print-preview',
   printDocument: 'markdown:print-document',
@@ -600,6 +604,13 @@ export interface MarkdownApi {
   exportOdt(request: ExportOdtRequest): Promise<ExportResult>
   /** save dialog (.hwp / .hwpx) → docx → Hangul → confirmation when something is lost → write */
   exportHwp(request: ExportHwpRequest): Promise<ExportResult>
+  /** where "exclude" in the sensitive-info list is remembered, per document path (app data, never the file) */
+  sensitiveExclusions: {
+    get(
+      docPath: string,
+    ): Promise<{ key: string; entries: Array<{ kind: string; hash: string }> } | null>
+    add(docPath: string, entry: { kind: string; hash: string }): Promise<boolean>
+  }
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   /** the PDF the print preview shows; the same options the PDF export uses */
   renderPrintPreview(request: MarkdownPrintPreviewRequest): Promise<MarkdownPrintPreviewResult>

@@ -1,15 +1,15 @@
 import type { zh } from './zh'
 
 export const en = {
-  redactMenuLabel: 'Hide the selection from AI',
+  redactMenuLabel: 'Hide sensitive info',
   redactDialogDesc:
-    'The selection stays in the document and in the file; the model sees the placeholder below instead. Name it so the model knows what it stands for.',
+    'The selected part isn’t sent to the AI. It stays in the file as it is. The AI sees only the label below. Name it so the AI knows what it stands for.',
   redactDialogScope:
-    "Hiding covers this app's AI. The CLI, MCP tools and headless export read the file directly, and they still see these words.",
-  redactDialogPlaceholder: 'Placeholder name, e.g. client phone',
+    'This applies wherever the document goes to an AI. It does not reach a program in agent mode that reads the file straight from the disk.',
+  redactDialogPlaceholder: 'Label, e.g. student name',
   redactCancel: 'Cancel',
   redactInsert: 'Hide',
-  redactEnable: 'Right-click a selection to hide it from the model.',
+  redactEnable: 'Hide sensitive info: right-click a selection to keep it from the AI.',
 
   appPhPromptTitle: 'Click to add title',
   appPhPromptSubtitle: 'Click to add subtitle',

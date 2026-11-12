@@ -29,12 +29,12 @@ export const vi = {
   mathPiecewise: 'Hàm từng phần',
   mathBinomial: 'Hệ số nhị thức',
 
-  redactMenuLabel: 'Ẩn phần đã chọn khỏi AI',
+  redactMenuLabel: 'Ẩn thông tin nhạy cảm',
   redactDialogDesc:
-    'Văn bản vẫn còn trong tài liệu và tệp; mô hình chỉ thấy placeholder bên dưới. Đặt tên để mô hình biết nó đại diện cho điều gì.',
+    'Phần đã chọn không được gửi cho AI. Trong tệp, nó vẫn giữ nguyên. AI chỉ thấy nhãn bên dưới. Hãy đặt tên để AI biết nó đại diện cho gì.',
   redactDialogScope:
-    'Điều này chỉ áp dụng cho AI trong ứng dụng này. CLI, các công cụ MCP và bản xuất không có cửa sổ đều đọc thẳng tệp, nên chúng vẫn thấy những từ này.',
-  redactDialogPlaceholder: 'Tên placeholder, ví dụ: số điện thoại khách hàng',
+    'Áp dụng cho mọi đường tài liệu đến với AI, trừ chương trình ở chế độ tác tử đọc tệp trực tiếp từ ổ đĩa.',
+  redactDialogPlaceholder: 'Nhãn, ví dụ: tên học sinh',
   redactCancel: 'Hủy',
   redactInsert: 'Ẩn',
 

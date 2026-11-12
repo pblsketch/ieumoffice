@@ -399,6 +399,11 @@ const api: SlidesApi = {
   setNotes: (op) => ipcRenderer.invoke('slides:set-notes', op),
   getComments: (slideIndex: number) => ipcRenderer.invoke('slides:get-comments', slideIndex),
   getAllComments: () => ipcRenderer.invoke('slides:get-all-comments'),
+  sensitiveText: () => ipcRenderer.invoke('slides:sensitive-text'),
+  sensitiveExclusions: {
+    get: (docPath) => ipcRenderer.invoke('slides:sensitive-exclusions-get', docPath),
+    add: (docPath, entry) => ipcRenderer.invoke('slides:sensitive-exclusions-add', docPath, entry),
+  },
   addComment: (op) => ipcRenderer.invoke('slides:add-comment', op),
   deleteComment: (op) => ipcRenderer.invoke('slides:delete-comment', op),
   nativeClipboard: (op: 'cut' | 'copy' | 'paste') =>

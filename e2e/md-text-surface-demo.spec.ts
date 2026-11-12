@@ -101,7 +101,7 @@ test.describe('the same bytes under three names', () => {
       await page.mouse.click(at!.x, at!.y)
       await page.mouse.dblclick(at!.x, at!.y)
       await page.mouse.click(at!.x, at!.y, { button: 'right' })
-      await page.getByText('Hide the selection from AI', { exact: true }).click({ timeout: 15_000 })
+      await page.getByText('Hide sensitive info', { exact: true }).click({ timeout: 15_000 })
       const dialog = page.locator('.redact-dialog')
       await expect(dialog).toBeVisible()
       await dialog.locator('input').fill('customer phone')

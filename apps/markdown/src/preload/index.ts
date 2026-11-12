@@ -182,6 +182,11 @@ const api: MarkdownApi = {
   exportDocx: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.exportDocx, request),
   exportOdt: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.exportOdt, request),
   exportHwp: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.exportHwp, request),
+  sensitiveExclusions: {
+    get: (docPath) => ipcRenderer.invoke(MARKDOWN_CHANNELS.sensitiveExclusionsGet, docPath),
+    add: (docPath, entry) =>
+      ipcRenderer.invoke(MARKDOWN_CHANNELS.sensitiveExclusionsAdd, docPath, entry),
+  },
   exportPdf: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.exportPdf, request),
   renderPrintPreview: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.printPreview, request),
   printDocument: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.printDocument, request),

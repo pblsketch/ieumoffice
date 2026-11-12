@@ -111,6 +111,7 @@ import type {
   SaveMode,
 } from '../shared/ipc'
 import { MAX_PRINT_HTML_CHARS, normalizeMarkdownPrintOptions } from '../shared/print-options'
+import { registerMarkdownSensitiveIpc } from './sensitive-ipc'
 
 const tDlg = createI18n({
   zh: {
@@ -1170,6 +1171,7 @@ function registerMarkdownIpc(): void {
   ipcRegistered = true
 
   registerImageProtocol()
+  registerMarkdownSensitiveIpc()
 
   ipcMain.handle(MARKDOWN_CHANNELS.consumePending, (e) => {
     const pending = openPathByWc.get(e.sender.id) ?? null

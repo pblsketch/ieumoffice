@@ -91,6 +91,7 @@ import {
   type ResolveFailure,
 } from './edit-queue'
 import { createFilesSkill } from './files-skill'
+import { useDeckSensitiveInfo } from './use-deck-sensitive'
 import { useGenerateHandoff } from './generate-handoff'
 import { createElectronTransport, type TransportHooks } from './transport'
 import {
@@ -743,6 +744,26 @@ export function AiPanel({
   const liveSettings = sendGate.settings ?? settings
   const settingsRef = useRef(liveSettings)
   settingsRef.current = liveSettings
+
+  /** "Find sensitive info" and the alert before this tab's first send */
+  const filePathRef = useRef(currentFilePath)
+  filePathRef.current = currentFilePath
+  /** the attachments of the request the first-send check is counting */
+  const sensitiveAttachmentsRef = useRef<readonly AttachmentMeta[]>([])
+  /** one send let out without the check, after the check itself failed */
+  const sensitiveBypassRef = useRef(false)
+  const sensitiveAskingRef = useRef(false)
+  const sensitive = useDeckSensitiveInfo({
+    lang,
+    t,
+    localAi: localContextLimit(liveSettings) !== undefined,
+    filePath: () => filePathRef.current,
+    applyDeck: (all, goTo) => applyDeckRef.current(all, goTo),
+    goTo: (slide) => applyDeckRef.current(slidesRef.current, slide),
+    requestAttachments: () => sensitiveAttachmentsRef.current,
+  })
+  const sensitiveRef = useRef(sensitive)
+  sensitiveRef.current = sensitive
 
   /** Which image/media tools have a route, as the main process reports it (re-read whenever
       the settings or the connections change, and on window focus) */
@@ -2024,6 +2045,32 @@ export function AiPanel({
     // otherwise two sets of bubbles get pushed and the earlier assistant placeholder stays at "thinking" forever.
     // qcRunningRef: the post-generation QC pass edits the deck outside the main loop — no concurrent runs
     if (!instruction || !loop || loop.busy || runStartingRef.current || qcRunningRef.current) return
+    // The tab's first send: what looks like sensitive info in the deck and in this request's
+    // attachments is counted once, and the person chooses before anything goes out. "Review"
+    // sends nothing and leaves the composer as it is.
+    if (!sensitiveRef.current.settled() && !sensitiveBypassRef.current) {
+      if (sensitiveAskingRef.current) return
+      sensitiveAskingRef.current = true
+      sensitiveAttachmentsRef.current = opts?.attachments ?? attachmentsRef.current
+      const again = () => runWith(instruction, displayText, opts, skillUse)
+      void sensitiveRef.current
+        .beforeSend()
+        .then((answer) => {
+          sensitiveAskingRef.current = false
+          if (answer === 'send') again()
+        })
+        .catch(() => {
+          // the count itself failed: the alert is advice, the hiding is enforced on its own
+          sensitiveAskingRef.current = false
+          sensitiveBypassRef.current = true
+          try {
+            again()
+          } finally {
+            sensitiveBypassRef.current = false
+          }
+        })
+      return
+    }
     // Nothing can run yet: the composer shows the connect prompt or the first-connection
     // notice instead of an error, and keeps its text. A request made in front of the notice
     // (or while the status check is still running) is held and starts once the way is clear;
@@ -2876,6 +2923,8 @@ export function AiPanel({
             />
           )}
           {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
+          <div className="ai-sens-bar">{sensitive.button}</div>
+          {sensitive.panel}
           {sendGate.connectChoice && (
             <AiConnectPrompt
               choice={sendGate.connectChoice}
