@@ -291,6 +291,8 @@ interface ExcelShellProps {
   readonly historicChat?: readonly AiChatMessage[]
   /** the project folder parts of the AI panel (chip, chat menu, notices) */
   readonly aiProject?: AiPanelProject | undefined
+  /** sensitive-info hiding: the find button, candidate list and send alert of the AI panel */
+  readonly aiSensitive?: ReactNode
   /** the skill card for a key a chat message carries */
   readonly renderSkillCard?: ((key: string) => ReactNode) | undefined
   /** the template flow's lines and its preview card, after the chat's messages */
@@ -541,6 +543,7 @@ export function ExcelShell({
   chat,
   historicChat,
   aiProject,
+  aiSensitive,
   renderSkillCard,
   skillNotes,
   onTemplateSkill,
@@ -1163,6 +1166,7 @@ export function ExcelShell({
           onExpand={aiDock.onExpand}
           onCollapse={() => setIsCopilotOpen(false)}
           project={aiProject}
+          sensitive={aiSensitive}
         />
         <div className="sheet-main">
           <section className="workbook-area">

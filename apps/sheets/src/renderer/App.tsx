@@ -178,7 +178,7 @@ import type {
   AiSubscriptionProviderId,
   AiSubscriptionUsage,
 } from '@genoffice/ai-provider/browser'
-import { localModelCapabilities } from '@genoffice/ai-provider/browser'
+import { localContextLimit, localModelCapabilities } from '@genoffice/ai-provider/browser'
 import { type WorkbookOperation } from '@genoffice/xlsx-gateway/domain/workbook-dsl'
 import {
   columnLabel,
@@ -867,26 +867,6 @@ export function App({
   /// to fully load the workbook first.
   const [fullLoadPrompt, setFullLoadPrompt] = useState<'ask' | 'tooLarge' | null>(null)
   const [message, setMessage] = useState(t('appReadyInitial'))
-  // sensitive-info hiding: the menu entries, the label dialog and the candidate list
-  const sheetHiding = useSheetHiding({
-    univerRef,
-    lang: getLang(),
-    setMessage,
-    readColumn: async (sheetId, column) => {
-      const rows = {
-        startRow: 0,
-        endRow: HEADER_SCAN_ROWS - 1,
-        startColumn: column,
-        endColumn: column,
-      }
-      await sheetsSkillDeps().ensureRangeLoaded?.(rows, sheetId)
-      const addresses = Array.from({ length: HEADER_SCAN_ROWS }, (_, row) =>
-        formatAddress(row, column),
-      )
-      const cells = readCellsImpl(readContext(), addresses, sheetId)
-      return addresses.map((address) => cells[address]?.rawValue ?? cells[address]?.value)
-    },
-  })
   const sheetTabActions = useMemo(
     () => createSheetTabActions({ univerRef, lazyWorkbookRef, notify: setMessage }),
     [],
@@ -1326,6 +1306,30 @@ export function App({
     },
   })
   aiSettingsRef.current = sendGate.settings
+  // sensitive-info hiding: the menu entries, the label dialog and the candidate list
+  const sheetHiding = useSheetHiding({
+    univerRef,
+    lang: getLang(),
+    setMessage,
+    readColumn: async (sheetId, column) => {
+      const rows = {
+        startRow: 0,
+        endRow: HEADER_SCAN_ROWS - 1,
+        startColumn: column,
+        endColumn: column,
+      }
+      await sheetsSkillDeps().ensureRangeLoaded?.(rows, sheetId)
+      const addresses = Array.from({ length: HEADER_SCAN_ROWS }, (_, row) =>
+        formatAddress(row, column),
+      )
+      const cells = readCellsImpl(readContext(), addresses, sheetId)
+      return addresses.map((address) => cells[address]?.rawValue ?? cells[address]?.value)
+    },
+    readContext: () => readContext(),
+    sessionId: () => lazyWorkbookRef.current?.file.sessionId ?? null,
+    // the alert says "the AI on this PC" for a local provider
+    localAi: sendGate.settings ? localContextLimit(sendGate.settings) !== undefined : false,
+  })
   /** whether the main process can route generate_image right now (refreshed
    *  with the settings, the connection, and on window focus) */
   const imageGenRef = useRef(false)
@@ -3822,6 +3826,8 @@ export function App({
     givenSkillUse: SkillUse = NO_SKILL_USE,
     /** the request was admitted (now, or later when a held request starts) */
     onAdmitted?: () => void,
+    /** the first-send check of sensitive info already let this request through */
+    sensitiveChecked = false,
   ): void {
     const instruction = (overrideInstruction ?? prompt).trim()
     if (!instruction || aiBusy) return
@@ -3829,6 +3835,26 @@ export function App({
     const hiding = sheetHidingState(readContext())
     if (!hiding.ok) {
       setMessage(t('appSensitiveBroken', { names: hiding.names.join(', ') }))
+      return
+    }
+    // the tab's first send counts what looks like sensitive info; Review sends nothing
+    if (!sensitiveChecked) {
+      const resend = () =>
+        handleSend(
+          overrideInstruction,
+          overrideAttachments,
+          retryIndex,
+          givenSkillUse,
+          onAdmitted,
+          true,
+        )
+      void sheetHiding.beforeSend(overrideAttachments ?? attachmentsRef.current).then(
+        (answer) => {
+          if (answer === 'send') resend()
+        },
+        // a count that fails does not hold the request: hiding itself still applies
+        resend,
+      )
       return
     }
     // a retried message that carried skills sends the same skill text again
@@ -5657,6 +5683,7 @@ export function App({
         chat={chat}
         historicChat={historicChat}
         aiProject={project}
+        aiSensitive={sheetHiding.panel}
         renderSkillCard={skillCards.render}
         skillNotes={skillTemplates.notes}
         onTemplateSkill={(request) => skillTemplatesRef.current.onTemplateSkill(request)}

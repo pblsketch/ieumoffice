@@ -12,6 +12,7 @@ import {
   SAVE_EDITS_CHUNK_JSON_MAX,
   SAVE_EDITS_CHUNK_MAX,
 } from './ipc-channels'
+import type { SensitiveKind } from '@genoffice/agent-core/sensitive-kinds'
 import { ADDABLE_SHAPE_TYPES } from '@genoffice/xlsx-gateway/shared/shape-types'
 import {
   PIVOT_AGGREGATIONS,
@@ -3200,6 +3201,16 @@ export interface DesktopApi {
   /// Export the whole workbook as an ODS copy; the session stays .xlsx.
   exportOds(request: WorkbookExportOdsRequest): Promise<WorkbookExportOdsResult>
   /// First Save of a CSV session: native "keep this format?" dialog.
+  /** find sensitive info: whether each candidate was dismissed before in this workbook */
+  sensitiveExclusionsFilter(
+    sessionId: string,
+    items: readonly { kind: SensitiveKind; value: string }[],
+  ): Promise<boolean[]>
+  /** find sensitive info: remember a dismissed candidate (the main process keeps a hash and the kind) */
+  sensitiveExclusionAdd(
+    sessionId: string,
+    item: { kind: SensitiveKind; value: string },
+  ): Promise<void>
   /** `hidingMarks`: sensitive-info hiding marks a CSV save would drop; asked about first */
   confirmCsvSave(hidingMarks?: number): Promise<'csv' | 'xlsx' | 'cancel'>
   /// AI create_document: write a new standalone file into the default save

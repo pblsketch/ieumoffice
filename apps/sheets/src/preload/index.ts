@@ -536,6 +536,19 @@ const desktopApi: DesktopApi = {
     }
     return result as { canceled: true }
   },
+  async sensitiveExclusionsFilter(sessionId, items) {
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.sensitiveExclusionsFilter, {
+      sessionId,
+      items,
+    })
+    if (!Array.isArray(result) || result.some((value) => typeof value !== 'boolean')) {
+      throw new Error('Invalid exclusion response.')
+    }
+    return result as boolean[]
+  },
+  async sensitiveExclusionAdd(sessionId, item) {
+    await ipcRenderer.invoke(IPC_CHANNELS.sensitiveExclusionAdd, { sessionId, item })
+  },
   async confirmCsvSave(hidingMarks?: number) {
     const result: unknown = await ipcRenderer.invoke(
       IPC_CHANNELS.csvSaveConfirm,

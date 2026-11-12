@@ -49,6 +49,7 @@ import type {
 } from 'electron'
 import { z } from 'zod'
 import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
+import { createSensitiveExclusionStore, exclusionItemSchema } from './sensitive-exclusions'
 import {
   abortOnDestroyed,
   appMenuLabels,
@@ -3991,9 +3992,44 @@ export async function requestSheetsClose(
 
 let coreIpcRegistered = false
 
+/** The workbook path a session's exclusion memory is kept under; null for a workbook with no file yet. */
+function exclusionDocPath(session: SessionInfo): string | null {
+  if (session.csvSourcePath) return session.csvSourcePath
+  if (session.odsSourcePath) return session.odsSourcePath
+  if (session.restoreTarget) return session.restoreTarget
+  if (session.recoveryOriginalPath) return session.recoveryOriginalPath
+  if (session.unsavedNew || session.importTempDir) return null
+  return session.path
+}
+
+const sensitiveExclusions = createSensitiveExclusionStore(() => app.getPath('userData'))
+const exclusionsFilterSchema = z
+  .object({ sessionId: z.string().uuid(), items: z.array(exclusionItemSchema).max(100_000) })
+  .strict()
+const exclusionAddSchema = z
+  .object({ sessionId: z.string().uuid(), item: exclusionItemSchema })
+  .strict()
+
 export function registerSheetsIpc(): void {
   if (coreIpcRegistered) return
   coreIpcRegistered = true
+
+  ipcMain.handle(IPC_CHANNELS.sensitiveExclusionsFilter, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = exclusionsFilterSchema.parse(input)
+    const session = entry.sessions.get(request.sessionId)
+    const docPath = session ? exclusionDocPath(session) : null
+    if (!docPath) return request.items.map(() => false)
+    return sensitiveExclusions.excluded(docPath, request.items)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sensitiveExclusionAdd, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = exclusionAddSchema.parse(input)
+    const session = entry.sessions.get(request.sessionId)
+    const docPath = session ? exclusionDocPath(session) : null
+    if (docPath) await sensitiveExclusions.add(docPath, request.item)
+  })
 
   ipcMain.handle(IPC_CHANNELS.userDisplayName, (event): string => {
     sessionFor(event)

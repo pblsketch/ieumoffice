@@ -103,6 +103,9 @@ export const IPC_CHANNELS = {
   exportCsv: 'workbook:export-csv',
   exportOds: 'workbook:export-ods',
   csvSaveConfirm: 'workbook:csv-save-confirm',
+  /** find sensitive info: which candidates were dismissed before / remember one (hash and kind only) */
+  sensitiveExclusionsFilter: 'sheets:sensitive-exclusions-filter',
+  sensitiveExclusionAdd: 'sheets:sensitive-exclusion-add',
   /** AI create_document: new standalone file in the default folder (no dialog) */
   createDocument: 'workbook:create-document',
   openExternal: 'shell:open-external',
