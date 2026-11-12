@@ -143,4 +143,58 @@ describe('in-app MCP sheet reads and edits with hidden cells', () => {
     expect(reply.error).toMatch(/^hidden_content: /)
     expect(JSON.stringify(reply)).not.toContain('Kim')
   })
+
+  it('a read without addresses drops header names of a hidden first row', async () => {
+    const header: SheetHidingMark[] = [
+      {
+        name: 'IeumHide_이름',
+        label: '이름',
+        areas: [{ sheetId: 's1', startRow: 0, endRow: 0, startColumn: 1, endColumn: 1 }],
+      },
+    ]
+    const headerState = (): SheetHidingState => ({
+      ok: true,
+      view: createSheetHidingView(header, createValueNumbering(), [], new Set(), {
+        sheets: SHEETS,
+      }),
+    })
+    const context = () => ({ sheetId: 's1', sheetName: 'Roster', selectionColumns: ['Kim Minji'] })
+    const reply = await send(
+      handlers({
+        context,
+        hiding: { state: headerState, prepare: async () => {}, readSheetFeatures: () => '' },
+      }),
+      'read_sheet',
+      {},
+    )
+    expect(reply.ok).toBe(true)
+    expect(JSON.stringify(reply)).not.toContain('Kim Minji')
+    expect(reply.result).toMatchObject({ context: { sheetId: 's1', sheetName: 'Roster' } })
+  })
+
+  it('a read without addresses keeps header names the hiding does not touch', async () => {
+    const context = () => ({ sheetId: 's1', selectionColumns: ['name'] })
+    const reply = await send(handlers({ context }), 'read_sheet', {})
+    expect(reply.ok).toBe(true)
+    expect(reply.result).toMatchObject({ context: { selectionColumns: ['name'] } })
+  })
+
+  it('a read without addresses answers nothing when the marks cannot be resolved', async () => {
+    const context = () => ({ sheetId: 's1', selectionColumns: ['Kim Minji'] })
+    const reply = await send(
+      handlers({
+        context,
+        hiding: {
+          state: () => ({ ok: false, names: ['IeumHide_x'] }),
+          prepare: async () => {},
+          readSheetFeatures: () => '',
+        },
+      }),
+      'read_sheet',
+      {},
+    )
+    expect(reply.ok).toBe(false)
+    expect(reply.error).toMatch(/^hidden_content: /)
+    expect(JSON.stringify(reply)).not.toContain('Kim')
+  })
 })

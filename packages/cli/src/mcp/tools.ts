@@ -53,6 +53,12 @@ export interface ToolSpec {
   openWorld?: boolean
   /** needs the GenOffice window in front of the client, so not registered in http mode */
   localOnly?: boolean
+  /**
+   * The parameter naming a source document this tool builds a new file from
+   * (convert, print, fill a template); MCP refuses such a source while it hides
+   * anything (hiding-gate.ts).
+   */
+  source?: 'file' | 'from'
 }
 
 export interface ResolvedParam extends Required<Pick<ParamSpec, 'key' | 'option' | 'kind'>> {
@@ -100,6 +106,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: 'convert',
     command: 'convert',
+    source: 'file',
     description:
       'Convert a document to another format with the GenOffice engines (pdf, docx, odt, xlsx, pptx, md, html, csv, epub, hwp; the `to` description lists the routes). Targets that need layout (to pdf, docx to html, html to docx, diagram to pdf/png/svg) start a hidden GenOffice process for 1-6 s. pdf to md/epub reflows the text (pictures in assets/ beside the .md) and uses pages read by pdf_ai_read. A diagram makes one PDF, or a PNG/SVG per page (<name>-p<n>, out is a folder) unless page picks one. Output defaults to the input name with the new extension.',
     positionals: [{ key: 'file', description: 'path of the source document' }],
@@ -119,6 +126,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: 'create_docx',
     command: 'create',
+    source: 'from',
     description:
       'Create a new Word document from Markdown (GFM; headings, lists, tables, images by relative path, $formulas$) or from a restricted-HTML fragment (tags per guide docs). Give exactly one of markdown, html or from. Edits to an existing .docx go through docs_apply instead.',
     fixed: ['--type', 'docx'],
@@ -143,6 +151,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: 'create_xlsx',
     command: 'create',
+    source: 'from',
     description:
       'Create a new workbook from data: a 2-D array of cell values, { "sheets": [{ "name", "rows" }] } for several sheets, or a .csv/.json file. Strings starting with "=" are formulas. Give exactly one of data or from. Formatting, charts and more sheets afterwards: sheet_apply.',
     fixed: ['--type', 'xlsx'],
@@ -164,6 +173,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: 'create_pdf',
     command: 'create',
+    source: 'from',
     description:
       'Print a document (md, html, docx, xlsx, pptx) to a new PDF with the GenOffice renderer, in a hidden GenOffice process.',
     fixed: ['--type', 'pdf'],
@@ -277,6 +287,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: 'merge',
     command: 'merge',
+    source: 'file',
     description:
       'Fill {{key}} placeholders in a .docx, .pptx or .xlsx template with values from a JSON object and write the result to out (nested objects flatten to dotted keys; whitespace inside the braces is tolerated; a whole-cell placeholder in xlsx takes the value type). The result lists used_keys, unused_keys and unresolved_placeholders with their location (block / slide + element / sheet + cell) and reason (no_key; split_placeholder when the template stores the braces across differently formatted runs; unreachable_nested inside a nested pptx group); strict makes an unresolved placeholder an error. ' +
       GUI_OPEN,

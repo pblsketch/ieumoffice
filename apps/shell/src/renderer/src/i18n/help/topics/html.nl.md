@@ -8,7 +8,7 @@ De HTML-editor opent .html / .htm met twee modi: **voorbeeld** (de weergegeven p
 - **Bronmodus**: de HTML bewerken; ctrl+F zoeken, Alles vervangen slaat de herschreven markup op.
 - **Opslaan**: bytegetrouw (BOM/CRLF/afsluitende regel blijven behouden); opslaan zonder wijzigingen schrijft niets opnieuw.
 - **Zoom**: ctrl+scrollwiel / knijpen schaalt het voorbeeld; ctrl+Z in het voorbeeld maakt de laatste bewerking ongedaan.
-- **Gevoelige gegevens verbergen**: in bronmodus rechtsklikt u op een selectie — elementinhoud, attribuutwaarde, script-strings — en het model ziet een placeholder; de gerenderde pagina verandert nooit (details in het hoofdstuk over het AI-paneel).
+- **Gevoelige gegevens verbergen**: selecteer in bronmodus wat u wilt verbergen (elementinhoud, attribuutwaarden, script-strings), klik er met de rechtermuisknop op en kies **Gevoelige gegevens verbergen**, typ dan een label en klik op **Verbergen**. Het model ziet op die plek een placeholder; de gerenderde pagina verandert nooit (details in het hoofdstuk over het AI-paneel).
 
 ## De werkbalk
 

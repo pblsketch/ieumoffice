@@ -69,6 +69,7 @@ import {
   hiddenRangesOf,
   hidingEntriesOf,
   hidingLabelOf,
+  hidingSignature,
   hidingSnapshot,
   rangesByBox,
   touchesHidden,
@@ -5475,6 +5476,7 @@ export const agentPlugin = {
     // the text is read for every request; it only changes when the document does
     let text = null
     // the same text as an AI call reads it (hidden spans as their labels), reset with `text`
+    // kept with the hiding it was read under: a memo can come or go without an edit event
     let aiText = null
     // the pictures of the document, in reading order, as the last listPictures read them
     let pictures = null
@@ -6745,8 +6747,11 @@ export const agentPlugin = {
       readText: guarded(() => {
         if (hidingScope) {
           const scope = hidingScope
-          aiText ??= host.read((doc) => textOf(doc, scope))
-          return aiText
+          const signature = hidingSignature(scope.ranges)
+          if (aiText?.signature !== signature) {
+            aiText = { signature, text: host.read((doc) => textOf(doc, scope)) }
+          }
+          return aiText.text
         }
         text ??= host.read(textOf)
         return text

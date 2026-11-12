@@ -185,13 +185,17 @@ async function sheetDependents(
   return out
 }
 
-/** The hiding of an .xlsx / .xlsm; null when it has no mark. Throws (closed) on a mark it cannot resolve. */
+/**
+ * The hiding of an .xlsx / .xlsm; null when it has no mark. Throws (closed) on
+ * a mark it cannot resolve, and on a package it cannot open: the workbook reader
+ * may still open what this one cannot, so its marks are not taken to be none.
+ */
 export async function workbookHidingOf(bytes: Uint8Array): Promise<WorkbookHiding | null> {
   let zip: JSZip
   try {
     zip = await JSZip.loadAsync(bytes)
-  } catch {
-    return null
+  } catch (err) {
+    throw unreadableHiding(err)
   }
   const workbookPath = 'xl/workbook.xml'
   const workbook = await text(zip, workbookPath)

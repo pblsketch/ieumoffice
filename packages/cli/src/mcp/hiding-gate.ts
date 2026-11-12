@@ -12,21 +12,25 @@ import { toJsonError } from '../result'
 import type { McpContext, Outcome } from './run'
 
 /**
- * MCP `convert` does not convert a document that hides anything (민감정보 가리기).
+ * MCP tools that make a new file from a source document (`convert`, and the
+ * same through `create_pdf`, `create_docx` / `create_xlsx` with `from`, and
+ * `merge`'s template; `ToolSpec.source` names the parameter) do not use a
+ * source that hides anything (민감정보 가리기).
  *
- * A client that only has MCP tools reads a converted copy with the read tools
- * of the target format, and a target without a place for the mark would hand
+ * A client that only has MCP tools reads the new file with the read tools of
+ * its format, and a format or a writer without a place for the mark would hand
  * it the hidden words: that is the one way round the hiding such a client has.
  * So a source with a mark, or one whose marks cannot be looked into
  * (`unknown`), is refused with `hidden_content`, `detail.reason: "convert"`.
- * The terminal's `convert` is not refused: a person and their scripts convert
+ * The terminal's commands are not refused: a person and their scripts convert
  * their own files, and an agent with a shell can read the file directly anyway.
  */
-export async function convertRefusal(
-  args: Record<string, unknown>,
+export async function sourceRefusal(
+  command: string,
+  source: unknown,
   ctx: McpContext,
 ): Promise<Outcome | null> {
-  const file = typeof args.file === 'string' ? args.file : ''
+  const file = typeof source === 'string' ? source : ''
   if (!file) return null
   const path = isAbsolute(file) ? file : resolve(ctx.cwd, file)
   // a missing or unreadable file is the command's own error to report
@@ -37,7 +41,7 @@ export async function convertRefusal(
   const marks = await hidingMarksOf(path, bytes)
   if (marks === 'none') return null
   const labels = marks === 'marked' ? await hiddenLabelsOf(path, bytes) : []
-  return { error: toJsonError('convert', hiddenContentError('convert', labels)) }
+  return { error: toJsonError(command, hiddenContentError('convert', labels)) }
 }
 
 const clean = (raw: string): string => sanitizeLabel(decodeEntities(raw)) || 'private'

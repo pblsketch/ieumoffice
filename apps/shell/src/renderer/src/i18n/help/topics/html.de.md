@@ -8,7 +8,7 @@ Der HTML-Editor öffnet .html / .htm mit zwei Modi: **Vorschau** (die gerenderte
 - **Quelltextmodus**: HTML bearbeiten; Strg+F zum Suchen, „Alle ersetzen“ speichert das neu geschriebene Markup.
 - **Speichern**: bytegetreu (BOM/CRLF/abschließender Zeilenumbruch bleiben erhalten); Speichern ohne Änderung schreibt nicht neu.
 - **Zoom**: Strg+Radrad / Ziehen skaliert die Vorschau; Strg+Z in der Vorschau macht die letzte Änderung rückgängig.
-- **Sensible Daten ausblenden**: im Quelltextmodus mit der rechten Maustaste auf eine Auswahl klicken — Elementinhalte, Attributwerte, Skript-Strings — und das Modell sieht einen Platzhalter; die gerenderte Seite ändert sich nie (Details im KI-Panel-Kapitel).
+- **Sensible Daten ausblenden**: Markieren Sie im Quelltextmodus, was ausgeblendet werden soll (Elementinhalte, Attributwerte, Skript-Strings), klicken Sie mit der rechten Maustaste darauf und wählen Sie **Sensible Daten ausblenden**, geben Sie dann eine Bezeichnung ein und klicken Sie auf **Ausblenden**. Das Modell sieht an dieser Stelle einen Platzhalter; die gerenderte Seite ändert sich nie (Details im KI-Panel-Kapitel).
 
 ## Die Werkzeugleiste
 
