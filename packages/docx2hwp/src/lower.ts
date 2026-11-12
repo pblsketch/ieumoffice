@@ -25,6 +25,7 @@ import {
   type TableModel,
   type TabStop as WordTabStop,
 } from '@genoffice/docx-engine'
+import { REDACT_EL } from '@genoffice/agent-core/redact-range'
 import type { LossFeature, LossLedger } from './losses'
 import type {
   Align,
@@ -85,6 +86,8 @@ interface Cx {
   /** body width in twips: the base of percent widths */
   readonly bodyTwips: number
   readonly numberings: Map<string, NumberingPlan>
+  /** the label of every hiding-marked run lowering has met, in order */
+  readonly hidingSeen: string[]
 }
 
 export function lowerDocument(parsed: ParsedDoc, ledger: LossLedger): HwpPlan {
@@ -104,6 +107,7 @@ export function lowerDocument(parsed: ParsedDoc, ledger: LossLedger): HwpPlan {
     ledger,
     bodyTwips: Math.max(1, settings.pageWidth - settings.marginLeft - settings.marginRight),
     numberings: new Map(),
+    hidingSeen: [],
   }
   noteDocumentLosses(cx)
   return {
@@ -167,6 +171,7 @@ function lowerBody(cx: Cx, blocks: readonly WordBlock[]): Story {
     const where = `b${i}`
     noteBlockLosses(cx, block, where)
     if (block.blockRevision?.kind === 'del' || block.moveRevision === 'from') return
+    const seenBefore = cx.hidingSeen.length
     for (const lowered of BLOCK_LOWERINGS[block.type](cx, block, where)) {
       out.push(lowered)
       styleIds.push(block.styleId)
@@ -174,6 +179,7 @@ function lowerBody(cx: Cx, blocks: readonly WordBlock[]): Story {
         (block.format?.effective?.contextualSpacing ?? block.format?.contextualSpacing) === true,
       )
     }
+    noteUnseenHidingMarks(cx, block, where, cx.hidingSeen.slice(seenBefore))
   })
   return withContextualSpacing(out, styleIds, contextual)
 }
@@ -201,6 +207,61 @@ function withContextualSpacing(
     }
     return { ...block, shape }
   })
+}
+
+// ---------------------------------------------------------------- hiding marks
+
+/** the Word editor's hiding mark: an element in the run's rPr holding the label */
+const HIDING_MARK_RE = new RegExp(`<${REDACT_EL}\\b([^>]*)>`, 'g')
+const HIDING_LABEL_RE = /\bw:label\s*=\s*"([^"]*)"/
+/** the label the Word editor reads when the mark has none */
+const HIDING_DEFAULT_LABEL = 'private'
+
+function unescapeXml(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+function labelOfMarkAttrs(attrs: string): string {
+  const found = HIDING_LABEL_RE.exec(attrs)
+  return found ? unescapeXml(found[1]) : HIDING_DEFAULT_LABEL
+}
+
+/** the hiding label of a run, null when the run is not marked */
+function hidingLabelOf(run: Run): string | null {
+  if (!run.rawRPr) return null
+  HIDING_MARK_RE.lastIndex = 0
+  const found = HIDING_MARK_RE.exec(run.rawRPr)
+  return found ? labelOfMarkAttrs(found[1]) : null
+}
+
+/**
+ * Every label the block's own XML marks, text boxes left out (their words are
+ * not in the copy). A label the lowering did not meet in that block means
+ * marked words reached the copy some other way (a block docx-engine could
+ * not model, kept as plain text) without their mark: reported, never silent.
+ */
+function noteUnseenHidingMarks(
+  cx: Cx,
+  block: WordBlock,
+  where: string,
+  seen: readonly string[],
+): void {
+  const xml = block.originalXml
+  if (!xml || !xml.includes(`<${REDACT_EL}`)) return
+  const outside = xml.replace(/<w:txbxContent\b[\s\S]*?<\/w:txbxContent>/g, '')
+  const met = new Set(seen)
+  HIDING_MARK_RE.lastIndex = 0
+  for (const found of outside.matchAll(HIDING_MARK_RE)) {
+    if (!met.has(labelOfMarkAttrs(found[1]))) {
+      cx.ledger.note('hiding_mark', `${where}/unseen`)
+      return
+    }
+  }
 }
 
 function noteBlockLosses(cx: Cx, block: WordBlock, where: string): void {
@@ -460,6 +521,8 @@ function inlinesOf(cx: Cx, runs: readonly Run[], where: string, place: Place): I
 
 function runInlines(cx: Cx, run: Run, where: string, place: Place): Inline[] {
   const { ledger } = cx
+  const hide = hidingLabelOf(run)
+  if (hide !== null) cx.hidingSeen.push(hide)
   if (run.del || run.ins || run.rPrChange) ledger.note('revision', where)
   if (run.del) return []
   if (isHiddenRun(run)) {
@@ -471,7 +534,11 @@ function runInlines(cx: Cx, run: Run, where: string, place: Place): Inline[] {
     ledger.note('equation', where)
     return []
   }
-  if (run.image) return runPicture(cx, run.image, where)
+  if (run.image) {
+    // a memo anchors on text: a marked picture of its own has none to hold it
+    if (hide !== null) ledger.note('hiding_mark', `${where}/picture`)
+    return runPicture(cx, run.image, where)
+  }
   if (run.link) ledger.note('hyperlink', where)
   if (
     run.refField ||
@@ -483,13 +550,18 @@ function runInlines(cx: Cx, run: Run, where: string, place: Place): Inline[] {
     ledger.note('field', where)
   }
   if (run.ruby) ledger.note('text_effect', where)
-  noteTextEffects(cx, run, where)
+  noteTextEffects(cx, run, where, hide !== null)
   const chars = charShapeOf(run)
   const text = run.caps === 'all' ? run.text.toUpperCase() : run.text
-  return place === 'hf' ? hfTextInlines(text, chars) : bodyTextInlines(text, chars, place)
+  const inlines = place === 'hf' ? hfTextInlines(text, chars) : bodyTextInlines(text, chars, place)
+  return hide === null ? inlines : inlines.map((inline) => withHide(inline, hide))
 }
 
-function noteTextEffects(cx: Cx, run: Run, where: string): void {
+const withHide = (inline: Inline, hide: string): Inline =>
+  inline.kind === 'text' ? { ...inline, hide } : inline
+
+/** `hidden`: the run's border is the hiding mark's own line, which the memo replaces */
+function noteTextEffects(cx: Cx, run: Run, where: string, hidden: boolean): void {
   const effect =
     run.caps === 'small' ||
     run.dstrike === true ||
@@ -497,7 +569,7 @@ function noteTextEffects(cx: Cx, run: Run, where: string): void {
     run.textOutline !== undefined ||
     run.glow !== undefined ||
     run.em !== undefined ||
-    run.bdr !== undefined ||
+    (run.bdr !== undefined && !hidden) ||
     (run.positionHalfPoints !== undefined && run.positionHalfPoints !== 0)
   if (effect) cx.ledger.note('text_effect', where)
 }
@@ -760,7 +832,12 @@ function fieldText(cx: Cx, block: WordBlock, where: string): Block[] {
   cx.ledger.note('field', where)
   const field = block.fieldDisplay!
   const inlines: Inline[] = field.runs?.length
-    ? field.runs.map((run) => ({ kind: 'text', text: run.text, chars: charShapeOf(run) }))
+    ? field.runs.map((run) => {
+        const hide = hidingLabelOf(run)
+        if (hide !== null) cx.hidingSeen.push(hide)
+        const inline: Inline = { kind: 'text', text: run.text, chars: charShapeOf(run) }
+        return hide === null ? inline : withHide(inline, hide)
+      })
     : [{ kind: 'text', text: field.left ?? '', chars: plainChars() }]
   return [paraOf({ kind: 'body' }, plainShape(cx), inlines.filter(hasText))]
 }

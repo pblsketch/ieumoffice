@@ -60,6 +60,7 @@ import {
 } from './asset-lifecycle'
 import { createMarkdownConversionSession, writeMarkdownConversion } from './conversion-lifecycle'
 import { normalizeMarkdownTheme, type MarkdownTheme } from '../shared/markdown-theme'
+import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
 import { confirmOdtReport, exportOdt, odtFilterName } from './odt-export'
 import { registerMarkdownSeedIpc } from './seed-main'
 import { registerMarkdownNoteAppendIpc } from './note-append'
@@ -1555,7 +1556,14 @@ function registerMarkdownIpc(): void {
       // Save As › ODT already chose (and approved) the path: no second dialog
       const approved = takeSaveAsExportTarget(e.sender.id, 'odt', request.saveAsTarget)
       if (approved === null) return { ok: false, error: 'markdown: save target not approved' }
+      // ODT has no hiding mark: asked once before converting, Cancel writes nothing
+      const hidden = typeof request.hidingMarks === 'number' ? request.hidingMarks : 0
       return exportOdt({
+        allowHidingLoss: async () =>
+          isHeadlessMode() ||
+          confirmHidingLoss(hidden, (options) =>
+            win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options),
+          ),
         pickPath: async () => {
           if (approved) return approved
           const picked = await showSaveDialogWithMemory(

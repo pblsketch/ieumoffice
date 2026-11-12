@@ -14,7 +14,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@genoffice/agent-core": "*",
     "@genoffice/docx-engine": "*",
+    "@genoffice/i18n": "*",
     "@rhwp/core": "file:../../vendor/rhwp-core"
   },
   "devDependencies": {

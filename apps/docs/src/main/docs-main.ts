@@ -204,6 +204,7 @@ import { startFirstChunkKeepalive } from './ai-keepalive'
 import { atomicWriteFile } from './atomic-write'
 import { Worker } from 'node:worker_threads'
 import hwpExportWorkerPath from './hwp-export-worker?modulePath'
+import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
 import { convertInWorker, exportHwp, hwpLossMessageBox } from './hwp-export'
 import { createDocsRecovery } from './docs-recovery'
 import {
@@ -5028,6 +5029,13 @@ export function registerDocsIpc(): void {
     if (proceed) docsRecovery.settleClosedDocument(event.sender.id, false)
     return proceed
   })
+  ipcMain.handle('docs:confirm-hiding-loss', (event, count: unknown) => {
+    if (tornDownWcIds.has(event.sender.id)) return false
+    const parent = dialogParent(event)
+    return confirmHidingLoss(typeof count === 'number' ? count : 0, (options) =>
+      parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options),
+    )
+  })
   ipcMain.handle('docs:system-locale', () => app.getSystemLocale())
 
   configureMetricsCache(userDataPath('font-metrics'))
@@ -6273,7 +6281,7 @@ export function registerDocsIpc(): void {
           materialize: async (bytes) => (await materializeLazyDocx(Buffer.from(bytes))).bytes,
           convert: (bytes, format) =>
             convertInWorker(
-              { docx: bytes, format, wasmPath: rhwpWasmPath() },
+              { docx: bytes, format, wasmPath: rhwpWasmPath(), hidingLang: getUiLang() },
               () => new Worker(hwpExportWorkerPath),
             ),
           confirm: async (losses, passwordDropped) => {

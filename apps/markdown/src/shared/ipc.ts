@@ -382,6 +382,8 @@ export interface ExportOdtRequest {
   suggestedName: string
   /** Save As › ODT: the path the save dialog approved (`exportAs`); no second dialog */
   saveAsTarget?: string
+  /** hidden spans in the document: ODT has no hiding mark, so they are asked about first */
+  hidingMarks?: number
 }
 
 export interface ExportPdfRequest {

@@ -54,6 +54,8 @@ export interface PlaceOps {
   insertNote?(p: number, at: number, kind: 'footnote' | 'endnote'): number
   /** pastes the control on the engine's clipboard into the empty paragraph p */
   pasteControl?(p: number): void
+  /** a memo over [from, to) of paragraph p; `json` is the engine's { author, text } */
+  insertMemo?(p: number, from: number, to: number, json: string): void
 }
 
 export function opsOf(doc: HwpDocument, place: Place): PlaceOps {
@@ -100,6 +102,8 @@ function bodyOps(doc: HwpDocument, place: Place & { kind: 'body' }): PlaceOps {
         doc.setPictureProperties(sec, p, made.controlIdx, JSON.stringify({ treatAsChar: true })),
       )
     },
+    insertMemo: (p, from, to, json) =>
+      void call('memo', () => doc.insertMemo(sec, p, from, to, json)),
     insertNote: (p, at, kind) =>
       call<{ controlIdx: number }>(kind, () =>
         kind === 'footnote' ? doc.insertFootnote(sec, p, at) : doc.insertEndnote(sec, p, at),
@@ -158,6 +162,8 @@ function cellOps(doc: HwpDocument, place: Place & { kind: 'cell' }): PlaceOps {
         ),
       )
     },
+    insertMemo: (p, from, to, json) =>
+      void call('cell memo', () => doc.insertMemoByPath(sec, para, path(p), from, to, json)),
     pasteControl: (p) =>
       void call('paste table', () => doc.pasteInternalInCellByPath(sec, para, path(p), 0)),
   }

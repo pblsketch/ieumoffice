@@ -49,6 +49,7 @@ import { projectPanelText } from '@genoffice/ui'
 import type { AiDocContent, OpenDocxResult } from '../shared/ipc'
 import { docFormatOfPath, type DocFormat, type SaveAsKind } from '../shared/open-file'
 import { numberedExportPaths } from '@genoffice/electron-utils/numbered-export-paths'
+import { allowHidingLoss } from './hiding-loss'
 import {
   hfVariantsFromParsed,
   isOdtDoc,
@@ -1209,6 +1210,11 @@ async function saveWithFormatChange(
   let data: Uint8Array
   let report: ConversionReport
   if (target === 'odt') {
+    // ODT has no hiding mark: asked once before converting, Cancel writes nothing
+    if (!(await allowHidingLoss(editor))) {
+      ctx.setStatus('')
+      return false
+    }
     // lazily served pictures are only placeholders in the editor's docx
     let whole = docx
     if (doc.parsed.extras.lazyMediaHashes.length > 0) {

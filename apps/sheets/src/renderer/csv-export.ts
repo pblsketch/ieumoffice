@@ -5,6 +5,7 @@
 
 import { MAX_CSV_EXPORT_CHARS } from '../shared/ipc-channels'
 import { formulaViewSheets } from './formula-view'
+import { hidingMarkCount } from './hiding-export'
 import { t } from './i18n/locale'
 import { showToast } from './toast-bus'
 import type { LazyWorkbookState, UniverRuntime } from './univer-state'
@@ -148,6 +149,7 @@ export async function handleExportCsv(ctx: CsvExportContext, targetPath?: string
       fileName: `${baseName}.csv`,
       content,
       hasFormulas: sheetHasFormulas(sheet),
+      hidingMarks: hidingMarkCount(runtime, state),
       ...(sheetCount > 1 ? { activeSheetName: sheet.getSheetName() } : {}),
       ...(targetPath === undefined ? {} : { targetPath }),
     })
