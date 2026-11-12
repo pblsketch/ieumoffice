@@ -401,6 +401,8 @@ describe('rhwp hiding menu patch', () => {
     "      { type: 'command', commandId: 'insert:comment' },",
     '    ];',
     '  }',
+    '',
+    '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
   ].join('\n')
   const memo = "      { type: 'command', commandId: 'insert:comment' },"
   const item = `      { type: 'command', commandId: '${HIDING_COMMAND}' },`
@@ -432,9 +434,12 @@ describe('rhwp hiding menu patch', () => {
     const crlf = applyPatch('studio-hiding-context-menu', menus.replaceAll('\n', '\r\n'))
     expect(crlf.split(HIDING_COMMAND)).toHaveLength(3)
     expect(crlf).not.toMatch(/[^\r]\n/)
-    // without 메모 in the menus there is nothing to stand after
+    // an upstream list that no longer ends where the patch stands fails the build
     expect(() =>
-      applyPatch('studio-hiding-context-menu', menus.replaceAll("'insert:comment'", "'x'")),
+      applyPatch('studio-hiding-context-menu', menus.replace('표 나누기', '표 쪼개기')),
+    ).toThrow(/rhwp patch/)
+    expect(() =>
+      applyPatch('studio-hiding-context-menu', menus.replace('/** 특수 키 처리', '/** 키 처리')),
     ).toThrow(/rhwp patch/)
   })
 })

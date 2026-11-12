@@ -861,23 +861,35 @@ const PATCHES = {
   'studio-hiding-context-menu': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
     edits: [
-      // the end of the menu of body text (and of a header or footer), right after 메모
+      // the end of the menu of body text (and of a header or footer), right after 메모, which
+      // studio-memo-context-menu puts last. Anchored on the upstream text, so the patch takes
+      // the fetched source on its own as well as after the memo patch.
       {
-        find: "      { type: 'command', commandId: 'insert:comment' },\n    ];",
-        replace:
-          "      { type: 'command', commandId: 'insert:comment' },\n" +
-          `      { type: 'command', commandId: '${HIDING_COMMAND}' },\n` +
+        find: [
           '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+        replace: [
+          `      { type: 'command', commandId: '${HIDING_COMMAND}' },`,
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
       },
-      // the menu inside a table cell, right after 메모
+      // the menu inside a table cell, right after 메모 and before the table's own commands
       {
-        find:
-          "      { type: 'command', commandId: 'insert:comment' },\n" +
+        find: [
           "      { type: 'separator' },",
-        replace:
-          "      { type: 'command', commandId: 'insert:comment' },\n" +
-          `      { type: 'command', commandId: '${HIDING_COMMAND}' },\n` +
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+        replace: [
+          `      { type: 'command', commandId: '${HIDING_COMMAND}' },`,
           "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
       },
     ],
   },
