@@ -1,15 +1,16 @@
 import type { zh } from './zh'
 
 export const ms = {
-  redactMenuLabel: 'Sembunyikan pilihan daripada AI',
+  redactMenuLabel: 'Sembunyikan maklumat sensitif',
   redactDialogDesc:
-    'Kandungan yang dipilih kekal dalam dokumen dan fail; model hanya melihat placeholder di bawah. Beri nama supaya model tahu apa yang diwakili.',
+    'Bahagian yang dipilih tidak dihantar kepada AI. Dalam fail, ia kekal seadanya. AI hanya melihat label di bawah. Namakannya supaya AI tahu maksudnya.',
   redactDialogScope:
-    'Penyembunyian ini hanya untuk AI dalam aplikasi ini. CLI, alat MCP dan eksport tanpa antara muka membaca fail secara terus, jadi perkataan ini masih kelihatan kepada mereka.',
-  redactDialogPlaceholder: 'Nama placeholder, cth. telefon pelanggan',
+    'Ini terpakai pada setiap laluan dokumen ke AI, kecuali program dalam mod ejen yang membaca fail terus daripada cakera.',
+  redactDialogPlaceholder: 'Label, cth. nama pelajar',
   redactCancel: 'Batal',
   redactInsert: 'Sembunyikan',
-  redactEnable: 'Klik kanan pada teks yang dipilih untuk menyembunyikannya daripada model.',
+  redactEnable:
+    'Sembunyikan maklumat sensitif: klik kanan pada pilihan untuk menyembunyikannya daripada AI.',
 
   appPhPromptTitle: 'Klik untuk menambah tajuk',
   appPhPromptSubtitle: 'Klik untuk menambah subtajuk',

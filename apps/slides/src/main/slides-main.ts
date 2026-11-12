@@ -329,6 +329,7 @@ const CLOUD_PAGE_PREFIX = 'cloudpptx:'
 const issuedCloudPages = new Set<string>()
 import { registerPresenterIpc } from './presenter-show'
 import { registerAttachmentIpc } from './attachments-ipc'
+import { registerSlidesSensitiveIpc } from './sensitive-ipc'
 import { registerGenerateHandoffIpc } from './generate-handoff-ipc'
 import { registerSlidesTemplateBytesIpc } from './template-bytes'
 import { openSlidesSeed } from './seed-deck'
@@ -5217,6 +5218,7 @@ export function registerSlidesIpc(): void {
 
   // ── Chat attachments (slides:files-*) ──
   registerAttachmentIpc()
+  registerSlidesSensitiveIpc()
 
   // ── Generate hand-off from the shell's "make" window (slides:handoff-*) ──
   registerGenerateHandoffIpc()

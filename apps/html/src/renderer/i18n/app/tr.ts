@@ -30,12 +30,12 @@ export const tr = {
   mathCases: 'Denklem sistemi',
   mathPiecewise: 'Parçalı fonksiyon',
   mathBinomial: 'Binom',
-  redactMenuLabel: 'Seçimi yapay zekâdan gizle',
+  redactMenuLabel: 'Hassas bilgileri gizle',
   redactDialogDesc:
-    'Sözcükler belgede ve dosyada kalır; model bunun yerine aşağıdaki yer tutucuyu görür. Neyi temsil ettiğini model bilsin diye ona bir ad verin.',
+    'Seçilen kısım AI’a gönderilmez. Dosyada olduğu gibi kalır. AI yalnızca aşağıdaki etiketi görür. Neyi temsil ettiğini anlaması için bir ad verin.',
   redactDialogScope:
-    'Gizleme bu uygulamanın yapay zekâsı için geçerlidir. CLI, MCP araçları ve penceresiz dışa aktarma dosyayı doğrudan okur ve bu sözcükleri görmeye devam eder.',
-  redactDialogPlaceholder: 'Yer tutucu adı, ör. müşteri telefonu',
+    'Belgenin bir AI’a ulaştığı her yolda geçerlidir; ajan modundaki bir programın dosyayı doğrudan diskten okuması bunun dışındadır.',
+  redactDialogPlaceholder: 'Etiket, ör. öğrenci adı',
   redactCancel: 'İptal',
   redactInsert: 'Gizle',
 

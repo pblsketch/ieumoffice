@@ -1,14 +1,14 @@
 /** app strings, zh: defines the key set every other locale shard must match. */
 export const zh = {
-  redactMenuLabel: '把选中的内容对 AI 隐藏',
+  redactMenuLabel: '隐藏敏感信息',
   redactDialogDesc:
-    '选中的内容会留在文档和文件里，AI 读到的却是下面的标记。给它起个名字，AI 才知道它是什么。',
+    '所选部分不会发送给 AI，文件中仍原样保留。AI 只能看到下面的标签。请起个名字，让 AI 知道它代表什么。',
   redactDialogScope:
-    '这只针对本应用的 AI。命令行、MCP 工具和无界面导出会直接读取文件，仍然看得到这些文字。',
-  redactDialogPlaceholder: '占位名称，例如：客户电话',
+    '适用于文档发送给 AI 的所有途径。但智能体模式下的程序直接从磁盘读取文件时，隐藏不起作用。',
+  redactDialogPlaceholder: '标签，例如：学生姓名',
   redactCancel: '取消',
   redactInsert: '隐藏',
-  redactEnable: '选中文字后右键，即可对 AI 隐藏。',
+  redactEnable: '隐藏敏感信息：选中文字后右键，即可对 AI 隐藏。',
 
   appPhPromptTitle: '单击此处添加标题',
   appPhPromptSubtitle: '单击此处添加副标题',

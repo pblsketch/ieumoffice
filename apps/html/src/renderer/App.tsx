@@ -1834,6 +1834,11 @@ export default function App() {
       if (name) void doSave('save', name)
     },
     clearHighlights: () => editorRef.current?.clearHighlights(),
+    hideSourceRange: (from, to, label) => {
+      flushPending()
+      return applyRedaction(redactMarkPlan(textRef.current, getMap(), from, to, label))
+    },
+    revealSourceRange: (from, to) => editorRef.current?.revealRange(from, to, true),
     onBriefConfirmed: (brief) => {
       briefRef.current = brief
     },

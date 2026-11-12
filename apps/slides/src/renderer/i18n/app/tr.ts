@@ -1,15 +1,15 @@
 import type { zh } from './zh'
 
 export const tr = {
-  redactMenuLabel: "Seçimi AI'dan gizle",
+  redactMenuLabel: 'Hassas bilgileri gizle',
   redactDialogDesc:
-    'Seçim belgede ve dosyada kalır; model bunun yerine aşağıdaki yer tutucuyu görür. Modelin neyi temsil ettiğini bilmesi için ona bir ad verin.',
+    'Seçilen kısım AI’a gönderilmez. Dosyada olduğu gibi kalır. AI yalnızca aşağıdaki etiketi görür. Neyi temsil ettiğini anlaması için bir ad verin.',
   redactDialogScope:
-    "Gizleme yalnızca bu uygulamanın AI'ını kapsar. CLI, MCP araçları ve penceresiz dışa aktarma dosyayı doğrudan okur ve bu sözcükleri yine görür.",
-  redactDialogPlaceholder: 'Yer tutucu adı, ör. müşteri telefonu',
+    'Belgenin bir AI’a ulaştığı her yolda geçerlidir; ajan modundaki bir programın dosyayı doğrudan diskten okuması bunun dışındadır.',
+  redactDialogPlaceholder: 'Etiket, ör. öğrenci adı',
   redactCancel: 'İptal',
   redactInsert: 'Gizle',
-  redactEnable: 'Modelden gizlemek için bir seçime sağ tıklayın.',
+  redactEnable: 'Hassas bilgileri gizle: Seçimi AI’dan gizlemek için sağ tıklayın.',
 
   appPhPromptTitle: 'Başlık eklemek için tıklayın',
   appPhPromptSubtitle: 'Alt başlık eklemek için tıklayın',

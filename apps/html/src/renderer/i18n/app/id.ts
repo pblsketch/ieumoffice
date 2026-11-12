@@ -30,12 +30,12 @@ export const id = {
   mathPiecewise: 'Fungsi bertahap',
   mathBinomial: 'Koefisien binomial',
 
-  redactMenuLabel: 'Sembunyikan pilihan dari AI',
+  redactMenuLabel: 'Sembunyikan informasi sensitif',
   redactDialogDesc:
-    'Kata-kata tetap ada di dokumen dan berkas; model hanya melihat placeholder di bawah. Beri nama agar model tahu apa yang diwakili.',
+    'Bagian yang dipilih tidak dikirim ke AI. Di file, bagian itu tetap apa adanya. AI hanya melihat label di bawah. Beri nama agar AI tahu artinya.',
   redactDialogScope:
-    'Penyembunyian ini hanya berlaku untuk AI di aplikasi ini. CLI, alat MCP, dan ekspor tanpa antarmuka membaca berkas secara langsung, sehingga kata-kata ini tetap terlihat olehnya.',
-  redactDialogPlaceholder: 'Nama placeholder, mis. telepon pelanggan',
+    'Ini berlaku di semua jalur dokumen menuju AI, kecuali program dalam mode agen yang membaca file langsung dari disk.',
+  redactDialogPlaceholder: 'Label, mis. nama siswa',
   redactCancel: 'Batal',
   redactInsert: 'Sembunyikan',
 

@@ -146,6 +146,11 @@ const api: HtmlApi = {
   },
   exportDocx: (request) => ipcRenderer.invoke(HTML_CHANNELS.exportDocx, request),
   exportOdt: (request) => ipcRenderer.invoke(HTML_CHANNELS.exportOdt, request),
+  sensitiveExclusions: {
+    get: (docPath) => ipcRenderer.invoke(HTML_CHANNELS.sensitiveExclusionsGet, docPath),
+    add: (docPath, entry) =>
+      ipcRenderer.invoke(HTML_CHANNELS.sensitiveExclusionsAdd, docPath, entry),
+  },
   exportPdf: (request) => ipcRenderer.invoke(HTML_CHANNELS.exportPdf, request),
   exportHtml: (request) => ipcRenderer.invoke(HTML_CHANNELS.exportHtml, request),
   printHtml: (request) => ipcRenderer.invoke(HTML_CHANNELS.printHtml, request),

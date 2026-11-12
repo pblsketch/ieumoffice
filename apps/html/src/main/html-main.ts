@@ -89,6 +89,7 @@ import {
 } from './asset-mime'
 import { buildPreviewDocument } from './preview-document'
 import { htmlHidingLossAllowed } from './hiding-loss-gate'
+import { registerHtmlSensitiveIpc } from './sensitive-ipc'
 import { confirmOdtReport, exportOdt, odtFilterName } from './odt-export'
 import { inlineImagesForSingleFile, singleFileExportBaseName } from './single-file-html'
 import { registerHtmlHandoffIpc } from './generate-handoff-ipc'
@@ -1629,6 +1630,7 @@ function registerHtmlIpc(): void {
   ipcRegistered = true
 
   registerImageProtocol()
+  registerHtmlSensitiveIpc()
   registerPreviewProtocol((wcId) => {
     const text = previewTextByWc.get(wcId)
     if (text === undefined) return null

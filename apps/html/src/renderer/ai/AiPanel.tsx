@@ -83,8 +83,9 @@ import type {
   AiSubscriptionProviderId,
   AiSubscriptionUsage,
 } from '@genoffice/ai-provider'
-import { localModelCapabilities } from '@genoffice/ai-provider/browser'
+import { localContextLimit, localModelCapabilities } from '@genoffice/ai-provider/browser'
 import { ATTACHMENT_IMAGE_EXTS } from '../../shared/ipc'
+import { useSourceSensitiveInfo } from './use-source-sensitive'
 import type { AttachmentAddResult, AttachmentMeta } from '../../shared/ipc'
 import {
   AiComposer,
@@ -421,6 +422,10 @@ export interface HtmlAiDeps {
   /** fired when a run with at least one mutation finishes (auto-save hook) */
   onRunDone(mutated: boolean): void
   clearHighlights(): void
+  /** "find sensitive info": withhold `[from, to)` of the source with the source pane's own command */
+  hideSourceRange?(from: number, to: number, label: string): boolean
+  /** "find sensitive info": select and show `[from, to)` in the source pane */
+  revealSourceRange?(from: number, to: number): void
   /** [label](htmlnav://sid/N) citation clicked */
   navigateTo(sid: number): void
   /** the user confirmed a brief on the card; the app pins it into the next generated document */
@@ -652,6 +657,28 @@ export function AiPanel({
   const [attachments, setAttachments] = useState<AttachmentMeta[]>([])
   const attachmentsRef = useRef(attachments)
   attachmentsRef.current = attachments
+
+  /** "Find sensitive info" and the alert before this tab's first send */
+  const sensitiveAttachmentsRef = useRef<readonly AttachmentMeta[]>([])
+  const sensitive = useSourceSensitiveInfo({
+    lang,
+    localAi: aiSettings !== null && localContextLimit(aiSettings) !== undefined,
+    access: () => depsRef.current.access,
+    position: (line, col) => t('cursorPos', { line, col }),
+    ...(deps.hideSourceRange
+      ? {
+          hide: (from: number, to: number, label: string) =>
+            depsRef.current.hideSourceRange?.(from, to, label) ?? false,
+        }
+      : {}),
+    reveal: (from, to) => depsRef.current.revealSourceRange?.(from, to),
+    requestAttachments: () => sensitiveAttachmentsRef.current,
+  })
+  const sensitiveRef = useRef(sensitive)
+  sensitiveRef.current = sensitive
+  /** the first-send question is open; one send let out after the count itself failed */
+  const sensitiveAskingRef = useRef(false)
+  const sensitiveBypassRef = useRef(false)
   const sendSeqRef = useRef(0)
   const [attachNotice, setAttachNotice] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -1469,6 +1496,32 @@ export function AiPanel({
     const instruction = text.trim()
     const loop = loopRef.current
     if (!instruction || !loop || loop.busy) return false
+    // The tab's first send: what looks like sensitive info in the page and in this request's
+    // attachments is counted once, and the person chooses before anything goes out. "Review"
+    // sends nothing; the text stays with the caller and the candidate list opens.
+    if (!sensitiveRef.current.settled() && !sensitiveBypassRef.current) {
+      if (sensitiveAskingRef.current) return false
+      sensitiveAskingRef.current = true
+      sensitiveAttachmentsRef.current = attachmentsOverride ?? attachmentsRef.current
+      const again = () => send(text, displayText, queueRun, attachmentsOverride, scope, skillUse)
+      void sensitiveRef.current
+        .beforeSend()
+        .then((answer) => {
+          sensitiveAskingRef.current = false
+          if (answer === 'send') again()
+        })
+        .catch(() => {
+          // the count itself failed: the alert is advice, the hiding is enforced on its own
+          sensitiveAskingRef.current = false
+          sensitiveBypassRef.current = true
+          try {
+            again()
+          } finally {
+            sensitiveBypassRef.current = false
+          }
+        })
+      return false
+    }
     // the window's project is not known yet (the panel just opened): the request waits for it,
     // so it goes to the right chat with the right context (spec 5.2, 6)
     if (projectChatRef.current.available && !projectChatRef.current.ready) {
@@ -2589,6 +2642,8 @@ export function AiPanel({
           <AiToolsUnsupportedNotice lang={lang} />
         )}
         {projectLines}
+        <div className="ai-sens-bar">{sensitive.button}</div>
+        {sensitive.panel}
         {/* Above the input card, not inside its footer: the reset time is long and
             would otherwise squeeze the attach/send buttons in a narrow panel. */}
         <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />

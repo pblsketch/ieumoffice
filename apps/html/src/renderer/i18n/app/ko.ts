@@ -30,14 +30,14 @@ export const ko = {
   mathPiecewise: '조각함수',
   mathBinomial: '이항계수',
 
-  redactMenuLabel: '선택한 부분을 AI에서 숨기기',
+  redactMenuLabel: '민감정보 가리기',
   redactDialogDesc:
-    '문서는 그대로 두고 AI에게는 아래 자리표시자만 보냅니다. 이름을 붙이면 AI가 무엇을 뜻하는지 알 수 있습니다.',
+    '고른 부분은 AI에게 보내지 않습니다. 파일에는 그대로 남습니다. AI는 아래 이름표만 봅니다. 무엇인지 알 수 있게 이름을 붙여 주세요.',
   redactDialogScope:
-    '이 앱의 AI에만 적용됩니다. CLI, MCP 도구, 창 없는 내보내기는 파일을 직접 읽으므로 이 단어들은 여전히 보입니다.',
-  redactDialogPlaceholder: '자리표시자 이름, 예: 고객 전화',
+    '문서가 AI에게 가는 모든 길에 적용됩니다. 다만 에이전트 모드의 프로그램이 디스크에서 파일을 직접 읽을 때는 가려지지 않습니다.',
+  redactDialogPlaceholder: '이름표, 예: 학생 이름',
   redactCancel: '취소',
-  redactInsert: '숨기기',
+  redactInsert: '가리기',
 
   loading: '불러오는 중…',
   loadFailed: '파일을 열 수 없습니다',

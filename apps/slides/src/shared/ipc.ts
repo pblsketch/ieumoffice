@@ -17,6 +17,7 @@ import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-p
 import type { AiToolCapabilities } from '@genoffice/ai-search'
 import type { TemplateSelection, TemplateSelectionInput } from './template-selection'
 import type { SubscriptionApi } from './subscription-api'
+import type { SensitiveExclusionEntryIpc, SlidesSensitiveText } from './sensitive-text'
 
 import type {
   EditRun,
@@ -1679,6 +1680,13 @@ export interface SlidesApi {
   getComments: (slideIndex: number) => Promise<SlideComment[]>
   /** Every page's comments in deck order (one array per slide, empty included; hidden slides too) */
   getAllComments: () => Promise<SlideComment[][]>
+  /** The deck's text as "find sensitive info" reads it (read-only) */
+  sensitiveText: () => Promise<SlidesSensitiveText | null>
+  /** Where "exclude" in the sensitive-info list is remembered, per document path */
+  sensitiveExclusions: {
+    get: (docPath: string) => Promise<{ key: string; entries: SensitiveExclusionEntryIpc[] } | null>
+    add: (docPath: string, entry: SensitiveExclusionEntryIpc) => Promise<boolean>
+  }
   /** Add a comment; returns the page's updated comment list, null on failure */
   addComment: (op: AddCommentOp) => Promise<SlideComment[] | null>
   /** Delete a comment; returns the page's updated comment list, null on failure */

@@ -1,15 +1,16 @@
 import type { zh } from './zh'
 
 export const nl = {
-  redactMenuLabel: 'Selectie verbergen voor de AI',
+  redactMenuLabel: 'Gevoelige gegevens verbergen',
   redactDialogDesc:
-    'De selectie blijft in het document en het bestand; het model ziet alleen de placeholder. Geef hem een naam.',
+    'Het gekozen deel wordt niet naar de AI gestuurd. In het bestand blijft het zoals het is. De AI ziet alleen het label hieronder. Geef het een naam zodat de AI weet waar het voor staat.',
   redactDialogScope:
-    'Verbergen geldt alleen voor de AI in deze app. De CLI, MCP-tools en de export zonder venster lezen het bestand rechtstreeks en zien deze woorden nog steeds.',
-  redactDialogPlaceholder: 'Naam van placeholder, bv. telefoonnummer klant',
+    'Dit geldt overal waar het document naar een AI gaat, behalve voor een programma in agentmodus dat het bestand rechtstreeks van de schijf leest.',
+  redactDialogPlaceholder: 'Label, bijv. naam leerling',
   redactCancel: 'Annuleren',
   redactInsert: 'Verbergen',
-  redactEnable: 'Rechtsklik op een selectie om die voor het model te verbergen.',
+  redactEnable:
+    'Gevoelige gegevens verbergen: klik met rechts op een selectie om die voor de AI te verbergen.',
 
   appPhPromptTitle: 'Klik om een titel toe te voegen',
   appPhPromptSubtitle: 'Klik om een ondertitel toe te voegen',

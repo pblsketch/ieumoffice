@@ -1,15 +1,16 @@
 import type { zh } from './zh'
 
 export const pl = {
-  redactMenuLabel: 'Ukryj zaznaczenie przed AI',
+  redactMenuLabel: 'Ukryj dane wrażliwe',
   redactDialogDesc:
-    'Zaznaczona zawartość zostaje w dokumencie i w pliku; model widzi tylko symbol. Nadaj mu nazwę, by wiedział, co oznacza.',
+    'Wybrana część nie jest wysyłana do AI. W pliku zostaje bez zmian. AI widzi tylko etykietę poniżej. Nazwij ją tak, by AI wiedziała, co oznacza.',
   redactDialogScope:
-    'Ukrywanie dotyczy tylko AI w tej aplikacji. CLI, narzędzia MCP i eksport bez okienka czytują plik bezpośrednio i nadal widzą te słowa.',
-  redactDialogPlaceholder: 'Nazwa symbolu, np. telefon klienta',
+    'Dotyczy to każdej drogi, którą dokument trafia do AI, z wyjątkiem programu w trybie agenta, który czyta plik bezpośrednio z dysku.',
+  redactDialogPlaceholder: 'Etykieta, np. imię ucznia',
   redactCancel: 'Anuluj',
   redactInsert: 'Ukryj',
-  redactEnable: 'Kliknij prawym na zaznaczeniu, aby ukryć je przed modelem.',
+  redactEnable:
+    'Ukryj dane wrażliwe: kliknij zaznaczenie prawym przyciskiem, aby ukryć je przed AI.',
 
   appPhPromptTitle: 'Kliknij, aby dodać tytuł',
   appPhPromptSubtitle: 'Kliknij, aby dodać podtytuł',

@@ -55,5 +55,6 @@ HTML 에디터다. HTML 원문이 기준이고, 옆에서 실시간 미리 보�
 - 실행: `npm run test -w @genoffice/html`(또는 이 폴더에서 `npx vitest run`), `npm run typecheck -w @genoffice/html`. Windows에서 전부 통과한다.
 - 편집 경로를 바꾸면 패치 집합의 검증(낡은 버전, 범위 밖, 겹침)과 "고치지 않은 원문이 글자 그대로인지"를 테스트한다.
 - 가림을 바꾸면 세 가지 표시 각각에 대해, 줄 번호로 읽은 결과가 실제 줄과 맞는지, 가려진 구간을 가로지르는 치환, 쪼개진 표식이 거절되는지를 테스트한다(`tests/redact*.test.ts`).
+- "민감정보 찾기"(AI 창 입력란 위의 단추, 후보 목록, 탭의 첫 보내기 알림)는 `ai/use-source-sensitive.tsx`가 잇는다. 모델이 읽는 원문 그대로 글 마디와 속성 값을 읽고(`ai/sensitive-source.ts`), 확정은 원문 창의 명령과 같은 `redactMarkPlan`을 뒤쪽 후보부터 적용한다(`HtmlAiDeps.hideSourceRange`). 공용 부분(`ai/sensitive-find.ts`의 찾기·제외 기억, `ai/use-sensitive-info.tsx`의 단추·목록·첫 전송 알림)은 마크다운·HTML·PPT 편집기에 같은 파일로 있다. 고치면 세 곳을 함께 고친다. 제외 기억은 뒷단 `main/sensitive-exclusions.ts`가 앱 데이터 폴더(`sensitive-info/<편집기>-exclusions.json`, 열쇠는 `<편집기>-exclusion-key`)에 문서 경로마다 종류와 해시만 둔다.
 - AI 배선(`tests/ai-connection.test.ts`, `tests/ai-panel-connection.test.ts`, `tests/subscription-bridge.test.ts`, `tests/subscription-client.test.ts`): 막힌 실행 판정, 핸들러가 없을 때의 상태, preload가 내보내는 구독 API. 이 모듈의 테스트는 제공자를 부르지 않는다.
 - 미리 보기 스킴, 숨은 창의 내보내기, 실제 Word 결과는 단위 테스트로 확인되지 않는다. 빌드한 앱에서 확인한다.

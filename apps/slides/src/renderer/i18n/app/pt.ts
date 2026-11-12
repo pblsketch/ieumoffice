@@ -1,15 +1,16 @@
 import type { zh } from './zh'
 
 export const pt = {
-  redactMenuLabel: 'Ocultar a seleção da IA',
+  redactMenuLabel: 'Ocultar informações sensíveis',
   redactDialogDesc:
-    'O conteúdo selecionado continua no documento e no arquivo; o modelo vê apenas o marcador. Dê-lhe um nome para que saiba o que representa.',
+    'A parte escolhida não é enviada para a IA. No arquivo, ela continua como está. A IA só vê o rótulo abaixo. Dê um nome para que a IA saiba o que ele representa.',
   redactDialogScope:
-    'Isso se aplica apenas à IA deste aplicativo. A CLI, as ferramentas MCP e a exportação sem interface leem o arquivo diretamente e ainda veem essas palavras.',
-  redactDialogPlaceholder: 'Nome do marcador, ex.: telefone do cliente',
+    'Vale para todos os caminhos pelos quais o documento chega a uma IA, exceto um programa no modo agente que lê o arquivo direto do disco.',
+  redactDialogPlaceholder: 'Rótulo, ex.: nome do aluno',
   redactCancel: 'Cancelar',
   redactInsert: 'Ocultar',
-  redactEnable: 'Clique com o botão direito numa seleção para ocultá-la do modelo.',
+  redactEnable:
+    'Ocultar informações sensíveis: clique com o botão direito numa seleção para ocultá-la da IA.',
 
   appPhPromptTitle: 'Clique para adicionar um título',
   appPhPromptSubtitle: 'Clique para adicionar um subtítulo',
