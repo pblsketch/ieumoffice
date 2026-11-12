@@ -245,6 +245,7 @@ import { FieldCodesExtension } from './field-codes'
 import { AiQueueAnchorsExtension } from './ai-queue-anchors'
 import { CheckboxToggleExtension } from './checkbox-toggle'
 import { OutlineViewExtension } from './outline-view'
+import { StoryViewExtension } from './story-view'
 import { PageGapNavExtension } from './page-gap-nav'
 import { TrailingTableExitExtension } from './trailing-table-exit'
 import { moveBlocks } from './move-block'
@@ -7426,4 +7427,5 @@ export const editorExtensions = [
   ParaMarkDelExtension,
   RevisionOriginalExtension,
   AutoDirectionExtension,
+  StoryViewExtension,
 ]

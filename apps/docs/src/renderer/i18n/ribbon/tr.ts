@@ -809,6 +809,8 @@ export const tr = {
   ribbonOutlineView: 'Anahat',
   ribbonOutlineViewTip:
     'Anahat görünümü: yalnızca başlık hiyerarşisini göster; başlıklar düzenlenebilir kalır',
+  ribbonStoryView: 'Hikaye',
+  ribbonStoryViewTip: 'Hikaye: belge biçimlendirmesi olmadan yazın',
   ribbonReadMode: 'Okuma Modu',
   ribbonReadModeTip: 'Okuma Modu: odaklanmış okuma için şeridi gizle, çıkmak için Esc',
   ribbonPagePreview: 'Sayfa Önizleme',
