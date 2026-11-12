@@ -182,6 +182,7 @@ import { localModelCapabilities } from '@genoffice/ai-provider/browser'
 import { type WorkbookOperation } from '@genoffice/xlsx-gateway/domain/workbook-dsl'
 import {
   columnLabel,
+  formatAddress,
   parseAddress,
   rangeCellCount,
 } from '@genoffice/xlsx-gateway/domain/cell-address'
@@ -300,6 +301,10 @@ import {
 import { createAiDocument } from './ai/create-document'
 import { createWorkbookSkill } from './ai/workbook-skill'
 import { sheetSkillHiding } from './hiding/app-hooks'
+import { HEADER_SCAN_ROWS } from './hiding/actions'
+import { installHidingGridCue } from './hiding/grid-cue'
+import { sheetHidingState } from './hiding/view'
+import { useSheetHiding } from './hiding/use-sheet-hiding'
 import { findWorkbookCells, selectWorkbookRange } from './ai/workbook-search'
 import { traceWorkbookDependents, traceWorkbookPrecedents } from './ai/formula-audit'
 import { createFilesSkill } from './ai/files-skill'
@@ -861,6 +866,26 @@ export function App({
   /// to fully load the workbook first.
   const [fullLoadPrompt, setFullLoadPrompt] = useState<'ask' | 'tooLarge' | null>(null)
   const [message, setMessage] = useState(t('appReadyInitial'))
+  // sensitive-info hiding: the menu entries, the label dialog and the candidate list
+  const sheetHiding = useSheetHiding({
+    univerRef,
+    lang: getLang(),
+    setMessage,
+    readColumn: async (sheetId, column) => {
+      const rows = {
+        startRow: 0,
+        endRow: HEADER_SCAN_ROWS - 1,
+        startColumn: column,
+        endColumn: column,
+      }
+      await sheetsSkillDeps().ensureRangeLoaded?.(rows, sheetId)
+      const addresses = Array.from({ length: HEADER_SCAN_ROWS }, (_, row) =>
+        formatAddress(row, column),
+      )
+      const cells = readCellsImpl(readContext(), addresses, sheetId)
+      return addresses.map((address) => cells[address]?.rawValue ?? cells[address]?.value)
+    },
+  })
   const sheetTabActions = useMemo(
     () => createSheetTabActions({ univerRef, lazyWorkbookRef, notify: setMessage }),
     [],
@@ -2505,6 +2530,9 @@ export function App({
     const dataValidationChromeDisposable = installActiveCellDataValidationChrome(runtime)
     // Excel shows no invalid-data marker until Circle Invalid Data is run.
     const dataValidationMarkerDisposable = installInvalidDataMarkerSuppression(runtime)
+    const hidingCueDisposable = installHidingGridCue(runtime, () =>
+      isDarkTheme() ? 'dark' : 'light',
+    )
     const threadedCommentDisposable = installThreadedCommentAffordances(runtime, {
       theme: () => (isDarkTheme() ? 'dark' : 'light'),
       onHover: setThreadHover,
@@ -3737,6 +3765,7 @@ export function App({
       dataValidationChromeDisposable.dispose()
       dataValidationMarkerDisposable.dispose()
       threadedCommentDisposable.dispose()
+      hidingCueDisposable.dispose()
       threadStore.onChange = null
       ruleDetailDisposable()
       lazyFindDisposable.dispose()
@@ -3792,6 +3821,12 @@ export function App({
   ): void {
     const instruction = (overrideInstruction ?? prompt).trim()
     if (!instruction || aiBusy) return
+    // a workbook whose hiding marks cannot be resolved sends nothing (fail closed); the draft stays
+    const hiding = sheetHidingState(readContext())
+    if (!hiding.ok) {
+      setMessage(t('appSensitiveBroken', { names: hiding.names.join(', ') }))
+      return
+    }
     // a retried message that carried skills sends the same skill text again
     const skillUse =
       retryIndex !== undefined &&
@@ -4457,6 +4492,7 @@ export function App({
   }
 
   function handleRibbonCommand(command: string): void {
+    if (sheetHiding.command(command)) return
     if (command === 'ai-ask-selection') {
       const range = univerRef.current?.univerAPI.getActiveWorkbook()?.getActiveRange()
       if (!range) return
@@ -5729,6 +5765,7 @@ export function App({
         getRuntime={getRuntime}
       />
       <ThreadHoverCard hover={threadHover} />
+      {sheetHiding.element}
       {findReplaceService && (
         <FindReplacePanel
           service={findReplaceService}

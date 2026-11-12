@@ -1458,6 +1458,15 @@ export const nl = {
   appCtxFormatCells: 'Celeigenschappen…',
   appCtxPickFromList: 'Kiezen uit vervolgkeuzelijst…',
   appCtxDefineName: 'Naam definiëren…',
+  appCtxSensitiveHide: 'Gevoelige gegevens verbergen',
+  appCtxSensitiveUnhide: 'Gevoelige gegevens niet meer verbergen',
+  appSensitiveHidden: '{range} is verborgen voor de AI. De AI ziet in plaats daarvan {marker}.',
+  appSensitiveUnhidden: '{range} wordt niet meer verborgen.',
+  appSensitiveNothingHidden: 'In de selectie is niets verborgen.',
+  appSensitiveBroken:
+    'Niet naar de AI verzonden: de verbergmarkeringen {names} verwijzen naar cellen die niet meer bestaan (een verwijderd blad of #REF!). Herstel of verwijder ze in Namen beheren.',
+  appSensitiveMergeRefused:
+    'Niet samengevoegd: de verborgen cellen van {file} kunnen niet naar deze werkmap worden meegenomen.',
   appCtxLink: 'Koppeling…',
   appCtxInsertFunction: 'Functie invoegen…',
   appFillUp: 'Omhoog doorvoeren',

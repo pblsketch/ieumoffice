@@ -1464,6 +1464,15 @@ export const es = {
   appCtxFormatCells: 'Formato de celdas…',
   appCtxPickFromList: 'Elegir de la lista desplegable…',
   appCtxDefineName: 'Definir nombre…',
+  appCtxSensitiveHide: 'Ocultar información sensible',
+  appCtxSensitiveUnhide: 'Dejar de ocultar información sensible',
+  appSensitiveHidden: '{range} queda oculto para la IA. La IA ve {marker} en su lugar.',
+  appSensitiveUnhidden: 'Se dejó de ocultar {range}.',
+  appSensitiveNothingHidden: 'No hay nada oculto en la selección.',
+  appSensitiveBroken:
+    'No se envió a la IA: las marcas de ocultación {names} apuntan a celdas que ya no existen (una hoja eliminada o #REF!). Corríjalas o elimínelas en el Administrador de nombres.',
+  appSensitiveMergeRefused:
+    'No se combinó: las celdas ocultas de {file} no se pueden traer a este libro.',
   appCtxLink: 'Vínculo…',
   appCtxInsertFunction: 'Insertar función…',
   appFillUp: 'Hacia arriba',

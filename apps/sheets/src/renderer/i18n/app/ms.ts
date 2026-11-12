@@ -1421,6 +1421,15 @@ export const ms = {
   appCtxFormatCells: 'Format Sel…',
   appCtxPickFromList: 'Pilih daripada Senarai Juntai Bawah…',
   appCtxDefineName: 'Takrifkan Nama…',
+  appCtxSensitiveHide: 'Sembunyikan maklumat sensitif',
+  appCtxSensitiveUnhide: 'Berhenti menyembunyikan maklumat sensitif',
+  appSensitiveHidden: '{range} disembunyikan daripada AI. AI melihat {marker} sebagai gantinya.',
+  appSensitiveUnhidden: '{range} tidak lagi disembunyikan.',
+  appSensitiveNothingHidden: 'Tiada apa-apa yang disembunyikan dalam pilihan ini.',
+  appSensitiveBroken:
+    'Tidak dihantar kepada AI: tanda penyembunyian {names} menunjuk kepada sel yang sudah tiada (helaian yang dipadam atau #REF!). Betulkan atau padamkannya dalam Pengurus Nama.',
+  appSensitiveMergeRefused:
+    'Tidak digabungkan: sel tersembunyi daripada {file} tidak dapat dibawa ke buku kerja ini.',
   appCtxLink: 'Pautan…',
   appCtxInsertFunction: 'Sisipkan Fungsi…',
   appFillUp: 'Isi ke Atas',

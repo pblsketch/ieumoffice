@@ -11,6 +11,8 @@ import {
   SHELL_COMMAND_ID,
   cellContextMenuLayout,
   headerContextMenuLayout,
+  SENSITIVE_HIDE_ID,
+  SENSITIVE_UNHIDE_ID,
 } from '../src/renderer/cell-context-menu'
 import { numberFormatCategories } from '../src/renderer/number-format'
 
@@ -24,6 +26,8 @@ describe('cellContextMenuLayout', () => {
     const others = nodes.filter((node) => node.group === ContextMenuGroup.OTHERS)
     expect(others.map((node) => node.id)).toEqual([
       'genoffice.ctx.ask-ai',
+      SENSITIVE_HIDE_ID,
+      SENSITIVE_UNHIDE_ID,
       'genoffice.ctx.new-comment',
       'genoffice.ctx.reply-comment',
       'genoffice.ctx.delete-comment',
@@ -88,6 +92,8 @@ describe('cellContextMenuLayout', () => {
       .map((node) => node.params?.command)
     expect(commands).toEqual([
       'ai-ask-selection',
+      'sensitive-hide',
+      'sensitive-unhide',
       'visual:paste',
       'comment-new',
       'comment-reply',
@@ -102,10 +108,14 @@ describe('cellContextMenuLayout', () => {
 })
 
 describe('headerContextMenuLayout', () => {
-  it('adds only Format Cells… to the row/column header menus', () => {
+  it('adds Format Cells… and the sensitive-info hiding entries to the row/column header menus', () => {
     const nodes = headerContextMenuLayout()
-    expect(nodes).toHaveLength(1)
-    expect(nodes[0]?.group).toBe(ContextMenuGroup.LAYOUT)
-    expect(nodes[0]?.params?.command).toBe('format-cells')
+    expect(nodes).toHaveLength(3)
+    expect(nodes.every((node) => node.group === ContextMenuGroup.LAYOUT)).toBe(true)
+    expect(nodes.map((node) => node.params?.command)).toEqual([
+      'format-cells',
+      'sensitive-hide',
+      'sensitive-unhide',
+    ])
   })
 })
