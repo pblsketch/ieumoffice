@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { evictOldestEntry } from '../src/advance'
 import { advanceWidths, fileAdvanceWidths, isFamilyInstalled } from '../src/index'
@@ -50,7 +51,7 @@ describe('advanceWidths', () => {
 })
 
 describe('fileAdvanceWidths', () => {
-  const carlito = new URL('../../ui/src/fonts/Carlito-Regular.ttf', import.meta.url).pathname
+  const carlito = fileURLToPath(new URL('../../ui/src/fonts/Carlito-Regular.ttf', import.meta.url))
 
   it('reads the bundled Carlito: m is 0.799 em (the Calibri 11 probe advance 175.7 twips)', () => {
     const w = fileAdvanceWidths(carlito, 'm \u{10FFF0}', 11)!

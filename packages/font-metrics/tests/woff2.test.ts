@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fileAdvanceWidths, isWoff2, woff2ToSfnt } from '../src'
@@ -31,6 +31,8 @@ describe('woff2ToSfnt', () => {
     expect(a).toBeLessThan(13000)
     expect(hangul).toBe(20000)
     expect(han).toBeNaN()
+    // The upstream Word editor bundles a Sarabun face; this fork's editor does not
+    if (!existsSync(THAI)) return
     const [thai] = fileAdvanceWidths(THAI, 'ก', 1000)!
     expect(thai).toBeGreaterThan(5000)
     expect(thai).toBeLessThan(12000)
