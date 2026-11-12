@@ -7,7 +7,12 @@ import {
 } from '@genoffice/agent-core/redact-core'
 
 /**
- * The label field of a "hide from the model" dialog.
+ * The label field of the "hide sensitive info" dialog.
+ *
+ * The dialog's words are shared too: its title is `sensitiveFeatureName(lang)`
+ * and its description `sensitiveInfoText(lang, 'featureDesc')`
+ * (`strings-sensitive-info.ts`). An editor without its own modal chrome can
+ * mount `<SensitiveLabelDialog>`, which wraps this hook.
  *
  * Five editors each grew this dialog, and the behaviour came out identical
  * five times: the label is sanitised as it is typed, the `{{placeholder}}` the
