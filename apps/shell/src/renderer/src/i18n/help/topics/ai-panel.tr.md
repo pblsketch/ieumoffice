@@ -48,13 +48,14 @@ Docs, Sheets, Slides, Hangul, HTML ve zihin haritası düzenleyicilerinin AI pan
 - Docs paneli bir **sürüm listesi** tutar: her tur için bir anlık görüntü, bunlardan herhangi birine dönün ve dönüşün kendisi Ctrl+Z ile geri alınabilir. Anlık görüntüler belge yeniden açıldıktan sonra da yaşar.
 - AI düzenlemeleri elle yapılanlarla aynı düzenleme hattından geçer (geri alınabilir, kaydetme onayına bağlı) — hiçbir şey kaydetme onayınızı atlamaz.
 
-## Bir seçimi AI’dan gizleme
+## Hassas bilgileri gizle
 
-- Slides, HTML ve Markdown’da bir seçim modelin gözünden uzak tutulabilir: üzerine sağ tıklayın ▸ **Seçimi AI’dan gizle**, yer tutucuyu adlandırın ve model onun yerine `{{ad}}` okur. (Markdown öğeyi şeridindeki gözü kapalı anahtarla etkinleştirir; HTML’in öğesi kaynak panelindedir.)
-- Dosya gerçek metni korur — kaydetme, dışa aktarma ve yazdırma etkilenmez, işaret yeniden açılışta da kalır. Aynı öğe gizliliği kaldırır (Markdown ayrı bir **Seçimi yeniden AI’a göster** girdisi alır).
-- HTML öğe içeriklerini, öznitelik değerlerini ve betik dize sabitlerini gizler; işlenmiş sayfa hiç değişmez.
-- Slides ayrıca resimlerin, videoların ve seslerin tamamını gizler ve gizli içerik barındıran bir slayt hiçbir zaman ekran görüntüsü olarak gönderilmez: otomatik yerleşim denetimi o sayfayı atlar ve bunu söyler.
-- Bu yalnızca uygulama içindeki AI içindir — CLI, MCP araçları ve penceresiz dışa aktarma dosyayı doğrudan okur ve metni yine görür.
+- Docs, Sheets, Slides, Hangul, Markdown ve HTML düzenleyicilerinde bir belgenin bir kısmını AI’dan uzak tutabilirsiniz: o kısmı seçin, sağ tıklayın ▸ **Hassas bilgileri gizle** ve bir etiket verin. Hangi AI’ı kullanırsanız kullanın, AI o yerde `{{etiket}}` okur. (Markdown öğeyi şeridindeki gözü kapalı anahtarla etkinleştirir; HTML’in öğesi kaynak panelindedir; Sheets’te başlık satırının altındaki sütunu gizlemek için sütun başlığına, yalnızca bir hücre aralığını gizlemek için o aralığa sağ tıklayın.)
+- Dosya gerçek metni korur — kaydetme, dışa aktarma ve yazdırma etkilenmez, işaret yeniden açıldıktan sonra da kalır. Aynı menü öğesi gizlemeyi kaldırır. Hangul’da gizlenen her kısım `[Hassas bilgileri gizle] etiket` yazan bir nottur; bu yüzden belgeyi alan kişi de o notu görür ve zaten notu olan metin gizlenemez. Sheets’te işaret, Ad yöneticisinde görünen `IeumHide_etiket` adlı tanımlı bir addır; AI gizlenen her hücreyi `{{etiket-01}}` olarak görür (aynı değer aynı numarayı alır) ve formülü gizli hücreleri kullanan bir hücre de gizlenir.
+- AI panelindeki **Hassas bilgileri bul**; ad, telefon numarası, e-posta adresi, kimlik numarası, hesap ve kart numarası, adres gibi görünen şeyleri listeler. Yalnızca bu bilgisayarda, sabit metin kalıplarıyla arar — bulmak ya da gizlemek için hiçbir AI kullanılmaz — ve siz **Gizle**’yi seçene kadar hiçbir şey gizlenmez. **Hariç tut**, bir adayın o belgede yeniden çıkmasını önler. İşaret taşıyamayan yerler (üst bilgi, konuşmacı notu, sayfa adı, …) kendiniz düzenleyebilmeniz için listede gösterilir.
+- Bir sekmede ilk kez gönderdiğinizde belgede ya da o isteğin eklerinde hâlâ böyle adaylar varsa panel bir kez sorar: **Kontrol et** hiçbir şey göndermez ve listeyi açar, **Yine de gönder** gönderir.
+- HTML öğe içeriklerini, öznitelik değerlerini ve betik dize sabitlerini gizler ve işlenmiş sayfa hiç değişmez. Slides ayrıca resimlerin, videoların ve seslerin tamamını gizler ve gizli içerik barındıran bir slayt hiçbir zaman ekran görüntüsü olarak gönderilmez.
+- Dosya başka bir düzenleyicide eklendiğinde, Giriş ekranında onun hakkında soru sorulduğunda, `ieumoffice` komutu ve onun MCP araçlarıyla ya da uygulamanın MCP sunucusu üzerinden okunduğunda gizli kısımlar gizli kalır. İşarete yer olmayan bir biçime (ODT, CSV, …) dönüştürmeden önce uygulama sorar. Gizleme, ajan modundaki bir programın doğrudan diskten okuduğu dosyalara ulaşmaz ve sayfa resimleri (`render`) metni olduğu gibi gösterir.
 
 ## Gizlilik
 

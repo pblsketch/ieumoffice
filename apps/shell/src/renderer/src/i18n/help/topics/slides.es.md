@@ -54,7 +54,7 @@ El menú depende de dónde haga clic derecho:
 - La tarjeta AI Slides de la pantalla de inicio: dé un tema o un esquema y la IA construye la presentación.
 - Sin la clave de un proveedor de imágenes, la IA no puede generar imágenes, y la presentación usa en su lugar imágenes encontradas mediante la búsqueda de imágenes; vea [Modelos de IA y ajustes](help://ai-models).
 - Sigua ajustando después con el panel de IA.
-- Clic derecho sobre una selección de texto o un elemento imagen/vídeo/audio ▸ **Ocultar la selección a la IA** lo saca de la vista del modelo (detalles en el capítulo del panel de IA); una diapositiva con contenido oculto se salta la revisión automática por captura.
+- Clic derecho sobre una selección de texto o un elemento imagen/vídeo/audio ▸ **Ocultar información sensible** lo saca de la vista del modelo (detalles en el capítulo del panel de IA); una diapositiva con contenido oculto se salta la revisión automática por captura.
 
 ## Presentar y exportar
 

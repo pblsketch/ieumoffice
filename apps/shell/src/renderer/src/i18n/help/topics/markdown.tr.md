@@ -7,7 +7,7 @@ Markdown düzenleyici .md / .markdown dosyalarını, ayrıca .txt / .json dosyal
 - **Önizleme**: canlı; görseller gibi göreli varlıklar belgenin yanında çözümlenir.
 - **Kaydetme**: bayt düzeyinde birebir — BOM, CRLF ve dosya sonundaki yeni satırın varlığı korunur; değişiklik yapılmamış bir kaydetme dosyayı yeniden yazmaz.
 - **Bul ve değiştir**: Ctrl+F kaynakta arar; Tümünü değiştir dosyaya geri yazar.
-- **AI**: hazır düğmeler asistanın belgeyi yeniden yazmasına, genişletmesine veya çevirmesine olanak tanır. Bir seçim AI’dan gizlenebilir (bkz. AI paneli bölümü).
+- **AI**: hazır düğmeler asistanın belgeyi yeniden yazmasına, genişletmesine veya çevirmesine olanak tanır. **Hassas bilgileri gizle** ile bir seçim AI’dan uzak tutulabilir (bkz. AI paneli bölümü).
 - **Bağlantıları açma**: düzenlerken bir bağlantıya Ctrl+tıklayın (Mac’te ⌘), tarayıcınızda açılır; düz tıklama imleci bağlantı metnine koyar, böylece metni düzenleyebilirsiniz. Sunum modunda (F5) düz tıklama bağlantıyı açar.
 
 ## Araç çubuğu

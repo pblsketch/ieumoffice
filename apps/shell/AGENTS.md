@@ -112,7 +112,7 @@
 - **처음 믿음 확인 전에는 이 PC의 앱이 쓰지 않은 지침·기억·`AGENTS.md`·`CLAUDE.md`·다른 PC의 대화를 맥락에 넣지 않는다.** 확인 창을 고르지 않고 닫으면 추가를 취소한다. 확인 뒤에는 다시 묻지 않고 "바뀜" 줄만 낸다.
 - **에이전트 세션은 사람이 시작한 창에만 속한다.** 채널은 그 창의 webContents만 받고, 세션은 그 창이 닫히면 끝난다. 경고 확인과 폴더 검사와 연결 확인은 화면이 아니라 뒷단이 시작할 때마다 다시 한다. 창에는 오류 문장을 보내지 않고 종류만 보낸다(`agentEventView`).
 - **에이전트 세션은 사람이 시작한 창에만 속한다.** 채널은 그 창의 webContents만 받고, 세션은 그 창이 닫히면 끝난다. 경고 확인과 폴더 검사와 연결 확인은 화면이 아니라 뒷단이 시작할 때마다 다시 한다. 창에는 오류 문장을 보내지 않고 종류만 보낸다(`agentEventView`). 시작하지 못한 까닭은 `AgentStartFailure`(`shared/agent-api.ts`)로 보내고, 창은 종류마다 정한 문장과 신고용 코드를 보인다(`renderer/src/agent/start-error.ts`). **세션을 시작한 뒤 새로 연 문서는 프로그램의 권한 규칙에 들어가지 않는다.** 다음 메시지 전에 그 사실을 한 번 알리고(`documents-unprotected` 이벤트), 앱 쪽 권한 판단에는 새 목록을 넘긴다(`setOpenDocuments`). 보호를 받으려면 세션을 멈추고 다시 시작해야 한다.
-- **세션 MCP 서버의 도구는 `AGENT_MCP_TOOL_NAMES`뿐이다.** 탭 닫기, 자체 편집 세션, 창 없는 파일 만들기를 더하지 않는다. 읽기는 가린 자리를 `{{이름}}`으로 내보내고(`withholdingSlides`, `withholdingOpenDocuments`), 가린 내용이 있는 PPT는 고치지 않는다. 연동의 앱 안 MCP 서버는 출력이 바깥에 약속된 것이라 이 처리를 하지 않는다(결정 0016).
+- **세션 MCP 서버의 도구는 `AGENT_MCP_TOOL_NAMES`뿐이다.** 탭 닫기, 자체 편집 세션, 창 없는 파일 만들기를 더하지 않는다. 읽기는 가린 자리를 `{{이름}}`으로 내보내고(`withholdingSlides`, `withholdingOpenDocuments`), 가린 내용이 있는 PPT는 고치지 않는다. 연동의 앱 안 MCP 서버도 같은 처리(`src/main/mcp/withholding.ts`)를 지난다(결정 0138). 워드·엑셀 탭은 편집기의 MCP 다리가 가리고 가린 내용에 닿는 편집을 `hidden_content`로 거절한다.
 
 ## 이 모듈의 방식
 

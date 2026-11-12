@@ -48,13 +48,14 @@ V panelu AI editorů Docs, Sheets, Slides, hangul, HTML a myšlenkových map mů
 - Panel v Docs vede **seznam verzí**: jeden snímek na krok, můžete se vrátit k libovolnému a samotný návrat lze zase vrátit pomocí Ctrl+Z. Snímy přežijí i znovu otevření dokumentu.
 - Změny od AI procházejí stejnou cestou úprav jako ruční změny (lze je vrátit, vyžadují uložení) — nic neobchází vaše potvrzení uložení.
 
-## Skrýt výběr před AI
+## Skrýt citlivé údaje
 
-- V Slides, HTML a Markdown lze výběr schovat před očima modelu: pravý klik ▸ **Skrýt výběr před AI**, pojmenujte zástupný text a model čte `{{název}}` místo něj. (Markdown položku zapíná přepínačem přeškrtnutého oka na pásu; ta HTML žije v panelu zdroje.)
-- Soubor si ponechá skutečný text — uložení, export i tisk zůstávají nedotčené a značka přežije znovuotevření. Tatáž položka skrytí zruší (Markdown má navíc **Znovu ukázat výběr AI**).
-- HTML skrývá obsah prvků, hodnoty atributů a řetězcové literály ve skriptech; vykreslená stránka se nikdy nemění.
-- Slides skrývá i celé obrázky, videa a audio a snímek se skrytým obsahem nikdy neodchází jako snímek obrazovky: automatická kontrola rozvržení stránku přeskočí a oznámí to.
-- Platí to jen pro AI v aplikaci — CLI, nástroje MCP a bezhlavý export čtou soubor přímo a text stále vidí.
+- V editorech Docs, Sheets, Slides, hangul, Markdown a HTML můžete část dokumentu AI neukázat: vyberte ji, klikněte pravým tlačítkem ▸ **Skrýt citlivé údaje** a zadejte štítek. AI na tom místě čte `{{štítek}}`, ať používáte kteroukoli AI. (Markdown položku zapíná přepínačem přeškrtnutého oka na pásu; v HTML je položka v panelu zdroje; v Sheets klikněte pravým tlačítkem na záhlaví sloupce, chcete-li skrýt sloupec pod řádkem záhlaví, nebo na oblast buněk, chcete-li skrýt jen tuto oblast.)
+- Soubor si ponechá skutečný text — uložení, export i tisk zůstávají nedotčené a značka zůstane i po znovuotevření. Stejnou položkou nabídky skrytí zrušíte. V hangulu je každá skrytá část komentář s textem `[Skrýt citlivé údaje] štítek`, takže tento komentář uvidí i ten, kdo dokument dostane, a text, který už komentář má, skrýt nelze. V Sheets je značkou definovaný název `IeumHide_štítek`, který je vidět ve Správci názvů; AI vidí každou skrytou buňku jako `{{štítek-01}}` (stejná hodnota dostane stejné číslo) a skrytá je i buňka, jejíž vzorec skryté buňky používá.
+- **Najít citlivé údaje** v panelu AI vypíše, co vypadá jako jména, telefonní čísla, e-mailové adresy, osobní identifikační čísla, čísla účtů a karet, adresy a podobně. Hledá se na tomto počítači jen podle pevně daných textových vzorů — k hledání ani ke skrývání se AI nepoužívá — a nic se neskryje, dokud nezvolíte **Skrýt**. Po volbě **Vyloučit** se kandidát v tomto dokumentu už neobjeví. Místa, která značku pojmout nemohou (záhlaví, poznámky řečníka, název listu…), jsou v seznamu také, abyste je mohli upravit sami.
+- Když v kartě poprvé odesíláte a dokument nebo přílohy daného požadavku takové kandidáty stále obsahují, panel se jednou zeptá: **Zkontrolovat** nic neodešle a otevře seznam, **Přesto odeslat** odešle.
+- HTML skrývá obsah prvků, hodnoty atributů a řetězcové literály ve skriptech a vykreslená stránka se nikdy nemění. Slides skrývá i celé obrázky, videa a audio a snímek se skrytým obsahem nikdy neodchází jako snímek obrazovky.
+- Skryté části zůstanou skryté, když soubor připojíte v jiném editoru, zeptáte se na něj na domovské stránce, čte ho příkaz `ieumoffice` a jeho nástroje MCP nebo se čte přes server MCP aplikace. Před převodem do formátu, který pro značku nemá místo (ODT, CSV, …), se aplikace nejdřív zeptá. Skrývání se nevztahuje na soubory, které program v režimu agenta čte přímo z disku, a obrázky stránek (`render`) ukazují text tak, jak je.
 
 ## Soukromí
 

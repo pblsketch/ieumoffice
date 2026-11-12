@@ -118,7 +118,7 @@ Lần đầu tiên có thể dùng một gói đăng ký, GenOffice hiển thị
 
 Các yêu cầu qua ChatGPT kết nối trực tiếp không đi qua chương trình Codex; chúng đi thẳng từ máy tính này đến OpenAI.
 
-Bất cứ thứ gì bạn đã ẩn bằng **Ẩn vùng chọn khỏi AI** đều không được gửi đi, dù bạn dùng AI nào.
+Bất cứ thứ gì bạn đã ẩn bằng **Ẩn thông tin nhạy cảm** đều không được gửi đi, dù bạn dùng AI nào.
 
 ## Nên biết
 

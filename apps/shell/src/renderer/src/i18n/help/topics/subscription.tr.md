@@ -118,7 +118,7 @@ Bir abonelik ilk kez kullanılabildiğinde GenOffice bir kez bir bildirim göste
 
 Doğrudan bağlanan ChatGPT üzerinden yapılan istekler Codex programından geçmez; bu bilgisayardan doğrudan OpenAI’ye gider.
 
-**Seçimi AI’dan gizle** ile gizlediğiniz hiçbir şey, hangi AI’ı kullanırsanız kullanın gönderilmez.
+**Hassas bilgileri gizle** ile gizlediğiniz hiçbir şey, hangi AI’ı kullanırsanız kullanın gönderilmez.
 
 ## Bilinmesi iyi olanlar
 
