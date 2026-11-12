@@ -29,12 +29,7 @@ import { CliError, EXIT, type CommandResult } from '../result'
 import { txnDetail, txnFailure } from './txn'
 import { BATCH_OPTIONS, batchCounts, batchMode, batchResult, failedBatch } from '../batch'
 import type { OpFailure } from '../op-errors'
-import {
-  HIDDEN_SUGGESTION,
-  hiddenContentError,
-  hiddenFailure,
-  withHiddenDetail,
-} from '../hiding'
+import { HIDDEN_SUGGESTION, hiddenContentError, hiddenFailure, withHiddenDetail } from '../hiding'
 import {
   deckHidingViolation,
   maskDeck,

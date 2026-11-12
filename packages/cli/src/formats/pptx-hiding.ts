@@ -64,7 +64,11 @@ interface HiddenPicture {
   label: string
 }
 
-function paragraphRuns(paragraphs: readonly Paragraph[] | undefined, owner: string, out: HiddenRun[]) {
+function paragraphRuns(
+  paragraphs: readonly Paragraph[] | undefined,
+  owner: string,
+  out: HiddenRun[],
+) {
   for (const p of paragraphs ?? []) {
     for (const run of p.runs) {
       if (run.redact) out.push({ run, owner, label: shownLabel(run.redact) })
@@ -72,12 +76,7 @@ function paragraphRuns(paragraphs: readonly Paragraph[] | undefined, owner: stri
   }
 }
 
-function walk(
-  el: SlideElement,
-  slide: string,
-  runs: HiddenRun[],
-  pictures: HiddenPicture[],
-): void {
+function walk(el: SlideElement, slide: string, runs: HiddenRun[], pictures: HiddenPicture[]): void {
   const owner = `${slide}/${elementDurableId(el)}`
   switch (el.type) {
     case 'text':

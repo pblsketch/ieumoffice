@@ -2,7 +2,11 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import JSZip from 'jszip'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { xlsxSidecarPath } from '../src/resources'
 import { run, tempDir } from './helpers'
+
+/** reads, --cells and an applied batch need the workbook engine; refusals happen before it */
+const sidecar = Boolean(xlsxSidecarPath())
 
 /**
  * A workbook that hides a range (민감정보 가리기, defined name `IeumHide_<label>`)
@@ -70,7 +74,7 @@ async function apply(path: string, ops: unknown[], ...flags: string[]) {
 }
 
 describe('sheet read hides the marked cells completely', () => {
-  it('values, a leaning formula result, and --where', async () => {
+  it.skipIf(!sidecar)('values, a leaning formula result, and --where', async () => {
     const path = copy('read.xlsx')
     const r = await run(['sheet', 'read', path, '--json'])
     expect(r.code, r.stdout + r.stderr).toBe(0)
@@ -111,34 +115,37 @@ describe('sheet apply refuses ops that reach hidden cells', () => {
     expect(readFileSync(path).equals(bookBytes)).toBe(true)
   })
 
-  it('best effort: the other ops apply; a formula reading hidden cells is allowed', async () => {
-    const path = copy('best.xlsx')
-    const r = await apply(
-      path,
-      [
-        { op: 'delete_rows', sheetId: sheetName, row: 2, count: 1 },
-        { op: 'set_formula', sheetId: sheetName, address: 'D2', formula: '=LEN(B2)' },
-        { op: 'set_cell', sheetId: sheetName, address: 'A5', value: 'note' },
-      ],
-      '--best-effort',
-    )
-    expect(r.code).toBe(0)
-    expect(r.json().status).toBe('partial')
-    expect(r.json().detail.failures).toEqual([
-      expect.objectContaining({
-        index: 0,
-        op: 'delete_rows',
-        reason: 'hidden_content',
-        hidden: { reason: 'edit', labels: [LABEL] },
-      }),
-    ])
-    expect(r.json().detail.batch).toMatchObject({ total: 3, applied: 2, failed: 1 })
-    const read = await run(['sheet', 'read', path, '--json'])
-    expect(read.stdout).not.toContain('Hong')
-    expect(read.json().detail.rows[4][0]).toBe('note')
-  })
+  it.skipIf(!sidecar)(
+    'best effort: the other ops apply; a formula reading hidden cells is allowed',
+    async () => {
+      const path = copy('best.xlsx')
+      const r = await apply(
+        path,
+        [
+          { op: 'delete_rows', sheetId: sheetName, row: 2, count: 1 },
+          { op: 'set_formula', sheetId: sheetName, address: 'D2', formula: '=LEN(B2)' },
+          { op: 'set_cell', sheetId: sheetName, address: 'A5', value: 'note' },
+        ],
+        '--best-effort',
+      )
+      expect(r.code).toBe(0)
+      expect(r.json().status).toBe('partial')
+      expect(r.json().detail.failures).toEqual([
+        expect.objectContaining({
+          index: 0,
+          op: 'delete_rows',
+          reason: 'hidden_content',
+          hidden: { reason: 'edit', labels: [LABEL] },
+        }),
+      ])
+      expect(r.json().detail.batch).toMatchObject({ total: 3, applied: 2, failed: 1 })
+      const read = await run(['sheet', 'read', path, '--json'])
+      expect(read.stdout).not.toContain('Hong')
+      expect(read.json().detail.rows[4][0]).toBe('note')
+    },
+  )
 
-  it('stop on error: the ops before the refused one apply', async () => {
+  it.skipIf(!sidecar)('stop on error: the ops before the refused one apply', async () => {
     const path = copy('stop.xlsx')
     const r = await apply(
       path,
@@ -168,7 +175,7 @@ describe('sheet apply refuses ops that reach hidden cells', () => {
     expect(readFileSync(path).equals(bookBytes)).toBe(true)
   })
 
-  it('--cells onto a hidden cell is refused', async () => {
+  it.skipIf(!sidecar)('--cells onto a hidden cell is refused', async () => {
     const path = copy('cells.xlsx')
     const r = await run([
       'sheet',

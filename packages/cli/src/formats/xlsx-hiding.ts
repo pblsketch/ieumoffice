@@ -468,8 +468,7 @@ export function concealIssues<
     if (!reached) return (issue.context && /"/.test(issue.context) ? rest : issue) as T
     return {
       ...rest,
-      message:
-        `a finding about a cell the workbook hides from AI; open the workbook in ${PRODUCT_NAME} to see it`,
+      message: `a finding about a cell the workbook hides from AI; open the workbook in ${PRODUCT_NAME} to see it`,
     } as T
   })
 }

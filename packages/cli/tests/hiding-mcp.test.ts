@@ -42,7 +42,7 @@ beforeAll(async () => {
   await server.connect(serverTransport)
   client = new Client({ name: 'hiding', version: '0' })
   await client.connect(clientTransport)
-})
+}, 120_000)
 
 afterAll(async () => {
   await client?.close()

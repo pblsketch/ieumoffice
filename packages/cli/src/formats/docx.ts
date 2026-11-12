@@ -971,7 +971,7 @@ async function runDocOps(
         ? hiddenLabelsInBlocks(doc.editor, op.blockIndexes as number[])
         : []
     if (sideHidden || movedHidden.length) {
-      failed = refusedHidden(sideHidden ?? movedHidden)
+      refusedHidden(sideHidden ?? movedHidden)
       if (mode === 'stop_on_error') return { results, failures, skipped: ops.length - index - 1 }
       continue
     }
