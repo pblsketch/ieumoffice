@@ -144,6 +144,12 @@ function anchoredIn(doc: ProseMirrorNode, from: number, to: number): Anchored {
   return { notes, comments }
 }
 
+function trackedCommentNote(env: RewriteEnv, before: Anchored): string {
+  return env.track && before.comments.size > 0
+    ? ' As a tracked change, the comments stay on the original (struck-through) text, not on the new text; accepting the change removes them, as in Word.'
+    : ''
+}
+
 function renumberNotes(tr: Transaction): void {
   renumber(tr, 'footnote')
   renumber(tr, 'endnote')
@@ -235,13 +241,9 @@ export function rewriteBlocks(
   // the model authored these blocks, so it has seen them
   recordShown(editor, blocksBetween(editor.state.doc, built.inserted.from, built.inserted.to))
   const tally = keepTallyText(inv, restored.used, drop)
-  const tracked =
-    env.track && before.comments.size > 0
-      ? ' As a tracked change, the comments stay on the original (struck-through) text, not on the new text; accepting the change removes them, as in Word.'
-      : ''
   return {
     ok: true,
-    output: `Replaced ${label} with ${restored.nodes.length} block(s); they took the paragraph formatting and base text style of the blocks they replace.${tally ? ` ${tally}` : ''}${tracked} Block indexes have changed; use get_document_context if needed.`,
+    output: `Replaced ${label} with ${restored.nodes.length} block(s); they took the paragraph formatting and base text style of the blocks they replace.${tally ? ` ${tally}` : ''}${trackedCommentNote(env, before)} Block indexes have changed; use get_document_context if needed.`,
   }
 }
 
@@ -324,6 +326,6 @@ export function rewriteSelection(
   const tally = keepTallyText(inv, restored.used, drop)
   return {
     ok: true,
-    output: `Replaced the selected text in block ${blockIndex}: "${clip(oldText, 200)}" → "${clip(newText, 200)}". The rest of the block is unchanged; the new text is now selected.${tally ? ` ${tally}` : ''}`,
+    output: `Replaced the selected text in block ${blockIndex}: "${clip(oldText, 200)}" → "${clip(newText, 200)}". The rest of the block is unchanged; the new text is now selected.${tally ? ` ${tally}` : ''}${trackedCommentNote(env, before)}`,
   }
 }

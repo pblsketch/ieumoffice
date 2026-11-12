@@ -1636,6 +1636,7 @@ export function inlineReplacementTr(
     if (inserted > 0) {
       tr.addMark(to, to + inserted, ins.create({ author: track.author, date }))
       untrackOnceAtoms(tr, to, to + inserted, once)
+      stripInsertedComments(tr, to, to + inserted)
     }
     tr.addMark(from, to, del.create({ author: track.author, date }))
     deleteOldAtoms(tr, oldAtoms)
