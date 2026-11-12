@@ -3355,7 +3355,7 @@ const tMain = createI18n({
 export const hwpCopy = {
   convert: (docx: Uint8Array, format: HwpFormat, look: HwpLook): Promise<HwpConversion> =>
     convertInWorker(
-      { docx, format, wasmPath: rhwpWasmPath(), look },
+      { docx, format, wasmPath: rhwpWasmPath(), look, hidingLang: getUiLang() },
       () => new Worker(hwpExportWorkerPath),
     ),
   /** asked only when something is lost; false = cancel */
