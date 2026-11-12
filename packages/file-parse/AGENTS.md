@@ -28,7 +28,7 @@
 - 지도 파일의 해석과 개요 글은 `packages/xmind-engine`이 한다. 여기는 `openXmind`와 `sheetsToOutline`을 부를 뿐이다(`xmind.ts`).
 - EPUB 책의 해석(zip 관문, DRM 판정, 장 글 뽑기)은 `packages/epub-engine`이 한다. 여기는 번역을 싣지 않는 진입점 `@genoffice/epub-engine/core`에서 `openEpub`과 `extractChapterText`를 가져와 부를 뿐이다(`epub.ts`). 패키지 루트를 가져오면 이 패키지를 쓰는 모든 편집기가 `pdf2docx` 소스까지 형 검사하게 된다. 출력 모양을 고치려면 엔진 쪽을 고친다.
 - 파일을 읽기 전에 "저장하지 않은 변경이 있는 파일인가"를 묻는 일은 호출자가 한다(`packages/electron-utils`의 `assertFileSaved`·`withoutUnsavedFiles`).
-- 터미널 명령어(`packages/cli`)의 읽기는 이 패키지를 지나지 않고, 가리기를 적용하지 않는다.
+- 터미널 명령어(`packages/cli`)는 읽기 전체를 이 패키지로 하지 않는다. 가리기는 그쪽이 이 패키지의 판정(`redactDocxPartXml`·`docxPartHasMarks`, `createXlsxRedactor`·`formulaReferences`·`xlsxHidingMarksOf`, `hwpToText`, `hidingMarksOf`, PPT는 `src/pptx-redaction.ts`)을 가져다 자기 출력에 적용한다(결정 0138). 판정을 바꾸면 `packages/cli`의 가리기 시험도 돌린다.
 - 한글 문서를 고치거나 저장하지 않는다. 그것은 `apps/hwp`의 편집기가 한다. 여기서는 같은 엔진(`@rhwp/core`)으로 열어 글자만 꺼낸다.
 - 읽기에 시간 제한을 두지 않는다. 칸이 수만 개인 표가 든 한글 문서는 엔진이 여는 데만 10초 넘게 걸린다. 파일 색인은 작업자 스레드와 120초 제한 안에서 부르지만, 첨부·MCP·열린 탭 읽기는 메인 프로세스에서 바로 부른다.
 

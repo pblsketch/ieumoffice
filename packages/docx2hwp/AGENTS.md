@@ -14,6 +14,7 @@
 - `write.ts`: 한글 모델 → 엔진 호출. 쪽 설정, 글꼴·스타일·번호 표, 본문, 표, 각주·미주, 머리말·꼬리말.
 - `engine.ts`: `@rhwp/core`를 값으로 가져오는 유일한 파일. 문서는 `withNewDocument`·`withOpenedDocument` 안에서만 살고 `finally`에서 `free()`한다.
 - `convert.ts`: 읽기(`not-docx`) → 낮추기 → (한글 문서 모양) → 쓰기(일괄 모드) → `.hwp`면 한글 편집기와 같은 저장 검사(`exportHwpVerify`의 쪽 수가 같아야 함) → 내보내기 → 결과를 한 번 다시 열어 본다. 검사가 어긋나면 HWPX로 내보내 다시 연 문서로 같은 검사를 하고 `.hwp`를 쓴다. 그래도 어긋나면 `hwp-readback`이다.
+- 민감정보 가리기(결정 0138): 워드 가리기 표시는 같은 글 위의 한글 가리기 메모가 된다(한 문단 안의 같은 이름표 구간마다 하나, 글은 `@genoffice/agent-core/hiding-memo`의 `buildHidingMemoText`, 작성자는 제품 이름). 머리말 언어는 `hidingLang`이고 없으면 영어다(터미널). 한글 사본이 담지 못한 표시(머리말·꼬리말, 그림에만 단 표시, 엔진이 거절한 메모, 다시 읽어 없는 메모)는 잃은 것 `hiding_mark`로 알린다. 표시가 없는 문서의 결과 바이트는 예전과 같다. 시험은 `tests/hiding.test.ts`.
 
 ## 맡지 않는 것 (경계)
 

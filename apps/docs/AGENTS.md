@@ -52,7 +52,7 @@ Word 문서(.docx)와 ODT(.odt) 에디터다. 그리고 배포되는 앱 전체�
 - **두 번 이스케이프된 줄바꿈은 되돌린다(`ai/tools.ts`의 `NEW_PLAIN_TEXT`).** 모델이 줄바꿈을 역슬래시+n 두 글자로 보내는 일이 있다(무료 Gemini). 그래서 아래 평문 인자는 `@genoffice/agent-core`의 `undoDoubledEscapes`를 거친다.
   - 대상: 메모·답글 본문, 각주·미주 글, `edit_note`의 replace, 머리말·꼬리말 글, 글상자 글
   - 거치지 않는 것: 찾을 글(메모의 `text`, `afterText`, `find`), HTML 인자. HTML 안의 수식(`\nabla`)과 코드가 깨지기 때문이다.
-- 문자열은 언어별 조각이다. `i18n/strings-ai.ts`·`strings-app.ts`·`strings-ribbon.ts`는 `i18n/<영역>/<lang>.ts`를 모으는 집계 파일이고 `zh.ts`가 키 집합을 정한다. 키를 추가하면 21개 조각 모두에 넣는다. 구독 연결 문장은 `@genoffice/ui`의 공용 문자열을 쓰고 여기에 복제하지 않는다. `useI18n()`의 `t`는 훅 의존성 배열에 넣지 않는다.
+- 문자열은 언어별 조각이다. `i18n/strings-ai.ts`·`strings-app.ts`·`strings-ribbon.ts`는 `i18n/<영역>/<lang>.ts`를 모으는 집계 파일이고 `zh.ts`가 키 집합을 정한다. 키를 추가하면 22개 조각 모두에 넣는다. 구독 연결 문장은 `@genoffice/ui`의 공용 문자열을 쓰고 여기에 복제하지 않는다. `useI18n()`의 `t`는 훅 의존성 배열에 넣지 않는다.
 - `electron.vite.config.ts`의 `externalizeDepsPlugin`은 `dependencies`의 패키지를 번들 밖에 둔다. `@genoffice/*` 패키지는 TS 소스라 밖에 두면 실행 시 해석에 실패하므로, `dependencies`에 workspace 패키지를 추가하면 `exclude` 목록에도 넣는다.
 - ODT는 다리 docx로 편집한다(`@genoffice/odt-engine`). 열 때 렌더러가 `parseOdtOffThread`(파싱 일꾼 안에서 `odtToDocx` → `parseDocx`)로 열고, 문서 상태에 `format: 'docx' | 'odt'`와 `odt`(원본 ODT 바이트, 다리 지도, docx로 바꿀 때의 보고)를 둔다(`doc-state.ts`의 `DocState`, `isOdtDoc`). 형식은 경로의 확장자가 정한다(`shared/open-file.ts`의 `docFormatOfPath`).
   - 저장은 `buildDocBytes`의 docx를 `saveOdt`로 **연 때의** 원본 ODT와 다리 지도에 되돌려 쓴다(`odtBytesFor`). 저장해도 이 기준은 바꾸지 않는다. 편집기의 비교 기준(`parsed`)만 docx 문서처럼 방금 저장한 docx로 바뀐다. 저장한 ODT로 기준을 다시 만들면 ODF 쓰기가 만든 모양이 편집 화면과 달라(굵게, 글자 크기, 문단 나누기) 화면을 다시 그리고 되돌리기 기록을 지운다(측정해서 확인함). 고치지 않은 부분은 몇 번을 저장해도 원본 바이트 그대로이고, 같은 편집은 늘 같은 바이트가 된다. 기준은 파일을 다시 열 때(복구본, 형식 바꿔 저장 뒤 다시 불러오기 포함) 새로 잡는다.
