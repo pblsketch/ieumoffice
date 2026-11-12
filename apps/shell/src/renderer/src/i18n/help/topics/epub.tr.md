@@ -12,7 +12,7 @@ E-kitap düzenleyici EPUB kitaplarını (`.epub`) bir sekmede açar. Kitabı oku
 
 ## Okuma
 
-- Soldaki **İçindekiler** bölmesi kitabın içindekiler tablosunu gösterir. Bir girdiye tıklayarak oraya gidin. İçindekiler tablosu olmayan bir kitapta bölümlerinin listesi görünür.
+- Soldaki **İçindekiler** bölmesi kitabın içindekiler tablosunu gösterir. Bir girdiye tıklayarak oraya gidin. İçindekiler tablosu olmayan bir kitapta bölümlerinin listesi görünür. Genişliği değiştirmek için bölmenin iç kenarını sürükleyin; özgün genişliğe dönmek için kenara çift tıklayın. Arama bölmesi de aynı genişliği kullanır.
 - Her bölüm yukarı ve aşağı kaydırılır. Bir bölümün sonunu geçene kadar kaydırmaya devam ederek sonrakine, başlangıcını geçerek bir öncekine gidin. Durum satırı hangi bölümde olduğunuzu gösterir.
 - **Görünüm** sekmesi metin boyutunu ve satır aralığını değiştirir, **Koyu görünüm**ü açıp kapatır. Bu ayarlar yalnızca ekranı değiştirir, kitabı asla değiştirmez ve her kitaba uygulanır.
 - Okumayı bıraktığınız yer her dosya için hatırlanır; kitapta değil, uygulamanın veri klasöründe.

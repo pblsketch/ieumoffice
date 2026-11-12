@@ -317,12 +317,36 @@ html.genoffice-popover-open .ribbon-tabs {
 }
 
 .epub-side {
-  flex: 0 0 260px;
+  flex: 0 0 var(--epub-side-width, 260px);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
   border-inline-end: 1px solid var(--border);
   background: var(--surface-subtle);
+}
+
+/* the handle on the pane's inner edge; it overlaps the pane's border */
+.epub-side-resizer {
+  flex: 0 0 6px;
+  margin-inline-start: -4px;
+  margin-inline-end: -2px;
+  position: relative;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.epub-side-resizer:hover,
+.epub-side-resizer:focus-visible,
+.epub-side-resizing .epub-side-resizer {
+  background: var(--border-strong);
+  outline: none;
+}
+
+/* while dragging, the chapter frame must not take the pointer */
+.epub-side-resizing iframe {
+  pointer-events: none;
 }
 
 .epub-side-head {

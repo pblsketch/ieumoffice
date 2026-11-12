@@ -7,7 +7,7 @@ PDF düzenleyicisinin beş şerit sekmesi vardır: **Giriş / Açıklama / Düze
 - Sol kenar çubuğu: **küçük resimler** (atlamak için tıklayın, görünen aralık vurgulanır) ya da **anahat** (varsa yer imleri).
 - Yakınlaştırma: sağ alttaki oran denetimi; ctrl+tekerlek yakınlaştırmayı kademelendirir.
 - Açılış yakınlaştırması: Görünüm sekmesindeki **Açılışta**, yeni açılan bir PDF’nin hangi görünümle başlayacağını belirler: genişliğe sığdır, sayfaya sığdır veya %50 ile %200 arası bir yakınlaştırma. Yakınlaştırmasını kendiniz değiştirdiğiniz bir PDF o yakınlaştırmayla yeniden açılır.
-- Görünümü taşıma: **El aracını** (Giriş ve Görünüm sekmeleri) açın ve sayfayı yukarı, aşağı ve yanlara taşımak için sürükleyin. Açıkken sürüklemek metin seçmez ve düz bir tıklama yine bağlantıyı izler. Orta düğme (tekerlek) basılıyken sürüklemek, araç olmadan görünümü taşır. Esc veya başka bir araç seçmek onu kapatır.
+- Görünümü taşıma: **El aracını** (Giriş ve Görünüm sekmeleri) açın ve sayfayı yukarı, aşağı ve yanlara taşımak için sürükleyin. Açıkken sürüklemek metin seçmez ve düz bir tıklama yine bağlantıyı izler. Orta düğme (tekerlek) basılıyken sürüklemek, araç olmadan görünümü taşır. Esc veya başka bir araç seçmek onu kapatır. Metin seçili değilken H tuşu onu açar ve kapatır.
 - Döndürme: Sayfa menüsünden sayfa başına ya da tüm sayfalar; döndürmeler kaydetmede geri yazılır.
 - Arama: ctrl+F ile tam metin, tüm eşleşmeler vurgulanır.
 - Şifreli PDF'ler: bir parola istemi (kendi küçük penceresi) onları açar; parola yalnızca bu oturum için kullanılır. Böyle bir belgeyi düzenleyip kaydedebilirsiniz; kaydetme parolasını korur. **Açıklama → Koru** parolayı ve okuyucuların neler yapabileceğini ayarlar, değiştirir veya kaldırır.

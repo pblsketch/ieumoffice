@@ -738,6 +738,11 @@ const RETIRED_MODELS: Partial<Record<AiProviderId, Record<string, string>>> = {
   glm: { 'glm-5-turbo': 'glm-5.3-flash' },
   // deprecated 2026-10-08; Google routes its requests to 3.8 Flash
   gemini: { 'gemini-3.7-flash': 'gemini-3.8-flash' },
+  // the free variant OpenRouter withdrew (gone from its list since 2026-11-02);
+  // the next tested free model, so a free connection stays free
+  openrouter: {
+    'nvidia/nemotron-3-super-120b-a12b:free': 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  },
 }
 
 /**

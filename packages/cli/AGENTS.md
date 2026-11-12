@@ -26,7 +26,7 @@
 
 ## 항상 지켜야 하는 것
 
-- 앱이 봉인한 키(`sealed:v1:`)는 `runCli`가 등록하는 `cliSecretCodecFor`(`src/secrets.ts`)가 앱을 창 없이 `--reveal-ai-secrets`로 띄워 풀고 그 프로세스의 메모리에만 둔다. 명령줄은 봉인하지 않고, 푼 값을 파일·로그·출력에 쓰지 않는다(결정 0063).
+- 앱이 봉인한 키(`sealed:v1:`)는 `runCli`가 등록하는 `cliSecretCodecFor`(`src/secrets.ts`)가 앱을 창 없이 `--reveal-ai-secrets`로 띄워 풀고 그 프로세스의 메모리에만 둔다. 요청은 환경 변수 `GENOFFICE_REVEAL_REQUEST`와 표준 입력으로 함께 보낸다. Windows의 Electron 주 프로세스는 표준 입력을 받지 못하므로 환경 변수를 빼지 않는다. 명령줄은 봉인하지 않고, 푼 값을 파일·로그·출력에 쓰지 않는다(결정 0063).
 - PC에 등록하는 이름은 전부 이 제품의 것이다. 명령 `ieumoffice`, MCP 항목 `ieumoffice`, 스킬 `ieumoffice`, 홈 폴더 `~/.ieumoffice`이고 `src/names.ts`의 상수로만 쓴다. 문자열로 다시 적지 않는다.
 - 원본 GenOffice가 같은 PC에 설치돼 있을 수 있다. 그 앱이 등록한 것(`genoffice` 명령, `[mcp_servers.genoffice]` 같은 MCP 항목, `genoffice` 스킬 폴더, `~/.genoffice`, 그 앱의 실행 파일)은 읽지도, 우리 것으로 간주하지도, 바꾸지도, 지우지도, 실행하지도 않는다. `isOurLauncher`·`isGenofficeLauncher`·`installedAppBinaries`가 이 구분을 한다.
 - 번들 파일 이름 `genoffice.cjs`(`CLI_BUNDLE_FILE`)는 앱 안의 내부 파일이라 원본 이름을 유지한다. 그래서 "이 번들을 실행한다"만으로는 우리 항목인지 알 수 없다. 원본 실행 파일로 이 이름의 번들을 실행하는 MCP 항목은 원본의 것으로 판정한다.
@@ -47,7 +47,7 @@
 - WebAssembly 메모리를 만들 수 없는 환경(가상 메모리 상한 `ulimit -v`)에서는 PDF·한글·네트워크 엔진이 `RangeError`로 실패한다. `src/wasm.ts`의 `wasmMemoryFailure`가 `runCli`의 마지막 catch에서 그 실패를 종료 코드 3, `error: "resource_limit"`, `detail.reason: "virtual_memory"` 봉투로 바꾸고 `ulimit -v`를 올리라는 `suggestion`을 붙인다. `capabilities`의 `detail.wasm`은 `wasmAvailability`로 같은 판단을 미리 알린다. 이 두 곳에서만 판단하고 명령마다 따로 잡지 않는다.
 - 쓰기는 한 곳을 거친다. 출력 경로는 `src/fs.ts`에서 풀고, `GENOFFICE_ALLOWED_ROOTS`를 symlink를 푼 뒤 검사하고, 앱이 탭으로 열어 둔 파일은 `--force` 없이는 덮어쓰지 않는다. 파일은 같은 폴더의 임시 파일에 쓴 뒤 rename한다. rename이 잠금으로 끝내 막혀 제자리 덮어쓰기까지 실패하면 임시 파일을 지우지 않고, 오류(`conversion_failed`)의 `message`와 `detail.rescue_path`에 그 경로를 적는다.
 - 비밀 값은 감사 기록에 남기지 않는다. 기록은 실패해도 명령을 실패시키지 않는다.
-- **가린 내용(민감정보 가리기, 결정 0138)은 어떤 출력에도 원문으로 나가지 않는다.** 문서 글이 든 출력(읽기, `info`, `check`·`audit`의 발견, 결과에 글을 되돌려 주는 연산, 묶음 안의 읽기)은 형식마다 `src/formats/*-hiding.ts`와 `hwpToText`를 지나 가린 자리를 `{{이름표}}`로 낸다. 원문을 꺼내는 옵션을 만들지 않는다. 글로 찾는 연산은 가린 글을 보지 못하고, 가린 내용을 바꾸거나 지우거나 옮기는 연산은 `src/hiding.ts`의 `hiddenContentError`(묶음은 `hiddenFailure`, `withHiddenDetail`)로 거절한다. `error: "hidden_content"`, `detail.reason`(`edit`·`convert`), `detail.labels`, `OpFailure.hidden`의 모양은 바깥 계약이다(`docs/contracts.md`). 가리기를 읽을 수 없는 파일은 `unreadableHiding`(종료 2, `unsupported`)으로 읽지 않는다. 원본 문서로 새 파일을 만드는 MCP 도구(`convert`, `create_pdf`, `from`을 준 `create_docx`·`create_xlsx`, `merge`)만 표시가 있는 원본을 거절하고(`src/mcp/hiding-gate.ts`, 도구 정의의 `source`가 원본 매개변수를 가리킨다), 터미널 명령과 `render`는 막지 않는다. 원본 파일로 새 파일을 쓰는 MCP 도구를 더하면 `source`를 단다. 새 읽기 명령이나 글을 되돌려 주는 연산을 더하면 이 길을 지나게 하고 `tests/hiding-*.test.ts`에 덮는다.
+- **가린 내용(민감정보 가리기, 결정 0140)은 어떤 출력에도 원문으로 나가지 않는다.** 문서 글이 든 출력(읽기, `info`, `check`·`audit`의 발견, 결과에 글을 되돌려 주는 연산, 묶음 안의 읽기)은 형식마다 `src/formats/*-hiding.ts`와 `hwpToText`를 지나 가린 자리를 `{{이름표}}`로 낸다. 원문을 꺼내는 옵션을 만들지 않는다. 글로 찾는 연산은 가린 글을 보지 못하고, 가린 내용을 바꾸거나 지우거나 옮기는 연산은 `src/hiding.ts`의 `hiddenContentError`(묶음은 `hiddenFailure`, `withHiddenDetail`)로 거절한다. `error: "hidden_content"`, `detail.reason`(`edit`·`convert`), `detail.labels`, `OpFailure.hidden`의 모양은 바깥 계약이다(`docs/contracts.md`). 가리기를 읽을 수 없는 파일은 `unreadableHiding`(종료 2, `unsupported`)으로 읽지 않는다. 원본 문서로 새 파일을 만드는 MCP 도구(`convert`, `create_pdf`, `from`을 준 `create_docx`·`create_xlsx`, `merge`)만 표시가 있는 원본을 거절하고(`src/mcp/hiding-gate.ts`, 도구 정의의 `source`가 원본 매개변수를 가리킨다), 터미널 명령과 `render`는 막지 않는다. 원본 파일로 새 파일을 쓰는 MCP 도구를 더하면 `source`를 단다. 새 읽기 명령이나 글을 되돌려 주는 연산을 더하면 이 길을 지나게 하고 `tests/hiding-*.test.ts`에 덮는다.
 
 ## 이 모듈의 방식
 

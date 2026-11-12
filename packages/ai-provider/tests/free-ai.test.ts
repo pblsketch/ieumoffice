@@ -9,11 +9,12 @@ import {
   isFreeTierModelRefusal,
   keyProviderModels,
   nextPacificMidnight,
+  openRouterFreeModelFor,
   withFreeAiConnection,
   withoutFreeAiConnection,
 } from '../src/free-ai'
 import { aiStreamErrorFields } from '../src/run-error'
-import { defaultAiSettings } from '../src/providers'
+import { currentModelId, defaultAiSettings, resolveAiSettings } from '../src/providers'
 import { selectAiProvider } from '../src/provider-selection'
 
 const OPENROUTER_DAILY_BODY =
@@ -99,6 +100,59 @@ describe('free connection settings', () => {
     expect(
       keyProviderModels('openrouter', OPENROUTER_FREE_MODELS[0]!, ['anthropic/claude-opus-6']),
     ).toEqual([...OPENROUTER_FREE_MODELS])
+  })
+
+  it('offers only the tested free models OpenRouter still lists for the key', () => {
+    const [first, second, ...rest] = OPENROUTER_FREE_MODELS
+    // the second tested model is gone from the live list: it is not offered
+    const live = [first!, ...rest, 'acme/untested:free', 'anthropic/claude-opus-6']
+    expect(keyProviderModels('openrouter', first!, live)).toEqual([first!, ...rest])
+    // a stored model that is gone stays at the top until it is moved, so the picker shows what runs
+    expect(keyProviderModels('openrouter', second!, live)).toEqual([second!, first!, ...rest])
+    // no list yet, or a list with none of the tested models: nothing to narrow to
+    expect(keyProviderModels('openrouter', first!)).toEqual([...OPENROUTER_FREE_MODELS])
+    expect(keyProviderModels('openrouter', first!, ['acme/untested:free'])).toEqual([
+      ...OPENROUTER_FREE_MODELS,
+    ])
+  })
+
+  it('moves a free connection off a model OpenRouter no longer lists, and only then', () => {
+    const [first, second] = OPENROUTER_FREE_MODELS
+    const live = [second!, 'acme/untested:free', 'anthropic/claude-opus-6']
+    // gone from the list: the first tested model that is listed
+    expect(openRouterFreeModelFor(first!, live)).toBe(second)
+    expect(openRouterFreeModelFor('acme/withdrawn:free', live)).toBe(second)
+    // still listed, tested or typed by the user: left alone
+    expect(openRouterFreeModelFor(second!, live)).toBe(second)
+    expect(openRouterFreeModelFor('acme/untested:free', live)).toBe('acme/untested:free')
+    // no list, or no tested model to move to: left alone rather than moved to an untried one
+    expect(openRouterFreeModelFor(first!, undefined)).toBe(first)
+    expect(openRouterFreeModelFor(first!, [])).toBe(first)
+    expect(openRouterFreeModelFor(first!, ['acme/untested:free'])).toBe(first)
+  })
+
+  it('never moves a paid OpenRouter model, and never moves a free one to a paid one', () => {
+    // a paid selection the list lacks is the user's to change: another model costs differently
+    expect(openRouterFreeModelFor('openai/gpt-withdrawn', [OPENROUTER_FREE_MODELS[0]!])).toBe(
+      'openai/gpt-withdrawn',
+    )
+    const moved = openRouterFreeModelFor('acme/withdrawn:free', [
+      'anthropic/claude-opus-6',
+      OPENROUTER_FREE_MODELS[1]!,
+    ])
+    expect(moved.endsWith(':free')).toBe(true)
+  })
+
+  it('reads the free model OpenRouter withdrew as the next tested one', () => {
+    const withdrawn = 'nvidia/nemotron-3-super-120b-a12b:free'
+    expect(OPENROUTER_FREE_MODELS).not.toContain(withdrawn)
+    expect(currentModelId('openrouter', withdrawn)).toBe(OPENROUTER_FREE_MODELS[0])
+    const stored = defaultAiSettings()
+    stored.providers.openrouter = { apiKey: 'sk-or-v1-x', model: withdrawn }
+    const read = resolveAiSettings(stored, defaultAiSettings())
+    expect(read.providers.openrouter.model).toBe(OPENROUTER_FREE_MODELS[0])
+    // still the free connection after the move
+    expect(freeAiConnected(read, 'openrouter')).toBe(true)
   })
 
   it('reads IPC answers defensively', () => {

@@ -16,6 +16,16 @@ if [ -f "$profile_src" ] && apparmor_status --enabled >/dev/null 2>&1; then
     fi
   fi
 fi
+# Start the app through the launcher that raises the open-file soft limit
+# before Chromium forks its zygote (#488, see build/linux-launch.sh).
+# electron-builder refuses a custom Exec for the desktop entry it writes, so
+# the entry is repointed here. Only the line that starts our own binary is
+# changed, and a payload without the launcher keeps the entry as it is.
+desktop="/usr/share/applications/ieumoffice.desktop"
+launch="$app/resources/ieumoffice-launch"
+if [ -x "$launch" ] && [ -f "$desktop" ]; then
+  sed -i -e "s#^Exec=$app/ieumoffice #Exec=$launch #" -e "s#^Exec=$app/ieumoffice\$#Exec=$launch#" "$desktop"
+fi
 # electron-builder stamps every MIME type it registers with
 # <icon name="x-office-document"/>, which overrides the system's per-type
 # icons (spreadsheet, presentation, text, pdf...) for all 21 types we claim

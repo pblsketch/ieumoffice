@@ -1,10 +1,12 @@
 // When the main process asks the key providers for their models, and how the
 // answer reaches the settings file (decision 0087).
 //
-// A provider is listed once per app run, and again whenever its key or base
-// URL changes, so a key pasted a moment ago shows the vendor's models in every
-// picker without a restart. Nothing else asks: a provider without a key is
-// never contacted, and opening a picker does not send a request.
+// A provider is listed once per app run, again whenever its key or base URL
+// changes, so a key pasted a moment ago shows the vendor's models in every
+// picker without a restart, and again once its list is a day old, so an app
+// left open for days still sees a model released meanwhile (decision 0138).
+// Nothing else asks: a provider without a key is never contacted, and opening
+// a picker does not send a request.
 //
 // `providers.<id>.models` belongs to the main process. A settings object a
 // renderer sends carries whatever list that window loaded, possibly an old one,
@@ -14,6 +16,7 @@
 import { createHash } from 'node:crypto'
 
 import { aiModelEffortsOf, type AiModelEffort } from './effort'
+import { openRouterFreeModelFor } from './free-ai'
 import {
   listKeyProviderModelListing,
   listsKeyProviderModels,
@@ -98,6 +101,24 @@ export function withKeyProviderModels(
   }
 }
 
+/**
+ * `settings` with an OpenRouter free connection moved off a free model
+ * OpenRouter no longer lists for the key, onto the first tested one it does
+ * (decision 0138). The same object comes back when there is nothing to move:
+ * not a free connection, no list, the model still listed, or no tested model
+ * left to move to.
+ */
+export function withListedFreeModel(settings: AiSettings): AiSettings {
+  const config = settings.providers.openrouter
+  if (!config) return settings
+  const model = openRouterFreeModelFor(config.model, config.models)
+  if (model === config.model) return settings
+  return { ...settings, providers: { ...settings.providers, openrouter: { ...config, model } } }
+}
+
+/** How old a provider's list may get in a running app before it is asked again */
+export const KEY_MODEL_RELIST_AFTER_MS = 24 * 60 * 60 * 1000
+
 export interface KeyModelRefresherDeps {
   /** the settings file as it is now, keys opened */
   read(): AiSettings
@@ -108,10 +129,17 @@ export interface KeyModelRefresherDeps {
     provider: AiProviderId,
     config: Pick<AiProviderConfig, 'apiKey' | 'baseUrl'>,
   ) => Promise<KeyModelListing | string[] | null>
+  /** the wall clock in milliseconds; replaced in tests */
+  now?: () => number
+  /** the age at which an unchanged key is listed again; `KEY_MODEL_RELIST_AFTER_MS` when absent */
+  relistAfterMs?: number
 }
 
 export interface KeyModelRefresher {
-  /** list every key provider whose key or base URL is not the one it was last listed with */
+  /**
+   * list every key provider whose key or base URL is not the one it was last
+   * listed with, or whose last listing is older than `relistAfterMs`
+   */
   refreshChanged(): void
   /** settles when no listing is in flight (tests) */
   idle(): Promise<void>
@@ -119,8 +147,10 @@ export interface KeyModelRefresher {
 
 export function createKeyModelRefresher(deps: KeyModelRefresherDeps): KeyModelRefresher {
   const list = deps.list ?? ((provider, config) => listKeyProviderModelListing(provider, config))
-  /** per provider, what its key and base URL were when it was last asked (in this run) */
-  const askedWith = new Map<AiProviderId, string>()
+  const now = deps.now ?? Date.now
+  const relistAfterMs = deps.relistAfterMs ?? KEY_MODEL_RELIST_AFTER_MS
+  /** per provider, what its key and base URL were when it was last asked (in this run), and when */
+  const askedWith = new Map<AiProviderId, { fingerprint: string; at: number }>()
   const inFlight = new Set<Promise<void>>()
 
   const refresh = (provider: AiProviderId, config: AiProviderConfig, fingerprint: string) => {
@@ -130,10 +160,12 @@ export function createKeyModelRefresher(deps: KeyModelRefresherDeps): KeyModelRe
         if (!answer) return
         const listing = Array.isArray(answer) ? { models: answer, efforts: undefined } : answer
         deps.write((latest) => {
-          const now = latest.providers[provider]
+          const current = latest.providers[provider]
           // the key changed while the list was on its way: that key's list is not this one
-          if (!now || fingerprintOf(now) !== fingerprint) return latest
-          return withKeyProviderModels(latest, provider, listing.models, listing.efforts)
+          if (!current || fingerprintOf(current) !== fingerprint) return latest
+          const listed = withKeyProviderModels(latest, provider, listing.models, listing.efforts)
+          // a free connection left on a model that is gone from this list would fail every request
+          return provider === 'openrouter' ? withListedFreeModel(listed) : listed
         })
       })
       .catch(() => undefined)
@@ -158,8 +190,11 @@ export function createKeyModelRefresher(deps: KeyModelRefresherDeps): KeyModelRe
           continue
         }
         const fingerprint = fingerprintOf(config)
-        if (askedWith.get(id) === fingerprint) continue
-        askedWith.set(id, fingerprint)
+        const last = askedWith.get(id)
+        // the clock may have been set back: an age in either direction counts
+        const due = last !== undefined && Math.abs(now() - last.at) >= relistAfterMs
+        if (last?.fingerprint === fingerprint && !due) continue
+        askedWith.set(id, { fingerprint, at: now() })
         refresh(id, config, fingerprint)
       }
     },

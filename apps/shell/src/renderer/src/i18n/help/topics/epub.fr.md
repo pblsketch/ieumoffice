@@ -12,7 +12,7 @@ L’éditeur de livres numériques ouvre les livres EPUB (`.epub`) dans un ongle
 
 ## Lire
 
-- Le volet **Sommaire**, à gauche, affiche la table des matières du livre. Cliquez sur une entrée pour vous y rendre. Un livre qui n’en a pas reçoit la liste de ses chapitres.
+- Le volet **Sommaire**, à gauche, affiche la table des matières du livre. Cliquez sur une entrée pour vous y rendre. Un livre qui n’en a pas reçoit la liste de ses chapitres. Faites glisser le bord intérieur du volet pour changer sa largeur ; double-cliquez sur le bord pour revenir à la largeur d’origine. Le volet de recherche a la même largeur.
 - Chaque chapitre défile de haut en bas. Continuez à défiler après la fin d’un chapitre pour passer au suivant, ou avant son début pour revenir au précédent. La ligne d’état indique dans quel chapitre vous êtes.
 - L’onglet **Affichage** règle la taille du texte et l’interligne, et active ou désactive la **Lecture sombre**. Ces réglages ne touchent que l’écran, jamais le livre, et valent pour tous les livres.
 - L’endroit où vous avez arrêté votre lecture est mémorisé pour chaque fichier, dans le dossier de données de l’application et non dans le livre.

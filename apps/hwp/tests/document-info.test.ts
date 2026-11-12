@@ -224,8 +224,10 @@ describe('문서 정보 대화 상자', () => {
       createBody(): HTMLElement {
         return globalThis.document.createElement('div')
       }
-      onConfirm() {
-        return true
+      // abstract in the studio: a dialog without its own onConfirm throws on the confirm button
+      declare onConfirm: () => void | boolean
+      hide() {
+        this.overlay.remove()
       }
       show() {
         const doc = globalThis.document
@@ -237,6 +239,10 @@ describe('문서 정보 대화 상자', () => {
         const primary = doc.createElement('button')
         primary.className = 'dialog-btn dialog-btn-primary'
         primary.textContent = '확인'
+        primary.addEventListener('click', () => {
+          const shouldClose = this.onConfirm()
+          if (shouldClose !== false) this.hide()
+        })
         const cancel = doc.createElement('button')
         cancel.className = 'dialog-btn'
         cancel.textContent = '취소'
@@ -293,6 +299,16 @@ describe('문서 정보 대화 상자', () => {
     expect(value('words')).toBe('2')
     expect(value('lines')).toBe('2')
     expect(value('pages')).toBe('3')
+  })
+
+  it('closes when 닫기 is pressed (#487)', () => {
+    globalThis.document = dom.window.document
+    dom.window.document.body.replaceChildren()
+    openDocumentInfo({ ModalDialog: dialogBase() }, { wasm } as never, true)
+    const close = dom.window.document.querySelector<HTMLButtonElement>('.dialog-btn-primary')
+    expect(close?.textContent).toBe('닫기')
+    close?.click()
+    expect(dom.window.document.querySelectorAll('.dialog-btn-primary').length).toBe(0)
   })
 
   it('does nothing without a dialog to build on', () => {

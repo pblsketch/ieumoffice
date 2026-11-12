@@ -12,7 +12,7 @@ Editor e-buku membuka buku EPUB (`.epub`) dalam satu tab. Anda boleh membaca buk
 
 ## Membaca
 
-- Anak tetingkap **Kandungan** di sebelah kiri memaparkan senarai kandungan buku. Klik satu entri untuk pergi ke situ. Buku yang tiada senarai kandungan akan mendapat senarai babnya.
+- Anak tetingkap **Kandungan** di sebelah kiri memaparkan senarai kandungan buku. Klik satu entri untuk pergi ke situ. Buku yang tiada senarai kandungan akan mendapat senarai babnya. Seret tepi dalam anak tetingkap untuk mengubah lebarnya; klik dua kali pada tepi itu untuk kembali ke lebar asal. Anak tetingkap carian menggunakan lebar yang sama.
 - Setiap bab ditatal ke atas dan ke bawah. Teruskan menatal melepasi hujung bab untuk ke bab seterusnya, atau melepasi permulaannya untuk berundur. Baris status menunjukkan bab yang sedang anda baca.
 - Tab **Paparan** menukar saiz teks dan jarak baris, serta menghidupkan dan mematikan **Paparan gelap**. Tetapan ini hanya mengubah skrin, tidak sekali-kali buku, dan digunakan untuk semua buku.
 - Tempat anda berhenti membaca diingati bagi setiap fail, dalam folder data aplikasi dan bukan dalam buku.

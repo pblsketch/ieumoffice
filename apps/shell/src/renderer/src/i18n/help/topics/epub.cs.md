@@ -12,7 +12,7 @@ Editor e-knih otevírá knihy EPUB (`.epub`) na kartě. Knihu můžete číst, o
 
 ## Čtení
 
-- Panel **Obsah** vlevo zobrazuje obsah knihy. Kliknutím na položku na ni přejdete. Kniha bez obsahu dostane seznam svých kapitol.
+- Panel **Obsah** vlevo zobrazuje obsah knihy. Kliknutím na položku na ni přejdete. Kniha bez obsahu dostane seznam svých kapitol. Šířku panelu změníte přetažením jeho vnitřního okraje, dvojklikem na okraj vrátíte původní šířku. Panel hledání má stejnou šířku.
 - Každá kapitola se posouvá nahoru a dolů. Když budete posouvat dál za konec kapitoly, přejdete na další, a za jejím začátkem se vrátíte na předchozí. Stavový řádek ukazuje, ve které kapitole jste.
 - Karta **Zobrazení** mění velikost textu a řádkování a zapíná a vypíná **Tmavé zobrazení**. Tato nastavení mění jen obrazovku, nikdy knihu, a platí pro všechny knihy.
 - Místo, kde jste přestali číst, se pamatuje pro každý soubor zvlášť, a to ve složce dat aplikace, ne v knize.

@@ -30,6 +30,7 @@ export const tr = {
   darkView: 'Koyu görünüm',
   toc: 'İçindekiler',
   tocEmpty: 'Bu kitabın içindekiler bölümü yok',
+  sideResize: 'Panel genişliğini ayarla',
   statusChapter: 'Bölüm {n}/{total}',
   prevChapter: 'Önceki bölüm',
   nextChapter: 'Sonraki bölüm',
