@@ -19,15 +19,25 @@
  *
  * The caller gives text pieces in reading order, each with an opaque
  * location (a paragraph, a cell, a shape) that comes back on its candidates.
- * Offsets are into that piece's text. A piece that is nothing but a label
- * word ("name", "phone:") announces the kind of the next piece, which is how
- * a table row of label cell then value cell is read; so pass table cells row
- * by row.
+ * Offsets are into that piece's text. Tables come in two shapes, and both
+ * are read by label words:
+ *
+ * - Headers on the row above (a class list: "name | student number" over
+ *   the values). Give each value cell its column's header as `header`; a
+ *   header that is a label word decides the kind of the cell's value.
+ * - Labels on the left (a form: a "name" cell, then the value cell). A piece
+ *   that is nothing but a label word ("name", "phone:") announces the kind
+ *   of the next piece, so pass such cells in reading order, row by row.
+ *
+ * A cell's own `header` wins over the piece before it.
  *
  * Candidates do not overlap. When two rules claim the same text, the kind
  * with the more specific shape wins (a registration number over a phone
- * number over an account number, and so on), and an address that runs into
- * another candidate is cut short before it.
+ * number over an account number, and so on). An address yields to every
+ * other kind: one that runs into another candidate is cut short before it.
+ * After an address label, an exact road-name or lot-number address in the
+ * line is taken as the whole address; otherwise the line is taken up to a
+ * wide gap, another kind's label word, a date, or another candidate.
  *
  * Renderer-safe, exported as `@genoffice/agent-core/sensitive-detect`.
  */
@@ -37,6 +47,8 @@ import type { SensitiveKind } from './sensitive-kinds'
 export interface TextPiece<L> {
   text: string
   location: L
+  /** the header of the column this cell sits in, when the table has its headers on the row above */
+  header?: string
 }
 
 export interface SensitiveCandidate<L> {
@@ -61,8 +73,8 @@ const PRIORITY: Readonly<Record<SensitiveKind, number>> = {
   'id-number': 7,
   'birth-date': 8,
   vehicle: 9,
-  address: 10,
-  name: 11,
+  name: 10,
+  address: 11,
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +279,12 @@ const NAME_HEADER_SET: ReadonlySet<string> = new Set([
   ...LABEL_WORDS.name.map(foldWord),
   ...NAME_HEADERS.map(foldWord),
 ])
+
+/** The kind a column header gives the values of its cells, or null. */
+function headerKind(header: string | undefined): SensitiveKind | null {
+  if (!header) return null
+  return isNameColumnHeader(header) ? 'name' : labelWordKind(header)
+}
 
 /** The kind a piece announces when it is nothing but a label word ("name", "phone:"), else null. */
 export function labelWordKind(text: string): SensitiveKind | null {
@@ -532,6 +550,15 @@ const NOT_LABELLED_NAMES: ReadonlySet<string> = new Set([
 
 const PARTICLE_ENDINGS = /[은는이가을를의도와과께]$/
 
+/** A label word or header, alone or with one particle after it, is never a name. */
+function isLabelWordLike(value: string): boolean {
+  const known = (v: string): boolean => {
+    const key = foldWord(v)
+    return WORD_KIND.has(key) || NAME_HEADER_SET.has(key)
+  }
+  return known(value) || (PARTICLE_ENDINGS.test(value) && known(value.slice(0, -1)))
+}
+
 /** A value's label pattern: the label words, then optional brackets, then a separator. */
 function labelled(kind: SensitiveKind, value: string, end: string): RegExp {
   return new RegExp(
@@ -598,7 +625,7 @@ const AFTER_LABEL: Readonly<Record<SensitiveKind, RegExp>> = Object.fromEntries(
 
 /** Where an address after its label stops: a wide gap, or another kind's label word. */
 const ADDRESS_STOP = new RegExp(
-  `\\s{2,}|[\\s,;/]+(?:${alternation(
+  `\\s{2,}|[\\s,;/]*(?<!\\d)\\d{4}[./-]\\d{1,2}[./-]\\d{1,2}(?!\\d)|[\\s,;/]+(?:${alternation(
     (Object.keys(LABEL_WORDS) as SensitiveKind[])
       .filter((k) => k !== 'address' && k !== 'account')
       .flatMap((k) => LABEL_WORDS[k]),
@@ -618,7 +645,7 @@ function finishValue(kind: SensitiveKind, value: string, labelledValue: boolean)
     case 'name': {
       let v = value
       if (/^[가-힣]+$/.test(v) && v.length >= 4 && PARTICLE_ENDINGS.test(v)) v = v.slice(0, -1)
-      if (NOT_NAMES.has(v)) return null
+      if (NOT_NAMES.has(v) || isLabelWordLike(v)) return null
       if (labelledValue && NOT_LABELLED_NAMES.has(foldWord(v))) return null
       return v
     }
@@ -639,8 +666,11 @@ function finishValue(kind: SensitiveKind, value: string, labelledValue: boolean)
       return n >= 13 && n <= 19 ? value : null
     }
     case 'address': {
+      if (!labelledValue) return value
       const stop = ADDRESS_STOP.exec(value)
-      const v = (stop ? value.slice(0, stop.index) : value).replace(/[\s,.;:]+$/, '')
+      const line = stop ? value.slice(0, stop.index) : value
+      const exact = exactAddressEnd(line)
+      const v = (exact === null ? line : line.slice(0, exact)).replace(/[\s,.;:]+$/, '')
       return v.length >= 2 ? v : null
     }
     default:
@@ -792,6 +822,27 @@ const RULES: readonly Rule[] = [
 // Running the rules
 // ---------------------------------------------------------------------------
 
+/** Own copies of the exact address shapes, so reading a label's line never disturbs a running scan. */
+const EXACT_ADDRESS: readonly Rule[] = RULES.filter((r) => r.kind === 'address').map((r) => ({
+  ...r,
+  re: new RegExp(r.re.source, r.re.flags),
+}))
+
+/** Where the earliest exact address in a label's line ends, or null when the line has none. */
+function exactAddressEnd(line: string): number | null {
+  let best: [number, number] | null = null
+  for (const rule of EXACT_ADDRESS) {
+    rule.re.lastIndex = 0
+    for (let m = rule.re.exec(line); m; m = rule.re.exec(line)) {
+      if (m[0].length === 0) rule.re.lastIndex++
+      if (rule.accept && !rule.accept(m[0], m)) continue
+      if (!best || m.index < best[0]) best = [m.index, m.index + m[0].length]
+      break
+    }
+  }
+  return best ? best[1] : null
+}
+
 interface Hit {
   kind: SensitiveKind
   start: number
@@ -847,7 +898,7 @@ function lowerBound(kept: readonly Hit[], start: number): number {
   return lo
 }
 
-/** Keep hits without overlaps, more specific kinds first; cut an address short instead of dropping it. */
+/** Keep hits without overlaps, more specific kinds first; an address comes last and is cut short instead of dropped. */
 function resolve(text: string, hits: Hit[]): Hit[] {
   hits.sort(
     (a, b) =>
@@ -873,16 +924,17 @@ function resolve(text: string, hits: Hit[]): Hit[] {
 }
 
 /**
- * The candidates in the given pieces, in piece order then position. A piece
- * that is only a label word makes the next piece's value a candidate of the
- * kind it announces.
+ * The candidates in the given pieces, in piece order then position. A cell's
+ * `header`, or else a piece before it that is only a label word, makes the
+ * cell's value a candidate of the kind it names.
  */
 export function detectSensitive<L>(pieces: Iterable<TextPiece<L>>): SensitiveCandidate<L>[] {
   const out: SensitiveCandidate<L>[] = []
   let announced: SensitiveKind | null = null
   for (const piece of pieces) {
     const text = piece.text
-    for (const hit of resolve(text, hitsIn(text, announced))) {
+    const kind = headerKind(piece.header) ?? announced
+    for (const hit of resolve(text, hitsIn(text, kind))) {
       out.push({
         kind: hit.kind,
         start: hit.start,

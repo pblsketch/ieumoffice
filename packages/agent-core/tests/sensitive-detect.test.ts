@@ -381,3 +381,89 @@ describe('vehicle plates', () => {
     expectNotFinds('vehicle', '1가 3456')
   })
 })
+
+describe('an address after its label', () => {
+  it('takes the exact road-name address and leaves the name after it', () => {
+    const result = found('주소: 서울시 종로구 세종대로 209, 홍길동 선생님')
+    expect(result).toEqual([
+      ['address', '서울시 종로구 세종대로 209'],
+      ['name', '홍길동'],
+    ])
+  })
+
+  it('does not run on into the rest of the sentence', () => {
+    const result = found('주소: 서울시 종로구 세종대로 209 학생 김철수는 2024-11-12에 제출했다')
+    expect(result).toEqual([
+      ['address', '서울시 종로구 세종대로 209'],
+      ['name', '김철수'],
+    ])
+  })
+
+  it('takes the exact lot-number address too', () => {
+    expect(found('주소 : 서울시 강남구 역삼동 123-45 김철수님 댁')).toEqual([
+      ['address', '서울시 강남구 역삼동 123-45'],
+      ['name', '김철수'],
+    ])
+  })
+
+  it('stops a free-form address at another candidate or a date', () => {
+    expect(found('주소: 부산 해운대구 우동 어딘가, 홍길동 선생님')).toEqual([
+      ['address', '부산 해운대구 우동 어딘가'],
+      ['name', '홍길동'],
+    ])
+    expect(found('주소: 부산 해운대구 우동 어딘가 010-1234-5678')).toEqual([
+      ['address', '부산 해운대구 우동 어딘가'],
+      ['phone', '010-1234-5678'],
+    ])
+    expect(found('주소: 부산 해운대구 우동 어딘가 2024-11-12에 이사')).toEqual([
+      ['address', '부산 해운대구 우동 어딘가'],
+    ])
+  })
+})
+
+describe('a table whose headers are on the row above', () => {
+  it('reads each cell by the header of its column', () => {
+    const result = detectSensitive([
+      { text: '성명', location: 'A1' },
+      { text: '학번', location: 'B1' },
+      { text: '연락처', location: 'C1' },
+      { text: '홍길동', location: 'A2', header: '성명' },
+      { text: '20231234', location: 'B2', header: '학번' },
+      { text: '01012345678', location: 'C2', header: '연락처' },
+      { text: '김철수', location: 'A3', header: '성명' },
+      { text: '20231235', location: 'B3', header: '학번' },
+    ])
+    expect(result.map((c) => [c.kind, c.value, c.location])).toEqual([
+      ['name', '홍길동', 'A2'],
+      ['id-number', '20231234', 'B2'],
+      ['phone', '01012345678', 'C2'],
+      ['name', '김철수', 'A3'],
+      ['id-number', '20231235', 'B3'],
+    ])
+  })
+
+  it('knows the wider name headers', () => {
+    const result = detectSensitive([{ text: 'Jane Doe', location: 0, header: 'Student name' }])
+    expect(result.map((c) => [c.kind, c.value])).toEqual([['name', 'Jane Doe']])
+  })
+
+  it('ignores a header that is not a label word', () => {
+    expect(detectSensitive([{ text: '홍길동', location: 0, header: '점수' }])).toEqual([])
+  })
+
+  it('lets the header win over a label in the piece before', () => {
+    const result = detectSensitive([
+      { text: '학번', location: 'B1' },
+      { text: '홍길동', location: 'A2', header: '성명' },
+    ])
+    expect(result.map((c) => [c.kind, c.value])).toEqual([['name', '홍길동']])
+  })
+})
+
+describe('label words are not names', () => {
+  it('leaves a label word after a title alone', () => {
+    expect(found('보호자 연락처: 010-1234-5678')).toEqual([['phone', '010-1234-5678']])
+    expect(kindsIn('담당 주소는 아래와 같다')).not.toContain('name')
+    expect(kindsIn('학생 성명 란')).not.toContain('name')
+  })
+})

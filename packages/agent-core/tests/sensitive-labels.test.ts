@@ -96,3 +96,51 @@ describe('candidate labels', () => {
     expect(labeler.labelFor('name', '홍길동')).not.toContain('홍길동')
   })
 })
+
+describe('candidate labels next to marks the document already has', () => {
+  it('reuse the label a value is already hidden under', () => {
+    const labeler = createCandidateLabeler({
+      lang: 'ko',
+      existingMarks: [
+        { label: '전화-01', value: '010-1234-5678' },
+        { label: '이름-02', value: '홍길동' },
+      ],
+    })
+    expect(labeler.labelFor('phone', '01012345678')).toBe('전화-01')
+    expect(labeler.labelFor('phone', '010 1234 5678')).toBe('전화-01')
+    expect(labeler.labelFor('name', '홍길동')).toBe('이름-02')
+    expect(labeler.labelFor('phone', '010-9999-0000')).toBe('전화-02')
+    expect(labeler.labelFor('name', '김철수')).toBe('이름-03')
+  })
+
+  it('use the kind a mark gives, or the kind its label names in any language', () => {
+    const labeler = createCandidateLabeler({
+      lang: 'ko',
+      existingMarks: [
+        { label: 'Phone-04', value: '01012345678' },
+        { label: '연락', value: '02-123-4567', kind: 'phone' },
+      ],
+    })
+    expect(labeler.labelFor('phone', '010-1234-5678')).toBe('Phone-04')
+    expect(labeler.labelFor('phone', '021234567')).toBe('연락')
+    expect(labeler.labelFor('phone', '010-0000-0000')).toBe('전화-01')
+  })
+
+  it('keep a label whose value is unknown out of the way', () => {
+    const labeler = createCandidateLabeler({
+      lang: 'ko',
+      existingLabels: ['전화-05'],
+      existingMarks: [{ label: '전화-02', value: '010-1111-2222' }],
+    })
+    expect(labeler.labelFor('phone', '010-3333-4444')).toBe('전화-06')
+    expect(labeler.labelFor('phone', '01011112222')).toBe('전화-02')
+  })
+
+  it('do not take a label from a mark of another kind', () => {
+    const labeler = createCandidateLabeler({
+      lang: 'ko',
+      existingMarks: [{ label: '계좌-01', value: '01012345678' }],
+    })
+    expect(labeler.labelFor('phone', '01012345678')).toBe('전화-01')
+  })
+})
