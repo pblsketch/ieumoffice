@@ -10,6 +10,7 @@
  */
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { inlineToRuns, pmTableToModel, type PmMark, type PmNode } from '../editor/convert'
+import { REDACT_MARK } from './redact'
 
 const hasDelMark = (node: ProseMirrorNode) => node.marks.some((m) => m.type.name === 'del')
 
@@ -69,26 +70,56 @@ const INHERITED_TEXT_STYLE_ATTRS = [
   'cs',
 ] as const
 
-/** docTextStyle attrs of the run carrying the most live characters in the block */
-function dominantTextStyle(node: ProseMirrorNode): Record<string, unknown> | null {
-  const buckets = new Map<string, { attrs: Record<string, unknown>; chars: number }>()
-  node.forEach((child) => {
-    if (!child.isText || !child.text) return
-    if (hasDelMark(child)) return
-    const mark = child.marks.find((m) => m.type.name === 'docTextStyle')
-    const picked: Record<string, unknown> = {}
-    for (const key of INHERITED_TEXT_STYLE_ATTRS) {
-      const value = mark?.attrs[key]
-      if (value != null) picked[key] = value
-    }
-    const id = JSON.stringify(picked)
-    const bucket = buckets.get(id) ?? { attrs: picked, chars: 0 }
+export interface BaseTextStyle {
+  /** textStyleKey of the style */
+  readonly key: string
+  /** the docTextStyle of a run carrying it, null when those runs have none */
+  readonly mark: PmMark | null
+}
+
+/** a docTextStyle compared by how it looks: rawRPr is tied to the original run bytes */
+export function textStyleKey(mark: PmMark | null | undefined): string {
+  const attrs = mark?.attrs ?? {}
+  const keys = Object.keys(attrs)
+    .filter((k) => k !== 'rawRPr' && attrs[k] != null)
+    .sort()
+  return JSON.stringify(keys.map((k) => [k, attrs[k]]))
+}
+
+/**
+ * The style plain text stands for in a block: that of the run carrying the
+ * most live, non-withheld characters. The model view prints runs of this
+ * style as plain text and a rewrite gives plain text this style, so both
+ * sides agree on what "plain" means.
+ */
+export function baseTextStyle(content: readonly PmNode[] | undefined): BaseTextStyle {
+  const buckets = new Map<string, { mark: PmMark | null; chars: number }>()
+  for (const child of content ?? []) {
+    if (child.type !== 'text' || !child.text) continue
+    const marks = child.marks ?? []
+    if (marks.some((m) => m.type === 'del' || m.type === REDACT_MARK)) continue
+    const mark = marks.find((m) => m.type === 'docTextStyle') ?? null
+    const key = textStyleKey(mark)
+    const bucket = buckets.get(key) ?? { mark, chars: 0 }
     bucket.chars += child.text.length
-    buckets.set(id, bucket)
-  })
-  let best: { attrs: Record<string, unknown>; chars: number } | null = null
-  for (const bucket of buckets.values()) if (!best || bucket.chars > best.chars) best = bucket
-  return best && Object.keys(best.attrs).length > 0 ? best.attrs : null
+    buckets.set(key, bucket)
+  }
+  let best: { key: string; mark: PmMark | null; chars: number } | null = null
+  for (const [key, bucket] of buckets) {
+    if (!best || bucket.chars > best.chars) best = { key, ...bucket }
+  }
+  return best ? { key: best.key, mark: best.mark } : { key: textStyleKey(null), mark: null }
+}
+
+/** the inheritable docTextStyle attrs of the block's base style */
+function dominantTextStyle(node: ProseMirrorNode): Record<string, unknown> | null {
+  const base = baseTextStyle((node.toJSON() as PmNode).content)
+  const picked: Record<string, unknown> = {}
+  for (const key of INHERITED_TEXT_STYLE_ATTRS) {
+    const value = base.mark?.attrs?.[key]
+    if (value != null) picked[key] = value
+  }
+  return Object.keys(picked).length > 0 ? picked : null
 }
 
 /** a replaced block can lend its formatting to a new block of the same role */
