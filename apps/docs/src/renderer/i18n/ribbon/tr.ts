@@ -949,10 +949,21 @@ export const tr = {
   ribbonMailingsOutput: 'Birleştirme çıktısı',
   ribbonMailingsOutputPerRecord: 'Her kayıt için bir belge',
   ribbonMailingsOutputSingle: 'Tüm kayıtlar için tek belge',
+  ribbonMailingsOutputLabels: 'Etiket sayfası',
+  ribbonMailingsOutputEnvelopes: 'Zarflar',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'Özel ızgara',
+  ribbonMailingsLabelColumns: 'Sütunlar',
+  ribbonMailingsLabelRows: 'Satırlar',
+  ribbonMailingsEnvelopeSize: 'Zarf boyutu',
   ribbonMailingsNamePattern: 'Dosya adı',
   ribbonMailingsNamePatternPh: 'Boş bırakılırsa ilk alan kullanılır',
   ribbonMailingsFinish: 'Birleştirmeyi Bitir',
   ribbonMailingsMerged: '{n} belge birleştirildi',
   ribbonMailingsMergeFailed: 'Birleştirme başarısız oldu',
   ribbonMailingsClose: 'Kapat',
+  ribbonMailingsEnvelopeNote:
+    "Zarflar bu belgeyi olduğu gibi zarf kağıdına yazdırır; adres bloğu sol üst kenar boşluğunda kalır (Word'ün Zarf sihirbazı teslim adresini ortalardı).",
+  ribbonMailingsLabelsDroppedHint:
+    'Etiket sayfası yalnızca paragrafları taşır: şablonun {n} bloğu (tablolar, resimler) dışarıda kalacak.',
 } satisfies Record<keyof typeof zh, string>

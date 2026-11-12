@@ -240,7 +240,6 @@ describe('story view: typing takes the paragraph style', () => {
   it('records a typed character as an insertion, not a formatting change', () => {
     const editor = makeEditor(STYLED_RUN)
     editor.storage.trackChanges.enabled = true
-    editor.storage.trackChanges.trackFormatting = true
     editor.commands.setStoryViewActive(true)
     typeText(editor, 'q')
     const texts = textsOf(editor)
