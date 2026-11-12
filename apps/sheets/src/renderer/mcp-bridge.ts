@@ -11,6 +11,7 @@ import {
   HIDING_UNAVAILABLE,
   hidingOperationError,
   maskSheetCell,
+  withoutHiddenHeaders,
   type ReadCell,
 } from './hiding/skill-guard'
 import type { SheetHidingView } from './hiding/view'
@@ -81,6 +82,19 @@ function maskMcpCell(
   if (masked === cell) return cell
   const { display: _display, ...rest } = masked
   return rest
+}
+
+/** The workbook overview with header names of a hidden first row left out. */
+function overviewOf(view: SheetHidingView, context: unknown): unknown {
+  if (!context || typeof context !== 'object') return context
+  const info = context as { sheetId?: unknown; selectionColumns?: readonly string[] }
+  if (!info.selectionColumns?.length) return context
+  // an overview that does not say its sheet cannot be checked: its header names are left out
+  if (typeof info.sheetId !== 'string') {
+    const { selectionColumns: _unknown, ...rest } = info
+    return rest
+  }
+  return withoutHiddenHeaders(view, { ...info, sheetId: info.sheetId })
 }
 
 /**
@@ -224,12 +238,12 @@ export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
             reply(false, undefined, resolved.error)
             return
           }
+          const hiding = await hidingView()
+          if (!hiding.ok) {
+            reply(false, undefined, hiding.error)
+            return
+          }
           if (addresses.length > 0) {
-            const hiding = await hidingView()
-            if (!hiding.ok) {
-              reply(false, undefined, hiding.error)
-              return
-            }
             const cells = handlers.readCells(addresses, resolved.sheetId) as Record<string, McpCell>
             const view = hiding.view
             const sheetId = resolved.sheetId ?? activeSheetId()
@@ -245,7 +259,9 @@ export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
                   : cells,
             })
           } else {
-            reply(true, { context: handlers.context() })
+            // the overview names the selected columns by their first-row text
+            const context = handlers.context()
+            reply(true, { context: hiding.view ? overviewOf(hiding.view, context) : context })
           }
           return
         }

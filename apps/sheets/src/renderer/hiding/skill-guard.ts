@@ -359,6 +359,26 @@ export interface SheetHidingHooks {
   readonly operation?: HidingOperationContext | undefined
 }
 
+/**
+ * The sheet overview as the model may read it: header names come from the
+ * first row, so they are dropped while anything in that row is hidden.
+ */
+export function withoutHiddenHeaders<
+  T extends Pick<ActiveSheetInfo, 'sheetId' | 'selectionColumns'>,
+>(view: SheetHidingView, info: T): T {
+  if (!view.active || !info.selectionColumns?.length) return info
+  const headerHidden = view.touchesHidden({
+    sheetId: info.sheetId,
+    startRow: 0,
+    endRow: 0,
+    startColumn: 0,
+    endColumn: HIDING_MAX_COLUMN,
+  })
+  if (!headerHidden) return info
+  const { selectionColumns: _hidden, ...rest } = info
+  return rest as T
+}
+
 /** A plan's before/after values as the model may read them. */
 function maskPlan(plan: ChangePlan, view: SheetHidingView): ChangePlan {
   if (!view.active || plan.cellChanges.length === 0) return plan
@@ -386,20 +406,7 @@ export function withSheetHiding(deps: SheetsSkillDeps, hooks: SheetHidingHooks):
   const wrapped: SheetsSkillDeps = {
     ...deps,
     getActiveSheetInfo() {
-      const info = deps.getActiveSheetInfo()
-      const view = viewOrThrow()
-      if (!view.active || !info.selectionColumns?.length) return info
-      // header names come from the first row; a hidden header is not named
-      const headerHidden = view.touchesHidden({
-        sheetId: info.sheetId,
-        startRow: 0,
-        endRow: 0,
-        startColumn: 0,
-        endColumn: HIDING_MAX_COLUMN,
-      })
-      if (!headerHidden) return info
-      const { selectionColumns: _hidden, ...rest } = info
-      return rest
+      return withoutHiddenHeaders(viewOrThrow(), deps.getActiveSheetInfo())
     },
     readCells(addresses, sheetId) {
       const view = viewOrThrow()

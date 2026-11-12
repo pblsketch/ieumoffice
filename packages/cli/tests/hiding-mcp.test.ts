@@ -170,3 +170,110 @@ describe('MCP convert refuses a source that hides anything', () => {
     expect(existsSync(out)).toBe(true)
   })
 })
+
+describe('every MCP tool that makes a new file from a source refuses a marked source', () => {
+  async function markedXlsx(): Promise<string> {
+    const plain = join(dir, 'b-plain.xlsx')
+    const data = join(dir, 'b.json')
+    writeFileSync(data, JSON.stringify([['name'], [SECRET], ['{{greet}}']]))
+    expect(
+      (await run(['create', '--type', 'xlsx', '--from', data, '--out', plain, '--force'])).code,
+    ).toBe(0)
+    const zip = await JSZip.loadAsync(readFileSync(plain))
+    let workbook = await zip.file('xl/workbook.xml')!.async('string')
+    const sheet = /<sheet\b[^>]*\bname="([^"]+)"/.exec(workbook)![1]!
+    const name = `<definedName name="IeumHide_${LABEL}">'${sheet}'!$A$2</definedName>`
+    workbook = workbook.includes('<definedNames>')
+      ? workbook.replace('<definedNames>', `<definedNames>${name}`)
+      : workbook.replace('</sheets>', `</sheets><definedNames>${name}</definedNames>`)
+    zip.file('xl/workbook.xml', workbook)
+    const path = join(dir, 'b.xlsx')
+    writeFileSync(path, await zip.generateAsync({ type: 'uint8array' }))
+    return path
+  }
+
+  const refusedAs = (command: string, labels: string[]) => ({
+    status: 'error',
+    code: 1,
+    command,
+    error: 'hidden_content',
+    detail: { reason: 'convert', labels },
+  })
+
+  it('create_pdf from a marked Markdown, Word or workbook source', async () => {
+    const md = join(dir, 'pdf-src.md')
+    writeFileSync(md, `call ${span(LABEL)} now\n`)
+    const out = join(dir, 'pdf-src.pdf')
+    const m = await call('create_pdf', { from: md, out })
+    expect(m.isError).toBe(true)
+    expect(m.json).toMatchObject(refusedAs('create', [LABEL]))
+    expect(existsSync(out)).toBe(false)
+    const w = await call('create_pdf', { from: await markedDocx(), out })
+    expect(w.json).toMatchObject(refusedAs('create', [LABEL]))
+    const x = await call('create_pdf', { from: await markedXlsx(), out })
+    expect(x.json).toMatchObject(refusedAs('create', [LABEL]))
+    expect(existsSync(out)).toBe(false)
+  })
+
+  it('create_docx from a marked HTML file; an unmarked one is built as before', async () => {
+    const html = join(dir, 'from.html')
+    writeFileSync(html, `<p>call <span data-gx-redact="${LABEL}">${SECRET}</span> now</p>`)
+    const out = join(dir, 'from.docx')
+    const r = await call('create_docx', { from: html, out })
+    expect(r.json).toMatchObject(refusedAs('create', [LABEL]))
+    expect(existsSync(out)).toBe(false)
+    const plain = join(dir, 'from-plain.html')
+    writeFileSync(plain, '<p>Nothing hidden.</p>')
+    const ok = await call('create_docx', { from: plain, out })
+    expect(ok.isError).toBe(false)
+    expect(existsSync(out)).toBe(true)
+  })
+
+  it('create_docx and create_xlsx from a marked Markdown or JSON file', async () => {
+    const md = join(dir, 'from.md')
+    writeFileSync(md, `call ${span(LABEL)} now\n`)
+    const d = await call('create_docx', { from: md, out: join(dir, 'from-md.docx') })
+    expect(d.json).toMatchObject(refusedAs('create', [LABEL]))
+    const json = join(dir, 'from.json')
+    writeFileSync(json, JSON.stringify([['name'], [span(LABEL)]]))
+    const x = await call('create_xlsx', { from: json, out: join(dir, 'from-json.xlsx') })
+    // the label inside a JSON string is escaped, so it reads as the plain 'private'
+    expect(x.json).toMatchObject({ error: 'hidden_content', detail: { reason: 'convert' } })
+    expect(existsSync(join(dir, 'from-json.xlsx'))).toBe(false)
+  })
+
+  it('merge refuses a marked workbook or Word template; an unmarked one merges', async () => {
+    const out = join(dir, 'merged.xlsx')
+    const x = await call('merge', { file: await markedXlsx(), data: { greet: 'hi' }, out })
+    expect(x.json).toMatchObject(refusedAs('merge', [LABEL]))
+    expect(existsSync(out)).toBe(false)
+    const w = await call('merge', {
+      file: await markedDocx(),
+      data: { greet: 'hi' },
+      out: join(dir, 'merged.docx'),
+    })
+    expect(w.json).toMatchObject(refusedAs('merge', [LABEL]))
+    const md = join(dir, 'tpl.md')
+    writeFileSync(md, 'Hello {{name}}.\n')
+    const tpl = join(dir, 'tpl.docx')
+    expect(
+      (await run(['create', '--type', 'docx', '--from', md, '--out', tpl, '--force'])).code,
+    ).toBe(0)
+    const ok = await call('merge', {
+      file: tpl,
+      data: { name: 'Ada' },
+      out: join(dir, 'tpl-out.docx'),
+    })
+    expect(ok.isError).toBe(false)
+    expect(existsSync(join(dir, 'tpl-out.docx'))).toBe(true)
+  })
+
+  it('the terminal create and merge are not refused', async () => {
+    const html = join(dir, 'term-from.html')
+    writeFileSync(html, `<p>call <span data-gx-redact="${LABEL}">${SECRET}</span> now</p>`)
+    const out = join(dir, 'term-from.docx')
+    const r = await run(['create', '--type', 'docx', '--from', html, '--out', out, '--json'])
+    expect(r.code).toBe(0)
+    expect(existsSync(out)).toBe(true)
+  })
+})

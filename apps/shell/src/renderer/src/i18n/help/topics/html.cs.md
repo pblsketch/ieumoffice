@@ -8,7 +8,7 @@ Editor HTML otevírá soubory .html / .htm ve dvou režimech: **náhled** (vykre
 - **Režim zdroje**: úprava HTML; ctrl+F hledá, Nahradit vše uloží přepsané značky.
 - **Ukládání**: věrné bajt po bajtu (BOM/CRLF/závěrečný řádek se zachovávají); uložení bez změn nic nepřepíše.
 - **Přiblížení**: ctrl+kolečko / štípek mění měřítko náhledu; ctrl+Z uvnitř náhledu zruší poslední úpravu.
-- **Skrýt citlivé údaje**: v režimu zdroje pravý klik na výběr — obsah prvku, hodnota atributu, řetězce skriptu — a model vidí zástupný text; vykreslená stránka se nemění (detaily v kapitole o AI panelu).
+- **Skrýt citlivé údaje**: v režimu zdroje vyberte, co chcete skrýt (obsah prvku, hodnotu atributu, řetězce skriptu), klikněte na výběr pravým tlačítkem a zvolte **Skrýt citlivé údaje**, pak napište popisek a stiskněte **Skrýt**. Model na tom místě vidí zástupný text; vykreslená stránka se nemění (detaily v kapitole o AI panelu).
 
 ## Pruh nástrojů
 

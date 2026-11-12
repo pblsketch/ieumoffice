@@ -8,7 +8,7 @@ L’éditeur HTML ouvre les .html / .htm avec deux modes : **Aperçu** (la page 
 - **Mode source** : modifiez le HTML ; ctrl+F pour rechercher, Remplacer tout enregistre le balisage réécrit.
 - **Enregistrement** : fidèle octet pour octet (BOM/CRLF/saut de ligne final préservés) ; un enregistrement sans modification ne réécrit rien.
 - **Zoom** : ctrl+molette / pincement met le résultat à l’échelle de l’aperçu ; ctrl+Z dans l’aperçu annule la dernière modification.
-- **Masquer les informations sensibles** : en mode source, clic droit sur une sélection — contenu d'élément, valeur d'attribut, chaînes de script — et le modèle voit un espace réservé ; la page rendue ne change jamais (détails au chapitre du panneau IA).
+- **Masquer les informations sensibles** : en mode source, sélectionnez ce qu’il faut masquer (contenu d’élément, valeur d’attribut, chaînes de script), faites un clic droit dessus et choisissez **Masquer les informations sensibles**, puis saisissez une étiquette et cliquez sur **Masquer**. Le modèle voit un espace réservé à la place ; la page rendue ne change jamais (détails au chapitre du panneau IA).
 
 ## La barre d’outils
 

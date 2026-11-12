@@ -8,7 +8,7 @@ El editor HTML abre .html / .htm con dos modos: **Vista previa** (la página ren
 - **Modo de código**: edite el HTML; ctrl+F para buscar, Reemplazar todo guarda el marcado reescrito.
 - **Guardar**: fiel byte a byte (se conservan el BOM, los CRLF y el salto de línea final); los guardados sin cambios no reescriben.
 - **Zoom**: ctrl+rueda o pellizco escala la vista previa; ctrl+Z dentro de la vista previa deshace la última edición.
-- **Ocultar información sensible**: en modo código, clic derecho sobre una selección — contenidos, valores de atributo, cadenas de script — y el modelo ve un marcador; la página renderizada nunca cambia (detalles en el capítulo del panel de IA).
+- **Ocultar información sensible**: en modo código, selecciona lo que quieras ocultar (contenidos de elementos, valores de atributo, cadenas de script), haz clic derecho y elige **Ocultar información sensible**; luego escribe una etiqueta y pulsa **Ocultar**. El modelo ve un marcador en su lugar; la página renderizada nunca cambia (detalles en el capítulo del panel de IA).
 
 ## La barra de herramientas
 

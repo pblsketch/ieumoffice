@@ -121,8 +121,9 @@ The mark is honoured:
 - by the `ieumoffice` terminal command and its MCP server, the app's own MCP
   server and an Agent window session's MCP server: every output that carries
   document text shows hidden parts as their labels, there is no option to
-  get the words back, and MCP `convert` refuses a document with any hidden
-  part;
+  get the words back, and the MCP tools that make a new file from a
+  document (`convert`, `create_pdf`, `create_docx` and `create_xlsx` from a
+  file, `merge`) refuse a document with any hidden part;
 - a file open in a tab with unsaved changes is not read for any of these
   until you save it, because a new mark only reaches the file on save.
 

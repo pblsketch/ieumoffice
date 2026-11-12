@@ -112,6 +112,17 @@ export function hiddenRangesOf(doc, entries) {
   return out
 }
 
+/**
+ * What the hiding of a document is now, as a string: two reads with the same signature
+ * hide the same characters, so a text kept from one may serve the other. A memo added or
+ * dropped outside the plugin's own edits (the editor's memo dialog) changes it.
+ */
+export function hidingSignature(ranges) {
+  return JSON.stringify(
+    ranges.map((r) => [r.id, r.label, r.sec, r.para, r.path ?? null, r.start, r.end, r.text]),
+  )
+}
+
 /** The spans by the paragraph they sit in. */
 export function rangesByBox(ranges) {
   const out = new Map()

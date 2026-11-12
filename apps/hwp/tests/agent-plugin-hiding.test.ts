@@ -264,6 +264,16 @@ describe('what the AI reads', () => {
     expect(editor.doc().getTextRange(0, 1, 0, 13)).toBe('학생 홍길동은 성실하다')
   })
 
+  it('reads a span hidden after the last read, even when no edit event told the plugin', () => {
+    const editor = openEditor(sample())
+    expect(editor.ai<string>('readText')).toContain('홍길동의 보호자 연락처')
+    // the editor's own memo dialog adds a memo without going through the plugin's change()
+    hideInBody(editor.doc(), 2, 0, 3, '보호자')
+    const text = editor.ai<string>('readText')
+    expect(text).toContain('{{보호자}}의 보호자 연락처')
+    expect(text).not.toContain('홍길동의 보호자')
+  })
+
   it('does not find the hidden words, but finds the same words elsewhere', () => {
     const editor = openEditor(sample())
     const found = editor.ai<{ count: number; matches: { context?: string }[] }>(

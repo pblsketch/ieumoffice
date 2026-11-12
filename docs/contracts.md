@@ -32,7 +32,7 @@
 - 문서 글이 든 모든 출력(`read`, `info`, `check`·`audit`의 발견, 결과에 글을 되돌려 주는 고치기 명령, 묶음 안의 읽기 연산)은 워드·PPT·마크다운·HTML·한글·엑셀의 가린 자리를 `{{이름표}}`로만 낸다. 엑셀의 가린 칸은 `{{이름표-NN}}`(같은 값 같은 번호, 빈 칸도 값, 읽을 때마다 새로 매김)이고, 가린 칸에 기대는 수식 칸은 `{{이름표}}`, 여러 표시에 기대면 `{{이름표+이름표}}`(코드 포인트 순)이며 수식 글은 보인다. 엑셀 `sheet check`의 발견 가운데 가린 칸·기대는 칸에 대한 것은 인용 없이 일반 문장으로 나온다. 원문을 꺼내는 옵션은 없다.
 - 글로 대상을 찾는 연산은 가린 글을 보지 못한다. 그런 대상은 다른 없는 글과 같이 `target_not_found`다.
 - 자리로 가리켜 가린 내용을 바꾸거나 지우거나 옮기거나 베끼는 연산은 거절한다. 엑셀에서는 가린 칸에 쓰기, 가린 칸이 든 범위의 `find_replace`(범위가 없으면 시트 전체), 가린 칸이 든 행·열 지우기, 표시가 있는 시트의 `delete_sheet`·`rename_sheet`·`duplicate_sheet`, `IeumHide_` 이름 연산이 거절된다. 서식, 행·열 넣기, 가린 칸을 읽는 수식 쓰기는 된다. `slides replace`는 가린 것이 있는 슬라이드에서 거절한다.
-- 묶음이 아닌 거절(연산 하나짜리 고치기, MCP `convert`)은 종료 코드 1이고 모양은 다음과 같다. `error` 값 `hidden_content`, `detail.reason` 값 `edit`·`convert`, `detail.labels`는 바뀌지 않는 식별자다.
+- 묶음이 아닌 거절(연산 하나짜리 고치기, 원본으로 새 파일을 만드는 MCP 도구)은 종료 코드 1이고 모양은 다음과 같다. `error` 값 `hidden_content`, `detail.reason` 값 `edit`·`convert`, `detail.labels`는 바뀌지 않는 식별자다.
 
 ```json
 {
@@ -48,8 +48,8 @@
 
 - 묶음 연산은 지금의 세 방식 그대로이고, 거절된 연산의 실패 항목(`OpFailure`)에 `reason: "hidden_content"`와 `hidden: { reason: "edit", labels: [...] }`가 실린다. 기본(모두 아니면 아무것도)은 쓰지 않고 종료 코드 1이며, 첫 실패가 가리기면 맨 위 `error`가 `hidden_content`이고 맨 위 `detail`에도 `reason`·`labels`가 더해진다. `detail.failures`·`detail.batch`·`detail.results`는 그대로다. `--best-effort`·`--stop-on-error`는 지금처럼 남은 것을 쓰고 `status: "partial"`이며, 거절된 연산은 `detail.failures[]`에 위 모양으로 들어간다.
 - `labels`는 걸린 표시의 이름표이고 처음 나온 순서로 겹치지 않는다. 엑셀은 값별 번호를 뺀 이름표다. 사람이 읽는 `message`·`suggestion`은 "앱에서 열어 사람이 고치라"는 뜻이다.
-- 가리기 표시를 안전하게 읽을 수 없는 파일(자리를 정할 수 없는 표시, 풀리지 않는 엑셀 이름, 읽지 못한 한글 메모 목록)은 아무것도 읽지 않고 종료 코드 2, `error: "unsupported"`로 끝난다.
-- 터미널의 `convert`는 거절하지 않는다. 대상 형식에 담을 곳이 있으면 표시를 옮기고(워드·마크다운 → 한글은 영어 머리말의 가리기 메모, 마크다운 → 워드는 워드 표시), 묻지 않는다. 담을 곳이 없는 형식으로 바꾼 결과에는 가린 글이 그대로 들어 있다. 셸을 가진 호출자는 어차피 파일을 직접 읽을 수 있다는 한계다.
+- 가리기 표시를 안전하게 읽을 수 없는 파일(자리를 정할 수 없는 표시, 풀리지 않는 엑셀 이름, 압축을 열지 못한 `.xlsx`·`.xlsm`, 읽지 못한 한글 메모 목록)은 아무것도 읽지 않고 종료 코드 2, `error: "unsupported"`로 끝난다.
+- 터미널의 `convert`·`create --from`·`merge`는 거절하지 않는다. 대상 형식에 담을 곳이 있으면 표시를 옮기고(워드·마크다운 → 한글은 영어 머리말의 가리기 메모, 마크다운 → 워드는 워드 표시), 묻지 않는다. 담을 곳이 없는 형식으로 바꾼 결과에는 가린 글이 그대로 들어 있다. 셸을 가진 호출자는 어차피 파일을 직접 읽을 수 있다는 한계다.
 
 **ODT(`.odt`).**
 
@@ -283,7 +283,7 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 - 그 결과 파일은 작업이 끝날 때 쓴다. `partial: true`로 부른 작업은 멈출 때 끝난 부분만 반영해 쓴다. 위치 규칙은 명령어와 같고, 경로는 `job.outputs`로 알려 준다.
 - 서버가 끝나면 그 작업도 멈춘다(`last_error: "interrupted"`). 보관된 결과는 남는다.
 - 결과는 `--json`이 내는 것과 같은 객체다. 실패는 `isError`와 같은 `error` 이유로 온다.
-- 가린 내용은 명령어와 같이 가려진다(위 "가린 내용"). 다른 점은 `convert` 하나다. 원본에 가리기 표시가 하나라도 있거나 있는지 알 수 없으면 바꾸지 않고 `command: "convert"`, `error: "hidden_content"`, `detail: { reason: "convert", labels }`로 거절한다. 표시가 있는지 알 수 없으면 `labels`는 `[]`다. 원본이 없거나 읽을 수 없는 파일이면 명령 자신의 오류가 그대로 온다.
+- 가린 내용은 명령어와 같이 가려진다(위 "가린 내용"). 다른 점은 원본 문서로 새 파일을 만드는 도구다(`convert`, `create_pdf`, `from`을 준 `create_docx`·`create_xlsx`, `merge`의 서식 파일). 원본에 가리기 표시가 하나라도 있거나 있는지 알 수 없으면 새 파일을 만들지 않고 `command`(그 도구의 명령, `convert`·`create`·`merge`), `error: "hidden_content"`, `detail: { reason: "convert", labels }`로 거절한다. 표시를 담지 못하는 형식이나 표시를 옮기지 않는 쓰기(PDF로 인쇄, HTML에서 워드 만들기, 서식 파일 채우기)로 만든 파일을 다시 읽으면 가린 글이 나오기 때문이다. 도구에 글로 직접 넘긴 내용(`markdown`·`html`·`data`·`ops`)은 클라이언트가 쓴 것이라 보지 않는다. 표시가 있는지 알 수 없으면 `labels`는 `[]`다. 원본이 없거나 읽을 수 없는 파일이면 명령 자신의 오류가 그대로 온다.
 - `render`(쪽을 그림으로 돌려주는 도구)는 막지 않는다. 그림에는 가린 글이 그대로 보인다. 저장소 주인이 받아들인 한계다(결정 0138).
 - 환경변수 `GENOFFICE_MCP_COMPACT_SCHEMAS`는 예전 철자를 유지한다. `--http`의 토큰은 `--token`, 없으면 `GENOFFICE_MCP_TOKEN`에서 읽고, 둘 다 없으면 인증 없이 받는다. 인증 없이 받는 것은 이 PC 주소(`127.0.0.1`, `localhost`, `::1`)에서 열 때뿐이다. 그 밖의 `--host`에 토큰이 없으면 서버를 열지 않고 종료 코드 1, `error: "invalid_argument"`로 끝난다. 에이전트 설정 폴더를 찾을 때의 홈 폴더는 `GENOFFICE_HOME`으로 바꿀 수 있다.
 - 안내 자료는 리소스로도 내놓는다(`ieumoffice://guide/docs`, `…/sheets`, `…/hwp`, `…/diagram`, `…/slides`, `…/slides/design`, `…/slides/spec`, `…/slides/templates`, 내장 템플릿마다 `…/slides/templates/<id>`).
