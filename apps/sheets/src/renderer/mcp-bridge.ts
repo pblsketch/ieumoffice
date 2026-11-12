@@ -83,6 +83,32 @@ function maskMcpCell(
   return rest
 }
 
+/**
+ * The bridge the editor installs: the live handlers App keeps in a ref (so the
+ * bridge never sees stale closures), with the AI skill's hiding hooks, so the
+ * in-app and session MCP servers read and edit the grid as the in-app AI does.
+ */
+export function installLiveSheetsMcpBridge(
+  live: { readonly current: McpSheetHandlers | null },
+  hiding: WorkbookSkillHiding,
+): () => void {
+  return installSheetsMcpBridge({
+    hasWorkbook: () => live.current?.hasWorkbook() ?? false,
+    context: () => live.current?.context(),
+    readCells: (addresses, sheetId) => live.current?.readCells(addresses, sheetId) ?? {},
+    sheets: () => live.current?.sheets() ?? [],
+    focusSheet: (sheetId, address) => live.current?.focusSheet(sheetId, address),
+    applyOps: async (ops, dryRun) =>
+      (await live.current?.applyOps(ops, dryRun)) ?? { ok: false, reason: 'not ready' },
+    saveTo: async (path, overwrite) =>
+      (await live.current?.saveTo(path, overwrite)) ?? {
+        ok: false,
+        error: 'the spreadsheet is not ready',
+      },
+    hiding,
+  })
+}
+
 export function installSheetsMcpBridge(handlers: McpSheetHandlers): () => void {
   const api = window.desktopApi
   if (typeof api?.onMcpCommand !== 'function') return () => {}

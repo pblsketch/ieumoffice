@@ -1,4 +1,8 @@
-import type { FWorkbook, FWorksheet } from '@univerjs/sheets/facade'
+import type { FRange, FWorkbook, FWorksheet } from '@univerjs/sheets/facade'
+import type { CellScalar } from '@genoffice/xlsx-gateway/domain/workbook.types'
+import { formatAddress } from '@genoffice/xlsx-gateway/domain/cell-address'
+import { HIDING_UNAVAILABLE, maskSheetCell } from './hiding/skill-guard'
+import type { SheetHidingState, SheetHidingView } from './hiding/view'
 
 /** Request/reply the shell relays from `genoffice open --range` and `genoffice selection`. */
 export type ControlRequest =
@@ -24,10 +28,17 @@ export function splitSheetRange(spec: string): { sheet?: string; range: string }
   return sheet ? { sheet, range } : { range }
 }
 
+/**
+ * `hiding` is the workbook's hiding state (민감정보 가리기) for a `selection`:
+ * the values go to a program, often a model, so hidden cells answer their
+ * labels as the in-app AI reads them, and a workbook whose marks cannot be
+ * resolved answers no values.
+ */
 export function handleSheetsControl(
   req: ControlRequest,
   workbook: FWorkbook | null | undefined,
   fileLoaded: boolean,
+  hiding?: SheetHidingState,
 ): ControlReply {
   // a pre-warmed spare view has a placeholder workbook mounted before the file is in
   if (!workbook || !fileLoaded) return { status: 'not_ready' }
@@ -40,13 +51,19 @@ export function handleSheetsControl(
     }
     const range = workbook.getActiveRange()
     if (!range) return { status: 'ok', result: { none: true, sheet: sheet.getSheetName() } }
+    if (hiding && !hiding.ok) {
+      return { status: 'error', error: { reason: 'unsupported', message: HIDING_UNAVAILABLE } }
+    }
     const cells = range.getWidth() * range.getHeight()
+    const view = hiding?.view.active ? hiding.view : null
     return {
       status: 'ok',
       result: {
         sheet: sheet.getSheetName(),
         range: range.getA1Notation(),
-        ...(cells <= MAX_SELECTION_VALUES ? { values: range.getValues() } : { cells }),
+        ...(cells <= MAX_SELECTION_VALUES
+          ? { values: view ? maskedValues(view, sheet.getSheetId(), range) : range.getValues() }
+          : { cells }),
       },
     }
   }
@@ -95,6 +112,26 @@ export function handleSheetsControl(
     // Univer services are still registering while the workbook boots; the shell asks again
     return { status: 'not_ready' }
   }
+}
+
+/** The values of a range as a model may read them: hidden and leaning cells as labels. */
+function maskedValues(view: SheetHidingView, sheetId: string, range: FRange): unknown[][] {
+  const values = range.getValues() as CellScalar[][]
+  let formulas: string[][] = []
+  try {
+    formulas = range.getFormulas()
+  } catch {
+    // without the formulas a leaning cell is found through the formula index alone
+  }
+  const top = range.getRow()
+  const left = range.getColumn()
+  return values.map((row, i) =>
+    row.map((value, j) => {
+      const formula = formulas[i]?.[j]
+      const address = formatAddress(top + i, left + j)
+      return maskSheetCell(view, sheetId, address, { value, ...(formula ? { formula } : {}) }).value
+    }),
+  )
 }
 
 /** Best effort: the scroll render controller is not registered while a sheet is still booting. */
