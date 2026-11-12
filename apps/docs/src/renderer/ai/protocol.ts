@@ -126,10 +126,6 @@ export const HTML_RULES = [
   '- Keep the same language as the original document / user instruction, unless translation is requested',
 ].join('\n')
 
-/**
- * How rewrites carry what the tags cannot write. Kept out of HTML_RULES: the
- * long-form writer shares those and only ever writes new content.
- */
 export const KEEP_RULES = [
   'read_blocks and the selection HTML mark, inside the text, what the tags above cannot write. replace_blocks and replace_selection must carry these tokens:',
   '- <keep id="k…" what="footnote 1"/> is an object you cannot edit: a footnote or endnote mark, a picture, a field or cross-reference result, a symbol, a checkbox, an index entry, ruby text or an imported formula. Copy it unchanged and move it with the words it belongs to.',
@@ -522,12 +518,9 @@ export function modelViewOfRange(
 ): ModelView {
   const inventory = emptyInventory()
   const formatted: number[] = []
-  const html = rangeToHtml(editor, startIndex, endIndex, sel, (_node, inlineSel, index) => {
-    // the live block, not the redacted copy: the projection prints a withheld
-    // run as its placeholder before anything else looks at it, and needs the
-    // run's real length to place the selection markers
-    const real = editor.state.doc.child(index).toJSON() as PmNode
-    const items = projectInline(real.content ?? [], baseTextStyle(real.content))
+  const html = rangeToHtml(editor, startIndex, endIndex, sel, (_redacted, inlineSel, index) => {
+    const liveBlock = editor.state.doc.child(index).toJSON() as PmNode
+    const items = projectInline(liveBlock.content ?? [], baseTextStyle(liveBlock.content))
     const widened = inlineSel ? widenToItems(items, inlineSel.from, inlineSel.to) : null
     addItems(inventory, items, index, sel ? (widened ?? { from: 0, to: 0 }) : null)
     const inline = itemsHtml(items, widened)
@@ -1039,7 +1032,6 @@ const INLINE_MARK_TAGS: Record<string, string> = {
  */
 const HTML_WHITESPACE = /[ \t\n\r\f]+/g
 
-/** `tokens`: keep tokens become pseudo nodes and marks for restoreBlocks / restoreInline */
 function parseInline(element: Node, marks: PmMark[], tokens = false): PmNode[] {
   const nodes: PmNode[] = []
   element.childNodes.forEach((child) => {
@@ -1467,7 +1459,6 @@ export type OnceAtoms = ReadonlyMap<string, number>
 export type BlockReplacement =
   { tr: Transaction; inserted: { from: number; to: number } } | { error: string }
 
-/** live inline atoms in [from, to) that `once` names, in document order */
 function onceAtomPositions(
   doc: ProseMirrorNode,
   from: number,
@@ -1510,7 +1501,6 @@ function stripInsertedComments(tr: Transaction, from: number, to: number): void 
   tr.removeMark(from, to, tr.doc.type.schema.marks.comment)
 }
 
-/** drop the old copies of the atoms the new text now holds (positions ascending) */
 function deleteOldAtoms(tr: Transaction, positions: number[]): void {
   for (const pos of [...positions].reverse()) tr.delete(pos, pos + 1)
 }

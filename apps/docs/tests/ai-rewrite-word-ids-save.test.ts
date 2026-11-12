@@ -48,7 +48,6 @@ const PARAGRAPH =
   run(' 끝.') +
   '</w:p>'
 
-/** the comment and the link without the atoms: a range with a table may hold no note mark or picture */
 const PLAIN_PARAGRAPH =
   '<w:p>' +
   run('준비를 마쳤고 ') +
@@ -109,7 +108,6 @@ async function savedDocumentXml(parsed: Awaited<ReturnType<typeof parseDocx>>, e
   return (await JSZip.loadAsync(saved)).file('word/document.xml')!.async('string')
 }
 
-/** document position of the first character of `needle` inside one text node */
 function textPos(editor: Editor, needle: string): number {
   let found = -1
   editor.state.doc.descendants((node, pos) => {
@@ -213,7 +211,6 @@ describe('an AI rewrite saves a document.xml Word opens', () => {
     expect(r.isError, String(r.output)).toBeFalsy()
     const xml = await savedDocumentXml(parsed, editor)
     expectOneOfEach(xml)
-    // Word's rule for typing over commented text with tracking on: the comment stays on the deleted words
     expect(xml, 'comment range inside inserted text').not.toMatch(
       /<w:ins\b[^>]*>(?:(?!<\/w:ins>)[\s\S])*<w:comment(?:RangeStart|RangeEnd|Reference) w:id="0"/,
     )

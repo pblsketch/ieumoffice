@@ -279,7 +279,6 @@ describe('replace_blocks keeps the replaced blocks formatting (issue #175)', () 
       { id: 'r', name: 'read_blocks', input: { startBlockIndex: 0, endBlockIndex: 0 } },
       NUM_IDS,
     )
-    // the condensed text leaves the bold lead-in out, so its own style span is dropped
     const lead = /<span id="(k[0-9a-z]{7})">/.exec(String(read.output))?.[1] ?? ''
     await replaceBlocks(editor, 0, 0, '<p>Short note.</p>', undefined, [lead])
     expect(textStyle(blocks(editor)[0])).toEqual(expect.objectContaining(BODY_STYLE))

@@ -5,13 +5,6 @@ import { editorExtensions } from '../src/renderer/editor/extensions'
 import { REDACT_MARK } from '../src/renderer/ai/redact'
 import { executeTool, markDocSeen } from '../src/renderer/ai/tools'
 
-/**
- * A withheld span is the reader's own words under a mark; the model only ever
- * sees its `{{label}}`. A rewrite that hands the placeholder back must land the
- * real words again, never the literal marker, and one that leaves it out must
- * not silently delete what the model was never shown.
- */
-
 const SECRET = '13800138000'
 const LABEL = 'client phone'
 const NUM_IDS = { bullet: null, ordered: null }

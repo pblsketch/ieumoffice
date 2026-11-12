@@ -35,14 +35,6 @@ import {
 } from './protocol'
 import { redactTextBetween } from './redact-view'
 
-/**
- * The write half of the model's round trip: everything replace_blocks and
- * replace_selection do between the tool input and the dispatch. A rewrite
- * lands only when its keep tokens account for every object of the range
- * (keep-tokens.ts); otherwise the document is left as it was and the model is
- * told exactly what to fix.
- */
-
 export const READ_MAX_CHARS = 24_000
 
 export interface RewriteRequest {
@@ -107,7 +99,6 @@ export function readBlocks(
   }
 }
 
-/** where an id lives in the whole document, for a refusal that names a move across the range edge */
 function whereIsIn(editor: Editor): (key: string) => number | null {
   let all: KeepInventory | null = null
   return (key) => {
@@ -116,7 +107,6 @@ function whereIsIn(editor: Editor): (key: string) => number | null {
   }
 }
 
-/** footnote/endnote marks and comment ids a write may take the last anchor of */
 interface Anchored {
   notes: Array<{ kind: NoteKind; id: string }>
   comments: Set<string>
@@ -134,7 +124,6 @@ function anchoredIn(doc: ProseMirrorNode, from: number, to: number): Anchored {
     }
     return true
   })
-  // a range carried by paragraph attrs is outside what a rewrite accounts for
   doc.forEach((block) => {
     for (const key of ['commentStarts', 'commentEnds']) {
       const ids = block.attrs?.[key]
@@ -155,11 +144,6 @@ function renumberNotes(tr: Transaction): void {
   renumber(tr, 'endnote')
 }
 
-/**
- * Word's rule for an untracked write: a note whose last reference is gone, or
- * a comment whose last anchored character is gone, goes with it. Decided from
- * the document after the write, so a retry finds nothing left to do.
- */
 function settleAnchors(editor: Editor, before: Anchored, env: RewriteEnv): void {
   if (env.track) return
   const notes = env.notes
@@ -213,8 +197,6 @@ export function rewriteBlocks(
     return fail(errorText(e))
   }
   if (parsed.length === 0) return fail('html did not parse into any content blocks')
-  // a tracked rewrite keeps the old blocks (struck through) next to the new
-  // ones, so the anchors stay with the old blocks until the user accepts
   const inherited = inheritBlockFormatting(editor, range.start, range.end, parsed, !env.track)
   const restored = restoreBlocks(inherited, inv, drop)
   if (!restored.ok) return fail(keepIssuesMessage(restored.issues, inv, label, whereIsIn(editor)))
@@ -238,7 +220,6 @@ export function rewriteBlocks(
   if (before.notes.length > 0) renumberNotes(built.tr)
   editor.view.dispatch(built.tr)
   settleAnchors(editor, before, env)
-  // the model authored these blocks, so it has seen them
   recordShown(editor, blocksBetween(editor.state.doc, built.inserted.from, built.inserted.to))
   const tally = keepTallyText(inv, restored.used, drop)
   return {
@@ -312,8 +293,6 @@ export function rewriteSelection(
   }
   const from = start + sel.from
   const to = start + sel.to
-  // the echo quotes what was replaced back to the model, so a selection
-  // covering a withheld span would undo the withholding right here
   const oldText = redactTextBetween(editor.getJSON(), from, to, ' ')
   const before = anchoredIn(doc, from, to)
   const tr = inlineReplacementTr(editor, from, to, nodes, env.track, restored.once)
@@ -321,7 +300,6 @@ export function rewriteSelection(
   editor.view.dispatch(tr)
   settleAnchors(editor, before, env)
   const { from: newFrom, to: newTo } = editor.state.selection
-  // restored withheld runs are real words: quote the new text as the model may read it
   const newText = redactTextBetween(editor.getJSON(), newFrom, newTo, ' ')
   const tally = keepTallyText(inv, restored.used, drop)
   return {

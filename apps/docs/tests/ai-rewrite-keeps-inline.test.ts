@@ -21,7 +21,6 @@ afterEach(() => {
   for (const editor of liveEditors.splice(0)) editor.destroy()
 })
 
-/** "이번 주에는 [b]신규 시스템[/b] 도입¹을 위한 준비 [red]마감[/red] [comment]예산[/comment] [pic] [link]위키[/link] 끝." */
 function richParagraph(): PmNode {
   return {
     type: 'docParagraph',
@@ -73,7 +72,6 @@ async function readBlock(editor: Editor, index: number): Promise<string> {
   return String(r.output).split('\n…(truncated')[0].trim()
 }
 
-/** what a reader of the live document can still find, independent of how it is stored */
 function inventory(editor: Editor) {
   const found = {
     noteIds: [] as string[],
@@ -100,7 +98,6 @@ function inventory(editor: Editor) {
   return found
 }
 
-/** comment id → the struck-through (tracked deletion) text it covers */
 function struckCommentText(editor: Editor): Record<string, string> {
   const out: Record<string, string> = {}
   editor.state.doc.descendants((node) => {
@@ -144,7 +141,6 @@ describe('an AI rewrite keeps the inline objects of the text it rewrites', () =>
         expect(inventory(editor)).toEqual(ORIGINAL)
         return
       }
-      // as in Word: the comment stays on the struck original, so accepting removes it
       expect(inventory(editor)).toEqual({ ...ORIGINAL, commentIds: [] })
       expect(struckCommentText(editor)).toEqual({ c7: '예산' })
       expect(String(r.output)).toContain('comments stay on the original (struck-through) text')
@@ -160,7 +156,6 @@ describe('an AI rewrite keeps the inline objects of the text it rewrites', () =>
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
     )
     const context = buildDocContext(editor, getSelectionScope(editor))
-    // the selection HTML, not the "<sel>…</sel>" of the instruction line above it
     const selected = /<p>[^\n]*?<sel>((?:(?!<sel>)[\s\S])*?)<\/sel>/.exec(context)?.[1] ?? ''
     expect(selected).not.toBe('')
 

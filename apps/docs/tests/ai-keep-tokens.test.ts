@@ -39,7 +39,6 @@ const picture = (): PmNode => ({
 })
 const comment = (ids: string) => [{ type: 'comment', attrs: { ids } }]
 
-/** a block that carries one of each kind of object, around plain words */
 function rich(): PmNode {
   return para(
     text('Plans for '),
@@ -134,7 +133,6 @@ const idOf = (html: string, what: string): string =>
 const spanIdOn = (html: string, words: string): string =>
   new RegExp(`<span id="(k[0-9a-z]{7})">(?:<[^>]+>)*${words}`).exec(html)?.[1] ?? ''
 
-/** what a reader of the live document finds, outside pending deletions */
 function objects(editor: Editor) {
   const found = { notes: [] as string[], pictures: 0, comments: [] as string[], links: 0 }
   editor.state.doc.descendants((node, _pos, parent) => {
@@ -169,8 +167,6 @@ describe('every inline node and mark has a place in the model view', () => {
 
   it('no mark type disappears from the text it is on', () => {
     const editor = open([para(text('x'))])
-    // ins is the AI's own tracked-change marker: the tracked path owns it and
-    // a rewrite never restores someone else's insertion mark
     const byDesign = new Set(['ins'])
     const attrsFor: Record<string, Record<string, unknown>> = {
       docTextStyle: { color: 'C00000' },
@@ -247,7 +243,6 @@ describe('a rewrite has to account for every object', () => {
     expect(out.output).toContain('read_blocks 0-0')
     expect(out.output).toContain('<keep id="k')
     expect(objects(editor)).toEqual({ notes: ['1'], pictures: 1, comments: ['c7'], links: 1 })
-    // the refusal is the read: a retry from that HTML goes through
     const html = out.output.slice(out.output.indexOf('<p>'))
     expect(replace(editor, 0, html.replace('week', 'month')).isError).toBe(false)
   })

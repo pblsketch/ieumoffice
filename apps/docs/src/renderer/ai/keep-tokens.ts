@@ -4,18 +4,6 @@ import type { PmMark, PmNode } from '../editor/convert'
 import { textStyleKey, type BaseTextStyle } from './inherit-formatting'
 import { REDACT_MARK, placeholderSource } from './redact'
 
-/**
- * Keep tokens. The model reads a block as restricted HTML, and much of what a
- * block holds has no tag there: a footnote mark, a picture, a comment range, a
- * run in another colour. The model view prints each such object as an opaque
- * token, and a rewrite puts the original JSON back from it, so the model can
- * reword and move text around those objects but cannot lose one silently.
- *
- * Ids are content-addressed (a hash of the object's JSON). Reading and writing
- * derive them from the live document with the same projection, so nothing is
- * stored between the two: the live range is the registry.
- */
-
 /** 'k' + 7 base36 characters of a hash over the object's canonical JSON */
 export type KeepId = string & { readonly __brand: 'KeepId' }
 
@@ -81,11 +69,8 @@ export type KeepIssue =
 
 export type DropList = ReadonlyMap<string, number>
 
-// ---- classification ----
-
 type MarkClass = 'tag' | 'link' | 'insert' | 'delete' | 'withheld' | 'fixed' | 'style' | 'span'
 
-/** marks whose text is a computed or glyph result: the run group is one object the model cannot edit */
 const FIXED_MARK_WHAT: Readonly<Record<string, string>> = {
   refField: 'cross-reference',
   instrField: 'field',
@@ -105,13 +90,11 @@ const MARK_CLASS: Readonly<Record<string, MarkClass>> = {
   docTextStyle: 'style',
 }
 
-/** an unlisted mark rides in a span, so a mark type added later is kept, never dropped */
 function markClass(type: string): MarkClass {
   if (FIXED_MARK_WHAT[type]) return 'fixed'
   return MARK_CLASS[type] ?? 'span'
 }
 
-/** printed in the same order the restricted HTML parser reads them back */
 const TAGS: ReadonlyArray<readonly [string, string]> = [
   ['bold', 'strong'],
   ['italic', 'em'],
@@ -119,7 +102,6 @@ const TAGS: ReadonlyArray<readonly [string, string]> = [
   ['strike', 's'],
 ]
 
-/** how a keep atom names itself; an unlisted inline node type is an atom named after its type */
 const ATOM_WHAT: Readonly<
   Record<string, (attrs: Record<string, unknown>) => { what: string; text?: string }>
 > = {
@@ -132,7 +114,6 @@ const ATOM_WHAT: Readonly<
   docInlineMath: (a) => ({ what: 'formula', text: String(a.text ?? '') }),
 }
 
-/** attrs that change without the object changing (renumbering, the AI highlight) */
 const VOLATILE_ATTRS: Readonly<Record<string, readonly string[]>> = { docNoteRef: ['num'] }
 
 const REVISION_MARKS = new Set(['ins', 'del'])
@@ -142,8 +123,6 @@ export const KEEP_NODE = '$keep'
 export const SPAN_MARK = '$span'
 export const LINK_MARK = '$link'
 const ID_SHAPE = /^k[0-9a-z]{7}$/
-
-// ---- identity ----
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
@@ -164,7 +143,6 @@ function fnv1a(text: string, seed: number): number {
   return h >>> 0
 }
 
-/** id from 36 of 64 hashed bits; the full 64 tell two objects with one id apart */
 function hashed(value: unknown): { id: KeepId; identity: string } {
   const text = canonical(value)
   const a = fnv1a(text, 0x811c9dc5)
@@ -180,7 +158,6 @@ function withoutRevision(node: PmNode): PmNode {
   return marks && marks.length > 0 ? { ...rest, marks } : rest
 }
 
-/** the parts of a node that make it this object */
 function stable(node: PmNode): PmNode {
   const volatile = VOLATILE_ATTRS[node.type] ?? []
   const attrs = node.attrs
@@ -200,8 +177,6 @@ export function atomKeyOf(node: PmNode): string {
 function keyOf(object: KeepObject): string {
   return object.kind === 'withheld' ? object.placeholder : object.id
 }
-
-// ---- projection: a block's inline content as the model sees it ----
 
 const sizeOf = (node: PmNode): number => (node.type === 'text' ? (node.text ?? '').length : 1)
 const isDeleted = (node: PmNode): boolean => (node.marks ?? []).some((m) => m.type === 'del')
@@ -324,7 +299,6 @@ export function projectInline(content: readonly PmNode[], base: BaseTextStyle): 
     } else if (node.type === 'hardBreak') {
       items.push({ kind: 'br', from: pos })
     } else if (latexOf(node)) {
-      // editor-made formulas carry their LaTeX and rebuild from it losslessly
       items.push({ kind: 'formula', from: pos, latex: latexOf(node) })
     } else {
       items.push({ kind: 'token', from: pos, size: 1, object: atomObject([node]), nodes: [node] })
@@ -349,8 +323,6 @@ export function widenToItems(
   }
   return { from, to }
 }
-
-// ---- printing ----
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -427,8 +399,6 @@ export function itemsHtml(
   return html
 }
 
-// ---- inventory ----
-
 export function emptyInventory(): KeepInventory {
   return { entries: new Map(), collisions: new Set(), commentBlocks: new Map() }
 }
@@ -484,8 +454,6 @@ export function addItems(
   for (const id of comments) inv.commentBlocks.set(id, (inv.commentBlocks.get(id) ?? 0) + 1)
 }
 
-// ---- parsing the model's HTML ----
-
 /** `<keep …/>`, `<keep …>` and `<keep …></keep>` all become an empty element; nothing is ever swallowed */
 export function normalizeKeepTags(html: string): string {
   return html.replace(/<\/keep\s*>/gi, '').replace(/<keep\b([^>]*?)\/?>/gi, '<keep$1></keep>')
@@ -496,8 +464,6 @@ export function tokenIdOf(el: Element): string | null {
   const id = el.getAttribute('id')
   return id && ID_SHAPE.test(id) ? id : null
 }
-
-// ---- restoring originals from the model's tokens ----
 
 export interface InlineDefaults {
   /** the docTextStyle text without a span of its own takes */
@@ -546,7 +512,6 @@ class Restorer {
       withheld.length > 0 ? new RegExp(withheld.map(escapeRegExp).join('|'), 'g') : null
   }
 
-  /** one use of `key`; the entry and the ordinal of this use, null when the range has no such object */
   private use(key: string, kind: KeepObject['kind']): { entry: KeepEntry; ordinal: number } | null {
     const entry = this.inv.entries.get(key)
     if (!entry || entry.object.kind !== kind) {
@@ -656,7 +621,6 @@ class Restorer {
     return this.withheld(next)
   }
 
-  /** a placeholder of this range in the text becomes the reader's own runs again */
   private withheld(node: PmNode): PmNode[] {
     const text = node.text ?? ''
     const re = this.placeholders
@@ -765,8 +729,6 @@ export function parseDrop(raw: unknown, inv: KeepInventory): DropList | KeepIssu
   return issues.length > 0 ? issues : drop
 }
 
-// ---- what the model is told ----
-
 function noun(entry: KeepEntry): string {
   const o = entry.object
   if (o.kind === 'atom')
@@ -868,8 +830,6 @@ export function keepIssuesMessage(
     'Put each object back with the words it belongs to, or list its id in drop if the user asked to remove that content. The document is unchanged.',
   ].join('\n')
 }
-
-// ---- what the model has seen in full, per editor and agent run ----
 
 const shown = new WeakMap<Editor, WeakSet<ProseMirrorNode>>()
 

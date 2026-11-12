@@ -111,7 +111,6 @@ export function baseTextStyle(content: readonly PmNode[] | undefined): BaseTextS
   return best ? { key: best.key, mark: best.mark } : { key: textStyleKey(null), mark: null }
 }
 
-/** the inheritable docTextStyle attrs of the block's base style */
 function dominantTextStyle(node: ProseMirrorNode): Record<string, unknown> | null {
   const base = baseTextStyle((node.toJSON() as PmNode).content)
   const picked: Record<string, unknown> = {}
