@@ -48,7 +48,7 @@
 
 - 묶음 연산은 지금의 세 방식 그대로이고, 거절된 연산의 실패 항목(`OpFailure`)에 `reason: "hidden_content"`와 `hidden: { reason: "edit", labels: [...] }`가 실린다. 기본(모두 아니면 아무것도)은 쓰지 않고 종료 코드 1이며, 첫 실패가 가리기면 맨 위 `error`가 `hidden_content`이고 맨 위 `detail`에도 `reason`·`labels`가 더해진다. `detail.failures`·`detail.batch`·`detail.results`는 그대로다. `--best-effort`·`--stop-on-error`는 지금처럼 남은 것을 쓰고 `status: "partial"`이며, 거절된 연산은 `detail.failures[]`에 위 모양으로 들어간다.
 - `labels`는 걸린 표시의 이름표이고 처음 나온 순서로 겹치지 않는다. 엑셀은 값별 번호를 뺀 이름표다. 사람이 읽는 `message`·`suggestion`은 "앱에서 열어 사람이 고치라"는 뜻이다.
-- 가리기 표시를 안전하게 읽을 수 없는 파일(자리를 정할 수 없는 표시, 풀리지 않는 엑셀 이름, 압축 파일로 시작하지만 열지 못한 `.xlsx`·`.xlsm`, 읽지 못한 한글 메모 목록)은 아무것도 읽지 않고 종료 코드 2, `error: "unsupported"`로 끝난다.
+- 가리기 표시를 안전하게 읽을 수 없는 파일(자리를 정할 수 없는 표시, 풀리지 않는 엑셀 이름, 압축 파일(앞머리나 끝의 압축 표지로 알아본다)이지만 열지 못한 `.xlsx`·`.xlsm`, 읽지 못한 한글 메모 목록)은 아무것도 읽지 않고 종료 코드 2, `error: "unsupported"`로 끝난다.
 - 터미널의 `convert`·`create --from`·`merge`는 거절하지 않는다. 대상 형식에 담을 곳이 있으면 표시를 옮기고(워드·마크다운 → 한글은 영어 머리말의 가리기 메모, 마크다운 → 워드는 워드 표시), 묻지 않는다. 담을 곳이 없는 형식으로 바꾼 결과에는 가린 글이 그대로 들어 있다. 셸을 가진 호출자는 어차피 파일을 직접 읽을 수 있다는 한계다.
 
 **ODT(`.odt`).**
@@ -284,7 +284,7 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 - 서버가 끝나면 그 작업도 멈춘다(`last_error: "interrupted"`). 보관된 결과는 남는다.
 - 결과는 `--json`이 내는 것과 같은 객체다. 실패는 `isError`와 같은 `error` 이유로 온다.
 - 가린 내용은 명령어와 같이 가려진다(위 "가린 내용"). 다른 점은 원본 문서로 새 파일을 만드는 도구다(`convert`, `create_pdf`, `from`을 준 `create_docx`·`create_xlsx`, `merge`의 서식 파일). 원본에 가리기 표시가 하나라도 있거나 있는지 알 수 없으면 새 파일을 만들지 않고 `command`(그 도구의 명령, `convert`·`create`·`merge`), `error: "hidden_content"`, `detail: { reason: "convert", labels }`로 거절한다. 표시를 담지 못하는 형식이나 표시를 옮기지 않는 쓰기(PDF로 인쇄, HTML에서 워드 만들기, 서식 파일 채우기)로 만든 파일을 다시 읽으면 가린 글이 나오기 때문이다. 도구에 글로 직접 넘긴 내용(`markdown`·`html`·`data`·`ops`)은 클라이언트가 쓴 것이라 보지 않는다. 표시가 있는지 알 수 없으면 `labels`는 `[]`다. 원본이 없거나 읽을 수 없는 파일이면 명령 자신의 오류가 그대로 온다.
-- `render`(쪽을 그림으로 돌려주는 도구)는 막지 않는다. 그림에는 가린 글이 그대로 보인다. 저장소 주인이 받아들인 한계다(결정 0138).
+- `render`와 `slides_render`(쪽을 그림으로 돌려주는 도구)는 막지 않는다. 그림에는 가린 글이 그대로 보인다. 저장소 주인이 받아들인 한계다(결정 0138).
 - 환경변수 `GENOFFICE_MCP_COMPACT_SCHEMAS`는 예전 철자를 유지한다. `--http`의 토큰은 `--token`, 없으면 `GENOFFICE_MCP_TOKEN`에서 읽고, 둘 다 없으면 인증 없이 받는다. 인증 없이 받는 것은 이 PC 주소(`127.0.0.1`, `localhost`, `::1`)에서 열 때뿐이다. 그 밖의 `--host`에 토큰이 없으면 서버를 열지 않고 종료 코드 1, `error: "invalid_argument"`로 끝난다. 에이전트 설정 폴더를 찾을 때의 홈 폴더는 `GENOFFICE_HOME`으로 바꿀 수 있다.
 - 안내 자료는 리소스로도 내놓는다(`ieumoffice://guide/docs`, `…/sheets`, `…/hwp`, `…/diagram`, `…/slides`, `…/slides/design`, `…/slides/spec`, `…/slides/templates`, 내장 템플릿마다 `…/slides/templates/<id>`).
 - 내장 디자인 템플릿은 `ieumoffice guide slides templates [<id>]`로 고른다. 목록의 `--json`은 `detail.templates`(`[{ id, name, scheme, description, fonts }]`, 정해진 순서), 템플릿 하나는 `detail`(`{ id, name, scheme, description, fonts, styleSheet }`)이다. 모르는 id는 종료 코드 1, `error: "invalid_argument"`, `detail.templates`에 쓸 수 있는 id 목록이다. MCP `guide` 도구는 세 번째 위치 인자 `name`으로 id를 받는다.

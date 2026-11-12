@@ -87,14 +87,24 @@ function maskMcpCell(
 /** The workbook overview with header names of a hidden first row left out. */
 function overviewOf(view: SheetHidingView, context: unknown): unknown {
   if (!context || typeof context !== 'object') return context
-  const info = context as { sheetId?: unknown; selectionColumns?: readonly string[] }
+  const info = context as {
+    sheetId?: unknown
+    selectionColumns?: readonly string[]
+    selectionSheetId?: unknown
+  }
   if (!info.selectionColumns?.length) return context
   // an overview that does not say its sheet cannot be checked: its header names are left out
   if (typeof info.sheetId !== 'string') {
     const { selectionColumns: _unknown, ...rest } = info
     return rest
   }
-  return withoutHiddenHeaders(view, { ...info, sheetId: info.sheetId })
+  // the names come from the selection's sheet; without it every marked sheet counts
+  const { selectionSheetId, ...rest } = info
+  return withoutHiddenHeaders(view, {
+    ...rest,
+    sheetId: info.sheetId,
+    ...(typeof selectionSheetId === 'string' ? { selectionSheetId } : {}),
+  })
 }
 
 /**

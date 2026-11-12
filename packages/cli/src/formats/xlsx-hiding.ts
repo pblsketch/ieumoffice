@@ -189,11 +189,12 @@ async function sheetDependents(
  * The hiding of an .xlsx / .xlsm; null when it has no mark. Throws (closed) on
  * a mark it cannot resolve, and on a zip package it cannot open: the workbook
  * reader may still open what this one cannot, so its marks are not taken to be
- * none. Bytes that do not even start as a zip are no package at all — no
- * workbook reader opens them as one, so there is no mark to keep.
+ * none. Bytes with neither a leading zip header nor a zip end record are no
+ * package at all — no workbook reader opens them as one, so there is no mark
+ * to keep.
  */
 export async function workbookHidingOf(bytes: Uint8Array): Promise<WorkbookHiding | null> {
-  if (!startsAsZip(bytes)) return null
+  if (!looksLikeZip(bytes)) return null
   let zip: JSZip
   try {
     zip = await JSZip.loadAsync(bytes)
@@ -480,9 +481,26 @@ export function concealIssues<
   })
 }
 
-/** a zip local file header: every OOXML package starts with one */
-function startsAsZip(bytes: Uint8Array): boolean {
+function signatureAt(bytes: Uint8Array, at: number, third: number, fourth: number): boolean {
   return (
-    bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4
+    bytes[at] === 0x50 &&
+    bytes[at + 1] === 0x4b &&
+    bytes[at + 2] === third &&
+    bytes[at + 3] === fourth
   )
+}
+
+/**
+ * Whether the bytes are a zip as readers find one: a leading local file
+ * header, or an end-of-central-directory record in the last 22 bytes plus a
+ * comment of up to 64 KiB. Readers open a zip with bytes in front of it too,
+ * so a package is not taken for "no zip" by its first bytes alone.
+ */
+function looksLikeZip(bytes: Uint8Array): boolean {
+  if (bytes.length >= 4 && signatureAt(bytes, 0, 3, 4)) return true
+  const floor = Math.max(0, bytes.length - (0xffff + 22))
+  for (let at = bytes.length - 22; at >= floor; at--) {
+    if (signatureAt(bytes, at, 5, 6)) return true
+  }
+  return false
 }

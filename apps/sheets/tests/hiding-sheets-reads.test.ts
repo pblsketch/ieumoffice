@@ -7,7 +7,11 @@ import { describe, expect, it } from 'vitest'
 import { createValueNumbering } from '@genoffice/agent-core/hiding-values'
 import type { CellScalar } from '@genoffice/xlsx-gateway/domain/workbook.types'
 
-import { executeWorkbookTool, type SheetsSkillDeps } from '../src/renderer/ai/tools'
+import {
+  buildWorkbookContext,
+  executeWorkbookTool,
+  type SheetsSkillDeps,
+} from '../src/renderer/ai/tools'
 import { createWorkbookSkill } from '../src/renderer/ai/workbook-skill'
 import { formulaRefAreas, type HidingNode } from '../src/renderer/hiding/dependents'
 import type { HidingSheet, SheetHidingMark } from '../src/renderer/hiding/marks'
@@ -237,6 +241,64 @@ describe('read tools see hidden cells as numbered labels', () => {
   it('a header row outside the mark keeps the selected column names', () => {
     const { deps } = harness()
     expect(deps.getActiveSheetInfo().selectionColumns).toEqual(['Name'])
+  })
+
+  it('a frozen selection on another sheet drops the names of its hidden header row', () => {
+    // Summary's header row is hidden; the run's selection was taken there and
+    // the user has since moved to Roster, whose header row is not hidden.
+    const header: SheetHidingMark[] = [
+      {
+        name: 'IeumHide_이름',
+        label: '이름',
+        areas: [{ sheetId: 's2', startRow: 0, endRow: 0, startColumn: 0, endColumn: 0 }],
+      },
+    ]
+    const view = createSheetHidingView(header, createValueNumbering(), [], new Set(), {
+      sheets: SHEETS,
+    })
+    const { base } = harness()
+    const info = {
+      ...base.getActiveSheetInfo(),
+      selection: 'Summary!A1:A9',
+      selectionFrozen: true,
+      selectionColumns: ['Kim Minji'],
+      selectionSheetId: 's2',
+    }
+    const deps = withSheetHiding(
+      { ...base, getActiveSheetInfo: () => info },
+      { state: () => ({ ok: true, view }), readSheetFeatures: () => '' },
+    )
+    expect(deps.getActiveSheetInfo().selectionColumns).toBeUndefined()
+    expect(buildWorkbookContext(deps)).not.toContain('Kim Minji')
+    // without the selection's sheet, any sheet's hidden header row counts
+    const { selectionSheetId: _unknown, ...unsure } = info
+    const unsureDeps = withSheetHiding(
+      { ...base, getActiveSheetInfo: () => unsure },
+      { state: () => ({ ok: true, view }), readSheetFeatures: () => '' },
+    )
+    expect(unsureDeps.getActiveSheetInfo().selectionColumns).toBeUndefined()
+  })
+
+  it('a frozen selection on a sheet whose header row is not hidden keeps its names', () => {
+    const { base } = harness()
+    const info = {
+      ...base.getActiveSheetInfo(),
+      selectionColumns: ['Total'],
+      selectionSheetId: 's2',
+    }
+    const deps = withSheetHiding(
+      { ...base, getActiveSheetInfo: () => info },
+      {
+        state: () => ({
+          ok: true,
+          view: createSheetHidingView(MARKS, createValueNumbering(), [], new Set(), {
+            sheets: SHEETS,
+          }),
+        }),
+        readSheetFeatures: () => '',
+      },
+    )
+    expect(deps.getActiveSheetInfo().selectionColumns).toEqual(['Total'])
   })
 
   it('propose_operations masks the before value of a leaning cell it overwrites', async () => {

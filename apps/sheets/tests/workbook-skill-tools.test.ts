@@ -205,6 +205,12 @@ describe('getActiveSheetInfo: the run selection scope', () => {
       sheetId: 'sh2',
     })
     expect(info.selection).toBe('My Summary!B2:D9')
+    const named = getActiveSheetInfo(demoReadContext('A1', 'sh1'), {
+      a1: 'B1:B9',
+      sheetId: 'sh2',
+      columns: ['Total'],
+    })
+    expect(named).toMatchObject({ sheetId: 'sh1', selectionSheetId: 'sh2' })
   })
 
   it('names the columns a whole-column scope covers', () => {
@@ -214,6 +220,8 @@ describe('getActiveSheetInfo: the run selection scope', () => {
       columns: ['Amount'],
     })
     expect(info.selectionColumns).toEqual(['Amount'])
+    // the hiding checks the header row of the sheet the names came from
+    expect(info.selectionSheetId).toBe('sh1')
     const text = buildWorkbookContext(fakeDeps({ getActiveSheetInfo: () => info }))
     expect(text).toContain('User selection: B1:B417 (the whole "Amount" column) — captured')
   })
