@@ -1,0 +1,260 @@
+/* "Hide sensitive info": the find button, the candidate list, the first-send alert, the label dialog */
+
+.gs-sens-find {
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.gs-sens-find:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.gs-sens-find:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.gs-sens-list,
+.gs-sens-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.gs-sens-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gs-sens-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gs-sens-count,
+.gs-sens-note,
+.gs-sens-empty,
+.gs-sens-alert p {
+  margin: 0;
+}
+
+.gs-sens-note,
+.gs-sens-dim {
+  color: var(--text-secondary);
+}
+
+.gs-sens-empty {
+  color: var(--text-dim);
+}
+
+.gs-sens-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gs-sens-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+}
+
+.gs-sens-row[data-hideable='false'] {
+  background: var(--surface);
+}
+
+.gs-sens-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gs-sens-kind {
+  font-weight: 600;
+}
+
+.gs-sens-loc {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-sens-context {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+button.gs-sens-context {
+  cursor: pointer;
+}
+
+button.gs-sens-context:hover {
+  color: var(--text);
+}
+
+.gs-sens-value {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--search-hit-bg);
+  color: var(--text);
+}
+
+.gs-sens-label {
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.gs-sens-unhideable {
+  color: var(--text-secondary);
+}
+
+.gs-sens-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.gs-sens-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+}
+
+.gs-sens-ask-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.gs-sens-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.gs-sens-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.gs-sens-btn.primary {
+  border-color: var(--color-btn-primary);
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.gs-sens-btn.primary:hover:not(:disabled) {
+  border-color: var(--color-btn-primary-hover);
+  background: var(--color-btn-primary-hover);
+}
+
+.gs-sens-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gs-sens-btn:focus-visible,
+.gs-sens-find:focus-visible,
+button.gs-sens-context:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gs-sens-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: var(--color-bg-overlay);
+}
+
+.gs-sens-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  margin-top: 96px;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-12);
+  background: var(--surface);
+  box-shadow: var(--shadow-modal-strong);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.gs-sens-dialog p {
+  margin: 0;
+}
+
+.gs-sens-dialog-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.gs-sens-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.gs-sens-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
