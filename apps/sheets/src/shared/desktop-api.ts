@@ -3200,7 +3200,8 @@ export interface DesktopApi {
   /// Export the whole workbook as an ODS copy; the session stays .xlsx.
   exportOds(request: WorkbookExportOdsRequest): Promise<WorkbookExportOdsResult>
   /// First Save of a CSV session: native "keep this format?" dialog.
-  confirmCsvSave(): Promise<'csv' | 'xlsx' | 'cancel'>
+  /** `hidingMarks`: sensitive-info hiding marks a CSV save would drop; asked about first */
+  confirmCsvSave(hidingMarks?: number): Promise<'csv' | 'xlsx' | 'cancel'>
   /// AI create_document: write a new standalone file into the default save
   /// folder (no dialog) and open it in a new tab.
   createDocument(request: WorkbookCreateDocumentRequest): Promise<WorkbookCreateDocumentResult>

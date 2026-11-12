@@ -4829,8 +4829,20 @@ export function registerSheetsIpc(): void {
 
   // First Save of a CSV session: Excel's "keep this format?" question. The
   // renderer remembers the answer for the file, so it is asked once.
-  ipcMain.handle(IPC_CHANNELS.csvSaveConfirm, async (event) => {
+  ipcMain.handle(IPC_CHANNELS.csvSaveConfirm, async (event, input: unknown) => {
     sessionFor(event)
+    // CSV has no defined names: a plain Save of a CSV session drops the hiding
+    // marks, so it asks about them first, like the CSV export does
+    const hidingMarks =
+      z.object({ hidingMarks: z.number().int().nonnegative() }).strict().optional().parse(input)
+        ?.hidingMarks ?? 0
+    if (hidingMarks > 0) {
+      const hidingParent = dialogParent(event)
+      const keep = await confirmHidingLoss(hidingMarks, (box) =>
+        hidingParent ? dialog.showMessageBox(hidingParent, box) : dialog.showMessageBox(box),
+      )
+      if (!keep) return 'cancel'
+    }
     const options = {
       type: 'warning' as const,
       message: tm('csvKeepFormatMsg'),

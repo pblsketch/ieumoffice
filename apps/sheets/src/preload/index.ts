@@ -536,8 +536,11 @@ const desktopApi: DesktopApi = {
     }
     return result as { canceled: true }
   },
-  async confirmCsvSave() {
-    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.csvSaveConfirm)
+  async confirmCsvSave(hidingMarks?: number) {
+    const result: unknown = await ipcRenderer.invoke(
+      IPC_CHANNELS.csvSaveConfirm,
+      typeof hidingMarks === 'number' && hidingMarks > 0 ? { hidingMarks } : undefined,
+    )
     if (result !== 'csv' && result !== 'xlsx' && result !== 'cancel') {
       throw new Error('Invalid CSV save confirmation response.')
     }
