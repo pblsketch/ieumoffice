@@ -112,6 +112,7 @@ export const hi = {
   aiToolTable: 'तालिका जोड़ी गई · {rows} × {cols}',
   aiToolImageSearchDone: '"{query}" की छवि खोज ({count} छवियाँ)',
   aiToolInsertImage: 'छवि डाली गई {what}',
+  aiToolImport: '"{name}" को नए HWP दस्तावेज़ के रूप में खोला गया',
   aiToolFormat: 'स्वरूप बदला गया · {text}',
   aiFmtBold: 'बोल्ड',
   aiFmtItalic: 'इटैलिक',

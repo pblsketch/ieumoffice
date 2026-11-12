@@ -115,6 +115,7 @@ export const es = {
   aiToolTable: 'Tabla añadida · {rows} × {cols}',
   aiToolImageSearchDone: 'Búsqueda de imágenes «{query}» ({count} imágenes)',
   aiToolInsertImage: 'Imagen insertada {what}',
+  aiToolImport: 'Se abrió «{name}» como nuevo documento HWP',
   aiToolFormat: 'Formato cambiado · {text}',
   aiFmtBold: 'Negrita',
   aiFmtItalic: 'Cursiva',

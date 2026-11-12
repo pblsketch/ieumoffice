@@ -37,6 +37,7 @@ Dosya menüsünde, hepsi yerel çalışır ve hepsi sonucu nereye koyacağınız
 
 - **Word olarak dışa aktar…** ve **PDF olarak dışa aktar…** gerçek bir .docx veya .pdf yazar.
 - **ODT olarak dışa aktar…** bir .odt (OpenDocument metni) dosyası yazar; Word dışa aktarmasıyla aynı dönüşümü kullanır ve yolda bir şey değişir veya düşerse önce listeyi görüp onaylarsınız.
+- **HWP belgesi olarak dışa aktar…** aynı dönüşümle bir Hangul belgesi (.hwp veya .hwpx) yazar; başlıklar, listeler ve tablolar Hangul belgesinin kendi öğeleri olarak gelir ve uzun bir tablo sonraki sayfada devam eder. Aktarılamayan bir şey varsa önce listeyi görür ve onaylarsınız.
 - **Görsel olarak dışa aktar…** her içerik öğesi için seçtiğiniz klasöre bir PNG yazar.
 - **Dönüştür ve Docs’ta aç** belgeyi .docx’e çevirir ve uygulamanın içindeki yerleşik Docs sekmesinde açar — buluttaki bir yere devredilmez ve dönüştürülen kopya, yaklaşık bir hafta sonra temizlenen bir önbellek klasöründe durur.
 

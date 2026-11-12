@@ -113,6 +113,7 @@ export const cs = {
   aiToolTable: 'Tabulka přidána · {rows} × {cols}',
   aiToolImageSearchDone: 'Hledání obrázků „{query}“ ({count} obrázků)',
   aiToolInsertImage: 'Obrázek vložen {what}',
+  aiToolImport: 'Soubor „{name}“ otevřen jako nový dokument HWP',
   aiToolFormat: 'Formát změněn · {text}',
   aiFmtBold: 'Tučné',
   aiFmtItalic: 'Kurzíva',

@@ -109,6 +109,7 @@ export const he = {
   aiToolTable: 'נוספה טבלה · {rows} × {cols}',
   aiToolImageSearchDone: 'חיפוש תמונות "{query}" ({count} תמונות)',
   aiToolInsertImage: 'התמונה נוספה {what}',
+  aiToolImport: '"{name}" נפתח כמסמך HWP חדש',
   aiToolFormat: 'העיצוב שונה · {text}',
   aiFmtBold: 'מודגש',
   aiFmtItalic: 'נטוי',

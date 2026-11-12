@@ -111,6 +111,7 @@ export const vi = {
   aiToolTable: 'Đã thêm bảng · {rows} × {cols}',
   aiToolImageSearchDone: 'Tìm kiếm hình ảnh "{query}" ({count} hình)',
   aiToolInsertImage: 'Đã chèn hình ảnh {what}',
+  aiToolImport: 'Đã mở "{name}" thành tài liệu HWP mới',
   aiToolFormat: 'Đã đổi định dạng · {text}',
   aiFmtBold: 'In đậm',
   aiFmtItalic: 'In nghiêng',

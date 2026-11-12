@@ -81,7 +81,9 @@ describe('every engine document is freed', () => {
       JSON.stringify({ bytesLen: 1, pageCountBefore: 2, pageCountAfter: 3, recovered: true }),
     )
     const result = await frees(() => docxToHwp(notice(), 'hwp', engine))
-    expect(result).toMatchObject({ freed: 1, made: 1, error: { code: 'hwp-readback' } })
+    // the written document, and the file opened again to settle its layout
+    expect(result).toMatchObject({ freed: 2, made: 1, error: { code: 'hwp-readback' } })
+    expect(openDocumentCount()).toBe(0)
   })
 
   it('when the written file does not open again', async () => {

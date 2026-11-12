@@ -4,15 +4,16 @@
 
 ## 맡은 범위
 
-- 공개면(`src/index.ts`)은 이것뿐이다: `HwpEngine.start(wasm)`, `docxToHwp(docx, 'hwp' | 'hwpx', engine)` → `{ bytes, losses }`, `Docx2HwpError`(`code`: `not-docx`, `hwp-readback`, `failed`), 형 `HwpFormat`·`HwpConversion`·`Loss`·`LossFeature`·`LossKind`. 호출하는 쪽은 엔진 문서, 단위, 문단 번호, `free()`를 보지 않는다.
+- 공개면(`src/index.ts`)은 이것뿐이다: `HwpEngine.start(wasm)`, `docxToHwp(docx, 'hwp' | 'hwpx', engine, { look? })` → `{ bytes, losses }`, `Docx2HwpError`(`code`: `not-docx`, `hwp-readback`, `failed`), 형 `HwpFormat`·`HwpConversion`·`HwpConversionOptions`·`HwpLook`·`Loss`·`LossFeature`·`LossKind`. 호출하는 쪽은 엔진 문서, 단위, 문단 번호, `free()`를 보지 않는다.
 - `units.ts`: 곱하는 수 전부와 단위 형(`HwpUnit` 1pt=100, `ParaUnit` 1pt=200, `Rgb`). 숫자를 단위 형으로 바꾸는 곳은 이 파일뿐이다.
 - `losses.ts`: 잃은 것 표 `LOSS_FEATURES`(기능 → `dropped` 빠짐 / `changed` 바뀜)와 변환 하나의 장부 `LossLedger`. 같은 개체·문단에서 여러 번 나와도 한 번으로 센다. 보고 순서는 표의 순서다.
 - `model.ts`: 엔진 단위로 바뀐 작은 한글 문서 모델(문단, 표, 머리말·꼬리말, 쪽 설정, 번호 정의). 표 칸에는 문단과 칸 안의 표가 워드의 순서대로 든다.
 - `lower.ts`: docx-engine 모델 → 한글 모델. 엔진 없이 도는 순수 함수이고, 잃은 것은 여기서 정할 때 장부에 적는다. 블록 종류는 `BLOCK_LOWERINGS`(docx-engine의 `BlockType`마다 하나, 새 종류가 생기면 형 검사가 실패한다), 해석하지 못한 블록은 `PASSTHROUGH_KINDS`(위에서부터 처음 맞는 것이 정한다, 남길 수 있는 글은 서식 없이 남긴다).
+- `look.ts`: 표의 모양(결정 0135). 낮춘 모델을 받아 표만 고친 모델을 돌려주는 순수 함수 둘이다. `wordLook`(기본값 `look: 'word'`)은 워드 문서의 표를 한글에서 버티게만 한다. `hangulLook`은 워드 문서가 다른 형식(마크다운)의 내용을 나르는 그릇일 때 호출하는 쪽이 `look: 'hangul'`로 고른다.
 - `cursor.ts`: 문단을 쓰는 자리(`Place`: 본문, 본문 표의 칸, 머리말·꼬리말)와 `ParagraphCursor`.
 - `write.ts`: 한글 모델 → 엔진 호출. 쪽 설정, 글꼴·스타일·번호 표, 본문, 표, 각주·미주, 머리말·꼬리말.
 - `engine.ts`: `@rhwp/core`를 값으로 가져오는 유일한 파일. 문서는 `withNewDocument`·`withOpenedDocument` 안에서만 살고 `finally`에서 `free()`한다.
-- `convert.ts`: 읽기(`not-docx`) → 낮추기 → 쓰기(일괄 모드) → `.hwp`면 한글 편집기와 같은 저장 검사(`exportHwpVerify`의 쪽 수가 같아야 함, 아니면 `hwp-readback`) → 내보내기 → 결과를 한 번 다시 열어 본다.
+- `convert.ts`: 읽기(`not-docx`) → 낮추기 → (한글 문서 모양) → 쓰기(일괄 모드) → `.hwp`면 한글 편집기와 같은 저장 검사(`exportHwpVerify`의 쪽 수가 같아야 함) → 내보내기 → 결과를 한 번 다시 열어 본다. 검사가 어긋나면 HWPX로 내보내 다시 연 문서로 같은 검사를 하고 `.hwp`를 쓴다. 그래도 어긋나면 `hwp-readback`이다.
 
 ## 맡지 않는 것 (경계)
 
@@ -36,6 +37,11 @@
 - 글꼴: 한글·한자·일어·기호 칸에는 동아시아 글꼴, 나머지 칸(라틴, 기타, 사용자)에는 라틴 글꼴을 쓴다. 워드는 한국어 문서의 ○·※ 같은 기호를 동아시아 글꼴로 그린다. 동아시아 글꼴이 없거나 라틴 전용 글꼴(Calibri 등)이면 한글 기본(함초롬바탕)을 둔다.
 - 워드의 내어쓰기는 첫 줄을 왼쪽으로 빼고, 한글의 내어쓰기는 다음 줄을 오른쪽으로 민다. 그래서 한글 왼쪽 여백 = 워드 왼쪽 들여쓰기 + (음수인) 첫 줄 들여쓰기다.
 - 한글의 머리말 칸은 위쪽 여백 아래에 있다. 워드의 위쪽 여백(본문까지)은 한글의 위쪽 여백(= 워드의 머리말 거리)과 머리말 칸으로 나눈다. 용지는 세운 크기로 주고 가로 방향은 표시로 준다.
+- **`.hwp` 검사가 어긋난 문서는 다시 열어 쓴다(결정 0135).** 일괄 모드 안에서 채운 표는 엔진의 배치에 빈 틀의 높이로 남는다(`docs/tracking/findings.md`). 칸 글이 여러 줄이면 엔진이 센 쪽 수와 파일의 쪽 수가 달라진다. 파일로 내보내 다시 연 문서는 든 것으로 새로 배치되므로, 그 문서를 검사하고 그 문서에서 `.hwp`를 쓴다. 검사를 바로 지난 문서는 이 길을 타지 않아 결과 바이트가 전과 같다. 다시 연 문서도 `withOpenedDocument` 안에서만 산다.
+- **워드 문서의 표는 두 가지만 고친다(`wordLook`).** 본문의 표를 문단 사이에 놓고(위 간격 0, 아래는 1mm와 다음 문단의 "문단 위" 가운데 큰 값), 칸의 위아래 여백을 1mm 이상으로 한다. 글자처럼 취급 표는 쪽을 넘지 못하고, 한글은 칸의 마지막 줄 아래에 줄 간격의 빈 자리를 두지 않아서다. 열 너비, 세로 정렬, 좌우 여백, 머리 줄의 글자 모양과 되풀이 여부는 건드리지 않는다. 여기에 모양을 더하지 않는다: 워드 → 한글은 워드의 모양을 따르는 길이다(결정 0121).
+- **다시 여는 길의 시험은 표를 글자처럼 둔 채로 돈다(`tests/settle.test.ts`).** 본문의 표가 문단 사이에 놓이면서 시험 문서들은 `.hwp` 검사를 바로 지난다. 칸 안의 표와 머리말·꼬리말의 표는 지금도 글자처럼 놓이므로 그 길은 남아 있고, 시험은 `wordLook`을 꺼서 그 경우를 만든다.
+- **한글 문서 모양은 표만 바꾼다(`look.ts`).** 본문의 표를 문단 사이에 놓고(`Table.flow`가 `block`: 글자처럼 취급을 끄고, 줄 경계에서 쪽을 넘는다), 칸 여백을 위아래 1mm·좌우 1.8mm 이상으로, 글을 세로 가운데로, 첫 줄만 칠해진 표의 그 줄을 머리 줄(굵게, 가운데, 쪽마다 되풀이)로 한다. 열 너비가 모두 같을 때만 내용에 맞춰 나눈다: 작성자가 준 너비는 건드리지 않는다. 칸 안의 표는 `char` 그대로다. 문단, 쪽 설정, 글자 모양은 바꾸지 않는다.
+- **문단 사이 표의 아래 간격은 두 곳에 같은 값으로 쓴다.** 한컴 한글은 표의 바깥 아래 여백(`outerBottom`)을, 우리 엔진은 표가 놓인 문단의 "문단 아래"(`tableParaJson`의 `spacingAfter`)를 비워 둔다. 한쪽만 쓰면 다른 프로그램에서 다음 문단이 표에 붙는다.
 - 엔진이 개체 하나(그림, 각주, 표)를 거절하면 장부에 적고 나머지를 쓴다. 글자·서식 호출이 실패하면 변환 전체가 실패한다(서식 없는 문단은 조용한 손실이다).
 - `LOSS_FEATURES`에 기능을 더하면 `apps/docs/src/main/hwp-export.ts`의 이름 표와 `hwp-export-strings.ts`의 22개 언어 문구, 터미널 명령어의 이름 표(`packages/cli/src/formats/docx-hwp.ts`)도 더한다(형 검사가 지킨다). `docs/contracts.md`의 식별자 목록에도 더한다(`packages/cli/tests/convert-docx-hwp.test.ts`가 지킨다). 식별자는 명령어의 `detail.hwp_report`로 밖에 약속한 값이라 이름을 바꾸지 않는다. ODT의 보고 ID(`REPORT_FEATURES`)와 섞지 않는다.
 
@@ -54,5 +60,6 @@
 
 - 패키지 폴더에서 `npx vitest run`, 또는 루트에서 `npm run test -w @genoffice/docx2hwp`. 실제 엔진을 쓴다(`node_modules/@rhwp/core` = `vendor/rhwp-core`).
 - `tests/convert.test.ts`: 시험 문서(`tests/fixtures`의 가정통신문·탭 문서·표 안의 표 문서, `apps/docs/tests/pagination-corpus/docx`의 각주·혼합·기본 견본)를 HWP와 HWPX로 바꾸고 `tests/helpers/read-back.ts`가 엔진으로 다시 열어 요약한다. 가정통신문 본문을 열 번 이은 긴 문서(160문단)가 가정통신문 열 벌과 같게 읽히는지도 본다. 문단 모양은 저장된 XML에서 pt로 읽는다(엔진의 속성 조회는 문단 간격을 다른 배율로 돌려준다).
+- `tests/look.test.ts`: 한글 문서 모양(엔진 없이 모델로, 그리고 두 형식으로 써서 저장된 XML로), `.hwp`를 다시 열어 쓰는 길(지어낸 마크다운 모양 문서 `fixtures/markdown-tables.docx`: 워드 모양으로 쓰면 쪽 수가 어긋난다. 결과가 일괄 모드 없이 쓴 것과 같은지, 다시 연 뒤에도 어긋나면 거절하는지).
 - `tests/lower.test.ts`: 엔진 없이 낮추기 규칙. `tests/engine.test.ts`: 엔진을 가져오는 파일과 단위를 만드는 파일이 하나씩인지, 성공과 실패 모두에서 문서가 모두 `free()`되는지.
 - 한컴 한글 확인은 사람이 돌린다: 결과를 한컴 한글 2024로 열어 쪽 수·글자 수를 보고 PDF로 그려 견준다(`tools/odt-hancom/`의 방식).

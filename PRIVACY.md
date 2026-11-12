@@ -520,7 +520,13 @@ Nothing in this list is uploaded by the app.
   and marks the file when it closes. When an agent session cannot start, one line holds
   the time, the program (`codex` or `claude-code`), a short code for the
   failure (such as `refused thread.start -32600`) and the error's type (such
-  as `Error:EACCES`); the agent window shows the same code. It holds no
+  as `Error:EACCES`); the agent window shows the same code. When the app stops
+  an AI run by its own rule (what the AI sent to edit the document could not
+  be used several times in a row, its edits kept failing, or it repeated the
+  same step), one line holds the time, the editor, which rule it was, how
+  often each kind of fault occurred (such as `truncated:2`), the name of one
+  of the app's own tools (such as `insert_table`), how many edits had run and
+  whether the document had been changed. It holds no
   document text, file names, paths or error messages, and it is kept under
   64 KB by dropping the oldest lines. The app never sends it anywhere; if you
   report a problem, you can attach it yourself. No crash dumps are written.

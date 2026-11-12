@@ -13,6 +13,7 @@ import type {
   Docx2HwpErrorCode,
   HwpConversion,
   HwpFormat,
+  HwpLook,
   Loss,
   LossFeature,
 } from '@genoffice/docx2hwp'
@@ -24,6 +25,8 @@ export interface HwpExportJob {
   docx: Uint8Array
   format: HwpFormat
   wasmPath: string
+  /** 'hangul' when the Word bytes only carry another editor's content (Markdown) */
+  look?: HwpLook
   /** the screen language a hiding mark's memo prefix is written in */
   hidingLang?: string
 }

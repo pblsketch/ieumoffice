@@ -112,6 +112,7 @@ export const id = {
   aiToolTable: 'Tabel ditambahkan · {rows} × {cols}',
   aiToolImageSearchDone: 'Pencarian gambar "{query}" ({count} gambar)',
   aiToolInsertImage: 'Gambar disisipkan {what}',
+  aiToolImport: 'Membuka "{name}" sebagai dokumen HWP baru',
   aiToolFormat: 'Format diubah · {text}',
   aiFmtBold: 'Tebal',
   aiFmtItalic: 'Miring',

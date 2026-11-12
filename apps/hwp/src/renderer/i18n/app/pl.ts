@@ -112,6 +112,7 @@ export const pl = {
   aiToolTable: 'Dodano tabelę · {rows} × {cols}',
   aiToolImageSearchDone: 'Wyszukiwanie obrazów „{query}” ({count} obrazów)',
   aiToolInsertImage: 'Wstawiono obraz {what}',
+  aiToolImport: 'Otwarto „{name}” jako nowy dokument HWP',
   aiToolFormat: 'Zmieniono formatowanie · {text}',
   aiFmtBold: 'Pogrubienie',
   aiFmtItalic: 'Kursywa',

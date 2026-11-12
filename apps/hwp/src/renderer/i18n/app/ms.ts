@@ -112,6 +112,7 @@ export const ms = {
   aiToolTable: 'Jadual ditambah · {rows} × {cols}',
   aiToolImageSearchDone: 'Carian imej "{query}" ({count} imej)',
   aiToolInsertImage: 'Imej disisipkan {what}',
+  aiToolImport: 'Membuka "{name}" sebagai dokumen HWP baharu',
   aiToolFormat: 'Format diubah · {text}',
   aiFmtBold: 'Tebal',
   aiFmtItalic: 'Condong',

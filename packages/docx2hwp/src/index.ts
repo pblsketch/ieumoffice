@@ -9,6 +9,8 @@ export {
   type Docx2HwpErrorCode,
   type Docx2HwpOptions,
   type HwpConversion,
+  type HwpConversionOptions,
   type HwpFormat,
 } from './convert'
+export type { HwpLook } from './look'
 export type { Loss, LossFeature, LossKind } from './losses'

@@ -115,6 +115,24 @@ describe('what a new tab takes over', () => {
     expect(handedRequestOf(null, 'hwp')).toBeNull()
   })
 
+  it('reads the note the app sends with a request, and only a text one', () => {
+    const raw = { id: 'h2', mode: 'skill', target: 'hwp', text: 'tidy it up', chips: [] }
+    expect(
+      handedRequestOf({ ...raw, note: 'The file is already in this document.' }, 'hwp'),
+    ).toEqual({
+      id: 'h2',
+      text: 'tidy it up',
+      chips: [],
+      note: 'The file is already in this document.',
+    })
+    expect(handedRequestOf({ ...raw, note: 7 }, 'hwp')).toEqual({
+      id: 'h2',
+      text: 'tidy it up',
+      chips: [],
+    })
+    expect(handedRequestOf({ ...raw, note: '' }, 'hwp')).not.toHaveProperty('note')
+  })
+
   it('reads the asking document a request brought along, paths only', () => {
     const raw = {
       id: 'h3',

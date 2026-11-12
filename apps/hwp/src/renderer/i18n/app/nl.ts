@@ -112,6 +112,7 @@ export const nl = {
   aiToolTable: 'Tabel toegevoegd · {rows} × {cols}',
   aiToolImageSearchDone: 'Afbeeldingen zoeken "{query}" ({count} afbeeldingen)',
   aiToolInsertImage: 'Afbeelding ingevoegd {what}',
+  aiToolImport: '"{name}" geopend als nieuw HWP-document',
   aiToolFormat: 'Opmaak gewijzigd · {text}',
   aiFmtBold: 'Vet',
   aiFmtItalic: 'Cursief',

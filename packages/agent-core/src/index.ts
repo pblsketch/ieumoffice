@@ -111,8 +111,10 @@ export type {
   AgentLoopEvents,
   AgentLoopOptions,
   AgentRunResult,
+  AgentRunStop,
   CompactionOptions,
   ToolExecutedEvent,
+  ToolInputFault,
 } from './loop'
 export { createIpcTransport, IPC_STREAM_SILENCE_TIMEOUT_MS } from './electron-transport'
 export {

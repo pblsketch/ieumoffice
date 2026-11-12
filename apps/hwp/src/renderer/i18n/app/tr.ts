@@ -111,6 +111,7 @@ export const tr = {
   aiToolTable: 'Tablo eklendi · {rows} × {cols}',
   aiToolImageSearchDone: '"{query}" görsel araması ({count} görsel)',
   aiToolInsertImage: '{what} görseli eklendi',
+  aiToolImport: '"{name}" yeni bir HWP belgesi olarak açıldı',
   aiToolFormat: 'Biçimlendirildi · {text}',
   aiFmtBold: 'Kalın',
   aiFmtItalic: 'İtalik',

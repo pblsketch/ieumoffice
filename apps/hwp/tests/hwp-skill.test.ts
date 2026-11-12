@@ -14,6 +14,7 @@ import {
   evenCutLine,
   typedTabs,
 } from '../src/renderer/ai/hwp-skill'
+import type { HwpSkillDeps } from '../src/renderer/ai/hwp-skill'
 
 /** where a change is, as the editor hands it back */
 const PLACE = { sec: 0, para: 1, offset: 0, length: 3 }
@@ -123,6 +124,7 @@ function setup(
   attachmentPath?: (name: string) => string | null,
   attachmentNames?: () => string[],
   pictureAnalysisAvailable?: () => boolean,
+  importAttachment?: HwpSkillDeps['importAttachment'],
 ) {
   const bridge: AgentBridge = {
     foreignChanges: vi.fn(async () => 0),
@@ -390,6 +392,7 @@ function setup(
     ...(attachmentPath ? { attachmentPath } : {}),
     ...(attachmentNames ? { attachmentNames } : {}),
     ...(pictureAnalysisAvailable ? { pictureAnalysisAvailable } : {}),
+    ...(importAttachment ? { importAttachment } : {}),
   })
   const call = (name: string, input: Record<string, unknown> = {}) =>
     skill.executeTool({ id: '1', name, input } satisfies AgentToolCall)
@@ -3475,6 +3478,86 @@ describe('a line break the model escaped twice', () => {
     const result = await call('replace_all', { find: String.raw`\n`, replace: ' ' })
     expect(result.isError).toBeFalsy()
     expect(bridge.replaceAllText).toHaveBeenCalledWith(String.raw`\n`, ' ')
+  })
+})
+
+describe('import_attachment: an attached Markdown file as a new Hangul document', () => {
+  const withImporter = (
+    importer: NonNullable<HwpSkillDeps['importAttachment']> = vi.fn(async () => ({
+      ok: true as const,
+      title: '안내',
+      handed: false,
+    })),
+  ) => ({
+    importer,
+    ...setup({}, undefined, undefined, undefined, undefined, undefined, importer),
+  })
+
+  it('is offered, and explained, only where the app can open a new tab', () => {
+    const without = setup()
+    expect(without.skill.tools.map((tool) => tool.name)).not.toContain('import_attachment')
+    expect(without.skill.systemPrompt).not.toContain('import_attachment')
+
+    const { skill } = withImporter()
+    expect(skill.tools.at(-1)!.name).toBe('import_attachment')
+    expect(skill.tools.at(-1)!.inputSchema.required).toEqual(['attachment'])
+    expect(skill.systemPrompt).toContain('## Turning an attached file into a Hangul document')
+    expect(skill.systemPrompt).toContain('do not retype it with insert_paragraphs')
+  })
+
+  it('opens the file through the app and leaves this document as it is', async () => {
+    const { call, importer, bridge, changes } = withImporter()
+    const result = await call('import_attachment', { attachment: '안내.md' })
+    expect(importer).toHaveBeenCalledWith('안내.md', false)
+    expect(result.isError).toBeFalsy()
+    expect(result.mutated).toBe(false)
+    expect(result.output).toContain('Opened "안내" as a new, untitled Hangul document')
+    expect(result.output).toContain('The document open here was not changed.')
+    expect(result.output).toContain('to change how it looks they ask in that tab')
+    expect(result.summary).toBe('aiToolImport:{"name":"안내.md"}')
+    expect(changes).toEqual([])
+    expect(bridge.insertParagraphs).not.toHaveBeenCalled()
+    expect(bridge.insertTable).not.toHaveBeenCalled()
+  })
+
+  it('hands the request over when asked to, and tells the model to stop here', async () => {
+    const importer = vi.fn(async () => ({ ok: true as const, title: '안내', handed: true }))
+    const { call } = withImporter(importer)
+    const result = await call('import_attachment', {
+      attachment: ' 안내.markdown ',
+      continue_request: true,
+    })
+    expect(importer).toHaveBeenCalledWith('안내.markdown', true)
+    expect(result.output).toContain('The request was handed to the assistant of that document')
+    expect(result.output).toContain('do nothing more for this request in this document')
+  })
+
+  it('refuses a file that is not Markdown without calling the app', async () => {
+    const { call, importer } = withImporter()
+    const result = await call('import_attachment', { attachment: '보고서.docx' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('only a Markdown file')
+    expect(result.output).toContain('read_attachment')
+    expect(importer).not.toHaveBeenCalled()
+    expect((await call('import_attachment', {})).isError).toBe(true)
+  })
+
+  it('passes on why the app could not open it', async () => {
+    const importer = vi.fn(async () => ({
+      ok: false as const,
+      error: 'there is no file named "안내.md" attached to this chat.',
+    }))
+    const { call } = withImporter(importer)
+    const result = await call('import_attachment', { attachment: '안내.md' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toBe('there is no file named "안내.md" attached to this chat.')
+  })
+
+  it('is not a tool at all without the app', async () => {
+    const { call } = setup()
+    const result = await call('import_attachment', { attachment: '안내.md' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('unknown tool')
   })
 })
 

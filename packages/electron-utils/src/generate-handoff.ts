@@ -181,6 +181,12 @@ export interface SkillHandoff {
    * document without unsaved changes is ever put here.
    */
   attach?: string[] | undefined
+  /**
+   * The app's own words to the model about this hand-off (what the new
+   * document already holds), sent with the request and not shown as the
+   * person's. Never text a model wrote.
+   */
+  note?: string | undefined
   /** ms since epoch */
   createdAt: number
 }

@@ -127,6 +127,16 @@ export interface HwpSkillDeps {
   readAttachmentDocument?: (
     name: string,
   ) => Promise<{ ok: true; base64: string } | { ok: false; error: string }>
+  /**
+   * Open a Markdown file attached to this conversation as a new, untitled Hangul document
+   * in a tab of its own (the app converts it; this document is not changed). With
+   * `handOver` the person's request goes on in that tab. Absent where there is no tab to
+   * open (the command line): import_attachment is then not offered.
+   */
+  importAttachment?: (
+    name: string,
+    handOver: boolean,
+  ) => Promise<{ ok: true; title: string; handed: boolean } | { ok: false; error: string }>
 }
 
 export interface HwpSkill {
@@ -147,6 +157,17 @@ export interface HwpSkill {
    */
   beginRun(): void
 }
+
+/** Told to the model where a whole attached file can be opened as a new document. */
+export const IMPORT_ATTACHMENT_NOTE = [
+  '',
+  '',
+  '## Turning an attached file into a Hangul document',
+  '- When the user asks to make a Hangul document out of an attached Markdown file (.md), do not retype it with insert_paragraphs and insert_table: call import_attachment with the name of the file. The app converts it itself, with its headings, lists, tables and bold text, and opens the result as a new, untitled Hangul document in a tab of its own. The document open here is not changed.',
+  '- Pass continue_request true when the request asks for more than the conversion (a look to give it, a form to follow, edits): the request then goes on in the new document, with the assistant of that tab. Do not do the rest of the request in this document.',
+  '- After the call, tell the user in a sentence that the file was opened as a new Hangul document in a new tab, and when the request was handed over, that the work goes on there.',
+  '- Only Markdown files can be brought in this way. For another kind of file, read it with read_attachment and write what the user asked for with the usual tools.',
+].join('\n')
 
 /** Hidden from the tool list while no image provider is reachable (see `createHwpSkill`). */
 export const IMAGE_GEN_OFF_NOTE =
@@ -456,6 +477,29 @@ const NOTE_TEXT_SCHEMA = {
   type: 'string',
   description:
     'the text of the note, without its number; a line break starts a new paragraph of the note',
+}
+
+/** offered only where the app can open a new tab (see `createHwpSkill`) */
+const IMPORT_ATTACHMENT_TOOL: AgentToolDef = {
+  name: 'import_attachment',
+  description:
+    'Turn a Markdown file (.md, .markdown) attached to this chat into a Hangul document: the app converts its headings, lists, tables and bold text and opens the result as a new, untitled document in a tab of its own. The document open here is not changed. Use this instead of retyping the file.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      attachment: {
+        type: 'string',
+        description:
+          'the exact name of the attached Markdown file, as the attachment list shows it',
+      },
+      continue_request: {
+        type: 'boolean',
+        description:
+          'true when the request asks for more than the conversion (a look, a form to follow, edits): the request then goes on in the new document',
+      },
+    },
+    required: ['attachment'],
+  },
 }
 
 const TOOLS: AgentToolDef[] = [
@@ -2496,6 +2540,30 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               ? 'No occurrence.'
               : `${found.count} occurrence(s).\n${matchLines(found.matches, found.count)}`,
           summary: label('aiToolFind', { text: quote(text), count: found.count }),
+        }
+      }
+      case 'import_attachment': {
+        const importer = deps.importAttachment
+        if (!importer) return bad(call, 'unknown tool: import_attachment')
+        const attachment = textArg(call, 'attachment')?.trim() ?? ''
+        if (!attachment) {
+          return bad(call, 'attachment must be the exact name of an attached Markdown file')
+        }
+        if (!/\.(md|markdown)$/i.test(attachment)) {
+          return bad(
+            call,
+            `only a Markdown file (.md, .markdown) can be opened as a Hangul document this way; "${attachment}" is not one. Read it with read_attachment and write what the user asked for with the usual tools.`,
+          )
+        }
+        const result = await importer(attachment, call.input.continue_request === true)
+        if (!result.ok) return bad(call, result.error)
+        const next = result.handed
+          ? 'The request was handed to the assistant of that document, which goes on from there: do nothing more for this request in this document. Tell the user in one sentence that the file opened as a new Hangul document in a new tab and that the work goes on there.'
+          : 'Tell the user in one sentence that the file opened as a new Hangul document in a new tab; to change how it looks they ask in that tab.'
+        return {
+          output: `Opened "${result.title}" as a new, untitled Hangul document in a tab of its own, with the headings, lists and tables of the file. The document open here was not changed. ${next}`,
+          mutated: false,
+          summary: label('aiToolImport', { name: attachment }),
         }
       }
       case 'read_url': {
@@ -4808,12 +4876,13 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           'call insert_image with attachment set to the name',
         )
         let base = SYSTEM_PROMPT + attached
+        if (deps.importAttachment) base += IMPORT_ATTACHMENT_NOTE
         if (!imageGenOn()) base += IMAGE_GEN_OFF_NOTE
         if (!pictureAnalysisOn()) base += PICTURE_ANALYSIS_OFF_NOTE
         return base
       },
       get tools(): AgentToolDef[] {
-        let offered = TOOLS
+        let offered = deps.importAttachment ? [...TOOLS, IMPORT_ATTACHMENT_TOOL] : TOOLS
         if (!imageGenOn()) offered = offered.filter((tool) => tool.name !== 'generate_image')
         if (!pictureAnalysisOn())
           offered = offered.filter((tool) => tool.name !== 'analyze_picture')

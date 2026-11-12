@@ -106,6 +106,7 @@ export const zh = {
   aiToolTable: '已插入表格 · {rows} 行 {cols} 列',
   aiToolImageSearchDone: '图片搜索“{query}”（{count} 张）',
   aiToolInsertImage: '已插入图片 {what}',
+  aiToolImport: '已将“{name}”作为新的 HWP 文档打开',
   aiToolFormat: '已更改格式 · {text}',
   aiFmtBold: '加粗',
   aiFmtItalic: '斜体',

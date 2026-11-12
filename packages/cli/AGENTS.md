@@ -72,6 +72,7 @@
   - 암호 ODT는 종료 코드 2, `unsupported`와 암호를 풀라는 `suggestion`이다(`odtOpenFailure`). 기본 이유 `file_not_found`로 두지 않는다.
 - 워드 → 한글(`src/formats/docx-hwp.ts`, 결정 0121): `@genoffice/docx2hwp`의 공개 API(`HwpEngine.start`, `docxToHwp`, `Docx2HwpError`)만 쓰고 패키지를 고치지 않는다. 엔진은 프로세스에 하나이고(시작이 실패하면 다음 명령이 다시 띄운다), WASM은 `rhwpWasmPath`로 읽어 넘긴다. 앱은 worker에서 돌리지만 명령은 제 프로세스라 그 자리에서 돌린다. `ieumoffice mcp`에서는 `hwp apply`처럼 엔진 메모리가 서버가 끝날 때까지 남는다.
   - 앱과 달리 묻지 않고 쓴다. 잃은 것은 항목마다 `hwp_dropped`·`hwp_changed` 경고와 `detail.hwp_report`(패키지의 `Loss` 그대로)다. 경고 글의 이름 표 `FEATURE_LABEL`은 `LossFeature`마다 하나라 패키지가 기능을 더하면 형 검사가 실패한다. 식별자 목록은 `docs/contracts.md`가 밖에 약속하고, `tests/convert-docx-hwp.test.ts`가 그 목록과 이름 표를 맞춘다.
+  - 마크다운 → 한글(`convert <md> --to hwp|hwpx`, 결정 0135)은 `markdownToDocx`의 워드 바이트를 같은 `docxToHangul`에 `look: 'hangul'`로 넘긴다. 그 워드 문서에는 지킬 모양이 없어서 표가 한글 문서의 모양을 받는다(패키지의 `look.ts`). `.docx`를 바꿀 때는 넘기지 않는다(`'word'`). 시험은 `tests/convert-markdown-hwp.test.ts`다.
   - 이 파일에서 `CliError`로 바꾸는 것은 `hwp-readback`(`--to hwpx` 안내)과 `not-docx` 둘이다. 엔진이 WebAssembly 메모리를 만들지 못한 실패는 잡지 않고 `runCli`에 넘긴다(`src/wasm.ts`).
 - 이 패키지는 `@genoffice/i18n`과 `@genoffice/electron-utils`를 import하지만 `package.json`의 `dependencies`에는 적혀 있지 않다(workspace 호이스팅에 기대는 기존 구조다).
 

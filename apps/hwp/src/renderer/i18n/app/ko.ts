@@ -111,6 +111,7 @@ export const ko = {
   aiToolTable: '표 넣음 · {rows}행 {cols}열',
   aiToolImageSearchDone: '"{query}" 이미지 검색 ({count}장)',
   aiToolInsertImage: '그림 넣기 {what}',
+  aiToolImport: '새 한글 문서로 열기 "{name}"',
   aiToolFormat: '서식 바꿈 · {text}',
   aiFmtBold: '굵게',
   aiFmtItalic: '기울임',

@@ -44,7 +44,11 @@ export interface AgentLoopEvents<TSnapshot> {
   /** tokens the provider billed for the turn that just streamed (per model call; compaction summary turns are not reported) */
   onUsage?(usage: AgentTokenUsage): void
   onDone?(result: AgentRunResult): void
-  onError?(error: string): void
+  /**
+   * `stop` comes with a run the loop itself gave up on (not a provider or
+   * network failure): what it gave up over, in words the UI can translate.
+   */
+  onError?(error: string, stop?: AgentRunStop): void
 }
 
 /** Context compaction config (budget tracked in UTF-8 bytes rather than message count) */
@@ -100,6 +104,30 @@ const STALE_TOOL_OUTPUT_MAX = 1_000
 
 /** Unified turn budget across the suite's chat panels (apps may still override per loop) */
 export const DEFAULT_MAX_TURNS = 100
+
+/** why one tool call's input could not be used */
+export type ToolInputFault = 'truncated' | 'unparseable' | 'missing' | 'invalid'
+
+/**
+ * A run the loop stopped by its own rule. Nothing here is model or document
+ * text: kinds, counts, and tool names taken from the skill's own list.
+ */
+export interface AgentRunStop {
+  /**
+   * 'tool-input': tool input was unusable turn after turn.
+   * 'tool-errors': every tool call failed turn after turn.
+   * 'repeating': the model sent the same turn again and again.
+   */
+  kind: 'tool-input' | 'tool-errors' | 'repeating'
+  /** tool-input: how often each fault was met in the turns that led to the stop */
+  faults?: Partial<Record<ToolInputFault, number>>
+  /** tool-input: the tools those calls named ('unknown' for a name the skill does not have) */
+  tools?: string[]
+  /** tool calls this run executed before it stopped */
+  executed: number
+  /** the run had already changed the artifact; those changes stay */
+  mutated: boolean
+}
 
 /** Cap on consecutive turns whose tool input was all unusable (a turn that executes a call resets it); abort beyond it (keeps the model from burning turns on bad JSON) */
 const MAX_INPUT_PARSE_RETRIES = 3
@@ -281,7 +309,8 @@ export function invalidArgumentFields(
 /**
  * Repairs the argument shapes weaker models emit that every handler used to
  * accept silently before invalidArgumentFields existed: a numeric string in a
- * number/integer field becomes a number, a number is clamped into a declared
+ * number/integer field becomes a number, the words "true" and "false" in a
+ * boolean field become the boolean, a number is clamped into a declared
  * minimum/maximum (the handlers clamp too, so this only spares a retry), and a
  * value that still violates a field whose schema declares a `default` is
  * replaced by it. Anything else is left for invalidArgumentFields.
@@ -305,6 +334,12 @@ export function coerceArgumentFields(
     if (numeric && typeof value === 'string' && value.trim() !== '') {
       const n = Number(value)
       if (Number.isFinite(n) && (declared.includes('number') || Number.isInteger(n))) next = n
+    }
+    // the same slip for a flag: "true" where true was meant (a field that also takes a string keeps it)
+    if (declared.includes('boolean') && !declared.includes('string') && typeof value === 'string') {
+      const word = value.trim().toLowerCase()
+      if (word === 'true') next = true
+      else if (word === 'false') next = false
     }
     if (typeof next === 'number' && Number.isFinite(next)) {
       const { minimum, maximum, exclusiveMinimum, exclusiveMaximum } = fieldSchema
@@ -506,6 +541,8 @@ export class AgentLoop<TSnapshot = unknown> {
   private finalizing = false
   private mutationSeen = false
   private inputParseFails = 0
+  /** the faults of the unusable turns in the current streak */
+  private inputFaults: Array<{ fault: ToolInputFault; tool: string }> = []
   /** signature (text + tool calls) of the previous turn, for the identical-turn guard */
   private lastTurnSig = ''
   private identicalTurns = 0
@@ -647,6 +684,7 @@ export class AgentLoop<TSnapshot = unknown> {
     this.finalizing = false
     this.mutationSeen = false
     this.inputParseFails = 0
+    this.inputFaults = []
     this.lastTurnSig = ''
     this.identicalTurns = 0
     this.allErrorTurns = 0
@@ -715,6 +753,14 @@ export class AgentLoop<TSnapshot = unknown> {
    * A run failed: remove its user message and every message after it, so the
    * failed instruction can't be silently re-executed by the next run.
    */
+  private runStop(kind: AgentRunStop['kind']): AgentRunStop {
+    return {
+      kind,
+      executed: this.executedCalls.filter((call) => call.ok).length,
+      mutated: this.mutationSeen,
+    }
+  }
+
   private rollbackFailedRun(): void {
     const msg = this.runUserMsg
     this.runUserMsg = null
@@ -1239,6 +1285,16 @@ export class AgentLoop<TSnapshot = unknown> {
         unreadable || missing.length > 0 ? [] : invalidArgumentFields(tool, call.input)
       if (unreadable || missing.length > 0 || invalid.length > 0) {
         unusableInTurn = true
+        this.inputFaults.push({
+          fault: call.truncated
+            ? 'truncated'
+            : call.inputError
+              ? 'unparseable'
+              : missing.length > 0
+                ? 'missing'
+                : 'invalid',
+          tool: tool ? tool.name : 'unknown',
+        })
         const output = call.truncated
           ? 'Tool arguments were cut off by the output length limit; the tool was not executed. Split this operation into several smaller tool calls (less content per call) and try again.'
           : call.inputError
@@ -1301,8 +1357,10 @@ export class AgentLoop<TSnapshot = unknown> {
       })
     }
     this.history.push({ role: 'tool', results })
-    if (executedInTurn) this.inputParseFails = 0
-    else if (unusableInTurn) this.inputParseFails++
+    if (executedInTurn) {
+      this.inputParseFails = 0
+      this.inputFaults = []
+    } else if (unusableInTurn) this.inputParseFails++
 
     // Cancelled while tools were executing: finish immediately, no further model request
     if (this.cancelled) {
@@ -1316,8 +1374,15 @@ export class AgentLoop<TSnapshot = unknown> {
     if (this.inputParseFails >= MAX_INPUT_PARSE_RETRIES) {
       this.running = false
       this.rollbackFailedRun()
+      const faults: Partial<Record<ToolInputFault, number>> = {}
+      for (const { fault } of this.inputFaults) faults[fault] = (faults[fault] ?? 0) + 1
       events?.onError?.(
         `Tool input was unusable (unparseable, truncated or missing required arguments) ${MAX_INPUT_PARSE_RETRIES} times in a row; retries stopped, please send the request again`,
+        {
+          ...this.runStop('tool-input'),
+          faults,
+          tools: [...new Set(this.inputFaults.map(({ tool }) => tool))],
+        },
       )
       return
     }
@@ -1331,6 +1396,7 @@ export class AgentLoop<TSnapshot = unknown> {
       this.rollbackFailedRun()
       events?.onError?.(
         `Every tool call failed for ${MAX_ALL_ERROR_TURNS} turns in a row; the run was stopped. Please send the request again`,
+        this.runStop('tool-errors'),
       )
       return
     }
@@ -1351,6 +1417,7 @@ export class AgentLoop<TSnapshot = unknown> {
         this.rollbackFailedRun()
         events?.onError?.(
           'The model kept repeating the exact same turn without making progress; the run was stopped. Please send the request again',
+          this.runStop('repeating'),
         )
         return
       }

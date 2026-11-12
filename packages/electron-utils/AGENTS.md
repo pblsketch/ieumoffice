@@ -39,6 +39,7 @@ shell과 에디터들의 메인 프로세스(일부는 preload)가 함께 쓰는
 - 패키지 루트 진입점은 Electron에 묶여 있다(`renderer-protocol.ts`가 `net`·`protocol`을, `drop-open.ts`가 `ipcRenderer`·`webUtils`를 실행 시점에 import한다). Electron 없이 도는 코드(`packages/cli`의 번들, `packages/ai-search`)는 `package.json`의 `exports`에 있는 하위 경로(`/remote-image`, `/generated-images`, `/safe-remote-url`, `/atomic-write`, `/headless-export` 등)로만 import한다. 그런 코드가 써야 할 모듈을 새로 만들면 하위 경로로도 내보낸다.
 - 내부 식별자는 원본 표기를 유지한다. 렌더러 스킴 `genoffice-app`(`RENDERER_SCHEME`), 임시 폴더 이름 `genoffice-ai-images`, 심볼 키 등은 사용자에게 보이지 않는 이름이라 바꾸지 않는다. 사용자에게 보이는 이름(메뉴의 제품 이름, 기본 저장 폴더 `<문서>/IeumOffice`)은 `@genoffice/i18n`의 `PRODUCT_NAME`·`productName`·`brandText`에서 가져온다.
 - 저장하지 않은 파일 확인과 생성 넘겨주기의 상태는 `Symbol.for(...)` 키에 둔다. shell이 건 목록과 맡겨 둔 요청을, 번들에 따로 들어간 에디터의 사본이 같은 것으로 읽어야 한다. 열린 문서 목록이 없는 실행(에디터 단독 실행)에서는 아무것도 막지 않는다.
+- 스킬 넘겨주기(`SkillHandoff`)의 `note`는 앱이 모델에게 덧붙이는 말이다(새 문서에 이미 무엇이 들어 있는지). 받는 AI 창이 요청과 함께 모델에 보내고 사람의 말풍선에는 보이지 않는다. 모델이 쓴 글을 여기에 넣지 않는다(결정 0135).
 - 넘겨주기는 실행을 시작하지 않는다. 요청은 맡겨진 webContents와 종류에서만, 한 번만 가져갈 수 있고, 가져가기 전에 탭이 닫히면 버린다. 디스크에 아무것도 쓰지 않는다.
 - 저장소 URL을 문자열로 다시 적지 않는다. `GITHUB_REPO_URL`·`GITHUB_ISSUES_URL`·`GITHUB_LATEST_RELEASE_URL`·`githubReleaseTagUrl`을 쓴다.
 - **복구 사본의 이름 규칙을 바꾸지 않는다.** 워드(`docs-autosave`, `.docx`·ODT는 `.odt`)·엑셀(`sheets-autosave`, `.xlsx`)·파워포인트(`slides-autosave`, `.pptx`)의 폴더와 "편집기가 쥔 경로 문자열의 sha1 앞 16글자 + 확장자"는 이전 버전이 남긴 사본을 찾는 열쇠다. 경로를 정규화하거나 이름을 바꾸면 업데이트 전의 사본을 잃는다. 곁 정보가 없는 사본은 `later`로 읽는다.

@@ -111,6 +111,7 @@ export const th = {
   aiToolTable: 'เพิ่มตารางแล้ว · {rows} × {cols}',
   aiToolImageSearchDone: 'ค้นหารูปภาพ "{query}" ({count} รูป)',
   aiToolInsertImage: 'แทรกรูปภาพแล้ว {what}',
+  aiToolImport: 'เปิด "{name}" เป็นเอกสาร HWP ใหม่แล้ว',
   aiToolFormat: 'เปลี่ยนรูปแบบแล้ว · {text}',
   aiFmtBold: 'ตัวหนา',
   aiFmtItalic: 'ตัวเอียง',

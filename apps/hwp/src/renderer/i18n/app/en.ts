@@ -111,6 +111,7 @@ export const en = {
   aiToolTable: 'Added a table · {rows} × {cols}',
   aiToolImageSearchDone: 'Image search "{query}" ({count} images)',
   aiToolInsertImage: 'Inserted the picture {what}',
+  aiToolImport: 'Opened "{name}" as a new Hangul document',
   aiToolFormat: 'Formatted · {text}',
   aiFmtBold: 'Bold',
   aiFmtItalic: 'Italic',

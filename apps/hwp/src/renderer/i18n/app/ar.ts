@@ -110,6 +110,7 @@ export const ar = {
   aiToolTable: 'تمت إضافة جدول · {rows} × {cols}',
   aiToolImageSearchDone: 'البحث عن صور "{query}" ({count} صورة)',
   aiToolInsertImage: 'تم إدراج الصورة {what}',
+  aiToolImport: 'تم فتح "{name}" كمستند HWP جديد',
   aiToolFormat: 'تم تغيير التنسيق · {text}',
   aiFmtBold: 'غامق',
   aiFmtItalic: 'مائل',

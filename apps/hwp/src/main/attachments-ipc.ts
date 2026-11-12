@@ -22,6 +22,7 @@ import {
 import type {
   AttachmentAddResult,
   AttachmentDocumentResult,
+  AttachmentImportResult,
   AttachmentImageResult,
   AttachmentMeta,
   AttachmentReadResult,
@@ -36,6 +37,9 @@ const ATTACHMENT_IMAGE_MIME: Record<string, string> = {
   gif: 'image/gif',
   webp: 'image/webp',
 }
+
+/** Most characters of the person's request handed to a new tab with an imported file. */
+const MAX_HANDED_REQUEST = 20_000
 
 /** Extracted-text cache keyed by path; invalidated when mtime+size change */
 const attachmentTextCache = new Map<string, { stamp: string; text: string }>()
@@ -124,7 +128,40 @@ async function extractAttachmentText(filePath: string): Promise<string> {
 }
 
 /** Register the hwp:files-* attachment channels (called from registerHwpIpc). */
-export function registerHwpAttachmentIpc(): void {
+/** What the main process lends the attachment channels (the shell's, through the runtime). */
+export interface HwpAttachmentHost {
+  /** a Markdown file as a new, untitled Hangul tab; absent without a shell */
+  openMarkdownAsDocument?: (
+    webContentsId: number,
+    path: string,
+    request?: string,
+  ) => Promise<AttachmentImportResult>
+}
+
+export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => ({})): void {
+  // The AI's import_attachment: the file is checked like any attachment that is
+  // read (a kind this editor takes, within the size limit, no unsaved edits in an
+  // open tab), then the shell converts it and opens the new tab.
+  ipcMain.handle(
+    HWP_CHANNELS.filesImportDocument,
+    async (e, filePath: unknown, request: unknown): Promise<AttachmentImportResult> => {
+      if (typeof filePath !== 'string' || !/\.(md|markdown)$/i.test(filePath)) {
+        return { ok: false, error: 'only a Markdown file can be opened as a Hangul document' }
+      }
+      const open = host().openMarkdownAsDocument
+      if (!open) return { ok: false, error: 'this window cannot open a new document tab' }
+      try {
+        const checked = statAttachment(filePath)
+        if (!checked.meta) throw new Error(checked.error ?? tm('errNotFile'))
+        await assertFileSaved(filePath)
+        const words = typeof request === 'string' ? request.trim().slice(0, MAX_HANDED_REQUEST) : ''
+        return await open(e.sender.id, filePath, words || undefined)
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
   ipcMain.handle(HWP_CHANNELS.filesPick, async (e): Promise<AttachmentAddResult | null> => {
     const parent =
       BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined

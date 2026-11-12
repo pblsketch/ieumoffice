@@ -113,6 +113,7 @@ export const ru = {
   aiToolTable: 'Таблица добавлена · {rows} × {cols}',
   aiToolImageSearchDone: 'Поиск изображений «{query}» ({count} изображений)',
   aiToolInsertImage: 'Изображение вставлено {what}',
+  aiToolImport: '«{name}» открыт как новый документ HWP',
   aiToolFormat: 'Формат изменён · {text}',
   aiFmtBold: 'Полужирный',
   aiFmtItalic: 'Курсив',

@@ -34,6 +34,7 @@ openoffice/
 │   │   ├── diagram-editor.md      ← 다이어그램(.drawio) 편집기 계획(구현됨, 사람 확인 남음)
 │   │   ├── epub-editor.md         ← EPUB 편집기 계획(구현됨, 사람 확인 남음)
 │   │   ├── hwp-format-copy.md     ← 한글 모양 복사(서식 복사) 분석·설계(1단계 구현됨, 사람 확인 남음)
+│   │   ├── md-to-hwp.md           ← 마크다운을 한글 문서로 옮기기 계획(1~4단계 구현됨, 사람 확인 남음)
 │   │   ├── ods-open-export.md     ← ODS 불러오기·내보내기 계획(1·2단계 구현됨, 사람 확인 남음)
 │   │   ├── pdf-reading-assist.md  ← PDF 읽기 도우미 계획
 │   │   ├── pdf-tools.md           ← PDF 도구 모음 계획(초안)
@@ -69,7 +70,7 @@ openoffice/
 │   ├── electron-utils/AGENTS.md   ← 뒷단 공용 도구
 │   ├── docx-engine/AGENTS.md      ← 워드 문서 엔진
 │   ├── odt-engine/AGENTS.md       ← ODT 열기·되돌려 쓰기·docx → ODT
-│   ├── docx2hwp/AGENTS.md         ← 워드 → 한글(.hwp, .hwpx) 변환
+│   ├── docx2hwp/AGENTS.md         ← 워드 → 한글(.hwp, .hwpx) 변환, 마크다운에서 온 표의 한글 문서 모양
 │   ├── pptx-engine/AGENTS.md      ← 파워포인트 문서 모델
 │   ├── pptx-ops/AGENTS.md         ← 슬라이드 편집 연산
 │   ├── pptx-render/AGENTS.md      ← 슬라이드 그리기

@@ -204,6 +204,7 @@ import { startFirstChunkKeepalive } from './ai-keepalive'
 import { atomicWriteFile } from './atomic-write'
 import { Worker } from 'node:worker_threads'
 import hwpExportWorkerPath from './hwp-export-worker?modulePath'
+import type { HwpConversion, HwpFormat, HwpLook, Loss } from '@genoffice/docx2hwp'
 import { confirmHidingLoss } from '@genoffice/electron-utils/hiding-loss'
 import { convertInWorker, exportHwp, hwpLossMessageBox } from './hwp-export'
 import { createDocsRecovery } from './docs-recovery'
@@ -3345,6 +3346,27 @@ const tMain = createI18n({
     menuShortcuts: '鍵盤快速鍵',
   },
 })
+/**
+ * The Hangul conversion and its confirmation, lent to another editor's export
+ * through the shell (the Markdown editor's Save As): the same worker per job
+ * and the same message box as this editor's own export.
+ */
+export const hwpCopy = {
+  convert: (docx: Uint8Array, format: HwpFormat, look: HwpLook): Promise<HwpConversion> =>
+    convertInWorker(
+      { docx, format, wasmPath: rhwpWasmPath(), look },
+      () => new Worker(hwpExportWorkerPath),
+    ),
+  /** asked only when something is lost; false = cancel */
+  confirm: async (parent: BrowserWindow | undefined, losses: readonly Loss[]): Promise<boolean> => {
+    const options = hwpLossMessageBox(losses, false, getUiLang())
+    const { response } = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options)
+    return response === 0
+  },
+}
+
 const tm = (key: Parameters<typeof tMain>[1], params?: Parameters<typeof tMain>[2]) =>
   tMain(getUiLang(), key, params)
 

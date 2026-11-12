@@ -466,7 +466,8 @@ default, and update checks go to GitHub. When an editor or the app stops
 abnormally, only the time, what stopped, the reason, the editor and the memory
 use at that moment (numbers only) are written to `crash-log.jsonl` in the data
 folder, and the same numbers are written when the PC or the app runs short of
-memory. To tell when the whole app went down, the running app also writes its
+memory. When the app itself stops an AI run that was editing a document, one
+line holds why, as fixed words and counts. To tell when the whole app went down, the running app also writes its
 memory numbers to `crash-heartbeat.json` every 30 seconds; no document text, file names or paths, and it is never sent
 anywhere. The full list is in [PRIVACY.md](PRIVACY.md).
 
