@@ -172,6 +172,45 @@ describe('in-app MCP sheet reads and edits with hidden cells', () => {
     expect(reply.result).toMatchObject({ context: { sheetId: 's1', sheetName: 'Roster' } })
   })
 
+  it('a read without addresses drops header names a frozen selection took on another sheet', async () => {
+    // During a run the overview names the columns from the first row of the
+    // sheet the selection was taken on, not the sheet the user moved to.
+    const sheets: HidingSheet[] = [
+      { id: 's1', name: 'Roster' },
+      { id: 's2', name: 'Private' },
+    ]
+    const header: SheetHidingMark[] = [
+      {
+        name: 'IeumHide_이름',
+        label: '이름',
+        areas: [{ sheetId: 's2', startRow: 0, endRow: 0, startColumn: 0, endColumn: 0 }],
+      },
+    ]
+    const headerState = (): SheetHidingState => ({
+      ok: true,
+      view: createSheetHidingView(header, createValueNumbering(), [], new Set(), { sheets }),
+    })
+    for (const context of [
+      () => ({ sheetId: 's1', selectionSheetId: 's2', selectionColumns: ['Kim Minji'] }),
+      // an overview that does not say the selection's sheet is checked against every sheet
+      () => ({ sheetId: 's1', selectionColumns: ['Kim Minji'] }),
+    ]) {
+      reportMcpResult.mockReset()
+      const reply = await send(
+        handlers({
+          context,
+          sheets: () => sheets,
+          hiding: { state: headerState, prepare: async () => {}, readSheetFeatures: () => '' },
+        }),
+        'read_sheet',
+        {},
+      )
+      expect(reply.ok).toBe(true)
+      expect(JSON.stringify(reply)).not.toContain('Kim Minji')
+      expect(reply.result).toMatchObject({ context: { sheetId: 's1' } })
+    }
+  })
+
   it('a read without addresses keeps header names the hiding does not touch', async () => {
     const context = () => ({ sheetId: 's1', selectionColumns: ['name'] })
     const reply = await send(handlers({ context }), 'read_sheet', {})

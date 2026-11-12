@@ -92,6 +92,9 @@ export interface ActiveSheetInfo {
   /** header names of the columns the selection covers, when it covers whole
    * ones — what the user means by "this column" */
   readonly selectionColumns?: readonly string[] | undefined
+  /** the sheet whose first row `selectionColumns` came from (the selection's
+   * sheet, which need not be the active one during a run) */
+  readonly selectionSheetId?: string | undefined
   /** merged ranges on the active sheet (A1 notation) */
   readonly merges?: readonly string[] | undefined
   /** charts in the workbook (imported files only) */

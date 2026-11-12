@@ -3,7 +3,12 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
-import { buildHidingMemoText } from '@genoffice/agent-core/hiding-memo'
+import {
+  buildHidingMemoText,
+  isHidingMemoText,
+  readHidingMemoLabel,
+} from '@genoffice/agent-core/hiding-memo'
+import { hwpMemoListOf } from '@genoffice/file-parse'
 import { run, tempDir } from './helpers'
 
 /**
@@ -146,6 +151,34 @@ describe('hwp apply edits', () => {
     })
     const read = await run(['hwp', 'read', file, '--json'])
     expect(read.json().detail.text).toContain('마지막 줄')
+    expect(read.json().detail.text).toContain(`{{${LABEL}}}`)
+  }, 60_000)
+
+  it('writing an .hwpx out as .hwp keeps the hiding memo', async () => {
+    const dir = tempDir()
+    const out = join(dir, 'out.hwp')
+    const r = await run([
+      'hwp',
+      'apply',
+      marked(dir),
+      '--ops',
+      ops(dir, [{ op: 'replace_text', find: '끝 줄', replace: '마지막 줄' }]),
+      '--out',
+      out,
+      '--json',
+    ])
+    expect(r.code, r.stdout).toBe(0)
+    expect(r.stdout).not.toContain(NAME)
+    const doc = new HwpDocument(readFileSync(out))
+    try {
+      const hiding = hwpMemoListOf(doc).filter((memo) => isHidingMemoText(memo.text ?? ''))
+      expect(hiding.map((memo) => readHidingMemoLabel(memo.text ?? ''))).toEqual([LABEL])
+    } finally {
+      doc.free()
+    }
+    const read = await run(['hwp', 'read', out, '--json'])
+    expect(read.code, read.stdout).toBe(0)
+    expect(read.stdout).not.toContain(NAME)
     expect(read.json().detail.text).toContain(`{{${LABEL}}}`)
   }, 60_000)
 })

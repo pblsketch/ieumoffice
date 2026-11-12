@@ -361,19 +361,28 @@ export interface SheetHidingHooks {
 
 /**
  * The sheet overview as the model may read it: header names come from the
- * first row, so they are dropped while anything in that row is hidden.
+ * first row of the selection's sheet, so they are dropped while anything in
+ * that row is hidden. During a run the selection may sit on a sheet other than
+ * the active one; an overview that does not say which sheet is checked against
+ * the first row of every sheet with a mark.
  */
 export function withoutHiddenHeaders<
-  T extends Pick<ActiveSheetInfo, 'sheetId' | 'selectionColumns'>,
+  T extends Pick<ActiveSheetInfo, 'sheetId' | 'selectionColumns' | 'selectionSheetId'>,
 >(view: SheetHidingView, info: T): T {
   if (!view.active || !info.selectionColumns?.length) return info
-  const headerHidden = view.touchesHidden({
-    sheetId: info.sheetId,
-    startRow: 0,
-    endRow: 0,
-    startColumn: 0,
-    endColumn: HIDING_MAX_COLUMN,
-  })
+  const sheetIds =
+    info.selectionSheetId !== undefined
+      ? [info.selectionSheetId]
+      : [info.sheetId, ...view.marks.flatMap((mark) => mark.areas.map((a) => a.sheetId))]
+  const headerHidden = sheetIds.some((sheetId) =>
+    view.touchesHidden({
+      sheetId,
+      startRow: 0,
+      endRow: 0,
+      startColumn: 0,
+      endColumn: HIDING_MAX_COLUMN,
+    }),
+  )
   if (!headerHidden) return info
   const { selectionColumns: _hidden, ...rest } = info
   return rest as T

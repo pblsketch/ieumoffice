@@ -349,7 +349,9 @@ export function getActiveSheetInfo(
   const frozenFields = frozenLabel
     ? {
         selectionFrozen: true,
-        ...(frozen?.columns?.length ? { selectionColumns: frozen.columns } : {}),
+        ...(frozen?.columns?.length
+          ? { selectionColumns: frozen.columns, selectionSheetId: frozen.sheetId }
+          : {}),
       }
     : {}
   const state = ctx.lazyWorkbookRef.current

@@ -434,7 +434,7 @@ project easy to take.
   the file is attached in another editor, asked about on the home screen, or
   read by the terminal command and MCP. They are not hidden when a program in
   agent mode reads the folder's files straight from the disk, in page pictures
-  from MCP `render`, or in a copy the terminal's `convert` makes in a format
+  from MCP `render` and `slides_render`, or in a copy the terminal's `convert` makes in a format
   that cannot hold the mark. In Hangul the mark is a memo and in Excel a
   defined name, so whoever receives the document can see it. Until they are
   fixed, hidden text can also reach AI in

@@ -145,12 +145,14 @@ It does **not** reach:
   read through the app's own tools, show hidden parts as their labels, and a
   PowerPoint document with hidden parts is not edited by the agent. The Agent
   window says this before your first session.
-- **Page pictures.** The MCP `render` tool (and the `render` command) returns
-  pictures of pages, and those show hidden text as it is.
-- **The terminal's `convert`.** It converts as before. Where the target format
-  has a place for the mark it is carried over; otherwise the converted copy
-  holds the hidden text unmarked. A program with a shell can read the file
-  directly anyway.
+- **Page pictures.** The MCP `render` and `slides_render` tools (and the
+  `render` and `slides render` commands) return pictures of pages, and those
+  show hidden text as it is.
+- **The terminal's `convert`, `create --from` and `merge`.** They are not
+  refused and work as before. Where the target format has a place for the
+  mark it is carried over; otherwise, and for a file made by printing to PDF
+  or filling a template, the new file holds the hidden text unmarked. A
+  program with a shell can read the file directly anyway.
 - **Conversions in the app to a format with no place for the mark** (ODT,
   ODS, CSV and the like) ask first; if you continue, the copy has the words
   without the mark.
