@@ -9,6 +9,12 @@
 - 전송 계약 `AgentTransport`(`src/types.ts`)와 그 IPC 구현 `createIpcTransport`(`src/electron-transport.ts`). 렌더러에서 돌며, 메인 프로세스가 보낸 스트림 조각(`IpcStreamChunk`)을 루프의 콜백으로 옮긴다.
 - 도구 없이 답 본문이 곧 결과물인 요청 `streamText`(`src/stream-text.ts`), 별표 파일 묶음을 읽는 `createKnowledgeBaseSkill`(`src/knowledge-base-skill.ts`).
 - "AI에게 보이지 않게" 규칙의 공통 부분: 자리 표시 `{{label}}`의 생성·검사(`src/redact-core.ts`), 문서 범위의 모델용 글 만들기와 저장 식별자 `REDACT_NS`·`REDACT_PREFIX`·`REDACT_EL`(`src/redact-range.ts`).
+- 민감정보 가리기의 공용 규칙(가져오는 것은 이 패키지 안의 파일뿐, 렌더러에서 돈다).
+  - 언어 표(`src/hiding-langs.ts`, 하위 경로 `/hiding-langs`): 화면 언어 코드 `HIDING_LANGS`(시험이 i18n `LANGS`와 맞춰 본다), 모르는 언어를 영어로 읽는 `hidingLangOf`, 이름표를 비웠을 때 저장하는 "민감정보" `SENSITIVE_INFO_WORD`.
+  - 한글 가리기 메모(`src/hiding-memo.ts`, `/hiding-memo`): 메모 글 `[<머리말>] <이름표>`의 만들기 `buildHidingMemoText`, 인식 `isHidingMemoText`·`readHidingMemoLabel`(빈 이름표는 `private`), 머리말을 둔 채 이름표만 바꾸는 `relabelHidingMemoText`, 머리말 표 `HIDING_MEMO_PREFIXES`.
+  - 엑셀 가리기 이름(`src/hiding-name.ts`, `/hiding-name`): `IeumHide[<n>]_<이름표>`의 이름표 글자 바꾸기 `hidingNameLabel`, 만들기 `buildHidingName`, 읽기 `parseHidingName`·`isHidingName`·`HIDING_NAME_PATTERN`, 빈 번호 고르기 `nextHidingName`.
+  - 엑셀 값별 번호(`src/hiding-values.ts`, `/hiding-values`): 문서마다 하나 만드는 `createValueNumbering`(`{{이름표-NN}}`, 같은 값 같은 번호, 빈 칸도 값), 기대는 칸의 `dependentPlaceholder`(이름표를 코드 포인트 순으로 `+`로 잇고 번호 없음).
+  - 자동 찾기(`src/sensitive-kinds.ts`·`src/sensitive-detect.ts`·`src/sensitive-labels.ts`·`src/sensitive-exclusion.ts`, 같은 이름의 하위 경로): 종류 12가지 `SENSITIVE_KINDS`와 22개 언어 이름 `SENSITIVE_KIND_NAMES`, 값 견주기 `normalizeSensitiveValue`, 탐지기 `detectSensitive`(글 조각과 자리를 받아 `{ kind, start, end, value, location }`), 이름표 낱말 판정 `labelWordKind`, 엑셀 이름 열 판정 `isNameColumnHeader`, 후보 이름표 `createCandidateLabeler`(`<종류>-<NN>`. `existingMarks`로 받은 이미 가린 값은 그 이름표를 그대로 주고, 값을 모르는 `existingLabels`는 번호만 피한다), 제외 기억의 열쇠 해시 `exclusionHash`(HMAC-SHA-256, Web Crypto)와 열쇠 `createExclusionKey`.
 - 사용자 스킬 능력 `createUserSkillsSkill`·`createBridgedUserSkillsSkill`(`src/user-skills-skill.ts`, 결정 0048): 스스로 쓰기 목록을 지시문에 넣는 구역(`autoSkillsSection`, 설명 300자·100개 상한)과 앱이 정의하고 앱이 실행하는 도구 셋 `use_skill`·`read_skill_file`·`propose_skill`. 스킬 글은 창의 다리(`window.aiOfficeUserSkills`)로 읽고, 스크립트는 실행하지 않으며, `propose_skill`은 카드를 띄울 뿐 파일을 쓰지 않는다. 영어 이름은 꼭 받고, 사람이 쓰는 언어의 제목도 받는다(결정 0128). 능력에 `editor`를 주면 다른 편집기용 스킬을 목록에서 빼고 `use_skill`·`read_skill_file`에서 거절한다. 그 편집기로 쓰는 곳을 좁힌 스킬은 목록 앞에 따로 묶여 "새 작업물 전체를 만드는 요청이면 첫 도구 호출은 `use_skill`"이라는 머리말(`EDITOR_SKILLS_HEADING`) 아래에 실린다(결정 0136). 머리말과 `use_skill` 도구 설명의 그 문장은 실제 구독으로 맞춘 것이니, 고치면 네 편집기에서 다시 확인한다.
 - 스킬의 쓰는 곳(`src/skill-editors.ts`, 하위 경로 `@genoffice/agent-core/skill-editors`, 가져오는 것 없음, 결정 0122): 편집기 이름 목록 `SKILL_EDITORS`, 적힌 값 읽기 `skillEditorsOf`(모르는 이름은 버리고, 아는 이름이 없으면 모든 편집기), 설정의 선택 읽기 `skillEditorsChoiceOf`, 쓰는 곳 정하기 `skillEditorScope`, 판정 `skillUsedIn`, 이름이 같은 켜진 스킬에 밀렸는지 `skillStandsBack`(뒷단이 정해 둔 `shadowedBy`를 읽는다. 이긴 스킬이 쓰이지 않는 편집기에서는 밀리지 않는다). 목록·도구·설정 화면·뒷단이 모두 이것을 쓴다.
 - 드라이브에서 읽은 내용이 대화에 들어간 뒤의 바깥 호출 차단: `isOutboundCall`·`DRIVE_OUTBOUND_BLOCKED`(`src/drive-skill.ts`). 바깥 도구 목록 `OUTBOUND_TOOLS`(여기에 `read_url`도 있다)는 `src/outbound.ts`에 있다.
@@ -39,6 +45,10 @@
 - `IPC_STREAM_SILENCE_TIMEOUT_MS`(240초)는 메인 프로세스의 유휴 제한(180초)보다 길어야 한다. 메인 쪽의 번역된 시간 초과 문장이 먼저 도착하게 하기 위해서다. 로컬 서버는 300~600초를 기다릴 수 있으므로, 첫 조각이 오기 전까지 5초마다 `ping`을 보내 침묵 감시를 다시 건다. 응답 헤더만 온 때에 ping을 멈추면 안 된다.
 - `REDACT_NS`, `REDACT_PREFIX`, `REDACT_EL`의 값을 바꾸지 않는다. 저장된 docx·pptx 안에 쓰이는 XML 네임스페이스와 접두사라서, 바꾸면 이미 가려 둔 범위(원본 GenOffice로 만든 것 포함)를 읽지 못해 그 내용이 다시 모델에게 보인다. 값에 다른 회사 주소가 들어 있어도 문서 데이터이므로 그대로 둔다.
 - `redact-range.ts`의 함수는 throw하지 않는다. 모르는 노드는 그대로 통과시킨다. 여기서 예외가 나면 호출자의 예비 경로가 가려지지 않은 원문을 보내게 된다.
+- 한글 가리기 메모의 머리말 표(`HIDING_MEMO_PREFIXES`)는 추가만 한다. 한 번 배포한 머리말은 바꾸거나 빼지 않는다. 문구를 고치려면 그 언어 목록 끝에 새 머리말을 더한다(새 메모는 끝의 것으로 쓰고, 모두 계속 인식한다). 시험이 배포한 머리말을 글자 그대로 붙잡고 있다. 엑셀 이름 모양 `IeumHide[<n>]_<이름표>`와 인식 식 `^IeumHide(\d*)_(.+)$`(대소문자 무시)도 파일 계약이라 바꾸지 않는다.
+- 화면 언어를 더하면 `HIDING_LANGS`, `SENSITIVE_INFO_WORD`, `HIDING_MEMO_PREFIXES`, `SENSITIVE_KIND_NAMES`에 그 언어를 함께 더한다. 빠지면 `tests/hiding-memo.test.ts`가 실패한다.
+- 표를 탐지기에 넘기는 법은 두 가지다. 열 제목이 위에 있는 명단 표는 값 칸마다 그 열의 제목을 조각의 `header`로 넘긴다(제목이 이름표 낱말이면 값의 종류가 정해진다). 제목 칸이 왼쪽에 있는 서식 표는 칸을 읽는 순서대로 넘긴다(이름표 낱말만 있는 조각이 다음 조각의 종류를 알린다). 두 가지가 겹치면 `header`가 이긴다.
+- 자동 찾기는 정해 둔 글자 모양 규칙만 쓴다. 모델·로컬 AI·네트워크를 부르지 않고, 같은 입력에 늘 같은 결과다. 놓치느니 많이 잡는 쪽으로 기운다. 제외 기억에는 원래 값을 두지 않고 `exclusionHash`의 결과와 종류만 둔다. 해시 열쇠는 기록과 따로 둔다(값의 가짓수가 적은 종류는 열쇠 없이 다 넣어 보면 풀린다).
 - 사용자 MCP 도구는 승인된 정의로만 목록에 올린다. "확인 필요"(정의가 바뀜)인 도구를 올리거나 서버가 지금 알리는 설명을 모델에 넘기지 않는다. `ask` 도구는 사람이 허락하기 전에 다리를 부르지 않고, 카드가 사라지거나 실행이 멈추면 거절로 끝낸다. 받은 내용 지키기는 드라이브 차단·`guardOutbound`보다 안쪽에 씌운다(결정 0100).
 - 사용자 메시지는 이력에 들어가기 전에 `sanitizeAgentPayload`를 거친다(실수로 붙여 넣은 키·비밀번호를 가린다). 이 호출을 우회해 이력에 직접 넣지 않는다.
 

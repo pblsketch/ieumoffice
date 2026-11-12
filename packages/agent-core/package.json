@@ -15,7 +15,15 @@
     "./user-mcp/result": "./src/user-mcp/result.ts",
     "./skill-mcp-refs": "./src/skill-mcp-refs.ts",
     "./mind-map": "./src/mind-map.ts",
-    "./doubled-escapes": "./src/doubled-escapes.ts"
+    "./doubled-escapes": "./src/doubled-escapes.ts",
+    "./hiding-langs": "./src/hiding-langs.ts",
+    "./hiding-memo": "./src/hiding-memo.ts",
+    "./hiding-name": "./src/hiding-name.ts",
+    "./hiding-values": "./src/hiding-values.ts",
+    "./sensitive-kinds": "./src/sensitive-kinds.ts",
+    "./sensitive-detect": "./src/sensitive-detect.ts",
+    "./sensitive-labels": "./src/sensitive-labels.ts",
+    "./sensitive-exclusion": "./src/sensitive-exclusion.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
