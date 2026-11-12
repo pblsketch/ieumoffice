@@ -11,6 +11,11 @@ import { AiPanel } from '../src/renderer/ai/AiPanel'
 import type { AgentBridge } from '../src/renderer/ai/agent-bridge'
 import { afterPrefillTaken, type AiPrefill } from '../src/renderer/ai/easy-words'
 
+/** an open document without hidden spans: the only call the panel makes before a send */
+const OPEN_DOC = {
+  hidingState: async () => ({ ok: true, count: 0, labels: [] }),
+} as unknown as AgentBridge
+
 let container: HTMLElement
 let root: Root | null = null
 const streamed: unknown[] = []
@@ -64,7 +69,7 @@ async function render(prefill: AiPrefill | null): Promise<void> {
   await act(async () => {
     root!.render(
       createElement(AiPanel, {
-        bridge: {} as AgentBridge,
+        bridge: OPEN_DOC,
         filePath: null,
         onCollapse: () => undefined,
         prefill,
@@ -114,7 +119,7 @@ describe('hwp AI panel: requests handed over', () => {
       host.show = setShown
       if (!shown) return null
       return createElement(AiPanel, {
-        bridge: {} as AgentBridge,
+        bridge: OPEN_DOC,
         filePath: null,
         onCollapse: () => undefined,
         prefill,

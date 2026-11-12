@@ -49,6 +49,7 @@ import {
   placeRemoteEntries,
   useProjectPanel,
   type ProjectPanel,
+  useSensitiveSendAlert,
 } from '@genoffice/ui'
 import { IconPicture, IconTable } from '@genoffice/ui/icons'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -72,7 +73,7 @@ import type {
   AiSubscriptionProviderId,
   AiSubscriptionUsage,
 } from '@genoffice/ai-provider/browser'
-import { localModelCapabilities } from '@genoffice/ai-provider/browser'
+import { localContextLimit, localModelCapabilities } from '@genoffice/ai-provider/browser'
 import { aiLangDirective, t as tGlobal, useI18n } from '../i18n/locale'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
@@ -83,6 +84,7 @@ import type { AttachmentAddResult, AttachmentMeta } from '../../shared/ipc'
 import type { AgentMemoRemovalRefusal, AgentPlace } from '../../../studio-plugin/agent-plugin.mjs'
 import type { AgentBridge } from './agent-bridge'
 import type { AiPrefill } from './easy-words'
+import type { HwpSensitiveGuard } from '../sensitive-info'
 import { blockedRunOf, type AiBlockedRun } from './ai-connection'
 import { AttachmentList, MAX_IMAGES_PER_MESSAGE, PASTE_MIME_EXT } from './attachments'
 import { createFilesSkill } from './files-skill'
@@ -225,6 +227,7 @@ export function AiPanel({
   onSkillHandoff,
   prefill,
   onPrefillTaken,
+  sensitive,
 }: {
   /** the document operations of the open editor */
   bridge: AgentBridge
@@ -245,6 +248,11 @@ export function AiPanel({
    * request runs once even when the panel mounts again with the same props
    */
   onPrefillTaken?: (taken: AiPrefill) => void
+  /**
+   * 민감정보 가리기's first-send alert for this tab: the check lives with the tab, the counts
+   * and the candidate list come from the editor
+   */
+  sensitive?: HwpSensitiveGuard
 }): ReactElement {
   const { lang, t } = useI18n()
   const [chat, setChat] = useState<ChatEntry[]>([])
@@ -345,7 +353,7 @@ export function AiPanel({
       // nothing can run right now: the message stays queued, and in front of "not connected"
       // the queue is paused so it does not start by itself after a sign-in
       if (!sendGateRef.current.admitQueued(() => msgQueueRef.current.setPaused(true))) return false
-      return send(text, queued.attachments, queued.scope, queued.skillUse)
+      return send(text, queued.attachments, queued.scope, queued.skillUse, true)
     },
   })
   const msgQueueRef = useRef(msgQueue)
@@ -607,6 +615,16 @@ export function AiPanel({
   }, [])
   /** the settings as last read, for what the panel shows and gates (settingsRef stays the run's own copy) */
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null)
+  /** the first send of the tab asks about what looks sensitive; a local model is named so */
+  const sendAlert = useSensitiveSendAlert({
+    lang,
+    localAi: aiSettings !== null && localContextLimit(aiSettings) !== undefined,
+    check: sensitive?.check,
+  })
+  /** why the last send of this document did not go out: a hidden span cannot be placed */
+  const [hidingBlocked, setHidingBlocked] = useState(false)
+  /** the send that passed the checks below runs once without asking again */
+  const checkedSendRef = useRef(false)
   /** connection of the two subscription providers, and the actions of their connect cards */
   const subscription = useSubscriptionConnection()
   const statuses = subscription.statuses
@@ -972,10 +990,52 @@ export function AiPanel({
     scopeOverride?: SelectionScope | null,
     /** the chosen skills: their text goes to the model, their chips onto the bubble */
     skillUse: SkillUse = NO_SKILL_USE,
+    /** from the queue: once taken it leaves the queue, and one held back returns to the input */
+    fromQueue = false,
   ): boolean => {
     const instruction = text.trim()
     const loop = loopRef.current
     if (!instruction || !loop || loop.busy || reverting) return false
+    // Before anything of the document goes out: every hidden span (민감정보 가리기) must be
+    // placed, or nothing is sent; and the tab's first send asks about what looks sensitive.
+    // Both are asked on this PC; the text stays with the caller until they let it through.
+    if (!checkedSendRef.current) {
+      const sentAttachments = attachmentsOverride ?? attachmentsRef.current
+      void (async () => {
+        const state = await Promise.resolve()
+          .then(() => bridgeRef.current.hidingState())
+          .catch(() => null)
+        if (!mountedRef.current) return
+        if (!state || !state.ok) {
+          setHidingBlocked(true)
+          if (fromQueue) setPrompt(text)
+          return
+        }
+        setHidingBlocked(false)
+        if (sensitive) {
+          let answer: 'send' | 'review'
+          try {
+            answer = await sendAlert.beforeSend(() => sensitive.count(sentAttachments))
+          } catch {
+            // a count that failed asks again next time; this send goes as asked
+            answer = 'send'
+          }
+          if (!mountedRef.current) return
+          if (answer === 'review') {
+            if (!attachmentsOverride || fromQueue) setPrompt(text)
+            sensitive.review()
+            return
+          }
+        }
+        checkedSendRef.current = true
+        try {
+          send(text, attachmentsOverride, scopeOverride, skillUse)
+        } finally {
+          checkedSendRef.current = false
+        }
+      })()
+      return fromQueue
+    }
     // A request made during a status check or in front of the first-connection notice is
     // held and starts by itself once the way is clear; in front of "not connected" nothing
     // is kept. Either way nothing is sent now and the text stays with the caller.
@@ -1591,6 +1651,12 @@ export function AiPanel({
           </div>
         )}
         {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
+        {hidingBlocked && (
+          <div className="ai-attach-notice" role="alert">
+            {t('hidingSendBlocked')}
+          </div>
+        )}
+        {sendAlert.alert}
         {/* Above the input card, not inside its footer: the reset time is long and
             would otherwise squeeze the attach/send buttons in a narrow panel. */}
         <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />

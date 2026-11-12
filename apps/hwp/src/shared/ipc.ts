@@ -65,6 +65,10 @@ export const HWP_CHANNELS = {
   fetchImage: 'hwp:fetch-image',
   /** invoke({ mediaUrls, requirements }) �� MediaAnalysisResult: let the model look at a picture */
   analyzeMedia: 'hwp:analyze-media',
+  /** invoke(items) → boolean[]: which candidates of 민감정보 찾기 this document's user dismissed */
+  sensitiveExcluded: 'hwp:sensitive-excluded',
+  /** invoke(item): remember a dismissed candidate for this document (kind and keyed hash only) */
+  sensitiveExclude: 'hwp:sensitive-exclude',
   // channels below are served once by the shell for every editor
   getLanguage: 'app:get-language',
   languageChanged: 'app:language-changed',
@@ -385,6 +389,13 @@ export interface HwpApi {
   onMemoBlocked(handler: () => void): () => void
   /** the author a new memo takes: the settings name, else the PC account */
   getAuthorName(): Promise<{ value: string; fallback: string }>
+  /**
+   * which candidates of 민감정보 찾기 were dismissed for the open document (remembered in the
+   * app's data folder by kind and keyed hash, never the value)
+   */
+  sensitiveExcluded(items: { kind: string; value: string }[]): Promise<boolean[]>
+  /** remember that a candidate was dismissed for the open document */
+  sensitiveExclude(item: { kind: string; value: string }): Promise<void>
   /** the main process wants the document as it is now, unsaved edits included */
   onReadBytesRequest(handler: () => void): () => void
   sendReadBytesResult(result: ReadBytesResult): void

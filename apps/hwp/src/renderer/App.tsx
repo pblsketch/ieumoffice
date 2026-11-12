@@ -6,6 +6,7 @@ import { IconClose } from '@genoffice/ui/icons'
 import {
   aiPanelInitiallyOpen,
   rememberAiPanelOpen,
+  sensitiveFeatureName,
   skillTemplateText,
   templateDocumentOf,
   useAutoSavePref,
@@ -20,6 +21,7 @@ import {
   DIRTY_EVENT,
   EASY_WORDS_EVENT,
   FILE_COMMAND_EVENT,
+  HIDING_EVENT,
   MEMO_NOT_COPIED_EVENT,
   MEMO_REMOVED_EVENT,
   MISSING_FONTS_EVENT,
@@ -29,6 +31,7 @@ import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
 import { openDocumentsDroppedOn } from './editor-drop'
+import { useHwpSensitive } from './sensitive-info'
 import { hwpPresentationKeyOf } from './presentation-keys'
 import { gatherPrintJob } from './print-flow'
 import { PrintPreview } from './preview/PrintPreview'
@@ -199,7 +202,7 @@ export default function App() {
   const restoredRef = useRef(false)
   /** the app's plugin inside the editor, for the calls that change no document */
   const pluginBridge = useMemo(() => createAgentBridge(() => editorRef.current), [])
-  /** the AI panel's way into the document: the same plugin, telling of each possible change */
+  /** the memo panel's and the preview's way into the document: telling of each possible change */
   const agentBridge = useMemo(
     () =>
       withChangeNotes(pluginBridge, () => {
@@ -207,6 +210,22 @@ export default function App() {
         setDocRevision((revision) => revision + 1)
       }),
     [pluginBridge],
+  )
+  /**
+   * The AI panel's and the document check's way in: the same plugin, through its aiCall, so
+   * that what they read has the hidden spans (민감정보 가리기) as their labels and their edits
+   * may not touch one
+   */
+  const aiBridge = useMemo(
+    () =>
+      withChangeNotes(
+        createAgentBridge(() => editorRef.current, { forAi: true }),
+        () => {
+          copierRef.current?.noteChange()
+          setDocRevision((revision) => revision + 1)
+        },
+      ),
+    [],
   )
 
   // the shell's split panes: tell it whenever this pane gains focus
@@ -393,6 +412,19 @@ export default function App() {
     setNotice({ tone: notice.tone ?? 'info', key: notice.key, params: notice.params })
   }, [])
 
+  // 민감정보 가리기: hiding the selection, renaming a hiding, the candidate list, and what
+  // the AI panel's first send counts (sensitive-info.tsx). These are the person's own edits
+  const openMemos = useCallback(() => setMemoOpen(true), [])
+  const sensitive = useHwpSensitive({
+    bridge: agentBridge,
+    lang,
+    t,
+    notify: showMemoNotice,
+    openMemos,
+  })
+  const startHideRef = useRef(sensitive.startHide)
+  startHideRef.current = sensitive.startHide
+
   // Save As > PDF: the PDF export, set once it exists below (it is made after the save)
   const pdfCopyRef = useRef<(path: string) => Promise<void>>(async () => {})
 
@@ -543,6 +575,18 @@ export default function App() {
     frame.addEventListener(EASY_WORDS_EVENT, onEasyWords)
     return () => frame.removeEventListener(EASY_WORDS_EVENT, onEasyWords)
   }, [phase, pluginBridge, t])
+
+  // the editor's right-click 민감정보 가리기 (studio-hiding-context-menu): named in the app's
+  // language; a click asks for a label and hides the selection, or says why it cannot be
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const frame = editorRef.current?.element.contentWindow
+    if (!frame) return
+    void pluginBridge.installHiding(sensitiveFeatureName(lang)).catch(() => {})
+    const onHide = () => void startHideRef.current()
+    frame.addEventListener(HIDING_EVENT, onHide)
+    return () => frame.removeEventListener(HIDING_EVENT, onHide)
+  }, [phase, pluginBridge, lang])
 
   // fonts that are not on this PC are drawn with others while the file keeps their names
   // (a document from Hancom Office on a PC without it): the editor's font menu and font box
@@ -1005,13 +1049,18 @@ export default function App() {
             defaultExtension: formatRef.current,
             untitledTitle: () =>
               copyNameRef.current?.replace(/\.[^.]+$/, '') || skillTemplateText(lang, 'untitled'),
+            // a document with hidden spans is not saved as a template as it is
+            redacted: async () => {
+              const state = await pluginBridge.hidingState()
+              return !state.ok || state.count > 0
+            },
             bytes: async () => {
               const editor = editorRef.current
               if (!editor) return null
               return formatRef.current === 'hwpx' ? editor.exportHwpx() : editor.exportHwp()
             },
           }),
-    [phase, filePath, lang],
+    [phase, filePath, lang, pluginBridge],
   )
 
   return (
@@ -1045,7 +1094,8 @@ export default function App() {
           <HwpAiDock
             open={aiOpen}
             setOpen={setAiOpen}
-            bridge={agentBridge}
+            bridge={aiBridge}
+            sensitive={sensitive.guard}
             filePath={filePath}
             templateDocument={templateDocument}
             prefill={aiPrefill}
@@ -1061,13 +1111,17 @@ export default function App() {
             onCollapse={() => setMemoOpen(false)}
             onModalOpenChange={setMemoBlocked}
             onNotice={showMemoNotice}
+            onHideSelection={() => void sensitive.startHide()}
+            onFindSensitive={() => void sensitive.openFinder()}
+            onRelabelHiding={sensitive.relabel}
+            overlay={sensitive.finder}
           />
         )}
         <div className="hwp-stage">
           <div ref={hostRef} className="hwp-editor-host" />
           {phase === 'ready' && checkOpen && (
             <DocCheckPanel
-              bridge={agentBridge}
+              bridge={aiBridge}
               format={docFormat}
               revision={docRevision}
               onClose={() => setCheckOpen(false)}
@@ -1099,6 +1153,7 @@ export default function App() {
           )}
         </div>
       </div>
+      {sensitive.dialog}
       {preview.open && (
         <PrintPreview
           bridge={agentBridge}

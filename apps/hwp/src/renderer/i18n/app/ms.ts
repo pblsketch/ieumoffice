@@ -305,4 +305,17 @@ export const ms = {
     'Aksara dikira termasuk ruang. Tanpa ruang: seluruh dokumen {totalNoSpace}. Seperti dalam Maklumat Dokumen, pengepala, pengaki, nota kaki dan nota akhir tidak dikira.',
   charCountHintSelected:
     'Dengan ruang: dipilih {selected} / seluruh dokumen {total}. Tanpa ruang: dipilih {selectedNoSpace} / seluruh dokumen {totalNoSpace}. Seperti dalam Maklumat Dokumen, pengepala, pengaki, nota kaki dan nota akhir tidak dikira.',
+  hidingErrNone: 'Pilih dahulu teks yang hendak disembunyikan.',
+  hidingErrOverlap:
+    'Teks ini sudah ada memo, jadi tidak boleh disembunyikan. Alihkan atau padam memo itu dahulu.',
+  hidingErrPlace:
+    'Teks dalam pengepala, pengaki, nota kaki, nota akhir atau objek tidak boleh disembunyikan.',
+  hidingErrProtected: 'Memo tidak boleh ditambah pada dokumen ini, jadi tidak boleh disembunyikan.',
+  hidingErrFailed: 'Pilihan tidak dapat disembunyikan.',
+  hidingDone: '{count} tempat disembunyikan. Fail menyimpan teksnya; AI hanya melihat label.',
+  hidingUnhide: 'Tunjukkan semula',
+  hidingRelabel: 'Tukar label',
+  hidingSendBlocked:
+    'Kedudukan bahagian yang disembunyikan tidak dapat dipastikan, jadi kandungan dokumen ini tidak dihantar kepada AI. Semak memo Sembunyikan maklumat sensitif dalam pengepala, pengaki atau seumpamanya di panel memo.',
+  sensitiveFindFailed: 'Dokumen tidak dapat dibaca, jadi tiada apa-apa dicari.',
 } satisfies Record<keyof typeof zh, string>

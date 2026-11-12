@@ -301,4 +301,16 @@ export const ko = {
     '글자 수는 공백을 포함해 셉니다. 공백 제외: 전체 {totalNoSpace}. 문서 정보처럼 머리말·꼬리말·각주·미주는 세지 않습니다.',
   charCountHintSelected:
     '공백 포함: 고른 글자 {selected} / 전체 {total}. 공백 제외: 고른 글자 {selectedNoSpace} / 전체 {totalNoSpace}. 문서 정보처럼 머리말·꼬리말·각주·미주는 세지 않습니다.',
+  hidingErrNone: '가릴 글을 먼저 고르세요.',
+  hidingErrOverlap:
+    '이미 메모가 있는 글이라 가릴 수 없습니다. 그 메모를 옮기거나 지운 뒤 가리세요.',
+  hidingErrPlace: '머리말·꼬리말·각주·미주와 개체 안은 가릴 수 없습니다.',
+  hidingErrProtected: '이 문서에는 메모를 넣을 수 없어 가릴 수 없습니다.',
+  hidingErrFailed: '고른 부분을 가리지 못했습니다.',
+  hidingDone: '{count}곳을 가렸습니다. 파일에는 그대로 남고, AI에는 이름표만 보입니다.',
+  hidingUnhide: '가리기 풀기',
+  hidingRelabel: '이름표 고치기',
+  hidingSendBlocked:
+    '가린 부분의 자리를 확인할 수 없어 이 문서의 내용을 AI에 보내지 않았습니다. 메모 칸에서 머리말·꼬리말 같은 곳에 있는 민감정보 가리기 메모를 확인하세요.',
+  sensitiveFindFailed: '문서를 읽지 못해 민감정보를 찾지 못했습니다.',
 } satisfies Record<keyof typeof zh, string>

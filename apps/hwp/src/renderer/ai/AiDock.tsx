@@ -23,6 +23,7 @@ import type { TemplateDocument } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
 import type { AgentBridge } from './agent-bridge'
 import type { AiPrefill } from './easy-words'
+import type { HwpSensitiveGuard } from '../sensitive-info'
 import { AiPanel } from './AiPanel'
 
 export interface HwpAiDockProps {
@@ -42,6 +43,8 @@ export interface HwpAiDockProps {
   prefill?: AiPrefill | null
   /** the panel took an `autoRun` request: clear it so it is not sent again */
   onPrefillTaken?: (taken: AiPrefill) => void
+  /** 민감정보 가리기's first-send alert for this tab */
+  sensitive?: HwpSensitiveGuard
 }
 
 /** The panel at the right end, or its rail while collapsed; the panel stays mounted either way. */
@@ -53,6 +56,7 @@ export function HwpAiDock({
   templateDocument,
   prefill,
   onPrefillTaken,
+  sensitive,
 }: HwpAiDockProps): ReactElement {
   const { lang, t } = useI18n()
   const { role, requestFocus } = useSplitPaneRole()
@@ -78,6 +82,7 @@ export function HwpAiDock({
         prefill={prefill ?? null}
         onPrefillTaken={onPrefillTaken}
         onSkillHandoff={() => setOpen(true)}
+        {...(sensitive ? { sensitive } : {})}
       />
     </div>
   )

@@ -306,4 +306,17 @@ export const pl = {
     'Znaki są liczone ze spacjami. Bez spacji: cały dokument {totalNoSpace}. Tak jak w informacjach o dokumencie, nagłówki, stopki, przypisy dolne i końcowe nie są liczone.',
   charCountHintSelected:
     'Ze spacjami: zaznaczenie {selected} / cały dokument {total}. Bez spacji: zaznaczenie {selectedNoSpace} / cały dokument {totalNoSpace}. Tak jak w informacjach o dokumencie, nagłówki, stopki, przypisy dolne i końcowe nie są liczone.',
+  hidingErrNone: 'Najpierw zaznacz tekst do ukrycia.',
+  hidingErrOverlap:
+    'Ten tekst ma już notatkę, więc nie można go ukryć. Najpierw przenieś lub usuń tę notatkę.',
+  hidingErrPlace:
+    'Nie można ukryć tekstu w nagłówku, stopce, przypisie dolnym lub końcowym ani w obiekcie.',
+  hidingErrProtected: 'Do tego dokumentu nie można dodać notatek, więc nie można nic ukryć.',
+  hidingErrFailed: 'Nie udało się ukryć zaznaczenia.',
+  hidingDone: 'Ukryto miejsca: {count}. Plik zachowuje tekst; AI widzi tylko etykietę.',
+  hidingUnhide: 'Przestań ukrywać',
+  hidingRelabel: 'Zmień etykietę',
+  hidingSendBlocked:
+    'Nie udało się potwierdzić, gdzie jest ukryta część, więc nic z tego dokumentu nie zostało wysłane do AI. Sprawdź w panelu notatek notatki „Ukryj dane wrażliwe” w nagłówku, stopce i podobnych miejscach.',
+  sensitiveFindFailed: 'Nie udało się odczytać dokumentu; niczego nie wyszukano.',
 } satisfies Record<keyof typeof zh, string>

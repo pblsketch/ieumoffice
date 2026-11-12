@@ -303,4 +303,16 @@ export const ja = {
     'スペースを含めて数えます。スペース除く：全体 {totalNoSpace}。 文書情報と同じく、ヘッダー・フッター・脚注・文末脚注は数えません。',
   charCountHintSelected:
     'スペース含む：選択 {selected} / 全体 {total}。スペース除く：選択 {selectedNoSpace} / 全体 {totalNoSpace}。 文書情報と同じく、ヘッダー・フッター・脚注・文末脚注は数えません。',
+  hidingErrNone: '先に隠す文字を選んでください。',
+  hidingErrOverlap:
+    'この文字にはすでにメモがあるため隠せません。先にそのメモを移動するか削除してください。',
+  hidingErrPlace: 'ヘッダー、フッター、脚注、文末脚注、オブジェクトの中は隠せません。',
+  hidingErrProtected: 'この文書にはメモを追加できないため、隠せません。',
+  hidingErrFailed: '選んだ部分を隠せませんでした。',
+  hidingDone: '{count} か所を隠しました。ファイルにはそのまま残り、AI にはラベルだけが見えます。',
+  hidingUnhide: '隠すのをやめる',
+  hidingRelabel: 'ラベルを変更',
+  hidingSendBlocked:
+    '隠した部分の位置を確認できないため、この文書の内容を AI に送りませんでした。メモ欄で、ヘッダーやフッターなどにある「機密情報を隠す」メモを確認してください。',
+  sensitiveFindFailed: '文書を読めなかったため、機密情報を探せませんでした。',
 } satisfies Record<keyof typeof zh, string>

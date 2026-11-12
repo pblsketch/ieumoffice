@@ -117,8 +117,16 @@
  *   so a selection can take a memo without going to the Insert menu. The menu keeps the
  *   selection, and the memo editor reads it when it opens.
  *
+ * studio-hiding-context-menu
+ *   The same two right-click menus gain 민감정보 가리기 right after 메모: it hides the
+ *   selection from the AI (a memo `[<prefix>] <label>` on each paragraph of it) and changes
+ *   no saved byte of a document it is not used on. The item is the command the app's plugin
+ *   registers (HIDING_COMMAND), named in the app's language and off while nothing is selected;
+ *   where a memo cannot go the app says why. Before the plugin registers it the menus leave
+ *   it out. The repository owner allowed this one patch for the feature.
+ *
  * studio-easy-words-context-menu
- *   The same two right-click menus gain 쉬운 말로 풀기 next to 메모: it asks the AI panel to
+ *   The same two right-click menus gain 쉬운 말로 풀기 after 민감정보 가리기: it asks the AI panel to
  *   explain the selected text in plain words, in the app's language, and changes nothing in
  *   the document. The item is the command the app's plugin registers (EASY_WORDS_COMMAND),
  *   so its name is the label the app gives it, and it is off while nothing is selected.
@@ -139,7 +147,7 @@
  */
 
 import { CLIPBOARD_HTML_MODULE } from '../studio-plugin/clipboard-html.mjs'
-import { EASY_WORDS_COMMAND } from '../studio-plugin/agent-plugin.mjs'
+import { EASY_WORDS_COMMAND, HIDING_COMMAND } from '../studio-plugin/command-ids.mjs'
 import { HANCOM_KEYS_MODULE, studioCommandIds } from '../studio-plugin/hancom-keys.mjs'
 import { PC_FONTS_MODULE } from '../studio-plugin/pc-fonts.mjs'
 
@@ -850,6 +858,29 @@ const PATCHES = {
       },
     ],
   },
+  'studio-hiding-context-menu': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      // the end of the menu of body text (and of a header or footer), right after 메모
+      {
+        find: "      { type: 'command', commandId: 'insert:comment' },\n    ];",
+        replace:
+          "      { type: 'command', commandId: 'insert:comment' },\n" +
+          `      { type: 'command', commandId: '${HIDING_COMMAND}' },\n` +
+          '    ];',
+      },
+      // the menu inside a table cell, right after 메모
+      {
+        find:
+          "      { type: 'command', commandId: 'insert:comment' },\n" +
+          "      { type: 'separator' },",
+        replace:
+          "      { type: 'command', commandId: 'insert:comment' },\n" +
+          `      { type: 'command', commandId: '${HIDING_COMMAND}' },\n` +
+          "      { type: 'separator' },",
+      },
+    ],
+  },
   'studio-easy-words-context-menu': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
     edits: [
@@ -1217,6 +1248,7 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-table-props-menu-label',
   'studio-memo-command',
   'studio-memo-context-menu',
+  'studio-hiding-context-menu',
   'studio-easy-words-context-menu',
   'studio-memo-label-ko',
   'studio-memo-label-en',

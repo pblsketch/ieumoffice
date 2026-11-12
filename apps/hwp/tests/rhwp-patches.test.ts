@@ -18,7 +18,11 @@ import {
   patchTargets,
   pluginHooks,
 } from '../scripts/rhwp-patches.mjs'
-import { AGENT_PLUGIN_ID, EASY_WORDS_COMMAND } from '../studio-plugin/agent-plugin.mjs'
+import {
+  AGENT_PLUGIN_ID,
+  EASY_WORDS_COMMAND,
+  HIDING_COMMAND,
+} from '../studio-plugin/agent-plugin.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -378,6 +382,63 @@ describe('rhwp memo menu patches', () => {
   })
 })
 
+describe('rhwp hiding menu patch', () => {
+  // the ends of the two right-click lists as the memo patch leaves them
+  const menus = [
+    '  private getTableContextMenuItems(): ContextMenuItem[] {',
+    '    return [',
+    "      { type: 'command', commandId: 'table:formula', label: '계산식(F)...' },",
+    "      { type: 'separator' },",
+    "      { type: 'command', commandId: 'insert:comment' },",
+    "      { type: 'separator' },",
+    "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+    '    ];',
+    '  }',
+    '  private getDefaultContextMenuItems(): ContextMenuItem[] {',
+    '    return [',
+    "      { type: 'command', commandId: 'format:para-num-shape', label: '문단 번호 모양(N)...' },",
+    "      { type: 'separator' },",
+    "      { type: 'command', commandId: 'insert:comment' },",
+    '    ];',
+    '  }',
+  ].join('\n')
+  const memo = "      { type: 'command', commandId: 'insert:comment' },"
+  const item = `      { type: 'command', commandId: '${HIDING_COMMAND}' },`
+  const split = (patched: string) => {
+    const at = patched.indexOf('getDefaultContextMenuItems')
+    return { table: patched.slice(0, at), body: patched.slice(at) }
+  }
+
+  it("put the plugin's command right after 메모 in the body and table cell menus, once each", () => {
+    const patched = applyPatch('studio-hiding-context-menu', menus)
+    const { table, body } = split(patched)
+    for (const menu of [table, body]) expect(menu.split(item)).toHaveLength(2)
+    // no label of its own: the menu shows the label the app gives the command
+    expect(patched).not.toMatch(/ieum-hide-sensitive', label/)
+    expect(body).toContain(`${memo}\n${item}\n    ];`)
+    expect(table).toContain(`${memo}\n${item}\n      { type: 'separator' },`)
+    // the two lines are all it adds
+    expect(patched.split(`${item}\n`).join('')).toBe(menus)
+  })
+
+  it('is the one patch the build applies right after the memo patch', () => {
+    expect(STUDIO_PATCHES.indexOf('studio-hiding-context-menu')).toBe(
+      STUDIO_PATCHES.indexOf('studio-memo-context-menu') + 1,
+    )
+    expect(STUDIO_PATCHES.filter((name) => name === 'studio-hiding-context-menu')).toHaveLength(1)
+  })
+
+  it('keep CRLF sources working and fail when a list changed', () => {
+    const crlf = applyPatch('studio-hiding-context-menu', menus.replaceAll('\n', '\r\n'))
+    expect(crlf.split(HIDING_COMMAND)).toHaveLength(3)
+    expect(crlf).not.toMatch(/[^\r]\n/)
+    // without 메모 in the menus there is nothing to stand after
+    expect(() =>
+      applyPatch('studio-hiding-context-menu', menus.replaceAll("'insert:comment'", "'x'")),
+    ).toThrow(/rhwp patch/)
+  })
+})
+
 describe('rhwp easy-words menu patch', () => {
   // the ends of the two right-click lists and what follows them, as the pinned release has them
   const menus = [
@@ -418,18 +479,19 @@ describe('rhwp easy-words menu patch', () => {
     )
   })
 
-  it('stand right after 메모 once the memo patch is in, as the build applies them', () => {
+  it('stand after 메모 and 민감정보 가리기 once those patches are in, as the build applies them', () => {
     expect(STUDIO_PATCHES.indexOf('studio-easy-words-context-menu')).toBe(
-      STUDIO_PATCHES.indexOf('studio-memo-context-menu') + 1,
+      STUDIO_PATCHES.indexOf('studio-memo-context-menu') + 2,
     )
     const patched = applyPatch(
       'studio-easy-words-context-menu',
-      applyPatch('studio-memo-context-menu', menus),
+      applyPatch('studio-hiding-context-menu', applyPatch('studio-memo-context-menu', menus)),
     )
     const memo = "      { type: 'command', commandId: 'insert:comment' },"
+    const hiding = `      { type: 'command', commandId: '${HIDING_COMMAND}' },`
     const { table, body } = split(patched)
-    expect(body).toContain(`${memo}\n${item}\n    ];`)
-    expect(table).toContain(`${memo}\n${item}\n      { type: 'separator' },`)
+    expect(body).toContain(`${memo}\n${hiding}\n${item}\n    ];`)
+    expect(table).toContain(`${memo}\n${hiding}\n${item}\n      { type: 'separator' },`)
   })
 
   it('keep CRLF sources working and fail when a list changed', () => {
@@ -729,7 +791,7 @@ describe('the studio source the build fetched', () => {
   )
 
   it.skipIf(!existsSync(studio))(
-    'puts 쉬운 말로 풀기 after 메모 in both menus, in build order',
+    'puts 민감정보 가리기 right after 메모 and 쉬운 말로 풀기 after it in both menus, in build order',
     () => {
       const file = join(studio, 'src/engine/input-handler.ts')
       let code = readFileSync(file, 'utf8')
@@ -742,11 +804,14 @@ describe('the studio source the build fetched', () => {
           line.includes(`private ${method}(): ContextMenuItem[]`),
         )
         const memo = lines.indexOf("      { type: 'command', commandId: 'insert:comment' },", from)
-        return lines[memo + 1]
+        return lines.slice(memo + 1, memo + 3)
       }
-      const item = `      { type: 'command', commandId: '${EASY_WORDS_COMMAND}' },`
-      expect(after('getTableContextMenuItems')).toBe(item)
-      expect(after('getDefaultContextMenuItems')).toBe(item)
+      const items = [
+        `      { type: 'command', commandId: '${HIDING_COMMAND}' },`,
+        `      { type: 'command', commandId: '${EASY_WORDS_COMMAND}' },`,
+      ]
+      expect(after('getTableContextMenuItems')).toEqual(items)
+      expect(after('getDefaultContextMenuItems')).toEqual(items)
     },
   )
 

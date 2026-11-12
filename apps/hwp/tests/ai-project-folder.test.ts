@@ -72,7 +72,11 @@ function projectApiStub() {
 
 /** an editor that is not there: every call fails, the panel swallows it */
 const NO_EDITOR = new Proxy({} as AgentBridge, {
-  get: () => () => Promise.reject(new Error('no editor in this test')),
+  // the check for hidden spans before a send answers that there are none
+  get: (_target, name) =>
+    name === 'hidingState'
+      ? () => Promise.resolve({ ok: true, count: 0, labels: [] })
+      : () => Promise.reject(new Error('no editor in this test')),
 })
 
 let container: HTMLElement

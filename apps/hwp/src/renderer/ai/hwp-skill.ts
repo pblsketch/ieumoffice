@@ -7,6 +7,7 @@ import {
   type AgentToolDef,
   type ToolExecution,
 } from '@genoffice/agent-core'
+import { placeholderInstruction, placeholderSource } from '@genoffice/agent-core/redact-core'
 import { brandText, type Params } from '@genoffice/i18n'
 import type {
   AgentBatchStyle,
@@ -2288,8 +2289,63 @@ function hostLabel(rawUrl: string): string {
   }
 }
 
+/**
+ * What the model is told about the document's hidden spans (민감정보 가리기): each reads as a
+ * `{{label}}` and cannot be found, changed or removed.
+ */
+const HWP_PLACEHOLDER_SPEC = {
+  subject: 'document',
+  opening:
+    'Each one stands in for words the user hid from you; the file keeps the real words, and the app never shows them to you.',
+  boundary: 'a line break or a table cell',
+  middle: [
+    'Write the text around them as if each stood for the words it replaces.',
+    'If a request needs what a placeholder hides, write around it rather than guessing.',
+    'You cannot find, change, cut or remove the hidden words: a search over them finds nothing, and an edit that would touch one is refused. Edit only the text around a placeholder.',
+  ],
+} as const
+
+/** An edit the plugin refused because it would touch a hidden span. */
+class HiddenContentError extends Error {
+  constructor(labels: readonly string[]) {
+    const named = labels.length > 0 ? ` (${labels.map(placeholderSource).join(', ')})` : ''
+    super(
+      `Nothing was changed: this edit would change, cut or remove text the user hid from you${named}. ` +
+        'Keep every placeholder exactly as it is and edit only the text around it; do not retry the same edit.',
+    )
+  }
+}
+
+/** The plugin's refusal of an edit that would touch a hidden span. */
+function isHiddenContentRefusal(value: unknown): value is { labels?: string[] } {
+  if (typeof value !== 'object' || value === null) return false
+  const answer = value as { ok?: unknown; reason?: unknown }
+  return answer.ok === false && answer.reason === 'hidden_content'
+}
+
+/**
+ * The bridge with an edit refused for a hidden span turned into the tool's failure, so every
+ * tool answers it the same way whatever it does with its other refusals.
+ */
+function withHiddenRefusals(bridge: AgentBridge): AgentBridge {
+  return new Proxy(bridge, {
+    get(target, name, receiver) {
+      const value = Reflect.get(target, name, receiver) as unknown
+      if (typeof value !== 'function') return value
+      return async (...args: unknown[]) => {
+        const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(target, args)
+        if (isHiddenContentRefusal(result)) {
+          throw new HiddenContentError(Array.isArray(result.labels) ? result.labels : [])
+        }
+        return result
+      }
+    },
+  })
+}
+
 export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
-  const { bridge, label } = deps
+  const { label } = deps
+  const bridge = withHiddenRefusals(deps.bridge)
   const imageGenOn = (): boolean => deps.imageGenAvailable?.() !== false
   /** unknown offers it: only a known "no picture reader" hides the tool and says so */
   const pictureAnalysisOn = (): boolean => deps.pictureAnalysisAvailable?.() !== false
@@ -4909,19 +4965,26 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     },
     refreshContext: async () => {
       try {
-        const [text, fields, tables, notes, styles, memos, pictures, fonts] = await Promise.all([
-          bridge.readText(),
-          bridge.listFields(),
-          bridge.listTables(),
-          // the notes are a line of the context; the document is still worth sending without it
-          bridge.listNotes().catch(() => null),
-          bridge.listStyles().catch(() => null),
-          // only the count goes into the context; a failure leaves the rest of it usable
-          bridge.listMemos().catch(() => null),
-          bridge.listPictures().catch(() => null),
-          // which document fonts this PC has, for a look the AI picks; unknown says nothing
-          bridge.documentFonts().catch(() => null),
-        ])
+        const [text, fields, tables, notes, styles, memos, pictures, fonts, hiding] =
+          await Promise.all([
+            bridge.readText(),
+            bridge.listFields(),
+            bridge.listTables(),
+            // the notes are a line of the context; the document is still worth sending without it
+            bridge.listNotes().catch(() => null),
+            bridge.listStyles().catch(() => null),
+            // only the count goes into the context; a failure leaves the rest of it usable
+            bridge.listMemos().catch(() => null),
+            bridge.listPictures().catch(() => null),
+            // which document fonts this PC has, for a look the AI picks; unknown says nothing
+            bridge.documentFonts().catch(() => null),
+            // the labels of the hidden spans, for the rules about their placeholders
+            // (a bridge without the call, as some callers hand one in, has none to tell)
+            typeof deps.bridge.hidingState === 'function'
+              ? bridge.hidingState().catch(() => null)
+              : null,
+          ])
+        const hiddenLabels = hiding?.ok ? hiding.labels : []
         const footnotes = notes?.notes.filter((note) => note.kind === 'footnote').length ?? 0
         // numbered: the number is what fill_field takes, and names repeat
         const names = fields
@@ -4970,6 +5033,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             ? 'Text (complete):'
             : `Text (the first ${CONTEXT_MAX_CHARS} characters; read_document returns the rest):`,
           whole ? text : text.slice(0, CONTEXT_MAX_CHARS),
+          ...(hiddenLabels.length > 0
+            ? ['', placeholderInstruction(hiddenLabels, HWP_PLACEHOLDER_SPEC)]
+            : []),
         ].join('\n')
       } catch {
         // without a readable document the model is told so and can still answer

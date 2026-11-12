@@ -1413,12 +1413,33 @@
 }
 
 .memo-panel-tools {
+  display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 8px 10px 0;
 }
 
 .memo-add-button {
   width: 100%;
+}
+
+/* 민감정보 가리기 and 민감정보 찾기 share the second row */
+.memo-panel-tools > .memo-button:not(.memo-add-button) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* the candidate list of 민감정보 찾기 takes the list's place in the column */
+.memo-overlay {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 10px 14px;
+  overflow-y: auto;
+}
+
+.memo-list[hidden] {
+  display: none;
 }
 
 .memo-panel-warning {
@@ -1514,6 +1535,20 @@
   flex: none;
   color: var(--color-text-secondary);
   font-size: 11px;
+}
+
+/* a hiding memo: its own mark, apart from an ordinary memo by weight and border */
+.memo-hiding-badge {
+  padding: 0 5px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-6);
+  color: var(--color-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.memo-card-hiding {
+  border-color: var(--color-border-strong);
 }
 
 .memo-readonly-badge {
