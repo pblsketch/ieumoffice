@@ -67,8 +67,6 @@ export const en = {
   aiEmptyTitle: 'Let AI help you write and edit',
   aiEmptyBody1: 'Give an instruction or just ask a question;',
   aiEmptyBody2: 'with text selected, rewrite commands apply to the selection.',
-  aiNoHidingNote:
-    'This editor cannot hide parts of a document from AI: what a request covers is sent as written.',
   aiStarterWeeklyReport: 'Write a weekly project report for me',
   aiStarterLaunchPost: 'Draft a product launch announcement',
   aiStarterEventOutline: 'Outline an event plan',

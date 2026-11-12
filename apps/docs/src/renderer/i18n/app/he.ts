@@ -345,15 +345,16 @@ export const he = {
   appEasyWords: 'הסבר במילים פשוטות',
   appEasyWordsPrompt:
     'הסבר את הקטע שנבחר בעברית כך שגם מי שזקוק לטקסט קל יבין אותו (ילדים, קשישים, אנשים שלומדים עברית). השתמש במילים יומיומיות ובמשפטים קצרים, ושמור על כל העובדות, המספרים והתנאים. אל תשנה את המסמך: "{text}"',
-  redactMenuLabel: 'הסתרת הבחירה מהמודל',
+  redactMenuLabel: 'הסתרת מידע רגיש',
   redactDialogDesc:
-    'המילים נשארות במסמך ובקובץ; המודל רואה רק את הסימון. תן לו שם כדי שיהיה ברור מה הוא מייצג.',
-  redactDialogScope:
-    'ההסתרה חלה רק על המודל באפליקציה הזו. CLI, כלי MCP וייצוא ללא ממשק קוראים את הקובץ ישירות ועדיין רואים את המילות האלה.',
-  redactDialogPlaceholder: 'שם הסימון, לדוגמה: טלפון הלקוח',
+    'החלק שבחרתם לא נשלח ל-AI. בקובץ הוא נשאר כמו שהוא. ה-AI רואה רק את התווית שלמטה. תנו לה שם כדי שה-AI יבין מה היא מייצגת.',
+  redactDialogScope: 'ההסתרה לא חלה כשתוכנה במצב סוכן קוראת את הקובץ ישירות מהדיסק.',
+  redactDialogPlaceholder: 'תווית, למשל: שם התלמיד',
   redactCancel: 'ביטול',
-  redactInsert: 'הסתר',
-  redactShowLabel: 'הצגת הבחירה למודל שוב',
+  redactInsert: 'הסתרה',
+  redactShowLabel: 'ביטול ההסתרה',
+  sensLocParagraph: 'פסקה {n}',
+  sensLocTableCell: 'טבלה {n}, שורה {r}, עמודה {c}',
   appLangEnglish: 'אנגלית',
   appLangSimplifiedChinese: 'סינית פשוטה',
   appLangJapanese: 'יפנית',

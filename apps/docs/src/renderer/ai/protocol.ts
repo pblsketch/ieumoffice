@@ -18,10 +18,12 @@ import { blockRangePositions, isTrackedDeleted, liveText } from './doc-utils'
 import {
   modelTextOf,
   projectedNodeText,
+  fileViewNode,
   redactNode,
   redactTextBetween,
   type RedactableNode,
 } from './redact-view'
+import { REDACT_MARK } from './redact'
 import { opSignatures } from './ops'
 import { pageSetupContextLines, type AiSectionState } from './page-setup'
 import { listRevisionEntries } from './revision-ops'
@@ -261,6 +263,14 @@ function escapeHtml(text: string): string {
 
 function wrapInlineText(raw: string, marks: PmMark[]): string {
   let text = escapeHtml(raw)
+  // Only the file view (Markdown export) still has a hidden run here: its words
+  // go into a span that keeps the hiding mark. In the model view the run was
+  // already replaced by its marker (redactNode), so this never fires there.
+  const hidden = marks.find((m: PmMark) => m.type === REDACT_MARK)
+  if (hidden) {
+    const label = escapeHtml(String(hidden.attrs?.label ?? 'private')).replace(/"/g, '&quot;')
+    text = `<span data-redaction="" data-label="${label}">${text}</span>`
+  }
   const has = (type: string) => marks.some((m: PmMark) => m.type === type)
   if (has('bold')) text = `<strong>${text}</strong>`
   if (has('italic')) text = `<em>${text}</em>`
@@ -451,12 +461,22 @@ export function serializeRangeToHtml(
   endIndex: number,
   sel?: { from: number; to: number } | null,
   image?: ImageSrcMapper,
+  /**
+   * 'model' (every AI path): hidden spans become their markers. 'file' is only
+   * for a copy written to disk for the reader (Markdown export): hidden words
+   * stay, inside a span that keeps the hiding mark.
+   */
+  view: 'model' | 'file' = 'model',
 ): string {
   // The model's view, not the document's: a withheld span's words must
   // not travel in the HTML this produces. `redactNode` is total, so a
   // shape it does not recognise still comes through rather than
   // throwing and falling back to the unredacted text.
-  const json = redactNode(editor.getJSON() as RedactableNode) as PmNode
+  const json = (
+    view === 'file'
+      ? fileViewNode(editor.getJSON() as RedactableNode)
+      : redactNode(editor.getJSON() as RedactableNode)
+  ) as PmNode
   const children = (json.content ?? []).slice(startIndex, endIndex + 1)
   const parts: string[] = []
   let listBuffer: { kind: string; items: string[] } | null = null

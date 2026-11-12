@@ -69,8 +69,6 @@ export const es = {
   aiEmptyTitle: 'Deja que la IA te ayude a escribir y editar',
   aiEmptyBody1: 'Da una instrucción o simplemente haz una pregunta;',
   aiEmptyBody2: 'con texto seleccionado, los comandos de reescritura se aplican a la selección.',
-  aiNoHidingNote:
-    'Este editor no permite ocultar partes del documento a la IA: lo que abarca la solicitud se envía tal cual.',
   aiStarterWeeklyReport: 'Escribe un informe semanal del proyecto',
   aiStarterLaunchPost: 'Redacta un anuncio de lanzamiento de producto',
   aiStarterEventOutline: 'Esboza un plan de evento',

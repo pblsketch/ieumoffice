@@ -353,15 +353,16 @@ export const cs = {
   appEasyWords: 'Vysvětlit jednoduše',
   appEasyWordsPrompt:
     'Vysvětlete vybraný text česky tak, aby mu porozuměli i lidé, kteří potřebují snadno srozumitelný text (děti, starší lidé, lidé, kteří se učí česky). Používejte běžná slova a krátké věty a zachovejte všechna fakta, čísla a podmínky. Dokument neupravujte: „{text}“',
-  redactMenuLabel: 'Skrýt výběr před AI',
+  redactMenuLabel: 'Skrýt citlivé údaje',
   redactDialogDesc:
-    'Slova zůstanou v dokumentu i v souboru; model uvidí jen zástupný symbol. Pojmenujte ho, aby věděl, co zastupuje.',
-  redactDialogScope:
-    'Skrýtí se týká jen AI v této aplikaci. CLI, nástroje MCP a headless export čtou soubor přímo a tato slova stále vidí.',
-  redactDialogPlaceholder: 'Název zástupného symbolu, např. telefon zákazníka',
+    'Vybraná část se do AI neposílá. V souboru zůstane beze změny. AI vidí jen štítek níže. Pojmenujte ho tak, aby AI věděla, co znamená.',
+  redactDialogScope: 'Skrytí neplatí, když program v režimu agenta čte soubor přímo z disku.',
+  redactDialogPlaceholder: 'Štítek, např. jméno žáka',
   redactCancel: 'Zrušit',
   redactInsert: 'Skrýt',
-  redactShowLabel: 'Znovu zobrazit výběr AI',
+  redactShowLabel: 'Přestat skrývat',
+  sensLocParagraph: 'Odstavec {n}',
+  sensLocTableCell: 'Tabulka {n}, řádek {r}, sloupec {c}',
   appLangEnglish: 'angličtina',
   appLangSimplifiedChinese: 'zjednodušená čínština',
   appLangJapanese: 'japonština',

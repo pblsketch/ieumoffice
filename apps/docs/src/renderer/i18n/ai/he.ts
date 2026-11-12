@@ -66,7 +66,6 @@ export const he = {
   aiEmptyTitle: 'תנו ל-AI לעזור לכם לכתוב ולערוך',
   aiEmptyBody1: 'אפשר לתת הוראה או פשוט לשאול שאלה;',
   aiEmptyBody2: 'כאשר טקסט מסומן, פקודות שכתוב חלות על הקטע המסומן.',
-  aiNoHidingNote: 'בעורך הזה אי אפשר להסתיר חלקים מהמסמך מה-AI: מה שהבקשה כוללת נשלח כמו שהוא.',
   aiStarterWeeklyReport: 'כתוב לי דוח שבועי על הפרויקט',
   aiStarterLaunchPost: 'נסח הודעה על השקת מוצר',
   aiStarterEventOutline: 'הכן ראשי פרקים לתוכנית אירוע',

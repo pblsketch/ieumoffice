@@ -77,13 +77,15 @@ export const DocRedaction = Mark.create({
     return {
       setRedaction:
         (label: string) =>
-        ({ editor, tr, dispatch }) => {
+        ({ tr, dispatch }) => {
           const clean = label.trim()
           if (!clean) return false
           if (dispatch) {
+            // the transaction's selection, so a chained setTextSelection before
+            // this command is the range that gets marked
             tr.addMark(
-              editor.state.selection.from,
-              editor.state.selection.to,
+              tr.selection.from,
+              tr.selection.to,
               this.type.create({
                 label: clean,
                 // the label has to live in the file, not only in the editor
