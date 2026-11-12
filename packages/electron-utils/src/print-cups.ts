@@ -8,6 +8,7 @@
 /// given the direct print.
 
 import { spawn } from 'node:child_process'
+import { decodeChunks } from './console-output'
 
 export interface CupsPrintJob {
   /** CUPS queue name; undefined = the system's default destination */
@@ -80,8 +81,8 @@ export async function printPdfViaCups(
     const child = spawnFn('/usr/bin/lp', lpArgumentsFor(job), {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
-    let stderr = ''
-    let stdout = ''
+    const outChunks: Array<Buffer | string> = []
+    const errChunks: Array<Buffer | string> = []
     let settled = false
     const settle = (result: { ok: boolean; error?: string }) => {
       if (!settled) {
@@ -91,17 +92,20 @@ export async function printPdfViaCups(
     }
     child.on('error', (err) => settle({ ok: false, error: err.message }))
     child.stdout.on('data', (chunk) => {
-      stdout += chunk
+      outChunks.push(chunk)
     })
     child.stderr.on('data', (chunk) => {
-      stderr += chunk
+      errChunks.push(chunk)
     })
     child.on('close', (code) => {
       if (code === 0) settle({ ok: true })
       else
         settle({
           ok: false,
-          error: stderr.trim() || stdout.trim() || `lp exited with code ${code}`,
+          error:
+            decodeChunks(errChunks).trim() ||
+            decodeChunks(outChunks).trim() ||
+            `lp exited with code ${code}`,
         })
     })
     // lp exits early on a bad queue and closes stdin: an EPIPE here must not
