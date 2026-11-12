@@ -4,7 +4,6 @@ import {
   comparablePath,
   isInsidePath,
 } from '@genoffice/ai-provider/agent-session'
-import { redactHtmlSource, redactMarkdownSource } from '@genoffice/file-parse'
 import { z } from 'zod'
 import { McpServerService, type McpToolDefinition } from '../mcp/mcp-server'
 import { createDocumentTools, type DocsControl } from '../mcp/tools/document-tools'
@@ -17,6 +16,10 @@ import { createPdfTools } from '../mcp/tools/pdf-tools'
 import { createSessionHost, type TargetResolver } from '../mcp/tools/session-tools'
 import { createSheetsTools, type SheetsControl } from '../mcp/tools/sheets-tools'
 import { createSlidesTools, type SlidesControl } from '../mcp/tools/slides-tools'
+import {
+  withholdingOpenDocuments as withholdingOpenDocumentsFor,
+  withholdingSlides,
+} from '../mcp/withholding'
 import type { AgentOpenTab } from './agent-skills'
 
 /**
@@ -197,43 +200,12 @@ export interface AgentMcpDeps {
   skillTools?: AgentSkillToolHooks | undefined
 }
 
-const WITHHELD_DECK =
-  'This presentation withholds some of its content from AI. It cannot be edited from an agent session; ask the person to edit it in the app instead.'
-
 /** Slides that read withheld words as labels and are not edited while they withhold anything */
-export function withholdingSlides(control: SlidesControl): SlidesControl {
-  return {
-    ...control,
-    readDeck: (wcId) => control.readDeck(wcId, { withhold: true }),
-    runTxn: async (wcId, request) => {
-      // without a way to tell, the deck is taken to withhold something
-      const withholds = control.deckWithholds ? await control.deckWithholds(wcId) : true
-      if (withholds) throw new Error(WITHHELD_DECK)
-      return control.runTxn(wcId, request)
-    },
-  }
-}
+export { withholdingSlides } from '../mcp/withholding'
 
-/** Open documents read with their withheld words as labels, and never closed */
+/** Open documents read with their withheld words as labels, and never closed or saved */
 export function withholdingOpenDocuments(control: OpenDocumentsControl): OpenDocumentsControl {
-  return {
-    list: () => control.list(),
-    read: async (tab) => {
-      if (tab.kind === 'slides') {
-        throw new Error('Read a presentation with read_deck, passing its id or path as `document`.')
-      }
-      const content = await control.read(tab)
-      if (tab.kind === 'markdown') return redactMarkdownSource(String(content))
-      if (tab.kind === 'html') return redactHtmlSource(String(content))
-      return content
-    },
-    close: async () => {
-      throw new Error('Closing documents is not available in an agent session.')
-    },
-    save: async () => {
-      throw new Error('Saving open documents is not available in an agent session.')
-    },
-  }
+  return withholdingOpenDocumentsFor(control, { session: true })
 }
 
 function insideProject(
