@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { coerceArgumentFields, type AgentToolCall } from '@genoffice/agent-core'
+import {
+  coerceArgumentFields,
+  missingRequiredFields,
+  type AgentToolCall,
+} from '@genoffice/agent-core'
 import type { AgentMemo, AgentMemoRemovalRefusal } from '../studio-plugin/agent-plugin.mjs'
 import type { AgentBridge } from '../src/renderer/ai/agent-bridge'
 import {
@@ -4183,13 +4187,24 @@ describe('what a call gives before its handler sees it', () => {
     })
     await call('set_columns', { count: 2, gapMm: 12 })
     expect(bridge.setColumns).toHaveBeenLastCalledWith({ count: 2, gapMm: 12 })
-    await call('format_look', { id: 'Labc123', bold: true })
-    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', { bold: true })
     await call('set_page_setup', { orientation: 'landscape', margins: { left: 25, top: 15 } })
     expect(bridge.setPageSetup).toHaveBeenLastCalledWith(
       { orientation: 'landscape', margins: { left: 25, top: 15 } },
       null,
     )
+  })
+
+  it('takes a look id in look alone, through the loop and on the command line alike', async () => {
+    const { call, skill, bridge } = setup()
+    const tool = skill.tools.find((offered) => offered.name === 'format_look')!
+    const byId = { id: 'Labc123', size: 12 }
+    expect(missingRequiredFields(tool, coerceArgumentFields(tool, byId))).toEqual(['look'])
+    const direct = await call('format_look', byId)
+    expect(direct.isError).toBe(true)
+    expect(direct.output).toContain('unknown argument "id". The look id goes in look.')
+    expect(bridge.formatLook).not.toHaveBeenCalled()
+    const reading = skill.tools.find((offered) => offered.name === 'read_formatting')!
+    expect(reading.description).toContain('the "look" of each look is the id format_look takes')
   })
 
   it('does not pick between an old name and the declared one when both are given', async () => {

@@ -1685,7 +1685,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'read_formatting',
     edits: false,
     description:
-      'Read how a document is formatted: its page setup, footnote and endnote settings, the styles it uses with their look, and the looks of its body paragraphs grouped (font, size, alignment, line spacing, indents, spacing, list), most used first, with sample text. Without attachment it reads this document, and each look has an id that format_look takes. With attachment it reads an attached HWP / HWPX document, to copy its formatting.',
+      'Read how a document is formatted: its page setup, footnote and endnote settings, the styles it uses with their look, and the looks of its body paragraphs grouped (font, size, alignment, line spacing, indents, spacing, list), most used first, with sample text. Without attachment it reads this document, and the "look" of each look is the id format_look takes. With attachment it reads an attached HWP / HWPX document, to copy its formatting.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1846,16 +1846,7 @@ function withCellsNamed(input: Fields): Fields {
   return input
 }
 
-function withLookNamed(input: Fields): Fields {
-  if (!isGiven(input.id) || isGiven(input.look)) return input
-  const { id, ...rest } = input
-  return { ...rest, look: id }
-}
-
-const ALSO_TAKEN_SHAPES = new Map([
-  ['format_cells', withCellsNamed],
-  ['format_look', withLookNamed],
-])
+const ALSO_TAKEN_SHAPES = new Map([['format_cells', withCellsNamed]])
 
 function openedWithoutOverwriting(
   value: Fields,
@@ -2120,6 +2111,7 @@ const SLIP_CURES: Record<string, (name: string) => string | null> = {
     /^(?:(?:from|to)_)?(?:row|col)$/.test(name)
       ? 'A block of cells goes in range: { "from_row", "from_col", "to_row", "to_col" }, all four; single cells go in cells: [{ "row", "col" }].'
       : null,
+  format_look: (name) => (name === 'id' ? 'The look id goes in look.' : null),
   insert_paragraphs: (name) =>
     Object.hasOwn(PARAGRAPH_FORMAT_SCHEMA, name) || Object.hasOwn(TEXT_FORMAT_SCHEMA, name)
       ? 'insert_paragraphs writes plain paragraphs: add them first, then give them their look with style_paragraphs or format_paragraph.'
