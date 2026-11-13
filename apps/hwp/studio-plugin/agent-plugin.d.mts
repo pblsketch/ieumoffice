@@ -43,13 +43,22 @@ export type AgentReplaceResult =
   | { ok: true; count: number; inTable: boolean; place: AgentPlace }
   | {
       ok: false
-      reason: 'not_found' | 'ambiguous' | 'no_such_occurrence' | 'unsupported_place'
+      /**
+       * `spans_object`: an object of the line (an equation, a footnote mark, a picture set
+       * as a character) stands between two characters of the match
+       */
+      reason:
+        'not_found' | 'ambiguous' | 'no_such_occurrence' | 'unsupported_place' | 'spans_object'
       count: number
       matches?: AgentMatch[]
     }
 
 export type AgentReplaceAllResult =
-  { ok: true; count: number; place: AgentPlace } | { ok: false; reason: 'not_found'; count: 0 }
+  /** `skipped`: matches left as they were, each across an object of its line */
+  | { ok: true; count: number; skipped?: number; place: AgentPlace }
+  | { ok: false; reason: 'not_found'; count: 0 }
+  /** every match lies across an object of its line; `count` is how many */
+  | { ok: false; reason: 'spans_object'; count: number }
 
 /** Why a paragraph edit did nothing: the anchor could not be decided, or an object is in the way. */
 export interface AgentPlaceRefusal {
@@ -795,6 +804,8 @@ export type AgentReplaceSelectionResult =
   /** the texts are not as many as the runs, and the runs are not one stretch of paragraphs */
   | { ok: false; reason: 'count'; count: number }
   | { ok: false; reason: 'has_objects'; count: number }
+  /** a run to rewrite lies across an object of its line */
+  | { ok: false; reason: 'spans_object'; count: number }
 
 export type AgentFormatSelectionResult =
   | {

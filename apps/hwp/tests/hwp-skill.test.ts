@@ -730,6 +730,19 @@ describe('replace_text', () => {
     expect(result).toMatchObject({ isError: true, output: 'the editor refused to replace' })
     expect(changes).toEqual([])
   })
+
+  it('says that an equation stands inside the text, and to replace one side of it', async () => {
+    const { call, changes } = setup({
+      replaceText: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
+    })
+    const result = await call('replace_text', { find: '7. 를 계산', replace: '8. 를 계산' })
+    expect(result.isError).toBe(true)
+    expect(result.mutated).toBeUndefined()
+    expect(result.output).toContain('Nothing was changed')
+    expect(result.output).toContain('an equation or another object of the line')
+    expect(result.output).toContain('the words in front of it or the words behind it')
+    expect(changes).toEqual([])
+  })
 })
 
 describe('replace_all', () => {
@@ -746,6 +759,24 @@ describe('replace_all', () => {
     })
     expect((await call('replace_all', { find: '없음', replace: 'x' })).isError).toBe(true)
     expect(changes).toEqual([])
+  })
+
+  it('tells how many matches it left because an object stands inside them', async () => {
+    const some = setup({
+      replaceAllText: async () => ({ ok: true, count: 2, skipped: 1, place: PLACE }),
+    })
+    const result = await some.call('replace_all', { find: '하거', replace: 'DD' })
+    expect(result.mutated).toBe(true)
+    expect(result.output).toContain('Replaced 2 occurrence(s).')
+    expect(result.output).toContain('1 more occurrence(s) were left as they were')
+    // nothing but such matches: nothing is reported as changed
+    const none = setup({
+      replaceAllText: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
+    })
+    const refused = await none.call('replace_all', { find: '하거', replace: 'DD' })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('an equation or another object of the line')
+    expect(none.changes).toEqual([])
   })
 })
 
@@ -1914,6 +1945,17 @@ describe('the part the user selected', () => {
     expect(stale.isError).toBe(true)
     expect(stale.output).toContain('no longer what it was')
     expect(gone.changes).toEqual([])
+  })
+
+  it('says that an equation stands inside a selected run it was to rewrite', async () => {
+    const across = setup({
+      replaceSelection: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
+    })
+    across.setSelection(STRETCH)
+    const result = await across.call('replace_selection', { paragraphs: ['a', 'b'] })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('an equation or another object of the line')
+    expect(across.changes).toEqual([])
   })
 })
 

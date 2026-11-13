@@ -1277,10 +1277,42 @@ function cellReplaceHead(text) {
   return Array.from(text).slice(0, MAX_CELL_REPLACE_CHARS).join('')
 }
 
+/**
+ * The caret place of a character of a body paragraph: its offset in the text plus one for
+ * every object of the line in front of it that the engine counts as a character (an
+ * equation, a footnote mark, a picture set as a character).
+ */
+const caretOf = (doc, hit, offset) => doc.textToLogicalOffset(hit.sec, hit.para, offset)
+
+/**
+ * Whether such an object stands between two characters of a match. The text the model
+ * reads has no place for the object, so a `find` can run across it; the new text has no
+ * place for it either, and the engine would leave the object behind the new text. A cell
+ * paragraph cannot be asked (the engine converts offsets of body paragraphs only).
+ */
+function spansObject(doc, hit) {
+  if (cellPathOf(hit) || hit.length < 2) return false
+  const { charOffset: start, length } = hit
+  return caretOf(doc, hit, start + length) - caretOf(doc, hit, start + 1) > length - 1
+}
+
+/** Whether such an object stands right in front of the first character of a body match. */
+const followsObject = (doc, hit) =>
+  hit.length > 0 && caretOf(doc, hit, hit.charOffset + 1) - caretOf(doc, hit, hit.charOffset) > 1
+
 function replaceHit(doc, hit, replacement) {
   const path = cellPathOf(hit)
   if (!path) {
-    expectOk(doc.replaceText(hit.sec, hit.para, hit.charOffset, hit.length, replacement), 'replace')
+    const { sec, para, charOffset: start, length } = hit
+    if (replacement.length > 0 && followsObject(doc, hit)) {
+      // the engine types new text in front of an object that stands at its place, which
+      // would put the object behind the new text: so the new text goes in behind the first
+      // matched character, and that character is taken out afterwards
+      expectOk(doc.replaceText(sec, para, start + 1, length - 1, replacement), 'replace')
+      expectOk(doc.deleteText(sec, para, start, 1), 'replace')
+      return
+    }
+    expectOk(doc.replaceText(sec, para, start, length, replacement), 'replace')
     return
   }
   const json = JSON.stringify(path)
@@ -6380,8 +6412,14 @@ export const agentPlugin = {
         const refusal = host.read((doc) => {
           const hits = searchAll(doc, find)
           const picked = pickHit(hits, occurrence)
-          if (picked.hit && isReplaceable(picked.hit)) return null
-          const reason = picked.hit ? 'unsupported_place' : picked.reason
+          const reason = !picked.hit
+            ? picked.reason
+            : !isReplaceable(picked.hit)
+              ? 'unsupported_place'
+              : spansObject(doc, picked.hit)
+                ? 'spans_object'
+                : null
+          if (!reason) return null
           return {
             ok: false,
             reason,
@@ -6395,7 +6433,9 @@ export const agentPlugin = {
           (doc) => {
             const hits = searchAll(doc, find)
             const { hit } = pickHit(hits, occurrence)
-            if (!hit || !isReplaceable(hit)) throw fail('CHANGED', 'the document changed mid-call')
+            if (!hit || !isReplaceable(hit) || spansObject(doc, hit)) {
+              throw fail('CHANGED', 'the document changed mid-call')
+            }
             replaceHit(doc, hit, replacement)
             return {
               ok: true,
@@ -6408,16 +6448,36 @@ export const agentPlugin = {
         )
       }),
 
-      /** Replace every occurrence of `find` outside equations, last match first. */
+      /**
+       * Replace every occurrence of `find` outside equations, last match first. A match
+       * that lies across an object of its line is left as it is and counted in `skipped`.
+       */
       replaceAllText: guarded((find, replacement, options) => {
         checkReplacement(replacement)
-        const total = host.read((doc) => searchAll(doc, find).filter(isReplaceable).length)
-        if (total === 0) return { ok: false, reason: 'not_found', count: 0 }
+        const sorted = (doc) => {
+          const hits = []
+          let skipped = 0
+          for (const hit of searchAll(doc, find).filter(isReplaceable)) {
+            if (spansObject(doc, hit)) skipped += 1
+            else hits.push(hit)
+          }
+          return { hits, skipped }
+        }
+        const found = host.read((doc) => {
+          const { hits, skipped } = sorted(doc)
+          return { total: hits.length, skipped }
+        })
+        if (found.total === 0) {
+          return found.skipped > 0
+            ? { ok: false, reason: 'spans_object', count: found.skipped }
+            : { ok: false, reason: 'not_found', count: 0 }
+        }
         return change(
           'replace-all',
           (doc) => {
+            const { hits: inOrder, skipped } = sorted(doc)
             // back to front, so replacing one match never moves the offset of one still to do
-            const hits = searchAll(doc, find).filter(isReplaceable).reverse()
+            const hits = inOrder.reverse()
             for (const hit of hits) replaceHit(doc, hit, replacement)
             // the first in reading order is the last one done; nothing in front of it moved.
             // A later match in the same paragraph moved by what the earlier ones changed.
@@ -6431,6 +6491,7 @@ export const agentPlugin = {
             return {
               ok: true,
               count: hits.length,
+              ...(skipped > 0 ? { skipped } : {}),
               place: placeOf(hits[hits.length - 1], replacement.length),
               marks,
             }
@@ -9356,8 +9417,9 @@ export const agentPlugin = {
        * run, made like Enter makes them, and runs left without a text are removed, a
        * wholly selected paragraph with them. `segments` is the selection as selection()
        * handed it out; when a run no longer holds its text (the user typed there, or the
-       * place moved) nothing changes. The runs come back as they are now, for a further
-       * change of the same selection.
+       * place moved) nothing changes. A run that lies across an object of its line is not
+       * rewritten (`spans_object`): the new text has no place for the object. The runs come
+       * back as they are now, for a further change of the same selection.
        */
       replaceSelection: guarded((segments, texts, options) => {
         checkSegments(segments)
@@ -9368,24 +9430,28 @@ export const agentPlugin = {
         if (texts.length !== segments.length && !isContiguous(segments)) {
           return { ok: false, reason: 'count', count: segments.length }
         }
-        if (!host.read((doc) => segmentsStand(doc, segments))) {
-          return { ok: false, reason: 'changed' }
-        }
+        const asHit = (segment) => ({
+          sec: segment.sec,
+          para: segment.para,
+          cellPath: segment.path,
+          charOffset: segment.offset,
+          length: segment.length,
+        })
+        const kept = Math.min(segments.length, texts.length)
+        const stands = (doc) =>
+          !segmentsStand(doc, segments)
+            ? 'changed'
+            : segments.slice(0, kept).some((segment) => spansObject(doc, asHit(segment)))
+              ? 'spans_object'
+              : null
+        const reason = host.read(stands)
+        if (reason) return { ok: false, reason, ...(reason === 'spans_object' ? { count: 1 } : {}) }
         return keepingObjects((mustKeep) =>
           change(
             'replace-selection',
             (doc) => {
-              if (!segmentsStand(doc, segments))
-                throw fail('CHANGED', 'the document changed mid-call')
+              if (stands(doc)) throw fail('CHANGED', 'the document changed mid-call')
               const before = objectsOf(doc)
-              const asHit = (segment) => ({
-                sec: segment.sec,
-                para: segment.para,
-                cellPath: segment.path,
-                charOffset: segment.offset,
-                length: segment.length,
-              })
-              const kept = Math.min(segments.length, texts.length)
               // runs left without a text go first, from the end, so that the paragraphs in
               // front of them keep their numbers
               for (let index = segments.length - 1; index >= kept; index--) {

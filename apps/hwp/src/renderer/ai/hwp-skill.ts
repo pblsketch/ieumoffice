@@ -1680,6 +1680,9 @@ const IN_TABLE_HELP =
   'Nothing was changed: that paragraph is inside a table cell, and a table cannot be put inside another table here. Anchor the new table to a paragraph of the body text, or add the content to the cell as paragraphs.'
 const HAS_OBJECTS_HELP =
   'Nothing was changed: a table, a picture or a form field sits in that paragraph, and the change would have moved or removed it. Use the paragraph before or after it as the anchor, or tell the user.'
+/** The text to replace runs across an object the document text does not show. */
+const SPANS_OBJECT_HELP =
+  'Nothing was changed: an equation or another object of the line (a footnote mark, a picture set in the text) stands inside the text to be replaced, and the new text has no place for it. Replace the words in front of it or the words behind it on their own, with replace_text.'
 const ONE_LINE_HELP =
   'Text with a line break cannot be searched or inserted: a replacement stays inside one paragraph or table cell. Split the change into one call per paragraph.'
 /** A line break in the new text of replace_text or replace_all. */
@@ -2741,6 +2744,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (result.reason === 'unsupported_place') {
           return bad(call, 'That occurrence is inside an equation, which cannot be edited here.')
         }
+        if (result.reason === 'spans_object') return bad(call, SPANS_OBJECT_HELP)
         return bad(call, NOT_FOUND_HELP)
       }
       case 'replace_all': {
@@ -2757,7 +2761,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (outcome.kind !== 'done')
           return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
         const result = outcome.result
-        if (!result.ok) return bad(call, NOT_FOUND_HELP)
+        if (!result.ok) {
+          return bad(call, result.reason === 'spans_object' ? SPANS_OBJECT_HELP : NOT_FOUND_HELP)
+        }
         deps.onChange({
           kind: 'replaceAll',
           from: find,
@@ -2765,8 +2771,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: result.count,
           place: result.place,
         })
+        const skipped = result.skipped
+          ? ` ${result.skipped} more occurrence(s) were left as they were: an equation or another object of the line stands inside the text there. Replace the words in front of it or behind it on their own, with replace_text.`
+          : ''
         return {
-          output: `Replaced ${result.count} occurrence(s).`,
+          output: `Replaced ${result.count} occurrence(s).${skipped}`,
           mutated: true,
           summary: `${arrow(find, replace)} ×${result.count}`,
         }
@@ -3153,7 +3162,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               ? SELECTION_CHANGED_HELP
               : result.reason === 'count'
                 ? SELECTION_COUNT_HELP(result.count)
-                : HAS_OBJECTS_HELP,
+                : result.reason === 'spans_object'
+                  ? SPANS_OBJECT_HELP
+                  : HAS_OBJECTS_HELP,
           )
         }
         selection = part

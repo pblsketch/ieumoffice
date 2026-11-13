@@ -1599,4 +1599,77 @@ describe('a paragraph that holds an object of its line', () => {
     expect(doc().getCellParagraphCountByPath(0, 2, cell(0))).toBe(2)
     expect(cellText(0)).toBe('셀 글과 뒤 글.')
   })
+
+  it('replaces words beside an equation and leaves the equation where it stands', () => {
+    const { plugin, doc } = open(
+      blank(['머리', '가나[[1]]다라', '마바[[2]]사아', '7. [[3]]를 계산하면?', '끝']),
+    )
+    plugin.insertEquations([
+      { find: '[[1]]', script: 'a' },
+      { find: '[[2]]', script: 'b' },
+      { find: '[[3]]', script: '12x^3 div 4x' },
+    ])
+    // the match ends where the equation stands
+    expect(plugin.replaceText('가나', 'AAAA', null)).toMatchObject({ ok: true })
+    expect(textOf(doc(), 1)).toBe('AAAA다라')
+    expect(places(doc(), 1)).toEqual([4])
+    // the match starts right behind the equation
+    expect(plugin.replaceText('사아', 'BBBB', null)).toMatchObject({ ok: true })
+    expect(textOf(doc(), 2)).toBe('마바BBBB')
+    expect(places(doc(), 2)).toEqual([2])
+    // one character behind it, and a match taken out
+    expect(plugin.replaceText('B', 'C', 1)).toMatchObject({ ok: true })
+    expect(textOf(doc(), 2)).toBe('마바CBBB')
+    expect(places(doc(), 2)).toEqual([2])
+    expect(plugin.replaceText('CBBB', '', null)).toMatchObject({ ok: true })
+    expect(textOf(doc(), 2)).toBe('마바')
+    expect(places(doc(), 2)).toEqual([2])
+    // the mark in front of an equation, on its own
+    expect(plugin.replaceText('7. ', '8. ', null)).toMatchObject({ ok: true })
+    expect(textOf(doc(), 3)).toBe('8. 를 계산하면?')
+    expect(places(doc(), 3)).toEqual([3])
+    expect(controlsOf(doc(), 'eqed')).toEqual([1, 2, 3])
+  })
+
+  it('refuses a replacement across an equation and changes nothing', () => {
+    const { plugin, doc, steps } = open(
+      blank(['머리', '7. [[1]]를 계산하면?', '파하[[2]]거너', '하거 하거', '끝']),
+    )
+    plugin.insertEquations([
+      { find: '[[1]]', script: '12x^3 div 4x' },
+      { find: '[[2]]', script: 'd' },
+    ])
+    const before = steps()
+    // what read_document shows has no place for the equation, so a find can run across it
+    expect(plugin.replaceText('7. 를 계산', '8. 를 계산', null)).toEqual({
+      ok: false,
+      reason: 'spans_object',
+      count: 1,
+    })
+    expect(steps()).toBe(before)
+    expect(textOf(doc(), 1)).toBe('7. 를 계산하면?')
+    expect(places(doc(), 1)).toEqual([3])
+    // replace_all changes the matches it can and counts the one it left
+    expect(plugin.replaceAllText('하거', 'DD')).toMatchObject({ ok: true, count: 2, skipped: 1 })
+    expect(textOf(doc(), 2)).toBe('파하거너')
+    expect(places(doc(), 2)).toEqual([2])
+    expect(textOf(doc(), 3)).toBe('DD DD')
+    // nothing but matches across an object: nothing to do
+    const after = steps()
+    expect(plugin.replaceAllText('하거', 'EE')).toEqual({
+      ok: false,
+      reason: 'spans_object',
+      count: 1,
+    })
+    expect(steps()).toBe(after)
+    // a selected run across the equation is not rewritten either
+    const run = { sec: 0, para: 2, offset: 0, length: 4, text: '파하거너' }
+    expect(plugin.replaceSelection([run], ['새 글'])).toEqual({
+      ok: false,
+      reason: 'spans_object',
+      count: 1,
+    })
+    expect(steps()).toBe(after)
+    expect(textOf(doc(), 2)).toBe('파하거너')
+  })
 })
