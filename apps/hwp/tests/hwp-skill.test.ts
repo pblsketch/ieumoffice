@@ -1500,6 +1500,66 @@ describe('format_cells', () => {
     expect(result.isError).toBe(true)
     expect(bridge.formatCells).not.toHaveBeenCalled()
   })
+
+  it('says in its answer which cells it formatted', async () => {
+    const { call } = setup()
+    const fill = { background: '#ffe08a' }
+    expect((await call('format_cells', { table: 2, ...fill })).output).toBe(
+      'Coloured 1 cell(s): the whole table 2.',
+    )
+    expect(
+      (
+        await call('format_cells', {
+          table: 2,
+          range: { from_row: 1, from_col: 1, to_row: 1, to_col: 3 },
+          ...fill,
+        })
+      ).output,
+    ).toBe('Coloured 1 cell(s): rows 1-1, columns 1-3 of table 2.')
+    expect(
+      (
+        await call('format_cells', {
+          table: 2,
+          cells: [
+            { row: 1, col: 1 },
+            { row: 2, col: 3 },
+          ],
+          bold: true,
+        })
+      ).output,
+    ).toBe('Formatted 1 cell(s): cells 1.1, 2.3 of table 2.')
+    const many = Array.from({ length: 11 }, (_, index) => ({ row: index + 1, col: 1 }))
+    expect((await call('format_cells', { table: 2, cells: many, ...fill })).output).toBe(
+      'Coloured 1 cell(s): cells 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1, 8.1 and 3 more of table 2.',
+    )
+  })
+
+  it('formats nothing when the cells cannot be read: no cells would mean the whole table', async () => {
+    const { call, bridge } = setup()
+    const text = await call('format_cells', { table: 1, range: 'A1:B2', background: '#000000' })
+    expect(text.isError).toBe(true)
+    expect(text.output).toContain('range must be an object')
+    const both = await call('format_cells', {
+      table: 1,
+      cells: [{ row: 1, col: 1 }],
+      range: { from_row: 1, from_col: 1, to_row: 2, to_col: 2 },
+      background: '#000000',
+    })
+    expect(both.isError).toBe(true)
+    expect(both.output).toContain('not both')
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+  })
+
+  it('hands a border rule to the editor as it came, for the editor to refuse what it cannot draw', async () => {
+    const { call, bridge } = setup()
+    await call('format_cells', {
+      table: 1,
+      borders: [{ sides: ['top', 'bottom'], line: 2, width: 0.5, color: null }],
+    })
+    expect(bridge.formatCells).toHaveBeenLastCalledWith(1, null, {
+      borders: [{ sides: ['top', 'bottom'], line: 2, width: 0.5 }],
+    })
+  })
 })
 
 describe('tables that are already in the document', () => {
@@ -2448,7 +2508,7 @@ describe('the look of a document', () => {
       { heightMm: 12, text: { align: 'center', bold: true, size: 12 } },
     )
     expect(changes.at(-1)?.to).toBe('aiFmtRowHeight 12mm · aiFmtCellText')
-    expect(result.output).toBe('Formatted 1 cell(s).')
+    expect(result.output).toBe('Formatted 1 cell(s): rows 1-3, columns 1-1 of table 1.')
   })
 
   it('makes a small table at the right, with its header row repeated', async () => {
@@ -2473,6 +2533,54 @@ describe('the look of a document', () => {
       ],
       { header: false, widthPercent: 40, place: 'right', repeatHeader: true },
     )
+  })
+
+  it('says which options of a new table did nothing', async () => {
+    const rows = [
+      ['가', '나'],
+      ['1', '2'],
+    ]
+    const plain = setup()
+    const coloured = await plain.call('insert_table', {
+      where: 'end',
+      rows,
+      header_color: '#D9E2F3',
+    })
+    expect(coloured.isError).toBeFalsy()
+    expect(coloured.output).toContain('header_color did nothing: the table has no header row')
+    // the editor answers without acrossColumns where the text runs in one column
+    const oneColumn = await plain.call('insert_table', { where: 'end', rows, across_columns: true })
+    expect(oneColumn.output).toContain('across_columns did nothing: the text runs in one column')
+    const across = setup({
+      insertTable: vi.fn(async () => ({
+        ok: true as const,
+        rows: 2,
+        cols: 2,
+        inTable: false,
+        acrossColumns: true as const,
+      })),
+    })
+    const head = await across.call('insert_table', {
+      where: 'before',
+      anchor: '제목',
+      rows,
+      across_columns: true,
+      width_percent: 50,
+      place: 'center',
+    })
+    expect(head.output).toContain('lying across the columns of the page')
+    expect(head.output).toContain('width_percent and place did nothing')
+    expect(head.output).not.toContain('across_columns did nothing')
+    // nothing is said of an option that took effect
+    const used = await plain.call('insert_table', {
+      where: 'end',
+      rows,
+      header: true,
+      header_color: '#D9E2F3',
+      width_percent: 50,
+      place: 'center',
+    })
+    expect(used.output).not.toContain('did nothing')
   })
 
   it('passes a paragraph border, a background and the width of characters on to the editor', async () => {
@@ -3148,7 +3256,7 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
       diagonal: 'down',
     })
     expect(through.output).toContain('runs through the words of 1.1')
-    expect(result.output).toBe('Formatted 1 cell(s).')
+    expect(result.output).toBe('Formatted 1 cell(s): cells 1.1 of table 1.')
   })
 
   it('gives a picture another width and says what it became', async () => {

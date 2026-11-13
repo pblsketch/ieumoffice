@@ -2399,21 +2399,21 @@ const standInNote = (fonts: AgentStandInFont[] | undefined): string =>
     ? ` This PC does not have ${fonts.map((font) => font.asked).join(', ')}: ${fonts.map((font) => `${font.used} was written for ${font.asked}`).join(', ')}. Tell the user.`
     : ''
 
-/** The border rules of a format_cells call as the editor takes them; null when one is not an object. */
+/**
+ * The border rules of a format_cells call as the editor takes them; null when one is not an
+ * object. What a rule holds is the editor's to check: a value dropped here for its type
+ * would get the default (every side, a solid line) and the call would answer as done.
+ */
 function borderArgs(raw: unknown): AgentBorderRule[] | null {
-  if (!Array.isArray(raw) || raw.length === 0) return null
-  const rules: AgentBorderRule[] = []
-  for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') return null
-    const { sides, line, width, color } = entry as Record<string, unknown>
-    rules.push({
-      ...(typeof sides === 'string' ? { sides: sides as AgentBorderRule['sides'] } : {}),
-      ...(typeof line === 'string' ? { line: line as AgentBorderRule['line'] } : {}),
-      ...(typeof width === 'number' ? { width } : {}),
-      ...(typeof color === 'string' ? { color } : {}),
-    })
-  }
-  return rules
+  if (!Array.isArray(raw) || raw.length === 0 || !raw.every(isRecord)) return null
+  return raw.map(
+    (rule) =>
+      Object.fromEntries(
+        ['sides', 'line', 'width', 'color']
+          .filter((key) => isGiven(rule[key]))
+          .map((key) => [key, rule[key]]),
+      ) as AgentBorderRule,
+  )
 }
 
 /** The format properties of a tool input (a call's own, or one style of a list), in the editor's names. */
@@ -2621,6 +2621,9 @@ const arrow = (from: string, to: string) => `“${quote(from)}” → “${quote
 
 const NO_FORMAT_HELP =
   'Name at least one property to change: bold, italic, underline, strikethrough, font, size, color, highlight, and for a paragraph align, line_spacing, indent, margin_left, margin_right, space_before, space_after or style.'
+
+/** Cells a format_cells answer names one by one; a longer list is counted. */
+const NAMED_CELLS = 8
 
 /** Table places as the model names them: row.col. */
 const cellList = (cells: { row: number; col: number }[]): string =>
@@ -3397,8 +3400,28 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: 1,
           place: result.place,
         })
+        const unused: string[] = []
+        if (tableLook.headerColor !== undefined && !tableLook.header) {
+          unused.push(
+            ' header_color did nothing: the table has no header row. Pass header true with it.',
+          )
+        }
+        if (tableLook.acrossColumns && !result.acrossColumns) {
+          unused.push(
+            ' across_columns did nothing: the text runs in one column, so the table is as wide as the text. For a head across columns, call set_columns first and add the table after it.',
+          )
+        }
+        const fixedAcross = [
+          tableLook.widthPercent !== undefined ? 'width_percent' : '',
+          tableLook.place ? 'place' : '',
+        ].filter(Boolean)
+        if (result.acrossColumns && fixedAcross.length > 0) {
+          unused.push(
+            ` ${fixedAcross.join(' and ')} did nothing: a table across the columns is as wide as the page.`,
+          )
+        }
         return {
-          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${unused.join('')}${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: label('aiToolTable', { rows: result.rows, cols: result.cols }),
         }
@@ -4051,21 +4074,31 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, 'table must be a table number from list_tables')
         }
         const rawCells = call.input.cells
-        const rawRange = call.input.range as Record<string, unknown> | null | undefined
-        if (rawCells !== undefined && rawCells !== null) {
-          if (!Array.isArray(rawCells) || rawCells.length === 0) {
-            return bad(call, 'cells must list at least one {row, col}')
-          }
+        const rawRange = call.input.range
+        if (isGiven(rawCells) && (!Array.isArray(rawCells) || rawCells.length === 0)) {
+          return bad(call, 'cells must list at least one {row, col}')
+        }
+        // cells that cannot be read name no cells, and no cells would mean the whole table
+        if (isGiven(rawRange) && !isRecord(rawRange)) {
+          return bad(call, 'range must be an object: { from_row, from_col, to_row, to_col }')
+        }
+        if (isGiven(rawCells) && isGiven(rawRange)) {
+          return bad(call, 'Nothing was changed: give the cells as cells or as range, not both.')
         }
         let cells: { row: number; col: number }[] | AgentCellBlock | null = null
-        if (Array.isArray(rawCells)) cells = rawCells as { row: number; col: number }[]
-        else if (rawRange && typeof rawRange === 'object') {
+        let where = `the whole table ${table}`
+        if (Array.isArray(rawCells)) {
+          cells = rawCells as { row: number; col: number }[]
+          const more = cells.length > NAMED_CELLS ? ` and ${cells.length - NAMED_CELLS} more` : ''
+          where = `cells ${cellList(cells.slice(0, NAMED_CELLS))}${more} of table ${table}`
+        } else if (isRecord(rawRange)) {
           const corners = [rawRange.from_row, rawRange.from_col, rawRange.to_row, rawRange.to_col]
           if (!corners.every((value) => typeof value === 'number')) {
             return bad(call, 'range needs from_row, from_col, to_row and to_col, counted from 1')
           }
           const [fromRow, fromCol, toRow, toCol] = corners as number[]
           cells = { fromRow: fromRow!, fromCol: fromCol!, toRow: toRow!, toCol: toCol! }
+          where = `rows ${fromRow}-${toRow}, columns ${fromCol}-${toCol} of table ${table}`
         }
         const look: AgentCellLook = {}
         const background = call.input.background
@@ -4163,8 +4196,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         return {
           output:
             (fillOnly
-              ? `Coloured ${result.count} cell(s).`
-              : `Formatted ${result.count} cell(s).`) +
+              ? `Coloured ${result.count} cell(s): ${where}.`
+              : `Formatted ${result.count} cell(s): ${where}.`) +
             (result.crossed
               ? ` The diagonal runs through the words of ${result.crossed.map((cell) => `${cell.row}.${cell.col}`).join(', ')}: empty those cells with fill_cells (text "") unless the user wants the words kept.`
               : ''),
