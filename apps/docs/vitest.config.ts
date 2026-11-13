@@ -59,9 +59,6 @@ export default defineConfig({
       '@genoffice/electron-utils/app-choice-bridge': local(
         '../../packages/electron-utils/src/app-choice-bridge.ts',
       ),
-      '@genoffice/electron-utils/app-choice': local(
-        '../../packages/electron-utils/src/app-choice.ts',
-      ),
       '@genoffice/electron-utils/generated-images': local(
         '../../packages/electron-utils/src/generated-images.ts',
       ),
