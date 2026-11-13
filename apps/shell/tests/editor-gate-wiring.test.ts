@@ -42,7 +42,8 @@ describe('the router', () => {
   it('turns an editor on through the one choice service and installs the gate for other modules', () => {
     expect(main).toMatch(/setChoice: \(patch\) => editorChoiceService\?\.set\(patch\)/)
     expect(main).toMatch(/installEditorGate\(openGate\)/)
-    expect(main).toMatch(/editorChoiceService = registerEditorChoiceIpc\(/)
+    expect(main).toMatch(/const editorChoice = registerEditorChoiceIpc\(/)
+    expect(main).toMatch(/editorChoiceService = editorChoice\b/)
   })
 })
 
