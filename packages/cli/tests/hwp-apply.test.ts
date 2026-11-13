@@ -329,3 +329,182 @@ describe('ieumoffice create --type hwp', () => {
     expect(textOf(out).join('\n')).toContain(title)
   })
 })
+
+describe('a number that counts from 1, and a number with a range', () => {
+  /** every op here is refused by the tool itself: no schema bound stands in front of it */
+  const REFUSED: [op: Record<string, unknown>, says: RegExp][] = [
+    [{ op: 'replace_text', find: '시행', replace: '실시', occurrence: 0 }, /occurrence must be/],
+    [
+      { op: 'insert_paragraphs', where: 'after', anchor: '시행', occurrence: 0, paragraphs: ['x'] },
+      /occurrence must be/,
+    ],
+    [{ op: 'delete_paragraph', find: '시행', occurrence: 0 }, /occurrence must be/],
+    [
+      { op: 'insert_table', where: 'after', anchor: '시행', occurrence: 0, rows: [['a']] },
+      /occurrence must be/,
+    ],
+    [{ op: 'insert_title_box', find: '시행', occurrence: 0 }, /occurrence must be/],
+    [{ op: 'format_text', find: '시행', occurrence: 0, bold: true }, /occurrence must be/],
+    [{ op: 'format_paragraph', find: '시행', occurrence: 0, bold: true }, /occurrence must be/],
+    [
+      { op: 'insert_note', kind: 'footnote', after: '시행', occurrence: 0, text: '주' },
+      /occurrence must be/,
+    ],
+    [{ op: 'insert_break', find: '시행', occurrence: 0, kind: 'page' }, /occurrence must be/],
+    [
+      {
+        op: 'insert_toc',
+        where: 'after',
+        anchor: '시행',
+        occurrence: 0,
+        entries: [{ find: '끝.', level: 1 }],
+      },
+      /occurrence must be/,
+    ],
+    [
+      { op: 'insert_toc', where: 'end', entries: [{ find: '시행', occurrence: 0, level: 1 }] },
+      /occurrence must be/,
+    ],
+    [{ op: 'refresh_toc', title: '시행', occurrence: 0 }, /occurrence must be/],
+    [
+      { op: 'insert_equations', equations: [{ find: '시행', occurrence: 0, script: 'x' }] },
+      /occurrence must be/,
+    ],
+    [
+      { op: 'insert_equations', equations: [{ find: '끝.', occurrence: 1.5, script: 'x' }] },
+      /occurrence must be/,
+    ],
+    [
+      { op: 'style_paragraphs', apply: [{ style: '바탕글', find: '시행', occurrence: 0 }] },
+      /occurrence .* must be/,
+    ],
+    [
+      { op: 'style_paragraphs', apply: [{ style: '바탕글', find: '끝.', occurrence: 1.5 }] },
+      /occurrence .* must be/,
+    ],
+    [{ op: 'read_table', table: 0 }, /no table 0/],
+    [{ op: 'read_table', table: 1, from_row: 0 }, /from_row must be a whole number from 1/],
+    [{ op: 'fill_cells', table: 0, cells: [{ row: 1, col: 1, text: 'x' }] }, /no table 0/],
+    [{ op: 'fill_cells', table: 1, cells: [{ row: 0, col: 1, text: 'x' }] }, /count from 1/],
+    [{ op: 'fill_cells', table: 1, cells: [{ row: 1, col: 0, text: 'x' }] }, /count from 1/],
+    [{ op: 'check_boxes', table: 0, cells: [{ row: 1, col: 1 }] }, /no table 0/],
+    [{ op: 'check_boxes', table: 1, cells: [{ row: 0, col: 1 }] }, /count from 1/],
+    [{ op: 'check_boxes', table: 1, cells: [{ row: 1, col: 0 }] }, /count from 1/],
+    [{ op: 'add_to_table', table: 0, what: 'rows', at: 1 }, /no table 0/],
+    [{ op: 'add_to_table', table: 1, what: 'rows', at: 0 }, /at counts from 1/],
+    [{ op: 'add_to_table', table: 1, what: 'rows', at: 1, count: 0 }, /count must be between 1/],
+    [{ op: 'remove_from_table', table: 0, what: 'rows', at: 1 }, /no table 0/],
+    [{ op: 'remove_from_table', table: 1, what: 'rows', at: 0 }, /at counts from 1/],
+    [
+      { op: 'remove_from_table', table: 1, what: 'rows', at: 1, count: 0 },
+      /count must be between 1/,
+    ],
+    [{ op: 'delete_table', table: 0 }, /no table 0/],
+    ...['table', 'from_row', 'from_col', 'to_row', 'to_col'].map(
+      (name): [Record<string, unknown>, RegExp] => [
+        { op: 'merge_cells', table: 1, from_row: 1, from_col: 1, to_row: 1, to_col: 2, [name]: 0 },
+        /must be whole numbers from 1/,
+      ],
+    ),
+    ...['table', 'row', 'col'].map((name): [Record<string, unknown>, RegExp] => [
+      { op: 'split_cell', table: 1, row: 1, col: 1, rows: 2, cols: 1, [name]: 0 },
+      /must be whole numbers from 1/,
+    ]),
+    [
+      { op: 'split_cell', table: 1, row: 1, col: 1, rows: 0, cols: 1 },
+      /rows and cols must be 1 to 10/,
+    ],
+    [
+      { op: 'split_cell', table: 1, row: 1, col: 1, rows: 2, cols: 0 },
+      /rows and cols must be 1 to 10/,
+    ],
+    [
+      { op: 'split_cell', table: 1, row: 1, col: 1, rows: 99, cols: 1 },
+      /rows and cols must be 1 to 10/,
+    ],
+    [
+      { op: 'split_cell', table: 1, row: 1, col: 1, rows: 2, cols: 11 },
+      /rows and cols must be 1 to 10/,
+    ],
+    [{ op: 'format_cells', table: 0, background: '#EEEEEE' }, /table must be a table number/],
+    [
+      { op: 'format_cells', table: 1, cells: [{ row: 0, col: 1 }], background: '#EEEEEE' },
+      /not in it: 0\.1/,
+    ],
+    ...['from_row', 'from_col', 'to_row', 'to_col'].map(
+      (name): [Record<string, unknown>, RegExp] => [
+        {
+          op: 'format_cells',
+          table: 1,
+          range: { from_row: 1, from_col: 1, to_row: 2, to_col: 2, [name]: 0 },
+          background: '#EEEEEE',
+        },
+        /from_row, from_col, to_row and to_col, counted from 1/,
+      ],
+    ),
+    [{ op: 'check_layout', from_table: 0 }, /must be whole numbers from 1/],
+    [{ op: 'check_layout', from_table: 1, from_row: 0 }, /must be whole numbers from 1/],
+    [{ op: 'fill_field', field: 0, value: 'x' }, /no form fields|no field 0/],
+    [{ op: 'edit_note', note: 0, text: 'x' }, /no such note/],
+    [{ op: 'delete_note', note: 0 }, /no such note/],
+    [{ op: 'set_page_setup', section: 0, paper: 'A4' }, /no such section/],
+    [{ op: 'set_columns', count: 0 }, /count must be a whole number from 1 to 4/],
+    [{ op: 'set_columns', count: 5 }, /count must be a whole number from 1 to 4/],
+    [
+      { op: 'set_note_settings', kind: 'footnote', start_number: 0 },
+      /start_number must be a whole number from 1 to 9999/,
+    ],
+    [
+      { op: 'set_note_settings', kind: 'footnote', start_number: 10000 },
+      /start_number must be a whole number from 1 to 9999/,
+    ],
+    [
+      { op: 'format_paragraph', find: '끝.', list: 'number', list_level: 0 },
+      /list_level must be a whole number from 1 to 7/,
+    ],
+    [
+      { op: 'format_paragraph', find: '끝.', list: 'number', list_level: 8 },
+      /list_level must be a whole number from 1 to 7/,
+    ],
+    [{ op: 'list_paragraph_looks', from: 0 }, /from must be a whole number from 1/],
+    [{ op: 'resize_picture', picture: 0, width_mm: 50 }, /picture must be a number/],
+    [{ op: 'analyze_picture', picture: 0 }, /picture must be a number/],
+  ]
+
+  it('is refused by the tool when it is 0 or out of its range, and nothing is written', async () => {
+    const dir = tempDir()
+    const path = write(dir, 'report.hwp', report().exportHwp())
+    // a footnote, so that note 0 is refused for its number and not for want of notes
+    const noted = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [{ op: 'insert_note', kind: 'footnote', after: '끝.', text: '주석' }]),
+      '--json',
+    ])
+    expect(noted.code, noted.stdout).toBe(0)
+    const before = readFileSync(path)
+    const r = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [{ op: 'list_tables' }, ...REFUSED.map(([op]) => op)]),
+      '--best-effort',
+      '--json',
+    ])
+    expect(r.code, r.stdout).toBe(0)
+    const { detail } = r.json()
+    expect(detail.results.map((result: { op: string }) => result.op)).toEqual(['list_tables'])
+    const failures = new Map<number, { op: string; error: string; reason: string }>(
+      detail.failures.map((failure: { index: number }) => [failure.index, failure]),
+    )
+    REFUSED.forEach(([op, says], index) => {
+      const failure = failures.get(index + 1)
+      expect(failure, JSON.stringify(op)).toMatchObject({ op: op.op, reason: 'op_rejected' })
+      expect(failure!.error, JSON.stringify(op)).toMatch(says)
+    })
+    expect(readFileSync(path).equals(before)).toBe(true)
+  })
+})

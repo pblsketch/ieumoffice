@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentToolCall } from '@genoffice/agent-core'
+import { coerceArgumentFields, type AgentToolCall } from '@genoffice/agent-core'
 import type { AgentMemo, AgentMemoRemovalRefusal } from '../studio-plugin/agent-plugin.mjs'
 import type { AgentBridge } from '../src/renderer/ai/agent-bridge'
 import {
@@ -4182,5 +4182,65 @@ describe('the declared name an undeclared one stands for', () => {
   it('is none when no declared name is near', () => {
     expect(nearestNames('thickness', ['sides', 'line', 'width', 'color'])).toEqual([])
     expect(nearestNames('id', [])).toEqual([])
+  })
+})
+
+describe('a number that counts from 1 or has a range', () => {
+  /** offset counts from 0 and width_pt is pulled into its range by its handler as well */
+  const BOUNDED = new Set(['offset', 'width_pt'])
+
+  it('reaches its handler as the model gave it: the loop has no declared range to pull it into', () => {
+    const tools = setup().skill.tools
+    let checked = 0
+    for (const tool of tools) {
+      const properties = tool.inputSchema.properties as Record<string, { type?: unknown }>
+      for (const [name, schema] of Object.entries(properties)) {
+        if (BOUNDED.has(name) || (schema.type !== 'integer' && schema.type !== 'number')) continue
+        for (const value of [0, -1, 1_000_000]) {
+          expect(coerceArgumentFields(tool, { [name]: value }), `${tool.name}.${name}`).toEqual({
+            [name]: value,
+          })
+        }
+        checked += 1
+      }
+    }
+    expect(checked).toBeGreaterThan(60)
+  })
+
+  it('declares a range only where the handler does the same as the loop, or the loop does not reach', () => {
+    const ranged = new Set<string>()
+    const walk = (schema: unknown, name: string) => {
+      if (typeof schema !== 'object' || schema === null) return
+      const { minimum, maximum, properties, items } = schema as Record<string, unknown>
+      if (minimum !== undefined || maximum !== undefined) ranged.add(name)
+      for (const [key, value] of Object.entries((properties as object | undefined) ?? {})) {
+        walk(value, key)
+      }
+      walk(items, name)
+    }
+    for (const tool of setup().skill.tools) walk(tool.inputSchema, tool.name)
+    // level is an entry of a list, where the loop repairs nothing
+    expect([...ranged].sort()).toEqual(['level', 'offset', 'width_pt'])
+  })
+
+  it('is refused by the selection tools when it is not a whole number from 1', async () => {
+    for (const from of [0, -1, 1.5]) {
+      const { call, setSelection } = setup()
+      setSelection(STRETCH)
+      const read = await call('read_selection', { from })
+      expect(read.isError, String(from)).toBe(true)
+      expect(read.output).toContain('from must be a whole number from 1')
+    }
+    for (const first of [0, -1, 1.5]) {
+      const { call, bridge, setSelection } = setup()
+      setSelection(STRETCH)
+      const replaced = await call('replace_selection', { paragraphs: ['새 글'], first })
+      expect(replaced.isError, String(first)).toBe(true)
+      expect(bridge.replaceSelection).not.toHaveBeenCalled()
+    }
+    const { call, setSelection } = setup()
+    setSelection(STRETCH)
+    expect((await call('read_selection', { from: 2 })).output).toContain('Paragraphs 2–2 of 2')
+    expect((await call('read_selection')).output).toContain('Paragraphs 1–2 of 2')
   })
 })

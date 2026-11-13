@@ -417,7 +417,7 @@ const PARAGRAPH_FORMAT_SCHEMA = {
     enum: ['number', 'bullet', 'none'],
     description: "numbered or bulleted paragraph (the editor's numbering), or none to take it away",
   },
-  list_level: { type: 'integer', minimum: 1, maximum: 7, description: 'level of a list paragraph' },
+  list_level: { type: 'integer', description: 'level of a list paragraph, 1 to 7' },
   bullet: { type: 'string', description: 'the bullet character of list bullet, default ●' },
   tabs: {
     type: 'array',
@@ -466,7 +466,6 @@ const TOC_ENTRY_SCHEMA = {
     find: { type: 'string', description: 'text of the heading, enough to tell it apart' },
     occurrence: {
       type: 'integer',
-      minimum: 1,
       description: 'which occurrence of find, when it occurs more than once',
     },
     level: { type: 'integer', minimum: 1, maximum: 3 },
@@ -578,7 +577,6 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         picture: {
           type: 'integer',
-          minimum: 1,
           description: 'the picture number from list_pictures',
         },
         width_mm: { type: 'number', description: 'the new width in millimetres, 5 to 400' },
@@ -596,7 +594,6 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         picture: {
           type: 'integer',
-          minimum: 1,
           description: 'the picture number from list_pictures',
         },
         question: {
@@ -618,7 +615,7 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         find: { type: 'string', description: 'the exact text to replace, within one paragraph' },
         replace: { type: 'string', description: 'the new text, one line' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
       },
       required: ['find', 'replace'],
     },
@@ -653,7 +650,7 @@ const TOOLS: HwpToolDef[] = [
           type: 'string',
           description: 'exact text found in the paragraph to add next to (not needed for "end")',
         },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         paragraphs: {
           type: 'array',
           items: { type: 'string' },
@@ -672,7 +669,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         find: { type: 'string', description: 'exact text found in the paragraph to remove' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
       },
       required: ['find'],
     },
@@ -687,7 +684,7 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         where: { type: 'string', enum: ['after', 'before', 'end'] },
         anchor: { type: 'string', description: 'exact text found in the paragraph to add next to' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         rows: {
           type: 'array',
           items: { type: 'array', items: { type: 'string' } },
@@ -794,7 +791,7 @@ const TOOLS: HwpToolDef[] = [
                   'the numbered level the paragraphs start with, named by its first number: "1." is every paragraph numbered 1. 2. 3. …, "가)" every 가) 나) 다) …',
               },
               find: { type: 'string', description: 'text of the one paragraph to style' },
-              occurrence: { type: 'integer', minimum: 1 },
+              occurrence: { type: 'integer' },
             },
             required: ['style'],
           },
@@ -813,7 +810,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         find: { type: 'string', description: 'text of the title paragraph' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         look: {
           type: 'string',
           enum: ['bands', 'lines', 'box', 'shaded'],
@@ -861,7 +858,7 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         where: { type: 'string', enum: ['after', 'before', 'end'] },
         anchor: { type: 'string', description: 'exact text found in the paragraph to add next to' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         url: { type: 'string', description: 'direct image URL (https)' },
         attachment: {
           type: 'string',
@@ -887,7 +884,7 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         where: { type: 'string', enum: ['after', 'before', 'end'] },
         anchor: { type: 'string', description: 'exact text found in the paragraph to add next to' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         prompt: { type: 'string', description: 'detailed English description of the picture' },
         aspectRatio: {
           type: 'string',
@@ -912,7 +909,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         find: { type: 'string', description: 'the exact text to format, within one paragraph' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         all: { type: 'boolean', description: 'format every occurrence of the text' },
         ...TEXT_FORMAT_SCHEMA,
       },
@@ -949,7 +946,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         find: { type: 'string', description: 'exact text found in the paragraph to format' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         ...PARAGRAPH_FORMAT_SCHEMA,
         ...TEXT_FORMAT_SCHEMA,
       },
@@ -971,7 +968,6 @@ const TOOLS: HwpToolDef[] = [
         },
         first: {
           type: 'integer',
-          minimum: 1,
           description: 'replace only the paragraphs from this number of the selection on',
         },
       },
@@ -986,7 +982,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        from: { type: 'integer', minimum: 1, description: 'paragraph to start from (default 1)' },
+        from: { type: 'integer', description: 'paragraph to start from (default 1)' },
       },
     },
   },
@@ -1070,11 +1066,11 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'table number from list_tables' },
-        from_row: { type: 'integer', minimum: 1 },
-        from_col: { type: 'integer', minimum: 1 },
-        to_row: { type: 'integer', minimum: 1 },
-        to_col: { type: 'integer', minimum: 1 },
+        table: { type: 'integer', description: 'table number from list_tables' },
+        from_row: { type: 'integer' },
+        from_col: { type: 'integer' },
+        to_row: { type: 'integer' },
+        to_col: { type: 'integer' },
       },
       required: ['table', 'from_row', 'from_col', 'to_row', 'to_col'],
     },
@@ -1087,11 +1083,11 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'table number from list_tables' },
-        row: { type: 'integer', minimum: 1 },
-        col: { type: 'integer', minimum: 1 },
-        rows: { type: 'integer', minimum: 1, maximum: 10 },
-        cols: { type: 'integer', minimum: 1, maximum: 10 },
+        table: { type: 'integer', description: 'table number from list_tables' },
+        row: { type: 'integer' },
+        col: { type: 'integer' },
+        rows: { type: 'integer', description: '1 to 10' },
+        cols: { type: 'integer', description: '1 to 10' },
       },
       required: ['table', 'row', 'col'],
     },
@@ -1104,14 +1100,14 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'table number from list_tables' },
+        table: { type: 'integer', description: 'table number from list_tables' },
         cells: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              row: { type: 'integer', minimum: 1 },
-              col: { type: 'integer', minimum: 1 },
+              row: { type: 'integer' },
+              col: { type: 'integer' },
             },
             required: ['row', 'col'],
           },
@@ -1119,10 +1115,10 @@ const TOOLS: HwpToolDef[] = [
         range: {
           type: 'object',
           properties: {
-            from_row: { type: 'integer', minimum: 1 },
-            from_col: { type: 'integer', minimum: 1 },
-            to_row: { type: 'integer', minimum: 1 },
-            to_col: { type: 'integer', minimum: 1 },
+            from_row: { type: 'integer' },
+            from_col: { type: 'integer' },
+            to_row: { type: 'integer' },
+            to_col: { type: 'integer' },
           },
           required: ['from_row', 'from_col', 'to_row', 'to_col'],
           description:
@@ -1202,12 +1198,10 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         from_table: {
           type: 'integer',
-          minimum: 1,
           description: 'table number from list_tables to start from (default 1)',
         },
         from_row: {
           type: 'integer',
-          minimum: 1,
           description: 'row of from_table to start from (default 1)',
         },
       },
@@ -1220,8 +1214,8 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'the table number from list_tables' },
-        from_row: { type: 'integer', minimum: 1, description: 'row to start from (default 1)' },
+        table: { type: 'integer', description: 'the table number from list_tables' },
+        from_row: { type: 'integer', description: 'row to start from (default 1)' },
       },
       required: ['table'],
     },
@@ -1234,14 +1228,14 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'the table number from list_tables' },
+        table: { type: 'integer', description: 'the table number from list_tables' },
         cells: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              row: { type: 'integer', minimum: 1 },
-              col: { type: 'integer', minimum: 1 },
+              row: { type: 'integer' },
+              col: { type: 'integer' },
               text: { type: 'string' },
             },
             required: ['row', 'col', 'text'],
@@ -1264,14 +1258,14 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'the table number from list_tables' },
+        table: { type: 'integer', description: 'the table number from list_tables' },
         cells: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              row: { type: 'integer', minimum: 1 },
-              col: { type: 'integer', minimum: 1 },
+              row: { type: 'integer' },
+              col: { type: 'integer' },
               choice: {
                 type: 'string',
                 description: 'the words beside the box, when the cell has more than one',
@@ -1293,11 +1287,11 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'the table number from list_tables' },
+        table: { type: 'integer', description: 'the table number from list_tables' },
         what: { type: 'string', enum: ['rows', 'columns'] },
-        at: { type: 'integer', minimum: 1, description: 'the row or column to add next to' },
+        at: { type: 'integer', description: 'the row or column to add next to' },
         where: { type: 'string', enum: ['after', 'before'], description: 'default "after"' },
-        count: { type: 'integer', minimum: 1, description: 'how many to add (default 1)' },
+        count: { type: 'integer', description: 'how many to add (default 1)' },
       },
       required: ['table', 'what', 'at'],
     },
@@ -1310,10 +1304,10 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'the table number from list_tables' },
+        table: { type: 'integer', description: 'the table number from list_tables' },
         what: { type: 'string', enum: ['rows', 'columns'] },
-        at: { type: 'integer', minimum: 1, description: 'the first row or column to remove' },
-        count: { type: 'integer', minimum: 1, description: 'how many to remove (default 1)' },
+        at: { type: 'integer', description: 'the first row or column to remove' },
+        count: { type: 'integer', description: 'how many to remove (default 1)' },
       },
       required: ['table', 'what', 'at'],
     },
@@ -1326,7 +1320,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        table: { type: 'integer', minimum: 1, description: 'the table number from list_tables' },
+        table: { type: 'integer', description: 'the table number from list_tables' },
       },
       required: ['table'],
     },
@@ -1346,7 +1340,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        field: { type: 'integer', minimum: 1, description: 'the field number from list_fields' },
+        field: { type: 'integer', description: 'the field number from list_fields' },
         value: { type: 'string' },
       },
       required: ['field', 'value'],
@@ -1361,7 +1355,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         anchor: { type: 'string', description: 'text of the paragraph it goes next to' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         where: { type: 'string', enum: ['after', 'before', 'end'] },
         title: { type: 'string', description: 'the title line, for example 차 례; empty for none' },
         entries: { type: 'array', items: TOC_ENTRY_SCHEMA, minItems: 1, maxItems: 100 },
@@ -1378,7 +1372,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'the title line of the table of contents' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
       },
       required: ['title'],
     },
@@ -1402,7 +1396,6 @@ const TOOLS: HwpToolDef[] = [
         after: { type: 'string', description: 'the body text the mark goes right after' },
         occurrence: {
           type: 'integer',
-          minimum: 1,
           description: 'which occurrence of after, when it occurs more than once',
         },
         text: NOTE_TEXT_SCHEMA,
@@ -1417,7 +1410,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        note: { type: 'integer', minimum: 1, description: 'the note number from list_notes' },
+        note: { type: 'integer', description: 'the note number from list_notes' },
         text: NOTE_TEXT_SCHEMA,
       },
       required: ['note', 'text'],
@@ -1431,7 +1424,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        note: { type: 'integer', minimum: 1, description: 'the note number from list_notes' },
+        note: { type: 'integer', description: 'the note number from list_notes' },
       },
       required: ['note'],
     },
@@ -1485,7 +1478,7 @@ const TOOLS: HwpToolDef[] = [
           description: 'one character after the number, or "" for none; 1) has suffix ")"',
         },
         superscript: { type: 'boolean', description: 'raise the number at the note itself' },
-        start_number: { type: 'integer', minimum: 1, maximum: 9999 },
+        start_number: { type: 'integer', description: '1 to 9999' },
         numbering: {
           type: 'string',
           enum: ['continue', 'restartSection', 'restartPage'],
@@ -1533,7 +1526,6 @@ const TOOLS: HwpToolDef[] = [
         margin_gutter: { type: 'number', description: 'binding margin, mm' },
         section: {
           type: 'integer',
-          minimum: 1,
           description: 'only this section (from 1); default the whole document',
         },
       },
@@ -1554,7 +1546,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        count: { type: 'integer', minimum: 1, maximum: 4, description: 'how many columns' },
+        count: { type: 'integer', description: 'how many columns, 1 to 4' },
         gap_mm: {
           type: 'number',
           description: 'the gap between the columns in millimetres; default 8',
@@ -1572,7 +1564,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         find: { type: 'string', description: 'text of the paragraph that is to start anew' },
-        occurrence: { type: 'integer', minimum: 1 },
+        occurrence: { type: 'integer' },
         kind: { type: 'string', enum: ['page', 'column'] },
       },
       required: ['find', 'kind'],
@@ -1614,7 +1606,7 @@ const TOOLS: HwpToolDef[] = [
                 description:
                   'the placeholder, or other text of the paragraph the equation goes into',
               },
-              occurrence: { type: 'integer', minimum: 1 },
+              occurrence: { type: 'integer' },
               script: { type: 'string', description: 'the equation in equation script, one line' },
               keep_text: {
                 type: 'boolean',
@@ -1714,7 +1706,6 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         from: {
           type: 'integer',
-          minimum: 1,
           description: 'the paragraph to start from, as numbered here (default 1)',
         },
       },
@@ -2045,7 +2036,7 @@ export function nearestNames(name: string, declared: readonly string[]): string[
   const lower = name.toLowerCase()
   const close = declared
     .map((candidate) => ({ candidate, distance: editDistance(lower, candidate) }))
-    .filter((entry) => entry.distance <= 2 && entry.distance * 2 < entry.candidate.length)
+    .filter((entry) => entry.distance <= 2 && entry.distance * 4 < entry.candidate.length)
     .sort((a, b) => a.distance - b.distance)
   return close.slice(0, 1).map((entry) => entry.candidate)
 }
@@ -3578,7 +3569,10 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'read_selection': {
         if (!selection) return bad(call, NO_SELECTION_HELP)
         const raw = call.input.from
-        const from = typeof raw === 'number' && Number.isInteger(raw) && raw > 1 ? raw : 1
+        if (isGiven(raw) && (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1)) {
+          return bad(call, 'from must be a whole number from 1')
+        }
+        const from = typeof raw === 'number' ? raw : 1
         if (from > selection.length) {
           return bad(call, `The selection has ${selection.length} paragraph(s).`)
         }

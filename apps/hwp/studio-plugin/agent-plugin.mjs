@@ -3268,7 +3268,7 @@ function styleBatchOf(spec) {
         startsWith: null,
         numbered: null,
         find,
-        occurrence: Number.isInteger(given.occurrence) ? given.occurrence : null,
+        occurrence: given.occurrence ?? null,
       })
     }
   }
@@ -8230,7 +8230,7 @@ export const agentPlugin = {
           }
           return {
             find: item.find,
-            occurrence: Number.isInteger(item.occurrence) ? item.occurrence : null,
+            occurrence: item.occurrence ?? null,
             script,
             replace: item.replace !== false,
           }
