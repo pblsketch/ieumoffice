@@ -132,7 +132,9 @@ describe('the generate window', () => {
 
   it('its preload exposes the choice to read and hear, never to change', () => {
     const preload = read('../src/preload/generate.ts')
-    expect(preload).toMatch(/contextBridge\.exposeInMainWorld\(GENERATE_CHOICE\.bridgeKey, \{\n {2}get:/)
+    expect(preload).toMatch(
+      /contextBridge\.exposeInMainWorld\(GENERATE_CHOICE\.bridgeKey, \{\n {2}get:/,
+    )
     expect(preload).toMatch(/onChange: /)
     expect(preload).not.toMatch(/choice\.set\b|stopAllAiJobs|markPickSeen|set-editor-choice/)
   })
