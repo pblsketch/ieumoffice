@@ -25,20 +25,33 @@ export const ALL_ON_APP_CHOICE_STATE: AppChoiceState = Object.freeze({
   locked: false,
 })
 
+/**
+ * What a screen with a shell to ask holds until the first answer: nothing
+ * turned off, but AI parts hidden, so they never flash in for a person who
+ * turned AI off. For a person with AI on they appear a moment later.
+ */
+export const PENDING_APP_CHOICE_STATE: AppChoiceState = Object.freeze({
+  off: Object.freeze([]) as readonly string[],
+  aiFeatures: false,
+  locked: false,
+})
+
 /** whether a screen shows its AI parts */
 export function aiVisible(state: AppChoiceState): boolean {
   return state.aiFeatures
 }
 
 /**
- * The choice that applies, kept current. Until the first answer arrives (and
- * with no source, an editor running on its own, or a failing one) it is
- * everything on and AI on: screens look as they did before this setting
- * existed, and the main process refuses AI runs while AI is off anyway. A
- * change heard before the first answer wins over that answer.
+ * The choice that applies, kept current. With no source (an editor running
+ * on its own) it is everything on and AI on, as before this setting existed;
+ * a failing source falls back to that too. With a source, until its first
+ * answer it is `PENDING_APP_CHOICE_STATE` (AI parts hidden). A change heard
+ * before the first answer wins over that answer.
  */
 export function useAppChoice(source: AppChoiceSource | undefined): AppChoiceState {
-  const [state, setState] = useState<AppChoiceState>(ALL_ON_APP_CHOICE_STATE)
+  const [state, setState] = useState<AppChoiceState>(
+    source ? PENDING_APP_CHOICE_STATE : ALL_ON_APP_CHOICE_STATE,
+  )
 
   useEffect(() => {
     if (!source) return
@@ -53,7 +66,8 @@ export function useAppChoice(source: AppChoiceSource | undefined): AppChoiceStat
         if (alive && !heard) setState(choice)
       },
       () => {
-        // no shell answering: stay with everything on
+        // no shell answering: everything on, as an editor on its own
+        if (alive && !heard) setState(ALL_ON_APP_CHOICE_STATE)
       },
     )
     return () => {

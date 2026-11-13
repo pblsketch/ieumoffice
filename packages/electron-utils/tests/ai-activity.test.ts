@@ -102,3 +102,56 @@ describe('AI job registry', () => {
     expect(seen).toEqual([1, 2, 1, 0])
   })
 })
+
+describe('AI job groups', () => {
+  afterEach(async () => {
+    vi.useRealTimers()
+    await stopAllAiJobs()
+  })
+
+  it('counts the jobs of one group once', () => {
+    track(registerAiJob({ kind: 'chat', stop: () => undefined, group: 'tab:1' }))
+    track(registerAiJob({ kind: 'chat', stop: () => undefined, group: 'tab:1' }))
+    track(registerAiJob({ kind: 'chat', stop: () => undefined, group: 'tab:2' }))
+    track(registerAiJob({ kind: 'document-job', stop: () => undefined }))
+    expect(runningAiJobCount()).toBe(3)
+  })
+
+  it('keeps a group counted between two calls of a turn, then forgets it', () => {
+    vi.useFakeTimers()
+    const first = registerAiJob({
+      kind: 'chat',
+      stop: () => undefined,
+      group: 'tab:1',
+      lingerMs: 3000,
+    })
+    first()
+    expect(runningAiJobCount()).toBe(1)
+    // the turn's next call arrives inside the pause: still one job
+    const second = registerAiJob({
+      kind: 'chat',
+      stop: () => undefined,
+      group: 'tab:1',
+      lingerMs: 3000,
+    })
+    expect(runningAiJobCount()).toBe(1)
+    second()
+    vi.advanceTimersByTime(2999)
+    expect(runningAiJobCount()).toBe(1)
+    vi.advanceTimersByTime(1)
+    expect(runningAiJobCount()).toBe(0)
+  })
+
+  it('stop-all forgets a lingering group and counts it as stopped', async () => {
+    vi.useFakeTimers()
+    const end = registerAiJob({
+      kind: 'chat',
+      stop: () => undefined,
+      group: 'tab:1',
+      lingerMs: 3000,
+    })
+    end()
+    expect(await stopAllAiJobs()).toBe(1)
+    expect(runningAiJobCount()).toBe(0)
+  })
+})

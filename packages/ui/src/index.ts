@@ -630,6 +630,7 @@ export {
 export { createImeEnterGuard, useImeEnterGuard, type ImeEnterGuard } from './ime-enter'
 export {
   ALL_ON_APP_CHOICE_STATE,
+  PENDING_APP_CHOICE_STATE,
   aiVisible,
   useAppChoice,
   type AppChoiceSource,

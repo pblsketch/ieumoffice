@@ -8969,8 +8969,13 @@ function buildEpubMenu(): void {
             if (tab) void requestEpubSave(tab.webContents, 'saveAs')
           },
         },
-        { type: 'separator' },
-        { label: tm('menuTranslateBook'), click: toBook('translate-book') },
+        // book translation runs AI: gone while AI is off (the menu is rebuilt on the switch)
+        { type: 'separator', visible: aiFeaturesOn() },
+        {
+          label: tm('menuTranslateBook'),
+          click: toBook('translate-book'),
+          visible: aiFeaturesOn(),
+        },
         { type: 'separator' },
         {
           label: tm('menuClose'),

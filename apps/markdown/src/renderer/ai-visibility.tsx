@@ -8,6 +8,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import {
   ALL_ON_APP_CHOICE_STATE,
+  PENDING_APP_CHOICE_STATE,
   aiVisible,
   useAppChoice,
   type AppChoiceSource,
@@ -44,7 +45,8 @@ export function AiVisibilityProvider({
   children: ReactNode
 }) {
   const live = useAppChoice(source)
-  // useAppChoice hands out the shared all-on constant until it heard the source
-  const visible = aiVisible(live === ALL_ON_APP_CHOICE_STATE ? initial : live)
+  // useAppChoice hands out a shared constant until it heard the source
+  const heard = live !== ALL_ON_APP_CHOICE_STATE && live !== PENDING_APP_CHOICE_STATE
+  const visible = aiVisible(heard ? live : initial)
   return <AiVisibleContext.Provider value={visible}>{children}</AiVisibleContext.Provider>
 }

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ALL_ON_APP_CHOICE_STATE,
+  PENDING_APP_CHOICE_STATE,
   aiVisible,
   useAppChoice,
   type AppChoiceSource,
@@ -59,10 +60,10 @@ describe('useAppChoice', () => {
     }
   }
 
-  it('starts with everything on and AI on, then shows the answer', async () => {
+  it('hides AI parts until the first answer, then shows the answer', async () => {
     const { source } = fakeSource(Promise.resolve(off))
     await act(async () => root.render(createElement(Probe, { source })))
-    expect(seen[0]).toEqual(ALL_ON_APP_CHOICE_STATE)
+    expect(seen[0]).toEqual(PENDING_APP_CHOICE_STATE)
     expect(seen.at(-1)).toEqual(off)
   })
 

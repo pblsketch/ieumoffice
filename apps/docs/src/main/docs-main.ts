@@ -288,6 +288,9 @@ import { normalizeReadUrlRequest, unexpectedReadUrlFailure } from './read-url-ip
 import { initDocsAutoUpdater } from './updater'
 import { registerZoteroIpc, teardownZoteroIpc } from './zotero-ipc'
 
+/** how long a chat turn still counts as running between two model calls (tunable) */
+const CHAT_TURN_LINGER_MS = 3_000
+
 /**
  * Docs main-process logic as an embeddable module: no top-level side effects.
  * Standalone mode (apps/docs entry) calls startDocsStandalone(); the unified
@@ -4599,7 +4602,13 @@ export function registerAiIpc(): void {
     // one running AI job while this reply streams (every editor's chat goes
     // through here): turning AI off stops it the way the screen's Stop does,
     // and the subscription program ends with the signal
-    const endJob = registerAiJob({ kind: 'chat', stop: () => controller.abort() })
+    const endJob = registerAiJob({
+      kind: 'chat',
+      stop: () => controller.abort(),
+      // one tab's turn is one job, its parallel calls and the pause between them included
+      group: `tab:${event.sender.id}`,
+      lingerMs: CHAT_TURN_LINGER_MS,
+    })
     // deltas go out in short batches, everything else in order behind them
     const out = createChunkCoalescer<AiStreamChunk>(send)
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
