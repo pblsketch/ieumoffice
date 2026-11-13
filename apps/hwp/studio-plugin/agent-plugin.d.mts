@@ -291,8 +291,18 @@ export interface AgentPageNumberChange {
 /** A header or footer as the model reads it. */
 export type AgentHeaderFooterState =
   | { exists: false }
-  /** plain: one line of text and fields, which setHeaderFooter may rewrite */
-  | { exists: true; text: string; plain: boolean }
+  /**
+   * plain: one line of text and fields, which setHeaderFooter may rewrite. Its text has the
+   * page fields as {page} and {pages}; align and size are told for a plain one, align only
+   * when it is one setHeaderFooter writes.
+   */
+  | {
+      exists: true
+      text: string
+      plain: boolean
+      align?: 'left' | 'center' | 'right'
+      size?: number
+    }
 
 export interface AgentPageLayout {
   sections: number
@@ -373,6 +383,7 @@ export type AgentPageNumberResult =
 export interface AgentHeaderFooterChange {
   /** one line; {page} is the page number and {pages} the number of pages; empty removes it */
   text: string
+  /** left out, a line that is there keeps its alignment and a new one is centred */
   align?: 'left' | 'center' | 'right' | null
   /** font size in points */
   size?: number | null

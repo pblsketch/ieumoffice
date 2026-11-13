@@ -212,6 +212,22 @@ describe('page setup', () => {
     expect(() => plugin.setPageSetup({ width: 100 }, null)).toThrow(/go together/)
     expect(steps()).toBe(0)
   })
+
+  it('takes a page setup back as it was read: the paper together with its own size', () => {
+    const { plugin } = open()
+    plugin.setPageSetup({ paper: 'B5', orientation: 'landscape', margins: { left: 22 } }, null)
+    const [read] = plugin.pageSetup().sections
+    expect(read).toMatchObject({ paper: 'B5', width: 182, height: 257 })
+    plugin.setPageSetup({ paper: 'A4', orientation: 'portrait', margins: { left: 30 } }, null)
+    expect(plugin.setPageSetup(read, null)).toMatchObject({ ok: true, pageSetup: read })
+    expect(plugin.pageSetup().sections).toEqual([read])
+    // a size that is not the paper's is still two answers to one question
+    expect(() => plugin.setPageSetup({ paper: 'A4', width: 182, height: 257 }, null)).toThrow(
+      /paper A4 is 210 by 297 millimetres/,
+    )
+    expect(() => plugin.setPageSetup({ paper: 'A4', width: 210 }, null)).toThrow(/paper A4 is/)
+    expect(plugin.pageSetup().sections).toEqual([read])
+  })
 })
 
 describe('numbered and bulleted paragraphs', () => {

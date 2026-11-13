@@ -5279,7 +5279,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const change: { text: string; align?: 'left' | 'center' | 'right'; size?: number } = {
           text,
         }
-        if (align === 'left' || align === 'center' || align === 'right') change.align = align
+        // an alignment the editor does not write is the editor's to refuse: dropped here, the
+        // line would keep the one it has and the call would answer as done
+        if (isGiven(align)) change.align = align as 'left' | 'center' | 'right'
         if (typeof call.input.size === 'number') change.size = call.input.size
         const outcome = await changeWithMemoApproval(
           () => bridge.setHeaderFooter(kind, change),

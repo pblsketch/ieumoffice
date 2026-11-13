@@ -48,6 +48,7 @@ import {
   borderRuleOf,
   cellBorders,
   contrastRatio,
+  HEADER_FIELD_TOKENS,
   headerPieces,
   pageNumberOf as pageNumberSettingOf,
   paragraphBorderOf,
@@ -2301,7 +2302,8 @@ function pageSetupOf(doc, sec) {
 /**
  * A page setup request, checked: what to give the engine's setPageDef (only what was asked
  * for), or a failure. `paper` names a size, or `width` and `height` give one (millimetres,
- * portrait); `orientation` turns it; `margins` sets the margins named.
+ * portrait), or both when they are the same size; `orientation` turns it; `margins` sets the
+ * margins named.
  */
 function pageSetupChangeOf(spec) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
@@ -2320,8 +2322,16 @@ function pageSetupChangeOf(spec) {
     if (!size) {
       throw fail('BAD_ARGUMENT', `paper must be one of ${Object.keys(PAPER_SIZES).join(', ')}`)
     }
-    if (given('width') || given('height')) {
-      throw fail('BAD_ARGUMENT', 'give paper or width and height, not both')
+    // what pageSetupOf reads names a paper and its size together: handed back, they agree
+    const agrees = (value, mm) => typeof value === 'number' && Math.abs(value - mm) < 1
+    if (
+      (given('width') || given('height')) &&
+      !(agrees(spec.width, size[0]) && agrees(spec.height, size[1]))
+    ) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `paper ${spec.paper} is ${size[0]} by ${size[1]} millimetres: give paper, or width and height, not a size that differs from the paper`,
+      )
     }
     out.width = hwpunitOf(size[0])
     out.height = hwpunitOf(size[1])
@@ -3378,11 +3388,40 @@ function plainHeader(found) {
   )
 }
 
-/** A header or footer's text as the model reads it: a field's mark shown as a placeholder. */
+/** The mark the engine leaves in a header's text for a field of type `type`. */
+const headerFieldMark = (type) => String.fromCharCode(0x14 + type)
+/** The token setHeaderFooter takes for a field, by the mark it reads back as. */
+const HEADER_TOKEN_OF_MARK = new Map(
+  Object.entries(HEADER_FIELD_TOKENS).map(([token, type]) => [headerFieldMark(type), token]),
+)
+
+/**
+ * A header or footer's text as the model reads it: a page field as the token that writes
+ * it, so the text can be handed back as it was read; any other field as a placeholder.
+ */
 const headerTextOf = (text) =>
   String(text ?? '')
-    .replace(HEADER_FIELD_MARKS, '{field}')
+    .replace(HEADER_FIELD_MARKS, (mark) => HEADER_TOKEN_OF_MARK.get(mark) ?? '{field}')
     .replace(ANY_CONTROL, ' ')
+
+/**
+ * How a one-line header or footer is set: its alignment, when it is one setHeaderFooter
+ * writes, and the size of its text in points. Nothing from an engine without the calls.
+ */
+function headerLookOf(doc, isHeader, text) {
+  const look = {}
+  try {
+    const align = parse(doc.getParaPropertiesInHf(0, isHeader, 0, 0)).alignment
+    if (TABLE_ALIGNS.includes(align)) look.align = align
+    if (text.length > 0) {
+      const size = parse(doc.getCharPropertiesInHeaderFooter(0, isHeader, 0, 0, 0)).fontSize
+      if (Number.isFinite(size)) look.size = size / 100
+    }
+  } catch {
+    // not known
+  }
+  return look
+}
 
 /**
  * Give the header row of a table just pasted in body paragraph `place` its grey, cell by
@@ -8104,7 +8143,13 @@ export const agentPlugin = {
           const read = (isHeader) => {
             const found = parse(doc.getHeaderFooter(0, isHeader, 0))
             if (found.exists !== true) return { exists: false }
-            return { exists: true, text: headerTextOf(found.text), plain: plainHeader(found) }
+            const plain = plainHeader(found)
+            return {
+              exists: true,
+              text: headerTextOf(found.text),
+              plain,
+              ...(plain ? headerLookOf(doc, isHeader, String(found.text ?? '')) : {}),
+            }
           }
           let pageNumber = null
           try {
@@ -8523,8 +8568,9 @@ export const agentPlugin = {
       /**
        * Write the header or the footer of the document (its first section, on every page):
        * one line of text, in which `{page}` is the page number and `{pages}` the number of
-       * pages. `spec.align` is left, center or right, and `spec.size` the font size in
-       * points. An empty text removes it. A header or footer that holds more than one line
+       * pages. `spec.align` is left, center or right (left out, a line that is there keeps
+       * its alignment and a new one is centred), and `spec.size` the font size in points. An
+       * empty text removes it. A header or footer that holds more than one line
        * of text and fields (a table, a picture, several paragraphs) was laid out by hand and
        * is refused (`not_plain`). One undo step.
        */
@@ -8543,8 +8589,8 @@ export const agentPlugin = {
             `text must be one line of at most ${MAX_HEADER_TEXT} characters`,
           )
         }
-        const align = given.align ?? 'center'
-        if (!TABLE_ALIGNS.includes(align)) {
+        const align = given.align ?? null
+        if (align !== null && !TABLE_ALIGNS.includes(align)) {
           throw fail('BAD_ARGUMENT', `align must be one of ${TABLE_ALIGNS.join(', ')}`)
         }
         let size = null
@@ -8595,10 +8641,19 @@ export const agentPlugin = {
               }
               offset = done.charOffset
             }
-            expectOk(
-              doc.applyParaFormatInHf(0, isHeader, 0, 0, JSON.stringify({ alignment: align })),
-              `align the ${kind}`,
-            )
+            // a rewrite that names no alignment keeps the one the line has
+            if (align !== null || !exists) {
+              expectOk(
+                doc.applyParaFormatInHf(
+                  0,
+                  isHeader,
+                  0,
+                  0,
+                  JSON.stringify({ alignment: align ?? 'center' }),
+                ),
+                `align the ${kind}`,
+              )
+            }
             if (size !== null && offset > 0) {
               expectOk(
                 doc.applyCharFormatInHeaderFooter(

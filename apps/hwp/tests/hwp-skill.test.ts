@@ -2940,6 +2940,46 @@ describe('the look of a document', () => {
     const result = await call('read_page_layout')
     expect(bridge.pageLayout).toHaveBeenCalled()
     expect(JSON.parse(result.output)).toMatchObject({ pageNumber: null, header: { exists: false } })
+    // the gap between columns under the name set_columns takes
+    expect(JSON.parse(result.output).columns).toEqual({ count: 1, gap_mm: 0 })
+  })
+
+  it('takes a footer back as read_page_layout gave it, and hands an alignment on as it came', async () => {
+    const { call, bridge } = setup({
+      pageLayout: vi.fn(async () => ({
+        sections: 1,
+        pages: 2,
+        columns: { count: 1, gapMm: 0 },
+        pageBorder: null,
+        pageNumber: null,
+        header: { exists: false as const },
+        footer: {
+          exists: true as const,
+          text: '{page} / {pages}',
+          plain: true,
+          align: 'right' as const,
+          size: 9,
+        },
+      })),
+    })
+    const { footer } = JSON.parse((await call('read_page_layout')).output)
+    const written = await call('set_header_footer', { kind: 'footer', ...footer })
+    expect(written.isError).toBeFalsy()
+    expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', {
+      text: '{page} / {pages}',
+      align: 'right',
+      size: 9,
+    })
+    expect(written.output).toMatch(/nothing was done with them: "exists", "plain"\.$/)
+    // no alignment named: none is sent, and the editor keeps the one the line has
+    await call('set_header_footer', { kind: 'footer', text: '끝' })
+    expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', { text: '끝' })
+    // one the editor does not write is the editor's to refuse, not dropped here
+    await call('set_header_footer', { kind: 'footer', text: '끝', align: 'justify' })
+    expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', {
+      text: '끝',
+      align: 'justify',
+    })
   })
 
   it('tells the model which document fonts this PC has, when that is known', async () => {

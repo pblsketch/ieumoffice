@@ -553,9 +553,21 @@ describe('page number, header and footer', () => {
       kind: 'footer',
     })
     const layout = plugin.pageLayout()
-    expect(layout.header).toEqual({ exists: true, text: '○○초등학교 교무기획부', plain: true })
-    expect(layout.footer).toMatchObject({ exists: true, plain: true })
-    expect((layout.footer as { text: string }).text).toBe('운영 계획 | {field} / {field}')
+    expect(layout.header).toEqual({
+      exists: true,
+      text: '○○초등학교 교무기획부',
+      plain: true,
+      align: 'right',
+      size: 9,
+    })
+    // the page fields read back as the tokens that write them; a new line is centred
+    expect(layout.footer).toEqual({
+      exists: true,
+      text: '운영 계획 | {page} / {pages}',
+      plain: true,
+      align: 'center',
+      size: 10,
+    })
     for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
       const again = new HwpDocument(bytes)
       expect((JSON.parse(again.getHeaderFooter(0, true, 0)) as { text: string }).text).toBe(
@@ -565,9 +577,15 @@ describe('page number, header and footer', () => {
         true,
       )
     }
-    // the same call again replaces the text instead of adding to it
+    // the same call again replaces the text instead of adding to it, and a call that names
+    // no alignment leaves the line where it stands
     plugin.setHeaderFooter('header', { text: '교무기획부' })
-    expect(plugin.pageLayout().header).toMatchObject({ text: '교무기획부' })
+    expect(plugin.pageLayout().header).toMatchObject({ text: '교무기획부', align: 'right' })
+    plugin.setHeaderFooter('header', { text: '교무기획부', align: 'left' })
+    expect(plugin.pageLayout().header).toMatchObject({ align: 'left' })
+    expect(() =>
+      plugin.setHeaderFooter('header', { text: '교무기획부', align: 'justify' as never }),
+    ).toThrow(/align must be one of left, center, right/)
     expect(plugin.setHeaderFooter('header', { text: '' })).toMatchObject({
       ok: true,
       removed: true,
@@ -577,6 +595,33 @@ describe('page number, header and footer', () => {
       ok: false,
       reason: 'not_there',
     })
+  })
+
+  it('takes a footer back as it was read, page fields and all', () => {
+    const { plugin, doc } = open()
+    plugin.setHeaderFooter('footer', { text: '{page} / {pages}', align: 'right', size: 9 })
+    const {
+      exists: _exists,
+      plain: _plain,
+      ...read
+    } = plugin.pageLayout().footer as {
+      exists: true
+      plain: boolean
+      text: string
+      align?: 'left' | 'center' | 'right'
+      size?: number
+    }
+    expect(read).toEqual({ text: '{page} / {pages}', align: 'right', size: 9 })
+    plugin.setHeaderFooter('footer', { text: '다른 글', align: 'left', size: 12 })
+    plugin.setHeaderFooter('footer', read)
+    expect(plugin.pageLayout().footer).toMatchObject(read)
+    // the fields are fields again, not the words of the tokens: a saved copy draws the numbers
+    for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+      const page = new HwpDocument(bytes).renderPageSvgWithProfile(0, 'print')
+      const drawn = [...page.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]).join('')
+      expect(drawn.endsWith('1/1')).toBe(true)
+      expect(drawn).not.toContain('{')
+    }
   })
 
   it('leaves a header someone laid out by hand alone', () => {
