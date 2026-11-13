@@ -171,14 +171,14 @@ describe('aiSubscriptionCardView', () => {
     })
   })
 
-  it('not-installed: install button, what it runs, and the official instructions', () => {
+  it('not-installed: install button, a way to look again, what it runs, and the official instructions', () => {
     expect(aiSubscriptionCardView(status('codex', 'not-installed'))).toEqual({
       provider: 'codex',
       state: 'not-installed',
       tone: 'neutral',
       statusKey: 'cardNotInstalled',
       noteKeys: ['installNote', 'installReturnNote'],
-      actions: ['install', 'install-help'],
+      actions: ['install', 'recheck', 'install-help'],
       links: ['install-help'],
     })
   })
@@ -547,14 +547,14 @@ describe('aiSubscriptionCardView', () => {
   describe('where the app cannot open a terminal window (macOS, Linux)', () => {
     const noWindows = { terminalWindows: false }
 
-    it('not-installed: only the official instructions, no install button or its note', () => {
+    it('not-installed: the official instructions and a way to look again, no install button or its note', () => {
       expect(aiSubscriptionCardView(status('codex', 'not-installed'), noWindows)).toEqual({
         provider: 'codex',
         state: 'not-installed',
         tone: 'neutral',
         statusKey: 'cardNotInstalled',
         noteKeys: [],
-        actions: ['install-help'],
+        actions: ['install-help', 'recheck'],
         links: ['install-help'],
       })
     })
@@ -562,7 +562,7 @@ describe('aiSubscriptionCardView', () => {
     it('not-installed Claude: the official instructions, and that the desktop app is not Claude Code', () => {
       const view = aiSubscriptionCardView(status('claude-code', 'not-installed'), noWindows)
       expect(view.noteKeys).toEqual(['claudeDesktopNote'])
-      expect(view.actions).toEqual(['install-help'])
+      expect(view.actions).toEqual(['install-help', 'recheck'])
     })
 
     it('a browser sign-in under way: where to sign in, with no window to open', () => {

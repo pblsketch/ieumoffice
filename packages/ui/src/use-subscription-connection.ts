@@ -149,7 +149,8 @@ async function attempt<T>(
  * Live connection state for as long as the calling component is mounted: the
  * statuses are read when it mounts, follow the main process's change events,
  * and are checked again each time the window regains focus after a login or an
- * install was started, since both happen in another window.
+ * install was started, since both happen in another window. A program that was
+ * not found is looked for again on every return, however it was installed.
  */
 export function useSubscriptionConnection(
   options: UseSubscriptionConnectionOptions,
@@ -225,13 +226,20 @@ export function useSubscriptionConnection(
       // no event source: the statuses still follow the checks
     }
     const onFocus = () => {
-      if (launched.current.size === 0) {
+      // A program not found may have been installed outside the app (the vendor's
+      // guide, a terminal) while the user was away. Looking again runs nothing
+      // until a program is found, so it is asked on every return.
+      const missing = (Object.keys(statusesRef.current) as AiSubscriptionProviderId[]).filter(
+        (provider) => statusesRef.current[provider]?.state === 'not-installed',
+      )
+      const wanted = new Set([...launched.current.keys(), ...missing])
+      if (wanted.size === 0) {
         if (optionsRef.current.refreshOnFocus) {
           void attempt(optionsRef.current.api, (api) => api.statuses()).then(apply)
         }
         return
       }
-      void check([...launched.current.keys()])
+      void check([...wanted])
       for (const [provider, state] of launched.current) {
         if (state === null) launched.current.delete(provider)
       }
