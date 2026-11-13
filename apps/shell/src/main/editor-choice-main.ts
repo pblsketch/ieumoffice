@@ -13,6 +13,7 @@ import {
   editorOffList,
   setAppChoiceSource,
   type AppChoice,
+  type AppChoicePatch,
 } from '@genoffice/electron-utils/app-choice'
 import { readAppSettings, writeAppSetting, writeAppSettings } from './app-settings'
 import { editorPickDue, storedAiFeatures, storedEditorChoice } from '../shared/editor-choice'
@@ -38,6 +39,11 @@ export interface EditorChoiceMainDeps {
 export interface EditorChoiceService {
   /** the choice that applies now */
   effective(): AppChoice
+  /**
+   * Change the choice from the main process (an "on and open" answer): stored
+   * and told to every window as a screen's change is. Answers the choice after.
+   */
+  set(patch: AppChoicePatch): AppChoice
   /** hear every change made through this service; returns the unsubscribe */
   onChange(listener: (choice: AppChoice) => void): () => void
 }
@@ -79,7 +85,7 @@ export function registerEditorChoiceIpc(deps: EditorChoiceMainDeps): EditorChoic
 
   ipcMain.handle(APP_CHOICE_CHANNELS.get, (): AppChoice => effective())
 
-  ipcMain.handle(APP_CHOICE_CHANNELS.set, (_event, raw: unknown): AppChoice => {
+  const set = (raw: unknown): AppChoice => {
     const before = effective()
     const patch =
       raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
@@ -101,7 +107,9 @@ export function registerEditorChoiceIpc(deps: EditorChoiceMainDeps): EditorChoic
       for (const listener of [...listeners]) listener(next)
     }
     return next
-  })
+  }
+
+  ipcMain.handle(APP_CHOICE_CHANNELS.set, (_event, raw: unknown): AppChoice => set(raw))
 
   ipcMain.handle(APP_CHOICE_CHANNELS.pickDue, (): boolean =>
     editorPickDue(readAppSettings(deps.settingsPath())),
@@ -117,6 +125,7 @@ export function registerEditorChoiceIpc(deps: EditorChoiceMainDeps): EditorChoic
 
   return {
     effective,
+    set,
     onChange(listener) {
       listeners.add(listener)
       return () => {

@@ -109,6 +109,26 @@ describe('where the setting applies', () => {
     expect(body).toMatch(/HOME_KINDS_CHANNELS\.changed/)
   })
 
+  it('leaves turned-off editors out of every "new" list and rebuilds the menus on a change', () => {
+    const menu = main.slice(main.indexOf('function newDocumentMenuItems('))
+    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    expect(body).toMatch(/hiddenNewDocumentKinds\(homeKinds, appChoice\(\)\)/)
+    expect(body).toMatch(
+      /visibleHomeKinds\(homeKinds\)\.filter\(\(kind\) => !offKinds\.includes\(kind\)\)/,
+    )
+    // Ctrl+N / ⌘N is the File menu's first entry, so it follows the same list
+    expect(main).toMatch(/newDocumentMenuItems\(\{ section: true, accelerator: 'CmdOrCtrl\+N' \}\)/)
+    const change = main.slice(main.indexOf('editorChoiceService.onChange('))
+    const onChange = change.slice(0, change.indexOf('\n})\n'))
+    expect(onChange).toMatch(/applyMenuFor\(linkMenuKind\(\) \?\? 'home'\)/)
+    expect(onChange).toMatch(/installDockMenu\(\)/)
+    const home = src('../src/renderer/src/Home.tsx')
+    expect(home).toMatch(/useAppChoice\(choiceSource\)/)
+    expect(home).toMatch(
+      /hiddenNewDocumentKinds\(homeKinds, \{ off: appChoice\.off\.filter\(isEditorItemId\) \}\)/,
+    )
+  })
+
   it('draws home cards from the setting', () => {
     const home = src('../src/renderer/src/Home.tsx')
     expect(home).toMatch(/visibleHomeKinds\(homeKinds\)/)

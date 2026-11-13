@@ -35,8 +35,10 @@ import {
   aiProviderDisplayName,
   aiSubscriptionCardView,
   aiSubscriptionText,
+  useAppChoice,
   useDismissablePopover,
   useEscapeToClose,
+  type AppChoiceSource,
 } from '@genoffice/ui'
 import { isSubscriptionProvider } from '@genoffice/ai-provider/browser'
 import type { AiSettings } from '@genoffice/ai-provider/browser'
@@ -53,6 +55,7 @@ import {
 import { SettingsModal } from './SettingsModal'
 import { HOME_KIND_LABEL, useHomeKinds } from './SettingsHomeKinds'
 import { visibleHomeKinds, type HomeKind } from '../../shared/home-kinds'
+import { hiddenNewDocumentKinds, isEditorItemId } from '../../shared/editor-choice'
 import type { SettingsTarget } from './SettingsModal'
 import { skillUpdateDue } from './IntegrationsPane'
 import { onFilesChanged } from './file-events'
@@ -1102,7 +1105,14 @@ export function Home({
   const i18n = useI18n()
   const { t, lang } = i18n
   const [homeKinds] = useHomeKinds()
-  const shownKinds = visibleHomeKinds(homeKinds)
+  // the shell preload's bridge, read once so the subscription stays put
+  const [choiceSource] = useState(
+    () => (window as unknown as { aiOfficeEditorChoice?: AppChoiceSource }).aiOfficeEditorChoice,
+  )
+  const appChoice = useAppChoice(choiceSource)
+  // a turned-off editor's kind leaves the cards too (Settings → Editors and AI)
+  const offKinds = hiddenNewDocumentKinds(homeKinds, { off: appChoice.off.filter(isEditorItemId) })
+  const shownKinds = visibleHomeKinds(homeKinds).filter((kind) => !offKinds.includes(kind))
   // ── Paged list state (rows loaded for the current view + filter) ──
   const [entries, setEntries] = useState<RecentEntry[]>([])
   /** total count under the current view + filter (not just the loaded rows) */
