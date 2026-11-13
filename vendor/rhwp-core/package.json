@@ -52,6 +52,7 @@
       "0043-batch-lays-out-format-edits-once.patch",
       "0044-cmap-range-entries-across-lines.patch",
       "0047-stale-table-width-rows-outvote.patch",
+      "0048-multicolumn-edited-ladder-past-column-foot.patch",
       "0049-cmap-range-comments.patch"
     ],
     "wasmPack": "0.15.0",

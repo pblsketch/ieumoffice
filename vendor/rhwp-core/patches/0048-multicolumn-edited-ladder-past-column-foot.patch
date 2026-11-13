@@ -1,0 +1,467 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: pblsketch <239486537+pblsketch@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 00:00:00 +0900
+Subject: [PATCH 34/34] fix(typeset): 다단에서 편집이 이어 붙인 글이 단 바닥을 넘으면 다음 단으로 넘긴다
+
+다단 조판은 저장 줄이 있는 문단을 끝 줄 간격 없이 세고(flow_advance_height), 단이 끝나는
+곳은 저장 줄 위치의 되감김(apply_stored_paragraph_boundary)이 알려 준다고 전제한다.
+편집으로 더한 문단은 recalculate_section_vpos 가 앞 문단 끝에 되감김 없이 이어 붙이므로
+그 위치는 단 높이를 넘어서도 계속 자라고, 흐름은 문단마다 끝 줄 간격만큼 뒤처진다.
+흐름은 "아직 들어간다"고 보고 그리기는 저장 위치에 그려, 글이 쪽 아래로 넘쳤다.
+
+- 빈 문서에 2단을 정한 뒤 insert_paragraph_native 로 260줄: 2쪽, 84줄이 본문 아래
+  (한컴 한글 2024 는 같은 저장본을 4쪽에 놓는다). 3단도 2쪽(한컴 3쪽).
+- 한/글이 저장한 2단 시험지(samples/exam_eng.hwp)의 저장 줄에서 갈라 낸 100문단:
+  layout-anomaly 로 넘침 28~32줄.
+
+새 문단(insert_paragraph_native)만의 일이 아니다. 저장 줄에서 갈라 낸 문단도 같은 사다리를
+받으므로, 새 문단의 줄 표지(TAG_IMPLEMENTATION_PROPERTY)만 고쳐서는 한/글 문서에 더한
+글이 그대로 넘친다.
+
+- 다단에서 문단의 첫 저장 줄이 바로 앞 문단 끝에 이어 붙었고(문단 간격 안) 그 뒤에
+  되감김이 없는데, 그 저장 위치로는 단 바닥을 넘으면 흐름 시작을 저장 위치로 옮긴다.
+  보통의 fit·분할이 문단을 다음 단으로 넘긴다. 한/글이 저장한 단의 끝 문단은 뒤에
+  되감김이 오고(한/글의 단 높이는 엔진이 잰 것보다 조금 클 수 있다, basic/KTX.hwp),
+  개체가 민 줄은 앞 문단 끝에 이어 붙지 않으므로(issue2019_floating_form_74312.hwpx)
+  옮기지 않는다.
+- 사다리와 흐름의 차는 단마다, 그리기가 그 단의 저장 원점을 잡는 자리에서 잰다. 다시 짠
+  문단(저장 자리 없음)은 앞 저장 문단의 저장 끝에서 이어진다.
+- 한 번 옮긴 뒤로는 그 구역 끝까지 흐름이 사다리를 따른다. 그 뒤의 글은 한/글이 둔
+  단·쪽에서 밀려났고, 흐름이 뒤처진 채 두면 흐름 자리에 놓이는 글자처럼 취급 표가 저장
+  자리에 그린 앞 글 위로 올라간다(시험지 20번 문단 뒤 2줄: 표가 세 줄을 덮음).
+
+조판만 바뀌고 저장(HWP·HWPX) 결과는 같다. samples 의 1,513개 문서의 dump-pages 는
+전후 같다(편집하지 않은 문서에서는 옮기는 일이 없다). 한/글이 한 문단을 두 단에 나눠
+저장한 자리(문단 안 되감김) 앞에 글을 더한 경우는 고치기 전과 같다.
+---
+ src/renderer/typeset/section/flow.rs               |   3 +
+ src/renderer/typeset/section/vpos.rs               | 166 ++++++++++++++++++++-
+ src/renderer/typeset/state/commands.rs             |  15 ++
+ src/renderer/typeset/state/data.rs                 |  14 ++
+ src/renderer/typeset/state/transition.rs           |   2 +
+ .../multicolumn_stored_ladder_past_column_foot.rs  | 148 ++++++++++++++++++
+ 6 files changed, 346 insertions(+), 2 deletions(-)
+ create mode 100644 tests/cases/multicolumn_stored_ladder_past_column_foot.rs
+
+diff --git a/src/renderer/typeset/section/flow.rs b/src/renderer/typeset/section/flow.rs
+index 76287996566f0c311f539e888101978cdb0cb0e2..84b8f20c8a7b8d951b7124af1c3aa6d183a7b57b 100644
+--- a/src/renderer/typeset/section/flow.rs
++++ b/src/renderer/typeset/section/flow.rs
+@@ -212,6 +212,9 @@ impl TypesetEngine {
+                 formatted.spacing_before,
+                 storage,
+             )?;
++            self.follow_stored_ladder_past_column_foot(
++                st, para_idx, para, paragraphs, styles, &formatted,
++            );
+             // 단 첫 줄이 완전한 자리차지 상자 뒤에 저장됐으면, 상자와 줄의
+             // 닫힌 경계가 쪽 축 0을 인증한다. 그 줄의 양수 vpos를 쪽 원점으로
+             // 빼면 뒤 본문이 올라가고 문단 내부의 다음 쪽 reset도 사라진다.
+diff --git a/src/renderer/typeset/section/vpos.rs b/src/renderer/typeset/section/vpos.rs
+index 92a04e9c484755da557f50fc19896ae3d46300ae..4e9abdf19f30b76f940c4d675d5f36bbcccf94fe 100644
+--- a/src/renderer/typeset/section/vpos.rs
++++ b/src/renderer/typeset/section/vpos.rs
+@@ -1,7 +1,8 @@
+ //! 구역 vpos 책임. 기존 조건과 호출 순서를 보존한다.
+ use crate::renderer::typeset::{
+-    stored_ladder_encodes_spacing_before, ComposedParagraph, HeightCursor, Paragraph,
+-    ResolvedStyleSet, TypesetEngine, TypesetState,
++    hwpunit_to_px, is_synthetic_line_seg, stored_ladder_encodes_spacing_before, ComposedParagraph,
++    FormattedParagraph, HeightCursor, PageItem, Paragraph, ResolvedStyleSet, TypesetEngine,
++    TypesetState,
+ };
+ impl TypesetEngine {
+     fn source_height_cursor(
+@@ -101,6 +102,167 @@ impl TypesetEngine {
+         );
+     }
+ 
++    /// 다단에서 편집이 이어 붙인 저장 사다리가 단 바닥을 지나 이어지면, 이 문단의 흐름 시작을
++    /// 사다리가 가리키는 자리로 옮긴다.
++    ///
++    /// 다단 조판은 저장 문단의 끝 줄 간격을 흐름에서 빼고(`flow_advance_height`), 단이 끝나는
++    /// 곳은 저장 사다리의 되감김(`apply_stored_paragraph_boundary`)이 알려 준다고 전제한다.
++    /// 편집으로 늘어난 문단은 `recalculate_section_vpos` 가 앞 문단 끝에 되감김 없이 이어
++    /// 붙이므로, 그 사다리는 단 높이를 넘어서도 계속 자란다. 덜 센 흐름은 "아직 들어간다"고
++    /// 보고 그리기는 저장 자리에 그려, 글이 쪽 아래로 넘친다. 옮긴 뒤에는 보통의 fit·분할이
++    /// 문단을 다음 단으로 넘긴다.
++    ///
++    /// 한/글이 저장한 단은 건드리지 않는다. 그 단의 끝 문단은 뒤에 되감김이 따르고(한/글의
++    /// 단 높이는 엔진이 잰 것보다 조금 클 수 있다), 개체가 민 줄은 앞 문단 끝에 이어 붙지
++    /// 않는다. 그래서 앞 문단 끝에 바로 이어 붙었고 뒤에 되감김이 없는 문단만 옮긴다.
++    ///
++    /// 사다리와 흐름의 차는 단마다 한 번, 그리기가 그 단의 저장 원점을 잡는 것과 같은 자리에서
++    /// 잰다. 단을 여는 문단은 제 줄이 단 위끝에 놓인다. 표 따위가 단을 열었으면 저장 사다리를
++    /// 쪽 기준으로 보되, 흐름이 그보다 아래에 있으면 흐름을 따른다. 엔진이 다시 짠 문단은
++    /// 저장 자리가 없으므로 앞 저장 문단의 저장 끝에서 이어진다.
++    ///
++    /// 그렇게 넘긴 뒤로는 구역 끝까지 한/글이 조판한 자리가 아니다(뒤 단의 글은 한/글이 둔
++    /// 단·쪽에서 밀려났다). 그 뒤의 문단은 흐름이 사다리를 그대로 따른다. 흐름이 뒤처진 채
++    /// 두면 흐름 자리에 놓이는 글자처럼 취급 표가 저장 자리에 그린 앞 글 위로 올라간다.
++    pub(in crate::renderer::typeset) fn follow_stored_ladder_past_column_foot(
++        &self,
++        st: &mut TypesetState,
++        para_idx: usize,
++        para: &Paragraph,
++        paragraphs: &[Paragraph],
++        styles: &ResolvedStyleSet,
++        formatted: &FormattedParagraph,
++    ) {
++        if st.col_count < 2 {
++            return;
++        }
++        let stored = |line: &&crate::model::paragraph::LineSeg| !is_synthetic_line_seg(line);
++        let px = |hu: i32| hwpunit_to_px(hu, self.dpi);
++        // 줄 전진량은 `recalculate_section_vpos` 와 같은 TAC th 관례로 센다.
++        let line_end = |line: &crate::model::paragraph::LineSeg| {
++            let height = if line.line_height > line.text_height && line.text_height > 0 {
++                line.text_height
++            } else {
++                line.line_height
++            };
++            line.vertical_pos
++                .saturating_add(height)
++                .saturating_add(line.line_spacing)
++        };
++        let column = (st.pages.len(), st.current_column);
++        let known = st
++            .column_stored_ladder
++            .filter(|ladder| ladder.column == column);
++        // 이 단의 마지막 항목이 바로 앞 문단일 때, 그 문단의 끝 줄과 아래 간격.
++        let previous = para_idx
++            .checked_sub(1)
++            .filter(|previous| {
++                st.current_items.last().is_some_and(|item| {
++                    matches!(item,
++                        PageItem::FullParagraph { para_index }
++                        | PageItem::PartialParagraph { para_index, .. }
++                            if para_index == previous)
++                })
++            })
++            .and_then(|previous| {
++                let previous = &paragraphs[previous];
++                let spacing_after = styles
++                    .para_styles
++                    .get(previous.para_shape_id as usize)
++                    .map_or(0.0, |style| style.spacing_after);
++                Some((previous.line_segs.last()?, spacing_after))
++            });
++        let (offset, lead, chained) = if let Some(first) = para.line_segs.first().filter(stored) {
++            let line_y = px(first.vertical_pos);
++            let line_flow_y = st.current_height + formatted.spacing_before;
++            if st.current_items.is_empty() {
++                st.record_column_stored_ladder(column, line_y - line_flow_y, 0.0);
++                return;
++            }
++            let offset = known.map(|ladder| ladder.offset).unwrap_or_else(|| {
++                self.column_opening_ladder_offset(st, paragraphs, styles)
++                    .unwrap_or_else(|| (line_y - line_flow_y).min(0.0))
++            });
++            let chained = previous.is_some_and(|(last, spacing_after)| {
++                let gap = crate::renderer::px_to_hwpunit(
++                    spacing_after + formatted.spacing_before,
++                    self.dpi,
++                );
++                (0..=gap + 2).contains(&first.vertical_pos.saturating_sub(line_end(last)))
++            });
++            (offset, line_y - offset - line_flow_y, chained)
++        } else {
++            let Some(ladder) = known else {
++                return;
++            };
++            let lead = previous.filter(|(last, _)| stored(last)).map_or(
++                ladder.lead,
++                |(last, spacing_after)| {
++                    px(line_end(last)) - ladder.offset + spacing_after - st.current_height
++                },
++            );
++            (ladder.offset, lead, true)
++        };
++        let lead = lead.max(0.0);
++        let ladder_goes_on = para
++            .line_segs
++            .windows(2)
++            .all(|pair| pair[1].vertical_pos >= pair[0].vertical_pos)
++            && paragraphs
++                .get(para_idx + 1)
++                .and_then(|next| next.line_segs.first().filter(stored))
++                .zip(para.line_segs.last())
++                .is_none_or(|(next, last)| next.vertical_pos >= last.vertical_pos);
++        let one_unit = self.dpi / 7200.0;
++        let past_foot = chained
++            && ladder_goes_on
++            && lead > one_unit
++            && st.current_height + lead + formatted.height_for_fit
++                > st.available_height() + one_unit;
++        let follow = past_foot || (chained && lead > one_unit && st.following_stored_ladder);
++        if follow {
++            st.align_flow_to(st.current_height + lead);
++        }
++        if past_foot {
++            st.follow_stored_ladder_from_now();
++        }
++        st.record_column_stored_ladder(column, offset, if follow { 0.0 } else { lead });
++    }
++
++    /// 저장 문단(조각)이 이 단을 열었을 때, 그 첫 줄의 저장 자리와 흐름 자리의 차(px).
++    fn column_opening_ladder_offset(
++        &self,
++        st: &TypesetState,
++        paragraphs: &[Paragraph],
++        styles: &ResolvedStyleSet,
++    ) -> Option<f64> {
++        let (index, line) = match st.current_items.first()? {
++            PageItem::FullParagraph { para_index } => (*para_index, 0),
++            PageItem::PartialParagraph {
++                para_index,
++                start_line,
++                ..
++            } => (*para_index, *start_line),
++            _ => return None,
++        };
++        let opener = paragraphs.get(index)?;
++        let spacing_before = if line == 0 {
++            styles
++                .para_styles
++                .get(opener.para_shape_id as usize)
++                .map_or(0.0, |style| style.spacing_before)
++        } else {
++            0.0
++        };
++        let line = opener
++            .line_segs
++            .get(line)
++            .filter(|line| !is_synthetic_line_seg(line))?;
++        Some(
++            hwpunit_to_px(line.vertical_pos, self.dpi) - (st.current_start_height + spacing_before),
++        )
++    }
++
+     /// 렌더러 `build_single_column` 의 inter-item VPOS_CORR(Stage C `HeightCursor::vpos_adjust`)
+     /// 를 페이지네이터에서도 적용해, 단락마다 `+= total_height` 로 누적된 sb·trailing_ls
+     /// drift 를 다음 항목 진입 시 제거한다(렌더러와 동일 측정). 단단(col_count==1) 전용 —
+diff --git a/src/renderer/typeset/state/commands.rs b/src/renderer/typeset/state/commands.rs
+index b4220245f9d8bb9186a9d84e3a84f8eef1c52627..2f36331edf8cdad6c628e44167f67ffa5a350397 100644
+--- a/src/renderer/typeset/state/commands.rs
++++ b/src/renderer/typeset/state/commands.rs
+@@ -476,6 +476,21 @@ impl TypesetState {
+     ) {
+         self.data.vpos_stored_column_origin = value;
+     }
++    pub(in crate::renderer::typeset) fn record_column_stored_ladder(
++        &mut self,
++        column: (usize, u16),
++        offset: f64,
++        lead: f64,
++    ) {
++        self.data.column_stored_ladder = Some(super::data::ColumnStoredLadder {
++            column,
++            offset,
++            lead,
++        });
++    }
++    pub(in crate::renderer::typeset) fn follow_stored_ladder_from_now(&mut self) {
++        self.data.following_stored_ladder = true;
++    }
+     /// 수용한 줄의 구성 결과를 같은 단의 실제 배치에 전달한다.
+     pub(in crate::renderer::typeset) fn record_computed_paragraph(
+         &mut self,
+diff --git a/src/renderer/typeset/state/data.rs b/src/renderer/typeset/state/data.rs
+index baa8231ddd5da9fefcf2f0c5278f30eb28bbbe31..7792c3bdad4c37ecdf8934a23ef0b86ae1032703 100644
+--- a/src/renderer/typeset/state/data.rs
++++ b/src/renderer/typeset/state/data.rs
+@@ -10,6 +10,17 @@ pub(super) struct PendingParagraphOrigin {
+     pub(super) flow_start: f64,
+     pub(super) flow_end: f64,
+ }
++/// 다단의 한 단에서 저장 사다리와 흐름이 어긋난 정도
++/// (`follow_stored_ladder_past_column_foot`).
++#[derive(Clone, Copy)]
++pub(in crate::renderer::typeset) struct ColumnStoredLadder {
++    /// 잰 단 `(쪽 수, 단 번호)`. 다른 단에서는 다시 잰다.
++    pub(in crate::renderer::typeset) column: (usize, u16),
++    /// 저장 줄 위치 − 흐름 위치(px).
++    pub(in crate::renderer::typeset) offset: f64,
++    /// 그리기가 흐름 커서보다 앞서 있는 높이(px).
++    pub(in crate::renderer::typeset) lead: f64,
++}
+ pub(in crate::renderer::typeset) struct StateView {
+     pub(in crate::renderer::typeset) deferred_table_successor_start: Option<usize>,
+     pub(super) pending_table_terminal_gap: Option<DeferredTableTerminalGap>,
+@@ -407,6 +418,9 @@ pub(in crate::renderer::typeset) struct StateView {
+     pub(in crate::renderer::typeset) vpos_ladder_dirty: bool,
+     /// 저장 행을 재조판해 줄인 높이. 같은 쪽의 뒤 저장 vpos도 이만큼 이동한다.
+     pub(in crate::renderer::typeset) vpos_compacted_stored_delta: f64,
++    pub(in crate::renderer::typeset) column_stored_ladder: Option<ColumnStoredLadder>,
++    /// 이 구역에서 사다리가 단 바닥을 넘겨 흐름을 옮긴 적이 있다.
++    pub(in crate::renderer::typeset) following_stored_ladder: bool,
+     /// 저장 vpos 스냅(VPOS_CORR)을 마친 문단 시작 커서 `(문단, y)`.
+     /// 측정 누적의 sb·trailing_ls drift 가 걷힌 실제 앞 커서다.
+     pub(in crate::renderer::typeset) vpos_snapped_flow_start: Option<(usize, f64)>,
+diff --git a/src/renderer/typeset/state/transition.rs b/src/renderer/typeset/state/transition.rs
+index d0c81752f30b91bafe93b4b4e7357b5c69ff65a6..cda3dfc23fc217b2a88c090f83cd11100c156035 100644
+--- a/src/renderer/typeset/state/transition.rs
++++ b/src/renderer/typeset/state/transition.rs
+@@ -144,6 +144,8 @@ impl TypesetState {
+                 vpos_page_base_stored: false,
+                 vpos_ladder_dirty: false,
+                 vpos_compacted_stored_delta: 0.0,
++                column_stored_ladder: None,
++                following_stored_ladder: false,
+                 vpos_snapped_flow_start: None,
+                 rejected_stored_forward_origin: None,
+                 vpos_prev_layout_para: None,
+diff --git a/tests/cases/multicolumn_stored_ladder_past_column_foot.rs b/tests/cases/multicolumn_stored_ladder_past_column_foot.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0b1bed47b08b05e2382654da4cb6cbafd56add59
+--- /dev/null
++++ b/tests/cases/multicolumn_stored_ladder_past_column_foot.rs
+@@ -0,0 +1,148 @@
++#![cfg(not(target_arch = "wasm32"))]
++//! 다단 구역에서 편집으로 늘어난 글은 단 바닥에서 다음 단과 쪽으로 넘어간다.
++//!
++//! 다단 조판은 저장 문단의 끝 줄 간격을 흐름에서 빼고, 단이 끝나는 곳은 저장 사다리의
++//! 되감김이 알려 준다고 전제한다. 편집이 더한 문단은 `recalculate_section_vpos` 가 되감김
++//! 없이 이어 붙이므로, 그 사다리는 단 높이를 넘어서도 계속 자란다. 고치기 전에는 그런
++//! 문단이 한 단에 1.6배(줄 간격 160%)까지 들어가 쪽 아래로 넘쳐 그려졌다.
++//!
++//! - 빈 문서에 단을 나눈 뒤 `insert_paragraph_native` 로 260줄: 2단 4쪽, 3단 3쪽(한컴 한글
++//!   2024 가 저장본을 조판한 쪽 수와 같다). 고치기 전 2쪽, 84줄이 본문 아래.
++//! - 한/글이 저장한 2단 시험지(`samples/exam_eng.hwp`)의 저장 줄에서 갈라 낸 100문단:
++//!   본문 아래로 넘는 글이 없고 앞쪽 문단의 쪽이 그대로다. 고치기 전 48줄이 본문 아래.
++//! - 저장 문단 뒤에 엔진이 다시 짠 문단(저장 자리가 없다)이 이어져도 같다.
++use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
++use rhwp::wasm_api::HwpDocument;
++
++const LINES: usize = 260;
++
++fn blank_with_columns(columns: u16) -> HwpDocument {
++    let mut doc = HwpDocument::create_empty();
++    doc.create_blank_document().unwrap();
++    doc.set_column_def_native(0, columns, 0, true, 2268)
++        .unwrap();
++    doc
++}
++
++/// 한 줄 문단 `LINES` 개를 빈 문단 넣기로 더한다(표 뒤나 새 문서에서 AI 도구가 쓰는 길).
++fn write_lines_by_insert(doc: &mut HwpDocument) {
++    doc.insert_text(0, 0, 0, "줄 1").unwrap();
++    for index in 1..LINES {
++        doc.insert_paragraph_native(0, index).unwrap();
++        doc.insert_text(0, index as u32, 0, &format!("줄 {}", index + 1))
++            .unwrap();
++    }
++}
++
++/// 문단 `after` 뒤에 한 줄 문단 `count` 개를, 앞 문단 끝에서 갈라(Enter) 더한다.
++fn add_lines_by_split(doc: &mut HwpDocument, after: usize, count: usize) {
++    for added in 0..count {
++        let at = after + added;
++        let length = doc.get_paragraph_length(0, at as u32).unwrap() as usize;
++        doc.split_paragraph_native(0, at, length, None).unwrap();
++        doc.insert_text(0, (at + 1) as u32, 0, &format!("새 줄 {}", added + 1))
++            .unwrap();
++    }
++}
++
++/// 제 단의 아래끝보다 아래에 그려진 본문 글 조각 수.
++fn runs_below_their_column(doc: &HwpDocument) -> usize {
++    fn walk(node: &RenderNode, column_bottom: Option<f64>, below: &mut usize) {
++        let column_bottom = match &node.node_type {
++            RenderNodeType::Column(_) => Some(node.bbox.y + node.bbox.height),
++            _ => column_bottom,
++        };
++        if let (RenderNodeType::TextRun(run), Some(bottom)) = (&node.node_type, column_bottom) {
++            if !run.text.trim().is_empty() && node.bbox.y + node.bbox.height > bottom + 1.0 {
++                *below += 1;
++            }
++        }
++        for child in &node.children {
++            walk(child, column_bottom, below);
++        }
++    }
++    let mut below = 0;
++    for page in 0..doc.page_count() {
++        walk(
++            &doc.build_page_render_tree(page).unwrap().root,
++            None,
++            &mut below,
++        );
++    }
++    below
++}
++
++fn page_of(doc: &HwpDocument, para: usize) -> String {
++    doc.get_page_of_position_native(0, para).unwrap()
++}
++
++fn exam_paper() -> HwpDocument {
++    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/exam_eng.hwp");
++    HwpDocument::from_bytes(&std::fs::read(path).unwrap()).unwrap()
++}
++
++#[test]
++fn lines_added_after_the_columns_were_set_fill_columns_and_pages() {
++    for (columns, pages) in [(2, 4), (3, 3)] {
++        let mut doc = blank_with_columns(columns);
++        write_lines_by_insert(&mut doc);
++        assert_eq!(doc.page_count(), pages, "{columns}단 쪽 수");
++        assert_eq!(runs_below_their_column(&doc), 0, "{columns}단 본문 아래 글");
++    }
++}
++
++#[test]
++fn the_layout_holds_after_save_and_reopen() {
++    let mut doc = blank_with_columns(2);
++    write_lines_by_insert(&mut doc);
++    for (format, bytes) in [
++        ("hwp", doc.export_hwp_native().unwrap()),
++        ("hwpx", doc.export_hwpx_native().unwrap()),
++    ] {
++        let reopened = HwpDocument::from_bytes(&bytes).unwrap();
++        assert_eq!(reopened.page_count(), 4, "{format} 쪽 수");
++        assert_eq!(
++            runs_below_their_column(&reopened),
++            0,
++            "{format} 본문 아래 글"
++        );
++    }
++}
++
++#[test]
++fn lines_split_off_stored_lines_flow_into_the_next_columns() {
++    let untouched = exam_paper();
++    assert_eq!(untouched.page_count(), 8);
++    assert_eq!(runs_below_their_column(&untouched), 0);
++
++    const AFTER: usize = 20;
++    let mut doc = exam_paper();
++    add_lines_by_split(&mut doc, AFTER, 100);
++    assert_eq!(runs_below_their_column(&doc), 0, "본문 아래 글");
++    for para in 0..=AFTER {
++        assert_eq!(
++            page_of(&doc, para),
++            page_of(&untouched, para),
++            "앞쪽 문단 {para}의 쪽"
++        );
++    }
++}
++
++#[test]
++fn a_few_lines_at_the_end_leave_the_stored_pages_alone() {
++    let mut doc = exam_paper();
++    let last = doc.get_paragraph_count(0).unwrap() as usize - 1;
++    add_lines_by_split(&mut doc, last, 2);
++    assert_eq!(doc.page_count(), 8);
++    assert_eq!(runs_below_their_column(&doc), 0);
++}
++
++#[test]
++fn paragraphs_laid_out_again_behind_stored_ones_flow_too() {
++    let mut doc = exam_paper();
++    let last = doc.get_paragraph_count(0).unwrap() as usize - 1;
++    add_lines_by_split(&mut doc, last, 100);
++    doc.reflow_body_paragraph_range_native(0, last + 1..last + 101)
++        .unwrap();
++    assert_eq!(runs_below_their_column(&doc), 0, "본문 아래 글");
++}
