@@ -67,6 +67,7 @@ import {
 import { convertHtmlToDocx } from '../../../../packages/html2docx/src'
 import { atomicWriteFile } from './atomic-write'
 import { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
+import { isFileUrlOf } from '../../../../packages/html2docx/src/drivers/file-url'
 import {
   copyImageIntoOwnedAssets,
   discardPendingOwnedAssets,
@@ -87,7 +88,7 @@ import {
   editableImageMime,
   extensionlessAssetMime,
 } from './asset-mime'
-import { buildPreviewDocument } from './preview-document'
+import { ASSET_SCHEME, buildPreviewDocument } from './preview-document'
 import { confirmOdtReport, exportOdt, odtFilterName } from './odt-export'
 import { inlineImagesForSingleFile, singleFileExportBaseName } from './single-file-html'
 import { registerHtmlHandoffIpc } from './generate-handoff-ipc'
@@ -1138,7 +1139,13 @@ async function renderHtmlDocx(
     const base = docPath ? assetBaseHref(dirname(docPath)) : null
     const htmlPath = join(workDir, 'export.html')
     await writeFile(htmlPath, buildPreviewDocument(html, base), 'utf8')
-    driver = await ElectronBrowserDriver.create(HTML2DOCX_VIEWPORT)
+    // The page may be a file someone sent. It keeps what the preview gives it
+    // (its folder's assets through html-asset://, the web), but no file:// URL
+    // other than its own: from file://, its scripts could read other local files.
+    driver = await ElectronBrowserDriver.create(HTML2DOCX_VIEWPORT, {
+      allowRequest: (url) => isFileUrlOf(url, htmlPath) || /^(?:https?|html-asset):/i.test(url),
+      protocols: { [ASSET_SCHEME]: serveHtmlAsset },
+    })
     // AI-generated markup with a script that never yields keeps
     // executeJavaScript pending forever, which would strand the hidden
     // window and this handler; race a watchdog and destroy the window on
@@ -1567,36 +1574,38 @@ async function resolveSaveTarget(
  * "Save page as, complete" assets by signature / requesting slot.
  */
 function registerImageProtocol(): void {
-  protocol.handle('html-asset', async (request) => {
-    let target: string
-    try {
-      target = decodeURIComponent(new URL(request.url).pathname)
-    } catch {
-      return new Response(null, { status: 400 })
+  protocol.handle(ASSET_SCHEME, serveHtmlAsset)
+}
+
+async function serveHtmlAsset(request: Request): Promise<Response> {
+  let target: string
+  try {
+    target = decodeURIComponent(new URL(request.url).pathname)
+  } catch {
+    return new Response(null, { status: 400 })
+  }
+  if (/^\/[a-zA-Z]:\//.test(target)) target = target.slice(1)
+  target = resolve(target)
+  const knownExt = PREVIEW_ASSET_EXTS.has(extname(target).toLowerCase())
+  if (!existsSync(target)) return new Response(null, { status: 404 })
+  let inDocDir = false
+  for (const doc of new Set([...openPathByWc.values(), ...savePathByWc.values()])) {
+    const dir = resolve(dirname(doc))
+    if (!isInDocDir(target, dir)) continue
+    if (await resolveSafeRelativeImagePath(doc, relative(dir, target))) {
+      inDocDir = true
+      break
     }
-    if (/^\/[a-zA-Z]:\//.test(target)) target = target.slice(1)
-    target = resolve(target)
-    const knownExt = PREVIEW_ASSET_EXTS.has(extname(target).toLowerCase())
-    if (!existsSync(target)) return new Response(null, { status: 404 })
-    let inDocDir = false
-    for (const doc of new Set([...openPathByWc.values(), ...savePathByWc.values()])) {
-      const dir = resolve(dirname(doc))
-      if (!isInDocDir(target, dir)) continue
-      if (await resolveSafeRelativeImagePath(doc, relative(dir, target))) {
-        inDocDir = true
-        break
-      }
-    }
-    if (!inDocDir) return new Response(null, { status: 403 })
-    let mime: string | null = null
-    if (!knownExt) {
-      mime = extensionlessAssetMime(target, await readHead(target), request.headers.get('accept'))
-      if (!mime) return new Response(null, { status: 404 })
-    }
-    const res = await net.fetch(pathToFileURL(target).toString())
-    if (!mime || !res.ok) return res
-    return new Response(res.body, { status: 200, headers: { 'Content-Type': mime } })
-  })
+  }
+  if (!inDocDir) return new Response(null, { status: 403 })
+  let mime: string | null = null
+  if (!knownExt) {
+    mime = extensionlessAssetMime(target, await readHead(target), request.headers.get('accept'))
+    if (!mime) return new Response(null, { status: 404 })
+  }
+  const res = await net.fetch(pathToFileURL(target).toString())
+  if (!mime || !res.ok) return res
+  return new Response(res.body, { status: 200, headers: { 'Content-Type': mime } })
 }
 
 async function readHead(target: string): Promise<Uint8Array> {

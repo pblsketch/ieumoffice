@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { handOffBytes } from './byte-handoff'
+import { altChunkDocument } from './altchunk-document'
 import {
   appendFileSync,
   existsSync,
@@ -108,6 +109,7 @@ import {
 } from '@genoffice/file-parse'
 import { convertHtmlToDocx } from '../../../../packages/html2docx/src'
 import { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
+import { isFileUrlOf } from '../../../../packages/html2docx/src/drivers/file-url'
 import {
   AI_MEDIA_PROVIDERS,
   AI_SEARCH_PROVIDERS,
@@ -5110,14 +5112,18 @@ export function registerDocsIpc(): void {
     let driver: ElectronBrowserDriver | null = null
     try {
       const htmlPath = join(workDir, 'chunk.html')
-      // the BOM outranks a stale <meta charset> left in the decoded markup
-      await writeFile(htmlPath, `\ufeff${html}`, 'utf8')
-      driver = await ElectronBrowserDriver.create(ALT_CHUNK_VIEWPORT)
-      // The markup is an unsanitised AI artifact: a script that never yields
-      // would otherwise keep executeJavaScript pending forever, and the
-      // finally below would never run (the hidden window and workDir leak for
-      // good). Race a watchdog and destroy the window on timeout, matching
-      // the slides export guard.
+      // The chunk is whatever the .docx's author put there. Its page runs no
+      // scripts and fetches nothing (CSP), and its window may load this one
+      // file and nothing else: not the chunk's neighbours on disk, not the network.
+      await writeFile(htmlPath, altChunkDocument(html), 'utf8')
+      driver = await ElectronBrowserDriver.create(ALT_CHUNK_VIEWPORT, {
+        allowRequest: (url) => isFileUrlOf(url, htmlPath),
+      })
+      // The converter's own page work still has to finish: a page that never
+      // yields would keep executeJavaScript pending forever, and the finally
+      // below would never run (the hidden window and workDir leak for good).
+      // Race a watchdog and destroy the window on timeout, matching the
+      // slides export guard.
       const conversion = convertHtmlToDocx({ url: pathToFileURL(htmlPath).href }, driver, {
         naturalTableWidth: true,
       }).then(({ docx }) => docx)

@@ -136,3 +136,4 @@
 | [0137](0137-hwp-ai-document-looks.md)                         | 한글 AI가 양식 없이 쓴 문서에 꼴을 주고, 꼴을 짓는 기본 도구를 갖는다                                | 2026-11-11 |
 | [0138](0138-daily-model-relist-and-free-model-move.md)        | 켜 둔 앱은 하루 지난 모델 목록을 다시 묻고, 무료 연결은 사라진 모델에서 시험된 다음 모델로 옮긴다    | 2026-11-12 |
 | [0139](0139-legacy-doc-ppt-open-as-copy.md)                   | 옛 워드·파워포인트 파일은 묻지 않고 바꾼 사본으로 연다                                               | 2026-11-13 |
+| [0142](0142-isolate-html-conversion-window.md)                | HTML을 Word로 바꾸는 숨은 창은 따로 떼어 둔 세션에서, 허락한 것만 불러온다                           | 2026-11-13 |
