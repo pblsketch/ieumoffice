@@ -24,6 +24,8 @@ import type {
   AgentNoSuchStyle,
   AgentPageSetupChange,
   AgentParagraphFormat,
+  AgentLookFormat,
+  AgentWordsSetApart,
   AgentPicture,
   AgentPictureList,
   AgentPlace,
@@ -348,6 +350,12 @@ const SYSTEM_PROMPT = [
 ].join('\n')
 
 /** The character formatting a format tool takes, as schema properties. */
+const EVERY_WORD_SCHEMA = {
+  type: 'boolean',
+  description:
+    'true puts the character formatting on every word even where some words differ in it (a bold word in plain text); without it such a call is refused',
+}
+
 const TEXT_FORMAT_SCHEMA = {
   bold: { type: 'boolean' },
   italic: { type: 'boolean' },
@@ -936,6 +944,7 @@ const TOOLS: HwpToolDef[] = [
         occurrence: { type: 'integer' },
         ...PARAGRAPH_FORMAT_SCHEMA,
         ...TEXT_FORMAT_SCHEMA,
+        every_word: EVERY_WORD_SCHEMA,
       },
       required: ['find'],
     },
@@ -1714,6 +1723,7 @@ const TOOLS: HwpToolDef[] = [
         look: { type: 'string', description: 'a look id from read_formatting of this document' },
         ...PARAGRAPH_FORMAT_SCHEMA,
         ...TEXT_FORMAT_SCHEMA,
+        every_word: EVERY_WORD_SCHEMA,
       },
       required: ['look'],
     },
@@ -2172,17 +2182,12 @@ const titleColourNote = (result: { textColorDropped?: boolean; textColor?: strin
   return result.textColor ? ' The title was written white to show on the fill.' : ''
 }
 
-/**
- * A look of read_formatting handed back whole formats every word of its paragraphs with the
- * look's own character properties, which is how the words set apart in them would lose what
- * sets them apart. The look says that it has such paragraphs.
- */
-function mixedLookRefusal(input: Fields): string | null {
-  const mixed = input.mixedFormatting
-  if (typeof mixed !== 'number' || mixed <= 0) return null
-  const onEveryWord = Object.keys(TEXT_FORMAT_SCHEMA).filter((name) => isGiven(input[name]))
-  if (onEveryWord.length === 0) return null
-  return `Nothing was changed: mixedFormatting ${mixed} says that ${mixed} paragraph(s) of this look hold words formatted apart from the rest, and ${onEveryWord.join(', ')} would be put on those words too. Pass only the properties that should change. To put one on every word, pass it without mixedFormatting.`
+/** What a format_look or format_paragraph call would take from words set apart in their paragraphs. */
+function wordsSetApartHelp({ properties, paragraphs }: AgentWordsSetApart): string {
+  const names = properties
+    .map((name) => DECLARED_NAME_OF_PLUGIN_ARGUMENT.get(name) ?? name)
+    .join(', ')
+  return `Nothing was changed: in ${paragraphs} paragraph(s) some words differ from the rest in ${names}, and this call would put that on every word. Pass only the properties that should change and leave ${names} out to keep those words as they are, or pass every_word true to put them on every word on purpose.`
 }
 
 const NO_NOTE_HELP = (count: number) =>
@@ -2484,6 +2489,13 @@ const LIST_LABELS = {
  */
 function formatArgs(call: AgentToolCall): AgentParagraphFormat {
   return formatOfInput(call.input)
+}
+
+/** The format of a format_look or format_paragraph call with its every_word; null when it names nothing to change. */
+function lookFormatArgs(call: AgentToolCall): AgentLookFormat | null {
+  const format = formatArgs(call)
+  if (Object.keys(format).length === 0) return null
+  return call.input.every_word === true ? { ...format, everyWord: true } : format
 }
 
 /** What a call says about fonts that stood in for ones this PC lacks, for the model to pass on. */
@@ -3667,10 +3679,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const find = textArg(call, 'find')
         if (!find) return bad(call, 'find must be a non-empty string')
         if (hasLineBreak(find)) return bad(call, ONE_LINE_HELP)
-        const flattens = mixedLookRefusal(call.input)
-        if (flattens) return bad(call, flattens)
-        const format = formatArgs(call)
-        if (Object.keys(format).length === 0) return bad(call, NO_FORMAT_HELP)
+        const format = lookFormatArgs(call)
+        if (!format) return bad(call, NO_FORMAT_HELP)
         const occurrence = call.input.occurrence
         const target = typeof occurrence === 'number' ? occurrence : null
         const outcome = await changeWithMemoApproval(
@@ -3682,6 +3692,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const result = outcome.result
         if (!result.ok) {
           if (result.reason === 'no_such_style') return bad(call, noSuchStyle(result))
+          if (result.reason === 'words_set_apart') return bad(call, wordsSetApartHelp(result))
           return bad(
             call,
             result.reason === 'unsupported_place'
@@ -5475,10 +5486,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'format_look': {
         const look = textArg(call, 'look')?.trim() ?? ''
         if (!look) return bad(call, 'look must be a look id from read_formatting of this document')
-        const flattens = mixedLookRefusal(call.input)
-        if (flattens) return bad(call, flattens)
-        const format = formatArgs(call)
-        if (Object.keys(format).length === 0) return bad(call, NO_FORMAT_HELP)
+        const format = lookFormatArgs(call)
+        if (!format) return bad(call, NO_FORMAT_HELP)
         const outcome = await changeWithMemoApproval(
           () => bridge.formatLook(look, format),
           (options) => bridge.formatLook(look, format, options),
@@ -5488,6 +5497,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const result = outcome.result
         if (!result.ok) {
           if (result.reason === 'no_such_style') return bad(call, noSuchStyle(result))
+          if (result.reason === 'words_set_apart') return bad(call, wordsSetApartHelp(result))
           if (result.reason === 'no_such_look') {
             return bad(
               call,

@@ -4522,17 +4522,24 @@ describe('what a read answer says beside its settings', () => {
     expect(bridge.editStyle).not.toHaveBeenCalled()
   })
 
-  it('stops a look with words set apart from being handed back over those words', async () => {
-    const { call, bridge } = setup()
+  it('says what words set apart would lose, and puts it on every word only with every_word', async () => {
+    const setApart = {
+      ok: false as const,
+      reason: 'words_set_apart' as const,
+      properties: ['bold', 'charWidth'],
+      paragraphs: 2,
+    }
+    const { call, bridge } = setup({
+      formatLook: vi.fn(async () => setApart),
+      formatParagraph: vi.fn(async () => setApart),
+    })
     const look = {
       look: 'Labc123',
       paragraphs: 6,
       style: '본문',
-      font: '함초롬바탕',
-      size: 10,
       bold: false,
+      char_width: 100,
       line_spacing: 160,
-      mixedFormatting: 2,
       samples: ['본문입니다'],
     }
     for (const handed of [
@@ -4541,22 +4548,29 @@ describe('what a read answer says beside its settings', () => {
     ]) {
       expect(handed.isError).toBe(true)
       expect(handed.output).toBe(
-        'Nothing was changed: mixedFormatting 2 says that 2 paragraph(s) of this look hold words formatted apart from the rest, and bold, size, font would be put on those words too. Pass only the properties that should change. To put one on every word, pass it without mixedFormatting.',
+        'Nothing was changed: in 2 paragraph(s) some words differ from the rest in bold, char_width, and this call would put that on every word. Pass only the properties that should change and leave bold, char_width out to keep those words as they are, or pass every_word true to put them on every word on purpose.',
       )
     }
-    expect(bridge.formatLook).not.toHaveBeenCalled()
-    expect(bridge.formatParagraph).not.toHaveBeenCalled()
-
-    const spaced = await call('format_look', {
-      look: 'Labc123',
-      mixedFormatting: 2,
-      line_spacing: 180,
+    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', {
+      style: '본문',
+      bold: false,
+      charWidth: 100,
+      lineSpacing: 160,
     })
-    expect(spaced.isError).toBeFalsy()
-    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', { lineSpacing: 180 })
-    const every = await call('format_look', { look: 'Labc123', bold: false })
-    expect(every.isError).toBeFalsy()
-    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', { bold: false })
+
+    await call('format_look', { look: 'Labc123', bold: false, every_word: true })
+    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', {
+      bold: false,
+      everyWord: true,
+    })
+    await call('format_paragraph', { find: '본문', bold: false, every_word: true })
+    expect(bridge.formatParagraph).toHaveBeenLastCalledWith('본문', null, {
+      bold: false,
+      everyWord: true,
+    })
+    const alone = await call('format_look', { look: 'Labc123', every_word: true })
+    expect(alone.isError).toBe(true)
+    expect(bridge.formatLook).toHaveBeenCalledTimes(2)
   })
 })
 

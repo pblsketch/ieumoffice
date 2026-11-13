@@ -494,6 +494,21 @@ export interface AgentParagraphFormat extends AgentTextFormat {
   bullet?: string
 }
 
+/** What formatParagraph and formatLook take: a paragraph format, and whether it goes on every word. */
+export interface AgentLookFormat extends AgentParagraphFormat {
+  /** put the character formatting on every word even where words of a paragraph differ in it; otherwise such a call is refused (words_set_apart) */
+  everyWord?: boolean
+}
+
+/** Some words of the paragraphs differ from the rest in character properties the call would put on every word. */
+export interface AgentWordsSetApart {
+  ok: false
+  reason: 'words_set_apart'
+  /** those properties, in the names of the format */
+  properties: string[]
+  paragraphs: number
+}
+
 /** A call named a style the document does not have; `styles` are the ones of that kind it has. */
 export interface AgentNoSuchStyle {
   ok: false
@@ -638,6 +653,7 @@ export type AgentFormatParagraphResult =
     }
   | AgentPlaceRefusal
   | AgentNoSuchStyle
+  | AgentWordsSetApart
 
 /** A table cell whose text does not fit where it is drawn, as checkLayout lists it. */
 export interface AgentLayoutOverflow {
@@ -1166,6 +1182,7 @@ export type AgentFormatLookResult =
       looks: { id: string; paragraphs: number; sample: string }[]
     }
   | AgentNoSuchStyle
+  | AgentWordsSetApart
   | { ok: false; reason: 'has_objects'; count: number }
   | AgentMemoRemovalRefusal
 
@@ -1478,7 +1495,7 @@ export interface AgentPluginSurface {
   formatParagraph(
     find: string,
     occurrence: number | null,
-    format: AgentParagraphFormat,
+    format: AgentLookFormat,
     options?: AgentChangeOptions,
   ): AgentFormatParagraphResult
   listTables(): AgentTableList
@@ -1572,7 +1589,7 @@ export interface AgentPluginSurface {
   paragraphLooks(from?: number | null): AgentParagraphLooks
   formatLook(
     look: string,
-    format: AgentParagraphFormat,
+    format: AgentLookFormat,
     options?: AgentChangeOptions,
   ): AgentFormatLookResult
   measureTabs(spots: AgentTabSpot[]): { tabs: (AgentTabMeasure | null)[] }

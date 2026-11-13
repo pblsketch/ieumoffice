@@ -350,6 +350,44 @@ describe('the formatting of a document', () => {
     })
   })
 
+  it('puts a character property on every word only on purpose where the words differ in it', () => {
+    const { plugin, doc } = open()
+    expect(plugin.formatText('조사를', null, false, { bold: true })).toMatchObject({ ok: true })
+    const boldWord = () =>
+      JSON.parse(doc().getCharPropertiesAt(0, 1, '국가인권위원회는 '.length)).bold
+    const lookNow = () => {
+      const formatting = plugin.formatting()
+      if (!formatting.ok) throw new Error('not read')
+      return formatting.looks.find((look) => look.paragraphs === 4)!
+    }
+    const handedBack = lookNow()
+    expect(handedBack.mixedFormatting).toBe(1)
+    const flattening = { bold: false, italic: false, size: 10, lineSpacing: 160 }
+    for (const refused of [
+      plugin.formatLook(handedBack.id!, flattening),
+      plugin.formatParagraph('조사를', null, flattening),
+      plugin.formatParagraph('조사를', null, { charStyle: '쪽 번호' }),
+    ]) {
+      expect(refused).toMatchObject({ ok: false, reason: 'words_set_apart', paragraphs: 1 })
+    }
+    expect(plugin.formatLook(handedBack.id!, flattening)).toMatchObject({ properties: ['bold'] })
+    expect(plugin.formatParagraph('조사를', null, { charStyle: '쪽 번호' })).toMatchObject({
+      properties: ['charStyle'],
+    })
+    expect(boldWord()).toBe(true)
+
+    expect(plugin.formatLook(handedBack.id!, { size: 12, lineSpacing: 200 })).toMatchObject({
+      ok: true,
+      paragraphs: 4,
+    })
+    expect(boldWord()).toBe(true)
+    expect(plugin.formatLook(lookNow().id!, { bold: false, everyWord: true })).toMatchObject({
+      ok: true,
+      paragraphs: 4,
+    })
+    expect(boldWord()).toBe(false)
+  })
+
   it('reads another document handed over as base64, leaving this one as it was', () => {
     const { plugin, doc } = open()
     const other = fixture('footnote-typed-number.hwpx')

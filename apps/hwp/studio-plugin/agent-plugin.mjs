@@ -1468,6 +1468,10 @@ function containerOf(doc, hit) {
           expectOk(doc.splitParagraph(sec, k, doc.getLogicalLength(sec, k)), 'split the paragraph'),
         ),
       font: (k) => fontOf(() => doc.getCharPropertiesAt(sec, k, 0)),
+      runLooks: (k, length) =>
+        parse(doc.getCharShapeRuns(sec, k, 0, length)).map((run) =>
+          parse(doc.getCharPropertiesAt(sec, k, run.startOffset ?? 0)),
+        ),
       // an empty paragraph after k without splitting k: it takes k's paragraph formatting
       addAfter: (k) => expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph'),
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
@@ -1504,6 +1508,10 @@ function containerOf(doc, hit) {
     // callers (keepingObjects) is what protects an object there
     objectPositions: () => [],
     font: (k) => fontOf(() => doc.getCellCharPropertiesAtByPath(sec, para, at(k), 0)),
+    runLooks: (k, length) =>
+      parse(doc.getCharShapeRunsInCellByPath(sec, para, at(k), 0, length)).map((run) =>
+        parse(doc.getCellCharPropertiesAtByPath(sec, para, at(k), run.startOffset ?? 0)),
+      ),
     // the engine has no caret place to ask for in a cell paragraph
     split: (k, textOffset) =>
       splitKeepingText(lengthOf, k, textOffset, () =>
@@ -1861,13 +1869,67 @@ function formatOf(format, allowParagraph) {
     )
   }
   if (!hasChars && !hasParagraph) throw fail('BAD_ARGUMENT', 'format names nothing to change')
+  if (given('everyWord') && typeof format.everyWord !== 'boolean') {
+    throw fail('BAD_ARGUMENT', 'everyWord must be true or false')
+  }
   return {
     chars: Object.keys(chars).length > 0 || font !== null ? chars : null,
     font,
     paragraph: Object.keys(paragraph).length > 0 ? paragraph : null,
     style,
     charStyle,
+    everyWord: format.everyWord === true,
   }
+}
+
+/** The name a format request gives the run property it sets, where the two differ. */
+const FORMAT_NAME_OF_RUN_KEY = {
+  fontSize: 'size',
+  textColor: 'color',
+  shadeColor: 'highlight',
+  ratios: 'charWidth',
+  spacings: 'letterSpacing',
+  fontFamilies: 'font',
+  charShapeId: 'charStyle',
+}
+
+/**
+ * What of a checked format (formatOf) the words of some paragraphs differ in, each paragraph
+ * given as its box and index: put on every word, it would take away what sets some words
+ * apart, such as a bold word in plain text. Refused with those properties in the format's
+ * names and the count of such paragraphs; null when there are none or the format says
+ * everyWord.
+ */
+function wordsSetApart(spec, paragraphs) {
+  if (spec.everyWord) return null
+  const keys = [
+    ...Object.keys(spec.chars ?? {}),
+    ...(spec.font ? ['fontFamilies'] : []),
+    ...(spec.charStyle ? ['charShapeId'] : []),
+  ]
+  if (keys.length === 0) return null
+  const properties = new Set()
+  let count = 0
+  for (const [box, k] of paragraphs) {
+    const length = box.length(k)
+    if (length === 0) continue
+    let runs
+    try {
+      runs = box.runLooks(k, length)
+    } catch {
+      // runs the engine will not read are not counted, as in looksOf
+      continue
+    }
+    const apart = keys.filter(
+      (key) => new Set(runs.map((run) => JSON.stringify(run[key]))).size > 1,
+    )
+    if (apart.length === 0) continue
+    count += 1
+    for (const key of apart) properties.add(FORMAT_NAME_OF_RUN_KEY[key] ?? key)
+  }
+  return properties.size > 0
+    ? { ok: false, reason: 'words_set_apart', properties: [...properties], paragraphs: count }
+    : null
 }
 
 /** The style called `name` (its own or its English name), of `type` unless that is null. */
@@ -7131,7 +7193,7 @@ export const agentPlugin = {
           const box = containerOf(doc, picked.hit)
           if ((spec.paragraph && !box.formatParagraph) || (spec.style && !box.applyStyle))
             return refuse('unsupported_place')
-          const missing = missingStyle(doc, spec)
+          const missing = missingStyle(doc, spec) ?? wordsSetApart(spec, [[box, box.index]])
           if (missing) return { refusal: missing }
           return { box }
         }
@@ -10252,7 +10314,13 @@ export const agentPlugin = {
                 })),
             }
           }
-          return missingStyle(doc, spec)
+          return (
+            missingStyle(doc, spec) ??
+            wordsSetApart(
+              spec,
+              group.places.map(({ sec, para }) => [containerOf(doc, { sec, para }), para]),
+            )
+          )
         })
         if (refusal) return refusal
         return keepingObjects((mustKeep) =>
