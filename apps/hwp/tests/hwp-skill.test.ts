@@ -2922,6 +2922,61 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     ])
   })
 
+  it('writes a tab only where a column of a line ends, and leaves paths and command names whole', async () => {
+    // a backslash and a "t" of the text itself: a path part, a command name, English words
+    for (const kept of [
+      String.raw`상대 경로는 ..\temp\test 입니다`,
+      String.raw`\theta`,
+      String.raw`x\times y`,
+      String.raw`C:\t3`,
+      String.raw`D:\t_backup`,
+      String.raw`\\server\tools\tmp`,
+      String.raw`Name\tAge`,
+      String.raw`3 \times 4, \tau`,
+      String.raw`2\times 3`,
+      String.raw`..\v2\tmp`,
+      String.raw`정규식 \d+\t\w+`,
+    ]) {
+      expect(typedTabs(kept)).toBe(kept)
+    }
+    // a tab escaped twice, behind Hangul, a digit or a closing bracket
+    for (const [typed, meant] of [
+      [String.raw`개회\t10:00`, '개회\t10:00'],
+      [String.raw`부록 1\t21`, '부록 1\t21'],
+      [String.raw`성명\tKim Minsu`, '성명\tKim Minsu'],
+      [String.raw`개회\tAM 10:00`, '개회\tAM 10:00'],
+      [String.raw`담당 홍길동\tTel. 02-123-4567`, '담당 홍길동\tTel. 02-123-4567'],
+      [String.raw`문의\tE-mail`, '문의\tE-mail'],
+      [String.raw`이름\t소속\t연락처`, '이름\t소속\t연락처'],
+      [String.raw`서명 (인)\t날짜`, '서명 (인)\t날짜'],
+    ]) {
+      expect(typedTabs(typed)).toBe(meant)
+    }
+    // the answer names the paragraphs whose two characters became a tab
+    const { call, bridge } = setup()
+    const result = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: [String.raw`상대 경로는 ..\temp\test 입니다`, String.raw`개회\t10:00`, '폐회'],
+    })
+    expect(bridge.insertParagraphs).toHaveBeenLastCalledWith('', null, 'end', [
+      String.raw`상대 경로는 ..\temp\test 입니다`,
+      '개회\t10:00',
+      '폐회',
+    ])
+    expect(result.output).toContain(
+      String.raw`\t were written as a tab in paragraph(s) 2 of this call`,
+    )
+    const plain = await call('insert_paragraphs', { where: 'end', paragraphs: ['폐회'] })
+    expect(plain.output).not.toContain('written as a tab')
+  })
+
+  it('leaves the two characters alone in a selection rewrite, which takes no tab', async () => {
+    const { call, bridge, setSelection } = setup()
+    setSelection(STRETCH)
+    await call('replace_selection', { paragraphs: [String.raw`성명\t(인)`, '둘째'] })
+    expect(bridge.replaceSelection).toHaveBeenCalledWith(SELECTED, [String.raw`성명\t(인)`, '둘째'])
+  })
+
   it('draws a line round the pages and takes it away', async () => {
     const { call, bridge, changes } = setup()
     const drawn = await call('set_page_border', { line: 'double', width: 0.7, color: '#1F3864' })

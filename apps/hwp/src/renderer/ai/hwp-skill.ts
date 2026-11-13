@@ -1830,14 +1830,25 @@ export function equationScript(script: string): string {
     .trim()
 }
 
+const HANGUL = /[\u3131-\u318E\uAC00-\uD7A3]/
+
 /**
  * A new paragraph whose tab came as the two characters `\t` (a model that escaped it
- * twice): the tab itself, which runs to the paragraph's tab stop. A paragraph that names a
- * Windows path (C:\temp) is left as it is.
+ * twice): the tab itself, which runs to the paragraph's tab stop. The same two characters
+ * also start a part of a path (..\temp) and a command name (\theta), and a tab written in
+ * their place eats the "t". So a paragraph with backslashes of its own is left as it came
+ * (a real tab beside them, a drive path, a backslash in front of anything but "t"), and in
+ * the others a `\t` is a tab only behind what a column of a line ends with: Hangul, or a
+ * digit or a closing bracket that no lowercase word follows (v2\tmp, 2\times 3).
  */
 export function typedTabs(text: string): string {
-  if (!text.includes('\\t') || /[A-Za-z]:\\/.test(text)) return text
-  return text.replaceAll('\\t', '\t')
+  if (!text.includes('\\t')) return text
+  if (text.includes('\t') || /[A-Za-z]:\\/.test(text) || /\\(?!t)/.test(text)) return text
+  return text.replace(/\\t/g, (typed, at: number) => {
+    const before = text[at - 1] ?? ''
+    if (HANGUL.test(before)) return '\t'
+    return /[0-9)\]}]/.test(before) && !/[a-z]/.test(text[at + 2] ?? '') ? '\t' : typed
+  })
 }
 
 /**
@@ -1874,7 +1885,7 @@ function withDoubledEscapesUndone(call: AgentToolCall): AgentToolCall {
       input.paragraphs = undoDoubledEscapesInList(input.paragraphs)
       if (Array.isArray(input.paragraphs)) {
         input.paragraphs = input.paragraphs.map((paragraph: unknown) =>
-          typeof paragraph === 'string' ? evenCutLine(typedTabs(paragraph)) : paragraph,
+          typeof paragraph === 'string' ? evenCutLine(paragraph) : paragraph,
         )
       }
       break
@@ -2782,14 +2793,18 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       }
       case 'insert_paragraphs': {
         const place = placeArgs(call)
-        const paragraphs = call.input.paragraphs
+        const given = call.input.paragraphs
         if (hasLineBreak(textArg(call, 'anchor') ?? '')) {
           return bad(call, ONE_LINE_FIND_HELP('anchor'))
         }
         if (!place) return bad(call, WHERE_HELP)
-        if (!isTextList(paragraphs))
-          return bad(call, 'paragraphs must be a non-empty list of strings')
-        if (paragraphs.some(hasLineBreak)) return bad(call, ONE_LINE_ITEM_HELP)
+        if (!isTextList(given)) return bad(call, 'paragraphs must be a non-empty list of strings')
+        if (given.some(hasLineBreak)) return bad(call, ONE_LINE_ITEM_HELP)
+        // only this tool: the others refuse a tab in the text they write
+        const paragraphs = given.map(typedTabs)
+        const tabbed = given.flatMap((text, index) =>
+          text === paragraphs[index] ? [] : [index + 1],
+        )
         const outcome = await changeWithMemoApproval(
           () => bridge.insertParagraphs(place.anchor, place.occurrence, place.where, paragraphs),
           (options) =>
@@ -2813,8 +2828,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: 1,
           place: result.place,
         })
+        const tabNote =
+          tabbed.length > 0
+            ? ` The two characters \\t were written as a tab in paragraph(s) ${tabbed.join(', ')} of this call.`
+            : ''
         return {
-          output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${tabNote}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: label('aiToolInsert', { count: result.count }),
         }
