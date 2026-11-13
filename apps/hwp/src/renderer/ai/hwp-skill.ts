@@ -1683,6 +1683,9 @@ const HAS_OBJECTS_HELP =
 const SPANS_OBJECT_ADVICE =
   'Replace the words in front of it or the words behind it on their own, with replace_text.'
 const SPANS_OBJECT_HELP = `Nothing was changed: an equation or another object of the line (a footnote mark, a picture set in the text) stands inside the text to be replaced, and the new text has no place for it. ${SPANS_OBJECT_ADVICE}`
+/** A break the tool cannot put on a paragraph: the next paragraph is no stand-in for it. */
+const BREAK_BY_HAND =
+  'Do not put the break on another paragraph instead: the page or column would turn at a different line. Tell the user that this break has to be typed in the editor in front of the paragraph, with Ctrl+Enter for a page or Ctrl+Shift+Enter for a column.'
 const ONE_LINE_HELP =
   'Text with a line break cannot be searched or inserted: a replacement stays inside one paragraph or table cell. Split the change into one call per paragraph.'
 /** A line break in the new text of replace_text or replace_all. */
@@ -4618,12 +4621,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             case 'layout_start':
               return bad(
                 call,
-                'Nothing was changed: that paragraph starts a part of the document with another number of columns, and a break put on it would take that start away. Put the break on the paragraph after it, or tell the user.',
+                `Nothing was changed: that paragraph starts a new section or a part of the document with columns of its own, and a break put on it from here would take that start away. ${BREAK_BY_HAND} The empty line that leaves in front keeps the start.`,
               )
             case 'holds_mark':
               return bad(
                 call,
-                'Nothing was changed: that paragraph holds a mark that belongs to its place (a page number that starts anew, a hidden page number, a bookmark), and a break put on it would leave the mark on the page before. Put the break on the paragraph after it, or tell the user.',
+                `Nothing was changed: that paragraph holds a mark that belongs to its place (a page number that starts anew, a hidden page number, a bookmark), and a break put on it from here would leave the mark on the page before. ${BREAK_BY_HAND} The mark stays on the empty line that leaves in front, so it has to be set on the paragraph again.`,
               )
             case 'memo_removal_requires_approval':
               return bad(call, 'Nothing was changed.')

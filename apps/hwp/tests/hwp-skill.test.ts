@@ -2735,7 +2735,10 @@ describe('the look of a document', () => {
     })
     const refused = await zone.call('insert_break', { find: '글', kind: 'page' })
     expect(refused.isError).toBe(true)
-    expect(refused.output).toContain('another number of columns')
+    expect(refused.output).toContain(
+      'starts a new section or a part of the document with columns of its own',
+    )
+    expect(refused.output).toContain('The empty line that leaves in front keeps the start.')
     expect(zone.changes).toEqual([])
     const marked = setup({
       insertBreak: vi.fn(async () => ({
@@ -2747,6 +2750,13 @@ describe('the look of a document', () => {
     const left = await marked.call('insert_break', { find: '글', kind: 'page' })
     expect(left.isError).toBe(true)
     expect(left.output).toContain('would leave the mark on the page before')
+    expect(left.output).toContain('it has to be set on the paragraph again')
+    // the paragraph behind it is no stand-in: the page would turn at another line
+    for (const answer of [refused.output, left.output]) {
+      expect(answer).not.toContain('paragraph after it')
+      expect(answer).toContain('Do not put the break on another paragraph instead')
+      expect(answer).toContain('Ctrl+Enter for a page or Ctrl+Shift+Enter for a column')
+    }
     expect(marked.changes).toEqual([])
   })
 
