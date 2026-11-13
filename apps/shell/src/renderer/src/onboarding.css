@@ -129,6 +129,10 @@
   margin-left: -4px;
 }
 
+.onb-art-pick {
+  margin-left: -7px;
+}
+
 .onb-title {
   margin: 0;
   font-size: 28px;
@@ -164,7 +168,13 @@
   margin-top: 0;
 }
 
-/* step 2: one card per subscription provider, then the Codex line */
+/* the pick step: the editor and AI switches under the lead paragraph */
+.onb-pick {
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* step 3: one card per subscription provider, then the Codex line */
 .onb-connect {
   display: flex;
   flex-direction: column;
