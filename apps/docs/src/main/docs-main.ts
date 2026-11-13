@@ -4316,6 +4316,13 @@ function writeAiSettingsFile(settings: unknown): void {
 /** how long after start the key providers are first asked for their models */
 const KEY_MODEL_FIRST_LIST_DELAY_MS = 5000
 
+/**
+ * how often a running app looks whether a key provider's list is due again.
+ * The refresher asks only for a list a day old; an hourly look on the wall
+ * clock is what catches that after the PC slept through the night.
+ */
+const KEY_MODEL_RELIST_CHECK_MS = 60 * 60 * 1000
+
 const activeAiStreams = new Map<string, AbortController>()
 
 /** AI requests in flight across every editor (the shell's memory record reads it) */
@@ -4365,8 +4372,9 @@ const AI_RUN_TEXTS: AiRunTexts = {
 
 /**
  * Asks the key providers for their current models (decision 0087): once per run,
- * then again for a provider whose key or base URL changed. The list lands in
- * the settings file, so every picker shows it.
+ * then again for a provider whose key or base URL changed, or whose list is a
+ * day old (decision 0138). The list lands in the settings file, so every
+ * picker shows it.
  */
 const keyModelRefresher = createKeyModelRefresher({
   read: storedAiSettings,
@@ -4479,6 +4487,9 @@ export function registerAiIpc(): void {
   // the first listing waits for the windows: a key provider's list is not needed to show them
   void app.whenReady().then(() => {
     setTimeout(() => keyModelRefresher.refreshChanged(), KEY_MODEL_FIRST_LIST_DELAY_MS)
+    // an app left open for days: a list a day old is asked again (decision 0138).
+    // Unref'd, so the look never keeps a process that is done alive.
+    setInterval(() => keyModelRefresher.refreshChanged(), KEY_MODEL_RELIST_CHECK_MS).unref()
   })
 
   ipcMain.handle('ai:codex-models', async (_event, cliPath: unknown) => {

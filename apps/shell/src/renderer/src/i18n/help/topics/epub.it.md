@@ -12,7 +12,7 @@ L’editor di e-book apre i libri EPUB (`.epub`) in una scheda. Puoi leggere il 
 
 ## Leggere
 
-- Il riquadro **Sommario** a sinistra mostra l’indice del libro. Fai clic su una voce per andarci. Un libro che non ne ha uno riceve un elenco dei suoi capitoli.
+- Il riquadro **Sommario** a sinistra mostra l’indice del libro. Fai clic su una voce per andarci. Un libro che non ne ha uno riceve un elenco dei suoi capitoli. Trascina il bordo interno del riquadro per cambiarne la larghezza; fai doppio clic sul bordo per tornare alla larghezza originale. Il riquadro di ricerca usa la stessa larghezza.
 - Ogni capitolo scorre in alto e in basso. Continua a scorrere oltre la fine di un capitolo per passare al successivo, o oltre il suo inizio per tornare indietro. La riga di stato mostra in quale capitolo ti trovi.
 - La scheda **Visualizza** cambia la dimensione del testo e l’interlinea e attiva o disattiva la **Vista scura**. Queste impostazioni cambiano solo lo schermo, mai il libro, e valgono per tutti i libri.
 - Il punto in cui hai smesso di leggere viene ricordato per ogni file, nella cartella dei dati dell’app e non nel libro.

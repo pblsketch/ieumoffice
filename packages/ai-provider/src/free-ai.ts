@@ -22,16 +22,21 @@ export function isFreeAiProvider(id: unknown): id is FreeAiProviderId {
 
 /**
  * OpenRouter's free models that ran the Word editor's tool loop end to end
- * (2026-10-14; the last two 2026-10-15), best first. The connection takes the
- * first one OpenRouter still lists with tool support; free variants come and go
- * without notice.
+ * (2026-10-14; the next two 2026-10-15; the last two 2026-11-13), best first.
+ * The connection takes the first one OpenRouter still lists with tool support;
+ * free variants come and go without notice. `nvidia/nemotron-3-super-120b-a12b:free`
+ * led this list until OpenRouter withdrew it (missing from the weekly check
+ * since 2026-11-02); a stored selection of it reads as the model below
+ * (RETIRED_MODELS). Models added later go to the end, so a new connection's
+ * default stays the one tested longest.
  */
 export const OPENROUTER_FREE_MODELS: readonly string[] = [
-  'nvidia/nemotron-3-super-120b-a12b:free',
   'nvidia/nemotron-3-ultra-550b-a55b:free',
   'google/gemma-4-31b-it:free',
   'nvidia/nemotron-3.5-lightning:free',
   'dots-studio/dots-3-note-preview:free',
+  'baidu/ernie-5.5-flash-preview:free',
+  'nvidia/nemotron-3.5-super-vl:free',
 ]
 
 /**
@@ -68,6 +73,37 @@ export function freeAiConnected(
 }
 
 /**
+ * The tested free models OpenRouter still lists for the key (decision 0138):
+ * a withdrawn one fails when picked, so it is not offered. All of them while
+ * there is no list, or while the list has none of them (nothing to narrow to).
+ */
+function offeredFreeModels(live: readonly string[] | undefined): readonly string[] {
+  if (!live) return OPENROUTER_FREE_MODELS
+  const offered = OPENROUTER_FREE_MODELS.filter((id) => live.includes(id))
+  return offered.length > 0 ? offered : OPENROUTER_FREE_MODELS
+}
+
+/**
+ * The model an OpenRouter free connection runs on, given what OpenRouter
+ * lists for the key: the stored one while it is listed, else the first tested
+ * model that is (decision 0138). Free variants are withdrawn without notice,
+ * and a connection left on one fails every request. The answer is always a
+ * tested free model, so this never moves a connection to a paid one. A model
+ * that is not free, no list, and a list with none of the tested models all
+ * come back as given.
+ */
+export function openRouterFreeModelFor(
+  stored: string,
+  listed: readonly string[] | undefined,
+): string {
+  const model = stored.trim()
+  if (!isOpenRouterFreeModel(model)) return stored
+  const live = listedModelsOf(listed)
+  if (!live || live.includes(model)) return stored
+  return OPENROUTER_FREE_MODELS.find((id) => live.includes(id)) ?? stored
+}
+
+/**
  * The models a picker lists for a key provider: the fixed catalog, then what
  * the vendor listed for the key and the catalog lacks (newest first, decision
  * 0087), with the stored one kept in the list.
@@ -78,14 +114,15 @@ export function keyProviderModels(
   listed?: readonly string[],
 ): string[] {
   const model = stored.trim()
+  const live = listedModelsOf(listed)
   // an OpenRouter free connection lists the free models only: picking a paid
   // one there would fail on an account without credit, or charge one with it
   const free = provider === 'openrouter' && isOpenRouterFreeModel(model)
   const catalog = free
-    ? OPENROUTER_FREE_MODELS
+    ? offeredFreeModels(live)
     : (AI_PROVIDERS.find((meta) => meta.id === provider)?.models ?? [])
   const known = new Set(catalog)
-  const added = free ? [] : (listedModelsOf(listed) ?? []).filter((id) => !known.has(id))
+  const added = free ? [] : (live ?? []).filter((id) => !known.has(id))
   const models = [...catalog, ...added]
   if (!model || models.includes(model)) return models
   return [model, ...models]

@@ -12,7 +12,7 @@ The e-book editor opens EPUB books (`.epub`) in a tab. You read the book, correc
 
 ## Reading
 
-- The **Contents** pane on the left shows the book's table of contents. Click an entry to go there. A book without one gets a list of its chapters.
+- The **Contents** pane on the left shows the book's table of contents. Click an entry to go there. A book without one gets a list of its chapters. Drag the pane's inner edge to change its width; double-click the edge to go back to the original width. The find pane uses the same width.
 - Each chapter scrolls up and down. Keep scrolling past the end of a chapter to go to the next one, or past its start to go back. The status line shows which chapter you are in.
 - The **View** tab changes the text size and line spacing and switches **Dark view** on and off. These settings change only the screen, never the book, and apply to every book.
 - The place where you stopped reading is remembered for each file, in the app's data folder and not in the book.

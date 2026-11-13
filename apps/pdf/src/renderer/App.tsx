@@ -132,7 +132,7 @@ import { CropDialog, CutoutDialog, cropImagePng } from './ImageDialogs'
 import { cropRect, flipPixels, multiplyAlpha } from './image-bake'
 import type { CropFractions, ImageBakeOp } from './image-bake'
 import { removeBackground, type PixelImage } from './cutout'
-import { navAction, shouldHandleDocumentUndo } from './keyNav'
+import { isHandToolKey, navAction, shouldHandleDocumentUndo } from './keyNav'
 import {
   EMPTY_PAGE_SELECTION,
   clickPageSelection,
@@ -1437,6 +1437,21 @@ export default function App() {
   useEffect(() => {
     if (otherToolArmed) setHandTool(false)
   }, [otherToolArmed])
+  /** The ribbon button and H: turning it on disarms every other tool */
+  const toggleHandTool = () => {
+    if (!handTool) {
+      setDrawTool(null)
+      setEditTextMode(false)
+      setEditImageMode(false)
+      setPendingSign(null)
+      setImagePick(null)
+      setPendingTextInsert(null)
+      setTextDraft(null)
+      setPendingStaticFill(null)
+      setFormDesignTool(null)
+    }
+    setHandTool((v) => !v)
+  }
   const thumbsRef = useRef<HTMLDivElement>(null)
   const thumbDragScroll = useDragEdgeScroll(thumbsRef, '.pdf-thumbs-header')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -9052,6 +9067,12 @@ export default function App() {
         return
       }
       if (inEditable) return
+      // with the selection bar up, H is its highlight shortcut
+      if (!selPopup && isHandToolKey(e)) {
+        e.preventDefault()
+        toggleHandTool()
+        return
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFormFieldIds.length > 0) {
         e.preventDefault()
         deleteSelectedFormFields()
@@ -9536,20 +9557,7 @@ export default function App() {
           className={`rb-big${handTool ? ' active' : ''}`}
           data-tip={t('handToolTip')}
           aria-pressed={handTool}
-          onClick={() => {
-            if (!handTool) {
-              setDrawTool(null)
-              setEditTextMode(false)
-              setEditImageMode(false)
-              setPendingSign(null)
-              setImagePick(null)
-              setPendingTextInsert(null)
-              setTextDraft(null)
-              setPendingStaticFill(null)
-              setFormDesignTool(null)
-            }
-            setHandTool((v) => !v)
-          }}
+          onClick={toggleHandTool}
         >
           <span className="rb-big-icon">
             <IconHand />

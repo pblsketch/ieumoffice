@@ -12,7 +12,7 @@ El editor de libros electrónicos abre libros EPUB (`.epub`) en una pestaña. Pu
 
 ## Leer
 
-- El panel **Contenido** de la izquierda muestra la tabla de contenido del libro. Haga clic en una entrada para ir allí. Un libro que no la tiene recibe una lista de sus capítulos.
+- El panel **Contenido** de la izquierda muestra la tabla de contenido del libro. Haga clic en una entrada para ir allí. Un libro que no la tiene recibe una lista de sus capítulos. Arrastre el borde interior del panel para cambiar su ancho; haga doble clic en el borde para volver al ancho original. El panel de búsqueda usa el mismo ancho.
 - Cada capítulo se desplaza hacia arriba y hacia abajo. Siga desplazándose más allá del final de un capítulo para pasar al siguiente, o más allá de su inicio para volver al anterior. La línea de estado muestra en qué capítulo se encuentra.
 - La pestaña **Vista** cambia el tamaño del texto y el interlineado, y activa o desactiva la **Vista oscura**. Estos ajustes solo cambian la pantalla, nunca el libro, y se aplican a todos los libros.
 - El punto donde dejó de leer se recuerda para cada archivo, en la carpeta de datos de la aplicación y no dentro del libro.

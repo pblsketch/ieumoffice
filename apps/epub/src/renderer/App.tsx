@@ -16,6 +16,7 @@
  * ribbon, the menu and the AI panel, and locks editing while it runs.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { EpubTocEntry } from '@genoffice/epub-engine'
 import type { Params } from '@genoffice/i18n'
 import { useAutoSavePref } from '@genoffice/ui'
@@ -40,6 +41,7 @@ import { EditHomeTools, EditQuickTools, ReplaceRow } from './components/EditTool
 import { Ribbon } from './components/Ribbon'
 import { IconBlockedBook, IconNext, IconPrev } from './components/icons'
 import { SearchPane, TocPane, type SearchView } from './components/SidePanes'
+import { SideResizer, useSideWidth } from './components/SideResizer'
 import { useI18n, type StringKey } from './i18n/locale'
 import { EpubEditController, type EditState, type ReplaceAllOutcome } from './edit/controller'
 import { belongsToField, shortcutOf, type EditCommand } from './edit/shortcuts'
@@ -171,6 +173,7 @@ export default function App(): React.JSX.Element {
   const [shown, setShown] = useState<ShownChapter | null>(null)
   const [chapterFailed, setChapterFailed] = useState<number | null>(null)
   const [side, setSide] = useState<'toc' | 'search' | null>('toc')
+  const sideWidth = useSideWidth()
   const [notice, setNotice] = useState<Notice | null>(null)
   const [closeMenus, setCloseMenus] = useState(0)
   const [search, setSearch] = useState<SearchView>(SEARCH_IDLE)
@@ -1048,7 +1051,10 @@ export default function App(): React.JSX.Element {
         onToggleToc={() => setSide((s) => (s === 'toc' ? null : 'toc'))}
         onTogglePreview={togglePreview}
       />
-      <div className="epub-main">
+      <div
+        className={`epub-main${sideWidth.resizing ? ' epub-side-resizing' : ''}`}
+        style={{ '--epub-side-width': `${sideWidth.width}px` } as CSSProperties}
+      >
         {side === 'toc' && (
           <TocPane
             entries={tocEntries}
@@ -1086,6 +1092,14 @@ export default function App(): React.JSX.Element {
               />
             )}
           </SearchPane>
+        )}
+        {side !== null && (
+          <SideResizer
+            width={sideWidth.width}
+            label={t('sideResize')}
+            choose={sideWidth.choose}
+            setResizing={sideWidth.setResizing}
+          />
         )}
         <section className="epub-reader">
           <BookTranslation

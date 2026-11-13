@@ -106,6 +106,40 @@ test('the hand tool and the middle button drag the PDF view', async () => {
     await editorPage.keyboard.press('Escape')
     await expect(hand).toHaveAttribute('aria-pressed', 'false')
     await expect(editorPage.locator('.pdf-scroll')).not.toHaveClass(/pdf-hand/)
+
+    // H turns it on and off again
+    await editorPage.keyboard.press('h')
+    await expect(hand).toHaveAttribute('aria-pressed', 'true')
+    await expect(editorPage.locator('.pdf-scroll')).toHaveClass(/pdf-hand/)
+    await editorPage.keyboard.press('h')
+    await expect(hand).toHaveAttribute('aria-pressed', 'false')
+
+    // with text selected, H belongs to the selection bar (highlight), not the hand tool
+    // back to fit width so the whole line is on screen, then wait for the layout to settle
+    await editorPage.keyboard.press('Control+0')
+    const span = editorPage.locator('.textLayer span').first()
+    let last = ''
+    await expect
+      .poll(
+        async () => {
+          await span.scrollIntoViewIfNeeded().catch(() => {})
+          const now = JSON.stringify(await span.boundingBox().catch(() => null))
+          const steady = now !== 'null' && now === last
+          last = now
+          return steady
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true)
+    const box = (await span.boundingBox())!
+    await editorPage.mouse.move(box.x + 1, box.y + box.height / 2)
+    await editorPage.mouse.down()
+    await editorPage.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 })
+    await editorPage.mouse.up()
+    await expect(editorPage.locator('.pdf-sel-popup')).toBeVisible()
+    await editorPage.keyboard.press('h')
+    await expect(editorPage.locator('.pdf-scroll')).not.toHaveClass(/pdf-hand/)
+    await expect(hand).toHaveAttribute('aria-pressed', 'false')
   } finally {
     await closeAndSaveVideo(launched, 'pdf-hand-pan')
   }

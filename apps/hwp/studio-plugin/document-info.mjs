@@ -396,6 +396,12 @@ export function openDocumentInfo(studio, services, ko) {
       setTimeout(() => this.fill(), 0)
     }
 
+    // 닫기 is the base dialog's confirm button: the base calls onConfirm and closes unless it
+    // returns false, and leaves onConfirm to the subclass. Without one the click threw (#487).
+    onConfirm() {
+      return true
+    }
+
     fill() {
       if (this.filled) return
       this.filled = true

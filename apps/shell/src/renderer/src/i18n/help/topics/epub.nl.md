@@ -12,7 +12,7 @@ De e-boekeditor opent EPUB-boeken (`.epub`) in een tabblad. Je leest het boek, v
 
 ## Lezen
 
-- Het deelvenster **Inhoud** links toont de inhoudsopgave van het boek. Klik op een item om erheen te gaan. Een boek zonder inhoudsopgave krijgt een lijst van zijn hoofdstukken.
+- Het deelvenster **Inhoud** links toont de inhoudsopgave van het boek. Klik op een item om erheen te gaan. Een boek zonder inhoudsopgave krijgt een lijst van zijn hoofdstukken. Sleep de binnenrand van het deelvenster om de breedte te wijzigen; dubbelklik op de rand om terug te gaan naar de oorspronkelijke breedte. Het zoekvenster gebruikt dezelfde breedte.
 - Elk hoofdstuk scrolt omhoog en omlaag. Scrol verder voorbij het einde van een hoofdstuk om naar het volgende te gaan, of voorbij het begin om terug te gaan. De statusregel laat zien in welk hoofdstuk je bent.
 - Het tabblad **Beeld** wijzigt de tekstgrootte en regelafstand en zet **Donkere weergave** aan en uit. Deze instellingen veranderen alleen het scherm, nooit het boek, en gelden voor alle boeken.
 - De plek waar je bent gestopt met lezen, wordt per bestand onthouden, in de gegevensmap van de app en niet in het boek.

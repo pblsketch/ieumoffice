@@ -12,7 +12,7 @@ Trình soạn thảo sách điện tử mở sách EPUB (`.epub`) trong một th
 
 ## Đọc
 
-- Ngăn **Mục lục** bên trái hiển thị mục lục của sách. Bấm vào một mục để đi tới đó. Sách không có mục lục sẽ có danh sách các chương thay thế.
+- Ngăn **Mục lục** bên trái hiển thị mục lục của sách. Bấm vào một mục để đi tới đó. Sách không có mục lục sẽ có danh sách các chương thay thế. Kéo mép trong của ngăn để đổi độ rộng; bấm đúp vào mép để trở về độ rộng ban đầu. Ngăn tìm kiếm dùng cùng độ rộng.
 - Mỗi chương cuộn lên xuống. Cứ cuộn tiếp qua cuối chương để sang chương sau, hoặc qua đầu chương để quay lại. Dòng trạng thái cho biết bạn đang ở chương nào.
 - Thẻ **Xem** đổi cỡ chữ và giãn dòng, đồng thời bật tắt **Chế độ đọc tối**. Các thiết lập này chỉ đổi cách hiển thị trên màn hình, không bao giờ đổi sách, và áp dụng cho mọi cuốn sách.
 - Chỗ bạn đọc dở được ghi nhớ riêng cho từng tệp, trong thư mục dữ liệu của ứng dụng chứ không phải trong sách.

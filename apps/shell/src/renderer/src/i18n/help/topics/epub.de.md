@@ -12,7 +12,7 @@ Der E-Book-Editor öffnet EPUB-Bücher (`.epub`) in einem Tab. Sie lesen das Buc
 
 ## Lesen
 
-- Der Bereich **Inhalt** links zeigt das Inhaltsverzeichnis des Buchs. Klicken Sie auf einen Eintrag, um dorthin zu springen. Hat ein Buch keins, erhält es eine Liste seiner Kapitel.
+- Der Bereich **Inhalt** links zeigt das Inhaltsverzeichnis des Buchs. Klicken Sie auf einen Eintrag, um dorthin zu springen. Hat ein Buch keins, erhält es eine Liste seiner Kapitel. Ziehen Sie den inneren Rand des Bereichs, um seine Breite zu ändern; ein Doppelklick auf den Rand stellt die ursprüngliche Breite wieder her. Der Suchbereich hat dieselbe Breite.
 - Jedes Kapitel wird nach oben und unten gescrollt. Scrollen Sie über das Ende eines Kapitels hinaus, um zum nächsten zu gelangen, oder über seinen Anfang hinaus, um zurückzugehen. Die Statuszeile zeigt, in welchem Kapitel Sie sich befinden.
 - Auf dem Tab **Ansicht** ändern Sie Schriftgröße und Zeilenabstand und schalten die **Dunkle Ansicht** ein und aus. Diese Einstellungen betreffen nur den Bildschirm, nie das Buch, und gelten für alle Bücher.
 - Die Stelle, an der Sie aufgehört haben zu lesen, wird für jede Datei gemerkt, und zwar im Datenordner der App, nicht im Buch.

@@ -12,7 +12,7 @@ Editor e-book membuka buku EPUB (`.epub`) di sebuah tab. Anda bisa membaca buku,
 
 ## Membaca
 
-- Panel **Daftar isi** di sebelah kiri menampilkan daftar isi buku. Klik sebuah entri untuk menuju ke sana. Buku yang tidak punya daftar isi mendapat daftar babnya sebagai gantinya.
+- Panel **Daftar isi** di sebelah kiri menampilkan daftar isi buku. Klik sebuah entri untuk menuju ke sana. Buku yang tidak punya daftar isi mendapat daftar babnya sebagai gantinya. Seret tepi dalam panel untuk mengubah lebarnya; klik dua kali tepinya untuk kembali ke lebar semula. Panel pencarian memakai lebar yang sama.
 - Setiap bab digulir ke atas dan ke bawah. Teruskan menggulir melewati akhir bab untuk pindah ke bab berikutnya, atau melewati awalnya untuk kembali. Baris status menunjukkan bab tempat Anda berada.
 - Tab **Tampilan** mengubah ukuran teks dan spasi baris, serta menyalakan dan mematikan **Tampilan gelap**. Pengaturan ini hanya mengubah tampilan layar, tidak pernah mengubah buku, dan berlaku untuk semua buku.
 - Posisi terakhir Anda membaca diingat untuk setiap file, di folder data aplikasi, bukan di dalam buku.

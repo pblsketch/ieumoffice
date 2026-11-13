@@ -149,7 +149,8 @@ jobs:
           for bin in \
             "$dir/ieumoffice" \
             "$dir/resources/native/xlsx-sidecar" \
-            "$dir/resources/cli/ieumoffice"; do
+            "$dir/resources/cli/ieumoffice" \
+            "$dir/resources/ieumoffice-launch"; do
             test -x "$bin" || { echo "missing or not executable: $bin"; exit 1; }
           done
           compgen -G "apps/shell/release/IeumOffice-*.AppImage" >/dev/null
@@ -202,6 +203,52 @@ jobs:
             xvfb-run --auto-servernum -- "$exe" --headless-export "$work/$input" --to pdf --out "$work/$input.pdf" --json --no-sandbox
             test -s "$work/$input.pdf"
           done
+
+      # A desktop session starts programs with an open-file soft limit of 1024.
+      # Chromium forks its zygote before any app code runs, and every renderer
+      # keeps the zygote's limit, so an editor that opens one file per font runs
+      # out on a PC with thousands of fonts and then blocks forever (#488).
+      # Started through the packaged launcher (the deb/rpm desktop entry points
+      # at it), the zygote and renderers must get the hard limit instead. The
+      # binary started directly is printed for comparison only.
+      - name: Renderers start with the raised open-file limit
+        run: |
+          set -euo pipefail
+          dir="$PWD/apps/shell/release/linux-unpacked"
+          work="$RUNNER_TEMP/nofile"
+          mkdir -p "$work"
+          # soft limits of the zygote and renderer processes of an app started from $1
+          child_limits() {
+            local start="$1" name="$2" pids="" soft="" pid
+            ( ulimit -Sn 1024; exec xvfb-run --auto-servernum -- "$start" --no-sandbox --user-data-dir="$work/profile-$name" ) >"$work/$name.log" 2>&1 &
+            local job=$!
+            for _ in $(seq 1 60); do
+              pgrep -f -- "$dir/ieumoffice --type=renderer" >/dev/null && break
+              sleep 1
+            done
+            pids="$(pgrep -f -- "$dir/ieumoffice --type=(zygote|renderer)" || true)"
+            for pid in $pids; do
+              soft="$soft $(awk '/^Max open files/ {print $4}' "/proc/$pid/limits" 2>/dev/null || true)"
+            done
+            pkill -f -- "$dir/ieumoffice" || true
+            kill "$job" 2>/dev/null || true
+            wait "$job" 2>/dev/null || true
+            echo $soft
+          }
+          launched="$(child_limits "$dir/resources/ieumoffice-launch" launcher)"
+          echo "through the launcher: ${launched:-none found}"
+          if [ -z "$launched" ]; then
+            echo "::error::no zygote or renderer process was found"
+            cat "$work/launcher.log" || true
+            exit 1
+          fi
+          for soft in $launched; do
+            if [ "$soft" != "unlimited" ] && [ "$soft" -le 1024 ]; then
+              echo "::error::a zygote or renderer started with an open-file soft limit of $soft"
+              exit 1
+            fi
+          done
+          echo "started directly (for comparison): $(child_limits "$dir/ieumoffice" direct)"
 
       # Every ELF file the packages carry (Electron, its libraries, the xlsx
       # sidecar, and any native program added later) must load on the floor
@@ -256,6 +303,9 @@ jobs:
                 libgbm1 libasound2 xvfb xauth > /dev/null
               ldd --version | sed -n 1p
               /opt/IeumOffice/resources/native/xlsx-sidecar < /dev/null
+              # the post-install step pointed the desktop entry at the launcher (#488)
+              test -x /opt/IeumOffice/resources/ieumoffice-launch
+              grep -q "^Exec=/opt/IeumOffice/resources/ieumoffice-launch " /usr/share/applications/ieumoffice.desktop
               if ldd /opt/IeumOffice/ieumoffice | grep "not found"; then exit 1; fi
               mkdir -p /tmp/out
               xvfb-run --auto-servernum -- /opt/IeumOffice/ieumoffice --headless-export /work/table.csv --to pdf --out /tmp/out/table.pdf --json --no-sandbox

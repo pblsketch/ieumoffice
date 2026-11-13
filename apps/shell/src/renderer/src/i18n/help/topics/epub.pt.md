@@ -12,7 +12,7 @@ O editor de livros digitais abre livros EPUB (`.epub`) em uma aba. Você lê o l
 
 ## Ler
 
-- O painel **Sumário**, à esquerda, mostra o índice do livro. Clique em um item para ir até ele. Um livro sem índice recebe uma lista dos seus capítulos.
+- O painel **Sumário**, à esquerda, mostra o índice do livro. Clique em um item para ir até ele. Um livro sem índice recebe uma lista dos seus capítulos. Arraste a borda interna do painel para mudar a largura; clique duas vezes na borda para voltar à largura original. O painel de busca usa a mesma largura.
 - Cada capítulo rola para cima e para baixo. Continue rolando depois do fim de um capítulo para passar ao seguinte, ou antes do início dele para voltar. A linha de status mostra em que capítulo você está.
 - A aba **Exibir** muda o tamanho do texto e o espaçamento entre linhas e liga e desliga a **Visualização escura**. Essas configurações mudam só a tela, nunca o livro, e valem para todos os livros.
 - O ponto em que você parou de ler é lembrado para cada arquivo, na pasta de dados do app, e não no livro.

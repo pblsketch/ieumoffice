@@ -75,19 +75,23 @@ describe('pickTransferImage', () => {
   // HTML comes from Excel. A picture left to the engine is a drawing in its
   // own model, which the save path never sees: it is visible, and it is gone
   // after the next save (genoffice#2566).
-  it('claims the bitmap of a table copy that is not from Excel', () => {
+  // This fork's range copy puts a picture of the cells next to its table
+  // (copy-picture.ts), and its keyboard paste drops such a rendering's files
+  // (withoutRenderingFiles), so the cells paste and no unsaved drawing is made.
+  // Upstream claims these bitmaps instead (genoffice#2596).
+  it('leaves the bitmap of a table copy to the cell paste, wherever it comes from', () => {
     const data = transfer([stringItem('text/plain'), stringItem('text/html'), imageItem()], {
       'text/plain': '1\t2\n3\t4',
       'text/html': '<table><tr><td>1</td><td>2</td></tr></table>',
     })
-    expect(pickTransferImage(data)).not.toBeNull()
+    expect(pickTransferImage(data)).toBeNull()
   })
 
-  it('claims the stray bitmap of a text copy, because the engine pastes the file', () => {
+  it('leaves the stray bitmap of a text copy to the text paste', () => {
     const data = transfer([stringItem('text/plain'), imageItem('image/tiff')], {
       'text/plain': 'hello',
     })
-    expect(pickTransferImage(data)).not.toBeNull()
+    expect(pickTransferImage(data)).toBeNull()
   })
 
   it('ignores transfers without an image file', () => {

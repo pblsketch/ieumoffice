@@ -12,7 +12,7 @@ Edytor e-booków otwiera książki EPUB (`.epub`) na karcie. Możesz czytać ksi
 
 ## Czytanie
 
-- Panel **Spis treści** po lewej pokazuje spis treści książki. Kliknij pozycję, aby do niej przejść. Książka bez spisu treści dostaje listę swoich rozdziałów.
+- Panel **Spis treści** po lewej pokazuje spis treści książki. Kliknij pozycję, aby do niej przejść. Książka bez spisu treści dostaje listę swoich rozdziałów. Przeciągnij wewnętrzną krawędź panelu, aby zmienić jego szerokość; kliknij krawędź dwukrotnie, aby wrócić do pierwotnej szerokości. Panel wyszukiwania ma tę samą szerokość.
 - Każdy rozdział przewija się w górę i w dół. Przewijaj dalej za koniec rozdziału, aby przejść do następnego, albo przed jego początek, aby wrócić. Wiersz stanu pokazuje, w którym rozdziale jesteś.
 - Karta **Widok** zmienia rozmiar tekstu i interlinię oraz włącza i wyłącza **Widok ciemny**. Te ustawienia zmieniają tylko ekran, nigdy książkę, i dotyczą wszystkich książek.
 - Miejsce, w którym skończyłeś czytać, jest zapamiętywane osobno dla każdego pliku, w folderze danych aplikacji, a nie w książce.
