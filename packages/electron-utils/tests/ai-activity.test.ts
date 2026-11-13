@@ -159,8 +159,7 @@ describe('AI job groups', () => {
 describe('a job stop-all ended', () => {
   it('does not linger once it reports its end', async () => {
     vi.useFakeTimers()
-    let end!: () => void
-    end = registerAiJob({
+    const end: () => void = registerAiJob({
       kind: 'chat',
       stop: () => end(),
       group: 'tab:9',
