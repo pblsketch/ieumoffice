@@ -9175,6 +9175,20 @@ export const agentPlugin = {
       }),
 
       /**
+       * Take the right-click item 쉬운 말로 풀기 away again (AI turned off in Settings): the
+       * menus leave out a command nobody registered. installEasyWords brings it back.
+       */
+      removeEasyWords: guarded(() => {
+        if (!host.automation.unregisterCommand) return { ok: false }
+        try {
+          host.automation.unregisterCommand(EASY_WORDS_COMMAND)
+        } catch {
+          // it was not registered
+        }
+        return { ok: true }
+      }),
+
+      /**
        * Mark the fonts that are not on this PC in the editor's font menu and font box, with
        * the app's words (`tag` beside a menu entry, `hint` as the tooltip), and tell which of
        * the document's fonts are not on this PC: once the editor's start-up look at the PC's
