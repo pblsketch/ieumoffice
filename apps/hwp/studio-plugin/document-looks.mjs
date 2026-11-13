@@ -505,11 +505,13 @@ export const MIN_TEXT_CONTRAST = 1.6
 export const MIN_BLACK_ON_FILL = 3
 
 /**
- * The colour words take on a fill (#RRGGBB) when the call names none for them: white where
- * black would be hard to read, else null for the colour they have.
+ * The colour words take on a fill (#RRGGBB) when the call names none that shows on it: white
+ * where black and the colour they have (`current`, black when not known) would both be hard
+ * to read, else null for the colour they have.
  */
-export function textColorOnFill(fill) {
-  return contrastRatio('#000000', fill) < MIN_BLACK_ON_FILL ? '#ffffff' : null
+export function textColorOnFill(fill, current) {
+  const shows = (color) => contrastRatio(color, fill) >= MIN_BLACK_ON_FILL
+  return shows('#000000') || (typeof current === 'string' && shows(current)) ? null : '#ffffff'
 }
 
 /** How text sits at a tab stop, and what fills the way to it, with the engine's codes. */

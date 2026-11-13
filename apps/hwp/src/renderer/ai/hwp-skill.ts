@@ -515,7 +515,7 @@ const TOOLS: HwpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        offset: { type: 'integer', minimum: 0, description: 'character to start from (default 0)' },
+        offset: { type: 'integer', description: 'character to start from (default 0)' },
       },
     },
   },
@@ -546,11 +546,7 @@ const TOOLS: HwpToolDef[] = [
       type: 'object',
       properties: {
         url: { type: 'string', description: 'http(s) address of the page to read' },
-        offset: {
-          type: 'integer',
-          minimum: 0,
-          description: 'character to start from (default 0)',
-        },
+        offset: { type: 'integer', description: 'character to start from (default 0)' },
       },
       required: ['url'],
     },
@@ -861,9 +857,7 @@ const TOOLS: HwpToolDef[] = [
         },
         width_pt: {
           type: 'number',
-          minimum: 24,
-          maximum: 600,
-          description: 'width on the page in points, default 240',
+          description: 'width on the page in points, 24 to 600, default 240',
         },
       },
       required: ['where'],
@@ -887,9 +881,7 @@ const TOOLS: HwpToolDef[] = [
         },
         width_pt: {
           type: 'number',
-          minimum: 24,
-          maximum: 600,
-          description: 'width on the page in points, default 240',
+          description: 'width on the page in points, 24 to 600, default 240',
         },
       },
       required: ['where', 'prompt'],
@@ -1669,7 +1661,12 @@ const TOOLS: HwpToolDef[] = [
       properties: {
         kind: { type: 'string', enum: ['header', 'footer'] },
         text: { type: 'string', description: 'one line; "" removes the header or footer' },
-        align: { type: 'string', enum: ['left', 'center', 'right'], description: 'default center' },
+        align: {
+          type: 'string',
+          enum: ['left', 'center', 'right'],
+          description:
+            'left out, a line that is there keeps its alignment and a new one is centred',
+        },
         size: { type: 'number', description: 'font size in points' },
       },
       required: ['kind', 'text'],
@@ -1731,11 +1728,11 @@ export const HWP_EDIT_TOOLS: ReadonlySet<string> = new Set(
   ALL_TOOLS.filter((tool) => tool.edits).map((tool) => tool.name),
 )
 
-const offered = ({ edits: _edits, ...tool }: HwpToolDef): AgentToolDef => tool
-const OFFERED_TOOLS = TOOLS.map(offered)
-const OFFERED_IMPORT_ATTACHMENT = offered(IMPORT_ATTACHMENT_TOOL)
+const withoutEditsMark = ({ edits: _edits, ...tool }: HwpToolDef): AgentToolDef => tool
+const OFFERED_TOOLS = TOOLS.map(withoutEditsMark)
+const OFFERED_IMPORT_ATTACHMENT = withoutEditsMark(IMPORT_ATTACHMENT_TOOL)
 
-const READ_NAMES = new Map([
+const DECLARED_NAME_OF_READ_KEY = new Map([
   ['lineSpacing', 'line_spacing'],
   ['marginLeft', 'margin_left'],
   ['marginRight', 'margin_right'],
@@ -1749,10 +1746,10 @@ const READ_NAMES = new Map([
   ['gapMm', 'gap_mm'],
 ])
 
-const ARGUMENT_ALIASES = new Map([...READ_NAMES, ['atMm', 'at_mm']])
+const DECLARED_NAME_OF_OLD_ARGUMENT = new Map([...DECLARED_NAME_OF_READ_KEY, ['atMm', 'at_mm']])
 
-const PLUGIN_NAMES = new Map([
-  ...ARGUMENT_ALIASES,
+const DECLARED_NAME_OF_PLUGIN_ARGUMENT = new Map([
+  ...DECLARED_NAME_OF_OLD_ARGUMENT,
   ['charWidth', 'char_width'],
   ['letterSpacing', 'letter_spacing'],
   ['charStyle', 'char_style'],
@@ -1774,51 +1771,60 @@ const PLUGIN_NAMES = new Map([
   ['keepWithNext', 'keep_with_next'],
   ['listPictures', 'list_pictures'],
 ])
-const PLUGIN_NAME = new RegExp(`\\b(?:${[...PLUGIN_NAMES.keys()].join('|')})\\b`, 'g')
+const PLUGIN_ARGUMENT = new RegExp(
+  `\\b(?:${[...DECLARED_NAME_OF_PLUGIN_ARGUMENT.keys()].join('|')})\\b`,
+  'g',
+)
 
 const inDeclaredWords = (message: string): string =>
-  message.replace(PLUGIN_NAME, (name) => PLUGIN_NAMES.get(name) ?? name)
+  message.replace(PLUGIN_ARGUMENT, (name) => DECLARED_NAME_OF_PLUGIN_ARGUMENT.get(name) ?? name)
 
 const PAGE_MARGIN_SIDES = ['left', 'right', 'top', 'bottom', 'header', 'footer', 'gutter'] as const
 
-const READ_ONLY_KEYS = new Set([
-  'paragraphs',
-  'samples',
-  'mixedFormatting',
-  'lineSpacingKind',
-  'kind',
-  'style',
-  'exists',
-  'plain',
-])
+const FACTS_OF_A_LOOK = ['paragraphs', 'samples', 'mixedFormatting', 'lineSpacingKind']
 
-const isReadOnly = (name: string, value: unknown): boolean =>
-  READ_ONLY_KEYS.has(name) || (name === 'look' && typeof value === 'string')
+/**
+ * What a read answer says beside its settings, by the tool that answer is handed back to. At
+ * the top of a call to that tool they are named in its answer as unused; an undeclared
+ * argument anywhere else is refused.
+ */
+const READ_ANSWER_FACTS: Record<string, readonly string[]> = {
+  create_style: [...FACTS_OF_A_LOOK, 'style', 'look'],
+  edit_style: [...FACTS_OF_A_LOOK, 'style', 'look', 'kind'],
+  format_paragraph: [...FACTS_OF_A_LOOK, 'look'],
+  format_look: FACTS_OF_A_LOOK,
+  set_header_footer: ['exists', 'plain'],
+}
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+type Fields = Record<string, unknown>
+
+const isRecord = (value: unknown): value is Fields =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const isGiven = (value: unknown): boolean => value !== undefined && value !== null
 
+const flatPageMargins = (margins: Fields): [string, unknown][] =>
+  Object.entries(margins).map(([side, margin]) => [`margin_${side}`, margin])
+
 function inDeclaredNames(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(inDeclaredNames)
   if (!isRecord(value)) return value
-  const out: Record<string, unknown> = {}
-  for (const [key, held] of Object.entries(value)) {
-    if (key === 'margins' && isRecord(held)) {
-      for (const [side, margin] of Object.entries(held)) out[`margin_${side}`] = margin
-    } else out[READ_NAMES.get(key) ?? key] = inDeclaredNames(held)
-  }
-  return out
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, held]): [string, unknown][] =>
+      key === 'margins' && isRecord(held)
+        ? flatPageMargins(held)
+        : [[DECLARED_NAME_OF_READ_KEY.get(key) ?? key, inDeclaredNames(held)]],
+    ),
+  )
 }
 
-const looksByName = (looks: readonly object[]): unknown[] =>
+const looksWithIdAsLook = (looks: readonly object[]): unknown[] =>
   looks.map((entry) => {
-    const { id, ...look } = inDeclaredNames(entry) as Record<string, unknown>
+    const { id, ...look } = inDeclaredNames(entry) as Fields
     return id === undefined ? look : { look: id, ...look }
   })
 
-function withCellsNamed(input: Record<string, unknown>): Record<string, unknown> {
+function withCellsNamed(input: Fields): Fields {
   if (isGiven(input.cells) || isGiven(input.range)) return input
   const { from_row, from_col, to_row, to_col, row, col, ...rest } = input
   const corners = [from_row, from_col, to_row, to_col]
@@ -1830,42 +1836,42 @@ function withCellsNamed(input: Record<string, unknown>): Record<string, unknown>
   return input
 }
 
-function withLookNamed(input: Record<string, unknown>): Record<string, unknown> {
+function withLookNamed(input: Fields): Fields {
   if (!isGiven(input.id) || isGiven(input.look)) return input
   const { id, ...rest } = input
   return { ...rest, look: id }
 }
 
-const OTHER_SHAPES = new Map([
+const ALSO_TAKEN_SHAPES = new Map([
   ['format_cells', withCellsNamed],
   ['format_look', withLookNamed],
 ])
 
-function inDeclaredShape(
-  value: Record<string, unknown>,
-  declared: Record<string, unknown>,
-): Record<string, unknown> {
+function openedWithoutOverwriting(
+  value: Fields,
+  wrapper: string,
+  entries: [string, unknown][],
+): Fields {
+  if (entries.some(([key]) => Object.hasOwn(value, key))) return value
+  const { [wrapper]: _wrapper, ...rest } = value
+  return { ...rest, ...Object.fromEntries(entries) }
+}
+
+const lookOpened = (value: Fields, declared: Fields): Fields =>
+  !Object.hasOwn(declared, 'look') && isRecord(value.look)
+    ? openedWithoutOverwriting(value, 'look', Object.entries(value.look))
+    : value
+
+const pageMarginsOpened = (value: Fields, declared: Fields): Fields =>
+  isRecord(value.margins) &&
+  !Object.hasOwn(declared, 'margins') &&
+  PAGE_MARGIN_SIDES.every((side) => Object.hasOwn(declared, `margin_${side}`))
+    ? openedWithoutOverwriting(value, 'margins', flatPageMargins(value.margins))
+    : value
+
+function oldNamesMovedWithoutOverwriting(value: Fields, declared: Fields): Fields {
   let out = value
-  const opened = (wrapper: string, entries: [string, unknown][]) => {
-    if (entries.some(([key]) => Object.hasOwn(out, key))) return
-    const { [wrapper]: _wrapper, ...rest } = out
-    out = { ...rest, ...Object.fromEntries(entries) }
-  }
-  if (!Object.hasOwn(declared, 'look') && isRecord(out.look)) {
-    opened('look', Object.entries(out.look))
-  }
-  const margins = out.margins
-  if (
-    isRecord(margins) &&
-    !Object.hasOwn(declared, 'margins') &&
-    PAGE_MARGIN_SIDES.every((side) => Object.hasOwn(declared, `margin_${side}`))
-  ) {
-    opened(
-      'margins',
-      Object.entries(margins).map(([side, margin]) => [`margin_${side}`, margin]),
-    )
-  }
-  for (const [old, name] of ARGUMENT_ALIASES) {
+  for (const [old, name] of DECLARED_NAME_OF_OLD_ARGUMENT) {
     if (!Object.hasOwn(out, old) || Object.hasOwn(declared, old)) continue
     if (!Object.hasOwn(declared, name) || Object.hasOwn(out, name)) continue
     const { [old]: moved, ...rest } = out
@@ -1874,7 +1880,13 @@ function inDeclaredShape(
   return out
 }
 
-function inDeclaredType(value: unknown, schema: Record<string, unknown>): unknown {
+const inDeclaredShape = (value: Fields, declared: Fields): Fields =>
+  oldNamesMovedWithoutOverwriting(
+    pageMarginsOpened(lookOpened(value, declared), declared),
+    declared,
+  )
+
+function inDeclaredType(value: unknown, schema: Fields): unknown {
   if (typeof value !== 'string') return value
   const types: unknown[] = Array.isArray(schema.type) ? schema.type : [schema.type]
   if ((types.includes('number') || types.includes('integer')) && value.trim() !== '') {
@@ -1891,37 +1903,105 @@ function inDeclaredType(value: unknown, schema: Record<string, unknown>): unknow
   return value
 }
 
+const isNumber = (value: unknown): boolean => typeof value === 'number' && Number.isFinite(value)
+
+const TYPE_FITS: Record<string, (value: unknown) => boolean> = {
+  string: (value) => typeof value === 'string',
+  number: isNumber,
+  // a fraction is refused by the handler, which says what the number counts
+  integer: isNumber,
+  boolean: (value) => typeof value === 'boolean',
+  array: Array.isArray,
+  object: isRecord,
+}
+
+const TYPE_IN_WORDS: Record<string, string> = {
+  string: 'text',
+  number: 'a number',
+  integer: 'a whole number',
+  boolean: 'true or false',
+  array: 'a list',
+  object: 'an object',
+}
+
+function expectedInstead(value: unknown, schema: Fields): string | null {
+  const allowed = schema.enum
+  if (Array.isArray(allowed)) {
+    return allowed.includes(value) ? null : `one of ${allowed.join(', ')}`
+  }
+  const types = (Array.isArray(schema.type) ? schema.type : [schema.type]).filter(
+    (type): type is string => typeof type === 'string' && Object.hasOwn(TYPE_FITS, type),
+  )
+  if (types.length === 0 || types.some((type) => TYPE_FITS[type]!(value))) return null
+  return types.map((type) => TYPE_IN_WORDS[type]).join(' or ')
+}
+
 export interface UndeclaredArgument {
   path: string
   name: string
+  /** the path of the object that holds it; `''` is the call itself */
   holder: string
   declared: string[]
+  /** the declared names given beside it */
+  given: string[]
+}
+
+export interface WrongValue {
+  path: string
+  expected: string
+  given: unknown
 }
 
 export interface PreparedInput {
   input: Record<string, unknown>
   undeclared: UndeclaredArgument[]
-  readOnly: string[]
+  wrong: WrongValue[]
+  /** paths of the READ_ANSWER_FACTS the call carried */
+  facts: string[]
 }
 
 export function prepareInput(tool: AgentToolDef, input: Record<string, unknown>): PreparedInput {
   const undeclared: UndeclaredArgument[] = []
-  const readOnly: string[] = []
-  const shaped = OTHER_SHAPES.get(tool.name)?.(input) ?? input
-  const prepared = walkArgumentFields(tool, shaped, (value, schema, holder) => {
+  const wrong: WrongValue[] = []
+  const facts: string[] = []
+  const factsOfTool = READ_ANSWER_FACTS[tool.name] ?? []
+  const shaped = ALSO_TAKEN_SHAPES.get(tool.name)?.(input) ?? input
+  const prepared = walkArgumentFields(tool, shaped, (given, schema, path) => {
+    const isListItem = path.endsWith(']')
+    if (!isGiven(given) && !isListItem) return given
+    const value = inDeclaredType(given, schema)
+    const expected = expectedInstead(value, schema)
+    if (expected) {
+      wrong.push({ path, expected, given: value })
+      return value
+    }
     const declared = schema.properties
-    if (!isRecord(value) || !isRecord(declared)) return inDeclaredType(value, schema)
+    if (!isRecord(value) || !isRecord(declared)) return value
     const held = inDeclaredShape(value, declared)
-    for (const [name, given] of Object.entries(held)) {
-      if (Object.hasOwn(declared, name) || !isGiven(given)) continue
-      const path = holder ? `${holder}.${name}` : name
-      if (isReadOnly(name, given)) readOnly.push(path)
-      else undeclared.push({ path, name, holder, declared: Object.keys(declared) })
+    const names = Object.keys(held)
+    for (const name of names) {
+      if (Object.hasOwn(declared, name) || !isGiven(held[name])) continue
+      const at = path ? `${path}.${name}` : name
+      if (path === '' && factsOfTool.includes(name)) facts.push(at)
+      else {
+        undeclared.push({
+          path: at,
+          name,
+          holder: path,
+          declared: Object.keys(declared),
+          given: names.filter((other) => Object.hasOwn(declared, other)),
+        })
+      }
     }
     return held
   })
-  return { input: prepared, undeclared, readOnly }
+  return { input: prepared, undeclared, wrong, facts }
 }
+
+const WRITTEN_OUT = new Map([
+  ['col', 'column'],
+  ['cols', 'columns'],
+])
 
 const wordsOf = (name: string): string[] =>
   name
@@ -1930,9 +2010,39 @@ const wordsOf = (name: string): string[] =>
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
 
-const sameWord = (one: string, other: string): boolean =>
-  one === other ||
-  (Math.min(one.length, other.length) >= 3 && (one.startsWith(other) || other.startsWith(one)))
+const oneOfMany = (word: string): string => {
+  const whole = WRITTEN_OUT.get(word) ?? word
+  return whole.length > 3 && whole.endsWith('s') ? whole.slice(0, -1) : whole
+}
+
+const sameWords = (one: readonly string[], other: readonly string[]): boolean =>
+  one.length === other.length &&
+  one.every((word, index) => oneOfMany(word) === oneOfMany(other[index]!))
+
+const UNIT_WORDS = ['mm', 'pt', 'percent']
+
+/** What a name a tool does not declare usually means, the likeliest first, in declared names. */
+const MEANT_BY: Record<string, readonly string[]> = {
+  background_color: ['background', 'highlight', 'header_color', 'color'],
+  bg_color: ['background', 'highlight', 'header_color', 'color'],
+  bg: ['background', 'highlight', 'header_color', 'color'],
+  fill: ['background', 'header_color', 'color'],
+  font_name: ['font'],
+  font_family: ['font'],
+  font_size: ['size'],
+  font_color: ['color', 'text_color'],
+  text_color: ['color'],
+  colour: ['color'],
+  line_height: ['line_spacing'],
+  thickness: ['width'],
+  style: ['line', 'look'],
+  type: ['kind', 'align'],
+  kind: ['align'],
+  index: ['occurrence', 'at'],
+  nth: ['occurrence'],
+  n: ['count', 'occurrence'],
+  columns: ['cols', 'count'],
+}
 
 function editDistance(from: string, to: string): number {
   let row = Array.from({ length: to.length + 1 }, (_, index) => index)
@@ -1950,35 +2060,41 @@ function editDistance(from: string, to: string): number {
   return row[to.length]!
 }
 
-export function nearestNames(name: string, declared: readonly string[]): string[] {
-  const known = PLUGIN_NAMES.get(name)
-  if (known !== undefined && declared.includes(known)) return [known]
+/**
+ * The declared names an undeclared one most likely stands for: at most two, and none when
+ * nothing is likely. A name the call already gives beside it is not a guess worth making,
+ * unless the undeclared one is another spelling of it.
+ */
+export function nearestNames(
+  name: string,
+  declared: readonly string[],
+  given: readonly string[] = [],
+): string[] {
+  const spelled = DECLARED_NAME_OF_PLUGIN_ARGUMENT.get(name)
+  if (spelled !== undefined && declared.includes(spelled)) return [spelled]
   const words = wordsOf(name)
-  const last = words.at(-1) ?? ''
-  const ranked = declared
-    .map((candidate) => {
-      const theirs = wordsOf(candidate)
-      const shared = theirs.filter((word) => words.some((mine) => sameWord(mine, word)))
-      return {
-        candidate,
-        shared: shared.reduce((letters, word) => letters + word.length, 0),
-        ending: Number(theirs.some((word) => sameWord(word, last))),
-        others: theirs.length - shared.length,
-      }
-    })
-    .filter((entry) => entry.shared > 0)
-    .sort((a, b) => b.shared - a.shared || b.ending - a.ending || a.others - b.others)
-  const [best, next] = ranked
-  if (best) {
-    const apart =
-      !next ||
-      next.shared !== best.shared ||
-      next.ending !== best.ending ||
-      next.others !== best.others
-    return apart ? [best.candidate] : [best.candidate, next.candidate]
+  const respelled = declared.filter((candidate) => {
+    const theirs = wordsOf(candidate)
+    return (
+      sameWords(theirs, words) ||
+      (UNIT_WORDS.includes(theirs.at(-1) ?? '') && sameWords(theirs.slice(0, -1), words))
+    )
+  })
+  if (respelled.length > 0) return respelled.slice(0, 2)
+  const meant = MEANT_BY[words.join('_')]
+  if (meant) return meant.filter((candidate) => declared.includes(candidate)).slice(0, 1)
+  const free = declared.filter((candidate) => !given.includes(candidate))
+  const last = words.at(-1)
+  const endingAlike = free
+    .map((candidate) => ({ candidate, theirs: wordsOf(candidate) }))
+    .filter(({ theirs }) => theirs.at(-1) === last)
+  const shorter = endingAlike.filter(({ theirs }) => theirs.every((word) => words.includes(word)))
+  const longer = endingAlike.filter(({ theirs }) => words.every((word) => theirs.includes(word)))
+  for (const alike of [shorter, longer]) {
+    if (alike.length > 0) return alike.slice(0, 2).map(({ candidate }) => candidate)
   }
   const lower = name.toLowerCase()
-  const close = declared
+  const close = free
     .map((candidate) => ({ candidate, distance: editDistance(lower, candidate) }))
     .filter((entry) => entry.distance <= 2 && entry.distance * 4 < entry.candidate.length)
     .sort((a, b) => a.distance - b.distance)
@@ -1987,31 +2103,49 @@ export function nearestNames(name: string, declared: readonly string[]): string[
 
 const SLIP_CURES: Record<string, (name: string) => string | null> = {
   format_text: (name) =>
-    Object.hasOwn(PARAGRAPH_FORMAT_SCHEMA, ARGUMENT_ALIASES.get(name) ?? name)
+    Object.hasOwn(PARAGRAPH_FORMAT_SCHEMA, DECLARED_NAME_OF_OLD_ARGUMENT.get(name) ?? name)
       ? 'Alignment, line spacing, indents, margins, spacing, a border, a background, tabs, a list and a style belong to a whole paragraph: format_paragraph sets them.'
       : null,
   format_cells: (name) =>
     /^(?:(?:from|to)_)?(?:row|col)$/.test(name)
       ? 'A block of cells goes in range: { "from_row", "from_col", "to_row", "to_col" }, all four; single cells go in cells: [{ "row", "col" }].'
       : null,
+  insert_paragraphs: (name) =>
+    Object.hasOwn(PARAGRAPH_FORMAT_SCHEMA, name) || Object.hasOwn(TEXT_FORMAT_SCHEMA, name)
+      ? 'insert_paragraphs writes plain paragraphs: add them first, then give them their look with style_paragraphs or format_paragraph.'
+      : null,
 }
 
 const quoted = (names: readonly string[]): string => names.map((name) => `"${name}"`).join(', ')
 
-function undeclaredRefusal(tool: string, undeclared: readonly UndeclaredArgument[]): string {
+const MAX_VALUE_SHOWN = 40
+
+function shown(value: unknown): string {
+  const text = JSON.stringify(value) ?? String(value)
+  return text.length > MAX_VALUE_SHOWN ? `${text.slice(0, MAX_VALUE_SHOWN)}…` : text
+}
+
+/** Why a call is not run: arguments an editing tool does not declare, values that are not what their schema declares. */
+function refusalOf(tool: HwpToolDef, { undeclared, wrong }: PreparedInput): string | null {
+  const unknown = tool.edits ? undeclared : []
+  if (unknown.length === 0 && wrong.length === 0) return null
   const cures = new Set<string>()
-  const slips = undeclared.map(({ path, name, holder, declared }) => {
-    const cure = holder ? null : (SLIP_CURES[tool]?.(name) ?? null)
+  const slips = unknown.map(({ path, name, holder, declared, given }) => {
+    const cure = holder ? null : (SLIP_CURES[tool.name]?.(name) ?? null)
     if (cure) cures.add(cure)
-    const near = cure ? [] : nearestNames(name, declared)
+    const near = cure ? [] : nearestNames(name, declared, given)
     return near.length > 0
       ? `unknown argument "${path}"; did you mean ${near.map((n) => `"${n}"`).join(' or ')}?`
       : `unknown argument "${path}".`
   })
-  return `Nothing was changed: ${[...slips, ...cures].join(' ')}\nUsage: ${takenWhere(tool, undeclared)}`
+  const misfits = wrong.map(
+    ({ path, expected, given }) => `${path} must be ${expected}, not ${shown(given)}.`,
+  )
+  const usage = unknown.length > 0 ? `\nUsage: ${declaredNamesByHolder(tool.name, unknown)}` : ''
+  return `${tool.edits ? 'Nothing was changed: ' : ''}${[...slips, ...cures, ...misfits].join(' ')}${usage}`
 }
 
-function takenWhere(tool: string, undeclared: readonly UndeclaredArgument[]): string {
+function declaredNamesByHolder(tool: string, undeclared: readonly UndeclaredArgument[]): string {
   const holders = new Map(undeclared.map((slip) => [slip.holder || tool, slip.declared]))
   const lists = [...holders].map(
     ([holder, declared]) =>
@@ -2020,12 +2154,35 @@ function takenWhere(tool: string, undeclared: readonly UndeclaredArgument[]): st
   return `${lists.join('; ')}.`
 }
 
-function unusedNote(tool: HwpToolDef, { undeclared, readOnly }: PreparedInput): string {
+function unusedNote(tool: HwpToolDef, { undeclared, facts }: PreparedInput): string {
   const named = tool.edits ? [] : undeclared
-  const paths = [...named.map((slip) => slip.path), ...readOnly]
+  const paths = [...named.map((slip) => slip.path), ...facts]
   if (paths.length === 0) return ''
-  const taken = named.length > 0 ? ` ${takenWhere(tool.name, named)}` : ''
+  const taken = named.length > 0 ? ` ${declaredNamesByHolder(tool.name, named)}` : ''
   return `\n\nNot arguments of ${tool.name}, so nothing was done with them: ${quoted(paths)}.${taken}`
+}
+
+const titleColourNote = (result: { textColorDropped?: boolean; textColor?: string }): string => {
+  if (result.textColorDropped && result.textColor) {
+    return ' The text colour asked for would not show on the fill, so the title was written white.'
+  }
+  if (result.textColorDropped) {
+    return ' The text colour was left as it was: the one asked for would not show on what is behind the title (bands, lines and a box leave the white page behind the words; white words need look shaded with a dark color).'
+  }
+  return result.textColor ? ' The title was written white to show on the fill.' : ''
+}
+
+/**
+ * A look of read_formatting handed back whole formats every word of its paragraphs with the
+ * look's own character properties, which is how the words set apart in them would lose what
+ * sets them apart. The look says that it has such paragraphs.
+ */
+function mixedLookRefusal(input: Fields): string | null {
+  const mixed = input.mixedFormatting
+  if (typeof mixed !== 'number' || mixed <= 0) return null
+  const onEveryWord = Object.keys(TEXT_FORMAT_SCHEMA).filter((name) => isGiven(input[name]))
+  if (onEveryWord.length === 0) return null
+  return `Nothing was changed: mixedFormatting ${mixed} says that ${mixed} paragraph(s) of this look hold words formatted apart from the rest, and ${onEveryWord.join(', ')} would be put on those words too. Pass only the properties that should change. To put one on every word, pass it without mixedFormatting.`
 }
 
 const NO_NOTE_HELP = (count: number) =>
@@ -2554,7 +2711,7 @@ const arrow = (from: string, to: string) => `“${quote(from)}” → “${quote
 const NO_FORMAT_HELP =
   'Name at least one property to change: bold, italic, underline, strikethrough, font, size, color, highlight, and for a paragraph align, line_spacing, indent, margin_left, margin_right, space_before, space_after or style.'
 
-const NAMED_CELLS = 8
+const MAX_CELLS_LISTED = 8
 
 /** Table places as the model names them: row.col. */
 const cellList = (cells: { row: number; col: number }[]): string =>
@@ -2648,13 +2805,25 @@ async function pictureSize(
   }
 }
 
+const PICTURE_WIDTH_PT = { min: 24, max: 600 }
+
+const pictureWidthRefusal = (input: unknown): string | null =>
+  isGiven(input) &&
+  !(typeof input === 'number' && input >= PICTURE_WIDTH_PT.min && input <= PICTURE_WIDTH_PT.max)
+    ? `width_pt must be ${PICTURE_WIDTH_PT.min} to ${PICTURE_WIDTH_PT.max} points`
+    : null
+
+const offsetRefusal = (input: unknown): string | null =>
+  isGiven(input) && !(typeof input === 'number' && Number.isInteger(input) && input >= 0)
+    ? 'offset must be a whole number from 0'
+    : null
+
 /**
- * The width to ask the plugin for, in points: the model's choice (default 240), pulled in so
+ * The width to ask the plugin for, in points: the model's choice (default 240), narrowed so
  * a tall picture does not run past a page. The plugin derives the height from the aspect.
  */
 function pictureWidthPt(input: unknown, size: { width: number; height: number } | null): number {
-  const wanted = typeof input === 'number' && Number.isFinite(input) ? input : 240
-  const width = Math.min(Math.max(wanted, 24), 600)
+  const width = typeof input === 'number' ? input : 240
   if (!size || size.width <= 0 || size.height <= 0) return width
   const height = (width * size.height) / size.width
   return height > 600 ? Math.round((width * 600) / height) : width
@@ -2862,11 +3031,10 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     switch (call.name) {
       case 'read_document': {
         const text = await bridge.readText()
+        const badOffset = offsetRefusal(call.input.offset)
+        if (badOffset) return bad(call, badOffset)
         const raw = call.input.offset
-        const offset =
-          typeof raw === 'number' && Number.isInteger(raw) && raw > 0
-            ? Math.min(raw, text.length)
-            : 0
+        const offset = typeof raw === 'number' ? Math.min(raw, text.length) : 0
         const splitsPair = (at: number) => at > 0 && (text.codePointAt(at - 1) ?? 0) > 0xffff
         if (splitsPair(offset)) {
           return bad(
@@ -2957,11 +3125,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             summary: label('aiToolReadUrlFail', { host }),
           }
         }
-        const rawOffset = call.input.offset
-        const offset =
-          typeof rawOffset === 'number' && Number.isFinite(rawOffset)
-            ? Math.max(0, Math.floor(rawOffset))
-            : 0
+        const badOffset = offsetRefusal(call.input.offset)
+        if (badOffset) return bad(call, badOffset)
+        const offset = typeof call.input.offset === 'number' ? call.input.offset : 0
         const result = await window.hwpApi.readUrl(url, offset)
         if (!result.ok) {
           return {
@@ -3332,9 +3498,13 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         const unused: string[] = []
-        if (tableLook.headerColor !== undefined && !tableLook.header) {
+        const withoutHeader = [
+          tableLook.headerColor !== undefined ? 'header_color' : '',
+          tableLook.repeatHeader ? 'repeat_header' : '',
+        ].filter(Boolean)
+        if (!tableLook.header && withoutHeader.length > 0) {
           unused.push(
-            ' header_color did nothing: the table has no header row. Pass header true with it.',
+            ` ${withoutHeader.join(' and ')} did nothing: the table has no header row. Pass header true with it.`,
           )
         }
         if (tableLook.acrossColumns && !result.acrossColumns) {
@@ -3382,6 +3552,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         }
       }
       case 'insert_image': {
+        const tooWide = pictureWidthRefusal(call.input.width_pt)
+        if (tooWide) return bad(call, tooWide)
         const attachment = textArg(call, 'attachment')?.trim() ?? ''
         if (attachment) {
           const path = deps.attachmentPath?.(attachment) ?? null
@@ -3410,6 +3582,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'generate_image': {
         const prompt = textArg(call, 'prompt')?.trim() ?? ''
         if (!prompt) return bad(call, 'prompt must be a non-empty string')
+        const tooWide = pictureWidthRefusal(call.input.width_pt)
+        if (tooWide) return bad(call, tooWide)
         const aspectRatio = textArg(call, 'aspectRatio')?.trim() ?? ''
         const generated = await window.hwpApi.generateImage({
           prompt,
@@ -3490,6 +3664,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const find = textArg(call, 'find')
         if (!find) return bad(call, 'find must be a non-empty string')
         if (hasLineBreak(find)) return bad(call, ONE_LINE_HELP)
+        const flattens = mixedLookRefusal(call.input)
+        if (flattens) return bad(call, flattens)
         const format = formatArgs(call)
         if (Object.keys(format).length === 0) return bad(call, NO_FORMAT_HELP)
         const occurrence = call.input.occurrence
@@ -3900,8 +4076,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (!name) return bad(call, 'name must be a style name')
         const result = await bridge.readStyle(name)
         if (!result.ok) return bad(call, noSuchStyle(result))
-        const { ok: _ok, name: found, englishName, ...rest } = result
-        const style = englishName ? { englishName, ...rest } : rest
+        const { ok: _ok, name: found, ...style } = result
         return {
           output: `Style "${found}": ${JSON.stringify(inDeclaredNames(style))}`,
           summary: label('aiToolStyleRead', { name: quote(found) }),
@@ -4023,8 +4198,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         let where = `the whole table ${table}`
         if (Array.isArray(rawCells)) {
           cells = rawCells as { row: number; col: number }[]
-          const more = cells.length > NAMED_CELLS ? ` and ${cells.length - NAMED_CELLS} more` : ''
-          where = `cells ${cellList(cells.slice(0, NAMED_CELLS))}${more} of table ${table}`
+          const more =
+            cells.length > MAX_CELLS_LISTED ? ` and ${cells.length - MAX_CELLS_LISTED} more` : ''
+          where = `cells ${cellList(cells.slice(0, MAX_CELLS_LISTED))}${more} of table ${table}`
         } else if (isRecord(rawRange)) {
           const corners = [rawRange.from_row, rawRange.from_col, rawRange.to_row, rawRange.to_col]
           if (!corners.every((value) => typeof value === 'number')) {
@@ -4939,7 +5115,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         return {
-          output: `Made the title a ${result.look} title box. The title is now in a table: tables after it are numbered one higher.${result.textColorDropped ? ' The text colour was left as it was: the one asked for would not show on what is behind the title (bands, lines and a box leave the white page behind the words; white words need look shaded with a dark color).' : ''}${result.textColor ? ' The title was written white to show on the fill.' : ''}${standInNote(result.standIn)}`,
+          output: `Made the title a ${result.look} title box. The title is now in a table: tables after it are numbered one higher.${titleColourNote(result)}${standInNote(result.standIn)}`,
           mutated: true,
           summary: label('aiToolTitleBox'),
         }
@@ -5265,7 +5441,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const head = attachment
           ? `Formatting of the attached document "${attachment}" (its looks have no id: apply what you take from them to this document with format_look, format_paragraph, edit_style or create_style, set_page_setup and set_note_settings).`
           : 'Formatting of this document. The "look" of an entry of looks is the id format_look takes.'
-        const named = { ...formatting, looks: looksByName(formatting.looks) }
+        const named = { ...formatting, looks: looksWithIdAsLook(formatting.looks) }
         return {
           output: `${head}\n${JSON.stringify(inDeclaredNames(named))}`,
           summary: attachment
@@ -5297,6 +5473,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'format_look': {
         const look = textArg(call, 'look')?.trim() ?? ''
         if (!look) return bad(call, 'look must be a look id from read_formatting of this document')
+        const flattens = mixedLookRefusal(call.input)
+        if (flattens) return bad(call, flattens)
         const format = formatArgs(call)
         if (Object.keys(format).length === 0) return bad(call, NO_FORMAT_HELP)
         const outcome = await changeWithMemoApproval(
@@ -5311,7 +5489,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           if (result.reason === 'no_such_look') {
             return bad(
               call,
-              `There is no look ${look} in this document now (a change may have given its paragraphs another look). Looks now: ${JSON.stringify(looksByName(result.looks))}`,
+              `There is no look ${look} in this document now (a change may have given its paragraphs another look). Looks now: ${JSON.stringify(looksWithIdAsLook(result.looks))}`,
             )
           }
           return bad(call, HAS_OBJECTS_HELP)
@@ -5364,12 +5542,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (!tool) return run(given, signal)
         const prepared = prepareInput(tool, given.input)
         const call = { ...given, input: prepared.input }
-        if (tool.edits && prepared.undeclared.length > 0) {
-          return bad(call, undeclaredRefusal(tool.name, prepared.undeclared))
-        }
+        const refusal = refusalOf(tool, prepared)
+        if (refusal) return bad(call, refusal)
         try {
           const done = await run(withDoubledEscapesUndone(call), signal)
-          const note = unusedNote(tool, prepared)
+          const note = done.isError ? '' : unusedNote(tool, prepared)
           return note ? { ...done, output: done.output + note } : done
         } catch (error) {
           // the editor refused or is gone: the model gets the cause and can say so

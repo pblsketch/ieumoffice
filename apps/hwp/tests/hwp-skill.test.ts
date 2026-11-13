@@ -612,7 +612,7 @@ describe('read_url', () => {
     expect(result.summary).toBe('aiToolReadUrl:{"host":"example.com","n":10}')
   })
 
-  it('marks a truncated read, floors the offset and falls back to the host', async () => {
+  it('marks a truncated read and falls back to the host', async () => {
     const readUrl = vi.fn(async () => ({
       ok: true as const,
       url: 'https://example.com/long',
@@ -624,7 +624,13 @@ describe('read_url', () => {
     }))
     vi.stubGlobal('window', { hwpApi: { readUrl } })
     const { call } = setup()
-    const result = await call('read_url', { url: 'https://example.com/long', offset: 10.7 })
+    for (const offset of [10.7, -5]) {
+      const refused = await call('read_url', { url: 'https://example.com/long', offset })
+      expect(refused.isError, String(offset)).toBe(true)
+      expect(refused.output).toBe('offset must be a whole number from 0')
+    }
+    expect(readUrl).not.toHaveBeenCalled()
+    const result = await call('read_url', { url: 'https://example.com/long', offset: 10 })
     expect(readUrl).toHaveBeenCalledWith('https://example.com/long', 10)
     expect(result.output.startsWith('example.com — characters 10..60 of 60')).toBe(true)
     expect(result.output).toContain('(continue with offset)')
@@ -1549,14 +1555,30 @@ describe('format_cells', () => {
     expect(bridge.formatCells).not.toHaveBeenCalled()
   })
 
-  it('hands a border rule to the editor as it came, for the editor to refuse what it cannot draw', async () => {
+  it('refuses a border rule whose values are not of the kind it declares', async () => {
     const { call, bridge } = setup()
-    await call('format_cells', {
+    const result = await call('format_cells', {
       table: 1,
       borders: [{ sides: ['top', 'bottom'], line: 2, width: 0.5, color: null }],
     })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(
+      'borders[0].sides must be one of all, outer, inner, top, bottom, left, right, inner_horizontal, inner_vertical, not ["top","bottom"].',
+    )
+    expect(result.output).toContain(
+      'borders[0].line must be one of none, solid, dashed, dotted, double, not 2.',
+    )
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+  })
+
+  it('hands a border rule to the editor as it came, for the editor to refuse a width it cannot draw', async () => {
+    const { call, bridge } = setup()
+    await call('format_cells', {
+      table: 1,
+      borders: [{ sides: 'top', line: 'double', width: 99, color: null }],
+    })
     expect(bridge.formatCells).toHaveBeenLastCalledWith(1, null, {
-      borders: [{ sides: ['top', 'bottom'], line: 2, width: 0.5 }],
+      borders: [{ sides: 'top', line: 'double', width: 99 }],
     })
   })
 })
@@ -2547,6 +2569,8 @@ describe('the look of a document', () => {
     })
     expect(coloured.isError).toBeFalsy()
     expect(coloured.output).toContain('header_color did nothing: the table has no header row')
+    const repeated = await plain.call('insert_table', { where: 'end', rows, repeat_header: true })
+    expect(repeated.output).toContain('repeat_header did nothing: the table has no header row')
     const oneColumn = await plain.call('insert_table', { where: 'end', rows, across_columns: true })
     expect(oneColumn.output).toContain('across_columns did nothing: the text runs in one column')
     const across = setup({
@@ -2920,6 +2944,29 @@ describe('the look of a document', () => {
     expect(changes[0]).toMatchObject({ kind: 'table', from: '운영 계획', to: 'aiTitleBox' })
   })
 
+  it('says what colour the title got when the one asked for would not show', async () => {
+    const made = { ok: true as const, look: 'shaded', place: PLACE, textColorDropped: true }
+    const white = setup({
+      insertTitleBox: vi.fn(async () => ({ ...made, textColor: '#ffffff' })),
+    })
+    expect(
+      (
+        await white.call('insert_title_box', {
+          find: '운영 계획',
+          look: 'shaded',
+          color: '#1F3864',
+          text_color: '#203A6A',
+        })
+      ).output,
+    ).toContain(
+      'The text colour asked for would not show on the fill, so the title was written white.',
+    )
+    const kept = setup({ insertTitleBox: vi.fn(async () => made) })
+    expect(
+      (await kept.call('insert_title_box', { find: '운영 계획', text_color: '#FEFEFE' })).output,
+    ).toContain('The text colour was left as it was')
+  })
+
   it('says why a title box could not be made', async () => {
     const { call } = setup({
       insertTitleBox: vi.fn(async () => ({
@@ -2970,7 +3017,7 @@ describe('the look of a document', () => {
     expect(JSON.parse(result.output).columns).toEqual({ count: 1, gap_mm: 0 })
   })
 
-  it('takes a footer back as read_page_layout gave it, and hands an alignment on as it came', async () => {
+  it('takes a footer back as read_page_layout gave it, and refuses an alignment it does not write', async () => {
     const { call, bridge } = setup({
       pageLayout: vi.fn(async () => ({
         sections: 1,
@@ -2999,11 +3046,16 @@ describe('the look of a document', () => {
     expect(written.output).toMatch(/nothing was done with them: "exists", "plain"\.$/)
     await call('set_header_footer', { kind: 'footer', text: '끝' })
     expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', { text: '끝' })
-    await call('set_header_footer', { kind: 'footer', text: '끝', align: 'justify' })
-    expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', {
+    const justified = await call('set_header_footer', {
+      kind: 'footer',
       text: '끝',
       align: 'justify',
     })
+    expect(justified.isError).toBe(true)
+    expect(justified.output).toBe(
+      'Nothing was changed: align must be one of left, center, right, not "justify".',
+    )
+    expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', { text: '끝' })
   })
 
   it('tells the model which document fonts this PC has, when that is known', async () => {
@@ -4032,7 +4084,8 @@ describe('what a call gives before its handler sees it', () => {
     })
     expect(border.isError).toBe(true)
     expect(border.output).toContain('unknown argument "border.side"; did you mean "sides"?')
-    expect(border.output).toContain('unknown argument "border.thickness".')
+    expect(border.output).toContain('unknown argument "border.style"; did you mean "line"?')
+    expect(border.output).toContain('unknown argument "border.thickness"; did you mean "width"?')
     expect(border.output).toContain('Usage: border takes sides, line, width, color.')
     expect(bridge.formatParagraph).not.toHaveBeenCalled()
 
@@ -4194,12 +4247,11 @@ describe('what a call gives before its handler sees it', () => {
     expect(one.output).toMatch(/nothing was done with them: "look", "paragraphs", "samples"\.$/)
   })
 
-  it('leaves the English name out of what it reads when the style has none', async () => {
+  it('reads a style that has no English name without one', async () => {
     const { call } = setup({
       readStyle: async () => ({
         ok: true as const,
         name: '항목',
-        englishName: '',
         kind: 'paragraph' as const,
         nextStyle: '항목',
         look: { size: 10 },
@@ -4326,6 +4378,176 @@ describe('what a call gives before its handler sees it', () => {
   })
 })
 
+describe('a value that is not of the kind its argument declares', () => {
+  it('is refused at every depth, by its path, before the editor is asked', async () => {
+    const { call, bridge } = setup()
+    const equation = await call('insert_equations', {
+      equations: [{ find: '본문', script: 'x^2', keep_text: 'yes' }],
+    })
+    expect(equation.isError).toBe(true)
+    expect(equation.output).toBe(
+      'Nothing was changed: equations[0].keep_text must be true or false, not "yes".',
+    )
+    expect(bridge.insertEquations).not.toHaveBeenCalled()
+
+    const title = await call('insert_title_box', { find: '운영 계획', look: 'filled' })
+    expect(title.output).toBe(
+      'Nothing was changed: look must be one of bands, lines, box, shaded, not "filled".',
+    )
+    expect(bridge.insertTitleBox).not.toHaveBeenCalled()
+
+    const numbered = await call('set_page_number', { position: 'bottom_center', dashes: 'no' })
+    expect(numbered.output).toBe('Nothing was changed: dashes must be true or false, not "no".')
+    expect(bridge.setPageNumber).not.toHaveBeenCalled()
+
+    const styled = await call('style_paragraphs', {
+      styles: [{ name: '제목', size: 16, tabs: 'at 30mm' }],
+      apply: [{ style: '제목', find: '본문' }],
+    })
+    expect(styled.output).toBe('Nothing was changed: styles[0].tabs must be a list, not "at 30mm".')
+    expect(bridge.styleParagraphs).not.toHaveBeenCalled()
+  })
+
+  it('is refused for a tool that only reads too, without the words about a change', async () => {
+    const { call, bridge } = setup()
+    const read = await call('read_table', { table: 'one' })
+    expect(read.isError).toBe(true)
+    expect(read.output).toBe('table must be a whole number, not "one".')
+    expect(bridge.readTable).not.toHaveBeenCalled()
+  })
+
+  it('is said beside an argument the tool does not declare, in one answer', async () => {
+    const { call } = setup()
+    const result = await call('insert_table', {
+      where: 'end',
+      rows: [['a']],
+      look: 'zebra',
+      headerColor: '#112233',
+    })
+    expect(result.output).toBe(
+      'Nothing was changed: unknown argument "headerColor"; did you mean "header_color"? look must be one of grid, open, rows, not "zebra".\nUsage: insert_table takes where, anchor, occurrence, rows, header, look, header_color, column_widths, align, size, font, width_percent, place, repeat_header, across_columns.',
+    )
+  })
+
+  it('is refused for a list item that is nothing, where a null argument is one not given', async () => {
+    const { call, bridge } = setup()
+    const cells = await call('format_cells', {
+      table: 1,
+      cells: [{ row: 1, col: 1 }, null],
+      background: '#EEEEEE',
+    })
+    expect(cells.output).toBe('Nothing was changed: cells[1] must be an object, not null.')
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+
+    const replaced = await call('replace_text', { find: '본문', replace: '글', occurrence: null })
+    expect(replaced.isError).toBeFalsy()
+    expect(bridge.replaceText).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a number that is the right kind and out of its range to the handler', async () => {
+    const generateImage = vi.fn(async () => ({ url: 'file:///store/a.png' }))
+    vi.stubGlobal('window', { hwpApi: { generateImage } })
+    const { call, bridge } = setup()
+    for (const width_pt of [5, 601, -10]) {
+      const generated = await call('generate_image', { where: 'end', prompt: 'a kite', width_pt })
+      expect(generated.isError, String(width_pt)).toBe(true)
+      expect(generated.output).toBe('width_pt must be 24 to 600 points')
+    }
+    expect(generateImage).not.toHaveBeenCalled()
+    const added = await call('insert_image', {
+      where: 'end',
+      url: 'https://example.com/a.png',
+      width_pt: 5,
+    })
+    expect(added.output).toBe('width_pt must be 24 to 600 points')
+    expect(bridge.insertPicture).not.toHaveBeenCalled()
+
+    for (const offset of [-1, 1.5]) {
+      const read = await call('read_document', { offset })
+      expect(read.isError, String(offset)).toBe(true)
+      expect(read.output).toBe('offset must be a whole number from 0')
+    }
+  })
+})
+
+describe('what a read answer says beside its settings', () => {
+  it('is refused like any undeclared argument by a tool no read answer is handed to', async () => {
+    const { call, bridge } = setup()
+    const table = await call('insert_table', { where: 'end', rows: [['a']], style: 'open' })
+    expect(table.isError).toBe(true)
+    expect(table.output).toContain('unknown argument "style"; did you mean "look"?')
+    expect(bridge.insertTable).not.toHaveBeenCalled()
+
+    const removed = await call('delete_table', { table: 1, kind: 'table' })
+    expect(removed.isError).toBe(true)
+    expect(removed.output).toContain('unknown argument "kind".')
+    expect(bridge.deleteTable).not.toHaveBeenCalled()
+
+    const added = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: ['새 소제목'],
+      style: '개요 1',
+    })
+    expect(added.isError).toBe(true)
+    expect(added.output).toContain(
+      'unknown argument "style". insert_paragraphs writes plain paragraphs: add them first, then give them their look with style_paragraphs or format_paragraph.',
+    )
+    expect(bridge.insertParagraphs).not.toHaveBeenCalled()
+  })
+
+  it('is refused inside an object or a list item of the tools a read answer is handed to', async () => {
+    const { call, bridge } = setup()
+    const line = await call('format_paragraph', {
+      find: '본문',
+      border: { sides: 'bottom', style: 'dashed' },
+    })
+    expect(line.isError).toBe(true)
+    expect(line.output).toContain('unknown argument "border.style"; did you mean "line"?')
+    const stop = await call('edit_style', { name: '본문', tabs: [{ at_mm: 10, kind: 'right' }] })
+    expect(stop.isError).toBe(true)
+    expect(stop.output).toContain('unknown argument "tabs[0].kind"; did you mean "align"?')
+    expect(bridge.formatParagraph).not.toHaveBeenCalled()
+    expect(bridge.editStyle).not.toHaveBeenCalled()
+  })
+
+  it('stops a look with words set apart from being handed back over those words', async () => {
+    const { call, bridge } = setup()
+    const look = {
+      look: 'Labc123',
+      paragraphs: 6,
+      style: '본문',
+      font: '함초롬바탕',
+      size: 10,
+      bold: false,
+      line_spacing: 160,
+      mixedFormatting: 2,
+      samples: ['본문입니다'],
+    }
+    for (const handed of [
+      await call('format_look', look),
+      await call('format_paragraph', { find: '본문', ...look }),
+    ]) {
+      expect(handed.isError).toBe(true)
+      expect(handed.output).toBe(
+        'Nothing was changed: mixedFormatting 2 says that 2 paragraph(s) of this look hold words formatted apart from the rest, and bold, size, font would be put on those words too. Pass only the properties that should change. To put one on every word, pass it without mixedFormatting.',
+      )
+    }
+    expect(bridge.formatLook).not.toHaveBeenCalled()
+    expect(bridge.formatParagraph).not.toHaveBeenCalled()
+
+    const spaced = await call('format_look', {
+      look: 'Labc123',
+      mixedFormatting: 2,
+      line_spacing: 180,
+    })
+    expect(spaced.isError).toBeFalsy()
+    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', { lineSpacing: 180 })
+    const every = await call('format_look', { look: 'Labc123', bold: false })
+    expect(every.isError).toBeFalsy()
+    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', { bold: false })
+  })
+})
+
 describe('the declared name an undeclared one stands for', () => {
   const format = [
     'find',
@@ -4342,18 +4564,46 @@ describe('the declared name an undeclared one stands for', () => {
     'margin_left',
     'list_level',
   ]
-  it('is the one that shares its words, the last word first', () => {
+  it('is what the name usually means, in the names this tool declares', () => {
     expect(nearestNames('font_size', format)).toEqual(['size'])
     expect(nearestNames('fontSize', format)).toEqual(['size'])
     expect(nearestNames('line_height', format)).toEqual(['line_spacing'])
     expect(nearestNames('background_color', format)).toEqual(['background'])
-    expect(nearestNames('text_align', format)).toEqual(['align'])
-    expect(nearestNames('level', format)).toEqual(['list_level'])
+    expect(nearestNames('background_color', ['find', 'color', 'highlight'])).toEqual(['highlight'])
+    expect(nearestNames('font_name', ['name', 'font', 'size'], ['name'])).toEqual(['font'])
+    expect(nearestNames('thickness', ['sides', 'line', 'width', 'color'])).toEqual(['width'])
+    expect(nearestNames('style', ['sides', 'line', 'width', 'color'])).toEqual(['line'])
+    expect(nearestNames('style', ['where', 'rows', 'look'])).toEqual(['look'])
+    // the size a model asks for beside the declared one is still that one
+    expect(nearestNames('font_size', format, ['find', 'size'])).toEqual(['size'])
+  })
+  it('is none when the name means something this tool does not have', () => {
+    expect(nearestNames('line_height', ['paper', 'width', 'height'])).toEqual([])
+    expect(nearestNames('columns', ['where', 'rows', 'across_columns'])).toEqual([])
+    expect(nearestNames('colour', ['table', 'row', 'col'])).toEqual([])
+    expect(nearestNames('text_color', ['kind', 'text', 'align', 'size'])).toEqual([])
+  })
+  it('is the same name written another way: one of many, a word in full, without its unit', () => {
     expect(nearestNames('column', ['row', 'col'])).toEqual(['col'])
     expect(nearestNames('side', ['sides', 'line', 'width', 'color'])).toEqual(['sides'])
+    expect(nearestNames('rowHeight', ['table', 'row_height_mm'])).toEqual(['row_height_mm'])
+    expect(nearestNames('gap', ['count', 'gap_mm'])).toEqual(['gap_mm'])
   })
-  it('is two names when nothing tells them apart', () => {
+  it('is the one that ends on the same word and has all its words, or all of whose words it has', () => {
+    expect(nearestNames('text_align', format)).toEqual(['align'])
+    expect(nearestNames('level', format)).toEqual(['list_level'])
     expect(nearestNames('spacing', format)).toEqual(['letter_spacing', 'line_spacing'])
+    expect(nearestNames('row', ['table', 'from_row', 'to_row'])).toEqual(['from_row', 'to_row'])
+  })
+  it('is not a name that only starts alike or shares a word that is not its last', () => {
+    expect(nearestNames('color', ['table', 'row', 'col', 'rows', 'cols'])).toEqual([])
+    expect(nearestNames('color', ['table', 'from_col', 'to_col'])).toEqual([])
+    expect(nearestNames('text', ['find', 'look', 'color', 'text_color'])).toEqual([])
+    expect(nearestNames('bold_text', ['find', 'bold', 'text_color'])).toEqual([])
+  })
+  it('is not a name the call already gives beside it', () => {
+    expect(nearestNames('new_text', ['kind', 'text', 'align'], ['kind', 'text'])).toEqual([])
+    expect(nearestNames('new_text', ['kind', 'text', 'align'], ['kind'])).toEqual(['text'])
   })
   it("is the declared spelling of one of the editor's own names", () => {
     expect(nearestNames('heightMm', ['table', 'row_height_mm'])).toEqual(['row_height_mm'])
@@ -4364,21 +4614,19 @@ describe('the declared name an undeclared one stands for', () => {
     expect(nearestNames('ocurrence', format)).toEqual(['occurrence'])
   })
   it('is none when no declared name is near', () => {
-    expect(nearestNames('thickness', ['sides', 'line', 'width', 'color'])).toEqual([])
+    expect(nearestNames('zebra', ['sides', 'line', 'width', 'color'])).toEqual([])
     expect(nearestNames('id', [])).toEqual([])
   })
 })
 
 describe('a number that counts from 1 or has a range', () => {
-  const BOUNDED = new Set(['offset', 'width_pt'])
-
   it('reaches its handler as the model gave it: the loop has no declared range to pull it into', () => {
     const tools = setup().skill.tools
     let checked = 0
     for (const tool of tools) {
       const properties = tool.inputSchema.properties as Record<string, { type?: unknown }>
       for (const [name, schema] of Object.entries(properties)) {
-        if (BOUNDED.has(name) || (schema.type !== 'integer' && schema.type !== 'number')) continue
+        if (schema.type !== 'integer' && schema.type !== 'number') continue
         for (const value of [0, -1, 1_000_000]) {
           expect(coerceArgumentFields(tool, { [name]: value }), `${tool.name}.${name}`).toEqual({
             [name]: value,
@@ -4390,7 +4638,7 @@ describe('a number that counts from 1 or has a range', () => {
     expect(checked).toBeGreaterThan(60)
   })
 
-  it('declares a range only where the handler does the same as the loop, or the loop does not reach', () => {
+  it('declares a range only where the loop does not reach: the level of a contents entry', () => {
     const ranged = new Set<string>()
     const walk = (schema: unknown, name: string) => {
       if (typeof schema !== 'object' || schema === null) return
@@ -4402,7 +4650,7 @@ describe('a number that counts from 1 or has a range', () => {
       walk(items, name)
     }
     for (const tool of setup().skill.tools) walk(tool.inputSchema, tool.name)
-    expect([...ranged].sort()).toEqual(['level', 'offset', 'width_pt'])
+    expect([...ranged].sort()).toEqual(['level'])
   })
 
   it('is refused by the selection tools when it is not a whole number from 1', async () => {

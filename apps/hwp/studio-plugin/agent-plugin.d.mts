@@ -533,7 +533,8 @@ export type AgentReadStyleResult =
   | {
       ok: true
       name: string
-      englishName: string
+      /** left out when the style has none */
+      englishName?: string
       kind: AgentStyleKind
       /** the paragraph style that follows a paragraph of this one (paragraph styles) */
       nextStyle?: string
@@ -1101,6 +1102,8 @@ export interface AgentLook {
   spacingAfter: number
   list?: 'number' | 'bullet' | 'outline'
   listLevel?: number
+  /** the bullet of a bulleted paragraph */
+  bullet?: string
   /** paragraphs of the group whose formatting changes inside their text */
   mixedFormatting?: number
   samples: string[]

@@ -618,4 +618,41 @@ describe('what the read ops answer', () => {
     expect(errors[6]).toContain('unknown argument "font_size"; did you mean "size"?')
     expect(r.json().detail.failures[6].usage).toMatch(/^Usage: format_paragraph takes find, /)
   })
+
+  it('refuses a value that is not of the kind its argument declares, where the op once answered as done', async () => {
+    const dir = tempDir()
+    const path = write(dir, 'report.hwp', report().exportHwp())
+    const r = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'list_tables' },
+        { op: 'set_page_number', position: 'bottom_center', dashes: 'no' },
+        { op: 'insert_table', where: 'end', rows: [['a']], style: 'open' },
+        { op: 'insert_equations', equations: [{ find: '끝.', script: 'x^2', keep_text: 'yes' }] },
+        { op: 'insert_title_box', find: '끝.', look: 'filled' },
+        { op: 'set_page_setup', orientation: 'sideways', margin_left: 20 },
+        { op: 'read_document' },
+        { op: 'read_page_setup' },
+      ]),
+      '--best-effort',
+      '--json',
+    ])
+    expect(r.code, r.stdout).toBe(0)
+    const errors = (r.json().detail.failures as { error: string }[]).map((failure) => failure.error)
+    expect(errors).toEqual([
+      'Nothing was changed: dashes must be true or false, not "no".',
+      expect.stringContaining('unknown argument "style"; did you mean "look"?'),
+      'Nothing was changed: equations[0].keep_text must be true or false, not "yes".',
+      'Nothing was changed: look must be one of bands, lines, box, shaded, not "filled".',
+      'Nothing was changed: orientation must be one of portrait, landscape, not "sideways".',
+    ])
+    const [text, setup] = (r.json().detail.results as { output: string }[])
+      .slice(-2)
+      .map((result) => result.output)
+    expect(text).toContain('끝.')
+    expect(setup).toContain('"margin_left":30')
+  })
 })

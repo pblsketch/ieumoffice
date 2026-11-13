@@ -29,7 +29,6 @@ import {
   CELL_DIAGONAL_LINE,
   CHAR_WIDTH_PERCENT,
   DEFAULT_COLUMN_GAP_MM,
-  MIN_BLACK_ON_FILL,
   MIN_TEXT_CONTRAST,
   LETTER_SPACING_PERCENT,
   DOCUMENT_FONTS,
@@ -2275,6 +2274,10 @@ const PAGE_MARGINS = {
   footer: 'marginFooter',
   gutter: 'marginGutter',
 }
+/** A page within this of a paper's size both ways is read as that paper. */
+const PAPER_NAME_TOLERANCE_MM = 1
+const isPaperSize = ([w, h], width, height) =>
+  Math.abs(w - width) < PAPER_NAME_TOLERANCE_MM && Math.abs(h - height) < PAPER_NAME_TOLERANCE_MM
 const MIN_PAPER_MM = 50
 const MAX_PAPER_MM = 1000
 const MAX_MARGIN_MM = 200
@@ -2287,9 +2290,7 @@ function pageSetupOf(doc, sec) {
   const width = mmOf(def.width)
   const height = mmOf(def.height)
   const paper =
-    Object.entries(PAPER_SIZES).find(
-      ([, [w, h]]) => Math.abs(w - width) < 1 && Math.abs(h - height) < 1,
-    )?.[0] ?? null
+    Object.entries(PAPER_SIZES).find(([, size]) => isPaperSize(size, width, height))?.[0] ?? null
   const margins = {}
   for (const [name, key] of Object.entries(PAGE_MARGINS)) margins[name] = mmOf(def[key] ?? 0)
   return {
@@ -2323,18 +2324,15 @@ function pageSetupChangeOf(spec) {
     if (!size) {
       throw fail('BAD_ARGUMENT', `paper must be one of ${Object.keys(PAPER_SIZES).join(', ')}`)
     }
-    const agrees = (value, mm) => typeof value === 'number' && Math.abs(value - mm) < 1
-    if (
-      (given('width') || given('height')) &&
-      !(agrees(spec.width, size[0]) && agrees(spec.height, size[1]))
-    ) {
+    const ownSize = given('width') || given('height')
+    if (ownSize && !isPaperSize(size, spec.width, spec.height)) {
       throw fail(
         'BAD_ARGUMENT',
         `paper ${spec.paper} is ${size[0]} by ${size[1]} millimetres: give paper, or width and height, not a size that differs from the paper`,
       )
     }
-    out.width = hwpunitOf(size[0])
-    out.height = hwpunitOf(size[1])
+    out.width = hwpunitOf(ownSize ? spec.width : size[0])
+    out.height = hwpunitOf(ownSize ? spec.height : size[1])
   } else if (given('width') || given('height')) {
     if (!given('width') || !given('height')) {
       throw fail('BAD_ARGUMENT', 'width and height go together')
@@ -2538,7 +2536,7 @@ function lookIdOf(key) {
  * paragraph formatting and list, and the character formatting at its start. Null for a
  * paragraph the engine will not read.
  */
-function paragraphLookOf(doc, sec, para, styles) {
+function paragraphLookOf(doc, sec, para, styles, bullets) {
   try {
     const p = parse(doc.getParaPropertiesAt(sec, para))
     const c = parse(doc.getCharPropertiesAt(sec, para, 0))
@@ -2566,6 +2564,9 @@ function paragraphLookOf(doc, sec, para, styles) {
             list:
               p.headType === 'Bullet' ? 'bullet' : p.headType === 'Outline' ? 'outline' : 'number',
             listLevel: (p.paraLevel ?? 0) + 1,
+            ...(p.headType === 'Bullet' && bullets.has(p.numberingId)
+              ? { bullet: bullets.get(p.numberingId) }
+              : {}),
           }
         : {}),
     }
@@ -2582,6 +2583,7 @@ function paragraphLookOf(doc, sec, para, styles) {
  */
 function looksOf(doc) {
   const styles = new Map(parse(doc.getStyleList()).map((style) => [style.id, style.name]))
+  const bullets = bulletChars(doc)
   const groups = new Map()
   let counted = 0
   let truncated = false
@@ -2600,7 +2602,7 @@ function looksOf(doc) {
       }
       const text = length > 0 ? squash(paragraphTextOf(doc, sec, para)) : ''
       if (!text) continue
-      const look = paragraphLookOf(doc, sec, para, styles)
+      const look = paragraphLookOf(doc, sec, para, styles, bullets)
       if (!look) continue
       counted += 1
       const key = JSON.stringify(look)
@@ -3308,35 +3310,26 @@ function titleBoxOf(spec) {
     }
     return value.toLowerCase()
   }
-  colorOf(given.textColor, 'textColor')
+  const textColor = colorOf(given.textColor, 'textColor')
   const standIns = []
   const text = {}
-  for (const key of ['font', 'size', 'bold', 'textColor']) {
-    if (given[key] !== undefined && given[key] !== null)
-      text[key === 'textColor' ? 'color' : key] = given[key]
+  for (const key of ['font', 'size', 'bold']) {
+    if (given[key] !== undefined && given[key] !== null) text[key] = given[key]
   }
   const color = colorOf(given.color, 'color') ?? TITLE_BOX_COLORS[look]
   // words that cannot be told from what is behind them are no title: bands, lines and a
   // frame leave the white page behind the words, and a fill may be as pale as the words
   const behind = look === 'shaded' ? color : '#ffffff'
-  let textColorDropped = false
-  if (
-    typeof text.color === 'string' &&
-    HEX_COLOR.test(text.color) &&
-    contrastRatio(text.color, behind) < MIN_TEXT_CONTRAST
-  ) {
-    delete text.color
-    textColorDropped = true
-  }
+  const textColorDropped =
+    textColor !== null && contrastRatio(textColor, behind) < MIN_TEXT_CONTRAST
+  if (textColor !== null && !textColorDropped) text.color = textColor
   return {
     look,
     color,
     color2: colorOf(given.color2, 'color2'),
     text: Object.keys(text).length > 0 ? standInFormat(text, standIns) : null,
-    fillBehind:
-      look === 'shaded' && (given.textColor === undefined || given.textColor === null)
-        ? color
-        : null,
+    fillUnderOwnColour:
+      look === 'shaded' && (textColor === null || textColorDropped) ? color : null,
     standIns,
     textColorDropped,
   }
@@ -3375,6 +3368,8 @@ const MAX_HEADER_TEXT = 200
  * number fields. Any other (a table, a picture, a line break) means someone laid it out by
  * hand, and it is left alone.
  */
+/** The mark the engine leaves in a header's text for a page field, by the field's type number. */
+const HEADER_MARK_OF_FIELD = { 1: '\u0015', 2: '\u0016' }
 // eslint-disable-next-line no-control-regex
 const HEADER_FIELD_MARKS = /[\u0012\u0015\u0016\u0017]/g
 // eslint-disable-next-line no-control-regex
@@ -3393,9 +3388,8 @@ function plainHeader(found) {
   )
 }
 
-const headerFieldMark = (type) => String.fromCharCode(0x14 + type)
 const HEADER_TOKEN_OF_MARK = new Map(
-  Object.entries(HEADER_FIELD_TOKENS).map(([token, type]) => [headerFieldMark(type), token]),
+  Object.entries(HEADER_FIELD_TOKENS).map(([token, type]) => [HEADER_MARK_OF_FIELD[type], token]),
 )
 
 const headerTextOf = (text) =>
@@ -3405,14 +3399,12 @@ const headerTextOf = (text) =>
 
 function headerLookOf(doc, isHeader, text) {
   const look = {}
-  try {
-    const align = parse(doc.getParaPropertiesInHf(0, isHeader, 0, 0)).alignment
-    if (TABLE_ALIGNS.includes(align)) look.align = align
-    if (text.length > 0) {
-      const size = parse(doc.getCharPropertiesInHeaderFooter(0, isHeader, 0, 0, 0)).fontSize
-      if (Number.isFinite(size)) look.size = size / 100
-    }
-  } catch {}
+  const align = parse(doc.getParaPropertiesInHf(0, isHeader, 0, 0)).alignment
+  if (TABLE_ALIGNS.includes(align)) look.align = align
+  if (text.length > 0) {
+    const size = parse(doc.getCharPropertiesInHeaderFooter(0, isHeader, 0, 0, 0)).fontSize
+    if (Number.isFinite(size)) look.size = size / 100
+  }
   return look
 }
 
@@ -7436,7 +7428,7 @@ export const agentPlugin = {
           return {
             ok: true,
             name: style.name,
-            englishName: style.englishName ?? '',
+            ...(style.englishName ? { englishName: style.englishName } : {}),
             kind: kindOf(style),
             ...(next ? { nextStyle: next.name } : {}),
             look: styleLookOf(doc, style),
@@ -8018,15 +8010,10 @@ export const agentPlugin = {
                 },
                 false,
               )
-              const onFill = wanted.fillBehind ? textColorOnFill(wanted.fillBehind) : null
-              const has = look.chars?.textColor
-              const whitened =
-                onFill !== null &&
-                !(
-                  typeof has === 'string' &&
-                  contrastRatio(has, wanted.fillBehind) >= MIN_BLACK_ON_FILL
-                )
-              if (whitened) look.chars = { ...look.chars, textColor: onFill }
+              const whitened = wanted.fillUnderOwnColour
+                ? textColorOnFill(wanted.fillUnderOwnColour, look.chars?.textColor)
+                : null
+              if (whitened) look.chars = { ...look.chars, textColor: whitened }
               const titlePoints = look.chars?.fontSize ? look.chars.fontSize / 100 : points
               box.deleteText(k, length)
               const layout = titleBoxCells(wanted.look, wanted.color, wanted.color2)
@@ -8120,7 +8107,7 @@ export const agentPlugin = {
                 look: wanted.look,
                 place: box.place(k, 0),
                 ...(wanted.textColorDropped ? { textColorDropped: true } : {}),
-                ...(whitened ? { textColor: onFill } : {}),
+                ...(whitened ? { textColor: whitened } : {}),
                 ...(wanted.standIns.length > 0 ? { standIn: wanted.standIns } : {}),
               }
             },

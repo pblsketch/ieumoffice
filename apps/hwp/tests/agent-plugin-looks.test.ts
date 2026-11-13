@@ -1484,6 +1484,31 @@ describe('a title box and the colour of its words', () => {
     expect(titleColor(asked.doc())).toBe('#ffc000')
   })
 
+  it('writes the title white when the colour the call names would not show on the dark fill', () => {
+    for (const [color, textColor] of [
+      ['#1F3864', '#1F3864'],
+      ['#1F3864', '#203A6A'],
+      ['#000000', '#111111'],
+    ]) {
+      const { plugin, doc } = open()
+      expect(
+        plugin.insertTitleBox(TITLE, null, { look: 'shaded', color, textColor }),
+        `${textColor} on ${color}`,
+      ).toMatchObject({ ok: true, textColorDropped: true, textColor: '#ffffff' })
+      expect(titleColor(doc())).toBe('#ffffff')
+    }
+    // on a pale fill black shows, so the title keeps the colour it has
+    const pale = open()
+    const made = pale.plugin.insertTitleBox(TITLE, null, {
+      look: 'shaded',
+      color: '#D9E2F3',
+      textColor: '#DDE6F5',
+    })
+    expect(made).toMatchObject({ ok: true, textColorDropped: true })
+    expect(made).not.toHaveProperty('textColor')
+    expect(titleColor(pale.doc())).toBe('#000000')
+  })
+
   it('names the text colour, not the colour of the box, when the text colour is no colour', () => {
     const { plugin, steps } = open()
     const before = steps()

@@ -227,6 +227,17 @@ describe('page setup', () => {
     expect(() => plugin.setPageSetup({ paper: 'A4', width: 210 }, null)).toThrow(/paper A4 is/)
     expect(plugin.pageSetup().sections).toEqual([read])
   })
+
+  it('keeps the size of a page that is read as a paper and is a little off it', () => {
+    const { plugin } = open()
+    plugin.setPageSetup({ width: 210.6, height: 297.3 }, null)
+    const [read] = plugin.pageSetup().sections
+    expect(read).toMatchObject({ paper: 'A4', width: 210.6, height: 297.3 })
+    plugin.setPageSetup({ paper: 'B5' }, null)
+    expect(plugin.setPageSetup(read, null)).toMatchObject({ ok: true, pageSetup: read })
+    plugin.setPageSetup({ paper: 'A4' }, null)
+    expect(plugin.pageSetup().sections[0]).toMatchObject({ paper: 'A4', width: 210, height: 297 })
+  })
 })
 
 describe('numbered and bulleted paragraphs', () => {
@@ -242,6 +253,23 @@ describe('numbered and bulleted paragraphs', () => {
     expect(head()).toMatchObject({ headType: 'Bullet', paraLevel: 1 })
     expect(plugin.formatParagraph('조사를', null, { list: 'none' })).toMatchObject({ ok: true })
     expect(head()).toMatchObject({ headType: 'None' })
+  })
+
+  it('reads the bullet of a bulleted paragraph in its look, so the look goes back as it was', () => {
+    const { plugin, doc } = open()
+    const bullet = () => {
+      const { numberingId } = JSON.parse(doc().getParaPropertiesAt(0, 1))
+      const bullets = JSON.parse(doc().getBulletList()) as { id: number; char: string }[]
+      return bullets.find((entry) => entry.id === numberingId)?.char
+    }
+    plugin.formatParagraph('조사를', null, { list: 'bullet', bullet: '-' })
+    expect(bullet()).toBe('-')
+    const read = plugin.formatting()
+    if (!read.ok) throw new Error('no formatting')
+    const look = read.looks.find((entry) => entry.list === 'bullet')
+    expect(look).toMatchObject({ list: 'bullet', listLevel: 1, bullet: '-' })
+    plugin.formatLook(look!.id!, { list: 'bullet', listLevel: 1, bullet: look!.bullet })
+    expect(bullet()).toBe('-')
   })
 
   it('refuses list settings that do not go together', () => {
