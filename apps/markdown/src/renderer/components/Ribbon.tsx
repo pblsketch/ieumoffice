@@ -17,6 +17,7 @@ import { useI18n } from '../i18n/locale'
 import { SOURCE_VIEW_SHORTCUT } from '../source-view-key'
 import { editorFontChoices, useSystemFonts } from '../editor-font'
 import { useRibbonFold } from './ribbon-overflow'
+import { useAiVisible } from '../ai-visibility'
 import { MARKDOWN_THEME_IDS, type MarkdownTheme } from '../../shared/markdown-theme'
 import type { StringKey } from '../i18n/locale'
 import { uiOp, type BlockType, type ListKind, type StylableMark } from '../editor/ops'
@@ -401,6 +402,8 @@ export function Ribbon({
   onToggleRedact,
 }: Props) {
   const { t, lang } = useI18n()
+  // Settings › Editors and AI: while AI is off the band has no AI entry at all
+  const aiOn = useAiVisible()
   const collapse = useRibbonCollapse('mdapp.ribbonCollapsed', {
     collapse: t('ribbonCollapse'),
     expand: t('ribbonExpand'),
@@ -480,7 +483,7 @@ export function Ribbon({
   // polish/tidy act on the selection when one exists (read at click time; the
   // mousedown preventDefault below keeps the selection alive); summarize stays whole-doc
   const hasSelection = () => !(editor?.state.selection.empty ?? true)
-  const aiPresets = [
+  const allAiPresets = [
     { kind: 'summarize', btn: 'aiSummarizeBtn', prompt: () => t('aiSummarizePrompt') },
     {
       kind: 'polish',
@@ -494,6 +497,7 @@ export function Ribbon({
     },
     { kind: 'mindmap', btn: 'aiMindMapBtn', prompt: () => t('aiMindMapPrompt') },
   ] as const
+  const aiPresets: readonly (typeof allAiPresets)[number][] = aiOn ? allAiPresets : []
 
   // the right-hand view tools, in row order; when the band runs out of room
   // the trailing ones move behind the More button instead of off-screen
@@ -611,7 +615,7 @@ export function Ribbon({
   })
   // with every view tool folded, the AI entries drop their labels; past that the
   // band closes up, the style box narrows and the AI presets join the view tools
-  const aiEntryKeys = ['assistant', ...aiPresets.map((p) => p.kind)]
+  const aiEntryKeys = aiOn ? ['assistant', ...aiPresets.map((p) => p.kind)] : []
   const fold = useRibbonFold(
     bodyRef,
     viewRowRef,
@@ -731,27 +735,31 @@ export function Ribbon({
       </div>
 
       <div className={`ribbon-body${fold.tight ? ' tight' : ''}`} data-ribbon-body="" ref={bodyRef}>
-        <div className="ribbon-group">
-          <div className="ribbon-group-items">
-            <button
-              type="button"
-              className={`rb-big ai-entry${aiOpen ? ' active' : ''}${isCompact('assistant') ? ' compact' : ''}`}
-              data-tip={t('aiOpenAssistant')}
-              data-fold-key="assistant"
-              disabled={disabled}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onToggleAi}
-            >
-              <span className="rb-big-icon">
-                <AiMark size={26} />
-              </span>
-              <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-            </button>
-            {inlinePresets.map(presetButton)}
-          </div>
-        </div>
+        {aiOn && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-items">
+                <button
+                  type="button"
+                  className={`rb-big ai-entry${aiOpen ? ' active' : ''}${isCompact('assistant') ? ' compact' : ''}`}
+                  data-tip={t('aiOpenAssistant')}
+                  data-fold-key="assistant"
+                  disabled={disabled}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={onToggleAi}
+                >
+                  <span className="rb-big-icon">
+                    <AiMark size={26} />
+                  </span>
+                  <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+                </button>
+                {inlinePresets.map(presetButton)}
+              </div>
+            </div>
 
-        <div className="rb-sep" />
+            <div className="rb-sep" />
+          </>
+        )}
 
         {!sourceMode && (
           <div className="ribbon-group">
@@ -952,7 +960,7 @@ export function Ribbon({
             )}
             {/* never folds: whether withholding is on decides what the model is
                 sent, so its state stays in sight at every width */}
-            {!sourceMode && (
+            {!sourceMode && aiOn && (
               <IconBtn
                 title={t('redactEnable')}
                 active={redactEnabled}

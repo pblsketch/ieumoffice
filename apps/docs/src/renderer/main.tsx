@@ -4,6 +4,7 @@ import { htmlDir, htmlLang, type Lang } from '@genoffice/i18n'
 import { App } from './App'
 import { setAuthorName } from './author-name'
 import { LocaleProvider, setModuleLang } from './i18n/locale'
+import { AiVisibilityProvider, editorChoiceSource, initialAppChoice } from './ai-visibility'
 import type { DocTheme, UiTheme } from '../shared/ipc'
 import '@genoffice/ui/tokens.css'
 import '@genoffice/ui/screentip.css'
@@ -73,11 +74,15 @@ async function bootstrap(): Promise<void> {
     .then(setAuthorName)
     .catch(() => {})
   window.desktop?.onAuthorNameChanged?.(setAuthorName)
+  const choiceSource = editorChoiceSource()
+  const choice = await initialAppChoice(choiceSource)
   const root = createRoot(document.getElementById('root')!)
   flushSync(() =>
     root.render(
       <LocaleProvider initial={lang}>
-        <App />
+        <AiVisibilityProvider source={choiceSource} initial={choice}>
+          <App />
+        </AiVisibilityProvider>
       </LocaleProvider>,
     ),
   )
