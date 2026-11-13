@@ -106,6 +106,7 @@ export {
   missingRequiredFields,
   runtimePreamble,
   sanitizeAgentPayload,
+  walkArgumentFields,
 } from './loop'
 export type {
   AgentLoopEvents,

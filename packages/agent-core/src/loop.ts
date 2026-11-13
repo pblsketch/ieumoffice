@@ -366,6 +366,49 @@ export function coerceArgumentFields(
 }
 
 /**
+ * Walks a tool call's input beside the tool's JSON Schema, outside in: `visit` gets the
+ * input itself (path `''`) and then every value under it that the schema declares, through
+ * `properties` and single-schema `items` at any depth (`styles[0].size`). What `visit`
+ * returns stands in for the value, and the walk goes on into that; a key the schema does
+ * not declare is neither visited nor touched, so a skill that wants to rename or refuse
+ * one does it when it is handed the object that holds it. Untouched input comes back as
+ * the same object. This is the mechanism only: unlike coerceArgumentFields it repairs
+ * nothing by itself, and it is not part of the loop's own checks.
+ */
+export function walkArgumentFields(
+  tool: AgentToolDef | undefined,
+  input: Record<string, unknown>,
+  visit: (value: unknown, schema: Record<string, unknown>, path: string) => unknown,
+): Record<string, unknown> {
+  const walk = (value: unknown, schema: unknown, path: string): unknown => {
+    if (!isPlainRecord(schema)) return value
+    const seen = visit(value, schema, path)
+    if (Array.isArray(seen)) {
+      let out: unknown[] = seen
+      seen.forEach((item, index) => {
+        const next = walk(item, schema.items, `${path}[${index}]`)
+        if (next === item) return
+        if (out === seen) out = [...seen]
+        out[index] = next
+      })
+      return out
+    }
+    if (!isPlainRecord(seen) || !isPlainRecord(schema.properties)) return seen
+    let out = seen
+    for (const [key, declared] of Object.entries(schema.properties)) {
+      if (!Object.hasOwn(seen, key)) continue
+      const next = walk(seen[key], declared, path ? `${path}.${key}` : key)
+      if (next === seen[key]) continue
+      if (out === seen) out = { ...seen }
+      out[key] = next
+    }
+    return out
+  }
+  const walked = walk(input, tool?.inputSchema, '')
+  return isPlainRecord(walked) ? walked : input
+}
+
+/**
  * Degenerate-loop guards. Weak models (BYOK/local endpoints especially) can
  * repeat the exact same turn forever or keep issuing failing tool calls; with
  * a large turn budget these must abort early instead of burning it.
