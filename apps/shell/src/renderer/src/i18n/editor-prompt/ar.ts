@@ -19,4 +19,9 @@ export const ar = {
   cancel: 'إلغاء',
   aiOffSkillMessage: 'الذكاء الاصطناعي متوقف. هل تريد تشغيله واستيراد المهارة؟',
   aiOnAndImport: 'تشغيل الذكاء الاصطناعي والاستيراد',
+  fileOnlyDetail: 'إنشاء الملف فقط: يبقى المحرر متوقفًا ويُعرض الملف الجديد في مجلده.',
+  entranceDetail: 'تحتاج هذه الميزة إلى تشغيل {item}.',
+  genAiOffConvert: 'الذكاء الاصطناعي متوقف: تتوفر التحويلات التي لا تستخدم الذكاء الاصطناعي فقط.',
+  genAiOffNoConversion:
+    'الذكاء الاصطناعي متوقف. أضف ملف خريطة ذهنية أو ملف Markdown واحدًا فقط لتحويله دون ذكاء اصطناعي.',
 } satisfies Record<keyof typeof zh, string>

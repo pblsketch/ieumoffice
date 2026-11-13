@@ -19,4 +19,9 @@ export const hi = {
   cancel: 'रद्द करें',
   aiOffSkillMessage: 'AI बंद है। AI चालू करके कौशल आयात करें?',
   aiOnAndImport: 'AI चालू करें और आयात करें',
+  fileOnlyDetail: 'केवल फ़ाइल बनाएँ: एडिटर बंद रहेगा और नई फ़ाइल उसके फ़ोल्डर में दिखाई जाएगी।',
+  entranceDetail: 'इस सुविधा के लिए {item} चालू होना चाहिए।',
+  genAiOffConvert: 'AI बंद है: केवल AI के बिना होने वाले रूपांतरण उपलब्ध हैं।',
+  genAiOffNoConversion:
+    'AI बंद है। AI के बिना रूपांतरण के लिए केवल एक माइंड मैप या Markdown फ़ाइल जोड़ें।',
 } satisfies Record<keyof typeof zh, string>

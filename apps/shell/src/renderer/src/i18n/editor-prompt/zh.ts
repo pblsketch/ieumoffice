@@ -17,4 +17,9 @@ export const zh = {
   cancel: '取消',
   aiOffSkillMessage: 'AI 功能已关闭。要启用 AI 并导入技能吗？',
   aiOnAndImport: '启用 AI 并导入',
+  fileOnlyDetail: '仅创建文件：编辑器保持关闭，并在文件夹中显示新文件。',
+  entranceDetail: '此功能需要启用{item}。',
+  genAiOffConvert: 'AI 功能已关闭：只能使用不需要 AI 的转换。',
+  genAiOffNoConversion:
+    'AI 功能已关闭。只添加一个思维导图或 Markdown 文件，即可不使用 AI 进行转换。',
 }

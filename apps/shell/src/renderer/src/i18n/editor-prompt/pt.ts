@@ -19,4 +19,10 @@ export const pt = {
   cancel: 'Cancelar',
   aiOffSkillMessage: 'A IA está desativada. Ativar a IA e importar a habilidade?',
   aiOnAndImport: 'Ativar a IA e importar',
+  fileOnlyDetail:
+    'Criar apenas o arquivo: o editor continua desativado e o novo arquivo é mostrado na pasta.',
+  entranceDetail: 'Este recurso precisa que o {item} esteja ativado.',
+  genAiOffConvert: 'A IA está desativada: só estão disponíveis conversões sem IA.',
+  genAiOffNoConversion:
+    'A IA está desativada. Adicione um único mapa mental ou arquivo Markdown para convertê-lo sem IA.',
 } satisfies Record<keyof typeof zh, string>

@@ -19,4 +19,9 @@ export const th = {
   cancel: 'ยกเลิก',
   aiOffSkillMessage: 'AI ปิดอยู่ เปิด AI แล้วนำเข้าสกิลไหม',
   aiOnAndImport: 'เปิด AI และนำเข้า',
+  fileOnlyDetail: 'สร้างไฟล์อย่างเดียว: ตัวแก้ไขยังปิดอยู่ และจะแสดงไฟล์ใหม่ในโฟลเดอร์',
+  entranceDetail: 'ต้องเปิด{item}ก่อนจึงจะใช้ฟังก์ชันนี้ได้',
+  genAiOffConvert: 'AI ปิดอยู่: ใช้ได้เฉพาะการแปลงที่ไม่ใช้ AI',
+  genAiOffNoConversion:
+    'AI ปิดอยู่ เพิ่มไฟล์แผนผังความคิดหรือไฟล์ Markdown เพียงไฟล์เดียวเพื่อแปลงโดยไม่ใช้ AI',
 } satisfies Record<keyof typeof zh, string>

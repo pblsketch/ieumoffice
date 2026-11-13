@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import type { AiTargetKind, GenerateWindowApi, GenerateWindowState } from '../shared/generate-api'
 import { GENERATE_CHANNELS } from '../shared/generate-api'
 
@@ -56,3 +57,10 @@ const api: GenerateWindowApi = {
 }
 
 contextBridge.exposeInMainWorld('aiOfficeGenerateWindow', api)
+
+// whether AI is on (the AI "make" hides while it is off): read and heard, never changed here
+const choice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: () => choice.get(),
+  onChange: (listener: Parameters<typeof choice.onChange>[0]) => choice.onChange(listener),
+})

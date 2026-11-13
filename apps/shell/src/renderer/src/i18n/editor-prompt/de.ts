@@ -19,4 +19,10 @@ export const de = {
   cancel: 'Abbrechen',
   aiOffSkillMessage: 'KI ist ausgeschaltet. KI einschalten und den Skill importieren?',
   aiOnAndImport: 'KI einschalten und importieren',
+  fileOnlyDetail:
+    'Nur Datei erstellen: Der Editor bleibt ausgeschaltet und die neue Datei wird in ihrem Ordner angezeigt.',
+  entranceDetail: 'Dafür muss der {item} eingeschaltet sein.',
+  genAiOffConvert: 'KI ist ausgeschaltet: Nur Umwandlungen ohne KI sind verfügbar.',
+  genAiOffNoConversion:
+    'KI ist ausgeschaltet. Fügen Sie genau eine Mindmap- oder Markdown-Datei hinzu, um sie ohne KI umzuwandeln.',
 } satisfies Record<keyof typeof zh, string>

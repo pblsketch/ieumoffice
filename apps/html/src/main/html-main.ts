@@ -47,6 +47,7 @@ import {
   type PrintDialogOutcome,
   assertFileSaved,
 } from '@genoffice/electron-utils'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { fetchImageBytes } from '@genoffice/electron-utils/fetch-image-bytes'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import {
@@ -1184,6 +1185,20 @@ async function writeHtmlDocx(
   }
 }
 
+/**
+ * A Word file's bytes from restricted HTML, the way the Word export makes
+ * them: for "create the file only" of a document that would otherwise open
+ * as a new Word tab while the Word editor is off (editor choice spec 7.3).
+ */
+export async function htmlToDocxBytes(html: string): Promise<Uint8Array> {
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
+  try {
+    return await renderHtmlDocx(html, undefined, workDir)
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 /** The ODT export: the Word export's bytes converted by docxToOdt, a change report confirmed. */
 async function writeHtmlOdt(
   html: string,
@@ -2034,9 +2049,20 @@ function registerHtmlIpc(): void {
       }
       const win =
         BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+      const headless = isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
+      // the Word copy opens in a Word tab: while that editor is off the export asks
+      // first (editor choice spec 7.3); "create the file only" shows it in its folder
+      if (
+        !headless &&
+        (await askBeforeMakeAndOpen('docs', {
+          fileName: `${exportFileName(request.suggestedName)}.docx`,
+        })) === 'cancel'
+      ) {
+        return { ok: true, canceled: true }
+      }
       // Headless export has no dialog to authorize a path; the CLI already chose one.
       const picked =
-        isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
+        headless && typeof request.outPath === 'string'
           ? { canceled: false, filePath: request.outPath }
           : await showSaveDialogWithMemory(
               dialog,

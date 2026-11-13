@@ -19,4 +19,10 @@ export const ru = {
   cancel: 'Отмена',
   aiOffSkillMessage: 'ИИ выключен. Включить ИИ и импортировать навык?',
   aiOnAndImport: 'Включить ИИ и импортировать',
+  fileOnlyDetail:
+    'Только создать файл: редактор останется выключенным, а новый файл будет показан в папке.',
+  entranceDetail: 'Для этого нужно включить: {item}.',
+  genAiOffConvert: 'ИИ выключен: доступны только преобразования без ИИ.',
+  genAiOffNoConversion:
+    'ИИ выключен. Добавьте один файл интеллект-карты или Markdown, чтобы преобразовать его без ИИ.',
 } satisfies Record<keyof typeof zh, string>

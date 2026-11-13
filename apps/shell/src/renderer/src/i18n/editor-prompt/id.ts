@@ -19,4 +19,9 @@ export const id = {
   cancel: 'Batal',
   aiOffSkillMessage: 'AI sedang nonaktif. Aktifkan AI lalu impor skill?',
   aiOnAndImport: 'Aktifkan AI dan impor',
+  fileOnlyDetail: 'Hanya buat file: editor tetap nonaktif dan file baru ditampilkan di foldernya.',
+  entranceDetail: 'Fitur ini memerlukan {item} aktif.',
+  genAiOffConvert: 'AI sedang nonaktif: hanya konversi tanpa AI yang tersedia.',
+  genAiOffNoConversion:
+    'AI sedang nonaktif. Tambahkan satu file peta pikiran atau Markdown untuk mengonversinya tanpa AI.',
 } satisfies Record<keyof typeof zh, string>

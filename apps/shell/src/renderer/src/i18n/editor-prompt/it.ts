@@ -19,4 +19,10 @@ export const it = {
   cancel: 'Annulla',
   aiOffSkillMessage: 'L’IA è disattivata. Attivare l’IA e importare l’abilità?',
   aiOnAndImport: 'Attiva l’IA e importa',
+  fileOnlyDetail:
+    'Crea solo il file: l’editor resta disattivato e il nuovo file viene mostrato nella sua cartella.',
+  entranceDetail: 'Questa funzione richiede che l’{item} sia attivo.',
+  genAiOffConvert: 'L’IA è disattivata: sono disponibili solo le conversioni senza IA.',
+  genAiOffNoConversion:
+    'L’IA è disattivata. Aggiungi una sola mappa mentale o un solo file Markdown per convertirlo senza IA.',
 } satisfies Record<keyof typeof zh, string>

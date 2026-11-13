@@ -19,4 +19,9 @@ export const cs = {
   cancel: 'Zrušit',
   aiOffSkillMessage: 'AI je vypnutá. Zapnout AI a importovat dovednost?',
   aiOnAndImport: 'Zapnout AI a importovat',
+  fileOnlyDetail: 'Jen vytvořit soubor: editor zůstane vypnutý a nový soubor se zobrazí ve složce.',
+  entranceDetail: 'Tato funkce vyžaduje zapnutí: {item}.',
+  genAiOffConvert: 'AI je vypnutá: k dispozici jsou jen převody bez AI.',
+  genAiOffNoConversion:
+    'AI je vypnutá. Přidejte jediný soubor myšlenkové mapy nebo Markdown a převeďte ho bez AI.',
 } satisfies Record<keyof typeof zh, string>

@@ -9370,8 +9370,16 @@ export default function App() {
     }
   }
 
-  /** Converter dropdown › Markdown / EPUB → the conversion dialog */
-  const openConvertDialog = (format: PdfReflowFormat): void => {
+  /**
+   * Converter dropdown › Markdown / EPUB → the conversion dialog. A Markdown
+   * result opens in the Markdown editor: while that is off the shell asks first
+   * (editor choice spec 7.3); an EPUB is only shown in its folder.
+   */
+  const openConvertDialog = async (format: PdfReflowFormat): Promise<void> => {
+    if (format === 'md' && filePath && window.pdfApi?.askBeforeConvert) {
+      const answer = await window.pdfApi.askBeforeConvert({ source: filePath, format })
+      if (answer === 'cancel') return
+    }
     setConvertDialog({ format })
   }
 
@@ -10140,7 +10148,7 @@ export default function App() {
                         : t('convertPdf')
                     }
                     onConvert={(format) => void convertTo(format)}
-                    onReflow={openConvertDialog}
+                    onReflow={(format) => void openConvertDialog(format)}
                     onPageImages={(allPages, format) => void exportImages(allPages, format)}
                     onEmbedded={exportPagePictures}
                   />
@@ -11235,8 +11243,8 @@ export default function App() {
                 geomOf={pageGeom}
                 languageName={(code) => languageName(code, lang)}
                 createDocument={
-                  window.pdfApi?.createDocument
-                    ? (request) => window.pdfApi.createDocument(request)
+                  window.pdfApi?.openAnnotDocument
+                    ? (request) => window.pdfApi.openAnnotDocument(request)
                     : undefined
                 }
                 onActivate={activateAnnot}

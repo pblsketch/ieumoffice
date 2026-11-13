@@ -19,4 +19,10 @@ export const pl = {
   cancel: 'Anuluj',
   aiOffSkillMessage: 'AI jest wyłączona. Włączyć AI i zaimportować umiejętność?',
   aiOnAndImport: 'Włącz AI i zaimportuj',
+  fileOnlyDetail:
+    'Tylko utwórz plik: edytor pozostaje wyłączony, a nowy plik zostanie pokazany w folderze.',
+  entranceDetail: 'Ta funkcja wymaga włączenia: {item}.',
+  genAiOffConvert: 'AI jest wyłączona: dostępne są tylko konwersje bez AI.',
+  genAiOffNoConversion:
+    'AI jest wyłączona. Dodaj jeden plik mapy myśli lub Markdown, aby przekonwertować go bez AI.',
 } satisfies Record<keyof typeof zh, string>

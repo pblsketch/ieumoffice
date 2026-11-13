@@ -224,6 +224,12 @@ const api: PdfApi = {
     (ipcRenderer.invoke(PDF_CHANNELS.convertReleaseTarget, request) as Promise<boolean>).catch(
       () => true,
     ),
+  askBeforeConvert: async (request) => {
+    const answer: unknown = await ipcRenderer
+      .invoke(PDF_CHANNELS.convertAskBeforeOpen, request)
+      .catch(() => 'open')
+    return answer === 'cancel' || answer === 'file-only' ? answer : 'open'
+  },
   openConvertResult: (request) =>
     (ipcRenderer.invoke(PDF_CHANNELS.convertOpenResult, request) as Promise<boolean>).catch(
       () => false,
@@ -233,6 +239,7 @@ const api: PdfApi = {
       () => false,
     ),
   createDocument: (request) => ipcRenderer.invoke(PDF_CHANNELS.createDocument, request),
+  openAnnotDocument: (request) => ipcRenderer.invoke(PDF_CHANNELS.annotDocument, request),
   openInPdfTools: (path, tool) =>
     (ipcRenderer.invoke(PDF_CHANNELS.openInPdfTools, path, tool) as Promise<boolean>).catch(
       () => false,
