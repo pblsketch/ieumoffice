@@ -3420,8 +3420,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             ` ${fixedAcross.join(' and ')} did nothing: a table across the columns is as wide as the page.`,
           )
         }
+        const headerText = result.headerTextColor
+          ? ' The words of the header row were written white to show on its fill.'
+          : ''
         return {
-          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${unused.join('')}${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${headerText}${unused.join('')}${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: label('aiToolTable', { rows: result.rows, cols: result.cols }),
         }
@@ -5005,7 +5008,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         return {
-          output: `Made the title a ${result.look} title box. The title is now in a table: tables after it are numbered one higher.${result.textColorDropped ? ' The text colour was left as it was: the one asked for would not show on what is behind the title (bands, lines and a box leave the white page behind the words; white words need look shaded with a dark color).' : ''}${standInNote(result.standIn)}`,
+          output: `Made the title a ${result.look} title box. The title is now in a table: tables after it are numbered one higher.${result.textColorDropped ? ' The text colour was left as it was: the one asked for would not show on what is behind the title (bands, lines and a box leave the white page behind the words; white words need look shaded with a dark color).' : ''}${result.textColor ? ' The title was written white to show on the fill.' : ''}${standInNote(result.standIn)}`,
           mutated: true,
           summary: label('aiToolTitleBox'),
         }

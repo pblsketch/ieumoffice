@@ -2571,6 +2571,37 @@ describe('the look of a document', () => {
     expect(head.output).toContain('lying across the columns of the page')
     expect(head.output).toContain('width_percent and place did nothing')
     expect(head.output).not.toContain('across_columns did nothing')
+    // white words the call did not ask for are told
+    const dark = setup({
+      insertTable: vi.fn(async () => ({
+        ok: true as const,
+        rows: 2,
+        cols: 2,
+        inTable: false,
+        headerTextColor: '#ffffff',
+      })),
+    })
+    const filled = await dark.call('insert_table', {
+      where: 'end',
+      rows,
+      header: true,
+      header_color: '#1F3864',
+    })
+    expect(filled.output).toContain('The words of the header row were written white')
+    const boxed = setup({
+      insertTitleBox: vi.fn(async () => ({
+        ok: true as const,
+        look: 'shaded',
+        place: PLACE,
+        textColor: '#ffffff',
+      })),
+    })
+    const title = await boxed.call('insert_title_box', {
+      find: '제목',
+      look: 'shaded',
+      color: '#1F3864',
+    })
+    expect(title.output).toContain('The title was written white to show on the fill.')
     // nothing is said of an option that took effect
     const used = await plain.call('insert_table', {
       where: 'end',

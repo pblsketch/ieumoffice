@@ -21,6 +21,9 @@ import {
   titleBoxCells,
   CELL_DIAGONALS,
   tabStopsOf,
+  MIN_TEXT_CONTRAST,
+  contrastRatio,
+  textColorOnFill,
 } from '../studio-plugin/document-looks.mjs'
 
 describe('border rules', () => {
@@ -166,6 +169,30 @@ describe('title boxes', () => {
       borderTop: { type: 0 },
     })
     expect(titleBoxCells('shaded', '#e7edf5', '#1f3864').cells[0].borderTop.type).toBe(1)
+  })
+})
+
+describe('the colour of words on a fill', () => {
+  it('is white where black would be hard to read, when the call names none', () => {
+    // the dark blue the prompt suggests for a header row: black has a contrast of 1.8 on it
+    expect(textColorOnFill('#1F3864')).toBe('#ffffff')
+    expect(textColorOnFill('#000000')).toBe('#ffffff')
+    expect(textColorOnFill('#404040')).toBe('#ffffff')
+  })
+
+  it('is left to the words on a fill black shows on', () => {
+    for (const fill of ['#FFFFFF', '#E5E5E5', '#D9E2F3', '#FFE699', '#5B9BD5', '#4472C4']) {
+      expect(textColorOnFill(fill), fill).toBeNull()
+    }
+  })
+
+  it('does not decide for a colour the call asks for: accent colours on white stay', () => {
+    // these would be taken for unreadable at the contrast white-on-fill is judged by
+    for (const asked of ['#ED7D31', '#00B050', '#FF9900']) {
+      const contrast = contrastRatio(asked, '#ffffff')
+      expect(contrast, asked).toBeLessThan(3)
+      expect(contrast, asked).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+    }
   })
 })
 

@@ -253,6 +253,50 @@ describe('insertTable: looks', () => {
     expect(table.cell(4).fillType).not.toBe('solid')
   })
 
+  it('writes the words of a header row white on a dark fill, in the document and in both files', () => {
+    const { doc, para } = withTable({ header: true, headerColor: '#1F3864' })
+    // two cells of the header row and one of the row under it
+    const colours = (source: HwpDocument) => {
+      const table = tableIn(source, para)
+      return [0, 2, 3].map(
+        (cell) =>
+          (
+            JSON.parse(source.getCellCharPropertiesAt(0, para, table.control, cell, 0, 0)) as {
+              textColor: string
+            }
+          ).textColor,
+      )
+    }
+    expect(colours(doc())).toEqual(['#ffffff', '#ffffff', '#000000'])
+    for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+      expect(colours(new HwpDocument(bytes))).toEqual(['#ffffff', '#ffffff', '#000000'])
+    }
+  })
+
+  it('says that it chose white for the header row, and leaves black where black shows', () => {
+    const insert = (look: Parameters<typeof withTable>[0]) =>
+      open().plugin.insertTable('□ 세부 일정', null, 'after', ROWS, look)
+    expect(insert({ header: true, headerColor: '#1F3864' })).toMatchObject({
+      ok: true,
+      headerTextColor: '#ffffff',
+    })
+    for (const look of [
+      { header: true, headerColor: '#D9E2F3' },
+      { header: true },
+      { header: true, headerColor: 'none' },
+      // no header row: the colour has nothing to fill
+      { headerColor: '#1F3864' },
+    ]) {
+      expect(insert(look), JSON.stringify(look)).not.toHaveProperty('headerTextColor')
+    }
+    const { doc, para } = withTable({ header: true, headerColor: '#D9E2F3' })
+    const table = tableIn(doc(), para)
+    const chars = JSON.parse(doc().getCellCharPropertiesAt(0, para, table.control, 0, 0, 0)) as {
+      textColor: string
+    }
+    expect(chars.textColor).toBe('#000000')
+  })
+
   it('gives the columns their shares of the width and the text its size', () => {
     const { doc, para } = withTable({
       header: true,
@@ -1414,6 +1458,38 @@ describe('a title box and the colour of its words', () => {
     expect(
       pale.plugin.insertTitleBox(TITLE, null, { look: 'shaded', textColor: '#FFFFFF' }),
     ).toMatchObject({ ok: true, textColorDropped: true })
+  })
+
+  it('writes the title white on a dark fill when the call names no colour for it', () => {
+    const dark = open()
+    expect(
+      dark.plugin.insertTitleBox(TITLE, null, { look: 'shaded', color: '#1F3864' }),
+    ).toMatchObject({ ok: true, textColor: '#ffffff' })
+    expect(titleColor(dark.doc())).toBe('#ffffff')
+    for (const bytes of [dark.doc().exportHwpx(), dark.doc().exportHwp()]) {
+      expect(titleColor(new HwpDocument(bytes))).toBe('#ffffff')
+    }
+    // a fill black shows on, and the looks that leave the page behind the words, keep the colour
+    for (const box of [
+      { look: 'shaded' as const, color: '#D9E2F3' },
+      { look: 'shaded' as const },
+      { look: 'bands' as const, color: '#1F3864' },
+      { look: 'lines' as const, color: '#1F3864' },
+    ]) {
+      const light = open()
+      const made = light.plugin.insertTitleBox(TITLE, null, box)
+      expect(made, JSON.stringify(box)).not.toHaveProperty('textColor')
+      expect(titleColor(light.doc()), JSON.stringify(box)).toBe('#000000')
+    }
+    // a colour the call asks for is not replaced: it is kept, or left out as before
+    const asked = open()
+    const kept = asked.plugin.insertTitleBox(TITLE, null, {
+      look: 'shaded',
+      color: '#1F3864',
+      textColor: '#FFC000',
+    })
+    expect(kept).not.toHaveProperty('textColor')
+    expect(titleColor(asked.doc())).toBe('#ffc000')
   })
 
   it('takes white words on a dark fill, and a dark colour anywhere', () => {

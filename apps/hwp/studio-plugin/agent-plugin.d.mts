@@ -244,6 +244,8 @@ export type AgentTitleBoxResult =
       place: AgentPlace
       /** the text colour asked for could not be told from what is behind the title, and was left out */
       textColorDropped?: boolean
+      /** the colour the title was given to show on a dark fill, when the call named none */
+      textColor?: string
       standIn?: AgentStandInFont[]
     }
   | AgentPlaceRefusal
@@ -406,6 +408,8 @@ export type AgentTableResult =
       place: AgentPlace
       /** the table lies across the columns of its page */
       acrossColumns?: boolean
+      /** the colour the words of the header row were given to show on its fill, when the fill is dark */
+      headerTextColor?: string
       standIn?: AgentStandInFont[]
     }
   | AgentPlaceRefusal

@@ -29,6 +29,7 @@ import {
   CELL_DIAGONAL_LINE,
   CHAR_WIDTH_PERCENT,
   DEFAULT_COLUMN_GAP_MM,
+  MIN_BLACK_ON_FILL,
   MIN_TEXT_CONTRAST,
   LETTER_SPACING_PERCENT,
   DOCUMENT_FONTS,
@@ -55,6 +56,7 @@ import {
   standInFont,
   tabStopsOf,
   tableLookBlocks,
+  textColorOnFill,
   titleBoxCells,
 } from './document-looks.mjs'
 import { equationSvgForThisPc } from './equation-fonts.mjs'
@@ -3332,6 +3334,11 @@ function titleBoxOf(spec) {
     color,
     color2: colorOf(given.color2, 'color2'),
     text: Object.keys(text).length > 0 ? standInFormat(text, standIns) : null,
+    // the fill the words stand on, when the call named no colour for them
+    fillBehind:
+      look === 'shaded' && (given.textColor === undefined || given.textColor === null)
+        ? color
+        : null,
     standIns,
     textColorDropped,
   }
@@ -6774,6 +6781,7 @@ export const agentPlugin = {
                       aligns: look.aligns,
                     }
                   : null
+              let headerTextColor = null
               // in the body the header's grey goes on after the paste, cell by cell (shadeHeaderCells)
               box.pasteHtml(at, tableHtml(table, font, look.header, box.inTable, columns))
               if (!box.inTable) {
@@ -6785,12 +6793,26 @@ export const agentPlugin = {
                     look.headerColor ?? TABLE_HEADER_FILL,
                   )
                 }
+                const headerText =
+                  look.header && look.headerColor && look.headerColor !== 'none'
+                    ? textColorOnFill(look.headerColor)
+                    : null
+                headerTextColor = headerText
                 // the lines of a look other than the plain grid, over the thin line the paste gave every cell
                 const blocks = tableLookBlocks(look.look, look.header)
                 const made =
-                  blocks.length > 0 || across || look.repeatHeader
+                  blocks.length > 0 || across || look.repeatHeader || headerText
                     ? pastedTableAt(doc, place)
                     : null
+                if (made && headerText) {
+                  formatCellText(
+                    doc,
+                    made,
+                    gridOf(doc, made),
+                    { top: 0, left: 0, bottom: 0, right: made.cols - 1 },
+                    { chars: JSON.stringify({ textColor: headerText }) },
+                  )
+                }
                 // the table stands in its paragraph like a character: the paragraph's
                 // alignment puts a narrow one at the left, in the middle or at the right
                 if (look.place && !across) {
@@ -6853,6 +6875,7 @@ export const agentPlugin = {
                 inTable: box.inTable,
                 place,
                 ...(across ? { acrossColumns: true } : {}),
+                ...(headerTextColor ? { headerTextColor } : {}),
                 ...(look.standIns.length > 0 ? { standIn: look.standIns } : {}),
               }
             },
@@ -8017,6 +8040,16 @@ export const agentPlugin = {
                 },
                 false,
               )
+              // a title the call gave no colour, on a fill the colour it has does not show on
+              const onFill = wanted.fillBehind ? textColorOnFill(wanted.fillBehind) : null
+              const has = look.chars?.textColor
+              const whitened =
+                onFill !== null &&
+                !(
+                  typeof has === 'string' &&
+                  contrastRatio(has, wanted.fillBehind) >= MIN_BLACK_ON_FILL
+                )
+              if (whitened) look.chars = { ...look.chars, textColor: onFill }
               const titlePoints = look.chars?.fontSize ? look.chars.fontSize / 100 : points
               box.deleteText(k, length)
               const layout = titleBoxCells(wanted.look, wanted.color, wanted.color2)
@@ -8110,6 +8143,7 @@ export const agentPlugin = {
                 look: wanted.look,
                 place: box.place(k, 0),
                 ...(wanted.textColorDropped ? { textColorDropped: true } : {}),
+                ...(whitened ? { textColor: onFill } : {}),
                 ...(wanted.standIns.length > 0 ? { standIn: wanted.standIns } : {}),
               }
             },

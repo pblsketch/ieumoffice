@@ -501,6 +501,18 @@ export function contrastRatio(one, other) {
 /** Below this contrast words cannot be told from what is behind them (white on a pale fill). */
 export const MIN_TEXT_CONTRAST = 1.6
 
+/** Black words on a fill they have less contrast with than this are hard to read. */
+export const MIN_BLACK_ON_FILL = 3
+
+/**
+ * The colour words take on a fill (#RRGGBB) when the call names none for them: white where
+ * black would be hard to read, else null for the colour they have. A colour the call does
+ * name is kept down to MIN_TEXT_CONTRAST: an accent colour that was asked for stays.
+ */
+export function textColorOnFill(fill) {
+  return contrastRatio('#000000', fill) < MIN_BLACK_ON_FILL ? '#ffffff' : null
+}
+
 /** How text sits at a tab stop, and what fills the way to it, with the engine's codes. */
 export const TAB_ALIGNS = { left: 0, right: 1, center: 2, decimal: 3 }
 export const TAB_LEADERS = { none: 0, line: 1, dashes: 2, dots: 3 }
