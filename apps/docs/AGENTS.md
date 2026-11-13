@@ -28,6 +28,7 @@ Word 문서(.docx)와 ODT(.odt) 에디터다. 그리고 배포되는 앱 전체�
 - AI 도구 호출에서 온 주소는 `fetchRemoteImage`와 크기 상한을 거친다(웹 검색 결과를 통한 프롬프트 주입이 가능한 값이다). 사설·링크 로컬 주소와 http(s)가 아닌 스킴은 거절된다.
 - 문서 내용은 테마가 다시 칠하지 않는다. 어두운 쪽 표시(`src/renderer/editor/dark-page.ts`)는 화면 전용 변환이다. 작성된 색은 실제 인라인 선언으로 남고, 변환된 값은 `--dk-*` 사용자 정의 속성으로 덧붙여 `.workspace.page-dark` 아래의 화면 전용 규칙이 바꿔 칠한다. 쪽 나눔 미리 보기, 인쇄, PDF 내보내기, 클립보드 HTML은 두 테마에서 같은 결과여야 한다.
 - 저장은 좁은 패치다. 원본 파일이 기준이고, 고친 블록만 OOXML 조각으로 바꿔 원래 `document.xml`에 끼워 넣으며, 손대지 않은 블록과 다른 zip 항목은 바이트 그대로 남는다. 열기·저장 경로를 바꾸면 손대지 않은 내용이 그대로 살아남는지 왕복 테스트로 증명한다.
+- **altChunk HTML은 그 문서를 만든 사람이 넣은 것이다.** `docs:altchunk-html-to-docx`는 조각을 `altChunkDocument`(스크립트·바깥 자원을 막는 CSP를 DOCTYPE 뒤에 넣는다)로 감싸 쓰고, 숨은 창에는 그 조각 파일 하나만 허락한다(`isFileUrlOf`, 결정 0142). 조각이 열리는 데 사람의 확인이 없으므로 이 둘을 빼거나 넓히지 않는다.
 - UI 크롬 색은 토큰만 쓴다(`var(--surface)` 등). 렌더러 CSS에 새 `#hex`·`rgb()`를 넣으면 `npm run check:theme-colors`가 실패한다. 강조색(`--accent` 계열)은 이 앱의 `styles.css`에서 정의한다.
 - 모델에게 주는 system prompt에서 제품을 가리키는 이름은 `brandText(…, 'en')`을 거친다(`ai/protocol.ts`, `ai/doc-writer.ts`). HTTP 사용자 에이전트는 `PRODUCT_NAME`으로 만든다.
 - **AI 첨부가 받는 형식 목록의 기준은 이 에디터의 첨부 목록이다.** 여섯 에디터가 함께 쓰는 목록(`ATTACHABLE_EXTS` 등)은 `packages/file-parse`의 `attachable.ts` 한 곳에 있고, 이 에디터가 받던 글자·코드 확장자가 그 기준이 된다. 다른 에디터는 이 목록을 넓히기만 하고 줄이지 않는다. 그림 확장자처럼 렌더러가 봐야 하는 값은 Node 결합(`file-parse`)을 렌더러로 못 가져오므로 이 앱의 `src/shared/ipc.ts`(`ATTACHMENT_IMAGE_EXTS`)에 그대로 두되 값은 공용 목록과 같게 맞춘다. 목록은 무엇을 첨부할 수 있는지만 정하고, 실제로 읽히는지는 첨부할 때 `parseFileToText`가 정한다.
