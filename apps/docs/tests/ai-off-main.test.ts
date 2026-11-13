@@ -155,7 +155,9 @@ describe('ai:stream (every editor’s chat goes through it)', () => {
     expect(runningAiJobCount()).toBe(1)
     held.finish()
     await done
-    expect(runningAiJobCount()).toBe(0)
+    // the tab's turn may go on with its next model call: it still counts for a moment
+    expect(runningAiJobCount()).toBe(1)
+    await vi.waitFor(() => expect(runningAiJobCount()).toBe(0), { timeout: 6000 })
   })
 
   it('turning AI off stops it the way Stop does: the provider signal ends', async () => {

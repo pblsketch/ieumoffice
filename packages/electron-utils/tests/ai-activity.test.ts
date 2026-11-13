@@ -155,3 +155,19 @@ describe('AI job groups', () => {
     expect(runningAiJobCount()).toBe(0)
   })
 })
+
+describe('a job stop-all ended', () => {
+  it('does not linger once it reports its end', async () => {
+    vi.useFakeTimers()
+    let end!: () => void
+    end = registerAiJob({
+      kind: 'chat',
+      stop: () => end(),
+      group: 'tab:9',
+      lingerMs: 3000,
+    })
+    expect(await stopAllAiJobs()).toBe(1)
+    expect(runningAiJobCount()).toBe(0)
+    vi.useRealTimers()
+  })
+})

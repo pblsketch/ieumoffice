@@ -31,6 +31,8 @@ export interface AiJob {
 }
 
 const jobs = new Set<AiJob>()
+/** jobs stop-all ended: their own end does not linger */
+const stoppedByAll = new WeakSet<AiJob>()
 const listeners = new Set<(count: number) => void>()
 /** groups whose last job ended a moment ago, with the timer that forgets them */
 const lingering = new Map<string, ReturnType<typeof setTimeout>>()
@@ -75,7 +77,7 @@ export function registerAiJob(job: AiJob): () => void {
   return () => {
     if (!jobs.delete(entry)) return
     const group = entry.group
-    const linger = job.lingerMs ?? 0
+    const linger = stoppedByAll.has(entry) ? 0 : (job.lingerMs ?? 0)
     if (group !== undefined && linger > 0 && ![...jobs].some((j) => j.group === group)) {
       const timer = setTimeout(() => {
         if (lingering.get(group) === timer) {
@@ -111,6 +113,7 @@ export async function stopAllAiJobs(): Promise<number> {
   lingering.clear()
   await Promise.all(
     running.map(async (job) => {
+      stoppedByAll.add(job)
       try {
         await job.stop()
       } catch {
