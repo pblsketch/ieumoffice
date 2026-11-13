@@ -8,8 +8,9 @@
  * positions chained onto the paragraph in front, so they run on past the column height and
  * never start again. Before the patch such paragraphs kept "fitting": with the default line
  * spacing of 160% a column took 65 lines where 41 fit, and the rest was drawn below the page.
- * 260 lines written after the columns were set came out on 2 pages with 84 lines below the
- * body. Hangul 2024 lays the saved file out on 4 pages (two columns) and 3 pages (three).
+ * 260 lines written through the AI tools after the columns were set came out on 2 pages with
+ * 48 lines below the body (84 when every line is a new paragraph of its own). Hangul 2024
+ * lays the saved file out on 4 pages (two columns) and 3 pages (three).
  *
  * The calls are the ones the AI tools make: `set_columns` sets the column definition, and
  * `insert_paragraphs` adds a paragraph behind the page setup of a new document with
