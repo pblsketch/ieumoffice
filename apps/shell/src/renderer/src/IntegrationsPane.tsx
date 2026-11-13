@@ -61,9 +61,12 @@ const api = () => window.aiOfficeIntegrations
 export function IntegrationsPane({
   t,
   onStatus,
+  mcpServers = true,
 }: {
   t: TFunc
   onStatus?: (s: IntegrationsStatus) => void
+  /** the person's own MCP servers (an AI feature): left out while AI is off */
+  mcpServers?: boolean
 }) {
   const [status, setStatus] = useState<IntegrationsStatus | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
@@ -209,7 +212,7 @@ export function IntegrationsPane({
 
       <DriveSettingsCard />
 
-      <McpServersCard />
+      {mcpServers && <McpServersCard />}
 
       <section className="set-intg-hero">
         <div className="set-intg-hero-title">{t('intgHeroTitle')}</div>
