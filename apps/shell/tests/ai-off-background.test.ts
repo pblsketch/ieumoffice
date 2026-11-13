@@ -4,25 +4,36 @@
  * back on it checks the subscriptions once. Every program here is a fake: the
  * status service and the launchers only count their calls.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { LANGS } from '@genoffice/i18n'
 import type { AppChoice } from '@genoffice/electron-utils/app-choice'
 import {
+  createSubscriptionIpcDeps,
   createSubscriptionStatusService,
   registerSubscriptionIpc,
   SUBSCRIPTION_IPC_CHANNELS,
   type SubscriptionDetection,
   type SubscriptionIpcDeps,
+  type SubscriptionProgram,
   type SubscriptionStatusMap,
   type SubscriptionStatusService,
 } from '@genoffice/ai-provider/subscription'
-import { defaultAiSettings } from '@genoffice/ai-provider'
+import { defaultAiSettings, type AiSubscriptionCliId } from '@genoffice/ai-provider'
 import type { KeyModelRefresher } from '@genoffice/ai-provider/key-models'
 import {
+  aiGatedDetect,
   aiGatedKeyModelRefresher,
+  aiGatedModelLister,
   aiGatedSubscriptionDeps,
+  endSubscriptionLoginsWhenAiOff,
   onAiFeaturesBack,
+  onAiFeaturesOff,
   resumeAiBackgroundWork,
+  stopAiBackgroundWork,
 } from '../../docs/src/main/ai-background'
 import { aiOffRefusalText, watchAiFeatures } from '../src/main/ai-off-main'
 
@@ -177,6 +188,185 @@ describe('the subscription channels the screens call, while AI is off', () => {
     const checked = (await call(SUBSCRIPTION_IPC_CHANNELS.recheck)) as SubscriptionStatusMap
     expect(detect).toHaveBeenCalled()
     expect(checked.codex.state).toBe('not-installed')
+  })
+})
+
+class FakeChild extends EventEmitter {
+  constructor(readonly pid: number) {
+    super()
+  }
+  kill(): boolean {
+    return true
+  }
+  unref(): void {}
+}
+
+function fakeProgram(provider: AiSubscriptionCliId): SubscriptionProgram {
+  const command = provider === 'codex' ? 'C:\\npm\\codex.exe' : 'C:\\npm\\claude.exe'
+  return { provider, command, prefixArgs: [], env: {}, entry: command, source: 'npm' }
+}
+
+const dataDirs: string[] = []
+afterAll(() => {
+  for (const dir of dataDirs) rmSync(dir, { recursive: true, force: true })
+})
+
+/**
+ * The subscription dependencies as the docs main builds them (the check and
+ * the model lister gated, the deps gated), over a fake runner: `detect` stands
+ * for the status-check program, `spawn` for the login program, `killTree` for
+ * ending it and its children. Nothing real is started.
+ */
+function gatedApp(aiOn: () => boolean) {
+  const dataDir = mkdtempSync(join(tmpdir(), 'ai-off-login-'))
+  dataDirs.push(dataDir)
+  const checks: string[] = []
+  const lists: string[] = []
+  const children: FakeChild[] = []
+  const ended: FakeChild[] = []
+  const detect = async (
+    provider: SubscriptionDetection['provider'],
+  ): Promise<SubscriptionDetection> => {
+    checks.push(provider)
+    return { provider, state: 'signed-out' }
+  }
+  const deps = aiGatedSubscriptionDeps(
+    createSubscriptionIpcDeps({
+      getSettings: () => defaultAiSettings(),
+      setMeteredAccepted: () => undefined,
+      dataDir,
+      detect: aiGatedDetect(detect, aiOn),
+      listModels: aiGatedModelLister(async (provider) => {
+        lists.push(provider)
+        return undefined
+      }, aiOn),
+      locate: async (provider) => fakeProgram(provider),
+      spawn: (() => {
+        const child = new FakeChild(2000 + children.length)
+        children.push(child)
+        return child
+      }) as never,
+      platform: 'win32',
+      killTree: (child) => {
+        ended.push(child as FakeChild)
+        ;(child as FakeChild).emit('exit', 1, null)
+      },
+    }),
+    aiOn,
+  )
+  return { deps, checks, lists, children, ended }
+}
+
+async function settleAll(): Promise<void> {
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve))
+}
+
+describe('a login started before AI went off (spec 8.3, 9)', () => {
+  it('ending on its own while AI is off starts no status check program', async () => {
+    let on = true
+    const app = gatedApp(() => on)
+    expect(await app.deps.launchLogin('claude-code')).toEqual({ ok: true })
+    expect(app.children).toHaveLength(1)
+    on = false
+    app.children[0]!.emit('exit', 0, null)
+    await settleAll()
+    expect(app.checks).toEqual([])
+    expect(app.lists).toEqual([])
+    expect(app.children).toHaveLength(1)
+    expect(app.deps.service.getStatuses()['claude-code'].signingIn).toBeUndefined()
+  })
+
+  it('cancelled while AI is off ends its program and starts no status check program', async () => {
+    let on = true
+    const app = gatedApp(() => on)
+    await app.deps.launchLogin('codex')
+    on = false
+    expect(await app.deps.cancelLogin('codex')).toEqual({ ok: true })
+    await settleAll()
+    expect(app.ended).toEqual([app.children[0]])
+    expect(app.checks).toEqual([])
+    expect(app.children).toHaveLength(1)
+  })
+
+  it('is ended when AI goes off, through the cancel path, with no check program', async () => {
+    let on = true
+    const app = gatedApp(() => on)
+    const stop = endSubscriptionLoginsWhenAiOff(app.deps)
+    try {
+      await app.deps.launchLogin('claude-code')
+      expect(app.deps.service.getStatuses()['claude-code'].signingIn).toBe('browser')
+      on = false
+      stopAiBackgroundWork()
+      await settleAll()
+      expect(app.ended).toEqual([app.children[0]])
+      expect(app.checks).toEqual([])
+      expect(app.deps.service.getStatuses()['claude-code'].signingIn).toBeUndefined()
+    } finally {
+      stop()
+    }
+  })
+
+  it('with AI back on, the checks ask the programs again', async () => {
+    let on = true
+    const app = gatedApp(() => on)
+    await app.deps.launchLogin('claude-code')
+    app.children[0]!.emit('exit', 0, null)
+    await settleAll()
+    expect(app.checks).toEqual(['claude-code'])
+    on = false
+    await app.deps.service.check(['claude-code'], { fresh: true })
+    expect(app.checks).toEqual(['claude-code'])
+    on = true
+    await app.deps.service.check(['claude-code'], { fresh: true })
+    expect(app.checks).toEqual(['claude-code', 'claude-code'])
+  })
+})
+
+describe('the gated status check and model list', () => {
+  it('answer the last detection seen while AI is off, or an error that keeps what is stored', async () => {
+    let on = false
+    const detect = vi.fn(
+      async (provider: SubscriptionDetection['provider']): Promise<SubscriptionDetection> => ({
+        provider,
+        state: 'ready',
+        loginMethod: 'subscription',
+      }),
+    )
+    const gated = aiGatedDetect(detect, () => on)
+    expect((await gated('codex')).state).toBe('error')
+    on = true
+    const seen = await gated('codex')
+    on = false
+    expect(await gated('codex')).toBe(seen)
+    expect(detect).toHaveBeenCalledTimes(1)
+  })
+
+  it('list no model while AI is off', async () => {
+    let on = false
+    const list = vi.fn(async () => [{ id: 'm', label: 'M' }])
+    const gated = aiGatedModelLister(list, () => on)
+    expect(await gated('codex')).toBeUndefined()
+    expect(list).not.toHaveBeenCalled()
+    on = true
+    expect(await gated('codex')).toEqual([{ id: 'm', label: 'M' }])
+  })
+})
+
+describe('turning AI off', () => {
+  it('lets every start point stop once, even after one fails', () => {
+    const first = vi.fn(() => {
+      throw new Error('broken')
+    })
+    const second = vi.fn()
+    const stopFirst = onAiFeaturesOff(first)
+    const stopSecond = onAiFeaturesOff(second)
+    stopAiBackgroundWork()
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).toHaveBeenCalledTimes(1)
+    stopFirst()
+    stopSecond()
+    stopAiBackgroundWork()
+    expect(second).toHaveBeenCalledTimes(1)
   })
 })
 

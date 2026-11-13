@@ -49,15 +49,23 @@ const TEN_EDITORS = EDITOR_ONLY_ITEM_IDS
 const dir = mkdtempSync(join(tmpdir(), 'editor-choice-main-'))
 const settingsPath = join(dir, 'app-settings.json')
 
+/** the shell's main window in these tests; 2 is an editor tab, 3 another window */
+const SHELL_ID = 1
+
 const service = registerEditorChoiceIpc({
   settingsPath: () => settingsPath,
+  isShellSender: (event) => event.sender.id === SHELL_ID,
   aiOffRefusal: () => 'AI is off',
 })
 
-function invoke(channel: string, ...args: unknown[]): unknown {
+function invokeFrom(senderId: number, channel: string, ...args: unknown[]): unknown {
   const handler = handlers.get(channel)
   if (!handler) throw new Error(`no handler for ${channel}`)
-  return handler({ sender: { id: 1 } }, ...args)
+  return handler({ sender: { id: senderId } }, ...args)
+}
+
+function invoke(channel: string, ...args: unknown[]): unknown {
+  return invokeFrom(SHELL_ID, channel, ...args)
 }
 
 function stored(): Record<string, unknown> {
@@ -193,5 +201,49 @@ describe('running AI jobs', () => {
     expect(
       sent.filter((m) => m.channel === APP_CHOICE_CHANNELS.aiJobsChanged).map((m) => m.payload),
     ).toEqual([1, 1, 0, 0])
+  })
+})
+
+describe('requests from a window other than the shell', () => {
+  it('cannot change the choice: they get it as it is and nothing is stored or told', async () => {
+    const heard: unknown[] = []
+    const off = service.onChange((choice) => heard.push(choice))
+    for (const sender of [2, 3]) {
+      expect(await invokeFrom(sender, APP_CHOICE_CHANNELS.set, { aiFeatures: false })).toEqual({
+        off: [],
+        aiFeatures: true,
+        locked: false,
+      })
+      await invokeFrom(sender, APP_CHOICE_CHANNELS.set, { off: ['docs'] })
+    }
+    off()
+    expect(stored()).toEqual({ theme: 'dark', onboardingSeen: true })
+    expect(sent).toEqual([])
+    expect(heard).toEqual([])
+  })
+
+  it('cannot mark the one-time picker seen', async () => {
+    await invokeFrom(2, APP_CHOICE_CHANNELS.markPickSeen)
+    expect('editorPickSeen' in stored()).toBe(false)
+    expect(invokeFrom(2, APP_CHOICE_CHANNELS.pickDue)).toBe(true)
+  })
+
+  it('cannot stop every AI job, and may still read the count', async () => {
+    const stop = vi.fn()
+    const done = registerAiJob({ kind: 'chat', stop })
+    expect(invokeFrom(2, APP_CHOICE_CHANNELS.aiJobCount)).toBe(1)
+    expect(await invokeFrom(2, APP_CHOICE_CHANNELS.stopAllAiJobs)).toBe(0)
+    expect(stop).not.toHaveBeenCalled()
+    expect(runningAiJobCount()).toBe(1)
+    done()
+  })
+
+  it('may still read the choice', async () => {
+    writeFileSync(settingsPath, JSON.stringify({ editors: { off: ['hwp'] } }))
+    expect(invokeFrom(2, APP_CHOICE_CHANNELS.get)).toEqual({
+      off: ['hwp'],
+      aiFeatures: true,
+      locked: false,
+    })
   })
 })

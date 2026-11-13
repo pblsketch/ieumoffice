@@ -314,7 +314,7 @@ describe('Settings → Editors and AI: switches', () => {
     expect(choice.api.stopAllAiJobs).not.toHaveBeenCalled()
   })
 
-  it('asks before stopping running AI jobs, then stops them and turns AI off', async () => {
+  it('asks before stopping running AI jobs, then turns AI off and stops them', async () => {
     const choice = fakeChoice({}, 2)
     await open(choice, { section: 'editorChoice' })
     await click(aiSwitch())
@@ -323,7 +323,7 @@ describe('Settings → Editors and AI: switches', () => {
     expect(choice.calls).toEqual(['count'])
     expect(aiSwitch().getAttribute('aria-checked')).toBe('true')
     await click(host.querySelector<HTMLButtonElement>('.es-ai-off-stop'))
-    expect(choice.calls).toEqual(['count', 'stop', 'set:{"aiFeatures":false}'])
+    expect(choice.calls).toEqual(['count', 'set:{"aiFeatures":false}', 'stop'])
     expect(host.querySelector('.es-confirm')).toBeNull()
     expect(aiSwitch().getAttribute('aria-checked')).toBe('false')
   })

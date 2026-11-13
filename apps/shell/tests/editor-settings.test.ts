@@ -116,11 +116,25 @@ describe('turning AI off', () => {
     expect(api.stopAllAiJobs).not.toHaveBeenCalled()
   })
 
-  it('stops every job before it turns AI off on "stop and turn off"', async () => {
+  it('turns AI off before it stops every job on "stop and turn off"', async () => {
+    // off first: a run another tab starts while the stops are awaited is already refused
     const { api, calls } = fakeApi(2)
     const choice = await aiOffConfirm(api)
     expect(choice.aiFeatures).toBe(false)
-    expect(calls).toEqual(['stop', 'set:{"aiFeatures":false}'])
+    expect(calls).toEqual(['set:{"aiFeatures":false}', 'stop'])
+  })
+
+  it('answers AI off even when stopping the jobs fails', async () => {
+    const { api } = fakeApi(2)
+    api.stopAllAiJobs.mockRejectedValueOnce(new Error('gone'))
+    expect((await aiOffConfirm(api)).aiFeatures).toBe(false)
+  })
+
+  it('stops nothing when AI could not be turned off', async () => {
+    const { api } = fakeApi(2)
+    api.set.mockRejectedValueOnce(new Error('not saved'))
+    await expect(aiOffConfirm(api)).rejects.toThrow('not saved')
+    expect(api.stopAllAiJobs).not.toHaveBeenCalled()
   })
 
   it('reads a failing count as no job running', async () => {
