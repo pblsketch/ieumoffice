@@ -47,6 +47,9 @@ export default defineConfig({
       '@genoffice/electron-utils/ai-run-guard': local(
         '../../packages/electron-utils/src/ai-run-guard.ts',
       ),
+      '@genoffice/electron-utils/app-choice': local(
+        '../../packages/electron-utils/src/app-choice.ts',
+      ),
       '@genoffice/electron-utils/generated-images': local(
         '../../packages/electron-utils/src/generated-images.ts',
       ),

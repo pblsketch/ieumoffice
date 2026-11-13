@@ -139,6 +139,9 @@ import { registerResultStoreIpc } from './result-store-ipc'
 import { FEEDBACK_SURVEY_URL, feedbackDetails, feedbackText, platformLabel } from './feedback'
 import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
 import { registerEditorChoiceIpc } from './editor-choice-main'
+import { aiOffRefusalText, watchAiFeatures } from './ai-off-main'
+import { resumeAiBackgroundWork } from '../../../docs/src/main/ai-background'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import { startMcpHub } from './mcp-client/hub-app'
 import type { McpHub } from './mcp-client/hub'
 import { freeAiInUse } from './drive/drive-consent'
@@ -565,6 +568,7 @@ import {
   type HomeKindsSettings,
 } from '../shared/home-kinds'
 import {
+  closeAgentWindow,
   configureAgentWindow,
   isAgentWindowContents,
   stopAgentSessions,
@@ -6808,7 +6812,8 @@ function registerHomeIpc(): void {
     HOME_CHANNELS.rerankSearch,
     async (_event, raw: unknown): Promise<FileSearchRerank | null> => {
       const settings = readFileSearchSettings()
-      if (!settings.rerank) return null
+      // the reordering is AI work: none while AI features are off (editor choice spec 8.3)
+      if (!settings.rerank || !aiFeaturesOn()) return null
       const query = (raw && typeof raw === 'object' ? raw : {}) as { q?: unknown; paths?: unknown }
       const q = typeof query.q === 'string' ? query.q.trim().slice(0, 200) : ''
       const paths = Array.isArray(query.paths)
@@ -9952,7 +9957,16 @@ registerProjectIpc()
 registerDocsIpc()
 registerHomeIpc()
 // editors and AI on or off (the source the editor mains read, the "ai-off" run check)
-registerEditorChoiceIpc({ settingsPath: APP_SETTINGS_PATH })
+const editorChoice = registerEditorChoiceIpc({
+  settingsPath: APP_SETTINGS_PATH,
+  aiOffRefusal: () => aiOffRefusalText(currentLang()),
+})
+// AI off closes the agent window; back on, the held-back checks run once (spec 8.5)
+watchAiFeatures({
+  choice: editorChoice,
+  turnedOff: closeAgentWindow,
+  turnedOn: resumeAiBackgroundWork,
+})
 registerProjectFolderChannels()
 registerIntegrationsIpc({
   settingsPath: APP_SETTINGS_PATH,
