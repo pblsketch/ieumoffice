@@ -123,7 +123,7 @@ export const ms = {
   stepLogin: 'Log masuk',
   stepReady: 'Disambungkan',
   installReturnNote:
-    'Apabila pemasangan dalam tetingkap itu selesai, kembali ke sini. Aplikasi akan menyemak semula dengan sendiri.',
+    'Semasa memuat turun, tetingkap itu mungkin tidak memaparkan apa-apa selama beberapa minit. Biarkan ia terbuka. Apabila pemasangan selesai, kembali ke sini. Aplikasi akan menyemak semula dengan sendiri.',
   loginHowNote:
     'Pelayar akan dibuka apabila anda menekannya. Log masuk dengan akaun {vendor} anda dan tekan Benarkan; sambungan akan selesai dengan sendiri.',
   signingInStalledNote:

@@ -125,7 +125,7 @@ export const it = {
   stepLogin: 'Accedi',
   stepReady: 'Connesso',
   installReturnNote:
-    'Quando l’installazione in quella finestra è finita, torna qui. L’app verifica di nuovo da sola.',
+    'Durante il download quella finestra può non mostrare nulla per qualche minuto. Lasciala aperta. Quando l’installazione è finita, torna qui. L’app verifica di nuovo da sola.',
   loginHowNote:
     'Premendo si apre un browser. Accedi con il tuo account {vendor} e premi Consenti: la connessione si completa da sola.',
   signingInStalledNote:

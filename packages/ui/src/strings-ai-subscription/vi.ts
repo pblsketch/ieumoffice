@@ -120,7 +120,7 @@ export const vi = {
   stepLogin: 'Đăng nhập',
   stepReady: 'Đã kết nối',
   installReturnNote:
-    'Khi cài đặt trong cửa sổ đó xong, hãy quay lại màn hình này. Ứng dụng sẽ tự kiểm tra lại.',
+    'Trong lúc tải xuống, cửa sổ đó có thể không hiện gì trong vài phút. Đừng đóng nó. Khi cài đặt xong, hãy quay lại màn hình này. Ứng dụng sẽ tự kiểm tra lại.',
   loginHowNote:
     'Khi bạn nhấn, trình duyệt sẽ mở ra. Đăng nhập bằng tài khoản {vendor} của bạn rồi nhấn Cho phép, kết nối sẽ tự hoàn tất.',
   signingInStalledNote:

@@ -123,7 +123,7 @@ export const pl = {
   stepLogin: 'Logowanie',
   stepReady: 'Połączono',
   installReturnNote:
-    'Gdy instalacja w tamtym oknie się zakończy, wróć tutaj. Aplikacja sama sprawdzi ponownie.',
+    'Podczas pobierania to okno może przez kilka minut nic nie pokazywać. Nie zamykaj go. Gdy instalacja się zakończy, wróć tutaj. Aplikacja sama sprawdzi ponownie.',
   loginHowNote:
     'Po kliknięciu otworzy się przeglądarka. Zaloguj się na konto {vendor} i kliknij Zezwól, a połączenie nastąpi samo.',
   signingInStalledNote:
