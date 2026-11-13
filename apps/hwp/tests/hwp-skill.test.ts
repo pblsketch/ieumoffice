@@ -12,6 +12,7 @@ import {
   type HwpChange,
   equationScript,
   evenCutLine,
+  nearestNames,
   typedTabs,
 } from '../src/renderer/ai/hwp-skill'
 import type { HwpSkillDeps } from '../src/renderer/ai/hwp-skill'
@@ -1253,7 +1254,11 @@ describe('styles', () => {
     const result = await call('read_style', { name: '본문' })
     expect(bridge.readStyle).toHaveBeenCalledWith('본문')
     expect(result.output).toContain('Style "본문"')
-    expect(result.output).toContain('"marginLeft":15')
+    // in the names edit_style takes, not the editor's own
+    expect(result.output).toContain('"margin_left":15')
+    expect(result.output).toContain('"line_spacing":160')
+    expect(result.output).toContain('"english_name":"Body"')
+    expect(result.output).not.toMatch(/marginLeft|lineSpacing|spacingBefore|englishName|nextStyle/)
     expect(result.mutated).toBeFalsy()
     expect(changes).toEqual([])
   })
@@ -2046,7 +2051,7 @@ describe('rows and columns of a table', () => {
       expect(changes).toEqual([])
     }
     const { call, bridge } = setup()
-    expect((await call('delete_table', { table: '1' })).isError).toBe(true)
+    expect((await call('delete_table', { table: 'first' })).isError).toBe(true)
     expect(bridge.deleteTable).not.toHaveBeenCalled()
   })
 
@@ -3567,7 +3572,11 @@ describe('document-wide settings', () => {
   it('reads the formatting of this document and formats one look of it', async () => {
     const { bridge, call, changes } = setup()
     const read = await call('read_formatting')
-    expect(read.output).toContain('"id":"Labc123"')
+    // a look is named by the key format_look takes it by
+    expect(read.output).toContain('"look":"Labc123"')
+    expect(read.output).toContain('"margin_left":30,"margin_right":30,"margin_top":20')
+    expect(read.output).toContain('"number_format":"digit"')
+    expect(read.output).not.toMatch(/"id"|"margins"|lineSpacing|numberFormat|startNumber/)
     expect(bridge.formatting).toHaveBeenCalledWith(null)
     const result = await call('format_look', { look: 'Labc123', font: '바탕', size: 11 })
     expect(result.isError).toBeFalsy()
@@ -3585,7 +3594,7 @@ describe('document-wide settings', () => {
     })
     const result = await call('format_look', { look: 'Lold000', bold: true })
     expect(result.isError).toBe(true)
-    expect(result.output).toContain('Lnew000')
+    expect(result.output).toContain('"look":"Lnew000"')
   })
 
   it('reads the formatting of an attached Hangul document by its name only', async () => {
@@ -3823,5 +3832,355 @@ describe('a cut line', () => {
       even,
       '참가 동의서',
     ])
+  })
+})
+
+describe('what a call gives before its handler sees it', () => {
+  it('refuses an argument an editing tool does not declare, with the name it likely stands for', async () => {
+    const { call, bridge, changes } = setup()
+    const result = await call('format_paragraph', { find: '본문', size: 13, font_size: 14 })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('unknown argument "font_size"; did you mean "size"?')
+    expect(result.output).toMatch(
+      /\nUsage: format_paragraph takes find, occurrence, .*line_spacing/,
+    )
+    expect(bridge.formatParagraph).not.toHaveBeenCalled()
+    expect(changes).toEqual([])
+
+    const two = await call('format_paragraph', { find: '본문', font_size: 14, line_height: 160 })
+    expect(two.output).toContain('unknown argument "font_size"; did you mean "size"?')
+    expect(two.output).toContain('unknown argument "line_height"; did you mean "line_spacing"?')
+    expect(bridge.formatParagraph).not.toHaveBeenCalled()
+  })
+
+  it('refuses an undeclared key inside an object or a list item, by its path', async () => {
+    const { call, bridge } = setup()
+    const border = await call('format_paragraph', {
+      find: '본문',
+      border: { side: 'bottom', style: 'dashed', thickness: 0.5 },
+    })
+    expect(border.isError).toBe(true)
+    expect(border.output).toContain('unknown argument "border.side"; did you mean "sides"?')
+    expect(border.output).toContain('unknown argument "border.thickness".')
+    expect(border.output).toContain('Usage: border takes sides, line, width, color.')
+    expect(bridge.formatParagraph).not.toHaveBeenCalled()
+
+    const cell = await call('format_cells', {
+      table: 1,
+      cells: [{ row: 1, column: 1 }],
+      background: '#EEEEEE',
+    })
+    expect(cell.isError).toBe(true)
+    expect(cell.output).toContain('unknown argument "cells[0].column"; did you mean "col"?')
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+  })
+
+  it('takes a null for nothing given', async () => {
+    const { call, bridge } = setup()
+    const result = await call('format_paragraph', { find: '본문', bold: true, font_size: null })
+    expect(result.isError).toBeFalsy()
+    expect(bridge.formatParagraph).toHaveBeenCalledWith('본문', null, { bold: true })
+  })
+
+  it('sends a paragraph property given to format_text on to format_paragraph', async () => {
+    const { call, bridge } = setup()
+    const result = await call('format_text', { find: '본문', line_spacing: 200 })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('unknown argument "line_spacing"')
+    expect(result.output).toContain('format_paragraph sets them')
+    // no guess at a name of format_text beside the cure
+    expect(result.output).not.toContain('did you mean')
+    expect(bridge.formatText).not.toHaveBeenCalled()
+  })
+
+  it('answers a reading tool and names the argument it did nothing with', async () => {
+    const { call, bridge } = setup({
+      listTables: async () => ({
+        count: 1,
+        partial: false,
+        tables: [{ table: 1, rows: 2, cols: 2, preview: ['가', '나'] }],
+      }),
+    })
+    const listed = await call('list_tables', { id: 1 })
+    expect(listed.isError).toBeFalsy()
+    expect(listed.output).toContain('Table 1: 2 row(s)')
+    expect(listed.output).toMatch(
+      /\n\nNot arguments of list_tables, so nothing was done with them: "id"\. list_tables takes no arguments\.$/,
+    )
+    const read = await call('read_formatting', { find: '본문' })
+    expect(read.isError).toBeFalsy()
+    expect(bridge.formatting).toHaveBeenCalledWith(null)
+    expect(read.output).toMatch(
+      /nothing was done with them: "find"\. read_formatting takes attachment\.$/,
+    )
+    // a call without one reads as before
+    expect((await call('list_tables')).output).not.toContain('Not arguments')
+  })
+
+  it('takes the names a read answer used to have for the ones the tools declare', async () => {
+    const { call, bridge } = setup()
+    await call('format_paragraph', { find: '본문', lineSpacing: 160, marginLeft: 20 })
+    expect(bridge.formatParagraph).toHaveBeenLastCalledWith('본문', null, {
+      lineSpacing: 160,
+      marginLeft: 20,
+    })
+    await call('format_paragraph', {
+      find: '본문',
+      marginRight: 5,
+      spacingBefore: 4,
+      spacingAfter: 6,
+      list: 'number',
+      listLevel: 2,
+      tabs: [{ atMm: 40 }],
+    })
+    expect(bridge.formatParagraph).toHaveBeenLastCalledWith('본문', null, {
+      marginRight: 5,
+      spacingBefore: 4,
+      spacingAfter: 6,
+      list: 'number',
+      listLevel: 2,
+      tabs: [{ atMm: 40 }],
+    })
+    await call('create_style', {
+      name: '새 스타일',
+      englishName: 'New',
+      nextStyle: '본문',
+      size: 11,
+    })
+    expect(bridge.createStyle).toHaveBeenLastCalledWith(
+      expect.objectContaining({ englishName: 'New', nextStyle: '본문', format: { size: 11 } }),
+    )
+    await call('set_note_settings', {
+      kind: 'footnote',
+      numberFormat: 'circledDigit',
+      startNumber: 3,
+    })
+    expect(bridge.setNoteSettings).toHaveBeenLastCalledWith('footnote', {
+      numberFormat: 'circledDigit',
+      startNumber: 3,
+    })
+    await call('set_columns', { count: 2, gapMm: 12 })
+    expect(bridge.setColumns).toHaveBeenLastCalledWith({ count: 2, gapMm: 12 })
+    await call('format_look', { id: 'Labc123', bold: true })
+    expect(bridge.formatLook).toHaveBeenLastCalledWith('Labc123', { bold: true })
+    await call('set_page_setup', { orientation: 'landscape', margins: { left: 25, top: 15 } })
+    expect(bridge.setPageSetup).toHaveBeenLastCalledWith(
+      { orientation: 'landscape', margins: { left: 25, top: 15 } },
+      null,
+    )
+  })
+
+  it('does not pick between an old name and the declared one when both are given', async () => {
+    const { call, bridge } = setup()
+    const result = await call('format_paragraph', {
+      find: '본문',
+      line_spacing: 160,
+      lineSpacing: 200,
+    })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('unknown argument "lineSpacing"; did you mean "line_spacing"?')
+    expect(bridge.formatParagraph).not.toHaveBeenCalled()
+    // the page margins of a read answer are flat only where the tool takes a margin for every side
+    const nested = await call('format_paragraph', { find: '본문', margins: { left: 5 } })
+    expect(nested.isError).toBe(true)
+    expect(nested.output).toContain('unknown argument "margins"')
+    // id names a look for format_look alone: a table's look is one of three words
+    const table = await call('insert_table', { where: 'end', rows: [['a']], id: 'Labc123' })
+    expect(table.isError).toBe(true)
+    expect(table.output).toContain('unknown argument "id"')
+    expect(bridge.insertTable).not.toHaveBeenCalled()
+  })
+
+  it('takes what read_style and read_formatting answer, handed back as it came', async () => {
+    const { call, bridge } = setup()
+    const answer = (await call('read_style', { name: '본문' })).output
+    const style = JSON.parse(answer.slice(answer.indexOf('{')))
+    const edited = await call('edit_style', { name: '본문', ...style })
+    expect(edited.isError).toBeFalsy()
+    const [name, changes] = bridge.editStyle.mock.calls.at(-1) as unknown as [
+      string,
+      { englishName?: string; format?: Record<string, unknown> },
+    ]
+    expect(name).toBe('본문')
+    expect(changes.englishName).toBe('Body')
+    expect(changes.format).toMatchObject({ size: 10, lineSpacing: 160, marginLeft: 15 })
+    // what the answer says about the style but edit_style does not change is named, not refused
+    expect(edited.output).toMatch(
+      /Not arguments of edit_style, so nothing was done with them: "kind"\.$/,
+    )
+
+    const read = (await call('read_formatting')).output
+    const look = JSON.parse(read.slice(read.indexOf('{'))).looks[0]
+    const formatted = await call('format_look', look)
+    expect(formatted.isError).toBeFalsy()
+    expect(bridge.formatLook).toHaveBeenLastCalledWith(
+      'Labc123',
+      expect.objectContaining({
+        font: '함초롬바탕',
+        lineSpacing: 160,
+        marginLeft: 0,
+        spacingAfter: 0,
+      }),
+    )
+    expect(formatted.output).toMatch(/nothing was done with them: "paragraphs", "samples"\.$/)
+  })
+
+  it('reads a block of format_cells given as four corners, and one cell given as row and col', async () => {
+    const { call, bridge } = setup()
+    await call('format_cells', {
+      table: 1,
+      from_row: 2,
+      from_col: 1,
+      to_row: 2,
+      to_col: 3,
+      background: '#FFE699',
+    })
+    expect(bridge.formatCells).toHaveBeenLastCalledWith(
+      1,
+      { fromRow: 2, fromCol: 1, toRow: 2, toCol: 3 },
+      '#FFE699',
+    )
+    await call('format_cells', { table: 1, row: 3, col: 1, background: '#DDEBF7' })
+    expect(bridge.formatCells).toHaveBeenLastCalledWith(1, [{ row: 3, col: 1 }], '#DDEBF7')
+    bridge.formatCells.mockClear()
+    // half a block names no cells: nothing is formatted, least of all the whole table
+    const half = await call('format_cells', {
+      table: 1,
+      from_row: 2,
+      to_row: 2,
+      background: '#FFE699',
+    })
+    expect(half.isError).toBe(true)
+    expect(half.output).toContain('unknown argument "from_row"')
+    expect(half.output).toContain('A block of cells goes in range')
+    const both = await call('format_cells', {
+      table: 1,
+      cells: [{ row: 1, col: 1 }],
+      row: 2,
+      col: 2,
+      background: '#FFE699',
+    })
+    expect(both.isError).toBe(true)
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+  })
+
+  it('reads a quoted number or flag as the value, at the top of a call and inside it', async () => {
+    const { call, bridge } = setup()
+    await call('delete_table', { table: '1' })
+    expect(bridge.deleteTable).toHaveBeenLastCalledWith(1)
+    await call('insert_table', { where: 'end', rows: [['1', '2']], header: 'true', size: '11' })
+    expect(bridge.insertTable).toHaveBeenLastCalledWith('', null, 'end', [['1', '2']], {
+      header: true,
+      size: 11,
+    })
+    await call('style_paragraphs', {
+      styles: [{ name: '항목', bold: 'true', size: '12', keep_with_next: 'true' }],
+      apply: [{ style: '항목', find: '본문', occurrence: '2' }],
+    })
+    expect(bridge.styleParagraphs).toHaveBeenLastCalledWith({
+      styles: [{ name: '항목', format: { bold: true, size: 12 }, keepWithNext: true }],
+      apply: [{ style: '항목', find: '본문', occurrence: 2 }],
+    })
+    await call('format_cells', {
+      table: '2',
+      range: { from_row: '2', from_col: '1', to_row: '2', to_col: '3' },
+      row_height_mm: '8',
+    })
+    expect(bridge.formatCells).toHaveBeenLastCalledWith(
+      2,
+      { fromRow: 2, fromCol: 1, toRow: 2, toCol: 3 },
+      { heightMm: 8 },
+    )
+    // text stays text, however much it looks like a number or a flag
+    await call('fill_cells', { table: 1, cells: [{ row: '1', col: '2', text: '2026' }] })
+    expect(bridge.fillCells.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      1,
+      [{ row: 1, col: 2, text: '2026' }],
+    ])
+    await call('replace_text', { find: '10', replace: 'true' })
+    expect(bridge.replaceText.mock.calls.at(-1)?.slice(0, 2)).toEqual(['10', 'true'])
+  })
+
+  it('leaves a number that is out of range to the handler instead of pulling it in', async () => {
+    const { call, bridge } = setup()
+    await call('split_cell', { table: 1, row: 1, col: 1, rows: '99', cols: 1 })
+    expect(bridge.splitCell).toHaveBeenLastCalledWith(1, 1, 1, 99, 1)
+  })
+
+  it('puts the words of the editor for a refusal into the names the tools declare', async () => {
+    const said: [string, string][] = [
+      ['lineSpacing must be 50 to 500 percent', 'line_spacing must be 50 to 500 percent'],
+      ['marginLeft must be 0 to 300 points', 'margin_left must be 0 to 300 points'],
+      ['spacingBefore must be 0 to 200 points', 'space_before must be 0 to 200 points'],
+      [
+        'listLevel must be a whole number from 1 to 7',
+        'list_level must be a whole number from 1 to 7',
+      ],
+      ['charWidth must be 50 to 200 percent', 'char_width must be 50 to 200 percent'],
+      ['atMm of a tab stop must be more than 0', 'at_mm of a tab stop must be more than 0'],
+      [
+        'align, lineSpacing, indents, margins, spacing, border, background, tabs, list and style belong to a whole paragraph',
+        'align, line_spacing, indents, margins, spacing, border, background, tabs, list and style belong to a whole paragraph',
+      ],
+    ]
+    for (const [editor, model] of said) {
+      const { call } = setup({
+        formatParagraph: async () => {
+          throw new Error(editor)
+        },
+      })
+      const result = await call('format_paragraph', { find: '본문', bold: true })
+      expect(result.isError).toBe(true)
+      expect(result.output).toBe(model)
+    }
+  })
+
+  it('offers the loop and the command line definitions without the editing mark', () => {
+    for (const tool of setup().skill.tools) {
+      expect(Object.keys(tool).sort(), tool.name).toEqual(['description', 'inputSchema', 'name'])
+    }
+  })
+})
+
+describe('the declared name an undeclared one stands for', () => {
+  const format = [
+    'find',
+    'occurrence',
+    'size',
+    'color',
+    'highlight',
+    'font',
+    'letter_spacing',
+    'align',
+    'border',
+    'background',
+    'line_spacing',
+    'margin_left',
+    'list_level',
+  ]
+  it('is the one that shares its words, the last word first', () => {
+    expect(nearestNames('font_size', format)).toEqual(['size'])
+    expect(nearestNames('fontSize', format)).toEqual(['size'])
+    expect(nearestNames('line_height', format)).toEqual(['line_spacing'])
+    expect(nearestNames('background_color', format)).toEqual(['background'])
+    expect(nearestNames('text_align', format)).toEqual(['align'])
+    expect(nearestNames('level', format)).toEqual(['list_level'])
+    expect(nearestNames('column', ['row', 'col'])).toEqual(['col'])
+    expect(nearestNames('side', ['sides', 'line', 'width', 'color'])).toEqual(['sides'])
+  })
+  it('is two names when nothing tells them apart', () => {
+    expect(nearestNames('spacing', format)).toEqual(['letter_spacing', 'line_spacing'])
+  })
+  it("is the declared spelling of one of the editor's own names", () => {
+    expect(nearestNames('heightMm', ['table', 'row_height_mm'])).toEqual(['row_height_mm'])
+    expect(nearestNames('verticalAlign', ['table', 'vertical_align'])).toEqual(['vertical_align'])
+  })
+  it('is the one a slip of the keys away', () => {
+    expect(nearestNames('colour', format)).toEqual(['color'])
+    expect(nearestNames('ocurrence', format)).toEqual(['occurrence'])
+  })
+  it('is none when no declared name is near', () => {
+    expect(nearestNames('thickness', ['sides', 'line', 'width', 'color'])).toEqual([])
+    expect(nearestNames('id', [])).toEqual([])
   })
 })
