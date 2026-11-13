@@ -809,6 +809,8 @@ export const hi = {
   ribbonOutlineView: 'रूपरेखा',
   ribbonOutlineViewTip:
     'रूपरेखा दृश्य: केवल शीर्षकों का पदानुक्रम दिखाएँ; शीर्षक संपादन योग्य रहते हैं',
+  ribbonStoryView: 'स्टोरी',
+  ribbonStoryViewTip: 'स्टोरी: दस्तावेज़ के प्रारूपण के बिना लिखें',
   ribbonReadMode: 'पठन मोड',
   ribbonReadModeTip: 'पठन मोड: एकाग्र पढ़ने के लिए रिबन छिपाएँ, बाहर निकलने के लिए Esc दबाएँ',
   ribbonPagePreview: 'पृष्ठ पूर्वावलोकन',
@@ -945,10 +947,21 @@ export const hi = {
   ribbonMailingsOutput: 'मर्ज आउटपुट',
   ribbonMailingsOutputPerRecord: 'हर रिकॉर्ड के लिए एक दस्तावेज़',
   ribbonMailingsOutputSingle: 'सभी रिकॉर्ड के लिए एक दस्तावेज़',
+  ribbonMailingsOutputLabels: 'लेबल शीट',
+  ribbonMailingsOutputEnvelopes: 'लिफ़ाफ़े',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'कस्टम ग्रिड',
+  ribbonMailingsLabelColumns: 'कॉलम',
+  ribbonMailingsLabelRows: 'पंक्तियाँ',
+  ribbonMailingsEnvelopeSize: 'लिफ़ाफ़ा आकार',
   ribbonMailingsNamePattern: 'फ़ाइल का नाम',
   ribbonMailingsNamePatternPh: 'खाली होने पर पहला फ़ील्ड उपयोग होगा',
   ribbonMailingsFinish: 'समाप्त करें और मर्ज करें',
   ribbonMailingsMerged: '{n} दस्तावेज़ मर्ज किए गए',
   ribbonMailingsMergeFailed: 'मर्ज विफल रहा',
   ribbonMailingsClose: 'बंद करें',
+  ribbonMailingsEnvelopeNote:
+    'लिफ़ाफ़े इस दस्तावेज़ को लिफ़ाफ़ा कागज़ पर जैसा है वैसा छापते हैं; पता ब्लॉक ऊपरी बाएँ मार्जिन पर रहता है (Word का लिफ़ाफ़ा विज़ार्ड डिलीवरी पता केंद्र में रखता है)।',
+  ribbonMailingsLabelsDroppedHint:
+    'लेबल शीट केवल पैराग्राफ़ ले जाती है: टेम्पलेट के {n} ब्लॉक (टेबल, चित्र) छोड़े जाएँगे।',
 } satisfies Record<keyof typeof zh, string>

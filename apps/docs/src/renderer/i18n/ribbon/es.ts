@@ -815,6 +815,8 @@ export const es = {
   ribbonOutlineView: 'Esquema',
   ribbonOutlineViewTip:
     'Vista Esquema: mostrar solo la jerarquía de títulos; los títulos siguen siendo editables',
+  ribbonStoryView: 'Historia',
+  ribbonStoryViewTip: 'Historia: escribir sin el formato del documento',
   ribbonReadMode: 'Modo de lectura',
   ribbonReadModeTip:
     'Modo de lectura: ocultar la cinta para leer sin distracciones; presione Esc para salir',
@@ -956,10 +958,21 @@ export const es = {
   ribbonMailingsOutput: 'Salida de la combinación',
   ribbonMailingsOutputPerRecord: 'Un documento por registro',
   ribbonMailingsOutputSingle: 'Un documento para todos los registros',
+  ribbonMailingsOutputLabels: 'Hoja de etiquetas',
+  ribbonMailingsOutputEnvelopes: 'Sobre',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'Cuadrícula personalizada',
+  ribbonMailingsLabelColumns: 'Columnas',
+  ribbonMailingsLabelRows: 'Filas',
+  ribbonMailingsEnvelopeSize: 'Tamaño del sobre',
   ribbonMailingsNamePattern: 'Nombre de archivo',
   ribbonMailingsNamePatternPh: 'Vacío: se usa el primer campo',
   ribbonMailingsFinish: 'Finalizar y combinar',
   ribbonMailingsMerged: '{n} documentos combinados',
   ribbonMailingsMergeFailed: 'La combinación ha fallado',
   ribbonMailingsClose: 'Cerrar',
+  ribbonMailingsEnvelopeNote:
+    'Los sobres imprimen este documento tal cual en el papel del sobre; el bloque de dirección queda en el margen superior izquierdo (el asistente de sobres de Word centra la dirección de entrega).',
+  ribbonMailingsLabelsDroppedHint:
+    'La hoja de etiquetas solo admite párrafos: se omitirán {n} bloques de la plantilla (tablas, imágenes).',
 } satisfies Record<keyof typeof zh, string>

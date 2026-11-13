@@ -221,7 +221,8 @@ export const strings = {
     aiPanelStartCollapsed: '收起',
     aiPanelStartLast: '上次状态',
     setAuthorName: '用户名',
-    setAuthorNameDesc: '作为批注和修订的作者显示在 Docs、Sheets、Slides 中。留空则使用电脑账户名。',
+    setAuthorNameDesc:
+      '作为批注和修订的作者显示在 Docs、Sheets、Slides、PDF 中。留空则使用电脑账户名。',
     settings: '设置',
     setSecAccount: '账户',
     setSecGeneral: '通用',
@@ -796,7 +797,7 @@ export const strings = {
     aiPanelStartLast: 'Last state',
     setAuthorName: 'User name',
     setAuthorNameDesc:
-      'Shown as the author of comments and tracked changes in Docs, Sheets and Slides. Leave blank to use your computer account name.',
+      'Shown as the author of comments and tracked changes in Docs, Sheets, Slides and PDF. Leave blank to use your computer account name.',
     settings: 'Settings',
     setSecAccount: 'Account',
     setSecGeneral: 'General',
@@ -1393,7 +1394,7 @@ export const strings = {
     aiPanelStartLast: 'Trạng thái gần nhất',
     setAuthorName: 'Tên người dùng',
     setAuthorNameDesc:
-      'Hiển thị là tác giả của nhận xét và thay đổi được theo dõi trong Docs, Sheets và Slides. Để trống để dùng tên tài khoản máy tính.',
+      'Hiển thị là tác giả của nhận xét và thay đổi được theo dõi trong Docs, Sheets, Slides và PDF. Để trống để dùng tên tài khoản máy tính.',
     settings: 'Cài đặt',
     setSecAccount: 'Tài khoản',
     setSecGeneral: 'Chung',
@@ -2604,7 +2605,7 @@ export const strings = {
     aiPanelStartLast: '前回の状態',
     setAuthorName: 'ユーザー名',
     setAuthorNameDesc:
-      'Docs、Sheets、Slides でコメントと変更履歴の作成者として表示されます。空欄の場合はパソコンのアカウント名を使います。',
+      'Docs、Sheets、Slides、PDF でコメントと変更履歴の作成者として表示されます。空欄の場合はパソコンのアカウント名を使います。',
     settings: '設定',
     setSecAccount: 'アカウント',
     setSecGeneral: '一般',
@@ -3215,7 +3216,7 @@ export const strings = {
     aiPanelStartLast: '마지막 상태',
     setAuthorName: '사용자 이름',
     setAuthorNameDesc:
-      'Docs, Sheets, Slides에서 메모와 변경 내용 추적의 작성자로 표시됩니다. 비워 두면 컴퓨터 계정 이름을 사용합니다.',
+      'Docs, Sheets, Slides, PDF에서 메모와 변경 내용 추적의 작성자로 표시됩니다. 비워 두면 컴퓨터 계정 이름을 사용합니다.',
     settings: '설정',
     setSecAccount: '계정',
     setSecGeneral: '일반',
@@ -3815,7 +3816,7 @@ export const strings = {
     aiPanelStartLast: 'Dernier état',
     setAuthorName: 'Nom d’utilisateur',
     setAuthorNameDesc:
-      'Affiché comme auteur des commentaires et des modifications suivies dans Docs, Sheets et Slides. Laissez vide pour utiliser le nom de votre compte.',
+      'Affiché comme auteur des commentaires et des modifications suivies dans Docs, Sheets, Slides et PDF. Laissez vide pour utiliser le nom de votre compte.',
     settings: 'Paramètres',
     setSecAccount: 'Compte',
     setSecGeneral: 'Général',
@@ -4439,7 +4440,7 @@ export const strings = {
     aiPanelStartLast: 'Letzter Zustand',
     setAuthorName: 'Benutzername',
     setAuthorNameDesc:
-      'Wird in Docs, Sheets und Slides als Autor von Kommentaren und nachverfolgten Änderungen angezeigt. Leer lassen, um den Kontonamen des Computers zu verwenden.',
+      'Wird in Docs, Sheets, Slides und PDF als Autor von Kommentaren und nachverfolgten Änderungen angezeigt. Leer lassen, um den Kontonamen des Computers zu verwenden.',
     settings: 'Einstellungen',
     setSecAccount: 'Konto',
     setSecGeneral: 'Allgemein',
@@ -5065,7 +5066,7 @@ export const strings = {
     aiPanelStartLast: 'Último estado',
     setAuthorName: 'Nombre de usuario',
     setAuthorNameDesc:
-      'Se muestra como autor de los comentarios y los cambios con seguimiento en Docs, Sheets y Slides. Déjalo vacío para usar el nombre de tu cuenta.',
+      'Se muestra como autor de los comentarios y los cambios con seguimiento en Docs, Sheets, Slides y PDF. Déjalo vacío para usar el nombre de tu cuenta.',
     settings: 'Configuración',
     setSecAccount: 'Cuenta',
     setSecGeneral: 'General',
@@ -5674,7 +5675,7 @@ export const strings = {
     aiPanelStartLast: 'สถานะล่าสุด',
     setAuthorName: 'ชื่อผู้ใช้',
     setAuthorNameDesc:
-      'แสดงเป็นผู้เขียนความคิดเห็นและการติดตามการเปลี่ยนแปลงใน Docs, Sheets และ Slides เว้นว่างไว้เพื่อใช้ชื่อบัญชีคอมพิวเตอร์',
+      'แสดงเป็นผู้เขียนความคิดเห็นและการติดตามการเปลี่ยนแปลงใน Docs, Sheets, Slides และ PDF เว้นว่างไว้เพื่อใช้ชื่อบัญชีคอมพิวเตอร์',
     settings: 'การตั้งค่า',
     setSecAccount: 'บัญชี',
     setSecGeneral: 'ทั่วไป',
@@ -6276,7 +6277,7 @@ export const strings = {
     aiPanelStartLast: 'Status terakhir',
     setAuthorName: 'Nama pengguna',
     setAuthorNameDesc:
-      'Ditampilkan sebagai penulis komentar dan perubahan terlacak di Docs, Sheets, dan Slides. Kosongkan untuk memakai nama akun komputer.',
+      'Ditampilkan sebagai penulis komentar dan perubahan terlacak di Docs, Sheets, Slides, dan PDF. Kosongkan untuk memakai nama akun komputer.',
     settings: 'Pengaturan',
     setSecAccount: 'Akun',
     setSecGeneral: 'Umum',
@@ -6888,7 +6889,7 @@ export const strings = {
     aiPanelStartLast: 'Последнее состояние',
     setAuthorName: 'Имя пользователя',
     setAuthorNameDesc:
-      'Отображается как автор примечаний и исправлений в Docs, Sheets и Slides. Оставьте пустым, чтобы использовать имя учётной записи компьютера.',
+      'Отображается как автор примечаний и исправлений в Docs, Sheets, Slides и PDF. Оставьте пустым, чтобы использовать имя учётной записи компьютера.',
     settings: 'Настройки',
     setSecAccount: 'Аккаунт',
     setSecGeneral: 'Общие',
@@ -7500,7 +7501,7 @@ export const strings = {
     aiPanelStartLast: 'الحالة الأخيرة',
     setAuthorName: 'اسم المستخدم',
     setAuthorNameDesc:
-      'يظهر كمؤلف التعليقات والتغييرات المتعقبة في Docs وSheets وSlides. اتركه فارغًا لاستخدام اسم حساب الكمبيوتر.',
+      'يظهر كمؤلف التعليقات والتغييرات المتعقبة في Docs وSheets وSlides وPDF. اتركه فارغًا لاستخدام اسم حساب الكمبيوتر.',
     settings: 'الإعدادات',
     setSecAccount: 'الحساب',
     setSecGeneral: 'عام',
@@ -7899,11 +7900,11 @@ export const strings = {
     askSend: 'Enviar',
     askStop: 'Parar',
     askHeroTagline:
-      'Marque com estrela os arquivos que você lê com frequência e a IA poderá pesquisá-los e citar a fonte — clique numa citação para abrir.',
+      'Marque com estrela os arquivos que você lê com frequência e a IA poderá pesquisá-los e citar a fonte — clique em uma citação para abrir.',
     askStep1Title: 'Marcar arquivos',
     askStep1Desc: 'Em Recentes ou Pastas, clique na estrela da linha do arquivo',
     askStep2Title: 'Faça perguntas',
-    askStep2Desc: 'Pergunte como num chat, sem abrir nenhum documento antes',
+    askStep2Desc: 'Pergunte como em um chat, sem abrir nenhum documento antes',
     askStep3Title: 'Abrir citações',
     askStep3Desc: 'As respostas citam o arquivo de origem; clique para ir até ele',
     askCtaRecents: 'Marcar de Recentes',
@@ -8095,7 +8096,7 @@ export const strings = {
     aiPanelStartLast: 'Último estado',
     setAuthorName: 'Nome de usuário',
     setAuthorNameDesc:
-      'Exibido como autor dos comentários e das alterações controladas no Docs, Sheets e Slides. Deixe em branco para usar o nome da conta do computador.',
+      'Exibido como autor dos comentários e das alterações controladas no Docs, Sheets, Slides e PDF. Deixe em branco para usar o nome da conta do computador.',
     settings: 'Configurações',
     setSecAccount: 'Conta',
     setSecGeneral: 'Geral',
@@ -8702,7 +8703,7 @@ export const strings = {
     aiPanelStartLast: 'Ultimo stato',
     setAuthorName: 'Nome utente',
     setAuthorNameDesc:
-      'Mostrato come autore di commenti e revisioni in Docs, Sheets e Slides. Lascia vuoto per usare il nome dell’account del computer.',
+      'Mostrato come autore di commenti e revisioni in Docs, Sheets, Slides e PDF. Lascia vuoto per usare il nome dell’account del computer.',
     settings: 'Impostazioni',
     setSecAccount: 'Account',
     setSecGeneral: 'Generale',
@@ -9310,7 +9311,7 @@ export const strings = {
     aiPanelStartLast: 'Ostatni stan',
     setAuthorName: 'Nazwa użytkownika',
     setAuthorNameDesc:
-      'Wyświetlana jako autor komentarzy i śledzonych zmian w Docs, Sheets i Slides. Pozostaw puste, aby użyć nazwy konta komputera.',
+      'Wyświetlana jako autor komentarzy i śledzonych zmian w Docs, Sheets, Slides i PDF. Pozostaw puste, aby użyć nazwy konta komputera.',
     settings: 'Ustawienia',
     setSecAccount: 'Konto',
     setSecGeneral: 'Ogólne',
@@ -10206,7 +10207,7 @@ export const strings = {
     aiPanelStartLast: 'Poslední stav',
     setAuthorName: 'Uživatelské jméno',
     setAuthorNameDesc:
-      'Zobrazuje se jako autor komentářů a sledovaných změn v Docs, Sheets a Slides. Ponechte prázdné pro použití názvu účtu počítače.',
+      'Zobrazuje se jako autor komentářů a sledovaných změn v Docs, Sheets, Slides a PDF. Ponechte prázdné pro použití názvu účtu počítače.',
     helpSearchPlaceholder: 'Hledat v příručce… (stiskněte /)',
     helpSearchLabel: 'Hledat v příručce',
     helpContentsLabel: 'Obsah příručky',
@@ -10512,7 +10513,7 @@ export const strings = {
     aiPanelStartLast: 'Laatste status',
     setAuthorName: 'Gebruikersnaam',
     setAuthorNameDesc:
-      'Wordt weergegeven als auteur van opmerkingen en bijgehouden wijzigingen in Docs, Sheets en Slides. Laat leeg om de accountnaam van je computer te gebruiken.',
+      'Wordt weergegeven als auteur van opmerkingen en bijgehouden wijzigingen in Docs, Sheets, Slides en PDF. Laat leeg om de accountnaam van je computer te gebruiken.',
     settings: 'Instellingen',
     setSecAccount: 'Account',
     setSecGeneral: 'Algemeen',
@@ -11116,7 +11117,7 @@ export const strings = {
     aiPanelStartLast: 'Keadaan terakhir',
     setAuthorName: 'Nama pengguna',
     setAuthorNameDesc:
-      'Dipaparkan sebagai pengarang komen dan perubahan dijejak dalam Docs, Sheets dan Slides. Biarkan kosong untuk menggunakan nama akaun komputer.',
+      'Dipaparkan sebagai pengarang komen dan perubahan dijejak dalam Docs, Sheets, Slides dan PDF. Biarkan kosong untuk menggunakan nama akaun komputer.',
     settings: 'Tetapan',
     setSecAccount: 'Akaun',
     setSecGeneral: 'Umum',
@@ -11717,7 +11718,7 @@ export const strings = {
     aiPanelStartLast: 'מצב אחרון',
     setAuthorName: 'שם משתמש',
     setAuthorNameDesc:
-      'מוצג כמחבר ההערות והשינויים במעקב ב‑Docs, Sheets ו‑Slides. השאירו ריק כדי להשתמש בשם חשבון המחשב.',
+      'מוצג כמחבר ההערות והשינויים במעקב ב‑Docs, Sheets, Slides ו‑PDF. השאירו ריק כדי להשתמש בשם חשבון המחשב.',
     settings: 'הגדרות',
     setSecAccount: 'חשבון',
     setSecGeneral: 'כללי',
@@ -12301,7 +12302,7 @@ export const strings = {
     aiPanelStartLast: 'पिछली स्थिति',
     setAuthorName: 'उपयोगकर्ता नाम',
     setAuthorNameDesc:
-      'Docs, Sheets और Slides में टिप्पणियों और ट्रैक किए गए परिवर्तनों के लेखक के रूप में दिखाया जाता है। कंप्यूटर खाता नाम उपयोग करने के लिए खाली छोड़ें।',
+      'Docs, Sheets, Slides और PDF में टिप्पणियों और ट्रैक किए गए परिवर्तनों के लेखक के रूप में दिखाया जाता है। कंप्यूटर खाता नाम उपयोग करने के लिए खाली छोड़ें।',
     settings: 'सेटिंग्स',
     setSecAccount: 'खाता',
     setSecGeneral: 'सामान्य',
@@ -12889,7 +12890,7 @@ export const strings = {
     aiPanelStartLast: '上次狀態',
     setAuthorName: '使用者名稱',
     setAuthorNameDesc:
-      '作為註解和追蹤修訂的作者顯示在 Docs、Sheets、Slides 中。留空則使用電腦帳戶名稱。',
+      '作為註解和追蹤修訂的作者顯示在 Docs、Sheets、Slides、PDF 中。留空則使用電腦帳戶名稱。',
     settings: '設定',
     setSecAccount: '帳戶',
     setSecGeneral: '一般',

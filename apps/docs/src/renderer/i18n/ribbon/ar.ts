@@ -804,6 +804,8 @@ export const ar = {
   ribbonOutlineView: 'مخطط تفصيلي',
   ribbonOutlineViewTip:
     'عرض المخطط التفصيلي: إظهار التسلسل الهرمي للعناوين فقط؛ وتبقى العناوين قابلة للتحرير',
+  ribbonStoryView: 'عرض القصة',
+  ribbonStoryViewTip: 'عرض القصة: اكتب دون تنسيق المستند',
   ribbonReadMode: 'وضع القراءة',
   ribbonReadModeTip: 'وضع القراءة: إخفاء الشريط للتركيز على القراءة، اضغط Esc للخروج',
   ribbonPagePreview: 'معاينة الصفحات',
@@ -937,10 +939,21 @@ export const ar = {
   ribbonMailingsOutput: 'ناتج الدمج',
   ribbonMailingsOutputPerRecord: 'مستند واحد لكل سجل',
   ribbonMailingsOutputSingle: 'مستند واحد لكل السجلات',
+  ribbonMailingsOutputLabels: 'ورقة ملصقات',
+  ribbonMailingsOutputEnvelopes: 'مظاريف',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'شبكة مخصصة',
+  ribbonMailingsLabelColumns: 'الأعمدة',
+  ribbonMailingsLabelRows: 'الصفوف',
+  ribbonMailingsEnvelopeSize: 'حجم الظرف',
   ribbonMailingsNamePattern: 'اسم الملف',
   ribbonMailingsNamePatternPh: 'فارغ: يُستخدم الحقل الأول',
   ribbonMailingsFinish: 'إنهاء الدمج',
   ribbonMailingsMerged: 'تم دمج {n} مستندًا',
   ribbonMailingsMergeFailed: 'فشل الدمج',
   ribbonMailingsClose: 'إغلاق',
+  ribbonMailingsEnvelopeNote:
+    'تُطبع المظاريف هذا المستند كما هو على ورق المظروف؛ يبقى عنوان الكتلة عند الهامش العلوي الأيسر (يركّز معالج المظاريف في Word عنوان التسليم).',
+  ribbonMailingsLabelsDroppedHint:
+    'تحتوي ورقة الملصقات على الفقرات فقط: سيتم حذف {n} من الكتل (جداول، صور) من القالب.',
 } satisfies Record<keyof typeof zh, string>

@@ -11,13 +11,14 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, readFile, stat, writeFile } from 'node:fs/promises'
-import { tmpdir, userInfo } from 'node:os'
+import { copyFile, open, readFile, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
 import type { WebContents } from 'electron'
 import {
   buildPrintableHtml,
+  configuredAuthorName,
   configuredDefaultSaveDir,
   confirmOverwriteIfConflicted,
   contextMenuLabels,
@@ -72,6 +73,8 @@ import type {
   PagePreviewRequest,
   ReplacePagesRequest,
   ReplacePagesResult,
+  RestoreFileRequest,
+  RestoreFileResult,
   SetPageSizeRequest,
   SetPageSizeResult,
   SplitPagesRequest,
@@ -147,6 +150,8 @@ import type { PdfNoteResult, PdfRecoveryCopyResult } from '../shared/ipc'
 import { createPdfRecovery, pdfLooksEncrypted } from './pdf-recovery'
 import { copiedPagesOf, heldCopiedPages, holdCopiedPages } from './page-clipboard'
 import { ResultStore, documentHashOfFile } from '../../../../packages/pdf-structure/src/store'
+/** the largest slice readFileChunk hands over IPC (the renderer loops) */
+const PDF_READ_CHUNK_MAX_BYTES = 8 * 1024 * 1024
 
 const tDlg = createI18n({
   zh: {
@@ -1605,13 +1610,7 @@ function registerPdfIpc(): void {
     return recovery.resolveOnOpen(e.sender, path).then(() => path)
   })
 
-  ipcMain.handle(PDF_CHANNELS.getUsername, () => {
-    try {
-      return userInfo().username
-    } catch {
-      return ''
-    }
-  })
+  ipcMain.handle(PDF_CHANNELS.getUsername, (): string => configuredAuthorName(app))
 
   ipcMain.handle(PDF_CHANNELS.readFile, async (e, path: unknown) => {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
@@ -1626,6 +1625,45 @@ function registerPdfIpc(): void {
       ? buf.buffer
       : buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
   })
+
+  // Chunked reads for the same grant: one 42 MB ArrayBuffer over IPC has
+  // killed renderers before first paint on Windows (genoffice#2366), while
+  // small slices deserialize fine. The size rides along so the renderer's
+  // loop needs no separate stat.
+  ipcMain.handle(
+    PDF_CHANNELS.readFileChunk,
+    async (e, path: unknown, start: unknown, end: unknown) => {
+      // the preload hands the grant's path, start and end as positional args
+      if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
+        throw new Error('pdf: path not granted to this view')
+      }
+      const from = typeof start === 'number' && Number.isInteger(start) && start >= 0 ? start : -1
+      const to = typeof end === 'number' && Number.isInteger(end) && end >= from ? end : -1
+      if (from < 0 || to < 0 || to - from > PDF_READ_CHUNK_MAX_BYTES) {
+        throw new Error('pdf: invalid chunk range')
+      }
+      // a view restored from a recovery copy shows the copy until it is saved
+      const restored = recovery.viewBytes(e.sender.id, path)
+      if (restored) {
+        if (from === 0) await rememberDiskState(e.sender.id, path)
+        return { data: restored.slice(from, to), fileSize: restored.byteLength }
+      }
+      const handle = await open(path, 'r')
+      let result: { data: Uint8Array; fileSize: number }
+      try {
+        const length = to - from
+        const buf = Buffer.alloc(length)
+        const { bytesRead } = await handle.read(buf, 0, length, from)
+        const fileSize = (await handle.stat()).size
+        result = { data: new Uint8Array(buf.subarray(0, bytesRead)), fileSize }
+      } finally {
+        await handle.close()
+      }
+      // The reader's copy: this view's save guard compares against this state
+      if (from === 0) await rememberDiskState(e.sender.id, path)
+      return result
+    },
+  )
 
   // the view has read its file: hear when another program changes it (untitled
   // working copies live in the app's temp folder and need no watch)
@@ -2543,6 +2581,28 @@ function registerPdfIpc(): void {
         )
         await writeOwnFile(e.sender.id, path, () => writePdfAtomically(path, merged))
         return { ok: true, removed, inserted }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    PDF_CHANNELS.restoreFile,
+    async (e, request: RestoreFileRequest): Promise<RestoreFileResult> => {
+      const { path, bytes } = request ?? {}
+      // a buffer from the renderer's realm (the web build's worker) fails instanceof
+      if (
+        typeof path !== 'string' ||
+        !allowedByWc.get(e.sender.id)?.has(path) ||
+        Object.prototype.toString.call(bytes) !== '[object ArrayBuffer]'
+      ) {
+        return { ok: false, error: 'pdf: path not granted to this view' }
+      }
+      try {
+        // this view's own write: its disk watch must not read it as another program's change
+        await writeOwnFile(e.sender.id, path, () => writePdfAtomically(path, new Uint8Array(bytes)))
+        return { ok: true }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
