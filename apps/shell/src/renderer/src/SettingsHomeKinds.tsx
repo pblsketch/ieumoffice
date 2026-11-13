@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
 import { IconArrowDown, IconArrowUp } from '@genoffice/ui/icons'
 import {
-  HOME_KINDS,
   defaultHomeKinds,
-  moveHomeKind,
   setHomeKindHidden,
   type HomeKind,
   type HomeKindsApi,
   type HomeKindsSettings,
 } from '../../shared/home-kinds'
+import type { EditorItemId } from '../../shared/editor-choice'
+import {
+  homeKindsInFirstOrder,
+  moveShownHomeKind,
+  resetShownHomeKinds,
+  shownHomeKinds,
+} from './editor-settings/home-kind-rows'
 import { homeKindsText } from './i18n/strings-home-kinds'
 import { useI18n, type StringKey } from './locale'
 
@@ -66,10 +71,17 @@ export function useHomeKinds(): [HomeKindsSettings, (next: HomeKindsSettings) =>
   return [settings, update]
 }
 
-export function HomeKindsField() {
+/**
+ * Settings → General "New documents on Home". Only kinds whose item is on are
+ * listed (Settings → Editors and AI); moving and resetting leave the off
+ * kinds' stored places and hidden marks alone, so turning an item back on
+ * restores its row as it was.
+ */
+export function HomeKindsField({ off = [] }: { off?: readonly EditorItemId[] }) {
   const { lang, t } = useI18n()
   const [settings, update] = useHomeKinds()
-  const isFirstOrder = settings.order.every((kind, index) => kind === HOME_KINDS[index])
+  const listed = shownHomeKinds(settings, off)
+  const isFirstOrder = homeKindsInFirstOrder(listed)
 
   return (
     <div className="set-field set-field-top set-home-kinds" data-testid="home-kinds">
@@ -82,13 +94,13 @@ export function HomeKindsField() {
           <button
             className="set-btn"
             disabled={isFirstOrder}
-            onClick={() => update({ order: [...HOME_KINDS], hidden: [...settings.hidden] })}
+            onClick={() => update(resetShownHomeKinds(settings, listed))}
           >
             {homeKindsText(lang, 'homeKindsReset')}
           </button>
         </div>
         <ul className="set-home-kinds-list">
-          {settings.order.map((kind, index) => {
+          {listed.map((kind, index) => {
             const label = HOME_KIND_LABEL[kind]
             const name = t(label.title)
             const shown = !settings.hidden.includes(kind)
@@ -103,16 +115,16 @@ export function HomeKindsField() {
                   disabled={index === 0}
                   aria-label={homeKindsText(lang, 'homeKindUp', { name })}
                   data-tip={homeKindsText(lang, 'homeKindUp', { name })}
-                  onClick={() => update(moveHomeKind(settings, kind, -1))}
+                  onClick={() => update(moveShownHomeKind(settings, kind, -1, listed))}
                 >
                   <IconArrowUp size={14} />
                 </button>
                 <button
                   className="set-home-kind-move"
-                  disabled={index === settings.order.length - 1}
+                  disabled={index === listed.length - 1}
                   aria-label={homeKindsText(lang, 'homeKindDown', { name })}
                   data-tip={homeKindsText(lang, 'homeKindDown', { name })}
-                  onClick={() => update(moveHomeKind(settings, kind, 1))}
+                  onClick={() => update(moveShownHomeKind(settings, kind, 1, listed))}
                 >
                   <IconArrowDown size={14} />
                 </button>
