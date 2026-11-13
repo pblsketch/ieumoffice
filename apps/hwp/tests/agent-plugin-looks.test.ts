@@ -42,6 +42,15 @@ const ONE_PIXEL = new Uint8Array(
   ),
 )
 
+/** The text drawn on each page, page numbers and list numbers with it. */
+function drawnPages(doc: HwpDocument): string[] {
+  return Array.from({ length: doc.pageCount() }, (_, page) =>
+    [...doc.renderPageSvgWithProfile(page, 'print').matchAll(/<text[^>]*>([^<]*)<[/]text>/g)]
+      .map((run) => run[1])
+      .join(''),
+  )
+}
+
 function blank(lines: string[] = LINES): HwpDocument {
   const doc = HwpDocument.createEmpty()
   doc.createBlankDocument()
@@ -954,16 +963,7 @@ describe('columns and breaks', () => {
       plugin.formatParagraph(item, null, { list: 'number' })
     }
     doc().setNumberingRestart(0, 3, 2, 5)
-    const drawn = () =>
-      Array.from({ length: doc().pageCount() }, (_, page) =>
-        [
-          ...doc()
-            .renderPageSvgWithProfile(page, 'print')
-            .matchAll(/<text[^>]*>([^<]*)<[/]text>/g),
-        ]
-          .map((run) => run[1])
-          .join(''),
-      )
+    const drawn = () => drawnPages(doc())
     expect(drawn()).toHaveLength(1)
     expect(drawn()[0]).toContain('2.둘째항목5.셋째항목6.넷째항목')
     const paragraphs = doc().getParagraphCount(0)
@@ -974,6 +974,39 @@ describe('columns and breaks', () => {
     expect(pages[0]).toContain('1.첫째항목2.둘째항목')
     expect(pages[0]).not.toContain('5.')
     expect(pages[1]).toContain('5.셋째항목6.넷째항목')
+
+    doc().setNumberingRestart(0, 4, 1, 0)
+    expect(plugin.insertBreak('넷째 항목', null, 'page')).toMatchObject({ ok: true })
+    // the engine tells what a paragraph carries only in the answer of a join
+    doc().insertPageBreak(0, 4, 0)
+    expect(JSON.parse(doc().mergeParagraph(0, 4)).removedParaMeta.numbering_restart).toBe(
+      'ContinuePrevious',
+    )
+  })
+
+  it('leaves a paragraph that holds a mark of its place as it is', () => {
+    const marks: Array<(doc: HwpDocument) => unknown> = [
+      (doc) => doc.insertNewNumber(0, 2, 0, 7),
+      (doc) => doc.setPageHide(0, 2, false, false, false, false, false, true),
+      (doc) => doc.addBookmark(0, 2, 0, 'ch2'),
+    ]
+    for (const mark of marks) {
+      const { plugin, doc, steps } = open(blank(['머리', '앞 문단', '둘째 장', '본문', '끝']))
+      plugin.setPageNumber({ position: 'bottom_center', dashes: false })
+      mark(doc())
+      const controls = () => [1, 2].map((para) => doc().getControlTextPositions(0, para))
+      const drawnBefore = drawnPages(doc())
+      const controlsBefore = controls()
+      const stepsBefore = steps()
+      expect(plugin.insertBreak('둘째 장', null, 'page')).toEqual({
+        ok: false,
+        reason: 'holds_mark',
+        count: 1,
+      })
+      expect(steps()).toBe(stepsBefore)
+      expect(drawnPages(doc())).toEqual(drawnBefore)
+      expect(controls()).toEqual(controlsBefore)
+    }
   })
 })
 

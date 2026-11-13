@@ -359,10 +359,12 @@ export type AgentBreakResult =
   | { ok: true; kind: AgentBreakKind; already: AgentBreakKind }
   | AgentPlaceRefusal
   /**
-   * the paragraph is inside a table cell, is the first one of the document, or starts a
-   * part of the document with other columns (a break would take that start away)
+   * the paragraph is inside a table cell, is the first one of the document, starts a part
+   * of the document with other columns (a break would take that start away), or holds a
+   * mark of its place (a page number that starts anew, a hidden page number, a bookmark)
+   * that a break would leave on the page before
    */
-  | { ok: false; reason: 'in_table' | 'at_start' | 'layout_start'; count: number }
+  | { ok: false; reason: 'in_table' | 'at_start' | 'layout_start' | 'holds_mark'; count: number }
   | AgentMemoRemovalRefusal
 
 export type AgentPageNumberResult =

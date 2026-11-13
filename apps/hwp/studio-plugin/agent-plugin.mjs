@@ -8376,7 +8376,9 @@ export const agentPlugin = {
        * front of it, and a numbering restart the paragraph had is set on it again. One that
        * starts a page already (or a column, when a column is asked for) is left as it is and
        * answered `already`; one that starts a part of the document with other columns is
-       * refused, since the break would take that start away (breakOutcome). One undo step.
+       * refused, since the break would take that start away (breakOutcome), and so is one
+       * that holds a mark of its place (`holds_mark`), which would move a page up. One undo
+       * step.
        */
       insertBreak: guarded((find, occurrence, kind, options) => {
         if (!BREAK_KINDS.includes(kind)) {
@@ -8410,6 +8412,9 @@ export const agentPlugin = {
                 const { hit } = plan(doc)
                 if (!hit) throw fail('CHANGED', 'the document changed mid-call')
                 const before = objectsOf(doc)
+                const controlsInFront = () =>
+                  parse(doc.getControlTextPositions(hit.sec, hit.para - 1)).length
+                const inFrontBefore = controlsInFront()
                 const made = parse(
                   kind === 'page'
                     ? doc.insertPageBreak(hit.sec, hit.para, 0)
@@ -8426,11 +8431,18 @@ export const agentPlugin = {
                   throw fail('ENGINE', 'the break could not be made')
                 }
                 const outcome = breakOutcome(joined.removedParaMeta, kind)
-                if (outcome.already || outcome.refuse) {
+                // the first half also keeps what the engine ties to the place of a paragraph
+                // (a page number that starts anew, a hidden page number, a bookmark), and
+                // the join hands it to the paragraph in front: one page too early
+                const marksLeftBehind = controlsInFront() !== inFrontBefore
+                const unchangedAnswer = outcome.already
+                  ? { ok: true, kind, already: outcome.already }
+                  : outcome.refuse || marksLeftBehind
+                    ? { ok: false, reason: outcome.refuse ?? 'holds_mark', count: 1 }
+                    : null
+                if (unchangedAnswer) {
                   const unchanged = fail('BREAK_NOT_MADE', 'the paragraph is left as it is')
-                  unchanged.answer = outcome.already
-                    ? { ok: true, kind, already: outcome.already }
-                    : { ok: false, reason: outcome.refuse, count: 1 }
+                  unchanged.answer = unchangedAnswer
                   throw unchanged
                 }
                 if (outcome.restart) {
