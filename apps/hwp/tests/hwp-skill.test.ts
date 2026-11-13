@@ -2737,6 +2737,17 @@ describe('the look of a document', () => {
     expect(refused.isError).toBe(true)
     expect(refused.output).toContain('another number of columns')
     expect(zone.changes).toEqual([])
+    const marked = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'holds_mark' as const,
+        count: 1,
+      })),
+    })
+    const left = await marked.call('insert_break', { find: '글', kind: 'page' })
+    expect(left.isError).toBe(true)
+    expect(left.output).toContain('would leave the mark on the page before')
+    expect(marked.changes).toEqual([])
   })
 
   it('turns a title into a title box', async () => {
@@ -2972,6 +2983,8 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
       String.raw`2\times 3`,
       String.raw`..\v2\tmp`,
       String.raw`정규식 \d+\t\w+`,
+      String.raw`자료\temp 폴더`,
+      String.raw`문서\test.hwp`,
     ]) {
       expect(typedTabs(kept)).toBe(kept)
     }
@@ -3011,10 +3024,15 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     const rewritten = await call('replace_selection', { paragraphs: typed })
     expect(bridge.replaceSelection).toHaveBeenCalledWith(SELECTED, typed)
     expect(rewritten.output).toBe(
-      String.raw`Replaced the selected text (2 paragraph(s)). The two characters \t in paragraph(s) 1 of this call were written as they are, not as a tab: replace_selection writes no tab, insert_paragraphs does.`,
+      String.raw`Replaced the selected text (2 paragraph(s)). The two characters \t in paragraph(s) 1 of this call were written as they are, not as a tab: this tool writes no tab.`,
     )
     const passedAsItIs = await call('replace_selection', { paragraphs: typed })
     expect(passedAsItIs.output).toBe('Replaced the selected text (2 paragraph(s)).')
+    const otherWordChanged = [String.raw`성명\t(인) 확인`, typed[1]!]
+    const edited = await call('replace_selection', { paragraphs: otherWordChanged })
+    expect(edited.output).toBe('Replaced the selected text (2 paragraph(s)).')
+    const moved = await call('replace_selection', { paragraphs: ['머리말', ...otherWordChanged] })
+    expect(moved.output).not.toContain('two characters')
   })
 
   it('draws a line round the pages and takes it away', async () => {

@@ -1840,7 +1840,7 @@ const hasOwnBackslashes = (text: string): boolean =>
   text.includes('\t') || DRIVE_PATH.test(text) || BACKSLASH_NOT_BEFORE_T.test(text)
 
 const endsColumn = (before: string, after: string): boolean =>
-  HANGUL.test(before) || (DIGIT_OR_CLOSING_BRACKET.test(before) && !LOWERCASE_LETTER.test(after))
+  (HANGUL.test(before) || DIGIT_OR_CLOSING_BRACKET.test(before)) && !LOWERCASE_LETTER.test(after)
 
 /**
  * A new paragraph whose tab came as the two characters `\t` (a model that escaped it
@@ -1854,6 +1854,10 @@ export function typedTabs(text: string): string {
     endsColumn(text[at - 1] ?? '', text[at + 2] ?? '') ? '\t' : typed,
   )
 }
+
+/** How many tabs the tab rule would write in a text. */
+const tabsTyped = (text: string): number =>
+  typedTabs(text).split('\t').length - text.split('\t').length
 
 /**
  * The call with `undoDoubledEscapes` applied to the new text it writes: cell, note and
@@ -3170,8 +3174,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, SELECTION_COUNT_HELP(selection.length))
         }
         const before = target.map((segment) => segment.text).join(' ⏎ ')
+        const selectedTexts = new Set(target.map((segment) => segment.text))
         const tabsLeftTyped = paragraphs.flatMap((text, index) =>
-          text !== target[index]?.text && typedTabs(text) !== text ? [index + 1] : [],
+          !selectedTexts.has(text) && tabsTyped(text) > tabsTyped(target[index]?.text ?? '')
+            ? [index + 1]
+            : [],
         )
         const outcome = await changeWithMemoApproval(
           () => bridge.replaceSelection(target, paragraphs),
@@ -3209,7 +3216,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         })
         const tabNote =
           tabsLeftTyped.length > 0
-            ? ` The two characters \\t in paragraph(s) ${tabsLeftTyped.join(', ')} of this call were written as they are, not as a tab: replace_selection writes no tab, insert_paragraphs does.`
+            ? ` The two characters \\t in paragraph(s) ${tabsLeftTyped.join(', ')} of this call were written as they are, not as a tab: this tool writes no tab.`
             : ''
         return {
           output:
@@ -4604,6 +4611,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               return bad(
                 call,
                 'Nothing was changed: that paragraph starts a part of the document with another number of columns, and a break put on it would take that start away. Put the break on the paragraph after it, or tell the user.',
+              )
+            case 'holds_mark':
+              return bad(
+                call,
+                'Nothing was changed: that paragraph holds a mark that belongs to its place (a page number that starts anew, a hidden page number, a bookmark), and a break put on it would leave the mark on the page before. Put the break on the paragraph after it, or tell the user.',
               )
             case 'memo_removal_requires_approval':
               return bad(call, 'Nothing was changed.')
