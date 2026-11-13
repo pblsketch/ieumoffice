@@ -4,7 +4,7 @@
 
 ## 맡은 범위
 
-- 루프: `AgentLoop`(`src/loop.ts`). 대화 이력, 턴 반복, 도구 인자 검증(`missingRequiredFields`, `invalidArgumentFields`, `coerceArgumentFields`: 숫자 칸의 숫자 문자열과 참·거짓 칸의 `"true"`·`"false"`는 고쳐 받는다), 이력 압축, 실패한 실행의 되돌림.
+- 루프: `AgentLoop`(`src/loop.ts`). 대화 이력, 턴 반복, 도구 인자 검증(`missingRequiredFields`, `invalidArgumentFields`, `coerceArgumentFields`: 숫자 칸의 숫자 문자열과 참·거짓 칸의 `"true"`·`"false"`는 고쳐 받는다), 스킬이 제 규칙을 얹는 스키마 걷기(`walkArgumentFields`: 호출의 입력을 도구 스키마와 나란히, 안쪽 값까지 걸으며 콜백이 돌려준 값으로 바꾼다. 스스로는 고치지도 거절하지도 않고 루프는 부르지 않는다), 이력 압축, 실패한 실행의 되돌림.
 - skill 계약: `AgentSkill`과 `composeSkills`(`src/skill.ts`). 에디터 하나의 능력(system prompt 구역, 도구 목록, 턴마다 붙는 문맥, 도구 실행기)을 묶는 단위다.
 - 전송 계약 `AgentTransport`(`src/types.ts`)와 그 IPC 구현 `createIpcTransport`(`src/electron-transport.ts`). 렌더러에서 돌며, 메인 프로세스가 보낸 스트림 조각(`IpcStreamChunk`)을 루프의 콜백으로 옮긴다.
 - 도구 없이 답 본문이 곧 결과물인 요청 `streamText`(`src/stream-text.ts`), 별표 파일 묶음을 읽는 `createKnowledgeBaseSkill`(`src/knowledge-base-skill.ts`).
