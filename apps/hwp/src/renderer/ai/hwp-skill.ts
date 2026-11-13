@@ -24,7 +24,7 @@ import type {
   AgentNoSuchStyle,
   AgentPageSetupChange,
   AgentParagraphFormat,
-  AgentLookFormat,
+  AgentWholeParagraphFormat,
   AgentWordsSetApart,
   AgentPicture,
   AgentPictureList,
@@ -350,12 +350,6 @@ const SYSTEM_PROMPT = [
 ].join('\n')
 
 /** The character formatting a format tool takes, as schema properties. */
-const EVERY_WORD_SCHEMA = {
-  type: 'boolean',
-  description:
-    'true puts the character formatting on every word even where some words differ in it (a bold word in plain text); without it such a call is refused',
-}
-
 const TEXT_FORMAT_SCHEMA = {
   bold: { type: 'boolean' },
   italic: { type: 'boolean' },
@@ -381,6 +375,12 @@ const TEXT_FORMAT_SCHEMA = {
     type: 'string',
     description: 'name of a character style of the document; set before the other properties',
   },
+}
+
+const EVERY_WORD_SCHEMA = {
+  type: 'boolean',
+  description:
+    'true puts the character formatting on every word even where some words differ in it (a bold word in plain text); without it such a call is refused',
 }
 
 /** The paragraph formatting a format tool takes, as schema properties. */
@@ -2056,7 +2056,6 @@ const MEANT_BY: Record<string, readonly string[]> = {
   position: ['where'],
 }
 
-/** What a name means inside one kind of object (the list or object that holds it), before what it usually means. */
 const MEANT_IN: Record<string, Record<string, readonly string[]>> = {
   tabs: { kind: ['align'], type: ['align'] },
 }
@@ -2196,7 +2195,6 @@ const titleColourNote = (result: { textColorDropped?: boolean; textColor?: strin
   return result.textColor ? ' The title was written white to show on the fill.' : ''
 }
 
-/** What a format_look or format_paragraph call would take from words set apart in their paragraphs. */
 function wordsSetApartHelp({ properties, paragraphs }: AgentWordsSetApart): string {
   const names = properties
     .map((name) => DECLARED_NAME_OF_PLUGIN_ARGUMENT.get(name) ?? name)
@@ -2505,8 +2503,7 @@ function formatArgs(call: AgentToolCall): AgentParagraphFormat {
   return formatOfInput(call.input)
 }
 
-/** The format of a format_look or format_paragraph call with its every_word; null when it names nothing to change. */
-function lookFormatArgs(call: AgentToolCall): AgentLookFormat | null {
+function wholeParagraphFormatArgs(call: AgentToolCall): AgentWholeParagraphFormat | null {
   const format = formatArgs(call)
   if (Object.keys(format).length === 0) return null
   return call.input.every_word === true ? { ...format, everyWord: true } : format
@@ -3693,7 +3690,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const find = textArg(call, 'find')
         if (!find) return bad(call, 'find must be a non-empty string')
         if (hasLineBreak(find)) return bad(call, ONE_LINE_HELP)
-        const format = lookFormatArgs(call)
+        const format = wholeParagraphFormatArgs(call)
         if (!format) return bad(call, NO_FORMAT_HELP)
         const occurrence = call.input.occurrence
         const target = typeof occurrence === 'number' ? occurrence : null
@@ -5497,7 +5494,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'format_look': {
         const look = textArg(call, 'look')?.trim() ?? ''
         if (!look) return bad(call, 'look must be a look id from read_formatting of this document')
-        const format = lookFormatArgs(call)
+        const format = wholeParagraphFormatArgs(call)
         if (!format) return bad(call, NO_FORMAT_HELP)
         const outcome = await changeWithMemoApproval(
           () => bridge.formatLook(look, format),

@@ -494,8 +494,7 @@ export interface AgentParagraphFormat extends AgentTextFormat {
   bullet?: string
 }
 
-/** What formatParagraph and formatLook take: a paragraph format, and whether it goes on every word. */
-export interface AgentLookFormat extends AgentParagraphFormat {
+export interface AgentWholeParagraphFormat extends AgentParagraphFormat {
   /** put the character formatting on every word even where words of a paragraph differ in it; otherwise such a call is refused (words_set_apart) */
   everyWord?: boolean
 }
@@ -1495,7 +1494,7 @@ export interface AgentPluginSurface {
   formatParagraph(
     find: string,
     occurrence: number | null,
-    format: AgentLookFormat,
+    format: AgentWholeParagraphFormat,
     options?: AgentChangeOptions,
   ): AgentFormatParagraphResult
   listTables(): AgentTableList
@@ -1589,7 +1588,7 @@ export interface AgentPluginSurface {
   paragraphLooks(from?: number | null): AgentParagraphLooks
   formatLook(
     look: string,
-    format: AgentLookFormat,
+    format: AgentWholeParagraphFormat,
     options?: AgentChangeOptions,
   ): AgentFormatLookResult
   measureTabs(spots: AgentTabSpot[]): { tabs: (AgentTabMeasure | null)[] }

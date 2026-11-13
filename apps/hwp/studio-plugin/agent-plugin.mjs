@@ -1882,7 +1882,6 @@ function formatOf(format, allowParagraph) {
   }
 }
 
-/** The name a format request gives the run property it sets, where the two differ. */
 const FORMAT_NAME_OF_RUN_KEY = {
   fontSize: 'size',
   textColor: 'color',
@@ -1893,13 +1892,6 @@ const FORMAT_NAME_OF_RUN_KEY = {
   charShapeId: 'charStyle',
 }
 
-/**
- * What of a checked format (formatOf) the words of some paragraphs differ in, each paragraph
- * given as its box and index: put on every word, it would take away what sets some words
- * apart, such as a bold word in plain text. Refused with those properties in the format's
- * names and the count of such paragraphs; null when there are none or the format says
- * everyWord.
- */
 function wordsSetApart(spec, paragraphs) {
   if (spec.everyWord) return null
   const keys = [
@@ -1913,13 +1905,7 @@ function wordsSetApart(spec, paragraphs) {
   for (const [box, k] of paragraphs) {
     const length = box.length(k)
     if (length === 0) continue
-    let runs
-    try {
-      runs = box.runLooks(k, length)
-    } catch {
-      // runs the engine will not read are not counted, as in looksOf
-      continue
-    }
+    const runs = box.runLooks(k, length)
     const apart = keys.filter(
       (key) => new Set(runs.map((run) => JSON.stringify(run[key]))).size > 1,
     )
