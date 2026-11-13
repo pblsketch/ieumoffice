@@ -55,6 +55,7 @@ export const vi = {
   appVerticalTextNotice:
     'Tài liệu này chứa văn bản dọc (tạm thời hiển thị ngang; không ảnh hưởng khi lưu)',
   appNewDocCreated: 'Đã tạo tài liệu trống. Mô tả nội dung cần tạo trong ngăn AI ở bên trái.',
+  appNewDocCreatedNoAi: 'Đã tạo tài liệu trống.',
   appNewFailed: 'Tạo tài liệu thất bại: {error}',
   appSaveFailed: 'Lưu thất bại: {error}',
   appAutoSavedAt: 'Đã tự động lưu ({time})',

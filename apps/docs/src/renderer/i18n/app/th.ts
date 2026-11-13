@@ -54,6 +54,7 @@ export const th = {
   appFontsMissing: 'ไม่มีแบบอักษรของเอกสาร: {names} (แสดงด้วยแบบอักษรทดแทน)',
   appVerticalTextNotice: 'เอกสารนี้มีข้อความแนวตั้ง (แสดงเป็นแนวนอนชั่วคราว ไม่มีผลต่อการบันทึก)',
   appNewDocCreated: 'สร้างเอกสารเปล่าแล้ว อธิบายเนื้อหาที่ต้องการสร้างได้ในแผง AI ทางซ้าย',
+  appNewDocCreatedNoAi: 'สร้างเอกสารเปล่าแล้ว',
   appNewFailed: 'สร้างเอกสารไม่สำเร็จ: {error}',
   appSaveFailed: 'บันทึกไม่สำเร็จ: {error}',
   appAutoSavedAt: 'บันทึกอัตโนมัติแล้ว ({time})',

@@ -2089,6 +2089,7 @@ export function App() {
     setStatus,
     setRecent,
     setShowAi,
+    aiOn,
     setDoc,
     setAiPanelKey,
     setDocCss,

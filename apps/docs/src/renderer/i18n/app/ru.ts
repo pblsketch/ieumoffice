@@ -56,6 +56,7 @@ export const ru = {
   appVerticalTextNotice:
     'Документ содержит вертикальный текст (пока отображается горизонтально; на сохранение это не влияет)',
   appNewDocCreated: 'Создан пустой документ. Опишите содержимое для создания в панели ИИ слева',
+  appNewDocCreatedNoAi: 'Создан пустой документ.',
   appNewFailed: 'Не удалось создать документ: {error}',
   appSaveFailed: 'Не удалось сохранить: {error}',
   appAutoSavedAt: 'Автосохранение ({time})',

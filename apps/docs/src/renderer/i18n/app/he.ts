@@ -53,6 +53,7 @@ export const he = {
   appFontsMissing: 'גופני המסמך חסרים: {names} (מוצגים גופנים חלופיים)',
   appVerticalTextNotice: 'המסמך מכיל טקסט אנכי (מוצג אופקית בינתיים; השמירה אינה מושפעת)',
   appNewDocCreated: 'נוצר מסמך ריק. תארו בחלונית ה-AI משמאל מה ליצור.',
+  appNewDocCreatedNoAi: 'נוצר מסמך ריק.',
   appNewFailed: 'יצירת המסמך נכשלה: {error}',
   appSaveFailed: 'השמירה נכשלה: {error}',
   appAutoSavedAt: 'נשמר אוטומטית ({time})',
