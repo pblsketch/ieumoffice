@@ -58,6 +58,7 @@ import { skillUpdateDue } from './IntegrationsPane'
 import { onFilesChanged } from './file-events'
 import { FirstConnectionDialog } from './FirstConnectionNotice'
 import { LaunchRecoveryList } from './RecoveryList'
+import { OneTimeEditorPick } from './editor-choice/OneTimeEditorPick'
 import type { SubscriptionConnection } from './subscription-client'
 import { homeAiEntry } from './subscription-status'
 import './pdf-tools/globals'
@@ -3712,6 +3713,9 @@ export function Home({
       {/* documents with unsaved content left in recovery copies, asked about
           once at launch; the main process keeps Home in front meanwhile */}
       <LaunchRecoveryList />
+      {/* the one-time editor picker for people who passed the first-run guide
+          before it had a pick step: after the launch, on the home tab only */}
+      <OneTimeEditorPick />
       <DropToOpenOverlay />
     </div>
   )
