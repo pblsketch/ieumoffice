@@ -6789,31 +6789,23 @@ export const agentPlugin = {
               box.pasteHtml(at, tableHtml(table, font, look.header, box.inTable, columns))
               if (!box.inTable) {
                 if (look.header && look.headerColor !== 'none') {
-                  shadeHeaderCells(
-                    doc,
-                    place,
-                    table[0].length,
-                    look.headerColor ?? TABLE_HEADER_FILL,
-                  )
+                  const fill = look.headerColor ?? TABLE_HEADER_FILL
+                  shadeHeaderCells(doc, place, table[0].length, fill)
+                  headerTextColor = textColorOnFill(fill)
                 }
-                const headerText =
-                  look.header && look.headerColor && look.headerColor !== 'none'
-                    ? textColorOnFill(look.headerColor)
-                    : null
-                headerTextColor = headerText
                 // the lines of a look other than the plain grid, over the thin line the paste gave every cell
                 const blocks = tableLookBlocks(look.look, look.header)
                 const made =
-                  blocks.length > 0 || across || look.repeatHeader || headerText
+                  blocks.length > 0 || across || look.repeatHeader || headerTextColor
                     ? pastedTableAt(doc, place)
                     : null
-                if (made && headerText) {
+                if (made && headerTextColor) {
                   formatCellText(
                     doc,
                     made,
                     gridOf(doc, made),
                     { top: 0, left: 0, bottom: 0, right: made.cols - 1 },
-                    { chars: JSON.stringify({ textColor: headerText }) },
+                    { chars: JSON.stringify({ textColor: headerTextColor }) },
                   )
                 }
                 // the table stands in its paragraph like a character: the paragraph's

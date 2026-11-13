@@ -1765,8 +1765,7 @@ const ARGUMENT_ALIASES = new Map([...READ_NAMES, ['atMm', 'at_mm']])
 
 /** The plugin's names for arguments, as the words of its refusals have them. */
 const PLUGIN_NAMES = new Map([
-  ...READ_NAMES,
-  ['atMm', 'at_mm'],
+  ...ARGUMENT_ALIASES,
   ['charWidth', 'char_width'],
   ['letterSpacing', 'letter_spacing'],
   ['charStyle', 'char_style'],
