@@ -1680,9 +1680,9 @@ const IN_TABLE_HELP =
   'Nothing was changed: that paragraph is inside a table cell, and a table cannot be put inside another table here. Anchor the new table to a paragraph of the body text, or add the content to the cell as paragraphs.'
 const HAS_OBJECTS_HELP =
   'Nothing was changed: a table, a picture or a form field sits in that paragraph, and the change would have moved or removed it. Use the paragraph before or after it as the anchor, or tell the user.'
-/** The text to replace runs across an object the document text does not show. */
-const SPANS_OBJECT_HELP =
-  'Nothing was changed: an equation or another object of the line (a footnote mark, a picture set in the text) stands inside the text to be replaced, and the new text has no place for it. Replace the words in front of it or the words behind it on their own, with replace_text.'
+const SPANS_OBJECT_ADVICE =
+  'Replace the words in front of it or the words behind it on their own, with replace_text.'
+const SPANS_OBJECT_HELP = `Nothing was changed: an equation or another object of the line (a footnote mark, a picture set in the text) stands inside the text to be replaced, and the new text has no place for it. ${SPANS_OBJECT_ADVICE}`
 const ONE_LINE_HELP =
   'Text with a line break cannot be searched or inserted: a replacement stays inside one paragraph or table cell. Split the change into one call per paragraph.'
 /** A line break in the new text of replace_text or replace_all. */
@@ -1831,24 +1831,28 @@ export function equationScript(script: string): string {
 }
 
 const HANGUL = /[\u3131-\u318E\uAC00-\uD7A3]/
+const DIGIT_OR_CLOSING_BRACKET = /[0-9)\]}]/
+const LOWERCASE_LETTER = /[a-z]/
+const DRIVE_PATH = /[A-Za-z]:\\/
+const BACKSLASH_NOT_BEFORE_T = /\\(?!t)/
+
+const hasOwnBackslashes = (text: string): boolean =>
+  text.includes('\t') || DRIVE_PATH.test(text) || BACKSLASH_NOT_BEFORE_T.test(text)
+
+const endsColumn = (before: string, after: string): boolean =>
+  HANGUL.test(before) || (DIGIT_OR_CLOSING_BRACKET.test(before) && !LOWERCASE_LETTER.test(after))
 
 /**
  * A new paragraph whose tab came as the two characters `\t` (a model that escaped it
- * twice): the tab itself, which runs to the paragraph's tab stop. The same two characters
- * also start a part of a path (..\temp) and a command name (\theta), and a tab written in
- * their place eats the "t". So a paragraph with backslashes of its own is left as it came
- * (a real tab beside them, a drive path, a backslash in front of anything but "t"), and in
- * the others a `\t` is a tab only behind what a column of a line ends with: Hangul, or a
- * digit or a closing bracket that no lowercase word follows (v2\tmp, 2\times 3).
+ * twice): the tab itself, where a column of the line ends in front of them. A paragraph
+ * with backslashes of its own, and a path part or a command name (v2\tmp, \theta), keeps
+ * the two characters.
  */
 export function typedTabs(text: string): string {
-  if (!text.includes('\\t')) return text
-  if (text.includes('\t') || /[A-Za-z]:\\/.test(text) || /\\(?!t)/.test(text)) return text
-  return text.replace(/\\t/g, (typed, at: number) => {
-    const before = text[at - 1] ?? ''
-    if (HANGUL.test(before)) return '\t'
-    return /[0-9)\]}]/.test(before) && !/[a-z]/.test(text[at + 2] ?? '') ? '\t' : typed
-  })
+  if (!text.includes('\\t') || hasOwnBackslashes(text)) return text
+  return text.replace(/\\t/g, (typed, at: number) =>
+    endsColumn(text[at - 1] ?? '', text[at + 2] ?? '') ? '\t' : typed,
+  )
 }
 
 /**
@@ -2783,7 +2787,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         const skipped = result.skipped
-          ? ` ${result.skipped} more occurrence(s) were left as they were: an equation or another object of the line stands inside the text there. Replace the words in front of it or behind it on their own, with replace_text.`
+          ? ` ${result.skipped} more occurrence(s) were left as they were: an equation or another object of the line stands inside the text there. ${SPANS_OBJECT_ADVICE}`
           : ''
         return {
           output: `Replaced ${result.count} occurrence(s).${skipped}`,
@@ -2800,7 +2804,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (!place) return bad(call, WHERE_HELP)
         if (!isTextList(given)) return bad(call, 'paragraphs must be a non-empty list of strings')
         if (given.some(hasLineBreak)) return bad(call, ONE_LINE_ITEM_HELP)
-        // only this tool: the others refuse a tab in the text they write
         const paragraphs = given.map(typedTabs)
         const tabbed = given.flatMap((text, index) =>
           text === paragraphs[index] ? [] : [index + 1],
@@ -4602,7 +4605,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           }
         }
         if ('already' in result) {
-          // not an error and not a change: the document is as the call wanted it
           return {
             output: `That paragraph already starts a ${result.already}${result.already === kind ? '' : ', and so a column too'}. Nothing was changed.`,
             summary: label('aiToolBreakInsert'),

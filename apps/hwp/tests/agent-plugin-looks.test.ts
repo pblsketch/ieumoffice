@@ -35,7 +35,6 @@ const LINES = [
   '○ 참가 동의서는 담임 교사에게 제출',
 ]
 
-/** A PNG of one pixel. */
 const ONE_PIXEL = new Uint8Array(
   Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -869,7 +868,6 @@ describe('columns and breaks', () => {
       kind: 'page',
       place: { para: PAPER.indexOf('5. 다음 글을 읽고 물음에 답하시오.') },
     })
-    // no empty paragraph is left in front of it
     expect(doc().getParagraphCount(0)).toBe(paragraphs)
     const pages = doc().pageCount()
     const before = steps()
@@ -878,7 +876,6 @@ describe('columns and breaks', () => {
       kind: 'page',
       already: 'page',
     })
-    // a paragraph that starts a page starts a column too
     expect(plugin.insertBreak('5. 다음 글을', null, 'column')).toEqual({
       ok: true,
       kind: 'column',
@@ -899,11 +896,9 @@ describe('columns and breaks', () => {
     })
     expect(doc().pageCount()).toBe(inColumns)
     expect(steps()).toBe(again)
-    // a page break on a paragraph that only starts a column makes the new page
     expect(plugin.insertBreak('3. 다음 글을', null, 'page')).toMatchObject({ ok: true })
     expect(doc().pageCount()).toBe(inColumns + 1)
     expect(doc().getParagraphCount(0)).toBe(paragraphs)
-    // the breaks are on the paragraphs: a saved copy has the same pages and no empty line more
     for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
       const saved = new HwpDocument(bytes)
       expect(saved.getParagraphCount(0)).toBe(paragraphs)
@@ -940,7 +935,6 @@ describe('columns and breaks', () => {
     expect(doc().getParagraphCount(0)).toBe(paragraphs)
     expect(tableIn(doc(), 2).cols).toBe(2)
     expect(doc().pageCount()).toBe(2)
-    // the break would take the place of the mark that starts the other columns
     const before = steps()
     expect(plugin.insertBreak('단이 바뀌는 문단', 2, 'page')).toEqual({
       ok: false,
@@ -960,7 +954,6 @@ describe('text written where it runs in columns', () => {
     doc.createBlankDocument()
     return doc
   }
-  /** How many body paragraphs start below the foot of the text of their page. */
   const belowThePage = (doc: HwpDocument) => {
     let count = 0
     for (let para = 0; para < doc.getParagraphCount(0); para++) {
@@ -997,7 +990,6 @@ describe('text written where it runs in columns', () => {
     expect(doc().getParagraphCount(0)).toBe(260)
     expect(doc().pageCount()).toBe(pages)
     expect(belowThePage(doc())).toBe(0)
-    // the columns are what they were set to, and the saved file opens with the same pages
     expect(columns(doc())).toEqual(expect.objectContaining({ columnCount: 2, spacing: 2268 }))
     for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
       const saved = new HwpDocument(bytes)
@@ -1012,7 +1004,6 @@ describe('text written where it runs in columns', () => {
     plugin.insertEquations([{ find: '[[1]]', script: 'x^2 + 1' }])
     const gap = columns(doc()).spacing
     for (let from = 0; from < 260; from += 100) {
-      // each batch goes right behind the equation line, in front of the batch before it
       plugin.insertParagraphs(
         '1. 다음 식을',
         null,
@@ -1683,7 +1674,6 @@ describe('a paragraph that holds an object of its line', () => {
       '끝 문단.',
       '맨 끝.',
     ])
-    // every equation is still in its own line, at its own place
     expect(controlsOf(doc(), 'eqed')).toEqual([1, 3, 3, 5])
     expect(places(doc(), 1)).toEqual([4])
     expect(places(doc(), 3)).toEqual([5, 8])
@@ -1697,7 +1687,6 @@ describe('a paragraph that holds an object of its line', () => {
       '표가 올 낱말 줄.',
       '끝',
     ])
-    // a picture that stands in the line as a character does
     start.insertPicture(0, 2, 5, '', ONE_PIXEL, 2000, 2000, 1, 1, 'png', '')
     start.setPictureProperties(0, 2, 0, JSON.stringify({ treatAsChar: true }))
     const { plugin, doc } = open(start)
@@ -1712,7 +1701,6 @@ describe('a paragraph that holds an object of its line', () => {
     expect(plugin.insertTable('표가 올', null, 'after', [['a', 'b']], false)).toMatchObject({
       ok: true,
     })
-    // the table stands in a paragraph of its own, and no stray paragraph holds a lost "."
     expect(bodyText(doc())).toEqual([
       '머리',
       '각주가 붙는 낱말 뒤의 글.',
@@ -1734,7 +1722,6 @@ describe('a paragraph that holds an object of its line', () => {
     const cell = (paragraph: number) =>
       JSON.stringify([{ controlIndex: 0, cellIndex: 0, cellParaIndex: paragraph }])
     const cellText = (paragraph: number) => doc().getTextInCellByPath(0, 2, cell(paragraph), 0, 40)
-    // overlapped characters: an object the engine counts as one character of the line
     doc().insertCharOverlapByPath(
       0,
       2,
@@ -1749,7 +1736,6 @@ describe('a paragraph that holds an object of its line', () => {
     expect(doc().getCellParagraphCountByPath(0, 2, cell(0))).toBe(2)
     expect(cellText(0)).toBe('셀 글과 뒤 글.')
     expect(cellText(1)).toBe('칸 새 줄.')
-    // a selection rewritten into two paragraphs splits the line behind the selected word
     const before = steps()
     const selected = {
       sec: 0,
@@ -1778,22 +1764,18 @@ describe('a paragraph that holds an object of its line', () => {
       { find: '[[2]]', script: 'b' },
       { find: '[[3]]', script: '12x^3 div 4x' },
     ])
-    // the match ends where the equation stands
     expect(plugin.replaceText('가나', 'AAAA', null)).toMatchObject({ ok: true })
     expect(textOf(doc(), 1)).toBe('AAAA다라')
     expect(places(doc(), 1)).toEqual([4])
-    // the match starts right behind the equation
     expect(plugin.replaceText('사아', 'BBBB', null)).toMatchObject({ ok: true })
     expect(textOf(doc(), 2)).toBe('마바BBBB')
     expect(places(doc(), 2)).toEqual([2])
-    // one character behind it, and a match taken out
     expect(plugin.replaceText('B', 'C', 1)).toMatchObject({ ok: true })
     expect(textOf(doc(), 2)).toBe('마바CBBB')
     expect(places(doc(), 2)).toEqual([2])
     expect(plugin.replaceText('CBBB', '', null)).toMatchObject({ ok: true })
     expect(textOf(doc(), 2)).toBe('마바')
     expect(places(doc(), 2)).toEqual([2])
-    // the mark in front of an equation, on its own
     expect(plugin.replaceText('7. ', '8. ', null)).toMatchObject({ ok: true })
     expect(textOf(doc(), 3)).toBe('8. 를 계산하면?')
     expect(places(doc(), 3)).toEqual([3])
@@ -1809,7 +1791,6 @@ describe('a paragraph that holds an object of its line', () => {
       { find: '[[2]]', script: 'd' },
     ])
     const before = steps()
-    // what read_document shows has no place for the equation, so a find can run across it
     expect(plugin.replaceText('7. 를 계산', '8. 를 계산', null)).toEqual({
       ok: false,
       reason: 'spans_object',
@@ -1818,12 +1799,10 @@ describe('a paragraph that holds an object of its line', () => {
     expect(steps()).toBe(before)
     expect(textOf(doc(), 1)).toBe('7. 를 계산하면?')
     expect(places(doc(), 1)).toEqual([3])
-    // replace_all changes the matches it can and counts the one it left
     expect(plugin.replaceAllText('하거', 'DD')).toMatchObject({ ok: true, count: 2, skipped: 1 })
     expect(textOf(doc(), 2)).toBe('파하거너')
     expect(places(doc(), 2)).toEqual([2])
     expect(textOf(doc(), 3)).toBe('DD DD')
-    // nothing but matches across an object: nothing to do
     const after = steps()
     expect(plugin.replaceAllText('하거', 'EE')).toEqual({
       ok: false,
@@ -1831,7 +1810,6 @@ describe('a paragraph that holds an object of its line', () => {
       count: 1,
     })
     expect(steps()).toBe(after)
-    // a selected run across the equation is not rewritten either
     const run = { sec: 0, para: 2, offset: 0, length: 4, text: '파하거너' }
     expect(plugin.replaceSelection([run], ['새 글'])).toEqual({
       ok: false,
@@ -1868,7 +1846,6 @@ describe('removing what follows a table', () => {
     expect(steps()).toBe(before + 1)
     expect(bodyText(doc())).toEqual(['머리', '표 앞', '', '', '다음 글', '끝'])
     expect(tableParagraphs(doc())).toEqual([2, 3])
-    // the second table goes with the paragraph it stood in; the first one stays
     expect(plugin.deleteTable(2)).toMatchObject({ ok: true, table: 2, rows: 1, cols: 2 })
     expect(bodyText(doc())).toEqual(['머리', '표 앞', '', '다음 글', '끝'])
     expect(tableParagraphs(doc())).toEqual([2])
@@ -1880,7 +1857,6 @@ describe('removing what follows a table', () => {
     const { plugin, doc } = open(
       blank(['보고서 제목', '1. 추진 배경', '배경 글입니다.', '2. 추진 계획', '계획 글입니다.']),
     )
-    // the title box makes the paragraph in front of the contents title one that holds a table
     plugin.insertTitleBox('보고서 제목', null, { look: 'box' })
     plugin.insertToc('1. 추진 배경', null, 'before', '차 례', [
       { find: '1. 추진 배경', level: 1 },
@@ -1897,7 +1873,6 @@ describe('removing what follows a table', () => {
       '2. 추진 계획',
       '계획 글입니다.',
     ])
-    // the title box is still there, with its words
     expect(tableParagraphs(doc())).toEqual([0])
     expect(plugin.readText()).toContain('보고서 제목')
   })
@@ -1923,7 +1898,6 @@ describe('removing what follows a table', () => {
         .filter((control) => control.list === 0 && control.ctrlId === 'gso')
         .map((control) => control.para)
     expect(pictures()).toEqual([1])
-    // two selected paragraphs rewritten into one: the second one goes, the picture stays
     const selected = [
       { sec: 0, para: 1, offset: 0, length: 11, text: '그림이 끝에 놓인 줄' },
       { sec: 0, para: 2, offset: 0, length: 5, text: '지울 문단' },
@@ -1931,7 +1905,6 @@ describe('removing what follows a table', () => {
     expect(plugin.replaceSelection(selected, ['그림이 끝에 놓인 줄'])).toMatchObject({ ok: true })
     expect(bodyText(doc())).toEqual(['머리', '그림이 끝에 놓인 줄', '끝'])
     expect(pictures()).toEqual([1])
-    // the same line as the anchor of delete_paragraph's neighbour
     expect(plugin.deleteParagraph('끝', 2)).toMatchObject({ ok: true, text: '끝' })
     expect(bodyText(doc())).toEqual(['머리', '그림이 끝에 놓인 줄'])
     expect(pictures()).toEqual([1])

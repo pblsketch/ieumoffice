@@ -769,7 +769,6 @@ describe('replace_all', () => {
     expect(result.mutated).toBe(true)
     expect(result.output).toContain('Replaced 2 occurrence(s).')
     expect(result.output).toContain('1 more occurrence(s) were left as they were')
-    // nothing but such matches: nothing is reported as changed
     const none = setup({
       replaceAllText: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
     })
@@ -2715,7 +2714,6 @@ describe('the look of a document', () => {
     expect(again.isError).toBeFalsy()
     expect(again.mutated).toBeUndefined()
     expect(twice.changes).toEqual([])
-    // a column was asked for, and the paragraph starts a page
     const paged = setup({
       insertBreak: vi.fn(async () => ({
         ok: true as const,
@@ -2728,7 +2726,6 @@ describe('the look of a document', () => {
       'That paragraph already starts a page, and so a column too. Nothing was changed.',
     )
     expect(paged.changes).toEqual([])
-    // the start of a part with other columns is not written over
     const zone = setup({
       insertBreak: vi.fn(async () => ({
         ok: false as const,
@@ -2963,7 +2960,6 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
   })
 
   it('writes a tab only where a column of a line ends, and leaves paths and command names whole', async () => {
-    // a backslash and a "t" of the text itself: a path part, a command name, English words
     for (const kept of [
       String.raw`상대 경로는 ..\temp\test 입니다`,
       String.raw`\theta`,
@@ -2979,7 +2975,6 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     ]) {
       expect(typedTabs(kept)).toBe(kept)
     }
-    // a tab escaped twice, behind Hangul, a digit or a closing bracket
     for (const [typed, meant] of [
       [String.raw`개회\t10:00`, '개회\t10:00'],
       [String.raw`부록 1\t21`, '부록 1\t21'],
@@ -2992,7 +2987,6 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     ]) {
       expect(typedTabs(typed)).toBe(meant)
     }
-    // the answer names the paragraphs whose two characters became a tab
     const { call, bridge } = setup()
     const result = await call('insert_paragraphs', {
       where: 'end',

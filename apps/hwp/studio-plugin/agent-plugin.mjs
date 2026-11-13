@@ -1285,10 +1285,8 @@ function cellReplaceHead(text) {
 const caretOf = (doc, hit, offset) => doc.textToLogicalOffset(hit.sec, hit.para, offset)
 
 /**
- * Whether such an object stands between two characters of a match. The text the model
- * reads has no place for the object, so a `find` can run across it; the new text has no
- * place for it either, and the engine would leave the object behind the new text. A cell
- * paragraph cannot be asked (the engine converts offsets of body paragraphs only).
+ * The engine would leave such an object behind the new text. A cell paragraph cannot be
+ * asked (the engine converts offsets of body paragraphs only).
  */
 function spansObject(doc, hit) {
   if (cellPathOf(hit) || hit.length < 2) return false
@@ -1296,7 +1294,6 @@ function spansObject(doc, hit) {
   return caretOf(doc, hit, start + length) - caretOf(doc, hit, start + 1) > length - 1
 }
 
-/** Whether such an object stands right in front of the first character of a body match. */
 const followsObject = (doc, hit) =>
   hit.length > 0 && caretOf(doc, hit, hit.charOffset + 1) - caretOf(doc, hit, hit.charOffset) > 1
 
@@ -1306,8 +1303,7 @@ function replaceHit(doc, hit, replacement) {
     const { sec, para, charOffset: start, length } = hit
     if (replacement.length > 0 && followsObject(doc, hit)) {
       // the engine types new text in front of an object that stands at its place, which
-      // would put the object behind the new text: so the new text goes in behind the first
-      // matched character, and that character is taken out afterwards
+      // would put the object behind the new text
       expectOk(doc.replaceText(sec, para, start + 1, length - 1, replacement), 'replace')
       expectOk(doc.deleteText(sec, para, start, 1), 'replace')
       return
@@ -1397,16 +1393,13 @@ function replaceHit(doc, hit, replacement) {
 const PAST_PARAGRAPH_END = 0x3fffffff
 
 /**
- * Run `split` on paragraph `k` and see that the text went where it was meant to: `offset`
- * characters stay and the rest are the new paragraph `k + 1`. The engine splits at a caret
- * place, where an object of the line (an equation, a footnote mark, a picture set as a
- * character) counts as one character, so a split can land in front of the place its caller
- * counted in characters. One that did throws: the change is rolled back and answered as
- * `has_objects` (keepingObjects) instead of leaving a line without its last characters.
+ * The engine splits at a caret place, where an object of the line (an equation, a footnote
+ * mark, a picture set as a character) counts as one character, so a split can land in front
+ * of the place its caller counted in characters.
  */
-function splitKeepingText(length, k, offset, split) {
+function splitKeepingText(length, k, textOffset, split) {
   const whole = length(k)
-  const kept = Math.min(offset, whole)
+  const kept = Math.min(textOffset, whole)
   split()
   if (length(k) !== kept || length(k + 1) !== whole - kept) {
     throw fail('HAS_OBJECTS', 'the split would have moved text of the paragraph')
@@ -1416,8 +1409,6 @@ function splitKeepingText(length, k, offset, split) {
 /**
  * The run of paragraphs a match sits in (the body of a section, or one table cell) with the
  * engine calls that address a paragraph of it by index. `index` is the matched paragraph.
- * Every offset a caller passes counts characters of the text; the box turns it into what
- * the engine call wants.
  */
 function containerOf(doc, hit) {
   const { sec, para } = hit
@@ -1436,15 +1427,13 @@ function containerOf(doc, hit) {
       // some: its section and column definitions). A memo is left out: it is a field the
       // memo guard watches, and a paragraph may be changed around it.
       objectPositions: (k) => memoFreeObjectPositions(doc, sec, k),
-      // in front of the text at `offset`: an object standing at that place goes with it
-      split: (k, offset) =>
-        splitKeepingText(lengthOf, k, offset, () =>
+      split: (k, textOffset) =>
+        splitKeepingText(lengthOf, k, textOffset, () =>
           expectOk(
-            doc.splitParagraph(sec, k, doc.textToLogicalOffset(sec, k, offset)),
+            doc.splitParagraph(sec, k, doc.textToLogicalOffset(sec, k, textOffset)),
             'split the paragraph',
           ),
         ),
-      // behind everything the paragraph holds, objects of its line included
       splitEnd: (k) =>
         splitKeepingText(lengthOf, k, lengthOf(k), () =>
           expectOk(doc.splitParagraph(sec, k, doc.getLogicalLength(sec, k)), 'split the paragraph'),
@@ -1458,9 +1447,6 @@ function containerOf(doc, hit) {
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
       deleteText: (k, count) => expectOk(doc.deleteText(sec, k, 0, count), 'delete'),
       deleteRange: (k1, o1, k2, o2) => expectOk(doc.deleteRange(sec, k1, o1, k2, o2), 'delete'),
-      // paragraph k and all it holds: for a paragraph without objects. A range from the end
-      // of the paragraph in front would take an object that stands at that end (a table on
-      // a line of its own) along with it.
       remove: (k) => expectOk(doc.deleteParagraph(sec, k), 'remove the paragraph'),
       pasteHtml: (k, html) => expectOk(doc.pasteHtml(sec, k, 0, html), 'insert the table'),
       formatChars: (k, start, end, json) =>
@@ -1492,11 +1478,13 @@ function containerOf(doc, hit) {
     // callers (keepingObjects) is what protects an object there
     objectPositions: () => [],
     font: (k) => fontOf(() => doc.getCellCharPropertiesAtByPath(sec, para, at(k), 0)),
-    // the engine has no caret place to ask for in a cell paragraph: an offset in the middle
-    // goes as it is, and the check on the text catches a split an object moved
-    split: (k, offset) =>
-      splitKeepingText(lengthOf, k, offset, () =>
-        expectOk(doc.splitParagraphInCellByPath(sec, para, at(k), offset), 'split the paragraph'),
+    // the engine has no caret place to ask for in a cell paragraph
+    split: (k, textOffset) =>
+      splitKeepingText(lengthOf, k, textOffset, () =>
+        expectOk(
+          doc.splitParagraphInCellByPath(sec, para, at(k), textOffset),
+          'split the paragraph',
+        ),
       ),
     splitEnd: (k) =>
       splitKeepingText(lengthOf, k, lengthOf(k), () =>
@@ -1510,8 +1498,7 @@ function containerOf(doc, hit) {
       expectOk(doc.deleteTextInCellByPath(sec, para, at(k), 0, count), 'delete'),
     deleteRange: (k1, o1, k2, o2) =>
       expectOk(doc.deleteRangeInCellByPath(sec, para, at(k1), k1, o1, k2, o2), 'delete'),
-    // the engine removes a paragraph of the body only: here the range from the end of the
-    // paragraph in front to the end of this one goes
+    // the engine removes a paragraph of the body only
     remove: (k) =>
       expectOk(
         doc.deleteRangeInCellByPath(sec, para, at(k - 1), k - 1, lengthOf(k - 1), k, lengthOf(k)),
@@ -4784,43 +4771,38 @@ function textWidthPt(doc, sec) {
   return Math.max(100, Math.round((width - (page.marginGutter ?? 0)) / 100))
 }
 
-/** The column definition a section starts with, or null from an engine without the call. */
-function columnDefOf(doc, sec) {
-  try {
-    return parse(doc.getColumnDef(sec))
-  } catch {
-    return null
-  }
-}
-
 /** The columns of a section's text: how many, and the gap between them in points. */
 function columnsOf(doc, sec) {
-  const def = columnDefOf(doc, sec)
+  let def = null
+  try {
+    def = parse(doc.getColumnDef(sec))
+  } catch {
+    // an engine without the call: one column
+  }
   const count = Number.isInteger(def?.columnCount) && def.columnCount > 1 ? def.columnCount : 1
   const gapPt = count > 1 && Number.isFinite(def.spacing) ? Math.max(0, def.spacing) / 100 : 0
   return { count, gapPt }
 }
 
 /**
- * Have the engine fold the body paragraphs of the first section anew where its text runs in
- * columns of one width. A paragraph the engine adds on its own (insertParagraph) keeps line
- * positions there that run on past the foot of its column, and so does every paragraph
- * split off it: a column is then filled by the height of the text without the line spacing
- * (65 lines where 41 fit), the text runs below the page, and the saved file opens the same
- * way. The engine folds every body paragraph anew only when the width of a column changes,
- * so the columns are set to one and back; the same columns set again change nothing.
- *
- * Left as they are: columns of several widths, which cannot be set back, and a section
- * whose controls cannot be read here (one behind the first) or that changes its columns
- * part way, since the engine would fold all of it to the first width.
+ * A paragraph the engine adds on its own (insertParagraph) where the text runs in columns is
+ * paginated without its line spacing, and so is every paragraph split off it: the text runs
+ * below the page (docs/tracking/findings.md). The engine folds anew only when the width of a
+ * column changes, so the columns go to one and back.
  */
 function foldColumnsAnew(doc, sec) {
-  const def = columnDefOf(doc, sec)
-  if (sec !== 0 || !(def?.columnCount > 1) || def.sameWidth !== true) return
-  const definitions = parse(doc.getControls()).filter(
-    (control) => control.list === 0 && control.ctrlId === 'cold',
-  )
-  if (definitions.length !== 1) return
+  const def = parse(doc.getColumnDef(sec))
+  if (!(def.columnCount > 1)) return
+  const widthsCanBeSetBack = def.sameWidth === true
+  // the engine names the controls of the first section only, and folds a whole section to
+  // the width of its first column definition
+  const columnDefinitions =
+    sec === 0
+      ? parse(doc.getControls()).filter(
+          (control) => control.list === 0 && control.ctrlId === 'cold',
+        ).length
+      : null
+  if (!widthsCanBeSetBack || columnDefinitions !== 1) return
   expectOk(doc.setColumnDef(sec, 1, def.columnType, 1, 0), 'lay the columns out again')
   expectOk(
     doc.setColumnDef(sec, def.columnCount, def.columnType, 1, def.spacing),
@@ -6352,7 +6334,6 @@ export const agentPlugin = {
      * Run a paragraph edit that must not cost the document an object or a field value. The
      * edit calls `mustKeep(before, after)`; when something is gone it throws, the editor
      * rolls the whole change back, and the call answers `has_objects` instead of failing.
-     * A split that an object of the line moved (splitKeepingText) ends the same way.
      */
     const keepingObjects = (edit) => {
       const mustKeep = (before, after) => {
@@ -6657,7 +6638,6 @@ export const agentPlugin = {
               // it keeps its place as an empty line
               const emptied = k === 0 || box.count() === 1
               if (emptied) box.deleteText(k, length)
-              // the paragraph goes, and the ones around it keep their own formatting
               else box.remove(k)
               mustKeep(before, objectsOf(doc))
               return {
@@ -8418,7 +8398,8 @@ export const agentPlugin = {
                 if (!joined || joined.ok !== true) {
                   throw fail('ENGINE', 'the break could not be made')
                 }
-                const had = joined.removedParaMeta?.column_type ?? 'None'
+                const had = joined.removedParaMeta?.column_type
+                if (typeof had !== 'string') throw fail('ENGINE', 'the break could not be read')
                 const starts =
                   had === 'Page' || (had === 'Column' && kind === 'column')
                     ? had.toLowerCase()
@@ -8426,7 +8407,6 @@ export const agentPlugin = {
                       ? null
                       : 'layout'
                 if (starts) {
-                  // nothing is to change: thrown, so that the editor takes the split back
                   const already = fail('STARTS_ALREADY', 'the paragraph already starts anew')
                   already.starts = starts
                   throw already
