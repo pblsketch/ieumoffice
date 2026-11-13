@@ -3368,10 +3368,10 @@ const MAX_HEADER_TEXT = 200
  * number fields. Any other (a table, a picture, a line break) means someone laid it out by
  * hand, and it is left alone.
  */
-/** The mark the engine leaves in a header's text for a page field, by the field's type number. */
-const HEADER_MARK_OF_FIELD = { 1: '\u0015', 2: '\u0016' }
 // eslint-disable-next-line no-control-regex
 const HEADER_FIELD_MARKS = /[\u0012\u0015\u0016\u0017]/g
+/** The mark the engine leaves in a header's text for a page field, by the field's type number. */
+const HEADER_MARK_OF_FIELD = { 1: '\u0015', 2: '\u0016' }
 // eslint-disable-next-line no-control-regex
 const ANY_CONTROL = /[\u0000-\u001f]/g
 /** The controls and spaces a paragraph's text may start with before its words. */
