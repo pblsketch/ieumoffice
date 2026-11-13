@@ -1462,3 +1462,141 @@ describe('equations, a diagonal, the page border, tab stops, the size of a pictu
     expect(() => plugin.insertEquations([{ find: '', script: 'x' }])).toThrow(/find/)
   })
 })
+
+describe('a paragraph that holds an object of its line', () => {
+  const textOf = (doc: HwpDocument, para: number) =>
+    doc.getTextRange(0, para, 0, doc.getParagraphLength(0, para))
+  const bodyText = (doc: HwpDocument) =>
+    Array.from({ length: doc.getParagraphCount(0) }, (_, para) => textOf(doc, para))
+  const controlsOf = (doc: HwpDocument, id: string) =>
+    (JSON.parse(doc.getControls()) as { ctrlId: string; list: number; para: number }[])
+      .filter((control) => control.list === 0 && control.ctrlId === id)
+      .map((control) => control.para)
+  const places = (doc: HwpDocument, para: number) =>
+    JSON.parse(doc.getControlTextPositions(0, para)) as number[]
+  const ONE_PIXEL = new Uint8Array(
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  )
+
+  it('adds paragraphs after a line with equations and leaves the line whole', () => {
+    const { plugin, doc } = open(
+      blank([
+        '머리',
+        '넓이는 [[1]] 이다.',
+        '두 개: [[2]] 와 [[3]] 끝.',
+        '끝자리 수식 [[4]]',
+        '끝 문단.',
+      ]),
+    )
+    plugin.insertEquations([
+      { find: '[[1]]', script: 'x^2' },
+      { find: '[[2]]', script: 'a' },
+      { find: '[[3]]', script: 'b' },
+      { find: '[[4]]', script: 'y^2' },
+    ])
+    expect(plugin.insertParagraphs('넓이는', null, 'after', ['가운데.'])).toMatchObject({
+      ok: true,
+    })
+    expect(plugin.insertParagraphs('두 개:', null, 'after', ['둘째.'])).toMatchObject({ ok: true })
+    expect(plugin.insertParagraphs('끝자리', null, 'after', ['셋째.'])).toMatchObject({ ok: true })
+    expect(plugin.insertParagraphs('', null, 'end', ['맨 끝.'])).toMatchObject({ ok: true })
+    expect(bodyText(doc())).toEqual([
+      '머리',
+      '넓이는  이다.',
+      '가운데.',
+      '두 개:  와  끝.',
+      '둘째.',
+      '끝자리 수식 ',
+      '셋째.',
+      '끝 문단.',
+      '맨 끝.',
+    ])
+    // every equation is still in its own line, at its own place
+    expect(controlsOf(doc(), 'eqed')).toEqual([1, 3, 3, 5])
+    expect(places(doc(), 1)).toEqual([4])
+    expect(places(doc(), 3)).toEqual([5, 8])
+  })
+
+  it('adds a paragraph or a table after a line with a footnote mark or a picture in it', () => {
+    const start = blank([
+      '머리',
+      '각주가 붙는 낱말 뒤의 글.',
+      '그림 앞 글과 그림 뒤 글.',
+      '표가 올 낱말 줄.',
+      '끝',
+    ])
+    // a picture that stands in the line as a character does
+    start.insertPicture(0, 2, 5, '', ONE_PIXEL, 2000, 2000, 1, 1, 'png', '')
+    start.setPictureProperties(0, 2, 0, JSON.stringify({ treatAsChar: true }))
+    const { plugin, doc } = open(start)
+    plugin.insertNote('footnote', '붙는 낱말', null, '첫 각주')
+    plugin.insertNote('footnote', '올 낱말', null, '둘째 각주')
+    expect(plugin.insertParagraphs('각주가 붙는', null, 'after', ['각주 뒤.'])).toMatchObject({
+      ok: true,
+    })
+    expect(plugin.insertParagraphs('그림 앞 글', null, 'after', ['그림 뒤.'])).toMatchObject({
+      ok: true,
+    })
+    expect(plugin.insertTable('표가 올', null, 'after', [['a', 'b']], false)).toMatchObject({
+      ok: true,
+    })
+    // the table stands in a paragraph of its own, and no stray paragraph holds a lost "."
+    expect(bodyText(doc())).toEqual([
+      '머리',
+      '각주가 붙는 낱말 뒤의 글.',
+      '각주 뒤.',
+      '그림 앞 글과 그림 뒤 글.',
+      '그림 뒤.',
+      '표가 올 낱말 줄.',
+      '',
+      '끝',
+    ])
+    expect(controlsOf(doc(), 'fn')).toEqual([1, 5])
+    expect(controlsOf(doc(), 'tbl')).toEqual([6])
+    expect(places(doc(), 3)).toEqual([5])
+  })
+
+  it('adds a paragraph in a table cell after a line with an object, and refuses to split such a line in the middle', () => {
+    const { plugin, doc, steps } = open(blank(['머리', '표 앞', '끝']))
+    plugin.insertTable('표 앞', null, 'after', [['셀 글과 뒤 글.', 'b']], false)
+    const cell = (paragraph: number) =>
+      JSON.stringify([{ controlIndex: 0, cellIndex: 0, cellParaIndex: paragraph }])
+    const cellText = (paragraph: number) => doc().getTextInCellByPath(0, 2, cell(paragraph), 0, 40)
+    // overlapped characters: an object the engine counts as one character of the line
+    doc().insertCharOverlapByPath(
+      0,
+      2,
+      cell(0),
+      2,
+      JSON.stringify({ text: '1', shape: 1, innerSize: 0, overlap: true }),
+    )
+    expect(plugin.insertParagraphs('셀 글과', null, 'after', ['칸 새 줄.'])).toMatchObject({
+      ok: true,
+      inTable: true,
+    })
+    expect(doc().getCellParagraphCountByPath(0, 2, cell(0))).toBe(2)
+    expect(cellText(0)).toBe('셀 글과 뒤 글.')
+    expect(cellText(1)).toBe('칸 새 줄.')
+    // a selection rewritten into two paragraphs splits the line behind the selected word
+    const before = steps()
+    const selected = {
+      sec: 0,
+      para: 2,
+      path: JSON.parse(cell(0)),
+      offset: 5,
+      length: 1,
+      text: '뒤',
+    }
+    expect(plugin.replaceSelection([selected], ['앞', '새 문단'])).toEqual({
+      ok: false,
+      reason: 'has_objects',
+      count: 1,
+    })
+    expect(steps()).toBe(before)
+    expect(doc().getCellParagraphCountByPath(0, 2, cell(0))).toBe(2)
+    expect(cellText(0)).toBe('셀 글과 뒤 글.')
+  })
+})

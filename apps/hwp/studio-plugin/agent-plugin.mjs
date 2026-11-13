@@ -1361,27 +1361,62 @@ function replaceHit(doc, hit, replacement) {
   )
 }
 
+/** A split offset past the end of any paragraph: the engine takes it as the paragraph's end. */
+const PAST_PARAGRAPH_END = 0x3fffffff
+
+/**
+ * Run `split` on paragraph `k` and see that the text went where it was meant to: `offset`
+ * characters stay and the rest are the new paragraph `k + 1`. The engine splits at a caret
+ * place, where an object of the line (an equation, a footnote mark, a picture set as a
+ * character) counts as one character, so a split can land in front of the place its caller
+ * counted in characters. One that did throws: the change is rolled back and answered as
+ * `has_objects` (keepingObjects) instead of leaving a line without its last characters.
+ */
+function splitKeepingText(length, k, offset, split) {
+  const whole = length(k)
+  const kept = Math.min(offset, whole)
+  split()
+  if (length(k) !== kept || length(k + 1) !== whole - kept) {
+    throw fail('HAS_OBJECTS', 'the split would have moved text of the paragraph')
+  }
+}
+
 /**
  * The run of paragraphs a match sits in (the body of a section, or one table cell) with the
  * engine calls that address a paragraph of it by index. `index` is the matched paragraph.
+ * Every offset a caller passes counts characters of the text; the box turns it into what
+ * the engine call wants.
  */
 function containerOf(doc, hit) {
   const { sec, para } = hit
   const path = cellPathOf(hit)
   if (!path) {
+    const lengthOf = (k) => doc.getParagraphLength(sec, k)
     return {
       index: para,
       inTable: false,
       place: (k, length) => ({ sec, para: k, offset: 0, length }),
       count: () => doc.getParagraphCount(sec),
-      length: (k) => doc.getParagraphLength(sec, k),
+      length: lengthOf,
       text: (k, count) => (count > 0 ? doc.getTextRange(sec, k, 0, count) : ''),
       // tables, pictures and the like sit in a paragraph without being its text; each one
       // has a place among the characters (the first paragraph of a document always holds
       // some: its section and column definitions). A memo is left out: it is a field the
       // memo guard watches, and a paragraph may be changed around it.
       objectPositions: (k) => memoFreeObjectPositions(doc, sec, k),
-      split: (k, offset) => expectOk(doc.splitParagraph(sec, k, offset), 'split the paragraph'),
+      // in front of the text at `offset`: an object standing at that place goes with it
+      split: (k, offset) =>
+        splitKeepingText(lengthOf, k, offset, () =>
+          expectOk(
+            doc.splitParagraph(sec, k, doc.textToLogicalOffset(sec, k, offset)),
+            'split the paragraph',
+          ),
+        ),
+      // behind everything the paragraph holds, objects of its line included
+      splitEnd: (k) =>
+        splitKeepingText(lengthOf, k, lengthOf(k), () =>
+          expectOk(doc.splitParagraph(sec, k, doc.getLogicalLength(sec, k)), 'split the paragraph'),
+        ),
       font: (k) => fontOf(() => doc.getCharPropertiesAt(sec, k, 0)),
       // an empty paragraph after k without splitting k: it takes k's paragraph formatting
       addAfter: (k) => expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph'),
@@ -1406,19 +1441,31 @@ function containerOf(doc, hit) {
   }
   const last = path[path.length - 1]
   const at = (k) => JSON.stringify([...path.slice(0, -1), { ...last, cellParaIndex: k }])
+  const lengthOf = (k) => doc.getCellParagraphLengthByPath(sec, para, at(k))
   return {
     index: last.cellParaIndex,
     inTable: true,
     place: (k, length) => ({ sec, para, path: parse(at(k)), offset: 0, length }),
     count: () => doc.getCellParagraphCountByPath(sec, para, at(0)),
-    length: (k) => doc.getCellParagraphLengthByPath(sec, para, at(k)),
+    length: lengthOf,
     text: (k, count) => (count > 0 ? doc.getTextInCellByPath(sec, para, at(k), 0, count) : ''),
     // the engine cannot be asked this for a cell paragraph; the before/after check of the
     // callers (keepingObjects) is what protects an object there
     objectPositions: () => [],
     font: (k) => fontOf(() => doc.getCellCharPropertiesAtByPath(sec, para, at(k), 0)),
+    // the engine has no caret place to ask for in a cell paragraph: an offset in the middle
+    // goes as it is, and the check on the text catches a split an object moved
     split: (k, offset) =>
-      expectOk(doc.splitParagraphInCellByPath(sec, para, at(k), offset), 'split the paragraph'),
+      splitKeepingText(lengthOf, k, offset, () =>
+        expectOk(doc.splitParagraphInCellByPath(sec, para, at(k), offset), 'split the paragraph'),
+      ),
+    splitEnd: (k) =>
+      splitKeepingText(lengthOf, k, lengthOf(k), () =>
+        expectOk(
+          doc.splitParagraphInCellByPath(sec, para, at(k), PAST_PARAGRAPH_END),
+          'split the paragraph',
+        ),
+      ),
     insert: (k, text) => expectOk(doc.insertTextInCellByPath(sec, para, at(k), 0, text), 'insert'),
     deleteText: (k, count) =>
       expectOk(doc.deleteTextInCellByPath(sec, para, at(k), 0, count), 'delete'),
@@ -6152,7 +6199,7 @@ export const agentPlugin = {
     /** Make an empty paragraph after paragraph `k` of `box`; its index is k + 1. */
     const openAfter = (box, k, plain) => {
       if (plain) box.addAfter(k)
-      else box.split(k, box.length(k))
+      else box.splitEnd(k)
     }
 
     /**
@@ -6228,18 +6275,17 @@ export const agentPlugin = {
      * Run a paragraph edit that must not cost the document an object or a field value. The
      * edit calls `mustKeep(before, after)`; when something is gone it throws, the editor
      * rolls the whole change back, and the call answers `has_objects` instead of failing.
+     * A split that an object of the line moved (splitKeepingText) ends the same way.
      */
     const keepingObjects = (edit) => {
-      let lost = false
       const mustKeep = (before, after) => {
         if (before.controls === after.controls && before.fields === after.fields) return
-        lost = true
         throw fail('HAS_OBJECTS', 'the change would remove an object of the document')
       }
       try {
         return edit(mustKeep)
       } catch (thrown) {
-        if (lost) return { ok: false, reason: 'has_objects', count: 1 }
+        if (thrown?.code === 'HAS_OBJECTS') return { ok: false, reason: 'has_objects', count: 1 }
         throw thrown
       }
     }
@@ -8677,7 +8723,7 @@ export const agentPlugin = {
                 }
                 target.lines.forEach((line, k) => {
                   // a further line is a further paragraph, made like Enter makes one
-                  if (k > 0 && k >= box.count()) box.split(k - 1, box.length(k - 1))
+                  if (k > 0 && k >= box.count()) box.splitEnd(k - 1)
                   if (line) box.insert(k, line)
                 })
                 target.lines.forEach((line, k) => {
