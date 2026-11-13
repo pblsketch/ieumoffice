@@ -402,7 +402,7 @@ describe('a number that counts from 1, and a number with a range', () => {
     ...['table', 'from_row', 'from_col', 'to_row', 'to_col'].map(
       (name): [Record<string, unknown>, RegExp] => [
         { op: 'merge_cells', table: 1, from_row: 1, from_col: 1, to_row: 1, to_col: 2, [name]: 0 },
-        /must be whole numbers from 1/,
+        new RegExp(`^${name} must be a whole number from 1, not 0\\.$`),
       ],
     ),
     ...['table', 'row', 'col'].map((name): [Record<string, unknown>, RegExp] => [
