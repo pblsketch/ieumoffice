@@ -41,7 +41,8 @@ export function appChoiceBridge(): AppChoiceBridge {
       normalizeAppChoice(await ipcRenderer.invoke(APP_CHOICE_CHANNELS.get).catch(() => null)),
     set: async (patch) => {
       const sent: AppChoicePatch = {}
-      if (Array.isArray(patch?.off)) sent.off = patch.off.map(String) as AppChoicePatch['off']
+      if (Array.isArray(patch?.off))
+        sent.off = patch.off.map(String) as NonNullable<AppChoicePatch['off']>
       if (typeof patch?.aiFeatures === 'boolean') sent.aiFeatures = patch.aiFeatures
       return normalizeAppChoice(await ipcRenderer.invoke(APP_CHOICE_CHANNELS.set, sent))
     },

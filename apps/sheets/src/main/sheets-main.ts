@@ -94,6 +94,8 @@ import {
   type SaveDiskState,
 } from '@genoffice/electron-utils'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { screenMediaCall } from './screen-media-call'
 import {
   encryptOoxml,
   isCfbHeader,
@@ -4004,20 +4006,23 @@ export function registerSheetsIpc(): void {
   ipcMain.handle(
     IPC_CHANNELS.aiGenerateImage,
     (event, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      // ends with its tab, or when the tab's AI run is stopped
-      withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          SETTINGS_PATH(),
-          {
-            prompt: String(op?.prompt ?? ''),
-            ...(op?.aspectRatio ? { aspectRatio: String(op.aspectRatio) } : {}),
-          },
-          {
-            mediaRoots: sheetsMediaRoots(event.sender.id),
-            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-            signal,
-          },
-        ),
+      // ends with its tab, or when the tab's AI run is stopped; refused while AI is turned off
+      screenMediaCall(
+        event.sender,
+        (signal) =>
+          generateImageTool(
+            SETTINGS_PATH(),
+            {
+              prompt: String(op?.prompt ?? ''),
+              ...(op?.aspectRatio ? { aspectRatio: String(op.aspectRatio) } : {}),
+            },
+            {
+              mediaRoots: sheetsMediaRoots(event.sender.id),
+              context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+              signal,
+            },
+          ),
+        (error) => ({ error, errorCode: 'unavailable' as const }),
       ),
   )
 
@@ -5529,6 +5534,15 @@ export function registerSheetsAiIpc(): void {
     const controller = new AbortController()
     entry.aiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one turn of the tab's chat is running AI work: turning AI off stops it the way Stop does
+    const senderId = event.sender.id
+    const unregisterJob = registerAiJob({
+      kind: 'chat',
+      stop: () => {
+        controller.abort()
+        abortMediaCalls(senderId)
+      },
+    })
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
     let lastPing = 0
     const ping = () => {
@@ -5567,6 +5581,7 @@ export function registerSheetsAiIpc(): void {
         send(aiStreamErrorChunk(requestId, err))
       }
     } finally {
+      unregisterJob()
       unwatchSender()
       entry.aiStreams.delete(requestId)
     }
