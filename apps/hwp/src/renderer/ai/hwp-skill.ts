@@ -4590,10 +4590,22 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
                 call,
                 'Nothing was changed: that is the first paragraph of the document, which starts its page already.',
               )
+            case 'layout_start':
+              return bad(
+                call,
+                'Nothing was changed: that paragraph starts a part of the document with another number of columns, and a break put on it would take that start away. Put the break on the paragraph after it, or tell the user.',
+              )
             case 'memo_removal_requires_approval':
               return bad(call, 'Nothing was changed.')
             default:
               return bad(call, placeRefusal(result))
+          }
+        }
+        if ('already' in result) {
+          // not an error and not a change: the document is as the call wanted it
+          return {
+            output: `That paragraph already starts a ${result.already}${result.already === kind ? '' : ', and so a column too'}. Nothing was changed.`,
+            summary: label('aiToolBreakInsert'),
           }
         }
         deps.onChange({

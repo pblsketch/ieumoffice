@@ -2702,6 +2702,46 @@ describe('the look of a document', () => {
     expect(lone.output).toContain('runs in one column')
   })
 
+  it('says that a paragraph already starts its page, without reporting a change', async () => {
+    const twice = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: true as const,
+        kind: 'page' as const,
+        already: 'page' as const,
+      })),
+    })
+    const again = await twice.call('insert_break', { find: '5. 다음 글', kind: 'page' })
+    expect(again.output).toBe('That paragraph already starts a page. Nothing was changed.')
+    expect(again.isError).toBeFalsy()
+    expect(again.mutated).toBeUndefined()
+    expect(twice.changes).toEqual([])
+    // a column was asked for, and the paragraph starts a page
+    const paged = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: true as const,
+        kind: 'column' as const,
+        already: 'page' as const,
+      })),
+    })
+    const column = await paged.call('insert_break', { find: '5. 다음 글', kind: 'column' })
+    expect(column.output).toBe(
+      'That paragraph already starts a page, and so a column too. Nothing was changed.',
+    )
+    expect(paged.changes).toEqual([])
+    // the start of a part with other columns is not written over
+    const zone = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'layout_start' as const,
+        count: 1,
+      })),
+    })
+    const refused = await zone.call('insert_break', { find: '글', kind: 'page' })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('another number of columns')
+    expect(zone.changes).toEqual([])
+  })
+
   it('turns a title into a title box', async () => {
     const { call, changes, bridge } = setup()
     const result = await call('insert_title_box', {

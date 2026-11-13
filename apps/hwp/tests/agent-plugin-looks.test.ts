@@ -852,6 +852,97 @@ describe('columns and breaks', () => {
       reason: 'not_found',
     })
   })
+
+  it('puts the break on the paragraph itself and says so when it starts its page or column already', () => {
+    const { plugin, doc, steps } = open(blank(PAPER))
+    const paragraphs = doc().getParagraphCount(0)
+    expect(plugin.insertBreak('5. 다음 글을', null, 'page')).toMatchObject({
+      ok: true,
+      kind: 'page',
+      place: { para: PAPER.indexOf('5. 다음 글을 읽고 물음에 답하시오.') },
+    })
+    // no empty paragraph is left in front of it
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    const pages = doc().pageCount()
+    const before = steps()
+    expect(plugin.insertBreak('5. 다음 글을', null, 'page')).toEqual({
+      ok: true,
+      kind: 'page',
+      already: 'page',
+    })
+    // a paragraph that starts a page starts a column too
+    expect(plugin.insertBreak('5. 다음 글을', null, 'column')).toEqual({
+      ok: true,
+      kind: 'column',
+      already: 'page',
+    })
+    expect(doc().pageCount()).toBe(pages)
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    expect(steps()).toBe(before)
+
+    plugin.setColumns({ count: 2 })
+    expect(plugin.insertBreak('3. 다음 글을', null, 'column')).toMatchObject({ ok: true })
+    const inColumns = doc().pageCount()
+    const again = steps()
+    expect(plugin.insertBreak('3. 다음 글을', null, 'column')).toEqual({
+      ok: true,
+      kind: 'column',
+      already: 'column',
+    })
+    expect(doc().pageCount()).toBe(inColumns)
+    expect(steps()).toBe(again)
+    // a page break on a paragraph that only starts a column makes the new page
+    expect(plugin.insertBreak('3. 다음 글을', null, 'page')).toMatchObject({ ok: true })
+    expect(doc().pageCount()).toBe(inColumns + 1)
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    // the breaks are on the paragraphs: a saved copy has the same pages and no empty line more
+    for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+      const saved = new HwpDocument(bytes)
+      expect(saved.getParagraphCount(0)).toBe(paragraphs)
+      expect(saved.pageCount()).toBe(inColumns + 1)
+    }
+  })
+
+  it('keeps a table in front of the paragraph, and the start of a part with other columns', () => {
+    const start = blank(['머리', '표 앞', '표 뒤 문단', '단이 바뀌는 문단 앞'])
+    // a paragraph that starts a part of the document laid out in other columns, as Hangul
+    // marks it: made through the engine's split, which takes the mark of the new paragraph
+    start.splitParagraph(
+      0,
+      3,
+      start.getParagraphLength(0, 3),
+      JSON.stringify({
+        para_shape_id: 0,
+        style_id: 0,
+        column_type: 'MultiColumn',
+        raw_break_type: 2,
+        numbering_restart: null,
+        raw_header_extra: [],
+        tab_extended: [],
+      }),
+    )
+    start.insertText(0, 4, 0, '단이 바뀌는 문단')
+    const { plugin, doc, steps } = open(start)
+    plugin.insertTable('표 앞', null, 'after', [['a', 'b']], false)
+    const paragraphs = doc().getParagraphCount(0)
+    expect(plugin.insertBreak('표 뒤 문단', null, 'page')).toMatchObject({
+      ok: true,
+      place: { para: 3 },
+    })
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    expect(tableIn(doc(), 2).cols).toBe(2)
+    expect(doc().pageCount()).toBe(2)
+    // the break would take the place of the mark that starts the other columns
+    const before = steps()
+    expect(plugin.insertBreak('단이 바뀌는 문단', 2, 'page')).toEqual({
+      ok: false,
+      reason: 'layout_start',
+      count: 1,
+    })
+    expect(steps()).toBe(before)
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    expect(doc().pageCount()).toBe(2)
+  })
 })
 
 describe('writing into an empty document', () => {

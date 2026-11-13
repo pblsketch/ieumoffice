@@ -8321,7 +8321,11 @@ export const agentPlugin = {
        * Start the body paragraph `find` occurs in on a new page or in the next column
        * (`kind`, one of BREAK_KINDS), as Hangul's 쪽 나누기 and 단 나누기 do in front of a
        * paragraph. A paragraph inside a table, and the first one of the document, cannot
-       * start anew. One undo step.
+       * start anew. The break is put on the paragraph itself: no empty paragraph is left in
+       * front of it. One that starts a page already (or a column, when a column is asked
+       * for) is left as it is and answered `already`; one that starts a part of the document
+       * with other columns is refused, since the break would take that start away. One undo
+       * step.
        */
       insertBreak: guarded((find, occurrence, kind, options) => {
         if (!BREAK_KINDS.includes(kind)) {
@@ -8347,36 +8351,64 @@ export const agentPlugin = {
         }
         const refusal = host.read((doc) => plan(doc).refusal ?? null)
         if (refusal) return refusal
-        return keepingObjects((mustKeep) =>
-          change(
-            'insert-break',
-            (doc) => {
-              const { hit } = plan(doc)
-              if (!hit) throw fail('CHANGED', 'the document changed mid-call')
-              const before = objectsOf(doc)
-              const made = parse(
-                kind === 'page'
-                  ? doc.insertPageBreak(hit.sec, hit.para, 0)
-                  : doc.insertColumnBreak(hit.sec, hit.para, 0),
-              )
-              if (!made || made.ok !== true) throw fail('ENGINE', 'the break could not be made')
-              mustKeep(before, objectsOf(doc))
-              const para = Number.isInteger(made.paraIdx) ? made.paraIdx : hit.para
-              return {
-                ok: true,
-                kind,
-                columns: columnsOf(doc, hit.sec).count,
-                place: {
-                  sec: hit.sec,
-                  para,
-                  offset: 0,
-                  length: doc.getParagraphLength(hit.sec, para),
-                },
-              }
-            },
-            options,
-          ),
-        )
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'insert-break',
+              (doc) => {
+                const { hit } = plan(doc)
+                if (!hit) throw fail('CHANGED', 'the document changed mid-call')
+                const before = objectsOf(doc)
+                const made = parse(
+                  kind === 'page'
+                    ? doc.insertPageBreak(hit.sec, hit.para, 0)
+                    : doc.insertColumnBreak(hit.sec, hit.para, 0),
+                )
+                if (!made || made.ok !== true) throw fail('ENGINE', 'the break could not be made')
+                // the engine splits the paragraph at its start and puts the break on the
+                // second half. The empty first half keeps the break the paragraph had, and
+                // every call would leave one more empty paragraph (a second call an empty
+                // page). Joined to the paragraph in front, it is gone, and the engine's
+                // answer says which break it carried: the only way to read a paragraph's.
+                const joined = parse(doc.mergeParagraph(hit.sec, hit.para))
+                if (!joined || joined.ok !== true) {
+                  throw fail('ENGINE', 'the break could not be made')
+                }
+                const had = joined.removedParaMeta?.column_type ?? 'None'
+                const starts =
+                  had === 'Page' || (had === 'Column' && kind === 'column')
+                    ? had.toLowerCase()
+                    : had === 'None' || had === 'Column'
+                      ? null
+                      : 'layout'
+                if (starts) {
+                  // nothing is to change: thrown, so that the editor takes the split back
+                  const already = fail('STARTS_ALREADY', 'the paragraph already starts anew')
+                  already.starts = starts
+                  throw already
+                }
+                mustKeep(before, objectsOf(doc))
+                return {
+                  ok: true,
+                  kind,
+                  columns: columnsOf(doc, hit.sec).count,
+                  place: {
+                    sec: hit.sec,
+                    para: hit.para,
+                    offset: 0,
+                    length: doc.getParagraphLength(hit.sec, hit.para),
+                  },
+                }
+              },
+              options,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown?.code !== 'STARTS_ALREADY') throw thrown
+          return thrown.starts === 'layout'
+            ? { ok: false, reason: 'layout_start', count: 1 }
+            : { ok: true, kind, already: thrown.starts }
+        }
       }),
 
       /**

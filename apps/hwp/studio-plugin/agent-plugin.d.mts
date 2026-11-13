@@ -355,9 +355,14 @@ export type AgentBreakKind = 'page' | 'column'
 
 export type AgentBreakResult =
   | { ok: true; kind: AgentBreakKind; columns: number; place: AgentPlace }
+  /** the paragraph carried a break that covers the one asked for: nothing was changed */
+  | { ok: true; kind: AgentBreakKind; already: AgentBreakKind }
   | AgentPlaceRefusal
-  /** the paragraph is inside a table cell, or is the first one of the document */
-  | { ok: false; reason: 'in_table' | 'at_start'; count: number }
+  /**
+   * the paragraph is inside a table cell, is the first one of the document, or starts a
+   * part of the document with other columns (a break would take that start away)
+   */
+  | { ok: false; reason: 'in_table' | 'at_start' | 'layout_start'; count: number }
   | AgentMemoRemovalRefusal
 
 export type AgentPageNumberResult =
