@@ -4446,7 +4446,8 @@ describe('a value that is not of the kind its argument declares', () => {
 
   it('leaves a number that is the right kind and out of its range to the handler', async () => {
     const generateImage = vi.fn(async () => ({ url: 'file:///store/a.png' }))
-    vi.stubGlobal('window', { hwpApi: { generateImage } })
+    const imageSearch = vi.fn(async () => ({ method: 'serper', images: [] }))
+    vi.stubGlobal('window', { hwpApi: { generateImage, imageSearch } })
     const { call, bridge } = setup()
     for (const width_pt of [5, 601, -10]) {
       const generated = await call('generate_image', { where: 'end', prompt: 'a kite', width_pt })
@@ -4467,6 +4468,17 @@ describe('a value that is not of the kind its argument declares', () => {
       expect(read.isError, String(offset)).toBe(true)
       expect(read.output).toBe('offset must be a whole number from 0')
     }
+
+    for (const maxResults of [0, -3, 2.5]) {
+      const searched = await call('image_search', { query: 'kite', maxResults })
+      expect(searched.isError, String(maxResults)).toBe(true)
+      expect(searched.output).toBe('maxResults must be a whole number from 1')
+    }
+    expect(imageSearch).not.toHaveBeenCalled()
+    await call('image_search', { query: 'kite' })
+    expect(imageSearch).toHaveBeenLastCalledWith('kite', 8)
+    await call('image_search', { query: 'kite', maxResults: 3 })
+    expect(imageSearch).toHaveBeenLastCalledWith('kite', 3)
   })
 })
 

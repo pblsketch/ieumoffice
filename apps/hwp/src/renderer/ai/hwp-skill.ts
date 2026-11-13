@@ -2813,9 +2813,9 @@ const pictureWidthRefusal = (input: unknown): string | null =>
     ? `width_pt must be ${PICTURE_WIDTH_PT.min} to ${PICTURE_WIDTH_PT.max} points`
     : null
 
-const offsetRefusal = (input: unknown): string | null =>
-  isGiven(input) && !(typeof input === 'number' && Number.isInteger(input) && input >= 0)
-    ? 'offset must be a whole number from 0'
+const wholeNumberRefusal = (name: string, input: unknown, least: number): string | null =>
+  isGiven(input) && !(typeof input === 'number' && Number.isInteger(input) && input >= least)
+    ? `${name} must be a whole number from ${least}`
     : null
 
 /**
@@ -3031,7 +3031,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     switch (call.name) {
       case 'read_document': {
         const text = await bridge.readText()
-        const badOffset = offsetRefusal(call.input.offset)
+        const badOffset = wholeNumberRefusal('offset', call.input.offset, 0)
         if (badOffset) return bad(call, badOffset)
         const raw = call.input.offset
         const offset = typeof raw === 'number' ? Math.min(raw, text.length) : 0
@@ -3125,7 +3125,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             summary: label('aiToolReadUrlFail', { host }),
           }
         }
-        const badOffset = offsetRefusal(call.input.offset)
+        const badOffset = wholeNumberRefusal('offset', call.input.offset, 0)
         if (badOffset) return bad(call, badOffset)
         const offset = typeof call.input.offset === 'number' ? call.input.offset : 0
         const result = await window.hwpApi.readUrl(url, offset)
@@ -3533,7 +3533,10 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'image_search': {
         const query = textArg(call, 'query')?.trim() ?? ''
         if (!query) return bad(call, 'query must be a non-empty string')
-        const r = await window.hwpApi.imageSearch(query, Number(call.input.maxResults) || 8)
+        const count = call.input.maxResults
+        const badCount = wholeNumberRefusal('maxResults', count, 1)
+        if (badCount) return bad(call, badCount)
+        const r = await window.hwpApi.imageSearch(query, typeof count === 'number' ? count : 8)
         // a backend failure must not read as an empty gallery: the model would make up choices
         if (r.method === 'error') {
           return bad(
@@ -3702,9 +3705,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'read_selection': {
         if (!selection) return bad(call, NO_SELECTION_HELP)
         const raw = call.input.from
-        if (isGiven(raw) && (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1)) {
-          return bad(call, 'from must be a whole number from 1')
-        }
+        const badFrom = wholeNumberRefusal('from', raw, 1)
+        if (badFrom) return bad(call, badFrom)
         const from = typeof raw === 'number' ? raw : 1
         if (from > selection.length) {
           return bad(call, `The selection has ${selection.length} paragraph(s).`)
