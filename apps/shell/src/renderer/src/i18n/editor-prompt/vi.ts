@@ -19,4 +19,9 @@ export const vi = {
   cancel: 'Hủy',
   aiOffSkillMessage: 'AI đang tắt. Bật AI và nhập kỹ năng?',
   aiOnAndImport: 'Bật AI và nhập',
+  fileOnlyDetail: 'Chỉ tạo tệp: trình soạn thảo vẫn tắt và tệp mới được hiển thị trong thư mục.',
+  entranceDetail: 'Tính năng này cần bật {item}.',
+  genAiOffConvert: 'AI đang tắt: chỉ có thể dùng các chuyển đổi không cần AI.',
+  genAiOffNoConversion:
+    'AI đang tắt. Hãy thêm đúng một tệp sơ đồ tư duy hoặc Markdown để chuyển đổi mà không cần AI.',
 } satisfies Record<keyof typeof zh, string>

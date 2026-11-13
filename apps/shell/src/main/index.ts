@@ -142,6 +142,9 @@ import { registerEditorChoiceIpc, type EditorChoiceService } from './editor-choi
 import { createEditorGate, installEditorGate, whenReady, type OpenOrigin } from './editor-gate'
 import { aiOffRefusalText, watchAiFeatures } from './ai-off-main'
 import { resumeAiBackgroundWork } from '../../../docs/src/main/ai-background'
+import { createEditorEntrances } from './editor-entrances'
+import { writeDocumentFileOnly } from './document-file-only'
+import { setEditorEntranceAsker } from '@genoffice/electron-utils/editor-entrance'
 import { aiFeaturesOn, appChoice } from '@genoffice/electron-utils/app-choice'
 import {
   editorItemOfTabKind,
@@ -204,6 +207,7 @@ import {
   activeAiStreamCount,
   legacyDocumentChatFor,
   hwpCopy,
+  sanitizeAiDocFileBase,
 } from '../../../docs/src/main/docs-main'
 import { blankXlsxBuffer } from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { blankPdfBuffer } from '../../../pdf/src/main/blank-pdf'
@@ -298,7 +302,11 @@ import {
   registerPdfStructureIpc,
   runWindowJob,
 } from './pdf-structure-ipc'
-import { registerPdfConvertUiIpc, requestPdfConvertDialog } from './pdf-convert-ui'
+import {
+  askThenRequestPdfConvertDialog,
+  registerPdfConvertUiIpc,
+  requestPdfConvertDialog,
+} from './pdf-convert-ui'
 import {
   pdfSaveAsDefaultPath,
   pdfSaveAsFilters,
@@ -352,6 +360,7 @@ import {
   setHtmlFileSavedHook,
   setHtmlPresentHooks,
   setHtmlProvisionalTitleHook,
+  htmlToDocxBytes,
 } from '../../../html/src/main/html-main'
 import {
   configureMindmapRuntime,
@@ -860,6 +869,19 @@ configurePdfRuntime({
   rendererFile: join(PDF_OUT, 'renderer', 'index.html'),
   openGeneratedPath: (path) => openGeneratedDocument(path),
   createDocument: createAiDocument,
+  // "create the file only" of the annotation list's document while its editor is off
+  writeDocumentFile: (request, owner) =>
+    writeDocumentFileOnly(
+      {
+        fileBase: sanitizeAiDocFileBase,
+        htmlToDocx: htmlToDocxBytes,
+        writeInProject: writeProjectNewDocument,
+        writeInDefaultFolder: writeInDefaultSaveFolder,
+        reveal: (path) => shell.showItemInFolder(path),
+      },
+      request,
+      owner,
+    ),
   openPdfTools: (path, tool) => openPdfToolsWithFile(path, tool),
   openNote: (path) => openNoteTab(noteTabHost, path) !== null,
   insertIntoNote: (path, text) => insertIntoNoteTab(noteTabHost, path, text),
@@ -5779,7 +5801,7 @@ function createShellWindow(): void {
   })
   // markdown "convert & open in Docs" → route the fresh .docx to a docs tab
   setMarkdownDocxExportedHook((path) => {
-    openDocumentPath(path)
+    openMadeDocument(path)
   })
   // markdown → Hangul: the Word editor's converter with the look of a Hangul
   // document, since the bytes the Markdown editor hands over have no Word layout
@@ -5799,7 +5821,7 @@ function createShellWindow(): void {
     return !manager.findDocsTabByPath(path)
   })
   setHtmlDocxExportedHook((path) => {
-    openDocumentPath(path)
+    openMadeDocument(path)
   })
 
   // Closing the whole window walks every dirty sheets/pdf/slides/docs tab through
@@ -5985,6 +6007,36 @@ const openGate = createEditorGate({
 installEditorGate(openGate)
 
 /**
+ * Entrances inside other features (a PDF conversion, the generate and PDF
+ * tools windows, a PDF's note…) ask before their work when the editor they
+ * need is off, and an export whose editor is off is shown in its folder
+ * (spec 7.3, editor-entrances.ts). The editor mains ask through the asker.
+ */
+const entrances = createEditorEntrances({
+  gate: () => openGate,
+  isOff: (item) => (editorChoiceService?.effective() ?? appChoice()).off.includes(item),
+  itemOfPath: editorItemOfPath,
+  isOpen: isDocumentOpen,
+  reveal: (path) => shell.showItemInFolder(path),
+  lang: () => currentLang(),
+})
+setEditorEntranceAsker(entrances)
+
+/** "create the file only": into the default save folder under a free name; its path */
+async function writeInDefaultSaveFolder(fileName: string, bytes: Uint8Array): Promise<string> {
+  const dir = defaultSaveDir()
+  mkdirSync(dir, { recursive: true })
+  const target = uniquePathIn(dir, fileName)
+  await atomicWriteFile(target, Buffer.from(bytes))
+  return target
+}
+
+/** a file a feature just made: its tab, or its folder while its editor is off (no question) */
+function openMadeDocument(filePath: string): boolean {
+  return entrances.openOrReveal(filePath, (path) => openDocumentPath(path))
+}
+
+/**
  * Several files a person opened at once (a launch, a drop, File → Open): one
  * question per turned-off editor. True = anything opened.
  */
@@ -6025,6 +6077,8 @@ function openDocumentPath(filePath: string, origin: OpenOrigin = 'user'): boolea
  * overwrite the file we just exported.
  */
 function openGeneratedDocument(filePath: string): boolean {
+  // an export into a turned-off editor is not asked about: false = the editor shows its folder
+  if (!entrances.opensInTab(filePath)) return false
   if (tabManager && PDF_RE.test(filePath)) {
     const existing = tabManager.findPdfTabByPath(filePath)
     if (existing) {
@@ -8619,7 +8673,7 @@ function buildPdfMenu(): void {
         // Markdown / EPUB: the pdf tab's conversion dialog (page range, save location, progress)
         {
           label: tm('menuExportMd'),
-          click: () => requestPdfConvertDialog(activePdfTarget()?.webContents, 'md'),
+          click: () => void askThenRequestPdfConvertDialog(activePdfTarget(), 'md'),
         },
         {
           label: tm('menuExportEpub'),
@@ -9430,7 +9484,7 @@ async function savePdfAsPick(tab = activePdfTarget()): Promise<(() => Promise<vo
       })
       return
     }
-    openDocumentPath(target)
+    openMadeDocument(target)
   } catch (err) {
     console.error('[shell] pdf save as failed:', err)
     showErrorDialog(host, tm('errPdfSaveAsFailed'), err)
@@ -9470,6 +9524,9 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the docs editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('docs', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
     // Save As already picked the name: no second dialog
     const picked = preset
@@ -9560,7 +9617,7 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
         detail: tm('pdfDocxLocalOcrDetail', { pages: ocrPages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): password-protected / damaged PDFs get
@@ -9613,6 +9670,9 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the slides editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('slides', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
     // Save As already picked the name: no second dialog
     const picked = preset
@@ -9680,7 +9740,7 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
         detail: tm('pdfDocxLocalDegradedDetail', { pages: imagePages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): same explanations as the Word export
@@ -9727,6 +9787,9 @@ async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the sheets editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('sheets', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
     // Save As already picked the name: no second dialog
     const picked = preset
@@ -9794,7 +9857,7 @@ async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
         detail: tm('pdfXlsxLocalSkippedDetail', { pages: noticePages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): same explanations as the Word export
@@ -9841,6 +9904,8 @@ ipcMain.handle(PDF_CHANNELS.convertOffice, async (e, format: unknown) => {
 async function openPdfAsHwp(): Promise<void> {
   const tab = activePdfTarget()
   if (!tab?.filePath || !tabManager) return
+  // the Hangul editor converts the PDF in its tab: it has to be on (spec 7.3)
+  if (!(await entrances.editorEntrance('hwp', { fileName: tab.filePath }))) return
   if (!(await flushPdfSave(tab.webContents, true))) return
   openPdfCopyAsHwp(tab.filePath)
 }
@@ -10114,7 +10179,11 @@ registerPdfConvertUiIpc({
     const tabId = tabManager?.tabIdForWebContents(viewId)
     if (tabId) tabManager?.activateTab(tabId)
   },
-  openDocument: (path) => openDocumentPath(path),
+  openDocument: (path) => openMadeDocument(path),
+  askBeforeConvert: (format, source) =>
+    format === 'md'
+      ? entrances.makeAndOpen('markdown', { fileName: source })
+      : Promise.resolve('open'),
 })
 
 // The person's skills (settings → skills, the AI windows' `/` list and skill
@@ -10533,6 +10602,8 @@ app.whenReady().then(async () => {
       }
       return openGeneratedDocument(path)
     },
+    askBeforeOpenResult: (path, open) => entrances.openExisting(path, open),
+    askEditorOn: (item) => entrances.editorEntrance(item),
     openForEditing: (path) => {
       revealShellWindow()
       return openDocumentPath(path)
@@ -10579,6 +10650,16 @@ app.whenReady().then(async () => {
       const manager = ensureTabManager()
       const contents = manager.webContentsForTab(manager.openGenerateTargetTab(handoff))
       if (contents) followOpenerProject(contents, opener)
+    },
+    askEditor: (item, withFileOnly, source) =>
+      withFileOnly
+        ? entrances.makeAndOpen(item, { fileName: source })
+        : entrances.editorEntrance(item).then((on) => (on ? 'open' : 'cancel')),
+    aiOn: () => (editorChoiceService?.effective() ?? appChoice()).aiFeatures,
+    saveConvertedFile: async (fileName, bytes) => {
+      const target = await writeInDefaultSaveFolder(fileName, bytes)
+      shell.showItemInFolder(target)
+      return target
     },
     openConvertedTab: (doc, opener) => {
       revealShellWindow()

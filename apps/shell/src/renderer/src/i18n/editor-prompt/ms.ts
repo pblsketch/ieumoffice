@@ -19,4 +19,10 @@ export const ms = {
   cancel: 'Batal',
   aiOffSkillMessage: 'AI dimatikan. Hidupkan AI dan import kemahiran?',
   aiOnAndImport: 'Hidupkan AI dan import',
+  fileOnlyDetail:
+    'Cipta fail sahaja: editor kekal dimatikan dan fail baharu ditunjukkan dalam foldernya.',
+  entranceDetail: 'Ciri ini memerlukan {item} dihidupkan.',
+  genAiOffConvert: 'AI dimatikan: hanya penukaran tanpa AI tersedia.',
+  genAiOffNoConversion:
+    'AI dimatikan. Tambah satu fail peta minda atau Markdown sahaja untuk menukarnya tanpa AI.',
 } satisfies Record<keyof typeof zh, string>

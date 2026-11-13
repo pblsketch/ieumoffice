@@ -19,4 +19,8 @@ export const zhTW = {
   cancel: '取消',
   aiOffSkillMessage: 'AI 功能已關閉。要啟用 AI 並匯入技能嗎？',
   aiOnAndImport: '啟用 AI 並匯入',
+  fileOnlyDetail: '僅建立檔案：編輯器保持關閉，並在資料夾中顯示新檔案。',
+  entranceDetail: '此功能需要啟用{item}。',
+  genAiOffConvert: 'AI 功能已關閉：只能使用不需要 AI 的轉換。',
+  genAiOffNoConversion: 'AI 功能已關閉。只加入一個心智圖或 Markdown 檔案，即可不使用 AI 進行轉換。',
 } satisfies Record<keyof typeof zh, string>

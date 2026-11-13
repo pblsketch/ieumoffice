@@ -19,4 +19,9 @@ export const he = {
   cancel: 'ביטול',
   aiOffSkillMessage: 'הבינה המלאכותית כבויה. להפעיל אותה ולייבא את המיומנות?',
   aiOnAndImport: 'הפעלת AI וייבוא',
+  fileOnlyDetail: 'יצירת הקובץ בלבד: העורך נשאר כבוי והקובץ החדש מוצג בתיקייה שלו.',
+  entranceDetail: 'תכונה זו דורשת שה{item} יהיה מופעל.',
+  genAiOffConvert: 'הבינה המלאכותית כבויה: זמינות רק המרות ללא בינה מלאכותית.',
+  genAiOffNoConversion:
+    'הבינה המלאכותית כבויה. הוסיפו קובץ מפת חשיבה או Markdown אחד בלבד כדי להמיר אותו ללא בינה מלאכותית.',
 } satisfies Record<keyof typeof zh, string>

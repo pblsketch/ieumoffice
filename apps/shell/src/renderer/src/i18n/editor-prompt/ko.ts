@@ -19,4 +19,9 @@ export const ko = {
   cancel: '취소',
   aiOffSkillMessage: 'AI가 꺼져 있습니다. AI를 켜고 스킬을 가져올까요?',
   aiOnAndImport: 'AI 켜고 가져오기',
+  fileOnlyDetail: '파일만 만들면 편집기는 꺼 둔 채 만든 파일을 폴더에서 보여 줍니다.',
+  entranceDetail: '이 기능은 {item}를 켜야 쓸 수 있습니다.',
+  genAiOffConvert: 'AI가 꺼져 있어 AI 없이 바꾸기만 할 수 있습니다.',
+  genAiOffNoConversion:
+    'AI가 꺼져 있습니다. 마인드맵이나 마크다운 파일 하나만 넣으면 AI 없이 바꿀 수 있습니다.',
 } satisfies Record<keyof typeof zh, string>

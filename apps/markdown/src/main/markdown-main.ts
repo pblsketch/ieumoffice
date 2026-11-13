@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
@@ -37,6 +37,7 @@ import {
   rendererUrl,
 } from '@genoffice/electron-utils'
 import type { RecoveryIdentity, SaveDiskState } from '@genoffice/electron-utils'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import { sharedSubscriptionStatuses } from '@genoffice/ai-provider/subscription'
 import {
@@ -1639,6 +1640,20 @@ function registerMarkdownIpc(): void {
       try {
         const bytes = Buffer.from(request.base64, 'base64')
         if (request.mode === 'openInDocs') {
+          // "open in Word" while the Word editor is off asks before anything is
+          // written (editor choice spec 7.3); "create the file only" puts the
+          // file where new documents go and shows it in its folder
+          const answer = await askBeforeMakeAndOpen('docs', { fileName: `${safeName}.docx` })
+          if (answer === 'cancel') return { ok: true, canceled: true }
+          if (answer === 'file-only') {
+            const dir = configuredDefaultSaveDir(app)
+            await mkdir(dir, { recursive: true })
+            let target = join(dir, `${safeName}.docx`)
+            for (let n = 2; existsSync(target); n++) target = join(dir, `${safeName}-${n}.docx`)
+            await writeFile(target, bytes)
+            shell.showItemInFolder(target)
+            return { ok: true, path: target }
+          }
           // Each conversion gets an app-owned cache file. A marked session is
           // retained for the life of open Docs tabs; crash leftovers expire
           // after the explicit TTL enforced when the next session starts.
@@ -1741,6 +1756,11 @@ function registerMarkdownIpc(): void {
       const approved = takeSaveAsExportTarget(e.sender.id, askedFormat, asked)
       if (approved === null) return { ok: false, error: 'markdown: save target not approved' }
       let target = approved ?? null
+      // the File menu's export opens the copy in a Hangul tab: while that editor
+      // is off it asks first (editor choice spec 7.3); Save As does not ask
+      if (!target && (await askBeforeMakeAndOpen('hwp', { fileName: safeName })) === 'cancel') {
+        return { ok: true, canceled: true }
+      }
       if (!target) {
         const first = readHwpDefaultFormat(app)
         const picked = await showSaveDialogWithMemory(

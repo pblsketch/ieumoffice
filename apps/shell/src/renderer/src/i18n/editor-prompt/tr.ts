@@ -19,4 +19,10 @@ export const tr = {
   cancel: 'İptal',
   aiOffSkillMessage: 'AI kapalı. AI etkinleştirilip beceri içe aktarılsın mı?',
   aiOnAndImport: "AI'yı etkinleştir ve içe aktar",
+  fileOnlyDetail:
+    'Yalnızca dosyayı oluştur: düzenleyici kapalı kalır ve yeni dosya klasöründe gösterilir.',
+  entranceDetail: 'Bu özellik için {item} açık olmalıdır.',
+  genAiOffConvert: 'AI kapalı: yalnızca AI kullanmayan dönüştürmeler kullanılabilir.',
+  genAiOffNoConversion:
+    'AI kapalı. AI olmadan dönüştürmek için tek bir zihin haritası veya Markdown dosyası ekleyin.',
 } satisfies Record<keyof typeof zh, string>

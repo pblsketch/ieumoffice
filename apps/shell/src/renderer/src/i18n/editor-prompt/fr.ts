@@ -19,4 +19,10 @@ export const fr = {
   cancel: 'Annuler',
   aiOffSkillMessage: 'L’IA est désactivée. Activer l’IA et importer la compétence ?',
   aiOnAndImport: 'Activer l’IA et importer',
+  fileOnlyDetail:
+    'Créer le fichier seulement : l’éditeur reste désactivé et le nouveau fichier est affiché dans son dossier.',
+  entranceDetail: 'Cette fonction nécessite que l’{item} soit activé.',
+  genAiOffConvert: 'L’IA est désactivée : seules les conversions sans IA sont disponibles.',
+  genAiOffNoConversion:
+    'L’IA est désactivée. Ajoutez une seule carte mentale ou un seul fichier Markdown pour le convertir sans IA.',
 } satisfies Record<keyof typeof zh, string>

@@ -42,6 +42,7 @@ import type {
   RecoveryStore,
   SaveDiskState,
 } from '@genoffice/electron-utils'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { brandText, createI18n, getUiLang } from '@genoffice/i18n'
 import {
   abortMediaCalls,
@@ -684,6 +685,15 @@ interface RuntimePaths {
   createDocument?: (
     request: CreateDocumentRequest,
     ownerWebContentsId?: number,
+  ) => Promise<CreateDocumentResult>
+  /**
+   * "Create the file only" of the annotation list's document while the editor
+   * it opens in is off (editor choice spec 7.3): the shell writes it where new
+   * documents go and shows it in its folder. Never the AI's creator.
+   */
+  writeDocumentFile?: (
+    request: CreateDocumentRequest,
+    ownerWebContentsId: number,
   ) => Promise<CreateDocumentResult>
   /** The shell's PDF tools window, opened on a task with a file picked (decision 0030) */
   openPdfTools?: (path: string, tool: PdfToolsHandoffTool) => boolean
@@ -1737,6 +1747,33 @@ function registerPdfIpc(): void {
       if (!create) return { ok: false, error: 'pdf: document creation is unavailable in this host' }
       try {
         return await create(parsed, e.sender.id)
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  // The annotation list's "Open as Markdown / Word document" (no AI): the
+  // document opens in another editor, so while that editor is off the shell
+  // asks before anything is made (editor choice spec 7.3)
+  ipcMain.handle(
+    PDF_CHANNELS.annotDocument,
+    async (e, request: unknown): Promise<CreateDocumentResult> => {
+      if (!allowedByWc.has(e.sender.id)) {
+        return { ok: false, error: 'pdf: sender is not a registered PDF view' }
+      }
+      const parsed = parseCreateDocumentRequest(request)
+      if (!parsed || (parsed.type !== 'md' && parsed.type !== 'docx')) {
+        return { ok: false, error: 'pdf: invalid annotation document request' }
+      }
+      const answer = await askBeforeMakeAndOpen(parsed.type === 'md' ? 'markdown' : 'docs', {
+        fileName: `${parsed.title}.${parsed.type}`,
+      })
+      if (answer === 'cancel') return { ok: false, canceled: true }
+      const make = answer === 'file-only' ? runtime.writeDocumentFile : runtime.createDocument
+      if (!make) return { ok: false, error: 'pdf: document creation is unavailable in this host' }
+      try {
+        return await make(parsed, e.sender.id)
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }

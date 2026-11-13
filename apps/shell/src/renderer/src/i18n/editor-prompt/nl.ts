@@ -19,4 +19,10 @@ export const nl = {
   cancel: 'Annuleren',
   aiOffSkillMessage: 'AI staat uit. AI aanzetten en de vaardigheid importeren?',
   aiOnAndImport: 'AI aanzetten en importeren',
+  fileOnlyDetail:
+    'Alleen het bestand maken: de editor blijft uit en het nieuwe bestand wordt in de map getoond.',
+  entranceDetail: 'Hiervoor moet de {item} aan staan.',
+  genAiOffConvert: 'AI staat uit: alleen omzettingen zonder AI zijn beschikbaar.',
+  genAiOffNoConversion:
+    'AI staat uit. Voeg één mindmap- of Markdown-bestand toe om het zonder AI om te zetten.',
 } satisfies Record<keyof typeof zh, string>
