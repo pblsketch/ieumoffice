@@ -30,17 +30,19 @@ Subject: [PATCH 34/34] fix(typeset): 다단에서 편집이 이어 붙인 글이
   단·쪽에서 밀려났고, 흐름이 뒤처진 채 두면 흐름 자리에 놓이는 글자처럼 취급 표가 저장
   자리에 그린 앞 글 위로 올라간다(시험지 20번 문단 뒤 2줄: 표가 세 줄을 덮음).
 
+한 단짜리 머리 아래에 2단 본문이 이어지는 구역(구역 가운데의 단 정의)도 같은 규칙으로 넘긴다.
+
 조판만 바뀌고 저장(HWP·HWPX) 결과는 같다. samples 의 1,513개 문서의 dump-pages 는
 전후 같다(편집하지 않은 문서에서는 옮기는 일이 없다). 한/글이 한 문단을 두 단에 나눠
 저장한 자리(문단 안 되감김) 앞에 글을 더한 경우는 고치기 전과 같다.
 ---
  src/renderer/typeset/section/flow.rs               |   3 +
- src/renderer/typeset/section/vpos.rs               | 166 ++++++++++++++++++++-
+ src/renderer/typeset/section/vpos.rs               | 166 ++++++++++++++++-
  src/renderer/typeset/state/commands.rs             |  15 ++
  src/renderer/typeset/state/data.rs                 |  14 ++
  src/renderer/typeset/state/transition.rs           |   2 +
- .../multicolumn_stored_ladder_past_column_foot.rs  | 148 ++++++++++++++++++
- 6 files changed, 346 insertions(+), 2 deletions(-)
+ .../multicolumn_stored_ladder_past_column_foot.rs  | 201 +++++++++++++++++++++
+ 6 files changed, 399 insertions(+), 2 deletions(-)
  create mode 100644 tests/cases/multicolumn_stored_ladder_past_column_foot.rs
 
 diff --git a/src/renderer/typeset/section/flow.rs b/src/renderer/typeset/section/flow.rs
@@ -313,10 +315,10 @@ index d0c81752f30b91bafe93b4b4e7357b5c69ff65a6..cda3dfc23fc217b2a88c090f83cd1110
                  vpos_prev_layout_para: None,
 diff --git a/tests/cases/multicolumn_stored_ladder_past_column_foot.rs b/tests/cases/multicolumn_stored_ladder_past_column_foot.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0b1bed47b08b05e2382654da4cb6cbafd56add59
+index 0000000000000000000000000000000000000000..dad9564c8b78c3e06fd70c86544444e0517d7f36
 --- /dev/null
 +++ b/tests/cases/multicolumn_stored_ladder_past_column_foot.rs
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,201 @@
 +#![cfg(not(target_arch = "wasm32"))]
 +//! 다단 구역에서 편집으로 늘어난 글은 단 바닥에서 다음 단과 쪽으로 넘어간다.
 +//!
@@ -330,6 +332,10 @@ index 0000000000000000000000000000000000000000..0b1bed47b08b05e2382654da4cb6cbaf
 +//! - 한/글이 저장한 2단 시험지(`samples/exam_eng.hwp`)의 저장 줄에서 갈라 낸 100문단:
 +//!   본문 아래로 넘는 글이 없고 앞쪽 문단의 쪽이 그대로다. 고치기 전 48줄이 본문 아래.
 +//! - 저장 문단 뒤에 엔진이 다시 짠 문단(저장 자리가 없다)이 이어져도 같다.
++//! - 한 단짜리 머리 아래에 2단 본문이 이어지는 구역(시험지 양식의 꼴)도 같다.
++use rhwp::model::control::Control;
++use rhwp::model::page::ColumnDef;
++use rhwp::model::paragraph::ColumnBreakType;
 +use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
 +use rhwp::wasm_api::HwpDocument;
 +
@@ -464,4 +470,53 @@ index 0000000000000000000000000000000000000000..0b1bed47b08b05e2382654da4cb6cbaf
 +    doc.reflow_body_paragraph_range_native(0, last + 1..last + 101)
 +        .unwrap();
 +    assert_eq!(runs_below_their_column(&doc), 0, "본문 아래 글");
++}
++
++/// 한 단짜리 머리 아래에 2단 본문이 이어지는 구역(시험지 양식의 꼴)에 더한 글도 두 단과 다음
++/// 쪽으로 간다. 본문 단 정의는 구역 첫 문단이 아니라 셋째 문단에 있다.
++#[test]
++fn lines_added_below_a_one_column_head_flow_into_the_two_column_body() {
++    let mut doc = HwpDocument::create_empty();
++    doc.create_blank_document().unwrap();
++    doc.insert_text(0, 0, 0, "머리").unwrap();
++    add_lines_by_split(&mut doc, 0, 2);
++    // 한/글의 다단 나누기처럼 경계 표시와 그 앞의 8유닛 단 정의 슬롯을 함께 넣는다.
++    let paragraph = &mut doc.document_mut().sections[0].paragraphs[2];
++    paragraph.column_type = ColumnBreakType::MultiColumn;
++    paragraph.raw_break_type = 0x02;
++    paragraph.align_ctrl_data_records();
++    paragraph.controls.insert(
++        0,
++        Control::ColumnDef(ColumnDef {
++            column_count: 2,
++            same_width: true,
++            spacing: 2268,
++            ..Default::default()
++        }),
++    );
++    paragraph.ctrl_data_records.insert(0, None);
++    for offset in &mut paragraph.char_offsets {
++        *offset += 8;
++    }
++    for shape in paragraph
++        .char_shapes
++        .iter_mut()
++        .filter(|shape| shape.start_pos > 0)
++    {
++        shape.start_pos += 8;
++    }
++    paragraph.char_count += 8;
++    doc.reflow_body_paragraph_range_native(0, 2..3).unwrap();
++
++    for index in 3..3 + LINES {
++        doc.insert_paragraph_native(0, index).unwrap();
++        doc.insert_text(0, index as u32, 0, &format!("본문 {index}"))
++            .unwrap();
++    }
++    assert_eq!(runs_below_their_column(&doc), 0, "본문 아래 글");
++    assert!(
++        doc.page_count() <= 4,
++        "두 단을 채운다: {}쪽",
++        doc.page_count()
++    );
 +}
