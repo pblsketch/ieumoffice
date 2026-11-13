@@ -221,7 +221,6 @@ describe('page setup', () => {
     plugin.setPageSetup({ paper: 'A4', orientation: 'portrait', margins: { left: 30 } }, null)
     expect(plugin.setPageSetup(read, null)).toMatchObject({ ok: true, pageSetup: read })
     expect(plugin.pageSetup().sections).toEqual([read])
-    // a size that is not the paper's is still two answers to one question
     expect(() => plugin.setPageSetup({ paper: 'A4', width: 182, height: 257 }, null)).toThrow(
       /paper A4 is 210 by 297 millimetres/,
     )

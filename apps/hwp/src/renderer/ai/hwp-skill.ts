@@ -479,11 +479,6 @@ const NOTE_TEXT_SCHEMA = {
     'the text of the note, without its number; a line break starts a new paragraph of the note',
 }
 
-/**
- * A tool of this skill. `edits` says whether it changes the open document: an edit left
- * undone is told to the user, and an argument an editing tool does not declare is refused
- * where a reading tool answers and names it. The mark stays here (see `offered`).
- */
 type HwpToolDef = AgentToolDef & { edits: boolean }
 
 /** offered only where the app can open a new tab (see `createHwpSkill`) */
@@ -1736,16 +1731,10 @@ export const HWP_EDIT_TOOLS: ReadonlySet<string> = new Set(
   ALL_TOOLS.filter((tool) => tool.edits).map((tool) => tool.name),
 )
 
-/** A definition as the loop, a provider and the command line get it: without the mark. */
 const offered = ({ edits: _edits, ...tool }: HwpToolDef): AgentToolDef => tool
 const OFFERED_TOOLS = TOOLS.map(offered)
 const OFFERED_IMPORT_ATTACHMENT = offered(IMPORT_ATTACHMENT_TOOL)
 
-/**
- * What a read answer called a setting before it took the name the write tools declare: the
- * editor plugin's own name for it. A read answer leaves in the declared names, and the old
- * ones are still taken as arguments.
- */
 const READ_NAMES = new Map([
   ['lineSpacing', 'line_spacing'],
   ['marginLeft', 'margin_left'],
@@ -1760,10 +1749,8 @@ const READ_NAMES = new Map([
   ['gapMm', 'gap_mm'],
 ])
 
-/** The old names taken as arguments: the read names, and a tab stop's `atMm`, which always went through. */
 const ARGUMENT_ALIASES = new Map([...READ_NAMES, ['atMm', 'at_mm']])
 
-/** The plugin's names for arguments, as the words of its refusals have them. */
 const PLUGIN_NAMES = new Map([
   ...ARGUMENT_ALIASES,
   ['charWidth', 'char_width'],
@@ -1789,18 +1776,11 @@ const PLUGIN_NAMES = new Map([
 ])
 const PLUGIN_NAME = new RegExp(`\\b(?:${[...PLUGIN_NAMES.keys()].join('|')})\\b`, 'g')
 
-/** The plugin's words for a refusal with its names for arguments turned into the declared ones. */
 const inDeclaredWords = (message: string): string =>
   message.replace(PLUGIN_NAME, (name) => PLUGIN_NAMES.get(name) ?? name)
 
 const PAGE_MARGIN_SIDES = ['left', 'right', 'top', 'bottom', 'header', 'footer', 'gutter'] as const
 
-/**
- * Keys a read answer carries beside its settings (how many paragraphs have a look, the style
- * they have, what a style is, whether a header exists). Handed back with the settings to a
- * tool that does not declare them, they are named in the answer as left alone, where any
- * other undeclared argument is refused.
- */
 const READ_ONLY_KEYS = new Set([
   'paragraphs',
   'samples',
@@ -1812,7 +1792,6 @@ const READ_ONLY_KEYS = new Set([
   'plain',
 ])
 
-/** Whether an undeclared key is one a read answer carries: the keys above, and the id of a look. */
 const isReadOnly = (name: string, value: unknown): boolean =>
   READ_ONLY_KEYS.has(name) || (name === 'look' && typeof value === 'string')
 
@@ -1821,7 +1800,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isGiven = (value: unknown): boolean => value !== undefined && value !== null
 
-/** A read answer of the plugin with its keys in the names the write tools declare, the page margins flat. */
 function inDeclaredNames(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(inDeclaredNames)
   if (!isRecord(value)) return value
@@ -1834,18 +1812,12 @@ function inDeclaredNames(value: unknown): unknown {
   return out
 }
 
-/** The looks of a read answer with their id under the name format_look takes it by. */
 const looksByName = (looks: readonly object[]): unknown[] =>
   looks.map((entry) => {
     const { id, ...look } = inDeclaredNames(entry) as Record<string, unknown>
     return id === undefined ? look : { look: id, ...look }
   })
 
-/**
- * format_cells with its block given the way merge_cells takes one (four corners) or with
- * one cell the way split_cell names it, moved into `range` and `cells`. Without either, the
- * handler would take a call that names no cells as the whole table.
- */
 function withCellsNamed(input: Record<string, unknown>): Record<string, unknown> {
   if (isGiven(input.cells) || isGiven(input.range)) return input
   const { from_row, from_col, to_row, to_col, row, col, ...rest } = input
@@ -1858,25 +1830,17 @@ function withCellsNamed(input: Record<string, unknown>): Record<string, unknown>
   return input
 }
 
-/** format_look with the look named `id`, as a read answer once had it. */
 function withLookNamed(input: Record<string, unknown>): Record<string, unknown> {
   if (!isGiven(input.id) || isGiven(input.look)) return input
   const { id, ...rest } = input
   return { ...rest, look: id }
 }
 
-/** Shapes one tool takes its arguments in besides the declared one. */
 const OTHER_SHAPES = new Map([
   ['format_cells', withCellsNamed],
   ['format_look', withLookNamed],
 ])
 
-/**
- * An object of a call's input in the shape and the names its schema declares, where it came
- * in the ones a read answer has or had: a `look` wrapper and the page `margins` opened up,
- * an old name moved to the declared one. A move that would write over a key the call also
- * gave is not made, so the undeclared key is left to be refused.
- */
 function inDeclaredShape(
   value: Record<string, unknown>,
   declared: Record<string, unknown>,
@@ -1910,11 +1874,6 @@ function inDeclaredShape(
   return out
 }
 
-/**
- * A number or a flag that came as a string, as the type its schema declares: the repair the
- * loop makes at the top level of a call, here at every depth and for the command line too.
- * A number is not pulled into a declared range: the handlers refuse one that is out of it.
- */
 function inDeclaredType(value: unknown, schema: Record<string, unknown>): unknown {
   if (typeof value !== 'string') return value
   const types: unknown[] = Array.isArray(schema.type) ? schema.type : [schema.type]
@@ -1932,32 +1891,19 @@ function inDeclaredType(value: unknown, schema: Record<string, unknown>): unknow
   return value
 }
 
-/** An argument of a call that its tool does not declare. */
 export interface UndeclaredArgument {
-  /** where it is in the input: `font_size`, `border.side`, `cells[0].column` */
   path: string
   name: string
-  /** the object that holds it: `''` for the call itself, else its path (`border`) */
   holder: string
-  /** the names the tool declares there */
   declared: string[]
 }
 
-/** A call's input as the handlers take it, and what of it they will not use. */
 export interface PreparedInput {
   input: Record<string, unknown>
-  /** to refuse when the tool edits, to name in the answer when it reads */
   undeclared: UndeclaredArgument[]
-  /** paths of the keys a read answer carries beside its settings: named in the answer */
   readOnly: string[]
 }
 
-/**
- * The three steps every call passes before its handler, in the app and on the command line
- * alike: the shapes and names of a read answer become the declared ones, a quoted number or
- * flag becomes the value, and what the tool still does not declare is listed. A null is
- * taken as nothing given.
- */
 export function prepareInput(tool: AgentToolDef, input: Record<string, unknown>): PreparedInput {
   const undeclared: UndeclaredArgument[] = []
   const readOnly: string[] = []
@@ -1984,7 +1930,6 @@ const wordsOf = (name: string): string[] =>
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
 
-/** Two words of a name that say the same: equal, or one the start of the other (col, column). */
 const sameWord = (one: string, other: string): boolean =>
   one === other ||
   (Math.min(one.length, other.length) >= 3 && (one.startsWith(other) || other.startsWith(one)))
@@ -2005,12 +1950,6 @@ function editDistance(from: string, to: string): number {
   return row[to.length]!
 }
 
-/**
- * The declared names an undeclared one most likely stands for, the likeliest first, two when
- * nothing tells them apart: the plugin's spelling of one, the name with the most of its
- * words (font_size is size, the word a name ends on counting for more), or a slip of the
- * keys (colour).
- */
 export function nearestNames(name: string, declared: readonly string[]): string[] {
   const known = PLUGIN_NAMES.get(name)
   if (known !== undefined && declared.includes(known)) return [known]
@@ -2046,10 +1985,6 @@ export function nearestNames(name: string, declared: readonly string[]): string[
   return close.slice(0, 1).map((entry) => entry.candidate)
 }
 
-/**
- * The cure of a slip a tool is known for, by the name given at the top of the call: where the
- * argument belongs instead. A slip with a cure gets no guess at a near name beside it.
- */
 const SLIP_CURES: Record<string, (name: string) => string | null> = {
   format_text: (name) =>
     Object.hasOwn(PARAGRAPH_FORMAT_SCHEMA, ARGUMENT_ALIASES.get(name) ?? name)
@@ -2063,7 +1998,6 @@ const SLIP_CURES: Record<string, (name: string) => string | null> = {
 
 const quoted = (names: readonly string[]): string => names.map((name) => `"${name}"`).join(', ')
 
-/** Why an editing tool did nothing for a call with arguments it does not declare. */
 function undeclaredRefusal(tool: string, undeclared: readonly UndeclaredArgument[]): string {
   const cures = new Set<string>()
   const slips = undeclared.map(({ path, name, holder, declared }) => {
@@ -2074,11 +2008,9 @@ function undeclaredRefusal(tool: string, undeclared: readonly UndeclaredArgument
       ? `unknown argument "${path}"; did you mean ${near.map((n) => `"${n}"`).join(' or ')}?`
       : `unknown argument "${path}".`
   })
-  // the command line lifts a line that starts with "Usage:" into the failure's own field
   return `Nothing was changed: ${[...slips, ...cures].join(' ')}\nUsage: ${takenWhere(tool, undeclared)}`
 }
 
-/** The names the tool takes at each place an undeclared one stood. */
 function takenWhere(tool: string, undeclared: readonly UndeclaredArgument[]): string {
   const holders = new Map(undeclared.map((slip) => [slip.holder || tool, slip.declared]))
   const lists = [...holders].map(
@@ -2088,7 +2020,6 @@ function takenWhere(tool: string, undeclared: readonly UndeclaredArgument[]): st
   return `${lists.join('; ')}.`
 }
 
-/** What an answer ends with when the tool went ahead without some of what it was given. */
 function unusedNote(tool: HwpToolDef, { undeclared, readOnly }: PreparedInput): string {
   const named = tool.edits ? [] : undeclared
   const paths = [...named.map((slip) => slip.path), ...readOnly]
@@ -2404,11 +2335,7 @@ const standInNote = (fonts: AgentStandInFont[] | undefined): string =>
     ? ` This PC does not have ${fonts.map((font) => font.asked).join(', ')}: ${fonts.map((font) => `${font.used} was written for ${font.asked}`).join(', ')}. Tell the user.`
     : ''
 
-/**
- * The border rules of a format_cells call as the editor takes them; null when one is not an
- * object. What a rule holds is the editor's to check: a value dropped here for its type
- * would get the default (every side, a solid line) and the call would answer as done.
- */
+/** The border rules of a format_cells call as the editor takes them; null when one is not an object. */
 function borderArgs(raw: unknown): AgentBorderRule[] | null {
   if (!Array.isArray(raw) || raw.length === 0 || !raw.every(isRecord)) return null
   return raw.map(
@@ -2627,7 +2554,6 @@ const arrow = (from: string, to: string) => `“${quote(from)}” → “${quote
 const NO_FORMAT_HELP =
   'Name at least one property to change: bold, italic, underline, strikethrough, font, size, color, highlight, and for a paragraph align, line_spacing, indent, margin_left, margin_right, space_before, space_after or style.'
 
-/** Cells a format_cells answer names one by one; a longer list is counted. */
 const NAMED_CELLS = 8
 
 /** Table places as the model names them: row.col. */
@@ -3975,7 +3901,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const result = await bridge.readStyle(name)
         if (!result.ok) return bad(call, noSuchStyle(result))
         const { ok: _ok, name: found, englishName, ...rest } = result
-        // a style without an English name has none to hand back: edit_style takes no empty one
         const style = englishName ? { englishName, ...rest } : rest
         return {
           output: `Style "${found}": ${JSON.stringify(inDeclaredNames(style))}`,
@@ -4088,7 +4013,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (isGiven(rawCells) && (!Array.isArray(rawCells) || rawCells.length === 0)) {
           return bad(call, 'cells must list at least one {row, col}')
         }
-        // cells that cannot be read name no cells, and no cells would mean the whole table
         if (isGiven(rawRange) && !isRecord(rawRange)) {
           return bad(call, 'range must be an object: { from_row, from_col, to_row, to_col }')
         }
@@ -5289,8 +5213,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const change: { text: string; align?: 'left' | 'center' | 'right'; size?: number } = {
           text,
         }
-        // an alignment the editor does not write is the editor's to refuse: dropped here, the
-        // line would keep the one it has and the call would answer as done
         if (isGiven(align)) change.align = align as 'left' | 'center' | 'right'
         if (typeof call.input.size === 'number') change.size = call.input.size
         const outcome = await changeWithMemoApproval(
@@ -5438,7 +5360,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       },
       buildContext: () => [context, selectionContext()].filter(Boolean).join('\n\n'),
       executeTool: async (given, signal) => {
-        // by the definition itself: the list offered depends on what this window can do
         const tool = TOOL_BY_NAME.get(given.name)
         if (!tool) return run(given, signal)
         const prepared = prepareInput(tool, given.input)

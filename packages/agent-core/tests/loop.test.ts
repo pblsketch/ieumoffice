@@ -2110,7 +2110,6 @@ describe('AgentLoop compaction', () => {
         title: 't',
         styles: [{ size: 12, border: { width: 0.5 }, tabs: [{ at_mm: 40 }] }, { size: 9 }],
       })
-      // the caller's input is not written to, and what did not change is not copied
       expect(input.styles[0]!.size).toBe('12')
       expect((out.styles as unknown[])[1]).toBe(input.styles[1])
     })
@@ -2144,7 +2143,6 @@ describe('AgentLoop compaction', () => {
         walkArgumentFields({ name: 'bare', description: '', inputSchema: {} }, input, visit),
       ).toBe(input)
       expect(visit).toHaveBeenCalledTimes(1)
-      // a visit that answers with something that is no object cannot replace the input
       expect(walkArgumentFields(tool, input, () => 'nothing')).toBe(input)
     })
   })

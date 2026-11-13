@@ -331,7 +331,6 @@ describe('ieumoffice create --type hwp', () => {
 })
 
 describe('a number that counts from 1, and a number with a range', () => {
-  /** every op here is refused by the tool itself: no schema bound stands in front of it */
   const REFUSED: [op: Record<string, unknown>, says: RegExp][] = [
     [{ op: 'replace_text', find: '시행', replace: '실시', occurrence: 0 }, /occurrence must be/],
     [
@@ -474,7 +473,6 @@ describe('a number that counts from 1, and a number with a range', () => {
   it('is refused by the tool when it is 0 or out of its range, and nothing is written', async () => {
     const dir = tempDir()
     const path = write(dir, 'report.hwp', report().exportHwp())
-    // a footnote, so that note 0 is refused for its number and not for want of notes
     const noted = await run([
       'hwp',
       'apply',
@@ -510,7 +508,6 @@ describe('a number that counts from 1, and a number with a range', () => {
 })
 
 describe('what the read ops answer', () => {
-  /** the JSON a read op answers with, after whatever words stand in front of it */
   const json = (output: string) => JSON.parse(output.slice(output.search(/[{[]/)).split('\n')[0]!)
   const READS = [
     { op: 'read_style', name: '본문 시험' },
@@ -547,14 +544,12 @@ describe('what the read ops answer', () => {
     ])
     expect(first.code, first.stdout).toBe(0)
     const [style, setup, notes, layout, formatting] = outputs(first, READS.length).map(json)
-    // every name is one a write op declares: none of the editor's own
     expect(JSON.stringify([style, setup, notes, layout, formatting])).not.toMatch(
       /lineSpacing"|marginLeft|marginRight|spacingBefore|spacingAfter|listLevel|englishName|nextStyle|numberFormat|startNumber|gapMm|"margins"|"id"/,
     )
     const look = formatting.looks.find((entry: { size: number }) => entry.size === 13)
     expect(look).toMatchObject({ line_spacing: 200, margin_left: 20 })
 
-    // other values, then every answer handed back as it came
     const second = await run([
       'hwp',
       'apply',
@@ -621,7 +616,6 @@ describe('what the read ops answer', () => {
     expect(errors[4]).toMatch(/^row_height_mm must be/)
     expect(errors[5]).toMatch(/^gap_mm must be/)
     expect(errors[6]).toContain('unknown argument "font_size"; did you mean "size"?')
-    // the names a refused op takes come as a field of the failure, for a caller that is a program
     expect(r.json().detail.failures[6].usage).toMatch(/^Usage: format_paragraph takes find, /)
   })
 })

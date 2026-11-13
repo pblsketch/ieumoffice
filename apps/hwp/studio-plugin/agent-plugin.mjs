@@ -2304,8 +2304,7 @@ function pageSetupOf(doc, sec) {
 /**
  * A page setup request, checked: what to give the engine's setPageDef (only what was asked
  * for), or a failure. `paper` names a size, or `width` and `height` give one (millimetres,
- * portrait), or both when they are the same size; `orientation` turns it; `margins` sets the
- * margins named.
+ * portrait); `orientation` turns it; `margins` sets the margins named.
  */
 function pageSetupChangeOf(spec) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
@@ -2324,7 +2323,6 @@ function pageSetupChangeOf(spec) {
     if (!size) {
       throw fail('BAD_ARGUMENT', `paper must be one of ${Object.keys(PAPER_SIZES).join(', ')}`)
     }
-    // what pageSetupOf reads names a paper and its size together: handed back, they agree
     const agrees = (value, mm) => typeof value === 'number' && Math.abs(value - mm) < 1
     if (
       (given('width') || given('height')) &&
@@ -3310,8 +3308,6 @@ function titleBoxOf(spec) {
     }
     return value.toLowerCase()
   }
-  // checked under its own name: handed on as the text's `color`, a bad one would be
-  // reported as `color`, which is the colour of the box
   colorOf(given.textColor, 'textColor')
   const standIns = []
   const text = {}
@@ -3337,7 +3333,6 @@ function titleBoxOf(spec) {
     color,
     color2: colorOf(given.color2, 'color2'),
     text: Object.keys(text).length > 0 ? standInFormat(text, standIns) : null,
-    // the fill the words stand on, when the call named no colour for them
     fillBehind:
       look === 'shaded' && (given.textColor === undefined || given.textColor === null)
         ? color
@@ -3398,26 +3393,16 @@ function plainHeader(found) {
   )
 }
 
-/** The mark the engine leaves in a header's text for a field of type `type`. */
 const headerFieldMark = (type) => String.fromCharCode(0x14 + type)
-/** The token setHeaderFooter takes for a field, by the mark it reads back as. */
 const HEADER_TOKEN_OF_MARK = new Map(
   Object.entries(HEADER_FIELD_TOKENS).map(([token, type]) => [headerFieldMark(type), token]),
 )
 
-/**
- * A header or footer's text as the model reads it: a page field as the token that writes
- * it, so the text can be handed back as it was read; any other field as a placeholder.
- */
 const headerTextOf = (text) =>
   String(text ?? '')
     .replace(HEADER_FIELD_MARKS, (mark) => HEADER_TOKEN_OF_MARK.get(mark) ?? '{field}')
     .replace(ANY_CONTROL, ' ')
 
-/**
- * How a one-line header or footer is set: its alignment, when it is one setHeaderFooter
- * writes, and the size of its text in points. Nothing from an engine without the calls.
- */
 function headerLookOf(doc, isHeader, text) {
   const look = {}
   try {
@@ -3427,9 +3412,7 @@ function headerLookOf(doc, isHeader, text) {
       const size = parse(doc.getCharPropertiesInHeaderFooter(0, isHeader, 0, 0, 0)).fontSize
       if (Number.isFinite(size)) look.size = size / 100
     }
-  } catch {
-    // not known
-  }
+  } catch {}
   return look
 }
 
@@ -8035,7 +8018,6 @@ export const agentPlugin = {
                 },
                 false,
               )
-              // a title the call gave no colour, on a fill the colour it has does not show on
               const onFill = wanted.fillBehind ? textColorOnFill(wanted.fillBehind) : null
               const has = look.chars?.textColor
               const whitened =
@@ -8670,7 +8652,6 @@ export const agentPlugin = {
               }
               offset = done.charOffset
             }
-            // a rewrite that names no alignment keeps the one the line has
             if (align !== null || !exists) {
               expectOk(
                 doc.applyParaFormatInHf(

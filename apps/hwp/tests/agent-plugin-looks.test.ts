@@ -255,7 +255,6 @@ describe('insertTable: looks', () => {
 
   it('writes the words of a header row white on a dark fill, in the document and in both files', () => {
     const { doc, para } = withTable({ header: true, headerColor: '#1F3864' })
-    // two cells of the header row and one of the row under it
     const colours = (source: HwpDocument) => {
       const table = tableIn(source, para)
       return [0, 2, 3].map(
@@ -284,7 +283,6 @@ describe('insertTable: looks', () => {
       { header: true, headerColor: '#D9E2F3' },
       { header: true },
       { header: true, headerColor: 'none' },
-      // no header row: the colour has nothing to fill
       { headerColor: '#1F3864' },
     ]) {
       expect(insert(look), JSON.stringify(look)).not.toHaveProperty('headerTextColor')
@@ -604,7 +602,6 @@ describe('page number, header and footer', () => {
       align: 'right',
       size: 9,
     })
-    // the page fields read back as the tokens that write them; a new line is centred
     expect(layout.footer).toEqual({
       exists: true,
       text: '운영 계획 | {page} / {pages}',
@@ -621,8 +618,6 @@ describe('page number, header and footer', () => {
         true,
       )
     }
-    // the same call again replaces the text instead of adding to it, and a call that names
-    // no alignment leaves the line where it stands
     plugin.setHeaderFooter('header', { text: '교무기획부' })
     expect(plugin.pageLayout().header).toMatchObject({ text: '교무기획부', align: 'right' })
     plugin.setHeaderFooter('header', { text: '교무기획부', align: 'left' })
@@ -659,7 +654,6 @@ describe('page number, header and footer', () => {
     plugin.setHeaderFooter('footer', { text: '다른 글', align: 'left', size: 12 })
     plugin.setHeaderFooter('footer', read)
     expect(plugin.pageLayout().footer).toMatchObject(read)
-    // the fields are fields again, not the words of the tokens: a saved copy draws the numbers
     for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
       const page = new HwpDocument(bytes).renderPageSvgWithProfile(0, 'print')
       const drawn = [...page.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]).join('')
@@ -1469,7 +1463,6 @@ describe('a title box and the colour of its words', () => {
     for (const bytes of [dark.doc().exportHwpx(), dark.doc().exportHwp()]) {
       expect(titleColor(new HwpDocument(bytes))).toBe('#ffffff')
     }
-    // a fill black shows on, and the looks that leave the page behind the words, keep the colour
     for (const box of [
       { look: 'shaded' as const, color: '#D9E2F3' },
       { look: 'shaded' as const },
@@ -1481,7 +1474,6 @@ describe('a title box and the colour of its words', () => {
       expect(made, JSON.stringify(box)).not.toHaveProperty('textColor')
       expect(titleColor(light.doc()), JSON.stringify(box)).toBe('#000000')
     }
-    // a colour the call asks for is not replaced: it is kept, or left out as before
     const asked = open()
     const kept = asked.plugin.insertTitleBox(TITLE, null, {
       look: 'shaded',

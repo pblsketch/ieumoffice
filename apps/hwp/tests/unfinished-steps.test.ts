@@ -37,7 +37,6 @@ describe('the edits a run left undone', () => {
   })
 
   it('count a refusal of every tool that changes the document', () => {
-    // the nine a hand-kept list once left out
     for (const name of [
       'resize_picture',
       'style_paragraphs',

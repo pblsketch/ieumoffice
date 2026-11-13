@@ -1254,7 +1254,6 @@ describe('styles', () => {
     const result = await call('read_style', { name: '본문' })
     expect(bridge.readStyle).toHaveBeenCalledWith('본문')
     expect(result.output).toContain('Style "본문"')
-    // in the names edit_style takes, not the editor's own
     expect(result.output).toContain('"margin_left":15')
     expect(result.output).toContain('"line_spacing":160')
     expect(result.output).toContain('"english_name":"Body"')
@@ -2548,7 +2547,6 @@ describe('the look of a document', () => {
     })
     expect(coloured.isError).toBeFalsy()
     expect(coloured.output).toContain('header_color did nothing: the table has no header row')
-    // the editor answers without acrossColumns where the text runs in one column
     const oneColumn = await plain.call('insert_table', { where: 'end', rows, across_columns: true })
     expect(oneColumn.output).toContain('across_columns did nothing: the text runs in one column')
     const across = setup({
@@ -2571,7 +2569,6 @@ describe('the look of a document', () => {
     expect(head.output).toContain('lying across the columns of the page')
     expect(head.output).toContain('width_percent and place did nothing')
     expect(head.output).not.toContain('across_columns did nothing')
-    // white words the call did not ask for are told
     const dark = setup({
       insertTable: vi.fn(async () => ({
         ok: true as const,
@@ -2602,7 +2599,6 @@ describe('the look of a document', () => {
       color: '#1F3864',
     })
     expect(title.output).toContain('The title was written white to show on the fill.')
-    // nothing is said of an option that took effect
     const used = await plain.call('insert_table', {
       where: 'end',
       rows,
@@ -2971,7 +2967,6 @@ describe('the look of a document', () => {
     const result = await call('read_page_layout')
     expect(bridge.pageLayout).toHaveBeenCalled()
     expect(JSON.parse(result.output)).toMatchObject({ pageNumber: null, header: { exists: false } })
-    // the gap between columns under the name set_columns takes
     expect(JSON.parse(result.output).columns).toEqual({ count: 1, gap_mm: 0 })
   })
 
@@ -3002,10 +2997,8 @@ describe('the look of a document', () => {
       size: 9,
     })
     expect(written.output).toMatch(/nothing was done with them: "exists", "plain"\.$/)
-    // no alignment named: none is sent, and the editor keeps the one the line has
     await call('set_header_footer', { kind: 'footer', text: '끝' })
     expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', { text: '끝' })
-    // one the editor does not write is the editor's to refuse, not dropped here
     await call('set_header_footer', { kind: 'footer', text: '끝', align: 'justify' })
     expect(bridge.setHeaderFooter).toHaveBeenLastCalledWith('footer', {
       text: '끝',
@@ -3751,7 +3744,6 @@ describe('document-wide settings', () => {
   it('reads the formatting of this document and formats one look of it', async () => {
     const { bridge, call, changes } = setup()
     const read = await call('read_formatting')
-    // a look is named by the key format_look takes it by
     expect(read.output).toContain('"look":"Labc123"')
     expect(read.output).toContain('"margin_left":30,"margin_right":30,"margin_top":20')
     expect(read.output).toContain('"number_format":"digit"')
@@ -4067,7 +4059,6 @@ describe('what a call gives before its handler sees it', () => {
     expect(result.isError).toBe(true)
     expect(result.output).toContain('unknown argument "line_spacing"')
     expect(result.output).toContain('format_paragraph sets them')
-    // no guess at a name of format_text beside the cure
     expect(result.output).not.toContain('did you mean')
     expect(bridge.formatText).not.toHaveBeenCalled()
   })
@@ -4092,7 +4083,6 @@ describe('what a call gives before its handler sees it', () => {
     expect(read.output).toMatch(
       /nothing was done with them: "find"\. read_formatting takes attachment\.$/,
     )
-    // a call without one reads as before
     expect((await call('list_tables')).output).not.toContain('Not arguments')
   })
 
@@ -4159,11 +4149,9 @@ describe('what a call gives before its handler sees it', () => {
     expect(result.isError).toBe(true)
     expect(result.output).toContain('unknown argument "lineSpacing"; did you mean "line_spacing"?')
     expect(bridge.formatParagraph).not.toHaveBeenCalled()
-    // the page margins of a read answer are flat only where the tool takes a margin for every side
     const nested = await call('format_paragraph', { find: '본문', margins: { left: 5 } })
     expect(nested.isError).toBe(true)
     expect(nested.output).toContain('unknown argument "margins"')
-    // id names a look for format_look alone: a table's look is one of three words
     const table = await call('insert_table', { where: 'end', rows: [['a']], id: 'Labc123' })
     expect(table.isError).toBe(true)
     expect(table.output).toContain('unknown argument "id"')
@@ -4183,7 +4171,6 @@ describe('what a call gives before its handler sees it', () => {
     expect(name).toBe('본문')
     expect(changes.englishName).toBe('Body')
     expect(changes.format).toMatchObject({ size: 10, lineSpacing: 160, marginLeft: 15 })
-    // what the answer says about the style but edit_style does not change is named, not refused
     expect(edited.output).toMatch(
       /Not arguments of edit_style, so nothing was done with them: "kind"\.$/,
     )
@@ -4202,7 +4189,6 @@ describe('what a call gives before its handler sees it', () => {
       }),
     )
     expect(formatted.output).toMatch(/nothing was done with them: "paragraphs", "samples"\.$/)
-    // the look of some paragraphs, id and all, is as good for one paragraph
     const one = await call('format_paragraph', { find: '본문', ...look })
     expect(one.isError).toBeFalsy()
     expect(one.output).toMatch(/nothing was done with them: "look", "paragraphs", "samples"\.$/)
@@ -4243,7 +4229,6 @@ describe('what a call gives before its handler sees it', () => {
     await call('format_cells', { table: 1, row: 3, col: 1, background: '#DDEBF7' })
     expect(bridge.formatCells).toHaveBeenLastCalledWith(1, [{ row: 3, col: 1 }], '#DDEBF7')
     bridge.formatCells.mockClear()
-    // half a block names no cells: nothing is formatted, least of all the whole table
     const half = await call('format_cells', {
       table: 1,
       from_row: 2,
@@ -4291,7 +4276,6 @@ describe('what a call gives before its handler sees it', () => {
       { fromRow: 2, fromCol: 1, toRow: 2, toCol: 3 },
       { heightMm: 8 },
     )
-    // text stays text, however much it looks like a number or a flag
     await call('fill_cells', { table: 1, cells: [{ row: '1', col: '2', text: '2026' }] })
     expect(bridge.fillCells.mock.calls.at(-1)?.slice(0, 2)).toEqual([
       1,
@@ -4386,7 +4370,6 @@ describe('the declared name an undeclared one stands for', () => {
 })
 
 describe('a number that counts from 1 or has a range', () => {
-  /** offset counts from 0 and width_pt is pulled into its range by its handler as well */
   const BOUNDED = new Set(['offset', 'width_pt'])
 
   it('reaches its handler as the model gave it: the loop has no declared range to pull it into', () => {
@@ -4419,7 +4402,6 @@ describe('a number that counts from 1 or has a range', () => {
       walk(items, name)
     }
     for (const tool of setup().skill.tools) walk(tool.inputSchema, tool.name)
-    // level is an entry of a list, where the loop repairs nothing
     expect([...ranged].sort()).toEqual(['level', 'offset', 'width_pt'])
   })
 

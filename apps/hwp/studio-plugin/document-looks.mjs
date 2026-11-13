@@ -506,8 +506,7 @@ export const MIN_BLACK_ON_FILL = 3
 
 /**
  * The colour words take on a fill (#RRGGBB) when the call names none for them: white where
- * black would be hard to read, else null for the colour they have. A colour the call does
- * name is kept down to MIN_TEXT_CONTRAST: an accent colour that was asked for stays.
+ * black would be hard to read, else null for the colour they have.
  */
 export function textColorOnFill(fill) {
   return contrastRatio('#000000', fill) < MIN_BLACK_ON_FILL ? '#ffffff' : null
