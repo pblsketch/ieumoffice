@@ -628,3 +628,10 @@ export {
   type SuggestSkillName,
 } from './skill-name-from-title'
 export { createImeEnterGuard, useImeEnterGuard, type ImeEnterGuard } from './ime-enter'
+export {
+  ALL_ON_APP_CHOICE_STATE,
+  aiVisible,
+  useAppChoice,
+  type AppChoiceSource,
+  type AppChoiceState,
+} from './use-app-choice'

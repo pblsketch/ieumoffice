@@ -17,12 +17,15 @@ const PRELOAD_MODULES = [
   'project-folder-bridge.ts',
   'mcp-tools-bridge.ts',
   'mcp-tools-channels.ts',
+  'app-choice-bridge.ts',
+  'app-choice.ts',
 ]
 const NODE_FREE = new Set([
   './user-skills-channels',
   './handoff-editors',
   './outbound-channels',
   './mcp-tools-channels',
+  './app-choice',
   // types and constants only (folder-api.ts imports nothing at runtime)
   '@genoffice/project-store/folder-api',
 ])

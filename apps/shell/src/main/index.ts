@@ -138,6 +138,7 @@ import { registerIntegrationsIpc } from './integrations-ipc'
 import { registerResultStoreIpc } from './result-store-ipc'
 import { FEEDBACK_SURVEY_URL, feedbackDetails, feedbackText, platformLabel } from './feedback'
 import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
+import { registerEditorChoiceIpc } from './editor-choice-main'
 import { startMcpHub } from './mcp-client/hub-app'
 import type { McpHub } from './mcp-client/hub'
 import { freeAiInUse } from './drive/drive-consent'
@@ -9950,6 +9951,8 @@ ipcMain.handle('slides:open-font-settings', () => {
 registerProjectIpc()
 registerDocsIpc()
 registerHomeIpc()
+// editors and AI on or off (the source the editor mains read, the "ai-off" run check)
+registerEditorChoiceIpc({ settingsPath: APP_SETTINGS_PATH })
 registerProjectFolderChannels()
 registerIntegrationsIpc({
   settingsPath: APP_SETTINGS_PATH,
