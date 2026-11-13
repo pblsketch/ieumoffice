@@ -75,6 +75,7 @@ import {
   type RecoveryIdentity,
   readHwpDefaultFormat,
 } from '@genoffice/electron-utils'
+import { aiCreateRefusal, withOffDocumentKinds } from '@genoffice/electron-utils/ai-create-guard'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
 import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
 import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
@@ -4581,7 +4582,8 @@ export function registerAiIpc(): void {
       send({ requestId, type: 'error', error: refusal })
       return
     }
-    const tools = request.tools ?? []
+    // the create tool names the document types whose editor is off now (spec 7.4)
+    const tools = withOffDocumentKinds(request.tools ?? [])
     const maxTokens = request.maxTokens ?? maxOutputTokensOf(settings)
     // A local server loads the model on its first request, so this endpoint's
     // own first-response limit (default 300s) replaces the protocol default,
@@ -6644,6 +6646,9 @@ export function sanitizeAiDocFileBase(title: string): string {
  * project (spec 6), pdf / md / html are made first and then written into that
  * project's folder by the shell (a free name, never over a file), and the
  * docx tab follows that project; otherwise everything is as described above.
+ *
+ * A type whose editor is turned off (Settings → Editors and AI) is refused
+ * before anything is made, with a reason the AI passes on (editor choice 7.4).
  */
 export async function createAiDocument(
   request: CreateDocumentRequest,
@@ -6653,6 +6658,9 @@ export async function createAiDocument(
   const title = sanitizeAiDocFileBase(request?.title)
   const content = String(request?.content ?? '')
   if (!content.trim()) return { ok: false, error: 'content must not be empty' }
+  // a type whose editor is turned off is refused before anything is made (spec 7.4)
+  const refusal = aiCreateRefusal(type)
+  if (refusal) return { ok: false, error: refusal }
   try {
     if (type === 'docx') {
       const payload: AiDocContent = { title, html: content }

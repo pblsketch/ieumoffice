@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ai-activity": "./src/ai-activity.ts",
+    "./ai-create-guard": "./src/ai-create-guard.ts",
     "./ai-run-guard": "./src/ai-run-guard.ts",
     "./app-choice": "./src/app-choice.ts",
     "./app-choice-bridge": "./src/app-choice-bridge.ts",
