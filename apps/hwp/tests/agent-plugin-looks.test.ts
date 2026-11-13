@@ -953,6 +953,82 @@ describe('columns and breaks', () => {
   })
 })
 
+describe('text written where it runs in columns', () => {
+  const LINES_OF_FOUR_PAGES = Array.from({ length: 260 }, (_, n) => `줄 ${n + 1}`)
+  const empty = () => {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    return doc
+  }
+  /** How many body paragraphs start below the foot of the text of their page. */
+  const belowThePage = (doc: HwpDocument) => {
+    let count = 0
+    for (let para = 0; para < doc.getParagraphCount(0); para++) {
+      const caret = JSON.parse(doc.getCursorRect(0, para, 0)) as {
+        pageIndex: number
+        y: number
+        height: number
+      }
+      const page = JSON.parse(doc.getPageInfo(caret.pageIndex)) as {
+        height: number
+        marginBottom: number
+      }
+      if (caret.y + caret.height > page.height - page.marginBottom) count += 1
+    }
+    return count
+  }
+  const columns = (doc: HwpDocument) =>
+    JSON.parse(doc.getColumnDef(0)) as { columnCount: number; sameWidth: boolean; spacing: number }
+
+  it('lays out text written after the columns were set as it does text written before', () => {
+    const before = open(empty())
+    for (let from = 0; from < 260; from += 100) {
+      before.plugin.insertParagraphs('', null, 'end', LINES_OF_FOUR_PAGES.slice(from, from + 100))
+    }
+    before.plugin.setColumns({ count: 2 })
+    const pages = before.doc().pageCount()
+    expect(belowThePage(before.doc())).toBe(0)
+
+    const { plugin, doc } = open(empty())
+    plugin.setColumns({ count: 2 })
+    for (let from = 0; from < 260; from += 100) {
+      plugin.insertParagraphs('', null, 'end', LINES_OF_FOUR_PAGES.slice(from, from + 100))
+    }
+    expect(doc().getParagraphCount(0)).toBe(260)
+    expect(doc().pageCount()).toBe(pages)
+    expect(belowThePage(doc())).toBe(0)
+    // the columns are what they were set to, and the saved file opens with the same pages
+    expect(columns(doc())).toEqual(expect.objectContaining({ columnCount: 2, spacing: 2268 }))
+    for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+      const saved = new HwpDocument(bytes)
+      expect(saved.pageCount()).toBe(pages)
+      expect(columns(saved).columnCount).toBe(2)
+    }
+  })
+
+  it('lays out paragraphs added behind a line that ends in an equation', () => {
+    const { plugin, doc } = open(blank(['시험지', '1. 다음 식을 계산하시오. [[1]]', '끝']))
+    plugin.setColumns({ count: 3, gapMm: 6 })
+    plugin.insertEquations([{ find: '[[1]]', script: 'x^2 + 1' }])
+    const gap = columns(doc()).spacing
+    for (let from = 0; from < 260; from += 100) {
+      // each batch goes right behind the equation line, in front of the batch before it
+      plugin.insertParagraphs(
+        '1. 다음 식을',
+        null,
+        'after',
+        LINES_OF_FOUR_PAGES.slice(from, from + 100),
+      )
+    }
+    expect(doc().getParagraphCount(0)).toBe(263)
+    expect(belowThePage(doc())).toBe(0)
+    expect(columns(doc())).toEqual(
+      expect.objectContaining({ columnCount: 3, sameWidth: true, spacing: gap }),
+    )
+    expect(new HwpDocument(doc().exportHwpx()).pageCount()).toBe(doc().pageCount())
+  })
+})
+
 describe('writing into an empty document', () => {
   const empty = () => {
     const doc = HwpDocument.createEmpty()

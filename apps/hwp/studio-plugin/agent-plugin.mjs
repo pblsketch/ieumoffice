@@ -1451,7 +1451,10 @@ function containerOf(doc, hit) {
         ),
       font: (k) => fontOf(() => doc.getCharPropertiesAt(sec, k, 0)),
       // an empty paragraph after k without splitting k: it takes k's paragraph formatting
-      addAfter: (k) => expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph'),
+      addAfter: (k) => {
+        expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph')
+        foldColumnsAnew(doc, sec)
+      },
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
       deleteText: (k, count) => expectOk(doc.deleteText(sec, k, 0, count), 'delete'),
       deleteRange: (k1, o1, k2, o2) => expectOk(doc.deleteRange(sec, k1, o1, k2, o2), 'delete'),
@@ -4781,17 +4784,48 @@ function textWidthPt(doc, sec) {
   return Math.max(100, Math.round((width - (page.marginGutter ?? 0)) / 100))
 }
 
+/** The column definition a section starts with, or null from an engine without the call. */
+function columnDefOf(doc, sec) {
+  try {
+    return parse(doc.getColumnDef(sec))
+  } catch {
+    return null
+  }
+}
+
 /** The columns of a section's text: how many, and the gap between them in points. */
 function columnsOf(doc, sec) {
-  let def = null
-  try {
-    def = parse(doc.getColumnDef(sec))
-  } catch {
-    // an engine without the call: one column
-  }
+  const def = columnDefOf(doc, sec)
   const count = Number.isInteger(def?.columnCount) && def.columnCount > 1 ? def.columnCount : 1
   const gapPt = count > 1 && Number.isFinite(def.spacing) ? Math.max(0, def.spacing) / 100 : 0
   return { count, gapPt }
+}
+
+/**
+ * Have the engine fold the body paragraphs of the first section anew where its text runs in
+ * columns of one width. A paragraph the engine adds on its own (insertParagraph) keeps line
+ * positions there that run on past the foot of its column, and so does every paragraph
+ * split off it: a column is then filled by the height of the text without the line spacing
+ * (65 lines where 41 fit), the text runs below the page, and the saved file opens the same
+ * way. The engine folds every body paragraph anew only when the width of a column changes,
+ * so the columns are set to one and back; the same columns set again change nothing.
+ *
+ * Left as they are: columns of several widths, which cannot be set back, and a section
+ * whose controls cannot be read here (one behind the first) or that changes its columns
+ * part way, since the engine would fold all of it to the first width.
+ */
+function foldColumnsAnew(doc, sec) {
+  const def = columnDefOf(doc, sec)
+  if (sec !== 0 || !(def?.columnCount > 1) || def.sameWidth !== true) return
+  const definitions = parse(doc.getControls()).filter(
+    (control) => control.list === 0 && control.ctrlId === 'cold',
+  )
+  if (definitions.length !== 1) return
+  expectOk(doc.setColumnDef(sec, 1, def.columnType, 1, 0), 'lay the columns out again')
+  expectOk(
+    doc.setColumnDef(sec, def.columnCount, def.columnType, 1, def.spacing),
+    'lay the columns out again',
+  )
 }
 
 /**
