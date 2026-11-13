@@ -44,7 +44,7 @@ Các thẻ phía trên danh sách tạo tài liệu mới trong một bước. N
 
 Tập tin mới nằm trong thư mục đang được chọn ở thanh bên; nếu không chọn gì thì nó vào thư mục mặc định.
 
-Để ẩn thẻ hoặc đổi thứ tự, hãy chọn trong **Tài liệu mới trên Trang chủ** ở Cài đặt → Chung. Loại bạn tắt chỉ biến mất khỏi thẻ và menu Mới; tệp thuộc loại đó vẫn mở như trước. Ở Trang chủ, ⌘N/Ctrl+N tạo loại đầu tiên còn hiển thị.
+Để ẩn thẻ hoặc đổi thứ tự, hãy chọn trong **Tài liệu mới trên Trang chủ** ở Cài đặt → Chung. Loại bạn tắt chỉ biến mất khỏi thẻ và menu Mới; tệp thuộc loại đó vẫn mở như trước. Ở Trang chủ, ⌘N/Ctrl+N tạo loại đầu tiên còn hiển thị. Tắt một trình soạn thảo trong Cài đặt → Trình soạn thảo và AI thì khác: thẻ và mục menu của nó cũng biến mất, và khi mở tệp của nó sẽ được hỏi trước.
 
 Từng thẻ dùng để làm gì:
 

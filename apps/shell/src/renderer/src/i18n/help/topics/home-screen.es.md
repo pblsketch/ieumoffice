@@ -44,7 +44,7 @@ Las tarjetas que están encima de las listas crean un documento en un solo paso.
 
 El archivo nuevo va a la carpeta seleccionada en la barra lateral; si no hay ninguna, va a la carpeta predeterminada.
 
-Para ocultar tarjetas o cambiar su orden, usa **Documentos nuevos en Inicio** en Configuración → General. Un tipo desactivado solo desaparece de las tarjetas y de los menús Nuevo; sus archivos se siguen abriendo igual. En Inicio, ⌘N/Ctrl+N crea el primer tipo que sigue visible.
+Para ocultar tarjetas o cambiar su orden, usa **Documentos nuevos en Inicio** en Configuración → General. Un tipo desactivado solo desaparece de las tarjetas y de los menús Nuevo; sus archivos se siguen abriendo igual. En Inicio, ⌘N/Ctrl+N crea el primer tipo que sigue visible. Desactivar un editor en Configuración → Editores e IA es otra cosa: también desaparecen sus tarjetas y sus entradas de menú, y al abrir sus archivos se pregunta primero.
 
 Qué hace cada tarjeta:
 

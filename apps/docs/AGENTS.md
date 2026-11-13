@@ -31,6 +31,7 @@ Word 문서(.docx)와 ODT(.odt) 에디터다. 그리고 배포되는 앱 전체�
 - UI 크롬 색은 토큰만 쓴다(`var(--surface)` 등). 렌더러 CSS에 새 `#hex`·`rgb()`를 넣으면 `npm run check:theme-colors`가 실패한다. 강조색(`--accent` 계열)은 이 앱의 `styles.css`에서 정의한다.
 - 모델에게 주는 system prompt에서 제품을 가리키는 이름은 `brandText(…, 'en')`을 거친다(`ai/protocol.ts`, `ai/doc-writer.ts`). HTTP 사용자 에이전트는 `PRODUCT_NAME`으로 만든다.
 - **AI 첨부가 받는 형식 목록의 기준은 이 에디터의 첨부 목록이다.** 여섯 에디터가 함께 쓰는 목록(`ATTACHABLE_EXTS` 등)은 `packages/file-parse`의 `attachable.ts` 한 곳에 있고, 이 에디터가 받던 글자·코드 확장자가 그 기준이 된다. 다른 에디터는 이 목록을 넓히기만 하고 줄이지 않는다. 그림 확장자처럼 렌더러가 봐야 하는 값은 Node 결합(`file-parse`)을 렌더러로 못 가져오므로 이 앱의 `src/shared/ipc.ts`(`ATTACHMENT_IMAGE_EXTS`)에 그대로 두되 값은 공용 목록과 같게 맞춘다. 목록은 무엇을 첨부할 수 있는지만 정하고, 실제로 읽히는지는 첨부할 때 `parseFileToText`가 정한다.
+- **AI 끄기(설정 › 편집기와 AI, 결정 0143).** preload는 선택의 읽기·구독(`get`, `onChange`)만 내보내고 바꾸기·모두 멈추기는 내보내지 않는다. 화면은 `@genoffice/ui`의 `aiVisible(useAppChoice(window.aiOfficeEditorChoice))`(`renderer/ai-visibility.tsx`)로 AI 창·리본·오른쪽 클릭·단축키의 AI 입구를 그리지 않는다. 이 뒷단은 공용 AI 창구라서 `ai:stream`이 `aiRunRefusal`(`ai-off` 검사)로 화면의 실행을 거절하고, 답을 받는 한 차례를 탭마다 `chat` 작업 하나로 올린다(같은 탭의 호출은 한 묶음, 끝난 뒤 3초 남김). 그림 생성·미디어 분석은 `src/main/ai-off.ts`의 `aiMediaCall`이, 구독 상태 확인·모델 목록 다시 받기·무료 연결 확인은 `src/main/ai-background.ts`가 AI가 꺼진 동안 막는다. 새 문서 만들기 도구는 꺼진 편집기의 종류를 `ai-create-guard`로 거절하고, 요청의 도구 설명에 그 종류를 적는다(`withOffDocumentKinds`).
 
 ## 이 모듈의 방식
 

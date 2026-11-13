@@ -26,6 +26,19 @@ Hell / Dunkel / System folgen. „System folgen“ richtet sich nach dem Erschei
 
 GenOffice erhebt und sendet keine Nutzungsstatistiken; deshalb gibt es dafür auch keinen Schalter.
 
+## Editoren und KI
+
+Hier wählen Sie, welche Editoren Sie nutzen und ob Sie KI verwenden. Dieselbe Liste erscheint außerdem einmal an zwei anderen Stellen: im Schritt **Editoren auswählen** der Willkommensbildschirme beim ersten Start und in einem einmaligen Fenster auf der Startseite für alle, die GenOffice schon vor dieser Einstellung genutzt haben. Anfangs ist alles eingeschaltet; wer nichts ändert, behält die App wie bisher. Eine Änderung gilt sofort in allen offenen Fenstern.
+
+- **Editoren**: Word, Excel, PowerPoint, PDF, PDF-Werkzeuge, Markdown und Text, HTML, Mindmap, Diagramm, HWP (Hangul) und E-Book (EPUB). Die PDF-Werkzeuge werden getrennt vom PDF-Editor geschaltet. Mindestens ein Editor muss eingeschaltet bleiben.
+- **Ein ausgeschalteter Editor** verschwindet aus den Listen für neue Dokumente: aus den Karten der Startseite, dem **+**-Menü der Tableiste, Datei ▸ Neu und der Liste der Standard-Apps. Bereits geöffnete Dokumente bleiben offen, Wiederherstellungskopien bleiben erhalten.
+- **Beim Öffnen einer Datei eines ausgeschalteten Editors** (Doppelklick, Ziehen und Ablegen, Datei ▸ Öffnen, zuletzt verwendete Dateien) werden Sie gefragt: **Einschalten und öffnen** oder **Abbrechen**. Öffnen Sie mehrere seiner Dateien auf einmal, kommt die Frage nur einmal.
+- **Andere Funktionen, die ihr Ergebnis in einem ausgeschalteten Editor öffnen würden**, etwa das Umwandeln einer PDF in dieses Format, fragen vor dem Start: **Einschalten und öffnen**, **Nur die Datei erstellen** (die Datei wird erstellt und in ihrem Ordner gezeigt, der Editor bleibt aus) oder **Abbrechen**.
+- **Bei ausgeschalteten KI-Funktionen** verschwinden KI-Bereiche, KI-Schaltflächen und -Menüs, das Fragefeld der Startseite, das Agentenfenster und die Hinweise zum Verbinden einer KI, und die Tabs Konto, KI und Skills verschwinden aus den Einstellungen. GenOffice startet aus seinen Bildschirmen kein KI-Programm. Anmeldungen, Schlüssel, Skills und Einstellungen bleiben erhalten und kehren zurück, wenn Sie KI wieder einschalten. Läuft noch KI-Arbeit, werden Sie zuerst gefragt, ob Sie **Anhalten und ausschalten** möchten.
+- Kommandozeile, MCP und diese Anleitung funktionieren gleich, egal ob Editoren oder KI ein- oder ausgeschaltet sind.
+
+Auch bei eingeschalteter KI erstellt die KI keine neuen Dokumente für einen ausgeschalteten Editor, sondern bittet Sie, ihn hier einzuschalten.
+
 ## KI ▸ Erweitert
 
 Geschlossen, bis Sie den Bereich öffnen; die meisten brauchen ihn nie. Der Tab **KI-Modell** enthält API-Schlüssel und selbst betriebene Server für den Chat. Auf dem Tab **KI-Medien & Suche** wählt jede Fähigkeit den Anbieter, der sie bedient, und Schlüssel und Basis-URL eines Anbieters werden einmal eingetragen und gemeinsam genutzt:
