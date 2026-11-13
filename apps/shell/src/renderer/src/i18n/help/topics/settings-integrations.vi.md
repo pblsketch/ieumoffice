@@ -26,6 +26,19 @@ Sáng / Tối / Theo hệ thống. Khi chọn Theo hệ thống, giao diện bá
 
 GenOffice không thu thập hay gửi số liệu thống kê sử dụng, nên không có công tắc nào cho việc đó.
 
+## Trình soạn thảo và AI
+
+Tại đây bạn chọn những trình soạn thảo mình dùng và có dùng AI hay không. Danh sách này cũng hiện một lần ở hai nơi khác: bước **Chọn trình soạn thảo bạn dùng** trong màn hình chào mừng khi khởi chạy lần đầu, và một cửa sổ hiện một lần ở Trang chủ cho những ai đã dùng GenOffice trước khi có thiết lập này. Ban đầu mọi thứ đều bật, nên nếu để nguyên thì không có gì thay đổi. Thay đổi có hiệu lực ngay trong mọi cửa sổ đang mở.
+
+- **Trình soạn thảo**: Word, Excel, PowerPoint, PDF, Công cụ PDF, Markdown và văn bản, HTML, Sơ đồ tư duy, Sơ đồ, HWP (Hangul) và Sách điện tử (EPUB). Công cụ PDF được bật tắt riêng với trình soạn thảo PDF. Phải giữ ít nhất một trình soạn thảo đang bật.
+- **Trình soạn thảo đã tắt** biến mất khỏi các danh sách tài liệu mới: thẻ ở Trang chủ, menu **+** trên thanh thẻ, Tệp ▸ Mới và danh sách ứng dụng mặc định. Tài liệu đang mở vẫn mở, và bản sao khôi phục vẫn được giữ.
+- **Khi mở tệp của trình soạn thảo đã tắt** (nhấp đúp, kéo thả, Tệp ▸ Mở, tệp gần đây), bạn được hỏi chọn **Bật và mở** hay **Hủy**. Mở nhiều tệp của nó cùng lúc thì chỉ hỏi một lần.
+- **Các tính năng khác sẽ mở kết quả trong trình soạn thảo đã tắt**, chẳng hạn chuyển PDF sang định dạng đó, sẽ hỏi trước khi bắt đầu: **Bật và mở**, **Chỉ tạo tệp** (tệp được tạo và hiện trong thư mục, trình soạn thảo vẫn tắt) hoặc **Hủy**.
+- **Khi tắt tính năng AI**, các bảng AI, nút và menu AI, bảng hỏi ở Trang chủ, cửa sổ tác tử và các lời nhắc kết nối AI đều biến mất, và các thẻ Tài khoản, AI, Kỹ năng rời khỏi phần cài đặt. GenOffice không khởi chạy chương trình AI nào từ màn hình của nó. Thông tin đăng nhập, khóa, kỹ năng và cài đặt vẫn được giữ và trở lại khi bạn bật AI lại. Nếu AI vẫn đang làm việc, bạn sẽ được hỏi trước có muốn **Dừng và tắt** không.
+- Dòng lệnh, MCP và hướng dẫn này hoạt động như nhau dù trình soạn thảo hay AI đang bật hay tắt.
+
+Ngay cả khi AI đang bật, AI cũng không tạo tài liệu mới cho trình soạn thảo đã tắt mà nhắc bạn bật trình soạn thảo đó tại đây.
+
 ## AI ▸ Nâng cao
 
 Mục này đóng cho đến khi bạn mở ra; hầu hết mọi người không bao giờ cần đến nó. Thẻ **Mô hình AI** chứa các khóa API và các máy chủ do bạn tự vận hành, dùng cho trò chuyện. Trong thẻ **Phương tiện AI & Tìm kiếm**, mỗi khả năng sẽ chọn nhà cung cấp phục vụ nó, và khóa cùng URL cơ sở của nhà cung cấp chỉ nhập một lần rồi dùng chung:

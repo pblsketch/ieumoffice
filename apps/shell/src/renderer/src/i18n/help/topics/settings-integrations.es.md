@@ -26,6 +26,19 @@ Claro / Oscuro / Seguir el sistema. «Seguir el sistema» sigue la apariencia de
 
 GenOffice no recopila ni envía estadísticas de uso, así que no hay ningún interruptor para ello.
 
+## Editores e IA
+
+Aquí elige qué editores usa y si usa la IA. La misma lista aparece además una vez en otros dos lugares: el paso **Elige tus editores** de las pantallas de bienvenida del primer arranque y una ventana que se muestra una sola vez en Inicio a quienes ya usaban GenOffice antes de que existiera este ajuste. Al principio todo está activado, así que si no toca nada no cambia nada. Los cambios se aplican al instante en todas las ventanas abiertas.
+
+- **Editores**: Word, Excel, PowerPoint, PDF, Herramientas PDF, Markdown y texto, HTML, Mapa mental, Diagrama, HWP (Hangul) y Libro electrónico (EPUB). Las herramientas PDF se activan por separado del editor de PDF. Al menos un editor tiene que seguir activado.
+- **Un editor desactivado** desaparece de las listas de documentos nuevos: las tarjetas de Inicio, el menú **+** de la barra de pestañas, Archivo ▸ Nuevo y la lista de aplicaciones predeterminadas. Los documentos ya abiertos siguen abiertos y las copias de recuperación se conservan.
+- **Al abrir un archivo de un editor desactivado** (doble clic, arrastrar y soltar, Archivo ▸ Abrir, archivos recientes) se le pide elegir entre **Activar y abrir** y **Cancelar**. Si abre varios de sus archivos a la vez, se pregunta una sola vez.
+- **Otras funciones que abrirían su resultado en un editor desactivado**, como convertir un PDF a ese formato, preguntan antes de empezar: **Activar y abrir**, **Solo crear el archivo** (el archivo se crea y se muestra en su carpeta, y el editor sigue desactivado) o **Cancelar**.
+- **Con las funciones de IA desactivadas** desaparecen los paneles de IA, los botones y menús de IA, el panel de preguntas de Inicio, la ventana del agente y los avisos para conectar una IA, y las pestañas Cuenta, IA y Habilidades salen de la configuración. GenOffice no inicia ningún programa de IA desde sus pantallas. Los inicios de sesión, claves, habilidades y ajustes se conservan y vuelven al activar de nuevo la IA. Si todavía hay trabajo de IA en curso, primero se le pregunta si quiere **Detener y desactivar**.
+- La línea de comandos, MCP y esta guía funcionan igual tanto si los editores o la IA están activados como si no.
+
+Aunque la IA esté activada, no crea documentos nuevos para un editor desactivado; le indica que lo active aquí.
+
 ## IA ▸ Avanzado
 
 Permanece cerrado hasta que se abre; la mayoría nunca lo necesita. La pestaña **Modelo de IA** contiene las claves de API y los servidores propios, para el chat. En la pestaña **Medios de IA y búsqueda**, cada capacidad elige el proveedor que la sirve, y la clave y la URL base de un proveedor se introducen una vez y se comparten:

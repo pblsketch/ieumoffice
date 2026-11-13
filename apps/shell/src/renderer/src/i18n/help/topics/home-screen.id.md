@@ -44,7 +44,7 @@ Kartu di atas daftar membuat dokumen baru dalam satu langkah. Mengklik kartu mem
 
 File baru akan masuk ke folder yang sedang dipilih di bilah sisi; jika tidak ada yang dipilih, file masuk ke folder bawaan.
 
-Untuk menyembunyikan kartu atau mengubah urutannya, pilih di **Dokumen baru di Beranda** pada Pengaturan → Umum. Jenis yang dimatikan hanya hilang dari kartu dan menu Baru; file jenis itu tetap terbuka seperti biasa. Di Beranda, ⌘N/Ctrl+N membuat jenis pertama yang masih tampil.
+Untuk menyembunyikan kartu atau mengubah urutannya, pilih di **Dokumen baru di Beranda** pada Pengaturan → Umum. Jenis yang dimatikan hanya hilang dari kartu dan menu Baru; file jenis itu tetap terbuka seperti biasa. Di Beranda, ⌘N/Ctrl+N membuat jenis pertama yang masih tampil. Mematikan editor di Pengaturan → Editor dan AI itu berbeda: kartu dan item menunya juga hilang, dan membuka filenya akan ditanyakan dulu.
 
 Apa yang dilakukan tiap kartu:
 

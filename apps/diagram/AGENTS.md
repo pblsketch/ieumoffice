@@ -69,6 +69,7 @@
 - **draw.io 자체 AI는 꺼 둔다.** AI는 이 창으로만 쓴다(구독·요금 규칙은 공용 부품이 지킨다).
 - 문구는 22개 언어 조각에 모두 넣는다. 제품 이름은 `GenOffice`로 적는다.
 - **기본 스킬 `diagram`이 이 편집기의 도구·연산·도형 이름을 적는다**(`apps/shell/resources/builtin-skills/diagram`). 그 이름이나 새 도형의 기본 크기·간격을 바꾸면 그 본문도 고친다(`tests/builtin-skill.test.ts`가 지킨다, 결정 0132).
+- **AI 끄기(설정 › 편집기와 AI, 결정 0143).** preload는 선택의 읽기·구독(`get`, `onChange`)만 내보내고 바꾸기·모두 멈추기는 내보내지 않는다. 화면은 `aiVisible(useAppChoice(window.aiOfficeEditorChoice))`로 AI 창과 그 레일(`DiagramAiDock`)을 그리지 않는다. 이 편집기의 AI 실행은 모두 공용 `ai:stream`을 지나므로 거절과 작업 등록은 워드 뒷단이 맡는다.
 
 ## 셸과의 약속
 

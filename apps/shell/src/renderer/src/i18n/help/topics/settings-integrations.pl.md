@@ -26,6 +26,19 @@ Jasny / Ciemny / Zgodnie z systemem. Opcja Zgodnie z systemem podąża za wyglą
 
 GenOffice nie zbiera ani nie wysyła statystyk użytkowania, więc nie ma do tego przełącznika.
 
+## Edytory i AI
+
+Tutaj wybierasz, z których edytorów korzystasz i czy używasz AI. Ta sama lista pojawia się też raz w dwóch innych miejscach: w kroku **Wybierz edytory** na ekranach powitalnych przy pierwszym uruchomieniu oraz w oknie pokazywanym jeden raz na stronie głównej osobom, które korzystały z GenOffice, zanim pojawiło się to ustawienie. Na początku wszystko jest włączone, więc jeśli nic nie zmienisz, nic się nie zmieni. Zmiana działa od razu we wszystkich otwartych oknach.
+
+- **Edytory**: Word, Excel, PowerPoint, PDF, Narzędzia PDF, Markdown i tekst, HTML, Mapa myśli, Diagram, HWP (Hangul) i E-book (EPUB). Narzędzia PDF włącza się osobno od edytora PDF. Co najmniej jeden edytor musi pozostać włączony.
+- **Wyłączony edytor** znika z list nowych dokumentów: z kart strony głównej, menu **+** paska kart, Plik ▸ Nowy i listy aplikacji domyślnych. Dokumenty, które są już otwarte, pozostają otwarte, a kopie odzyskiwania są zachowywane.
+- **Otwarcie pliku wyłączonego edytora** (dwukrotne kliknięcie, przeciągnięcie i upuszczenie, Plik ▸ Otwórz, ostatnie pliki) pyta, czy wybierasz **Włącz i otwórz**, czy **Anuluj**. Gdy otwierasz naraz kilka jego plików, pytanie pada tylko raz.
+- **Inne funkcje, które otworzyłyby wynik w wyłączonym edytorze**, na przykład konwersja PDF do tego formatu, pytają przed rozpoczęciem: **Włącz i otwórz**, **Utwórz tylko plik** (plik zostaje utworzony i pokazany w folderze, a edytor pozostaje wyłączony) albo **Anuluj**.
+- **Gdy funkcje AI są wyłączone**, znikają panele AI, przyciski i menu AI, panel pytań na stronie głównej, okno agenta i podpowiedzi dotyczące łączenia AI, a karty Konto, AI i Umiejętności znikają z ustawień. GenOffice nie uruchamia ze swoich ekranów żadnego programu AI. Logowania, klucze, umiejętności i ustawienia zostają zachowane i wracają po ponownym włączeniu AI. Jeśli praca AI wciąż trwa, najpierw padnie pytanie, czy chcesz **Zatrzymaj i wyłącz**.
+- Wiersz poleceń, MCP i ten przewodnik działają tak samo bez względu na to, czy edytory i AI są włączone.
+
+Nawet przy włączonym AI nie tworzy ono nowych dokumentów dla wyłączonego edytora, tylko prosi, by włączyć go tutaj.
+
 ## AI ▸ Zaawansowane
 
 Ta część pozostaje zwinięta, dopóki jej nie otworzysz; większość osób nigdy jej nie potrzebuje. Karta **Model AI** zawiera klucze API i serwery uruchamiane samodzielnie, używane do czatu. Na karcie **Media i wyszukiwanie AI** każda możliwość wybiera dostawcę, który ją obsługuje, a klucz i bazowy adres URL dostawcy wpisuje się raz i są wspólne:
