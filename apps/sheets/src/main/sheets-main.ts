@@ -93,6 +93,7 @@ import {
   type RecoveryOpenUntitledRequest,
   type SaveDiskState,
 } from '@genoffice/electron-utils'
+import { aiCreateRefusal } from '@genoffice/electron-utils/ai-create-guard'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
 import {
   encryptOoxml,
@@ -4778,6 +4779,9 @@ export function registerSheetsIpc(): void {
     async (event, input: unknown): Promise<WorkbookCreateDocumentResult> => {
       sessionFor(event)
       const request = workbookCreateDocumentRequestSchema.parse(input)
+      // a type whose editor is turned off is refused before anything is made (spec 7.4)
+      const refusal = aiCreateRefusal(request.type)
+      if (refusal) return { ok: false, error: refusal }
       try {
         if (request.type === 'csv') {
           const fileName = `${sanitizeGeneratedFileBase(request.title)}.csv`

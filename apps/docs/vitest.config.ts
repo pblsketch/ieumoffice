@@ -44,6 +44,12 @@ export default defineConfig({
       '@genoffice/electron-utils/template-font-response': local(
         '../../packages/electron-utils/src/template-font-response.ts',
       ),
+      '@genoffice/electron-utils/ai-create-guard': local(
+        '../../packages/electron-utils/src/ai-create-guard.ts',
+      ),
+      '@genoffice/electron-utils/app-choice': local(
+        '../../packages/electron-utils/src/app-choice.ts',
+      ),
       '@genoffice/electron-utils/ai-run-guard': local(
         '../../packages/electron-utils/src/ai-run-guard.ts',
       ),

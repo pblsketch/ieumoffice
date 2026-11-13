@@ -10717,7 +10717,11 @@ app.whenReady().then(async () => {
     aiSettings: () => readStoredAiSettings(),
     readPrefs: () => normalizeAgentPrefs(readAppSettings(APP_SETTINGS_PATH()).agent),
     writePrefs: (prefs) => writeAgentPrefs(APP_SETTINGS_PATH(), prefs),
-    openPath: (path) => routeDocumentPath(path),
+    // the person pressed "Open" by a file the agent wrote: a turned-off editor asks first
+    // (editor choice spec 7.2); the agent itself opens files through its MCP server (7.6)
+    openPath: (path) =>
+      openGate.check(path, 'user', (picked) => routeDocumentPath(picked)) ??
+      routeDocumentPath(path),
     openDocuments: () => [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()],
     userData: app.getPath('userData'),
     runners: {
