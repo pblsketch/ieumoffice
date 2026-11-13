@@ -15,6 +15,7 @@ import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-ch
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
@@ -114,6 +115,21 @@ const translate: EpubTranslateApi = {
   checkResultPath: (path) => ipcRenderer.invoke(EPUB_CHANNELS.checkResultPath, path),
   writeTranslated: (request) => ipcRenderer.invoke(EPUB_CHANNELS.writeTranslated, request),
   store,
+  aiJob: {
+    begin: async (jobId) => {
+      const answer = (await ipcRenderer.invoke(EPUB_CHANNELS.aiJobBegin, jobId)) as {
+        ok?: unknown
+        error?: unknown
+      } | null
+      if (answer?.ok === true) return null
+      return typeof answer?.error === 'string' ? answer.error : 'refused'
+    },
+    end: (jobId) => ipcRenderer.send(EPUB_CHANNELS.aiJobEnd, jobId),
+    onStop: (handler) =>
+      listen<[unknown]>(EPUB_CHANNELS.aiJobStop, (jobId) => {
+        if (typeof jobId === 'string') handler(jobId)
+      }),
+  },
 }
 
 // ---- the AI panel's bridge ----
@@ -217,6 +233,12 @@ contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
 // The shell's split panes: this view's pane role, and its way to ask for focus
 contextBridge.exposeInMainWorld(SPLIT_PANE_BRIDGE_KEY, splitPaneBridge(ipcRenderer))
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// whether AI features are on (Settings): read and follow only, this tab never changes it
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
 // project folders (decision 0088): main identifies this window, the bridge forwards ids only
 contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 

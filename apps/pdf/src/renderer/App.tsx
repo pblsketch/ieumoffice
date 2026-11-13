@@ -17,6 +17,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { AiPanel } from './ai/AiPanel'
 import { AiAskPopover, type AskAnchorRect } from './AiAskPopover'
+import { useAiOn } from './ai-choice'
 import {
   createSavedAnnotCountsLoader,
   loadSavedAnnots,
@@ -566,6 +567,13 @@ interface WrittenSteps {
 /** Each step holds the whole file twice: a long history of them would hold that much memory */
 const MAX_WRITTEN_STEPS = 10
 
+/** selection-bar actions that ask the AI (explain, translate, ask): none while AI is off */
+const AI_SELECTION_ACTIONS: ReadonlySet<SelectionBarAction> = new Set([
+  'explain',
+  'translate',
+  'ask',
+])
+
 export default function App() {
   const { lang, t } = useI18n()
   // Fallback focus ping: the shell is told whenever this window gains focus
@@ -685,6 +693,9 @@ export default function App() {
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
+  // AI features on (Settings): while off, every AI entrance below is gone, and
+  // turning AI on brings them back without reopening the tab
+  const aiOn = useAiOn()
   // Persisted so a closed AI panel stays closed on next launch (docs/slides parity)
   const [aiCollapsed, setAiCollapsed] = useState(
     () => !aiPanelInitiallyOpen('genoffice-pdf-show-ai'),
@@ -705,6 +716,10 @@ export default function App() {
   const [spread, setSpread] = useState<1 | 2>(1)
   // side-by-side translation view; the revision rebuilds its tree after a save
   const [bilingualOn, setBilingualOn] = useState(false)
+  // the side-by-side translation view is an AI view: it closes when AI is turned off
+  useEffect(() => {
+    if (!aiOn) setBilingualOn(false)
+  }, [aiOn])
   const [bilingualRev, setBilingualRev] = useState(0)
   /** bumped when the open file was rewritten in place (a page operation, not a save) */
   const [docReloadRev, setDocReloadRev] = useState(0)
@@ -766,7 +781,11 @@ export default function App() {
   /** the Markdown / EPUB conversion dialog that is open; `outPath` = a Save As target */
   const [convertDialog, setConvertDialog] = useState<PdfConvertDialogRequest | null>(null)
   /** AI page reading: this tab's document jobs, the window's handle, the ribbon menu */
-  const jobSession = useMemo(() => new DocumentJobSession(), [])
+  // each job is also one entry on the shell's list of running AI work (Settings stops it)
+  const jobSession = useMemo(
+    () => new DocumentJobSession(undefined, window.pdfApi?.aiJob ?? null),
+    [],
+  )
   const aiReadApi = useMemo(() => {
     const api = window.pdfApi
     if (!api?.structure || !api.store) return null
@@ -1338,8 +1357,9 @@ export default function App() {
   // the first AI turn should already know whether the file carries review
   // feedback, so an open panel starts the scan before the user sends anything
   useEffect(() => {
-    if (!aiCollapsed) startAiAnnotCountScan()
-  }, [aiCollapsed, startAiAnnotCountScan])
+    // the scan feeds the AI window, which is gone while AI is off
+    if (aiOn && !aiCollapsed) startAiAnnotCountScan()
+  }, [aiOn, aiCollapsed, startAiAnnotCountScan])
   const [selected, setSelected] = useState<AnnotSelection | null>(null)
   /** Markup context menu opened by a right click on a pending or saved annotation */
   const [markupMenu, setMarkupMenu] = useState<MarkupMenu | null>(null)
@@ -2193,7 +2213,8 @@ export default function App() {
     () => saveHighlightPreview(highlightPreviewSwitch.saved),
     [highlightPreviewSwitch.saved],
   )
-  const highlightPreview = previewShown(highlightPreviewSwitch)
+  // the AI highlight suggestions (preview, panel items) are not shown while AI is off
+  const highlightPreview = aiOn && previewShown(highlightPreviewSwitch)
 
   useEffect(() => {
     if (
@@ -3517,7 +3538,12 @@ export default function App() {
         })
       }
       // Read-only documents still get the bar for its Ask-AI entry (Q&A works);
-      // the markup buttons themselves are hidden in that state
+      // the markup buttons themselves are hidden in that state. With AI off such a
+      // bar would be empty, so none shows.
+      if (readOnly && !aiOn) {
+        setSelPopup(null)
+        return
+      }
       const anchor = { left: box.left, top: box.top, right: box.right, bottom: box.bottom }
       setSelColorRow(null)
       setPenEdit(null)
@@ -3739,6 +3765,7 @@ export default function App() {
       anchor now (the bar's mousedown preventDefault kept the selection alive up
       to this click; the popover input will collapse it) */
   const openAskPopover = () => {
+    if (!aiOn) return
     const sel = window.getSelection()
     const box =
       sel && !sel.isCollapsed && sel.rangeCount > 0
@@ -3781,6 +3808,8 @@ export default function App() {
   /** One selection-bar shortcut (reading-assist 4.1): the same as pressing its button */
   const runSelectionBarAction = (action: SelectionBarAction) => {
     if (!selPopup) return
+    // E, T and Enter ask the AI: no such key while AI is off
+    if (!aiOn && AI_SELECTION_ACTIONS.has(action)) return
     switch (action) {
       case 'highlight':
         applyMarkup(action)
@@ -3821,6 +3850,7 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const verdict = selectionBarKey(e, { visible: selPopup !== null, readOnly })
       if (!verdict) return
+      if (!aiOn && 'action' in verdict && AI_SELECTION_ACTIONS.has(verdict.action)) return
       e.preventDefault()
       if ('blocked' in verdict) {
         // the same reason the hidden markup buttons stand for
@@ -9837,17 +9867,19 @@ export default function App() {
           <span className="rb-big-icon">{spread === 2 ? <IconSinglePage /> : <IconSpread />}</span>
           <span>{spread === 2 ? t('singlePage') : t('twoPage')}</span>
         </button>
-        <button
-          className={`rb-big${bilingualOn ? ' active' : ''}`}
-          data-tip={t('blToggleTip')}
-          aria-pressed={bilingualOn}
-          onClick={() => applyViewMode(toggleBilingual(!bilingualOn, spread))}
-        >
-          <span className="rb-big-icon">
-            <IconAiTranslate />
-          </span>
-          <span>{t('blToggle')}</span>
-        </button>
+        {aiOn && (
+          <button
+            className={`rb-big${bilingualOn ? ' active' : ''}`}
+            data-tip={t('blToggleTip')}
+            aria-pressed={bilingualOn}
+            onClick={() => applyViewMode(toggleBilingual(!bilingualOn, spread))}
+          >
+            <span className="rb-big-icon">
+              <IconAiTranslate />
+            </span>
+            <span>{t('blToggle')}</span>
+          </button>
+        )}
         <button
           className={`rb-big${nightMode ? ' active' : ''}`}
           data-tip={t('nightMode')}
@@ -9858,29 +9890,33 @@ export default function App() {
           </span>
           <span>{t('nightMode')}</span>
         </button>
-        <button
-          className={`rb-big${passageMarks ? ' active' : ''}`}
-          data-tip={t('rdUnderlinesTip')}
-          aria-pressed={passageMarks}
-          onClick={() => setPassageMarks((v) => !v)}
-        >
-          <span className="rb-big-icon">
-            <IconPassageMarks />
-          </span>
-          <span>{t('rdUnderlines')}</span>
-        </button>
-        <button
-          className={`rb-big${highlightPreview ? ' active' : ''}`}
-          data-tip={t('hlPreviewTip')}
-          data-action="highlight-preview"
-          aria-pressed={highlightPreview}
-          onClick={() => setHighlightPreviewSwitch(togglePreview)}
-        >
-          <span className="rb-big-icon">
-            <IconHighlightPreview />
-          </span>
-          <span>{t('hlPreview')}</span>
-        </button>
+        {aiOn && (
+          <>
+            <button
+              className={`rb-big${passageMarks ? ' active' : ''}`}
+              data-tip={t('rdUnderlinesTip')}
+              aria-pressed={passageMarks}
+              onClick={() => setPassageMarks((v) => !v)}
+            >
+              <span className="rb-big-icon">
+                <IconPassageMarks />
+              </span>
+              <span>{t('rdUnderlines')}</span>
+            </button>
+            <button
+              className={`rb-big${highlightPreview ? ' active' : ''}`}
+              data-tip={t('hlPreviewTip')}
+              data-action="highlight-preview"
+              aria-pressed={highlightPreview}
+              onClick={() => setHighlightPreviewSwitch(togglePreview)}
+            >
+              <span className="rb-big-icon">
+                <IconHighlightPreview />
+              </span>
+              <span>{t('hlPreview')}</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -9993,130 +10029,139 @@ export default function App() {
           {ribbonTab === 'home' && (
             <>
               {/* ---- AI (first slot: entry + one-click AI actions, docs parity) ---- */}
-              <div className="ribbon-group">
-                <div className="ribbon-group-items">
-                  <button
-                    className={`rb-big ai-entry${aiCollapsed ? '' : ' active'}`}
-                    data-tip={t('aiOpenAssistant')}
-                    onClick={() => setAiCollapsed((v) => !v)}
-                  >
-                    <span className="rb-big-icon">
-                      <AiMark size={26} />
-                    </span>
-                    <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('aiSummarizeBtn')}
-                    onClick={() =>
-                      runAiPreset(
-                        t(aiSelection ? 'aiQuickSummarySelPrompt' : 'aiQuickSummaryPrompt'),
-                      )
-                    }
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiSummarize />
-                      </span>
-                    </span>
-                    <span>{t('aiSummarizeBtn')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('aiKeyPointsBtn')}
-                    onClick={() =>
-                      runAiPreset(
-                        t(aiSelection ? 'aiQuickKeyPointsSelPrompt' : 'aiQuickKeyPointsPrompt'),
-                      )
-                    }
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiKeyPoints />
-                      </span>
-                    </span>
-                    <span>{t('aiKeyPointsBtn')}</span>
-                  </button>
-                  <div className="rb-drop-wrap" ref={aiReadWrapRef}>
-                    <button
-                      className={`rb-big ai-entry${aiReadMenuOpen ? ' active' : ''}`}
-                      data-tip={t('arButtonTip')}
-                      data-action="ai-read-menu"
-                      onClick={() => setAiReadMenuOpen((v) => !v)}
-                    >
-                      <span className="rb-big-icon">
-                        <span className="ai-feature-icon" aria-hidden="true">
-                          <IconAiReadPages />
+              {aiOn && (
+                <>
+                  <div className="ribbon-group">
+                    <div className="ribbon-group-items">
+                      <button
+                        className={`rb-big ai-entry${aiCollapsed ? '' : ' active'}`}
+                        data-tip={t('aiOpenAssistant')}
+                        onClick={() => setAiCollapsed((v) => !v)}
+                      >
+                        <span className="rb-big-icon">
+                          <AiMark size={26} />
                         </span>
-                        <RbCaret />
-                      </span>
-                      <span>{t('arButton')}</span>
-                    </button>
-                    {aiReadMenuOpen && (
-                      <div className="rb-drop rb-menu">
+                        <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('aiSummarizeBtn')}
+                        onClick={() =>
+                          runAiPreset(
+                            t(aiSelection ? 'aiQuickSummarySelPrompt' : 'aiQuickSummaryPrompt'),
+                          )
+                        }
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiSummarize />
+                          </span>
+                        </span>
+                        <span>{t('aiSummarizeBtn')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('aiKeyPointsBtn')}
+                        onClick={() =>
+                          runAiPreset(
+                            t(aiSelection ? 'aiQuickKeyPointsSelPrompt' : 'aiQuickKeyPointsPrompt'),
+                          )
+                        }
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiKeyPoints />
+                          </span>
+                        </span>
+                        <span>{t('aiKeyPointsBtn')}</span>
+                      </button>
+                      <div className="rb-drop-wrap" ref={aiReadWrapRef}>
                         <button
-                          data-action="ai-read-open"
-                          onClick={() => {
-                            setAiReadMenuOpen(false)
-                            const answer = aiReadRef.current?.requestOpen(null)
-                            if (answer && 'running' in answer)
-                              showNotice(t('arBusy', answer.running))
-                            else if (!answer || 'unavailable' in answer)
-                              showNotice(t('arUnavailable'))
-                          }}
+                          className={`rb-big ai-entry${aiReadMenuOpen ? ' active' : ''}`}
+                          data-tip={t('arButtonTip')}
+                          data-action="ai-read-menu"
+                          onClick={() => setAiReadMenuOpen((v) => !v)}
                         >
-                          {t('arMenuRead')}
+                          <span className="rb-big-icon">
+                            <span className="ai-feature-icon" aria-hidden="true">
+                              <IconAiReadPages />
+                            </span>
+                            <RbCaret />
+                          </span>
+                          <span>{t('arButton')}</span>
                         </button>
-                        <button
-                          data-action="ai-read-delete"
-                          onClick={() => {
-                            setAiReadMenuOpen(false)
-                            void aiReadRef.current?.deleteStored()
-                          }}
-                        >
-                          {t('arMenuDelete')}
-                        </button>
+                        {aiReadMenuOpen && (
+                          <div className="rb-drop rb-menu">
+                            <button
+                              data-action="ai-read-open"
+                              onClick={() => {
+                                setAiReadMenuOpen(false)
+                                const answer = aiReadRef.current?.requestOpen(null)
+                                if (answer && 'running' in answer)
+                                  showNotice(t('arBusy', answer.running))
+                                else if (!answer || 'unavailable' in answer)
+                                  showNotice(t('arUnavailable'))
+                              }}
+                            >
+                              {t('arMenuRead')}
+                            </button>
+                            <button
+                              data-action="ai-read-delete"
+                              onClick={() => {
+                                setAiReadMenuOpen(false)
+                                void aiReadRef.current?.deleteStored()
+                              }}
+                            >
+                              {t('arMenuDelete')}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('trButtonTip')}
+                        data-action="translate-open"
+                        onClick={() => {
+                          const answer = translateRef.current?.requestOpen({
+                            lang: null,
+                            pages: null,
+                          })
+                          if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
+                          else if (!answer || 'unavailable' in answer)
+                            showNotice(t('trUnavailable'))
+                        }}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiTranslate />
+                          </span>
+                        </span>
+                        <span>{t('trButton')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={readOnly ? t('hlReadOnly') : t('hlButtonTip')}
+                        data-action="highlight-open"
+                        onClick={() => {
+                          // opens the start window only; a read-only document shows why it cannot start
+                          const answer = highlightRef.current?.requestOpen()
+                          if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
+                          else if (!answer || 'unavailable' in answer)
+                            showNotice(t('hlUnavailable'))
+                        }}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconHighlightPreview />
+                          </span>
+                        </span>
+                        <span>{t('hlButton')}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('trButtonTip')}
-                    data-action="translate-open"
-                    onClick={() => {
-                      const answer = translateRef.current?.requestOpen({ lang: null, pages: null })
-                      if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
-                      else if (!answer || 'unavailable' in answer) showNotice(t('trUnavailable'))
-                    }}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiTranslate />
-                      </span>
-                    </span>
-                    <span>{t('trButton')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={readOnly ? t('hlReadOnly') : t('hlButtonTip')}
-                    data-action="highlight-open"
-                    onClick={() => {
-                      // opens the start window only; a read-only document shows why it cannot start
-                      const answer = highlightRef.current?.requestOpen()
-                      if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
-                      else if (!answer || 'unavailable' in answer) showNotice(t('hlUnavailable'))
-                    }}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconHighlightPreview />
-                      </span>
-                    </span>
-                    <span>{t('hlButton')}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="ribbon-sep" />
+                  <div className="ribbon-sep" />
+                </>
+              )}
               {markupGroup}
               <div className="ribbon-sep" />
               {/* Edit entries lead; Search moved after page/zoom (⌘F is the common path) */}
@@ -10179,36 +10224,40 @@ export default function App() {
           )}
           {ribbonTab === 'annotate' && (
             <>
-              <div className="ribbon-group">
-                <div className="ribbon-group-items">
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('aiReviewSummaryBtn')}
-                    onClick={() => runAiPreset(t('aiReviewSummaryPrompt'))}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiSummarize />
-                      </span>
-                    </span>
-                    <span>{t('aiReviewSummaryBtn')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    disabled={readOnly}
-                    data-tip={t('aiProcessNotesBtn')}
-                    onClick={() => runAiPreset(t('aiProcessNotesPrompt'))}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <AiMark size={20} />
-                      </span>
-                    </span>
-                    <span>{t('aiProcessNotesBtn')}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="ribbon-sep" />
+              {aiOn && (
+                <>
+                  <div className="ribbon-group">
+                    <div className="ribbon-group-items">
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('aiReviewSummaryBtn')}
+                        onClick={() => runAiPreset(t('aiReviewSummaryPrompt'))}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiSummarize />
+                          </span>
+                        </span>
+                        <span>{t('aiReviewSummaryBtn')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        disabled={readOnly}
+                        data-tip={t('aiProcessNotesBtn')}
+                        onClick={() => runAiPreset(t('aiProcessNotesPrompt'))}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <AiMark size={20} />
+                          </span>
+                        </span>
+                        <span>{t('aiProcessNotesBtn')}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="ribbon-sep" />
+                </>
+              )}
               {markupGroup}
               <div className="ribbon-sep" />
               <div className="ribbon-group">
@@ -10435,17 +10484,19 @@ export default function App() {
             <>
               <div className="ribbon-group">
                 <div className="ribbon-group-items">
-                  <button
-                    className="rb-big ai-entry"
-                    disabled={readOnly}
-                    data-tip={t('aiFillFormBtn')}
-                    onClick={() => runAiPreset(t('aiFillFormPrompt'))}
-                  >
-                    <span className="rb-big-icon">
-                      <IconFormAiFill />
-                    </span>
-                    <span>{t('aiFillFormBtn')}</span>
-                  </button>
+                  {aiOn && (
+                    <button
+                      className="rb-big ai-entry"
+                      disabled={readOnly}
+                      data-tip={t('aiFillFormBtn')}
+                      onClick={() => runAiPreset(t('aiFillFormPrompt'))}
+                    >
+                      <span className="rb-big-icon">
+                        <IconFormAiFill />
+                      </span>
+                      <span>{t('aiFillFormBtn')}</span>
+                    </button>
+                  )}
                   <button
                     className={`rb-big${pendingStaticFill === 'text' ? ' active' : ''}`}
                     disabled={readOnly}
@@ -10965,54 +11016,61 @@ export default function App() {
       <div className="app-main">
         {/* dock wrapper animates the width between panel and rail (docs-style 180ms ease);
             the panel stays mounted while collapsed so the chat history survives */}
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() =>
-                onAiRailClick(paneRole, !aiCollapsed, (open) => setAiCollapsed(!open), requestFocus)
-              }
-            >
-              <AiMark size={22} />
-            </button>
-          )}
-          <AiPanel
-            api={aiApi}
-            filePath={filePath}
-            preset={aiPreset}
-            onCollapse={() => setAiCollapsed(true)}
-            onRunDone={() => void autoSaveAfterAiRun()}
-            onClearSelection={() => setAiSelection(null)}
-            onCitation={openCitation}
-            templateDocument={templateDocument}
-            onSkillHandoff={() => setAiCollapsed(false)}
-            overview={
-              <InsightsCard
-                insights={documentInsights}
-                session={jobSession}
-                lang={lang}
-                t={t}
-                onSearchTerm={searchFor}
-                onGotoPage={(page) => void aiApi.gotoPage(page)}
-                onNotice={showNotice}
-                sectionActions={(section) =>
-                  noteInsertAction(
-                    noteActions,
-                    overviewNoteRequest(section, t('airOverview')),
-                    t,
-                    'ai-overview-link',
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() =>
+                  onAiRailClick(
+                    paneRole,
+                    !aiCollapsed,
+                    (open) => setAiCollapsed(!open),
+                    requestFocus,
                   )
                 }
-              />
-            }
-          />
-        </div>
+              >
+                <AiMark size={22} />
+              </button>
+            )}
+            <AiPanel
+              api={aiApi}
+              filePath={filePath}
+              preset={aiPreset}
+              onCollapse={() => setAiCollapsed(true)}
+              onRunDone={() => void autoSaveAfterAiRun()}
+              onClearSelection={() => setAiSelection(null)}
+              onCitation={openCitation}
+              templateDocument={templateDocument}
+              onSkillHandoff={() => setAiCollapsed(false)}
+              overview={
+                <InsightsCard
+                  insights={documentInsights}
+                  session={jobSession}
+                  lang={lang}
+                  t={t}
+                  onSearchTerm={searchFor}
+                  onGotoPage={(page) => void aiApi.gotoPage(page)}
+                  onNotice={showNotice}
+                  sectionActions={(section) =>
+                    noteInsertAction(
+                      noteActions,
+                      overviewNoteRequest(section, t('airOverview')),
+                      t,
+                      'ai-overview-link',
+                    )
+                  }
+                />
+              }
+            />
+          </div>
+        )}
         <div className="app-content">
           {diskChange !== null && status === 'ready' && (
             <div className="pdf-disk-change-bar" role="alert">
@@ -11057,6 +11115,7 @@ export default function App() {
           )}
           <AiPageReading
             ref={aiReadRef}
+            hidden={!aiOn}
             filePath={filePath || null}
             revision={docReloadRev}
             password={passwordRef.current}
@@ -11087,6 +11146,7 @@ export default function App() {
           />
           <PassageReading
             ref={readingRef}
+            hidden={!aiOn}
             cards={passageCards}
             confirmations={saveConfirmations}
             lang={lang}
@@ -11121,6 +11181,7 @@ export default function App() {
           />
           <DocumentTranslation
             ref={translateRef}
+            hidden={!aiOn}
             filePath={filePath || null}
             fileName={fileName}
             password={passwordRef.current}
@@ -11140,6 +11201,7 @@ export default function App() {
           />
           <AiHighlights
             ref={highlightRef}
+            hidden={!aiOn}
             filePath={filePath || null}
             password={passwordRef.current}
             pageCount={sizes.length}
@@ -12608,7 +12670,7 @@ export default function App() {
                                 scale={scale}
                                 selectedId={selected?.kind === 'markup' ? selected.id : null}
                               />
-                              {passageMarks && (
+                              {aiOn && passageMarks && (
                                 <PassageUnderlines
                                   cards={passageCards}
                                   origIdx={origIdx}
@@ -13126,24 +13188,26 @@ export default function App() {
                         </svg>
                         {t('drawNote')}
                       </button>
-                      <span className="pdf-sel-popup-sep" aria-hidden />
+                      {aiOn && <span className="pdf-sel-popup-sep" aria-hidden />}
                     </>
                   )}
-                  <button
-                    type="button"
-                    className="pdf-sel-ask"
-                    data-tip={labelWithKey(t, t('aiAskTitle'), 'ask')}
-                    aria-label={labelWithKey(t, t('aiAskBtn'), 'ask')}
-                    onClick={openAskPopover}
-                  >
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
-                      <path
-                        d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 15l.85 2.3L22 18.15l-2.15.85L19 21.3l-.85-2.3-2.15-.85 2.15-.85L19 15z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    {t('aiAskBtn')}
-                  </button>
+                  {aiOn && (
+                    <button
+                      type="button"
+                      className="pdf-sel-ask"
+                      data-tip={labelWithKey(t, t('aiAskTitle'), 'ask')}
+                      aria-label={labelWithKey(t, t('aiAskBtn'), 'ask')}
+                      onClick={openAskPopover}
+                    >
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
+                        <path
+                          d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 15l.85 2.3L22 18.15l-2.15.85L19 21.3l-.85-2.3-2.15-.85 2.15-.85L19 15z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                      {t('aiAskBtn')}
+                    </button>
+                  )}
                 </div>
                 {!readOnly &&
                   selColorRow &&
@@ -13185,7 +13249,7 @@ export default function App() {
                 />
               </div>
             )}
-            {askPop && (
+            {aiOn && askPop && (
               <AiAskPopover
                 rect={askPop.rect}
                 excerpt={askPop.excerpt}

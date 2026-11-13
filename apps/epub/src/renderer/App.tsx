@@ -34,6 +34,7 @@ import type {
 } from '../shared/ipc'
 import { openableLink } from '../shared/links'
 import { EpubAiDock, useEpubAi } from './ai/AiDock'
+import { useAiOn } from './ai/ai-choice'
 import type { StartBookTranslation } from './ai/book-tools'
 import { BookPreview, type BookPreviewHandle, type PreviewPlace } from './components/BookPreview'
 import { ChapterFrame, type FrameWheel } from './components/ChapterFrame'
@@ -253,6 +254,11 @@ export default function App(): React.JSX.Element {
 
   const book = phase.kind === 'open' ? phase.book : null
   const translateRef = useRef<BookTranslationHandle>(null)
+  // AI features on (Settings): while off, the AI panel and book translation are
+  // gone, and turning AI on brings them back without reopening the tab
+  const aiOn = useAiOn()
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
 
   const readChapterForAi = useCallback((spineIndex: number) => api.readChapter(spineIndex), [api])
   // the AI panel's start_book_translation only opens the translation window
@@ -696,6 +702,8 @@ export default function App(): React.JSX.Element {
 
   /** the ribbon's button and the menu: open the window, or say why not */
   const openTranslation = useCallback(() => {
+    // the menu's "Translate book" too: book translation is AI work
+    if (!aiOnRef.current) return
     const answer = translateRef.current?.requestOpen({ lang: null, chapters: null })
     if (!answer) return
     if ('running' in answer) flash({ key: 'btBusy', params: answer.running })
@@ -1034,12 +1042,14 @@ export default function App(): React.JSX.Element {
           />
         }
         translateTools={
-          <TranslateButton
-            t={t}
-            hasBook
-            fixedLayout={phase.book.fixedLayout}
-            onClick={openTranslation}
-          />
+          aiOn ? (
+            <TranslateButton
+              t={t}
+              hasBook
+              fixedLayout={phase.book.fixedLayout}
+              onClick={openTranslation}
+            />
+          ) : undefined
         }
         onSave={() => void save('save')}
         onSaveAs={() => void save('saveAs')}
@@ -1113,6 +1123,7 @@ export default function App(): React.JSX.Element {
             save={saveForTranslation}
             lock={lockForTranslation}
             onWindowOpen={translationWindowChanged}
+            hidden={!aiOn}
           />
           {preview && (
             <BookPreview
@@ -1175,7 +1186,7 @@ export default function App(): React.JSX.Element {
             </button>
           </div>
         </section>
-        <EpubAiDock ai={ai} filePath={filePath} />
+        {aiOn && <EpubAiDock ai={ai} filePath={filePath} />}
       </div>
       <footer className="epub-status" aria-live="polite">
         <span className="epub-status-chapter">

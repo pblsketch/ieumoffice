@@ -10,6 +10,11 @@
  * Generic over the job kind: AI page reading and translation share it. An
  * easy explanation is a translate or translate-page job with `mode` 'easy';
  * its record is told apart from the plain one of the same language.
+ *
+ * With an `activity` bridge every job is also one entry on the shell's list
+ * of running AI work: the main process refuses a job while AI is turned off
+ * (the job stops and fails with the refusal) and asks a job to stop when AI
+ * is being turned off (the same as its Stop).
  */
 import {
   DocumentJobBusyError,
@@ -23,6 +28,7 @@ import {
 import type { JobStatus } from '../../../../../packages/pdf-structure/src/store/store'
 // the store's own record-key rule, from its Node-free module (reading-assist spec 5.3)
 import { jobKeyOf, type JobKind } from '../../../../../packages/pdf-structure/src/store/job-keys'
+import type { ScreenAiJobBridge } from '../../shared/ipc'
 
 export interface DocumentJobView {
   /** session-unique */
@@ -92,8 +98,18 @@ export class DocumentJobSession {
   private readonly ran = new Set<string>()
   /** copies of those records an in-app save carried to another hash, and when */
   private readonly carried = new Map<string, number>()
+  /** the activity id of each running job, to the document it runs on */
+  private readonly activityJobs = new Map<string, string>()
 
-  constructor(private readonly registry: DocumentJobRegistry = documentJobs) {}
+  constructor(
+    private readonly registry: DocumentJobRegistry = documentJobs,
+    private readonly activity: ScreenAiJobBridge | null = null,
+  ) {
+    activity?.onStop((jobId) => {
+      const docHash = this.activityJobs.get(jobId)
+      if (docHash !== undefined) this.stop(docHash)
+    })
+  }
 
   /** the job running on this document in this process (any tab), or null */
   running(docHash: string): RunningDocumentJob | null {
@@ -105,6 +121,27 @@ export class DocumentJobSession {
     const busy = this.registry.running(spec.docHash)
     if (busy) return { ok: false, running: busy }
     const controller = new AbortController()
+    // told before the job's first call leaves, so the main process hears it first
+    const activityId = this.activity ? crypto.randomUUID() : null
+    let refusal: string | null = null
+    const activityEnded = () => {
+      if (activityId === null) return
+      this.activityJobs.delete(activityId)
+      this.activity?.end(activityId)
+    }
+    if (activityId !== null) {
+      this.activityJobs.set(activityId, spec.docHash)
+      this.activity!.begin(activityId).then(
+        (refused) => {
+          if (!refused || controller.signal.aborted) return
+          refusal = refused
+          controller.abort('cancelled')
+        },
+        () => {
+          // no main process answering (an older shell): the job runs as before
+        },
+      )
+    }
     const view: DocumentJobView = {
       id: this.nextId++,
       docHash: spec.docHash,
@@ -135,6 +172,7 @@ export class DocumentJobSession {
           }),
       })
     } catch (err) {
+      activityEnded()
       if (err instanceof DocumentJobBusyError) return { ok: false, running: err.running }
       throw err
     }
@@ -143,8 +181,12 @@ export class DocumentJobSession {
     this.ran.add(recordKey(spec.docHash, spec.kind, jobKeyOf(spec), spec.mode))
     this.emit()
     const end = (patch: Partial<DocumentJobView>) => {
+      activityEnded()
       if (this.controllers.get(spec.docHash) === controller) this.controllers.delete(spec.docHash)
-      const last = this.update(view.id, spec.docHash, { ...patch, stopping: false })
+      // a job the main process refused (AI turned off) fails with that refusal
+      const ended =
+        refusal === null ? patch : { ...patch, state: 'failed' as const, error: refusal }
+      const last = this.update(view.id, spec.docHash, { ...ended, stopping: false })
       if (last) spec.onEnd?.(last)
     }
     handle.result.then(
