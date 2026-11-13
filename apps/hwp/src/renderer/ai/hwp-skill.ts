@@ -3940,19 +3940,16 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         }
       }
       case 'merge_cells': {
-        const numbers = ['table', 'from_row', 'from_col', 'to_row', 'to_col'].map(
-          (key) => call.input[key],
-        )
-        if (
-          !numbers.every(
-            (value) => typeof value === 'number' && Number.isInteger(value) && value >= 1,
-          )
-        ) {
-          return bad(
-            call,
-            'table, from_row, from_col, to_row and to_col must be whole numbers from 1',
-          )
-        }
+        const keys = ['table', 'from_row', 'from_col', 'to_row', 'to_col']
+        const numbers = keys.map((key) => call.input[key])
+        const notCells = keys.flatMap((key, index) => {
+          const value = numbers[index]
+          if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return []
+          return [
+            `${key} must be a whole number from 1${isGiven(value) ? `, not ${shown(value)}` : ''}.`,
+          ]
+        })
+        if (notCells.length > 0) return bad(call, notCells.join(' '))
         const [table, fromRow, fromCol, toRow, toCol] = numbers as number[]
         if (fromRow === toRow && fromCol === toCol) {
           return bad(call, 'from and to name the same cell: there is nothing to merge')

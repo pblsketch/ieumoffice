@@ -1421,6 +1421,19 @@ describe('merge_cells and split_cell', () => {
     expect(bridge.mergeCells).not.toHaveBeenCalled()
   })
 
+  it('names the number that is not a cell before asking the editor', async () => {
+    const { call, bridge } = setup()
+    const zero = await call('merge_cells', { table: 1, from_row: 0, from_col: 1, to_row: 1 })
+    expect(zero).toMatchObject({
+      isError: true,
+      output: expect.stringContaining(
+        'from_row must be a whole number from 1, not 0. to_col must be a whole number from 1.',
+      ),
+    })
+    expect(zero.output).not.toMatch(/table|from_col|to_row/)
+    expect(bridge.mergeCells).not.toHaveBeenCalled()
+  })
+
   it('replaces a font everywhere, and says how much it changed', async () => {
     const { call, bridge, changes } = setup()
     const result = await call('replace_font', { from: '휴먼명조', to: '함초롬바탕' })
