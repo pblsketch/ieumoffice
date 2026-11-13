@@ -3004,11 +3004,17 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     expect(plain.output).not.toContain('written as a tab')
   })
 
-  it('leaves the two characters alone in a selection rewrite, which takes no tab', async () => {
+  it('leaves the two characters alone in a selection rewrite, which takes no tab, and says so', async () => {
     const { call, bridge, setSelection } = setup()
     setSelection(STRETCH)
-    await call('replace_selection', { paragraphs: [String.raw`성명\t(인)`, '둘째'] })
-    expect(bridge.replaceSelection).toHaveBeenCalledWith(SELECTED, [String.raw`성명\t(인)`, '둘째'])
+    const typed = [String.raw`성명\t(인)`, String.raw`..\temp\test`]
+    const rewritten = await call('replace_selection', { paragraphs: typed })
+    expect(bridge.replaceSelection).toHaveBeenCalledWith(SELECTED, typed)
+    expect(rewritten.output).toBe(
+      String.raw`Replaced the selected text (2 paragraph(s)). The two characters \t in paragraph(s) 1 of this call were written as they are, not as a tab: replace_selection writes no tab, insert_paragraphs does.`,
+    )
+    const passedAsItIs = await call('replace_selection', { paragraphs: typed })
+    expect(passedAsItIs.output).toBe('Replaced the selected text (2 paragraph(s)).')
   })
 
   it('draws a line round the pages and takes it away', async () => {

@@ -3170,6 +3170,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, SELECTION_COUNT_HELP(selection.length))
         }
         const before = target.map((segment) => segment.text).join(' ⏎ ')
+        const tabsLeftTyped = paragraphs.flatMap((text, index) =>
+          text !== target[index]?.text && typedTabs(text) !== text ? [index + 1] : [],
+        )
         const outcome = await changeWithMemoApproval(
           () => bridge.replaceSelection(target, paragraphs),
           (options) => bridge.replaceSelection(target, paragraphs, options),
@@ -3204,11 +3207,15 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: 1,
           place: result.place,
         })
+        const tabNote =
+          tabsLeftTyped.length > 0
+            ? ` The two characters \\t in paragraph(s) ${tabsLeftTyped.join(', ')} of this call were written as they are, not as a tab: replace_selection writes no tab, insert_paragraphs does.`
+            : ''
         return {
           output:
             target.length === paragraphs.length
-              ? `Replaced the selected text (${paragraphs.length} paragraph(s)).`
-              : `Replaced the selected text: its ${target.length} paragraph(s) are now ${paragraphs.length}.${OCCURRENCE_SHIFT_NOTE}`,
+              ? `Replaced the selected text (${paragraphs.length} paragraph(s)).${tabNote}`
+              : `Replaced the selected text: its ${target.length} paragraph(s) are now ${paragraphs.length}.${tabNote}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: arrow(before, after),
         }
