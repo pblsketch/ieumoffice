@@ -53,7 +53,14 @@ import {
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
 } from '@genoffice/ai-provider/subscription'
-import { generateImageTool, documentMediaRoots, withMediaCallSignal } from '@genoffice/ai-search'
+import {
+  abortMediaCalls,
+  generateImageTool,
+  documentMediaRoots,
+  withMediaCallSignal,
+} from '@genoffice/ai-search'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import {
   parseFileToText,
   ATTACHABLE_EXTS,
@@ -1612,6 +1619,27 @@ async function readHead(target: string): Promise<Uint8Array> {
 
 let ipcRegistered = false
 
+/** what a picture call answers while AI is off; the model reads it, so it stays English */
+const AI_OFF_ERROR = 'AI features are turned off in Settings.'
+
+/**
+ * A tab's AI picture call: refused while AI is off (Settings › Editors and
+ * AI), else one running AI job that turning AI off stops the way the tab's
+ * Stop does (ending its media calls ends the program the call started).
+ */
+async function aiImageCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  if (!aiFeaturesOn()) return { error: AI_OFF_ERROR }
+  const end = registerAiJob({ kind: 'chat', stop: () => abortMediaCalls(senderId) })
+  try {
+    return await run()
+  } finally {
+    end()
+  }
+}
+
 function registerHtmlIpc(): void {
   if (ipcRegistered) return
   ipcRegistered = true
@@ -1976,23 +2004,26 @@ function registerHtmlIpc(): void {
   ipcMain.handle(
     HTML_CHANNELS.aiGenerateImage,
     (e, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      // ends with its tab, or when the tab's AI run is stopped
-      withMediaCallSignal(e.sender, (signal) =>
-        generateImageTool(
-          join(app.getPath('userData'), 'ai-settings.json'),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          {
-            mediaRoots: documentMediaRoots(
-              htmlFilePath(e.sender.id),
-              join(app.getPath('temp'), 'genoffice-pasted'),
-            ),
-            // screen path: the statuses of the process-wide subscription service decide the route
-            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-            signal,
-          },
+      // refused while AI is off, else one running AI job; ends with its tab,
+      // or when the tab's AI run is stopped
+      aiImageCall(e.sender.id, () =>
+        withMediaCallSignal(e.sender, (signal) =>
+          generateImageTool(
+            join(app.getPath('userData'), 'ai-settings.json'),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+            },
+            {
+              mediaRoots: documentMediaRoots(
+                htmlFilePath(e.sender.id),
+                join(app.getPath('temp'), 'genoffice-pasted'),
+              ),
+              // screen path: the statuses of the process-wide subscription service decide the route
+              context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+              signal,
+            },
+          ),
         ),
       ),
   )
