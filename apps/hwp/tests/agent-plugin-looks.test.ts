@@ -945,6 +945,36 @@ describe('columns and breaks', () => {
     expect(doc().getParagraphCount(0)).toBe(paragraphs)
     expect(doc().pageCount()).toBe(2)
   })
+
+  it('keeps the numbering of an item that starts its numbers anew', () => {
+    const { plugin, doc } = open(
+      blank(['머리', '첫째 항목', '둘째 항목', '셋째 항목', '넷째 항목', '끝']),
+    )
+    for (const item of ['첫째 항목', '둘째 항목', '셋째 항목', '넷째 항목']) {
+      plugin.formatParagraph(item, null, { list: 'number' })
+    }
+    doc().setNumberingRestart(0, 3, 2, 5)
+    const drawn = () =>
+      Array.from({ length: doc().pageCount() }, (_, page) =>
+        [
+          ...doc()
+            .renderPageSvgWithProfile(page, 'print')
+            .matchAll(/<text[^>]*>([^<]*)<[/]text>/g),
+        ]
+          .map((run) => run[1])
+          .join(''),
+      )
+    expect(drawn()).toHaveLength(1)
+    expect(drawn()[0]).toContain('2.둘째항목5.셋째항목6.넷째항목')
+    const paragraphs = doc().getParagraphCount(0)
+    expect(plugin.insertBreak('셋째 항목', null, 'page')).toMatchObject({ ok: true, kind: 'page' })
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    const pages = drawn()
+    expect(pages).toHaveLength(2)
+    expect(pages[0]).toContain('1.첫째항목2.둘째항목')
+    expect(pages[0]).not.toContain('5.')
+    expect(pages[1]).toContain('5.셋째항목6.넷째항목')
+  })
 })
 
 describe('text written where it runs in columns', () => {

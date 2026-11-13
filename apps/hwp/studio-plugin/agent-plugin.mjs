@@ -1406,6 +1406,33 @@ function splitKeepingText(length, k, textOffset, split) {
   }
 }
 
+/** The engine's names for a numbering restart, as setNumberingRestart takes them. */
+const RESTART_CONTINUE = 1
+const RESTART_NEW_START = 2
+
+/**
+ * What to do with a break asked for on a paragraph, from what the engine says the paragraph
+ * carried (`meta`, the removedParaMeta of the join in insertBreak). The engine's break call
+ * leaves the paragraph's break and its numbering restart on the half that is joined away:
+ * - `already`: the paragraph starts a page (or a column, when a column is asked for);
+ * - `refuse`: it starts a part with other columns or a section, a mark the break replaces;
+ * - `restart`: go on, and set this numbering restart on the paragraph again (null: none).
+ */
+function breakOutcome(meta, kind) {
+  const { column_type: had, numbering_restart: numbering } = meta ?? {}
+  if (typeof had !== 'string') throw fail('ENGINE', 'the break could not be read')
+  if (had === 'Page' || (had === 'Column' && kind === 'column')) {
+    return { already: had.toLowerCase() }
+  }
+  if (had !== 'None' && had !== 'Column') return { refuse: 'layout_start' }
+  if (numbering === null) return { restart: null }
+  if (numbering === 'ContinuePrevious') return { restart: [RESTART_CONTINUE, 0] }
+  if (Number.isInteger(numbering?.NewStart)) {
+    return { restart: [RESTART_NEW_START, numbering.NewStart] }
+  }
+  throw fail('ENGINE', 'the numbering of the paragraph could not be read')
+}
+
 /**
  * The run of paragraphs a match sits in (the body of a section, or one table cell) with the
  * engine calls that address a paragraph of it by index. `index` is the matched paragraph.
@@ -8346,10 +8373,10 @@ export const agentPlugin = {
        * (`kind`, one of BREAK_KINDS), as Hangul's 쪽 나누기 and 단 나누기 do in front of a
        * paragraph. A paragraph inside a table, and the first one of the document, cannot
        * start anew. The break is put on the paragraph itself: no empty paragraph is left in
-       * front of it. One that starts a page already (or a column, when a column is asked
-       * for) is left as it is and answered `already`; one that starts a part of the document
-       * with other columns is refused, since the break would take that start away. One undo
-       * step.
+       * front of it, and a numbering restart the paragraph had is set on it again. One that
+       * starts a page already (or a column, when a column is asked for) is left as it is and
+       * answered `already`; one that starts a part of the document with other columns is
+       * refused, since the break would take that start away (breakOutcome). One undo step.
        */
       insertBreak: guarded((find, occurrence, kind, options) => {
         if (!BREAK_KINDS.includes(kind)) {
@@ -8398,18 +8425,19 @@ export const agentPlugin = {
                 if (!joined || joined.ok !== true) {
                   throw fail('ENGINE', 'the break could not be made')
                 }
-                const had = joined.removedParaMeta?.column_type
-                if (typeof had !== 'string') throw fail('ENGINE', 'the break could not be read')
-                const starts =
-                  had === 'Page' || (had === 'Column' && kind === 'column')
-                    ? had.toLowerCase()
-                    : had === 'None' || had === 'Column'
-                      ? null
-                      : 'layout'
-                if (starts) {
-                  const already = fail('STARTS_ALREADY', 'the paragraph already starts anew')
-                  already.starts = starts
-                  throw already
+                const outcome = breakOutcome(joined.removedParaMeta, kind)
+                if (outcome.already || outcome.refuse) {
+                  const unchanged = fail('BREAK_NOT_MADE', 'the paragraph is left as it is')
+                  unchanged.answer = outcome.already
+                    ? { ok: true, kind, already: outcome.already }
+                    : { ok: false, reason: outcome.refuse, count: 1 }
+                  throw unchanged
+                }
+                if (outcome.restart) {
+                  expectOk(
+                    doc.setNumberingRestart(hit.sec, hit.para, ...outcome.restart),
+                    'keep the numbering of the paragraph',
+                  )
                 }
                 mustKeep(before, objectsOf(doc))
                 return {
@@ -8428,10 +8456,8 @@ export const agentPlugin = {
             ),
           )
         } catch (thrown) {
-          if (thrown?.code !== 'STARTS_ALREADY') throw thrown
-          return thrown.starts === 'layout'
-            ? { ok: false, reason: 'layout_start', count: 1 }
-            : { ok: true, kind, already: thrown.starts }
+          if (thrown?.code !== 'BREAK_NOT_MADE') throw thrown
+          return thrown.answer
         }
       }),
 
