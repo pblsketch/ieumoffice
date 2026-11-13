@@ -2,6 +2,7 @@
  * Which edits of a run were left undone. A model may answer "done" after a tool refused,
  * so the panel decides from the tool results themselves and says so under the reply.
  */
+import { HWP_EDIT_TOOLS } from './hwp-skill'
 
 /** One tool call of a run, as the panel saw it executed. */
 export interface RunStep {
@@ -11,41 +12,6 @@ export interface RunStep {
   /** the step's label in the activity list */
   summary: string
 }
-
-/** The tools of the Hangul skill that change the document; failures of the others are not counted. */
-const EDIT_TOOLS = new Set([
-  'replace_text',
-  'replace_all',
-  'insert_paragraphs',
-  'delete_paragraph',
-  'insert_table',
-  'insert_image',
-  'generate_image',
-  'format_text',
-  'replace_font',
-  'format_paragraph',
-  'replace_selection',
-  'format_selection',
-  'create_style',
-  'edit_style',
-  'merge_cells',
-  'split_cell',
-  'format_cells',
-  'fill_cells',
-  'check_boxes',
-  'add_to_table',
-  'remove_from_table',
-  'delete_table',
-  'fill_field',
-  'insert_toc',
-  'refresh_toc',
-  'insert_note',
-  'edit_note',
-  'delete_note',
-  'set_note_settings',
-  'set_page_setup',
-  'format_look',
-])
 
 /**
  * The arguments that say what an edit was about. A later call with the same ones did that
@@ -59,6 +25,7 @@ const TARGET_ARGS = [
   'table',
   'field',
   'note',
+  'picture',
   'name',
   'title',
   'look',
@@ -79,7 +46,7 @@ function targetOf(step: RunStep): string {
 export function unfinishedSteps(steps: readonly RunStep[]): RunStep[] {
   const left = new Map<string, RunStep>()
   for (const step of steps) {
-    if (!EDIT_TOOLS.has(step.name)) continue
+    if (!HWP_EDIT_TOOLS.has(step.name)) continue
     const target = targetOf(step)
     if (step.isError) {
       if (!left.has(target)) left.set(target, step)
