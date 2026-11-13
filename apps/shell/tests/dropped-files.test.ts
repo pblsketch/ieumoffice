@@ -166,4 +166,66 @@ describe('handleDroppedFiles with skill files', () => {
     await handleDroppedFiles(['/tmp/photo.png'], deps)
     expect(deps.noSkills).not.toHaveBeenCalled()
   })
+
+  it('asks to turn AI on before importing a skill while AI is off', async () => {
+    const pack = await zipAt('pack.zip', { 'report/SKILL.md': skillMd })
+    const yes = vi.fn(async () => true)
+    const accepted = fakeDeps({ aiFeaturesOn: () => false, askAiOnForSkills: yes })
+    await handleDroppedFiles([pack], accepted)
+    expect(yes).toHaveBeenCalledOnce()
+    expect(accepted.skills).toEqual([{ kind: 'zip', file: pack }])
+
+    const no = vi.fn(async () => false)
+    const declined = fakeDeps({ aiFeaturesOn: () => false, askAiOnForSkills: no })
+    await handleDroppedFiles([pack], declined)
+    expect(no).toHaveBeenCalledOnce()
+    expect(declined.skills).toEqual([])
+    expect(declined.noSkills).not.toHaveBeenCalled()
+  })
+
+  it('asks once for several skill files, never with AI on, and not for a zip without one', async () => {
+    const a = await zipAt('a.zip', { 'one/SKILL.md': skillMd })
+    const b = await zipAt('b.zip', { 'two/SKILL.md': skillMd })
+    const ask = vi.fn(async () => true)
+    const off = fakeDeps({ aiFeaturesOn: () => false, askAiOnForSkills: ask })
+    await handleDroppedFiles([a, b], off)
+    expect(ask).toHaveBeenCalledOnce()
+    expect(off.skills).toHaveLength(2)
+
+    const onAsk = vi.fn(async () => true)
+    const on = fakeDeps({ aiFeaturesOn: () => true, askAiOnForSkills: onAsk })
+    await handleDroppedFiles([a], on)
+    expect(onAsk).not.toHaveBeenCalled()
+    expect(on.skills).toHaveLength(1)
+
+    const photos = await zipAt('photos.zip', { 'trip/1.png': 'png' })
+    const empty = vi.fn(async () => true)
+    const none = fakeDeps({ aiFeaturesOn: () => false, askAiOnForSkills: empty })
+    await handleDroppedFiles([photos], none)
+    expect(empty).not.toHaveBeenCalled()
+    // the skills page is hidden while AI is off: no notice either
+    expect(none.noSkills).not.toHaveBeenCalled()
+  })
+})
+
+describe('handleDroppedFiles with the batch entry (editors turned off)', () => {
+  it('hands every document of the drop over at once and reveals when one opened', async () => {
+    const batches: string[][] = []
+    const deps = fakeDeps({
+      openPaths: vi.fn(async (paths: readonly string[]) => {
+        batches.push([...paths])
+        return true
+      }),
+    })
+    await handleDroppedFiles(['/tmp/a.docx', '/tmp/b.pptx'], deps)
+    expect(batches).toEqual([['/tmp/a.docx', '/tmp/b.pptx']])
+    expect(deps.opened).toEqual([])
+    expect(deps.revealed).toHaveBeenCalledOnce()
+  })
+
+  it('does not reveal the shell when every file was cancelled', async () => {
+    const deps = fakeDeps({ openPaths: vi.fn(async () => false) })
+    await handleDroppedFiles(['/tmp/b.pptx'], deps)
+    expect(deps.revealed).not.toHaveBeenCalled()
+  })
 })

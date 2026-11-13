@@ -138,7 +138,14 @@ import { registerIntegrationsIpc } from './integrations-ipc'
 import { registerResultStoreIpc } from './result-store-ipc'
 import { FEEDBACK_SURVEY_URL, feedbackDetails, feedbackText, platformLabel } from './feedback'
 import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
-import { registerEditorChoiceIpc } from './editor-choice-main'
+import { registerEditorChoiceIpc, type EditorChoiceService } from './editor-choice-main'
+import { createEditorGate, installEditorGate, whenReady, type OpenOrigin } from './editor-gate'
+import { aiFeaturesOn, appChoice } from '@genoffice/electron-utils/app-choice'
+import {
+  editorItemOfTabKind,
+  hiddenNewDocumentKinds,
+  type EditorItemId,
+} from '../shared/editor-choice'
 import { startMcpHub } from './mcp-client/hub-app'
 import type { McpHub } from './mcp-client/hub'
 import { freeAiInUse } from './drive/drive-consent'
@@ -464,6 +471,7 @@ import {
   PPTX_RE,
   TEXT_RE,
   XLSX_RE,
+  appForPath,
   renameStaysInApp,
 } from './app-routing'
 import { isSameFile, pdfSaveAsTarget, isValidRawRenameName } from './rename-validation'
@@ -544,7 +552,12 @@ import { runTabDocumentAction, type TabDocumentAction } from './tab-document-act
 import { duplicateDocumentFile } from './tab-duplicate'
 import { closeTabsInOrder, createRecentlyClosedTracker } from './tab-lifecycle'
 import { handleTabShortcut } from './tab-shortcuts'
-import { readSplitMemory, writeSplitMemory, type SplitMemory } from './split-memory'
+import {
+  forgetSplitMemoryPaths,
+  readSplitMemory,
+  writeSplitMemory,
+  type SplitMemory,
+} from './split-memory'
 import { SPLIT_EVEN_RATIO, decideSplitDrop, paneRects, splitDropZone } from './split-layout'
 import { configureGenerateWindow } from './generate/generate-window'
 import { configurePdfToolsWindow, openPdfToolsWithFile } from './pdf-tools/pdf-tools-window'
@@ -5902,6 +5915,9 @@ function showAppWarning(message: string, detail?: string): void {
  */
 const droppedFilesDeps = (): DroppedFilesDeps => ({
   openDocumentPath,
+  openPaths: (paths) => requestOpenPaths(paths),
+  aiFeaturesOn,
+  askAiOnForSkills: () => openGate.askAiOnForSkills(),
   revealShellWindow,
   showWarning: showAppWarning,
   unsupportedMessage: (exts: string[]) => tm('errUnsupportedExt', { ext: exts.join(', ') }),
@@ -5922,8 +5938,71 @@ function registerDroppedFilesIpc(): void {
   })
 }
 
-/** the single router: extension decides which module owns the file; false = nothing opened */
-function openDocumentPath(filePath: string): boolean {
+/** which item's editor opens a file: the router's own answer (a legacy file opens as a copy) */
+function editorItemOfPath(filePath: string): EditorItemId | null {
+  const kind = legacyEditorFor(filePath) ?? appForPath(filePath)
+  return kind ? editorItemOfTabKind(kind) : null
+}
+
+/** the file is in a tab or a detached window now (no unloaded tab is loaded to find out) */
+function isDocumentOpen(filePath: string): boolean {
+  const wanted = canonicalPath(filePath)
+  const open = [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()]
+  if (open.some((path) => canonicalPath(path) === wanted)) return true
+  const legacyTab = legacyCopyTabs.get(resolve(filePath).toLowerCase())
+  return !!legacyTab && !!tabManager?.webContentsForTab(legacyTab)
+}
+
+/** set once the choice service is registered (lifecycle below) */
+let editorChoiceService: EditorChoiceService | null = null
+
+/**
+ * Editors turned off in Settings → Editors and AI ask before a file opens
+ * with them (spec 7.2, 7.5); the questions, the grouping and "turn on" live
+ * in editor-gate.ts. The PDF tools and generate windows reach it through
+ * editorGate().
+ */
+const openGate = createEditorGate({
+  choice: () => editorChoiceService?.effective() ?? appChoice(),
+  setChoice: (patch) => editorChoiceService?.set(patch) ?? appChoice(),
+  itemOfPath: editorItemOfPath,
+  isOpen: isDocumentOpen,
+  showMessageBox: async (box) => {
+    const focused = BrowserWindow.getFocusedWindow()
+    const parent = focused && !focused.isDestroyed() ? focused : shellWindow
+    const options = { type: 'question' as const, noLink: true, ...box }
+    const { response } =
+      parent && !parent.isDestroyed()
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options)
+    return response
+  },
+  lang: () => currentLang(),
+})
+installEditorGate(openGate)
+
+/**
+ * Several files a person opened at once (a launch, a drop, File → Open): one
+ * question per turned-off editor. True = anything opened.
+ */
+function requestOpenPaths(paths: readonly string[], origin: OpenOrigin = 'user'): Promise<boolean> {
+  return openGate.openMany(paths, origin, (path) => openDocumentPath(path, origin))
+}
+
+/** one file, waiting for the answer when its editor is off (callers that need the tab) */
+function openDocumentPathAnswered(filePath: string, origin: OpenOrigin = 'user'): Promise<boolean> {
+  return openGate.openOne(filePath, origin, (path) => openDocumentPath(path, origin))
+}
+
+/**
+ * The single router: extension decides which module owns the file; false =
+ * nothing opened. `origin` says who asked (editor-gate.ts): with no origin it
+ * is a person, whose file of a turned-off editor asks first; while the
+ * question is up the answer is true (handled), so no caller falls back.
+ */
+function openDocumentPath(filePath: string, origin: OpenOrigin = 'user'): boolean {
+  const gated = openGate.check(filePath, origin, (path) => openDocumentPath(path, origin))
+  if (gated !== null) return gated
   // a copy of a Drive file (from Recent, say) reopens through Drive, so a copy
   // older than the file in Drive is refreshed first unless it holds unsent edits
   const viaDrive = driveService?.reopen(filePath)
@@ -6608,8 +6687,8 @@ function registerProjectFolderChannels(): void {
     openFolder: async (path) => {
       await shell.openPath(path)
     },
-    openDocument: (path) => {
-      if (!openDocumentPath(path)) return null
+    openDocument: async (path) => {
+      if (!(await openDocumentPathAnswered(path))) return null
       const found = tabManager?.findTabByPath(path) ?? findDetachedTabByPath(path)
       if (!found) return null
       trackProjectContents(found.webContents)
@@ -6916,7 +6995,7 @@ function registerHomeIpc(): void {
       ],
       properties: ['openFile', 'multiSelections'],
     })
-    if (!result.canceled) for (const path of result.filePaths) openDocumentPath(path)
+    if (!result.canceled) void requestOpenPaths(result.filePaths)
   })
 
   ipcMain.handle(HOME_CHANNELS.newDoc, (_event, opts?: NewFileOpts) => {
@@ -7413,6 +7492,8 @@ function registerHomeIpc(): void {
     exePath: app.getPath('exe'),
     run: execFileRunner,
     openExternal: (url) => shell.openExternal(url),
+    // a turned-off editor's types are neither checked nor claimed (spec 7.1)
+    editorsOff: () => appChoice().off,
   })
   ipcMain.handle(HOME_CHANNELS.getDefaultAppStatus, () => defaultApp.status())
   ipcMain.handle(HOME_CHANNELS.setDefaultApp, () => defaultApp.set())
@@ -7609,7 +7690,11 @@ function newDocumentMenuItems(opts: {
   section?: boolean
   accelerator?: string
 }): MenuItemConstructorOptions[] {
-  const items = visibleHomeKinds(readHomeKinds()).flatMap((kind): MenuItemConstructorOptions[] => {
+  const homeKinds = readHomeKinds()
+  // a turned-off editor's kind leaves every "new" menu (Settings → Editors and AI)
+  const offKinds = hiddenNewDocumentKinds(homeKinds, appChoice())
+  const kinds = visibleHomeKinds(homeKinds).filter((kind) => !offKinds.includes(kind))
+  const items = kinds.flatMap((kind): MenuItemConstructorOptions[] => {
     if (kind === 'pdfTools' || (opts.only && !opts.only.includes(kind))) return []
     const entry = NEW_KIND_MENU[kind]
     return [
@@ -7942,13 +8027,41 @@ function notifySplitRoles(manager: TabManager): void {
 }
 
 /**
- * A launch with no file argument: reopen the remembered arrangement when its
- * documents are still on disk, else the home screen as always. A remembered
+ * A launch with no file argument, first asking about a remembered document
+ * whose editor is turned off (spec 7.5). A declined one leaves the memory, so
+ * no later launch asks again; the rest is placed as before.
+ */
+function restoreSplitMemoryOrHome(): void {
+  const memory = readRememberedSplit()
+  const paths = [fileOnDisk(memory?.a), fileOnDisk(memory?.b)].filter(
+    (path): path is string => path !== undefined,
+  )
+  const refusal = openGate.askRestore(
+    paths.map((path) => ({ key: path, item: editorItemOfPath(path) })),
+  )
+  whenReady(refusal, (refused) => {
+    if (refused.size > 0) {
+      try {
+        forgetSplitMemoryPaths([...refused], {
+          settingsPath: APP_SETTINGS_PATH,
+          same: (a, b) => canonicalPath(a) === canonicalPath(b),
+        })
+      } catch (error) {
+        console.warn('[split] the declined documents could not leave the memory:', error)
+      }
+    }
+    placeSplitMemoryOrHome()
+  })
+}
+
+/**
+ * Reopen the remembered arrangement when its documents are still on disk,
+ * else the home screen as always. A remembered
  * path that is gone is skipped — one remaining document opens alone, both gone
  * falls back to home. The memory is left untouched: the next split change
  * rewrites it.
  */
-function restoreSplitMemoryOrHome(): void {
+function placeSplitMemoryOrHome(): void {
   const manager = ensureTabManager()
   const memory = readRememberedSplit()
   const aPath = fileOnDisk(memory?.a)
@@ -8408,7 +8521,7 @@ async function openFileViaDialog(): Promise<void> {
     filters: [{ name: tm('filterSupported'), extensions: OPEN_DIALOG_EXTENSIONS }],
     properties: ['openFile', 'multiSelections'],
   })
-  if (!result.canceled) for (const path of result.filePaths) openDocumentPath(path)
+  if (!result.canceled) void requestOpenPaths(result.filePaths)
 }
 
 function buildHomeMenu(): void {
@@ -9897,9 +10010,10 @@ function revealShellWindow(): void {
 }
 
 function openLaunchPaths(paths: readonly string[]): void {
-  let opened = false
-  for (const filePath of paths) opened = openDocumentPath(filePath) || opened
-  if (!opened) tabManager?.openHomeTab()
+  // files of turned-off editors ask first; Home shows when nothing opened
+  void requestOpenPaths(paths).then((opened) => {
+    if (!opened) tabManager?.openHomeTab()
+  })
 }
 
 // On macOS a file opened from Finder is not in argv; it arrives via the open-file event (before ready).
@@ -9952,7 +10066,12 @@ registerProjectIpc()
 registerDocsIpc()
 registerHomeIpc()
 // editors and AI on or off (the source the editor mains read, the "ai-off" run check)
-registerEditorChoiceIpc({ settingsPath: APP_SETTINGS_PATH })
+editorChoiceService = registerEditorChoiceIpc({ settingsPath: APP_SETTINGS_PATH })
+// a turned-off editor's kind leaves the "new" menus at once (the cards follow by IPC)
+editorChoiceService.onChange(() => {
+  applyMenuFor(linkMenuKind() ?? 'home')
+  installDockMenu()
+})
 registerProjectFolderChannels()
 registerIntegrationsIpc({
   settingsPath: APP_SETTINGS_PATH,
@@ -10267,8 +10386,11 @@ app.whenReady().then(async () => {
     settingsPath: APP_SETTINGS_PATH,
     lang: () => currentLang(),
     window: () => shellWindow,
-    // a Drive copy opens like any local file; the Drive service already chose the copy
-    openPath: (path) => routeDocumentPath(path),
+    // a Drive copy opens like any local file; the Drive service already chose the
+    // copy. A pick of a turned-off editor's file asks first (spec 7.2).
+    openPath: (path) =>
+      openGate.check(path, 'user', (picked) => routeDocumentPath(picked)) ??
+      routeDocumentPath(path),
     isOpen: (path) =>
       (tabManager?.openFilePaths() ?? []).some(
         (open) => resolve(open).toLowerCase() === resolve(path).toLowerCase(),
@@ -10675,7 +10797,8 @@ app.whenReady().then(async () => {
       const detachedId = detachedDocumentFor(wc.id)?.id
       return detachedId ? closeDetachedWithoutPrompt(detachedId) : false
     },
-    reopen: (filePath) => void openDocumentPath(filePath),
+    // a crashed tab coming back never asks, even when its editor is off now
+    reopen: (filePath) => void openDocumentPath(filePath, 'automation'),
     // an untitled document comes back from its recovery copy (spec 8); its
     // identity is read while the editor still knows the crashed view
     untitledCopyOf: (wc) => {
@@ -10741,6 +10864,12 @@ app.whenReady().then(async () => {
     afterSheetsOpen: restoredTabDeps.afterSheetsOpen,
     sessionChanged: noteLiveSession,
     reopenedByInstaller: reopenedByInstaller(),
+    // restored tabs of turned-off editors ask before the strip is rebuilt (spec 7.5)
+    askRestore: (tabs, { fromList }) =>
+      openGate.askRestore(
+        tabs.map((tab) => ({ key: tab.key, item: editorItemOfTabKind(tab.kind) })),
+        { askAgain: fromList },
+      ),
     settled: () => {
       const paths = deferredLaunchPaths
       deferredLaunchPaths = []
@@ -10759,7 +10888,8 @@ app.whenReady().then(async () => {
     app.getPath('userData'),
     controlHandler({
       reveal: revealShellWindow,
-      openDocument: openDocumentPath,
+      // the terminal command never asks, even for a turned-off editor (spec 7.6)
+      openDocument: (path) => openDocumentPath(path, 'automation'),
       activateTab: (id) => {
         if (!activateDetached(id)) tabManager?.activateTab(id)
       },
