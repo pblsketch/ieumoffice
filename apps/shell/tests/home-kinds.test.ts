@@ -118,7 +118,7 @@ describe('where the setting applies', () => {
     )
     // Ctrl+N / ⌘N is the File menu's first entry, so it follows the same list
     expect(main).toMatch(/newDocumentMenuItems\(\{ section: true, accelerator: 'CmdOrCtrl\+N' \}\)/)
-    const change = main.slice(main.indexOf('editorChoiceService.onChange('))
+    const change = main.slice(main.indexOf('editorChoice.onChange('))
     const onChange = change.slice(0, change.indexOf('\n})\n'))
     expect(onChange).toMatch(/applyMenuFor\(linkMenuKind\(\) \?\? 'home'\)/)
     expect(onChange).toMatch(/installDockMenu\(\)/)
