@@ -35,6 +35,14 @@ const LINES = [
   '○ 참가 동의서는 담임 교사에게 제출',
 ]
 
+/** A PNG of one pixel. */
+const ONE_PIXEL = new Uint8Array(
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  ),
+)
+
 function blank(lines: string[] = LINES): HwpDocument {
   const doc = HwpDocument.createEmpty()
   doc.createBlankDocument()
@@ -1565,12 +1573,6 @@ describe('a paragraph that holds an object of its line', () => {
       .map((control) => control.para)
   const places = (doc: HwpDocument, para: number) =>
     JSON.parse(doc.getControlTextPositions(0, para)) as number[]
-  const ONE_PIXEL = new Uint8Array(
-    Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64',
-    ),
-  )
 
   it('adds paragraphs after a line with equations and leaves the line whole', () => {
     const { plugin, doc } = open(
@@ -1762,5 +1764,100 @@ describe('a paragraph that holds an object of its line', () => {
     })
     expect(steps()).toBe(after)
     expect(textOf(doc(), 2)).toBe('파하거너')
+  })
+})
+
+describe('removing what follows a table', () => {
+  const textOf = (doc: HwpDocument, para: number) =>
+    doc.getTextRange(0, para, 0, doc.getParagraphLength(0, para))
+  const bodyText = (doc: HwpDocument) =>
+    Array.from({ length: doc.getParagraphCount(0) }, (_, para) => textOf(doc, para))
+  const tableParagraphs = (doc: HwpDocument) =>
+    (JSON.parse(doc.getControls()) as { ctrlId: string; list: number; para: number }[])
+      .filter((control) => control.list === 0 && control.ctrlId === 'tbl')
+      .map((control) => control.para)
+
+  it('removes a body paragraph that follows a table, and a table that follows another', () => {
+    const { plugin, doc, steps } = open(blank(['머리', '표 앞', '표 뒤 문단', '다음 글', '끝']))
+    plugin.insertTable('표 앞', null, 'after', [['a', 'b']], false)
+    plugin.insertTable('표 뒤 문단', null, 'before', [['c', 'd']], false)
+    expect(bodyText(doc())).toEqual(['머리', '표 앞', '', '', '표 뒤 문단', '다음 글', '끝'])
+    expect(tableParagraphs(doc())).toEqual([2, 3])
+    const before = steps()
+    expect(plugin.deleteParagraph('표 뒤 문단', null)).toMatchObject({
+      ok: true,
+      text: '표 뒤 문단',
+      emptied: false,
+    })
+    expect(steps()).toBe(before + 1)
+    expect(bodyText(doc())).toEqual(['머리', '표 앞', '', '', '다음 글', '끝'])
+    expect(tableParagraphs(doc())).toEqual([2, 3])
+    // the second table goes with the paragraph it stood in; the first one stays
+    expect(plugin.deleteTable(2)).toMatchObject({ ok: true, table: 2, rows: 1, cols: 2 })
+    expect(bodyText(doc())).toEqual(['머리', '표 앞', '', '다음 글', '끝'])
+    expect(tableParagraphs(doc())).toEqual([2])
+    expect(plugin.listTables().count).toBe(1)
+    expect(plugin.readTable(1)).toMatchObject({ ok: true, cells: [{ text: 'a' }, { text: 'b' }] })
+  })
+
+  it('removes the title line of a table of contents once its table is gone', () => {
+    const { plugin, doc } = open(
+      blank(['보고서 제목', '1. 추진 배경', '배경 글입니다.', '2. 추진 계획', '계획 글입니다.']),
+    )
+    // the title box makes the paragraph in front of the contents title one that holds a table
+    plugin.insertTitleBox('보고서 제목', null, { look: 'box' })
+    plugin.insertToc('1. 추진 배경', null, 'before', '차 례', [
+      { find: '1. 추진 배경', level: 1 },
+      { find: '2. 추진 계획', level: 1 },
+    ])
+    expect(plugin.listTables().count).toBe(2)
+    expect(bodyText(doc()).slice(0, 3)).toEqual(['', '차 례', ''])
+    expect(plugin.deleteTable(2)).toMatchObject({ ok: true })
+    expect(plugin.deleteParagraph('차 례', null)).toMatchObject({ ok: true, text: '차 례' })
+    expect(bodyText(doc())).toEqual([
+      '',
+      '1. 추진 배경',
+      '배경 글입니다.',
+      '2. 추진 계획',
+      '계획 글입니다.',
+    ])
+    // the title box is still there, with its words
+    expect(tableParagraphs(doc())).toEqual([0])
+    expect(plugin.readText()).toContain('보고서 제목')
+  })
+
+  it('removes a selected paragraph behind a line that ends in a picture', () => {
+    const start = blank(['머리', '그림이 끝에 놓인 줄', '지울 문단', '끝'])
+    start.insertPicture(
+      0,
+      1,
+      start.getParagraphLength(0, 1),
+      '',
+      ONE_PIXEL,
+      2000,
+      2000,
+      1,
+      1,
+      'png',
+      '',
+    )
+    const { plugin, doc } = open(start)
+    const pictures = () =>
+      (JSON.parse(doc().getControls()) as { ctrlId: string; list: number; para: number }[])
+        .filter((control) => control.list === 0 && control.ctrlId === 'gso')
+        .map((control) => control.para)
+    expect(pictures()).toEqual([1])
+    // two selected paragraphs rewritten into one: the second one goes, the picture stays
+    const selected = [
+      { sec: 0, para: 1, offset: 0, length: 11, text: '그림이 끝에 놓인 줄' },
+      { sec: 0, para: 2, offset: 0, length: 5, text: '지울 문단' },
+    ]
+    expect(plugin.replaceSelection(selected, ['그림이 끝에 놓인 줄'])).toMatchObject({ ok: true })
+    expect(bodyText(doc())).toEqual(['머리', '그림이 끝에 놓인 줄', '끝'])
+    expect(pictures()).toEqual([1])
+    // the same line as the anchor of delete_paragraph's neighbour
+    expect(plugin.deleteParagraph('끝', 2)).toMatchObject({ ok: true, text: '끝' })
+    expect(bodyText(doc())).toEqual(['머리', '그림이 끝에 놓인 줄'])
+    expect(pictures()).toEqual([1])
   })
 })

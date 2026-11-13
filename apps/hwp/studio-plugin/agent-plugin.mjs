@@ -1455,6 +1455,10 @@ function containerOf(doc, hit) {
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
       deleteText: (k, count) => expectOk(doc.deleteText(sec, k, 0, count), 'delete'),
       deleteRange: (k1, o1, k2, o2) => expectOk(doc.deleteRange(sec, k1, o1, k2, o2), 'delete'),
+      // paragraph k and all it holds: for a paragraph without objects. A range from the end
+      // of the paragraph in front would take an object that stands at that end (a table on
+      // a line of its own) along with it.
+      remove: (k) => expectOk(doc.deleteParagraph(sec, k), 'remove the paragraph'),
       pasteHtml: (k, html) => expectOk(doc.pasteHtml(sec, k, 0, html), 'insert the table'),
       formatChars: (k, start, end, json) =>
         expectOk(doc.applyCharFormat(sec, k, start, end, json), 'format the text'),
@@ -1503,6 +1507,13 @@ function containerOf(doc, hit) {
       expectOk(doc.deleteTextInCellByPath(sec, para, at(k), 0, count), 'delete'),
     deleteRange: (k1, o1, k2, o2) =>
       expectOk(doc.deleteRangeInCellByPath(sec, para, at(k1), k1, o1, k2, o2), 'delete'),
+    // the engine removes a paragraph of the body only: here the range from the end of the
+    // paragraph in front to the end of this one goes
+    remove: (k) =>
+      expectOk(
+        doc.deleteRangeInCellByPath(sec, para, at(k - 1), k - 1, lengthOf(k - 1), k, lengthOf(k)),
+        'remove the paragraph',
+      ),
     pasteHtml: (k, html) =>
       expectOk(doc.pasteHtmlInCellByPath(sec, para, at(k), 0, html), 'insert the table'),
     formatChars: (k, start, end, json) =>
@@ -6612,9 +6623,8 @@ export const agentPlugin = {
               // it keeps its place as an empty line
               const emptied = k === 0 || box.count() === 1
               if (emptied) box.deleteText(k, length)
-              // from the end of the paragraph in front to the end of this one: the paragraph
-              // goes, and the ones around it keep their own formatting
-              else box.deleteRange(k - 1, box.length(k - 1), k, length)
+              // the paragraph goes, and the ones around it keep their own formatting
+              else box.remove(k)
               mustKeep(before, objectsOf(doc))
               return {
                 ok: true,
@@ -9222,7 +9232,7 @@ export const agentPlugin = {
                 (cellPath.length === 0
                   ? box.objectPositions(k).length === 0
                   : !paragraphHoldsObject(doc, sec, para, cellPath))
-              if (k > 0 && bare) box.deleteRange(k - 1, box.length(k - 1), k, 0)
+              if (k > 0 && bare) box.remove(k)
               // only this table and the tables inside it may be gone
               mustKeep({ ...before, controls: before.controls - 1 - inner }, objectsOf(doc, going))
               return {
@@ -9490,9 +9500,8 @@ export const agentPlugin = {
                 const segment = segments[index]
                 const { box, k } = segmentBox(doc, segment)
                 const whole = segment.offset === 0 && segment.length === box.length(k)
-                if (whole && k > 0 && box.objectPositions(k).length === 0) {
-                  box.deleteRange(k - 1, box.length(k - 1), k, box.length(k))
-                } else replaceHit(doc, asHit(segment), '')
+                if (whole && k > 0 && box.objectPositions(k).length === 0) box.remove(k)
+                else replaceHit(doc, asHit(segment), '')
               }
               // each run is in a paragraph of its own, so one does not move another
               for (let index = 0; index < kept; index++) {
