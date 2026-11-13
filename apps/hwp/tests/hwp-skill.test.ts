@@ -2750,7 +2750,7 @@ describe('the look of a document', () => {
     const left = await marked.call('insert_break', { find: '글', kind: 'page' })
     expect(left.isError).toBe(true)
     expect(left.output).toContain('would leave the mark on the page before')
-    expect(left.output).toContain('it has to be set on the paragraph again')
+    expect(left.output).toContain('it has to be moved from there to the paragraph')
     for (const answer of [refused.output, left.output]) {
       expect(answer).not.toContain('paragraph after it')
       expect(answer).toContain('Do not put the break on another paragraph instead')
@@ -3032,6 +3032,17 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     expect(typedTabs('이름\t' + String.raw`소속\t연락처`)).toBe('이름\t소속\t연락처')
   })
 
+  it('keeps the two characters where a text names them: alone between spaces, quotes or the ends of the line', () => {
+    for (const named of [
+      String.raw`탭 문자는 \t 로 씁니다`,
+      String.raw`구분자로 "\t"를 씁니다`,
+      String.raw`이스케이프 문자 \t`,
+      String.raw`\t`,
+    ]) {
+      expect(typedTabs(named)).toBe(named)
+    }
+  })
+
   it('takes one letter and a colon for a drive, not the end of a word', () => {
     expect(typedTabs(String.raw`TEL:\t02-123-4567`)).toBe('TEL:\t02-123-4567')
     expect(typedTabs(String.raw`Q:\t질문`)).toBe(String.raw`Q:\t질문`)
@@ -3043,7 +3054,7 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     })
     const shift =
       ' Occurrence numbers shift after this change; call find_text again before passing occurrence.'
-    const kept = String.raw` Paragraph(s) 2 of this call look like a path or a command name, so their \t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
+    const kept = String.raw` Paragraph(s) 2 of this call read as a path, a command name or the two characters themselves, so their \t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
     const both = await call('insert_paragraphs', {
       where: 'end',
       paragraphs: [String.raw`개회\t\t10:00`, String.raw`상대 경로는 ..\temp\test 입니다`, '폐회'],

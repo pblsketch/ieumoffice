@@ -1835,19 +1835,25 @@ export function equationScript(script: string): string {
 const BACKSLASH_NOT_BEFORE_T = /\\(?!t)/
 const ONE_LETTER_DRIVE = /(?:^|[^A-Za-z])[A-Za-z]:\\/
 const LOWERCASE_NAME_BEHIND_BACKSLASH = /\\t[a-z]/
+const QUOTE_OR_SPACE = String.raw`[\s"'‘’“”]`
+const TYPED_TAB_AS_A_WORD = new RegExp(
+  String.raw`(?:^|${QUOTE_OR_SPACE})\\t(?:$|${QUOTE_OR_SPACE})`,
+)
 
-const showsPathOrCommand = (text: string): boolean =>
+const meansTheTwoCharacters = (text: string): boolean =>
   BACKSLASH_NOT_BEFORE_T.test(text) ||
   ONE_LETTER_DRIVE.test(text) ||
-  LOWERCASE_NAME_BEHIND_BACKSLASH.test(text)
+  LOWERCASE_NAME_BEHIND_BACKSLASH.test(text) ||
+  TYPED_TAB_AS_A_WORD.test(text)
 
 /**
  * A new paragraph whose tabs came as the two characters `\t` (a model that escaped them
  * twice), with the tabs themselves. The paragraph is read whole: every `\t` of it becomes
- * a tab, or it shows a path or a command name and every one stays as typed.
+ * a tab, or it shows a path, a command name or the two characters named as such, and every
+ * one stays as typed.
  */
 export function typedTabs(text: string): string {
-  if (!text.includes('\\t') || showsPathOrCommand(text)) return text
+  if (!text.includes('\\t') || meansTheTwoCharacters(text)) return text
   return text.replaceAll('\\t', '\t')
 }
 
@@ -2840,7 +2846,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             : ''
         const typedNote =
           leftTyped.length > 0
-            ? ` Paragraph(s) ${leftTyped.join(', ')} of this call look like a path or a command name, so their \\t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
+            ? ` Paragraph(s) ${leftTyped.join(', ')} of this call read as a path, a command name or the two characters themselves, so their \\t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
             : ''
         return {
           output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${tabNote}${typedNote}${OCCURRENCE_SHIFT_NOTE}`,
@@ -4618,7 +4624,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             case 'holds_mark':
               return bad(
                 call,
-                `Nothing was changed: that paragraph holds a mark that belongs to its place (a page number that starts anew, a hidden page number, a bookmark), and a break put on it from here would leave the mark on the page before. ${BREAK_BY_HAND} The mark stays on the empty line that leaves in front, so it has to be set on the paragraph again.`,
+                `Nothing was changed: that paragraph holds a mark that belongs to its place (a page number that starts anew, a hidden page number, a bookmark), and a break put on it from here would leave the mark on the page before. ${BREAK_BY_HAND} The mark stays on the empty line that leaves in front, so it has to be moved from there to the paragraph.`,
               )
             case 'memo_removal_requires_approval':
               return bad(call, 'Nothing was changed.')
