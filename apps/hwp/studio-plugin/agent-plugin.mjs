@@ -3773,7 +3773,6 @@ function tablesOf(doc) {
   return { tables, partial: lookups <= 0 }
 }
 
-/** Whether a body paragraph holds a table. */
 function holdsTable(doc, sec, para) {
   const controls = parse(doc.getControlTextPositions(sec, para)).length
   for (let ctrl = 0; ctrl < controls; ctrl++) {

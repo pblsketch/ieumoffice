@@ -2751,7 +2751,6 @@ describe('the look of a document', () => {
     expect(left.isError).toBe(true)
     expect(left.output).toContain('would leave the mark on the page before')
     expect(left.output).toContain('it has to be set on the paragraph again')
-    // the paragraph behind it is no stand-in: the page would turn at another line
     for (const answer of [refused.output, left.output]) {
       expect(answer).not.toContain('paragraph after it')
       expect(answer).toContain('Do not put the break on another paragraph instead')
@@ -3024,13 +3023,18 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
       [String.raw`(가)\t설명`, '(가)\t설명'],
       [String.raw`이름\t소속\t연락처`, '이름\t소속\t연락처'],
       [String.raw`서명 (인)\t날짜`, '서명 (인)\t날짜'],
-      // a real tab beside the typed ones is no reason to keep them
-      ['이름\t' + String.raw`소속\t연락처`, '이름\t소속\t연락처'],
-      // the end of a word in front of a colon names no drive
-      [String.raw`TEL:\t02-123-4567`, 'TEL:\t02-123-4567'],
     ]) {
       expect(typedTabs(typed)).toBe(meant)
     }
+  })
+
+  it('writes the typed tabs of a paragraph that holds a real tab too', () => {
+    expect(typedTabs('이름\t' + String.raw`소속\t연락처`)).toBe('이름\t소속\t연락처')
+  })
+
+  it('takes one letter and a colon for a drive, not the end of a word', () => {
+    expect(typedTabs(String.raw`TEL:\t02-123-4567`)).toBe('TEL:\t02-123-4567')
+    expect(typedTabs(String.raw`Q:\t질문`)).toBe(String.raw`Q:\t질문`)
   })
 
   it('says which new paragraphs got their tabs and which kept the two characters', async () => {
@@ -3057,7 +3061,6 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
       paragraphs: ['머리말', String.raw`x\times y`, '맺음말'],
     })
     expect(onlyKept.output).toBe(`Added 3 paragraph(s).${kept}${shift}`)
-    // a paragraph without the two characters is named in neither note, a real tab or not
     const plain = await call('insert_paragraphs', {
       where: 'end',
       paragraphs: ['머리말', '부록 1\t21', '맺음말'],

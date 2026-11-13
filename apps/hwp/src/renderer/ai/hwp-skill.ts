@@ -1683,7 +1683,6 @@ const HAS_OBJECTS_HELP =
 const SPANS_OBJECT_ADVICE =
   'Replace the words in front of it or the words behind it on their own, with replace_text.'
 const SPANS_OBJECT_HELP = `Nothing was changed: an equation or another object of the line (a footnote mark, a picture set in the text) stands inside the text to be replaced, and the new text has no place for it. ${SPANS_OBJECT_ADVICE}`
-/** A break the tool cannot put on a paragraph: the next paragraph is no stand-in for it. */
 const BREAK_BY_HAND =
   'Do not put the break on another paragraph instead: the page or column would turn at a different line. Tell the user that this break has to be typed in the editor in front of the paragraph, with Ctrl+Enter for a page or Ctrl+Shift+Enter for a column.'
 const ONE_LINE_HELP =
@@ -1834,25 +1833,18 @@ export function equationScript(script: string): string {
 }
 
 const BACKSLASH_NOT_BEFORE_T = /\\(?!t)/
-/** One letter in front of the colon: the l of "Tel:" names no drive. */
-const DRIVE_START = /(?:^|[^A-Za-z])[A-Za-z]:\\/
-const TYPED_TAB_BEFORE_LOWERCASE = /\\t[a-z]/
+const ONE_LETTER_DRIVE = /(?:^|[^A-Za-z])[A-Za-z]:\\/
+const LOWERCASE_NAME_BEHIND_BACKSLASH = /\\t[a-z]/
 
-/**
- * Whether the backslashes of a paragraph are its own: one that starts no `\t` (\\server,
- * \d), a drive (C:\), or a `\t` that runs into a lowercase word, which is a folder or a
- * command name (\temp, \theta) far more often than a column that starts in lowercase.
- */
 const showsPathOrCommand = (text: string): boolean =>
   BACKSLASH_NOT_BEFORE_T.test(text) ||
-  DRIVE_START.test(text) ||
-  TYPED_TAB_BEFORE_LOWERCASE.test(text)
+  ONE_LETTER_DRIVE.test(text) ||
+  LOWERCASE_NAME_BEHIND_BACKSLASH.test(text)
 
 /**
  * A new paragraph whose tabs came as the two characters `\t` (a model that escaped them
  * twice), with the tabs themselves. The paragraph is read whole: every `\t` of it becomes
- * a tab, or it shows a path or a command name and every one stays as typed. A line with
- * some of them written and the rest left as text is worse than either.
+ * a tab, or it shows a path or a command name and every one stays as typed.
  */
 export function typedTabs(text: string): string {
   if (!text.includes('\\t') || showsPathOrCommand(text)) return text
