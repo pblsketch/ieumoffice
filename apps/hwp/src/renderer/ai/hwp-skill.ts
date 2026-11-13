@@ -2037,12 +2037,28 @@ const MEANT_BY: Record<string, readonly string[]> = {
   line_height: ['line_spacing'],
   thickness: ['width'],
   style: ['line', 'look'],
-  type: ['kind', 'align'],
-  kind: ['align'],
+  type: ['kind'],
   index: ['occurrence', 'at'],
   nth: ['occurrence'],
   n: ['count', 'occurrence'],
   columns: ['cols', 'count'],
+  alignment: ['align'],
+  vertical_alignment: ['vertical_align'],
+  spacing_before: ['space_before'],
+  spacing_after: ['space_after'],
+  indent_left: ['margin_left'],
+  font_weight: ['bold'],
+  start_row: ['from_row'],
+  start_col: ['from_col'],
+  end_row: ['to_row'],
+  end_col: ['to_col'],
+  text: ['find', 'paragraphs'],
+  position: ['where'],
+}
+
+/** What a name means inside one kind of object (the list or object that holds it), before what it usually means. */
+const MEANT_IN: Record<string, Record<string, readonly string[]>> = {
+  tabs: { kind: ['align'], type: ['align'] },
 }
 
 function editDistance(from: string, to: string): number {
@@ -2070,6 +2086,7 @@ export function nearestNames(
   name: string,
   declared: readonly string[],
   given: readonly string[] = [],
+  within = '',
 ): string[] {
   const spelled = DECLARED_NAME_OF_PLUGIN_ARGUMENT.get(name)
   if (spelled !== undefined && declared.includes(spelled)) return [spelled]
@@ -2082,7 +2099,7 @@ export function nearestNames(
     )
   })
   if (respelled.length > 0) return respelled.slice(0, 2)
-  const meant = MEANT_BY[words.join('_')]
+  const meant = MEANT_IN[within]?.[words.join('_')] ?? MEANT_BY[words.join('_')]
   if (meant) return meant.filter((candidate) => declared.includes(candidate)).slice(0, 1)
   const free = declared.filter((candidate) => !given.includes(candidate))
   const last = words.at(-1)
@@ -2108,10 +2125,14 @@ const SLIP_CURES: Record<string, (name: string) => string | null> = {
       ? 'Alignment, line spacing, indents, margins, spacing, a border, a background, tabs, a list and a style belong to a whole paragraph: format_paragraph sets them.'
       : null,
   format_cells: (name) =>
-    /^(?:(?:from|to)_)?(?:row|col)$/.test(name)
+    /^(?:(?:from|to|start|end)_)?(?:row|col|column)$/.test(name)
       ? 'A block of cells goes in range: { "from_row", "from_col", "to_row", "to_col" }, all four; single cells go in cells: [{ "row", "col" }].'
       : null,
   format_look: (name) => (name === 'id' ? 'The look id goes in look.' : null),
+  replace_text: (name) =>
+    name === 'text' || name === 'new_text'
+      ? 'The text to look for goes in find, the new text in replace.'
+      : null,
   insert_paragraphs: (name) =>
     Object.hasOwn(PARAGRAPH_FORMAT_SCHEMA, name) || Object.hasOwn(TEXT_FORMAT_SCHEMA, name)
       ? 'insert_paragraphs writes plain paragraphs: add them first, then give them their look with style_paragraphs or format_paragraph.'
@@ -2135,7 +2156,8 @@ function refusalOf(tool: HwpToolDef, { undeclared, wrong }: PreparedInput): stri
   const slips = unknown.map(({ path, name, holder, declared, given }) => {
     const cure = holder ? null : (SLIP_CURES[tool.name]?.(name) ?? null)
     if (cure) cures.add(cure)
-    const near = cure ? [] : nearestNames(name, declared, given)
+    const within = holder.replace(/^.*\./, '').replace(/\[\d+\]/g, '')
+    const near = cure ? [] : nearestNames(name, declared, given, within)
     return near.length > 0
       ? `unknown argument "${path}"; did you mean ${near.map((n) => `"${n}"`).join(' or ')}?`
       : `unknown argument "${path}".`

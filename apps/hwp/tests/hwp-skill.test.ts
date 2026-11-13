@@ -4194,6 +4194,32 @@ describe('what a call gives before its handler sees it', () => {
     )
   })
 
+  it('says where the text and the corners go instead of guessing', async () => {
+    const { call, bridge } = setup()
+    for (const input of [
+      { text: '본문', new_text: '새 본문' },
+      { find: '본문', text: '새 본문' },
+    ]) {
+      const slipped = await call('replace_text', input)
+      expect(slipped.isError).toBe(true)
+      expect(slipped.output).toContain(
+        'The text to look for goes in find, the new text in replace.',
+      )
+      expect(slipped.output).not.toContain('did you mean')
+    }
+    const corners = await call('format_cells', {
+      table: 1,
+      start_row: 2,
+      start_col: 1,
+      end_row: 2,
+      end_col: 3,
+      background: '#EEEEEE',
+    })
+    expect(corners.output).toContain('A block of cells goes in range')
+    expect(bridge.replaceText).not.toHaveBeenCalled()
+    expect(bridge.formatCells).not.toHaveBeenCalled()
+  })
+
   it('takes a look id in look alone, through the loop and on the command line alike', async () => {
     const { call, skill, bridge } = setup()
     const tool = skill.tools.find((offered) => offered.name === 'format_look')!
@@ -4618,6 +4644,27 @@ describe('the declared name an undeclared one stands for', () => {
     // the size a model asks for beside the declared one is still that one
     expect(nearestNames('font_size', format, ['find', 'size'])).toEqual(['size'])
   })
+  it('is what a common slip means, and no alignment for a kind or a type', () => {
+    const paragraph = ['find', 'align', 'margin_left', 'space_before', 'space_after', 'bold']
+    expect(nearestNames('alignment', paragraph)).toEqual(['align'])
+    expect(nearestNames('spacing_before', paragraph)).toEqual(['space_before'])
+    expect(nearestNames('spacing_after', paragraph)).toEqual(['space_after'])
+    expect(nearestNames('indent_left', paragraph)).toEqual(['margin_left'])
+    expect(nearestNames('font_weight', paragraph)).toEqual(['bold'])
+    expect(nearestNames('vertical_alignment', ['vertical_align', 'align'])).toEqual([
+      'vertical_align',
+    ])
+    expect(nearestNames('position', ['table', 'what', 'at', 'where'])).toEqual(['where'])
+    const corners = ['table', 'from_row', 'from_col', 'to_row', 'to_col']
+    expect(
+      ['start_row', 'start_col', 'end_row', 'end_col'].map((name) => nearestNames(name, corners)),
+    ).toEqual([['from_row'], ['from_col'], ['to_row'], ['to_col']])
+    expect(nearestNames('text', ['find', 'occurrence'])).toEqual(['find'])
+    expect(nearestNames('text', ['where', 'anchor', 'paragraphs'])).toEqual(['paragraphs'])
+    expect(nearestNames('kind', paragraph)).toEqual([])
+    expect(nearestNames('type', paragraph)).toEqual([])
+    expect(nearestNames('kind', ['at_mm', 'align', 'leader'], [], 'tabs')).toEqual(['align'])
+  })
   it('is none when the name means something this tool does not have', () => {
     expect(nearestNames('line_height', ['paper', 'width', 'height'])).toEqual([])
     expect(nearestNames('columns', ['where', 'rows', 'across_columns'])).toEqual([])
@@ -4639,7 +4686,7 @@ describe('the declared name an undeclared one stands for', () => {
   it('is not a name that only starts alike or shares a word that is not its last', () => {
     expect(nearestNames('color', ['table', 'row', 'col', 'rows', 'cols'])).toEqual([])
     expect(nearestNames('color', ['table', 'from_col', 'to_col'])).toEqual([])
-    expect(nearestNames('text', ['find', 'look', 'color', 'text_color'])).toEqual([])
+    expect(nearestNames('text', ['look', 'color', 'text_color'])).toEqual([])
     expect(nearestNames('bold_text', ['find', 'bold', 'text_color'])).toEqual([])
   })
   it('is not a name the call already gives beside it', () => {
