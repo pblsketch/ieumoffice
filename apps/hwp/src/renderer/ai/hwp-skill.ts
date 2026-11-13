@@ -1797,9 +1797,10 @@ const inDeclaredWords = (message: string): string =>
 const PAGE_MARGIN_SIDES = ['left', 'right', 'top', 'bottom', 'header', 'footer', 'gutter'] as const
 
 /**
- * Keys a read answer carries beside its settings (how many paragraphs have a look, what a
- * style is, whether a header exists). Handed back with the settings they are named in the
- * answer as left alone, where any other undeclared argument is refused.
+ * Keys a read answer carries beside its settings (how many paragraphs have a look, the style
+ * they have, what a style is, whether a header exists). Handed back with the settings to a
+ * tool that does not declare them, they are named in the answer as left alone, where any
+ * other undeclared argument is refused.
  */
 const READ_ONLY_KEYS = new Set([
   'paragraphs',
@@ -1807,9 +1808,14 @@ const READ_ONLY_KEYS = new Set([
   'mixedFormatting',
   'lineSpacingKind',
   'kind',
+  'style',
   'exists',
   'plain',
 ])
+
+/** Whether an undeclared key is one a read answer carries: the keys above, and the id of a look. */
+const isReadOnly = (name: string, value: unknown): boolean =>
+  READ_ONLY_KEYS.has(name) || (name === 'look' && typeof value === 'string')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -1964,7 +1970,7 @@ export function prepareInput(tool: AgentToolDef, input: Record<string, unknown>)
     for (const [name, given] of Object.entries(held)) {
       if (Object.hasOwn(declared, name) || !isGiven(given)) continue
       const path = holder ? `${holder}.${name}` : name
-      if (READ_ONLY_KEYS.has(name)) readOnly.push(path)
+      if (isReadOnly(name, given)) readOnly.push(path)
       else undeclared.push({ path, name, holder, declared: Object.keys(declared) })
     }
     return held
@@ -3969,7 +3975,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (!name) return bad(call, 'name must be a style name')
         const result = await bridge.readStyle(name)
         if (!result.ok) return bad(call, noSuchStyle(result))
-        const { ok: _ok, name: found, ...style } = result
+        const { ok: _ok, name: found, englishName, ...rest } = result
+        // a style without an English name has none to hand back: edit_style takes no empty one
+        const style = englishName ? { englishName, ...rest } : rest
         return {
           output: `Style "${found}": ${JSON.stringify(inDeclaredNames(style))}`,
           summary: label('aiToolStyleRead', { name: quote(found) }),

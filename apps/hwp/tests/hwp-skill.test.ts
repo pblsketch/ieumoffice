@@ -4202,6 +4202,27 @@ describe('what a call gives before its handler sees it', () => {
       }),
     )
     expect(formatted.output).toMatch(/nothing was done with them: "paragraphs", "samples"\.$/)
+    // the look of some paragraphs, id and all, is as good for one paragraph
+    const one = await call('format_paragraph', { find: '본문', ...look })
+    expect(one.isError).toBeFalsy()
+    expect(one.output).toMatch(/nothing was done with them: "look", "paragraphs", "samples"\.$/)
+  })
+
+  it('leaves the English name out of what it reads when the style has none', async () => {
+    const { call } = setup({
+      readStyle: async () => ({
+        ok: true as const,
+        name: '항목',
+        englishName: '',
+        kind: 'paragraph' as const,
+        nextStyle: '항목',
+        look: { size: 10 },
+      }),
+    })
+    const read = await call('read_style', { name: '항목' })
+    expect(read.output).toBe(
+      'Style "항목": {"kind":"paragraph","next_style":"항목","look":{"size":10}}',
+    )
   })
 
   it('reads a block of format_cells given as four corners, and one cell given as row and col', async () => {

@@ -1492,6 +1492,15 @@ describe('a title box and the colour of its words', () => {
     expect(titleColor(asked.doc())).toBe('#ffc000')
   })
 
+  it('names the text colour, not the colour of the box, when the text colour is no colour', () => {
+    const { plugin, steps } = open()
+    const before = steps()
+    expect(() => plugin.insertTitleBox(TITLE, null, { look: 'lines', textColor: 'navy' })).toThrow(
+      /textColor must look like #RRGGBB/,
+    )
+    expect(steps()).toBe(before)
+  })
+
   it('takes white words on a dark fill, and a dark colour anywhere', () => {
     const dark = open()
     const made = dark.plugin.insertTitleBox(TITLE, null, {

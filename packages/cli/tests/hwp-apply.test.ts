@@ -508,3 +508,120 @@ describe('a number that counts from 1, and a number with a range', () => {
     expect(readFileSync(path).equals(before)).toBe(true)
   })
 })
+
+describe('what the read ops answer', () => {
+  /** the JSON a read op answers with, after whatever words stand in front of it */
+  const json = (output: string) => JSON.parse(output.slice(output.search(/[{[]/)).split('\n')[0]!)
+  const READS = [
+    { op: 'read_style', name: '본문 시험' },
+    { op: 'read_page_setup' },
+    { op: 'read_note_settings' },
+    { op: 'read_page_layout' },
+    { op: 'read_formatting' },
+  ]
+  const outputs = (r: Awaited<ReturnType<typeof run>>, count: number): string[] =>
+    (r.json().detail.results as { output: string }[]).slice(-count).map((result) => result.output)
+
+  it('can be handed back to the write ops as it came', async () => {
+    const dir = tempDir()
+    const path = write(dir, 'report.hwpx', report().exportHwpx())
+    const first = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'create_style', name: '본문 시험', size: 12, line_spacing: 180, margin_left: 10 },
+        { op: 'format_paragraph', find: '끝.', line_spacing: 200, margin_left: 20, size: 13 },
+        { op: 'set_page_setup', paper: 'B5', margin_left: 25, margin_top: 15 },
+        {
+          op: 'set_note_settings',
+          kind: 'footnote',
+          number_format: 'circledDigit',
+          start_number: 3,
+        },
+        { op: 'set_columns', count: 2, gap_mm: 12 },
+        ...READS,
+      ]),
+      '--json',
+    ])
+    expect(first.code, first.stdout).toBe(0)
+    const [style, setup, notes, layout, formatting] = outputs(first, READS.length).map(json)
+    // every name is one a write op declares: none of the editor's own
+    expect(JSON.stringify([style, setup, notes, layout, formatting])).not.toMatch(
+      /lineSpacing"|marginLeft|marginRight|spacingBefore|spacingAfter|listLevel|englishName|nextStyle|numberFormat|startNumber|gapMm|"margins"|"id"/,
+    )
+    const look = formatting.looks.find((entry: { size: number }) => entry.size === 13)
+    expect(look).toMatchObject({ line_spacing: 200, margin_left: 20 })
+
+    // other values, then every answer handed back as it came
+    const second = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'edit_style', name: '본문 시험', size: 9, line_spacing: 120, margin_left: 0 },
+        { op: 'format_paragraph', find: '끝.', line_spacing: 160, margin_left: 0, size: 10 },
+        { op: 'set_page_setup', paper: 'A4', margin_left: 30, margin_top: 20 },
+        { op: 'set_note_settings', kind: 'footnote', number_format: 'digit', start_number: 1 },
+        { op: 'set_columns', count: 1 },
+        { op: 'edit_style', name: '본문 시험', ...style },
+        { op: 'format_paragraph', find: '끝.', ...look },
+        { op: 'set_page_setup', ...setup },
+        { op: 'set_note_settings', kind: 'footnote', ...notes.footnote },
+        { op: 'set_columns', ...layout.columns },
+        ...READS,
+      ]),
+      '--json',
+    ])
+    expect(second.code, second.stdout).toBe(0)
+    expect(second.json().detail.failures ?? []).toEqual([])
+    const again = outputs(second, READS.length).map(json)
+    expect(again[0]).toEqual(style)
+    expect(again[1]).toEqual(setup)
+    expect(again[2]).toEqual(notes)
+    expect(again[3].columns).toEqual(layout.columns)
+    expect(again[4].looks.find((entry: { size: number }) => entry.size === 13)).toMatchObject({
+      line_spacing: 200,
+      margin_left: 20,
+    })
+  })
+
+  it('names the editor argument a refusal is about by the name the op declares', async () => {
+    const dir = tempDir()
+    const path = write(dir, 'report.hwp', report().exportHwp())
+    const r = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'list_tables' },
+        { op: 'format_paragraph', find: '끝.', line_spacing: 5000 },
+        { op: 'format_paragraph', find: '끝.', margin_left: 9999 },
+        { op: 'format_text', find: '끝.', char_width: 1 },
+        { op: 'insert_table', where: 'end', rows: [['a']], width_percent: 1 },
+        { op: 'format_cells', table: 1, row_height_mm: 1 },
+        { op: 'set_columns', count: 2, gap_mm: 999 },
+        { op: 'format_paragraph', find: '끝.', size: 13, font_size: 14 },
+      ]),
+      '--best-effort',
+      '--json',
+    ])
+    expect(r.code, r.stdout).toBe(0)
+    const errors = (r.json().detail.failures as { error: string; usage?: string }[]).map(
+      (failure) => failure.error,
+    )
+    expect(errors).toHaveLength(7)
+    expect(errors[0]).toMatch(/^line_spacing must be/)
+    expect(errors[1]).toMatch(/^margin_left must be/)
+    expect(errors[2]).toMatch(/^char_width must be/)
+    expect(errors[3]).toMatch(/^width_percent must be/)
+    expect(errors[4]).toMatch(/^row_height_mm must be/)
+    expect(errors[5]).toMatch(/^gap_mm must be/)
+    expect(errors[6]).toContain('unknown argument "font_size"; did you mean "size"?')
+    // the names a refused op takes come as a field of the failure, for a caller that is a program
+    expect(r.json().detail.failures[6].usage).toMatch(/^Usage: format_paragraph takes find, /)
+  })
+})

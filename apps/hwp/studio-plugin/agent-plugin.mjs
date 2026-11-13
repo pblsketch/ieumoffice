@@ -3310,6 +3310,9 @@ function titleBoxOf(spec) {
     }
     return value.toLowerCase()
   }
+  // checked under its own name: handed on as the text's `color`, a bad one would be
+  // reported as `color`, which is the colour of the box
+  colorOf(given.textColor, 'textColor')
   const standIns = []
   const text = {}
   for (const key of ['font', 'size', 'bold', 'textColor']) {
