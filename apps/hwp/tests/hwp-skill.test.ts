@@ -2970,20 +2970,23 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
     ])
   })
 
-  it('writes a tab only where a column of a line ends, and leaves paths and command names whole', async () => {
+  it('reads a paragraph whole: every typed tab becomes a tab, or a path or a command name keeps them all', () => {
     for (const kept of [
-      String.raw`상대 경로는 ..\temp\test 입니다`,
+      String.raw`..\temp\test`,
       String.raw`\theta`,
       String.raw`x\times y`,
       String.raw`C:\t3`,
       String.raw`D:\t_backup`,
       String.raw`\\server\tools\tmp`,
-      String.raw`Name\tAge`,
+      String.raw`한글폴더\temp\a.txt`,
+      String.raw`자료\temp 폴더`,
+      String.raw`x\to y`,
+      String.raw`성명\tkim minsu`,
+      String.raw`상대 경로는 ..\temp\test 입니다`,
       String.raw`3 \times 4, \tau`,
       String.raw`2\times 3`,
       String.raw`..\v2\tmp`,
       String.raw`정규식 \d+\t\w+`,
-      String.raw`자료\temp 폴더`,
       String.raw`문서\test.hwp`,
     ]) {
       expect(typedTabs(kept)).toBe(kept)
@@ -2995,26 +2998,61 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
       [String.raw`개회\tAM 10:00`, '개회\tAM 10:00'],
       [String.raw`담당 홍길동\tTel. 02-123-4567`, '담당 홍길동\tTel. 02-123-4567'],
       [String.raw`문의\tE-mail`, '문의\tE-mail'],
+      [String.raw`학년\t\t이름`, '학년\t\t이름'],
+      [String.raw`제목\t\t쪽`, '제목\t\t쪽'],
+      [String.raw`성명\tKim\tAge`, '성명\tKim\tAge'],
+      [String.raw`일시:\t2026. 11. 20.(금)`, '일시:\t2026. 11. 20.(금)'],
+      [String.raw`문의:\t교무실`, '문의:\t교무실'],
+      [String.raw`Tel.\t02-123-4567`, 'Tel.\t02-123-4567'],
+      [String.raw`1.\t개요`, '1.\t개요'],
+      [String.raw`가.\t추진 배경`, '가.\t추진 배경'],
+      [String.raw`□\t준비물`, '□\t준비물'],
+      [String.raw`2026. 11. 20.\t15:00`, '2026. 11. 20.\t15:00'],
+      [String.raw`Name\tAge`, 'Name\tAge'],
+      [String.raw`A\tB`, 'A\tB'],
+      [String.raw`1교시\t국어`, '1교시\t국어'],
+      [String.raw`(가)\t설명`, '(가)\t설명'],
       [String.raw`이름\t소속\t연락처`, '이름\t소속\t연락처'],
       [String.raw`서명 (인)\t날짜`, '서명 (인)\t날짜'],
+      // a real tab beside the typed ones is no reason to keep them
+      ['이름\t' + String.raw`소속\t연락처`, '이름\t소속\t연락처'],
+      // the end of a word in front of a colon names no drive
+      [String.raw`TEL:\t02-123-4567`, 'TEL:\t02-123-4567'],
     ]) {
       expect(typedTabs(typed)).toBe(meant)
     }
-    const { call, bridge } = setup()
-    const result = await call('insert_paragraphs', {
-      where: 'end',
-      paragraphs: [String.raw`상대 경로는 ..\temp\test 입니다`, String.raw`개회\t10:00`, '폐회'],
+  })
+
+  it('says which new paragraphs got their tabs and which kept the two characters', async () => {
+    const { call, bridge } = setup({
+      insertParagraphs: vi.fn(async () => ({ ok: true as const, count: 3, inTable: false })),
     })
+    const shift =
+      ' Occurrence numbers shift after this change; call find_text again before passing occurrence.'
+    const kept = String.raw` Paragraph(s) 2 of this call look like a path or a command name, so their \t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
+    const both = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: [String.raw`개회\t\t10:00`, String.raw`상대 경로는 ..\temp\test 입니다`, '폐회'],
+    })
+    expect(both.output).toBe(
+      String.raw`Added 3 paragraph(s). The two characters \t were written as a tab in paragraph(s) 1 of this call.${kept}${shift}`,
+    )
     expect(bridge.insertParagraphs).toHaveBeenLastCalledWith('', null, 'end', [
+      '개회\t\t10:00',
       String.raw`상대 경로는 ..\temp\test 입니다`,
-      '개회\t10:00',
       '폐회',
     ])
-    expect(result.output).toContain(
-      String.raw`\t were written as a tab in paragraph(s) 2 of this call`,
-    )
-    const plain = await call('insert_paragraphs', { where: 'end', paragraphs: ['폐회'] })
-    expect(plain.output).not.toContain('written as a tab')
+    const onlyKept = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: ['머리말', String.raw`x\times y`, '맺음말'],
+    })
+    expect(onlyKept.output).toBe(`Added 3 paragraph(s).${kept}${shift}`)
+    // a paragraph without the two characters is named in neither note, a real tab or not
+    const plain = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: ['머리말', '부록 1\t21', '맺음말'],
+    })
+    expect(plain.output).toBe(`Added 3 paragraph(s).${shift}`)
   })
 
   it('leaves the two characters alone in a selection rewrite, which takes no tab, and says so', async () => {

@@ -1830,29 +1830,30 @@ export function equationScript(script: string): string {
     .trim()
 }
 
-const HANGUL = /[\u3131-\u318E\uAC00-\uD7A3]/
-const DIGIT_OR_CLOSING_BRACKET = /[0-9)\]}]/
-const LOWERCASE_LETTER = /[a-z]/
-const DRIVE_PATH = /[A-Za-z]:\\/
 const BACKSLASH_NOT_BEFORE_T = /\\(?!t)/
-
-const hasOwnBackslashes = (text: string): boolean =>
-  text.includes('\t') || DRIVE_PATH.test(text) || BACKSLASH_NOT_BEFORE_T.test(text)
-
-const endsColumn = (before: string, after: string): boolean =>
-  (HANGUL.test(before) || DIGIT_OR_CLOSING_BRACKET.test(before)) && !LOWERCASE_LETTER.test(after)
+/** One letter in front of the colon: the l of "Tel:" names no drive. */
+const DRIVE_START = /(?:^|[^A-Za-z])[A-Za-z]:\\/
+const TYPED_TAB_BEFORE_LOWERCASE = /\\t[a-z]/
 
 /**
- * A new paragraph whose tab came as the two characters `\t` (a model that escaped it
- * twice): the tab itself, where a column of the line ends in front of them. A paragraph
- * with backslashes of its own, and a path part or a command name (v2\tmp, \theta), keeps
- * the two characters.
+ * Whether the backslashes of a paragraph are its own: one that starts no `\t` (\\server,
+ * \d), a drive (C:\), or a `\t` that runs into a lowercase word, which is a folder or a
+ * command name (\temp, \theta) far more often than a column that starts in lowercase.
+ */
+const showsPathOrCommand = (text: string): boolean =>
+  BACKSLASH_NOT_BEFORE_T.test(text) ||
+  DRIVE_START.test(text) ||
+  TYPED_TAB_BEFORE_LOWERCASE.test(text)
+
+/**
+ * A new paragraph whose tabs came as the two characters `\t` (a model that escaped them
+ * twice), with the tabs themselves. The paragraph is read whole: every `\t` of it becomes
+ * a tab, or it shows a path or a command name and every one stays as typed. A line with
+ * some of them written and the rest left as text is worse than either.
  */
 export function typedTabs(text: string): string {
-  if (!text.includes('\\t') || hasOwnBackslashes(text)) return text
-  return text.replace(/\\t/g, (typed, at: number) =>
-    endsColumn(text[at - 1] ?? '', text[at + 2] ?? '') ? '\t' : typed,
-  )
+  if (!text.includes('\\t') || showsPathOrCommand(text)) return text
+  return text.replaceAll('\\t', '\t')
 }
 
 /** How many tabs the tab rule would write in a text. */
@@ -2809,9 +2810,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (!isTextList(given)) return bad(call, 'paragraphs must be a non-empty list of strings')
         if (given.some(hasLineBreak)) return bad(call, ONE_LINE_ITEM_HELP)
         const paragraphs = given.map(typedTabs)
-        const tabbed = given.flatMap((text, index) =>
-          text === paragraphs[index] ? [] : [index + 1],
-        )
+        const tabbed: number[] = []
+        const leftTyped: number[] = []
+        given.forEach((text, index) => {
+          if (text !== paragraphs[index]) tabbed.push(index + 1)
+          else if (text.includes('\\t')) leftTyped.push(index + 1)
+        })
         const outcome = await changeWithMemoApproval(
           () => bridge.insertParagraphs(place.anchor, place.occurrence, place.where, paragraphs),
           (options) =>
@@ -2839,8 +2843,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           tabbed.length > 0
             ? ` The two characters \\t were written as a tab in paragraph(s) ${tabbed.join(', ')} of this call.`
             : ''
+        const typedNote =
+          leftTyped.length > 0
+            ? ` Paragraph(s) ${leftTyped.join(', ')} of this call look like a path or a command name, so their \\t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
+            : ''
         return {
-          output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${tabNote}${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${tabNote}${typedNote}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: label('aiToolInsert', { count: result.count }),
         }
