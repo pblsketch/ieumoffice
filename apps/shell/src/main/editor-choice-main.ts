@@ -1,4 +1,4 @@
-import { ipcMain, webContents } from 'electron'
+import { ipcMain, webContents, type IpcMainInvokeEvent } from 'electron'
 import {
   onAiJobsChanged,
   runningAiJobCount,
@@ -32,6 +32,13 @@ export const AI_OFF_REFUSAL = 'AI features are turned off in Settings.'
 
 export interface EditorChoiceMainDeps {
   settingsPath: () => string
+  /**
+   * Whether a request comes from the shell's own screen (Home and its
+   * Settings in the main window). Changing the choice, marking the one-time
+   * picker seen and stopping every AI job are answered only for it; any other
+   * sender gets the choice as it is, or no job stopped, and nothing changes.
+   */
+  isShellSender: (event: IpcMainInvokeEvent) => boolean
   /** the refusal an AI run gets while AI is off; English when not given */
   aiOffRefusal?: () => string
 }
@@ -109,18 +116,23 @@ export function registerEditorChoiceIpc(deps: EditorChoiceMainDeps): EditorChoic
     return next
   }
 
-  ipcMain.handle(APP_CHOICE_CHANNELS.set, (_event, raw: unknown): AppChoice => set(raw))
+  ipcMain.handle(APP_CHOICE_CHANNELS.set, (event, raw: unknown): AppChoice =>
+    deps.isShellSender(event) ? set(raw) : effective(),
+  )
 
   ipcMain.handle(APP_CHOICE_CHANNELS.pickDue, (): boolean =>
     editorPickDue(readAppSettings(deps.settingsPath())),
   )
 
-  ipcMain.handle(APP_CHOICE_CHANNELS.markPickSeen, (): void => {
+  ipcMain.handle(APP_CHOICE_CHANNELS.markPickSeen, (event): void => {
+    if (!deps.isShellSender(event)) return
     writeAppSetting(deps.settingsPath(), APP_CHOICE_KEYS.editorPickSeen, true)
   })
 
   ipcMain.handle(APP_CHOICE_CHANNELS.aiJobCount, (): number => runningAiJobCount())
-  ipcMain.handle(APP_CHOICE_CHANNELS.stopAllAiJobs, (): Promise<number> => stopAllAiJobs())
+  ipcMain.handle(APP_CHOICE_CHANNELS.stopAllAiJobs, (event): Promise<number> =>
+    deps.isShellSender(event) ? stopAllAiJobs() : Promise.resolve(0),
+  )
   onAiJobsChanged((count) => broadcast(APP_CHOICE_CHANNELS.aiJobsChanged, count))
 
   return {

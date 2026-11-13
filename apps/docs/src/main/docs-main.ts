@@ -151,8 +151,10 @@ import { listCustomModelsForIpc } from '@genoffice/ai-provider/custom-models'
 import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
   createSubscriptionIpcDeps,
+  detectSubscriptionLogin,
   ensureSubscriptionIpc,
   initSubscriptionChildTracking,
+  listSubscriptionModels,
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
   type SubscriptionIpcSetup,
@@ -280,8 +282,11 @@ import {
 } from './starred-files'
 import { registerFreeAiIpc } from './free-ai-ipc'
 import {
+  aiGatedDetect,
   aiGatedKeyModelRefresher,
+  aiGatedModelLister,
   aiGatedSubscriptionDeps,
+  endSubscriptionLoginsWhenAiOff,
   onAiFeaturesBack,
 } from './ai-background'
 import { normalizeReadUrlRequest, unexpectedReadUrlFailure } from './read-url-ipc'
@@ -4471,6 +4476,10 @@ export function registerAiIpc(): void {
       broadcastAiSettingsChanged()
     },
     dataDir: app.getPath('userData'),
+    // every check and model listing, the ones the service starts itself after a login ends
+    // included, asks no program while AI features are off (editor choice spec 8.3, 9)
+    detect: aiGatedDetect(detectSubscriptionLogin, aiFeaturesOn),
+    listModels: aiGatedModelLister(listSubscriptionModels, aiFeaturesOn),
     broadcast: (channel, statuses) => {
       for (const wc of webContents.getAllWebContents())
         if (!wc.isDestroyed()) wc.send(channel, statuses)
@@ -4498,6 +4507,8 @@ export function registerAiIpc(): void {
     void subscriptionDeps.service.check().catch(() => undefined)
     keyModelRefresher.refreshChanged()
   })
+  // turned off, a login still running (started in Settings before) ends with its program
+  endSubscriptionLoginsWhenAiOff(subscriptionDeps)
 
   ipcMain.handle('ai:get-settings', async (): Promise<AiSettings> => storedAiSettings())
 

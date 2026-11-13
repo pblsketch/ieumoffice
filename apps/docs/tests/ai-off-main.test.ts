@@ -70,9 +70,27 @@ vi.mock('../src/main/ai-run', async (importOriginal) => ({
 }))
 
 const listCodexModels = vi.fn(async () => ({ models: [] }))
+// the status-check program, the model lister and a login's cancel path, as fakes that count
+const detectSubscriptionLogin = vi.fn(async (provider: string) => ({
+  provider,
+  state: 'signed-out',
+}))
+const listSubscriptionModels = vi.fn(async () => undefined)
+const cancelLogin = vi.fn(async () => ({ ok: true }))
+interface CapturedSetup {
+  detect: (provider: string) => Promise<{ state: string }>
+  listModels: (provider: string) => Promise<unknown>
+}
+let subscriptionSetup: CapturedSetup | null = null
 vi.mock('@genoffice/ai-provider/subscription', () => ({
-  ensureSubscriptionIpc: () => ({}),
+  ensureSubscriptionIpc: (_ipc: unknown, setup: CapturedSetup) => {
+    subscriptionSetup = setup
+    return { cancelLogin }
+  },
   sharedSubscriptionStatuses: () => ({}),
+  detectSubscriptionLogin: (provider: string) => detectSubscriptionLogin(provider),
+  listSubscriptionModels: () => listSubscriptionModels(),
+  subscriptionStatusErrorText: (kind: string, detail: string) => `${kind}: ${detail}`,
 }))
 vi.mock('@genoffice/ai-provider/codex-app-server', () => ({
   shutdownCodexAppServers: () => {},
@@ -86,6 +104,8 @@ import { runningAiJobCount, stopAllAiJobs } from '@genoffice/electron-utils/ai-a
 import { setAiRunGuard } from '@genoffice/electron-utils/ai-run-guard'
 import { setAppChoiceSource } from '@genoffice/electron-utils/app-choice'
 import { registerAiIpc } from '../src/main/docs-main'
+import { stopAiBackgroundWork } from '../src/main/ai-background'
+import { AI_SUBSCRIPTION_PROVIDERS } from '@genoffice/ai-provider'
 
 let nextId = 500
 class FakeContents extends EventEmitter {
@@ -254,5 +274,32 @@ describe.each(MEDIA)('$channel', ({ channel, tool, op }) => {
     await stopping
     await result
     expect(runningAiJobCount()).toBe(0)
+  })
+})
+
+describe('the subscription channels docs main sets up', () => {
+  it('ask no status-check program and list no models while AI is off, on any path', async () => {
+    const setup = subscriptionSetup!
+    aiOn = false
+    detectSubscriptionLogin.mockClear()
+    listSubscriptionModels.mockClear()
+    // the check a login's end or cancel starts goes through this same detect
+    expect((await setup.detect('codex')).state).toBe('error')
+    expect(await setup.listModels('codex')).toBeUndefined()
+    expect(detectSubscriptionLogin).not.toHaveBeenCalled()
+    expect(listSubscriptionModels).not.toHaveBeenCalled()
+    aiOn = true
+    await setup.detect('codex')
+    await setup.listModels('codex')
+    expect(detectSubscriptionLogin).toHaveBeenCalledTimes(1)
+    expect(listSubscriptionModels).toHaveBeenCalledTimes(1)
+  })
+
+  it('end every running login when AI goes off', () => {
+    cancelLogin.mockClear()
+    stopAiBackgroundWork()
+    for (const provider of AI_SUBSCRIPTION_PROVIDERS) {
+      expect(cancelLogin).toHaveBeenCalledWith(provider)
+    }
   })
 })

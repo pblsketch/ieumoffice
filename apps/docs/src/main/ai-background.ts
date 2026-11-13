@@ -1,7 +1,12 @@
+import { AI_SUBSCRIPTION_PROVIDERS, type AiSubscriptionProviderId } from '@genoffice/ai-provider'
 import type { KeyModelRefresher } from '@genoffice/ai-provider/key-models'
-import type {
-  SubscriptionIpcDeps,
-  SubscriptionLaunchResult,
+import {
+  subscriptionStatusErrorText,
+  type SubscriptionDetection,
+  type SubscriptionDetector,
+  type SubscriptionIpcDeps,
+  type SubscriptionLaunchResult,
+  type SubscriptionModelLister,
 } from '@genoffice/ai-provider/subscription'
 
 /**
@@ -10,7 +15,8 @@ import type {
  * programs are neither checked (status, version, login) nor started from a
  * screen, and the key providers' model lists are not asked for. Turned back
  * on, the shell calls `resumeAiBackgroundWork` and each start point catches
- * up once (spec 8.5). Nothing stored is touched either way (spec 8.4).
+ * up once (spec 8.5); turned off, it calls `stopAiBackgroundWork`, which ends
+ * the logins still running. Nothing stored is touched either way (spec 8.4).
  *
  * Electron-free: `aiOn` is the shell's choice as the editor mains read it
  * (`aiFeaturesOn` in @genoffice/electron-utils/app-choice).
@@ -35,6 +41,80 @@ export function resumeAiBackgroundWork(): void {
       // one start point failing does not keep the others back
     }
   }
+}
+
+const stoppers = new Set<() => void>()
+
+/** Hear AI features going off; returns the unsubscribe */
+export function onAiFeaturesOff(listener: () => void): () => void {
+  stoppers.add(listener)
+  return () => {
+    stoppers.delete(listener)
+  }
+}
+
+/** AI features went off: every start point ends what it still has running */
+export function stopAiBackgroundWork(): void {
+  for (const stop of [...stoppers]) {
+    try {
+      stop()
+    } catch {
+      // one start point failing does not keep the others running
+    }
+  }
+}
+
+/**
+ * End every login the app started when AI features go off (spec 6.2, 9): the
+ * login's program and its child processes end through `cancelLogin`, the path
+ * a press on "cancel" takes. Returns the unsubscribe.
+ */
+export function endSubscriptionLoginsWhenAiOff(
+  deps: Pick<SubscriptionIpcDeps, 'cancelLogin'>,
+): () => void {
+  return onAiFeaturesOff(() => {
+    for (const provider of AI_SUBSCRIPTION_PROVIDERS) {
+      void deps.cancelLogin(provider).catch(() => undefined)
+    }
+  })
+}
+
+/**
+ * The subscription status check as the status service runs it, asking no
+ * program while AI is off. Every check goes through it, the ones the service
+ * starts on its own included (a login that ended or was cancelled, a ChatGPT
+ * session that changed), so none of them starts a program (spec 8.3, 9). It
+ * answers the last detection it saw instead, which leaves the status and the
+ * stored acceptance as they are; with none seen yet, an error detection, which
+ * keeps the stored acceptance too. Turned back on, checks ask the programs again.
+ */
+export function aiGatedDetect(
+  detect: SubscriptionDetector,
+  aiOn: () => boolean,
+): SubscriptionDetector {
+  const last = new Map<AiSubscriptionProviderId, SubscriptionDetection>()
+  return async (provider, options) => {
+    if (!aiOn()) {
+      return (
+        last.get(provider) ?? {
+          provider,
+          state: 'error',
+          error: subscriptionStatusErrorText('failed', 'AI features are turned off'),
+        }
+      )
+    }
+    const detection = await detect(provider, options)
+    last.set(provider, detection)
+    return detection
+  }
+}
+
+/** The subscription model listing, which asks the program: no list while AI is off */
+export function aiGatedModelLister(
+  list: SubscriptionModelLister,
+  aiOn: () => boolean,
+): SubscriptionModelLister {
+  return (provider, options) => (aiOn() ? list(provider, options) : Promise.resolve(undefined))
 }
 
 /**

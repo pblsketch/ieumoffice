@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useModalKeys } from '@genoffice/ui'
 import type { EditorChoiceApi, EditorItemId } from '../../../shared/editor-choice'
 import type { TabsApi, TabSummary } from '../../../shared/tabs-api'
@@ -40,8 +40,9 @@ function windowDeps(): OneTimeEditorPickDeps | null {
  * for the launch to lay out its tabs, and shows only while the home tab is
  * in front (editor views paint above the shell). Everything starts on; the
  * new-document entries hidden on Home are not applied (a different setting).
- * Saving sends the switches, closing keeps the choice as it is; both mark it
- * seen, so it never comes back.
+ * It marks itself seen as soon as it shows, so quitting the app with it open
+ * does not bring it back; saving sends the switches, closing keeps the choice
+ * as it is, and either marks it seen again if the first mark failed.
  */
 export function OneTimeEditorPick({ deps: given }: { deps?: OneTimeEditorPickDeps }) {
   const [deps] = useState(() => given ?? windowDeps())
@@ -52,6 +53,26 @@ export function OneTimeEditorPick({ deps: given }: { deps?: OneTimeEditorPickDep
   const [off, setOff] = useState<EditorItemId[]>([])
   const [aiFeatures, setAiFeatures] = useState(true)
   const [busy, setBusy] = useState(false)
+  /** the mark under way or made; null before the first show, or after a mark that failed */
+  const seenMark = useRef<Promise<boolean> | null>(null)
+
+  /** mark it seen once; true when the mark is stored */
+  const markSeen = useCallback((): Promise<boolean> => {
+    if (!deps) return Promise.resolve(false)
+    if (!seenMark.current) {
+      const mark = deps.choice.markPickSeen().then(
+        () => true,
+        (error: unknown) => {
+          console.warn('editor picker not marked seen', error)
+          // the next try (saving or closing) marks it again
+          if (seenMark.current === mark) seenMark.current = null
+          return false
+        },
+      )
+      seenMark.current = mark
+    }
+    return seenMark.current
+  }, [deps])
 
   useEffect(() => {
     if (!deps) return
@@ -84,6 +105,12 @@ export function OneTimeEditorPick({ deps: given }: { deps?: OneTimeEditorPickDep
     homeActive: tabs !== null && homeTabActive(tabs),
     done,
   })
+
+  // seen once it shows (spec 5): it does not come back after a quit with it open
+  useEffect(() => {
+    if (visible) void markSeen()
+  }, [visible, markSeen])
+
   if (!deps || !visible) return null
 
   const finish = async (save: boolean): Promise<void> => {
@@ -97,11 +124,8 @@ export function OneTimeEditorPick({ deps: given }: { deps?: OneTimeEditorPickDep
       setBusy(false)
       return
     }
-    try {
-      await deps.choice.markPickSeen()
-    } catch (error) {
-      console.warn('editor picker not marked seen', error)
-    }
+    // a mark made when it showed is enough; one that failed is tried again
+    if (!(await markSeen())) await markSeen()
     setBusy(false)
     setDone(true)
   }

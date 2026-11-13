@@ -141,7 +141,7 @@ import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
 import { registerEditorChoiceIpc, type EditorChoiceService } from './editor-choice-main'
 import { createEditorGate, installEditorGate, whenReady, type OpenOrigin } from './editor-gate'
 import { aiOffRefusalText, watchAiFeatures } from './ai-off-main'
-import { resumeAiBackgroundWork } from '../../../docs/src/main/ai-background'
+import { resumeAiBackgroundWork, stopAiBackgroundWork } from '../../../docs/src/main/ai-background'
 import { createEditorEntrances } from './editor-entrances'
 import { writeDocumentFileOnly } from './document-file-only'
 import { setEditorEntranceAsker } from '@genoffice/electron-utils/editor-entrance'
@@ -10142,13 +10142,20 @@ registerHomeIpc()
 // editors and AI on or off (the source the editor mains read, the "ai-off" run check)
 const editorChoice = registerEditorChoiceIpc({
   settingsPath: APP_SETTINGS_PATH,
+  // only Home and its Settings in the main window change the choice or stop every AI job
+  isShellSender: (event) =>
+    !!shellWindow && !shellWindow.isDestroyed() && event.sender === shellWindow.webContents,
   aiOffRefusal: () => aiOffRefusalText(currentLang()),
 })
 editorChoiceService = editorChoice
-// AI off closes the agent window; back on, the held-back checks run once (spec 8.5)
+// AI off closes the agent window and ends running logins; back on, the held-back checks run
+// once (spec 8.5)
 watchAiFeatures({
   choice: editorChoice,
-  turnedOff: closeAgentWindow,
+  turnedOff: () => {
+    closeAgentWindow()
+    stopAiBackgroundWork()
+  },
   turnedOn: resumeAiBackgroundWork,
 })
 // a turned-off editor's kind leaves the "new" menus at once (the cards follow by IPC)

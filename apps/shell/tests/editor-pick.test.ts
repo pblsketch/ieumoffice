@@ -306,6 +306,47 @@ describe('OneTimeEditorPick', () => {
     expect(switchOf('docs').getAttribute('aria-checked')).toBe('false')
   })
 
+  it('marks itself seen as soon as it shows, before any answer', async () => {
+    // spec 5: quitting the app with it open does not bring it back next launch
+    const { deps } = fakeDeps()
+    render(createElement(OneTimeEditorPick, { deps }))
+    await settle()
+    expect(dialog()).not.toBeNull()
+    expect(deps.choice.markPickSeen).toHaveBeenCalledTimes(1)
+    expect(deps.choice.set).not.toHaveBeenCalled()
+  })
+
+  it('is not marked seen while it waits under an editor tab', async () => {
+    const { deps, pushTabs } = fakeDeps({
+      tabs: [tab('home', 'home'), tab('a', 'slides', true)],
+    })
+    render(createElement(OneTimeEditorPick, { deps }))
+    await settle()
+    expect(deps.choice.markPickSeen).not.toHaveBeenCalled()
+    await pushTabs([tab('home', 'home', true), tab('a', 'slides')])
+    await settle()
+    expect(deps.choice.markPickSeen).toHaveBeenCalledTimes(1)
+    // stepping aside and coming back is the same showing
+    await pushTabs([tab('home', 'home'), tab('a', 'slides', true)])
+    await pushTabs([tab('home', 'home', true), tab('a', 'slides')])
+    await settle()
+    expect(deps.choice.markPickSeen).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks itself seen again on close when the first mark failed', async () => {
+    const { deps } = fakeDeps()
+    deps.choice.markPickSeen.mockRejectedValueOnce(new Error('not written'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    render(createElement(OneTimeEditorPick, { deps }))
+    await settle()
+    expect(deps.choice.markPickSeen).toHaveBeenCalledTimes(1)
+    await click('.ec-pick-close')
+    await settle()
+    expect(deps.choice.markPickSeen).toHaveBeenCalledTimes(2)
+    expect(dialog()).toBeNull()
+    warn.mockRestore()
+  })
+
   it('saves the switches and marks itself seen', async () => {
     const { deps } = fakeDeps()
     render(createElement(OneTimeEditorPick, { deps }))
