@@ -915,7 +915,48 @@ describe('columns and breaks', () => {
     }
   })
 
-  it('keeps a table in front of the paragraph, and the start of a part with other columns', () => {
+  it('leaves a table on its page when it shrinks after a break was put behind it', () => {
+    const LONG =
+      '이 칸에는 여러 줄로 접히는 긴 설명이 들어갑니다. 조사 대상과 방법, 기간, 그리고 결과를 한 칸에 모두 적어 줄 수가 늘어나게 합니다. 한 줄로는 다 들어가지 않습니다. 세 줄이 넘도록 조금 더 적습니다. 마지막 문장입니다.'
+    const ADDED = ['칸 안에 더한 줄 A', '칸 안에 더한 줄 B', '칸 안에 더한 줄 C']
+    const LAST = 32
+    const rows = Array.from({ length: LAST }, (_, row) => [`항목 ${row + 1}`, `값 ${row + 1}`])
+    type Plugin = ReturnType<typeof open>['plugin']
+    const fillLast = (text: string) => (plugin: Plugin) =>
+      plugin.fillCells(1, [{ row: LAST, col: 2, text }], true)
+    const changes: Array<{
+      grow: (plugin: Plugin) => unknown
+      shrink: (plugin: Plugin) => unknown
+    }> = [
+      { grow: fillLast(LONG), shrink: fillLast('짧은 값') },
+      { grow: fillLast(LONG), shrink: (plugin) => plugin.removeTableLines(1, 'rows', LAST, 1) },
+      { grow: fillLast(LONG), shrink: (plugin) => plugin.replaceText(LONG, '짧은 값', null) },
+      {
+        grow: (plugin) => plugin.insertParagraphs(`값 ${LAST}`, null, 'after', ADDED),
+        shrink: (plugin) => ADDED.map((line) => plugin.deleteParagraph(line, null)),
+      },
+    ]
+    for (const { grow, shrink } of changes) {
+      const { plugin, doc } = open(
+        blank(['보고서 제목', '표 앞 문단입니다.', '다음 장 제목', '다음 장 본문']),
+      )
+      plugin.insertTable('표 앞 문단입니다.', null, 'after', rows, true)
+      const TABLE = 2
+      const pageOf = (from: HwpDocument, para: number) =>
+        (JSON.parse(from.getPageOfPosition(0, para)) as { page: number }).page
+      expect(pageOf(doc(), TABLE)).toBe(0)
+      grow(plugin)
+      expect(plugin.insertBreak('다음 장 제목', null, 'page')).toMatchObject({ ok: true })
+      shrink(plugin)
+      expect([doc().pageCount(), pageOf(doc(), TABLE)]).toEqual([2, 0])
+      for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+        const saved = new HwpDocument(bytes)
+        expect([saved.pageCount(), pageOf(saved, TABLE)]).toEqual([2, 0])
+      }
+    }
+  })
+
+  it('leaves one empty paragraph behind a table, and keeps the start of a part with other columns', () => {
     const start = blank(['머리', '표 앞', '표 뒤 문단', '단이 바뀌는 문단 앞'])
     // a paragraph that starts a part of the document laid out in other columns, as Hangul
     // marks it: made through the engine's split, which takes the mark of the new paragraph
@@ -936,10 +977,17 @@ describe('columns and breaks', () => {
     start.insertText(0, 4, 0, '단이 바뀌는 문단')
     const { plugin, doc, steps } = open(start)
     plugin.insertTable('표 앞', null, 'after', [['a', 'b']], false)
-    const paragraphs = doc().getParagraphCount(0)
+    const paragraphs = doc().getParagraphCount(0) + 1
     expect(plugin.insertBreak('표 뒤 문단', null, 'page')).toMatchObject({
       ok: true,
-      place: { para: 3 },
+      place: { para: 4 },
+    })
+    expect(doc().getParagraphCount(0)).toBe(paragraphs)
+    expect(doc().getParagraphLength(0, 3)).toBe(0)
+    expect(plugin.insertBreak('표 뒤 문단', null, 'page')).toEqual({
+      ok: true,
+      kind: 'page',
+      already: 'page',
     })
     expect(doc().getParagraphCount(0)).toBe(paragraphs)
     expect(tableIn(doc(), 2).cols).toBe(2)

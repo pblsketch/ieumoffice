@@ -3773,6 +3773,20 @@ function tablesOf(doc) {
   return { tables, partial: lookups <= 0 }
 }
 
+/** Whether a body paragraph holds a table. */
+function holdsTable(doc, sec, para) {
+  const controls = parse(doc.getControlTextPositions(sec, para)).length
+  for (let ctrl = 0; ctrl < controls; ctrl++) {
+    try {
+      parse(doc.getTableDimensions(sec, para, ctrl))
+      return true
+    } catch {
+      // not a table: a picture, a section definition
+    }
+  }
+  return false
+}
+
 /**
  * The text lines of each table cell on page `page`, from one layout read of the page
  * (getPageTextLayout): for every cell, keyed as `tableKey` + `/` + cell index, its runs of
@@ -8373,7 +8387,8 @@ export const agentPlugin = {
        * (`kind`, one of BREAK_KINDS), as Hangul's 쪽 나누기 and 단 나누기 do in front of a
        * paragraph. A paragraph inside a table, and the first one of the document, cannot
        * start anew. The break is put on the paragraph itself: no empty paragraph is left in
-       * front of it, and a numbering restart the paragraph had is set on it again. One that
+       * front of it, except one behind a table, which keeps the table's paragraph as it was
+       * laid out; a numbering restart the paragraph had is set on it again. One that
        * starts a page already (or a column, when a column is asked for) is left as it is and
        * answered `already`; one that starts a part of the document with other columns is
        * refused, since the break would take that start away (breakOutcome), and so is one
@@ -8412,13 +8427,23 @@ export const agentPlugin = {
                 const { hit } = plan(doc)
                 if (!hit) throw fail('CHANGED', 'the document changed mid-call')
                 const before = objectsOf(doc)
+                // the join below lays the paragraph in front out again, and the line of a
+                // table's paragraph then takes the height the table has now. The engine keeps
+                // that line when a cell is emptied later, and moves the table to the next
+                // page though it fits (docs/tracking/findings.md). An empty paragraph between
+                // the two takes the join instead, and stays behind the table.
+                let para = hit.para
+                if (holdsTable(doc, hit.sec, para - 1)) {
+                  expectOk(doc.insertParagraph(hit.sec, para), 'keep the table apart')
+                  para += 1
+                }
                 const controlsInFront = () =>
-                  parse(doc.getControlTextPositions(hit.sec, hit.para - 1)).length
+                  parse(doc.getControlTextPositions(hit.sec, para - 1)).length
                 const inFrontBefore = controlsInFront()
                 const made = parse(
                   kind === 'page'
-                    ? doc.insertPageBreak(hit.sec, hit.para, 0)
-                    : doc.insertColumnBreak(hit.sec, hit.para, 0),
+                    ? doc.insertPageBreak(hit.sec, para, 0)
+                    : doc.insertColumnBreak(hit.sec, para, 0),
                 )
                 if (!made || made.ok !== true) throw fail('ENGINE', 'the break could not be made')
                 // the engine splits the paragraph at its start and puts the break on the
@@ -8426,7 +8451,7 @@ export const agentPlugin = {
                 // every call would leave one more empty paragraph (a second call an empty
                 // page). Joined to the paragraph in front, it is gone, and the engine's
                 // answer says which break it carried: the only way to read a paragraph's.
-                const joined = parse(doc.mergeParagraph(hit.sec, hit.para))
+                const joined = parse(doc.mergeParagraph(hit.sec, para))
                 if (!joined || joined.ok !== true) {
                   throw fail('ENGINE', 'the break could not be made')
                 }
@@ -8447,7 +8472,7 @@ export const agentPlugin = {
                 }
                 if (outcome.restart) {
                   expectOk(
-                    doc.setNumberingRestart(hit.sec, hit.para, ...outcome.restart),
+                    doc.setNumberingRestart(hit.sec, para, ...outcome.restart),
                     'keep the numbering of the paragraph',
                   )
                 }
@@ -8458,9 +8483,9 @@ export const agentPlugin = {
                   columns: columnsOf(doc, hit.sec).count,
                   place: {
                     sec: hit.sec,
-                    para: hit.para,
+                    para,
                     offset: 0,
-                    length: doc.getParagraphLength(hit.sec, hit.para),
+                    length: doc.getParagraphLength(hit.sec, para),
                   },
                 }
               },
