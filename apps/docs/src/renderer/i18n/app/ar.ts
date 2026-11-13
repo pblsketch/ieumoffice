@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ar = {
+  appLegacyDocImported:
+    'تم فتح ملف .{ext} كنسخة ‎.docx محوَّلة. يبقى الملف الأصلي كما هو، ويؤدي الحفظ إلى كتابة ملف ‎.docx جديد.',
   appScTitle: 'اختصارات لوحة المفاتيح',
   appScFilter: 'البحث عن اختصار',
   appScNone: 'لا توجد اختصارات مطابقة',

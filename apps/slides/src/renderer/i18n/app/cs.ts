@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const cs = {
+  appLegacyPptImported:
+    'Soubor .ppt byl otevřen jako převedená kopie .pptx. Původní soubor zůstává beze změny; uložením vznikne nový soubor .pptx. Poznámky řečníka a animace se nepřenášejí.',
   redactMenuLabel: 'Skrýt výběr před AI',
   redactDialogDesc:
     'Vybraný obsah zůstane v dokumentu i v souboru; model uvidí jen zástupný symbol. Pojmenujte ho, aby věděl, co zastupuje.',

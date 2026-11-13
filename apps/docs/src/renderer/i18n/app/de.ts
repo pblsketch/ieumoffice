@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const de = {
+  appLegacyDocImported:
+    'Die .{ext}-Datei wurde als konvertierte .docx-Kopie geöffnet. Das Original bleibt unverändert; beim Speichern entsteht eine neue .docx-Datei.',
   appScTitle: 'Tastenkombinationen',
   appScFilter: 'Tastenkombination suchen',
   appScNone: 'Keine passenden Tastenkombinationen',

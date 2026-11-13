@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ms = {
+  appLegacyDocImported:
+    'Fail .{ext} dibuka sebagai salinan .docx yang ditukar. Fail asal kekal seperti sedia ada; menyimpan akan menulis fail .docx baharu.',
   appScTitle: 'Pintasan Papan Kekunci',
   appScFilter: 'Cari pintasan',
   appScNone: 'Tiada pintasan yang sepadan',

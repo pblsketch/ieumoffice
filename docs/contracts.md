@@ -38,10 +38,12 @@
 **옛 워드 문서(`.doc`·`.dot`).**
 
 - `convert <file.doc|.dot> --to docx`만 받는다. 앱을 띄우지 않고 `@genoffice/doc2docx`로 바꾼다. `.doc`로 다시 쓰는 길은 없다.
+- 앱에서 열면 같은 변환기로 바꾼 `.docx` 사본을 이름 없는 새 문서로 연다. 원본은 읽기만 하고, 처음 저장할 때 원본 옆의 같은 이름 `.docx`를 제안한다(결정 0139).
 - 바꾸며 빠지거나 바뀐 것은 파일을 쓰고 `detail.warnings`에 적는다. 암호가 걸린 문서, Word 97보다 오래된 판, 깨진 파일은 종료 코드 3으로 끝나고, `detail.reason`에 `doc2docx`의 이유 코드(`encrypted`, `unsupported_version`, `not_cfb`, `corrupt` 등)가 온다.
 
 **옛 파워포인트 문서(`.ppt`).**
 
+- 앱에서 열면 같은 변환기로 바꾼 `.pptx` 사본을 이름 없는 새 문서로 연다. 원본은 읽기만 하고, 처음 저장할 때 원본 옆의 같은 이름 `.pptx`를 제안한다(결정 0139).
 - `convert <file.ppt> --to pptx`만 받는다. 앱을 띄우지 않고 `@genoffice/ppt2pptx`로 바꾼다. 슬라이드 순서와 크기, 글자와 서식, 도형·채우기·그림·배경, 마스터에서 이어받는 모양을 옮긴다. 슬라이드 노트, 애니메이션, 하이퍼링크, 표(칸 도형만 옮긴다)는 빠진다. 빠진 것은 `detail.warnings`에, 슬라이드 수는 `detail.slides`에 온다. `.ppt`로 다시 쓰는 길은 없다.
 - 암호가 걸린 문서, PowerPoint 97보다 오래된 판, 깨진 파일은 종료 코드 3으로 끝나고, `detail.reason`에 `ppt2pptx`의 이유 코드(`encrypted`, `unsupported_version`, `not_cfb`, `corrupt` 등)가 온다.
 

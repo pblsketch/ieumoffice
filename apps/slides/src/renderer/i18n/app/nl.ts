@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const nl = {
+  appLegacyPptImported:
+    'Het .ppt-bestand is geopend als geconverteerde .pptx-kopie. Het origineel blijft ongewijzigd; opslaan schrijft een nieuw .pptx-bestand. Sprekersnotities en animaties worden niet overgenomen.',
   redactMenuLabel: 'Selectie verbergen voor de AI',
   redactDialogDesc:
     'De selectie blijft in het document en het bestand; het model ziet alleen de placeholder. Geef hem een naam.',

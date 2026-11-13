@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const tr = {
+  appLegacyPptImported:
+    '.ppt dosyası dönüştürülmüş bir .pptx kopyası olarak açıldı. Özgün dosya değişmez; kaydetmek yeni bir .pptx dosyası yazar. Konuşmacı notları ve animasyonlar aktarılmaz.',
   redactMenuLabel: "Seçimi AI'dan gizle",
   redactDialogDesc:
     'Seçim belgede ve dosyada kalır; model bunun yerine aşağıdaki yer tutucuyu görür. Modelin neyi temsil ettiğini bilmesi için ona bir ad verin.',

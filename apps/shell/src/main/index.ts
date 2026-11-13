@@ -253,6 +253,7 @@ import {
   setSlidesCloseTabHook,
   setSlidesExtraFileMenuItems,
   setSlidesDocumentLinkMenuItems,
+  setSlidesLegacyOpenHook,
   setSlidesOpenedHook,
   setSlidesHostWindowHook,
   setSlidesPasswordPrompt,
@@ -465,6 +466,7 @@ import {
   renameStaysInApp,
 } from './app-routing'
 import { isSameFile, pdfSaveAsTarget, isValidRawRenameName } from './rename-validation'
+import { convertLegacyFile, legacyEditorFor } from './legacy-open'
 import {
   FolderWatcher,
   createFolder,
@@ -1254,6 +1256,11 @@ const tMain = createI18n({
     errNewTabFailed: '新建文档失败',
     errDuplicateFailed: '复制文件失败',
     errUnsupportedExt: '暂不支持 .{ext} 类型',
+    errLegacyConvert: '无法转换此 .{ext} 文件',
+    errLegacyConvertDetail:
+      '文件可能已损坏，或采用了此转换器尚不支持的格式。请在创建它的程序中打开并另存为 .{to}，再在这里打开该文件。',
+    errLegacyEncrypted:
+      '此文件受密码保护。请在创建它的程序中取消密码，或另存为 .{to}，然后在这里打开。',
     copySuffix: '副本',
     menuHelp: '帮助',
     menuUserGuide: '使用手册',
@@ -1411,6 +1418,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Could not create the new document',
     errDuplicateFailed: 'Could not duplicate the file',
     errUnsupportedExt: '.{ext} files are not supported',
+    errLegacyConvert: 'Could not convert this .{ext} file',
+    errLegacyConvertDetail:
+      'The file may be damaged or in a form this converter does not read yet. Open it in the program that made it and save it as .{to}, then open that file here.',
+    errLegacyEncrypted:
+      'This file is password-protected. Remove the password in the program that made it, or save it there as .{to}, then open it here.',
     copySuffix: 'copy',
     menuHelp: 'Help',
     menuUserGuide: 'User Guide',
@@ -1576,6 +1588,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Không thể tạo tài liệu mới',
     errDuplicateFailed: 'Không thể nhân bản tệp',
     errUnsupportedExt: 'Tệp .{ext} không được hỗ trợ',
+    errLegacyConvert: 'Không thể chuyển đổi tệp .{ext} này',
+    errLegacyConvertDetail:
+      'Tệp có thể bị hỏng hoặc ở dạng mà trình chuyển đổi này chưa đọc được. Hãy mở tệp trong chương trình đã tạo ra nó, lưu thành .{to}, rồi mở tệp đó tại đây.',
+    errLegacyEncrypted:
+      'Tệp này được bảo vệ bằng mật khẩu. Hãy gỡ mật khẩu trong chương trình đã tạo ra nó, hoặc lưu thành .{to} ở đó, rồi mở tại đây.',
     copySuffix: 'bản sao',
     menuHelp: 'Trợ giúp',
     menuUserGuide: 'Hướng dẫn sử dụng',
@@ -1742,6 +1759,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Yeni belge oluşturulamadı',
     errDuplicateFailed: 'Dosyanın kopyası oluşturulamadı',
     errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errLegacyConvert: 'Bu .{ext} dosyası dönüştürülemedi',
+    errLegacyConvertDetail:
+      'Dosya bozuk olabilir ya da bu dönüştürücünün henüz okuyamadığı bir biçimde olabilir. Dosyayı oluşturan programda açıp .{to} olarak kaydedin, sonra o dosyayı burada açın.',
+    errLegacyEncrypted:
+      'Bu dosya parola korumalı. Parolayı dosyayı oluşturan programda kaldırın ya da orada .{to} olarak kaydedin, sonra burada açın.',
     copySuffix: 'kopya',
     menuHelp: 'Yardım',
     menuUserGuide: 'Kullanım kılavuzu',
@@ -1907,6 +1929,11 @@ const tMain = createI18n({
     errNewTabFailed: '新規ドキュメントを作成できませんでした',
     errDuplicateFailed: 'ファイルを複製できませんでした',
     errUnsupportedExt: '.{ext} 形式には対応していません',
+    errLegacyConvert: 'この .{ext} ファイルを変換できませんでした',
+    errLegacyConvertDetail:
+      'ファイルが壊れているか、この変換ではまだ読めない形式の可能性があります。作成したプログラムで開いて .{to} として保存し、そのファイルをここで開いてください。',
+    errLegacyEncrypted:
+      'パスワードで保護されたファイルです。作成したプログラムでパスワードを解除するか .{to} として保存してから、ここで開いてください。',
     copySuffix: 'コピー',
     menuHelp: 'ヘルプ',
     menuUserGuide: 'ユーザーガイド',
@@ -2074,6 +2101,11 @@ const tMain = createI18n({
     errNewTabFailed: '새 문서를 만들지 못했습니다',
     errDuplicateFailed: '파일을 복제할 수 없습니다',
     errUnsupportedExt: '.{ext} 형식은 지원되지 않습니다',
+    errLegacyConvert: '.{ext} 파일을 변환하지 못했습니다',
+    errLegacyConvertDetail:
+      '파일이 손상됐거나 아직 읽지 못하는 형식일 수 있습니다. 만든 프로그램에서 열어 .{to}로 저장한 뒤 그 파일을 여기서 열어 주세요.',
+    errLegacyEncrypted:
+      '암호가 걸린 파일입니다. 만든 프로그램에서 암호를 풀거나 .{to}로 저장한 뒤 여기서 열어 주세요.',
     copySuffix: '복사본',
     menuHelp: '도움말',
     menuUserGuide: '사용자 가이드',
@@ -2239,6 +2271,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Impossible de créer le nouveau document',
     errDuplicateFailed: 'Impossible de dupliquer le fichier',
     errUnsupportedExt: 'les fichiers .{ext} ne sont pas pris en charge',
+    errLegacyConvert: 'Impossible de convertir ce fichier .{ext}',
+    errLegacyConvertDetail:
+      'Le fichier est peut-être endommagé ou dans une forme que ce convertisseur ne lit pas encore. Ouvrez-le dans le programme qui l’a créé, enregistrez-le en .{to}, puis ouvrez ce fichier ici.',
+    errLegacyEncrypted:
+      'Ce fichier est protégé par mot de passe. Retirez le mot de passe dans le programme qui l’a créé, ou enregistrez-le en .{to}, puis ouvrez-le ici.',
     copySuffix: 'copie',
     menuHelp: 'Aide',
     menuUserGuide: "Guide de l'utilisateur",
@@ -2408,6 +2445,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Neues Dokument konnte nicht erstellt werden',
     errDuplicateFailed: 'Datei konnte nicht dupliziert werden',
     errUnsupportedExt: '.{ext}-Dateien werden nicht unterstützt',
+    errLegacyConvert: 'Diese .{ext}-Datei konnte nicht konvertiert werden',
+    errLegacyConvertDetail:
+      'Die Datei ist möglicherweise beschädigt oder liegt in einer Form vor, die dieser Konverter noch nicht liest. Öffnen Sie sie im Programm, mit dem sie erstellt wurde, speichern Sie sie als .{to} und öffnen Sie dann diese Datei hier.',
+    errLegacyEncrypted:
+      'Diese Datei ist kennwortgeschützt. Entfernen Sie das Kennwort im Programm, mit dem sie erstellt wurde, oder speichern Sie sie dort als .{to} und öffnen Sie sie dann hier.',
     copySuffix: 'Kopie',
     menuHelp: 'Hilfe',
     menuUserGuide: 'Benutzerhandbuch',
@@ -2575,6 +2617,11 @@ const tMain = createI18n({
     errNewTabFailed: 'No se pudo crear el nuevo documento',
     errDuplicateFailed: 'No se pudo duplicar el archivo',
     errUnsupportedExt: 'los archivos .{ext} no son compatibles',
+    errLegacyConvert: 'No se pudo convertir este archivo .{ext}',
+    errLegacyConvertDetail:
+      'Puede que el archivo esté dañado o en una forma que este convertidor aún no lee. Ábralo en el programa que lo creó, guárdelo como .{to} y abra ese archivo aquí.',
+    errLegacyEncrypted:
+      'Este archivo está protegido con contraseña. Quite la contraseña en el programa que lo creó, o guárdelo allí como .{to}, y luego ábralo aquí.',
     copySuffix: 'copia',
     menuHelp: 'Ayuda',
     menuUserGuide: 'Guía del usuario',
@@ -2742,6 +2789,11 @@ const tMain = createI18n({
     errNewTabFailed: 'สร้างเอกสารใหม่ไม่สำเร็จ',
     errDuplicateFailed: 'ไม่สามารถทำสำเนาไฟล์ได้',
     errUnsupportedExt: 'ไม่รองรับไฟล์ .{ext}',
+    errLegacyConvert: 'ไม่สามารถแปลงไฟล์ .{ext} นี้ได้',
+    errLegacyConvertDetail:
+      'ไฟล์อาจเสียหายหรืออยู่ในรูปแบบที่ตัวแปลงนี้ยังอ่านไม่ได้ เปิดไฟล์ในโปรแกรมที่สร้างไฟล์นั้น บันทึกเป็น .{to} แล้วเปิดไฟล์นั้นที่นี่',
+    errLegacyEncrypted:
+      'ไฟล์นี้มีรหัสผ่านป้องกัน ให้เอารหัสผ่านออกในโปรแกรมที่สร้างไฟล์ หรือบันทึกเป็น .{to} ที่นั่น แล้วเปิดที่นี่',
     copySuffix: 'สำเนา',
     menuHelp: 'วิธีใช้',
     menuUserGuide: 'คู่มือผู้ใช้',
@@ -2905,6 +2957,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Gagal membuat dokumen baru',
     errDuplicateFailed: 'Tidak dapat menduplikasi berkas',
     errUnsupportedExt: 'file .{ext} tidak didukung',
+    errLegacyConvert: 'File .{ext} ini tidak dapat dikonversi',
+    errLegacyConvertDetail:
+      'File mungkin rusak atau dalam bentuk yang belum dapat dibaca konverter ini. Buka di program yang membuatnya, simpan sebagai .{to}, lalu buka file itu di sini.',
+    errLegacyEncrypted:
+      'File ini dilindungi kata sandi. Hapus kata sandinya di program yang membuatnya, atau simpan di sana sebagai .{to}, lalu buka di sini.',
     copySuffix: 'salinan',
     menuHelp: 'Bantuan',
     menuUserGuide: 'Panduan Pengguna',
@@ -3072,6 +3129,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Не удалось создать новый документ',
     errDuplicateFailed: 'Не удалось создать копию файла',
     errUnsupportedExt: 'файлы .{ext} не поддерживаются',
+    errLegacyConvert: 'Не удалось преобразовать этот файл .{ext}',
+    errLegacyConvertDetail:
+      'Файл может быть повреждён или иметь форму, которую этот конвертер пока не читает. Откройте его в программе, в которой он создан, сохраните как .{to} и откройте этот файл здесь.',
+    errLegacyEncrypted:
+      'Файл защищён паролем. Снимите пароль в программе, в которой он создан, или сохраните его там как .{to}, а затем откройте здесь.',
     copySuffix: 'копия',
     menuHelp: 'Справка',
     menuUserGuide: 'Руководство пользователя',
@@ -3238,6 +3300,11 @@ const tMain = createI18n({
     errNewTabFailed: 'تعذّر إنشاء المستند الجديد',
     errDuplicateFailed: 'تعذر تكرار الملف',
     errUnsupportedExt: 'ملفات .{ext} غير مدعومة',
+    errLegacyConvert: 'تعذّر تحويل ملف .{ext} هذا',
+    errLegacyConvertDetail:
+      'قد يكون الملف تالفًا أو بصيغة لا يقرؤها هذا المحوّل بعد. افتحه في البرنامج الذي أنشأه واحفظه بصيغة ‎.{to}، ثم افتح ذلك الملف هنا.',
+    errLegacyEncrypted:
+      'هذا الملف محمي بكلمة مرور. أزل كلمة المرور في البرنامج الذي أنشأه، أو احفظه هناك بصيغة ‎.{to}، ثم افتحه هنا.',
     copySuffix: 'نسخة',
     menuHelp: 'تعليمات',
     menuUserGuide: 'دليل المستخدم',
@@ -3401,6 +3468,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Falha ao criar o novo documento',
     errDuplicateFailed: 'Não foi possível duplicar o arquivo',
     errUnsupportedExt: 'arquivos .{ext} não são suportados',
+    errLegacyConvert: 'Não foi possível converter este arquivo .{ext}',
+    errLegacyConvertDetail:
+      'O arquivo pode estar danificado ou em uma forma que este conversor ainda não lê. Abra-o no programa que o criou, salve como .{to} e abra esse arquivo aqui.',
+    errLegacyEncrypted:
+      'Este arquivo é protegido por senha. Remova a senha no programa que o criou, ou salve-o lá como .{to}, e depois abra-o aqui.',
     copySuffix: 'cópia',
     menuHelp: 'Ajuda',
     menuUserGuide: 'Guia do Usuário',
@@ -3568,6 +3640,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Impossibile creare il nuovo documento',
     errDuplicateFailed: 'Impossibile duplicare il file',
     errUnsupportedExt: 'i file .{ext} non sono supportati',
+    errLegacyConvert: 'Impossibile convertire questo file .{ext}',
+    errLegacyConvertDetail:
+      'Il file potrebbe essere danneggiato o in una forma che questo convertitore non legge ancora. Aprilo nel programma che lo ha creato, salvalo come .{to} e poi apri qui quel file.',
+    errLegacyEncrypted:
+      'Questo file è protetto da password. Rimuovi la password nel programma che lo ha creato, oppure salvalo lì come .{to}, poi aprilo qui.',
     copySuffix: 'copia',
     menuHelp: 'Aiuto',
     menuUserGuide: "Guida dell'utente",
@@ -3735,6 +3812,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Nie udało się utworzyć nowego dokumentu',
     errDuplicateFailed: 'Nie udało się zduplikować pliku',
     errUnsupportedExt: 'pliki .{ext} nie są obsługiwane',
+    errLegacyConvert: 'Nie udało się przekonwertować tego pliku .{ext}',
+    errLegacyConvertDetail:
+      'Plik może być uszkodzony lub mieć postać, której ten konwerter jeszcze nie czyta. Otwórz go w programie, w którym powstał, zapisz jako .{to}, a potem otwórz ten plik tutaj.',
+    errLegacyEncrypted:
+      'Plik jest chroniony hasłem. Usuń hasło w programie, w którym powstał, albo zapisz go tam jako .{to}, a potem otwórz tutaj.',
     copySuffix: 'kopia',
     menuHelp: 'Pomoc',
     menuUserGuide: 'Podręcznik użytkownika',
@@ -3901,6 +3983,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Nový dokument se nepodařilo vytvořit',
     errDuplicateFailed: 'Soubor se nepodařilo duplikovat',
     errUnsupportedExt: 'Soubory .{ext} nejsou podporovány',
+    errLegacyConvert: 'Tento soubor .{ext} se nepodařilo převést',
+    errLegacyConvertDetail:
+      'Soubor může být poškozený nebo v podobě, kterou tento převodník zatím nečte. Otevřete ho v programu, ve kterém vznikl, uložte jako .{to} a ten soubor otevřete zde.',
+    errLegacyEncrypted:
+      'Soubor je chráněný heslem. Odstraňte heslo v programu, ve kterém vznikl, nebo ho tam uložte jako .{to} a pak ho otevřete zde.',
     copySuffix: 'kopie',
     menuHelp: 'Nápověda',
     menuUserGuide: 'Uživatelská příručka',
@@ -4066,6 +4153,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Kan het nieuwe document niet maken',
     errDuplicateFailed: 'Kan het bestand niet dupliceren',
     errUnsupportedExt: '.{ext}-bestanden worden niet ondersteund',
+    errLegacyConvert: 'Dit .{ext}-bestand kon niet worden geconverteerd',
+    errLegacyConvertDetail:
+      'Het bestand is mogelijk beschadigd of in een vorm die deze converter nog niet leest. Open het in het programma waarmee het is gemaakt, sla het op als .{to} en open dat bestand hier.',
+    errLegacyEncrypted:
+      'Dit bestand is met een wachtwoord beveiligd. Verwijder het wachtwoord in het programma waarmee het is gemaakt, of sla het daar op als .{to}, en open het dan hier.',
     copySuffix: 'kopie',
     menuHelp: 'Help',
     menuUserGuide: 'Gebruikershandleiding',
@@ -4234,6 +4326,11 @@ const tMain = createI18n({
     errNewTabFailed: 'Gagal mencipta dokumen baharu',
     errDuplicateFailed: 'Tidak dapat menduplikasi fail',
     errUnsupportedExt: 'fail .{ext} tidak disokong',
+    errLegacyConvert: 'Fail .{ext} ini tidak dapat ditukar',
+    errLegacyConvertDetail:
+      'Fail mungkin rosak atau dalam bentuk yang belum dapat dibaca oleh penukar ini. Buka dalam program yang menciptanya, simpan sebagai .{to}, kemudian buka fail itu di sini.',
+    errLegacyEncrypted:
+      'Fail ini dilindungi kata laluan. Buang kata laluan dalam program yang menciptanya, atau simpan di sana sebagai .{to}, kemudian buka di sini.',
     copySuffix: 'salinan',
     menuHelp: 'Bantuan',
     menuUserGuide: 'Panduan Pengguna',
@@ -4399,6 +4496,11 @@ const tMain = createI18n({
     errNewTabFailed: 'יצירת המסמך החדש נכשלה',
     errDuplicateFailed: 'לא ניתן לשכפל את הקובץ',
     errUnsupportedExt: 'קובצי .{ext} אינם נתמכים',
+    errLegacyConvert: 'לא ניתן להמיר את קובץ ה-.{ext} הזה',
+    errLegacyConvertDetail:
+      'ייתכן שהקובץ פגום או בצורה שהממיר הזה עדיין לא קורא. פתחו אותו בתוכנה שיצרה אותו, שמרו כ-.{to} ופתחו את הקובץ הזה כאן.',
+    errLegacyEncrypted:
+      'הקובץ מוגן בסיסמה. הסירו את הסיסמה בתוכנה שיצרה אותו, או שמרו אותו שם כ-.{to}, ואז פתחו אותו כאן.',
     copySuffix: 'עותק',
     menuHelp: 'עזרה',
     menuUserGuide: 'מדריך למשתמש',
@@ -4563,6 +4665,11 @@ const tMain = createI18n({
     errNewTabFailed: 'नया दस्तावेज़ बनाने में विफल',
     errDuplicateFailed: 'फ़ाइल की प्रतिलिपि नहीं बनाई जा सकी',
     errUnsupportedExt: '.{ext} फ़ाइलें समर्थित नहीं हैं',
+    errLegacyConvert: 'इस .{ext} फ़ाइल को परिवर्तित नहीं किया जा सका',
+    errLegacyConvertDetail:
+      'फ़ाइल क्षतिग्रस्त हो सकती है या ऐसे रूप में हो सकती है जिसे यह कनवर्टर अभी नहीं पढ़ता। इसे बनाने वाले प्रोग्राम में खोलें, .{to} के रूप में सहेजें, फिर वह फ़ाइल यहाँ खोलें।',
+    errLegacyEncrypted:
+      'यह फ़ाइल पासवर्ड से सुरक्षित है। इसे बनाने वाले प्रोग्राम में पासवर्ड हटाएँ या वहाँ .{to} के रूप में सहेजें, फिर इसे यहाँ खोलें।',
     copySuffix: 'प्रतिलिपि',
     menuHelp: 'सहायता',
     menuUserGuide: 'उपयोगकर्ता गाइड',
@@ -4729,6 +4836,11 @@ const tMain = createI18n({
     errNewTabFailed: '新建文件失敗',
     errDuplicateFailed: '複製檔案失敗',
     errUnsupportedExt: '暫不支援 .{ext} 類型',
+    errLegacyConvert: '無法轉換此 .{ext} 檔案',
+    errLegacyConvertDetail:
+      '檔案可能已損毀，或採用了此轉換器尚不支援的格式。請在建立它的程式中開啟並另存為 .{to}，再在這裡開啟該檔案。',
+    errLegacyEncrypted:
+      '此檔案受密碼保護。請在建立它的程式中移除密碼，或另存為 .{to}，再在這裡開啟。',
     copySuffix: '副本',
     menuHelp: '說明',
     menuUserGuide: '使用手冊',
@@ -5004,7 +5116,7 @@ function ensureFileIndexer(): FileIndexer | null {
 }
 
 const SEARCH_EXT_FAMILY: Record<string, readonly string[]> = {
-  docx: ['docx', 'doc', 'odt'],
+  docx: ['docx', 'doc', 'dot', 'odt'],
   xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'],
   pptx: ['pptx', 'ppt'],
   md: ['md', 'markdown', 'txt', 'json'],
@@ -5501,6 +5613,8 @@ function createShellWindow(): void {
     detachedSetFileFor(wc.id, path)
     recordRecentFile(path)
   })
+  // a .ppt picked inside a slides tab opens as a converted copy, like one from Home
+  setSlidesLegacyOpenHook((path) => void openDocumentPath(path))
   setSlidesOpenedHook((wc, path) => {
     manager.setTabFileFor(wc.id, path)
     detachedSetFileFor(wc.id, path)
@@ -5725,13 +5839,13 @@ function createShellWindow(): void {
 // ---- routing: one dispatch function for every open path ----
 
 /**
- * Single source of truth for the open-dialog filter. Includes the
- * legacy .doc/.ppt binaries so they are selectable and surface the explicit
- * "not supported" dialog via openDocumentPath instead of being grayed out.
+ * Single source of truth for the open-dialog filter. The legacy .doc/.dot/.ppt
+ * binaries open as converted copies (openLegacyCopyTab).
  */
 const OPEN_DIALOG_EXTENSIONS = [
   'docx',
   'doc',
+  'dot',
   'odt',
   'xlsx',
   'xlsm',
@@ -5844,6 +5958,12 @@ function routeDocumentPath(filePath: string): boolean {
   // a detached editor window already shows this file — focus it, never a second copy
   if (focusDetachedByPath(filePath)) return true
   if (!tabManager) return false
+  // a legacy .doc/.dot/.ppt opens as a converted, untitled .docx/.pptx copy
+  if (legacyEditorFor(filePath)) {
+    recordRecentFile(filePath)
+    void openLegacyCopyTab(filePath)
+    return true
+  }
   if (DOCX_RE.test(filePath) || ODT_RE.test(filePath)) {
     recordRecentFile(filePath)
     const existing = tabManager.findDocsTabByPath(filePath)
@@ -5941,6 +6061,77 @@ function routeDocumentPath(filePath: string): boolean {
   }
   notifyUnsupportedFile(filePath)
   return false
+}
+
+/** the tab each opened legacy file's copy went to: opening the file again comes back to it */
+const legacyCopyTabs = new Map<string, string>()
+
+/**
+ * A legacy .doc/.dot/.ppt: converted here, then opened like a skill template's
+ * copy, as a new untitled document whose first save suggests the converted
+ * name beside the original. The original is only read. A file the converter
+ * refuses gets the reason, and no tab.
+ */
+async function openLegacyCopyTab(filePath: string): Promise<void> {
+  const key = resolve(filePath).toLowerCase()
+  const known = legacyCopyTabs.get(key)
+  if (known && tabManager?.webContentsForTab(known)) {
+    tabManager.activateTab(known)
+    return
+  }
+  const result = await convertLegacyFile(filePath)
+  if (!result) return
+  if (!result.ok) {
+    console.warn('[shell] legacy import failed:', result.error)
+    showAppWarning(
+      tm('errLegacyConvert', { ext: result.from }),
+      tm(result.reason === 'encrypted' ? 'errLegacyEncrypted' : 'errLegacyConvertDetail', {
+        to: result.to,
+      }),
+    )
+    return
+  }
+  const manager = tabManager
+  if (!manager) return
+  const { copy } = result
+  // the Word tab reads an untitled copy from a file once, as it boots
+  let tempDir: string | null = null
+  let path = filePath
+  if (copy.editor === 'docs') {
+    tempDir = join(app.getPath('temp'), 'genoffice-imports', randomUUID())
+    path = join(tempDir, copy.fileName)
+    try {
+      mkdirSync(tempDir, { recursive: true })
+      await atomicWriteFile(path, Buffer.from(copy.bytes))
+    } catch (err) {
+      rmSync(tempDir, { recursive: true, force: true })
+      showAppWarning(
+        tm('errLegacyConvert', { ext: copy.importedFrom }),
+        err instanceof Error ? err.message : String(err),
+      )
+      return
+    }
+  }
+  const opened = manager.openTemplateCopy({
+    editor: copy.editor,
+    path,
+    bytes: copy.bytes,
+    fileName: copy.fileName,
+    title: copy.fileName,
+    saveAsDefaultPath: copy.saveAsDefaultPath,
+    importedFrom: copy.importedFrom,
+  })
+  const dir = tempDir
+  if (!opened) {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    return
+  }
+  legacyCopyTabs.set(key, opened.tabId)
+  opened.contents.once('destroyed', () => {
+    if (legacyCopyTabs.get(key) === opened.tabId) legacyCopyTabs.delete(key)
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+  manager.activateTab(opened.tabId)
 }
 
 /**
@@ -6707,7 +6898,7 @@ function registerHomeIpc(): void {
       title: tm('dlgOpenTitle'),
       filters: [
         { name: tm('filterSupported'), extensions: OPEN_DIALOG_EXTENSIONS },
-        { name: tm('filterWord'), extensions: ['docx', 'doc'] },
+        { name: tm('filterWord'), extensions: ['docx', 'doc', 'dot'] },
         { name: tm('filterOdt'), extensions: ['odt'] },
         { name: tm('filterExcel'), extensions: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'] },
         { name: tm('filterPpt'), extensions: ['pptx', 'ppt'] },

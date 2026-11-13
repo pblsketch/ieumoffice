@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const id = {
+  appLegacyDocImported:
+    'File .{ext} dibuka sebagai salinan .docx hasil konversi. File asli tetap seperti semula; menyimpan akan menulis file .docx baru.',
   appScTitle: 'Pintasan Papan Ketik',
   appScFilter: 'Cari pintasan',
   appScNone: 'Tidak ada pintasan yang cocok',

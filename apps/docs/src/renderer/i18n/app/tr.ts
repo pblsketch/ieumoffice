@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const tr = {
+  appLegacyDocImported:
+    '.{ext} dosyası dönüştürülmüş bir .docx kopyası olarak açıldı. Özgün dosya değişmez; kaydetmek yeni bir .docx dosyası yazar.',
   appScTitle: 'Klavye Kısayolları',
   appScFilter: 'Kısayol ara',
   appScNone: 'Eşleşen kısayol yok',

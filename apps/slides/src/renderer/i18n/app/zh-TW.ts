@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const zhTW = {
+  appLegacyPptImported:
+    '已將 .ppt 檔案轉換為 .pptx 副本開啟。原始檔案保持不變，儲存時會寫入新的 .pptx 檔案。演講者備忘稿和動畫不會轉換。',
   redactMenuLabel: '把選中的內容對 AI 隱藏',
   redactDialogDesc:
     '選取的內容會留在文件裡，AI 讀到的卻是下面的標記。給它起個名字，AI 才知道它是什麼。',

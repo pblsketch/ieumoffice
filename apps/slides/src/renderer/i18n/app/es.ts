@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const es = {
+  appLegacyPptImported:
+    'El archivo .ppt se abrió como una copia .pptx convertida. El original no cambia; al guardar se escribe un nuevo archivo .pptx. Las notas del orador y las animaciones no se conservan.',
   redactMenuLabel: 'Ocultar la selección a la IA',
   redactDialogDesc:
     'Lo seleccionado sigue en el documento y en el archivo; el modelo solo ve el marcador. Ponle un nombre para que sepa qué representa.',

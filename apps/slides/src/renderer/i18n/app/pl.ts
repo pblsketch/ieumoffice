@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const pl = {
+  appLegacyPptImported:
+    'Plik .ppt otwarto jako przekonwertowaną kopię .pptx. Oryginał pozostaje bez zmian; zapis tworzy nowy plik .pptx. Notatki prelegenta i animacje nie są przenoszone.',
   redactMenuLabel: 'Ukryj zaznaczenie przed AI',
   redactDialogDesc:
     'Zaznaczona zawartość zostaje w dokumencie i w pliku; model widzi tylko symbol. Nadaj mu nazwę, by wiedział, co oznacza.',

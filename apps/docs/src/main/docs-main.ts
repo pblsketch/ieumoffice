@@ -3417,14 +3417,26 @@ export function queueDocsAiContent(wcId: number, content: AiDocContent): void {
 }
 
 /**
- * Untitled copies waiting for their tab (a skill template's, spec 5.7), keyed
- * by webContents id: the copy's temp file and the name it shows. The tab gets
- * the bytes once and is never granted a write to that file.
+ * An untitled copy waiting for its tab: the copy's temp file and the name it
+ * shows, plus, for a legacy Word file opened as a converted copy, the path its
+ * first save suggests and the format it came from.
  */
-const pendingDocCopies = new Map<number, { path: string; name: string }>()
+export interface QueuedDocsCopy {
+  path: string
+  name: string
+  saveAsDefaultPath?: string | undefined
+  importedFrom?: string | undefined
+}
+
+/**
+ * Untitled copies waiting for their tab (a skill template's, spec 5.7, or a
+ * converted .doc/.dot), keyed by webContents id. The tab gets the bytes once
+ * and is never granted a write to that file.
+ */
+const pendingDocCopies = new Map<number, QueuedDocsCopy>()
 
 /** queue an untitled copy for a fresh docs tab (called by the shell right after creating the view) */
-export function queueDocsCopy(wcId: number, copy: { path: string; name: string }): void {
+export function queueDocsCopy(wcId: number, copy: QueuedDocsCopy): void {
   pendingDocCopies.set(wcId, copy)
 }
 
@@ -5253,6 +5265,8 @@ export function registerDocsIpc(): void {
         dataUrl: handOffBytes(bytes),
         hash: '',
         untitledCopy: true,
+        ...(copy.saveAsDefaultPath ? { saveAsDefaultPath: copy.saveAsDefaultPath } : {}),
+        ...(copy.importedFrom ? { importedFrom: copy.importedFrom } : {}),
       }
     } catch {
       return null

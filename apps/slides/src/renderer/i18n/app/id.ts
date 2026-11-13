@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const id = {
+  appLegacyPptImported:
+    'File .ppt dibuka sebagai salinan .pptx hasil konversi. File asli tetap seperti semula; menyimpan akan menulis file .pptx baru. Catatan pembicara dan animasi tidak ikut terbawa.',
   redactMenuLabel: 'Sembunyikan pilihan dari AI',
   redactDialogDesc:
     'Konten yang dipilih tetap ada di dokumen dan berkas; model hanya melihat placeholder di bawah. Beri nama agar model tahu apa yang diwakili.',

@@ -1300,8 +1300,11 @@ export function App() {
       .then((r) => {
         if (bootHandledRef.current) return
         bootHandledRef.current = true
-        if (r) applyOpen(r)
-        else void bootBlank()
+        if (r) {
+          applyOpen(r)
+          // a converted .ppt: the original is untouched and the first save writes a .pptx
+          if (r.importedFrom) showToast(t('appLegacyPptImported'))
+        } else void bootBlank()
       })
       // Open failures (corrupt file etc.) also land on a blank deck, or it stays at "Opening…" forever
       .catch(() => {

@@ -834,6 +834,10 @@ export class TabManager {
     bytes: Uint8Array
     fileName: string
     title: string
+    /** where the first save suggests writing (a converted legacy file: beside the original) */
+    saveAsDefaultPath?: string
+    /** the legacy format the copy was converted from: the editor tells the person once */
+    importedFrom?: string
   }): { tabId: string; contents: WebContents } | null {
     let id: string
     switch (copy.editor) {
@@ -866,14 +870,21 @@ export class TabManager {
     if (!contents) return null
     // the decoder drops a leading byte order mark
     const text = () => new TextDecoder('utf-8').decode(copy.bytes)
-    if (copy.editor === 'docs') queueDocsCopy(contents.id, { path: copy.path, name: copy.fileName })
-    else if (copy.editor === 'markdown') queueMarkdownSeedFor(contents, text())
+    if (copy.editor === 'docs') {
+      queueDocsCopy(contents.id, {
+        path: copy.path,
+        name: copy.fileName,
+        saveAsDefaultPath: copy.saveAsDefaultPath,
+        importedFrom: copy.importedFrom,
+      })
+    } else if (copy.editor === 'markdown') queueMarkdownSeedFor(contents, text())
     else if (copy.editor === 'html') queueHtmlSeedFor(contents, text())
     else if (copy.editor === 'mindmap') queueMindmapSeedFor(contents, { bytes: copy.bytes })
     else if (copy.editor === 'slides') {
       queueSlidesSeedFor(contents, copy.bytes, {
         askPathOnFirstSave: true,
-        suggestedName: copy.fileName,
+        suggestedName: copy.saveAsDefaultPath ?? copy.fileName,
+        importedFrom: copy.importedFrom,
       })
     }
     // a tab without a file takes the copy's title (one with the copy's path shows its name)

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const he = {
+  appLegacyDocImported:
+    'קובץ ה-.{ext} נפתח כעותק .docx מומר. הקובץ המקורי נשאר כפי שהיה; השמירה כותבת קובץ .docx חדש.',
   appScTitle: 'קיצורי מקלדת',
   appScFilter: 'חיפוש קיצור',
   appScNone: 'לא נמצאו קיצורים מתאימים',

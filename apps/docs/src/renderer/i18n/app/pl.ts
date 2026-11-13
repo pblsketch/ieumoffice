@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const pl = {
+  appLegacyDocImported:
+    'Plik .{ext} otwarto jako przekonwertowaną kopię .docx. Oryginał pozostaje bez zmian; zapis tworzy nowy plik .docx.',
   appScTitle: 'Skróty klawiaturowe',
   appScFilter: 'Szukaj skrótu',
   appScNone: 'Brak pasujących skrótów',

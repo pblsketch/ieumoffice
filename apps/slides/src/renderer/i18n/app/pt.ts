@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const pt = {
+  appLegacyPptImported:
+    'O arquivo .ppt foi aberto como uma cópia .pptx convertida. O original permanece inalterado; ao salvar, é gravado um novo arquivo .pptx. As anotações do orador e as animações não são transferidas.',
   redactMenuLabel: 'Ocultar a seleção da IA',
   redactDialogDesc:
     'O conteúdo selecionado continua no documento e no arquivo; o modelo vê apenas o marcador. Dê-lhe um nome para que saiba o que representa.',

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const th = {
+  appLegacyDocImported:
+    'เปิดไฟล์ .{ext} เป็นสำเนา .docx ที่แปลงแล้ว ไฟล์ต้นฉบับไม่เปลี่ยนแปลง การบันทึกจะเขียนเป็นไฟล์ .docx ใหม่',
   appScTitle: 'แป้นพิมพ์ลัด',
   appScFilter: 'ค้นหาแป้นพิมพ์ลัด',
   appScNone: 'ไม่พบแป้นพิมพ์ลัดที่ตรงกัน',
