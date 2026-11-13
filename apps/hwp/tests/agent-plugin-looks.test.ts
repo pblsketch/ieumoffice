@@ -1003,6 +1003,36 @@ describe('columns and breaks', () => {
     expect(doc().pageCount()).toBe(2)
   })
 
+  it('keeps the numbering behind a table, and refuses a mark of the place there as elsewhere', () => {
+    const { plugin, doc } = open(blank(['머리', '표 앞', '첫째 항목', '둘째 항목', '끝']))
+    for (const item of ['첫째 항목', '둘째 항목']) {
+      plugin.formatParagraph(item, null, { list: 'number' })
+    }
+    plugin.insertTable('표 앞', null, 'after', [['a', 'b']], false)
+    doc().setNumberingRestart(0, 3, 2, 5)
+    expect(drawnPages(doc())[0]).toContain('5.첫째항목6.둘째항목')
+    expect(plugin.insertBreak('첫째 항목', null, 'page')).toMatchObject({
+      ok: true,
+      place: { para: 4 },
+    })
+    const pages = drawnPages(doc())
+    expect(pages).toHaveLength(2)
+    expect(pages[1]).toContain('5.첫째항목6.둘째항목')
+
+    const marked = open(blank(['머리', '표 앞', '둘째 장', '끝']))
+    marked.plugin.insertTable('표 앞', null, 'after', [['a', 'b']], false)
+    marked.doc().addBookmark(0, 3, 0, 'ch2')
+    const paragraphs = marked.doc().getParagraphCount(0)
+    const before = marked.steps()
+    expect(marked.plugin.insertBreak('둘째 장', null, 'page')).toEqual({
+      ok: false,
+      reason: 'holds_mark',
+      count: 1,
+    })
+    expect(marked.steps()).toBe(before)
+    expect(marked.doc().getParagraphCount(0)).toBe(paragraphs)
+  })
+
   it('keeps the numbering of an item that starts its numbers anew', () => {
     const { plugin, doc } = open(
       blank(['머리', '첫째 항목', '둘째 항목', '셋째 항목', '넷째 항목', '끝']),
