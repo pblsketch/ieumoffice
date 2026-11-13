@@ -140,6 +140,8 @@ import { FEEDBACK_SURVEY_URL, feedbackDetails, feedbackText, platformLabel } fro
 import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
 import { registerEditorChoiceIpc, type EditorChoiceService } from './editor-choice-main'
 import { createEditorGate, installEditorGate, whenReady, type OpenOrigin } from './editor-gate'
+import { aiOffRefusalText, watchAiFeatures } from './ai-off-main'
+import { resumeAiBackgroundWork } from '../../../docs/src/main/ai-background'
 import { aiFeaturesOn, appChoice } from '@genoffice/electron-utils/app-choice'
 import {
   editorItemOfTabKind,
@@ -578,6 +580,7 @@ import {
   type HomeKindsSettings,
 } from '../shared/home-kinds'
 import {
+  closeAgentWindow,
   configureAgentWindow,
   isAgentWindowContents,
   stopAgentSessions,
@@ -6887,7 +6890,8 @@ function registerHomeIpc(): void {
     HOME_CHANNELS.rerankSearch,
     async (_event, raw: unknown): Promise<FileSearchRerank | null> => {
       const settings = readFileSearchSettings()
-      if (!settings.rerank) return null
+      // the reordering is AI work: none while AI features are off (editor choice spec 8.3)
+      if (!settings.rerank || !aiFeaturesOn()) return null
       const query = (raw && typeof raw === 'object' ? raw : {}) as { q?: unknown; paths?: unknown }
       const q = typeof query.q === 'string' ? query.q.trim().slice(0, 200) : ''
       const paths = Array.isArray(query.paths)
@@ -10066,9 +10070,19 @@ registerProjectIpc()
 registerDocsIpc()
 registerHomeIpc()
 // editors and AI on or off (the source the editor mains read, the "ai-off" run check)
-editorChoiceService = registerEditorChoiceIpc({ settingsPath: APP_SETTINGS_PATH })
+const editorChoice = registerEditorChoiceIpc({
+  settingsPath: APP_SETTINGS_PATH,
+  aiOffRefusal: () => aiOffRefusalText(currentLang()),
+})
+editorChoiceService = editorChoice
+// AI off closes the agent window; back on, the held-back checks run once (spec 8.5)
+watchAiFeatures({
+  choice: editorChoice,
+  turnedOff: closeAgentWindow,
+  turnedOn: resumeAiBackgroundWork,
+})
 // a turned-off editor's kind leaves the "new" menus at once (the cards follow by IPC)
-editorChoiceService.onChange(() => {
+editorChoice.onChange(() => {
   applyMenuFor(linkMenuKind() ?? 'home')
   installDockMenu()
 })

@@ -76,6 +76,7 @@ import {
   readHwpDefaultFormat,
 } from '@genoffice/electron-utils'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import {
   configureExtraFontDirs,
   configureMetricsCache,
@@ -146,10 +147,12 @@ import { listCodexModels, shutdownCodexAppServers } from '@genoffice/ai-provider
 import { listCustomModelsForIpc } from '@genoffice/ai-provider/custom-models'
 import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
+  createSubscriptionIpcDeps,
   ensureSubscriptionIpc,
   initSubscriptionChildTracking,
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
+  type SubscriptionIpcSetup,
 } from '@genoffice/ai-provider/subscription'
 import {
   abortMediaCalls,
@@ -273,6 +276,11 @@ import {
   writeStarredItems,
 } from './starred-files'
 import { registerFreeAiIpc } from './free-ai-ipc'
+import {
+  aiGatedKeyModelRefresher,
+  aiGatedSubscriptionDeps,
+  onAiFeaturesBack,
+} from './ai-background'
 import { normalizeReadUrlRequest, unexpectedReadUrlFailure } from './read-url-ipc'
 import { initDocsAutoUpdater } from './updater'
 import { registerZoteroIpc, teardownZoteroIpc } from './zotero-ipc'
@@ -4374,18 +4382,22 @@ const AI_RUN_TEXTS: AiRunTexts = {
  * Asks the key providers for their current models (decision 0087): once per run,
  * then again for a provider whose key or base URL changed, or whose list is a
  * day old (decision 0138). The list lands in the settings file, so every
- * picker shows it.
+ * picker shows it. Nothing is asked while AI features are off (editor choice
+ * spec 8.3); turned back on, the lists due are asked for.
  */
-const keyModelRefresher = createKeyModelRefresher({
-  read: storedAiSettings,
-  write: (update) => {
-    const latest = storedAiSettings()
-    const next = update(latest)
-    if (next === latest) return
-    writeAiSettingsFile(next)
-    broadcastAiSettingsChanged()
-  },
-})
+const keyModelRefresher = aiGatedKeyModelRefresher(
+  createKeyModelRefresher({
+    read: storedAiSettings,
+    write: (update) => {
+      const latest = storedAiSettings()
+      const next = update(latest)
+      if (next === latest) return
+      writeAiSettingsFile(next)
+      broadcastAiSettingsChanged()
+    },
+  }),
+  aiFeaturesOn,
+)
 
 /**
  * Persist settings a renderer sent: schema-checked, with the live model lists
@@ -4430,7 +4442,7 @@ export function registerAiIpc(): void {
   app.once('before-quit', shutdownCodexAppServers)
   // the subscription channels (statuses, recheck, login, install, metered) exist once per
   // process: whichever editor main asks first registers them and starts the first check
-  ensureSubscriptionIpc(ipcMain, {
+  const subscriptionSetup: SubscriptionIpcSetup = {
     getSettings: storedAiSettings,
     setMeteredAccepted: (provider: AiSubscriptionProviderId, accepted: boolean) => {
       writeAiSettingsFile(
@@ -4462,6 +4474,15 @@ export function registerAiIpc(): void {
       },
       pages: () => aiChatGptSignInPages(getUiLang()),
     },
+  }
+  // while AI features are off no check runs and no program starts (editor choice spec 8.3);
+  // turned back on, the programs are checked once (spec 8.5)
+  const subscriptionDeps = ensureSubscriptionIpc(ipcMain, subscriptionSetup, (setup) =>
+    aiGatedSubscriptionDeps(createSubscriptionIpcDeps(setup), aiFeaturesOn),
+  )
+  onAiFeaturesBack(() => {
+    void subscriptionDeps.service.check().catch(() => undefined)
+    keyModelRefresher.refreshChanged()
   })
 
   ipcMain.handle('ai:get-settings', async (): Promise<AiSettings> => storedAiSettings())
@@ -4493,6 +4514,8 @@ export function registerAiIpc(): void {
   })
 
   ipcMain.handle('ai:codex-models', async (_event, cliPath: unknown) => {
+    // AI features turned off (editor choice spec 8.3): no program is started for a list
+    if (!aiFeaturesOn()) throw new Error('AI features are turned off')
     // turned off in this app (decision 0114): Codex is not started for its list either
     if (subscriptionOffIn(storedAiSettings(), 'codex')) {
       throw new Error('Codex is turned off in this app')
@@ -4747,6 +4770,8 @@ export function registerAiIpc(): void {
   )
 
   ipcMain.handle('ai:search-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, apiKey } = (input ?? {}) as { provider?: AiSearchProviderId; apiKey?: string }
     if (!provider || !AI_SEARCH_PROVIDERS.some((meta) => meta.id === provider)) {
       return { ok: false, error: 'No search provider to test' }
@@ -4756,6 +4781,8 @@ export function registerAiIpc(): void {
 
   // settings-UI connection test for a key media provider
   ipcMain.handle('ai:media-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, config } = (input ?? {}) as {
       provider?: AiMediaProviderId
       config?: AiMediaProviderConfig
