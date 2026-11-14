@@ -43,13 +43,22 @@ export type AgentReplaceResult =
   | { ok: true; count: number; inTable: boolean; place: AgentPlace }
   | {
       ok: false
-      reason: 'not_found' | 'ambiguous' | 'no_such_occurrence' | 'unsupported_place'
+      /**
+       * `spans_object`: an object of the line (an equation, a footnote mark, a picture set
+       * as a character) stands between two characters of the match
+       */
+      reason:
+        'not_found' | 'ambiguous' | 'no_such_occurrence' | 'unsupported_place' | 'spans_object'
       count: number
       matches?: AgentMatch[]
     }
 
 export type AgentReplaceAllResult =
-  { ok: true; count: number; place: AgentPlace } | { ok: false; reason: 'not_found'; count: 0 }
+  /** `skipped`: matches left as they were, each across an object of its line */
+  | { ok: true; count: number; skipped?: number; place: AgentPlace }
+  | { ok: false; reason: 'not_found'; count: 0 }
+  /** every match lies across an object of its line; `count` is how many */
+  | { ok: false; reason: 'spans_object'; count: number }
 
 /** Why a paragraph edit did nothing: the anchor could not be decided, or an object is in the way. */
 export interface AgentPlaceRefusal {
@@ -346,9 +355,16 @@ export type AgentBreakKind = 'page' | 'column'
 
 export type AgentBreakResult =
   | { ok: true; kind: AgentBreakKind; columns: number; place: AgentPlace }
+  /** the paragraph carried a break that covers the one asked for: nothing was changed */
+  | { ok: true; kind: AgentBreakKind; already: AgentBreakKind }
   | AgentPlaceRefusal
-  /** the paragraph is inside a table cell, or is the first one of the document */
-  | { ok: false; reason: 'in_table' | 'at_start'; count: number }
+  /**
+   * the paragraph is inside a table cell, is the first one of the document, starts a part
+   * of the document with other columns (a break would take that start away), or holds a
+   * mark of its place (a page number that starts anew, a hidden page number, a bookmark)
+   * that a break would leave on the page before
+   */
+  | { ok: false; reason: 'in_table' | 'at_start' | 'layout_start' | 'holds_mark'; count: number }
   | AgentMemoRemovalRefusal
 
 export type AgentPageNumberResult =
@@ -795,6 +811,8 @@ export type AgentReplaceSelectionResult =
   /** the texts are not as many as the runs, and the runs are not one stretch of paragraphs */
   | { ok: false; reason: 'count'; count: number }
   | { ok: false; reason: 'has_objects'; count: number }
+  /** a run to rewrite lies across an object of its line */
+  | { ok: false; reason: 'spans_object'; count: number }
 
 export type AgentFormatSelectionResult =
   | {

@@ -1277,10 +1277,38 @@ function cellReplaceHead(text) {
   return Array.from(text).slice(0, MAX_CELL_REPLACE_CHARS).join('')
 }
 
+/**
+ * The caret place of a character of a body paragraph: its offset in the text plus one for
+ * every object of the line in front of it that the engine counts as a character (an
+ * equation, a footnote mark, a picture set as a character).
+ */
+const caretOf = (doc, hit, offset) => doc.textToLogicalOffset(hit.sec, hit.para, offset)
+
+/**
+ * The engine would leave such an object behind the new text. A cell paragraph cannot be
+ * asked (the engine converts offsets of body paragraphs only).
+ */
+function spansObject(doc, hit) {
+  if (cellPathOf(hit) || hit.length < 2) return false
+  const { charOffset: start, length } = hit
+  return caretOf(doc, hit, start + length) - caretOf(doc, hit, start + 1) > length - 1
+}
+
+const followsObject = (doc, hit) =>
+  hit.length > 0 && caretOf(doc, hit, hit.charOffset + 1) - caretOf(doc, hit, hit.charOffset) > 1
+
 function replaceHit(doc, hit, replacement) {
   const path = cellPathOf(hit)
   if (!path) {
-    expectOk(doc.replaceText(hit.sec, hit.para, hit.charOffset, hit.length, replacement), 'replace')
+    const { sec, para, charOffset: start, length } = hit
+    if (replacement.length > 0 && followsObject(doc, hit)) {
+      // the engine types new text in front of an object that stands at its place, which
+      // would put the object behind the new text
+      expectOk(doc.replaceText(sec, para, start + 1, length - 1, replacement), 'replace')
+      expectOk(doc.deleteText(sec, para, start, 1), 'replace')
+      return
+    }
+    expectOk(doc.replaceText(sec, para, start, length, replacement), 'replace')
     return
   }
   const json = JSON.stringify(path)
@@ -1361,6 +1389,50 @@ function replaceHit(doc, hit, replacement) {
   )
 }
 
+/** A split offset past the end of any paragraph: the engine takes it as the paragraph's end. */
+const PAST_PARAGRAPH_END = 0x3fffffff
+
+/**
+ * The engine splits at a caret place, where an object of the line (an equation, a footnote
+ * mark, a picture set as a character) counts as one character, so a split can land in front
+ * of the place its caller counted in characters.
+ */
+function splitKeepingText(length, k, textOffset, split) {
+  const whole = length(k)
+  const kept = Math.min(textOffset, whole)
+  split()
+  if (length(k) !== kept || length(k + 1) !== whole - kept) {
+    throw fail('HAS_OBJECTS', 'the split would have moved text of the paragraph')
+  }
+}
+
+/** The engine's names for a numbering restart, as setNumberingRestart takes them. */
+const RESTART_CONTINUE = 1
+const RESTART_NEW_START = 2
+
+/**
+ * What to do with a break asked for on a paragraph, from what the engine says the paragraph
+ * carried (`meta`, the removedParaMeta of the join in insertBreak). The engine's break call
+ * leaves the paragraph's break and its numbering restart on the half that is joined away:
+ * - `already`: the paragraph starts a page (or a column, when a column is asked for);
+ * - `refuse`: it starts a part with other columns or a section, a mark the break replaces;
+ * - `restart`: go on, and set this numbering restart on the paragraph again (null: none).
+ */
+function breakOutcome(meta, kind) {
+  const { column_type: had, numbering_restart: numbering } = meta ?? {}
+  if (typeof had !== 'string') throw fail('ENGINE', 'the break could not be read')
+  if (had === 'Page' || (had === 'Column' && kind === 'column')) {
+    return { already: had.toLowerCase() }
+  }
+  if (had !== 'None' && had !== 'Column') return { refuse: 'layout_start' }
+  if (numbering === null) return { restart: null }
+  if (numbering === 'ContinuePrevious') return { restart: [RESTART_CONTINUE, 0] }
+  if (Number.isInteger(numbering?.NewStart)) {
+    return { restart: [RESTART_NEW_START, numbering.NewStart] }
+  }
+  throw fail('ENGINE', 'the numbering of the paragraph could not be read')
+}
+
 /**
  * The run of paragraphs a match sits in (the body of a section, or one table cell) with the
  * engine calls that address a paragraph of it by index. `index` is the matched paragraph.
@@ -1369,25 +1441,37 @@ function containerOf(doc, hit) {
   const { sec, para } = hit
   const path = cellPathOf(hit)
   if (!path) {
+    const lengthOf = (k) => doc.getParagraphLength(sec, k)
     return {
       index: para,
       inTable: false,
       place: (k, length) => ({ sec, para: k, offset: 0, length }),
       count: () => doc.getParagraphCount(sec),
-      length: (k) => doc.getParagraphLength(sec, k),
+      length: lengthOf,
       text: (k, count) => (count > 0 ? doc.getTextRange(sec, k, 0, count) : ''),
       // tables, pictures and the like sit in a paragraph without being its text; each one
       // has a place among the characters (the first paragraph of a document always holds
       // some: its section and column definitions). A memo is left out: it is a field the
       // memo guard watches, and a paragraph may be changed around it.
       objectPositions: (k) => memoFreeObjectPositions(doc, sec, k),
-      split: (k, offset) => expectOk(doc.splitParagraph(sec, k, offset), 'split the paragraph'),
+      split: (k, textOffset) =>
+        splitKeepingText(lengthOf, k, textOffset, () =>
+          expectOk(
+            doc.splitParagraph(sec, k, doc.textToLogicalOffset(sec, k, textOffset)),
+            'split the paragraph',
+          ),
+        ),
+      splitEnd: (k) =>
+        splitKeepingText(lengthOf, k, lengthOf(k), () =>
+          expectOk(doc.splitParagraph(sec, k, doc.getLogicalLength(sec, k)), 'split the paragraph'),
+        ),
       font: (k) => fontOf(() => doc.getCharPropertiesAt(sec, k, 0)),
       // an empty paragraph after k without splitting k: it takes k's paragraph formatting
       addAfter: (k) => expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph'),
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
       deleteText: (k, count) => expectOk(doc.deleteText(sec, k, 0, count), 'delete'),
       deleteRange: (k1, o1, k2, o2) => expectOk(doc.deleteRange(sec, k1, o1, k2, o2), 'delete'),
+      remove: (k) => expectOk(doc.deleteParagraph(sec, k), 'remove the paragraph'),
       pasteHtml: (k, html) => expectOk(doc.pasteHtml(sec, k, 0, html), 'insert the table'),
       formatChars: (k, start, end, json) =>
         expectOk(doc.applyCharFormat(sec, k, start, end, json), 'format the text'),
@@ -1406,24 +1490,44 @@ function containerOf(doc, hit) {
   }
   const last = path[path.length - 1]
   const at = (k) => JSON.stringify([...path.slice(0, -1), { ...last, cellParaIndex: k }])
+  const lengthOf = (k) => doc.getCellParagraphLengthByPath(sec, para, at(k))
   return {
     index: last.cellParaIndex,
     inTable: true,
     place: (k, length) => ({ sec, para, path: parse(at(k)), offset: 0, length }),
     count: () => doc.getCellParagraphCountByPath(sec, para, at(0)),
-    length: (k) => doc.getCellParagraphLengthByPath(sec, para, at(k)),
+    length: lengthOf,
     text: (k, count) => (count > 0 ? doc.getTextInCellByPath(sec, para, at(k), 0, count) : ''),
     // the engine cannot be asked this for a cell paragraph; the before/after check of the
     // callers (keepingObjects) is what protects an object there
     objectPositions: () => [],
     font: (k) => fontOf(() => doc.getCellCharPropertiesAtByPath(sec, para, at(k), 0)),
-    split: (k, offset) =>
-      expectOk(doc.splitParagraphInCellByPath(sec, para, at(k), offset), 'split the paragraph'),
+    // the engine has no caret place to ask for in a cell paragraph
+    split: (k, textOffset) =>
+      splitKeepingText(lengthOf, k, textOffset, () =>
+        expectOk(
+          doc.splitParagraphInCellByPath(sec, para, at(k), textOffset),
+          'split the paragraph',
+        ),
+      ),
+    splitEnd: (k) =>
+      splitKeepingText(lengthOf, k, lengthOf(k), () =>
+        expectOk(
+          doc.splitParagraphInCellByPath(sec, para, at(k), PAST_PARAGRAPH_END),
+          'split the paragraph',
+        ),
+      ),
     insert: (k, text) => expectOk(doc.insertTextInCellByPath(sec, para, at(k), 0, text), 'insert'),
     deleteText: (k, count) =>
       expectOk(doc.deleteTextInCellByPath(sec, para, at(k), 0, count), 'delete'),
     deleteRange: (k1, o1, k2, o2) =>
       expectOk(doc.deleteRangeInCellByPath(sec, para, at(k1), k1, o1, k2, o2), 'delete'),
+    // the engine removes a paragraph of the body only
+    remove: (k) =>
+      expectOk(
+        doc.deleteRangeInCellByPath(sec, para, at(k - 1), k - 1, lengthOf(k - 1), k, lengthOf(k)),
+        'remove the paragraph',
+      ),
     pasteHtml: (k, html) =>
       expectOk(doc.pasteHtmlInCellByPath(sec, para, at(k), 0, html), 'insert the table'),
     formatChars: (k, start, end, json) =>
@@ -3664,6 +3768,19 @@ function tablesOf(doc) {
     }
   }
   return { tables, partial: lookups <= 0 }
+}
+
+function holdsTable(doc, sec, para) {
+  const controls = parse(doc.getControlTextPositions(sec, para)).length
+  for (let ctrl = 0; ctrl < controls; ctrl++) {
+    try {
+      parse(doc.getTableDimensions(sec, para, ctrl))
+      return true
+    } catch {
+      // not a table: a picture, a section definition
+    }
+  }
+  return false
 }
 
 /**
@@ -6152,7 +6269,7 @@ export const agentPlugin = {
     /** Make an empty paragraph after paragraph `k` of `box`; its index is k + 1. */
     const openAfter = (box, k, plain) => {
       if (plain) box.addAfter(k)
-      else box.split(k, box.length(k))
+      else box.splitEnd(k)
     }
 
     /**
@@ -6230,16 +6347,14 @@ export const agentPlugin = {
      * rolls the whole change back, and the call answers `has_objects` instead of failing.
      */
     const keepingObjects = (edit) => {
-      let lost = false
       const mustKeep = (before, after) => {
         if (before.controls === after.controls && before.fields === after.fields) return
-        lost = true
         throw fail('HAS_OBJECTS', 'the change would remove an object of the document')
       }
       try {
         return edit(mustKeep)
       } catch (thrown) {
-        if (lost) return { ok: false, reason: 'has_objects', count: 1 }
+        if (thrown?.code === 'HAS_OBJECTS') return { ok: false, reason: 'has_objects', count: 1 }
         throw thrown
       }
     }
@@ -6334,8 +6449,14 @@ export const agentPlugin = {
         const refusal = host.read((doc) => {
           const hits = searchAll(doc, find)
           const picked = pickHit(hits, occurrence)
-          if (picked.hit && isReplaceable(picked.hit)) return null
-          const reason = picked.hit ? 'unsupported_place' : picked.reason
+          const reason = !picked.hit
+            ? picked.reason
+            : !isReplaceable(picked.hit)
+              ? 'unsupported_place'
+              : spansObject(doc, picked.hit)
+                ? 'spans_object'
+                : null
+          if (!reason) return null
           return {
             ok: false,
             reason,
@@ -6349,7 +6470,9 @@ export const agentPlugin = {
           (doc) => {
             const hits = searchAll(doc, find)
             const { hit } = pickHit(hits, occurrence)
-            if (!hit || !isReplaceable(hit)) throw fail('CHANGED', 'the document changed mid-call')
+            if (!hit || !isReplaceable(hit) || spansObject(doc, hit)) {
+              throw fail('CHANGED', 'the document changed mid-call')
+            }
             replaceHit(doc, hit, replacement)
             return {
               ok: true,
@@ -6362,16 +6485,36 @@ export const agentPlugin = {
         )
       }),
 
-      /** Replace every occurrence of `find` outside equations, last match first. */
+      /**
+       * Replace every occurrence of `find` outside equations, last match first. A match
+       * that lies across an object of its line is left as it is and counted in `skipped`.
+       */
       replaceAllText: guarded((find, replacement, options) => {
         checkReplacement(replacement)
-        const total = host.read((doc) => searchAll(doc, find).filter(isReplaceable).length)
-        if (total === 0) return { ok: false, reason: 'not_found', count: 0 }
+        const sorted = (doc) => {
+          const hits = []
+          let skipped = 0
+          for (const hit of searchAll(doc, find).filter(isReplaceable)) {
+            if (spansObject(doc, hit)) skipped += 1
+            else hits.push(hit)
+          }
+          return { hits, skipped }
+        }
+        const found = host.read((doc) => {
+          const { hits, skipped } = sorted(doc)
+          return { total: hits.length, skipped }
+        })
+        if (found.total === 0) {
+          return found.skipped > 0
+            ? { ok: false, reason: 'spans_object', count: found.skipped }
+            : { ok: false, reason: 'not_found', count: 0 }
+        }
         return change(
           'replace-all',
           (doc) => {
+            const { hits: inOrder, skipped } = sorted(doc)
             // back to front, so replacing one match never moves the offset of one still to do
-            const hits = searchAll(doc, find).filter(isReplaceable).reverse()
+            const hits = inOrder.reverse()
             for (const hit of hits) replaceHit(doc, hit, replacement)
             // the first in reading order is the last one done; nothing in front of it moved.
             // A later match in the same paragraph moved by what the earlier ones changed.
@@ -6385,6 +6528,7 @@ export const agentPlugin = {
             return {
               ok: true,
               count: hits.length,
+              ...(skipped > 0 ? { skipped } : {}),
               place: placeOf(hits[hits.length - 1], replacement.length),
               marks,
             }
@@ -6505,9 +6649,7 @@ export const agentPlugin = {
               // it keeps its place as an empty line
               const emptied = k === 0 || box.count() === 1
               if (emptied) box.deleteText(k, length)
-              // from the end of the paragraph in front to the end of this one: the paragraph
-              // goes, and the ones around it keep their own formatting
-              else box.deleteRange(k - 1, box.length(k - 1), k, length)
+              else box.remove(k)
               mustKeep(before, objectsOf(doc))
               return {
                 ok: true,
@@ -8214,7 +8356,14 @@ export const agentPlugin = {
        * Start the body paragraph `find` occurs in on a new page or in the next column
        * (`kind`, one of BREAK_KINDS), as Hangul's 쪽 나누기 and 단 나누기 do in front of a
        * paragraph. A paragraph inside a table, and the first one of the document, cannot
-       * start anew. One undo step.
+       * start anew. The break is put on the paragraph itself: no empty paragraph is left in
+       * front of it, except one behind a table, which keeps the table's paragraph as it was
+       * laid out; a numbering restart the paragraph had is set on it again. One that
+       * starts a page already (or a column, when a column is asked for) is left as it is and
+       * answered `already`; one that starts a part of the document with other columns is
+       * refused, since the break would take that start away (breakOutcome), and so is one
+       * that holds a mark of its place (`holds_mark`), which would move a page up. One undo
+       * step.
        */
       insertBreak: guarded((find, occurrence, kind, options) => {
         if (!BREAK_KINDS.includes(kind)) {
@@ -8240,36 +8389,83 @@ export const agentPlugin = {
         }
         const refusal = host.read((doc) => plan(doc).refusal ?? null)
         if (refusal) return refusal
-        return keepingObjects((mustKeep) =>
-          change(
-            'insert-break',
-            (doc) => {
-              const { hit } = plan(doc)
-              if (!hit) throw fail('CHANGED', 'the document changed mid-call')
-              const before = objectsOf(doc)
-              const made = parse(
-                kind === 'page'
-                  ? doc.insertPageBreak(hit.sec, hit.para, 0)
-                  : doc.insertColumnBreak(hit.sec, hit.para, 0),
-              )
-              if (!made || made.ok !== true) throw fail('ENGINE', 'the break could not be made')
-              mustKeep(before, objectsOf(doc))
-              const para = Number.isInteger(made.paraIdx) ? made.paraIdx : hit.para
-              return {
-                ok: true,
-                kind,
-                columns: columnsOf(doc, hit.sec).count,
-                place: {
-                  sec: hit.sec,
-                  para,
-                  offset: 0,
-                  length: doc.getParagraphLength(hit.sec, para),
-                },
-              }
-            },
-            options,
-          ),
-        )
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'insert-break',
+              (doc) => {
+                const { hit } = plan(doc)
+                if (!hit) throw fail('CHANGED', 'the document changed mid-call')
+                const before = objectsOf(doc)
+                // the join below lays the paragraph in front out again, and the line of a
+                // table's paragraph then takes the height the table has now. The engine keeps
+                // that line when a cell is emptied later, and moves the table to the next
+                // page though it fits (docs/tracking/findings.md). An empty paragraph between
+                // the two takes the join instead, and stays behind the table.
+                let para = hit.para
+                if (holdsTable(doc, hit.sec, para - 1)) {
+                  expectOk(doc.insertParagraph(hit.sec, para), 'keep the table apart')
+                  para += 1
+                }
+                const controlsInFront = () =>
+                  parse(doc.getControlTextPositions(hit.sec, para - 1)).length
+                const inFrontBefore = controlsInFront()
+                const made = parse(
+                  kind === 'page'
+                    ? doc.insertPageBreak(hit.sec, para, 0)
+                    : doc.insertColumnBreak(hit.sec, para, 0),
+                )
+                if (!made || made.ok !== true) throw fail('ENGINE', 'the break could not be made')
+                // the engine splits the paragraph at its start and puts the break on the
+                // second half. The empty first half keeps the break the paragraph had, and
+                // every call would leave one more empty paragraph (a second call an empty
+                // page). Joined to the paragraph in front, it is gone, and the engine's
+                // answer says which break it carried: the only way to read a paragraph's.
+                const joined = parse(doc.mergeParagraph(hit.sec, para))
+                if (!joined || joined.ok !== true) {
+                  throw fail('ENGINE', 'the break could not be made')
+                }
+                const outcome = breakOutcome(joined.removedParaMeta, kind)
+                // the first half also keeps what the engine ties to the place of a paragraph
+                // (a page number that starts anew, a hidden page number, a bookmark), and
+                // the join hands it to the paragraph in front: one page too early
+                const marksLeftBehind = controlsInFront() !== inFrontBefore
+                const unchangedAnswer = outcome.already
+                  ? { ok: true, kind, already: outcome.already }
+                  : outcome.refuse || marksLeftBehind
+                    ? { ok: false, reason: outcome.refuse ?? 'holds_mark', count: 1 }
+                    : null
+                if (unchangedAnswer) {
+                  const unchanged = fail('BREAK_NOT_MADE', 'the paragraph is left as it is')
+                  unchanged.answer = unchangedAnswer
+                  throw unchanged
+                }
+                if (outcome.restart) {
+                  expectOk(
+                    doc.setNumberingRestart(hit.sec, para, ...outcome.restart),
+                    'keep the numbering of the paragraph',
+                  )
+                }
+                mustKeep(before, objectsOf(doc))
+                return {
+                  ok: true,
+                  kind,
+                  columns: columnsOf(doc, hit.sec).count,
+                  place: {
+                    sec: hit.sec,
+                    para,
+                    offset: 0,
+                    length: doc.getParagraphLength(hit.sec, para),
+                  },
+                }
+              },
+              options,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown?.code !== 'BREAK_NOT_MADE') throw thrown
+          return thrown.answer
+        }
       }),
 
       /**
@@ -8677,7 +8873,7 @@ export const agentPlugin = {
                 }
                 target.lines.forEach((line, k) => {
                   // a further line is a further paragraph, made like Enter makes one
-                  if (k > 0 && k >= box.count()) box.split(k - 1, box.length(k - 1))
+                  if (k > 0 && k >= box.count()) box.splitEnd(k - 1)
                   if (line) box.insert(k, line)
                 })
                 target.lines.forEach((line, k) => {
@@ -9083,7 +9279,7 @@ export const agentPlugin = {
                 (cellPath.length === 0
                   ? box.objectPositions(k).length === 0
                   : !paragraphHoldsObject(doc, sec, para, cellPath))
-              if (k > 0 && bare) box.deleteRange(k - 1, box.length(k - 1), k, 0)
+              if (k > 0 && bare) box.remove(k)
               // only this table and the tables inside it may be gone
               mustKeep({ ...before, controls: before.controls - 1 - inner }, objectsOf(doc, going))
               return {
@@ -9310,8 +9506,9 @@ export const agentPlugin = {
        * run, made like Enter makes them, and runs left without a text are removed, a
        * wholly selected paragraph with them. `segments` is the selection as selection()
        * handed it out; when a run no longer holds its text (the user typed there, or the
-       * place moved) nothing changes. The runs come back as they are now, for a further
-       * change of the same selection.
+       * place moved) nothing changes. A run that lies across an object of its line is not
+       * rewritten (`spans_object`): the new text has no place for the object. The runs come
+       * back as they are now, for a further change of the same selection.
        */
       replaceSelection: guarded((segments, texts, options) => {
         checkSegments(segments)
@@ -9322,33 +9519,36 @@ export const agentPlugin = {
         if (texts.length !== segments.length && !isContiguous(segments)) {
           return { ok: false, reason: 'count', count: segments.length }
         }
-        if (!host.read((doc) => segmentsStand(doc, segments))) {
-          return { ok: false, reason: 'changed' }
-        }
+        const asHit = (segment) => ({
+          sec: segment.sec,
+          para: segment.para,
+          cellPath: segment.path,
+          charOffset: segment.offset,
+          length: segment.length,
+        })
+        const kept = Math.min(segments.length, texts.length)
+        const stands = (doc) =>
+          !segmentsStand(doc, segments)
+            ? 'changed'
+            : segments.slice(0, kept).some((segment) => spansObject(doc, asHit(segment)))
+              ? 'spans_object'
+              : null
+        const reason = host.read(stands)
+        if (reason) return { ok: false, reason, ...(reason === 'spans_object' ? { count: 1 } : {}) }
         return keepingObjects((mustKeep) =>
           change(
             'replace-selection',
             (doc) => {
-              if (!segmentsStand(doc, segments))
-                throw fail('CHANGED', 'the document changed mid-call')
+              if (stands(doc)) throw fail('CHANGED', 'the document changed mid-call')
               const before = objectsOf(doc)
-              const asHit = (segment) => ({
-                sec: segment.sec,
-                para: segment.para,
-                cellPath: segment.path,
-                charOffset: segment.offset,
-                length: segment.length,
-              })
-              const kept = Math.min(segments.length, texts.length)
               // runs left without a text go first, from the end, so that the paragraphs in
               // front of them keep their numbers
               for (let index = segments.length - 1; index >= kept; index--) {
                 const segment = segments[index]
                 const { box, k } = segmentBox(doc, segment)
                 const whole = segment.offset === 0 && segment.length === box.length(k)
-                if (whole && k > 0 && box.objectPositions(k).length === 0) {
-                  box.deleteRange(k - 1, box.length(k - 1), k, box.length(k))
-                } else replaceHit(doc, asHit(segment), '')
+                if (whole && k > 0 && box.objectPositions(k).length === 0) box.remove(k)
+                else replaceHit(doc, asHit(segment), '')
               }
               // each run is in a paragraph of its own, so one does not move another
               for (let index = 0; index < kept; index++) {

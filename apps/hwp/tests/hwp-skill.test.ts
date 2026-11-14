@@ -730,6 +730,19 @@ describe('replace_text', () => {
     expect(result).toMatchObject({ isError: true, output: 'the editor refused to replace' })
     expect(changes).toEqual([])
   })
+
+  it('says that an equation stands inside the text, and to replace one side of it', async () => {
+    const { call, changes } = setup({
+      replaceText: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
+    })
+    const result = await call('replace_text', { find: '7. 를 계산', replace: '8. 를 계산' })
+    expect(result.isError).toBe(true)
+    expect(result.mutated).toBeUndefined()
+    expect(result.output).toContain('Nothing was changed')
+    expect(result.output).toContain('an equation or another object of the line')
+    expect(result.output).toContain('the words in front of it or the words behind it')
+    expect(changes).toEqual([])
+  })
 })
 
 describe('replace_all', () => {
@@ -746,6 +759,23 @@ describe('replace_all', () => {
     })
     expect((await call('replace_all', { find: '없음', replace: 'x' })).isError).toBe(true)
     expect(changes).toEqual([])
+  })
+
+  it('tells how many matches it left because an object stands inside them', async () => {
+    const some = setup({
+      replaceAllText: async () => ({ ok: true, count: 2, skipped: 1, place: PLACE }),
+    })
+    const result = await some.call('replace_all', { find: '하거', replace: 'DD' })
+    expect(result.mutated).toBe(true)
+    expect(result.output).toContain('Replaced 2 occurrence(s).')
+    expect(result.output).toContain('1 more occurrence(s) were left as they were')
+    const none = setup({
+      replaceAllText: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
+    })
+    const refused = await none.call('replace_all', { find: '하거', replace: 'DD' })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('an equation or another object of the line')
+    expect(none.changes).toEqual([])
   })
 })
 
@@ -1915,6 +1945,17 @@ describe('the part the user selected', () => {
     expect(stale.output).toContain('no longer what it was')
     expect(gone.changes).toEqual([])
   })
+
+  it('says that an equation stands inside a selected run it was to rewrite', async () => {
+    const across = setup({
+      replaceSelection: async () => ({ ok: false, reason: 'spans_object', count: 1 }),
+    })
+    across.setSelection(STRETCH)
+    const result = await across.call('replace_selection', { paragraphs: ['a', 'b'] })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('an equation or another object of the line')
+    expect(across.changes).toEqual([])
+  })
 })
 
 describe('rows and columns of a table', () => {
@@ -2660,6 +2701,64 @@ describe('the look of a document', () => {
     expect(lone.output).toContain('runs in one column')
   })
 
+  it('says that a paragraph already starts its page, without reporting a change', async () => {
+    const twice = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: true as const,
+        kind: 'page' as const,
+        already: 'page' as const,
+      })),
+    })
+    const again = await twice.call('insert_break', { find: '5. 다음 글', kind: 'page' })
+    expect(again.output).toBe('That paragraph already starts a page. Nothing was changed.')
+    expect(again.isError).toBeFalsy()
+    expect(again.mutated).toBeUndefined()
+    expect(twice.changes).toEqual([])
+    const paged = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: true as const,
+        kind: 'column' as const,
+        already: 'page' as const,
+      })),
+    })
+    const column = await paged.call('insert_break', { find: '5. 다음 글', kind: 'column' })
+    expect(column.output).toBe(
+      'That paragraph already starts a page, and so a column too. Nothing was changed.',
+    )
+    expect(paged.changes).toEqual([])
+    const zone = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'layout_start' as const,
+        count: 1,
+      })),
+    })
+    const refused = await zone.call('insert_break', { find: '글', kind: 'page' })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain(
+      'starts a new section or a part of the document with columns of its own',
+    )
+    expect(refused.output).toContain('The empty line that leaves in front keeps the start.')
+    expect(zone.changes).toEqual([])
+    const marked = setup({
+      insertBreak: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'holds_mark' as const,
+        count: 1,
+      })),
+    })
+    const left = await marked.call('insert_break', { find: '글', kind: 'page' })
+    expect(left.isError).toBe(true)
+    expect(left.output).toContain('would leave the mark on the page before')
+    expect(left.output).toContain('it has to be moved from there to the paragraph')
+    for (const answer of [refused.output, left.output]) {
+      expect(answer).not.toContain('paragraph after it')
+      expect(answer).toContain('Do not put the break on another paragraph instead')
+      expect(answer).toContain('Ctrl+Enter for a page or Ctrl+Shift+Enter for a column')
+    }
+    expect(marked.changes).toEqual([])
+  })
+
   it('turns a title into a title box', async () => {
     const { call, changes, bridge } = setup()
     const result = await call('insert_title_box', {
@@ -2878,6 +2977,124 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
       '성명: 홍길동\t(인)',
       '부록 1\t21',
     ])
+  })
+
+  it('reads a paragraph whole: every typed tab becomes a tab, or a path or a command name keeps them all', () => {
+    for (const kept of [
+      String.raw`..\temp\test`,
+      String.raw`\theta`,
+      String.raw`x\times y`,
+      String.raw`C:\t3`,
+      String.raw`D:\t_backup`,
+      String.raw`\\server\tools\tmp`,
+      String.raw`한글폴더\temp\a.txt`,
+      String.raw`자료\temp 폴더`,
+      String.raw`x\to y`,
+      String.raw`성명\tkim minsu`,
+      String.raw`상대 경로는 ..\temp\test 입니다`,
+      String.raw`3 \times 4, \tau`,
+      String.raw`2\times 3`,
+      String.raw`..\v2\tmp`,
+      String.raw`정규식 \d+\t\w+`,
+      String.raw`문서\test.hwp`,
+    ]) {
+      expect(typedTabs(kept)).toBe(kept)
+    }
+    for (const [typed, meant] of [
+      [String.raw`개회\t10:00`, '개회\t10:00'],
+      [String.raw`부록 1\t21`, '부록 1\t21'],
+      [String.raw`성명\tKim Minsu`, '성명\tKim Minsu'],
+      [String.raw`개회\tAM 10:00`, '개회\tAM 10:00'],
+      [String.raw`담당 홍길동\tTel. 02-123-4567`, '담당 홍길동\tTel. 02-123-4567'],
+      [String.raw`문의\tE-mail`, '문의\tE-mail'],
+      [String.raw`학년\t\t이름`, '학년\t\t이름'],
+      [String.raw`제목\t\t쪽`, '제목\t\t쪽'],
+      [String.raw`성명\tKim\tAge`, '성명\tKim\tAge'],
+      [String.raw`일시:\t2026. 11. 20.(금)`, '일시:\t2026. 11. 20.(금)'],
+      [String.raw`문의:\t교무실`, '문의:\t교무실'],
+      [String.raw`Tel.\t02-123-4567`, 'Tel.\t02-123-4567'],
+      [String.raw`1.\t개요`, '1.\t개요'],
+      [String.raw`가.\t추진 배경`, '가.\t추진 배경'],
+      [String.raw`□\t준비물`, '□\t준비물'],
+      [String.raw`2026. 11. 20.\t15:00`, '2026. 11. 20.\t15:00'],
+      [String.raw`Name\tAge`, 'Name\tAge'],
+      [String.raw`A\tB`, 'A\tB'],
+      [String.raw`1교시\t국어`, '1교시\t국어'],
+      [String.raw`(가)\t설명`, '(가)\t설명'],
+      [String.raw`이름\t소속\t연락처`, '이름\t소속\t연락처'],
+      [String.raw`서명 (인)\t날짜`, '서명 (인)\t날짜'],
+    ]) {
+      expect(typedTabs(typed)).toBe(meant)
+    }
+  })
+
+  it('writes the typed tabs of a paragraph that holds a real tab too', () => {
+    expect(typedTabs('이름\t' + String.raw`소속\t연락처`)).toBe('이름\t소속\t연락처')
+  })
+
+  it('keeps the two characters where a text names them: alone between spaces, quotes or the ends of the line', () => {
+    for (const named of [
+      String.raw`탭 문자는 \t 로 씁니다`,
+      String.raw`구분자로 "\t"를 씁니다`,
+      String.raw`이스케이프 문자 \t`,
+      String.raw`\t`,
+    ]) {
+      expect(typedTabs(named)).toBe(named)
+    }
+  })
+
+  it('takes one letter and a colon for a drive, not the end of a word', () => {
+    expect(typedTabs(String.raw`TEL:\t02-123-4567`)).toBe('TEL:\t02-123-4567')
+    expect(typedTabs(String.raw`Q:\t질문`)).toBe(String.raw`Q:\t질문`)
+  })
+
+  it('says which new paragraphs got their tabs and which kept the two characters', async () => {
+    const { call, bridge } = setup({
+      insertParagraphs: vi.fn(async () => ({ ok: true as const, count: 3, inTable: false })),
+    })
+    const shift =
+      ' Occurrence numbers shift after this change; call find_text again before passing occurrence.'
+    const kept = String.raw` Paragraph(s) 2 of this call read as a path, a command name or the two characters themselves, so their \t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
+    const both = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: [String.raw`개회\t\t10:00`, String.raw`상대 경로는 ..\temp\test 입니다`, '폐회'],
+    })
+    expect(both.output).toBe(
+      String.raw`Added 3 paragraph(s). The two characters \t were written as a tab in paragraph(s) 1 of this call.${kept}${shift}`,
+    )
+    expect(bridge.insertParagraphs).toHaveBeenLastCalledWith('', null, 'end', [
+      '개회\t\t10:00',
+      String.raw`상대 경로는 ..\temp\test 입니다`,
+      '폐회',
+    ])
+    const onlyKept = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: ['머리말', String.raw`x\times y`, '맺음말'],
+    })
+    expect(onlyKept.output).toBe(`Added 3 paragraph(s).${kept}${shift}`)
+    const plain = await call('insert_paragraphs', {
+      where: 'end',
+      paragraphs: ['머리말', '부록 1\t21', '맺음말'],
+    })
+    expect(plain.output).toBe(`Added 3 paragraph(s).${shift}`)
+  })
+
+  it('leaves the two characters alone in a selection rewrite, which takes no tab, and says so', async () => {
+    const { call, bridge, setSelection } = setup()
+    setSelection(STRETCH)
+    const typed = [String.raw`성명\t(인)`, String.raw`..\temp\test`]
+    const rewritten = await call('replace_selection', { paragraphs: typed })
+    expect(bridge.replaceSelection).toHaveBeenCalledWith(SELECTED, typed)
+    expect(rewritten.output).toBe(
+      String.raw`Replaced the selected text (2 paragraph(s)). The two characters \t in paragraph(s) 1 of this call were written as they are, not as a tab: this tool writes no tab.`,
+    )
+    const passedAsItIs = await call('replace_selection', { paragraphs: typed })
+    expect(passedAsItIs.output).toBe('Replaced the selected text (2 paragraph(s)).')
+    const otherWordChanged = [String.raw`성명\t(인) 확인`, typed[1]!]
+    const edited = await call('replace_selection', { paragraphs: otherWordChanged })
+    expect(edited.output).toBe('Replaced the selected text (2 paragraph(s)).')
+    const moved = await call('replace_selection', { paragraphs: ['머리말', ...otherWordChanged] })
+    expect(moved.output).not.toContain('two characters')
   })
 
   it('draws a line round the pages and takes it away', async () => {

@@ -1680,6 +1680,11 @@ const IN_TABLE_HELP =
   'Nothing was changed: that paragraph is inside a table cell, and a table cannot be put inside another table here. Anchor the new table to a paragraph of the body text, or add the content to the cell as paragraphs.'
 const HAS_OBJECTS_HELP =
   'Nothing was changed: a table, a picture or a form field sits in that paragraph, and the change would have moved or removed it. Use the paragraph before or after it as the anchor, or tell the user.'
+const SPANS_OBJECT_ADVICE =
+  'Replace the words in front of it or the words behind it on their own, with replace_text.'
+const SPANS_OBJECT_HELP = `Nothing was changed: an equation or another object of the line (a footnote mark, a picture set in the text) stands inside the text to be replaced, and the new text has no place for it. ${SPANS_OBJECT_ADVICE}`
+const BREAK_BY_HAND =
+  'Do not put the break on another paragraph instead: the page or column would turn at a different line. Tell the user that this break has to be typed in the editor in front of the paragraph, with Ctrl+Enter for a page or Ctrl+Shift+Enter for a column.'
 const ONE_LINE_HELP =
   'Text with a line break cannot be searched or inserted: a replacement stays inside one paragraph or table cell. Split the change into one call per paragraph.'
 /** A line break in the new text of replace_text or replace_all. */
@@ -1827,15 +1832,34 @@ export function equationScript(script: string): string {
     .trim()
 }
 
+const BACKSLASH_NOT_BEFORE_T = /\\(?!t)/
+const ONE_LETTER_DRIVE = /(?:^|[^A-Za-z])[A-Za-z]:\\/
+const LOWERCASE_NAME_BEHIND_BACKSLASH = /\\t[a-z]/
+const QUOTE_OR_SPACE = String.raw`[\s"'‘’“”]`
+const TYPED_TAB_AS_A_WORD = new RegExp(
+  String.raw`(?:^|${QUOTE_OR_SPACE})\\t(?:$|${QUOTE_OR_SPACE})`,
+)
+
+const meansTheTwoCharacters = (text: string): boolean =>
+  BACKSLASH_NOT_BEFORE_T.test(text) ||
+  ONE_LETTER_DRIVE.test(text) ||
+  LOWERCASE_NAME_BEHIND_BACKSLASH.test(text) ||
+  TYPED_TAB_AS_A_WORD.test(text)
+
 /**
- * A new paragraph whose tab came as the two characters `\t` (a model that escaped it
- * twice): the tab itself, which runs to the paragraph's tab stop. A paragraph that names a
- * Windows path (C:\temp) is left as it is.
+ * A new paragraph whose tabs came as the two characters `\t` (a model that escaped them
+ * twice), with the tabs themselves. The paragraph is read whole: every `\t` of it becomes
+ * a tab, or it shows a path, a command name or the two characters named as such, and every
+ * one stays as typed.
  */
 export function typedTabs(text: string): string {
-  if (!text.includes('\\t') || /[A-Za-z]:\\/.test(text)) return text
+  if (!text.includes('\\t') || meansTheTwoCharacters(text)) return text
   return text.replaceAll('\\t', '\t')
 }
+
+/** How many tabs the tab rule would write in a text. */
+const tabsTyped = (text: string): number =>
+  typedTabs(text).split('\t').length - text.split('\t').length
 
 /**
  * The call with `undoDoubledEscapes` applied to the new text it writes: cell, note and
@@ -1871,7 +1895,7 @@ function withDoubledEscapesUndone(call: AgentToolCall): AgentToolCall {
       input.paragraphs = undoDoubledEscapesInList(input.paragraphs)
       if (Array.isArray(input.paragraphs)) {
         input.paragraphs = input.paragraphs.map((paragraph: unknown) =>
-          typeof paragraph === 'string' ? evenCutLine(typedTabs(paragraph)) : paragraph,
+          typeof paragraph === 'string' ? evenCutLine(paragraph) : paragraph,
         )
       }
       break
@@ -2741,6 +2765,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (result.reason === 'unsupported_place') {
           return bad(call, 'That occurrence is inside an equation, which cannot be edited here.')
         }
+        if (result.reason === 'spans_object') return bad(call, SPANS_OBJECT_HELP)
         return bad(call, NOT_FOUND_HELP)
       }
       case 'replace_all': {
@@ -2757,7 +2782,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (outcome.kind !== 'done')
           return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
         const result = outcome.result
-        if (!result.ok) return bad(call, NOT_FOUND_HELP)
+        if (!result.ok) {
+          return bad(call, result.reason === 'spans_object' ? SPANS_OBJECT_HELP : NOT_FOUND_HELP)
+        }
         deps.onChange({
           kind: 'replaceAll',
           from: find,
@@ -2765,22 +2792,31 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: result.count,
           place: result.place,
         })
+        const skipped = result.skipped
+          ? ` ${result.skipped} more occurrence(s) were left as they were: an equation or another object of the line stands inside the text there. ${SPANS_OBJECT_ADVICE}`
+          : ''
         return {
-          output: `Replaced ${result.count} occurrence(s).`,
+          output: `Replaced ${result.count} occurrence(s).${skipped}`,
           mutated: true,
           summary: `${arrow(find, replace)} ×${result.count}`,
         }
       }
       case 'insert_paragraphs': {
         const place = placeArgs(call)
-        const paragraphs = call.input.paragraphs
+        const given = call.input.paragraphs
         if (hasLineBreak(textArg(call, 'anchor') ?? '')) {
           return bad(call, ONE_LINE_FIND_HELP('anchor'))
         }
         if (!place) return bad(call, WHERE_HELP)
-        if (!isTextList(paragraphs))
-          return bad(call, 'paragraphs must be a non-empty list of strings')
-        if (paragraphs.some(hasLineBreak)) return bad(call, ONE_LINE_ITEM_HELP)
+        if (!isTextList(given)) return bad(call, 'paragraphs must be a non-empty list of strings')
+        if (given.some(hasLineBreak)) return bad(call, ONE_LINE_ITEM_HELP)
+        const paragraphs = given.map(typedTabs)
+        const tabbed: number[] = []
+        const leftTyped: number[] = []
+        given.forEach((text, index) => {
+          if (text !== paragraphs[index]) tabbed.push(index + 1)
+          else if (text.includes('\\t')) leftTyped.push(index + 1)
+        })
         const outcome = await changeWithMemoApproval(
           () => bridge.insertParagraphs(place.anchor, place.occurrence, place.where, paragraphs),
           (options) =>
@@ -2804,8 +2840,16 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: 1,
           place: result.place,
         })
+        const tabNote =
+          tabbed.length > 0
+            ? ` The two characters \\t were written as a tab in paragraph(s) ${tabbed.join(', ')} of this call.`
+            : ''
+        const typedNote =
+          leftTyped.length > 0
+            ? ` Paragraph(s) ${leftTyped.join(', ')} of this call read as a path, a command name or the two characters themselves, so their \\t stayed two characters. If a tab was meant, remove the paragraph (delete_paragraph) and add it again with a real tab character.`
+            : ''
         return {
-          output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added ${result.count} paragraph(s)${result.inTable ? ' in the table cell' : ''}.${tabNote}${typedNote}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: label('aiToolInsert', { count: result.count }),
         }
@@ -3139,6 +3183,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, SELECTION_COUNT_HELP(selection.length))
         }
         const before = target.map((segment) => segment.text).join(' ⏎ ')
+        const selectedTexts = new Set(target.map((segment) => segment.text))
+        const tabsLeftTyped = paragraphs.flatMap((text, index) =>
+          !selectedTexts.has(text) && tabsTyped(text) > tabsTyped(target[index]?.text ?? '')
+            ? [index + 1]
+            : [],
+        )
         const outcome = await changeWithMemoApproval(
           () => bridge.replaceSelection(target, paragraphs),
           (options) => bridge.replaceSelection(target, paragraphs, options),
@@ -3153,7 +3203,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               ? SELECTION_CHANGED_HELP
               : result.reason === 'count'
                 ? SELECTION_COUNT_HELP(result.count)
-                : HAS_OBJECTS_HELP,
+                : result.reason === 'spans_object'
+                  ? SPANS_OBJECT_HELP
+                  : HAS_OBJECTS_HELP,
           )
         }
         selection = part
@@ -3171,11 +3223,15 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           count: 1,
           place: result.place,
         })
+        const tabNote =
+          tabsLeftTyped.length > 0
+            ? ` The two characters \\t in paragraph(s) ${tabsLeftTyped.join(', ')} of this call were written as they are, not as a tab: this tool writes no tab.`
+            : ''
         return {
           output:
             target.length === paragraphs.length
-              ? `Replaced the selected text (${paragraphs.length} paragraph(s)).`
-              : `Replaced the selected text: its ${target.length} paragraph(s) are now ${paragraphs.length}.${OCCURRENCE_SHIFT_NOTE}`,
+              ? `Replaced the selected text (${paragraphs.length} paragraph(s)).${tabNote}`
+              : `Replaced the selected text: its ${target.length} paragraph(s) are now ${paragraphs.length}.${tabNote}${OCCURRENCE_SHIFT_NOTE}`,
           mutated: true,
           summary: arrow(before, after),
         }
@@ -4560,10 +4616,26 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
                 call,
                 'Nothing was changed: that is the first paragraph of the document, which starts its page already.',
               )
+            case 'layout_start':
+              return bad(
+                call,
+                `Nothing was changed: that paragraph starts a new section or a part of the document with columns of its own, and a break put on it from here would take that start away. ${BREAK_BY_HAND} The empty line that leaves in front keeps the start.`,
+              )
+            case 'holds_mark':
+              return bad(
+                call,
+                `Nothing was changed: that paragraph holds a mark that belongs to its place (a page number that starts anew, a hidden page number, a bookmark), and a break put on it from here would leave the mark on the page before. ${BREAK_BY_HAND} The mark stays on the empty line that leaves in front, so it has to be moved from there to the paragraph.`,
+              )
             case 'memo_removal_requires_approval':
               return bad(call, 'Nothing was changed.')
             default:
               return bad(call, placeRefusal(result))
+          }
+        }
+        if ('already' in result) {
+          return {
+            output: `That paragraph already starts a ${result.already}${result.already === kind ? '' : ', and so a column too'}. Nothing was changed.`,
+            summary: label('aiToolBreakInsert'),
           }
         }
         deps.onChange({
