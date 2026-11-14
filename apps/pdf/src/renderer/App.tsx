@@ -8126,6 +8126,9 @@ export default function App() {
   // Synchronous re-entry guard: the menu accelerator and the renderer's own ⌘P can both
   // fire, and the `printing` state only updates after the async flush has started
   const printBusyRef = useRef(false)
+  // Page preparation of the current print path, shown in a toast with a cancel
+  const [printProgress, setPrintProgress] = useState<{ done: number; total: number } | null>(null)
+  const printAbortRef = useRef<AbortController | null>(null)
   // `pages` are 1-based file pages; the flush compacts the file to the visible
   // order first, so visible page v prints as file page v.
   const printDoc = async (pages?: number[], includeAnnotations = printAnnots) => {
@@ -8134,17 +8137,28 @@ export default function App() {
     try {
       await flushThen(async () => {
         setPrinting(true)
+        const controller = new AbortController()
+        printAbortRef.current = controller
         try {
           const data = await readFileBytes(window.pdfApi, filePath)
           const pdoc = await getDocument({ data, ...DOC_OPTS }).promise
           try {
-            await printPdf(pdoc, pages, { includeAnnotations })
+            await printPdf(pdoc, pages, {
+              includeAnnotations,
+              signal: controller.signal,
+              onProgress: (done, total) => setPrintProgress({ done, total }),
+            })
           } finally {
             void pdoc.loadingTask.destroy()
           }
         } catch (err) {
-          opFailed(err instanceof Error ? err.message : String(err))
+          // A cancelled preparation prints nothing and is not an error
+          if (!controller.signal.aborted) {
+            opFailed(err instanceof Error ? err.message : String(err))
+          }
         } finally {
+          printAbortRef.current = null
+          setPrintProgress(null)
           setPrinting(false)
         }
       })
@@ -13454,6 +13468,14 @@ export default function App() {
                 <span>{notice}</span>
                 <button type="button" onClick={() => setNotice(null)}>
                   {t('ok')}
+                </button>
+              </div>
+            )}
+            {printProgress && printProgress.done < printProgress.total && (
+              <div className="pdf-toast pdf-toast-notice" role="status">
+                <span>{t('printPreparingPages', printProgress)}</span>
+                <button type="button" onClick={() => printAbortRef.current?.abort()}>
+                  {t('cancel')}
                 </button>
               </div>
             )}
