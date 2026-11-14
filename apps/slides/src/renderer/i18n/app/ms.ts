@@ -180,6 +180,9 @@ export const ms = {
   appPrintLandscape: 'Landskap',
   appPrintFrame: 'Bingkai slaid',
   appPrintHidden: 'Cetak slaid tersembunyi',
+  appPrintRangeSelected: 'Slaid yang dipilih',
+  appPrintLayoutBlocked:
+    'Edaran dan halaman nota dicetak satu halaman setiap helaian. Untuk menyusun halaman, pilih Slaid Halaman Penuh.',
   appPrintPageCount: '{n} halaman',
   appPrintNoPages: 'Tiada slaid untuk dicetak',
   appPrintRendering: 'Menjana pratonton…',

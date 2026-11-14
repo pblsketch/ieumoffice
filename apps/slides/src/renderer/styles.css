@@ -9575,6 +9575,15 @@ body.show-curtain::after {
   height: 100%;
   border: 0;
 }
+.print-schematic-pane {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  overflow: auto;
+}
+.print-options > * {
+  flex-shrink: 0;
+}
 .print-preview-empty {
   height: 100%;
   display: flex;

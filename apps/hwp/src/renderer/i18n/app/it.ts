@@ -285,6 +285,7 @@ export const it = {
   previewMargins: 'Mostra margini',
   previewEditPage: 'Modifica questa pagina',
   previewEditFailed: 'Impossibile passare a questa pagina.',
+  printLayoutSaved: 'Il risultato impaginato è stato salvato in PDF.',
   checkTitle: 'Controllo del documento',
   checkRunning: 'Lettura del documento…',
   checkFailed: 'Impossibile leggere il documento.',

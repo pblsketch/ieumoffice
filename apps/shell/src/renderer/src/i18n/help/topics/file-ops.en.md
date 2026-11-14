@@ -46,7 +46,17 @@ Rules: the extension is preserved automatically; illegal characters, trailing do
 
 ## Print
 
-File ▸ Print in each editor (⌘P/ctrl+P) opens the system print dialog; PDFs print with the current page order and rotations.
+File ▸ Print (⌘P/ctrl+P) in each editor opens a print window. Docs, PDF, Sheets, Slides and Markdown show a **Page layout** section in their usual print window, Hangul shows it in print preview, and HTML, Mind Map and Diagram show it in a new small print window. If you choose nothing under Page layout, printing works the same way as before.
+
+- **Layout**: choose one of One page per sheet, Several pages per sheet (2, 4, 6, 9 or 16), Booklet (bind on the left or right), Poster (sheets across and down, overlap, cut lines) or Labels (one page per label or the same page on every label, a start label, a common A4 label sheet or custom sizes).
+- **Odd sides only, Even sides only, Print in reverse order**: sides are counted after the layout is applied, on the sides that actually come out of the printer. Use them on a printer without two-sided printing: print the fronts, turn the paper over, then print the backs.
+- **Shrink to fit the paper**: only pages larger than the chosen paper are shrunk; smaller pages are not enlarged. Sheets and Markdown keep using their own paper and scale settings.
+- **Grayscale and image resolution**: printing with Page layout options turns each page into an image before it goes to the printer. Choose Automatic, 150, 300 or 600 dpi for the resolution.
+- **Selection only**: Docs and Markdown print just the selected text, laid out again from the first page; Slides prints the selected slides and PDF the selected pages. Sheets prints the selected range as before.
+- **Layout diagram and result preview**: the diagram shows right away where each page number lands on the paper, and **Preview the result** shows what was actually made. **Save the arranged result as PDF** to print the same layout on another PC or at a print shop.
+- **System print window**: for a booklet, choose two-sided printing flipped on the short edge. Leave the page range and pages per sheet in the system window as they are.
+
+PDFs print with the current page order and rotations.
 
 ## Where untitled files live
 

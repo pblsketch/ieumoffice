@@ -169,6 +169,9 @@ export const th = {
   appPrintLandscape: 'แนวนอน',
   appPrintFrame: 'ใส่กรอบสไลด์',
   appPrintHidden: 'พิมพ์สไลด์ที่ซ่อน',
+  appPrintRangeSelected: 'สไลด์ที่เลือก',
+  appPrintLayoutBlocked:
+    'เอกสารประกอบและหน้าบันทึกย่อพิมพ์หนึ่งหน้าต่อแผ่น หากต้องการจัดวางหน้า ให้เลือก สไลด์เต็มหน้า',
   appPrintPageCount: 'ทั้งหมด {n} หน้า',
   appPrintNoPages: 'ไม่มีสไลด์ที่จะพิมพ์',
   appPrintRendering: 'กำลังสร้างตัวอย่าง…',

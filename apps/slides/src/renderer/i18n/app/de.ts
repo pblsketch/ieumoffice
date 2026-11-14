@@ -185,6 +185,9 @@ export const de = {
   appPrintLandscape: 'Querformat',
   appPrintFrame: 'Folien einrahmen',
   appPrintHidden: 'Ausgeblendete Folien drucken',
+  appPrintRangeSelected: 'Ausgewählte Folien',
+  appPrintLayoutBlocked:
+    'Handzettel und Notizenseiten werden mit einer Seite pro Blatt gedruckt. Wählen Sie „Ganzseitige Folien“, um Seiten anzuordnen.',
   appPrintPageCount: '{n} Seiten',
   appPrintNoPages: 'Keine Folien zum Drucken',
   appPrintRendering: 'Vorschau wird erstellt…',

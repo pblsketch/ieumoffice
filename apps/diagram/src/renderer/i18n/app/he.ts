@@ -36,6 +36,7 @@ export const he = {
   btnCancel: 'ביטול',
   exportFailed: 'הייצוא נכשל: {error}',
   printFailed: 'ההדפסה נכשלה: {error}',
+  printLayoutSaved: 'התוצאה המסודרת נשמרה כ־PDF.',
   linkNotOpened: 'לא ניתן לפתוח את הקישור הזה.',
   dlgSaveTitle: 'שמירת תרשים',
   dlgExportTitle: 'ייצוא תרשים',

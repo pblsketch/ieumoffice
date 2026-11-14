@@ -38,6 +38,7 @@ export const hi = {
   btnCancel: 'रद्द करें',
   exportFailed: 'निर्यात विफल रहा: {error}',
   printFailed: 'मुद्रण विफल रहा: {error}',
+  printLayoutSaved: 'व्यवस्थित परिणाम PDF के रूप में सहेजा गया।',
   linkNotOpened: 'यह लिंक खोला नहीं जा सकता।',
   dlgSaveTitle: 'आरेख सहेजें',
   dlgExportTitle: 'आरेख निर्यात करें',

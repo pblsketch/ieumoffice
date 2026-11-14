@@ -41,6 +41,7 @@ export const ja = {
   btnCancel: 'キャンセル',
   exportFailed: 'エクスポートに失敗しました: {error}',
   printFailed: '印刷に失敗しました: {error}',
+  printLayoutSaved: '配置した結果をPDFで保存しました。',
   linkNotOpened: 'このリンクは開けません。',
   dlgSaveTitle: 'ダイアグラムを保存',
   dlgExportTitle: 'ダイアグラムをエクスポート',

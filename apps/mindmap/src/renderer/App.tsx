@@ -30,6 +30,7 @@ import { deleteSheetAfterConfirm } from './document/sheet-actions'
 import { thumbnailForSave } from './document/thumbnail'
 import { saveMapIntoProject } from './document/save-into-project'
 import { useMapExport } from './export/use-map-export'
+import { MapPrintDialog } from './export/PrintDialog'
 import { MapController, type MapHost, type TopicRequest } from './map/controller'
 import { usePictureDrop } from './map/use-picture-drop'
 import { applyLinkPreview, type LinkPreviewOutcome } from './map/link-preview'
@@ -1089,6 +1090,16 @@ export default function App() {
         />
       )}
       {confirm && <ConfirmDialog request={confirm} onAnswer={answer} />}
+      {exporter.printing.job && (
+        <MapPrintDialog
+          lang={lang}
+          job={exporter.printing.job}
+          printLayout={window.mindmapApi.printLayout}
+          onPlainPrint={exporter.printing.printPlain}
+          onSaved={() => say('exportDone')}
+          onClose={exporter.printing.close}
+        />
+      )}
       {fieldRequest && (
         <TopicFieldDialog
           key={`${fieldRequest.field}:${fieldRequest.topicId}`}

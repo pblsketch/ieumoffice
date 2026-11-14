@@ -46,6 +46,11 @@ export const id = {
   saveFailedStatus: 'Gagal menyimpan',
   exportFailed: 'Ekspor gagal',
   printFailed: 'Gagal mencetak: {error}',
+  printRangeEmpty:
+    'Dokumen ini memiliki {count} halaman. Ketik nomor halaman di dalam rentang itu.',
+  printPagesFailed: 'Tidak dapat menghitung halaman yang akan dicetak: {error}',
+  printLayoutSaved: 'Hasil tata letak disimpan sebagai PDF.',
+  printLayoutSaveFailed: 'Tidak dapat menyimpan PDF: {error}',
   exportHtmlSkipped: 'Diekspor, tetapi {count} aset tidak dapat disematkan (mis. {first})',
   viewPreview: 'Pratinjau',
   viewSplit: 'Terpisah',

@@ -10,6 +10,10 @@
  * File names: one page goes to the chosen name; several pages go next to it
  * as `<name>-p<page number>.<ext>`, the other editors' per-page naming. Files
  * that already exist are replaced only after the person agrees.
+ *
+ * Print with an advanced layout option on (decision 0141) makes its job PDF
+ * the same way as the PDF export (`renderPdf`) and hands it to the shared
+ * arranged print (`print-layout.ts`).
  */
 import { existsSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
@@ -17,6 +21,11 @@ import { pageFilePaths } from './export-paths'
 import { BrowserWindow, app, dialog, ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 import { configuredDefaultSaveDir, showSaveDialogWithMemory } from '@genoffice/electron-utils'
+import {
+  LABEL_SPEC_FILE_NAME,
+  ensurePrintLayoutIpc,
+  type PrintLayoutInvokeEvent,
+} from '@genoffice/electron-utils/print-arranged'
 import { PRINT_READY_SCRIPT } from '@genoffice/electron-utils/print-window'
 import { atomicWriteFile } from '@genoffice/electron-utils/atomic-write'
 import { BRIDGE_PREFIX, DRAWIO_ORIGIN } from '../shared/bridge-protocol'
@@ -39,6 +48,7 @@ import {
   isPrintCancel,
   isPrintPage,
 } from './print-document'
+import { registerDiagramPrintLayout } from './print-layout'
 
 function bytesOf(value: unknown): Uint8Array | null {
   if (value instanceof Uint8Array) return value
@@ -94,6 +104,42 @@ function defaultExportPath(
   const file = filePathOf(wcId)
   const dir = file ? dirname(file) : configuredDefaultSaveDir(app)
   return join(dir, `${safeFileNameBase(name) || tm('untitled')}.${ext}`)
+}
+
+/** Asks where a PDF goes (the PDF export's dialog); null when the person cancels. */
+async function pickPdfPath(
+  filePathOf: (wcId: number) => string | undefined,
+  contents: WebContents,
+  suggestedName: string,
+): Promise<string | null> {
+  const picked = await showSaveDialogWithMemory(dialog, parentOf(contents), {
+    title: tm('dlgExportTitle'),
+    defaultPath: defaultExportPath(filePathOf, contents.id, suggestedName, 'pdf'),
+    filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+  })
+  if (picked.canceled || !picked.filePath) return null
+  return extname(picked.filePath).toLowerCase() === '.pdf'
+    ? picked.filePath
+    : `${picked.filePath}.pdf`
+}
+
+/**
+ * The hidden window the arranged faces print from. The shared print writes
+ * the faces as image files and loads them from disk, which the diagram's
+ * session refuses (it lets only the app's own schemes through), so this
+ * window is not in that session. It loads nothing but those local files:
+ * no new windows, no navigation away.
+ */
+function arrangedPrintWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    show: false,
+    width: 900,
+    height: 1200,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+  })
+  win.webContents.setWindowOpenHandler(windowOpenAction)
+  win.webContents.on('will-navigate', (event) => event.preventDefault())
+  return win
 }
 
 /** A hidden window of the diagram's session showing the print document. */
@@ -244,19 +290,12 @@ export function registerDiagramExportIpc(options: DiagramExportIpcOptions): void
     const request = (raw ?? {}) as Partial<ExportPdfRequest>
     const pages = printPagesOf(request.pages)
     if (!pages) return { ok: false, error: 'bad export pages' }
-    const picked = await showSaveDialogWithMemory(dialog, parentOf(e.sender), {
-      title: tm('dlgExportTitle'),
-      defaultPath: defaultExportPath(
-        options.filePathOf,
-        e.sender.id,
-        String(request.suggestedName ?? ''),
-        'pdf',
-      ),
-      filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
-    })
-    if (picked.canceled || !picked.filePath) return { ok: true, canceled: true }
-    const target =
-      extname(picked.filePath).toLowerCase() === '.pdf' ? picked.filePath : `${picked.filePath}.pdf`
+    const target = await pickPdfPath(
+      options.filePathOf,
+      e.sender,
+      String(request.suggestedName ?? ''),
+    )
+    if (!target) return { ok: true, canceled: true }
     try {
       await atomicWriteFile(
         target,
@@ -277,5 +316,18 @@ export function registerDiagramExportIpc(options: DiagramExportIpcOptions): void
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // advanced print layout: the job PDF is the PDF export's, arranged and printed or saved
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerDiagramPrintLayout({
+    ipcMain,
+    renderJobPdf: renderPdf,
+    createPrintWindow: arrangedPrintWindow,
+    pickSavePath: (event: PrintLayoutInvokeEvent, title) =>
+      pickPdfPath(options.filePathOf, event.sender as WebContents, title),
   })
 }

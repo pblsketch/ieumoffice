@@ -273,6 +273,7 @@ export const ar = {
   previewMargins: 'إظهار الهوامش',
   previewEditPage: 'تحرير هذه الصفحة',
   previewEditFailed: 'تعذر الانتقال إلى هذه الصفحة.',
+  printLayoutSaved: 'تم حفظ النتيجة المرتبة بتنسيق PDF.',
   checkTitle: 'فحص المستند',
   checkRunning: 'جارٍ قراءة المستند…',
   checkFailed: 'تعذّرت قراءة المستند.',

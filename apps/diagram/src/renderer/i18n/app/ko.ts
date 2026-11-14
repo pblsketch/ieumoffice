@@ -36,6 +36,7 @@ export const ko = {
   btnCancel: '취소',
   exportFailed: '내보내지 못했습니다: {error}',
   printFailed: '인쇄하지 못했습니다: {error}',
+  printLayoutSaved: '배치한 결과를 PDF로 저장했습니다.',
   linkNotOpened: '이 링크는 열 수 없습니다.',
   dlgSaveTitle: '다이어그램 저장',
   dlgExportTitle: '다이어그램 내보내기',

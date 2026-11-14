@@ -39,6 +39,7 @@ export const tr = {
   btnCancel: 'İptal',
   exportFailed: 'Dışa aktarma başarısız: {error}',
   printFailed: 'Yazdırma başarısız: {error}',
+  printLayoutSaved: 'Düzenlenmiş sonuç PDF olarak kaydedildi.',
   linkNotOpened: 'Bu bağlantı açılamıyor.',
   dlgSaveTitle: 'Diyagramı Kaydet',
   dlgExportTitle: 'Diyagramı Dışa Aktar',

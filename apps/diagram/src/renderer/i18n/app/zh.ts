@@ -34,6 +34,7 @@ export const zh = {
   btnCancel: '取消',
   exportFailed: '导出失败：{error}',
   printFailed: '打印失败：{error}',
+  printLayoutSaved: '已将排版结果保存为 PDF。',
   linkNotOpened: '无法打开此链接。',
   dlgSaveTitle: '保存图表',
   dlgExportTitle: '导出图表',

@@ -37,6 +37,7 @@ export const ms = {
   btnCancel: 'Batal',
   exportFailed: 'Gagal mengeksport: {error}',
   printFailed: 'Gagal mencetak: {error}',
+  printLayoutSaved: 'Hasil susunan disimpan sebagai PDF.',
   linkNotOpened: 'Pautan ini tidak dapat dibuka.',
   dlgSaveTitle: 'Simpan Rajah',
   dlgExportTitle: 'Eksport Rajah',

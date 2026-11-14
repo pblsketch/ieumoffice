@@ -176,6 +176,9 @@ export const id = {
   appPrintLandscape: 'Lanskap',
   appPrintFrame: 'Bingkai slide',
   appPrintHidden: 'Cetak slide tersembunyi',
+  appPrintRangeSelected: 'Slide yang dipilih',
+  appPrintLayoutBlocked:
+    'Handout dan halaman catatan dicetak satu halaman per lembar. Untuk mengatur halaman, pilih Slide Halaman Penuh.',
   appPrintPageCount: '{n} halaman',
   appPrintNoPages: 'Tidak ada slide untuk dicetak',
   appPrintRendering: 'Membuat pratinjau…',

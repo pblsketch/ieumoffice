@@ -161,6 +161,8 @@ export const zh = {
   appPrintLandscape: '横向',
   appPrintFrame: '幻灯片加框',
   appPrintHidden: '打印隐藏幻灯片',
+  appPrintRangeSelected: '所选幻灯片',
+  appPrintLayoutBlocked: '讲义和备注页每张纸只打印一页。要排列页面，请将版式改为“整页幻灯片”。',
   appPrintPageCount: '共 {n} 页',
   appPrintNoPages: '没有可打印的幻灯片',
   appPrintRendering: '正在生成预览…',
