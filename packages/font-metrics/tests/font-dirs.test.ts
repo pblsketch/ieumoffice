@@ -7,7 +7,7 @@ const linux = process.platform === 'linux'
 
 describe('xdgUserFontDir', () => {
   it('prefers XDG_DATA_HOME and appends fonts', () => {
-    expect(xdgUserFontDir('/tmp/xdg-data')).toBe('/tmp/xdg-data/fonts')
+    expect(xdgUserFontDir('/tmp/xdg-data')).toBe(join('/tmp/xdg-data', 'fonts'))
   })
 
   it('falls back to ~/.local/share when XDG_DATA_HOME is unset or empty', () => {
