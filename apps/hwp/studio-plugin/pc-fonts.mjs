@@ -171,6 +171,35 @@ export function fontOnPc(name) {
   return false
 }
 
+/**
+ * Whether the studio holds the PC's own font list. Until it does (the first seconds of a
+ * document, a window that was never shown, a PC that refuses the list) its substitution
+ * leaves out fonts it cannot vouch for, installed ones too.
+ */
+export function pcFontsKnown() {
+  return Boolean(presence) && presence.state().source === 'local-font-access'
+}
+
+/**
+ * The names an installed font goes by to the browser (its PostScript name, its full name),
+ * for the font the studio draws `name` with from this PC; null when the PC's own list does
+ * not hold it. A print document names the same face with them (`local()`), so the paper
+ * shows the font file the page showed.
+ */
+export function localFontFace(name) {
+  if (!presence || typeof name !== 'string' || !name.trim()) return null
+  if (presence.state().source !== 'local-font-access') return null
+  const record = presence.resolveLocalFont(name.trim())
+  if (!record || record.detectionSource === 'font-presence-probe') return null
+  const names = []
+  for (const value of [record.postscriptName, record.fullName]) {
+    if (typeof value === 'string' && value.trim() && !names.includes(value.trim())) {
+      names.push(value.trim())
+    }
+  }
+  return names.length > 0 ? names : null
+}
+
 /** The names of the studio's records, gathered again only when it detected anew. */
 function namesOfRecords(state) {
   const key = `${state.count ?? ''}|${String(state.detectedAt ?? '')}`
@@ -251,4 +280,19 @@ export function watchFontBox(box) {
 
 function remarkFontBox() {
   if (fontBox) markFontBox(fontBox, fontBox.value)
+}
+
+/** The engine's own names for a document's font program, as it leads a canvas font list with. */
+const ENGINE_FONT_ALIAS = /^__rhwp_(?:ttf|intrinsic)__/
+
+/**
+ * Whether a name in a canvas font list is the engine's alias for the document's font
+ * program (`__rhwp_ttf__함초롬바탕`) and not a font. Only a host that hands the studio font
+ * files turns such a name into a font; this app draws with the PC's fonts, where it names
+ * nothing. Weighed as the document's font it is "not on this PC", and the studio then put
+ * its stand-in (바탕, 맑은 고딕) before the font the document names: the page showed every
+ * such font in the stand-in, while a print or a PDF drew the font itself.
+ */
+export function isEngineFontAlias(name) {
+  return typeof name === 'string' && ENGINE_FONT_ALIAS.test(name)
 }
