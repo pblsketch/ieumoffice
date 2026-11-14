@@ -242,6 +242,9 @@ export type AgentTitleBoxResult =
       ok: true
       look: string
       place: AgentPlace
+      /** the box's number, as listTables numbers tables, and how many tables there are now */
+      table?: number
+      tables?: number
       /** the text colour asked for could not be told from what is behind the title, and was left out */
       textColorDropped?: boolean
       /** the colour the title was given to show on a dark fill, when the call named none */
@@ -316,10 +319,48 @@ export interface AgentPageLayout {
   pageNumber: AgentPageNumber | null
   header: AgentHeaderFooterState
   footer: AgentHeaderFooterState
+  map: AgentPageMap
+}
+
+/** The first or last body paragraph of a page: its first words, or the table it holds. */
+export type AgentPageEnd = { text: string } | { table: number }
+
+/** One page of the page map; `pastFoot` counts lines of body text below its text area. */
+export type AgentMapPage =
+  | { page: number; empty: true }
+  | { page: number; first: AgentPageEnd; last: AgentPageEnd; pastFoot?: number }
+
+/** Where the body falls on the pages, as print lays them out; tables as listTables numbers them. */
+export interface AgentPageMap {
+  pages: AgentMapPage[]
+  /** a heading or a one-line caption that ends a page (or a column) apart from what follows it */
+  alone: {
+    page: number
+    column?: number
+    kind: 'heading' | 'caption'
+    text: string
+    /** the page the paragraph after it starts on */
+    nextPage: number
+  }[]
+  /** tables drawn over more than one page, from page to page */
+  spans: { table: number; from: number; to: number }[]
+  past: AgentTablePastFoot[]
+}
+
+/**
+ * A table drawn below the foot of a page's text area from `row` on, cut off in print;
+ * `taller` when it is higher than the text area, so it cannot fit any page whole.
+ */
+export interface AgentTablePastFoot {
+  table: number
+  page: number
+  row: number
+  taller?: true
 }
 
 export type AgentColumnsResult =
-  | { ok: true; count: number; gapMm: number; was: number; sections: number }
+  /** `wide`: the tables, as listTables numbers them, wider than a column now; absent when none is */
+  | { ok: true; count: number; gapMm: number; was: number; sections: number; wide?: number[] }
   | AgentMemoRemovalRefusal
 
 /** The line round every page: as a cell's border line is told; line "none" takes it away. */
@@ -406,6 +447,9 @@ export type AgentTableResult =
       cols: number
       inTable: boolean
       place: AgentPlace
+      /** the new table's number, as listTables numbers tables, and how many there are now; absent in a cell */
+      table?: number
+      tables?: number
       /** the table lies across the columns of its page */
       acrossColumns?: boolean
       /** the colour the words of the header row were given to show on its fill, when the fill is dark */
@@ -682,6 +726,10 @@ export interface AgentLayoutCheck {
   from: AgentLayoutPlace
   /** the cells from `from` up to `next` (or the end) whose text does not fit */
   cells: AgentLayoutOverflow[]
+  /** the cells a line of which starts inside a word, such as a broken address or date */
+  wrapped: Omit<AgentLayoutOverflow, 'over'>[]
+  /** the tables from `from` on drawn below the foot of a page */
+  past: AgentTablePastFoot[]
   /** cells this call measured */
   measured: number
   /** where the next call goes on; absent when the last table was measured */
@@ -1368,7 +1416,8 @@ export interface AgentTabMeasure {
 }
 
 export type AgentInsertTocResult =
-  | { ok: true; count: number; pages: number[]; place: AgentPlace }
+  /** `table`: the contents table's number, as listTables numbers tables, of `tables` */
+  | { ok: true; count: number; pages: number[]; table: number; tables: number; place: AgentPlace }
   | AgentPlaceRefusal
   | { ok: false; reason: 'in_table'; count: number }
   /** a heading could not be decided: `why` is not_found, ambiguous, no_such_occurrence or unsupported_place */
@@ -1499,7 +1548,12 @@ export interface AgentPluginSurface {
   ): AgentFormatParagraphResult
   listTables(): AgentTableList
   /** the table cells whose text is cut off on the page; reads only */
-  checkLayout(fromTable?: number | null, fromRow?: number | null): AgentLayoutCheck
+  /** given `toRow`, only table `fromTable` is measured, from `fromRow` to `toRow` */
+  checkLayout(
+    fromTable?: number | null,
+    fromRow?: number | null,
+    toRow?: number | null,
+  ): AgentLayoutCheck
   readTable(table: number, fromRow?: number | null): AgentReadTableResult
   fillCells(
     table: number,
@@ -1640,6 +1694,7 @@ export interface AgentPluginSurface {
   ): AgentTitleBoxResult
   documentFonts(): AgentDocumentFonts
   /** the page number, header and footer of the document */
+  pageCount(): number
   pageLayout(): AgentPageLayout
   setColumns(
     spec: { count: number; gapMm?: number | null },
