@@ -47,6 +47,10 @@ export const nl = {
   saveFailedStatus: 'Opslaan mislukt',
   exportFailed: 'Exporteren mislukt',
   printFailed: 'Afdrukken mislukt: {error}',
+  printRangeEmpty: "Dit document heeft {count} pagina's. Typ paginanummers binnen dat bereik.",
+  printPagesFailed: "Kan de te printen pagina's niet tellen: {error}",
+  printLayoutSaved: 'Het geschikte resultaat is als pdf opgeslagen.',
+  printLayoutSaveFailed: 'Kan de pdf niet opslaan: {error}',
   exportHtmlSkipped:
     'Geëxporteerd, maar {count} bron(nen) konden niet worden ingesloten (bijv. {first})',
   viewPreview: 'Voorbeeld',

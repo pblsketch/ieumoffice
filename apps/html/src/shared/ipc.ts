@@ -1,9 +1,12 @@
 import type { AiPanelPrefs } from '@genoffice/ui'
 import type { HeadlessExportTarget } from '@genoffice/electron-utils/headless-export'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import type { PageSize } from '@genoffice/print-layout/plan'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiToolCapabilities } from '@genoffice/ai-search'
 import type { HtmlSubscriptionApi } from './subscription-api'
+import type { HtmlPrintPageRange } from './print-range'
 
 export const HTML_CHANNELS = {
   consumePending: 'html:consume-pending',
@@ -44,6 +47,8 @@ export const HTML_CHANNELS = {
   printRequest: 'html:print-request',
   printHtml: 'html:print-html',
   printPreview: 'html:print-preview',
+  /** invoke(PrintJobPagesRequest) → PrintJobPagesResult: the print job's page sizes */
+  printJobPages: 'html:print-job-pages',
   aiGenerateImage: 'html:ai-generate-image',
   filesPick: 'html:files-pick',
   filesAdd: 'html:files-add',
@@ -243,6 +248,27 @@ export interface PrintHtmlRequest {
  * so it must stay silent. Mirrors the `canceled` variant ExportResult already uses. */
 export type PrintResult = { ok: true } | { ok: true; canceled: true } | { ok: false; error: string }
 
+/**
+ * The editor's part of an advanced print request (decision 0141): the document
+ * as the print hands it over, and the typed page range when there is one.
+ */
+export interface HtmlPrintJob {
+  /** the document text, serialized as the print serializes it */
+  html: string
+  /** file name (no extension) the save dialog of the arranged PDF suggests */
+  suggestedName?: string
+  /** absent = every page */
+  ranges?: HtmlPrintPageRange[]
+}
+
+/** The document whose print job pages the print dialog counts. */
+export interface PrintJobPagesRequest {
+  html: string
+}
+
+/** Every page of the print job PDF, in points; the dialog picks a range's pages out of these. */
+export type PrintJobPagesResult = { ok: true; pages: PageSize[] } | { ok: false; error: string }
+
 export interface ImageData {
   base64: string
   mime: 'image/png' | 'image/jpeg' | 'image/gif'
@@ -353,6 +379,10 @@ export interface HtmlApi {
   printHtml(request: PrintHtmlRequest): Promise<PrintResult>
   /** the PDF the export would write, in memory: the page thumbnails of the paper view are drawn from it; null when it cannot be rendered */
   renderPrintPreview(request: PrintHtmlRequest): Promise<Uint8Array | null>
+  /** the print job PDF's page sizes (made the way the print loads the document), once per print dialog */
+  printJobPages(request: PrintJobPagesRequest): Promise<PrintJobPagesResult>
+  /** advanced print layout (`html:print-layout-*`): preview, print and save the arranged job */
+  printLayout: PrintLayoutBridge<HtmlPrintJob>
   getLanguage(): Promise<Lang>
   onLanguageChanged(handler: (lang: Lang) => void): () => void
   getTheme(): Promise<UiTheme>

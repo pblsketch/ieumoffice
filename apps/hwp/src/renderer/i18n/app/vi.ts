@@ -277,6 +277,7 @@ export const vi = {
   previewMargins: 'Hiện lề',
   previewEditPage: 'Sửa trang này',
   previewEditFailed: 'Không thể chuyển đến trang này.',
+  printLayoutSaved: 'Đã lưu kết quả đã sắp xếp thành PDF.',
   checkTitle: 'Kiểm tra tài liệu',
   checkRunning: 'Đang đọc tài liệu…',
   checkFailed: 'Không đọc được tài liệu.',

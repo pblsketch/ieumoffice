@@ -11,12 +11,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import type { PrintPage } from '../shared/ipc'
-
-const MAX_UNITS = 100_000
-
-function units(value: number, fallback: number): number {
-  return Number.isFinite(value) && value > 0 && value <= MAX_UNITS ? value : fallback
-}
+import { FALLBACK_SHEET_UNITS, sheetUnits as units } from '../shared/print-sizes'
 
 const inches = (value: number): string => `${Math.round(value * 100) / 10000}in`
 
@@ -57,8 +52,8 @@ export function buildPrintHtml(pages: readonly PrintPage[], title = ''): string 
   const sheets: string[] = []
   pages.forEach((page, index) => {
     const name = `p${index + 1}`
-    const sheetWidth = units(page.pageWidth, 827)
-    const sheetHeight = units(page.pageHeight, 1169)
+    const sheetWidth = units(page.pageWidth, FALLBACK_SHEET_UNITS.width)
+    const sheetHeight = units(page.pageHeight, FALLBACK_SHEET_UNITS.height)
     const width = units(page.width, sheetWidth)
     const height = units(page.height, sheetHeight)
     rules.push(`@page ${name} { size: ${inches(sheetWidth)} ${inches(sheetHeight)}; margin: 0; }`)

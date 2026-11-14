@@ -9,6 +9,7 @@ import {
 } from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
 import type { AiStreamChunk } from '@genoffice/ai-provider'
@@ -25,7 +26,7 @@ import {
   installDropOpenBridge,
 } from '@genoffice/electron-utils/drop-open'
 import { AI_CHANNELS, HWP_CHANNELS } from '../shared/ipc'
-import type { HwpApi, PreviewAction, PrintMode, SaveMode, UiTheme } from '../shared/ipc'
+import type { HwpApi, PreviewAction, PrintJob, PrintMode, SaveMode, UiTheme } from '../shared/ipc'
 import type { SubscriptionApi } from '../shared/subscription-api'
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
@@ -124,6 +125,7 @@ const api: HwpApi = {
     options
       ? ipcRenderer.invoke(HWP_CHANNELS.printPages, job, options)
       : ipcRenderer.invoke(HWP_CHANNELS.printPages, job),
+  printLayout: createPrintLayoutBridge<PrintJob>(ipcRenderer, 'hwp'),
   consumeHeadlessExport: () => ipcRenderer.invoke(HWP_CHANNELS.consumeHeadlessExport),
   headlessExportDone: (result) => ipcRenderer.send(HWP_CHANNELS.headlessExportDone, result),
   onCloseSaveRequest: (handler) => {

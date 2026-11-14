@@ -278,6 +278,7 @@ export const ja = {
   previewMargins: '余白を表示',
   previewEditPage: 'このページを編集',
   previewEditFailed: 'このページに移動できませんでした。',
+  printLayoutSaved: '配置した結果をPDFに保存しました。',
   checkTitle: '文書チェック',
   checkRunning: '文書を読み込んでいます…',
   checkFailed: '文書を読み込めませんでした。',

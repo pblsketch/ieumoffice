@@ -38,6 +38,7 @@ export const id = {
   btnCancel: 'Batal',
   exportFailed: 'Gagal mengekspor: {error}',
   printFailed: 'Gagal mencetak: {error}',
+  printLayoutSaved: 'Hasil tata letak disimpan sebagai PDF.',
   linkNotOpened: 'Tautan ini tidak dapat dibuka.',
   dlgSaveTitle: 'Simpan Diagram',
   dlgExportTitle: 'Ekspor Diagram',
