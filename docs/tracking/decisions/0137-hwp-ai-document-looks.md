@@ -76,3 +76,4 @@
 - 한글 문서를 쓰는 기본 스킬(`hwp-document`, 결정 0132)이 "본문은 나온 그대로 둔다", "1×1 표를 제목 상자로 쓰지 않는다", "표 테두리는 만들 수 없다"고 적고 있다. 그 스킬이 main에 들어오면 이 결정에 맞게 고쳐야 한다. 지시문은 스킬이 꼴을 정하면 스킬을 따르게 되어 있어, 그대로 두면 그 스킬을 켠 요청에서는 꼴이 나오지 않는다.
 - 남은 확인은 `docs/tracking/status.md`에 있다. 실제 구독으로 AI가 맥락에 맞는 꼴을 고르는지, 빌드한 앱에서 바뀐 곳 표시와 되돌리기가 맞는지는 사람이 본다.
 - 한 구역짜리 문서를 기준으로 했다. 구역이 여럿인 문서에서 머리말·꼬리말은 첫 구역에만 쓴다.
+- 읽기 연산의 답은 쓰기 연산이 받는 이름으로 온다. `lineSpacing`은 `line_spacing`이 되었다. 문단 여백 `marginLeft`와 `marginRight`는 `margin_left`와 `margin_right`가 되었다. 쪽 설정의 `margins`는 `margin_left`부터 `margin_gutter`까지 일곱 이름으로 나뉘었다. `read_formatting`이 묶은 모양의 번호는 `id`가 아니라 `look`이다. 각주·미주 설정의 `numberFormat`과 `startNumber`는 `number_format`과 `start_number`가 되었다. 터미널 명령어와 MCP로 이 답을 읽는 사람도 새 이름을 받는다. 바뀐 이름 전체와 인수로 계속 받는 예전 이름은 `docs/contracts.md`에 있다.
