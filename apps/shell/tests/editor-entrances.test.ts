@@ -60,13 +60,13 @@ const ko = editorPromptStrings.ko
 describe('a feature that makes a file and opens it', () => {
   it('goes ahead without a question while the editor is on', async () => {
     const { entrances, boxes } = setup([])
-    expect(await entrances.makeAndOpen('docs', { fileName: 'C:\\in\\report.pdf' })).toBe('open')
+    expect(await entrances.makeAndOpen('docs', { fileName: '/in/report.pdf' })).toBe('open')
     expect(boxes).toHaveLength(0)
   })
 
   it('asks the three-button question, with the file and what "file only" does', async () => {
     const { entrances, boxes } = setup(['docs'], 2)
-    expect(await entrances.makeAndOpen('docs', { fileName: 'C:\\in\\report.pdf' })).toBe('cancel')
+    expect(await entrances.makeAndOpen('docs', { fileName: '/in/report.pdf' })).toBe('cancel')
     expect(boxes).toHaveLength(1)
     expect(boxes[0]!.buttons).toEqual([ko.turnOnAndOpen, ko.fileOnly, ko.cancel])
     expect(boxes[0]!.cancelId).toBe(2)
@@ -87,9 +87,9 @@ describe('a feature that makes a file and opens it', () => {
   })
 
   it('does not ask about a file that is open already', async () => {
-    const { entrances, boxes } = setup(['markdown'], 2, ['C:\\notes\\a.md'])
-    expect(await entrances.makeAndOpen('markdown', { path: 'C:\\notes\\a.md' })).toBe('open')
-    expect(await entrances.editorEntrance('markdown', { path: 'C:\\notes\\a.md' })).toBe(true)
+    const { entrances, boxes } = setup(['markdown'], 2, ['/notes/a.md'])
+    expect(await entrances.makeAndOpen('markdown', { path: '/notes/a.md' })).toBe('open')
+    expect(await entrances.editorEntrance('markdown', { path: '/notes/a.md' })).toBe(true)
     expect(boxes).toHaveLength(0)
   })
 })
@@ -114,27 +114,27 @@ describe('exports and made files: a tab, or the folder while the editor is off',
   it('opens in a tab while the editor is on, or for a file no editor owns', () => {
     const { entrances, revealed } = setup(['pdf'])
     const open = vi.fn(() => true)
-    expect(entrances.opensInTab('C:\\out\\a.docx')).toBe(true)
-    expect(entrances.opensInTab('C:\\out\\a.zip')).toBe(true)
-    expect(entrances.openOrReveal('C:\\out\\a.docx', open)).toBe(true)
-    expect(open).toHaveBeenCalledWith('C:\\out\\a.docx')
+    expect(entrances.opensInTab('/out/a.docx')).toBe(true)
+    expect(entrances.opensInTab('/out/a.zip')).toBe(true)
+    expect(entrances.openOrReveal('/out/a.docx', open)).toBe(true)
+    expect(open).toHaveBeenCalledWith('/out/a.docx')
     expect(revealed).toEqual([])
   })
 
   it('shows the file in its folder, without a question, while the editor is off', () => {
     const { entrances, revealed, boxes } = setup(['pdf'])
     const open = vi.fn(() => true)
-    expect(entrances.opensInTab('C:\\out\\a.pdf')).toBe(false)
-    expect(entrances.openOrReveal('C:\\out\\a.pdf', open)).toBe(true)
+    expect(entrances.opensInTab('/out/a.pdf')).toBe(false)
+    expect(entrances.openOrReveal('/out/a.pdf', open)).toBe(true)
     expect(open).not.toHaveBeenCalled()
-    expect(revealed).toEqual(['C:\\out\\a.pdf'])
+    expect(revealed).toEqual(['/out/a.pdf'])
     expect(boxes).toHaveLength(0)
   })
 
   it('a file still open in a tab of the turned-off editor goes to that tab', () => {
-    const { entrances, revealed } = setup(['pdf'], 0, ['C:\\out\\a.pdf'])
+    const { entrances, revealed } = setup(['pdf'], 0, ['/out/a.pdf'])
     const open = vi.fn(() => true)
-    expect(entrances.openOrReveal('C:\\out\\a.pdf', open)).toBe(true)
+    expect(entrances.openOrReveal('/out/a.pdf', open)).toBe(true)
     expect(open).toHaveBeenCalled()
     expect(revealed).toEqual([])
   })
@@ -144,7 +144,7 @@ describe('a result that exists already (PDF tools)', () => {
   it('cancel opens and shows nothing', async () => {
     const { entrances, revealed } = setup(['pdf'], 2)
     const open = vi.fn(() => true)
-    expect(await entrances.openExisting('C:\\out\\m.pdf', open)).toBe(false)
+    expect(await entrances.openExisting('/out/m.pdf', open)).toBe(false)
     expect(open).not.toHaveBeenCalled()
     expect(revealed).toEqual([])
   })
@@ -152,16 +152,16 @@ describe('a result that exists already (PDF tools)', () => {
   it('"create the file only" shows it in its folder', async () => {
     const { entrances, revealed } = setup(['pdf'], 1)
     const open = vi.fn(() => true)
-    expect(await entrances.openExisting('C:\\out\\m.pdf', open)).toBe(true)
+    expect(await entrances.openExisting('/out/m.pdf', open)).toBe(true)
     expect(open).not.toHaveBeenCalled()
-    expect(revealed).toEqual(['C:\\out\\m.pdf'])
+    expect(revealed).toEqual(['/out/m.pdf'])
   })
 
   it('"turn on and open" opens it', async () => {
     const { entrances, choice } = setup(['pdf'], 0)
     const open = vi.fn(() => true)
-    expect(await entrances.openExisting('C:\\out\\m.pdf', open)).toBe(true)
-    expect(open).toHaveBeenCalledWith('C:\\out\\m.pdf')
+    expect(await entrances.openExisting('/out/m.pdf', open)).toBe(true)
+    expect(open).toHaveBeenCalledWith('/out/m.pdf')
     expect(choice().off).toEqual([])
   })
 })

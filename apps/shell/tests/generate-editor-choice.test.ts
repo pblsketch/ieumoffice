@@ -219,7 +219,7 @@ describe('the file a conversion makes for "create the file only"', () => {
   it('is named after its source with the target extension', async () => {
     const md = await convertedFileOf(
       { kind: 'mindmap-to-markdown', target: 'markdown', markdown: '# 제목\n' },
-      'C:\\maps\\plan.xmind',
+      '/maps/plan.xmind',
       'Untitled',
     )
     expect(md.fileName).toBe('plan.md')
