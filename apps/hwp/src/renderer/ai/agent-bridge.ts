@@ -69,6 +69,8 @@ const METHODS = [
   'createStyle',
   'editStyle',
   'printPages',
+  'printPageSizes',
+  'documentRevision',
   'previewPage',
   'pageTarget',
   'formatCells',
