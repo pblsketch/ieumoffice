@@ -75,6 +75,8 @@ import { consumePendingUndoCarry, undoStackDepth } from './undo-carry'
 import { createSaveGate, shouldRunSaveTick } from './save-scheduler'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
+  aiVisible,
+  useAppChoice,
   useAutoSavePref,
   addTokenUsage,
   useAiSendGate,
@@ -447,7 +449,7 @@ import type { SheetProtectionAllow } from '@genoffice/xlsx-gateway/gateway/xlsx-
 import { installCtrlDragFill } from './ctrl-drag-fill'
 import { installContextSubmenuReopenFix } from './context-submenu-reopen-fix'
 import { installMenuInputEnter } from './menu-input-enter'
-import { installCellContextMenu } from './cell-context-menu'
+import { aiMenuHidden$, installCellContextMenu } from './cell-context-menu'
 import { installClipboardAnchorTile } from './clipboard-anchor-tile'
 import { installSelectionWrapGuard } from './selection-wrap-fix'
 import { installSelectionAppearance } from './selection-appearance'
@@ -1287,6 +1289,13 @@ export function App({
   // when no provider is configured — see isAgentConfigured/handleSend) ----
   const [aiSettings, setAiSettingsState] = useState<AiSettings | null>(null)
   const aiSettingsRef = useRef<AiSettings | null>(null)
+  /** AI turned on in Settings: off, no AI part is drawn and nothing is sent */
+  const aiOn = aiVisible(useAppChoice(window.aiOfficeEditorChoice))
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
+  useEffect(() => {
+    aiMenuHidden$.next(!aiOn)
+  }, [aiOn])
 
   /** connection of the subscription providers (Claude, Codex) and the connect actions */
   const subscription = useSubscriptionConnection()
@@ -3818,7 +3827,8 @@ export function App({
     onAdmitted?: () => void,
   ): void {
     const instruction = (overrideInstruction ?? prompt).trim()
-    if (!instruction || aiBusy) return
+    // AI turned off: a request that still finds its way here (a handed-over skill) is dropped
+    if (!instruction || aiBusy || !aiOnRef.current) return
     // a retried message that carried skills sends the same skill text again
     const skillUse =
       retryIndex !== undefined &&
@@ -4493,6 +4503,7 @@ export function App({
 
   function handleRibbonCommand(command: string): void {
     if (command === 'ai-ask-selection') {
+      if (!aiOnRef.current) return
       const range = univerRef.current?.univerAPI.getActiveWorkbook()?.getActiveRange()
       if (!range) return
       refreshAiScope(range, true)
@@ -5631,6 +5642,7 @@ export function App({
         recoveryNotice={recoveryNotice}
         onDismissRecoveryNotice={() => setRecoveryNotice(null)}
         aiBusy={aiBusy}
+        aiOn={aiOn}
         {...(sessionUsage !== undefined ? { sessionUsage } : {})}
         aiSubscription={{
           settings: sendGate.settings,

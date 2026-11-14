@@ -283,6 +283,8 @@ interface ExcelShellProps {
   readonly sheetHasContent: boolean
   /// true while the real LLM agent is running (composer disabled meanwhile).
   readonly aiBusy: boolean
+  /** AI is turned on in Settings; off, every AI part of the window is gone */
+  readonly aiOn: boolean
   /** tokens billed across the session, shown beside the composer */
   readonly sessionUsage?: AiTokenUsageView
   /** subscription connection as the AI panel shows it */
@@ -536,6 +538,7 @@ export function ExcelShell({
   formatPainterActive,
   sheetHasContent,
   aiBusy,
+  aiOn,
   sessionUsage,
   aiSubscription,
   chat,
@@ -669,11 +672,16 @@ export function ExcelShell({
   // Split panes (decision 0036): as the secondary pane the dock is forced to
   // the rail, and the rail's click asks the shell to focus this pane first.
   const aiDock = useAiDock(isCopilotOpen, setIsCopilotOpen)
+  // AI turned off in Settings: no panel and no rail, while the remembered
+  // open state waits for AI to come back on
+  const aiDockOpen = aiOn && aiDock.open
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
   // the "show the AI sidebar" setting off hides the copilot rail (soft hide):
   // an explicit AI action (ribbon run, toggle) still opens the panel, and
   // closing it returns to hidden — no dead affordances, no invisible runs
   useEffect(() => {
-    if (openAiRequest) setIsCopilotOpen(true)
+    if (openAiRequest && aiOnRef.current) setIsCopilotOpen(true)
   }, [openAiRequest])
   const [showFormatCells, setShowFormatCells] = useState(false)
   const [axisSizeTarget, setAxisSizeTarget] = useState<'row' | 'col' | null>(null)
@@ -823,9 +831,11 @@ export function ExcelShell({
       else if (!protection.protected) setProtectSheetMode('protect')
       else if (protection.hasPassword) setProtectSheetMode('unprotect')
       else onCommand('sheet-unprotect')
-    } else if (command === 'ai-open-panel') setIsCopilotOpen(true)
-    else if (command === 'ai-toggle-panel') setIsCopilotOpen((v) => !v)
-    else if (command === 'chart-element-title') setChartTextTarget('title')
+    } else if (command === 'ai-open-panel') {
+      if (aiOn) setIsCopilotOpen(true)
+    } else if (command === 'ai-toggle-panel') {
+      if (aiOn) setIsCopilotOpen((v) => !v)
+    } else if (command === 'chart-element-title') setChartTextTarget('title')
     else if (command === 'chart-element-axis-cat') setChartTextTarget('axis-category')
     else if (command === 'chart-element-axis-val') setChartTextTarget('axis-value')
     else if (command === 'formula-bar-toggle') toggleFormulaBarExpand()
@@ -1001,7 +1011,7 @@ export function ExcelShell({
 
   return (
     <main
-      className={`app-shell ${aiDock.open ? '' : 'copilot-collapsed'}${presenting ? ' sheet-presenting' : ''}`}
+      className={`app-shell ${aiDockOpen ? '' : 'copilot-collapsed'}${presenting ? ' sheet-presenting' : ''}`}
       inert={openingWorkbook}
       aria-busy={openingWorkbook}
     >
@@ -1113,57 +1123,62 @@ export function ExcelShell({
             setIsCopilotOpen(true)
             onSend(nextPrompt)
           }}
-          aiOpen={aiDock.open}
+          aiOn={aiOn}
+          aiOpen={aiDockOpen}
           onAiToggle={() => setIsCopilotOpen((open) => !open)}
         />
       </header>
 
       {/* AI panel docks on the left, full height under the ribbon (unified with docs) */}
-      <div className={`sheet-body${!aiSidebarEnabled && !aiDock.open ? ' ai-dock-off' : ''}`}>
-        <AiChatPanel
-          isOpen={aiDock.open}
-          focusRequest={openAiRequest}
-          hideRail={!aiSidebarEnabled}
-          hasContent={sheetHasContent}
-          chat={chat}
-          {...(historicChat !== undefined ? { historicChat } : {})}
-          renderSkillCard={renderSkillCard}
-          skillNotes={skillNotes}
-          onTemplateSkill={onTemplateSkill}
-          attachments={attachments}
-          attachNotice={attachNotice}
-          onPickAttachments={onPickAttachments}
-          onDrivePicked={onDrivePicked}
-          docMention={docMention}
-          onAddAttachmentPaths={onAddAttachmentPaths}
-          onAddPastedImage={onAddPastedImage}
-          onRemoveAttachment={onRemoveAttachment}
-          prompt={prompt}
-          preview={preview}
-          aiBusy={aiBusy}
-          sessionUsage={sessionUsage}
-          subscription={aiSubscription}
-          onPromptChange={onPromptChange}
-          onSend={onSend}
-          onSendQueued={(text, atts, skillUse) => {
-            // the panel asks the send gate first: a message stays queued while it asks to
-            // connect or shows the first-use notice
-            if (aiBusy) return false
-            onSend(text, atts, undefined, skillUse)
-            return true
-          }}
-          onStop={onStop}
-          onNewChat={onNewChat}
-          onUndo={onUndo}
-          scopeRange={aiScopeRange}
-          scopeColumns={aiScopeColumns}
-          scopeLocked={aiScopeLocked}
-          onScopeDismiss={onAiScopeDismiss}
-          onCitation={onAiCitation}
-          onExpand={aiDock.onExpand}
-          onCollapse={() => setIsCopilotOpen(false)}
-          project={aiProject}
-        />
+      <div
+        className={`sheet-body${!aiOn || (!aiSidebarEnabled && !aiDock.open) ? ' ai-dock-off' : ''}`}
+      >
+        {aiOn && (
+          <AiChatPanel
+            isOpen={aiDock.open}
+            focusRequest={openAiRequest}
+            hideRail={!aiSidebarEnabled}
+            hasContent={sheetHasContent}
+            chat={chat}
+            {...(historicChat !== undefined ? { historicChat } : {})}
+            renderSkillCard={renderSkillCard}
+            skillNotes={skillNotes}
+            onTemplateSkill={onTemplateSkill}
+            attachments={attachments}
+            attachNotice={attachNotice}
+            onPickAttachments={onPickAttachments}
+            onDrivePicked={onDrivePicked}
+            docMention={docMention}
+            onAddAttachmentPaths={onAddAttachmentPaths}
+            onAddPastedImage={onAddPastedImage}
+            onRemoveAttachment={onRemoveAttachment}
+            prompt={prompt}
+            preview={preview}
+            aiBusy={aiBusy}
+            sessionUsage={sessionUsage}
+            subscription={aiSubscription}
+            onPromptChange={onPromptChange}
+            onSend={onSend}
+            onSendQueued={(text, atts, skillUse) => {
+              // the panel asks the send gate first: a message stays queued while it asks to
+              // connect or shows the first-use notice
+              if (aiBusy) return false
+              onSend(text, atts, undefined, skillUse)
+              return true
+            }}
+            onStop={onStop}
+            onNewChat={onNewChat}
+            onUndo={onUndo}
+            scopeRange={aiScopeRange}
+            scopeColumns={aiScopeColumns}
+            scopeLocked={aiScopeLocked}
+            onScopeDismiss={onAiScopeDismiss}
+            onCitation={onAiCitation}
+            onExpand={aiDock.onExpand}
+            onCollapse={() => setIsCopilotOpen(false)}
+            project={aiProject}
+          />
+        )}
         <div className="sheet-main">
           <section className="workbook-area">
             <div id="univer-container" className="spreadsheet" />
@@ -2092,7 +2107,8 @@ function LinkDialog({
   )
 }
 
-function Ribbon({
+/** The active tab's ribbon body (exported for its tests). */
+export function Ribbon({
   activeTab,
   selectionFormat,
   formatPainterActive,
@@ -2109,6 +2125,7 @@ function Ribbon({
   outlineSummary,
   onCommand,
   onAiRun,
+  aiOn,
   aiOpen,
   onAiToggle,
   onListNames,
@@ -2142,6 +2159,8 @@ function Ribbon({
   readonly calcManual: boolean
   /** Open the AI panel and immediately send the given prompt */
   readonly onAiRun: (prompt: string) => void
+  /** AI is turned on in Settings; off, the AI buttons and menus are not drawn */
+  readonly aiOn: boolean
   /** AI side panel visibility (docs/slides parity: the entry button toggles it) */
   readonly aiOpen: boolean
   readonly onAiToggle: () => void
@@ -3505,26 +3524,28 @@ function Ribbon({
             </button>
           </div>
         </RibbonGroup>
-        <RibbonGroup label={t('appGroupLanguage')}>
-          <div className="ribbon-tool large" data-tip={t('appTranslateTitle')}>
-            <span className="tool-icon-row">
-              <ToolSymbol symbol="文" />
-              <CaretIcon />
-            </span>
-            <span>
-              <strong>{t('appTranslate')}</strong>
-            </span>
-            <MenuSelect
-              cover
-              label={t('appTranslate')}
-              options={TRANSLATE_LANGUAGES.map((language) => ({
-                value: language,
-                label: language,
-              }))}
-              onPick={(language) => onAiRun(t('appTranslatePrompt', { language }))}
-            />
-          </div>
-        </RibbonGroup>
+        {aiOn && (
+          <RibbonGroup label={t('appGroupLanguage')}>
+            <div className="ribbon-tool large" data-tip={t('appTranslateTitle')}>
+              <span className="tool-icon-row">
+                <ToolSymbol symbol="文" />
+                <CaretIcon />
+              </span>
+              <span>
+                <strong>{t('appTranslate')}</strong>
+              </span>
+              <MenuSelect
+                cover
+                label={t('appTranslate')}
+                options={TRANSLATE_LANGUAGES.map((language) => ({
+                  value: language,
+                  label: language,
+                }))}
+                onPick={(language) => onAiRun(t('appTranslatePrompt', { language }))}
+              />
+            </div>
+          </RibbonGroup>
+        )}
         <RibbonGroup label={t('appGroupComments')}>
           <RibbonButton
             large
@@ -3626,77 +3647,79 @@ function Ribbon({
     : [...fontSizes, echoSize].sort((a, b) => a - b)
   return (
     <div className="ribbon" data-ribbon-body="">
-      <RibbonGroup label={aiSubscriptionText(lang, 'aiAssistant')}>
-        <button
-          className={`ribbon-tool as-button large ai-entry ${aiOpen ? 'active' : ''}`}
-          data-tip={t('aiOpenAssistant')}
-          onClick={onAiToggle}
-        >
-          <span className="tool-icon-row">
-            <AiMark size={26} />
-          </span>
-          <span>
-            <strong>{aiSubscriptionText(lang, 'aiAssistant')}</strong>
-          </span>
-        </button>
-        <button
-          className="ribbon-tool as-button large ai-entry"
-          disabled={!sheetHasContent}
-          data-tip={t('aiCheckBtn')}
-          onClick={() => onAiRun(t('aiCheckPrompt'))}
-        >
-          <span className="tool-icon-row">
-            <span className="ai-feature-icon" aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M11 3.25C15.2802 3.25 18.75 6.71979 18.75 11C18.75 15.2802 15.2802 18.75 11 18.75C6.71979 18.75 3.25 15.2802 3.25 11C3.25 6.71979 6.71979 3.25 11 3.25Z" />
-                <path
-                  d="M7.5 10.8235L9.64097 12.9645C9.93755 13.2611 10.4177 13.2634 10.7171 12.9697L14.7647 9"
+      {aiOn && (
+        <RibbonGroup label={aiSubscriptionText(lang, 'aiAssistant')}>
+          <button
+            className={`ribbon-tool as-button large ai-entry ${aiOpen ? 'active' : ''}`}
+            data-tip={t('aiOpenAssistant')}
+            onClick={onAiToggle}
+          >
+            <span className="tool-icon-row">
+              <AiMark size={26} />
+            </span>
+            <span>
+              <strong>{aiSubscriptionText(lang, 'aiAssistant')}</strong>
+            </span>
+          </button>
+          <button
+            className="ribbon-tool as-button large ai-entry"
+            disabled={!sheetHasContent}
+            data-tip={t('aiCheckBtn')}
+            onClick={() => onAiRun(t('aiCheckPrompt'))}
+          >
+            <span className="tool-icon-row">
+              <span className="ai-feature-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
                   strokeLinecap="round"
-                />
-                <path d="M20 20.5L16.5 17" strokeLinecap="round" />
-              </svg>
+                  strokeLinejoin="round"
+                >
+                  <path d="M11 3.25C15.2802 3.25 18.75 6.71979 18.75 11C18.75 15.2802 15.2802 18.75 11 18.75C6.71979 18.75 3.25 15.2802 3.25 11C3.25 6.71979 6.71979 3.25 11 3.25Z" />
+                  <path
+                    d="M7.5 10.8235L9.64097 12.9645C9.93755 13.2611 10.4177 13.2634 10.7171 12.9697L14.7647 9"
+                    strokeLinecap="round"
+                  />
+                  <path d="M20 20.5L16.5 17" strokeLinecap="round" />
+                </svg>
+              </span>
             </span>
-          </span>
-          <span>
-            <strong>{t('aiCheckBtn')}</strong>
-          </span>
-        </button>
-        <button
-          className="ribbon-tool as-button large ai-entry"
-          disabled={!sheetHasContent}
-          data-tip={t('aiAnalyzeBtn')}
-          onClick={() => onAiRun(t('aiAnalyzePrompt'))}
-        >
-          <span className="tool-icon-row">
-            <span className="ai-feature-icon" aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3.88589 14.2073H8.48682" strokeLinecap="round" />
-                <path d="M3.88589 19.0112H8.48682" strokeLinecap="round" />
-                <path d="M3.88589 9.40369H11.692" strokeLinecap="round" />
-                <path d="M3.88589 4.59998H19.1645" strokeLinecap="round" />
-                <path d="M15.1995 10.5445C15.3784 10.0908 16.0206 10.0908 16.1996 10.5445L16.706 11.8286C17.0338 12.6598 17.6918 13.3178 18.523 13.6456L19.8071 14.1521C20.2608 14.331 20.2608 14.9732 19.8071 15.1522L18.523 15.6586C17.6918 15.9864 17.0338 16.6444 16.706 17.4756L16.1996 18.7597C16.0206 19.2134 15.3784 19.2134 15.1995 18.7597L14.693 17.4756C14.3652 16.6444 13.7072 15.9864 12.876 15.6586L11.592 15.1522C11.1382 14.9732 11.1382 14.331 11.592 14.1521L12.876 13.6456C13.7072 13.3178 14.3652 12.6598 14.693 11.8286L15.1995 10.5445Z" />
-              </svg>
+            <span>
+              <strong>{t('aiCheckBtn')}</strong>
             </span>
-          </span>
-          <span>
-            <strong>{t('aiAnalyzeBtn')}</strong>
-          </span>
-        </button>
-      </RibbonGroup>
+          </button>
+          <button
+            className="ribbon-tool as-button large ai-entry"
+            disabled={!sheetHasContent}
+            data-tip={t('aiAnalyzeBtn')}
+            onClick={() => onAiRun(t('aiAnalyzePrompt'))}
+          >
+            <span className="tool-icon-row">
+              <span className="ai-feature-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3.88589 14.2073H8.48682" strokeLinecap="round" />
+                  <path d="M3.88589 19.0112H8.48682" strokeLinecap="round" />
+                  <path d="M3.88589 9.40369H11.692" strokeLinecap="round" />
+                  <path d="M3.88589 4.59998H19.1645" strokeLinecap="round" />
+                  <path d="M15.1995 10.5445C15.3784 10.0908 16.0206 10.0908 16.1996 10.5445L16.706 11.8286C17.0338 12.6598 17.6918 13.3178 18.523 13.6456L19.8071 14.1521C20.2608 14.331 20.2608 14.9732 19.8071 15.1522L18.523 15.6586C17.6918 15.9864 17.0338 16.6444 16.706 17.4756L16.1996 18.7597C16.0206 19.2134 15.3784 19.2134 15.1995 18.7597L14.693 17.4756C14.3652 16.6444 13.7072 15.9864 12.876 15.6586L11.592 15.1522C11.1382 14.9732 11.1382 14.331 11.592 14.1521L12.876 13.6456C13.7072 13.3178 14.3652 12.6598 14.693 11.8286L15.1995 10.5445Z" />
+                </svg>
+              </span>
+            </span>
+            <span>
+              <strong>{t('aiAnalyzeBtn')}</strong>
+            </span>
+          </button>
+        </RibbonGroup>
+      )}
       <RibbonGroup label={t('appGroupClipboard')}>
         <button
           className="ribbon-tool as-button large"

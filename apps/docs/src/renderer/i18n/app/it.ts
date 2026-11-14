@@ -56,6 +56,7 @@ export const it = {
   appVerticalTextNotice:
     'Questo documento contiene testo verticale (mostrato orizzontalmente per ora; il salvataggio non è interessato)',
   appNewDocCreated: 'Documento vuoto creato. Descrivi cosa generare nel pannello IA a sinistra.',
+  appNewDocCreatedNoAi: 'Documento vuoto creato.',
   appNewFailed: 'Creazione del documento non riuscita: {error}',
   appSaveFailed: 'Salvataggio non riuscito: {error}',
   appAutoSavedAt: 'Salvato automaticamente ({time})',

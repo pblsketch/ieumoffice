@@ -32,6 +32,7 @@ openoffice/
 │   │   ├── chatgpt-one-account.md ← ChatGPT 두 길을 하나로 보이기 계획(확정)
 │   │   ├── connect-guide.md       ← AI 연결 도우미 계획(진행 중)
 │   │   ├── diagram-editor.md      ← 다이어그램(.drawio) 편집기 계획(구현됨, 사람 확인 남음)
+│   │   ├── editor-choice.md       ← 편집기 고르기와 AI 끄기 계획(1단계 구현됨, 2단계·관리자 정책 자리)
 │   │   ├── epub-editor.md         ← EPUB 편집기 계획(구현됨, 사람 확인 남음)
 │   │   ├── hwp-format-copy.md     ← 한글 모양 복사(서식 복사) 분석·설계(1단계 구현됨, 사람 확인 남음)
 │   │   ├── md-to-hwp.md           ← 마크다운을 한글 문서로 옮기기 계획(1~4단계 구현됨, 사람 확인 남음)

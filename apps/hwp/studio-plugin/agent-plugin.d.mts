@@ -1478,6 +1478,7 @@ export interface AgentPluginSurface {
   deleteTable(table: number, options?: AgentChangeOptions): AgentDeleteTableResult
   installFileMenu(labels: Record<AgentFileCommand, string>): { ok: boolean }
   installEasyWords(label: string): { ok: boolean }
+  removeEasyWords(): { ok: boolean }
   showCharCount(labels: AgentCharCountLabels): { ok: boolean }
   watchMissingFonts(labels: AgentMissingFontLabels): { ok: boolean }
   reveal(place: AgentPlace): { ok: boolean }

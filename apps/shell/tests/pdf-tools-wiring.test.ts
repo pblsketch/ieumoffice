@@ -99,7 +99,8 @@ describe('paths stay in the main process', () => {
 
   it('opens a picked PDF without reloading an open tab, and only its own results with a reload', () => {
     expect(win).toMatch(/deps\.openForEditing\(path\)/)
-    expect(win).toMatch(/results\.get\(id\)[\s\S]*deps\?\.openResult\(path\)/)
+    // while the result's editor is off its open asks first (editor choice spec 7.3)
+    expect(win).toMatch(/results\.get\(id\)[\s\S]*d\.openResult\(p(ath)?\)/)
   })
 })
 

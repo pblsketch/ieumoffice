@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
@@ -41,9 +41,17 @@ import {
   LABEL_SPEC_FILE_NAME,
   ensurePrintLayoutIpc,
 } from '@genoffice/electron-utils/print-arranged'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import { sharedSubscriptionStatuses } from '@genoffice/ai-provider/subscription'
-import { generateImageTool, documentMediaRoots, withMediaCallSignal } from '@genoffice/ai-search'
+import {
+  abortMediaCalls,
+  generateImageTool,
+  documentMediaRoots,
+  withMediaCallSignal,
+} from '@genoffice/ai-search'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import { ImageExportSessions } from './image-export'
 import { printMarkdownDocument } from './print-document'
 import { printMarkdownPdf } from './print-pdf'
@@ -1169,6 +1177,27 @@ const imageExports = new ImageExportSessions()
 
 let ipcRegistered = false
 
+/** what a picture call answers while AI is off; the model reads it, so it stays English */
+const AI_OFF_ERROR = 'AI features are turned off in Settings.'
+
+/**
+ * A tab's AI picture call: refused while AI is off (Settings › Editors and
+ * AI), else one running AI job that turning AI off stops the way the tab's
+ * Stop does (ending its media calls ends the program the call started).
+ */
+async function aiImageCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  if (!aiFeaturesOn()) return { error: AI_OFF_ERROR }
+  const end = registerAiJob({ kind: 'chat', stop: () => abortMediaCalls(senderId) })
+  try {
+    return await run()
+  } finally {
+    end()
+  }
+}
+
 function registerMarkdownIpc(): void {
   if (ipcRegistered) return
   ipcRegistered = true
@@ -1469,21 +1498,24 @@ function registerMarkdownIpc(): void {
   ipcMain.handle(
     MARKDOWN_CHANNELS.aiGenerateImage,
     (e, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      // ends with its tab, or when the tab's AI run is stopped
-      withMediaCallSignal(e.sender, (signal) =>
-        generateImageTool(
-          join(app.getPath('userData'), 'ai-settings.json'),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          // markdown keeps pasted/picked images as doc-relative assets, so the
-          // open document's own directory is the media root
-          {
-            mediaRoots: documentMediaRoots(markdownFilePath(e.sender.id), undefined),
-            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-            signal,
-          },
+      // refused while AI is off, else one running AI job; ends with its tab,
+      // or when the tab's AI run is stopped
+      aiImageCall(e.sender.id, () =>
+        withMediaCallSignal(e.sender, (signal) =>
+          generateImageTool(
+            join(app.getPath('userData'), 'ai-settings.json'),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+            },
+            // markdown keeps pasted/picked images as doc-relative assets, so the
+            // open document's own directory is the media root
+            {
+              mediaRoots: documentMediaRoots(markdownFilePath(e.sender.id), undefined),
+              context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+              signal,
+            },
+          ),
         ),
       ),
   )
@@ -1613,6 +1645,20 @@ function registerMarkdownIpc(): void {
       try {
         const bytes = Buffer.from(request.base64, 'base64')
         if (request.mode === 'openInDocs') {
+          // "open in Word" while the Word editor is off asks before anything is
+          // written (editor choice spec 7.3); "create the file only" puts the
+          // file where new documents go and shows it in its folder
+          const answer = await askBeforeMakeAndOpen('docs', { fileName: `${safeName}.docx` })
+          if (answer === 'cancel') return { ok: true, canceled: true }
+          if (answer === 'file-only') {
+            const dir = configuredDefaultSaveDir(app)
+            await mkdir(dir, { recursive: true })
+            let target = join(dir, `${safeName}.docx`)
+            for (let n = 2; existsSync(target); n++) target = join(dir, `${safeName}-${n}.docx`)
+            await writeFile(target, bytes)
+            shell.showItemInFolder(target)
+            return { ok: true, path: target }
+          }
           // Each conversion gets an app-owned cache file. A marked session is
           // retained for the life of open Docs tabs; crash leftovers expire
           // after the explicit TTL enforced when the next session starts.
@@ -1715,6 +1761,11 @@ function registerMarkdownIpc(): void {
       const approved = takeSaveAsExportTarget(e.sender.id, askedFormat, asked)
       if (approved === null) return { ok: false, error: 'markdown: save target not approved' }
       let target = approved ?? null
+      // the File menu's export opens the copy in a Hangul tab: while that editor
+      // is off it asks first (editor choice spec 7.3); Save As does not ask
+      if (!target && (await askBeforeMakeAndOpen('hwp', { fileName: safeName })) === 'cancel') {
+        return { ok: true, canceled: true }
+      }
       if (!target) {
         const first = readHwpDefaultFormat(app)
         const picked = await showSaveDialogWithMemory(

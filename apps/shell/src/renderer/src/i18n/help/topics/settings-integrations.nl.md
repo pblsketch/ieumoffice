@@ -26,6 +26,19 @@ Licht / Donker / Systeem volgen. Systeem volgen volgt het uiterlijk van het best
 
 GenOffice verzamelt of verstuurt geen gebruiksstatistieken, dus er is ook geen schakelaar voor.
 
+## Editors en AI
+
+Hier kies je welke editors je gebruikt en of je AI gebruikt. Dezelfde lijst verschijnt ook één keer op twee andere plekken: in de stap **Kies je editors** van de welkomstschermen bij de eerste start, en in een venster dat één keer op Start verschijnt voor wie GenOffice al gebruikte voordat deze instelling bestond. In het begin staat alles aan; laat je het zo, dan verandert er niets. Een wijziging geldt meteen in alle open vensters.
+
+- **Editors**: Word, Excel, PowerPoint, PDF, PDF-hulpmiddelen, Markdown en tekst, HTML, Mindmap, Diagram, HWP (Hangul) en E-book (EPUB). De PDF-hulpmiddelen zet je los van de PDF-editor aan en uit. Er moet minstens één editor aan blijven.
+- **Een editor die uit staat** verdwijnt uit de lijsten voor nieuwe documenten: de kaarten op Start, het **+**-menu van de tabbalk, Bestand ▸ Nieuw en de lijst met standaardapps. Documenten die al open zijn blijven open, en herstelkopieën blijven bewaard.
+- **Open je een bestand van een uitgeschakelde editor** (dubbelklikken, slepen en neerzetten, Bestand ▸ Openen, recente bestanden), dan kies je tussen **Aanzetten en openen** en **Annuleren**. Open je meerdere van zijn bestanden tegelijk, dan wordt het maar één keer gevraagd.
+- **Andere functies die hun resultaat in een uitgeschakelde editor zouden openen**, zoals een PDF naar dat formaat omzetten, vragen het voordat ze beginnen: **Aanzetten en openen**, **Alleen het bestand maken** (het bestand wordt gemaakt en in zijn map getoond, de editor blijft uit) of **Annuleren**.
+- **Met AI-functies uit** verdwijnen de AI-panelen, AI-knoppen en -menu's, het vragenpaneel op Start, het agentvenster en de meldingen om een AI te koppelen, en de tabbladen Account, AI en Vaardigheden verdwijnen uit de instellingen. GenOffice start vanuit zijn schermen geen AI-programma. Aanmeldingen, sleutels, vaardigheden en instellingen blijven bewaard en komen terug als je AI weer aanzet. Loopt er nog AI-werk, dan wordt eerst gevraagd of je wilt **Stoppen en uitschakelen**.
+- De opdrachtregel, MCP en deze handleiding werken hetzelfde, of editors en AI nu aan of uit staan.
+
+Ook met AI aan maakt de AI geen nieuwe documenten voor een editor die uit staat; hij vraagt je die editor hier aan te zetten.
+
 ## AI ▸ Geavanceerd
 
 Dicht tot je het opent; de meeste mensen hebben het nooit nodig. Het tabblad **AI-model** bevat API-sleutels en servers die je zelf draait, voor chat. Op het tabblad **AI-media en zoeken** kiest elke functie de leverancier die haar bedient, en de sleutel en basis-URL van een leverancier worden eenmaal ingevuld en gedeeld:

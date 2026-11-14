@@ -138,6 +138,19 @@ import { registerIntegrationsIpc } from './integrations-ipc'
 import { registerResultStoreIpc } from './result-store-ipc'
 import { FEEDBACK_SURVEY_URL, feedbackDetails, feedbackText, platformLabel } from './feedback'
 import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
+import { registerEditorChoiceIpc, type EditorChoiceService } from './editor-choice-main'
+import { createEditorGate, installEditorGate, whenReady, type OpenOrigin } from './editor-gate'
+import { aiOffRefusalText, watchAiFeatures } from './ai-off-main'
+import { resumeAiBackgroundWork, stopAiBackgroundWork } from '../../../docs/src/main/ai-background'
+import { createEditorEntrances } from './editor-entrances'
+import { writeDocumentFileOnly } from './document-file-only'
+import { setEditorEntranceAsker } from '@genoffice/electron-utils/editor-entrance'
+import { aiFeaturesOn, appChoice } from '@genoffice/electron-utils/app-choice'
+import {
+  editorItemOfTabKind,
+  hiddenNewDocumentKinds,
+  type EditorItemId,
+} from '../shared/editor-choice'
 import { startMcpHub } from './mcp-client/hub-app'
 import type { McpHub } from './mcp-client/hub'
 import { freeAiInUse } from './drive/drive-consent'
@@ -194,6 +207,7 @@ import {
   activeAiStreamCount,
   legacyDocumentChatFor,
   hwpCopy,
+  sanitizeAiDocFileBase,
 } from '../../../docs/src/main/docs-main'
 import { blankXlsxBuffer } from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { blankPdfBuffer } from '../../../pdf/src/main/blank-pdf'
@@ -288,7 +302,11 @@ import {
   registerPdfStructureIpc,
   runWindowJob,
 } from './pdf-structure-ipc'
-import { registerPdfConvertUiIpc, requestPdfConvertDialog } from './pdf-convert-ui'
+import {
+  askThenRequestPdfConvertDialog,
+  registerPdfConvertUiIpc,
+  requestPdfConvertDialog,
+} from './pdf-convert-ui'
 import {
   pdfSaveAsDefaultPath,
   pdfSaveAsFilters,
@@ -342,6 +360,7 @@ import {
   setHtmlFileSavedHook,
   setHtmlPresentHooks,
   setHtmlProvisionalTitleHook,
+  htmlToDocxBytes,
 } from '../../../html/src/main/html-main'
 import {
   configureMindmapRuntime,
@@ -463,6 +482,7 @@ import {
   PPTX_RE,
   TEXT_RE,
   XLSX_RE,
+  appForPath,
   renameStaysInApp,
 } from './app-routing'
 import { isSameFile, pdfSaveAsTarget, isValidRawRenameName } from './rename-validation'
@@ -543,7 +563,12 @@ import { runTabDocumentAction, type TabDocumentAction } from './tab-document-act
 import { duplicateDocumentFile } from './tab-duplicate'
 import { closeTabsInOrder, createRecentlyClosedTracker } from './tab-lifecycle'
 import { handleTabShortcut } from './tab-shortcuts'
-import { readSplitMemory, writeSplitMemory, type SplitMemory } from './split-memory'
+import {
+  forgetSplitMemoryPaths,
+  readSplitMemory,
+  writeSplitMemory,
+  type SplitMemory,
+} from './split-memory'
 import { SPLIT_EVEN_RATIO, decideSplitDrop, paneRects, splitDropZone } from './split-layout'
 import { configureGenerateWindow } from './generate/generate-window'
 import { configurePdfToolsWindow, openPdfToolsWithFile } from './pdf-tools/pdf-tools-window'
@@ -564,6 +589,7 @@ import {
   type HomeKindsSettings,
 } from '../shared/home-kinds'
 import {
+  closeAgentWindow,
   configureAgentWindow,
   isAgentWindowContents,
   stopAgentSessions,
@@ -843,6 +869,19 @@ configurePdfRuntime({
   rendererFile: join(PDF_OUT, 'renderer', 'index.html'),
   openGeneratedPath: (path) => openGeneratedDocument(path),
   createDocument: createAiDocument,
+  // "create the file only" of the annotation list's document while its editor is off
+  writeDocumentFile: (request, owner) =>
+    writeDocumentFileOnly(
+      {
+        fileBase: sanitizeAiDocFileBase,
+        htmlToDocx: htmlToDocxBytes,
+        writeInProject: writeProjectNewDocument,
+        writeInDefaultFolder: writeInDefaultSaveFolder,
+        reveal: (path) => shell.showItemInFolder(path),
+      },
+      request,
+      owner,
+    ),
   openPdfTools: (path, tool) => openPdfToolsWithFile(path, tool),
   openNote: (path) => openNoteTab(noteTabHost, path) !== null,
   insertIntoNote: (path, text) => insertIntoNoteTab(noteTabHost, path, text),
@@ -5762,7 +5801,7 @@ function createShellWindow(): void {
   })
   // markdown "convert & open in Docs" → route the fresh .docx to a docs tab
   setMarkdownDocxExportedHook((path) => {
-    openDocumentPath(path)
+    openMadeDocument(path)
   })
   // markdown → Hangul: the Word editor's converter with the look of a Hangul
   // document, since the bytes the Markdown editor hands over have no Word layout
@@ -5782,7 +5821,7 @@ function createShellWindow(): void {
     return !manager.findDocsTabByPath(path)
   })
   setHtmlDocxExportedHook((path) => {
-    openDocumentPath(path)
+    openMadeDocument(path)
   })
 
   // Closing the whole window walks every dirty sheets/pdf/slides/docs tab through
@@ -5901,6 +5940,9 @@ function showAppWarning(message: string, detail?: string): void {
  */
 const droppedFilesDeps = (): DroppedFilesDeps => ({
   openDocumentPath,
+  openPaths: (paths) => requestOpenPaths(paths),
+  aiFeaturesOn,
+  askAiOnForSkills: () => openGate.askAiOnForSkills(),
   revealShellWindow,
   showWarning: showAppWarning,
   unsupportedMessage: (exts: string[]) => tm('errUnsupportedExt', { ext: exts.join(', ') }),
@@ -5921,8 +5963,101 @@ function registerDroppedFilesIpc(): void {
   })
 }
 
-/** the single router: extension decides which module owns the file; false = nothing opened */
-function openDocumentPath(filePath: string): boolean {
+/** which item's editor opens a file: the router's own answer (a legacy file opens as a copy) */
+function editorItemOfPath(filePath: string): EditorItemId | null {
+  const kind = legacyEditorFor(filePath) ?? appForPath(filePath)
+  return kind ? editorItemOfTabKind(kind) : null
+}
+
+/** the file is in a tab or a detached window now (no unloaded tab is loaded to find out) */
+function isDocumentOpen(filePath: string): boolean {
+  const wanted = canonicalPath(filePath)
+  const open = [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()]
+  if (open.some((path) => canonicalPath(path) === wanted)) return true
+  const legacyTab = legacyCopyTabs.get(resolve(filePath).toLowerCase())
+  return !!legacyTab && !!tabManager?.webContentsForTab(legacyTab)
+}
+
+/** set once the choice service is registered (lifecycle below) */
+let editorChoiceService: EditorChoiceService | null = null
+
+/**
+ * Editors turned off in Settings → Editors and AI ask before a file opens
+ * with them (spec 7.2, 7.5); the questions, the grouping and "turn on" live
+ * in editor-gate.ts. The PDF tools and generate windows reach it through
+ * editorGate().
+ */
+const openGate = createEditorGate({
+  choice: () => editorChoiceService?.effective() ?? appChoice(),
+  setChoice: (patch) => editorChoiceService?.set(patch) ?? appChoice(),
+  itemOfPath: editorItemOfPath,
+  isOpen: isDocumentOpen,
+  showMessageBox: async (box) => {
+    const focused = BrowserWindow.getFocusedWindow()
+    const parent = focused && !focused.isDestroyed() ? focused : shellWindow
+    const options = { type: 'question' as const, noLink: true, ...box }
+    const { response } =
+      parent && !parent.isDestroyed()
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options)
+    return response
+  },
+  lang: () => currentLang(),
+})
+installEditorGate(openGate)
+
+/**
+ * Entrances inside other features (a PDF conversion, the generate and PDF
+ * tools windows, a PDF's note…) ask before their work when the editor they
+ * need is off, and an export whose editor is off is shown in its folder
+ * (spec 7.3, editor-entrances.ts). The editor mains ask through the asker.
+ */
+const entrances = createEditorEntrances({
+  gate: () => openGate,
+  isOff: (item) => (editorChoiceService?.effective() ?? appChoice()).off.includes(item),
+  itemOfPath: editorItemOfPath,
+  isOpen: isDocumentOpen,
+  reveal: (path) => shell.showItemInFolder(path),
+  lang: () => currentLang(),
+})
+setEditorEntranceAsker(entrances)
+
+/** "create the file only": into the default save folder under a free name; its path */
+async function writeInDefaultSaveFolder(fileName: string, bytes: Uint8Array): Promise<string> {
+  const dir = defaultSaveDir()
+  mkdirSync(dir, { recursive: true })
+  const target = uniquePathIn(dir, fileName)
+  await atomicWriteFile(target, Buffer.from(bytes))
+  return target
+}
+
+/** a file a feature just made: its tab, or its folder while its editor is off (no question) */
+function openMadeDocument(filePath: string): boolean {
+  return entrances.openOrReveal(filePath, (path) => openDocumentPath(path))
+}
+
+/**
+ * Several files a person opened at once (a launch, a drop, File → Open): one
+ * question per turned-off editor. True = anything opened.
+ */
+function requestOpenPaths(paths: readonly string[], origin: OpenOrigin = 'user'): Promise<boolean> {
+  return openGate.openMany(paths, origin, (path) => openDocumentPath(path, origin))
+}
+
+/** one file, waiting for the answer when its editor is off (callers that need the tab) */
+function openDocumentPathAnswered(filePath: string, origin: OpenOrigin = 'user'): Promise<boolean> {
+  return openGate.openOne(filePath, origin, (path) => openDocumentPath(path, origin))
+}
+
+/**
+ * The single router: extension decides which module owns the file; false =
+ * nothing opened. `origin` says who asked (editor-gate.ts): with no origin it
+ * is a person, whose file of a turned-off editor asks first; while the
+ * question is up the answer is true (handled), so no caller falls back.
+ */
+function openDocumentPath(filePath: string, origin: OpenOrigin = 'user'): boolean {
+  const gated = openGate.check(filePath, origin, (path) => openDocumentPath(path, origin))
+  if (gated !== null) return gated
   // a copy of a Drive file (from Recent, say) reopens through Drive, so a copy
   // older than the file in Drive is refreshed first unless it holds unsent edits
   const viaDrive = driveService?.reopen(filePath)
@@ -5942,6 +6077,8 @@ function openDocumentPath(filePath: string): boolean {
  * overwrite the file we just exported.
  */
 function openGeneratedDocument(filePath: string): boolean {
+  // an export into a turned-off editor is not asked about: false = the editor shows its folder
+  if (!entrances.opensInTab(filePath)) return false
   if (tabManager && PDF_RE.test(filePath)) {
     const existing = tabManager.findPdfTabByPath(filePath)
     if (existing) {
@@ -6607,8 +6744,8 @@ function registerProjectFolderChannels(): void {
     openFolder: async (path) => {
       await shell.openPath(path)
     },
-    openDocument: (path) => {
-      if (!openDocumentPath(path)) return null
+    openDocument: async (path) => {
+      if (!(await openDocumentPathAnswered(path))) return null
       const found = tabManager?.findTabByPath(path) ?? findDetachedTabByPath(path)
       if (!found) return null
       trackProjectContents(found.webContents)
@@ -6807,7 +6944,8 @@ function registerHomeIpc(): void {
     HOME_CHANNELS.rerankSearch,
     async (_event, raw: unknown): Promise<FileSearchRerank | null> => {
       const settings = readFileSearchSettings()
-      if (!settings.rerank) return null
+      // the reordering is AI work: none while AI features are off (editor choice spec 8.3)
+      if (!settings.rerank || !aiFeaturesOn()) return null
       const query = (raw && typeof raw === 'object' ? raw : {}) as { q?: unknown; paths?: unknown }
       const q = typeof query.q === 'string' ? query.q.trim().slice(0, 200) : ''
       const paths = Array.isArray(query.paths)
@@ -6915,7 +7053,7 @@ function registerHomeIpc(): void {
       ],
       properties: ['openFile', 'multiSelections'],
     })
-    if (!result.canceled) for (const path of result.filePaths) openDocumentPath(path)
+    if (!result.canceled) void requestOpenPaths(result.filePaths)
   })
 
   ipcMain.handle(HOME_CHANNELS.newDoc, (_event, opts?: NewFileOpts) => {
@@ -7412,6 +7550,8 @@ function registerHomeIpc(): void {
     exePath: app.getPath('exe'),
     run: execFileRunner,
     openExternal: (url) => shell.openExternal(url),
+    // a turned-off editor's types are neither checked nor claimed (spec 7.1)
+    editorsOff: () => appChoice().off,
   })
   ipcMain.handle(HOME_CHANNELS.getDefaultAppStatus, () => defaultApp.status())
   ipcMain.handle(HOME_CHANNELS.setDefaultApp, () => defaultApp.set())
@@ -7608,7 +7748,11 @@ function newDocumentMenuItems(opts: {
   section?: boolean
   accelerator?: string
 }): MenuItemConstructorOptions[] {
-  const items = visibleHomeKinds(readHomeKinds()).flatMap((kind): MenuItemConstructorOptions[] => {
+  const homeKinds = readHomeKinds()
+  // a turned-off editor's kind leaves every "new" menu (Settings → Editors and AI)
+  const offKinds = hiddenNewDocumentKinds(homeKinds, appChoice())
+  const kinds = visibleHomeKinds(homeKinds).filter((kind) => !offKinds.includes(kind))
+  const items = kinds.flatMap((kind): MenuItemConstructorOptions[] => {
     if (kind === 'pdfTools' || (opts.only && !opts.only.includes(kind))) return []
     const entry = NEW_KIND_MENU[kind]
     return [
@@ -7941,13 +8085,41 @@ function notifySplitRoles(manager: TabManager): void {
 }
 
 /**
- * A launch with no file argument: reopen the remembered arrangement when its
- * documents are still on disk, else the home screen as always. A remembered
+ * A launch with no file argument, first asking about a remembered document
+ * whose editor is turned off (spec 7.5). A declined one leaves the memory, so
+ * no later launch asks again; the rest is placed as before.
+ */
+function restoreSplitMemoryOrHome(): void {
+  const memory = readRememberedSplit()
+  const paths = [fileOnDisk(memory?.a), fileOnDisk(memory?.b)].filter(
+    (path): path is string => path !== undefined,
+  )
+  const refusal = openGate.askRestore(
+    paths.map((path) => ({ key: path, item: editorItemOfPath(path) })),
+  )
+  whenReady(refusal, (refused) => {
+    if (refused.size > 0) {
+      try {
+        forgetSplitMemoryPaths([...refused], {
+          settingsPath: APP_SETTINGS_PATH,
+          same: (a, b) => canonicalPath(a) === canonicalPath(b),
+        })
+      } catch (error) {
+        console.warn('[split] the declined documents could not leave the memory:', error)
+      }
+    }
+    placeSplitMemoryOrHome()
+  })
+}
+
+/**
+ * Reopen the remembered arrangement when its documents are still on disk,
+ * else the home screen as always. A remembered
  * path that is gone is skipped — one remaining document opens alone, both gone
  * falls back to home. The memory is left untouched: the next split change
  * rewrites it.
  */
-function restoreSplitMemoryOrHome(): void {
+function placeSplitMemoryOrHome(): void {
   const manager = ensureTabManager()
   const memory = readRememberedSplit()
   const aPath = fileOnDisk(memory?.a)
@@ -8407,7 +8579,7 @@ async function openFileViaDialog(): Promise<void> {
     filters: [{ name: tm('filterSupported'), extensions: OPEN_DIALOG_EXTENSIONS }],
     properties: ['openFile', 'multiSelections'],
   })
-  if (!result.canceled) for (const path of result.filePaths) openDocumentPath(path)
+  if (!result.canceled) void requestOpenPaths(result.filePaths)
 }
 
 function buildHomeMenu(): void {
@@ -8501,7 +8673,7 @@ function buildPdfMenu(): void {
         // Markdown / EPUB: the pdf tab's conversion dialog (page range, save location, progress)
         {
           label: tm('menuExportMd'),
-          click: () => requestPdfConvertDialog(activePdfTarget()?.webContents, 'md'),
+          click: () => void askThenRequestPdfConvertDialog(activePdfTarget(), 'md'),
         },
         {
           label: tm('menuExportEpub'),
@@ -8797,8 +8969,13 @@ function buildEpubMenu(): void {
             if (tab) void requestEpubSave(tab.webContents, 'saveAs')
           },
         },
-        { type: 'separator' },
-        { label: tm('menuTranslateBook'), click: toBook('translate-book') },
+        // book translation runs AI: gone while AI is off (the menu is rebuilt on the switch)
+        { type: 'separator', visible: aiFeaturesOn() },
+        {
+          label: tm('menuTranslateBook'),
+          click: toBook('translate-book'),
+          visible: aiFeaturesOn(),
+        },
         { type: 'separator' },
         {
           label: tm('menuClose'),
@@ -9312,7 +9489,7 @@ async function savePdfAsPick(tab = activePdfTarget()): Promise<(() => Promise<vo
       })
       return
     }
-    openDocumentPath(target)
+    openMadeDocument(target)
   } catch (err) {
     console.error('[shell] pdf save as failed:', err)
     showErrorDialog(host, tm('errPdfSaveAsFailed'), err)
@@ -9352,6 +9529,9 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the docs editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('docs', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
     // Save As already picked the name: no second dialog
     const picked = preset
@@ -9442,7 +9622,7 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
         detail: tm('pdfDocxLocalOcrDetail', { pages: ocrPages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): password-protected / damaged PDFs get
@@ -9495,6 +9675,9 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the slides editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('slides', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
     // Save As already picked the name: no second dialog
     const picked = preset
@@ -9562,7 +9745,7 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
         detail: tm('pdfDocxLocalDegradedDetail', { pages: imagePages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): same explanations as the Word export
@@ -9609,6 +9792,9 @@ async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the sheets editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('sheets', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
     // Save As already picked the name: no second dialog
     const picked = preset
@@ -9676,7 +9862,7 @@ async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
         detail: tm('pdfXlsxLocalSkippedDetail', { pages: noticePages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): same explanations as the Word export
@@ -9723,6 +9909,8 @@ ipcMain.handle(PDF_CHANNELS.convertOffice, async (e, format: unknown) => {
 async function openPdfAsHwp(): Promise<void> {
   const tab = activePdfTarget()
   if (!tab?.filePath || !tabManager) return
+  // the Hangul editor converts the PDF in its tab: it has to be on (spec 7.3)
+  if (!(await entrances.editorEntrance('hwp', { fileName: tab.filePath }))) return
   if (!(await flushPdfSave(tab.webContents, true))) return
   openPdfCopyAsHwp(tab.filePath)
 }
@@ -9896,9 +10084,10 @@ function revealShellWindow(): void {
 }
 
 function openLaunchPaths(paths: readonly string[]): void {
-  let opened = false
-  for (const filePath of paths) opened = openDocumentPath(filePath) || opened
-  if (!opened) tabManager?.openHomeTab()
+  // files of turned-off editors ask first; Home shows when nothing opened
+  void requestOpenPaths(paths).then((opened) => {
+    if (!opened) tabManager?.openHomeTab()
+  })
 }
 
 // On macOS a file opened from Finder is not in argv; it arrives via the open-file event (before ready).
@@ -9950,6 +10139,30 @@ ipcMain.handle('slides:open-font-settings', () => {
 registerProjectIpc()
 registerDocsIpc()
 registerHomeIpc()
+// editors and AI on or off (the source the editor mains read, the "ai-off" run check)
+const editorChoice = registerEditorChoiceIpc({
+  settingsPath: APP_SETTINGS_PATH,
+  // only Home and its Settings in the main window change the choice or stop every AI job
+  isShellSender: (event) =>
+    !!shellWindow && !shellWindow.isDestroyed() && event.sender === shellWindow.webContents,
+  aiOffRefusal: () => aiOffRefusalText(currentLang()),
+})
+editorChoiceService = editorChoice
+// AI off closes the agent window and ends running logins; back on, the held-back checks run
+// once (spec 8.5)
+watchAiFeatures({
+  choice: editorChoice,
+  turnedOff: () => {
+    closeAgentWindow()
+    stopAiBackgroundWork()
+  },
+  turnedOn: resumeAiBackgroundWork,
+})
+// a turned-off editor's kind leaves the "new" menus at once (the cards follow by IPC)
+editorChoice.onChange(() => {
+  applyMenuFor(linkMenuKind() ?? 'home')
+  installDockMenu()
+})
 registerProjectFolderChannels()
 registerIntegrationsIpc({
   settingsPath: APP_SETTINGS_PATH,
@@ -9978,7 +10191,11 @@ registerPdfConvertUiIpc({
     const tabId = tabManager?.tabIdForWebContents(viewId)
     if (tabId) tabManager?.activateTab(tabId)
   },
-  openDocument: (path) => openDocumentPath(path),
+  openDocument: (path) => openMadeDocument(path),
+  askBeforeConvert: (format, source) =>
+    format === 'md'
+      ? entrances.makeAndOpen('markdown', { fileName: source })
+      : Promise.resolve('open'),
 })
 
 // The person's skills (settings → skills, the AI windows' `/` list and skill
@@ -10264,8 +10481,11 @@ app.whenReady().then(async () => {
     settingsPath: APP_SETTINGS_PATH,
     lang: () => currentLang(),
     window: () => shellWindow,
-    // a Drive copy opens like any local file; the Drive service already chose the copy
-    openPath: (path) => routeDocumentPath(path),
+    // a Drive copy opens like any local file; the Drive service already chose the
+    // copy. A pick of a turned-off editor's file asks first (spec 7.2).
+    openPath: (path) =>
+      openGate.check(path, 'user', (picked) => routeDocumentPath(picked)) ??
+      routeDocumentPath(path),
     isOpen: (path) =>
       (tabManager?.openFilePaths() ?? []).some(
         (open) => resolve(open).toLowerCase() === resolve(path).toLowerCase(),
@@ -10394,6 +10614,8 @@ app.whenReady().then(async () => {
       }
       return openGeneratedDocument(path)
     },
+    askBeforeOpenResult: (path, open) => entrances.openExisting(path, open),
+    askEditorOn: (item) => entrances.editorEntrance(item),
     openForEditing: (path) => {
       revealShellWindow()
       return openDocumentPath(path)
@@ -10440,6 +10662,16 @@ app.whenReady().then(async () => {
       const manager = ensureTabManager()
       const contents = manager.webContentsForTab(manager.openGenerateTargetTab(handoff))
       if (contents) followOpenerProject(contents, opener)
+    },
+    askEditor: (item, withFileOnly, source) =>
+      withFileOnly
+        ? entrances.makeAndOpen(item, { fileName: source })
+        : entrances.editorEntrance(item).then((on) => (on ? 'open' : 'cancel')),
+    aiOn: () => (editorChoiceService?.effective() ?? appChoice()).aiFeatures,
+    saveConvertedFile: async (fileName, bytes) => {
+      const target = await writeInDefaultSaveFolder(fileName, bytes)
+      shell.showItemInFolder(target)
+      return target
     },
     openConvertedTab: (doc, opener) => {
       revealShellWindow()
@@ -10592,7 +10824,11 @@ app.whenReady().then(async () => {
     aiSettings: () => readStoredAiSettings(),
     readPrefs: () => normalizeAgentPrefs(readAppSettings(APP_SETTINGS_PATH()).agent),
     writePrefs: (prefs) => writeAgentPrefs(APP_SETTINGS_PATH(), prefs),
-    openPath: (path) => routeDocumentPath(path),
+    // the person pressed "Open" by a file the agent wrote: a turned-off editor asks first
+    // (editor choice spec 7.2); the agent itself opens files through its MCP server (7.6)
+    openPath: (path) =>
+      openGate.check(path, 'user', (picked) => routeDocumentPath(picked)) ??
+      routeDocumentPath(path),
     openDocuments: () => [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()],
     userData: app.getPath('userData'),
     runners: {
@@ -10672,7 +10908,8 @@ app.whenReady().then(async () => {
       const detachedId = detachedDocumentFor(wc.id)?.id
       return detachedId ? closeDetachedWithoutPrompt(detachedId) : false
     },
-    reopen: (filePath) => void openDocumentPath(filePath),
+    // a crashed tab coming back never asks, even when its editor is off now
+    reopen: (filePath) => void openDocumentPath(filePath, 'automation'),
     // an untitled document comes back from its recovery copy (spec 8); its
     // identity is read while the editor still knows the crashed view
     untitledCopyOf: (wc) => {
@@ -10738,6 +10975,12 @@ app.whenReady().then(async () => {
     afterSheetsOpen: restoredTabDeps.afterSheetsOpen,
     sessionChanged: noteLiveSession,
     reopenedByInstaller: reopenedByInstaller(),
+    // restored tabs of turned-off editors ask before the strip is rebuilt (spec 7.5)
+    askRestore: (tabs, { fromList }) =>
+      openGate.askRestore(
+        tabs.map((tab) => ({ key: tab.key, item: editorItemOfTabKind(tab.kind) })),
+        { askAgain: fromList },
+      ),
     settled: () => {
       const paths = deferredLaunchPaths
       deferredLaunchPaths = []
@@ -10756,7 +10999,8 @@ app.whenReady().then(async () => {
     app.getPath('userData'),
     controlHandler({
       reveal: revealShellWindow,
-      openDocument: openDocumentPath,
+      // the terminal command never asks, even for a turned-off editor (spec 7.6)
+      openDocument: (path) => openDocumentPath(path, 'automation'),
       activateTab: (id) => {
         if (!activateDetached(id)) tabManager?.activateTab(id)
       },

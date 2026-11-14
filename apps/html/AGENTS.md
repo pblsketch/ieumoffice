@@ -32,6 +32,7 @@ HTML 에디터다. HTML 원문이 기준이고, 옆에서 실시간 미리 보�
 - AI 첨부 확장자에 `odt`가 있다. 글자 뽑기는 `@genoffice/file-parse`가 한다. 받는 형식 목록은 그 패키지의 `attachable.ts` 한 곳에 있고, 첨부 칸에는 로컬 파일과 함께 "이음오피스 문서에서 첨부"(`DocAttachButton`, 결정 0035)가 있다. 입력란에는 `@` 문서 목록(결정 0051)이 있다. 고른 파일은 드라이브 첨부와 같은 길로 첨부 칸에 들어간다.
 - 모델에게 주는 프롬프트에서 제품을 가리키는 이름은 `brandText`를 거친다(`tests/ai-prompts-brand.test.ts`가 확인한다). 크롬 색은 토큰만 쓴다. 미리 보기 안의 쪽은 문서 내용이라 토큰의 영향을 받지 않는다.
 - **기본 스킬 `html-document`가 이 편집기의 도구 이름과 쪽 쓰기 단계에 넘기는 것(`plan`, `context`, 대화)을 적는다**(`apps/shell/resources/builtin-skills/html-document`). 도구 이름이나 쪽 쓰기 요청이 받는 것을 바꾸면 그 본문도 고친다(`tests/builtin-skill.test.ts`가 지킨다, 결정 0132).
+- **AI 끄기(설정 › 편집기와 AI, 결정 0143).** preload는 선택의 읽기·구독(`get`, `onChange`)만 내보내고 바꾸기·모두 멈추기는 내보내지 않는다. 화면은 `renderer/ai-visibility.tsx`(`aiVisible(useAppChoice(...))`)로 AI 창과 리본의 AI 입구를 그리지 않는다. 대화는 공용 `ai:stream`이 거절·작업 등록을 맡고, 이 뒷단의 그림 생성·미디어 분석은 AI가 꺼져 있으면 거절하고 도는 동안 `registerAiJob`으로 올린다(`html-main.ts`).
 
 ## 이 모듈의 방식
 

@@ -49,6 +49,7 @@ shell과 에디터들의 메인 프로세스(일부는 preload)가 함께 쓰는
 - **"저장 안 함"으로 지운 문서는 다시 쓰지 않는다.** `deleteCopy(id, 'dontSave')`는 그 문서를 막아 두고, 막힌 동안 `writeCopy`·`writeCopyStreamed`는 쓰지 않고(흘려 쓰는 함수도 부르지 않고) `'superseded'`를 돌려준다. 창 닫기는 탭을 하나씩 묻기 때문에, 먼저 "저장 안 함"으로 답한 탭도 뒤 탭의 물음이 끝날 때까지 편집 내용을 쥔 채 살아 있다. 막음은 닫기가 취소될 때(`resumeDiscardedCopies`, 껍데기 앱이 부른다) 모두 풀리고, 그 문서를 다시 열 때(`openPlan`, `markCopyLoaded`, `clearDiscarded`) 그 문서만 풀린다. 같은 파일을 보는 다른 창이 있어 그 사본을 계속 써야 하면 편집기가 `clearDiscarded`를 부른다.
 - 종료 래치, 지우기 순번, 문서별 쓰기 줄, "저장 안 함" 막음, 실행 식별자, 편집기 약속 등록표는 `Symbol.for(...)` 키에 둔다. 편집기마다 이 패키지의 사본이 번들에 들어가므로, shell이 세운 래치와 등록표를 편집기의 사본이 같은 것으로 읽어야 한다.
 - 문서별 물음은 문서 이름을 보이고, 단추는 "되살리기"·"버리기" 둘이며, Esc와 창 닫기는 되살리기다. 파일이 사본보다 새로우면 그 줄을 더하고 사본을 조용히 지우지 않는다. 이 기본값을 바꾸지 않는다.
+- **편집기 고르기와 AI 끄기의 공용 부품(결정 0143).** `app-choice.ts`는 import가 없어 preload·화면에서도 쓴다(항목 id, 값 정리, 채널 이름, 편집기 뒷단의 `appChoice()`·`aiFeaturesOn()`·`isEditorItemOff()`). 원천은 껍데기가 `setAppChoiceSource`로 한 번 넣고, 원천이 없으면(편집기 단독 실행) 모두 켜짐·AI 켜짐이다. `app-choice-bridge.ts`는 preload 쪽 다리이고, 편집기 preload는 그 가운데 `get`·`onChange`만 내보낸다. `ai-activity.ts`는 화면이 시작한 AI 작업 목록이다(`registerAiJob`, 같은 `group`은 하나로 세고 `lingerMs` 동안 남김, `stopAllAiJobs`는 각 작업의 `stop`을 기다린다). 명령어·MCP 작업은 올리지 않는다. `ai-run-guard.ts`의 검사는 이름으로 따로 놓고 지운다(`drive`, `ai-off`). `ai-create-guard.ts`는 AI 문서 만들기 도구의 꺼진 종류 거절, `editor-entrance.ts`는 다른 기능 안의 입구에서 껍데기에 묻는 일이다(묻는 쪽이 없으면 그대로 진행). 모두 Electron을 가져오지 않는다.
 
 ## 이 모듈의 방식
 

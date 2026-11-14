@@ -74,6 +74,7 @@ import { showToast } from './components/toast-bus'
 import { TableMenu } from './components/TableMenu'
 import { FrontmatterPanel } from './components/FrontmatterPanel'
 import { AiAskPopover } from './components/AiAskPopover'
+import { useAiVisible } from './ai-visibility'
 import { AiPanel, type AiPreset, type MarkdownAiDeps } from './ai/AiPanel'
 import { EDIT_QUEUE_MAX, selectionForAnchor, type EditQueueItem } from './ai/edit-queue'
 import { addQueueAnchor, clearQueueAnchors, removeQueueAnchors } from './editor/aiQueueAnchors'
@@ -208,6 +209,9 @@ export default function App() {
   const aiPanelOpen = effectiveAiPanelOpen(aiOpen, paneRole)
   // the sidebar switch is a soft hide; it closes the panel when it turns off
   const aiSidebarEnabled = useAiSidebarEnabled(setAiOpen)
+  // Settings › Editors and AI: while AI is off no AI part of this editor is drawn
+  // (panel, ribbon entries, Ask AI, withholding); turning it back on brings them back
+  const aiOn = useAiVisible()
   const [aiPreset, setAiPreset] = useState<AiPreset | null>(null)
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
   const editQueueRef = useRef(editQueue)
@@ -1319,6 +1323,10 @@ export default function App() {
     if (editorRef.current) clearQueueAnchors(editorRef.current)
     setEditQueue([])
   }, [])
+  // AI turned off: the queued AI edits go with the panel, and so do their anchors
+  useEffect(() => {
+    if (!aiOn && editQueueRef.current.length > 0) queueClear()
+  }, [aiOn, queueClear])
   /** a submission hands its items to the run and drops them from the queue */
   const queueConsume = useCallback((qids: string[]): void => {
     if (editorRef.current) removeQueueAnchors(editorRef.current, qids)
@@ -1494,39 +1502,41 @@ export default function App() {
       />
       {status === 'loading' && <div className="center-note">{t('loading')}</div>}
       <div className="app-main" style={status === 'ready' ? undefined : { display: 'none' }}>
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
-            >
-              <AiMark size={22} />
-            </button>
-          )}
-          {/* mounted only after the file is loaded so chat history resolves against the real path */}
-          {status === 'ready' && (
-            <AiPanel
-              deps={aiDeps}
-              filePath={filePath}
-              preset={aiPreset}
-              onCollapse={() => setAiOpen(false)}
-              editQueue={editQueue}
-              onQueueEditInstruction={queueUpdate}
-              onQueueRemove={queueRemove}
-              onQueueClear={queueClear}
-              onQueueFocus={queueFocus}
-              onQueueConsume={queueConsume}
-              templateDocument={templateDocument}
-              onSkillHandoff={() => setAiOpen(true)}
-            />
-          )}
-        </div>
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
+              >
+                <AiMark size={22} />
+              </button>
+            )}
+            {/* mounted only after the file is loaded so chat history resolves against the real path */}
+            {status === 'ready' && (
+              <AiPanel
+                deps={aiDeps}
+                filePath={filePath}
+                preset={aiPreset}
+                onCollapse={() => setAiOpen(false)}
+                editQueue={editQueue}
+                onQueueEditInstruction={queueUpdate}
+                onQueueRemove={queueRemove}
+                onQueueClear={queueClear}
+                onQueueFocus={queueFocus}
+                onQueueConsume={queueConsume}
+                templateDocument={templateDocument}
+                onSkillHandoff={() => setAiOpen(true)}
+              />
+            )}
+          </div>
+        )}
         {outlineOpen && !sourceMode && (
           <OutlinePane
             items={outlineItems}
@@ -1657,7 +1667,7 @@ export default function App() {
           onDismiss={() => setWikiSuggestState(null)}
         />
       )}
-      <RedactMenu editor={editor} enabled={redactEnabled} />
+      <RedactMenu editor={editor} enabled={redactEnabled && aiOn} />
       <ToastHost />
       {graphOpen && (
         <GraphView
@@ -1689,7 +1699,7 @@ export default function App() {
         />
       )}
       {!sourceMode && <TableMenu editor={editor} scrollRef={scrollRef} zoom={zoom} />}
-      {editor && !sourceMode && status === 'ready' && (
+      {editor && !sourceMode && status === 'ready' && aiOn && (
         <AiAskPopover
           editor={editor}
           queueFull={editQueue.length >= EDIT_QUEUE_MAX}

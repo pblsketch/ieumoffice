@@ -56,6 +56,7 @@ export const fr = {
   appVerticalTextNotice:
     "Ce document contient du texte vertical (affiché horizontalement pour l'instant ; l'enregistrement n'est pas affecté)",
   appNewDocCreated: 'Document vierge créé. Décrivez le contenu à générer dans le volet IA à gauche',
+  appNewDocCreatedNoAi: 'Document vierge créé.',
   appNewFailed: 'Échec de la création du document : {error}',
   appSaveFailed: "Échec de l'enregistrement : {error}",
   appAutoSavedAt: 'Enregistrement automatique ({time})',

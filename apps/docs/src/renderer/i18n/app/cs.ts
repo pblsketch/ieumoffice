@@ -56,6 +56,7 @@ export const cs = {
   appVerticalTextNotice:
     'Tento dokument obsahuje svislý text (zatím se zobrazuje vodorovně; ukládání není ovlivněno)',
   appNewDocCreated: 'Prázdný dokument vytvořen. Popište v panelu AI vlevo, co má vygenerovat.',
+  appNewDocCreatedNoAi: 'Byl vytvořen prázdný dokument.',
   appNewFailed: 'Dokument se nepodařilo vytvořit: {error}',
   appSaveFailed: 'Uložení se nezdařilo: {error}',
   appAutoSavedAt: 'Automaticky uloženo ({time})',

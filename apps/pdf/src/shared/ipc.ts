@@ -92,6 +92,10 @@ export const PDF_CHANNELS = {
   createDocument: 'pdf:create-document',
   openInPdfTools: 'pdf:open-in-pdf-tools',
   generateImage: 'pdf:generate-image',
+  // a document job of this screen begins / ends (the shell's AI activity); main asks it to stop
+  aiJobBegin: 'pdf:ai-job-begin',
+  aiJobEnd: 'pdf:ai-job-end',
+  aiJobStop: 'pdf:ai-job-stop',
   listDigitalSignatures: 'pdf:list-digital-signatures',
   pickCertificate: 'pdf:pick-certificate',
   listSystemCertificates: 'pdf:list-system-certificates',
@@ -168,6 +172,10 @@ export const PDF_CHANNELS = {
   convertDialogRequest: 'pdf:convert-dialog-request',
   convertReleaseTarget: 'pdf:convert-release-target',
   convertOpenResult: 'pdf:convert-open-result',
+  /** before the converter's Markdown dialog: the shell asks while the Markdown editor is off */
+  convertAskBeforeOpen: 'pdf:convert-ask-before-open',
+  /** the annotation list's "Open as Markdown / Word document" (no AI) */
+  annotDocument: 'pdf:annot-document',
   convertRevealResult: 'pdf:convert-reveal-result',
   authorNameChanged: 'app:author-name-changed',
 } as const
@@ -372,6 +380,8 @@ export interface CreateDocumentResult {
   /** the created file, when it is written directly (pdf/md); docx opens as a new tab that saves itself */
   path?: string
   error?: string
+  /** the person cancelled (the editor it opens in is off): nothing was made */
+  canceled?: boolean
 }
 
 export type UiTheme = 'light' | 'dark' | 'system'
@@ -1858,12 +1868,28 @@ export interface PdfApi {
   onConvertDialogRequest(handler: (request: PdfConvertDialogRequest) => void): () => void
   /** Before a Markdown job writes: close a Markdown tab showing that file (its unsaved-changes guard applies). False = still open */
   releaseConvertTarget(request: PdfConvertOutputRequest): Promise<boolean>
+  /**
+   * The converter's Markdown entry, before its dialog opens: the shell asks
+   * while the editor the result opens in is off ('cancel' = do nothing; a
+   * result made with 'file-only' is shown in its folder). 'open' without a shell.
+   */
+  askBeforeConvert(request: {
+    source: string
+    format: PdfReflowFormat
+  }): Promise<'open' | 'file-only' | 'cancel'>
   /** Open a converted Markdown file in a Markdown tab (same routing as File > Open) */
   openConvertResult(request: PdfConvertOutputRequest): Promise<boolean>
   /** Show a converted file (or an export folder's first file) in the system file manager */
   revealConvertResult(request: PdfConvertOutputRequest): Promise<boolean>
   /** AI create_document: build a new standalone file in the default folder and open it in a new tab */
   createDocument(request: CreateDocumentRequest): Promise<CreateDocumentResult>
+  /**
+   * The annotation list's "Open as Markdown / Word document": not an AI
+   * document. While the editor it opens in is off the shell asks first
+   * (editor choice spec 7.3); "create the file only" writes it and shows it
+   * in its folder.
+   */
+  openAnnotDocument(request: CreateDocumentRequest): Promise<CreateDocumentResult>
   /** open the shell's PDF tools window on `tool` with this view's file picked (false: no host) */
   openInPdfTools(path: string, tool: PdfToolsHandoffTool): Promise<boolean>
   /** Web image search for AI tools (app-wide ai:image-search handler) */
@@ -1983,4 +2009,19 @@ export interface PdfApi {
    */
   aiStreamCancel(requestId: string, scope?: 'request'): Promise<void>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void
+  /** a document job tells the main process it runs (absent in an older preload) */
+  aiJob?: ScreenAiJobBridge
+}
+
+/**
+ * How a document job of this screen tells the main process it runs, so the
+ * shell can count it and stop it when AI is turned off.
+ */
+export interface ScreenAiJobBridge {
+  /** a job begins: null to go on, or the refusal to show (AI is turned off) */
+  begin(jobId: string): Promise<string | null>
+  /** the job ended however it ended */
+  end(jobId: string): void
+  /** the main process asks the job `jobId` to stop */
+  onStop(handler: (jobId: string) => void): () => void
 }

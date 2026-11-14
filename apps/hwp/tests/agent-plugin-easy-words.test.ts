@@ -240,6 +240,20 @@ describe('the right-click item 쉬운 말로 풀기', () => {
     expect(fired).toEqual([{ text: '65세 이상' }, { text: '대상\n65세 이상' }])
   })
 
+  it('leaves the menus while AI is off, and comes back with its name when AI is on again', () => {
+    const { plugin, command, unchanged } = openDocument()
+    // AI off before the item was ever installed: nothing to take away, no failure
+    expect(plugin.removeEasyWords()).toEqual({ ok: true })
+    expect(command()).toBeUndefined()
+    plugin.installEasyWords('쉬운 말로 풀기')
+    expect(plugin.removeEasyWords()).toEqual({ ok: true })
+    expect(command()).toBeUndefined()
+    expect(plugin.installEasyWords('쉬운 말로 풀기')).toEqual({ ok: true })
+    expect(command()?.label).toBe('쉬운 말로 풀기')
+    expect(unchanged()).toBe(true)
+    expect(openDocument(false).plugin.removeEasyWords()).toEqual({ ok: false })
+  })
+
   it('refuses an empty name, and says so in an editor without commands', () => {
     expect(() => openDocument().plugin.installEasyWords('  ')).toThrow(/label/)
     expect(openDocument(false).plugin.installEasyWords('쉬운 말로 풀기')).toEqual({ ok: false })

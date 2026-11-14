@@ -26,6 +26,19 @@ Chiaro / Scuro / Segui il sistema. L'opzione Segui il sistema segue l'aspetto de
 
 GenOffice non raccoglie né invia statistiche di utilizzo, quindi non c'è alcun interruttore.
 
+## Editor e IA
+
+Qui scegli quali editor usare e se usare l’IA. Lo stesso elenco compare una volta anche in altri due punti: nel passaggio **Scegli i tuoi editor** delle schermate di benvenuto al primo avvio e in una finestra mostrata una sola volta nella Home a chi usava GenOffice prima che esistesse questa impostazione. All’inizio è tutto attivo, quindi se non tocchi nulla non cambia nulla. Una modifica vale subito in tutte le finestre aperte.
+
+- **Editor**: Word, Excel, PowerPoint, PDF, Strumenti PDF, Markdown e testo, HTML, Mappa mentale, Diagramma, HWP (Hangul) ed E-book (EPUB). Gli strumenti PDF si attivano separatamente dall’editor PDF. Almeno un editor deve restare attivo.
+- **Un editor disattivato** sparisce dagli elenchi dei nuovi documenti: le schede della Home, il menu **+** della barra delle schede, File ▸ Nuovo e l’elenco delle app predefinite. I documenti già aperti restano aperti e le copie di recupero vengono conservate.
+- **Aprendo un file di un editor disattivato** (doppio clic, trascinamento, File ▸ Apri, file recenti) ti viene chiesto di scegliere tra **Attiva e apri** e **Annulla**. Se apri più file di quell’editor insieme, la domanda arriva una sola volta.
+- **Altre funzioni che aprirebbero il risultato in un editor disattivato**, come convertire un PDF in quel formato, chiedono prima di iniziare: **Attiva e apri**, **Crea solo il file** (il file viene creato e mostrato nella sua cartella, l’editor resta disattivato) oppure **Annulla**.
+- **Con le funzioni IA disattivate** spariscono i pannelli IA, i pulsanti e i menu IA, il pannello delle domande della Home, la finestra dell’agente e gli inviti a collegare un’IA, e le schede Account, IA e Abilità escono dalle impostazioni. GenOffice non avvia alcun programma di IA dalle sue schermate. Accessi, chiavi, skill e impostazioni restano e tornano quando riattivi l’IA. Se c’è ancora un lavoro di IA in corso, ti viene chiesto prima se vuoi **Ferma e disattiva**.
+- La riga di comando, MCP e questa guida funzionano allo stesso modo, con editor o IA attivi o no.
+
+Anche con l’IA attiva, l’IA non crea nuovi documenti per un editor disattivato e ti dice di attivarlo qui.
+
 ## IA ▸ Avanzate
 
 Resta chiusa finché non la apri; alla maggior parte delle persone non serve mai. La scheda **Modello IA** contiene le chiavi API e i server che gestisci tu, per la chat. Nella scheda **Media e ricerca IA** ogni capacità sceglie il fornitore che la serve e la chiave e l'URL di base di un fornitore si inseriscono una volta sola e si condividono:

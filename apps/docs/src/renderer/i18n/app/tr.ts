@@ -57,6 +57,7 @@ export const tr = {
     'Bu belgede dikey metin var (şimdilik yatay gösteriliyor; kaydetmeyi etkilemez)',
   appNewDocCreated:
     'Boş belge oluşturuldu. Oluşturmak istediğiniz içeriği soldaki AI bölmesinde açıklayın.',
+  appNewDocCreatedNoAi: 'Boş belge oluşturuldu.',
   appNewFailed: 'Belge oluşturulamadı: {error}',
   appSaveFailed: 'Kaydetme başarısız: {error}',
   appAutoSavedAt: 'Otomatik kaydedildi ({time})',

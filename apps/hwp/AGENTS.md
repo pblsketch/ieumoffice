@@ -132,6 +132,7 @@
 - **편집기 대화상자의 모양은 `studio-plugin/dialog-theme.mjs` 하나가 정한다(디자인 시스템, `docs/plans/hwp-dialog-design.md`).** `agent-plugin.mjs`가 활성화될 때 `<style>`을 한 번 주입하고, rhwp의 모든 `ModalDialog`가 같은 `.dialog-*` 뼈대를 쓰므로 표/셀 속성·누름틀(메모 칸)·쪽 설정·글자 모양 등이 함께 적용된다. 모달이 아닌 찾기/바꾸기 패널(`.find-dialog`)도 같은 토큰을 쓴다. 앱 쪽의 **메모 편집 모달**(`src/renderer/MemoPanel.tsx`의 `.memo-modal`)은 iframe 밖이므로 `src/renderer/dialog-theme.css`가 같은 이름의 토큰으로 맞춘다(두 토큰 블록은 `tests/dialog-theme.test.ts`가 값을 견준다). 색·모서리·깊이·움직임은 `--ieum-dialog-*` 토큰으로만 쓰고, 컴포넌트 규칙에 hex/rgba를 직접 쓰지 않는다. 크기·간격·스크롤·보이고 숨기기는 `:where(:root[…])` 아래에 써서 rhwp가 창마다 정한 배치(라벨 폭, 본문 높이, PDF 준비 중 푸터 숨김)에 지게 한다. 테스트가 빌드 캐시의 rhwp CSS와 대조한다. 새 대화상자는 `ModalDialog`(앱 쪽은 `.memo-modal`의 뼈대)와 기존 클래스를 쓰고, 새 선택자를 넣으면 스킨·`tests/dialog-theme.test.ts`·설계 문서를 함께 고친다. 사용자가 옛 스킨(oldschool)을 고르면 iframe 스킨은 스스로 꺼진다.
 - 크롬 색은 토큰만 쓴다. 편집기 안쪽(iframe)은 rhwp의 화면이라 이 규칙의 대상이 아니고, 밝게·어둡게만 앱 설정을 따르게 한다.
 - **기본 스킬이 이 편집기의 도구 이름을 적는다.** `apps/shell/resources/builtin-skills`의 `hwp-document`, `administration-report`, `administration-report-draft`다. AI 도구의 이름을 바꾸거나 없애면 그 본문도 고친다(`tests/hwp-skill.test.ts`가 지킨다, 결정 0132).
+- **AI 끄기(설정 › 편집기와 AI, 결정 0143).** preload는 선택의 읽기·구독(`get`, `onChange`)만 내보내고 바꾸기·모두 멈추기는 내보내지 않는다. 화면은 `aiVisible(useAppChoice(window.aiOfficeEditorChoice))`로 AI 창과 AI 입구를 그리지 않고, 편집 화면의 오른쪽 클릭 "쉬운 말로 풀기"는 플러그인의 `removeEasyWords()`로 뗀다(다시 켜면 `installEasyWords`). 대화는 공용 `ai:stream`이 거절·작업 등록을 맡고, AI 그림 넣기(`src/main/ai-image.ts`)는 AI가 꺼져 있으면 거절하고 도는 동안 `registerAiJob`으로 올린다.
 
 ## 이 모듈의 방식
 

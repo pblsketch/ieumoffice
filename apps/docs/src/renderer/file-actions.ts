@@ -147,6 +147,8 @@ export interface FileActionContext {
   setStatus: (status: string) => void
   setRecent: (paths: string[]) => void
   setShowAi: (show: boolean) => void
+  /** AI parts shown (Settings › Editors and AI); false keeps the new-document line off the AI pane */
+  aiOn?: boolean
   setDoc: Dispatch<SetStateAction<DocState | null>>
   setAiPanelKey: Dispatch<SetStateAction<number>>
   setDocCss: (css: string) => void
@@ -754,7 +756,7 @@ export async function newFile(ctx: FileActionContext): Promise<boolean | undefin
     ctx.dirtyRef.current = false
     // same rule as the first render, so the "open in new documents" setting holds for Cmd+N too
     ctx.setShowAi(aiPanelInitiallyOpen('aidocs.showAi'))
-    ctx.setStatus(t('appNewDocCreated'))
+    ctx.setStatus(t(ctx.aiOn === false ? 'appNewDocCreatedNoAi' : 'appNewDocCreated'))
     return true
   } catch (err) {
     if (generation !== openGeneration) return

@@ -61,6 +61,10 @@ vi.mock('@genoffice/ai-provider/subscription', () => ({
     return {}
   },
   sharedSubscriptionStatuses: () => ({}),
+  // the gated status check and model list wrap these; the tests start no program
+  detectSubscriptionLogin: async () => ({}),
+  listSubscriptionModels: async () => undefined,
+  subscriptionStatusErrorText: (kind: string, detail: string) => `${kind}: ${detail}`,
 }))
 vi.mock('@genoffice/ai-provider/codex-app-server', () => ({
   shutdownCodexAppServers: () => {},

@@ -57,6 +57,7 @@ export const ms = {
     'Dokumen ini mengandungi teks menegak (dipaparkan mendatar buat masa ini; penyimpanan tidak terjejas)',
   appNewDocCreated:
     'Dokumen kosong telah dibuat. Terangkan kandungan yang hendak dijana di panel AI sebelah kiri.',
+  appNewDocCreatedNoAi: 'Dokumen kosong dicipta.',
   appNewFailed: 'Gagal membuat dokumen: {error}',
   appSaveFailed: 'Gagal menyimpan: {error}',
   appAutoSavedAt: 'Disimpan secara automatik ({time})',

@@ -60,6 +60,7 @@
 - **창구 이름은 `mindmap:`으로 시작한다.** `src/shared/ipc.ts`에 이미 있는 이름을 쓰고, 받는 쪽이 준비된 창구만 등록한다.
 - 화면에 "XMind"라고 적는 곳은 "XMind 파일(.xmind)을 열고 저장한다"는 호환 설명뿐이다. 다른 프로그램의 이름·색·그림·글꼴·예제 파일을 저장소에 넣지 않는다. 테스트용 지도는 테스트 코드가 엔진으로 만든다.
 - **기본 스킬 `mindmap`이 이 편집기의 도구·편집 이름과 개요 문법을 적는다**(`apps/shell/resources/builtin-skills/mindmap`). 도구나 `EDIT_OPS`의 이름, `write_map`의 개요 문법을 바꾸면 그 본문도 고친다(`tests/builtin-skill.test.ts`가 지킨다, 결정 0132). AI가 배치·테마·표식을 정할 수 있게 되면 스킬의 "What you cannot set" 줄도 고친다.
+- **AI 끄기(설정 › 편집기와 AI, 결정 0143).** preload는 선택의 읽기·구독(`get`, `onChange`)만 내보내고 바꾸기·모두 멈추기는 내보내지 않는다. 화면은 `aiVisible(useAppChoice(window.aiOfficeEditorChoice))`로 AI 창과 도구 막대의 AI 입구를 그리지 않는다. 대화는 공용 `ai:stream`이 거절·작업 등록을 맡고, AI 그림 넣기(`src/main/ai-image.ts`)는 AI가 꺼져 있으면 거절하고 도는 동안 `registerAiJob`으로 올린다.
 
 ## 이 모듈의 방식
 

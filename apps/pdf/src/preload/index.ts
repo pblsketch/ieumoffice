@@ -15,6 +15,7 @@ import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
 import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import { AI_CHANNELS, PDF_CHANNELS } from '../shared/ipc'
 import type {
   PdfApi,
@@ -226,6 +227,12 @@ const api: PdfApi = {
     (ipcRenderer.invoke(PDF_CHANNELS.convertReleaseTarget, request) as Promise<boolean>).catch(
       () => true,
     ),
+  askBeforeConvert: async (request) => {
+    const answer: unknown = await ipcRenderer
+      .invoke(PDF_CHANNELS.convertAskBeforeOpen, request)
+      .catch(() => 'open')
+    return answer === 'cancel' || answer === 'file-only' ? answer : 'open'
+  },
   openConvertResult: (request) =>
     (ipcRenderer.invoke(PDF_CHANNELS.convertOpenResult, request) as Promise<boolean>).catch(
       () => false,
@@ -235,6 +242,7 @@ const api: PdfApi = {
       () => false,
     ),
   createDocument: (request) => ipcRenderer.invoke(PDF_CHANNELS.createDocument, request),
+  openAnnotDocument: (request) => ipcRenderer.invoke(PDF_CHANNELS.annotDocument, request),
   openInPdfTools: (path, tool) =>
     (ipcRenderer.invoke(PDF_CHANNELS.openInPdfTools, path, tool) as Promise<boolean>).catch(
       () => false,
@@ -398,6 +406,24 @@ const api: PdfApi = {
     ipcRenderer.on(AI_CHANNELS.streamChunk, listener)
     return () => ipcRenderer.removeListener(AI_CHANNELS.streamChunk, listener)
   },
+  aiJob: {
+    begin: async (jobId) => {
+      const answer = (await ipcRenderer.invoke(PDF_CHANNELS.aiJobBegin, jobId)) as {
+        ok?: unknown
+        error?: unknown
+      } | null
+      if (answer?.ok === true) return null
+      return typeof answer?.error === 'string' ? answer.error : 'refused'
+    },
+    end: (jobId) => ipcRenderer.send(PDF_CHANNELS.aiJobEnd, jobId),
+    onStop: (handler) => {
+      const listener = (_e: Electron.IpcRendererEvent, jobId: unknown) => {
+        if (typeof jobId === 'string') handler(jobId)
+      }
+      ipcRenderer.on(PDF_CHANNELS.aiJobStop, listener)
+      return () => ipcRenderer.removeListener(PDF_CHANNELS.aiJobStop, listener)
+    },
+  },
 }
 
 // Shared project chat store (registered app-wide by the shell's main init):
@@ -423,6 +449,12 @@ contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// whether AI features are on (Settings): read and follow only, this tab never changes it
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
 // project folders (decision 0088): main identifies this window, the bridge forwards ids only
 contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 

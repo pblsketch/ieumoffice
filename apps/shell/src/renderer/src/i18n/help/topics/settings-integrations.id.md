@@ -26,6 +26,19 @@ Terang / Gelap / Ikuti Sistem. Mode Ikuti Sistem mengikuti tampilan sistem opera
 
 GenOffice tidak mengumpulkan atau mengirim statistik penggunaan, jadi tidak ada sakelar untuk itu.
 
+## Editor dan AI
+
+Di sini Anda memilih editor mana yang dipakai dan apakah memakai AI. Daftar yang sama juga muncul sekali di dua tempat lain: langkah **Pilih editor yang Anda pakai** pada layar selamat datang saat pertama kali dijalankan, dan jendela yang muncul sekali di Beranda bagi orang yang sudah memakai GenOffice sebelum pengaturan ini ada. Awalnya semua menyala, jadi kalau dibiarkan tidak ada yang berubah. Perubahan langsung berlaku di semua jendela yang terbuka.
+
+- **Editor**: Word, Excel, PowerPoint, PDF, Alat PDF, Markdown dan teks, HTML, Peta pikiran, Diagram, HWP (Hangul), dan Buku elektronik (EPUB). Alat PDF dinyalakan dan dimatikan terpisah dari editor PDF. Setidaknya satu editor harus tetap menyala.
+- **Editor yang dimatikan** hilang dari daftar dokumen baru: kartu di Beranda, menu **+** di bilah tab, File ▸ Baru, dan daftar aplikasi default. Dokumen yang sudah terbuka tetap terbuka, dan salinan pemulihan tetap disimpan.
+- **Saat membuka file milik editor yang dimatikan** (klik ganda, seret dan lepas, File ▸ Buka, file terbaru), Anda diminta memilih **Aktifkan dan buka** atau **Batal**. Membuka beberapa filenya sekaligus hanya ditanyakan sekali.
+- **Fitur lain yang akan membuka hasilnya di editor yang dimatikan**, misalnya mengubah PDF ke format itu, bertanya sebelum mulai: **Aktifkan dan buka**, **Buat file saja** (file dibuat dan ditampilkan di foldernya, editor tetap mati), atau **Batal**.
+- **Saat fitur AI dimatikan**, panel AI, tombol dan menu AI, panel tanya di Beranda, jendela agen, serta ajakan menghubungkan AI hilang, dan tab Akun, AI, serta Skill keluar dari pengaturan. GenOffice tidak menjalankan program AI apa pun dari layarnya. Info masuk, kunci, skill, dan pengaturan tetap disimpan dan kembali saat AI dinyalakan lagi. Jika pekerjaan AI masih berjalan, Anda ditanya dulu apakah ingin **Hentikan dan matikan**.
+- Baris perintah, MCP, dan panduan ini bekerja sama saja, baik editor atau AI menyala maupun mati.
+
+Meskipun AI menyala, AI tidak membuat dokumen baru untuk editor yang dimatikan; AI meminta Anda menyalakan editor itu di sini.
+
 ## AI ▸ Lanjutan
 
 Tertutup sampai Anda membukanya; kebanyakan orang tidak pernah memerlukannya. Tab **Model AI** berisi kunci API dan server yang Anda jalankan sendiri, untuk obrolan. Di tab **Media & Pencarian AI**, setiap kemampuan memilih vendor yang melayaninya, dan kunci serta URL dasar sebuah vendor cukup diisi sekali lalu dipakai bersama:

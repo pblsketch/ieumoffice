@@ -634,3 +634,11 @@ export {
   printLayoutText,
   type PrintLayoutStringKey,
 } from './strings-print-layout'
+export {
+  ALL_ON_APP_CHOICE_STATE,
+  PENDING_APP_CHOICE_STATE,
+  aiVisible,
+  useAppChoice,
+  type AppChoiceSource,
+  type AppChoiceState,
+} from './use-app-choice'

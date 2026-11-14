@@ -56,6 +56,7 @@ export const hi = {
   appVerticalTextNotice:
     'इस दस्तावेज़ में लंबवत पाठ है (फ़िलहाल क्षैतिज रूप में दिखाया गया है; सहेजने पर असर नहीं)',
   appNewDocCreated: 'खाली दस्तावेज़ बनाया गया। बाईं ओर AI पैनल में बताएँ कि क्या जनरेट करना है।',
+  appNewDocCreatedNoAi: 'खाली दस्तावेज़ बनाया गया।',
   appNewFailed: 'दस्तावेज़ बनाने में विफल: {error}',
   appSaveFailed: 'सहेजने में विफल: {error}',
   appAutoSavedAt: 'स्वतः सहेजा गया ({time})',

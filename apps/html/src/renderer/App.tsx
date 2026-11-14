@@ -75,6 +75,7 @@ import {
 import { AiMark, CropDialog, CutoutDialog, type ImageDialogLabels } from '@genoffice/ui'
 import { FloatToolbar } from './components/FloatToolbar'
 import { RedactDialog } from './components/RedactDialog'
+import { useAiVisible } from './ai-visibility'
 import { useMathExtension } from './extensions/math/useMathExtension'
 import { redactClearPlan, redactMarkPlan, type RedactPlan } from './document/redact-edit'
 import {
@@ -198,9 +199,20 @@ export default function App() {
   const aiPanelOpen = effectiveAiPanelOpen(aiOpen, paneRole)
   // the sidebar switch is a soft hide; it closes the panel when it turns off
   const aiSidebarEnabled = useAiSidebarEnabled(setAiOpen)
+  // Settings › Editors and AI: while AI is off no AI part of this editor is drawn
+  // (panel, ribbon entries, Ask AI, withholding); turning it back on brings them back
+  const aiOn = useAiVisible()
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
   const [aiPreset, setAiPreset] = useState<AiPreset | null>(null)
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
   const [askMode, setAskMode] = useState<AskMode | null>(null)
+  // AI turned off: the queued AI edits go with the panel, and so does an open Ask AI
+  useEffect(() => {
+    if (aiOn) return
+    setEditQueue((queue) => (queue.length ? [] : queue))
+    setAskMode(null)
+  }, [aiOn])
   const [selectedSid, setSelectedSid] = useState<number | null>(null)
   const [selectedState, setSelectedState] = useState<NodeState>('static')
   /** elements selected alongside selectedSid (shift / ctrl+click, rubber band): delete,
@@ -985,8 +997,9 @@ export default function App() {
               'clear',
             )
           else if (msg.command === 'escape') selectSid(null)
-          else if (msg.command === 'askAi') setAskMode({ kind: 'new' })
-          else if (msg.command === 'bold') wrapSelectionRef.current('strong')
+          else if (msg.command === 'askAi') {
+            if (aiOnRef.current) setAskMode({ kind: 'new' })
+          } else if (msg.command === 'bold') wrapSelectionRef.current('strong')
           else if (msg.command === 'italic') wrapSelectionRef.current('em')
           else if (msg.command === 'parent' && e.parentSid !== null) {
             const parent = map.bySid.get(e.parentSid)
@@ -2001,38 +2014,40 @@ export default function App() {
       />
 
       <div className="app-main">
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
-            >
-              <AiMark size={18} />
-            </button>
-          )}
-          {/* stays mounted while collapsed: an in-flight run, its snapshots and the loop context survive */}
-          <AiPanel
-            deps={aiDeps}
-            filePath={path}
-            preset={aiPreset}
-            onGenerateHandoff={() => setAiOpen(true)}
-            templateDocument={templateDocument}
-            onSkillHandoff={() => setAiOpen(true)}
-            editQueue={editQueue}
-            onQueueEditInstruction={queueUpdate}
-            onQueueRemove={queueRemove}
-            onQueueClear={() => setEditQueue([])}
-            onQueueFocus={queueFocus}
-            onQueueConsume={queueConsume}
-            onCollapse={() => setAiOpen(false)}
-          />
-        </div>
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
+              >
+                <AiMark size={18} />
+              </button>
+            )}
+            {/* stays mounted while collapsed: an in-flight run, its snapshots and the loop context survive */}
+            <AiPanel
+              deps={aiDeps}
+              filePath={path}
+              preset={aiPreset}
+              onGenerateHandoff={() => setAiOpen(true)}
+              templateDocument={templateDocument}
+              onSkillHandoff={() => setAiOpen(true)}
+              editQueue={editQueue}
+              onQueueEditInstruction={queueUpdate}
+              onQueueRemove={queueRemove}
+              onQueueClear={() => setEditQueue([])}
+              onQueueFocus={queueFocus}
+              onQueueConsume={queueConsume}
+              onCollapse={() => setAiOpen(false)}
+            />
+          </div>
+        )}
         <div className="app-content">
           {findTarget && (
             <FindPanel
@@ -2132,7 +2147,7 @@ export default function App() {
                       onReplaceImage={replaceImage}
                       onCropImage={() => void openPictureDialog('crop')}
                       onCutoutImage={() => void openPictureDialog('cutout')}
-                      canAskAi={askTarget !== null}
+                      canAskAi={aiOn && askTarget !== null}
                       onAskAi={askAi}
                       tag={selectedEntry.tag}
                       onMove={moveSelected}
@@ -2187,7 +2202,7 @@ export default function App() {
                 onChange={onEditorChange}
                 onCursor={onCursor}
                 onBeforeReplace={flushPending}
-                onRedact={onRedactSelection}
+                onRedact={aiOn ? onRedactSelection : undefined}
               />
             </div>
           </div>
@@ -2262,7 +2277,7 @@ export default function App() {
           </footer>
         </div>
       </div>
-      {askTarget && askMode && canvasMode !== 'present' && (
+      {aiOn && askTarget && askMode && canvasMode !== 'present' && (
         <AiAskPopover
           key={askMode.kind === 'edit' ? askMode.qid : 'new'}
           target={askTarget}
