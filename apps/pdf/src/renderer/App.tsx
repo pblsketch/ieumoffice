@@ -172,6 +172,8 @@ import {
   remapOutlineTree,
 } from './heading-outline'
 import { printPdf } from './print'
+import { PrintDialog } from './PrintDialog'
+import { jobPageSizes, pickedVisiblePages, routePrint } from './print-route'
 import { readFileBytes } from './file-bytes'
 import { mayChangeProtection } from './protection-gate'
 import { PasswordDialog } from './PasswordDialog'
@@ -288,6 +290,7 @@ import {
   onAiRailClick,
   rememberAiPanelOpen,
   presentationKeyOf,
+  printLayoutIssueText,
   useAutoSavePref,
   useDismissablePopover,
   useRibbonCollapse,
@@ -295,8 +298,12 @@ import {
   useSplitPaneFocusPing,
   useSplitPaneRole,
   templateDocumentOf,
+  type PrintLabelSpecStore,
+  type PrintLayoutPreviewRequest,
+  type PrintLayoutProgress,
   type TemplateDocument,
 } from '@genoffice/ui'
+import type { PrintLayoutErrorCode, PrintLayoutOptions } from '@genoffice/print-layout/plan'
 import { useI18n } from './i18n/locale'
 import { useAutosave } from './useAutosave'
 import { useRecoveryCopies } from './recovery/useRecoveryCopies'
@@ -330,7 +337,9 @@ import type {
   TextInsertFailure,
   TextInsertInput,
   PdfToolsHandoffTool,
+  PdfPrintLayoutEditor,
 } from '../shared/ipc'
+import { PDF_PRINT_SAVE_RESTRICTED } from '../shared/ipc'
 import {
   ZOOM_STEPS,
   MIN_SCALE,
@@ -565,6 +574,13 @@ interface WrittenSteps {
 }
 /** Each step holds the whole file twice: a long history of them would hold that much memory */
 const MAX_WRITTEN_STEPS = 10
+
+/** An arranged print or save from the print dialog: its progress, or why it failed. */
+interface PrintJobState {
+  progress: PrintLayoutProgress | null
+  error: string | null
+}
+const PRINT_JOB_IDLE: PrintJobState = { progress: null, error: null }
 
 export default function App() {
   const { lang, t } = useI18n()
@@ -1396,9 +1412,8 @@ export default function App() {
   const [pageSizeDlg, setPageSizeDlg] = useState(false)
   const [splitPagesDlg, setSplitPagesDlg] = useState(false)
   const [printDlg, setPrintDlg] = useState(false)
-  const [printMode, setPrintMode] = useState<'all' | 'current' | 'custom'>('all')
-  const [printInput, setPrintInput] = useState('')
-  const [printInvalid, setPrintInvalid] = useState(false)
+  /** an arranged print or save (advanced print route) in progress, or why it failed */
+  const [printJob, setPrintJob] = useState<PrintJobState>(PRINT_JOB_IDLE)
   const [printAnnots, setPrintAnnots] = useState(true)
   /** Save As flow: the shell picked the target, the reader still chooses what happens to annotations */
   const [saveCopyDlg, setSaveCopyDlg] = useState<{ targetPath: string } | null>(null)
@@ -8101,10 +8116,9 @@ export default function App() {
 
   // currentPage only tracks scroll, so it can outlive a page deletion
   const printCurrentPage = Math.max(1, Math.min(currentPage, pageCount))
+  // The dialog mounts per open, so its range and layout options start fresh
   const openPrintDlg = () => {
-    setPrintMode('all')
-    setPrintInput(String(printCurrentPage))
-    setPrintInvalid(false)
+    setPrintJob(PRINT_JOB_IDLE)
     setPrintDlg(true)
   }
 
@@ -8139,25 +8153,117 @@ export default function App() {
     }
   }
 
-  /** Print dialog confirm: visible page numbers → 1-based file pages */
-  const confirmPrint = () => {
-    if (printMode === 'all') {
-      setPrintDlg(false)
-      void printDoc()
-      return
+  /** Picked thumbnails as 1-based visible pages, for the dialog's "picked pages" range */
+  const printPickedPages = useMemo(
+    () => pickedVisiblePages(pickedPages, visList),
+    [pickedPages, visList],
+  )
+
+  /** The print job's page sizes for the layout diagram; the flush saves the visible order */
+  const printPageSizes = (pages: number[] | undefined) =>
+    jobPageSizes(pages, pageCount, (visiblePage) => {
+      const origIdx = visList[visiblePage - 1]
+      if (origIdx === undefined || !(allSizes[origIdx] ?? blankSizeNow(origIdx))) return null
+      const g = pageGeom(origIdx)
+      return { width: g.pw, height: g.ph, rotate: g.rot, userUnit: g.userUnit ?? 1 }
+    })
+
+  const printLayoutEditor = (pages: number[] | null): PdfPrintLayoutEditor => ({
+    path: filePath,
+    pages,
+    includeAnnotations: printAnnots,
+  })
+
+  const printLayoutFailureText = (failure: { error: string; code?: PrintLayoutErrorCode }) =>
+    failure.code
+      ? printLayoutIssueText(lang, { code: failure.code, message: failure.error })
+      : failure.error === PDF_PRINT_SAVE_RESTRICTED
+        ? t('printSaveRestricted')
+        : failure.error
+
+  /**
+   * Arranged print or save (any layout option on): pending edits are saved
+   * first, as for the current print, then the main process builds the job
+   * from the file. The dialog stays open with progress and closes once printed.
+   */
+  const runArrangedJob = async (
+    kind: 'print' | 'save',
+    options: PrintLayoutOptions,
+    pages: number[] | null,
+  ) => {
+    if (printBusyRef.current) return
+    printBusyRef.current = true
+    const bridge = window.pdfApi.printLayout
+    setPrintJob({ progress: { done: 0, total: 0 }, error: null })
+    const stopProgress = bridge.onProgress((progress) => setPrintJob({ progress, error: null }))
+    try {
+      const result = await flushThen(async () => {
+        setPrinting(true)
+        try {
+          const request = { options, editor: printLayoutEditor(pages) }
+          return kind === 'print' ? await bridge.print(request) : await bridge.savePdf(request)
+        } finally {
+          setPrinting(false)
+        }
+      })
+      if (result && !result.ok && !('aborted' in result)) {
+        setPrintJob({ progress: null, error: printLayoutFailureText(result) })
+        return
+      }
+      setPrintJob(PRINT_JOB_IDLE)
+      if (kind === 'print' && result?.ok) setPrintDlg(false)
+    } finally {
+      stopProgress()
+      printBusyRef.current = false
     }
-    if (printMode === 'current') {
-      setPrintDlg(false)
-      void printDoc([printCurrentPage])
-      return
+  }
+
+  /** Print pressed: default options keep the current path and its arguments */
+  const confirmPrint = (pages: number[] | undefined, options: PrintLayoutOptions) => {
+    routePrint(options, pages, {
+      current: (...args) => {
+        setPrintDlg(false)
+        void printDoc(...args)
+      },
+      arranged: (jobPages) => void runArrangedJob('print', options, jobPages),
+    })
+  }
+
+  const previewArranged = async (
+    pages: number[] | undefined,
+    ...[options, { signal, onProgress }]: Parameters<PrintLayoutPreviewRequest>
+  ): Promise<Uint8Array[]> => {
+    const bridge = window.pdfApi.printLayout
+    const stopProgress = bridge.onProgress(onProgress)
+    const onAbort = () => void bridge.cancel()
+    signal.addEventListener('abort', onAbort, { once: true })
+    try {
+      const result = await flushThen(() =>
+        bridge.preview({ options, editor: printLayoutEditor(pages ?? null) }),
+      )
+      if (!result) throw new Error('saving the pending edits failed')
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return result.faces.map((face) => face.png)
+    } finally {
+      signal.removeEventListener('abort', onAbort)
+      stopProgress()
     }
-    const pages = parsePageRanges(printInput, pageCount)
-    if (!pages || pages.length === 0) {
-      setPrintInvalid(true)
-      return
-    }
+  }
+
+  const printLabelSpecStore = useMemo<PrintLabelSpecStore>(
+    () => ({
+      load: () => window.pdfApi.printLayout.getLabelSpec(),
+      save: async (spec) => {
+        const result = await window.pdfApi.printLayout.setLabelSpec(spec)
+        if (!result.ok) throw new Error(result.error)
+      },
+    }),
+    [],
+  )
+
+  const closePrintDlg = () => {
+    if (printJob.progress) void window.pdfApi.printLayout.cancel()
     setPrintDlg(false)
-    void printDoc(pages)
   }
 
   /** Capability surface for AI tools; rebuilt each render (AiPanel mirrors it via refs to get the latest) */
@@ -13945,72 +14051,27 @@ export default function App() {
               </div>
             )}
             {printDlg && (
-              <div className="pdf-modal-mask" onClick={() => setPrintDlg(false)}>
-                <div className="pdf-modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="pdf-modal-title">{t('print')}</div>
-                  <label className="pdf-modal-row">
-                    <input
-                      type="radio"
-                      name="print-range"
-                      checked={printMode === 'all'}
-                      onChange={() => setPrintMode('all')}
-                    />
-                    <span>{t('printRangeAll')}</span>
-                  </label>
-                  <label className="pdf-modal-row">
-                    <input
-                      type="radio"
-                      name="print-range"
-                      checked={printMode === 'current'}
-                      onChange={() => setPrintMode('current')}
-                    />
-                    <span>
-                      {t('printRangeCurrent')} ({printCurrentPage})
-                    </span>
-                  </label>
-                  <label className="pdf-modal-row">
-                    <input
-                      type="radio"
-                      name="print-range"
-                      checked={printMode === 'custom'}
-                      onChange={() => setPrintMode('custom')}
-                    />
-                    <span>{t('printRangeCustom')}</span>
-                  </label>
-                  {printMode === 'custom' && (
-                    <input
-                      className={`pdf-modal-input${printInvalid ? ' invalid' : ''}`}
-                      value={printInput}
-                      placeholder={t('printRangeHint')}
-                      autoFocus
-                      onChange={(e) => {
-                        setPrintInput(e.target.value)
-                        setPrintInvalid(false)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') confirmPrint()
-                        else if (e.key === 'Escape') setPrintDlg(false)
-                      }}
-                    />
-                  )}
-                  <label className="pdf-modal-row">
-                    <input
-                      type="checkbox"
-                      checked={printAnnots}
-                      onChange={(e) => setPrintAnnots(e.target.checked)}
-                    />
-                    <span>{t('printIncludeAnnots')}</span>
-                  </label>
-                  <div className="pdf-modal-actions">
-                    <button className="pdf-modal-btn" onClick={() => setPrintDlg(false)}>
-                      {t('cancel')}
-                    </button>
-                    <button className="pdf-modal-btn primary" onClick={confirmPrint}>
-                      {t('print')}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <PrintDialog
+                lang={lang}
+                t={t}
+                pageCount={pageCount}
+                currentPage={printCurrentPage}
+                pickedPages={printPickedPages}
+                includeAnnotations={printAnnots}
+                onIncludeAnnotationsChange={setPrintAnnots}
+                pageSizes={printPageSizes}
+                onPrint={confirmPrint}
+                onSavePdf={(pages, options) => void runArrangedJob('save', options, pages ?? null)}
+                saveRestricted={documentEncrypted || encryption !== null}
+                onPreviewRequest={previewArranged}
+                onCancel={closePrintDlg}
+                job={{
+                  progress: printJob.progress,
+                  error: printJob.error,
+                  onCancel: () => void window.pdfApi.printLayout.cancel(),
+                }}
+                labelSpecStore={printLabelSpecStore}
+              />
             )}
             {saveCopyDlg && (
               <div className="pdf-modal-mask" onClick={cancelSaveCopy}>

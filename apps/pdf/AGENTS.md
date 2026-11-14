@@ -100,6 +100,7 @@ PDF 보기·주석·편집 에디터다. 화면은 PDF.js로 그리고, 저장�
 - 문자열은 `src/renderer/i18n/strings.ts`(한 파일에 22개 언어, `zh`가 키 집합)와 `cert-sign-strings.ts`에 있다. 새 기능의 문자열은 언어별 조각으로 나뉘어 있다(`i18n/convert/`, `i18n/ai-read/`, `i18n/translate/`, 읽기 도우미의 `i18n/reading/`, `i18n/annot-panel/`, `i18n/ai-reading/`, `i18n/bilingual/`, `i18n/highlight/`, `i18n/notes/`, 각각 `zh`가 키 집합, 묶는 파일은 `strings-<기능>.ts`). 노트 저장 창의 문구는 메인의 `note-link.ts`에 있다. 구독 연결 문장과 AI 진입 이름은 `@genoffice/ui`의 것을 쓴다.
 - 문서 작업 엔진은 화면 프로세스에서 돈다. 페이지 그림은 화면이 자기 PDF.js 사본으로 그리고, 모델 호출은 AI 창과 같은 `ai:stream`으로 간다. 결과 쓰기는 `ipc-store.ts`를 거쳐 셸의 보관소로 간다. 셸은 그 창에 열린 파일에서 자기가 계산한 해시만 받아들인다.
 - `src/shared/ipc.ts`의 `structure*`·`store*` 채널 모양을 바꾸면 셸의 처리 코드(`apps/shell/src/main/pdf-structure/`)도 함께 고치고 셸을 다시 빌드한다.
+- **고급 인쇄(결정 0141).** 인쇄 창은 `PrintDialog.tsx`로 옮겼고 공용 쪽 배치 칸과 "고른 페이지" 범위가 붙었다. 쪽 배치에서 아무것도 고르지 않으면 `printDoc` → `printPdf`(PDF.js 그림 인쇄)가 전과 같다. 고르면 저장된 파일에서 범위·고른 페이지를 사본으로 뽑아(주석 포함이면 `flattenAnnotsBytes`, 아니면 입력란까지 모든 주석 목록을 뺀다) `pdf:print-layout-*`로 보낸다(`src/main/print-layout.ts`). 원본 파일은 바뀌지 않는다. 결과 미리 보기도 인쇄처럼 먼저 저장한다. 권한 제한이 걸린(`/Encrypt`가 있는) 파일은 인쇄·미리 보기는 되지만 "배치한 결과를 PDF로 저장"이 없고(`PrintDialog`의 `saveRestricted`, 까닭 한 줄), 뒷단도 저장 창을 띄우기 전과 작업을 만들 때 `PDF_PRINT_SAVE_RESTRICTED`로 거절한다.
 
 ## 로컬 AI (결정 0067)
 
