@@ -78,6 +78,7 @@ const METHODS = [
   'styleParagraphs',
   'insertTitleBox',
   'documentFonts',
+  'pageCount',
   'pageLayout',
   'setColumns',
   'insertBreak',

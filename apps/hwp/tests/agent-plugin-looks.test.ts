@@ -2125,3 +2125,136 @@ describe('removing what follows a table', () => {
     expect(pictures()).toEqual([1])
   })
 })
+
+describe('what a change leaves on the pages', () => {
+  const lines = (count: number, word = '본문 줄') =>
+    Array.from({ length: count }, (_, k) => `${word} ${k + 1}`)
+  const rows = (count: number) => Array.from({ length: count }, (_, k) => [`${k + 1}행`, '값'])
+
+  it('maps the pages: the words each starts and ends with, and a caption left at the foot', () => {
+    const { plugin } = open(blank([...lines(36), '<표 1> 일정']))
+    expect(plugin.insertTable('<표 1> 일정', null, 'after', rows(10), false)).toMatchObject({
+      ok: true,
+    })
+    const { pages, map } = plugin.pageLayout()
+    expect(pages).toBe(2)
+    expect(map.pages).toEqual([
+      { page: 1, first: { text: '본문 줄 1' }, last: { text: '<표 1> 일정' } },
+      { page: 2, first: { table: 1 }, last: { table: 1 } },
+    ])
+    expect(map.alone).toEqual([{ page: 1, kind: 'caption', text: '<표 1> 일정', nextPage: 2 }])
+    expect([map.spans, map.past]).toEqual([[], []])
+  })
+
+  it('names a heading that ends a page while its text starts the next one', () => {
+    const { plugin } = open(blank(lines(70)))
+    const foot = plugin.pageLayout().map.pages[0]
+    if (!('last' in foot) || !('text' in foot.last)) throw new Error('page 1 ends with no text')
+    expect(plugin.pageLayout().map.alone).toEqual([])
+    plugin.styleParagraphs({
+      styles: [{ name: '머리', format: {}, keepWithNext: true }],
+      apply: [{ style: '머리', find: foot.last.text }],
+    })
+    expect(plugin.pageLayout().map.alone).toEqual([
+      { page: 1, kind: 'heading', text: foot.last.text, nextPage: 2 },
+    ])
+  })
+
+  it('tells a page with nothing on it', () => {
+    const doc = blank(['앞 쪽', '', '뒤 쪽'])
+    doc.insertPageBreak(0, 1, 0)
+    doc.insertPageBreak(0, 3, 0)
+    const { map } = open(doc).plugin.pageLayout()
+    expect(map.pages.map((page) => ('empty' in page ? 'empty' : page.first))).toEqual([
+      { text: '앞 쪽' },
+      'empty',
+      { text: '뒤 쪽' },
+    ])
+  })
+
+  it('names a table that runs over pages, and one taller than a page that runs off it', () => {
+    const { plugin, doc } = open(blank(lines(3)))
+    plugin.insertTable('본문 줄 3', null, 'after', rows(70), false)
+    const tall = plugin.pageLayout().map
+    expect(tall.past).toEqual([{ table: 1, page: 2, row: expect.any(Number), taller: true }])
+    expect(tall.spans).toEqual([])
+    const cut = plugin.checkLayout(null, null)
+    expect(cut.cells).toEqual([])
+    expect(cut.past).toEqual([{ table: 1, page: 2, row: tall.past[0]!.row, taller: true }])
+    const { control } = tableIn(doc(), 3)
+    doc().setTableProperties(0, 3, control, JSON.stringify({ treatAsChar: false, pageBreak: 1 }))
+    const split = plugin.pageLayout().map
+    expect(split.spans).toEqual([{ table: 1, from: 1, to: 3 }])
+    expect([split.past, plugin.checkLayout(null, null).past]).toEqual([[], []])
+  })
+
+  it('gives a title the height of the lines it takes, so that nothing of it is cut', () => {
+    const long = '2026년 상반기 신규 직원 직무 역량 강화를 위한 연수 운영 계획 및 예산 집행 방안'
+    for (const [title, size, lineCount] of [
+      [TITLE, 22, 1],
+      [long, 20, 2],
+    ] as const) {
+      const { plugin, doc } = open(blank([title, '□ 목적']))
+      expect(plugin.insertTitleBox(title, null, { look: 'bands', size })).toMatchObject({
+        ok: true,
+        table: 1,
+        tables: 1,
+      })
+      const box = tableIn(doc(), 0)
+      const lines = JSON.parse(doc().getLineInfoInCell(0, 0, box.control, 1, 0, 0)) as {
+        lineCount: number
+      }
+      expect(lines.lineCount).toBe(lineCount)
+      const oneLine = Math.round(size * 100 * 1.9)
+      expect(box.cell(1).height).toBe(
+        lineCount === 1 ? oneLine : Math.round(size * 100 * (1.9 + 1.6 * (lineCount - 1))),
+      )
+      expect(plugin.checkLayout(null, null).cells).toEqual([])
+    }
+  })
+
+  it('gives the number of the table it made and says how many there are', () => {
+    const { plugin } = open()
+    expect(plugin.insertTable('□ 세부 일정', null, 'after', ROWS, true)).toMatchObject({
+      table: 1,
+      tables: 1,
+    })
+    expect(plugin.insertTable('□ 추진 배경', null, 'after', ROWS, true)).toMatchObject({
+      table: 1,
+      tables: 2,
+    })
+    expect(
+      plugin.insertToc('□ 추진 배경', null, 'before', '차 례', [{ find: '□ 세부 일정', level: 1 }]),
+    ).toMatchObject({ ok: true, table: 1, tables: 3 })
+    expect(plugin.insertTitleBox(TITLE, null, { look: 'box' })).toMatchObject({
+      ok: true,
+      table: 1,
+      tables: 4,
+    })
+    expect(plugin.listTables().tables.map((table) => table.rows)).toEqual([1, 1, 3, 3])
+  })
+
+  it('names the tables wider than a column once the text runs in columns', () => {
+    const { plugin } = open()
+    plugin.insertTable('□ 추진 배경', null, 'after', ROWS, { header: true })
+    plugin.insertTable('□ 세부 일정', null, 'after', ROWS, { header: true, widthPercent: 40 })
+    expect(plugin.setColumns({ count: 2 })).toMatchObject({ ok: true, wide: [1] })
+    expect(plugin.setColumns({ count: 1 })).not.toHaveProperty('wide')
+  })
+
+  it('measures one table from a row to a row, and counts cells that break inside a word', () => {
+    const { plugin } = withTable()
+    plugin.insertTable('□ 추진 배경', null, 'after', ROWS, true)
+    const address = 'haneul.kim.planning-office@example.org'
+    plugin.fillCells(2, [{ row: 2, col: 3, text: address }], true)
+    const one = plugin.checkLayout(2, 2, 2)
+    expect(one).toMatchObject({ tables: 2, from: { table: 2, row: 2 } })
+    expect(one.wrapped).toEqual([
+      { table: 2, row: 2, col: 3, page: 1, text: expect.stringContaining('haneul') },
+    ])
+    expect(plugin.checkLayout(2, 3, 3).wrapped).toEqual([])
+    expect(plugin.checkLayout(1, 1, 3).wrapped).toEqual([])
+    plugin.fillCells(2, [{ row: 3, col: 3, text: '국립중앙박물관어린이박물관체험학습실' }], true)
+    expect(plugin.checkLayout(2, 3, 3).wrapped).toEqual([])
+  })
+})

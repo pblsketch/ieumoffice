@@ -2922,6 +2922,44 @@ function pastedTableAt(doc, place) {
 }
 
 /**
+ * The number listTables gives the table object `control` of body paragraph `para` (its last
+ * table when `control` is null), with how many tables the document has; empty when no
+ * table is there.
+ */
+function tableNumberOf(doc, sec, para, control = null) {
+  const { tables } = tablesOf(doc)
+  const index = tables.findLastIndex(
+    (table) =>
+      table.sec === sec &&
+      table.para === para &&
+      table.path.length === 1 &&
+      (control === null || table.path[0].controlIndex === control),
+  )
+  return index < 0 ? {} : { table: index + 1, tables: tables.length }
+}
+
+/**
+ * The listTables numbers of the body tables that stand in the line of text and are wider
+ * than a column of their section: in columns they lie over the text of the next column.
+ * A table that hangs from the page (one laid across the columns) is meant to be wide.
+ */
+function tablesWiderThanColumn(doc) {
+  const wide = []
+  tablesOf(doc).tables.forEach((table, index) => {
+    if (table.path.length !== 1) return
+    const control = table.path[0].controlIndex
+    try {
+      if (parse(doc.getTableProperties(table.sec, table.para, control)).treatAsChar === false) {
+        return
+      }
+      const { width } = parse(doc.getTableBBox(table.sec, table.para, control))
+      if (width > (columnWidthPt(doc, table.sec) * 96) / 72 + 1) wide.push(index + 1)
+    } catch {}
+  })
+  return wide
+}
+
+/**
  * Set the lines of a block of cells of a body table (`rect`, zero-based and inclusive) by
  * border rules. Each cell gets all its changed edges in one call, and a line between two
  * cells of the block is the same on both: the engine carries a cell's edge over to its
@@ -3932,6 +3970,189 @@ function overflowIn(runs, box, paragraphs) {
   return lowest.y + lowest.h - edge
 }
 
+/** Hangul and other CJK script: text written in it breaks between any two characters. */
+const BREAKS_ANYWHERE = /[ᄀ-ᇿ぀-ヿ㄰-㆏一-鿿가-힯]/
+
+/**
+ * Whether one of the cell's lines of `runs` starts inside a word: no space on either side
+ * of the break, and at least one side not in a script that breaks between any two
+ * characters (Korean text breaks per syllable when its paragraph says so, as Hangul's
+ * default does). Lines are the runs of one paragraph that start at another height.
+ */
+function breaksInsideWord(runs, box, paragraphs) {
+  const own = runs.filter(
+    (run) => run.x >= box.x - 1 && run.x < box.x + box.w && drawsTextOf(run, paragraphs()),
+  )
+  const starts = new Map()
+  for (const run of own) {
+    const lines = starts.get(run.para) ?? new Map()
+    const y = Math.round(run.y)
+    lines.set(y, Math.min(lines.get(y) ?? Infinity, run.start))
+    starts.set(run.para, lines)
+  }
+  for (const [para, lines] of starts) {
+    const text = paragraphs()[para]
+    const ordered = [...lines].sort((a, b) => a[0] - b[0])
+    for (const [, start] of ordered.slice(1)) {
+      const before = engineSlice(text, start - 1, start)
+      const after = engineSlice(text, start, start + 1)
+      if (!/\S/.test(before) || !/\S/.test(after)) continue
+      if (!(BREAKS_ANYWHERE.test(before) && BREAKS_ANYWHERE.test(after))) return true
+    }
+  }
+  return false
+}
+
+/** How a table's caption line starts: <표 1>, [표 2], 표 3., 〈그림 1〉, Table 4. */
+const CAPTION_START = /^[<[〈《(]?\s*(표|그림|도표|Table|Figure)\s*\d/i
+
+/** Where the text area of page `page` ends and begins, in CSS px from the top of the page. */
+function bodyAreaOf(doc, page) {
+  const info = parse(doc.getPageInfo(page))
+  const foot = info.footerArea?.y ?? info.height - info.marginBottom
+  const top = info.headerArea ? info.headerArea.y + info.headerArea.height : info.marginTop
+  return { top, foot, columns: Array.isArray(info.columns) ? info.columns : [] }
+}
+
+/** The AgentPageMap of the document as it is laid out now. Reads only. */
+function pageMapOf(doc) {
+  const numbers = new Map()
+  tablesOf(doc).tables.forEach((table, index) => {
+    if (table.path.length === 1) {
+      numbers.set(`${table.sec}/${table.para}/${table.path[0].controlIndex}`, index + 1)
+    }
+  })
+  const counts = []
+  const isBody = (sec, para) =>
+    Number.isInteger(sec) &&
+    Number.isInteger(para) &&
+    para < (counts[sec] ??= sec < doc.getSectionCount() ? doc.getParagraphCount(sec) : 0)
+  const order = (a, b) => a.sec - b.sec || a.para - b.para
+  const pages = []
+  const slots = []
+  const spans = new Map()
+  const past = []
+  const total = doc.pageCount()
+  for (let page = 0; page < total; page++) {
+    const { top, foot, columns } = bodyAreaOf(doc, page)
+    const columnOf = (x) => {
+      let at = 0
+      columns.forEach((column, index) => {
+        if (x >= column.x - 1) at = index
+      })
+      return at
+    }
+    let runs = []
+    try {
+      runs = parse(doc.getPageTextLayout(page)).runs ?? []
+    } catch {}
+    let controls = []
+    try {
+      controls = parse(doc.getPageControlLayout(page)).controls ?? []
+    } catch {}
+    const items = []
+    let objects = 0
+    const lowLines = new Set()
+    for (const run of runs) {
+      if (run.cellPath || !isBody(run.secIdx, run.paraIdx) || !/\S/.test(run.text ?? '')) continue
+      items.push({ sec: run.secIdx, para: run.paraIdx, column: columnOf(run.x), table: null })
+      if (run.y + run.h - foot > run.h * LAYOUT_SLACK_LINE) lowLines.add(Math.round(run.y))
+    }
+    for (const control of controls) {
+      if (control.headerFooter || !isBody(control.secIdx, control.paraIdx)) continue
+      const number =
+        control.type === 'table'
+          ? (numbers.get(`${control.secIdx}/${control.paraIdx}/${control.controlIdx}`) ?? null)
+          : null
+      if (number === null) {
+        objects += 1
+        continue
+      }
+      items.push({
+        sec: control.secIdx,
+        para: control.paraIdx,
+        column: columnOf(control.x),
+        table: number,
+      })
+      spans.set(number, [...(spans.get(number) ?? []), page + 1])
+      if (control.y + control.h > foot + 1) {
+        const low = (control.cells ?? []).filter((cell) => cell.y + cell.h > foot + 1)
+        past.push({
+          table: number,
+          page: page + 1,
+          row: low.length > 0 ? Math.min(...low.map((cell) => cell.row)) + 1 : 1,
+          ...(control.h > foot - top + 1 ? { taller: true } : {}),
+        })
+      }
+    }
+    if (items.length === 0) {
+      pages.push(
+        objects > 0
+          ? { page: page + 1, first: { text: '' }, last: { text: '' } }
+          : { page: page + 1, empty: true },
+      )
+      continue
+    }
+    const sorted = [...items].sort(order)
+    const ends = (item) => {
+      const text = paragraphText(doc, item.sec, item.para)
+      return item.table !== null && !text ? { table: item.table } : { text }
+    }
+    pages.push({
+      page: page + 1,
+      first: ends(sorted[0]),
+      last: ends(sorted.at(-1)),
+      ...(lowLines.size > 0 ? { pastFoot: lowLines.size } : {}),
+    })
+    for (let column = 0; column < Math.max(1, columns.length); column++) {
+      const mine = items.filter((item) => item.column === column).sort(order)
+      if (mine.length === 0) continue
+      slots.push({
+        page: page + 1,
+        column: column + 1,
+        columns: columns.length,
+        first: mine[0],
+        last: mine.at(-1),
+      })
+    }
+  }
+  const alone = []
+  for (let k = 0; k + 1 < slots.length; k++) {
+    const { last } = slots[k]
+    const { first } = slots[k + 1]
+    if (last.table !== null || first.sec !== last.sec || first.para !== last.para + 1) continue
+    if (!paragraphText(doc, last.sec, last.para)) continue
+    const props = parse(doc.getParaPropertiesAt(last.sec, last.para))
+    const heading = props.keepWithNext === true || props.headType === 'Outline'
+    const caption =
+      first.table !== null &&
+      (heading || CAPTION_START.test(paragraphText(doc, last.sec, last.para)))
+    if (!heading && !caption) continue
+    alone.push({
+      page: slots[k].page,
+      ...(slots[k].columns > 1 ? { column: slots[k].column } : {}),
+      kind: caption ? 'caption' : 'heading',
+      text: paragraphText(doc, last.sec, last.para),
+      nextPage: slots[k + 1].page,
+    })
+  }
+  return {
+    pages,
+    alone,
+    spans: [...spans]
+      .filter(([, on]) => on.length > 1)
+      .map(([table, on]) => ({ table, from: on[0], to: on.at(-1) })),
+    past,
+  }
+}
+
+/** The first words of body paragraph `para`, or '' when it has no text. */
+function paragraphText(doc, sec, para) {
+  const length = doc.getParagraphLength(sec, para)
+  if (length === 0) return ''
+  return clip(doc.getTextRange(sec, para, 0, length).replace(/\s+/g, ' ').trim(), PREVIEW_CHARS)
+}
+
 /**
  * The table cells whose text does not fit, as the pages are laid out (checkLayout lays them
  * out with the widths print and export use): a row keeps the height the file gives it, so a
@@ -3942,23 +4163,37 @@ function overflowIn(runs, box, paragraphs) {
  *
  * Starts at table `fromTable`, row `fromRow` (1-based, as listTables and readTable number
  * them) and goes on for about two seconds or until MAX_LISTED_OVERFLOWS cells are listed,
- * always ending on a whole row; `next` names where the next call starts. Reads only.
+ * always ending on a whole row; `next` names where the next call starts. Given `toRow`,
+ * only table `fromTable` is measured, up to that row. Reads only.
+ *
+ * Beside the cut cells: `wrapped`, the cells a line of which starts inside a word, and
+ * `past`, per table the first row drawn below the foot of a page's text area (a table
+ * stands whole on its page here, and one taller than the page runs off it, `taller`).
  */
-function overflowsOf(doc, fromTable, fromRow) {
+function overflowsOf(doc, fromTable, fromRow, toRow = null) {
   const { tables, partial } = tablesOf(doc)
   const start = Number.isInteger(fromTable) && fromTable >= 1 ? fromTable - 1 : 0
   const firstRow = Number.isInteger(fromRow) && fromRow >= 1 ? fromRow - 1 : 0
+  const end = toRow === null ? tables.length : Math.min(start + 1, tables.length)
+  const lastRow = toRow === null ? Infinity : toRow - 1
   const began = Date.now()
   const pages = new Map()
   const linesOn = (page) => {
     if (!pages.has(page)) pages.set(page, cellLinesOn(doc, page))
     return pages.get(page)
   }
+  const areas = new Map()
+  const areaOf = (page) => {
+    if (!areas.has(page)) areas.set(page, bodyAreaOf(doc, page))
+    return areas.get(page)
+  }
   const toMm = (px) => Math.round(((px * 25.4) / 96) * 10) / 10
   const cells = []
+  const wrapped = []
+  const past = []
   let measured = 0
   let next = null
-  for (let index = start; index < tables.length && !next; index++) {
+  for (let index = start; index < end && !next; index++) {
     const table = tables[index]
     let boxes
     try {
@@ -3977,6 +4212,7 @@ function overflowsOf(doc, fromTable, fromRow) {
     }
     const cellAtPlace = new Map(grid.map((g) => [`${g.row}/${g.col}`, g.cell]))
     const key = tableKey(table.sec, table.para, table.path)
+    const broken = new Set()
     const texts = new Map()
     const textOf = (cell) => {
       if (!texts.has(cell)) texts.set(cell, paragraphsOf(cellBox(doc, table, cell)))
@@ -3984,9 +4220,25 @@ function overflowsOf(doc, fromTable, fromRow) {
     }
     const rows = new Map()
     for (const box of boxes) {
-      if (index === start && box.row < firstRow) continue
+      if (index === start && (box.row < firstRow || box.row > lastRow)) continue
       if (!rows.has(box.row)) rows.set(box.row, [])
       rows.get(box.row).push(box)
+    }
+    const below = boxes
+      .filter((box) => rows.has(box.row) && box.y + box.h > areaOf(box.pageIndex).foot + 1)
+      .sort((a, b) => a.row - b.row)
+    if (below.length > 0) {
+      const { pageIndex } = below[0]
+      const { top, foot } = areaOf(pageIndex)
+      const onPage = boxes.filter((box) => box.pageIndex === pageIndex)
+      const height =
+        Math.max(...onPage.map((box) => box.y + box.h)) - Math.min(...onPage.map((box) => box.y))
+      past.push({
+        table: index + 1,
+        row: below[0].row + 1,
+        page: pageIndex + 1,
+        ...(height > foot - top + 1 ? { taller: true } : {}),
+      })
     }
     for (const row of [...rows.keys()].sort((a, b) => a - b)) {
       if (
@@ -4006,17 +4258,26 @@ function overflowsOf(doc, fromTable, fromRow) {
           measured += 1
         }
         if (listed.has(cell)) continue
-        const below = overflowIn(linesOn(box.pageIndex).get(`${key}/${cell}`) ?? [], box, () =>
-          textOf(cell),
-        )
-        if (below === null) continue
+        const runs = linesOn(box.pageIndex).get(`${key}/${cell}`) ?? []
+        if (!broken.has(cell) && breaksInsideWord(runs, box, () => textOf(cell))) {
+          broken.add(cell)
+          wrapped.push({
+            table: index + 1,
+            row: box.row + 1,
+            col: box.col + 1,
+            page: box.pageIndex + 1,
+            text: clip(textOf(cell).join(' ').trim(), PREVIEW_CHARS),
+          })
+        }
+        const cut = overflowIn(runs, box, () => textOf(cell))
+        if (cut === null) continue
         listed.add(cell)
         cells.push({
           table: index + 1,
           row: box.row + 1,
           col: box.col + 1,
           page: box.pageIndex + 1,
-          over: toMm(below),
+          over: toMm(cut),
           text: clip(textOf(cell).join(' ').trim(), PREVIEW_CHARS),
         })
       }
@@ -4026,6 +4287,8 @@ function overflowsOf(doc, fromTable, fromRow) {
     tables: tables.length,
     from: { table: start + 1, row: firstRow + 1 },
     cells,
+    wrapped,
+    past,
     measured,
     ...(next ? { next } : {}),
     ...(partial ? { partial: true } : {}),
@@ -6892,6 +7155,7 @@ export const agentPlugin = {
                 cols: table[0].length,
                 inTable: box.inTable,
                 place,
+                ...(box.inTable ? {} : tableNumberOf(doc, place.sec, place.para)),
                 ...(across ? { acrossColumns: true } : {}),
                 ...(headerTextColor ? { headerTextColor } : {}),
                 ...(look.standIns.length > 0 ? { standIn: look.standIns } : {}),
@@ -7220,10 +7484,14 @@ export const agentPlugin = {
        * page and how far past the edge in mm. Starts at table `fromTable`, row `fromRow`
        * (1-based, default the first) and measures for about two seconds; `next` is where
        * the next call goes on. The pages are laid out with the widths printPages and the
-       * PDF export use, so a listed cell is the one cut off in print. Reads only.
+       * PDF export use, so a listed cell is the one cut off in print. Given `toRow`, only
+       * table `fromTable` is measured, up to that row: what an edit of that table cut off.
+       * Reads only.
        */
-      checkLayout: guarded((fromTable, fromRow) =>
-        host.read((doc) => withPortableWidths(doc, () => overflowsOf(doc, fromTable, fromRow))),
+      checkLayout: guarded((fromTable, fromRow, toRow) =>
+        host.read((doc) =>
+          withPortableWidths(doc, () => overflowsOf(doc, fromTable, fromRow, toRow ?? null)),
+        ),
       ),
 
       /**
@@ -8086,12 +8354,13 @@ export const agentPlugin = {
                 throw fail('ENGINE', 'the title box could not be made')
               }
               const control = made.controlIdx
+              // a title cell as high as its lines and some air: the engine does not grow a
+              // row whose height is set, so the height follows the lines the title takes
+              const titleHeight = (lines, spacing) =>
+                Math.round(titlePoints * 100 * (1.9 + spacing * (lines - 1)))
               layout.cells.forEach((props, cell) => {
-                // a title cell as high as its line and some air; a longer title still grows it
                 const shape =
-                  cell === layout.title
-                    ? { ...props, height: Math.round(titlePoints * 100 * 1.9) }
-                    : props
+                  cell === layout.title ? { ...props, height: titleHeight(1, 0) } : props
                 expectOk(
                   doc.setCellProperties(sec, k, control, cell, JSON.stringify(shape)),
                   'shape the title box',
@@ -8147,13 +8416,35 @@ export const agentPlugin = {
                   'shape the band',
                 )
               }
+              const lines = parse(
+                doc.getLineInfoInCell(sec, k, control, layout.title, 0, 0),
+              ).lineCount
+              if (Number.isInteger(lines) && lines > 1) {
+                const para = parse(doc.getCellParaPropertiesAt(sec, k, control, layout.title, 0))
+                const spacing =
+                  para.lineSpacingType === 'Percent' && para.lineSpacing > 0
+                    ? para.lineSpacing / 100
+                    : 1.6
+                expectOk(
+                  doc.setCellProperties(
+                    sec,
+                    k,
+                    control,
+                    layout.title,
+                    JSON.stringify({ height: titleHeight(lines, spacing) }),
+                  ),
+                  'fit the title box to its title',
+                )
+              }
               const after = objectsOf(doc)
               // the box is an object of its own; nothing that was there may be gone
               mustKeep(before, { ...after, controls: Math.min(after.controls, before.controls) })
               return {
                 ok: true,
                 look: wanted.look,
+                rows: layout.rows,
                 place: box.place(k, 0),
+                ...tableNumberOf(doc, sec, k, control),
                 ...(wanted.textColorDropped ? { textColorDropped: true } : {}),
                 ...(whitened ? { textColor: whitened } : {}),
                 ...(wanted.standIns.length > 0 ? { standIn: wanted.standIns } : {}),
@@ -8179,10 +8470,14 @@ export const agentPlugin = {
         return { known: onPc.length + missing.length > 0, onPc, missing }
       }),
 
+      /** How many pages the document has as the editor lays it out now. */
+      pageCount: guarded(() => host.read((doc) => doc.pageCount())),
+
       /**
        * The page number, header and footer of the document (its first section): the page
        * number's place, shape and dashes, and the text of the header and of the footer with
-       * `plain` saying whether setHeaderFooter may rewrite it.
+       * `plain` saying whether setHeaderFooter may rewrite it; and the page map (pageMapOf).
+       * The pages are counted and mapped with the widths print and checkLayout use.
        */
       pageLayout: guarded(() =>
         host.read((doc) => {
@@ -8204,6 +8499,10 @@ export const agentPlugin = {
             // an engine without the call: the page number is not known
           }
           const columns = columnsOf(doc, 0)
+          const { pages, map } = withPortableWidths(doc, () => ({
+            pages: doc.pageCount(),
+            map: pageMapOf(doc),
+          }))
           let pageBorder = null
           try {
             const line = parse(doc.getPageBorderFill(0)).borderTop
@@ -8214,7 +8513,7 @@ export const agentPlugin = {
           }
           return {
             sections: doc.getSectionCount(),
-            pages: doc.pageCount(),
+            pages,
             pageBorder,
             columns: {
               count: columns.count,
@@ -8223,6 +8522,7 @@ export const agentPlugin = {
             pageNumber,
             header: read(true),
             footer: read(false),
+            map,
           }
         }),
       ),
@@ -8244,7 +8544,7 @@ export const agentPlugin = {
           throw fail('BAD_ARGUMENT', `gapMm must be 0 to ${MAX_COLUMN_GAP_MM} millimetres`)
         }
         const gap = count > 1 ? Math.round((gapMm * 7200) / 25.4) : 0
-        return change(
+        const done = change(
           'set-columns',
           (doc) => {
             const sections = doc.getSectionCount()
@@ -8256,6 +8556,9 @@ export const agentPlugin = {
           },
           options,
         )
+        if (!done.ok || count === 1) return done
+        const wide = host.read((doc) => tablesWiderThanColumn(doc))
+        return wide.length > 0 ? { ...done, wide } : done
       }),
 
       /**
@@ -9858,10 +10161,15 @@ export const agentPlugin = {
                 holder = first + 1
               }
               box.pasteHtml(holder, tocHtml(rows, font, width))
-              const table = tablesOf(doc).tables.find(
-                (candidate) =>
-                  candidate.sec === sec && candidate.para === holder && candidate.path.length === 1,
-              )
+              const { tables } = tablesOf(doc)
+              const number =
+                tables.findIndex(
+                  (candidate) =>
+                    candidate.sec === sec &&
+                    candidate.para === holder &&
+                    candidate.path.length === 1,
+                ) + 1
+              const table = tables[number - 1]
               if (!table) throw fail('ENGINE', 'the table of contents could not be made')
               // the pages as they are now: every paragraph from the first new one moved down
               const added = holder - first + 1
@@ -9887,6 +10195,8 @@ export const agentPlugin = {
                 ok: true,
                 count: entries.length,
                 pages,
+                table: number,
+                tables: tables.length,
                 place: { sec, para: first, offset: 0, length: titled ? title.trim().length : 0 },
               }
             },

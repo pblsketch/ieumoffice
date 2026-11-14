@@ -19,7 +19,12 @@ import type {
   AgentChangeOptions,
   AgentEquation,
   AgentCheckBox,
+  AgentLayoutCheck,
+  AgentLayoutOverflow,
   AgentMatch,
+  AgentPageEnd,
+  AgentPageMap,
+  AgentTablePastFoot,
   AgentMemoRemovalRefusal,
   AgentNoSuchStyle,
   AgentPageSetupChange,
@@ -291,7 +296,7 @@ const SYSTEM_PROMPT = [
   '- An official letter (공문): no decoration; its fixed parts in one text face of 12 to 13 pt.',
   '- The Ministry of the Interior and Safety guideline format (행안부 형식), or when the user asks for a plain document: no title box, no shading and no colour, prose paragraphs, fonts every PC has. A skill that says how the document must look is followed before these lines.',
   '- Anything else (minutes, a proposal, a paper): what such documents usually look like; when unsure, a centred bold title, bold headings and body text of 10 to 11 pt.',
-  '- Build it in this order: set_columns when the look has columns; all the text with insert_paragraphs; the tables with insert_table (look, header_color, column_widths, size); then one style_paragraphs call that makes the styles (those of headings with keep_with_next, so that a heading is not left alone at the foot of a page) and applies each by the mark or the number its lines start with (and the title by find); then insert_title_box when the look has one; then read_page_layout, which says how many pages the document has now, and set_page_number when it runs over one page. A few calls style the whole document: do not format it paragraph by paragraph.',
+  '- Build it in this order: set_columns when the look has columns; all the text with insert_paragraphs; the tables with insert_table (look, header_color, column_widths, size); then one style_paragraphs call that makes the styles (those of headings with keep_with_next, so that a heading is not left alone at the foot of a page) and applies each by the mark or the number its lines start with (and the title by find); then insert_title_box when the look has one; then read_page_layout, which says how many pages the document has now and what is left alone at the foot of a page, and set_page_number when it runs over one page. A few calls style the whole document: do not format it paragraph by paragraph.',
   '- Fonts: the context says which document fonts this PC has. Offices write headings in HY헤드라인M and text in 휴먼명조, which come with Hancom Office only: use them when the PC has them. Where it lacks them use a font of the same kind that it has: a gothic in bold (맑은 고딕) for headings, a serif face (함초롬바탕, else 바탕) for text. style_paragraphs, insert_title_box and insert_table make this swap themselves and report it as a stand-in. When the user names a font, use that font.',
   '- Boxes and lines are paragraph borders: a box round a few lines (the 〈보기〉 of a test, a summary, a note to mind) is border with sides box on each of those paragraphs, with margin_left and margin_right of 6 to 10 pt so that the words do not touch the lines, and a pale background when it should stand out (space above its first paragraph and below its last is room inside the box; room outside it belongs to the paragraphs around it); a line under a heading is border with sides bottom; a note set off from the text is a band at the left (sides left, 1 to 1.5 mm wide) with margin_left 8 to 10 pt and a pale background. Put them into the styles of style_paragraphs. An approval box (결재란) is a small table at the right: insert_table with width_percent 30 to 45 and place right, its first column merged for the word 결재 (merge_cells) and the signing row made high (format_cells row_height_mm). Text in table cells is formatted with format_cells (align, bold, size) on a block, not cell by cell. Narrow or space characters (char_width, letter_spacing) only to fit a line, as official documents do: 90 to 100 percent and 0 to -5.',
   '- Something at the right end of a line (the page of a contents line you type yourself, the price of an item, the time in a programme, "(인)" after a name) is one paragraph with a tab character between the two parts (written \\t in the text you pass) and a tab stop on it: tabs [{ "leader": "dots" }] puts what follows the tab at the right edge of the text with dots leading up to it, and without leader the way stays empty. Never fill the way with typed dots or spaces. A table of contents of the headings of the document itself is insert_toc, not this.',
@@ -1188,7 +1193,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'check_layout',
     edits: false,
     description:
-      'List the table cells whose text does not fit where it is drawn: a row keeps the height the file gives it, so a line that runs past the bottom of its cell is cut off on the page and in print. Each with the table number, row and column, page, and how far past the edge in mm. Call it after writing into table cells; shorten the text or change the table when a cell is listed. A long document is checked in parts; call again with from_table and from_row to go on.',
+      'List the table cells whose text does not fit where it is drawn: a row keeps the height the file gives it, so a line that runs past the bottom of its cell is cut off on the page and in print. Each with the table number, row and column, page, and how far past the edge in mm. Call it after writing into table cells; shorten the text or change the table when a cell is listed. It also names the cells whose line breaks inside a word, and tables drawn past the foot of a page. A long document is checked in parts; call again with from_table and from_row to go on.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1531,7 +1536,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'read_page_layout',
     edits: false,
     description:
-      'Show how many pages the document has, the columns its text runs in, the line round its pages, its page number (place, shape, dashes or not) and the text of its header and footer; plain says whether set_header_footer may rewrite it.',
+      'Show how many pages the document has and where its body falls on them as printed (the words each page starts and ends with, a heading or caption left alone at the foot of a page, tables over two pages or past the foot, empty pages, text past the foot), the columns its text runs in, the line round its pages, its page number (place, shape, dashes or not) and the text of its header and footer; plain says whether set_header_footer may rewrite it.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -2183,6 +2188,75 @@ function unusedNote(tool: HwpToolDef, { undeclared, facts }: PreparedInput): str
   if (paths.length === 0) return ''
   const taken = named.length > 0 ? ` ${declaredNamesByHolder(tool.name, named)}` : ''
   return `\n\nNot arguments of ${tool.name}, so nothing was done with them: ${quoted(paths)}.${taken}`
+}
+
+const MAX_CUT_CELLS_NAMED = 10
+
+const TABLE_WRITERS = new Set([
+  'fill_cells',
+  'insert_table',
+  'insert_title_box',
+  'format_cells',
+  'add_to_table',
+])
+
+const pastFootNote = ({ table, page, row, taller }: AgentTablePastFoot): string =>
+  `Table ${table} is drawn below the foot of page ${page} from row ${row} on, and that part is cut off in print${taller ? ': it is taller than a page and does not break across pages, so make it into two tables' : ''}.`
+
+const tableNumberNote = (result: { table?: number; tables?: number }): string =>
+  result.table === undefined
+    ? ''
+    : ` It is table ${result.table}${result.tables !== undefined && result.tables > result.table ? '; tables after it are numbered one higher' : ''}.`
+
+const rowsOf = (cells: { row: number }[] | AgentCellBlock | null): [from: number, to: number] => {
+  if (cells === null) return [1, Number.MAX_SAFE_INTEGER]
+  const rows = Array.isArray(cells) ? cells.map((cell) => cell.row) : [cells.fromRow, cells.toRow]
+  return [Math.min(...rows), Math.max(...rows)]
+}
+
+const wideTablesNote = (wide: readonly number[] | undefined): string => {
+  if (!wide || wide.length === 0) return ''
+  const named =
+    wide.length > 1 ? `Tables ${wide.join(', ')} are wider` : `Table ${wide[0]} is wider`
+  return ` ${named} than a column and lie${wide.length > 1 ? '' : 's'} over the text of the next one: delete ${wide.length > 1 ? 'each' : 'it'} with delete_table and add it again with insert_table, which makes it one column wide (or as wide as the page with across_columns).`
+}
+
+const pageEndText = (end: AgentPageEnd): string =>
+  'table' in end ? `table ${end.table}` : end.text ? `“${end.text}”` : '(no text)'
+
+function pageMapLines(map: AgentPageMap): string[] {
+  const alone = new Map<number, string[]>()
+  for (const line of map.alone) {
+    const where = line.column === undefined ? '' : ` of column ${line.column}`
+    const what =
+      line.kind === 'caption'
+        ? `the caption “${line.text}” is left alone at the foot${where}, its table starts on page ${line.nextPage}`
+        : `the heading “${line.text}” is left alone at the foot${where}, the text after it starts on page ${line.nextPage}`
+    alone.set(line.page, [...(alone.get(line.page) ?? []), what])
+  }
+  const pages = map.pages.map((page) => {
+    if ('empty' in page) return `page ${page.page}: empty`
+    const notes = [
+      ...(alone.get(page.page) ?? []),
+      ...(page.pastFoot
+        ? [
+            `${page.pastFoot} line(s) of text lie below the foot of the page and are cut off in print`,
+          ]
+        : []),
+    ]
+    return `page ${page.page}: ${pageEndText(page.first)} to ${pageEndText(page.last)}${notes.length > 0 ? `; ${notes.join('; ')}` : ''}`
+  })
+  return [
+    'Pages as printed:',
+    ...pages,
+    ...map.spans.map((span) => `Table ${span.table} runs over pages ${span.from} to ${span.to}.`),
+    ...map.past.map(pastFootNote),
+    ...(map.alone.length > 0
+      ? [
+          'insert_break with kind page on a heading or caption left alone moves it to the next page.',
+        ]
+      : []),
+  ]
 }
 
 const titleColourNote = (result: { textColorDropped?: boolean; textColor?: string }): string => {
@@ -2875,6 +2949,54 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
   let addedThisRun: string[] = []
   /** delete_paragraph calls (find, occurrence) refused for hitting one of those, this run */
   let refusedDeletes = new Set<string>()
+  let cutThisRun = new Map<string, string>()
+
+  const forgetCuts = (table: number, from: number, to: number): void => {
+    for (const key of cutThisRun.keys()) {
+      const [t, row] = key.split('/').map(Number)
+      if (t === table && row >= from && row <= to) cutThisRun.delete(key)
+    }
+  }
+  const keepCuts = (cells: readonly AgentLayoutOverflow[]): void => {
+    for (const cell of cells) {
+      cutThisRun.set(
+        `${cell.table}/${cell.row}/${cell.col}`,
+        `table ${cell.table}, row ${cell.row}, col ${cell.col}`,
+      )
+    }
+  }
+
+  const pagesNow = async (): Promise<number | null> => {
+    try {
+      const pages = await bridge.pageCount()
+      return Number.isInteger(pages) ? pages : null
+    } catch {
+      return null
+    }
+  }
+
+  const cutNote = async (table: number, from: number, to: number): Promise<string> => {
+    let checked: AgentLayoutCheck
+    try {
+      checked = await bridge.checkLayout(table, from, to)
+    } catch {
+      return ''
+    }
+    forgetCuts(table, from, to)
+    keepCuts(checked.cells)
+    const notes: string[] = []
+    if (checked.cells.length > 0) {
+      const shown = checked.cells
+        .slice(0, MAX_CUT_CELLS_NAMED)
+        .map((cell) => `row ${cell.row}, col ${cell.col} (${cell.over} mm past its bottom)`)
+      const more = checked.cells.length - shown.length
+      notes.push(
+        `The text of ${checked.cells.length} cell(s) of table ${table} does not fit and is cut off: ${shown.join('; ')}${more > 0 ? `; ${more} more (check_layout lists them)` : ''}. Give the row more height (format_cells row_height_mm) or write a shorter text.`,
+      )
+    }
+    notes.push(...checked.past.map(pastFootNote))
+    return notes.length > 0 ? ` ${notes.join(' ')}` : ''
+  }
 
   type ChangeOutcome<T> =
     { kind: 'done'; result: T } | { kind: 'declined' | 'changed'; refusal: AgentMemoRemovalRefusal }
@@ -3548,7 +3670,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           ? ' The words of the header row were written white to show on its fill.'
           : ''
         return {
-          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${headerText}${unused.join('')}${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added a table of ${result.rows} row(s) and ${result.cols} column(s)${result.acrossColumns ? ', lying across the columns of the page' : ''}.${headerText}${unused.join('')}${standInNote(result.standIn)}${OCCURRENCE_SHIFT_NOTE}${tableNumberNote(result)}${result.table === undefined ? '' : await cutNote(result.table, 1, result.rows)}`,
           mutated: true,
           summary: label('aiToolTable', { rows: result.rows, cols: result.cols }),
         }
@@ -3894,11 +4016,23 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const until = checked.next
           ? `, stopping before table ${checked.next.table}, row ${checked.next.row}`
           : ''
+        const counted = `${checked.measured} cell(s) of ${checked.tables} table(s) measured`
         const head =
-          lines.length === 0
-            ? `Every table cell's text fits${scope}${until} (${checked.measured} cell(s) of ${checked.tables} table(s) measured).`
-            : `${lines.length} cell(s) do not fit${scope}${until}:`
+          lines.length > 0
+            ? `${lines.length} cell(s) do not fit${scope}${until}:`
+            : checked.past.length > 0
+              ? `No cell's text runs past its cell${scope}${until} (${counted}), but a table runs off the page:`
+              : `Every table cell's text fits${scope}${until} (${counted}).`
+        if (from.table === 1 && from.row === 1 && !checked.next) cutThisRun = new Map()
+        keepCuts(checked.cells)
+        const wrapped = checked.wrapped.slice(0, MAX_CUT_CELLS_NAMED)
         const tail = [
+          ...checked.past.map(pastFootNote),
+          ...(wrapped.length > 0
+            ? [
+                `${checked.wrapped.length} cell(s) wrap inside a word: ${wrapped.map((cell) => `table ${cell.table}, row ${cell.row}, col ${cell.col} (${quote(cell.text)})`).join('; ')}${checked.wrapped.length > wrapped.length ? '; …' : ''}. A shorter text or a smaller size (format_cells size) keeps the word on one line.`,
+              ]
+            : []),
           ...(checked.next
             ? [
                 `[not finished: table ${checked.next.table} from row ${checked.next.row} on is not measured yet; call check_layout with from_table ${checked.next.table} and from_row ${checked.next.row}]`,
@@ -4331,7 +4465,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               : `Formatted ${result.count} cell(s): ${where}.`) +
             (result.crossed
               ? ` The diagonal runs through the words of ${result.crossed.map((cell) => `${cell.row}.${cell.col}`).join(', ')}: empty those cells with fill_cells (text "") unless the user wants the words kept.`
-              : ''),
+              : '') +
+            (fillOnly ? '' : await cutNote(table, ...rowsOf(cells))),
           mutated: true,
           summary: label(fillOnly ? 'aiToolCellFill' : 'aiToolCellLook', {
             table,
@@ -4365,8 +4500,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             count: result.count,
             place: result.place,
           })
+          const rows = cells.map((cell) => cell.row)
           return {
-            output: `Filled ${result.count} cell(s) of table ${table}.`,
+            output: `Filled ${result.count} cell(s) of table ${table}.${await cutNote(table, Math.min(...rows), Math.max(...rows))}`,
             mutated: true,
             summary: label('aiToolFillCells', { table, count: result.count }),
           }
@@ -4483,7 +4619,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         })
         const last = result.first + result.count - 1
         return {
-          output: `Added ${result.count} of the ${args.what}: number ${result.first}${last > result.first ? ` to ${last}` : ''}, empty. Table ${args.table} now has ${result.rows} row(s) and ${result.cols} column(s).`,
+          output: `Added ${result.count} of the ${args.what}: number ${result.first}${last > result.first ? ` to ${last}` : ''}, empty. Table ${args.table} now has ${result.rows} row(s) and ${result.cols} column(s).${await cutNote(args.table, 1, result.rows)}`,
           mutated: true,
           summary: `${name} · ${what}`,
         }
@@ -4664,7 +4800,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         return {
-          output: `Added a table of contents of ${result.count} heading(s), on pages ${result.pages.join(', ')}.${OCCURRENCE_SHIFT_NOTE}`,
+          output: `Added a table of contents of ${result.count} heading(s), on pages ${result.pages.join(', ')}.${OCCURRENCE_SHIFT_NOTE}${tableNumberNote(result)}`,
           mutated: true,
           summary: label('aiToolToc', { count: result.count }),
         }
@@ -5136,15 +5272,15 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         return {
-          output: `Made the title a ${result.look} title box. The title is now in a table: tables after it are numbered one higher.${titleColourNote(result)}${standInNote(result.standIn)}`,
+          output: `Made the title a ${result.look} title box.${tableNumberNote(result)}${titleColourNote(result)}${standInNote(result.standIn)}${result.table === undefined ? '' : await cutNote(result.table, 1, result.rows)}`,
           mutated: true,
           summary: label('aiToolTitleBox'),
         }
       }
       case 'read_page_layout': {
-        const layout = await bridge.pageLayout()
+        const { map, ...layout } = await bridge.pageLayout()
         return {
-          output: JSON.stringify(inDeclaredNames(layout)),
+          output: [JSON.stringify(inDeclaredNames(layout)), ...pageMapLines(map)].join('\n'),
           summary: label('aiToolLayoutRead'),
         }
       }
@@ -5174,7 +5310,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         return {
           output:
             result.count > 1
-              ? `The text now runs in ${result.count} columns with ${result.gapMm} mm between them. A table added from now on is one column wide; pass across_columns for one as wide as the page. Tables that were already there kept their width.`
+              ? `The text now runs in ${result.count} columns with ${result.gapMm} mm between them. A table added from now on is one column wide; pass across_columns for one as wide as the page. Tables that were already there kept their width.${wideTablesNote(result.wide)}`
               : 'The text runs in one column again.',
           mutated: true,
           summary: label('aiToolColumnsSet', { count: result.count }),
@@ -5557,6 +5693,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         return offered
       },
       buildContext: () => [context, selectionContext()].filter(Boolean).join('\n\n'),
+      verifyResponse: (_text, executed) => {
+        if (cutThisRun.size === 0) return null
+        if (!executed.some((done) => done.ok && TABLE_WRITERS.has(done.name))) return null
+        const cells = [...cutThisRun.values()]
+        return `Table cells written in this run were cut off when last measured: ${cells.slice(0, MAX_CUT_CELLS_NAMED).join('; ')}${cells.length > MAX_CUT_CELLS_NAMED ? '; …' : ''}. Make them fit (format_cells row_height_mm, or a shorter text), call check_layout to see that they do, then answer.`
+      },
       executeTool: async (given, signal) => {
         const tool = TOOL_BY_NAME.get(given.name)
         if (!tool) return run(given, signal)
@@ -5565,9 +5707,15 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const refusal = refusalOf(tool, prepared)
         if (refusal) return bad(call, refusal)
         try {
+          const pagesBefore = tool.edits ? await pagesNow() : null
           const done = await run(withDoubledEscapesUndone(call), signal)
-          const note = done.isError ? '' : unusedNote(tool, prepared)
-          return note ? { ...done, output: done.output + note } : done
+          if (done.isError) return done
+          const output = done.output + unusedNote(tool, prepared)
+          // read once the change returned: the editor pages the document when it commits
+          const pages = pagesBefore !== null && done.mutated ? await pagesNow() : null
+          if (pages === null || pages === pagesBefore) return { ...done, output }
+          const joiner = output.includes('\n') ? '\n' : ' '
+          return { ...done, output: `${output}${joiner}Pages ${pagesBefore} -> ${pages}.` }
         } catch (error) {
           // the editor refused or is gone: the model gets the cause and can say so
           return bad(call, inDeclaredWords(error instanceof Error ? error.message : String(error)))
@@ -5582,6 +5730,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     beginRun: () => {
       addedThisRun = []
       refusedDeletes = new Set()
+      cutThisRun = new Map()
     },
     refreshContext: async () => {
       try {
