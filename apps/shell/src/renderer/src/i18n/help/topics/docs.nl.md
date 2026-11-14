@@ -90,4 +90,4 @@ Rechtermuisklik ergens in de tekst — het menu volgt waarop je klikte. Hoofdgro
 
 ## Afdrukken
 
-ctrl+P via het systeemvenster, met WYSIWYG-pagina's.
+ctrl+P opent het afdrukvenster. Kies printer, aantal exemplaren, dubbelzijdig en bereik (ook de selectie); onder **Pagina-indeling** kies je meerdere pagina's per vel, boekje, affiche, etiketten, oneven of even zijden en grijstinten (zie [Bestandsbewerkingen](help://file-ops)).

@@ -41,6 +41,7 @@ export const de = {
   btnCancel: 'Abbrechen',
   exportFailed: 'Export fehlgeschlagen: {error}',
   printFailed: 'Drucken fehlgeschlagen: {error}',
+  printLayoutSaved: 'Angeordnetes Ergebnis als PDF gespeichert.',
   linkNotOpened: 'Dieser Link kann nicht geöffnet werden.',
   dlgSaveTitle: 'Diagramm speichern',
   dlgExportTitle: 'Diagramm exportieren',

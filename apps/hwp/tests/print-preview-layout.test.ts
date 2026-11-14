@@ -56,9 +56,9 @@ async function settle(turns = 6): Promise<void> {
   }
 }
 
-/** Three pages: two portrait around one landscape. */
-function previewBridge() {
-  const sizes = [PORTRAIT, LANDSCAPE, PORTRAIT]
+/** Three pages, by default two portrait around one landscape. */
+function previewBridge(sizes = [PORTRAIT, LANDSCAPE, PORTRAIT]) {
+  let revision = 0
   return {
     previewPage: vi.fn(async (page: number) => ({
       pageCount: sizes.length,
@@ -67,6 +67,16 @@ function previewBridge() {
       ...sizes[page]!,
       margins: { left: 10, top: 10, right: 10, bottom: 10 },
     })),
+    printPageSizes: vi.fn(async (from: number) => ({
+      pageCount: sizes.length,
+      from,
+      sizes: sizes.slice(from),
+    })),
+    documentRevision: vi.fn(async () => revision),
+    /** an edit the preview did not make (an AI call still landing) */
+    edit: () => {
+      revision += 1
+    },
   }
 }
 
@@ -96,13 +106,18 @@ function fakePrintLayout() {
   }
 }
 
-async function mount(props: Record<string, unknown> = {}) {
-  const onPrint = vi.fn(async (): Promise<PrintResult> => ({ ok: true }))
-  const printLayout = fakePrintLayout()
-  const gatherJob = vi.fn(async (onProgress: (done: number, total: number) => void) => {
+/** The job as the PDF export gathers it, counted. */
+function gatherFake() {
+  return vi.fn(async (onProgress: (done: number, total: number) => void) => {
     onProgress(3, 3)
     return JOB
   })
+}
+
+async function mount(props: Record<string, unknown> = {}) {
+  const onPrint = vi.fn(async (): Promise<PrintResult> => ({ ok: true }))
+  const printLayout = fakePrintLayout()
+  const gatherJob = (props.gatherJob as ReturnType<typeof gatherFake> | undefined) ?? gatherFake()
   const all = {
     bridge: previewBridge(),
     initialPage: 0,
@@ -146,6 +161,14 @@ function mode(value: string): HTMLInputElement {
   const found = container.querySelector<HTMLInputElement>(`[data-pl="mode"][value="${value}"]`)
   if (!found) throw new Error(`no mode ${value}`)
   return found
+}
+
+/** The size a face of the layout diagram gives its page. */
+function faceBox(face: number): { width: number; height: number } {
+  const svg = container.querySelector(`figure[data-pl-face="${face}"] svg`)
+  if (!svg) throw new Error(`no face ${face}`)
+  const [, , width, height] = svg.getAttribute('viewBox')!.split(' ').map(Number)
+  return { width: width!, height: height! }
 }
 
 async function click(element: HTMLElement): Promise<void> {
@@ -278,14 +301,59 @@ describe('the print preview with a layout option on', () => {
   it('draws the diagram with each page at the size the preview drew it', async () => {
     await mount()
     await click(pl('reverse'))
-    const box = (face: number) => {
-      const svg = container.querySelector(`figure[data-pl-face="${face}"] svg`)
-      const [, , width, height] = svg!.getAttribute('viewBox')!.split(' ').map(Number)
-      return { width: width!, height: height! }
-    }
     // the preview drew pages 1 (portrait) and 2 (landscape); faces keep their numbers
-    expect(box(1).width).toBeLessThan(box(1).height)
-    expect(box(2).width).toBeGreaterThan(box(2).height)
+    expect(faceBox(1).width).toBeLessThan(faceBox(1).height)
+    expect(faceBox(2).width).toBeGreaterThan(faceBox(2).height)
+  })
+
+  it('draws the diagram with every page at its print size, drawn or not', async () => {
+    // the landscape page is the last: the preview draws pages 1 and 2 only
+    const bridge = previewBridge([PORTRAIT, PORTRAIT, LANDSCAPE])
+    await mount({ bridge })
+    await click(pl('reverse'))
+    expect(bridge.previewPage).not.toHaveBeenCalledWith(2)
+    expect(bridge.printPageSizes).toHaveBeenCalled()
+    expect(faceBox(2).width).toBeLessThan(faceBox(2).height)
+    expect(faceBox(3).width).toBeGreaterThan(faceBox(3).height)
+  })
+
+  it('falls back to the drawn pages’ sizes when the print sizes cannot be read', async () => {
+    const bridge = previewBridge([PORTRAIT, PORTRAIT, LANDSCAPE])
+    bridge.printPageSizes.mockRejectedValue(new Error('no plugin'))
+    await mount({ bridge })
+    await click(pl('reverse'))
+    // page 3 is not drawn: it takes the size of page 2
+    expect(faceBox(3).width).toBeLessThan(faceBox(3).height)
+  })
+
+  it('gathers the pages once for a preview, a print and a save', async () => {
+    const { printLayout, gatherJob } = await mount()
+    await click(mode('nup'))
+    await click(pl('preview'))
+    await click(button('Print…'))
+    await click(pl('save-pdf'))
+    expect(printLayout.preview).toHaveBeenCalledTimes(1)
+    expect(printLayout.print).toHaveBeenCalledTimes(1)
+    expect(printLayout.savePdf).toHaveBeenCalledTimes(1)
+    expect(gatherJob).toHaveBeenCalledTimes(1)
+  })
+
+  it('gathers again when the document changed, and in a new preview', async () => {
+    const bridge = previewBridge()
+    const { gatherJob } = await mount({ bridge })
+    await click(pl('reverse'))
+    await click(button('Print…'))
+    bridge.edit()
+    await click(button('Print…'))
+    expect(gatherJob).toHaveBeenCalledTimes(2)
+
+    act(() => root!.unmount())
+    root = null
+    const again = await mount({ bridge, gatherJob })
+    expect(again.gatherJob).toBe(gatherJob)
+    await click(pl('reverse'))
+    await click(button('Print…'))
+    expect(gatherJob).toHaveBeenCalledTimes(3)
   })
 
   it('starts from the defaults every time it opens', async () => {
@@ -318,6 +386,24 @@ describe('the page sizes of the layout diagram', () => {
       { widthPt: 72, heightPt: 72 },
       { widthPt: 72, heightPt: 72 },
     ])
+  })
+
+  it('are the print sizes of every page when the plugin measured them all', () => {
+    const drawn = new Map([[0, { width: 96, height: 192 }]])
+    const exact = [
+      { width: 96, height: 192 },
+      { width: 192, height: 96 },
+    ]
+    expect(layoutPageSizes(2, drawn, { width: 10, height: 10 }, exact)).toEqual([
+      { widthPt: 72, heightPt: 144 },
+      { widthPt: 144, heightPt: 72 },
+    ])
+    // a list of another length is from another document: the drawn pages answer
+    expect(layoutPageSizes(3, drawn, { width: 10, height: 10 }, exact)).toHaveLength(3)
+    expect(layoutPageSizes(3, drawn, { width: 10, height: 10 }, exact)[1]).toEqual({
+      widthPt: 72,
+      heightPt: 144,
+    })
   })
 })
 

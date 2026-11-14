@@ -38,6 +38,7 @@ export const cs = {
   btnCancel: 'Zrušit',
   exportFailed: 'Export se nezdařil: {error}',
   printFailed: 'Tisk se nezdařil: {error}',
+  printLayoutSaved: 'Rozložený výsledek byl uložen jako PDF.',
   linkNotOpened: 'Tento odkaz nelze otevřít.',
   dlgSaveTitle: 'Uložit diagram',
   dlgExportTitle: 'Exportovat diagram',

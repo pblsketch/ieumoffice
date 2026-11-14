@@ -21,6 +21,7 @@ import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import type { Lang } from '@genoffice/i18n'
 import { AI_CHANNELS, APP_CHANNELS, DIAGRAM_CHANNELS } from '../shared/ipc'
@@ -31,6 +32,7 @@ import type {
   DiagramApplyQuery,
   DiagramCoreApi,
   DiagramExportApi,
+  DiagramPrintJob,
   DiagramHeadlessApi,
   DiagramMenuCommand,
   DiagramQueryApi,
@@ -92,6 +94,7 @@ const exporting: DiagramExportApi = {
   exportImages: (request) => ipcRenderer.invoke(DIAGRAM_CHANNELS.exportImages, request),
   exportPdf: (request) => ipcRenderer.invoke(DIAGRAM_CHANNELS.exportPdf, request),
   print: (request) => ipcRenderer.invoke(DIAGRAM_CHANNELS.print, request),
+  printLayout: createPrintLayoutBridge<DiagramPrintJob>(ipcRenderer, 'diagram'),
 }
 
 const recovery: DiagramRecoveryApi = {

@@ -38,6 +38,7 @@ export const ar = {
   btnCancel: 'إلغاء',
   exportFailed: 'فشل التصدير: {error}',
   printFailed: 'فشلت الطباعة: {error}',
+  printLayoutSaved: 'تم حفظ النتيجة المرتبة بصيغة PDF.',
   linkNotOpened: 'لا يمكن فتح هذا الرابط.',
   dlgSaveTitle: 'حفظ المخطط',
   dlgExportTitle: 'تصدير المخطط',

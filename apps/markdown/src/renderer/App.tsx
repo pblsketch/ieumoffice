@@ -80,7 +80,8 @@ import { addQueueAnchor, clearQueueAnchors, removeQueueAnchors } from './editor/
 import { DOCX_MAX_IMAGE_PX, exportDocxBytes } from './export/docxExport'
 import { decodeImageDataUrl, toDocxImage } from './export/exportImage'
 import { buildPrintHtml } from './export/printHtml'
-import { PrintPreviewDialog } from './print/PrintPreviewDialog'
+import { PrintPreviewDialog, type PrintPreviewContent } from './print/PrintPreviewDialog'
+import { selectionPrintRoot, sourcePrintRoot } from './print/print-content'
 import { diagramSvgToPng, renderDiagram } from './editor/diagrams'
 import type { DiagramLanguage } from './editor/diagrams'
 import type { ExportFormat, SaveMode } from '../shared/ipc'
@@ -1067,23 +1068,30 @@ export default function App() {
     [sourceRev, sourceMode],
   )
 
-  const [printPreviewHtml, setPrintPreviewHtml] = useState<string | null>(null)
+  const [printPreview, setPrintPreview] = useState<PrintPreviewContent | null>(null)
   const printDoc = useCallback(() => {
     const current = editorRef.current
-    if (!current || statusRef.current !== 'ready' || printPreviewHtml !== null) return
+    if (!current || statusRef.current !== 'ready' || printPreview !== null) return
     const title =
       (filePathRef.current
         ? filePathRef.current.replace(/^.*[/\\]/, '').replace(/\.(md|markdown|txt|json)$/i, '')
         : deriveAutoFileName(current)) || 'Untitled'
     let printRoot: HTMLElement = current.view.dom
+    // the "Selection" range: only the selected part, as a document of its own
+    let selectionRoot: HTMLElement | null
     if (sourceMode) {
-      printRoot = document.createElement('div')
-      const pre = document.createElement('pre')
-      pre.textContent = sourceTextRef.current
-      printRoot.appendChild(pre)
+      printRoot = sourcePrintRoot(sourceTextRef.current)
+      const picked = sourceRef.current?.selectedText() ?? ''
+      selectionRoot = picked ? sourcePrintRoot(picked) : null
+    } else {
+      selectionRoot = selectionPrintRoot(current.view)
     }
-    setPrintPreviewHtml(buildPrintHtml(printRoot, title))
-  }, [printPreviewHtml, sourceMode])
+    setPrintPreview({
+      html: buildPrintHtml(printRoot, title),
+      selectionHtml: selectionRoot ? buildPrintHtml(selectionRoot, title) : null,
+      title,
+    })
+  }, [printPreview, sourceMode])
 
   useEffect(() => {
     const offExport = window.markdownApi.onExportRequest((format) => void runExport(format))
@@ -1692,8 +1700,13 @@ export default function App() {
           onQueueRemove={queueRemove}
         />
       )}
-      {printPreviewHtml !== null && (
-        <PrintPreviewDialog html={printPreviewHtml} onClose={() => setPrintPreviewHtml(null)} />
+      {printPreview !== null && (
+        <PrintPreviewDialog
+          html={printPreview.html}
+          selectionHtml={printPreview.selectionHtml}
+          title={printPreview.title}
+          onClose={() => setPrintPreview(null)}
+        />
       )}
     </div>
   )

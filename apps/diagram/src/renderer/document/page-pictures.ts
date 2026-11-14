@@ -25,7 +25,10 @@ export async function pagePictureBytes(
 }
 
 /** One page as a PDF or print sheet: a light SVG at the page's own format. */
-export async function printPageOf(client: DrawioFrame, page: PageInfo): Promise<PrintPage> {
+export async function printPageOf(
+  client: Pick<DrawioFrame, 'request'>,
+  page: PageInfo,
+): Promise<PrintPage> {
   const svg = await client.request('pageSvg', { pageId: page.id, theme: 'light' })
   return {
     svg: svg.svg,
