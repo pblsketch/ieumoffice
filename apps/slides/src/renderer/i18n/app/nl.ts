@@ -184,6 +184,9 @@ export const nl = {
   appPrintLandscape: 'Liggend',
   appPrintFrame: "Kader om dia's",
   appPrintHidden: "Verborgen dia's afdrukken",
+  appPrintRangeSelected: "Geselecteerde dia's",
+  appPrintLayoutBlocked:
+    "Hand-outs en notitiepagina's worden met één pagina per vel afgedrukt. Kies Dia's op volledige pagina om pagina's te schikken.",
   appPrintPageCount: "{n} pagina's",
   appPrintNoPages: "Geen dia's om af te drukken",
   appPrintRendering: 'Voorbeeld genereren…',

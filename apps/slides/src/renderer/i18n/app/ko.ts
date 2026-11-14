@@ -170,6 +170,9 @@ export const ko = {
   appPrintLandscape: '가로',
   appPrintFrame: '슬라이드에 테두리 표시',
   appPrintHidden: '숨겨진 슬라이드 인쇄',
+  appPrintRangeSelected: '고른 슬라이드',
+  appPrintLayoutBlocked:
+    '유인물과 슬라이드 노트는 한 장에 한 쪽씩 인쇄합니다. 배치 방식을 고르려면 레이아웃을 "전체 페이지 슬라이드"로 바꾸세요.',
   appPrintPageCount: '총 {n}페이지',
   appPrintNoPages: '인쇄할 슬라이드가 없습니다',
   appPrintRendering: '미리 보기 생성 중…',

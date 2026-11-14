@@ -171,6 +171,9 @@ export const ar = {
   appPrintLandscape: 'أفقي',
   appPrintFrame: 'إحاطة الشرائح بإطار',
   appPrintHidden: 'طباعة الشرائح المخفية',
+  appPrintRangeSelected: 'الشرائح المحددة',
+  appPrintLayoutBlocked:
+    'تُطبع النشرات وصفحات الملاحظات بصفحة واحدة لكل ورقة. لترتيب الصفحات، اختر شرائح بحجم الصفحة.',
   appPrintPageCount: '{n} صفحات',
   appPrintNoPages: 'لا توجد شرائح للطباعة',
   appPrintRendering: 'جارٍ إنشاء المعاينة…',

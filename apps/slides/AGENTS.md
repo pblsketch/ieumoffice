@@ -59,6 +59,7 @@ PowerPoint 프레젠테이션(.pptx) 에디터다. 파일을 바이트 그대로
 - 도형 병합(`merge-shapes.ts`)은 화면 좌표의 윤곽을 `polygon-clipping`으로 합치고, 저장은 `addElement`·`setShapeGeometry`·서식 연산·`deleteElements`를 `batched`로 묶어 부른다. 윤곽을 모르는 도형(화면이 사각형으로 근사하는 프리셋, 선·그림·표·차트)은 병합하지 않는다.
 - 발표자 보기(`components/PresenterView.tsx`)의 오른쪽 칸(다음 슬라이드·노트) 폭은 현재 슬라이드와 그 칸 사이의 손잡이(`.pv-splitter`)로 끌거나, 손잡이에 포커스를 두고 ←/→(Shift는 큰 걸음)·Home·End로 바꾸고, 두 번 누르면 기본 340px로 돌아간다. 폭 계산은 순수 함수 모음 `presenter-layout.ts`에 있고, 고른 폭은 설치마다 localStorage `ai-slides-presenter-side-width`에 남긴다. 그릴 때는 창에 맞춰 줄이되(아래 줄 도구가 겹치지 않게 본 영역에 600px을 남긴다) 고른 값은 지우지 않는다. 다음 슬라이드 미리보기는 칸 높이의 40%까지만 커져서, 칸을 넓힌 만큼이 노트에 간다. 손잡이에 포커스가 있을 때 그 네 키는 쪽 넘기기로 가지 않는다. 마우스로 끌면 포커스를 가져가지 않는다. 끌기 한 번은 `presenter-side-drag.ts`가 맡는다. 실제로 움직였을 때만 놓을 때 저장하고(누르기만 하면 창에 맞춰 줄인 폭으로 고른 값을 덮지 않는다), 끄는 중에 발표자 보기가 닫히면(Esc) 창에 건 처리기와 커서를 거둔다.
 - `vitest.config.ts`는 `@genoffice/pptx-*` 패키지를 이 저장소의 소스 경로로 고정한다. 하위 경로 별칭은 패키지 이름 별칭보다 앞에 둔다(문자열 별칭은 접두사 치환이다).
+- **고급 인쇄(결정 0141).** 인쇄 창에 공용 쪽 배치 칸과 "고른 슬라이드" 범위를 붙였다. 배치 방식은 인쇄 모양이 전체 슬라이드일 때만 고른다(유인물·노트는 한 장에 한 쪽으로 고정). 쪽 배치에서 아무것도 고르지 않으면 `slides:print`가 전과 같다. 고르면 같은 인쇄 HTML(`slidesPrintHtml`)을 `printToPDF`해 `slides:print-layout-*`로 보낸다.
 
 ## 테스트
 
