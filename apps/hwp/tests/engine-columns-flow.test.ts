@@ -52,6 +52,13 @@ function paragraphStartingWith(doc: HwpDocument, start: string): number {
   throw new Error(`no paragraph starts with ${start}`)
 }
 
+function splitLinesAfter(doc: HwpDocument, at: number, count: number): void {
+  for (let k = 0; k < count; k++) {
+    doc.splitParagraph(0, at + k, doc.getParagraphLength(0, at + k))
+    doc.insertText(0, at + k + 1, 0, `새 줄 ${k + 1}`)
+  }
+}
+
 function linesBelowTheBody(doc: HwpDocument): number {
   let below = 0
   for (let page = 0; page < doc.pageCount(); page++) {
@@ -73,6 +80,22 @@ function linesBelowTheBody(doc: HwpDocument): number {
   return below
 }
 
+// The .hwp save reads its own output back and refuses it when the page count differs.
+// Both saved formats must open on the pages the session drew, with no more text below the foot.
+function expectReopenedAsLaidOut(doc: HwpDocument): void {
+  const verify = JSON.parse(doc.exportHwpVerify()) as {
+    pageCountBefore: number
+    pageCountAfter: number
+  }
+  expect(verify.pageCountAfter).toBe(verify.pageCountBefore)
+  for (const bytes of [doc.exportHwp(), doc.exportHwpx()]) {
+    const reopened = new HwpDocument(bytes)
+    expect(reopened.pageCount()).toBe(doc.pageCount())
+    expect(linesBelowTheBody(reopened)).toBe(linesBelowTheBody(doc))
+    reopened.free()
+  }
+}
+
 describe('text added to a section of columns', () => {
   it.each(HANCOM_2024_PAGES)(
     'fills %i columns and goes on to the next page (%i pages)',
@@ -85,17 +108,16 @@ describe('text added to a section of columns', () => {
     },
   )
 
-  it('is laid out the same after the file is saved and opened again', () => {
-    const doc = blank(2)
-    insertOneParagraphThenSplitLines(doc)
-    for (const bytes of [doc.exportHwp(), doc.exportHwpx()]) {
-      const reopened = new HwpDocument(bytes)
-      expect(reopened.pageCount()).toBe(4)
-      expect(linesBelowTheBody(reopened)).toBe(0)
-      reopened.free()
-    }
-    doc.free()
-  })
+  it.each(HANCOM_2024_PAGES)(
+    'with %i columns is laid out the same after the file is saved and opened again',
+    (columns) => {
+      const doc = blank(columns)
+      insertOneParagraphThenSplitLines(doc)
+      expect(linesBelowTheBody(doc)).toBe(0)
+      expectReopenedAsLaidOut(doc)
+      doc.free()
+    },
+  )
 
   it('leaves a document of one column as it was', () => {
     const doc = blank(1)
@@ -118,12 +140,19 @@ describe('a two-column file Hancom laid out', () => {
 
   it('gets no page Hancom does not give it when an edit adds lines to its prose', () => {
     const doc = openFixture('two-column-prose-hancom.hwp')
-    const at = paragraphStartingWith(doc, '6. ')
-    for (let k = 0; k < 10; k++) {
-      doc.splitParagraph(0, at + k, doc.getParagraphLength(0, at + k))
-      doc.insertText(0, at + k + 1, 0, `새 줄 ${k + 1}`)
-    }
+    splitLinesAfter(doc, paragraphStartingWith(doc, '6. '), 10)
     expect(doc.pageCount()).toBe(3)
+    doc.free()
+  })
+
+  it('flows a hundred lines added at the end of its body into columns that hold after saving', () => {
+    const doc = openFixture('two-column-zone-hancom.hwp')
+    // the engine places the two-column zone lower than Hancom does, so three of Hancom's lines
+    // on page 1 already run past the engine's foot before any edit
+    const unedited = linesBelowTheBody(doc)
+    splitLinesAfter(doc, doc.getParagraphCount(0) - 1, 100)
+    expect(linesBelowTheBody(doc)).toBe(unedited)
+    expectReopenedAsLaidOut(doc)
     doc.free()
   })
 })
