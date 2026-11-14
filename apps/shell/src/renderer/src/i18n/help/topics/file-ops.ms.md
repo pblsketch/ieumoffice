@@ -46,7 +46,17 @@ Peraturannya ialah seperti berikut. Sambungan dikekalkan secara automatik. Aksar
 
 ## Cetakan
 
-Fail ▸ Cetak dalam setiap editor, atau ⌘P dan ctrl+P, akan membuka tetingkap cetakan sistem. Fail PDF dicetak mengikut susunan halaman dan putaran semasa.
+Fail ▸ Cetak (⌘P/ctrl+P) dalam setiap editor membuka tetingkap cetakan. Docs, PDF, Sheets, Slides dan Markdown mempunyai bahagian **Susun atur halaman** dalam tetingkap cetakan sedia ada, HWP dalam pratonton cetakan, manakala HTML, peta minda dan rajah dalam tetingkap cetakan kecil yang baharu. Jika anda tidak memilih apa-apa dalam Susun atur halaman, cetakan berjalan sama seperti sebelum ini.
+
+- **Cara susunan**: pilih salah satu daripada Satu halaman setiap helai, Beberapa halaman setiap helai (2, 4, 6, 9 atau 16), Buku kecil (jilid di kiri atau kanan), Poster (helaian melintang dan menegak, pertindihan, garis potong) atau Label (satu halaman setiap label atau halaman sama pada setiap label, label mula, saiz A4 yang lazim atau saiz sendiri).
+- **Muka ganjil sahaja, muka genap sahaja, susunan terbalik**: muka dikira selepas susunan dibuat, berdasarkan muka yang benar-benar keluar dari pencetak. Gunakan pada pencetak tanpa cetakan dua belah: cetak muka hadapan, terbalikkan kertas, kemudian cetak muka belakang.
+- **Kecilkan supaya muat pada kertas**: hanya halaman yang lebih besar daripada kertas yang dipilih dikecilkan; halaman yang lebih kecil tidak dibesarkan. Sheets dan Markdown menggunakan medan kertas dan skala sedia ada.
+- **Skala kelabu dan resolusi imej**: apabila mencetak dengan pilihan Susun atur halaman, setiap halaman ditukar menjadi imej sebelum dihantar ke pencetak. Resolusi dipilih daripada Automatik, 150, 300 atau 600 dpi.
+- **Pilihan sahaja**: Docs dan Markdown mencetak teks yang dipilih sahaja, disusun semula bermula dari halaman pertama; Slides mencetak slaid yang dipilih dan PDF mencetak halaman yang dipilih. Sheets tetap mencetak julat yang dipilih seperti sebelum ini.
+- **Rajah susunan dan pratonton hasil**: rajah terus menunjukkan kedudukan setiap nombor halaman pada kertas, dan **Pratonton hasil** menunjukkan hasil yang benar-benar dibuat. Dengan **Simpan hasil susunan sebagai PDF**, susunan yang sama boleh dicetak pada PC lain atau di kedai cetak.
+- **Tetingkap cetakan sistem**: untuk buku kecil, pilih cetakan dua belah yang diterbalikkan pada sisi pendek. Biarkan julat halaman dan bilangan halaman setiap helai dalam tetingkap sistem seperti sedia ada.
+
+Fail PDF dicetak mengikut susunan halaman dan putaran semasa.
 
 ## Di mana fail tanpa tajuk berada
 

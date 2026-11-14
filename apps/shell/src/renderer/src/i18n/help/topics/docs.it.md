@@ -90,4 +90,4 @@ Fai clic destro ovunque nel corpo del testo — il menu si adatta all'elemento s
 
 ## Stampa
 
-ctrl+P tramite la finestra di dialogo di sistema, con pagine WYSIWYG.
+ctrl+P apre la finestra di stampa. Scegli stampante, copie, fronte-retro e intervallo (selezione compresa); in **Disposizione delle pagine** trovi più pagine per foglio, opuscolo, manifesto, etichette, facciate pari o dispari e scala di grigi (vedi [Operazioni sui file](help://file-ops)).
