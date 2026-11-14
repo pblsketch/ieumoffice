@@ -328,7 +328,11 @@ export class ProjectFolderTools {
       return refused('outside')
     }
     // a stream name (`:`) or a trailing dot or space is another spelling of some entry on Windows
-    if (this.platform === 'win32' && !asked.every(isPlainSegment)) return refused('not-found')
+    if (
+      this.platform === 'win32' &&
+      !asked.every((segment) => isPlainSegment(segment, this.platform))
+    )
+      return refused('not-found')
     const judged = this.judge(visibility, asked)
     if (judged) return refused(judged)
 

@@ -87,12 +87,14 @@ function looksAbsolute(path: string): boolean {
 }
 
 /** The segments of a path relative to `.ieumoffice/`, or a refusal */
-function dataSegments(relPath: string): string[] {
+function dataSegments(relPath: string, platform: NodeJS.Platform): string[] {
   if (typeof relPath !== 'string' || relPath === '' || looksAbsolute(relPath)) {
     throw new ProjectWriteRefused('bad-path', String(relPath))
   }
   const segments = relPath.split(/[\\/]/)
-  if (!segments.every(isPlainSegment)) throw new ProjectWriteRefused('bad-path', relPath)
+  if (!segments.every((segment) => isPlainSegment(segment, platform))) {
+    throw new ProjectWriteRefused('bad-path', relPath)
+  }
   return segments
 }
 
@@ -103,7 +105,7 @@ export class ProjectWriteGuard {
 
   /** The absolute path of a file under `<root>/.ieumoffice/`; checks the name only, touches nothing */
   dataPath(root: string, relPath: string): string {
-    return join(root, PROJECT_FOLDER_NAMES.dataDir, ...dataSegments(relPath))
+    return join(root, PROJECT_FOLDER_NAMES.dataDir, ...dataSegments(relPath, this.platform))
   }
 
   /** Replace a file under `.ieumoffice/` (temporary file, then rename) */
@@ -175,7 +177,9 @@ export class ProjectWriteGuard {
     const rel = relativeInside(root, api.normalize(target), this.platform)
     if (rel === null) throw new ProjectWriteRefused('outside', target)
     const segments = rel.split('/')
-    if (!segments.every(isPlainSegment)) throw new ProjectWriteRefused('bad-path', target)
+    if (!segments.every((segment) => isPlainSegment(segment, this.platform))) {
+      throw new ProjectWriteRefused('bad-path', target)
+    }
     if (segments[0]!.toLowerCase() === PROJECT_FOLDER_NAMES.dataDir) {
       throw new ProjectWriteRefused('outside', target)
     }
@@ -210,7 +214,7 @@ export class ProjectWriteGuard {
    * under the parent's canonical path.
    */
   async createProjectFolder(parent: string, name: string): Promise<string> {
-    if (!isValidRenameName(name) || !isPlainSegment(name)) {
+    if (!isValidRenameName(name) || !isPlainSegment(name, this.platform)) {
       throw new ProjectWriteRefused('bad-path', name)
     }
     if (!looksAbsolute(parent)) throw new ProjectWriteRefused('bad-path', parent)
@@ -259,7 +263,7 @@ export class ProjectWriteGuard {
    * the file is absent. Resolves to the target's stats, or null when it is absent.
    */
   private async prepareData(root: string, relPath: string, create: boolean): Promise<Stats | null> {
-    const segments = dataSegments(relPath)
+    const segments = dataSegments(relPath, this.platform)
     await this.assertRoot(root)
     let dir = join(root, PROJECT_FOLDER_NAMES.dataDir)
     const folders = [dir]
