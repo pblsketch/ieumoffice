@@ -1,6 +1,6 @@
 import type { AgentSkill } from '@genoffice/agent-core'
 import { brandText } from '@genoffice/i18n'
-import { AGENT_TOOLS, executePdfTool } from './tools'
+import { AGENT_TOOLS, ENCRYPTED_CONTEXT, executePdfTool } from './tools'
 import type { PdfAiDeps } from './tools'
 
 // written with the upstream name; brandText swaps in the product name
@@ -84,8 +84,7 @@ export function createPdfSkill(deps: PdfAiDeps): AgentSkill {
       const parts = [
         `Current document: "${deps.fileName()}", ${deps.pageCount()} pages; the user is viewing page ${deps.currentPage()}.`,
       ]
-      if (deps.readOnly())
-        parts.push('The document is encrypted and read-only; it cannot be modified.')
+      if (deps.readOnly()) parts.push(ENCRYPTED_CONTEXT)
       const outline = deps.outline()
       if (outline && outline.length > 0) {
         parts.push(

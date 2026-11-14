@@ -955,9 +955,10 @@ describe('translation: resume offer', () => {
 })
 
 describe('start_document_translation tool', () => {
-  const depsWith = (open?: PdfAiDeps['startDocumentTranslation']): PdfAiDeps =>
+  const depsWith = (open?: PdfAiDeps['startDocumentTranslation'], readOnly = false): PdfAiDeps =>
     ({
       pageCount: () => 5,
+      readOnly: () => readOnly,
       ...(open ? { startDocumentTranslation: open } : {}),
     }) as unknown as PdfAiDeps
   const call = (input: Record<string, unknown> = {}) => ({
@@ -981,12 +982,22 @@ describe('start_document_translation tool', () => {
     expect(result.isError).toBeUndefined()
     expect(result.output).toContain('nothing has been sent yet')
     expect(result.output).toContain('do not claim the document was translated')
+    expect(result.output).not.toContain('encrypted')
+  })
+
+  it('opens on an encrypted document and says the window offers no translated PDF', async () => {
+    const open = vi.fn(() => ({ opened: true as const }))
+    const result = await executePdfTool(depsWith(open, true), call({ language: 'ko' }))
+    expect(open).toHaveBeenCalledWith({ lang: 'ko', pages: null })
+    expect(result.isError).toBeUndefined()
+    expect(result.output).toContain('Markdown and EPUB output only')
   })
 
   it('works through the editor: the window opens with the language, nothing is sent', async () => {
     const m = await mount({ lang: 'ko' })
     const deps = {
       pageCount: () => 2,
+      readOnly: () => false,
       startDocumentTranslation: (request: { lang: string | null; pages: number[] | null }) =>
         m.handle.current!.requestOpen(request),
     } as unknown as PdfAiDeps
