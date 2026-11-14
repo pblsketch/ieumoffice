@@ -176,6 +176,9 @@ export const tr = {
   appPrintLandscape: 'Yatay',
   appPrintFrame: 'Slaytları çerçevele',
   appPrintHidden: 'Gizli slaytları yazdır',
+  appPrintRangeSelected: 'Seçili slaytlar',
+  appPrintLayoutBlocked:
+    'El notları ve not sayfaları her kâğıda bir sayfa olarak yazdırılır. Sayfaları düzenlemek için Tam Sayfa Slaytlar seçeneğini seçin.',
   appPrintPageCount: '{n} sayfa',
   appPrintNoPages: 'Yazdırılacak slayt yok',
   appPrintRendering: 'Önizleme oluşturuluyor…',

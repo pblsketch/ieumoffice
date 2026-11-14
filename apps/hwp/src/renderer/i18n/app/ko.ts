@@ -276,6 +276,7 @@ export const ko = {
   previewMargins: '여백 보기',
   previewEditPage: '현재 쪽 편집',
   previewEditFailed: '이 쪽으로 이동하지 못했습니다.',
+  printLayoutSaved: '배치한 결과를 PDF로 저장했습니다.',
   checkTitle: '문서 점검',
   checkRunning: '문서를 읽는 중…',
   checkFailed: '문서를 읽지 못했습니다.',

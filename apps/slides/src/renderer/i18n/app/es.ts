@@ -181,6 +181,9 @@ export const es = {
   appPrintLandscape: 'Horizontal',
   appPrintFrame: 'Enmarcar diapositivas',
   appPrintHidden: 'Imprimir diapositivas ocultas',
+  appPrintRangeSelected: 'Diapositivas seleccionadas',
+  appPrintLayoutBlocked:
+    'Los documentos y las páginas de notas se imprimen con una página por hoja. Para organizar las páginas, elija Diapositivas de página completa.',
   appPrintPageCount: '{n} páginas',
   appPrintNoPages: 'No hay diapositivas para imprimir',
   appPrintRendering: 'Generando la vista previa…',

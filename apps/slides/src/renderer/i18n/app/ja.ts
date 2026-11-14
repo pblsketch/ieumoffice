@@ -173,6 +173,9 @@ export const ja = {
   appPrintLandscape: '横',
   appPrintFrame: 'スライドに枠を付ける',
   appPrintHidden: '非表示スライドを印刷する',
+  appPrintRangeSelected: '選択したスライド',
+  appPrintLayoutBlocked:
+    '配布資料とノートは 1 枚に 1 ページで印刷します。ページを配置するには、レイアウトを「スライド(フルページ)」にしてください。',
   appPrintPageCount: '全 {n} ページ',
   appPrintNoPages: '印刷できるスライドがありません',
   appPrintRendering: 'プレビューを生成しています…',

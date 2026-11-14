@@ -180,6 +180,9 @@ export const hi = {
   appPrintLandscape: 'लैंडस्केप',
   appPrintFrame: 'स्लाइड के चारों ओर फ़्रेम',
   appPrintHidden: 'छिपी स्लाइड प्रिंट करें',
+  appPrintRangeSelected: 'चुनी गई स्लाइड',
+  appPrintLayoutBlocked:
+    'हैंडआउट और नोट्स पृष्ठ एक शीट पर एक पृष्ठ छपते हैं। पृष्ठ व्यवस्थित करने के लिए पूर्ण पृष्ठ स्लाइड चुनें।',
   appPrintPageCount: 'कुल {n} पृष्ठ',
   appPrintNoPages: 'प्रिंट करने के लिए कोई स्लाइड नहीं',
   appPrintRendering: 'पूर्वावलोकन बनाया जा रहा है…',

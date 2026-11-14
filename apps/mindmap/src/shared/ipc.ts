@@ -10,6 +10,7 @@
  * calls them.
  */
 import type { AiPanelPrefs } from '@genoffice/ui'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiToolCapabilities } from '@genoffice/ai-search'
@@ -298,6 +299,21 @@ export interface PrintMindmapRequest {
 /** A cancelled job is the user closing the system dialog: an outcome, not a failure. */
 export type PrintResult = { ok: true } | { ok: true; canceled: true } | { ok: false; error: string }
 
+/**
+ * The advanced print layout's channels (decision 0141) are
+ * `mindmap:print-layout-preview|print|save|cancel` and the progress event
+ * `mindmap:print-layout-progress`, named by the shared print layout from this prefix.
+ */
+export const MINDMAP_PRINT_LAYOUT_PREFIX = 'mindmap'
+
+/** What a print layout request carries as its `editor` part: the page Print would print. */
+export interface MindmapPrintJob {
+  /** the same self-contained print HTML `print` is given (`snapshotPage`) */
+  html: string
+  /** file name (no extension) the save dialog of the arranged PDF suggests */
+  suggestedName: string
+}
+
 // ---- chat attachments (T12; same shapes as the other editors) ----
 
 /** image attachments skip text extraction: read as base64 on send and passed to the model with the user message */
@@ -461,6 +477,12 @@ export interface MindmapExportApi {
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   exportMarkdown(request: ExportMarkdownRequest): Promise<ExportResult>
   print(request: PrintMindmapRequest): Promise<PrintResult>
+  /**
+   * The advanced print layout: the page `print` would print, made into a
+   * landscape A4 PDF the way the PDF export makes it, then arranged and
+   * previewed, printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<MindmapPrintJob>
 }
 
 /** The AI panel's bridge. The panel and the attachment handlers are T12's. */

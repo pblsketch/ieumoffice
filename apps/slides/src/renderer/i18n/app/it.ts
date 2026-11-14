@@ -183,6 +183,9 @@ export const it = {
   appPrintLandscape: 'Orizzontale',
   appPrintFrame: 'Cornice alle diapositive',
   appPrintHidden: 'Stampa diapositive nascoste',
+  appPrintRangeSelected: 'Diapositive selezionate',
+  appPrintLayoutBlocked:
+    'Stampati e pagine note si stampano con una pagina per foglio. Per disporre le pagine, scegli Diapositive a pagina intera.',
   appPrintPageCount: '{n} pagine',
   appPrintNoPages: 'Nessuna diapositiva da stampare',
   appPrintRendering: 'Generazione dell’anteprima…',

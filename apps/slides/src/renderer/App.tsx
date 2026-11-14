@@ -4826,6 +4826,7 @@ export function App() {
           slides={slides}
           images={images}
           current={current}
+          selectedSlides={selectedSlides}
           onClose={() => setPrintDlgOpen(false)}
           setStatus={setStatus}
         />
