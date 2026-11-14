@@ -5678,6 +5678,8 @@ export default function App() {
   const friendlySaveError = (error: string): string => {
     const verify = /save-verify-failed pages=([\d,]+)/.exec(error)
     if (verify) return t('saveVerifyFailed', { pages: verify[1]!.split(',').join(', ') })
+    const locked = /save-target-locked code=(\w+)/.exec(error)
+    if (locked) return `${t('saveTargetLocked')} (${locked[1]})`
     return error
   }
 
