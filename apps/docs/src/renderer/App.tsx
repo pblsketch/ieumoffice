@@ -112,6 +112,7 @@ import {
 import { ZoteroDocumentController } from './zotero/controller'
 import { AiPanel, AI_REVISION_AUTHOR } from './ai/AiPanel'
 import { useAiDock } from './ai/use-ai-dock'
+import { useAiVisible } from './ai-visibility'
 import type { AiCommentsAccess, AiDocExtras, AiHeaderFooterAccess } from './ai/tools'
 import type { AiStyleInfo } from './ai/style-ops'
 import { applyResolvedPageSetup, describeSection, type AiPageSetupAccess } from './ai/page-setup'
@@ -832,6 +833,11 @@ export function App() {
   // returns to hidden. The dock stays mounted either way, so panel state and
   // in-flight runs survive; the hook closes it when the switch itself goes off.
   const aiSidebarEnabled = useAiSidebarEnabled(setShowAi)
+  // Settings › Editors and AI: while AI is off no AI part of this editor is drawn
+  // and nothing here starts an AI run; turning it back on brings them all back
+  const aiOn = useAiVisible()
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
   const [spellcheck, setSpellcheck] = useState(spellcheckEnabled)
   const [largeDocSpellOff, setLargeDocSpellOff] = useState(false)
   const spellcheckActive = spellcheck && !largeDocSpellOff
@@ -1952,10 +1958,18 @@ export function App() {
   useEffect(() => window.desktop.onTeardown?.(() => setTornDown(true)), [])
 
   // keep the native View menu's checkmarks (AI Sidebar / Dark Mode) in sync
-  // (the IPC field keeps its historical darkCanvas name)
+  // (the IPC field keeps its historical darkCanvas name); a report also lets the
+  // main process show or hide the menu's AI entries after the AI switch changed
   useEffect(() => {
     window.desktop.reportViewMenuState?.({ aiSidebar: showAi, darkCanvas: darkPage, odt: odtDoc })
-  }, [showAi, darkPage, odtDoc])
+  }, [showAi, darkPage, odtDoc, aiOn])
+
+  // AI turned off: the queued AI edits go with the panel, and so do their anchors
+  useEffect(() => {
+    if (aiOn || !editor || editQueueRef.current.length === 0) return
+    clearQueueAnchors(editor)
+    setEditQueue([])
+  }, [aiOn, editor])
 
   // Crash-recovery copy: while the document is dirty, push a serialized copy
   // to the main process about every 30s (a never-saved document's too, into
@@ -2075,6 +2089,7 @@ export function App() {
     setStatus,
     setRecent,
     setShowAi,
+    aiOn,
     setDoc,
     setAiPanelKey,
     setDocCss,
@@ -5512,6 +5527,7 @@ export function App() {
   // Review > Editor, the Tools menu and Word's F7 all run the same AI proofread
   // behind the one-time whole-document-rewrite acknowledgement
   const runAiProofread = useCallback(() => {
+    if (!aiOnRef.current) return
     if (
       localStorage.getItem(AI_REWRITE_ACK_KEY) !== '1' &&
       !window.confirm(t('ribbonAiRewriteConfirm'))
@@ -5895,7 +5911,7 @@ export function App() {
           zoomFit('multi')
           break
         case 'toggle-ai':
-          setShowAi((v) => !v)
+          if (aiOnRef.current) setShowAi((v) => !v)
           break
         case 'toggle-dark':
           updateDarkPage(!darkPageRef.current)
@@ -7589,7 +7605,7 @@ export function App() {
       />
 
       <div className="app-main">
-        {doc && (
+        {doc && aiOn && (
           <div
             className={`ai-dock${aiDock.open ? '' : ' collapsed'}${
               !aiSidebarEnabled && !aiDock.open ? ' ai-dock-off' : ''
@@ -7660,7 +7676,7 @@ export function App() {
                 onClose={closeNav}
               />
             )}
-            {doc && (
+            {doc && aiOn && (
               <AiAskPopover
                 editor={editor}
                 queueFull={editQueue.length >= EDIT_QUEUE_MAX}

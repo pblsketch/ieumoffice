@@ -26,6 +26,19 @@ Světlý / Tmavý / Podle systému. Volba Podle systému sleduje vzhled operačn
 
 GenOffice neshromažďuje ani neodesílá statistiky používání, takže pro ně není žádný přepínač.
 
+## Editory a AI
+
+Tady vybíráte, které editory používáte a zda chcete používat AI. Stejný seznam se navíc jednou objeví na dvou dalších místech: v kroku **Vyberte editory** uvítacích obrazovek při prvním spuštění a v okně, které se jednou ukáže na domovské stránce těm, kdo GenOffice používali už před zavedením tohoto nastavení. Na začátku je vše zapnuté, takže když nic nezměníte, nic se nezmění. Změna platí hned ve všech otevřených oknech.
+
+- **Editory**: Word, Excel, PowerPoint, PDF, Nástroje PDF, Markdown a text, HTML, Myšlenková mapa, Diagram, HWP (hangul) a E-kniha (EPUB). Nástroje PDF se zapínají odděleně od editoru PDF. Aspoň jeden editor musí zůstat zapnutý.
+- **Vypnutý editor** zmizí ze seznamů nových dokumentů: z karet domovské stránky, z nabídky **+** na liště karet, z Soubor ▸ Nový a ze seznamu výchozích aplikací. Dokumenty, které už jsou otevřené, zůstanou otevřené a záložní kopie pro obnovení se zachovají.
+- **Při otevření souboru vypnutého editoru** (dvojklik, přetažení, Soubor ▸ Otevřít, nedávné soubory) se zobrazí volba **Zapnout a otevřít** nebo **Zrušit**. Když otevřete několik jeho souborů najednou, zeptá se jen jednou.
+- **Jiné funkce, které by svůj výsledek otevřely ve vypnutém editoru**, například převod PDF do jeho formátu, se zeptají před začátkem: **Zapnout a otevřít**, **Jen vytvořit soubor** (soubor se vytvoří a ukáže ve složce, editor zůstane vypnutý) nebo **Zrušit**.
+- **Když jsou funkce AI vypnuté**, zmizí panely AI, tlačítka a nabídky AI, panel dotazů na domovské stránce, okno agenta i výzvy k připojení AI a z nastavení zmizí karty Účet, AI a Dovednosti. GenOffice ze svých obrazovek nespouští žádný program AI. Přihlášení, klíče, dovednosti a nastavení zůstanou a po opětovném zapnutí AI se vrátí. Pokud ještě běží práce AI, nejdřív se zeptá, zda chcete **Zastavit a vypnout**.
+- Příkazový řádek, MCP a tato příručka fungují stejně, ať jsou editory a AI zapnuté, nebo ne.
+
+Ani se zapnutou AI nevytváří AI nové dokumenty pro vypnutý editor; požádá vás, abyste ho zapnuli zde.
+
 ## AI ▸ Pokročilé
 
 Tato část je sbalená, dokud ji neotevřete; většina lidí ji nikdy nepotřebuje. Karta **Model AI** obsahuje klíče API a servery, které provozujete sami, pro chat. Na kartě **AI média a vyhledávání** si každá schopnost vybere dodavatele, který ji poskytuje, a klíč i základní URL dodavatele se zadávají jednou a sdílejí se:

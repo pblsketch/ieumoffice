@@ -21,6 +21,7 @@ import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import {
   PROJECT_FOLDER_BRIDGE_KEY,
   projectFolderBridge,
@@ -1063,6 +1064,10 @@ const homeKindsApi: HomeKindsApi = {
   },
 }
 contextBridge.exposeInMainWorld('aiOfficeHomeKinds', homeKindsApi)
+
+// Which editors are on and whether AI is on; the running AI job count and "stop all"
+// (EditorChoiceApi in ../shared/editor-choice)
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, appChoiceBridge())
 
 // Home's launch recovery list (crash recovery spec 6): the rows the main
 // process asks about at launch, and the user's choices back

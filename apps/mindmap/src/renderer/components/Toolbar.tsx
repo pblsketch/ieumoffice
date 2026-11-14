@@ -66,6 +66,8 @@ export interface ToolbarProps {
   noteOpen: boolean
   /** the AI panel is open */
   aiOpen: boolean
+  /** AI is on in Settings (the AI button shows); on when not given */
+  aiOn?: boolean
   /** the format panel is open */
   formatOpen: boolean
   /** what the topic in hand shows; null without one */
@@ -391,18 +393,20 @@ export function Toolbar(p: ToolbarProps) {
           </div>
         </div>
         <span className="mm-tools-end">
-          <button
-            type="button"
-            className={`mm-ai-entry ai-entry${p.aiOpen ? ' active' : ''}`}
-            data-tip={t('aiOpenAssistant')}
-            data-action="ai"
-            aria-pressed={p.aiOpen}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={p.onToggleAi}
-          >
-            <AiMark size={18} />
-            <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-          </button>
+          {p.aiOn !== false && (
+            <button
+              type="button"
+              className={`mm-ai-entry ai-entry${p.aiOpen ? ' active' : ''}`}
+              data-tip={t('aiOpenAssistant')}
+              data-action="ai"
+              aria-pressed={p.aiOpen}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={p.onToggleAi}
+            >
+              <AiMark size={18} />
+              <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+            </button>
+          )}
         </span>
       </div>
     </header>

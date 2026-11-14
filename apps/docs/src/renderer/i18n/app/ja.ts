@@ -56,6 +56,7 @@ export const ja = {
   appFontsMissing: '文書のフォントが未インストールです: {names}（代替フォントで表示）',
   appVerticalTextNotice: '縦書きテキストを含む文書です（現在は横書きで表示。保存には影響しません）',
   appNewDocCreated: '空白の文書を作成しました。左側の AI パネルで生成したい内容を記述できます',
+  appNewDocCreatedNoAi: '空白の文書を作成しました',
   appNewFailed: '新規作成に失敗しました: {error}',
   appSaveFailed: '保存に失敗しました: {error}',
   appAutoSavedAt: '自動保存しました ({time})',

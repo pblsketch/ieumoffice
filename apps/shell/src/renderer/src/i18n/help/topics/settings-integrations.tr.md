@@ -26,6 +26,19 @@ Açık / Koyu / Sistem. Sistem, işletim sisteminin görünümünü izler ve dü
 
 GenOffice kullanım istatistiği toplamaz veya göndermez, bu yüzden bunun için bir anahtar yoktur.
 
+## Düzenleyiciler ve AI
+
+Burada hangi düzenleyicileri kullandığınızı ve AI kullanıp kullanmayacağınızı seçersiniz. Aynı liste iki yerde daha birer kez çıkar: ilk açılıştaki karşılama ekranlarının **Kullanacağınız düzenleyicileri seçin** adımında ve bu ayar gelmeden önce de GenOffice kullananlara Giriş ekranında bir kez gösterilen pencerede. Başta her şey açıktır; hiçbir şeye dokunmazsanız hiçbir şey değişmez. Yaptığınız değişiklik açık tüm pencerelerde hemen geçerli olur.
+
+- **Düzenleyiciler**: Word, Excel, PowerPoint, PDF, PDF araçları, Markdown ve metin, HTML, Zihin haritası, Diyagram, HWP (Hangıl) ve E-kitap (EPUB). PDF araçları, PDF düzenleyicisinden ayrı açılıp kapatılır. En az bir düzenleyici açık kalmalıdır.
+- **Kapattığınız düzenleyici** yeni belge listelerinden çıkar: Giriş ekranındaki kartlar, sekme çubuğunun **+** menüsü, Dosya ▸ Yeni ve varsayılan uygulama listesi. Zaten açık olan belgeler açık kalır, kurtarma kopyaları da korunur.
+- **Kapalı bir düzenleyicinin dosyasını açtığınızda** (çift tıklama, sürükleyip bırakma, Dosya ▸ Aç, son dosyalar) **Etkinleştir ve aç** ile **İptal** arasında seçim yapmanız istenir. Onun birden çok dosyasını aynı anda açarsanız yalnızca bir kez sorulur.
+- **Sonucunu kapalı bir düzenleyicide açacak diğer özellikler**, örneğin bir PDF'yi o biçime dönüştürmek, başlamadan önce sorar: **Etkinleştir ve aç**, **Yalnızca dosyayı oluştur** (dosya oluşturulur ve klasöründe gösterilir, düzenleyici kapalı kalır) ya da **İptal**.
+- **AI özellikleri kapalıyken** AI panelleri, AI düğmeleri ve menüleri, Giriş ekranındaki soru paneli, ajan penceresi ve AI bağlama uyarıları kaybolur; Hesap, AI ve Beceriler sekmeleri de ayarlardan çıkar. GenOffice ekranlarından hiçbir AI programını başlatmaz. Oturum açma bilgileri, anahtarlar, beceriler ve ayarlar korunur ve AI'ı yeniden açtığınızda geri gelir. Hâlâ çalışan bir AI işi varsa önce **Durdur ve kapat** isteyip istemediğiniz sorulur.
+- Komut satırı, MCP ve bu kılavuz, düzenleyiciler ya da AI açık olsun kapalı olsun aynı şekilde çalışır.
+
+AI açıkken bile AI, kapalı bir düzenleyici için yeni belge oluşturmaz; o düzenleyiciyi burada açmanızı söyler.
+
 ## AI ▸ Gelişmiş
 
 Siz açana kadar kapalıdır; çoğu kişi hiç ihtiyaç duymaz. **AI Modeli** sekmesi sohbet için API anahtarlarını ve kendi çalıştırdığınız sunucuları barındırır. **AI Medya ve Arama** sekmesinde her yetenek onu sunan sağlayıcıyı seçer; bir sağlayıcının anahtarı ve temel URL’si bir kez girilir ve paylaşılır:

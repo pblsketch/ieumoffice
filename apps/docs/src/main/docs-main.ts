@@ -76,7 +76,11 @@ import {
   type RecoveryIdentity,
   readHwpDefaultFormat,
 } from '@genoffice/electron-utils'
+import { aiCreateRefusal, withOffDocumentKinds } from '@genoffice/electron-utils/ai-create-guard'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
+import { AI_OFF_ERROR, aiMediaCall } from './ai-off'
 import {
   configureExtraFontDirs,
   configureMetricsCache,
@@ -148,10 +152,14 @@ import { listCodexModels, shutdownCodexAppServers } from '@genoffice/ai-provider
 import { listCustomModelsForIpc } from '@genoffice/ai-provider/custom-models'
 import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
+  createSubscriptionIpcDeps,
+  detectSubscriptionLogin,
   ensureSubscriptionIpc,
   initSubscriptionChildTracking,
+  listSubscriptionModels,
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
+  type SubscriptionIpcSetup,
 } from '@genoffice/ai-provider/subscription'
 import {
   abortMediaCalls,
@@ -275,9 +283,20 @@ import {
   writeStarredItems,
 } from './starred-files'
 import { registerFreeAiIpc } from './free-ai-ipc'
+import {
+  aiGatedDetect,
+  aiGatedKeyModelRefresher,
+  aiGatedModelLister,
+  aiGatedSubscriptionDeps,
+  endSubscriptionLoginsWhenAiOff,
+  onAiFeaturesBack,
+} from './ai-background'
 import { normalizeReadUrlRequest, unexpectedReadUrlFailure } from './read-url-ipc'
 import { initDocsAutoUpdater } from './updater'
 import { registerZoteroIpc, teardownZoteroIpc } from './zotero-ipc'
+
+/** how long a chat turn still counts as running between two model calls (tunable) */
+const CHAT_TURN_LINGER_MS = 3_000
 
 /**
  * Docs main-process logic as an embeddable module: no top-level side effects.
@@ -4376,18 +4395,22 @@ const AI_RUN_TEXTS: AiRunTexts = {
  * Asks the key providers for their current models (decision 0087): once per run,
  * then again for a provider whose key or base URL changed, or whose list is a
  * day old (decision 0138). The list lands in the settings file, so every
- * picker shows it.
+ * picker shows it. Nothing is asked while AI features are off (editor choice
+ * spec 8.3); turned back on, the lists due are asked for.
  */
-const keyModelRefresher = createKeyModelRefresher({
-  read: storedAiSettings,
-  write: (update) => {
-    const latest = storedAiSettings()
-    const next = update(latest)
-    if (next === latest) return
-    writeAiSettingsFile(next)
-    broadcastAiSettingsChanged()
-  },
-})
+const keyModelRefresher = aiGatedKeyModelRefresher(
+  createKeyModelRefresher({
+    read: storedAiSettings,
+    write: (update) => {
+      const latest = storedAiSettings()
+      const next = update(latest)
+      if (next === latest) return
+      writeAiSettingsFile(next)
+      broadcastAiSettingsChanged()
+    },
+  }),
+  aiFeaturesOn,
+)
 
 /**
  * Persist settings a renderer sent: schema-checked, with the live model lists
@@ -4427,12 +4450,20 @@ function registerCodexImageBackend(): void {
   setCodexImageGenerationAvailable(true)
 }
 
+/** a tab's picture or media call: refused while AI is off, else one running AI job its Stop ends */
+function screenMediaCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  return aiMediaCall(() => abortMediaCalls(senderId), run)
+}
+
 export function registerAiIpc(): void {
   registerCodexImageBackend()
   app.once('before-quit', shutdownCodexAppServers)
   // the subscription channels (statuses, recheck, login, install, metered) exist once per
   // process: whichever editor main asks first registers them and starts the first check
-  ensureSubscriptionIpc(ipcMain, {
+  const subscriptionSetup: SubscriptionIpcSetup = {
     getSettings: storedAiSettings,
     setMeteredAccepted: (provider: AiSubscriptionProviderId, accepted: boolean) => {
       writeAiSettingsFile(
@@ -4447,6 +4478,10 @@ export function registerAiIpc(): void {
       broadcastAiSettingsChanged()
     },
     dataDir: app.getPath('userData'),
+    // every check and model listing, the ones the service starts itself after a login ends
+    // included, asks no program while AI features are off (editor choice spec 8.3, 9)
+    detect: aiGatedDetect(detectSubscriptionLogin, aiFeaturesOn),
+    listModels: aiGatedModelLister(listSubscriptionModels, aiFeaturesOn),
     broadcast: (channel, statuses) => {
       for (const wc of webContents.getAllWebContents())
         if (!wc.isDestroyed()) wc.send(channel, statuses)
@@ -4464,7 +4499,18 @@ export function registerAiIpc(): void {
       },
       pages: () => aiChatGptSignInPages(getUiLang()),
     },
+  }
+  // while AI features are off no check runs and no program starts (editor choice spec 8.3);
+  // turned back on, the programs are checked once (spec 8.5)
+  const subscriptionDeps = ensureSubscriptionIpc(ipcMain, subscriptionSetup, (setup) =>
+    aiGatedSubscriptionDeps(createSubscriptionIpcDeps(setup), aiFeaturesOn),
+  )
+  onAiFeaturesBack(() => {
+    void subscriptionDeps.service.check().catch(() => undefined)
+    keyModelRefresher.refreshChanged()
   })
+  // turned off, a login still running (started in Settings before) ends with its program
+  endSubscriptionLoginsWhenAiOff(subscriptionDeps)
 
   ipcMain.handle('ai:get-settings', async (): Promise<AiSettings> => storedAiSettings())
 
@@ -4495,6 +4541,8 @@ export function registerAiIpc(): void {
   })
 
   ipcMain.handle('ai:codex-models', async (_event, cliPath: unknown) => {
+    // AI turned off in Settings: no subscription program starts from a screen
+    if (!aiFeaturesOn()) throw new Error(AI_OFF_ERROR)
     // turned off in this app (decision 0114): Codex is not started for its list either
     if (subscriptionOffIn(storedAiSettings(), 'codex')) {
       throw new Error('Codex is turned off in this app')
@@ -4550,7 +4598,8 @@ export function registerAiIpc(): void {
       send({ requestId, type: 'error', error: refusal })
       return
     }
-    const tools = request.tools ?? []
+    // the create tool names the document types whose editor is off now (spec 7.4)
+    const tools = withOffDocumentKinds(request.tools ?? [])
     const maxTokens = request.maxTokens ?? maxOutputTokensOf(settings)
     // A local server loads the model on its first request, so this endpoint's
     // own first-response limit (default 300s) replaces the protocol default,
@@ -4563,6 +4612,16 @@ export function registerAiIpc(): void {
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one running AI job while this reply streams (every editor's chat goes
+    // through here): turning AI off stops it the way the screen's Stop does,
+    // and the subscription program ends with the signal
+    const endJob = registerAiJob({
+      kind: 'chat',
+      stop: () => controller.abort(),
+      // one tab's turn is one job, its parallel calls and the pause between them included
+      group: `tab:${event.sender.id}`,
+      lingerMs: CHAT_TURN_LINGER_MS,
+    })
     // deltas go out in short batches, everything else in order behind them
     const out = createChunkCoalescer<AiStreamChunk>(send)
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
@@ -4630,6 +4689,7 @@ export function registerAiIpc(): void {
       out.flush()
       unwatchSender()
       activeAiStreams.delete(requestId)
+      endJob()
     }
   })
 
@@ -4686,24 +4746,26 @@ export function registerAiIpc(): void {
   // docs-prefixed: slides registers its own ai:analyze-media in the same shell process.
   // Ends with its tab, or when the tab's AI run is stopped.
   ipcMain.handle('docs:analyze-media', (event, op: { mediaUrls: string[]; requirements: string }) =>
-    withMediaCallSignal(event.sender, async (signal) => {
-      const mediaUrls = (op.mediaUrls ?? []).map(String).filter(Boolean)
-      // a picture opened lazily from a large docx is only addressable by its main-process
-      // store; hand its bytes over as a data URL so the loader can read them like any other
-      const resolved: string[] = []
-      for (const url of mediaUrls) {
-        const lazy = await readLazyMedia(url).catch(() => null)
-        resolved.push(lazy ? `data:${lazy.mime};base64,${lazy.body.toString('base64')}` : url)
-      }
-      return analyzeMediaTool(
-        SETTINGS_PATH(),
-        {
-          mediaUrls: resolved,
-          requirements: String(op.requirements ?? ''),
-        },
-        { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
-      )
-    }),
+    screenMediaCall(event.sender.id, () =>
+      withMediaCallSignal(event.sender, async (signal) => {
+        const mediaUrls = (op.mediaUrls ?? []).map(String).filter(Boolean)
+        // a picture opened lazily from a large docx is only addressable by its main-process
+        // store; hand its bytes over as a data URL so the loader can read them like any other
+        const resolved: string[] = []
+        for (const url of mediaUrls) {
+          const lazy = await readLazyMedia(url).catch(() => null)
+          resolved.push(lazy ? `data:${lazy.mime};base64,${lazy.body.toString('base64')}` : url)
+        }
+        return analyzeMediaTool(
+          SETTINGS_PATH(),
+          {
+            mediaUrls: resolved,
+            requirements: String(op.requirements ?? ''),
+          },
+          { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+        )
+      }),
+    ),
   )
 
   // download image from URL → base64+mime (download in the main process avoids CORS; the renderer builds the image node and measures size itself)
@@ -4736,19 +4798,23 @@ export function registerAiIpc(): void {
   ipcMain.handle(
     'docs:ai-generate-image',
     (event, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          SETTINGS_PATH(),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+      screenMediaCall(event.sender.id, () =>
+        withMediaCallSignal(event.sender, (signal) =>
+          generateImageTool(
+            SETTINGS_PATH(),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+            },
+            { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
         ),
       ),
   )
 
   ipcMain.handle('ai:search-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, apiKey } = (input ?? {}) as { provider?: AiSearchProviderId; apiKey?: string }
     if (!provider || !AI_SEARCH_PROVIDERS.some((meta) => meta.id === provider)) {
       return { ok: false, error: 'No search provider to test' }
@@ -4758,6 +4824,8 @@ export function registerAiIpc(): void {
 
   // settings-UI connection test for a key media provider
   ipcMain.handle('ai:media-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, config } = (input ?? {}) as {
       provider?: AiMediaProviderId
       config?: AiMediaProviderConfig
@@ -4769,11 +4837,18 @@ export function registerAiIpc(): void {
     return testMediaProvider(provider, config)
   })
 
-  ipcMain.handle('ai:chat', async (_event, request: AiChatRequest) => {
+  ipcMain.handle('ai:chat', async (event, request: AiChatRequest) => {
     // same schema check and provider choice as ai:stream: one-shot requests would
     // otherwise act on the renderer's settings copy verbatim
     const target = resolveAiRun(request.settings, sharedSubscriptionStatuses(), AI_RUN_TEXTS)
     if (!target.ok) return { ok: false, ...target.refusal }
+    // the shell's checks in front of every screen's AI run (AI off, Drive copies)
+    const refusal = aiRunRefusal({
+      senderId: event.sender.id,
+      provider: target.provider,
+      model: target.config.model,
+    })
+    if (refusal) return { ok: false, error: refusal }
     const { system, user } = request
     try {
       const result = await chatForProvider(target.provider, target.config, system, user)
@@ -6597,6 +6672,9 @@ export function sanitizeAiDocFileBase(title: string): string {
  * project (spec 6), pdf / md / html are made first and then written into that
  * project's folder by the shell (a free name, never over a file), and the
  * docx tab follows that project; otherwise everything is as described above.
+ *
+ * A type whose editor is turned off (Settings → Editors and AI) is refused
+ * before anything is made, with a reason the AI passes on (editor choice 7.4).
  */
 export async function createAiDocument(
   request: CreateDocumentRequest,
@@ -6606,6 +6684,9 @@ export async function createAiDocument(
   const title = sanitizeAiDocFileBase(request?.title)
   const content = String(request?.content ?? '')
   if (!content.trim()) return { ok: false, error: 'content must not be empty' }
+  // a type whose editor is turned off is refused before anything is made (spec 7.4)
+  const refusal = aiCreateRefusal(type)
+  if (refusal) return { ok: false, error: refusal }
   try {
     if (type === 'docx') {
       const payload: AiDocContent = { title, html: content }
@@ -6692,6 +6773,13 @@ function activeViewMenuState(): ViewMenuState {
 
 /** Insert-menu entries of features an ODT document switches off (equations, comments) */
 const ODT_OFF_MENU_IDS = ['docs-menu-insert-equation', 'docs-menu-insert-comment'] as const
+
+/** menu entries that open or run the AI: hidden while AI is off (Settings › Editors and AI) */
+const AI_MENU_IDS = [
+  'docs-menu-ai-sidebar',
+  'docs-menu-ai-proofread-sep',
+  'docs-menu-ai-proofread',
+] as const
 
 /** shell-injected items appended to the File menu (e.g. Back to Home); persists
  * across the internal rebuilds pushRecent() triggers */
@@ -6870,6 +6958,7 @@ export function buildDocsMenu(): void {
           id: 'docs-menu-ai-sidebar',
           type: 'checkbox',
           checked: activeViewMenuState().aiSidebar,
+          visible: aiFeaturesOn(),
           label: tm('menuAiSidebar'),
           click: () => sendCommand('toggle-ai'),
         },
@@ -7036,9 +7125,14 @@ export function buildDocsMenu(): void {
         ...(isMac
           ? []
           : [{ label: tm('menuPreferences'), click: () => sendCommand('preferences') }]),
-        { type: 'separator' },
+        { id: 'docs-menu-ai-proofread-sep', type: 'separator', visible: aiFeaturesOn() },
         // Runs the same AI proofread as Review > Editor (renderer shows the one-time ack)
-        { label: tm('menuAiProofread'), click: () => sendCommand('ai-proofread') },
+        {
+          id: 'docs-menu-ai-proofread',
+          label: tm('menuAiProofread'),
+          visible: aiFeaturesOn(),
+          click: () => sendCommand('ai-proofread'),
+        },
       ],
     },
     windowMenuTemplate(process.platform, appMenuLabels(getUiLang())),
@@ -7237,6 +7331,12 @@ ipcMain.on('docs:view-menu-state', (event, state: unknown) => {
   for (const id of ODT_OFF_MENU_IDS) {
     const item = menu?.getMenuItemById(id)
     if (item) item.enabled = !next.odt
+  }
+  // every tab reports again when the AI switch changes, so the live menu follows it
+  const aiOn = aiFeaturesOn()
+  for (const id of AI_MENU_IDS) {
+    const item = menu?.getMenuItemById(id)
+    if (item) item.visible = aiOn
   }
 })
 

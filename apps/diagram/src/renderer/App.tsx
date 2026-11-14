@@ -6,7 +6,7 @@
  * the drawing is draw.io's.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAutoSavePref, useSplitPaneFocusPing } from '@genoffice/ui'
+import { aiVisible, useAppChoice, useAutoSavePref, useSplitPaneFocusPing } from '@genoffice/ui'
 import { createDiagramFile, type DiagramFormat } from '@genoffice/drawio-model'
 import type { Lang } from '@genoffice/i18n'
 import type { BridgeEvent, DrawioMenuAction, EmbedEvent } from '../shared/bridge-protocol'
@@ -93,6 +93,9 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
   const copierRef = useRef<DiagramCopier | null>(null)
 
   useSplitPaneFocusPing()
+
+  // AI turned off in Settings takes the AI panel and its rail away; turned on, they come back
+  const aiOn = aiVisible(useAppChoice(window.aiOfficeEditorChoice))
 
   // the AI panel reads and changes the diagram through the frame, once draw.io is up
   const ai = useDiagramAi({
@@ -697,7 +700,7 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
             </div>
           )}
         </div>
-        <DiagramAiDock ai={ai} filePath={path} />
+        {aiOn && <DiagramAiDock ai={ai} filePath={path} />}
       </div>
       <div className="dg-foot">
         <span className="dg-status" aria-live="polite">

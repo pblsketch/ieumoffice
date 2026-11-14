@@ -45,6 +45,8 @@ function fixture() {
     helpCheckUpdatesItems: () => [],
     shellHooks: null,
     activeViewMenuState: () => ({}),
+    // the AI menu entries follow Settings › Editors and AI (on here)
+    aiFeaturesOn: () => true,
     Menu: { buildFromTemplate: (template: unknown) => template, setApplicationMenu: installMenu },
     ipcMain: {
       handle: (_channel: string, handler: () => unknown) => {

@@ -44,7 +44,7 @@ Les cartes au-dessus des listes créent un document en une étape. Cliquer sur u
 
 Le nouveau fichier atterrit dans le dossier actuellement sélectionné dans la barre latérale ; sans sélection, il va dans le dossier par défaut.
 
-Pour masquer des cartes ou changer leur ordre, utilisez **Nouveaux documents sur l’accueil** dans Paramètres → Général. Un type désactivé disparaît seulement des cartes et des menus Nouveau ; ses fichiers s’ouvrent toujours normalement. Sur l’accueil, ⌘N/Ctrl+N crée le premier type encore affiché.
+Pour masquer des cartes ou changer leur ordre, utilisez **Nouveaux documents sur l’accueil** dans Paramètres → Général. Un type désactivé disparaît seulement des cartes et des menus Nouveau ; ses fichiers s’ouvrent toujours normalement. Sur l’accueil, ⌘N/Ctrl+N crée le premier type encore affiché. Désactiver un éditeur dans Paramètres → Éditeurs et IA est autre chose : ses cartes et ses entrées de menu disparaissent aussi, et ouvrir ses fichiers demande d’abord une confirmation.
 
 Ce que fait chaque carte :
 

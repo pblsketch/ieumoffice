@@ -10,9 +10,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  aiVisible,
   projectPanelText,
   templateDocumentOf,
   presentationKeyOf,
+  useAppChoice,
   useAutoSavePref,
   useSplitPaneFocusPing,
   type TemplateDocument,
@@ -371,6 +373,9 @@ export default function App() {
     saving: () => savingRef.current,
   })
 
+  // AI turned off in Settings takes the AI button, panel and rail away; turned on, they come back
+  const aiOn = aiVisible(useAppChoice(window.aiOfficeEditorChoice))
+
   // the AI panel works on the map through the same session and controllers (T12)
   const ai = useMindmapAi({ session, controllers, activeKey, setActiveKey, path, flush: flushAll })
 
@@ -386,7 +391,8 @@ export default function App() {
 
   // a request the shell handed over to this new map: taken once, run through the panel (T16)
   const handoff = useMapHandoff({
-    ready: status === 'ready',
+    // with AI off a handed-over request is not taken: there is no panel to run it
+    ready: status === 'ready' && aiOn,
     untitled: path === null,
     openPanel: () => {
       closeNote()
@@ -894,6 +900,7 @@ export default function App() {
         formatOpen={formatOpen}
         textFormat={controller?.textFormat() ?? null}
         aiOpen={ai.open}
+        aiOn={aiOn}
         noteOpen={noteOpen}
         onSave={() => void doSave('save')}
         onSaveAs={() => void doSave('saveAs')}
@@ -1041,21 +1048,23 @@ export default function App() {
             onClose={closeNote}
           />
         )}
-        <MindmapAiDock
-          ai={ai}
-          filePath={path}
-          request={handoff.request}
-          onRunStart={handoff.onRunStart}
-          templateDocument={templateDocument}
-          onSkillHandoff={() => {
-            closeNote()
-            setThemeOpen(false)
-            setFormatOpen(false)
-            ai.setOpen(true)
-          }}
-          // a map a create flow handed over goes into the panel's project once made (spec 6)
-          onHandedRunDone={() => void saveIntoProject()}
-        />
+        {aiOn && (
+          <MindmapAiDock
+            ai={ai}
+            filePath={path}
+            request={handoff.request}
+            onRunStart={handoff.onRunStart}
+            templateDocument={templateDocument}
+            onSkillHandoff={() => {
+              closeNote()
+              setThemeOpen(false)
+              setFormatOpen(false)
+              ai.setOpen(true)
+            }}
+            // a map a create flow handed over goes into the panel's project once made (spec 6)
+            onHandedRunDone={() => void saveIntoProject()}
+          />
+        )}
       </main>
 
       <footer className="mm-foot">

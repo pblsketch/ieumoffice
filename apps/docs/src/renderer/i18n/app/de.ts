@@ -57,6 +57,7 @@ export const de = {
     'Dieses Dokument enthält vertikalen Text (vorerst horizontal angezeigt; das Speichern ist nicht betroffen)',
   appNewDocCreated:
     'Leeres Dokument erstellt. Beschreiben Sie im KI-Bereich links, was generiert werden soll',
+  appNewDocCreatedNoAi: 'Leeres Dokument erstellt.',
   appNewFailed: 'Erstellen des Dokuments fehlgeschlagen: {error}',
   appSaveFailed: 'Speichern fehlgeschlagen: {error}',
   appAutoSavedAt: 'Automatisch gespeichert ({time})',

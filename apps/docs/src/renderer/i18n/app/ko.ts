@@ -57,6 +57,7 @@ export const ko = {
   appVerticalTextNotice:
     '세로쓰기 텍스트가 포함된 문서입니다(현재 가로쓰기로 표시되며 저장에는 영향이 없습니다)',
   appNewDocCreated: '빈 문서를 만들었습니다. 왼쪽 AI 창에서 생성할 내용을 바로 입력할 수 있습니다',
+  appNewDocCreatedNoAi: '빈 문서를 만들었습니다',
   appNewFailed: '새로 만들기 실패: {error}',
   appSaveFailed: '저장 실패: {error}',
   appAutoSavedAt: '자동 저장됨 ({time})',

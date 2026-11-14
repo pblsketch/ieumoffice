@@ -35,8 +35,10 @@ import {
   aiProviderDisplayName,
   aiSubscriptionCardView,
   aiSubscriptionText,
+  useAppChoice,
   useDismissablePopover,
   useEscapeToClose,
+  type AppChoiceSource,
 } from '@genoffice/ui'
 import { isSubscriptionProvider } from '@genoffice/ai-provider/browser'
 import type { AiSettings } from '@genoffice/ai-provider/browser'
@@ -53,11 +55,14 @@ import {
 import { SettingsModal } from './SettingsModal'
 import { HOME_KIND_LABEL, useHomeKinds } from './SettingsHomeKinds'
 import { visibleHomeKinds, type HomeKind } from '../../shared/home-kinds'
+import { hiddenNewDocumentKinds, isEditorItemId } from '../../shared/editor-choice'
 import type { SettingsTarget } from './SettingsModal'
 import { skillUpdateDue } from './IntegrationsPane'
 import { onFilesChanged } from './file-events'
 import { FirstConnectionDialog } from './FirstConnectionNotice'
+import { firstConnectionNoticeShown, useAiFeaturesOn } from './ai-features'
 import { LaunchRecoveryList } from './RecoveryList'
+import { OneTimeEditorPick } from './editor-choice/OneTimeEditorPick'
 import type { SubscriptionConnection } from './subscription-client'
 import { homeAiEntry } from './subscription-status'
 import './pdf-tools/globals'
@@ -862,6 +867,7 @@ function AccountEntry({
   onFileSearchSettingsChange,
   openRequest,
   overWelcome = false,
+  aiOn = true,
 }: {
   connection: SubscriptionConnection
   /** the AI settings as last read; null until the first read answers */
@@ -873,6 +879,8 @@ function AccountEntry({
   openRequest?: SettingsTarget | null
   /** the first-run welcome window is up: the modal opens above it */
   overWelcome?: boolean
+  /** AI features are on: the entry shows the connection; off, it is the way into Settings alone */
+  aiOn?: boolean
 }) {
   const { t, lang } = useI18n()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -900,7 +908,7 @@ function AccountEntry({
     setTarget(to)
     setSettingsOpen(true)
   }, [])
-  const handleClick = () => openSettings({ section: 'aiModel' })
+  const handleClick = () => openSettings(aiOn ? { section: 'aiModel' } : null)
   useEffect(() => {
     if (openRequest) openSettings(openRequest)
   }, [openRequest, openSettings])
@@ -932,12 +940,17 @@ function AccountEntry({
           ? aiSubscriptionText(lang, 'cardOff')
           : null
   const named =
-    summary.state === 'connected' || summary.state === 'needs-connection' || summary.state === 'off'
-  const label = named
-    ? names
-    : summary.state === 'checking'
-      ? aiSubscriptionText(lang, 'cardChecking')
-      : aiSubscriptionText(lang, 'pickerNotConnected')
+    aiOn &&
+    (summary.state === 'connected' ||
+      summary.state === 'needs-connection' ||
+      summary.state === 'off')
+  const label = !aiOn
+    ? t('settings')
+    : named
+      ? names
+      : summary.state === 'checking'
+        ? aiSubscriptionText(lang, 'cardChecking')
+        : aiSubscriptionText(lang, 'pickerNotConnected')
 
   return (
     <div className="account-entry">
@@ -956,25 +969,27 @@ function AccountEntry({
         onClick={handleClick}
         aria-haspopup="dialog"
         aria-expanded={settingsOpen}
-        data-subscription={summary.state}
+        data-subscription={aiOn ? summary.state : undefined}
         data-tip={
           named
             ? `${names} · ${stateText}`
-            : summary.state === 'checking'
+            : !aiOn || summary.state === 'checking'
               ? t('settings')
               : aiSubscriptionText(lang, 'connectTitle')
         }
         aria-label={t('settings')}
       >
-        <span className={`account-avatar${summary.state === 'connected' ? ' logged-in' : ''}`}>
-          <AiMark size={16} />
+        <span
+          className={`account-avatar${aiOn && summary.state === 'connected' ? ' logged-in' : ''}`}
+        >
+          {aiOn ? <AiMark size={16} /> : <SettingsGlyph />}
           {skillUpdate && (
             <span className="account-badge" role="img" aria-label={t('intgUpdateDue')} />
           )}
         </span>
         <span className="account-text">
           <span className="account-name">{label}</span>
-          {stateText && <span className="account-sub">{stateText}</span>}
+          {aiOn && stateText && <span className="account-sub">{stateText}</span>}
         </span>
         <span className="account-settings">{t('settings')}</span>
         <svg
@@ -1072,6 +1087,21 @@ export function DropToOpenOverlay(): ReactElement | null {
   )
 }
 
+/** the settings entry's mark while AI features are off (a gear in place of the AI mark) */
+function SettingsGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 // ── Main component ──────────────────────────────────────
 
 export function Home({
@@ -1101,7 +1131,14 @@ export function Home({
   const i18n = useI18n()
   const { t, lang } = i18n
   const [homeKinds] = useHomeKinds()
-  const shownKinds = visibleHomeKinds(homeKinds)
+  // the shell preload's bridge, read once so the subscription stays put
+  const [choiceSource] = useState(
+    () => (window as unknown as { aiOfficeEditorChoice?: AppChoiceSource }).aiOfficeEditorChoice,
+  )
+  const appChoice = useAppChoice(choiceSource)
+  // a turned-off editor's kind leaves the cards too (Settings → Editors and AI)
+  const offKinds = hiddenNewDocumentKinds(homeKinds, { off: appChoice.off.filter(isEditorItemId) })
+  const shownKinds = visibleHomeKinds(homeKinds).filter((kind) => !offKinds.includes(kind))
   // ── Paged list state (rows loaded for the current view + filter) ──
   const [entries, setEntries] = useState<RecentEntry[]>([])
   /** total count under the current view + filter (not just the loaded rows) */
@@ -1114,6 +1151,11 @@ export function Home({
   const [view, setView] = useState<'recent' | 'starred'>('recent')
   // the knowledge-base ask panel takes over the content area the same way
   const [askMode, setAskMode] = useState(false)
+  // AI features off (editor choice spec 8.1): no ask panel, agent entry or other AI part
+  const aiOn = useAiFeaturesOn()
+  useEffect(() => {
+    if (!aiOn) setAskMode(false)
+  }, [aiOn])
   // a project chat the project screen handed to the ask panel; cleared when the panel goes
   const [askOpenChat, setAskOpenChat] = useState<{
     projectId: string
@@ -1404,7 +1446,7 @@ export function Home({
       ? [q, filter, ...searchPage.hits.slice(0, 20).map((h) => h.path)].join('\n')
       : ''
   useEffect(() => {
-    if (!rerankKey) return
+    if (!rerankKey || !aiOn) return
     const key = rerankKey
     const paths = key.split('\n').slice(2)
     const timer = window.setTimeout(() => {
@@ -1414,7 +1456,7 @@ export function Home({
       })
     }, 600)
     return () => window.clearTimeout(timer)
-  }, [q, filter, rerankKey, rerankSettingsTick])
+  }, [q, filter, rerankKey, rerankSettingsTick, aiOn])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2838,7 +2880,7 @@ export function Home({
     )
   }
 
-  const rerankApplied = rerank && rerank.key === rerankKey ? rerank.result : null
+  const rerankApplied = aiOn && rerank && rerank.key === rerankKey ? rerank.result : null
 
   /** judged hits in Jev's order, then the rest in local order */
   const orderedSearchHits = (hits: readonly FileSearchHit[]): FileSearchHit[] => {
@@ -3050,7 +3092,7 @@ export function Home({
             )}
             <div className="file-search-group">
               {renderSearchBox()}
-              {renderSearchSettingsButton()}
+              {aiOn && renderSearchSettingsButton()}
             </div>
             {searchActive ? (
               renderSearchHeading()
@@ -3221,7 +3263,7 @@ export function Home({
             )}
             <div className="file-search-group">
               {renderSearchBox()}
-              {renderSearchSettingsButton()}
+              {aiOn && renderSearchSettingsButton()}
             </div>
             {searchActive ? (
               renderSearchHeading()
@@ -3367,34 +3409,36 @@ export function Home({
             <span className="nav-label">{t('navStarred')}</span>
             <span className="nav-count">{navCounts.starred}</span>
           </button>
-          <button
-            className={`nav-item${activeNav === 'ask' ? ' active' : ''}`}
-            aria-current={activeNav === 'ask' ? 'page' : undefined}
-            onClick={() => {
-              setAskMode(true)
-              setDriveMode(false)
-              setProjectsMode(false)
-              setSelectedFolder(null)
-              setSelected(new Set())
-              setRowMenu(null)
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path
-                d="M14 10.5c0 .9-.7 1.6-1.6 1.6H5.4L2 14.5V3.6C2 2.7 2.7 2 3.6 2h8.8c.9 0 1.6.7 1.6 1.6z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M5 6.2h6M5 8.6h4"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="nav-label">{t('navAsk')}</span>
-          </button>
+          {aiOn && (
+            <button
+              className={`nav-item${activeNav === 'ask' ? ' active' : ''}`}
+              aria-current={activeNav === 'ask' ? 'page' : undefined}
+              onClick={() => {
+                setAskMode(true)
+                setDriveMode(false)
+                setProjectsMode(false)
+                setSelectedFolder(null)
+                setSelected(new Set())
+                setRowMenu(null)
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M14 10.5c0 .9-.7 1.6-1.6 1.6H5.4L2 14.5V3.6C2 2.7 2.7 2 3.6 2h8.8c.9 0 1.6.7 1.6 1.6z"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M5 6.2h6M5 8.6h4"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="nav-label">{t('navAsk')}</span>
+            </button>
+          )}
           {projectsOffered && (
             <button
               className={`nav-item${activeNav === 'projects' ? ' active' : ''}`}
@@ -3427,7 +3471,7 @@ export function Home({
             </button>
           )}
           {/* decision 0032: the agent opens a window of its own, hence the mark on the right */}
-          {window.aiOfficeAgent ? (
+          {aiOn && window.aiOfficeAgent ? (
             <button
               className="nav-item"
               title={agentText(lang, 'homeCardSub')}
@@ -3486,6 +3530,7 @@ export function Home({
           onFileSearchSettingsChange={() => setRerankSettingsTick((n) => n + 1)}
           openRequest={settingsRequest}
           overWelcome={welcomeOpen}
+          aiOn={aiOn}
         />
       </aside>
       <div className="sidebar-resizer" onPointerDown={onSidebarResizeStart} />
@@ -3505,13 +3550,15 @@ export function Home({
           noticeDue={noticeDue}
           onNoticeNeeded={() => setProjectsNoticeAsked(true)}
           onOpenAiSettings={() => setSettingsRequest({ section: 'aiModel' })}
+          aiOn={aiOn}
           onOpenHomeAsk={(chat) => {
+            if (!aiOn) return
             setProjectsMode(false)
             setAskMode(true)
             setAskOpenChat((prev) => ({ ...chat, seq: (prev?.seq ?? 0) + 1 }))
           }}
         />
-      ) : askMode ? (
+      ) : askMode && aiOn ? (
         <KbAskPanel
           connection={connection}
           aiSettings={aiSettings}
@@ -3706,12 +3753,20 @@ export function Home({
       {/* the first-connection notice comes up where a connection is made or first
           used from this screen: in Settings and on the ask panel (an editor's AI
           panel shows it for itself) */}
-      {noticeDue && (settingsVisited || askMode || (projectsMode && projectsNoticeAsked)) && (
-        <FirstConnectionDialog onAcknowledge={onNoticeAcknowledge} />
-      )}
+      {firstConnectionNoticeShown({
+        aiOn,
+        noticeDue,
+        settingsVisited,
+        askMode,
+        projectsMode,
+        projectsNoticeAsked,
+      }) && <FirstConnectionDialog onAcknowledge={onNoticeAcknowledge} />}
       {/* documents with unsaved content left in recovery copies, asked about
           once at launch; the main process keeps Home in front meanwhile */}
       <LaunchRecoveryList />
+      {/* the one-time editor picker for people who passed the first-run guide
+          before it had a pick step: after the launch, on the home tab only */}
+      <OneTimeEditorPick />
       <DropToOpenOverlay />
     </div>
   )

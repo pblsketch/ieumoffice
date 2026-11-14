@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   OFFICE_TYPES,
+  claimableOfficeTypes,
   createDefaultAppService,
   macAppBundlePath,
   parseMacStatus,
@@ -225,5 +226,56 @@ describe('createDefaultAppService', () => {
     })
     const svc = createDefaultAppService({ ...base, platform: 'darwin', run })
     expect((await svc.status()).state).toBe('unknown')
+  })
+})
+
+describe('turned-off editors (Settings → Editors and AI)', () => {
+  const base = {
+    packaged: true,
+    exePath: '/Applications/GenOffice.app/Contents/MacOS/GenOffice',
+    openExternal: vi.fn(async () => {}),
+  }
+
+  it('leaves out the types of the editors that are off', () => {
+    expect(claimableOfficeTypes([]).map((t) => t.ext)).toEqual(OFFICE_TYPES.map((t) => t.ext))
+    expect(claimableOfficeTypes(['sheets', 'diagram']).map((t) => t.ext)).toEqual(['docx', 'pptx'])
+  })
+
+  it('checks and claims only the types of editors that are on', async () => {
+    const calls: string[][] = []
+    const run = vi.fn<RunCommand>(async (cmd, args) => {
+      calls.push([cmd, ...args])
+      return args[0] === 'query' ? 'ieumoffice.desktop' : ''
+    })
+    const svc = createDefaultAppService({
+      ...base,
+      platform: 'linux',
+      run,
+      editorsOff: () => ['docs', 'sheets', 'diagram'],
+    })
+    expect(await svc.status()).toMatchObject({ state: 'default' })
+    await svc.set()
+    const pptx = OFFICE_TYPES.find((t) => t.ext === 'pptx')!.mime
+    // status() and the status set() answers with: only the PowerPoint type each time
+    expect(calls.filter((c) => c[1] === 'query').map((c) => c[3])).toEqual([pptx, pptx])
+    expect(calls.find((c) => c[1] === 'default')).toEqual([
+      'xdg-mime',
+      'default',
+      'ieumoffice.desktop',
+      pptx,
+    ])
+  })
+
+  it('has nothing to make default when every editor with such a type is off', async () => {
+    const run = vi.fn<RunCommand>()
+    const svc = createDefaultAppService({
+      ...base,
+      platform: 'linux',
+      run,
+      editorsOff: () => ['docs', 'sheets', 'slides', 'diagram'],
+    })
+    expect(await svc.status()).toMatchObject({ state: 'unsupported' })
+    expect(await svc.set()).toMatchObject({ state: 'unsupported' })
+    expect(run).not.toHaveBeenCalled()
   })
 })

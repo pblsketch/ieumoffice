@@ -54,6 +54,7 @@ export const zh = {
   appFontsMissing: '文档字体未安装：{names}（已用替代字体显示）',
   appVerticalTextNotice: '文档包含竖排文字（暂以横排显示，保存不受影响）',
   appNewDocCreated: '已新建空白文档,可在左侧 AI 面板直接描述要生成的内容',
+  appNewDocCreatedNoAi: '已新建空白文档',
   appNewFailed: '新建失败: {error}',
   appSaveFailed: '保存失败: {error}',
   appAutoSavedAt: '已自动保存 ({time})',

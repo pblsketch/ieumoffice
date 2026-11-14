@@ -41,6 +41,8 @@ import {
   writeJsonAtomic,
 } from '@genoffice/electron-utils'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { screenMediaCall } from './screen-media-call'
 import {
   webSearchTool,
   imageSearchTool,
@@ -232,6 +234,15 @@ export function registerAiIpc(): void {
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one turn of the window's chat is running AI work: turning AI off stops it the way Stop does
+    const senderId = event.sender.id
+    const unregisterJob = registerAiJob({
+      kind: 'chat',
+      stop: () => {
+        controller.abort()
+        abortMediaCalls(senderId)
+      },
+    })
     try {
       await runAiStream({
         request,
@@ -241,6 +252,7 @@ export function registerAiIpc(): void {
         send,
       })
     } finally {
+      unregisterJob()
       unwatchSender()
       activeAiStreams.delete(requestId)
     }
@@ -319,8 +331,9 @@ export function registerSlidesOnlyAiIpc(): void {
     aiToolCapabilities(readAiSettings(), screenToolContext()),
   )
 
-  // AI image generation / media analysis. Answers with an error text when no route is available.
-  // Either call ends with its window, or when the window's AI run is stopped.
+  // AI image generation / media analysis. Answers with an error text when no route is available,
+  // and refuses while AI is turned off. Either call ends with its window, or when the window's
+  // AI run is stopped.
   ipcMain.handle(
     'ai:generate-image',
     async (
@@ -334,21 +347,24 @@ export function registerSlidesOnlyAiIpc(): void {
         transparentBackground?: boolean
       },
     ) => {
-      return withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          AI_SETTINGS_PATH(),
-          {
-            prompt: String(op.prompt),
-            model: op.model ? String(op.model) : undefined,
-            referenceImageUrls: Array.isArray(op.referenceImageUrls)
-              ? op.referenceImageUrls.map(String)
-              : undefined,
-            aspectRatio: op.aspectRatio ? String(op.aspectRatio) : undefined,
-            imageSize: op.imageSize ? String(op.imageSize) : undefined,
-            transparentBackground: op.transparentBackground === true,
-          },
-          { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
-        ),
+      return screenMediaCall(
+        event.sender,
+        (signal) =>
+          generateImageTool(
+            AI_SETTINGS_PATH(),
+            {
+              prompt: String(op.prompt),
+              model: op.model ? String(op.model) : undefined,
+              referenceImageUrls: Array.isArray(op.referenceImageUrls)
+                ? op.referenceImageUrls.map(String)
+                : undefined,
+              aspectRatio: op.aspectRatio ? String(op.aspectRatio) : undefined,
+              imageSize: op.imageSize ? String(op.imageSize) : undefined,
+              transparentBackground: op.transparentBackground === true,
+            },
+            { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
+        (error) => ({ error, errorCode: 'unavailable' as const }),
       )
     },
   )
@@ -356,15 +372,18 @@ export function registerSlidesOnlyAiIpc(): void {
   ipcMain.handle(
     'ai:analyze-media',
     async (event, op: { mediaUrls: string[]; requirements: string }) => {
-      return withMediaCallSignal(event.sender, (signal) =>
-        analyzeMediaTool(
-          AI_SETTINGS_PATH(),
-          {
-            mediaUrls: (op.mediaUrls ?? []).map(String),
-            requirements: String(op.requirements ?? ''),
-          },
-          { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
-        ),
+      return screenMediaCall(
+        event.sender,
+        (signal) =>
+          analyzeMediaTool(
+            AI_SETTINGS_PATH(),
+            {
+              mediaUrls: (op.mediaUrls ?? []).map(String),
+              requirements: String(op.requirements ?? ''),
+            },
+            { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
+        (error) => ({ error, errorCode: 'unavailable' as const }),
       )
     },
   )
