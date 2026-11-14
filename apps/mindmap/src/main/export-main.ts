@@ -17,11 +17,14 @@
  * is exported or printed.
  *
  * PDF and print are one landscape A4 page: the renderer fits the map to it,
- * and this side asks for exactly that page size.
+ * and this side asks for exactly that page size. The advanced print layout
+ * (decision 0141, `print-layout.ts`) makes that same page into its print job
+ * PDF the way the PDF export does, and prints the arranged faces from a hidden
+ * window of the same session, which loads only the files of that print.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { extname, join, resolve } from 'node:path'
+import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BrowserWindow, app, dialog, ipcMain, session } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -32,8 +35,14 @@ import {
   showSaveDialogWithMemory,
   type PrintDialogWindow,
 } from '@genoffice/electron-utils'
+import {
+  LABEL_SPEC_FILE_NAME,
+  ensurePrintLayoutIpc,
+  type PrintLayoutWindow,
+} from '@genoffice/electron-utils/print-arranged'
 import { atomicWriteFile } from './atomic-write'
 import { tm } from './i18n-main'
+import { registerMindmapPrintLayout } from './print-layout'
 import { MINDMAP_CHANNELS } from '../shared/ipc'
 import type { ExportResult, PrintResult } from '../shared/ipc'
 
@@ -202,12 +211,30 @@ export function allowPageFile(path: string): () => void {
   return () => pageFiles.delete(key)
 }
 
-/** A `data:` address, or exactly a page file being loaded; no other file, share or host. */
+/** The temp folders of arranged prints loading right now: their page and its face pictures. */
+const pageFolders = new Set<string>()
+
+/**
+ * Lets the export session load the files directly inside the folder of this
+ * page file (the arranged print's page and the face pictures beside it, all
+ * written by the shared print layout), until the returned function is called.
+ */
+export function allowPageFolder(pagePath: string): () => void {
+  const key = pathKey(dirname(pagePath))
+  pageFolders.add(key)
+  return () => pageFolders.delete(key)
+}
+
+/**
+ * A `data:` address, exactly a page file being loaded, or a file directly
+ * inside the folder of an arranged print; no other file, share or host.
+ */
 export function exportRequestAllowed(url: string): boolean {
   if (/^data:/i.test(url)) return true
   if (!/^file:/i.test(url)) return false
   try {
-    return pageFiles.has(pathKey(fileURLToPath(url)))
+    const path = fileURLToPath(url)
+    return pageFiles.has(pathKey(path)) || pageFolders.has(pathKey(dirname(path)))
   } catch {
     return false
   }
@@ -272,6 +299,8 @@ export async function pageToPdf(html: string): Promise<Buffer> {
 function printWindow(): PrintDialogWindow {
   const win = pageWindow(true)
   let release = (): void => {}
+  // a window closed some other way still gives the folder back
+  win.once('closed', () => release())
   return {
     loadFile: (path) => {
       release()
@@ -286,6 +315,35 @@ function printWindow(): PrintDialogWindow {
           { ...options, landscape: true, pageSize: 'A4', margins: { marginType: 'none' } },
           callback,
         ),
+    },
+    show: () => win.show(),
+    focus: () => win.focus(),
+    isDestroyed: () => win.isDestroyed(),
+    destroy: () => {
+      release()
+      win.destroy()
+    },
+  }
+}
+
+/**
+ * The window the advanced print layout prints its face pictures from: the
+ * print window's settings (hidden, sandboxed, scripts on for the readiness
+ * probe, the export session), allowed the folder of the page it loads.
+ */
+function arrangedPrintWindow(): PrintLayoutWindow {
+  const win = pageWindow(true)
+  let release = (): void => {}
+  return {
+    loadFile: (path) => {
+      release()
+      release = allowPageFolder(path)
+      return win.loadFile(path)
+    },
+    webContents: {
+      executeJavaScript: (script, userGesture) =>
+        win.webContents.executeJavaScript(script, userGesture),
+      print: (options, callback) => win.webContents.print(options, callback),
     },
     show: () => win.show(),
     focus: () => win.focus(),
@@ -376,5 +434,18 @@ export function registerMindmapExportIpc(options: ExportIpcOptions): void {
       fileName: 'map.html',
       dirPrefix: 'genoffice-mindmap-print-',
     })
+  })
+
+  // advanced print layout: the page above as the PDF export's PDF, arranged and printed or saved
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerMindmapPrintLayout({
+    ipcMain,
+    pageToPdf,
+    createPrintWindow: arrangedPrintWindow,
+    pickSavePath: (event, suggestedName) =>
+      pickTarget(event as IpcMainInvokeEvent, 'pdf', suggestedName, options),
   })
 }
