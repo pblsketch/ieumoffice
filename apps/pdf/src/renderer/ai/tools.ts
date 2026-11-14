@@ -1266,8 +1266,23 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   },
 ]
 
+/**
+ * What the model is told about an encrypted (read-only) document. Only
+ * changing this file is blocked; told just "cannot be modified", a model
+ * refused document translation as well, which works on an encrypted file.
+ */
+export const ENCRYPTED_CONTEXT =
+  'The document is encrypted, so this file is read-only: tools that change it (text, markup, images, pages, forms, saving) refuse. ' +
+  'Everything that only reads it still works: reading and searching its text, summarizing, answering questions, and document translation with start_document_translation (Markdown or EPUB output; a translated PDF cannot be written from an encrypted file). ' +
+  'Do not refuse those because of the encryption.'
+
 const READONLY_OUTPUT =
-  'The document is encrypted and read-only; it cannot be modified. Inform the user.'
+  'The document is encrypted and read-only; this change cannot be made to it. Tell the user that editing is blocked, ' +
+  'and that reading, summarizing and document translation (start_document_translation, Markdown or EPUB output) still work.'
+
+/** what the translation tool adds for an encrypted document: the window offers no translated PDF */
+const ENCRYPTED_TRANSLATION_NOTE =
+  ' The document is encrypted, so the window offers Markdown and EPUB output only; a translated PDF cannot be written from it. Tell the user this.'
 
 /** mirror of the docs tool-echo guard: reject tool-protocol output pasted as document content */
 function contentEchoError(content: string): string | null {
@@ -4072,7 +4087,8 @@ function startDocumentTranslation(deps: PdfAiDeps, input: Record<string, unknown
       'Opened the document-translation window' +
       (lang ? ` with ${lang} preselected` : '') +
       '. The user now picks the pages and output formats and confirms the calls and the provider; nothing has been sent yet and nothing is translated until they press Start. ' +
-      'The translation then runs as a separate job with its own progress bar and saves the chosen files when it finishes. Tell the user briefly what to do in the window; do not wait for it, do not claim the document was translated, and do not translate it yourself.',
+      'The translation then runs as a separate job with its own progress bar and saves the chosen files when it finishes. Tell the user briefly what to do in the window; do not wait for it, do not claim the document was translated, and do not translate it yourself.' +
+      (deps.readOnly() ? ENCRYPTED_TRANSLATION_NOTE : ''),
     summary,
   }
 }
