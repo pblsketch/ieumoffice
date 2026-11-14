@@ -97,6 +97,77 @@ export function plainText(xml: string): string {
   return decodeEntities(texts.join(''))
 }
 
+/**
+ * Like `plainText`, but for display previews only (passthrough block
+ * previews, outline listings, block search text): it also keeps the
+ * characters Word actually shows for `<w:tab/>`/`<w:ptab/>` (tab),
+ * `<w:br/>`/`<w:cr/>` (newline, except a page/column break, which is layout
+ * only) and `<w:noBreakHyphen/>` (hyphen), which `plainText` drops.
+ *
+ * This is a separate function rather than a change to `plainText` itself,
+ * because `plainText` also backs structural, non-preview computations whose
+ * own correctness depends on it staying exactly as narrow as it has always
+ * been: the flattened `headerText`/`footerText` string (deliberately joins
+ * header runs across a field's internal tab stops into one line --
+ * `tests/hf-fldchar-element-form.test.ts` fixes this), an inline content
+ * control's reported inner text, an inline picture's leading-whitespace
+ * measurement (`imageMeta`'s `imageLeadingText`, which already substitutes
+ * `<w:tab/>` itself and has no notion of a leading newline), and several
+ * `.trim() === ''`/`!== ''` visibility checks where a stray tab or
+ * no-break hyphen with no real text would flip "empty" to "non-empty".
+ * Swapping any of those to this richer text would change their output, not
+ * just add characters a display preview was missing.
+ */
+export function previewText(xml: string): string {
+  const texts: string[] = []
+  // tab-stop *definitions* (w:tabs) and tracked-deletion content (w:del,
+  // which can itself hold a deleted <w:tab/>/<w:br/>/...) must not become
+  // characters here, same as plainText already keeps w:delText out by only
+  // ever matching w:t
+  const source = xml
+    .replace(/<w:tabs\b[^>]*>[\s\S]*?<\/w:tabs>/gi, '')
+    .replace(/<w:del\b[^>]*>[\s\S]*?<\/w:del>/gi, '')
+  // a space at cell boundaries keeps table text from gluing together;
+  // w:tab / w:br / w:cr / w:noBreakHyphen are real characters Word shows
+  const re =
+    /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<\/w:tc>|<w:ptab\b[^>]*\/?>|<w:tab\b[^>]*\/?>|<w:br\b[^>]*\/?>|<w:cr\b[^>]*\/?>|<w:noBreakHyphen\b[^>]*\/?>/g
+  let m: RegExpExecArray | null
+  let pendingGap = false
+  const flushGap = () => {
+    if (pendingGap) {
+      texts.push(' ')
+      pendingGap = false
+    }
+  }
+  while ((m = re.exec(source)) !== null) {
+    if (m[0] === '</w:tc>') {
+      pendingGap = texts.length > 0
+      continue
+    }
+    if (/^<w:br\b/i.test(m[0]) && /w:type="(?:page|column)"/i.test(m[0])) {
+      continue
+    }
+    if (/^<w:(?:tab|ptab)\b/i.test(m[0])) {
+      flushGap()
+      texts.push('\t')
+      continue
+    }
+    if (/^<w:(?:br|cr)\b/i.test(m[0])) {
+      flushGap()
+      texts.push('\n')
+      continue
+    }
+    if (/^<w:noBreakHyphen\b/i.test(m[0])) {
+      flushGap()
+      texts.push('-')
+      continue
+    }
+    flushGap()
+    texts.push(m[1])
+  }
+  return decodeEntities(texts.join(''))
+}
+
 /** Visible OMML leaf tokens; editing these preserves the surrounding formula tree. */
 export function mathTokens(xml: string): string[] {
   const tokens: string[] = []
