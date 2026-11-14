@@ -130,3 +130,35 @@ export function zoomLabel(mode: ZoomMode, scale: number): string {
   if (mode === 'fit-width') return 'fit-width'
   return `${Math.round(scale * 100)}%`
 }
+
+/** A page size in CSS pixels, as the preview draws pages. */
+export interface PixelSize {
+  width: number
+  height: number
+}
+
+/** CSS pixels to PDF points: 96 pixels and 72 points to the inch. */
+const PT_PER_PX = 72 / 96
+
+/**
+ * The print job's page sizes in points, for the page layout diagram and its checks. A
+ * page the preview has drawn is its own size; one it has not drawn yet takes the size
+ * of the nearest drawn page before it (a section's pages share their paper), or after
+ * it, or `fallback` while none is drawn. Only the diagram uses these: the printed job
+ * is laid out from its own pages.
+ */
+export function layoutPageSizes(
+  pageCount: number,
+  drawn: ReadonlyMap<number, PixelSize>,
+  fallback: PixelSize,
+): { widthPt: number; heightPt: number }[] {
+  let first: PixelSize | undefined
+  for (let page = 0; page < pageCount && !first; page++) first = drawn.get(page)
+  let last = first ?? fallback
+  const sizes: { widthPt: number; heightPt: number }[] = []
+  for (let page = 0; page < pageCount; page++) {
+    last = drawn.get(page) ?? last
+    sizes.push({ widthPt: last.width * PT_PER_PX, heightPt: last.height * PT_PER_PX })
+  }
+  return sizes
+}

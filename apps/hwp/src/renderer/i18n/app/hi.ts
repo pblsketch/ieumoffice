@@ -280,6 +280,7 @@ export const hi = {
   previewMargins: 'हाशिये दिखाएँ',
   previewEditPage: 'इस पृष्ठ को संपादित करें',
   previewEditFailed: 'इस पृष्ठ पर नहीं जाया जा सका।',
+  printLayoutSaved: 'व्यवस्थित परिणाम PDF के रूप में सहेजा गया।',
   checkTitle: 'दस्तावेज़ जाँच',
   checkRunning: 'दस्तावेज़ पढ़ा जा रहा है…',
   checkFailed: 'दस्तावेज़ पढ़ा नहीं जा सका।',

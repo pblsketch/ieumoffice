@@ -266,6 +266,7 @@ export const zh = {
   previewMargins: '显示边距',
   previewEditPage: '编辑此页',
   previewEditFailed: '无法转到此页。',
+  printLayoutSaved: '已将排版结果保存为 PDF。',
   checkTitle: '文档检查',
   checkRunning: '正在读取文档…',
   checkFailed: '无法读取文档。',

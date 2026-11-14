@@ -1,5 +1,6 @@
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiToolCapabilities, MediaToolErrorCode } from '@genoffice/ai-search'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
 import type { SubscriptionApi } from './subscription-api'
@@ -371,6 +372,12 @@ export interface HwpApi {
    * the print dialog for these pages
    */
   printPages(job: PrintJob, options?: { path: string }): Promise<PrintResult>
+  /**
+   * The advanced print layout (decision 0141): the same pages as `printPages`, sent as
+   * the request's `editor`, made into the PDF export's PDF, then arranged and previewed,
+   * printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<PrintJob>
   /** Headless export mode: the PDF path this hidden window must write, null in normal use */
   consumeHeadlessExport(): Promise<string | null>
   /** Headless export mode: report the outcome so the main process can exit */

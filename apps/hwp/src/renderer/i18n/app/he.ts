@@ -273,6 +273,7 @@ export const he = {
   previewMargins: 'הצג שוליים',
   previewEditPage: 'ערוך עמוד זה',
   previewEditFailed: 'לא ניתן לעבור לעמוד זה.',
+  printLayoutSaved: 'התוצאה המסודרת נשמרה כ-PDF.',
   checkTitle: 'בדיקת מסמך',
   checkRunning: 'קורא את המסמך…',
   checkFailed: 'לא ניתן היה לקרוא את המסמך.',
