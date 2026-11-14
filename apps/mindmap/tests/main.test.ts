@@ -105,6 +105,7 @@ import {
   resetGenerateHandoffsForTest,
   type GenerateHandoff,
 } from '@genoffice/electron-utils/generate-handoff'
+import { PRINT_LAYOUT_SHARED_CHANNELS } from '@genoffice/electron-utils/print-layout-channels'
 import { AI_CHANNELS, APP_CHANNELS, MINDMAP_CHANNELS } from '../src/shared/ipc'
 import type { MindmapHandoff, OpenFileResult, SaveMindmapResult } from '../src/shared/ipc'
 
@@ -147,8 +148,14 @@ describe('channel names', () => {
     for (const channel of handlers.keys()) {
       expect(Object.values(AI_CHANNELS)).not.toContain(channel)
       expect(channel).not.toMatch(/^ai:/)
-      // the language getter is the one shell channel every editor answers
-      if (!channel.startsWith('mindmap:')) expect(channel).toBe(APP_CHANNELS.getLanguage)
+      // the language getter is the one shell channel every editor answers, and the
+      // print layout's label grid store is registered once by whichever editor comes first
+      if (!channel.startsWith('mindmap:')) {
+        expect([
+          APP_CHANNELS.getLanguage,
+          ...Object.values(PRINT_LAYOUT_SHARED_CHANNELS),
+        ]).toContain(channel)
+      }
     }
   })
 

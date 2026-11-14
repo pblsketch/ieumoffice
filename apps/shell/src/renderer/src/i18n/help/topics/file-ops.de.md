@@ -46,7 +46,17 @@ Regeln: Die Dateiendung bleibt automatisch erhalten; unzulässige Zeichen, Punkt
 
 ## Drucken
 
-Datei ▸ Drucken in jedem Editor (⌘P/ctrl+P) öffnet den Systemdialog; PDFs werden mit der aktuellen Seitenreihenfolge und den aktuellen Drehungen gedruckt.
+Datei ▸ Drucken (⌘P/ctrl+P) öffnet in jedem Editor ein Druckfenster. Docs, PDF, Sheets, Slides und Markdown haben den Bereich **Seitenanordnung** in ihrem gewohnten Druckfenster, HWP in der Druckvorschau, HTML, Mindmap und Diagramm in einem neuen kleinen Druckfenster. Wenn Sie unter Seitenanordnung nichts auswählen, wird genauso gedruckt wie bisher.
+
+- **Anordnung**: Wählen Sie Eine Seite pro Blatt, Mehrere Seiten pro Blatt (2, 4, 6, 9 oder 16), Broschüre (links oder rechts binden), Plakat (Blätter nebeneinander und untereinander, Überlappung, Schnittlinien) oder Etiketten (eine Seite pro Etikett oder gleiche Seite auf jedem Etikett, Start-Etikett, gängiges A4-Format oder eigene Maße).
+- **Nur ungerade Blattseiten, nur gerade Blattseiten, umgekehrte Reihenfolge**: Gezählt werden die Seiten, die nach der Anordnung tatsächlich aus dem Drucker kommen. Nützlich bei Druckern ohne Duplexfunktion: erst die Vorderseiten drucken, das Papier wenden, dann die Rückseiten drucken.
+- **Auf Papiergröße verkleinern**: Nur Seiten, die größer als das gewählte Papier sind, werden verkleinert; kleinere werden nicht vergrößert. Sheets und Markdown verwenden ihre bisherigen Felder für Papier und Skalierung.
+- **Graustufen und Bildauflösung**: Beim Drucken mit Optionen der Seitenanordnung wird jede Seite in ein Bild umgewandelt und so an den Drucker geschickt. Die Auflösung wählen Sie aus Automatisch, 150, 300 oder 600 dpi.
+- **Nur Auswahl**: Docs und Markdown drucken nur den markierten Text, neu ab der ersten Seite umbrochen; Slides druckt die ausgewählten Folien, PDF die ausgewählten Seiten. Sheets druckt wie bisher den markierten Bereich.
+- **Anordnungsskizze und Ergebnisvorschau**: Die Skizze zeigt sofort, wo jede Seitenzahl auf dem Papier landet, und **Ergebnis anzeigen** zeigt das tatsächlich erzeugte Ergebnis. Mit **Angeordnetes Ergebnis als PDF speichern** drucken Sie dieselbe Anordnung auf einem anderen PC oder in einer Druckerei.
+- **Druckfenster des Systems**: Wählen Sie für eine Broschüre beidseitigen Druck mit Wenden an der kurzen Kante. Seitenbereich und Seiten pro Blatt lassen Sie im Systemfenster unverändert.
+
+PDFs werden mit der aktuellen Seitenreihenfolge und den aktuellen Drehungen gedruckt.
 
 ## Wo Dateien ohne Namen liegen
 
