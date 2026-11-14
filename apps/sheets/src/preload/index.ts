@@ -12,6 +12,7 @@ import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-ch
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 
 import type { AiChatResponse, AiSettings, AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
@@ -451,6 +452,7 @@ const desktopApi: DesktopApi = {
     }
     return result as { ok: true } | { ok: false; error?: string }
   },
+  printLayout: createPrintLayoutBridge(ipcRenderer, 'sheets'),
   async listPrinters() {
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.listPrinters)
     if (!Array.isArray(result)) throw new Error('Invalid printer list.')

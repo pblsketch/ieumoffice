@@ -6788,7 +6788,9 @@ body > div:has([data-u-comp='find-replace-dialog']) {
 }
 
 .print-settings {
+  display: grid;
   align-content: start;
+  gap: 14px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -6842,6 +6844,19 @@ body > div:has([data-u-comp='find-replace-dialog']) {
   display: grid;
   place-items: center;
   padding: 12px;
+}
+
+/* The shared layout diagram in place of the pages (both rows of the preview) */
+.print-preview-schematic {
+  grid-row: 1 / -1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.print-preview-bar[hidden],
+.print-preview-pane[hidden] {
+  display: none;
 }
 
 .print-preview-page {
