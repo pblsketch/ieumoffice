@@ -47,6 +47,7 @@ export const es = {
   hiddenFooter: '{n} habilidades integradas ocultas',
   unhide: 'Volver a mostrar',
   confirmRemove: '¿Mover la habilidad «{title}» a la papelera? Podrás restaurarla desde allí.',
+  removeTurnOn: 'Volver a activar la habilidad {name} ({source})',
   confirmHide:
     '¿Ocultar la habilidad integrada «{title}»? Una habilidad oculta queda desactivada; puedes volver a mostrarla al final de la lista.',
   cancel: 'Cancelar',

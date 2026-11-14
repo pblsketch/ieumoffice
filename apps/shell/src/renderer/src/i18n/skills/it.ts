@@ -47,6 +47,7 @@ export const it = {
   hiddenFooter: 'Abilità integrate nascoste: {n}',
   unhide: 'Mostra di nuovo',
   confirmRemove: "Spostare l'abilità «{title}» nel cestino? Potrai ripristinarla da lì.",
+  removeTurnOn: "Riattiva l'abilità {name} ({source})",
   confirmHide:
     "Nascondere l'abilità integrata «{title}»? Un'abilità nascosta viene disattivata; puoi mostrarla di nuovo in fondo all'elenco.",
   cancel: 'Annulla',

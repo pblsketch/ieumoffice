@@ -15,11 +15,11 @@ Un'abilità è un insieme di istruzioni di lavoro per l'IA. Scrivi una volta sol
 | **Cartella abilità di Codex**  | Le abilità in `~/.agents/skills`                              | Disattivate |
 
 - L'interruttore attiva o disattiva un'abilità. La stessa impostazione vale per il pannello IA di ogni editor, per Ask AI in Home e per la finestra dell'agente.
-- Per un'abilità attiva, scegli **Decide l'IA** o **Solo se richiamata**. All'inizio è impostata su Decide l'IA. Con Solo se richiamata, l'abilità viene usata solo quando la richiami tu.
+- Per un'abilità attiva, scegli **Decide l'IA** o **Solo se richiamata**. All'inizio è impostata su Decide l'IA. Con Solo se richiamata, l'abilità viene usata solo quando la richiami tu. Per un'abilità disattivata la scelta resta visibile, attenuata, così puoi impostarla prima di riattivarla.
 - Abilità di provenienze diverse possono avere lo stesso nome. L'etichetta della provenienza su ogni riga permette di distinguerle. Quando due abilità con lo stesso nome sono entrambe attive, solo una compare nell’elenco `/` e viene usata: la prima nell’ordine Le mie abilità, Integrate, Cartella abilità di Claude, Cartella abilità di Codex, Plugin di Claude. La riga dell’altra indica quale abilità viene usata al suo posto.
 - Il menu delle altre azioni contiene **Vedi contenuto**, **Modifica** (solo per le mie abilità), **Esporta (zip)** (solo per le mie abilità) e **Apri cartella**. Le abilità integrate non hanno **Apri cartella**. **Dove si usa** apre direttamente il punto in cui si scelgono gli editor in cui l’abilità viene usata.
 - Le mie abilità si trovano nella cartella `~/.ieumoffice/skills`. In Windows è `C:\Users\<nome utente>\.ieumoffice\skills`. **Apri cartella**, nel menu delle altre azioni, apre la cartella dell’abilità.
-- **Sposta nel cestino** sposta una delle mie abilità nel cestino del sistema, da cui puoi ripristinarla.
+- **Sposta nel cestino** sposta una delle mie abilità nel cestino del sistema, da cui puoi ripristinarla. Se un'abilità con lo stesso nome di un'altra fonte è disattivata, la conferma mostra una casella spuntata per riattivarla. Togli la spunta per lasciarla disattivata.
 - Un'abilità integrata non si elimina, si nasconde: scegli **Nascondi**. **Mostra di nuovo** in fondo all'elenco la riporta com'era all'inizio.
 - Per cambiare un'abilità integrata o una che viene da un altro programma, scegli **Copia nelle mie abilità**. La copia compare tra le mie abilità e l'originale viene disattivato.
 - Se esporti un'abilità con un modello, nello zip finisce anche il documento modello. Prima di esportarla, controlla che il documento non contenga dati personali.

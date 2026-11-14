@@ -49,6 +49,7 @@ export const fr = {
   unhide: 'Afficher à nouveau',
   confirmRemove:
     'Mettre la compétence « {title} » à la corbeille ? Vous pourrez la restaurer depuis la corbeille.',
+  removeTurnOn: 'Réactiver la compétence {name} ({source})',
   confirmHide:
     'Masquer la compétence intégrée « {title} » ? Une compétence masquée est désactivée ; vous pouvez l’afficher à nouveau en bas de la liste.',
   cancel: 'Annuler',

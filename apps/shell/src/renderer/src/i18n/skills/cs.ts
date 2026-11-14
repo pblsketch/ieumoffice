@@ -47,6 +47,7 @@ export const cs = {
   hiddenFooter: 'Skryté vestavěné dovednosti: {n}',
   unhide: 'Znovu zobrazit',
   confirmRemove: 'Přesunout dovednost „{title}“ do koše? Odtud ji můžete obnovit.',
+  removeTurnOn: 'Znovu zapnout dovednost {name} ({source})',
   confirmHide:
     'Skrýt vestavěnou dovednost „{title}“? Skrytá dovednost se vypne; znovu ji zobrazíte dole v seznamu.',
   cancel: 'Zrušit',

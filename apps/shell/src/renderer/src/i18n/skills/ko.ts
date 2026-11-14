@@ -47,6 +47,7 @@ export const ko = {
   hiddenFooter: '숨긴 기본 스킬 {n}개',
   unhide: '다시 보이기',
   confirmRemove: '"{title}" 스킬을 휴지통으로 옮길까요? 휴지통에서 되살릴 수 있습니다.',
+  removeTurnOn: '{name} 스킬({source}) 다시 켜기',
   confirmHide:
     '"{title}" 기본 스킬을 숨길까요? 숨긴 스킬은 꺼지고, 목록 맨 아래에서 다시 보이게 할 수 있습니다.',
   cancel: '취소',

@@ -15,11 +15,11 @@ Dovednost je sada pracovních pokynů pro AI. Jednou si zapište, co děláte st
 | **Složka dovedností Codex**  | Dovednosti v `~/.agents/skills`                                        | Vypnuté    |
 
 - Přepínač dovednost zapíná nebo vypíná. Stejné nastavení platí pro panel AI každého editoru, pro Ask AI na stránce Domů i pro okno agenta.
-- U zapnuté dovednosti zvolte **Rozhoduje AI** nebo **Jen na vyvolání**. Na začátku je nastaveno Rozhoduje AI. S volbou Jen na vyvolání se dovednost použije jen tehdy, když ji vyvoláte sami.
+- U zapnuté dovednosti zvolte **Rozhoduje AI** nebo **Jen na vyvolání**. Na začátku je nastaveno Rozhoduje AI. S volbou Jen na vyvolání se dovednost použije jen tehdy, když ji vyvoláte sami. U vypnuté dovednosti tato volba zůstává, jen ztlumená, takže ji můžete nastavit ještě před opětovným zapnutím.
 - Dovednosti z různých zdrojů mohou mít stejný název. Rozlišíte je podle štítku původu na každém řádku. Když jsou zapnuté dvě dovednosti se stejným jménem, v seznamu `/` se zobrazí a používá jen jedna: první v pořadí Moje dovednosti, Vestavěné, Složka dovedností Claude, Složka dovedností Codex, Pluginy Claude. V řádku té druhé je uvedeno, která dovednost se používá místo ní.
 - V nabídce dalších akcí jsou **Zobrazit obsah**, **Upravit** (jen moje dovednosti), **Exportovat (zip)** (jen moje dovednosti) a **Otevřít složku**. Vestavěné dovednosti položku **Otevřít složku** nemají. **Kde se používá** otevře rovnou místo, kde se vybírají editory, ve kterých se dovednost používá.
 - Moje dovednosti jsou ve složce `~/.ieumoffice/skills`. Ve Windows je to `C:\Users\<uživatelské jméno>\.ieumoffice\skills`. **Otevřít složku** v nabídce dalších akcí otevře složku dovednosti.
-- **Přesunout do koše** přesune jednu z mých dovedností do systémového koše, odkud ji můžete obnovit.
+- **Přesunout do koše** přesune jednu z mých dovedností do systémového koše, odkud ji můžete obnovit. Pokud je vypnutá dovednost se stejným názvem z jiného zdroje, potvrzení ukáže zaškrtnuté políčko pro její opětovné zapnutí. Zrušte zaškrtnutí a zůstane vypnutá.
 - Vestavěná dovednost se neodstraňuje, ale skrývá: zvolte **Skrýt**. **Znovu zobrazit** dole v seznamu ji vrátí do původního stavu.
 - Chcete-li změnit vestavěnou dovednost nebo dovednost z jiného programu, zvolte **Kopírovat do mých dovedností**. Kopie se objeví v mých dovednostech a originál se vypne.
 - Při exportu dovednosti se šablonou se do zipu přibalí i dokument šablony. Před exportem zkontrolujte, že dokument neobsahuje osobní údaje.

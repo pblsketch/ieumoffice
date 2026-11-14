@@ -15,11 +15,11 @@ Skill adalah sekumpulan petunjuk kerja untuk AI. Tuliskan sekali saja hal yang A
 | **Folder skill Codex**  | Skill di `~/.agents/skills`                                  | Nonaktif |
 
 - Sakelar mengaktifkan atau menonaktifkan skill. Pengaturan yang sama berlaku untuk panel AI di semua editor, Tanya AI di Beranda, dan jendela agen.
-- Untuk skill yang aktif, pilih **AI yang menentukan** atau **Hanya saat dipanggil**. Awalnya disetel ke AI yang menentukan. Dengan Hanya saat dipanggil, skill hanya dipakai jika Anda sendiri yang memanggilnya.
+- Untuk skill yang aktif, pilih **AI yang menentukan** atau **Hanya saat dipanggil**. Awalnya disetel ke AI yang menentukan. Dengan Hanya saat dipanggil, skill hanya dipakai jika Anda sendiri yang memanggilnya. Pada skill yang nonaktif, pilihan ini tetap tampak redup, jadi Anda bisa mengaturnya sebelum mengaktifkan skill itu lagi.
 - Skill dari sumber yang berbeda bisa bernama sama. Label sumber di setiap baris membedakannya. Jika dua skill bernama sama sama-sama aktif, hanya satu yang muncul di daftar `/` dan dipakai: yang lebih dulu menurut urutan Skill saya, Bawaan, Folder skill Claude, Folder skill Codex, Plugin Claude. Baris skill yang lain menyebutkan skill mana yang dipakai sebagai gantinya.
 - Menu lainnya berisi **Lihat isi**, **Edit** (hanya skill saya), **Ekspor (zip)** (hanya skill saya), dan **Buka folder**. Skill bawaan tidak memiliki **Buka folder**. **Tempat dipakai** langsung membuka tempat memilih editor yang memakai skill itu.
 - Skill saya berada di folder `~/.ieumoffice/skills`. Di Windows, itu adalah `C:\Users\<nama pengguna>\.ieumoffice\skills`. **Buka folder** di menu lainnya membuka folder skill tersebut.
-- **Pindahkan ke tempat sampah** memindahkan salah satu skill saya ke tempat sampah sistem, dan dari sana skill itu bisa dipulihkan.
+- **Pindahkan ke tempat sampah** memindahkan salah satu skill saya ke tempat sampah sistem, dan dari sana skill itu bisa dipulihkan. Jika ada skill bernama sama dari sumber lain yang nonaktif, konfirmasi menampilkan kotak tercentang untuk mengaktifkannya lagi. Hapus centangnya agar skill itu tetap nonaktif.
 - Skill bawaan tidak dihapus, melainkan disembunyikan: pilih **Sembunyikan**. **Tampilkan lagi** di bagian bawah daftar mengembalikannya seperti semula.
 - Untuk mengubah skill bawaan atau skill dari program lain, pilih **Salin ke skill saya**. Salinannya muncul di skill saya dan skill aslinya dinonaktifkan.
 - Saat skill yang memiliki templat diekspor, dokumen templatnya ikut masuk ke file zip. Pastikan dokumen itu tidak berisi informasi pribadi sebelum Anda mengekspornya.

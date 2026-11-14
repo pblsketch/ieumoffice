@@ -47,6 +47,7 @@ export const vi = {
   hiddenFooter: '{n} kỹ năng có sẵn đã ẩn',
   unhide: 'Hiện lại',
   confirmRemove: 'Chuyển kỹ năng "{title}" vào thùng rác? Bạn có thể khôi phục từ đó.',
+  removeTurnOn: 'Bật lại kỹ năng {name} ({source})',
   confirmHide:
     'Ẩn kỹ năng có sẵn "{title}"? Kỹ năng bị ẩn sẽ bị tắt; bạn có thể hiện lại ở cuối danh sách.',
   cancel: 'Hủy',

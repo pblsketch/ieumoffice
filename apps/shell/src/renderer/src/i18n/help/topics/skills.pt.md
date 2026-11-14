@@ -15,11 +15,11 @@ Uma habilidade é um conjunto de instruções de trabalho para a IA. Registe uma
 | **Pasta de habilidades do Codex**  | As habilidades em `~/.agents/skills`                        | Desativadas |
 
 - O interruptor ativa ou desativa uma habilidade. A mesma configuração vale para o painel de IA de todos os editores, para o Ask AI do Início e para a janela do agente.
-- Para uma habilidade ativada, escolha **A IA decide** ou **Só quando chamada**. No início fica em A IA decide. Com Só quando chamada, a habilidade só é usada quando a chama.
+- Para uma habilidade ativada, escolha **A IA decide** ou **Só quando chamada**. No início fica em A IA decide. Com Só quando chamada, a habilidade só é usada quando a chama. Numa habilidade desativada esta escolha continua visível, esbatida, para a poder definir antes de voltar a ativá-la.
 - Habilidades de origens diferentes podem ter o mesmo nome. O rótulo de origem em cada linha distingue-as. Quando duas habilidades de mesmo nome estão ativadas, só uma aparece na lista `/` e é usada: a primeira na ordem Minhas habilidades, Integradas, Pasta de habilidades do Claude, Pasta de habilidades do Codex, Plugins do Claude. A linha da outra informa qual habilidade é usada no lugar dela.
 - O menu de mais opções tem **Ver conteúdo**, **Editar** (só minhas habilidades), **Exportar (zip)** (só minhas habilidades) e **Abrir pasta**. As habilidades integradas não têm **Abrir pasta**. **Onde é usada** abre direto o lugar onde se escolhem os editores em que a habilidade é usada.
 - Minhas habilidades ficam na pasta `~/.ieumoffice/skills`. No Windows é `C:\Users\<nome de usuário>\.ieumoffice\skills`. **Abrir pasta**, no menu de mais opções, abre a pasta da habilidade.
-- **Mover para a lixeira** envia uma das minhas habilidades para a reciclagem do sistema, de onde a pode restaurar.
+- **Mover para a lixeira** envia uma das minhas habilidades para a reciclagem do sistema, de onde a pode restaurar. Se uma habilidade com o mesmo nome de outra origem estiver desativada, a confirmação mostra uma caixa marcada para voltar a ativá-la. Desmarque-a para a deixar desativada.
 - Uma habilidade integrada é ocultada em vez de removida: escolha **Ocultar**. **Mostrar de novo**, no fim da lista, traz a habilidade de volta tal como era no início.
 - Para alterar uma habilidade integrada ou de outro programa, escolha **Copiar para minhas habilidades**. A cópia aparece em minhas habilidades e a original é desativada.
 - Ao exportar uma habilidade com modelo, o documento de modelo também vai no zip. Verifique se o documento não contém informações pessoais antes de exportar.

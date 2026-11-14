@@ -438,9 +438,9 @@ describe('Settings → Skills screen', () => {
     expect(api.setState).toHaveBeenCalledWith(mine.id, { invoke: 'manual' })
   })
 
-  it('offers the auto/manual choice only for an enabled skill', async () => {
+  it('keeps the auto/manual choice on a skill that is off', async () => {
     await renderPane(bridge([claude]))
-    expect(buttonWithText(ko('invokeAuto'), row(claude.id))).toBeUndefined()
+    expect(buttonWithText(ko('invokeAuto'), row(claude.id))).toBeTruthy()
   })
 
   it('offers the more-menu items each source allows', async () => {
@@ -477,7 +477,7 @@ describe('Settings → Skills screen', () => {
     expect(api.remove).not.toHaveBeenCalled()
     expect(host.textContent).toContain(ko('confirmRemove', { title: '가정통신문' }))
     await click(buttonWithText(ko('actRemove'), row(mine.id)))
-    expect(api.remove).toHaveBeenCalledWith(mine.id)
+    expect(api.remove).toHaveBeenCalledWith(mine.id, [])
   })
 
   it('asks before hiding a builtin and shows hidden builtins at the bottom', async () => {

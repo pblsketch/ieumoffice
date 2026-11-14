@@ -47,6 +47,7 @@ export const ms = {
   hiddenFooter: '{n} kemahiran terbina dalam disembunyikan',
   unhide: 'Tunjukkan semula',
   confirmRemove: 'Alihkan kemahiran "{title}" ke tong sampah? Anda boleh memulihkannya dari sana.',
+  removeTurnOn: 'Hidupkan semula kemahiran {name} ({source})',
   confirmHide:
     'Sembunyikan kemahiran terbina dalam "{title}"? Kemahiran yang disembunyikan akan dimatikan; anda boleh menunjukkannya semula di bahagian bawah senarai.',
   cancel: 'Batal',

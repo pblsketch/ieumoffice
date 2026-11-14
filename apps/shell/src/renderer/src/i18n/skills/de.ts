@@ -48,6 +48,7 @@ export const de = {
   unhide: 'Wieder einblenden',
   confirmRemove:
     'Den Skill „{title}“ in den Papierkorb verschieben? Sie können ihn dort wiederherstellen.',
+  removeTurnOn: 'Skill {name} ({source}) wieder einschalten',
   confirmHide:
     'Den integrierten Skill „{title}“ ausblenden? Ein ausgeblendeter Skill ist ausgeschaltet; Sie können ihn unten in der Liste wieder einblenden.',
   cancel: 'Abbrechen',

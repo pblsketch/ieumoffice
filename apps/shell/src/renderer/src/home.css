@@ -220,8 +220,10 @@ body.vib .home {
 
 .account-btn {
   display: flex;
+  /* a sidebar too narrow for both drops the settings button under the AI name */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 9px;
+  gap: 6px 9px;
   width: 100%;
   padding: 7px 8px;
   border: none;
@@ -272,20 +274,28 @@ body.vib .home {
   flex-direction: column;
   min-width: 0;
   line-height: 1.25;
-  flex: 1;
+  /* the least room the AI name keeps before the settings button moves down */
+  flex: 1 1 72px;
 }
 
+/* the way into the settings: drawn as a button, in the sidebar items' own text */
 .account-settings {
   flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 4px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
   white-space: nowrap;
 }
 
-.account-chevron {
+.account-settings svg {
   flex-shrink: 0;
-  margin-left: auto;
-  color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .account-name {

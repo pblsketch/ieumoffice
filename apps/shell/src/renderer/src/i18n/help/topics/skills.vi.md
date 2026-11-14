@@ -15,11 +15,11 @@ Kỹ năng là một bộ hướng dẫn làm việc dành cho AI. Hãy viết r
 | **Thư mục kỹ năng Codex**  | Các kỹ năng trong `~/.agents/skills`                     | Tắt     |
 
 - Công tắc dùng để bật hoặc tắt một kỹ năng. Cùng một cài đặt áp dụng cho bảng AI của mọi trình soạn thảo, Hỏi AI ở Trang chủ và cửa sổ tác tử.
-- Với kỹ năng đang bật, hãy chọn **AI tự quyết định** hoặc **Chỉ khi được gọi**. Ban đầu là AI tự quyết định. Với Chỉ khi được gọi, kỹ năng chỉ được dùng khi chính bạn gọi nó.
+- Với kỹ năng đang bật, hãy chọn **AI tự quyết định** hoặc **Chỉ khi được gọi**. Ban đầu là AI tự quyết định. Với Chỉ khi được gọi, kỹ năng chỉ được dùng khi chính bạn gọi nó. Ở kỹ năng đang tắt, lựa chọn này vẫn hiện mờ, nên bạn có thể đặt trước khi bật lại kỹ năng.
 - Các kỹ năng từ những nguồn khác nhau có thể trùng tên. Nhãn nguồn trên mỗi hàng giúp phân biệt chúng. Khi hai kỹ năng cùng tên đều đang bật, chỉ một kỹ năng xuất hiện trong danh sách `/` và được dùng: kỹ năng đứng trước theo thứ tự Kỹ năng của tôi, Có sẵn, Thư mục kỹ năng Claude, Thư mục kỹ năng Codex, Phần bổ trợ Claude. Dòng của kỹ năng còn lại cho biết kỹ năng nào được dùng thay.
 - Menu thêm có **Xem nội dung**, **Chỉnh sửa** (chỉ kỹ năng của tôi), **Xuất (zip)** (chỉ kỹ năng của tôi) và **Mở thư mục**. Kỹ năng có sẵn không có **Mở thư mục**. **Nơi dùng** mở ngay chỗ chọn các trình soạn thảo dùng kỹ năng đó.
 - Kỹ năng của tôi nằm trong thư mục `~/.ieumoffice/skills`. Trên Windows đó là `C:\Users\<tên người dùng>\.ieumoffice\skills`. **Mở thư mục** trong menu thêm sẽ mở thư mục của kỹ năng.
-- **Chuyển vào thùng rác** chuyển một kỹ năng của tôi vào thùng rác hệ thống, nơi bạn có thể khôi phục lại.
+- **Chuyển vào thùng rác** chuyển một kỹ năng của tôi vào thùng rác hệ thống, nơi bạn có thể khôi phục lại. Nếu một kỹ năng cùng tên từ nguồn khác đang tắt, hộp xác nhận hiện một ô đã đánh dấu để bật lại kỹ năng đó. Bỏ dấu để giữ nó ở trạng thái tắt.
 - Kỹ năng có sẵn không bị xóa mà được ẩn đi: hãy chọn **Ẩn**. **Hiện lại** ở cuối danh sách sẽ đưa nó trở lại như ban đầu.
 - Để thay đổi một kỹ năng có sẵn hoặc kỹ năng từ chương trình khác, hãy chọn **Sao chép vào kỹ năng của tôi**. Bản sao xuất hiện trong kỹ năng của tôi và bản gốc bị tắt.
 - Khi xuất một kỹ năng có mẫu, tài liệu mẫu cũng được đưa vào tệp zip. Hãy kiểm tra để chắc rằng tài liệu đó không chứa thông tin cá nhân trước khi xuất.
