@@ -192,6 +192,8 @@ describe('checkLayout', () => {
       tables: 1,
       from: { table: 1, row: 1 },
       cells: [],
+      wrapped: [],
+      past: [],
       measured: 4,
     })
   })
