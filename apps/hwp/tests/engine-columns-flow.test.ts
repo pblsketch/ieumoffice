@@ -41,6 +41,17 @@ function insertOneParagraphThenSplitLines(doc: HwpDocument): void {
   }
 }
 
+function openFixture(name: string): HwpDocument {
+  return new HwpDocument(new Uint8Array(readFileSync(join(__dirname, 'fixtures', name))))
+}
+
+function paragraphStartingWith(doc: HwpDocument, start: string): number {
+  for (let k = 0; k < doc.getParagraphCount(0); k++) {
+    if (doc.getTextRange(0, k, 0, doc.getParagraphLength(0, k)).startsWith(start)) return k
+  }
+  throw new Error(`no paragraph starts with ${start}`)
+}
+
 function linesBelowTheBody(doc: HwpDocument): number {
   let below = 0
   for (let page = 0; page < doc.pageCount(); page++) {
@@ -91,6 +102,28 @@ describe('text added to a section of columns', () => {
     insertOneParagraphThenSplitLines(doc)
     expect(doc.pageCount()).toBe(7)
     expect(linesBelowTheBody(doc)).toBe(0)
+    doc.free()
+  })
+})
+
+// Generated filler text that Hancom Hangul 2024 laid out and saved, metadata stripped.
+// Hancom's columns can hold more than the engine measures, so their stored lines run past
+// the engine's column foot in the same shape as lines an edit chained on.
+describe('a two-column file Hancom laid out', () => {
+  it('keeps the pages Hancom gives it when nobody edits it', () => {
+    const doc = openFixture('two-column-zone-hancom.hwp')
+    expect(doc.pageCount()).toBe(3)
+    doc.free()
+  })
+
+  it('gets no page Hancom does not give it when an edit adds lines to its prose', () => {
+    const doc = openFixture('two-column-prose-hancom.hwp')
+    const at = paragraphStartingWith(doc, '6. ')
+    for (let k = 0; k < 10; k++) {
+      doc.splitParagraph(0, at + k, doc.getParagraphLength(0, at + k))
+      doc.insertText(0, at + k + 1, 0, `새 줄 ${k + 1}`)
+    }
+    expect(doc.pageCount()).toBe(3)
     doc.free()
   })
 })
