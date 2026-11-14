@@ -280,6 +280,7 @@ export const ru = {
   previewMargins: 'Показать поля',
   previewEditPage: 'Изменить эту страницу',
   previewEditFailed: 'Не удалось перейти на эту страницу.',
+  printLayoutSaved: 'Результат раскладки сохранён в PDF.',
   checkTitle: 'Проверка документа',
   checkRunning: 'Чтение документа…',
   checkFailed: 'Не удалось прочитать документ.',

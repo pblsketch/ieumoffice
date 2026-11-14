@@ -33,7 +33,12 @@ import {
   slidesSaveAsSuggestion,
 } from './save-as-formats'
 import { exportSlidesPdf } from './pdf-export'
-import { printSlidesHtml } from './print-window'
+import { printSlidesHtml, slidesPrintHtml, slidesPrintJobPdf } from './print-window'
+import {
+  ensurePrintLayoutIpc,
+  LABEL_SPEC_FILE_NAME,
+  registerPrintLayoutIpc,
+} from '@genoffice/electron-utils/print-arranged'
 import { shutdownSubscriptionChildren } from '@genoffice/ai-provider/subscription'
 import {
   appMenuLabels,
@@ -271,7 +276,6 @@ import type {
 } from '../shared/ipc'
 import { DECK_LINK_PROTOCOLS } from '../shared/run-link'
 import { planSlideDuplicates, planSlideMoves } from '../shared/slide-selection'
-import { buildPrintDocumentHtml } from '../shared/print-html'
 
 import { tm } from './i18n-main'
 import { tiffToPng } from './tiff-decode'
@@ -5134,36 +5138,73 @@ export function registerSlidesIpc(): void {
     })
   })
 
+  /** Hidden window the system print dialog prints from (Windows shows it for the dialog). */
+  const createPrintDialogWindow = (sender: WebContents | undefined): BrowserWindow => {
+    const owner = (sender ? hostWindowFor(sender) : undefined) ?? dialogParent()
+    return new BrowserWindow({
+      show: false,
+      ...(owner && !owner.isDestroyed() ? { parent: owner } : {}),
+      ...(process.platform === 'win32'
+        ? {
+            width: 900,
+            height: 700,
+            autoHideMenuBar: true,
+            closable: false,
+            skipTaskbar: true,
+          }
+        : {}),
+      webPreferences: { sandbox: true },
+    })
+  }
+
   ipcMain.handle(
     'slides:print',
     async (e, op: PrintSlidesOp): Promise<{ ok: boolean; error?: string }> => {
       // Page assembly is shared with the renderer's print-preview pane (print-html.ts)
-      const html = buildPrintDocumentHtml({
-        srcs: op.pngsBase64.map((b64) => `data:image/png;base64,${b64}`),
-        ratio: op.widthPx / op.heightPx,
-        layout: op.layout ?? 'full',
-        ...(op.notes ? { notes: op.notes } : {}),
-        ...(op.orientation ? { orientation: op.orientation } : {}),
-        ...(op.frame ? { frame: true } : {}),
-      })
-      const owner = hostWindowFor(e.sender) ?? dialogParent()
-      const win = new BrowserWindow({
-        show: false,
-        ...(owner && !owner.isDestroyed() ? { parent: owner } : {}),
-        ...(process.platform === 'win32'
-          ? {
-              width: 900,
-              height: 700,
-              autoHideMenuBar: true,
-              closable: false,
-              skipTaskbar: true,
-            }
-          : {}),
-        webPreferences: { sandbox: true },
-      })
-      return printSlidesHtml(html, win)
+      const html = slidesPrintHtml(op)
+      return printSlidesHtml(html, createPrintDialogWindow(e.sender))
     },
   )
+
+  // Advanced print (decision 0141): the job PDF is the same print document
+  // printed to PDF; arranging, rasterizing and sending are shared.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerPrintLayoutIpc<PrintSlidesOp>('slides', {
+    ipcMain,
+    buildJobPdf: (_e, op) =>
+      slidesPrintJobPdf(
+        op,
+        () =>
+          // hidden: without backgroundThrottling off the readiness wait can stall
+          new BrowserWindow({
+            show: false,
+            webPreferences: { sandbox: true, backgroundThrottling: false },
+          }),
+      ),
+    createPrintWindow: (e) => createPrintDialogWindow(webContents.fromId(e.sender.id)),
+    pickSavePath: async (e) => {
+      const session = sessions.get(e.sender.id)
+      const name = session?.path
+        ? basename(session.path).replace(/\.pptx$/i, '')
+        : session
+          ? untitledRecoveryTitle(session)
+          : tm('untitledDeck')
+      const r = await showSaveDialogWithMemory(
+        dialog,
+        dialogParent(),
+        {
+          title: tm('dlgExportPdf'),
+          defaultPath: `${name}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        getDraftsDir(),
+      )
+      return r.canceled || !r.filePath ? null : r.filePath
+    },
+  })
 
   ipcMain.handle('slides:recent', () => readRecent())
 

@@ -162,6 +162,9 @@ export const zhTW = {
   appPrintLandscape: '橫向',
   appPrintFrame: '投影片加框',
   appPrintHidden: '列印隱藏投影片',
+  appPrintRangeSelected: '選取的投影片',
+  appPrintLayoutBlocked:
+    '講義和備忘稿每張紙只列印一頁。若要排列頁面，請將版面配置改為「全頁投影片」。',
   appPrintPageCount: '共 {n} 頁',
   appPrintNoPages: '沒有可列印的投影片',
   appPrintRendering: '正在產生預覽…',

@@ -278,6 +278,7 @@ export const tr = {
   previewMargins: 'Kenar boşluklarını göster',
   previewEditPage: 'Bu sayfayı düzenle',
   previewEditFailed: 'Bu sayfaya gidilemedi.',
+  printLayoutSaved: 'Düzenlenmiş sonuç PDF olarak kaydedildi.',
   checkTitle: 'Belge denetimi',
   checkRunning: 'Belge okunuyor…',
   checkFailed: 'Belge okunamadı.',

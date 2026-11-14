@@ -14,10 +14,12 @@ import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { AI_CHANNELS, PDF_CHANNELS } from '../shared/ipc'
 import type {
   PdfApi,
   PdfDiskFileChange,
+  PdfPrintLayoutEditor,
   PdfNoteResult,
   PdfRecoveryCopyResult,
   PdfStoreApi,
@@ -307,6 +309,7 @@ const api: PdfApi = {
     ipcRenderer.on(PDF_CHANNELS.printRequest, listener)
     return () => ipcRenderer.removeListener(PDF_CHANNELS.printRequest, listener)
   },
+  printLayout: createPrintLayoutBridge<PdfPrintLayoutEditor>(ipcRenderer, 'pdf'),
   onFileRenamed: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, newPath: string) => handler(newPath)
     ipcRenderer.on(PDF_CHANNELS.fileRenamed, listener)

@@ -174,6 +174,9 @@ export const vi = {
   appPrintLandscape: 'Khổ ngang',
   appPrintFrame: 'Đóng khung trang chiếu',
   appPrintHidden: 'In các trang chiếu ẩn',
+  appPrintRangeSelected: 'Các trang chiếu đã chọn',
+  appPrintLayoutBlocked:
+    'Bản phát tay và trang ghi chú được in một trang trên mỗi tờ. Để sắp xếp trang, hãy chọn Trang chiếu toàn trang.',
   appPrintPageCount: '{n} trang',
   appPrintNoPages: 'Không có trang chiếu nào để in',
   appPrintRendering: 'Đang tạo bản xem trước…',

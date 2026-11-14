@@ -2,6 +2,7 @@ import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { SubscriptionApi } from './subscription-api'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { DocumentTree, InlineRun } from '../../../../packages/pdf-structure/src/tree/types'
 import type { PageFingerprint } from '../../../../packages/pdf-structure/src/tree/extract'
 import type { MarkdownWarning } from '../../../../packages/pdf-structure/src/markdown/write'
@@ -1688,6 +1689,25 @@ export interface PdfDiskFileChange {
   kind: 'changed' | 'missing' | 'unchanged'
 }
 
+/**
+ * The PDF editor's part of an advanced print request (`pdf:print-layout-*`):
+ * which saved file, which 1-based pages (null: all), and whether annotations
+ * are baked in or left out.
+ */
+export interface PdfPrintLayoutEditor {
+  path: string
+  pages: number[] | null
+  includeAnnotations: boolean
+}
+
+/**
+ * The error `pdf:print-layout-save` answers for a file with permission
+ * restrictions: its arranged result would be a copy without them, so it is
+ * never saved (printing it stays allowed). The screen shows its own wording.
+ */
+export const PDF_PRINT_SAVE_RESTRICTED =
+  'pdf: a PDF with permission restrictions cannot be saved as an arranged PDF'
+
 export interface PdfApi {
   /** Take the pdf path pending for this view (queued at tab creation); null if none */
   consumePending(): Promise<string | null>
@@ -1907,6 +1927,8 @@ export interface PdfApi {
   onAutoSaveDefaultChanged(handler: (value: AutoSaveDefault) => void): () => void
   /** Shell menu Print → renderer runs its print flow (save, rasterize, system dialog) */
   onPrintRequest(handler: () => void): () => void
+  /** Advanced print: arranged preview, print and PDF save, built in the main process from the saved file */
+  printLayout: PrintLayoutBridge<PdfPrintLayoutEditor>
   /** The file was renamed or moved from the shell (home Folders / Files pane); the viewer follows the new path */
   onFileRenamed(handler: (newPath: string) => void): () => void
   /** Watch the file this view just read; another program's change arrives via onDiskFileChanged */

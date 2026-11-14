@@ -283,6 +283,7 @@ export const pt = {
   previewMargins: 'Mostrar margens',
   previewEditPage: 'Editar esta página',
   previewEditFailed: 'Não foi possível ir para esta página.',
+  printLayoutSaved: 'O resultado organizado foi salvo como PDF.',
   checkTitle: 'Verificação do documento',
   checkRunning: 'Lendo o documento…',
   checkFailed: 'Não foi possível ler o documento.',

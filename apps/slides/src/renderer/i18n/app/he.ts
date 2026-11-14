@@ -167,6 +167,9 @@ export const he = {
   appPrintLandscape: 'לרוחב',
   appPrintFrame: 'מסגרת סביב שקופיות',
   appPrintHidden: 'הדפסת שקופיות מוסתרות',
+  appPrintRangeSelected: 'שקופיות נבחרות',
+  appPrintLayoutBlocked:
+    'דפי מידע ועמודי הערות מודפסים עמוד אחד בכל גיליון. כדי לסדר עמודים, בחרו שקופיות בעמוד מלא.',
   appPrintPageCount: '{n} עמודים',
   appPrintNoPages: 'אין שקופיות להדפסה',
   appPrintRendering: 'יוצר תצוגה מקדימה…',

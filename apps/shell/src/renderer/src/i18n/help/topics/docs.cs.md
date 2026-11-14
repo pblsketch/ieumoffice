@@ -86,4 +86,4 @@ Klikněte pravým tlačítkem kamkoli do textu — nabídka se přizpůsobí tom
 
 ## Tisk
 
-ctrl+P přes systémový dialog, stránky WYSIWYG.
+ctrl+P otevře okno tisku. Zvolte tiskárnu, počet kopií, oboustranný tisk a rozsah (i výběr); v oddílu **Rozložení stránek** pak více stránek na list, brožuru, plakát, štítky, liché či sudé strany a odstíny šedi (viz [Práce se soubory](help://file-ops)).

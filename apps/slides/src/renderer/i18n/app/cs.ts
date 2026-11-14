@@ -174,6 +174,9 @@ export const cs = {
   appPrintLandscape: 'Na šířku',
   appPrintFrame: 'Orámovat snímky',
   appPrintHidden: 'Tisknout skryté snímky',
+  appPrintRangeSelected: 'Vybrané snímky',
+  appPrintLayoutBlocked:
+    'Podklady a stránky poznámek se tisknou po jedné stránce na list. Chcete-li stránky uspořádat, zvolte Snímky na celou stránku.',
   appPrintPageCount: '{n} stránek',
   appPrintNoPages: 'Žádné snímky k tisku',
   appPrintRendering: 'Generuje se náhled…',

@@ -172,6 +172,9 @@ export const en = {
   appPrintLandscape: 'Landscape',
   appPrintFrame: 'Frame slides',
   appPrintHidden: 'Print hidden slides',
+  appPrintRangeSelected: 'Selected slides',
+  appPrintLayoutBlocked:
+    'Handouts and notes pages print one page per sheet. To arrange pages, choose Full Page Slides.',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'No slides to print',
   appPrintRendering: 'Generating preview…',

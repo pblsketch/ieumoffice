@@ -32,6 +32,9 @@ export default defineConfig({
       '@genoffice/electron-utils/print-job': local(
         '../../packages/electron-utils/src/print-job.ts',
       ),
+      '@genoffice/electron-utils/print-arranged': local(
+        '../../packages/electron-utils/src/print-arranged.ts',
+      ),
       '@genoffice/electron-utils/atomic-write': local(
         '../../packages/electron-utils/src/atomic-write.ts',
       ),

@@ -10325,7 +10325,7 @@ body.docs-crop-active
 /* ---- print dialog (Word-style: page preview + range options) ---- */
 
 .modal.print-dialog {
-  width: min(880px, calc(100vw - 64px));
+  width: min(940px, calc(100vw - 64px));
 }
 
 .print-dialog-body {
@@ -10398,6 +10398,14 @@ body.docs-crop-active
   cursor: default;
 }
 
+/* the shared layout diagram in place of the page clone (page layout options, printed selection) */
+.print-preview-schematic {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
 .print-preview-empty {
   flex: 1;
   display: flex;
@@ -10408,7 +10416,7 @@ body.docs-crop-active
 }
 
 .print-options {
-  width: 240px;
+  width: 280px;
   flex-shrink: 0;
   overflow-y: auto;
   display: flex;

@@ -176,6 +176,9 @@ export const ru = {
   appPrintLandscape: 'Альбомная',
   appPrintFrame: 'Рамка вокруг слайдов',
   appPrintHidden: 'Печатать скрытые слайды',
+  appPrintRangeSelected: 'Выбранные слайды',
+  appPrintLayoutBlocked:
+    'Выдачи и страницы заметок печатаются по одной странице на лист. Чтобы расположить страницы, выберите «Слайды на всю страницу».',
   appPrintPageCount: 'Страниц: {n}',
   appPrintNoPages: 'Нет слайдов для печати',
   appPrintRendering: 'Создание предварительного просмотра…',
