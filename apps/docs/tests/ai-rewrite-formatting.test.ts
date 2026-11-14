@@ -102,13 +102,14 @@ async function replaceBlocks(
   end: number,
   html: string,
   track?: typeof TRACK,
+  drop?: string[],
 ) {
   const r = await executeTool(
     editor,
     {
       id: 't',
       name: 'replace_blocks',
-      input: { startBlockIndex: start, endBlockIndex: end, html },
+      input: { startBlockIndex: start, endBlockIndex: end, html, drop },
     },
     NUM_IDS,
     track,
@@ -273,7 +274,13 @@ describe('replace_blocks keeps the replaced blocks formatting (issue #175)', () 
         ],
       },
     ])
-    await replaceBlocks(editor, 0, 0, '<p>Short note.</p>')
+    const read = await executeTool(
+      editor,
+      { id: 'r', name: 'read_blocks', input: { startBlockIndex: 0, endBlockIndex: 0 } },
+      NUM_IDS,
+    )
+    const lead = /<span id="(k[0-9a-z]{7})">/.exec(String(read.output))?.[1] ?? ''
+    await replaceBlocks(editor, 0, 0, '<p>Short note.</p>', undefined, [lead])
     expect(textStyle(blocks(editor)[0])).toEqual(expect.objectContaining(BODY_STYLE))
     expect(textStyle(blocks(editor)[0])?.font).toBe('SimSun')
   })

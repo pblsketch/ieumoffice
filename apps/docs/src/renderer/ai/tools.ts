@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core'
-import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { ChartDisplay, CommentInfo, NewChart, NoteInfo } from '@genoffice/docx-engine'
 import type { ToolDisplay } from '@genoffice/agent-core'
 import type {
@@ -14,7 +14,7 @@ import { undoDoubledEscapes } from '@genoffice/agent-core/doubled-escapes'
 import { executeOps, opNames } from './ops'
 import { odtGuardRefusalText, odtToolRefusal, startOdtToolCall } from './odt-tools'
 import { clipExcerpt, repliesOf, resolveCommentAnchor } from './comment-ops'
-import { redactTextBetween } from './redact-view'
+import { readBlocks, rewriteBlocks, rewriteSelection } from './rewrite'
 import {
   PAGE_SETUP_TOOL,
   SECTION_BREAK_TOOL,
@@ -74,12 +74,8 @@ import {
   buildRevisionsContext,
   insertBlocksAfter,
   isBlankDocument,
-  isTrackedDeleted,
   parseHtmlFragment,
-  parseInlineFragment,
   replaceBlockRange,
-  replaceInlineRange,
-  serializeRangeToHtml,
   type AiHfState,
   type AiTrack,
   type NumIds,
@@ -91,8 +87,6 @@ import {
  * channel. The "execution backend" is the in-process ProseMirror doc, split
  * into three safe primitives plus the deterministic command engine.
  */
-
-const READ_MAX_CHARS = 24_000
 
 export const AGENT_TOOLS: AgentToolDef[] = [
   {
@@ -171,13 +165,19 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'replace_blocks',
     description:
-      "Replace a block range with new content (restricted HTML). For rewriting/translating/condensing/expanding existing content; the new block count may differ from the old. New blocks inherit the replaced blocks' paragraph and text formatting (font, size, color, indent, spacing, alignment) automatically, and a rewritten <table> keeps the old table's column widths, borders, shading and cell formatting (unchanged cells keep their content); never try to restore formatting afterwards.",
+      "Replace a block range with new content (restricted HTML). For rewriting/translating/condensing/expanding existing content; the new block count may differ from the old. Write it from read_blocks HTML: new blocks take the replaced blocks' paragraph formatting and base text style (font, size, color, indent, spacing, alignment), and every keep token of the range (<keep>, <span id>, <a id>, {{…}}) must come back or be listed in drop. A rewritten <table> keeps the old table's column widths, borders, shading and cell formatting (unchanged cells keep their content).",
     inputSchema: {
       type: 'object',
       properties: {
         startBlockIndex: { type: 'integer', description: 'start block index (0-based, inclusive)' },
         endBlockIndex: { type: 'integer', description: 'end block index (inclusive)' },
         html: { type: 'string', description: 'replacement restricted HTML fragment' },
+        drop: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'keep-token ids (or {{…}} placeholders) of the range whose content the user asked to remove; every other token must appear in html',
+        },
       },
       required: ['startBlockIndex', 'endBlockIndex', 'html'],
     },
@@ -185,14 +185,20 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'replace_selection',
     description:
-      "Replace exactly the user's selected text (the <sel>…</sel> span in the context) with new inline content, leaving the rest of the block untouched. For rewording/translating/correcting a selected phrase or sentence inside a paragraph. The new text inherits the selection's formatting unless the fragment styles it. Requires a range selection inside one paragraph/heading/list item; for whole blocks or several blocks use replace_blocks.",
+      "Replace exactly the user's selected text (the <sel>…</sel> span in the context) with new inline content, leaving the rest of the block untouched. For rewording/translating/correcting a selected phrase or sentence inside a paragraph. The new text inherits the selection's formatting unless the fragment styles it; every keep token inside <sel> (<keep>, <span id>, <a id>, {{…}}) must come back or be listed in drop. Requires a range selection inside one paragraph/heading/list item; for whole blocks or several blocks use replace_blocks.",
     inputSchema: {
       type: 'object',
       properties: {
         html: {
           type: 'string',
           description:
-            'replacement inline content: plain text or restricted inline HTML (strong em u s a br formula)',
+            'replacement inline content: plain text or restricted inline HTML (strong em u s a br formula and the keep tokens of the selection)',
+        },
+        drop: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'keep-token ids (or {{…}} placeholders) of the range whose content the user asked to remove; every other token must appear in html',
         },
       },
       required: ['html'],
@@ -753,9 +759,6 @@ const fail = (summary: string, output: string): ToolExecution => ({
   summary,
 })
 
-const clipText = (text: string, max: number): string =>
-  text.length > max ? `${text.slice(0, max)}…` : text
-
 /** Host shown in a read_url summary, from the final address after redirects. */
 function hostOfUrl(url: string): string {
   try {
@@ -829,10 +832,6 @@ function selectionRange(
   const { from, to, empty } = editor.state.selection
   return empty ? null : { from, to }
 }
-
-/** formatting the fragment expresses itself (tags), so it must not also be inherited from the old text */
-const FRAGMENT_MARK_TYPES = new Set(['bold', 'italic', 'underline', 'strike', 'link'])
-const REVISION_MARK_TYPES = new Set(['ins', 'del'])
 
 /** Doc as last seen by the AI pipeline (context build / read / own write); a differing doc means the user edited in between. */
 const docBaseline = new WeakMap<Editor, ProseMirrorNode>()
@@ -1553,34 +1552,11 @@ function executeSyncTool(
     case 'read_blocks': {
       const range = validRange(editor, call.input.startBlockIndex, call.input.endBlockIndex)
       if (!range) return fail(t('aiSumReadBlocks'), rangeError(editor))
-      const html = serializeRangeToHtml(editor, range.start, range.end)
       const offset = Math.max(0, Math.trunc(Number(call.input.offset)) || 0)
-      if (offset > 0 && offset >= html.length) {
-        return fail(
-          t('aiSumReadBlocks'),
-          `offset ${offset} is beyond the content (${html.length} characters in total)`,
-        )
-      }
-      const slice = html.slice(offset, offset + READ_MAX_CHARS)
-      const end = offset + slice.length
-      const note =
-        end < html.length
-          ? `\n…(truncated: ${html.length} characters in total, call read_blocks again with offset=${end} to continue)`
-          : offset > 0
-            ? `\n(end of range: ${html.length} characters in total)`
-            : ''
-      let empty = '(range is empty)'
-      if (!slice) {
-        let deletedBlocks = 0
-        for (let i = range.start; i <= range.end; i++) {
-          if (isTrackedDeleted(editor.state.doc.child(i))) deletedBlocks++
-        }
-        if (deletedBlocks > 0) {
-          empty = `(the ${deletedBlocks} block(s) in this range are pending tracked deletions — that text is already deleted and hidden from reads; do not delete or rewrite it again)`
-        }
-      }
+      const read = readBlocks(editor, range, offset)
+      if (!read.ok) return fail(t('aiSumReadBlocks'), read.output)
       return {
-        output: slice ? slice + note : empty,
+        output: read.output,
         mutated: false,
         summary: t('aiSumReadBlocksRange', { start: range.start, end: range.end }),
       }
@@ -1628,17 +1604,15 @@ function executeSyncTool(
       const html = String(call.input.html ?? '')
       const echo = toolEchoError(html) ?? contextMarkerError(html)
       if (echo) return fail(t('aiSumReplaceContent'), echo)
-      let nodes: ReturnType<typeof parseHtmlFragment>
-      try {
-        nodes = parseHtmlFragment(html, numIds)
-      } catch (e) {
-        return fail(t('aiSumReplaceContent'), e instanceof Error ? e.message : String(e))
-      }
-      if (nodes.length === 0)
-        return fail(t('aiSumReplaceContent'), 'html did not parse into any content blocks')
-      replaceBlockRange(editor, range.start, range.end, nodes, track)
+      const out = rewriteBlocks(
+        editor,
+        range,
+        { html, drop: call.input.drop },
+        { numIds, track, notes, comments },
+      )
+      if (!out.ok) return fail(t('aiSumReplaceContent'), out.output)
       return {
-        output: `Replaced blocks ${range.start}-${range.end} with ${nodes.length} block(s); the new blocks kept the replaced blocks' formatting. Block indexes have changed; use get_document_context if needed.`,
+        output: out.output,
         mutated: true,
         summary: t('aiSumReplacedBlocks', { start: range.start, end: range.end }),
       }
@@ -1664,40 +1638,14 @@ function executeSyncTool(
           'the selection spans several blocks or sits in protected content (table, image, field); replace_selection only edits text inside one paragraph/heading/list item — use replace_blocks for that range',
         )
       }
-      let inline: ReturnType<typeof parseInlineFragment>
-      try {
-        inline = parseInlineFragment(html)
-      } catch (e) {
-        return fail(t('aiSumReplaceSelection'), e instanceof Error ? e.message : String(e))
-      }
-      if (inline.length === 0) {
-        return fail(t('aiSumReplaceSelection'), 'html did not parse into any text')
-      }
-      const schema = editor.schema
-      const fragmentStyled = inline.some((n) => (n.marks ?? []).length > 0)
-      const anchor = $from.parent.childAfter($from.parentOffset).node
-      const inherited = (anchor?.marks ?? []).filter(
-        (m) =>
-          !REVISION_MARK_TYPES.has(m.type.name) &&
-          !(fragmentStyled && FRAGMENT_MARK_TYPES.has(m.type.name)),
+      const out = rewriteSelection(
+        editor,
+        range,
+        { html, drop: call.input.drop },
+        { track, notes, comments },
       )
-      const nodes = inline.map((n) => {
-        if (n.type !== 'text') return schema.nodeFromJSON(n)
-        let marks: readonly Mark[] = inherited
-        for (const m of n.marks ?? []) marks = schema.markFromJSON(m).addToSet(marks)
-        return schema.text(n.text ?? '', marks)
-      })
-      const blockIndex = $from.index(0)
-      // the echo quotes what was replaced back to the model, so a selection
-      // covering a withheld span would undo the withholding right here
-      const oldText = redactTextBetween(editor.getJSON(), range.from, range.to, ' ')
-      replaceInlineRange(editor, range.from, range.to, nodes, track)
-      const newText = nodes.map((n) => n.textContent).join('')
-      return {
-        output: `Replaced the selected text in block ${blockIndex}: "${clipText(oldText, 200)}" → "${clipText(newText, 200)}". The rest of the block is unchanged; the new text is now selected.`,
-        mutated: true,
-        summary: t('aiSumReplaceSelection'),
-      }
+      if (!out.ok) return fail(t('aiSumReplaceSelection'), out.output)
+      return { output: out.output, mutated: true, summary: t('aiSumReplaceSelection') }
     }
 
     case 'insert_chart': {
