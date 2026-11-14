@@ -25,7 +25,10 @@
     "./office-encryption": "./src/office-encryption.ts",
     "./headless-export": "./src/headless-export.ts",
     "./print-cups": "./src/print-cups.ts",
+    "./print-arranged": "./src/print-arranged.ts",
     "./print-job": "./src/print-job.ts",
+    "./print-layout-bridge": "./src/print-layout-bridge.ts",
+    "./print-layout-channels": "./src/print-layout-channels.ts",
     "./print-window": "./src/print-window.ts",
     "./remote-image": "./src/remote-image.ts",
     "./fetch-image-bytes": "./src/fetch-image-bytes.ts",
@@ -52,6 +55,7 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@genoffice/print-layout": "*",
     "parse5": "^8.0.1",
     "undici": "^6.29.0"
   }

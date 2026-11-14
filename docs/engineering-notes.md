@@ -99,6 +99,15 @@
 
 - **인쇄하면 네 모서리가 조금씩 잘린다(0.12.9~0.12.11).** Chromium은 문서 CSS의 `@page { margin }`을 `printToPDF`·`print()`에 준 `margins`보다 먼저 쓴다. 인쇄용 HTML(`printHtml.ts`)에 `margin: 0`이 들어가 있어 미리보기·PDF 내보내기·인쇄 모두 0.6인치 여백 없이 글이 종이 끝에 붙었고, 프린터가 찍지 못하는 가장자리에서 잘렸다. → `@page` 여백을 `MARKDOWN_PRINT_OPTIONS.marginIn`에서 가져와 두 값이 같게 둔다. 여백을 바꾸려면 CSS가 아니라 그 값을 바꾼다. 쪽 크기와 여백을 직접 그리는 편집기(한글·다이어그램·마인드맵)의 `margin: 0`은 일부러 둔 것이다.
 
+## 고급 인쇄 (결정 0141)
+
+- **Electron 인쇄 선택지로 모아찍기·홀짝·회색조를 하려 하면 아무 일도 일어나지 않는다.** Electron 43의 `pagesPerSheet`는 세 운영체제 모두에서 쓰이지 않고(모아찍기 변환은 Chrome 인쇄 미리 보기에만 있다), Windows 시스템 인쇄 창은 쪽 범위 말고는 넘긴 값을 버리고 프린터 기본값에서 시작한다. macOS는 쪽 범위를 첫 구간만 받고, `color:false`는 드라이버가 정한다. → 편집기가 인쇄 작업 PDF를 만들고 `@genoffice/print-layout`이 쪽을 다시 놓은 뒤 쪽 그림으로 인쇄한다. 가로 면은 그림에서만 돌려 세로 종이로 보낸다(창의 방향 설정과 상관없게).
+- **배치한 PDF에서 PDF 편집기의 형광펜·메모·입력란이 사라진다.** pdf-lib의 `embedPages`는 쪽 내용만 옮기고 주석 객체는 옮기지 않는다. → "주석 포함"이면 사본에서 `flattenAnnotsBytes`로 먼저 굽는다. 끄면 사본의 주석 목록을 통째로 뺀다(지금 인쇄의 `annotationMode` 끔과 같은 결과).
+- **공용 인쇄 코드를 고쳤더니 엑셀 형 검사만 실패한다.** 엑셀 편집기는 `exactOptionalPropertyTypes`·`noUncheckedIndexedAccess`로 컴파일하고, `@genoffice/ui`와 `print-arranged`를 거쳐 공용 인쇄 코드를 끌어온다. → 공용 인쇄 코드의 선택 속성은 `| undefined`를 받게 쓰고, 배열 읽기는 `at()`처럼 확인하는 도우미를 거친다. 공용 인쇄 코드를 고치면 `npm run typecheck -w @genoffice/sheets`를 함께 돌린다. Electron의 `WebContentsPrintOptions`에 넘기는 객체의 선택 속성에는 `| undefined`를 붙이지 않는다(그 형에 넣을 수 없게 된다).
+- **배치한 쪽 그림 인쇄 창이 빈 쪽을 낸다(다이어그램·마인드맵).** 쪽 그림은 임시 폴더의 파일이라 `file:` 주소로 연다. 다이어그램 세션은 앱 주소만, 마인드맵 내보내기 세션은 지금 여는 페이지만 허용한다. → 다이어그램은 이 창만 기본 세션의 샌드박스 창으로 띄우고(내용을 PDF로 만드는 창은 다이어그램 세션), 마인드맵은 인쇄하는 동안 그 임시 폴더 바로 안의 파일만 허용한다(`allowPageFolder`).
+- **기본값 인쇄를 바꾸면 편집기 시험이 실패한다.** 편집기마다 "쪽 배치에서 아무것도 고르지 않으면 지금 인쇄 함수가 같은 인수로 불린다"를 지키는 시험이 있다(`apps/*/tests/print-*layout*.test.ts`, `print-dialog*.test.ts`). 기본 인쇄를 일부러 바꿀 때만 그 시험을 고친다.
+- **부하가 큰 PC에서 vitest가 "Timeout waiting for worker to respond"를 낸다.** 그 파일은 시작하지 못한 것이라 통과도 실패도 아니다. → `--pool=threads --maxWorkers=1`(또는 `--pool=forks`)로 그 파일만 다시 돌린다. 2026-11-13~14에 여러 편집기 시험을 동시에 돌리다 수십 개 파일이 이렇게 빠졌다.
+
 ## ODT
 
 - **한컴 ODT는 표준 검사기에서 처음부터 오류가 난다.** 한컴이 쓴 ODT는 `mimetype`이 맨 앞이 아니고 압축돼 있으며, `office:version`이 없고 스키마 오류도 있다. → ODF 검사기로는 "우리가 새 오류를 만들지 않았다"만 본다. 받은 파일의 오류는 고치지 않는다. 합격 여부는 한컴 한글 2024가 읽은 결과로 정한다.
