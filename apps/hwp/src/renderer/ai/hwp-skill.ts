@@ -2190,12 +2190,8 @@ function unusedNote(tool: HwpToolDef, { undeclared, facts }: PreparedInput): str
   return `\n\nNot arguments of ${tool.name}, so nothing was done with them: ${quoted(paths)}.${taken}`
 }
 
-/** Cut-off cells an edit's answer names one by one; check_layout lists the rest. */
 const MAX_CUT_CELLS_NAMED = 10
-/** Rows of the tallest title box look (bands), so that measuring rows 1 to it covers any. */
-const TITLE_BOX_ROWS = 3
 
-/** The tools that write or make table cells, after which cut-off text is worth a turn. */
 const TABLE_WRITERS = new Set([
   'fill_cells',
   'insert_table',
@@ -2207,13 +2203,11 @@ const TABLE_WRITERS = new Set([
 const pastFootNote = ({ table, page, row, taller }: AgentTablePastFoot): string =>
   `Table ${table} is drawn below the foot of page ${page} from row ${row} on, and that part is cut off in print${taller ? ': it is taller than a page and does not break across pages, so make it into two tables' : ''}.`
 
-/** "It is table 2", and that the tables after it moved up a number when there are any. */
 const tableNumberNote = (result: { table?: number; tables?: number }): string =>
   result.table === undefined
     ? ''
     : ` It is table ${result.table}${result.tables !== undefined && result.tables > result.table ? '; tables after it are numbered one higher' : ''}.`
 
-/** The first and last row a format_cells call names; every row when it names none. */
 const rowsOf = (cells: { row: number }[] | AgentCellBlock | null): [from: number, to: number] => {
   if (cells === null) return [1, Number.MAX_SAFE_INTEGER]
   const rows = Array.isArray(cells) ? cells.map((cell) => cell.row) : [cells.fromRow, cells.toRow]
@@ -2230,7 +2224,6 @@ const wideTablesNote = (wide: readonly number[] | undefined): string => {
 const pageEndText = (end: AgentPageEnd): string =>
   'table' in end ? `table ${end.table}` : end.text ? `“${end.text}”` : '(no text)'
 
-/** The page map as lines for the model: each page, then what sits badly on the pages. */
 function pageMapLines(map: AgentPageMap): string[] {
   const alone = new Map<number, string[]>()
   for (const line of map.alone) {
@@ -2956,7 +2949,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
   let addedThisRun: string[] = []
   /** delete_paragraph calls (find, occurrence) refused for hitting one of those, this run */
   let refusedDeletes = new Set<string>()
-  /** the table cells cut off when this run last measured them, keyed table/row/col */
   let cutThisRun = new Map<string, string>()
 
   const forgetCuts = (table: number, from: number, to: number): void => {
@@ -2983,11 +2975,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     }
   }
 
-  /**
-   * What writing rows `from` to `to` of table `table` left cut off in print, as sentences
-   * for the end of the edit's answer: the cells whose text runs past their bottom edge,
-   * and rows drawn below the foot of a page. '' when it all fits or cannot be measured.
-   */
   const cutNote = async (table: number, from: number, to: number): Promise<string> => {
     let checked: AgentLayoutCheck
     try {
@@ -5285,7 +5272,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           place: result.place,
         })
         return {
-          output: `Made the title a ${result.look} title box.${tableNumberNote(result)}${titleColourNote(result)}${standInNote(result.standIn)}${result.table === undefined ? '' : await cutNote(result.table, 1, TITLE_BOX_ROWS)}`,
+          output: `Made the title a ${result.look} title box.${tableNumberNote(result)}${titleColourNote(result)}${standInNote(result.standIn)}${result.table === undefined ? '' : await cutNote(result.table, 1, result.rows)}`,
           mutated: true,
           summary: label('aiToolTitleBox'),
         }
@@ -5724,10 +5711,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           const done = await run(withDoubledEscapesUndone(call), signal)
           if (done.isError) return done
           const output = done.output + unusedNote(tool, prepared)
-          // read after the change returned: the editor lays the pages out when it commits
+          // read once the change returned: the editor pages the document when it commits
           const pages = pagesBefore !== null && done.mutated ? await pagesNow() : null
           if (pages === null || pages === pagesBefore) return { ...done, output }
-          // a list stays a list: the note goes on a line of its own after one
           const joiner = output.includes('\n') ? '\n' : ' '
           return { ...done, output: `${output}${joiner}Pages ${pagesBefore} -> ${pages}.` }
         } catch (error) {

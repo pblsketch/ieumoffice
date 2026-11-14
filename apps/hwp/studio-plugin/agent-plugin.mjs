@@ -2954,9 +2954,7 @@ function tablesWiderThanColumn(doc) {
       }
       const { width } = parse(doc.getTableBBox(table.sec, table.para, control))
       if (width > (columnWidthPt(doc, table.sec) * 96) / 72 + 1) wide.push(index + 1)
-    } catch {
-      // a table the engine cannot measure is not named
-    }
+    } catch {}
   })
   return wide
 }
@@ -4016,16 +4014,7 @@ function bodyAreaOf(doc, page) {
   return { top, foot, columns: Array.isArray(info.columns) ? info.columns : [] }
 }
 
-/**
- * Where the body falls on the pages as they are laid out now. Per page: its first and last
- * body paragraph (`table` when that paragraph is a table's), `empty` when nothing of the
- * body is on it, and `pastFoot`, how many lines of body text lie below the foot of its text
- * area. `alone`: a heading (keepWithNext or an outline level) or a table's caption (such a
- * line, or one that starts as captions do, CAPTION_START, right before the table) that ends
- * a page or a column while the paragraph after it opens the next one. `spans`: the tables drawn on more than one page. `past`: the tables drawn below
- * the foot of a page, from which row, `taller` when the table is higher than the text area.
- * Tables are numbered as listTables numbers them. Reads only.
- */
+/** The AgentPageMap of the document as it is laid out now. Reads only. */
 function pageMapOf(doc) {
   const numbers = new Map()
   tablesOf(doc).tables.forEach((table, index) => {
@@ -4056,17 +4045,12 @@ function pageMapOf(doc) {
     let runs = []
     try {
       runs = parse(doc.getPageTextLayout(page)).runs ?? []
-    } catch {
-      // a page the engine cannot lay out is told as empty
-    }
+    } catch {}
     let controls = []
     try {
       controls = parse(doc.getPageControlLayout(page)).controls ?? []
-    } catch {
-      // as above
-    }
+    } catch {}
     const items = []
-    // pictures and other objects only tell that the page is not empty
     let objects = 0
     const lowLines = new Set()
     for (const run of runs) {
@@ -8458,6 +8442,7 @@ export const agentPlugin = {
               return {
                 ok: true,
                 look: wanted.look,
+                rows: layout.rows,
                 place: box.place(k, 0),
                 ...tableNumberOf(doc, sec, k, control),
                 ...(wanted.textColorDropped ? { textColorDropped: true } : {}),

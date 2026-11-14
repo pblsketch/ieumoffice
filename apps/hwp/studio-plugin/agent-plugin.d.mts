@@ -241,6 +241,8 @@ export type AgentTitleBoxResult =
   | {
       ok: true
       look: string
+      /** the rows of the box: the title's and any bands */
+      rows: number
       place: AgentPlace
       /** the box's number, as listTables numbers tables, and how many tables there are now */
       table?: number
@@ -1547,8 +1549,10 @@ export interface AgentPluginSurface {
     options?: AgentChangeOptions,
   ): AgentFormatParagraphResult
   listTables(): AgentTableList
-  /** the table cells whose text is cut off on the page; reads only */
-  /** given `toRow`, only table `fromTable` is measured, from `fromRow` to `toRow` */
+  /**
+   * the table cells whose text is cut off on the page; reads only. Given `toRow`, only
+   * table `fromTable` is measured, from `fromRow` to `toRow`
+   */
   checkLayout(
     fromTable?: number | null,
     fromRow?: number | null,
@@ -1693,8 +1697,8 @@ export interface AgentPluginSurface {
     options?: AgentChangeOptions,
   ): AgentTitleBoxResult
   documentFonts(): AgentDocumentFonts
-  /** the page number, header and footer of the document */
   pageCount(): number
+  /** the page number, header and footer of the document */
   pageLayout(): AgentPageLayout
   setColumns(
     spec: { count: number; gapMm?: number | null },

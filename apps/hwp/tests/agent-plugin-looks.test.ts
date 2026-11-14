@@ -2254,7 +2254,6 @@ describe('what a change leaves on the pages', () => {
     ])
     expect(plugin.checkLayout(2, 3, 3).wrapped).toEqual([])
     expect(plugin.checkLayout(1, 1, 3).wrapped).toEqual([])
-    // a Korean text broken between syllables, as its paragraph says, is no broken word
     plugin.fillCells(2, [{ row: 3, col: 3, text: '국립중앙박물관어린이박물관체험학습실' }], true)
     expect(plugin.checkLayout(2, 3, 3).wrapped).toEqual([])
   })

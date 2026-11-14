@@ -4873,6 +4873,7 @@ describe('what an edit did to the pages and tables, in its answer', () => {
       insertTitleBox: vi.fn(async () => ({
         ok: true as const,
         look: 'bands',
+        rows: 3,
         place: PLACE,
         table: 1,
         tables: 3,
@@ -4882,6 +4883,7 @@ describe('what an edit did to the pages and tables, in its answer', () => {
     expect(table.output).toMatch(/ It is table 2\.$/)
     expect(bridge.checkLayout).toHaveBeenLastCalledWith(2, 1, 3)
     const box = await call('insert_title_box', { find: '제목' })
+    expect(bridge.checkLayout).toHaveBeenLastCalledWith(1, 1, 3)
     expect(box.output).toBe(
       'Made the title a bands title box. It is table 1; tables after it are numbered one higher.',
     )
@@ -4984,17 +4986,14 @@ describe('what an edit did to the pages and tables, in its answer', () => {
     beginRun()
     await call('fill_cells', { table: 1, cells: [{ row: 2, col: 1, text: '긴 제목' }] })
     expect(verify(['fill_cells'])).toContain('table 1, row 2, col 1')
-    // a run that wrote no cell is not sent back for cut text it only read
     beginRun()
     await call('check_layout')
     expect(verify(['check_layout'])).toBeNull()
-    // fixed and checked again: nothing is left
     beginRun()
     await call('fill_cells', { table: 1, cells: [{ row: 2, col: 1, text: '긴 제목' }] })
     cells = []
     await call('check_layout')
     expect(verify(['fill_cells', 'check_layout'])).toBeNull()
-    // a write that failed is no write
     beginRun()
     cells = [cut(1, 2, 1)]
     await call('check_layout')
