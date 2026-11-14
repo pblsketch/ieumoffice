@@ -737,4 +737,21 @@ describe('adding a picture', () => {
     ).toThrow(/not a PNG/)
     expect(editor.steps()).toBe(steps)
   })
+
+  it('refuses an occurrence of 0 for its anchor instead of taking the first', () => {
+    const editor = openEditor()
+    const steps = editor.steps()
+    const result = editor.plugin.insertPicture(
+      '첫째 문단',
+      0,
+      'after',
+      PNG.toString('base64'),
+      240,
+      1,
+      1,
+      'png',
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'no_such_occurrence' })
+    expect(editor.steps()).toBe(steps)
+  })
 })

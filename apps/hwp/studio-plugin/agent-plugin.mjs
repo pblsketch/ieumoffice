@@ -48,12 +48,14 @@ import {
   borderRuleOf,
   cellBorders,
   contrastRatio,
+  HEADER_FIELD_TOKENS,
   headerPieces,
   pageNumberOf as pageNumberSettingOf,
   paragraphBorderOf,
   standInFont,
   tabStopsOf,
   tableLookBlocks,
+  textColorOnFill,
   titleBoxCells,
 } from './document-looks.mjs'
 import { equationSvgForThisPc } from './equation-fonts.mjs'
@@ -1466,6 +1468,10 @@ function containerOf(doc, hit) {
           expectOk(doc.splitParagraph(sec, k, doc.getLogicalLength(sec, k)), 'split the paragraph'),
         ),
       font: (k) => fontOf(() => doc.getCharPropertiesAt(sec, k, 0)),
+      runLooks: (k, length) =>
+        parse(doc.getCharShapeRuns(sec, k, 0, length)).map((run) =>
+          parse(doc.getCharPropertiesAt(sec, k, run.startOffset ?? 0)),
+        ),
       // an empty paragraph after k without splitting k: it takes k's paragraph formatting
       addAfter: (k) => expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph'),
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
@@ -1502,6 +1508,10 @@ function containerOf(doc, hit) {
     // callers (keepingObjects) is what protects an object there
     objectPositions: () => [],
     font: (k) => fontOf(() => doc.getCellCharPropertiesAtByPath(sec, para, at(k), 0)),
+    runLooks: (k, length) =>
+      parse(doc.getCharShapeRunsInCellByPath(sec, para, at(k), 0, length)).map((run) =>
+        parse(doc.getCellCharPropertiesAtByPath(sec, para, at(k), run.startOffset ?? 0)),
+      ),
     // the engine has no caret place to ask for in a cell paragraph
     split: (k, textOffset) =>
       splitKeepingText(lengthOf, k, textOffset, () =>
@@ -1859,13 +1869,53 @@ function formatOf(format, allowParagraph) {
     )
   }
   if (!hasChars && !hasParagraph) throw fail('BAD_ARGUMENT', 'format names nothing to change')
+  if (given('everyWord') && typeof format.everyWord !== 'boolean') {
+    throw fail('BAD_ARGUMENT', 'everyWord must be true or false')
+  }
   return {
     chars: Object.keys(chars).length > 0 || font !== null ? chars : null,
     font,
     paragraph: Object.keys(paragraph).length > 0 ? paragraph : null,
     style,
     charStyle,
+    everyWord: format.everyWord === true,
   }
+}
+
+const FORMAT_NAME_OF_RUN_KEY = {
+  fontSize: 'size',
+  textColor: 'color',
+  shadeColor: 'highlight',
+  ratios: 'charWidth',
+  spacings: 'letterSpacing',
+  fontFamilies: 'font',
+  charShapeId: 'charStyle',
+}
+
+function wordsSetApart(spec, paragraphs) {
+  if (spec.everyWord) return null
+  const keys = [
+    ...Object.keys(spec.chars ?? {}),
+    ...(spec.font ? ['fontFamilies'] : []),
+    ...(spec.charStyle ? ['charShapeId'] : []),
+  ]
+  if (keys.length === 0) return null
+  const properties = new Set()
+  let count = 0
+  for (const [box, k] of paragraphs) {
+    const length = box.length(k)
+    if (length === 0) continue
+    const runs = box.runLooks(k, length)
+    const apart = keys.filter(
+      (key) => new Set(runs.map((run) => JSON.stringify(run[key]))).size > 1,
+    )
+    if (apart.length === 0) continue
+    count += 1
+    for (const key of apart) properties.add(FORMAT_NAME_OF_RUN_KEY[key] ?? key)
+  }
+  return properties.size > 0
+    ? { ok: false, reason: 'words_set_apart', properties: [...properties], paragraphs: count }
+    : null
 }
 
 /** The style called `name` (its own or its English name), of `type` unless that is null. */
@@ -2272,6 +2322,10 @@ const PAGE_MARGINS = {
   footer: 'marginFooter',
   gutter: 'marginGutter',
 }
+/** A page within this of a paper's size both ways is read as that paper. */
+const PAPER_NAME_TOLERANCE_MM = 1
+const isPaperSize = ([w, h], width, height) =>
+  Math.abs(w - width) < PAPER_NAME_TOLERANCE_MM && Math.abs(h - height) < PAPER_NAME_TOLERANCE_MM
 const MIN_PAPER_MM = 50
 const MAX_PAPER_MM = 1000
 const MAX_MARGIN_MM = 200
@@ -2284,9 +2338,7 @@ function pageSetupOf(doc, sec) {
   const width = mmOf(def.width)
   const height = mmOf(def.height)
   const paper =
-    Object.entries(PAPER_SIZES).find(
-      ([, [w, h]]) => Math.abs(w - width) < 1 && Math.abs(h - height) < 1,
-    )?.[0] ?? null
+    Object.entries(PAPER_SIZES).find(([, size]) => isPaperSize(size, width, height))?.[0] ?? null
   const margins = {}
   for (const [name, key] of Object.entries(PAGE_MARGINS)) margins[name] = mmOf(def[key] ?? 0)
   return {
@@ -2320,11 +2372,15 @@ function pageSetupChangeOf(spec) {
     if (!size) {
       throw fail('BAD_ARGUMENT', `paper must be one of ${Object.keys(PAPER_SIZES).join(', ')}`)
     }
-    if (given('width') || given('height')) {
-      throw fail('BAD_ARGUMENT', 'give paper or width and height, not both')
+    const ownSize = given('width') || given('height')
+    if (ownSize && !isPaperSize(size, spec.width, spec.height)) {
+      throw fail(
+        'BAD_ARGUMENT',
+        `paper ${spec.paper} is ${size[0]} by ${size[1]} millimetres: give paper, or width and height, not a size that differs from the paper`,
+      )
     }
-    out.width = hwpunitOf(size[0])
-    out.height = hwpunitOf(size[1])
+    out.width = hwpunitOf(ownSize ? spec.width : size[0])
+    out.height = hwpunitOf(ownSize ? spec.height : size[1])
   } else if (given('width') || given('height')) {
     if (!given('width') || !given('height')) {
       throw fail('BAD_ARGUMENT', 'width and height go together')
@@ -2528,7 +2584,7 @@ function lookIdOf(key) {
  * paragraph formatting and list, and the character formatting at its start. Null for a
  * paragraph the engine will not read.
  */
-function paragraphLookOf(doc, sec, para, styles) {
+function paragraphLookOf(doc, sec, para, styles, bullets) {
   try {
     const p = parse(doc.getParaPropertiesAt(sec, para))
     const c = parse(doc.getCharPropertiesAt(sec, para, 0))
@@ -2556,6 +2612,9 @@ function paragraphLookOf(doc, sec, para, styles) {
             list:
               p.headType === 'Bullet' ? 'bullet' : p.headType === 'Outline' ? 'outline' : 'number',
             listLevel: (p.paraLevel ?? 0) + 1,
+            ...(p.headType === 'Bullet' && bullets.has(p.numberingId)
+              ? { bullet: bullets.get(p.numberingId) }
+              : {}),
           }
         : {}),
     }
@@ -2572,6 +2631,7 @@ function paragraphLookOf(doc, sec, para, styles) {
  */
 function looksOf(doc) {
   const styles = new Map(parse(doc.getStyleList()).map((style) => [style.id, style.name]))
+  const bullets = bulletChars(doc)
   const groups = new Map()
   let counted = 0
   let truncated = false
@@ -2590,7 +2650,7 @@ function looksOf(doc) {
       }
       const text = length > 0 ? squash(paragraphTextOf(doc, sec, para)) : ''
       if (!text) continue
-      const look = paragraphLookOf(doc, sec, para, styles)
+      const look = paragraphLookOf(doc, sec, para, styles, bullets)
       if (!look) continue
       counted += 1
       const key = JSON.stringify(look)
@@ -3268,7 +3328,7 @@ function styleBatchOf(spec) {
         startsWith: null,
         numbered: null,
         find,
-        occurrence: Number.isInteger(given.occurrence) ? given.occurrence : null,
+        occurrence: given.occurrence ?? null,
       })
     }
   }
@@ -3298,30 +3358,26 @@ function titleBoxOf(spec) {
     }
     return value.toLowerCase()
   }
+  const textColor = colorOf(given.textColor, 'textColor')
   const standIns = []
   const text = {}
-  for (const key of ['font', 'size', 'bold', 'textColor']) {
-    if (given[key] !== undefined && given[key] !== null)
-      text[key === 'textColor' ? 'color' : key] = given[key]
+  for (const key of ['font', 'size', 'bold']) {
+    if (given[key] !== undefined && given[key] !== null) text[key] = given[key]
   }
   const color = colorOf(given.color, 'color') ?? TITLE_BOX_COLORS[look]
   // words that cannot be told from what is behind them are no title: bands, lines and a
   // frame leave the white page behind the words, and a fill may be as pale as the words
   const behind = look === 'shaded' ? color : '#ffffff'
-  let textColorDropped = false
-  if (
-    typeof text.color === 'string' &&
-    HEX_COLOR.test(text.color) &&
-    contrastRatio(text.color, behind) < MIN_TEXT_CONTRAST
-  ) {
-    delete text.color
-    textColorDropped = true
-  }
+  const textColorDropped =
+    textColor !== null && contrastRatio(textColor, behind) < MIN_TEXT_CONTRAST
+  if (textColor !== null && !textColorDropped) text.color = textColor
   return {
     look,
     color,
     color2: colorOf(given.color2, 'color2'),
     text: Object.keys(text).length > 0 ? standInFormat(text, standIns) : null,
+    fillUnderOwnColour:
+      look === 'shaded' && (textColor === null || textColorDropped) ? color : null,
     standIns,
     textColorDropped,
   }
@@ -3362,6 +3418,8 @@ const MAX_HEADER_TEXT = 200
  */
 // eslint-disable-next-line no-control-regex
 const HEADER_FIELD_MARKS = /[\u0012\u0015\u0016\u0017]/g
+/** The mark the engine leaves in a header's text for a page field, by the field's type number. */
+const HEADER_MARK_OF_FIELD = { 1: '\u0015', 2: '\u0016' }
 // eslint-disable-next-line no-control-regex
 const ANY_CONTROL = /[\u0000-\u001f]/g
 /** The controls and spaces a paragraph's text may start with before its words. */
@@ -3378,11 +3436,25 @@ function plainHeader(found) {
   )
 }
 
-/** A header or footer's text as the model reads it: a field's mark shown as a placeholder. */
+const HEADER_TOKEN_OF_MARK = new Map(
+  Object.entries(HEADER_FIELD_TOKENS).map(([token, type]) => [HEADER_MARK_OF_FIELD[type], token]),
+)
+
 const headerTextOf = (text) =>
   String(text ?? '')
-    .replace(HEADER_FIELD_MARKS, '{field}')
+    .replace(HEADER_FIELD_MARKS, (mark) => HEADER_TOKEN_OF_MARK.get(mark) ?? '{field}')
     .replace(ANY_CONTROL, ' ')
+
+function headerLookOf(doc, isHeader, text) {
+  const look = {}
+  const align = parse(doc.getParaPropertiesInHf(0, isHeader, 0, 0)).alignment
+  if (TABLE_ALIGNS.includes(align)) look.align = align
+  if (text.length > 0) {
+    const size = parse(doc.getCharPropertiesInHeaderFooter(0, isHeader, 0, 0, 0)).fontSize
+    if (Number.isFinite(size)) look.size = size / 100
+  }
+  return look
+}
 
 /**
  * Give the header row of a table just pasted in body paragraph `place` its grey, cell by
@@ -6735,23 +6807,30 @@ export const agentPlugin = {
                       aligns: look.aligns,
                     }
                   : null
+              let headerTextColor = null
               // in the body the header's grey goes on after the paste, cell by cell (shadeHeaderCells)
               box.pasteHtml(at, tableHtml(table, font, look.header, box.inTable, columns))
               if (!box.inTable) {
                 if (look.header && look.headerColor !== 'none') {
-                  shadeHeaderCells(
-                    doc,
-                    place,
-                    table[0].length,
-                    look.headerColor ?? TABLE_HEADER_FILL,
-                  )
+                  const fill = look.headerColor ?? TABLE_HEADER_FILL
+                  shadeHeaderCells(doc, place, table[0].length, fill)
+                  headerTextColor = textColorOnFill(fill)
                 }
                 // the lines of a look other than the plain grid, over the thin line the paste gave every cell
                 const blocks = tableLookBlocks(look.look, look.header)
                 const made =
-                  blocks.length > 0 || across || look.repeatHeader
+                  blocks.length > 0 || across || look.repeatHeader || headerTextColor
                     ? pastedTableAt(doc, place)
                     : null
+                if (made && headerTextColor) {
+                  formatCellText(
+                    doc,
+                    made,
+                    gridOf(doc, made),
+                    { top: 0, left: 0, bottom: 0, right: made.cols - 1 },
+                    { chars: JSON.stringify({ textColor: headerTextColor }) },
+                  )
+                }
                 // the table stands in its paragraph like a character: the paragraph's
                 // alignment puts a narrow one at the left, in the middle or at the right
                 if (look.place && !across) {
@@ -6814,6 +6893,7 @@ export const agentPlugin = {
                 inTable: box.inTable,
                 place,
                 ...(across ? { acrossColumns: true } : {}),
+                ...(headerTextColor ? { headerTextColor } : {}),
                 ...(look.standIns.length > 0 ? { standIn: look.standIns } : {}),
               }
             },
@@ -7099,7 +7179,7 @@ export const agentPlugin = {
           const box = containerOf(doc, picked.hit)
           if ((spec.paragraph && !box.formatParagraph) || (spec.style && !box.applyStyle))
             return refuse('unsupported_place')
-          const missing = missingStyle(doc, spec)
+          const missing = missingStyle(doc, spec) ?? wordsSetApart(spec, [[box, box.index]])
           if (missing) return { refusal: missing }
           return { box }
         }
@@ -7396,7 +7476,7 @@ export const agentPlugin = {
           return {
             ok: true,
             name: style.name,
-            englishName: style.englishName ?? '',
+            ...(style.englishName ? { englishName: style.englishName } : {}),
             kind: kindOf(style),
             ...(next ? { nextStyle: next.name } : {}),
             look: styleLookOf(doc, style),
@@ -7978,6 +8058,10 @@ export const agentPlugin = {
                 },
                 false,
               )
+              const whitened = wanted.fillUnderOwnColour
+                ? textColorOnFill(wanted.fillUnderOwnColour, look.chars?.textColor)
+                : null
+              if (whitened) look.chars = { ...look.chars, textColor: whitened }
               const titlePoints = look.chars?.fontSize ? look.chars.fontSize / 100 : points
               box.deleteText(k, length)
               const layout = titleBoxCells(wanted.look, wanted.color, wanted.color2)
@@ -8071,6 +8155,7 @@ export const agentPlugin = {
                 look: wanted.look,
                 place: box.place(k, 0),
                 ...(wanted.textColorDropped ? { textColorDropped: true } : {}),
+                ...(whitened ? { textColor: whitened } : {}),
                 ...(wanted.standIns.length > 0 ? { standIn: wanted.standIns } : {}),
               }
             },
@@ -8104,7 +8189,13 @@ export const agentPlugin = {
           const read = (isHeader) => {
             const found = parse(doc.getHeaderFooter(0, isHeader, 0))
             if (found.exists !== true) return { exists: false }
-            return { exists: true, text: headerTextOf(found.text), plain: plainHeader(found) }
+            const plain = plainHeader(found)
+            return {
+              exists: true,
+              text: headerTextOf(found.text),
+              plain,
+              ...(plain ? headerLookOf(doc, isHeader, String(found.text ?? '')) : {}),
+            }
           }
           let pageNumber = null
           try {
@@ -8230,7 +8321,7 @@ export const agentPlugin = {
           }
           return {
             find: item.find,
-            occurrence: Number.isInteger(item.occurrence) ? item.occurrence : null,
+            occurrence: item.occurrence ?? null,
             script,
             replace: item.replace !== false,
           }
@@ -8523,8 +8614,9 @@ export const agentPlugin = {
       /**
        * Write the header or the footer of the document (its first section, on every page):
        * one line of text, in which `{page}` is the page number and `{pages}` the number of
-       * pages. `spec.align` is left, center or right, and `spec.size` the font size in
-       * points. An empty text removes it. A header or footer that holds more than one line
+       * pages. `spec.align` is left, center or right (left out, a line that is there keeps
+       * its alignment and a new one is centred), and `spec.size` the font size in points. An
+       * empty text removes it. A header or footer that holds more than one line
        * of text and fields (a table, a picture, several paragraphs) was laid out by hand and
        * is refused (`not_plain`). One undo step.
        */
@@ -8543,8 +8635,8 @@ export const agentPlugin = {
             `text must be one line of at most ${MAX_HEADER_TEXT} characters`,
           )
         }
-        const align = given.align ?? 'center'
-        if (!TABLE_ALIGNS.includes(align)) {
+        const align = given.align ?? null
+        if (align !== null && !TABLE_ALIGNS.includes(align)) {
           throw fail('BAD_ARGUMENT', `align must be one of ${TABLE_ALIGNS.join(', ')}`)
         }
         let size = null
@@ -8595,10 +8687,18 @@ export const agentPlugin = {
               }
               offset = done.charOffset
             }
-            expectOk(
-              doc.applyParaFormatInHf(0, isHeader, 0, 0, JSON.stringify({ alignment: align })),
-              `align the ${kind}`,
-            )
+            if (align !== null || !exists) {
+              expectOk(
+                doc.applyParaFormatInHf(
+                  0,
+                  isHeader,
+                  0,
+                  0,
+                  JSON.stringify({ alignment: align ?? 'center' }),
+                ),
+                `align the ${kind}`,
+              )
+            }
             if (size !== null && offset > 0) {
               expectOk(
                 doc.applyCharFormatInHeaderFooter(
@@ -10200,7 +10300,13 @@ export const agentPlugin = {
                 })),
             }
           }
-          return missingStyle(doc, spec)
+          return (
+            missingStyle(doc, spec) ??
+            wordsSetApart(
+              spec,
+              group.places.map(({ sec, para }) => [containerOf(doc, { sec, para }), para]),
+            )
+          )
         })
         if (refusal) return refusal
         return keepingObjects((mustKeep) =>

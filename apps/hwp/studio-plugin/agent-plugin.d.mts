@@ -244,6 +244,8 @@ export type AgentTitleBoxResult =
       place: AgentPlace
       /** the text colour asked for could not be told from what is behind the title, and was left out */
       textColorDropped?: boolean
+      /** the colour the title was given to show on a dark fill, when the call named none */
+      textColor?: string
       standIn?: AgentStandInFont[]
     }
   | AgentPlaceRefusal
@@ -291,8 +293,18 @@ export interface AgentPageNumberChange {
 /** A header or footer as the model reads it. */
 export type AgentHeaderFooterState =
   | { exists: false }
-  /** plain: one line of text and fields, which setHeaderFooter may rewrite */
-  | { exists: true; text: string; plain: boolean }
+  /**
+   * plain: one line of text and fields, which setHeaderFooter may rewrite. Its text has the
+   * page fields as {page} and {pages}; align and size are told for a plain one, align only
+   * when it is one setHeaderFooter writes.
+   */
+  | {
+      exists: true
+      text: string
+      plain: boolean
+      align?: 'left' | 'center' | 'right'
+      size?: number
+    }
 
 export interface AgentPageLayout {
   sections: number
@@ -373,6 +385,7 @@ export type AgentPageNumberResult =
 export interface AgentHeaderFooterChange {
   /** one line; {page} is the page number and {pages} the number of pages; empty removes it */
   text: string
+  /** left out, a line that is there keeps its alignment and a new one is centred */
   align?: 'left' | 'center' | 'right' | null
   /** font size in points */
   size?: number | null
@@ -395,6 +408,8 @@ export type AgentTableResult =
       place: AgentPlace
       /** the table lies across the columns of its page */
       acrossColumns?: boolean
+      /** the colour the words of the header row were given to show on its fill, when the fill is dark */
+      headerTextColor?: string
       standIn?: AgentStandInFont[]
     }
   | AgentPlaceRefusal
@@ -479,6 +494,20 @@ export interface AgentParagraphFormat extends AgentTextFormat {
   bullet?: string
 }
 
+export interface AgentWholeParagraphFormat extends AgentParagraphFormat {
+  /** put the character formatting on every word even where words of a paragraph differ in it; otherwise such a call is refused (words_set_apart) */
+  everyWord?: boolean
+}
+
+/** Some words of the paragraphs differ from the rest in character properties the call would put on every word. */
+export interface AgentWordsSetApart {
+  ok: false
+  reason: 'words_set_apart'
+  /** those properties, in the names of the format */
+  properties: string[]
+  paragraphs: number
+}
+
 /** A call named a style the document does not have; `styles` are the ones of that kind it has. */
 export interface AgentNoSuchStyle {
   ok: false
@@ -518,7 +547,8 @@ export type AgentReadStyleResult =
   | {
       ok: true
       name: string
-      englishName: string
+      /** left out when the style has none */
+      englishName?: string
       kind: AgentStyleKind
       /** the paragraph style that follows a paragraph of this one (paragraph styles) */
       nextStyle?: string
@@ -622,6 +652,7 @@ export type AgentFormatParagraphResult =
     }
   | AgentPlaceRefusal
   | AgentNoSuchStyle
+  | AgentWordsSetApart
 
 /** A table cell whose text does not fit where it is drawn, as checkLayout lists it. */
 export interface AgentLayoutOverflow {
@@ -1086,6 +1117,8 @@ export interface AgentLook {
   spacingAfter: number
   list?: 'number' | 'bullet' | 'outline'
   listLevel?: number
+  /** the bullet of a bulleted paragraph */
+  bullet?: string
   /** paragraphs of the group whose formatting changes inside their text */
   mixedFormatting?: number
   samples: string[]
@@ -1148,6 +1181,7 @@ export type AgentFormatLookResult =
       looks: { id: string; paragraphs: number; sample: string }[]
     }
   | AgentNoSuchStyle
+  | AgentWordsSetApart
   | { ok: false; reason: 'has_objects'; count: number }
   | AgentMemoRemovalRefusal
 
@@ -1460,7 +1494,7 @@ export interface AgentPluginSurface {
   formatParagraph(
     find: string,
     occurrence: number | null,
-    format: AgentParagraphFormat,
+    format: AgentWholeParagraphFormat,
     options?: AgentChangeOptions,
   ): AgentFormatParagraphResult
   listTables(): AgentTableList
@@ -1554,7 +1588,7 @@ export interface AgentPluginSurface {
   paragraphLooks(from?: number | null): AgentParagraphLooks
   formatLook(
     look: string,
-    format: AgentParagraphFormat,
+    format: AgentWholeParagraphFormat,
     options?: AgentChangeOptions,
   ): AgentFormatLookResult
   measureTabs(spots: AgentTabSpot[]): { tabs: (AgentTabMeasure | null)[] }

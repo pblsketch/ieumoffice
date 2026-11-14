@@ -9,6 +9,7 @@ import {
   invalidArgumentFields,
   missingRequiredFields,
   runtimePreamble,
+  walkArgumentFields,
   type AgentMessage,
   type AgentSkill,
   type AgentStreamCallbacks,
@@ -2036,6 +2037,114 @@ describe('AgentLoop compaction', () => {
     expect(coerceArgumentFields(tool, { either: 'true' })).toEqual({ either: 'true' })
     const same = { continue_request: true }
     expect(coerceArgumentFields(tool, same)).toBe(same)
+  })
+
+  describe('walkArgumentFields', () => {
+    const tool = {
+      name: 'style_paragraphs',
+      description: '',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          styles: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                size: { type: 'number' },
+                border: { type: 'object', properties: { width: { type: 'number' } } },
+                tabs: {
+                  type: 'array',
+                  items: { type: 'object', properties: { at_mm: { type: 'number' } } },
+                },
+              },
+            },
+          },
+          rows: { type: 'array', items: { type: 'array', items: { type: 'string' } } },
+        },
+      },
+    }
+
+    it('visits the input and every declared value under it, outside in, with its path', () => {
+      const seen: string[] = []
+      walkArgumentFields(
+        tool,
+        {
+          title: 't',
+          styles: [{ size: 1, border: { width: 2 }, tabs: [{ at_mm: 3 }] }],
+          rows: [['a']],
+          stray: { size: 9 },
+        },
+        (value, schema, path) => {
+          seen.push(`${path || '(input)'}:${String(schema.type)}`)
+          return value
+        },
+      )
+      expect(seen).toEqual([
+        '(input):object',
+        'title:string',
+        'styles:array',
+        'styles[0]:object',
+        'styles[0].size:number',
+        'styles[0].border:object',
+        'styles[0].border.width:number',
+        'styles[0].tabs:array',
+        'styles[0].tabs[0]:object',
+        'styles[0].tabs[0].at_mm:number',
+        'rows:array',
+        'rows[0]:array',
+        'rows[0][0]:string',
+      ])
+    })
+
+    it('puts what the visit returns in place of the value, at any depth', () => {
+      const input = {
+        title: 't',
+        styles: [{ size: '12', border: { width: '0.5' }, tabs: [{ at_mm: '40' }] }, { size: 9 }],
+      }
+      const out = walkArgumentFields(tool, input, (value, schema) =>
+        schema.type === 'number' && typeof value === 'string' ? Number(value) : value,
+      )
+      expect(out).toEqual({
+        title: 't',
+        styles: [{ size: 12, border: { width: 0.5 }, tabs: [{ at_mm: 40 }] }, { size: 9 }],
+      })
+      expect(input.styles[0]!.size).toBe('12')
+      expect((out.styles as unknown[])[1]).toBe(input.styles[1])
+    })
+
+    it('goes on into the object the visit returned, so a renamed key is walked', () => {
+      const out = walkArgumentFields(tool, { styles: [{ fontSize: '14' }] }, (value, schema) => {
+        if (schema.type === 'number' && typeof value === 'string') return Number(value)
+        if (typeof value !== 'object' || value === null || !('fontSize' in value)) return value
+        const { fontSize, ...rest } = value as Record<string, unknown>
+        return { ...rest, size: fontSize }
+      })
+      expect(out).toEqual({ styles: [{ size: 14 }] })
+    })
+
+    it('leaves a key the schema does not declare alone and does not visit it', () => {
+      const paths: string[] = []
+      const input = { stray: { size: '9' }, styles: [{ stray: '1' }] }
+      const out = walkArgumentFields(tool, input, (value, _schema, path) => {
+        paths.push(path)
+        return value
+      })
+      expect(paths).toEqual(['', 'styles', 'styles[0]'])
+      expect(out).toBe(input)
+    })
+
+    it('hands the input back as it came for a tool without a schema to walk', () => {
+      const input = { size: '9' }
+      const visit = vi.fn((value: unknown) => value)
+      expect(walkArgumentFields(undefined, input, visit)).toBe(input)
+      expect(
+        walkArgumentFields({ name: 'bare', description: '', inputSchema: {} }, input, visit),
+      ).toBe(input)
+      expect(visit).toHaveBeenCalledTimes(1)
+      expect(walkArgumentFields(tool, input, () => 'nothing')).toBe(input)
+    })
   })
 
   it('the loop hands the handler the coerced arguments instead of a retry', async () => {

@@ -212,6 +212,32 @@ describe('page setup', () => {
     expect(() => plugin.setPageSetup({ width: 100 }, null)).toThrow(/go together/)
     expect(steps()).toBe(0)
   })
+
+  it('takes a page setup back as it was read: the paper together with its own size', () => {
+    const { plugin } = open()
+    plugin.setPageSetup({ paper: 'B5', orientation: 'landscape', margins: { left: 22 } }, null)
+    const [read] = plugin.pageSetup().sections
+    expect(read).toMatchObject({ paper: 'B5', width: 182, height: 257 })
+    plugin.setPageSetup({ paper: 'A4', orientation: 'portrait', margins: { left: 30 } }, null)
+    expect(plugin.setPageSetup(read, null)).toMatchObject({ ok: true, pageSetup: read })
+    expect(plugin.pageSetup().sections).toEqual([read])
+    expect(() => plugin.setPageSetup({ paper: 'A4', width: 182, height: 257 }, null)).toThrow(
+      /paper A4 is 210 by 297 millimetres/,
+    )
+    expect(() => plugin.setPageSetup({ paper: 'A4', width: 210 }, null)).toThrow(/paper A4 is/)
+    expect(plugin.pageSetup().sections).toEqual([read])
+  })
+
+  it('keeps the size of a page that is read as a paper and is a little off it', () => {
+    const { plugin } = open()
+    plugin.setPageSetup({ width: 210.6, height: 297.3 }, null)
+    const [read] = plugin.pageSetup().sections
+    expect(read).toMatchObject({ paper: 'A4', width: 210.6, height: 297.3 })
+    plugin.setPageSetup({ paper: 'B5' }, null)
+    expect(plugin.setPageSetup(read, null)).toMatchObject({ ok: true, pageSetup: read })
+    plugin.setPageSetup({ paper: 'A4' }, null)
+    expect(plugin.pageSetup().sections[0]).toMatchObject({ paper: 'A4', width: 210, height: 297 })
+  })
 })
 
 describe('numbered and bulleted paragraphs', () => {
@@ -227,6 +253,23 @@ describe('numbered and bulleted paragraphs', () => {
     expect(head()).toMatchObject({ headType: 'Bullet', paraLevel: 1 })
     expect(plugin.formatParagraph('조사를', null, { list: 'none' })).toMatchObject({ ok: true })
     expect(head()).toMatchObject({ headType: 'None' })
+  })
+
+  it('reads the bullet of a bulleted paragraph in its look, so the look goes back as it was', () => {
+    const { plugin, doc } = open()
+    const bullet = () => {
+      const { numberingId } = JSON.parse(doc().getParaPropertiesAt(0, 1))
+      const bullets = JSON.parse(doc().getBulletList()) as { id: number; char: string }[]
+      return bullets.find((entry) => entry.id === numberingId)?.char
+    }
+    plugin.formatParagraph('조사를', null, { list: 'bullet', bullet: '-' })
+    expect(bullet()).toBe('-')
+    const read = plugin.formatting()
+    if (!read.ok) throw new Error('no formatting')
+    const look = read.looks.find((entry) => entry.list === 'bullet')
+    expect(look).toMatchObject({ list: 'bullet', listLevel: 1, bullet: '-' })
+    plugin.formatLook(look!.id!, { list: 'bullet', listLevel: 1, bullet: look!.bullet })
+    expect(bullet()).toBe('-')
   })
 
   it('refuses list settings that do not go together', () => {
@@ -305,6 +348,44 @@ describe('the formatting of a document', () => {
       ok: false,
       reason: 'no_such_look',
     })
+  })
+
+  it('puts a character property on every word only on purpose where the words differ in it', () => {
+    const { plugin, doc } = open()
+    expect(plugin.formatText('조사를', null, false, { bold: true })).toMatchObject({ ok: true })
+    const boldWord = () =>
+      JSON.parse(doc().getCharPropertiesAt(0, 1, '국가인권위원회는 '.length)).bold
+    const lookNow = () => {
+      const formatting = plugin.formatting()
+      if (!formatting.ok) throw new Error('not read')
+      return formatting.looks.find((look) => look.paragraphs === 4)!
+    }
+    const handedBack = lookNow()
+    expect(handedBack.mixedFormatting).toBe(1)
+    const flattening = { bold: false, italic: false, size: 10, lineSpacing: 160 }
+    for (const refused of [
+      plugin.formatLook(handedBack.id!, flattening),
+      plugin.formatParagraph('조사를', null, flattening),
+      plugin.formatParagraph('조사를', null, { charStyle: '쪽 번호' }),
+    ]) {
+      expect(refused).toMatchObject({ ok: false, reason: 'words_set_apart', paragraphs: 1 })
+    }
+    expect(plugin.formatLook(handedBack.id!, flattening)).toMatchObject({ properties: ['bold'] })
+    expect(plugin.formatParagraph('조사를', null, { charStyle: '쪽 번호' })).toMatchObject({
+      properties: ['charStyle'],
+    })
+    expect(boldWord()).toBe(true)
+
+    expect(plugin.formatLook(handedBack.id!, { size: 12, lineSpacing: 200 })).toMatchObject({
+      ok: true,
+      paragraphs: 4,
+    })
+    expect(boldWord()).toBe(true)
+    expect(plugin.formatLook(lookNow().id!, { bold: false, everyWord: true })).toMatchObject({
+      ok: true,
+      paragraphs: 4,
+    })
+    expect(boldWord()).toBe(false)
   })
 
   it('reads another document handed over as base64, leaving this one as it was', () => {

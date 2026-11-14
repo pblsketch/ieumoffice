@@ -36,6 +36,34 @@ describe('the edits a run left undone', () => {
     ).toEqual([])
   })
 
+  it('count a refusal of every tool that changes the document', () => {
+    for (const name of [
+      'resize_picture',
+      'style_paragraphs',
+      'insert_title_box',
+      'set_columns',
+      'insert_break',
+      'set_page_border',
+      'insert_equations',
+      'set_page_number',
+      'set_header_footer',
+    ]) {
+      const failed = step(name, { find: '제목' }, true)
+      expect(unfinishedSteps([failed]), name).toEqual([failed])
+    }
+    expect(unfinishedSteps([step('import_attachment', { attachment: 'a.md' }, true)])).toEqual([])
+  })
+
+  it('tell one picture from another', () => {
+    const second = step('resize_picture', { picture: 2, width_mm: 300 }, true)
+    expect(unfinishedSteps([second, step('resize_picture', { picture: 3, width_mm: 80 })])).toEqual(
+      [second],
+    )
+    expect(unfinishedSteps([second, step('resize_picture', { picture: 2, width_mm: 80 })])).toEqual(
+      [],
+    )
+  })
+
   it('count an ambiguous find answered with an occurrence as done', () => {
     expect(
       unfinishedSteps([

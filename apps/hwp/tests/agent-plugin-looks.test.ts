@@ -253,6 +253,48 @@ describe('insertTable: looks', () => {
     expect(table.cell(4).fillType).not.toBe('solid')
   })
 
+  it('writes the words of a header row white on a dark fill, in the document and in both files', () => {
+    const { doc, para } = withTable({ header: true, headerColor: '#1F3864' })
+    const colours = (source: HwpDocument) => {
+      const table = tableIn(source, para)
+      return [0, 2, 3].map(
+        (cell) =>
+          (
+            JSON.parse(source.getCellCharPropertiesAt(0, para, table.control, cell, 0, 0)) as {
+              textColor: string
+            }
+          ).textColor,
+      )
+    }
+    expect(colours(doc())).toEqual(['#ffffff', '#ffffff', '#000000'])
+    for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+      expect(colours(new HwpDocument(bytes))).toEqual(['#ffffff', '#ffffff', '#000000'])
+    }
+  })
+
+  it('says that it chose white for the header row, and leaves black where black shows', () => {
+    const insert = (look: Parameters<typeof withTable>[0]) =>
+      open().plugin.insertTable('□ 세부 일정', null, 'after', ROWS, look)
+    expect(insert({ header: true, headerColor: '#1F3864' })).toMatchObject({
+      ok: true,
+      headerTextColor: '#ffffff',
+    })
+    for (const look of [
+      { header: true, headerColor: '#D9E2F3' },
+      { header: true },
+      { header: true, headerColor: 'none' },
+      { headerColor: '#1F3864' },
+    ]) {
+      expect(insert(look), JSON.stringify(look)).not.toHaveProperty('headerTextColor')
+    }
+    const { doc, para } = withTable({ header: true, headerColor: '#D9E2F3' })
+    const table = tableIn(doc(), para)
+    const chars = JSON.parse(doc().getCellCharPropertiesAt(0, para, table.control, 0, 0, 0)) as {
+      textColor: string
+    }
+    expect(chars.textColor).toBe('#000000')
+  })
+
   it('gives the columns their shares of the width and the text its size', () => {
     const { doc, para } = withTable({
       header: true,
@@ -553,9 +595,20 @@ describe('page number, header and footer', () => {
       kind: 'footer',
     })
     const layout = plugin.pageLayout()
-    expect(layout.header).toEqual({ exists: true, text: '○○초등학교 교무기획부', plain: true })
-    expect(layout.footer).toMatchObject({ exists: true, plain: true })
-    expect((layout.footer as { text: string }).text).toBe('운영 계획 | {field} / {field}')
+    expect(layout.header).toEqual({
+      exists: true,
+      text: '○○초등학교 교무기획부',
+      plain: true,
+      align: 'right',
+      size: 9,
+    })
+    expect(layout.footer).toEqual({
+      exists: true,
+      text: '운영 계획 | {page} / {pages}',
+      plain: true,
+      align: 'center',
+      size: 10,
+    })
     for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
       const again = new HwpDocument(bytes)
       expect((JSON.parse(again.getHeaderFooter(0, true, 0)) as { text: string }).text).toBe(
@@ -565,9 +618,13 @@ describe('page number, header and footer', () => {
         true,
       )
     }
-    // the same call again replaces the text instead of adding to it
     plugin.setHeaderFooter('header', { text: '교무기획부' })
-    expect(plugin.pageLayout().header).toMatchObject({ text: '교무기획부' })
+    expect(plugin.pageLayout().header).toMatchObject({ text: '교무기획부', align: 'right' })
+    plugin.setHeaderFooter('header', { text: '교무기획부', align: 'left' })
+    expect(plugin.pageLayout().header).toMatchObject({ align: 'left' })
+    expect(() =>
+      plugin.setHeaderFooter('header', { text: '교무기획부', align: 'justify' as never }),
+    ).toThrow(/align must be one of left, center, right/)
     expect(plugin.setHeaderFooter('header', { text: '' })).toMatchObject({
       ok: true,
       removed: true,
@@ -577,6 +634,32 @@ describe('page number, header and footer', () => {
       ok: false,
       reason: 'not_there',
     })
+  })
+
+  it('takes a footer back as it was read, page fields and all', () => {
+    const { plugin, doc } = open()
+    plugin.setHeaderFooter('footer', { text: '{page} / {pages}', align: 'right', size: 9 })
+    const {
+      exists: _exists,
+      plain: _plain,
+      ...read
+    } = plugin.pageLayout().footer as {
+      exists: true
+      plain: boolean
+      text: string
+      align?: 'left' | 'center' | 'right'
+      size?: number
+    }
+    expect(read).toEqual({ text: '{page} / {pages}', align: 'right', size: 9 })
+    plugin.setHeaderFooter('footer', { text: '다른 글', align: 'left', size: 12 })
+    plugin.setHeaderFooter('footer', read)
+    expect(plugin.pageLayout().footer).toMatchObject(read)
+    for (const bytes of [doc().exportHwpx(), doc().exportHwp()]) {
+      const page = new HwpDocument(bytes).renderPageSvgWithProfile(0, 'print')
+      const drawn = [...page.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]).join('')
+      expect(drawn.endsWith('1/1')).toBe(true)
+      expect(drawn).not.toContain('{')
+    }
   })
 
   it('leaves a header someone laid out by hand alone', () => {
@@ -1369,6 +1452,70 @@ describe('a title box and the colour of its words', () => {
     expect(
       pale.plugin.insertTitleBox(TITLE, null, { look: 'shaded', textColor: '#FFFFFF' }),
     ).toMatchObject({ ok: true, textColorDropped: true })
+  })
+
+  it('writes the title white on a dark fill when the call names no colour for it', () => {
+    const dark = open()
+    expect(
+      dark.plugin.insertTitleBox(TITLE, null, { look: 'shaded', color: '#1F3864' }),
+    ).toMatchObject({ ok: true, textColor: '#ffffff' })
+    expect(titleColor(dark.doc())).toBe('#ffffff')
+    for (const bytes of [dark.doc().exportHwpx(), dark.doc().exportHwp()]) {
+      expect(titleColor(new HwpDocument(bytes))).toBe('#ffffff')
+    }
+    for (const box of [
+      { look: 'shaded' as const, color: '#D9E2F3' },
+      { look: 'shaded' as const },
+      { look: 'bands' as const, color: '#1F3864' },
+      { look: 'lines' as const, color: '#1F3864' },
+    ]) {
+      const light = open()
+      const made = light.plugin.insertTitleBox(TITLE, null, box)
+      expect(made, JSON.stringify(box)).not.toHaveProperty('textColor')
+      expect(titleColor(light.doc()), JSON.stringify(box)).toBe('#000000')
+    }
+    const asked = open()
+    const kept = asked.plugin.insertTitleBox(TITLE, null, {
+      look: 'shaded',
+      color: '#1F3864',
+      textColor: '#FFC000',
+    })
+    expect(kept).not.toHaveProperty('textColor')
+    expect(titleColor(asked.doc())).toBe('#ffc000')
+  })
+
+  it('writes the title white when the colour the call names would not show on the dark fill', () => {
+    for (const [color, textColor] of [
+      ['#1F3864', '#1F3864'],
+      ['#1F3864', '#203A6A'],
+      ['#000000', '#111111'],
+    ]) {
+      const { plugin, doc } = open()
+      expect(
+        plugin.insertTitleBox(TITLE, null, { look: 'shaded', color, textColor }),
+        `${textColor} on ${color}`,
+      ).toMatchObject({ ok: true, textColorDropped: true, textColor: '#ffffff' })
+      expect(titleColor(doc())).toBe('#ffffff')
+    }
+    // on a pale fill black shows, so the title keeps the colour it has
+    const pale = open()
+    const made = pale.plugin.insertTitleBox(TITLE, null, {
+      look: 'shaded',
+      color: '#D9E2F3',
+      textColor: '#DDE6F5',
+    })
+    expect(made).toMatchObject({ ok: true, textColorDropped: true })
+    expect(made).not.toHaveProperty('textColor')
+    expect(titleColor(pale.doc())).toBe('#000000')
+  })
+
+  it('names the text colour, not the colour of the box, when the text colour is no colour', () => {
+    const { plugin, steps } = open()
+    const before = steps()
+    expect(() => plugin.insertTitleBox(TITLE, null, { look: 'lines', textColor: 'navy' })).toThrow(
+      /textColor must look like #RRGGBB/,
+    )
+    expect(steps()).toBe(before)
   })
 
   it('takes white words on a dark fill, and a dark colour anywhere', () => {
