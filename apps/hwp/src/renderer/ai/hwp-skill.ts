@@ -2214,13 +2214,9 @@ const tableNumberNote = (result: { table?: number; tables?: number }): string =>
     : ` It is table ${result.table}${result.tables !== undefined && result.tables > result.table ? '; tables after it are numbered one higher' : ''}.`
 
 /** The first and last row a format_cells call names; every row when it names none. */
-const rowsOf = (
-  cells: readonly { row: number }[] | AgentCellBlock | null,
-): [from: number, to: number] => {
+const rowsOf = (cells: { row: number }[] | AgentCellBlock | null): [from: number, to: number] => {
   if (cells === null) return [1, Number.MAX_SAFE_INTEGER]
-  const rows = Array.isArray(cells)
-    ? cells.map((cell) => cell.row)
-    : [(cells as AgentCellBlock).fromRow, (cells as AgentCellBlock).toRow]
+  const rows = Array.isArray(cells) ? cells.map((cell) => cell.row) : [cells.fromRow, cells.toRow]
   return [Math.min(...rows), Math.max(...rows)]
 }
 
@@ -2269,10 +2265,6 @@ function pageMapLines(map: AgentPageMap): string[] {
       : []),
   ]
 }
-
-/** `note` after `output`: on its own line when the answer is a list, else in the same line. */
-const withNote = (output: string, note: string): string =>
-  note ? `${output}${output.includes('\n') ? '\n' : ' '}${note}` : output
 
 const titleColourNote = (result: { textColorDropped?: boolean; textColor?: string }): string => {
   if (result.textColorDropped && result.textColor) {
@@ -5734,9 +5726,10 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           const output = done.output + unusedNote(tool, prepared)
           // read after the change returned: the editor lays the pages out when it commits
           const pages = pagesBefore !== null && done.mutated ? await pagesNow() : null
-          const pageNote =
-            pages !== null && pages !== pagesBefore ? `Pages ${pagesBefore} -> ${pages}.` : ''
-          return { ...done, output: withNote(output, pageNote) }
+          if (pages === null || pages === pagesBefore) return { ...done, output }
+          // a list stays a list: the note goes on a line of its own after one
+          const joiner = output.includes('\n') ? '\n' : ' '
+          return { ...done, output: `${output}${joiner}Pages ${pagesBefore} -> ${pages}.` }
         } catch (error) {
           // the editor refused or is gone: the model gets the cause and can say so
           return bad(call, inDeclaredWords(error instanceof Error ? error.message : String(error)))

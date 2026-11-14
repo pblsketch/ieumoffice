@@ -4066,6 +4066,8 @@ function pageMapOf(doc) {
       // as above
     }
     const items = []
+    // pictures and other objects only tell that the page is not empty
+    let objects = 0
     const lowLines = new Set()
     for (const run of runs) {
       if (run.cellPath || !isBody(run.secIdx, run.paraIdx) || !/\S/.test(run.text ?? '')) continue
@@ -4078,13 +4080,16 @@ function pageMapOf(doc) {
         control.type === 'table'
           ? (numbers.get(`${control.secIdx}/${control.paraIdx}/${control.controlIdx}`) ?? null)
           : null
+      if (number === null) {
+        objects += 1
+        continue
+      }
       items.push({
         sec: control.secIdx,
         para: control.paraIdx,
         column: columnOf(control.x),
         table: number,
       })
-      if (number === null) continue
       spans.set(number, [...(spans.get(number) ?? []), page + 1])
       if (control.y + control.h > foot + 1) {
         const low = (control.cells ?? []).filter((cell) => cell.y + cell.h > foot + 1)
@@ -4097,7 +4102,11 @@ function pageMapOf(doc) {
       }
     }
     if (items.length === 0) {
-      pages.push({ page: page + 1, empty: true })
+      pages.push(
+        objects > 0
+          ? { page: page + 1, first: { text: '' }, last: { text: '' } }
+          : { page: page + 1, empty: true },
+      )
       continue
     }
     const sorted = [...items].sort(order)
