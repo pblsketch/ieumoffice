@@ -280,6 +280,7 @@ export const id = {
   previewMargins: 'Tampilkan margin',
   previewEditPage: 'Edit halaman ini',
   previewEditFailed: 'Tidak dapat membuka halaman ini.',
+  printLayoutSaved: 'Hasil tata letak disimpan sebagai PDF.',
   checkTitle: 'Pemeriksaan dokumen',
   checkRunning: 'Membaca dokumen…',
   checkFailed: 'Dokumen tidak dapat dibaca.',

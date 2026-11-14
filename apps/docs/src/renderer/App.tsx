@@ -409,6 +409,8 @@ import {
 } from './doc-state'
 import {
   applyAiDocContent as applyAiDocContentImpl,
+  buildPrintJobParts,
+  buildSelectionPrintPdf,
   exportPdf as exportPdfImpl,
   exportHtml as exportHtmlImpl,
   exportHwp as exportHwpImpl,
@@ -2933,8 +2935,14 @@ export function App() {
         // A failed open falls back to an untitled blank document (filePath
         // null); exporting that would hand the CLI a blank PDF and call it
         // success, so only a document that came from disk counts as ready.
+        // A printed selection arrives as an untitled copy instead: only that
+        // copy (asking for a path on its first save) counts.
         () => {
           const doc = fileCtxRef.current.doc
+          if (target.untitled) {
+            const copy = doc?.askPathOnFirstSave === true
+            return { opened: copy, failed: !!doc && !copy }
+          }
           return { opened: typeof doc?.filePath === 'string', failed: doc?.filePath === null }
         },
         target.format === 'html' ? exportHtml : target.format === 'md' ? exportMarkdown : exportPdf,
@@ -8431,7 +8439,19 @@ export function App() {
         />
       )}
 
-      {doc && showPrintDialog && <PrintDialog onClose={closePrintDialog} setStatus={setStatus} />}
+      {doc && showPrintDialog && (
+        <PrintDialog
+          onClose={closePrintDialog}
+          setStatus={setStatus}
+          docName={doc.fileName}
+          buildPageJob={buildPrintJobParts}
+          prepareSelection={
+            editor && !editor.state.selection.empty
+              ? () => buildSelectionPrintPdf(fileCtxRef.current)
+              : undefined
+          }
+        />
+      )}
 
       {stats && <WordCountDialog stats={stats} onClose={() => setStats(null)} />}
 

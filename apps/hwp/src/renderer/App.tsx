@@ -48,6 +48,7 @@ import { hwpFormatOfPath } from '../shared/ipc'
 import type {
   HwpFormat,
   PreviewAction,
+  PrintJob,
   PrintMode,
   PrintResult,
   SaveMode,
@@ -753,6 +754,15 @@ export default function App() {
     [phase, agentBridge],
   )
 
+  /** The preview's advanced print layout: the job's pages as the PDF export gathers them. */
+  const gatherLayoutJob = useCallback(
+    (onProgress: (done: number, total: number) => void): Promise<PrintJob> =>
+      phase === 'ready'
+        ? gatherPrintJob(agentBridge, 'pdf', onProgress)
+        : Promise.reject(new Error('the editor is not ready')),
+    [phase, agentBridge],
+  )
+
   useEffect(() => {
     previewRef.current = preview.open
   }, [preview.open])
@@ -1125,6 +1135,8 @@ export default function App() {
           onClose={closePreview}
           onPrint={runPrint}
           onEditPage={editPage}
+          printLayout={window.hwpApi.printLayout}
+          gatherJob={gatherLayoutJob}
         />
       )}
     </div>

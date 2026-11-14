@@ -286,6 +286,7 @@ export const fr = {
   previewMargins: 'Afficher les marges',
   previewEditPage: 'Modifier cette page',
   previewEditFailed: "Impossible d'aller à cette page.",
+  printLayoutSaved: 'Le résultat mis en page a été enregistré en PDF.',
   checkTitle: 'Vérification du document',
   checkRunning: 'Lecture du document…',
   checkFailed: 'Impossible de lire le document.',

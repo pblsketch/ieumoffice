@@ -267,6 +267,7 @@ export const zhTW = {
   previewMargins: '顯示邊距',
   previewEditPage: '編輯此頁',
   previewEditFailed: '無法移至本頁。',
+  printLayoutSaved: '已將排版結果儲存為 PDF。',
   checkTitle: '文件檢查',
   checkRunning: '正在讀取文件…',
   checkFailed: '無法讀取文件。',

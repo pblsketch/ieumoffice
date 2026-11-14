@@ -182,6 +182,9 @@ export const fr = {
   appPrintLandscape: 'Paysage',
   appPrintFrame: 'Encadrer les diapositives',
   appPrintHidden: 'Imprimer les diapositives masquées',
+  appPrintRangeSelected: 'Diapositives sélectionnées',
+  appPrintLayoutBlocked:
+    'Les documents et les pages de notes s’impriment à une page par feuille. Pour disposer les pages, choisissez Diapositives pleine page.',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'Aucune diapositive à imprimer',
   appPrintRendering: 'Génération de l’aperçu…',

@@ -1774,6 +1774,14 @@ button {
   gap: 10px;
 }
 
+/* The print dialog carries the shared page layout panel: it scrolls inside the view */
+.pdf-modal.pdf-print-dialog {
+  width: 420px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 128px);
+  overflow-y: auto;
+}
+
 .pdf-modal-title {
   font-size: 13px;
   font-weight: 600;

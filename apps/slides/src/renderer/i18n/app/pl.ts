@@ -180,6 +180,9 @@ export const pl = {
   appPrintLandscape: 'Pozioma',
   appPrintFrame: 'Obramowanie slajdów',
   appPrintHidden: 'Drukuj ukryte slajdy',
+  appPrintRangeSelected: 'Zaznaczone slajdy',
+  appPrintLayoutBlocked:
+    'Materiały informacyjne i strony notatek drukują się po jednej stronie na arkusz. Aby rozmieścić strony, wybierz Slajdy na całej stronie.',
   appPrintPageCount: 'Stron: {n}',
   appPrintNoPages: 'Brak slajdów do wydrukowania',
   appPrintRendering: 'Generowanie podglądu…',

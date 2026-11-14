@@ -46,7 +46,17 @@ Quy tắc: phần mở rộng được giữ tự động; ký tự không hợp
 
 ## In
 
-File ▸ In trong từng trình soạn thảo (⌘P/ctrl+P) mở hộp thoại in của hệ thống; PDF in theo thứ tự trang và góc xoay hiện tại.
+File ▸ In (⌘P/ctrl+P) trong từng trình soạn thảo mở cửa sổ in. Docs, PDF, Sheets, Slides và Markdown có mục **Bố cục trang** trong cửa sổ in vốn có, HWP có mục này trong bản xem trước khi in, còn HTML, sơ đồ tư duy và trình vẽ sơ đồ có nó trong một cửa sổ in nhỏ mới. Nếu không chọn gì trong Bố cục trang, việc in vẫn diễn ra như trước.
+
+- **Cách sắp xếp**: chọn một trong Một trang mỗi tờ, Nhiều trang mỗi tờ (2, 4, 6, 9 hoặc 16), Tập sách nhỏ (đóng gáy bên trái hoặc bên phải), Áp phích (số tờ theo chiều ngang và chiều dọc, phần chồng lên nhau, đường cắt) hoặc Nhãn (mỗi nhãn một trang hoặc cùng một trang trên mọi nhãn, nhãn bắt đầu, khổ A4 thông dụng hoặc tự nhập).
+- **Chỉ mặt lẻ, chỉ mặt chẵn, in theo thứ tự ngược**: các mặt được đếm sau khi sắp xếp, theo những mặt thực sự đi ra khỏi máy in. Dùng khi máy in không in được hai mặt: in mặt trước, lật giấy rồi in mặt sau.
+- **Thu nhỏ cho vừa giấy**: chỉ thu nhỏ những trang lớn hơn khổ giấy đã chọn; trang nhỏ hơn không được phóng to. Sheets và Markdown dùng các ô khổ giấy và tỉ lệ vốn có.
+- **Thang xám và độ phân giải hình**: khi in bằng các tùy chọn của Bố cục trang, mỗi trang được chuyển thành hình rồi mới gửi tới máy in. Độ phân giải chọn trong Tự động, 150, 300 hoặc 600 dpi.
+- **Chỉ vùng đã chọn**: Docs và Markdown chỉ in phần chữ đã chọn, chia trang lại từ trang đầu; Slides in các trang chiếu đã chọn, PDF in các trang đã chọn. Sheets vẫn in vùng đã chọn như trước.
+- **Sơ đồ bố cục và xem trước kết quả**: sơ đồ cho thấy ngay mỗi số trang nằm ở đâu trên tờ giấy, còn **Xem trước kết quả** cho thấy kết quả thực sự được tạo ra. Dùng **Lưu kết quả đã sắp xếp thành PDF** để in đúng bố cục đó trên máy khác hoặc ở tiệm in.
+- **Cửa sổ in của hệ thống**: với tập sách nhỏ, hãy chọn in hai mặt và lật theo cạnh ngắn. Giữ nguyên phạm vi trang và số trang mỗi tờ trong cửa sổ hệ thống.
+
+PDF in theo thứ tự trang và góc xoay hiện tại.
 
 ## Tập tin chưa có tiêu đề nằm ở đâu
 

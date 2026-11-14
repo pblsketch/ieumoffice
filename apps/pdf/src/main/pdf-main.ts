@@ -159,6 +159,8 @@ import {
 import type { PdfNoteResult, PdfRecoveryCopyResult } from '../shared/ipc'
 import { createPdfRecovery, pdfLooksEncrypted } from './pdf-recovery'
 import { copiedPagesOf, heldCopiedPages, holdCopiedPages } from './page-clipboard'
+import { LABEL_SPEC_FILE_NAME } from '@genoffice/electron-utils/print-arranged'
+import { registerPdfPrintLayout } from './print-layout'
 import { ResultStore, documentHashOfFile } from '../../../../packages/pdf-structure/src/store'
 /** the largest slice readFileChunk hands over IPC (the renderer loops) */
 const PDF_READ_CHUNK_MAX_BYTES = 8 * 1024 * 1024
@@ -1632,6 +1634,29 @@ export async function readMergeInputs(
 function registerPdfIpc(): void {
   if (ipcRegistered) return
   ipcRegistered = true
+
+  // Advanced print: the job PDF comes from the view's saved document (the
+  // renderer saves pending edits first), arranged and printed from here
+  registerPdfPrintLayout({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+    async readViewBytes(viewId, path) {
+      if (!pdfPathGranted(viewId, path)) throw new Error('pdf: path not granted to this view')
+      return viewDocumentBytes(viewId, path)
+    },
+    createPrintWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    async pickSavePath(event, editor) {
+      const parent = BrowserWindow.fromWebContents(event.sender as WebContents)
+      const options = {
+        defaultPath: basename(editor.path).replace(/\.pdf$/i, '') + '-print.pdf',
+        filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+      }
+      const picked = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+  })
 
   // the recovery question (a copy of unsaved edits) is answered before the renderer reads the file
   ipcMain.handle(PDF_CHANNELS.consumePending, (e) => {

@@ -84,6 +84,7 @@ openoffice/
 │   ├── doc-rules/AGENTS.md        ← 행정문서 형식 규칙(자료)과 순수 판정 함수
 │   ├── file-parse/AGENTS.md       ← 첨부·검색용 파일 읽기, 다른 파일로 읽을 때의 가리기
 │   ├── zip-gate/AGENTS.md         ← 압축 파일 안전 검사
+│   ├── print-layout/AGENTS.md     ← 고급 인쇄 배치(모아찍기·소책자·포스터·라벨·홀짝·회색조), 쪽 그림 만들기
 │   ├── google-drive/AGENTS.md     ← Google 드라이브 로그인과 파일 주고받기
 │   ├── font-metrics/AGENTS.md     ← 글꼴 치수
 │   ├── pipelines/AGENTS.md        ← 슬라이드 생성 단계

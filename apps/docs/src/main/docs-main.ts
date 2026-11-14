@@ -61,7 +61,6 @@ import {
   toggleDevToolsItem,
   windowMenuTemplate,
   type HeadlessExportFormat,
-  type HeadlessExportTarget,
   installRendererProtocol,
   registerRendererScheme,
   rendererUrl,
@@ -187,12 +186,14 @@ import type {
   CreateDocumentRequest,
   CreateDocumentResult,
   DecryptOpenResult,
+  DocsHeadlessExportTarget,
   DocsTabInfo,
   MarkdownImage,
   MenuCommand,
   MergeOutputRequest,
   OpenDocxResult,
   OpenFileResult,
+  PrintSelectionPdfResult,
   SpellLanguages,
 } from '../shared/ipc'
 import { MARKDOWN_MEDIA_DIR_TOKEN } from '../shared/ipc'
@@ -271,6 +272,19 @@ import {
 } from './print-args'
 import { printPdfViaCups } from '@genoffice/electron-utils/print-cups'
 import { printOutcome } from '@genoffice/electron-utils/print-job'
+import {
+  ensurePrintLayoutIpc,
+  LABEL_SPEC_FILE_NAME,
+  registerPrintLayoutIpc,
+} from '@genoffice/electron-utils/print-arranged'
+import { readJobPageSizes } from '@genoffice/print-layout'
+import {
+  mergePrintJobParts,
+  printPdfDefaultName,
+  readDocsPrintJob,
+  selectionDocxForPrint,
+  validSectPrXml,
+} from './print-job-pdf'
 import { addPdfInternalLinks } from './pdf-links'
 import {
   assignStarredGroup,
@@ -5356,7 +5370,7 @@ export function registerDocsIpc(): void {
 
   // ---- headless export mode (--headless-export) ----
 
-  ipcMain.handle('docs:consume-headless-export', (event): HeadlessExportTarget | null => {
+  ipcMain.handle('docs:consume-headless-export', (event): DocsHeadlessExportTarget | null => {
     const target = headlessExportTargets.get(event.sender.id) ?? null
     headlessExportTargets.delete(event.sender.id)
     return target
@@ -6171,6 +6185,56 @@ export function registerDocsIpc(): void {
     const printers = await event.sender.getPrintersAsync()
     return printers.map((p) => ({ name: p.name, displayName: p.displayName || p.name }))
   })
+
+  // Advanced print (decision 0141): the renderer sends the job PDF it printed
+  // the way the PDF export does (chosen pages only, or a laid-out selection);
+  // the shared module arranges it and prints, previews or saves the result.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerPrintLayoutIpc('docs', {
+    ipcMain,
+    buildJobPdf: async (_event, editor) => mergePrintJobParts(readDocsPrintJob(editor).parts),
+    createPrintWindow: () =>
+      new BrowserWindow({
+        show: false,
+        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+      }),
+    pickSavePath: async (event, editor) => {
+      const name =
+        typeof editor === 'object' && editor !== null
+          ? (editor as { name?: unknown }).name
+          : undefined
+      const result = await saveDialog(event as IpcMainInvokeEvent, {
+        title: tm('dlgExportPdf'),
+        defaultPath: printPdfDefaultName(name),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      return result.canceled || !result.filePath ? null : result.filePath
+    },
+  })
+
+  // Print selection: the selected content as a .docx of its own, laid out in a
+  // hidden window exactly like a PDF export of that document
+  ipcMain.handle(
+    'docs:print-selection-pdf',
+    async (event, docx: unknown, sectPr: unknown): Promise<PrintSelectionPdfResult> => {
+      if (tornDownWcIds.has(event.sender.id) || !(docx instanceof ArrayBuffer)) {
+        return { ok: false, error: 'no selection to print' }
+      }
+      const section = sectPr === null ? null : validSectPrXml(sectPr) ? sectPr : undefined
+      if (section === undefined) return { ok: false, error: 'invalid section properties' }
+      try {
+        const pdf = await renderSelectionPdf(Buffer.from(docx), section)
+        const pages = await readJobPageSizes(new Uint8Array(pdf))
+        if (pages.length === 0) return { ok: false, error: 'the selection laid out no pages' }
+        return { ok: true, base64: pdf.toString('base64'), pages }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
 
   ipcMain.handle('docs:print', async (event, scale?: number, job?: unknown, paper?: unknown) => {
     // print the calling tab's own content; zero margins — the docx page padding provides them.
@@ -7158,7 +7222,7 @@ export function buildDocsMenu(): void {
 // ---- headless export ----
 
 /** hidden export windows: webContents id -> what the renderer must write */
-const headlessExportTargets = new Map<number, HeadlessExportTarget>()
+const headlessExportTargets = new Map<number, DocsHeadlessExportTarget>()
 /** settled by 'docs:headless-export-done' (or by the renderer dying) */
 const headlessExportWaiters = new Map<number, (result: HeadlessExportReport) => void>()
 
@@ -7219,6 +7283,77 @@ export async function exportDocsHeadless(
     headlessExportTargets.delete(wcId)
     pendingWindowOpens.delete(wcId)
     if (!win.isDestroyed()) win.destroy()
+  }
+}
+
+/** a printed selection's layout gets this long before it counts as failed */
+const PRINT_SELECTION_TIMEOUT_MS = 300_000
+
+/**
+ * Print selection (decision 0141): lay out `docx` (the selected content only,
+ * as the editor's save path wrote it) in a hidden docs window and return the
+ * PDF, made by the same load -> paginate -> PDF export the File menu runs.
+ *
+ * The window is wired like exportDocsHeadless's, but the document arrives as
+ * an untitled copy: no recent entry, no write grant, no archive, no file
+ * watch. The window counts as torn down from the start, so it never writes a
+ * recovery copy or saves, and its PDF is never revealed or opened. Everything
+ * lives in one temp folder that is removed on every path.
+ */
+async function renderSelectionPdf(docx: Buffer, sectPr: string | null): Promise<Buffer> {
+  const { bytes: full } = await materializeLazyDocx(docx)
+  const prepared = await selectionDocxForPrint(full, sectPr)
+  const dir = await mkdtemp(join(tmpdir(), 'genoffice-docs-print-selection-'))
+  let win: BrowserWindow | null = null
+  let wcId = -1
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const input = join(dir, 'selection.docx')
+    const outPath = join(dir, 'selection.pdf')
+    await writeFile(input, prepared)
+    win = new BrowserWindow({
+      show: false,
+      width: 1360,
+      height: 900,
+      webPreferences: {
+        preload: runtime.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    })
+    const contents = win.webContents
+    wcId = contents.id
+    tornDownWcIds.add(wcId)
+    pendingDocCopies.set(wcId, { path: input, name: 'selection.docx' })
+    headlessExportTargets.set(wcId, { outPath, format: 'pdf', untitled: true })
+    allowPdfWrite(wcId, outPath)
+    // an export temp: written silently, never revealed or opened
+    imageExportTemps.set(wcId, new Set([outPath]))
+    const report = await new Promise<HeadlessExportReport>((resolve) => {
+      headlessExportWaiters.set(wcId, resolve)
+      contents.on('render-process-gone', (_event, details) =>
+        resolve({ ok: false, error: `docs renderer stopped (${details.reason})` }),
+      )
+      timer = setTimeout(
+        () => resolve({ ok: false, error: 'the selection did not finish laying out' }),
+        PRINT_SELECTION_TIMEOUT_MS,
+      )
+      void contents.loadURL(rendererUrl(runtime.rendererUrl, 'docs'))
+    })
+    if (!report.ok) throw new Error(report.error ?? 'the selection did not lay out')
+    return await readFile(outPath)
+  } finally {
+    if (timer) clearTimeout(timer)
+    if (wcId >= 0) {
+      headlessExportWaiters.delete(wcId)
+      headlessExportTargets.delete(wcId)
+      pendingDocCopies.delete(wcId)
+      dropDocWriter(wcId)
+    }
+    if (win && !win.isDestroyed()) win.destroy()
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 

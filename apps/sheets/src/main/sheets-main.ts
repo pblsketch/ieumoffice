@@ -234,6 +234,7 @@ import { atomicWriteFile } from './atomic-write'
 import { closeGuardDecision, ShutdownLatch } from './close-guard'
 import { SaveEditsTransferStore } from './save-edits-transfer'
 import { exportPdf, printWorkbook } from './pdf-export'
+import { registerSheetsPrintLayoutIpc } from './print-layout'
 import { exportWorkbookAsOds, type OdsLoss, type OdsLossKind } from './ods-export'
 import {
   resolveSheetsSaveAsPick,
@@ -4611,6 +4612,14 @@ export function registerSheetsIpc(): void {
   ipcMain.handle(IPC_CHANNELS.printWorkbook, async (event, input: unknown) => {
     sessionFor(event)
     return printWorkbook(event, workbookExportPdfRequestSchema.parse(input))
+  })
+
+  // The Print dialog's shared layout panel: same print HTML, arranged in main.
+  registerSheetsPrintLayoutIpc({
+    ipcMain,
+    assertSender: (event) => {
+      sessionFor(event as unknown as IpcMainInvokeEvent)
+    },
   })
 
   ipcMain.handle(IPC_CHANNELS.listPrinters, async (event) => {

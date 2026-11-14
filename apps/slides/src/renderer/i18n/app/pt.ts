@@ -181,6 +181,9 @@ export const pt = {
   appPrintLandscape: 'Paisagem',
   appPrintFrame: 'Emoldurar slides',
   appPrintHidden: 'Imprimir slides ocultos',
+  appPrintRangeSelected: 'Slides selecionados',
+  appPrintLayoutBlocked:
+    'Folhetos e páginas de anotações são impressos com uma página por folha. Para organizar as páginas, escolha Slides em Página Inteira.',
   appPrintPageCount: '{n} páginas',
   appPrintNoPages: 'Nenhum slide para imprimir',
   appPrintRendering: 'Gerando a visualização…',

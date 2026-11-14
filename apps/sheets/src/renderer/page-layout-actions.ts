@@ -12,6 +12,13 @@ import type { WorkbookOperation } from '@genoffice/xlsx-gateway/domain/workbook-
 import type { ApplyOutcome } from '@genoffice/xlsx-gateway/domain/workbook.types'
 
 import { columnLabel } from '@genoffice/xlsx-gateway/domain/cell-address'
+import type { PrintLayoutErrorCode, PrintLayoutOptions } from '@genoffice/print-layout/plan'
+import {
+  printLayoutIssueText,
+  type PrintLabelSpecStore,
+  type PrintLayoutPreviewRequest,
+  type PrintLayoutProgress,
+} from '@genoffice/ui'
 import {
   isSheetRemoved,
   journalSize,
@@ -21,7 +28,7 @@ import {
   type PageSetupJournalState,
 } from './edit-journal'
 import type { HeaderFooterResult } from './HeaderFooterDialog'
-import { t } from './i18n/locale'
+import { getLang, t } from './i18n/locale'
 import { effectivePageBreaks } from './page-break-preview'
 import { COLOR_SCHEMES, FONT_SCHEMES, rethemeStyles, THEME_PRESETS } from './themes'
 import { settleFormulas } from './formula-settle'
@@ -449,7 +456,50 @@ export interface PrintPreviewHost {
   /// Persists one dialog setting as a Page Layout command (`orientation:landscape`).
   applySetting(rest: string): void
   setMessage(message: string): void
+  /// The shared layout panel's route (any option on): the request `print`
+  /// sends becomes the print job, arranged in main. The in-app printer and
+  /// copies carry over; copies always print as whole sets. Null: the user
+  /// stopped the job, nothing was sent.
+  printArranged(
+    job: PrintJob,
+    output: PrintOutputSettings,
+    options: PrintLayoutOptions,
+  ): Promise<string | null>
+  /// Each arranged face as a PNG for the panel's result preview.
+  previewArranged(
+    job: PrintJob,
+    pages: PrintOutputSettings['pages'],
+    options: PrintLayoutOptions,
+    context: Parameters<PrintLayoutPreviewRequest>[1],
+  ): Promise<Uint8Array[]>
+  /// Asks where, then saves the arranged PDF. Null: the user stopped the job.
+  saveArrangedPdf(
+    job: PrintJob,
+    pages: PrintOutputSettings['pages'],
+    options: PrintLayoutOptions,
+  ): Promise<string | null>
+  /// Stops this window's running layout job.
+  cancelArranged(): Promise<void>
+  /// Faces done of the running layout job; returns the unsubscribe.
+  onArrangedProgress(listener: (progress: PrintLayoutProgress) => void): () => void
+  readonly labelSpecStore: PrintLabelSpecStore
 }
+
+type LayoutFailure =
+  { ok: false; aborted: true } | { ok: false; error: string; code?: PrintLayoutErrorCode }
+
+/// A failed layout job as the error the dialog shows: the layout's own text
+/// when it names a cause, else the plain failure text.
+function layoutFailure(result: Exclude<LayoutFailure, { aborted: true }>, fallback: string): Error {
+  return new PrintError(
+    result.code === undefined
+      ? fallback
+      : printLayoutIssueText(getLang(), { code: result.code, message: result.error }),
+  )
+}
+
+const isAborted = (result: LayoutFailure): result is { ok: false; aborted: true } =>
+  'aborted' in result
 
 /// null (after a status message) when the workbook is not ready to print.
 export function createPrintPreviewHost(ctx: PageLayoutContext): PrintPreviewHost | null {
@@ -549,6 +599,54 @@ export function createPrintPreviewHost(ctx: PageLayoutContext): PrintPreviewHost
     },
     applySetting: (rest) => handlePageLayoutCommand(ctx, rest),
     setMessage: ctx.setMessage,
+    async printArranged(job, output, options) {
+      const result = await window.desktopApi.printLayout.print({
+        options,
+        editor: printRequest(job.documents, job.fileName, include(output.pages)),
+        job: { deviceName: output.deviceName, copies: output.copies, collate: true },
+      })
+      if (result.ok) return result.canceled ? t('appPrintCanceled') : t('appPrintSent')
+      if (isAborted(result)) return null
+      throw layoutFailure(result, t('appPrintFailed'))
+    },
+    async previewArranged(job, pages, options, context) {
+      const bridge = window.desktopApi.printLayout
+      const stop = () => void bridge.cancel()
+      context.signal.addEventListener('abort', stop, { once: true })
+      const unsubscribe = bridge.onProgress(context.onProgress)
+      try {
+        const result = await bridge.preview({
+          options,
+          editor: printRequest(job.documents, job.fileName, include(pages)),
+        })
+        if (result.ok) return result.faces.map((face) => face.png)
+        if (isAborted(result)) throw new DOMException('The preview was canceled', 'AbortError')
+        throw layoutFailure(result, t('appPrintFailed'))
+      } finally {
+        unsubscribe()
+        context.signal.removeEventListener('abort', stop)
+      }
+    },
+    async saveArrangedPdf(job, pages, options) {
+      const result = await window.desktopApi.printLayout.savePdf({
+        options,
+        editor: printRequest(job.documents, job.fileName, include(pages)),
+      })
+      if (result.ok) {
+        return 'path' in result ? t('appPdfExported', { path: result.path }) : t('appPdfCanceled')
+      }
+      if (isAborted(result)) return null
+      throw layoutFailure(result, t('appPdfExportFailed'))
+    },
+    cancelArranged: () => window.desktopApi.printLayout.cancel(),
+    onArrangedProgress: (listener) => window.desktopApi.printLayout.onProgress(listener),
+    labelSpecStore: {
+      load: () => window.desktopApi.printLayout.getLabelSpec(),
+      async save(spec) {
+        const result = await window.desktopApi.printLayout.setLabelSpec(spec)
+        if (!result.ok) throw new Error(result.error)
+      },
+    },
   }
 }
 

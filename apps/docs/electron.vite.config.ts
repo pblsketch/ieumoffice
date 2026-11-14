@@ -33,6 +33,7 @@ export default defineConfig({
           // the Hangul export's converter, run in its worker thread
           '@genoffice/docx2hwp',
           '@genoffice/electron-utils',
+          '@genoffice/print-layout',
           '@genoffice/font-metrics',
           '@genoffice/odt-engine',
           // the template font list the media scheme serves from

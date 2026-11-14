@@ -5135,6 +5135,12 @@ export const agentPlugin = {
     // the editor's history is one stack and anything on top of the run would be undone first
     let foreign = 0
     let own = false
+    // counts every edit, whoever made it, and every document swapped in: the print preview
+    // keeps the pages it gathered while this has not moved
+    let revision = 0
+    host.events.on('document-swapped', () => {
+      revision += 1
+    })
     // the text is read for every request; it only changes when the document does
     let text = null
     // the pictures of the document, in reading order, as the last listPictures read them
@@ -5543,6 +5549,7 @@ export const agentPlugin = {
     }
 
     onDocumentEdit(host, () => {
+      revision += 1
       text = null
       pictures = null
       if (!own) {
@@ -6254,6 +6261,9 @@ export const agentPlugin = {
 
     const api = {
       foreignChanges: () => foreign,
+
+      /** Moves with every edit of the document and every document swapped in; reads nothing. */
+      documentRevision: () => revision,
 
       /** The whole document as plain text, table cells included, in reading order. */
       readText: guarded(() => {
@@ -7121,6 +7131,31 @@ export const agentPlugin = {
               if (Date.now() - began > PRINT_BATCH_MS) break
             }
             return { pageCount, from: start, pages }
+          }),
+        ),
+      ),
+
+      /**
+       * Each page's size in CSS pixels as the print path lays it out, from page `from`
+       * (0-based), without drawing any: the print preview's layout diagram needs every
+       * page's paper before it has drawn them. As many pages as are measured in about two
+       * seconds (always one); called again from where it stopped until `pageCount`. Like
+       * printPages, the call lays the pages out with the portable text widths and puts the
+       * screen's back before it returns.
+       */
+      printPageSizes: guarded((from) =>
+        host.read((doc) =>
+          withPortableWidths(doc, () => {
+            const pageCount = doc.pageCount()
+            const start = Number.isInteger(from) && from > 0 ? Math.min(from, pageCount) : 0
+            const began = Date.now()
+            const sizes = []
+            for (let page = start; page < pageCount; page++) {
+              const info = JSON.parse(doc.getPageInfo(page))
+              sizes.push({ width: info.width, height: info.height })
+              if (Date.now() - began > PRINT_BATCH_MS) break
+            }
+            return { pageCount, from: start, sizes }
           }),
         ),
       ),

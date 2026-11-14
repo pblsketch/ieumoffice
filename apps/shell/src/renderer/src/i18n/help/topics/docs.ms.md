@@ -88,4 +88,4 @@ Klik kanan di mana-mana bahagian teks, dan menu akan mengikut apa yang anda klik
 
 ## Cetak
 
-ctrl+P melalui dialog sistem, dengan halaman seperti yang dipaparkan.
+ctrl+P membuka tetingkap cetakan. Pilih pencetak, bilangan salinan, cetakan dua belah dan julat (termasuk pilihan); dalam **Susun atur halaman** anda boleh memilih beberapa halaman setiap helai, buku kecil, poster, label, muka ganjil atau genap dan skala kelabu (lihat [Operasi fail](help://file-ops)).

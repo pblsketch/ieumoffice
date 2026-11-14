@@ -49,6 +49,10 @@ import {
 } from '@genoffice/electron-utils'
 import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { fetchImageBytes } from '@genoffice/electron-utils/fetch-image-bytes'
+import {
+  ensurePrintLayoutIpc,
+  LABEL_SPEC_FILE_NAME,
+} from '@genoffice/electron-utils/print-arranged'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import {
   sharedSubscriptionStatuses,
@@ -103,6 +107,7 @@ import { registerHtmlHandoffIpc } from './generate-handoff-ipc'
 import { registerHtmlSeedIpc } from './seed-main'
 import { createTextRecovery } from './recovery'
 import { registerHtmlAiSearchIpc } from './ai-search-ipc'
+import { registerHtmlPrintLayout } from './print-layout'
 import {
   assetBaseHref,
   previewUrlFor,
@@ -2212,6 +2217,39 @@ function registerHtmlIpc(): void {
       return printHtml(request.html, savePathByWc.get(e.sender.id))
     },
   )
+
+  // Advanced print (decision 0141): an option on, or a typed page range, makes
+  // the job PDF from the page loaded as printHtml loads it (scripting on, the
+  // readiness probe), never from the export's script-free window.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerHtmlPrintLayout({
+    ipcMain,
+    documentOf: (event, html) => {
+      const docPath = savePathByWc.get(event.sender.id)
+      return buildPreviewDocument(html, docPath ? assetBaseHref(dirname(docPath)) : null)
+    },
+    createJobWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    createPrintWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    pickSavePath: async (event, suggestedName) => {
+      const win =
+        BrowserWindow.fromWebContents(event.sender as WebContents) ??
+        BrowserWindow.getFocusedWindow() ??
+        undefined
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: `${exportFileName(suggestedName)}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+  })
 
   ipcMain.handle(
     HTML_CHANNELS.exportHtml,

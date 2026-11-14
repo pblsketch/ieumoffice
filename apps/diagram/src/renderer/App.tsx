@@ -18,7 +18,6 @@ import type {
   DiagramMenuCommand,
   ExportFormat,
   ExportScope,
-  PrintPage,
   SaveRequestMode,
   UiTheme,
 } from '../shared/ipc'
@@ -30,6 +29,8 @@ import { settleOpenFailure } from './document/open-failure'
 import { applyLiveOps, liveDiagramRead, liveDiagramText } from './document/live-ops'
 import { DiagramCopier, RECOVERY_COPY_TIMING } from './document/recovery-copies'
 import { pagePictureBytes } from './document/page-pictures'
+import { pagesInScope, printPagesIn } from './document/print-pages'
+import { DiagramPrintDialog } from './PrintDialog'
 import { t as translate, useI18n, type StringKey } from './i18n/locale'
 import { useDarkView } from './theme'
 import { DiagramAiDock, useDiagramAi } from './ai/AiDock'
@@ -66,6 +67,8 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notices, setNotices] = useState<DiagramNotices | null>(null)
   const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null)
+  /** the print dialog, open with the diagram's name */
+  const [printing, setPrinting] = useState<{ title: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [frameLang, setFrameLang] = useState<Lang>(lang)
   const [frameKey, setFrameKey] = useState(0)
@@ -333,49 +336,36 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
 
   // ---- export and print: the app's own, never draw.io's dialogs ----
 
-  const pagesFor = useCallback(async (scope: ExportScope) => {
+  const editorClient = useCallback((): DrawioFrame => {
     const client = clientRef.current
     if (!client) throw new Error('no editor')
-    const info = await client.request('pageInfo', {})
-    const all = info.pages.map((page, index) => ({ ...page, number: index + 1 }))
-    const chosen = scope === 'all' ? all : all.filter((page) => page.id === info.currentPage)
-    return { client, chosen }
+    return client
   }, [])
+
+  // the print dialog asks whichever frame is up when it asks (the frame restarts on a language change)
+  const printClient = useMemo<Pick<DrawioFrame, 'request'>>(
+    () => ({
+      request: (op, args) => editorClient().request(op, args),
+    }),
+    [editorClient],
+  )
 
   const suggestedName = (): string =>
     diagramBaseName(pathRef.current) || titleRef.current || translate('untitled')
-
-  const printPages = useCallback(
-    async (scope: ExportScope): Promise<PrintPage[]> => {
-      const { client, chosen } = await pagesFor(scope)
-      const pages: PrintPage[] = []
-      for (const page of chosen) {
-        const svg = await client.request('pageSvg', { pageId: page.id, theme: 'light' })
-        pages.push({
-          svg: svg.svg,
-          width: svg.width,
-          height: svg.height,
-          pageWidth: page.pageWidth,
-          pageHeight: page.pageHeight,
-        })
-      }
-      return pages
-    },
-    [pagesFor],
-  )
 
   const runExport = useCallback(
     async (format: ExportFormat, scope: ExportScope) => {
       try {
         if (format === 'pdf') {
           const result = await window.diagramApi.exportPdf({
-            pages: await printPages(scope),
+            pages: await printPagesIn(editorClient(), scope),
             suggestedName: suggestedName(),
           })
           if (!result.ok) say(translate('exportFailed', { error: result.error }))
           return
         }
-        const { client, chosen } = await pagesFor(scope)
+        const client = editorClient()
+        const chosen = await pagesInScope(client, scope)
         const pages: { number: number; bytes: Uint8Array }[] = []
         for (const page of chosen) {
           pages.push({
@@ -394,21 +384,15 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
         say(translate('exportFailed', { error: err instanceof Error ? err.message : String(err) }))
       }
     },
-    [pagesFor, printPages, say],
+    [editorClient, say],
   )
 
-  const runPrint = useCallback(async () => {
-    if (statusRef.current !== 'ready') return
-    try {
-      const result = await window.diagramApi.print({
-        pages: await printPages('all'),
-        title: suggestedName(),
-      })
-      if (!result.ok) say(translate('printFailed', { error: result.error }))
-    } catch (err) {
-      say(translate('printFailed', { error: err instanceof Error ? err.message : String(err) }))
-    }
-  }, [printPages, say])
+  /** Print (Ctrl+P, the menus): the print dialog, which prints as before unless a layout option is on. */
+  const runPrint = useCallback(() => {
+    if (statusRef.current !== 'ready' || !clientRef.current) return
+    const title = suggestedName()
+    setPrinting((open) => open ?? { title })
+  }, [])
 
   const askExport = useCallback((format: ExportFormat) => {
     if (statusRef.current === 'ready') setExportFormat(format)
@@ -426,7 +410,7 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
           revisionRef.current = event.revision
           return
         case 'shortcut':
-          if (event.key === 'print') void runPrint()
+          if (event.key === 'print') runPrint()
           else void doSave(event.key)
           return
         case 'command':
@@ -435,7 +419,7 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
               window.diagramApi.openHelp()
               return
             case 'print':
-              void runPrint()
+              runPrint()
               return
             case 'save':
               void doSave('save')
@@ -560,7 +544,7 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
       }
     })
     const offExport = api.onExportRequest((format) => askExport(format))
-    const offPrint = api.onPrintRequest(() => void runPrint())
+    const offPrint = api.onPrintRequest(() => runPrint())
     // questions from the in-app MCP server; silence while loading keeps the asker retrying
     const offRead = api.onReadRequest((query) => {
       const client = clientRef.current
@@ -650,7 +634,7 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
         void doSave(event.shiftKey ? 'saveAs' : 'save')
       } else if (key === 'p' && !event.shiftKey) {
         event.preventDefault()
-        void runPrint()
+        runPrint()
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
@@ -715,6 +699,15 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
           {t('autoSave')}
         </label>
       </div>
+      {printing && (
+        <DiagramPrintDialog
+          client={printClient}
+          api={window.diagramApi}
+          title={printing.title}
+          onClose={() => setPrinting(null)}
+          onMessage={say}
+        />
+      )}
       {exportFormat && (
         <ExportDialog
           format={exportFormat}

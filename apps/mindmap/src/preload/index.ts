@@ -10,6 +10,7 @@ import {
 } from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
 import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
@@ -18,7 +19,12 @@ import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { ProjectApi } from '@genoffice/project-store'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
-import { AI_CHANNELS, APP_CHANNELS, MINDMAP_CHANNELS } from '../shared/ipc'
+import {
+  AI_CHANNELS,
+  APP_CHANNELS,
+  MINDMAP_CHANNELS,
+  MINDMAP_PRINT_LAYOUT_PREFIX,
+} from '../shared/ipc'
 import type {
   AutoSaveDefault,
   ExportFormat,
@@ -29,6 +35,7 @@ import type {
   MindmapHandoffApi,
   MindmapMakeFromApi,
   MindmapMenuCommand,
+  MindmapPrintJob,
   MindmapQueryApi,
   MindmapRecoveryApi,
   MindmapSeedApi,
@@ -90,6 +97,7 @@ const exporting: MindmapExportApi = {
   exportPdf: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.exportPdf, request),
   exportMarkdown: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.exportMarkdown, request),
   print: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.print, request),
+  printLayout: createPrintLayoutBridge<MindmapPrintJob>(ipcRenderer, MINDMAP_PRINT_LAYOUT_PREFIX),
 }
 
 // ---- the AI panel's bridge: the panel and the attachment handlers are T12's ----

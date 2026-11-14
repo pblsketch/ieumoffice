@@ -15,6 +15,7 @@ import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { ProjectApi } from '@genoffice/project-store'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import { AI_CHANNELS, AI_TOOL_CAPABILITIES_CHANNEL, MARKDOWN_CHANNELS } from '../shared/ipc'
 import { normalizeMarkdownTheme, type MarkdownTheme } from '../shared/markdown-theme'
@@ -23,6 +24,7 @@ import type {
   DocTheme,
   ExportFormat,
   MarkdownApi,
+  MarkdownPrintLayoutJob,
   SaveMode,
   UiTheme,
 } from '../shared/ipc'
@@ -186,6 +188,7 @@ const api: MarkdownApi = {
   exportPdf: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.exportPdf, request),
   renderPrintPreview: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.printPreview, request),
   printDocument: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.printDocument, request),
+  printLayout: createPrintLayoutBridge<MarkdownPrintLayoutJob>(ipcRenderer, 'markdown'),
   prepareImageExport: (request) =>
     ipcRenderer.invoke(MARKDOWN_CHANNELS.prepareImageExport, request),
   writeExportImage: (id, page, base64) =>

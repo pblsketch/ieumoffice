@@ -643,6 +643,10 @@ metadata:
 - `off`(결정 0114)는 이 앱에서 끈 `claude-code`·`codex`에만 온다. 다른 항목은 없다(`meteredAccepted`는 거짓). `-off`는 `{ provider, off }`(CLI 식별자와 참/거짓)를 받아 `{ ok, statuses }`로 답한다. 끈 프로그램에 대한 `-login`·`-logout`·`-install`·`-update`는 `invalid`, `-metered`는 `ok: false`다.
 - `chatgpt`의 `state`는 `checking`, `signed-out`, `ready`, `error`뿐이다. `-login`은 앱 자신의 브라우저 로그인을 시작하고, `-logout`은 이 앱의 연결만 끊는다. `-install`·`-update`는 `invalid`로 답한다. 답에 `chatgpt` 항목이 없으면(예전 앱) `signed-out`으로 읽는다.
 
+## 라벨 규격 (`print-label-spec.json`, 결정 0141)
+
+데이터 폴더에 있다. 인쇄 창의 쪽 배치에서 라벨 규격을 "직접 입력"으로 적으면 앱 전체에 하나(마지막에 쓴 값)를 기억한다. 앱만 읽고 쓰고, 터미널 명령어와 MCP는 읽지 않는다. 모양은 `{ "version": 1, "spec": { "paper": "A4" | "Letter", "cols", "rows", "cellWidthMm", "cellHeightMm", "topMarginMm", "leftMarginMm", "hPitchMm", "vPitchMm" } }`이고, 쓸 때마다 간격이 칸보다 작지 않은지와 종이 안에 드는지를 검사한다. 읽을 수 없거나 검사를 통과하지 못하는 파일은 없는 것으로 본다.
+
 ## 문서 호환
 
 - `.docx`·`.xlsx`·`.pptx`·PDF·마크다운·HTML 파일은 원본 프로그램과 같은 방식으로 읽고 쓴다. 한쪽에서 만든 문서를 다른 쪽에서 열 수 있다.
