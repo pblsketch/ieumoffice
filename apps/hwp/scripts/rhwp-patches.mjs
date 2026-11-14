@@ -136,6 +136,17 @@
  *   font box showed its name as if it were there. The menu marks such an entry and the box
  *   underlines such a name, with a tooltip saying the file keeps the font's name
  *   (studio-plugin/pc-fonts.mjs, in the words the app gives).
+ *
+ * studio-source-font-alias
+ *   The engine leads a canvas font list with its own alias for the document's font program
+ *   (`__rhwp_ttf__함초롬바탕`), meant for a host that supplies font files. The studio's
+ *   substitution took the alias for the document's font: it is on no PC, so the stand-in
+ *   (바탕, 맑은 고딕) went before the font the document names and the page drew every such
+ *   font in the stand-in, even one that is installed. The print and the PDF read the
+ *   engine's list without the alias and drew the font itself, so the paper did not look
+ *   like the page. The aliases keep their place and the list is weighed by its first real
+ *   name. Upstream has the same defect (edwardkim/rhwp#9077); the patch is dropped with the
+ *   release that fixes it.
  */
 
 import { CLIPBOARD_HTML_MODULE } from '../studio-plugin/clipboard-html.mjs'
@@ -1133,6 +1144,36 @@ const PATCHES = {
       },
     ],
   },
+  // The engine leads a canvas font list with its alias for the document's font program
+  // (pc-fonts.mjs, isEngineFontAlias). The substitution took that alias for the document's
+  // font, found it on no PC and put its stand-in first: the page drew 함초롬바탕, 궁서 or
+  // Arial in 바탕 or 맑은 고딕 while the print drew the font. The aliases stay where the
+  // engine put them and the list is weighed by its first real name.
+  'studio-source-font-alias': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
+    edits: [
+      {
+        find: "import type { FileSystemFileHandleLike } from '@/command/file-system-access';",
+        replace: [
+          "import type { FileSystemFileHandleLike } from '@/command/file-system-access';",
+          `import { isEngineFontAlias } from '${PC_FONTS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: '  const incoming = parseCssFontFamilyList(familyPart);',
+        replace: [
+          '  const listed = parseCssFontFamilyList(familyPart);',
+          '  const engineAliases = listed.filter(name => isEngineFontAlias(name));',
+          '  const incoming = listed.filter(name => !isEngineFontAlias(name));',
+        ].join('\n'),
+      },
+      {
+        find: '  return prefix + formatCssFontFamilyList(completeFontFamilyList(merged, studioChain.slice(1)));',
+        replace:
+          '  return prefix + formatCssFontFamilyList([...engineAliases, ...completeFontFamilyList(merged, studioChain.slice(1))]);',
+      },
+    ],
+  },
   'studio-missing-font-marks': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]toolbar\.ts$/,
     edits: [
@@ -1224,6 +1265,7 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-pc-fonts',
   'studio-missing-font-marks',
   'studio-equation-fonts',
+  'studio-source-font-alias',
 ])
 
 /** Whether a patch is written against this file. */

@@ -56,8 +56,9 @@ import {
   tableLookBlocks,
   titleBoxCells,
 } from './document-looks.mjs'
-import { equationSvgForThisPc } from './equation-fonts.mjs'
+import { equationSvgForThisPc, isEquationSvgFamily } from './equation-fonts.mjs'
 import { fontOnPc, missingFonts, setMissingFontLabels, whenPcFontsSettled } from './pc-fonts.mjs'
+import { printSvgForThisPc, screenFonts } from './print-fonts.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
 
@@ -193,11 +194,24 @@ const MAX_MARKS = 500
 /** How long one call of printPages draws pages for; the bridge gives a call ten seconds. */
 const PRINT_BATCH_MS = 2000
 
+/**
+ * A page's SVG as the print path draws it, for this PC: an equation's glyph runs decoded
+ * where Hancom's equation font is missing, and the page's text in the fonts the screen
+ * shows it in (print-fonts.mjs). `screen` is one screenFonts() for the pages of a call.
+ */
+function printSvgOf(doc, page, screen) {
+  return printSvgForThisPc(
+    equationSvgForThisPc(doc.renderPageSvgWithProfile(page, 'print')),
+    screen,
+    isEquationSvgFamily,
+  )
+}
+
 /** One page as the print path draws it: the SVG and its size in CSS pixels. */
-function printPageOf(doc, page) {
+function printPageOf(doc, page, screen) {
   const info = JSON.parse(doc.getPageInfo(page))
   return {
-    svg: equationSvgForThisPc(doc.renderPageSvgWithProfile(page, 'print')),
+    svg: printSvgOf(doc, page, screen),
     width: info.width,
     height: info.height,
   }
@@ -5093,6 +5107,27 @@ function withPortableWidths(doc, fn) {
   }
 }
 
+/**
+ * Run `fn` to lay out and draw the pages for print. Where the screen can answer for the
+ * fonts it draws with (`screen`, print-fonts.mjs) and the engine lets an export keep the
+ * widths the screen measured (vendor/rhwp-core patch 0050), the pages keep the screen's
+ * layout: the same lines and the same page breaks as the page the user edits, drawn in the
+ * fonts those widths were measured on. Otherwise they are laid out with the widths every
+ * PC lays out the same, as the editor's own print does.
+ */
+function withPrintWidths(doc, screen, fn) {
+  const measured = doc.canvasMetricsActive?.() ?? false
+  if (!measured || !screen || typeof doc.setExportKeepsCanvasMetrics !== 'function') {
+    return withPortableWidths(doc, fn)
+  }
+  doc.setExportKeepsCanvasMetrics(true)
+  try {
+    return fn()
+  } finally {
+    doc.setExportKeepsCanvasMetrics(false)
+  }
+}
+
 export const agentPlugin = {
   id: AGENT_PLUGIN_ID,
   apiVersion: 1,
@@ -7001,7 +7036,9 @@ export const agentPlugin = {
        * PDF export use, so a listed cell is the one cut off in print. Reads only.
        */
       checkLayout: guarded((fromTable, fromRow) =>
-        host.read((doc) => withPortableWidths(doc, () => overflowsOf(doc, fromTable, fromRow))),
+        host.read((doc) =>
+          withPrintWidths(doc, screenFonts(), () => overflowsOf(doc, fromTable, fromRow)),
+        ),
       ),
 
       /**
@@ -7116,36 +7153,38 @@ export const agentPlugin = {
        * The pages as the editor prints them, from page `from` (0-based): SVG drawn for
        * print and each page's size in CSS pixels, as many pages as are drawn in about two
        * seconds (always one). Called again from where it stopped until `pageCount`. Pages
-       * are laid out with the portable text widths, as the editor's own print does, and the
-       * screen's are put back before the call returns.
+       * are laid out as withPrintWidths says (the screen's layout where the editor can
+       * answer for its fonts, else the portable text widths) and drawn in the fonts the
+       * screen shows (printSvgOf); the screen's state is put back before the call returns.
        */
       printPages: guarded((from) =>
-        host.read((doc) =>
-          withPortableWidths(doc, () => {
+        host.read((doc) => {
+          const screen = screenFonts()
+          return withPrintWidths(doc, screen, () => {
             const pageCount = doc.pageCount()
             const start = Number.isInteger(from) && from > 0 ? Math.min(from, pageCount) : 0
             const began = Date.now()
             const pages = []
             for (let page = start; page < pageCount; page++) {
-              pages.push(printPageOf(doc, page))
+              pages.push(printPageOf(doc, page, screen))
               if (Date.now() - began > PRINT_BATCH_MS) break
             }
             return { pageCount, from: start, pages }
-          }),
-        ),
+          })
+        }),
       ),
 
       /**
        * Each page's size in CSS pixels as the print path lays it out, from page `from`
        * (0-based), without drawing any: the print preview's layout diagram needs every
        * page's paper before it has drawn them. As many pages as are measured in about two
-       * seconds (always one); called again from where it stopped until `pageCount`. Like
-       * printPages, the call lays the pages out with the portable text widths and puts the
-       * screen's back before it returns.
+       * seconds (always one); called again from where it stopped until `pageCount`. The
+       * call lays the pages out the way printPages does (withPrintWidths) and puts the
+       * screen's state back before it returns.
        */
       printPageSizes: guarded((from) =>
         host.read((doc) =>
-          withPortableWidths(doc, () => {
+          withPrintWidths(doc, screenFonts(), () => {
             const pageCount = doc.pageCount()
             const start = Number.isInteger(from) && from > 0 ? Math.min(from, pageCount) : 0
             const began = Date.now()
@@ -7163,12 +7202,13 @@ export const agentPlugin = {
       /**
        * One page as the print path draws it, for the print preview. `page` is 0-based.
        * The page count comes back with it, so the preview can show "1 / N" before any
-       * other page is drawn. Like printPages, the call lays the page out with the
-       * portable text widths and puts the screen's back before it returns.
+       * other page is drawn. The call lays the page out the way printPages does
+       * (withPrintWidths) and puts the screen's state back before it returns.
        */
       previewPage: guarded((page) =>
-        host.read((doc) =>
-          withPortableWidths(doc, () => {
+        host.read((doc) => {
+          const screen = screenFonts()
+          return withPrintWidths(doc, screen, () => {
             const pageCount = doc.pageCount()
             if (!Number.isInteger(page) || page < 0 || page >= pageCount) {
               throw fail('BAD_ARGUMENT', 'page out of range')
@@ -7177,7 +7217,7 @@ export const agentPlugin = {
             return {
               pageCount,
               page,
-              svg: equationSvgForThisPc(doc.renderPageSvgWithProfile(page, 'print')),
+              svg: printSvgOf(doc, page, screen),
               width: info.width,
               height: info.height,
               margins: {
@@ -7187,8 +7227,8 @@ export const agentPlugin = {
                 bottom: info.marginBottom,
               },
             }
-          }),
-        ),
+          })
+        }),
       ),
 
       /**
