@@ -535,9 +535,12 @@ describe('the connect cards', () => {
     await openAiSection()
     subscription.recheck.mockClear()
 
-    // nothing was started yet: coming back to the window checks nothing
+    // nothing was started yet, but a program not found may have been installed
+    // from the vendor's guide: coming back looks for it, and only for it
     await act(async () => window.dispatchEvent(new Event('focus')))
-    expect(subscription.recheck).not.toHaveBeenCalled()
+    await flush()
+    expect(subscription.recheck).toHaveBeenCalledWith(['claude-code'])
+    subscription.recheck.mockClear()
 
     await click(button('Install', card('claude-code')))
     expect(subscription.install).toHaveBeenCalledWith('claude-code')

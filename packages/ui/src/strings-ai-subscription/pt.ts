@@ -123,7 +123,7 @@ export const pt = {
   stepLogin: 'Entrar',
   stepReady: 'Conectado',
   installReturnNote:
-    'Quando a instalação terminar naquela janela, volte para cá. O app verifica de novo sozinho.',
+    'Durante o download, aquela janela pode não mostrar nada por alguns minutos. Deixe-a aberta. Quando a instalação terminar, volte para cá. O app verifica de novo sozinho.',
   loginHowNote:
     'Ao clicar, um navegador se abre. Entre com sua conta da {vendor} e clique em Permitir; a conexão é concluída sozinha.',
   signingInStalledNote:

@@ -120,7 +120,7 @@ export const tr = {
   stepLogin: 'Oturum aç',
   stepReady: 'Bağlı',
   installReturnNote:
-    'O penceredeki yükleme bittiğinde buraya dönün. Uygulama kendiliğinden yeniden denetler.',
+    'İndirme sırasında o pencere birkaç dakika hiçbir şey göstermeyebilir. Pencereyi kapatmayın. Yükleme bittiğinde buraya dönün. Uygulama kendiliğinden yeniden denetler.',
   loginHowNote:
     'Düğmeye bastığınızda bir tarayıcı açılır. {vendor} hesabınızla oturum açıp İzin ver’e basın; bağlantı kendiliğinden tamamlanır.',
   signingInStalledNote:

@@ -118,7 +118,7 @@ export const en = {
   stepLogin: 'Sign in',
   stepReady: 'Connected',
   installReturnNote:
-    'When the install has finished in that window, come back here. The app checks again by itself.',
+    'That window may show nothing for a few minutes while it downloads. Leave it open. When the install has finished, come back here. The app checks again by itself.',
   loginHowNote:
     'A browser opens when you press it. Sign in with your {vendor} account and press Allow; the connection finishes by itself.',
   signingInStalledNote:

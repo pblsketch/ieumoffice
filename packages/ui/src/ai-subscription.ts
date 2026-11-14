@@ -259,7 +259,7 @@ function cliCardView(
     return {
       ...view,
       noteKeys: desktopAppNoteOf(status.provider),
-      actions: ['install-help'],
+      actions: ['install-help', 'recheck'],
       links: ['install-help'],
     }
   }
@@ -468,7 +468,8 @@ function connectionCardParts(
         tone: 'neutral',
         statusKey: 'cardNotInstalled',
         noteKeys: [...desktopAppNoteOf(status.provider), 'installNote', 'installReturnNote'],
-        actions: ['install', 'install-help'],
+        // installed some other way (the vendor's guide, a terminal): the user can ask again
+        actions: ['install', 'recheck', 'install-help'],
       }
     case 'signed-out': {
       // the browser hands back a code, not the sign-in, when it cannot reach the

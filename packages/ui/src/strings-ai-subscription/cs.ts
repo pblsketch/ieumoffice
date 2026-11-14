@@ -118,7 +118,7 @@ export const cs = {
   stepLogin: 'Přihlášení',
   stepReady: 'Připojeno',
   installReturnNote:
-    'Až instalace v tom okně skončí, vraťte se sem. Aplikace to sama zkontroluje znovu.',
+    'Během stahování může okno několik minut nic nezobrazovat. Nechte ho otevřené. Až instalace skončí, vraťte se sem. Aplikace to sama zkontroluje znovu.',
   loginHowNote:
     'Po kliknutí se otevře prohlížeč. Přihlaste se účtem {vendor} a klikněte na Povolit; připojení se dokončí samo.',
   signingInStalledNote:

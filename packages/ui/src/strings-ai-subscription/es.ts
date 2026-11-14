@@ -124,7 +124,7 @@ export const es = {
   stepLogin: 'Iniciar sesión',
   stepReady: 'Conectado',
   installReturnNote:
-    'Cuando termine la instalación en esa ventana, vuelve aquí. La aplicación vuelve a comprobarlo sola.',
+    'Mientras descarga, esa ventana puede no mostrar nada durante unos minutos. No la cierres. Cuando termine la instalación, vuelve aquí. La aplicación vuelve a comprobarlo sola.',
   loginHowNote:
     'Al pulsarlo se abre un navegador. Inicia sesión con tu cuenta de {vendor} y pulsa Permitir; la conexión se completa sola.',
   signingInStalledNote:
