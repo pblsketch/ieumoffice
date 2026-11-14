@@ -13,6 +13,7 @@ import {
   SAVE_EDITS_CHUNK_MAX,
 } from './ipc-channels'
 import { ADDABLE_SHAPE_TYPES } from '@genoffice/xlsx-gateway/shared/shape-types'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import {
   PIVOT_AGGREGATIONS,
   PIVOT_SHOW_DATA_AS,
@@ -3192,6 +3193,10 @@ export interface DesktopApi {
   ): Promise<{ renamed: boolean; name?: string }>
   exportPdf(request: WorkbookExportPdfRequest): Promise<WorkbookExportPdfResult>
   printWorkbook(request: WorkbookExportPdfRequest): Promise<WorkbookPrintResult>
+  /// The Print dialog's shared layout panel (`sheets:print-layout-*`); the
+  /// editor part of each request is the request `printWorkbook` would get,
+  /// without the printer fields.
+  printLayout: PrintLayoutBridge<WorkbookExportPdfRequest>
   listPrinters(): Promise<PrinterInfo[]>
   exportCsv(request: WorkbookExportCsvRequest): Promise<WorkbookExportCsvResult>
   /// Export the whole workbook as an ODS copy; the session stays .xlsx.

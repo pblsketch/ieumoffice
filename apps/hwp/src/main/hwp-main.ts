@@ -19,6 +19,10 @@ import {
   showSaveDialogWithMemory,
 } from '@genoffice/electron-utils'
 import type { SaveDiskState } from '@genoffice/electron-utils'
+import {
+  LABEL_SPEC_FILE_NAME,
+  ensurePrintLayoutIpc,
+} from '@genoffice/electron-utils/print-arranged'
 import { hwpToText } from '@genoffice/file-parse'
 import { getUiLang } from '@genoffice/i18n'
 import { registerHwpAttachmentIpc } from './attachments-ipc'
@@ -26,6 +30,7 @@ import { registerHwpImageIpc } from './ai-image'
 import { atomicWriteFile } from './atomic-write'
 import { readHwpDefaultFormat } from './default-format'
 import { badJob, printJobToPdf, printJobToPrinter } from './print-document'
+import { registerHwpPrintLayout } from './print-layout'
 import { tm } from './dialog-strings'
 import { fieldKindsOf } from './field-kinds'
 import type { FieldKinds } from './field-kinds'
@@ -340,6 +345,13 @@ export function requestHwpPreview(contents: WebContents, action: PreviewAction):
 const printWindow = (): BrowserWindow =>
   new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } })
 
+/**
+ * The hidden window the advanced print layout prints its face pictures from: no preload,
+ * sandboxed, scripts on for the shared readiness check (the page it loads has none).
+ */
+const arrangedPrintWindow = (): BrowserWindow =>
+  new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+
 /** The name an exported PDF is offered under: the document's, or the untitled one. */
 function pdfName(wcId: number): string {
   const current = savePathByWc.get(wcId)
@@ -541,6 +553,18 @@ function registerHwpIpc(): void {
   })
   installHwpRecovery(recoveryHost)
   registerHwpRecoveryIpc()
+
+  // advanced print layout: the job PDF is the PDF export's, arranged and printed or saved
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerHwpPrintLayout({
+    ipcMain,
+    createJobWindow: printWindow,
+    createPrintWindow: arrangedPrintWindow,
+    pickSavePath: (event) => pickPdfTarget(event.sender as WebContents),
+  })
 
   // ---- headless export mode (--headless-export) ----
   ipcMain.handle(HWP_CHANNELS.consumeHeadlessExport, (e): string | null => {

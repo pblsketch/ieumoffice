@@ -46,7 +46,17 @@ Zasady: rozszerzenie jest zachowywane automatycznie; niedozwolone znaki, kropki 
 
 ## Drukowanie
 
-Plik ▸ Drukuj… w każdym edytorze (⌘P/ctrl+P) otwiera systemowe okno drukowania; pliki PDF drukują się z bieżącą kolejnością stron i obrotami.
+Plik ▸ Drukuj (⌘P/ctrl+P) otwiera w każdym edytorze okno drukowania. Docs, PDF, Sheets, Slides i Markdown mają sekcję **Układ stron** w swoim dotychczasowym oknie drukowania, HWP w podglądzie wydruku, a HTML, mapa myśli i diagram w nowym, małym oknie drukowania. Jeśli w sekcji Układ stron nic nie wybierzesz, drukowanie przebiega tak samo jak dotąd.
+
+- **Układ**: wybierz Jedna strona na arkusz, Kilka stron na arkusz (2, 4, 6, 9 lub 16), Broszura (oprawa z lewej lub z prawej), Plakat (arkusze w poziomie i w pionie, zakładka, linie cięcia) albo Etykiety (jedna strona na etykietę lub ta sama strona na każdej etykiecie, etykieta początkowa, popularny format A4 lub własne wymiary).
+- **Tylko nieparzyste strony arkusza, tylko parzyste strony arkusza, odwrotna kolejność**: strony liczy się po ułożeniu, według tego, co faktycznie wychodzi z drukarki. Przydaje się przy drukarce bez druku dwustronnego: wydrukuj przednie strony, odwróć papier i wydrukuj tylne.
+- **Zmniejsz do rozmiaru papieru**: zmniejszane są tylko strony większe niż wybrany papier; mniejsze nie są powiększane. Sheets i Markdown korzystają ze swoich dotychczasowych pól papieru i skali.
+- **Skala szarości i rozdzielczość obrazu**: przy drukowaniu z opcjami sekcji Układ stron każda strona jest zamieniana na obraz i dopiero wtedy trafia do drukarki. Rozdzielczość wybierasz spośród: Automatyczna, 150, 300 lub 600 dpi.
+- **Tylko zaznaczenie**: Docs i Markdown drukują tylko zaznaczony tekst, ułożony od nowa od pierwszej strony; Slides drukuje zaznaczone slajdy, a PDF zaznaczone strony. Sheets jak dotąd drukuje zaznaczony zakres.
+- **Schemat układu i podgląd wyniku**: schemat od razu pokazuje, gdzie na papierze trafia każdy numer strony, a **Podgląd wyniku** pokazuje to, co faktycznie powstało. Użyj **Zapisz ułożony wynik jako PDF**, aby wydrukować ten sam układ na innym komputerze lub w drukarni.
+- **Systemowe okno drukowania**: dla broszury wybierz druk dwustronny z obracaniem wzdłuż krótszej krawędzi. Zakres stron i liczbę stron na arkusz zostaw w oknie systemowym bez zmian.
+
+Pliki PDF drukują się z bieżącą kolejnością stron i obrotami.
 
 ## Gdzie trafiają pliki bez tytułu
 
