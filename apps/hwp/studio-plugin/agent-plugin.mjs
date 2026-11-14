@@ -1467,10 +1467,7 @@ function containerOf(doc, hit) {
         ),
       font: (k) => fontOf(() => doc.getCharPropertiesAt(sec, k, 0)),
       // an empty paragraph after k without splitting k: it takes k's paragraph formatting
-      addAfter: (k) => {
-        expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph')
-        foldColumnsAnew(doc, sec)
-      },
+      addAfter: (k) => expectOk(doc.insertParagraph(sec, k + 1), 'add a paragraph'),
       insert: (k, text) => expectOk(doc.insertText(sec, k, 0, text), 'insert'),
       deleteText: (k, count) => expectOk(doc.deleteText(sec, k, 0, count), 'delete'),
       deleteRange: (k1, o1, k2, o2) => expectOk(doc.deleteRange(sec, k1, o1, k2, o2), 'delete'),
@@ -4822,32 +4819,6 @@ function columnsOf(doc, sec) {
   const count = Number.isInteger(def?.columnCount) && def.columnCount > 1 ? def.columnCount : 1
   const gapPt = count > 1 && Number.isFinite(def.spacing) ? Math.max(0, def.spacing) / 100 : 0
   return { count, gapPt }
-}
-
-/**
- * A paragraph the engine adds on its own (insertParagraph) where the text runs in columns is
- * paginated without its line spacing, and so is every paragraph split off it: the text runs
- * below the page (docs/tracking/findings.md). The engine folds anew only when the width of a
- * column changes, so the columns go to one and back.
- */
-function foldColumnsAnew(doc, sec) {
-  const def = parse(doc.getColumnDef(sec))
-  if (!(def.columnCount > 1)) return
-  const widthsCanBeSetBack = def.sameWidth === true
-  // the engine names the controls of the first section only, and folds a whole section to
-  // the width of its first column definition
-  const columnDefinitions =
-    sec === 0
-      ? parse(doc.getControls()).filter(
-          (control) => control.list === 0 && control.ctrlId === 'cold',
-        ).length
-      : null
-  if (!widthsCanBeSetBack || columnDefinitions !== 1) return
-  expectOk(doc.setColumnDef(sec, 1, def.columnType, 1, 0), 'lay the columns out again')
-  expectOk(
-    doc.setColumnDef(sec, def.columnCount, def.columnType, 1, def.spacing),
-    'lay the columns out again',
-  )
 }
 
 /**
