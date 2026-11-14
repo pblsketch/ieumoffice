@@ -17,6 +17,7 @@ import { IconChevronLeft, IconChevronRight } from '@genoffice/ui/icons'
 import type { AgentBridge } from '../ai/agent-bridge'
 import { useI18n } from '../i18n/locale'
 import type { HwpApi, PrintJob, PrintMode, PrintResult } from '../../shared/ipc'
+import { createJobCache, gatherPageSizes } from '../print-flow'
 import { LruPages } from './preview-cache'
 import {
   MAX_ZOOM,
@@ -58,7 +59,7 @@ let rememberedZoom: ZoomMode = 'fit-page'
 let rememberedMargins = false
 
 interface Props {
-  bridge: Pick<AgentBridge, 'previewPage'>
+  bridge: Pick<AgentBridge, 'previewPage' | 'printPageSizes' | 'documentRevision'>
   /** 0-based page the cursor was on; clamped once the document's count is known. */
   initialPage: number
   /** A File > Print / Ctrl+P that arrived while the preview was open. */
@@ -72,7 +73,10 @@ interface Props {
   onEditPage: (page: number) => Promise<boolean>
   /** the advanced print layout's calls; only used while a layout option is on */
   printLayout: HwpApi['printLayout']
-  /** the job's pages as the PDF export gathers them, for the advanced print layout */
+  /**
+   * the job's pages as the PDF export gathers them, for the advanced print layout; the
+   * preview gathers them once and hands them out again while the document stays as it was
+   */
   gatherJob: (onProgress: (done: number, total: number) => void) => Promise<PrintJob>
 }
 
@@ -97,6 +101,9 @@ export function PrintPreview({
   // every preview starts at the default layout: nothing carries over from the last print
   const [layout, setLayout] = usePrintLayoutOptions(true)
   const [drawnSizes, setDrawnSizes] = useState<ReadonlyMap<number, PixelSize>>(new Map())
+  /** every page's print size, asked for once a layout option is on; null until it comes */
+  const [printSizes, setPrintSizes] = useState<readonly PixelSize[] | null>(null)
+  const printSizesAskedRef = useRef(false)
   const [layoutProgress, setLayoutProgress] = useState<PrintLayoutProgress | null>(null)
   const [layoutFailure, setLayoutFailure] = useState<LayoutFailure | null>(null)
   const [layoutSaved, setLayoutSaved] = useState(false)
@@ -273,17 +280,40 @@ export function PrintPreview({
   // revision is read so a cache fill redraws the page; the value itself is not used
   void revision
 
+  const layoutOn = takesNewPrintRoute(layout)
+
+  // Every page's print size, measured without drawing, once an option is on: the diagram
+  // shows pages the preview has not drawn. A failed call leaves the drawn pages' sizes.
+  useEffect(() => {
+    if (!layoutOn || pageCount === null || printSizesAskedRef.current) return
+    printSizesAskedRef.current = true
+    gatherPageSizes(bridge).then(
+      (sizes) => {
+        if (mountedRef.current && sizes.length === pageCountRef.current) setPrintSizes(sizes)
+      },
+      () => {},
+    )
+  }, [layoutOn, pageCount, bridge])
+
   // The job's page count and sizes for the layout diagram and its checks.
   const layoutPages = useMemo(
-    () => (pageCount === null ? null : layoutPageSizes(pageCount, drawnSizes, FALLBACK_SIZE)),
-    [pageCount, drawnSizes],
+    () =>
+      pageCount === null ? null : layoutPageSizes(pageCount, drawnSizes, FALLBACK_SIZE, printSizes),
+    [pageCount, drawnSizes, printSizes],
   )
-  const layoutOn = takesNewPrintRoute(layout)
   const layoutProblem = useMemo(
     () => (layoutOn ? printLayoutProblem(layout, layoutPages) : null),
     [layoutOn, layout, layoutPages],
   )
   const layoutRunningRef = useRef(false)
+
+  // The arranged preview, print and save of one open preview share the pages gathered for
+  // the first of them; the job is let go when the preview closes.
+  const jobCache = useMemo(
+    () => createJobCache(gatherJob, () => bridge.documentRevision()),
+    [gatherJob, bridge],
+  )
+  useEffect(() => () => jobCache.clear(), [jobCache])
 
   // A layout job still running when the preview closes is stopped: nothing is sent.
   useEffect(
@@ -311,7 +341,7 @@ export function PrintPreview({
         if (mountedRef.current) setLayoutProgress(next)
       })
       try {
-        const job = await gatherJob((done, total) => {
+        const job = await jobCache.get((done, total) => {
           if (mountedRef.current) setProgress({ done, total })
         })
         if (!mountedRef.current) return
@@ -349,12 +379,12 @@ export function PrintPreview({
         }
       }
     },
-    [gatherJob, printLayout],
+    [jobCache, printLayout],
   )
 
   const previewLayout = useCallback<PrintLayoutPreviewRequest>(
     async (options, { signal, onProgress }) => {
-      const job = await gatherJob((done, total) => onProgress({ done, total }))
+      const job = await jobCache.get((done, total) => onProgress({ done, total }))
       signal.throwIfAborted()
       const off = printLayout.onProgress(onProgress)
       const stop = (): void => void printLayout.cancel()
@@ -368,7 +398,7 @@ export function PrintPreview({
         signal.removeEventListener('abort', stop)
       }
     },
-    [gatherJob, printLayout],
+    [jobCache, printLayout],
   )
 
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
