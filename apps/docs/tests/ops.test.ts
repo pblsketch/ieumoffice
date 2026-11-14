@@ -392,10 +392,10 @@ describe('findReplace', () => {
 
   it('matches across runs case-insensitively', () => {
     const editor = createEditor([
-      para([text('GEN', [{ type: 'bold' }]), text('spark')], { docxIndex: 0 }),
+      para([text('OPEN', [{ type: 'bold' }]), text('office')], { docxIndex: 0 }),
     ])
     const outcome = executeOps(editor, [
-      { op: 'findReplace', find: 'genspark', replace: 'X', matchCase: false },
+      { op: 'findReplace', find: 'openoffice', replace: 'X', matchCase: false },
     ])
     expect(outcome.ok).toBe(true)
     expect(editor.state.doc.child(0).textContent).toBe('X')
