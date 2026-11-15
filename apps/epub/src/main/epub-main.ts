@@ -47,6 +47,9 @@ import type { SaveDiskState } from '@genoffice/electron-utils'
 import { getUiLang, normalizeLang, setUiLang } from '@genoffice/i18n'
 import { buildTranslatedEpub, epubTranslationUnits } from '@genoffice/epub-engine'
 import { ResultStore } from '@genoffice/pdf-structure/store'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import { registerEpubAiIpc } from './ai-attachments'
 import { EPUB_ASSET_SCHEME_PRIVILEGE, serveEpubAsset } from './asset-protocol'
 import { atomicWriteFile } from './atomic-write'
@@ -58,6 +61,7 @@ import { checkResultPath, pathKey, samePath } from './result-paths'
 import { saveBook } from './save-pipeline'
 import type { MigrateJobRecords } from './save-pipeline'
 import { createEpubStoreHandlers } from './store-handlers'
+import { AI_OFF_FALLBACK, createScreenAiJobs } from './screen-ai-jobs'
 import type { EpubStoreHandlers } from './store-handlers'
 import { epubAssetBase, defaultResultName } from '../shared/asset-url'
 import { APP_CHANNELS, EPUB_ASSET_SCHEME, EPUB_CHANNELS } from '../shared/ipc'
@@ -615,6 +619,15 @@ async function writeTranslated(
 let ipcRegistered = false
 let storeHandlers: EpubStoreHandlers | null = null
 
+/** the screens' book translations on the shell's list of running AI work */
+const screenAiJobs = createScreenAiJobs({
+  aiOn: aiFeaturesOn,
+  // the shell's refusal of a screen's AI run while AI is turned off (Settings)
+  refusal: (senderId) => aiRunRefusal({ senderId, provider: '', model: '' }) ?? AI_OFF_FALLBACK,
+  register: registerAiJob,
+  stopChannel: EPUB_CHANNELS.aiJobStop,
+})
+
 function registerEpubIpc(): void {
   if (ipcRegistered) return
   ipcRegistered = true
@@ -846,6 +859,12 @@ function registerEpubIpc(): void {
   ipcMain.handle(EPUB_CHANNELS.storeWrite, (e, request: unknown) =>
     handlers.write(e.sender.id, request),
   )
+
+  // a book translation begins and ends (the screen runs it; refused while AI is off)
+  ipcMain.handle(EPUB_CHANNELS.aiJobBegin, (e, jobId: unknown) =>
+    screenAiJobs.begin(e.sender, jobId),
+  )
+  ipcMain.on(EPUB_CHANNELS.aiJobEnd, (e, jobId: unknown) => screenAiJobs.end(e.sender.id, jobId))
 
   // the AI panel's attachments
   registerEpubAiIpc()

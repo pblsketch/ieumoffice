@@ -805,6 +805,8 @@ export const cs = {
   ribbonOutlineView: 'Osnova',
   ribbonOutlineViewTip:
     'Zobrazení osnovy: zobrazit pouze hierarchii nadpisů; nadpisy zůstávají upravitelné',
+  ribbonStoryView: 'Příběh',
+  ribbonStoryViewTip: 'Příběh: psaní bez formátování dokumentu',
   ribbonReadMode: 'Režim čtení',
   ribbonReadModeTip: 'Režim čtení: skrýt pás karet pro soustředěné čtení, ukončíte klávesou Esc',
   ribbonPagePreview: 'Náhled stránky',
@@ -939,10 +941,21 @@ export const cs = {
   ribbonMailingsOutput: 'Výstup korespondence',
   ribbonMailingsOutputPerRecord: 'Jeden dokument na záznam',
   ribbonMailingsOutputSingle: 'Jeden dokument pro všechny záznamy',
+  ribbonMailingsOutputLabels: 'Arch štítků',
+  ribbonMailingsOutputEnvelopes: 'Obálky',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'Vlastní mřížka',
+  ribbonMailingsLabelColumns: 'Sloupce',
+  ribbonMailingsLabelRows: 'Řádky',
+  ribbonMailingsEnvelopeSize: 'Velikost obálky',
   ribbonMailingsNamePattern: 'Název souboru',
   ribbonMailingsNamePatternPh: 'Prázdné: použije se první pole',
   ribbonMailingsFinish: 'Dokončit a sloučit',
   ribbonMailingsMerged: 'Sloučeno dokumentů: {n}',
   ribbonMailingsMergeFailed: 'Sloučení se nezdařilo',
   ribbonMailingsClose: 'Zavřít',
+  ribbonMailingsEnvelopeNote:
+    'Obálky tisknou tento dokument tak, jak je, na papír obálky; blok adresy zůstává u levého horního okraje (průvodce obálkami ve Wordu umisťuje doručovací adresu doprostřed).',
+  ribbonMailingsLabelsDroppedHint:
+    'List štítků nese pouze odstavce: {n} bloků šablony (tabulky, obrázky) bude vynecháno.',
 } satisfies Record<keyof typeof zh, string>

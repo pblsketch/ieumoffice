@@ -15,6 +15,8 @@ import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { ProjectApi } from '@genoffice/project-store'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import { AI_CHANNELS, AI_TOOL_CAPABILITIES_CHANNEL, MARKDOWN_CHANNELS } from '../shared/ipc'
 import { normalizeMarkdownTheme, type MarkdownTheme } from '../shared/markdown-theme'
 import type {
@@ -22,6 +24,7 @@ import type {
   DocTheme,
   ExportFormat,
   MarkdownApi,
+  MarkdownPrintLayoutJob,
   SaveMode,
   UiTheme,
 } from '../shared/ipc'
@@ -29,6 +32,7 @@ import type { SubscriptionApi } from '../shared/subscription-api'
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionStatusMapOf,
 } from '../shared/subscription-api'
@@ -83,6 +87,11 @@ const aiSubscription: SubscriptionApi = {
       handler(subscriptionStatusMapOf(statuses))
     ipcRenderer.on(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
     return () => ipcRenderer.removeListener(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
+  },
+  onUsage(handler) {
+    const listener = (_event: unknown, usage: unknown) => handler(Array.isArray(usage) ? usage : [])
+    ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)
   },
   async openInstallHelp(provider) {
     await ipcRenderer.invoke(SUBSCRIPTION_INSTALL_HELP_CHANNEL, provider)
@@ -185,6 +194,7 @@ const api: MarkdownApi = {
   exportPdf: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.exportPdf, request),
   renderPrintPreview: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.printPreview, request),
   printDocument: (request) => ipcRenderer.invoke(MARKDOWN_CHANNELS.printDocument, request),
+  printLayout: createPrintLayoutBridge<MarkdownPrintLayoutJob>(ipcRenderer, 'markdown'),
   prepareImageExport: (request) =>
     ipcRenderer.invoke(MARKDOWN_CHANNELS.prepareImageExport, request),
   writeExportImage: (id, page, base64) =>
@@ -266,6 +276,13 @@ const projectApi: Pick<ProjectApi, 'resolveChat' | 'appendChat' | 'loadChat' | '
 contextBridge.exposeInMainWorld('markdownApi', api)
 // The split-pane role and focus calls the shell drives this pane with
 contextBridge.exposeInMainWorld('aiOfficeSplit', splitPaneBridge(ipcRenderer))
+// Settings › Editors and AI: the screen reads and hears the choice (hides its AI parts
+// while AI is off); changing it or stopping AI jobs is the shell's alone
+const editorChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: editorChoice.get,
+  onChange: editorChoice.onChange,
+})
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())

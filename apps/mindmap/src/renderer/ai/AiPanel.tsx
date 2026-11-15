@@ -81,6 +81,7 @@ import {
   type ProjectChatOpened,
   type ProjectMemoryLine,
   type ProjectRunPrepared,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
@@ -465,6 +466,12 @@ export function AiPanel({
   sendGateRef.current = sendGate
   /** rate-limit windows the subscription program reported (latest per window) */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own)
+  useSubscriptionUsageUpdates(
+    () => window.mindmapApi?.subscription,
+    setSubscriptionUsage,
+    mergeSubscriptionUsage,
+  )
   /** the last turn's input was cut to fit a limit; shown until dismissed */
   const [inputTruncated, setInputTruncated] = useState(false)
   /** structured cause of the last failed stream */

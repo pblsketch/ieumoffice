@@ -7,6 +7,16 @@ import type { DroppedSkillSource } from './user-skills'
 export interface DroppedFilesDeps {
   /** the normal File > Open pipeline; false = the path didn't open */
   openDocumentPath: (path: string) => boolean
+  /**
+   * The documents of one drop, together: files of turned-off editors get one
+   * question per editor (editor-gate.ts). True = anything opened. Absent =
+   * each path goes through openDocumentPath.
+   */
+  openPaths?: (paths: readonly string[]) => Promise<boolean>
+  /** AI features are on (Settings → Editors and AI); absent = on */
+  aiFeaturesOn?: () => boolean
+  /** AI is off and a skill was dropped: ask to turn AI on; true = it is on now */
+  askAiOnForSkills?: () => Promise<boolean>
   /** bring the shell window forward (the drop may land in a detached editor) */
   revealShellWindow: () => void
   /** the shared warning box; receives a localized message */
@@ -28,24 +38,37 @@ export interface DroppedFilesDeps {
  * the skills import preview. A zip or `SKILL.md` that holds no skill gets
  * one notice for the whole drop, and only when the drop gave the app nothing
  * else to do: beside a document that opened, a skill that was found or an
- * unsupported-format warning, it stays silent.
+ * unsupported-format warning, it stays silent. While AI is off, skills are
+ * imported only after the person turns AI on (spec 8.1).
  */
 export async function handleDroppedFiles(raw: unknown, deps: DroppedFilesDeps): Promise<void> {
   const { supported, skillFiles, unsupportedExts } = partitionDropPayload(raw)
   let opened = false
-  for (const path of supported) opened = deps.openDocumentPath(path) || opened
+  if (deps.openPaths) {
+    if (supported.length > 0) opened = await deps.openPaths(supported)
+  } else {
+    for (const path of supported) opened = deps.openDocumentPath(path) || opened
+  }
   if (opened) deps.revealShellWindow()
   if (unsupportedExts.length > 0) deps.showWarning(deps.unsupportedMessage(unsupportedExts))
   let acted = opened || unsupportedExts.length > 0
   let missed = false
+  const found: DroppedSkillSource[] = []
   for (const path of skillFiles) {
     const source = await deps.skillSourceOf(path).catch(() => undefined)
-    if (source) {
-      deps.importSkills(source)
-      acted = true
-    } else {
-      missed = true
-    }
+    if (source) found.push(source)
+    else missed = true
+  }
+  const aiOn = deps.aiFeaturesOn?.() ?? true
+  if (!aiOn) {
+    // skills are an AI feature: their settings page is hidden while AI is off.
+    // A drop with skills asks once to turn AI on; one with none says nothing.
+    if (found.length === 0) return
+    if (!(await deps.askAiOnForSkills?.())) return
+  }
+  for (const source of found) {
+    deps.importSkills(source)
+    acted = true
   }
   if (missed && !acted) deps.noSkillsFound()
 }

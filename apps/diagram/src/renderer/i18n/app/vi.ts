@@ -38,6 +38,7 @@ export const vi = {
   btnCancel: 'Hủy',
   exportFailed: 'Xuất không thành công: {error}',
   printFailed: 'In không thành công: {error}',
+  printLayoutSaved: 'Đã lưu kết quả đã sắp xếp thành PDF.',
   linkNotOpened: 'Không thể mở liên kết này.',
   dlgSaveTitle: 'Lưu sơ đồ',
   dlgExportTitle: 'Xuất sơ đồ',

@@ -41,6 +41,7 @@ export const nl = {
   btnCancel: 'Annuleren',
   exportFailed: 'Exporteren mislukt: {error}',
   printFailed: 'Afdrukken mislukt: {error}',
+  printLayoutSaved: 'Ingedeeld resultaat opgeslagen als pdf.',
   linkNotOpened: 'Deze koppeling kan niet worden geopend.',
   dlgSaveTitle: 'Diagram opslaan',
   dlgExportTitle: 'Diagram exporteren',

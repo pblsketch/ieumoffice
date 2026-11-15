@@ -645,6 +645,91 @@ describe('read_url', () => {
   })
 })
 
+describe('web_search', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('is offered with the same name, input and description as the other editors', () => {
+    const tool = setup().skill.tools.find((candidate) => candidate.name === 'web_search')
+    expect(tool).toEqual({
+      name: 'web_search',
+      description:
+        'Search the web for textual information (references/data/facts). Use when you need up-to-date information or are unsure about a fact. Returns titles/links/snippets.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search keywords' },
+          maxResults: { type: 'integer', description: 'Maximum number of results, default 6' },
+        },
+        required: ['query'],
+      },
+    })
+  })
+
+  it('tells the model to search instead of inventing, and to cite what it writes in', () => {
+    const prompt = setup().skill.systemPrompt
+    expect(prompt).toContain('## Web search')
+    expect(prompt).toContain(
+      'When you need up-to-date information, data, or facts beyond the document, use web_search; never fabricate numbers from memory.',
+    )
+    expect(prompt).toContain(
+      'When writing search results into the document, attribute the data source (a link or a source name).',
+    )
+  })
+
+  it('numbers the results, with the direct answer first, through the shared handler', async () => {
+    const webSearch = vi.fn(async () => ({
+      answer: '42',
+      results: [
+        { title: 'First', url: 'https://a.example/1', snippet: 'one' },
+        { title: 'Second', url: 'https://b.example/2', snippet: 'two' },
+      ],
+      method: 'tavily',
+    }))
+    vi.stubGlobal('window', { hwpApi: { webSearch } })
+    const { call } = setup()
+    const result = await call('web_search', { query: '  인구 통계  ' })
+    expect(webSearch).toHaveBeenCalledWith('인구 통계', 6)
+    expect(result.isError).toBeUndefined()
+    expect(result.mutated).toBe(false)
+    expect(result.output).toBe(
+      'Direct answer: 42\n\n1. First\n   https://a.example/1\n   one\n2. Second\n   https://b.example/2\n   two',
+    )
+    expect(result.summary).toBe('aiToolWebSearchDone:{"query":"인구 통계","count":2}')
+  })
+
+  it('passes the number of results the model asked for, and says when there are none', async () => {
+    const webSearch = vi.fn(async () => ({ results: [], method: 'duckduckgo' }))
+    vi.stubGlobal('window', { hwpApi: { webSearch } })
+    const { call } = setup()
+    const result = await call('web_search', { query: 'x', maxResults: 3 })
+    expect(webSearch).toHaveBeenCalledWith('x', 3)
+    expect(result.output).toBe('(no results)')
+    expect(result.isError).toBeUndefined()
+  })
+
+  it('reads a service failure as an error, not as an empty result', async () => {
+    const webSearch = vi.fn(async () => ({ results: [], method: 'error', error: 'HTTP 503' }))
+    vi.stubGlobal('window', { hwpApi: { webSearch } })
+    const { call } = setup()
+    const result = await call('web_search', { query: 'x' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toBe(
+      'web search failed (service error, not an empty result — you may retry): HTTP 503',
+    )
+    expect(result.summary).toBe('aiToolWebSearch')
+  })
+
+  it('refuses an empty query without searching', async () => {
+    const webSearch = vi.fn()
+    vi.stubGlobal('window', { hwpApi: { webSearch } })
+    const { call } = setup()
+    const result = await call('web_search', { query: '   ' })
+    expect(result.isError).toBe(true)
+    expect(result.output).toBe('query must not be empty')
+    expect(webSearch).not.toHaveBeenCalled()
+  })
+})
+
 describe('replace_text', () => {
   it('reports the change to the panel and marks the run as having edited', async () => {
     const { call, changes, bridge } = setup()
@@ -3010,6 +3095,7 @@ describe('the skill as the model sees it', () => {
       'read_document',
       'read_memos',
       'find_text',
+      'web_search',
       'read_url',
       'list_pictures',
       'resize_picture',
@@ -3108,6 +3194,37 @@ describe('pictures', () => {
     expect(on.systemPrompt).not.toContain(IMAGE_GEN_OFF_NOTE)
   })
 
+  it('tells the model how a ChatGPT plan makes pictures when none can be made', () => {
+    expect(IMAGE_GEN_OFF_NOTE).toContain(
+      'If the user uses a ChatGPT plan, making pictures needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex).',
+    )
+    expect(IMAGE_GEN_OFF_NOTE).toContain(
+      "The app's direct ChatGPT connection cannot make pictures, because OpenAI does not allow it.",
+    )
+  })
+
+  it('takes an image model only when the user named one, and passes it to the main process', async () => {
+    const generate = setup().skill.tools.find((tool) => tool.name === 'generate_image')!
+    const properties = (generate.inputSchema as { properties: Record<string, unknown> }).properties
+    expect(properties.model).toMatchObject({ type: 'string' })
+    expect(JSON.stringify(properties.model)).toContain('only when the user named')
+    expect((generate.inputSchema as { required: string[] }).required).not.toContain('model')
+
+    const hwpApi = api()
+    const { call } = setup()
+    await call('generate_image', {
+      where: 'end',
+      prompt: 'a red kite',
+      aspectRatio: '4:3',
+      model: ' gpt-image-2 ',
+    })
+    expect(hwpApi.generateImage).toHaveBeenCalledWith({
+      prompt: 'a red kite',
+      aspectRatio: '4:3',
+      model: 'gpt-image-2',
+    })
+  })
+
   it('downloads a search result and inserts it as a PNG, one change step', async () => {
     const hwpApi = api()
     const { bridge, call, changes } = setup()
@@ -3144,6 +3261,24 @@ describe('pictures', () => {
     const failed = await call('generate_image', { where: 'end', prompt: 'x' })
     expect(failed.isError).toBe(true)
     expect(failed.output).toContain('signed out')
+  })
+
+  it("passes the image tool's note on to the model with the inserted picture", async () => {
+    api({
+      generateImage: vi.fn(async () => ({
+        url: 'file:///store/a.png',
+        note: 'Codex picks the image model on this route',
+      })),
+    })
+    const { bridge, call } = setup()
+    const result = await call('generate_image', {
+      where: 'end',
+      prompt: 'a red kite',
+      model: 'gpt-image-2',
+    })
+    expect(result.isError).toBeUndefined()
+    expect(bridge.insertPicture).toHaveBeenCalled()
+    expect(result.output).toContain('\nNote: Codex picks the image model on this route')
   })
 
   it('refuses bytes that are not the picture the extension names', async () => {

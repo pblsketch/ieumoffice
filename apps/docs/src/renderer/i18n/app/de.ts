@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const de = {
+  appLegacyDocImported:
+    'Die .{ext}-Datei wurde als konvertierte .docx-Kopie geöffnet. Das Original bleibt unverändert; beim Speichern entsteht eine neue .docx-Datei.',
   appScTitle: 'Tastenkombinationen',
   appScFilter: 'Tastenkombination suchen',
   appScNone: 'Keine passenden Tastenkombinationen',
@@ -55,6 +57,7 @@ export const de = {
     'Dieses Dokument enthält vertikalen Text (vorerst horizontal angezeigt; das Speichern ist nicht betroffen)',
   appNewDocCreated:
     'Leeres Dokument erstellt. Beschreiben Sie im KI-Bereich links, was generiert werden soll',
+  appNewDocCreatedNoAi: 'Leeres Dokument erstellt.',
   appNewFailed: 'Erstellen des Dokuments fehlgeschlagen: {error}',
   appSaveFailed: 'Speichern fehlgeschlagen: {error}',
   appAutoSavedAt: 'Automatisch gespeichert ({time})',
@@ -97,6 +100,9 @@ export const de = {
   appPrintRangeAll: 'Alle Seiten',
   appPrintRangeCurrent: 'Aktuelle Seite',
   appPrintRangeCustom: 'Benutzerdefinierter Bereich',
+  appPrintRangeSelection: 'Markierung',
+  appPrintSelectionPreparing: 'Markierung wird auf Seiten verteilt…',
+  appPrintSelectionFailed: 'Die Markierung konnte nicht auf Seiten verteilt werden: {error}',
   appPrintRangeHint: 'z. B. 1,3,5-8',
   appPrintPageCount: '{n} Seiten',
   appPrintNoPages: 'Keine Seiten zum Drucken',

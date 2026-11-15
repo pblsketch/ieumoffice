@@ -118,6 +118,14 @@ export const EPUB_CHANNELS = {
   /** invoke(`EpubStoreWriteRequest`) → `EpubOutcome<EpubStoreWriteResult>` */
   storeWrite: 'epub:store-write',
 
+  // ---- the shell's list of running AI work ----
+  /** invoke(jobId) → `{ ok: true } | { ok: false, error }`: a book translation begins (refused while AI is off) */
+  aiJobBegin: 'epub:ai-job-begin',
+  /** send(jobId): that translation ended */
+  aiJobEnd: 'epub:ai-job-end',
+  /** main → screen (jobId): stop that translation (AI is being turned off) */
+  aiJobStop: 'epub:ai-job-stop',
+
   // ---- chat attachments ----
   /** invoke → `AttachmentAddResult | null` */
   filesPick: 'epub:files-pick',
@@ -651,6 +659,8 @@ export interface EpubTranslateApi {
     request: EpubWriteTranslatedRequest,
   ): Promise<EpubOutcome<EpubWriteTranslatedResult>>
   store: EpubStoreApi
+  /** a translation tells the main process it runs (absent in an older preload) */
+  aiJob?: ScreenAiJobBridge
 }
 
 export interface EpubStoreApi {
@@ -664,6 +674,19 @@ export interface EpubStoreApi {
   /** easy explanations' records come too, each with `mode: 'easy'` */
   unfinishedJobs(docHash: string): Promise<EpubOutcome<{ jobs: JobStatus[] }>>
   write(request: EpubStoreWriteRequest): Promise<EpubOutcome<EpubStoreWriteResult>>
+}
+
+/**
+ * How a book translation tells the main process it runs, so the shell can
+ * count it and stop it when AI is turned off.
+ */
+export interface ScreenAiJobBridge {
+  /** a job begins: null to go on, or the refusal to show (AI is turned off) */
+  begin(jobId: string): Promise<string | null>
+  /** the job ended however it ended */
+  end(jobId: string): void
+  /** the main process asks the job `jobId` to stop */
+  onStop(handler: (jobId: string) => void): () => void
 }
 
 /** The AI panel's bridge. */

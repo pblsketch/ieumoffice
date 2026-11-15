@@ -117,6 +117,11 @@ export interface DocumentTranslationProps {
   onNotice: (text: string) => void
   /** open the AI page-reading window (offered for scanned documents) */
   onOpenAiRead?: () => void
+  /**
+   * AI is turned off (Settings): nothing of this is shown and the window does
+   * not open; a translation that ended still writes its files
+   */
+  hidden?: boolean
 }
 
 /** what the AI window's tool hears back */
@@ -534,7 +539,7 @@ export const DocumentTranslation = forwardRef<DocumentTranslationHandle, Documen
     useImperativeHandle(ref, () => ({
       requestOpen({ lang: target, pages, mode }) {
         const p = propsRef.current
-        if (!p.api || !p.filePath) return { unavailable: true }
+        if (p.hidden || !p.api || !p.filePath) return { unavailable: true }
         const hash = docHashRef.current
         const running = (hash ? session.running(hash) : null) ?? tabJob()
         if (running) return { running: running.progress }
@@ -542,6 +547,7 @@ export const DocumentTranslation = forwardRef<DocumentTranslationHandle, Documen
         return { opened: true }
       },
       resume(job) {
+        if (propsRef.current.hidden) return
         const target = job.lang ?? null
         const hash = docHashRef.current
         const easy = job.mode === 'easy'
@@ -561,6 +567,7 @@ export const DocumentTranslation = forwardRef<DocumentTranslationHandle, Documen
     const nameOf = (code: string) => languageName(code, lang)
     const pdfApi = api
 
+    if (props.hidden) return null
     return (
       <>
         {view && view.kind === 'translate' && (

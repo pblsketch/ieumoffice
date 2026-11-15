@@ -7,6 +7,8 @@
 - 진입과 명령 표: `runCli`·`defaultRegistry`(`src/cli.ts`), `CommandDef`·`CommandRegistry`(`src/registry.ts`), 결과 봉투와 종료 코드(`src/result.ts`), 명령 구현(`src/commands/`), 형식별 어댑터(`src/formats/`).
 - MCP 서버: stdio(`src/mcp/server.ts`)와 HTTP(`src/mcp/http.ts`), 명령 표를 MCP 도구로 바꾸는 `src/mcp/tools.ts`.
 - 검색·이미지·미디어 명령의 준비 과정 `headlessCall`·`cloudToolError`(`src/cloud.ts`)와 `capabilities` 명령.
+- Codex 그림 길의 등록 `registerCodexImageRoute`(`src/cloud.ts`, 결정 0145). `runCli`가 명령마다(`setAiSecretCodec` 뒤) 부른다. `@genoffice/ai-search`의 `createCodexImageGenerator`를 등록하고 가용성을 켤 뿐 아무것도 띄우지 않는다. 사용량 함수는 넘기지 않는다(자동 호출은 장부만 쓴다). 그래서 `image`, MCP 그림 도구, `capabilities`가 Codex 경로를 안다. Codex로 그리는 것은 자동 호출 스위치와 지금 판의 동의가 있을 때뿐이고, 동의 판은 올리지 않았다. 결정 0114의 "Codex 끄기"는 걸리고, 결정 0143의 "AI 끄기"는 걸리지 않는다. 무료 요금제라는 답을 받으면 그 명령 하나 동안 Codex 길을 숨긴다.
+- `image --model`과 MCP `model`은 "그 경로가 내주는 모델이면 쓰고, 아니면 쓸 수 있는 모델 이름과 함께 거절한다"이다. 참조 그림(`--ref`)은 Codex 길에서도 받는다. `hwp apply`는 `web_search`를 앱에서만 되는 도구로 거절하고 `ieumoffice search`를 가리킨다(`NOT_HEADLESS`, `src/formats/hwp-edit.ts`).
 - 웹 페이지 읽기 명령 `read-url`(`src/commands/read-url.ts`, MCP `read_url`): 주소 하나를 그 사이트에서 받아 글자 offset과 함께 돌려준다. 제공자·구독·자동 호출 장부를 쓰지 않는다.
 - PDF 구조 명령: `convert --to md|epub`, `pdf read --structured`, `pdf images`(`src/commands/convert.ts`, `pdf.ts`, `src/formats/pdf-structure.ts`, `pdf-outputs.ts`). 문서 나무와 출력은 `packages/pdf-structure`를 명령 프로세스 안에서 부른다.
 - PDF 문서 작업 명령: `pdf ai-read`, `pdf translate`, `pdf status`(`src/commands/pdf-ai-read.ts`, `pdf-translate.ts`, `pdf-status.ts`, 공통 준비 `pdf-job.ts`), 이 작업들의 AI 연결(`src/pdf-ai.ts`), MCP 도구로 띄운 작업의 추적(`src/pdf-jobs.ts`).
@@ -79,7 +81,7 @@
 ## 테스트
 
 - 실행: `npm run test -w @genoffice/cli`(또는 이 폴더에서 `npx vitest run`), `npm run typecheck -w @genoffice/cli`. 테스트는 `tests/helpers.ts`의 `run()`으로 `runCli`를 프로세스 안에서 부른다.
-- 어떤 테스트도 벤더 프로그램이나 네트워크에 닿으면 안 된다. `tests/headless-tools.test.ts`처럼 `@genoffice/ai-provider/subscription`의 `detectSubscriptionLogin`과 키 제공자 호출을 `vi.mock`으로 바꾼다. 구독 경로에 닿을 수 있는 테스트는 도구나 이미지 생성기도 함께 바꾼다.
+- 어떤 테스트도 벤더 프로그램이나 네트워크에 닿으면 안 된다. `tests/headless-tools.test.ts`처럼 `@genoffice/ai-provider/subscription`의 `detectSubscriptionLogin`과 키 제공자 호출을 `vi.mock`으로 바꾼다. 구독 경로에 닿을 수 있는 테스트는 도구나 이미지 생성기도 함께 바꾼다. `runCli`는 늘 진짜 Codex 그림 생성기를 등록하므로, Codex 경로에 닿을 수 있는 테스트는 `@genoffice/ai-provider`의 `generateCodexImage`와 `listCodexModels`를 `vi.mock`으로 바꾼다(`tests/headless-tools.test.ts`, `tests/capabilities.test.ts`). 바꾸지 않으면 실제 Codex가 뜬다.
 - `tests/upstream-coexistence.test.ts`는 원본 앱과의 공존을 고정한다. 등록·삭제·판정 코드를 바꾸면 "원본의 항목이 그대로 남는다"는 경우를 여기에 추가한다.
 - 바꾸면 반드시 테스트하는 것: 설정 스위치 켬·끔·예전 판 동의에 따른 `capabilities`와 실제 명령의 답이 같은지, 한도 소진(`rate-limit`) 때 봉투의 `errorCode`·`resetsAt`, PDF 작업 명령의 예상만 답하기·요금 경로 거절·`--partial` 유무·이어하기·MCP가 바로 답하기·`pdf_status` 모양(`tests/pdf-ai-jobs.test.ts`, `tests/pdf-structure-commands.test.ts`), EPUB 번역 명령의 같은 것들과 `--chapters` 범위 오류·`unsupported` 이유·성공 `detail` 모양(`tests/epub-jobs.test.ts`), 허용 폴더 밖 경로와 symlink 우회, 앱이 열어 둔 파일 쓰기, 부분 적용 배치(`status: "partial"`).
 - 다이어그램 시험: 앱 없이 되는 것과 앱이 없을 때(`tests/diagram.test.ts`, `GENOFFICE_APP_BIN`을 없는 경로로), 앱이 할 일과 그 답의 처리(`tests/diagram-app.test.ts`, `runDiagramApp`을 `vi.mock`으로 바꾼다).

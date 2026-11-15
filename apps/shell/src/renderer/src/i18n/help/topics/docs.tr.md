@@ -77,4 +77,4 @@ Gövdenin herhangi bir yerine sağ tıklayın — menü tıkladığınız yeri i
 
 ## Yazdırma
 
-Sistem penceresi üzerinden ctrl+P, WYSIWYG sayfalar.
+ctrl+P yazdırma penceresini açar. Yazıcıyı, kopya sayısını, çift taraflı yazdırmayı ve aralığı (seçim dahil) seçebilir, **Sayfa düzeni** bölümünde kâğıt başına birden çok sayfa, kitapçık, afiş, etiket, tek veya çift yüz ve gri tonlama seçebilirsiniz (bkz. [Dosya işlemleri](help://file-ops)).

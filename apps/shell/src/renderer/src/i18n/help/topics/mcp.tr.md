@@ -58,7 +58,7 @@ Her komut bir araçtır. İlginç olanlar:
 `ieumoffice` komutundan veya bir MCP istemcisinden gelen isteği uygulamada siz yazmadığınız için GenOffice onunla dikkatli davranır.
 
 - **Arama** her zaman çalışır ve varsayılan olarak ücretsizdir. Bir arama sağlayıcısı anahtarı yalnızca bir tane seçtiyseniz kullanılır.
-- **Görsel oluşturma** bir görsel sağlayıcı anahtarı gerektirir. Bu sürümde abonelik görsel oluşturmaz.
+- **Görsel oluşturma**, Ayarlar'daki görsel üretimi seçimini izler. Varsayılan seçim olan ChatGPT planı (Codex programı), Codex programı üzerinden ChatGPT planınızı kullanır ve **izin vermedikçe kullanılmaz** (aşağıya bakın). Aksi halde kurduğunuz bir görsel sağlayıcısının anahtarı kullanılır. Ajanın adını verdiği model, o yol sunuyorsa kullanılır.
 - **Bir görseli betimleme**, kuruluysa bir anahtar sağlayıcı kullanır. Claude veya Codex aboneliğiniz **izin vermedikçe kullanılmaz**.
 - **Video ve ses** videoyu destekleyen bir anahtar sağlayıcı gerektirir.
 

@@ -89,7 +89,7 @@ The deb and rpm packages install to `/opt/GenOffice` and link the terminal comma
 
 - GenOffice looks for a newer version on the same GitHub Releases page. When one is published, **Settings ▸ About** offers it: press **Update to …**, wait for the download, then press **Restart & install**. On Windows an installer window shows the progress; when it finishes, GenOffice opens again with the documents you had open. On a Mac the app closes, is swapped for the new version and opens again with the documents you had open. That works for an app in the Applications folder; one opened straight from the disk image points you to the download page instead. The update installs only when you press that button, never when you simply close the app.
 - On Linux only the AppImage updates itself. With a deb or rpm install the app tells you about the new version and opens the download page; install the new file the same way.
-- **Menu (☰) ▸ Check for updates** checks whenever you ask. On a Mac it is **Help ▸ Check for updates**.
+- **Menu (☰) ▸ Check for updates** checks whenever you ask. On a Mac it is **Help ▸ Check for updates**. On a Mac the app menu has it too, right under About.
 - When the check fails — no network, or nothing published yet — nothing happens, and the app keeps working as before.
 - **Update Channel**, also under Settings ▸ About, is Stable or Beta. Changing it takes effect at once and checks for an update; it will not downgrade a Beta install back to Stable.
 - Updates are not code-signed either. Before installing one, the app checks the downloaded file against the checksum published with that release.

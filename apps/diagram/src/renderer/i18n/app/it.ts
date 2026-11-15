@@ -42,6 +42,7 @@ export const it = {
   btnCancel: 'Annulla',
   exportFailed: 'Esportazione non riuscita: {error}',
   printFailed: 'Stampa non riuscita: {error}',
+  printLayoutSaved: 'Risultato disposto salvato in PDF.',
   linkNotOpened: 'Impossibile aprire questo link.',
   dlgSaveTitle: 'Salva diagramma',
   dlgExportTitle: 'Esporta diagramma',

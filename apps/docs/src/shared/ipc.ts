@@ -19,6 +19,11 @@ export interface OpenFileResult {
    * suggests this path (the original's folder and name).
    */
   saveAsDefaultPath?: string
+  /**
+   * The untitled copy was converted from a legacy Word file (`doc`, `dot`):
+   * the tab says so once, since the original stays as it was.
+   */
+  importedFrom?: string
 }
 
 /** Password-protected (ECMA-376 encrypted) docx: the renderer prompts for the
@@ -69,8 +74,9 @@ export interface MergeOutputFile {
   data: ArrayBuffer
 }
 
-/** where the merged documents go: one file for all records, or one per record */
-export type MergeOutputMode = 'single' | 'perRecord'
+/** where the merged documents go: one file for all records, one per record, a
+ * label sheet, or one envelope per record */
+export type MergeOutputMode = 'single' | 'perRecord' | 'labels' | 'envelopes'
 
 export interface MergeOutputRequest {
   mode: MergeOutputMode
@@ -101,6 +107,8 @@ import type {
 } from '@genoffice/ai-provider'
 import type { AiToolCapabilities, MediaToolErrorCode } from '@genoffice/ai-search'
 import type { HeadlessExportTarget } from '@genoffice/electron-utils/headless-export'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import type { PageSize } from '@genoffice/print-layout/plan'
 import type { FaceVerticalMetrics } from '@genoffice/font-metrics'
 import type { AiPanelPrefs, FontFamilyInfo } from '@genoffice/ui'
 import type { DocFormat, SaveAsKind } from './open-file'
@@ -316,8 +324,8 @@ export interface ZoteroRendererResponse {
  * MCP bridge: an editor command pushed from the shell main process into a docs
  * tab so an external agent drives the *visible* editor instead of writing a file
  * behind it. `insert_content` / `replace_blocks` / `apply_ops` / `insert_picture` /
- * `read_document` reuse the built-in agent's tool executors; `save_document` writes
- * the live document to an explicit path.
+ * `read_document` / `read_blocks` reuse the built-in agent's tool executors;
+ * `save_document` writes the live document to an explicit path.
  */
 export type McpEditorCommand =
   | 'insert_content'
@@ -325,6 +333,7 @@ export type McpEditorCommand =
   | 'apply_ops'
   | 'insert_picture'
   | 'read_document'
+  | 'read_blocks'
   | 'save_document'
 
 export interface McpCommandMessage {
@@ -393,6 +402,21 @@ export interface PdfInternalLink {
 }
 
 export type PrintDuplex = 'simplex' | 'longEdge' | 'shortEdge'
+
+/** The word editor's part of an advanced print request: the job PDF as base64
+ *  fragments in page order, and the document name for the save dialog */
+export interface DocsPrintJobRequest {
+  parts: string[]
+  name?: string
+}
+
+/** A selection laid out for printing: its PDF and page sizes, or why not */
+export type PrintSelectionPdfResult =
+  { ok: true; base64: string; pages: PageSize[] } | { ok: false; error: string }
+
+/** A hidden export renderer's target; `untitled`: the document arrives as an
+ *  untitled copy (a printed selection), not as a file of its own */
+export type DocsHeadlessExportTarget = HeadlessExportTarget & { untitled?: boolean }
 
 /** job options from the in-app print dialog; deviceName null = system dialog, '' = OS default printer */
 export interface PrintJobOptions {
@@ -490,7 +514,7 @@ export interface DesktopApi {
   /** an untitled copy queued for this tab (a skill template's); one-shot, null when none */
   consumeDocCopy?(): Promise<OpenFileResult | null>
   /** Headless export mode: the path and format this hidden renderer must export, null in normal use */
-  consumeHeadlessExport(): Promise<HeadlessExportTarget | null>
+  consumeHeadlessExport(): Promise<DocsHeadlessExportTarget | null>
   /** Headless export mode: report the export outcome so the main process can quit */
   headlessExportDone(result: { ok: boolean; error?: string }): void
   /** AI create_document: build a new standalone file and open it in a new tab */
@@ -690,6 +714,11 @@ export interface DesktopApi {
     images: MarkdownImage[],
     outPath?: string,
   ): Promise<{ ok: boolean; path?: string; error?: string; imagesDropped?: number }>
+  /** Advanced print (decision 0141): preview, print and save the arranged job; the job PDF rides in `editor` */
+  printLayout: PrintLayoutBridge<DocsPrintJobRequest>
+  /** Print selection: lay out a .docx of the selected content in a hidden window as one
+   *  section (`sectPr`, null = the body's own) numbered from 1; the PDF comes back as base64 */
+  printSelectionPdf(docx: ArrayBuffer, sectPr: string | null): Promise<PrintSelectionPdfResult>
   /** Mixed paper-size export: produce a set of PDF bytes (base64) at given sizes per the current print layout */
   printPdfBuffer(
     pageWidthTwips: number,
@@ -760,7 +789,7 @@ export interface DesktopApi {
   }): Promise<{ text?: string; error?: string; errorCode?: MediaToolErrorCode; resetsAt?: number }>
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
   /** AI image generation via the Codex subscription or a key image provider (see aiToolCapabilities) */
-  aiGenerateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  aiGenerateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
     errorCode?: MediaToolErrorCode

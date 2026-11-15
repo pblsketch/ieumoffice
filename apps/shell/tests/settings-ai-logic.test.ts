@@ -12,6 +12,7 @@ import {
   aiSelectionChoices,
   aiSelectionValue,
   changeAiSettings,
+  chatGptImageConnectShown,
   initialAdvancedProvider,
   mediaKeyProviders,
   mediaSelection,
@@ -399,6 +400,47 @@ describe('the Advanced key pane', () => {
     )
     // the stored selection still comes first
     expect(initialAdvancedProvider({ ...withKey, provider: 'codex' }, AI_PROVIDERS)).toBe('codex')
+  })
+})
+
+describe('the ChatGPT plan line under image generation', () => {
+  const states: AiSubscriptionStatus['state'][] = [
+    'checking',
+    'not-installed',
+    'signed-out',
+    'ready',
+    'metered',
+    'error',
+    'off',
+  ]
+  // the capability report: unavailable, available, or not read (yet, or no bridge)
+  const reports = [false, true, null] as const
+
+  it('shows only for ChatGPT ready, Codex not ready and image generation unavailable', () => {
+    for (const chatgpt of states) {
+      for (const codex of states) {
+        for (const report of reports) {
+          const statuses = {
+            'claude-code': status('claude-code', 'ready'),
+            chatgpt: status('chatgpt', chatgpt),
+            codex: status('codex', codex),
+          }
+          expect(
+            chatGptImageConnectShown(statuses, report),
+            `chatgpt=${chatgpt} codex=${codex} report=${report}`,
+          ).toBe(chatgpt === 'ready' && codex !== 'ready' && report === false)
+        }
+      }
+    }
+  })
+
+  it('a Codex metered login is not a subscription one, and a missing status is not ready', () => {
+    const chatgpt = status('chatgpt', 'ready')
+    expect(
+      chatGptImageConnectShown({ chatgpt, codex: status('codex', 'metered', true) }, false),
+    ).toBe(true)
+    expect(chatGptImageConnectShown({ chatgpt }, false)).toBe(true)
+    expect(chatGptImageConnectShown({ codex: status('codex', 'signed-out') }, false)).toBe(false)
   })
 })
 

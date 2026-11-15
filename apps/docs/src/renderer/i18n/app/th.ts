@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const th = {
+  appLegacyDocImported:
+    'เปิดไฟล์ .{ext} เป็นสำเนา .docx ที่แปลงแล้ว ไฟล์ต้นฉบับไม่เปลี่ยนแปลง การบันทึกจะเขียนเป็นไฟล์ .docx ใหม่',
   appScTitle: 'แป้นพิมพ์ลัด',
   appScFilter: 'ค้นหาแป้นพิมพ์ลัด',
   appScNone: 'ไม่พบแป้นพิมพ์ลัดที่ตรงกัน',
@@ -52,6 +54,7 @@ export const th = {
   appFontsMissing: 'ไม่มีแบบอักษรของเอกสาร: {names} (แสดงด้วยแบบอักษรทดแทน)',
   appVerticalTextNotice: 'เอกสารนี้มีข้อความแนวตั้ง (แสดงเป็นแนวนอนชั่วคราว ไม่มีผลต่อการบันทึก)',
   appNewDocCreated: 'สร้างเอกสารเปล่าแล้ว อธิบายเนื้อหาที่ต้องการสร้างได้ในแผง AI ทางซ้าย',
+  appNewDocCreatedNoAi: 'สร้างเอกสารเปล่าแล้ว',
   appNewFailed: 'สร้างเอกสารไม่สำเร็จ: {error}',
   appSaveFailed: 'บันทึกไม่สำเร็จ: {error}',
   appAutoSavedAt: 'บันทึกอัตโนมัติแล้ว ({time})',
@@ -93,6 +96,9 @@ export const th = {
   appPrintRangeAll: 'ทุกหน้า',
   appPrintRangeCurrent: 'หน้าปัจจุบัน',
   appPrintRangeCustom: 'ช่วงที่กำหนดเอง',
+  appPrintRangeSelection: 'ส่วนที่เลือก',
+  appPrintSelectionPreparing: 'กำลังจัดหน้าส่วนที่เลือก…',
+  appPrintSelectionFailed: 'จัดหน้าส่วนที่เลือกไม่ได้: {error}',
   appPrintRangeHint: 'เช่น 1,3,5-8',
   appPrintPageCount: 'ทั้งหมด {n} หน้า',
   appPrintNoPages: 'ไม่มีหน้าที่จะพิมพ์',

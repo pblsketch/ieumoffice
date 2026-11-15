@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ja = {
+  appLegacyPptImported:
+    '.ppt ファイルを .pptx のコピーに変換して開きました。元のファイルはそのままで、保存すると新しい .pptx ファイルになります。ノートとアニメーションは引き継がれません。',
   redactMenuLabel: '選択範囲をAIから隠す',
   redactDialogDesc:
     '選択した内容はドキュメントとファイルに残り、AI には下のマーカーしか見えません。名前をつけると、何を表すかAIが理解できます。',
@@ -171,6 +173,9 @@ export const ja = {
   appPrintLandscape: '横',
   appPrintFrame: 'スライドに枠を付ける',
   appPrintHidden: '非表示スライドを印刷する',
+  appPrintRangeSelected: '選択したスライド',
+  appPrintLayoutBlocked:
+    '配布資料とノートは 1 枚に 1 ページで印刷します。ページを配置するには、レイアウトを「スライド(フルページ)」にしてください。',
   appPrintPageCount: '全 {n} ページ',
   appPrintNoPages: '印刷できるスライドがありません',
   appPrintRendering: 'プレビューを生成しています…',

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const en = {
+  appLegacyDocImported:
+    'Opened the .{ext} file as a converted .docx copy. The original stays as it was; saving writes a new .docx file.',
   appScTitle: 'Keyboard Shortcuts',
   appScFilter: 'Search shortcuts',
   appScNone: 'No matching shortcuts',
@@ -54,6 +56,7 @@ export const en = {
   appVerticalTextNotice:
     'This document contains vertical text (shown horizontally for now; saving is unaffected)',
   appNewDocCreated: 'Blank document created. Describe what to generate in the AI pane on the left.',
+  appNewDocCreatedNoAi: 'Blank document created.',
   appNewFailed: 'Failed to create document: {error}',
   appSaveFailed: 'Save failed: {error}',
   appAutoSavedAt: 'AutoSaved ({time})',
@@ -93,6 +96,9 @@ export const en = {
   appPrintRangeAll: 'All pages',
   appPrintRangeCurrent: 'Current page',
   appPrintRangeCustom: 'Custom range',
+  appPrintRangeSelection: 'Selection',
+  appPrintSelectionPreparing: 'Laying out the selection…',
+  appPrintSelectionFailed: 'Could not lay out the selection: {error}',
   appPrintRangeHint: 'e.g. 1,3,5-8',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'No pages to print',

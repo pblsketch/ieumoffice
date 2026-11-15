@@ -12,10 +12,12 @@ Chaque éditeur a ses propres combinaisons de touches, et seules quelques-unes f
 | Réduire / agrandir le ruban — tous les éditeurs                          | ⌥⌘R   | Ctrl+F1         |
 | Ruban compact — Docs seulement                                           | ⌥⌘K   | Ctrl+Alt+K      |
 | Ouvrir la feuille des raccourcis clavier — Word uniquement               | ⌘/    | Ctrl+/          |
+| Ouvrir les paramètres — tous les onglets sauf Word                       | ⌘,    | Ctrl+,          |
 
 - **F1 ouvre ce manuel**, pas la feuille des raccourcis. Cette touche appartient au menu de l’application : elle fonctionne donc aussi bien depuis Word, Sheets, Slides, PDF ou l’onglet Home.
 - **Le bouton du ruban est `Ctrl+F1`, ou `⌥⌘R` sur macOS.** Appuyer sur `F1` seul ne fait rien — F1 est le manuel, et la touche du ruban ne partage volontairement pas ce code. `Ctrl+F1` est acceptée sur macOS également, mais `⌥⌘R` est la touche qu’utilise Office pour Mac.
 - **La feuille des raccourcis clavier appartient au seul Word** (`⌘/`). Elle reprend exactement la table Word ci-dessous. Aucun autre éditeur n’en possède.
+- **`⌘,` ouvre les paramètres** (`Ctrl+,` sous Windows et Linux), comme dans la plupart des apps Mac. Dans un onglet Word, ce raccourci reste l’indice : ouvrez alors les paramètres depuis le menu de l’application sur un Mac, ou depuis Menu (☰) ▸ Paramètres… sous Windows et Linux.
 
 ![La feuille des raccourcis clavier propre à Word : l’action à gauche, le raccourci à droite, regroupés par Fichier, Édition, Mise en forme du texte, Mise en forme du paragraphe, Insertion, Révision et outils, Affichage](img/word-shortcuts.png)
 

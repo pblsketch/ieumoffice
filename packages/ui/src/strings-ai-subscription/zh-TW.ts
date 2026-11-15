@@ -105,7 +105,8 @@ export const zhTW = {
   stepInstall: '安裝程式',
   stepLogin: '登入',
   stepReady: '連線完成',
-  installReturnNote: '在該視窗中安裝完成後，請回到這裡。應用程式會自動重新檢查。',
+  installReturnNote:
+    '下載期間，該視窗可能有幾分鐘不顯示任何內容。請不要關閉它。安裝完成後，請回到這裡。應用程式會自動重新檢查。',
   loginHowNote: '按下後會開啟瀏覽器。用你的 {vendor} 帳戶登入並按下允許，就會自動完成連線。',
   signingInStalledNote:
     '如果瀏覽器中沒有開啟登入頁面，請用下方的按鈕開啟登入視窗。如果你還在瀏覽器中登入，請不要按，先在瀏覽器中完成。按下按鈕會停止目前的登入並重新開始。',

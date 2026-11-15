@@ -53,7 +53,7 @@ ieumoffice docs apply brief.docx --ops ops.json
 `search`, `image` ve `media`, uygulamada Ayarlar ▸ AI ▸ Gelişmiş altında kurulmuş olanı kullanır:
 
 - `search` her zaman çalışır. Varsayılan olarak ücretsiz aramayı ya da anahtarını seçtiğiniz arama sağlayıcısını kullanır.
-- `image` bir görsel sağlayıcı anahtarı gerektirir. Bu sürümde abonelik görsel oluşturmaz.
+- `image`, Ayarlar'daki görsel üretimi seçimini izler. Varsayılan seçim olan ChatGPT planı (Codex programı) ile Codex programı üzerinden ChatGPT planınızla çizer; ancak bunu yalnızca otomatik çağrılarda abonelik kullanımına izin verdiyseniz yapar (**varsayılan olarak kapalı**; bkz. [Bir kodlama ajanı bağlama](help://mcp)). Aksi halde kurduğunuz bir görsel sağlayıcısının anahtarını kullanır. `--model`, o yol modeli sunuyorsa kullanılır; sunmuyorsa komut kullanabileceğiniz modellerle yanıt verir. `--ref` ile verilen görseller iki yolda da çalışır.
 - Bir görsel üzerinde `media`, kuruluysa bir anahtar sağlayıcı kullanır. Claude veya Codex aboneliğinizi yalnızca buna izin verdiyseniz kullanır ve bu varsayılan olarak **kapalıdır**; [Bir kodlama ajanı bağlama](help://mcp) anahtarı ve sınırlarını açıklar.
 - Video veya ses üzerinde `media`, videoyu destekleyen bir anahtar sağlayıcı gerektirir.
 

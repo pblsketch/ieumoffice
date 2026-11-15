@@ -10,6 +10,7 @@
  * calls them.
  */
 import type { AiPanelPrefs } from '@genoffice/ui'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiToolCapabilities } from '@genoffice/ai-search'
@@ -78,7 +79,7 @@ export const MINDMAP_CHANNELS = {
   filesReadImage: 'mindmap:files-read-image',
   /** renderer → main(title): name an untitled map's tab from the first AI request. T12 */
   provisionalTitle: 'mindmap:provisional-title',
-  /** invoke({prompt, aspectRatio}) → `{url?, error?, errorCode?}`: one AI picture */
+  /** invoke({prompt, aspectRatio, model}) → `{url?, error?, errorCode?}`: one AI picture */
   aiGenerateImage: 'mindmap:ai-generate-image',
   /** invoke(url) → `{base64, mime} | null`: a web image or a file of the generated-image store */
   fetchImage: 'mindmap:fetch-image',
@@ -298,6 +299,21 @@ export interface PrintMindmapRequest {
 /** A cancelled job is the user closing the system dialog: an outcome, not a failure. */
 export type PrintResult = { ok: true } | { ok: true; canceled: true } | { ok: false; error: string }
 
+/**
+ * The advanced print layout's channels (decision 0141) are
+ * `mindmap:print-layout-preview|print|save|cancel` and the progress event
+ * `mindmap:print-layout-progress`, named by the shared print layout from this prefix.
+ */
+export const MINDMAP_PRINT_LAYOUT_PREFIX = 'mindmap'
+
+/** What a print layout request carries as its `editor` part: the page Print would print. */
+export interface MindmapPrintJob {
+  /** the same self-contained print HTML `print` is given (`snapshotPage`) */
+  html: string
+  /** file name (no extension) the save dialog of the arranged PDF suggests */
+  suggestedName: string
+}
+
 // ---- chat attachments (T12; same shapes as the other editors) ----
 
 /** image attachments skip text extraction: read as base64 on send and passed to the model with the user message */
@@ -461,6 +477,12 @@ export interface MindmapExportApi {
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   exportMarkdown(request: ExportMarkdownRequest): Promise<ExportResult>
   print(request: PrintMindmapRequest): Promise<PrintResult>
+  /**
+   * The advanced print layout: the page `print` would print, made into a
+   * landscape A4 PDF the way the PDF export makes it, then arranged and
+   * previewed, printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<MindmapPrintJob>
 }
 
 /** The AI panel's bridge. The panel and the attachment handlers are T12's. */
@@ -492,10 +514,12 @@ export interface MindmapAiApi {
   readUrl(url: string, offset?: number): Promise<ReadUrlResult>
   imageSearch(query: string, maxResults?: number): Promise<ImageSearchResult>
   /** AI image generation (mindmap-owned channel; the main process picks the backend) */
-  generateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  generateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
     errorCode?: string
+    /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+    note?: string
   }>
   /** Download an image URL (or a file of the generated-image store) in the main process */
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>

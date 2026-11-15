@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ko = {
+  appLegacyDocImported:
+    '.{ext} 파일을 .docx 사본으로 바꿔 열었습니다. 원본은 그대로 두고, 저장하면 새 .docx 파일로 저장됩니다.',
   appScTitle: '키보드 바로 가기',
   appScFilter: '바로 가기 검색',
   appScNone: '일치하는 바로 가기가 없습니다',
@@ -55,6 +57,7 @@ export const ko = {
   appVerticalTextNotice:
     '세로쓰기 텍스트가 포함된 문서입니다(현재 가로쓰기로 표시되며 저장에는 영향이 없습니다)',
   appNewDocCreated: '빈 문서를 만들었습니다. 왼쪽 AI 창에서 생성할 내용을 바로 입력할 수 있습니다',
+  appNewDocCreatedNoAi: '빈 문서를 만들었습니다',
   appNewFailed: '새로 만들기 실패: {error}',
   appSaveFailed: '저장 실패: {error}',
   appAutoSavedAt: '자동 저장됨 ({time})',
@@ -100,6 +103,9 @@ export const ko = {
   appPrintRangeAll: '모든 페이지',
   appPrintRangeCurrent: '현재 페이지',
   appPrintRangeCustom: '사용자 지정 범위',
+  appPrintRangeSelection: '선택 영역',
+  appPrintSelectionPreparing: '선택 영역을 쪽으로 나누는 중…',
+  appPrintSelectionFailed: '선택 영역을 준비하지 못했습니다: {error}',
   appPrintRangeHint: '예: 1,3,5-8',
   appPrintPageCount: '총 {n}페이지',
   appPrintNoPages: '인쇄할 페이지가 없습니다',

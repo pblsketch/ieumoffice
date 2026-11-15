@@ -36,6 +36,7 @@ export const zhTW = {
   btnCancel: '取消',
   exportFailed: '匯出失敗：{error}',
   printFailed: '列印失敗：{error}',
+  printLayoutSaved: '已將編排結果儲存為 PDF。',
   linkNotOpened: '無法開啟此連結。',
   dlgSaveTitle: '儲存圖表',
   dlgExportTitle: '匯出圖表',

@@ -518,6 +518,7 @@ export const hwpdocument_setControlZOrderAt: (a: number, b: number, c: number, d
 export const hwpdocument_setDpi: (a: number, b: number) => void;
 export const hwpdocument_setEquationProperties: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
 export const hwpdocument_setExactFontInstance: (a: number, b: number, c: number) => [number, number, number, number];
+export const hwpdocument_setExportKeepsCanvasMetrics: (a: number, b: number) => void;
 export const hwpdocument_setFallbackFont: (a: number, b: number, c: number) => void;
 export const hwpdocument_setFieldValue: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const hwpdocument_setFieldValueByName: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];

@@ -445,6 +445,11 @@ export const AGENT_TOOLS: AgentToolDef[] = [
           type: 'string',
           description: 'e.g. "1:1", "16:9", "4:3"; omit for the default',
         },
+        model: {
+          type: 'string',
+          description:
+            'image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
+        },
         alt: { type: 'string', description: 'alt text describing the image' },
       },
       required: ['prompt'],
@@ -750,7 +755,7 @@ async function executeImageSearch(call: AgentToolCall): Promise<ToolExecution> {
 
 /** hidden from the tool list while no image provider is reachable (see createHtmlSkill) */
 export const IMAGE_GEN_OFF_NOTE =
-  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.'
+  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery. If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
 
 export function createHtmlSkillCore(access: HtmlDocAccess): {
   buildContext(): string
@@ -832,9 +837,11 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
     const prompt = String(call.input.prompt ?? '').trim()
     if (!prompt) return { output: 'prompt must not be empty', isError: true, summary }
     const aspectRatio = String(call.input.aspectRatio ?? '').trim()
+    const model = String(call.input.model ?? '').trim()
     const generated = await window.htmlApi.aiGenerateImage({
       prompt,
       ...(aspectRatio ? { aspectRatio } : {}),
+      ...(model ? { model } : {}),
     })
     // never write after the user hit stop (generation may resolve long after the abort)
     if (currentSignal?.aborted)
@@ -877,7 +884,9 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
           ? 'inlined as a data URL because the document has no saved location yet'
           : `hot-linked (${src}); the host may expire it`
     return {
-      output: `Inserted the image at L${at} (${landed}). Document is now version ${access.getVersion()}.`,
+      output:
+        `Inserted the image at L${at} (${landed}). Document is now version ${access.getVersion()}.` +
+        (generated.note ? `\nNote: ${generated.note}` : ''),
       mutated: true,
       summary: t('aiToolGenImageDone'),
     }

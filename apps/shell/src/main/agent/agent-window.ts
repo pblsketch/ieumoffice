@@ -10,6 +10,7 @@ import type {
 } from '@genoffice/electron-utils/user-skills-channels'
 import { productName, type Lang } from '@genoffice/i18n'
 import { safeExternalUrl } from '@genoffice/electron-utils'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import type { AgentSessionEvent } from '@genoffice/ai-provider/agent-session'
 import type { AiSubscriptionProviderId, AiSubscriptionStatus } from '@genoffice/ai-provider'
 import {
@@ -372,6 +373,8 @@ export async function startAgentForWindow(
   const mode = value.mode as AgentMode
   const folder = typeof value.folder === 'string' ? value.folder : ''
   const failed = (failure: AgentStartFailure): AgentStartResponse => ({ ok: false, failure })
+  // AI features turned off (editor choice spec 8.3): the window is closing, nothing starts
+  if (!aiFeaturesOn()) return failed({ reason: 'stopped' })
   if (!AGENT_PROVIDERS.includes(provider) || !AGENT_MODES.includes(mode)) {
     return failed({ reason: 'invalid-request' })
   }
@@ -433,10 +436,11 @@ function registerIpc(): void {
 
   ipcMain.handle(AGENT_CHANNELS.getTheme, () => deps?.theme() ?? 'system')
 
-  // Home opens the window; nothing else may
+  // Home opens the window; nothing else may, and not while AI features are off
   ipcMain.handle(AGENT_HOME_OPEN_CHANNEL, (event) => {
     const home = deps?.parentWindow()
     if (!home || home.isDestroyed() || event.sender !== home.webContents) return
+    if (!aiFeaturesOn()) return
     openAgentWindow()
   })
 
@@ -518,7 +522,7 @@ function registerIpc(): void {
     const owner = ownerOf(event)
     if (owner === null || !manager || typeof sessionId !== 'string' || typeof text !== 'string')
       return false
-    if (!text.trim()) return false
+    if (!text.trim() || !aiFeaturesOn()) return false
     try {
       await manager.send(owner, sessionId, text)
       return true
@@ -723,6 +727,14 @@ export function openAgentWindow(): void {
   } else {
     void next.loadFile(join(__dirname, '../renderer/agent.html'))
   }
+}
+
+/**
+ * AI features were turned off: the window closes, and its sessions end with it
+ * (editor choice spec 8.1)
+ */
+export function closeAgentWindow(): void {
+  if (win && !win.isDestroyed()) win.close()
 }
 
 /** The app is quitting: every session ends with it */

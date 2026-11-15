@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const it = {
+  appLegacyDocImported:
+    'Il file .{ext} è stato aperto come copia .docx convertita. L’originale resta invariato; il salvataggio crea un nuovo file .docx.',
   appScTitle: 'Scelte rapide da tastiera',
   appScFilter: 'Cerca scelta rapida',
   appScNone: 'Nessuna scelta rapida corrispondente',
@@ -54,6 +56,7 @@ export const it = {
   appVerticalTextNotice:
     'Questo documento contiene testo verticale (mostrato orizzontalmente per ora; il salvataggio non è interessato)',
   appNewDocCreated: 'Documento vuoto creato. Descrivi cosa generare nel pannello IA a sinistra.',
+  appNewDocCreatedNoAi: 'Documento vuoto creato.',
   appNewFailed: 'Creazione del documento non riuscita: {error}',
   appSaveFailed: 'Salvataggio non riuscito: {error}',
   appAutoSavedAt: 'Salvato automaticamente ({time})',
@@ -96,6 +99,9 @@ export const it = {
   appPrintRangeAll: 'Tutte le pagine',
   appPrintRangeCurrent: 'Pagina corrente',
   appPrintRangeCustom: 'Intervallo personalizzato',
+  appPrintRangeSelection: 'Selezione',
+  appPrintSelectionPreparing: 'Impaginazione della selezione…',
+  appPrintSelectionFailed: 'Impossibile impaginare la selezione: {error}',
   appPrintRangeHint: 'es. 1,3,5-8',
   appPrintPageCount: '{n} pagine',
   appPrintNoPages: 'Nessuna pagina da stampare',

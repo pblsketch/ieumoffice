@@ -96,6 +96,14 @@ export function resolveImageRoute(
   })
 }
 
+/**
+ * True for everyone, so it is always said: a ChatGPT plan makes pictures only
+ * through the Codex program, because OpenAI allows no image generation on the
+ * app's direct ChatGPT connection (decision 0081).
+ */
+export const CHATGPT_PLAN_IMAGE_HINT =
+  " If the user uses a ChatGPT plan, making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the app's direct ChatGPT connection cannot make images because OpenAI does not allow it."
+
 export function imageGenerationUnavailableMessage(
   settings: AiSettings,
   context: AiToolCallContext = SCREEN_TOOL_CONTEXT,
@@ -107,6 +115,7 @@ export function imageGenerationUnavailableMessage(
   return (
     `Image generation is unavailable: ${connect}add an image provider key under Settings > AI > Advanced.` +
     (offered && blocked ? HEADLESS_SETTING_HINT : '') +
+    CHATGPT_PLAN_IMAGE_HINT +
     ' Use image search for imagery instead.'
   )
 }

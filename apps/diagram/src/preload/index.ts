@@ -10,6 +10,7 @@ import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { ProjectApi } from '@genoffice/project-store'
 import type { AiPanelPrefs } from '@genoffice/ui'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import {
   PROJECT_FOLDER_BRIDGE_KEY,
   projectFolderBridge,
@@ -21,6 +22,7 @@ import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import type { Lang } from '@genoffice/i18n'
 import { AI_CHANNELS, APP_CHANNELS, DIAGRAM_CHANNELS } from '../shared/ipc'
@@ -31,6 +33,7 @@ import type {
   DiagramApplyQuery,
   DiagramCoreApi,
   DiagramExportApi,
+  DiagramPrintJob,
   DiagramHeadlessApi,
   DiagramMenuCommand,
   DiagramQueryApi,
@@ -43,6 +46,7 @@ import type {
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionMeteredResultOf,
   subscriptionStatusMapOf,
@@ -92,6 +96,7 @@ const exporting: DiagramExportApi = {
   exportImages: (request) => ipcRenderer.invoke(DIAGRAM_CHANNELS.exportImages, request),
   exportPdf: (request) => ipcRenderer.invoke(DIAGRAM_CHANNELS.exportPdf, request),
   print: (request) => ipcRenderer.invoke(DIAGRAM_CHANNELS.print, request),
+  printLayout: createPrintLayoutBridge<DiagramPrintJob>(ipcRenderer, 'diagram'),
 }
 
 const recovery: DiagramRecoveryApi = {
@@ -157,6 +162,10 @@ const subscription: DiagramSubscriptionApi = {
     listen<[unknown]>(SUBSCRIPTION_IPC_CHANNELS.changed, (statuses) =>
       handler(subscriptionStatusMapOf(statuses)),
     ),
+  onUsage: (handler) =>
+    listen<[unknown]>(SUBSCRIPTION_USAGE_CHANNEL, (usage) =>
+      handler(Array.isArray(usage) ? usage : []),
+    ),
   openInstallHelp: async (provider) => {
     await ipcRenderer.invoke(SUBSCRIPTION_INSTALL_HELP_CHANNEL, provider)
   },
@@ -203,6 +212,12 @@ const projectApi: Pick<ProjectApi, 'resolveChat' | 'appendChat' | 'loadChat' | '
 }
 
 contextBridge.exposeInMainWorld('diagramApi', api)
+// Whether AI is on (Settings › Editors and AI): this screen only reads and follows it
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
 contextBridge.exposeInMainWorld('projectApi', projectApi)
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())

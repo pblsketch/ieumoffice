@@ -48,6 +48,11 @@ export const fr = {
   saveFailedStatus: "Échec de l'enregistrement",
   exportFailed: "Échec de l'export",
   printFailed: "Échec de l'impression : {error}",
+  printRangeEmpty:
+    'Ce document compte {count} pages. Saisissez des numéros de page compris dans cette plage.',
+  printPagesFailed: 'Impossible de compter les pages à imprimer : {error}',
+  printLayoutSaved: 'Le résultat mis en page a été enregistré en PDF.',
+  printLayoutSaveFailed: 'Impossible d’enregistrer le PDF : {error}',
   exportHtmlSkipped: 'Exporté, mais {count} ressource(s) n’ont pas pu être intégrées (ex. {first})',
   viewPreview: 'Aperçu',
   viewSplit: 'Scindé',

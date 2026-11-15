@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const cs = {
+  appLegacyDocImported:
+    'Soubor .{ext} byl otevřen jako převedená kopie .docx. Původní soubor zůstává beze změny; uložením vznikne nový soubor .docx.',
   appScTitle: 'Klávesové zkratky',
   appScFilter: 'Hledat zkratky',
   appScNone: 'Žádné odpovídající zkratky',
@@ -54,6 +56,7 @@ export const cs = {
   appVerticalTextNotice:
     'Tento dokument obsahuje svislý text (zatím se zobrazuje vodorovně; ukládání není ovlivněno)',
   appNewDocCreated: 'Prázdný dokument vytvořen. Popište v panelu AI vlevo, co má vygenerovat.',
+  appNewDocCreatedNoAi: 'Byl vytvořen prázdný dokument.',
   appNewFailed: 'Dokument se nepodařilo vytvořit: {error}',
   appSaveFailed: 'Uložení se nezdařilo: {error}',
   appAutoSavedAt: 'Automaticky uloženo ({time})',
@@ -94,6 +97,9 @@ export const cs = {
   appPrintRangeAll: 'Všechny stránky',
   appPrintRangeCurrent: 'Aktuální stránka',
   appPrintRangeCustom: 'Vlastní rozsah',
+  appPrintRangeSelection: 'Výběr',
+  appPrintSelectionPreparing: 'Rozdělování výběru na stránky…',
+  appPrintSelectionFailed: 'Výběr se nepodařilo rozdělit na stránky: {error}',
   appPrintRangeHint: 'např. 1,3,5-8',
   appPrintPageCount: 'Stránek: {n}',
   appPrintNoPages: 'Žádné stránky k tisku',

@@ -44,7 +44,7 @@ Listelerin üstündeki kartlar tek adımda yeni bir belge oluşturur. Bir karta 
 
 Yeni dosya, kenar çubuğunda o anda seçili olan klasöre gider; seçim yoksa varsayılan klasöre gider.
 
-Kartları gizlemek veya sıralarını değiştirmek için Ayarlar → Genel altındaki **Giriş ekranındaki yeni belgeler**’i kullanın. Kapattığınız bir tür yalnızca kartlardan ve Yeni menülerinden çıkar; o türdeki dosyalar eskisi gibi açılır. Giriş ekranında ⌘N/Ctrl+N hâlâ gösterilen ilk türü oluşturur.
+Kartları gizlemek veya sıralarını değiştirmek için Ayarlar → Genel altındaki **Giriş ekranındaki yeni belgeler**’i kullanın. Kapattığınız bir tür yalnızca kartlardan ve Yeni menülerinden çıkar; o türdeki dosyalar eskisi gibi açılır. Giriş ekranında ⌘N/Ctrl+N hâlâ gösterilen ilk türü oluşturur. Ayarlar → Düzenleyiciler ve AI altında bir düzenleyiciyi kapatmak farklıdır: onun kartları ve menü öğeleri de kaybolur, dosyalarını açarken önce sorulur.
 
 Kartların her birinin yaptığı iş:
 

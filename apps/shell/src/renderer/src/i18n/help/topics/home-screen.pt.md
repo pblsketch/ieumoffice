@@ -44,7 +44,7 @@ Os cartões acima das listas criam um documento novo num só passo. Clicar num c
 
 O arquivo novo vai parar à pasta atualmente selecionada na barra lateral; se não houver nenhuma seleção, vai para a pasta predefinida.
 
-Para ocultar cartões ou mudar a ordem, use **Novos documentos no Início** em Configurações → Geral. Um tipo desativado só sai dos cartões e dos menus Novo; os arquivos desse tipo continuam abrindo normalmente. No Início, ⌘N/Ctrl+N cria o primeiro tipo ainda visível.
+Para ocultar cartões ou mudar a ordem, use **Novos documentos no Início** em Configurações → Geral. Um tipo desativado só sai dos cartões e dos menus Novo; os arquivos desse tipo continuam abrindo normalmente. No Início, ⌘N/Ctrl+N cria o primeiro tipo ainda visível. Desativar um editor em Configurações → Editores e IA é diferente: os cartões e itens de menu dele também somem, e abrir os arquivos dele pede confirmação antes.
 
 O que faz cada cartão:
 

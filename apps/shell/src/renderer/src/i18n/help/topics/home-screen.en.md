@@ -44,7 +44,7 @@ The cards above the lists create a new document in one step. Clicking a card cre
 
 The new file lands in the folder currently selected in the sidebar; with no selection it goes to the default folder.
 
-To hide cards or change their order, use **New documents on Home** under Settings → General. A type you turn off only leaves the cards and the New menus; files of that type still open as before. On Home, ⌘N/Ctrl+N creates the first type still shown.
+To hide cards or change their order, use **New documents on Home** under Settings → General. A type you turn off only leaves the cards and the New menus; files of that type still open as before. On Home, ⌘N/Ctrl+N creates the first type still shown. Turning an editor off under Settings → Editors and AI is different: its cards and menu entries go as well, and opening its files asks first.
 
 What each card does:
 

@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { htmlDir, htmlLang, type Lang } from '@genoffice/i18n'
 import App from './App'
 import { LocaleProvider } from './i18n/locale'
+import { AiVisibilityProvider, editorChoiceSource, initialAppChoice } from './ai-visibility'
 import type { DocTheme, UiTheme } from '../shared/ipc'
 import '@genoffice/ui/tokens.css'
 import '@genoffice/ui/screentip.css'
@@ -61,9 +62,13 @@ void (async () => {
     .then(applyAiPanelPrefs)
     .catch(() => {})
   window.markdownApi?.onAiPanelPrefsChanged?.(applyAiPanelPrefs)
+  const choiceSource = editorChoiceSource()
+  const choice = await initialAppChoice(choiceSource)
   createRoot(document.getElementById('root')!).render(
     <LocaleProvider initial={lang}>
-      <App />
+      <AiVisibilityProvider source={choiceSource} initial={choice}>
+        <App />
+      </AiVisibilityProvider>
     </LocaleProvider>,
   )
 })()

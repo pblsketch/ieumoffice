@@ -12,10 +12,12 @@ Mỗi trình soạn thảo có tổ hợp phím riêng, và chỉ vài tổ hợ
 | Thu gọn / mở rộng Ribbon — mọi trình soạn thảo            | ⌥⌘R   | Ctrl+F1         |
 | Ruy-băng gọn — chỉ Docs                                   | ⌥⌘K   | Ctrl+Alt+K      |
 | Mở bảng Phím tắt — chỉ Word                               | ⌘/    | Ctrl+/          |
+| Mở Cài đặt — mọi thẻ trừ Word                             | ⌘,    | Ctrl+,          |
 
 - **F1 mở sổ tay này**, không phải bảng phím tắt. Nó thuộc về menu ứng dụng, nên hoạt động như nhau kể cả từ Word, Sheets, Slides, PDF hay thẻ Trang chủ.
 - **Phím bật/tắt Ribbon là `Ctrl+F1`, hoặc `⌥⌘R` trên macOS.** Nhấn `F1` trần không làm gì — F1 là sổ tay, còn phím của Ribbon cố ý không dùng chung với nó. `Ctrl+F1` cũng được chấp nhận trên macOS, dù `⌥⌘R` mới là phím mà Office for Mac dùng.
 - **Bảng Phím tắt là của riêng Word** (`⌘/`). Nó liệt kê đúng bảng Word ở dưới đây. Không trình soạn thảo nào khác có bảng đó.
+- **`⌘,` mở Cài đặt** (`Ctrl+,` trên Windows và Linux), giống hầu hết ứng dụng Mac. Trong thẻ Word, tổ hợp này vẫn là chỉ số dưới, nên ở đó hãy mở Cài đặt từ menu ứng dụng trên Mac, hoặc từ Menu (☰) ▸ Cài đặt… trên Windows và Linux.
 
 ![Bảng Phím tắt của riêng Word: hành động ở bên trái, tổ hợp phím ở bên phải, chia theo nhóm Tệp, Chỉnh sửa, Định dạng văn bản, Định dạng đoạn văn, Chèn, Rà soát và công cụ, Xem](img/word-shortcuts.png)
 

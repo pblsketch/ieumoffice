@@ -32,6 +32,9 @@ export default defineConfig({
       '@genoffice/electron-utils/print-job': local(
         '../../packages/electron-utils/src/print-job.ts',
       ),
+      '@genoffice/electron-utils/print-arranged': local(
+        '../../packages/electron-utils/src/print-arranged.ts',
+      ),
       '@genoffice/electron-utils/atomic-write': local(
         '../../packages/electron-utils/src/atomic-write.ts',
       ),
@@ -44,8 +47,20 @@ export default defineConfig({
       '@genoffice/electron-utils/template-font-response': local(
         '../../packages/electron-utils/src/template-font-response.ts',
       ),
+      '@genoffice/electron-utils/ai-create-guard': local(
+        '../../packages/electron-utils/src/ai-create-guard.ts',
+      ),
+      '@genoffice/electron-utils/app-choice': local(
+        '../../packages/electron-utils/src/app-choice.ts',
+      ),
       '@genoffice/electron-utils/ai-run-guard': local(
         '../../packages/electron-utils/src/ai-run-guard.ts',
+      ),
+      '@genoffice/electron-utils/ai-activity': local(
+        '../../packages/electron-utils/src/ai-activity.ts',
+      ),
+      '@genoffice/electron-utils/app-choice-bridge': local(
+        '../../packages/electron-utils/src/app-choice-bridge.ts',
       ),
       '@genoffice/electron-utils/generated-images': local(
         '../../packages/electron-utils/src/generated-images.ts',

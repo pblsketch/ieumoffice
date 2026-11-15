@@ -2483,6 +2483,8 @@ export const strings = {
     saveFailed: '保存失败',
     saveVerifyFailed:
       '第 {pages} 页的修改未能完整写回，已取消保存以保护原文件；请撤销该页的相关修改后重试',
+    saveTargetLocked:
+      '无法覆盖该文件：其他程序正在使用它（PDF 阅读器、杀毒软件的勒索病毒防护等），或文件为只读。原文件未被更改，您的修改仍保留在屏幕上。请关闭该程序后重新保存，或使用“另存为”保存到新文件',
     textEditNoMatch: '无法编辑这段文字：未能在文档中定位到对应的文本',
     textBlockOverflow:
       '编辑后的段落放不下：多出的文字会盖住下方内容。请缩短文字，或按 Esc 放弃修改',
@@ -2567,8 +2569,11 @@ export const strings = {
     ocrStopped: '已停止识别扫描页：已识别 {done} / {total} 个扫描页。',
     print: '打印',
     printPreparing: '准备打印…',
+    printPreparingPages: '正在准备打印：{done} / {total} 页',
     printRangeAll: '所有页',
     printRangeCurrent: '当前页',
+    printRangePicked: '所选页面',
+    printSaveRestricted: '此 PDF 设有权限限制，无法将排版结果保存为 PDF。仍可打印。',
     printRangeCustom: '自定义范围',
     printRangeHint: '如:1,3,5-8',
     printIncludeAnnots: '打印注释（高亮、备注）',
@@ -2660,6 +2665,8 @@ export const strings = {
     aiToolGenImage: '生成图片',
     aiToolReadUrl: '已读取 {host} · {n} 字',
     aiToolReadUrlFail: '无法读取 {host}',
+    aiToolWebSearch: '联网搜索',
+    aiToolWebSearchDone: '搜索"{query}" · {count} 条结果',
     aiToolListImages: '读取文档图片',
     aiToolInsertText: '插入文字到第 {page} 页',
     aiToolListInsertedText: '列出插入的文字',
@@ -2938,6 +2945,8 @@ export const strings = {
     saveFailed: 'Save failed',
     saveVerifyFailed:
       'Changes on page {pages} could not be written back intact, so the save was cancelled and the file left untouched; undo the affected edit and try again',
+    saveTargetLocked:
+      'The file could not be overwritten: another program is using it (a PDF viewer, or an antivirus ransomware guard) or it is read-only. The original file is unchanged and your edits are still on screen. Close that program and save again, or use "Save a copy" to save to a new file',
     textEditNoMatch: 'This text cannot be edited: it could not be located in the document',
     textBlockOverflow:
       'The edited paragraph no longer fits: the extra lines would cover the content below. Shorten the text, or press Esc to discard the change',
@@ -3024,8 +3033,12 @@ export const strings = {
     ocrStopped: 'Stopped recognizing scanned pages: {done} of {total} recognized.',
     print: 'Print',
     printPreparing: 'Preparing…',
+    printPreparingPages: 'Preparing to print: {done} / {total} pages',
     printRangeAll: 'All pages',
     printRangeCurrent: 'Current page',
+    printRangePicked: 'Selected pages',
+    printSaveRestricted:
+      'This PDF has permission restrictions, so the arranged result cannot be saved as a PDF. You can still print it.',
     printRangeCustom: 'Custom range',
     printRangeHint: 'e.g. 1,3,5-8',
     printIncludeAnnots: 'Include annotations (highlights, notes)',
@@ -3123,6 +3136,8 @@ export const strings = {
     aiToolGenImage: 'Generate image',
     aiToolReadUrl: 'Read {host} · {n} chars',
     aiToolReadUrlFail: 'Could not read {host}',
+    aiToolWebSearch: 'Web search',
+    aiToolWebSearchDone: 'Searched "{query}" · {count} results',
     aiToolListImages: 'List document images',
     aiToolInsertText: 'Insert text on page {page}',
     aiToolListInsertedText: 'List inserted text',
@@ -3406,6 +3421,8 @@ export const strings = {
     saveFailed: 'Lưu thất bại',
     saveVerifyFailed:
       'Không thể ghi lại nguyên vẹn các thay đổi trên trang {pages}, vì vậy việc lưu đã bị hủy và tệp được giữ nguyên; hãy hoàn tác chỉnh sửa bị ảnh hưởng và thử lại',
+    saveTargetLocked:
+      'Không thể ghi đè tệp: một chương trình khác đang dùng tệp (trình xem PDF, tính năng chống ransomware của phần mềm diệt virus) hoặc tệp chỉ đọc. Tệp gốc vẫn giữ nguyên và các chỉnh sửa vẫn còn trên màn hình. Hãy đóng chương trình đó rồi lưu lại, hoặc dùng "Lưu bản sao" để lưu vào tệp mới',
     textEditNoMatch: 'Không thể chỉnh sửa văn bản này: không tìm thấy vị trí trong tài liệu',
     textBlockOverflow:
       'Đoạn văn đã chỉnh sửa không còn vừa: các dòng thừa sẽ che mất nội dung bên dưới. Hãy rút ngắn văn bản hoặc nhấn Esc để hủy thay đổi',
@@ -3492,8 +3509,12 @@ export const strings = {
     ocrStopped: 'Đã dừng nhận dạng trang quét: đã nhận dạng {done} / {total} trang.',
     print: 'In',
     printPreparing: 'Đang chuẩn bị…',
+    printPreparingPages: 'Đang chuẩn bị in: {done} / {total} trang',
     printRangeAll: 'Tất cả các trang',
     printRangeCurrent: 'Trang hiện tại',
+    printRangePicked: 'Các trang đã chọn',
+    printSaveRestricted:
+      'PDF này có giới hạn quyền nên không thể lưu kết quả đã sắp xếp thành PDF. Bạn vẫn có thể in.',
     printRangeCustom: 'Phạm vi tùy chỉnh',
     printRangeHint: 'ví dụ: 1,3,5-8',
     printIncludeAnnots: 'Bao gồm chú thích (đánh dấu, ghi chú)',
@@ -3591,6 +3612,8 @@ export const strings = {
     aiToolGenImage: 'Tạo hình ảnh',
     aiToolReadUrl: 'Đã đọc {host} · {n} ký tự',
     aiToolReadUrlFail: 'Không đọc được {host}',
+    aiToolWebSearch: 'Tìm kiếm trên web',
+    aiToolWebSearchDone: 'Đã tìm kiếm "{query}" · {count} kết quả',
     aiToolListImages: 'Liệt kê các hình ảnh trong tài liệu',
     aiToolInsertText: 'Chèn văn bản trên trang {page}',
     aiToolListInsertedText: 'Liệt kê văn bản đã chèn',
@@ -3877,6 +3900,8 @@ export const strings = {
     saveFailed: 'Kaydetme başarısız',
     saveVerifyFailed:
       'Sayfa {pages} üzerindeki değişiklikler eksiksiz geri yazılamadı; bu yüzden kaydetme iptal edildi ve dosyaya dokunulmadı. Etkilenen düzenlemeyi geri alıp yeniden deneyin',
+    saveTargetLocked:
+      'Dosyanın üzerine yazılamadı: başka bir program dosyayı kullanıyor (bir PDF görüntüleyici veya virüsten koruma yazılımının fidye yazılımı koruması) ya da dosya salt okunur. Özgün dosya değişmedi ve düzenlemeleriniz ekranda duruyor. O programı kapatıp yeniden kaydedin ya da yeni bir dosyaya kaydetmek için "Kopya kaydet"i kullanın',
     textEditNoMatch: 'Bu metin düzenlenemiyor: belgede konumu bulunamadı',
     textBlockOverflow:
       'Düzenlenen paragraf artık sığmıyor: fazladan satırlar alttaki içeriğin üstünü örter. Metni kısaltın veya değişikliği bırakmak için Esc tuşuna basın',
@@ -3962,8 +3987,12 @@ export const strings = {
     ocrStopped: 'Taranmış sayfaların tanınması durduruldu: {total} sayfanın {done} tanesi tanındı.',
     print: 'Yazdır',
     printPreparing: 'Hazırlanıyor…',
+    printPreparingPages: 'Yazdırmaya hazırlanıyor: {done} / {total} sayfa',
     printRangeAll: 'Tüm sayfalar',
     printRangeCurrent: 'Geçerli sayfa',
+    printRangePicked: 'Seçili sayfalar',
+    printSaveRestricted:
+      "Bu PDF'de izin kısıtlamaları olduğundan düzenlenmiş sonuç PDF olarak kaydedilemez. Yine de yazdırabilirsiniz.",
     printRangeCustom: 'Özel aralık',
     printRangeHint: 'örn. 1,3,5-8',
     printIncludeAnnots: 'Açıklamaları dahil et (vurgular, notlar)',
@@ -4060,6 +4089,8 @@ export const strings = {
     aiToolGenImage: 'Görsel oluşturuldu',
     aiToolReadUrl: '{host} okundu · {n} karakter',
     aiToolReadUrlFail: '{host} okunamadı',
+    aiToolWebSearch: 'Web araması',
+    aiToolWebSearchDone: '"{query}" arandı · {count} sonuç',
     aiToolListImages: 'Belgedeki görseller listelendi',
     aiToolInsertText: 'Sayfa {page} üzerine metin eklendi',
     aiToolListInsertedText: 'Eklenen metin listelendi',
@@ -4345,6 +4376,8 @@ export const strings = {
     saveFailed: '保存に失敗しました',
     saveVerifyFailed:
       'ページ {pages} の変更を完全に書き込めなかったため、保存を中止しました（ファイルは変更されていません）。該当の編集を取り消してからもう一度お試しください',
+    saveTargetLocked:
+      'ファイルを上書きできませんでした。別のプログラム（PDF ビューアー、ウイルス対策ソフトのランサムウェア保護など）が使用中か、ファイルが読み取り専用です。元のファイルはそのままで、編集内容は画面に残っています。そのプログラムを閉じてもう一度保存するか、「名前を付けて保存」で新しいファイルに保存してください',
     textEditNoMatch: 'このテキストは編集できません：文書内で該当箇所を特定できませんでした',
     textBlockOverflow:
       '編集後の段落が収まりません：あふれた行が下の内容に重なってしまいます。文字を短くするか、Esc で変更を破棄してください',
@@ -4428,8 +4461,12 @@ export const strings = {
     ocrStopped: 'スキャナーページの認識を停止しました：{done} / {total} ページを認識済み。',
     print: '印刷',
     printPreparing: '準備中…',
+    printPreparingPages: '印刷を準備中: {done} / {total} ページ',
     printRangeAll: 'すべてのページ',
     printRangeCurrent: '現在のページ',
+    printRangePicked: '選択したページ',
+    printSaveRestricted:
+      'この PDF には権限の制限があるため、配置した結果を PDF で保存できません。印刷はできます。',
     printRangeCustom: 'ユーザー設定の範囲',
     printRangeHint: '例:1,3,5-8',
     printIncludeAnnots: '注釈を含める（ハイライト・メモ）',
@@ -4527,6 +4564,8 @@ export const strings = {
     aiToolGenImage: '画像を生成',
     aiToolReadUrl: '{host} を読み込み · {n} 字',
     aiToolReadUrlFail: '{host} を読み込めませんでした',
+    aiToolWebSearch: 'ウェブ検索',
+    aiToolWebSearchDone: '「{query}」を検索 · {count} 件',
     aiToolListImages: '文書内の画像を取得',
     aiToolInsertText: 'ページ {page} にテキストを挿入',
     aiToolListInsertedText: '挿入テキストを一覧',
@@ -4811,6 +4850,8 @@ export const strings = {
     saveFailed: '저장 실패',
     saveVerifyFailed:
       '{pages}페이지의 변경 사항을 온전히 기록할 수 없어 저장을 취소했으며 파일은 변경되지 않았습니다. 해당 편집을 실행 취소한 후 다시 시도하세요',
+    saveTargetLocked:
+      '다른 프로그램이 이 파일을 쓰고 있거나(PDF 보기 프로그램, 백신의 랜섬웨어 보호 기능 등) 파일이 읽기 전용이라 덮어쓰지 못했습니다. 원래 파일은 그대로이고 고친 내용은 화면에 남아 있습니다. 그 프로그램을 닫고 다시 저장하거나 "다른 이름으로 저장"으로 새 파일에 저장하세요',
     textEditNoMatch: '이 텍스트는 편집할 수 없습니다: 문서에서 해당 텍스트를 찾지 못했습니다',
     textBlockOverflow:
       '편집한 단락이 공간에 들어가지 않습니다: 넘친 줄이 아래 내용을 덮게 됩니다. 텍스트를 줄이거나 Esc 키로 변경을 취소하세요',
@@ -4896,8 +4937,12 @@ export const strings = {
     ocrStopped: '스캔 페이지 인식을 중단했습니다: {done} / {total}페이지 인식됨.',
     print: '인쇄',
     printPreparing: '준비 중…',
+    printPreparingPages: '인쇄 준비 중: {done} / {total}쪽',
     printRangeAll: '모든 페이지',
     printRangeCurrent: '현재 페이지',
+    printRangePicked: '고른 페이지',
+    printSaveRestricted:
+      '권한이 걸린 PDF라 배치한 결과를 PDF로 저장할 수 없습니다. 인쇄는 할 수 있습니다.',
     printRangeCustom: '사용자 지정 범위',
     printRangeHint: '예: 1,3,5-8',
     printIncludeAnnots: '주석 포함 (형광펜·메모)',
@@ -4994,6 +5039,8 @@ export const strings = {
     aiToolGenImage: '이미지 생성',
     aiToolReadUrl: '{host} 읽음 · {n}자',
     aiToolReadUrlFail: '{host} 읽지 못함',
+    aiToolWebSearch: '웹 검색',
+    aiToolWebSearchDone: '"{query}" 검색 · 결과 {count}개',
     aiToolListImages: '문서 이미지 읽기',
     aiToolInsertText: '{page}페이지에 텍스트 삽입',
     aiToolListInsertedText: '삽입한 텍스트 목록',
@@ -5280,6 +5327,8 @@ export const strings = {
       "Ce texte ne peut pas être modifié : il n'a pas pu être localisé dans le document",
     textBlockOverflow:
       'Le paragraphe modifié ne tient plus : les lignes en trop recouvriraient le contenu en dessous. Raccourcissez le texte ou appuyez sur Échap pour abandonner la modification',
+    saveTargetLocked:
+      'Impossible d’écraser le fichier : un autre programme l’utilise (une visionneuse PDF, la protection anti-rançongiciel d’un antivirus) ou il est en lecture seule. Le fichier d’origine n’a pas changé et vos modifications sont toujours à l’écran. Fermez ce programme et enregistrez de nouveau, ou utilisez « Enregistrer une copie » pour enregistrer dans un nouveau fichier',
     textEditSkipped:
       "Certaines modifications de texte à la page {pages} n'ont pas pu être appliquées et ont été ignorées",
     removeMarkup: 'Cliquer pour sélectionner cette annotation',
@@ -5365,8 +5414,12 @@ export const strings = {
     ocrStopped: 'Reconnaissance des pages numérisées arrêtée : {done} / {total} pages reconnues.',
     print: 'Imprimer',
     printPreparing: 'Préparation…',
+    printPreparingPages: 'Préparation de l’impression : {done} / {total} pages',
     printRangeAll: 'Toutes les pages',
     printRangeCurrent: 'Page actuelle',
+    printRangePicked: 'Pages sélectionnées',
+    printSaveRestricted:
+      'Ce PDF comporte des restrictions d’autorisation : le résultat disposé ne peut pas être enregistré en PDF. Vous pouvez toujours l’imprimer.',
     printRangeCustom: 'Plage personnalisée',
     printRangeHint: 'ex. 1,3,5-8',
     printIncludeAnnots: 'Inclure les annotations (surlignages, notes)',
@@ -5466,6 +5519,8 @@ export const strings = {
     aiToolGenImage: 'Générer une image',
     aiToolReadUrl: '{host} lu · {n} caractères',
     aiToolReadUrlFail: 'Impossible de lire {host}',
+    aiToolWebSearch: 'Recherche Web',
+    aiToolWebSearchDone: 'Recherche « {query} » · {count} résultats',
     aiToolListImages: 'Lire les images du document',
     aiToolInsertText: 'Insérer du texte page {page}',
     aiToolListInsertedText: 'Lister le texte inséré',
@@ -5754,6 +5809,8 @@ export const strings = {
     saveFailed: 'Speichern fehlgeschlagen',
     saveVerifyFailed:
       'Die Änderungen auf Seite {pages} konnten nicht vollständig zurückgeschrieben werden; das Speichern wurde abgebrochen und die Datei blieb unverändert. Machen Sie die betroffene Bearbeitung rückgängig und versuchen Sie es erneut',
+    saveTargetLocked:
+      'Die Datei konnte nicht überschrieben werden: Ein anderes Programm verwendet sie (ein PDF-Viewer oder der Ransomware-Schutz eines Virenscanners) oder sie ist schreibgeschützt. Die Originaldatei ist unverändert, und Ihre Änderungen sind noch auf dem Bildschirm. Schließen Sie das Programm und speichern Sie erneut, oder speichern Sie mit „Kopie speichern“ in eine neue Datei',
     textEditNoMatch:
       'Dieser Text kann nicht bearbeitet werden: Er konnte im Dokument nicht gefunden werden',
     textBlockOverflow:
@@ -5842,8 +5899,12 @@ export const strings = {
     ocrStopped: 'Erkennung gescannter Seiten gestoppt: {done} von {total} Seiten erkannt.',
     print: 'Drucken',
     printPreparing: 'Vorbereitung…',
+    printPreparingPages: 'Druck wird vorbereitet: {done} / {total} Seiten',
     printRangeAll: 'Alle Seiten',
     printRangeCurrent: 'Aktuelle Seite',
+    printRangePicked: 'Ausgewählte Seiten',
+    printSaveRestricted:
+      'Dieses PDF hat Berechtigungsbeschränkungen, daher kann das angeordnete Ergebnis nicht als PDF gespeichert werden. Drucken ist weiterhin möglich.',
     printRangeCustom: 'Benutzerdefinierter Bereich',
     printRangeHint: 'z. B. 1,3,5-8',
     printIncludeAnnots: 'Anmerkungen einschließen (Markierungen, Notizen)',
@@ -5943,6 +6004,8 @@ export const strings = {
     aiToolGenImage: 'Bild generieren',
     aiToolReadUrl: '{host} gelesen · {n} Zeichen',
     aiToolReadUrlFail: '{host} konnte nicht gelesen werden',
+    aiToolWebSearch: 'Websuche',
+    aiToolWebSearchDone: '„{query}" gesucht · {count} Treffer',
     aiToolListImages: 'Dokumentbilder lesen',
     aiToolInsertText: 'Text auf Seite {page} einfügen',
     aiToolListInsertedText: 'Eingefügten Text auflisten',
@@ -6230,6 +6293,8 @@ export const strings = {
     saveFailed: 'Error al guardar',
     saveVerifyFailed:
       'Los cambios de la página {pages} no se pudieron escribir íntegramente; se canceló el guardado y el archivo quedó intacto. Deshaz la edición afectada e inténtalo de nuevo',
+    saveTargetLocked:
+      'No se pudo sobrescribir el archivo: otro programa lo está usando (un visor de PDF o la protección contra ransomware de un antivirus) o es de solo lectura. El archivo original no ha cambiado y tus cambios siguen en pantalla. Cierra ese programa y vuelve a guardar, o usa «Guardar una copia» para guardar en un archivo nuevo',
     textEditNoMatch: 'Este texto no se puede editar: no se pudo localizar en el documento',
     textBlockOverflow:
       'El párrafo editado ya no cabe: las líneas sobrantes cubrirían el contenido de abajo. Acorta el texto o pulsa Esc para descartar el cambio',
@@ -6316,8 +6381,12 @@ export const strings = {
     ocrStopped: 'Se detuvo el reconocimiento de páginas escaneadas: {done} de {total} reconocidas.',
     print: 'Imprimir',
     printPreparing: 'Preparando…',
+    printPreparingPages: 'Preparando la impresión: {done} / {total} páginas',
     printRangeAll: 'Todas las páginas',
     printRangeCurrent: 'Página actual',
+    printRangePicked: 'Páginas seleccionadas',
+    printSaveRestricted:
+      'Este PDF tiene restricciones de permisos, así que el resultado dispuesto no se puede guardar como PDF. Aún puede imprimirlo.',
     printRangeCustom: 'Intervalo personalizado',
     printRangeHint: 'p. ej. 1,3,5-8',
     printIncludeAnnots: 'Incluir anotaciones (resaltados, notas)',
@@ -6417,6 +6486,8 @@ export const strings = {
     aiToolGenImage: 'Generar imagen',
     aiToolReadUrl: '{host} leído · {n} caracteres',
     aiToolReadUrlFail: 'No se pudo leer {host}',
+    aiToolWebSearch: 'Búsqueda web',
+    aiToolWebSearchDone: 'Búsqueda de «{query}» · {count} resultados',
     aiToolListImages: 'Leer las imágenes del documento',
     aiToolInsertText: 'Insertar texto en la página {page}',
     aiToolListInsertedText: 'Listar el texto insertado',
@@ -6704,6 +6775,8 @@ export const strings = {
     saveFailed: 'บันทึกไม่สำเร็จ',
     saveVerifyFailed:
       'ไม่สามารถเขียนการแก้ไขในหน้า {pages} กลับได้ครบถ้วน จึงยกเลิกการบันทึกและไฟล์ไม่ถูกแก้ไข โปรดเลิกทำการแก้ไขที่เกี่ยวข้องแล้วลองอีกครั้ง',
+    saveTargetLocked:
+      'เขียนทับไฟล์ไม่ได้ เนื่องจากโปรแกรมอื่นกำลังใช้ไฟล์นี้อยู่ (โปรแกรมดู PDF หรือระบบป้องกันแรนซัมแวร์ของโปรแกรมป้องกันไวรัส) หรือไฟล์เป็นแบบอ่านอย่างเดียว ไฟล์ต้นฉบับยังเหมือนเดิมและการแก้ไขของคุณยังอยู่บนหน้าจอ ปิดโปรแกรมนั้นแล้วบันทึกอีกครั้ง หรือใช้ "บันทึกสำเนา" เพื่อบันทึกเป็นไฟล์ใหม่',
     textEditNoMatch: 'ไม่สามารถแก้ไขข้อความนี้ได้: ไม่พบข้อความดังกล่าวในเอกสาร',
     textBlockOverflow:
       'ย่อหน้าที่แก้ไขมีขนาดเกินพื้นที่เดิม: บรรทัดที่เกินจะทับเนื้อหาด้านล่าง โปรดย่อข้อความหรือกด Esc เพื่อยกเลิกการแก้ไข',
@@ -6788,8 +6861,12 @@ export const strings = {
     ocrStopped: 'หยุดรู้จำหน้าที่สแกนแล้ว: รู้จำแล้ว {done} / {total} หน้า',
     print: 'พิมพ์',
     printPreparing: 'กำลังเตรียม…',
+    printPreparingPages: 'กำลังเตรียมพิมพ์: {done} / {total} หน้า',
     printRangeAll: 'ทุกหน้า',
     printRangeCurrent: 'หน้าปัจจุบัน',
+    printRangePicked: 'หน้าที่เลือก',
+    printSaveRestricted:
+      'PDF นี้มีการจำกัดสิทธิ์ จึงบันทึกผลที่จัดวางแล้วเป็น PDF ไม่ได้ แต่ยังพิมพ์ได้',
     printRangeCustom: 'ช่วงที่กำหนดเอง',
     printRangeHint: 'เช่น 1,3,5-8',
     printIncludeAnnots: 'รวมคำอธิบายประกอบ (ไฮไลต์ โน้ต)',
@@ -6886,6 +6963,8 @@ export const strings = {
     aiToolGenImage: 'สร้างรูปภาพ',
     aiToolReadUrl: 'อ่าน {host} · {n} ตัวอักษร',
     aiToolReadUrlFail: 'อ่าน {host} ไม่ได้',
+    aiToolWebSearch: 'ค้นหาเว็บ',
+    aiToolWebSearchDone: 'ค้นหา "{query}" · {count} รายการ',
     aiToolListImages: 'อ่านรูปภาพในเอกสาร',
     aiToolInsertText: 'แทรกข้อความในหน้า {page}',
     aiToolListInsertedText: 'แสดงรายการข้อความที่แทรก',
@@ -7167,6 +7246,8 @@ export const strings = {
     saveFailed: 'Gagal menyimpan',
     saveVerifyFailed:
       'Perubahan di halaman {pages} tidak dapat ditulis kembali secara utuh; penyimpanan dibatalkan dan file tidak diubah. Urungkan pengeditan terkait lalu coba lagi',
+    saveTargetLocked:
+      'File tidak dapat ditimpa: program lain sedang menggunakannya (penampil PDF atau perlindungan ransomware antivirus) atau file bersifat baca-saja. File asli tidak berubah dan suntingan Anda masih ada di layar. Tutup program itu lalu simpan lagi, atau gunakan "Simpan salinan" untuk menyimpan ke file baru',
     textEditNoMatch: 'Teks ini tidak dapat diedit: tidak dapat ditemukan di dalam dokumen',
     textBlockOverflow:
       'Paragraf yang diedit tidak lagi muat: baris berlebih akan menutupi konten di bawahnya. Persingkat teks atau tekan Esc untuk membatalkan perubahan',
@@ -7254,8 +7335,12 @@ export const strings = {
     ocrStopped: 'Pengenalan halaman hasil pindai dihentikan: {done} dari {total} dikenali.',
     print: 'Cetak',
     printPreparing: 'Menyiapkan…',
+    printPreparingPages: 'Menyiapkan cetakan: {done} / {total} halaman',
     printRangeAll: 'Semua halaman',
     printRangeCurrent: 'Halaman saat ini',
+    printRangePicked: 'Halaman yang dipilih',
+    printSaveRestricted:
+      'PDF ini memiliki pembatasan izin, sehingga hasil tata letak tidak dapat disimpan sebagai PDF. Anda tetap dapat mencetaknya.',
     printRangeCustom: 'Rentang kustom',
     printRangeHint: 'mis. 1,3,5-8',
     printIncludeAnnots: 'Sertakan anotasi (sorotan, catatan)',
@@ -7353,6 +7438,8 @@ export const strings = {
     aiToolGenImage: 'Buat gambar',
     aiToolReadUrl: '{host} dibaca · {n} karakter',
     aiToolReadUrlFail: 'Tidak dapat membaca {host}',
+    aiToolWebSearch: 'Pencarian web',
+    aiToolWebSearchDone: 'Mencari "{query}" · {count} hasil',
     aiToolListImages: 'Baca gambar dokumen',
     aiToolInsertText: 'Sisipkan teks di halaman {page}',
     aiToolListInsertedText: 'Daftar teks yang disisipkan',
@@ -7638,6 +7725,8 @@ export const strings = {
     saveFailed: 'Ошибка сохранения',
     saveVerifyFailed:
       'Изменения на странице {pages} не удалось записать полностью; сохранение отменено, файл не изменён. Отмените затронутую правку и попробуйте снова',
+    saveTargetLocked:
+      'Не удалось перезаписать файл: его использует другая программа (средство просмотра PDF или защита от программ-вымогателей в антивирусе) либо файл доступен только для чтения. Исходный файл не изменён, а ваши правки остаются на экране. Закройте эту программу и сохраните снова или используйте «Сохранить копию», чтобы сохранить в новый файл',
     textEditNoMatch: 'Этот текст нельзя отредактировать: не удалось найти его в документе',
     textBlockOverflow:
       'Отредактированный абзац больше не помещается: лишние строки закроют содержимое ниже. Сократите текст или нажмите Esc, чтобы отменить изменение',
@@ -7725,8 +7814,12 @@ export const strings = {
     ocrStopped: 'Распознавание сканированных страниц остановлено: распознано {done} из {total}.',
     print: 'Печать',
     printPreparing: 'Подготовка…',
+    printPreparingPages: 'Подготовка к печати: {done} / {total} стр.',
     printRangeAll: 'Все страницы',
     printRangeCurrent: 'Текущая страница',
+    printRangePicked: 'Выбранные страницы',
+    printSaveRestricted:
+      'У этого PDF есть ограничения прав, поэтому результат компоновки нельзя сохранить в PDF. Печать по-прежнему доступна.',
     printRangeCustom: 'Настраиваемый диапазон',
     printRangeHint: 'напр. 1,3,5-8',
     printIncludeAnnots: 'Включить аннотации (выделения, заметки)',
@@ -7824,6 +7917,8 @@ export const strings = {
     aiToolGenImage: 'Генерация изображения',
     aiToolReadUrl: '{host} прочитано · {n} символов',
     aiToolReadUrlFail: 'Не удалось прочитать {host}',
+    aiToolWebSearch: 'Веб-поиск',
+    aiToolWebSearchDone: 'Поиск «{query}» · {count} результатов',
     aiToolListImages: 'Чтение изображений документа',
     aiToolInsertText: 'Вставка текста на стр. {page}',
     aiToolListInsertedText: 'Список вставленного текста',
@@ -8111,6 +8206,8 @@ export const strings = {
     saveFailed: 'فشل الحفظ',
     saveVerifyFailed:
       'تعذّرت كتابة تعديلات الصفحة {pages} بالكامل؛ أُلغي الحفظ ولم يتغيّر الملف. تراجع عن التعديل المعني ثم حاول مجددًا',
+    saveTargetLocked:
+      'تعذّرت الكتابة فوق الملف: برنامج آخر يستخدمه (عارض PDF أو حماية برنامج مكافحة الفيروسات من برامج الفدية) أو أن الملف للقراءة فقط. الملف الأصلي لم يتغير وتعديلاتك ما زالت على الشاشة. أغلق ذلك البرنامج واحفظ مرة أخرى، أو استخدم "حفظ نسخة" للحفظ في ملف جديد',
     textEditNoMatch: 'تعذّر تحرير هذا النص: لم يتم العثور عليه في المستند',
     textBlockOverflow:
       'الفقرة المعدّلة لم تعد تتسع: الأسطر الزائدة ستغطي المحتوى أسفلها. اختصر النص أو اضغط Esc للتراجع عن التعديل',
@@ -8195,8 +8292,12 @@ export const strings = {
     ocrStopped: 'توقّف التعرّف على الصفحات الممسوحة ضوئيًا: تم التعرّف على {done} من {total}.',
     print: 'طباعة',
     printPreparing: 'جارٍ التجهيز…',
+    printPreparingPages: 'جارٍ تجهيز الطباعة: {done} / {total} صفحة',
     printRangeAll: 'كل الصفحات',
     printRangeCurrent: 'الصفحة الحالية',
+    printRangePicked: 'الصفحات المحددة',
+    printSaveRestricted:
+      'يحتوي ملف PDF هذا على قيود أذونات، لذا لا يمكن حفظ النتيجة المرتبة بصيغة PDF. لا يزال بإمكانك طباعته.',
     printRangeCustom: 'نطاق مخصص',
     printRangeHint: 'مثال: 1,3,5-8',
     printIncludeAnnots: 'تضمين التعليقات التوضيحية (التمييزات والملاحظات)',
@@ -8293,6 +8394,8 @@ export const strings = {
     aiToolGenImage: 'إنشاء صورة',
     aiToolReadUrl: 'تمت قراءة {host} · {n} حرفًا',
     aiToolReadUrlFail: 'تعذّرت قراءة {host}',
+    aiToolWebSearch: 'بحث ويب',
+    aiToolWebSearchDone: 'بحث عن "{query}" · {count} نتيجة',
     aiToolListImages: 'قراءة صور المستند',
     aiToolInsertText: 'إدراج نص في الصفحة {page}',
     aiToolListInsertedText: 'عرض النص المُدرج',
@@ -8574,6 +8677,8 @@ export const strings = {
     saveFailed: 'Falha ao salvar',
     saveVerifyFailed:
       'As alterações na página {pages} não puderam ser gravadas integralmente; o salvamento foi cancelado e o arquivo permaneceu intacto. Desfaça a edição afetada e tente novamente',
+    saveTargetLocked:
+      'Não foi possível substituir o arquivo: outro programa está usando-o (um visualizador de PDF ou a proteção contra ransomware de um antivírus) ou ele é somente leitura. O arquivo original não foi alterado e suas edições continuam na tela. Feche esse programa e salve novamente, ou use "Salvar uma cópia" para salvar em um novo arquivo',
     textEditNoMatch: 'Este texto não pode ser editado: não foi possível localizá-lo no documento',
     textBlockOverflow:
       'O parágrafo editado não cabe mais: as linhas excedentes cobririam o conteúdo abaixo. Encurte o texto ou pressione Esc para descartar a alteração',
@@ -8662,8 +8767,12 @@ export const strings = {
       'Reconhecimento de páginas digitalizadas interrompido: {done} de {total} reconhecidas.',
     print: 'Imprimir',
     printPreparing: 'Preparando…',
+    printPreparingPages: 'Preparando a impressão: {done} / {total} páginas',
     printRangeAll: 'Todas as páginas',
     printRangeCurrent: 'Página atual',
+    printRangePicked: 'Páginas selecionadas',
+    printSaveRestricted:
+      'Este PDF tem restrições de permissão, por isso o resultado disposto não pode ser salvo como PDF. Você ainda pode imprimi-lo.',
     printRangeCustom: 'Intervalo personalizado',
     printRangeHint: 'ex.: 1,3,5-8',
     printIncludeAnnots: 'Incluir anotações (realces, notas)',
@@ -8762,6 +8871,8 @@ export const strings = {
     aiToolGenImage: 'Gerar imagem',
     aiToolReadUrl: '{host} lido · {n} caracteres',
     aiToolReadUrlFail: 'Não foi possível ler {host}',
+    aiToolWebSearch: 'Pesquisa na Web',
+    aiToolWebSearchDone: 'Pesquisa por "{query}" · {count} resultados',
     aiToolListImages: 'Ler as imagens do documento',
     aiToolInsertText: 'Inserir texto na página {page}',
     aiToolListInsertedText: 'Listar texto inserido',
@@ -8806,7 +8917,7 @@ export const strings = {
     batesErrRange: 'O intervalo de páginas é inválido',
     compare: 'Comparar',
     comparePick: 'Comparar com outro PDF…',
-    compareNeedsSaved: 'Guarde o documento antes de comparar',
+    compareNeedsSaved: 'Salve o documento antes de comparar',
     compareSwap: 'Trocar antigo e novo',
     compareIdentical: 'Ambos os documentos têm o mesmo texto',
     compareDiffPages: '{count} páginas diferem',
@@ -8861,7 +8972,7 @@ export const strings = {
     linkDialogTitle: 'Adicionar ligação',
     linkUrlLabel: 'Endereço web',
     linkPageLabel: 'Ou uma página neste documento (1–{n})',
-    editImageHint: 'Clique numa imagem da página: arraste para mover, cantos para redimensionar',
+    editImageHint: 'Clique em uma imagem da página: arraste para mover, cantos para redimensionar',
     imagePlaceHint: 'Clique na página para posicionar a imagem',
     imageLayerAbove: 'Trazer para frente do texto',
     imageLayerBelow: 'Enviar para trás do texto',
@@ -9047,6 +9158,8 @@ export const strings = {
     saveFailed: 'Salvataggio non riuscito',
     saveVerifyFailed:
       'Le modifiche a pagina {pages} non sono state riscritte integralmente; il salvataggio è stato annullato e il file è rimasto invariato. Annulla la modifica interessata e riprova',
+    saveTargetLocked:
+      'Impossibile sovrascrivere il file: un altro programma lo sta usando (un visualizzatore PDF o la protezione ransomware di un antivirus) oppure è di sola lettura. Il file originale non è cambiato e le modifiche sono ancora sullo schermo. Chiudi quel programma e salva di nuovo, oppure usa «Salva una copia» per salvare in un nuovo file',
     textEditNoMatch:
       'Questo testo non può essere modificato: impossibile individuarlo nel documento',
     textBlockOverflow:
@@ -9136,8 +9249,12 @@ export const strings = {
       'Riconoscimento delle pagine scansionate interrotto: riconosciute {done} di {total}.',
     print: 'Stampa',
     printPreparing: 'Preparazione…',
+    printPreparingPages: 'Preparazione della stampa: {done} / {total} pagine',
     printRangeAll: 'Tutte le pagine',
     printRangeCurrent: 'Pagina corrente',
+    printRangePicked: 'Pagine selezionate',
+    printSaveRestricted:
+      'Questo PDF ha restrizioni sui permessi, quindi il risultato disposto non può essere salvato in PDF. È comunque possibile stamparlo.',
     printRangeCustom: 'Intervallo personalizzato',
     printRangeHint: 'es. 1,3,5-8',
     printIncludeAnnots: 'Includi annotazioni (evidenziazioni, note)',
@@ -9237,6 +9354,8 @@ export const strings = {
     aiToolGenImage: 'Genera immagine',
     aiToolReadUrl: '{host} letto · {n} caratteri',
     aiToolReadUrlFail: 'Impossibile leggere {host}',
+    aiToolWebSearch: 'Ricerca web',
+    aiToolWebSearchDone: 'Cercato "{query}" · {count} risultati',
     aiToolListImages: 'Leggi le immagini del documento',
     aiToolInsertText: 'Inserisci testo a pagina {page}',
     aiToolListInsertedText: 'Elenca testo inserito',
@@ -9524,6 +9643,8 @@ export const strings = {
     saveFailed: 'Nie udało się zapisać',
     saveVerifyFailed:
       'Zmian na stronie {pages} nie udało się zapisać w całości; zapis anulowano, a plik pozostał nietknięty. Cofnij problematyczną edycję i spróbuj ponownie',
+    saveTargetLocked:
+      'Nie można nadpisać pliku: używa go inny program (przeglądarka PDF lub ochrona przed ransomware w programie antywirusowym) albo plik jest tylko do odczytu. Oryginalny plik nie został zmieniony, a Twoje zmiany nadal są na ekranie. Zamknij ten program i zapisz ponownie albo użyj „Zapisz kopię”, aby zapisać w nowym pliku',
     textEditNoMatch: 'Nie można edytować tego tekstu: nie udało się go zlokalizować w dokumencie',
     textBlockOverflow:
       'Zmieniony akapit już się nie mieści: nadmiarowe wiersze zakryłyby treść poniżej. Skróć tekst lub naciśnij Esc, aby odrzucić zmianę',
@@ -9610,8 +9731,12 @@ export const strings = {
     ocrStopped: 'Rozpoznawanie zeskanowanych stron zatrzymane: rozpoznano {done} z {total}.',
     print: 'Drukuj',
     printPreparing: 'Przygotowywanie…',
+    printPreparingPages: 'Przygotowywanie wydruku: {done} / {total} stron',
     printRangeAll: 'Wszystkie strony',
     printRangeCurrent: 'Bieżąca strona',
+    printRangePicked: 'Wybrane strony',
+    printSaveRestricted:
+      'Ten plik PDF ma ograniczenia uprawnień, więc ułożonego wyniku nie można zapisać jako PDF. Drukowanie nadal jest możliwe.',
     printRangeCustom: 'Zakres niestandardowy',
     printRangeHint: 'np. 1,3,5-8',
     printIncludeAnnots: 'Uwzględnij adnotacje (wyróżnienia, notatki)',
@@ -9709,6 +9834,8 @@ export const strings = {
     aiToolGenImage: 'Generuj obraz',
     aiToolReadUrl: 'Przeczytano {host} · {n} znaków',
     aiToolReadUrlFail: 'Nie udało się odczytać {host}',
+    aiToolWebSearch: 'Wyszukiwanie w sieci',
+    aiToolWebSearchDone: 'Wyszukano „{query}" · {count} wyników',
     aiToolListImages: 'Odczytaj obrazy dokumentu',
     aiToolInsertText: 'Wstaw tekst na stronie {page}',
     aiToolListInsertedText: 'Lista wstawionego tekstu',
@@ -9996,6 +10123,8 @@ export const strings = {
     saveFailed: 'Uložení se nezdařilo',
     saveVerifyFailed:
       'Změny na stránce {pages} se nepodařilo zapsat zpět beze změny, uložení bylo proto zrušeno a soubor zůstal nedotčen; vraťte dotčenou úpravu zpět a zkuste to znovu',
+    saveTargetLocked:
+      'Soubor nelze přepsat: používá ho jiný program (prohlížeč PDF nebo ochrana proti ransomwaru v antiviru) nebo je jen pro čtení. Původní soubor se nezměnil a vaše úpravy jsou stále na obrazovce. Zavřete ten program a uložte znovu, nebo použijte „Uložit kopii“ a uložte do nového souboru',
     textEditNoMatch: 'Tento text nelze upravit: nepodařilo se ho v dokumentu najít',
     textBlockOverflow:
       'Upravený odstavec se již nevejde: přidané řádky by překryly obsah pod ním. Zkraťte text nebo stiskněte Esc pro zrušení změny',
@@ -10081,8 +10210,12 @@ export const strings = {
     ocrStopped: 'Rozpoznávání naskenovaných stran zastaveno: rozpoznáno {done} z {total}.',
     print: 'Tisk',
     printPreparing: 'Příprava…',
+    printPreparingPages: 'Příprava tisku: {done} / {total} stran',
     printRangeAll: 'Všechny stránky',
     printRangeCurrent: 'Aktuální stránka',
+    printRangePicked: 'Vybrané stránky',
+    printSaveRestricted:
+      'Toto PDF má omezená oprávnění, proto rozložený výsledek nelze uložit jako PDF. Tisknout jej stále můžete.',
     printRangeCustom: 'Vlastní rozsah',
     printRangeHint: 'např. 1,3,5-8',
     printIncludeAnnots: 'Zahrnout anotace (zvýraznění, poznámky)',
@@ -10180,6 +10313,8 @@ export const strings = {
     aiToolGenImage: 'Vygenerovat obrázek',
     aiToolReadUrl: '{host} přečteno · {n} znaků',
     aiToolReadUrlFail: 'Nepodařilo se přečíst {host}',
+    aiToolWebSearch: 'Hledání na webu',
+    aiToolWebSearchDone: 'Hledáno „{query}“ · {count} výsledků',
     aiToolListImages: 'Vypsat obrázky dokumentu',
     aiToolInsertText: 'Vložit text na stránku {page}',
     aiToolListInsertedText: 'Vypsat vložený text',
@@ -10465,6 +10600,8 @@ export const strings = {
     saveFailed: 'Opslaan mislukt',
     saveVerifyFailed:
       'De wijzigingen op pagina {pages} konden niet volledig worden weggeschreven; het opslaan is geannuleerd en het bestand is ongewijzigd. Maak de betreffende bewerking ongedaan en probeer het opnieuw',
+    saveTargetLocked:
+      "Het bestand kon niet worden overschreven: een ander programma gebruikt het (een PDF-viewer of de ransomwarebeveiliging van een virusscanner) of het is alleen-lezen. Het oorspronkelijke bestand is ongewijzigd en je wijzigingen staan nog op het scherm. Sluit dat programma en sla opnieuw op, of gebruik 'Een kopie opslaan' om in een nieuw bestand op te slaan",
     textEditNoMatch:
       'Deze tekst kan niet worden bewerkt: deze kon niet in het document worden gevonden',
     textBlockOverflow:
@@ -10552,8 +10689,12 @@ export const strings = {
     ocrStopped: 'Herkennen van scannende pagina’s gestopt: {done} van {total} herkend.',
     print: 'Afdrukken',
     printPreparing: 'Voorbereiden…',
+    printPreparingPages: 'Afdrukken voorbereiden: pagina {done} van {total}',
     printRangeAll: "Alle pagina's",
     printRangeCurrent: 'Huidige pagina',
+    printRangePicked: "Geselecteerde pagina's",
+    printSaveRestricted:
+      'Deze pdf heeft beperkte machtigingen, dus het ingedeelde resultaat kan niet als pdf worden opgeslagen. Afdrukken kan nog wel.',
     printRangeCustom: 'Aangepast bereik',
     printRangeHint: 'bijv. 1,3,5-8',
     printIncludeAnnots: 'Annotaties opnemen (markeringen, notities)',
@@ -10652,6 +10793,8 @@ export const strings = {
     aiToolGenImage: 'Afbeelding genereren',
     aiToolReadUrl: '{host} gelezen · {n} tekens',
     aiToolReadUrlFail: '{host} kon niet worden gelezen',
+    aiToolWebSearch: 'Zoeken op internet',
+    aiToolWebSearchDone: 'Gezocht naar "{query}" · {count} resultaten',
     aiToolListImages: 'Documentafbeeldingen lezen',
     aiToolInsertText: 'Tekst invoegen op pagina {page}',
     aiToolListInsertedText: 'Ingevoegde tekst weergeven',
@@ -10939,6 +11082,8 @@ export const strings = {
     saveFailed: 'Gagal menyimpan',
     saveVerifyFailed:
       'Perubahan pada halaman {pages} tidak dapat ditulis semula sepenuhnya; penyimpanan dibatalkan dan fail tidak diubah. Buat asal suntingan berkaitan dan cuba lagi',
+    saveTargetLocked:
+      'Fail tidak dapat ditulis ganti: program lain sedang menggunakannya (pemapar PDF atau perlindungan perisian tebusan antivirus) atau fail ini baca sahaja. Fail asal tidak berubah dan suntingan anda masih ada pada skrin. Tutup program itu dan simpan semula, atau gunakan "Simpan salinan" untuk menyimpan ke fail baharu',
     textEditNoMatch: 'Teks ini tidak boleh diedit: tidak dapat ditemui dalam dokumen',
     textBlockOverflow:
       'Perenggan yang diedit tidak lagi muat: baris berlebihan akan menutupi kandungan di bawah. Pendekkan teks atau tekan Esc untuk membatalkan perubahan',
@@ -11025,8 +11170,12 @@ export const strings = {
     ocrStopped: 'Pengecaman halaman yang diimbas dihentikan: {done} daripada {total} dicam.',
     print: 'Cetak',
     printPreparing: 'Sedang menyediakan…',
+    printPreparingPages: 'Sedang menyediakan cetakan: {done} / {total} halaman',
     printRangeAll: 'Semua halaman',
     printRangeCurrent: 'Halaman semasa',
+    printRangePicked: 'Halaman terpilih',
+    printSaveRestricted:
+      'PDF ini mempunyai sekatan kebenaran, jadi hasil susunan tidak boleh disimpan sebagai PDF. Anda masih boleh mencetaknya.',
     printRangeCustom: 'Julat tersuai',
     printRangeHint: 'cth. 1,3,5-8',
     printIncludeAnnots: 'Sertakan anotasi (sorotan, nota)',
@@ -11124,6 +11273,8 @@ export const strings = {
     aiToolGenImage: 'Jana imej',
     aiToolReadUrl: '{host} dibaca · {n} aksara',
     aiToolReadUrlFail: 'Gagal membaca {host}',
+    aiToolWebSearch: 'Carian web',
+    aiToolWebSearchDone: 'Cari "{query}" · {count} hasil',
     aiToolListImages: 'Baca imej dokumen',
     aiToolInsertText: 'Sisipkan teks pada halaman {page}',
     aiToolListInsertedText: 'Senaraikan teks yang disisipkan',
@@ -11409,6 +11560,8 @@ export const strings = {
     saveFailed: 'השמירה נכשלה',
     saveVerifyFailed:
       'לא ניתן היה לכתוב את השינויים בעמוד {pages} במלואם; השמירה בוטלה והקובץ לא שונה. בטלו את העריכה הרלוונטית ונסו שוב',
+    saveTargetLocked:
+      'לא ניתן היה לשכתב את הקובץ: תוכנה אחרת משתמשת בו (מציג PDF או הגנת כופרה של תוכנת אנטי-וירוס) או שהקובץ לקריאה בלבד. הקובץ המקורי לא השתנה והעריכות שלך עדיין מוצגות במסך. סגור את התוכנה ההיא ושמור שוב, או השתמש ב"שמור עותק" כדי לשמור לקובץ חדש',
     textEditNoMatch: 'לא ניתן לערוך טקסט זה: לא ניתן היה לאתר אותו במסמך',
     textBlockOverflow:
       'הפסקה שנערכה כבר אינה נכנסת: השורות העודפות יכסו את התוכן שמתחת. קצרו את הטקסט או הקישו Esc לביטול השינוי',
@@ -11492,8 +11645,12 @@ export const strings = {
     ocrStopped: 'הזיהוי של דפים סרוקים נעצר: זוהו {done} מתוך {total}.',
     print: 'הדפסה',
     printPreparing: 'מכין…',
+    printPreparingPages: 'מכין להדפסה: {done} / {total} עמודים',
     printRangeAll: 'כל העמודים',
     printRangeCurrent: 'עמוד נוכחי',
+    printRangePicked: 'עמודים שנבחרו',
+    printSaveRestricted:
+      'ל־PDF הזה יש הגבלות הרשאה, ולכן אי אפשר לשמור את התוצאה המסודרת כ־PDF. עדיין אפשר להדפיס אותו.',
     printRangeCustom: 'טווח מותאם אישית',
     printRangeHint: 'לדוגמה: 1,3,5-8',
     printIncludeAnnots: 'כלול הערות (הדגשות, פתקים)',
@@ -11586,6 +11743,8 @@ export const strings = {
     aiToolGenImage: 'יצירת תמונה',
     aiToolReadUrl: '{host} נקרא · {n} תווים',
     aiToolReadUrlFail: 'לא ניתן לקרוא את {host}',
+    aiToolWebSearch: 'חיפוש ברשת',
+    aiToolWebSearchDone: 'חיפוש "{query}" · {count} תוצאות',
     aiToolListImages: 'קריאת תמונות המסמך',
     aiToolInsertText: 'הוספת טקסט בעמוד {page}',
     aiToolListInsertedText: 'הצגת הטקסט שהוסף',
@@ -11866,6 +12025,8 @@ export const strings = {
     saveFailed: 'सहेजना विफल',
     saveVerifyFailed:
       'पृष्ठ {pages} के बदलाव पूरी तरह लिखे नहीं जा सके; सहेजना रद्द कर दिया गया और फ़ाइल अपरिवर्तित रही। प्रभावित संपादन को पूर्ववत करें और फिर से प्रयास करें',
+    saveTargetLocked:
+      'फ़ाइल को ओवरराइट नहीं किया जा सका: कोई दूसरा प्रोग्राम इसका उपयोग कर रहा है (PDF व्यूअर या एंटीवायरस की रैंसमवेयर सुरक्षा) या फ़ाइल केवल-पढ़ने योग्य है। मूल फ़ाइल नहीं बदली है और आपके बदलाव अभी भी स्क्रीन पर हैं। उस प्रोग्राम को बंद करके फिर से सहेजें, या नई फ़ाइल में सहेजने के लिए "प्रति सहेजें" का उपयोग करें',
     textEditNoMatch: 'इस टेक्स्ट को संपादित नहीं किया जा सकता: दस्तावेज़ में इसे ढूँढा नहीं जा सका',
     textBlockOverflow:
       'संपादित अनुच्छेद अब जगह में नहीं समाता: अतिरिक्त पंक्तियाँ नीचे की सामग्री को ढक देंगी। टेक्स्ट छोटा करें या बदलाव रद्द करने के लिए Esc दबाएँ',
@@ -11951,8 +12112,12 @@ export const strings = {
     ocrStopped: 'स्कैन किए गए पृष्ठों की पहचान रोक दी गई: {done} / {total} पहचाने गए।',
     print: 'प्रिंट करें',
     printPreparing: 'तैयार किया जा रहा है…',
+    printPreparingPages: 'प्रिंट की तैयारी: {done} / {total} पृष्ठ',
     printRangeAll: 'सभी पृष्ठ',
     printRangeCurrent: 'वर्तमान पृष्ठ',
+    printRangePicked: 'चुने गए पृष्ठ',
+    printSaveRestricted:
+      'इस PDF पर अनुमति प्रतिबंध हैं, इसलिए व्यवस्थित परिणाम को PDF के रूप में सहेजा नहीं जा सकता। आप इसे अब भी प्रिंट कर सकते हैं।',
     printRangeCustom: 'कस्टम श्रेणी',
     printRangeHint: 'जैसे: 1,3,5-8',
     printIncludeAnnots: 'एनोटेशन शामिल करें (हाइलाइट, नोट)',
@@ -12050,6 +12215,8 @@ export const strings = {
     aiToolGenImage: 'छवि बनाएं',
     aiToolReadUrl: '{host} पढ़ा गया · {n} अक्षर',
     aiToolReadUrlFail: '{host} पढ़ा नहीं जा सका',
+    aiToolWebSearch: 'वेब खोज',
+    aiToolWebSearchDone: '"{query}" खोजा · {count} परिणाम',
     aiToolListImages: 'दस्तावेज़ की छवियां पढ़ें',
     aiToolInsertText: 'पृष्ठ {page} पर टेक्स्ट डालें',
     aiToolListInsertedText: 'डाला गया टेक्स्ट सूचीबद्ध करें',
@@ -12333,6 +12500,8 @@ export const strings = {
     saveFailed: '儲存失敗',
     saveVerifyFailed:
       '第 {pages} 頁的修改未能完整寫回，已取消儲存以保護原檔；請復原該頁的相關修改後重試',
+    saveTargetLocked:
+      '無法覆寫此檔案：其他程式正在使用它（PDF 檢視器、防毒軟體的勒索軟體防護等），或檔案為唯讀。原始檔案未被變更，您的修改仍保留在畫面上。請關閉該程式後重新儲存，或使用「另存副本」儲存為新檔案',
     textEditNoMatch: '無法編輯這段文字：未能在文件中定位到對應的文字',
     textBlockOverflow:
       '編輯後的段落放不下：多出的文字會蓋住下方內容。請縮短文字，或按 Esc 放棄修改',
@@ -12416,8 +12585,11 @@ export const strings = {
     ocrStopped: '已停止辨識掃描頁：已辨識 {done} / {total} 個掃描頁。',
     print: '列印',
     printPreparing: '準備列印…',
+    printPreparingPages: '正在準備列印：{done} / {total} 頁',
     printRangeAll: '所有頁面',
     printRangeCurrent: '目前頁面',
+    printRangePicked: '所選頁面',
+    printSaveRestricted: '此 PDF 設有權限限制，無法將編排結果儲存為 PDF。仍可列印。',
     printRangeCustom: '自訂範圍',
     printRangeHint: '如:1,3,5-8',
     printIncludeAnnots: '包含註解（螢光標記、備註）',
@@ -12509,6 +12681,8 @@ export const strings = {
     aiToolGenImage: '生成圖片',
     aiToolReadUrl: '已讀取 {host} · {n} 字',
     aiToolReadUrlFail: '無法讀取 {host}',
+    aiToolWebSearch: '網路搜尋',
+    aiToolWebSearchDone: '搜尋「{query}」· {count} 筆結果',
     aiToolListImages: '讀取文件圖片',
     aiToolInsertText: '插入文字到第 {page} 頁',
     aiToolListInsertedText: '列出插入的文字',

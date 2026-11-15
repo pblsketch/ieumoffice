@@ -77,4 +77,4 @@ Rechtsklicken Sie irgendwo im Text — das Menü richtet sich nach dem, was Sie 
 
 ## Drucken
 
-ctrl+P über den Systemdialog, WYSIWYG-Seiten.
+ctrl+P öffnet das Druckfenster. Wählen Sie Drucker, Exemplare, beidseitigen Druck und Bereich (auch die Auswahl); unter **Seitenanordnung** gibt es mehrere Seiten pro Blatt, Broschüre, Plakat, Etiketten, ungerade oder gerade Seiten und Graustufen (siehe [Dateivorgänge](help://file-ops)).

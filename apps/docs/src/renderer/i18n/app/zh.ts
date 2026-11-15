@@ -1,5 +1,7 @@
 /** app strings, zh: defines the key set every other locale shard must match. */
 export const zh = {
+  appLegacyDocImported:
+    '已将 .{ext} 文件转换为 .docx 副本打开。原文件保持不变，保存时将写入新的 .docx 文件。',
   appScTitle: '键盘快捷键',
   appScFilter: '搜索快捷键',
   appScNone: '没有匹配的快捷键',
@@ -52,6 +54,7 @@ export const zh = {
   appFontsMissing: '文档字体未安装：{names}（已用替代字体显示）',
   appVerticalTextNotice: '文档包含竖排文字（暂以横排显示，保存不受影响）',
   appNewDocCreated: '已新建空白文档,可在左侧 AI 面板直接描述要生成的内容',
+  appNewDocCreatedNoAi: '已新建空白文档',
   appNewFailed: '新建失败: {error}',
   appSaveFailed: '保存失败: {error}',
   appAutoSavedAt: '已自动保存 ({time})',
@@ -96,6 +99,9 @@ export const zh = {
   appPrintRangeAll: '所有页',
   appPrintRangeCurrent: '当前页',
   appPrintRangeCustom: '自定义范围',
+  appPrintRangeSelection: '选定内容',
+  appPrintSelectionPreparing: '正在为选定内容分页…',
+  appPrintSelectionFailed: '无法准备选定内容：{error}',
   appPrintRangeHint: '如:1,3,5-8',
   appPrintPageCount: '共 {n} 页',
   appPrintNoPages: '没有可打印的页面',

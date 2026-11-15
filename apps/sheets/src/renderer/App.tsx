@@ -75,6 +75,8 @@ import { consumePendingUndoCarry, undoStackDepth } from './undo-carry'
 import { createSaveGate, shouldRunSaveTick } from './save-scheduler'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
+  aiVisible,
+  useAppChoice,
   useAutoSavePref,
   addTokenUsage,
   useAiSendGate,
@@ -101,6 +103,7 @@ import {
   placeRemoteEntries,
   useProjectPanel,
   type ProjectPanel,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 
 import {
@@ -417,6 +420,7 @@ import {
 } from './data-tools-actions'
 import { installTsvClipboardFix } from './clipboard-tsv'
 import { installFilteredCopyHook } from './filtered-copy'
+import { installSortFormulaRefs } from './sort-formula-refs'
 import { installFilterRangeOutlineSuppression } from './filter-range-outline'
 import { createSheetTabActions } from './sheet-tab-actions'
 import { installVeryHiddenSheetGuard } from './very-hidden-sheets'
@@ -446,7 +450,7 @@ import type { SheetProtectionAllow } from '@genoffice/xlsx-gateway/gateway/xlsx-
 import { installCtrlDragFill } from './ctrl-drag-fill'
 import { installContextSubmenuReopenFix } from './context-submenu-reopen-fix'
 import { installMenuInputEnter } from './menu-input-enter'
-import { installCellContextMenu } from './cell-context-menu'
+import { aiMenuHidden$, installCellContextMenu } from './cell-context-menu'
 import { installClipboardAnchorTile } from './clipboard-anchor-tile'
 import { installSelectionWrapGuard } from './selection-wrap-fix'
 import { installSelectionAppearance } from './selection-appearance'
@@ -511,8 +515,9 @@ import { installInvalidDataMarkerSuppression } from './data-validation-marker'
 import { installThreadedCommentAffordances, type ThreadHover } from './threaded-comment-marker'
 import { threadPane, threadStore } from './threaded-comments'
 import { ThreadHoverCard, ThreadedCommentsPane } from './ThreadedCommentsPane'
-import { NotePicturesPane } from './NotePicturesPane'
-import type { PendingNotePicture } from './note-pictures'
+import { NotePictureHoverCard, NotePicturesPane } from './NotePicturesPane'
+import { installNotePopupCard, type NotePopupCard } from './note-hover-card'
+import { collectNotePictures, type NotePicture, type PendingNotePicture } from './note-pictures'
 import { handleRemoveNotePicture } from './note-picture-actions'
 import { installFormulaNullResultFix } from './formula-null-result'
 import { installKoreanDateInput } from './korean-date-input'
@@ -698,6 +703,8 @@ export function App({
   /// Set once Univer boots; mounts the app's Excel-style Find & Replace panel.
   const [findReplaceService, setFindReplaceService] = useState<IFindReplaceService | null>(null)
   const [threadHover, setThreadHover] = useState<ThreadHover | null>(null)
+  /// The note popup that is up and carries a picture (see note-hover-card.ts).
+  const [notePopupCard, setNotePopupCard] = useState<NotePopupCard | null>(null)
   const getRuntime = useCallback(() => univerRef.current, [])
   /// True while Univer's in-cell editor is open (AutoSave must not save-reload then).
   const editingCellRef = useRef(false)
@@ -740,6 +747,21 @@ export function App({
   const [_revision, setRevision] = useState(0)
   const [workbookFile, setWorkbookFile] = useState<WorkbookFile | null>(null)
   const [pendingEdits, setPendingEdits] = useState(0)
+  /// The note-picture lookup reads the file through a ref: the hover-card
+  /// install lives once per runtime while the file changes across loads.
+  const workbookFileRef = useRef<WorkbookFile | null>(null)
+  useEffect(() => {
+    workbookFileRef.current = workbookFile
+  }, [workbookFile])
+  // The card follows the note it belongs to: a file reload that drops the
+  // picture (or drops the note) takes the card with it.
+  useEffect(() => {
+    setNotePopupCard((card) => {
+      if (!card) return null
+      const fresh = notePictureAt(card.sheetId, card.row, card.column)
+      return fresh ? { ...card, picture: fresh } : null
+    })
+  }, [workbookFile, pendingEdits])
   /// Whether any cell in the workbook has content — the ribbon's one-click AI
   /// action buttons are greyed out on a fully empty sheet.
   const [sheetHasContent, setSheetHasContent] = useState(false)
@@ -1268,6 +1290,13 @@ export function App({
   // when no provider is configured — see isAgentConfigured/handleSend) ----
   const [aiSettings, setAiSettingsState] = useState<AiSettings | null>(null)
   const aiSettingsRef = useRef<AiSettings | null>(null)
+  /** AI turned on in Settings: off, no AI part is drawn and nothing is sent */
+  const aiOn = aiVisible(useAppChoice(window.aiOfficeEditorChoice))
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
+  useEffect(() => {
+    aiMenuHidden$.next(!aiOn)
+  }, [aiOn])
 
   /** connection of the subscription providers (Claude, Codex) and the connect actions */
   const subscription = useSubscriptionConnection()
@@ -1321,6 +1350,9 @@ export function App({
   }, [aiSettings, subscription.statuses])
   /** rate-limit windows the subscription provider reported on its latest turn */
   const [subscriptionUsage, setSubscriptionUsage] = useState<readonly AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own);
+  // the shared merge keeps the windows a report does not name
+  useSubscriptionUsageUpdates(() => window.desktopApi?.aiSubscription, setSubscriptionUsage)
   /** the input of the current run was cut to fit a limit: the user is told */
   const [inputTruncated, setInputTruncated] = useState(false)
   /** cause of the failed turn, handed over by the transport right before the loop reports it */
@@ -2365,6 +2397,8 @@ export function App({
     // Copying in a filtered sheet must skip hidden rows;
     // see filtered-copy.ts for why the built-in hook is not enough.
     const filteredCopyDisposable = installFilteredCopyHook(runtime)
+    // A sort that cuts a shared formula group keeps the rest of the group (sort-formula-refs.ts).
+    const sortFormulaRefsDisposable = installSortFormulaRefs(runtime)
     // Excel-compatible TSV plain text (TRUE/FALSE, quoted newlines).
     const tsvClipboardDisposable = installTsvClipboardFix(runtime)
     // Formula view: swap formula cells to their formula text per sheet.
@@ -2506,6 +2540,12 @@ export function App({
     const threadedCommentDisposable = installThreadedCommentAffordances(runtime, {
       theme: () => (isDarkTheme() ? 'dark' : 'light'),
       onHover: setThreadHover,
+    })
+    // A note that carries a picture shows it under Univer's note popup: the
+    // popup itself is text-only (see note-pictures.ts).
+    const notePopupCardDisposable = installNotePopupCard(runtime, {
+      picturesAt: notePictureAt,
+      onCard: setNotePopupCard,
     })
     threadStore.onChange = (sheetId) => {
       const state = lazyWorkbookRef.current
@@ -3697,6 +3737,7 @@ export function App({
       prefersDark.removeEventListener('change', applyUniverDark)
       dateTextDisposable.dispose()
       filteredCopyDisposable.dispose()
+      sortFormulaRefsDisposable.dispose()
       tsvClipboardDisposable.dispose()
       formulaViewDisposable.dispose()
       formulaTextDisposable.dispose()
@@ -3735,6 +3776,7 @@ export function App({
       dataValidationChromeDisposable.dispose()
       dataValidationMarkerDisposable.dispose()
       threadedCommentDisposable.dispose()
+      notePopupCardDisposable.dispose()
       threadStore.onChange = null
       ruleDetailDisposable()
       lazyFindDisposable.dispose()
@@ -3789,7 +3831,8 @@ export function App({
     onAdmitted?: () => void,
   ): void {
     const instruction = (overrideInstruction ?? prompt).trim()
-    if (!instruction || aiBusy) return
+    // AI turned off: a request that still finds its way here (a handed-over skill) is dropped
+    if (!instruction || aiBusy || !aiOnRef.current) return
     // a retried message that carried skills sends the same skill text again
     const skillUse =
       retryIndex !== undefined &&
@@ -4381,6 +4424,14 @@ export function App({
     }))
   }
 
+  /** The note's picture at a cell — what the file has merged with what this
+   *  session's journal carries, the same merge the pictures pane shows. */
+  function notePictureAt(sheetId: string, row: number, column: number): NotePicture | undefined {
+    return collectNotePictures(workbookFileRef.current, pendingNotePictures()).find(
+      (entry) => entry.sheetId === sheetId && entry.row === row && entry.column === column,
+    )
+  }
+
   /** App-scope refs/state bundle for the extracted ribbon dispatcher (ribbon-actions.ts). */
   function ribbonContext(): RibbonCommandContext {
     return {
@@ -4456,6 +4507,7 @@ export function App({
 
   function handleRibbonCommand(command: string): void {
     if (command === 'ai-ask-selection') {
+      if (!aiOnRef.current) return
       const range = univerRef.current?.univerAPI.getActiveWorkbook()?.getActiveRange()
       if (!range) return
       refreshAiScope(range, true)
@@ -5594,6 +5646,7 @@ export function App({
         recoveryNotice={recoveryNotice}
         onDismissRecoveryNotice={() => setRecoveryNotice(null)}
         aiBusy={aiBusy}
+        aiOn={aiOn}
         {...(sessionUsage !== undefined ? { sessionUsage } : {})}
         aiSubscription={{
           settings: sendGate.settings,
@@ -5727,6 +5780,14 @@ export function App({
         getRuntime={getRuntime}
       />
       <ThreadHoverCard hover={threadHover} />
+      <NotePictureHoverCard
+        card={notePopupCard}
+        sessionId={workbookFile?.sessionId}
+        onRemove={(sheetId, row, column) => {
+          handleRemoveNotePicture(ribbonContext(), sheetId, row, column)
+          setNotePopupCard(null)
+        }}
+      />
       {findReplaceService && (
         <FindReplacePanel
           service={findReplaceService}

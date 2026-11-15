@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   GEMINI_FREE_MODEL,
   OPENROUTER_FREE_MODELS,
+  OPENROUTER_REJECTED_FREE_MODELS,
   freeAiConnectResultOf,
   freeAiConnected,
   freeAiQuotaOf,
@@ -14,7 +17,13 @@ import {
   withoutFreeAiConnection,
 } from '../src/free-ai'
 import { aiStreamErrorFields } from '../src/run-error'
-import { currentModelId, defaultAiSettings, resolveAiSettings } from '../src/providers'
+import { listsKeyProviderModels } from '../src/key-models'
+import {
+  AI_PROVIDERS,
+  currentModelId,
+  defaultAiSettings,
+  resolveAiSettings,
+} from '../src/providers'
 import { selectAiProvider } from '../src/provider-selection'
 
 const OPENROUTER_DAILY_BODY =
@@ -105,15 +114,77 @@ describe('free connection settings', () => {
   it('offers only the tested free models OpenRouter still lists for the key', () => {
     const [first, second, ...rest] = OPENROUTER_FREE_MODELS
     // the second tested model is gone from the live list: it is not offered
-    const live = [first!, ...rest, 'acme/untested:free', 'anthropic/claude-opus-6']
+    const live = [first!, ...rest, 'anthropic/claude-opus-6']
     expect(keyProviderModels('openrouter', first!, live)).toEqual([first!, ...rest])
     // a stored model that is gone stays at the top until it is moved, so the picker shows what runs
     expect(keyProviderModels('openrouter', second!, live)).toEqual([second!, first!, ...rest])
     // no list yet, or a list with none of the tested models: nothing to narrow to
     expect(keyProviderModels('openrouter', first!)).toEqual([...OPENROUTER_FREE_MODELS])
-    expect(keyProviderModels('openrouter', first!, ['acme/untested:free'])).toEqual([
+    expect(keyProviderModels('openrouter', first!, ['anthropic/claude-opus-6'])).toEqual([
       ...OPENROUTER_FREE_MODELS,
     ])
+  })
+
+  it("adds OpenRouter's newly listed free models after the tested ones, newest first", () => {
+    const [first, ...rest] = OPENROUTER_FREE_MODELS
+    // the live list runs newest first, with paid models mixed in
+    const live = [
+      'particle-ai/particle-1:free',
+      'anthropic/claude-opus-6',
+      rest[0]!,
+      'acme/older:free',
+      first!,
+      'openai/gpt-6:freeform',
+    ]
+    const models = keyProviderModels('openrouter', first!, live)
+    expect(models).toEqual([first!, rest[0]!, 'particle-ai/particle-1:free', 'acme/older:free'])
+    expect(models.every((m) => m.endsWith(':free'))).toBe(true)
+    // with no tested model listed, the tested ones still lead and the new ones follow
+    expect(keyProviderModels('openrouter', first!, ['particle-ai/particle-1:free'])).toEqual([
+      ...OPENROUTER_FREE_MODELS,
+      'particle-ai/particle-1:free',
+    ])
+    // a stored untested model the list has is not listed twice, nor moved to the top
+    expect(keyProviderModels('openrouter', 'acme/older:free', live)).toEqual(models)
+  })
+
+  it('leaves out the free models the trial turned down', () => {
+    const rejected = OPENROUTER_REJECTED_FREE_MODELS[0]!
+    expect(rejected.endsWith(':free')).toBe(true)
+    const live = [rejected, 'particle-ai/particle-1:free', OPENROUTER_FREE_MODELS[0]!]
+    expect(keyProviderModels('openrouter', OPENROUTER_FREE_MODELS[0]!, live)).toEqual([
+      OPENROUTER_FREE_MODELS[0]!,
+      'particle-ai/particle-1:free',
+    ])
+    // one the user typed in anyway stays selectable, at the top as any stored model the list lacks
+    expect(keyProviderModels('openrouter', rejected, live)[0]).toBe(rejected)
+    // a tested model is never also a turned-down one
+    expect(
+      OPENROUTER_FREE_MODELS.filter((id) => OPENROUTER_REJECTED_FREE_MODELS.includes(id)),
+    ).toEqual([])
+  })
+
+  it('turns down the same free models the trial recorded', () => {
+    const file = join(__dirname, '../../../tools/free-models-rejected.json')
+    const recorded = Object.keys(JSON.parse(readFileSync(file, 'utf8')) as object)
+    expect([...OPENROUTER_REJECTED_FREE_MODELS].sort()).toEqual(recorded.sort())
+  })
+
+  it('adds the live list after the catalog for every key provider that lists models', () => {
+    const listing = AI_PROVIDERS.filter((meta) => listsKeyProviderModels(meta.id))
+    expect(listing.length).toBeGreaterThan(10)
+    for (const meta of listing) {
+      const live = ['acme/brand-new-model', ...meta.models.slice(0, 1)]
+      const models = keyProviderModels(meta.id, '', live)
+      // the catalog first, in its order and without a second copy; the new model after it
+      expect(models, meta.id).toEqual([...meta.models, 'acme/brand-new-model'])
+    }
+  })
+
+  it('gives a paid OpenRouter setup the whole live list', () => {
+    const live = ['particle-ai/particle-1:free', 'anthropic/claude-opus-6']
+    const models = keyProviderModels('openrouter', 'openrouter/auto', live)
+    expect(models).toEqual(expect.arrayContaining(live))
   })
 
   it('moves a free connection off a model OpenRouter no longer lists, and only then', () => {

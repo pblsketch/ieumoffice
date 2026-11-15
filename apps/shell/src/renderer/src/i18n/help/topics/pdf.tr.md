@@ -85,7 +85,7 @@ Altı araç: **mürekkep, dikdörtgen, elips, ok, not**, ayrıca Açıklama sekm
 - Dosya menüsünde **Word olarak dışa aktar… / PowerPoint… / Excel…** ya da şeritteki **PDF Dönüştürücü** ile aynı üçü — hepsi yerel, yükleme yok. .pptx sayfa başına bir slayt, .xlsx sayfa başına bir çalışma sayfası olarak çıkar. Her biri nereye kaydedileceğini sorar.
 - Şeritteki **PDF Dönüştürücü** altındaki **PDF’den HWP’ye**, PDF’yi yeni bir Hangul sekmesinde bir Hangul belgesine dönüştürür. Sekmenin gösterdiği PDF içe aktarma penceresinde **İçe aktar**’ı (가져오기) seçin; belge o sekmede oluşturulur ve ilk kaydetmesi .hwp veya .hwpx dosyasının nereye konacağını sorar. PDF’nin kendisi olduğu gibi kalır ve dönüştürme bu bilgisayarda çalışır. Gövde metninin sayfalar boyunca akan paragraflar olarak mı yoksa sabit metin kutuları olarak mı geleceği, Hangul sekmesinin seçeneklerinde (환경 설정) PDF içe aktarma altında ayarlanır.
 - Aynı dönüştürme bir Hangul sekmesinden de başlar. **Dosya** ▸ **PDF içe aktar…** ile bir PDF seçin; aynı PDF içe aktarma penceresiyle yeni bir Hangul sekmesi açılır. Menünün kullanıldığı sekmenin belgesi olduğu gibi kalır.
-- **Yazdır**: sistem penceresi üzerinden geçerli sıra ve döndürmeler; sayfa aralıkları desteklenir.
+- **Yazdır**: sistem penceresi üzerinden geçerli sıra ve döndürmeler. Bir sayfa aralığını veya küçük resimlerde seçilen sayfaları yazdırabilir, **Sayfa düzeni** bölümünde kâğıt başına birden çok sayfa, kitapçık, gri tonlama ve daha fazlasını seçebilirsiniz.
 
 ## Kaydetme
 

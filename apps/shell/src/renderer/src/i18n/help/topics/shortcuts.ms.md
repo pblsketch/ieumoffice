@@ -12,10 +12,12 @@ Setiap editor mempunyai pengikatan kekunci sendiri, dan hanya sebahagian kecil d
 | Ciutkan / Kembangkan reben — setiap editor                           | ⌥⌘R   | Ctrl+F1         |
 | Reben kompak — Docs sahaja                                           | ⌥⌘K   | Ctrl+Alt+K      |
 | Buka helaian Pintasan Papan Kekunci — Word sahaja                    | ⌘/    | Ctrl+/          |
+| Buka Tetapan — semua tab kecuali Word                                | ⌘,    | Ctrl+,          |
 
 - **F1 membuka manual ini**, bukan helaian pintasan. Kekunci itu milik menu aplikasi, jadi ia berfungsi dari Word, Sheets, Slides, PDF mahupun tab Laman Utama.
 - **Kekunci suis reben ialah `Ctrl+F1`, atau `⌥⌘R` pada macOS.** Menekan `F1` kosong tidak melakukan apa-apa — F1 ialah manualnya, dan kekunci reben sengaja tidak berkongsi denyut itu. `Ctrl+F1` juga diterima pada macOS, walaupun `⌥⌘R` ialah kekunci yang digunakan oleh Office for Mac.
 - **Helaian Pintasan Papan Kekunci milik Word sahaja** (`⌘/`). Ia menyenaraikan tepat jadual Word di bawah ini. Tiada editor lain mempunyai helaian seperti itu.
+- **`⌘,` membuka Tetapan** (`Ctrl+,` pada Windows dan Linux), seperti kebanyakan apl Mac. Dalam tab Word kombinasi ini kekal sebagai subskrip, jadi buka Tetapan daripada menu aplikasi pada Mac, atau daripada Menu (☰) ▸ Tetapan… pada Windows dan Linux.
 
 ![Helaian Pintasan Papan Kekunci milik Word sahaja: tindakan di sebelah kiri, pintasan kekunci di sebelah kanan, dikumpulkan mengikut kumpulan Fail, Edit, Pemformatan Teks, Pemformatan Perenggan, Sisip, Semakan & Alat, dan Paparan](img/word-shortcuts.png)
 

@@ -817,6 +817,8 @@ export const fr = {
   ribbonOutlineView: 'Plan',
   ribbonOutlineViewTip:
     'Mode Plan : afficher uniquement la hiérarchie des titres ; les titres restent modifiables',
+  ribbonStoryView: 'Story',
+  ribbonStoryViewTip: 'Story : écrire sans la mise en forme du document',
   ribbonReadMode: 'Mode Lecture',
   ribbonReadModeTip:
     'Mode Lecture : masquer le ruban pour une lecture concentrée, appuyez sur Échap pour quitter',
@@ -957,10 +959,21 @@ export const fr = {
   ribbonMailingsOutput: 'Sortie de fusion',
   ribbonMailingsOutputPerRecord: 'Un document par enregistrement',
   ribbonMailingsOutputSingle: 'Un document pour tous les enregistrements',
+  ribbonMailingsOutputLabels: 'Planche d’étiquettes',
+  ribbonMailingsOutputEnvelopes: 'Enveloppes',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'Grille personnalisée',
+  ribbonMailingsLabelColumns: 'Colonnes',
+  ribbonMailingsLabelRows: 'Lignes',
+  ribbonMailingsEnvelopeSize: 'Format d’enveloppe',
   ribbonMailingsNamePattern: 'Nom du fichier',
   ribbonMailingsNamePatternPh: 'Vide : le premier champ est utilisé',
   ribbonMailingsFinish: 'Terminer et fusionner',
   ribbonMailingsMerged: '{n} documents fusionnés',
   ribbonMailingsMergeFailed: 'La fusion a échoué',
   ribbonMailingsClose: 'Fermer',
+  ribbonMailingsEnvelopeNote:
+    "Les enveloppes impriment ce document tel quel sur le papier enveloppe ; le bloc d'adresse reste à la marge supérieure gauche (l'assistant Enveloppes de Word centre l'adresse de destination).",
+  ribbonMailingsLabelsDroppedHint:
+    "La planche d'étiquettes ne reprend que les paragraphes : {n} blocs du modèle (tableaux, images) seront ignorés.",
 } satisfies Record<keyof typeof zh, string>

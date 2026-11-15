@@ -84,6 +84,31 @@ function offeredFreeModels(live: readonly string[] | undefined): readonly string
 }
 
 /**
+ * OpenRouter free models the in-app trial turned down: the ids of
+ * `tools/free-models-rejected.json`, which the trial writes and a test keeps
+ * this list in step with. A free connection's picker leaves them out even
+ * when OpenRouter lists them (decision 0148).
+ */
+export const OPENROUTER_REJECTED_FREE_MODELS: readonly string[] = [
+  'cohere/north-mini-code:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+  'liquid/lfm-2.5-2.6b:free',
+  'thinkingmachines/inkling-2-small:free',
+  'liquid/lfm-3-1.7b:free',
+]
+
+/**
+ * Whether a model from OpenRouter's live list goes into a free connection's
+ * picker after the tested ones (decision 0148): free (the `:free` suffix
+ * OpenRouter bills nothing for) and not turned down by the trial. The live
+ * list holds only chat models that take tools (`keyModelIdsOf`).
+ */
+function offersListedFreeModel(id: string): boolean {
+  return isOpenRouterFreeModel(id) && !OPENROUTER_REJECTED_FREE_MODELS.includes(id)
+}
+
+/**
  * The model an OpenRouter free connection runs on, given what OpenRouter
  * lists for the key: the stored one while it is listed, else the first tested
  * model that is (decision 0138). Free variants are withdrawn without notice,
@@ -106,7 +131,9 @@ export function openRouterFreeModelFor(
 /**
  * The models a picker lists for a key provider: the fixed catalog, then what
  * the vendor listed for the key and the catalog lacks (newest first, decision
- * 0087), with the stored one kept in the list.
+ * 0087), with the stored one kept in the list. An OpenRouter free connection
+ * has the tested free models for its catalog, and takes from the live list
+ * only the free models the trial has not turned down (decision 0148).
  */
 export function keyProviderModels(
   provider: AiProviderId,
@@ -122,7 +149,7 @@ export function keyProviderModels(
     ? offeredFreeModels(live)
     : (AI_PROVIDERS.find((meta) => meta.id === provider)?.models ?? [])
   const known = new Set(catalog)
-  const added = free ? [] : (live ?? []).filter((id) => !known.has(id))
+  const added = (live ?? []).filter((id) => !known.has(id) && (!free || offersListedFreeModel(id)))
   const models = [...catalog, ...added]
   if (!model || models.includes(model)) return models
   return [model, ...models]

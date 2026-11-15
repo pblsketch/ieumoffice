@@ -86,4 +86,4 @@ Right-click anywhere in the body — the menu follows what you clicked. Main gro
 
 ## Print
 
-ctrl+P through the system dialog, WYSIWYG pages.
+ctrl+P opens the print window. Choose the printer, copies, two-sided printing and range (including the selection), and use **Page layout** for several pages per sheet, booklets, posters, labels, odd or even sides and grayscale (see [File operations](help://file-ops)).

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const id = {
+  appLegacyDocImported:
+    'File .{ext} dibuka sebagai salinan .docx hasil konversi. File asli tetap seperti semula; menyimpan akan menulis file .docx baru.',
   appScTitle: 'Pintasan Papan Ketik',
   appScFilter: 'Cari pintasan',
   appScNone: 'Tidak ada pintasan yang cocok',
@@ -55,6 +57,7 @@ export const id = {
     'Dokumen ini berisi teks vertikal (sementara ditampilkan horizontal; penyimpanan tidak terpengaruh)',
   appNewDocCreated:
     'Dokumen kosong telah dibuat. Jelaskan konten yang ingin dibuat di panel AI sebelah kiri',
+  appNewDocCreatedNoAi: 'Dokumen kosong dibuat.',
   appNewFailed: 'Gagal membuat dokumen: {error}',
   appSaveFailed: 'Gagal menyimpan: {error}',
   appAutoSavedAt: 'Disimpan otomatis ({time})',
@@ -96,6 +99,9 @@ export const id = {
   appPrintRangeAll: 'Semua halaman',
   appPrintRangeCurrent: 'Halaman saat ini',
   appPrintRangeCustom: 'Rentang kustom',
+  appPrintRangeSelection: 'Pilihan',
+  appPrintSelectionPreparing: 'Menata halaman pilihan…',
+  appPrintSelectionFailed: 'Pilihan tidak dapat ditata ke halaman: {error}',
   appPrintRangeHint: 'mis. 1,3,5-8',
   appPrintPageCount: '{n} halaman',
   appPrintNoPages: 'Tidak ada halaman untuk dicetak',

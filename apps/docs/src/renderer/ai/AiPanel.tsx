@@ -43,6 +43,7 @@ import {
   useProjectPanel,
   type ProjectPanel,
   type ProjectMemoryLine,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
@@ -829,6 +830,12 @@ export function AiPanel({
   }, [settings, subscription.statuses])
   /** rate-limit windows the subscription CLI reported (newest per provider and window) */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own)
+  useSubscriptionUsageUpdates(
+    () => window.aiOfficeSubscription,
+    setSubscriptionUsage,
+    mergeSubscriptionUsage,
+  )
   /** the last turn's input was cut to fit a limit: the user is told, never silently */
   const [inputTruncated, setInputTruncated] = useState(false)
   /** structured copy of the transport's latest failure, matched to the loop's error by its text */

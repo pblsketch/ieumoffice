@@ -47,13 +47,25 @@ import {
   type PrintDialogOutcome,
   assertFileSaved,
 } from '@genoffice/electron-utils'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { fetchImageBytes } from '@genoffice/electron-utils/fetch-image-bytes'
+import {
+  ensurePrintLayoutIpc,
+  LABEL_SPEC_FILE_NAME,
+} from '@genoffice/electron-utils/print-arranged'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import {
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
 } from '@genoffice/ai-provider/subscription'
-import { generateImageTool, documentMediaRoots, withMediaCallSignal } from '@genoffice/ai-search'
+import {
+  abortMediaCalls,
+  generateImageTool,
+  documentMediaRoots,
+  withMediaCallSignal,
+} from '@genoffice/ai-search'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import {
   parseFileToText,
   ATTACHABLE_EXTS,
@@ -67,6 +79,7 @@ import {
 import { convertHtmlToDocx } from '../../../../packages/html2docx/src'
 import { atomicWriteFile } from './atomic-write'
 import { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
+import { isFileUrlOf } from '../../../../packages/html2docx/src/drivers/file-url'
 import {
   copyImageIntoOwnedAssets,
   discardPendingOwnedAssets,
@@ -87,13 +100,14 @@ import {
   editableImageMime,
   extensionlessAssetMime,
 } from './asset-mime'
-import { buildPreviewDocument } from './preview-document'
+import { ASSET_SCHEME, buildPreviewDocument } from './preview-document'
 import { confirmOdtReport, exportOdt, odtFilterName } from './odt-export'
 import { inlineImagesForSingleFile, singleFileExportBaseName } from './single-file-html'
 import { registerHtmlHandoffIpc } from './generate-handoff-ipc'
 import { registerHtmlSeedIpc } from './seed-main'
 import { createTextRecovery } from './recovery'
 import { registerHtmlAiSearchIpc } from './ai-search-ipc'
+import { registerHtmlPrintLayout } from './print-layout'
 import {
   assetBaseHref,
   previewUrlFor,
@@ -1138,7 +1152,13 @@ async function renderHtmlDocx(
     const base = docPath ? assetBaseHref(dirname(docPath)) : null
     const htmlPath = join(workDir, 'export.html')
     await writeFile(htmlPath, buildPreviewDocument(html, base), 'utf8')
-    driver = await ElectronBrowserDriver.create(HTML2DOCX_VIEWPORT)
+    // The page may be a file someone sent. It keeps what the preview gives it
+    // (its folder's assets through html-asset://, the web), but no file:// URL
+    // other than its own: from file://, its scripts could read other local files.
+    driver = await ElectronBrowserDriver.create(HTML2DOCX_VIEWPORT, {
+      allowRequest: (url) => isFileUrlOf(url, htmlPath) || /^(?:https?|html-asset):/i.test(url),
+      protocols: { [ASSET_SCHEME]: serveHtmlAsset },
+    })
     // AI-generated markup with a script that never yields keeps
     // executeJavaScript pending forever, which would strand the hidden
     // window and this handler; race a watchdog and destroy the window on
@@ -1179,6 +1199,20 @@ async function writeHtmlDocx(
     return { ok: true, path: target }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+/**
+ * A Word file's bytes from restricted HTML, the way the Word export makes
+ * them: for "create the file only" of a document that would otherwise open
+ * as a new Word tab while the Word editor is off (editor choice spec 7.3).
+ */
+export async function htmlToDocxBytes(html: string): Promise<Uint8Array> {
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
+  try {
+    return await renderHtmlDocx(html, undefined, workDir)
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => {})
   }
@@ -1567,36 +1601,38 @@ async function resolveSaveTarget(
  * "Save page as, complete" assets by signature / requesting slot.
  */
 function registerImageProtocol(): void {
-  protocol.handle('html-asset', async (request) => {
-    let target: string
-    try {
-      target = decodeURIComponent(new URL(request.url).pathname)
-    } catch {
-      return new Response(null, { status: 400 })
+  protocol.handle(ASSET_SCHEME, serveHtmlAsset)
+}
+
+async function serveHtmlAsset(request: Request): Promise<Response> {
+  let target: string
+  try {
+    target = decodeURIComponent(new URL(request.url).pathname)
+  } catch {
+    return new Response(null, { status: 400 })
+  }
+  if (/^\/[a-zA-Z]:\//.test(target)) target = target.slice(1)
+  target = resolve(target)
+  const knownExt = PREVIEW_ASSET_EXTS.has(extname(target).toLowerCase())
+  if (!existsSync(target)) return new Response(null, { status: 404 })
+  let inDocDir = false
+  for (const doc of new Set([...openPathByWc.values(), ...savePathByWc.values()])) {
+    const dir = resolve(dirname(doc))
+    if (!isInDocDir(target, dir)) continue
+    if (await resolveSafeRelativeImagePath(doc, relative(dir, target))) {
+      inDocDir = true
+      break
     }
-    if (/^\/[a-zA-Z]:\//.test(target)) target = target.slice(1)
-    target = resolve(target)
-    const knownExt = PREVIEW_ASSET_EXTS.has(extname(target).toLowerCase())
-    if (!existsSync(target)) return new Response(null, { status: 404 })
-    let inDocDir = false
-    for (const doc of new Set([...openPathByWc.values(), ...savePathByWc.values()])) {
-      const dir = resolve(dirname(doc))
-      if (!isInDocDir(target, dir)) continue
-      if (await resolveSafeRelativeImagePath(doc, relative(dir, target))) {
-        inDocDir = true
-        break
-      }
-    }
-    if (!inDocDir) return new Response(null, { status: 403 })
-    let mime: string | null = null
-    if (!knownExt) {
-      mime = extensionlessAssetMime(target, await readHead(target), request.headers.get('accept'))
-      if (!mime) return new Response(null, { status: 404 })
-    }
-    const res = await net.fetch(pathToFileURL(target).toString())
-    if (!mime || !res.ok) return res
-    return new Response(res.body, { status: 200, headers: { 'Content-Type': mime } })
-  })
+  }
+  if (!inDocDir) return new Response(null, { status: 403 })
+  let mime: string | null = null
+  if (!knownExt) {
+    mime = extensionlessAssetMime(target, await readHead(target), request.headers.get('accept'))
+    if (!mime) return new Response(null, { status: 404 })
+  }
+  const res = await net.fetch(pathToFileURL(target).toString())
+  if (!mime || !res.ok) return res
+  return new Response(res.body, { status: 200, headers: { 'Content-Type': mime } })
 }
 
 async function readHead(target: string): Promise<Uint8Array> {
@@ -1611,6 +1647,27 @@ async function readHead(target: string): Promise<Uint8Array> {
 }
 
 let ipcRegistered = false
+
+/** what a picture call answers while AI is off; the model reads it, so it stays English */
+const AI_OFF_ERROR = 'AI features are turned off in Settings.'
+
+/**
+ * A tab's AI picture call: refused while AI is off (Settings › Editors and
+ * AI), else one running AI job that turning AI off stops the way the tab's
+ * Stop does (ending its media calls ends the program the call started).
+ */
+async function aiImageCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  if (!aiFeaturesOn()) return { error: AI_OFF_ERROR }
+  const end = registerAiJob({ kind: 'chat', stop: () => abortMediaCalls(senderId) })
+  try {
+    return await run()
+  } finally {
+    end()
+  }
+}
 
 function registerHtmlIpc(): void {
   if (ipcRegistered) return
@@ -1975,26 +2032,33 @@ function registerHtmlIpc(): void {
   // shell-registered, but image generation is gated per app
   ipcMain.handle(
     HTML_CHANNELS.aiGenerateImage,
-    (e, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      // ends with its tab, or when the tab's AI run is stopped
-      withMediaCallSignal(e.sender, (signal) =>
-        generateImageTool(
-          join(app.getPath('userData'), 'ai-settings.json'),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          {
-            mediaRoots: documentMediaRoots(
-              htmlFilePath(e.sender.id),
-              join(app.getPath('temp'), 'genoffice-pasted'),
-            ),
-            // screen path: the statuses of the process-wide subscription service decide the route
-            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-            signal,
-          },
+    (e, op: { prompt?: unknown; aspectRatio?: unknown; model?: unknown }) => {
+      // the model the user named, as given: the shared tool decides whether the route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      // refused while AI is off, else one running AI job; ends with its tab,
+      // or when the tab's AI run is stopped
+      return aiImageCall(e.sender.id, () =>
+        withMediaCallSignal(e.sender, (signal) =>
+          generateImageTool(
+            join(app.getPath('userData'), 'ai-settings.json'),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+              ...(model ? { model } : {}),
+            },
+            {
+              mediaRoots: documentMediaRoots(
+                htmlFilePath(e.sender.id),
+                join(app.getPath('temp'), 'genoffice-pasted'),
+              ),
+              // screen path: the statuses of the process-wide subscription service decide the route
+              context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+              signal,
+            },
+          ),
         ),
-      ),
+      )
+    },
   )
 
   const MIME_BY_EXT: Record<string, ImageData['mime']> = {
@@ -2034,9 +2098,20 @@ function registerHtmlIpc(): void {
       }
       const win =
         BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+      const headless = isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
+      // the Word copy opens in a Word tab: while that editor is off the export asks
+      // first (editor choice spec 7.3); "create the file only" shows it in its folder
+      if (
+        !headless &&
+        (await askBeforeMakeAndOpen('docs', {
+          fileName: `${exportFileName(request.suggestedName)}.docx`,
+        })) === 'cancel'
+      ) {
+        return { ok: true, canceled: true }
+      }
       // Headless export has no dialog to authorize a path; the CLI already chose one.
       const picked =
-        isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
+        headless && typeof request.outPath === 'string'
           ? { canceled: false, filePath: request.outPath }
           : await showSaveDialogWithMemory(
               dialog,
@@ -2146,6 +2221,39 @@ function registerHtmlIpc(): void {
       return printHtml(request.html, savePathByWc.get(e.sender.id))
     },
   )
+
+  // Advanced print (decision 0141): an option on, or a typed page range, makes
+  // the job PDF from the page loaded as printHtml loads it (scripting on, the
+  // readiness probe), never from the export's script-free window.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerHtmlPrintLayout({
+    ipcMain,
+    documentOf: (event, html) => {
+      const docPath = savePathByWc.get(event.sender.id)
+      return buildPreviewDocument(html, docPath ? assetBaseHref(dirname(docPath)) : null)
+    },
+    createJobWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    createPrintWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    pickSavePath: async (event, suggestedName) => {
+      const win =
+        BrowserWindow.fromWebContents(event.sender as WebContents) ??
+        BrowserWindow.getFocusedWindow() ??
+        undefined
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: `${exportFileName(suggestedName)}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+  })
 
   ipcMain.handle(
     HTML_CHANNELS.exportHtml,

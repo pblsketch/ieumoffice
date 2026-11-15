@@ -126,7 +126,7 @@ export const fr = {
   stepLogin: 'Se connecter',
   stepReady: 'Connecté',
   installReturnNote:
-    'Une fois l’installation terminée dans cette fenêtre, revenez ici. L’application vérifie à nouveau d’elle-même.',
+    'Pendant le téléchargement, cette fenêtre peut ne rien afficher pendant quelques minutes. Laissez-la ouverte. Une fois l’installation terminée, revenez ici. L’application vérifie à nouveau d’elle-même.',
   loginHowNote:
     'Un navigateur s’ouvre quand vous cliquez. Connectez-vous avec votre compte {vendor} et cliquez sur Autoriser : la connexion se fait d’elle-même.',
   signingInStalledNote:

@@ -130,6 +130,26 @@ export async function printWorkbook(
   }
 }
 
+/// Advanced print layout: the print job PDF is the laid-out HTML the preview,
+/// print and PDF export use (range, scale, paper, margins and gridlines already
+/// applied by the renderer), rendered exactly as the PDF export renders it.
+export async function buildPrintJobPdf(request: WorkbookExportPdfRequest): Promise<Uint8Array> {
+  const workDir = await mkdtemp(join(tmpdir(), 'ai-excel-print-layout-'))
+  const htmlPath = join(workDir, 'print.html')
+  const window = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, javascript: false },
+  })
+  try {
+    await writeFile(htmlPath, withTemplateFontFaces(request.html, sheetsTemplateFontsDir()), 'utf8')
+    await window.loadFile(htmlPath)
+    return await renderPdf(window.webContents, request)
+  } finally {
+    window.destroy()
+    await rm(workDir, { recursive: true, force: true })
+  }
+}
+
 interface TemplatePair {
   readonly headerTemplate?: string | undefined
   readonly footerTemplate?: string | undefined

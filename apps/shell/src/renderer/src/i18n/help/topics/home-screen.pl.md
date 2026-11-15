@@ -44,7 +44,7 @@ Karty nad listami tworzą nowy dokument jednym krokiem. Kliknięcie karty tworzy
 
 Nowy plik trafia do folderu aktualnie zaznaczonego na pasku bocznym; jeśli nic nie jest zaznaczone, trafia do folderu domyślnego.
 
-Aby ukryć karty lub zmienić ich kolejność, użyj **Nowe dokumenty na stronie głównej** w Ustawienia → Ogólne. Wyłączony typ znika tylko z kart i z menu Nowy; pliki tego typu nadal się otwierają. Na stronie głównej ⌘N/Ctrl+N tworzy pierwszy wciąż widoczny typ.
+Aby ukryć karty lub zmienić ich kolejność, użyj **Nowe dokumenty na stronie głównej** w Ustawienia → Ogólne. Wyłączony typ znika tylko z kart i z menu Nowy; pliki tego typu nadal się otwierają. Na stronie głównej ⌘N/Ctrl+N tworzy pierwszy wciąż widoczny typ. Wyłączenie edytora w Ustawienia → Edytory i AI to co innego: znikają też jego karty i pozycje menu, a otwarcie jego plików najpierw wywołuje pytanie.
 
 Co robi każda karta:
 

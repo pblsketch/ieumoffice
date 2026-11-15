@@ -8,6 +8,7 @@
 - 리본·도구 단추의 말풍선 `src/screentip.ts`(`installScreenTips`, 모든 화면이 하나를 쓴다). 포인터가 띄운 말풍선은 포인터 그림이 차지하는 칸(끝점에서 오른쪽 아래로 `--os-pointer-size`, 없으면 32px)과 겹치면 그 아래로, 창 아래에 자리가 없으면 단추 위로 비킨다. 포인터를 크게 키워 쓰는 사람이 말풍선을 못 읽던 신고로 넣었다. 키보드 초점으로 뜬 말풍선은 원래 자리다.
 - AI 패널 공용 부품: 작성기 `AiComposer`, 모델 선택 `AiModelPicker`(`src/ai-model-picker-options.ts`의 `aiProviderPickerGroups`·`withAiProviderSelection`), 대기열 `useChatRunQueue`(`src/chat-run-queue.ts`), 패널 표시 설정(`src/ai-panel-prefs.ts`), 구독 연결 상태 기계 `useSubscriptionConnection`(`src/use-subscription-connection.ts`), 답이 이어지는 동안 그 답 맨 아래에 두는 진행 줄 `AiReplyProgress`(`src/AiTypingIndicator.tsx`). 진행 줄은 답이 끝날 때까지 남고, 글이 나온 뒤에도, 도구가 도는 동안에도 사라지지 않는다. 문구는 도구 단계가 없을 때(`thinking`)와 있을 때(`working`) 두 가지다. PDF 창만 진행 줄을 대화 끝에 따로 둔다.
 - 구독 연결 화면 부품과 그 규칙: `AiSubscriptionCard`·`AiConnectPrompt`, 연결 도우미 `AiConnectGuide`(규칙은 `src/connect-guide.ts`), `AiBlockedNotice`, `AiSubscriptionUsageLine`, `AiFirstConnectionNotice`·`AiCodexNotice`·`AiMeteredWarning`·`AiInputTruncatedNotice`, `AiMark`. 무엇을 보여 줄지는 순수 함수(`src/ai-subscription.ts`)가 정하고 컴포넌트는 배치만 한다.
+- 채팅 밖에서 온 구독 사용량 받기(결정 0145): `useSubscriptionUsageUpdates`, `mergeLatestSubscriptionUsage`, `subscriptionUsageOf`(`src/use-subscription-usage-updates.ts`). 메인이 모든 창에 보내는 `ai:subscription-usage-update`(지금은 그림 요청 중 Codex가 알린 사용량)를 편집기 구독 다리의 `onUsage`로 듣고, 창이 사라지면 듣기를 푼다. 열 편집기(docs, html, hwp, markdown, mindmap, pdf, sheets, slides, epub, diagram)가 `useSubscriptionConnection`에 주는 것과 같은 다리로 부른다. docs·html·mindmap·pdf·epub·diagram은 이 값을 제 `mergeSubscriptionUsage`로 합치고, hwp·markdown·slides·sheets는 이 알림에만 `mergeLatestSubscriptionUsage`를 쓴다(채팅 길은 그대로). `tests/editors-consistency.test.ts`가 열 편집기의 배선을 지킨다.
 - 앱이 제 규칙으로 멈춘 실행의 알림(결정 0135): `AiRunStopNotice`, 문장과 낱말 줄을 만드는 `src/run-stop.ts`(`runStopNotice`·`runStopText`·`runStopCode`), "이어서 하기"가 모델에게 붙이는 말 `runContinueNote`, 문구 `src/strings-run-stop.ts`(22개 언어, "이어서 하기"의 이름이 문장 안에도 같은 말로 들어간다: `tests/run-stop.test.ts`). 낱말 줄(`tool-input: truncated 2 (insert_table); 4 calls ran`)은 번역하지 않는다. 신고를 받았을 때 어느 규칙·어느 까닭이었는지 가리는 값이다.
 - AI 창의 "Google 드라이브에서 첨부" 버튼 `DriveAttachButton`과 그 문구(`src/strings-drive-attach.ts`, 결정 0033, 0085). 편집기 preload의 `window.aiOfficeDriveAi`가 있고 드라이브가 연결돼 있을 때만 그린다. Google 선택 창과 내려받기, 학습 확인·무료 연결 거절은 껍데기 앱의 일이고, 이 부품은 돌아온 경로와 알림 글을 편집기에 넘길 뿐이다.
 - AI 창의 "이음오피스 문서에서 첨부" 버튼 `DocAttachButton`과 그 문구(`src/strings-doc-attach.ts`, 결정 0035). 편집기 preload의 `window.aiOfficeDocs`가 있을 때만(껍데기 앱 안에서 돌 때만) 그린다. 열린 문서·최근 문서의 고르기 창은 껍데기 앱의 일이고, 이 부품은 고른 파일 경로와 알림 글(`docPickedOf`로 거른 `{ paths, notes }`)을 편집기에 넘길 뿐이다. 고르는 동안에는 잠긴다.
@@ -21,6 +22,7 @@
 - AI와 무관한 공용 부품: `Dropdown`, 색 선택기(문구 `eyedropper`를 넘긴 편집기에만 화면 색 따오기 줄이 생긴다, `pickScreenColor`), 찾기 패널, 리본 접기, 이미지 대화 상자·뷰어, `Markdown`, 아이콘, 글꼴 목록, WordArt 프리셋.
 - PC 글꼴 불러오기(`src/system-fonts.ts`): 워드·엑셀·파워포인트 글꼴 상자가 쓰는 `createSystemFontSource`와 훅 `useSystemFontSource`. 편집기마다 한글 이름을 묻는 다리만 넘긴다(한글 편집기는 rhwp의 찾기를 쓴다, `apps/hwp/studio-plugin/pc-fonts.mjs`).
 - 디자인 템플릿 글꼴: 폴더 `template-fonts/`(글꼴 파일, 패밀리마다의 라이선스 글, `README.md`)와 그 목록 `src/template-fonts.ts`(`@genoffice/ui/template-fonts`). 폴더는 `src/` 밖에 있어 어느 편집기 빌드에도 복사되지 않는다.
+- 고급 인쇄의 공용 화면(결정 0141): 쪽 배치 칸(`src/print-layout/PrintLayoutPanel.tsx`), 배치도, 결과 미리 보기, HTML·마인드맵·다이어그램의 작은 인쇄 창(`SimplePrintDialog`), 양면·한 벌씩 맞추기 같은 도우미(`model.ts`, `hooks.ts`), 문구(`strings-print-layout/`, 22개 언어). 화면은 `@genoffice/print-layout/plan`만 값으로 가져온다.
 
 ## 맡지 않는 것 (경계)
 
@@ -55,6 +57,7 @@
 - **프로젝트 도구는 앱 도구다.** 도구 넷은 이 패키지가 정의하고 실행은 다리를 부른다. 범위는 뒷단이 지키므로 화면은 프로젝트 id만 넘긴다. `project_remember`는 기억 쌓기가 켜져 있고, 믿음이 "지침까지 사용"이고, 폴더에 쓸 수 있을 때만 목록에 넣는다. 구독 프로그램에 도구를 켜는 길을 만들지 않는다. 기억 정리는 사람이 누를 때만 한 번 실행하고, 보내기 전 판단(`aiSendGate`)을 똑같이 지난다.
 - **사용자 MCP 허락은 카드가 답할 때만 진행한다(결정 0100).** `McpPermissionCard`는 사람이 단추를 누르기 전에 허락을 넘기지 않고, 언마운트·멈춤은 거절로 끝낸다. 서버 단추의 동작은 설정을 열거나 다시 시도를 부를 뿐, 서버 설정을 바꾸지 않는다(설정 창구는 껍데기 앱 메인 창 전용). 화면에 서버의 주소·열쇠·명령을 그리지 않는다. 다리가 주지 않는다.
 - 상태 확인의 오류 문장(`status.error`)을 그대로 화면에 찍지 않는다. `subscriptionStatusErrorKind`로 종류를 읽어 번역된 문장을 쓴다. 로그인·설치 실패의 원문도 마찬가지다(실행 파일 경로가 들어 있을 수 있다).
+- **`use-app-choice.ts`(결정 0143).** 편집기 화면은 `useAppChoice(window.aiOfficeEditorChoice)`와 `aiVisible`로 AI 부분을 그릴지 정한다. 원천은 바뀌지 않는 객체를 넘긴다. 원천이 있으면 첫 답을 받기 전에는 `PENDING_APP_CHOICE_STATE`(AI 부분 감춤)라서 AI를 끈 사람에게 AI 단추가 번쩍 보이지 않는다. 원천이 없으면(편집기 단독 실행) 처음부터 모두 켜짐이다. 첫 답 전에 들은 바뀜이 첫 답보다 앞선다.
 
 ## 이 모듈의 방식
 

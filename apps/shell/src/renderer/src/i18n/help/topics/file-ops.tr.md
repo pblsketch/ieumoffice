@@ -46,7 +46,17 @@ Kurallar: uzantı kendiliğinden korunur; geçersiz karakterler, sonu noktayla b
 
 ## Yazdırma
 
-Her düzenleyicide Dosya ▸ Yazdır (⌘P/ctrl+P) sistem yazdırma iletişim kutusunu açar; PDF’ler geçerli sayfa sırası ve döndürmelerle yazdırılır.
+Her düzenleyicide Dosya ▸ Yazdır (⌘P/ctrl+P) bir yazdırma penceresi açar. **Sayfa düzeni** bölümü Docs, PDF, Sheets, Slides ve Markdown’da alışılmış yazdırma penceresinde, HWP’de baskı önizlemesinde, HTML, zihin haritası ve diyagramda ise yeni küçük bir yazdırma penceresinde bulunur. Sayfa düzeninde hiçbir şey seçmezseniz yazdırma eskisi gibi yapılır.
+
+- **Yerleşim**: Kâğıt başına bir sayfa, Kâğıt başına birden çok sayfa (2, 4, 6, 9 veya 16), Kitapçık (soldan veya sağdan cilt), Afiş (yatayda ve dikeyde kâğıt sayısı, bindirme, kesim çizgileri) ya da Etiketler (her etikete bir sayfa veya her etikette aynı sayfa, başlangıç etiketi, yaygın bir A4 ölçüsü ya da özel ölçü) arasından birini seçin.
+- **Yalnızca tek yüzler, yalnızca çift yüzler, ters sırada yazdırma**: yüzler, yerleşim uygulandıktan sonra yazıcıdan gerçekten çıkanlara göre sayılır. Çift taraflı yazdıramayan bir yazıcıda önce ön yüzleri basıp kâğıdı çevirerek arka yüzleri basmak için kullanılır.
+- **Kâğıda sığacak şekilde küçült**: yalnızca seçilen kâğıttan büyük sayfalar küçültülür; küçük sayfalar büyütülmez. Sheets ve Markdown kendi kâğıt ve ölçek alanlarını kullanır.
+- **Gri tonlama ve görüntü çözünürlüğü**: Sayfa düzeni seçenekleriyle yazdırırken her sayfa yazıcıya gitmeden önce görüntüye dönüştürülür. Çözünürlük Otomatik, 150, 300 veya 600 dpi arasından seçilir.
+- **Yalnızca seçim**: Docs ve Markdown yalnızca seçili metni ilk sayfadan başlayarak yeniden sayfalayıp yazdırır; Slides seçili slaytları, PDF seçili sayfaları yazdırır. Sheets seçili aralığı eskisi gibi yazdırır.
+- **Yerleşim şeması ve sonuç önizlemesi**: şema, her sayfa numarasının kâğıtta nereye düştüğünü hemen gösterir; **Sonucu önizle** ise gerçekten oluşturulan sonucu gösterir. **Düzenlenmiş sonucu PDF olarak kaydet** ile aynı yerleşimi başka bir bilgisayarda ya da matbaada basabilirsiniz.
+- **Sistemin yazdırma penceresi**: kitapçık için çift taraflı yazdırmayı kısa kenardan çevirme olarak seçin. Sayfa aralığını ve kâğıt başına sayfa sayısını sistem penceresinde değiştirmeden bırakın.
+
+PDF’ler geçerli sayfa sırası ve döndürmelerle yazdırılır.
 
 ## Dosyası olmayan belgeler nerede durur
 

@@ -93,7 +93,8 @@ import './translate.css'
 
 /** what book translation needs of the preload */
 export type BookTranslationApi = BookTranslateDialogApi &
-  Pick<EpubTranslateApi, 'documentHash' | 'writeTranslated'> & {
+  Pick<EpubTranslateApi, 'documentHash' | 'writeTranslated'> &
+  Partial<Pick<EpubTranslateApi, 'aiJob'>> & {
     store: Pick<EpubStoreApi, 'translation' | 'write' | 'unfinishedJobs'>
   } & ModelStreamApi &
   Partial<Pick<EpubAiApi, 'openSourcePath'>>
@@ -115,6 +116,11 @@ export interface BookTranslationProps {
   lock: (locked: boolean) => Promise<boolean>
   /** the window opened (true) or closed (false); automatic saves wait meanwhile */
   onWindowOpen?: (open: boolean) => void
+  /**
+   * AI is turned off (Settings): nothing of this is shown and the window does
+   * not open; a translation that ended still writes its book
+   */
+  hidden?: boolean
 }
 
 export interface BookTranslationHandle {
@@ -167,7 +173,8 @@ const WRITE_ERROR_KEY = {
 export const BookTranslation = forwardRef<BookTranslationHandle, BookTranslationProps>(
   function BookTranslation(props, ref): ReactElement | null {
     const { book, lang, t, api } = props
-    const [session] = useState(() => new BookJobSession())
+    // the job is also one entry on the shell's list of running AI work (Settings stops it)
+    const [session] = useState(() => new BookJobSession(undefined, api?.aiJob ?? null))
     const [dialog, setDialog] = useState<DialogState | null>(null)
     const [writing, setWriting] = useState<Writing | null>(null)
     const [report, setReport] = useState<ReportState | null>(null)
@@ -185,6 +192,11 @@ export const BookTranslation = forwardRef<BookTranslationHandle, BookTranslation
     const runRef = useRef<TranslationRun | null>(null)
     const offeredRef = useRef(false)
     const windowOpen = dialog !== null
+
+    // AI turned off: an open window closes (it sent nothing yet), so saves go on
+    useEffect(() => {
+      if (props.hidden) setDialog(null)
+    }, [props.hidden])
 
     // automatic saves wait while the window is open: what it shows is the saved book
     useEffect(() => {
@@ -483,7 +495,8 @@ export const BookTranslation = forwardRef<BookTranslationHandle, BookTranslation
     useImperativeHandle(ref, () => ({
       requestOpen({ lang: target, chapters, mode }) {
         const p = propsRef.current
-        if (!p.api || !p.book || !p.filePath || p.book.fixedLayout) return { unavailable: true }
+        if (p.hidden || !p.api || !p.book || !p.filePath || p.book.fixedLayout)
+          return { unavailable: true }
         const running = tabJob()
         if (running) return { running }
         open(target, chapters, mode ?? 'translate')
@@ -494,6 +507,7 @@ export const BookTranslation = forwardRef<BookTranslationHandle, BookTranslation
     const nameOf = (code: string) => languageName(code, lang)
     const run = runRef.current
 
+    if (props.hidden) return null
     return (
       <>
         {offers &&

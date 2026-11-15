@@ -12,10 +12,12 @@ Elke editor heeft een eigen toetsenindeling en slechts een paar werken overal. D
 | Lint in- of uitklappen — elke editor                     | ⌥⌘R   | Ctrl+F1         |
 | Lint compact — alleen Docs                               | ⌥⌘K   | Ctrl+Alt+K      |
 | Het blad Sneltoetsen openen — alleen Word                | ⌘/    | Ctrl+/          |
+| Instellingen openen — elk tabblad behalve Word           | ⌘,    | Ctrl+,          |
 
 - **F1 opent deze handleiding**, niet het sneltoetsenblad. De toets hoort bij het toepassingsmenu en werkt dus vanuit Word, Sheets, Slides, PDF of het tabblad Home.
 - **De linttoets is `Ctrl+F1`, of `⌥⌘R` op macOS.** Een kale `F1` doet niets — F1 is de handleiding, en de linttoets deelt die toets bewust niet. `Ctrl+F1` werkt ook op macOS, maar `⌥⌘R` is de toets die Office voor Mac gebruikt.
 - **Het blad Sneltoetsen bestaat alleen in Word** (`⌘/`). Het toont precies de Word-tabel hieronder. Geen enkele andere editor heeft er een.
+- **`⌘,` opent de instellingen** (`Ctrl+,` op Windows en Linux), zoals in de meeste Mac-apps. In een Word-tabblad blijft de toetscombinatie subscript; open de instellingen daar via het app-menu op een Mac, of via Menu (☰) ▸ Instellingen… op Windows en Linux.
 
 ![Het blad Sneltoetsen van Word zelf: de actie links, de sneltoets rechts, gegroepeerd per Bestand, Bewerken, Tekstopmaak, Alinea-opmaak, Invoegen, Controleren en hulpmiddelen, Weergave](img/word-shortcuts.png)
 

@@ -22,6 +22,7 @@
  * No Electron: the window module wires it, the tests run it as is.
  */
 import { readFile, stat } from 'node:fs/promises'
+import { basename, extname } from 'node:path'
 import { parseFileToText, type ParsedFile } from '@genoffice/file-parse'
 import {
   createXmindDocumentFromOutline,
@@ -123,6 +124,35 @@ export async function convertSource(
     return { ok: false, problem: 'failed' }
   }
   return { ok: false, problem: 'failed' }
+}
+
+/** the extension each conversion's result is saved with */
+const CONVERTED_EXTENSION = { markdown: '.md', slides: '.pptx', mindmap: '.xmind' } as const
+
+/**
+ * "Create the file only" (editor choice spec 7.3): a conversion's result as a
+ * file, named after its source (`notes.xmind` → `notes.md`), for when the
+ * editor it would open in stays off. The bytes are what the new tab would
+ * have shown as its first, unsaved state.
+ */
+export async function convertedFileOf(
+  content: ConvertedContent,
+  sourcePath: string,
+  untitled: string,
+): Promise<{ fileName: string; bytes: Uint8Array }> {
+  const name = basename(sourcePath)
+  const stem = name.slice(0, name.length - extname(name).length) || untitled
+  const fileName = `${stem}${CONVERTED_EXTENSION[content.target]}`
+  switch (content.target) {
+    case 'markdown':
+      return { fileName, bytes: new TextEncoder().encode(content.markdown) }
+    case 'slides':
+      return { fileName, bytes: content.deck }
+    case 'mindmap': {
+      const map = await createXmindDocumentFromOutline(content.outline, { untitled })
+      return { fileName, bytes: await map.save() }
+    }
+  }
 }
 
 // ---- map → PPT skeleton ----

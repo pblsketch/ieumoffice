@@ -426,7 +426,9 @@ project easy to take.
   the Windows proxy setting. Claude Code and Codex are separate programs: they
   see only the proxy environment variables (`HTTPS_PROXY` and the like), not a
   proxy that is set in Windows alone.
-- **Image generation needs a key**, as described above.
+- **Image generation needs a key or a paid ChatGPT plan**: either the key
+  of an image provider, or the Codex program on this PC signed in with a
+  paid ChatGPT plan (Plus or higher), as described above.
 - **Translations.** 20 of the 22 interface languages are machine-translated
   and have not been reviewed by native speakers.
 - **Hiding does not reach everywhere.** Parts you hid from AI in the

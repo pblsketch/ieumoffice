@@ -817,6 +817,8 @@ export const it = {
   ribbonOutlineView: 'Struttura',
   ribbonOutlineViewTip:
     'Visualizzazione struttura: mostra solo la gerarchia dei titoli; i titoli restano modificabili',
+  ribbonStoryView: 'Story',
+  ribbonStoryViewTip: 'Story: scrivere senza la formattazione del documento',
   ribbonReadMode: 'Modalità di lettura',
   ribbonReadModeTip:
     'Modalità di lettura: nascondi la barra multifunzione per una lettura concentrata, premi Esc per uscire',
@@ -956,10 +958,21 @@ export const it = {
   ribbonMailingsOutput: 'Output di unione',
   ribbonMailingsOutputPerRecord: 'Un documento per record',
   ribbonMailingsOutputSingle: 'Un documento per tutti i record',
+  ribbonMailingsOutputLabels: 'Foglio di etichette',
+  ribbonMailingsOutputEnvelopes: 'Buste',
+  ribbonMailingsStock5160: 'Avery 5160 (3 × 10)',
+  ribbonMailingsStockCustom: 'Griglia personalizzata',
+  ribbonMailingsLabelColumns: 'Colonne',
+  ribbonMailingsLabelRows: 'Righe',
+  ribbonMailingsEnvelopeSize: 'Formato busta',
   ribbonMailingsNamePattern: 'Nome file',
   ribbonMailingsNamePatternPh: 'Vuoto: usa il primo campo',
   ribbonMailingsFinish: 'Completa e unisci',
   ribbonMailingsMerged: '{n} documenti uniti',
   ribbonMailingsMergeFailed: 'Unione non riuscita',
   ribbonMailingsClose: 'Chiudi',
+  ribbonMailingsEnvelopeNote:
+    "Le buste stampano questo documento così com'è sulla carta per buste; il blocco indirizzo resta sul margine in alto a sinistra (la procedura Buste di Word centra l'indirizzo di consegna).",
+  ribbonMailingsLabelsDroppedHint:
+    'Il foglio etichette contiene solo paragrafi: {n} blocchi del modello (tabelle, immagini) verranno omessi.',
 } satisfies Record<keyof typeof zh, string>

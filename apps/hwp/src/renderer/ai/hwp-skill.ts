@@ -171,7 +171,9 @@ export const IMPORT_ATTACHMENT_NOTE = [
 
 /** Hidden from the tool list while no image provider is reachable (see `createHwpSkill`). */
 export const IMAGE_GEN_OFF_NOTE =
-  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.'
+  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.' +
+  ' If the user uses a ChatGPT plan, making pictures needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex).' +
+  " The app's direct ChatGPT connection cannot make pictures, because OpenAI does not allow it."
 
 /** Told to the model when the panel knows that no connection can look at a picture. */
 export const PICTURE_ANALYSIS_OFF_NOTE =
@@ -331,6 +333,10 @@ const SYSTEM_PROMPT = [
   '- For proofreading or rewording requests, read the text first, then fix each place with its own replace_text call.',
   '- If a tool says the text was not found, read that part of the document again before trying anything else.',
   '- If a tool says an object is in the way (a table, a picture or a form field sits in that paragraph), pick the paragraph before or after it as the anchor, or tell the user.',
+  '',
+  '## Web search',
+  '- When you need up-to-date information, data, or facts beyond the document, use web_search; never fabricate numbers from memory.',
+  '- When writing search results into the document, attribute the data source (a link or a source name).',
   '',
   '## Reading web pages',
   '- Read a link the user gave (a skill, a guide, an article) with read_url before using it; do not answer from the address alone.',
@@ -529,6 +535,19 @@ const TOOLS: AgentToolDef[] = [
       type: 'object',
       properties: { text: { type: 'string', description: 'the text to look for' } },
       required: ['text'],
+    },
+  },
+  {
+    name: 'web_search',
+    description:
+      'Search the web for textual information (references/data/facts). Use when you need up-to-date information or are unsure about a fact. Returns titles/links/snippets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search keywords' },
+        maxResults: { type: 'integer', description: 'Maximum number of results, default 6' },
+      },
+      required: ['query'],
     },
   },
   {
@@ -866,6 +885,11 @@ const TOOLS: AgentToolDef[] = [
         aspectRatio: {
           type: 'string',
           description: 'e.g. "1:1", "16:9", "4:3"; omit for the default',
+        },
+        model: {
+          type: 'string',
+          description:
+            'image model name; set only when the user named a model to use, otherwise omit it. The app uses it when the current image route offers it, and otherwise answers with the models that can be used.',
         },
         width_pt: {
           type: 'number',
@@ -2566,6 +2590,36 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           summary: label('aiToolImport', { name: attachment }),
         }
       }
+      case 'web_search': {
+        // the shape of the other editors' web_search (mindmap search-skill.ts)
+        const query = String(call.input.query ?? '').trim()
+        if (!query) {
+          return {
+            output: 'query must not be empty',
+            isError: true,
+            summary: label('aiToolWebSearch'),
+          }
+        }
+        const r = await window.hwpApi.webSearch(query, Number(call.input.maxResults) || 6)
+        // a backend failure must not read as "no results": the model would fabricate conclusions
+        if (r.method === 'error') {
+          return {
+            output: `web search failed (service error, not an empty result — you may retry): ${r.error ?? 'unknown error'}`,
+            isError: true,
+            summary: label('aiToolWebSearch'),
+          }
+        }
+        const lines: string[] = []
+        if (r.answer) lines.push(`Direct answer: ${r.answer}\n`)
+        r.results.forEach((it, i) =>
+          lines.push(`${i + 1}. ${it.title}\n   ${it.url}\n   ${it.snippet}`),
+        )
+        return {
+          output: lines.join('\n') || '(no results)',
+          mutated: false,
+          summary: label('aiToolWebSearchDone', { query, count: r.results.length }),
+        }
+      }
       case 'read_url': {
         const url = (textArg(call, 'url') ?? '').trim()
         const host = hostLabel(url)
@@ -2987,13 +3041,20 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const prompt = textArg(call, 'prompt')?.trim() ?? ''
         if (!prompt) return bad(call, 'prompt must be a non-empty string')
         const aspectRatio = textArg(call, 'aspectRatio')?.trim() ?? ''
+        // the main process decides whether the image route offers this model
+        const model = textArg(call, 'model')?.trim() ?? ''
         const generated = await window.hwpApi.generateImage({
           prompt,
           ...(aspectRatio ? { aspectRatio } : {}),
+          ...(model ? { model } : {}),
         })
         if (signal?.aborted) return bad(call, 'stopped by the user; the picture was not inserted')
         if (!generated.url) return bad(call, generated.error ?? 'image generation failed')
-        return insertPictureFromUrl(call, generated.url, prompt, signal)
+        const inserted = await insertPictureFromUrl(call, generated.url, prompt, signal)
+        // the shared tool's remark (e.g. Codex picked the image model) reaches the model
+        return generated.note
+          ? { ...inserted, output: `${inserted.output}\nNote: ${generated.note}` }
+          : inserted
       }
       case 'format_text': {
         const find = textArg(call, 'find')

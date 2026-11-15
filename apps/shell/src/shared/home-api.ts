@@ -210,6 +210,11 @@ export interface DefaultAppStatus {
   manualOnly: boolean
 }
 
+/** The part of the tool report (`AiToolCapabilities`) Settings reads */
+export interface HomeToolCapabilities {
+  imageGeneration: { available: boolean }
+}
+
 export interface HomeApi {
   /** unified recents across document types, newest first (paged) */
   recents(query?: RecentQuery): Promise<RecentPage>
@@ -448,6 +453,12 @@ export interface HomeApi {
   cancelLocalTest(testId: string): Promise<boolean>
   /** one-shot round trip against the given (possibly unsaved) settings — the settings-UI connection test */
   testAiSettings(settings: AiSettings): Promise<AiChatResponse>
+  /**
+   * What the tool report (`ai:tool-capabilities`, answered by the docs main)
+   * says about image generation on the screen path right now; null when it
+   * gave no answer. Only the part Settings reads is passed on.
+   */
+  aiToolCapabilities(): Promise<HomeToolCapabilities | null>
   /** image generation / media analysis provider catalog */
   getAiMediaProviders(): AiMediaProviderMeta[]
   /** credential check for a (possibly unsaved) media provider */

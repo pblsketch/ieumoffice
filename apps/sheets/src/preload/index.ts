@@ -12,6 +12,8 @@ import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-ch
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 
 import type { AiChatResponse, AiSettings, AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
@@ -70,6 +72,7 @@ import {
   SAVE_EDITS_CHUNK_JSON_MAX,
 } from '../shared/ipc-channels'
 import {
+  SUBSCRIPTION_USAGE_CHANNEL,
   isSubscriptionProviderId,
   subscriptionLaunchResultOf,
   subscriptionStatusMapOf,
@@ -134,6 +137,11 @@ const aiSubscription: SubscriptionApi = {
       handler(subscriptionStatusMapOf(statuses))
     ipcRenderer.on(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
     return () => ipcRenderer.removeListener(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
+  },
+  onUsage(handler) {
+    const listener = (_event: unknown, usage: unknown) => handler(Array.isArray(usage) ? usage : [])
+    ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)
   },
 }
 
@@ -451,6 +459,7 @@ const desktopApi: DesktopApi = {
     }
     return result as { ok: true } | { ok: false; error?: string }
   },
+  printLayout: createPrintLayoutBridge(ipcRenderer, 'sheets'),
   async listPrinters() {
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.listPrinters)
     if (!Array.isArray(result)) throw new Error('Invalid printer list.')
@@ -931,6 +940,12 @@ contextBridge.exposeInMainWorld('projectApi', projectApi)
 contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 // The shell's split panes: which pane this view is, and focus requests for it
 contextBridge.exposeInMainWorld('aiOfficeSplit', splitPaneBridge(ipcRenderer))
+// Settings' AI switch: the screen only reads it and hears changes (hides its AI parts)
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
 
 // Off by default. e2e drivers launch the BUILT app with GENOFFICE_DEBUG_HOOKS=1
 // so the renderer exposes window.__genofficeDebug (see App.tsx) — the dev-only

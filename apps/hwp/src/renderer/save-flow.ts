@@ -4,6 +4,7 @@ import type {
   MeasuredTab,
   MemoSnapshot,
   SaveMode,
+  SavePreview,
   TabMeasure,
   TabSpot,
 } from '../shared/ipc'
@@ -26,6 +27,8 @@ export interface SaveEditorPort {
   setMemoLock(locked: boolean): Promise<unknown>
   /** how the editor lays out the given tabs; null for one it cannot measure */
   measureTabs(spots: TabSpot[]): Promise<(TabMeasure | null)[]>
+  /** the document's preview as it is now: its first lines and first page (decision 0146) */
+  savePreview(): Promise<SavePreview>
   /** clear the editor's unsaved state after the host stored the bytes */
   notifySaved(fileName?: string): Promise<unknown>
 }
@@ -172,10 +175,13 @@ export async function runSave(
     return { kind: 'failed', reason: 'export', detail: detailOf(error) }
   }
 
+  // a preview that cannot be made is sent as null: the file gets a blank one, never the
+  // opened file's (which may show text deleted since); a save never fails over this
+  const preview = await editor.savePreview().catch(() => null)
   const commit = await api.commitSave(
     bytes,
     await measuredTabs(editor, api, bytes, begin.format),
-    memos === undefined ? { auto: automatic } : { auto: automatic, memos },
+    memos === undefined ? { auto: automatic, preview } : { auto: automatic, memos, preview },
   )
   if (!commit.ok) {
     // a same-document copy holds the disk version: the main process refused

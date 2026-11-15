@@ -29,6 +29,7 @@ import { PasswordDialog } from '../PasswordDialog'
 import { parsePageRange } from './page-range'
 import { conversionWarningLines, structureFailureText } from './messages'
 import { BookInfoAiFill, type BookInfoFillState } from './BookInfoAiFill'
+import { useAiOn } from '../ai-choice'
 import { collectLeadingText, isLanguageTag } from './book-info-ai'
 
 export interface ConvertDialogApi {
@@ -96,6 +97,8 @@ export function ConvertDialog(props: ConvertDialogProps): ReactElement {
   const [showErrors, setShowErrors] = useState(false)
   const [aiPress, setAiPress] = useState(0)
   const [aiState, setAiState] = useState<BookInfoFillState>({ kind: 'idle' })
+  // "Fill in with AI" is an AI entrance: gone while AI is turned off
+  const aiOn = useAiOn()
   const [pwInput, setPwInput] = useState('')
   /** the password the next run uses: the open one, or the one typed into the prompt */
   const passwordRef = useRef(props.password)
@@ -477,30 +480,32 @@ export function ConvertDialog(props: ConvertDialogProps): ReactElement {
                     {languageError}
                   </span>
                 )}
-                <div className="pdf-convert-ai">
-                  <button
-                    className="pdf-modal-btn"
-                    data-action="ai-fill"
-                    data-tip={t('cvAiFillTip')}
-                    disabled={busy || aiState.kind === 'running'}
-                    onClick={() => setAiPress((n) => n + 1)}
-                  >
-                    {t('cvAiFill')}
-                  </button>
-                  {aiState.kind !== 'idle' && (
-                    <span
-                      className={`pdf-convert-ai-state${aiState.kind === 'error' ? ' is-error' : ''}`}
-                      data-ai-state={aiState.kind}
+                {aiOn && (
+                  <div className="pdf-convert-ai">
+                    <button
+                      className="pdf-modal-btn"
+                      data-action="ai-fill"
+                      data-tip={t('cvAiFillTip')}
+                      disabled={busy || aiState.kind === 'running'}
+                      onClick={() => setAiPress((n) => n + 1)}
                     >
-                      {aiState.kind === 'running'
-                        ? t('cvAiFilling')
-                        : aiState.kind === 'filled'
-                          ? t('cvAiFilled')
-                          : aiState.message}
-                    </span>
-                  )}
-                </div>
-                {aiPress > 0 && (
+                      {t('cvAiFill')}
+                    </button>
+                    {aiState.kind !== 'idle' && (
+                      <span
+                        className={`pdf-convert-ai-state${aiState.kind === 'error' ? ' is-error' : ''}`}
+                        data-ai-state={aiState.kind}
+                      >
+                        {aiState.kind === 'running'
+                          ? t('cvAiFilling')
+                          : aiState.kind === 'filled'
+                            ? t('cvAiFilled')
+                            : aiState.message}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {aiOn && aiPress > 0 && (
                   <BookInfoAiFill
                     press={aiPress}
                     lang={lang}

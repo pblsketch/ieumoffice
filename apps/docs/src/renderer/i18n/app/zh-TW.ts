@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const zhTW = {
+  appLegacyDocImported:
+    '已將 .{ext} 檔案轉換為 .docx 副本開啟。原始檔案保持不變，儲存時會寫入新的 .docx 檔案。',
   appScTitle: '鍵盤快速鍵',
   appScFilter: '搜尋快速鍵',
   appScNone: '沒有相符的快速鍵',
@@ -51,6 +53,7 @@ export const zhTW = {
   appFontsMissing: '文件字型未安裝：{names}（已以替代字型顯示）',
   appVerticalTextNotice: '文件包含直排文字（暫以橫排顯示，儲存不受影響）',
   appNewDocCreated: '已建立空白文件,可在左側 AI 面板直接描述要產生的內容',
+  appNewDocCreatedNoAi: '已建立空白文件',
   appNewFailed: '建立失敗: {error}',
   appSaveFailed: '儲存失敗: {error}',
   appAutoSavedAt: '已自動儲存 ({time})',
@@ -90,6 +93,9 @@ export const zhTW = {
   appPrintRangeAll: '所有頁面',
   appPrintRangeCurrent: '目前頁面',
   appPrintRangeCustom: '自訂範圍',
+  appPrintRangeSelection: '選取範圍',
+  appPrintSelectionPreparing: '正在為選取範圍分頁…',
+  appPrintSelectionFailed: '無法準備選取範圍：{error}',
   appPrintRangeHint: '如:1,3,5-8',
   appPrintPageCount: '共 {n} 頁',
   appPrintNoPages: '沒有可列印的頁面',

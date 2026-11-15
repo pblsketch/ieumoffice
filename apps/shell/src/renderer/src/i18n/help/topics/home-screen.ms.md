@@ -44,7 +44,7 @@ Kad di atas senarai menubuhkan dokumen baharu dalam satu langkah. Klik pada kad 
 
 Fail baharu akan mendarat dalam folder yang sedang dipilih dalam bar sisi. Jika tiada apa-apa yang dipilih, ia akan ke folder lalai.
 
-Untuk menyembunyikan kad atau menukar susunannya, gunakan **Dokumen baharu di Laman Utama** dalam Tetapan → Umum. Jenis yang dimatikan hanya hilang daripada kad dan menu Baharu; fail jenis itu masih dibuka seperti biasa. Di Laman Utama, ⌘N/Ctrl+N mencipta jenis pertama yang masih dipaparkan.
+Untuk menyembunyikan kad atau menukar susunannya, gunakan **Dokumen baharu di Laman Utama** dalam Tetapan → Umum. Jenis yang dimatikan hanya hilang daripada kad dan menu Baharu; fail jenis itu masih dibuka seperti biasa. Di Laman Utama, ⌘N/Ctrl+N mencipta jenis pertama yang masih dipaparkan. Mematikan editor dalam Tetapan → Editor dan AI adalah berbeza: kad dan item menunya juga hilang, dan membuka failnya akan ditanya dahulu.
 
 Apa yang setiap kad lakukan:
 

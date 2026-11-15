@@ -110,6 +110,7 @@ OpenRouter 무료 연결에서 고를 수 있는 모델은 `packages/ai-provider
 - 시험은 설치된 앱에 저장된 OpenRouter 키(`%APPDATA%/IeumOffice/ai-settings.json`)로 하고 그 키의 하루 무료 요청을 쓴다. 키는 화면에 찍히지 않는다. 앱이 봉인한 키(결정 0063)는 이 저장소의 빌드(없으면 설치된 앱)를 `--reveal-ai-secrets`로 띄워 풀고, 그 프로세스와 앱 시험의 환경에만 둔다. 풀지 못하면 시험을 시작하지 않는다. 봉인된 글자를 키로 보내면 모든 후보가 401로 떨어진 것으로 적히기 때문이다. 모델 하나에 짧은 확인 1번, 앱 시험 약 12번이 든다. 남은 수가 모자라면 그 모델은 건너뛴다.
 - 통과한 모델은 실행기가 알려 주는 대로 `OPENROUTER_FREE_MODELS`에 더한다. 순서가 곧 새 연결의 기본 모델 순위이므로 맨 앞은 함부로 바꾸지 않는다.
 - 떨어진 모델은 실행기가 `tools/free-models-rejected.json`에 날짜·이유와 함께 적는다. 거기 있는 모델은 매주 확인에서 후보로 다시 나오지 않는다. 다시 시험하려면 그 줄을 지운다.
+- 앱의 선택기는 시험하지 않은 `:free` 모델도 시험된 모델 뒤에 보이고, 떨어진 모델만 뺀다(결정 0148). 앱은 떨어진 모델을 `packages/ai-provider/src/free-ai.ts`의 `OPENROUTER_REJECTED_FREE_MODELS`로 갖는다. JSON에 줄을 더하거나 지우면 그 상수도 같이 고친다. 다르면 `free-ai.test.ts`가 실패한다.
 - 앱이 보여 주는 모델이 사라졌다는 보고가 오면 목록에서 빼고 `RETIRED_MODELS`(`packages/ai-provider/src/providers.ts`)에 다음 모델로 가는 줄을 넣은 뒤 새 버전을 낸다. 그 전에도 앱은 OpenRouter 목록을 받으면 그 모델을 선택기에서 감추고, 그 모델로 연결된 사람을 남아 있는 첫 모델로 옮긴다(결정 0138). 이 동작이 없는 예전 판에서는 그 모델을 고른 사용자가 실패를 본다.
 
 ## Windows 설치 파일 만들기

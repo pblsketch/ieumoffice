@@ -126,6 +126,14 @@ enum Command {
     ReadExternalLinks {
         path: PathBuf,
     },
+    #[serde(rename_all = "camelCase")]
+    ListExternalLinks {
+        path: PathBuf,
+    },
+    #[serde(rename_all = "camelCase")]
+    ReadExternalLinkUsage {
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -686,6 +694,13 @@ fn handle_request(
         }
         Command::ReadExternalLinks { path } => {
             xlsx_sidecar::external_links::read_external_link_statuses(&path).and_then(to_json_value)
+        }
+        Command::ListExternalLinks { path } => {
+            xlsx_sidecar::external_links::list_external_link_statuses(&path).and_then(to_json_value)
+        }
+        Command::ReadExternalLinkUsage { path } => {
+            xlsx_sidecar::external_links::read_external_link_usage(&path)
+                .and_then(|links| to_json_value(serde_json::json!({ "links": links })))
         }
     };
     Some(match result {

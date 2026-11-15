@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { handOffBytes } from './byte-handoff'
+import { altChunkDocument } from './altchunk-document'
 import {
   appendFileSync,
   existsSync,
@@ -56,11 +57,11 @@ import {
   showOpenDialogWithMemory,
   showSaveDialogWithMemory,
   aboutMenuItem,
+  macAppMenuTemplate,
   helpCheckUpdatesItems,
   toggleDevToolsItem,
   windowMenuTemplate,
   type HeadlessExportFormat,
-  type HeadlessExportTarget,
   installRendererProtocol,
   registerRendererScheme,
   rendererUrl,
@@ -75,7 +76,11 @@ import {
   type RecoveryIdentity,
   readHwpDefaultFormat,
 } from '@genoffice/electron-utils'
+import { aiCreateRefusal, withOffDocumentKinds } from '@genoffice/electron-utils/ai-create-guard'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
+import { AI_OFF_ERROR, aiMediaCall } from './ai-off'
 import {
   configureExtraFontDirs,
   configureMetricsCache,
@@ -108,6 +113,7 @@ import {
 } from '@genoffice/file-parse'
 import { convertHtmlToDocx } from '../../../../packages/html2docx/src'
 import { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
+import { isFileUrlOf } from '../../../../packages/html2docx/src/drivers/file-url'
 import {
   AI_MEDIA_PROVIDERS,
   AI_SEARCH_PROVIDERS,
@@ -139,6 +145,7 @@ import {
   type AiStreamRequest,
   type AiSubscriptionCliId,
   type AiSubscriptionProviderId,
+  type AiSubscriptionUsage,
   sealAiSecrets,
   withMigratedSubscriptionNoticeVersion,
 } from '@genoffice/ai-provider'
@@ -146,15 +153,19 @@ import { listCodexModels, shutdownCodexAppServers } from '@genoffice/ai-provider
 import { listCustomModelsForIpc } from '@genoffice/ai-provider/custom-models'
 import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
+  createSubscriptionIpcDeps,
+  detectSubscriptionLogin,
   ensureSubscriptionIpc,
   initSubscriptionChildTracking,
+  listSubscriptionModels,
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
+  type SubscriptionIpcSetup,
 } from '@genoffice/ai-provider/subscription'
 import {
   abortMediaCalls,
   aiToolCapabilities,
-  createCodexImageCliGenerator,
+  createCodexImageGenerator,
   generateImageTool,
   registerCodexImageGenerator,
   testSearchProvider,
@@ -177,15 +188,18 @@ import type {
   CreateDocumentRequest,
   CreateDocumentResult,
   DecryptOpenResult,
+  DocsHeadlessExportTarget,
   DocsTabInfo,
   MarkdownImage,
   MenuCommand,
   MergeOutputRequest,
   OpenDocxResult,
   OpenFileResult,
+  PrintSelectionPdfResult,
   SpellLanguages,
 } from '../shared/ipc'
 import { MARKDOWN_MEDIA_DIR_TOKEN } from '../shared/ipc'
+import { SUBSCRIPTION_USAGE_CHANNEL } from '../shared/subscription-api'
 import { MERGE_DATA_SOURCE_EXTENSIONS, readMergeDataSource } from './merge-data-source'
 import { mergeOutputFileName, mergeOutputPath } from './merge-output'
 import { ClickClaims } from '../shared/context-menu-claims'
@@ -254,12 +268,26 @@ import {
 import { copyImageDisplaySize, validCopyImageDataUrl } from './copy-image-guard'
 import {
   printJobOptions,
+  printPaperOption,
   printScaleOption,
   validPrintGeometry,
   validPrintPaper,
 } from './print-args'
 import { printPdfViaCups } from '@genoffice/electron-utils/print-cups'
 import { printOutcome } from '@genoffice/electron-utils/print-job'
+import {
+  ensurePrintLayoutIpc,
+  LABEL_SPEC_FILE_NAME,
+  registerPrintLayoutIpc,
+} from '@genoffice/electron-utils/print-arranged'
+import { readJobPageSizes } from '@genoffice/print-layout'
+import {
+  mergePrintJobParts,
+  printPdfDefaultName,
+  readDocsPrintJob,
+  selectionDocxForPrint,
+  validSectPrXml,
+} from './print-job-pdf'
 import { addPdfInternalLinks } from './pdf-links'
 import {
   assignStarredGroup,
@@ -272,9 +300,20 @@ import {
   writeStarredItems,
 } from './starred-files'
 import { registerFreeAiIpc } from './free-ai-ipc'
+import {
+  aiGatedDetect,
+  aiGatedKeyModelRefresher,
+  aiGatedModelLister,
+  aiGatedSubscriptionDeps,
+  endSubscriptionLoginsWhenAiOff,
+  onAiFeaturesBack,
+} from './ai-background'
 import { normalizeReadUrlRequest, unexpectedReadUrlFailure } from './read-url-ipc'
 import { initDocsAutoUpdater } from './updater'
 import { registerZoteroIpc, teardownZoteroIpc } from './zotero-ipc'
+
+/** how long a chat turn still counts as running between two model calls (tunable) */
+const CHAT_TURN_LINGER_MS = 3_000
 
 /**
  * Docs main-process logic as an embeddable module: no top-level side effects.
@@ -3416,14 +3455,26 @@ export function queueDocsAiContent(wcId: number, content: AiDocContent): void {
 }
 
 /**
- * Untitled copies waiting for their tab (a skill template's, spec 5.7), keyed
- * by webContents id: the copy's temp file and the name it shows. The tab gets
- * the bytes once and is never granted a write to that file.
+ * An untitled copy waiting for its tab: the copy's temp file and the name it
+ * shows, plus, for a legacy Word file opened as a converted copy, the path its
+ * first save suggests and the format it came from.
  */
-const pendingDocCopies = new Map<number, { path: string; name: string }>()
+export interface QueuedDocsCopy {
+  path: string
+  name: string
+  saveAsDefaultPath?: string | undefined
+  importedFrom?: string | undefined
+}
+
+/**
+ * Untitled copies waiting for their tab (a skill template's, spec 5.7, or a
+ * converted .doc/.dot), keyed by webContents id. The tab gets the bytes once
+ * and is never granted a write to that file.
+ */
+const pendingDocCopies = new Map<number, QueuedDocsCopy>()
 
 /** queue an untitled copy for a fresh docs tab (called by the shell right after creating the view) */
-export function queueDocsCopy(wcId: number, copy: { path: string; name: string }): void {
+export function queueDocsCopy(wcId: number, copy: QueuedDocsCopy): void {
   pendingDocCopies.set(wcId, copy)
 }
 
@@ -4361,18 +4412,22 @@ const AI_RUN_TEXTS: AiRunTexts = {
  * Asks the key providers for their current models (decision 0087): once per run,
  * then again for a provider whose key or base URL changed, or whose list is a
  * day old (decision 0138). The list lands in the settings file, so every
- * picker shows it.
+ * picker shows it. Nothing is asked while AI features are off (editor choice
+ * spec 8.3); turned back on, the lists due are asked for.
  */
-const keyModelRefresher = createKeyModelRefresher({
-  read: storedAiSettings,
-  write: (update) => {
-    const latest = storedAiSettings()
-    const next = update(latest)
-    if (next === latest) return
-    writeAiSettingsFile(next)
-    broadcastAiSettingsChanged()
-  },
-})
+const keyModelRefresher = aiGatedKeyModelRefresher(
+  createKeyModelRefresher({
+    read: storedAiSettings,
+    write: (update) => {
+      const latest = storedAiSettings()
+      const next = update(latest)
+      if (next === latest) return
+      writeAiSettingsFile(next)
+      broadcastAiSettingsChanged()
+    },
+  }),
+  aiFeaturesOn,
+)
 
 /**
  * Persist settings a renderer sent: schema-checked, with the live model lists
@@ -4394,22 +4449,43 @@ function writeRendererAiSettings(settings: unknown): boolean {
 let codexImageRegistered = false
 
 /**
- * Codex image generation through the official CLI (the path the `codex-image` skill
- * documents): one `codex exec` per image, with the account's OAuth login and the built-in
- * image_gen tool, in a throw-away folder. The chat loop keeps every built-in tool off; this
- * is a separate call, so nothing of a conversation goes through it. Registered once per
- * process, before the capability report can be asked.
+ * The usage Codex reports while it draws a picture, to every window's AI pane.
+ * A picture call is no stream, so it has no chunk to carry it; the value is the
+ * account's, so every window takes it, like the subscription statuses. Same
+ * shape as the chat stream's subscription-usage chunk.
+ */
+function broadcastSubscriptionUsage(usage: AiSubscriptionUsage[]): void {
+  for (const wc of webContents.getAllWebContents())
+    if (!wc.isDestroyed()) wc.send(SUBSCRIPTION_USAGE_CHANNEL, usage)
+}
+
+/**
+ * Codex image generation through the subscription: one picture in a disposable
+ * thread of the app's `codex app-server` client, with the same locks as a chat
+ * thread and the image tool its only built-in tool. Every call reads the settings
+ * file again, so Codex turned off in this app (decision 0114) is not started; while
+ * AI is off (decision 0143) no picture call reaches the generator. Registered once
+ * per process, before the capability report can be asked; nothing starts until a
+ * request on the Codex route calls it.
  */
 function registerCodexImageBackend(): void {
   if (codexImageRegistered) return
   codexImageRegistered = true
   registerCodexImageGenerator(
-    createCodexImageCliGenerator({
+    createCodexImageGenerator({
       settingsPath: SETTINGS_PATH,
-      tempRoot: () => app.getPath('temp'),
+      onUsage: broadcastSubscriptionUsage,
     }),
   )
   setCodexImageGenerationAvailable(true)
+}
+
+/** a tab's picture or media call: refused while AI is off, else one running AI job its Stop ends */
+function screenMediaCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  return aiMediaCall(() => abortMediaCalls(senderId), run)
 }
 
 export function registerAiIpc(): void {
@@ -4417,7 +4493,7 @@ export function registerAiIpc(): void {
   app.once('before-quit', shutdownCodexAppServers)
   // the subscription channels (statuses, recheck, login, install, metered) exist once per
   // process: whichever editor main asks first registers them and starts the first check
-  ensureSubscriptionIpc(ipcMain, {
+  const subscriptionSetup: SubscriptionIpcSetup = {
     getSettings: storedAiSettings,
     setMeteredAccepted: (provider: AiSubscriptionProviderId, accepted: boolean) => {
       writeAiSettingsFile(
@@ -4432,6 +4508,10 @@ export function registerAiIpc(): void {
       broadcastAiSettingsChanged()
     },
     dataDir: app.getPath('userData'),
+    // every check and model listing, the ones the service starts itself after a login ends
+    // included, asks no program while AI features are off (editor choice spec 8.3, 9)
+    detect: aiGatedDetect(detectSubscriptionLogin, aiFeaturesOn),
+    listModels: aiGatedModelLister(listSubscriptionModels, aiFeaturesOn),
     broadcast: (channel, statuses) => {
       for (const wc of webContents.getAllWebContents())
         if (!wc.isDestroyed()) wc.send(channel, statuses)
@@ -4449,7 +4529,18 @@ export function registerAiIpc(): void {
       },
       pages: () => aiChatGptSignInPages(getUiLang()),
     },
+  }
+  // while AI features are off no check runs and no program starts (editor choice spec 8.3);
+  // turned back on, the programs are checked once (spec 8.5)
+  const subscriptionDeps = ensureSubscriptionIpc(ipcMain, subscriptionSetup, (setup) =>
+    aiGatedSubscriptionDeps(createSubscriptionIpcDeps(setup), aiFeaturesOn),
+  )
+  onAiFeaturesBack(() => {
+    void subscriptionDeps.service.check().catch(() => undefined)
+    keyModelRefresher.refreshChanged()
   })
+  // turned off, a login still running (started in Settings before) ends with its program
+  endSubscriptionLoginsWhenAiOff(subscriptionDeps)
 
   ipcMain.handle('ai:get-settings', async (): Promise<AiSettings> => storedAiSettings())
 
@@ -4480,6 +4571,8 @@ export function registerAiIpc(): void {
   })
 
   ipcMain.handle('ai:codex-models', async (_event, cliPath: unknown) => {
+    // AI turned off in Settings: no subscription program starts from a screen
+    if (!aiFeaturesOn()) throw new Error(AI_OFF_ERROR)
     // turned off in this app (decision 0114): Codex is not started for its list either
     if (subscriptionOffIn(storedAiSettings(), 'codex')) {
       throw new Error('Codex is turned off in this app')
@@ -4535,7 +4628,8 @@ export function registerAiIpc(): void {
       send({ requestId, type: 'error', error: refusal })
       return
     }
-    const tools = request.tools ?? []
+    // the create tool names the document types whose editor is off now (spec 7.4)
+    const tools = withOffDocumentKinds(request.tools ?? [])
     const maxTokens = request.maxTokens ?? maxOutputTokensOf(settings)
     // A local server loads the model on its first request, so this endpoint's
     // own first-response limit (default 300s) replaces the protocol default,
@@ -4548,6 +4642,16 @@ export function registerAiIpc(): void {
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one running AI job while this reply streams (every editor's chat goes
+    // through here): turning AI off stops it the way the screen's Stop does,
+    // and the subscription program ends with the signal
+    const endJob = registerAiJob({
+      kind: 'chat',
+      stop: () => controller.abort(),
+      // one tab's turn is one job, its parallel calls and the pause between them included
+      group: `tab:${event.sender.id}`,
+      lingerMs: CHAT_TURN_LINGER_MS,
+    })
     // deltas go out in short batches, everything else in order behind them
     const out = createChunkCoalescer<AiStreamChunk>(send)
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
@@ -4615,6 +4719,7 @@ export function registerAiIpc(): void {
       out.flush()
       unwatchSender()
       activeAiStreams.delete(requestId)
+      endJob()
     }
   })
 
@@ -4671,24 +4776,26 @@ export function registerAiIpc(): void {
   // docs-prefixed: slides registers its own ai:analyze-media in the same shell process.
   // Ends with its tab, or when the tab's AI run is stopped.
   ipcMain.handle('docs:analyze-media', (event, op: { mediaUrls: string[]; requirements: string }) =>
-    withMediaCallSignal(event.sender, async (signal) => {
-      const mediaUrls = (op.mediaUrls ?? []).map(String).filter(Boolean)
-      // a picture opened lazily from a large docx is only addressable by its main-process
-      // store; hand its bytes over as a data URL so the loader can read them like any other
-      const resolved: string[] = []
-      for (const url of mediaUrls) {
-        const lazy = await readLazyMedia(url).catch(() => null)
-        resolved.push(lazy ? `data:${lazy.mime};base64,${lazy.body.toString('base64')}` : url)
-      }
-      return analyzeMediaTool(
-        SETTINGS_PATH(),
-        {
-          mediaUrls: resolved,
-          requirements: String(op.requirements ?? ''),
-        },
-        { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
-      )
-    }),
+    screenMediaCall(event.sender.id, () =>
+      withMediaCallSignal(event.sender, async (signal) => {
+        const mediaUrls = (op.mediaUrls ?? []).map(String).filter(Boolean)
+        // a picture opened lazily from a large docx is only addressable by its main-process
+        // store; hand its bytes over as a data URL so the loader can read them like any other
+        const resolved: string[] = []
+        for (const url of mediaUrls) {
+          const lazy = await readLazyMedia(url).catch(() => null)
+          resolved.push(lazy ? `data:${lazy.mime};base64,${lazy.body.toString('base64')}` : url)
+        }
+        return analyzeMediaTool(
+          SETTINGS_PATH(),
+          {
+            mediaUrls: resolved,
+            requirements: String(op.requirements ?? ''),
+          },
+          { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+        )
+      }),
+    ),
   )
 
   // download image from URL → base64+mime (download in the main process avoids CORS; the renderer builds the image node and measures size itself)
@@ -4720,20 +4827,28 @@ export function registerAiIpc(): void {
   // registered once a slides view exists, so docs needs its own channel
   ipcMain.handle(
     'docs:ai-generate-image',
-    (event, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          SETTINGS_PATH(),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+    (event, op: { prompt?: unknown; aspectRatio?: unknown; model?: unknown }) => {
+      // the model the user named, as given: the shared tool decides whether the route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      return screenMediaCall(event.sender.id, () =>
+        withMediaCallSignal(event.sender, (signal) =>
+          generateImageTool(
+            SETTINGS_PATH(),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+              ...(model ? { model } : {}),
+            },
+            { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
         ),
-      ),
+      )
+    },
   )
 
   ipcMain.handle('ai:search-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, apiKey } = (input ?? {}) as { provider?: AiSearchProviderId; apiKey?: string }
     if (!provider || !AI_SEARCH_PROVIDERS.some((meta) => meta.id === provider)) {
       return { ok: false, error: 'No search provider to test' }
@@ -4743,6 +4858,8 @@ export function registerAiIpc(): void {
 
   // settings-UI connection test for a key media provider
   ipcMain.handle('ai:media-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, config } = (input ?? {}) as {
       provider?: AiMediaProviderId
       config?: AiMediaProviderConfig
@@ -4754,11 +4871,18 @@ export function registerAiIpc(): void {
     return testMediaProvider(provider, config)
   })
 
-  ipcMain.handle('ai:chat', async (_event, request: AiChatRequest) => {
+  ipcMain.handle('ai:chat', async (event, request: AiChatRequest) => {
     // same schema check and provider choice as ai:stream: one-shot requests would
     // otherwise act on the renderer's settings copy verbatim
     const target = resolveAiRun(request.settings, sharedSubscriptionStatuses(), AI_RUN_TEXTS)
     if (!target.ok) return { ok: false, ...target.refusal }
+    // the shell's checks in front of every screen's AI run (AI off, Drive copies)
+    const refusal = aiRunRefusal({
+      senderId: event.sender.id,
+      provider: target.provider,
+      model: target.config.model,
+    })
+    if (refusal) return { ok: false, error: refusal }
     const { system, user } = request
     try {
       const result = await chatForProvider(target.provider, target.config, system, user)
@@ -5097,14 +5221,18 @@ export function registerDocsIpc(): void {
     let driver: ElectronBrowserDriver | null = null
     try {
       const htmlPath = join(workDir, 'chunk.html')
-      // the BOM outranks a stale <meta charset> left in the decoded markup
-      await writeFile(htmlPath, `\ufeff${html}`, 'utf8')
-      driver = await ElectronBrowserDriver.create(ALT_CHUNK_VIEWPORT)
-      // The markup is an unsanitised AI artifact: a script that never yields
-      // would otherwise keep executeJavaScript pending forever, and the
-      // finally below would never run (the hidden window and workDir leak for
-      // good). Race a watchdog and destroy the window on timeout, matching
-      // the slides export guard.
+      // The chunk is whatever the .docx's author put there. Its page runs no
+      // scripts and fetches nothing (CSP), and its window may load this one
+      // file and nothing else: not the chunk's neighbours on disk, not the network.
+      await writeFile(htmlPath, altChunkDocument(html), 'utf8')
+      driver = await ElectronBrowserDriver.create(ALT_CHUNK_VIEWPORT, {
+        allowRequest: (url) => isFileUrlOf(url, htmlPath),
+      })
+      // The converter's own page work still has to finish: a page that never
+      // yields would keep executeJavaScript pending forever, and the finally
+      // below would never run (the hidden window and workDir leak for good).
+      // Race a watchdog and destroy the window on timeout, matching the
+      // slides export guard.
       const conversion = convertHtmlToDocx({ url: pathToFileURL(htmlPath).href }, driver, {
         naturalTableWidth: true,
       }).then(({ docx }) => docx)
@@ -5252,6 +5380,8 @@ export function registerDocsIpc(): void {
         dataUrl: handOffBytes(bytes),
         hash: '',
         untitledCopy: true,
+        ...(copy.saveAsDefaultPath ? { saveAsDefaultPath: copy.saveAsDefaultPath } : {}),
+        ...(copy.importedFrom ? { importedFrom: copy.importedFrom } : {}),
       }
     } catch {
       return null
@@ -5260,7 +5390,7 @@ export function registerDocsIpc(): void {
 
   // ---- headless export mode (--headless-export) ----
 
-  ipcMain.handle('docs:consume-headless-export', (event): HeadlessExportTarget | null => {
+  ipcMain.handle('docs:consume-headless-export', (event): DocsHeadlessExportTarget | null => {
     const target = headlessExportTargets.get(event.sender.id) ?? null
     headlessExportTargets.delete(event.sender.id)
     return target
@@ -5851,9 +5981,7 @@ export function registerDocsIpc(): void {
     },
   )
 
-  ipcMain.handle('docs:recent', () =>
-    readJson<string[]>(RECENT_PATH(), []).filter((p) => existsSync(p)),
-  )
+  ipcMain.handle('docs:recent', () => readJson<string[]>(RECENT_PATH(), []))
 
   ipcMain.handle('docs:pick-image', async (event) => {
     const result = await openDialog(event, {
@@ -5908,7 +6036,7 @@ export function registerDocsIpc(): void {
       await writeFile(path, bytes)
     }
     try {
-      if (request.mode === 'single') {
+      if (request.mode === 'single' || request.mode === 'labels') {
         const file = files[0]!
         const name = mergeOutputFileName(file.name)
         const result = await saveDialog(event, {
@@ -6078,6 +6206,56 @@ export function registerDocsIpc(): void {
     return printers.map((p) => ({ name: p.name, displayName: p.displayName || p.name }))
   })
 
+  // Advanced print (decision 0141): the renderer sends the job PDF it printed
+  // the way the PDF export does (chosen pages only, or a laid-out selection);
+  // the shared module arranges it and prints, previews or saves the result.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerPrintLayoutIpc('docs', {
+    ipcMain,
+    buildJobPdf: async (_event, editor) => mergePrintJobParts(readDocsPrintJob(editor).parts),
+    createPrintWindow: () =>
+      new BrowserWindow({
+        show: false,
+        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+      }),
+    pickSavePath: async (event, editor) => {
+      const name =
+        typeof editor === 'object' && editor !== null
+          ? (editor as { name?: unknown }).name
+          : undefined
+      const result = await saveDialog(event as IpcMainInvokeEvent, {
+        title: tm('dlgExportPdf'),
+        defaultPath: printPdfDefaultName(name),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      return result.canceled || !result.filePath ? null : result.filePath
+    },
+  })
+
+  // Print selection: the selected content as a .docx of its own, laid out in a
+  // hidden window exactly like a PDF export of that document
+  ipcMain.handle(
+    'docs:print-selection-pdf',
+    async (event, docx: unknown, sectPr: unknown): Promise<PrintSelectionPdfResult> => {
+      if (tornDownWcIds.has(event.sender.id) || !(docx instanceof ArrayBuffer)) {
+        return { ok: false, error: 'no selection to print' }
+      }
+      const section = sectPr === null ? null : validSectPrXml(sectPr) ? sectPr : undefined
+      if (section === undefined) return { ok: false, error: 'invalid section properties' }
+      try {
+        const pdf = await renderSelectionPdf(Buffer.from(docx), section)
+        const pages = await readJobPageSizes(new Uint8Array(pdf))
+        if (pages.length === 0) return { ok: false, error: 'the selection laid out no pages' }
+        return { ok: true, base64: pdf.toString('base64'), pages }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
   ipcMain.handle('docs:print', async (event, scale?: number, job?: unknown, paper?: unknown) => {
     // print the calling tab's own content; zero margins — the docx page padding provides them.
     // Resolves when the system dialog is dismissed (or the silent job is queued); the print
@@ -6086,6 +6264,10 @@ export function registerDocsIpc(): void {
       margins: { marginType: 'none' as const },
       ...printScale(scale),
       ...printJobOptions(job),
+      // the document's own paper: Chromium prints on Letter unless the job
+      // states one, and an A4 sheet on Letter is taller than the paper — it
+      // splits in two, so the printed page loses its bottom (genoffice#2563)
+      ...printPaperOption(paper),
     }
     // A named printer prints silently, and Chromium's silent print on macOS
     // can drop the job outright — no queue entry, no callback error
@@ -6574,6 +6756,9 @@ export function sanitizeAiDocFileBase(title: string): string {
  * project (spec 6), pdf / md / html are made first and then written into that
  * project's folder by the shell (a free name, never over a file), and the
  * docx tab follows that project; otherwise everything is as described above.
+ *
+ * A type whose editor is turned off (Settings → Editors and AI) is refused
+ * before anything is made, with a reason the AI passes on (editor choice 7.4).
  */
 export async function createAiDocument(
   request: CreateDocumentRequest,
@@ -6583,6 +6768,9 @@ export async function createAiDocument(
   const title = sanitizeAiDocFileBase(request?.title)
   const content = String(request?.content ?? '')
   if (!content.trim()) return { ok: false, error: 'content must not be empty' }
+  // a type whose editor is turned off is refused before anything is made (spec 7.4)
+  const refusal = aiCreateRefusal(type)
+  if (refusal) return { ok: false, error: refusal }
   try {
     if (type === 'docx') {
       const payload: AiDocContent = { title, html: content }
@@ -6670,6 +6858,13 @@ function activeViewMenuState(): ViewMenuState {
 /** Insert-menu entries of features an ODT document switches off (equations, comments) */
 const ODT_OFF_MENU_IDS = ['docs-menu-insert-equation', 'docs-menu-insert-comment'] as const
 
+/** menu entries that open or run the AI: hidden while AI is off (Settings › Editors and AI) */
+const AI_MENU_IDS = [
+  'docs-menu-ai-sidebar',
+  'docs-menu-ai-proofread-sep',
+  'docs-menu-ai-proofread',
+] as const
+
 /** shell-injected items appended to the File menu (e.g. Back to Home); persists
  * across the internal rebuilds pushRecent() triggers */
 let extraFileMenuItems: MenuItemConstructorOptions[] = []
@@ -6701,9 +6896,8 @@ export function setDocsMenuGate(gate: () => boolean): void {
 export function buildDocsMenu(): void {
   if (docsMenuGate && !docsMenuGate()) return
   const isMac = process.platform === 'darwin'
-  const recent = readJson<string[]>(RECENT_PATH(), [])
-    .filter((p) => existsSync(p))
-    .slice(0, 10)
+  // Opening a menu must not trigger an automount; validate when the user opens a file.
+  const recent = readJson<string[]>(RECENT_PATH(), []).slice(0, 10)
 
   const recentSubmenu: MenuItemConstructorOptions[] =
     recent.length > 0
@@ -6716,24 +6910,13 @@ export function buildDocsMenu(): void {
       : [{ label: tm('menuNoRecent'), enabled: false }]
 
   const template: MenuItemConstructorOptions[] = [
+    // ⌘, stays subscript here (the Word tab's own chord), so Settings… shows no shortcut
     ...(isMac
       ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' as const },
-              { type: 'separator' as const },
-              { label: tm('menuPreferences'), click: () => sendCommand('preferences') },
-              { type: 'separator' as const },
-              { role: 'services' as const },
-              { type: 'separator' as const },
-              { role: 'hide' as const },
-              { role: 'hideOthers' as const },
-              { role: 'unhide' as const },
-              { type: 'separator' as const },
-              { role: 'quit' as const },
-            ],
-          },
+          macAppMenuTemplate(appMenuLabels(getUiLang()), {
+            settingsShortcut: 'none',
+            extraItems: [{ label: tm('menuPreferences'), click: () => sendCommand('preferences') }],
+          }),
         ]
       : []),
     {
@@ -6848,6 +7031,7 @@ export function buildDocsMenu(): void {
           id: 'docs-menu-ai-sidebar',
           type: 'checkbox',
           checked: activeViewMenuState().aiSidebar,
+          visible: aiFeaturesOn(),
           label: tm('menuAiSidebar'),
           click: () => sendCommand('toggle-ai'),
         },
@@ -7014,9 +7198,14 @@ export function buildDocsMenu(): void {
         ...(isMac
           ? []
           : [{ label: tm('menuPreferences'), click: () => sendCommand('preferences') }]),
-        { type: 'separator' },
+        { id: 'docs-menu-ai-proofread-sep', type: 'separator', visible: aiFeaturesOn() },
         // Runs the same AI proofread as Review > Editor (renderer shows the one-time ack)
-        { label: tm('menuAiProofread'), click: () => sendCommand('ai-proofread') },
+        {
+          id: 'docs-menu-ai-proofread',
+          label: tm('menuAiProofread'),
+          visible: aiFeaturesOn(),
+          click: () => sendCommand('ai-proofread'),
+        },
       ],
     },
     windowMenuTemplate(process.platform, appMenuLabels(getUiLang())),
@@ -7042,7 +7231,7 @@ export function buildDocsMenu(): void {
 // ---- headless export ----
 
 /** hidden export windows: webContents id -> what the renderer must write */
-const headlessExportTargets = new Map<number, HeadlessExportTarget>()
+const headlessExportTargets = new Map<number, DocsHeadlessExportTarget>()
 /** settled by 'docs:headless-export-done' (or by the renderer dying) */
 const headlessExportWaiters = new Map<number, (result: HeadlessExportReport) => void>()
 
@@ -7103,6 +7292,77 @@ export async function exportDocsHeadless(
     headlessExportTargets.delete(wcId)
     pendingWindowOpens.delete(wcId)
     if (!win.isDestroyed()) win.destroy()
+  }
+}
+
+/** a printed selection's layout gets this long before it counts as failed */
+const PRINT_SELECTION_TIMEOUT_MS = 300_000
+
+/**
+ * Print selection (decision 0141): lay out `docx` (the selected content only,
+ * as the editor's save path wrote it) in a hidden docs window and return the
+ * PDF, made by the same load -> paginate -> PDF export the File menu runs.
+ *
+ * The window is wired like exportDocsHeadless's, but the document arrives as
+ * an untitled copy: no recent entry, no write grant, no archive, no file
+ * watch. The window counts as torn down from the start, so it never writes a
+ * recovery copy or saves, and its PDF is never revealed or opened. Everything
+ * lives in one temp folder that is removed on every path.
+ */
+async function renderSelectionPdf(docx: Buffer, sectPr: string | null): Promise<Buffer> {
+  const { bytes: full } = await materializeLazyDocx(docx)
+  const prepared = await selectionDocxForPrint(full, sectPr)
+  const dir = await mkdtemp(join(tmpdir(), 'genoffice-docs-print-selection-'))
+  let win: BrowserWindow | null = null
+  let wcId = -1
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const input = join(dir, 'selection.docx')
+    const outPath = join(dir, 'selection.pdf')
+    await writeFile(input, prepared)
+    win = new BrowserWindow({
+      show: false,
+      width: 1360,
+      height: 900,
+      webPreferences: {
+        preload: runtime.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    })
+    const contents = win.webContents
+    wcId = contents.id
+    tornDownWcIds.add(wcId)
+    pendingDocCopies.set(wcId, { path: input, name: 'selection.docx' })
+    headlessExportTargets.set(wcId, { outPath, format: 'pdf', untitled: true })
+    allowPdfWrite(wcId, outPath)
+    // an export temp: written silently, never revealed or opened
+    imageExportTemps.set(wcId, new Set([outPath]))
+    const report = await new Promise<HeadlessExportReport>((resolve) => {
+      headlessExportWaiters.set(wcId, resolve)
+      contents.on('render-process-gone', (_event, details) =>
+        resolve({ ok: false, error: `docs renderer stopped (${details.reason})` }),
+      )
+      timer = setTimeout(
+        () => resolve({ ok: false, error: 'the selection did not finish laying out' }),
+        PRINT_SELECTION_TIMEOUT_MS,
+      )
+      void contents.loadURL(rendererUrl(runtime.rendererUrl, 'docs'))
+    })
+    if (!report.ok) throw new Error(report.error ?? 'the selection did not lay out')
+    return await readFile(outPath)
+  } finally {
+    if (timer) clearTimeout(timer)
+    if (wcId >= 0) {
+      headlessExportWaiters.delete(wcId)
+      headlessExportTargets.delete(wcId)
+      pendingDocCopies.delete(wcId)
+      dropDocWriter(wcId)
+    }
+    if (win && !win.isDestroyed()) win.destroy()
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
@@ -7215,6 +7475,12 @@ ipcMain.on('docs:view-menu-state', (event, state: unknown) => {
   for (const id of ODT_OFF_MENU_IDS) {
     const item = menu?.getMenuItemById(id)
     if (item) item.enabled = !next.odt
+  }
+  // every tab reports again when the AI switch changes, so the live menu follows it
+  const aiOn = aiFeaturesOn()
+  for (const id of AI_MENU_IDS) {
+    const item = menu?.getMenuItemById(id)
+    if (item) item.visible = aiOn
   }
 })
 

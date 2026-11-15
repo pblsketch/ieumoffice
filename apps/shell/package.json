@@ -32,6 +32,7 @@
     "@genoffice/pipelines": "*",
     "@genoffice/pptx-engine": "*",
     "@genoffice/pptx-render": "*",
+    "@genoffice/print-layout": "*",
     "@genoffice/sheets": "*",
     "@genoffice/slides": "*",
     "@genoffice/ui": "*",

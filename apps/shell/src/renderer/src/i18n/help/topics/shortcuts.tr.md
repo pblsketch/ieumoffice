@@ -12,10 +12,12 @@ Her düzenleyicinin kendi tuş bağlamaları vardır ve bunlardan yalnızca birk
 | Şeridi daralt / genişlet — her düzenleyici                | ⌥⌘R   | Ctrl+F1         |
 | Şeridi kompakt yap — yalnızca Docs                        | ⌥⌘K   | Ctrl+Alt+K      |
 | Klavye Kısayolları sayfasını aç — yalnızca Word           | ⌘/    | Ctrl+/          |
+| Ayarları aç — Word dışındaki tüm sekmeler                 | ⌘,    | Ctrl+,          |
 
 - **F1 bu kılavuzu açar**, kısayol sayfasını değil. Uygulama menüsüne ait olduğu için Word, Sheets, Slides, PDF ya da Giriş sekmesinden aynı şekilde çalışır.
 - **Şerit anahtarı `Ctrl+F1`, macOS'ta `⌥⌘R`'dir.** Yalın `F1` hiçbir şey yapmaz — F1 kılavuzdur ve şerit tuşu bilerek onu paylaşmaz. `Ctrl+F1` macOS'ta da kabul edilir, gerçi Office for Mac'in kullandığı tuş `⌥⌘R`'dir.
 - **Klavye Kısayolları sayfası yalnızca Word'e özgüdür** (`⌘/`). Tam olarak aşağıdaki Word tablosunu listeler. Başka hiçbir düzenleyicide yoktur.
+- **`⌘,` ayarları açar** (Windows ve Linux’ta `Ctrl+,`); çoğu Mac uygulamasında olduğu gibi. Word sekmesinde bu kısayol alt simge olarak kalır; orada ayarları Mac’te uygulama menüsünden, Windows ve Linux’ta Menü (☰) ▸ Ayarlar… ile açın.
 
 ![Word'ün kendi Klavye Kısayolları sayfası: solda eylem, sağda birleşim; Dosya, Düzenle, Metin, Paragraf, Ekle, Gözden Geçir ve Görünüm'e göre gruplanmış](img/word-shortcuts.png)
 

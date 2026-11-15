@@ -75,6 +75,7 @@ import {
 import { AiMark, CropDialog, CutoutDialog, type ImageDialogLabels } from '@genoffice/ui'
 import { FloatToolbar } from './components/FloatToolbar'
 import { RedactDialog } from './components/RedactDialog'
+import { useAiVisible } from './ai-visibility'
 import { useMathExtension } from './extensions/math/useMathExtension'
 import { redactClearPlan, redactMarkPlan, type RedactPlan } from './document/redact-edit'
 import {
@@ -104,6 +105,7 @@ import { withPendingEdits } from './document/pending-edits'
 import { adoptImageRewrites } from './document/image-rewrites'
 import { deriveAutoFileName, deriveNameFromPrompt, derivePageTitleName } from './document/auto-name'
 import { runGuardedPrint } from './print-guard'
+import { HtmlPrintDialog } from './PrintDialog'
 import { startRecoveryCopies } from './recovery-copy'
 import type { ExportFormat, SaveMode } from '../shared/ipc'
 
@@ -197,9 +199,20 @@ export default function App() {
   const aiPanelOpen = effectiveAiPanelOpen(aiOpen, paneRole)
   // the sidebar switch is a soft hide; it closes the panel when it turns off
   const aiSidebarEnabled = useAiSidebarEnabled(setAiOpen)
+  // Settings › Editors and AI: while AI is off no AI part of this editor is drawn
+  // (panel, ribbon entries, Ask AI, withholding); turning it back on brings them back
+  const aiOn = useAiVisible()
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
   const [aiPreset, setAiPreset] = useState<AiPreset | null>(null)
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
   const [askMode, setAskMode] = useState<AskMode | null>(null)
+  // AI turned off: the queued AI edits go with the panel, and so does an open Ask AI
+  useEffect(() => {
+    if (aiOn) return
+    setEditQueue((queue) => (queue.length ? [] : queue))
+    setAskMode(null)
+  }, [aiOn])
   const [selectedSid, setSelectedSid] = useState<number | null>(null)
   const [selectedState, setSelectedState] = useState<NodeState>('static')
   /** elements selected alongside selectedSid (shift / ctrl+click, rubber band): delete,
@@ -984,8 +997,9 @@ export default function App() {
               'clear',
             )
           else if (msg.command === 'escape') selectSid(null)
-          else if (msg.command === 'askAi') setAskMode({ kind: 'new' })
-          else if (msg.command === 'bold') wrapSelectionRef.current('strong')
+          else if (msg.command === 'askAi') {
+            if (aiOnRef.current) setAskMode({ kind: 'new' })
+          } else if (msg.command === 'bold') wrapSelectionRef.current('strong')
           else if (msg.command === 'italic') wrapSelectionRef.current('em')
           else if (msg.command === 'parent' && e.parentSid !== null) {
             const parent = map.bySid.get(e.parentSid)
@@ -1602,6 +1616,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t is not referentially stable
   }, [])
 
+  // Shell menu Print / ⌘P / the tab menu open the print dialog first (decision
+  // 0141). All pages with nothing changed there is runPrint as before.
+  const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const openPrintDialog = useCallback(() => {
+    // the system dialog of a print already under way is modal: no second print
+    if (statusRef.current !== 'ready' || printingRef.current) return
+    setPrintDialogOpen(true)
+  }, [])
+  const closePrintDialog = useCallback(() => setPrintDialogOpen(false), [])
+  const printDocumentText = useCallback(() => {
+    flushPending()
+    return serializeDocText({ text: textRef.current, envelope: envelopeRef.current })
+  }, [flushPending])
+  const printSuggestedName = useCallback(
+    () =>
+      pathRef.current?.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '') ||
+      deriveAutoFileName(textRef.current) ||
+      '',
+    [],
+  )
+
   // Headless export mode (--headless-export): this renderer lives in a hidden
   // window whose only job is to run the File menu's PDF or Word export against
   // a path the CLI chose, then report back so the main process can quit.
@@ -1667,7 +1702,7 @@ export default function App() {
     const offExport = window.htmlApi.onExportRequest((format) => void runExport(format))
     // Shell menu Print / ⌘P. The menu owns the accelerator, so this subscription
     // is the only route the keystroke takes; without it ⌘P did nothing at all.
-    const offPrint = window.htmlApi.onPrintRequest(() => void runPrint())
+    const offPrint = window.htmlApi.onPrintRequest(openPrintDialog)
     const offTheme = window.htmlApi.onThemeChanged(() => {
       // let main.tsx flip data-theme first
       window.setTimeout(() => {
@@ -1725,7 +1760,17 @@ export default function App() {
       offTheme()
       window.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [doSave, runExport, runPrint, cycleView, zoomIn, zoomOut, flushPending, openFind, postPaper])
+  }, [
+    doSave,
+    runExport,
+    openPrintDialog,
+    cycleView,
+    zoomIn,
+    zoomOut,
+    flushPending,
+    openFind,
+    postPaper,
+  ])
 
   // pinch / ctrl+wheel over the stage chrome around the frame; wheel inside the frame arrives as gx:zoom
   useEffect(() => {
@@ -1969,38 +2014,40 @@ export default function App() {
       />
 
       <div className="app-main">
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
-            >
-              <AiMark size={18} />
-            </button>
-          )}
-          {/* stays mounted while collapsed: an in-flight run, its snapshots and the loop context survive */}
-          <AiPanel
-            deps={aiDeps}
-            filePath={path}
-            preset={aiPreset}
-            onGenerateHandoff={() => setAiOpen(true)}
-            templateDocument={templateDocument}
-            onSkillHandoff={() => setAiOpen(true)}
-            editQueue={editQueue}
-            onQueueEditInstruction={queueUpdate}
-            onQueueRemove={queueRemove}
-            onQueueClear={() => setEditQueue([])}
-            onQueueFocus={queueFocus}
-            onQueueConsume={queueConsume}
-            onCollapse={() => setAiOpen(false)}
-          />
-        </div>
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
+              >
+                <AiMark size={18} />
+              </button>
+            )}
+            {/* stays mounted while collapsed: an in-flight run, its snapshots and the loop context survive */}
+            <AiPanel
+              deps={aiDeps}
+              filePath={path}
+              preset={aiPreset}
+              onGenerateHandoff={() => setAiOpen(true)}
+              templateDocument={templateDocument}
+              onSkillHandoff={() => setAiOpen(true)}
+              editQueue={editQueue}
+              onQueueEditInstruction={queueUpdate}
+              onQueueRemove={queueRemove}
+              onQueueClear={() => setEditQueue([])}
+              onQueueFocus={queueFocus}
+              onQueueConsume={queueConsume}
+              onCollapse={() => setAiOpen(false)}
+            />
+          </div>
+        )}
         <div className="app-content">
           {findTarget && (
             <FindPanel
@@ -2100,7 +2147,7 @@ export default function App() {
                       onReplaceImage={replaceImage}
                       onCropImage={() => void openPictureDialog('crop')}
                       onCutoutImage={() => void openPictureDialog('cutout')}
-                      canAskAi={askTarget !== null}
+                      canAskAi={aiOn && askTarget !== null}
                       onAskAi={askAi}
                       tag={selectedEntry.tag}
                       onMove={moveSelected}
@@ -2155,7 +2202,7 @@ export default function App() {
                 onChange={onEditorChange}
                 onCursor={onCursor}
                 onBeforeReplace={flushPending}
-                onRedact={onRedactSelection}
+                onRedact={aiOn ? onRedactSelection : undefined}
               />
             </div>
           </div>
@@ -2230,7 +2277,7 @@ export default function App() {
           </footer>
         </div>
       </div>
-      {askTarget && askMode && canvasMode !== 'present' && (
+      {aiOn && askTarget && askMode && canvasMode !== 'present' && (
         <AiAskPopover
           key={askMode.kind === 'edit' ? askMode.qid : 'new'}
           target={askTarget}
@@ -2273,6 +2320,16 @@ export default function App() {
           image={pictureDialog.image}
           onApply={(png) => void applyPictureBytes(pictureDialog.sid, pictureDialog.src, png)}
           onCancel={() => setPictureDialog(null)}
+        />
+      )}
+      {printDialogOpen && (
+        <HtmlPrintDialog
+          api={window.htmlApi}
+          documentText={printDocumentText}
+          suggestedName={printSuggestedName}
+          onPlainPrint={() => void runPrint()}
+          onClose={closePrintDialog}
+          onNotice={setNotice}
         />
       )}
     </div>

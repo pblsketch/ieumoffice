@@ -17,6 +17,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { AiPanel } from './ai/AiPanel'
 import { AiAskPopover, type AskAnchorRect } from './AiAskPopover'
+import { useAiOn } from './ai-choice'
 import {
   createSavedAnnotCountsLoader,
   loadSavedAnnots,
@@ -172,6 +173,9 @@ import {
   remapOutlineTree,
 } from './heading-outline'
 import { printPdf } from './print'
+import { PrintDialog } from './PrintDialog'
+import { jobPageSizes, pickedVisiblePages, routePrint } from './print-route'
+import { readFileBytes } from './file-bytes'
 import { mayChangeProtection } from './protection-gate'
 import { PasswordDialog } from './PasswordDialog'
 import { PropertiesDialog } from './PropertiesDialog'
@@ -287,6 +291,7 @@ import {
   onAiRailClick,
   rememberAiPanelOpen,
   presentationKeyOf,
+  printLayoutIssueText,
   useAutoSavePref,
   useDismissablePopover,
   useRibbonCollapse,
@@ -294,8 +299,12 @@ import {
   useSplitPaneFocusPing,
   useSplitPaneRole,
   templateDocumentOf,
+  type PrintLabelSpecStore,
+  type PrintLayoutPreviewRequest,
+  type PrintLayoutProgress,
   type TemplateDocument,
 } from '@genoffice/ui'
+import type { PrintLayoutErrorCode, PrintLayoutOptions } from '@genoffice/print-layout/plan'
 import { useI18n } from './i18n/locale'
 import { useAutosave } from './useAutosave'
 import { useRecoveryCopies } from './recovery/useRecoveryCopies'
@@ -329,7 +338,9 @@ import type {
   TextInsertFailure,
   TextInsertInput,
   PdfToolsHandoffTool,
+  PdfPrintLayoutEditor,
 } from '../shared/ipc'
+import { PDF_PRINT_SAVE_RESTRICTED } from '../shared/ipc'
 import {
   ZOOM_STEPS,
   MIN_SCALE,
@@ -391,6 +402,8 @@ import {
   textEditPreviewParts,
   textEditPreviewContent,
   seedDraftColors,
+  draftOwnedEditIds,
+  previewsTextEdit,
   paperCss,
   textEraseKey,
   textEraseProbe,
@@ -551,6 +564,30 @@ type MarkupMenu =
       y: number
     }
   | { kind: 'saved'; annot: SavedMarkupAnnot; x: number; y: number }
+/** The file's bytes before and after a change written to it at once */
+interface WrittenStep {
+  before: ArrayBuffer
+  after: ArrayBuffer
+}
+interface WrittenSteps {
+  undo: WrittenStep[]
+  redo: WrittenStep[]
+}
+/** Each step holds the whole file twice: a long history of them would hold that much memory */
+const MAX_WRITTEN_STEPS = 10
+
+/** An arranged print or save from the print dialog: its progress, or why it failed. */
+interface PrintJobState {
+  progress: PrintLayoutProgress | null
+  error: string | null
+}
+const PRINT_JOB_IDLE: PrintJobState = { progress: null, error: null }
+/** selection-bar actions that ask the AI (explain, translate, ask): none while AI is off */
+const AI_SELECTION_ACTIONS: ReadonlySet<SelectionBarAction> = new Set([
+  'explain',
+  'translate',
+  'ask',
+])
 
 export default function App() {
   const { lang, t } = useI18n()
@@ -671,6 +708,9 @@ export default function App() {
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
+  // AI features on (Settings): while off, every AI entrance below is gone, and
+  // turning AI on brings them back without reopening the tab
+  const aiOn = useAiOn()
   // Persisted so a closed AI panel stays closed on next launch (docs/slides parity)
   const [aiCollapsed, setAiCollapsed] = useState(
     () => !aiPanelInitiallyOpen('genoffice-pdf-show-ai'),
@@ -691,6 +731,10 @@ export default function App() {
   const [spread, setSpread] = useState<1 | 2>(1)
   // side-by-side translation view; the revision rebuilds its tree after a save
   const [bilingualOn, setBilingualOn] = useState(false)
+  // the side-by-side translation view is an AI view: it closes when AI is turned off
+  useEffect(() => {
+    if (!aiOn) setBilingualOn(false)
+  }, [aiOn])
   const [bilingualRev, setBilingualRev] = useState(0)
   /** bumped when the open file was rewritten in place (a page operation, not a save) */
   const [docReloadRev, setDocReloadRev] = useState(0)
@@ -730,10 +774,11 @@ export default function App() {
   const [savedNotes, setSavedNotes] = useState<Map<number, SavedNoteAnnot[]>>(new Map())
   /** Active comment thread: its margin card is expanded and linked to its pin */
   const [activeNote, setActiveNote] = useState<{ origIdx: number; rootKey: string } | null>(null)
-  /** OS account name; the default author of new note comments */
+  /** Settings → General user name; the default author of new note comments */
   const [noteAuthor, setNoteAuthor] = useState('')
   useEffect(() => {
     window.pdfApi.getUsername().then(setNoteAuthor, () => {})
+    return window.pdfApi.onUsernameChanged(setNoteAuthor)
   }, [])
   /** the selection bar's three highlighter pens (user-editable, remembered) */
   const [highlightPens, setHighlightPens] = useState<Rgb[]>(() =>
@@ -751,7 +796,11 @@ export default function App() {
   /** the Markdown / EPUB conversion dialog that is open; `outPath` = a Save As target */
   const [convertDialog, setConvertDialog] = useState<PdfConvertDialogRequest | null>(null)
   /** AI page reading: this tab's document jobs, the window's handle, the ribbon menu */
-  const jobSession = useMemo(() => new DocumentJobSession(), [])
+  // each job is also one entry on the shell's list of running AI work (Settings stops it)
+  const jobSession = useMemo(
+    () => new DocumentJobSession(undefined, window.pdfApi?.aiJob ?? null),
+    [],
+  )
   const aiReadApi = useMemo(() => {
     const api = window.pdfApi
     if (!api?.structure || !api.store) return null
@@ -1323,8 +1372,9 @@ export default function App() {
   // the first AI turn should already know whether the file carries review
   // feedback, so an open panel starts the scan before the user sends anything
   useEffect(() => {
-    if (!aiCollapsed) startAiAnnotCountScan()
-  }, [aiCollapsed, startAiAnnotCountScan])
+    // the scan feeds the AI window, which is gone while AI is off
+    if (aiOn && !aiCollapsed) startAiAnnotCountScan()
+  }, [aiOn, aiCollapsed, startAiAnnotCountScan])
   const [selected, setSelected] = useState<AnnotSelection | null>(null)
   /** Markup context menu opened by a right click on a pending or saved annotation */
   const [markupMenu, setMarkupMenu] = useState<MarkupMenu | null>(null)
@@ -1352,6 +1402,16 @@ export default function App() {
   const [printing, setPrinting] = useState(false)
   const [undoStack, setUndoStack] = useState<EditSnapshot[]>([])
   const [redoStack, setRedoStack] = useState<EditSnapshot[]>([])
+  /** The file around each change written to it at once (Replace pages, Page size, Crop, Insert
+      PDF): Undo with no pending edit left writes it back as it was, Redo as the change left it */
+  const writtenRef = useRef<WrittenSteps>({ undo: [], redo: [] })
+  /** Their counts, for the Undo and Redo buttons */
+  const [written, setWrittenCounts] = useState({ undo: 0, redo: 0 })
+  const setWritten = (steps: WrittenSteps) => {
+    writtenRef.current = steps
+    setWrittenCounts({ undo: steps.undo.length, redo: steps.redo.length })
+  }
+  const writtenStepBusyRef = useRef(false)
   const [pwInput, setPwInput] = useState('')
   const [pwWrong, setPwWrong] = useState(false)
   const [extractDlg, setExtractDlg] = useState(false)
@@ -1371,9 +1431,8 @@ export default function App() {
   const [pageSizeDlg, setPageSizeDlg] = useState(false)
   const [splitPagesDlg, setSplitPagesDlg] = useState(false)
   const [printDlg, setPrintDlg] = useState(false)
-  const [printMode, setPrintMode] = useState<'all' | 'current' | 'custom'>('all')
-  const [printInput, setPrintInput] = useState('')
-  const [printInvalid, setPrintInvalid] = useState(false)
+  /** an arranged print or save (advanced print route) in progress, or why it failed */
+  const [printJob, setPrintJob] = useState<PrintJobState>(PRINT_JOB_IDLE)
   const [printAnnots, setPrintAnnots] = useState(true)
   /** Save As flow: the shell picked the target, the reader still chooses what happens to annotations */
   const [saveCopyDlg, setSaveCopyDlg] = useState<{ targetPath: string } | null>(null)
@@ -1592,11 +1651,10 @@ export default function App() {
       saved?: SavedSnapshot,
       waitForPageNos: number[] = [],
     ) => {
-      const data = await window.pdfApi.readFile(path)
-      const bytes = new Uint8Array(data)
-      // getDocument transfers the buffer to its worker, leaving `data` and `bytes`
-      // empty here: take what is needed from them first
-      const byteLength = data.byteLength
+      const bytes = await readFileBytes(window.pdfApi, path)
+      // getDocument transfers the buffer to its worker, leaving `bytes`
+      // empty here: take what is needed from it first
+      const byteLength = bytes.byteLength
       const xfaMarker = hasXfaMarker(bytes)
       setFormHasXfa(xfaMarker)
       if (!saved) {
@@ -2021,6 +2079,7 @@ export default function App() {
       setDeleteToast(false)
       setUndoStack([])
       setRedoStack([])
+      setWritten({ undo: [], redo: [] })
       outlineDocRef.current = loaded
       // A save-reload keeps the current tree (page indices already remapped
       // above) visible while headings rescan
@@ -2082,7 +2141,7 @@ export default function App() {
           // reports it like a password failure, and the answer has to name the
           // real reason instead of looping the prompt
           try {
-            const raw = new Uint8Array(await window.pdfApi.readFile(path))
+            const raw = await readFileBytes(window.pdfApi, path)
             const probe = await window.pdfApi.decryptPdf(raw, '')
             if (!probe.ok && probe.reason === 'certificate-encryption') {
               showNotice(t('pwCertEncrypted'))
@@ -2168,7 +2227,8 @@ export default function App() {
     () => saveHighlightPreview(highlightPreviewSwitch.saved),
     [highlightPreviewSwitch.saved],
   )
-  const highlightPreview = previewShown(highlightPreviewSwitch)
+  // the AI highlight suggestions (preview, panel items) are not shown while AI is off
+  const highlightPreview = aiOn && previewShown(highlightPreviewSwitch)
 
   useEffect(() => {
     if (
@@ -2874,6 +2934,7 @@ export default function App() {
     const snap = snapshot()
     setUndoStack((prev) => [...prev.slice(-49), snap])
     setRedoStack([])
+    if (writtenRef.current.redo.length > 0) setWritten({ ...writtenRef.current, redo: [] })
   }
 
   const newId = () => `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -3059,7 +3120,7 @@ export default function App() {
 
   const undo = () => {
     const top = undoStack[undoStack.length - 1]
-    if (!top) return
+    if (!top) return void stepWritten('undo')
     // Taken before applySnapshot rewrites the refs; the updater may run after it
     const cur = snapshot()
     setRedoStack((r) => [...r, cur])
@@ -3070,7 +3131,7 @@ export default function App() {
 
   const redo = () => {
     const top = redoStack[redoStack.length - 1]
-    if (!top) return
+    if (!top) return void stepWritten('redo')
     const cur = snapshot()
     setUndoStack((u) => [...u, cur])
     setRedoStack((r) => r.slice(0, -1))
@@ -3491,7 +3552,12 @@ export default function App() {
         })
       }
       // Read-only documents still get the bar for its Ask-AI entry (Q&A works);
-      // the markup buttons themselves are hidden in that state
+      // the markup buttons themselves are hidden in that state. With AI off such a
+      // bar would be empty, so none shows.
+      if (readOnly && !aiOn) {
+        setSelPopup(null)
+        return
+      }
       const anchor = { left: box.left, top: box.top, right: box.right, bottom: box.bottom }
       setSelColorRow(null)
       setPenEdit(null)
@@ -3713,6 +3779,7 @@ export default function App() {
       anchor now (the bar's mousedown preventDefault kept the selection alive up
       to this click; the popover input will collapse it) */
   const openAskPopover = () => {
+    if (!aiOn) return
     const sel = window.getSelection()
     const box =
       sel && !sel.isCollapsed && sel.rangeCount > 0
@@ -3755,6 +3822,8 @@ export default function App() {
   /** One selection-bar shortcut (reading-assist 4.1): the same as pressing its button */
   const runSelectionBarAction = (action: SelectionBarAction) => {
     if (!selPopup) return
+    // E, T and Enter ask the AI: no such key while AI is off
+    if (!aiOn && AI_SELECTION_ACTIONS.has(action)) return
     switch (action) {
       case 'highlight':
         applyMarkup(action)
@@ -3795,6 +3864,7 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const verdict = selectionBarKey(e, { visible: selPopup !== null, readOnly })
       if (!verdict) return
+      if (!aiOn && 'action' in verdict && AI_SELECTION_ACTIONS.has(verdict.action)) return
       e.preventDefault()
       if ('blocked' in verdict) {
         // the same reason the hidden markup buttons stand for
@@ -5622,6 +5692,8 @@ export default function App() {
   const friendlySaveError = (error: string): string => {
     const verify = /save-verify-failed pages=([\d,]+)/.exec(error)
     if (verify) return t('saveVerifyFailed', { pages: verify[1]!.split(',').join(', ') })
+    const locked = /save-target-locked code=(\w+)/.exec(error)
+    if (locked) return `${t('saveTargetLocked')} (${locked[1]})`
     return error
   }
 
@@ -5680,6 +5752,7 @@ export default function App() {
     fields: LocalFormField[] = savableFormFields,
   ) => ({
     markups: markups.map(({ id: _id, ...rest }) => rest),
+    ...(noteAuthor ? { annotationAuthor: noteAuthor } : {}),
     annotDeletes: annotDeletes.map((d): AnnotDeleteInput => ({
       pageIndex: d.annot.pageIndex,
       objNum: d.annot.objNum,
@@ -7308,7 +7381,7 @@ export default function App() {
   /** Pending edits the open draft stands in for (reopened / folded): the draft's probe
       erases their run, so they take the draft's erased state */
   const draftOwnedIds = useMemo(
-    () => new Set(textDraft ? [textDraft.editId, ...(textDraft.foldedIds ?? [])] : []),
+    () => draftOwnedEditIds(textDraft),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- same: identity fields only
     [textDraft?.editId, textDraft?.foldedIds],
   )
@@ -7698,14 +7771,60 @@ export default function App() {
     else if ('canceled' in result) return { ok: true, canceled: true, flushed }
     return result as Exclude<R, { canceled: true }>
   }
+  /** Reloads the file a change just wrote, and keeps the file from *before* it as an Undo step */
+  const reloadWritten = async (before: ArrayBuffer): Promise<number> => {
+    const kept = writtenRef.current.undo
+    const pageCount = await loadDoc(filePath, doc)
+    const after = await window.pdfApi.readFile(filePath)
+    setWritten({ undo: [...kept.slice(-(MAX_WRITTEN_STEPS - 1)), { before, after }], redo: [] })
+    return pageCount
+  }
+
+  /** Undo or Redo of a change written at once, once no pending edit is left; false when there is none */
+  const stepWritten = (direction: 'undo' | 'redo'): boolean => {
+    const { undo: undoable, redo: redoable } = writtenRef.current
+    const steps = direction === 'undo' ? undoable : redoable
+    const step = steps[steps.length - 1]
+    if (!step || dirty || writtenStepBusyRef.current) return false
+    writtenStepBusyRef.current = true
+    void (async () => {
+      try {
+        const bytes = direction === 'undo' ? step.before : step.after
+        const result = await window.pdfApi.restoreFile({ path: filePath, bytes })
+        if (!result.ok) {
+          opFailed(result.error)
+          return
+        }
+        // the stored AI results follow the file put back, as after the change itself
+        await aiReadRef.current?.afterPageOperation().catch(() => null)
+        await loadDoc(filePath, doc)
+        setWritten(
+          direction === 'undo'
+            ? { undo: undoable.slice(0, -1), redo: [...redoable, step] }
+            : { undo: [...undoable, step], redo: redoable.slice(0, -1) },
+        )
+      } finally {
+        writtenStepBusyRef.current = false
+      }
+    })()
+    return true
+  }
+
   const rewriteInPlace = async (
     run: () => Promise<{ ok: true } | { ok: true; canceled: true } | { ok: false; error: string }>,
   ): Promise<FileOpResult> => {
-    const result = await runFileOp(run)
+    const held: { before?: ArrayBuffer } = {}
+    const result = await runFileOp(async () => {
+      held.before = await window.pdfApi.readFile(filePath)
+      return run()
+    })
     if (!result.ok || 'canceled' in result) return result
     // the stored AI results of the kept pages follow the rewritten file before it is read again
     await aiReadRef.current?.afterPageOperation().catch(() => null)
-    return { ok: true, pageCount: await loadDoc(filePath, doc) }
+    return {
+      ok: true,
+      pageCount: held.before ? await reloadWritten(held.before) : await loadDoc(filePath, doc),
+    }
   }
   const baseName = () => fileName.replace(/\.pdf$/i, '')
 
@@ -7790,6 +7909,7 @@ export default function App() {
     // the flush bakes the visible order into the file, so the anchor becomes its visible position
     const afterPageIndex = visListOf(orderRef.current).indexOf(afterOrigIdx)
     return flushThen(async () => {
+      const before = await window.pdfApi.readFile(filePath)
       const result = await window.pdfApi.insertPdf({ path: filePath, afterPageIndex })
       if (!result.ok) {
         opFailed(result.error)
@@ -7797,7 +7917,7 @@ export default function App() {
       }
       if ('canceled' in result) return
       await aiReadRef.current?.afterPageOperation().catch(() => null)
-      await loadDoc(filePath, doc)
+      await reloadWritten(before)
     })
   }
 
@@ -8027,10 +8147,9 @@ export default function App() {
 
   // currentPage only tracks scroll, so it can outlive a page deletion
   const printCurrentPage = Math.max(1, Math.min(currentPage, pageCount))
+  // The dialog mounts per open, so its range and layout options start fresh
   const openPrintDlg = () => {
-    setPrintMode('all')
-    setPrintInput(String(printCurrentPage))
-    setPrintInvalid(false)
+    setPrintJob(PRINT_JOB_IDLE)
     setPrintDlg(true)
   }
 
@@ -8038,6 +8157,9 @@ export default function App() {
   // Synchronous re-entry guard: the menu accelerator and the renderer's own ⌘P can both
   // fire, and the `printing` state only updates after the async flush has started
   const printBusyRef = useRef(false)
+  // Page preparation of the current print path, shown in a toast with a cancel
+  const [printProgress, setPrintProgress] = useState<{ done: number; total: number } | null>(null)
+  const printAbortRef = useRef<AbortController | null>(null)
   // `pages` are 1-based file pages; the flush compacts the file to the visible
   // order first, so visible page v prints as file page v.
   const printDoc = async (pages?: number[], includeAnnotations = printAnnots) => {
@@ -8046,17 +8168,28 @@ export default function App() {
     try {
       await flushThen(async () => {
         setPrinting(true)
+        const controller = new AbortController()
+        printAbortRef.current = controller
         try {
-          const data = await window.pdfApi.readFile(filePath)
-          const pdoc = await getDocument({ data: new Uint8Array(data), ...DOC_OPTS }).promise
+          const data = await readFileBytes(window.pdfApi, filePath)
+          const pdoc = await getDocument({ data, ...DOC_OPTS }).promise
           try {
-            await printPdf(pdoc, pages, { includeAnnotations })
+            await printPdf(pdoc, pages, {
+              includeAnnotations,
+              signal: controller.signal,
+              onProgress: (done, total) => setPrintProgress({ done, total }),
+            })
           } finally {
             void pdoc.loadingTask.destroy()
           }
         } catch (err) {
-          opFailed(err instanceof Error ? err.message : String(err))
+          // A cancelled preparation prints nothing and is not an error
+          if (!controller.signal.aborted) {
+            opFailed(err instanceof Error ? err.message : String(err))
+          }
         } finally {
+          printAbortRef.current = null
+          setPrintProgress(null)
           setPrinting(false)
         }
       })
@@ -8065,25 +8198,117 @@ export default function App() {
     }
   }
 
-  /** Print dialog confirm: visible page numbers → 1-based file pages */
-  const confirmPrint = () => {
-    if (printMode === 'all') {
-      setPrintDlg(false)
-      void printDoc()
-      return
+  /** Picked thumbnails as 1-based visible pages, for the dialog's "picked pages" range */
+  const printPickedPages = useMemo(
+    () => pickedVisiblePages(pickedPages, visList),
+    [pickedPages, visList],
+  )
+
+  /** The print job's page sizes for the layout diagram; the flush saves the visible order */
+  const printPageSizes = (pages: number[] | undefined) =>
+    jobPageSizes(pages, pageCount, (visiblePage) => {
+      const origIdx = visList[visiblePage - 1]
+      if (origIdx === undefined || !(allSizes[origIdx] ?? blankSizeNow(origIdx))) return null
+      const g = pageGeom(origIdx)
+      return { width: g.pw, height: g.ph, rotate: g.rot, userUnit: g.userUnit ?? 1 }
+    })
+
+  const printLayoutEditor = (pages: number[] | null): PdfPrintLayoutEditor => ({
+    path: filePath,
+    pages,
+    includeAnnotations: printAnnots,
+  })
+
+  const printLayoutFailureText = (failure: { error: string; code?: PrintLayoutErrorCode }) =>
+    failure.code
+      ? printLayoutIssueText(lang, { code: failure.code, message: failure.error })
+      : failure.error === PDF_PRINT_SAVE_RESTRICTED
+        ? t('printSaveRestricted')
+        : failure.error
+
+  /**
+   * Arranged print or save (any layout option on): pending edits are saved
+   * first, as for the current print, then the main process builds the job
+   * from the file. The dialog stays open with progress and closes once printed.
+   */
+  const runArrangedJob = async (
+    kind: 'print' | 'save',
+    options: PrintLayoutOptions,
+    pages: number[] | null,
+  ) => {
+    if (printBusyRef.current) return
+    printBusyRef.current = true
+    const bridge = window.pdfApi.printLayout
+    setPrintJob({ progress: { done: 0, total: 0 }, error: null })
+    const stopProgress = bridge.onProgress((progress) => setPrintJob({ progress, error: null }))
+    try {
+      const result = await flushThen(async () => {
+        setPrinting(true)
+        try {
+          const request = { options, editor: printLayoutEditor(pages) }
+          return kind === 'print' ? await bridge.print(request) : await bridge.savePdf(request)
+        } finally {
+          setPrinting(false)
+        }
+      })
+      if (result && !result.ok && !('aborted' in result)) {
+        setPrintJob({ progress: null, error: printLayoutFailureText(result) })
+        return
+      }
+      setPrintJob(PRINT_JOB_IDLE)
+      if (kind === 'print' && result?.ok) setPrintDlg(false)
+    } finally {
+      stopProgress()
+      printBusyRef.current = false
     }
-    if (printMode === 'current') {
-      setPrintDlg(false)
-      void printDoc([printCurrentPage])
-      return
+  }
+
+  /** Print pressed: default options keep the current path and its arguments */
+  const confirmPrint = (pages: number[] | undefined, options: PrintLayoutOptions) => {
+    routePrint(options, pages, {
+      current: (...args) => {
+        setPrintDlg(false)
+        void printDoc(...args)
+      },
+      arranged: (jobPages) => void runArrangedJob('print', options, jobPages),
+    })
+  }
+
+  const previewArranged = async (
+    pages: number[] | undefined,
+    ...[options, { signal, onProgress }]: Parameters<PrintLayoutPreviewRequest>
+  ): Promise<Uint8Array[]> => {
+    const bridge = window.pdfApi.printLayout
+    const stopProgress = bridge.onProgress(onProgress)
+    const onAbort = () => void bridge.cancel()
+    signal.addEventListener('abort', onAbort, { once: true })
+    try {
+      const result = await flushThen(() =>
+        bridge.preview({ options, editor: printLayoutEditor(pages ?? null) }),
+      )
+      if (!result) throw new Error('saving the pending edits failed')
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return result.faces.map((face) => face.png)
+    } finally {
+      signal.removeEventListener('abort', onAbort)
+      stopProgress()
     }
-    const pages = parsePageRanges(printInput, pageCount)
-    if (!pages || pages.length === 0) {
-      setPrintInvalid(true)
-      return
-    }
+  }
+
+  const printLabelSpecStore = useMemo<PrintLabelSpecStore>(
+    () => ({
+      load: () => window.pdfApi.printLayout.getLabelSpec(),
+      save: async (spec) => {
+        const result = await window.pdfApi.printLayout.setLabelSpec(spec)
+        if (!result.ok) throw new Error(result.error)
+      },
+    }),
+    [],
+  )
+
+  const closePrintDlg = () => {
+    if (printJob.progress) void window.pdfApi.printLayout.cancel()
     setPrintDlg(false)
-    void printDoc(pages)
   }
 
   /** Capability surface for AI tools; rebuilt each render (AiPanel mirrors it via refs to get the latest) */
@@ -9296,8 +9521,16 @@ export default function App() {
     }
   }
 
-  /** Converter dropdown › Markdown / EPUB → the conversion dialog */
-  const openConvertDialog = (format: PdfReflowFormat): void => {
+  /**
+   * Converter dropdown › Markdown / EPUB → the conversion dialog. A Markdown
+   * result opens in the Markdown editor: while that is off the shell asks first
+   * (editor choice spec 7.3); an EPUB is only shown in its folder.
+   */
+  const openConvertDialog = async (format: PdfReflowFormat): Promise<void> => {
+    if (format === 'md' && filePath && window.pdfApi?.askBeforeConvert) {
+      const answer = await window.pdfApi.askBeforeConvert({ source: filePath, format })
+      if (answer === 'cancel') return
+    }
     setConvertDialog({ format })
   }
 
@@ -9763,17 +9996,19 @@ export default function App() {
           <span className="rb-big-icon">{spread === 2 ? <IconSinglePage /> : <IconSpread />}</span>
           <span>{spread === 2 ? t('singlePage') : t('twoPage')}</span>
         </button>
-        <button
-          className={`rb-big${bilingualOn ? ' active' : ''}`}
-          data-tip={t('blToggleTip')}
-          aria-pressed={bilingualOn}
-          onClick={() => applyViewMode(toggleBilingual(!bilingualOn, spread))}
-        >
-          <span className="rb-big-icon">
-            <IconAiTranslate />
-          </span>
-          <span>{t('blToggle')}</span>
-        </button>
+        {aiOn && (
+          <button
+            className={`rb-big${bilingualOn ? ' active' : ''}`}
+            data-tip={t('blToggleTip')}
+            aria-pressed={bilingualOn}
+            onClick={() => applyViewMode(toggleBilingual(!bilingualOn, spread))}
+          >
+            <span className="rb-big-icon">
+              <IconAiTranslate />
+            </span>
+            <span>{t('blToggle')}</span>
+          </button>
+        )}
         <button
           className={`rb-big${nightMode ? ' active' : ''}`}
           data-tip={t('nightMode')}
@@ -9784,29 +10019,33 @@ export default function App() {
           </span>
           <span>{t('nightMode')}</span>
         </button>
-        <button
-          className={`rb-big${passageMarks ? ' active' : ''}`}
-          data-tip={t('rdUnderlinesTip')}
-          aria-pressed={passageMarks}
-          onClick={() => setPassageMarks((v) => !v)}
-        >
-          <span className="rb-big-icon">
-            <IconPassageMarks />
-          </span>
-          <span>{t('rdUnderlines')}</span>
-        </button>
-        <button
-          className={`rb-big${highlightPreview ? ' active' : ''}`}
-          data-tip={t('hlPreviewTip')}
-          data-action="highlight-preview"
-          aria-pressed={highlightPreview}
-          onClick={() => setHighlightPreviewSwitch(togglePreview)}
-        >
-          <span className="rb-big-icon">
-            <IconHighlightPreview />
-          </span>
-          <span>{t('hlPreview')}</span>
-        </button>
+        {aiOn && (
+          <>
+            <button
+              className={`rb-big${passageMarks ? ' active' : ''}`}
+              data-tip={t('rdUnderlinesTip')}
+              aria-pressed={passageMarks}
+              onClick={() => setPassageMarks((v) => !v)}
+            >
+              <span className="rb-big-icon">
+                <IconPassageMarks />
+              </span>
+              <span>{t('rdUnderlines')}</span>
+            </button>
+            <button
+              className={`rb-big${highlightPreview ? ' active' : ''}`}
+              data-tip={t('hlPreviewTip')}
+              data-action="highlight-preview"
+              aria-pressed={highlightPreview}
+              onClick={() => setHighlightPreviewSwitch(togglePreview)}
+            >
+              <span className="rb-big-icon">
+                <IconHighlightPreview />
+              </span>
+              <span>{t('hlPreview')}</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -9832,7 +10071,7 @@ export default function App() {
             className="qa-btn"
             data-tip={`${t('undo')} (${platformShortcuts('⌘Z')})`}
             aria-label={`${t('undo')} (${platformShortcuts('⌘Z')})`}
-            disabled={undoStack.length === 0}
+            disabled={undoStack.length === 0 && written.undo === 0}
             onClick={undo}
           >
             <IconUndo />
@@ -9841,7 +10080,7 @@ export default function App() {
             className="qa-btn"
             data-tip={`${t('redo')} (${platformShortcuts('⇧⌘Z')})`}
             aria-label={`${t('redo')} (${platformShortcuts('⇧⌘Z')})`}
-            disabled={redoStack.length === 0}
+            disabled={redoStack.length === 0 && written.redo === 0}
             onClick={redo}
           >
             <IconRedo />
@@ -9919,130 +10158,139 @@ export default function App() {
           {ribbonTab === 'home' && (
             <>
               {/* ---- AI (first slot: entry + one-click AI actions, docs parity) ---- */}
-              <div className="ribbon-group">
-                <div className="ribbon-group-items">
-                  <button
-                    className={`rb-big ai-entry${aiCollapsed ? '' : ' active'}`}
-                    data-tip={t('aiOpenAssistant')}
-                    onClick={() => setAiCollapsed((v) => !v)}
-                  >
-                    <span className="rb-big-icon">
-                      <AiMark size={26} />
-                    </span>
-                    <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('aiSummarizeBtn')}
-                    onClick={() =>
-                      runAiPreset(
-                        t(aiSelection ? 'aiQuickSummarySelPrompt' : 'aiQuickSummaryPrompt'),
-                      )
-                    }
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiSummarize />
-                      </span>
-                    </span>
-                    <span>{t('aiSummarizeBtn')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('aiKeyPointsBtn')}
-                    onClick={() =>
-                      runAiPreset(
-                        t(aiSelection ? 'aiQuickKeyPointsSelPrompt' : 'aiQuickKeyPointsPrompt'),
-                      )
-                    }
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiKeyPoints />
-                      </span>
-                    </span>
-                    <span>{t('aiKeyPointsBtn')}</span>
-                  </button>
-                  <div className="rb-drop-wrap" ref={aiReadWrapRef}>
-                    <button
-                      className={`rb-big ai-entry${aiReadMenuOpen ? ' active' : ''}`}
-                      data-tip={t('arButtonTip')}
-                      data-action="ai-read-menu"
-                      onClick={() => setAiReadMenuOpen((v) => !v)}
-                    >
-                      <span className="rb-big-icon">
-                        <span className="ai-feature-icon" aria-hidden="true">
-                          <IconAiReadPages />
+              {aiOn && (
+                <>
+                  <div className="ribbon-group">
+                    <div className="ribbon-group-items">
+                      <button
+                        className={`rb-big ai-entry${aiCollapsed ? '' : ' active'}`}
+                        data-tip={t('aiOpenAssistant')}
+                        onClick={() => setAiCollapsed((v) => !v)}
+                      >
+                        <span className="rb-big-icon">
+                          <AiMark size={26} />
                         </span>
-                        <RbCaret />
-                      </span>
-                      <span>{t('arButton')}</span>
-                    </button>
-                    {aiReadMenuOpen && (
-                      <div className="rb-drop rb-menu">
+                        <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('aiSummarizeBtn')}
+                        onClick={() =>
+                          runAiPreset(
+                            t(aiSelection ? 'aiQuickSummarySelPrompt' : 'aiQuickSummaryPrompt'),
+                          )
+                        }
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiSummarize />
+                          </span>
+                        </span>
+                        <span>{t('aiSummarizeBtn')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('aiKeyPointsBtn')}
+                        onClick={() =>
+                          runAiPreset(
+                            t(aiSelection ? 'aiQuickKeyPointsSelPrompt' : 'aiQuickKeyPointsPrompt'),
+                          )
+                        }
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiKeyPoints />
+                          </span>
+                        </span>
+                        <span>{t('aiKeyPointsBtn')}</span>
+                      </button>
+                      <div className="rb-drop-wrap" ref={aiReadWrapRef}>
                         <button
-                          data-action="ai-read-open"
-                          onClick={() => {
-                            setAiReadMenuOpen(false)
-                            const answer = aiReadRef.current?.requestOpen(null)
-                            if (answer && 'running' in answer)
-                              showNotice(t('arBusy', answer.running))
-                            else if (!answer || 'unavailable' in answer)
-                              showNotice(t('arUnavailable'))
-                          }}
+                          className={`rb-big ai-entry${aiReadMenuOpen ? ' active' : ''}`}
+                          data-tip={t('arButtonTip')}
+                          data-action="ai-read-menu"
+                          onClick={() => setAiReadMenuOpen((v) => !v)}
                         >
-                          {t('arMenuRead')}
+                          <span className="rb-big-icon">
+                            <span className="ai-feature-icon" aria-hidden="true">
+                              <IconAiReadPages />
+                            </span>
+                            <RbCaret />
+                          </span>
+                          <span>{t('arButton')}</span>
                         </button>
-                        <button
-                          data-action="ai-read-delete"
-                          onClick={() => {
-                            setAiReadMenuOpen(false)
-                            void aiReadRef.current?.deleteStored()
-                          }}
-                        >
-                          {t('arMenuDelete')}
-                        </button>
+                        {aiReadMenuOpen && (
+                          <div className="rb-drop rb-menu">
+                            <button
+                              data-action="ai-read-open"
+                              onClick={() => {
+                                setAiReadMenuOpen(false)
+                                const answer = aiReadRef.current?.requestOpen(null)
+                                if (answer && 'running' in answer)
+                                  showNotice(t('arBusy', answer.running))
+                                else if (!answer || 'unavailable' in answer)
+                                  showNotice(t('arUnavailable'))
+                              }}
+                            >
+                              {t('arMenuRead')}
+                            </button>
+                            <button
+                              data-action="ai-read-delete"
+                              onClick={() => {
+                                setAiReadMenuOpen(false)
+                                void aiReadRef.current?.deleteStored()
+                              }}
+                            >
+                              {t('arMenuDelete')}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('trButtonTip')}
+                        data-action="translate-open"
+                        onClick={() => {
+                          const answer = translateRef.current?.requestOpen({
+                            lang: null,
+                            pages: null,
+                          })
+                          if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
+                          else if (!answer || 'unavailable' in answer)
+                            showNotice(t('trUnavailable'))
+                        }}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiTranslate />
+                          </span>
+                        </span>
+                        <span>{t('trButton')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={readOnly ? t('hlReadOnly') : t('hlButtonTip')}
+                        data-action="highlight-open"
+                        onClick={() => {
+                          // opens the start window only; a read-only document shows why it cannot start
+                          const answer = highlightRef.current?.requestOpen()
+                          if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
+                          else if (!answer || 'unavailable' in answer)
+                            showNotice(t('hlUnavailable'))
+                        }}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconHighlightPreview />
+                          </span>
+                        </span>
+                        <span>{t('hlButton')}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('trButtonTip')}
-                    data-action="translate-open"
-                    onClick={() => {
-                      const answer = translateRef.current?.requestOpen({ lang: null, pages: null })
-                      if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
-                      else if (!answer || 'unavailable' in answer) showNotice(t('trUnavailable'))
-                    }}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiTranslate />
-                      </span>
-                    </span>
-                    <span>{t('trButton')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={readOnly ? t('hlReadOnly') : t('hlButtonTip')}
-                    data-action="highlight-open"
-                    onClick={() => {
-                      // opens the start window only; a read-only document shows why it cannot start
-                      const answer = highlightRef.current?.requestOpen()
-                      if (answer && 'running' in answer) showNotice(t('arBusy', answer.running))
-                      else if (!answer || 'unavailable' in answer) showNotice(t('hlUnavailable'))
-                    }}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconHighlightPreview />
-                      </span>
-                    </span>
-                    <span>{t('hlButton')}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="ribbon-sep" />
+                  <div className="ribbon-sep" />
+                </>
+              )}
               {markupGroup}
               <div className="ribbon-sep" />
               {/* Edit entries lead; Search moved after page/zoom (⌘F is the common path) */}
@@ -10066,7 +10314,7 @@ export default function App() {
                         : t('convertPdf')
                     }
                     onConvert={(format) => void convertTo(format)}
-                    onReflow={openConvertDialog}
+                    onReflow={(format) => void openConvertDialog(format)}
                     onPageImages={(allPages, format) => void exportImages(allPages, format)}
                     onEmbedded={exportPagePictures}
                   />
@@ -10105,36 +10353,40 @@ export default function App() {
           )}
           {ribbonTab === 'annotate' && (
             <>
-              <div className="ribbon-group">
-                <div className="ribbon-group-items">
-                  <button
-                    className="rb-big ai-entry"
-                    data-tip={t('aiReviewSummaryBtn')}
-                    onClick={() => runAiPreset(t('aiReviewSummaryPrompt'))}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <IconAiSummarize />
-                      </span>
-                    </span>
-                    <span>{t('aiReviewSummaryBtn')}</span>
-                  </button>
-                  <button
-                    className="rb-big ai-entry"
-                    disabled={readOnly}
-                    data-tip={t('aiProcessNotesBtn')}
-                    onClick={() => runAiPreset(t('aiProcessNotesPrompt'))}
-                  >
-                    <span className="rb-big-icon">
-                      <span className="ai-feature-icon" aria-hidden="true">
-                        <AiMark size={20} />
-                      </span>
-                    </span>
-                    <span>{t('aiProcessNotesBtn')}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="ribbon-sep" />
+              {aiOn && (
+                <>
+                  <div className="ribbon-group">
+                    <div className="ribbon-group-items">
+                      <button
+                        className="rb-big ai-entry"
+                        data-tip={t('aiReviewSummaryBtn')}
+                        onClick={() => runAiPreset(t('aiReviewSummaryPrompt'))}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <IconAiSummarize />
+                          </span>
+                        </span>
+                        <span>{t('aiReviewSummaryBtn')}</span>
+                      </button>
+                      <button
+                        className="rb-big ai-entry"
+                        disabled={readOnly}
+                        data-tip={t('aiProcessNotesBtn')}
+                        onClick={() => runAiPreset(t('aiProcessNotesPrompt'))}
+                      >
+                        <span className="rb-big-icon">
+                          <span className="ai-feature-icon" aria-hidden="true">
+                            <AiMark size={20} />
+                          </span>
+                        </span>
+                        <span>{t('aiProcessNotesBtn')}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="ribbon-sep" />
+                </>
+              )}
               {markupGroup}
               <div className="ribbon-sep" />
               <div className="ribbon-group">
@@ -10361,17 +10613,19 @@ export default function App() {
             <>
               <div className="ribbon-group">
                 <div className="ribbon-group-items">
-                  <button
-                    className="rb-big ai-entry"
-                    disabled={readOnly}
-                    data-tip={t('aiFillFormBtn')}
-                    onClick={() => runAiPreset(t('aiFillFormPrompt'))}
-                  >
-                    <span className="rb-big-icon">
-                      <IconFormAiFill />
-                    </span>
-                    <span>{t('aiFillFormBtn')}</span>
-                  </button>
+                  {aiOn && (
+                    <button
+                      className="rb-big ai-entry"
+                      disabled={readOnly}
+                      data-tip={t('aiFillFormBtn')}
+                      onClick={() => runAiPreset(t('aiFillFormPrompt'))}
+                    >
+                      <span className="rb-big-icon">
+                        <IconFormAiFill />
+                      </span>
+                      <span>{t('aiFillFormBtn')}</span>
+                    </button>
+                  )}
                   <button
                     className={`rb-big${pendingStaticFill === 'text' ? ' active' : ''}`}
                     disabled={readOnly}
@@ -10891,54 +11145,61 @@ export default function App() {
       <div className="app-main">
         {/* dock wrapper animates the width between panel and rail (docs-style 180ms ease);
             the panel stays mounted while collapsed so the chat history survives */}
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() =>
-                onAiRailClick(paneRole, !aiCollapsed, (open) => setAiCollapsed(!open), requestFocus)
-              }
-            >
-              <AiMark size={22} />
-            </button>
-          )}
-          <AiPanel
-            api={aiApi}
-            filePath={filePath}
-            preset={aiPreset}
-            onCollapse={() => setAiCollapsed(true)}
-            onRunDone={() => void autoSaveAfterAiRun()}
-            onClearSelection={() => setAiSelection(null)}
-            onCitation={openCitation}
-            templateDocument={templateDocument}
-            onSkillHandoff={() => setAiCollapsed(false)}
-            overview={
-              <InsightsCard
-                insights={documentInsights}
-                session={jobSession}
-                lang={lang}
-                t={t}
-                onSearchTerm={searchFor}
-                onGotoPage={(page) => void aiApi.gotoPage(page)}
-                onNotice={showNotice}
-                sectionActions={(section) =>
-                  noteInsertAction(
-                    noteActions,
-                    overviewNoteRequest(section, t('airOverview')),
-                    t,
-                    'ai-overview-link',
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() =>
+                  onAiRailClick(
+                    paneRole,
+                    !aiCollapsed,
+                    (open) => setAiCollapsed(!open),
+                    requestFocus,
                   )
                 }
-              />
-            }
-          />
-        </div>
+              >
+                <AiMark size={22} />
+              </button>
+            )}
+            <AiPanel
+              api={aiApi}
+              filePath={filePath}
+              preset={aiPreset}
+              onCollapse={() => setAiCollapsed(true)}
+              onRunDone={() => void autoSaveAfterAiRun()}
+              onClearSelection={() => setAiSelection(null)}
+              onCitation={openCitation}
+              templateDocument={templateDocument}
+              onSkillHandoff={() => setAiCollapsed(false)}
+              overview={
+                <InsightsCard
+                  insights={documentInsights}
+                  session={jobSession}
+                  lang={lang}
+                  t={t}
+                  onSearchTerm={searchFor}
+                  onGotoPage={(page) => void aiApi.gotoPage(page)}
+                  onNotice={showNotice}
+                  sectionActions={(section) =>
+                    noteInsertAction(
+                      noteActions,
+                      overviewNoteRequest(section, t('airOverview')),
+                      t,
+                      'ai-overview-link',
+                    )
+                  }
+                />
+              }
+            />
+          </div>
+        )}
         <div className="app-content">
           {diskChange !== null && status === 'ready' && (
             <div className="pdf-disk-change-bar" role="alert">
@@ -10983,6 +11244,7 @@ export default function App() {
           )}
           <AiPageReading
             ref={aiReadRef}
+            hidden={!aiOn}
             filePath={filePath || null}
             revision={docReloadRev}
             password={passwordRef.current}
@@ -11013,6 +11275,7 @@ export default function App() {
           />
           <PassageReading
             ref={readingRef}
+            hidden={!aiOn}
             cards={passageCards}
             confirmations={saveConfirmations}
             lang={lang}
@@ -11047,6 +11310,7 @@ export default function App() {
           />
           <DocumentTranslation
             ref={translateRef}
+            hidden={!aiOn}
             filePath={filePath || null}
             fileName={fileName}
             password={passwordRef.current}
@@ -11066,6 +11330,7 @@ export default function App() {
           />
           <AiHighlights
             ref={highlightRef}
+            hidden={!aiOn}
             filePath={filePath || null}
             password={passwordRef.current}
             pageCount={sizes.length}
@@ -11161,8 +11426,8 @@ export default function App() {
                 geomOf={pageGeom}
                 languageName={(code) => languageName(code, lang)}
                 createDocument={
-                  window.pdfApi?.createDocument
-                    ? (request) => window.pdfApi.createDocument(request)
+                  window.pdfApi?.openAnnotDocument
+                    ? (request) => window.pdfApi.openAnnotDocument(request)
                     : undefined
                 }
                 onActivate={activateAnnot}
@@ -11936,7 +12201,7 @@ export default function App() {
                                 })}
                               {/* Pending text edits: cover the original run and preview the replacement */}
                               {textEdits
-                                .filter((te) => te.input.pageIndex === origIdx)
+                                .filter((te) => previewsTextEdit(te, origIdx, draftOwnedIds))
                                 .map((te) => {
                                   const { style, coverStyle } = textEditPreviewParts(
                                     te,
@@ -12534,7 +12799,7 @@ export default function App() {
                                 scale={scale}
                                 selectedId={selected?.kind === 'markup' ? selected.id : null}
                               />
-                              {passageMarks && (
+                              {aiOn && passageMarks && (
                                 <PassageUnderlines
                                   cards={passageCards}
                                   origIdx={origIdx}
@@ -13052,24 +13317,26 @@ export default function App() {
                         </svg>
                         {t('drawNote')}
                       </button>
-                      <span className="pdf-sel-popup-sep" aria-hidden />
+                      {aiOn && <span className="pdf-sel-popup-sep" aria-hidden />}
                     </>
                   )}
-                  <button
-                    type="button"
-                    className="pdf-sel-ask"
-                    data-tip={labelWithKey(t, t('aiAskTitle'), 'ask')}
-                    aria-label={labelWithKey(t, t('aiAskBtn'), 'ask')}
-                    onClick={openAskPopover}
-                  >
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
-                      <path
-                        d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 15l.85 2.3L22 18.15l-2.15.85L19 21.3l-.85-2.3-2.15-.85 2.15-.85L19 15z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    {t('aiAskBtn')}
-                  </button>
+                  {aiOn && (
+                    <button
+                      type="button"
+                      className="pdf-sel-ask"
+                      data-tip={labelWithKey(t, t('aiAskTitle'), 'ask')}
+                      aria-label={labelWithKey(t, t('aiAskBtn'), 'ask')}
+                      onClick={openAskPopover}
+                    >
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
+                        <path
+                          d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 15l.85 2.3L22 18.15l-2.15.85L19 21.3l-.85-2.3-2.15-.85 2.15-.85L19 15z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                      {t('aiAskBtn')}
+                    </button>
+                  )}
                 </div>
                 {!readOnly &&
                   selColorRow &&
@@ -13111,7 +13378,7 @@ export default function App() {
                 />
               </div>
             )}
-            {askPop && (
+            {aiOn && askPop && (
               <AiAskPopover
                 rect={askPop.rect}
                 excerpt={askPop.excerpt}
@@ -13274,6 +13541,14 @@ export default function App() {
                 <span>{notice}</span>
                 <button type="button" onClick={() => setNotice(null)}>
                   {t('ok')}
+                </button>
+              </div>
+            )}
+            {printProgress && printProgress.done < printProgress.total && (
+              <div className="pdf-toast pdf-toast-notice" role="status">
+                <span>{t('printPreparingPages', printProgress)}</span>
+                <button type="button" onClick={() => printAbortRef.current?.abort()}>
+                  {t('cancel')}
                 </button>
               </div>
             )}
@@ -13871,72 +14146,27 @@ export default function App() {
               </div>
             )}
             {printDlg && (
-              <div className="pdf-modal-mask" onClick={() => setPrintDlg(false)}>
-                <div className="pdf-modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="pdf-modal-title">{t('print')}</div>
-                  <label className="pdf-modal-row">
-                    <input
-                      type="radio"
-                      name="print-range"
-                      checked={printMode === 'all'}
-                      onChange={() => setPrintMode('all')}
-                    />
-                    <span>{t('printRangeAll')}</span>
-                  </label>
-                  <label className="pdf-modal-row">
-                    <input
-                      type="radio"
-                      name="print-range"
-                      checked={printMode === 'current'}
-                      onChange={() => setPrintMode('current')}
-                    />
-                    <span>
-                      {t('printRangeCurrent')} ({printCurrentPage})
-                    </span>
-                  </label>
-                  <label className="pdf-modal-row">
-                    <input
-                      type="radio"
-                      name="print-range"
-                      checked={printMode === 'custom'}
-                      onChange={() => setPrintMode('custom')}
-                    />
-                    <span>{t('printRangeCustom')}</span>
-                  </label>
-                  {printMode === 'custom' && (
-                    <input
-                      className={`pdf-modal-input${printInvalid ? ' invalid' : ''}`}
-                      value={printInput}
-                      placeholder={t('printRangeHint')}
-                      autoFocus
-                      onChange={(e) => {
-                        setPrintInput(e.target.value)
-                        setPrintInvalid(false)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') confirmPrint()
-                        else if (e.key === 'Escape') setPrintDlg(false)
-                      }}
-                    />
-                  )}
-                  <label className="pdf-modal-row">
-                    <input
-                      type="checkbox"
-                      checked={printAnnots}
-                      onChange={(e) => setPrintAnnots(e.target.checked)}
-                    />
-                    <span>{t('printIncludeAnnots')}</span>
-                  </label>
-                  <div className="pdf-modal-actions">
-                    <button className="pdf-modal-btn" onClick={() => setPrintDlg(false)}>
-                      {t('cancel')}
-                    </button>
-                    <button className="pdf-modal-btn primary" onClick={confirmPrint}>
-                      {t('print')}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <PrintDialog
+                lang={lang}
+                t={t}
+                pageCount={pageCount}
+                currentPage={printCurrentPage}
+                pickedPages={printPickedPages}
+                includeAnnotations={printAnnots}
+                onIncludeAnnotationsChange={setPrintAnnots}
+                pageSizes={printPageSizes}
+                onPrint={confirmPrint}
+                onSavePdf={(pages, options) => void runArrangedJob('save', options, pages ?? null)}
+                saveRestricted={documentEncrypted || encryption !== null}
+                onPreviewRequest={previewArranged}
+                onCancel={closePrintDlg}
+                job={{
+                  progress: printJob.progress,
+                  error: printJob.error,
+                  onCancel: () => void window.pdfApi.printLayout.cancel(),
+                }}
+                labelSpecStore={printLabelSpecStore}
+              />
             )}
             {saveCopyDlg && (
               <div className="pdf-modal-mask" onClick={cancelSaveCopy}>

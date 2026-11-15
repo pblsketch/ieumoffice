@@ -160,17 +160,28 @@ const entryText = (selector: string): string | null =>
   entry().querySelector(selector)?.textContent ?? null
 
 describe('home settings entry', () => {
-  it('names the connected subscription and its state', async () => {
+  const name = () => entryText('.account-name')
+  const sub = () => entryText('.account-sub')
+  const tip = () => entry().dataset.tip
+
+  it('reads Settings, with the connected subscription state below and its name in the tooltip', async () => {
     await renderHome(statuses({ state: 'ready', planName: 'max' }, { state: 'signed-out' }))
     expect(entry().dataset.subscription).toBe('connected')
-    expect(entryText('.account-name')).toBe('Claude')
-    expect(entryText('.account-sub')).toBe('Connected · max')
+    expect(name()).toBe('Settings')
+    expect(sub()).toBe('AI: Connected · max')
+    expect(tip()).toBe('Claude · Connected · max')
+    expect(entry().textContent).not.toContain('Claude')
+    // the button's name stays Settings; the state line describes it
+    expect(entry().getAttribute('aria-label')).toBe('Settings')
+    const described = entry().getAttribute('aria-describedby')
+    expect(described && document.getElementById(described)?.textContent).toBe('AI: Connected · max')
   })
 
-  it('lists both when both are connected', async () => {
+  it('names both in the tooltip when both are connected', async () => {
     await renderHome(statuses({ state: 'ready' }, { state: 'ready' }))
-    expect(entryText('.account-name')).toBe('Claude · Codex')
-    expect(entryText('.account-sub')).toBe(aiSubscriptionText('en', 'cardReady'))
+    expect(name()).toBe('Settings')
+    expect(sub()).toBe(`AI: ${aiSubscriptionText('en', 'cardReady')}`)
+    expect(tip()).toBe(`Claude · Codex · ${aiSubscriptionText('en', 'cardReady')}`)
   })
 
   it('keeps the cost in sight for an accepted metered login that is selected', async () => {
@@ -178,18 +189,18 @@ describe('home settings entry', () => {
     await renderHome(map, {
       aiSettings: { ...defaultAiSettings(), provider: 'codex', meteredAccepted: { codex: true } },
     })
-    expect(entryText('.account-name')).toBe('Codex')
-    expect(entryText('.account-sub')).toBe(aiSubscriptionText('en', 'cardMeteredAccepted'))
+    expect(sub()).toBe(`AI: ${aiSubscriptionText('en', 'cardMeteredAccepted')}`)
+    expect(tip()).toContain('Codex')
 
     // under auto the metered login does not run, so it is not shown as in use
     await renderHome(map, {
       aiSettings: { ...defaultAiSettings(), meteredAccepted: { codex: true } },
     })
     expect(entry().dataset.subscription).toBe('disconnected')
-    expect(entryText('.account-name')).toBe(aiSubscriptionText('en', 'pickerNotConnected'))
+    expect(sub()).toBe('AI: Not connected')
   })
 
-  it('names the selected key provider in use over the subscriptions', async () => {
+  it('shows the selected key provider in use over the subscriptions', async () => {
     await renderHome(statuses({ state: 'ready', planName: 'max' }, { state: 'ready' }), {
       aiSettings: {
         ...defaultAiSettings(),
@@ -198,8 +209,9 @@ describe('home settings entry', () => {
       },
     })
     expect(entry().dataset.subscription).toBe('connected')
-    expect(entryText('.account-name')).toBe('Gemini')
-    expect(entryText('.account-sub')).toBe('Connected · in use')
+    expect(name()).toBe('Settings')
+    expect(sub()).toBe('AI: Connected · in use')
+    expect(tip()).toBe('Gemini · Connected · in use')
   })
 
   it('shows the selected key provider as needing a connection when its key is missing', async () => {
@@ -207,8 +219,8 @@ describe('home settings entry', () => {
       aiSettings: { ...defaultAiSettings(), provider: 'gemini' },
     })
     expect(entry().dataset.subscription).toBe('needs-connection')
-    expect(entryText('.account-name')).toBe('Gemini')
-    expect(entryText('.account-sub')).toBe('Needs connecting')
+    expect(sub()).toBe('AI: Needs connecting')
+    expect(tip()).toBe('Gemini · Needs connecting')
     expect(entry().querySelector('.account-avatar')?.classList.contains('logged-in')).toBe(false)
   })
 
@@ -221,9 +233,8 @@ describe('home settings entry', () => {
       },
     })
     expect(entry().dataset.subscription).toBe('off')
-    expect(entryText('.account-name')).toBe('Claude')
-    expect(entryText('.account-sub')).toBe('Off in this app')
-    expect(entry().dataset.tip).toBe('Claude · Off in this app')
+    expect(sub()).toBe('AI: Off in this app')
+    expect(tip()).toBe('Claude · Off in this app')
     expect(entry().querySelector('.account-avatar')?.classList.contains('logged-in')).toBe(false)
     await click(entry())
     expect(host.querySelector('.set-nav-item.active')?.textContent).toContain('AI')
@@ -231,18 +242,19 @@ describe('home settings entry', () => {
 
   it('reads the statuses alone while the settings are not read', async () => {
     await renderHome(statuses({ state: 'ready' }, { state: 'ready' }), { aiSettings: null })
-    expect(entryText('.account-name')).toBe('Claude · Codex')
+    expect(tip()).toContain('Claude · Codex')
   })
 
-  it('invites to connect when nothing is, and waits while still checking', async () => {
+  it('says nothing is connected, and waits while still checking', async () => {
     await renderHome(statuses({ state: 'not-installed' }, { state: 'signed-out' }))
     expect(entry().dataset.subscription).toBe('disconnected')
-    expect(entryText('.account-name')).toBe(aiSubscriptionText('en', 'pickerNotConnected'))
-    expect(entryText('.account-sub')).toBeNull()
+    expect(name()).toBe('Settings')
+    expect(sub()).toBe('AI: Not connected')
+    expect(tip()).toBe(aiSubscriptionText('en', 'connectTitle'))
 
     await renderHome(statuses({ state: 'checking' }, { state: 'checking' }))
     expect(entry().dataset.subscription).toBe('checking')
-    expect(entryText('.account-name')).toBe(aiSubscriptionText('en', 'cardChecking'))
+    expect(sub()).toBe(`AI: ${aiSubscriptionText('en', 'cardChecking')}`)
   })
 
   it('opens Settings on the AI section and re-reads the connection when it closes', async () => {
@@ -259,30 +271,19 @@ describe('home settings entry', () => {
   })
 })
 
-describe('the word Settings on the home entry', () => {
-  const label = () => entryText('.account-settings')
-
-  it('is in sight beside the AI connection, whatever that connection is', async () => {
-    await renderHome(statuses({ state: 'ready', planName: 'max' }, { state: 'signed-out' }))
-    expect(label()).toBe('Settings')
-    // the connection it shows is still there
-    expect(entryText('.account-name')).toBe('Claude')
-    expect(entryText('.account-sub')).toBe('Connected · max')
-
-    await renderHome(statuses({ state: 'not-installed' }, { state: 'signed-out' }))
-    expect(label()).toBe('Settings')
-    expect(entryText('.account-name')).toBe(aiSubscriptionText('en', 'pickerNotConnected'))
-
-    await renderHome(statuses({ state: 'checking' }, { state: 'checking' }))
-    expect(label()).toBe('Settings')
-  })
-
-  it('has a word in every language', () => {
+describe('the words on the home entry', () => {
+  it('has Settings in every language', () => {
     for (const lang of LANGS) {
       // read from the dictionary itself: the lookup falls back to English for a missing word
       const word = strings[lang].settings
       expect(word.trim(), lang).not.toBe('')
       if (lang !== 'en') expect(word, lang).not.toBe('Settings')
+    }
+  })
+
+  it('has the AI state line in every language, with a place for the state', () => {
+    for (const lang of LANGS) {
+      expect(strings[lang].homeEntryAiState, lang).toContain('{state}')
     }
   })
 })

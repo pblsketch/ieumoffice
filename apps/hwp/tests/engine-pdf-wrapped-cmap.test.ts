@@ -9,6 +9,11 @@
  * limit of 100,000. "PDF to HWP" then stopped with `PDF_RESOURCE_LIMIT: CMap entries` on a
  * five-page paper whose ten tables held 792 entries (2026-11-10). Lines that stayed
  * under the limit mapped the wrong codes without a word.
+ *
+ * Patch 0049: a `%` outside a string starts a PostScript comment that runs to the end of the
+ * line. The token reader of 0044 read the strings and brackets in a comment as entries, so
+ * `% source <41>` joined the next line's `<42> <42>` into a range of its own and moved the
+ * letters (upstream review of edwardkim/rhwp#8922, 2026-11-12).
  */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -96,6 +101,18 @@ describe('PDF import: a ToUnicode array wrapped over lines', () => {
     const wrapped = '<41><48>[<0052><0045><0041>\n<2135><D835DC9C><0044>\n<0059><0021>]'
     // before the patch this threw `PDF_RESOURCE_LIMIT: CMap entries`
     expect(importedText(pdfWithRange(wrapped, 'ABCFGH'))).toContain('READY!')
+  })
+
+  it('reads no entry out of a comment', () => {
+    // codes A, B stand for R E; with 0044 alone this read `BC`
+    const afterEntry = '<41> <41> <0052> % source <41>\n<42> <42> <0045>'
+    expect(importedText(pdfWithRange(afterEntry, 'AB'))).toContain('RE')
+    // a `[` in a comment dropped the entry after it
+    const bracket = '<41> <41> <0052> % [note\n<42> <42> <0045>'
+    expect(importedText(pdfWithRange(bracket, 'AB'))).toContain('RE')
+    // a comment inside a wrapped array is no element of it
+    const inArray = '<41> <46> [<0052> <0045> % <0058> [\n<0041> <0044> <0059> <0021>]'
+    expect(importedText(pdfWithRange(inArray, 'ABCDEF'))).toContain('READY!')
   })
 
   it('still refuses a range that really is past the limit', () => {

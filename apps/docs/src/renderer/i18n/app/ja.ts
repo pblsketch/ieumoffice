@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ja = {
+  appLegacyDocImported:
+    '.{ext} ファイルを .docx のコピーに変換して開きました。元のファイルはそのままで、保存すると新しい .docx ファイルになります。',
   appScTitle: 'キーボードショートカット',
   appScFilter: 'ショートカットを検索',
   appScNone: '一致するショートカットがありません',
@@ -54,6 +56,7 @@ export const ja = {
   appFontsMissing: '文書のフォントが未インストールです: {names}（代替フォントで表示）',
   appVerticalTextNotice: '縦書きテキストを含む文書です（現在は横書きで表示。保存には影響しません）',
   appNewDocCreated: '空白の文書を作成しました。左側の AI パネルで生成したい内容を記述できます',
+  appNewDocCreatedNoAi: '空白の文書を作成しました',
   appNewFailed: '新規作成に失敗しました: {error}',
   appSaveFailed: '保存に失敗しました: {error}',
   appAutoSavedAt: '自動保存しました ({time})',
@@ -100,6 +103,9 @@ export const ja = {
   appPrintRangeAll: 'すべてのページ',
   appPrintRangeCurrent: '現在のページ',
   appPrintRangeCustom: 'ユーザー設定の範囲',
+  appPrintRangeSelection: '選択範囲',
+  appPrintSelectionPreparing: '選択範囲をページに割り付けています…',
+  appPrintSelectionFailed: '選択範囲を準備できませんでした: {error}',
   appPrintRangeHint: '例:1,3,5-8',
   appPrintPageCount: '全 {n} ページ',
   appPrintNoPages: '印刷できるページがありません',

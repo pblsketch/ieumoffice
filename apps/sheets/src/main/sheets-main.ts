@@ -68,6 +68,7 @@ import {
   showOpenDialogWithMemory,
   showSaveDialogWithMemory,
   helpMenuTemplate,
+  macAppMenuTemplate,
   viewMenuTemplate,
   windowMenuTemplate,
   installRendererProtocol,
@@ -93,7 +94,10 @@ import {
   type RecoveryOpenUntitledRequest,
   type SaveDiskState,
 } from '@genoffice/electron-utils'
+import { aiCreateRefusal } from '@genoffice/electron-utils/ai-create-guard'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { screenMediaCall } from './screen-media-call'
 import {
   encryptOoxml,
   isCfbHeader,
@@ -231,6 +235,7 @@ import { atomicWriteFile } from './atomic-write'
 import { closeGuardDecision, ShutdownLatch } from './close-guard'
 import { SaveEditsTransferStore } from './save-edits-transfer'
 import { exportPdf, printWorkbook } from './pdf-export'
+import { registerSheetsPrintLayoutIpc } from './print-layout'
 import { exportWorkbookAsOds, type OdsLoss, type OdsLossKind } from './ods-export'
 import {
   resolveSheetsSaveAsPick,
@@ -4003,22 +4008,29 @@ export function registerSheetsIpc(): void {
   // owns its channel the way pdf does.
   ipcMain.handle(
     IPC_CHANNELS.aiGenerateImage,
-    (event, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      // ends with its tab, or when the tab's AI run is stopped
-      withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          SETTINGS_PATH(),
-          {
-            prompt: String(op?.prompt ?? ''),
-            ...(op?.aspectRatio ? { aspectRatio: String(op.aspectRatio) } : {}),
-          },
-          {
-            mediaRoots: sheetsMediaRoots(event.sender.id),
-            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-            signal,
-          },
-        ),
-      ),
+    (event, op: { prompt?: unknown; aspectRatio?: unknown; model?: unknown }) => {
+      // the model the user named, as given: the shared tool decides whether the route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      // ends with its tab, or when the tab's AI run is stopped; refused while AI is turned off
+      return screenMediaCall(
+        event.sender,
+        (signal) =>
+          generateImageTool(
+            SETTINGS_PATH(),
+            {
+              prompt: String(op?.prompt ?? ''),
+              ...(op?.aspectRatio ? { aspectRatio: String(op.aspectRatio) } : {}),
+              ...(model ? { model } : {}),
+            },
+            {
+              mediaRoots: sheetsMediaRoots(event.sender.id),
+              context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+              signal,
+            },
+          ),
+        (error) => ({ error, errorCode: 'unavailable' as const }),
+      )
+    },
   )
 
   // What the image and search tools can do right now. Registered here for the
@@ -4607,6 +4619,14 @@ export function registerSheetsIpc(): void {
     return printWorkbook(event, workbookExportPdfRequestSchema.parse(input))
   })
 
+  // The Print dialog's shared layout panel: same print HTML, arranged in main.
+  registerSheetsPrintLayoutIpc({
+    ipcMain,
+    assertSender: (event) => {
+      sessionFor(event as unknown as IpcMainInvokeEvent)
+    },
+  })
+
   ipcMain.handle(IPC_CHANNELS.listPrinters, async (event) => {
     sessionFor(event)
     const printers = await event.sender.getPrintersAsync()
@@ -4778,6 +4798,9 @@ export function registerSheetsIpc(): void {
     async (event, input: unknown): Promise<WorkbookCreateDocumentResult> => {
       sessionFor(event)
       const request = workbookCreateDocumentRequestSchema.parse(input)
+      // a type whose editor is turned off is refused before anything is made (spec 7.4)
+      const refusal = aiCreateRefusal(request.type)
+      if (refusal) return { ok: false, error: refusal }
       try {
         if (request.type === 'csv') {
           const fileName = `${sanitizeGeneratedFileBase(request.title)}.csv`
@@ -5529,6 +5552,15 @@ export function registerSheetsAiIpc(): void {
     const controller = new AbortController()
     entry.aiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one turn of the tab's chat is running AI work: turning AI off stops it the way Stop does
+    const senderId = event.sender.id
+    const unregisterJob = registerAiJob({
+      kind: 'chat',
+      stop: () => {
+        controller.abort()
+        abortMediaCalls(senderId)
+      },
+    })
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
     let lastPing = 0
     const ping = () => {
@@ -5567,6 +5599,7 @@ export function registerSheetsAiIpc(): void {
         send(aiStreamErrorChunk(requestId, err))
       }
     } finally {
+      unregisterJob()
       unwatchSender()
       entry.aiStreams.delete(requestId)
     }
@@ -6629,7 +6662,7 @@ function installApplicationMenu(): void {
   const labels = appMenuLabels(getUiLang())
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+      ...(process.platform === 'darwin' ? [macAppMenuTemplate(labels)] : []),
       {
         label: tm('menuFile'),
         submenu: [

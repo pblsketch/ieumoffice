@@ -46,7 +46,7 @@ vi.mock('electron', () => ({
   webContents: { getAllWebContents: () => [], fromId: () => null },
 }))
 vi.mock('@genoffice/ai-search', () => ({
-  createCodexImageCliGenerator: () => async () => ({ bytes: new Uint8Array(), mime: 'image/png' }),
+  createCodexImageGenerator: () => ({ generate: async () => null, models: async () => null }),
   registerCodexImageGenerator: () => {},
 }))
 vi.mock('@genoffice/ai-provider/subscription', () => ({
@@ -55,6 +55,10 @@ vi.mock('@genoffice/ai-provider/subscription', () => ({
     return {}
   },
   sharedSubscriptionStatuses: () => ({}),
+  // docs-main gates these with the AI switch (editor choice); never called here
+  detectSubscriptionLogin: async () => ({}),
+  listSubscriptionModels: async () => [],
+  subscriptionStatusErrorText: () => '',
 }))
 vi.mock('@genoffice/ai-provider/codex-app-server', () => ({
   shutdownCodexAppServers: () => {},

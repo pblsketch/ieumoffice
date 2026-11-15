@@ -12,10 +12,12 @@ Setiap editor punya pengikatan tombol sendiri, dan hanya sebagian yang berlaku d
 | Ciutkan / perluas pita — setiap editor                           | ⌥⌘R   | Ctrl+F1         |
 | Pita kompak — hanya Docs                                         | ⌥⌘K   | Ctrl+Alt+K      |
 | Buka lembar Pintasan Papan Ketik — hanya Word                    | ⌘/    | Ctrl+/          |
+| Buka Pengaturan — semua tab kecuali Word                         | ⌘,    | Ctrl+,          |
 
 - **F1 membuka manual ini**, bukan lembar pintasan. Tombol itu milik menu aplikasi, jadi ia berlaku dari Word, Sheets, Slides, PDF, maupun tab Beranda.
 - **Tombol pita adalah `Ctrl+F1`, atau `⌥⌘R` di macOS.** Menekan `F1` polos tidak melakukan apa pun — F1 adalah manualnya, dan tombol pita sengaja tidak berbagi kunci dengan F1. `Ctrl+F1` juga diterima di macOS, meski `⌥⌘R` adalah tombol yang dipakai Office for Mac.
 - **Lembar Pintasan Papan Ketik hanya milik Word** (`⌘/`). Isinya persis tabel Word di bawah ini. Tidak ada editor lain yang memilikinya.
+- **`⌘,` membuka Pengaturan** (`Ctrl+,` di Windows dan Linux), seperti di kebanyakan aplikasi Mac. Di tab Word kombinasi ini tetap subskrip, jadi buka Pengaturan dari menu aplikasi di Mac, atau dari Menu (☰) ▸ Pengaturan… di Windows dan Linux.
 
 ![Lembar Pintasan Papan Ketik milik Word sendiri: tindakan di sebelah kiri, kombinasi tombol di sebelah kanan, dikelompokkan menurut Berkas, Edit, Format Teks, Format Paragraf, Sisipkan, Tinjau & Alat, dan Tampilan](img/word-shortcuts.png)
 

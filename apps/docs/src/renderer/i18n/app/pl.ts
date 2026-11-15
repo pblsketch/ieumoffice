@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const pl = {
+  appLegacyDocImported:
+    'Plik .{ext} otwarto jako przekonwertowaną kopię .docx. Oryginał pozostaje bez zmian; zapis tworzy nowy plik .docx.',
   appScTitle: 'Skróty klawiaturowe',
   appScFilter: 'Szukaj skrótu',
   appScNone: 'Brak pasujących skrótów',
@@ -54,6 +56,7 @@ export const pl = {
   appVerticalTextNotice:
     'Ten dokument zawiera tekst pionowy (na razie wyświetlany poziomo; zapis pozostaje bez zmian)',
   appNewDocCreated: 'Utworzono pusty dokument. Opisz w panelu AI po lewej, co wygenerować.',
+  appNewDocCreatedNoAi: 'Utworzono pusty dokument.',
   appNewFailed: 'Nie udało się utworzyć dokumentu: {error}',
   appSaveFailed: 'Zapisywanie nie powiodło się: {error}',
   appAutoSavedAt: 'Zapisano automatycznie ({time})',
@@ -95,6 +98,9 @@ export const pl = {
   appPrintRangeAll: 'Wszystkie strony',
   appPrintRangeCurrent: 'Bieżąca strona',
   appPrintRangeCustom: 'Zakres niestandardowy',
+  appPrintRangeSelection: 'Zaznaczenie',
+  appPrintSelectionPreparing: 'Dzielenie zaznaczenia na strony…',
+  appPrintSelectionFailed: 'Nie udało się podzielić zaznaczenia na strony: {error}',
   appPrintRangeHint: 'np. 1,3,5-8',
   appPrintPageCount: 'Stron: {n}',
   appPrintNoPages: 'Brak stron do wydrukowania',

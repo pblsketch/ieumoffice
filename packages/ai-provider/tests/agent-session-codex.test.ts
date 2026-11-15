@@ -193,12 +193,16 @@ describe('the launch and the thread', () => {
       'skills.include_instructions=false',
       'web_search="disabled"',
     ])
+    // the chat process alone also starts with Codex's image tool off; agent mode does not inherit it
     expect(codexAppServerLaunchArgs()).toEqual([
       'app-server',
       ...CODEX_CONFIG_OVERRIDES.flatMap((override) => ['-c', override]),
+      '-c',
+      'features.image_generation=false',
       '--listen',
       'stdio://',
     ])
+    expect(codexAgentLaunchArgs()).not.toContain('features.image_generation=false')
   })
 
   it('opens the network of the profile only when commands may reach the internet', () => {

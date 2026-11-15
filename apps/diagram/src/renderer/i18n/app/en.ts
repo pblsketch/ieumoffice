@@ -38,6 +38,7 @@ export const en = {
   btnCancel: 'Cancel',
   exportFailed: 'Export failed: {error}',
   printFailed: 'Printing failed: {error}',
+  printLayoutSaved: 'Saved the arranged result as PDF.',
   linkNotOpened: 'This link cannot be opened.',
   dlgSaveTitle: 'Save Diagram',
   dlgExportTitle: 'Export Diagram',

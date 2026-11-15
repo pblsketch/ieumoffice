@@ -25,6 +25,7 @@ import type {
   AiSubscriptionStatus,
 } from '@genoffice/ai-provider'
 import { subscriptionConnection, subscriptionOffIn } from '@genoffice/ai-provider'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
 import {
   AGENT_RUN_ERROR_KINDS,
   type AgentPrepareStep,
@@ -409,6 +410,8 @@ interface LiveSession {
   protectedDocuments: Set<string>
   /** documents warned about already, so one notice is not repeated every message */
   warnedDocuments: Set<string>
+  /** takes the session off the running AI jobs (editor choice spec 6.2) */
+  unregisterJob?: (() => void) | undefined
 }
 
 export interface AgentManager {
@@ -458,6 +461,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
 
   const cleanup = (entry: LiveSession): void => {
     if (!live.delete(entry.id)) return
+    entry.unregisterJob?.()
     release(entry)
   }
 
@@ -534,6 +538,15 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
       }
       // live while it is prepared: its window closing or the app quitting stops it here too
       live.set(id, entry)
+      // one running AI job from here until it ends; "stop all" (turning AI off) stops it the
+      // way the window's Stop does, its program and the program's children with it
+      entry.unregisterJob = registerAiJob({
+        kind: 'agent',
+        stop: () => {
+          entry.session?.stop()
+          cleanup(entry)
+        },
+      })
       /** stopped meanwhile: what came after the stop, a program the runner gave included, ends */
       const stopped = (): boolean => {
         if (live.has(id)) return false

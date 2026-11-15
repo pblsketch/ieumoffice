@@ -6,6 +6,7 @@ import { PRODUCT_NAME } from '@genoffice/i18n'
 import { flagBool, parseArgs } from './args'
 import { appendAudit } from './audit'
 import { cliSecretCodecFor } from './secrets'
+import { registerCodexImageRoute } from './cloud'
 import { capabilitiesCommand } from './commands/capabilities'
 import { convertCommand } from './commands/convert'
 import { docsCommand } from './commands/docs'
@@ -189,6 +190,8 @@ export async function runCli(argv: readonly string[], opts: RunOptions = {}): Pr
   }
   // keys the app sealed open through it, for this command's settings file (decision 0063)
   setAiSecretCodec(cliSecretCodecFor(ctx.env))
+  // the Codex image route over the same settings file; starts nothing until an image takes it
+  registerCodexImageRoute(ctx.env)
   const started = Date.now()
   const audit = (status: 'ok' | 'error', code: ExitCode, outputPath?: string) =>
     appendAudit(ctx.env, {

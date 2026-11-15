@@ -875,6 +875,14 @@ const config = {
         to: 'shell-new',
         filter: ['*.docx', '*.xlsx', '*.pptx'],
       },
+      // Raises the open-file soft limit before Chromium forks its zygote, so
+      // an editor on a PC with thousands of fonts does not run out of file
+      // descriptors (#488). The deb/rpm post-install step points the desktop
+      // entry at it; AppImage starts through its own AppRun and does not use it.
+      {
+        from: 'build/linux-launch.sh',
+        to: 'ieumoffice-launch',
+      },
     ],
   },
   // Same "@genoffice/shell" problem as executableName above: the default deb

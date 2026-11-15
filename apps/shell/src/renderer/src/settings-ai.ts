@@ -352,6 +352,25 @@ export function mediaSpecialChoices(
   return ['none']
 }
 
+/**
+ * Whether the image generation block says to connect the Codex program with
+ * the same ChatGPT account: the app's direct ChatGPT connection is ready, yet
+ * it cannot make images (OpenAI does not allow it), Codex is not ready on a
+ * subscription login, and the tool report says image generation has no route
+ * right now. The stored selection does not decide it; an unread report
+ * (`null`) shows nothing.
+ */
+export function chatGptImageConnectShown(
+  statuses: AiSubscriptionStatuses,
+  imageGenerationAvailable: boolean | null,
+): boolean {
+  return (
+    statuses.chatgpt?.state === 'ready' &&
+    statuses.codex?.state !== 'ready' &&
+    imageGenerationAvailable === false
+  )
+}
+
 /** Key providers able to serve a media block */
 export function mediaKeyProviders(
   block: MediaBlock,

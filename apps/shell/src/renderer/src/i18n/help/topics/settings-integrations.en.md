@@ -2,7 +2,9 @@
 
 ## Opening settings
 
-The row at the bottom left of Home opens the settings panel (it reads Connect AI until an AI is connected). It has five sections: Account, AI, General, Integrations and About.
+The row at the bottom left of Home opens the settings panel (the line under it shows whether an AI is connected). It has five sections: Account, AI, General, Integrations and About.
+
+You can also open it from any tab with **⌘,** (Ctrl+, on Windows and Linux), from **Settings…** in the app menu on a Mac (the menu named after the app, at the left of the menu bar), or from **Menu (☰) ▸ Settings…** on Windows and Linux. In a Word tab ⌘, (Ctrl+,) is subscript, so open it from the menu there.
 
 **Account** shows where your Claude, ChatGPT and Codex connections stand, and **Manage connections** leads to the AI section. AI has its own articles: [Subscription connection](help://subscription) and [AI models and settings](help://ai-models).
 
@@ -26,6 +28,19 @@ Light / Dark / System. System follows the OS appearance, and the editors re-skin
 
 GenOffice does not collect or send usage statistics, so there is no switch for it.
 
+## Editors and AI
+
+Here you choose which editors you use and whether to use AI. The same list also appears once in two other places: the **Choose your editors** step of the welcome screens on first launch, and a one-time window on the Home screen for people who used GenOffice before this setting existed. Everything starts turned on, so leaving it as it is changes nothing. A change applies at once in every open window.
+
+- **Editors**: Word, Excel, PowerPoint, PDF, PDF tools, Markdown and text, HTML, Mind map, Diagram, HWP (Hangul) and E-book (EPUB). The PDF tools are switched separately from the PDF editor. At least one editor has to stay on.
+- **An editor you turn off** leaves the new-document lists: the Home cards, the tab bar's **+** menu, File ▸ New and the default-app list. Documents that are already open stay open, and recovery copies are kept.
+- **Opening a file of a turned-off editor** (double-click, drag and drop, File ▸ Open, recent files) asks you to choose **Turn on and open** or **Cancel**. Opening several of its files at once asks only once.
+- **Other features that would open their result in a turned-off editor**, such as converting a PDF to that format, ask before they start: **Turn on and open**, **Create the file only** (the file is made and shown in its folder, and the editor stays off) or **Cancel**.
+- **With AI features off**, the AI panels, AI buttons and menus, the Home ask panel, the agent window and the AI connection prompts disappear, and the Account, AI and Skills tabs leave Settings. GenOffice does not start an AI program from its screens. Sign-ins, keys, skills and settings are kept and come back when you turn AI on again. If AI work is still running, you are asked first whether to **Stop and turn off**.
+- The command line, MCP and this guide work the same whether editors or AI are on or off.
+
+With AI on, the AI still does not make new documents for an editor that is off; it tells you to turn that editor on here.
+
 ## AI ▸ Advanced
 
 Closed until you open it; most people never need it. The **AI Model** tab holds API keys and servers you run yourself, for chat. On the **AI Media & Search** tab each capability picks the vendor that serves it, and a vendor's key and base URL are entered once and shared:
@@ -46,7 +61,7 @@ Settings can register GenOffice as the handler for .docx / .xlsx / .pptx / .pdf 
 ## Third-party notices and updates
 
 - Help ▸ Third-party notices: the full OSS license inventory shipped with the app.
-- Menu (☰) ▸ Check for updates (Help ▸ Check for updates on a Mac): triggers a manual check; a newer version prompts to install.
+- Menu (☰) ▸ Check for updates (Help ▸ Check for updates on a Mac): triggers a manual check; a newer version prompts to install. On a Mac the app menu has it too, right under About.
 
 ## MCP integration (for advanced users / AI clients)
 

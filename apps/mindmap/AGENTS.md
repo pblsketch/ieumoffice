@@ -60,6 +60,7 @@
 - **창구 이름은 `mindmap:`으로 시작한다.** `src/shared/ipc.ts`에 이미 있는 이름을 쓰고, 받는 쪽이 준비된 창구만 등록한다.
 - 화면에 "XMind"라고 적는 곳은 "XMind 파일(.xmind)을 열고 저장한다"는 호환 설명뿐이다. 다른 프로그램의 이름·색·그림·글꼴·예제 파일을 저장소에 넣지 않는다. 테스트용 지도는 테스트 코드가 엔진으로 만든다.
 - **기본 스킬 `mindmap`이 이 편집기의 도구·편집 이름과 개요 문법을 적는다**(`apps/shell/resources/builtin-skills/mindmap`). 도구나 `EDIT_OPS`의 이름, `write_map`의 개요 문법을 바꾸면 그 본문도 고친다(`tests/builtin-skill.test.ts`가 지킨다, 결정 0132). AI가 배치·테마·표식을 정할 수 있게 되면 스킬의 "What you cannot set" 줄도 고친다.
+- **AI 끄기(설정 › 편집기와 AI, 결정 0143).** preload는 선택의 읽기·구독(`get`, `onChange`)만 내보내고 바꾸기·모두 멈추기는 내보내지 않는다. 화면은 `aiVisible(useAppChoice(window.aiOfficeEditorChoice))`로 AI 창과 도구 막대의 AI 입구를 그리지 않는다. 대화는 공용 `ai:stream`이 거절·작업 등록을 맡고, AI 그림 넣기(`src/main/ai-image.ts`)는 AI가 꺼져 있으면 거절하고 도는 동안 `registerAiJob`으로 올린다.
 
 ## 이 모듈의 방식
 
@@ -125,6 +126,7 @@
 - PNG는 복사본을 SVG `foreignObject`에 넣어 캔버스에 그린다. SVG는 `data:` 주소로 불러온다(이 앱 스킴의 `blob:` 주소는 캔버스를 오염시켜 `toBlob`이 실패한다). 그림은 그려질 크기로 미리 만들어 넣는다(`export/resample.ts`). 브라우저가 크기를 바꿔 그리면 앞서 그린 것에 따라 몇 픽셀이 달라지기 때문이다.
 - PDF와 인쇄는 가로 A4 한 쪽에 맞춘 HTML 한 장(`render.ts`의 `snapshotPage`)이다. 바탕은 지도의 바탕색이다. 페이지의 CSP가 `data:` 그림 말고는 아무것도 불러오지 못하게 막고, 메인 프로세스의 숨은 창은 자기 세션(`mindmap-export`)에서 파일과 `data:` 말고는 모든 요청을 거절한다. PDF는 `printToPDF`, 인쇄는 `printHtmlDocument`에 가로 A4를 덧붙인 창으로 한다.
 - 내보내기와 인쇄는 차례로 돈다. 하나가 도는 중에 온 요청은 버리지 않고 기다린다.
+- 인쇄는 작은 인쇄 창(범위 없음)을 먼저 연다(결정 0141). 아무것도 고르지 않으면 지금 인쇄 경로가 그대로다. 쪽 배치를 고르면 같은 한 장을 PDF 내보내기처럼 `printToPDF`해 `mindmap:print-layout-*`로 보낸다. 배치한 쪽 그림을 인쇄하는 동안에만 내보내기 세션이 그 인쇄의 임시 폴더 바로 안의 파일을 읽게 한다(`allowPageFolder`).
 - 미리보기 그림: 내용이 바뀐 저장에서만 첫 시트로 만든다(최대 800×600). 첫 시트가 숨어 있으면 그 순간만 보이지 않게 펼쳐 잰다. 그린 적 없는 첫 시트, 실패, 4초 초과면 그림 없이 저장하고 파일의 예전 그림이 남는다.
 
 ## 테스트

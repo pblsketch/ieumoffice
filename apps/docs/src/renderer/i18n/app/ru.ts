@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ru = {
+  appLegacyDocImported:
+    'Файл .{ext} открыт как преобразованная копия .docx. Исходный файл не изменяется; при сохранении создаётся новый файл .docx.',
   appScTitle: 'Сочетания клавиш',
   appScFilter: 'Поиск сочетания',
   appScNone: 'Совпадений не найдено',
@@ -54,6 +56,7 @@ export const ru = {
   appVerticalTextNotice:
     'Документ содержит вертикальный текст (пока отображается горизонтально; на сохранение это не влияет)',
   appNewDocCreated: 'Создан пустой документ. Опишите содержимое для создания в панели ИИ слева',
+  appNewDocCreatedNoAi: 'Создан пустой документ.',
   appNewFailed: 'Не удалось создать документ: {error}',
   appSaveFailed: 'Не удалось сохранить: {error}',
   appAutoSavedAt: 'Автосохранение ({time})',
@@ -96,6 +99,9 @@ export const ru = {
   appPrintRangeAll: 'Все страницы',
   appPrintRangeCurrent: 'Текущая страница',
   appPrintRangeCustom: 'Настраиваемый диапазон',
+  appPrintRangeSelection: 'Выделенный фрагмент',
+  appPrintSelectionPreparing: 'Разбивка выделенного фрагмента на страницы…',
+  appPrintSelectionFailed: 'Не удалось разбить выделенный фрагмент на страницы: {error}',
   appPrintRangeHint: 'напр. 1,3,5-8',
   appPrintPageCount: 'Страниц: {n}',
   appPrintNoPages: 'Нет страниц для печати',

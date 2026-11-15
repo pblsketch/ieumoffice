@@ -452,6 +452,11 @@ const TOOLS: AgentToolDef[] = [
           description:
             'Set true when the result must have a real transparent background (icons, logos, cutouts placed over slide content). The app strips the background automatically after generation; never rely on the prompt for transparency.',
         },
+        model: {
+          type: 'string',
+          description:
+            'Image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
+        },
       },
       required: ['prompt'],
     },
@@ -1131,10 +1136,15 @@ function hiddenMediaTools(access: DeckAccess): Set<string> {
   return hidden
 }
 
+/** told whenever generate_image is hidden, so the model can point a ChatGPT plan user at the one path that draws */
+export const IMAGE_GEN_CHATGPT_NOTE =
+  'If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
+
 function mediaToolsOffNote(hidden: Set<string>): string {
   if (hidden.size === 0) return ''
   const plural = hidden.size > 1
-  return `\n\nNote: ${[...hidden].join(' and ')} ${plural ? 'are' : 'is'} currently unavailable (no image/media provider is connected or set up in Settings). Do not call or promise ${plural ? 'them' : 'it'}; for imagery use image_search + insert_web_image instead.`
+  const chatgpt = hidden.has('generate_image') ? ` ${IMAGE_GEN_CHATGPT_NOTE}` : ''
+  return `\n\nNote: ${[...hidden].join(' and ')} ${plural ? 'are' : 'is'} currently unavailable (no image/media provider is connected or set up in Settings). Do not call or promise ${plural ? 'them' : 'it'}; for imagery use image_search + insert_web_image instead.${chatgpt}`
 }
 
 export function createSlidesSkill(access: DeckAccess): AgentSkill {
@@ -1793,7 +1803,8 @@ async function executeTool(
       return {
         output:
           `Image generated, URL: ${r.url}\n` +
-          'New imagery: insert it with insert_web_image. If this edits an existing slide picture (e.g. background removal), swap it in place with replace_image instead.',
+          'New imagery: insert it with insert_web_image. If this edits an existing slide picture (e.g. background removal), swap it in place with replace_image instead.' +
+          (r.note ? `\nNote: ${r.note}` : ''),
         mutated: false,
         summary: t('aiSumGenImage', {
           prompt: `${prompt.slice(0, 20)}${prompt.length > 20 ? '…' : ''}`,

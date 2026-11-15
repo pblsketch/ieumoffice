@@ -77,4 +77,4 @@ Haga clic derecho en cualquier parte del cuerpo: el menú se ajusta a lo que ha 
 
 ## Imprimir
 
-ctrl+P a través del cuadro de diálogo del sistema, con páginas WYSIWYG.
+ctrl+P abre la ventana de impresión. Elija la impresora, las copias, la doble cara y el intervalo (incluida la selección); en **Disposición de páginas** hay varias páginas por hoja, folleto, póster, etiquetas, caras pares o impares y escala de grises (consulte [Operaciones de archivo](help://file-ops)).

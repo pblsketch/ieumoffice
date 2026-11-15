@@ -1,4 +1,5 @@
 import type { AiPanelPrefs, FontFamilyInfo } from '@genoffice/ui'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { SlidesAiFonts } from '@genoffice/ui/slides-ai-fonts'
 /**
  * slides main-process <-> renderer IPC contract (Phase 3: open/save/edit, AI not included yet).
@@ -97,6 +98,8 @@ export interface OpenResult {
   size: { cx: number; cy: number }
   /** Theme body default font (fallback shown in the font box when the selection has no text element) */
   defaultFont?: string
+  /** the untitled deck was converted from a legacy .ppt: the tab says so once */
+  importedFrom?: string
 }
 
 // ---- Chat attachments (local files fed to the agent via tools; structure copied from apps/docs) ----
@@ -1741,6 +1744,8 @@ export interface SlidesApi {
   exportPdf: (op: ExportPdfOp) => Promise<ExportPdfResult>
   /** Print (system dialog; cancel counts as ok=false without an error) */
   printSlides: (op: PrintSlidesOp) => Promise<{ ok: boolean; error?: string }>
+  /** Advanced print (decision 0141): the print op is the job, arranged by the shared layout */
+  printLayout: PrintLayoutBridge<PrintSlidesOp>
   /** Save the deck in place. auto marks the AutoSave timer's own pass: while a
    *  sibling split-view copy moved the disk past this one, an auto save defers
    *  silently (`reason: 'external-modified'`) where a user's save asks first. */
@@ -1863,7 +1868,12 @@ export interface SlidesApi {
     aspectRatio?: string
     imageSize?: string
     transparentBackground?: boolean
-  }) => Promise<{ url?: string; error?: string }>
+  }) => Promise<{
+    url?: string
+    error?: string
+    /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+    note?: string
+  }>
   /** Media analysis: image/audio/video content understanding, returns analysis text */
   analyzeMedia: (op: {
     mediaUrls: string[]

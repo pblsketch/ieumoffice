@@ -124,7 +124,7 @@ export const nl = {
   stepLogin: 'Aanmelden',
   stepReady: 'Verbonden',
   installReturnNote:
-    'Kom hier terug als de installatie in dat venster klaar is. De app controleert dan vanzelf opnieuw.',
+    'Tijdens het downloaden kan dat venster een paar minuten niets tonen. Laat het open. Kom hier terug als de installatie klaar is. De app controleert dan vanzelf opnieuw.',
   loginHowNote:
     'Als je erop klikt, opent er een browser. Meld je aan met je {vendor}-account en klik op Toestaan; de verbinding komt vanzelf tot stand.',
   signingInStalledNote:

@@ -77,4 +77,4 @@ Clic droit n’importe où dans le corps — le menu correspond à ce que vous a
 
 ## Impression
 
-ctrl+P via la boîte de dialogue du système, pages en WYSIWYG.
+ctrl+P ouvre la fenêtre d’impression. Choisissez l’imprimante, le nombre de copies, le recto verso et la plage (sélection comprise) ; **Mise en page** propose plusieurs pages par feuille, livret, affiche, étiquettes, faces paires ou impaires et niveaux de gris (voir [Opérations sur les fichiers](help://file-ops)).

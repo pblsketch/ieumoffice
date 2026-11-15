@@ -14,6 +14,7 @@ import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { DiagramFormat, DiagramOpResult, DiagramReadResult } from '@genoffice/drawio-model'
 import type { AiPanelPrefs } from '@genoffice/ui'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { DiagramNotices } from './notices'
 import type { DiagramSubscriptionApi } from './subscription-api'
 
@@ -67,6 +68,8 @@ export const DIAGRAM_CHANNELS = {
   printRequest: 'diagram:print-request',
   /** invoke(`PrintDiagramRequest`) → `PrintResult` */
   print: 'diagram:print',
+  // `diagram:print-layout-preview|print|save|cancel|progress` (the advanced print layout)
+  // are named by the shared helper (`printLayoutChannels('diagram')`) and carry `DiagramPrintJob`
 
   // ---- crash-recovery copies (decision 0061) ----
   /** invoke(`RecoveryCopyRequest`) → `RecoveryCopyResult` */
@@ -306,6 +309,13 @@ export interface PrintDiagramRequest {
   title?: string
 }
 
+/**
+ * What the advanced print layout's channels (`diagram:print-layout-*`) carry
+ * as the editor part: the same pages and name as a print, so the job PDF is
+ * the print document of exactly those pages.
+ */
+export type DiagramPrintJob = PrintDiagramRequest
+
 export type ExportResult =
   { ok: true; paths: string[] } | { ok: true; canceled: true } | { ok: false; error: string }
 
@@ -514,6 +524,8 @@ export interface DiagramExportApi {
   exportImages(request: ExportImagesRequest): Promise<ExportResult>
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   print(request: PrintDiagramRequest): Promise<PrintResult>
+  /** the advanced print layout: preview, print and save the arranged job */
+  printLayout: PrintLayoutBridge<DiagramPrintJob>
 }
 
 export interface DiagramRecoveryApi {

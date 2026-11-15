@@ -88,4 +88,4 @@ Kliknij prawym przyciskiem w dowolnym miejscu tekstu — menu dostosowuje się d
 
 ## Drukowanie
 
-ctrl+P przez okno systemowe, strony WYSIWYG.
+ctrl+P otwiera okno drukowania. Wybierz drukarkę, liczbę kopii, druk dwustronny i zakres (także zaznaczenie), a w sekcji **Układ stron** kilka stron na arkusz, broszurę, plakat, etykiety, strony nieparzyste lub parzyste i skalę szarości (zobacz [Operacje na plikach](help://file-ops)).

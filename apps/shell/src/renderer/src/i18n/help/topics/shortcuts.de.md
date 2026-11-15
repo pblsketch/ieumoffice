@@ -12,10 +12,12 @@ Jeder Editor hat eigene Tastenbelegungen, und nur wenige davon funktionieren üb
 | Menüband einklappen / ausklappen — jeder Editor           | ⌥⌘R   | Ctrl+F1         |
 | Menüband kompakt — nur Docs                               | ⌥⌘K   | Ctrl+Alt+K      |
 | Tastenkürzel-Tabelle öffnen — nur Word                    | ⌘/    | Ctrl+/          |
+| Einstellungen öffnen — jeder Tab außer Word               | ⌘,    | Ctrl+,          |
 
 - **F1 öffnet dieses Handbuch**, nicht die Kürzel-Tabelle. Die Taste gehört zum Anwendungsmenü und funktioniert daher aus Word, Sheets, Slides, PDF oder dem Tab Home gleichermaßen.
 - **Der Umschalter für das Menüband ist `Ctrl+F1`, auf macOS `⌥⌘R`.** Ein bloßer Druck auf `F1` bewirkt nichts — F1 ist das Handbuch, und die Menüband-Taste teilt sich diese Belegung bewusst nicht. `Ctrl+F1` wird auch auf macOS akzeptiert, aber `⌥⌘R` ist die Taste, die Office für Mac verwendet.
 - **Die Tastenkürzel-Tabelle gehört allein zu Word** (`⌘/`). Sie listet genau die Word-Tabelle weiter unten auf. Kein anderer Editor hat eine.
+- **`⌘,` öffnet die Einstellungen** (`Ctrl+,` unter Windows und Linux), wie in den meisten Mac-Apps. In einem Word-Tab bleibt die Tastenkombination Tiefgestellt; öffnen Sie die Einstellungen dort über das App-Menü (Mac) oder über Menü (☰) ▸ Einstellungen… (Windows und Linux).
 
 ![Die Tastenkürzel-Tabelle von Word selbst: die Aktion links, die Tastenkombination rechts, gruppiert nach Datei, Bearbeiten, Textformatierung, Absatzformatierung, Einfügen, Überprüfen und Werkzeuge, Ansicht](img/word-shortcuts.png)
 

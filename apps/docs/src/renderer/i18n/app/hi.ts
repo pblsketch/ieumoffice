@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const hi = {
+  appLegacyDocImported:
+    '.{ext} फ़ाइल को परिवर्तित .docx प्रति के रूप में खोला गया। मूल फ़ाइल वैसी ही रहती है; सहेजने पर नई .docx फ़ाइल लिखी जाती है।',
   appScTitle: 'कीबोर्ड शॉर्टकट',
   appScFilter: 'शॉर्टकट खोजें',
   appScNone: 'कोई मेल खाता शॉर्टकट नहीं',
@@ -54,6 +56,7 @@ export const hi = {
   appVerticalTextNotice:
     'इस दस्तावेज़ में लंबवत पाठ है (फ़िलहाल क्षैतिज रूप में दिखाया गया है; सहेजने पर असर नहीं)',
   appNewDocCreated: 'खाली दस्तावेज़ बनाया गया। बाईं ओर AI पैनल में बताएँ कि क्या जनरेट करना है।',
+  appNewDocCreatedNoAi: 'खाली दस्तावेज़ बनाया गया।',
   appNewFailed: 'दस्तावेज़ बनाने में विफल: {error}',
   appSaveFailed: 'सहेजने में विफल: {error}',
   appAutoSavedAt: 'स्वतः सहेजा गया ({time})',
@@ -94,6 +97,9 @@ export const hi = {
   appPrintRangeAll: 'सभी पृष्ठ',
   appPrintRangeCurrent: 'वर्तमान पृष्ठ',
   appPrintRangeCustom: 'कस्टम श्रेणी',
+  appPrintRangeSelection: 'चयन',
+  appPrintSelectionPreparing: 'चयन को पृष्ठों में बाँटा जा रहा है…',
+  appPrintSelectionFailed: 'चयन को पृष्ठों में नहीं बाँटा जा सका: {error}',
   appPrintRangeHint: 'जैसे: 1,3,5-8',
   appPrintPageCount: 'कुल {n} पृष्ठ',
   appPrintNoPages: 'प्रिंट करने के लिए कोई पृष्ठ नहीं',

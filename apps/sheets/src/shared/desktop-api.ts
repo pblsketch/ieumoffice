@@ -13,6 +13,7 @@ import {
   SAVE_EDITS_CHUNK_MAX,
 } from './ipc-channels'
 import { ADDABLE_SHAPE_TYPES } from '@genoffice/xlsx-gateway/shared/shape-types'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import {
   PIVOT_AGGREGATIONS,
   PIVOT_SHOW_DATA_AS,
@@ -3192,6 +3193,10 @@ export interface DesktopApi {
   ): Promise<{ renamed: boolean; name?: string }>
   exportPdf(request: WorkbookExportPdfRequest): Promise<WorkbookExportPdfResult>
   printWorkbook(request: WorkbookExportPdfRequest): Promise<WorkbookPrintResult>
+  /// The Print dialog's shared layout panel (`sheets:print-layout-*`); the
+  /// editor part of each request is the request `printWorkbook` would get,
+  /// without the printer fields.
+  printLayout: PrintLayoutBridge<WorkbookExportPdfRequest>
   listPrinters(): Promise<PrinterInfo[]>
   exportCsv(request: WorkbookExportCsvRequest): Promise<WorkbookExportCsvResult>
   /// Export the whole workbook as an ODS copy; the session stays .xlsx.
@@ -3261,7 +3266,11 @@ export interface DesktopApi {
   /// Image search (same shared main-process channel as docs/slides)
   imageSearch(query: string, maxResults?: number): Promise<ImageSearchResponse>
   /// AI image generation (sheets-owned channel)
-  generateImage(op: { prompt: string; aspectRatio?: string }): Promise<GenerateImageResult>
+  generateImage(op: {
+    prompt: string
+    aspectRatio?: string
+    model?: string
+  }): Promise<GenerateImageResult>
   /// Downloads an image URL in the main process (SSRF-guarded); null on failure
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void
@@ -3333,4 +3342,6 @@ export type ReadUrlResult =
 export interface GenerateImageResult {
   url?: string
   error?: string
+  /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+  note?: string
 }

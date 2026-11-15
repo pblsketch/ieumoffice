@@ -34,6 +34,7 @@ type HwpDocument = InstanceType<Engine['HwpDocument']>
 /** Tools of the in-app AI that need the app's window, the network or a model: not ops here. */
 const NOT_HEADLESS: Record<string, string> = {
   read_url: 'reads a web page; use `ieumoffice read-url`',
+  web_search: 'searches the web; use `ieumoffice search`',
   image_search: 'searches the web for pictures',
   generate_image: 'asks an image model',
   insert_image: 'pictures come from the chat or the web in the app',
@@ -491,7 +492,15 @@ export async function saveHwpSession(
   } catch {
     // a tab that cannot be measured is written as the engine wrote it (as in the app)
   }
-  const fixed = mods.saveFixes.applySaveFixes(bytes, format, tabs, session.base)
+  // the preview of the document as it is now (decision 0146): the text, and with no screen
+  // to draw the page on, the blank picture rather than the opened file's
+  let preview: { text: string; image: null } = { text: '', image: null }
+  try {
+    preview = { text: session.surface.savePreview().text, image: null }
+  } catch {
+    // a blank preview, never the stale one
+  }
+  const fixed = mods.saveFixes.applySaveFixes(bytes, format, tabs, session.base, preview)
   bytes = fixed.bytes
   if (!mods.savePlan.bytesMatchFormat(bytes, format)) {
     throw new CliError(

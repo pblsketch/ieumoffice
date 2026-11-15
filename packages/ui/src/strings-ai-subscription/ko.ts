@@ -112,7 +112,8 @@ export const ko = {
   stepInstall: '프로그램 설치',
   stepLogin: '로그인',
   stepReady: '연결 완료',
-  installReturnNote: '창에서 설치가 끝나면 이 화면으로 돌아오세요. 앱이 저절로 다시 확인합니다.',
+  installReturnNote:
+    '설치 창에는 내려받는 몇 분 동안 아무것도 나오지 않을 수 있습니다. 창을 닫지 말고 기다리세요. 설치가 끝나면 이 화면으로 돌아오세요. 앱이 저절로 다시 확인합니다.',
   loginHowNote:
     '누르면 브라우저가 열립니다. {vendor} 계정으로 로그인하고 허용을 누르면 저절로 연결됩니다.',
   signingInStalledNote:

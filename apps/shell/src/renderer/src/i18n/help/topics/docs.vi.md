@@ -77,4 +77,4 @@ Nhấp chuột phải ở bất kỳ đâu trong nội dung — menu đi theo th
 
 ## In
 
-ctrl+P qua hộp thoại của hệ thống, trang WYSIWYG.
+ctrl+P mở cửa sổ in. Chọn máy in, số bản, in hai mặt và phạm vi (kể cả vùng đã chọn); trong **Bố cục trang** có thể chọn nhiều trang mỗi tờ, tập sách nhỏ, áp phích, nhãn, mặt lẻ hoặc chẵn và thang xám (xem [Thao tác tập tin](help://file-ops)).

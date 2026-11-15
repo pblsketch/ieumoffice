@@ -35,8 +35,11 @@ export type AiProviderId =
   | 'atlascloud'
   | 'runcrate'
   | 'cloudgpu'
+  | 'siliconflow'
+  | 'ppio'
   | 'opencode-zen'
   | 'opencode-go'
+  | 'commandcode'
   | 'custom'
 
 /**
@@ -309,7 +312,18 @@ export interface AiProviderMeta {
 
 /** Image generation / media analysis backends (separate from the chat provider) */
 export type AiMediaProviderId =
-  'openai' | 'gemini' | 'doubao' | 'glm' | 'xai' | 'qwen' | 'minimax' | 'deepseek' | 'custom'
+  | 'openai'
+  | 'gemini'
+  | 'doubao'
+  | 'glm'
+  | 'xai'
+  | 'qwen'
+  | 'minimax'
+  | 'deepseek'
+  | 'stability'
+  | 'bfl'
+  | 'microsoft'
+  | 'custom'
 
 /** Media backends configured with a key (or a base URL): every entry of the AI_MEDIA_PROVIDERS catalog */
 export type AiMediaKeyProviderId = AiMediaProviderId
@@ -322,7 +336,8 @@ export type AiAnalysisProviderSelection = 'chat' | AiMediaProviderId
 export type AiVideoAnalysisProviderSelection = 'none' | AiMediaProviderId
 
 /** wire shape of the image endpoint */
-export type AiImageProtocol = 'openai-images' | 'gemini' | 'dashscope' | 'minimax'
+export type AiImageProtocol =
+  'openai-images' | 'gemini' | 'dashscope' | 'minimax' | 'stability' | 'bfl' | 'mai'
 /** wire shape of the understanding endpoint */
 export type AiAnalysisProtocol = 'openai-chat' | 'gemini'
 
@@ -497,6 +512,10 @@ export interface AiStreamRequest {
 export interface AiTokenUsage {
   inputTokens?: number
   outputTokens?: number
+  /** share of inputTokens served from the provider's prompt cache */
+  cacheReadTokens?: number
+  /** share of inputTokens written to the prompt cache this turn (Anthropic bills it at a premium) */
+  cacheWriteTokens?: number
 }
 
 export interface AiStreamChunk {

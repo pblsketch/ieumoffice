@@ -3,6 +3,7 @@ import {
   AiPanelSideButton,
   AiModelPicker,
   type AiModelPickerBridge,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
@@ -583,6 +584,12 @@ export function AiPanel({
   })
   /** rate-limit windows the subscription CLI reported (latest per provider and window) */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own)
+  useSubscriptionUsageUpdates(
+    () => window.pdfApi?.subscription,
+    setSubscriptionUsage,
+    mergeSubscriptionUsage,
+  )
   /** the last turn's input was cut to fit a limit */
   const [inputTruncated, setInputTruncated] = useState(false)
   /** structured cause of the failure the loop is about to report through onError */

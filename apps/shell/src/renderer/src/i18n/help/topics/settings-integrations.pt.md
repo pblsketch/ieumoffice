@@ -2,7 +2,9 @@
 
 ## Abrir as configurações
 
-A linha no canto inferior esquerdo do ecrã Início abre o painel de configurações (mostra Conectar IA enquanto não houver uma IA conectada). O painel tem cinco secções: Conta, IA, Geral, Integrações e Sobre.
+A linha no canto inferior esquerdo do ecrã Início abre o painel de configurações (a linha por baixo mostra se há uma IA conectada). O painel tem cinco secções: Conta, IA, Geral, Integrações e Sobre.
+
+Também pode abri-las a partir de qualquer separador com **⌘,** (Ctrl+, no Windows e no Linux), a partir de **Configurações…** no menu da aplicação num Mac (o menu com o nome da app, à esquerda da barra de menus) ou a partir de **Menu (☰) ▸ Configurações…** no Windows e no Linux. Num separador do Word, ⌘, (Ctrl+,) é subscrito, por isso abra-as pelo menu.
 
 **Conta** mostra em que estado estão as suas conexões do Claude, do ChatGPT e do Codex, e **Gerenciar conexões** leva à secção IA. A IA tem os seus próprios artigos: [Conexão por assinatura](help://subscription) e [Modelos de IA e configurações](help://ai-models).
 
@@ -26,6 +28,19 @@ Claro / Escuro / Seguir o Sistema. O modo Seguir o Sistema acompanha o aspeto do
 
 O GenOffice não recolhe nem envia estatísticas de utilização, por isso não há nenhum interruptor para isso.
 
+## Editores e IA
+
+Aqui você escolhe quais editores usa e se usa a IA. A mesma lista também aparece uma vez em outros dois lugares: no passo **Escolha seus editores** das telas de boas-vindas na primeira execução e numa janela mostrada uma única vez no Início para quem já usava o GenOffice antes de esta opção existir. No começo tudo está ativado, então deixar como está não muda nada. Uma alteração vale na hora em todas as janelas abertas.
+
+- **Editores**: Word, Excel, PowerPoint, PDF, Ferramentas de PDF, Markdown e texto, HTML, Mapa mental, Diagrama, HWP (Hangul) e Livro digital (EPUB). As ferramentas de PDF são ligadas e desligadas separadamente do editor de PDF. Pelo menos um editor tem de continuar ativado.
+- **Um editor desativado** sai das listas de novos documentos: os cartões do Início, o menu **+** da barra de abas, Arquivo ▸ Novo e a lista de aplicativos padrão. Os documentos já abertos continuam abertos, e as cópias de recuperação são mantidas.
+- **Ao abrir um arquivo de um editor desativado** (clique duplo, arrastar e soltar, Arquivo ▸ Abrir, arquivos recentes), você escolhe entre **Ativar e abrir** e **Cancelar**. Se abrir vários arquivos dele de uma vez, a pergunta aparece só uma vez.
+- **Outras funções que abririam o resultado num editor desativado**, como converter um PDF para esse formato, perguntam antes de começar: **Ativar e abrir**, **Só criar o arquivo** (o arquivo é criado e mostrado na pasta, e o editor continua desativado) ou **Cancelar**.
+- **Com os recursos de IA desativados**, somem os painéis de IA, os botões e menus de IA, o painel de perguntas do Início, a janela do agente e os avisos para conectar uma IA, e as abas Conta, IA e Habilidades saem das configurações. O GenOffice não inicia nenhum programa de IA pelas suas telas. Logins, chaves, habilidades e configurações são mantidos e voltam quando você ativa a IA de novo. Se ainda houver trabalho de IA em andamento, você é perguntado primeiro se quer **Parar e desativar**.
+- A linha de comando, o MCP e este guia funcionam do mesmo jeito, com editores ou IA ativados ou não.
+
+Mesmo com a IA ativada, ela não cria documentos novos para um editor desativado; ela pede que você o ative aqui.
+
 ## IA ▸ Avançado
 
 Fica fechado até o abrir; a maioria das pessoas nunca precisa dele. O separador **Modelo de IA** guarda as chaves de API e os servidores que executa por conta própria, para a conversa. No separador **Mídia e busca de IA**, cada capacidade escolhe o fornecedor que a serve, e a chave e o URL base de um fornecedor são introduzidos uma vez e partilhados:
@@ -46,7 +61,7 @@ As Configurações podem registar o GenOffice como a aplicação que abre fichei
 ## Avisos de software de terceiros e atualizações
 
 - Ajuda ▸ Avisos de software de terceiros: o inventário completo das licenças de código aberto que acompanha a aplicação.
-- Menu (☰) ▸ Procurar atualizações… (num Mac, Ajuda ▸ Procurar atualizações…): inicia uma verificação manual; e se houver uma versão mais recente, o GenOffice propõe a instalação.
+- Menu (☰) ▸ Procurar atualizações… (num Mac, Ajuda ▸ Procurar atualizações…): inicia uma verificação manual; e se houver uma versão mais recente, o GenOffice propõe a instalação. Num Mac também está no menu da aplicação, logo abaixo de «Sobre o GenOffice».
 
 ## Integração MCP (para utilizadores avançados / clientes de IA)
 

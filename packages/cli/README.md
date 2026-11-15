@@ -303,10 +303,15 @@ at a screen when it runs. That decides which route it may take.
   used only when it is the one selected in the app's settings and its key is
   there; Parallel, Tavily, Exa and Firecrawl provide web search only. Search
   never uses a subscription.
-- **Image generation** is key-based only in this version: it runs on an image
-  provider whose key is set up in the app, and answers "unavailable"
-  otherwise. `--model` is ignored (a successful result says so in
-  `detail.note`) and `--size` has no effect on the key-based providers.
+- **Image generation** runs on the image route chosen in the app: the ChatGPT
+  plan through the Codex program (a Codex subscription login, used only with
+  the automatic-call setting below), or an image provider whose key is set up
+  in the app; otherwise it answers "unavailable". `--ref` images go with the
+  request on either route. `--model` is used when the route in use offers it
+  (on the Codex route a `gpt-image` name leaves the image model to Codex, and
+  `detail.note` says so); any other name is refused before anything is sent,
+  with the model names that route can use. `--size` has no effect on the
+  key-based providers.
 - **Media analysis**: a picture is shown to the AI provider the chat runs on,
   or to the key-based analysis provider chosen in the app. Video and sound
   need a key-based provider that can analyse video.

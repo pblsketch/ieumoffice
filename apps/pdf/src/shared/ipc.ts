@@ -2,6 +2,7 @@ import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { SubscriptionApi } from './subscription-api'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { DocumentTree, InlineRun } from '../../../../packages/pdf-structure/src/tree/types'
 import type { PageFingerprint } from '../../../../packages/pdf-structure/src/tree/extract'
 import type { MarkdownWarning } from '../../../../packages/pdf-structure/src/markdown/write'
@@ -48,6 +49,7 @@ export type PdfToolsHandoffTool = (typeof PDF_TOOLS_HANDOFF)[number]
 export const PDF_CHANNELS = {
   consumePending: 'pdf:consume-pending',
   readFile: 'pdf:read-file',
+  readFileChunk: 'pdf:read-file-chunk',
   decryptPdf: 'pdf:decrypt',
   save: 'pdf:save',
   pickAttachmentFile: 'pdf:pick-attachment-file',
@@ -82,6 +84,7 @@ export const PDF_CHANNELS = {
   setPageSize: 'pdf:set-page-size',
   splitPages: 'pdf:split-pages',
   cropPages: 'pdf:crop-pages',
+  restoreFile: 'pdf:restore-file',
   exportImages: 'pdf:export-images',
   // Save As › PNG page images: the shell picked the name; the renderer draws the pages
   exportImagesRequest: 'pdf:export-images-request',
@@ -89,6 +92,10 @@ export const PDF_CHANNELS = {
   createDocument: 'pdf:create-document',
   openInPdfTools: 'pdf:open-in-pdf-tools',
   generateImage: 'pdf:generate-image',
+  // a document job of this screen begins / ends (the shell's AI activity); main asks it to stop
+  aiJobBegin: 'pdf:ai-job-begin',
+  aiJobEnd: 'pdf:ai-job-end',
+  aiJobStop: 'pdf:ai-job-stop',
   listDigitalSignatures: 'pdf:list-digital-signatures',
   pickCertificate: 'pdf:pick-certificate',
   listSystemCertificates: 'pdf:list-system-certificates',
@@ -165,7 +172,12 @@ export const PDF_CHANNELS = {
   convertDialogRequest: 'pdf:convert-dialog-request',
   convertReleaseTarget: 'pdf:convert-release-target',
   convertOpenResult: 'pdf:convert-open-result',
+  /** before the converter's Markdown dialog: the shell asks while the Markdown editor is off */
+  convertAskBeforeOpen: 'pdf:convert-ask-before-open',
+  /** the annotation list's "Open as Markdown / Word document" (no AI) */
+  annotDocument: 'pdf:annot-document',
   convertRevealResult: 'pdf:convert-reveal-result',
+  authorNameChanged: 'app:author-name-changed',
 } as const
 
 export const VISUAL_SIGNATURE_CONTENT_PREFIX = 'GenOffice visual signature field: '
@@ -368,6 +380,8 @@ export interface CreateDocumentResult {
   /** the created file, when it is written directly (pdf/md); docx opens as a new tab that saves itself */
   path?: string
   error?: string
+  /** the person cancelled (the editor it opens in is off): nothing was made */
+  canceled?: boolean
 }
 
 export type UiTheme = 'light' | 'dark' | 'system'
@@ -551,7 +565,7 @@ export type DrawingInput =
       color: [number, number, number]
       at: [number, number]
       contents: string
-      /** Annotation author (/T); omitted → 'GenOffice' */
+      /** Annotation author (/T); omitted → the request's annotationAuthor */
       author?: string
       /** Creation time (ms since epoch) → /CreationDate and /M; omitted → save time */
       createdMs?: number
@@ -952,6 +966,9 @@ export interface SavePdfRequest {
       from `encryption.userPassword`. */
   decryption?: { userPassword: string }
   markups: MarkupInput[]
+  /** Author (/T) of the markups and drawings this save adds; a note keeps its own
+      author when it has one. Omitted → 'GenOffice' */
+  annotationAuthor?: string
   /** Saved markup annotations to remove (applied before every other stage) */
   annotDeletes?: AnnotDeleteInput[]
   drawings: DrawingInput[]
@@ -1149,6 +1166,14 @@ export type ReplacePagesResult =
   | { ok: true; removed: number; inserted: number }
   | { ok: true; canceled: true }
   | { ok: false; error: string }
+
+/** The file put back as it was around a change written in place (Undo and Redo of that change) */
+export interface RestoreFileRequest {
+  path: string
+  bytes: ArrayBuffer
+}
+
+export type RestoreFileResult = { ok: true } | { ok: false; error: string }
 
 /** Resize all pages to a target paper size (points), content scaled to fit; written back in place */
 export interface SetPageSizeRequest {
@@ -1632,9 +1657,19 @@ export const AI_CHANNELS = {
   streamChunk: 'ai:stream-chunk',
   streamCancel: 'ai:stream-cancel',
   imageSearch: 'ai:image-search',
+  webSearch: 'ai:web-search',
   readUrl: 'ai:read-url',
   fetchImage: 'ai:fetch-image',
 } as const
+
+/** One web search for the AI (the shared ai:web-search handler) */
+export interface WebSearchResult {
+  answer?: string
+  results: Array<{ title: string; url: string; snippet: string }>
+  method: string
+  /** failure reason when method === 'error' */
+  error?: string
+}
 
 export interface ImageSearchResponse {
   images: Array<{
@@ -1674,6 +1709,25 @@ export interface PdfDiskFileChange {
   kind: 'changed' | 'missing' | 'unchanged'
 }
 
+/**
+ * The PDF editor's part of an advanced print request (`pdf:print-layout-*`):
+ * which saved file, which 1-based pages (null: all), and whether annotations
+ * are baked in or left out.
+ */
+export interface PdfPrintLayoutEditor {
+  path: string
+  pages: number[] | null
+  includeAnnotations: boolean
+}
+
+/**
+ * The error `pdf:print-layout-save` answers for a file with permission
+ * restrictions: its arranged result would be a copy without them, so it is
+ * never saved (printing it stays allowed). The screen shows its own wording.
+ */
+export const PDF_PRINT_SAVE_RESTRICTED =
+  'pdf: a PDF with permission restrictions cannot be saved as an arranged PDF'
+
 export interface PdfApi {
   /** Take the pdf path pending for this view (queued at tab creation); null if none */
   consumePending(): Promise<string | null>
@@ -1681,6 +1735,14 @@ export interface PdfApi {
   openSourcePath(path: string): Promise<void>
   /** Read pdf bytes. Only paths granted to this view are allowed */
   readFile(path: string): Promise<ArrayBuffer>
+  /** one slice of a granted file, with the file's size so the reader loop
+   *  needs no separate stat: a 42 MB one-shot ArrayBuffer over IPC has
+   *  killed renderers before first paint on Windows (genoffice#2366) */
+  readFileChunk(
+    path: string,
+    start: number,
+    end: number,
+  ): Promise<{ data: Uint8Array; fileSize: number }>
   /** Open a password-protected document for editing: plain bytes, the /P the file
       carried, whether a password was needed at all (false: owner-only file) and
       which password opened it (the owner's ignores the /P limits) */
@@ -1806,6 +1868,7 @@ export interface PdfApi {
   setPageSize(request: SetPageSizeRequest): Promise<SetPageSizeResult>
   splitPages(request: SplitPagesRequest): Promise<SplitPagesResult>
   cropPages(request: CropPagesRequest): Promise<CropPagesResult>
+  restoreFile(request: RestoreFileRequest): Promise<RestoreFileResult>
   exportImages(request: ExportImagesRequest): Promise<ExportImagesResult>
   /** Shell Save As › PNG page images → draw every page and export it with `saveAs: true` */
   onExportImagesRequest(handler: () => void): () => void
@@ -1815,24 +1878,45 @@ export interface PdfApi {
   onConvertDialogRequest(handler: (request: PdfConvertDialogRequest) => void): () => void
   /** Before a Markdown job writes: close a Markdown tab showing that file (its unsaved-changes guard applies). False = still open */
   releaseConvertTarget(request: PdfConvertOutputRequest): Promise<boolean>
+  /**
+   * The converter's Markdown entry, before its dialog opens: the shell asks
+   * while the editor the result opens in is off ('cancel' = do nothing; a
+   * result made with 'file-only' is shown in its folder). 'open' without a shell.
+   */
+  askBeforeConvert(request: {
+    source: string
+    format: PdfReflowFormat
+  }): Promise<'open' | 'file-only' | 'cancel'>
   /** Open a converted Markdown file in a Markdown tab (same routing as File > Open) */
   openConvertResult(request: PdfConvertOutputRequest): Promise<boolean>
   /** Show a converted file (or an export folder's first file) in the system file manager */
   revealConvertResult(request: PdfConvertOutputRequest): Promise<boolean>
   /** AI create_document: build a new standalone file in the default folder and open it in a new tab */
   createDocument(request: CreateDocumentRequest): Promise<CreateDocumentResult>
+  /**
+   * The annotation list's "Open as Markdown / Word document": not an AI
+   * document. While the editor it opens in is off the shell asks first
+   * (editor choice spec 7.3); "create the file only" writes it and shows it
+   * in its folder.
+   */
+  openAnnotDocument(request: CreateDocumentRequest): Promise<CreateDocumentResult>
   /** open the shell's PDF tools window on `tool` with this view's file picked (false: no host) */
   openInPdfTools(path: string, tool: PdfToolsHandoffTool): Promise<boolean>
   /** Web image search for AI tools (app-wide ai:image-search handler) */
   imageSearch(query: string, maxResults?: number): Promise<ImageSearchResponse>
+  /** Web search for AI tools (app-wide ai:web-search handler) */
+  webSearch(query: string, maxResults?: number): Promise<WebSearchResult>
   /** Read one web page as text for AI tools (app-wide ai:read-url handler), paged by offset */
   readUrl(url: string, offset?: number): Promise<ReadUrlResult>
   /** Download an image URL in the main process (SSRF-guarded, avoids CORS); null on failure */
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
-  /** AI image generation (Codex subscription or a media API key); returns a downloadable URL or an error message */
-  generateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  /** AI image generation (Codex subscription or a media API key); returns a downloadable URL or an error message.
+      model: only when the user named one; the main process uses it if the image route offers it */
+  generateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
+    /** something the request asked for that the app passes on to the model with the URL */
+    note?: string
   }>
   /** Read and verify the digital (certificate) signatures embedded in a granted PDF */
   listDigitalSignatures(path: string): Promise<PdfSignatureInfo[]>
@@ -1856,7 +1940,7 @@ export interface PdfApi {
   addSavedSignature(data: SignatureData): Promise<SavedSignature[]>
   /** Delete one saved signature by id; returns the updated list */
   removeSavedSignature(id: string): Promise<SavedSignature[]>
-  /** OS account name, used as the default author of new note comments; '' when unavailable */
+  /** Settings → General user name (the OS account name when unset), used as the default author of new note comments */
   getUsername(): Promise<string>
   /** The /Subj of the markup annotations in a granted file (accepted AI highlights' categories) */
   annotSubjects(path: string): Promise<PdfAnnotSubject[]>
@@ -1866,6 +1950,7 @@ export interface PdfApi {
   noteInsert(request: PdfNoteInsertRequest): Promise<PdfNoteResult>
   /** this view's PDF has no path the person saved yet (a new blank before its first save): the note buttons wait */
   noteUnsaved(): Promise<boolean>
+  onUsernameChanged(handler: (name: string) => void): () => void
   /** Mirror unsaved-changes state to the main process; drives the save prompt before closing a tab/window */
   setDirty(dirty: boolean): void
   /** Main process asks for a save (close prompt, menu Save, export flows) and waits for sendCloseSaveResult.
@@ -1883,6 +1968,8 @@ export interface PdfApi {
   onAutoSaveDefaultChanged(handler: (value: AutoSaveDefault) => void): () => void
   /** Shell menu Print → renderer runs its print flow (save, rasterize, system dialog) */
   onPrintRequest(handler: () => void): () => void
+  /** Advanced print: arranged preview, print and PDF save, built in the main process from the saved file */
+  printLayout: PrintLayoutBridge<PdfPrintLayoutEditor>
   /** The file was renamed or moved from the shell (home Folders / Files pane); the viewer follows the new path */
   onFileRenamed(handler: (newPath: string) => void): () => void
   /** Watch the file this view just read; another program's change arrives via onDiskFileChanged */
@@ -1937,4 +2024,19 @@ export interface PdfApi {
    */
   aiStreamCancel(requestId: string, scope?: 'request'): Promise<void>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void
+  /** a document job tells the main process it runs (absent in an older preload) */
+  aiJob?: ScreenAiJobBridge
+}
+
+/**
+ * How a document job of this screen tells the main process it runs, so the
+ * shell can count it and stop it when AI is turned off.
+ */
+export interface ScreenAiJobBridge {
+  /** a job begins: null to go on, or the refusal to show (AI is turned off) */
+  begin(jobId: string): Promise<string | null>
+  /** the job ended however it ended */
+  end(jobId: string): void
+  /** the main process asks the job `jobId` to stop */
+  onStop(handler: (jobId: string) => void): () => void
 }

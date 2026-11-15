@@ -36,6 +36,7 @@ export const th = {
   btnCancel: 'ยกเลิก',
   exportFailed: 'ส่งออกไม่สำเร็จ: {error}',
   printFailed: 'พิมพ์ไม่สำเร็จ: {error}',
+  printLayoutSaved: 'บันทึกผลที่จัดวางแล้วเป็น PDF แล้ว',
   linkNotOpened: 'ไม่สามารถเปิดลิงก์นี้ได้',
   dlgSaveTitle: 'บันทึกไดอะแกรม',
   dlgExportTitle: 'ส่งออกไดอะแกรม',

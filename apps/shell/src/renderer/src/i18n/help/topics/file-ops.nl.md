@@ -46,7 +46,17 @@ Regels: de extensie blijft automatisch behouden; ongeldige tekens, afsluitende p
 
 ## Afdrukken
 
-Bestand ▸ Afdrukken… in elke editor (⌘P/ctrl+P) opent het systeemvenster voor afdrukken; pdf's worden afgedrukt met de huidige paginavolgorde en draaiingen.
+Bestand ▸ Afdrukken (⌘P/ctrl+P) opent in elke editor een afdrukvenster. Docs, PDF, Sheets, Slides en Markdown hebben het onderdeel **Pagina-indeling** in hun gewone afdrukvenster, HWP in het afdrukvoorbeeld, en HTML, mindmap en diagram in een nieuw klein afdrukvenster. Kies je niets onder Pagina-indeling, dan wordt er afgedrukt zoals vroeger.
+
+- **Indeling**: kies Eén pagina per vel, Meerdere pagina's per vel (2, 4, 6, 9 of 16), Boekje (links of rechts binden), Affiche (vellen in de breedte en hoogte, overlapping, snijlijnen) of Etiketten (één pagina per etiket of dezelfde pagina op elk etiket, beginetiket, een gangbaar A4-formaat of eigen maten).
+- **Alleen oneven zijden, alleen even zijden, omgekeerde volgorde**: de zijden worden geteld na het indelen, op wat werkelijk uit de printer komt. Handig bij een printer zonder dubbelzijdig afdrukken: druk de voorkanten af, draai het papier om en druk de achterkanten af.
+- **Verkleinen tot papierformaat**: alleen pagina's die groter zijn dan het gekozen papier worden verkleind; kleinere worden niet vergroot. Sheets en Markdown gebruiken hun eigen velden voor papier en schaal.
+- **Grijstinten en beeldresolutie**: bij afdrukken met opties uit Pagina-indeling wordt elke pagina eerst een afbeelding en zo naar de printer gestuurd. Kies de resolutie uit Automatisch, 150, 300 of 600 dpi.
+- **Alleen selectie**: Docs en Markdown drukken alleen de geselecteerde tekst af, opnieuw verdeeld vanaf de eerste pagina; Slides drukt de geselecteerde dia's af en PDF de geselecteerde pagina's. Sheets drukt zoals vroeger het geselecteerde bereik af.
+- **Indelingsschets en resultaat bekijken**: de schets laat meteen zien waar elk paginanummer op het papier komt, en **Resultaat bekijken** toont wat er echt is gemaakt. Met **Ingedeeld resultaat opslaan als pdf** druk je dezelfde indeling af op een andere pc of bij een drukkerij.
+- **Afdrukvenster van het systeem**: kies voor een boekje dubbelzijdig afdrukken met omslaan over de korte kant. Laat het paginabereik en het aantal pagina's per vel in het systeemvenster zoals ze zijn.
+
+Pdf's worden afgedrukt met de huidige paginavolgorde en draaiingen.
 
 ## Waar naamloze bestanden staan
 

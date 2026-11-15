@@ -2,7 +2,9 @@
 
 ## Apertura delle impostazioni
 
-La riga in basso a sinistra in Home apre il pannello delle impostazioni (finché non è collegata un'IA riporta Collega l’IA). Ha cinque sezioni: Account, IA, Generale, Integrazioni e Informazioni.
+La riga in basso a sinistra in Home apre il pannello delle impostazioni (la riga sotto indica se è collegata un'IA). Ha cinque sezioni: Account, IA, Generale, Integrazioni e Informazioni.
+
+Puoi aprirle anche da qualsiasi scheda con **⌘,** (Ctrl+, su Windows e Linux), da **Impostazioni…** nel menu dell’app su un Mac (il menu con il nome dell’app, a sinistra nella barra dei menu) o da **Menu (☰) ▸ Impostazioni…** su Windows e Linux. In una scheda Word ⌘, (Ctrl+,) è il pedice, quindi lì aprile dal menu.
 
 **Account** mostra a che punto sono le tue connessioni Claude, ChatGPT e Codex, e **Gestisci connessioni** porta alla sezione IA. L'IA ha i suoi articoli: [Connessione con abbonamento](help://subscription) e [Modelli IA e impostazioni](help://ai-models).
 
@@ -26,6 +28,19 @@ Chiaro / Scuro / Segui il sistema. L'opzione Segui il sistema segue l'aspetto de
 
 GenOffice non raccoglie né invia statistiche di utilizzo, quindi non c'è alcun interruttore.
 
+## Editor e IA
+
+Qui scegli quali editor usare e se usare l’IA. Lo stesso elenco compare una volta anche in altri due punti: nel passaggio **Scegli i tuoi editor** delle schermate di benvenuto al primo avvio e in una finestra mostrata una sola volta nella Home a chi usava GenOffice prima che esistesse questa impostazione. All’inizio è tutto attivo, quindi se non tocchi nulla non cambia nulla. Una modifica vale subito in tutte le finestre aperte.
+
+- **Editor**: Word, Excel, PowerPoint, PDF, Strumenti PDF, Markdown e testo, HTML, Mappa mentale, Diagramma, HWP (Hangul) ed E-book (EPUB). Gli strumenti PDF si attivano separatamente dall’editor PDF. Almeno un editor deve restare attivo.
+- **Un editor disattivato** sparisce dagli elenchi dei nuovi documenti: le schede della Home, il menu **+** della barra delle schede, File ▸ Nuovo e l’elenco delle app predefinite. I documenti già aperti restano aperti e le copie di recupero vengono conservate.
+- **Aprendo un file di un editor disattivato** (doppio clic, trascinamento, File ▸ Apri, file recenti) ti viene chiesto di scegliere tra **Attiva e apri** e **Annulla**. Se apri più file di quell’editor insieme, la domanda arriva una sola volta.
+- **Altre funzioni che aprirebbero il risultato in un editor disattivato**, come convertire un PDF in quel formato, chiedono prima di iniziare: **Attiva e apri**, **Crea solo il file** (il file viene creato e mostrato nella sua cartella, l’editor resta disattivato) oppure **Annulla**.
+- **Con le funzioni IA disattivate** spariscono i pannelli IA, i pulsanti e i menu IA, il pannello delle domande della Home, la finestra dell’agente e gli inviti a collegare un’IA, e le schede Account, IA e Abilità escono dalle impostazioni. GenOffice non avvia alcun programma di IA dalle sue schermate. Accessi, chiavi, skill e impostazioni restano e tornano quando riattivi l’IA. Se c’è ancora un lavoro di IA in corso, ti viene chiesto prima se vuoi **Ferma e disattiva**.
+- La riga di comando, MCP e questa guida funzionano allo stesso modo, con editor o IA attivi o no.
+
+Anche con l’IA attiva, l’IA non crea nuovi documenti per un editor disattivato e ti dice di attivarlo qui.
+
 ## IA ▸ Avanzate
 
 Resta chiusa finché non la apri; alla maggior parte delle persone non serve mai. La scheda **Modello IA** contiene le chiavi API e i server che gestisci tu, per la chat. Nella scheda **Media e ricerca IA** ogni capacità sceglie il fornitore che la serve e la chiave e l'URL di base di un fornitore si inseriscono una volta sola e si condividono:
@@ -46,7 +61,7 @@ Le impostazioni possono registrare GenOffice come gestore dei file .docx / .xlsx
 ## Note sul software di terze parti e aggiornamenti
 
 - Aiuto ▸ Note sul software di terze parti: l'elenco completo delle licenze open source incluso nell'app.
-- Menu (☰) ▸ Controlla aggiornamenti… (su un Mac, Aiuto ▸ Controlla aggiornamenti…): avvia un controllo manuale; se c'è una versione più recente ti propone di installarla.
+- Menu (☰) ▸ Controlla aggiornamenti… (su un Mac, Aiuto ▸ Controlla aggiornamenti…): avvia un controllo manuale; se c'è una versione più recente ti propone di installarla. Su un Mac si trova anche nel menu dell’app, subito sotto Informazioni su GenOffice.
 
 ## Integrazione MCP (per utenti avanzati / client IA)
 

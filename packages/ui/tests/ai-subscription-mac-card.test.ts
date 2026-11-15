@@ -68,7 +68,7 @@ describe('the Claude card on a Mac', () => {
     for (const lang of ['en', 'ko'] as const) {
       render({ provider: 'claude-code', state: 'not-installed', meteredAccepted: false }, lang)
       expect(textsOf('.ai-sub-note')).toEqual([DESKTOP_NOTE[lang]])
-      expect(actionsShown()).toEqual(['install-help'])
+      expect(actionsShown()).toEqual(['install-help', 'recheck'])
     }
   })
 

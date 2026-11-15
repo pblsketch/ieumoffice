@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const es = {
+  appLegacyDocImported:
+    'El archivo .{ext} se abrió como una copia .docx convertida. El original no cambia; al guardar se escribe un nuevo archivo .docx.',
   appScTitle: 'Atajos de teclado',
   appScFilter: 'Buscar atajo',
   appScNone: 'No hay atajos coincidentes',
@@ -55,6 +57,7 @@ export const es = {
     'Este documento contiene texto vertical (se muestra horizontal por ahora; el guardado no se ve afectado)',
   appNewDocCreated:
     'Documento en blanco creado. Describa el contenido que desea generar en el panel de IA de la izquierda',
+  appNewDocCreatedNoAi: 'Documento en blanco creado.',
   appNewFailed: 'Error al crear el documento: {error}',
   appSaveFailed: 'Error al guardar: {error}',
   appAutoSavedAt: 'Guardado automáticamente ({time})',
@@ -97,6 +100,9 @@ export const es = {
   appPrintRangeAll: 'Todas las páginas',
   appPrintRangeCurrent: 'Página actual',
   appPrintRangeCustom: 'Intervalo personalizado',
+  appPrintRangeSelection: 'Selección',
+  appPrintSelectionPreparing: 'Paginando la selección…',
+  appPrintSelectionFailed: 'No se pudo paginar la selección: {error}',
   appPrintRangeHint: 'p. ej. 1,3,5-8',
   appPrintPageCount: '{n} páginas',
   appPrintNoPages: 'No hay páginas para imprimir',

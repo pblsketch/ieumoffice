@@ -118,7 +118,7 @@ export const id = {
   stepLogin: 'Masuk',
   stepReady: 'Terhubung',
   installReturnNote:
-    'Setelah pemasangan di jendela itu selesai, kembali ke sini. Aplikasi akan memeriksa lagi dengan sendirinya.',
+    'Selama mengunduh, jendela itu mungkin tidak menampilkan apa pun selama beberapa menit. Biarkan tetap terbuka. Setelah pemasangan selesai, kembali ke sini. Aplikasi akan memeriksa lagi dengan sendirinya.',
   loginHowNote:
     'Browser akan terbuka saat Anda menekannya. Masuk dengan akun {vendor} Anda dan tekan Izinkan; koneksi akan selesai dengan sendirinya.',
   signingInStalledNote:

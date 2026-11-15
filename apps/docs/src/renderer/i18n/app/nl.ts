@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const nl = {
+  appLegacyDocImported:
+    'Het .{ext}-bestand is geopend als geconverteerde .docx-kopie. Het origineel blijft ongewijzigd; opslaan schrijft een nieuw .docx-bestand.',
   appScTitle: 'Sneltoetsen',
   appScFilter: 'Sneltoets zoeken',
   appScNone: 'Geen overeenkomende sneltoetsen',
@@ -55,6 +57,7 @@ export const nl = {
     'Dit document bevat verticale tekst (voorlopig horizontaal weergegeven; opslaan wordt niet beïnvloed)',
   appNewDocCreated:
     'Leeg document gemaakt. Beschrijf in het AI-paneel links wat er gegenereerd moet worden.',
+  appNewDocCreatedNoAi: 'Leeg document gemaakt.',
   appNewFailed: 'Document maken mislukt: {error}',
   appSaveFailed: 'Opslaan mislukt: {error}',
   appAutoSavedAt: 'Automatisch opgeslagen ({time})',
@@ -97,6 +100,9 @@ export const nl = {
   appPrintRangeAll: "Alle pagina's",
   appPrintRangeCurrent: 'Huidige pagina',
   appPrintRangeCustom: 'Aangepast bereik',
+  appPrintRangeSelection: 'Selectie',
+  appPrintSelectionPreparing: 'Selectie wordt over pagina’s verdeeld…',
+  appPrintSelectionFailed: 'Kan de selectie niet over pagina’s verdelen: {error}',
   appPrintRangeHint: 'bijv. 1,3,5-8',
   appPrintPageCount: "{n} pagina's",
   appPrintNoPages: "Geen pagina's om af te drukken",

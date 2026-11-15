@@ -83,6 +83,14 @@ export {
 } from './image-backend'
 export type { AiImageBackend, AiImageBackendContext } from './image-backend'
 export {
+  CODEX_IMAGE_MAX_BYTES,
+  CODEX_IMAGE_MIN_VERSION,
+  CODEX_IMAGE_TIMEOUT_MS,
+  generateCodexImage,
+  listCodexModels,
+} from './codex-image'
+export type { CodexImageCall, CodexImageOutcome, CodexImageReference } from './codex-image'
+export {
   AI_EFFORTS,
   CLAUDE_EFFORTS,
   aiEffortOf,

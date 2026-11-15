@@ -12,10 +12,12 @@ Every editor has its own key bindings, and only a few of them work everywhere. T
 | Collapse / expand the ribbon — every editor     | ⌥⌘R   | Ctrl+F1         |
 | Compact the ribbon — Docs only                  | ⌥⌘K   | Ctrl+Alt+K      |
 | Open the Keyboard Shortcuts sheet — Word only   | ⌘/    | Ctrl+/          |
+| Open Settings — every tab except Word           | ⌘,    | Ctrl+,          |
 
 - **F1 opens this manual**, not the shortcut sheet. It belongs to the application menu, so it works from Word, Sheets, Slides, PDF or the Home tab alike.
 - **The ribbon toggle is `Ctrl+F1`, or `⌥⌘R` on macOS.** Pressing bare `F1` does nothing — F1 is the manual, and the ribbon key deliberately does not share it. `Ctrl+F1` is accepted on macOS as well, though `⌥⌘R` is the key Office for Mac uses.
 - **The Keyboard Shortcuts sheet is Word's alone** (`⌘/`). It lists exactly the Word table below. No other editor has one.
+- **`⌘,` opens Settings** (`Ctrl+,` on Windows and Linux), as in most Mac apps. In a Word tab the chord stays subscript, so open Settings there from the app menu on a Mac, or from Menu (☰) ▸ Settings… on Windows and Linux.
 
 ![Word's own Keyboard Shortcuts sheet: the action on the left, the chord on the right, grouped by File, Edit, Text, Paragraph, Insert, Review and View](img/word-shortcuts.png)
 

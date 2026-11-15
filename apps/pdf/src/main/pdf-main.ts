@@ -11,13 +11,14 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, readFile, stat, writeFile } from 'node:fs/promises'
-import { tmpdir, userInfo } from 'node:os'
+import { copyFile, open, readFile, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
 import type { WebContents } from 'electron'
 import {
   buildPrintableHtml,
+  configuredAuthorName,
   configuredDefaultSaveDir,
   confirmOverwriteIfConflicted,
   contextMenuLabels,
@@ -41,11 +42,21 @@ import type {
   RecoveryStore,
   SaveDiskState,
 } from '@genoffice/electron-utils'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { brandText, createI18n, getUiLang } from '@genoffice/i18n'
-import { generateImageTool, documentMediaRoots, withMediaCallSignal } from '@genoffice/ai-search'
+import {
+  abortMediaCalls,
+  generateImageTool,
+  documentMediaRoots,
+  withMediaCallSignal,
+} from '@genoffice/ai-search'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import { sharedSubscriptionStatuses } from '@genoffice/ai-provider/subscription'
 import { PDF_CHANNELS, PDF_TOOLS_HANDOFF, type PdfToolsHandoffTool } from '../shared/ipc'
 import { CertificateEncryptionError, WrongPasswordError, decryptDocument } from './pdf-crypt'
+import { AI_OFF_FALLBACK, createScreenAiJobs } from './screen-ai-jobs'
 import {
   buildExportImagePaths,
   buildSaveAsImagePaths,
@@ -72,6 +83,8 @@ import type {
   PagePreviewRequest,
   ReplacePagesRequest,
   ReplacePagesResult,
+  RestoreFileRequest,
+  RestoreFileResult,
   SetPageSizeRequest,
   SetPageSizeResult,
   SplitPagesRequest,
@@ -146,7 +159,11 @@ import {
 import type { PdfNoteResult, PdfRecoveryCopyResult } from '../shared/ipc'
 import { createPdfRecovery, pdfLooksEncrypted } from './pdf-recovery'
 import { copiedPagesOf, heldCopiedPages, holdCopiedPages } from './page-clipboard'
+import { LABEL_SPEC_FILE_NAME } from '@genoffice/electron-utils/print-arranged'
+import { registerPdfPrintLayout } from './print-layout'
 import { ResultStore, documentHashOfFile } from '../../../../packages/pdf-structure/src/store'
+/** the largest slice readFileChunk hands over IPC (the renderer loops) */
+const PDF_READ_CHUNK_MAX_BYTES = 8 * 1024 * 1024
 
 const tDlg = createI18n({
   zh: {
@@ -671,6 +688,15 @@ interface RuntimePaths {
     request: CreateDocumentRequest,
     ownerWebContentsId?: number,
   ) => Promise<CreateDocumentResult>
+  /**
+   * "Create the file only" of the annotation list's document while the editor
+   * it opens in is off (editor choice spec 7.3): the shell writes it where new
+   * documents go and shows it in its folder. Never the AI's creator.
+   */
+  writeDocumentFile?: (
+    request: CreateDocumentRequest,
+    ownerWebContentsId: number,
+  ) => Promise<CreateDocumentResult>
   /** The shell's PDF tools window, opened on a task with a file picked (decision 0030) */
   openPdfTools?: (path: string, tool: PdfToolsHandoffTool) => boolean
   /** The shell opens (or brings forward) a PDF's note in a Markdown tab (reading-assist 4.9) */
@@ -780,6 +806,18 @@ function openGeneratedPdf(path: string): void {
  * (View > Reload) remounts the renderer and consumes again — a one-shot entry
  * would strand the tab on "No file to open". */
 const openPathByWc = new Map<number, string>()
+
+/** the shell's refusal of a screen's AI run while AI is turned off (Settings) */
+const aiOffRefusal = (senderId: number): string =>
+  aiRunRefusal({ senderId, provider: '', model: '' }) ?? AI_OFF_FALLBACK
+
+/** the screens' document jobs on the shell's list of running AI work */
+const screenAiJobs = createScreenAiJobs({
+  aiOn: aiFeaturesOn,
+  refusal: aiOffRefusal,
+  register: registerAiJob,
+  stopChannel: PDF_CHANNELS.aiJobStop,
+})
 /** File paths granted to each view — readFile only allows these */
 const allowedByWc = new Map<number, Set<string>>()
 /** Unsaved-changes flags mirrored from the renderer; drives the save prompt before closing a tab/window */
@@ -1597,6 +1635,29 @@ function registerPdfIpc(): void {
   if (ipcRegistered) return
   ipcRegistered = true
 
+  // Advanced print: the job PDF comes from the view's saved document (the
+  // renderer saves pending edits first), arranged and printed from here
+  registerPdfPrintLayout({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+    async readViewBytes(viewId, path) {
+      if (!pdfPathGranted(viewId, path)) throw new Error('pdf: path not granted to this view')
+      return viewDocumentBytes(viewId, path)
+    },
+    createPrintWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    async pickSavePath(event, editor) {
+      const parent = BrowserWindow.fromWebContents(event.sender as WebContents)
+      const options = {
+        defaultPath: basename(editor.path).replace(/\.pdf$/i, '') + '-print.pdf',
+        filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+      }
+      const picked = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+  })
+
   // the recovery question (a copy of unsaved edits) is answered before the renderer reads the file
   ipcMain.handle(PDF_CHANNELS.consumePending, (e) => {
     const path = openPathByWc.get(e.sender.id) ?? null
@@ -1605,13 +1666,7 @@ function registerPdfIpc(): void {
     return recovery.resolveOnOpen(e.sender, path).then(() => path)
   })
 
-  ipcMain.handle(PDF_CHANNELS.getUsername, () => {
-    try {
-      return userInfo().username
-    } catch {
-      return ''
-    }
-  })
+  ipcMain.handle(PDF_CHANNELS.getUsername, (): string => configuredAuthorName(app))
 
   ipcMain.handle(PDF_CHANNELS.readFile, async (e, path: unknown) => {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
@@ -1626,6 +1681,45 @@ function registerPdfIpc(): void {
       ? buf.buffer
       : buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
   })
+
+  // Chunked reads for the same grant: one 42 MB ArrayBuffer over IPC has
+  // killed renderers before first paint on Windows (genoffice#2366), while
+  // small slices deserialize fine. The size rides along so the renderer's
+  // loop needs no separate stat.
+  ipcMain.handle(
+    PDF_CHANNELS.readFileChunk,
+    async (e, path: unknown, start: unknown, end: unknown) => {
+      // the preload hands the grant's path, start and end as positional args
+      if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
+        throw new Error('pdf: path not granted to this view')
+      }
+      const from = typeof start === 'number' && Number.isInteger(start) && start >= 0 ? start : -1
+      const to = typeof end === 'number' && Number.isInteger(end) && end >= from ? end : -1
+      if (from < 0 || to < 0 || to - from > PDF_READ_CHUNK_MAX_BYTES) {
+        throw new Error('pdf: invalid chunk range')
+      }
+      // a view restored from a recovery copy shows the copy until it is saved
+      const restored = recovery.viewBytes(e.sender.id, path)
+      if (restored) {
+        if (from === 0) await rememberDiskState(e.sender.id, path)
+        return { data: restored.slice(from, to), fileSize: restored.byteLength }
+      }
+      const handle = await open(path, 'r')
+      let result: { data: Uint8Array; fileSize: number }
+      try {
+        const length = to - from
+        const buf = Buffer.alloc(length)
+        const { bytesRead } = await handle.read(buf, 0, length, from)
+        const fileSize = (await handle.stat()).size
+        result = { data: new Uint8Array(buf.subarray(0, bytesRead)), fileSize }
+      } finally {
+        await handle.close()
+      }
+      // The reader's copy: this view's save guard compares against this state
+      if (from === 0) await rememberDiskState(e.sender.id, path)
+      return result
+    },
+  )
 
   // the view has read its file: hear when another program changes it (untitled
   // working copies live in the app's temp folder and need no watch)
@@ -1678,6 +1772,33 @@ function registerPdfIpc(): void {
       if (!create) return { ok: false, error: 'pdf: document creation is unavailable in this host' }
       try {
         return await create(parsed, e.sender.id)
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  // The annotation list's "Open as Markdown / Word document" (no AI): the
+  // document opens in another editor, so while that editor is off the shell
+  // asks before anything is made (editor choice spec 7.3)
+  ipcMain.handle(
+    PDF_CHANNELS.annotDocument,
+    async (e, request: unknown): Promise<CreateDocumentResult> => {
+      if (!allowedByWc.has(e.sender.id)) {
+        return { ok: false, error: 'pdf: sender is not a registered PDF view' }
+      }
+      const parsed = parseCreateDocumentRequest(request)
+      if (!parsed || (parsed.type !== 'md' && parsed.type !== 'docx')) {
+        return { ok: false, error: 'pdf: invalid annotation document request' }
+      }
+      const answer = await askBeforeMakeAndOpen(parsed.type === 'md' ? 'markdown' : 'docs', {
+        fileName: `${parsed.title}.${parsed.type}`,
+      })
+      if (answer === 'cancel') return { ok: false, canceled: true }
+      const make = answer === 'file-only' ? runtime.writeDocumentFile : runtime.createDocument
+      if (!make) return { ok: false, error: 'pdf: document creation is unavailable in this host' }
+      try {
+        return await make(parsed, e.sender.id)
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
@@ -2550,6 +2671,28 @@ function registerPdfIpc(): void {
   )
 
   ipcMain.handle(
+    PDF_CHANNELS.restoreFile,
+    async (e, request: RestoreFileRequest): Promise<RestoreFileResult> => {
+      const { path, bytes } = request ?? {}
+      // a buffer from the renderer's realm (the web build's worker) fails instanceof
+      if (
+        typeof path !== 'string' ||
+        !allowedByWc.get(e.sender.id)?.has(path) ||
+        Object.prototype.toString.call(bytes) !== '[object ArrayBuffer]'
+      ) {
+        return { ok: false, error: 'pdf: path not granted to this view' }
+      }
+      try {
+        // this view's own write: its disk watch must not read it as another program's change
+        await writeOwnFile(e.sender.id, path, () => writePdfAtomically(path, new Uint8Array(bytes)))
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  ipcMain.handle(
     PDF_CHANNELS.setPageSize,
     async (e, request: SetPageSizeRequest): Promise<SetPageSizeResult> => {
       const { path, width, height } = request ?? {}
@@ -2669,28 +2812,56 @@ function registerPdfIpc(): void {
 
   // pdf-owned (unlike ai:image-search / ai:fetch-image, which the shell registers app-wide):
   // slides' ai:generate-image is only registered once a slides view exists, so pdf needs its own
-  ipcMain.handle(PDF_CHANNELS.generateImage, (e, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-    // ends with its tab, or when the tab's AI run is stopped
-    withMediaCallSignal(e.sender, (signal) =>
-      generateImageTool(
-        join(app.getPath('userData'), 'ai-settings.json'),
-        {
-          prompt: String(op?.prompt ?? ''),
-          aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+  ipcMain.handle(
+    PDF_CHANNELS.generateImage,
+    async (e, op: { prompt?: unknown; aspectRatio?: unknown; model?: unknown }) => {
+      // the AI window is hidden while AI is off; a late call is refused, not run
+      if (!aiFeaturesOn()) return { error: aiOffRefusal(e.sender.id) }
+      const senderId = e.sender.id
+      // a model the user named: generateImageTool decides whether this route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      // ends with its tab, or when the tab's AI run is stopped
+      const run = withMediaCallSignal(e.sender, (signal) =>
+        generateImageTool(
+          join(app.getPath('userData'), 'ai-settings.json'),
+          {
+            prompt: String(op?.prompt ?? ''),
+            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+            ...(model ? { model } : {}),
+          },
+          {
+            // pdf keeps its media (exported/edited images) beside the open file
+            mediaRoots: documentMediaRoots(
+              openPathByWc.get(senderId),
+              join(app.getPath('temp'), 'genoffice-pasted'),
+            ),
+            // a user request from the AI panel: the connected subscription may be used
+            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+            signal,
+          },
+        ),
+      )
+      // part of the AI window's turn: Settings counts it and can stop it
+      const unregister = registerAiJob({
+        kind: 'chat',
+        stop: () => {
+          abortMediaCalls(senderId)
+          return run.catch(() => undefined)
         },
-        {
-          // pdf keeps its media (exported/edited images) beside the open file
-          mediaRoots: documentMediaRoots(
-            openPathByWc.get(e.sender.id),
-            join(app.getPath('temp'), 'genoffice-pasted'),
-          ),
-          // a user request from the AI panel: the connected subscription may be used
-          context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-          signal,
-        },
-      ),
-    ),
+      })
+      try {
+        return await run
+      } finally {
+        unregister()
+      }
+    },
   )
+
+  // the document jobs the screen runs (AI page reading, translation, AI highlights, overview)
+  ipcMain.handle(PDF_CHANNELS.aiJobBegin, (e, jobId: unknown) =>
+    screenAiJobs.begin(e.sender, jobId),
+  )
+  ipcMain.on(PDF_CHANNELS.aiJobEnd, (e, jobId: unknown) => screenAiJobs.end(e.sender.id, jobId))
 
   // ── Certificate (digital) signatures ──
 

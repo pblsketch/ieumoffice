@@ -2,6 +2,7 @@ import type { AiPanelPrefs } from '@genoffice/ui'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiToolCapabilities } from '@genoffice/ai-search'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { ExportImageMime } from './export-image-mime'
 import type { SubscriptionApi } from './subscription-api'
 
@@ -425,6 +426,18 @@ export interface MarkdownPrintDocumentRequest {
 export type MarkdownPrintDocumentResult =
   { ok: true; canceled?: boolean } | { ok: false; error: string }
 
+/**
+ * The advanced print layout's job (decision 0141): the print preview's PDF of
+ * this HTML and paper, cut to `pages` when the dialog chose a range.
+ */
+export interface MarkdownPrintLayoutJob {
+  html: string
+  pages: MarkdownPageRange | null
+  options: MarkdownPrintOptions
+  /** the document's name, offered in the save dialog of the arranged PDF */
+  name: string
+}
+
 export interface ImageExportRequest extends Omit<ExportPdfRequest, 'outPath'> {
   /**
    * Save As › page images: the one file name the save dialog approved
@@ -603,6 +616,11 @@ export interface MarkdownApi {
   renderPrintPreview(request: MarkdownPrintPreviewRequest): Promise<MarkdownPrintPreviewResult>
   /** print through the system dialog, using the same HTML and options as the preview */
   printDocument(request: MarkdownPrintDocumentRequest): Promise<MarkdownPrintDocumentResult>
+  /**
+   * The advanced print layout: the preview's PDF of the job's HTML and paper,
+   * arranged and previewed, printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<MarkdownPrintLayoutJob>
   prepareImageExport(request: ImageExportRequest): Promise<ImageExportPreparation>
   writeExportImage(
     id: string,
@@ -647,8 +665,10 @@ export interface MarkdownApi {
   /** Download an image URL in the main process (CORS-free, scheme/target validated) */
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
   /** AI image generation through the configured image route (markdown-owned channel) */
-  aiGenerateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  aiGenerateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
+    /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+    note?: string
   }>
 }

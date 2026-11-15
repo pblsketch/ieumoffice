@@ -2,7 +2,9 @@
 
 ## Membuka tetapan
 
-Baris di penjuru kiri bawah pada Laman Utama akan membuka panel tetapan. Ia memaparkan Sambungkan AI sehingga ada AI yang disambungkan. Panel ini mempunyai lima bahagian: Akaun, AI, Umum, Integrasi dan Perihal.
+Baris di penjuru kiri bawah pada Laman Utama akan membuka panel tetapan. Baris di bawahnya menunjukkan sama ada AI telah disambungkan. Panel ini mempunyai lima bahagian: Akaun, AI, Umum, Integrasi dan Perihal.
+
+Anda juga boleh membukanya dari mana-mana tab dengan **⌘,** (Ctrl+, pada Windows dan Linux), daripada **Tetapan…** dalam menu aplikasi pada Mac (menu yang dinamakan sempena aplikasi, di kiri bar menu), atau daripada **Menu (☰) ▸ Tetapan…** pada Windows dan Linux. Dalam tab Word, ⌘, (Ctrl+,) ialah subskrip, jadi bukanya daripada menu.
 
 **Akaun** menunjukkan keadaan sambungan Claude, ChatGPT dan Codex anda, dan **Urus sambungan** membawa anda ke bahagian AI. AI mempunyai babnya sendiri: [Sambungan langganan](help://subscription) dan [Model AI dan tetapan](help://ai-models).
 
@@ -26,6 +28,19 @@ Tiga pilihan ialah Cerah, Gelap, dan Ikut Sistem. Mod Ikut Sistem mengikut rupa 
 
 GenOffice tidak mengumpul atau menghantar statistik penggunaan, jadi tiada suis untuknya.
 
+## Editor dan AI
+
+Di sini anda memilih editor yang digunakan dan sama ada menggunakan AI. Senarai yang sama juga muncul sekali di dua tempat lain: langkah **Pilih editor yang anda gunakan** dalam skrin alu-aluan semasa pelancaran pertama, dan tetingkap yang dipaparkan sekali di Laman Utama kepada mereka yang sudah menggunakan GenOffice sebelum tetapan ini wujud. Pada mulanya semuanya dihidupkan, jadi jika dibiarkan tiada apa yang berubah. Perubahan terpakai serta-merta dalam semua tetingkap yang terbuka.
+
+- **Editor**: Word, Excel, PowerPoint, PDF, Alat PDF, Markdown dan teks, HTML, Peta minda, Rajah, HWP (Hangul) dan E-buku (EPUB). Alat PDF dihidupkan dan dimatikan berasingan daripada editor PDF. Sekurang-kurangnya satu editor mesti kekal hidup.
+- **Editor yang dimatikan** hilang daripada senarai dokumen baharu: kad di Laman Utama, menu **+** pada bar tab, Fail ▸ Baharu dan senarai aplikasi lalai. Dokumen yang sudah terbuka kekal terbuka, dan salinan pemulihan disimpan.
+- **Apabila membuka fail editor yang dimatikan** (klik dua kali, seret dan lepas, Fail ▸ Buka, fail terbaharu), anda diminta memilih **Hidupkan dan buka** atau **Batal**. Membuka beberapa failnya serentak hanya ditanya sekali.
+- **Ciri lain yang akan membuka hasilnya dalam editor yang dimatikan**, contohnya menukar PDF kepada format itu, bertanya sebelum bermula: **Hidupkan dan buka**, **Cipta fail sahaja** (fail dicipta dan dipaparkan dalam foldernya, editor kekal mati) atau **Batal**.
+- **Apabila ciri AI dimatikan**, panel AI, butang dan menu AI, panel soalan di Laman Utama, tetingkap ejen dan gesaan menyambungkan AI hilang, dan tab Akaun, AI dan Kemahiran keluar daripada tetapan. GenOffice tidak memulakan sebarang program AI dari skrinnya. Log masuk, kunci, kemahiran dan tetapan disimpan dan kembali apabila AI dihidupkan semula. Jika kerja AI masih berjalan, anda ditanya dahulu sama ada mahu **Hentikan dan matikan**.
+- Baris arahan, MCP dan panduan ini berfungsi sama sahaja, sama ada editor atau AI dihidupkan atau dimatikan.
+
+Walaupun AI dihidupkan, AI tidak mencipta dokumen baharu untuk editor yang dimatikan; ia meminta anda menghidupkan editor itu di sini.
+
 ## AI ▸ Lanjutan
 
 Tertutup sehingga anda membukanya; kebanyakan orang tidak pernah memerlukannya. Tab **Model AI** menyimpan kunci API dan pelayan yang anda jalankan sendiri, untuk sembang. Pada tab **Media & Carian AI**, setiap keupayaan memilih penyedia yang menyediakannya, dan kunci serta URL asas setiap penyedia dimasukkan sekali sahaja lalu dikongsi bersama:
@@ -46,7 +61,7 @@ Tetapan boleh mendaftar GenOffice sebagai aplikasi yang mengendalikan fail .docx
 ## Notis perisian pihak ketiga dan kemas kini
 
 - Bantuan ▸ Notis Perisian Pihak Kedua memaparkan senarai penuh lesen perisian sumber terbuka yang disertakan dengan aplikasi.
-- Menu (☰) ▸ Semak Kemas Kini (pada Mac, Bantuan ▸ Semak Kemas Kini) memulakan pemeriksaan secara manual. Jika terdapat versi yang lebih baharu, aplikasi akan meminta anda memasangnya.
+- Menu (☰) ▸ Semak Kemas Kini (pada Mac, Bantuan ▸ Semak Kemas Kini) memulakan pemeriksaan secara manual. Jika terdapat versi yang lebih baharu, aplikasi akan meminta anda memasangnya. Pada Mac, ia juga ada dalam menu aplikasi, betul-betul di bawah Perihal GenOffice.
 
 ## Integrasi MCP
 

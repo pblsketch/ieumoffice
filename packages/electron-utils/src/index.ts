@@ -23,11 +23,16 @@ export {
   editMenuTemplate,
   helpCheckUpdatesItems,
   helpMenuTemplate,
+  macAppMenuTemplate,
+  SETTINGS_ACCELERATOR,
+  setOpenSettingsInvoker,
+  settingsMenuItem,
   setUpdateCheckInvoker,
   toggleDevToolsItem,
   viewMenuTemplate,
   windowMenuTemplate,
   type AppMenuLabels,
+  type SettingsShortcut,
   type ViewMenuOptions,
 } from './app-menu'
 export {
@@ -75,6 +80,14 @@ export {
   type SettingsPathProvider,
 } from './hwp-default-format'
 export { installNavigationGuard } from './navigation-guard'
+export {
+  decodeChunks,
+  decodeChunksUtf8,
+  decodeCommandOutput,
+  decodeUtf8,
+  windowsOemCodePage,
+  type DecodeCommandOptions,
+} from './console-output'
 export {
   DROP_OPEN_CHANNEL,
   droppableFilePaths,

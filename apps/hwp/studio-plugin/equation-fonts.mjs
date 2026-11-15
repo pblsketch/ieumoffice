@@ -96,6 +96,17 @@ export function isEquationGlyphFont(family) {
 }
 
 /**
+ * Whether a font list of a print page (the value of an SVG `font-family`) is an
+ * equation's: Hancom's glyph font, or the fallback equationSvgForThisPc wrote in its
+ * place. Such text is drawn by this module's own rules, not the page text's.
+ */
+export function isEquationSvgFamily(families) {
+  if (typeof families !== 'string') return false
+  if (families === SVG_FALLBACK) return true
+  return isEquationGlyphFont(families.split(',')[0].replace(/&apos;|&quot;/g, "'"))
+}
+
+/**
  * A glyph run as the characters it stands for; null when it holds no glyph code. `italic`
  * is whether the run is one of slanted glyphs, `fit` whether it is a big operator to be
  * fitted onto the baseline (the engine writes one glyph a run).

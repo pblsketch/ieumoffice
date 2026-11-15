@@ -207,7 +207,7 @@ body.vib .home {
   justify-content: center;
 }
 
-/* ---- bottom-left settings entry: where the AI subscription connection stands ---- */
+/* ---- bottom-left settings entry: "Settings" over the state of the AI in use ---- */
 /* clicking it opens the settings modal (settings.css) directly, which hosts
    the connection plus preferences (language / theme / save location / update channel) */
 
@@ -273,13 +273,6 @@ body.vib .home {
   min-width: 0;
   line-height: 1.25;
   flex: 1;
-}
-
-.account-settings {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
 }
 
 .account-chevron {

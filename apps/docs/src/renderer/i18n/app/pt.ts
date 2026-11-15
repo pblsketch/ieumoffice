@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const pt = {
+  appLegacyDocImported:
+    'O arquivo .{ext} foi aberto como uma cópia .docx convertida. O original permanece inalterado; ao salvar, é gravado um novo arquivo .docx.',
   appScTitle: 'Atalhos de Teclado',
   appScFilter: 'Pesquisar atalho',
   appScNone: 'Nenhum atalho correspondente',
@@ -54,6 +56,7 @@ export const pt = {
   appVerticalTextNotice:
     'Este documento contém texto vertical (exibido horizontalmente por enquanto; o salvamento não é afetado)',
   appNewDocCreated: 'Documento em branco criado. Descreva o que gerar no painel de IA à esquerda.',
+  appNewDocCreatedNoAi: 'Documento em branco criado.',
   appNewFailed: 'Falha ao criar o documento: {error}',
   appSaveFailed: 'Falha ao salvar: {error}',
   appAutoSavedAt: 'Salvo automaticamente ({time})',
@@ -95,6 +98,9 @@ export const pt = {
   appPrintRangeAll: 'Todas as páginas',
   appPrintRangeCurrent: 'Página atual',
   appPrintRangeCustom: 'Intervalo personalizado',
+  appPrintRangeSelection: 'Seleção',
+  appPrintSelectionPreparing: 'Paginando a seleção…',
+  appPrintSelectionFailed: 'Não foi possível paginar a seleção: {error}',
   appPrintRangeHint: 'ex.: 1,3,5-8',
   appPrintPageCount: '{n} páginas',
   appPrintNoPages: 'Nenhuma página para imprimir',
@@ -374,9 +380,9 @@ export const pt = {
   appLangIndonesian: 'indonésio',
   appLangRussian: 'russo',
   appLangArabic: 'árabe',
-  appLangPortuguese: 'português',
+  appLangPortuguese: 'Português',
   appLangItalian: 'italiano',
-  appLangPolish: 'polaco',
+  appLangPolish: 'polonês',
   appLangCzech: 'tcheco',
   appLangDutch: 'neerlandês',
   appLangMalay: 'malaio',

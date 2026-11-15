@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const tr = {
+  appLegacyDocImported:
+    '.{ext} dosyası dönüştürülmüş bir .docx kopyası olarak açıldı. Özgün dosya değişmez; kaydetmek yeni bir .docx dosyası yazar.',
   appScTitle: 'Klavye Kısayolları',
   appScFilter: 'Kısayol ara',
   appScNone: 'Eşleşen kısayol yok',
@@ -55,6 +57,7 @@ export const tr = {
     'Bu belgede dikey metin var (şimdilik yatay gösteriliyor; kaydetmeyi etkilemez)',
   appNewDocCreated:
     'Boş belge oluşturuldu. Oluşturmak istediğiniz içeriği soldaki AI bölmesinde açıklayın.',
+  appNewDocCreatedNoAi: 'Boş belge oluşturuldu.',
   appNewFailed: 'Belge oluşturulamadı: {error}',
   appSaveFailed: 'Kaydetme başarısız: {error}',
   appAutoSavedAt: 'Otomatik kaydedildi ({time})',
@@ -94,6 +97,9 @@ export const tr = {
   appPrintRangeAll: 'Tüm sayfalar',
   appPrintRangeCurrent: 'Geçerli sayfa',
   appPrintRangeCustom: 'Özel aralık',
+  appPrintRangeSelection: 'Seçim',
+  appPrintSelectionPreparing: 'Seçim sayfalara yerleştiriliyor…',
+  appPrintSelectionFailed: 'Seçim sayfalara yerleştirilemedi: {error}',
   appPrintRangeHint: 'ör. 1,3,5-8',
   appPrintPageCount: '{n} sayfa',
   appPrintNoPages: 'Yazdırılacak sayfa yok',

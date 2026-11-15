@@ -48,6 +48,11 @@ export const de = {
   saveFailedStatus: 'Speichern fehlgeschlagen',
   exportFailed: 'Export fehlgeschlagen',
   printFailed: 'Druck fehlgeschlagen: {error}',
+  printRangeEmpty:
+    'Dieses Dokument hat {count} Seiten. Geben Sie Seitenzahlen innerhalb dieser Seiten ein.',
+  printPagesFailed: 'Die zu druckenden Seiten konnten nicht gezählt werden: {error}',
+  printLayoutSaved: 'Das angeordnete Ergebnis wurde als PDF gespeichert.',
+  printLayoutSaveFailed: 'Das PDF konnte nicht gespeichert werden: {error}',
   exportHtmlSkipped:
     'Exportiert, aber {count} Ressource(n) konnten nicht eingebettet werden (z. B. {first})',
   viewPreview: 'Vorschau',

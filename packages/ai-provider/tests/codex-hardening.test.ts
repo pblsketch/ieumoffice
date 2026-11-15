@@ -336,7 +336,10 @@ describe('Codex MCP servers', () => {
     expect(profile.config).toMatchObject({ default_permissions: 'genoffice', mcp_servers: off })
     const readOnly = codexThreadStartParams(CONFIG, '/tmp/x', 'read-only', off)
     expect(readOnly).toMatchObject({ sandbox: 'read-only', config: { mcp_servers: off } })
-    expect(codexThreadStartParams(CONFIG, '/tmp/x', 'read-only')).not.toHaveProperty('config')
+    // without servers the read-only thread still states its features (the image tool off)
+    expect(codexThreadStartParams(CONFIG, '/tmp/x', 'read-only').config).not.toHaveProperty(
+      'mcp_servers',
+    )
   })
 
   it('starts a thread with the servers Codex itself reports switched off', async () => {

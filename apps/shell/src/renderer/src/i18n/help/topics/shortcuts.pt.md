@@ -6,16 +6,18 @@ Cada editor tem as suas próprias combinações de teclas, e apenas algumas func
 
 **Quase nada disto é global.** As três teclas de acesso abaixo são-no; tudo o que se segue pertence à aplicação que tiver à frente, e muda quando muda de separador.
 
-| Ação                                                      | macOS | Windows / Linux |
-| --------------------------------------------------------- | ----- | --------------- |
-| Abrir o guia do utilizador — funciona em toda a aplicação | F1    | F1              |
-| Recolher / expandir o friso — todos os editores           | ⌥⌘R   | Ctrl+F1         |
-| Faixa compacta — só Docs                                  | ⌥⌘K   | Ctrl+Alt+K      |
-| Abrir a folha de atalhos de teclado — apenas Word         | ⌘/    | Ctrl+/          |
+| Ação                                                        | macOS | Windows / Linux |
+| ----------------------------------------------------------- | ----- | --------------- |
+| Abrir o guia do utilizador — funciona em toda a aplicação   | F1    | F1              |
+| Recolher / expandir o friso — todos os editores             | ⌥⌘R   | Ctrl+F1         |
+| Faixa compacta — só Docs                                    | ⌥⌘K   | Ctrl+Alt+K      |
+| Abrir a folha de atalhos de teclado — apenas Word           | ⌘/    | Ctrl+/          |
+| Abrir as configurações — todos os separadores exceto o Word | ⌘,    | Ctrl+,          |
 
 - **F1 abre este manual**, não a folha de atalhos. A tecla pertence ao menu da aplicação, por isso funciona igualmente a partir de Word, Sheets, Slides, PDF ou do separador Home.
 - **O interruptor do friso é `Ctrl+F1`, ou `⌥⌘R` no macOS.** Premir `F1` sozinho não faz nada — F1 é o manual, e a tecla do friso deliberadamente não partilha essa combinação. `Ctrl+F1` também é aceite no macOS, mas `⌥⌘R` é a tecla que o Office para Mac usa.
 - **A folha de atalhos de teclado é só do Word** (`⌘/`). Lista exatamente a tabela do Word abaixo. Nenhum outro editor tem uma.
+- **`⌘,` abre as configurações** (`Ctrl+,` no Windows e no Linux), como na maioria das apps para Mac. Num separador do Word a combinação continua a ser subscrito; abra aí as configurações pelo menu da aplicação num Mac, ou por Menu (☰) ▸ Configurações… no Windows e no Linux.
 
 ![A folha de atalhos de teclado do próprio Word: a ação à esquerda, o atalho à direita, agrupados por Ficheiro, Edição, Formatação de texto, Formatação de parágrafo, Inserir, Revisão e ferramentas, Vista](img/word-shortcuts.png)
 

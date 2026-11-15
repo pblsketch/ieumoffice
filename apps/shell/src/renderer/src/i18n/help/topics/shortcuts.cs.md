@@ -12,10 +12,12 @@ Každý editor má vlastní přiřazení kláves a funguje všude jen několik z
 | Složit / rozbalit pás — každý editor                       | ⌥⌘R   | Ctrl+F1         |
 | Kompaktní pás — jen Docs                                   | ⌥⌘K   | Ctrl+Alt+K      |
 | Otevřít list Klávesové zkratky — pouze Word                | ⌘/    | Ctrl+/          |
+| Otevřít nastavení — všechny karty kromě Wordu              | ⌘,    | Ctrl+,          |
 
 - **F1 otevírá tuto příručku**, ne list zkratek. Patří do menu aplikace, takže funguje z Wordu, Sheets, Slides, PDF i panelu Home.
 - **Přepínač pásu je `Ctrl+F1`, nebo `⌥⌘R` na macOS.** Samotné `F1` nic neudělá — F1 je příručka a klávesa pásu ji záměrně nesdílí. `Ctrl+F1` se na macOS také přijímá, ale `⌥⌘R` je klávesa, kterou používá Office pro Mac.
 - **List Klávesové zkratky existuje jen ve Wordu** (`⌘/`). Vypisuje přesně tabulku Wordu níže. Jiný editor ho nemá.
+- **`⌘,` otevře nastavení** (`Ctrl+,` ve Windows a Linuxu), jako ve většině aplikací pro Mac. Na kartě Word zůstává tato zkratka dolním indexem, proto tam nastavení otevřete z nabídky aplikace na Macu nebo přes Nabídka (☰) ▸ Nastavení… ve Windows a Linuxu.
 
 ![List Klávesové zkratky ve Wordu: akce vlevo, klávesová zkratka vpravo, seskupeno podle Soubor, Úpravy, Formátování textu, Formátování odstavce, Vkládání, Kontrola a nástroje, Zobrazení](img/word-shortcuts.png)
 

@@ -2557,6 +2557,14 @@ export class HwpDocument {
      */
     setExactFontInstance(options_json: string): string;
     /**
+     * Canvas2D 보충 폭이 켜진 채로 export(SVG 등)를 허용할지 설정한다 (기본 꺼짐).
+     *
+     * 호스트가 보충 폭을 잰 것과 같은 브라우저·같은 글꼴로 결과를 그릴 때만 켠다.
+     * 켜 둔 동안의 export는 화면과 같은 조판(줄·쪽 나눔)을 그대로 담는다.
+     * export가 끝나면 호출자가 다시 끈다. 조판 자체는 바꾸지 않는다.
+     */
+    setExportKeepsCanvasMetrics(enabled: boolean): void;
+    /**
      * 대체 폰트 경로를 설정한다.
      */
     setFallbackFont(path: string): void;
@@ -3569,6 +3577,7 @@ export interface InitOutput {
     readonly hwpdocument_setDpi: (a: number, b: number) => void;
     readonly hwpdocument_setEquationProperties: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly hwpdocument_setExactFontInstance: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly hwpdocument_setExportKeepsCanvasMetrics: (a: number, b: number) => void;
     readonly hwpdocument_setFallbackFont: (a: number, b: number, c: number) => void;
     readonly hwpdocument_setFieldValue: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly hwpdocument_setFieldValueByName: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];

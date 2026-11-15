@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const he = {
+  appLegacyDocImported:
+    'קובץ ה-.{ext} נפתח כעותק .docx מומר. הקובץ המקורי נשאר כפי שהיה; השמירה כותבת קובץ .docx חדש.',
   appScTitle: 'קיצורי מקלדת',
   appScFilter: 'חיפוש קיצור',
   appScNone: 'לא נמצאו קיצורים מתאימים',
@@ -51,6 +53,7 @@ export const he = {
   appFontsMissing: 'גופני המסמך חסרים: {names} (מוצגים גופנים חלופיים)',
   appVerticalTextNotice: 'המסמך מכיל טקסט אנכי (מוצג אופקית בינתיים; השמירה אינה מושפעת)',
   appNewDocCreated: 'נוצר מסמך ריק. תארו בחלונית ה-AI משמאל מה ליצור.',
+  appNewDocCreatedNoAi: 'נוצר מסמך ריק.',
   appNewFailed: 'יצירת המסמך נכשלה: {error}',
   appSaveFailed: 'השמירה נכשלה: {error}',
   appAutoSavedAt: 'נשמר אוטומטית ({time})',
@@ -90,6 +93,9 @@ export const he = {
   appPrintRangeAll: 'כל העמודים',
   appPrintRangeCurrent: 'עמוד נוכחי',
   appPrintRangeCustom: 'טווח מותאם אישית',
+  appPrintRangeSelection: 'הבחירה',
+  appPrintSelectionPreparing: 'מחלק את הבחירה לעמודים…',
+  appPrintSelectionFailed: 'לא ניתן לחלק את הבחירה לעמודים: {error}',
   appPrintRangeHint: 'לדוגמה: 1,3,5-8',
   appPrintPageCount: '{n} עמודים',
   appPrintNoPages: 'אין עמודים להדפסה',

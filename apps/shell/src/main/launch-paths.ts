@@ -39,10 +39,11 @@ export const LAUNCHABLE_DOUBLE_EXTS = ['drawio.svg', 'drawio.png'] as const
 
 /**
  * Files the suite imports but never claims: a `.mm` mind map belongs to the
- * programs that made it (FreeMind, Freeplane), so no file association names
- * it. It reaches the app the same ways as a draw.io picture.
+ * programs that made it (FreeMind, Freeplane), and a legacy Word or PowerPoint
+ * file (`.doc`, `.dot`, `.ppt`) opens as a converted copy, so no file
+ * association names them. They reach the app the same ways as a draw.io picture.
  */
-export const LAUNCHABLE_UNCLAIMED_EXTS = ['mm'] as const
+export const LAUNCHABLE_UNCLAIMED_EXTS = ['mm', 'doc', 'dot', 'ppt'] as const
 
 const SUPPORTED_LAUNCH_RE = new RegExp(
   `\\.(${[
@@ -52,7 +53,7 @@ const SUPPORTED_LAUNCH_RE = new RegExp(
   ].join('|')})$`,
   'i',
 )
-const UNSUPPORTED_LAUNCH_RE = /\.(doc|rtf|ppt|pps|odp|xlsb|pages|key|numbers)$/i
+const UNSUPPORTED_LAUNCH_RE = /\.(rtf|pps|odp|xlsb|pages|key|numbers)$/i
 
 interface LaunchPayload {
   launchPaths?: unknown

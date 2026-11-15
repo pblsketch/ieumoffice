@@ -12,10 +12,12 @@ Ogni editor ha le proprie combinazioni di tasti, e solo poche funzionano ovunque
 | Comprimi / espandi il nastro — ogni editor               | ⌥⌘R   | Ctrl+F1         |
 | Barra compatta — solo Docs                               | ⌥⌘K   | Ctrl+Alt+K      |
 | Apri il foglio delle scorciatoie da tastiera — solo Word | ⌘/    | Ctrl+/          |
+| Aprire le impostazioni — tutte le schede tranne Word     | ⌘,    | Ctrl+,          |
 
 - **F1 apre questo manuale**, non il foglio delle scorciatoie. Il tasto appartiene al menu dell’applicazione, quindi funziona allo stesso modo da Word, Sheets, Slides, PDF o dalla scheda Home.
 - **L’interruttore del nastro è `Ctrl+F1`, oppure `⌥⌘R` su macOS.** Premere `F1` da solo non fa nulla — F1 è il manuale, e il tasto del nastro non condivide deliberatamente quella combinazione. `Ctrl+F1` è accettata anche su macOS, ma `⌥⌘R` è il tasto che usa Office per Mac.
 - **Il foglio delle scorciatoie da tastiera appartiene solo a Word** (`⌘/`). Elenca esattamente la tabella di Word qui sotto. Nessun altro editor ne ha uno.
+- **`⌘,` apre le impostazioni** (`Ctrl+,` su Windows e Linux), come nella maggior parte delle app per Mac. In una scheda Word la combinazione resta il pedice: lì apri le impostazioni dal menu dell’app su un Mac, o da Menu (☰) ▸ Impostazioni… su Windows e Linux.
 
 ![Il foglio delle scorciatoie da tastiera di Word stesso: l’azione a sinistra, la scorciatoia a destra, raggruppati per File, Modifica, Formattazione del testo, Formattazione del paragrafo, Inserimento, Revisione e strumenti, Vista](img/word-shortcuts.png)
 

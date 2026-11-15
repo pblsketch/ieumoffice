@@ -12,6 +12,7 @@ import {
   AiSubscriptionUsageLine,
   aiSubscriptionText,
   useAiSendGate,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
@@ -436,6 +437,9 @@ export function AiPanel({
   const streamErrorRef = useRef<IpcStreamError | null>(null)
   /** usage windows the subscription program reported last */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own);
+  // the shared merge keeps the windows a report does not name
+  useSubscriptionUsageUpdates(() => window.markdownApi.aiSubscription, setSubscriptionUsage)
   /** the input of the last run was cut to fit a limit */
   const [inputTruncated, setInputTruncated] = useState(false)
   const langRef = useRef(lang)

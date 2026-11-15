@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const de = {
+  appLegacyPptImported:
+    'Die .ppt-Datei wurde als konvertierte .pptx-Kopie geöffnet. Das Original bleibt unverändert; beim Speichern entsteht eine neue .pptx-Datei. Sprechernotizen und Animationen werden nicht übernommen.',
   redactMenuLabel: 'Auswahl vor der KI verbergen',
   redactDialogDesc:
     'Das Ausgewählte bleibt im Dokument und in der Datei; das Modell sieht nur den Platzhalter. Geben Sie ihm einen Namen.',
@@ -183,6 +185,9 @@ export const de = {
   appPrintLandscape: 'Querformat',
   appPrintFrame: 'Folien einrahmen',
   appPrintHidden: 'Ausgeblendete Folien drucken',
+  appPrintRangeSelected: 'Ausgewählte Folien',
+  appPrintLayoutBlocked:
+    'Handzettel und Notizenseiten werden mit einer Seite pro Blatt gedruckt. Wählen Sie „Ganzseitige Folien“, um Seiten anzuordnen.',
   appPrintPageCount: '{n} Seiten',
   appPrintNoPages: 'Keine Folien zum Drucken',
   appPrintRendering: 'Vorschau wird erstellt…',

@@ -43,6 +43,8 @@ import {
   type ProjectMemoryLine,
   type SkillChipRef,
   type SkillUse,
+  useImeEnterGuard,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
@@ -678,6 +680,7 @@ export function AiPanel({
     onChange: setInput,
     textareaRef: inputRef,
   })
+  const ime = useImeEnterGuard()
   /** Stop following once the user scrolls up; re-attach when near the bottom */
   const stickToBottomRef = useRef(true)
   /** Current chat's projectId/chatId, set after resolve succeeds */
@@ -769,6 +772,9 @@ export function AiPanel({
   const streamErrorRef = useRef<IpcStreamError | null>(null)
   /** the latest rate-limit windows a subscription program reported */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own);
+  // the shared merge keeps the windows a report does not name
+  useSubscriptionUsageUpdates(() => window.slidesApi?.aiSubscription, setSubscriptionUsage)
   /** the input of the current run was cut to fit a limit: the user is told, never silently */
   const [inputTruncated, setInputTruncated] = useState(false)
   const transportHooksRef = useRef<TransportHooks>({
@@ -2999,13 +3005,20 @@ export function AiPanel({
                 picker.track(e.target)
               }}
               onSelect={(e) => picker.track(e.currentTarget)}
-              onCompositionStart={picker.onCompositionStart}
-              onCompositionEnd={picker.onCompositionEnd}
+              onCompositionStart={() => {
+                picker.onCompositionStart()
+                ime.handleCompositionStart()
+              }}
+              onCompositionEnd={(e) => {
+                picker.onCompositionEnd(e)
+                ime.handleCompositionEnd()
+              }}
               onBlur={picker.onBlur}
               onKeyDown={(e) => {
                 if (picker.onKeyDown(e)) return
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
+                  if (ime.isImeConfirm(e.nativeEvent)) return
                   if (busy) enqueueDraft()
                   else run()
                 } else if (e.key === 'Escape' && busy) {

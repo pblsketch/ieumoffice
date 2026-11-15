@@ -103,7 +103,8 @@ export const zh = {
   stepInstall: '安装程序',
   stepLogin: '登录',
   stepReady: '连接完成',
-  installReturnNote: '在那个窗口中安装完成后，请回到这里。应用会自动重新检查。',
+  installReturnNote:
+    '下载期间，那个窗口可能有几分钟不显示任何内容。请不要关闭它。安装完成后，请回到这里。应用会自动重新检查。',
   loginHowNote: '按下后会打开浏览器。用你的 {vendor} 账户登录并点击允许，就会自动完成连接。',
   signingInStalledNote:
     '如果浏览器中没有打开登录页面，请用下面的按钮打开登录窗口。如果你还在浏览器中登录，请不要按，先在浏览器中完成。按下按钮会停止当前的登录并重新开始。',

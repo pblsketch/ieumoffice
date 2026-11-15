@@ -278,7 +278,7 @@ export const TOOLS: ToolSpec[] = [
     name: 'merge',
     command: 'merge',
     description:
-      'Fill {{key}} placeholders in a .docx, .pptx or .xlsx template with values from a JSON object and write the result to out (nested objects flatten to dotted keys; whitespace inside the braces is tolerated; a whole-cell placeholder in xlsx takes the value type). The result lists used_keys, unused_keys and unresolved_placeholders with their location (block / slide + element / sheet + cell) and reason (no_key; split_placeholder when the template stores the braces across differently formatted runs; unreachable_nested inside a nested pptx group); strict makes an unresolved placeholder an error. ' +
+      'Fill {{key}} placeholders in a .docx, .pptx or .xlsx template with values from a JSON object and write the result to out (nested objects flatten to dotted keys; whitespace inside the braces is tolerated; a whole-cell placeholder in xlsx takes the value type). The result lists used_keys, unused_keys and unresolved_placeholders with their location (block / slide + element / sheet + cell) and reason (no_key; split_placeholder when the braces sit where a flat text match cannot reach them, such as across a line break or a block boundary; unreachable_nested inside a nested pptx group); strict makes an unresolved placeholder an error. ' +
       GUI_OPEN,
     positionals: [{ key: 'file', description: 'path of the template (.docx, .pptx or .xlsx)' }],
     options: [
@@ -718,7 +718,7 @@ export const TOOLS: ToolSpec[] = [
     command: 'image',
     openWorld: true,
     description:
-      'Generate an image from a prompt with the image provider configured in GenOffice and save it; the result names the real format. ref images steer an edit (key providers only). A failure names its cause in detail.errorCode (unavailable: not configured, do not retry; rate-limit: the subscription limit is used up, wait until detail.resetsAt when it is given).',
+      'Generate an image from a prompt with the image provider configured in GenOffice and save it; the result names the real format. ref images steer an edit. A failure names its cause in detail.errorCode (unavailable: not configured, do not retry; rate-limit: the subscription limit is used up, wait until detail.resetsAt when it is given).',
     positionals: [{ key: 'prompt', description: 'what to draw' }],
     options: ['out', 'aspect', 'size', 'ref', 'model', 'force'],
   },

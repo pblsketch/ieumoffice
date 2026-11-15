@@ -114,6 +114,14 @@ import { adoptEmbeddedFonts } from './embedded-fonts'
 import { defaultEastAsiaFontFor } from './font-list'
 import { hasPrintableHeaderFooter } from './pagination'
 import { clearPrintZoom, setPrintZoom } from './print-zoom'
+import {
+  printJobGroups,
+  selectionPrintDoc,
+  selectionSectPr,
+  type PrintPageJob,
+  type PrintSelectionJob,
+} from './print-job'
+import { sectionIndexAtBlock } from './ai/pending-sections'
 import { collectPdfInternalLinks } from './pdf-internal-links'
 import type { PdfInternalLink } from '../shared/ipc'
 import { showToast } from './components/toast-bus'
@@ -139,6 +147,8 @@ export interface FileActionContext {
   setStatus: (status: string) => void
   setRecent: (paths: string[]) => void
   setShowAi: (show: boolean) => void
+  /** AI parts shown (Settings › Editors and AI); false keeps the new-document line off the AI pane */
+  aiOn?: boolean
   setDoc: Dispatch<SetStateAction<DocState | null>>
   setAiPanelKey: Dispatch<SetStateAction<number>>
   setDocCss: (css: string) => void
@@ -532,6 +542,8 @@ export async function loadFile(
         ? { saveAsDefaultPath: result.saveAsDefaultPath }
         : {}),
     })
+    // a converted .doc/.dot: the original is untouched and the first save writes a .docx
+    if (result.importedFrom) showToast(t('appLegacyDocImported', { ext: result.importedFrom }))
     ctx.onRevisionsLoaded(blocksHaveRevisions(parsed.blocks))
     // this tab's document was replaced: a password parked for the previous
     // unsaved draft is stale and must not encrypt this document's saves.
@@ -744,7 +756,7 @@ export async function newFile(ctx: FileActionContext): Promise<boolean | undefin
     ctx.dirtyRef.current = false
     // same rule as the first render, so the "open in new documents" setting holds for Cmd+N too
     ctx.setShowAi(aiPanelInitiallyOpen('aidocs.showAi'))
-    ctx.setStatus(t('appNewDocCreated'))
+    ctx.setStatus(t(ctx.aiOn === false ? 'appNewDocCreatedNoAi' : 'appNewDocCreated'))
     return true
   } catch (err) {
     if (generation !== openGeneration) return
@@ -1623,15 +1635,12 @@ function chunkPrintGroups(groups: PrintGroup[], size: number): PrintGroup[] {
   return chunked
 }
 
-async function printGroupsMerged(
-  ctx: FileActionContext,
-  fileName: string,
+/** Each group printed to a PDF fragment (base64), in order; a page that fails on its own fails the whole. */
+async function printGroupParts(
   pvPages: HTMLElement[],
   groups: PrintGroup[],
   scale: number,
-  outPath?: string,
-  links?: PdfInternalLink[],
-): Promise<boolean> {
+): Promise<{ ok: true; parts: string[] } | { ok: false; error?: string }> {
   const parts: string[] = []
   // every printToPDF flips the whole document between print and screen media;
   // pv-exporting parks the covered editor's subtree layout for the export's
@@ -1659,13 +1668,30 @@ async function printGroupsMerged(
         queue.unshift({ ...g, to: mid }, { ...g, from: mid + 1 })
         continue
       }
-      ctx.setStatus(t('appExportPdfFailed', { error: part.error ?? t('appPrintGroupFailed') }))
-      return false
+      return { ok: false, error: part.error }
     }
   } finally {
     appRoot?.classList.remove('pv-exporting')
     pvPages.forEach((page) => page.classList.remove('pv-print-skip', 'pv-print-tail'))
   }
+  return { ok: true, parts }
+}
+
+async function printGroupsMerged(
+  ctx: FileActionContext,
+  fileName: string,
+  pvPages: HTMLElement[],
+  groups: PrintGroup[],
+  scale: number,
+  outPath?: string,
+  links?: PdfInternalLink[],
+): Promise<boolean> {
+  const printed = await printGroupParts(pvPages, groups, scale)
+  if (!printed.ok) {
+    ctx.setStatus(t('appExportPdfFailed', { error: printed.error ?? t('appPrintGroupFailed') }))
+    return false
+  }
+  const parts = printed.parts
   const result = await window.desktop.saveMergedPdf(fileName, parts, outPath, links)
   const mixed = groups.some((g) => g.w !== groups[0].w || g.h !== groups[0].h)
   ctx.setStatus(
@@ -1828,6 +1854,56 @@ export async function exportPdf(ctx: FileActionContext, outPath?: string): Promi
     clearPrintZoom()
     printJobActive = false
   }
+}
+
+const sheetTwips = (px: number) => Math.round((px / 96) * 1440)
+
+/**
+ * The advanced print route's job PDF (decision 0141): the chosen preview
+ * pages (0-based) printed the way the PDF export prints them — printToPDF per
+ * run of one paper size, other sheets hidden — as base64 fragments in order.
+ * Pages outside the range are in no fragment.
+ */
+export async function buildPrintJobParts(pages: number[]): Promise<PrintPageJob> {
+  if (printJobActive) return { ok: false, error: t('appExportingPdf') }
+  printJobActive = true
+  try {
+    const pvPages = [...document.querySelectorAll<HTMLElement>('.pagination-preview .pv-page')]
+    const sizes = pvPages.map((page) => ({
+      w: sheetTwips(parseFloat(page.style.width)),
+      h: sheetTwips(parseFloat(page.style.height)),
+    }))
+    const groups = printJobGroups(sizes, pages)
+    if (groups.length === 0) return { ok: false, error: t('appPrintNoPages') }
+    const scale = setPrintZoom()
+    return await printGroupParts(pvPages, groups, scale)
+  } finally {
+    clearPrintZoom()
+    printJobActive = false
+  }
+}
+
+/**
+ * Print selection (decision 0141): the selected content only, serialized by
+ * the save path into a .docx of its own (nothing is written and nothing in
+ * the tab changes), then laid out from the top of page 1 in a hidden window
+ * with the page setup, headers and footers of the section the selection
+ * starts in, page numbers from 1.
+ */
+export async function buildSelectionPrintPdf(ctx: FileActionContext): Promise<PrintSelectionJob> {
+  const { doc, editor } = ctx
+  if (!doc || !editor) return { ok: false }
+  await waitForFullContent()
+  const pmDoc = editor.state.doc
+  const { from, to } = editor.state.selection
+  const content = selectionPrintDoc(pmDoc, from, to)
+  if (!content) return { ok: false, error: t('appPrintNoPages') }
+  const start = sectionIndexAtBlock(pmDoc, ctx.sections, pmDoc.resolve(from).index(0))
+  const sectPr = selectionSectPr(ctx.sections, start)
+  const docx = await buildDocBytes(ctx, content)
+  if (!docx) return { ok: false }
+  const r = await window.desktop.printSelectionPdf(toArrayBuffer(docx), sectPr)
+  return r.ok ? { ok: true, parts: [r.base64], pages: r.pages } : { ok: false, error: r.error }
 }
 
 /** PNG resolution of "Export as Images" (2x the 96 dpi screen page) */

@@ -46,6 +46,11 @@ export const pt = {
   saveFailedStatus: 'Falha ao salvar',
   exportFailed: 'Falha na exportação',
   printFailed: 'Falha ao imprimir: {error}',
+  printRangeEmpty:
+    'Este documento tem {count} páginas. Digite números de página dentro desse intervalo.',
+  printPagesFailed: 'Não foi possível contar as páginas a imprimir: {error}',
+  printLayoutSaved: 'O resultado organizado foi salvo como PDF.',
+  printLayoutSaveFailed: 'Não foi possível salvar o PDF: {error}',
   exportHtmlSkipped:
     'Exportado, mas {count} recurso(s) não puderam ser incorporados (ex.: {first})',
   viewPreview: 'Visualizar',

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import JSZip from 'jszip'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { run, tempDir } from './helpers'
@@ -327,5 +328,38 @@ describe('ieumoffice create --type hwp', () => {
       doc.free()
     }
     expect(textOf(out).join('\n')).toContain(title)
+  })
+
+  it('writes the preview of the edited document, not the opened one (decision 0146)', async () => {
+    // a file Hangul 2024 saved: its preview text is "a" and "b", with a drawn first page
+    const hancom = readFileSync(
+      join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'apps',
+        'hwp',
+        'tests',
+        'fixtures',
+        'hancom-page-number-no-dash.hwpx',
+      ),
+    )
+    const dir = tempDir()
+    const path = write(dir, 'hancom.hwpx', hancom)
+    const r = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [{ op: 'replace_text', find: 'a', replace: '새 글' }]),
+      '--json',
+    ])
+    expect(r.code, r.stdout).toBe(0)
+    const zip = await JSZip.loadAsync(readFileSync(path))
+    expect(await zip.file('Preview/PrvText.txt')!.async('string')).toBe('새 글\r\nb\r\n')
+    // no screen to draw the page on: a blank picture, not the old page
+    const image = Buffer.from(await zip.file('Preview/PrvImage.png')!.async('uint8array'))
+    expect(image.readUInt32BE(16)).toBe(1)
   })
 })

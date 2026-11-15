@@ -38,7 +38,14 @@
 **옛 워드 문서(`.doc`·`.dot`).**
 
 - `convert <file.doc|.dot> --to docx`만 받는다. 앱을 띄우지 않고 `@genoffice/doc2docx`로 바꾼다. `.doc`로 다시 쓰는 길은 없다.
+- 앱에서 열면 같은 변환기로 바꾼 `.docx` 사본을 이름 없는 새 문서로 연다. 원본은 읽기만 하고, 처음 저장할 때 원본 옆의 같은 이름 `.docx`를 제안한다(결정 0139).
 - 바꾸며 빠지거나 바뀐 것은 파일을 쓰고 `detail.warnings`에 적는다. 암호가 걸린 문서, Word 97보다 오래된 판, 깨진 파일은 종료 코드 3으로 끝나고, `detail.reason`에 `doc2docx`의 이유 코드(`encrypted`, `unsupported_version`, `not_cfb`, `corrupt` 등)가 온다.
+
+**옛 파워포인트 문서(`.ppt`).**
+
+- 앱에서 열면 같은 변환기로 바꾼 `.pptx` 사본을 이름 없는 새 문서로 연다. 원본은 읽기만 하고, 처음 저장할 때 원본 옆의 같은 이름 `.pptx`를 제안한다(결정 0139).
+- `convert <file.ppt> --to pptx`만 받는다. 앱을 띄우지 않고 `@genoffice/ppt2pptx`로 바꾼다. 슬라이드 순서와 크기, 글자와 서식, 도형·채우기·그림·배경, 마스터에서 이어받는 모양을 옮긴다. 슬라이드 노트, 애니메이션, 하이퍼링크, 표(칸 도형만 옮긴다)는 빠진다. 빠진 것은 `detail.warnings`에, 슬라이드 수는 `detail.slides`에 온다. `.ppt`로 다시 쓰는 길은 없다.
+- 암호가 걸린 문서, PowerPoint 97보다 오래된 판, 깨진 파일은 종료 코드 3으로 끝나고, `detail.reason`에 `ppt2pptx`의 이유 코드(`encrypted`, `unsupported_version`, `not_cfb`, `corrupt` 등)가 온다.
 
 **워드 문서를 한글 문서로(`.docx` → `.hwp`·`.hwpx`, 결정 0121).**
 
@@ -205,11 +212,11 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 
 이 셋은 자동 호출이다. 화면을 보는 사람이 없는 요청이므로 갈 수 있는 길이 제한된다.
 
-| 명령     | 가는 길                                                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `search` | 기본은 무료 경로(Parallel 무료 검색 → DuckDuckGo). 이미지 검색은 DuckDuckGo. 앱 설정에서 고른 키 방식 검색 제공자가 있고 키가 있으면 그것. 구독은 쓰지 않는다 |
-| `image`  | 키 방식 이미지 제공자만. 없으면 "쓸 수 없음". `--model`은 무시된다(성공 결과의 `detail.note`에 적힌다)                                                        |
-| `media`  | 사진은 대화에 쓰는 AI 제공자 또는 고른 키 방식 분석 제공자. 영상·소리는 영상 분석이 되는 키 방식 제공자만                                                     |
+| 명령     | 가는 길                                                                                                                                                                                                                                                                                                    |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search` | 기본은 무료 경로(Parallel 무료 검색 → DuckDuckGo). 이미지 검색은 DuckDuckGo. 앱 설정에서 고른 키 방식 검색 제공자가 있고 키가 있으면 그것. 구독은 쓰지 않는다                                                                                                                                              |
+| `image`  | 앱 설정의 이미지 생성 선택(`resolveImageBackend`). Codex(ChatGPT 요금제)는 자동 호출 규칙 아래에서만, 아니면 키 방식 이미지 제공자. 둘 다 없으면 "쓸 수 없음". `--ref`의 참조 그림은 두 길 모두 받는다. `--model`은 그 경로가 내주는 모델이면 쓰고, 아니면 쓸 수 있는 모델 이름과 함께 거절한다(결정 0145) |
+| `media`  | 사진은 대화에 쓰는 AI 제공자 또는 고른 키 방식 분석 제공자. 영상·소리는 영상 분석이 되는 키 방식 제공자만                                                                                                                                                                                                  |
 
 - 구독은 사용자가 설정에서 허용했을 때만 쓰인다(기본 꺼짐). 꺼져 있으면 구독이 없는 것처럼 답한다. 켜져 있으면 모든 명령 실행과 MCP 호출을 통틀어 AI 요청을 하나씩 차례로 처리한다. 차례의 단위는 작업이 아니라 요청 하나라서, 긴 PDF 작업도 다른 호출자와 요청마다 번갈아 처리된다. 시간당 한도는 없다.
 - 시간당 한도가 있던 예전 경고에 동의해 켜 둔 스위치는 꺼진 것으로 읽는다. 새 경고에 다시 동의해야 켜진다(설정 파일의 `headlessSubscriptionConsentVersion`).
@@ -235,6 +242,7 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 
 - `media_analysis`는 예전 호출자를 위해 남긴 항목이다. `image_analysis`와 같고, 영상만 될 때는 `video_analysis`와 같다.
 - 웹·이미지 검색은 키 제공자를 고르지 않는 한 항상 `available`이고 `route`는 `free`다.
+- `image_generation`은 자동 호출 스위치와 지금 판의 동의가 있고 Codex가 구독으로 연결돼 있으면 `{ available: true, via: "codex", route: "subscription" }`일 수 있다(결정 0145). 전에는 Codex가 이 답에 오지 않았다. 바뀐 것은 값뿐이고 모양은 그대로다.
 - `automatic_calls.used`는 최근 한 시간 동안 처리한 자동 호출 수이고 정보용이다. 한도가 없으므로 `limit`, `remaining`은 `null`이고 `resetsAt`은 오지 않는다.
 
 **실패.** 세 명령이 실행될 수 없으면 종료 코드 4, `error: "app_unavailable"`.
@@ -269,7 +277,7 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 명령어 쪽 서버와 다른 것이다. 실행 중인 앱이 직접 여는 서버이고, 열려 있는 문서를 다룬다.
 
 - 설정 → 연동에서 켠다. 기본은 꺼짐이다. 기본 포트는 3093이고 이 PC(`127.0.0.1`)에서만 닿는다. 인증은 없고, 요청의 Host·Origin이 이 PC의 것이 아니면 거절한다.
-- 도구: `get_app_info`, `open_documents`, `open_in_genoffice`(이 이름은 예전 철자를 유지한다), `create_session`, `save_session`, `read_document`, `read_docx`, `read_sheet`, `read_deck`, `read_pdf`, `create_docx`, `create_xlsx`, `create_pptx`, `apply_ops`, `apply_sheet_ops`, `apply_slide_ops`, `insert_content`, `replace_blocks`, `insert_picture`, `read_diagram`, `apply_diagram_ops`.
+- 도구: `get_app_info`, `open_documents`, `open_in_genoffice`(이 이름은 예전 철자를 유지한다), `create_session`, `save_session`, `read_document`, `read_blocks`, `read_docx`, `read_sheet`, `read_deck`, `read_pdf`, `create_docx`, `create_xlsx`, `create_pptx`, `apply_ops`, `apply_sheet_ops`, `apply_slide_ops`, `insert_content`, `replace_blocks`, `insert_picture`, `read_diagram`, `apply_diagram_ops`.
 - `insert_picture`는 열린 워드 탭에 그림을 넣는다(원본 genoffice#2267). 앱 안 AI의 같은 이름 도구를 그대로 거치므로 그림 주소는 http(s)와 `data:image/`만 받고, http(s) 주소면 앱이 그 주소에서 그림을 받아 온다. 에이전트 모드의 세션 서버에는 없다.
 - 열린 ODT 탭은 워드 문서로 다룬다(`open_documents`의 `format`이 `odt`). `read_docx`는 `.odt` 파일도 읽는다. `save_session`은 탭의 형식으로만 저장한다. 다른 확장자의 경로를 주면 거절하고 `ieumoffice convert`를 쓰라고 안내한다. 대화 상자가 없는 경로에서 형식이 조용히 바뀌지 않게 하기 위해서다.
 - 에이전트 설정에 넣는 항목 이름은 `ieumoffice-editor`다. 명령어 쪽 서버의 `ieumoffice`와 겹치지 않는다.
@@ -340,18 +348,22 @@ metadata:
 
 **앱 설정(`app-settings.json`)의 값.** 데이터 폴더에 있다.
 
-| 값                      | 종류                                                                                                                                                                                                            | 기본                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `skills.states`         | 식별자 → `{ enabled?, invoke?: 'auto' \| 'manual', editors?: 'all' \| 편집기 이름 목록 }`. 사람이 바꾼 것만 적는다. `editors`는 내 스킬이 아닌 스킬의 쓰는 곳이고 파일의 `ieum-editors`보다 앞선다(결정 0122)   | 없음(출처별 처음 상태)                                                                 |
-| `skills.hiddenBuiltins` | 숨긴 기본 스킬 이름 목록                                                                                                                                                                                        | 없음                                                                                   |
-| `agentSkillNoticeSeen`  | 참/거짓. 에이전트 창의 스킬 안내를 봤는지                                                                                                                                                                       | 없음                                                                                   |
-| `agentProjectPrefs`     | 프로젝트 폴더 절대 경로 → `{ codexWebSearch: 'cached' \| 'live' \| 'disabled', codexNetwork }`                                                                                                                  | 없음(`cached`, 거짓)                                                                   |
-| `hwpDefaultFormat`      | `'hwp'` 또는 `'hwpx'`. 파일이 없는 새 한글 문서의 첫 저장에 먼저 제안할 형식                                                                                                                                    | `hwp`                                                                                  |
-| `slidesAiFonts`         | `{ mode: 'auto' \| 'sans' \| 'serif' \| 'serifTitle', sans, serif }`. AI가 새 발표 자료를 만들 때 요청에 글꼴이 없으면 쓰는 글꼴. `sans`·`serif`는 글꼴 이름(80자까지). 모르는 부분은 그 부분만 기본으로 읽는다 | 화면 언어가 한국어·영어면 `sans`, 나머지는 `auto`. 글꼴은 `Pretendard`·`Noto Serif KR` |
-| `homeKinds`             | `{ order?, hidden? }`. 홈의 새 문서 카드·새로 만들기 메뉴의 순서와 뺀 종류(`docx`·`xlsx`·`pptx`·`md`·`html`·`xmind`·`hwp`·`pdf`·`pdfTools`). 처음 상태와 다른 것만 적는다                                       | 없음(모두, 처음 순서)                                                                  |
+| 값                      | 종류                                                                                                                                                                                                                                                                                               | 기본                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `skills.states`         | 식별자 → `{ enabled?, invoke?: 'auto' \| 'manual', editors?: 'all' \| 편집기 이름 목록 }`. 사람이 바꾼 것만 적는다. `editors`는 내 스킬이 아닌 스킬의 쓰는 곳이고 파일의 `ieum-editors`보다 앞선다(결정 0122)                                                                                      | 없음(출처별 처음 상태)                                                                 |
+| `skills.hiddenBuiltins` | 숨긴 기본 스킬 이름 목록                                                                                                                                                                                                                                                                           | 없음                                                                                   |
+| `agentSkillNoticeSeen`  | 참/거짓. 에이전트 창의 스킬 안내를 봤는지                                                                                                                                                                                                                                                          | 없음                                                                                   |
+| `agentProjectPrefs`     | 프로젝트 폴더 절대 경로 → `{ codexWebSearch: 'cached' \| 'live' \| 'disabled', codexNetwork }`                                                                                                                                                                                                     | 없음(`cached`, 거짓)                                                                   |
+| `hwpDefaultFormat`      | `'hwp'` 또는 `'hwpx'`. 파일이 없는 새 한글 문서의 첫 저장에 먼저 제안할 형식                                                                                                                                                                                                                       | `hwp`                                                                                  |
+| `slidesAiFonts`         | `{ mode: 'auto' \| 'sans' \| 'serif' \| 'serifTitle', sans, serif }`. AI가 새 발표 자료를 만들 때 요청에 글꼴이 없으면 쓰는 글꼴. `sans`·`serif`는 글꼴 이름(80자까지). 모르는 부분은 그 부분만 기본으로 읽는다                                                                                    | 화면 언어가 한국어·영어면 `sans`, 나머지는 `auto`. 글꼴은 `Pretendard`·`Noto Serif KR` |
+| `homeKinds`             | `{ order?, hidden? }`. 홈의 새 문서 카드·새로 만들기 메뉴의 순서와 뺀 종류(`docx`·`xlsx`·`pptx`·`md`·`html`·`xmind`·`hwp`·`pdf`·`pdfTools`). 처음 상태와 다른 것만 적는다                                                                                                                          | 없음(모두, 처음 순서)                                                                  |
+| `editors`               | `{ off: [...] }`. 끈 항목의 id(`docs`·`sheets`·`slides`·`pdf`·`pdfTools`·`markdown`·`html`·`mindmap`·`diagram`·`hwp`·`epub`, 결정 0143). 모르는 id는 읽을 때 버린다. 편집기 10개(`pdfTools` 제외)가 모두 꺼진 값은 쓰지 않고, 그런 값이 있으면 모두 켜짐으로 읽는다. `homeKinds`의 숨김과는 따로다 | 없음(모두 켜짐)                                                                        |
+| `aiFeatures`            | `false`일 때만 쓴다. 앱 화면의 AI 기능을 모두 감추고 화면 경로의 AI 실행을 멈춘다. 로그인·키·스킬·다른 설정은 지우지 않는다. 터미널 명령어와 MCP는 이 값을 따르지 않는다                                                                                                                           | 없음(켜짐)                                                                             |
+| `editorPickSeen`        | 참. 첫 실행 안내의 고르기 단계나 기존 사용자의 한 번 고르기를 한 번 지났는지                                                                                                                                                                                                                       | 없음(아직 안 봄)                                                                       |
 
 - 식별자는 `〈출처〉:〈이름〉`, 플러그인은 `plugin:〈플러그인〉:〈이름〉`이다. 출처 값은 `builtin`(기본), `app`(`~/.ieumoffice/skills`, 깃허브 포함), `user`(`~/.claude/skills`), `plugin`(설치된 Claude 플러그인), `codex`(`~/.agents/skills`)다. 저장되는 값이라 바꾸지 않는다. 프로젝트 스킬(`project`)은 저장하지 않는다.
 - 알 수 없는 값은 무시하고 처음 상태로 읽는다. 처음 상태는 `builtin`·`app`이 켜짐·스스로 쓰기, `user`·`plugin`·`codex`가 꺼짐이다.
+- `editors`·`aiFeatures`·`editorPickSeen`은 처음 상태와 다른 것만 적는다. 모두 켜면 `editors`는 빈 `{}`가 되고, AI를 다시 켜면 `aiFeatures`를 지운다. 읽는 길은 껍데기 뒷단의 `effectiveAppChoice` 하나이고, 편집기 뒷단은 파일을 따로 읽지 않는다(나중에 관리자 정책이 덮을 자리, `docs/plans/editor-choice.md`). 명령어와 MCP는 세 값을 읽지 않는다.
 
 ## 설정 파일 (`ai-settings.json`)
 
@@ -377,7 +389,7 @@ metadata:
 - 키와 토큰(`providers.*.apiKey`, `customEndpoints[].apiKey`, `media.providers.*.apiKey`, `search.providers.*.apiKey`, `readUrl.githubToken`)은 Windows와 Linux(GNOME 키링·KWallet이 있을 때)에서 앱이 저장할 때 `sealed:v1:<base64>`로 봉인된다(결정 0063). 사람이 평문으로 적어 넣어도 읽히고, 앱이 다음에 저장하거나 시작할 때 봉인된다. 명령어와 MCP는 봉인된 값을 앱에게 풀어 받아 쓰고(처음 한 번 1~2초), 풀지 못한 값은 빈 키로 읽는다. 명령어는 봉인하지 않는다. macOS는 봉인하지 않는다.
 - `readUrl.githubToken`은 비공개 GitHub 파일을 읽는 읽기 토큰이다. 키와 같은 방식으로 저장되고, `api.github.com` 요청에만 실린다. 다른 사이트나 리다이렉트 홉에는 보내지 않는다.
 - `headlessSubscriptionEnabled`가 참이어도 `headlessSubscriptionConsentVersion`이 지금 경고의 판(2)보다 작거나 없으면 꺼진 것으로 읽는다. 판 1은 시간당 한도가 있던 예전 경고이고, 그때는 판을 저장하지 않았다.
-- 이미지 생성 제공자의 저장값 기본은 `codex`다. 앱에서는 Codex 구독으로 만든다(결정 0076). 터미널 명령어와 MCP에는 Codex 이미지 생성이 없어 `none`(선택 없음)과 똑같이 동작한다.
+- 이미지 생성 제공자의 저장값 기본은 `codex`다. 화면 이름은 "ChatGPT 요금제(Codex 프로그램)"이다. 앱에서는 Codex 프로그램에 로그인한 ChatGPT 요금제로 만든다(결정 0145, 0076을 대체). 터미널 명령어와 MCP도 같은 길을 쓰되, `headlessSubscriptionEnabled`와 지금 판의 동의(`headlessSubscriptionConsentVersion` ≥ 2)가 있을 때만이다. 없으면 Codex는 쓸 수 없는 것으로 치고 키 방식 이미지 제공자를 본다. 동의 판은 그림 때문에 올리지 않았다.
 - 구독 제공자의 식별자는 `claude-code`, `chatgpt`, `codex`다. 인증 방식은 `claude-subscription`, `chatgpt-plan`, `codex-chatgpt`, `api-key` 넷이다. `provider`에 `chatgpt`를 저장할 수 있고, `providers.chatgpt.model`이 그 모델이다(빈 값은 요금제 목록의 첫 모델). `meteredAccepted`에는 `chatgpt` 항목이 없다(요금제 범위 연결이라 종량 로그인이 없다).
 - ChatGPT 직접 연결(결정 0081)의 토큰은 이 파일이 아니라 같은 폴더의 `chatgpt-connection.json`에 있다. 앱만 읽고 쓴다. 손으로 고치거나 옮기지 않는다(다른 PC·계정에서는 봉인이 풀리지 않아 연결이 없는 것으로 읽힌다). 터미널 명령어와 MCP는 이 파일을 읽지 않는다. 명령어에서 `chatgpt`는 늘 로그인되지 않은 상태이고, `auto`는 Claude, Codex 순으로 고른다.
 - 모르는 제공자 식별자나 없어진 선택값이 있어도 오류 없이 읽는다. 그 자리는 기본값이 되고, 모르는 식별자의 제공자 설정은 다음에 앱이 저장할 때 지워진다.
@@ -523,7 +535,7 @@ metadata:
 같은 데이터 폴더에 둘이 있다. 터미널 명령어와 MCP는 둘 다 읽지도 쓰지도 않는다.
 
 - `google-drive.json`: `{ "version": 1, "token": "<base64>" }`. `token`은 운영체제 암호화(Electron `safeStorage`: Windows는 DPAPI, macOS는 키체인, Linux는 키링이 있을 때만)로 감싼 갱신 토큰이다. 다른 사용자나 다른 PC에서는 풀리지 않고, 풀리지 않는 파일은 연결이 없는 것으로 읽는다. 암호화를 쓸 수 없는 PC에서는 이 파일을 만들지 않는다. 연결 끊기와 Google의 연결 종료(`invalid_grant`)에 지운다.
-- `drive-cache/`: 연 드라이브 파일의 PC 사본. 파일마다 `drive-cache/<드라이브 파일 id>/<이름>`이고, `drive-cache/index.json`이 사본과 드라이브 파일을 잇는다. 항목에는 드라이브 파일 id, 이름, 상위 폴더 id, PC 경로, 마지막으로 맞춘 내용의 해시(SHA-256)와 드라이브 쪽 해시(MD5)·변경 시각, 저장이 갈 드라이브 파일 id, "이 PC에만 저장"을 골랐는지, 마지막으로 연 시각이 있다. 문서 내용은 사본 파일에만 있다. 한 달 동안 열지 않았고 올리지 못한 변경이 없는 사본은 시작할 때 지운다.
+- `drive-cache/`: 연 드라이브 파일의 PC 사본. 파일마다 `drive-cache/<드라이브 파일 id>/<이름>`이고, `drive-cache/index.json`이 사본과 드라이브 파일을 잇는다. 항목에는 드라이브 파일 id, 이름, 상위 폴더 id, PC 경로, 마지막으로 맞춘 내용의 해시(SHA-256)와 드라이브 쪽 해시(MD5)·변경 시각, 저장이 갈 드라이브 파일 id, "이 PC에만 저장"을 골랐는지, 마지막으로 연 시각이 있다. 문서 내용은 사본 파일에만 있다. 한 달 동안 열지 않았고 올리지 못한 변경이 없는 사본은 시작할 때 지운다. "이 PC에만 저장"을 고른 사본은 드라이브가 받지 못한 변경을 담고 있으므로 지우지 않는다.
 
 `app-settings.json`의 `driveAiAccess`(참/거짓, 기본 참)는 편집기의 AI가 드라이브를 찾고 읽어도 되는지다. 드라이브가 연결돼 있을 때만 뜻이 있다. `driveTrainingAck`(참일 때만 확인, 기본 없음)는 사람이 "드라이브 파일과 함께 쓰는 AI 계정에서 모델 학습을 껐습니다"에 체크했는지다. 참이 아니면 연결, 고르기, 첨부, AI의 드라이브 도구가 멈춘다.
 
@@ -629,8 +641,13 @@ metadata:
 - `programPath`는 버전이 낮은 `error`(`needs-update`)일 때만 있다. 한 줄짜리 절대 경로(드라이브, `\\` 공유, `/`로 시작)가 아니면 빠진다.
 - `models`의 `id`는 프로그램이 받는 값이자 저장되는 선택값이다. 빈 `id`는 프로그램의 기본 모델을 뜻하고, 그것이 가리키는 모델이 `resolved`에 온다. 목록은 50개까지다.
 - 창구 이름은 `ai:subscription-statuses`, `-recheck`, `-login`, `-logout`, `-install`, `-metered`, `-off`, `-codex-image`와 변경 알림 `ai:subscription-changed`다. `-logout`과 `-off`는 껍데기 앱의 화면에서만 부른다.
+- 사용량 알림 `ai:subscription-usage-update`(결정 0145)는 메인이 모든 창에 보낸다. 값은 채팅 조각의 사용량과 같은 모양(`IpcSubscriptionUsage[]`)이다. 지금은 그림 요청 중에 Codex가 알린 사용량이 이 길로 온다.
 - `off`(결정 0114)는 이 앱에서 끈 `claude-code`·`codex`에만 온다. 다른 항목은 없다(`meteredAccepted`는 거짓). `-off`는 `{ provider, off }`(CLI 식별자와 참/거짓)를 받아 `{ ok, statuses }`로 답한다. 끈 프로그램에 대한 `-login`·`-logout`·`-install`·`-update`는 `invalid`, `-metered`는 `ok: false`다.
 - `chatgpt`의 `state`는 `checking`, `signed-out`, `ready`, `error`뿐이다. `-login`은 앱 자신의 브라우저 로그인을 시작하고, `-logout`은 이 앱의 연결만 끊는다. `-install`·`-update`는 `invalid`로 답한다. 답에 `chatgpt` 항목이 없으면(예전 앱) `signed-out`으로 읽는다.
+
+## 라벨 규격 (`print-label-spec.json`, 결정 0141)
+
+데이터 폴더에 있다. 인쇄 창의 쪽 배치에서 라벨 규격을 "직접 입력"으로 적으면 앱 전체에 하나(마지막에 쓴 값)를 기억한다. 앱만 읽고 쓰고, 터미널 명령어와 MCP는 읽지 않는다. 모양은 `{ "version": 1, "spec": { "paper": "A4" | "Letter", "cols", "rows", "cellWidthMm", "cellHeightMm", "topMarginMm", "leftMarginMm", "hPitchMm", "vPitchMm" } }`이고, 쓸 때마다 간격이 칸보다 작지 않은지와 종이 안에 드는지를 검사한다. 읽을 수 없거나 검사를 통과하지 못하는 파일은 없는 것으로 본다.
 
 ## 문서 호환
 
@@ -647,7 +664,7 @@ metadata:
 - 저장한 스타일 파일(`<데이터 폴더>/style-templates/<이름>.json`)에는 선택 항목 `basedOn`(기본 템플릿의 id)이 붙을 수 있다. 이 값을 모르는 예전 버전은 무시하고 그대로 읽는다.
 - 한글 문서(`.hwp`·`.hwpx`)는 연 형식 그대로 저장한다. 파일이 없는 새 문서의 첫 저장은 설정 → 일반의 "새 한글 문서 저장 형식"(기본 HWP)을 먼저 제안한다. 한 탭이 파일을 처음 덮어쓰기 전에 원본을 같은 폴더에 `<파일 이름>.bak`으로 남긴다. 암호가 걸린 문서는 저장하지 않는다. AI는 한글 문서에서 글자를 바꾸고, 문단을 넣고 지우고, 본문에 표를 넣고, 있는 표의 빈 칸을 채우고(글자가 있는 칸은 사용자가 바꾸라고 했을 때만 덮어쓰고, 그림이 든 칸은 쓰지 않는다), 본문의 표에 행과 열을 넣고 빼고, 첨부한 파일(한글·워드·엑셀·파워포인트·PDF·글자 파일·그림)을 참고 자료로 읽고, 사용자가 편집기에서 선택한 부분만 고치고, 글자 모양 일부(굵게·기울임·밑줄·취소선·크기·색·형광펜)와 문단의 정렬·줄 간격을 바꾸고, 본문을 다단으로 나누고 문단 앞에 쪽·단 나누기를 넣고, 본문에 수식을 넣고, 쪽 테두리를 두르고, 문단에 탭 자리와 채움선을 주고, 표 칸에 대각선을 긋고, 본문 그림의 너비를 바꾸고, 누름틀을 채운다. 표·그림·누름틀이 놓인 문단은 지우지 않는다. 양식 없이 처음부터 쓴 문서에는 그 종류의 문서가 갖는 꼴을 준다(결정 0137): 문단 스타일을 만들어 줄 머리 기호별로 한 번에 걸고, 표 칸의 테두리·배경·세로 정렬과 새 표의 꼴(옆이 트인 표, 열 너비, 머리줄 색)을 정하고, 제목 문단을 제목 상자(한 열짜리 표)로 바꾸고, 쪽 번호를 매기고, 한 줄짜리 머리말·꼬리말을 쓴다. 꼴의 글꼴이 이 PC에 없으면 같은 계열의 있는 글꼴로 쓴다. 이미 꼴이 있는 문서는 다시 꾸미지 않는다.
 - 앱 안에서 한글 문서는 편집기 밖에서 읽기만 한다. 홈의 파일 검색과 지식 자료, 다른 편집기 AI의 첨부, 터미널 명령어(`ieumoffice hwp read`, `info`), MCP(앱의 `read_hwp`, 명령어 쪽의 `hwp_read`)가 글자를 읽는다. 문단은 한 줄로, 표는 행마다 칸을 `|`로 이어 적는다. MCP의 열린 문서 읽기는 한글 탭의 저장하지 않은 내용까지 읽고, 저장은 하지 않는다. 앱 안 MCP로는 한글 문서를 고치지 않는다. 암호가 걸린 문서는 읽지 않는다.
-- **터미널 명령어로 한글 문서를 만들고 고친다(결정 0079).** `ieumoffice hwp apply <파일> --ops`(MCP `hwp_apply`)와 `ieumoffice create --type hwp|hwpx --ops`(MCP `create_hwp`)다. 연산은 한글 편집기 AI의 도구 그대로이고(이름, 입력, 답한 글), 앱의 플러그인이 같은 엔진에서 한다. 그래서 찾은 말이 여러 곳이면 고르지 않고, 표·그림·누름틀·메모를 잃는 변경은 되돌리고 거절한다. 그림 넣기, 웹 읽기와 그림 찾기·만들기, 편집기 선택 도구는 명령어에 없다(`unsupported`). 연산 목록은 `ieumoffice guide hwp`이고 도구 정의에서 만든다. 저장은 앱의 저장과 같다. 연 형식 그대로(`--out`이면 그 확장자로) 쓰고, `.hwp`는 엔진이 다시 읽어 쪽수가 같을 때만 쓰며, 새 탭 폭·필드 종류·바탕쪽과 메모를 바로잡고(결정 0024·0026·0028), 덮어쓰는 파일은 먼저 `<파일 이름>.bak`으로 남긴다. 변경 추적이 든 `.hwp`는 지금의 내용으로 고치고(결정 0027) `detail.warnings`로 알린다. 읽기 연산만 든 묶음은 파일을 쓰지 않는다. 암호가 걸린 문서는 `unsupported`다. 앱이 탭으로 연 파일은 다른 형식처럼 `--force` 없이 쓰지 않는다.
+- **터미널 명령어로 한글 문서를 만들고 고친다(결정 0079).** `ieumoffice hwp apply <파일> --ops`(MCP `hwp_apply`)와 `ieumoffice create --type hwp|hwpx --ops`(MCP `create_hwp`)다. 연산은 한글 편집기 AI의 도구 그대로이고(이름, 입력, 답한 글), 앱의 플러그인이 같은 엔진에서 한다. 그래서 찾은 말이 여러 곳이면 고르지 않고, 표·그림·누름틀·메모를 잃는 변경은 되돌리고 거절한다. 그림 넣기, 웹 검색(`web_search`, `ieumoffice search`를 쓰라고 답한다)·웹 읽기와 그림 찾기·만들기, 편집기 선택 도구는 명령어에 없다(`unsupported`). 연산 목록은 `ieumoffice guide hwp`이고 도구 정의에서 만든다. 저장은 앱의 저장과 같다. 연 형식 그대로(`--out`이면 그 확장자로) 쓰고, `.hwp`는 엔진이 다시 읽어 쪽수가 같을 때만 쓰며, 새 탭 폭·필드 종류·바탕쪽과 메모를 바로잡고(결정 0024·0026·0028), 덮어쓰는 파일은 먼저 `<파일 이름>.bak`으로 남긴다. 변경 추적이 든 `.hwp`는 지금의 내용으로 고치고(결정 0027) `detail.warnings`로 알린다. 읽기 연산만 든 묶음은 파일을 쓰지 않는다. 암호가 걸린 문서는 `unsupported`다. 앱이 탭으로 연 파일은 다른 형식처럼 `--force` 없이 쓰지 않는다.
 - **한글 메모(결정 0072).** `.hwp`·`.hwpx`의 메모는 본문·표 칸·글상자에서 읽고, 앱의 메모 패널에서 평문으로 넣고 고치고 지운다(한 영역에 새 메모 하나, 서식 있는 메모는 읽기 전용). 작성자는 사용자 이름 설정 → PC 계정 이름 → `IeumOffice`(제품 이름), 새 메모의 날짜는 파일이 담고 있을 때만 보인다. 메모 편집기가 열려 있는 동안 저장은 `메모 작성을 먼저 저장하거나 취소해 주세요.`로 막고, 탭 닫기·종료는 메모를 버리고 닫을지 묻는다. AI는 메모를 읽을 수 있지만 쓰는 도구가 없고, 앵커를 지우는 편집은 그 요청에 한해 사람의 승인을 받는다. 저장은 연 형식 그대로 하고, `.hwpx`에서 실제로 빠진 메모가 있을 때만 수와 함께 HWP 저장을 안내한다. 메모가 없는 문서의 저장 결과는 예전과 같다.
 - **한글 문서를 PDF로 바꾼다.** `ieumoffice convert <파일.hwp|.hwpx> --to pdf`(MCP `convert`)는 창 없는 앱(`--headless-export`)에서 한글 편집기의 PDF 내보내기를 그대로 돌린다. 파일 메뉴의 "PDF로 내보내기", 다른 이름으로 저장의 PDF와 같은 인쇄 작업이라 쪽 모양과 글자 층이 같다. 한글 문서가 받는 경로는 PDF 하나다. 파일은 디스크에 있는 그대로 읽는다. 앱이 그 파일의 저장하지 않은 변경을 복구 사본으로 갖고 있어도 묻지 않고, 쓰지 않고, 지우지 않는다. 열리지 않는 파일은 종료 코드 3(`the input document did not open`)이고 PDF를 쓰지 않는다. 암호가 걸린 문서는 답할 사람이 없어 시간 초과로 실패한다. `ieumoffice render <파일.hwp|.hwpx>`(MCP `render`)는 같은 PDF 내보내기 결과를 쪽마다 PNG로 바꾼다. 옵션과 출력 구조는 다른 형식의 `render`와 같고, `--el`은 pptx에서만 된다.
 - **한글 읽기의 메모.** `hwpToText`와 `parseFileToText`는 메모가 있으면 본문과 표 뒤에 `### Comments` 블록을 붙인다. 첫 줄은 `- 작성자 (p.N): 첫 줄`, 이어지는 줄은 두 칸 들여쓰며, 작성자가 없으면 `unknown`, 쪽을 모르면 `(p.N)`을 뺀다. 메모가 없으면 블록을 붙이지 않는다. 같은 읽기를 쓰는 터미널 명령어(`ieumoffice hwp read`, `info`)와 MCP(`read_hwp`, `hwp_read`)의 출력에도 이 블록이 붙는다. 메모를 읽지 못하면 블록 없이 본문만 돌려준다. 이미 색인된 파일의 메모는 그 파일이 바뀌어 다시 색인될 때 검색에 들어간다. `hwpMemosOf`는 저장 검증을 위해 메모를 구조로 돌려주며, 엔진이 모델에 담지 못한 원시 기록은 세지 않는다.

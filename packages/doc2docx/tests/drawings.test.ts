@@ -113,6 +113,85 @@ describe('floating pictures: FSPA anchors + OfficeArt blips', () => {
     expect([...mediaOf(result.body[0]).bytes]).toEqual([...minimalPng()])
   })
 
+  it("takes the shape's posRelH and posRelV over the FSPA's bx and by", async () => {
+    const bytes = floatingDoc([
+      {
+        story: 'body',
+        cp: 7,
+        rect: [907, 461, 1341, 895],
+        bx: 2,
+        by: 2,
+        wr: 3,
+        blip: PNG,
+        props: [
+          [0x0390, 1],
+          [0x0392, 2],
+        ],
+      },
+      {
+        story: 'body',
+        cp: 7,
+        spid: 2000,
+        rect: [0, 0, 720, 720],
+        bx: 0,
+        by: 0,
+        blip: PNG,
+        props: [
+          [0x0390, 3],
+          [0x0392, 3],
+        ],
+      },
+    ])
+    const result = parseFloatingPictures(openLegacyDoc(bytes))
+    expect(result.body[0]).toMatchObject({
+      horizontalRelative: 'page',
+      verticalRelative: 'paragraph',
+    })
+    expect(result.body[1]).toMatchObject({
+      horizontalRelative: 'character',
+      verticalRelative: 'line',
+    })
+    const { docx } = await convertLegacyDocToDocx(bytes)
+    const xml = (await zipText(docx, 'word/document.xml'))!
+    expect(xml).toContain('<wp:positionH relativeFrom="page"><wp:posOffset>575945</wp:posOffset>')
+    expect(xml).toContain('<wp:positionH relativeFrom="character">')
+    expect(xml).toContain('<wp:positionV relativeFrom="line">')
+  })
+
+  it('reads cropFromTop/Bottom/Left/Right as a:srcRect thousandths and ignores a full crop', async () => {
+    const bytes = floatingDoc([
+      {
+        story: 'body',
+        cp: 7,
+        rect: [1440, 720, 4320, 2160],
+        blip: PNG,
+        props: [
+          [0x0100, 0x4000],
+          [0x0101, 0x2000],
+          [0x0103, 0x0800],
+        ],
+      },
+      {
+        story: 'body',
+        cp: 7,
+        spid: 2000,
+        rect: [0, 0, 720, 720],
+        blip: PNG,
+        props: [
+          [0x0102, 0x8000],
+          [0x0103, 0x8000],
+        ],
+      },
+    ])
+    const result = parseFloatingPictures(openLegacyDoc(bytes))
+    expect(result.body).toHaveLength(2)
+    expect(result.body[0]).toMatchObject({ crop: { l: 0, t: 25000, r: 3125, b: 12500 } })
+    expect(result.body[1]).not.toHaveProperty('crop')
+    const { docx } = await convertLegacyDocToDocx(bytes)
+    const xml = (await zipText(docx, 'word/document.xml'))!
+    expect(xml).toContain('<a:srcRect t="25000" r="3125" b="12500"/>')
+  })
+
   it('attaches the picture to the anchor paragraph and writes a wp:anchor drawing', async () => {
     const bytes = floatingDoc([
       {

@@ -38,6 +38,7 @@ export const ru = {
   btnCancel: 'Отмена',
   exportFailed: 'Не удалось экспортировать: {error}',
   printFailed: 'Не удалось напечатать: {error}',
+  printLayoutSaved: 'Результат сохранён в PDF.',
   linkNotOpened: 'Эту ссылку нельзя открыть.',
   dlgSaveTitle: 'Сохранить диаграмму',
   dlgExportTitle: 'Экспорт диаграммы',

@@ -54,7 +54,7 @@ export const MAP_TOOL_NAMES = {
 
 /** Hidden from the tool list while no image provider is reachable (see `createMindmapSkill`). */
 export const IMAGE_GEN_OFF_NOTE =
-  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.'
+  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery. If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
 
 const SYSTEM_PROMPT = [
   'You are the assistant inside GenOffice Mind Map, an editor for mind maps saved as .xmind files. A map has one or more sheets; each sheet has one central topic with branches (subtopics) below it, any number of levels deep. A topic has a title and may carry labels, a note and a web link.',
@@ -289,6 +289,11 @@ const TOOLS: AgentToolDef[] = [
         aspectRatio: {
           type: 'string',
           description: 'e.g. "1:1", "16:9", "4:3"; omit for the default',
+        },
+        model: {
+          type: 'string',
+          description:
+            'image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
         },
         sheet: SHEET_PROPERTY,
       },
