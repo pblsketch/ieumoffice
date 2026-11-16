@@ -4661,6 +4661,9 @@ export function registerSheetsIpc(): void {
       if (response === 2) return { canceled: true }
     }
     let pickedPath = request.targetPath
+    if (pickedPath !== undefined && !saveAsExportTargets.take(event.sender.id, pickedPath)) {
+      pickedPath = undefined
+    }
     if (pickedPath === undefined) {
       const selection = await saveFileDialog(event, {
         defaultPath: request.fileName,
@@ -4947,7 +4950,10 @@ export function registerSheetsIpc(): void {
       }
       // A CSV pick can't ride the xlsx pipeline: hand the path back so the
       // renderer serializes the active sheet through the CSV export channel.
-      if (pick.kind === 'csv') return { canceled: true, csvSaveAsPath: pick.path }
+      if (pick.kind === 'csv') {
+        saveAsExportTargets.authorize(event.sender.id, pick.path)
+        return { canceled: true, csvSaveAsPath: pick.path }
+      }
       // An ODS pick is a copy as well: the renderer asks the ODS export to
       // write it, and the session keeps its .xlsx path.
       if (pick.kind === 'ods') {
