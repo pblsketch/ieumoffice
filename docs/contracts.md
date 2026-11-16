@@ -204,6 +204,7 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 - 주제 id는 한 시트 안에서만 하나다. 같은 id가 여러 시트에 있으면 그 id를 겨냥한 연산은 거절된다.
 - `delete_topic`은 지우면 보존 요소(경계, 부유 주제, 부름말, 요약 아래 가지)를 잃는 주제를 개수와 함께 거절한다(`op_rejected`, `detail.preserved`). 가운데 주제는 지우거나 옮기지 못한다.
 - MCP 도구는 `map_read`, `map_apply`, `map_create`다. `map_create`는 `out`이 꼭 있어야 한다.
+- `selection <파일.xmind> --json`(MCP `selection`)은 실행 중인 앱에 그 파일이 열려 있어야 한다. 활성 시트에서 고른 토픽을 `detail: { sheet, topics: [{ id, title, path }] }`로 돌려준다. `sheet`는 활성 시트의 제목이고, `path`는 중심 토픽부터 고른 토픽까지의 제목 배열이다. 여러 토픽을 골랐으면 모두 들어간다. 고른 토픽이 없으면 `detail: { none: true, sheet }`, 요약은 `nothing is selected`다. 선택 요약은 시트 제목과 토픽 id·제목 프리뷰를 담고, 여러 개면 앞 세 토픽과 나머지 개수만 보인다. 시트 제목을 알려 주는 것이며, 여러 시트에 겹친 id를 겨냥한 연산의 거절 규칙은 바뀌지 않는다. 제목을 입력 중이면 기존 지도 읽기와 같이 입력을 먼저 확정하지만, 파일을 저장하거나 선택·시트를 바꾸지는 않는다.
 
 ## 웹 페이지 읽기 (`read-url`)
 

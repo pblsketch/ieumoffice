@@ -27,6 +27,21 @@ export const selectionCommand: CommandDef = {
 /** One line for the agent: what the user has selected, with a long text cut to a short preview. */
 export function summarize(result: Record<string, unknown>): string {
   if (result.none) return 'nothing is selected'
+  if (Array.isArray(result.topics)) {
+    const topics = result.topics as Array<{ id: string; title: string }>
+    if (topics.length === 0) return 'nothing is selected'
+    const sheetTitle = typeof result.sheet === 'string' ? preview(result.sheet) : ''
+    const sheet = sheetTitle ? `sheet ${sheetTitle}, ` : ''
+    const selected = topics.slice(0, 3).map((topic) => {
+      const title = preview(topic.title)
+      return topic.id + (title ? `: ${title}` : '')
+    })
+    return (
+      sheet +
+      (topics.length === 1 ? `topic ${selected[0]}` : `topics: ${selected.join(', ')}`) +
+      (topics.length > 3 ? `, +${topics.length - 3} more` : '')
+    )
+  }
   if (Array.isArray(result.elements)) {
     return result.elements.length
       ? `slide ${result.slide}: ${result.elements.join(', ')}`

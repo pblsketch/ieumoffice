@@ -55,6 +55,7 @@ import {
   type TopicFieldRequest,
 } from './components/dialogs'
 import type { MindmapMenuCommand, SaveMode } from '../shared/ipc'
+import { handleMindmapControl, type ControlRequest } from './control'
 
 type LoadStatus = 'loading' | 'ready' | 'failed' | 'error'
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed'
@@ -559,6 +560,16 @@ export default function App() {
     () => (activeKey ? (controllers.current.get(activeKey) ?? null) : null),
     [activeKey],
   )
+
+  // The shell evaluates this hook for the CLI's selection command.
+  useEffect(() => {
+    const target = window as unknown as Record<string, unknown>
+    target.__genofficeControl = (req: ControlRequest) =>
+      handleMindmapControl(req, { status: statusRef.current, controller: activeController() })
+    return () => {
+      delete target.__genofficeControl
+    }
+  }, [activeController])
 
   // a picture dragged from the desktop onto a topic: the same way in as an AI picture
   const pictureDrop = usePictureDrop({ host: ai.host, controller: activeController, say })

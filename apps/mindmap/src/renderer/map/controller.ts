@@ -550,6 +550,11 @@ export class MapController {
 
   // ---- reading ----
 
+  get sheetTitle(): string {
+    const title = this.#session.sheet(this.#key).title
+    return typeof title === 'string' ? title : ''
+  }
+
   get layout(): ViewLayout {
     return layoutOfDirection(this.mind.direction, this.#structure)
   }

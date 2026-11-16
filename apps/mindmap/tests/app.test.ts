@@ -15,6 +15,7 @@ import {
   type XmindSheet,
 } from '@genoffice/xmind-engine'
 import App from '../src/renderer/App'
+import type { ControlReply, ControlRequest } from '../src/renderer/control'
 import { LocaleProvider } from '../src/renderer/i18n/locale'
 import type {
   MindmapApi,
@@ -190,6 +191,193 @@ async function typeTitle(id: string, title: string): Promise<void> {
   await pressOnMap('F2')
   container.querySelector<HTMLElement>('#input-box')!.textContent = title
 }
+
+function controlHook() {
+  return (window as unknown as { __genofficeControl?: (req: ControlRequest) => ControlReply })
+    .__genofficeControl
+}
+
+async function readSelection(): Promise<ControlReply> {
+  let reply: ControlReply
+  await act(async () => {
+    reply = controlHook()!({ cmd: 'selection' })
+  })
+  return reply!
+}
+
+describe('CLI selection of the open map', () => {
+  it('reports nothing selected without saving or changing the document', async () => {
+    const { fake } = await openWith(richSheet())
+    const dirty = [...fake.dirty]
+    expect(await readSelection()).toEqual({ status: 'ok', result: { none: true, sheet: 'First' } })
+    expect(fake.saves).toEqual([])
+    expect(fake.dirty).toEqual(dirty)
+  })
+
+  it('reads the root and a nested topic with the full title path and original ids', async () => {
+    const { fake, bytes } = await openWith(richSheet())
+    await selectOnMap(IDS.root)
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: { sheet: 'First', topics: [{ id: IDS.root, title: 'Plan', path: ['Plan'] }] },
+    })
+    await selectOnMap(IDS.a1)
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: {
+        sheet: 'First',
+        topics: [{ id: IDS.a1, title: 'Alpha one', path: ['Plan', 'Alpha', 'Alpha one'] }],
+      },
+    })
+    expect(fake.saves).toEqual([])
+    expect(fake.dirty.at(-1)).toBe(false)
+    // Saving after a read still returns the untouched archive, including its hidden elements.
+    await act(async () => fake.emit.saveRequest('save'))
+    await savesReach(fake)
+    expect(fake.saves[0]!.bytes).toEqual(bytes)
+  })
+
+  it('returns all selected topics, not just the last one', async () => {
+    await openWith(richSheet())
+    await selectOnMap(IDS.a)
+    await act(async () => {
+      const event = new MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        shiftKey: true,
+      })
+      Object.defineProperty(event, 'pointerType', { value: 'mouse' })
+      topicEl(IDS.c).dispatchEvent(event)
+    })
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: {
+        sheet: 'First',
+        topics: [
+          { id: IDS.a, title: 'Alpha', path: ['Plan', 'Alpha'] },
+          { id: IDS.c, title: 'Gamma', path: ['Plan', 'Gamma'] },
+        ],
+      },
+    })
+  })
+
+  it('reads the active sheet rather than a hidden sheet with the same topic ids', async () => {
+    const second = richSheet()
+    second.id = 'second-sheet'
+    second.title = 'Second'
+    second.rootTopic.title = 'Other plan'
+    await openWith(richSheet(), second)
+    await selectOnMap(IDS.a)
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: { sheet: 'First', topics: [{ id: IDS.a, title: 'Alpha', path: ['Plan', 'Alpha'] }] },
+    })
+    await click('.mm-sheet:not(.on) .mm-sheet-name')
+    expect(await readSelection()).toEqual({ status: 'ok', result: { none: true, sheet: 'Second' } })
+    const visible = container.querySelector<HTMLElement>('.mm-sheet-host:not([hidden])')!
+    await act(async () => {
+      visible
+        .querySelector<HTMLElement>(`[data-nodeid="me${IDS.a}"]`)!
+        .dispatchEvent(
+          new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
+        )
+    })
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: {
+        sheet: 'Second',
+        topics: [{ id: IDS.a, title: 'Alpha', path: ['Other plan', 'Alpha'] }],
+      },
+    })
+  })
+
+  it('includes a title still being typed without saving it to a file', async () => {
+    const { fake } = await openWith(richSheet())
+    await typeTitle(IDS.a, 'Updated title')
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: {
+        sheet: 'First',
+        topics: [{ id: IDS.a, title: 'Updated title', path: ['Plan', 'Updated title'] }],
+      },
+    })
+    expect(fake.saves).toEqual([])
+  })
+
+  it('includes a title during IME composition and ends the composition on blur', async () => {
+    const { fake } = await openWith(richSheet())
+    await typeTitle(IDS.a, '')
+    const box = container.querySelector<HTMLElement>('#input-box')!
+    const events: string[] = []
+    const map = container.querySelector<HTMLElement>('.map-container')!
+    map.addEventListener('compositionstart', () => events.push('start'))
+    map.addEventListener('compositionend', () => events.push('end'))
+    // Simulate the browser ending composition before the library removes the blurred box.
+    box.addEventListener(
+      'blur',
+      () =>
+        box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '한글' })),
+      { capture: true, once: true },
+    )
+    await act(async () => {
+      box.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      box.textContent = '한글'
+      box.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, data: '한글' }))
+    })
+    expect(events).toEqual(['start'])
+    expect(await readSelection()).toEqual({
+      status: 'ok',
+      result: {
+        sheet: 'First',
+        topics: [{ id: IDS.a, title: '한글', path: ['Plan', '한글'] }],
+      },
+    })
+    expect(events).toEqual(['start', 'end'])
+    expect(container.querySelector('#input-box')).toBeNull()
+    expect(topicEl(IDS.a).textContent).toContain('한글')
+    expect(fake.saves).toEqual([])
+    await act(async () => fake.emit.menu('undo'))
+    expect(topicEl(IDS.a).textContent).toContain('Alpha')
+  })
+
+  it('answers loading and failed states and removes the hook on unmount', async () => {
+    const fake = fakeApi('C:/maps/unreadable.xmind', null)
+    let finishOpen!: (file: OpenFileResult) => void
+    fake.api.openFile = () =>
+      new Promise((resolve) => {
+        finishOpen = resolve
+      })
+    ;(window as unknown as { mindmapApi: MindmapApi }).mindmapApi = fake.api
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(createElement(LocaleProvider, { initial: 'en', children: createElement(App) }))
+    })
+    unmount = () => act(() => root.unmount())
+    expect(await readSelection()).toEqual({ status: 'not_ready' })
+    await act(async () => finishOpen({ status: 'unreadable' }))
+    expect(await readSelection()).toEqual({
+      status: 'error',
+      error: { reason: 'app_unavailable', message: 'the map could not be opened' },
+    })
+    expect(fake.saves).toEqual([])
+    unmount()
+    unmount = () => {}
+    expect(controlHook()).toBeUndefined()
+  })
+
+  it('does not navigate or edit for an unsupported target', async () => {
+    const { fake } = await openWith(richSheet())
+    expect(controlHook()!({ cmd: 'goto', target: { kind: 'block' } })).toEqual({
+      status: 'error',
+      error: { reason: 'unsupported', message: 'mind maps do not support a navigation target' },
+    })
+    expect(fake.saves).toEqual([])
+    expect(fake.dirty.at(-1)).toBe(false)
+  })
+})
 
 describe('a file that does not open', () => {
   it.each([
