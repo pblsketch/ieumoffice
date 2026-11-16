@@ -133,8 +133,7 @@ function isCommentsRelationship(type: string): boolean {
 
 /** the .rels part that belongs to a package part */
 function relsPathFor(partPath: string): string {
-  const slash = partPath.lastIndexOf('/')
-  return `${partPath.slice(0, slash)}/_rels/${partPath.slice(slash + 1)}.rels`
+  return partPath.replace(/([^/]+)$/, '_rels/$1.rels')
 }
 
 async function notesXmlForSlide(zip: JSZip, slidePath: string): Promise<string | undefined> {
