@@ -287,6 +287,7 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 - 결과는 `--json`이 내는 것과 같은 객체다. 실패는 `isError`와 같은 `error` 이유로 온다.
 - 환경변수 `GENOFFICE_MCP_COMPACT_SCHEMAS`는 예전 철자를 유지한다. `--http`의 토큰은 `--token`, 없으면 `GENOFFICE_MCP_TOKEN`에서 읽고, 둘 다 없으면 인증 없이 받는다. 인증 없이 받는 것은 이 PC 주소(`127.0.0.1`, `localhost`, `::1`)에서 열 때뿐이다. 그 밖의 `--host`에 토큰이 없으면 서버를 열지 않고 종료 코드 1, `error: "invalid_argument"`로 끝난다. 에이전트 설정 폴더를 찾을 때의 홈 폴더는 `GENOFFICE_HOME`으로 바꿀 수 있다.
 - 안내 자료는 리소스로도 내놓는다(`ieumoffice://guide/docs`, `…/sheets`, `…/hwp`, `…/diagram`, `…/map`, `…/slides`, `…/slides/design`, `…/slides/spec`, `…/slides/templates`, 내장 템플릿마다 `…/slides/templates/<id>`).
+- 적용한 스킬도 리소스로 내놓는다(따라오기, 이슈 #558). `ieumoffice://skills`는 사용자가 켜 둔(적용한) 스킬의 이름과 설명만 한 줄에 하나씩 준다. `ieumoffice://skills/<이름>`는 그 스킬의 `SKILL.md` 하나를 통째로 준다. 본문을 처음부터 모두 내주지 않고 읽을 때 필요한 것만 읽게 한다(점진적 공개). 끈 스킬, 숨긴 기본 스킬, 에이전트 창 전용 기본 스킬, 같은 이름에 밀린 스킬은 나오지 않는다. 없는 이름을 읽으면 적용한 이름 목록을 담은 오류가 온다.
 - 내장 디자인 템플릿은 `ieumoffice guide slides templates [<id>]`로 고른다. 목록의 `--json`은 `detail.templates`(`[{ id, name, scheme, description, fonts }]`, 정해진 순서), 템플릿 하나는 `detail`(`{ id, name, scheme, description, fonts, styleSheet }`)이다. 모르는 id는 종료 코드 1, `error: "invalid_argument"`, `detail.templates`에 쓸 수 있는 id 목록이다. MCP `guide` 도구는 세 번째 위치 인자 `name`으로 id를 받는다.
 - 앱의 설정 → 연동 화면이 지금 설치본에 맞는 등록 예시를 보여 준다.
 
@@ -322,11 +323,12 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 - `ieumoffice skill list`는 Claude Code·`agents`·Windsurf 줄과 예전 사본 줄을 낸다. 줄의 필드(`agent`, `label`, `detected`, `skills_dir`, `status`, `installed_version`, `up_to_date`)는 그대로이고 `legacy`(예전 사본이면 `true`)가 더해졌다.
 - `ieumoffice skill install <agent|all>`의 이름은 `claude-code`, `agents`, `codex`, `cursor`, `gemini`, `copilot`, `opencode`, `windsurf`다. 다섯 도구의 이름은 그 도구가 이 PC에 있는지 보고(없으면 `--force`) 공용 폴더에 쓰며, 그 도구의 예전 사본이 있으면 함께 맞춘다. `all`은 있는 줄 모두와 예전 사본 모두다. 손으로 고친 예전 사본은 `--force`가 없으면 그대로 두고 경고 `legacy_copy_left`를 낸다. 결과 줄의 `action`은 `written`·`unchanged`다.
 - `ieumoffice skill remove <agent> [--dir <path>]`는 이 앱이 쓴 사본 하나를 지운다(설정 → 연동의 제거와 같다). 다섯 도구의 이름은 그 도구 자기 폴더의 예전 사본, `agents`는 공용 사본이다. 이 앱이 쓰지 않은 파일은 지우지 않고 경고 `not_installed_by_app`을 낸다. 결과 줄의 `action`은 `removed`·`unchanged`다.
+- `ieumoffice skill export <이름> --out <폴더>`는 아래 "사용자 스킬"의 발행 기능이다(적용한 스킬을 표준 스킬 폴더로 내보낸다).
 - 이 스킬은 앱 안의 사용자 스킬 목록에는 나오지 않는다(이름 `ieumoffice`는 어느 출처에서든 읽지 않는다, 결정 0048).
 
 ## 사용자 스킬 (결정 0048)
 
-앱 안에서 쓰는 스킬이다. 위 "에이전트 스킬"(바깥 에이전트에 설치하는 것)과 다르다. 터미널 명령어 `ieumoffice`와 그 MCP 서버는 사용자 스킬을 쓰지 않는다.
+앱 안에서 쓰는 스킬이다. 위 "에이전트 스킬"(바깥 에이전트에 설치하는 것)과 다르다. 터미널 명령어 `ieumoffice`와 그 MCP 서버는 사용자 스킬을 쓰지 않는다. 적용한 스킬만 예외다(이슈 #558): MCP 서버가 리소스로 내주고(따라오기), `skill export`로 내보낼 수 있다(발행). 이 길이 기본 스킬을 찾는 자리는 환경변수 `GENOFFICE_BUILTIN_SKILLS`로 바꿀 수 있다(없으면 설치본의 `builtin-skills`, 개발 실행에서는 저장소의 `apps/shell/resources/builtin-skills`에서 찾는다).
 
 **스킬 폴더 형식.** 공개 표준을 따른다. 폴더 하나에 `SKILL.md`가 있고, 앞머리에 `name`(1~64자)과 `description`이 있어야 한다. 이음오피스는 표준의 `metadata`에 세 값을 쓴다. 다른 프로그램은 이 값을 무시해도 스킬이 동작한다.
 
@@ -347,6 +349,8 @@ metadata:
 - 이음오피스가 새로 만드는 이름은 소문자·숫자·하이픈만 쓰고, 하이픈으로 시작하거나 끝나지 않으며 `--`가 없다.
 
 **내보내기 zip과 꾸러미(결정 0120).** 내보낸 zip은 맨 위에 스킬 이름의 폴더가 있고, 그 안이 스킬 폴더 그대로다(아래 출처 기록은 빠진다). 스킬 하나는 `<이름>.zip`이고, 여러 개(꾸러미)는 저장 창이 "〈첫 스킬〉 외 N개.zip"을 제안한다(화면 언어의 말, Windows 파일 이름에 쓸 수 없는 글자는 뺀다. 쓸 말이 없으면 `skills.zip`, 결정 0128). 파일 이름은 사람이 바꿀 수 있고 내용과 상관없다. 꾸러미는 맨 위 폴더마다 스킬 하나다. 이름이 같은 스킬 둘은 한 꾸러미에 넣지 않는다. 다른 프로그램에서는 맨 위 폴더를 하나씩 스킬 폴더에 풀어 넣으면 된다. 가져오기는 이 꼴 말고도 zip 안의 `SKILL.md` 폴더를 모두 찾지만, 창에 끌어 놓은 zip은 맨 위에 `SKILL.md`가 있거나 맨 위 폴더마다 `SKILL.md`가 있을 때만 스킬로 본다(`__MACOSX`와 `.`으로 시작하는 폴더, 맨 위의 낱 파일은 따지지 않는다).
+
+**발행(이슈 #558).** `ieumoffice skill export <이름> --out <폴더> [--include-template]`는 적용한 스킬을 표준 스킬 폴더(`SKILL.md`와 부가 파일)로 내보내 발행 준비를 마친다. `<폴더>`가 곧 스킬 폴더이고 깃허브에 그대로 올릴 수 있다. 깃허브 출처 기록(`.ieum-source.json`)은 들어가지 않는다. `--out` 폴더는 새로 만들거나 비어 있어야 하고, 비어 있지 않으면 종료 코드 2, `error: "output_exists"`로 거절한다. 스킬 폴더를 읽을 수 없거나 `SKILL.md`가 하나도 복사되지 않으면 종료 코드 2, `error: "file_not_found"`로 거절하고, 스킬 폴더가 너무 크면 종료 코드 2, `error: "resource_limit"`로 거절한다. 스킬 안의 파일을 읽지 못한 실패도 같은 읽기 오류(`file_not_found`)로 알리고, 쓸 수 없는 `--out`과 구분한다. 적용하지 않은 스킬은 이름이 맞아도 내보내지 않고 종료 코드 1, `error: "invalid_argument"`로 알린다. 이름이 같은 스킬이 여러 개면 밀리지 않고 고른(적용된) 스킬 하나가 내보내지고, 밀린 스킬의 식별자로는 내보낼 수 없다. 양식 문서(`metadata.ieum-template`이 가리키는 `assets/`의 문서 사본)는 기본으로 들어가지 않고 `--include-template`을 줄 때만 복사한다. 빼면 경고 `template_left_out`, 넣으면 경고 `template_included`를 내고, 결과의 `detail.template_included`에 포함 여부를 적는다.
 
 **받는 주소.** 깃허브 링크 칸은 결정 0048의 다섯 꼴(저장소, `tree/…`, `blob/…/SKILL.md`, `owner/repo`, `owner/repo@이름`)에 더해 스킬 목록 사이트의 쪽 주소 `https://skills.sh/<owner>/<repo>/<skill>`을 받는다. 이 주소는 `owner/repo@skill`과 같게 읽는다. 끝의 `/`와 `#…`는 무시하고, 그 아래 쪽과 물음표가 붙은 주소는 받지 않는다.
 

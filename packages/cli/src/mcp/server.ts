@@ -1,7 +1,9 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { PRODUCT_NAME } from '@genoffice/i18n'
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { appliedSkills, appliedSkillsSummary, findAppliedSkill, skillMdOf } from '../applied-skills'
 import type { BatchCounts } from '../batch'
 import { defaultRegistry, VERSION } from '../cli'
 import type { OpFailure } from '../op-errors'
@@ -116,6 +118,84 @@ async function templateGuides(): Promise<typeof GUIDES> {
   }))
 }
 
+/** The follow-along list resource; one skill is `ieumoffice://skills/<name>` */
+const SKILLS_URI = 'ieumoffice://skills'
+
+/**
+ * The skills the person applied (enabled) in the app, as resources (issue
+ * #558, follow-along). `ieumoffice://skills` shows the name and description of
+ * each only, `ieumoffice://skills/<name>` one skill's SKILL.md — read on
+ * purpose, never all bodies at once (progressive disclosure). What the person
+ * left off is never exposed; a name that is not applied is an error naming the
+ * applied ones.
+ */
+function registerSkillResources(server: McpServer, ctx: McpContext): void {
+  server.registerResource(
+    'Applied skills',
+    SKILLS_URI,
+    {
+      description:
+        "the skills applied (enabled) in IeumOffice: name and description only; read ieumoffice://skills/<name> for one skill's SKILL.md",
+      mimeType: 'text/plain',
+    },
+    async (uri) => {
+      const skills = await appliedSkills(ctx.env)
+      return {
+        contents: [{ uri: uri.href, mimeType: 'text/plain', text: appliedSkillsSummary(skills) }],
+      }
+    },
+  )
+  server.registerResource(
+    'Applied skill',
+    new ResourceTemplate(`${SKILLS_URI}/{name}`, {
+      list: async () => ({
+        resources: (await appliedSkills(ctx.env)).map((skill) => ({
+          // encoded: a name is a path segment, and names may hold reserved URI characters
+          uri: `${SKILLS_URI}/${encodeURIComponent(skill.name)}`,
+          name: skill.name,
+          description: skill.description,
+          mimeType: 'text/markdown',
+        })),
+      }),
+    }),
+    {
+      description: 'the SKILL.md of one skill applied (enabled) in IeumOffice',
+      mimeType: 'text/markdown',
+    },
+    async (uri, vars) => {
+      const skills = await appliedSkills(ctx.env)
+      const raw = String(vars.name ?? '')
+      let wanted: string
+      try {
+        wanted = decodeURIComponent(raw)
+      } catch {
+        // a malformed escape (ieumoffice://skills/%zz) cannot name a skill;
+        // fall through with the raw name so the unknown-skill error explains it
+        wanted = raw
+      }
+      const skill = findAppliedSkill(skills, wanted)
+      if (!skill) {
+        const names = skills.map((s) => s.name).join(', ') || '(none)'
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `unknown skill: ${wanted}; applied skills: ${names}`,
+        )
+      }
+      const md = await skillMdOf(skill)
+      if (md.kind === 'broken') {
+        // distinct from a missing SKILL.md: the folder exists but cannot be
+        // read. The name only, never the folder path: this message also goes
+        // out over --http
+        throw new McpError(ErrorCode.InternalError, `cannot read the skill folder of ${skill.name}`)
+      }
+      if (md.kind === 'missing') {
+        throw new McpError(ErrorCode.InvalidParams, `skill ${skill.name} has no SKILL.md`)
+      }
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: md.text }] }
+    },
+  )
+}
+
 export interface ServerOptions {
   registry?: CommandRegistry
   /** advertise ops / cells / data as untyped `array | object` (GENOFFICE_MCP_COMPACT_SCHEMAS=1, --compact-schemas) */
@@ -181,6 +261,7 @@ export async function createMcpServer(
       },
     )
   }
+  registerSkillResources(server, ctx)
   return server
 }
 

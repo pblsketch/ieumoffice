@@ -559,9 +559,15 @@ Nothing in this list is uploaded by the app.
   A template you save with a skill is a copy of your document, kept in the
   skill's folder (`assets/`); it holds whatever that document held, so use
   **Make a blank template** to clear names and other filled-in values first.
-  A skill exported as a zip carries its template documents with it. Removing
-  a skill moves it to the system trash. Which skills are on is kept in
-  `app-settings.json` in the data folder.
+  A skill exported as a zip carries its template documents with it. A
+  connected MCP client reads the name, description and text of the skills you
+  have turned on: `ieumoffice://skills` lists each name and description, and
+  one resource gives one skill's `SKILL.md` when the client reads it. Skills
+  that are off are never exposed. The export also runs from the terminal
+  command (`ieumoffice skill export`), which writes one turned-on skill as a
+  standard skill folder and leaves its template document out unless you pass
+  `--include-template`. Removing a skill moves it to the system trash. Which
+  skills are on is kept in `app-settings.json` in the data folder.
 - **Earlier versions of your skills** (`~/.ieumoffice/skill-history`): when
   you edit one of your skills, install another over it or update it, the
   version before is kept here as a zip (template documents included) so you
