@@ -1106,6 +1106,8 @@ function loadStandardFont(m: Pdfium, doc: number, name: string): number {
   }
 }
 
+class UndrawableTextError extends Error {}
+
 /** Rebuild font plus whether bold must be synthesized by stroking. A bold toggle on
     "keep original" never swaps the face: the same glyphs with a thin same-color
     stroke keep every advance, so the surrounding layout survives (a bold face file
@@ -1230,7 +1232,7 @@ async function resolveRebuildFont(
   // and block the whole save — reject this one edit instead (it is reported as
   // skipped with this reason, everything else saves)
   if (!fallback) {
-    throw new Error('the replacement contains characters no available font can draw')
+    throw new UndrawableTextError('the replacement contains characters no available font can draw')
   }
   const sub = await subsetTtf(fallback, drawn)
   try {
@@ -2396,15 +2398,25 @@ export function applyTextInserts(
       const keysOf = new Map<TextInsertInput, Set<string>>()
       const faces = new Map<
         string,
-        { sample: TextInsertInput; face: ReturnType<typeof faceOf>; text: string }
+        {
+          sample: TextInsertInput
+          face: ReturnType<typeof faceOf>
+          text: string
+          entries: Map<number, { input: TextInsertInput; editIndex: number; text: string }>
+        }
       >()
       for (const pageInserts of byPage.values())
-        for (const { input } of pageInserts) {
+        for (const { input, editIndex } of pageInserts) {
           const styles = insertCharStyles(input)
           charStylesOf.set(input, styles)
           const keys = new Set<string>([faceKeyOf(input)])
           if (!faces.has(faceKeyOf(input)))
-            faces.set(faceKeyOf(input), { sample: input, face: faceOf(input, null), text: '' })
+            faces.set(faceKeyOf(input), {
+              sample: input,
+              face: faceOf(input, null),
+              text: '',
+              entries: new Map(),
+            })
           for (let k = 0; k < input.text.length; k++) {
             const ch = input.text[k]!
             if (ch === '\n') continue
@@ -2412,8 +2424,15 @@ export function applyTextInserts(
             const key = faceKeyOf(input, s)
             keys.add(key)
             let f = faces.get(key)
-            if (!f) faces.set(key, (f = { sample: input, face: faceOf(input, s), text: '' }))
+            if (!f)
+              faces.set(
+                key,
+                (f = { sample: input, face: faceOf(input, s), text: '', entries: new Map() }),
+              )
             f.text += ch
+            let entry = f.entries.get(editIndex)
+            if (!entry) f.entries.set(editIndex, (entry = { input, editIndex, text: '' }))
+            entry.text += ch
           }
           keysOf.set(input, keys)
         }
@@ -2421,7 +2440,9 @@ export function applyTextInserts(
         string,
         { font: number; truetype: boolean; syntheticBold: boolean; failed?: string }
       >()
-      for (const [key, { sample, face, text: merged }] of faces) {
+      const unsupportedInserts = new Set<number>()
+      for (const [key, { sample, face, text: merged, entries }] of faces) {
+        let group = [...entries.values()]
         const pseudoEdit: TextEditInput = {
           pageIndex: 0,
           rect: [0, 0, 0, 0],
@@ -2435,12 +2456,31 @@ export function applyTextInserts(
           newItalic: face.italic,
         }
         try {
-          const { bytes: fontBytes, syntheticBold } = await resolveRebuildFont(
-            m,
-            0,
-            pseudoEdit,
-            merged,
-          )
+          let resolved: { bytes: Buffer; syntheticBold: boolean }
+          try {
+            resolved = await resolveRebuildFont(m, 0, pseudoEdit, merged)
+          } catch (err) {
+            if (!(err instanceof UndrawableTextError)) throw err
+            // Diagnose coverage only on the failed path. Keep the drawable lines
+            // together so a single unsupported insert does not discard their face.
+            const drawable = group.filter(({ text }) =>
+              canDrawText(text, face.font, face.bold, face.italic),
+            )
+            if (drawable.length === group.length) throw err
+            const drawableIndexes = new Set(drawable.map(({ editIndex }) => editIndex))
+            for (const { input, editIndex } of group) {
+              if (drawableIndexes.has(editIndex)) continue
+              if (!unsupportedInserts.has(editIndex)) {
+                unsupportedInserts.add(editIndex)
+                skipped.push({ editIndex, pageIndex: input.pageIndex, reason: errMsg(err) })
+              }
+            }
+            group = drawable
+            if (!group.length) continue
+            const text = group.map(({ text: t }) => t).join('')
+            resolved = await resolveRebuildFont(m, 0, { ...pseudoEdit, newText: text }, text)
+          }
+          const { bytes: fontBytes, syntheticBold } = resolved
           const fontPtr = m._malloc(fontBytes.length)
           m.HEAPU8.set(fontBytes, fontPtr)
           const font = m._FPDFText_LoadFont(
@@ -2465,6 +2505,7 @@ export function applyTextInserts(
           let applied = 0
           try {
             for (const { input, editIndex } of pageInserts) {
+              if (unsupportedInserts.has(editIndex)) continue
               const text = input.text.trim()
               if (!text) {
                 skipped.push({ editIndex, pageIndex, reason: 'empty inserted text' })
