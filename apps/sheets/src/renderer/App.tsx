@@ -563,6 +563,7 @@ import { installFormulaNullResultFix } from './formula-null-result'
 import { installKoreanDateInput } from './korean-date-input'
 import { installNumberFormatFix } from './numfmt-fix'
 import { installIfsEmptySetFix } from './ifs-empty-set'
+import { installExcel365Functions } from './excel-365-functions'
 import { installCriteriaCompareCacheFix } from './criteria-compare-cache'
 import { installRateFallback } from './rate-function'
 import {
@@ -2521,6 +2522,7 @@ export function App({
     const rateFallbackDisposable = installRateFallback(runtime)
     // MINIFS/MAXIFS over zero matching cells return 0, not blank.
     const ifsEmptySetDisposable = installIfsEmptySetFix(runtime)
+    const excel365Disposable = installExcel365Functions(runtime)
     // Repeated *IF(S) '=' compares on text columns survive the inverted-
     // index cache when the criteria was number-coerced ("2026-06").
     const criteriaCompareCacheDisposable = installCriteriaCompareCacheFix()
@@ -3837,6 +3839,7 @@ export function App({
       cellFilenameDisposable.dispose()
       rateFallbackDisposable.dispose()
       ifsEmptySetDisposable.dispose()
+      excel365Disposable.dispose()
       criteriaCompareCacheDisposable.dispose()
       formulaLexerFixDisposable.dispose()
       sheetRenameFixDisposable.dispose()
