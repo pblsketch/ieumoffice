@@ -627,38 +627,17 @@ html.markdown-graph-open .ribbon-tabs {
   -webkit-app-region: no-drag;
 }
 
-/* the toolbar row below the QAT row (old single-row ribbon) */
 .ribbon-body {
   display: flex;
-  /* stretch like the docs ribbon: groups fill the band and the tall AI
-     buttons top-align at the same size/position as docs */
-  align-items: stretch;
-  /* band metrics shared with the docs/slides/pdf ribbons; no row gap — groups
-     own their spacing (2px 4px padding) exactly like the docs/slides ribbons */
-  padding: 6px 12px;
-  /* HARD-fixed height like the other editors' ribbons, so switching shell tabs
-     never shifts the toolbar's bottom edge (no wrap-driven growth) */
-  height: 80px;
-  /* groups never shrink, so a narrow window scrolls the row inside the ribbon
-     instead of spilling controls out of reach (matching the docs ribbon). The
-     .rb-link-pop dropdown is position: fixed + anchor-positioned, so this
-     clip cannot cut it off */
+  align-items: center;
+  gap: 5px;
+  height: 44px;
+  /* Reserve the right edge for the shared, absolutely positioned collapse button. */
+  padding: 4px 28px 4px 12px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-}
-
-/* the step after the AI labels: the band and its groups close up their spacing */
-.ribbon-body.tight {
-  padding-inline: 6px;
-}
-
-.ribbon-body.tight > .ribbon-group {
-  padding-inline: 1px;
-}
-
-.ribbon-body.tight > .rb-sep {
-  margin-inline: 3px;
+  container: md-ribbon / inline-size;
 }
 
 .ribbon-body::-webkit-scrollbar {
@@ -666,16 +645,15 @@ html.markdown-graph-open .ribbon-tabs {
 }
 
 .rb-sep {
-  width: 1px;
-  flex-shrink: 0;
-  align-self: stretch;
+  flex: 0 0 1px;
+  height: 22px;
+  margin-inline: 3px;
   background: var(--border);
-  /* 2px matches the groups' vertical padding — same inset as docs/slides */
-  margin: 2px 6px;
 }
 
 .rb-spacer {
   flex: 1;
+  min-width: 8px;
 }
 
 /* ---- quick-access buttons (save / undo / redo), same as the docs QAT ---- */
@@ -796,156 +774,177 @@ html.markdown-graph-open .ribbon-tabs {
   cursor: default;
 }
 
-/* ---- docs-parity ribbon group with tall AI buttons ---- */
-
-.ribbon-group {
+.ribbon-group,
+.ribbon-group-items,
+.rb-ai-split {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 2px 4px;
-  /* groups never shrink below content, same as the docs/slides ribbons */
+  align-items: center;
   flex-shrink: 0;
-}
-
-.ribbon-group-items {
-  display: flex;
-  align-items: center;
   gap: 2px;
-  flex: 1;
 }
 
-.rb-big {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: none;
-  border-radius: 4px;
-  padding: 4px 7px 6px;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-  color: var(--text-primary);
+.rb-labeled {
+  gap: 5px;
+  padding-inline: 6px;
+  font: inherit;
+  font-size: 13px;
 }
 
-.rb-big-icon {
-  min-height: 28px;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-primary);
-  /* same icon-row box as docs: full button width with horizontal bleed */
-  align-self: stretch;
-  border-radius: 4px;
-  padding: 3px 4px;
-  margin: 0 -4px;
-}
-
-.rb-big:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* the AI entries read as one piece: hover/press tint the whole button */
-.rb-big.ai-entry:hover:not(:disabled) {
-  background: var(--hover);
-}
-
-/* a band too narrow even with the view tools folded shows the entry's icon
-   alone. The label is clipped, not removed: it keeps its line, so the icon
-   sits level with its labelled neighbours, and it still names the button. */
-.rb-big.ai-entry.compact > :not(.rb-big-icon) {
-  width: 0;
+.rb-label {
+  max-inline-size: 100px;
   overflow: hidden;
-  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-/* neutral gray open state, same control across docs/sheets/slides ribbons */
-.rb-big.ai-entry.active {
-  background: var(--active-bg);
-  color: var(--text-primary);
+.rb-btn[aria-expanded='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
 }
 
-.ai-feature-icon {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  color: var(--color-brand-secondary);
+.rb-ai-split {
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
 }
 
-.ai-feature-icon svg {
-  width: 24px;
-  height: 24px;
+.rb-ai-split .rb-menu-trigger {
+  border-inline-start: 1px solid var(--border);
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
 }
 
-/* typographic letterform glyphs (B/I/U/S): 15px/600 like the docs inline row */
-.rb-mono {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11.5px;
-}
-
-/* block-style picker (shared @genoffice/ui gs-dd dropdown): same box as the
- * docs/slides font pickers (28px tall, 3px radius, 13px label, 7px inline
- * padding, strong border) */
 .rb-style.gs-dd {
-  min-width: 108px;
+  width: 108px;
 }
 
 .rb-style .gs-dd-btn {
   height: 28px;
-  padding: 0 7px;
+  padding-inline: 7px;
   border-color: var(--color-border-strong);
   color: var(--text-primary);
   font-size: 13px;
 }
 
-/* the step after the spacing: the box clips the style name, its ScreenTip reads it in full */
-.rb-style.gs-dd.narrow {
-  min-width: 0;
-  width: 72px;
+.rb-style .gs-dd-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* view font picker: the block-style picker's box */
-.rb-font.gs-dd {
-  width: 112px;
+@container md-ribbon (width < 1040px) {
+  .ribbon-actions .rb-label {
+    display: none;
+  }
 }
 
-.rb-font .gs-dd-btn {
-  height: 28px;
-  padding: 0 7px;
-  border-color: var(--color-border-strong);
-  color: var(--text-primary);
-  font-size: 13px;
+@container md-ribbon (width < 790px) {
+  .rb-labeled .rb-label {
+    display: none;
+  }
+
+  .rb-style.gs-dd {
+    width: 82px;
+  }
 }
 
-/* More: the view tools that no longer fit the band, in a floating row under
-   the button (the slides ribbon's collapsed-group flyout). Fixed + anchored so
-   the ribbon-body clip cannot cut it off; it opens leftward from the window edge. */
-.rb-more-wrap {
+.rb-menu-wrap {
   position: relative;
   display: inline-flex;
-  anchor-name: --rb-more-anchor;
-  anchor-scope: --rb-more-anchor;
+  anchor-name: --md-ribbon-menu;
+  anchor-scope: --md-ribbon-menu;
 }
 
-.rb-more-pop {
+.rb-menu {
   position: fixed;
-  position-anchor: --rb-more-anchor;
-  top: calc(anchor(bottom) + 6px);
-  right: anchor(right);
-  position-try-fallbacks: flip-inline;
+  position-anchor: --md-ribbon-menu;
+  inset-block-start: calc(anchor(end) + 4px);
+  inset-inline-start: anchor(start);
+  position-try-fallbacks:
+    flip-inline,
+    flip-block,
+    flip-inline flip-block;
   z-index: 30;
+  display: grid;
+  min-inline-size: 190px;
+  max-inline-size: min(290px, calc(100vw - 16px));
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-menu);
+}
+
+.rb-menu-wrap.align-end > .rb-menu {
+  inset-inline-start: auto;
+  inset-inline-end: anchor(end);
+}
+
+.rb-menu-wrap.submenu {
+  display: block;
+}
+
+.rb-menu-wrap.submenu > .rb-menu {
+  inset-block-start: anchor(start);
+  inset-inline-start: auto;
+  inset-inline-end: calc(anchor(start) + 4px);
+  position-try-fallbacks:
+    --rb-submenu-inset,
+    flip-inline,
+    flip-inline --rb-submenu-inset;
+  z-index: 31;
+  max-block-size: min(320px, calc(100dvh - 16px));
+  overflow: auto;
+}
+
+@position-try --rb-submenu-inset {
+  inset-block-start: 8px;
+}
+
+.rb-menu-item {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px var(--md-shadow-color);
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rb-menu-item > svg,
+.rb-menu-glyph {
+  flex: 0 0 18px;
+}
+
+.rb-menu-item:hover:not(:disabled),
+.rb-menu-item:focus-visible {
+  background: var(--hover);
+}
+
+.rb-menu-item[aria-expanded='true'],
+.rb-menu-check {
+  color: var(--accent-dark);
+}
+
+.rb-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rb-submenu-trigger > svg:last-child,
+.rb-menu-check {
+  margin-inline-start: auto;
+}
+
+.rb-menu-divider {
+  height: 1px;
+  margin: 4px;
+  background: var(--border);
 }
 
 /* Anchor for the link popover, which is position: fixed so it escapes the
@@ -3634,62 +3633,6 @@ div.tiptap-mathematics-render {
 .redact-dialog-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* ---- document paper theme picker (ribbon) ---- */
-
-.md-theme-wrap {
-  position: relative;
-  anchor-name: --md-theme-anchor;
-  anchor-scope: --md-theme-anchor;
-}
-
-/* fixed + anchored like .rb-link-pop: the ribbon body clips both axes, so an
-   absolute menu below the band was cut off at the band's bottom edge */
-.md-theme-menu {
-  position: fixed;
-  position-anchor: --md-theme-anchor;
-  top: calc(anchor(bottom) + 6px);
-  left: anchor(left);
-  position-try-fallbacks: flip-inline;
-  z-index: 30;
-  min-width: 190px;
-  padding: 5px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-menu);
-}
-
-.md-theme-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  font: inherit;
-  font-size: 13px;
-  color: var(--text);
-  text-align: start;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.md-theme-item:hover {
-  background: var(--surface-subtle);
-}
-
-.md-theme-item.on {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.md-theme-check {
-  font-size: 12px;
 }
 
 /* ---- backlinks panel ---- */

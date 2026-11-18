@@ -7,23 +7,23 @@ Penyunting Markdown membuka .md / .markdown — dan .txt / .json, terus ke papar
 - **Pratonton**: dipaparkan secara langsung, dengan sumber relatif seperti imej diselesaikan berhampiran dokumen.
 - **Simpanan** mengekalkan setiap bait dengan tepat. Tanda BOM, aksara CRLF, dan kehadiran baris akhir kosong semuanya dikekalkan, dan simpanan tanpa perubahan tidak menulis semula fail.
 - **Cari dan ganti**: ctrl+F mencari dalam sumber, dan Ganti Semua menulis hasilnya ke fail.
-- **AI**: Butang tetapan awal membolehkan pembantu menulis semula, melanjutkan, atau menterjemah dokumen tersebut. Pemilihan boleh disembunyikan daripada AI (lihat bab panel AI).
+- **AI**: Minta pembantu membuat kerja pada dokumen melalui panel AI. Pemilihan boleh disembunyikan daripada AI (lihat bab panel AI).
 - **Membuka pautan**: semasa mengedit, Ctrl+klik pautan (⌘ pada Mac) membukanya dalam pelayar; klik biasa meletakkan kursor dalam teks pautan untuk diedit. Dalam mod pembentangan (F5), klik biasa membukanya.
 
 ## Bar alat
 
-Satu baris butang di atas editor (halakan penuding ke atasnya untuk melihat tooltip):
+Alat fail dan penyuntingan terletak di atas dokumen. Halakan penuding pada butang untuk melihat keterangannya.
 
 - **Fail dan sejarah**: Simpan, Simpan Sebagai, Buat Asal, Buat Semula, dan Cari. Togol **Autosimpan** di sebelah kanan menulis perubahan ke cakera secara berkala.
-- **Butang AI** membuka panel AI, dan bersetunya terdapat tetapan awal untuk menulis semula, melanjutkan, dan menterjemah.
+- Klik **Pembantu AI** untuk membuka panel AI. Anak panah di sebelahnya membuka menu tindakan.
 - **Gaya perenggan** dalam senarai lungsur membolehkan anda bertukar antara teks biasa dan pelbagai tahap tajuk.
 - **Pemformatan dalam talian** merangkumi tebal, condong, teks bergaris, kod dalam talian, dan pautan.
 - **Senarai** merangkumi senarai bertindan, bernombor, dan senarai tugasan.
 - **Sisip** merangkumi jadual, imej, dan garis mendatar.
-- **Sifat** memasukkan atau melompat ke blok YAML front matter di bahagian atas fail.
-- **Kerangka** membolehkan anda melompat mengikut hierarki tajuk.
-- **Semakan ejaan** menyalakan atau mematikan pemeriksaan ejaan bagi dokumen ini.
-- **Tetapan hos imej**: imej yang ditampal dan dijatuhkan pergi dahulu ke storan anda sendiri — serasi S3 (R2/OSS/COS/MinIO), SM.MS atau GitHub — salinan assets setempat kekal sebagai sandaran.
+- **Paparan › Sifat** memasukkan atau melompat ke blok YAML front matter di bahagian atas fail.
+- **Paparan › Rangka** membolehkan anda melompat mengikut hierarki tajuk.
+- **Paparan › Ejaan** menyalakan atau mematikan pemeriksaan ejaan bagi dokumen ini.
+- **Sisip › Tetapan hos imej**: imej yang ditampal dan dijatuhkan pergi dahulu ke storan anda sendiri — serasi S3 (R2/OSS/COS/MinIO), SM.MS atau GitHub — salinan assets setempat kekal sebagai sandaran.
 
 Tiga contoh pantas:
 

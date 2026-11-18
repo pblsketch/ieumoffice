@@ -21,8 +21,12 @@ export async function openSource(
         getLanguage: async () => 'en',
         getTheme: async () => 'light',
         getMarkdownTheme: async () => 'default',
-        setMarkdownTheme: async () => 'default',
-        onLanguageChanged: () => off,
+        setMarkdownTheme: async (theme) => theme,
+        onLanguageChanged: (handler) => {
+          const change = (event: Event) => handler((event as CustomEvent).detail)
+          window.addEventListener('test:language', change)
+          return () => window.removeEventListener('test:language', change)
+        },
         onThemeChanged: () => off,
         getAutoSaveDefault: async () => ({ on: false, updatedAt: 0 }),
         onAutoSaveDefaultChanged: () => off,

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { Editor } from '@tiptap/core'
 import { buildExtensions } from '../src/renderer/editor/extensions'
 import { Ribbon } from '../src/renderer/components/Ribbon'
+import { strings } from '../src/renderer/i18n/strings'
 import {
   EDITOR_FONT_KEY,
   applyEditorFont,
@@ -118,31 +119,49 @@ function renderRibbon(props: { editorFont: string | null; sourceMode?: boolean }
   return { container, onEditorFont }
 }
 
-function pickFont(container: HTMLElement, value: string) {
-  act(() => (container.querySelector('.rb-font .gs-dd-btn') as HTMLButtonElement).click())
-  const item = container.querySelector(`.gs-dd-item[data-value="${value}"]`) as HTMLButtonElement
+function openView(container: HTMLElement) {
+  const view = container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${strings.zh.ribbonView}"]`,
+  )!
+  act(() => view.click())
+}
+
+function fontTrigger(container: HTMLElement) {
+  return container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${strings.zh.editorFontTitle}"]`,
+  )
+}
+
+function pickFont(container: HTMLElement, name: string) {
+  act(() => fontTrigger(container)!.click())
+  const item = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('button[role="menuitemradio"]'),
+  ).find((option) => option.querySelector('span')?.textContent === name)!
   act(() => item.click())
 }
 
 describe('the ribbon font picker', () => {
   it('passes the picked family, and null for the default entry', () => {
     const { container, onEditorFont } = renderRibbon({ editorFont: 'Georgia' })
-    expect(container.querySelector('.rb-font .gs-dd-btn')?.getAttribute('data-value')).toBe(
-      'Georgia',
-    )
+    openView(container)
     pickFont(container, 'Arial')
     expect(onEditorFont).toHaveBeenLastCalledWith('Arial')
-    pickFont(container, '')
+    pickFont(container, strings.zh.editorFontDefault)
     expect(onEditorFont).toHaveBeenLastCalledWith(null)
   })
 
-  it('still shows a remembered font the list no longer has', () => {
+  it('still shows and marks a remembered font the list no longer has', () => {
     const { container } = renderRibbon({ editorFont: 'Gone Font' })
-    expect(container.querySelector('.rb-font .gs-dd-value')?.textContent).toBe('Gone Font')
+    openView(container)
+    act(() => fontTrigger(container)!.click())
+    expect(
+      container.querySelector('[role="menuitemradio"][aria-checked="true"] span')?.textContent,
+    ).toBe('Gone Font')
   })
 
   it('is not offered for a .txt or .json file, which has no block editor', () => {
     const { container } = renderRibbon({ editorFont: null, sourceMode: true })
-    expect(container.querySelector('.rb-font')).toBeNull()
+    openView(container)
+    expect(fontTrigger(container)).toBeNull()
   })
 })

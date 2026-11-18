@@ -7,23 +7,23 @@ Markdown düzenleyici .md / .markdown dosyalarını, ayrıca .txt / .json dosyal
 - **Önizleme**: canlı; görseller gibi göreli varlıklar belgenin yanında çözümlenir.
 - **Kaydetme**: bayt düzeyinde birebir — BOM, CRLF ve dosya sonundaki yeni satırın varlığı korunur; değişiklik yapılmamış bir kaydetme dosyayı yeniden yazmaz.
 - **Bul ve değiştir**: Ctrl+F kaynakta arar; Tümünü değiştir dosyaya geri yazar.
-- **AI**: hazır düğmeler asistanın belgeyi yeniden yazmasına, genişletmesine veya çevirmesine olanak tanır. Bir seçim AI’dan gizlenebilir (bkz. AI paneli bölümü).
+- **AI**: AI panelinde asistandan belge üzerinde çalışmasını isteyebilirsiniz. Bir seçim AI’dan gizlenebilir (bkz. AI paneli bölümü).
 - **Bağlantıları açma**: düzenlerken bir bağlantıya Ctrl+tıklayın (Mac’te ⌘), tarayıcınızda açılır; düz tıklama imleci bağlantı metnine koyar, böylece metni düzenleyebilirsiniz. Sunum modunda (F5) düz tıklama bağlantıyı açar.
 
 ## Araç çubuğu
 
-Düzenleyicinin üstünde tek satır düğme (ipuçları için üzerine gelin):
+Dosya ve düzenleme araçları belgenin üstündedir. Açıklamayı görmek için işaretçiyi düğmenin üzerine getirin.
 
 - **Dosya ve geçmiş**: Kaydet, Farklı kaydet, Geri al, Yinele, Bul; sağdaki **Otomatik kaydet** anahtarı değişiklikleri belirli aralıklarla diske yazar.
-- **AI düğmesi**: AI panelini açar; yanında yeniden yazma / genişletme / çeviri hazır ayarları bulunur.
+- AI panelini açmak için **AI Asistanı** düğmesine tıklayın. Yanındaki ok işlem menüsünü açar.
 - **Paragraf stili** (açılır liste): gövde metni ile başlık düzeyleri arasında geçiş yapın.
 - **Satır içi biçimlendirme**: **kalın**, _italik_, ~~üstü çizili~~, `satır içi kod`, bağlantı.
-- **Listeler**: madde işaretli, numaralı, görev listesi.
+- **Liste**: madde işaretli, numaralı, görev listesi.
 - **Ekle**: tablo, görsel, yatay çizgi.
-- **Özellikler**: dosyanın başındaki YAML ön bilgi bloğunu ekleyin veya oraya gidin.
-- **Anahat**: başlık hiyerarşisine göre gidin.
-- **Yazım denetimi**: bu belge için yazım denetimini açıp kapatın.
-- **Görsel sunucusu ayarları**: yapıştırılan ve sürüklenen resimleri önce kendi depolamanıza gönderin — S3 uyumlu (R2/OSS/COS/MinIO), SM.MS veya GitHub — yerel varlık kopyası yedek olarak kalır.
+- **Görünüm › Özellikler**: dosyanın başındaki YAML ön bilgi bloğunu ekleyin veya oraya gidin.
+- **Görünüm › Anahat**: başlık hiyerarşisine göre gidin.
+- **Görünüm › Yazım denetimi**: bu belge için yazım denetimini açıp kapatın.
+- **Ekle › Resim sunucusu ayarları**: yapıştırılan ve sürüklenen resimleri önce kendi depolamanıza gönderin — S3 uyumlu (R2/OSS/COS/MinIO), SM.MS veya GitHub — yerel varlık kopyası yedek olarak kalır.
 
 Üç kısa örnek:
 

@@ -7,23 +7,23 @@ Der Markdown-Editor öffnet .md / .markdown — und .txt / .json, direkt in der 
 - **Vorschau**: in Echtzeit; relative Ressourcen wie Bilder werden neben dem Dokument aufgelöst.
 - **Speichern**: bytegetreu — BOM, CRLF und das Vorhandensein eines abschließenden Zeilenumbruchs bleiben erhalten; ein Speichern ohne Änderung schreibt die Datei nicht neu.
 - **Suchen und Ersetzen**: Strg+F durchsucht den Quelltext; „Alle ersetzen“ schreibt zurück.
-- **KI**: Voreinstellungs-Schaltflächen lassen den Assistenten das Dokument umformulieren, ausbauen oder übersetzen. Eine Auswahl lässt sich vor der KI verbergen (siehe Kapitel zum KI-Panel).
+- **KI**: Im KI-Bereich können Sie den Assistenten um Hilfe mit dem Dokument bitten. Eine Auswahl lässt sich vor der KI verbergen (siehe Kapitel zum KI-Panel).
 - **Links öffnen**: Beim Bearbeiten öffnet Strg+Klick auf einen Link (⌘ auf dem Mac) ihn im Browser; ein einfacher Klick setzt den Cursor in den Linktext, damit er bearbeitet werden kann. In der Präsentation (F5) öffnet ein einfacher Klick den Link.
 
 ## Die Werkzeugleiste
 
-Eine Zeile Schaltflächen über dem Editor (zum Tooltip mit der Maus darüberfahren):
+Über dem Dokument stehen Datei- und Bearbeitungsbefehle. Beim Überfahren erscheinen Hinweise.
 
 - **Datei und Verlauf**: Speichern, Speichern unter, Rückgängig, Wiederholen, Suchen; der Schalter **AutoSpeichern** rechts schreibt Änderungen in regelmäßigen Abständen auf den Datenträger.
-- **KI-Schaltfläche**: öffnet den KI-Bereich; daneben liegen die Voreinstellungen zum Umformulieren, Ausbauen und Übersetzen.
+- Mit **KI-Assistent** öffnen Sie den KI-Bereich. Der Pfeil daneben öffnet die Aktionen.
 - **Absatzformat** (Dropdown): zwischen Fließtext und den Überschriftebenen wechseln.
 - **Zeichenformat**: **Fett**, _Kursiv_, ~~Durchgestrichen~~, `Inline-Code`, Link.
-- **Listen**: Aufzählung, nummerierte Liste, Aufgabenliste.
+- **Liste**: Aufzählung, nummerierte Liste, Aufgabenliste.
 - **Einfügen**: Tabelle, Bild, Trennlinie.
-- **Eigenschaften**: fügt den YAML-Front-Matter-Block am Dateianfang ein oder springt dorthin.
-- **Gliederung**: springt nach Überschriftenhierarchie.
-- **Rechtschreibung**: schaltet die Rechtschreibprüfung für dieses Dokument um.
-- **Bildhost-Einstellungen**: eingefügte und gezogene Bilder gehen zuerst in Ihren eigenen Speicher — S3-kompatibel (R2/OSS/COS/MinIO), SM.MS oder GitHub — die lokale assets-Kopie bleibt als Rückfallebene.
+- **Ansicht › Eigenschaften**: fügt den YAML-Front-Matter-Block am Dateianfang ein oder springt dorthin.
+- **Ansicht › Gliederung**: springt nach Überschriftenhierarchie.
+- **Ansicht › Rechtschreibung**: schaltet die Rechtschreibprüfung für dieses Dokument um.
+- **Einfügen › Bildhost-Einstellungen**: eingefügte und gezogene Bilder gehen zuerst in Ihren eigenen Speicher — S3-kompatibel (R2/OSS/COS/MinIO), SM.MS oder GitHub — die lokale assets-Kopie bleibt als Rückfallebene.
 
 Drei schnelle Beispiele:
 

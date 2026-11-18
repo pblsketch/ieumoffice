@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Editor } from '@tiptap/core'
-import type { AppChoiceSource, AppChoiceState } from '@genoffice/ui'
+import { aiSubscriptionText, type AppChoiceSource, type AppChoiceState } from '@genoffice/ui'
 import { buildExtensions } from '../src/renderer/editor/extensions'
 import { Ribbon } from '../src/renderer/components/Ribbon'
 import { AiVisibilityProvider } from '../src/renderer/ai-visibility'
@@ -84,31 +84,35 @@ async function renderRibbon(source: AppChoiceSource, initial: AppChoiceState) {
   return container
 }
 
-const withholding = (container: Element) =>
-  container.querySelector(`[aria-label="${t('redactEnable')}"]`)
+const aiEntrances = (container: HTMLElement) =>
+  [aiSubscriptionText('zh', 'aiAssistant'), t('ribbonAiActions'), t('ribbonRedact')].flatMap(
+    (label) => {
+      const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
+      return button ? [button] : []
+    },
+  )
 
 describe('Markdown ribbon AI entrances follow the AI switch', () => {
   it('shows none while AI is off, and all of them once AI is turned on', async () => {
     const bridge = fakeSource(choice(false))
     const container = await renderRibbon(bridge.source, choice(false))
-    expect(container.querySelector('.ai-entry')).toBeNull()
-    expect(container.querySelector('[data-fold-key="assistant"]')).toBeNull()
-    expect(withholding(container)).toBeNull()
-    // the rest of the band is still there
+    expect(aiEntrances(container)).toHaveLength(0)
     expect(container.querySelector('.rb-style')).not.toBeNull()
 
     await act(async () => bridge.change(choice(true)))
-    expect(container.querySelector('[data-fold-key="assistant"]')).not.toBeNull()
-    expect(container.querySelectorAll('.ai-entry').length).toBeGreaterThan(1)
-    expect(withholding(container)).not.toBeNull()
+    const entrances = aiEntrances(container)
+    expect(entrances).toHaveLength(3)
+    act(() => entrances[1]!.click())
+    expect(container.querySelectorAll('[role="menuitem"]')).toHaveLength(4)
 
     await act(async () => bridge.change(choice(false)))
-    expect(container.querySelector('.ai-entry')).toBeNull()
+    expect(aiEntrances(container)).toHaveLength(0)
+    expect(container.querySelector('[role="menu"]')).toBeNull()
   })
 
   it('draws no AI entry before the first answer when the start value is off', async () => {
     const silent: AppChoiceSource = { get: () => new Promise(() => {}), onChange: () => () => {} }
     const container = await renderRibbon(silent, choice(false))
-    expect(container.querySelector('.ai-entry')).toBeNull()
+    expect(aiEntrances(container)).toHaveLength(0)
   })
 })

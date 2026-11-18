@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { Editor } from '@tiptap/core'
 import { buildExtensions } from '../src/renderer/editor/extensions'
 import { Ribbon } from '../src/renderer/components/Ribbon'
+import { aiSubscriptionText } from '@genoffice/ui'
+import { strings } from '../src/renderer/i18n/strings'
 
 beforeEach(() => vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true))
 const cleanups: Array<() => void> = []
@@ -18,6 +20,8 @@ afterEach(() => {
  *   because the two mean different things and can never both be on
  */
 function renderRibbon(sourceMode: boolean, sourceViewOpen = false) {
+  const onToggleAi = vi.fn()
+  const onAiPreset = vi.fn()
   const editor = new Editor({
     extensions: buildExtensions({
       slashController: { onOpen() {}, onUpdate() {}, onKeyDown: () => false, onClose() {} },
@@ -48,11 +52,24 @@ function renderRibbon(sourceMode: boolean, sourceViewOpen = false) {
         spellcheck: true,
         onToggleSpellcheck: vi.fn(),
         aiOpen: false,
-        onToggleAi: vi.fn(),
-        onAiPreset: vi.fn(),
+        onToggleAi,
+        onAiPreset,
         sourceMode,
         sourceViewOpen,
         onToggleSource: vi.fn(),
+        onImageHost: vi.fn(),
+        backlinksOpen: false,
+        onToggleBacklinks: vi.fn(),
+        tagsOpen: false,
+        onToggleTags: vi.fn(),
+        onOpenGraph: vi.fn(),
+        mdTheme: 'default',
+        onMarkdownTheme: vi.fn(),
+        editorFont: null,
+        onEditorFont: vi.fn(),
+        onCopyBlockLink: vi.fn(),
+        redactEnabled: false,
+        onToggleRedact: vi.fn(),
       }),
     )
   })
@@ -61,76 +78,63 @@ function renderRibbon(sourceMode: boolean, sourceViewOpen = false) {
     container.remove()
     editor.destroy()
   })
-  return container
+  return { container, editor, onToggleAi, onAiPreset }
 }
 
-/**
- * The style dropdown is the one formatting control with its own class, and it
- * only makes sense for a block document. The remaining formatting buttons are
- * plain icon buttons, so they are counted in the toolbar body instead — a
- * source-mode ribbon keeps only the spellcheck button down there.
- */
-function counts(container: HTMLElement) {
-  return {
-    styleDropdown: container.querySelectorAll('.rb-style').length,
-    // every icon button in the toolbar body, minus the one the source ribbon keeps
-    iconButtons: container.querySelectorAll('.ribbon-body button.rb-btn').length,
-  }
+function button(container: HTMLElement, label: string) {
+  return container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
+}
+
+function menuButton(container: HTMLElement, label: string) {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('.rb-menu-item')).find(
+    (item) => item.querySelector(':scope > span:not([aria-hidden])')?.textContent === label,
+  )
 }
 
 describe('Ribbon source mode', () => {
-  it('drops the block-formatting controls for a .txt/.json file', () => {
-    const source = counts(renderRibbon(true))
-    const markdown = counts(renderRibbon(false))
-    expect(markdown.styleDropdown).toBe(1)
-    expect(source.styleDropdown).toBe(0)
-    // 14 block-formatting controls, plus this PR's withhold toggle, plus the
-    // markdown-only source-view toggle (absent for a .txt/.json, which has no
-    // use for it), plus the image-host button, which is not a formatting
-    // control and so renders in either mode, plus the paper-theme picker and
-    // the backlinks and graph buttons, which are markdown-only views like the
-    // source-view toggle, plus the copy-block-link button beside the link one.
-    expect(markdown.iconButtons).toBe(23)
-    // source mode keeps exactly two: the spellcheck toggle (the withhold
-    // toggle gates the block editor's marks, which source mode does not carry)
-    // and the paper-theme picker (the paper exists in source view too)
-    expect(source.iconButtons).toBe(2)
-  })
-
-  it('keeps the actions that still apply to source text', () => {
-    const container = renderRibbon(true)
-    // the quick-access row is untouched: save, save-as, undo, redo, find
-    expect(container.querySelectorAll('.ribbon-tabs .qa-btn').length).toBe(5)
+  it('keeps the file and AI controls and only the applicable view commands in .txt/.json', () => {
+    const { container } = renderRibbon(true)
+    expect(container.querySelector('.rb-style')).toBeNull()
+    for (const label of [
+      strings.zh.ribbonList,
+      strings.zh.ribbonInsert,
+      strings.zh.sourceView,
+      strings.zh.ribbonRedact,
+    ]) {
+      expect(button(container, label)).toBeNull()
+    }
+    expect(container.querySelectorAll('.ribbon-tabs .qa-btn')).toHaveLength(5)
     expect(container.querySelector('.autosave-toggle')).not.toBeNull()
+    expect(button(container, strings.zh.ribbonAiActions)?.disabled).toBe(false)
+
+    act(() => button(container, strings.zh.ribbonView)!.click())
+    expect(menuButton(container, strings.zh.spellcheck)?.getAttribute('aria-checked')).toBe('true')
+    expect(menuButton(container, strings.zh.mdThemeTitle)?.disabled).toBe(true)
+    expect(menuButton(container, strings.zh.editorFontTitle)).toBeUndefined()
   })
 
-  it('disables the block-formatting controls in the markdown source view', () => {
-    // A different situation from a .txt/.json, and so a different answer. Here
-    // the document is still live behind the pane — a keystroke in it is parsed
-    // straight back into the editor — so the controls are disabled rather than
-    // removed: they act on a selection the reader cannot see right now, and
-    // removing them would make the ribbon jump on every toggle.
-    const open = renderRibbon(false, true)
-    const plain = renderRibbon(false)
-    // Label-free on purpose: this suite renders in the default locale, so an
-    // aria-label lookup would be asserting on a translation. What matters is
-    // how many controls are live, and whether the ribbon lost any of them.
-    const disabledIn = (container: HTMLElement) =>
-      container.querySelectorAll('button.rb-btn:disabled').length
-    // Relative, not absolute: undo and redo are already disabled on a fresh
-    // document, so the claim is that opening the view quiets MORE of them.
-    expect(disabledIn(open)).toBeGreaterThan(disabledIn(plain))
-    // nothing was removed: the reader's ribbon does not jump on toggle, and
-    // the controls come back enabled when the view closes
-    expect(counts(open).iconButtons).toBe(counts(plain).iconButtons)
+  it('disables edits in Markdown source view and keeps the source toggle and host settings usable', () => {
+    const open = renderRibbon(false, true).container
+    const plain = renderRibbon(false).container
+    expect(button(open, strings.zh.sourceView)?.getAttribute('aria-pressed')).toBe('true')
+    expect(button(open, strings.zh.ribbonList)?.disabled).toBe(true)
+    expect(button(plain, strings.zh.ribbonList)?.disabled).toBe(false)
+    expect(button(open, strings.zh.bold)?.disabled).toBe(true)
+    expect(button(plain, strings.zh.bold)?.disabled).toBe(false)
+
+    act(() => button(open, strings.zh.ribbonInsert)!.click())
+    for (const label of [strings.zh.insertTable, strings.zh.insertImage, strings.zh.insertHr]) {
+      expect(menuButton(open, label)?.disabled).toBe(true)
+    }
+    expect(menuButton(open, strings.zh.imageHostTitle)?.disabled).toBe(false)
   })
 
   it('keeps Save As live in both modes and Find live only outside the source view', () => {
     const quick = (container: HTMLElement) =>
       Array.from(container.querySelectorAll<HTMLButtonElement>('.ribbon-tabs .qa-btn'))
-    const [, saveAsPlain, , , findPlain] = quick(renderRibbon(false))
-    const [, saveAsSource, , , findSource] = quick(renderRibbon(true))
-    const [, saveAsView, , , findView] = quick(renderRibbon(false, true))
+    const [, saveAsPlain, , , findPlain] = quick(renderRibbon(false).container)
+    const [, saveAsSource, , , findSource] = quick(renderRibbon(true).container)
+    const [, saveAsView, , , findView] = quick(renderRibbon(false, true).container)
     expect(saveAsPlain!.disabled).toBe(false)
     expect(saveAsSource!.disabled).toBe(false)
     expect(saveAsView!.disabled).toBe(false)
@@ -139,12 +143,30 @@ describe('Ribbon source mode', () => {
     expect(findView!.disabled).toBe(true)
   })
 
-  it('shows the formatting controls again for a markdown file', () => {
-    const { styleDropdown, iconButtons } = counts(renderRibbon(false))
-    expect(styleDropdown).toBe(1)
-    // 20 here too: the source-view toggle is present here and absent above,
-    // the withhold toggle, the image-host button, the paper-theme picker and
-    // the backlinks and graph buttons are present in both
-    expect(iconButtons).toBe(23)
+  it('opens the assistant separately and uses the current editor selection for rewrite presets', () => {
+    const { container, editor, onToggleAi, onAiPreset } = renderRibbon(false)
+    const presets = button(container, strings.zh.ribbonAiActions)!
+    expect(menuButton(container, strings.zh.aiSummarizeBtn)).toBeUndefined()
+    act(() => button(container, aiSubscriptionText('zh', 'aiAssistant'))!.click())
+    expect(onToggleAi).toHaveBeenCalledOnce()
+    expect(onAiPreset).not.toHaveBeenCalled()
+
+    const pick = (label: string) => {
+      act(() => presets.click())
+      act(() => menuButton(container, label)!.click())
+      expect(presets.getAttribute('aria-expanded')).toBe('false')
+    }
+    pick(strings.zh.aiPolishBtn)
+    expect(onAiPreset).toHaveBeenLastCalledWith(strings.zh.aiPolishPrompt)
+    act(() => editor.commands.setTextSelection({ from: 1, to: 4 }))
+    pick(strings.zh.aiPolishBtn)
+    expect(onAiPreset).toHaveBeenLastCalledWith(strings.zh.aiPolishSelectionPrompt)
+    pick(strings.zh.aiTidyBtn)
+    expect(onAiPreset).toHaveBeenLastCalledWith(strings.zh.aiTidySelectionPrompt)
+    pick(strings.zh.aiSummarizeBtn)
+    expect(onAiPreset).toHaveBeenLastCalledWith(strings.zh.aiSummarizePrompt)
+    pick(strings.zh.aiMindMapBtn)
+    expect(onAiPreset).toHaveBeenLastCalledWith(strings.zh.aiMindMapPrompt)
+    expect(onToggleAi).toHaveBeenCalledOnce()
   })
 })
