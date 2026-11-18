@@ -34,7 +34,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "canvaskit-wasm": "0.42.0",
     "cfb": "^1.2.2",
-    "electron": "^43.7.6",
+    "electron": "^43.8.10",
     "electron-vite": "^5.0.0",
     "jsdom": "^28.0.0",
     "jszip": "^3.10.1",
