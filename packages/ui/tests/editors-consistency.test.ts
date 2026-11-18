@@ -116,16 +116,27 @@ describe('the AI entry label', () => {
     expect(resizer?.[0], 'resizer label').toContain(`aria-label={${LABEL_CALL}}`)
   })
 
-  it.each(Object.keys(EDITORS))('%s: the ribbon AI button uses it', (name) => {
-    const ribbon = source(EDITORS[name]!.ribbon)
-    // the button that opens the panel: the `ai-entry` control with the open-assistant tip
-    const button = ribbon.match(
-      /ai-entry[^\n]*\n\s*data-tip=\{t\('aiOpenAssistant'\)\}[\s\S]{0,420}?<\/button>/,
+  it('markdown: the ribbon AI button uses it', () => {
+    const ribbon = source(EDITORS.markdown!.ribbon)
+    expect(ribbon).toContain(`const assistantLabel = ${LABEL_CALL}`)
+    expect(ribbon).toMatch(
+      /<IconBtn\s+title=\{assistantLabel\}\s+tip=\{t\('aiOpenAssistant'\)\}\s+showLabel/,
     )
-    expect(button?.[0], 'ribbon AI button').toContain(LABEL_CALL)
-    // no bare "AI" left as the button text
-    expect(button?.[0]).not.toMatch(/>AI</)
   })
+
+  it.each(Object.keys(EDITORS).filter((name) => name !== 'markdown'))(
+    '%s: the ribbon AI button uses it',
+    (name) => {
+      const ribbon = source(EDITORS[name]!.ribbon)
+      // the button that opens the panel: the `ai-entry` control with the open-assistant tip
+      const button = ribbon.match(
+        /ai-entry[^\n]*\n\s*data-tip=\{t\('aiOpenAssistant'\)\}[\s\S]{0,420}?<\/button>/,
+      )
+      expect(button?.[0], 'ribbon AI button').toContain(LABEL_CALL)
+      // no bare "AI" left as the button text
+      expect(button?.[0]).not.toMatch(/>AI</)
+    },
+  )
 
   it.each(Object.keys(EDITORS))('%s: no key of its own carries the label any more', (name) => {
     const editor = EDITORS[name]!
