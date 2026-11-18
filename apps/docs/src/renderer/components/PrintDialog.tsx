@@ -104,7 +104,7 @@ export function PrintDialog({
   prepareSelection,
   docName,
   initialDestination,
-  editor,
+  editor = null,
 }: {
   onClose: () => void
   setStatus: (s: string) => void
@@ -116,7 +116,7 @@ export function PrintDialog({
   docName?: string
   /** optional initial destination pre-selected when opened from the Quick Print menu */
   initialDestination?: string
-  editor: Editor | null
+  editor?: Editor | null
 }) {
   const { t, lang } = useI18n()
   const [pageCount, setPageCount] = useState(0)
