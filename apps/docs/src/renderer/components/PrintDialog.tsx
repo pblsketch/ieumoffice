@@ -173,11 +173,11 @@ export function PrintDialog({
         if (!initialPageRef.current) {
           initialPageRef.current = true
           // Functional update: navigation the reader already did wins.
-          setPage((shown) =>
-            shown === 0
-              ? initialPrintPageIndex(pageBlockIds(sheets), blockIdAtSelection(editor))
-              : shown,
+          const initialPage = initialPrintPageIndex(
+            pageBlockIds(sheets),
+            blockIdAtSelection(editor),
           )
+          setPage((shown) => (shown === 0 ? initialPage : shown))
         }
       }
       last = n
