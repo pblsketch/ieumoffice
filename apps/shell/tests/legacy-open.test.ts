@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm, truncate, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
@@ -41,6 +43,22 @@ describe('legacy .doc/.dot/.ppt open as converted copies', () => {
     expect(result.copy.importedFrom).toBe('ppt')
     const zip = await JSZip.loadAsync(result.copy.bytes)
     expect(zip.file('ppt/presentation.xml')).toBeTruthy()
+  })
+
+  it('rejects an oversized legacy file before converting it', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'legacy-open-'))
+    const path = join(directory, 'oversized.doc')
+    try {
+      await writeFile(path, '')
+      await truncate(path, 512 * 1024 * 1024 + 1)
+      await expect(convertLegacyFile(path)).resolves.toMatchObject({
+        ok: false,
+        error: 'File exceeds the 512 MB import limit',
+      })
+    } finally {
+      await rm(path, { force: true })
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 
   it('reads the original only', async () => {

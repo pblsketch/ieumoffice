@@ -6507,6 +6507,8 @@ interface PreparedWorkbookOpen {
   odsSourcePath?: string
 }
 
+const MAX_LEGACY_IMPORT_BYTES = 512 * 1024 * 1024
+
 /// .xls, .ods and .tsv open as a converted copy in the temp dir; the session
 /// remembers the original's .xlsx sibling as the Save As default. .csv converts
 /// the same way but keeps its file identity, so Save writes values back to it.
@@ -6518,6 +6520,13 @@ async function prepareWorkbookForOpen(
   parent?: BrowserWindow | undefined,
   options?: { skipRecoveryPrompt?: boolean },
 ): Promise<PreparedWorkbookOpen | null> {
+  const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+  if (
+    (extension === 'xls' || extension === 'ods') &&
+    (await stat(path)).size > MAX_LEGACY_IMPORT_BYTES
+  ) {
+    throw new Error(tm('errFileTooLarge'))
+  }
   // A shell-created "New spreadsheet" opens from a temp directory and has no
   // user-visible file yet: Save As produces it, and closing unsaved discards
   // the directory. The mark is consumed once the session exists (see
@@ -6579,7 +6588,6 @@ async function prepareWorkbookForOpen(
     if (unsavedNew.restored) recoveryStore.markCopyLoaded(unsavedNew.recovery)
     return { openPath: path, ...base }
   }
-  const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
   // An encrypted file never has a recovery copy: it is not written for one.
   const encrypted = await prepareEncryptedWorkbook(client, path, extension, parent)
   if (encrypted !== undefined) return encrypted
