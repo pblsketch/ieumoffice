@@ -704,13 +704,13 @@ function patchCellXml(tcXml: string, paras: readonly CellParaPatch[]): string | 
   const body = paras
     .map((entry, i) => {
       if (entry === null) return originals[i] ?? ''
+      const template = originals[Math.min(i, originals.length - 1)] ?? ''
+      const bookmarks = aligned ? cellBookmarkEdges(template) : { before: '', after: '' }
       if (typeof entry === 'string') {
         const keep = i === 0 ? drawingRuns : ''
-        return entry === ''
-          ? `<w:p>${firstPPr}${keep}</w:p>`
-          : `<w:p>${firstPPr}<w:r>${rPr}${cellRunContentXml(entry)}</w:r>${keep}</w:p>`
+        const runs = entry === '' ? '' : `<w:r>${rPr}${cellRunContentXml(entry)}</w:r>`
+        return `<w:p>${firstPPr}${bookmarks.before}${runs}${keep}${bookmarks.after}</w:p>`
       }
-      const template = originals[Math.min(i, originals.length - 1)] ?? ''
       const pPr = entry.format
         ? mergeCellParaFormat(pPrOf(template), entry.format, entry.original)
         : pPrOf(template)
@@ -721,10 +721,27 @@ function patchCellXml(tcXml: string, paras: readonly CellParaPatch[]): string | 
         : i === 0
           ? originals.map((p) => carriedRunsOf(p, emittedMedia)).join('')
           : ''
-      return `<w:p>${pPr}${emitted}${keep}</w:p>`
+      return `<w:p>${pPr}${bookmarks.before}${emitted}${keep}${bookmarks.after}</w:p>`
     })
     .join('')
   return openTag + tcPr + body + '</w:tc>'
+}
+
+function cellBookmarkEdges(paragraph: string): { before: string; after: string } {
+  let before = ''
+  let after = ''
+  if (!paragraph.includes('<w:bookmark')) return { before, after }
+  const children = splitXmlChildren(paragraph.slice(paragraph.indexOf('>') + 1, -'</w:p>'.length))
+  let reachedContent = false
+  for (const child of children) {
+    if (child.name === 'w:bookmarkStart' || child.name === 'w:bookmarkEnd') {
+      if (reachedContent) after += child.xml
+      else before += child.xml
+    } else if (child.name !== 'w:pPr') {
+      reachedContent = true
+    }
+  }
+  return { before, after }
 }
 
 /** cell paragraph texts carry tabs/breaks as control chars (extractRuns encoding);

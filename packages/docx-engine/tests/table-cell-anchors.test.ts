@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateTableModelXml, parseDocx, saveDocx } from '../src/index'
+import { generateTableModelXml, parseDocx, patchTableCellTexts, saveDocx } from '../src/index'
 import { buildDocx } from './helpers/build-docx'
 
 // a table whose first cell paragraph carries a paragraph style and a bookmark
@@ -10,8 +10,8 @@ const CELL_ANCHOR_TABLE_XML =
   '<w:tr>' +
   '<w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/></w:tcPr>' +
   '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>' +
-  '<w:bookmarkStart w:id="7" w:name="KeepAnchor"/><w:bookmarkEnd w:id="7"/>' +
-  '<w:r><w:t>Styled</w:t></w:r></w:p>' +
+  '<w:bookmarkStart w:id="7" w:name="KeepAnchor"/>' +
+  '<w:r><w:t>Styled</w:t></w:r><w:bookmarkEnd w:id="7"/></w:p>' +
   '<w:p><w:pPr><w:pStyle w:val="Compact"/></w:pPr>' +
   '<w:bookmarkStart w:id="8" w:name="_Toc99001"/><w:bookmarkEnd w:id="8"/>' +
   '<w:r><w:t>Toc</w:t></w:r></w:p>' +
@@ -56,6 +56,29 @@ describe('table cell paragraph styles and bookmark anchors', () => {
     const plain = generateTableModelXml(doc.blocks[0].table!)
     const ids = [...plain.matchAll(/<w:bookmarkStart w:id="(\d+)"/g)].map((m) => m[1])
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('keeps original bookmark endpoints on either side of replacement cell text', async () => {
+    const doc = await parseDocx(await buildDocx({ bodyXml: CELL_ANCHOR_TABLE_XML }))
+    const patched = patchTableCellTexts(doc.blocks[0].originalXml!, [
+      [[{ runs: [{ text: 'Edited' }] }, 'EditedToc']],
+    ])
+    const saved = await parseDocx(await saveDocx(doc, [{ kind: 'xml', xml: patched }]))
+    const rich = saved.blocks[0].table!.rows[0][0].richParas!
+    expect(rich.map((p) => p.runs.map((run) => run.text).join(''))).toEqual(['Edited', 'EditedToc'])
+    expect(rich[0].bookmarks).toEqual(['KeepAnchor'])
+    expect(rich[1].hiddenBookmarks).toEqual(['_Toc99001'])
+    const start = patched.indexOf('<w:bookmarkStart w:id="7" w:name="KeepAnchor"/>')
+    const word = patched.indexOf('Edited')
+    const end = patched.indexOf('<w:bookmarkEnd w:id="7"/>')
+    const collapsed = patched.indexOf(
+      '<w:bookmarkStart w:id="8" w:name="_Toc99001"/><w:bookmarkEnd w:id="8"/>',
+    )
+    expect(start).toBeGreaterThan(-1)
+    expect(word).toBeGreaterThan(start)
+    expect(end).toBeGreaterThan(word)
+    expect(collapsed).toBeGreaterThan(end)
+    expect(patched.indexOf('EditedToc')).toBeGreaterThan(collapsed)
   })
 
   it('the anchors survive a save and reload (round trip)', async () => {
