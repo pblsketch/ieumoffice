@@ -26,12 +26,15 @@ test('list and insert menus invoke the original editor commands', async ({ page 
 })
 
 test('the View menu reports toggles and restores focus when a submenu closes', async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 480 })
   await openSource(page, false)
   const view = page.getByRole('button', { name: 'View', exact: true })
   const outline = page.getByRole('menuitemcheckbox', { name: 'Outline', exact: true })
   const theme = page.getByRole('menuitem', { name: 'Document theme' })
 
   await view.click()
+  await expect(theme.getByText('Document theme', { exact: true })).toBeVisible()
+  await expect(page.getByText('Editor font', { exact: true })).toBeVisible()
   await expect(outline).toHaveAttribute('aria-checked', 'false')
   await outline.click()
   await view.focus()

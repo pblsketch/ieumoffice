@@ -19,7 +19,7 @@ afterEach(() => {
  * @param sourceViewOpen this PR's markdown source view, kept a separate flag
  *   because the two mean different things and can never both be on
  */
-function renderRibbon(sourceMode: boolean, sourceViewOpen = false) {
+function renderRibbon(sourceMode: boolean, sourceViewOpen = false, content = '<p>body</p>') {
   const onToggleAi = vi.fn()
   const onAiPreset = vi.fn()
   const editor = new Editor({
@@ -27,7 +27,7 @@ function renderRibbon(sourceMode: boolean, sourceViewOpen = false) {
       slashController: { onOpen() {}, onUpdate() {}, onKeyDown: () => false, onClose() {} },
       slashItems: () => [],
     }),
-    content: '<p>body</p>',
+    content,
   })
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -142,6 +142,32 @@ describe('Ribbon source mode', () => {
     expect(findSource!.disabled).toBe(false)
     expect(findView!.disabled).toBe(true)
   })
+
+  it.each([
+    ['plain source', true, false, '<p>body</p>'],
+    ['Markdown source view', false, true, '<p>body</p>'],
+    ['empty Markdown', false, false, '<p></p>'],
+  ] as const)(
+    'keeps chat available and disables AI presets for %s',
+    (_, sourceMode, sourceViewOpen, content) => {
+      const { container, onToggleAi, onAiPreset } = renderRibbon(
+        sourceMode,
+        sourceViewOpen,
+        content,
+      )
+      act(() => button(container, aiSubscriptionText('zh', 'aiAssistant'))!.click())
+      expect(onToggleAi).toHaveBeenCalledOnce()
+
+      act(() => button(container, strings.zh.ribbonAiActions)!.click())
+      const entries = container.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')
+      expect(entries).toHaveLength(4)
+      for (const entry of entries) {
+        expect(entry.disabled).toBe(true)
+        act(() => entry.click())
+      }
+      expect(onAiPreset).not.toHaveBeenCalled()
+    },
+  )
 
   it('opens the assistant separately and uses the current editor selection for rewrite presets', () => {
     const { container, editor, onToggleAi, onAiPreset } = renderRibbon(false)

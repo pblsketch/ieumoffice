@@ -831,13 +831,13 @@ html.markdown-graph-open .ribbon-tabs {
 }
 
 @container md-ribbon (width < 1040px) {
-  .ribbon-actions .rb-label {
+  .ribbon-actions .rb-labeled > .rb-label {
     display: none;
   }
 }
 
 @container md-ribbon (width < 790px) {
-  .rb-labeled .rb-label {
+  .rb-labeled > .rb-label {
     display: none;
   }
 

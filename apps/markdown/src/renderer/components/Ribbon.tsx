@@ -782,6 +782,7 @@ export function Ribbon({
                       key={kind}
                       label={t(btn)}
                       icon={<AiFeatureIcon kind={kind} />}
+                      disabled={off || state?.empty}
                       onClick={() => select(() => onAiPreset(prompt()))}
                     />
                   ))
