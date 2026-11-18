@@ -1,11 +1,19 @@
 import { expect, test } from '@playwright/test'
 import { LANGS } from '@genoffice/i18n'
+import type { Editor } from '@tiptap/core'
 import { strings } from '../../src/renderer/i18n/strings'
 import { openSource } from './helpers'
 
 test('list and insert menus invoke the original editor commands', async ({ page }) => {
   await openSource(page, false, false, '# Topic\n\nBody\n')
-  await page.locator('.doc-editor p').click()
+  const editor = page.locator('.doc-editor')
+  await editor.getByText('Body', { exact: true }).click({ position: { x: 4, y: 8 } })
+  const caretBlock = () =>
+    editor.evaluate((element) => {
+      const { editor } = element as HTMLElement & { editor: Editor }
+      return editor.state.selection.$from.parent.textContent
+    })
+  await expect.poll(caretBlock).toBe('Body')
 
   const list = page.getByRole('button', { name: 'List', exact: true })
   await list.focus()
@@ -15,6 +23,7 @@ test('list and insert menus invoke the original editor commands', async ({ page 
   await expect(bullets).toBeFocused()
   await bullets.press('ArrowDown')
   await expect(numbers).toBeFocused()
+  await expect.poll(caretBlock).toBe('Body')
   await numbers.press('Enter')
   await expect(page.locator('.doc-editor ol')).toContainText('Body')
   await list.click()
