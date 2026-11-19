@@ -10976,6 +10976,8 @@ app.whenReady().then(async () => {
   // the open books' pictures, styles and fonts (only entries of a book a tab has open)
   registerEpubAssetProtocol()
   if (headlessArgv.kind !== 'none') {
+    // Headless renderers use the same shared language as editor tabs.
+    currentLang()
     await runHeadlessExportEntry(headlessArgv)
     return
   }
