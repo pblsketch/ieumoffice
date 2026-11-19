@@ -88,6 +88,7 @@ import {
   ribbonDatePattern,
 } from './excel-format-shortcuts'
 import { isModalOpen, resolveGlobalShortcut } from './global-shortcuts'
+import { installRibbonFit } from './ribbon-fit'
 import { scrollRibbonOnWheel } from './ribbon-wheel'
 
 import type { ChartSeriesVisualState } from '@genoffice/xlsx-gateway/domain/chart-visual'
@@ -693,6 +694,12 @@ export function ExcelShell({
     window.addEventListener('wheel', scrollRibbonOnWheel, { passive: false })
     return () => window.removeEventListener('wheel', scrollRibbonOnWheel)
   }, [])
+  // Tight metrics, then icon-only groups from the right, only when the band would scroll
+  const ribbonRoot = collapse.rootRef
+  useEffect(() => {
+    const header = ribbonRoot.current
+    return header ? installRibbonFit(header) : undefined
+  }, [ribbonRoot])
   useEffect(() => {
     rememberAiPanelOpen('ai-sheets-show-ai', isCopilotOpen)
   }, [isCopilotOpen])
