@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { chainPdfium, loadPdfium, saveDoc, withDocument } from './text-edit'
+import { createStrokeCtmFixer } from './stroke-ctm'
 import type { RedactionInput } from '../shared/ipc'
 
 /** PDF user-space rectangle. Callers retain original page indices until the redaction copy is made. */
@@ -368,10 +369,12 @@ export function redactPdf(bytes: Uint8Array, regions: RedactionRegion[]): Promis
           m._FPDF_ClosePage(page)
         }
       }
+      const strokeFixer = createStrokeCtmFixer(bytes)
       for (const region of checked) {
         const page = m._FPDF_LoadPage(doc, region.pageIndex)
         if (!page) throw new Error(`PDFium could not load redaction page ${region.pageIndex + 1}`)
         try {
+          await strokeFixer.preparePage(m, page, region.pageIndex)
           removeHitAnnotations(m, page, region.nativeRect, region.pageIndex)
           const annot = m._FPDFPage_CreateAnnot(page, FPDF_ANNOT_REDACT)
           if (!annot)
@@ -423,7 +426,7 @@ export function redactPdf(bytes: Uint8Array, regions: RedactionRegion[]): Promis
           m._FPDF_ClosePage(page)
         }
       }
-      return saveDoc(m, doc)
+      return strokeFixer.fixSavedBytes(saveDoc(m, doc))
     })
   })
 }
