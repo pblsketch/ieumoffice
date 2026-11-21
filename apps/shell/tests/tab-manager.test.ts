@@ -224,6 +224,7 @@ vi.mock('../../diagram/src/main/diagram-main', () => ({
 }))
 
 import { helpTopicParam, helpViewUrl, TabManager } from '../src/main/tab-manager'
+import { controlHandler } from '../src/main/control-handlers'
 import type { TabKind } from '../src/shared/tabs-api'
 
 const TAB_STRIP_HEIGHT = 40
@@ -292,6 +293,112 @@ describe('initial state', () => {
     expect(manager.list()).toEqual([
       { id: 'home', kind: 'home', title: 'IeumOffice', closable: false, active: true },
     ])
+  })
+})
+
+describe('openDocuments', () => {
+  it('excludes Home, help and Present tabs while keeping editor documents', async () => {
+    manager.openHelpTab()
+    const docsId = manager.openDocsTab('/docs/report.docx')
+    const htmlId = manager.openHtmlTab('/docs/page.html')
+    manager.openHtmlPresentTab(lastCreatedView(createDocsView).webContents as never, 'Preview')
+
+    expect(manager.list().map((tab) => tab.kind)).toEqual(['home', 'help', 'docs', 'html', 'html'])
+    expect(await manager.openDocuments()).toStrictEqual([
+      {
+        id: docsId,
+        kind: 'docs',
+        title: 'report.docx',
+        filePath: '/docs/report.docx',
+        active: false,
+        dirty: false,
+      },
+      {
+        id: htmlId,
+        kind: 'html',
+        title: 'page.html',
+        filePath: '/docs/page.html',
+        active: false,
+        dirty: false,
+      },
+    ])
+  })
+
+  it('lists restored unloaded tabs without opening them and omits never-saved file paths', async () => {
+    const open = vi.fn(() => ({ view: makeFakeView() as never }))
+    const restoredId = manager.addUnloadedTab({
+      kind: 'docs',
+      filePath: '/docs/restored.docx',
+      opener: { open },
+    })
+    const untitledId = manager.openSlidesTab()
+
+    expect(await manager.openDocuments()).toStrictEqual([
+      {
+        id: restoredId,
+        kind: 'docs',
+        title: 'restored.docx',
+        filePath: '/docs/restored.docx',
+        active: false,
+        dirty: false,
+      },
+      {
+        id: untitledId,
+        kind: 'slides',
+        title: manager.list().find((tab) => tab.id === untitledId)!.title,
+        active: true,
+        dirty: false,
+      },
+    ])
+    expect(manager.webContentsForTab(restoredId)).toBeUndefined()
+    expect(open).not.toHaveBeenCalled()
+    expect(docsQueryDirty).not.toHaveBeenCalled()
+  })
+
+  it('maps the real filtered list to control rows with kind and null paths without activation', async () => {
+    manager.openHelpTab()
+    const savedId = manager.openDocsTab('/docs/report.docx')
+    const untitledId = manager.openSlidesTab()
+    manager.openHtmlPresentTab(lastCreatedView(createDocsView).webContents as never, 'Preview')
+    const reveal = vi.fn()
+    const openDocument = vi.fn(() => false)
+    const activateTab = vi.fn()
+    const findTab = vi.fn(() => undefined)
+    const tabsBefore = manager.list()
+    const reply = await controlHandler({
+      reveal,
+      openDocument,
+      activateTab,
+      findTab,
+      list: () => manager.openDocuments(),
+    })({ cmd: 'open_documents' })
+
+    expect(reply).toEqual({
+      ok: true,
+      result: {
+        documents: [
+          {
+            id: savedId,
+            path: '/docs/report.docx',
+            title: 'report.docx',
+            kind: 'docs',
+            active: false,
+          },
+          {
+            id: untitledId,
+            path: null,
+            title: tabsBefore.find((tab) => tab.id === untitledId)!.title,
+            kind: 'slides',
+            active: false,
+          },
+        ],
+      },
+    })
+    expect(manager.list()).toEqual(tabsBefore)
+    expect(reveal).not.toHaveBeenCalled()
+    expect(openDocument).not.toHaveBeenCalled()
+    expect(activateTab).not.toHaveBeenCalled()
+    expect(findTab).not.toHaveBeenCalled()
   })
 })
 

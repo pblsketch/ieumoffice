@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { controlHandler } from '../src/main/control-handlers'
 
 /**
  * Detached editor windows (src/main/detached-windows.ts): the open-documents
@@ -187,6 +188,81 @@ describe('detachedOpenDocuments', () => {
     })
     const docs = await detached.detachedOpenDocuments()
     expect(docs.map((d) => d.id)).toEqual(['detached:22'])
+  })
+
+  it('includes saved and never-saved detached documents in control rows without focusing them', async () => {
+    detached.createDetachedEditorWindow({
+      view: fakeView(51) as never,
+      kind: 'docs',
+      title: 'report.docx',
+      filePath: '/docs/report.docx',
+      applyMenuFor: () => {},
+    })
+    detached.createDetachedEditorWindow({
+      view: fakeView(52) as never,
+      kind: 'slides',
+      title: 'Untitled presentation',
+      applyMenuFor: () => {},
+    })
+    instances[1]!.focused = true
+    const documents = await detached.detachedOpenDocuments()
+    expect(documents).toStrictEqual([
+      {
+        id: 'detached:51',
+        kind: 'docs',
+        title: 'report.docx',
+        filePath: '/docs/report.docx',
+        active: false,
+        dirty: false,
+      },
+      {
+        id: 'detached:52',
+        kind: 'slides',
+        title: 'Untitled presentation',
+        active: true,
+        dirty: false,
+      },
+    ])
+    const reveal = vi.fn()
+    const openDocument = vi.fn(() => false)
+    const activateTab = vi.fn()
+    const findTab = vi.fn(() => undefined)
+    vi.clearAllMocks()
+
+    expect(
+      await controlHandler({
+        reveal,
+        openDocument,
+        activateTab,
+        findTab,
+        list: () => detached.detachedOpenDocuments(),
+      })({ cmd: 'open_documents' }),
+    ).toEqual({
+      ok: true,
+      result: {
+        documents: [
+          {
+            id: 'detached:51',
+            kind: 'docs',
+            path: '/docs/report.docx',
+            title: 'report.docx',
+            active: false,
+          },
+          {
+            id: 'detached:52',
+            kind: 'slides',
+            path: null,
+            title: 'Untitled presentation',
+            active: true,
+          },
+        ],
+      },
+    })
+    expect(reveal).not.toHaveBeenCalled()
+    expect(openDocument).not.toHaveBeenCalled()
+    expect(activateTab).not.toHaveBeenCalled()
+    expect(findTab).not.toHaveBeenCalled()
+    for (const win of instances) expect(win.focus).not.toHaveBeenCalled()
   })
 
   it('skips windows destroyed during the async dirty check', async () => {

@@ -30,7 +30,7 @@ describe('control server', () => {
     const seen: ControlRequest[] = []
     const server = await startControlServer(userData, async (req) => {
       seen.push(req)
-      return { ok: true, result: { echoed: req.path } }
+      return { ok: true, result: { echoed: 'path' in req ? req.path : null } }
     })
     servers.push(server)
     const published = JSON.parse(readFileSync(join(userData, 'control.json'), 'utf8'))
@@ -67,11 +67,45 @@ describe('control server', () => {
   it('rejects envelopes that are not a known command', () => {
     expect(parseEnvelope('{"token":"t","request":{"cmd":"rm","path":"/x"}}')).toBeNull()
     expect(parseEnvelope('{"token":"t","request":{"cmd":"open"}}')).toBeNull()
+    expect(parseEnvelope('{"token":"t","request":{"cmd":"viewport"}}')).toBeNull()
     expect(parseEnvelope('{"request":{"cmd":"open","path":"/x"}}')).toBeNull()
     expect(parseEnvelope('{"token":"t","request":{"cmd":"open","path":"/x"}}')).toEqual({
       token: 't',
       request: { cmd: 'open', path: '/x' },
     })
+  })
+
+  it('accepts the open_documents listing request that carries no path', () => {
+    expect(parseEnvelope('{"token":"t","request":{"cmd":"open_documents"}}')).toEqual({
+      token: 't',
+      request: { cmd: 'open_documents' },
+    })
+  })
+
+  it.each(['/ignored.docx', null, 42, { unexpected: true }])(
+    'discards an unnecessary open_documents path: %j',
+    (path) => {
+      expect(
+        parseEnvelope(JSON.stringify({ token: 't', request: { cmd: 'open_documents', path } })),
+      ).toEqual({ token: 't', request: { cmd: 'open_documents' } })
+    },
+  )
+
+  it('passes an open_documents request through to the handler without a path', async () => {
+    const userData = mkdtempSync(join(tmpdir(), 'genoffice-control-'))
+    const seen: unknown[] = []
+    const server = await startControlServer(userData, async (req) => {
+      seen.push(req)
+      return { ok: true, result: { documents: [] } }
+    })
+    servers.push(server)
+    const published = JSON.parse(readFileSync(join(userData, 'control.json'), 'utf8'))
+    const reply = await roundTrip(
+      server.endpoint.endpoint,
+      JSON.stringify({ token: published.token, request: { cmd: 'open_documents' } }) + '\n',
+    )
+    expect(JSON.parse(reply.reply)).toEqual({ ok: true, result: { documents: [] } })
+    expect(seen).toEqual([{ cmd: 'open_documents' }])
   })
 })
 
@@ -88,6 +122,7 @@ describe('control handler', () => {
     openDocument: vi.fn(() => true),
     activateTab: vi.fn(),
     findTab: () => undefined,
+    list: vi.fn(async () => []),
     readyTimeoutMs: 1_000,
     ...overrides,
   })
@@ -179,6 +214,64 @@ describe('control handler', () => {
     expect(await controlHandler(slow)({ cmd: 'selection', path: __filename })).toMatchObject({
       ok: false,
       error: { reason: 'app_unavailable' },
+    })
+  })
+
+  it('lists open documents read-only: metadata only, no focus and no load', async () => {
+    const findTab = vi.fn(() => undefined)
+    const h = host({
+      findTab,
+      list: vi.fn(async () => [
+        {
+          id: 't1',
+          kind: 'docs',
+          title: 'report.docx',
+          filePath: '/docs/report.docx',
+          active: true,
+          dirty: false,
+        },
+        {
+          id: 'd:7',
+          kind: 'slides',
+          title: 'Untitled presentation',
+          active: false,
+          dirty: true,
+        },
+      ]),
+    })
+    const reply = await controlHandler(h)({ cmd: 'open_documents' })
+    expect(reply).toEqual({
+      ok: true,
+      result: {
+        documents: [
+          {
+            path: '/docs/report.docx',
+            id: 't1',
+            title: 'report.docx',
+            kind: 'docs',
+            active: true,
+          },
+          {
+            path: null,
+            id: 'd:7',
+            title: 'Untitled presentation',
+            kind: 'slides',
+            active: false,
+          },
+        ],
+      },
+    })
+    expect(h.list).toHaveBeenCalledTimes(1)
+    expect(h.reveal).not.toHaveBeenCalled()
+    expect(h.openDocument).not.toHaveBeenCalled()
+    expect(h.activateTab).not.toHaveBeenCalled()
+    expect(findTab).not.toHaveBeenCalled()
+  })
+
+  it('lists an empty set when nothing is open', async () => {
+    expect(await controlHandler(host({}))({ cmd: 'open_documents' })).toEqual({
+      ok: true,
+      result: { documents: [] },
     })
   })
 })

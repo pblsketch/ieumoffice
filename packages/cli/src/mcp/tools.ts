@@ -790,6 +790,14 @@ export const TOOLS: ToolSpec[] = [
     options: ['slide', 'el', 'block', 'range', 'sheet', 'page'],
   },
   {
+    name: 'open_documents',
+    command: 'open_documents',
+    localOnly: true,
+    readOnly: true,
+    description:
+      'List documents open in the running GenOffice app: path (null if never saved), tab or window id, title, kind and active state. Read-only; does not start the app or switch tabs.',
+  },
+  {
     name: 'selection',
     command: 'selection',
     localOnly: true,

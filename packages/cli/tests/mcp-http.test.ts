@@ -94,6 +94,7 @@ describe('genoffice mcp --http', () => {
     expect(names).toContain('docs_apply')
     expect(names).not.toContain('open')
     expect(names).not.toContain('selection')
+    expect(names).not.toContain('open_documents')
     const create = tools.find((t) => t.name === 'create_docx')!
     expect(create.inputSchema.required ?? []).not.toContain('out')
     const props = create.inputSchema.properties as Record<string, { description?: string }>

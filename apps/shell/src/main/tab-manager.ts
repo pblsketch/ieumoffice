@@ -473,7 +473,7 @@ export class TabManager {
   }
 
   /**
-   * Documents an MCP agent may act on: every editor tab except Home (no file)
+   * Documents an MCP agent may act on: every editor tab except Home, help
    * and chrome-free Present tabs (a live preview of another tab's document, so
    * acting on it would double-count that document).
    *
@@ -485,7 +485,8 @@ export class TabManager {
     // an unloaded tab is listed like any other (clean: it has no edits yet);
     // a caller that targets it loads it through ensureTabLoaded
     const tabs = this.tabs.filter(
-      (tab) => tab.kind !== 'home' && !tab.present && (tab.view || tab.opener),
+      (tab) =>
+        tab.kind !== 'home' && tab.kind !== 'help' && !tab.present && (tab.view || tab.opener),
     )
     return Promise.all(
       tabs.map(async (tab) => ({

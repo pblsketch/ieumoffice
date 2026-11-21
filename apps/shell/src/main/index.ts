@@ -11027,6 +11027,13 @@ app.whenReady().then(async () => {
         if (!activateDetached(id)) tabManager?.activateTab(id)
       },
       findTab: (path) => tabManager?.findTabByPath(path) ?? findDetachedTabByPath(path),
+      // the read-only `open_documents` listing: the same sources the in-app MCP
+      // listing uses (editor tabs + detached windows, never-saved tabs
+      // included); metadata only, so no tab is loaded or focused to answer
+      list: async () => {
+        const tabs = tabManager ? await tabManager.openDocuments() : []
+        return [...tabs, ...(await detachedOpenDocuments())]
+      },
     }),
   ).then(
     (server) => {

@@ -20,6 +20,7 @@ import { mergeCommand } from './commands/merge'
 import { readUrlCommand } from './commands/read-url'
 import { searchCommand } from './commands/search'
 import { selectionCommand } from './commands/selection'
+import { openDocumentsCommand } from './commands/open-documents'
 import { infoCommand } from './commands/info'
 import { installCommand } from './commands/install'
 import { mcpCommand } from './commands/mcp'
@@ -83,6 +84,7 @@ export function defaultRegistry(): CommandRegistry {
     .register(mediaCommand)
     .register(openCommand)
     .register(selectionCommand)
+    .register(openDocumentsCommand)
     .register(capabilitiesCommand)
     .register(installCommand)
     .register(mcpCommand)

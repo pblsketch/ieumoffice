@@ -276,6 +276,14 @@ draw.io 다이어그램(`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`)을 읽�
 | `auth`                                                                                                                                                | GitHub가 읽기 토큰을 거절함(`read-url`)                           | 설정의 GitHub 읽기 토큰을 확인                |
 | `not-connected`, `signed-out`, `not-installed`, `metered-not-accepted`, `needs-update`, `unsafe-tools`, `timeout`, `network`, `overloaded`, `credits` | 실행이 그 이유로 실패                                             | 이유에 따라                                   |
 
+## 열린 문서 목록 (`ieumoffice open_documents`)
+
+- 인수 없이 실행 중인 앱의 제어 채널에 묻는다. `--json`의 `detail.documents[]`는 `{ path, id, title, kind, active }`다. `id`는 탭 또는 떼어 낸 창의 식별자이고, 한 번도 저장하지 않은 문서의 `path`는 `null`이다. 홈·도움말·발표 미리보기는 문서가 아니므로 빠진다.
+- `active`는 기존 앱 목록과 같은 뜻이다. 셸의 활성 탭과 초점을 가진 떼어 낸 창이 각각 참일 수 있으므로 하나만 참이라는 보장은 없다. 복구된 미로딩 탭도 목록에 나온다. 목록을 묻는 일은 문서를 불러오거나 앞으로 내지 않고, 문서 내용·선택·보이는 영역을 읽지 않는다.
+- 앱이 켜져 있고 문서가 없으면 빈 목록이다. 앱이 꺼져 있거나 연결이 끊기면 종료 코드 4, `error: "app_unavailable"`다. 앱을 저절로 켜거나 예전 디스크 목록으로 대신 답하지 않는다.
+- CLI 쪽 MCP에는 인수 없는 읽기 전용 `open_documents`로 나오며, `open`·`selection`처럼 stdio에서만 제공한다. HTTP 클라이언트에 로컬 문서 목록을 내놓지 않는다. 앱 안 MCP의 같은 이름 도구(`action`을 받는 도구)와는 달리 목록만 읽는다.
+- `viewport`는 이번에 제공하지 않는다. 현재 렌더러 제어 계약은 `goto`·`selection`뿐이라 보이는 범위를 알려면 편집기별 새 계약과 분할 화면·떼어 낸 창의 대상 규칙이 필요하다.
+
 ## MCP 서버 (`ieumoffice mcp`)
 
 - 표준 입출력으로 같은 명령들을 도구로 내놓는다. `--http <포트>`를 주면 Streamable HTTP로 내놓는다(`--host`, `--token`).

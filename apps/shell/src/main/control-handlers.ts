@@ -8,13 +8,19 @@ import type {
   RendererControlReply,
   RendererControlRequest,
 } from '@genoffice/cli/control-protocol'
-import type { TabKind } from '../shared/tabs-api'
+import type { OpenDocumentTab, TabKind } from '../shared/tabs-api'
 
 export interface ControlHost {
   reveal(): void
   openDocument(path: string): boolean
   activateTab(id: string): void
   findTab(path: string): { id: string; kind: TabKind; webContents: WebContents } | undefined
+  /**
+   * Every open document (editor tabs and detached windows, never-saved tabs
+   * included) as metadata. Listing must not reveal or load these documents;
+   * the existing list source may query their unsaved-changes state.
+   */
+  list(): Promise<OpenDocumentTab[]>
   /** ms to keep asking a renderer that has not loaded its document yet */
   readyTimeoutMs?: number
 }
@@ -34,6 +40,10 @@ const TARGET_KIND_BY_TAB: Partial<Record<TabKind, ControlTarget['kind']>> = {
  */
 export function controlHandler(host: ControlHost): (req: ControlRequest) => Promise<ControlReply> {
   return async (req) => {
+    if (req.cmd === 'open_documents') {
+      // Read-only metadata; no document contents or selection are requested.
+      return { ok: true, result: { documents: (await host.list()).map(documentRow) } }
+    }
     if (!existsSync(req.path)) {
       return fail('file_not_found', `file not found: ${req.path}`)
     }
@@ -63,6 +73,17 @@ export function controlHandler(host: ControlHost): (req: ControlRequest) => Prom
       })
     }
     return ask(tab.webContents, { cmd: 'selection' }, host.readyTimeoutMs)
+  }
+}
+
+/** one `open_documents` row: the tab's metadata, `path` null while never saved */
+function documentRow(doc: OpenDocumentTab): Record<string, unknown> {
+  return {
+    path: doc.filePath ?? null,
+    id: doc.id,
+    title: doc.title,
+    kind: doc.kind,
+    active: doc.active,
   }
 }
 

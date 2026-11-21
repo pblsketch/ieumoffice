@@ -117,9 +117,9 @@ describe('mcp tool table', () => {
     expect(stop.argv).toEqual(['slides', 'apply', 'd.pptx', '--stop-on-error'])
   })
 
-  it('marks open and selection as stdio-only', () => {
+  it('marks GUI control tools as stdio-only', () => {
     const local = TOOLS.filter((t) => t.localOnly).map((t) => t.name)
-    expect(local.sort()).toEqual(['open', 'selection'])
+    expect(local.sort()).toEqual(['open', 'open_documents', 'selection'])
   })
 })
 

@@ -27,7 +27,9 @@ export type ControlTarget =
   | { kind: 'page'; page: number }
 
 export type ControlRequest =
-  { cmd: 'open'; path: string; target?: ControlTarget } | { cmd: 'selection'; path: string }
+  | { cmd: 'open'; path: string; target?: ControlTarget }
+  | { cmd: 'selection'; path: string }
+  | { cmd: 'open_documents' }
 
 export interface ControlEnvelope {
   token: string

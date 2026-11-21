@@ -95,6 +95,7 @@ ieumoffice map apply plan.xmind --ops '[{"op":"rename_topic","id":"<id>","title"
 ieumoffice map create --outline plan.md --out plan.xmind       # a new .xmind from a markdown outline (`# ` sheet heading, `- ` topic item); without --out the outline name gets .xmind
 ieumoffice guide map                                           # the map ops, built from the same definitions `map apply` checks against
 ieumoffice guide docs                                                   # op signatures + restricted-HTML rules (`guide <domain> --json` = the catalog with each op's schema and a fingerprint)
+ieumoffice open_documents --json         # open tabs and detached windows: path, id, title, kind, active (never-saved path: null); requires the running app
 ieumoffice selection report.docx --json   # what the user has selected in the editor showing the file
 ieumoffice skill list   # coding agents found on this machine and the skill version each has
 ieumoffice skill install codex   # Codex, Cursor, Gemini CLI, Copilot and OpenCode share ~/.agents/skills (`skill install agents`)
@@ -233,7 +234,7 @@ every path parameter also takes an http(s) URL (fetched into the session's
 scratch directory, `src/mcp/files.ts`), and a tool that writes a file returns
 `output_url` plus the bytes as an embedded resource when small or a
 `resource_link` otherwise (`src/mcp/remote.ts`). Each session has its own
-scratch directory, working directory and deck state; `open` and `selection`
+scratch directory, working directory and deck state; `open`, `open_documents` and `selection`
 are not registered;
 with `GENOFFICE_ALLOWED_ROOTS` unset the tools are confined to the server's
 file store. A `--host` other than this machine (`127.0.0.1`,
