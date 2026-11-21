@@ -1,4 +1,5 @@
 import { nativeImage } from 'electron'
+import { PDFDocument } from 'pdf-lib'
 import {
   FPDF_PAGEOBJ_TEXT,
   chainPdfium,
@@ -8,6 +9,8 @@ import {
   withDocument,
 } from './text-edit'
 import type { Pdfium } from './text-edit'
+import { createStrokeCtmFixer } from './stroke-ctm'
+import type { StrokeCtmFixer } from './stroke-ctm'
 import {
   SHARED_TEMPLATE_IMAGE_REASON,
   chainIsExclusive,
@@ -134,6 +137,7 @@ function formExclusivity(bytes: Uint8Array): FormExclusive {
 interface EditGuard {
   exclusive: FormExclusive
   pageIndex: number
+  strokeFixer: StrokeCtmFixer
 }
 
 /** Locate the image under `rect`; a template image is lifted to page level first (as
@@ -150,6 +154,9 @@ async function resolveImage(
   if (target.chain.length > 0) {
     if (guard && !(await guard.exclusive(guard.pageIndex, target))) {
       throw new Error(SHARED_TEMPLATE_IMAGE_REASON)
+    }
+    if (guard) {
+      await guard.strokeFixer.prepareFormChain(m, guard.pageIndex, target.chain, target.ordinals)
     }
     liftOutOfForms(m, page, target.obj, target.chain)
     target.chain = []
@@ -345,32 +352,145 @@ export interface ImageEditsResult {
   skipped: ImageEditFailure[]
 }
 
+const num = (v: number): number => Math.round(v * 10000) / 10000
+
+const isPngBytes = (b: Uint8Array): boolean =>
+  b.length >= 8 &&
+  b[0] === 0x89 &&
+  b[1] === 0x50 &&
+  b[2] === 0x4e &&
+  b[3] === 0x47 &&
+  b[4] === 0x0d &&
+  b[5] === 0x0a &&
+  b[6] === 0x1a &&
+  b[7] === 0x0a
+
+const isJpegBytes = (b: Uint8Array): boolean =>
+  b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff
+
+/**
+ * Append top-layer inserted images (including static form fills: text, check, cross)
+ * directly via pdf-lib content-stream wrapping, leaving every original page content
+ * stream byte-for-byte untouched without invoking PDFium's full-page regeneration.
+ */
+async function appendTopLayerImages(
+  bytes: Uint8Array,
+  pagesToAppend: Map<
+    number,
+    { edit: Extract<ImageEditInput, { kind: 'insertImage' }>; editIndex: number }[]
+  >,
+  skipped: ImageEditFailure[],
+): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false })
+  const pageCount = pdfDoc.getPageCount()
+  let appliedTotal = 0
+
+  for (const [pageIndex, pageEdits] of pagesToAppend) {
+    if (pageIndex < 0 || pageIndex >= pageCount) {
+      for (const { editIndex } of pageEdits) {
+        skipped.push({ editIndex, pageIndex, reason: 'page does not exist' })
+      }
+      continue
+    }
+    const page = pdfDoc.getPage(pageIndex)
+    const ops: string[] = []
+    for (const { edit, editIndex } of pageEdits) {
+      try {
+        const raw = Buffer.from(edit.image, 'base64')
+        let embedded
+        if (isPngBytes(raw)) {
+          // Pass base64 string: avoids cross-realm Uint8Array checks under jsdom tests
+          embedded = await pdfDoc.embedPng(edit.image)
+        } else if (isJpegBytes(raw)) {
+          embedded = await pdfDoc.embedJpg(edit.image)
+        } else {
+          const img = nativeImage.createFromBuffer(raw)
+          if (img.isEmpty()) throw new Error('could not decode the image data')
+          embedded = await pdfDoc.embedPng(img.toPNG().toString('base64'))
+        }
+        const key = page.node.newXObject('Im', embedded.ref)
+        const mat = imageMatrix(edit.rect, edit.rotate ?? 0)
+          .map(num)
+          .join(' ')
+        ops.push(`q ${mat} cm ${key.asString()} Do Q`)
+        appliedTotal++
+      } catch (err) {
+        skipped.push({
+          editIndex,
+          pageIndex,
+          reason: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+    if (ops.length > 0) {
+      // addContentStream normalizes the page first, wrapping existing streams in q/Q
+      const overlayRef = pdfDoc.context.register(pdfDoc.context.stream(`${ops.join('\n')}\n`))
+      page.node.addContentStream(overlayRef)
+    }
+  }
+  return appliedTotal > 0 ? pdfDoc.save({ useObjectStreams: false }) : bytes
+}
+
 /** Apply content-stream image ops, fail-soft per edit (mirrors applyTextEdits) */
-export function applyImageEdits(
+export async function applyImageEdits(
   bytes: Uint8Array,
   edits: ImageEditInput[],
 ): Promise<ImageEditsResult> {
+  const skipped: ImageEditFailure[] = []
+  const byPage = new Map<number, { edit: ImageEditInput; editIndex: number }[]>()
+  for (const [editIndex, edit] of edits.entries()) {
+    byPage.set(edit.pageIndex, [...(byPage.get(edit.pageIndex) ?? []), { edit, editIndex }])
+  }
+
+  // Pages that only insert images above text (static form fills, standard image
+  // inserts) can append a clean overlay stream without rewriting existing content.
+  const appendPages = new Map<
+    number,
+    { edit: Extract<ImageEditInput, { kind: 'insertImage' }>; editIndex: number }[]
+  >()
+  const pdfiumPages = new Map<number, { edit: ImageEditInput; editIndex: number }[]>()
+  for (const [pageIndex, pageEdits] of byPage) {
+    if (pageEdits.every((e) => e.edit.kind === 'insertImage' && e.edit.layer !== 'belowText')) {
+      appendPages.set(
+        pageIndex,
+        pageEdits as {
+          edit: Extract<ImageEditInput, { kind: 'insertImage' }>
+          editIndex: number
+        }[],
+      )
+    } else {
+      pdfiumPages.set(pageIndex, pageEdits)
+    }
+  }
+
+  let current = bytes
+  if (appendPages.size > 0) {
+    current = await appendTopLayerImages(current, appendPages, skipped)
+  }
+  if (pdfiumPages.size === 0) {
+    return { bytes: current, skipped }
+  }
+
   return chainPdfium(async () => {
     const m = await loadPdfium()
-    const skipped: ImageEditFailure[] = []
-    const exclusive = formExclusivity(bytes)
-    return withDocument(m, bytes, async (doc) => {
+    const exclusive = formExclusivity(current)
+    const strokeFixer = createStrokeCtmFixer(current)
+    return withDocument(m, current, async (doc) => {
       const pageCount = m._FPDF_GetPageCount(doc)
-      const byPage = new Map<number, { edit: ImageEditInput; editIndex: number }[]>()
-      for (const [editIndex, edit] of edits.entries()) {
-        if (edit.pageIndex < 0 || edit.pageIndex >= pageCount) {
-          skipped.push({ editIndex, pageIndex: edit.pageIndex, reason: 'page does not exist' })
+      let appliedTotal = 0
+      for (const [pageIndex, pageEdits] of pdfiumPages) {
+        if (pageIndex < 0 || pageIndex >= pageCount) {
+          for (const { editIndex } of pageEdits) {
+            skipped.push({ editIndex, pageIndex, reason: 'page does not exist' })
+          }
           continue
         }
-        byPage.set(edit.pageIndex, [...(byPage.get(edit.pageIndex) ?? []), { edit, editIndex }])
-      }
-      let appliedTotal = 0
-      for (const [pageIndex, pageEdits] of byPage) {
         const page = m._FPDF_LoadPage(doc, pageIndex)
         if (!page) throw new Error(`could not load page ${pageIndex + 1}`)
         try {
+          await strokeFixer.preparePage(m, page, pageIndex)
           let applied = 0
-          const guard = { exclusive, pageIndex }
+          const guard: EditGuard = { exclusive, pageIndex, strokeFixer }
           // Objects are re-collected inside each op: every mutation shifts indices
           for (const { edit, editIndex } of pageEdits) {
             try {
@@ -395,7 +515,9 @@ export function applyImageEdits(
           m._FPDF_ClosePage(page)
         }
       }
-      return { bytes: appliedTotal > 0 ? saveDoc(m, doc) : bytes, skipped }
+      if (appliedTotal === 0) return { bytes: current, skipped }
+      const saved = await strokeFixer.fixSavedBytes(saveDoc(m, doc))
+      return { bytes: saved, skipped }
     })
   })
 }

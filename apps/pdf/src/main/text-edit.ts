@@ -25,6 +25,8 @@ import {
   walkPageText,
 } from './form-text'
 import type { FormChain, FormDrawTree } from './form-text'
+import { createStrokeCtmFixer } from './stroke-ctm'
+import type { StrokeCtmFixer } from './stroke-ctm'
 
 export const FPDF_PAGEOBJ_TEXT = 1
 const FPDF_FONT_TYPE1 = 1
@@ -2314,6 +2316,7 @@ export function applyTextInserts(
   return chainPdfium(async () => {
     const m = await loadPdfium()
     const skipped: TextInsertFailure[] = []
+    const strokeFixer = createStrokeCtmFixer(bytes)
     return withDocument(m, bytes, async (doc) => {
       const pageCount = m._FPDF_GetPageCount(doc)
       let appliedTotal = 0
@@ -2389,6 +2392,7 @@ export function applyTextInserts(
         if (!page) throw new Error(`could not load page ${pageIndex + 1}`)
         let applied = 0
         try {
+          await strokeFixer.preparePage(m, page, pageIndex)
           for (const { input, editIndex } of pageInserts) {
             const text = input.text.trim()
             if (!text) {
@@ -2470,7 +2474,7 @@ export function applyTextInserts(
         }
       }
       if (appliedTotal === 0) return { bytes, skipped }
-      const saved = saveDoc(m, doc)
+      const saved = await strokeFixer.fixSavedBytes(saveDoc(m, doc))
       return { bytes: embeddedCff ? await relabelOpenTypeFontFiles(saved) : saved, skipped }
     })
   })
@@ -2543,6 +2547,7 @@ async function applyPageEdits(
   pageEdits: TextEditInput[],
   skip: (edit: TextEditInput, reason: string) => void,
   exclusive: FormExclusive,
+  strokeFixer?: StrokeCtmFixer,
 ): Promise<{ applied: number; embeddedCff: boolean }> {
   let embeddedCff = false
   const objects = collectTextObjects(m, page, textPage)
@@ -2572,7 +2577,15 @@ async function applyPageEdits(
   }
   // Template text is lifted before anything is sorted or removed: the lift inserts
   // page objects, which renumbers everything after the template
-  const unlifted = liftMatches(m, page, new Set(planned.flatMap((p) => p.matches)), objects)
+  const liftSet = new Set(planned.flatMap((p) => p.matches))
+  if (strokeFixer) {
+    for (const t of liftSet) {
+      if (t.chain.length > 0) {
+        await strokeFixer.prepareFormChain(m, pageIndex, t.chain, t.ordinals)
+      }
+    }
+  }
+  const unlifted = liftMatches(m, page, liftSet, objects)
   if (unlifted.size > 0) {
     planned = planned.filter((p) => {
       const bad = p.matches.find((t) => unlifted.has(t))
@@ -2647,7 +2660,9 @@ export async function eraseTextRuns(
   probes: TextEditInput[],
 ): Promise<boolean[]> {
   const textPage = m._FPDFText_LoadPage(page)
+  const strokeFixer = createStrokeCtmFixer(bytes)
   try {
+    await strokeFixer.preparePage(m, page, pageIndex)
     const edits = probes.map((p) => ({ ...p, newText: '', translate: undefined }))
     const failed = new Set<TextEditInput>()
     const { applied } = await applyPageEdits(
@@ -2659,6 +2674,7 @@ export async function eraseTextRuns(
       edits,
       (e) => failed.add(e),
       formExclusivity(bytes),
+      strokeFixer,
     )
     if (applied > 0) m._FPDFPage_GenerateContent(page)
     return edits.map((e) => !failed.has(e))
@@ -2679,6 +2695,7 @@ async function applyTextEditsInner(
   return withDocument(m, bytes, async (doc) => {
     const byPage = groupByPage(m, doc, edits, (e) => skip(e, 'page does not exist'))
     const exclusive = formExclusivity(bytes)
+    const strokeFixer = createStrokeCtmFixer(bytes)
     let appliedTotal = 0
     let embeddedCff = false
     for (const [pageIndex, pageEdits] of byPage) {
@@ -2686,6 +2703,7 @@ async function applyTextEditsInner(
       if (!page) throw new Error(`could not load page ${pageIndex + 1}`)
       const textPage = m._FPDFText_LoadPage(page)
       try {
+        await strokeFixer.preparePage(m, page, pageIndex)
         const res = await applyPageEdits(
           m,
           doc,
@@ -2695,6 +2713,7 @@ async function applyTextEditsInner(
           pageEdits,
           skip,
           exclusive,
+          strokeFixer,
         )
         embeddedCff = res.embeddedCff || embeddedCff
         if (res.applied > 0 && !m._FPDFPage_GenerateContent(page)) {
@@ -2708,7 +2727,7 @@ async function applyTextEditsInner(
     }
     // Nothing applied → return the input bytes untouched (skip the pdfium round-trip)
     if (appliedTotal === 0) return { bytes, skipped }
-    const saved = saveDoc(m, doc)
+    const saved = await strokeFixer.fixSavedBytes(saveDoc(m, doc))
     return { bytes: embeddedCff ? await relabelOpenTypeFontFiles(saved) : saved, skipped }
   })
 }
