@@ -114,9 +114,11 @@ export function serializeXNode(node: XNode): string {
   return inner === '' ? `<${name}${attrs}/>` : `<${name}${attrs}>${inner}</${name}>`
 }
 
-// Control characters outside \t \n \r are illegal in XML 1.0 even when escaped
-// eslint-disable-next-line no-control-regex
-const ILLEGAL_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g
+// Control characters outside \t \n \r, noncharacters, and lone surrogates are
+// all illegal in XML 1.0 even when escaped
+const ILLEGAL_XML_CHARS =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
 
 export function escapeXmlText(text: string): string {
   return text
