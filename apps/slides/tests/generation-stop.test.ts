@@ -6,8 +6,9 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { RenderSlide } from '@genoffice/pptx-render'
+import { JOB_STOP_KINDS } from '../../../packages/pdf-structure/src/jobs/errors'
 import { createSlidesSkill, type DeckAccess } from '../src/renderer/ai/slides-skill'
-import { isGenerationStopKind } from '../src/renderer/ai/generation-stop'
+import { GENERATION_STOP_KINDS, isGenerationStopKind } from '../src/renderer/ai/generation-stop'
 
 const deck = { widthPx: 1280, heightPx: 720, nodes: [] } as unknown as RenderSlide
 
@@ -40,6 +41,7 @@ const call = (name: string, input: Record<string, unknown>) => ({ id: 't', name,
 
 describe('generation stop kinds', () => {
   it('covers the document-job stop rule and the free connection limit', () => {
+    for (const kind of JOB_STOP_KINDS) expect(GENERATION_STOP_KINDS).toContain(kind)
     for (const kind of ['rate-limit', 'signed-out', 'credits', 'headless-limit', 'free-limit'])
       expect(isGenerationStopKind(kind)).toBe(true)
     expect(isGenerationStopKind('network')).toBe(false)

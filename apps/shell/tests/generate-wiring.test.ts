@@ -78,6 +78,14 @@ describe('the shell wiring', () => {
     expect(config).toMatch(/generate: resolve\(__dirname, 'src\/preload\/generate\.ts'\)/)
     expect(config).toMatch(/generate: resolve\(__dirname, 'src\/renderer\/generate\.html'\)/)
   })
+
+  it('draws the generate window title band itself so a dark theme reaches the caption', () => {
+    const win = src('../src/main/generate/generate-window.ts')
+    expect(win).toMatch(/titleBarStyle: 'hidden'/)
+    expect(win).toMatch(/titleBarOverlay: generateTitleBarOverlay/)
+    expect(win).toMatch(/nativeTheme\.on\('updated'/)
+    expect(win).toMatch(/nativeTheme\.off\('updated'/)
+  })
 })
 
 describe('generate strings', () => {
