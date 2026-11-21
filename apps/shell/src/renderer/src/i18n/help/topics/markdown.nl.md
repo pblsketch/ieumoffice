@@ -7,23 +7,23 @@ De Markdown-editor opent .md / .markdown — en .txt / .json, rechtstreeks in de
 - **Voorbeeld**: live; relatieve bronnen zoals afbeeldingen worden naast het document opgezocht.
 - **Opslaan**: bytegetrouw — BOM, CRLF en de aanwezigheid van een afsluitende lege regel blijven behouden; opslaan zonder wijzigingen schrijft het bestand niet opnieuw.
 - **Zoeken en vervangen**: ctrl+F zoekt in de bron; Alles vervangen schrijft het resultaat terug.
-- **AI**: voorinstellingsknoppen laten de assistent het document herschrijven, uitbreiden of vertalen. Een selectie kan voor de AI verborgen worden (zie het hoofdstuk over het AI-paneel).
+- **AI**: Vraag de assistent om in het AI-paneel aan het document te werken. Een selectie kan voor de AI verborgen worden (zie het hoofdstuk over het AI-paneel).
 - **Links openen**: tijdens bewerken opent Ctrl+klik op een link (⌘ op de Mac) deze in de browser; een gewone klik zet de cursor in de linktekst zodat je die kunt bewerken. In de presentatie (F5) opent een gewone klik de link.
 
 ## De werkbalk
 
-Eén rij knoppen boven de editor (zweef voor tooltips):
+Bestands- en bewerkingsopdrachten staan boven het document. Wijs een knop aan om de uitleg te zien.
 
 - **Bestand en geschiedenis**: Opslaan, Opslaan als…, Ongedaan maken, Opnieuw, Zoeken; de schakelaar **Automatisch opslaan** rechts schrijft wijzigingen op een timer naar schijf.
-- **AI-knop**: opent het AI-paneel; ernaast staan de voorinstellingen herschrijven / uitbreiden / vertalen.
+- Klik op **AI-assistent** om het AI-paneel te openen. De pijl ernaast opent het actiemenu.
 - **Alineastijl** (keuzelijst): wisselen tussen bodytekst en de verschillende kopniveaus.
 - **Tekstopmaak**: **vet**, _cursief_, ~~doorhaling~~, `inline code`, koppeling.
-- **Lijsten**: opsomming, genummerd, takenlijst.
+- **Lijst**: opsomming, genummerd, takenlijst.
 - **Invoegen**: tabel, afbeelding, horizontale lijn.
-- **Eigenschappen**: voegt het YAML front matter-blok bovenaan het bestand in of springt erheen.
-- **Overzicht**: springen op basis van de kopniveaus.
-- **Spellingcontrole**: de spellingcontrole voor dit document aan- of uitzetten.
-- **Afbeeldingshost-instellingen**: geplakte en gesleepte afbeeldingen gaan eerst naar uw eigen opslag — S3-compatibel (R2/OSS/COS/MinIO), SM.MS of GitHub — met de lokale assets-kopie als terugval.
+- **Beeld › Eigenschappen**: voegt het YAML front matter-blok bovenaan het bestand in of springt erheen.
+- **Beeld › Overzicht**: springen op basis van de kopniveaus.
+- **Beeld › Spelling**: de spellingcontrole voor dit document aan- of uitzetten.
+- **Invoegen › Afbeeldingshost-instellingen**: geplakte en gesleepte afbeeldingen gaan eerst naar uw eigen opslag — S3-compatibel (R2/OSS/COS/MinIO), SM.MS of GitHub — met de lokale assets-kopie als terugval.
 
 Drie snelle voorbeelden:
 

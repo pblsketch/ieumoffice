@@ -1,11 +1,10 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import type { ReactNode, RefObject } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { Editor } from '@tiptap/core'
 import { useEditorState } from '@tiptap/react'
 import {
   AiMark,
   Dropdown,
-  type DropdownOption,
   isSymbolFontFamily,
   RibbonCollapseButton,
   RibbonExpandButton,
@@ -16,7 +15,7 @@ import {
 import { useI18n } from '../i18n/locale'
 import { SOURCE_VIEW_SHORTCUT } from '../source-view-key'
 import { editorFontChoices, useSystemFonts } from '../editor-font'
-import { useRibbonFold } from './ribbon-overflow'
+import { RibbonMenu, RibbonMenuItem } from './RibbonMenu'
 import { useAiVisible } from '../ai-visibility'
 import { MARKDOWN_THEME_IDS, type MarkdownTheme } from '../../shared/markdown-theme'
 import { uiOp } from '../editor/ops'
@@ -52,7 +51,6 @@ import {
   IconTaskList,
   IconUndo,
   IconPalette,
-  IconMore,
 } from './icons'
 
 interface Props {
@@ -109,6 +107,8 @@ interface Props {
 function AiFeatureIcon({ kind }: { kind: 'summarize' | 'polish' | 'tidy' | 'mindmap' }) {
   return (
     <svg
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -164,9 +164,6 @@ const MARKDOWN_THEME_LABELS: Record<Exclude<MarkdownTheme, 'default'>, string> =
   newsprint: 'Newsprint',
 }
 
-/** Paper theme picker: a ribbon button with a small theme list. Selecting a
- *  theme persists through the caller and re-scopes the paper via
- *  data-markdown-theme (see markdown-themes.css). */
 function ThemePicker({
   mdTheme,
   disabled,
@@ -177,98 +174,30 @@ function ThemePicker({
   onPick: (theme: MarkdownTheme) => void
 }) {
   const { t } = useI18n()
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLDivElement | null>(null)
-  useDismissablePopover(open, () => setOpen(false), {
-    inside: () => [wrapRef.current],
-  })
-  useCloseOnEscape(open, () => setOpen(false), wrapRef)
   return (
-    <div className="md-theme-wrap" ref={wrapRef}>
-      <IconBtn
-        title={t('mdThemeTitle')}
-        hasPopup
-        active={open}
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <IconPalette size={18} />
-      </IconBtn>
-      {open && (
-        <div className="md-theme-menu" role="menu" aria-label={t('mdThemeTitle')}>
-          {(
-            ['default', ...MARKDOWN_THEME_IDS.filter((id) => id !== 'default')] as MarkdownTheme[]
-          ).map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={mdTheme === id}
-              className={`md-theme-item${mdTheme === id ? ' on' : ''}`}
-              onClick={() => {
-                setOpen(false)
+    <RibbonMenu
+      label={t('mdThemeTitle')}
+      icon={<IconPalette size={18} />}
+      submenu
+      disabled={disabled}
+    >
+      {(select) =>
+        MARKDOWN_THEME_IDS.map((id) => (
+          <RibbonMenuItem
+            key={id}
+            label={id === 'default' ? t('mdThemeDefault') : MARKDOWN_THEME_LABELS[id]}
+            radio
+            checked={mdTheme === id}
+            onClick={() =>
+              select(() => {
                 if (id !== mdTheme) onPick(id)
-              }}
-            >
-              {id === 'default' ? t('mdThemeDefault') : MARKDOWN_THEME_LABELS[id]}
-              {mdTheme === id && <span className="md-theme-check">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** open ribbon menus, innermost last: Esc closes only the one opened last */
-const escapeClosers: (() => void)[] = []
-
-function closeTopOnEscape(e: KeyboardEvent) {
-  // a list that handles its own Esc (the font dropdown) stops it before the window
-  if (e.key !== 'Escape' || !escapeClosers.length) return
-  e.preventDefault()
-  escapeClosers[escapeClosers.length - 1]!()
-}
-
-/** Esc closes an open ribbon menu; focus inside it goes back to the button that opened it. */
-function useCloseOnEscape(
-  open: boolean,
-  close: () => void,
-  wrapRef: RefObject<HTMLElement | null>,
-) {
-  const closeRef = useRef(close)
-  closeRef.current = close
-  useEffect(() => {
-    if (!open) return
-    const closer = () => {
-      const wrap = wrapRef.current
-      if (wrap?.contains(document.activeElement)) {
-        wrap.querySelector<HTMLElement>(':scope > button')?.focus()
+              })
+            }
+          />
+        ))
       }
-      closeRef.current()
-    }
-    escapeClosers.push(closer)
-    if (escapeClosers.length === 1) window.addEventListener('keydown', closeTopOnEscape)
-    return () => {
-      escapeClosers.splice(escapeClosers.indexOf(closer), 1)
-      if (!escapeClosers.length) window.removeEventListener('keydown', closeTopOnEscape)
-    }
-  }, [open, wrapRef])
-}
-
-const DEFAULT_FONT = ''
-
-/** Each family is listed in its own face, except symbol fonts, whose names would read as pictographs. */
-function fontOption(family: string): DropdownOption {
-  return {
-    value: family,
-    label: family,
-    render: (
-      <span style={isSymbolFontFamily(family) ? undefined : { fontFamily: `"${family}"` }}>
-        {family}
-      </span>
-    ),
-  }
+    </RibbonMenu>
+  )
 }
 
 function EditorFontPicker({
@@ -283,22 +212,42 @@ function EditorFontPicker({
   const { t, lang } = useI18n()
   const { families } = useSystemFonts()
   const choices = editorFontChoices(lang, families)
-  // a remembered font this PC no longer lists still reads as itself
   if (font && !choices.includes(font)) choices.unshift(font)
-  const options = [
-    { value: DEFAULT_FONT, label: t('editorFontDefault') },
-    ...choices.map(fontOption),
-  ]
   return (
-    <Dropdown
-      className="rb-font"
-      value={font ?? DEFAULT_FONT}
-      options={options}
-      ariaLabel={t('editorFontTitle')}
-      tip={t('editorFontTitle')}
+    <RibbonMenu
+      label={t('editorFontTitle')}
+      icon={
+        <span className="rb-menu-glyph" aria-hidden="true">
+          Aa
+        </span>
+      }
+      submenu
       disabled={disabled}
-      onPick={(value) => onPick(value === DEFAULT_FONT ? null : value)}
-    />
+    >
+      {(select) => (
+        <>
+          <RibbonMenuItem
+            label={t('editorFontDefault')}
+            radio
+            checked={font === null}
+            onClick={() => select(() => onPick(null))}
+          />
+          {choices.map((family) => (
+            <RibbonMenuItem
+              key={family}
+              label={family}
+              radio
+              checked={font === family}
+              onClick={() => select(() => onPick(family))}
+            >
+              <span style={isSymbolFontFamily(family) ? undefined : { fontFamily: `"${family}"` }}>
+                {family}
+              </span>
+            </RibbonMenuItem>
+          ))}
+        </>
+      )}
+    </RibbonMenu>
   )
 }
 
@@ -307,7 +256,8 @@ function IconBtn({
   active,
   disabled,
   shortcut,
-  hasPopup,
+  showLabel,
+  tip,
   onClick,
   children,
 }: {
@@ -316,25 +266,25 @@ function IconBtn({
   disabled?: boolean
   /** shown after the label in the ScreenTip; the accessible name stays `title` */
   shortcut?: string
-  /** opens a menu rather than acting, so the More flyout stays open around it;
-   *  `active` then reads as the menu being open */
-  hasPopup?: boolean
+  showLabel?: boolean
+  tip?: string
   onClick: () => void
   children: ReactNode
 }) {
   return (
     <button
       type="button"
-      className={`rb-btn${active ? ' active' : ''}`}
-      data-tip={shortcut ? `${title} (${shortcut})` : title}
+      className={`rb-btn${active ? ' active' : ''}${showLabel ? ' rb-labeled' : ''}`}
+      data-tip={shortcut ? `${title} (${shortcut})` : (tip ?? title)}
       aria-label={title}
-      aria-haspopup={hasPopup ? 'menu' : undefined}
-      aria-expanded={hasPopup ? Boolean(active) : undefined}
+      aria-description={tip}
+      aria-pressed={active}
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
     >
       {children}
+      {showLabel && <span className="rb-label">{title}</span>}
     </button>
   )
 }
@@ -380,6 +330,7 @@ export function Ribbon({
   const { t, lang } = useI18n()
   // Settings › Editors and AI: while AI is off the band has no AI entry at all
   const aiOn = useAiVisible()
+  const assistantLabel = aiSubscriptionText(lang, 'aiAssistant')
   const collapse = useRibbonCollapse('mdapp.ribbonCollapsed', {
     collapse: t('ribbonCollapse'),
     expand: t('ribbonExpand'),
@@ -388,11 +339,6 @@ export function Ribbon({
   const [linkUrl, setLinkUrl] = useState('')
   const linkInputRef = useRef<HTMLInputElement>(null)
   const linkAnchorRef = useRef<HTMLSpanElement>(null)
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const viewRowRef = useRef<HTMLDivElement>(null)
-  const moreRef = useRef<HTMLSpanElement>(null)
-  const [moreOpen, setMoreOpen] = useState(false)
-
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => {
@@ -423,11 +369,6 @@ export function Ribbon({
     inside: () => [linkAnchorRef.current],
   })
 
-  useDismissablePopover(moreOpen, () => setMoreOpen(false), {
-    inside: () => [moreRef.current],
-  })
-  useCloseOnEscape(moreOpen, () => setMoreOpen(false), moreRef)
-
   // editor-shaped commands stand down while the pane hides the selection;
   // Save As never does, and Find only while the source view hides its target
   const off = disabled || sourceMode || sourceViewOpen || !editor || !state
@@ -452,7 +393,7 @@ export function Ribbon({
   // polish/tidy act on the selection when one exists (read at click time; the
   // mousedown preventDefault below keeps the selection alive); summarize stays whole-doc
   const hasSelection = () => !(editor?.state.selection.empty ?? true)
-  const allAiPresets = [
+  const aiPresets = [
     { kind: 'summarize', btn: 'aiSummarizeBtn', prompt: () => t('aiSummarizePrompt') },
     {
       kind: 'polish',
@@ -466,167 +407,8 @@ export function Ribbon({
     },
     { kind: 'mindmap', btn: 'aiMindMapBtn', prompt: () => t('aiMindMapPrompt') },
   ] as const
-  const aiPresets: readonly (typeof allAiPresets)[number][] = aiOn ? allAiPresets : []
 
-  // the right-hand view tools, in row order; when the band runs out of room
-  // the trailing ones move behind the More button instead of off-screen
-  // (AI withholding is pinned after them, see below)
-  const viewTools: { key: string; node: ReactNode }[] = []
-  if (!sourceMode) {
-    viewTools.push(
-      {
-        key: 'source',
-        node: (
-          <IconBtn
-            title={t('sourceView')}
-            shortcut={SOURCE_VIEW_SHORTCUT}
-            active={sourceViewOpen}
-            disabled={disabled}
-            onClick={onToggleSource}
-          >
-            <IconSourceCode size={ICON} />
-          </IconBtn>
-        ),
-      },
-      {
-        key: 'properties',
-        node: (
-          <IconBtn
-            title={t('fmProperties')}
-            active={frontmatterOpen}
-            disabled={disabled}
-            onClick={onToggleFrontmatter}
-          >
-            <IconProperties size={ICON} />
-          </IconBtn>
-        ),
-      },
-      {
-        key: 'outline',
-        node: (
-          <IconBtn
-            title={t('outline')}
-            active={outlineOpen}
-            disabled={disabled}
-            onClick={onToggleOutline}
-          >
-            <IconOutlineView size={ICON} />
-          </IconBtn>
-        ),
-      },
-    )
-  }
-  viewTools.push({
-    key: 'theme',
-    node: (
-      <ThemePicker
-        mdTheme={mdTheme}
-        disabled={disabled || sourceMode || sourceViewOpen}
-        onPick={onMarkdownTheme}
-      />
-    ),
-  })
-  if (!sourceMode) {
-    viewTools.push(
-      {
-        key: 'font',
-        node: (
-          <EditorFontPicker
-            font={editorFont}
-            disabled={disabled || sourceViewOpen}
-            onPick={onEditorFont}
-          />
-        ),
-      },
-      {
-        key: 'backlinks',
-        node: (
-          <IconBtn
-            title={t('backlinks')}
-            active={backlinksOpen}
-            disabled={disabled}
-            onClick={onToggleBacklinks}
-          >
-            <IconBacklinks size={ICON} />
-          </IconBtn>
-        ),
-      },
-      {
-        key: 'tags',
-        node: (
-          <IconBtn title={t('tags')} active={tagsOpen} disabled={disabled} onClick={onToggleTags}>
-            <IconTag size={ICON} />
-          </IconBtn>
-        ),
-      },
-      {
-        key: 'graph',
-        node: (
-          <IconBtn title={t('graph')} disabled={disabled} onClick={onOpenGraph}>
-            <IconGraph size={ICON} />
-          </IconBtn>
-        ),
-      },
-    )
-  }
-  viewTools.push({
-    key: 'spellcheck',
-    node: (
-      <IconBtn
-        title={t('spellcheck')}
-        active={spellcheck}
-        disabled={disabled}
-        onClick={onToggleSpellcheck}
-      >
-        <IconSpellcheck size={ICON} />
-      </IconBtn>
-    ),
-  })
-  // with every view tool folded, the AI entries drop their labels; past that the
-  // band closes up, the style box narrows and the AI presets join the view tools
-  const aiEntryKeys = aiOn ? ['assistant', ...aiPresets.map((p) => p.kind)] : []
-  const fold = useRibbonFold(
-    bodyRef,
-    viewRowRef,
-    {
-      fold: viewTools.map((v) => v.key),
-      label: aiEntryKeys,
-      style: sourceMode ? [] : ['style'],
-      aiFold: aiPresets.map((p) => p.kind),
-    },
-    lang,
-  )
-  const isCompact = (key: string) => aiEntryKeys.indexOf(key) >= aiEntryKeys.length - fold.label
-  const inlineTools = viewTools.slice(0, viewTools.length - fold.fold)
-  const foldedTools = viewTools.slice(viewTools.length - fold.fold)
-  const inlinePresets = aiPresets.slice(0, aiPresets.length - fold.aiFold)
-  const foldedPresets = aiPresets.slice(aiPresets.length - fold.aiFold)
-  const foldedCount = foldedTools.length + foldedPresets.length
   const styleLabel = t(BLOCK_STYLE_LABEL[state?.style ?? 'paragraph'])
-
-  const presetButton = ({ kind, btn, prompt }: (typeof aiPresets)[number]) => (
-    <button
-      key={kind}
-      type="button"
-      className={`rb-big ai-entry${isCompact(kind) ? ' compact' : ''}`}
-      data-fold-key={kind}
-      data-tip={t(btn)}
-      disabled={off || state?.empty}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onAiPreset(prompt())}
-    >
-      <span className="rb-big-icon">
-        <span className="ai-feature-icon" aria-hidden="true">
-          <AiFeatureIcon kind={kind} />
-        </span>
-      </span>
-      <span>{t(btn)}</span>
-    </button>
-  )
-
-  useEffect(() => {
-    if (!foldedCount) setMoreOpen(false)
-  }, [foldedCount])
 
   return (
     <div className={`ribbon ${collapse.rootClass}`} ref={collapse.rootRef}>
@@ -703,40 +485,14 @@ export function Ribbon({
         <RibbonExpandButton state={collapse} label={t('ribbonExpand')} />
       </div>
 
-      <div className={`ribbon-body${fold.tight ? ' tight' : ''}`} data-ribbon-body="" ref={bodyRef}>
-        {aiOn && (
-          <>
-            <div className="ribbon-group">
-              <div className="ribbon-group-items">
-                <button
-                  type="button"
-                  className={`rb-big ai-entry${aiOpen ? ' active' : ''}${isCompact('assistant') ? ' compact' : ''}`}
-                  data-tip={t('aiOpenAssistant')}
-                  data-fold-key="assistant"
-                  disabled={disabled}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={onToggleAi}
-                >
-                  <span className="rb-big-icon">
-                    <AiMark size={26} />
-                  </span>
-                  <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-                </button>
-                {inlinePresets.map(presetButton)}
-              </div>
-            </div>
-
-            <div className="rb-sep" />
-          </>
-        )}
-
+      <div className="ribbon-body" data-ribbon-body="">
         {!sourceMode && (
           <div className="ribbon-group">
-            <div className="ribbon-group-items" data-fold-key="style">
+            <div className="ribbon-group-items">
               <Dropdown
-                className={`rb-style${fold.style ? ' narrow' : ''}`}
+                className="rb-style"
                 value={state?.style ?? 'paragraph'}
-                tip={fold.style ? styleLabel : undefined}
+                tip={styleLabel}
                 disabled={off}
                 options={BLOCK_STYLES.map((s) => ({
                   value: s,
@@ -822,124 +578,202 @@ export function Ribbon({
           </div>
         )}
 
-        {!sourceMode && <div className="rb-sep" />}
-
         {!sourceMode && (
-          <div className="ribbon-group">
+          <>
+            <div className="rb-sep" />
             <div className="ribbon-group-items">
-              <IconBtn
-                title={t('bulletList')}
-                active={state?.bullet}
-                disabled={off}
-                onClick={() => toggleList(editor, 'bullet')}
-              >
-                <IconBullets size={ICON} />
-              </IconBtn>
-              <IconBtn
-                title={t('orderedList')}
-                active={state?.ordered}
-                disabled={off}
-                onClick={() => toggleList(editor, 'ordered')}
-              >
-                <IconNumbered size={ICON} />
-              </IconBtn>
-              <IconBtn
-                title={t('taskList')}
-                active={state?.task}
-                disabled={off}
-                onClick={() => toggleList(editor, 'task')}
-              >
-                <IconTaskList size={ICON} />
-              </IconBtn>
+              <RibbonMenu label={t('ribbonList')} icon={<IconBullets size={ICON} />} disabled={off}>
+                {(select) => (
+                  <>
+                    <RibbonMenuItem
+                      label={t('bulletList')}
+                      icon={<IconBullets size={18} />}
+                      checked={Boolean(state?.bullet)}
+                      onClick={() => select(() => toggleList(editor, 'bullet'))}
+                    />
+                    <RibbonMenuItem
+                      label={t('orderedList')}
+                      icon={<IconNumbered size={18} />}
+                      checked={Boolean(state?.ordered)}
+                      onClick={() => select(() => toggleList(editor, 'ordered'))}
+                    />
+                    <RibbonMenuItem
+                      label={t('taskList')}
+                      icon={<IconTaskList size={18} />}
+                      checked={Boolean(state?.task)}
+                      onClick={() => select(() => toggleList(editor, 'task'))}
+                    />
+                  </>
+                )}
+              </RibbonMenu>
+              <RibbonMenu label={t('ribbonInsert')} icon={<IconTable size={ICON} />}>
+                {(select) => (
+                  <>
+                    <RibbonMenuItem
+                      label={t('insertTable')}
+                      icon={<IconTable size={18} />}
+                      disabled={off}
+                      onClick={() =>
+                        select(
+                          () => editor && uiOp(editor, { op: 'insertTable', after: 'selection' }),
+                        )
+                      }
+                    />
+                    <RibbonMenuItem
+                      label={t('insertImage')}
+                      icon={<IconPicture size={18} />}
+                      disabled={off || !imageEnabled}
+                      onClick={() => select(onInsertImage)}
+                    />
+                    <RibbonMenuItem
+                      label={t('insertHr')}
+                      icon={<IconHr size={18} />}
+                      disabled={off}
+                      onClick={() =>
+                        select(
+                          () =>
+                            editor &&
+                            uiOp(editor, { op: 'insertHorizontalRule', after: 'selection' }),
+                        )
+                      }
+                    />
+                    <div className="rb-menu-divider" role="separator" />
+                    <RibbonMenuItem
+                      label={t('imageHostTitle')}
+                      icon={<IconCloudUpload size={18} />}
+                      onClick={() => select(onImageHost)}
+                    />
+                  </>
+                )}
+              </RibbonMenu>
             </div>
-          </div>
-        )}
-
-        {!sourceMode && <div className="rb-sep" />}
-
-        {!sourceMode && (
-          <div className="ribbon-group">
-            <div className="ribbon-group-items">
-              <IconBtn
-                title={t('insertTable')}
-                disabled={off}
-                onClick={() => editor && uiOp(editor, { op: 'insertTable', after: 'selection' })}
-              >
-                <IconTable size={ICON} />
-              </IconBtn>
-              <IconBtn
-                title={t('insertImage')}
-                disabled={off || !imageEnabled}
-                onClick={onInsertImage}
-              >
-                <IconPicture size={ICON} />
-              </IconBtn>
-              <IconBtn title={t('imageHostTitle')} onClick={onImageHost}>
-                <IconCloudUpload size={ICON} />
-              </IconBtn>
-              <IconBtn
-                title={t('insertHr')}
-                disabled={off}
-                onClick={() =>
-                  editor && uiOp(editor, { op: 'insertHorizontalRule', after: 'selection' })
-                }
-              >
-                <IconHr size={ICON} />
-              </IconBtn>
-            </div>
-          </div>
+          </>
         )}
 
         <div className="rb-spacer" />
 
-        <div className="ribbon-group">
-          <div className="ribbon-group-items" ref={viewRowRef}>
-            {inlineTools.map(({ key, node }) => (
-              <Fragment key={key}>{node}</Fragment>
-            ))}
-            {foldedCount > 0 && (
-              <span className="rb-more-wrap" ref={moreRef}>
-                <IconBtn
-                  title={t('ribbonMore')}
-                  hasPopup
-                  active={moreOpen}
-                  onClick={() => setMoreOpen((v) => !v)}
-                >
-                  <IconMore size={ICON} />
-                </IconBtn>
-                {moreOpen && (
-                  <div
-                    className="rb-more-pop"
-                    role="group"
-                    aria-label={t('ribbonMore')}
-                    onClick={(e) => {
-                      // a command closes the flyout; a menu trigger keeps it as the menu's anchor
-                      const btn = (e.target as Element).closest('button')
-                      if (btn && !btn.hasAttribute('aria-haspopup')) setMoreOpen(false)
-                    }}
-                  >
-                    {foldedPresets.map(presetButton)}
-                    {foldedPresets.length > 0 && <div className="rb-sep" />}
-                    {foldedTools.map(({ key, node }) => (
-                      <Fragment key={key}>{node}</Fragment>
-                    ))}
-                  </div>
+        <div className="ribbon-group-items ribbon-actions">
+          {!sourceMode && (
+            <IconBtn
+              title={t('sourceView')}
+              showLabel
+              shortcut={SOURCE_VIEW_SHORTCUT}
+              active={sourceViewOpen}
+              disabled={disabled}
+              onClick={onToggleSource}
+            >
+              <IconSourceCode size={ICON} />
+            </IconBtn>
+          )}
+          <RibbonMenu
+            label={t('ribbonView')}
+            icon={<IconOutlineView size={ICON} />}
+            alignEnd
+            disabled={disabled}
+          >
+            {(select) => (
+              <>
+                {!sourceMode && (
+                  <>
+                    <RibbonMenuItem
+                      label={t('fmProperties')}
+                      icon={<IconProperties size={18} />}
+                      checked={frontmatterOpen}
+                      onClick={() => select(onToggleFrontmatter)}
+                    />
+                    <RibbonMenuItem
+                      label={t('outline')}
+                      icon={<IconOutlineView size={18} />}
+                      checked={outlineOpen}
+                      onClick={() => select(onToggleOutline)}
+                    />
+                    <div className="rb-menu-divider" role="separator" />
+                  </>
                 )}
-              </span>
+                <ThemePicker
+                  mdTheme={mdTheme}
+                  disabled={sourceMode || sourceViewOpen}
+                  onPick={onMarkdownTheme}
+                />
+                {!sourceMode && (
+                  <>
+                    <EditorFontPicker
+                      font={editorFont}
+                      disabled={sourceViewOpen}
+                      onPick={onEditorFont}
+                    />
+                    <div className="rb-menu-divider" role="separator" />
+                    <RibbonMenuItem
+                      label={t('backlinks')}
+                      icon={<IconBacklinks size={18} />}
+                      checked={backlinksOpen}
+                      onClick={() => select(onToggleBacklinks)}
+                    />
+                    <RibbonMenuItem
+                      label={t('tags')}
+                      icon={<IconTag size={18} />}
+                      checked={tagsOpen}
+                      onClick={() => select(onToggleTags)}
+                    />
+                    <RibbonMenuItem
+                      label={t('graph')}
+                      icon={<IconGraph size={18} />}
+                      onClick={() => select(onOpenGraph)}
+                    />
+                    <div className="rb-menu-divider" role="separator" />
+                  </>
+                )}
+                <RibbonMenuItem
+                  label={t('spellcheck')}
+                  icon={<IconSpellcheck size={18} />}
+                  checked={spellcheck}
+                  onClick={() => select(onToggleSpellcheck)}
+                />
+              </>
             )}
-            {/* never folds: whether withholding is on decides what the model is
-                sent, so its state stays in sight at every width */}
-            {!sourceMode && aiOn && (
+          </RibbonMenu>
+          {aiOn && (
+            <div className="rb-ai-split">
               <IconBtn
-                title={t('redactEnable')}
+                title={assistantLabel}
+                tip={t('aiOpenAssistant')}
+                showLabel
+                active={aiOpen}
+                disabled={disabled}
+                onClick={onToggleAi}
+              >
+                <AiMark size={ICON} />
+              </IconBtn>
+              <RibbonMenu label={t('ribbonAiActions')} alignEnd arrowOnly disabled={disabled}>
+                {(select) =>
+                  aiPresets.map(({ kind, btn, prompt }) => (
+                    <RibbonMenuItem
+                      key={kind}
+                      label={t(btn)}
+                      icon={<AiFeatureIcon kind={kind} />}
+                      disabled={off || state?.empty}
+                      onClick={() => select(() => onAiPreset(prompt()))}
+                    />
+                  ))
+                }
+              </RibbonMenu>
+            </div>
+          )}
+          {!sourceMode && aiOn && (
+            <>
+              <div className="rb-sep" />
+              <IconBtn
+                title={t('ribbonRedact')}
+                tip={t('redactEnable')}
+                showLabel
                 active={redactEnabled}
                 disabled={disabled}
                 onClick={() => onToggleRedact(!redactEnabled)}
               >
                 <IconEyeOff size={ICON} />
               </IconBtn>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
       <RibbonCollapseButton state={collapse} label={t('ribbonCollapse')} />

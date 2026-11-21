@@ -7,23 +7,23 @@ L'editor Markdown apre .md / .markdown — e .txt / .json, dritti nella vista so
 - **Anteprima**: in tempo reale; le risorse relative come le immagini si risolvono accanto al documento.
 - **Salvataggio**: fedele byte per byte — il BOM, i CRLF e la presenza di una riga finale vuota vengono preservati; un salvataggio senza modifiche non riscrive il file.
 - **Trova e sostituisci**: ctrl+F cerca nel sorgente; Sostituisci tutto scrive il risultato.
-- **IA**: i pulsanti predefiniti permettono all'assistente di riscrivere, estendere o tradurre il documento. Una selezione può essere nascosta all'IA (vedi il capitolo del pannello IA).
+- **IA**: Nel pannello IA puoi chiedere all’assistente di lavorare sul documento. Una selezione può essere nascosta all'IA (vedi il capitolo del pannello IA).
 - **Aprire i link**: durante la modifica, Ctrl+clic su un link (⌘ su Mac) lo apre nel browser; un clic normale posiziona il cursore nel testo del link per modificarlo. In presentazione (F5), un clic normale lo apre.
 
 ## La barra degli strumenti
 
-Una riga di pulsanti sopra l'editor (passa il puntatore per le descrizioni):
+I comandi per i file e la modifica sono sopra il documento. Passa il puntatore su un pulsante per vederne la descrizione.
 
 - **File e cronologia**: Salva, Salva con nome…, Annulla, Ripeti, Trova; a destra l'interruttore **Salvataggio automatico** scrive le modifiche su disco a intervalli regolari.
-- **Pulsante AI**: apre il pannello IA; accanto trovi le impostazioni predefinite riscrivi / estendi / traduci.
+- Fai clic su **Assistente IA** per aprire il pannello IA. La freccia accanto apre il menu delle azioni.
 - **Stile paragrafo** (menu a tendina): passa dal testo del corpo ai vari livelli di titolo.
 - **Formattazione in linea**: **grassetto**, _corsivo_, ~~barratura~~, `codice in linea`, collegamento.
-- **Elenchi**: puntato, numerato, elenco di attività.
+- **Elenco**: puntato, numerato, elenco di attività.
 - **Inserisci**: tabella, immagine, linea orizzontale.
-- **Proprietà**: inserisce o salta al blocco YAML front matter in cima al file.
-- **Struttura**: salta in base alla gerarchia dei titoli.
-- **Controllo ortografico**: attiva o disattiva il controllo ortografico per questo documento.
-- **Impostazioni host immagini**: le immagini incollate o trascinate vanno prima nel tuo archivio — compatibile S3 (R2/OSS/COS/MinIO), SM.MS o GitHub — con la copia locale in assets come riserva.
+- **Visualizza › Proprietà**: inserisce o salta al blocco YAML front matter in cima al file.
+- **Visualizza › Struttura**: salta in base alla gerarchia dei titoli.
+- **Visualizza › Ortografia**: attiva o disattiva il controllo ortografico per questo documento.
+- **Inserisci › Impostazioni host immagini**: le immagini incollate o trascinate vanno prima nel tuo archivio — compatibile S3 (R2/OSS/COS/MinIO), SM.MS o GitHub — con la copia locale in assets come riserva.
 
 Tre esempi rapidi:
 

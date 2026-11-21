@@ -63,7 +63,10 @@ test('editor-shaped ribbon commands stand down while the source view is open', a
   // save stays live; formatting, which acts on an invisible selection, does not
   await expect(page.locator(SOURCE_BUTTON)).toBeEnabled()
   await expect(page.locator('.rb-btn[aria-label="Bold"]')).toBeDisabled()
-  await expect(page.locator('.rb-btn[aria-label="Bullet list"]')).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'List', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Insert', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: 'Insert table' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Image host settings' })).toBeEnabled()
 })
 
 test('a write that landed while the pane sat unfocused is picked up on refocus', async ({

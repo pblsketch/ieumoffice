@@ -7,23 +7,23 @@ El editor Markdown abre .md / .markdown — y .txt / .json, directo a la vista d
 - **Vista previa**: en vivo; los recursos relativos como las imágenes se resuelven junto al documento.
 - **Guardar**: fiel byte a byte: el BOM, los CRLF y la presencia de un salto de línea final se conservan; un guardado sin cambios no reescribe el archivo.
 - **Buscar y reemplazar**: ctrl+F busca en el código fuente; Reemplazar todo lo reescribe.
-- **IA**: unos botones predefinidos permiten que el asistente reescriba, amplíe o traduzca el documento. Una selección puede ocultarse a la IA (ver el capítulo del panel de IA).
+- **IA**: Pida al asistente que trabaje en el documento desde el panel de IA. Una selección puede ocultarse a la IA (ver el capítulo del panel de IA).
 - **Abrir enlaces**: al editar, Ctrl+clic en un enlace (⌘ en Mac) lo abre en el navegador; un clic normal coloca el cursor en el texto del enlace para editarlo. En la presentación (F5), un clic normal lo abre.
 
 ## La barra de herramientas
 
-Una fila de botones encima del editor (pase el cursor para ver las descripciones):
+Los controles de archivo y edición están encima del documento. Pase el cursor para ver las ayudas.
 
 - **Archivo e historial**: Guardar, Guardar como, Deshacer, Rehacer, Buscar; el interruptor de **Autoguardado** de la derecha escribe los cambios en el disco a intervalos.
-- **Botón de IA**: abre el panel de IA; a su lado están los preajustes de reescritura, ampliación y traducción.
+- Pulse **Asistente de IA** para abrir el panel de IA. La flecha contigua abre el menú de acciones.
 - **Estilo de párrafo** (desplegable): cambiar entre el cuerpo del texto y los niveles de título.
 - **Formato en línea**: **Negrita**, _Cursiva_, ~~Tachado~~, `Código en línea`, enlace.
-- **Listas**: con viñetas, numerada, lista de tareas.
+- **Lista**: con viñetas, numerada, lista de tareas.
 - **Insertar**: tabla, imagen, línea separadora.
-- **Propiedades**: inserta el bloque YAML front matter al principio del archivo o salta hasta él.
-- **Esquema**: saltar por la jerarquía de títulos.
-- **Ortografía**: activa o desactiva la corrección ortográfica de este documento.
-- **Ajustes de alojamiento de imágenes**: las imágenes pegadas o soltadas van primero a tu propio almacenamiento — compatible S3 (R2/OSS/COS/MinIO), SM.MS o GitHub — con la copia local en assets como respaldo.
+- **Vista › Propiedades**: inserta el bloque YAML front matter al principio del archivo o salta hasta él.
+- **Vista › Esquema**: saltar por la jerarquía de títulos.
+- **Vista › Ortografía**: activa o desactiva la corrección ortográfica de este documento.
+- **Insertar › Ajustes del servidor de imágenes**: las imágenes pegadas o soltadas van primero a tu propio almacenamiento — compatible S3 (R2/OSS/COS/MinIO), SM.MS o GitHub — con la copia local en assets como respaldo.
 
 Tres ejemplos rápidos:
 

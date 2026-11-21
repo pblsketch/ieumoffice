@@ -7,23 +7,23 @@ Editor Markdown otevírá .md / .markdown — a .txt / .json, rovnou v zobrazen�
 - **Náhled**: živý; relativní zdroje, například obrázky, se načítají vedle dokumentu.
 - **Ukládání**: věrné bajt po bajtu — BOM, znaky CRLF i přítomnost prázdného řádku na konci se zachovávají; uložení bez změn soubor nepřepíše.
 - **Najít a nahradit**: ctrl+F hledá ve zdroji; Nahradit vše zapíše výsledek.
-- **AI**: předvolená tlačítka nechají asistenta dokument přepsat, rozšířit nebo přeložit. Výběr lze skrýt před AI (viz kapitola o AI panelu).
+- **AI**: V panelu AI můžete asistenta požádat o úpravu dokumentu. Výběr lze skrýt před AI (viz kapitola o AI panelu).
 - **Otevírání odkazů**: při úpravách otevře Ctrl+kliknutí na odkaz (⌘ na Macu) v prohlížeči; běžné kliknutí umístí kurzor do textu odkazu, aby se dal upravit. V režimu prezentace (F5) odkaz otevře běžné kliknutí.
 
 ## Pruh nástrojů
 
-Jeden řádek tlačítek nad editorem (nápovědy zobrazíte po najetí):
+Nad dokumentem jsou příkazy pro soubor a úpravy. Nápovědu zobrazíte najetím ukazatele.
 
 - **Soubor a historie**: Uložit, Uložit jako…, Zpět, Znovu, Najít; přepínač **Automatické ukládání** vpravo zapisuje změny na disk v pravidelných intervalech.
-- **Tlačítko AI**: otevře panel AI; vedle něj jsou předvolby přepsat / rozšířit / přeložit.
+- Tlačítko **Asistent AI** otevře panel AI. Šipka vedle něj otevře nabídku akcí.
 - **Styl odstavce** (rozbalovací seznam): přechod mezi základním textem a úrovněmi nadpisů.
 - **Formátování v textu**: **tučné**, _kurzíva_, ~~přeškrtnutí~~, `kód v textu`, odkaz.
-- **Seznamy**: odrážkový, číslovaný, kontrolní.
+- **Seznam**: odrážkový, číslovaný, kontrolní.
 - **Vložit**: tabulka, obrázek, vodorovná čára.
-- **Vlastnosti**: vloží nebo přeskočí na blok YAML front matter na začátku souboru.
-- **Osnova**: přeskakování podle hierarchie nadpisů.
-- **Kontrola pravopisu**: zapne nebo vypne kontrolu pravopisu pro tento dokument.
-- **Nastavení hostitele obrázků**: vložené a přetažené obrázky míří nejdřív do vlastního úložiště — kompatibilního se S3 (R2/OSS/COS/MinIO), SM.MS nebo GitHub — lokální kopie v assets zůstává jako záloha.
+- **Zobrazení › Vlastnosti**: vloží nebo přeskočí na blok YAML front matter na začátku souboru.
+- **Zobrazení › Osnova**: přeskakování podle hierarchie nadpisů.
+- **Zobrazení › Pravopis**: zapne nebo vypne kontrolu pravopisu pro tento dokument.
+- **Vložit › Nastavení hostitele obrázků**: vložené a přetažené obrázky míří nejdřív do vlastního úložiště — kompatibilního se S3 (R2/OSS/COS/MinIO), SM.MS nebo GitHub — lokální kopie v assets zůstává jako záloha.
 
 Tři rychlé příklady:
 

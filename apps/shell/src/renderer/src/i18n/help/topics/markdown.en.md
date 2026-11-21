@@ -7,23 +7,23 @@ The Markdown editor opens .md / .markdown — and .txt / .json, straight into so
 - **Preview**: live; relative assets like images resolve next to the document.
 - **Saving**: byte-faithful — BOM, CRLF and the presence of a trailing newline are preserved; an unmodified save does not rewrite the file.
 - **Find & replace**: ctrl+F searches the source; Replace All writes back.
-- **AI**: preset buttons let the assistant rewrite, extend or translate the document. A selection can be hidden from the AI (see the AI panel chapter).
+- **AI**: Ask the assistant to work on the document in the AI panel. A selection can be hidden from the AI (see the AI panel chapter).
 - **Opening links**: while editing, Ctrl+click a link (⌘ on a Mac) to open it in your browser; a plain click puts the cursor in the link text so you can edit it. In presentation mode (F5) a plain click opens the link.
 
 ## The toolbar
 
-One row of buttons above the editor (hover for tooltips):
+File and editing tools are above the document. Hover over a button for its tooltip.
 
 - **File & history**: Save, Save As, Undo, Redo, Find; the **AutoSave** toggle on the right writes changes to disk on a timer.
-- **AI button**: opens the AI panel; next to it are the rewrite / extend / translate presets.
+- Click **AI Assistant** to open the AI panel. The adjacent arrow opens the actions menu.
 - **Paragraph style** (dropdown): switch between body text and heading levels.
 - **Inline formatting**: **bold**, _italic_, ~~strikethrough~~, `inline code`, link.
-- **Lists**: bullet, numbered, task list.
+- **List**: bullet, numbered, task list.
 - **Insert**: table, image, horizontal rule.
-- **Properties**: insert or jump to the YAML front matter block at the top of the file.
-- **Outline**: jump by heading hierarchy.
-- **Spellcheck**: toggle spellcheck for this document.
-- **Image host settings**: send pasted and dropped pictures to your own storage first — S3-compatible (R2/OSS/COS/MinIO), SM.MS or GitHub — with the local assets copy as the fallback.
+- **View › Properties**: insert or jump to the YAML front matter block at the top of the file.
+- **View › Outline**: jump by heading hierarchy.
+- **View › Spelling**: toggle spellcheck for this document.
+- **Insert › Image host settings**: send pasted and dropped pictures to your own storage first — S3-compatible (R2/OSS/COS/MinIO), SM.MS or GitHub — with the local assets copy as the fallback.
 
 Three quick examples:
 

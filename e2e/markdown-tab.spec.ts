@@ -189,9 +189,8 @@ test.describe('markdown editor', () => {
       // sending needs a connected AI; the stub answers instead of a real program
       await stubAiReady(app)
 
-      const summarizeBtn = editorPage.locator('.rb-big.ai-entry', {
-        hasText: /AI Summarize/,
-      })
+      await editorPage.getByRole('button', { name: 'AI actions', exact: true }).click()
+      const summarizeBtn = editorPage.getByRole('menuitem', { name: 'AI Summarize' })
       await expect(summarizeBtn).toBeEnabled()
       await summarizeBtn.click()
 

@@ -7,23 +7,23 @@ Editor Markdown membuka .md / .markdown — dan .txt / .json, langsung ke tampil
 - **Pratinjau**: langsung; aset relatif seperti gambar diselesaikan di samping dokumen.
 - **Menyimpan**: setia byte demi byte — BOM, CRLF, dan keberadaan baris baru di akhir file dipertahankan; penyimpanan tanpa perubahan tidak menulis ulang file.
 - **Cari dan ganti**: ctrl+F mencari di sumber; Ganti Semua menuliskan hasilnya kembali.
-- **AI**: tombol siap pakai membiarkan asisten menulis ulang, memperpanjang, atau menerjemahkan dokumen. Seleksi bisa disembunyikan dari AI (lihat bab panel AI).
+- **AI**: Minta asisten membantu mengolah dokumen lewat panel AI. Seleksi bisa disembunyikan dari AI (lihat bab panel AI).
 - **Membuka tautan**: saat mengedit, Ctrl+klik tautan (⌘ di Mac) membukanya di browser; klik biasa menempatkan kursor di teks tautan agar dapat diedit. Dalam mode presentasi (F5), klik biasa membukanya.
 
 ## Bilah alat
 
-Satu baris tombol di atas editor (arahkan kursor untuk melihat keterangan):
+Perintah berkas dan penyuntingan ada di atas dokumen. Arahkan kursor ke tombol untuk melihat keterangannya.
 
 - **File & riwayat**: Simpan, Simpan Sebagai…, Urungkan, Ulangi, Temukan; sakelar **Simpan Otomatis** di sebelah kanan menulis perubahan ke disk secara berkala.
-- **Tombol AI**: membuka panel AI; di sebelahnya adalah siap-siap untuk menulis ulang / memperpanjang / menerjemahkan.
+- Klik **Asisten AI** untuk membuka panel AI. Panah di sampingnya membuka menu tindakan.
 - **Gaya paragraf** (drop-down): berpindah antara teks isi dan berbagai tingkat judul.
 - **Format sebaris**: **tebal**, _miring_, ~~coret~~, `kode sebaris`, tautan.
 - **Daftar**: daftar poin, daftar bernomor, daftar tugas.
 - **Sisipkan**: tabel, gambar, garis pemisah.
-- **Properti**: menyisipkan atau melompat ke blok YAML front matter di bagian atas file.
-- **Kerangka**: melompat menurut hierarki judul.
-- **Ejaan**: menyalakan atau mematikan pemeriksaan ejaan untuk dokumen ini.
-- **Pengaturan host gambar**: gambar yang ditempel dan dijatuhkan pergi lebih dulu ke penyimpanan Anda sendiri — kompatibel S3 (R2/OSS/COS/MinIO), SM.MS, atau GitHub — salinan assets lokal tetap menjadi cadangan.
+- **Tampilan › Properti**: menyisipkan atau melompat ke blok YAML front matter di bagian atas file.
+- **Tampilan › Kerangka**: melompat menurut hierarki judul.
+- **Tampilan › Ejaan**: menyalakan atau mematikan pemeriksaan ejaan untuk dokumen ini.
+- **Sisipkan › Pengaturan host gambar**: gambar yang ditempel dan dijatuhkan pergi lebih dulu ke penyimpanan Anda sendiri — kompatibel S3 (R2/OSS/COS/MinIO), SM.MS, atau GitHub — salinan assets lokal tetap menjadi cadangan.
 
 Tiga contoh singkat:
 

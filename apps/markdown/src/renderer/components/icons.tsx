@@ -259,14 +259,3 @@ export function IconBlockLink(props: IconProps) {
     </Svg>
   )
 }
-
-/** horizontal ellipsis: the ribbon's More button for tools that no longer fit */
-export function IconMore(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <circle cx="3.5" cy="8" r="0.6" />
-      <circle cx="8" cy="8" r="0.6" />
-      <circle cx="12.5" cy="8" r="0.6" />
-    </Svg>
-  )
-}
