@@ -1994,6 +1994,7 @@ export function Home({
             <button
               key={kind}
               className="quick-card"
+              data-kind={kind}
               onClick={() => void window.aiOfficePdfToolsHome.open()}
             >
               <FileBadge ext="pdf" size={30} />
@@ -2005,7 +2006,12 @@ export function Home({
               </span>
             </button>
           ) : (
-            <button key={kind} className="quick-card" onClick={() => void NEW_ITEM_ACTION[kind]()}>
+            <button
+              key={kind}
+              className="quick-card"
+              data-kind={kind}
+              onClick={() => void NEW_ITEM_ACTION[kind]()}
+            >
               <FileBadge ext={kind} size={30} />
               <span className="quick-text">
                 <span className="quick-title-row">
