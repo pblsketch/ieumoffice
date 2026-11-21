@@ -137,6 +137,7 @@ import {
   mathTokens,
   onOffOf,
   plainText,
+  previewText,
   stripHash,
   type RelInfo,
 } from './parse-xml-text'
@@ -1080,11 +1081,12 @@ async function buildBlock(
     // No usable paragraph found → passthrough; keep the text visible at least.
     // A content-less sdt (w:sdtPr only, or empty sdtContent) renders as nothing
     // in Word, so it must not produce a visible placeholder chip.
-    const sdtPreview = plainText(xml)
-    if (!sdtPreview.trim() && !xml.includes('<w:drawing') && !/<w:pict[\s>]/.test(xml)) {
+    // the emptiness check stays on plainText: a lone no-break hyphen with no
+    // real text would otherwise flip this from invisible to a visible chip
+    if (!plainText(xml).trim() && !xml.includes('<w:drawing') && !/<w:pict[\s>]/.test(xml)) {
       return { ...base, type: 'passthrough', label: 'Content control', invisibleMarker: true }
     }
-    return { ...base, type: 'passthrough', label: 'Content control', previewText: sdtPreview }
+    return { ...base, type: 'passthrough', label: 'Content control', previewText: previewText(xml) }
   }
   if (INVISIBLE_BODY_MARKERS.has(el.name)) {
     return { ...base, type: 'passthrough', label: el.name, invisibleMarker: true }
@@ -1204,7 +1206,10 @@ async function buildBlock(
       ...base,
       type: 'passthrough',
       label: fieldLabel(xml),
-      previewText: plainText(xml),
+      // previewText is a display-only preview (see parse-xml-text.ts); the
+      // runs/`visible` field-matching above compares against fieldDisplay.left,
+      // which fieldDisplayOf computes from plainText independently of this value
+      previewText: previewText(xml),
       fieldDisplay,
       ...(pStyle ? { styleId: pStyle } : {}),
     }
@@ -1221,7 +1226,7 @@ async function buildBlock(
         ...base,
         type: 'passthrough',
         label: 'Embedded object',
-        previewText: plainText(detect),
+        previewText: previewText(detect),
         ...(await oleDisplay(detect, ctx)),
       }
     }
@@ -1240,7 +1245,7 @@ async function buildBlock(
       ...base,
       type: 'passthrough',
       label: 'TOC entry',
-      previewText: plainText(xml),
+      previewText: previewText(xml),
       fieldDisplay: fieldDisplayOf(xml, ctx.styles, ctx.resolver),
       styleId: tocStyleId,
     }
@@ -1258,7 +1263,7 @@ async function buildBlock(
       ...base,
       type: 'passthrough',
       label: 'Revised paragraph',
-      previewText: plainText(detect),
+      previewText: previewText(detect),
     }
   }
   // display equations (oMathPara / math-only paragraphs) stay protected as a
@@ -1467,7 +1472,7 @@ async function buildBlock(
       ...base,
       type: 'passthrough',
       label: 'Embedded object',
-      previewText: plainText(detect),
+      previewText: previewText(detect),
       ...(await oleDisplay(detect, ctx)),
     }
   }
@@ -2393,11 +2398,16 @@ function buildTextParagraph(
     parsed = xmlParser.parse(xml) as XNode[]
   } catch {
     // unparseable paragraph (e.g. pathological nesting): keep the original bytes
-    return { ...base, type: 'passthrough', label: 'Paragraph', previewText: plainText(xml) }
+    return { ...base, type: 'passthrough', label: 'Paragraph', previewText: previewText(xml) }
   }
   const pNode = parsed.find((n) => nameOf(n) === 'w:p')
   if (!pNode) {
-    return { ...base, type: 'passthrough', label: 'Unknown paragraph', previewText: plainText(xml) }
+    return {
+      ...base,
+      type: 'passthrough',
+      label: 'Unknown paragraph',
+      previewText: previewText(xml),
+    }
   }
 
   const pPr = findChild(pNode, 'w:pPr')
@@ -4356,7 +4366,9 @@ function foldFieldCodeParagraphs(blocks: Block[], ctx: BuildContext): void {
       if (runs) fieldDisplay.runs = runs
     }
     tail.fieldDisplay = fieldDisplay
-    tail.previewText = plainText(joined)
+    // display-only, like fieldPassthrough() above: fieldResultRuns already
+    // matched against fieldDisplay.left (computed from plainText independently)
+    tail.previewText = previewText(joined)
     tail.label = fieldLabel(joined)
     for (let k = i; k < end; k++) {
       blocks[k].invisibleMarker = true
@@ -5297,7 +5309,7 @@ function tableSummary(xml: string): { label: string; previewText: string } {
   const rows = (xml.match(/<w:tr[\s>]/g) ?? []).length
   const firstRow = /<w:tr[\s>][\s\S]*?<\/w:tr>/.exec(xml)?.[0] ?? ''
   const cols = (firstRow.match(/<w:tc[\s>]/g) ?? []).length
-  return { label: `Table ${rows}×${cols}`, previewText: plainText(xml).slice(0, 120) }
+  return { label: `Table ${rows}×${cols}`, previewText: previewText(xml).slice(0, 120) }
 }
 
 /**
