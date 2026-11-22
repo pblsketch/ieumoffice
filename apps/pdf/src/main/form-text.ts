@@ -9,6 +9,7 @@ import {
   decodePDFRawStream,
 } from 'pdf-lib'
 import type { Pdfium } from './text-edit'
+import { scaleTextStrokeForTransform } from './stroke-ctm'
 
 /**
  * Text drawn inside Form XObjects (FPDI/TCPDF templates, pdf-lib embedded pages,
@@ -275,6 +276,9 @@ export function liftOutOfForms(m: Pdfium, page: number, obj: number, chain: Form
     else m._FPDFPage_InsertObject(page, child)
     const [a, b, c, d, e, f] = objMatrix(m, parent)
     m._FPDFPageObj_Transform(child, a, b, c, d, e, f)
+    // Baking the parent form's matrix into a lifted stroked text object moves
+    // the scale from cm into Tm; scale its stroke width to keep page appearance.
+    scaleTextStrokeForTransform(m, child, [a, b, c, d, e, f])
   }
   // Top-down: once a nested form sits on the page, its own children can follow
   for (let i = 1; i < chain.length; i++) {
