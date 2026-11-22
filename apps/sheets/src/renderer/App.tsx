@@ -582,7 +582,11 @@ import {
   type PrintPreviewHost,
   type PageLayoutContext,
 } from './page-layout-actions'
-import { handleExportCsv as handleExportCsvImpl, type CsvExportContext } from './csv-export'
+import {
+  csvNeutralizeFormulasEnabled,
+  handleExportCsv as handleExportCsvImpl,
+  type CsvExportContext,
+} from './csv-export'
 import {
   handleExportOds as handleExportOdsImpl,
   saveThenExportOds,
@@ -5406,7 +5410,9 @@ export function App({
     } else if (action === 'export-pdf') {
       void handleExportPdfImpl(pageLayoutContext())
     } else if (action === 'export-csv') {
-      void handleExportCsvImpl(csvExportContext())
+      void handleExportCsvImpl(csvExportContext(), undefined, {
+        neutralizeFormulas: csvNeutralizeFormulasEnabled(),
+      })
     } else if (action === 'export-ods') {
       void handleExportOdsImpl(odsExportContext())
     } else if (action === 'undo' || action === 'redo') {

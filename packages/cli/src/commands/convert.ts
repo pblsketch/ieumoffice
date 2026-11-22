@@ -120,7 +120,7 @@ export const convertCommand: CommandDef = {
   name: 'convert',
   summary: 'Convert a document to another format using the GenOffice engines.',
   usage:
-    'convert <file> --to <format> [--out <path>] [--force] [--password <pw>] [--sheet <name>] [--pages <list>] [--title <text>] [--author <text>] [--no-cover] [--page-breaks] [--page <id|name>]',
+    'convert <file> --to <format> [--out <path>] [--force] [--password <pw>] [--sheet <name>] [--neutralize-formulas] [--pages <list>] [--title <text>] [--author <text>] [--no-cover] [--page-breaks] [--page <id|name>]',
   options: [
     { name: 'to', value: 'format', description: 'target format: ' + describeRoutes() },
     { name: 'out', value: 'path', description: 'output file (default: same name, new extension)' },
@@ -130,6 +130,11 @@ export const convertCommand: CommandDef = {
       name: 'sheet',
       value: 'name',
       description: 'xlsx→csv: worksheet to export (default: the active one)',
+    },
+    {
+      name: 'neutralize-formulas',
+      description:
+        'xlsx→csv: prefix formula-like cells (a leading =, a function call behind @/+/-, DDE) with a text-marker apostrophe; off by default — ordinary data keeps its bytes',
     },
     {
       name: 'pages',
@@ -268,7 +273,10 @@ async function run(
     return { bytes: await csvToXlsx(readInput(input), sheet), detail: { sheet } }
   }
   if (to === 'csv') {
-    const { csv, ...detail } = await sheetToCsv(input, { sheet: flagString(args, 'sheet') })
+    const { csv, ...detail } = await sheetToCsv(input, {
+      sheet: flagString(args, 'sheet'),
+      neutralizeFormulas: flagBool(args, 'neutralize-formulas'),
+    })
     // UTF-8 BOM, as the app writes it, so Excel opens the file without a wizard
     return { bytes: Buffer.from('\ufeff' + csv, 'utf-8'), detail }
   }
