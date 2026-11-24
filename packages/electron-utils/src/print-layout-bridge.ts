@@ -9,12 +9,16 @@ import {
   printLayoutChannels,
   type LabelSpecSetResult,
   type PrintLayoutFailure,
+  type PrintLayoutPreviewFacesRequest,
+  type PrintLayoutPreviewFacesResult,
   type PrintLayoutPreviewRequest,
   type PrintLayoutPreviewResult,
   type PrintLayoutPrinterInfo,
   type PrintLayoutPrintRequest,
   type PrintLayoutPrintResult,
   type PrintLayoutProgress,
+  type PrintLayoutSaveImagesRequest,
+  type PrintLayoutSaveImagesResult,
   type PrintLayoutSaveRequest,
   type PrintLayoutSaveResult,
 } from './print-layout-channels'
@@ -29,10 +33,16 @@ export interface PrintLayoutIpcRenderer {
 export interface PrintLayoutBridge<E = unknown> {
   /** builds the arranged result and returns each face as a small PNG */
   preview(request: PrintLayoutPreviewRequest<E>): Promise<PrintLayoutPreviewResult>
+  /** on-demand cached preview rendering only requested 0-based face indices */
+  previewFaces?(request: PrintLayoutPreviewFacesRequest<E>): Promise<PrintLayoutPreviewFacesResult>
+  /** releases any cached job/arranged PDF held for this window's live preview */
+  closePreview?(): Promise<void>
   /** prints the arranged result (system dialog, or the in-app printer in `job`) */
   print(request: PrintLayoutPrintRequest<E>): Promise<PrintLayoutPrintResult>
   /** asks where to save, then writes the arranged PDF */
   savePdf(request: PrintLayoutSaveRequest<E>): Promise<PrintLayoutSaveResult>
+  /** asks where to save, then writes the arranged faces as PNG/JPG files or ZIP */
+  saveImages?(request: PrintLayoutSaveImagesRequest<E>): Promise<PrintLayoutSaveImagesResult>
   /** stops this window's running job; nothing is sent to a printer */
   cancel(): Promise<void>
   /** faces done of the running job; returns the unsubscribe */
@@ -42,6 +52,10 @@ export interface PrintLayoutBridge<E = unknown> {
   setLabelSpec(spec: LabelSpec): Promise<LabelSpecSetResult>
   /** installed OS printers for the in-app print dialog; absent in older mocks */
   listPrinters?(): Promise<PrintLayoutPrinterInfo[]>
+  /** app-wide quick-print click preference: true when clicking the print icon prints immediately */
+  getQuickPrintPref?(): Promise<boolean>
+  setQuickPrintPref?(enabled: boolean): Promise<boolean>
+  onQuickPrintPrefChanged?(listener: (enabled: boolean) => void): () => void
 }
 
 function noAnswer(err: unknown): PrintLayoutFailure {
@@ -69,8 +83,13 @@ export function createPrintLayoutBridge<E = unknown>(
   const c = printLayoutChannels(prefix)
   return {
     preview: (request) => ipcRenderer.invoke(c.preview, request).catch(noAnswer),
+    previewFaces: (request) => ipcRenderer.invoke(c.previewFaces, request).catch(noAnswer),
+    closePreview: async () => {
+      await ipcRenderer.invoke(c.closePreview).catch(() => undefined)
+    },
     print: (request) => ipcRenderer.invoke(c.print, request).catch(noAnswer),
     savePdf: (request) => ipcRenderer.invoke(c.save, request).catch(noAnswer),
+    saveImages: (request) => ipcRenderer.invoke(c.saveImages, request).catch(noAnswer),
     cancel: async () => {
       await ipcRenderer.invoke(c.cancel).catch(() => undefined)
     },
@@ -95,5 +114,24 @@ export function createPrintLayoutBridge<E = unknown>(
         .invoke(PRINT_LAYOUT_SHARED_CHANNELS.listPrinters)
         .then((list: unknown) => (Array.isArray(list) ? (list as PrintLayoutPrinterInfo[]) : []))
         .catch(() => []),
+    getQuickPrintPref: () =>
+      ipcRenderer
+        .invoke(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefGet)
+        .then((v: unknown) => v === true)
+        .catch(() => false),
+    setQuickPrintPref: (enabled: boolean) =>
+      ipcRenderer
+        .invoke(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefSet, enabled === true)
+        .then((v: unknown) => v === true)
+        .catch(() => enabled === true),
+    onQuickPrintPrefChanged(listener) {
+      const handler = (_event: unknown, value: unknown) => {
+        listener(value === true)
+      }
+      ipcRenderer.on(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefChanged, handler)
+      return () => {
+        ipcRenderer.removeListener(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefChanged, handler)
+      }
+    },
   }
 }

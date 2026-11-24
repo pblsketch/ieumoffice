@@ -9,6 +9,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { LANGS } from '@genoffice/i18n'
 import { createDefaultOptions } from '@genoffice/print-layout/plan'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST } from '@genoffice/ui'
 import { PrintDialog, type PrintDialogProps } from '../src/renderer/PrintDialog'
 import { strings } from '../src/renderer/i18n/strings'
 
@@ -72,11 +73,11 @@ const setValue = async (el: HTMLInputElement | HTMLSelectElement, value: string)
 const DEFAULT_JOB = { deviceName: '', copies: 1, collate: true, duplex: 'simplex' }
 
 describe('PrintDialog', () => {
-  it('shows the shared layout panel with paper and fit', async () => {
+  it('shows the shared layout panel with paper and scaling', async () => {
     await mount()
     expect(q('[data-pl="mode"]')).not.toBeNull()
     expect(q('[data-pl="paper"]')).not.toBeNull()
-    expect(q('[data-pl="fit"]')).not.toBeNull()
+    expect(q('[data-pl="scaling"]')).not.toBeNull()
   })
 
   it('offers "picked pages" only for two or more picked thumbnails', async () => {
@@ -194,31 +195,37 @@ describe('PrintDialog', () => {
 })
 
 describe('a PDF with permission restrictions', () => {
-  const chooseNup = () => click(container!.querySelector('input[data-pl="mode"][value="nup"]')!)
-  const saveButton = () => q('[data-pl="save-pdf"]')
+  const savePdfOption = () => [...printerSelect().options].find((o) => o.value === SAVE_PDF_DEST)
+  const saveImagesOption = () =>
+    [...printerSelect().options].find((o) => o.value === SAVE_IMAGES_DEST)
   const reason = () => q('[data-print-save-restricted]')
 
-  it('offers no "save the arranged result as PDF" and says why', async () => {
+  it('disables Save as PDF and Save as images in the destination list and says why', async () => {
     const onSavePdf = vi.fn()
-    await mount({ onSavePdf, saveRestricted: true })
-    await chooseNup()
-    expect(saveButton()).toBeNull()
-    expect(reason()?.textContent).toBe(strings.en.printSaveRestricted)
+    const onSaveImages = vi.fn()
+    await mount({ onSavePdf, onSaveImages, saveRestricted: true })
+    expect(savePdfOption()?.disabled).toBe(true)
+    expect(saveImagesOption()?.disabled).toBe(true)
+    expect(reason()).not.toBeNull()
     // printing stays available
     expect(printButton().disabled).toBe(false)
   })
 
-  it('keeps the save button and no reason line for an unrestricted PDF', async () => {
+  it('enables Save as PDF and Save as images with no restriction line for an unrestricted PDF', async () => {
     const onSavePdf = vi.fn()
-    await mount({ onSavePdf })
-    await chooseNup()
-    expect(saveButton()).not.toBeNull()
+    const onSaveImages = vi.fn()
+    await mount({ onSavePdf, onSaveImages })
+    expect(savePdfOption()?.disabled).toBe(false)
+    expect(saveImagesOption()?.disabled).toBe(false)
     expect(reason()).toBeNull()
-  })
 
-  it('says nothing while no layout option is chosen (there is no save button then)', async () => {
-    await mount({ onSavePdf: vi.fn(), saveRestricted: true })
-    expect(reason()).toBeNull()
+    await setValue(printerSelect(), SAVE_IMAGES_DEST)
+    await click(printButton())
+    expect(onSaveImages).toHaveBeenCalledWith(undefined, createDefaultOptions(), {
+      format: 'png',
+      quality: 90,
+      bundle: 'files',
+    })
   })
 })
 

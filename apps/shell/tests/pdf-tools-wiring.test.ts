@@ -101,6 +101,9 @@ describe('paths stay in the main process', () => {
     expect(win).toMatch(/deps\.openForEditing\(path\)/)
     // while the result's editor is off its open asks first (editor choice spec 7.3)
     expect(win).toMatch(/results\.get\(id\)[\s\S]*d\.openResult\(p(ath)?\)/)
+    // split bookmark lookup and visual-editor handoff take opaque input ids only
+    expect(win).toMatch(/PDF_TOOLS_CHANNELS\.readBookmarks[\s\S]*readBookmarksForInput/)
+    expect(win).toMatch(/PDF_TOOLS_CHANNELS\.openSplitInEditor[\s\S]*openSplitForInput/)
   })
 })
 

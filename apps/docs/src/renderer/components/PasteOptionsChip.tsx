@@ -129,29 +129,43 @@ export function PasteOptionsChip({ editor }: { editor: Editor }) {
     }
   }, [editor])
 
-  // anchor at the end of the pasted content; follow scrolling
+  // anchor at the end of the pasted content; follow scrolling via rAF and
+  // direct DOM style writes so scrolling never triggers React root commits
   useEffect(() => {
     if (!chip) {
       setPos(null)
       return
     }
-    const place = () => {
+    let raf = 0
+    const place = (domOnly: boolean) => {
       try {
         const max = editor.state.doc.content.size
         const coords = editor.view.coordsAtPos(Math.min(chip.to, max))
-        const left = Math.min(coords.right + GAP, window.innerWidth - EDGE - 32)
-        const top = Math.min(coords.bottom + GAP, window.innerHeight - EDGE - 32)
-        setPos({ left: Math.max(EDGE, left), top: Math.max(EDGE, top) })
+        const left = Math.max(EDGE, Math.min(coords.right + GAP, window.innerWidth - EDGE - 32))
+        const top = Math.max(EDGE, Math.min(coords.bottom + GAP, window.innerHeight - EDGE - 32))
+        if (domOnly && rootRef.current) {
+          rootRef.current.style.transform = `translate3d(${left}px, ${top}px, 0)`
+          return
+        }
+        setPos({ left, top })
       } catch {
         setChip(null)
       }
     }
-    place()
-    window.addEventListener('scroll', place, true)
-    window.addEventListener('resize', place)
+    const onScrollOrResize = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        place(true)
+      })
+    }
+    place(false)
+    window.addEventListener('scroll', onScrollOrResize, { capture: true, passive: true })
+    window.addEventListener('resize', onScrollOrResize)
     return () => {
-      window.removeEventListener('scroll', place, true)
-      window.removeEventListener('resize', place)
+      if (raf) cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
     }
   }, [editor, chip])
 
@@ -220,7 +234,7 @@ export function PasteOptionsChip({ editor }: { editor: Editor }) {
     <div
       ref={rootRef}
       className="paste-chip"
-      style={{ left: pos.left, top: pos.top }}
+      style={{ left: 0, top: 0, transform: `translate3d(${pos.left}px, ${pos.top}px, 0)` }}
       data-testid="paste-options-chip"
     >
       <button

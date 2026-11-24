@@ -53,6 +53,11 @@ export default defineConfig({
   renderer: {
     plugins: [react()],
     resolve: { alias: localAlias },
+    build: {
+      // electron-vite disables minification by default; minifying the large
+      // Docs renderer bundle cuts parse/eval overhead on every new tab open.
+      minify: 'esbuild',
+    },
     server: {
       // Overridable so multiple genoffice dev instances can coexist (default 5173).
       port: Number(process.env.DOCS_DEV_PORT) || 5173,

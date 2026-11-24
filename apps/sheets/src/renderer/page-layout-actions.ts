@@ -12,9 +12,16 @@ import type { WorkbookOperation } from '@genoffice/xlsx-gateway/domain/workbook-
 import type { ApplyOutcome } from '@genoffice/xlsx-gateway/domain/workbook.types'
 
 import { columnLabel } from '@genoffice/xlsx-gateway/domain/cell-address'
-import type { PrintLayoutErrorCode, PrintLayoutOptions } from '@genoffice/print-layout/plan'
+import type {
+  ImageExportOptions,
+  PrintLayoutErrorCode,
+  PrintLayoutOptions,
+} from '@genoffice/print-layout/plan'
 import {
   printLayoutIssueText,
+  printLayoutText,
+  type LivePreviewBatchResult,
+  type OverlayBundle,
   type PrintLabelSpecStore,
   type PrintLayoutPreviewRequest,
   type PrintLayoutProgress,
@@ -465,6 +472,7 @@ export interface PrintPreviewHost {
     job: PrintJob,
     output: PrintOutputSettings,
     options: PrintLayoutOptions,
+    overlays?: OverlayBundle,
   ): Promise<string | null>
   /// Each arranged face as a PNG for the panel's result preview.
   previewArranged(
@@ -473,11 +481,34 @@ export interface PrintPreviewHost {
     options: PrintLayoutOptions,
     context: Parameters<PrintLayoutPreviewRequest>[1],
   ): Promise<Uint8Array[]>
+  /// On-demand live preview faces (lazy per-face PDFium rendering).
+  previewArrangedFaces?(
+    job: PrintJob,
+    pages: PrintOutputSettings['pages'],
+    options: PrintLayoutOptions,
+    editorKey: string,
+    optionsKey: string,
+    faceIndices: number[],
+    longSidePx: number,
+    overlays: OverlayBundle | undefined,
+    signal: AbortSignal,
+  ): Promise<LivePreviewBatchResult>
+  /// Releases cached live-preview session when the dialog closes.
+  closeArrangedPreview?(): void
   /// Asks where, then saves the arranged PDF. Null: the user stopped the job.
   saveArrangedPdf(
     job: PrintJob,
     pages: PrintOutputSettings['pages'],
     options: PrintLayoutOptions,
+    overlays?: OverlayBundle,
+  ): Promise<string | null>
+  /// Asks where, then saves arranged images (PNG/JPG/ZIP). Null: the user stopped the job.
+  saveArrangedImages?(
+    job: PrintJob,
+    pages: PrintOutputSettings['pages'],
+    options: PrintLayoutOptions,
+    image: ImageExportOptions,
+    overlays?: OverlayBundle,
   ): Promise<string | null>
   /// Stops this window's running layout job.
   cancelArranged(): Promise<void>
@@ -603,10 +634,11 @@ export function createPrintPreviewHost(ctx: PageLayoutContext): PrintPreviewHost
     },
     applySetting: (rest) => handlePageLayoutCommand(ctx, rest),
     setMessage: ctx.setMessage,
-    async printArranged(job, output, options) {
+    async printArranged(job, output, options, overlays) {
       const result = await window.desktopApi.printLayout.print({
         options,
         editor: printRequest(job.documents, job.fileName, include(output.pages)),
+        ...(overlays ? { overlays } : {}),
         job: {
           deviceName: output.deviceName,
           copies: output.copies,
@@ -638,13 +670,63 @@ export function createPrintPreviewHost(ctx: PageLayoutContext): PrintPreviewHost
         context.signal.removeEventListener('abort', stop)
       }
     },
-    async saveArrangedPdf(job, pages, options) {
+    async previewArrangedFaces(
+      job,
+      pages,
+      options,
+      editorKey,
+      optionsKey,
+      faceIndices,
+      longSidePx,
+      overlays,
+      signal,
+    ) {
+      signal.throwIfAborted()
+      const result = await window.desktopApi.printLayout.previewFaces!({
+        options,
+        editor: printRequest(job.documents, job.fileName, include(pages)),
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (result.ok) {
+        return {
+          totalFaces: result.totalFaces,
+          faceSizes: result.faceSizes,
+          faces: result.faces,
+        }
+      }
+      if (isAborted(result)) throw new DOMException('The preview was canceled', 'AbortError')
+      throw layoutFailure(result, t('appPrintFailed'))
+    },
+    closeArrangedPreview: () => {
+      void window.desktopApi.printLayout.closePreview?.()
+    },
+    async saveArrangedPdf(job, pages, options, overlays) {
       const result = await window.desktopApi.printLayout.savePdf({
         options,
         editor: printRequest(job.documents, job.fileName, include(pages)),
+        ...(overlays ? { overlays } : {}),
       })
       if (result.ok) {
         return 'path' in result ? t('appPdfExported', { path: result.path }) : t('appPdfCanceled')
+      }
+      if (isAborted(result)) return null
+      throw layoutFailure(result, t('appPdfExportFailed'))
+    },
+    async saveArrangedImages(job, pages, options, image, overlays) {
+      const result = await window.desktopApi.printLayout.saveImages!({
+        options,
+        editor: printRequest(job.documents, job.fileName, include(pages)),
+        image,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (result.ok) {
+        return 'paths' in result
+          ? printLayoutText(getLang(), 'imagesSaved', { count: result.paths.length })
+          : t('appPdfCanceled')
       }
       if (isAborted(result)) return null
       throw layoutFailure(result, t('appPdfExportFailed'))

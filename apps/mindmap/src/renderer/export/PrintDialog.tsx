@@ -1,18 +1,14 @@
 /**
- * The mind map's print dialog (decision 0141): the shared small print dialog
- * with no range (Print prints one page) and the page layout panel.
- *
- * The page is made before the dialog opens: the sheet on screen fitted to
- * landscape A4 (`snapshotPage`), in the map's own colours whatever the app's
- * theme. With nothing changed in the panel, Print hands that page to the print
- * as before. With an option on, the same page goes to the main process, which
- * makes it the PDF export's one-page PDF and arranges, previews, prints or
- * saves it.
+ * The mind map's print dialog (decision 0141): the shared split-pane print
+ * dialog with live preview, unified destination (printer / Save as PDF / Save
+ * as images / System dialog), no range (Print prints one page), and the page
+ * layout panel.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type { Lang } from '@genoffice/i18n'
 import {
   paperSizePt,
+  type ImageExportOptions,
   type PageSize,
   type PrintLayoutErrorCode,
   type PrintLayoutOptions,
@@ -20,6 +16,7 @@ import {
 import {
   SimplePrintDialog,
   printLayoutIssueText,
+  type OverlayBundle,
   type PrintJobSelection,
   type PrintLabelSpecStore,
   type PrintLayoutProgress,
@@ -36,7 +33,7 @@ export const MAP_PRINT_PAGES: readonly PageSize[] = [{ widthPt: A4.heightPt, hei
 type LayoutBridge = MindmapExportApi['printLayout']
 
 interface Failure {
-  kind: 'print' | 'save'
+  kind: 'print' | 'save' | 'save-images'
   code?: PrintLayoutErrorCode
   detail: string
 }
@@ -48,13 +45,15 @@ export interface MapPrintDialogProps {
   printLayout: LayoutBridge
   /** nothing changed in the panel: the print as it was, with this page */
   onPlainPrint: (html: string) => void
-  /** the arranged PDF was written */
+  /** the arranged PDF or images were written */
   onSaved: () => void
   onClose: () => void
+  /** optional initial destination pre-selected when opened from the Quick Print menu */
+  initialDestination?: string
 }
 
 export function MapPrintDialog(props: MapPrintDialogProps): ReactElement {
-  const { lang, job, printLayout, onPlainPrint, onSaved, onClose } = props
+  const { lang, job, printLayout, onPlainPrint, onSaved, onClose, initialDestination } = props
   const [progress, setProgress] = useState<PrintLayoutProgress | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
   const running = useRef(false)
@@ -71,9 +70,13 @@ export function MapPrintDialog(props: MapPrintDialogProps): ReactElement {
 
   const run = useCallback(
     async (
-      kind: 'print' | 'save',
+      kind: 'print' | 'save' | 'save-images',
       options: PrintLayoutOptions,
-      printJob?: PrintJobSelection,
+      opts?: {
+        printJob?: PrintJobSelection
+        image?: ImageExportOptions
+        overlays?: OverlayBundle
+      },
     ): Promise<void> => {
       if (running.current) return
       running.current = true
@@ -83,13 +86,20 @@ export function MapPrintDialog(props: MapPrintDialogProps): ReactElement {
         if (mounted.current) setProgress(next)
       })
       try {
-        const request = {
+        const base = {
           options,
           editor: job,
-          ...(kind === 'print' && printJob ? { job: printJob } : {}),
+          ...(opts?.overlays ? { overlays: opts.overlays } : {}),
         }
         const result =
-          kind === 'print' ? await printLayout.print(request) : await printLayout.savePdf(request)
+          kind === 'print'
+            ? await printLayout.print({
+                ...base,
+                ...(opts?.printJob ? { job: opts.printJob } : {}),
+              })
+            : kind === 'save'
+              ? await printLayout.savePdf(base)
+              : await printLayout.saveImages!({ ...base, image: opts!.image! })
         if (!mounted.current) return
         if (!result.ok) {
           // a cancel is the user's own: nothing to tell
@@ -98,7 +108,7 @@ export function MapPrintDialog(props: MapPrintDialogProps): ReactElement {
           setFailure({ kind, detail: result.error, ...(result.code ? { code: result.code } : {}) })
         } else if (kind === 'print') {
           if (!('canceled' in result)) onClose()
-        } else if ('path' in result) {
+        } else if ('path' in result || 'paths' in result) {
           onSaved()
           onClose()
         }
@@ -132,6 +142,29 @@ export function MapPrintDialog(props: MapPrintDialogProps): ReactElement {
     [job, printLayout],
   )
 
+  const previewFaces = useCallback<NonNullable<SimplePrintDialogProps['onPreviewFaces']>>(
+    async (_range, options, faceIndices, longSidePx, overlays, signal) => {
+      signal.throwIfAborted()
+      const optionsKey = `${JSON.stringify(options)}:${overlays ? overlays.stamps.length : 0}`
+      const result = await printLayout.previewFaces!({
+        options,
+        editor: job,
+        editorKey: 'map',
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return { totalFaces: result.totalFaces, faceSizes: result.faceSizes, faces: result.faces }
+    },
+    [job, printLayout],
+  )
+
+  const closePreview = useCallback(() => {
+    void printLayout.closePreview?.()
+  }, [printLayout])
+
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
     () => ({
       load: () => printLayout.getLabelSpec(),
@@ -159,15 +192,27 @@ export function MapPrintDialog(props: MapPrintDialogProps): ReactElement {
       rangeChoice="none"
       pages={MAP_PRINT_PAGES}
       capabilities={{ showPaperAndFit: true }}
+      documentTitle={job.suggestedName}
+      initialDestination={initialDestination}
       listPrinters={printLayout.listPrinters}
       onPlainPrint={() => onPlainPrint(job.html)}
-      onPrint={(_range, options, printJob) => void run('print', options, printJob)}
-      onSavePdf={(_range, options) => void run('save', options)}
+      onPrint={(_range, options, printJob, overlays) =>
+        void run('print', options, { printJob, overlays })
+      }
+      onSavePdf={(_range, options, overlays) => void run('save', options, { overlays })}
+      onSaveImages={
+        printLayout.saveImages
+          ? (_range, options, image, overlays) =>
+              void run('save-images', options, { image, overlays })
+          : undefined
+      }
       onCancel={() => {
         if (running.current) void printLayout.cancel()
         onClose()
       }}
       labelSpecStore={labelSpecStore}
+      onPreviewFaces={printLayout.previewFaces ? previewFaces : undefined}
+      onClosePreview={printLayout.closePreview ? closePreview : undefined}
       onPreviewRequest={preview}
       job={{ progress, onCancel: () => void printLayout.cancel(), error }}
     />

@@ -3,7 +3,13 @@ import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultOptions, type PageSize } from '@genoffice/print-layout/plan'
-import { SimplePrintDialog, SYSTEM_DIALOG, type SimplePrintDialogProps } from '../src/print-layout'
+import {
+  SAVE_IMAGES_DEST,
+  SAVE_PDF_DEST,
+  SimplePrintDialog,
+  SYSTEM_DIALOG,
+  type SimplePrintDialogProps,
+} from '../src/print-layout'
 
 const A4: PageSize = { widthPt: 595.28, heightPt: 841.89 }
 const pages = (n: number): PageSize[] => Array.from({ length: n }, () => ({ ...A4 }))
@@ -83,17 +89,38 @@ describe('SimplePrintDialog', () => {
     })
   })
 
-  it('takes the new route and shows save once an option is on', () => {
-    const props = mount()
+  it('integrates Save as PDF and Save as images into the destination dropdown and updates primary button text', () => {
+    const onSaveImages = vi.fn()
+    const props = mount({ onSaveImages })
+    const dest = $<HTMLSelectElement>('select[data-print="printer"]')!
+    const primary = $<HTMLButtonElement>('button[data-pl="print"]')!
+    expect(primary.textContent).toBe('Print')
     click($('input[data-pl="reverse"]'))
-    expect($('button[data-pl="save-pdf"]')).not.toBeNull()
-    click($('button[data-pl="print"]'))
-    expect(props.onPlainPrint).not.toHaveBeenCalled()
     const expected = createDefaultOptions()
     expected.reverse = true
+    click(primary)
+    expect(props.onPlainPrint).not.toHaveBeenCalled()
     expect(props.onPrint).toHaveBeenCalledWith({ kind: 'all' }, expected, DEFAULT_JOB)
-    click($('button[data-pl="save-pdf"]'))
+
+    // Switch destination to Save as PDF
+    selectValue(dest, SAVE_PDF_DEST)
+    expect(primary.textContent).toBe('Save')
+    expect($('input[data-print="copies"]')).toBeNull()
+    click(primary)
     expect(props.onSavePdf).toHaveBeenCalledWith({ kind: 'all' }, expected)
+
+    // Switch destination to Save as images (JPG 80% + ZIP)
+    selectValue(dest, SAVE_IMAGES_DEST)
+    expect(primary.textContent).toBe('Save')
+    selectValue($<HTMLSelectElement>('select[data-print="image-format"]')!, 'jpg')
+    selectValue($<HTMLSelectElement>('select[data-print="image-quality"]')!, '80')
+    selectValue($<HTMLSelectElement>('select[data-print="image-bundle"]')!, 'zip')
+    click(primary)
+    expect(onSaveImages).toHaveBeenCalledWith({ kind: 'all' }, expected, {
+      format: 'jpg',
+      quality: 80,
+      bundle: 'zip',
+    })
   })
 
   it('reads a custom range and refuses a malformed one', () => {
@@ -156,19 +183,36 @@ describe('SimplePrintDialog', () => {
     expect(onCancelJob).toHaveBeenCalled()
   })
 
-  it('asks the editor for a preview of the chosen range', () => {
-    const onPreviewRequest = vi.fn(() => new Promise<Uint8Array[]>(() => {}))
-    mount({ rangeChoice: 'all-current', onPreviewRequest })
-    click($$<HTMLInputElement>('input[data-pl="range"]')[1]!)
-    click($('input[data-pl="grayscale"]'))
-    click($('button[data-pl="preview"]'))
-    const expected = createDefaultOptions()
-    expected.grayscale = true
-    expect(onPreviewRequest).toHaveBeenCalledWith(
-      { kind: 'current' },
-      expected,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  it('renders live split-pane preview on demand and releases session on unmount', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:live-0', revokeObjectURL: vi.fn() }),
     )
+    const onPreviewFaces = vi.fn(async (_range, _opts, indices: number[]) => ({
+      totalFaces: 4,
+      faceSizes: pages(4),
+      faces: indices.map((index) => ({
+        index,
+        png: new Uint8Array([1, 2, 3]),
+        widthPt: A4.widthPt,
+        heightPt: A4.heightPt,
+      })),
+    }))
+    const onClosePreview = vi.fn()
+    mount({ rangeChoice: 'all-current', onPreviewFaces, onClosePreview })
+    expect($('[data-pl="live-preview"]')).not.toBeNull()
+    await act(async () => {
+      vi.advanceTimersByTime(300)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(onPreviewFaces).toHaveBeenCalled()
+    expect($('img[data-pl="live-img"]')).not.toBeNull()
+    act(() => root.unmount())
+    expect(onClosePreview).toHaveBeenCalledTimes(1)
+    root = createRoot(host)
+    vi.useRealTimers()
   })
 
   it('closes with Cancel and with Escape', () => {

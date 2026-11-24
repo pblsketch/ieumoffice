@@ -22,6 +22,7 @@ import type { SaveDiskState } from '@genoffice/electron-utils'
 import {
   LABEL_SPEC_FILE_NAME,
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
 } from '@genoffice/electron-utils/print-arranged'
 import { hwpToText } from '@genoffice/file-parse'
 import { localFontNamesFor } from '@genoffice/font-metrics'
@@ -589,6 +590,23 @@ function registerHwpIpc(): void {
     createJobWindow: printWindow,
     createPrintWindow: arrangedPrintWindow,
     pickSavePath: (event) => pickPdfTarget(event.sender as WebContents),
+    pickImageSavePath: async (event, image) => {
+      const contents = event.sender as WebContents
+      const win =
+        BrowserWindow.fromWebContents(contents) ?? BrowserWindow.getFocusedWindow() ?? undefined
+      const current = savePathByWc.get(contents.id)
+      const base = pdfName(contents.id).replace(/\.pdf$/i, '')
+      const spec = imageSaveDialogSpec(base, image)
+      const picked = await showSaveDialogWithMemory(dialog, win, {
+        title: tm('dlgExportPdfTitle'),
+        defaultPath: join(
+          current ? dirname(current) : configuredDefaultSaveDir(app),
+          spec.defaultFileName,
+        ),
+        filters: spec.filters,
+      })
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
   })
 
   // ---- headless export mode (--headless-export) ----

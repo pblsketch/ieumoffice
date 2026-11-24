@@ -111,8 +111,11 @@ describe('editor print layout channels', () => {
   it('names every channel after the editor', () => {
     expect(printLayoutChannels('docs')).toEqual({
       preview: 'docs:print-layout-preview',
+      previewFaces: 'docs:print-layout-preview-faces',
+      closePreview: 'docs:print-layout-close-preview',
       print: 'docs:print-layout-print',
       save: 'docs:print-layout-save',
+      saveImages: 'docs:print-layout-save-images',
       cancel: 'docs:print-layout-cancel',
       progress: 'docs:print-layout-progress',
     })
@@ -126,12 +129,15 @@ describe('editor print layout channels', () => {
     expect(second).toBe(first)
     expect(ipc.registrations).toEqual([
       'docs:print-layout-preview',
+      'docs:print-layout-preview-faces',
+      'docs:print-layout-close-preview',
       'docs:print-layout-print',
       'docs:print-layout-save',
+      'docs:print-layout-save-images',
       'docs:print-layout-cancel',
     ])
     registerPrintLayoutIpc('pdf', handlers(ipc))
-    expect(ipc.registrations).toHaveLength(8)
+    expect(ipc.registrations).toHaveLength(14)
     first()
     expect([...ipc.handlers.keys()].every((c) => c.startsWith('pdf:'))).toBe(true)
   })
@@ -315,19 +321,30 @@ describe('shared label grid store', () => {
       PRINT_LAYOUT_SHARED_CHANNELS.labelSpecGet,
       PRINT_LAYOUT_SHARED_CHANNELS.labelSpecSet,
       PRINT_LAYOUT_SHARED_CHANNELS.listPrinters,
+      PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefGet,
+      PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefSet,
     ])
     const event = sender(1).event
     expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.listPrinters, event)).toEqual([])
     const withPrinters = {
       sender: {
         ...event.sender,
-        getPrintersAsync: async () => [{ name: 'HP', displayName: 'HP Office' }, { name: 'Raw' }],
+        getPrintersAsync: async () => [
+          { name: 'HP', displayName: 'HP Office', isDefault: true },
+          { name: 'Raw' },
+        ],
       },
     }
     expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.listPrinters, withPrinters)).toEqual([
-      { name: 'HP', displayName: 'HP Office' },
+      { name: 'HP', displayName: 'HP Office', isDefault: true },
       { name: 'Raw', displayName: 'Raw' },
     ])
+    expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefGet, event)).toBe(false)
+    expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefSet, event, true)).toBe(true)
+    expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefGet, event)).toBe(true)
+    expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefSet, event, false)).toBe(
+      false,
+    )
     expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.labelSpecGet, event)).toBeNull()
     expect(await ipc.invoke(PRINT_LAYOUT_SHARED_CHANNELS.labelSpecSet, event, spec)).toEqual({
       ok: true,

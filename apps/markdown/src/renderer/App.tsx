@@ -21,8 +21,11 @@ import {
   useSplitPaneRole,
   createZoomWheelClassifier,
   wheelZoomStepPercent,
+  printLayoutText,
   type TemplateDocument,
 } from '@genoffice/ui'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
+import { MARKDOWN_PRINT_OPTIONS } from '../shared/print-options'
 import {
   pollUntilReady,
   runHeadlessRendererExport,
@@ -1075,16 +1078,18 @@ export default function App() {
     [sourceRev, sourceMode],
   )
 
-  const [printPreview, setPrintPreview] = useState<PrintPreviewContent | null>(null)
-  const printDoc = useCallback(() => {
+  const [quickPrintNotice, setQuickPrintNotice] = useState<string | null>(null)
+  const [printPreview, setPrintPreview] = useState<
+    (PrintPreviewContent & { initialDestination?: string }) | null
+  >(null)
+  const buildMarkdownPrintSnapshot = useCallback(() => {
     const current = editorRef.current
-    if (!current || statusRef.current !== 'ready' || printPreview !== null) return
+    if (!current || statusRef.current !== 'ready') return null
     const title =
       (filePathRef.current
         ? filePathRef.current.replace(/^.*[/\\]/, '').replace(/\.(md|markdown|txt|json)$/i, '')
         : deriveAutoFileName(current)) || 'Untitled'
     let printRoot: HTMLElement = current.view.dom
-    // the "Selection" range: only the selected part, as a document of its own
     let selectionRoot: HTMLElement | null
     if (sourceMode) {
       printRoot = sourcePrintRoot(sourceTextRef.current)
@@ -1093,12 +1098,67 @@ export default function App() {
     } else {
       selectionRoot = selectionPrintRoot(current.view)
     }
-    setPrintPreview({
+    return {
       html: buildPrintHtml(printRoot, title),
       selectionHtml: selectionRoot ? buildPrintHtml(selectionRoot, title) : null,
       title,
-    })
-  }, [printPreview, sourceMode])
+    }
+  }, [sourceMode])
+
+  const printDoc = useCallback(
+    (initialDestination?: string) => {
+      if (printPreview !== null) return
+      const snap = buildMarkdownPrintSnapshot()
+      if (!snap) return
+      setPrintPreview({ ...snap, initialDestination })
+    },
+    [printPreview, buildMarkdownPrintSnapshot],
+  )
+
+  const runQuickPrint = useCallback(
+    async (printerLabel: string) => {
+      const snap = buildMarkdownPrintSnapshot()
+      if (!snap) return
+      setQuickPrintNotice(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+      const result = await window.markdownApi.printLayout.print({
+        options: createDefaultOptions(),
+        editor: {
+          html: snap.html,
+          pages: null,
+          options: { ...MARKDOWN_PRINT_OPTIONS, pageSize: 'A4', landscape: false },
+          name: snap.title,
+        },
+        job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+      })
+      if (result.ok) {
+        setQuickPrintNotice(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+      } else if (!('aborted' in result)) {
+        setQuickPrintNotice(result.error)
+      } else {
+        setQuickPrintNotice(null)
+      }
+    },
+    [buildMarkdownPrintSnapshot, lang],
+  )
+
+  const getPrintPageCount = useCallback(async () => {
+    const snap = buildMarkdownPrintSnapshot()
+    if (!snap) return null
+    try {
+      const res = await window.markdownApi.renderPrintPreview({
+        html: snap.html,
+        options: { ...MARKDOWN_PRINT_OPTIONS, pageSize: 'A4', landscape: false },
+      })
+      if (!res.ok) return null
+      const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const pdf = await getDocument({ data: res.pdf }).promise
+      const count = pdf.numPages
+      void pdf.loadingTask.destroy()
+      return count
+    } catch {
+      return null
+    }
+  }, [buildMarkdownPrintSnapshot])
 
   useEffect(() => {
     const offExport = window.markdownApi.onExportRequest((format) => void runExport(format))
@@ -1506,6 +1566,12 @@ export default function App() {
           setRedactEnabled(on)
           localStorage.setItem('mdapp.redact', on ? '1' : '0')
         }}
+        onOpenPrintDialog={(dest) => printDoc(dest)}
+        onQuickPrint={runQuickPrint}
+        listPrinters={window.markdownApi?.printLayout?.listPrinters}
+        quickPrintPrefStore={window.markdownApi?.printLayout}
+        getPrintPageCount={getPrintPageCount}
+        onQuickPrintNotice={setQuickPrintNotice}
       />
       {status === 'loading' && <div className="center-note">{t('loading')}</div>}
       <div className="app-main" style={status === 'ready' ? undefined : { display: 'none' }}>
@@ -1612,6 +1678,11 @@ export default function App() {
           )}
           <footer className="status-bar">
             <div className="status-left">
+              {quickPrintNotice && (
+                <span className="status-item status-export" role="status">
+                  {quickPrintNotice}
+                </span>
+              )}
               {imageExportStatus && (
                 <span className="status-item status-export" role="status">
                   {t(imageExportStatus.key, imageExportStatus.params)}
@@ -1725,6 +1796,7 @@ export default function App() {
           html={printPreview.html}
           selectionHtml={printPreview.selectionHtml}
           title={printPreview.title}
+          initialDestination={printPreview.initialDestination}
           onClose={() => setPrintPreview(null)}
         />
       )}
