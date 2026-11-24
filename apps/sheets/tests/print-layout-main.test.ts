@@ -95,7 +95,7 @@ function setup() {
   const runs: { kind: string; jobPdf: Uint8Array }[] = []
   const runner: PrintLayoutRunner = {
     async run(request) {
-      runs.push({ kind: request.kind, jobPdf: request.jobPdf })
+      if ('jobPdf' in request) runs.push({ kind: request.kind, jobPdf: request.jobPdf })
       if (request.kind === 'print-images') {
         return {
           kind: 'print-images',

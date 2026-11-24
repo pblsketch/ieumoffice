@@ -49,6 +49,59 @@ pub fn encode_bgrx_to_png(
         .map_err(semantic_err)
 }
 
+/// Encodes tightly packed 8-bit gray (`channels = 1`) or RGB (`channels = 3`)
+/// pixel rows to baseline JPEG.
+#[wasm_bindgen]
+pub fn encode_jpeg(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    channels: u8,
+    quality: u8,
+) -> Result<Vec<u8>, JsValue> {
+    pixels::encode_jpeg(pixels, width, height, channels, quality).map_err(semantic_err)
+}
+
+/// Converts BGRx rows with stride and encodes to baseline JPEG.
+#[wasm_bindgen]
+pub fn encode_bgrx_to_jpeg(
+    bgrx: &[u8],
+    stride: u32,
+    width: u32,
+    height: u32,
+    grayscale: bool,
+    quality: u8,
+) -> Result<Vec<u8>, JsValue> {
+    pixels::encode_bgrx_to_jpeg(bgrx, stride as usize, width, height, grayscale, quality)
+        .map_err(semantic_err)
+}
+
+/// Stamps pre-rendered PNG overlays (watermark, header/footer) onto PDF faces.
+#[wasm_bindgen]
+pub fn stamp_pdf_overlays(
+    pdf_bytes: &[u8],
+    placements_json: &str,
+    stamps_blob: &[u8],
+    stamp_lengths: &[u32],
+) -> Result<Vec<u8>, JsValue> {
+    let placements: Vec<Vec<pdf_ops::OverlayPlacementDto>> = serde_json::from_str(placements_json)
+        .map_err(|e| semantic_err(format!("invalid overlay placements JSON: {e}")))?;
+    let mut slices: Vec<&[u8]> = Vec::with_capacity(stamp_lengths.len());
+    let mut offset = 0usize;
+    for &len in stamp_lengths {
+        let n = len as usize;
+        let end = offset
+            .checked_add(n)
+            .ok_or_else(|| semantic_err("stamp blob offset overflow".to_string()))?;
+        if end > stamps_blob.len() {
+            return Err(semantic_err("stamp blob is truncated".to_string()));
+        }
+        slices.push(&stamps_blob[offset..end]);
+        offset = end;
+    }
+    pdf_ops::stamp_pdf_overlays(pdf_bytes, &placements, &slices).map_err(semantic_err)
+}
+
 /// Reads each page's displayed size in points as JSON `[{widthPt, heightPt}, ...]`.
 #[wasm_bindgen]
 pub fn read_job_page_sizes(pdf_bytes: &[u8]) -> Result<String, JsValue> {

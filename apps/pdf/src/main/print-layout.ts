@@ -12,6 +12,7 @@
  * file access.
  */
 import { PDFDocument, PDFName } from 'pdf-lib'
+import type { ImageExportOptions } from '@genoffice/print-layout/plan'
 import {
   ensurePrintLayoutIpc,
   registerPrintLayoutIpc,
@@ -110,6 +111,12 @@ export interface PdfPrintLayoutSetup {
   createPrintWindow(event: PrintLayoutInvokeEvent): PrintLayoutWindow
   /** where to save the arranged PDF; null when the user cancels */
   pickSavePath(event: PrintLayoutInvokeEvent, editor: PdfPrintLayoutEditor): Promise<string | null>
+  /** where to save arranged images (PNG/JPG/ZIP); null when the user cancels */
+  pickImageSavePath?(
+    event: PrintLayoutInvokeEvent,
+    editor: PdfPrintLayoutEditor,
+    image: ImageExportOptions,
+  ): Promise<string | null>
   runner?: PrintLayoutRunner
 }
 
@@ -124,13 +131,14 @@ async function refuseRestrictedSave(bytes: Uint8Array): Promise<void> {
 }
 
 /**
- * Registers `pdf:print-layout-*` and the app-wide label channels. A save of a
- * restricted file is refused before the save dialog, and again on the bytes
- * the job is built from (the file may change while the dialog is open).
+ * Registers `pdf:print-layout-*` and the app-wide label channels. A save (PDF
+ * or image) of a restricted file is refused before the save dialog, and again
+ * on the bytes the job is built from (the file may change while the dialog is
+ * open).
  */
 export function registerPdfPrintLayout(setup: PdfPrintLayoutSetup): () => void {
   ensurePrintLayoutIpc({ ipcMain: setup.ipcMain, labelSpecPath: setup.labelSpecPath })
-  // the save handler asks for a path, then builds the job with the same event
+  // the save handlers ask for a path, then build the job with the same event
   const saving = new WeakSet<PrintLayoutInvokeEvent>()
   return registerPrintLayoutIpc<unknown>(PDF_PRINT_LAYOUT_PREFIX, {
     ipcMain: setup.ipcMain,
@@ -148,5 +156,19 @@ export function registerPdfPrintLayout(setup: PdfPrintLayoutSetup): () => void {
       saving.add(event)
       return setup.pickSavePath(event, editor)
     },
+    ...(setup.pickImageSavePath
+      ? {
+          async pickImageSavePath(
+            event: PrintLayoutInvokeEvent,
+            raw: unknown,
+            image: ImageExportOptions,
+          ) {
+            const editor = editorOf(raw)
+            await refuseRestrictedSave(await setup.readViewBytes(event.sender.id, editor.path))
+            saving.add(event)
+            return setup.pickImageSavePath!(event, editor, image)
+          },
+        }
+      : {}),
   })
 }

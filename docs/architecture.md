@@ -31,8 +31,8 @@ apps/whiteboard 화이트보드(.whiteboard) 편집기. React/SVG 캔버스, Exc
                 문서 모델·ZIP 저장·편집 계획·선언형 템플릿·Excalidraw 변환은 packages/whiteboard-engine(Rust WASM)이 맡는다
 packages/ai-provider   제공자 목록, 제공자 선택 규칙, 구독 프로그램 실행부, 키 방식 제공자 연결
 packages/ai-search     검색·이미지 생성·미디어 분석 도구, 자동 호출 경로의 구독 요청 차례
-packages/agent-core    AI 실행 반복(모델 → 도구 → 모델), 화면↔뒷단 전송 통로, 가리기, 공용 앱 도구 `ask_questions`, 정적 품질 점검 코어
-packages/ui            편집기들이 함께 쓰는 AI 화면 부품(`AiQuestionCard`, `AiNextSteps`, `ReviewMemoPicker`, `AiQualityBadge`, `VersionTimelineDrawer`, `Tweaks` 스타일)과 그 문구(22개 언어), 5단계 텍스트·알파 채움·그림자 토큰
+packages/agent-core    AI 실행 반복(모델 → 도구 → 모델), 화면↔뒷단 전송 통로, 가리기, 공용 앱 도구 `ask_questions`(입력은 A2UI v1.0 질문 카드, 결정 0164), 정적 품질 점검 코어
+packages/ui            편집기들이 함께 쓰는 AI 화면 부품(A2UI 질문 카드 `AiQuestionCard`·`AiQuestionReceipt`, `AiNextSteps`, `ReviewMemoPicker`, `AiQualityBadge`, `VersionTimelineDrawer`, `Tweaks` 스타일)과 그 문구(22개 언어), 5단계 텍스트·알파 채움·그림자 토큰
 packages/i18n          화면 언어 목록, 제품 이름 한 곳 정의
 packages/cli           터미널 명령어 `ieumoffice`, MCP 도구, 에이전트 스킬 설치
 packages/electron-utils 편집기 뒷단 공용 도구(메뉴, 저장소 주소, 원격 이미지 받기 등), 저장하지 않은 파일 확인,

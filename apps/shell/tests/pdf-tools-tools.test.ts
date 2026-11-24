@@ -13,7 +13,9 @@ import {
   jobBytesOf,
   outputNames,
   pagesToText,
+  readBookmarksBytes,
   runPdfTool,
+  runSplitPdfTool,
   toolAccepts,
   toolInputKind,
   toolMinInputs,
@@ -23,6 +25,7 @@ import {
 } from '../src/main/pdf-tools/tools'
 import { PDF_TOOL_ANNOT_KINDS } from '../src/shared/pdf-tools-api'
 import { ANNOT_KINDS } from '../../pdf/src/main/annot-strip'
+import { applySaveRequest } from '../../pdf/src/main/save-pdf'
 
 /**
  * The PDF tools window's work: each tool's file is read back (page count,
@@ -282,6 +285,103 @@ describe('running each tool', () => {
   it('splits into files of the chosen page count', async () => {
     const parts = await runUntouched('split', [await pdf(5)], { chunkSize: 2 })
     expect(await Promise.all(parts.map(widths))).toEqual([[100, 101], [102, 103], [104]])
+  })
+
+  it('splits by custom ranges, merged ranges, equal file count, bookmarks and maxSize', async () => {
+    const source = await pdf(6)
+    expect(checkOptions('split', { splitMode: 'ranges', splitRanges: '1-2, 4-6' }, 6)).toEqual({
+      ok: true,
+      options: {
+        splitMode: 'ranges',
+        splitRanges: '1-2, 4-6',
+        splitMergeRanges: false,
+        splitPattern: 'numbered',
+        splitCreateSubfolder: false,
+      },
+    })
+    expect(checkOptions('split', { splitMode: 'ranges', splitRanges: '1-9' }, 6)).toEqual({
+      ok: false,
+      error: 'range',
+    })
+    expect(checkOptions('split', { splitMode: 'maxSize', splitMaxBytes: 100 }, 6)).toEqual({
+      ok: false,
+      error: 'invalid-size',
+    })
+
+    const rangeOut = await runSplitPdfTool(source, 'Report.pdf', {
+      splitMode: 'ranges',
+      splitRanges: '1-2, 5-6',
+      splitPattern: 'range',
+    })
+    expect(rangeOut.names).toEqual(['Report_p1-2.pdf', 'Report_p5-6.pdf'])
+    expect(await Promise.all(rangeOut.parts.map(widths))).toEqual([
+      [100, 101],
+      [104, 105],
+    ])
+
+    const mergedOut = await runSplitPdfTool(source, 'Report.pdf', {
+      splitMode: 'ranges',
+      splitRanges: '1-2, 5-6',
+      splitMergeRanges: true,
+    })
+    expect(mergedOut.parts).toHaveLength(1)
+    expect(await widths(mergedOut.parts[0]!)).toEqual([100, 101, 104, 105])
+
+    const equalOut = await runSplitPdfTool(source, 'Report.pdf', {
+      splitMode: 'fixed',
+      splitFixedKind: 'fileCount',
+      splitFixedValue: 3,
+      splitPrefix: 'Part',
+    })
+    expect(equalOut.names).toEqual(['Part-1.pdf', 'Part-2.pdf', 'Part-3.pdf'])
+    expect(await Promise.all(equalOut.parts.map(widths))).toEqual([
+      [100, 101],
+      [102, 103],
+      [104, 105],
+    ])
+
+    // Bookmarks refusal when absent, and chapter split when present
+    await expect(
+      runSplitPdfTool(source, 'Plain.pdf', { splitMode: 'bookmarks', splitBookmarkLevel: 1 }),
+    ).rejects.toBeInstanceOf(PdfToolRefusal)
+
+    const withOutline = (
+      await applySaveRequest(source, {
+        path: '',
+        markups: [],
+        drawings: [],
+        formValues: [],
+        stamps: [],
+        outline: [
+          { title: 'Intro', pageIndex: 0 },
+          { title: 'Body', pageIndex: 3 },
+        ],
+      })
+    ).bytes
+    expect(await readBookmarksBytes(withOutline)).toEqual([
+      { title: 'Intro', level: 1, page: 1 },
+      { title: 'Body', level: 1, page: 4 },
+    ])
+    const bmOut = await runSplitPdfTool(withOutline, 'Book.pdf', {
+      splitMode: 'bookmarks',
+      splitBookmarkLevel: 1,
+      splitPattern: 'bookmark',
+    })
+    expect(bmOut.names).toEqual(['1_Intro.pdf', '2_Body.pdf'])
+    expect(await Promise.all(bmOut.parts.map(widths))).toEqual([
+      [100, 101, 102],
+      [103, 104, 105],
+    ])
+
+    // maxSize splits cleanly within a generous cap
+    const sizedOut = await runSplitPdfTool(source, 'Sized.pdf', {
+      splitMode: 'maxSize',
+      splitMaxBytes: 50 * 1024,
+    })
+    expect(sizedOut.parts.length).toBeGreaterThanOrEqual(1)
+    expect(sizedOut.oversizedPages).toEqual([])
+    expect(outputNames('split', 'a.pdf', 12, {})[0]).toBe('a-01.pdf')
+    expect(outputNames('split', 'a.pdf', 12, {})[11]).toBe('a-12.pdf')
   })
 
   it('extracts the chosen pages', async () => {

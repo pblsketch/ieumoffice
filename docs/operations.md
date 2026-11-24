@@ -221,6 +221,7 @@ npm run typecheck
 - 옮긴 뒤 위의 검사 전체와, 건드린 엔진 패키지의 테스트를 돌린다.
 - `packages/pdf2docx`(결정 0058)에는 원본과 다른 동작이 있다. `packages/docx-engine`(결정 0092)은 지금 원본과 같지만, 다시 고치게 되면 같은 절에 적는다. 그 패키지의 `AGENTS.md` "원본과 다른 점"에 적힌 시험이 옮긴 뒤에도 통과하는지 본다. 충돌이 나면 그 목록의 동작을 남긴다. 원본이 같은 수정을 받아들였으면 그 항목을 지운다.
 - `packages/pptx-engine`·`packages/pptx-ops`에도 원본과 다른 동작이 있다(결정 0094: 강조 색·문자 간격 쓰기, 도형 숨기기·이름). 두 패키지의 `AGENTS.md` "원본과 다른 점"의 시험으로 같은 확인을 한다.
+- HTML·슬라이드 편집기의 옛 질문 도구 `ask_clarification`과 그 카드(`ClarifyCard`, 슬라이드 `question-card-adapter.ts`)는 이 프로젝트에서 없앴다(결정 0164). 원본에는 남아 있으니, 원본의 AI 쪽 변경이 그 도구를 다시 들고 오면 받지 않는다. 질문은 공용 `ask_questions`(A2UI v1.0 카드) 하나로 한다.
 - `packages/xlsx-gateway`에도 원본과 다른 동작이 있다(결정 0112: 한셀 `styles.xml`의 호환 블록 보존). 같은 방식으로 그 패키지 `AGENTS.md` "원본과 다른 점"의 시험을 돌린다.
 
 ## 한글 엔진(rhwp) 다시 빌드하기

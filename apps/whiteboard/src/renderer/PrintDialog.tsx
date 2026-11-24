@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import {
   SimplePrintDialog,
   printLayoutIssueText,
+  printLayoutText,
+  type OverlayBundle,
   type PrintJobSelection,
   type PrintLabelSpecStore,
   type PrintLayoutProgress,
@@ -9,6 +11,7 @@ import {
   type SimplePrintRange,
 } from '@genoffice/ui'
 import type {
+  ImageExportOptions,
   PageSize,
   PrintLayoutErrorCode,
   PrintLayoutOptions,
@@ -16,7 +19,11 @@ import type {
 import type { PrintPage, WhiteboardApi, WhiteboardPrintJob } from '../shared/ipc'
 import { useI18n } from './i18n/locale'
 
-type Failure = { kind: 'print' | 'save'; detail: string; code?: PrintLayoutErrorCode | undefined }
+type Failure = {
+  kind: 'print' | 'save' | 'save-images'
+  detail: string
+  code?: PrintLayoutErrorCode | undefined
+}
 
 const GATHERING: PrintLayoutProgress = { done: 0, total: 0 }
 const PX_TO_PT = 72 / 96
@@ -32,16 +39,17 @@ export interface WhiteboardPrintDialogProps {
   buildPages: (scope: 'all' | 'current') => PrintPage[]
   onClose: () => void
   onMessage: (text: string) => void
+  /** optional initial destination pre-selected when opened from the Quick Print menu */
+  initialDestination?: string
 }
 
 /**
- * The whiteboard's print dialog: printer/copies/duplex, all pages or current
- * page, and the shared page layout panel. System dialog with default options
- * keeps `whiteboard:print`; any layout option or in-app printer goes through
- * `whiteboard:print-layout-*`.
+ * The whiteboard's print dialog: live preview, unified destination (printer /
+ * Save as PDF / Save as images / System dialog), all pages or current page,
+ * and the shared page layout panel.
  */
 export function WhiteboardPrintDialog(props: WhiteboardPrintDialogProps): ReactElement {
-  const { api, title, buildPages, onClose, onMessage } = props
+  const { api, title, buildPages, onClose, onMessage, initialDestination } = props
   const { lang, t } = useI18n()
   const [scope, setScope] = useState<'all' | 'current'>('all')
   const [progress, setProgress] = useState<PrintLayoutProgress | null>(null)
@@ -88,10 +96,14 @@ export function WhiteboardPrintDialog(props: WhiteboardPrintDialogProps): ReactE
   }
 
   const runLayout = async (
-    kind: 'print' | 'save',
+    kind: 'print' | 'save' | 'save-images',
     range: SimplePrintRange,
     options: PrintLayoutOptions,
-    printJob?: PrintJobSelection,
+    opts?: {
+      printJob?: PrintJobSelection
+      image?: ImageExportOptions
+      overlays?: OverlayBundle
+    },
   ): Promise<void> => {
     if (runningRef.current) return
     runningRef.current = true
@@ -101,13 +113,17 @@ export function WhiteboardPrintDialog(props: WhiteboardPrintDialogProps): ReactE
       if (mountedRef.current) setProgress(next)
     })
     try {
-      const request = {
+      const base = {
         options,
         editor: jobOf(range),
-        ...(kind === 'print' && printJob ? { job: printJob } : {}),
+        ...(opts?.overlays ? { overlays: opts.overlays } : {}),
       }
       const result =
-        kind === 'print' ? await printLayout.print(request) : await printLayout.savePdf(request)
+        kind === 'print'
+          ? await printLayout.print({ ...base, ...(opts?.printJob ? { job: opts.printJob } : {}) })
+          : kind === 'save'
+            ? await printLayout.savePdf(base)
+            : await printLayout.saveImages!({ ...base, image: opts!.image! })
       if (!mountedRef.current) return
       if (!result.ok) {
         if (!('aborted' in result)) {
@@ -117,8 +133,11 @@ export function WhiteboardPrintDialog(props: WhiteboardPrintDialogProps): ReactE
       }
       if (kind === 'print') {
         if (!('canceled' in result)) onClose()
-      } else if ('path' in result) {
+      } else if (kind === 'save') {
+        if ('path' in result) onClose()
+      } else if ('paths' in result) {
         onClose()
+        onMessage(printLayoutText(lang, 'imagesSaved', { count: result.paths.length }))
       }
     } catch (err) {
       if (mountedRef.current) setFailure({ kind, detail: messageOf(err) })
@@ -149,6 +168,31 @@ export function WhiteboardPrintDialog(props: WhiteboardPrintDialogProps): ReactE
     }
   }
 
+  const previewFaces = useCallback<NonNullable<SimplePrintDialogProps['onPreviewFaces']>>(
+    async (range, options, faceIndices, longSidePx, overlays, signal) => {
+      const editor = jobOf(range)
+      signal.throwIfAborted()
+      const editorKey = scopeOf(range)
+      const optionsKey = `${JSON.stringify(options)}:${overlays ? overlays.stamps.length : 0}`
+      const result = await printLayout.previewFaces!({
+        options,
+        editor,
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return { totalFaces: result.totalFaces, faceSizes: result.faceSizes, faces: result.faces }
+    },
+    [jobOf, printLayout],
+  )
+
+  const closePreview = useCallback(() => {
+    void printLayout.closePreview?.()
+  }, [printLayout])
+
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
     () => ({
       load: () => printLayout.getLabelSpec(),
@@ -176,16 +220,28 @@ export function WhiteboardPrintDialog(props: WhiteboardPrintDialogProps): ReactE
       rangeChoice="all-current"
       pages={pages}
       capabilities={{ showPaperAndFit: true }}
+      documentTitle={title}
+      initialDestination={initialDestination}
       listPrinters={printLayout.listPrinters}
       onRangeChange={(range) => setScope(scopeOf(range))}
       onPlainPrint={onPlainPrint}
-      onPrint={(range, options, printJob) => void runLayout('print', range, options, printJob)}
-      onSavePdf={(range, options) => void runLayout('save', range, options)}
+      onPrint={(range, options, printJob, overlays) =>
+        void runLayout('print', range, options, { printJob, overlays })
+      }
+      onSavePdf={(range, options, overlays) => void runLayout('save', range, options, { overlays })}
+      onSaveImages={
+        printLayout.saveImages
+          ? (range, options, image, overlays) =>
+              void runLayout('save-images', range, options, { image, overlays })
+          : undefined
+      }
       onCancel={() => {
         if (runningRef.current) void printLayout.cancel()
         onClose()
       }}
       labelSpecStore={labelSpecStore}
+      onPreviewFaces={printLayout.previewFaces ? previewFaces : undefined}
+      onClosePreview={printLayout.closePreview ? closePreview : undefined}
       onPreviewRequest={onPreviewRequest}
       job={{ progress, onCancel: () => void printLayout.cancel(), error }}
     />

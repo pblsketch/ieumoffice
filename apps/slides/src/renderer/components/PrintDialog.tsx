@@ -1,32 +1,41 @@
 /**
  * Print dialog modeled on PowerPoint's print sheet: live page preview on the left
- * (the exact pages that will print, built by the shared print-html assembly),
- * range / layout / orientation / framing options on the right. "Print" hands the
- * assembled pages to the system print dialog.
- *
- * Below them sits the shared page layout panel (decision 0141). With every
- * panel option at its default, printing stays the `slides:print` call above.
- * With any option on, the same print op goes to the shared print layout route:
- * the main process prints the same document to PDF and arranges that.
+ * (exact slide HTML preview, switching to PDFium LivePrintPreview when layout,
+ * grayscale, watermark, or header/footer changes the output faces), unified
+ * destination (printer / Save as PDF / Save as images / System dialog), range /
+ * layout / orientation / framing options, and the shared page layout panel.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  buildOverlayBundle,
+  LivePrintPreview,
   normalizePanelOptions,
   printLayoutIssueText,
   printLayoutProblem,
+  printLayoutText,
   PrintJobFields,
   PrintLayoutPanel,
   PrintLayoutSchematic,
   showsLayoutSchematic,
+  showsLivePrintPreview,
   takesNewPrintRoute,
   usePrintJob,
   usePrintLayoutOptions,
+  type LivePreviewBatchResult,
+  type OverlayBundle,
   type PrintLabelSpecStore,
   type PrintLayoutCapabilities,
-  type PrintLayoutPreviewRequest,
   type PrintLayoutProgress,
 } from '@genoffice/ui'
-import type { PrintLayoutIssue, PrintLayoutOptions } from '@genoffice/print-layout/plan'
+import {
+  hasFaceOverlays,
+  planSheets,
+  validateOptions,
+  type ImageExportOptions,
+  type PageSize,
+  type PrintLayoutIssue,
+  type PrintLayoutOptions,
+} from '@genoffice/print-layout/plan'
 import { useEscOverlay } from '../esc-overlay'
 import type { RenderSlide } from '@genoffice/pptx-render'
 import { useI18n } from '../i18n/locale'
@@ -57,6 +66,7 @@ interface LayoutDone {
   ok: true
   canceled?: true
   path?: string
+  paths?: string[]
 }
 
 /** A shared-route answer that did not finish. */
@@ -67,6 +77,23 @@ interface LayoutFailure {
   code?: PrintLayoutIssue['code']
 }
 
+function plannedFaceSizes(
+  pages: readonly PageSize[] | null,
+  options: PrintLayoutOptions,
+): PageSize[] {
+  if (!pages || pages.length === 0) return []
+  const checked = validateOptions(options, pages.length)
+  if (!checked.ok) return []
+  try {
+    return planSheets(pages, checked.options).output.map((f) => ({
+      widthPt: f.width,
+      heightPt: f.height,
+    }))
+  } catch {
+    return []
+  }
+}
+
 export function PrintDialog({
   slides,
   images,
@@ -74,6 +101,7 @@ export function PrintDialog({
   selectedSlides = [],
   onClose,
   setStatus,
+  initialDestination,
 }: {
   /** The whole deck, hidden pages included (the hidden toggle filters at print time) */
   slides: RenderSlide[]
@@ -84,6 +112,8 @@ export function PrintDialog({
   selectedSlides?: number[]
   onClose: () => void
   setStatus: (s: string) => void
+  /** Optional initial destination pre-selected when opened from the Quick Print menu */
+  initialDestination?: string
 }) {
   useEscOverlay(true)
   const { t, lang } = useI18n()
@@ -211,11 +241,25 @@ export function PrintDialog({
         : null,
     [selected.length, ratio, layout, orientation],
   )
-  const layoutProblem = useMemo(
-    () => (newRoute ? printLayoutProblem(effectiveOptions, jobPages) : null),
-    [newRoute, effectiveOptions, jobPages],
+  const faceSizes = useMemo(
+    () => plannedFaceSizes(jobPages, effectiveOptions),
+    [jobPages, effectiveOptions],
   )
-  const showSchematic = showsLayoutSchematic(effectiveOptions)
+  const listPrinters = useCallback(
+    () => window.slidesApi.printLayout.listPrinters?.() ?? Promise.resolve([]),
+    [],
+  )
+  const printJob = usePrintJob(effectiveOptions, listPrinters, {
+    allowSaveDestinations: true,
+    initialDestination,
+  })
+  const layoutProblem = useMemo(
+    () => (newRoute || printJob.isSave ? printLayoutProblem(effectiveOptions, jobPages) : null),
+    [newRoute, printJob.isSave, effectiveOptions, jobPages],
+  )
+  const useLivePreview =
+    !!window.slidesApi.printLayout.previewFaces && showsLivePrintPreview(effectiveOptions)
+  const showSchematic = useLivePreview || showsLayoutSchematic(effectiveOptions)
   const layoutRunning = layoutJob.progress !== null
 
   const previewHtml = useMemo(() => {
@@ -252,7 +296,7 @@ export function PrintDialog({
   }, [applyZoom])
 
   /** The print op: what slides:print prints, and the job of the shared layout route */
-  const printOp = (): PrintSlidesOp | null => {
+  const printOp = useCallback((): PrintSlidesOp | null => {
     if (!pngs || selected.length === 0) return null
     const first = slides[selected[0]]
     return {
@@ -264,7 +308,7 @@ export function PrintDialog({
       ...(layout !== 'full' ? { orientation } : {}),
       ...(frame && layout === 'full' ? { frame: true } : {}),
     }
-  }
+  }, [pngs, selected, slides, layout, notes, orientation, frame])
 
   // A job still running when the dialog closes sends nothing
   const layoutRunningRef = useRef(false)
@@ -272,6 +316,7 @@ export function PrintDialog({
   useEffect(
     () => () => {
       if (layoutRunningRef.current) void window.slidesApi.printLayout.cancel()
+      void window.slidesApi.printLayout.closePreview?.()
     },
     [],
   )
@@ -306,21 +351,60 @@ export function PrintDialog({
     }
   }
 
-  const listPrinters = useCallback(
-    () => window.slidesApi.printLayout.listPrinters?.() ?? Promise.resolve([]),
-    [],
-  )
-  const printJob = usePrintJob(effectiveOptions, listPrinters)
+  const doSaveArrangedPdf = async (options: PrintLayoutOptions, overlays?: OverlayBundle) => {
+    const op = printOp()
+    if (!op || printing || layoutRunning) return
+    const r = await runLayoutJob(() =>
+      window.slidesApi.printLayout.savePdf({
+        options: normalizePanelOptions(options, capabilities),
+        editor: op,
+        ...(overlays ? { overlays } : {}),
+      }),
+    )
+    if (r?.path) setStatus(t('appExportPdfDone', { path: r.path }))
+  }
+
+  const doSaveArrangedImages = async (
+    options: PrintLayoutOptions,
+    image: ImageExportOptions,
+    overlays?: OverlayBundle,
+  ) => {
+    const op = printOp()
+    if (!op || printing || layoutRunning || !window.slidesApi.printLayout.saveImages) return
+    const r = await runLayoutJob(() =>
+      window.slidesApi.printLayout.saveImages!({
+        options: normalizePanelOptions(options, capabilities),
+        editor: op,
+        image,
+        ...(overlays ? { overlays } : {}),
+      }),
+    )
+    if (r?.paths) setStatus(printLayoutText(lang, 'imagesSaved', { count: r.paths.length }))
+  }
 
   const doPrint = async () => {
     const op = printOp()
     if (!op || printing || layoutRunning) return
+    const overlays = hasFaceOverlays(effectiveOptions)
+      ? await buildOverlayBundle(effectiveOptions, faceSizes)
+      : undefined
+    if (printJob.isSavePdf) {
+      if (layoutProblem) return
+      await doSaveArrangedPdf(effectiveOptions, overlays)
+      return
+    }
+    if (printJob.isSaveImages) {
+      if (layoutProblem) return
+      await doSaveArrangedImages(effectiveOptions, printJob.imageOptions, overlays)
+      return
+    }
     if (newRoute || printJob.isSilent) {
       if (newRoute && layoutProblem) return
       const r = await runLayoutJob(() =>
         window.slidesApi.printLayout.print({
           options: effectiveOptions,
           editor: op,
+          ...(overlays ? { overlays } : {}),
           job: printJob.job,
         }),
       )
@@ -339,40 +423,35 @@ export function PrintDialog({
     }
   }
 
-  const doSaveArrangedPdf = async (options: PrintLayoutOptions) => {
-    const op = printOp()
-    if (!op || printing || layoutRunning) return
-    const r = await runLayoutJob(() =>
-      window.slidesApi.printLayout.savePdf({
-        options: normalizePanelOptions(options, capabilities),
+  const editorKey = `${selected.join(',')}|${layout}|${orientation}|${frame ? 1 : 0}`
+  const previewCacheKey = `${editorKey}|${JSON.stringify(effectiveOptions)}`
+  const fetchFaces = useCallback(
+    async (
+      faceIndices: number[],
+      longSidePx: number,
+      signal: AbortSignal,
+    ): Promise<LivePreviewBatchResult> => {
+      const op = printOp()
+      if (!op || !window.slidesApi.printLayout.previewFaces) {
+        throw new Error('no slides to print')
+      }
+      const overlays = await buildOverlayBundle(effectiveOptions, faceSizes)
+      signal.throwIfAborted()
+      const optionsKey = `${JSON.stringify(effectiveOptions)}:${overlays ? overlays.stamps.length : 0}`
+      const r = await window.slidesApi.printLayout.previewFaces({
+        options: effectiveOptions,
         editor: op,
-      }),
-    )
-    if (r?.path) setStatus(t('appExportPdfDone', { path: r.path }))
-  }
-
-  const requestArrangedPreview: PrintLayoutPreviewRequest = async (
-    options,
-    { signal, onProgress },
-  ) => {
-    const op = printOp()
-    if (!op) throw new Error('no slides to print')
-    const api = window.slidesApi.printLayout
-    const off = api.onProgress(onProgress)
-    const stop = () => void api.cancel()
-    signal.addEventListener('abort', stop, { once: true })
-    try {
-      const r = await api.preview({
-        options: normalizePanelOptions(options, capabilities),
-        editor: op,
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
       })
       if (!r.ok) throw new Error('aborted' in r ? 'canceled' : r.error)
-      return r.faces.map((f) => f.png)
-    } finally {
-      signal.removeEventListener('abort', stop)
-      off()
-    }
-  }
+      return { totalFaces: r.totalFaces, faceSizes: r.faceSizes, faces: r.faces }
+    },
+    [printOp, effectiveOptions, faceSizes, editorKey],
+  )
 
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
     () => ({
@@ -392,6 +471,9 @@ export function PrintDialog({
     ['handout6', t('appPrintLayoutHandout6')],
     ['notes', t('appPrintLayoutNotes')],
   ]
+  const problemText = layoutProblem
+    ? printLayoutIssueText(lang, layoutProblem, { pageCount: jobPages?.length })
+    : null
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -408,7 +490,18 @@ export function PrintDialog({
           <div className="print-preview-pane" ref={paneRef}>
             {showSchematic ? (
               <div className="print-schematic-pane">
-                <PrintLayoutSchematic lang={lang} pages={jobPages} options={effectiveOptions} />
+                {useLivePreview ? (
+                  <LivePrintPreview
+                    lang={lang}
+                    pages={jobPages}
+                    options={effectiveOptions}
+                    cacheKey={previewCacheKey}
+                    fetchFaces={pngs && selected.length > 0 ? fetchFaces : undefined}
+                    problemText={problemText}
+                  />
+                ) : (
+                  <PrintLayoutSchematic lang={lang} pages={jobPages} options={effectiveOptions} />
+                )}
               </div>
             ) : previewHtml ? (
               <iframe
@@ -428,6 +521,8 @@ export function PrintDialog({
             <PrintJobFields
               lang={lang}
               state={printJob}
+              faceCount={faceSizes.length > 0 ? faceSizes.length : undefined}
+              grayscale={effectiveOptions.grayscale}
               disabled={!pngs || selected.length === 0 || printing || layoutRunning}
             />
             <fieldset>
@@ -551,8 +646,6 @@ export function PrintDialog({
               capabilities={capabilities}
               labelSpecStore={labelSpecStore}
               showSchematic={false}
-              onPreviewRequest={requestArrangedPreview}
-              onSavePdf={(options) => void doSaveArrangedPdf(options)}
               job={{
                 progress: layoutJob.progress,
                 onCancel: () => void window.slidesApi.printLayout.cancel(),
@@ -570,11 +663,20 @@ export function PrintDialog({
           <button
             className="primary"
             disabled={
-              !pngs || selected.length === 0 || printing || layoutRunning || !!layoutProblem
+              !pngs ||
+              selected.length === 0 ||
+              printing ||
+              layoutRunning ||
+              !!layoutProblem ||
+              (printJob.isSaveImages && !window.slidesApi.printLayout.saveImages)
             }
             onClick={() => void doPrint()}
           >
-            {printing || layoutRunning ? t('appPrintProgress') : t('appPrintTitle')}
+            {printing || layoutRunning
+              ? t('appPrintProgress')
+              : printJob.isSave
+                ? printLayoutText(lang, 'save')
+                : t('appPrintTitle')}
           </button>
         </div>
       </div>

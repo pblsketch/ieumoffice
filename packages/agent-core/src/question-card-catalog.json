@@ -1,0 +1,303 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ieumoffice.com:question-card/v1",
+  "protocolVersion": "1.0",
+  "title": "IeumOffice question card catalog",
+  "description": "The components and functions the IeumOffice AI question card draws: a subset of the A2UI Basic Catalog v1 (Column, Text, ChoicePicker, CheckBox, TextField, Slider and the function required). Each definition is copied unchanged from catalogs/basic/v1/catalog.json of https://github.com/a2ui-project/a2ui at commit c26be2dd087b541c46e0296c164ae13bf35f7836, Copyright 2024 Google LLC, licensed under the Apache License, Version 2.0.",
+  "catalogId": "ieumoffice.com:question-card/v1",
+  "components": {
+    "Column": {
+      "type": "object",
+      "description": "A layout component that arranges its children vertically. To create a grid layout, nest Rows within this Column.",
+      "properties": {
+        "component": {
+          "const": "Column"
+        },
+        "children": {
+          "description": "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID.",
+          "$ref": "common_types.json#/$defs/ChildList"
+        },
+        "justify": {
+          "type": "string",
+          "description": "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together.",
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "spaceBetween",
+            "spaceAround",
+            "spaceEvenly",
+            "stretch"
+          ],
+          "default": "start"
+        },
+        "align": {
+          "type": "string",
+          "description": "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property.",
+          "enum": ["center", "end", "start", "stretch"],
+          "default": "stretch"
+        },
+        "weight": {
+          "$ref": "#/$defs/Weight"
+        }
+      },
+      "required": ["component", "children"]
+    },
+    "Text": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "Text"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+        },
+        "variant": {
+          "type": "string",
+          "description": "A hint for the base text style.",
+          "enum": ["caption", "body"],
+          "default": "body"
+        },
+        "weight": {
+          "$ref": "#/$defs/Weight"
+        }
+      },
+      "required": ["component", "text"]
+    },
+    "ChoicePicker": {
+      "type": "object",
+      "description": "A component that allows selecting one or more options from a list.",
+      "allOf": [
+        {
+          "$ref": "common_types.json#/$defs/Checkable"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "ChoicePicker"
+            },
+            "label": {
+              "$ref": "common_types.json#/$defs/DynamicString",
+              "description": "The label for the group of options."
+            },
+            "variant": {
+              "type": "string",
+              "description": "A hint for how the choice picker should be displayed and behave.",
+              "enum": ["multipleSelection", "mutuallyExclusive"],
+              "default": "mutuallyExclusive"
+            },
+            "options": {
+              "type": "array",
+              "description": "The list of available options to choose from.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "description": "The text to display for this option.",
+                    "$ref": "common_types.json#/$defs/DynamicString"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The stable value associated with this option."
+                  }
+                },
+                "required": ["label", "value"],
+                "additionalProperties": false
+              }
+            },
+            "value": {
+              "$ref": "common_types.json#/$defs/DynamicStringList",
+              "description": "The list of currently selected values. This should be bound to a string array in the data model."
+            },
+            "displayStyle": {
+              "type": "string",
+              "description": "The display style of the component.",
+              "enum": ["checkbox", "chips"],
+              "default": "checkbox"
+            },
+            "filterable": {
+              "type": "boolean",
+              "description": "If true, displays a search input to filter the options.",
+              "default": false
+            },
+            "weight": {
+              "$ref": "#/$defs/Weight"
+            }
+          },
+          "required": ["component", "options", "value"]
+        }
+      ]
+    },
+    "CheckBox": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "common_types.json#/$defs/Checkable"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "CheckBox"
+            },
+            "label": {
+              "$ref": "common_types.json#/$defs/DynamicString",
+              "description": "The text to display next to the checkbox."
+            },
+            "value": {
+              "$ref": "common_types.json#/$defs/DynamicBoolean",
+              "description": "The current state of the checkbox (true for checked, false for unchecked)."
+            },
+            "weight": {
+              "$ref": "#/$defs/Weight"
+            }
+          },
+          "required": ["component", "label", "value"]
+        }
+      ]
+    },
+    "TextField": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "common_types.json#/$defs/Checkable"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "TextField"
+            },
+            "label": {
+              "$ref": "common_types.json#/$defs/DynamicString",
+              "description": "The text label for the input field."
+            },
+            "value": {
+              "$ref": "common_types.json#/$defs/DynamicString",
+              "description": "The value of the text field."
+            },
+            "placeholder": {
+              "$ref": "common_types.json#/$defs/DynamicString",
+              "description": "The placeholder text for the input field."
+            },
+            "variant": {
+              "type": "string",
+              "description": "The type of input field to display.",
+              "enum": ["longText", "number", "shortText", "obscured"],
+              "default": "shortText"
+            },
+            "weight": {
+              "$ref": "#/$defs/Weight"
+            }
+          },
+          "required": ["component", "label", "value"]
+        }
+      ]
+    },
+    "Slider": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "common_types.json#/$defs/Checkable"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Slider"
+            },
+            "label": {
+              "$ref": "common_types.json#/$defs/DynamicString",
+              "description": "The label for the slider."
+            },
+            "min": {
+              "type": "number",
+              "description": "The minimum value of the slider.",
+              "default": 0
+            },
+            "max": {
+              "type": "number",
+              "description": "The maximum value of the slider."
+            },
+            "value": {
+              "$ref": "common_types.json#/$defs/DynamicNumber",
+              "description": "The current value of the slider."
+            },
+            "steps": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The number of discrete divisions in the slider range. If specified, the slider will snap to discrete values."
+            },
+            "weight": {
+              "$ref": "#/$defs/Weight"
+            }
+          },
+          "required": ["component", "value", "max"]
+        }
+      ]
+    }
+  },
+  "functions": {
+    "required": {
+      "type": "object",
+      "description": "Checks that the value is not null, undefined, or empty.",
+      "returnType": "validationResult",
+      "properties": {
+        "@call": {
+          "const": "required"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "description": "The value to check."
+            }
+          },
+          "required": ["value"],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": ["@call", "args"]
+    }
+  },
+  "$defs": {
+    "anyComponent": {
+      "oneOf": [
+        {
+          "$ref": "#/components/Column"
+        },
+        {
+          "$ref": "#/components/Text"
+        },
+        {
+          "$ref": "#/components/ChoicePicker"
+        },
+        {
+          "$ref": "#/components/CheckBox"
+        },
+        {
+          "$ref": "#/components/TextField"
+        },
+        {
+          "$ref": "#/components/Slider"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "component"
+      }
+    },
+    "anyFunction": {
+      "oneOf": [
+        {
+          "$ref": "#/functions/required"
+        }
+      ]
+    },
+    "Weight": {
+      "type": "number",
+      "description": "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+    }
+  }
+}

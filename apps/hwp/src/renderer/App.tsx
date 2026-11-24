@@ -6,6 +6,8 @@ import { IconClose } from '@genoffice/ui/icons'
 import {
   aiPanelInitiallyOpen,
   aiVisible,
+  printLayoutText,
+  QuickPrintButton,
   rememberAiPanelOpen,
   skillTemplateText,
   templateDocumentOf,
@@ -14,6 +16,7 @@ import {
   useSplitPaneFocusPing,
   type TemplateDocument,
 } from '@genoffice/ui'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import { HwpAiDock } from './ai/AiDock'
 import { DocCheckPanel } from './check/DocCheckPanel'
 import { createAgentBridge } from './ai/agent-bridge'
@@ -167,7 +170,11 @@ export default function App() {
   const [presenting, setPresenting] = useState(false)
   const presentingRef = useRef(false)
   /** the print preview covers the editor; 0-based page it opens on */
-  const [preview, setPreview] = useState<{ open: boolean; initialPage: number }>({
+  const [preview, setPreview] = useState<{
+    open: boolean
+    initialPage: number
+    initialDestination?: string
+  }>({
     open: false,
     initialPage: 0,
   })
@@ -816,18 +823,66 @@ export default function App() {
     previewRef.current = preview.open
   }, [preview.open])
 
-  const openPreview = useCallback(async (): Promise<void> => {
-    if (phase !== 'ready' || previewRef.current || printingRef.current) return
-    let page = 1
+  const openPreview = useCallback(
+    async (initialDestination?: string): Promise<void> => {
+      if (phase !== 'ready' || previewRef.current || printingRef.current) return
+      let page = 1
+      try {
+        const context = await editorRef.current?.getSelectionContext()
+        if (context && Number.isInteger(context.page) && context.page > 0) page = context.page
+      } catch {
+        // no caret yet: open at the first page
+      }
+      previewRef.current = true
+      setPreview({ open: true, initialPage: page - 1, initialDestination })
+    },
+    [phase],
+  )
+
+  const runQuickPrintHwp = useCallback(
+    async (printerLabel: string): Promise<void> => {
+      if (phase !== 'ready' || printingRef.current) return
+      printingRef.current = true
+      setNotice({
+        tone: 'info',
+        text: printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }),
+        sticky: true,
+      })
+      try {
+        const job = await gatherLayoutJob(() => {})
+        const result = await window.hwpApi.printLayout.print({
+          options: createDefaultOptions(),
+          editor: job,
+          job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+        })
+        if (result.ok) {
+          setNotice({
+            tone: 'info',
+            text: printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }),
+          })
+        } else if (!('aborted' in result)) {
+          setNotice({ tone: 'error', key: 'printFailed', detail: result.error })
+        } else {
+          setNotice(null)
+        }
+      } catch (error) {
+        setNotice({ tone: 'error', key: 'printFailed', detail: detailOf(error) })
+      } finally {
+        printingRef.current = false
+      }
+    },
+    [phase, lang, gatherLayoutJob],
+  )
+
+  const getHwpPageCount = useCallback(async (): Promise<number | null> => {
+    if (phase !== 'ready') return null
     try {
-      const context = await editorRef.current?.getSelectionContext()
-      if (context && Number.isInteger(context.page) && context.page > 0) page = context.page
+      const batch = await agentBridge.printPageSizes(0)
+      return typeof batch.pageCount === 'number' ? batch.pageCount : null
     } catch {
-      // no caret yet: open at the first page
+      return null
     }
-    previewRef.current = true
-    setPreview({ open: true, initialPage: page - 1 })
-  }, [phase])
+  }, [phase, agentBridge])
 
   const closePreview = useCallback((): void => {
     previewRef.current = false
@@ -1135,6 +1190,17 @@ export default function App() {
             {t('checkTitle')}
           </button>
           <MemoToggle open={memoOpen} onToggle={() => setMemoOpen((open) => !open)} />
+          <QuickPrintButton
+            lang={lang}
+            align="right"
+            disabled={preview.open}
+            listPrinters={window.hwpApi?.printLayout?.listPrinters}
+            prefStore={window.hwpApi?.printLayout}
+            getPageCount={getHwpPageCount}
+            onOpenDialog={(dest) => void openPreview(dest)}
+            onQuickPrint={runQuickPrintHwp}
+            onNoPrinter={(text) => setNotice({ tone: 'info', text })}
+          />
           <label className={`autosave-toggle${autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
             <span className="autosave-knob" />
             <span className="autosave-text">{t('autoSave')}</span>
@@ -1226,6 +1292,7 @@ export default function App() {
         <PrintPreview
           bridge={agentBridge}
           initialPage={preview.initialPage}
+          initialDestination={preview.initialDestination}
           printSignal={printSignal}
           onClose={closePreview}
           onPrint={runPrint}

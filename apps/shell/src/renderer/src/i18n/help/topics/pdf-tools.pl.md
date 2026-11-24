@@ -30,6 +30,7 @@ Karty w grupie **W edytorze PDF** otwierają wybrany PDF na karcie edytora. Tam 
 - **Usuń puste strony** tylko pokazuje kandydatów. Usuwane są tylko wybrane strony, a strona z choćby jednym znakiem nigdy nie jest kandydatem.
 - **Usuń adnotacje** zachowuje pola formularza i usuwa łącza tylko po ich zaznaczeniu. Treść usuniętych adnotacji nie zostaje w nowym pliku.
 - **Zapisz jako tekst** czyta tylko warstwę tekstu. Strony, na których tekst jest obrazem, np. zeskanowane, będą puste.
+- **Podziel PDF** dzieli według zakresów (z opcją scalenia), liczby stron, zakładek lub maksymalnego rozmiaru pliku, z wyborem nazewnictwa i podfolderu.
 
 ## Przydaje się, gdy
 

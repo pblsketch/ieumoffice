@@ -1,8 +1,9 @@
 import type { StringKey } from '../i18n/locale'
 
 /**
- * A docked card holds the run until the person acts on it: the questionnaire
- * (`answer`), the page brief (`confirm`) or the partial-page choice (`choice`).
+ * A card holds the run until the person acts on it: the shared question card
+ * (`answer`, drawn in the chat), the page brief (`confirm`) or the partial-page
+ * choice (`choice`).
  * While it does, the panel says so instead of counting seconds as if the AI
  * were still working.
  */
@@ -15,9 +16,13 @@ export const WAIT_LABEL: Record<PanelWait, StringKey> = {
   choice: 'aiWaitingChoice',
 }
 
-/** The card the composer slot shows, in its order: questionnaire, then brief, then partial page */
-export function panelWaitOf(clarify: unknown, brief: unknown, partial: unknown): PanelWait | null {
-  if (clarify) return 'answer'
+/** The card the run waits on, in this order: the question card, then the brief, then the partial page */
+export function panelWaitOf(
+  questionOpen: boolean,
+  brief: unknown,
+  partial: unknown,
+): PanelWait | null {
+  if (questionOpen) return 'answer'
   if (brief) return 'confirm'
   if (partial) return 'choice'
   return null

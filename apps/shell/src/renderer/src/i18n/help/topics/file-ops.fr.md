@@ -46,17 +46,17 @@ Règles : l’extension est conservée automatiquement ; les caractères interdi
 
 ## Impression
 
-Fichier ▸ Imprimer (⌘P/ctrl+P) ouvre une fenêtre d’impression dans chaque éditeur. Docs, PDF, Sheets, Slides et Markdown ont une section **Mise en page** dans leur fenêtre d’impression habituelle, HWP dans l’aperçu avant impression, et HTML, carte mentale et diagramme dans une nouvelle petite fenêtre d’impression. Si vous ne choisissez rien dans Mise en page, l’impression se fait comme avant.
+Fichier ▸ Imprimer (⌘P/ctrl+P) ouvre une fenêtre d’impression avec aperçu en direct dans chaque éditeur — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram et Whiteboard. Sans modification sous Mise en page via la boîte de dialogue système, l’impression fonctionne comme avant.
 
-- **Disposition** : choisissez Une page par feuille, Plusieurs pages par feuille (2, 4, 6, 9 ou 16), Livret (reliure à gauche ou à droite), Affiche (feuilles en largeur et en hauteur, chevauchement, lignes de coupe) ou Étiquettes (une page par étiquette ou même page sur chaque étiquette, étiquette de départ, format A4 courant ou dimensions personnalisées).
-- **Faces impaires seulement, faces paires seulement, ordre inverse** : les faces sont comptées après la disposition, sur ce qui sort réellement de l’imprimante. Utile avec une imprimante sans recto verso : imprimez les rectos, retournez le papier, puis imprimez les versos.
-- **Réduire pour tenir sur le papier** : seules les pages plus grandes que le papier choisi sont réduites ; les plus petites ne sont pas agrandies. Sheets et Markdown utilisent leurs propres réglages de papier et d’échelle.
-- **Niveaux de gris et résolution des images** : quand vous imprimez avec des options de Mise en page, chaque page est convertie en image avant d’être envoyée à l’imprimante. Choisissez la résolution parmi Automatique, 150, 300 ou 600 dpi.
-- **Sélection seulement** : Docs et Markdown impriment uniquement le texte sélectionné, remis en page à partir de la première page ; Slides imprime les diapositives sélectionnées et PDF les pages sélectionnées. Sheets imprime la plage sélectionnée comme avant.
-- **Schéma de disposition et aperçu du résultat** : le schéma montre tout de suite où chaque numéro de page tombe sur la feuille, et **Aperçu du résultat** montre ce qui a réellement été produit. **Enregistrer le résultat disposé en PDF** permet d’imprimer la même disposition sur un autre PC ou chez un imprimeur.
-- **Fenêtre d’impression du système** : pour un livret, choisissez le recto verso avec retournement sur le bord court. Laissez la plage de pages et le nombre de pages par feuille tels quels dans la fenêtre du système.
+- **Sortie (imprimante, PDF, images)** : choisissez une imprimante installée, **Enregistrer en PDF**, **Enregistrer en images** ou **Boîte de dialogue système** dans une seule liste. L’export d’images prend en charge PNG et JPG (Élevée 90 %, Moyenne 80 %, Fichier léger 65 %) en fichiers numérotés séparés ou en archive ZIP. Les PDF protégés désactivent l’enregistrement PDF et image tout en conservant l’impression.
+- **Aperçu avant impression en direct** : les dix éditeurs affichent un aperçu avant la sortie. Lorsque la mise en page, les niveaux de gris, un filigrane ou les en-têtes/pieds de page modifient le rendu, l’aperçu génère les faces finales à la demande avec navigation, zoom et bascule vers le schéma.
+- **Mise en page** : choisissez Une page par feuille, Plusieurs pages par feuille (2, 4, 6, 9 ou 16, avec bordures en option), Livret (reliure gauche ou droite), Affiche (colonnes × lignes, chevauchement, traits de coupe et repères de tuiles) ou Étiquettes (une page par étiquette ou répétition, cellule de départ, formats A4 ou sur mesure).
+- **Échelle, orientation, faces et ordre** : sélectionnez Taille réelle (100 %), Ajuster au papier, Réduire les pages trop grandes ou Échelle personnalisée (10 %–400 %), ainsi que l’orientation Automatique, Vertical ou Horizontal. Faces impaires, faces paires et ordre inverse s’appliquent aux faces finales.
+- **Filigrane, en-têtes/pieds de page, niveaux de gris et résolution** : ajoutez un filigrane texte ou image ainsi que 6 zones d’en-tête et pied de page (titre, date, numéro de page ou texte libre) uniquement à l’impression, sans modifier le document. Les niveaux de gris et la résolution (Automatique, 150, 300 ou 600 dpi) contrôlent la qualité.
+- **Plages de pages et sélection** : Docs et Markdown réimpriment le texte sélectionné dès la page 1 ; Slides imprime les diapositives choisies ; PDF les pages choisies ; Hangul propose Tout, Page actuelle ou Plage personnalisée ; Sheets imprime la feuille active, le classeur ou la sélection.
+- **Boîte de dialogue système** : pour un livret, activez le recto verso sur le bord court et laissez la plage de pages ainsi que le nombre de pages par feuille inchangés.
 
-Les PDF s’impriment avec l’ordre de pages et les rotations courants.
+Les PDF s’impriment selon l’ordre et l’orientation actuels des pages.
 
 ## Où vivent les fichiers sans titre
 
