@@ -13,6 +13,7 @@ import {
   pushGraphicsState,
   rectangle,
   rgb,
+  StandardFonts,
 } from 'pdf-lib'
 import { at } from './at'
 import { issue, PrintLayoutError } from './errors'
@@ -23,6 +24,8 @@ import { wasmArrangePdf, wasmReadJobPageSizes } from './wasm'
 
 /** Cut marks are hairlines; 0.5pt still shows on every printer. */
 const CUT_MARK_WIDTH_PT = 0.5
+const CELL_BORDER_WIDTH_PT = 0.5
+const TILE_LABEL_FONT_PT = 8
 
 interface SourceInfo {
   page: PDFPage
@@ -157,6 +160,44 @@ async function arrangePrintJobJs(
         thickness: CUT_MARK_WIDTH_PT,
         color: rgb(0, 0, 0),
       })
+    }
+    if (face.cellBorders) {
+      for (const b of face.cellBorders) {
+        page.drawRectangle({
+          x: b.x,
+          y: face.height - b.y - b.height,
+          width: b.width,
+          height: b.height,
+          borderColor: rgb(0.5, 0.5, 0.5),
+          borderWidth: CELL_BORDER_WIDTH_PT,
+        })
+      }
+    }
+    if (face.tileLabel) {
+      const label = face.tileLabel.replace(/[^\x20-\x7e]/g, '')
+      if (label.length > 0) {
+        const font = await out.embedFont(StandardFonts.Helvetica)
+        const padX = 3
+        const padY = 2
+        const pillW = label.length * 4.8 + padX * 2
+        const pillH = TILE_LABEL_FONT_PT + padY * 2
+        const pillX = 6
+        const pillY = Math.max(0, face.height - 6 - pillH)
+        page.drawRectangle({
+          x: pillX,
+          y: pillY,
+          width: pillW,
+          height: pillH,
+          color: rgb(1, 1, 1),
+        })
+        page.drawText(label, {
+          x: pillX + padX,
+          y: pillY + padY + 1.5,
+          size: TILE_LABEL_FONT_PT,
+          font,
+          color: rgb(0.2, 0.2, 0.2),
+        })
+      }
     }
   }
   return out.save()

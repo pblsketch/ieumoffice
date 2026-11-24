@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import {
   aiVisible,
+  printLayoutText,
   tweaksText,
   useAppChoice,
   useAutoSavePref,
@@ -19,6 +20,7 @@ import {
   type DrawerVersionEntry,
 } from '@genoffice/ui'
 import '@genoffice/ui/tweaks-panel.css'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import type { BoardDocument } from '@genoffice/whiteboard-engine'
 import {
   VERSION_TIMELINE_BRIDGE_KEY,
@@ -66,7 +68,10 @@ export default function App(): ReactElement {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [toast, setToast] = useState<string | null>(null)
   const [exportModalFormat, setExportModalFormat] = useState<ExportFormat | null>(null)
-  const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [printDialogState, setPrintDialogState] = useState<{ initialDestination?: string } | null>(
+    null,
+  )
+  const printDialogOpen = printDialogState !== null
   const [presenting, setPresenting] = useState(false)
   const [handoff, setHandoff] = useState<WhiteboardHandoff | null>(null)
   const [menuCommand, setMenuCommand] = useState<{
@@ -328,10 +333,31 @@ export default function App(): ReactElement {
     [buildPrintPages, showToast],
   )
 
-  const handlePrint = useCallback(() => {
+  const handlePrint = useCallback((initialDestination?: string) => {
     if (!sessionRef.current) return
-    setPrintDialogOpen(true)
+    setPrintDialogState({ initialDestination })
   }, [])
+
+  const handleQuickPrint = useCallback(
+    async (printerLabel: string) => {
+      const s = sessionRef.current
+      if (!s) return
+      showToast(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+      const pages = buildPrintPages(s, 'all')
+      const title = s.getDocument().title || tGlobal('untitled')
+      const result = await window.whiteboardApi.exporting.printLayout.print({
+        options: createDefaultOptions(),
+        editor: { pages, title },
+        job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+      })
+      if (result.ok) {
+        showToast(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+      } else if (!('aborted' in result)) {
+        showToast(tGlobal('printFailed', { error: result.error }))
+      }
+    },
+    [buildPrintPages, lang, showToast],
+  )
 
   // Subscribe to shell IPC events (save, close-save, export, print, menu, recovery, MCP queries).
   useEffect(() => {
@@ -454,7 +480,10 @@ export default function App(): ReactElement {
         autoSave={autoSave}
         onToggleAutoSave={() => setAutoSave(!autoSave)}
         onExport={(fmt, scope) => void handleExport(fmt, scope)}
-        onPrint={() => void handlePrint()}
+        onPrint={(dest) => handlePrint(dest)}
+        onQuickPrint={handleQuickPrint}
+        listPrinters={window.whiteboardApi?.exporting?.printLayout?.listPrinters}
+        quickPrintPrefStore={window.whiteboardApi?.exporting?.printLayout}
         exportModalFormat={exportModalFormat}
         onCloseExportModal={() => setExportModalFormat(null)}
         onOpenExportModal={(fmt) => setExportModalFormat(fmt)}
@@ -535,8 +564,9 @@ export default function App(): ReactElement {
         <WhiteboardPrintDialog
           api={window.whiteboardApi}
           title={session.getDocument().title || tGlobal('untitled')}
+          initialDestination={printDialogState?.initialDestination}
           buildPages={(scope) => buildPrintPages(session, scope)}
-          onClose={() => setPrintDialogOpen(false)}
+          onClose={() => setPrintDialogState(null)}
           onMessage={showToast}
         />
       )}

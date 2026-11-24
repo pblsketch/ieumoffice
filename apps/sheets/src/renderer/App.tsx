@@ -122,6 +122,9 @@ import {
   type ProjectPanel,
   useSubscriptionUsageUpdates,
   aiChangesLabels,
+  isQuestionToolActivity,
+  printLayoutText,
+  useAiInlineQuestions,
 } from '@genoffice/ui'
 
 import {
@@ -265,7 +268,14 @@ interface StoredChatEntry {
   readonly role: 'user' | 'assistant'
   readonly text: string
   readonly tools?:
-    readonly { name: string; summary: string; isError?: boolean; output?: string }[] | undefined
+    | readonly {
+        name: string
+        summary: string
+        isError?: boolean
+        input?: string
+        output?: string
+      }[]
+    | undefined
   readonly attachments?:
     readonly { name: string; path?: string; ext?: string; sizeBytes?: number }[] | undefined
   readonly scope?: AiScopeQuoteData | undefined
@@ -280,13 +290,25 @@ function storedChatMessageOf(m: StoredChatEntry): AiChatMessage {
   return {
     role: m.role,
     text: m.text,
+    restored: true,
     tools:
-      m.tools?.map((t) => ({
-        summary: t.summary,
-        isError: !!t.isError,
-        ...(t.name ? { name: t.name } : {}),
-        ...(t.output ? { output: t.output.slice(0, 2000) } : {}),
-      })) ?? [],
+      m.tools?.map((t) =>
+        // a question card keeps its input and whole output so the reopened chat redraws it
+        isQuestionToolActivity(t)
+          ? {
+              summary: t.summary,
+              isError: !!t.isError,
+              name: t.name,
+              ...(t.input !== undefined ? { input: t.input } : {}),
+              ...(t.output !== undefined ? { output: t.output } : {}),
+            }
+          : {
+              summary: t.summary,
+              isError: !!t.isError,
+              ...(t.name ? { name: t.name } : {}),
+              ...(t.output ? { output: t.output.slice(0, 2000) } : {}),
+            },
+      ) ?? [],
     // stored metadata only: no thumbnail read for history, the chips render name/size
     ...(m.attachments && m.attachments.length > 0
       ? {
@@ -737,6 +759,12 @@ export function App({
     new Set(),
   )
   const [printHost, setPrintHost] = useState<PrintPreviewHost | null>(null)
+  const [printInitialDest, setPrintInitialDest] = useState<string | undefined>(undefined)
+  const quickPrintPreparedRef = useRef<{
+    host: PrintPreviewHost
+    job: Awaited<ReturnType<PrintPreviewHost['buildJob']>>
+    at: number
+  } | null>(null)
   const pageBreakLayersRef = useRef<Map<string, { dispose(): void }[]>>(new Map())
   const pageBreakIdRef = useRef(0)
   /// App-level setting, Excel-style: not stored in the file, kept across
@@ -1793,6 +1821,8 @@ export function App({
   const sendGateRef = useRef(sendGate)
   sendGateRef.current = sendGate
 
+  // the question card of the run: its skill joins the loop, its card and state go to the panel
+  const inlineQuestions = useAiInlineQuestions()
   const agentLoopRef = useRef<AgentLoop | null>(null)
   if (!agentLoopRef.current) {
     agentLoopRef.current = new AgentLoop({
@@ -1819,6 +1849,7 @@ export function App({
           () => imageGenRef.current,
           () => availableAttachments(),
         ),
+        inlineQuestions.askQuestionsSkill,
         // the person's skills: use_skill, read_skill_file, propose_skill (app-run tools)
         ...panelUserSkills({
           editor: 'sheets',
@@ -2140,6 +2171,8 @@ export function App({
     setHistoricChat([])
     skillCards.reset()
     skillTemplates.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
     // Unsent composer attachments would otherwise ride into the next chat's
     // file context (availableAttachments merges sent + live) — same as docs
     // (#224) and slides. The typed draft itself is kept.
@@ -3910,6 +3943,8 @@ export function App({
       return
     }
     onAdmitted?.()
+    // a new message closes a card still open and gives this run its one card
+    inlineQuestions.supersedeOpen()
     lastSkillUseRef.current = skillUse
     skillTemplatesRef.current.noteRequest(instruction)
     runToolsRef.current = []
@@ -4123,7 +4158,10 @@ export function App({
       plan.structuralChanges.length
     const marks = planMarkRanges(plan)
     const resolveSheetName = (sheetId: string): string | undefined =>
-      univerRef.current?.univerAPI.getActiveWorkbook()?.getSheetBySheetId(sheetId)?.getSheetName() ??
+      univerRef.current?.univerAPI
+        .getActiveWorkbook()
+        ?.getSheetBySheetId(sheetId)
+        ?.getSheetName() ??
       adapterRef.current.getSnapshot().sheets.find((s) => s.id === sheetId)?.name
     const planLines = planChangeLines(plan, resolveSheetName)
     const state = lazyWorkbookRef.current
@@ -5751,7 +5789,56 @@ export function App({
         sheetHasContent={sheetHasContent}
         pageLayout={activePageLayout}
         printHost={printHost}
-        onClosePrint={() => setPrintHost(null)}
+        printInitialDestination={printInitialDest}
+        onOpenPrint={(dest) => {
+          if (openingWorkbook || workbookOpeningRef.current) return
+          setPrintInitialDest(dest)
+          void openPrintPreviewHost(pageLayoutContext()).then(setPrintHost)
+        }}
+        onQuickPrint={async (printerLabel) => {
+          if (openingWorkbook || workbookOpeningRef.current) return
+          setMessage(printLayoutText(getLang(), 'quickPrintSending', { printer: printerLabel }))
+          try {
+            const cached = quickPrintPreparedRef.current
+            quickPrintPreparedRef.current = null
+            let host = cached && Date.now() - cached.at < 15_000 ? cached.host : null
+            let job = cached && Date.now() - cached.at < 15_000 ? cached.job : null
+            if (!host || !job) {
+              host = await openPrintPreviewHost(pageLayoutContext())
+              if (!host) return
+              job = await host.buildJob('active', {})
+            }
+            const msg = await host.print(job, {
+              deviceName: '',
+              copies: 1,
+              collate: true,
+              duplex: 'simplex',
+              pages: null,
+            })
+            setMessage(msg)
+          } catch (err) {
+            setMessage(err instanceof Error ? err.message : t('appPrintFailed'))
+          }
+        }}
+        getPrintPageCount={async () => {
+          if (openingWorkbook || workbookOpeningRef.current) return null
+          try {
+            const host = await openPrintPreviewHost(pageLayoutContext())
+            if (!host) return null
+            const job = await host.buildJob('active', {})
+            quickPrintPreparedRef.current = { host, job, at: Date.now() }
+            return job.pageCount
+          } catch {
+            return null
+          }
+        }}
+        listPrinters={() => window.desktopApi?.listPrinters?.() ?? Promise.resolve([])}
+        quickPrintPrefStore={window.desktopApi?.printLayout}
+        onQuickPrintNotice={setMessage}
+        onClosePrint={() => {
+          setPrintHost(null)
+          setPrintInitialDest(undefined)
+        }}
         calcManual={calcManual}
         showFormulas={activeShowFormulas}
         onGoalSeek={(setCell, toValue, byCell) => {
@@ -5809,6 +5896,7 @@ export function App({
         chat={chat}
         historicChat={historicChat}
         aiProject={project}
+        aiQuestions={inlineQuestions}
         renderSkillCard={skillCards.render}
         skillNotes={skillTemplates.notes}
         onTemplateSkill={(request) => skillTemplatesRef.current.onTemplateSkill(request)}

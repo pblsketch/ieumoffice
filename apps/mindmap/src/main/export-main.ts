@@ -38,6 +38,7 @@ import {
 import {
   LABEL_SPEC_FILE_NAME,
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   type PrintLayoutWindow,
 } from '@genoffice/electron-utils/print-arranged'
 import { atomicWriteFile } from './atomic-write'
@@ -447,5 +448,21 @@ export function registerMindmapExportIpc(options: ExportIpcOptions): void {
     createPrintWindow: arrangedPrintWindow,
     pickSavePath: (event, suggestedName) =>
       pickTarget(event as IpcMainInvokeEvent, 'pdf', suggestedName, options),
+    pickImageSavePath: async (event, suggestedName, image) => {
+      const e = event as IpcMainInvokeEvent
+      const spec = imageSaveDialogSpec(exportFileBase(suggestedName), image)
+      const win =
+        BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: saveAsSuggestion(options.filePathOf(e.sender.id), spec.defaultFileName),
+          filters: spec.filters,
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
   })
 }

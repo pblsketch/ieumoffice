@@ -10,8 +10,11 @@ use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
 use serde::{Deserialize, Serialize};
 
 use crate::gray_pdf::format_pdf_num;
+use crate::pixels::decode_png_rgb_alpha;
 
 const CUT_MARK_WIDTH_PT: f64 = 0.5;
+const CELL_BORDER_WIDTH_PT: f64 = 0.5;
+const TILE_LABEL_FONT_PT: f64 = 8.0;
 
 #[derive(Debug, Clone, Copy)]
 struct PdfBox {
@@ -61,6 +64,21 @@ pub struct PlannedFaceDto {
     pub cells: Vec<PlacedCellDto>,
     #[serde(rename = "cutMarks")]
     pub cut_marks: Vec<LineSegmentDto>,
+    #[serde(default, rename = "cellBorders")]
+    pub cell_borders: Vec<RectDto>,
+    #[serde(default, rename = "tileLabel")]
+    pub tile_label: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OverlayPlacementDto {
+    #[serde(rename = "stampIndex")]
+    pub stamp_index: usize,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub opacity: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -476,6 +494,61 @@ pub fn arrange_pdf(pdf_bytes: &[u8], faces: &[PlannedFaceDto]) -> Result<Vec<u8>
             );
         }
 
+        for b in &face.cell_borders {
+            let _ = writeln!(
+                &mut content,
+                "q\n0.5 0.5 0.5 RG\n{} w\n{} {} {} {} re S\nQ",
+                format_pdf_num(CELL_BORDER_WIDTH_PT),
+                format_pdf_num(b.x),
+                format_pdf_num(face.height - b.y - b.height),
+                format_pdf_num(b.width),
+                format_pdf_num(b.height),
+            );
+        }
+
+        let mut fonts = Dictionary::new();
+        if let Some(ref label) = face.tile_label {
+            if !label.is_empty() {
+                let mut escaped = String::with_capacity(label.len());
+                for ch in label.chars() {
+                    if ch.is_ascii() && !ch.is_ascii_control() {
+                        if matches!(ch, '(' | ')' | '\\') {
+                            escaped.push('\\');
+                        }
+                        escaped.push(ch);
+                    }
+                }
+                if !escaped.is_empty() {
+                    let font_dict = Dictionary::from_iter(vec![
+                        ("Type", Object::Name(b"Font".to_vec())),
+                        ("Subtype", Object::Name(b"Type1".to_vec())),
+                        ("BaseFont", Object::Name(b"Helvetica".to_vec())),
+                    ]);
+                    fonts.set("F0", Object::Dictionary(font_dict));
+                    let pad_x = 3.0;
+                    let pad_y = 2.0;
+                    let pill_w = (escaped.len() as f64) * 4.8 + pad_x * 2.0;
+                    let pill_h = TILE_LABEL_FONT_PT + pad_y * 2.0;
+                    let pill_x = 6.0;
+                    let pill_y = (face.height - 6.0 - pill_h).max(0.0);
+                    let text_x = pill_x + pad_x;
+                    let text_y = pill_y + pad_y + 1.5;
+                    let _ = writeln!(
+                        &mut content,
+                        "q\n1 1 1 rg\n{} {} {} {} re f\n0.2 0.2 0.2 rg\nBT\n/F0 {} Tf\n{} {} Td\n({}) Tj\nET\nQ",
+                        format_pdf_num(pill_x),
+                        format_pdf_num(pill_y),
+                        format_pdf_num(pill_w),
+                        format_pdf_num(pill_h),
+                        format_pdf_num(TILE_LABEL_FONT_PT),
+                        format_pdf_num(text_x),
+                        format_pdf_num(text_y),
+                        escaped,
+                    );
+                }
+            }
+        }
+
         let content_bytes = content.into_bytes();
         let mut content_dict = Dictionary::new();
         let stream_data = if content_bytes.len() > 256 {
@@ -490,6 +563,9 @@ pub fn arrange_pdf(pdf_bytes: &[u8], faces: &[PlannedFaceDto]) -> Result<Vec<u8>
         let mut resources = Dictionary::new();
         if !xobjects.is_empty() {
             resources.set("XObject", Object::Dictionary(xobjects));
+        }
+        if !fonts.is_empty() {
+            resources.set("Font", Object::Dictionary(fonts));
         }
 
         let mut page_dict = Dictionary::new();
@@ -1138,6 +1214,208 @@ pub fn rotate_landscape_faces(pdf_bytes: &[u8]) -> Result<(Option<Vec<u8>>, u32)
     Ok((Some(saved), rotated))
 }
 
+fn embed_png_xobject(doc: &mut Document, png_bytes: &[u8]) -> Result<ObjectId, String> {
+    let decoded = decode_png_rgb_alpha(png_bytes)?;
+    let smask_id = if let Some(alpha) = decoded.alpha {
+        let compressed = zlib_compress_fast(&alpha)?;
+        let mut smask_dict = Dictionary::new();
+        smask_dict.set("Type", Object::Name(b"XObject".to_vec()));
+        smask_dict.set("Subtype", Object::Name(b"Image".to_vec()));
+        smask_dict.set("Width", Object::Integer(decoded.width as i64));
+        smask_dict.set("Height", Object::Integer(decoded.height as i64));
+        smask_dict.set("ColorSpace", Object::Name(b"DeviceGray".to_vec()));
+        smask_dict.set("BitsPerComponent", Object::Integer(8));
+        smask_dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+        smask_dict.set("Length", Object::Integer(compressed.len() as i64));
+        Some(doc.add_object(Object::Stream(Stream::new(smask_dict, compressed))))
+    } else {
+        None
+    };
+
+    let compressed_rgb = zlib_compress_fast(&decoded.rgb)?;
+    let mut img_dict = Dictionary::new();
+    img_dict.set("Type", Object::Name(b"XObject".to_vec()));
+    img_dict.set("Subtype", Object::Name(b"Image".to_vec()));
+    img_dict.set("Width", Object::Integer(decoded.width as i64));
+    img_dict.set("Height", Object::Integer(decoded.height as i64));
+    img_dict.set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+    img_dict.set("BitsPerComponent", Object::Integer(8));
+    img_dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+    img_dict.set("Length", Object::Integer(compressed_rgb.len() as i64));
+    if let Some(sid) = smask_id {
+        img_dict.set("SMask", Object::Reference(sid));
+    }
+    Ok(doc.add_object(Object::Stream(Stream::new(img_dict, compressed_rgb))))
+}
+
+/// Stamps pre-rendered PNG overlays (watermark, header/footer) onto pages of `pdf_bytes`.
+/// Each unique stamp PNG is embedded once as an Image XObject (with `/SMask` for alpha).
+pub fn stamp_pdf_overlays(
+    pdf_bytes: &[u8],
+    per_face: &[Vec<OverlayPlacementDto>],
+    stamps: &[&[u8]],
+) -> Result<Vec<u8>, String> {
+    if per_face.iter().all(|list| list.is_empty()) {
+        return Ok(pdf_bytes.to_vec());
+    }
+    let mut doc = load_unencrypted(pdf_bytes)?;
+    let infos = collect_page_infos(&doc)?;
+
+    let mut embedded_stamps: HashMap<usize, ObjectId> = HashMap::new();
+    let mut gstates: HashMap<u32, ObjectId> = HashMap::new();
+
+    // Shared q / Q streams so existing page CTM mutations never leak into overlays.
+    let q_open_id = {
+        let mut d = Dictionary::new();
+        d.set("Length", Object::Integer(2));
+        doc.add_object(Object::Stream(Stream::new(d, b"q\n".to_vec())))
+    };
+    let q_close_id = {
+        let mut d = Dictionary::new();
+        d.set("Length", Object::Integer(3));
+        doc.add_object(Object::Stream(Stream::new(d, b"\nQ\n".to_vec())))
+    };
+
+    for (idx, info) in infos.iter().enumerate() {
+        let Some(placements) = per_face.get(idx) else {
+            continue;
+        };
+        if placements.is_empty() {
+            continue;
+        }
+
+        // Resolve/clone the page's Resources dictionary (inheriting if needed).
+        let mut res_dict = match resolve_inherited(&doc, info.page_id, b"Resources")
+            .and_then(|o| resolve_object(&doc, o))
+        {
+            Some(Object::Dictionary(d)) => d.clone(),
+            _ => Dictionary::new(),
+        };
+        let mut xobjs = match res_dict.get(b"XObject").ok().and_then(|o| resolve_object(&doc, o)) {
+            Some(Object::Dictionary(d)) => d.clone(),
+            _ => Dictionary::new(),
+        };
+        let mut ext_gs = match res_dict
+            .get(b"ExtGState")
+            .ok()
+            .and_then(|o| resolve_object(&doc, o))
+        {
+            Some(Object::Dictionary(d)) => d.clone(),
+            _ => Dictionary::new(),
+        };
+
+        let mut overlay_ops = String::new();
+        for (p_idx, p) in placements.iter().enumerate() {
+            let Some(&stamp_bytes) = stamps.get(p.stamp_index) else {
+                return Err(format!("overlay stamp index {} out of range", p.stamp_index));
+            };
+            let img_id = match embedded_stamps.get(&p.stamp_index) {
+                Some(&id) => id,
+                None => {
+                    let id = embed_png_xobject(&mut doc, stamp_bytes)?;
+                    embedded_stamps.insert(p.stamp_index, id);
+                    id
+                }
+            };
+            let xname = format!("IeumOv{p_idx}");
+            xobjs.set(xname.as_bytes(), Object::Reference(img_id));
+
+            let opacity = p.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
+            let gs_cmd = if opacity < 0.999 {
+                let key = (opacity * 1000.0).round() as u32;
+                let gs_id = match gstates.get(&key) {
+                    Some(&id) => id,
+                    None => {
+                        let mut gd = Dictionary::new();
+                        gd.set("Type", Object::Name(b"ExtGState".to_vec()));
+                        gd.set("ca", Object::Real(opacity as f32));
+                        gd.set("CA", Object::Real(opacity as f32));
+                        let id = doc.add_object(Object::Dictionary(gd));
+                        gstates.insert(key, id);
+                        id
+                    }
+                };
+                let gs_name = format!("IeumGs{key}");
+                ext_gs.set(gs_name.as_bytes(), Object::Reference(gs_id));
+                format!("/{gs_name} gs\n")
+            } else {
+                String::new()
+            };
+
+            let face_w = info.size.width_pt;
+            let face_h = info.size.height_pt;
+            let tx = p.x.unwrap_or(0.0);
+            let ty = p.y.unwrap_or(0.0);
+            let tw = p.width.unwrap_or(face_w);
+            let th = p.height.unwrap_or(face_h);
+            let dx = tx;
+            let dy = face_h - ty - th;
+            let bl = info.vis_box.left;
+            let bb = info.vis_box.bottom;
+            let br = info.vis_box.right;
+            let bt = info.vis_box.top;
+
+            let (a, b, c, d, e, f) = match info.rotate {
+                90 => (0.0, tw, -th, 0.0, br - dy, bb + dx),
+                180 => (-tw, 0.0, 0.0, -th, br - dx, bt - dy),
+                270 => (0.0, -tw, th, 0.0, bl + dy, bt - dx),
+                _ => (tw, 0.0, 0.0, th, bl + dx, bb + dy),
+            };
+            let _ = writeln!(
+                &mut overlay_ops,
+                "q\n{gs_cmd}{} {} {} {} {} {} cm\n/{xname} Do\nQ",
+                format_pdf_num(a),
+                format_pdf_num(b),
+                format_pdf_num(c),
+                format_pdf_num(d),
+                format_pdf_num(e),
+                format_pdf_num(f),
+            );
+        }
+
+        res_dict.set("XObject", Object::Dictionary(xobjs));
+        if !ext_gs.is_empty() {
+            res_dict.set("ExtGState", Object::Dictionary(ext_gs));
+        }
+
+        let ov_bytes = overlay_ops.into_bytes();
+        let mut ov_dict = Dictionary::new();
+        ov_dict.set("Length", Object::Integer(ov_bytes.len() as i64));
+        let ov_stream_id = doc.add_object(Object::Stream(Stream::new(ov_dict, ov_bytes)));
+
+        // Collect existing Contents references so we wrap them in q ... Q before stamping.
+        let existing_contents: Vec<Object> = match resolve_dict(&doc, info.page_id)
+            .and_then(|d| d.get(b"Contents").ok())
+            .cloned()
+        {
+            Some(Object::Reference(rid)) => match doc.objects.get(&rid) {
+                Some(Object::Array(arr)) => arr.clone(),
+                _ => vec![Object::Reference(rid)],
+            },
+            Some(Object::Array(arr)) => arr,
+            _ => Vec::new(),
+        };
+
+        let mut new_contents = Vec::with_capacity(existing_contents.len() + 3);
+        if !existing_contents.is_empty() {
+            new_contents.push(Object::Reference(q_open_id));
+            new_contents.extend(existing_contents);
+            new_contents.push(Object::Reference(q_close_id));
+        }
+        new_contents.push(Object::Reference(ov_stream_id));
+
+        if let Some(Object::Dictionary(page_dict)) = doc.objects.get_mut(&info.page_id) {
+            page_dict.set("Resources", Object::Dictionary(res_dict));
+            page_dict.set("Contents", Object::Array(new_contents));
+        }
+    }
+
+    let mut saved = Vec::new();
+    doc.save_to(&mut saved)
+        .map_err(|e| format!("failed to serialize overlaid PDF: {e}"))?;
+    Ok(saved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1241,6 +1519,8 @@ mod tests {
                     },
                 ],
                 cut_marks: vec![],
+                cell_borders: vec![],
+                tile_label: None,
             });
         }
         let arranged = arrange_pdf(&src, &faces).unwrap();
@@ -1250,5 +1530,39 @@ mod tests {
         let (rotated_bytes, count) = rotate_landscape_faces(&arranged).unwrap();
         assert_eq!(count, 10);
         assert!(rotated_bytes.is_some());
+    }
+
+    #[test]
+    fn draws_cell_borders_tile_labels_and_stamps_overlays() {
+        let src = make_minimal_pdf(&[(595.0, 842.0, 0), (595.0, 842.0, 0)], false);
+        let faces = vec![PlannedFaceDto {
+            width: 842.0,
+            height: 595.0,
+            cells: vec![PlacedCellDto {
+                box_rect: RectDto { x: 0.0, y: 0.0, width: 421.0, height: 595.0 },
+                page_index: Some(0),
+                content: Some(RectDto { x: 0.0, y: 0.0, width: 421.0, height: 595.0 }),
+            }],
+            cut_marks: vec![],
+            cell_borders: vec![RectDto { x: 0.25, y: 0.25, width: 420.5, height: 594.5 }],
+            tile_label: Some("(1-1)".to_string()),
+        }];
+        let arranged = arrange_pdf(&src, &faces).unwrap();
+        let stamp_png = crate::pixels::encode_png(&[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0], 2, 2, 3).unwrap();
+        let stamped = stamp_pdf_overlays(
+            &arranged,
+            &[vec![OverlayPlacementDto {
+                stamp_index: 0,
+                x: Some(10.0),
+                y: Some(10.0),
+                width: Some(100.0),
+                height: Some(100.0),
+                opacity: Some(0.3),
+            }]],
+            &[stamp_png.as_slice()],
+        )
+        .unwrap();
+        let doc = Document::load_mem(&stamped).unwrap();
+        assert_eq!(doc.get_pages().len(), 1);
     }
 }

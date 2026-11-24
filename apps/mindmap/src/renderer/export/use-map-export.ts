@@ -21,6 +21,7 @@
  * light or dark (`render.ts`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import { t as translate, type StringKey } from '../i18n/locale'
 import type { DocumentSession } from '../document/session'
 import { setThumbnailProvider } from '../document/thumbnail'
@@ -115,13 +116,17 @@ export interface MapExport {
   /** `path`: the file Save As picked for this export; the export then asks nothing */
   exportAs(format: ExportFormat, path?: string): void
   /** makes the page of the sheet on screen and opens the print dialog with it */
-  print(): void
+  print(initialDestination?: string): void
+  /** prints the active sheet immediately to the OS default printer (1 copy, default layout) */
+  quickPrint(): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 /** The print dialog, while it is open. */
 export interface MapPrintState {
   /** the page made when Print was asked for; null while no dialog is open */
   job: MindmapPrintJob | null
+  /** optional destination pre-selected when opened from Quick Print menu */
+  initialDestination?: string
   /** nothing changed in the dialog: the page goes to the print as before */
   printPlain(html: string): void
   close(): void
@@ -136,7 +141,10 @@ export function useMapExport(host: MapExportHost): MapExport & { printing: MapPr
   const hostRef = useRef(host)
   hostRef.current = host
   /** the page of an open print dialog */
-  const [printJob, setPrintJob] = useState<MindmapPrintJob | null>(null)
+  const [printJob, setPrintJob] = useState<{
+    job: MindmapPrintJob
+    initialDestination?: string
+  } | null>(null)
   const queue = useRef<Promise<void>>(Promise.resolve())
   const inTurn = useCallback((task: () => Promise<void>): void => {
     queue.current = queue.current.then(task, task)
@@ -208,15 +216,39 @@ export function useMapExport(host: MapExportHost): MapExport & { printing: MapPr
   )
 
   /** Print: the page is made now, from the sheet as it is; the dialog then decides the route. */
-  const print = useCallback(async (): Promise<void> => {
-    if (!hostRef.current.session) return
+  const print = useCallback(
+    async (initialDestination?: string): Promise<void> => {
+      if (!hostRef.current.session) return
+      try {
+        const taken = await activeSnapshot()
+        if (!taken) throw new Error('the sheet is not drawn')
+        setPrintJob({
+          job: { html: snapshotPage(taken.snapshot), suggestedName: taken.name },
+          initialDestination,
+        })
+      } catch (error) {
+        console.error('[mindmap] print failed:', error)
+        hostRef.current.say('printFailed')
+      }
+    },
+    [activeSnapshot],
+  )
+
+  const quickPrint = useCallback(async (): Promise<{ ok: true } | { ok: false; error: string }> => {
+    if (!hostRef.current.session) return { ok: false, error: 'no document' }
     try {
       const taken = await activeSnapshot()
-      if (!taken) throw new Error('the sheet is not drawn')
-      setPrintJob({ html: snapshotPage(taken.snapshot), suggestedName: taken.name })
+      if (!taken) return { ok: false, error: 'the sheet is not drawn' }
+      const result = await window.mindmapApi.printLayout.print({
+        options: createDefaultOptions(),
+        editor: { html: snapshotPage(taken.snapshot), suggestedName: taken.name },
+        job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+      })
+      if (result.ok) return { ok: true }
+      if ('aborted' in result) return { ok: true }
+      return { ok: false, error: result.error }
     } catch (error) {
-      console.error('[mindmap] print failed:', error)
-      hostRef.current.say('printFailed')
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
   }, [activeSnapshot])
 
@@ -233,7 +265,8 @@ export function useMapExport(host: MapExportHost): MapExport & { printing: MapPr
 
   const printing = useMemo<MapPrintState>(
     () => ({
-      job: printJob,
+      job: printJob?.job ?? null,
+      initialDestination: printJob?.initialDestination,
       printPlain: (html) => {
         setPrintJob(null)
         inTurn(() => printPlain(html))
@@ -246,7 +279,7 @@ export function useMapExport(host: MapExportHost): MapExport & { printing: MapPr
   useEffect(() => {
     const api = window.mindmapApi
     const offExport = api.onExportRequest((format) => inTurn(() => exportAs(format)))
-    const offPrint = api.onPrintRequest(() => inTurn(print))
+    const offPrint = api.onPrintRequest(() => inTurn(() => print()))
     setThumbnailProvider(() =>
       thumbnailFor(hostRef.current.session, hostRef.current.controllers.current),
     )
@@ -261,9 +294,10 @@ export function useMapExport(host: MapExportHost): MapExport & { printing: MapPr
   const commands = useMemo<MapExport>(
     () => ({
       exportAs: (format, path) => inTurn(() => exportAs(format, path)),
-      print: () => inTurn(print),
+      print: (initialDestination) => inTurn(() => print(initialDestination)),
+      quickPrint,
     }),
-    [exportAs, print, inTurn],
+    [exportAs, print, quickPrint, inTurn],
   )
   return { ...commands, printing }
 }

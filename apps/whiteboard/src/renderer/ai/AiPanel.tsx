@@ -31,6 +31,7 @@ import {
   type AiSubscriptionProviderId,
   type AiSubscriptionUsage,
 } from '@genoffice/ai-provider/browser'
+import type { Lang } from '@genoffice/i18n'
 import {
   AI_QUEUE_LABELS,
   AiAttachMenu,
@@ -51,6 +52,8 @@ import {
   AiPanelSideButton,
   AiQualityBadge,
   AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
   AiQueueStrip,
   AiReplyFooter,
   AiReplyProgress,
@@ -156,6 +159,79 @@ interface TurnChanges {
 
 interface ToolActivity extends AiWorkStep {
   readonly callId?: string
+  /** the call's input as JSON: kept for a question card call only, so a reopened chat can draw it */
+  readonly input?: string
+}
+
+/** a question card call keeps its input and output up to the store's own cut (spec 5.1) */
+const QUESTION_TOOL_FIELD_MAX_CHARS = 16_000
+
+/** a tool call's input as the transcript keeps it (undefined when it cannot be written out) */
+function toolInputText(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined
+  try {
+    const text = typeof input === 'string' ? input : JSON.stringify(input)
+    return text ? text.slice(0, QUESTION_TOOL_FIELD_MAX_CHARS) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * A tool's activity as the transcript keeps and shows it: a question card call
+ * keeps its input and whole output (a reopened chat draws it as a read-only
+ * card); any other tool keeps a short output only, as before.
+ */
+function keptToolActivity(tool: {
+  name: string
+  summary: string
+  isError?: boolean
+  input?: unknown
+  output?: string
+}): ToolActivity {
+  const question = isQuestionToolActivity(tool)
+  const input = question ? toolInputText(tool.input) : undefined
+  const max = question ? QUESTION_TOOL_FIELD_MAX_CHARS : TOOL_OUTPUT_MAX_CHARS
+  return {
+    name: tool.name,
+    summary: tool.summary,
+    isError: tool.isError,
+    ...(input !== undefined ? { input } : {}),
+    output: tool.output ? tool.output.slice(0, max) : undefined,
+  }
+}
+
+/**
+ * A reply's tool steps. In a reopened chat each question card call is drawn in
+ * its place as the read-only card (spec 5.1); live, the card shows below the chat.
+ */
+function ReplyToolSteps({
+  lang,
+  tools,
+  restored,
+}: {
+  lang: Lang
+  tools: ToolActivity[]
+  restored: boolean
+}): ReactNode {
+  if (!restored) return <AiWorkSteps lang={lang} steps={tools} />
+  const parts: ReactNode[] = []
+  let steps: ToolActivity[] = []
+  const flush = () => {
+    if (steps.length === 0) return
+    parts.push(<AiWorkSteps key={`s-${parts.length}`} lang={lang} steps={steps} />)
+    steps = []
+  }
+  for (const tool of tools) {
+    if (!isQuestionToolActivity(tool)) {
+      steps.push(tool)
+      continue
+    }
+    flush()
+    parts.push(<AiQuestionReceipt key={`q-${parts.length}`} lang={lang} activity={tool} />)
+  }
+  flush()
+  return parts
 }
 
 interface ChatEntry {
@@ -175,6 +251,8 @@ interface ChatEntry {
   changes?: TurnChanges
   memory?: readonly ProjectMemoryLine[]
   otherEditorTools?: ProjectChatEntry['otherEditorTools']
+  /** read back from a saved chat: its question cards are read-only */
+  restored?: boolean
 }
 
 export interface WhiteboardAiPanelProps {
@@ -231,16 +309,8 @@ function chatEntryOf(entry: ProjectChatEntry): ChatEntry {
     id: nextEntryId(entry.role === 'user' ? 'u' : 'a'),
     role: entry.role,
     text: entry.text,
-    ...(entry.tools && entry.tools.length > 0
-      ? {
-          tools: entry.tools.map((tl) => ({
-            name: tl.name,
-            summary: tl.summary,
-            isError: tl.isError,
-            output: tl.output ? tl.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-          })),
-        }
-      : {}),
+    restored: true,
+    ...(entry.tools && entry.tools.length > 0 ? { tools: entry.tools.map(keptToolActivity) } : {}),
     ...(entry.role === 'user' && skillChipRefsOf(entry.skills).length > 0
       ? { skills: skillChipRefsOf(entry.skills) }
       : {}),
@@ -772,11 +842,14 @@ export function AiPanel({
         onToolExecuted: ({ call, execution }) => {
           const activity: ToolActivity = {
             callId: call.id,
-            name: call.name,
-            summary: execution.summary || toolStepLabel(call.name),
             running: false,
-            isError: execution.isError,
-            output: execution.output.slice(0, TOOL_OUTPUT_MAX_CHARS),
+            ...keptToolActivity({
+              name: call.name,
+              summary: execution.summary || toolStepLabel(call.name),
+              isError: execution.isError,
+              input: call.input,
+              output: execution.output,
+            }),
           }
           runToolsRef.current.push(activity)
           patchLast((last) => {
@@ -1083,6 +1156,9 @@ export function AiPanel({
       }
       msgQueue.enqueue(text, { atts, skillUse })
       setPrompt('')
+      // a message sent while a card waits closes it: the run goes on without the answer
+      // (and cannot ask again in this run)
+      inlineQuestions.closeOpenCard()
     })
   }
 
@@ -1117,6 +1193,8 @@ export function AiPanel({
     clearMarks()
     skills.resetConversation()
     skillCards.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
     attachmentsRef.current = []
     setAttachments([])
     setAttachNotice(null)
@@ -1318,7 +1396,9 @@ export function AiPanel({
               key={entry.id}
               className={`ai-msg ai-msg-assistant${entry.isError && !entry.blocked ? ' ai-msg-error' : ''}${entry.streaming ? ' ai-msg-streaming' : ''}`}
             >
-              {hasTools && <AiWorkSteps lang={lang} steps={entry.tools!} />}
+              {hasTools && (
+                <ReplyToolSteps lang={lang} tools={entry.tools!} restored={!!entry.restored} />
+              )}
               {entry.blocked ? (
                 <AiBlockedNotice
                   kind={entry.blocked.kind}
@@ -1337,15 +1417,16 @@ export function AiPanel({
                       lang={lang}
                       text={entry.text}
                       streaming={entry.streaming}
+                      restored={entry.restored}
                       questionStatus={inlineQuestions.textCardStates[entry.id]?.status}
-                      savedAnswers={inlineQuestions.textCardStates[entry.id]?.answers}
-                      onQuestionSubmit={(spec, answers) => {
-                        inlineQuestions.markTextCard(entry.id, 'submitted', answers)
-                        send(inlineQuestions.formatFollowUp(spec, answers, false))
+                      questionAnswer={inlineQuestions.textCardStates[entry.id]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(entry.id, 'submitted', answer)
+                        send(inlineQuestions.formatFollowUp(lang, view, answer))
                       }}
-                      onQuestionSkip={(spec) => {
+                      onQuestionSkip={(view) => {
                         inlineQuestions.markTextCard(entry.id, 'skipped')
-                        send(inlineQuestions.formatFollowUp(spec, {}, true))
+                        send(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
                       }}
                     />
                   </div>
@@ -1368,7 +1449,12 @@ export function AiPanel({
                   onClearMarks={markedMsgId === entry.id ? clearMarks : null}
                 />
               )}
-              <AiReplyProgress reply={entry} thinking={t('aiThinking')} working={t('aiWorking')} />
+              <AiReplyProgress
+                reply={entry}
+                thinking={t('aiThinking')}
+                working={t('aiWorking')}
+                paused={inlineQuestions.waitingForPerson}
+              />
               {isLast && !busy && qualityFindings.length > 0 && (
                 <AiQualityBadge
                   lang={lang}
@@ -1420,10 +1506,11 @@ export function AiPanel({
         })}
         {inlineQuestions.activeToolCard && (
           <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
             lang={lang}
-            spec={inlineQuestions.activeToolCard.spec}
+            view={inlineQuestions.activeToolCard.view}
             status={inlineQuestions.activeToolCard.status}
-            savedAnswers={inlineQuestions.activeToolCard.answers}
+            answer={inlineQuestions.activeToolCard.answer}
             onSubmit={inlineQuestions.submitToolCard}
             onSkip={inlineQuestions.skipToolCard}
           />
