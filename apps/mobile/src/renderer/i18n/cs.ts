@@ -35,6 +35,8 @@ export const cs = {
   insertImageNeedsCaret: 'Nejprve klepněte v textu na místo, kam má obrázek přijít.',
   insertImageFailed: 'Tento soubor obrázku se nepodařilo přečíst.',
   flowEditRefused: 'Tuto úpravu zde nelze provést, proto byla vrácena.',
+  aiChangedPlaces: 'AI změnila {count} míst.',
+  aiUndoRefused: 'Dokument se po úpravách AI změnil, proto je nešlo vrátit všechny.',
   memoTitle: 'Poznámky',
   memoAdd: 'Přidat poznámku',
   memoAuthor: 'Jméno',

@@ -35,6 +35,8 @@ export const en = {
   insertImageNeedsCaret: 'Tap in the text where the picture should go first.',
   insertImageFailed: 'This picture file could not be read.',
   flowEditRefused: "This edit can't be made here, so it was undone.",
+  aiChangedPlaces: 'AI changed {count} places.',
+  aiUndoRefused: "The document changed after the AI's edits, so they could not all be undone.",
   memoTitle: 'Memos',
   memoAdd: 'Add memo',
   memoAuthor: 'Name',

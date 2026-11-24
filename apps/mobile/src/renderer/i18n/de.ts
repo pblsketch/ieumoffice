@@ -36,6 +36,9 @@ export const de = {
   insertImageNeedsCaret: 'Tippe zuerst im Text an die Stelle, an der das Bild hin soll.',
   insertImageFailed: 'Diese Bilddatei konnte nicht gelesen werden.',
   flowEditRefused: 'Diese Änderung ist hier nicht möglich und wurde rückgängig gemacht.',
+  aiChangedPlaces: 'Die KI hat {count} Stellen geändert.',
+  aiUndoRefused:
+    'Das Dokument hat sich nach den Änderungen der KI geändert, daher ließen sie sich nicht alle rückgängig machen.',
   memoTitle: 'Notizen',
   memoAdd: 'Notiz hinzufügen',
   memoAuthor: 'Name',

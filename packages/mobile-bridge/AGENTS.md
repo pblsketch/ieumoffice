@@ -9,7 +9,7 @@
 - `src/view-edit-gate.ts`: 보기 우선 열기(`initialDocumentMode`), 보기 모드 × AI 수정 도구 자동 전환 및 읽기 전용·암호·배포용 문서 수정 차단(`wrapSkillWithViewEditGate`).
 - `src/ai-bridge.ts`: Rust 키 비노출 스냅샷(`MobileAiSettingsSnapshot`)을 `@genoffice/ai-provider/browser`의 `selectAiProvider`와 `@genoffice/ui`의 `aiSendGate` 계약으로 투영(`claude-code`·`codex` `'off'`, `__sealed__` 자리표시자, `subscriptionNoticeVersion` 영속화, OpenRouter `freeOnly` 강제), 스트림 전송기(`createMobileAgentTransport`), 문서 한정 메모리 대화 저장소(`MobileAiMemoryStore`).
 - `src/markdown/index.ts`: 마크다운 모바일 어댑터(`createMobileMarkdownApi`), 5 MiB 상한 인라인 `data:` 그림 삽입(`inlineImageToMarkdown`), 상대 경로 그림 문법 보존(`preserveRelativeImageLinks`), 마크다운 AI 스킬(`createMobileMarkdownSkill`), 1차 제외 기능 미지원 응답.
-- `src/hwp/index.ts`: 한글 모바일 어댑터(`createMobileHwpApi`), Canvas2D 강제 설정 시딩(`seedMobileHwpStudioSettings`, `mobileHwpStudioUrl`), 자가 검증→탭 측정→Rust 저장 보정/백업 게이트 연동, 암호 문서 원본 전용 공유, 한글 AI 스킬(`createMobileHwpSkill`), 1차 제외 기능 미지원 응답.
+- `src/hwp/index.ts`: 한글 모바일 어댑터(`createMobileHwpApi`), Canvas2D 강제 설정 시딩(`seedMobileHwpStudioSettings`, `mobileHwpStudioUrl`), 자가 검증→탭 측정→Rust 저장 보정/백업 게이트 연동, 암호 문서 원본 전용 공유, 1차 제외 기능 미지원 응답. 한글 AI 도구는 여기 두지 않고 앱이 PC 한글 편집기의 도구를 플러그인 위에서 그대로 쓴다(`apps/mobile/src/renderer/ai/hwpAgent.ts`); 보기/편집 게이트(`wrapSkillWithViewEditGate`)는 앱이 그 도구에 씌운다.
 
 ## 항상 지켜야 하는 것
 

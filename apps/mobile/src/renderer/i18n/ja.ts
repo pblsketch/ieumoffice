@@ -35,6 +35,8 @@ export const ja = {
   insertImageNeedsCaret: '先に、画像を入れたい位置の文字をタップしてください。',
   insertImageFailed: 'この画像ファイルを読み込めませんでした。',
   flowEditRefused: 'ここではこの編集はできないため、元に戻しました。',
+  aiChangedPlaces: 'AIが{count}か所を直しました。',
+  aiUndoRefused: 'AIの編集の後に文書が変わったため、すべては元に戻せませんでした。',
   memoTitle: 'メモ',
   memoAdd: 'メモを追加',
   memoAuthor: '名前',

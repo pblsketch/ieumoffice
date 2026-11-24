@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AgentLoop, type AgentMessage } from '@genoffice/agent-core'
+import { AgentLoop, composeSkills, type AgentMessage, type AgentSkill } from '@genoffice/agent-core'
+import { useAiInlineQuestions } from '@genoffice/ui'
 import { AI_SUBSCRIPTION_NOTICE_VERSION } from '@genoffice/ai-provider/browser'
 import { normalizeLang, PRODUCT_NAME, type Lang } from '@genoffice/i18n'
 import {
   createMobileAgentTransport,
   createMobileAiMemoryStore,
 } from '@genoffice/mobile-bridge/ai-bridge'
-import { createMobileHwpApi, createMobileHwpSkill } from '@genoffice/mobile-bridge/hwp'
+import { createMobileHwpApi } from '@genoffice/mobile-bridge/hwp'
 import {
   base64ToUtf8,
   createMobileMarkdownApi,
@@ -35,8 +36,10 @@ import {
 import {
   canMutateDocument,
   initialDocumentMode,
+  wrapSkillWithViewEditGate,
   type DocumentMode,
 } from '@genoffice/mobile-bridge/view-edit-gate'
+import type { MobileHwpAgent } from './ai/hwpAgent'
 import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiSheetPanel'
 import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
@@ -159,6 +162,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const [aiAutoSwitched, setAiAutoSwitched] = useState(false)
   const [aiRecoveryNotice, setAiRecoveryNotice] = useState<ChatGptRecoveryNoticeKind>(null)
   const [lastAiUndo, setLastAiUndo] = useState<{ summary: string; undo: () => void } | null>(null)
+  // the shared A2UI question card (ask_questions, decision 0164)
+  const inlineQuestions = useAiInlineQuestions()
+  const inlineQuestionsRef = useRef(inlineQuestions)
+  inlineQuestionsRef.current = inlineQuestions
   const [lastAiPrompt, setLastAiPrompt] = useState<string | null>(null)
   const [hwpVerifyFailed, setHwpVerifyFailed] = useState(false)
 
@@ -240,6 +247,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const activeRunCancelRef = useRef<(() => void) | null>(null)
 
   const lang: Lang = normalizeLang(prefs.lang)
+  const langRef = useRef(lang)
+  langRef.current = lang
   const tNow = useCallback(
     (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key),
     [lang],
@@ -419,6 +428,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       onResetAiMemory: (_prev, nextDocKey) => {
         activeRunCancelRef.current?.()
         aiMemoryRef.current.resetForDoc(nextDocKey)
+        inlineQuestionsRef.current.resetConversation()
         setAiMessages([])
         setLastAiUndo(null)
         setAiAutoSwitched(false)
@@ -676,6 +686,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setAiRecoveryNotice(null)
       setAiStreaming(true)
       let classifiedError = false
+      // the message shows at once; reading the document for the tools comes after
+      const history = [...aiMemoryRef.current.getMessages()]
+      aiMemoryRef.current.append({ role: 'user', text: prompt })
+      setAiMessages(aiMemoryRef.current.getMessages())
 
       const caps = {
         writable: doc.session.writable,
@@ -690,49 +704,65 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         setAiAutoSwitched(true)
       }
 
-      const skill =
-        doc.session.format === 'md' || doc.session.format === 'txt'
-          ? createMobileMarkdownSkill(
-              {
-                getMarkdown: () =>
-                  markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current,
-                setMarkdown: (next) => {
-                  markdownEditorRef.current?.setMarkdown(next)
-                  setMarkdownText(next)
-                  sessionControllerRef.current?.markDirty(true)
+      let base: AgentSkill
+      let hwpAgent: MobileHwpAgent | null = null
+      if (doc.session.format === 'md' || doc.session.format === 'txt') {
+        base = createMobileMarkdownSkill(
+          {
+            getMarkdown: () => markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current,
+            setMarkdown: (next) => {
+              markdownEditorRef.current?.setMarkdown(next)
+              setMarkdownText(next)
+              sessionControllerRef.current?.markDirty(true)
+            },
+          },
+          {
+            getMode: () => modeRef.current,
+            getCapabilities: () => caps,
+            switchToEdit,
+            onDocumentMutated: (summary, prev) => {
+              setLastAiUndo({
+                summary,
+                undo: () => {
+                  markdownEditorRef.current?.setMarkdown(prev)
+                  setMarkdownText(prev)
+                  setLastAiUndo(null)
                 },
-              },
-              {
-                getMode: () => modeRef.current,
-                getCapabilities: () => caps,
-                switchToEdit,
-                onDocumentMutated: (summary, prev) => {
-                  setLastAiUndo({
-                    summary,
-                    undo: () => {
-                      markdownEditorRef.current?.setMarkdown(prev)
-                      setMarkdownText(prev)
-                      setLastAiUndo(null)
-                    },
-                  })
-                },
-              },
-            )
-          : createMobileHwpSkill(hwpPort, {
-              getMode: () => modeRef.current,
-              getCapabilities: () => caps,
-              switchToEdit,
-              onDocumentMutated: (summary) => {
-                sessionControllerRef.current?.markDirty(true)
-                setLastAiUndo({
-                  summary,
-                  undo: () => {
-                    hwpEditorRef.current?.runAction('undo')
-                    setLastAiUndo(null)
-                  },
-                })
-              },
-            })
+              })
+            },
+          },
+        )
+      } else {
+        // the PC editor's tools over the page editor's plugin (ai/hwpAgent.ts), after the
+        // flow view's edits have been handed to the page editor
+        try {
+          await flushFlowToStudio()
+          const { createMobileHwpAgent } = await import('./ai/hwpAgent')
+          const agent = createMobileHwpAgent(
+            (method, ...args) => {
+              const studio = hwpEditorRef.current
+              if (!studio) return Promise.reject(new Error('the page editor is not ready'))
+              return studio.callPlugin(method, ...args)
+            },
+            () => langRef.current,
+          )
+          await agent.begin()
+          hwpAgent = agent
+          base = wrapSkillWithViewEditGate(agent.skill, {
+            isMutatingTool: (name) => agent.editTools.has(name),
+            getMode: () => modeRef.current,
+            getCapabilities: () => caps,
+            switchToEdit,
+          })
+        } catch {
+          setAiRecoveryNotice('connection-error')
+          setAiStreaming(false)
+          return
+        }
+      }
+      // every document can ask through the shared question card
+      inlineQuestionsRef.current.supersedeOpen()
+      const skill = composeSkills(base.id, '', [base, inlineQuestionsRef.current.askQuestionsSkill])
 
       const transport = createMobileAgentTransport(client, {
         onStreamError: (detail) => {
@@ -746,10 +776,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           }
         },
       })
-
-      const history = [...aiMemoryRef.current.getMessages()]
-      aiMemoryRef.current.append({ role: 'user', text: prompt })
-      setAiMessages(aiMemoryRef.current.getMessages())
 
       await new Promise<void>((resolve) => {
         const loop = new AgentLoop({
@@ -782,8 +808,30 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       })
       activeRunCancelRef.current = null
       setAiStreaming(false)
+      const changed = hwpAgent?.finish() ?? null
+      if (changed) {
+        // the page editor changed: the flow view follows, and the change can be taken back
+        studioEditedRef.current = true
+        sessionControllerRef.current?.markDirty(true)
+        if (hwpLayoutRef.current === 'flow') refreshFlowFromStudio()
+        setLastAiUndo({
+          summary: translateMobile(langRef.current, 'aiChangedPlaces', { count: changed.places }),
+          undo: () => {
+            setLastAiUndo(null)
+            void changed.undo().then((outcome) => {
+              if (hwpLayoutRef.current === 'flow') refreshFlowFromStudio()
+              if (outcome !== 'reverted') {
+                showToast({
+                  message: translateMobile(langRef.current, 'aiUndoRefused'),
+                  tone: 'error',
+                })
+              }
+            })
+          },
+        })
+      }
     },
-    [client, hwpPort, prefs.aiEnabled],
+    [client, flushFlowToStudio, prefs.aiEnabled, refreshFlowFromStudio, showToast],
   )
 
   const handleUpdatePrefs = useCallback(
@@ -1356,6 +1404,15 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                 onUndoLastChange={lastAiUndo?.undo}
                 onSend={(p) => void handleSendAi(p)}
                 onStop={() => activeRunCancelRef.current?.()}
+                // a card shows while its run lasts; the reply that follows carries the answer
+                questionCard={
+                  inlineQuestions.activeToolCard &&
+                  (aiStreaming || inlineQuestions.activeToolCard.status === 'open')
+                    ? inlineQuestions.activeToolCard
+                    : null
+                }
+                onQuestionSubmit={inlineQuestions.submitToolCard}
+                onQuestionSkip={inlineQuestions.skipToolCard}
                 onOpenSettings={() => {
                   void refreshAiState()
                   setScreen('settings')

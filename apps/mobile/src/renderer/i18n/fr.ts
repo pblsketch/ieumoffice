@@ -36,6 +36,9 @@ export const fr = {
   insertImageNeedsCaret: 'Touchez d’abord l’endroit du texte où placer l’image.',
   insertImageFailed: 'Impossible de lire ce fichier image.',
   flowEditRefused: 'Cette modification est impossible ici ; elle a été annulée.',
+  aiChangedPlaces: "L'IA a modifié {count} endroits.",
+  aiUndoRefused:
+    "Le document a changé après les modifications de l'IA ; elles n'ont pas toutes pu être annulées.",
   memoTitle: 'Notes',
   memoAdd: 'Ajouter une note',
   memoAuthor: 'Nom',

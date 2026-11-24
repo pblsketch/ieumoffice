@@ -1,5 +1,4 @@
-import type { AgentSkill, AgentToolCall, AgentToolDef, ToolExecution } from '@genoffice/agent-core'
-import { brandText, type Lang } from '@genoffice/i18n'
+import type { Lang } from '@genoffice/i18n'
 import {
   isMobileCommandError,
   MobileCommandError,
@@ -9,11 +8,6 @@ import {
   type MobileTheme,
   type TabSpot,
 } from '../transport'
-import {
-  wrapSkillWithViewEditGate,
-  type DocumentEditCapabilities,
-  type DocumentMode,
-} from '../view-edit-gate'
 
 export const MOBILE_STUDIO_SETTINGS_KEY = 'rhwp-settings'
 
@@ -365,84 +359,4 @@ export function createMobileHwpApi(client: MobileClient): MobileHwpApi {
       return UNSUPPORTED_ON_MOBILE
     },
   }
-}
-
-export interface MobileHwpSkillGate {
-  readonly getMode: () => DocumentMode
-  readonly getCapabilities: () => DocumentEditCapabilities
-  readonly switchToEdit: () => void | Promise<void>
-  readonly onAutoSwitchedToEdit?: (toolName: string) => void
-  readonly onDocumentMutated?: (summary: string) => void
-}
-
-const MOBILE_HWP_TOOLS: AgentToolDef[] = [
-  {
-    name: 'read_hwp_text',
-    description: 'Read the plain text content of the open Hangul (HWP/HWPX) document.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'replace_hwp_text',
-    description: 'Replace exact text inside the open Hangul (HWP/HWPX) document.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        find: { type: 'string', description: 'Exact existing text to replace.' },
-        replace: { type: 'string', description: 'Replacement text.' },
-      },
-      required: ['find', 'replace'],
-    },
-  },
-]
-
-const HWP_MUTATING_TOOLS = new Set(['replace_hwp_text'])
-
-export function createMobileHwpSkill(
-  editor: MobileHwpEditorPort,
-  gate: MobileHwpSkillGate,
-): AgentSkill {
-  const baseSkill: AgentSkill = {
-    id: 'mobile-hwp',
-    systemPrompt: [
-      brandText(
-        'You are the writing assistant inside GenOffice Mobile Hangul (HWP/HWPX) editor.',
-        'en',
-      ),
-      'Use read_hwp_text to inspect the open document and replace_hwp_text to edit text in place.',
-      'Only inspect or edit the currently open document.',
-    ].join('\n'),
-    tools: MOBILE_HWP_TOOLS,
-    async executeTool(call: AgentToolCall): Promise<ToolExecution> {
-      if (call.name === 'read_hwp_text') {
-        const text = await editor.getPlainText()
-        return { output: text, mutated: false, summary: 'Read Hangul document' }
-      }
-      if (call.name === 'replace_hwp_text') {
-        const find = typeof call.input.find === 'string' ? call.input.find : ''
-        const replace = typeof call.input.replace === 'string' ? call.input.replace : ''
-        if (!find) {
-          return { output: 'Missing non-empty "find" text.', isError: true, summary: call.name }
-        }
-        const ok = await editor.replaceText(find, replace)
-        if (!ok) {
-          return { output: `Text not found: ${find}`, isError: true, summary: call.name }
-        }
-        gate.onDocumentMutated?.(`Replaced "${find.slice(0, 24)}"`)
-        return {
-          output: 'Updated text in Hangul document.',
-          mutated: true,
-          summary: 'Replace text',
-        }
-      }
-      return { output: `Unknown tool: ${call.name}`, isError: true, summary: call.name }
-    },
-  }
-
-  return wrapSkillWithViewEditGate(baseSkill, {
-    isMutatingTool: (name) => HWP_MUTATING_TOOLS.has(name),
-    getMode: gate.getMode,
-    getCapabilities: gate.getCapabilities,
-    switchToEdit: gate.switchToEdit,
-    onAutoSwitchedToEdit: gate.onAutoSwitchedToEdit,
-  })
 }

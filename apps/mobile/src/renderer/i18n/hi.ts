@@ -36,6 +36,8 @@ export const hi = {
   insertImageNeedsCaret: 'पहले टेक्स्ट में उस जगह टैप करें जहाँ चित्र डालना है।',
   insertImageFailed: 'यह चित्र फ़ाइल पढ़ी नहीं जा सकी।',
   flowEditRefused: 'यह बदलाव यहाँ नहीं किया जा सकता, इसलिए इसे पलट दिया गया।',
+  aiChangedPlaces: 'AI ने {count} जगह बदलाव किए।',
+  aiUndoRefused: 'AI के बदलावों के बाद दस्तावेज़ बदल गया, इसलिए सभी बदलाव पलटे नहीं जा सके।',
   memoTitle: 'मेमो',
   memoAdd: 'मेमो जोड़ें',
   memoAuthor: 'नाम',

@@ -35,6 +35,8 @@ export const ar = {
   insertImageNeedsCaret: 'انقر أولاً في النص على المكان الذي ستوضع فيه الصورة.',
   insertImageFailed: 'تعذّرت قراءة ملف الصورة هذا.',
   flowEditRefused: 'لا يمكن إجراء هذا التعديل هنا، لذا تم التراجع عنه.',
+  aiChangedPlaces: 'غيّر الذكاء الاصطناعي {count} مواضع.',
+  aiUndoRefused: 'تغيّر المستند بعد تعديلات الذكاء الاصطناعي، لذا تعذّر التراجع عنها كلها.',
   memoTitle: 'الملاحظات',
   memoAdd: 'إضافة ملاحظة',
   memoAuthor: 'الاسم',

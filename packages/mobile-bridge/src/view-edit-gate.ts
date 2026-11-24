@@ -57,6 +57,10 @@ export function wrapSkillWithViewEditGate(
       }
       return skill.tools.filter((tool) => !options.isMutatingTool(tool.name))
     },
+    // the tools-off prompt goes along unchanged: without tools nothing can be edited
+    get toolsOffSystemPrompt() {
+      return skill.toolsOffSystemPrompt
+    },
     buildContext: skill.buildContext ? () => skill.buildContext!() : undefined,
     async executeTool(call: AgentToolCall, signal?: AbortSignal): Promise<ToolExecution> {
       const mutating = options.isMutatingTool(call.name)

@@ -35,6 +35,8 @@ export const ru = {
   insertImageNeedsCaret: 'Сначала коснитесь места в тексте, куда вставить рисунок.',
   insertImageFailed: 'Не удалось прочитать этот файл изображения.',
   flowEditRefused: 'Здесь эту правку сделать нельзя, поэтому она отменена.',
+  aiChangedPlaces: 'ИИ изменил мест: {count}.',
+  aiUndoRefused: 'После правок ИИ документ изменился, поэтому отменить их все не удалось.',
   memoTitle: 'Заметки',
   memoAdd: 'Добавить заметку',
   memoAuthor: 'Имя',

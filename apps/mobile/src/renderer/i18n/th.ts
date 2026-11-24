@@ -35,6 +35,8 @@ export const th = {
   insertImageNeedsCaret: 'แตะตำแหน่งในข้อความที่จะใส่รูปภาพก่อน',
   insertImageFailed: 'อ่านไฟล์รูปภาพนี้ไม่ได้',
   flowEditRefused: 'แก้ไขแบบนี้ตรงนี้ไม่ได้ จึงยกเลิกให้แล้ว',
+  aiChangedPlaces: 'AI แก้ไข {count} ตำแหน่ง',
+  aiUndoRefused: 'เอกสารเปลี่ยนไปหลังจาก AI แก้ไข จึงยกเลิกการแก้ไขทั้งหมดไม่ได้',
   memoTitle: 'บันทึกย่อ',
   memoAdd: 'เพิ่มบันทึกย่อ',
   memoAuthor: 'ชื่อ',

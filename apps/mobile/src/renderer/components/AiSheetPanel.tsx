@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import type { AgentMessage } from '@genoffice/agent-core'
 import { SUBSCRIPTION_CHATGPT_USAGE_URL } from '@genoffice/ai-provider/browser'
-import { AiMark } from '@genoffice/ui'
+import {
+  AiMark,
+  AiQuestionCard,
+  type ActiveQuestionCardState,
+  type QuestionCardSubmission,
+} from '@genoffice/ui'
 import { evaluateMobileAiSendGate } from '@genoffice/mobile-bridge/ai-bridge'
 import type {
   MobileAiSettingsSnapshot,
@@ -31,6 +36,10 @@ export interface AiSheetPanelProps {
   readonly onChatgptReconsent: () => void
   readonly onChatgptReconnect: () => void
   readonly onRetryLast?: () => void
+  /** The shared A2UI question card the AI is asking with (ask_questions), if any. */
+  readonly questionCard?: ActiveQuestionCardState | null
+  readonly onQuestionSubmit?: (answer: QuestionCardSubmission) => void
+  readonly onQuestionSkip?: () => void
 }
 
 export function AiSheetPanel({
@@ -51,8 +60,11 @@ export function AiSheetPanel({
   onChatgptReconsent,
   onChatgptReconnect,
   onRetryLast,
+  questionCard,
+  onQuestionSubmit,
+  onQuestionSkip,
 }: AiSheetPanelProps) {
-  const { t } = useMobileLocale()
+  const { t, lang } = useMobileLocale()
   const [draft, setDraft] = useState('')
 
   if (!aiEnabled) {
@@ -218,6 +230,17 @@ export function AiSheetPanel({
               </div>
             )
           })
+        )}
+        {questionCard && (
+          <AiQuestionCard
+            key={questionCard.id}
+            lang={lang}
+            view={questionCard.view}
+            status={questionCard.status}
+            answer={questionCard.answer}
+            onSubmit={onQuestionSubmit}
+            onSkip={onQuestionSkip}
+          />
         )}
       </div>
 

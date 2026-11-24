@@ -35,6 +35,9 @@ export const tr = {
   insertImageNeedsCaret: 'Önce metinde resmin gideceği yere dokunun.',
   insertImageFailed: 'Bu resim dosyası okunamadı.',
   flowEditRefused: 'Bu düzenleme burada yapılamıyor, bu yüzden geri alındı.',
+  aiChangedPlaces: 'Yapay zekâ {count} yeri değiştirdi.',
+  aiUndoRefused:
+    'Belge yapay zekânın düzenlemelerinden sonra değişti, bu yüzden hepsi geri alınamadı.',
   memoTitle: 'Notlar',
   memoAdd: 'Not ekle',
   memoAuthor: 'Ad',
