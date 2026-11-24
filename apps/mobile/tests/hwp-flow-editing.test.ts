@@ -5,7 +5,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { HwpDocument, initSync } from '@rhwp/core'
 import {
   createFlowEditor,
+  keepSpacesVisible,
   offsetInParagraph,
+  paragraphText,
   placeCaret,
   renumberParagraphs,
   textDiff,
@@ -37,6 +39,16 @@ describe('flow editing helpers', () => {
       '2',
       '3',
     ])
+  })
+
+  it('keeps spaces that HTML would collapse visible without changing the text', () => {
+    document.body.innerHTML =
+      '<div class="flow-p" data-sec="0" data-para="0"><p><span> 가 </span><span>나  다 </span></p></div>'
+    const p = document.querySelector('.flow-p')!
+    keepSpacesVisible(p)
+    const nbsp = String.fromCharCode(0xa0)
+    expect(p.textContent).toBe(`${nbsp}가 나${nbsp}${nbsp}다${nbsp}`)
+    expect(paragraphText(p)).toBe(' 가 나  다 ')
   })
 
   it('maps DOM points to character offsets and back', () => {
@@ -214,7 +226,7 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(cellCount(0)).toBe(before + 1)
     expect(cellText(cellPath(0, 0))).toBe('일')
     expect(cellText(cellPath(0, 1))).toBe(' 시')
-    expect(cellEl(cellPath(0, 1)).textContent).toBe(' 시')
+    expect(paragraphText(cellEl(cellPath(0, 1)))).toBe(' 시')
     // the caret is at the start of the new cell paragraph; Backspace joins them
     expect(beforeInput('deleteContentBackward')).toBe(true)
     expect(cellCount(0)).toBe(before)
@@ -372,6 +384,46 @@ describe('editing captions, text boxes and bulleted paragraphs (real rhwp engine
     typeAt(el, before.length, '!')
     expect(pathText(d, para, path)).toBe(`${before}!`)
     expect(el.textContent).toBe(`${before}!`)
+  })
+
+  it('shows automatic numbers and shifts them after Enter (engine patch 0057)', () => {
+    const d = HwpDocument.createEmpty()
+    d.createBlankDocument()
+    d.insertText(0, 0, 0, '첫째')
+    d.splitParagraph(0, 0, 2)
+    d.insertText(0, 1, 0, '둘째')
+    d.splitParagraph(0, 1, 2)
+    d.insertText(0, 2, 0, '셋째')
+    const id = d.ensureDefaultNumbering()
+    for (const p of [0, 1, 2]) {
+      d.applyParaFormat(0, p, JSON.stringify({ headType: 'Number', numberingId: id, paraLevel: 0 }))
+    }
+    doc = d
+    document.body.innerHTML = buildFlowHtml(d as unknown as FlowEditDocument)
+    editor = createFlowEditor({
+      doc: d as unknown as FlowEditDocument,
+      frameDocument: document,
+      onChange: () => {},
+    })
+    editor.setEditable(true)
+    const markers = () =>
+      [...document.querySelectorAll('.flow-p:not([data-path]) p[data-number]')].map((p) =>
+        p.getAttribute('data-marker'),
+      )
+    expect(markers()).toEqual(['1.', '2.', '3.'])
+    // the number is drawn by CSS, not part of the text
+    expect(document.querySelector('.flow-p')?.textContent).toBe('첫째')
+    placeCaret(document.querySelector<HTMLElement>('.flow-p')!, 2)
+    document.dispatchEvent(
+      new InputEvent('beforeinput', {
+        inputType: 'insertParagraph',
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+    expect(markers()).toEqual(['1.', '2.', '3.', '4.'])
+    editor.undo()
+    expect(markers()).toEqual(['1.', '2.', '3.'])
   })
 
   it('keeps the bullet out of the text when typing into a bulleted paragraph', () => {

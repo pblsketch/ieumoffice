@@ -24,6 +24,7 @@ import {
   cellParagraphHtml,
   flatStep,
   listParagraphLength,
+  paragraphNumber,
   renderCellContents,
   type CellStep,
   type FlowSourceDocument,
@@ -244,6 +245,30 @@ export function renumberParagraphs(root: ParentNode, sec: number, fromPara: numb
   }
 }
 
+const NBSP = String.fromCharCode(0xa0)
+
+/**
+ * HTML collapses spaces at the start and end of a block and runs of spaces, so
+ * after a block is redrawn from the engine a just-typed trailing space would
+ * vanish under the caret and the next character would land before it. Spaces
+ * that would collapse become no-break spaces; `paragraphText` reads them back
+ * as spaces, so the engine text is unchanged.
+ */
+export function keepSpacesVisible(root: Element): void {
+  const blocks = root.matches('.flow-p') ? [root] : [...root.querySelectorAll('.flow-p')]
+  for (const block of blocks) {
+    const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+    const nodes: Text[] = []
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text)
+    nodes.forEach((node, i) => {
+      let text = node.data.replace(/ {2,}/g, (run) => NBSP.repeat(run.length))
+      if (i === 0) text = text.replace(/^ /, NBSP)
+      if (i === nodes.length - 1) text = text.replace(/ $/, NBSP)
+      if (text !== node.data) node.data = text
+    })
+  }
+}
+
 /** Character offset of a DOM point inside a block element. */
 export function offsetInParagraph(pEl: Element, node: Node, nodeOffset: number): number {
   const range = pEl.ownerDocument.createRange()
@@ -391,7 +416,10 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
 
   const redraw = (at: BlockAddress): HTMLElement | null => {
     const el = blockEl(at)
-    if (el) el.innerHTML = ops.html(at)
+    if (el) {
+      el.innerHTML = ops.html(at)
+      keepSpacesVisible(el)
+    }
     return el
   }
 
@@ -408,6 +436,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
       ) {
         td.innerHTML = renderCellContents(doc, at.sec, at.para, cell)
         markObjectsReadOnly(td)
+        keepSpacesVisible(td)
         return
       }
     }
@@ -423,6 +452,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
     el.setAttribute('data-sec', String(at.sec))
     el.setAttribute('data-para', String(at.para))
     el.innerHTML = ops.html(at)
+    keepSpacesVisible(el)
     return el
   }
 
@@ -453,15 +483,28 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
     if (inserted) ops.insert(at, offset, inserted)
   }
 
+  /** Automatic numbers after an added or removed paragraph shift: ask the engine again. */
+  const refreshNumbers = () => {
+    for (const p of body.querySelectorAll<HTMLElement>('.flow-p p[data-number]')) {
+      const block = p.closest('.flow-p')
+      const at = block ? blockAddress(block) : null
+      if (!at) continue
+      const text = paragraphNumber(doc, at.sec, at.para, at.path)
+      if (text) p.setAttribute('data-marker', text)
+      else p.removeAttribute('data-marker')
+    }
+  }
+
   const doSplit = (at: BlockAddress, offset: number) => {
     ops.split(at, offset)
     if (at.path) {
       redrawCell(at)
-      return
+    } else {
+      renumberParagraphs(body, at.sec, at.para + 1, 1)
+      const current = redraw(at)
+      current?.after(newBodyBlock(neighbour(at, 1)))
     }
-    renumberParagraphs(body, at.sec, at.para + 1, 1)
-    const current = redraw(at)
-    current?.after(newBodyBlock(neighbour(at, 1)))
+    refreshNumbers()
   }
 
   /** Joins `at` into the block before it; returns the offset where they meet. */
@@ -471,11 +514,12 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
     ops.merge(at)
     if (at.path) {
       redrawCell(at)
-      return joinOffset
+    } else {
+      blockEl(at)?.remove()
+      renumberParagraphs(body, at.sec, at.para + 1, -1)
+      redraw(prev)
     }
-    blockEl(at)?.remove()
-    renumberParagraphs(body, at.sec, at.para + 1, -1)
-    redraw(prev)
+    refreshNumbers()
     return joinOffset
   }
 
@@ -748,6 +792,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
       body.contentEditable = next ? 'true' : 'false'
       body.setAttribute('spellcheck', 'false')
       markObjectsReadOnly(body)
+      if (next) keepSpacesVisible(body)
     },
     runFormat(action) {
       const info = selectionInfo()

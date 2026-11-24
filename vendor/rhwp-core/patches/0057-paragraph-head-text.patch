@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: pblsketch <239486537+pblsketch@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 19:45:08 +0900
+Subject: [PATCH] feat(wasm): expose the number text of numbered paragraphs
+ (0057)
+
+---
+ src/wasm_api.rs | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/src/wasm_api.rs b/src/wasm_api.rs
+index 81a7bde5a..1b3b9537b 100644
+--- a/src/wasm_api.rs
++++ b/src/wasm_api.rs
+@@ -3518,6 +3518,38 @@ impl HwpDocument {
+         Ok(para.text.chars().count() as u32)
+     }
+ 
++    /// 번호·개요 문단 앞에 그려지는 번호 문자열(예: `1.`, `가.`, `①`)을 반환한다.
++    ///
++    /// 쪽 나누기가 문서 순서로 정해 둔 값(`Paragraph::numbering_marker`)을 그대로 읽으므로
++    /// 쪽 화면에 그려지는 번호와 같다. 번호·개요 문단이 아니거나 아직 정해지지 않았으면
++    /// 빈 문자열이다. 글머리표는 돌려주지 않는다(`getBulletList`로 문자를 얻는다).
++    /// `path_json`이 `[]`이면 본문 문단 `para_idx`, 아니면 그 경로의 칸·글상자 문단이다.
++    #[wasm_bindgen(js_name = getParagraphHeadText)]
++    pub fn get_paragraph_head_text(
++        &self,
++        section_idx: u32,
++        para_idx: u32,
++        path_json: &str,
++    ) -> Result<String, JsValue> {
++        let para = if path_json.trim() == "[]" {
++            self.document
++                .sections
++                .get(section_idx as usize)
++                .and_then(|section| section.paragraphs.get(para_idx as usize))
++                .ok_or_else(|| {
++                    JsValue::from_str(&format!(
++                        "문단 {}:{} 범위 초과",
++                        section_idx, para_idx
++                    ))
++                })?
++        } else {
++            let path = DocumentCore::parse_cell_path(path_json)?;
++            self.resolve_paragraph_by_path(section_idx as usize, para_idx as usize, &path)
++                .map_err(|e| -> JsValue { e.into() })?
++        };
++        Ok(para.numbering_marker.text().unwrap_or("").to_string())
++    }
++
+     /// 표 셀의 텍스트 방향을 반환한다 (0=가로, 1=세로/영문눕힘, 2=세로/영문세움).
+     #[wasm_bindgen(js_name = getCellTextDirection)]
+     pub fn get_cell_text_direction(

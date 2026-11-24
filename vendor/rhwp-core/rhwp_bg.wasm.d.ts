@@ -303,6 +303,7 @@ export const hwpdocument_getParaPropertiesInFootnote: (a: number, b: number, c: 
 export const hwpdocument_getParaPropertiesInHf: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const hwpdocument_getParaShapeSet: (a: number, b: number, c: number) => [number, number];
 export const hwpdocument_getParagraphCount: (a: number, b: number) => [number, number, number];
+export const hwpdocument_getParagraphHeadText: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const hwpdocument_getParagraphLength: (a: number, b: number, c: number) => [number, number, number];
 export const hwpdocument_getPdfImportDiagnostics: (a: number) => [number, number];
 export const hwpdocument_getPdfImportPolicy: () => [number, number];
