@@ -44,6 +44,13 @@ import { UnsavedModal } from './components/UnsavedModal'
 import { rememberedLayout, rememberLayout } from './shell/layoutMemory'
 import { pickImageFile, readPicture } from './editors/pickPicture'
 import { MemoSheet } from './components/MemoSheet'
+import { PageNumberSheet } from './components/PageNumberSheet'
+import {
+  applyPageNumber,
+  readPageNumber,
+  type PageNumberDocument,
+  type PageNumberSetting,
+} from './editors/pageNumbers'
 import { createFlowSyncedPort } from './editors/flowSyncedPort'
 import { HwpFlowView, type HwpFlowViewHandle } from './editors/HwpFlowView'
 import type { FlowFormatAction, FlowMemo } from './editors/flowEditing'
@@ -70,6 +77,12 @@ import {
 } from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
 
+/** The engine calls a whole-document change uses. */
+type WholeDocument = PageNumberDocument & {
+  exportHwp(): Uint8Array
+  exportHwpx(): Uint8Array
+  free(): void
+}
 const DEFAULT_PREFS: MobileAppPrefs = {
   lang: 'ko',
   theme: 'system',
@@ -816,6 +829,69 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const isMarkdownDoc = activeFormat === 'md' || activeFormat === 'txt'
 
   // Toolbar actions and the format panel ([Aa]) of the active editor.
+  /**
+   * A change to the whole document (page setup and the like): the page editor's
+   * bytes, with flow edits handed over first, changed in an engine copy, then
+   * loaded back into the page editor and the flow view. Undo history restarts.
+   */
+  const changeWholeDocument = useCallback(
+    async (change: (doc: WholeDocument) => void) => {
+      const active = activeDocRef.current
+      const studio = hwpEditorRef.current
+      if (!active || !studio) throw new Error('no HWP document is open')
+      const hwpx = active.session.format === 'hwpx'
+      const bytes = hwpx ? await hwpPort.exportHwpx() : await hwpPort.exportHwp()
+      const engine = (await openFlowDocument(bytes)) as unknown as WholeDocument
+      let changed: Uint8Array
+      try {
+        change(engine)
+        changed = hwpx ? engine.exportHwpx() : engine.exportHwp()
+      } finally {
+        engine.free()
+      }
+      await studio.loadBytes(changed)
+      setFlowBytes(changed)
+      studioEditedRef.current = false
+      sessionControllerRef.current?.markDirty(true)
+    },
+    [hwpPort],
+  )
+
+  const [pageNumberOpen, setPageNumberOpen] = useState(false)
+  const [pageNumberNow, setPageNumberNow] = useState<PageNumberSetting | null>(null)
+
+  /** Opens the page number sheet with the document's current setting. */
+  const openPageNumbers = useCallback(async () => {
+    const active = activeDocRef.current
+    if (!active) return
+    try {
+      const bytes =
+        active.session.format === 'hwpx' ? await hwpPort.exportHwpx() : await hwpPort.exportHwp()
+      const engine = (await openFlowDocument(bytes)) as unknown as WholeDocument
+      try {
+        setPageNumberNow(readPageNumber(engine))
+      } finally {
+        engine.free()
+      }
+    } catch {
+      setPageNumberNow(null)
+    }
+    setPageNumberOpen(true)
+  }, [hwpPort])
+
+  const applyPageNumbers = useCallback(
+    async (setting: PageNumberSetting) => {
+      setPageNumberOpen(false)
+      try {
+        await changeWholeDocument((doc) => applyPageNumber(doc, setting))
+        showToast(tNow('pageNumberDone'))
+      } catch {
+        showToast({ message: tNow('pageNumberFailed'), tone: 'error' })
+      }
+    },
+    [changeWholeDocument, showToast, tNow],
+  )
+
   /** Flow view: pick a picture and put it in line at the caret. */
   const insertFlowPicture = useCallback(async () => {
     const file = await pickImageFile()
@@ -947,6 +1023,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             items: [
               { id: 'image', label: tNow('insertImage'), onPress: () => void insertFlowPicture() },
               { id: 'memos', label: tNow('memoAdd'), onPress: openMemos },
+              {
+                id: 'pageNumber',
+                label: tNow('pageNumber'),
+                onPress: () => void openPageNumbers(),
+              },
               // tables are placed on the page
               {
                 id: 'pageView',
@@ -1009,11 +1090,21 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           items: [
             hwp('insertTable', 'insertTable'),
             { ...hwp('insertImage', 'insertImage'), id: 'image' },
+            { id: 'pageNumber', label: tNow('pageNumber'), onPress: () => void openPageNumbers() },
           ],
         },
       ],
     }
-  }, [activeFormat, hwpLayout, insertFlowPicture, isMarkdownDoc, openMemos, switchHwpLayout, tNow])
+  }, [
+    activeFormat,
+    hwpLayout,
+    insertFlowPicture,
+    isMarkdownDoc,
+    openMemos,
+    openPageNumbers,
+    switchHwpLayout,
+    tNow,
+  ])
 
   const isHwpDoc = activeFormat === 'hwp' || activeFormat === 'hwpx'
   const viewTools = useMemo((): EditorQuickActionItem[] => {
@@ -1248,6 +1339,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           onEdit={(id, text) => memoAction((view) => view.editMemo(id, text))}
           onRemove={(id) => memoAction((view) => view.removeMemo(id))}
           onReveal={(id) => flowRef.current?.revealMemo(id)}
+        />
+        <PageNumberSheet
+          open={pageNumberOpen && isHwpDoc}
+          onClose={() => setPageNumberOpen(false)}
+          current={pageNumberNow}
+          onApply={(setting) => void applyPageNumbers(setting)}
         />
         <ToastHost toast={toast} onDismiss={dismissToast} />
       </BackStackProvider>

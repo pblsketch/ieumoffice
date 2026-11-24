@@ -1939,3 +1939,34 @@ input:focus-visible {
 .mobile-memo-error {
   color: var(--danger);
 }
+
+/* single-choice sheets (page numbers) */
+.mobile-choice-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) * 2.5), 1fr));
+  gap: var(--m-space-2);
+}
+
+.mobile-choice-btn {
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  cursor: pointer;
+}
+
+.mobile-choice-btn[aria-checked='true'] {
+  border-color: var(--color-btn-primary);
+  box-shadow: inset 0 0 0 1px var(--color-btn-primary);
+  font-weight: 700;
+}
