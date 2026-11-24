@@ -22,12 +22,65 @@
 import {
   bodyParagraphHtml,
   cellParagraphHtml,
+  flatStep,
+  listParagraphLength,
   renderCellContents,
   type CellStep,
   type FlowSourceDocument,
 } from './hwpFlow'
 
 export interface FlowEditDocument extends FlowSourceDocument {
+  insertTextInCell(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+    offset: number,
+    text: string,
+  ): string
+  deleteTextInCell(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+    offset: number,
+    count: number,
+  ): string
+  splitParagraphInCell(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+    offset: number,
+  ): string
+  mergeParagraphInCell(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+  ): string
+  applyCharFormatInCell(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+    start: number,
+    end: number,
+    propsJson: string,
+  ): string
+  getCellCharPropertiesAt(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+    offset: number,
+  ): string
   insertText(sec: number, para: number, offset: number, text: string): string
   deleteText(sec: number, para: number, offset: number, count: number): string
   splitParagraph(sec: number, para: number, offset: number): string
@@ -224,52 +277,87 @@ export function placeCaret(pEl: Element, offset: number): void {
 
 // ---------- engine access per block ----------
 
+/**
+ * Engine calls for one text block. Body paragraphs use the body calls; one-step
+ * paths (body-level table cells, text boxes, captions) the flat cell calls, the
+ * only ones that reach table captions and split text boxes and captions; deeper
+ * paths the path calls.
+ */
 function blockOps(doc: FlowEditDocument) {
-  const pj = (at: BlockAddress) => JSON.stringify(at.path)
+  type Target =
+    | { kind: 'body' }
+    | { kind: 'flat'; ctrl: number; cell: number; cellPara: number }
+    | { kind: 'path'; json: string }
+  const target = (at: BlockAddress): Target => {
+    if (!at.path) return { kind: 'body' }
+    const flat = flatStep(at.path)
+    return flat ? { kind: 'flat', ...flat } : { kind: 'path', json: JSON.stringify(at.path) }
+  }
+  const range = (at: BlockAddress, offset: number, count: number): string => {
+    const t = target(at)
+    if (t.kind === 'body') return doc.getTextRange(at.sec, at.para, offset, count)
+    if (t.kind === 'flat') {
+      return doc.getTextInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara, offset, count)
+    }
+    return doc.getTextInCellByPath(at.sec, at.para, t.json, offset, count)
+  }
   return {
     length(at: BlockAddress): number {
       return at.path
-        ? doc.getCellParagraphLengthByPath(at.sec, at.para, pj(at))
+        ? listParagraphLength(doc, at.sec, at.para, at.path)
         : doc.getParagraphLength(at.sec, at.para)
     },
     text(at: BlockAddress): string {
       const len = this.length(at)
-      if (len === 0) return ''
-      return at.path
-        ? doc.getTextInCellByPath(at.sec, at.para, pj(at), 0, len)
-        : doc.getTextRange(at.sec, at.para, 0, len)
+      return len === 0 ? '' : range(at, 0, len)
     },
     slice(at: BlockAddress, offset: number, count: number): string {
-      if (count <= 0) return ''
-      return at.path
-        ? doc.getTextInCellByPath(at.sec, at.para, pj(at), offset, count)
-        : doc.getTextRange(at.sec, at.para, offset, count)
+      return count <= 0 ? '' : range(at, offset, count)
     },
     insert(at: BlockAddress, offset: number, text: string) {
-      if (at.path) doc.insertTextInCellByPath(at.sec, at.para, pj(at), offset, text)
-      else doc.insertText(at.sec, at.para, offset, text)
+      const t = target(at)
+      if (t.kind === 'body') doc.insertText(at.sec, at.para, offset, text)
+      else if (t.kind === 'flat') {
+        doc.insertTextInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara, offset, text)
+      } else doc.insertTextInCellByPath(at.sec, at.para, t.json, offset, text)
     },
     remove(at: BlockAddress, offset: number, count: number) {
-      if (at.path) doc.deleteTextInCellByPath(at.sec, at.para, pj(at), offset, count)
-      else doc.deleteText(at.sec, at.para, offset, count)
+      const t = target(at)
+      if (t.kind === 'body') doc.deleteText(at.sec, at.para, offset, count)
+      else if (t.kind === 'flat') {
+        doc.deleteTextInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara, offset, count)
+      } else doc.deleteTextInCellByPath(at.sec, at.para, t.json, offset, count)
     },
     split(at: BlockAddress, offset: number) {
-      if (at.path) doc.splitParagraphInCellByPath(at.sec, at.para, pj(at), offset)
-      else doc.splitParagraph(at.sec, at.para, offset)
+      const t = target(at)
+      if (t.kind === 'body') doc.splitParagraph(at.sec, at.para, offset)
+      else if (t.kind === 'flat') {
+        doc.splitParagraphInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara, offset)
+      } else doc.splitParagraphInCellByPath(at.sec, at.para, t.json, offset)
     },
     /** Joins `at` into the block before it. */
     merge(at: BlockAddress) {
-      if (at.path) doc.mergeParagraphInCellByPath(at.sec, at.para, pj(at))
-      else doc.mergeParagraph(at.sec, at.para)
+      const t = target(at)
+      if (t.kind === 'body') doc.mergeParagraph(at.sec, at.para)
+      else if (t.kind === 'flat') {
+        doc.mergeParagraphInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara)
+      } else doc.mergeParagraphInCellByPath(at.sec, at.para, t.json)
     },
     format(at: BlockAddress, start: number, end: number, json: string) {
-      if (at.path) doc.applyCharFormatInCellByPath(at.sec, at.para, pj(at), start, end, json)
-      else doc.applyCharFormat(at.sec, at.para, start, end, json)
+      const t = target(at)
+      if (t.kind === 'body') doc.applyCharFormat(at.sec, at.para, start, end, json)
+      else if (t.kind === 'flat') {
+        doc.applyCharFormatInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara, start, end, json)
+      } else doc.applyCharFormatInCellByPath(at.sec, at.para, t.json, start, end, json)
     },
     props(at: BlockAddress, offset: number): Record<string, unknown> {
-      const raw = at.path
-        ? doc.getCellCharPropertiesAtByPath(at.sec, at.para, pj(at), offset)
-        : doc.getCharPropertiesAt(at.sec, at.para, offset)
+      const t = target(at)
+      const raw =
+        t.kind === 'body'
+          ? doc.getCharPropertiesAt(at.sec, at.para, offset)
+          : t.kind === 'flat'
+            ? doc.getCellCharPropertiesAt(at.sec, at.para, t.ctrl, t.cell, t.cellPara, offset)
+            : doc.getCellCharPropertiesAtByPath(at.sec, at.para, t.json, offset)
       return JSON.parse(raw) as Record<string, unknown>
     },
     html(at: BlockAddress): string {
@@ -312,7 +400,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
     if (!at.path) return
     const cell = cellOf(at.path)
     const json = JSON.stringify(cell)
-    for (const td of body.querySelectorAll<HTMLElement>('td[data-cell-path]')) {
+    for (const td of body.querySelectorAll<HTMLElement>('[data-cell-path]')) {
       if (
         td.getAttribute('data-cell-path') === json &&
         Number(td.getAttribute('data-sec')) === at.sec &&
@@ -486,8 +574,24 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
 
   // --- events ---
 
+  /**
+   * Cancels an edit the engine refused (for example Enter in a text box inside a
+   * table, which only the path calls reach and they split table cells only) and
+   * shows the engine's text again.
+   */
   const onBeforeInput = (event: Event) => {
-    const e = event as InputEvent
+    try {
+      handleBeforeInput(event as InputEvent)
+    } catch {
+      event.preventDefault()
+      const info = selectionInfo()
+      if (!info) return
+      if (info.start.at.path) redrawCell(info.start.at)
+      else redraw(info.start.at)
+    }
+  }
+
+  const handleBeforeInput = (e: InputEvent) => {
     if (!editable || composing || e.isComposing) return
     const type = e.inputType
 
