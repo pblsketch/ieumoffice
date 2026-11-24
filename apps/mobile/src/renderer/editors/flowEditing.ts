@@ -517,8 +517,8 @@ export function textRange(block: Element, start: number, end: number): Range | n
 /**
  * Engine calls for one text block. Body paragraphs use the body calls; one-step
  * paths (body-level table cells, text boxes, captions) the flat cell calls, the
- * only ones that reach table captions and split text boxes and captions; deeper
- * paths the path calls.
+ * only ones that reach table captions; deeper paths the path calls (which split
+ * text boxes and captions too since engine patch 0058).
  */
 function blockOps(doc: FlowEditDocument) {
   type Target =
@@ -854,9 +854,9 @@ export function createFlowEditor({
   // --- events ---
 
   /**
-   * Cancels an edit the engine refused (for example Enter in a text box inside a
-   * table, which only the path calls reach and they split table cells only) and
-   * shows the engine's text again, so the person knows it did not happen.
+   * Cancels an edit the engine refused (for example Enter on an older engine,
+   * whose path split took table cells only) and shows the engine's text again,
+   * telling the person it did not happen.
    */
   const onBeforeInput = (event: Event) => {
     try {

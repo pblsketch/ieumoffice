@@ -1,0 +1,195 @@
+diff --git a/src/document_core/commands/text_editing.rs b/src/document_core/commands/text_editing.rs
+index 1c4150fdc..9d3193006 100644
+--- a/src/document_core/commands/text_editing.rs
++++ b/src/document_core/commands/text_editing.rs
+@@ -6736,6 +6736,30 @@ impl DocumentCore {
+         )))
+     }
+ 
++    /// [ieum 0058] 경로 나누기·합치기는 머리말·꼬리말 문단 자체(한 단계 경로)를 받지 않는다.
++    /// 그 문단은 머리말 API(`split_paragraph_in_header_footer` 등)가 맡는다 — 패치 전과 같다.
++    fn reject_header_footer_root_for_split_merge(
++        &self,
++        section_idx: usize,
++        parent_para_idx: usize,
++        path: &[(usize, usize, usize)],
++    ) -> Result<(), HwpError> {
++        if let [(ctrl_idx, _, _)] = path {
++            let control = self
++                .document
++                .sections
++                .get(section_idx)
++                .and_then(|s| s.paragraphs.get(parent_para_idx))
++                .and_then(|p| p.controls.get(*ctrl_idx));
++            if matches!(control, Some(Control::Header(_) | Control::Footer(_))) {
++                return Err(HwpError::RenderError(
++                    "경로: 머리말·꼬리말 문단은 머리말 API로 고칩니다".to_string(),
++                ));
++            }
++        }
++        Ok(())
++    }
++
+     /// path 기반 셀 문단 분할 (중첩 표 지원)
+     ///
+     /// `restore_meta` 는 병합 undo 전용이다 — 평면 형제와 같은 규약이다 (Task #2342).
+@@ -6754,63 +6778,24 @@ impl DocumentCore {
+             .last()
+             .ok_or_else(|| HwpError::RenderError("경로가 비어있습니다".to_string()))?;
+         let cell_para_idx = last.2;
+-        // [#2755] 리플로우 후 재적용할 원본 vpos(분할 대상 문단 첫 seg).
+-        let mut split_origin_vpos: Option<i32> = None;
+-
+-        // 셀에 접근하여 문단 분할
+-        let section = self
+-            .document
+-            .sections
+-            .get_mut(section_idx)
+-            .ok_or_else(|| HwpError::RenderError("구역 범위 초과".to_string()))?;
+-        let mut para: &mut Paragraph = section
+-            .paragraphs
+-            .get_mut(parent_para_idx)
+-            .ok_or_else(|| HwpError::RenderError("문단 범위 초과".to_string()))?;
+-
+-        // path를 따라 마지막 셀까지 진입
+-        for (i, &(ctrl_idx, cell_idx, _cpi)) in path.iter().enumerate() {
+-            let table = match para.controls.get_mut(ctrl_idx) {
+-                Some(Control::Table(t)) => t.as_mut(),
+-                // 머리말·꼬리말 뿌리: 그 문단에 든 표로 내려간다(머리말 문단 자체는 머리말 API가 맡는다).
+-                Some(ctrl @ (Control::Header(_) | Control::Footer(_)))
+-                    if i == 0 && cell_idx == 0 && path.len() > 1 =>
+-                {
+-                    para = ctrl
+-                        .header_footer_paragraphs_mut()
+-                        .and_then(|paragraphs| paragraphs.get_mut(_cpi))
+-                        .ok_or_else(|| {
+-                            HwpError::RenderError("머리말·꼬리말 문단 범위 초과".to_string())
+-                        })?;
+-                    continue;
+-                }
+-                _ => return Err(HwpError::RenderError("경로: 표가 아닙니다".to_string())),
+-            };
+-            let cell = table
+-                .cells
+-                .get_mut(cell_idx)
+-                .ok_or_else(|| HwpError::RenderError("셀 범위 초과".to_string()))?;
+-            if i == path.len() - 1 {
+-                // 이 셀에서 문단 분할. 리플로우/shift/recalc 는 borrow 해제 후 루프 밖에서 한다.
+-                if cell_para_idx >= cell.paragraphs.len() {
+-                    return Err(HwpError::RenderError("셀문단 범위 초과".to_string()));
+-                }
+-                split_origin_vpos = cell.paragraphs[cell_para_idx]
+-                    .line_segs
+-                    .first()
+-                    .map(|seg| seg.vertical_pos);
+-                let mut new_para = cell.paragraphs[cell_para_idx].split_at(char_offset);
+-                if let Some(meta) = restore_meta {
+-                    restore_para_meta(&mut new_para, meta, &self.document.doc_info.para_shapes);
+-                }
+-                cell.paragraphs.insert(cell_para_idx + 1, new_para);
+-                break;
+-            }
+-            para = cell
+-                .paragraphs
+-                .get_mut(_cpi)
++        // [ieum 0058] 마지막 단계가 표 칸이든 글상자·그림 캡션이든 같은 문단 목록 해석을 쓴다
++        // (평면 형제가 글상자·캡션을 나누는 것과 같다). 머리말·꼬리말 문단 자체는 머리말 API가 맡는다.
++        self.reject_header_footer_root_for_split_merge(section_idx, parent_para_idx, path)?;
++        let (split_origin_vpos, mut new_para) = {
++            let paragraphs =
++                self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?;
++            let cell_para = paragraphs
++                .get_mut(cell_para_idx)
+                 .ok_or_else(|| HwpError::RenderError("셀문단 범위 초과".to_string()))?;
++            // [#2755] 리플로우 후 재적용할 원본 vpos(분할 대상 문단 첫 seg).
++            let origin = cell_para.line_segs.first().map(|seg| seg.vertical_pos);
++            (origin, cell_para.split_at(char_offset))
++        };
++        if let Some(meta) = restore_meta {
++            restore_para_meta(&mut new_para, meta, &self.document.doc_info.para_shapes);
+         }
++        self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?
++            .insert(cell_para_idx + 1, new_para);
+ 
+         // [#2755] flat split 형제(:2387)와 동일하게 분할된 두 문단을 셀 폭으로 재래핑한 뒤
+         // vpos 를 재계산한다(리플로우가 line_segs 를 재작성하므로 shift/recalc 를 그 뒤에 둔다).
+@@ -6870,63 +6855,24 @@ impl DocumentCore {
+             ));
+         }
+         let prev_idx = cell_para_idx - 1;
++        // [ieum 0058] 분할과 같이 글상자·그림 캡션 문단도 합친다.
++        self.reject_header_footer_root_for_split_merge(section_idx, parent_para_idx, path)?;
++        let paragraphs =
++            self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?;
++        if cell_para_idx >= paragraphs.len() {
++            return Err(HwpError::RenderError("셀문단 범위 초과".to_string()));
++        }
+         // [#2755] 리플로우 후 재적용할 원본 vpos(병합 생존 문단 첫 seg).
+-        let mut merge_origin_vpos: Option<i32> = None;
+-
+-        let section = self
+-            .document
+-            .sections
+-            .get_mut(section_idx)
+-            .ok_or_else(|| HwpError::RenderError("구역 범위 초과".to_string()))?;
+-        let mut para: &mut Paragraph = section
+-            .paragraphs
+-            .get_mut(parent_para_idx)
+-            .ok_or_else(|| HwpError::RenderError("문단 범위 초과".to_string()))?;
+-
+-        let mut merge_point = 0usize;
++        let merge_origin_vpos = paragraphs[prev_idx]
++            .line_segs
++            .first()
++            .map(|seg| seg.vertical_pos);
++        let removed = paragraphs.remove(cell_para_idx);
+         // 사라지는 문단의 스코프 메타 — undo(split)가 되돌릴 값이다 (Task #2342).
+-        let mut removed_meta: Option<ParaMeta> = None;
+-        for (i, &(ctrl_idx, cell_idx, _cpi)) in path.iter().enumerate() {
+-            let table = match para.controls.get_mut(ctrl_idx) {
+-                Some(Control::Table(t)) => t.as_mut(),
+-                // 머리말·꼬리말 뿌리: 그 문단에 든 표로 내려간다(머리말 문단 자체는 머리말 API가 맡는다).
+-                Some(ctrl @ (Control::Header(_) | Control::Footer(_)))
+-                    if i == 0 && cell_idx == 0 && path.len() > 1 =>
+-                {
+-                    para = ctrl
+-                        .header_footer_paragraphs_mut()
+-                        .and_then(|paragraphs| paragraphs.get_mut(_cpi))
+-                        .ok_or_else(|| {
+-                            HwpError::RenderError("머리말·꼬리말 문단 범위 초과".to_string())
+-                        })?;
+-                    continue;
+-                }
+-                _ => return Err(HwpError::RenderError("경로: 표가 아닙니다".to_string())),
+-            };
+-            let cell = table
+-                .cells
+-                .get_mut(cell_idx)
+-                .ok_or_else(|| HwpError::RenderError("셀 범위 초과".to_string()))?;
+-            if i == path.len() - 1 {
+-                if cell_para_idx >= cell.paragraphs.len() {
+-                    return Err(HwpError::RenderError("셀문단 범위 초과".to_string()));
+-                }
+-                merge_origin_vpos = cell.paragraphs[prev_idx]
+-                    .line_segs
+-                    .first()
+-                    .map(|seg| seg.vertical_pos);
+-                let removed = cell.paragraphs.remove(cell_para_idx);
+-                removed_meta = Some(removed.capture_meta());
+-                let prev = &mut cell.paragraphs[prev_idx];
+-                merge_point = prev.text.chars().count();
+-                prev.merge_from(&removed);
+-                break;
+-            }
+-            para = cell
+-                .paragraphs
+-                .get_mut(_cpi)
+-                .ok_or_else(|| HwpError::RenderError("셀문단 범위 초과".to_string()))?;
+-        }
++        let removed_meta = Some(removed.capture_meta());
++        let prev = &mut paragraphs[prev_idx];
++        let merge_point = prev.text.chars().count();
++        prev.merge_from(&removed);
+ 
+         // [#2755] flat merge 형제(:2486)와 동일하게 병합 생존 문단을 셀 폭으로 재래핑한 뒤
+         // vpos 를 재계산한다(리플로우가 line_segs 를 재작성하므로 shift/recalc 를 그 뒤에 둔다).

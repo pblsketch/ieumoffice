@@ -593,6 +593,60 @@ describe('editing captions, text boxes and bulleted paragraphs (real rhwp engine
     expect(capText()).toBe(before)
   })
 
+  it('splits and joins a text box paragraph inside a table cell (engine patch 0058)', () => {
+    // no sample has a text box in a cell: make one in the engine and paste it into cell 3
+    doc = new HwpDocument(new Uint8Array(readFileSync(join(fixtures, 'nested-form.hwp'))))
+    const made = JSON.parse(
+      doc.createShapeControl(
+        JSON.stringify({ sectionIdx: 0, paraIdx: 0, charOffset: 0, shapeType: 'textbox' }),
+      ),
+    ) as { paraIdx: number; controlIdx: number }
+    doc.insertTextInCell(0, made.paraIdx, made.controlIdx, 0, 0, 0, '상자글')
+    doc.copyControl(0, made.paraIdx, '[]', made.controlIdx)
+    doc.pasteInternalInCell(0, 2, 0, 3, 0, 0)
+    document.body.innerHTML = buildFlowHtml(doc as unknown as FlowEditDocument)
+    const onRefused = vi.fn<() => void>()
+    editor = createFlowEditor({
+      doc: doc as unknown as FlowEditDocument,
+      frameDocument: document,
+      onChange: () => {},
+      onRefused,
+    })
+    editor.setEditable(true)
+    const box = [
+      { controlIndex: 0, cellIndex: 3, cellParaIndex: 0 },
+      { controlIndex: 0, cellIndex: 0 },
+    ]
+    const at = (k: number) => [box[0], { ...box[1], cellParaIndex: k }]
+    const boxBlocks = () => [...document.querySelectorAll<HTMLElement>('td .flow-box .flow-p')]
+    expect(boxBlocks().map((el) => el.textContent)).toEqual(['상자글'])
+
+    placeCaret(boxBlocks()[0], 1)
+    const enter = new InputEvent('beforeinput', {
+      inputType: 'insertParagraph',
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(enter)
+    expect(enter.defaultPrevented).toBe(true)
+    expect(onRefused).not.toHaveBeenCalled()
+    expect(doc.getCellParagraphCountByPath(0, 2, JSON.stringify(at(0)))).toBe(2)
+    expect(pathText(doc, 2, at(0))).toBe('상')
+    expect(pathText(doc, 2, at(1))).toBe('자글')
+    expect(boxBlocks().map((el) => el.textContent)).toEqual(['상', '자글'])
+
+    editor!.undo()
+    expect(doc.getCellParagraphCountByPath(0, 2, JSON.stringify(at(0)))).toBe(1)
+    expect(boxBlocks().map((el) => el.textContent)).toEqual(['상자글'])
+    // the document still saves and opens again with the box in the cell
+    const again = new HwpDocument(doc.exportHwp())
+    try {
+      expect(pathText(again, 2, at(0))).toBe('상자글')
+    } finally {
+      again.free()
+    }
+  })
+
   it('types into a table inside a text box', () => {
     const d = open('textbox-table.hwp')
     const el = document.querySelector<HTMLElement>('.flow-box td .flow-p')!
