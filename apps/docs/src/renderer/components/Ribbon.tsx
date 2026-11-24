@@ -210,6 +210,7 @@ import {
   IconPasteMerge,
   IconPasteSource,
   IconPasteText,
+  IconPicture,
   IconPilcrow,
   IconFlipH,
   IconFlipV,
@@ -2022,7 +2023,7 @@ function RibbonInner({
   }
 
   const [pasteSpecial, setPasteSpecial] = useState(false)
-  const pasteAs = (mode?: PasteMode) => {
+  const pasteAs = (mode?: PasteMode | 'picture') => {
     setDropdown(null)
     if (canEdit) void pasteFromClipboard(ed, mode)
   }
@@ -3341,6 +3342,10 @@ function RibbonInner({
                       <button role="menuitem" onClick={() => pasteAs('text')}>
                         <IconPasteText size={16} />
                         {t('appPasteTextOnly')}
+                      </button>
+                      <button role="menuitem" onClick={() => pasteAs('picture')}>
+                        <IconPicture size={16} />
+                        {t('ribbonPasteFormatPicture')}
                       </button>
                       <div className="spacing-menu-sep" />
                       <button
