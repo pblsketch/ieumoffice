@@ -1,9 +1,10 @@
 // Main-process / worker side: renders PDF faces to pixels with PDFium, one face
 // at a time, so a long job never holds every face's bitmap at once.
 import type { DpiChoice } from './options'
+import { encodeJpeg } from './jpeg'
 import { loadRasterPdfium, type RasterPdfium } from './pdfium'
 import { encodePng } from './png'
-import { wasmConvertBgrxPixels, wasmEncodeBgrxToPng } from './wasm'
+import { wasmConvertBgrxPixels, wasmEncodeBgrxToJpeg, wasmEncodeBgrxToPng } from './wasm'
 
 /** Density the automatic choice aims for (the PDF editor's print rule). */
 export const AUTO_TARGET_DPI = 200
@@ -49,6 +50,8 @@ export interface RasterizeOptions {
   grayscale: boolean
   /** turn faces wider than tall 90° clockwise, so they print on upright paper */
   rotateLandscape: boolean
+  /** optional subset of 0-based face indices to render (defaults to all faces) */
+  faceIndices?: readonly number[] | undefined
   signal?: AbortSignal | undefined
   onProgress?: ((progress: RasterProgress) => void) | undefined
   /** pdfium.wasm; default `pdfiumWasmPath()` */
@@ -153,6 +156,22 @@ export function encodeBgrxToPng(
   return encodePng(pixels, width, height, gray ? 1 : 3)
 }
 
+/** BGRx-to-JPEG encoding (Rust WASM `jpeg-encoder` with pure-TS fallback). */
+export function encodeBgrxToJpeg(
+  bgrx: Uint8Array,
+  stride: number,
+  width: number,
+  height: number,
+  gray: boolean,
+  quality = 90,
+  hintPdfiumWasmPath?: string | undefined,
+): Uint8Array {
+  const wasm = wasmEncodeBgrxToJpeg(bgrx, stride, width, height, gray, quality, hintPdfiumWasmPath)
+  if (wasm.ok) return wasm.value
+  const pixels = convertPixelsJs(bgrx, stride, width, height, gray)
+  return encodeJpeg(pixels, width, height, gray ? 1 : 3, quality)
+}
+
 /**
  * Internal helper: renders every face of `pdf` to a PDFium BGRx bitmap and
  * hands the raw view to `onFace` before destroying the bitmap. Callers that
@@ -192,8 +211,14 @@ export async function rasterizePdfBgrx(
             options.dpi,
             sizes.map((s) => s.w * s.h),
           )
-      options.onProgress?.({ done: 0, total })
-      for (let i = 0; i < total; i++) {
+      const targetIndices =
+        options.faceIndices !== undefined
+          ? options.faceIndices.filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < total)
+          : Array.from({ length: total }, (_, i) => i)
+      const progressTotal = targetIndices.length
+      options.onProgress?.({ done: 0, total: progressTotal })
+      for (let step = 0; step < targetIndices.length; step++) {
+        const i = targetIndices[step]!
         abortIfAsked(options.signal)
         const { w, h } = sizes[i]!
         let scale = longSide ? longSide / Math.max(w, h, 1) : dpi / 72
@@ -233,7 +258,7 @@ export async function rasterizePdfBgrx(
         } finally {
           m._FPDF_ClosePage(page)
         }
-        options.onProgress?.({ done: i + 1, total })
+        options.onProgress?.({ done: step + 1, total: progressTotal })
       }
       return total
     } finally {

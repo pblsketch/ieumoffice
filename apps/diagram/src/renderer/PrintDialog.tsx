@@ -1,15 +1,14 @@
 /**
- * The diagram's print dialog (spec 4, 5): all pages or the page on screen,
- * and the shared page layout panel. With every layout option at its default,
- * Print is the print as it always was (`plainPrint`: the scope's sheets in
- * the app's hidden print window, the system dialog). With an option on, the
- * same sheets travel to the main process, which makes them the print job PDF
- * and prints, previews or saves the arranged result.
+ * The diagram's print dialog (spec 4, 5): live preview, unified destination
+ * (printer / Save as PDF / Save as images / System dialog), all pages or the
+ * page on screen, and the shared page layout panel.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   SimplePrintDialog,
   printLayoutIssueText,
+  printLayoutText,
+  type OverlayBundle,
   type PrintJobSelection,
   type PrintLabelSpecStore,
   type PrintLayoutProgress,
@@ -17,6 +16,7 @@ import {
   type SimplePrintDialogProps,
 } from '@genoffice/ui'
 import type {
+  ImageExportOptions,
   PageSize,
   PrintLayoutErrorCode,
   PrintLayoutOptions,
@@ -26,7 +26,11 @@ import type { DrawioFrame } from './drawio/frame-client'
 import { plainPrint, printPagesIn, printSheetSizesIn } from './document/print-pages'
 import { useI18n } from './i18n/locale'
 
-type Failure = { kind: 'print' | 'save'; detail: string; code?: PrintLayoutErrorCode | undefined }
+type Failure = {
+  kind: 'print' | 'save' | 'save-images'
+  detail: string
+  code?: PrintLayoutErrorCode | undefined
+}
 
 /** The print gathers before anything shows a count: "…" until the main process reports. */
 const GATHERING: PrintLayoutProgress = { done: 0, total: 0 }
@@ -42,12 +46,14 @@ export interface DiagramPrintDialogProps {
   /** the diagram's name: the print job's and the saved PDF's */
   title: string
   onClose: () => void
-  /** a line for the status bar: a failed plain print, a saved PDF */
+  /** a line for the status bar: a failed plain print, a saved PDF or images */
   onMessage: (text: string) => void
+  /** optional initial destination pre-selected when opened from the Quick Print menu */
+  initialDestination?: string
 }
 
 export function DiagramPrintDialog(props: DiagramPrintDialogProps) {
-  const { client, api, title, onClose, onMessage } = props
+  const { client, api, title, onClose, onMessage, initialDestination } = props
   const { lang, t } = useI18n()
   const [pages, setPages] = useState<PageSize[] | null>(null)
   const [progress, setProgress] = useState<PrintLayoutProgress | null>(null)
@@ -102,10 +108,14 @@ export function DiagramPrintDialog(props: DiagramPrintDialogProps) {
   }
 
   const runLayout = async (
-    kind: 'print' | 'save',
+    kind: 'print' | 'save' | 'save-images',
     range: SimplePrintRange,
     options: PrintLayoutOptions,
-    printJob?: PrintJobSelection,
+    opts?: {
+      printJob?: PrintJobSelection
+      image?: ImageExportOptions
+      overlays?: OverlayBundle
+    },
   ): Promise<void> => {
     if (runningRef.current) return
     runningRef.current = true
@@ -116,14 +126,18 @@ export function DiagramPrintDialog(props: DiagramPrintDialogProps) {
       if (mountedRef.current) setProgress(next)
     })
     try {
-      const request = {
+      const base = {
         options,
         editor: await jobOf(range),
-        ...(kind === 'print' && printJob ? { job: printJob } : {}),
+        ...(opts?.overlays ? { overlays: opts.overlays } : {}),
       }
       if (stoppedRef.current || !mountedRef.current) return
       const result =
-        kind === 'print' ? await printLayout.print(request) : await printLayout.savePdf(request)
+        kind === 'print'
+          ? await printLayout.print({ ...base, ...(opts?.printJob ? { job: opts.printJob } : {}) })
+          : kind === 'save'
+            ? await printLayout.savePdf(base)
+            : await printLayout.saveImages!({ ...base, image: opts!.image! })
       if (!mountedRef.current) return
       if (!result.ok) {
         if (!('aborted' in result)) {
@@ -133,9 +147,14 @@ export function DiagramPrintDialog(props: DiagramPrintDialogProps) {
       }
       if (kind === 'print') {
         if (!('canceled' in result)) onClose()
-      } else if ('path' in result) {
+      } else if (kind === 'save') {
+        if ('path' in result) {
+          onClose()
+          onMessage(t('printLayoutSaved'))
+        }
+      } else if ('paths' in result) {
         onClose()
-        onMessage(t('printLayoutSaved'))
+        onMessage(printLayoutText(lang, 'imagesSaved', { count: result.paths.length }))
       }
     } catch (err) {
       if (mountedRef.current) setFailure({ kind, detail: messageOf(err) })
@@ -171,6 +190,31 @@ export function DiagramPrintDialog(props: DiagramPrintDialogProps) {
     }
   }
 
+  const previewFaces = useCallback<NonNullable<SimplePrintDialogProps['onPreviewFaces']>>(
+    async (range, options, faceIndices, longSidePx, overlays, signal) => {
+      const editor = await jobOf(range)
+      signal.throwIfAborted()
+      const editorKey = scopeOf(range)
+      const optionsKey = `${JSON.stringify(options)}:${overlays ? overlays.stamps.length : 0}`
+      const result = await printLayout.previewFaces!({
+        options,
+        editor,
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return { totalFaces: result.totalFaces, faceSizes: result.faceSizes, faces: result.faces }
+    },
+    [jobOf, printLayout],
+  )
+
+  const closePreview = useCallback(() => {
+    void printLayout.closePreview?.()
+  }, [printLayout])
+
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
     () => ({
       load: () => printLayout.getLabelSpec(),
@@ -198,16 +242,28 @@ export function DiagramPrintDialog(props: DiagramPrintDialogProps) {
       rangeChoice="all-current"
       pages={pages}
       capabilities={{ showPaperAndFit: true }}
+      documentTitle={title}
+      initialDestination={initialDestination}
       listPrinters={printLayout.listPrinters}
       onRangeChange={(range) => countPages(scopeOf(range))}
       onPlainPrint={onPlainPrint}
-      onPrint={(range, options, printJob) => void runLayout('print', range, options, printJob)}
-      onSavePdf={(range, options) => void runLayout('save', range, options)}
+      onPrint={(range, options, printJob, overlays) =>
+        void runLayout('print', range, options, { printJob, overlays })
+      }
+      onSavePdf={(range, options, overlays) => void runLayout('save', range, options, { overlays })}
+      onSaveImages={
+        printLayout.saveImages
+          ? (range, options, image, overlays) =>
+              void runLayout('save-images', range, options, { image, overlays })
+          : undefined
+      }
       onCancel={() => {
         if (runningRef.current) stopJob()
         onClose()
       }}
       labelSpecStore={labelSpecStore}
+      onPreviewFaces={printLayout.previewFaces ? previewFaces : undefined}
+      onClosePreview={printLayout.closePreview ? closePreview : undefined}
       onPreviewRequest={onPreviewRequest}
       job={{ progress, onCancel: stopJob, error }}
     />

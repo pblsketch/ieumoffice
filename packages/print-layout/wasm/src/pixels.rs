@@ -1,4 +1,8 @@
+use std::io::Read as _;
+
 use crc32fast::Hasher;
+use flate2::read::ZlibDecoder;
+use jpeg_encoder::{ColorType, Encoder};
 
 const PNG_SIGNATURE: [u8; 8] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -219,6 +223,245 @@ pub fn encode_bgrx_to_png(
     Ok(finish_png(width, height, channels, &filtered))
 }
 
+/// Encodes tightly packed 8-bit gray (`channels = 1`) or RGB (`channels = 3`)
+/// pixels into a baseline JPEG image.
+pub fn encode_jpeg(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    channels: u8,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    if width == 0 || height == 0 || width > u16::MAX as u32 || height > u16::MAX as u32 {
+        return Err(format!("invalid JPEG size {width}x{height}"));
+    }
+    if channels != 1 && channels != 3 {
+        return Err(format!("invalid JPEG channel count {channels}"));
+    }
+    if quality == 0 || quality > 100 {
+        return Err(format!("invalid JPEG quality {quality}"));
+    }
+    let expected = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|v| v.checked_mul(channels as usize))
+        .ok_or_else(|| "JPEG buffer size overflow".to_string())?;
+    if pixels.len() < expected {
+        return Err("JPEG pixel buffer is too short".to_string());
+    }
+    let color = if channels == 1 {
+        ColorType::Luma
+    } else {
+        ColorType::Rgb
+    };
+    let mut out = Vec::new();
+    let encoder = Encoder::new(&mut out, quality);
+    encoder
+        .encode(&pixels[..expected], width as u16, height as u16, color)
+        .map_err(|e| format!("JPEG encode failed: {e}"))?;
+    Ok(out)
+}
+
+/// Converts BGRx bitmap rows and encodes directly to JPEG.
+pub fn encode_bgrx_to_jpeg(
+    bgrx: &[u8],
+    stride: usize,
+    width: u32,
+    height: u32,
+    grayscale: bool,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    let pixels = convert_bgrx_pixels(bgrx, stride, width, height, grayscale)?;
+    let channels: u8 = if grayscale { 1 } else { 3 };
+    encode_jpeg(&pixels, width, height, channels, quality)
+}
+
+pub struct DecodedPng {
+    pub width: u32,
+    pub height: u32,
+    pub rgb: Vec<u8>,
+    pub alpha: Option<Vec<u8>>,
+}
+
+fn paeth(a: u8, b: u8, c: u8) -> u8 {
+    let a = a as i32;
+    let b = b as i32;
+    let c = c as i32;
+    let p = a + b - c;
+    let pa = (p - a).abs();
+    let pb = (p - b).abs();
+    let pc = (p - c).abs();
+    if pa <= pb && pa <= pc {
+        a as u8
+    } else if pb <= pc {
+        b as u8
+    } else {
+        c as u8
+    }
+}
+
+/// Decodes a standard non-interlaced 8-bit PNG (Gray, RGB, GrayAlpha, or RGBA)
+/// into tight RGB bytes and an optional 8-bit alpha mask for PDF `/SMask`.
+pub fn decode_png_rgb_alpha(png: &[u8]) -> Result<DecodedPng, String> {
+    if png.len() < 8 || png[0..8] != PNG_SIGNATURE {
+        return Err("invalid PNG signature".to_string());
+    }
+    let mut pos = 8usize;
+    let mut width = 0u32;
+    let mut height = 0u32;
+    let mut bit_depth = 0u8;
+    let mut color_type = 0u8;
+    let mut interlace = 0u8;
+    let mut saw_ihdr = false;
+    let mut idat = Vec::new();
+
+    while pos + 12 <= png.len() {
+        let len = u32::from_be_bytes(png[pos..pos + 4].try_into().unwrap()) as usize;
+        let ctype = &png[pos + 4..pos + 8];
+        let data_start = pos + 8;
+        let data_end = data_start
+            .checked_add(len)
+            .ok_or_else(|| "PNG chunk length overflow".to_string())?;
+        if data_end + 4 > png.len() {
+            return Err("truncated PNG chunk".to_string());
+        }
+        let data = &png[data_start..data_end];
+        if ctype == b"IHDR" {
+            if len < 13 {
+                return Err("invalid PNG IHDR".to_string());
+            }
+            width = u32::from_be_bytes(data[0..4].try_into().unwrap());
+            height = u32::from_be_bytes(data[4..8].try_into().unwrap());
+            bit_depth = data[8];
+            color_type = data[9];
+            interlace = data[12];
+            saw_ihdr = true;
+        } else if ctype == b"IDAT" {
+            idat.extend_from_slice(data);
+        } else if ctype == b"IEND" {
+            break;
+        }
+        pos = data_end + 4;
+    }
+
+    if !saw_ihdr || width == 0 || height == 0 {
+        return Err("PNG missing valid IHDR".to_string());
+    }
+    if bit_depth != 8 || interlace != 0 {
+        return Err("only 8-bit non-interlaced PNG overlays are supported".to_string());
+    }
+    let bpp: usize = match color_type {
+        0 => 1,
+        2 => 3,
+        4 => 2,
+        6 => 4,
+        _ => return Err(format!("unsupported PNG color type {color_type}")),
+    };
+
+    let w = width as usize;
+    let h = height as usize;
+    let row_bytes = w
+        .checked_mul(bpp)
+        .ok_or_else(|| "PNG row size overflow".to_string())?;
+    let expected = (row_bytes + 1)
+        .checked_mul(h)
+        .ok_or_else(|| "PNG decoded size overflow".to_string())?;
+
+    let mut dec = ZlibDecoder::new(idat.as_slice());
+    let mut raw = Vec::with_capacity(expected);
+    dec.read_to_end(&mut raw)
+        .map_err(|e| format!("PNG inflate failed: {e}"))?;
+    if raw.len() < expected {
+        return Err("PNG image data is truncated".to_string());
+    }
+
+    let mut prev = vec![0u8; row_bytes];
+    let mut cur = vec![0u8; row_bytes];
+    let px_count = w
+        .checked_mul(h)
+        .ok_or_else(|| "PNG pixel count overflow".to_string())?;
+    let mut rgb = Vec::with_capacity(px_count * 3);
+    let has_alpha = color_type == 4 || color_type == 6;
+    let mut alpha = if has_alpha {
+        Some(Vec::with_capacity(px_count))
+    } else {
+        None
+    };
+
+    for y in 0..h {
+        let base = y * (row_bytes + 1);
+        let filter = raw[base];
+        let src = &raw[base + 1..base + 1 + row_bytes];
+        match filter {
+            0 => cur.copy_from_slice(src),
+            1 => {
+                for i in 0..row_bytes {
+                    let left = if i >= bpp { cur[i - bpp] } else { 0 };
+                    cur[i] = src[i].wrapping_add(left);
+                }
+            }
+            2 => {
+                for i in 0..row_bytes {
+                    cur[i] = src[i].wrapping_add(prev[i]);
+                }
+            }
+            3 => {
+                for i in 0..row_bytes {
+                    let left = if i >= bpp { cur[i - bpp] as u16 } else { 0 };
+                    let up = prev[i] as u16;
+                    cur[i] = src[i].wrapping_add(((left + up) >> 1) as u8);
+                }
+            }
+            4 => {
+                for i in 0..row_bytes {
+                    let left = if i >= bpp { cur[i - bpp] } else { 0 };
+                    let up = prev[i];
+                    let up_left = if i >= bpp { prev[i - bpp] } else { 0 };
+                    cur[i] = src[i].wrapping_add(paeth(left, up, up_left));
+                }
+            }
+            _ => return Err(format!("unsupported PNG filter {filter}")),
+        }
+
+        match color_type {
+            0 => {
+                for &g in &cur {
+                    rgb.push(g);
+                    rgb.push(g);
+                    rgb.push(g);
+                }
+            }
+            2 => rgb.extend_from_slice(&cur),
+            4 => {
+                let a_out = alpha.as_mut().unwrap();
+                for px in cur.chunks_exact(2) {
+                    rgb.push(px[0]);
+                    rgb.push(px[0]);
+                    rgb.push(px[0]);
+                    a_out.push(px[1]);
+                }
+            }
+            6 => {
+                let a_out = alpha.as_mut().unwrap();
+                for px in cur.chunks_exact(4) {
+                    rgb.push(px[0]);
+                    rgb.push(px[1]);
+                    rgb.push(px[2]);
+                    a_out.push(px[3]);
+                }
+            }
+            _ => unreachable!(),
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+
+    Ok(DecodedPng {
+        width,
+        height,
+        rgb,
+        alpha,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,5 +552,29 @@ mod tests {
             assert_eq!((w, h, ch), (2, 2, if gray { 1 } else { 3 }));
             assert_eq!(decoded, pixels);
         }
+    }
+
+    #[test]
+    fn encode_jpeg_produces_valid_jfif_for_rgb_and_gray() {
+        let bgrx = [
+            10, 20, 30, 255, 200, 150, 100, 255, 0, 0, 0, 0,
+            70, 80, 90, 255, 255, 255, 255, 255, 0, 0, 0, 0,
+        ];
+        for gray in [false, true] {
+            let jpg = encode_bgrx_to_jpeg(&bgrx, 12, 2, 2, gray, 90).unwrap();
+            assert!(jpg.len() > 20);
+            assert_eq!(&jpg[0..2], &[0xff, 0xd8]);
+            assert_eq!(&jpg[jpg.len() - 2..], &[0xff, 0xd9]);
+        }
+    }
+
+    #[test]
+    fn decode_png_roundtrips_rgb_png() {
+        let pixels = vec![10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
+        let png = encode_png(&pixels, 2, 2, 3).unwrap();
+        let decoded = decode_png_rgb_alpha(&png).unwrap();
+        assert_eq!((decoded.width, decoded.height), (2, 2));
+        assert_eq!(decoded.rgb, pixels);
+        assert!(decoded.alpha.is_none());
     }
 }

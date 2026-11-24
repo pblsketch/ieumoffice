@@ -13,14 +13,62 @@ import {
   transcriptOf,
 } from '../src/renderer/ai/brief-writer'
 
+/** an A2UI question card call (spec 3.1): two inputs, one of them left to the AI */
+const SURFACE = {
+  version: '1.0',
+  createSurface: {
+    surfaceId: 'page-scope',
+    catalogId: 'ieumoffice.com:question-card/v1',
+    components: [
+      { id: 'root', component: 'Column', children: ['title', 'audience', 'tone'] },
+      { id: 'title', component: 'Text', text: 'Page direction' },
+      {
+        id: 'audience',
+        component: 'ChoicePicker',
+        label: 'Who is it for?',
+        options: [
+          { label: 'Young athletes', value: 'athletes' },
+          { label: 'Parents', value: 'parents' },
+        ],
+        value: { '@path': '/audience' },
+      },
+      {
+        id: 'tone',
+        component: 'ChoicePicker',
+        label: 'Tone',
+        options: [
+          { label: 'Playful', value: 'playful' },
+          { label: 'Calm', value: 'calm' },
+        ],
+        value: { '@path': '/tone' },
+      },
+    ],
+    dataModel: {},
+  },
+}
+
+const actionOf = (name: 'submit' | 'skip', context: Record<string, unknown>) =>
+  JSON.stringify({
+    version: '1.0',
+    action: {
+      name,
+      surfaceId: 'page-scope',
+      sourceComponentId: name === 'submit' ? 'ieum_submit' : 'ieum_skip',
+      timestamp: '2026-11-24T09:00:00.000Z',
+      context,
+    },
+  })
+
+const SUBMITTED = actionOf('submit', { answers: { audience: ['athletes'] }, decideForMe: ['tone'] })
+
 const history: AgentMessage[] = [
   { role: 'user', text: 'Landing page for Acme water\n\n## Document\nfile: (untitled)' },
   {
     role: 'assistant',
     text: 'A few questions first.',
-    toolCalls: [{ id: 't1', name: 'ask_clarification', input: { questions: [] } }],
+    toolCalls: [{ id: 't1', name: 'ask_questions', input: SURFACE }],
   },
-  { role: 'tool', results: [{ toolCallId: 't1', output: 'User answers:\nq1: young athletes' }] },
+  { role: 'tool', results: [{ id: 't1', name: 'ask_questions', output: SUBMITTED }] },
   {
     role: 'assistant',
     text: '',
@@ -45,9 +93,56 @@ describe('transcriptOf', () => {
   it('flattens user, assistant, tool calls and tool results in order', () => {
     const t = transcriptOf(history)
     expect(t).toContain('### User\nLanding page for Acme water')
-    expect(t).toContain('### Assistant\nA few questions first.\n[called ask_clarification')
-    expect(t).toContain('### Tool result\nUser answers:\nq1: young athletes')
-    expect(t.indexOf('### User')).toBeLessThan(t.indexOf('### Tool result'))
+    expect(t).toContain('### Assistant\nA few questions first.')
+    expect(t).toContain('[called plan_page {"mode":"new"}]')
+    expect(t.indexOf('### User')).toBeLessThan(t.indexOf('Who is it for?'))
+    expect(t.indexOf('Who is it for?')).toBeLessThan(t.indexOf('[called plan_page'))
+  })
+
+  it('writes a question card as readable question: answer lines, not JSON', () => {
+    const t = transcriptOf(history)
+    expect(t).toContain('[Page direction]\n- Who is it for?: Young athletes\n- Tone: Decide for me')
+    // the person's UI language names the questions left to the AI
+    expect(transcriptOf(history, 'ko')).toContain('- Tone: 알아서 정해 줘')
+    expect(t).not.toContain('createSurface')
+    expect(t).not.toContain('ieum_submit')
+    expect(t).not.toContain('[called ask_questions')
+  })
+
+  it('writes a skipped card as skipped and leaves out a card the checks refused', () => {
+    const skipped = transcriptOf([
+      {
+        role: 'assistant',
+        text: '',
+        toolCalls: [{ id: 's', name: 'ask_questions', input: SURFACE }],
+      },
+      {
+        role: 'tool',
+        results: [{ id: 's', name: 'ask_questions', output: actionOf('skip', {}) }],
+      },
+    ])
+    expect(skipped).toContain('[Page direction] Skipped. Please decide yourself.')
+    expect(skipped).not.toContain('"action"')
+    const refused = transcriptOf([
+      { role: 'user', text: 'make a page' },
+      {
+        role: 'assistant',
+        text: '',
+        toolCalls: [{ id: 'e', name: 'ask_questions', input: { questions: 'nope' } }],
+      },
+      {
+        role: 'tool',
+        results: [
+          {
+            id: 'e',
+            name: 'ask_questions',
+            output: 'createSurface: is required',
+            isError: true,
+          },
+        ],
+      },
+    ])
+    expect(refused).toBe('### User\nmake a page')
   })
 
   it('keeps the newest turns when the transcript exceeds its budget', () => {
@@ -71,7 +166,7 @@ describe('buildBriefWriterRequest', () => {
     )
     expect(system).toContain('brief writer')
     expect(system.endsWith('Reply in the same language.')).toBe(true)
-    expect(user).toContain('young athletes')
+    expect(user).toContain('Who is it for?: Young athletes')
     expect(user).toContain('A new page in an empty document')
     expect(user).toContain('## Notes from the assistant\nforest green, misty')
     expect(user).not.toContain('## Current page')

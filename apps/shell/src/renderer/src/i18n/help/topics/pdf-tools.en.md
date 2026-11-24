@@ -30,6 +30,7 @@ The cards in **In the PDF editor** open the chosen PDF in an editor tab. Pick th
 - **Remove blank pages** only shows candidates. Only the pages you pick are removed, and a page with even one character is never a candidate.
 - **Remove annotations** keeps form fields and removes links only when you tick them. What the removed annotations said does not stay in the new file.
 - **Save as text** reads the text layer only. Pages whose text is a picture, such as scanned pages, come out empty.
+- **Split PDF** can split by custom ranges (optionally merged into one file), page count or equal parts, bookmarks, or maximum file size, with custom naming and an optional subfolder.
 
 ## Try it for
 

@@ -281,7 +281,7 @@ describe('the arranged print, with a stand-in for the layout', () => {
     const seen: { kind: string; jobPdf: Uint8Array }[] = []
     const runner: PrintLayoutRunner = {
       run: async (request) => {
-        seen.push({ kind: request.kind, jobPdf: request.jobPdf })
+        if ('jobPdf' in request) seen.push({ kind: request.kind, jobPdf: request.jobPdf })
         return { kind: 'pdf', pdf: new Uint8Array([1]) }
       },
     }

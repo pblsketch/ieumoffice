@@ -1,21 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { PrintLayoutErrorCode, PrintLayoutOptions } from '@genoffice/print-layout/plan'
 import {
+  hasFaceOverlays,
+  planSheets,
+  validateOptions,
+  type ImageExportOptions,
+  type PageSize,
+  type PrintLayoutErrorCode,
+  type PrintLayoutOptions,
+} from '@genoffice/print-layout/plan'
+import {
+  buildOverlayBundle,
+  LivePrintPreview,
   PrintJobFields,
   PrintLayoutPanel,
   PrintLayoutSchematic,
   createZoomWheelClassifier,
+  parsePrintRanges,
   printLayoutIssueText,
   printLayoutProblem,
+  printLayoutText,
   showsLayoutSchematic,
+  showsLivePrintPreview,
   takesNewPrintRoute,
   usePrintJob,
   usePrintLayoutOptions,
   wheelZoomStepPercent,
+  type LivePreviewBatchResult,
+  type OverlayBundle,
   type PrintJobSelection,
   type PrintLabelSpecStore,
-  type PrintLayoutPreviewRequest,
   type PrintLayoutProgress,
 } from '@genoffice/ui'
 import { IconChevronLeft, IconChevronRight } from '@genoffice/ui/icons'
@@ -63,11 +77,45 @@ let rememberedView: PageView = 'single'
 let rememberedZoom: ZoomMode = 'fit-page'
 let rememberedMargins = false
 
+type HwpRangeMode = 'all' | 'current' | 'custom'
+
+function expandRangeIndices(text: string, totalPages: number): number[] | null {
+  const ranges = parsePrintRanges(text)
+  if (!ranges) return null
+  const set = new Set<number>()
+  for (const r of ranges) {
+    const start = Math.max(1, r.from)
+    const end = Math.min(totalPages, r.to)
+    for (let p = start; p <= end; p++) set.add(p - 1)
+  }
+  if (set.size === 0) return null
+  return [...set].sort((a, b) => a - b)
+}
+
+function plannedFaceSizes(
+  pages: readonly PageSize[] | null,
+  options: PrintLayoutOptions,
+): PageSize[] {
+  if (!pages || pages.length === 0) return []
+  const checked = validateOptions(options, pages.length)
+  if (!checked.ok) return []
+  try {
+    return planSheets(pages, checked.options).output.map((f) => ({
+      widthPt: f.width,
+      heightPt: f.height,
+    }))
+  } catch {
+    return []
+  }
+}
+
 interface Props {
   bridge: Pick<AgentBridge, 'previewPage' | 'printPageSizes' | 'documentRevision'> &
     Partial<Pick<AgentBridge, 'printFontsReady'>>
   /** 0-based page the cursor was on; clamped once the document's count is known. */
   initialPage: number
+  /** optional destination pre-selected when opened from the Quick Print menu */
+  initialDestination?: string
   /** A File > Print / Ctrl+P that arrived while the preview was open. */
   printSignal: number
   onClose: () => void
@@ -77,7 +125,7 @@ interface Props {
   ) => Promise<PrintResult>
   /** Ctrl+Enter: close the preview and put the caret on the page's first paragraph */
   onEditPage: (page: number) => Promise<boolean>
-  /** the advanced print layout's calls; only used while a layout option is on */
+  /** the advanced print layout's calls; used for arranged print, save PDF/images, and page ranges */
   printLayout: HwpApi['printLayout']
   /**
    * the job's pages as the PDF export gathers them, for the advanced print layout; the
@@ -88,7 +136,7 @@ interface Props {
 
 /** Why the last arranged print or save failed, put in words when it is shown. */
 interface LayoutFailure {
-  kind: 'print' | 'save'
+  kind: 'print' | 'save' | 'save-images'
   detail: string
   code?: PrintLayoutErrorCode
 }
@@ -96,6 +144,7 @@ interface LayoutFailure {
 export function PrintPreview({
   bridge,
   initialPage,
+  initialDestination,
   printSignal,
   onClose,
   onPrint,
@@ -106,14 +155,19 @@ export function PrintPreview({
   const { t, lang } = useI18n()
   // every preview starts at the default layout: nothing carries over from the last print
   const [layout, setLayout] = usePrintLayoutOptions(true)
-  const printJob = usePrintJob(layout, printLayout.listPrinters)
+  const printJob = usePrintJob(layout, printLayout.listPrinters, {
+    allowSaveDestinations: true,
+    initialDestination,
+  })
+  const [rangeMode, setRangeMode] = useState<HwpRangeMode>('all')
+  const [customRange, setCustomRange] = useState('')
   const [drawnSizes, setDrawnSizes] = useState<ReadonlyMap<number, PixelSize>>(new Map())
   /** every page's print size, asked for once a layout option is on; null until it comes */
   const [printSizes, setPrintSizes] = useState<readonly PixelSize[] | null>(null)
   const printSizesAskedRef = useRef(false)
   const [layoutProgress, setLayoutProgress] = useState<PrintLayoutProgress | null>(null)
   const [layoutFailure, setLayoutFailure] = useState<LayoutFailure | null>(null)
-  const [layoutSaved, setLayoutSaved] = useState(false)
+  const [layoutSavedNotice, setLayoutSavedNotice] = useState<string | null>(null)
   const [page, setPage] = useState(() => Math.max(0, initialPage))
   const [pageCount, setPageCount] = useState<number | null>(null)
   const [view, setView] = useState<PageView>(rememberedView)
@@ -210,9 +264,6 @@ export function PrintPreview({
     [page, view, pageCount],
   )
 
-  // Draw what is on screen first, then the screens just before and after it. A big
-  // grid (5x5 and above) only prefetches the first pages of its neighbours: drawing
-  // another 25-64 pages would queue work nobody asked to see.
   useEffect(() => {
     if (pageCount === null || staleRef.current) return
     const visible = slots.filter((slot): slot is number => slot !== null)
@@ -289,6 +340,16 @@ export function PrintPreview({
   // revision is read so a cache fill redraws the page; the value itself is not used
   void revision
 
+  // Page range selection (0-based indices; null = all pages)
+  const selectedIndices = useMemo<number[] | null | 'invalid'>(() => {
+    if (rangeMode === 'all') return null
+    if (pageCount === null) return null
+    if (rangeMode === 'current') return [Math.min(Math.max(page, 0), Math.max(pageCount - 1, 0))]
+    return expandRangeIndices(customRange, pageCount) ?? 'invalid'
+  }, [rangeMode, pageCount, page, customRange])
+  const rangeInvalid = selectedIndices === 'invalid'
+  const rangeSubset = selectedIndices !== null && selectedIndices !== 'invalid'
+
   const layoutOn = takesNewPrintRoute(layout)
 
   // Every page's print size, measured without drawing, once an option is on: the diagram
@@ -305,14 +366,21 @@ export function PrintPreview({
   }, [layoutOn, pageCount, bridge])
 
   // The job's page count and sizes for the layout diagram and its checks.
-  const layoutPages = useMemo(
+  const allLayoutPages = useMemo(
     () =>
       pageCount === null ? null : layoutPageSizes(pageCount, drawnSizes, FALLBACK_SIZE, printSizes),
     [pageCount, drawnSizes, printSizes],
   )
+  const layoutPages = useMemo(() => {
+    if (!allLayoutPages) return null
+    if (selectedIndices === null || selectedIndices === 'invalid') return allLayoutPages
+    return selectedIndices.map((i) => allLayoutPages[i]!).filter(Boolean)
+  }, [allLayoutPages, selectedIndices])
+
+  const faceSizes = useMemo(() => plannedFaceSizes(layoutPages, layout), [layoutPages, layout])
   const layoutProblem = useMemo(
-    () => (layoutOn ? printLayoutProblem(layout, layoutPages) : null),
-    [layoutOn, layout, layoutPages],
+    () => (layoutOn || printJob.isSave ? printLayoutProblem(layout, layoutPages) : null),
+    [layoutOn, printJob.isSave, layout, layoutPages],
   )
   const layoutRunningRef = useRef(false)
 
@@ -328,8 +396,22 @@ export function PrintPreview({
   useEffect(
     () => () => {
       if (layoutRunningRef.current) void printLayout.cancel()
+      void printLayout.closePreview?.()
     },
     [printLayout],
+  )
+
+  const sliceJobForRange = useCallback(
+    (full: PrintJob): PrintJob => {
+      if (!rangeSubset) return full
+      return {
+        ...full,
+        pages: (selectedIndices as number[])
+          .map((i) => full.pages[i])
+          .filter((p): p is PrintJob['pages'][number] => p !== undefined),
+      }
+    },
+    [rangeSubset, selectedIndices],
   )
 
   /**
@@ -339,33 +421,52 @@ export function PrintPreview({
    */
   const runLayout = useCallback(
     async (
-      kind: 'print' | 'save',
+      kind: 'print' | 'save' | 'save-images',
       options: PrintLayoutOptions,
-      jobSelection?: PrintJobSelection,
+      opts?: {
+        jobSelection?: PrintJobSelection
+        image?: ImageExportOptions
+        overlays?: OverlayBundle
+      },
     ): Promise<void> => {
-      if (printingRef.current || staleRef.current || pageCountRef.current === null) return
+      if (
+        printingRef.current ||
+        staleRef.current ||
+        pageCountRef.current === null ||
+        rangeInvalid
+      ) {
+        return
+      }
       printingRef.current = true
       layoutRunningRef.current = true
       setPrinting(true)
       setPrintError(null)
       setLayoutFailure(null)
-      setLayoutSaved(false)
+      setLayoutSavedNotice(null)
       const off = printLayout.onProgress((next) => {
         if (mountedRef.current) setLayoutProgress(next)
       })
       try {
-        const job = await jobCache.get((done, total) => {
+        const fullJob = await jobCache.get((done, total) => {
           if (mountedRef.current) setProgress({ done, total })
         })
         if (!mountedRef.current) return
         setProgress(null)
-        const request = {
+        const editor = sliceJobForRange(fullJob)
+        const base = {
           options,
-          editor: job,
-          ...(kind === 'print' && jobSelection ? { job: jobSelection } : {}),
+          editor,
+          ...(opts?.overlays ? { overlays: opts.overlays } : {}),
         }
         const result =
-          kind === 'print' ? await printLayout.print(request) : await printLayout.savePdf(request)
+          kind === 'print'
+            ? await printLayout.print({
+                ...base,
+                ...(opts?.jobSelection ? { job: opts.jobSelection } : {}),
+              })
+            : kind === 'save'
+              ? await printLayout.savePdf(base)
+              : await printLayout.saveImages!({ ...base, image: opts!.image! })
         if (!mountedRef.current) return
         if (!result.ok) {
           if (!('aborted' in result)) {
@@ -376,7 +477,9 @@ export function PrintPreview({
             })
           }
         } else if (kind === 'save' && 'path' in result) {
-          setLayoutSaved(true)
+          setLayoutSavedNotice(t('printLayoutSaved'))
+        } else if (kind === 'save-images' && 'paths' in result) {
+          setLayoutSavedNotice(printLayoutText(lang, 'imagesSaved', { count: result.paths.length }))
         }
       } catch (error) {
         if (mountedRef.current) {
@@ -396,26 +499,42 @@ export function PrintPreview({
         }
       }
     },
-    [jobCache, printLayout],
+    [jobCache, lang, printLayout, rangeInvalid, sliceJobForRange, t],
   )
 
-  const previewLayout = useCallback<PrintLayoutPreviewRequest>(
-    async (options, { signal, onProgress }) => {
-      const job = await jobCache.get((done, total) => onProgress({ done, total }))
+  const rangeKey =
+    selectedIndices === null
+      ? 'all'
+      : selectedIndices === 'invalid'
+        ? 'invalid'
+        : selectedIndices.join(',')
+  const previewCacheKey = `${rangeKey}|${JSON.stringify(layout)}`
+  const fetchFaces = useCallback(
+    async (
+      faceIndices: number[],
+      longSidePx: number,
+      signal: AbortSignal,
+    ): Promise<LivePreviewBatchResult> => {
+      if (!printLayout.previewFaces || rangeInvalid) throw new Error('preview unavailable')
+      const fullJob = await jobCache.get(() => {})
       signal.throwIfAborted()
-      const off = printLayout.onProgress(onProgress)
-      const stop = (): void => void printLayout.cancel()
-      signal.addEventListener('abort', stop, { once: true })
-      try {
-        const result = await printLayout.preview({ options, editor: job })
-        if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
-        return result.faces.map((face) => face.png)
-      } finally {
-        off()
-        signal.removeEventListener('abort', stop)
-      }
+      const editor = sliceJobForRange(fullJob)
+      const overlays = await buildOverlayBundle(layout, faceSizes)
+      signal.throwIfAborted()
+      const optionsKey = `${JSON.stringify(layout)}:${overlays ? overlays.stamps.length : 0}`
+      const result = await printLayout.previewFaces({
+        options: layout,
+        editor,
+        editorKey: rangeKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return { totalFaces: result.totalFaces, faceSizes: result.faceSizes, faces: result.faces }
     },
-    [jobCache, printLayout],
+    [printLayout, rangeInvalid, jobCache, sliceJobForRange, layout, faceSizes, rangeKey],
   )
 
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
@@ -432,12 +551,28 @@ export function PrintPreview({
   const doPrint = useCallback(
     async (mode: PrintMode): Promise<void> => {
       if (printingRef.current || staleRef.current || pageCountRef.current === null) return
-      // a layout option on or an in-app printer chosen: the arranged route;
-      // system dialog with all defaults keeps the plain print as it was
-      if (mode === 'print' && (layoutOn || printJob.isSilent)) {
-        if (layoutOn && layoutProblem) return
-        await runLayout('print', layout, printJob.job)
-        return
+      if (mode === 'print') {
+        if (rangeInvalid) return
+        const overlays = hasFaceOverlays(layout)
+          ? await buildOverlayBundle(layout, faceSizes)
+          : undefined
+        if (printJob.isSavePdf) {
+          if (layoutProblem) return
+          await runLayout('save', layout, { overlays })
+          return
+        }
+        if (printJob.isSaveImages) {
+          if (layoutProblem || !printLayout.saveImages) return
+          await runLayout('save-images', layout, { image: printJob.imageOptions, overlays })
+          return
+        }
+        // a layout option on, a page range selected, or an in-app printer chosen: the arranged route;
+        // system dialog with all defaults and all pages keeps the plain print as it was
+        if (layoutOn || printJob.isSilent || rangeSubset) {
+          if (layoutOn && layoutProblem) return
+          await runLayout('print', layout, { jobSelection: printJob.job, overlays })
+          return
+        }
       }
       printingRef.current = true
       setPrinting(true)
@@ -455,7 +590,22 @@ export function PrintPreview({
         }
       }
     },
-    [onPrint, layoutOn, layoutProblem, runLayout, layout, printJob.isSilent, printJob.job],
+    [
+      onPrint,
+      layoutOn,
+      layoutProblem,
+      runLayout,
+      layout,
+      faceSizes,
+      printJob.isSavePdf,
+      printJob.isSaveImages,
+      printJob.imageOptions,
+      printJob.isSilent,
+      printJob.job,
+      printLayout.saveImages,
+      rangeInvalid,
+      rangeSubset,
+    ],
   )
 
   useEffect(() => {
@@ -556,10 +706,6 @@ export function PrintPreview({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [doPrint, editCurrent, go, onClose, page, percent, view])
 
-  // Ctrl/⌘+wheel zooms without moving the page under the pointer, five percentage points
-  // per notch whatever the OS scroll setting (the zoom list and +/- keep their steps).
-  // A native listener is needed: React's wheel listener is passive, where preventDefault
-  // does nothing. The classifier outlives the listener, which is re-attached per zoom.
   const zoomWheelRef = useRef<ReturnType<typeof createZoomWheelClassifier> | null>(null)
   useEffect(() => {
     const paneEl = paneRef.current
@@ -579,15 +725,19 @@ export function PrintPreview({
 
   const canPrint = pageCount !== null && !printing && !stale
   const initialError = errors.has(Math.max(0, initialPage)) && pageCount === null
-  const showSchematic = showsLayoutSchematic(layout)
+  const useLivePreview = !!printLayout.previewFaces && showsLivePrintPreview(layout)
+  const showSchematic = useLivePreview || showsLayoutSchematic(layout)
   const layoutError = layoutFailure
     ? layoutFailure.code
       ? printLayoutIssueText(
           lang,
           { code: layoutFailure.code, message: layoutFailure.detail },
-          { pageCount: pageCount ?? undefined },
+          { pageCount: layoutPages?.length ?? pageCount ?? undefined },
         )
       : `${t(layoutFailure.kind === 'print' ? 'printFailed' : 'pdfFailed')} ${layoutFailure.detail}`
+    : null
+  const problemText = layoutProblem
+    ? printLayoutIssueText(lang, layoutProblem, { pageCount: layoutPages?.length })
     : null
 
   return (
@@ -603,10 +753,16 @@ export function PrintPreview({
         <button
           type="button"
           className="hwp-preview-button primary"
-          disabled={!canPrint || layoutProblem !== null}
+          data-hwp-print-primary=""
+          disabled={
+            !canPrint ||
+            rangeInvalid ||
+            layoutProblem !== null ||
+            (printJob.isSaveImages && !printLayout.saveImages)
+          }
           onClick={() => void doPrint('print')}
         >
-          {t('filePrint')}
+          {printJob.isSave ? printLayoutText(lang, 'save') : t('filePrint')}
         </button>
         <button
           type="button"
@@ -730,9 +886,20 @@ export function PrintPreview({
             <div className="hwp-preview-empty">{t('previewRendering')}</div>
           )
         ) : showSchematic ? (
-          // the faces are not the pages while the layout moves them: show where they go
+          // the faces are not the pages while the layout moves them: show live preview or diagram
           <div className="hwp-preview-schematic">
-            <PrintLayoutSchematic lang={lang} pages={layoutPages} options={layout} />
+            {useLivePreview ? (
+              <LivePrintPreview
+                lang={lang}
+                pages={layoutPages}
+                options={layout}
+                cacheKey={previewCacheKey}
+                fetchFaces={!rangeInvalid ? fetchFaces : undefined}
+                problemText={problemText}
+              />
+            ) : (
+              <PrintLayoutSchematic lang={lang} pages={layoutPages} options={layout} />
+            )}
           </div>
         ) : (
           <div
@@ -812,7 +979,70 @@ export function PrintPreview({
         )}
       </div>
       <aside className="hwp-preview-layout">
-        <PrintJobFields lang={lang} state={printJob} disabled={printing} />
+        <PrintJobFields
+          lang={lang}
+          state={printJob}
+          faceCount={faceSizes.length > 0 ? faceSizes.length : undefined}
+          grayscale={layout.grayscale}
+          disabled={printing}
+        />
+        <fieldset className="gs-pl-group">
+          <legend className="gs-pl-legend">{printLayoutText(lang, 'rangeLabel')}</legend>
+          <label className="gs-pl-check">
+            <input
+              type="radio"
+              name="hwp-print-range"
+              data-hwp-range="all"
+              checked={rangeMode === 'all'}
+              disabled={printing}
+              onChange={() => setRangeMode('all')}
+            />
+            <span>{printLayoutText(lang, 'rangeAll')}</span>
+          </label>
+          <label className="gs-pl-check">
+            <input
+              type="radio"
+              name="hwp-print-range"
+              data-hwp-range="current"
+              checked={rangeMode === 'current'}
+              disabled={printing || pageCount === null}
+              onChange={() => setRangeMode('current')}
+            />
+            <span>
+              {printLayoutText(lang, 'rangeCurrentPage')}
+              {pageCount !== null ? ` (${page + 1})` : ''}
+            </span>
+          </label>
+          <label className="gs-pl-check">
+            <input
+              type="radio"
+              name="hwp-print-range"
+              data-hwp-range="custom"
+              checked={rangeMode === 'custom'}
+              disabled={printing || pageCount === null}
+              onChange={() => setRangeMode('custom')}
+            />
+            <span>{printLayoutText(lang, 'rangeCustom')}</span>
+          </label>
+          {rangeMode === 'custom' && (
+            <input
+              type="text"
+              className="gs-pl-range-text"
+              data-hwp-range="custom-text"
+              value={customRange}
+              placeholder={printLayoutText(lang, 'rangeCustomHint')}
+              aria-label={printLayoutText(lang, 'rangeCustom')}
+              aria-invalid={rangeInvalid ? 'true' : undefined}
+              disabled={printing}
+              onChange={(event) => setCustomRange(event.target.value)}
+            />
+          )}
+          {rangeInvalid && (
+            <p className="gs-pl-issue" role="alert" data-hwp-range="invalid">
+              {printLayoutText(lang, 'rangeInvalid')}
+            </p>
+          )}
+        </fieldset>
         <PrintLayoutPanel
           lang={lang}
           value={layout}
@@ -821,8 +1051,6 @@ export function PrintPreview({
           capabilities={{ showPaperAndFit: true }}
           labelSpecStore={labelSpecStore}
           showSchematic={false}
-          onPreviewRequest={previewLayout}
-          onSavePdf={(options) => void runLayout('save', options)}
           job={{
             progress: layoutProgress,
             onCancel: () => void printLayout.cancel(),
@@ -863,10 +1091,10 @@ export function PrintPreview({
             {t('printFailed')} {printError}
           </span>
         )}
-        {layoutSaved && (
+        {layoutSavedNotice && (
           <>
             <span aria-hidden="true">·</span>
-            <span role="status">{t('printLayoutSaved')}</span>
+            <span role="status">{layoutSavedNotice}</span>
           </>
         )}
       </div>

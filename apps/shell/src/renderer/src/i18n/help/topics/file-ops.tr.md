@@ -46,17 +46,17 @@ Kurallar: uzantı kendiliğinden korunur; geçersiz karakterler, sonu noktayla b
 
 ## Yazdırma
 
-Her düzenleyicide Dosya ▸ Yazdır (⌘P/ctrl+P) bir yazdırma penceresi açar. **Sayfa düzeni** bölümü Docs, PDF, Sheets, Slides ve Markdown’da alışılmış yazdırma penceresinde, HWP’de baskı önizlemesinde, HTML, zihin haritası ve diyagramda ise yeni küçük bir yazdırma penceresinde bulunur. Sayfa düzeninde hiçbir şey seçmezseniz yazdırma eskisi gibi yapılır.
+Her düzenleyicide — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram ve Whiteboard — Dosya ▸ Yazdır (⌘P/ctrl+P) canlı önizlemeli yazdırma penceresini açar. Sayfa düzeninde hiçbir ayar değiştirilmeden sistem yazdırma penceresi kullanıldığında yazdırma eskisi gibi çalışır.
 
-- **Yerleşim**: Kâğıt başına bir sayfa, Kâğıt başına birden çok sayfa (2, 4, 6, 9 veya 16), Kitapçık (soldan veya sağdan cilt), Afiş (yatayda ve dikeyde kâğıt sayısı, bindirme, kesim çizgileri) ya da Etiketler (her etikete bir sayfa veya her etikette aynı sayfa, başlangıç etiketi, yaygın bir A4 ölçüsü ya da özel ölçü) arasından birini seçin.
-- **Yalnızca tek yüzler, yalnızca çift yüzler, ters sırada yazdırma**: yüzler, yerleşim uygulandıktan sonra yazıcıdan gerçekten çıkanlara göre sayılır. Çift taraflı yazdıramayan bir yazıcıda önce ön yüzleri basıp kâğıdı çevirerek arka yüzleri basmak için kullanılır.
-- **Kâğıda sığacak şekilde küçült**: yalnızca seçilen kâğıttan büyük sayfalar küçültülür; küçük sayfalar büyütülmez. Sheets ve Markdown kendi kâğıt ve ölçek alanlarını kullanır.
-- **Gri tonlama ve görüntü çözünürlüğü**: Sayfa düzeni seçenekleriyle yazdırırken her sayfa yazıcıya gitmeden önce görüntüye dönüştürülür. Çözünürlük Otomatik, 150, 300 veya 600 dpi arasından seçilir.
-- **Yalnızca seçim**: Docs ve Markdown yalnızca seçili metni ilk sayfadan başlayarak yeniden sayfalayıp yazdırır; Slides seçili slaytları, PDF seçili sayfaları yazdırır. Sheets seçili aralığı eskisi gibi yazdırır.
-- **Yerleşim şeması ve sonuç önizlemesi**: şema, her sayfa numarasının kâğıtta nereye düştüğünü hemen gösterir; **Sonucu önizle** ise gerçekten oluşturulan sonucu gösterir. **Düzenlenmiş sonucu PDF olarak kaydet** ile aynı yerleşimi başka bir bilgisayarda ya da matbaada basabilirsiniz.
-- **Sistemin yazdırma penceresi**: kitapçık için çift taraflı yazdırmayı kısa kenardan çevirme olarak seçin. Sayfa aralığını ve kâğıt başına sayfa sayısını sistem penceresinde değiştirmeden bırakın.
+- **Hedef (yazıcı, PDF, görseller)**: tek listeden kurulu bir yazıcı, **PDF olarak kaydet**, **Görsel olarak kaydet** veya **Sistem yazdırma penceresi** seçin. Görsel kaydetme PNG ve JPG (Yüksek %90, Orta %80, Küçük dosya %65) biçimlerini, çok sayfalı işler için ayrı numaralı dosyalar veya tek bir ZIP arşivi olarak destekler. İzin kısıtlı PDF’lerde PDF ve görsel kaydetme kapalıdır, yazdırma açıktır.
+- **Canlı yazdırma önizlemesi**: on düzenleyicinin tümü çıktıdan önce canlı önizleme sunar. Düzen, gri tonlama, filigran veya üstbilgi/altbilgi çıktı yüzlerini değiştirdiğinde önizleme sayfaları isteğe bağlı olarak oluşturur; sayfa geçişi, yakınlaştırma ve yerleşim şeması geçişi sunar.
+- **Yerleşim**: Yaprak başına tek sayfa, Yaprak başına çok sayfa (2, 4, 6, 9 veya 16; isteğe bağlı sayfa kenarlıkları), Kitapçık (sol veya sağ cilt), Poster (sütun × satır, bindirme, kesim çizgileri ve parça etiketleri) veya Etiketler (etiket başına tek sayfa ya da tekrar, başlangıç hücresi, A4 şablonları veya özel boyut) seçin.
+- **Ölçek, yön, yüzler ve sıra**: Gerçek boyut (%100), Kağıda sığdır, Yalnızca büyük sayfaları küçült veya Özel ölçek (%10–%400) ile Otomatik, Dikey veya Yatay kağıt yönünü seçin. Yalnızca tek, yalnızca çift yüzler ve ters sıra nihai çıktı yüzlerine göre hesaplanır.
+- **Filigran, üstbilgi/altbilgi, gri tonlama ve çözünürlük**: belgeyi değiştirmeden nihai yüzlere metin veya görsel filigran ile 6 bölmeli üstbilgi/altbilgi (başlık, tarih, sayfa numarası veya özel metin) ekleyin. Gri tonlama ve DPI (Otomatik, 150, 300 veya 600 dpi) kaliteyi belirler.
+- **Sayfa aralıkları ve seçim**: Docs ve Markdown seçili metni 1. sayfadan yeniden sayfalandırır; Slides seçili slaytları; PDF seçili sayfaları; Hangul Tümü, Geçerli sayfa veya Özel aralık seçeneklerini; Sheets etkin sayfaları, çalışma kitabını veya seçimi yazdırır.
+- **Sistem yazdırma penceresi**: kitapçık için kısa kenardan çevirmeli çift taraflı yazdırmayı seçin; sistem penceresindeki sayfa aralığı ve yaprak başına sayfa ayarlarına dokunmayın.
 
-PDF’ler geçerli sayfa sırası ve döndürmelerle yazdırılır.
+PDF’ler mevcut sayfa sırası ve döndürmeleriyle yazdırılır.
 
 ## Dosyası olmayan belgeler nerede durur
 

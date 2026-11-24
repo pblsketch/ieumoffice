@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { LANGS } from '@genoffice/i18n'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST } from '@genoffice/ui'
 import { PrintDialog } from '../src/renderer/components/PrintDialog'
 import { appStrings } from '../src/renderer/i18n/strings-app'
 
@@ -45,6 +46,7 @@ function mockDesktop() {
     preview: vi.fn(async () => ({ ok: true as const, faces: [] })),
     print: vi.fn(async (_req: unknown) => ({ ok: true as const })),
     savePdf: vi.fn(async (_req: unknown) => ({ ok: true as const, path: 'out.pdf' })),
+    saveImages: vi.fn(async (_req: unknown) => ({ ok: true as const, paths: ['out-01.png'] })),
     cancel: vi.fn(async () => undefined),
     onProgress: vi.fn(() => () => undefined),
     getLabelSpec: vi.fn(async () => null),
@@ -243,10 +245,24 @@ describe('print dialog: options take the new route', () => {
   it('saves the arranged PDF with the same job', async () => {
     const m = await mount(2)
     await m.click(m.mode('booklet'))
-    await m.click(m.q('[data-pl="save-pdf"]'))
+    await m.setValue(m.q('select[data-print="printer"]'), SAVE_PDF_DEST)
+    await m.click(m.printButton())
     await m.settle()
     const req = m.desktop.printLayout.savePdf.mock.calls[0]![0] as { editor: unknown }
     expect(req.editor).toEqual({ parts: ['UEFHRQ=='], name: 'doc.docx' })
+  })
+
+  it('saves arranged images when Save as images is selected', async () => {
+    const m = await mount(2)
+    await m.setValue(m.q('select[data-print="printer"]'), SAVE_IMAGES_DEST)
+    await m.click(m.printButton())
+    await m.settle()
+    expect(m.desktop.printLayout.saveImages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        editor: { parts: ['UEFHRQ=='], name: 'doc.docx' },
+        image: { format: 'png', quality: 90, bundle: 'files' },
+      }),
+    )
   })
 })
 

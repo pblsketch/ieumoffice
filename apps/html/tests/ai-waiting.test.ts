@@ -9,14 +9,14 @@ import {
 import { aiStrings } from '../src/renderer/i18n/strings-ai'
 
 describe('panelWaitOf', () => {
-  it('names the card in the order the composer slot shows them', () => {
-    expect(panelWaitOf(null, null, null)).toBeNull()
-    expect(panelWaitOf([{}], null, null)).toBe('answer')
-    expect(panelWaitOf(null, {}, null)).toBe('confirm')
-    expect(panelWaitOf(null, null, { lines: 3 })).toBe('choice')
-    // the questionnaire hides the brief, the brief hides the partial page
-    expect(panelWaitOf([{}], {}, { lines: 3 })).toBe('answer')
-    expect(panelWaitOf(null, {}, { lines: 3 })).toBe('confirm')
+  it('names the card the run waits on, the question card first', () => {
+    expect(panelWaitOf(false, null, null)).toBeNull()
+    expect(panelWaitOf(true, null, null)).toBe('answer')
+    expect(panelWaitOf(false, {}, null)).toBe('confirm')
+    expect(panelWaitOf(false, null, { lines: 3 })).toBe('choice')
+    // an open question card comes first, the brief hides the partial page
+    expect(panelWaitOf(true, {}, { lines: 3 })).toBe('answer')
+    expect(panelWaitOf(false, {}, { lines: 3 })).toBe('confirm')
   })
 })
 

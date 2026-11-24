@@ -1,13 +1,22 @@
 // Main-process / worker side: one print layout job from the job PDF to what the
-// sender needs (face image files, preview images, or a PDF). The same function
-// runs in a worker thread in the app and directly in tests.
+// sender needs (face image files, preview images, arranged PDF, or saved images).
+// The same function runs in a worker thread in the app and directly in tests.
 import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { arrangePrintJob } from './arrange'
+import { basename, join } from 'node:path'
+import { arrangePrintJob, readJobPageSizes } from './arrange'
 import { PrintLayoutError, type PrintLayoutIssue } from './errors'
+import type { PageSize } from './geometry'
 import { grayscalePdf, rotateLandscapeFaces } from './grayscale'
-import type { PrintLayoutOptions } from './options'
-import { encodeBgrxToPng, rasterizePdfBgrx, type RasterProgress } from './raster'
+import type {
+  DpiChoice,
+  ImageBundleMode,
+  ImageExportFormat,
+  JpgQuality,
+  PrintLayoutOptions,
+} from './options'
+import { applyPdfOverlays, type PdfOverlayBundle } from './overlay'
+import { encodeBgrxToJpeg, encodeBgrxToPng, rasterizePdfBgrx, type RasterProgress } from './raster'
+import { buildStoreZip, type ZipStoreEntry } from './zip-store'
 
 /** Long side of a preview image when the caller names none. */
 export const PREVIEW_LONG_SIDE_PX = 800
@@ -21,6 +30,7 @@ export type RasterJobRequest =
       kind: 'print-images'
       jobPdf: Uint8Array
       options: PrintLayoutOptions
+      overlays?: PdfOverlayBundle | undefined
       outDir: string
       wasmPath?: string | undefined
     }
@@ -29,7 +39,28 @@ export type RasterJobRequest =
       kind: 'preview'
       jobPdf: Uint8Array
       options: PrintLayoutOptions
+      overlays?: PdfOverlayBundle | undefined
       longSidePx: number
+      /** optional 0-based face indices to render (defaults to all faces) */
+      faceIndices?: number[] | undefined
+      wasmPath?: string | undefined
+    }
+  | {
+      /** arranges the PDF and stamps overlays once for a cached live-preview session */
+      kind: 'arrange'
+      jobPdf: Uint8Array
+      options: PrintLayoutOptions
+      overlays?: PdfOverlayBundle | undefined
+      wasmPath?: string | undefined
+    }
+  | {
+      /** renders selected faces from an already-arranged PDF (live-preview page flip) */
+      kind: 'preview-arranged'
+      arrangedPdf: Uint8Array
+      dpi: DpiChoice
+      grayscale: boolean
+      longSidePx: number
+      faceIndices?: number[] | undefined
       wasmPath?: string | undefined
     }
   | {
@@ -37,7 +68,21 @@ export type RasterJobRequest =
       kind: 'pdf'
       jobPdf: Uint8Array
       options: PrintLayoutOptions
+      overlays?: PdfOverlayBundle | undefined
       rotateLandscape: boolean
+      wasmPath?: string | undefined
+    }
+  | {
+      /** saves arranged faces as PNG/JPG files (single, numbered, or UTF-8 STORE ZIP) */
+      kind: 'save-images'
+      jobPdf: Uint8Array
+      options: PrintLayoutOptions
+      overlays?: PdfOverlayBundle | undefined
+      format: ImageExportFormat
+      quality: JpgQuality
+      bundle: ImageBundleMode
+      /** target file path picked by the user (single/numbered base path, or .zip path) */
+      outPath: string
       wasmPath?: string | undefined
     }
 
@@ -51,6 +96,8 @@ export interface PrintImageFace {
 }
 
 export interface PreviewImageFace {
+  /** 0-based face index in the arranged output */
+  index?: number | undefined
   png: Uint8Array
   /** the face in points as the arranged PDF shows it */
   widthPt: number
@@ -59,8 +106,16 @@ export interface PreviewImageFace {
 
 export type RasterJobResult =
   | { kind: 'print-images'; faces: PrintImageFace[] }
-  | { kind: 'preview'; faces: PreviewImageFace[] }
+  | {
+      kind: 'preview'
+      faces: PreviewImageFace[]
+      totalFaces?: number | undefined
+      faceSizes?: PageSize[] | undefined
+    }
+  | { kind: 'arrange'; pdf: Uint8Array; faceSizes: PageSize[] }
+  | { kind: 'preview-arranged'; faces: PreviewImageFace[]; totalFaces: number }
   | { kind: 'pdf'; pdf: Uint8Array }
+  | { kind: 'save-images'; paths: string[] }
 
 export interface RasterJobContext {
   signal?: AbortSignal | undefined
@@ -71,6 +126,45 @@ function faceFileName(index: number): string {
   return `face-${String(index + 1).padStart(5, '0')}.png`
 }
 
+/** Matches `numberedExportPaths`: 1 face keeps `target`; >=2 faces get `stem-01.ext`, ... */
+export function numberedImagePaths(target: string, count: number): string[] {
+  const pages = Math.max(0, Math.floor(count))
+  if (pages <= 1) return pages === 1 ? [target] : []
+  const slash = Math.max(target.lastIndexOf('/'), target.lastIndexOf('\\'))
+  const dot = target.lastIndexOf('.')
+  const hasExt = dot > slash + 1
+  const stem = hasExt ? target.slice(0, dot) : target
+  const ext = hasExt ? target.slice(dot) : ''
+  const width = Math.max(2, String(pages).length)
+  return Array.from(
+    { length: pages },
+    (_, i) => `${stem}-${String(i + 1).padStart(width, '0')}${ext}`,
+  )
+}
+
+function clampPreviewLongSide(requested: number): number {
+  return Math.round(
+    Math.min(
+      PREVIEW_LONG_SIDE_MAX_PX,
+      Math.max(PREVIEW_LONG_SIDE_MIN_PX, requested || PREVIEW_LONG_SIDE_PX),
+    ),
+  )
+}
+
+async function prepareArrangedPdf(
+  jobPdf: Uint8Array,
+  options: PrintLayoutOptions,
+  overlays: PdfOverlayBundle | undefined,
+  wasmPath: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<Uint8Array> {
+  const arranged = await arrangePrintJob(jobPdf, options)
+  signal?.throwIfAborted()
+  const stamped = await applyPdfOverlays(arranged, overlays, wasmPath)
+  signal?.throwIfAborted()
+  return stamped
+}
+
 /** Runs one job. Throws `PrintLayoutError` for options the job cannot take. */
 export async function runRasterJob(
   request: RasterJobRequest,
@@ -78,9 +172,55 @@ export async function runRasterJob(
 ): Promise<RasterJobResult> {
   const { signal, onProgress } = context
   signal?.throwIfAborted()
-  const arranged = await arrangePrintJob(request.jobPdf, request.options)
-  signal?.throwIfAborted()
+
+  if (request.kind === 'preview-arranged') {
+    const longSidePx = clampPreviewLongSide(request.longSidePx)
+    const faces: PreviewImageFace[] = []
+    const totalFaces = await rasterizePdfBgrx(
+      request.arrangedPdf,
+      {
+        dpi: request.dpi,
+        longSidePx,
+        grayscale: request.grayscale,
+        rotateLandscape: false,
+        faceIndices: request.faceIndices,
+        signal,
+        onProgress,
+        wasmPath: request.wasmPath,
+      },
+      (face) => {
+        faces.push({
+          index: face.index,
+          png: encodeBgrxToPng(
+            face.bgrx,
+            face.stride,
+            face.widthPx,
+            face.heightPx,
+            request.grayscale,
+            request.wasmPath,
+          ),
+          widthPt: face.widthPt,
+          heightPt: face.heightPt,
+        })
+      },
+    )
+    return { kind: 'preview-arranged', faces, totalFaces }
+  }
+
   const { options, wasmPath } = request
+  const arranged = await prepareArrangedPdf(
+    request.jobPdf,
+    options,
+    request.overlays,
+    wasmPath,
+    signal,
+  )
+
+  if (request.kind === 'arrange') {
+    const faceSizes = await readJobPageSizes(arranged)
+    signal?.throwIfAborted()
+    return { kind: 'arrange', pdf: arranged, faceSizes }
+  }
 
   if (request.kind === 'pdf') {
     let pdf = options.grayscale
@@ -92,26 +232,25 @@ export async function runRasterJob(
   }
 
   if (request.kind === 'preview') {
-    const longSidePx = Math.round(
-      Math.min(
-        PREVIEW_LONG_SIDE_MAX_PX,
-        Math.max(PREVIEW_LONG_SIDE_MIN_PX, request.longSidePx || PREVIEW_LONG_SIDE_PX),
-      ),
-    )
+    const longSidePx = clampPreviewLongSide(request.longSidePx)
     const faces: PreviewImageFace[] = []
-    await rasterizePdfBgrx(
+    const faceSizes = await readJobPageSizes(arranged)
+    signal?.throwIfAborted()
+    const totalFaces = await rasterizePdfBgrx(
       arranged,
       {
         dpi: options.dpi,
         longSidePx,
         grayscale: options.grayscale,
         rotateLandscape: false,
+        faceIndices: request.faceIndices,
         signal,
         onProgress,
         wasmPath,
       },
       (face) => {
         faces.push({
+          index: face.index,
           png: encodeBgrxToPng(
             face.bgrx,
             face.stride,
@@ -125,7 +264,70 @@ export async function runRasterJob(
         })
       },
     )
-    return { kind: 'preview', faces }
+    return { kind: 'preview', faces, totalFaces, faceSizes }
+  }
+
+  if (request.kind === 'save-images') {
+    const ext = request.format === 'jpg' ? 'jpg' : 'png'
+    const faceSizes = await readJobPageSizes(arranged)
+    signal?.throwIfAborted()
+    const total = faceSizes.length
+    if (total === 0) throw new Error('the print job has no faces')
+    const useZip = request.bundle === 'zip' || /\.zip$/i.test(request.outPath)
+
+    const encodeFace = (bgrx: Uint8Array, stride: number, w: number, h: number): Uint8Array =>
+      request.format === 'jpg'
+        ? encodeBgrxToJpeg(bgrx, stride, w, h, options.grayscale, request.quality, wasmPath)
+        : encodeBgrxToPng(bgrx, stride, w, h, options.grayscale, wasmPath)
+
+    if (useZip) {
+      const baseName = basename(request.outPath).replace(/\.zip$/i, '') || 'pages'
+      const width = Math.max(2, String(total).length)
+      const entries: ZipStoreEntry[] = []
+      await rasterizePdfBgrx(
+        arranged,
+        {
+          dpi: options.dpi,
+          grayscale: options.grayscale,
+          rotateLandscape: false,
+          signal,
+          onProgress,
+          wasmPath,
+        },
+        (face) => {
+          const data = encodeFace(face.bgrx, face.stride, face.widthPx, face.heightPx)
+          entries.push({
+            name: `${baseName}-${String(face.index + 1).padStart(width, '0')}.${ext}`,
+            data,
+          })
+        },
+      )
+      signal?.throwIfAborted()
+      const zip = buildStoreZip(entries)
+      await writeFile(request.outPath, zip)
+      return { kind: 'save-images', paths: [request.outPath] }
+    }
+
+    const targets = numberedImagePaths(request.outPath, total)
+    const written: string[] = []
+    await rasterizePdfBgrx(
+      arranged,
+      {
+        dpi: options.dpi,
+        grayscale: options.grayscale,
+        rotateLandscape: false,
+        signal,
+        onProgress,
+        wasmPath,
+      },
+      async (face) => {
+        const bytes = encodeFace(face.bgrx, face.stride, face.widthPx, face.heightPx)
+        const target = targets[face.index]!
+        await writeFile(target, bytes)
+        written.push(target)
+      },
+    )
+    return { kind: 'save-images', paths: written }
   }
 
   // Grayscale faces are rendered gray here, once; the gray PDF is not built
@@ -190,8 +392,10 @@ export interface RasterWorkerPort {
 }
 
 function transferablesOf(result: RasterJobResult): ArrayBuffer[] {
-  if (result.kind === 'pdf') return [result.pdf.buffer as ArrayBuffer]
-  if (result.kind === 'preview') return result.faces.map((f) => f.png.buffer as ArrayBuffer)
+  if (result.kind === 'pdf' || result.kind === 'arrange') return [result.pdf.buffer as ArrayBuffer]
+  if (result.kind === 'preview' || result.kind === 'preview-arranged') {
+    return result.faces.map((f) => f.png.buffer as ArrayBuffer)
+  }
   return []
 }
 
@@ -224,8 +428,9 @@ export function serveRasterJob(port: RasterWorkerPort): void {
 
 function ownedCopy(result: RasterJobResult): RasterJobResult {
   if (result.kind === 'pdf') return { kind: 'pdf', pdf: result.pdf.slice() }
-  if (result.kind === 'preview') {
-    return { kind: 'preview', faces: result.faces.map((f) => ({ ...f, png: f.png.slice() })) }
+  if (result.kind === 'arrange') return { ...result, pdf: result.pdf.slice() }
+  if (result.kind === 'preview' || result.kind === 'preview-arranged') {
+    return { ...result, faces: result.faces.map((f) => ({ ...f, png: f.png.slice() })) }
   }
   return result
 }

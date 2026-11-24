@@ -46,17 +46,17 @@ Quy tắc: phần mở rộng được giữ tự động; ký tự không hợp
 
 ## In
 
-File ▸ In (⌘P/ctrl+P) trong từng trình soạn thảo mở cửa sổ in. Docs, PDF, Sheets, Slides và Markdown có mục **Bố cục trang** trong cửa sổ in vốn có, HWP có mục này trong bản xem trước khi in, còn HTML, sơ đồ tư duy và trình vẽ sơ đồ có nó trong một cửa sổ in nhỏ mới. Nếu không chọn gì trong Bố cục trang, việc in vẫn diễn ra như trước.
+Tệp ▸ In (⌘P/ctrl+P) mở cửa sổ in có xem trước trực tiếp trong mọi trình chỉnh sửa — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram và Whiteboard. Khi giữ nguyên bố cục trang và chọn hộp thoại in hệ thống, việc in hoạt động như trước.
 
-- **Cách sắp xếp**: chọn một trong Một trang mỗi tờ, Nhiều trang mỗi tờ (2, 4, 6, 9 hoặc 16), Tập sách nhỏ (đóng gáy bên trái hoặc bên phải), Áp phích (số tờ theo chiều ngang và chiều dọc, phần chồng lên nhau, đường cắt) hoặc Nhãn (mỗi nhãn một trang hoặc cùng một trang trên mọi nhãn, nhãn bắt đầu, khổ A4 thông dụng hoặc tự nhập).
-- **Chỉ mặt lẻ, chỉ mặt chẵn, in theo thứ tự ngược**: các mặt được đếm sau khi sắp xếp, theo những mặt thực sự đi ra khỏi máy in. Dùng khi máy in không in được hai mặt: in mặt trước, lật giấy rồi in mặt sau.
-- **Thu nhỏ cho vừa giấy**: chỉ thu nhỏ những trang lớn hơn khổ giấy đã chọn; trang nhỏ hơn không được phóng to. Sheets và Markdown dùng các ô khổ giấy và tỉ lệ vốn có.
-- **Thang xám và độ phân giải hình**: khi in bằng các tùy chọn của Bố cục trang, mỗi trang được chuyển thành hình rồi mới gửi tới máy in. Độ phân giải chọn trong Tự động, 150, 300 hoặc 600 dpi.
-- **Chỉ vùng đã chọn**: Docs và Markdown chỉ in phần chữ đã chọn, chia trang lại từ trang đầu; Slides in các trang chiếu đã chọn, PDF in các trang đã chọn. Sheets vẫn in vùng đã chọn như trước.
-- **Sơ đồ bố cục và xem trước kết quả**: sơ đồ cho thấy ngay mỗi số trang nằm ở đâu trên tờ giấy, còn **Xem trước kết quả** cho thấy kết quả thực sự được tạo ra. Dùng **Lưu kết quả đã sắp xếp thành PDF** để in đúng bố cục đó trên máy khác hoặc ở tiệm in.
-- **Cửa sổ in của hệ thống**: với tập sách nhỏ, hãy chọn in hai mặt và lật theo cạnh ngắn. Giữ nguyên phạm vi trang và số trang mỗi tờ trong cửa sổ hệ thống.
+- **Đích xuất (máy in, PDF, hình ảnh)**: chọn máy in đã cài, **Lưu thành PDF**, **Lưu thành hình ảnh** hoặc **Hộp thoại in hệ thống** trong cùng một danh sách. Lưu ảnh hỗ trợ PNG và JPG (Cao 90%, Trung bình 80%, Tệp nhỏ 65%), xuất thành từng tệp đánh số hoặc gộp một tệp ZIP cho tài liệu nhiều trang. PDF bị giới hạn quyền sẽ tắt cả lưu PDF và lưu ảnh nhưng vẫn cho phép in.
+- **Xem trước khi in trực tiếp**: cả 10 trình chỉnh sửa đều có bản xem trước trước khi xuất. Khi bố cục, thang độ xám, hình mờ hoặc đầu trang/chân trang làm thay đổi mặt in, bản xem trước sẽ dựng mặt in thực tế theo nhu cầu cùng điều hướng trang, thu phóng và chuyển sang sơ đồ bố cục.
+- **Bố cục**: chọn Một trang mỗi tờ, Nhiều trang mỗi tờ (2, 4, 6, 9 hoặc 16, tùy chọn viền trang), Sách nhỏ (đóng gáy trái hoặc phải), Áp phích (cột × hàng, phần chồng mép, đường cắt và nhãn tọa độ mảnh) hoặc Nhãn dán (mỗi nhãn một trang hoặc lặp lại, ô bắt đầu, mẫu A4 hay kích thước tùy chỉnh).
+- **Tỷ lệ, hướng giấy, mặt in và thứ tự**: chọn Kích thước thực (100%), Vừa khổ giấy, Chỉ thu nhỏ trang quá khổ hoặc Tỷ lệ tùy chỉnh (10%–400%), cùng hướng Tự động, Dọc hoặc Ngang. Chỉ mặt lẻ, chỉ mặt chẵn và thứ tự đảo ngược được tính theo các mặt in cuối cùng.
+- **Hình mờ, đầu trang/chân trang, thang độ xám và độ phân giải**: thêm hình mờ chữ hoặc ảnh cùng 6 ô đầu/chân trang (tiêu đề, ngày, số trang hoặc văn bản tự nhập) chỉ áp dụng khi in mà không sửa tài liệu gốc. Thang độ xám và DPI (Tự động, 150, 300 hoặc 600 dpi) điều chỉnh chất lượng ảnh.
+- **Phạm vi trang và vùng chọn**: Docs và Markdown dàn lại đoạn văn đã chọn từ trang 1; Slides in các trang chiếu đã chọn; PDF in các trang đã chọn; Hangul hỗ trợ Tất cả, Trang hiện tại hoặc Phạm vi tùy chỉnh; Sheets in trang tính hiện hành, cả bảng tính hoặc vùng chọn.
+- **Hộp thoại in hệ thống**: khi in sách nhỏ, hãy bật in hai mặt lật theo cạnh ngắn và giữ nguyên phạm vi trang cùng số trang mỗi tờ trong cửa sổ hệ thống.
 
-PDF in theo thứ tự trang và góc xoay hiện tại.
+Tệp PDF được in theo đúng thứ tự và góc xoay trang hiện tại.
 
 ## Tập tin chưa có tiêu đề nằm ở đâu
 

@@ -30,6 +30,7 @@ Karty ve skupině **V editoru PDF** otevřou vybrané PDF na kartě editoru. Tam
 - **Odebrat prázdné stránky** jen ukazuje kandidáty. Odeberou se jen vybrané stránky a stránka s jediným znakem nikdy není kandidátem.
 - **Odebrat poznámky** ponechá pole formuláře a odkazy odebere jen po zaškrtnutí. Obsah odebraných poznámek v novém souboru nezůstane.
 - **Uložit jako text** čte jen textovou vrstvu. Stránky, kde je text obrázkem, například naskenované, budou prázdné.
+- **Rozdělit PDF** umí dělit podle vlastních rozsahů (i sloučit do jednoho souboru), počtu stran, záložek nebo maximální velikosti souboru, s volbou názvů a podsložky.
 
 ## Hodí se, když
 
