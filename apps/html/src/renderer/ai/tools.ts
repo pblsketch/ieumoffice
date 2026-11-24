@@ -45,8 +45,6 @@ export interface HtmlDocAccess {
     label: string,
   ): { ok: true; ranges: Array<[number, number]> } | { ok: false; errors: OpError[] }
   replaceAll(html: string, label: string): void
-  /** questionnaire card; resolves with the user's answers or cancelled when skipped */
-  askClarification?(questions: ClarifyQuestion[]): Promise<{ answers: string; cancelled?: boolean }>
   /** brief drafting as its own streamed request (see brief-writer.ts); resolves with the raw JSON object */
   planBrief?(spec: BriefPlanSpec, signal?: AbortSignal): Promise<BriefPlanResult>
   /** brief card; resolves with the confirmed (possibly edited) brief, a request for another one, or cancelled */
@@ -68,15 +66,6 @@ export interface HtmlDocAccess {
 }
 
 export type PlanMode = 'new' | 'redesign' | 'restyle' | 'extract'
-
-export interface ClarifyQuestion {
-  id: string
-  label: string
-  description?: string
-  /** ≤5 options; the card appends "decide for me" and a free-text "other" itself */
-  options: string[]
-  multi?: boolean
-}
 
 export type BriefDecision =
   { kind: 'confirmed'; brief: Brief } | { kind: 'redo'; note: string } | { kind: 'cancelled' }
@@ -339,33 +328,6 @@ export const AGENT_TOOLS: AgentToolDef[] = [
           },
         },
         summary: { type: 'string', description: 'One short sentence shown to the user' },
-      },
-    },
-  },
-  {
-    name: 'ask_clarification',
-    description:
-      '[Before creating a new page] Show a questionnaire card so the user makes the key choices (audience, scenario, tone, focus, length). Ask 2–4 questions that are real trade-offs for THIS topic, ≤5 options each; the card adds "decide for me" and a free-text option itself. Skip it when the request already answers these. Wait for the answers, then call plan_page. Do not repeat the questions in your reply.',
-    inputSchema: {
-      type: 'object',
-      required: ['questions'],
-      properties: {
-        questions: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 4,
-          items: {
-            type: 'object',
-            required: ['id', 'label', 'options'],
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-              description: { type: 'string' },
-              options: { type: 'array', items: { type: 'string' }, maxItems: 5 },
-              multi: { type: 'boolean' },
-            },
-          },
-        },
       },
     },
   },
@@ -1227,46 +1189,6 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
             })()
           }
           return finish(ops as HtmlOp[])
-        }
-        case 'ask_clarification': {
-          if (!access.askClarification)
-            return {
-              output:
-                'questionnaire cards are not available here; decide sensible defaults and continue',
-              isError: true,
-              summary: t('aiToolClarify'),
-            }
-          const raw = Array.isArray(call.input.questions) ? call.input.questions : []
-          const questions: ClarifyQuestion[] = raw
-            .map((q: Record<string, unknown>, i: number) => ({
-              id: String(q.id ?? `q${i + 1}`),
-              label: String(q.label ?? '').trim(),
-              description: q.description ? String(q.description) : undefined,
-              options: Array.isArray(q.options)
-                ? q.options.map((o: unknown) => String(o)).slice(0, 5)
-                : [],
-              multi: !!q.multi,
-            }))
-            .filter((q) => q.label && q.options.length > 0)
-            .slice(0, 4)
-          if (questions.length === 0)
-            return {
-              output: 'questions must be non-empty and every question needs options',
-              isError: true,
-              summary: t('aiToolClarify'),
-            }
-          return access.askClarification(questions).then((r) =>
-            r.cancelled
-              ? {
-                  output:
-                    'The user skipped the questionnaire. Decide the core hook and style yourself, then call plan_page.',
-                  summary: t('aiToolClarifySkipped'),
-                }
-              : {
-                  output: `User answers:\n${r.answers}\nNow call plan_page with a brief that follows these choices.`,
-                  summary: t('aiToolClarify'),
-                },
-          )
         }
         case 'plan_page': {
           const { planBrief, confirmBrief } = access

@@ -170,6 +170,33 @@ export function convert_bgrx_pixels(bgrx, stride, width, height, grayscale) {
 }
 
 /**
+ * Converts BGRx rows with stride and encodes to baseline JPEG.
+ * @param {Uint8Array | number[]} bgrx
+ * @param {number} stride
+ * @param {number} width
+ * @param {number} height
+ * @param {boolean} grayscale
+ * @param {number} quality
+ * @returns {Uint8Array}
+ */
+export function encode_bgrx_to_jpeg(bgrx, stride, width, height, grayscale, quality) {
+    const val2 = +stride;
+    const val3 = +width;
+    const val4 = +height;
+    const val5 = +grayscale;
+    const val6 = +quality;
+    const ptr0 = passArray8ToWasm0(bgrx, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.encode_bgrx_to_jpeg(ptr0, len0, val2, val3, val4, val5, val6);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v7 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v7;
+}
+
+/**
  * Fused BGRx-to-PNG encoder without an intermediate full-frame pixel copy.
  * @param {Uint8Array | number[]} bgrx
  * @param {number} stride
@@ -186,6 +213,32 @@ export function encode_bgrx_to_png(bgrx, stride, width, height, grayscale) {
     const ptr0 = passArray8ToWasm0(bgrx, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.encode_bgrx_to_png(ptr0, len0, val2, val3, val4, val5);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v6 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v6;
+}
+
+/**
+ * Encodes tightly packed 8-bit gray (`channels = 1`) or RGB (`channels = 3`)
+ * pixel rows to baseline JPEG.
+ * @param {Uint8Array | number[]} pixels
+ * @param {number} width
+ * @param {number} height
+ * @param {number} channels
+ * @param {number} quality
+ * @returns {Uint8Array}
+ */
+export function encode_jpeg(pixels, width, height, channels, quality) {
+    const val2 = +width;
+    const val3 = +height;
+    const val4 = +channels;
+    const val5 = +quality;
+    const ptr0 = passArray8ToWasm0(pixels, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.encode_jpeg(ptr0, len0, val2, val3, val4, val5);
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -258,6 +311,41 @@ export function rotate_landscape_faces(pdf_bytes) {
     }
     return RotateResult.__wrap(ret[0]);
 }
+
+/**
+ * Stamps pre-rendered PNG overlays (watermark, header/footer) onto PDF faces.
+ * @param {Uint8Array | number[]} pdf_bytes
+ * @param {string} placements_json
+ * @param {Uint8Array | number[]} stamps_blob
+ * @param {Uint32Array | number[]} stamp_lengths
+ * @returns {Uint8Array}
+ */
+export function stamp_pdf_overlays(pdf_bytes, placements_json, stamps_blob, stamp_lengths) {
+    let ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3;
+    try {
+        ptr0 = passArray8ToWasm0(pdf_bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(placements_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+        ptr2 = passArray8ToWasm0(stamps_blob, wasm.__wbindgen_malloc);
+        len2 = WASM_VECTOR_LEN;
+        ptr3 = passArray32ToWasm0(stamp_lengths, wasm.__wbindgen_malloc);
+        len3 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr3) { wasm.__wbindgen_free(ptr3, len3 * 4, 4); }
+        if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.stamp_pdf_overlays(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v5 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v5;
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -310,6 +398,14 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
 let cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
     if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
@@ -325,6 +421,13 @@ function handleError(f, args) {
         const idx = addToExternrefTable0(e);
         wasm.__wbindgen_exn_store(idx);
     }
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passArray8ToWasm0(arg, malloc) {
@@ -411,6 +514,7 @@ function __wbg_finalize_init(instance, module) {
     wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;

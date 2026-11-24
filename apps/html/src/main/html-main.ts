@@ -51,6 +51,7 @@ import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { fetchImageBytes } from '@genoffice/electron-utils/fetch-image-bytes'
 import {
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   LABEL_SPEC_FILE_NAME,
 } from '@genoffice/electron-utils/print-arranged'
 import { createI18n, getUiLang } from '@genoffice/i18n'
@@ -2251,6 +2252,23 @@ function registerHtmlIpc(): void {
         {
           defaultPath: `${exportFileName(suggestedName)}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+    pickImageSavePath: async (event, suggestedName, image) => {
+      const win =
+        BrowserWindow.fromWebContents(event.sender as WebContents) ??
+        BrowserWindow.getFocusedWindow() ??
+        undefined
+      const spec = imageSaveDialogSpec(exportFileName(suggestedName), image)
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: spec.defaultFileName,
+          filters: spec.filters,
         },
         configuredDefaultSaveDir(app),
       )

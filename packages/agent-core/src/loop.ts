@@ -1098,15 +1098,18 @@ export class AgentLoop<TSnapshot = unknown> {
     // the retry guards below must not replay the turn as if nothing arrived.
     let ignoredToolCall = false
     try {
-      // A model that cannot call tools gets none, plus a paragraph saying so;
-      // true or absent keeps the skill's tools exactly as before.
+      // A model that cannot call tools gets none, plus a paragraph saying so,
+      // and the skill's tools-off prompt where it has one; true or absent keeps
+      // the skill's tools and prompt exactly as before.
       const toolsAllowed = this.options.toolsAllowed?.() !== false
       this.handle = this.options.transport.stream(
         {
           system:
             runtimePreamble() +
             MATERIAL_NOT_INSTRUCTIONS +
-            this.options.skill.systemPrompt +
+            (toolsAllowed
+              ? this.options.skill.systemPrompt
+              : (this.options.skill.toolsOffSystemPrompt ?? this.options.skill.systemPrompt)) +
             (toolsAllowed ? '' : TOOLS_UNAVAILABLE_NOTE) +
             (this.options.systemSuffix?.() ?? ''),
           messages: [...this.history],
