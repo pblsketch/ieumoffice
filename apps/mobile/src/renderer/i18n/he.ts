@@ -56,6 +56,8 @@ export const he = {
   lineSpacingNarrower: 'ריווח שורות צר יותר',
   insertTable: 'הוספת טבלה',
   fitToWidth: 'התאם לרוחב',
+  flowView: 'תצוגת קריאה',
+  pageView: 'תצוגת עמוד',
   unsavedTitle: 'שינויים שלא נשמרו',
   unsavedPrompt: 'לשמור שינויים לפני מעבר למסמך אחר?',
   unsavedSave: 'שמור',

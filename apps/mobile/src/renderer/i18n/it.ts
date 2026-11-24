@@ -56,6 +56,8 @@ export const it = {
   lineSpacingNarrower: 'Interlinea più stretta',
   insertTable: 'Inserisci tabella',
   fitToWidth: 'Adatta alla larghezza',
+  flowView: 'Vista lettura',
+  pageView: 'Vista pagina',
   unsavedTitle: 'Modifiche non salvate',
   unsavedPrompt: 'Salvare le modifiche prima di cambiare documento?',
   unsavedSave: 'Salva',

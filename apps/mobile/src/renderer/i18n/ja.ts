@@ -56,6 +56,8 @@ export const ja = {
   lineSpacingNarrower: '行間を狭く',
   insertTable: '表を挿入',
   fitToWidth: '幅に合わせる',
+  flowView: 'リーディングビュー',
+  pageView: 'ページビュー',
   unsavedTitle: '未保存の変更があります',
   unsavedPrompt: 'ドキュメントを切り替える前に変更を保存しますか？',
   unsavedSave: '保存',

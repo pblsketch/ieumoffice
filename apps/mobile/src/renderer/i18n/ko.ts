@@ -56,6 +56,8 @@ export const ko = {
   lineSpacingNarrower: '줄 간격 좁게',
   insertTable: '표 넣기',
   fitToWidth: '너비 맞춤',
+  flowView: '흐름 보기',
+  pageView: '쪽 보기',
   unsavedTitle: '저장하지 않은 변경이 있습니다',
   unsavedPrompt: '문서를 전환하기 전에 현재 변경 내용을 저장할까요?',
   unsavedSave: '저장',

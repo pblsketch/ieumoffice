@@ -56,6 +56,8 @@ export const id = {
   lineSpacingNarrower: 'Spasi baris lebih rapat',
   insertTable: 'Sisipkan tabel',
   fitToWidth: 'Sesuaikan lebar',
+  flowView: 'Tampilan baca',
+  pageView: 'Tampilan halaman',
   unsavedTitle: 'Perubahan belum disimpan',
   unsavedPrompt: 'Simpan perubahan sebelum beralih dokumen?',
   unsavedSave: 'Simpan',

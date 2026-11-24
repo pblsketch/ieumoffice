@@ -310,3 +310,40 @@ export function IconKeyboardHide(props: IconProps) {
     </SvgIcon>
   )
 }
+
+export function IconFlowView(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M4 6h16M4 10h16M4 14h12M4 18h9" />
+    </SvgIcon>
+  )
+}
+
+export function IconPageView(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="1.5" />
+      <path d="M8 8h8M8 12h8M8 16h5" />
+    </SvgIcon>
+  )
+}
+
+export function IconTextSmaller(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M3 18 7.5 6 12 18" />
+      <path d="M4.8 14h5.4" />
+      <path d="M15 12h6" />
+    </SvgIcon>
+  )
+}
+
+export function IconTextBigger(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M3 18 7.5 6 12 18" />
+      <path d="M4.8 14h5.4" />
+      <path d="M15 12h6M18 9v6" />
+    </SvgIcon>
+  )
+}

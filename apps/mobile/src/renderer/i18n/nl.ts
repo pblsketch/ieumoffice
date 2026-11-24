@@ -57,6 +57,8 @@ export const nl = {
   lineSpacingNarrower: 'Kleinere regelafstand',
   insertTable: 'Tabel invoegen',
   fitToWidth: 'Passend op breedte',
+  flowView: 'Leesweergave',
+  pageView: 'Paginaweergave',
   unsavedTitle: 'Niet-opgeslagen wijzigingen',
   unsavedPrompt: 'Wijzigingen opslaan voordat u van document wisselt?',
   unsavedSave: 'Opslaan',

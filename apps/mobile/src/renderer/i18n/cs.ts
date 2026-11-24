@@ -56,6 +56,8 @@ export const cs = {
   lineSpacingNarrower: 'Menší řádkování',
   insertTable: 'Vložit tabulku',
   fitToWidth: 'Přizpůsobit šířce',
+  flowView: 'Zobrazení pro čtení',
+  pageView: 'Zobrazení stránky',
   unsavedTitle: 'Neuložené změny',
   unsavedPrompt: 'Uložit změny před přepnutím dokumentu?',
   unsavedSave: 'Uložit',

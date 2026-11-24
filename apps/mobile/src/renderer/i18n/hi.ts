@@ -57,6 +57,8 @@ export const hi = {
   lineSpacingNarrower: 'पंक्ति अंतर घटाएँ',
   insertTable: 'तालिका डालें',
   fitToWidth: 'चौड़ाई में फ़िट करें',
+  flowView: 'पठन दृश्य',
+  pageView: 'पृष्ठ दृश्य',
   unsavedTitle: 'असहेजे गए परिवर्तन',
   unsavedPrompt: 'दस्तावेज़ बदलने से पहले परिवर्तन सहेजें?',
   unsavedSave: 'सहेजें',

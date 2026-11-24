@@ -56,6 +56,8 @@ export const th = {
   lineSpacingNarrower: 'ระยะบรรทัดแคบลง',
   insertTable: 'แทรกตาราง',
   fitToWidth: 'พอดีความกว้าง',
+  flowView: 'มุมมองการอ่าน',
+  pageView: 'มุมมองหน้า',
   unsavedTitle: 'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก',
   unsavedPrompt: 'ต้องการบันทึกการเปลี่ยนแปลงก่อนเปลี่ยนเอกสารหรือไม่?',
   unsavedSave: 'บันทึก',

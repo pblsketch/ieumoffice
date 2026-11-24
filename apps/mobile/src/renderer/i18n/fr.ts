@@ -57,6 +57,8 @@ export const fr = {
   lineSpacingNarrower: 'Interligne plus serré',
   insertTable: 'Insérer un tableau',
   fitToWidth: 'Ajuster à la largeur',
+  flowView: 'Mode lecture',
+  pageView: 'Vue page',
   unsavedTitle: 'Modifications non enregistrées',
   unsavedPrompt: 'Enregistrer les modifications avant de changer de document ?',
   unsavedSave: 'Enregistrer',

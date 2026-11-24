@@ -56,6 +56,8 @@ export const vi = {
   lineSpacingNarrower: 'Giãn dòng hẹp hơn',
   insertTable: 'Chèn bảng',
   fitToWidth: 'Vừa chiều rộng',
+  flowView: 'Chế độ đọc',
+  pageView: 'Xem theo trang',
   unsavedTitle: 'Thay đổi chưa lưu',
   unsavedPrompt: 'Lưu thay đổi trước khi chuyển tài liệu?',
   unsavedSave: 'Lưu',
