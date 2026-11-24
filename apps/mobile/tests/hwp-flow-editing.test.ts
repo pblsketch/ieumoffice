@@ -6,11 +6,13 @@ import { HwpDocument, initSync } from '@rhwp/core'
 import {
   createFlowEditor,
   keepSpacesVisible,
+  memoFromEngine,
   offsetInParagraph,
   paragraphText,
   placeCaret,
   renumberParagraphs,
   textDiff,
+  textRange,
   type FlowEditDocument,
   type FlowEditor,
 } from '../src/renderer/editors/flowEditing'
@@ -49,6 +51,37 @@ describe('flow editing helpers', () => {
     const nbsp = String.fromCharCode(0xa0)
     expect(p.textContent).toBe(`${nbsp}가 나${nbsp}${nbsp}다${nbsp}`)
     expect(paragraphText(p)).toBe(' 가 나  다 ')
+  })
+
+  it('turns engine memo locations into flow block addresses', () => {
+    const base = {
+      id: 1,
+      parentId: null,
+      sectionIndex: 0,
+      paraIndex: 2,
+      startCharIdx: 0,
+      endCharIdx: 2,
+    }
+    expect(memoFromEngine({ ...base, path: null }).at).toEqual({ sec: 0, para: 2, path: null })
+    expect(
+      memoFromEngine({
+        ...base,
+        path: [{ type: 'cell', controlIndex: 0, cellIndex: 3, paraIndex: 1 }],
+      }).at?.path,
+    ).toEqual([{ controlIndex: 0, cellIndex: 3, cellParaIndex: 1 }])
+    // a text box is cell 0 of its control
+    expect(
+      memoFromEngine({ ...base, path: [{ type: 'textbox', controlIndex: 3, paraIndex: 0 }] }).at
+        ?.path,
+    ).toEqual([{ controlIndex: 3, cellIndex: 0, cellParaIndex: 0 }])
+  })
+
+  it('builds a DOM range over character offsets across text nodes', () => {
+    document.body.innerHTML =
+      '<div class="flow-p" data-sec="0" data-para="0"><p><span>가나</span><span>다라</span></p></div>'
+    const range = textRange(document.querySelector('.flow-p')!, 1, 3)!
+    expect(range.toString()).toBe('나다')
+    expect(textRange(document.querySelector('.flow-p')!, 1, 9)).toBeNull()
   })
 
   it('maps DOM points to character offsets and back', () => {
@@ -287,6 +320,49 @@ describe('editing in the flow view (real rhwp engine)', () => {
   it('refuses a picture without a caret in text', () => {
     document.getSelection()!.removeAllRanges()
     expect(editor.insertPicture(picture)).toBe(false)
+  })
+
+  const selectIn = (el: HTMLElement, start: number, end: number) => {
+    placeCaret(el, start)
+    const sel = document.getSelection()!
+    const anchor = sel.anchorNode!
+    const anchorOffset = sel.anchorOffset
+    placeCaret(el, end)
+    sel.setBaseAndExtent(anchor, anchorOffset, sel.focusNode!, sel.focusOffset)
+  }
+
+  it('adds, answers, changes and removes memos on the selection', () => {
+    selectIn(pEl(1), 0, 3)
+    expect(editor.addMemo('이름 확인', '홍길동')).toBe(true)
+    const [memo] = editor.memos()
+    expect(memo).toMatchObject({
+      author: '홍길동',
+      text: '이름 확인',
+      parentId: null,
+      at: { sec: 0, para: 1, path: null },
+      start: 0,
+      end: 3,
+    })
+    expect(onChange).toHaveBeenCalled()
+    expect(editor.replyMemo(memo.id, '확인함', '김철수')).toBe(true)
+    expect(editor.memos().find((m) => m.parentId === memo.id)?.text).toBe('확인함')
+    expect(editor.editMemo(memo.id, '이름 다시 확인')).toBe(true)
+    expect(editor.memos()[0].text).toBe('이름 다시 확인')
+    // removing a memo removes its replies; the text stays
+    expect(editor.removeMemo(memo.id)).toBe(true)
+    expect(editor.memos()).toEqual([])
+    expect(engineText(1)).toBe('작성자 : ○○○ (서명)')
+  })
+
+  it('adds a memo inside a table cell, located by the cell path', () => {
+    selectIn(cellEl(cellPath(3)), 0, 2)
+    expect(editor.addMemo('장소?', '홍길동')).toBe(true)
+    expect(editor.memos()[0].at).toEqual({ sec: 0, para: 2, path: cellPath(3) })
+  })
+
+  it('refuses a memo without a selection', () => {
+    document.getSelection()!.removeAllRanges()
+    expect(editor.addMemo('x', 'y')).toBe(false)
   })
 
   it('shows every cell paragraph, empty ones included, at its engine path', () => {

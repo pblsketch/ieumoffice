@@ -32,6 +32,19 @@ import {
 } from './hwpFlow'
 
 export interface FlowEditDocument extends FlowSourceDocument {
+  getMemoList(): string
+  insertMemo(sec: number, para: number, start: number, end: number, json: string): string
+  insertMemoByPath(
+    sec: number,
+    para: number,
+    pathJson: string,
+    start: number,
+    end: number,
+    json: string,
+  ): string
+  insertMemoReply(parentId: number, json: string): string
+  setMemoText(id: number, text: string): string
+  removeMemo(id: number): string
   getPageDef(sec: number): string
   insertPicture(
     sec: number,
@@ -223,6 +236,8 @@ const HU_PER_PX = 75
 /** 150 x 220 mm, used when the page size cannot be read. */
 const DEFAULT_TEXT_WIDTH_HU = 42520
 const DEFAULT_TEXT_HEIGHT_HU = 62362
+/** Name of the memo highlight; FLOW_FRAME_CSS styles ::highlight(ieum-memo). */
+const MEMO_HIGHLIGHT = 'ieum-memo'
 
 /** Font size steps in the engine's unit (1/100 pt). */
 const FONT_STEP = 100
@@ -254,7 +269,32 @@ export interface FlowPicture {
   readonly description: string
 }
 
+/** One memo (comment) as the flow shows it. */
+export interface FlowMemo {
+  readonly id: number
+  /** The memo this one replies to, or null for a top-level memo. */
+  readonly parentId: number | null
+  readonly author: string
+  /** ISO date, or null when the document did not store one. */
+  readonly date: string | null
+  readonly text: string
+  /** The text block the memo is anchored to, or null when it is outside the flow. */
+  readonly at: BlockAddress | null
+  readonly start: number
+  readonly end: number
+  readonly editable: boolean
+}
+
 export interface FlowEditor {
+  /** Memos in document order. */
+  memos(): FlowMemo[]
+  /** Adds a memo on the selection (within its first block); false without a selection. */
+  addMemo(text: string, author: string): boolean
+  replyMemo(parentId: number, text: string, author: string): boolean
+  editMemo(id: number, text: string): boolean
+  removeMemo(id: number): boolean
+  /** Scrolls to a memo's text and selects it. */
+  revealMemo(id: number): void
   setEditable(editable: boolean): void
   runFormat(action: FlowFormatAction): void
   /** Puts a picture in line at the end of the caret's paragraph; false without a caret in text. */
@@ -399,6 +439,70 @@ export function placeCaret(pEl: Element, offset: number): void {
   }
   if (last) sel.collapse(last, last.textContent?.length ?? 0)
   else sel.collapse(pEl.querySelector('p') ?? pEl, 0)
+}
+
+interface RawMemo {
+  id: number
+  parentId: number | null
+  author?: string
+  date?: string | null
+  text?: string
+  sectionIndex: number
+  paraIndex: number
+  startCharIdx: number
+  endCharIdx: number
+  path: Array<{
+    type?: string
+    controlIndex: number
+    cellIndex?: number
+    paraIndex?: number
+  }> | null
+  editable?: boolean
+}
+
+/** A memo from `getMemoList`, with its location as a flow block address. */
+export function memoFromEngine(raw: RawMemo): FlowMemo {
+  const path = raw.path
+    ? raw.path.map((step) => ({
+        controlIndex: step.controlIndex,
+        // text boxes and captions are cell 0 of their control (see hwpFlow)
+        cellIndex: step.type === 'cell' ? (step.cellIndex ?? 0) : 0,
+        cellParaIndex: step.paraIndex ?? 0,
+      }))
+    : null
+  return {
+    id: raw.id,
+    parentId: raw.parentId ?? null,
+    author: raw.author ?? '',
+    date: raw.date ?? null,
+    text: raw.text ?? '',
+    at: { sec: raw.sectionIndex, para: raw.paraIndex, path },
+    start: raw.startCharIdx,
+    end: raw.endCharIdx,
+    editable: raw.editable !== false,
+  }
+}
+
+/** A DOM range over character offsets of a block, or null when they fall outside it. */
+export function textRange(block: Element, start: number, end: number): Range | null {
+  const doc = block.ownerDocument
+  const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  const range = doc.createRange()
+  let seen = 0
+  let started = false
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const length = node.textContent?.length ?? 0
+    if (!started && start <= seen + length) {
+      range.setStart(node, start - seen)
+      started = true
+    }
+    if (started && end <= seen + length) {
+      range.setEnd(node, end - seen)
+      return range
+    }
+    seen += length
+  }
+  return null
 }
 
 // ---------- engine access per block ----------
@@ -644,6 +748,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
   const record = (entry: UndoEntry) => {
     undoStack.push(entry)
     redoStack.length = 0
+    refreshMemoHighlights()
     onChange()
   }
 
@@ -1019,6 +1124,54 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
     }
   }
 
+  const readMemos = (): FlowMemo[] => {
+    try {
+      return (JSON.parse(doc.getMemoList()) as RawMemo[]).map(memoFromEngine)
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Colors memo ranges with the CSS Custom Highlight API: no DOM changes, so
+   * typing and reconciling are unaffected. Without the API memos are only listed.
+   */
+  const refreshMemoHighlights = () => {
+    const view = frameDocument.defaultView as
+      | (Window & {
+          CSS?: { highlights?: Map<string, unknown> }
+          Highlight?: new (...ranges: Range[]) => unknown
+        })
+      | null
+    const registry = view?.CSS?.highlights
+    const HighlightType = view?.Highlight
+    if (!registry || !HighlightType) return
+    const ranges: Range[] = []
+    for (const memo of readMemos()) {
+      if (!memo.at || memo.end <= memo.start) continue
+      const el = blockEl(memo.at)
+      const range = el ? textRange(el, memo.start, memo.end) : null
+      if (range) ranges.push(range)
+    }
+    registry.set(MEMO_HIGHLIGHT, new HighlightType(...ranges))
+  }
+
+  const memoChanged = () => {
+    refreshMemoHighlights()
+    onChange()
+  }
+
+  /** Runs a memo call; true when the engine answered ok. */
+  const memoCall = (call: () => string): boolean => {
+    try {
+      if ((JSON.parse(call()) as { ok?: boolean }).ok !== true) return false
+    } catch {
+      return false
+    }
+    memoChanged()
+    return true
+  }
+
   /** Puts the selection back over the same text after its blocks were redrawn. */
   const restoreSelection = (info: NonNullable<ReturnType<typeof selectionInfo>>) => {
     const sel = frameDocument.getSelection()
@@ -1105,6 +1258,37 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
   }
 
   const editor: FlowEditor = {
+    memos: () => readMemos(),
+    addMemo(text, author) {
+      const info = selectionInfo()
+      if (!info) return false
+      const at = info.start.at
+      const start = info.start.offset
+      // a memo covers text in one block: a selection across blocks stops at the end of the first
+      const end = sameAddress(info.start.at, info.end.at) ? info.end.offset : ops.length(at)
+      const json = JSON.stringify({ author, text })
+      return memoCall(() =>
+        at.path
+          ? doc.insertMemoByPath(at.sec, at.para, JSON.stringify(at.path), start, end, json)
+          : doc.insertMemo(at.sec, at.para, start, end, json),
+      )
+    },
+    replyMemo: (parentId, text, author) =>
+      memoCall(() => doc.insertMemoReply(parentId, JSON.stringify({ author, text }))),
+    editMemo: (id, text) => memoCall(() => doc.setMemoText(id, text)),
+    removeMemo: (id) => memoCall(() => doc.removeMemo(id)),
+    revealMemo(id) {
+      const memo = readMemos().find((m) => m.id === id)
+      const el = memo?.at ? blockEl(memo.at) : null
+      if (!memo || !el) return
+      el.scrollIntoView({ block: 'center' })
+      const range = textRange(el, memo.start, Math.max(memo.start, memo.end))
+      const sel = frameDocument.getSelection()
+      if (range && sel) {
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+    },
     insertPicture(picture) {
       const caret = editor.caret()
       if (!caret) return false
@@ -1172,6 +1356,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
       if (!entry) return
       applyUndo(entry, true)
       redoStack.push(entry)
+      refreshMemoHighlights()
       onChange()
     },
     redo() {
@@ -1179,6 +1364,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
       if (!entry) return
       applyUndo(entry, false)
       undoStack.push(entry)
+      refreshMemoHighlights()
       onChange()
     },
     canUndo: () => undoStack.length > 0,
@@ -1193,5 +1379,6 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
       frameDocument.removeEventListener('compositionend', onCompositionEnd)
     },
   }
+  refreshMemoHighlights()
   return editor
 }
