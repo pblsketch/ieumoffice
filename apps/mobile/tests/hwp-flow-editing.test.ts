@@ -62,7 +62,36 @@ describe('editing in the flow view (real rhwp engine)', () => {
     return len ? doc.getTextRange(0, para, 0, len) : ''
   }
   const pEl = (para: number) =>
-    document.querySelector<HTMLElement>(`.flow-p[data-sec="0"][data-para="${para}"]`)!
+    document.querySelector<HTMLElement>(
+      `.flow-p[data-sec="0"][data-para="${para}"]:not([data-path])`,
+    )!
+  /** Cell block of the top table (body paragraph 2), or of the table nested in cell 9. */
+  const cellPath = (cellIndex: number, cellParaIndex = 0, nested = false) =>
+    nested
+      ? [
+          { controlIndex: 0, cellIndex: 9, cellParaIndex: 3 },
+          { controlIndex: 0, cellIndex, cellParaIndex },
+        ]
+      : [{ controlIndex: 0, cellIndex, cellParaIndex }]
+  const cellEl = (path: unknown) =>
+    [...document.querySelectorAll<HTMLElement>('.flow-p[data-path]')].find(
+      (el) => el.getAttribute('data-path') === JSON.stringify(path),
+    )!
+  const cellText = (path: unknown) => {
+    const json = JSON.stringify(path)
+    const len = doc.getCellParagraphLengthByPath(0, 2, json)
+    return len ? doc.getTextInCellByPath(0, 2, json, 0, len) : ''
+  }
+  const cellCount = (cellIndex: number) =>
+    doc.getCellParagraphCountByPath(0, 2, JSON.stringify(cellPath(cellIndex)))
+  const typeAt = (el: HTMLElement, offset: number, text: string) => {
+    const textNode = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode() as Text
+    textNode.insertData(offset, text)
+    placeCaret(el, offset + text.length)
+    document.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: text, bubbles: true }),
+    )
+  }
   const beforeInput = (inputType: string, init: InputEventInit = {}) => {
     const event = new InputEvent('beforeinput', {
       inputType,
@@ -159,12 +188,85 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(JSON.parse(doc.getCharPropertiesAt(0, 0, 2)).bold).toBe(false)
   })
 
-  it('keeps tables read-only', () => {
-    const obj = document.querySelector<HTMLElement>('.flow-obj')!
-    expect(obj.contentEditable).toBe('false')
-    const cellText = document.createTreeWalker(obj, NodeFilter.SHOW_TEXT).nextNode() as Text
-    document.getSelection()!.collapse(cellText, 0)
+  it('shows every cell paragraph, empty ones included, at its engine path', () => {
+    expect(cellEl(cellPath(0)).textContent).toBe('일 시')
+    expect(cellEl(cellPath(9, 1)).textContent).toBe('')
+    expect(cellEl(cellPath(9, 2)).textContent).toBe('2. 2학기 정기시험 및 수행평가 계획(0학년)')
+    expect(cellEl(cellPath(1, 0, true)).textContent).toBe('정기시험')
+  })
+
+  it('types into a table cell and a nested table cell, and undoes it', () => {
+    typeAt(cellEl(cellPath(3)), 0, '본관 ')
+    expect(cellText(cellPath(3))).toBe('본관 ○○○○○○')
+    typeAt(cellEl(cellPath(1, 0, true)), 4, '!')
+    expect(cellText(cellPath(1, 0, true))).toBe('정기시험!')
+    expect(cellEl(cellPath(1, 0, true)).textContent).toBe('정기시험!')
+    editor.undo()
+    expect(cellText(cellPath(1, 0, true))).toBe('정기시험')
+    editor.undo()
+    expect(cellText(cellPath(3))).toBe('○○○○○○')
+  })
+
+  it('splits and joins paragraphs inside a cell', () => {
+    const before = cellCount(0)
+    placeCaret(cellEl(cellPath(0)), 1)
+    expect(beforeInput('insertParagraph')).toBe(true)
+    expect(cellCount(0)).toBe(before + 1)
+    expect(cellText(cellPath(0, 0))).toBe('일')
+    expect(cellText(cellPath(0, 1))).toBe(' 시')
+    expect(cellEl(cellPath(0, 1)).textContent).toBe(' 시')
+    // the caret is at the start of the new cell paragraph; Backspace joins them
+    expect(beforeInput('deleteContentBackward')).toBe(true)
+    expect(cellCount(0)).toBe(before)
+    expect(cellEl(cellPath(0)).textContent).toBe('일 시')
+    // Backspace at the start of the first cell paragraph does nothing
+    placeCaret(cellEl(cellPath(0)), 0)
+    expect(beforeInput('deleteContentBackward')).toBe(true)
+    expect(cellCount(0)).toBe(before)
+  })
+
+  it('makes cell text bold', () => {
+    const el = cellEl(cellPath(2))
+    placeCaret(el, 0)
+    const sel = document.getSelection()!
+    const anchor = sel.anchorNode!
+    placeCaret(el, 1)
+    sel.setBaseAndExtent(anchor, 0, sel.focusNode!, sel.focusOffset)
+    editor.runFormat('bold')
+    const json = JSON.stringify(cellPath(2))
+    expect(JSON.parse(doc.getCellCharPropertiesAtByPath(0, 2, json, 0)).bold).toBe(true)
+    editor.undo()
+    expect(JSON.parse(doc.getCellCharPropertiesAtByPath(0, 2, json, 0)).bold).toBe(false)
+  })
+
+  it('does not write outside text blocks', () => {
+    const td = document.querySelector<HTMLElement>('td[data-cell-path]')!
+    document.getSelection()!.collapse(td, 0)
     expect(beforeInput('insertText', { data: 'x' })).toBe(true)
+  })
+
+  it('renumbers cells when a body paragraph above the table splits', () => {
+    placeCaret(pEl(0), 2)
+    beforeInput('insertParagraph')
+    // the table now hangs on body paragraph 3
+    const block = [...document.querySelectorAll<HTMLElement>('.flow-p[data-path]')][0]
+    expect(block.getAttribute('data-para')).toBe('3')
+    typeAt(block, 0, '*')
+    const json = JSON.stringify(cellPath(0))
+    const len = doc.getCellParagraphLengthByPath(0, 3, json)
+    expect(doc.getTextInCellByPath(0, 3, json, 0, len)).toBe('*일 시')
+  })
+
+  it('hands over cell edits the page editor can open', () => {
+    typeAt(cellEl(cellPath(3)), 0, '본관 ')
+    const reopened = new HwpDocument(doc.exportHwp())
+    try {
+      const json = JSON.stringify(cellPath(3))
+      const len = reopened.getCellParagraphLengthByPath(0, 2, json)
+      expect(reopened.getTextInCellByPath(0, 2, json, 0, len)).toBe('본관 ○○○○○○')
+    } finally {
+      reopened.free()
+    }
   })
 
   it('hands over edits the page editor can open', () => {

@@ -79,6 +79,9 @@ describe('HwpFlowView', () => {
       getControlTextPositions: () => '[]',
       exportSelectionHtml: () => '<!--StartFragment--><p>본문</p><!--EndFragment-->',
       exportControlHtml: () => '',
+      getCellParagraphCountByPath: () => 0,
+      getCellParagraphLengthByPath: () => 0,
+      exportSelectionInCellHtmlByPath: () => '',
       free: vi.fn(),
     }
     const el = render(
