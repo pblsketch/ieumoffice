@@ -22,6 +22,7 @@ import {
   type AiAttachmentAccess,
 } from './tools'
 import type { AiNotesAccess } from './note-ops'
+import { beginModelRun } from './keep-tokens'
 import type { AgentToolDef } from '../../shared/ipc'
 import { isOdtSession } from '../odt-gate'
 import { ODT_SYSTEM_NOTE, odtToolFilter } from './odt-tools'
@@ -99,6 +100,7 @@ export function createDocsSkill(
     buildContext: () => {
       const editor = getEditor()
       markDocSeen(editor) // the context the model receives is the freshness baseline for index-addressed writes
+      beginModelRun(editor)
       frozen = { scope: getSelectionScope(editor), doc: editor.state.doc }
       return buildDocContext(
         editor,

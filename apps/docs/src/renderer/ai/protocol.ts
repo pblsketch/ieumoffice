@@ -1,7 +1,7 @@
 import { brandText } from '@genoffice/i18n'
 import type { Editor } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { TextSelection } from '@tiptap/pm/state'
+import { TextSelection, type Transaction } from '@tiptap/pm/state'
 import {
   TABLE_HEADER_FILL,
   type Block,
@@ -11,7 +11,27 @@ import {
 } from '@genoffice/docx-engine'
 import { pmTableToModel, tableModelToPmNode, type PmMark, type PmNode } from '../editor/convert'
 import { equationBlockJson, inlineEquationNodeJson } from '../editor/equation'
-import { inheritFrom, inheritTableFormatting, sameBlockRole } from './inherit-formatting'
+import {
+  baseTextStyle,
+  inheritFrom,
+  inheritTableFormatting,
+  sameBlockRole,
+} from './inherit-formatting'
+import {
+  KEEP_NODE,
+  LINK_MARK,
+  SPAN_MARK,
+  addItems,
+  atomKeyOf,
+  emptyInventory,
+  itemsHtml,
+  normalizeKeepTags,
+  projectInline,
+  recordShown,
+  tokenIdOf,
+  widenToItems,
+  type KeepInventory,
+} from './keep-tokens'
 import { TRACK_IGNORE, type RevisionRange } from '../editor/revisions'
 import { countWords, documentTextForWordCount, leafTextForWordCount } from '../word-count'
 import { blockRangePositions, isTrackedDeleted, liveText } from './doc-utils'
@@ -106,6 +126,15 @@ export const HTML_RULES = [
   '- Keep the same language as the original document / user instruction, unless translation is requested',
 ].join('\n')
 
+export const KEEP_RULES = [
+  'read_blocks and the selection HTML mark, inside the text, what the tags above cannot write. replace_blocks and replace_selection must carry these tokens:',
+  '- <keep id="k…" what="footnote 1"/> is an object you cannot edit: a footnote or endnote mark, a picture, a field or cross-reference result, a symbol, a checkbox, an index entry, ruby text or an imported formula. Copy it unchanged and move it with the words it belongs to.',
+  '- <span id="k…">…</span> carries formatting or a comment range the tags cannot express (color, highlight, font, a comment). Reword the text inside freely; keep the span around the words that carry it.',
+  '- <a href="…" id="k…"> keeps a link (you may change the href); an <a> without an id is a new link.',
+  '- Every token of the range you rewrite must come back: each <keep> and each {{…}} placeholder exactly as often as it appears, each <span id> and <a id> at least once. When the user asked to remove the content an object belongs to (deleting the sentence that carries a footnote), list its id (or the placeholder) in drop instead. Never invent an id or copy one from outside the range.',
+  '- keep and span are allowed only as these tokens. A rewrite that does not account for every token, or that rewrites formatted blocks you have not read, is refused and the document stays unchanged; the refusal says what to fix.',
+].join('\n')
+
 /**
  * Agent system prompt: document-first, intent resolution, act via tools,
  * answer in chat.
@@ -124,8 +153,8 @@ export const AGENT_SYSTEM_PROMPT = [
   '',
   '# Tool usage',
   '- Every user message carries the latest "document block list" (index|type|content preview; previews may be truncated); after modifications, call get_document_context if you need the latest state;',
-  '- When a list preview is truncated, read the full content with read_blocks before rewriting; never rewrite based on a truncated preview;',
-  '- Content changes: use insert_content for new content, and replace_blocks to rewrite/replace existing blocks (pass a block index range and the new HTML); replaced blocks pass their paragraph and text formatting (font, size, color, indent, spacing, alignment) on to the new blocks automatically, and a rewritten table keeps its widths, borders, shading and cell formatting, so a rewrite never needs follow-up formatting commands;',
+  '- Previews are plain text, often truncated: before rewriting blocks, read them with read_blocks (bold, links, styled runs, comments, notes and pictures appear only there); never rewrite based on a preview;',
+  '- Content changes: use insert_content for new content, and replace_blocks to rewrite/replace existing blocks (pass a block index range and the new HTML); the new blocks take the paragraph formatting and the base text style (font, size, color, indent, spacing, alignment) of the blocks they replace, everything else rides on the keep tokens of the HTML you read (see "Keep tokens"), and a rewritten table keeps its widths, borders, shading and cell formatting;',
   '- Long new content (drafting a whole document, a chapter, a full report/article/translation — anything beyond a few paragraphs) goes through write_document: you pass the plan and the reference material, and the system writer streams the text into the document while the user watches; never paste long content into insert_content. When the document is blank and the user asks for content, use write_document;',
   '- Formatting, structure, and batch operations (color/font size/line spacing/alignment/indent/heading level/find & replace/delete/move/list conversion) go through apply_ops — do not rewrite whole blocks with replace_blocks;',
   '- Small in-place text fixes (changing a few words inside a sentence) go through apply_ops findReplace with a target — do not rewrite the whole block; styling every occurrence of a phrase (e.g. bold each "TODO") uses setMatchedFont;',
@@ -184,6 +213,9 @@ export const AGENT_SYSTEM_PROMPT = [
   '',
   '# HTML fragment rules',
   HTML_RULES,
+  '',
+  '# Keep tokens',
+  KEEP_RULES,
   '',
   '# apply_ops guide',
   OPS_GUIDE,
@@ -444,12 +476,66 @@ function tableToHtmlWithImages(node: PmNode, image: ImageSrcMapper): string {
  * Serialize top-level nodes [startIndex, endIndex] into restricted HTML.
  * Consecutive list items of the same kind are grouped into ul/ol. With `sel`
  * (absolute positions), the selected characters are delimited by <sel>…</sel>.
+ * With an image mapper this is the export view; without one it is the
+ * model's view (see modelViewOfRange).
  */
 export function serializeRangeToHtml(
   editor: Editor,
   startIndex: number,
   endIndex: number,
   sel?: { from: number; to: number } | null,
+  image?: ImageSrcMapper,
+): string {
+  if (!image) return modelViewOfRange(editor, startIndex, endIndex, sel).html
+  return rangeToHtml(
+    editor,
+    startIndex,
+    endIndex,
+    sel,
+    (node, inlineSel) => inlineToHtml(node.content, inlineSel, image),
+    image,
+  )
+}
+
+export interface ModelView {
+  html: string
+  /** what the keep tokens of the range (or of the selection, with `sel`) stand for */
+  inventory: KeepInventory
+  /** text blocks whose inline HTML carries tags or tokens a block-list preview does not show */
+  formatted: number[]
+}
+
+/**
+ * The model's view of blocks [startIndex, endIndex]: restricted HTML in which
+ * everything the tags cannot write is a keep token, plus the inventory those
+ * tokens name. Reads and rewrites both call this, so their ids agree.
+ */
+export function modelViewOfRange(
+  editor: Editor,
+  startIndex: number,
+  endIndex: number,
+  sel?: { from: number; to: number } | null,
+): ModelView {
+  const inventory = emptyInventory()
+  const formatted: number[] = []
+  const html = rangeToHtml(editor, startIndex, endIndex, sel, (_redacted, inlineSel, index) => {
+    const liveBlock = editor.state.doc.child(index).toJSON() as PmNode
+    const items = projectInline(liveBlock.content ?? [], baseTextStyle(liveBlock.content))
+    const widened = inlineSel ? widenToItems(items, inlineSel.from, inlineSel.to) : null
+    addItems(inventory, items, index, sel ? (widened ?? { from: 0, to: 0 }) : null)
+    const inline = itemsHtml(items, widened)
+    if (inline.includes('<')) formatted.push(index)
+    return inline
+  })
+  return { html, inventory, formatted }
+}
+
+function rangeToHtml(
+  editor: Editor,
+  startIndex: number,
+  endIndex: number,
+  sel: { from: number; to: number } | null | undefined,
+  inline: (node: PmNode, sel: InlineSelection | undefined, index: number) => string,
   image?: ImageSrcMapper,
 ): string {
   // The model's view, not the document's: a withheld span's words must
@@ -483,25 +569,26 @@ export function serializeRangeToHtml(
       flushList()
       continue
     }
+    const inlineOf = () => inline(node, inlineSel(i), startIndex + i)
     if (node.type === 'docHeading') {
       flushList()
       const level = Math.min(Math.max(Number(node.attrs?.level) || 1, 1), 6)
-      parts.push(`<h${level}>${inlineToHtml(node.content, inlineSel(i), image)}</h${level}>`)
+      parts.push(`<h${level}>${inlineOf()}</h${level}>`)
     } else if (node.type === 'docListItem') {
       const kind = (node.attrs?.kind as string) ?? 'bullet'
       if (!listBuffer || listBuffer.kind !== kind) {
         flushList()
         listBuffer = { kind, items: [] }
       }
-      listBuffer.items.push(`<li>${inlineToHtml(node.content, inlineSel(i), image)}</li>`)
+      listBuffer.items.push(`<li>${inlineOf()}</li>`)
     } else if (node.type === 'docParagraph') {
       flushList()
       if (isCodeParagraph(node)) {
         parts.push(`<pre>${codeToHtml(node.content, inlineSel(i))}</pre>`)
       } else if (isQuoteParagraph(node)) {
-        parts.push(`<blockquote>${inlineToHtml(node.content, inlineSel(i), image)}</blockquote>`)
+        parts.push(`<blockquote>${inlineOf()}</blockquote>`)
       } else {
-        parts.push(`<p>${inlineToHtml(node.content, inlineSel(i), image)}</p>`)
+        parts.push(`<p>${inlineOf()}</p>`)
       }
     } else if (node.type === 'docTable') {
       flushList()
@@ -859,12 +946,15 @@ export function buildDocContext(
   const isEmptyDoc = isBlankDocument(editor)
   scope ??= getSelectionScope(editor)
   const partial = partialSelection(editor, scope)
-  const selectionHtml = scope.isRange
-    ? clip(
-        serializeRangeToHtml(editor, scope.startIndex, scope.endIndex, partial),
-        SELECTION_MAX_CHARS,
-      )
+  const fullSelectionHtml = scope.isRange
+    ? serializeRangeToHtml(editor, scope.startIndex, scope.endIndex, partial)
     : ''
+  const selectionHtml = clip(fullSelectionHtml, SELECTION_MAX_CHARS)
+  if (fullSelectionHtml && selectionHtml === fullSelectionHtml) {
+    const blocks: ProseMirrorNode[] = []
+    for (let i = scope.startIndex; i <= scope.endIndex; i++) blocks.push(editor.state.doc.child(i))
+    recordShown(editor, blocks)
+  }
   // `textBetween` would read the words; the context quotes the selection back
   // to the model, so it has to be the projected read
   const selectedText = partial
@@ -942,7 +1032,7 @@ const INLINE_MARK_TAGS: Record<string, string> = {
  */
 const HTML_WHITESPACE = /[ \t\n\r\f]+/g
 
-function parseInline(element: Node, marks: PmMark[]): PmNode[] {
+function parseInline(element: Node, marks: PmMark[], tokens = false): PmNode[] {
   const nodes: PmNode[] = []
   element.childNodes.forEach((child) => {
     if (child.nodeType === Node.TEXT_NODE) {
@@ -958,9 +1048,24 @@ function parseInline(element: Node, marks: PmMark[]): PmNode[] {
       nodes.push({ type: 'hardBreak' })
       return
     }
+    const id = tokens ? tokenIdOf(el) : null
+    if (id && tag === 'keep') {
+      nodes.push({ type: KEEP_NODE, attrs: { id } })
+      return
+    }
+    if (id && (tag === 'span' || tag === 'a')) {
+      const token: PmMark =
+        tag === 'span'
+          ? { type: SPAN_MARK, attrs: { id } }
+          : { type: LINK_MARK, attrs: { id, href: el.getAttribute('href') } }
+      nodes.push(...parseInline(el, [...marks, token], tokens))
+      return
+    }
     if (tag === 'a') {
       const href = el.getAttribute('href') ?? ''
-      nodes.push(...parseInline(el, [...marks, { type: 'link', attrs: { href, rId: null } }]))
+      nodes.push(
+        ...parseInline(el, [...marks, { type: 'link', attrs: { href, rId: null } }], tokens),
+      )
       return
     }
     if (tag === 'formula') {
@@ -977,11 +1082,11 @@ function parseInline(element: Node, marks: PmMark[]): PmNode[] {
     const markType = INLINE_MARK_TAGS[tag]
     if (markType) {
       const next = marks.some((m) => m.type === markType) ? marks : [...marks, { type: markType }]
-      nodes.push(...parseInline(el, next))
+      nodes.push(...parseInline(el, next, tokens))
       return
     }
     // unknown inline tag (span etc.): keep its text content
-    nodes.push(...parseInline(el, marks))
+    nodes.push(...parseInline(el, marks, tokens))
   })
   return nodes
 }
@@ -1001,13 +1106,14 @@ function parseList(
   ilvl: number,
   numIds: NumIds,
   out: PmNode[],
+  tokens = false,
 ): void {
   el.childNodes.forEach((child) => {
     if (child.nodeType !== Node.ELEMENT_NODE) return
     const item = child as Element
     const tag = item.tagName.toLowerCase()
     if (tag === 'ul' || tag === 'ol') {
-      parseList(item, tag === 'ol' ? 'ordered' : 'bullet', ilvl + 1, numIds, out)
+      parseList(item, tag === 'ol' ? 'ordered' : 'bullet', ilvl + 1, numIds, out, tokens)
       return
     }
     if (tag !== 'li') return
@@ -1021,11 +1127,18 @@ function parseList(
       blockNode(
         'docListItem',
         { kind, numId: numIds[kind], ilvl: Math.min(ilvl, 4) },
-        parseInline(item, []),
+        parseInline(item, [], tokens),
       ),
     )
     for (const n of nested) {
-      parseList(n, n.tagName.toLowerCase() === 'ol' ? 'ordered' : 'bullet', ilvl + 1, numIds, out)
+      parseList(
+        n,
+        n.tagName.toLowerCase() === 'ol' ? 'ordered' : 'bullet',
+        ilvl + 1,
+        numIds,
+        out,
+        tokens,
+      )
     }
   })
 }
@@ -1111,9 +1224,9 @@ function parseCodeBlock(el: Element): PmNode | null {
 }
 
 /** <blockquote> -> indented gray paragraph with a left border */
-function parseBlockquote(el: Element): PmNode | null {
+function parseBlockquote(el: Element, tokens: boolean): PmNode | null {
   const mark: PmMark = { type: 'docTextStyle', attrs: { color: QUOTE_BLOCK_PRESET.color } }
-  const inline = parseInline(el, [mark])
+  const inline = parseInline(el, [mark], tokens)
   if (inline.length === 0) return null
   return blockNode(
     'docParagraph',
@@ -1124,13 +1237,16 @@ function parseBlockquote(el: Element): PmNode | null {
 
 /**
  * Parse a restricted HTML fragment returned by the model into top-level PmNodes.
- * Tolerates markdown code fences and plain-text responses.
+ * Tolerates markdown code fences and plain-text responses. `keep: 'tokens'`
+ * reads keep tokens as pseudo nodes for restoreBlocks (rewrites only).
  */
-export function parseHtmlFragment(raw: string, numIds: NumIds): PmNode[] {
+export function parseHtmlFragment(raw: string, numIds: NumIds, keep?: 'tokens'): PmNode[] {
+  const tokens = keep === 'tokens'
   let text = raw.trim()
   const fence = /```(?:html)?\s*([\s\S]*?)```/.exec(text)
   if (fence) text = fence[1].trim()
   if (!text) return []
+  if (tokens) text = normalizeKeepTags(text)
 
   // plain text response (no tags): one paragraph per blank-line-separated chunk
   if (!/<[a-z][\s\S]*>/i.test(text)) {
@@ -1164,10 +1280,15 @@ export function parseHtmlFragment(raw: string, numIds: NumIds): PmNode[] {
     const el = child as Element
     const tag = el.tagName.toLowerCase()
     const headingMatch = /^h([1-6])$/.exec(tag)
+    const id = tokens ? tokenIdOf(el) : null
     if (headingMatch) {
-      out.push(blockNode('docHeading', { level: Number(headingMatch[1]) }, parseInline(el, [])))
+      out.push(
+        blockNode('docHeading', { level: Number(headingMatch[1]) }, parseInline(el, [], tokens)),
+      )
     } else if (tag === 'ul' || tag === 'ol') {
-      parseList(el, tag === 'ol' ? 'ordered' : 'bullet', 0, numIds, out)
+      parseList(el, tag === 'ol' ? 'ordered' : 'bullet', 0, numIds, out, tokens)
+    } else if (id && tag === 'keep') {
+      out.push({ type: KEEP_NODE, attrs: { id } })
     } else if (tag === 'table') {
       const node = parseTable(el)
       if (node) out.push(node)
@@ -1175,12 +1296,12 @@ export function parseHtmlFragment(raw: string, numIds: NumIds): PmNode[] {
       const node = parseCodeBlock(el)
       if (node) out.push(node)
     } else if (tag === 'blockquote') {
-      const node = parseBlockquote(el)
+      const node = parseBlockquote(el, tokens)
       if (node) out.push(node)
     } else if (tag === 'formula') {
       pushFormula(el)
     } else if (tag === 'p' || tag === 'div') {
-      const inline = parseInline(el, [])
+      const inline = parseInline(el, [], tokens)
       if (inline.length > 0) out.push(blockNode('docParagraph', {}, inline))
     } else {
       // unknown block-ish tag: salvage the text
@@ -1198,10 +1319,11 @@ const BLOCK_TAG = /<\/?(h[1-6]|p|div|ul|ol|li|table|thead|tbody|tr|th|td|pre|blo
  * single <p>…</p>. Any other block structure is refused — the selection lives
  * inside one text block, so a multi-block answer belongs to replace_blocks.
  */
-export function parseInlineFragment(raw: string): PmNode[] {
+export function parseInlineFragment(raw: string, keep?: 'tokens'): PmNode[] {
   let text = raw.trim()
   const fence = /```(?:html)?\s*([\s\S]*?)```/.exec(text)
   if (fence) text = fence[1].trim()
+  if (keep === 'tokens') text = normalizeKeepTags(text)
   const single = /^<p(?:\s[^>]*)?>([\s\S]*)<\/p>$/i.exec(text)
   if (single) text = single[1]
   if (BLOCK_TAG.test(text)) {
@@ -1212,7 +1334,7 @@ export function parseInlineFragment(raw: string): PmNode[] {
   }
   const parsed = new DOMParser().parseFromString(`<p>${text}</p>`, 'text/html')
   const p = parsed.body.firstElementChild
-  return p ? parseInline(p, []) : []
+  return p ? parseInline(p, [], keep === 'tokens') : []
 }
 
 // ---- applying parsed fragments ----
@@ -1307,6 +1429,7 @@ export function inheritBlockFormatting(
  * inheritBlockFormatting). With `track`, and when both sides are plain text
  * blocks, this becomes a tracked rewrite instead: the old blocks stay struck
  * through (del) and the new blocks follow with ins marks — accept/reject via Review.
+ * A comment stays on the struck old text only, as in Word.
  */
 export function replaceBlockRange(
   editor: Editor,
@@ -1319,6 +1442,81 @@ export function replaceBlockRange(
   // a tracked rewrite keeps the old blocks (struck through) next to the new
   // ones, so the anchors stay with the old blocks until the user accepts
   const nodes = inheritBlockFormatting(editor, startIndex, endIndex, parsed, !track)
+  const built = blockReplacementTr(editor, startIndex, endIndex, nodes, track)
+  if ('error' in built) return false
+  editor.view.dispatch(built.tr)
+  return true
+}
+
+/**
+ * Restored keep atoms by key, with how many of each the new content holds.
+ * Word refuses a file whose note reference sits both inside a deletion and
+ * inside an insertion, so a tracked rewrite places each of these exactly once:
+ * where the model put it, untracked, and gone from the struck-through text.
+ */
+export type OnceAtoms = ReadonlyMap<string, number>
+
+export type BlockReplacement =
+  { tr: Transaction; inserted: { from: number; to: number } } | { error: string }
+
+function onceAtomPositions(
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+  once: OnceAtoms | undefined,
+): number[] {
+  if (!once || once.size === 0) return []
+  const left = new Map(once)
+  const out: number[] = []
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isInline || node.isText) return true
+    if (node.marks.some((m) => m.type.name === 'del')) return false
+    const key = atomKeyOf(node.toJSON() as PmNode)
+    const n = left.get(key) ?? 0
+    if (n > 0) {
+      left.set(key, n - 1)
+      out.push(pos)
+    }
+    return false
+  })
+  return out
+}
+
+function untrackOnceAtoms(
+  tr: Transaction,
+  from: number,
+  to: number,
+  once: OnceAtoms | undefined,
+): void {
+  const ins = tr.doc.type.schema.marks.ins
+  for (const pos of onceAtomPositions(tr.doc, from, to, once)) tr.removeMark(pos, pos + 1, ins)
+}
+
+/**
+ * Word keeps a comment on the deleted original text of a tracked rewrite
+ * (accepting removes it, rejecting keeps it), and refuses a file whose comment
+ * id has a second range on the inserted text.
+ */
+function stripInsertedComments(tr: Transaction, from: number, to: number): void {
+  tr.removeMark(from, to, tr.doc.type.schema.marks.comment)
+}
+
+function deleteOldAtoms(tr: Transaction, positions: number[]): void {
+  for (const pos of [...positions].reverse()) tr.delete(pos, pos + 1)
+}
+
+/**
+ * The transaction replaceBlockRange dispatches, for already inherited nodes.
+ * `inserted` is where the new blocks sit in the transaction's document.
+ */
+export function blockReplacementTr(
+  editor: Editor,
+  startIndex: number,
+  endIndex: number,
+  nodes: PmNode[],
+  track?: AiTrack,
+  once?: OnceAtoms,
+): BlockReplacement {
   const { from, to } = blockRangePositions(editor, startIndex, endIndex)
   const pmNodes = nodes.map((n) => editor.schema.nodeFromJSON(n))
 
@@ -1342,15 +1540,26 @@ export function replaceBlockRange(
       // nothing to strike through (blank paragraphs): replace outright
       tr.replaceWith(from, to, tracked)
       tr.addMark(from, from + inserted, ins.create({ author: track.author, date }))
-    } else {
-      tr.insert(to, tracked)
-      tr.addMark(to, to + inserted, ins.create({ author: track.author, date }))
-      tr.addMark(from, to, del.create({ author: track.author, date }))
+      untrackOnceAtoms(tr, from, from + inserted, once)
+      return { tr, inserted: { from, to: from + inserted } }
     }
-    editor.view.dispatch(tr)
-    return true
+    const oldAtoms = onceAtomPositions(tr.doc, from, to, once)
+    tr.insert(to, tracked)
+    tr.addMark(to, to + inserted, ins.create({ author: track.author, date }))
+    untrackOnceAtoms(tr, to, to + inserted, once)
+    stripInsertedComments(tr, to, to + inserted)
+    tr.addMark(from, to, del.create({ author: track.author, date }))
+    deleteOldAtoms(tr, oldAtoms)
+    const at = to - oldAtoms.length
+    return { tr, inserted: { from: at, to: at + inserted } }
   }
   if (track) {
+    if ([...(once?.values() ?? [])].some((n) => n > 0)) {
+      return {
+        error:
+          'a tracked rewrite of a range holding a table or other protected block keeps whole blocks as revisions, so a footnote mark or picture would end up both deleted and inserted; rewrite the text blocks and the table in separate calls',
+      }
+    }
     const date = revisionDate()
     const oldNodes: ProseMirrorNode[] = []
     editor.state.doc.nodesBetween(from, to, (node, _pos, parent) => {
@@ -1382,36 +1591,47 @@ export function replaceBlockRange(
     )
     const tr = editor.state.tr.replaceWith(from, to, [...oldNodes, ...inserted])
     tr.setMeta(TRACK_IGNORE, true)
-    editor.view.dispatch(tr)
-    return true
+    const at = from + oldNodes.reduce((size, n) => size + n.nodeSize, 0)
+    const end = at + inserted.reduce((size, n) => size + n.nodeSize, 0)
+    stripInsertedComments(tr, at, end)
+    return { tr, inserted: { from: at, to: end } }
   }
-  editor.view.dispatch(editor.state.tr.replaceWith(from, to, pmNodes))
-  return true
+  const tr = editor.state.tr.replaceWith(from, to, pmNodes)
+  return { tr, inserted: { from, to: from + pmNodes.reduce((size, n) => size + n.nodeSize, 0) } }
 }
 
 /**
  * Replace an inline range inside one text block with the given inline nodes
  * (the replace_selection tool). The new text becomes the selection so a
  * follow-up scope:'selection' command targets it. With `track`, the old text
- * stays struck through (del) and the new text follows with ins marks.
+ * stays struck through (del) and the new text follows with ins marks; `once`
+ * atoms are placed as in blockReplacementTr.
  */
-export function replaceInlineRange(
+export function inlineReplacementTr(
   editor: Editor,
   from: number,
   to: number,
   nodes: ProseMirrorNode[],
   track?: AiTrack,
-): void {
+  once?: OnceAtoms,
+): Transaction {
   const tr = editor.state.tr
   const blockPos = tr.doc.resolve(from).before(1)
   const inserted = nodes.reduce((size, n) => size + n.nodeSize, 0)
   if (track) {
     const date = revisionDate()
     const { ins, del } = editor.schema.marks
+    const oldAtoms = onceAtomPositions(tr.doc, from, to, once)
     tr.insert(to, nodes)
-    if (inserted > 0) tr.addMark(to, to + inserted, ins.create({ author: track.author, date }))
+    if (inserted > 0) {
+      tr.addMark(to, to + inserted, ins.create({ author: track.author, date }))
+      untrackOnceAtoms(tr, to, to + inserted, once)
+      stripInsertedComments(tr, to, to + inserted)
+    }
     tr.addMark(from, to, del.create({ author: track.author, date }))
-    tr.setSelection(TextSelection.create(tr.doc, to, to + inserted))
+    deleteOldAtoms(tr, oldAtoms)
+    const at = to - oldAtoms.length
+    tr.setSelection(TextSelection.create(tr.doc, at, at + inserted))
     tr.setMeta(TRACK_IGNORE, true)
   } else {
     tr.replaceWith(from, to, nodes)
@@ -1419,7 +1639,7 @@ export function replaceInlineRange(
     const block = tr.doc.nodeAt(blockPos)
     if (block) tr.setNodeMarkup(blockPos, undefined, { ...block.attrs, aiChanged: true })
   }
-  editor.view.dispatch(tr)
+  return tr
 }
 
 /** insert the parsed nodes after the given top-level block index */
