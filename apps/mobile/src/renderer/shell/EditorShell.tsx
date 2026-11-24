@@ -19,6 +19,8 @@ import {
   IconItalic,
   IconKeyboardHide,
   IconList,
+  IconNumberedList,
+  IconTable,
   IconMore,
   IconPageView,
   IconRedo,
@@ -108,7 +110,12 @@ function renderQuickActionIcon(id: string): ReactNode {
     case 'heading':
       return <IconHeading size={19} />
     case 'list':
+    case 'bulletList':
       return <IconList size={19} />
+    case 'numberedList':
+      return <IconNumberedList size={19} />
+    case 'insertTable':
+      return <IconTable size={19} />
     case 'image':
       return <IconImage size={19} />
     case 'fontSmaller':

@@ -260,7 +260,22 @@ function withMarker(html: string, marker: ParagraphMarker): string {
   // numbers shift when paragraphs are added or removed; the editor refreshes `data-number` ones
   const attr = ` data-marker="${escapeAttr(marker.text).replace(/"/g, '&quot;')}"${marker.numbered ? ' data-number' : ''}`
   if (!html) return `<p${attr}><br></p>`
-  return /<p[\s>]/.test(html) ? html.replace(/<p(?=[\s>])/, `<p${attr}`) : html
+  if (!/<p[\s>]/.test(html)) return html
+  // the marker takes the font of the paragraph's first text run (the text sits in spans)
+  const vars = markerFontVars(html)
+  if (vars && /<p\s[^>]*style="/.test(html)) {
+    return html.replace(/<p(\s[^>]*?)style="/, `<p${attr}$1style="${vars}`)
+  }
+  return html.replace(/<p(?=[\s>])/, vars ? `<p${attr} style="${vars}"` : `<p${attr}`)
+}
+
+/** `--marker-font` / `--marker-size` taken from the first styled span, or ''. */
+function markerFontVars(html: string): string {
+  const style = /<span[^>]*\sstyle="([^"]*)"/.exec(html)?.[1]
+  if (!style) return ''
+  const family = /font-family:([^;]+)/.exec(style)?.[1]?.trim()
+  const size = /font-size:([^;]+)/.exec(style)?.[1]?.trim()
+  return `${family ? `--marker-font:${family};` : ''}${size ? `--marker-size:${size};` : ''}`
 }
 
 /** HTML of one body paragraph's text. */
@@ -631,7 +646,12 @@ td .flow-obj { overflow-x: visible; }
 .flow-obj td p, .flow-obj th p { word-break: keep-all; }
 img { max-width: 100%; height: auto; }
 /* bullets are drawn here so they never become editable text */
-.flow-p p[data-marker]::before { content: attr(data-marker); margin-right: 0.4em; }
+.flow-p p[data-marker]::before {
+  content: attr(data-marker);
+  margin-right: 0.4em;
+  font-family: var(--marker-font, inherit);
+  font-size: var(--marker-size, inherit);
+}
 .flow-caption { margin: 2px 0 4px; }
 .flow-box { border: 1px solid #b0b0b0; border-radius: 4px; padding: 6px 8px; margin: 4px 0; }
 .flow-note { font-size: 0.85em; color: #444444; padding-left: 1em; margin: 0 0 6px; }

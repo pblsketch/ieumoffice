@@ -200,6 +200,35 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(JSON.parse(doc.getCharPropertiesAt(0, 0, 2)).bold).toBe(false)
   })
 
+  it('changes paragraph alignment at the caret and undoes it', () => {
+    const align = () => JSON.parse(doc.getParaPropertiesAt(0, 1)).alignment
+    const before = align()
+    placeCaret(pEl(1), 2)
+    editor.runFormat('alignCenter')
+    expect(align()).toBe('center')
+    expect(pEl(1).innerHTML).toContain('text-align:center')
+    editor.undo()
+    expect(align()).toBe(before)
+  })
+
+  it('toggles a bulleted list on and off, drawn outside the text', () => {
+    placeCaret(pEl(1), 0)
+    editor.runFormat('bulletList')
+    expect(JSON.parse(doc.getParaPropertiesAt(0, 1)).headType).toBe('Bullet')
+    expect(pEl(1).querySelector('p[data-marker]')).not.toBeNull()
+    expect(engineText(1)).toBe('작성자 : ○○○ (서명)')
+    placeCaret(pEl(1), 0)
+    editor.runFormat('bulletList')
+    expect(JSON.parse(doc.getParaPropertiesAt(0, 1)).headType).toBe('None')
+    expect(pEl(1).querySelector('p[data-marker]')).toBeNull()
+  })
+
+  it('aligns a paragraph inside a table cell', () => {
+    placeCaret(cellEl(cellPath(3)), 1)
+    editor.runFormat('alignRight')
+    expect(JSON.parse(doc.getCellParaPropertiesAt(0, 2, 0, 3, 0)).alignment).toBe('right')
+  })
+
   it('shows every cell paragraph, empty ones included, at its engine path', () => {
     expect(cellEl(cellPath(0)).textContent).toBe('일 시')
     expect(cellEl(cellPath(9, 1)).textContent).toBe('')

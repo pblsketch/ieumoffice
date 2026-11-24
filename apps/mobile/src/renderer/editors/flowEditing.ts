@@ -31,6 +31,18 @@ import {
 } from './hwpFlow'
 
 export interface FlowEditDocument extends FlowSourceDocument {
+  applyParaFormat(sec: number, para: number, propsJson: string): string
+  applyParaFormatInCell(
+    sec: number,
+    para: number,
+    ctrl: number,
+    cell: number,
+    cellPara: number,
+    propsJson: string,
+  ): string
+  applyParaFormatInCellByPath(sec: number, para: number, path: string, propsJson: string): string
+  ensureDefaultBullet(bulletChar: string): number
+  ensureDefaultNumbering(): number
   insertTextInCell(
     sec: number,
     para: number,
@@ -135,7 +147,34 @@ export interface FlowPosition extends BlockAddress {
 }
 
 export type FlowCharToggle = 'bold' | 'italic' | 'underline' | 'strikethrough'
-export type FlowFormatAction = FlowCharToggle | 'fontBigger' | 'fontSmaller'
+export type FlowParagraphAction =
+  | 'alignLeft'
+  | 'alignCenter'
+  | 'alignRight'
+  | 'alignJustify'
+  | 'lineSpacingWider'
+  | 'lineSpacingNarrower'
+  | 'bulletList'
+  | 'numberedList'
+export type FlowFormatAction = FlowCharToggle | 'fontBigger' | 'fontSmaller' | FlowParagraphAction
+
+const PARAGRAPH_ACTIONS: ReadonlySet<string> = new Set<FlowParagraphAction>([
+  'alignLeft',
+  'alignCenter',
+  'alignRight',
+  'alignJustify',
+  'lineSpacingWider',
+  'lineSpacingNarrower',
+  'bulletList',
+  'numberedList',
+])
+
+/** Line spacing steps in percent, as the page editor's wider/narrower commands. */
+const LINE_SPACING_STEP = 10
+const LINE_SPACING_MIN = 50
+const LINE_SPACING_MAX = 500
+/** Bullet for a new bulleted list; the document's own bullets keep their characters. */
+const FALLBACK_LIST_BULLET = String.fromCharCode(0x2022)
 
 /** Font size steps in the engine's unit (1/100 pt). */
 const FONT_STEP = 100
@@ -147,6 +186,7 @@ type UndoEntry =
   | { kind: 'split'; at: BlockAddress; offset: number }
   | { kind: 'merge'; at: BlockAddress; joinOffset: number }
   | { kind: 'format'; at: BlockAddress; start: number; end: number; before: string; after: string }
+  | { kind: 'para'; at: BlockAddress; before: string; after: string }
 
 export interface FlowEditorOptions {
   readonly doc: FlowEditDocument
@@ -384,6 +424,23 @@ function blockOps(doc: FlowEditDocument) {
             ? doc.getCellCharPropertiesAt(at.sec, at.para, t.ctrl, t.cell, t.cellPara, offset)
             : doc.getCellCharPropertiesAtByPath(at.sec, at.para, t.json, offset)
       return JSON.parse(raw) as Record<string, unknown>
+    },
+    paraProps(at: BlockAddress): Record<string, unknown> {
+      const t = target(at)
+      const raw =
+        t.kind === 'body'
+          ? doc.getParaPropertiesAt(at.sec, at.para)
+          : t.kind === 'flat'
+            ? doc.getCellParaPropertiesAt(at.sec, at.para, t.ctrl, t.cell, t.cellPara)
+            : doc.getCellParaPropertiesAtByPath(at.sec, at.para, t.json)
+      return JSON.parse(raw) as Record<string, unknown>
+    },
+    paraFormat(at: BlockAddress, json: string) {
+      const t = target(at)
+      if (t.kind === 'body') doc.applyParaFormat(at.sec, at.para, json)
+      else if (t.kind === 'flat') {
+        doc.applyParaFormatInCell(at.sec, at.para, t.ctrl, t.cell, t.cellPara, json)
+      } else doc.applyParaFormatInCellByPath(at.sec, at.para, t.json, json)
     },
     html(at: BlockAddress): string {
       const inner = at.path
@@ -783,7 +840,97 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
         ops.format(entry.at, entry.start, entry.end, reverse ? entry.before : entry.after)
         redraw(entry.at)
         break
+      case 'para':
+        ops.paraFormat(entry.at, reverse ? entry.before : entry.after)
+        redraw(entry.at)
+        refreshNumbers()
+        break
     }
+  }
+
+  /** Puts the selection back over the same text after its blocks were redrawn. */
+  const restoreSelection = (info: NonNullable<ReturnType<typeof selectionInfo>>) => {
+    const sel = frameDocument.getSelection()
+    const a = blockEl(info.start.at)
+    const b = blockEl(info.end.at)
+    if (!sel || !a || !b) return
+    placeCaret(a, info.start.offset)
+    const anchor = sel.anchorNode
+    const anchorOffset = sel.anchorOffset
+    placeCaret(b, info.end.offset)
+    const focus = sel.focusNode
+    const focusOffset = sel.focusOffset
+    if (anchor && focus) sel.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
+  }
+
+  /** The paragraph formats a paragraph action touches, as the engine reports them. */
+  const paraSnapshot = (props: Record<string, unknown>) => ({
+    alignment: props.alignment,
+    lineSpacing: props.lineSpacing,
+    headType: props.headType,
+    numberingId: props.numberingId,
+    paraLevel: props.paraLevel,
+  })
+
+  /**
+   * Alignment, line spacing and lists for every block the selection (or caret)
+   * touches. Lists toggle as one: if the first block already has that list, all
+   * blocks drop it; otherwise all get it.
+   */
+  const runParagraph = (
+    action: FlowParagraphAction,
+    info: NonNullable<ReturnType<typeof selectionInfo>>,
+  ) => {
+    const blocks = [...body.querySelectorAll<HTMLElement>('.flow-p')]
+    const from = blocks.indexOf(info.start.el)
+    const to = blocks.indexOf(info.end.el)
+    if (from < 0 || to < from) return
+    const targets = blocks
+      .slice(from, to + 1)
+      .map((el) => blockAddress(el))
+      .filter((at): at is BlockAddress => at !== null)
+    if (targets.length === 0) return
+    const listHead =
+      action === 'bulletList' ? 'Bullet' : action === 'numberedList' ? 'Number' : null
+    const listOff = listHead !== null && ops.paraProps(targets[0]).headType === listHead
+    const listId =
+      listHead === 'Bullet'
+        ? doc.ensureDefaultBullet(FALLBACK_LIST_BULLET)
+        : listHead === 'Number'
+          ? doc.ensureDefaultNumbering()
+          : 0
+    for (const at of targets) {
+      const current = ops.paraProps(at)
+      let change: Record<string, unknown>
+      if (listHead) {
+        change = listOff
+          ? { headType: 'None' }
+          : { headType: listHead, numberingId: listId, paraLevel: current.paraLevel ?? 0 }
+      } else if (action === 'lineSpacingWider' || action === 'lineSpacingNarrower') {
+        // only percent spacing has a meaningful step
+        if (current.lineSpacingType && current.lineSpacingType !== 'Percent') continue
+        const spacing = typeof current.lineSpacing === 'number' ? current.lineSpacing : 160
+        const step = action === 'lineSpacingWider' ? LINE_SPACING_STEP : -LINE_SPACING_STEP
+        change = {
+          lineSpacing: Math.round(
+            Math.min(LINE_SPACING_MAX, Math.max(LINE_SPACING_MIN, spacing + step)),
+          ),
+        }
+      } else {
+        const alignment = { alignLeft: 'left', alignCenter: 'center', alignRight: 'right' }[
+          action as 'alignLeft' | 'alignCenter' | 'alignRight'
+        ]
+        change = { alignment: alignment ?? 'justify' }
+      }
+      const before = JSON.stringify(paraSnapshot(current))
+      ops.paraFormat(at, JSON.stringify(change))
+      const after = JSON.stringify(paraSnapshot(ops.paraProps(at)))
+      if (before === after) continue
+      record({ kind: 'para', at, before, after })
+      redraw(at)
+    }
+    refreshNumbers()
+    restoreSelection(info)
   }
 
   const editor: FlowEditor = {
@@ -796,6 +943,10 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
     },
     runFormat(action) {
       const info = selectionInfo()
+      if (info && PARAGRAPH_ACTIONS.has(action)) {
+        runParagraph(action as FlowParagraphAction, info)
+        return
+      }
       if (!info || info.collapsed) return
       const blocks = [...body.querySelectorAll<HTMLElement>('.flow-p')]
       const from = blocks.indexOf(info.start.el)
@@ -825,19 +976,7 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
         record({ kind: 'format', at, start: s, end: e, before, after })
         redraw(at)
       }
-      // keep the selection where it was
-      const sel = frameDocument.getSelection()
-      const a = blockEl(info.start.at)
-      const b = blockEl(info.end.at)
-      if (sel && a && b) {
-        placeCaret(a, info.start.offset)
-        const anchor = sel.anchorNode
-        const anchorOffset = sel.anchorOffset
-        placeCaret(b, info.end.offset)
-        const focus = sel.focusNode
-        const focusOffset = sel.focusOffset
-        if (anchor && focus) sel.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
-      }
+      restoreSelection(info)
     },
     undo() {
       const entry = undoStack.pop()
