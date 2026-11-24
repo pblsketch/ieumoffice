@@ -1,6 +1,6 @@
 /**
  * HWP flow (reading) view: rebuilds the document as HTML that reflows to the
- * screen width (design system 5.3, decision 0163).
+ * screen width (design system 5.3, decision 0165).
  *
  * The rhwp engine has no reflow layout, but it can export a paragraph range as
  * HTML (the copy format) and each table or picture as HTML. The flow view puts

@@ -16,6 +16,13 @@ export interface AgentSkill {
   id: string
   /** system prompt section describing this skill's rules and tools */
   systemPrompt: string
+  /**
+   * The prompt section used instead of `systemPrompt` when the run's model
+   * cannot call tools (`toolsAllowed()` false), for a skill whose section only
+   * makes sense with its tools (e.g. ask_questions -> an in-text question
+   * block). Absent: `systemPrompt` is used either way.
+   */
+  toolsOffSystemPrompt?: string | undefined
   tools: AgentToolDef[]
   /**
    * Fresh context sections attached to every user turn (e.g. document
@@ -57,6 +64,14 @@ export function composeSkills(id: string, intro: string, skills: AgentSkill[]): 
     // live like tools: a sub-skill's prompt may vary with the same capability its tools key on
     get systemPrompt() {
       return [intro, ...skills.map((s) => s.systemPrompt)].filter(Boolean).join('\n\n')
+    },
+    // undefined unless a sub-skill has its own tools-off section, so a composition
+    // without one sends exactly the systemPrompt above in a tools-off run
+    get toolsOffSystemPrompt() {
+      if (!skills.some((s) => s.toolsOffSystemPrompt !== undefined)) return undefined
+      return [intro, ...skills.map((s) => s.toolsOffSystemPrompt ?? s.systemPrompt)]
+        .filter(Boolean)
+        .join('\n\n')
     },
     get tools() {
       const all = skills.flatMap((s) => s.tools)

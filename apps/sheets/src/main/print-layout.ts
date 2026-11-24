@@ -9,6 +9,7 @@ import { app, BrowserWindow, dialog } from 'electron'
 import { showSaveDialogWithMemory } from '@genoffice/electron-utils'
 import {
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   LABEL_SPEC_FILE_NAME,
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -77,6 +78,16 @@ export function registerSheetsPrintLayoutIpc(setup: SheetsPrintLayoutSetup): () 
       const selection = await showSaveDialogWithMemory(dialog, ownerOf(event), {
         defaultPath: request.fileName,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      return selection.canceled || !selection.filePath ? null : selection.filePath
+    },
+    async pickImageSavePath(event, editor, image) {
+      setup.assertSender(event)
+      const request = jobRequest(editor)
+      const spec = imageSaveDialogSpec(request.fileName, image)
+      const selection = await showSaveDialogWithMemory(dialog, ownerOf(event), {
+        defaultPath: spec.defaultFileName,
+        filters: spec.filters,
       })
       return selection.canceled || !selection.filePath ? null : selection.filePath
     },

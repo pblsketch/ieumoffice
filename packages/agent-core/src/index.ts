@@ -13,15 +13,59 @@ export type {
   ToolDisplay,
   ToolExecution,
 } from './types'
-export { ASK_QUESTIONS_TOOL, createAskQuestionsSkill } from './ask-questions-skill'
-export type {
-  AskQuestionField,
-  AskQuestionOption,
-  AskQuestionsDeps,
-  AskQuestionsRequest,
-  AskQuestionsResponse,
-  AskQuestionsSkill,
+export {
+  ASK_QUESTIONS_TOOL,
+  ASK_QUESTIONS_TOOLS_OFF_PROMPT,
+  createAskQuestionsSkill,
 } from './ask-questions-skill'
+export type { AskQuestionsDeps, AskQuestionsSkill } from './ask-questions-skill'
+export {
+  A2UI_PROTOCOL_VERSION,
+  QUESTION_CARD_CATALOG_ID,
+  QUESTION_CARD_COMPONENT_PROPS,
+  QUESTION_CARD_MAX_ERRORS,
+  QUESTION_CARD_MAX_INPUTS,
+  QUESTION_CARD_MAX_OPTIONS,
+  QUESTION_CARD_RESERVED_ID_PREFIX,
+  QUESTION_SKIP_ACTION,
+  QUESTION_SKIP_COMPONENT_ID,
+  QUESTION_SUBMIT_ACTION,
+  QUESTION_SUBMIT_COMPONENT_ID,
+  emptyAnswerOf,
+  fitAnswer,
+  questionAnswerAction,
+  skipAction,
+  submitAction,
+  validateQuestionSurface,
+} from './a2ui-question-card'
+export type {
+  A2uiActionMessage,
+  CheckBoxInput,
+  ChoicePickerInput,
+  QuestionAnswerValue,
+  QuestionAnswers,
+  QuestionCardAnswer,
+  QuestionCardRequest,
+  QuestionChoiceOption,
+  QuestionComponentName,
+  QuestionInput,
+  QuestionInputKind,
+  QuestionSkipMessage,
+  QuestionSubmitContext,
+  QuestionSubmitMessage,
+  QuestionSurfaceValidation,
+  QuestionSurfaceView,
+  SliderInput,
+  TextFieldInput,
+} from './a2ui-question-card'
+export { parseQuestionAction, readQuestionRecord } from './question-record'
+export type {
+  QuestionRecord,
+  QuestionRecordShape,
+  QuestionRecordSource,
+  RecordedAnswer,
+  RecordedAnswerLine,
+} from './question-record'
 export {
   DEFAULT_FOOTER_RAIL_RATIO,
   DEFAULT_MAX_ACCENT_REPEATS,

@@ -5,7 +5,7 @@ export type PageIntent = 'design' | 'write'
 
 const WRITE_DIRECTIVE = [
   'User intent for this blank document: WRITE CONTENT (content first, not a designed page).',
-  '- Do not call ask_clarification or plan_page unless the user explicitly asks for design choices.',
+  '- Do not call plan_page unless the user explicitly asks for design choices.',
   '- Call write_document with the title, a plan (outline, key points, length, voice) and the reference material as context; the system writes the whole document as a clean single-column page.',
   '- Put the substance in the plan and context; the page is the document, not a showcase for it.',
 ].join('\n')

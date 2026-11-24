@@ -6810,12 +6810,14 @@ body > div:has([data-u-comp='find-replace-dialog']) {
   padding: 12px;
 }
 
-/* The shared layout diagram in place of the pages (both rows of the preview) */
+/* The shared layout diagram or live preview in place of the pages (both rows of the preview) */
 .print-preview-schematic {
   grid-row: 1 / -1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
-  padding: 12px;
+  padding: 10px;
 }
 
 .print-preview-bar[hidden],

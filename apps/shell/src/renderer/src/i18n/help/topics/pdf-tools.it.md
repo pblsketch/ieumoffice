@@ -30,6 +30,7 @@ Le schede di **Nell’editor PDF** aprono il PDF scelto in una scheda dell’edi
 - **Rimuovi pagine bianche** mostra solo candidate. Vengono rimosse solo le pagine scelte, e una pagina con anche un solo carattere non è mai candidata.
 - **Rimuovi annotazioni** mantiene i campi modulo e rimuove i collegamenti solo se li selezioni. Il contenuto delle annotazioni rimosse non rimane nel nuovo file.
 - **Salva come testo** legge solo il livello di testo. Le pagine il cui testo è un’immagine, come quelle scansionate, resteranno vuote.
+- **Dividi PDF** separa per intervalli personalizzati (anche uniti in un solo file), numero di pagine, segnalibri o dimensione massima, con formato del nome e sottocartella.
 
 ## Prova per
 

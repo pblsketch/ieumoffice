@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  ASK_QUESTIONS_TOOL,
   coerceArgumentFields,
   missingRequiredFields,
   type AgentToolCall,
@@ -4190,7 +4191,8 @@ describe('equations, tab stops, a page border, a diagonal and the size of a pict
 describe('the skill as the model sees it', () => {
   it('has every tool the built-in skills for this editor name', () => {
     // apps/shell/resources/builtin-skills: the skills written for Hangul documents
-    const names = new Set(setup().skill.tools.map((tool) => tool.name))
+    // the panel composes the shared question tool next to the Hangul skill
+    const names = new Set([...setup().skill.tools.map((tool) => tool.name), ASK_QUESTIONS_TOOL])
     const dir = join(__dirname, '../../shell/resources/builtin-skills')
     for (const skill of [
       'hwp-document',

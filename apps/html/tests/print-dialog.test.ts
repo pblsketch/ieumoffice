@@ -9,7 +9,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultOptions, type PageSize } from '@genoffice/print-layout/plan'
 import { LANGS } from '@genoffice/i18n'
-import { SYSTEM_DIALOG } from '@genoffice/ui'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST, SYSTEM_DIALOG } from '@genoffice/ui'
 
 vi.mock('../src/renderer/i18n/locale', async () => {
   const { createI18n } = await import('@genoffice/i18n')
@@ -80,6 +80,10 @@ function fakeApi(pages: PageSize[] | Error = [A4, A4, A4]) {
       preview: vi.fn(async () => ({ ok: true as const, faces: [] })),
       print: vi.fn(async () => ({ ok: true }) as { ok: true } | { ok: true; canceled: true }),
       savePdf: vi.fn(async () => ({ ok: true as const, path: 'C:/out.pdf' })),
+      saveImages: vi.fn(async () => ({
+        ok: true as const,
+        paths: ['C:/out-01.png', 'C:/out-02.png'],
+      })),
       cancel: vi.fn(async () => {}),
       onProgress: vi.fn(() => () => {}),
       getLabelSpec: vi.fn(async () => null),
@@ -208,12 +212,25 @@ describe('the HTML print dialog', () => {
   it('saves the arranged PDF with the suggested name and says so', async () => {
     const { props, api } = await mount()
     await click($('input[data-pl="reverse"]'))
-    await click($('button[data-pl="save-pdf"]'))
+    selectValue($<HTMLSelectElement>('select[data-print="printer"]')!, SAVE_PDF_DEST)
+    await click($('button[data-pl="print"]'))
     expect(api.printLayout.savePdf).toHaveBeenCalledWith({
       options: { ...createDefaultOptions(), reverse: true },
       editor: { html: DOC, suggestedName: 'page' },
     })
     expect(props.onNotice).toHaveBeenCalledWith('Saved the arranged result as PDF.')
+  })
+
+  it('saves arranged images when Save as images is selected', async () => {
+    const { props, api } = await mount()
+    selectValue($<HTMLSelectElement>('select[data-print="printer"]')!, SAVE_IMAGES_DEST)
+    await click($('button[data-pl="print"]'))
+    expect(api.printLayout.saveImages).toHaveBeenCalledWith({
+      options: createDefaultOptions(),
+      editor: { html: DOC, suggestedName: 'page' },
+      image: { format: 'png', quality: 90, bundle: 'files' },
+    })
+    expect(props.onNotice).toHaveBeenCalledWith('Saved as images (2).')
   })
 
   it('says when the pages could not be counted', async () => {

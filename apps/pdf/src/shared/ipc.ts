@@ -30,6 +30,28 @@ import type {
   PassageCardInput,
 } from '../../../../packages/pdf-structure/src/store/reading'
 import type { TranslationBlockKey } from '../../../../packages/pdf-structure/src/store/keys'
+import type {
+  SplitBookmarkEntry,
+  SplitFixedKind,
+  SplitMode,
+  SplitNamingPattern,
+  SplitOutputOptions,
+  SplitPartPlan,
+  SplitPlanRequest,
+  SplitRange,
+  SplitSizeUnit,
+} from './split-plan'
+export type {
+  SplitBookmarkEntry,
+  SplitFixedKind,
+  SplitMode,
+  SplitNamingPattern,
+  SplitOutputOptions,
+  SplitPartPlan,
+  SplitPlanRequest,
+  SplitRange,
+  SplitSizeUnit,
+}
 
 /**
  * The PDF tools window's tasks the ribbon's "PDF tools" menu opens with the
@@ -80,6 +102,10 @@ export const PDF_CHANNELS = {
   reduceFileSize: 'pdf:reduce-file-size',
   insertBlankPage: 'pdf:insert-blank-page',
   splitPdf: 'pdf:split-pdf',
+  splitPdfProgress: 'pdf:split-pdf-progress',
+  splitPdfCancel: 'pdf:split-pdf-cancel',
+  splitDialogRequest: 'pdf:split-dialog-request',
+  takeSplitDialogRequest: 'pdf:take-split-dialog-request',
   mergePdf: 'pdf:merge-pdf',
   mergePages: 'pdf:merge-pages',
   replacePages: 'pdf:replace-pages',
@@ -1156,16 +1182,27 @@ export interface InsertBlankPageRequest {
 
 export type InsertBlankPageResult = { ok: true } | { ok: false; error: string }
 
-/** Split the file into chunks of chunkSize pages: main shows a folder picker and writes one PDF per chunk */
+/** Split the file by plan (ranges, fixed, bookmarks, maxSize) or legacy chunkSize */
 export interface SplitPdfRequest {
   path: string
-  chunkSize: number
-  /** Base for output file names: <baseName>-1.pdf, <baseName>-2.pdf, … */
+  /** Legacy fixed chunk size (kept for AI tool and backwards compatibility) */
+  chunkSize?: number
+  /** Structured split plan (ranges, fixed, bookmarks, maxSize) */
+  plan?: SplitPlanRequest
+  /** Base for output file names */
   baseName: string
+  /** Output naming pattern and subfolder options */
+  output?: SplitOutputOptions
 }
 
 export type SplitPdfResult =
-  | { ok: true; savedDir: string; count: number }
+  | {
+      ok: true
+      savedDir: string
+      count: number
+      firstPath?: string
+      oversizedPages?: number[]
+    }
   | { ok: true; canceled: true }
   | { ok: false; error: string }
 
@@ -1902,6 +1939,10 @@ export interface PdfApi {
   copiedPageCount?(): Promise<number>
   insertBlankPage(request: InsertBlankPageRequest): Promise<InsertBlankPageResult>
   splitPdf(request: SplitPdfRequest): Promise<SplitPdfResult>
+  cancelSplitPdf?(): Promise<void>
+  onSplitPdfProgress?(handler: (progress: { done: number; total: number }) => void): () => void
+  onSplitDialogRequest?(handler: () => void): () => void
+  takeSplitDialogRequest?(): Promise<boolean>
   mergePdf(request: MergePdfRequest): Promise<MergePdfResult>
   mergePages(request: MergePagesRequest): Promise<MergePagesResult>
   replacePages(request: ReplacePagesRequest): Promise<ReplacePagesResult>

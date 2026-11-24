@@ -219,6 +219,9 @@ export function guardDriveContent(
     get systemPrompt() {
       return skill.systemPrompt
     },
+    get toolsOffSystemPrompt() {
+      return skill.toolsOffSystemPrompt
+    },
     get tools() {
       return skill.tools
     },
