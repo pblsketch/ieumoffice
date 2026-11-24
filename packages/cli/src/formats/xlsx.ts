@@ -1235,6 +1235,15 @@ export async function writeWorkbook(
       [],
       gateway.sparklineAdditions,
       formulaValues,
+      null,
+      null,
+      [],
+      [],
+      [],
+      [],
+      [],
+      null,
+      { refreshUntouchedSheets: true },
     )
     return assembleWithJsZip(source, mutation)
   }
@@ -1588,6 +1597,12 @@ export async function breakExternalLinks(
 const UNKNOWN_FUNCTION_RESULT = '#NAME?'
 /** The engine could not parse the formula at all — a reference it cannot read, not a missing function. */
 const UNPARSED_RESULT = '#ERROR!'
+/**
+ * IronCalc error codes Excel does not have. Caching one would write a value
+ * Excel cannot show; a written formula that evaluates to one of these is
+ * reported uncached, the same as #NAME?/#ERROR! above.
+ */
+const ENGINE_ONLY_ERRORS = new Set(['#N/IMPL!', '#CIRC!'])
 /** Value edit without the engine: formula caches it depends on stay as they are. */
 const DEPENDENTS_WITHOUT_ENGINE =
   'the xlsx engine was not found, so formula cells that depend on the edited cells keep their previous cached values; they recalculate when the file opens in Excel'
@@ -1632,7 +1647,11 @@ function cachedValueFor(cell: RecalcCell): FormulaCachedValue {
  * stale. The engine evaluates the whole workbook, so dependents are found
  * without walking a reference graph — indirect and cross-sheet references
  * included. Cells whose result the engine cannot express (#NAME?/#ERROR!),
- * exactly like the batch path, keep the file's cached value.
+ * exactly like the batch path, keep the file's cached value. An IronCalc
+ * error code Excel does not have (`#N/IMPL!`, `#CIRC!`) is reported as
+ * uncached for a formula the batch wrote; the engine's own audit already
+ * keeps the old cache instead of that code for an untouched dependent
+ * (`staleUnrefreshed`).
  */
 async function evaluateFormulas(
   path: string,
@@ -1697,6 +1716,10 @@ async function evaluateFormulas(
             }
             if (cell.formatted === UNPARSED_RESULT) {
               unparsed.push(`${sheet}!${toA1Address(cell.row, cell.column)}`)
+              return { row: cell.row, column: cell.column, value: null }
+            }
+            if (ENGINE_ONLY_ERRORS.has(cell.formatted)) {
+              uncached.push(`${sheet}!${toA1Address(cell.row, cell.column)}`)
               return { row: cell.row, column: cell.column, value: null }
             }
             return { row: cell.row, column: cell.column, value: cachedValueFor(cell) }

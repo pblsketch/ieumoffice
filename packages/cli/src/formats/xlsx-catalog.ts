@@ -130,6 +130,14 @@ const FOOTER = [
   'with their results; functions the engine lacks are left for Excel to compute on open (warning formulas_not_cached),',
   'and a formula the engine cannot parse is reported separately (warning formula_errors) so a bad reference is not',
   'mistaken for a missing function.',
+  'A value-changing write also refreshes every other formula cell, anywhere in the workbook, whose cached result',
+  'the edit left stale; the engine evaluates the whole file, so indirect and cross-sheet references are included',
+  'with no reference graph to walk. An IronCalc-only error code (not one of Excel\'s) never overwrites a good cache:',
+  'an untouched dependent keeps its previous value (warning dependents_not_recalculated), and a formula the batch',
+  'itself wrote is reported uncached instead. On a workbook with the 1904 date system the engine cannot audit,',
+  'nothing is refreshed and every dependent keeps its cache (same warning, naming the date system as the cause).',
+  'cached_values is false whenever any relevant formula result could not be refreshed; Excel recalculates those',
+  'results on open.',
 ]
 
 function opSchemas(): Map<string, JsonSchema> {

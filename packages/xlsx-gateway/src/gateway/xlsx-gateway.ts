@@ -1048,6 +1048,10 @@ export async function planCellEditsToXlsx(
   tableEdits: readonly SheetTableEdit[] = [],
   cellImageAdditions: readonly SheetCellImageAddition[] = [],
   externalLinkOps: ExternalLinkOps | null = null,
+  /// CLI-only opt-in: desktop saves must ignore values from sheets the user merely viewed.
+  /// A caller — or a test's positional placeholder for a slot that does not
+  /// exist yet — may also pass null here; treat that the same as the default.
+  options: { readonly refreshUntouchedSheets?: boolean } | null = {},
 ): Promise<MutationPlan> {
   // A pending pivot pins final coordinates for its source and output; shifts
   // on either sheet, and sheet renames (worksheetSource@sheet), would desync
@@ -1193,6 +1197,7 @@ export async function planCellEditsToXlsx(
     ...tabColorStates.map((state) => state.sheetName),
     ...pageSetupStates.map((state) => state.sheetName),
     ...protectedRangeStates.map((state) => state.sheetName),
+    ...(options?.refreshUntouchedSheets ? formulaValues.map((sheet) => sheet.sheetName) : []),
   ])
   const worksheetXmls = new Map<string, string>()
   const worksheetPaths = new Map<string, string>()

@@ -116,6 +116,8 @@ export interface StreamingSaveRequest {
   readonly workbookProtectionState?: { readonly lockStructure: boolean } | null | undefined
   readonly protectedRangeStates?: readonly SheetProtectedRangesState[] | undefined
   readonly tabColorStates?: readonly SheetTabColorState[] | undefined
+  /// CLI-only opt-in: desktop saves must ignore values from sheets the user merely viewed.
+  readonly refreshUntouchedSheets?: boolean | undefined
 }
 
 export interface StreamingSaveResult {
@@ -187,6 +189,7 @@ export async function saveWorkbookViaSidecar(
       request.tableEdits ?? [],
       request.cellImageAdditions ?? [],
       request.externalLinkOps ?? null,
+      { refreshUntouchedSheets: request.refreshUntouchedSheets === true },
     )
 
     const replacements = await writePlanContents(workDir, 'replace', plan.replaced)
