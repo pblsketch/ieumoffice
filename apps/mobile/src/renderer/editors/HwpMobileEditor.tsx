@@ -55,7 +55,8 @@ function applyMobileStudioCanvasStyle(editor: RhwpEditor): void {
     const style = doc.createElement('style')
     style.id = 'ieum-mobile-studio-style'
     style.textContent = `
-      @media (max-width: 767px) {
+      /* compact and medium window classes (< 840px, see useViewportLayout) */
+      @media (max-width: 839px) {
         #ruler-corner,
         #h-ruler,
         #v-ruler {

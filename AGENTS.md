@@ -37,6 +37,8 @@ openoffice/
 │   │   ├── hwp-format-copy.md     ← 한글 모양 복사(서식 복사) 분석·설계(1단계 구현됨, 사람 확인 남음)
 │   │   ├── md-to-hwp.md           ← 마크다운을 한글 문서로 옮기기 계획(1~4단계 구현됨, 사람 확인 남음)
 │   │   ├── mobile.md              ← 모바일 앱(Android·iOS, Tauri 2) 계획(1차 구현됨, 실기기 확인 남음)
+│   │   ├── mobile-scope.md        ← 모바일 기능 범위: PC와 맞추기, 1판·2판, PDF 도구·스캔(확정)
+│   │   ├── mobile-design-system.md ← 모바일 디자인 시스템: 토큰·창 크기·부품·AI 보임 규칙(확정, 1단계 구현 중)
 │   │   ├── ods-open-export.md     ← ODS 불러오기·내보내기 계획(1·2단계 구현됨, 사람 확인 남음)
 │   │   ├── pdf-reading-assist.md  ← PDF 읽기 도우미 계획
 │   │   ├── pdf-tools.md           ← PDF 도구 모음 계획(초안)

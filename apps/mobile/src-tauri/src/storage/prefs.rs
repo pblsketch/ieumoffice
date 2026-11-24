@@ -19,7 +19,8 @@ impl Default for MobileAppPrefs {
             lang: "ko".to_string(),
             theme: "system".to_string(),
             hwp_default_format: MobileDocFormat::Hwpx,
-            ai_enabled: true,
+            // AI starts hidden on mobile; the user turns it on in Settings.
+            ai_enabled: false,
         }
     }
 }
