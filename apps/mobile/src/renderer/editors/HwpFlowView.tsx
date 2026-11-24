@@ -4,12 +4,15 @@ import {
   type FlowEditDocument,
   type FlowEditor,
   type FlowFormatAction,
+  type FlowPicture,
 } from './flowEditing'
 import { buildFlowDocument, buildFlowHtml } from './hwpFlow'
 import type { FlowEngineDocument } from './rhwpEngine'
 
 export interface HwpFlowViewHandle {
   runFormat(action: FlowFormatAction): void
+  /** Puts a picture in line at the caret; false when there is no caret in text. */
+  insertPicture(picture: FlowPicture): boolean
   undo(): void
   redo(): void
   /** True when the flow holds edits the page editor has not received yet. */
@@ -136,6 +139,7 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     ref,
     () => ({
       runFormat: (action) => editorRef.current?.runFormat(action),
+      insertPicture: (picture) => editorRef.current?.insertPicture(picture) ?? false,
       undo: () => editorRef.current?.undo(),
       redo: () => editorRef.current?.redo(),
       hasPendingEdits: () => pendingRef.current,

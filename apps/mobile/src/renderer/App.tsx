@@ -42,6 +42,7 @@ import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
 import { rememberedLayout, rememberLayout } from './shell/layoutMemory'
+import { pickImageFile, readPicture } from './editors/pickPicture'
 import { createFlowSyncedPort } from './editors/flowSyncedPort'
 import { HwpFlowView, type HwpFlowViewHandle } from './editors/HwpFlowView'
 import type { FlowFormatAction } from './editors/flowEditing'
@@ -799,6 +800,20 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const isMarkdownDoc = activeFormat === 'md' || activeFormat === 'txt'
 
   // Toolbar actions and the format panel ([Aa]) of the active editor.
+  /** Flow view: pick a picture and put it in line at the caret. */
+  const insertFlowPicture = useCallback(async () => {
+    const file = await pickImageFile()
+    if (!file) return
+    try {
+      const picture = await readPicture(file)
+      if (!flowRef.current?.insertPicture(picture)) {
+        showToast({ message: tNow('insertImageNeedsCaret'), tone: 'error' })
+      }
+    } catch {
+      showToast({ message: tNow('insertImageFailed'), tone: 'error' })
+    }
+  }, [showToast, tNow])
+
   const { quickActions, formatGroups } = useMemo((): {
     quickActions: EditorQuickActionItem[]
     formatGroups: EditorFormatGroup[]
@@ -914,7 +929,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             id: 'insert',
             title: tNow('fmtGroupInsert'),
             items: [
-              // tables and pictures are placed on the page
+              { id: 'image', label: tNow('insertImage'), onPress: () => void insertFlowPicture() },
+              // tables are placed on the page
               {
                 id: 'pageView',
                 label: tNow('pageView'),
@@ -973,11 +989,14 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         {
           id: 'insert',
           title: tNow('fmtGroupInsert'),
-          items: [hwp('insertTable', 'insertTable')],
+          items: [
+            hwp('insertTable', 'insertTable'),
+            { ...hwp('insertImage', 'insertImage'), id: 'image' },
+          ],
         },
       ],
     }
-  }, [activeFormat, hwpLayout, isMarkdownDoc, switchHwpLayout, tNow])
+  }, [activeFormat, hwpLayout, insertFlowPicture, isMarkdownDoc, switchHwpLayout, tNow])
 
   const isHwpDoc = activeFormat === 'hwp' || activeFormat === 'hwpx'
   const viewTools = useMemo((): EditorQuickActionItem[] => {

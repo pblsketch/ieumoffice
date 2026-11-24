@@ -32,6 +32,8 @@ export const th = {
   underline: 'ขีดเส้นใต้',
   heading: 'หัวข้อ',
   insertImage: 'แทรกรูปภาพ',
+  insertImageNeedsCaret: 'แตะตำแหน่งในข้อความที่จะใส่รูปภาพก่อน',
+  insertImageFailed: 'อ่านไฟล์รูปภาพนี้ไม่ได้',
   formatPanel: 'รูปแบบ',
   hideKeyboard: 'ซ่อนแป้นพิมพ์',
   fmtGroupText: 'ข้อความ',

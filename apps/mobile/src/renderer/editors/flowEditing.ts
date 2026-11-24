@@ -21,6 +21,7 @@
  */
 import {
   bodyParagraphHtml,
+  renderBodyParagraph,
   cellParagraphHtml,
   flatStep,
   listParagraphLength,
@@ -31,6 +32,48 @@ import {
 } from './hwpFlow'
 
 export interface FlowEditDocument extends FlowSourceDocument {
+  getPageDef(sec: number): string
+  insertPicture(
+    sec: number,
+    para: number,
+    offset: number,
+    cellPathJson: string,
+    bytes: Uint8Array,
+    width: number,
+    height: number,
+    naturalWidthPx: number,
+    naturalHeightPx: number,
+    extension: string,
+    description: string,
+  ): string
+  insertPictureInCell(
+    sec: number,
+    para: number,
+    offset: number,
+    cellPathJson: string,
+    bytes: Uint8Array,
+    width: number,
+    height: number,
+    naturalWidthPx: number,
+    naturalHeightPx: number,
+    extension: string,
+    description: string,
+  ): string
+  setPictureProperties(sec: number, para: number, ctrl: number, propsJson: string): string
+  setCellPicturePropertiesByPath(
+    sec: number,
+    para: number,
+    cellPathJson: string,
+    ctrl: number,
+    propsJson: string,
+  ): string
+  deletePictureControl(sec: number, para: number, ctrl: number): string
+  deleteCellPictureControlByPath(
+    sec: number,
+    para: number,
+    cellPathJson: string,
+    ctrl: number,
+  ): string
   applyParaFormat(sec: number, para: number, propsJson: string): string
   applyParaFormatInCell(
     sec: number,
@@ -175,6 +218,11 @@ const LINE_SPACING_MIN = 50
 const LINE_SPACING_MAX = 500
 /** Bullet for a new bulleted list; the document's own bullets keep their characters. */
 const FALLBACK_LIST_BULLET = String.fromCharCode(0x2022)
+/** HWPUNIT per CSS pixel (1/96 inch = 7200/96). */
+const HU_PER_PX = 75
+/** 150 x 220 mm, used when the page size cannot be read. */
+const DEFAULT_TEXT_WIDTH_HU = 42520
+const DEFAULT_TEXT_HEIGHT_HU = 62362
 
 /** Font size steps in the engine's unit (1/100 pt). */
 const FONT_STEP = 100
@@ -187,6 +235,7 @@ type UndoEntry =
   | { kind: 'merge'; at: BlockAddress; joinOffset: number }
   | { kind: 'format'; at: BlockAddress; start: number; end: number; before: string; after: string }
   | { kind: 'para'; at: BlockAddress; before: string; after: string }
+  | { kind: 'picture'; at: FlowPosition; picture: FlowPicture; ctrl: number }
 
 export interface FlowEditorOptions {
   readonly doc: FlowEditDocument
@@ -195,9 +244,21 @@ export interface FlowEditorOptions {
   readonly onChange: () => void
 }
 
+/** A picture to put into the document, already read from a file. */
+export interface FlowPicture {
+  readonly bytes: Uint8Array
+  readonly widthPx: number
+  readonly heightPx: number
+  /** File extension the engine stores the picture under (png, jpg, gif, bmp). */
+  readonly extension: string
+  readonly description: string
+}
+
 export interface FlowEditor {
   setEditable(editable: boolean): void
   runFormat(action: FlowFormatAction): void
+  /** Puts a picture in line at the end of the caret's paragraph; false without a caret in text. */
+  insertPicture(picture: FlowPicture): boolean
   undo(): void
   redo(): void
   canUndo(): boolean
@@ -845,6 +906,116 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
         redraw(entry.at)
         refreshNumbers()
         break
+      case 'picture':
+        if (reverse) removePicture(entry.at, entry.ctrl)
+        else entry.ctrl = placePicture(entry.at, entry.picture)
+        caretTo(entry.at)
+        break
+    }
+  }
+
+  /** Redraws everything a body paragraph shows (text, objects, notes) from the engine. */
+  const redrawBodyParagraph = (sec: number, para: number) => {
+    const at = (el: Element) => [
+      Number(el.getAttribute('data-sec')),
+      Number(el.getAttribute('data-para')),
+    ]
+    const children = [...body.children]
+    const parts = children.filter((el) => {
+      const [s, p] = at(el)
+      return s === sec && p === para
+    })
+    const holder = frameDocument.createElement('template')
+    holder.innerHTML = renderBodyParagraph(doc, sec, para)
+    const fresh = [...holder.content.children]
+    const after = children.find((el) => {
+      const [s, p] = at(el)
+      return s === sec && p > para
+    })
+    if (parts.length > 0) parts[0].before(holder.content)
+    else if (after) after.before(holder.content)
+    else body.append(holder.content)
+    for (const el of parts) el.remove()
+    for (const el of fresh) {
+      markObjectsReadOnly(el)
+      keepSpacesVisible(el)
+    }
+  }
+
+  /** Text area of the section's page in HWPUNIT; 150 x 220 mm when unknown. */
+  const textArea = (sec: number): { width: number; height: number } => {
+    try {
+      const page = JSON.parse(doc.getPageDef(sec)) as Record<string, number>
+      const width = page.width - page.marginLeft - page.marginRight - (page.marginGutter ?? 0)
+      const height =
+        page.height -
+        page.marginTop -
+        page.marginBottom -
+        (page.marginHeader ?? 0) -
+        (page.marginFooter ?? 0)
+      if (width > 0 && height > 0) return { width, height }
+    } catch {
+      // fall through
+    }
+    return { width: DEFAULT_TEXT_WIDTH_HU, height: DEFAULT_TEXT_HEIGHT_HU }
+  }
+
+  /**
+   * The picture at its natural size, shrunk to fit the text width (a third of it
+   * in a cell) and half the text height, so a tall photo does not take a page.
+   */
+  const pictureSize = (picture: FlowPicture, pos: FlowPosition) => {
+    const area = textArea(pos.sec)
+    const maxWidth = pos.path ? area.width / 3 : area.width
+    const maxHeight = area.height / 2
+    const natural = { width: picture.widthPx * HU_PER_PX, height: picture.heightPx * HU_PER_PX }
+    const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height)
+    return {
+      width: Math.max(1, Math.round(natural.width * scale)),
+      height: Math.max(1, Math.round(natural.height * scale)),
+    }
+  }
+
+  /** Inserts the picture in line at `pos`; returns its control index. */
+  const placePicture = (pos: FlowPosition, picture: FlowPicture): number => {
+    const { width, height } = pictureSize(picture, pos)
+    const args = [
+      picture.bytes,
+      width,
+      height,
+      picture.widthPx,
+      picture.heightPx,
+      picture.extension,
+      picture.description,
+    ] as const
+    const inline = JSON.stringify({ treatAsChar: true })
+    if (!pos.path) {
+      const result = JSON.parse(
+        doc.insertPicture(pos.sec, pos.para, pos.offset, '[]', ...args),
+      ) as { controlIdx?: number }
+      const ctrl = result.controlIdx ?? 0
+      // the engine places a new body picture on the page; in the flow it belongs in the text
+      doc.setPictureProperties(pos.sec, pos.para, ctrl, inline)
+      redrawBodyParagraph(pos.sec, pos.para)
+      return ctrl
+    }
+    const json = JSON.stringify(pos.path)
+    const result = JSON.parse(
+      doc.insertPictureInCell(pos.sec, pos.para, pos.offset, json, ...args),
+    ) as { controlIdx?: number }
+    const ctrl = result.controlIdx ?? 0
+    doc.setCellPicturePropertiesByPath(pos.sec, pos.para, json, ctrl, inline)
+    redrawCell(pos)
+    return ctrl
+  }
+
+  const removePicture = (pos: FlowPosition, ctrl: number) => {
+    if (!pos.path) {
+      doc.deletePictureControl(pos.sec, pos.para, ctrl)
+      redrawBodyParagraph(pos.sec, pos.para)
+    } else {
+      doc.deleteCellPictureControlByPath(pos.sec, pos.para, JSON.stringify(pos.path), ctrl)
+      redrawCell(pos)
     }
   }
 
@@ -934,6 +1105,24 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
   }
 
   const editor: FlowEditor = {
+    insertPicture(picture) {
+      const caret = editor.caret()
+      if (!caret) return false
+      // The flow shows a paragraph's pictures after its text, so the picture goes at the end of
+      // the caret's paragraph: the page view then shows it in the same place, not mid-sentence.
+      const pos: FlowPosition = { ...caret, offset: ops.length(caret) }
+      try {
+        const ctrl = placePicture(pos, picture)
+        record({ kind: 'picture', at: pos, picture, ctrl })
+        caretTo(pos)
+        return true
+      } catch {
+        // e.g. a table caption, which the engine does not take pictures in
+        if (pos.path) redrawCell(pos)
+        else redrawBodyParagraph(pos.sec, pos.para)
+        return false
+      }
+    },
     setEditable(next) {
       editable = next
       body.contentEditable = next ? 'true' : 'false'

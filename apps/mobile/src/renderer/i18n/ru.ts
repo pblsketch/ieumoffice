@@ -32,6 +32,8 @@ export const ru = {
   underline: 'Подчёркнутый',
   heading: 'Заголовок',
   insertImage: 'Вставить изображение',
+  insertImageNeedsCaret: 'Сначала коснитесь места в тексте, куда вставить рисунок.',
+  insertImageFailed: 'Не удалось прочитать этот файл изображения.',
   formatPanel: 'Формат',
   hideKeyboard: 'Скрыть клавиатуру',
   fmtGroupText: 'Текст',

@@ -32,6 +32,8 @@ export const he = {
   underline: 'קו תחתון',
   heading: 'כותרת',
   insertImage: 'הוסף תמונה',
+  insertImageNeedsCaret: 'קודם יש להקיש בטקסט במקום שבו תופיע התמונה.',
+  insertImageFailed: 'לא ניתן לקרוא את קובץ התמונה הזה.',
   formatPanel: 'עיצוב',
   hideKeyboard: 'הסתרת המקלדת',
   fmtGroupText: 'טקסט',

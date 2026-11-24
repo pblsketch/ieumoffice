@@ -32,6 +32,8 @@ export const it = {
   underline: 'Sottolineato',
   heading: 'Intestazione',
   insertImage: 'Inserisci immagine',
+  insertImageNeedsCaret: 'Tocca prima nel testo il punto in cui inserire l’immagine.',
+  insertImageFailed: 'Impossibile leggere questo file immagine.',
   formatPanel: 'Formato',
   hideKeyboard: 'Nascondi tastiera',
   fmtGroupText: 'Testo',

@@ -32,6 +32,8 @@ export const ms = {
   underline: 'Garis bawah',
   heading: 'Tajuk',
   insertImage: 'Sisipkan imej',
+  insertImageNeedsCaret: 'Ketik dahulu tempat dalam teks untuk meletakkan gambar.',
+  insertImageFailed: 'Fail gambar ini tidak dapat dibaca.',
   formatPanel: 'Format',
   hideKeyboard: 'Sembunyikan papan kekunci',
   fmtGroupText: 'Teks',

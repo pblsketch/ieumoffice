@@ -32,6 +32,8 @@ export const es = {
   underline: 'Subrayado',
   heading: 'Encabezado',
   insertImage: 'Insertar imagen',
+  insertImageNeedsCaret: 'Primero toca en el texto el lugar donde irá la imagen.',
+  insertImageFailed: 'No se pudo leer este archivo de imagen.',
   formatPanel: 'Formato',
   hideKeyboard: 'Ocultar teclado',
   fmtGroupText: 'Texto',

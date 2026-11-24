@@ -32,6 +32,8 @@ export const pt = {
   underline: 'Sublinhado',
   heading: 'Título',
   insertImage: 'Inserir imagem',
+  insertImageNeedsCaret: 'Toque primeiro no texto onde a imagem deve ficar.',
+  insertImageFailed: 'Não foi possível ler este arquivo de imagem.',
   formatPanel: 'Formatar',
   hideKeyboard: 'Ocultar teclado',
   fmtGroupText: 'Texto',

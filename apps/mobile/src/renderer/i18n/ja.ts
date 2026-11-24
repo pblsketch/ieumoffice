@@ -32,6 +32,8 @@ export const ja = {
   underline: '下線',
   heading: '見出し',
   insertImage: '画像を挿入',
+  insertImageNeedsCaret: '先に、画像を入れたい位置の文字をタップしてください。',
+  insertImageFailed: 'この画像ファイルを読み込めませんでした。',
   formatPanel: '書式',
   hideKeyboard: 'キーボードを閉じる',
   fmtGroupText: '文字',

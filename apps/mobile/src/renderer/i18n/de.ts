@@ -33,6 +33,8 @@ export const de = {
   underline: 'Unterstrichen',
   heading: 'Überschrift',
   insertImage: 'Bild einfügen',
+  insertImageNeedsCaret: 'Tippe zuerst im Text an die Stelle, an der das Bild hin soll.',
+  insertImageFailed: 'Diese Bilddatei konnte nicht gelesen werden.',
   formatPanel: 'Format',
   hideKeyboard: 'Tastatur ausblenden',
   fmtGroupText: 'Text',

@@ -30,6 +30,8 @@ export const zh = {
   underline: '下划线',
   heading: '标题',
   insertImage: '插入图片',
+  insertImageNeedsCaret: '请先在文字中点按要插入图片的位置。',
+  insertImageFailed: '无法读取此图片文件。',
   formatPanel: '格式',
   hideKeyboard: '收起键盘',
   fmtGroupText: '文字',

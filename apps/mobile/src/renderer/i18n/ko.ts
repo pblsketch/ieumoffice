@@ -32,6 +32,8 @@ export const ko = {
   underline: '밑줄',
   heading: '제목',
   insertImage: '그림 넣기',
+  insertImageNeedsCaret: '그림을 넣을 자리를 글 안에서 먼저 눌러 주세요.',
+  insertImageFailed: '이 그림 파일을 읽지 못했습니다.',
   formatPanel: '서식',
   hideKeyboard: '키보드 내리기',
   fmtGroupText: '글자',

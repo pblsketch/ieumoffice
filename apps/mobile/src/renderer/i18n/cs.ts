@@ -32,6 +32,8 @@ export const cs = {
   underline: 'Podtržené',
   heading: 'Nadpis',
   insertImage: 'Vložit obrázek',
+  insertImageNeedsCaret: 'Nejprve klepněte v textu na místo, kam má obrázek přijít.',
+  insertImageFailed: 'Tento soubor obrázku se nepodařilo přečíst.',
   formatPanel: 'Formát',
   hideKeyboard: 'Skrýt klávesnici',
   fmtGroupText: 'Text',
