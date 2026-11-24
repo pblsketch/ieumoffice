@@ -654,6 +654,8 @@ td .flow-obj { overflow-x: visible; }
 /* keep short labels (two or three syllables) on one line instead of one per line */
 .flow-obj td p, .flow-obj th p { word-break: keep-all; }
 img { max-width: 100%; height: auto; }
+/* memo ranges (CSS Custom Highlight API, set by the flow editor) */
+::highlight(ieum-memo) { background-color: #fff2a8; }
 /* bullets are drawn here so they never become editable text */
 .flow-p p[data-marker]::before {
   content: attr(data-marker);

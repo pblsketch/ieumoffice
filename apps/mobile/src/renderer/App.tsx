@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentLoop, type AgentMessage } from '@genoffice/agent-core'
 import { AI_SUBSCRIPTION_NOTICE_VERSION } from '@genoffice/ai-provider/browser'
-import { normalizeLang, type Lang } from '@genoffice/i18n'
+import { normalizeLang, PRODUCT_NAME, type Lang } from '@genoffice/i18n'
 import {
   createMobileAgentTransport,
   createMobileAiMemoryStore,
@@ -43,9 +43,10 @@ import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
 import { rememberedLayout, rememberLayout } from './shell/layoutMemory'
 import { pickImageFile, readPicture } from './editors/pickPicture'
+import { MemoSheet } from './components/MemoSheet'
 import { createFlowSyncedPort } from './editors/flowSyncedPort'
 import { HwpFlowView, type HwpFlowViewHandle } from './editors/HwpFlowView'
-import type { FlowFormatAction } from './editors/flowEditing'
+import type { FlowFormatAction, FlowMemo } from './editors/flowEditing'
 import { openFlowDocument } from './editors/rhwpEngine'
 import {
   HwpMobileEditor,
@@ -154,6 +155,21 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   // HWP reading layout: reflowed "flow" view or the page editor (design system 5.3).
   const [hwpLayout, setHwpLayout] = useState<'page' | 'flow'>('flow')
   const [flowZoom, setFlowZoom] = useState(FLOW_ZOOM_DEFAULT)
+  const [memoOpen, setMemoOpen] = useState(false)
+  const [memos, setMemos] = useState<readonly FlowMemo[]>([])
+  /** Opens the memo sheet with the memos as the flow editor has them now. */
+  const openMemos = useCallback(() => {
+    setMemos(flowRef.current?.memos() ?? [])
+    setMemoOpen(true)
+  }, [])
+  /** Runs a memo change and lists the memos again. */
+  const memoAction = useCallback((run: (view: HwpFlowViewHandle) => boolean): boolean => {
+    const view = flowRef.current
+    if (!view) return false
+    const ok = run(view)
+    setMemos(view.memos())
+    return ok
+  }, [])
   const [flowBytes, setFlowBytes] = useState<Uint8Array | null>(null)
   const studioEditedRef = useRef(false)
   const flowRef = useRef<HwpFlowViewHandle | null>(null)
@@ -930,6 +946,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             title: tNow('fmtGroupInsert'),
             items: [
               { id: 'image', label: tNow('insertImage'), onPress: () => void insertFlowPicture() },
+              { id: 'memos', label: tNow('memoAdd'), onPress: openMemos },
               // tables are placed on the page
               {
                 id: 'pageView',
@@ -996,7 +1013,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         },
       ],
     }
-  }, [activeFormat, hwpLayout, insertFlowPicture, isMarkdownDoc, switchHwpLayout, tNow])
+  }, [activeFormat, hwpLayout, insertFlowPicture, isMarkdownDoc, openMemos, switchHwpLayout, tNow])
 
   const isHwpDoc = activeFormat === 'hwp' || activeFormat === 'hwpx'
   const viewTools = useMemo((): EditorQuickActionItem[] => {
@@ -1015,6 +1032,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           onPress: () =>
             setFlowZoom((z) => Math.min(FLOW_ZOOM_MAX, +(z + FLOW_ZOOM_STEP).toFixed(2))),
         },
+        { id: 'memos', label: tNow('memoTitle'), onPress: openMemos },
         { id: 'pageView', label: tNow('pageView'), onPress: () => void switchHwpLayout('page') },
       ]
     }
@@ -1029,7 +1047,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       },
       { id: 'flowView', label: tNow('flowView'), onPress: () => void switchHwpLayout('flow') },
     ]
-  }, [hwpLayout, isHwpDoc, switchHwpLayout, tNow])
+  }, [hwpLayout, isHwpDoc, openMemos, switchHwpLayout, tNow])
 
   return (
     <MobileLocaleProvider lang={lang}>
@@ -1218,6 +1236,18 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           open={unsavedPromptDoc !== null}
           docTitle={unsavedPromptDoc ?? ''}
           onChoice={resolveUnsavedChoice}
+        />
+        <MemoSheet
+          open={memoOpen && isHwpDoc && hwpLayout === 'flow'}
+          onClose={() => setMemoOpen(false)}
+          memos={memos}
+          canEdit={mode === 'edit' && canEditActive}
+          defaultAuthor={PRODUCT_NAME}
+          onAdd={(text, author) => memoAction((view) => view.addMemo(text, author))}
+          onReply={(id, text, author) => memoAction((view) => view.replyMemo(id, text, author))}
+          onEdit={(id, text) => memoAction((view) => view.editMemo(id, text))}
+          onRemove={(id) => memoAction((view) => view.removeMemo(id))}
+          onReveal={(id) => flowRef.current?.revealMemo(id)}
         />
         <ToastHost toast={toast} onDismiss={dismissToast} />
       </BackStackProvider>

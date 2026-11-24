@@ -4,6 +4,7 @@ import {
   type FlowEditDocument,
   type FlowEditor,
   type FlowFormatAction,
+  type FlowMemo,
   type FlowPicture,
 } from './flowEditing'
 import { buildFlowDocument, buildFlowHtml } from './hwpFlow'
@@ -13,6 +14,12 @@ export interface HwpFlowViewHandle {
   runFormat(action: FlowFormatAction): void
   /** Puts a picture in line at the caret; false when there is no caret in text. */
   insertPicture(picture: FlowPicture): boolean
+  memos(): FlowMemo[]
+  addMemo(text: string, author: string): boolean
+  replyMemo(parentId: number, text: string, author: string): boolean
+  editMemo(id: number, text: string): boolean
+  removeMemo(id: number): boolean
+  revealMemo(id: number): void
   undo(): void
   redo(): void
   /** True when the flow holds edits the page editor has not received yet. */
@@ -140,6 +147,13 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     () => ({
       runFormat: (action) => editorRef.current?.runFormat(action),
       insertPicture: (picture) => editorRef.current?.insertPicture(picture) ?? false,
+      memos: () => editorRef.current?.memos() ?? [],
+      addMemo: (text, author) => editorRef.current?.addMemo(text, author) ?? false,
+      replyMemo: (parentId, text, author) =>
+        editorRef.current?.replyMemo(parentId, text, author) ?? false,
+      editMemo: (id, text) => editorRef.current?.editMemo(id, text) ?? false,
+      removeMemo: (id) => editorRef.current?.removeMemo(id) ?? false,
+      revealMemo: (id) => editorRef.current?.revealMemo(id),
       undo: () => editorRef.current?.undo(),
       redo: () => editorRef.current?.redo(),
       hasPendingEdits: () => pendingRef.current,

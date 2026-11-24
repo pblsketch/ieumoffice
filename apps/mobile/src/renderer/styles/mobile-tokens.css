@@ -1854,3 +1854,88 @@ input:focus-visible {
   visibility: hidden;
   pointer-events: none;
 }
+
+/* HWP memo sheet */
+.mobile-memo-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-memo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.mobile-memo {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+}
+
+.mobile-memo[data-reply] {
+  margin-inline-start: var(--m-space-6);
+  background: var(--surface-subtle);
+}
+
+.mobile-memo-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  width: 100%;
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-memo-meta {
+  color: var(--text-secondary);
+  font-size: var(--m-text-caption);
+}
+
+.mobile-memo-text {
+  font-size: var(--m-text-body-s);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mobile-memo-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-1);
+  padding: 0 var(--m-space-2) var(--m-space-2);
+}
+
+.mobile-memo-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.mobile-memo-composer .mobile-memo-actions {
+  padding: 0;
+}
+
+.mobile-memo-input {
+  resize: vertical;
+}
+
+.mobile-memo-empty,
+.mobile-memo-error {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.mobile-memo-error {
+  color: var(--danger);
+}
