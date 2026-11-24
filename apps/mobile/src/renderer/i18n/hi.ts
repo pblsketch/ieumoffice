@@ -40,6 +40,10 @@ export const hi = {
   unsavedDiscard: 'छोड़ें',
   cancel: 'रद्द करें',
   savedNotice: 'सहेजा गया।',
+  saveStateSaved: 'सहेजा गया',
+  saveStateDirty: 'सहेजा नहीं गया',
+  saveStateSaving: 'सहेजा जा रहा है…',
+  saveStateFailed: 'सहेजा नहीं जा सका',
   readonlyShareNotice:
     'अस्थायी साझा फ़ाइल को ओवरराइट नहीं किया जा सकता। "इस रूप में सहेजें" चुनें।',
   hwpTrackingDroppedNotice:

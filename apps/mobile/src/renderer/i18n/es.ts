@@ -39,6 +39,10 @@ export const es = {
   unsavedDiscard: 'Descartar',
   cancel: 'Cancelar',
   savedNotice: 'Guardado.',
+  saveStateSaved: 'Guardado',
+  saveStateDirty: 'Sin guardar',
+  saveStateSaving: 'Guardando…',
+  saveStateFailed: 'No se pudo guardar',
   readonlyShareNotice:
     'Los archivos compartidos temporales no se pueden sobrescribir. Usa Guardar como.',
   hwpTrackingDroppedNotice:

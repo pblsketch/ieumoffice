@@ -40,6 +40,10 @@ export const nl = {
   unsavedDiscard: 'Niet opslaan',
   cancel: 'Annuleren',
   savedNotice: 'Opgeslagen.',
+  saveStateSaved: 'Opgeslagen',
+  saveStateDirty: 'Niet opgeslagen',
+  saveStateSaving: 'Opslaan…',
+  saveStateFailed: 'Opslaan mislukt',
   readonlyShareNotice:
     'Tijdelijk gedeelde bestanden kunnen niet worden overschreven. Gebruik Opslaan als.',
   hwpTrackingDroppedNotice:

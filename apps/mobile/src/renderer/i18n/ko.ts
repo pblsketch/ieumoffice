@@ -39,6 +39,10 @@ export const ko = {
   unsavedDiscard: '저장 안 함',
   cancel: '취소',
   savedNotice: '저장했습니다.',
+  saveStateSaved: '저장됨',
+  saveStateDirty: '저장 안 됨',
+  saveStateSaving: '저장 중…',
+  saveStateFailed: '저장 못 함',
   readonlyShareNotice: '외부 앱에서 공유된 임시 파일은 덮어쓸 수 없어 다른 이름으로 저장합니다.',
   hwpTrackingDroppedNotice:
     '변경 추적 문서를 현재 본문으로 열었습니다. 저장 시 추적 기록은 유지되지 않습니다.',

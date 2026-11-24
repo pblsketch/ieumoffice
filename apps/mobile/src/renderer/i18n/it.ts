@@ -39,6 +39,10 @@ export const it = {
   unsavedDiscard: 'Non salvare',
   cancel: 'Annulla',
   savedNotice: 'Salvato.',
+  saveStateSaved: 'Salvato',
+  saveStateDirty: 'Non salvato',
+  saveStateSaving: 'Salvataggio…',
+  saveStateFailed: 'Salvataggio non riuscito',
   readonlyShareNotice:
     'I file condivisi temporanei non possono essere sovrascritti. Usa Salva con nome.',
   hwpTrackingDroppedNotice:

@@ -73,14 +73,16 @@ describe('responsive mobile shell layout (<840px phone layout vs >=840px tablet 
       <EditorShell
         docTitle="plan.md"
         docFormat="md"
-        dirty={false}
+        saveState="saved"
         mode="edit"
         canEdit={true}
         aiEnabled={true}
         quickActions={[{ id: 'bold', label: 'B', onPress: () => {} }]}
         aiPanelContent={<div>AI Content</div>}
         onBack={() => {}}
-        onToggleMode={() => {}}
+        onEnterEdit={() => {}}
+        onDone={() => {}}
+        onExitEdit={() => {}}
         onSave={() => {}}
         onSaveAs={() => {}}
         onShare={() => {}}
@@ -102,14 +104,16 @@ describe('responsive mobile shell layout (<840px phone layout vs >=840px tablet 
       <EditorShell
         docTitle="plan.md"
         docFormat="md"
-        dirty={false}
+        saveState="saved"
         mode="edit"
         canEdit={true}
         aiEnabled={false}
         quickActions={[{ id: 'bold', label: 'B', onPress: () => {} }]}
         aiPanelContent={<div>AI Content</div>}
         onBack={() => {}}
-        onToggleMode={() => {}}
+        onEnterEdit={() => {}}
+        onDone={() => {}}
+        onExitEdit={() => {}}
         onSave={() => {}}
         onSaveAs={() => {}}
         onShare={() => {}}
@@ -131,14 +135,19 @@ describe('responsive mobile shell layout (<840px phone layout vs >=840px tablet 
       <EditorShell
         docTitle="report.hwp"
         docFormat="hwp"
-        dirty={true}
+        saveState="dirty"
         mode="edit"
         canEdit={true}
         aiEnabled={true}
-        quickActions={[{ id: 'undo', label: 'Undo', onPress: () => {} }]}
+        quickActions={[
+          { id: 'undo', label: 'Undo', onPress: () => {} },
+          { id: 'bold', label: 'Bold', onPress: () => {} },
+        ]}
         aiPanelContent={<div>AI Dock</div>}
         onBack={() => {}}
-        onToggleMode={() => {}}
+        onEnterEdit={() => {}}
+        onDone={() => {}}
+        onExitEdit={() => {}}
         onSave={() => {}}
         onSaveAs={() => {}}
         onShare={() => {}}

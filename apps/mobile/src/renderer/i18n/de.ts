@@ -40,6 +40,10 @@ export const de = {
   unsavedDiscard: 'Verwerfen',
   cancel: 'Abbrechen',
   savedNotice: 'Gespeichert.',
+  saveStateSaved: 'Gespeichert',
+  saveStateDirty: 'Nicht gespeichert',
+  saveStateSaving: 'Wird gespeichert…',
+  saveStateFailed: 'Speichern fehlgeschlagen',
   readonlyShareNotice:
     'Temporär geteilte Dateien können nicht überschrieben werden. Nutzen Sie Speichern unter.',
   hwpTrackingDroppedNotice:
