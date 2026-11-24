@@ -60,6 +60,11 @@ export interface HwpMobileEditorHandle {
   readonly fitToWidth: () => void
   /** Replaces the open document with these bytes (edits handed over from the flow view). */
   readonly loadBytes: (bytes: Uint8Array) => Promise<void>
+  /**
+   * Calls a method of the app's page-editor plugin (apps/hwp/studio-plugin/agent-plugin.mjs,
+   * shipped in the same studio bundle), loading it on first use as the PC bridge does.
+   */
+  readonly callPlugin: (method: string, ...args: unknown[]) => Promise<unknown>
 }
 
 export interface HwpMobileEditorProps {
@@ -76,6 +81,8 @@ export interface HwpMobileEditorProps {
 /** Matches `PASSWORD_FLAG` in `apps/hwp/scripts/rhwp-patches.mjs`. */
 const PASSWORD_FLAG = 'passwordProtected'
 const STUDIO_DIRTY_EVENT = 'ieum:dirty'
+/** Id of the app's studio plugin (AGENT_PLUGIN_ID in apps/hwp/studio-plugin/agent-plugin.mjs). */
+const AGENT_PLUGIN_ID = 'ieum-agent'
 const DIRTY_POLL_MS = 2000
 
 const MOBILE_HIDDEN_CHROME = {
@@ -127,6 +134,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
   ) {
     const containerRef = useRef<HTMLDivElement | null>(null)
     const editorRef = useRef<RhwpEditor | null>(null)
+    const pluginLoadedRef = useRef<{ editor: RhwpEditor; ready: Promise<unknown> } | null>(null)
     const [loading, setLoading] = useState(true)
     const [zoom, setZoom] = useState(1)
 
@@ -309,6 +317,20 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
         fitToWidth() {
           setZoom(1)
           void editorRef.current?.commands.execute('view:zoom-fit-width').catch(() => {})
+        },
+        async callPlugin(method, ...args) {
+          const ed = editorRef.current
+          if (!ed) throw new Error('HWP editor is not ready.')
+          if (pluginLoadedRef.current?.editor !== ed) {
+            const entry = { editor: ed, ready: ed.plugins.load(AGENT_PLUGIN_ID) }
+            pluginLoadedRef.current = entry
+            // a failed load is tried again by the next call
+            entry.ready.catch(() => {
+              if (pluginLoadedRef.current === entry) pluginLoadedRef.current = null
+            })
+          }
+          await pluginLoadedRef.current.ready
+          return ed.plugins.invoke(AGENT_PLUGIN_ID, method, args)
         },
         async loadBytes(bytes) {
           const ed = editorRef.current

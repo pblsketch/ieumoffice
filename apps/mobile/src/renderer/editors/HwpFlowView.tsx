@@ -4,6 +4,7 @@ import {
   type FlowEditDocument,
   type FlowEditor,
   type FlowFormatAction,
+  type BlockAddress,
   type FlowMemo,
   type FlowPicture,
 } from './flowEditing'
@@ -20,6 +21,7 @@ export interface HwpFlowViewHandle {
   editMemo(id: number, text: string): boolean
   removeMemo(id: number): boolean
   revealMemo(id: number): void
+  reveal(at: BlockAddress): void
   undo(): void
   redo(): void
   /** True when the flow holds edits the page editor has not received yet. */
@@ -154,6 +156,7 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
       editMemo: (id, text) => editorRef.current?.editMemo(id, text) ?? false,
       removeMemo: (id) => editorRef.current?.removeMemo(id) ?? false,
       revealMemo: (id) => editorRef.current?.revealMemo(id),
+      reveal: (at) => editorRef.current?.reveal(at),
       undo: () => editorRef.current?.undo(),
       redo: () => editorRef.current?.redo(),
       hasPendingEdits: () => pendingRef.current,

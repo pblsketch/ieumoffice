@@ -360,6 +360,29 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(editor.memos()[0].at).toEqual({ sec: 0, para: 2, path: cellPath(3) })
   })
 
+  it('reveals a nested table by the cell paragraph that holds it', () => {
+    const scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this)
+    }
+    try {
+      editor.reveal({
+        sec: 0,
+        para: 2,
+        path: [{ controlIndex: 0, cellIndex: 9, cellParaIndex: 3 }],
+      })
+      expect(scrolled).toHaveLength(1)
+      expect(scrolled[0].classList.contains('flow-obj')).toBe(true)
+      expect(scrolled[0].querySelector('table')?.textContent).toContain('평가')
+      // a body paragraph with text: its block
+      editor.reveal({ sec: 0, para: 1, path: null })
+      expect(scrolled[1]).toBe(pEl(1))
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('refuses a memo without a selection', () => {
     document.getSelection()!.removeAllRanges()
     expect(editor.addMemo('x', 'y')).toBe(false)
