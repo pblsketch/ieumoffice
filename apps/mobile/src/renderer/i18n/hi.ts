@@ -56,6 +56,13 @@ export const hi = {
   pageNumberApply: 'लागू करें',
   pageNumberDone: 'पृष्ठ संख्या बदल दी गई। ये पृष्ठ दृश्य में दिखती हैं।',
   pageNumberFailed: 'पृष्ठ संख्या नहीं बदली जा सकी।',
+  markdownToHwp: 'HWP दस्तावेज़ के रूप में सहेजें',
+  markdownToHwpWorking: 'HWP दस्तावेज़ में बदला जा रहा है…',
+  markdownToHwpDone: 'HWP दस्तावेज़ के रूप में सहेजा गया।',
+  markdownToHwpDoneLoss:
+    'HWP दस्तावेज़ के रूप में सहेजा गया। कुछ फ़ॉर्मेटिंग ठीक वैसी नहीं ले जाई जा सकी।',
+  markdownToHwpFailed: 'HWP दस्तावेज़ में नहीं बदला जा सका।',
+  openNow: 'खोलें',
   formatPanel: 'फ़ॉर्मेट',
   hideKeyboard: 'कीबोर्ड छिपाएँ',
   fmtGroupText: 'टेक्स्ट',

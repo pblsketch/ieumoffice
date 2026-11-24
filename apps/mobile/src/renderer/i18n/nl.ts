@@ -56,6 +56,13 @@ export const nl = {
   pageNumberApply: 'Toepassen',
   pageNumberDone: 'Paginanummers gewijzigd. Ze staan in de paginaweergave.',
   pageNumberFailed: 'De paginanummers konden niet worden gewijzigd.',
+  markdownToHwp: 'Opslaan als HWP-document',
+  markdownToHwpWorking: 'Omzetten naar HWP-document…',
+  markdownToHwpDone: 'Opgeslagen als HWP-document.',
+  markdownToHwpDoneLoss:
+    'Opgeslagen als HWP-document. Een deel van de opmaak kon niet precies worden overgenomen.',
+  markdownToHwpFailed: 'Kon niet omzetten naar een HWP-document.',
+  openNow: 'Openen',
   formatPanel: 'Opmaak',
   hideKeyboard: 'Toetsenbord verbergen',
   fmtGroupText: 'Tekst',

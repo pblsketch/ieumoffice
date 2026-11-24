@@ -55,6 +55,13 @@ export const id = {
   pageNumberApply: 'Terapkan',
   pageNumberDone: 'Nomor halaman diubah. Terlihat di tampilan halaman.',
   pageNumberFailed: 'Nomor halaman tidak dapat diubah.',
+  markdownToHwp: 'Simpan sebagai dokumen HWP',
+  markdownToHwpWorking: 'Mengubah ke dokumen HWP…',
+  markdownToHwpDone: 'Disimpan sebagai dokumen HWP.',
+  markdownToHwpDoneLoss:
+    'Disimpan sebagai dokumen HWP. Sebagian format tidak dapat dipindahkan persis.',
+  markdownToHwpFailed: 'Tidak dapat mengubah ke dokumen HWP.',
+  openNow: 'Buka',
   formatPanel: 'Format',
   hideKeyboard: 'Sembunyikan keyboard',
   fmtGroupText: 'Teks',

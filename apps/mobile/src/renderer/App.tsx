@@ -857,6 +857,33 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     [hwpPort],
   )
 
+  /** Markdown: convert to a HWP document (.hwpx) and save it as a new file. */
+  const exportMarkdownToHwp = useCallback(async () => {
+    const active = activeDocRef.current
+    if (!active) return
+    const text = markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current
+    showToast(tNow('markdownToHwpWorking'))
+    let converted: { bytes: Uint8Array; lossCount: number }
+    try {
+      const { markdownToHwpx } = await import('./editors/markdownToHwp')
+      converted = await markdownToHwpx(text)
+    } catch {
+      showToast({ message: tNow('markdownToHwpFailed'), tone: 'error' })
+      return
+    }
+    try {
+      const name = `${active.session.name.replace(/\.(md|markdown|txt)$/i, '')}.hwpx`
+      const session = await markdownApi.saveConvertedHwpx(name, converted.bytes)
+      showToast({
+        message: tNow(converted.lossCount > 0 ? 'markdownToHwpDoneLoss' : 'markdownToHwpDone'),
+        action: { label: tNow('openNow'), onPress: () => void openLoadedSession(session) },
+      })
+    } catch (err) {
+      if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
+      showToast({ message: tNow('markdownToHwpFailed'), tone: 'error' })
+    }
+  }, [markdownApi, openLoadedSession, showToast, tNow])
+
   const [pageNumberOpen, setPageNumberOpen] = useState(false)
   const [pageNumberNow, setPageNumberNow] = useState<PageNumberSetting | null>(null)
 
@@ -1228,6 +1255,17 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             onDismissNotice={() => setNoticeBanner(null)}
             quickActions={quickActions}
             formatGroups={formatGroups}
+            moreItems={
+              activeFormat === 'md'
+                ? [
+                    {
+                      id: 'markdownToHwp',
+                      label: tNow('markdownToHwp'),
+                      onPress: () => void exportMarkdownToHwp(),
+                    },
+                  ]
+                : []
+            }
             viewTools={viewTools}
             onBack={() => void handleBackFromEditor()}
             onEnterEdit={() => setMode('edit')}

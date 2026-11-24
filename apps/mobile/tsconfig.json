@@ -5,5 +5,14 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+  // Markdown → HWP reuses the Markdown editor's parser and Word exporter (editors/markdownToHwp.ts);
+  // its window globals and module shims come along, as in packages/cli
+  "include": [
+    "src",
+    "tests",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "../markdown/src/renderer/env.d.ts",
+    "../markdown/src/renderer/types/wavedrom.d.ts"
+  ]
 }

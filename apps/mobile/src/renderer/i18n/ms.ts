@@ -55,6 +55,13 @@ export const ms = {
   pageNumberApply: 'Guna',
   pageNumberDone: 'Nombor halaman diubah. Ia kelihatan dalam paparan halaman.',
   pageNumberFailed: 'Nombor halaman tidak dapat diubah.',
+  markdownToHwp: 'Simpan sebagai dokumen HWP',
+  markdownToHwpWorking: 'Menukar kepada dokumen HWP…',
+  markdownToHwpDone: 'Disimpan sebagai dokumen HWP.',
+  markdownToHwpDoneLoss:
+    'Disimpan sebagai dokumen HWP. Sebahagian format tidak dapat dibawa dengan tepat.',
+  markdownToHwpFailed: 'Tidak dapat menukar kepada dokumen HWP.',
+  openNow: 'Buka',
   formatPanel: 'Format',
   hideKeyboard: 'Sembunyikan papan kekunci',
   fmtGroupText: 'Teks',

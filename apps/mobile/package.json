@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@genoffice/agent-core": "*",
+    "@genoffice/docx2hwp": "*",
     "@genoffice/ai-provider": "*",
     "@genoffice/i18n": "*",
     "@genoffice/mobile-bridge": "*",
