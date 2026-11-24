@@ -41,6 +41,7 @@ import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiShe
 import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
+import { rememberedLayout, rememberLayout } from './shell/layoutMemory'
 import { createFlowSyncedPort } from './editors/flowSyncedPort'
 import { HwpFlowView, type HwpFlowViewHandle } from './editors/HwpFlowView'
 import type { FlowFormatAction } from './editors/flowEditing'
@@ -199,6 +200,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       if (next === 'page') await flushFlowToStudio()
       else if (studioEditedRef.current) refreshFlowFromStudio()
       setHwpLayout(next)
+      const doc = activeDocRef.current
+      if (doc) rememberLayout(window.localStorage, doc.session.docKey, next)
     },
     [flushFlowToStudio, refreshFlowFromStudio],
   )
@@ -450,11 +453,13 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setHwpBytes(opened.bytes)
       setFlowBytes(opened.bytes)
       studioEditedRef.current = false
-      // Phones and small tablets read in the flow view; larger windows keep the page.
+      // The layout last chosen for this document; otherwise phones and small tablets
+      // read in the flow view and larger windows keep the page.
       setHwpLayout(
-        windowClassRef.current === 'compact' || windowClassRef.current === 'medium'
-          ? 'flow'
-          : 'page',
+        rememberedLayout(window.localStorage, session.docKey) ??
+          (windowClassRef.current === 'compact' || windowClassRef.current === 'medium'
+            ? 'flow'
+            : 'page'),
       )
       setMarkdownText('')
       setMode(initialDocumentMode({ isUntitled }))
@@ -851,7 +856,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       }
     }
     if (hwpLayout === 'flow') {
-      // editing in the flow view: character formats; paragraph layout needs the page view
+      // editing in the flow view: character and paragraph formats; tables and pictures need the page view
       const flow = (
         id: 'undo' | 'redo' | FlowFormatAction,
         label: MobileStringKey,
@@ -873,6 +878,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           flow('bold', 'bold'),
           flow('italic', 'italic'),
           flow('underline', 'underline'),
+          flow('bulletList', 'bulletList'),
+          flow('numberedList', 'numberedList'),
+          flow('fontBigger', 'fontBigger'),
+          flow('fontSmaller', 'fontSmaller'),
         ],
         formatGroups: [
           {
@@ -888,9 +897,24 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             ],
           },
           {
-            id: 'more',
+            id: 'paragraph',
             title: tNow('fmtGroupParagraph'),
             items: [
+              flow('alignLeft', 'alignLeft'),
+              flow('alignCenter', 'alignCenter'),
+              flow('alignRight', 'alignRight'),
+              flow('alignJustify', 'alignJustify'),
+              flow('lineSpacingWider', 'lineSpacingWider'),
+              flow('lineSpacingNarrower', 'lineSpacingNarrower'),
+              flow('bulletList', 'bulletList'),
+              flow('numberedList', 'numberedList'),
+            ],
+          },
+          {
+            id: 'insert',
+            title: tNow('fmtGroupInsert'),
+            items: [
+              // tables and pictures are placed on the page
               {
                 id: 'pageView',
                 label: tNow('pageView'),
@@ -913,6 +937,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         hwp('bold', 'bold'),
         hwp('italic', 'italic'),
         hwp('underline', 'underline'),
+        hwp('bulletList', 'bulletList'),
+        hwp('numberedList', 'numberedList'),
+        hwp('fontBigger', 'fontBigger'),
+        hwp('fontSmaller', 'fontSmaller'),
+        hwp('insertTable', 'insertTable'),
       ],
       formatGroups: [
         {

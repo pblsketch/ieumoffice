@@ -214,6 +214,29 @@ export function IconList(props: IconProps) {
   )
 }
 
+export function IconNumberedList(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="10" y1="6" x2="21" y2="6" />
+      <line x1="10" y1="12" x2="21" y2="12" />
+      <line x1="10" y1="18" x2="21" y2="18" />
+      <path d="M4 5h1v4" />
+      <path d="M3.5 13.5a1.25 1.25 0 0 1 2.5 0c0 1-2.5 1.5-2.5 2.5h2.5" />
+    </SvgIcon>
+  )
+}
+
+export function IconTable(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" ry="2" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <line x1="3" y1="15" x2="21" y2="15" />
+      <line x1="10" y1="4" x2="10" y2="20" />
+    </SvgIcon>
+  )
+}
+
 export function IconImage(props: IconProps) {
   return (
     <SvgIcon {...props}>
