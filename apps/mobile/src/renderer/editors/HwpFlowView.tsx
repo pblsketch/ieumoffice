@@ -1,6 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  createFlowEditor,
+  type FlowEditDocument,
+  type FlowEditor,
+  type FlowFormatAction,
+} from './flowEditing'
 import { buildFlowDocument, buildFlowHtml } from './hwpFlow'
 import type { FlowEngineDocument } from './rhwpEngine'
+
+export interface HwpFlowViewHandle {
+  runFormat(action: FlowFormatAction): void
+  undo(): void
+  redo(): void
+  /** True when the flow holds edits the page editor has not received yet. */
+  hasPendingEdits(): boolean
+  /** Exports the flow's document and marks it as handed over. */
+  takeBytes(format: 'hwp' | 'hwpx'): Uint8Array | null
+}
 
 export interface HwpFlowViewProps {
   readonly bytes: Uint8Array | null
@@ -8,28 +24,42 @@ export interface HwpFlowViewProps {
   readonly lang: string
   /** Text scale; document sizes are in pt, so the whole frame is zoomed. */
   readonly zoom: number
+  /** Typing in the flow (body paragraphs; tables and pictures stay read-only). */
+  readonly editable?: boolean
   /** Opens bytes with the rhwp engine; injectable for tests. */
   readonly openDocument: (bytes: Uint8Array) => Promise<FlowEngineDocument>
   /** Called when the engine cannot build a flow (the caller falls back to the page view). */
   readonly onUnavailable?: (message: string) => void
+  /** Called after each edit that reached the engine. */
+  readonly onEdit?: () => void
 }
 
+type EngineDocument = FlowEngineDocument &
+  FlowEditDocument & {
+    exportHwp(): Uint8Array
+    exportHwpx(): Uint8Array
+  }
+
 /**
- * Reading view that reflows an HWP document to the screen width. The HTML
- * comes from the document, so it is shown in a frame that may not run scripts.
+ * Reading view that reflows an HWP document to the screen width, and edits it
+ * in place (flowEditing.ts). The HTML comes from the document, so it is shown
+ * in a frame that may not run scripts; this component drives it from outside.
  */
-export function HwpFlowView({
-  bytes,
-  title,
-  lang,
-  zoom,
-  openDocument,
-  onUnavailable,
-}: HwpFlowViewProps) {
+export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(function HwpFlowView(
+  { bytes, title, lang, zoom, editable = false, openDocument, onUnavailable, onEdit },
+  ref,
+) {
   const [body, setBody] = useState<string | null>(null)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  const docRef = useRef<EngineDocument | null>(null)
+  const editorRef = useRef<FlowEditor | null>(null)
+  const pendingRef = useRef(false)
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
+  const editableRef = useRef(editable)
+  editableRef.current = editable
+  const onEditRef = useRef(onEdit)
+  onEditRef.current = onEdit
 
   useEffect(() => {
     if (!bytes || bytes.byteLength === 0) {
@@ -37,42 +67,96 @@ export function HwpFlowView({
       return
     }
     let cancelled = false
+    let opened: EngineDocument | null = null
     setBody(null)
     void (async () => {
-      let doc: FlowEngineDocument | null = null
       try {
-        doc = await openDocument(bytes)
-        const html = buildFlowHtml(doc)
-        if (!cancelled) setBody(html)
+        const doc = (await openDocument(bytes)) as EngineDocument
+        if (cancelled) {
+          doc.free()
+          return
+        }
+        opened = doc
+        docRef.current = doc
+        pendingRef.current = false
+        setBody(buildFlowHtml(doc))
       } catch (err) {
         if (!cancelled) onUnavailable?.(err instanceof Error ? err.message : String(err))
-      } finally {
-        doc?.free()
       }
     })()
     return () => {
       cancelled = true
+      editorRef.current?.dispose()
+      editorRef.current = null
+      if (opened && docRef.current === opened) docRef.current = null
+      opened?.free()
     }
     // onUnavailable is a notification only; rebuilding on its identity would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bytes, openDocument])
 
-  // The frame is rebuilt only when the document changes; zoom is applied in place
-  // so the reading position stays put.
+  // The frame is rebuilt only when the document changes; zoom and editing are
+  // applied in place so the reading position and the caret stay put.
   const srcDoc = useMemo(
     () => (body === null ? '' : buildFlowDocument(body, zoomRef.current, lang)),
     [body, lang],
   )
-  const applyZoom = () => {
+
+  const onFrameLoad = () => {
+    const frameDoc = frameRef.current?.contentDocument
+    if (!frameDoc) return
+    frameDoc.documentElement.style.setProperty('--flow-zoom', String(zoomRef.current))
+    editorRef.current?.dispose()
+    editorRef.current = null
+    const doc = docRef.current
+    if (!doc) return
+    editorRef.current = createFlowEditor({
+      doc,
+      frameDocument: frameDoc,
+      onChange: () => {
+        pendingRef.current = true
+        onEditRef.current?.()
+      },
+    })
+    editorRef.current.setEditable(editableRef.current)
+  }
+
+  useEffect(() => {
     frameRef.current?.contentDocument?.documentElement.style.setProperty(
       '--flow-zoom',
-      String(zoomRef.current),
+      String(zoom),
     )
-  }
-  useEffect(applyZoom, [zoom])
+  }, [zoom])
+
+  useEffect(() => {
+    editorRef.current?.setEditable(editable)
+  }, [editable])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      runFormat: (action) => editorRef.current?.runFormat(action),
+      undo: () => editorRef.current?.undo(),
+      redo: () => editorRef.current?.redo(),
+      hasPendingEdits: () => pendingRef.current,
+      takeBytes(format) {
+        const doc = docRef.current
+        if (!doc) return null
+        const out = format === 'hwpx' ? doc.exportHwpx() : doc.exportHwp()
+        pendingRef.current = false
+        return out
+      },
+    }),
+    [],
+  )
 
   return (
-    <div className="mobile-hwp-flow" data-editor="hwp-flow" data-testid="hwp-flow-view">
+    <div
+      className="mobile-hwp-flow"
+      data-editor="hwp-flow"
+      data-mode={editable ? 'edit' : 'view'}
+      data-testid="hwp-flow-view"
+    >
       {body === null ? (
         <div className="mobile-hwp-loading" aria-live="polite">
           <div className="mobile-spinner" aria-hidden="true" />
@@ -84,9 +168,9 @@ export function HwpFlowView({
           ref={frameRef}
           sandbox="allow-same-origin"
           srcDoc={srcDoc}
-          onLoad={applyZoom}
+          onLoad={onFrameLoad}
         />
       )}
     </div>
   )
-}
+})

@@ -56,6 +56,8 @@ export interface HwpMobileEditorHandle {
   readonly getSavePort: () => MobileHwpEditorPort
   readonly runAction: (action: HwpQuickAction) => void
   readonly fitToWidth: () => void
+  /** Replaces the open document with these bytes (edits handed over from the flow view). */
+  readonly loadBytes: (bytes: Uint8Array) => Promise<void>
 }
 
 export interface HwpMobileEditorProps {
@@ -133,6 +135,8 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
     onReadyRef.current = onReady
     const onErrorRef = useRef(onError)
     onErrorRef.current = onError
+    const fileNameRef = useRef(fileName)
+    fileNameRef.current = fileName
 
     useEffect(() => {
       let cancelled = false
@@ -303,6 +307,14 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
         fitToWidth() {
           setZoom(1)
           void editorRef.current?.commands.execute('view:zoom-fit-width').catch(() => {})
+        },
+        async loadBytes(bytes) {
+          const ed = editorRef.current
+          if (!ed) throw new Error('HWP editor is not ready.')
+          await ed.loadFile(bytes, fileNameRef.current || 'document.hwp', {
+            skipUnsavedGuard: true,
+          })
+          await ed.commands.execute('view:zoom-fit-width').catch(() => {})
         },
       }),
       [],

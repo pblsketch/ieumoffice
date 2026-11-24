@@ -96,7 +96,8 @@ describe('HwpFlowView', () => {
     const frame = el.querySelector('iframe')
     expect(frame?.getAttribute('sandbox')).toBe('allow-same-origin')
     expect(frame?.getAttribute('srcdoc')).toContain('<p>본문</p>')
-    expect(fake.free).toHaveBeenCalledTimes(1)
+    // the engine document stays open while the view is shown (for editing)
+    expect(fake.free).not.toHaveBeenCalled()
   })
 
   it('reports when the engine cannot open the document', async () => {
