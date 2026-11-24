@@ -52,6 +52,69 @@ describe('HWP flow builder (real rhwp engine)', () => {
     }
   })
 
+  const flowOf = (name: string) => {
+    const doc = new HwpDocument(new Uint8Array(readFileSync(join(fixtures, name))))
+    try {
+      const html = buildFlowHtml(doc as unknown as FlowEngineDocument)
+      return new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body
+    } finally {
+      doc.free()
+    }
+  }
+
+  it('shows bullets as markers outside the editable text', () => {
+    const body = flowOf('title-table-zone-fill.hwpx')
+    const marked = body.querySelectorAll('.flow-p p[data-marker="•"]')
+    expect(marked.length).toBeGreaterThan(0)
+    // the marker is an attribute drawn by CSS, not text
+    expect(marked[0].textContent?.startsWith('•')).toBe(false)
+  })
+
+  it('shows footnotes after the paragraph that refers to them', () => {
+    const body = flowOf('footnote-typed-number.hwpx')
+    const notes = [...body.querySelectorAll('.flow-note')]
+    expect(notes.length).toBeGreaterThanOrEqual(3)
+    expect(notes[0].textContent).toMatch(/^1\) 가나다라/)
+    expect(notes[0].getAttribute('contenteditable')).toBe('false')
+  })
+
+  it('shows picture captions as editable blocks next to the picture', () => {
+    const body = flowOf('caption-footnote-flow.hwpx')
+    const caption = body.querySelector('.flow-caption')!
+    expect(caption.textContent).toContain('[그림 1]')
+    expect(caption.getAttribute('data-cell-path')).toBe('[{"controlIndex":0,"cellIndex":0}]')
+    expect(caption.querySelector('.flow-p[data-path]')).not.toBeNull()
+    // the caption sits right after its picture
+    expect(caption.previousElementSibling?.tagName).toBe('IMG')
+  })
+
+  it('shows table captions above the table as editable blocks', () => {
+    const body = flowOf('caption-footnote-flow.hwpx')
+    const caption = [...body.querySelectorAll('.flow-caption')].find((el) =>
+      el.textContent?.startsWith('[표 1]'),
+    )!
+    expect(caption.getAttribute('data-cell-path')).toBe('[{"controlIndex":0,"cellIndex":65534}]')
+    expect(caption.nextElementSibling?.tagName).toBe('TABLE')
+    expect(caption.querySelector('p')?.getAttribute('style')).toContain('text-align:center')
+  })
+
+  it('shows text box contents, including a table inside the box', () => {
+    const body = flowOf('textbox-table.hwp')
+    const box = body.querySelector('.flow-box')!
+    expect(box).not.toBeNull()
+    expect(box.textContent).toContain('상자-0')
+    expect(box.querySelector('table')).not.toBeNull()
+  })
+
+  it('shows header text once at the top of the section', () => {
+    const body = flowOf('header-picture-and-text.hwpx')
+    const hf = body.querySelector('.flow-hf')!
+    expect(hf.textContent).toBe('HEADER01')
+    expect(hf).toBe(body.firstElementChild)
+    // a header that holds only a table has no top-level text: nothing is shown
+    expect(flowOf('header-footer-paper-tables.hwpx').querySelector('.flow-hf')).toBeNull()
+  })
+
   it('strips the clipboard wrapper and builds a script-free frame document', () => {
     expect(
       stripClipboardFragment('<html><!--StartFragment--><p>a</p><!--EndFragment--></html>'),
@@ -82,6 +145,17 @@ describe('HwpFlowView', () => {
       getCellParagraphCountByPath: () => 0,
       getCellParagraphLengthByPath: () => 0,
       exportSelectionInCellHtmlByPath: () => '',
+      getParaPropertiesAt: () => '{"headType":"None"}',
+      getCellParaPropertiesAtByPath: () => '{"headType":"None"}',
+      getBulletList: () => '[]',
+      getFootnoteInfo: () => '{"ok":false}',
+      getHeaderFooter: () => '{"ok":true,"exists":false}',
+      getTableProperties: () => '{}',
+      getCellParagraphCount: () => 0,
+      getCellParagraphLength: () => 0,
+      getTextInCell: () => '',
+      getCellParaPropertiesAt: () => '{"headType":"None"}',
+      getCellCharPropertiesAt: () => '{}',
       free: vi.fn(),
     }
     const el = render(

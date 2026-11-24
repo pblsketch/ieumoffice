@@ -281,3 +281,109 @@ describe('editing in the flow view (real rhwp engine)', () => {
     }
   })
 })
+
+describe('editing captions, text boxes and bulleted paragraphs (real rhwp engine)', () => {
+  const fixtures = join(__dirname, '../../hwp/tests/fixtures')
+  let doc: HwpDocument | null = null
+  let editor: FlowEditor | null = null
+
+  const open = (name: string) => {
+    doc = new HwpDocument(new Uint8Array(readFileSync(join(fixtures, name))))
+    document.body.innerHTML = buildFlowHtml(doc as unknown as FlowEditDocument)
+    editor = createFlowEditor({
+      doc: doc as unknown as FlowEditDocument,
+      frameDocument: document,
+      onChange: () => {},
+    })
+    editor.setEditable(true)
+    return doc
+  }
+  afterEach(() => {
+    editor?.dispose()
+    doc?.free()
+    editor = null
+    doc = null
+  })
+  const typeAt = (el: HTMLElement, offset: number, text: string) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode() as Text | null
+    let rest = offset
+    while (node && rest > node.length) {
+      rest -= node.length
+      node = walker.nextNode() as Text | null
+    }
+    node!.insertData(rest, text)
+    placeCaret(el, offset + text.length)
+    document.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: text, bubbles: true }),
+    )
+  }
+  const pathText = (d: HwpDocument, para: number, path: unknown) => {
+    const json = JSON.stringify(path)
+    const len = d.getCellParagraphLengthByPath(0, para, json)
+    return len ? d.getTextInCellByPath(0, para, json, 0, len) : ''
+  }
+
+  it('types into a picture caption and splits it with Enter', () => {
+    const d = open('caption-footnote-flow.hwpx')
+    const el = document.querySelector<HTMLElement>('.flow-caption .flow-p')!
+    const path = JSON.parse(el.getAttribute('data-path')!) as unknown[]
+    const para = Number(el.getAttribute('data-para'))
+    const before = pathText(d, para, path)
+    typeAt(el, 0, '★')
+    expect(pathText(d, para, path)).toBe(`★${before}`)
+    placeCaret(el, 1)
+    const enter = new InputEvent('beforeinput', {
+      inputType: 'insertParagraph',
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(enter)
+    expect(enter.defaultPrevented).toBe(true)
+    const captions = document.querySelectorAll('.flow-caption .flow-p')
+    expect(captions[0].textContent).toBe('★')
+    expect(captions[1].textContent).toBe(before)
+  })
+
+  it('edits a table caption and undoes it', () => {
+    const d = open('caption-footnote-flow.hwpx')
+    const el = [...document.querySelectorAll<HTMLElement>('.flow-caption .flow-p')].find((p) =>
+      p.textContent?.startsWith('[표 1]'),
+    )!
+    const para = Number(el.getAttribute('data-para'))
+    const capText = () => {
+      const len = d.getCellParagraphLength(0, para, 0, 65534, 0)
+      return d.getTextInCell(0, para, 0, 65534, 0, 0, len)
+    }
+    const before = capText()
+    typeAt(el, 0, '★')
+    expect(capText()).toBe(`★${before}`)
+    expect(el.textContent).toBe(`★${before}`)
+    editor!.undo()
+    expect(capText()).toBe(before)
+  })
+
+  it('types into a table inside a text box', () => {
+    const d = open('textbox-table.hwp')
+    const el = document.querySelector<HTMLElement>('.flow-box td .flow-p')!
+    const path = JSON.parse(el.getAttribute('data-path')!) as unknown[]
+    const para = Number(el.getAttribute('data-para'))
+    const before = pathText(d, para, path)
+    typeAt(el, before.length, '!')
+    expect(pathText(d, para, path)).toBe(`${before}!`)
+    expect(el.textContent).toBe(`${before}!`)
+  })
+
+  it('keeps the bullet out of the text when typing into a bulleted paragraph', () => {
+    const d = open('title-table-zone-fill.hwpx')
+    const el = document.querySelector<HTMLElement>(
+      '.flow-p:not([data-path]) p[data-marker]',
+    )!.parentElement!
+    const para = Number(el.getAttribute('data-para'))
+    const before = d.getTextRange(0, para, 0, d.getParagraphLength(0, para))
+    typeAt(el, 0, '※')
+    expect(d.getTextRange(0, para, 0, d.getParagraphLength(0, para))).toBe(`※${before}`)
+    // the bullet is still drawn after the paragraph is redrawn from the engine
+    expect(el.querySelector('p[data-marker]')).not.toBeNull()
+  })
+})
