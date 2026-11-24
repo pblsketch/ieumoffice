@@ -34,6 +34,7 @@ export const pt = {
   insertImage: 'Inserir imagem',
   insertImageNeedsCaret: 'Toque primeiro no texto onde a imagem deve ficar.',
   insertImageFailed: 'Não foi possível ler este arquivo de imagem.',
+  flowEditRefused: 'Esta edição não pode ser feita aqui, por isso foi desfeita.',
   memoTitle: 'Notas',
   memoAdd: 'Adicionar nota',
   memoAuthor: 'Nome',

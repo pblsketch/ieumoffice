@@ -34,6 +34,7 @@ export const ru = {
   insertImage: 'Вставить изображение',
   insertImageNeedsCaret: 'Сначала коснитесь места в тексте, куда вставить рисунок.',
   insertImageFailed: 'Не удалось прочитать этот файл изображения.',
+  flowEditRefused: 'Здесь эту правку сделать нельзя, поэтому она отменена.',
   memoTitle: 'Заметки',
   memoAdd: 'Добавить заметку',
   memoAuthor: 'Имя',

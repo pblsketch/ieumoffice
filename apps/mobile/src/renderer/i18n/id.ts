@@ -34,6 +34,7 @@ export const id = {
   insertImage: 'Sisipkan gambar',
   insertImageNeedsCaret: 'Ketuk dulu tempat di teks untuk meletakkan gambar.',
   insertImageFailed: 'File gambar ini tidak dapat dibaca.',
+  flowEditRefused: 'Suntingan ini tidak bisa dilakukan di sini, jadi dibatalkan.',
   memoTitle: 'Memo',
   memoAdd: 'Tambah memo',
   memoAuthor: 'Nama',

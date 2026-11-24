@@ -34,6 +34,7 @@ export const zhTW = {
   insertImage: '插入圖片',
   insertImageNeedsCaret: '請先在文字中點一下要插入圖片的位置。',
   insertImageFailed: '無法讀取此圖片檔案。',
+  flowEditRefused: '這裡無法進行此編輯，已復原。',
   memoTitle: '註解',
   memoAdd: '新增註解',
   memoAuthor: '姓名',

@@ -34,6 +34,7 @@ export const vi = {
   insertImage: 'Chèn ảnh',
   insertImageNeedsCaret: 'Hãy chạm vào vị trí trong văn bản để đặt ảnh trước.',
   insertImageFailed: 'Không đọc được tệp ảnh này.',
+  flowEditRefused: 'Không thể sửa như vậy ở đây nên thay đổi đã được hoàn tác.',
   memoTitle: 'Ghi chú',
   memoAdd: 'Thêm ghi chú',
   memoAuthor: 'Tên',

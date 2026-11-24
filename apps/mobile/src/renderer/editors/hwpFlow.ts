@@ -517,23 +517,99 @@ function escapeText(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-/** Header or footer text of a section (both-pages first, then odd, then even), or ''. */
+/**
+ * Header or footer of a section (both-pages first, then odd, then even), or ''.
+ * Its paragraphs, tables and pictures are shown read-only; when they cannot be
+ * rendered, its plain text is shown instead.
+ */
 function headerFooterHtml(doc: FlowSourceDocument, sec: number, isHeader: boolean): string {
   for (const applyTo of [0, 2, 1]) {
+    let info: { exists?: boolean; text?: string; paraIndex?: number; controlIndex?: number }
     try {
-      const info = JSON.parse(doc.getHeaderFooter(sec, isHeader, applyTo)) as {
-        exists?: boolean
-        text?: string
-      }
-      const text = info.exists ? (info.text ?? '').replace(/\s+/g, ' ').trim() : ''
-      if (text) {
-        return `<div class="flow-hf" contenteditable="false">${escapeText(text)}</div>`
-      }
+      info = JSON.parse(doc.getHeaderFooter(sec, isHeader, applyTo)) as typeof info
     } catch {
       // no header/footer API answer for this section: leave it out
+      continue
+    }
+    if (!info.exists) continue
+    const kind = isHeader ? 'flow-hf flow-header' : 'flow-hf flow-footer'
+    const rich = headerFooterContents(doc, sec, info.paraIndex, info.controlIndex)
+    if (rich) return `<div class="${kind}" contenteditable="false">${rich}</div>`
+    const text = (info.text ?? '').replace(/\s+/g, ' ').trim()
+    if (text) {
+      return `<div class="${kind} flow-hf-text" contenteditable="false">${escapeText(text)}</div>`
     }
   }
   return ''
+}
+
+/** Attributes the flow editor reads to find what it edits; a header must carry none. */
+const EDIT_ADDRESS_ATTRS = [
+  'data-sec',
+  'data-para',
+  'data-path',
+  'data-cell-path',
+  'data-obj-path',
+  'data-ctrl',
+]
+
+/**
+ * A header's or footer's contents, rendered like a cell's, with every editing
+ * address taken off so the flow editor leaves them alone. '' when it holds
+ * nothing visible or cannot be rendered.
+ */
+function headerFooterContents(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number | undefined,
+  ctrl: number | undefined,
+): string {
+  if (para === undefined || ctrl === undefined) return ''
+  let html: string
+  try {
+    html = renderCellContents(pathCallsOnly(doc), sec, para, [{ controlIndex: ctrl, cellIndex: 0 }])
+  } catch {
+    return ''
+  }
+  const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  for (const el of parsed.body.querySelectorAll('*')) {
+    for (const attr of EDIT_ADDRESS_ATTRS) el.removeAttribute(attr)
+    if (el.classList.contains('flow-p')) {
+      el.classList.replace('flow-p', 'flow-hf-p')
+      // an empty paragraph's placeholder line would only add space
+      if (!el.textContent?.trim() && !el.querySelector('img,table')) el.remove()
+    }
+  }
+  const visible = parsed.body.textContent?.trim() || parsed.body.querySelector('img,table')
+  return visible ? parsed.body.innerHTML : ''
+}
+
+/**
+ * The engine's flat cell calls take only tables and text boxes, so a header's
+ * own paragraph list (reached as "cell 0" of the header control) answers only
+ * the path calls. This view of the document sends the flat calls there.
+ */
+function pathCallsOnly(doc: FlowSourceDocument): FlowSourceDocument {
+  const at = (ctrl: number, cell: number, cellPara: number) =>
+    JSON.stringify([{ controlIndex: ctrl, cellIndex: cell, cellParaIndex: cellPara }])
+  const overrides: Partial<FlowSourceDocument> = {
+    getCellParagraphCount: (s, p, c, cell) => doc.getCellParagraphCountByPath(s, p, at(c, cell, 0)),
+    getCellParagraphLength: (s, p, c, cell, k) =>
+      doc.getCellParagraphLengthByPath(s, p, at(c, cell, k)),
+    getCellParaPropertiesAt: (s, p, c, cell, k) =>
+      doc.getCellParaPropertiesAtByPath(s, p, at(c, cell, k)),
+  }
+  return new Proxy(doc, {
+    get(target, key, receiver) {
+      if (typeof key === 'string' && key in overrides) {
+        return overrides[key as keyof FlowSourceDocument]
+      }
+      const value: unknown = Reflect.get(target, key, receiver)
+      return typeof value === 'function'
+        ? (value as (...a: unknown[]) => unknown).bind(target)
+        : value
+    },
+  })
 }
 
 /** Renders a table: the engine's skeleton with each cell's contents rebuilt. */
@@ -672,7 +748,13 @@ img { max-width: 100%; height: auto; }
 .flow-box { border: 1px solid #b0b0b0; border-radius: 4px; padding: 6px 8px; margin: 4px 0; }
 .flow-note { font-size: 0.85em; color: #444444; padding-left: 1em; margin: 0 0 6px; }
 .flow-note p { margin: 0; }
-.flow-hf { font-size: 0.8em; color: #666666; text-align: center; margin: 0 0 8px; }
+.flow-hf { font-size: 0.8em; color: #666666; opacity: 0.6; }
+/* set apart from the body by a thin rule, since its own fonts and colors match the body's */
+.flow-header { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid #d8d8d8; }
+.flow-footer { margin: 8px 0 0; padding-top: 6px; border-top: 1px solid #d8d8d8; }
+.flow-hf-text { text-align: center; }
+.flow-hf-p p { margin: 0; }
+.flow-hf .flow-obj { margin: 0 0 4px; }
 `
 
 /** Builds the srcdoc for the sandboxed frame. `zoom` scales all text (document sizes are in pt). */

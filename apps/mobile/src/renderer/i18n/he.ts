@@ -34,6 +34,7 @@ export const he = {
   insertImage: 'הוסף תמונה',
   insertImageNeedsCaret: 'קודם יש להקיש בטקסט במקום שבו תופיע התמונה.',
   insertImageFailed: 'לא ניתן לקרוא את קובץ התמונה הזה.',
+  flowEditRefused: 'אי אפשר לבצע את העריכה הזו כאן, ולכן היא בוטלה.',
   memoTitle: 'הערות',
   memoAdd: 'הוספת הערה',
   memoAuthor: 'שם',

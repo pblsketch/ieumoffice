@@ -32,6 +32,7 @@ export const zh = {
   insertImage: '插入图片',
   insertImageNeedsCaret: '请先在文字中点按要插入图片的位置。',
   insertImageFailed: '无法读取此图片文件。',
+  flowEditRefused: '此处无法进行这项编辑，已撤销。',
   memoTitle: '批注',
   memoAdd: '添加批注',
   memoAuthor: '姓名',

@@ -34,6 +34,7 @@ export const ar = {
   insertImage: 'إدراج صورة',
   insertImageNeedsCaret: 'انقر أولاً في النص على المكان الذي ستوضع فيه الصورة.',
   insertImageFailed: 'تعذّرت قراءة ملف الصورة هذا.',
+  flowEditRefused: 'لا يمكن إجراء هذا التعديل هنا، لذا تم التراجع عنه.',
   memoTitle: 'الملاحظات',
   memoAdd: 'إضافة ملاحظة',
   memoAuthor: 'الاسم',

@@ -44,6 +44,8 @@ export interface HwpFlowViewProps {
   readonly onUnavailable?: (message: string) => void
   /** Called after each edit that reached the engine. */
   readonly onEdit?: () => void
+  /** Called when the engine refused an edit (it is undone on screen). */
+  readonly onEditRefused?: () => void
 }
 
 type EngineDocument = FlowEngineDocument &
@@ -58,7 +60,17 @@ type EngineDocument = FlowEngineDocument &
  * in a frame that may not run scripts; this component drives it from outside.
  */
 export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(function HwpFlowView(
-  { bytes, title, lang, zoom, editable = false, openDocument, onUnavailable, onEdit },
+  {
+    bytes,
+    title,
+    lang,
+    zoom,
+    editable = false,
+    openDocument,
+    onUnavailable,
+    onEdit,
+    onEditRefused,
+  },
   ref,
 ) {
   const [body, setBody] = useState<string | null>(null)
@@ -72,6 +84,8 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
   editableRef.current = editable
   const onEditRef = useRef(onEdit)
   onEditRef.current = onEdit
+  const onEditRefusedRef = useRef(onEditRefused)
+  onEditRefusedRef.current = onEditRefused
 
   useEffect(() => {
     if (!bytes || bytes.byteLength === 0) {
@@ -129,6 +143,7 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
         pendingRef.current = true
         onEditRef.current?.()
       },
+      onRefused: () => onEditRefusedRef.current?.(),
     })
     editorRef.current.setEditable(editableRef.current)
   }

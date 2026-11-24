@@ -35,6 +35,7 @@ export const nl = {
   insertImage: 'Afbeelding invoegen',
   insertImageNeedsCaret: 'Tik eerst in de tekst op de plek waar de afbeelding moet komen.',
   insertImageFailed: 'Dit afbeeldingsbestand kon niet worden gelezen.',
+  flowEditRefused: 'Deze bewerking kan hier niet, dus is ze ongedaan gemaakt.',
   memoTitle: 'Notities',
   memoAdd: 'Notitie toevoegen',
   memoAuthor: 'Naam',

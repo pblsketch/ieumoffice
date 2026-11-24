@@ -34,6 +34,7 @@ export const th = {
   insertImage: 'แทรกรูปภาพ',
   insertImageNeedsCaret: 'แตะตำแหน่งในข้อความที่จะใส่รูปภาพก่อน',
   insertImageFailed: 'อ่านไฟล์รูปภาพนี้ไม่ได้',
+  flowEditRefused: 'แก้ไขแบบนี้ตรงนี้ไม่ได้ จึงยกเลิกให้แล้ว',
   memoTitle: 'บันทึกย่อ',
   memoAdd: 'เพิ่มบันทึกย่อ',
   memoAuthor: 'ชื่อ',
