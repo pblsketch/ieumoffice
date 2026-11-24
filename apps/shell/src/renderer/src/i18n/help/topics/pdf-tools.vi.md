@@ -30,6 +30,7 @@ Các thẻ trong nhóm **Trong trình chỉnh sửa PDF** mở PDF đã chọn t
 - **Xóa trang trống** chỉ hiện các trang nghi là trống. Chỉ những trang bạn chọn mới bị xóa, và trang có dù chỉ một ký tự không bao giờ được đề xuất.
 - **Xóa chú thích** giữ các ô nhập của biểu mẫu và chỉ xóa liên kết khi bạn đánh dấu. Nội dung của chú thích đã xóa không còn trong tệp mới.
 - **Lưu thành văn bản** chỉ đọc lớp chữ. Những trang có chữ ở dạng ảnh, như trang quét, sẽ để trống.
+- **Tách PDF** hỗ trợ tách theo phạm vi tùy chỉnh (có thể gộp thành một tệp), số trang, dấu trang hoặc dung lượng tối đa, kèm tùy chọn đặt tên và thư mục con.
 
 ## Dùng khi
 

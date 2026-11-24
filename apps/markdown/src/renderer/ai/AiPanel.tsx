@@ -14,6 +14,9 @@ import {
   AiMark,
   AiAssistantBody,
   AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  questionToolActivities,
   AiReplyFooter,
   openGenerateForCurrentDocument,
   useAiInlineQuestions,
@@ -30,6 +33,7 @@ import {
   useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useEffect, useRef, useState } from 'react'
+import type { Lang } from '@genoffice/i18n'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
 import {
   AgentLoop,
@@ -127,6 +131,8 @@ const PANEL_WIDTH_DEFAULT = 360
 const PANEL_WIDTH_MIN = 280
 const MAX_SNAPSHOTS = 20
 const TOOL_OUTPUT_MAX_CHARS = 2000
+/** Cap on a question tool's input and output kept in the transcript (the store cuts at 16,000 too) */
+const QUESTION_TOOL_FIELD_MAX = 16_000
 /** progress chip refresh while a write streams */
 const CHIP_UPDATE_MS = 400
 
@@ -153,6 +159,68 @@ interface ToolActivity {
   running?: boolean
   isError?: boolean
   output?: string
+  /** Tool input (JSON); kept for question tools so a reopened chat redraws the card */
+  input?: string
+}
+
+/** A question tool's input as JSON for the transcript; undefined when it cannot be written. */
+function questionInputText(input: unknown): string | undefined {
+  try {
+    const text = JSON.stringify(input)
+    return text ? text.slice(0, QUESTION_TOOL_FIELD_MAX) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** A stored tool activity as the transcript shows it: question tools keep their input and whole output. */
+function restoredToolOf(tool: {
+  readonly name: string
+  readonly summary: string
+  readonly isError?: boolean | undefined
+  readonly input?: string | undefined
+  readonly output?: string | undefined
+}): ToolActivity {
+  if (isQuestionToolActivity(tool)) {
+    return {
+      name: tool.name,
+      summary: tool.summary,
+      isError: tool.isError,
+      ...(tool.input !== undefined ? { input: tool.input } : {}),
+      ...(tool.output !== undefined ? { output: tool.output } : {}),
+    }
+  }
+  return {
+    name: tool.name,
+    summary: tool.summary,
+    isError: tool.isError,
+    output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
+  }
+}
+
+/**
+ * The work steps of one reply. A restored reply draws each question tool as a
+ * read-only card instead of a step; a live reply keeps its card at the foot of the chat.
+ */
+function ReplyToolSteps({
+  lang,
+  tools,
+  restored,
+}: {
+  lang: Lang
+  tools: ToolActivity[] | undefined
+  restored: boolean | undefined
+}): ReactElement | null {
+  if (!tools || tools.length === 0) return null
+  if (!restored) return <AiWorkSteps lang={lang} steps={tools} />
+  return (
+    <>
+      <AiWorkSteps lang={lang} steps={tools.filter((tool) => !isQuestionToolActivity(tool))} />
+      {questionToolActivities(tools).map((activity, k) => (
+        <AiQuestionReceipt key={`q${k}`} lang={lang} activity={activity} />
+      ))}
+    </>
+  )
 }
 
 interface ChatEntry {
@@ -182,6 +250,8 @@ interface ChatEntry {
   otherEditorTools?: OtherEditorTools
   /** the run this reply ends changed the document (session-only, not persisted) */
   changes?: RunChanges
+  /** came from a stored conversation: question cards are read-only */
+  restored?: boolean
 }
 
 interface MarkdownChangeLine extends AiChangeLine {
@@ -275,12 +345,8 @@ function entryFromProject(m: ProjectChatEntry & { skillProposals?: string[] }): 
   return {
     role: m.role,
     text: m.text,
-    tools: m.tools?.map((tool) => ({
-      name: tool.name,
-      summary: tool.summary,
-      isError: tool.isError,
-      output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-    })),
+    restored: true,
+    tools: m.tools?.map(restoredToolOf),
     ...(m.scope ? { scope: m.scope } : {}),
     ...(m.role === 'user' && skillChipRefsOf(m.skills).length > 0
       ? { skills: skillChipRefsOf(m.skills) }
@@ -392,6 +458,8 @@ export function AiPanel({
       // nothing can run right now: the message stays queued, and in front of "not connected"
       // the queue is paused so it does not start by itself after a sign-in
       if (!sendGateRef.current.admitQueued(() => msgQueueRef.current.setPaused(true))) return false
+      // the queued message starts its own run: it gets its one card
+      inlineQuestions.supersedeOpen()
       return send(text, text, null, meta.skillUse)
     },
   })
@@ -651,6 +719,7 @@ export function AiPanel({
               name: tool.name,
               summary: tool.summary,
               isError: tool.isError,
+              ...(tool.input ? { input: tool.input } : {}),
               output: tool.output,
             })),
           }
@@ -889,7 +958,19 @@ export function AiPanel({
             isError: execution.isError,
             output: execution.output?.slice(0, TOOL_OUTPUT_MAX_CHARS),
           }
-          runToolsRef.current.push(activity)
+          // a question card is kept whole (input and output) so a reopened chat redraws it
+          const questionInput = isQuestionToolActivity(call)
+            ? questionInputText(call.input)
+            : undefined
+          runToolsRef.current.push(
+            isQuestionToolActivity(call)
+              ? {
+                  ...activity,
+                  output: execution.output?.slice(0, QUESTION_TOOL_FIELD_MAX),
+                  ...(questionInput !== undefined ? { input: questionInput } : {}),
+                }
+              : activity,
+          )
           patchLast((last) => {
             // Swap out the running placeholder pushed by onToolStart (parse-fail calls have none)
             const tools = [...(last.tools ?? [])]
@@ -1019,12 +1100,8 @@ export function AiPanel({
           return msgs.map((m) => ({
             role: m.role,
             text: m.text,
-            tools: m.tools?.map((tool) => ({
-              name: tool.name,
-              summary: tool.summary,
-              isError: tool.isError,
-              output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-            })),
+            restored: true,
+            tools: m.tools?.map(restoredToolOf),
             ...(m.scope ? { scope: m.scope } : {}),
             ...(m.role === 'user' && skillChipRefsOf(m.skills).length > 0
               ? { skills: skillChipRefsOf(m.skills) }
@@ -1069,6 +1146,8 @@ export function AiPanel({
     skills.resetConversation()
     skillCards.reset()
     skillTemplates.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
   }
 
   /** "New chat": a new project chat when a project is chosen, else the reset as before */
@@ -1236,6 +1315,7 @@ export function AiPanel({
   const sendTyped = () => {
     const text = prompt.trim()
     if (!text) return
+    inlineQuestions.supersedeOpen()
     skills.withSkills(text, (skillUse) => send(text, undefined, undefined, skillUse))
   }
 
@@ -1249,6 +1329,9 @@ export function AiPanel({
     skillsRef.current.consume(skillUse)
     msgQueue.enqueue(text, { skillUse })
     setPrompt('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   const retry = (): void => {
@@ -1599,7 +1682,7 @@ export function AiPanel({
               key={i}
               className={`ai-msg ai-msg-assistant${entry.isError && !blocked ? ' ai-msg-error' : ''}${entry.streaming ? ' ai-msg-streaming' : ''}`}
             >
-              {hasTools && <AiWorkSteps lang={lang} steps={entry.tools!} />}
+              <ReplyToolSteps lang={lang} tools={entry.tools} restored={entry.restored} />
               {blocked ? (
                 <AiBlockedNotice
                   kind={blocked.kind}
@@ -1620,15 +1703,16 @@ export function AiPanel({
                       text={entry.text}
                       navs={[docNav, fileNav]}
                       streaming={entry.streaming}
+                      restored={entry.restored}
                       questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
-                      savedAnswers={inlineQuestions.textCardStates[`m-${i}`]?.answers}
-                      onQuestionSubmit={(spec, answers) => {
-                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answers)
-                        send(inlineQuestions.formatFollowUp(spec, answers, false))
+                      questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                        send(inlineQuestions.formatFollowUp(lang, view, answer))
                       }}
-                      onQuestionSkip={(spec) => {
+                      onQuestionSkip={(view) => {
                         inlineQuestions.markTextCard(`m-${i}`, 'skipped')
-                        send(inlineQuestions.formatFollowUp(spec, {}, true))
+                        send(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
                       }}
                     />
                   </div>
@@ -1682,7 +1766,12 @@ export function AiPanel({
                   onClearMarks={i === latestChangesIdx && marksShown ? clearMarks : null}
                 />
               )}
-              <AiReplyProgress reply={entry} thinking={t('aiThinking')} working={t('aiWorking')} />
+              <AiReplyProgress
+                reply={entry}
+                thinking={t('aiThinking')}
+                working={t('aiWorking')}
+                paused={inlineQuestions.waitingForPerson}
+              />
               {(showToolbar || entry.usage) && (
                 <AiReplyFooter
                   lang={lang}
@@ -1717,10 +1806,11 @@ export function AiPanel({
         })}
         {inlineQuestions.activeToolCard && (
           <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
             lang={lang}
-            spec={inlineQuestions.activeToolCard.spec}
+            view={inlineQuestions.activeToolCard.view}
             status={inlineQuestions.activeToolCard.status}
-            savedAnswers={inlineQuestions.activeToolCard.answers}
+            answer={inlineQuestions.activeToolCard.answer}
             onSubmit={inlineQuestions.submitToolCard}
             onSkip={inlineQuestions.skipToolCard}
           />

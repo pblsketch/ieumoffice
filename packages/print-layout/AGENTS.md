@@ -2,10 +2,10 @@
 
 ## 맡은 범위
 
-편집기들이 함께 쓰는 고급 인쇄 배치다. 선택지의 모양과 기본값, 면 배치 계획(화면에서도 쓰는 `./plan`), 인쇄 작업 PDF의 쪽을 다시 놓는 일(한 장에 여러 쪽, 소책자, 포스터, 라벨, 홀짝, 역순, 용지 맞춤)을 맡는다. 결정 0141.
+편집기들이 함께 쓰는 고급 인쇄 배치다. 선택지의 모양과 기본값, 면 배치 계획(화면에서도 쓰는 `./plan`), 인쇄 작업 PDF의 쪽을 다시 놓는 일(한 장에 여러 쪽·쪽 테두리, 소책자, 포스터·타일 좌표, 라벨, 홀짝, 역순, 배율 4모드, 용지 방향 강제), 최종 출력 면 오버레이(워터마크·머리글/바닥글) 스탬프, PNG/JPG/ZIP 그림 내보내기와 온디맨드 미리보기를 맡는다. 결정 0141, 0158, 0163.
 
-- `./plan`(`src/plan.ts`): 선택지 형과 값 목록, `createDefaultOptions`, `isDefaultOptions`(새 길로 갈지), `changesSheetArrangement`(면 배치가 바뀌는지, 미리 보기를 배치도로 바꿀지), `validateOptions`, 라벨 규격 목록과 `validateLabelSpec`, 용지 크기, `planSheets`(면 계획).
-- `.`(`src/index.ts`): `./plan`의 모든 것과 `arrangePrintJob`(인쇄 작업 PDF → 배치한 PDF), `readJobPageSizes`, 뒷단 전용 모듈(`src/backend.ts`): PDFium으로 쪽 그림 만들기(`rasterizePdf`, `rasterDpiFor`), 회색 그림 PDF(`grayscalePdf`), 인쇄용 가로 면 돌리기, 작업 스레드에서 도는 그림 작업(`runRasterJob`, `serveRasterJob`), PNG 쓰기(`encodePng`).
+- `./plan`(`src/plan.ts`): 선택지 형과 값 목록, `createDefaultOptions`, `isDefaultOptions`(새 길로 갈지), `changesSheetArrangement`(면 배치가 바뀌는지), `needsLivePreview`(실제 미리보기가 필요한지), `hasFaceOverlays`, `validateOptions`, `validateImageExportOptions`, 라벨 규격 목록과 `validateLabelSpec`, 용지 크기, `planSheets`(면 계획).
+- `.`(`src/index.ts`): `./plan`의 모든 것과 `arrangePrintJob`(인쇄 작업 PDF → 배치한 PDF), `applyPdfOverlays`(투명 PNG 오버레이 스탬프), `readJobPageSizes`, 뒷단 전용 모듈(`src/backend.ts`): PDFium으로 쪽 그림 만들기(`rasterizePdf`, `rasterDpiFor`, `faceIndices` 온디맨드 지원), 회색 그림 PDF(`grayscalePdf`), 인쇄용 가로 면 돌리기, 작업 스레드에서 도는 그림 작업(`runRasterJob`, `serveRasterJob` — `arrange`·`preview-arranged`·`save-images` 포함), PNG/JPEG 인코딩(`encodePng`, `encodeJpeg`, `encodeBgrxToJpeg`), UTF-8 STORE ZIP 묶기(`buildStoreZip`).
 
 ## 맡지 않는 것 (경계)
 

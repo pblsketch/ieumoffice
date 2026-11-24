@@ -27,6 +27,7 @@ openoffice/
 │   ├── headless-pdf-export.md     ← 창 없이 PDF로 내보내는 진입점
 │   ├── slides-op-journal.md       ← 슬라이드 편집 기록 형식
 │   ├── plans/
+│   │   ├── a2ui-question-card.md  ← AI 질문 카드를 A2UI v1.0으로(1단계 구현됨, MCP 화면은 다음)
 │   │   ├── ai-friendly-docs.md    ← 행정문서 점검(행안부 가이드라인) 계획(설계)
 │   │   ├── ai-web-reading.md      ← AI 웹 읽기 계획(초안)
 │   │   ├── chatgpt-one-account.md ← ChatGPT 두 길을 하나로 보이기 계획(확정)
@@ -42,6 +43,7 @@ openoffice/
 │   │   ├── ods-open-export.md     ← ODS 불러오기·내보내기 계획(1·2단계 구현됨, 사람 확인 남음)
 │   │   ├── pdf-reading-assist.md  ← PDF 읽기 도우미 계획
 │   │   ├── pdf-tools.md           ← PDF 도구 모음 계획(초안)
+│   │   ├── print-upgrade.md       ← 인쇄 기능 고도화 계획(구현됨, 사람 확인 남음)
 │   │   ├── project-folder.md      ← 프로젝트 폴더(AI 맥락을 폴더 단위로) 계획(확정)
 │   │   ├── skills-v2.md           ← 스킬 고도화(만들기·고치기·나누기·스킬 모음) 계획(방향 확정)
 │   │   └── update-details.md      ← 업데이트 상세 내역 표시 계획(확정)

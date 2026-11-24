@@ -30,6 +30,7 @@ De kaarten onder **In de PDF-editor** openen de gekozen pdf in een editortabblad
 - **Lege pagina’s verwijderen** toont alleen kandidaten. Alleen de gekozen pagina’s worden verwijderd, en een pagina met ook maar één teken is nooit een kandidaat.
 - **Aantekeningen verwijderen** laat formuliervelden staan en verwijdert koppelingen alleen als u ze aanvinkt. De inhoud van verwijderde aantekeningen blijft niet in het nieuwe bestand.
 - **Opslaan als tekst** leest alleen de tekstlaag. Pagina’s waarvan de tekst een afbeelding is, zoals gescande pagina’s, blijven leeg.
+- **PDF splitsen** splitst op eigen bereiken (desgewenst samengevoegd), pagina-aantal, bladwijzers of maximale bestandsgrootte, met naamgeving en optionele submap.
 
 ## Handig voor
 

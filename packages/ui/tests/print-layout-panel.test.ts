@@ -129,26 +129,34 @@ describe('PrintLayoutPanel', () => {
     expect($('select[data-pl="dpi"]')).not.toBeNull()
   })
 
-  it('keeps fit off until a paper is chosen with one page per sheet', () => {
+  it('keeps shrink/fit disabled until a paper is chosen and resets scaling outside single mode', () => {
     mount()
-    const fit = () => $<HTMLInputElement>('input[data-pl="fit"]')!
-    expect(fit().disabled).toBe(true)
+    const scaling = () => $<HTMLSelectElement>('select[data-pl="scaling"]')!
+    const opt = (v: string) =>
+      [...scaling().options].find((o) => o.value === v) as HTMLOptionElement
+    expect(opt('shrink').disabled).toBe(true)
+    expect(opt('fit').disabled).toBe(true)
+    expect(opt('custom').disabled).toBe(false)
     act(() => setValue($<HTMLSelectElement>('select[data-pl="paper"]')!, 'A4'))
     expect(latest.paper).toBe('A4')
-    expect(fit().disabled).toBe(false)
-    click(fit())
+    expect(opt('shrink').disabled).toBe(false)
+    expect(opt('fit').disabled).toBe(false)
+    act(() => setValue(scaling(), 'shrink'))
+    expect(latest.scaling).toBe('shrink')
     expect(latest.fitToPaper).toBe(true)
-    // another mode clears and locks fit
+    // another mode clears scaling back to actual
     click($$('input[data-pl="mode"]')[1]!)
     expect(latest.fitToPaper).toBe(false)
-    expect(fit().disabled).toBe(true)
+    expect(latest.scaling).toBe('actual')
+    expect($('select[data-pl="scaling"]')).toBeNull()
     click($$('input[data-pl="mode"]')[0]!)
-    click(fit())
-    expect(latest.fitToPaper).toBe(true)
-    // going back to the document size clears it too
+    act(() => setValue(scaling(), 'fit'))
+    expect(latest.scaling).toBe('fit')
+    // going back to document size clears fit/shrink back to actual
     act(() => setValue($<HTMLSelectElement>('select[data-pl="paper"]')!, 'source'))
+    expect(latest.scaling).toBe('actual')
     expect(latest.fitToPaper).toBe(false)
-    expect(fit().disabled).toBe(true)
+    expect(opt('fit').disabled).toBe(true)
   })
 
   it('keeps one page per sheet and shows the editor reason while layouts are blocked', () => {
@@ -277,18 +285,24 @@ describe('PrintLayoutPanel', () => {
     expect($('[data-pl="issue"]')?.textContent).toBe('The page to repeat can be from 1 to 3.')
   })
 
-  it('offers save and preview buttons only while an option is on', () => {
-    const onSavePdf = vi.fn()
-    const onPreviewRequest = vi.fn(async () => [] as Uint8Array[])
-    mount({ onSavePdf, onPreviewRequest })
+  it('omits duplicate bottom save and preview buttons and exposes watermark & header/footer sections', () => {
+    mount()
     expect($('button[data-pl="save-pdf"]')).toBeNull()
     expect($('button[data-pl="preview"]')).toBeNull()
     click($('input[data-pl="reverse"]'))
-    click($('button[data-pl="save-pdf"]'))
-    expect(onSavePdf).toHaveBeenCalledWith(latest)
-    expect($('[data-pl="gray-note"]')).toBeNull()
-    click($('input[data-pl="grayscale"]'))
-    expect($('[data-pl="gray-note"]')).not.toBeNull()
+    expect($('button[data-pl="save-pdf"]')).toBeNull()
+    expect($('button[data-pl="preview"]')).toBeNull()
+    // Watermark text toggles active state
+    click($$<HTMLInputElement>('input[data-pl="wm-kind"]').find((r) => r.value === 'text')!)
+    act(() => setValue($<HTMLInputElement>('input[data-pl="wm-text"]')!, 'DRAFT'))
+    expect(latest.watermark.kind).toBe('text')
+    expect(latest.watermark.text).toBe('DRAFT')
+    // Header/Footer enable checkbox
+    click($('input[data-pl="hf-enable"]'))
+    expect(latest.headerFooter.enabled).toBe(true)
+    // Orientation override
+    act(() => setValue($<HTMLSelectElement>('select[data-pl="orientation"]')!, 'landscape'))
+    expect(latest.orientation).toBe('landscape')
   })
 })
 
@@ -443,42 +457,6 @@ describe('ArrangedPreview', () => {
     expect(revoke).toHaveBeenCalledWith('blob:face-1')
     expect(revoke).toHaveBeenCalledWith('blob:face-2')
     root = createRoot(host)
-  })
-
-  it('runs the editor request from the panel and cancels it through the signal', async () => {
-    let signal: AbortSignal | null = null
-    let progress: ((p: { done: number; total: number }) => void) | null = null
-    const onPreviewRequest = vi.fn(
-      (_o: PrintLayoutOptions, ctx: { signal: AbortSignal; onProgress: typeof progress }) => {
-        signal = ctx.signal
-        progress = ctx.onProgress
-        return new Promise<Uint8Array[]>(() => {})
-      },
-    )
-    mount({ onPreviewRequest })
-    click($('input[data-pl="grayscale"]'))
-    click($('button[data-pl="preview"]'))
-    expect(onPreviewRequest).toHaveBeenCalledTimes(1)
-    act(() => progress!({ done: 1, total: 8 }))
-    expect(host.textContent).toContain('1 of 8 pages')
-    click($('button[data-pl="preview-cancel"]'))
-    expect(signal!.aborted).toBe(true)
-    expect($('button[data-pl="preview-cancel"]')).toBeNull()
-  })
-
-  it('drops a stale preview when an option changes', async () => {
-    const onPreviewRequest = vi.fn(async () => [new Uint8Array([1])])
-    vi.stubGlobal(
-      'URL',
-      Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }),
-    )
-    mount({ onPreviewRequest })
-    click($('input[data-pl="grayscale"]'))
-    click($('button[data-pl="preview"]'))
-    await flush()
-    expect($$('img').length).toBe(1)
-    click($('input[data-pl="reverse"]'))
-    expect($$('img').length).toBe(0)
   })
 })
 

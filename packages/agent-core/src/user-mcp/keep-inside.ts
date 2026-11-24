@@ -124,6 +124,9 @@ export function guardReceivedContent(
     get systemPrompt() {
       return skill.systemPrompt
     },
+    get toolsOffSystemPrompt() {
+      return skill.toolsOffSystemPrompt
+    },
     get tools() {
       return skill.tools
     },

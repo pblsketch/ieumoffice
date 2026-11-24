@@ -97,6 +97,7 @@ import {
   type ResizeHandle,
   type SnapGuide,
 } from '../canvas/geometry'
+import { QuickPrintButton, type PrintPrinterInfo, type QuickPrintPrefStore } from '@genoffice/ui'
 import { buildBuiltinTemplate, type BuiltinTemplateId } from '../canvas/templates'
 import { SHAPE_KINDS, shapePath, shapeTextBox } from '../canvas/shape-paths'
 import { STICKER_IDS, StickerIcon } from '../canvas/stickers'
@@ -159,7 +160,6 @@ import {
   PenIcon,
   PlusIcon,
   PresentIcon,
-  PrintIcon,
   RedoIcon,
   SearchIcon,
   SelectIcon,
@@ -339,7 +339,10 @@ export interface WhiteboardEditorProps {
   autoSave: boolean
   onToggleAutoSave(): void
   onExport(format: ExportFormat, scope: 'all' | 'current'): void
-  onPrint(): void
+  onPrint(initialDestination?: string): void
+  onQuickPrint(printerLabel: string): void | Promise<void>
+  listPrinters?: () => Promise<readonly PrintPrinterInfo[]>
+  quickPrintPrefStore?: QuickPrintPrefStore
   exportModalFormat: ExportFormat | null
   onCloseExportModal(): void
   onOpenExportModal(format: ExportFormat): void
@@ -356,6 +359,9 @@ export function WhiteboardEditor({
   onToggleAutoSave,
   onExport,
   onPrint,
+  onQuickPrint,
+  listPrinters,
+  quickPrintPrefStore,
   exportModalFormat,
   onCloseExportModal,
   onOpenExportModal,
@@ -364,7 +370,7 @@ export function WhiteboardEditor({
   onToast,
   menuCommand,
 }: WhiteboardEditorProps): ReactElement {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [, setTick] = useState(0)
   const [tool, setTool] = useState<ToolKind>('select')
   const [spacePanning, setSpacePanning] = useState(false)
@@ -2718,16 +2724,17 @@ export function WhiteboardEditor({
             <ExportIcon size={16} />
             <span>{t('toolExport')}</span>
           </button>
-          <button
-            type="button"
-            className="wb-header-btn"
-            aria-label={t('toolPrint')}
-            data-tip={t('toolPrint')}
-            onClick={onPrint}
-          >
-            <PrintIcon size={16} />
-            <span>{t('toolPrint')}</span>
-          </button>
+          <QuickPrintButton
+            lang={lang}
+            variant="labeled"
+            align="right"
+            listPrinters={listPrinters}
+            prefStore={quickPrintPrefStore}
+            getPageCount={() => doc.pages.length}
+            onOpenDialog={onPrint}
+            onQuickPrint={onQuickPrint}
+            onNoPrinter={onToast}
+          />
           <button
             type="button"
             className="wb-header-btn wb-present-btn"
