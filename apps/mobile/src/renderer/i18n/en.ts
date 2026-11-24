@@ -56,6 +56,8 @@ export const en = {
   lineSpacingNarrower: 'Narrower line spacing',
   insertTable: 'Insert table',
   fitToWidth: 'Fit to width',
+  flowView: 'Reading view',
+  pageView: 'Page view',
   unsavedTitle: 'Unsaved changes',
   unsavedPrompt: 'Save your changes before switching documents?',
   unsavedSave: 'Save',

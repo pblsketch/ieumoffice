@@ -56,6 +56,8 @@ export const tr = {
   lineSpacingNarrower: 'Satır aralığını azalt',
   insertTable: 'Tablo ekle',
   fitToWidth: 'Genişliğe sığdır',
+  flowView: 'Okuma görünümü',
+  pageView: 'Sayfa görünümü',
   unsavedTitle: 'Kaydedilmemiş değişiklikler',
   unsavedPrompt: 'Belge değiştirmeden önce değişiklikler kaydedilsin mi?',
   unsavedSave: 'Kaydet',

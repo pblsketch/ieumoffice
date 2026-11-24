@@ -12,6 +12,7 @@ import {
   IconClose,
   IconEdit,
   IconFitWidth,
+  IconFlowView,
   IconHeading,
   IconHistory,
   IconImage,
@@ -19,10 +20,13 @@ import {
   IconKeyboardHide,
   IconList,
   IconMore,
+  IconPageView,
   IconRedo,
   IconSave,
   IconShare,
+  IconTextBigger,
   IconTextFormat,
+  IconTextSmaller,
   IconUnderline,
   IconUndo,
 } from '../components/MobileIcons'
@@ -71,6 +75,8 @@ export interface EditorShellProps {
   readonly quickActions: readonly EditorQuickActionItem[]
   /** Groups for the format panel ([Aa]); none hides the button. */
   readonly formatGroups?: readonly EditorFormatGroup[]
+  /** View-mode tools of the document area (page/flow switch, text size, fit width). */
+  readonly viewTools?: readonly EditorQuickActionItem[]
   readonly aiPanelContent: ReactNode
   readonly onBack: () => void
   /** [편집]: view -> edit. */
@@ -105,6 +111,16 @@ function renderQuickActionIcon(id: string): ReactNode {
       return <IconList size={19} />
     case 'image':
       return <IconImage size={19} />
+    case 'fontSmaller':
+      return <IconTextSmaller size={19} />
+    case 'fontBigger':
+      return <IconTextBigger size={19} />
+    case 'flowView':
+      return <IconFlowView size={19} />
+    case 'pageView':
+      return <IconPageView size={19} />
+    case 'fitWidth':
+      return <IconFitWidth size={18} />
     default:
       return null
   }
@@ -121,6 +137,7 @@ export function EditorShell({
   onDismissNotice,
   quickActions,
   formatGroups = [],
+  viewTools = [],
   aiPanelContent,
   onBack,
   onEnterEdit,
@@ -202,6 +219,20 @@ export function EditorShell({
         <div className="mobile-header-actions">
           {isEdit &&
             barActions.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="mobile-icon-btn"
+                onClick={item.onPress}
+                aria-label={item.label}
+                title={item.label}
+              >
+                {renderQuickActionIcon(item.id)}
+              </button>
+            ))}
+          {isTablet &&
+            !isEdit &&
+            viewTools.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -404,19 +435,21 @@ export function EditorShell({
         </nav>
       )}
 
-      {!isTablet && !isEdit && (isHwpFamily || aiEnabled) && (
+      {!isTablet && !isEdit && (viewTools.length > 0 || aiEnabled) && (
         <div className="mobile-view-fab-bar">
-          {isHwpFamily && (
+          {viewTools.map((item) => (
             <button
+              key={item.id}
               type="button"
               className="mobile-fab-mini"
-              onClick={onFitToWidth}
-              aria-label={t('fitToWidth')}
-              title={t('fitToWidth')}
+              onClick={item.onPress}
+              aria-label={item.label}
+              title={item.label}
+              data-testid={`view-tool-${item.id}`}
             >
-              <IconFitWidth size={18} />
+              {renderQuickActionIcon(item.id)}
             </button>
-          )}
+          ))}
           {aiEnabled && (
             <button
               type="button"

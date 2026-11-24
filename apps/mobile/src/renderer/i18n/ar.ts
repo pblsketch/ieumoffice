@@ -56,6 +56,8 @@ export const ar = {
   lineSpacingNarrower: 'تباعد أسطر أضيق',
   insertTable: 'إدراج جدول',
   fitToWidth: 'ملاءمة للعرض',
+  flowView: 'عرض القراءة',
+  pageView: 'عرض الصفحة',
   unsavedTitle: 'تغييرات غير محفوظة',
   unsavedPrompt: 'هل تريد حفظ التغييرات قبل التبديل إلى مستند آخر؟',
   unsavedSave: 'حفظ',

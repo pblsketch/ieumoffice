@@ -56,6 +56,8 @@ export const pt = {
   lineSpacingNarrower: 'Menos espaçamento entre linhas',
   insertTable: 'Inserir tabela',
   fitToWidth: 'Ajustar à largura',
+  flowView: 'Modo de leitura',
+  pageView: 'Visualização de página',
   unsavedTitle: 'Alterações não salvas',
   unsavedPrompt: 'Salvar as alterações antes de trocar de documento?',
   unsavedSave: 'Salvar',

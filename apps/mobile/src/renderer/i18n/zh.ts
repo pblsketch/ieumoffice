@@ -54,6 +54,8 @@ export const zh = {
   lineSpacingNarrower: '减小行距',
   insertTable: '插入表格',
   fitToWidth: '适应宽度',
+  flowView: '阅读视图',
+  pageView: '页面视图',
   unsavedTitle: '有未保存的更改',
   unsavedPrompt: '切换文档前是否保存当前更改？',
   unsavedSave: '保存',

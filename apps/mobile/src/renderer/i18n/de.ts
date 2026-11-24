@@ -57,6 +57,8 @@ export const de = {
   lineSpacingNarrower: 'Kleinerer Zeilenabstand',
   insertTable: 'Tabelle einfügen',
   fitToWidth: 'An Breite anpassen',
+  flowView: 'Leseansicht',
+  pageView: 'Seitenansicht',
   unsavedTitle: 'Ungesicherte Änderungen',
   unsavedPrompt: 'Änderungen vor dem Dokumentwechsel speichern?',
   unsavedSave: 'Speichern',

@@ -56,6 +56,8 @@ export const pl = {
   lineSpacingNarrower: 'Mniejsza interlinia',
   insertTable: 'Wstaw tabelę',
   fitToWidth: 'Dopasuj do szerokości',
+  flowView: 'Widok do czytania',
+  pageView: 'Widok strony',
   unsavedTitle: 'Niezapisane zmiany',
   unsavedPrompt: 'Zapisać zmiany przed zmianą dokumentu?',
   unsavedSave: 'Zapisz',

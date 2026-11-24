@@ -41,6 +41,8 @@ import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiShe
 import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
+import { HwpFlowView } from './editors/HwpFlowView'
+import { openFlowDocument } from './editors/rhwpEngine'
 import {
   HwpMobileEditor,
   type HwpMobileEditorHandle,
@@ -87,6 +89,12 @@ function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
 }
 
 const RECOVERY_IDLE_MS = 2000
+
+/** Text scale of the HWP flow view (document sizes are in pt). */
+const FLOW_ZOOM_DEFAULT = 1.2
+const FLOW_ZOOM_MIN = 0.8
+const FLOW_ZOOM_MAX = 2.4
+const FLOW_ZOOM_STEP = 0.15
 const RECOVERY_PERIODIC_MS = 30000
 
 type ScreenView = 'home' | 'editor' | 'settings'
@@ -104,7 +112,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const hwpApi = useMemo(() => createMobileHwpApi(client), [client])
   const aiMemoryRef = useRef(createMobileAiMemoryStore())
   // Publishes data-window and --m-kb on <html> for every screen, not only the editor.
-  useViewportLayout()
+  const viewport = useViewportLayout()
+  const windowClassRef = useRef(viewport.windowClass)
+  windowClassRef.current = viewport.windowClass
 
   const [screen, setScreen] = useState<ScreenView>('home')
   const [prefs, setPrefs] = useState<MobileAppPrefs>(DEFAULT_PREFS)
@@ -137,6 +147,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   const markdownEditorRef = useRef<MarkdownMobileEditorHandle | null>(null)
   const hwpEditorRef = useRef<HwpMobileEditorHandle | null>(null)
+  // HWP reading layout: reflowed "flow" view or the page editor (design system 5.3).
+  const [hwpLayout, setHwpLayout] = useState<'page' | 'flow'>('flow')
+  const [flowZoom, setFlowZoom] = useState(FLOW_ZOOM_DEFAULT)
+  const [flowBytes, setFlowBytes] = useState<Uint8Array | null>(null)
+  const studioEditedRef = useRef(false)
   const activeRunCancelRef = useRef<(() => void) | null>(null)
 
   const lang: Lang = normalizeLang(prefs.lang)
@@ -383,6 +398,14 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       }))
       if (!outcome.switched) return
       setHwpBytes(opened.bytes)
+      setFlowBytes(opened.bytes)
+      studioEditedRef.current = false
+      // Phones and small tablets read in the flow view; larger windows keep the page.
+      setHwpLayout(
+        windowClassRef.current === 'compact' || windowClassRef.current === 'medium'
+          ? 'flow'
+          : 'page',
+      )
       setMarkdownText('')
       setMode(initialDocumentMode({ isUntitled }))
       setNoticeBanner(opened.trackingDropped ? tNow('hwpTrackingDroppedNotice') : null)
@@ -685,8 +708,22 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   )
 
   const handleHwpDirty = useCallback(() => {
+    studioEditedRef.current = true
     sessionControllerRef.current?.markDirty(true)
   }, [])
+
+  // After editing in the page editor, rebuild the flow view from the edited document.
+  useEffect(() => {
+    if (mode !== 'view' || !studioEditedRef.current) return
+    const doc = activeDocRef.current
+    const port = hwpEditorRef.current?.getSavePort()
+    if (!doc || !port || (doc.session.format !== 'hwp' && doc.session.format !== 'hwpx')) return
+    studioEditedRef.current = false
+    const exportBytes = doc.session.format === 'hwpx' ? port.exportHwpx() : port.exportHwp()
+    exportBytes.then(setFlowBytes).catch(() => {
+      // Keep the last flow; the page view still shows the edits.
+    })
+  }, [mode])
 
   const handleHwpError = useCallback((msg: string) => {
     setNoticeBanner(msg)
@@ -810,6 +847,39 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     }
   }, [activeFormat, isMarkdownDoc, tNow])
 
+  const isHwpDoc = activeFormat === 'hwp' || activeFormat === 'hwpx'
+  const viewTools = useMemo((): EditorQuickActionItem[] => {
+    if (!isHwpDoc) return []
+    if (hwpLayout === 'flow') {
+      return [
+        {
+          id: 'fontSmaller',
+          label: tNow('fontSmaller'),
+          onPress: () =>
+            setFlowZoom((z) => Math.max(FLOW_ZOOM_MIN, +(z - FLOW_ZOOM_STEP).toFixed(2))),
+        },
+        {
+          id: 'fontBigger',
+          label: tNow('fontBigger'),
+          onPress: () =>
+            setFlowZoom((z) => Math.min(FLOW_ZOOM_MAX, +(z + FLOW_ZOOM_STEP).toFixed(2))),
+        },
+        { id: 'pageView', label: tNow('pageView'), onPress: () => setHwpLayout('page') },
+      ]
+    }
+    return [
+      {
+        id: 'fitWidth',
+        label: tNow('fitToWidth'),
+        onPress: () => {
+          setZoomScale(1)
+          hwpEditorRef.current?.fitToWidth()
+        },
+      },
+      { id: 'flowView', label: tNow('flowView'), onPress: () => setHwpLayout('flow') },
+    ]
+  }, [hwpLayout, isHwpDoc, tNow])
+
   return (
     <MobileLocaleProvider lang={lang}>
       <BackStackProvider>
@@ -898,6 +968,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             onDismissNotice={() => setNoticeBanner(null)}
             quickActions={quickActions}
             formatGroups={formatGroups}
+            viewTools={viewTools}
             onBack={() => void handleBackFromEditor()}
             onEnterEdit={() => setMode('edit')}
             onDone={() => void handleDone()}
@@ -956,16 +1027,35 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                 onErrorNotice={(key) => setNoticeBanner(tNow(key))}
               />
             ) : (
-              <HwpMobileEditor
-                ref={hwpEditorRef}
-                fileName={activeDoc.session.name}
-                documentBytes={hwpBytes}
-                mode={mode}
-                lang={lang}
-                theme={prefs.theme}
-                onDirty={handleHwpDirty}
-                onError={handleHwpError}
-              />
+              <>
+                {hwpLayout === 'flow' && mode === 'view' && (
+                  <HwpFlowView
+                    bytes={flowBytes}
+                    title={activeDoc.session.name}
+                    lang={lang}
+                    zoom={flowZoom}
+                    openDocument={openFlowDocument}
+                    onUnavailable={() => setHwpLayout('page')}
+                  />
+                )}
+                {/* The page editor stays mounted under the flow view: saving, sharing and
+                    AI read the document through it. */}
+                <div
+                  className="mobile-hwp-layer"
+                  data-hidden={hwpLayout === 'flow' && mode === 'view' ? 'true' : undefined}
+                >
+                  <HwpMobileEditor
+                    ref={hwpEditorRef}
+                    fileName={activeDoc.session.name}
+                    documentBytes={hwpBytes}
+                    mode={mode}
+                    lang={lang}
+                    theme={prefs.theme}
+                    onDirty={handleHwpDirty}
+                    onError={handleHwpError}
+                  />
+                </div>
+              </>
             )}
           </EditorShell>
         )}

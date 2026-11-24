@@ -56,6 +56,8 @@ export const zhTW = {
   lineSpacingNarrower: '縮小行距',
   insertTable: '插入表格',
   fitToWidth: '符合寬度',
+  flowView: '閱讀檢視',
+  pageView: '頁面檢視',
   unsavedTitle: '尚有未儲存的變更',
   unsavedPrompt: '切換文件前是否要儲存目前的變更？',
   unsavedSave: '儲存',

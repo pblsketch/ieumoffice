@@ -56,6 +56,8 @@ export const ms = {
   lineSpacingNarrower: 'Jarak baris lebih rapat',
   insertTable: 'Sisip jadual',
   fitToWidth: 'Padankan lebar',
+  flowView: 'Paparan bacaan',
+  pageView: 'Paparan halaman',
   unsavedTitle: 'Perubahan belum disimpan',
   unsavedPrompt: 'Simpan perubahan sebelum menukar dokumen?',
   unsavedSave: 'Simpan',

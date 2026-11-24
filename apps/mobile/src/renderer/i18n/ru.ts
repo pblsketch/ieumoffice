@@ -56,6 +56,8 @@ export const ru = {
   lineSpacingNarrower: 'Уже интервал',
   insertTable: 'Вставить таблицу',
   fitToWidth: 'По ширине',
+  flowView: 'Режим чтения',
+  pageView: 'Постраничный вид',
   unsavedTitle: 'Несохранённые изменения',
   unsavedPrompt: 'Сохранить изменения перед переключением документа?',
   unsavedSave: 'Сохранить',
