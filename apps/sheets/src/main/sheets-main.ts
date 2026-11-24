@@ -214,6 +214,8 @@ import {
   workbookExportPdfRequestSchema,
   printerInfoSchema,
   workbookRangeRequestSchema,
+  workbookFilterRequestSchema,
+  workbookFilterResultSchema,
   workbookRangeResultSchema,
   workbookSaveEditsAbortSchema,
   workbookSaveEditsBeginSchema,
@@ -4363,6 +4365,13 @@ export function registerSheetsIpc(): void {
     if (!entry.sessions.has(request.sessionId)) throw new Error('Unknown workbook session.')
     const result = await entry.client.readFormulaCells(request)
     return workbookFormulaCellsResultSchema.parse(result)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.filterWorkbookRows, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = workbookFilterRequestSchema.parse(input)
+    if (!entry.sessions.has(request.sessionId)) throw new Error('Unknown workbook session.')
+    return workbookFilterResultSchema.parse(await entry.client.filterRows(request))
   })
 
   ipcMain.handle(IPC_CHANNELS.findWorkbookCells, async (event, input: unknown) => {
