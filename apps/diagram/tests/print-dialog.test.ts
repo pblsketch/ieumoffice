@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LANGS, type Lang } from '@genoffice/i18n'
-import { SYSTEM_DIALOG } from '@genoffice/ui'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST, SYSTEM_DIALOG } from '@genoffice/ui'
 import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { BridgeOp, BridgeOps } from '../src/shared/bridge-protocol'
@@ -75,6 +75,7 @@ function fakeBridge(): PrintLayoutBridge<DiagramPrintJob> &
     preview: vi.fn(async () => ({ ok: true as const, faces: [] })),
     print: vi.fn(async () => ({ ok: true as const })),
     savePdf: vi.fn(async () => ({ ok: true as const, path: 'C:/Out/Flow.pdf' })),
+    saveImages: vi.fn(async () => ({ ok: true as const, paths: ['C:/Out/Flow-01.png'] })),
     cancel: vi.fn(async () => {}),
     onProgress: vi.fn(() => () => {}),
     getLabelSpec: vi.fn(async () => null),
@@ -236,13 +237,29 @@ describe('the arranged route', () => {
   it('saves the arranged PDF and says so', async () => {
     const { printLayout, onClose, onMessage } = await open()
     click($('input[data-pl="reverse"]'))
-    click($('button[data-pl="save-pdf"]'))
+    selectValue($<HTMLSelectElement>('select[data-print="printer"]'), SAVE_PDF_DEST)
+    click($('button[data-pl="print"]'))
     await settle()
     expect(printLayout.savePdf).toHaveBeenCalledWith(
       expect.objectContaining({ editor: { pages: [SHEET_P1, SHEET_P2], title: 'Flow' } }),
     )
     expect(onClose).toHaveBeenCalled()
     expect(onMessage).toHaveBeenCalledWith('Saved the arranged result as PDF.')
+  })
+
+  it('saves arranged images and reports count', async () => {
+    const { printLayout, onClose, onMessage } = await open()
+    selectValue($<HTMLSelectElement>('select[data-print="printer"]'), SAVE_IMAGES_DEST)
+    click($('button[data-pl="print"]'))
+    await settle()
+    expect(printLayout.saveImages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        editor: { pages: [SHEET_P1, SHEET_P2], title: 'Flow' },
+        image: { format: 'png', quality: 90, bundle: 'files' },
+      }),
+    )
+    expect(onClose).toHaveBeenCalled()
+    expect(onMessage).toHaveBeenCalledWith('Saved as images (1).')
   })
 
   it('stays open with the reason when the arranged print fails', async () => {

@@ -1,4 +1,4 @@
-/* Inline structured question card (AiQuestionCard) — chrome tokens only. */
+/* Inline question card (AiQuestionCard, AiQuestionCardReadOnly) — chrome tokens only. */
 
 .ai-qcard {
   display: flex;
@@ -37,10 +37,16 @@
   color: var(--text-secondary);
 }
 
-.ai-qcard-desc {
+.ai-qcard-desc,
+.ai-qcard-footer {
   font-size: 12.5px;
   color: var(--text-secondary);
   margin: 0;
+  white-space: pre-line;
+}
+
+.ai-qcard-footer {
+  color: var(--text-tertiary);
 }
 
 .ai-qcard-field {
@@ -67,6 +73,7 @@
 .ai-qcard-field-desc {
   font-size: 11.5px;
   color: var(--text-tertiary);
+  white-space: pre-line;
 }
 
 .ai-qcard-options {
@@ -96,14 +103,20 @@
   border-color: var(--border-hover);
 }
 
+.ai-qcard-opt-decide {
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+
 .ai-qcard-opt-selected {
   border-color: var(--accent, var(--color-border-brand));
+  border-style: solid;
   background: var(--fill-muted);
+  color: var(--text-primary);
   font-weight: 600;
 }
 
-.ai-qcard-input,
-.ai-qcard-select {
+.ai-qcard-input {
   width: 100%;
   box-sizing: border-box;
   padding: 6px 9px;
@@ -115,6 +128,44 @@
   font-size: 12.5px;
 }
 
+textarea.ai-qcard-input {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.ai-qcard-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ai-qcard-check input {
+  accent-color: var(--accent, var(--color-border-brand));
+}
+
+.ai-qcard-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-qcard-slider input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent, var(--color-border-brand));
+}
+
+.ai-qcard-slider-value {
+  min-width: 2.5em;
+  text-align: end;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
 .ai-qcard-summary {
   margin: 0;
   padding: 0;
@@ -124,6 +175,25 @@
   gap: 4px;
   font-size: 12.5px;
   color: var(--text-secondary);
+}
+
+.ai-qcard-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.ai-qcard-summary-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-qcard-summary-answer {
+  white-space: pre-line;
+}
+
+.ai-qcard-summary-muted {
+  color: var(--text-tertiary);
 }
 
 .ai-qcard-actions {

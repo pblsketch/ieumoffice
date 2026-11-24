@@ -46,17 +46,17 @@ As regras: a extensão é preservada automaticamente; caracteres proibidos, pont
 
 ## Imprimir
 
-Arquivo ▸ Imprimir (⌘P/ctrl+P) abre uma janela de impressão em cada editor. Docs, PDF, Sheets, Slides e Markdown têm a seção **Disposição das páginas** na janela de impressão de sempre, o HWP na pré-visualização de impressão, e HTML, mapa mental e diagrama numa nova janela de impressão pequena. Se não escolher nada em Disposição das páginas, a impressão funciona como antes.
+Arquivo ▸ Imprimir (⌘P/ctrl+P) abre uma janela de impressão com pré-visualização ao vivo em todos os editores — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram e Whiteboard. Sem alterar o Layout de página e usando a caixa de diálogo do sistema, a impressão funciona como antes.
 
-- **Disposição**: escolha Uma página por folha, Várias páginas por folha (2, 4, 6, 9 ou 16), Livreto (encadernar à esquerda ou à direita), Pôster (folhas na largura e na altura, sobreposição, linhas de corte) ou Etiquetas (uma página por etiqueta ou a mesma página em todas as etiquetas, etiqueta inicial, formato A4 comum ou medidas personalizadas).
-- **Só faces ímpares, só faces pares, ordem inversa**: as faces são contadas depois da disposição, sobre o que realmente sai da impressora. Serve em impressoras sem frente e verso: imprima as frentes, vire o papel e imprima os versos.
-- **Reduzir para caber no papel**: só as páginas maiores que o papel escolhido são reduzidas; as menores não são ampliadas. Sheets e Markdown usam os próprios campos de papel e escala.
-- **Tons de cinza e resolução da imagem**: ao imprimir com opções de Disposição das páginas, cada página vira imagem antes de ir para a impressora. Escolha a resolução entre Automática, 150, 300 ou 600 dpi.
-- **Só a seleção**: Docs e Markdown imprimem só o texto selecionado, repaginado a partir da primeira página; Slides imprime os slides selecionados e PDF as páginas selecionadas. Sheets imprime o intervalo selecionado como antes.
-- **Esquema da disposição e pré-visualização do resultado**: o esquema mostra na hora onde cada número de página fica no papel, e **Pré-visualizar o resultado** mostra o que foi gerado de fato. Com **Salvar o resultado disposto como PDF** é possível imprimir a mesma disposição em outro PC ou numa gráfica.
-- **Janela de impressão do sistema**: para um livreto, escolha frente e verso virando pela borda curta. Deixe o intervalo de páginas e as páginas por folha como estão na janela do sistema.
+- **Destino (impressora, PDF, imagens)**: escolha numa única lista uma impressora instalada, **Salvar como PDF**, **Salvar como imagens** ou **Diálogo de impressão do sistema**. A exportação de imagens oferece PNG e JPG (Alta 90%, Média 80%, Arquivo menor 65%), em arquivos numerados ou compactados em um ZIP. PDFs com restrições bloqueiam PDF e imagens, mantendo a impressão ativa.
+- **Pré-visualização ao vivo**: todos os dez editores exibem pré-visualização antes da saída. Quando layout, tons de cinza, marca d’água ou cabeçalhos/rodapés alteram as faces finais, a visualização renderiza sob demanda com navegação, zoom e alternância para o esquema.
+- **Layout**: escolha Uma página por folha, Várias páginas por folha (2, 4, 6, 9 ou 16, com bordas opcionais), Livreto (encadernação esquerda ou direita), Pôster (colunas × linhas, sobreposição, marcas de corte e coordenadas dos blocos) ou Etiquetas (uma página por etiqueta ou repetida, célula inicial, formatos A4 ou medidas personalizadas).
+- **Escala, orientação, lados e ordem**: selecione Tamanho real (100%), Ajustar ao papel, Reduzir páginas maiores ou Escala personalizada (10%–400%), além de orientação Automática, Retrato ou Paisagem. Apenas ímpares, apenas pares e ordem inversa contam os lados finais.
+- **Marca d’água, cabeçalhos/rodapés, tons de cinza e resolução**: adicione marca d’água de texto ou imagem e 6 posições de cabeçalho/rodapé (título, data, número da página ou texto livre) apenas na saída, sem modificar o documento. Escolha também tons de cinza e resolução (Automática, 150, 300 ou 600 dpi).
+- **Intervalos de páginas e seleção**: Docs e Markdown paginam o texto selecionado a partir da página 1; Slides imprime slides selecionados; PDF imprime páginas selecionadas; Hangul aceita Tudo, Página atual ou Intervalo personalizado; Sheets imprime planilhas ativas, pasta inteira ou seleção.
+- **Diálogo do sistema**: para livretos, ative frente e verso pela borda curta e mantenha intervalo e páginas por folha inalterados no diálogo do sistema.
 
-Os PDFs imprimem com a ordem de páginas e as rotações atuais.
+Os PDFs são impressos na ordem e rotação atuais das páginas.
 
 ## Onde vivem os ficheiros sem título
 

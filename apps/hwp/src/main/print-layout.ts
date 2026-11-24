@@ -1,3 +1,4 @@
+import type { ImageExportOptions } from '@genoffice/print-layout/plan'
 import {
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -35,17 +36,31 @@ export interface HwpPrintLayoutSetup {
   createPrintWindow: (event: PrintLayoutInvokeEvent) => PrintLayoutWindow
   /** the PDF export's save dialog; null when the user cancels */
   pickSavePath: (event: PrintLayoutInvokeEvent) => Promise<string | null>
+  /** save dialog for arranged images (PNG/JPG/ZIP); null when the user cancels */
+  pickImageSavePath?: (
+    event: PrintLayoutInvokeEvent,
+    image: ImageExportOptions,
+  ) => Promise<string | null>
   runner?: PrintLayoutIpcHandlers<PrintJob>['runner']
   platform?: NodeJS.Platform
 }
 
-/** `hwp:print-layout-preview|print|save|cancel`. */
+/** `hwp:print-layout-preview|preview-faces|close-preview|print|save|save-images|cancel`. */
 export function registerHwpPrintLayout(setup: HwpPrintLayoutSetup): () => void {
   return registerPrintLayoutIpc<PrintJob>('hwp', {
     ipcMain: setup.ipcMain,
     buildJobPdf: (_event, editor) => hwpJobPdf(editor, setup.createJobWindow),
     createPrintWindow: setup.createPrintWindow,
     pickSavePath: (event) => setup.pickSavePath(event),
+    ...(setup.pickImageSavePath
+      ? {
+          pickImageSavePath: (
+            event: PrintLayoutInvokeEvent,
+            _editor: PrintJob | undefined,
+            image: ImageExportOptions,
+          ) => setup.pickImageSavePath!(event, image),
+        }
+      : {}),
     ...(setup.runner ? { runner: setup.runner } : {}),
     ...(setup.platform ? { platform: setup.platform } : {}),
   })

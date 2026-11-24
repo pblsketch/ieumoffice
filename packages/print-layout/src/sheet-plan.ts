@@ -10,7 +10,12 @@ import {
   type Rect,
 } from './geometry'
 import { labelCellBoxes, labelCellCount, resolveLabelSpec } from './labels'
-import { validateOptions, type NupCount, type PrintLayoutOptions } from './options'
+import {
+  validateOptions,
+  type NupCount,
+  type OrientationChoice,
+  type PrintLayoutOptions,
+} from './options'
 import { paperSizePt, PAPER_SIZES_MM } from './paper'
 
 /** One place on a face. Every cell is drawn clipped to its `box`. */
@@ -57,6 +62,10 @@ export interface PlannedFace {
   poster?: PosterTile
   /** thin lines to cut along (poster tiles) */
   cutMarks: LineSegment[]
+  /** N-up cell borders drawn as thin rectangles when `nup.border` is true */
+  cellBorders?: Rect[] | undefined
+  /** Poster coordinate label drawn in the top-left corner when `poster.tileLabels` is true */
+  tileLabel?: string | undefined
 }
 
 export interface SheetPlan {
@@ -76,6 +85,8 @@ const NUP_GRID: Record<NupCount, { long: number; short: number }> = {
 
 /** Scales this close are treated as a tie. */
 const TIE = 1e-9
+/** Inset N-up cell borders by half a hairline so outer edges never clip. */
+const BORDER_INSET_PT = 0.25
 
 interface GridFace {
   width: number
@@ -85,8 +96,9 @@ interface GridFace {
 }
 
 /**
- * Picks the face orientation that shows `first` largest in one cell. `base` is
- * the paper (or first page) size in either orientation.
+ * Picks the face orientation that shows `first` largest in one cell, unless
+ * `orientation` forces portrait or landscape. `base` is the paper (or first
+ * page) size in either orientation.
  */
 function chooseGrid(
   base: PageSize,
@@ -94,11 +106,14 @@ function chooseGrid(
   portraitGrid: { cols: number; rows: number },
   landscapeGrid: { cols: number; rows: number },
   preferLandscapeOnTie: boolean,
+  orientation: OrientationChoice = 'auto',
 ): GridFace {
   const a = Math.min(base.widthPt, base.heightPt)
   const b = Math.max(base.widthPt, base.heightPt)
   const portrait: GridFace = { width: a, height: b, ...portraitGrid }
   const landscape: GridFace = { width: b, height: a, ...landscapeGrid }
+  if (orientation === 'portrait') return portrait
+  if (orientation === 'landscape') return landscape
   const scale = (g: GridFace) =>
     fitScale(first, { width: g.width / g.cols, height: g.height / g.rows }, true)
   const sp = scale(portrait)
@@ -124,30 +139,45 @@ function baseSize(pages: readonly PageSize[], o: PrintLayoutOptions): PageSize {
   return o.paper === 'source' ? at(pages, 0) : paperSizePt(o.paper)
 }
 
+function orientSize(
+  size: PageSize,
+  orientation: OrientationChoice,
+  fallbackLandscape: boolean,
+): {
+  width: number
+  height: number
+} {
+  const shortSide = Math.min(size.widthPt, size.heightPt)
+  const longSide = Math.max(size.widthPt, size.heightPt)
+  const landscape =
+    orientation === 'landscape' ? true : orientation === 'portrait' ? false : fallbackLandscape
+  return landscape ? { width: longSide, height: shortSide } : { width: shortSide, height: longSide }
+}
+
+function singleScale(page: PageSize, box: Rect, o: PrintLayoutOptions): number {
+  if (o.scaling === 'fit') return fitScale(page, box, true)
+  if (o.scaling === 'shrink' || o.fitToPaper) return fitScale(page, box, false)
+  if (o.scaling === 'custom') return o.scalePercent / 100
+  return 1
+}
+
 function planSingle(
   pages: readonly PageSize[],
   o: PrintLayoutOptions,
 ): Omit<PlannedFace, 'face'>[] {
   return pages.map((page, pageIndex) => {
-    if (o.paper === 'source') {
-      const box = { x: 0, y: 0, width: page.widthPt, height: page.heightPt }
-      return {
-        width: box.width,
-        height: box.height,
-        cells: [{ box, pageIndex, content: { ...box } }],
-        cutMarks: [],
-      }
-    }
-    const paper = paperSizePt(o.paper)
-    const landscape = isLandscape(page)
-    const width = landscape ? paper.heightPt : paper.widthPt
-    const height = landscape ? paper.widthPt : paper.heightPt
+    const base = o.paper === 'source' ? page : paperSizePt(o.paper)
+    const { width, height } = orientSize(base, o.orientation, isLandscape(page))
     const box = { x: 0, y: 0, width, height }
-    const scale = o.fitToPaper ? fitScale(page, box, false) : 1
+    const scale = singleScale(page, box, o)
+    const content =
+      o.paper === 'source' && o.orientation === 'auto' && scale === 1
+        ? { ...box }
+        : centreIn(page, box, scale)
     return {
       width,
       height,
-      cells: [{ box, pageIndex, content: centreIn(page, box, scale) }],
+      cells: [{ box, pageIndex, content }],
       cutMarks: [],
     }
   })
@@ -161,18 +191,38 @@ function planNup(pages: readonly PageSize[], o: PrintLayoutOptions): Omit<Planne
     { cols: short, rows: long },
     { cols: long, rows: short },
     isLandscape(at(pages, 0)),
+    o.orientation,
   )
   const perFace = g.cols * g.rows
+  const drawBorder = o.nup.border === true
   const faces: Omit<PlannedFace, 'face'>[] = []
   for (let start = 0; start < pages.length; start += perFace) {
     const cells: PlacedCell[] = []
+    const cellBorders: Rect[] = []
     for (let j = 0; j < perFace; j++) {
       const col = o.nup.order === 'row' ? j % g.cols : Math.floor(j / g.rows)
       const row = o.nup.order === 'row' ? Math.floor(j / g.cols) : j % g.rows
       const k = start + j
-      cells.push(fitCell(pages, k < pages.length ? k : null, gridCell(g, col, row)))
+      const box = gridCell(g, col, row)
+      const hasPage = k < pages.length
+      cells.push(fitCell(pages, hasPage ? k : null, box))
+      if (drawBorder && hasPage) {
+        const inset = Math.min(BORDER_INSET_PT, box.width / 4, box.height / 4)
+        cellBorders.push({
+          x: box.x + inset,
+          y: box.y + inset,
+          width: Math.max(0, box.width - inset * 2),
+          height: Math.max(0, box.height - inset * 2),
+        })
+      }
     }
-    faces.push({ width: g.width, height: g.height, cells, cutMarks: [] })
+    faces.push({
+      width: g.width,
+      height: g.height,
+      cells,
+      cutMarks: [],
+      ...(drawBorder && cellBorders.length > 0 ? { cellBorders } : {}),
+    })
   }
   return faces
 }
@@ -217,6 +267,7 @@ function planPoster(
   o: PrintLayoutOptions,
 ): Omit<PlannedFace, 'face'>[] {
   const { cols, rows, cutMarks } = o.poster
+  const showLabels = o.poster.tileLabels === true
   const overlap = mmToPt(o.poster.overlapMm)
   const posterOf = (g: { width: number; height: number }) => ({
     width: cols * g.width - (cols - 1) * overlap,
@@ -227,17 +278,18 @@ function planPoster(
   const b = Math.max(base.widthPt, base.heightPt)
   const portrait = { width: a, height: b }
   const landscape = { width: b, height: a }
-  // Same rule as N-up: the orientation that shows the first page largest.
-  const sp = fitScale(at(pages, 0), posterOf(portrait), true)
-  const sl = fitScale(at(pages, 0), posterOf(landscape), true)
-  const tie = Math.abs(sp - sl) <= TIE * Math.max(sp, sl)
-  const tile = tie
-    ? isLandscape(at(pages, 0))
-      ? landscape
-      : portrait
-    : sl > sp
-      ? landscape
-      : portrait
+  let tile: { width: number; height: number }
+  if (o.orientation === 'portrait') {
+    tile = portrait
+  } else if (o.orientation === 'landscape') {
+    tile = landscape
+  } else {
+    // Same rule as N-up: the orientation that shows the first page largest.
+    const sp = fitScale(at(pages, 0), posterOf(portrait), true)
+    const sl = fitScale(at(pages, 0), posterOf(landscape), true)
+    const tie = Math.abs(sp - sl) <= TIE * Math.max(sp, sl)
+    tile = tie ? (isLandscape(at(pages, 0)) ? landscape : portrait) : sl > sp ? landscape : portrait
+  }
   if (overlap >= tile.width || overlap >= tile.height) {
     throw new PrintLayoutError(
       issue('poster-overlap-too-large', 'the overlap is as large as the sheet it overlaps'),
@@ -246,6 +298,7 @@ function planPoster(
   const poster = posterOf(tile)
   const stepX = tile.width - overlap
   const stepY = tile.height - overlap
+  const multiPage = pages.length > 1
   const faces: Omit<PlannedFace, 'face'>[] = []
   pages.forEach((page, pageIndex) => {
     const whole = centreIn(page, { x: 0, y: 0, ...poster }, fitScale(page, poster, true))
@@ -259,6 +312,11 @@ function planPoster(
         if (cutMarks && row < rows - 1) {
           marks.push({ x1: 0, y1: stepY, x2: tile.width, y2: stepY })
         }
+        const tileLabel = showLabels
+          ? multiPage
+            ? `P${pageIndex + 1} (${row + 1}-${col + 1})`
+            : `(${row + 1}-${col + 1})`
+          : undefined
         faces.push({
           width: tile.width,
           height: tile.height,
@@ -271,6 +329,7 @@ function planPoster(
           ],
           poster: { pageIndex, col, row, cols, rows },
           cutMarks: marks,
+          ...(tileLabel !== undefined ? { tileLabel } : {}),
         })
       }
     }

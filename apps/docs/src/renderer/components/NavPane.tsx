@@ -148,6 +148,7 @@ export function NavPane({
   doc,
   zoom,
   pageInfo,
+  subscribeCurrentPage,
   onClose,
 }: {
   editor: Editor
@@ -155,6 +156,8 @@ export function NavPane({
   /** canvas zoom factor (1 = 100%) */
   zoom: number
   pageInfo: { current: number; total: number }
+  /** optional scroll-page subscription so App need not re-render on scroll */
+  subscribeCurrentPage?: (listener: (page: number) => void) => () => void
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -505,6 +508,16 @@ export function NavPane({
   const [layoutVersion, setLayoutVersion] = useState(0)
   useEffect(() => setLayoutVersion((v) => v + 1), [doc, pageInfo.total])
 
+  const pageInfoCurrent = pageInfo.current
+  const [liveCurrentPage, setLiveCurrentPage] = useState(pageInfoCurrent)
+  useEffect(() => {
+    setLiveCurrentPage(pageInfoCurrent)
+  }, [pageInfoCurrent])
+  useEffect(() => {
+    if (tab !== 'pages' || !subscribeCurrentPage) return
+    return subscribeCurrentPage(setLiveCurrentPage)
+  }, [tab, subscribeCurrentPage])
+
   const tabs: Array<{ id: NavTab; label: string }> = [
     { id: 'headings', label: t('appNavTabHeadings') },
     { id: 'pages', label: t('appNavTabPages') },
@@ -645,7 +658,7 @@ export function NavPane({
             zoom={zoom}
             width={bodyW}
             layoutVersion={layoutVersion}
-            currentPage={pageInfo.current}
+            currentPage={liveCurrentPage}
             hitPositions={hitPositions}
           />
         )}

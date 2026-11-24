@@ -13,7 +13,7 @@ The tool names below are those of the Hangul editor's AI panel. In another windo
 
 ## 1. Settle four things first
 
-Take them from the request and the attachments. Ask only for what is missing and matters, in one question; otherwise choose a sensible default and say in your reply what you assumed.
+Take them from the request and the attachments. Ask only for what is missing and matters, all in one `ask_questions` card (never as a question in your reply text); otherwise choose a sensible default and say in your reply what you assumed.
 
 | Decide | Why it matters |
 | --- | --- |

@@ -46,15 +46,15 @@ Rules: the extension is preserved automatically; illegal characters, trailing do
 
 ## Print
 
-File ▸ Print (⌘P/ctrl+P) in each editor opens a print window. Docs, PDF, Sheets, Slides and Markdown show a **Page layout** section in their usual print window, Hangul shows it in print preview, and HTML, Mind Map and Diagram show it in a new small print window. If you choose nothing under Page layout, printing works the same way as before.
+File ▸ Print (⌘P/ctrl+P) opens a print window with live preview in every editor — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram and Whiteboard. When nothing under Page layout is changed and you print through the system dialog, printing behaves the same way as before.
 
-- **Layout**: choose one of One page per sheet, Several pages per sheet (2, 4, 6, 9 or 16), Booklet (bind on the left or right), Poster (sheets across and down, overlap, cut lines) or Labels (one page per label or the same page on every label, a start label, a common A4 label sheet or custom sizes).
-- **Odd sides only, Even sides only, Print in reverse order**: sides are counted after the layout is applied, on the sides that actually come out of the printer. Use them on a printer without two-sided printing: print the fronts, turn the paper over, then print the backs.
-- **Shrink to fit the paper**: only pages larger than the chosen paper are shrunk; smaller pages are not enlarged. Sheets and Markdown keep using their own paper and scale settings.
-- **Grayscale and image resolution**: printing with Page layout options turns each page into an image before it goes to the printer. Choose Automatic, 150, 300 or 600 dpi for the resolution.
-- **Selection only**: Docs and Markdown print just the selected text, laid out again from the first page; Slides prints the selected slides and PDF the selected pages. Sheets prints the selected range as before.
-- **Layout diagram and result preview**: the diagram shows right away where each page number lands on the paper, and **Preview the result** shows what was actually made. **Save the arranged result as PDF** to print the same layout on another PC or at a print shop.
-- **System print window**: for a booklet, choose two-sided printing flipped on the short edge. Leave the page range and pages per sheet in the system window as they are.
+- **Destination (printer, PDF, images)**: pick an installed printer, **Save as PDF**, **Save as images**, or the **System print dialog** from one list. Image export supports PNG and JPG (High 90%, Medium 80%, Small file 65%), writing separate numbered files or a single ZIP archive for multi-page jobs. Documents with permission restrictions disable both PDF and image saving while keeping printing available.
+- **Live print preview**: all ten editors show a live preview before output. When layout arrangement, grayscale, watermarks or headers and footers change the output faces, the preview renders the actual arranged faces on demand with page navigation, zoom and a layout diagram toggle.
+- **Layout**: choose One page per sheet, Several pages per sheet (2, 4, 6, 9 or 16, with optional page borders), Booklet (left or right binding), Poster (columns × rows, overlap, cut lines and tile coordinate labels) or Labels (one page per label or repeat one page, start cell, A4 presets or custom dimensions).
+- **Scale, orientation, sides and order**: pick Actual size (100%), Fit to paper, Shrink oversized pages or Custom scale (10%–400%), and force Auto, Portrait or Landscape sheet orientation. Odd sides only, Even sides only and Reverse order are counted on the final arranged sides.
+- **Watermark, headers/footers, grayscale and resolution**: add a print-only text or image watermark and 6-slot headers and footers (title, date, page number or custom text) onto the final output faces without editing the document. Grayscale and DPI (Auto, 150, 300 or 600 dpi) control rasterized output quality.
+- **Page ranges and selection**: Docs and Markdown print selected text repaginated from page 1; Slides prints selected slides; PDF prints selected pages; Hangul supports All, Current page or Custom ranges; Sheets prints active sheets, workbook or selection.
+- **System print window**: for a booklet, choose two-sided printing flipped on the short edge. Leave page range and pages per sheet in the system window untouched.
 
 PDFs print with the current page order and rotations.
 

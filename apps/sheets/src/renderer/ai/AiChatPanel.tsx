@@ -8,6 +8,11 @@ import {
   AiReplyFooter,
   openGenerateForCurrentDocument,
   useAiInlineQuestions,
+  AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  questionToolActivities,
+  type AiInlineQuestions,
   AiScrollToBottom,
   AiModelPicker,
   AiWorkSteps,
@@ -29,6 +34,7 @@ import {
   type SkillUse,
 } from '@genoffice/ui'
 import React, { useEffect, useRef, useState } from 'react'
+import type { Lang } from '@genoffice/i18n'
 import {
   AiBlockedNotice,
   AiComposer,
@@ -243,6 +249,8 @@ export interface AiToolChip {
   readonly name?: string
   /** Tool output (truncated UI-side); when present the row expands to details */
   readonly output?: string
+  /** Tool input (JSON); kept for question tools so a reopened chat redraws the card */
+  readonly input?: string
 }
 
 /** what a queued message carries until it runs */
@@ -279,6 +287,8 @@ export interface AiChatMessage {
   readonly memory?: readonly ProjectMemoryLine[] | undefined
   /** tools another editor ran for this message (a reopened project chat) */
   readonly otherEditorTools?: ProjectChatEntry['otherEditorTools'] | undefined
+  /** came from a stored conversation: question cards are read-only */
+  readonly restored?: boolean | undefined
 }
 
 /** The project folder parts of the panel (built in App.tsx with `useProjectPanel` of @genoffice/ui) */
@@ -378,6 +388,7 @@ export function AiChatPanel({
   onCollapse,
   project,
   filePath,
+  inlineQuestions: givenQuestions,
 }: {
   readonly isOpen: boolean
   /** An explicit AI action focuses the composer, including when already open. */
@@ -456,6 +467,8 @@ export function AiChatPanel({
   readonly project?: AiPanelProject | undefined
   /** optional saved file path for the "Create another document" next-step chip */
   readonly filePath?: string | null | undefined
+  /** the run's question card, owned by App.tsx whose loop has its skill; absent: the panel's own */
+  readonly inlineQuestions?: AiInlineQuestions | undefined
 }): React.JSX.Element {
   const { t, lang } = useI18n()
   // A reply that stopped because its connection cannot go on: the queue is paused, so the next
@@ -464,7 +477,8 @@ export function AiChatPanel({
   const msgQueueRef = useRef<ChatRunQueue<QueuedMeta> | null>(null)
   /** the chat index whose changes card is taking its run back */
   const [reverting, setReverting] = useState<number | null>(null)
-  const inlineQuestions = useAiInlineQuestions()
+  const ownQuestions = useAiInlineQuestions()
+  const inlineQuestions = givenQuestions ?? ownQuestions
   const lastEntry = chat.at(-1)
   const lastReplyBlocked = lastEntry?.role === 'assistant' && lastEntry.blocked !== undefined
   useEffect(() => {
@@ -713,6 +727,9 @@ export function AiChatPanel({
     for (const a of atts) onRemoveAttachment(a.path)
     msgQueue.enqueue(text, { atts, skillUse })
     onPromptChange('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   const onDrop = (e: React.DragEvent): void => {
@@ -819,15 +836,22 @@ export function AiChatPanel({
                 {entry.role === 'user' && entry.attachments && entry.attachments.length > 0 && (
                   <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
                 )}
-                {entry.tools.length > 0 && (
-                  <AiWorkSteps lang={lang} steps={toWorkSteps(entry.tools)} />
-                )}
+                <ReplyToolSteps lang={lang} tools={entry.tools} restored />
                 <SkillUsedNotes tools={entry.tools} />
                 {project?.messageParts(entry)}
                 {entry.skillProposals?.map((key) => renderSkillCard?.(key))}
                 {entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} navs={[citationNav, fileNav]} />
+                    {entry.role === 'assistant' ? (
+                      <AiAssistantBody
+                        lang={lang}
+                        text={entry.text}
+                        navs={[citationNav, fileNav]}
+                        restored
+                      />
+                    ) : (
+                      <Markdown text={entry.text} navs={[citationNav, fileNav]} />
+                    )}
                   </div>
                 )}
               </div>
@@ -896,9 +920,7 @@ export function AiChatPanel({
                 </>
               ) : (
                 <>
-                  {entry.tools.length > 0 && (
-                    <AiWorkSteps lang={lang} steps={toWorkSteps(entry.tools)} />
-                  )}
+                  <ReplyToolSteps lang={lang} tools={entry.tools} restored={entry.restored} />
                   <SkillUsedNotes tools={entry.tools} />
                   {project?.messageParts(entry)}
                   {entry.skillProposals?.map((key) => renderSkillCard?.(key))}
@@ -924,15 +946,16 @@ export function AiChatPanel({
                           text={entry.text}
                           navs={[citationNav, fileNav]}
                           streaming={entry.streaming}
+                          restored={entry.restored}
                           questionStatus={inlineQuestions.textCardStates[`m-${index}`]?.status}
-                          savedAnswers={inlineQuestions.textCardStates[`m-${index}`]?.answers}
-                          onQuestionSubmit={(spec, answers) => {
-                            inlineQuestions.markTextCard(`m-${index}`, 'submitted', answers)
-                            onSend(inlineQuestions.formatFollowUp(spec, answers, false), [])
+                          questionAnswer={inlineQuestions.textCardStates[`m-${index}`]?.answer}
+                          onQuestionSubmit={(view, answer) => {
+                            inlineQuestions.markTextCard(`m-${index}`, 'submitted', answer)
+                            onSend(inlineQuestions.formatFollowUp(lang, view, answer), [])
                           }}
-                          onQuestionSkip={(spec) => {
+                          onQuestionSkip={(view) => {
                             inlineQuestions.markTextCard(`m-${index}`, 'skipped')
-                            onSend(inlineQuestions.formatFollowUp(spec, {}, true), [])
+                            onSend(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }), [])
                           }}
                         />
                       </div>
@@ -962,6 +985,7 @@ export function AiChatPanel({
                     reply={entry}
                     thinking={t('aiThinking')}
                     working={t('aiWorking')}
+                    paused={inlineQuestions.waitingForPerson}
                   />
                   {(showCopy || entry.usage) && (
                     <AiReplyFooter
@@ -994,6 +1018,17 @@ export function AiChatPanel({
             </div>
           )
         })}
+        {inlineQuestions.activeToolCard && (
+          <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
+            lang={lang}
+            view={inlineQuestions.activeToolCard.view}
+            status={inlineQuestions.activeToolCard.status}
+            answer={inlineQuestions.activeToolCard.answer}
+            onSubmit={inlineQuestions.submitToolCard}
+            onSkip={inlineQuestions.skipToolCard}
+          />
+        )}
         {skillNotes}
         {/* an MCP tool waiting for the person's yes (user MCP spec 7.4) */}
         <McpPermissionCard lang={lang} />
@@ -1306,6 +1341,38 @@ function IconCollapse({ size }: { size: number }): React.JSX.Element {
       <path d="M5.5 2.5v11" />
       <path d="M12.5 8H8.1M9.8 5.9 7.7 8l2.1 2.1" strokeWidth="1.3" strokeLinejoin="round" />
     </Svg>
+  )
+}
+
+/**
+ * The work steps of one reply. A restored reply draws each question tool as a
+ * read-only card instead of a step; a live reply keeps its card at the foot of the chat.
+ */
+function ReplyToolSteps({
+  lang,
+  tools,
+  restored,
+}: {
+  readonly lang: Lang
+  readonly tools: readonly AiToolChip[]
+  readonly restored: boolean | undefined
+}): React.JSX.Element | null {
+  if (tools.length === 0) return null
+  if (!restored) return <AiWorkSteps lang={lang} steps={toWorkSteps(tools)} />
+  return (
+    <>
+      <AiWorkSteps
+        lang={lang}
+        steps={toWorkSteps(
+          tools.filter((tool) => !isQuestionToolActivity({ name: tool.name ?? '' })),
+        )}
+      />
+      {questionToolActivities(tools.map((tool) => ({ ...tool, name: tool.name ?? '' }))).map(
+        (activity, k) => (
+          <AiQuestionReceipt key={`q${k}`} lang={lang} activity={activity} />
+        ),
+      )}
+    </>
   )
 }
 

@@ -1,27 +1,45 @@
 /// Excel's Print with Preview: settings on the left, the paginated pages on
 /// the right. The preview is the very HTML the printer and the PDF export
-/// receive (one paper-sized box per page), shown one page at a time. Below the
-/// settings sits the shared page layout panel; while one of its options
-/// rearranges the faces the preview shows its diagram instead, and with any
-/// option on Print takes the arranged route (spec 3, 4.5, 4.7).
+/// receive (one paper-sized box per page), shown one page at a time; when
+/// arrangement, grayscale, watermark or header/footer changes the output faces,
+/// it switches to LivePrintPreview. Destination integrates installed printers,
+/// Save as PDF, Save as images, and System print dialog.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  buildOverlayBundle,
   effectiveCollate,
   isCollateLocked,
+  LivePrintPreview,
   PrintLayoutPanel,
   PrintLayoutSchematic,
+  printLayoutIssueText,
   printLayoutProblem,
   printLayoutText,
+  SAVE_IMAGES_DEST,
+  SAVE_PDF_DEST,
   showsLayoutSchematic,
+  showsLivePrintPreview,
   takesNewPrintRoute,
   useDuplexCoupling,
   usePrintLayoutOptions,
+  type OverlayBundle,
   type PrintLayoutDuplex,
-  type PrintLayoutPreviewRequest,
   type PrintLayoutProgress,
 } from '@genoffice/ui'
-import type { PrintLayoutOptions } from '@genoffice/print-layout/plan'
+import {
+  createDefaultImageExportOptions,
+  hasFaceOverlays,
+  JPG_QUALITIES,
+  planSheets,
+  validateOptions,
+  type ImageBundleMode,
+  type ImageExportFormat,
+  type ImageExportOptions,
+  type JpgQuality,
+  type PageSize,
+  type PrintLayoutOptions,
+} from '@genoffice/print-layout/plan'
 
 import type { PrinterInfo } from '../shared/desktop-api'
 import type { PageSetupJournalState } from './edit-journal'
@@ -118,25 +136,48 @@ function overridesFor(settings: Settings): PageSetupJournalState {
   }
 }
 
+function plannedFaceSizes(
+  pages: readonly PageSize[] | null,
+  options: PrintLayoutOptions,
+): PageSize[] {
+  if (!pages || pages.length === 0) return []
+  const checked = validateOptions(options, pages.length)
+  if (!checked.ok) return []
+  try {
+    return planSheets(pages, checked.options).output.map((f) => ({
+      widthPt: f.width,
+      heightPt: f.height,
+    }))
+  } catch {
+    return []
+  }
+}
+
 export function PrintDialog({
   host,
   onClose,
   onPageSetup,
   revision,
+  initialDestination,
 }: {
   readonly host: PrintPreviewHost
   readonly onClose: () => void
   readonly onPageSetup: () => void
   /// Bumped when Page Setup (Header & Footer) closes so the preview re-lays out.
   readonly revision: number
+  /// Optional initial destination pre-selected when opened from the Quick Print menu.
+  readonly initialDestination?: string | undefined
 }): React.JSX.Element {
   const { t, lang } = useI18n()
   const [settings, setSettings] = useState<Settings>(() => initialSettings(host))
   const [range, setRange] = useState<PrintRange>('active')
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
-  const [deviceName, setDeviceName] = useState(DEFAULT_PRINTER)
+  const [deviceName, setDeviceName] = useState(() => initialDestination ?? DEFAULT_PRINTER)
   const [copies, setCopies] = useState(1)
   const [collate, setCollate] = useState(true)
+  const [imageOptions, setImageOptions] = useState<ImageExportOptions>(() =>
+    createDefaultImageExportOptions(),
+  )
   const [pagesMode, setPagesMode] = useState<'all' | 'range'>('all')
   const [from, setFrom] = useState(1)
   const [to, setTo] = useState(1)
@@ -151,9 +192,21 @@ export function PrintDialog({
   const modal = useModalDialog(onClose)
   // Mounted per open, so every print starts from the defaults (spec 4).
   const [layout, setLayout] = usePrintLayoutOptions(true)
-  const { duplex, setDuplex } = useDuplexCoupling(layout, 'simplex')
+  const documentTitle = job?.fileName.replace(/\.[^./\\]+$/, '')
+  const effectiveLayout = useMemo<PrintLayoutOptions>(
+    () =>
+      documentTitle && layout.headerFooter.enabled
+        ? { ...layout, headerFooter: { ...layout.headerFooter, documentTitle } }
+        : layout,
+    [layout, documentTitle],
+  )
+  const { duplex, setDuplex } = useDuplexCoupling(effectiveLayout, 'simplex')
   const [layoutProgress, setLayoutProgress] = useState<PrintLayoutProgress | null>(null)
   const layoutRunning = useRef(false)
+
+  const isSavePdf = deviceName === SAVE_PDF_DEST
+  const isSaveImages = deviceName === SAVE_IMAGES_DEST
+  const isSave = isSavePdf || isSaveImages
 
   // Progress of a print or save; the result preview shows its own.
   useEffect(
@@ -167,6 +220,7 @@ export function PrintDialog({
   useEffect(
     () => () => {
       if (layoutRunning.current) void host.cancelArranged()
+      host.closeArrangedPreview?.()
     },
     [host],
   )
@@ -283,15 +337,25 @@ export function PrintDialog({
   const rangeInvalid =
     pagesMode === 'range' && (from < 1 || to < from || (pageCount > 0 && to > pageCount))
   const canOutput = job !== null && !busy && !rangeInvalid
-  const arranged = takesNewPrintRoute(layout)
-  const schematic = showsLayoutSchematic(layout)
+  const arranged = takesNewPrintRoute(effectiveLayout)
+  const useLivePreview = !!host.previewArrangedFaces && showsLivePrintPreview(effectiveLayout)
+  const schematic = useLivePreview || showsLayoutSchematic(effectiveLayout)
   const jobPages = useMemo(
     () => (job && !rangeInvalid ? printJobPageSizes(job.documents, pages) : null),
     // `pages` is a fresh object every render; its parts are the dependency
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [job, rangeInvalid, pagesMode, from, to],
   )
-  const layoutProblem = arranged ? printLayoutProblem(layout, jobPages) : null
+  const faceSizes = useMemo(
+    () => plannedFaceSizes(jobPages, effectiveLayout),
+    [jobPages, effectiveLayout],
+  )
+  const layoutProblem = arranged || isSave ? printLayoutProblem(effectiveLayout, jobPages) : null
+  const problemText = layoutProblem
+    ? printLayoutIssueText(lang, layoutProblem, {
+        ...(jobPages ? { pageCount: jobPages.length } : {}),
+      })
+    : null
 
   /// A null message: the user stopped a layout job, so the dialog stays open.
   const run = async (action: (built: PrintJob) => Promise<string | null>): Promise<void> => {
@@ -319,7 +383,18 @@ export function PrintDialog({
     })
   }
 
-  const print = (): void => {
+  const dispatchAction = (overlays: OverlayBundle | undefined): void => {
+    if (isSavePdf) {
+      void runLayout((built) => host.saveArrangedPdf(built, pages, effectiveLayout, overlays))
+      return
+    }
+    if (isSaveImages) {
+      if (!host.saveArrangedImages) return
+      void runLayout((built) =>
+        host.saveArrangedImages!(built, pages, effectiveLayout, imageOptions, overlays),
+      )
+      return
+    }
     const systemDialog = deviceName === SYSTEM_DIALOG
     const output = {
       deviceName: systemDialog ? null : deviceName,
@@ -329,22 +404,40 @@ export function PrintDialog({
       pages,
     }
     void (arranged
-      ? runLayout((built) => host.printArranged(built, output, layout))
+      ? runLayout((built) => host.printArranged(built, output, effectiveLayout, overlays))
       : run((built) => host.print(built, output)))
   }
 
-  const saveArranged = (options: PrintLayoutOptions): void => {
-    void runLayout((built) => host.saveArrangedPdf(built, pages, options))
+  const print = (): void => {
+    if (!hasFaceOverlays(effectiveLayout)) {
+      dispatchAction(undefined)
+      return
+    }
+    void buildOverlayBundle(effectiveLayout, faceSizes).then((overlays) => dispatchAction(overlays))
   }
 
-  const previewRequest = useCallback<PrintLayoutPreviewRequest>(
-    (options, context) =>
-      job
-        ? host.previewArranged(job, pages, options, context)
-        : Promise.reject(new Error('the print job is not ready')),
-    // `pages` is a fresh object every render; its parts are the dependency
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [host, job, pagesMode, from, to],
+  const editorKey = `${range}|${pagesMode}:${from}-${to}|${JSON.stringify(settings)}|rev:${revision}`
+  const previewCacheKey = `${editorKey}|${JSON.stringify(effectiveLayout)}`
+  const fetchFaces = useCallback(
+    async (faceIndices: number[], longSidePx: number, signal: AbortSignal) => {
+      if (!job || !host.previewArrangedFaces) throw new Error('preview unavailable')
+      const overlays = await buildOverlayBundle(effectiveLayout, faceSizes)
+      signal.throwIfAborted()
+      const optionsKey = `${JSON.stringify(effectiveLayout)}:${overlays ? overlays.stamps.length : 0}`
+      return host.previewArrangedFaces(
+        job,
+        pages,
+        effectiveLayout,
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        overlays,
+        signal,
+      )
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pages fields tracked via editorKey
+    [job, host, effectiveLayout, faceSizes, editorKey],
   )
 
   return (
@@ -362,51 +455,135 @@ export function PrintDialog({
             <div className="dialog-grid">
               <label className="dialog-span">
                 {t('dlgPrintPrinter')}
-                <select value={deviceName} onChange={(event) => setDeviceName(event.target.value)}>
+                <select
+                  data-print="printer"
+                  value={deviceName}
+                  onChange={(event) => setDeviceName(event.target.value)}
+                >
                   <option value={DEFAULT_PRINTER}>{t('dlgPrintDefaultPrinter')}</option>
                   {printers.map((printer) => (
                     <option key={printer.name} value={printer.name}>
                       {printer.displayName}
                     </option>
                   ))}
+                  <option value={SAVE_PDF_DEST}>{printLayoutText(lang, 'destSavePdf')}</option>
+                  <option value={SAVE_IMAGES_DEST}>
+                    {printLayoutText(lang, 'destSaveImages')}
+                  </option>
                   <option value={SYSTEM_DIALOG}>{t('dlgPrintSystemDialog')}</option>
                 </select>
               </label>
-              <label>
-                {t('dlgPrintCopies')}
-                <input
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={copies}
-                  disabled={deviceName === SYSTEM_DIALOG}
-                  onChange={(event) =>
-                    setCopies(Math.min(999, Math.max(1, Number(event.target.value) || 1)))
-                  }
-                />
-              </label>
-              <label className="dialog-check">
-                <input
-                  type="checkbox"
-                  checked={effectiveCollate(layout, collate)}
-                  disabled={deviceName === SYSTEM_DIALOG || isCollateLocked(layout)}
-                  onChange={(event) => setCollate(event.target.checked)}
-                />
-                {t('dlgPrintCollate')}
-              </label>
-              <label className="dialog-span">
-                {printLayoutText(lang, 'duplex')}
-                <select
-                  data-print="duplex"
-                  value={duplex}
-                  disabled={deviceName === SYSTEM_DIALOG}
-                  onChange={(event) => setDuplex(event.target.value as PrintLayoutDuplex)}
-                >
-                  <option value="simplex">{printLayoutText(lang, 'duplexOff')}</option>
-                  <option value="longEdge">{printLayoutText(lang, 'duplexLong')}</option>
-                  <option value="shortEdge">{printLayoutText(lang, 'duplexShort')}</option>
-                </select>
-              </label>
+              {!isSave && (
+                <>
+                  <label>
+                    {t('dlgPrintCopies')}
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={copies}
+                      disabled={deviceName === SYSTEM_DIALOG}
+                      onChange={(event) =>
+                        setCopies(Math.min(999, Math.max(1, Number(event.target.value) || 1)))
+                      }
+                    />
+                  </label>
+                  <label className="dialog-check">
+                    <input
+                      type="checkbox"
+                      checked={effectiveCollate(effectiveLayout, collate)}
+                      disabled={deviceName === SYSTEM_DIALOG || isCollateLocked(effectiveLayout)}
+                      onChange={(event) => setCollate(event.target.checked)}
+                    />
+                    {t('dlgPrintCollate')}
+                  </label>
+                  <label className="dialog-span">
+                    {printLayoutText(lang, 'duplex')}
+                    <select
+                      data-print="duplex"
+                      value={duplex}
+                      disabled={deviceName === SYSTEM_DIALOG}
+                      onChange={(event) => setDuplex(event.target.value as PrintLayoutDuplex)}
+                    >
+                      <option value="simplex">{printLayoutText(lang, 'duplexOff')}</option>
+                      <option value="longEdge">{printLayoutText(lang, 'duplexLong')}</option>
+                      <option value="shortEdge">{printLayoutText(lang, 'duplexShort')}</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              {isSavePdf && effectiveLayout.grayscale && (
+                <p className="gs-pl-note dialog-span">{printLayoutText(lang, 'savePdfGrayNote')}</p>
+              )}
+              {isSaveImages && (
+                <>
+                  <label className="dialog-span">
+                    {printLayoutText(lang, 'imageFormat')}
+                    <select
+                      data-print="image-format"
+                      value={imageOptions.format}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setImageOptions((cur) => ({
+                          ...cur,
+                          format: event.target.value as ImageExportFormat,
+                        }))
+                      }
+                    >
+                      <option value="png">PNG</option>
+                      <option value="jpg">JPG</option>
+                    </select>
+                  </label>
+                  {imageOptions.format === 'jpg' && (
+                    <label className="dialog-span">
+                      {printLayoutText(lang, 'imageQuality')}
+                      <select
+                        data-print="image-quality"
+                        value={String(imageOptions.quality)}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setImageOptions((cur) => ({
+                            ...cur,
+                            quality: Number(event.target.value) as JpgQuality,
+                          }))
+                        }
+                      >
+                        {JPG_QUALITIES.map((q) => (
+                          <option key={q} value={String(q)}>
+                            {printLayoutText(
+                              lang,
+                              q === 90
+                                ? 'imageQualityHigh'
+                                : q === 80
+                                  ? 'imageQualityMedium'
+                                  : 'imageQualitySmall',
+                            )}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {faceSizes.length >= 2 && (
+                    <label className="dialog-span">
+                      {printLayoutText(lang, 'imageBundle')}
+                      <select
+                        data-print="image-bundle"
+                        value={imageOptions.bundle}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setImageOptions((cur) => ({
+                            ...cur,
+                            bundle: event.target.value as ImageBundleMode,
+                          }))
+                        }
+                      >
+                        <option value="files">{printLayoutText(lang, 'imageBundleFiles')}</option>
+                        <option value="zip">{printLayoutText(lang, 'imageBundleZip')}</option>
+                      </select>
+                    </label>
+                  )}
+                </>
+              )}
               <label className="dialog-span">
                 {t('dlgPrintRange')}
                 <select
@@ -564,14 +741,12 @@ export function PrintDialog({
             </div>
             <PrintLayoutPanel
               lang={lang}
-              value={layout}
+              value={effectiveLayout}
               onChange={setLayout}
               pages={jobPages}
               capabilities={LAYOUT_CAPABILITIES}
               labelSpecStore={host.labelSpecStore}
               showSchematic={false}
-              {...(job ? { onPreviewRequest: previewRequest } : {})}
-              {...(canOutput ? { onSavePdf: saveArranged } : {})}
               job={{
                 progress: layoutProgress,
                 onCancel: () => void host.cancelArranged(),
@@ -580,11 +755,22 @@ export function PrintDialog({
             />
           </div>
           <div className="print-preview">
-            {/* The page preview stays mounted under the diagram so its size
-                tracking and laid-out frame are ready when the diagram goes. */}
+            {/* The page preview stays mounted under the diagram/live preview so its size
+                tracking and laid-out frame are ready when the native preview returns. */}
             {schematic && (
               <div className="print-preview-schematic" data-print-preview="schematic">
-                <PrintLayoutSchematic lang={lang} pages={jobPages} options={layout} />
+                {useLivePreview ? (
+                  <LivePrintPreview
+                    lang={lang}
+                    pages={jobPages}
+                    options={effectiveLayout}
+                    cacheKey={previewCacheKey}
+                    fetchFaces={job ? fetchFaces : undefined}
+                    problemText={problemText}
+                  />
+                ) : (
+                  <PrintLayoutSchematic lang={lang} pages={jobPages} options={effectiveLayout} />
+                )}
               </div>
             )}
             <div className="print-preview-bar" hidden={schematic}>
@@ -673,10 +859,12 @@ export function PrintDialog({
           <button
             className="primary-action"
             data-print-action="print"
-            disabled={!canOutput || layoutProblem !== null}
+            disabled={
+              !canOutput || layoutProblem !== null || (isSaveImages && !host.saveArrangedImages)
+            }
             onClick={print}
           >
-            {t('dlgPrintButton')}
+            {isSave ? printLayoutText(lang, 'save') : t('dlgPrintButton')}
           </button>
         </div>
       </div>
