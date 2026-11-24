@@ -23,6 +23,8 @@ export interface AskQuestionsDeps {
    * then answers `skip` without waiting for this promise.
    */
   readonly ask: (request: QuestionCardRequest, signal?: AbortSignal) => Promise<QuestionCardAnswer>
+  /** Called once at the start of every new AgentLoop run (normal send, retry, preset, handoff). */
+  readonly onTurnStart?: (() => void) | undefined
 }
 
 /** `summary` of a card without a title. */
@@ -208,6 +210,11 @@ export function createAskQuestionsSkill(deps: AskQuestionsDeps): AskQuestionsSki
     tools: [TOOL_DEF],
     resetTurn() {
       askedInRun = false
+    },
+    buildContext() {
+      askedInRun = false
+      deps.onTurnStart?.()
+      return ''
     },
     async executeTool(call: AgentToolCall, signal?: AbortSignal): Promise<ToolExecution> {
       if (call.name !== ASK_QUESTIONS_TOOL) {

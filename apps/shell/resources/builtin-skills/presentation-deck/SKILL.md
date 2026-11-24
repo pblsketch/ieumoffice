@@ -17,7 +17,7 @@ When audience, deck purpose, target slide count, or visual tone is unclear, call
 
 ## 2. Choose the matching deck structure
 
-Pick one of the four purpose-specific structures (orthogonal to visual theme):
+If the user already selected a deck structure in the UI (provided in the system prompt), follow that selected structure instead of picking another. Otherwise pick one of the four purpose-specific structures (orthogonal to visual theme):
 
 - **Weekly Report (~6 slides):** Cover → Executive Summary → Key Metrics → Completed Work → Risks & Decisions → Next Week Plan.
 - **Proposal (~8 slides):** Cover → Problem & Opportunity → Proposed Solution → Workflow/Architecture → Expected Impact → Roadmap & Milestones → Resources & Risks → Decision Ask.

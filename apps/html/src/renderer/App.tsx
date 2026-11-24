@@ -54,6 +54,12 @@ import {
   runHeadlessRendererExport,
 } from '@genoffice/electron-utils/headless-export'
 import { useI18n } from './i18n/locale'
+import { htmlTemplatesText, practicalTemplateLabel } from './i18n/strings-templates'
+import {
+  PRACTICAL_HTML_TEMPLATES,
+  findPracticalHtmlTemplate,
+  type PracticalHtmlTemplateId,
+} from './templates/practical-templates'
 import { parseDocText, serializeDocText, type Envelope } from './document/envelope'
 import {
   SourceEditor,
@@ -1216,6 +1222,23 @@ export default function App() {
     replaceAll(documentSkeleton(lang), false)
   }, [lang, replaceAll])
 
+  /** apply one of the 5 offline 1-page practical HTML templates (works in AI-OFF mode too) */
+  const applyPracticalTemplate = useCallback(
+    (id: PracticalHtmlTemplateId) => {
+      const tpl = findPracticalHtmlTemplate(id)
+      if (!tpl) return
+      if (
+        !isDocEmpty(textRef.current) &&
+        !window.confirm(htmlTemplatesText(lang, 'templatesReplaceConfirm'))
+      ) {
+        return
+      }
+      selectSidRef.current?.(null, {})
+      replaceAll(tpl.html, false)
+    },
+    [lang, replaceAll],
+  )
+
   /** ribbon Insert menu: a starter element after the selection (or at the end of the body), then straight into editing */
   const insertElement = async (kind: InsertKind, opts: InsertOptions = {}) => {
     let imageSrc: string | undefined
@@ -2190,6 +2213,7 @@ export default function App() {
         onMath={() => openMathRef.current()}
         onInsertSkeleton={insertSkeleton}
         canInsertSkeleton={canvasMode === 'edit' && isDocEmpty(textRef.current)}
+        onApplyTemplate={applyPracticalTemplate}
         onAiPreset={(text) => {
           flushPending()
           setAiOpen(true)
@@ -2314,6 +2338,37 @@ export default function App() {
                   onLoad={onPreviewLoad}
                   draft={draftHtml}
                 />
+                {canvasMode === 'edit' && view !== 'source' && isDocEmpty(text) && !draftHtml && (
+                  <div className="html-blank-templates" data-testid="html-blank-templates">
+                    <div className="html-blank-templates-panel">
+                      <h2 className="html-blank-templates-title">
+                        {htmlTemplatesText(lang, 'templatesTitle')}
+                      </h2>
+                      <p className="html-blank-templates-subtitle">
+                        {htmlTemplatesText(lang, 'templatesSubtitle')}
+                      </p>
+                      <div className="html-blank-templates-grid">
+                        {PRACTICAL_HTML_TEMPLATES.map((tpl) => {
+                          const label = practicalTemplateLabel(lang, tpl.id)
+                          return (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              className="html-blank-template-card"
+                              data-template-id={tpl.id}
+                              onClick={() => applyPracticalTemplate(tpl.id)}
+                            >
+                              <span className="html-blank-template-card-title">{label.title}</span>
+                              <span className="html-blank-template-card-summary">
+                                {label.summary}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {canvasMode === 'present' && (
                   <button
                     type="button"

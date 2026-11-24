@@ -3416,3 +3416,115 @@ button.status-item[aria-pressed='true'] {
   min-width: 0;
   box-sizing: border-box;
 }
+
+/* Offline 1-page practical templates: ribbon menu and blank-canvas quick start */
+.rb-menu.rb-template-menu {
+  min-width: 280px;
+  max-width: 340px;
+  padding: 6px;
+}
+
+.rb-template-menu-head {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.rb-menu.rb-template-menu button.rb-template-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  height: auto;
+  padding: 7px 9px;
+  line-height: 1.35;
+}
+
+.rb-template-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rb-template-item-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: normal;
+}
+
+.html-blank-templates {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.html-blank-templates-panel {
+  pointer-events: auto;
+  width: min(680px, 100%);
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-menu);
+}
+
+.html-blank-templates-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.html-blank-templates-subtitle {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.html-blank-templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.html-blank-template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.html-blank-template-card:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.html-blank-template-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.html-blank-template-card-summary {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}

@@ -11,9 +11,14 @@ import {
   type QuickPrintPrefStore,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
+import { htmlTemplatesText, practicalTemplateLabel } from '../i18n/strings-templates'
 import { useAiVisible } from '../ai-visibility'
 import type { StringKey } from '../i18n/locale'
 import type { InsertKind, InsertOptions } from '../document/insert-presets'
+import {
+  PRACTICAL_HTML_TEMPLATES,
+  type PracticalHtmlTemplateId,
+} from '../templates/practical-templates'
 import {
   IconBullets,
   IconButton,
@@ -37,6 +42,7 @@ import {
   IconSplitView,
   IconSummarize,
   IconTable,
+  IconTemplate,
   IconUndo,
   IconWand,
 } from './icons'
@@ -89,6 +95,8 @@ interface Props {
   onInsertSkeleton: () => void
   /** false once the page has content: a skeleton would only duplicate the document */
   canInsertSkeleton: boolean
+  /** load one of the 5 offline 1-page practical templates (works in AI-OFF mode too) */
+  onApplyTemplate?: (id: PracticalHtmlTemplateId) => void
   /** page-wide AI actions: send this instruction to the assistant right away */
   onAiPreset: (text: string) => void
   canvasMode: CanvasMode
@@ -136,8 +144,8 @@ const MORE_KINDS: Array<{ kind: InsertKind; Icon: InsertIcon }> = [
   { kind: 'divider', Icon: IconDivider },
 ]
 
-/** which insert popover is open: the image-URL form, the table size grid or the "More" menu */
-type InsertPopover = 'imageUrl' | 'table' | 'more'
+/** which insert popover is open: the image-URL form, the table size grid, templates, or "More" */
+type InsertPopover = 'imageUrl' | 'table' | 'more' | 'templates'
 
 const TABLE_PICKER_ROWS = 8
 const TABLE_PICKER_COLS = 10
@@ -172,6 +180,7 @@ export function Ribbon(p: Props) {
   const imageRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const moreRef = useRef<HTMLDivElement>(null)
+  const templatesRef = useRef<HTMLDivElement>(null)
   const closeInsert = () => {
     setInsertPop(null)
     setImageUrl('')
@@ -180,7 +189,7 @@ export function Ribbon(p: Props) {
   const toggleInsert = (pop: InsertPopover) =>
     insertPop === pop ? closeInsert() : setInsertPop(pop)
   useDismissablePopover(insertPop !== null, closeInsert, {
-    inside: () => [imageRef.current, tableRef.current, moreRef.current],
+    inside: () => [imageRef.current, tableRef.current, moreRef.current, templatesRef.current],
     escape: true,
   })
   const submitImageUrl = () => {
@@ -548,6 +557,56 @@ export function Ribbon(p: Props) {
                 </div>
               )}
             </div>
+            {p.onApplyTemplate && (
+              <div className="rb-menu-wrap" ref={templatesRef}>
+                <button
+                  type="button"
+                  className={`rb-btn rb-view${insertPop === 'templates' ? ' active' : ''}`}
+                  data-tip={htmlTemplatesText(lang, 'templatesTitle')}
+                  data-testid="html-ribbon-templates-btn"
+                  aria-haspopup="menu"
+                  aria-expanded={insertPop === 'templates'}
+                  disabled={insertOff}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => toggleInsert('templates')}
+                >
+                  <IconTemplate size={ICON} />
+                  <span>{htmlTemplatesText(lang, 'templatesBtn')}</span>
+                  <IconChevronDown size={14} />
+                </button>
+                {insertPop === 'templates' && (
+                  <div
+                    className="rb-menu rb-template-menu"
+                    role="menu"
+                    aria-label={htmlTemplatesText(lang, 'templatesTitle')}
+                  >
+                    <div className="rb-template-menu-head">
+                      {htmlTemplatesText(lang, 'templatesSubtitle')}
+                    </div>
+                    {PRACTICAL_HTML_TEMPLATES.map((tpl) => {
+                      const label = practicalTemplateLabel(lang, tpl.id)
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          role="menuitem"
+                          className="rb-template-item"
+                          data-template-id={tpl.id}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            closeInsert()
+                            p.onApplyTemplate?.(tpl.id)
+                          }}
+                        >
+                          <span className="rb-template-item-title">{label.title}</span>
+                          <span className="rb-template-item-summary">{label.summary}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

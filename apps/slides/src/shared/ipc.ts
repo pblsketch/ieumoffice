@@ -1972,6 +1972,8 @@ export interface SlidesApi {
     text: string
     /** the materials to attach, in the order the user listed them */
     materials: Array<{ path: string; name: string }>
+    /** optional slides-only toggle (default off): keep slide text brief and put details in speaker notes */
+    speakerNotesSeparate?: boolean
   } | null>
   /** A run started in this tab with these attachments; true when it was recorded as the hand-off's start */
   reportGenerateRunStarted?: (attachedPaths: string[]) => Promise<boolean>
