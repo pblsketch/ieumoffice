@@ -578,7 +578,12 @@ export function renderCellContents(
       const html = exportControl(doc, sec, para, path, ctrl)
       if (html === null) break
       const inner = renderControl(doc, sec, para, path, ctrl, html)
-      if (inner) objects.push(`<div class="flow-obj">${inner}</div>`)
+      // data-obj-path: the cell paragraph holding the object, for finding it again (doc check)
+      if (inner) {
+        objects.push(
+          `<div class="flow-obj" data-obj-path='${escapeAttr(JSON.stringify(path))}'>${inner}</div>`,
+        )
+      }
     }
     if (text || objects.length === 0) parts.push(blockDiv(sec, para, path, text))
     parts.push(...objects)

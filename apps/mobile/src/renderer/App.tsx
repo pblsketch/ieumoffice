@@ -45,6 +45,8 @@ import { rememberedLayout, rememberLayout } from './shell/layoutMemory'
 import { pickImageFile, readPicture } from './editors/pickPicture'
 import { MemoSheet } from './components/MemoSheet'
 import { PageNumberSheet } from './components/PageNumberSheet'
+import { DocCheckSheet } from './components/DocCheckSheet'
+import type { DocumentProfile, Place } from '@genoffice/doc-rules'
 import {
   applyPageNumber,
   readPageNumber,
@@ -884,6 +886,56 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     }
   }, [markdownApi, openLoadedSession, showToast, tNow])
 
+  const [docCheckOpen, setDocCheckOpen] = useState(false)
+
+  /** What the document is made of, read by the page editor plugin after flow edits are handed over. */
+  const readDocumentProfile = useCallback(async (): Promise<DocumentProfile> => {
+    const studio = hwpEditorRef.current
+    if (!studio) throw new Error('the page editor is not ready')
+    await flushFlowToStudio()
+    return (await studio.callPlugin('documentProfile')) as DocumentProfile
+  }, [flushFlowToStudio])
+
+  /** Shows a checked place: in the flow view by its block, on the page through the plugin. */
+  const revealCheckedPlace = useCallback((place: Place) => {
+    const path = place.anchor.path?.map((step) => ({
+      controlIndex: step.controlIndex,
+      cellIndex: step.cellIndex,
+      cellParaIndex: step.cellParaIndex ?? 0,
+    }))
+    const sec = place.anchor.section ?? 0
+    if (hwpLayoutRef.current === 'flow') {
+      flowRef.current?.reveal({
+        sec,
+        para: place.anchor.para,
+        path: path && path.length > 0 ? path : null,
+      })
+      return
+    }
+    void hwpEditorRef.current
+      ?.callPlugin('reveal', {
+        sec,
+        para: place.anchor.para,
+        ...(path && path.length > 0 ? { path } : {}),
+        offset: 0,
+        length: 0,
+      })
+      .catch(() => {})
+  }, [])
+
+  /** The check's one fix: a Korean-word-processor-only font replaced everywhere. */
+  const replaceCheckedFont = useCallback(
+    async (from: string, to: string) => {
+      const studio = hwpEditorRef.current
+      if (!studio) throw new Error('the page editor is not ready')
+      await flushFlowToStudio()
+      await studio.callPlugin('replaceFont', from, to)
+      sessionControllerRef.current?.markDirty(true)
+      refreshFlowFromStudio()
+    },
+    [flushFlowToStudio, refreshFlowFromStudio],
+  )
+
   const [pageNumberOpen, setPageNumberOpen] = useState(false)
   const [pageNumberNow, setPageNumberNow] = useState<PageNumberSetting | null>(null)
 
@@ -1264,7 +1316,15 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                       onPress: () => void exportMarkdownToHwp(),
                     },
                   ]
-                : []
+                : isHwpDoc
+                  ? [
+                      {
+                        id: 'docCheck',
+                        label: tNow('checkTitle'),
+                        onPress: () => setDocCheckOpen(true),
+                      },
+                    ]
+                  : []
             }
             viewTools={viewTools}
             onBack={() => void handleBackFromEditor()}
@@ -1377,6 +1437,14 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           onEdit={(id, text) => memoAction((view) => view.editMemo(id, text))}
           onRemove={(id) => memoAction((view) => view.removeMemo(id))}
           onReveal={(id) => flowRef.current?.revealMemo(id)}
+        />
+        <DocCheckSheet
+          open={docCheckOpen && isHwpDoc}
+          onClose={() => setDocCheckOpen(false)}
+          format={activeFormat === 'hwpx' ? 'hwpx' : 'hwp'}
+          readProfile={readDocumentProfile}
+          onReveal={revealCheckedPlace}
+          onReplaceFont={mode === 'edit' && canEditActive ? replaceCheckedFont : undefined}
         />
         <PageNumberSheet
           open={pageNumberOpen && isHwpDoc}

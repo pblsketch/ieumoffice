@@ -295,6 +295,11 @@ export interface FlowEditor {
   removeMemo(id: number): boolean
   /** Scrolls to a memo's text and selects it. */
   revealMemo(id: number): void
+  /**
+   * Scrolls to a place in the document: its text block, or for a table or picture the
+   * object its paragraph shows. Puts the caret there when editing.
+   */
+  reveal(at: BlockAddress): void
   setEditable(editable: boolean): void
   runFormat(action: FlowFormatAction): void
   /** Puts a picture in line at the end of the caret's paragraph; false without a caret in text. */
@@ -1277,6 +1282,31 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
       memoCall(() => doc.insertMemoReply(parentId, JSON.stringify({ author, text }))),
     editMemo: (id, text) => memoCall(() => doc.setMemoText(id, text)),
     removeMemo: (id) => memoCall(() => doc.removeMemo(id)),
+    reveal(at) {
+      const block = blockEl(at)
+      // a cell paragraph that only holds a table or picture shows that object
+      const cellObject = at.path
+        ? [...body.querySelectorAll<HTMLElement>('.flow-obj[data-obj-path]')].find((el) => {
+            const cell = el.closest('[data-cell-path]')
+            return (
+              el.getAttribute('data-obj-path') === JSON.stringify(at.path) &&
+              Number(cell?.getAttribute('data-sec')) === at.sec &&
+              Number(cell?.getAttribute('data-para')) === at.para
+            )
+          })
+        : undefined
+      const target =
+        block ??
+        cellObject ??
+        [...body.children].find(
+          (el) =>
+            Number(el.getAttribute('data-sec')) === at.sec &&
+            Number(el.getAttribute('data-para')) === at.para,
+        )
+      if (!target) return
+      target.scrollIntoView({ block: 'center' })
+      if (block && editable) placeCaret(block, 0)
+    },
     revealMemo(id) {
       const memo = readMemos().find((m) => m.id === id)
       const el = memo?.at ? blockEl(memo.at) : null
