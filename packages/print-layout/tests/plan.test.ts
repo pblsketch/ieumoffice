@@ -38,9 +38,9 @@ describe('defaults', () => {
   it('pins every default value', () => {
     expect(createDefaultOptions()).toEqual({
       mode: 'single',
-      nup: { count: 2, order: 'row' },
+      nup: { count: 2, order: 'row', border: false },
       booklet: { binding: 'left' },
-      poster: { cols: 2, rows: 2, overlapMm: 10, cutMarks: true },
+      poster: { cols: 2, rows: 2, overlapMm: 10, cutMarks: true, tileLabels: false },
       labels: {
         fill: 'sequence',
         repeatPage: 1,
@@ -51,8 +51,30 @@ describe('defaults', () => {
       reverse: false,
       paper: 'source',
       fitToPaper: false,
+      scaling: 'actual',
+      scalePercent: 100,
+      orientation: 'auto',
       grayscale: false,
       dpi: 'auto',
+      watermark: {
+        kind: 'none',
+        text: '',
+        color: '#888888',
+        opacity: 0.2,
+        angle: -45,
+        fontSize: 48,
+        tile: false,
+        imageScale: 50,
+      },
+      headerFooter: {
+        enabled: false,
+        topLeft: { kind: 'none', text: '' },
+        topCenter: { kind: 'none', text: '' },
+        topRight: { kind: 'none', text: '' },
+        bottomLeft: { kind: 'none', text: '' },
+        bottomCenter: { kind: 'pageNumber', text: '' },
+        bottomRight: { kind: 'none', text: '' },
+      },
     })
   })
 
@@ -110,7 +132,7 @@ describe('validateOptions', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.options.mode).toBe('nup')
-    expect(r.options.nup).toEqual({ count: 4, order: 'row' })
+    expect(r.options.nup).toEqual({ count: 4, order: 'row', border: false })
     expect(r.options.poster).toEqual(createDefaultOptions().poster)
     expect(r.options.dpi).toBe('auto')
   })

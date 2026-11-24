@@ -6,6 +6,8 @@ import {
   AiPanelSideButton,
   AiQualityBadge,
   AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
   AiModelPicker,
   type AiModelPickerBridge,
   AiBlockedNotice,
@@ -148,10 +150,9 @@ import {
   type BriefPlanSpec,
   type BriefPlanResult,
 } from './brief-writer'
-import type { BriefDecision, ClarifyQuestion, HtmlDocAccess } from './tools'
+import type { BriefDecision, HtmlDocAccess } from './tools'
 import type { Brief } from '../document/brief'
 import { isDocEmpty } from '../document/blank'
-import { ClarifyCard } from '../components/ClarifyCard'
 import { BriefCard } from '../components/BriefCard'
 import { createSearchSkill } from './search-skill'
 import { pastedBase64Image } from './base64-paste'
@@ -337,12 +338,73 @@ interface ToolActivity {
   /** the running tool holds the run on a docked card: the row and the group title say whose turn it is */
   waiting?: PanelWait
   isError?: boolean
+  /** the call's input as JSON: kept for the question card only, so a reopened chat can draw it */
+  input?: string
   output?: string
+}
+
+/** Cap on a question card's stored input and output (the store cuts each field at the same length) */
+const QUESTION_TOOL_FIELD_MAX = 16_000
+
+/**
+ * The tool activity as this panel keeps and stores it. A question card keeps
+ * its input and its whole output (spec 5.1); any other tool keeps no input and
+ * the first TOOL_OUTPUT_MAX_CHARS of its output, as before.
+ */
+function toolActivityOf(tool: {
+  name: string
+  summary: string
+  isError?: boolean | undefined
+  input?: unknown
+  output?: string | undefined
+}): ToolActivity {
+  const question = isQuestionToolActivity(tool)
+  const input = question ? questionInputText(tool.input) : undefined
+  return {
+    name: tool.name,
+    summary: tool.summary,
+    isError: tool.isError,
+    ...(input ? { input } : {}),
+    output: tool.output
+      ? tool.output.slice(0, question ? QUESTION_TOOL_FIELD_MAX : TOOL_OUTPUT_MAX_CHARS)
+      : undefined,
+  }
+}
+
+/** A question card's input as stored JSON text (a stored one is already text) */
+function questionInputText(input: unknown): string | undefined {
+  if (typeof input === 'string') return input ? input.slice(0, QUESTION_TOOL_FIELD_MAX) : undefined
+  if (input === undefined || input === null) return undefined
+  try {
+    return JSON.stringify(input).slice(0, QUESTION_TOOL_FIELD_MAX)
+  } catch {
+    return undefined
+  }
+}
+
+type RestoredToolSegment =
+  { kind: 'steps'; steps: ToolActivity[] } | { kind: 'question'; activity: ToolActivity }
+
+/** A stored reply's tools in order: runs of ordinary steps, and each question card call on its own */
+function restoredToolSegments(tools: readonly ToolActivity[]): RestoredToolSegment[] {
+  const out: RestoredToolSegment[] = []
+  for (const tool of tools) {
+    if (isQuestionToolActivity(tool)) {
+      out.push({ kind: 'question', activity: tool })
+      continue
+    }
+    const last = out.at(-1)
+    if (last?.kind === 'steps') last.steps.push(tool)
+    else out.push({ kind: 'steps', steps: [tool] })
+  }
+  return out
 }
 
 interface ChatEntry {
   role: 'user' | 'assistant'
   text: string
+  /** shown from a stored conversation: question blocks and question tool steps are read-only cards */
+  restored?: boolean
   streaming?: boolean
   isError?: boolean
   /** the run stopped because its connection cannot go on: rendered as the blocked notice */
@@ -456,16 +518,8 @@ function chatEntryOf(entry: ProjectChatEntry & { skillProposals?: string[] }): C
   return {
     role: entry.role,
     text: entry.text,
-    ...(entry.tools && entry.tools.length > 0
-      ? {
-          tools: entry.tools.map((tool) => ({
-            name: tool.name,
-            summary: tool.summary,
-            isError: tool.isError,
-            output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-          })),
-        }
-      : {}),
+    restored: true,
+    ...(entry.tools && entry.tools.length > 0 ? { tools: entry.tools.map(toolActivityOf) } : {}),
     ...(attachments ? { attachments } : {}),
     ...(entry.scope ? { scope: entry.scope } : {}),
     ...(skills.length > 0 ? { skills } : {}),
@@ -649,6 +703,8 @@ export function AiPanel({
       // a queued message waits instead of being refused and dropped; in front of "not
       // connected" the queue is paused so it does not start by itself after a sign-in
       if (!sendGateRef.current.admitQueued(() => msgQueueRef.current.setPaused(true))) return false
+      // the queued message starts its own run: it gets its one card
+      inlineQuestions.supersedeOpen()
       return send(text, text, false, meta.atts, undefined, meta.skillUse)
     },
   })
@@ -739,20 +795,14 @@ export function AiPanel({
   const nextSnapshotIdRef = useRef(1)
   /** taken before the in-flight run's first change; becomes its card's snapshot when the run ends */
   const runSnapshotRef = useRef<DocSnapshot | null>(null)
-  /** questionnaire / brief cards docked in the composer slot while a tool waits for the user */
-  const [activeClarify, setActiveClarify] = useState<ClarifyQuestion[] | null>(null)
-  const clarifyResolverRef = useRef<((r: { answers: string; cancelled?: boolean }) => void) | null>(
-    null,
-  )
+  /** the brief card docked in the composer slot while plan_page waits for the user */
   const [activeBrief, setActiveBrief] = useState<Brief | null>(null)
   const briefResolverRef = useRef<((d: BriefDecision) => void) | null>(null)
   /** the page writer stopped early: keep-or-discard card for what arrived */
   const [activePartial, setActivePartial] = useState<{ lines: number } | null>(null)
   const partialResolverRef = useRef<((keep: boolean) => void) | null>(null)
-  /** answered receipts rendered after the user message they belong to (view-only, not chat data) */
-  const [receipts, setReceipts] = useState<
-    Array<{ afterIdx: number; qa?: Array<{ q: string; a: string }>; brief?: Brief }>
-  >([])
+  /** confirmed-brief receipts rendered after the user message they belong to (view-only, not chat data) */
+  const [receipts, setReceipts] = useState<Array<{ afterIdx: number; brief: Brief }>>([])
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stickToBottomRef = useRef(true)
@@ -1105,6 +1155,19 @@ export function AiPanel({
     )
   }
 
+  /** The question card (ask_questions) holds the running tool the same way while it is open */
+  const waitingForPerson = inlineQuestions.waitingForPerson
+  const questionWaitShownRef = useRef(false)
+  useEffect(() => {
+    if (questionWaitShownRef.current === waitingForPerson) return
+    questionWaitShownRef.current = waitingForPerson
+    patchLast((last) => ({
+      tools: waitingForPerson
+        ? markRunningWait(last.tools, 'answer', tGlobal('aiWaitClarifyStep'))
+        : clearRunningWait(last.tools, toolStepLabel),
+    }))
+  }, [waitingForPerson])
+
   /**
    * Whole-page generation: one tool-less request whose reply is the HTML, streamed
    * into the preview mirror as it arrives. A stream that stops early leaves the user
@@ -1200,6 +1263,7 @@ export function AiPanel({
       spec,
       loopRef.current?.messages ?? [],
       aiLangDirective(langRef.current),
+      langRef.current,
     )
     patchLast((last) => ({
       tools: last.tools?.map((tl) =>
@@ -1263,15 +1327,6 @@ export function AiPanel({
               queueRunRef.current ? null : depsRef.current.access.getSelectedSid(),
             applyOps: (ops, label) => depsRef.current.access.applyOps(ops, label),
             replaceAll: (html, label) => depsRef.current.access.replaceAll(html, label),
-            askClarification: (questions) =>
-              awaitPerson(
-                'answer',
-                tGlobal('aiWaitClarifyStep'),
-                new Promise((resolve) => {
-                  clarifyResolverRef.current = resolve
-                  setActiveClarify(questions)
-                }),
-              ),
             confirmBrief: (brief) =>
               awaitPerson(
                 'confirm',
@@ -1343,12 +1398,13 @@ export function AiPanel({
             }
           }
           if (snapshotBefore !== undefined) runSnapshotRef.current = snapshotBefore
-          const activity: ToolActivity = {
+          const activity = toolActivityOf({
             name: call.name,
             summary: execution.summary,
             isError: execution.isError,
-            output: execution.output?.slice(0, TOOL_OUTPUT_MAX_CHARS),
-          }
+            input: call.input,
+            output: execution.output,
+          })
           runToolsRef.current.push(activity)
           patchLast((last) => {
             // Swap out the running placeholder pushed by onToolStart (parse-fail calls have none)
@@ -1462,7 +1518,6 @@ export function AiPanel({
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      clarifyResolverRef.current?.({ answers: '', cancelled: true })
       briefResolverRef.current?.({ kind: 'cancelled' })
       partialResolverRef.current?.(false)
       loopRef.current?.cancel()
@@ -1523,12 +1578,8 @@ export function AiPanel({
           return msgs.map((m) => ({
             role: m.role,
             text: m.text,
-            tools: m.tools?.map((tool) => ({
-              name: tool.name,
-              summary: tool.summary,
-              isError: tool.isError,
-              output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-            })),
+            restored: true,
+            tools: m.tools?.map(toolActivityOf),
             attachments: restoredAtts(m),
             ...(m.scope ? { scope: m.scope } : {}),
             ...(m.role === 'user' && skillChipRefsOf(m.skills).length > 0
@@ -1752,9 +1803,6 @@ export function AiPanel({
 
   /** finish pending cards as skipped so no promise is left dangling */
   const dismissCards = (): void => {
-    clarifyResolverRef.current?.({ answers: '', cancelled: true })
-    clarifyResolverRef.current = null
-    setActiveClarify(null)
     briefResolverRef.current?.({ kind: 'cancelled' })
     briefResolverRef.current = null
     setActiveBrief(null)
@@ -1795,6 +1843,9 @@ export function AiPanel({
     if (atts.length > 0) setAttachments([])
     msgQueue.enqueue(text, { atts, skillUse })
     setPrompt('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   /** the composer's send: the typed text goes out with the chosen skills */
@@ -1873,6 +1924,8 @@ export function AiPanel({
     skills.resetConversation()
     skillCards.reset()
     skillTemplates.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
     setReceipts([])
     // the cards go with the chat, and the snapshots and marks with them
     setSnapshots([])
@@ -2314,7 +2367,7 @@ export function AiPanel({
 
   const docEmpty = chat.length === 0 && isDocEmpty(deps.access.getText())
   /** a docked card the run is waiting on: the live reply shows it in place of the clock */
-  const panelWait = panelWaitOf(activeClarify, activeBrief, activePartial)
+  const panelWait = panelWaitOf(waitingForPerson, activeBrief, activePartial)
 
   return (
     <aside
@@ -2433,23 +2486,12 @@ export function AiPanel({
                   </div>
                 )}
                 <span dir="auto">{entry.text}</span>
-                {own.map((r, k) =>
-                  r.qa ? (
-                    <div key={`ca${k}`} className="ai-clarify-answered">
-                      {r.qa.map((pair, m) => (
-                        <div key={m} className="ai-clarify-answered-row">
-                          <div className="ai-clarify-answered-q">{pair.q}</div>
-                          <div className="ai-clarify-answered-a">{pair.a}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : r.brief ? (
-                    <div key={`br${k}`} className="brief-receipt">
-                      <b>{t('briefTitle')}</b> ·{' '}
-                      {t('briefReceipt', { hook: r.brief.core_hook, n: r.brief.sections.length })}
-                    </div>
-                  ) : null,
-                )}
+                {own.map((r, k) => (
+                  <div key={`br${k}`} className="brief-receipt">
+                    <b>{t('briefTitle')}</b> ·{' '}
+                    {t('briefReceipt', { hook: r.brief.core_hook, n: r.brief.sections.length })}
+                  </div>
+                ))}
                 {entry.undelivered && (
                   <div className="ai-msg-undelivered">
                     {t('aiUndelivered')}
@@ -2496,16 +2538,26 @@ export function AiPanel({
               key={i}
               className={`ai-msg ai-msg-assistant${entry.isError ? ' ai-msg-error' : ''}${entry.streaming ? ' ai-msg-streaming' : ''}`}
             >
-              {hasTools && (
-                <AiWorkSteps
-                  lang={lang}
-                  steps={entry.tools!}
-                  summaryLabel={(() => {
-                    const wait = stepsWaitOf(entry.tools!)
-                    return wait ? t(WAIT_LABEL[wait]) : undefined
-                  })()}
-                />
-              )}
+              {hasTools &&
+                (entry.restored ? (
+                  // a reopened chat: each question card step becomes its read-only card, in place
+                  restoredToolSegments(entry.tools!).map((segment, k) =>
+                    segment.kind === 'question' ? (
+                      <AiQuestionReceipt key={k} lang={lang} activity={segment.activity} />
+                    ) : (
+                      <AiWorkSteps key={k} lang={lang} steps={segment.steps} />
+                    ),
+                  )
+                ) : (
+                  <AiWorkSteps
+                    lang={lang}
+                    steps={entry.tools!}
+                    summaryLabel={(() => {
+                      const wait = stepsWaitOf(entry.tools!)
+                      return wait ? t(WAIT_LABEL[wait]) : undefined
+                    })()}
+                  />
+                ))}
               {entry.blocked ? (
                 <AiBlockedNotice
                   kind={entry.blocked.kind}
@@ -2526,15 +2578,16 @@ export function AiPanel({
                       text={entry.text}
                       navs={[docNav, fileNav]}
                       streaming={entry.streaming}
+                      restored={entry.restored}
                       questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
-                      savedAnswers={inlineQuestions.textCardStates[`m-${i}`]?.answers}
-                      onQuestionSubmit={(spec, answers) => {
-                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answers)
-                        send(inlineQuestions.formatFollowUp(spec, answers, false))
+                      questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                        send(inlineQuestions.formatFollowUp(lang, view, answer))
                       }}
-                      onQuestionSkip={(spec) => {
+                      onQuestionSkip={(view) => {
                         inlineQuestions.markTextCard(`m-${i}`, 'skipped')
-                        send(inlineQuestions.formatFollowUp(spec, {}, true))
+                        send(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
                       }}
                     />
                   </div>
@@ -2571,9 +2624,9 @@ export function AiPanel({
               )}
               {entry.streaming && isLast && panelWait ? (
                 <span className="ai-typing-row">
-                  <span className="ai-clarify-chip" role="status">
-                    <span className="ai-clarify-chip-eyebrow">{t(WAIT_LABEL[panelWait])}</span>
-                    <span className="ai-clarify-chip-arrow" aria-hidden>
+                  <span className="ai-wait-chip" role="status">
+                    <span className="ai-wait-chip-eyebrow">{t(WAIT_LABEL[panelWait])}</span>
+                    <span className="ai-wait-chip-arrow" aria-hidden>
                       ↓
                     </span>
                   </span>
@@ -2636,10 +2689,11 @@ export function AiPanel({
         })}
         {inlineQuestions.activeToolCard && (
           <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
             lang={lang}
-            spec={inlineQuestions.activeToolCard.spec}
+            view={inlineQuestions.activeToolCard.view}
             status={inlineQuestions.activeToolCard.status}
-            savedAnswers={inlineQuestions.activeToolCard.answers}
+            answer={inlineQuestions.activeToolCard.answer}
             onSubmit={inlineQuestions.submitToolCard}
             onSkip={inlineQuestions.skipToolCard}
           />
@@ -2650,9 +2704,7 @@ export function AiPanel({
       </div>
 
       <AiScrollToBottom
-        visible={
-          showScrollBottom && chat.length > 0 && !activeClarify && !activeBrief && !activePartial
-        }
+        visible={showScrollBottom && chat.length > 0 && !activeBrief && !activePartial}
         lang={lang}
         onClick={() => {
           stickToBottomRef.current = true
@@ -2660,26 +2712,7 @@ export function AiPanel({
         }}
       />
 
-      {activeClarify && (
-        <div className="ai-composer">
-          <ClarifyCard
-            questions={activeClarify}
-            onSubmit={(answers, qa) => {
-              const idx = chat.map((c) => c.role).lastIndexOf('user')
-              clarifyResolverRef.current?.({ answers })
-              clarifyResolverRef.current = null
-              setActiveClarify(null)
-              setReceipts((prev) => [...prev, { afterIdx: idx, qa }])
-            }}
-            onSkip={() => {
-              clarifyResolverRef.current?.({ answers: '', cancelled: true })
-              clarifyResolverRef.current = null
-              setActiveClarify(null)
-            }}
-          />
-        </div>
-      )}
-      {activeBrief && !activeClarify && (
+      {activeBrief && (
         <div className="ai-composer">
           <BriefCard
             key={activeBrief.core_hook + activeBrief.sections.length}
@@ -2697,7 +2730,7 @@ export function AiPanel({
           />
         </div>
       )}
-      {activePartial && !activeClarify && !activeBrief && (
+      {activePartial && !activeBrief && (
         <div className="ai-composer">
           <div className="brief-card ai-partial-card" role="group" aria-label={t('aiPartialTitle')}>
             <div className="ai-partial-title">{t('aiPartialTitle')}</div>
@@ -2749,7 +2782,7 @@ export function AiPanel({
       )}
       <div
         className="ai-composer"
-        style={activeClarify || activeBrief || activePartial ? { display: 'none' } : undefined}
+        style={activeBrief || activePartial ? { display: 'none' } : undefined}
       >
         {chat.length === 0 && docEmpty && (
           <div className="ai-intent-bar">

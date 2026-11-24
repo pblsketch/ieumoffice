@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createDefaultOptions, type PrintLayoutOptions } from '@genoffice/print-layout/plan'
+import {
+  createDefaultImageExportOptions,
+  createDefaultOptions,
+  type ImageExportOptions,
+  type PrintLayoutOptions,
+} from '@genoffice/print-layout/plan'
 import {
   coupleDuplex,
   createDuplexCoupling,
@@ -14,10 +19,15 @@ import {
 /** Printer option values that are not device names (Electron: '' = OS default). */
 export const DEFAULT_PRINTER = ''
 export const SYSTEM_DIALOG = '\u0000system-dialog'
+export const SAVE_PDF_DEST = '\u0000save-pdf'
+export const SAVE_IMAGES_DEST = '\u0000save-images'
+
+export type PrintDestinationKind = 'printer' | 'system' | 'save-pdf' | 'save-images'
 
 export interface PrintPrinterInfo {
   readonly name: string
   readonly displayName: string
+  readonly isDefault?: boolean | undefined
 }
 
 /** Per-job printer options passed to `print-layout-print` (matches `PrintJobOptions`). */
@@ -28,11 +38,26 @@ export interface PrintJobSelection {
   readonly duplex?: PrintLayoutDuplex | undefined
 }
 
+export interface UsePrintJobConfig {
+  /** true for permission-restricted PDFs: disables Save as PDF & Save as images */
+  readonly saveRestricted?: boolean | undefined
+  /** hide Save as PDF / Save as images from the dropdown if an editor does not wire them */
+  readonly allowSaveDestinations?: boolean | undefined
+  /** optional initial destination (e.g. SAVE_PDF_DEST or SAVE_IMAGES_DEST from Quick Print menu) */
+  readonly initialDestination?: string | undefined
+}
+
 export interface PrintJobState {
   readonly printers: readonly PrintPrinterInfo[]
   readonly deviceName: string
   readonly setDeviceName: (deviceName: string) => void
+  readonly destinationKind: PrintDestinationKind
   readonly systemDialog: boolean
+  readonly isSavePdf: boolean
+  readonly isSaveImages: boolean
+  readonly isSave: boolean
+  readonly saveRestricted: boolean
+  readonly allowSaveDestinations: boolean
   /** true when an in-app printer is chosen ('' = OS default, or a named printer) */
   readonly isSilent: boolean
   readonly copies: number
@@ -42,6 +67,8 @@ export interface PrintJobState {
   readonly setCollate: (collate: boolean) => void
   readonly duplex: PrintLayoutDuplex
   readonly setDuplex: (duplex: PrintLayoutDuplex) => void
+  readonly imageOptions: ImageExportOptions
+  readonly setImageOptions: (patch: Partial<ImageExportOptions>) => void
   readonly job: PrintJobSelection
 }
 
@@ -51,22 +78,47 @@ function isMacPlatform(): boolean {
   return typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
 }
 
+function defaultDestination(): string {
+  return isMacPlatform() ? SYSTEM_DIALOG : DEFAULT_PRINTER
+}
+
+export function destinationKindOf(deviceName: string): PrintDestinationKind {
+  if (deviceName === SYSTEM_DIALOG) return 'system'
+  if (deviceName === SAVE_PDF_DEST) return 'save-pdf'
+  if (deviceName === SAVE_IMAGES_DEST) return 'save-images'
+  return 'printer'
+}
+
 /**
- * In-app printer, copies, collate and duplex state coupled to the shared page
- * layout options. Defaults to the OS default printer on Windows/Linux (so
- * double-sided printing is one click away) and to the system print sheet on
- * macOS.
+ * In-app destination (OS printer, Save as PDF, Save as images, or System print
+ * dialog), copies, collate, duplex, and image export state coupled to the
+ * shared page layout options. Starts fresh from defaults every time the dialog
+ * mounts.
  */
 export function usePrintJob(
   options: PrintLayoutOptions,
   listPrinters?: (() => Promise<readonly PrintPrinterInfo[]>) | undefined,
+  config?: UsePrintJobConfig | undefined,
 ): PrintJobState {
+  const saveRestricted = config?.saveRestricted === true
+  const allowSaveDestinations = config?.allowSaveDestinations !== false
   const [printers, setPrinters] = useState<readonly PrintPrinterInfo[]>([])
-  const [deviceName, setDeviceName] = useState(() =>
-    isMacPlatform() ? SYSTEM_DIALOG : DEFAULT_PRINTER,
-  )
+  const [deviceName, setDeviceNameRaw] = useState<string>(() => {
+    const initial = config?.initialDestination
+    if (initial === undefined) return defaultDestination()
+    if (
+      (saveRestricted || !allowSaveDestinations) &&
+      (initial === SAVE_PDF_DEST || initial === SAVE_IMAGES_DEST)
+    ) {
+      return defaultDestination()
+    }
+    return initial
+  })
   const [copies, setCopiesRaw] = useState(1)
   const [collateRaw, setCollate] = useState(true)
+  const [imageOptions, setImageOptionsRaw] = useState<ImageExportOptions>(
+    createDefaultImageExportOptions,
+  )
   const { duplex, setDuplex } = useDuplexCoupling(options, 'simplex')
   const listRef = useRef(listPrinters)
   listRef.current = listPrinters
@@ -85,25 +137,63 @@ export function usePrintJob(
     }
   }, [])
 
+  // Never stay on a save destination if the document restricts saving.
+  useEffect(() => {
+    if (
+      (saveRestricted || !allowSaveDestinations) &&
+      (deviceName === SAVE_PDF_DEST || deviceName === SAVE_IMAGES_DEST)
+    ) {
+      setDeviceNameRaw(defaultDestination())
+    }
+  }, [saveRestricted, allowSaveDestinations, deviceName])
+
+  const setDeviceName = useCallback(
+    (next: string) => {
+      if (
+        (saveRestricted || !allowSaveDestinations) &&
+        (next === SAVE_PDF_DEST || next === SAVE_IMAGES_DEST)
+      ) {
+        return
+      }
+      setDeviceNameRaw(next)
+    },
+    [saveRestricted, allowSaveDestinations],
+  )
+
   const setCopies = useCallback((next: number) => {
     setCopiesRaw(Math.min(999, Math.max(1, Math.round(next) || 1)))
   }, [])
 
-  const systemDialog = deviceName === SYSTEM_DIALOG
+  const setImageOptions = useCallback((patch: Partial<ImageExportOptions>) => {
+    setImageOptionsRaw((prev) => ({ ...prev, ...patch }))
+  }, [])
+
+  const destinationKind = destinationKindOf(deviceName)
+  const systemDialog = destinationKind === 'system'
+  const isSavePdf = destinationKind === 'save-pdf'
+  const isSaveImages = destinationKind === 'save-images'
+  const isSave = isSavePdf || isSaveImages
+  const isSilent = destinationKind === 'printer'
   const collateLocked = isCollateLocked(options)
   const collate = effectiveCollate(options, collateRaw)
 
   const job = useMemo<PrintJobSelection>(
-    () => (systemDialog ? { deviceName: null } : { deviceName, copies, collate, duplex }),
-    [systemDialog, deviceName, copies, collate, duplex],
+    () => (isSilent ? { deviceName, copies, collate, duplex } : { deviceName: null }),
+    [isSilent, deviceName, copies, collate, duplex],
   )
 
   return {
     printers,
     deviceName,
     setDeviceName,
+    destinationKind,
     systemDialog,
-    isSilent: !systemDialog,
+    isSavePdf,
+    isSaveImages,
+    isSave,
+    saveRestricted,
+    allowSaveDestinations,
+    isSilent,
     copies,
     setCopies,
     collate,
@@ -111,6 +201,8 @@ export function usePrintJob(
     setCollate,
     duplex,
     setDuplex,
+    imageOptions,
+    setImageOptions,
     job,
   }
 }

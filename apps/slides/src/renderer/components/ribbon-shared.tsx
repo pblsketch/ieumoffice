@@ -307,7 +307,12 @@ export interface Props {
   onSaveAs: () => void
   /** Export as PDF (hidden slides skipped) */
   onExportPdf: () => void
-  onPrint: () => void
+  onPrint: (initialDestination?: string) => void
+  onQuickPrint?: (printerLabel: string) => void | Promise<void>
+  listPrinters?: () => Promise<readonly import('@genoffice/ui').PrintPrinterInfo[]>
+  quickPrintPrefStore?: import('@genoffice/ui').QuickPrintPrefStore
+  getPrintPageCount?: () => number | null | Promise<number | null>
+  onQuickPrintNotice?: (message: string) => void
   /** Export as images (one PNG per page, hidden slides skipped) */
   onExportImages: () => void
   /** Export as images (one JPG per page, hidden slides skipped) */

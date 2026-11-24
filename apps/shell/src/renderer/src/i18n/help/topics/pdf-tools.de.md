@@ -30,6 +30,7 @@ Die Karten unter **Im PDF-Editor** öffnen das gewählte PDF in einem Editor-Tab
 - **Leere Seiten entfernen** zeigt nur Kandidaten. Entfernt werden nur die gewählten Seiten, und eine Seite mit auch nur einem Zeichen ist nie ein Kandidat.
 - **Anmerkungen entfernen** behält Formularfelder und entfernt Links nur, wenn Sie sie ankreuzen. Der Inhalt entfernter Anmerkungen bleibt nicht in der neuen Datei.
 - **Als Text speichern** liest nur die Textebene. Seiten, deren Text ein Bild ist, etwa gescannte Seiten, bleiben leer.
+- **PDF aufteilen** teilt nach eigenen Bereichen (optional zusammengeführt), Seitenanzahl, Lesezeichen oder maximaler Dateigröße – inklusive Benennung und Unterordner.
 
 ## Wofür es sich eignet
 

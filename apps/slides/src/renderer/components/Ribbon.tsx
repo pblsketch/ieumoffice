@@ -17,6 +17,7 @@ import {
   useDismissablePopover,
   useRibbonCollapse,
   Dropdown,
+  QuickPrintButton,
   THEME_COLORS,
   THEME_COLOR_SHADES,
   STANDARD_COLORS,
@@ -1135,6 +1136,11 @@ export function Ribbon({
   onSaveAs,
   onExportPdf,
   onPrint,
+  onQuickPrint,
+  listPrinters,
+  quickPrintPrefStore,
+  getPrintPageCount,
+  onQuickPrintNotice,
   onExportImages,
   onExportImagesJpg,
   onFormat,
@@ -1292,7 +1298,7 @@ export function Ribbon({
   selectionPaneOpen,
   onToggleSelectionPane,
 }: Props) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const contextTab = contextTabForElement(contextElementType ?? null)
   const autoContextTab = autoContextTabForElement(contextElementType ?? null)
 
@@ -1926,6 +1932,18 @@ export function Ribbon({
         >
           <IconRedo size={16} />
         </button>
+        {onQuickPrint && (
+          <QuickPrintButton
+            lang={lang}
+            disabled={!hasDoc}
+            listPrinters={listPrinters}
+            prefStore={quickPrintPrefStore}
+            getPageCount={getPrintPageCount}
+            onOpenDialog={onPrint}
+            onQuickPrint={onQuickPrint}
+            onNoPrinter={onQuickPrintNotice}
+          />
+        )}
         <label
           className={`autosave-toggle ${autoSave ? 'on' : ''}`}
           data-tip={t('ribbonAutoSaveTip')}

@@ -4,7 +4,11 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LANGS } from '@genoffice/i18n'
-import { AiTypingIndicator, SLOW_RESPONSE_HINT_AFTER_S } from '../src/AiTypingIndicator'
+import {
+  AiReplyProgress,
+  AiTypingIndicator,
+  SLOW_RESPONSE_HINT_AFTER_S,
+} from '../src/AiTypingIndicator'
 import { aiDiagnosticsText } from '../src/strings-ai-diagnostics'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -42,6 +46,61 @@ describe('AiTypingIndicator slow-response hint', () => {
     const hint = host.querySelector('.ai-typing-slow-hint')
     expect(hint).not.toBeNull()
     expect(hint?.textContent).toBe(aiDiagnosticsText('ko', 'slowResponseHint'))
+
+    act(() => {
+      root.unmount()
+    })
+  })
+
+  it('stops counting while paused and resumes from the held value', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(<AiTypingIndicator label="생각 중" lang="ko" />)
+    })
+    act(() => {
+      vi.advanceTimersByTime(5_000)
+    })
+    expect(host.textContent).toContain('5s')
+
+    act(() => {
+      root.render(<AiTypingIndicator label="생각 중" lang="ko" paused />)
+    })
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(host.textContent).toContain('5s')
+    expect(host.querySelector('.ai-typing-slow-hint')).toBeNull()
+
+    act(() => {
+      root.render(<AiTypingIndicator label="생각 중" lang="ko" paused={false} />)
+    })
+    act(() => {
+      vi.advanceTimersByTime(2_000)
+    })
+    expect(host.textContent).toContain('7s')
+
+    act(() => {
+      root.unmount()
+    })
+  })
+
+  it('passes paused through the reply progress row', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(
+        <AiReplyProgress reply={{ streaming: true }} thinking="생각 중" working="작업 중" paused />,
+      )
+    })
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+    expect(host.textContent).not.toContain('10s')
 
     act(() => {
       root.unmount()

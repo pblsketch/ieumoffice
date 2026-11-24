@@ -46,17 +46,17 @@ Peraturannya ialah seperti berikut. Sambungan dikekalkan secara automatik. Aksar
 
 ## Cetakan
 
-Fail ▸ Cetak (⌘P/ctrl+P) dalam setiap editor membuka tetingkap cetakan. Docs, PDF, Sheets, Slides dan Markdown mempunyai bahagian **Susun atur halaman** dalam tetingkap cetakan sedia ada, HWP dalam pratonton cetakan, manakala HTML, peta minda dan rajah dalam tetingkap cetakan kecil yang baharu. Jika anda tidak memilih apa-apa dalam Susun atur halaman, cetakan berjalan sama seperti sebelum ini.
+Fail ▸ Cetak (⌘P/ctrl+P) membuka tetingkap cetakan dengan pratonton langsung dalam setiap editor — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram dan Whiteboard. Jika tiada tetapan Susun atur halaman diubah dan dialog cetakan sistem dipilih, cetakan berfungsi seperti biasa.
 
-- **Cara susunan**: pilih salah satu daripada Satu halaman setiap helai, Beberapa halaman setiap helai (2, 4, 6, 9 atau 16), Buku kecil (jilid di kiri atau kanan), Poster (helaian melintang dan menegak, pertindihan, garis potong) atau Label (satu halaman setiap label atau halaman sama pada setiap label, label mula, saiz A4 yang lazim atau saiz sendiri).
-- **Muka ganjil sahaja, muka genap sahaja, susunan terbalik**: muka dikira selepas susunan dibuat, berdasarkan muka yang benar-benar keluar dari pencetak. Gunakan pada pencetak tanpa cetakan dua belah: cetak muka hadapan, terbalikkan kertas, kemudian cetak muka belakang.
-- **Kecilkan supaya muat pada kertas**: hanya halaman yang lebih besar daripada kertas yang dipilih dikecilkan; halaman yang lebih kecil tidak dibesarkan. Sheets dan Markdown menggunakan medan kertas dan skala sedia ada.
-- **Skala kelabu dan resolusi imej**: apabila mencetak dengan pilihan Susun atur halaman, setiap halaman ditukar menjadi imej sebelum dihantar ke pencetak. Resolusi dipilih daripada Automatik, 150, 300 atau 600 dpi.
-- **Pilihan sahaja**: Docs dan Markdown mencetak teks yang dipilih sahaja, disusun semula bermula dari halaman pertama; Slides mencetak slaid yang dipilih dan PDF mencetak halaman yang dipilih. Sheets tetap mencetak julat yang dipilih seperti sebelum ini.
-- **Rajah susunan dan pratonton hasil**: rajah terus menunjukkan kedudukan setiap nombor halaman pada kertas, dan **Pratonton hasil** menunjukkan hasil yang benar-benar dibuat. Dengan **Simpan hasil susunan sebagai PDF**, susunan yang sama boleh dicetak pada PC lain atau di kedai cetak.
-- **Tetingkap cetakan sistem**: untuk buku kecil, pilih cetakan dua belah yang diterbalikkan pada sisi pendek. Biarkan julat halaman dan bilangan halaman setiap helai dalam tetingkap sistem seperti sedia ada.
+- **Destinasi output (pencetak, PDF, imej)**: pilih pencetak terpasang, **Simpan sebagai PDF**, **Simpan sebagai imej**, atau **Dialog cetakan sistem** daripada satu senarai. Eksport imej menyokong PNG dan JPG (Tinggi 90%, Sederhana 80%, Fail kecil 65%) sebagai fail bernombor berasingan atau satu arkib ZIP bagi berbilang muka. PDF yang mempunyai sekatan kebenaran menyahdayakan simpanan PDF dan imej, namun cetakan masih dibenarkan.
+- **Pratonton cetakan langsung**: kesemua sepuluh editor memaparkan pratonton langsung sebelum output. Apabila susun atur, skala kelabu, tera air atau pengepala/pengaki mengubah sisi output, pratonton memaparkan hasil sebenar atas permintaan berserta navigasi halaman, zum dan togol rajah susun atur.
+- **Susun atur**: pilih Satu halaman sehelai, Beberapa halaman sehelai (2, 4, 6, 9 atau 16, dengan pilihan sempadan halaman), Buku kecil (jilid kiri atau kanan), Poster (lajur × baris, tindihan, garisan potong dan label koordinat jubin) atau Label (satu halaman setiap label atau ulang, sel mula, praset A4 atau saiz tersuai).
+- **Skala, orientasi, sisi dan turutan**: pilih Saiz sebenar (100%), Muat ke kertas, Kecilkan halaman terlalu besar sahaja atau Skala tersuai (10%–400%), serta orientasi Automatik, Potret atau Landskap. Sisi ganjil, sisi genap dan susunan terbalik dikira berdasarkan sisi akhir output.
+- **Tera air, pengepala/pengaki, skala kelabu dan resolusi**: tambah tera air teks atau imej serta 6 ruang pengepala dan pengaki (tajuk, tarikh, nombor halaman atau teks tersuai) pada output akhir tanpa mengubah dokumen asal. Kawal juga skala kelabu dan DPI (Automatik, 150, 300 atau 600 dpi).
+- **Julat halaman dan pilihan**: Docs dan Markdown menyusun semula teks pilihan bermula halaman 1; Slides mencetak slaid dipilih; PDF mencetak halaman dipilih; Hangul menyokong Semua, Halaman semasa atau Julat tersuai; Sheets mencetak helaian aktif, buku kerja atau pilihan.
+- **Dialog cetakan sistem**: bagi buku kecil, pilih cetakan dua muka pusing di tepi pendek dan biarkan julat halaman serta halaman sehelai dalam tetingkap sistem seperti asal.
 
-Fail PDF dicetak mengikut susunan halaman dan putaran semasa.
+PDF dicetak mengikut turutan dan putaran halaman semasa.
 
 ## Di mana fail tanpa tajuk berada
 

@@ -1909,6 +1909,36 @@ button {
   overflow-y: auto;
 }
 
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split {
+  margin-top: 16px;
+  width: min(1040px, calc(100% - 32px));
+  height: min(760px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split > .gs-pl-dialog-split-body {
+  padding: 12px 16px;
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split > .pdf-modal-title {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split > .pdf-modal-actions {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.pdf-print-dialog-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .pdf-modal-title {
   font-size: 13px;
   font-weight: 600;
@@ -7103,4 +7133,586 @@ button.ai-overview-term-page:hover {
   background: var(--surface);
   color: var(--danger);
   font-size: 12px;
+}
+
+/* ── Split PDF dialog (visual thumbnails + scissor lines + 4 modes) ── */
+.pdf-modal-mask.pdf-split-mask {
+  align-items: center;
+  padding: 16px;
+}
+
+.pdf-split-modal {
+  margin-top: 0;
+  width: min(940px, 100%);
+  max-width: 100%;
+  height: min(640px, 100%);
+  max-height: 100%;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pdf-split-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.pdf-split-head .pdf-modal-title {
+  margin: 0;
+}
+
+.pdf-split-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-6);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.pdf-split-close:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.pdf-split-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.95fr);
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .pdf-split-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}
+
+.pdf-split-visual {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.pdf-split-visual-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.pdf-split-visual-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pdf-split-visual-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pdf-split-mini-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.pdf-split-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  row-gap: 14px;
+  column-gap: 2px;
+}
+
+.pdf-split-tile {
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  border-radius: var(--radius-8);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  transition:
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.pdf-split-tile.excluded {
+  opacity: 0.42;
+  border-style: dashed;
+}
+
+.pdf-split-tile.g-0 {
+  border-color: var(--accent);
+}
+
+.pdf-split-tile.g-1 {
+  border-color: var(--pdf-ok);
+}
+
+.pdf-split-tile.g-2 {
+  border-color: var(--pdf-sig-warn);
+}
+
+.pdf-split-tile.g-3 {
+  border-color: var(--text-secondary);
+}
+
+.pdf-split-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.pdf-split-page-num {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-split-group-badge {
+  padding: 1px 5px;
+  border-radius: var(--radius-4);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.pdf-split-tile.g-1 .pdf-split-group-badge {
+  color: var(--pdf-ok);
+  background: var(--surface-subtle);
+}
+
+.pdf-split-tile.g-2 .pdf-split-group-badge {
+  color: var(--pdf-sig-warn);
+  background: var(--surface-subtle);
+}
+
+.pdf-split-tile.g-3 .pdf-split-group-badge {
+  color: var(--text-primary);
+  background: var(--surface-subtle);
+}
+
+.pdf-split-thumb-frame {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-4);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-split-thumb-frame canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.pdf-split-thumb-placeholder {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.pdf-split-cut-btn {
+  position: relative;
+  width: 24px;
+  height: 164px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex: none;
+}
+
+.pdf-split-cut-btn:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
+.pdf-split-cut-line {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 0;
+  border-left: 2px dashed transparent;
+  transform: translateX(-50%);
+  transition: border-color 0.12s ease;
+}
+
+.pdf-split-cut-icon {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  opacity: 0.22;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.pdf-split-cut-btn:hover:not(:disabled) .pdf-split-cut-line {
+  border-left-color: var(--accent);
+}
+
+.pdf-split-cut-btn:hover:not(:disabled) .pdf-split-cut-icon {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pdf-split-cut-btn.active .pdf-split-cut-line {
+  border-left-color: var(--accent);
+}
+
+.pdf-split-cut-btn.active .pdf-split-cut-icon {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--color-btn-primary-text);
+}
+
+.pdf-split-controls {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.pdf-split-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.pdf-split-tab {
+  padding: 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pdf-split-tab:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pdf-split-tab.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pdf-split-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pdf-split-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdf-split-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-split-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.pdf-split-range-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.pdf-split-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdf-split-range-tag {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 54px;
+}
+
+.pdf-split-num {
+  width: 68px;
+  margin-bottom: 0;
+  padding: 5px 8px;
+}
+
+.pdf-split-num-wide {
+  width: 110px;
+  margin-bottom: 0;
+}
+
+.pdf-split-unit {
+  width: 78px;
+  margin-bottom: 0;
+}
+
+.pdf-split-dash {
+  color: var(--text-secondary);
+}
+
+.pdf-split-row-del {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-4);
+  cursor: pointer;
+}
+
+.pdf-split-row-del:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--danger);
+}
+
+.pdf-split-row-del:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pdf-split-row-actions,
+.pdf-split-presets,
+.pdf-split-size-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pdf-split-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pdf-split-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pdf-split-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pdf-split-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pdf-split-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pdf-split-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.pdf-split-empty {
+  padding: 12px;
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.pdf-split-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.pdf-split-preview {
+  padding: 10px 12px;
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdf-split-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pdf-split-preview-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pdf-split-link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pdf-split-link-btn:hover {
+  text-decoration: underline;
+}
+
+.pdf-split-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.pdf-split-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.pdf-split-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.pdf-split-file-pages {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.pdf-split-output {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdf-split-subhead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pdf-split-output-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pdf-split-output-grid .pdf-modal-input {
+  margin-bottom: 0;
+}
+
+.pdf-split-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.pdf-split-progress {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--text-secondary);
 }

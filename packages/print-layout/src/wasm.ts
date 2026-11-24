@@ -8,14 +8,18 @@ import { fileURLToPath } from 'node:url'
 import {
   arrange_pdf,
   convert_bgrx_pixels,
+  encode_bgrx_to_jpeg,
   encode_bgrx_to_png,
+  encode_jpeg,
   encode_png,
   GrayPdfBuilder,
   initSync,
   read_job_page_sizes,
   rotate_landscape_faces,
+  stamp_pdf_overlays,
 } from '../wasm/pkg/print_layout_wasm.js'
 import type { PageSize } from './geometry'
+import type { PdfOverlayPlacement } from './overlay'
 import type { PlannedFace } from './sheet-plan'
 
 const SEMANTIC_PREFIX = 'SEMANTIC:'
@@ -174,6 +178,53 @@ export function wasmEncodeBgrxToPng(
     () => encode_bgrx_to_png(bgrx, stride, width, height, grayscale),
     hintPdfiumWasmPath,
   )
+}
+
+export function wasmEncodeJpeg(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  channels: 1 | 3,
+  quality: number,
+): WasmCallResult<Uint8Array> {
+  return runWasmOrFallback(() => encode_jpeg(pixels, width, height, channels, quality))
+}
+
+export function wasmEncodeBgrxToJpeg(
+  bgrx: Uint8Array,
+  stride: number,
+  width: number,
+  height: number,
+  grayscale: boolean,
+  quality: number,
+  hintPdfiumWasmPath?: string | undefined,
+): WasmCallResult<Uint8Array> {
+  return runWasmOrFallback(
+    () => encode_bgrx_to_jpeg(bgrx, stride, width, height, grayscale, quality),
+    hintPdfiumWasmPath,
+  )
+}
+
+export function wasmStampPdfOverlays(
+  pdfBytes: Uint8Array,
+  perFace: readonly (readonly PdfOverlayPlacement[])[],
+  stamps: readonly Uint8Array[],
+  hintPdfiumWasmPath?: string | undefined,
+): WasmCallResult<Uint8Array> {
+  return runWasmOrFallback(() => {
+    let totalLen = 0
+    for (const s of stamps) totalLen += s.length
+    const blob = new Uint8Array(totalLen)
+    const lengths = new Uint32Array(stamps.length)
+    let offset = 0
+    for (let i = 0; i < stamps.length; i++) {
+      const s = stamps[i]!
+      blob.set(s, offset)
+      lengths[i] = s.length
+      offset += s.length
+    }
+    return stamp_pdf_overlays(pdfBytes, JSON.stringify(perFace), blob, lengths)
+  }, hintPdfiumWasmPath)
 }
 
 export function wasmReadJobPageSizes(pdfBytes: Uint8Array): WasmCallResult<PageSize[]> {

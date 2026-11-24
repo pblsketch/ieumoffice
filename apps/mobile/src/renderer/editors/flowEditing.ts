@@ -1,5 +1,5 @@
 /**
- * Editing inside the HWP flow view (decision 0163, design system 5.3).
+ * Editing inside the HWP flow view (decision 0165, design system 5.3).
  *
  * The flow frame shows text blocks: body paragraphs (`.flow-p[data-sec][data-para]`)
  * and paragraphs inside table cells at any depth (the same plus `data-path`, the

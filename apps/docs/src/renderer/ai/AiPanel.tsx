@@ -10,6 +10,9 @@ import {
   AiPanelHeader,
   AiPanelSideButton,
   AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  questionToolActivities,
   AiReplyFooter,
   AiScrollToBottom,
   AiModelPicker,
@@ -56,7 +59,8 @@ import {
   type ProjectMemoryLine,
   useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import type { Lang } from '@genoffice/i18n'
 import type { Editor } from '@tiptap/core'
 import type { Block } from '@genoffice/docx-engine'
 import {
@@ -80,7 +84,7 @@ import type {
   AttachmentAddResult,
   AttachmentMeta,
 } from '../../shared/ipc'
-import { redactTextBetween, type RedactableNode } from './redact-view'
+import { redactDocRange } from './redact-view'
 import { ATTACHMENT_IMAGE_EXTS } from '../../shared/ipc'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state'
@@ -174,10 +178,62 @@ interface ToolActivity {
   isError?: boolean
   /** Tool output (truncated on the UI side); when set, the row can be expanded for details */
   output?: string
+  /** Tool input (JSON); kept for question tools so a reopened chat redraws the card */
+  input?: string
 }
 
 /** Max characters of tool output in the UI expansion panel */
 const TOOL_OUTPUT_MAX_CHARS = 2000
+
+/**
+ * The work steps of one reply. A restored reply draws each question tool as a
+ * read-only card instead of a step; a live reply keeps its card at the foot of the chat.
+ */
+function ReplyToolSteps({
+  lang,
+  tools,
+  restored,
+}: {
+  lang: Lang
+  tools: ToolActivity[] | undefined
+  restored: boolean | undefined
+}) {
+  if (!tools || tools.length === 0) return null
+  if (!restored) return <AiWorkSteps lang={lang} steps={tools} />
+  return (
+    <>
+      <AiWorkSteps lang={lang} steps={tools.filter((t) => !isQuestionToolActivity(t))} />
+      {questionToolActivities(tools).map((activity, k) => (
+        <AiQuestionReceipt key={`q${k}`} lang={lang} activity={activity} />
+      ))}
+    </>
+  )
+}
+
+/** A stored tool activity as the transcript shows it: question tools keep their input and whole output. */
+function restoredToolOf(t: {
+  name: string
+  summary: string
+  isError?: boolean
+  input?: string
+  output?: string
+}): ToolActivity {
+  if (isQuestionToolActivity(t)) {
+    return {
+      name: t.name,
+      summary: t.summary,
+      isError: t.isError,
+      ...(t.input !== undefined ? { input: t.input } : {}),
+      ...(t.output !== undefined ? { output: t.output } : {}),
+    }
+  }
+  return {
+    name: t.name,
+    summary: t.summary,
+    isError: t.isError,
+    output: t.output ? t.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
+  }
+}
 
 /** progress chip refresh while a write streams */
 const CHIP_UPDATE_MS = 400
@@ -271,13 +327,21 @@ interface ChatEntry {
   memory?: ProjectMemoryLine[]
   /** tools another editor ran for this message (a reopened project chat) */
   otherEditorTools?: ProjectChatEntry['otherEditorTools']
+  /** came from a stored conversation: question cards are read-only */
+  restored?: boolean
 }
 
 /** A stored message (per-document or project chat) as the panel keeps it */
 interface StoredEntry {
   role: 'user' | 'assistant'
   text: string
-  tools?: readonly { name: string; summary: string; isError?: boolean; output?: string }[]
+  tools?: readonly {
+    name: string
+    summary: string
+    isError?: boolean
+    input?: string
+    output?: string
+  }[]
   attachments?: readonly { name: string; path?: string; ext?: string; sizeBytes?: number }[]
   scope?: AiScopeQuoteData
   skills?: unknown
@@ -291,12 +355,8 @@ function storedEntryOf(m: StoredEntry): ChatEntry {
   return {
     role: m.role,
     text: m.text,
-    tools: m.tools?.map((t) => ({
-      name: t.name,
-      summary: t.summary,
-      isError: t.isError,
-      output: t.output ? t.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-    })),
+    restored: true,
+    tools: m.tools?.map(restoredToolOf),
     // stored metadata only: no thumbnail read for history, the chips render name/size
     attachments: m.attachments
       ?.filter((a) => a.path)
@@ -545,7 +605,7 @@ const MODEL_BRIDGE: AiModelPickerBridge = {
   openModelSettings: () => window.desktop.openAiModelSettings().catch(() => {}),
 }
 
-export function AiPanel({
+function AiPanelInner({
   editor,
   blocks,
   settings,
@@ -595,6 +655,8 @@ export function AiPanel({
       // nothing can run right now: the message stays queued, and in front of "not connected"
       // the queue is paused so it does not start by itself after a sign-in
       if (!sendGateRef.current.admitQueued(() => msgQueueRef.current.setPaused(true))) return false
+      // the queued message starts its own run: it gets its one card
+      inlineQuestions.supersedeOpen()
       runWith(text, text, meta.attachments, meta.scope, meta.skillUse)
       return true
     },
@@ -1479,18 +1541,19 @@ export function AiPanel({
     }
   }, [editor])
 
-  // scope chip data, recomputed per render (the scope tick above keeps it fresh)
+  // scope chip data, memoised on doc + selection endpoints so unrelated
+  // re-renders never re-serialise the selection or walk the document
   const liveSelection = editor.state.selection
-  const selectionText = liveSelection.empty
-    ? ''
-    : redactTextBetween(
-        editor.getJSON() as RedactableNode,
-        liveSelection.from,
-        liveSelection.to,
-        '\n',
-      )
-        .replace(/\s+/g, ' ')
-        .trim()
+  const liveDoc = editor.state.doc
+  const selectionText = useMemo(
+    () =>
+      liveSelection.empty
+        ? ''
+        : redactDocRange(liveDoc, liveSelection.from, liveSelection.to, '\n')
+            .replace(/\s+/g, ' ')
+            .trim(),
+    [liveDoc, liveSelection.empty, liveSelection.from, liveSelection.to],
+  )
   const hasScopeSelection = selectionText.length > 0
 
   /** the × on the scope chip: collapse the selection so the run targets the whole document */
@@ -1501,9 +1564,7 @@ export function AiPanel({
   const selectionScopeQuote = (): AiScopeQuoteData | undefined => {
     const { from, to, empty } = editor.state.selection
     if (empty) return undefined
-    const text = redactTextBetween(editor.getJSON() as RedactableNode, from, to, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const text = redactDocRange(editor.state.doc, from, to, ' ').replace(/\s+/g, ' ').trim()
     if (!text) return undefined
     return {
       label: t('aiScopeSelection', { words: countWords(text) }),
@@ -1769,6 +1830,9 @@ export function AiPanel({
     }
     msgQueue.enqueue(text, { attachments, scope: selectionScopeQuote() ?? null, skillUse })
     setInput('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   /** Today's "new chat": the screen, the loop and everything the conversation carried start over. */
@@ -1792,6 +1856,8 @@ export function AiPanel({
     skills.resetConversation()
     skillCards.reset()
     skillTemplates.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
     // Unsent composer attachments would otherwise ride into the next chat's
     // file context (availableAttachments merges sent + live). The typed
     // draft itself is kept — only staged files are dropped.
@@ -2046,15 +2112,17 @@ export function AiPanel({
                 {entry.role === 'user' && entry.attachments && entry.attachments.length > 0 && (
                   <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
                 )}
-                {entry.tools && entry.tools.length > 0 && (
-                  <AiWorkSteps lang={lang} steps={entry.tools} />
-                )}
+                <ReplyToolSteps lang={lang} tools={entry.tools} restored />
                 <SkillUsedNotes tools={entry.tools} />
                 {project.messageParts(entry)}
                 {entry.skillProposals?.map((key) => skillCards.render(key))}
                 {entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} navs={chatNavs} />
+                    {entry.role === 'assistant' ? (
+                      <AiAssistantBody lang={lang} text={entry.text} navs={chatNavs} restored />
+                    ) : (
+                      <Markdown text={entry.text} navs={chatNavs} />
+                    )}
                   </div>
                 )}
               </div>
@@ -2130,8 +2198,8 @@ export function AiPanel({
               {entry.role === 'user' && entry.attachments && entry.attachments.length > 0 && (
                 <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
               )}
-              {entry.role === 'assistant' && entry.tools && entry.tools.length > 0 && (
-                <AiWorkSteps lang={lang} steps={entry.tools} />
+              {entry.role === 'assistant' && (
+                <ReplyToolSteps lang={lang} tools={entry.tools} restored={entry.restored} />
               )}
               {entry.role === 'assistant' ? (
                 entry.text && (
@@ -2141,16 +2209,17 @@ export function AiPanel({
                       text={entry.text}
                       navs={chatNavs}
                       streaming={entry.streaming}
+                      restored={entry.restored}
                       questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
-                      savedAnswers={inlineQuestions.textCardStates[`m-${i}`]?.answers}
-                      onQuestionSubmit={(spec, answers) => {
-                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answers)
-                        const follow = inlineQuestions.formatFollowUp(spec, answers, false)
+                      questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                        const follow = inlineQuestions.formatFollowUp(lang, view, answer)
                         runWith(follow, follow)
                       }}
-                      onQuestionSkip={(spec) => {
+                      onQuestionSkip={(view) => {
                         inlineQuestions.markTextCard(`m-${i}`, 'skipped')
-                        const follow = inlineQuestions.formatFollowUp(spec, {}, true)
+                        const follow = inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' })
                         runWith(follow, follow)
                       }}
                     />
@@ -2212,7 +2281,12 @@ export function AiPanel({
                   onClearMarks={marksShown && i === lastChangesIdx ? clearMarks : null}
                 />
               )}
-              <AiReplyProgress reply={entry} thinking={t('aiThinking')} working={t('aiWorking')} />
+              <AiReplyProgress
+                reply={entry}
+                thinking={t('aiThinking')}
+                working={t('aiWorking')}
+                paused={inlineQuestions.waitingForPerson}
+              />
               {entry.role === 'assistant' && (showToolbar || entry.usage) && (
                 <AiReplyFooter
                   lang={lang}
@@ -2252,10 +2326,11 @@ export function AiPanel({
         })}
         {inlineQuestions.activeToolCard && (
           <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
             lang={lang}
-            spec={inlineQuestions.activeToolCard.spec}
+            view={inlineQuestions.activeToolCard.view}
             status={inlineQuestions.activeToolCard.status}
-            savedAnswers={inlineQuestions.activeToolCard.answers}
+            answer={inlineQuestions.activeToolCard.answer}
             onSubmit={inlineQuestions.submitToolCard}
             onSkip={inlineQuestions.skipToolCard}
           />
@@ -2552,3 +2627,5 @@ export function AiPanel({
     </aside>
   )
 }
+
+export const AiPanel = memo(AiPanelInner)

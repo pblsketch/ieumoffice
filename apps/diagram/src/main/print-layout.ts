@@ -6,6 +6,7 @@
  * PDF export show. The shared module arranges it and prints or saves the
  * result.
  */
+import type { ImageExportOptions } from '@genoffice/print-layout/plan'
 import {
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -49,11 +50,17 @@ export interface DiagramPrintLayoutSetup {
   createPrintWindow: (event: PrintLayoutInvokeEvent) => PrintLayoutWindow
   /** the PDF export's save dialog for this job's name; null when the user cancels */
   pickSavePath: (event: PrintLayoutInvokeEvent, title: string) => Promise<string | null>
+  /** save dialog for arranged images (PNG/JPG/ZIP); null when the user cancels */
+  pickImageSavePath?: (
+    event: PrintLayoutInvokeEvent,
+    title: string,
+    image: ImageExportOptions,
+  ) => Promise<string | null>
   runner?: PrintLayoutIpcHandlers<DiagramPrintJob>['runner']
   platform?: NodeJS.Platform
 }
 
-/** `diagram:print-layout-preview|print|save|cancel`. */
+/** `diagram:print-layout-preview|preview-faces|close-preview|print|save|save-images|cancel`. */
 export function registerDiagramPrintLayout(setup: DiagramPrintLayoutSetup): () => void {
   return registerPrintLayoutIpc<DiagramPrintJob>('diagram', {
     ipcMain: setup.ipcMain,
@@ -61,6 +68,15 @@ export function registerDiagramPrintLayout(setup: DiagramPrintLayoutSetup): () =
     createPrintWindow: setup.createPrintWindow,
     pickSavePath: (event, editor) =>
       setup.pickSavePath(event, diagramPrintJobOf(editor)?.title ?? ''),
+    ...(setup.pickImageSavePath
+      ? {
+          pickImageSavePath: (
+            event: PrintLayoutInvokeEvent,
+            editor: DiagramPrintJob | undefined,
+            image: ImageExportOptions,
+          ) => setup.pickImageSavePath!(event, diagramPrintJobOf(editor)?.title ?? '', image),
+        }
+      : {}),
     ...(setup.runner ? { runner: setup.runner } : {}),
     ...(setup.platform ? { platform: setup.platform } : {}),
   })

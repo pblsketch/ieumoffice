@@ -16,6 +16,8 @@ export const PDF_TOOLS_CHANNELS = {
   openResult: 'pdf-tools:open-result',
   revealResult: 'pdf-tools:reveal-result',
   openInEditor: 'pdf-tools:open-in-editor',
+  openSplitInEditor: 'pdf-tools:open-split-in-editor',
+  readBookmarks: 'pdf-tools:read-bookmarks',
   findBlankPages: 'pdf-tools:find-blank-pages',
   cancelFind: 'pdf-tools:cancel-find',
   /** stop a tool that reports progress (compress) */
@@ -85,8 +87,30 @@ export const PDF_TOOL_MARGINS = ['none', 'small', 'large'] as const
 export type PdfToolMargin = (typeof PDF_TOOL_MARGINS)[number]
 
 export interface PdfToolOptions {
-  /** split: pages per output file */
+  /** split: legacy pages per output file */
   chunkSize?: number
+  /** split: mode selector ('ranges' | 'fixed' | 'bookmarks' | 'maxSize') */
+  splitMode?: 'ranges' | 'fixed' | 'bookmarks' | 'maxSize'
+  /** split (ranges): comma-separated ranges like "1-3, 4-8" */
+  splitRanges?: string
+  /** split (ranges): merge all listed ranges into a single PDF */
+  splitMergeRanges?: boolean
+  /** split (fixed): pages per file or equal file count */
+  splitFixedKind?: 'pagesPerFile' | 'fileCount'
+  /** split (fixed): value for pagesPerFile or fileCount */
+  splitFixedValue?: number
+  /** split (bookmarks): nesting depth (1 or 2) */
+  splitBookmarkLevel?: 1 | 2
+  /** split (bookmarks): include pages before the first bookmark */
+  splitIncludeLeading?: boolean
+  /** split (maxSize): maximum byte size per output file */
+  splitMaxBytes?: number
+  /** split: custom output filename prefix */
+  splitPrefix?: string
+  /** split: output filename naming pattern */
+  splitPattern?: 'numbered' | 'range' | 'bookmark'
+  /** split: group multiple output files inside a new subfolder */
+  splitCreateSubfolder?: boolean
   /** extract: "1-3,5" style, 1-based */
   pages?: string
   /** nup: pages per sheet (2-16), fill order and hairlines between cells */
@@ -165,6 +189,8 @@ export type PdfToolError =
   | 'password-same'
   | 'password-long'
   | 'wrong-password'
+  | 'no-bookmarks'
+  | 'invalid-size'
   | 'failed'
 
 export interface PdfToolRunRequest {
@@ -177,9 +203,25 @@ export interface PdfToolRunRequest {
 }
 
 export type PdfToolRunResult =
-  | { ok: true; outputs: { id: string; name: string; size: number }[] }
+  | {
+      ok: true
+      outputs: { id: string; name: string; size: number }[]
+      /** 1-based pages that exceeded maxSize on their own */
+      oversizedPages?: number[]
+    }
   | { ok: false; canceled: true }
   | { ok: false; error: PdfToolError }
+
+export interface PdfBookmarkItem {
+  title: string
+  level: number
+  /** 1-based page number */
+  page: number
+}
+
+export type PdfBookmarksResult =
+  | { ok: true; bookmarks: PdfBookmarkItem[] }
+  | { ok: false; error: 'no-input' | 'missing' | 'failed' }
 
 /** A page that may be blank, for the user to look at before anything is removed */
 export interface PdfBlankCandidate {
@@ -224,6 +266,10 @@ export interface PdfToolsWindowApi {
   revealResult(id: string): Promise<void>
   /** pick a PDF and open it in a PDF editor tab */
   openInEditor(): Promise<void>
+  /** open a picked PDF in the editor and immediately launch the visual Split dialog */
+  openSplitInEditor(inputId: string): Promise<void>
+  /** read document bookmarks for a picked PDF */
+  readBookmarks(inputId: string): Promise<PdfBookmarksResult>
   /** look for blank pages in a picked PDF, in a process of its own */
   findBlankPages(inputId: string): Promise<PdfBlankPagesResult>
   cancelFind(): Promise<void>
