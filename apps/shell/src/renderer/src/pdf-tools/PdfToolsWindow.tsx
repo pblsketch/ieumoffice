@@ -1,11 +1,24 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type { Lang, Params } from '@genoffice/i18n'
 import { IconArrowDown, IconArrowLeft, IconArrowUp, IconClose } from '@genoffice/ui/icons'
+import {
+  MAX_SPLIT_MAX_BYTES,
+  MIN_SPLIT_MAX_BYTES,
+  formatPartPages,
+  formatSplitOutputNames,
+  parseSplitRangeList,
+  planSplitParts,
+  splitSubfolderName,
+  type SplitNamingPattern,
+  type SplitPlanRequest,
+  type SplitSizeUnit,
+} from '../../../../../pdf/src/shared/split-plan'
 import {
   PDF_TOOL_ANNOT_KINDS,
   PDF_TOOL_MARGINS,
   PDF_TOOL_PAPERS,
   PDF_TOOL_SHEET_PAGES,
+  type PdfBookmarkItem,
   type PdfEditorToolId,
   type PdfToolAccept,
   type PdfInputProblem,
@@ -127,6 +140,8 @@ const ERROR_TEXT: Record<PdfToolError, PdfToolsStringKey> = {
   'password-same': 'errPasswordSame',
   'password-long': 'errPasswordLong',
   'wrong-password': 'errWrongPassword',
+  'no-bookmarks': 'errNoBookmarks',
+  'invalid-size': 'errInvalidSize',
   failed: 'errFailed',
 }
 
@@ -142,6 +157,17 @@ const PER_SHEET = [2, 4, 6, 8, 9, 16]
 
 const DEFAULT_OPTIONS: PdfToolOptions = {
   chunkSize: 1,
+  splitMode: 'ranges',
+  splitRanges: '',
+  splitMergeRanges: false,
+  splitFixedKind: 'pagesPerFile',
+  splitFixedValue: 1,
+  splitBookmarkLevel: 1,
+  splitIncludeLeading: true,
+  splitMaxBytes: 10 * 1024 * 1024,
+  splitPrefix: '',
+  splitPattern: 'numbered',
+  splitCreateSubfolder: true,
   pages: '',
   perSheet: 2,
   direction: 'horizontal',
@@ -187,7 +213,11 @@ type View =
   { kind: 'home' } | { kind: 'tool'; tool: PdfToolId } | { kind: 'editor'; tool: PdfEditorToolId }
 
 type Outcome =
-  | { kind: 'done'; outputs: { id: string; name: string; size: number }[] }
+  | {
+      kind: 'done'
+      outputs: { id: string; name: string; size: number }[]
+      oversizedPages?: number[]
+    }
   | { kind: 'error'; message: string }
   | null
 
@@ -240,18 +270,55 @@ export function PdfToolsWindow({ lang }: { lang: Lang }) {
   const [outcome, setOutcome] = useState<Outcome>(null)
   /** blankPages: the search, what it found, and the pages the user picked */
   const [blank, setBlank] = useState<BlankState>(NO_BLANK)
-  /** a long tool's progress while it runs (compress) */
+  /** a long tool's progress while it runs (compress, split) */
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  /** split: loaded bookmarks for the current picked PDF */
+  const [splitBookmarks, setSplitBookmarks] = useState<{
+    loading: boolean
+    items: PdfBookmarkItem[]
+  }>({ loading: false, items: [] })
 
   const openTool = (next: View) => {
     setView(next)
     setInputs([])
     setBackground(null)
     setBlank(NO_BLANK)
+    setSplitBookmarks({ loading: false, items: [] })
     setRejected([])
     setOptions(DEFAULT_OPTIONS)
     setOutcome(null)
   }
+
+  const firstInputId = inputs[0]?.id ?? null
+  const firstInputPages = inputs[0]?.pages ?? 0
+  const firstInputName = inputs[0]?.name ?? ''
+  useEffect(() => {
+    if (view.kind !== 'tool' || view.tool !== 'split' || !firstInputId) {
+      setSplitBookmarks({ loading: false, items: [] })
+      return
+    }
+    let live = true
+    const defaultRange =
+      firstInputPages >= 2
+        ? `1-${Math.floor(firstInputPages / 2)}, ${Math.floor(firstInputPages / 2) + 1}-${firstInputPages}`
+        : firstInputPages === 1
+          ? '1'
+          : ''
+    const basePrefix = firstInputName.replace(/\.pdf$/i, '')
+    setOptions((prev) => ({
+      ...prev,
+      splitRanges: defaultRange,
+      splitPrefix: basePrefix,
+    }))
+    setSplitBookmarks({ loading: true, items: [] })
+    void api.readBookmarks(firstInputId).then((res) => {
+      if (!live) return
+      setSplitBookmarks({ loading: false, items: res.ok ? res.bookmarks : [] })
+    })
+    return () => {
+      live = false
+    }
+  }, [api, view, firstInputId, firstInputPages, firstInputName])
 
   const pick = async (tool: PdfToolId) => {
     const many = takesMany(tool)
@@ -324,7 +391,11 @@ export function PdfToolsWindow({ lang }: { lang: Lang }) {
         ...(tool === 'overlay' && background ? { backgroundId: background.id } : {}),
       })
       if (result.ok) {
-        setOutcome({ kind: 'done', outputs: result.outputs })
+        setOutcome({
+          kind: 'done',
+          outputs: result.outputs,
+          ...(result.oversizedPages?.length ? { oversizedPages: result.oversizedPages } : {}),
+        })
         // a password the file now has, or had, is not kept on screen once it is used
         setOptions((prev) => ({
           ...prev,
@@ -445,6 +516,8 @@ export function PdfToolsWindow({ lang }: { lang: Lang }) {
             inputs={inputs}
             background={background}
             blank={blank}
+            splitBookmarks={splitBookmarks}
+            onOpenSplitInEditor={(id) => void api.openSplitInEditor(id)}
             progress={progress}
             onCancelRun={() => void api.cancelRun()}
             onFindBlank={() => void findBlank()}
@@ -486,6 +559,8 @@ interface ToolPanelProps {
   inputs: PdfToolInput[]
   background: PdfToolInput | null
   blank: BlankState
+  splitBookmarks: { loading: boolean; items: PdfBookmarkItem[] }
+  onOpenSplitInEditor(inputId: string): void
   progress: { done: number; total: number } | null
   onCancelRun(): void
   onFindBlank(): void
@@ -512,12 +587,21 @@ function ToolPanel(p: ToolPanelProps) {
   const many = takesMany(tool)
   const images = takesImages(tool)
   const first = inputs[0]
+  const splitReady = (opts: PdfToolOptions, pages: number): boolean => {
+    const mode = opts.splitMode ?? 'ranges'
+    if (mode === 'ranges') return parseSplitRangeList(opts.splitRanges ?? '', pages).ok
+    if (mode === 'fixed') return (opts.splitFixedValue ?? opts.chunkSize ?? 1) >= 1
+    if (mode === 'bookmarks') return !p.splitBookmarks.loading && p.splitBookmarks.items.length > 0
+    const maxBytes = opts.splitMaxBytes ?? 0
+    return maxBytes >= MIN_SPLIT_MAX_BYTES && maxBytes <= MAX_SPLIT_MAX_BYTES
+  }
   const ready =
     tool === 'merge'
       ? inputs.length >= 2
       : many
         ? inputs.length >= 1
         : inputs.length === 1 &&
+          (tool !== 'split' || (!!first && splitReady(options, first.pages))) &&
           (tool !== 'overlay' || !!p.background) &&
           (tool !== 'stripAnnots' || (options.annotKinds ?? []).length > 0) &&
           (tool !== 'blankPages' || p.blank.chosen.length > 0) &&
@@ -665,6 +749,10 @@ function ToolPanel(p: ToolPanelProps) {
           t={t}
           options={options}
           pages={first.pages}
+          sourceName={first.name}
+          sourceId={first.id}
+          splitBookmarks={p.splitBookmarks}
+          onOpenSplitInEditor={p.onOpenSplitInEditor}
           backgroundPages={p.background?.pages ?? 0}
           onChange={p.onOptions}
         />
@@ -710,6 +798,9 @@ function ToolPanel(p: ToolPanelProps) {
                   })
                 : t('doneOne', { name: firstOutput.name })
               : t('doneMany', { n: done.length })}
+            {p.outcome?.kind === 'done' && p.outcome.oversizedPages?.length
+              ? ` ${t('splitOversizedWarn', { pages: formatPartPages(p.outcome.oversizedPages) })}`
+              : ''}
           </span>
           <span className="pt-done-actions">
             {done.length === 1 && (
@@ -732,28 +823,406 @@ interface OptionsProps {
   t: (key: PdfToolsStringKey, params?: Params) => string
   options: PdfToolOptions
   pages: number
+  sourceName: string
+  sourceId: string
+  splitBookmarks: { loading: boolean; items: PdfBookmarkItem[] }
+  onOpenSplitInEditor(inputId: string): void
   /** overlay: pages of the picked background, 0 before one is picked */
   backgroundPages: number
   onChange(patch: PdfToolOptions): void
 }
 
-function Options({ tool, t, options, pages, backgroundPages, onChange }: OptionsProps) {
+function SplitOptions({
+  t,
+  options,
+  pages,
+  sourceName,
+  sourceId,
+  splitBookmarks,
+  onOpenSplitInEditor,
+  onChange,
+}: Omit<OptionsProps, 'tool' | 'backgroundPages'>) {
+  const [sizeUnit, setSizeUnit] = useState<SplitSizeUnit>('MB')
+  const [showFiles, setShowFiles] = useState(false)
+  const [patternTouched, setPatternTouched] = useState(false)
+
+  const mode = options.splitMode ?? 'ranges'
+  const fixedKind = options.splitFixedKind ?? 'pagesPerFile'
+  const fixedValue = options.splitFixedValue ?? options.chunkSize ?? 1
+  const bookmarkLevel = options.splitBookmarkLevel ?? 1
+  const includeLeading = options.splitIncludeLeading !== false
+  const maxBytes = options.splitMaxBytes ?? 10 * 1024 * 1024
+  const sizeInput =
+    sizeUnit === 'MB'
+      ? Math.round((maxBytes / (1024 * 1024)) * 100) / 100
+      : Math.round((maxBytes / 1024) * 100) / 100
+  const pattern = options.splitPattern ?? 'numbered'
+  const prefix = options.splitPrefix ?? sourceName.replace(/\.pdf$/i, '')
+  const createSubfolder = options.splitCreateSubfolder !== false
+
+  const plan = useMemo<SplitPlanRequest>(() => {
+    if (mode === 'ranges') {
+      const parsed = parseSplitRangeList(options.splitRanges ?? '', pages)
+      return {
+        mode: 'ranges',
+        ranges: parsed.ok ? parsed.ranges : [],
+        mergeRanges: options.splitMergeRanges === true,
+      }
+    }
+    if (mode === 'fixed') {
+      return { mode: 'fixed', kind: fixedKind, value: fixedValue }
+    }
+    if (mode === 'bookmarks') {
+      return {
+        mode: 'bookmarks',
+        level: bookmarkLevel,
+        includeLeadingPages: includeLeading,
+        bookmarks: splitBookmarks.items,
+      }
+    }
+    return { mode: 'maxSize', maxBytes }
+  }, [
+    mode,
+    options.splitRanges,
+    options.splitMergeRanges,
+    pages,
+    fixedKind,
+    fixedValue,
+    bookmarkLevel,
+    includeLeading,
+    splitBookmarks.items,
+    maxBytes,
+  ])
+
+  const planned = useMemo(
+    () => planSplitParts(plan, pages, splitBookmarks.items),
+    [plan, pages, splitBookmarks.items],
+  )
+  const previewNames = useMemo(
+    () =>
+      planned.ok && !planned.dynamic
+        ? formatSplitOutputNames(planned.parts, sourceName, { prefix, pattern })
+        : [],
+    [planned, sourceName, prefix, pattern],
+  )
+  const multiOutput = planned.ok && (planned.dynamic || planned.parts.length >= 2)
+  const subfolder = splitSubfolderName(sourceName, prefix)
+
+  const switchMode = (next: 'ranges' | 'fixed' | 'bookmarks' | 'maxSize') => {
+    onChange({
+      splitMode: next,
+      ...(!patternTouched ? { splitPattern: next === 'bookmarks' ? 'bookmark' : 'numbered' } : {}),
+    })
+  }
+
+  return (
+    <div className="pt-fields">
+      <div className="pt-split-tabs" role="tablist">
+        {(
+          [
+            ['ranges', 'splitModeRanges'],
+            ['fixed', 'splitModeFixed'],
+            ['bookmarks', 'splitModeBookmarks'],
+            ['maxSize', 'splitModeMaxSize'],
+          ] as const
+        ).map(([id, key]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={mode === id}
+            className={`pt-split-tab${mode === id ? ' active' : ''}`}
+            onClick={() => switchMode(id)}
+          >
+            {t(key)}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'ranges' && (
+        <>
+          <label className="pt-field">
+            <span className="pt-field-label">{t('splitRangesLabel')}</span>
+            <input
+              type="text"
+              className="pt-input"
+              value={options.splitRanges ?? ''}
+              placeholder={
+                pages >= 2
+                  ? `1-${Math.floor(pages / 2)}, ${Math.floor(pages / 2) + 1}-${pages}`
+                  : '1'
+              }
+              onChange={(e) => onChange({ splitRanges: e.target.value })}
+            />
+          </label>
+          <label className="pt-check">
+            <input
+              type="checkbox"
+              checked={options.splitMergeRanges === true}
+              onChange={(e) => onChange({ splitMergeRanges: e.target.checked })}
+            />
+            {t('splitMergeRanges')}
+          </label>
+        </>
+      )}
+
+      {mode === 'fixed' && (
+        <>
+          <fieldset className="pt-field pt-choices">
+            <Choice
+              name="splitFixedKind"
+              checked={fixedKind === 'pagesPerFile'}
+              label={t('splitFixedEvery')}
+              onPick={() => onChange({ splitFixedKind: 'pagesPerFile' })}
+            />
+            <Choice
+              name="splitFixedKind"
+              checked={fixedKind === 'fileCount'}
+              label={t('splitFixedCount')}
+              onPick={() => onChange({ splitFixedKind: 'fileCount' })}
+            />
+          </fieldset>
+          <label className="pt-field">
+            <span className="pt-field-label">
+              {fixedKind === 'pagesPerFile' ? t('optChunk') : t('splitFixedFilesLabel')}
+            </span>
+            <input
+              type="number"
+              className="pt-input pt-input-short"
+              min={1}
+              max={pages}
+              value={fixedValue}
+              onChange={(e) =>
+                onChange({
+                  splitFixedValue: Math.max(
+                    1,
+                    Math.min(pages, Math.floor(Number(e.target.value) || 1)),
+                  ),
+                })
+              }
+            />
+          </label>
+          <div className="pt-split-presets">
+            {(fixedKind === 'pagesPerFile' ? [1, 2, 5, 10] : [2, 3, 4, 5])
+              .filter((n) => n <= pages)
+              .map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`pt-split-chip${fixedValue === n ? ' active' : ''}`}
+                  onClick={() => onChange({ splitFixedValue: n })}
+                >
+                  {fixedKind === 'pagesPerFile'
+                    ? n === 1
+                      ? t('splitPresetAll')
+                      : t('splitPresetEvery', { n })
+                    : `${n}`}
+                </button>
+              ))}
+          </div>
+        </>
+      )}
+
+      {mode === 'bookmarks' && (
+        <>
+          {splitBookmarks.loading ? (
+            <p className="pt-hint">{t('splitLoadingBookmarks')}</p>
+          ) : splitBookmarks.items.length === 0 ? (
+            <p className="pt-hint">{t('splitNoBookmarks')}</p>
+          ) : (
+            <>
+              <fieldset className="pt-field pt-choices">
+                <legend className="pt-field-label">{t('splitBookmarkLevel')}</legend>
+                <Choice
+                  name="splitBookmarkLevel"
+                  checked={bookmarkLevel === 1}
+                  label={t('splitBookmarkLevel1')}
+                  onPick={() => onChange({ splitBookmarkLevel: 1 })}
+                />
+                <Choice
+                  name="splitBookmarkLevel"
+                  checked={bookmarkLevel === 2}
+                  label={t('splitBookmarkLevel2')}
+                  onPick={() => onChange({ splitBookmarkLevel: 2 })}
+                />
+              </fieldset>
+              <label className="pt-check">
+                <input
+                  type="checkbox"
+                  checked={includeLeading}
+                  onChange={(e) => onChange({ splitIncludeLeading: e.target.checked })}
+                />
+                {t('splitIncludeLeading')}
+              </label>
+            </>
+          )}
+        </>
+      )}
+
+      {mode === 'maxSize' && (
+        <>
+          <div className="pt-field">
+            <span className="pt-field-label">{t('splitMaxSizeLabel')}</span>
+            <div className="pt-split-size-row">
+              <input
+                type="number"
+                className="pt-input pt-input-short"
+                min={1}
+                step="any"
+                value={sizeInput}
+                onChange={(e) => {
+                  const val = Math.max(0, Number(e.target.value) || 0)
+                  onChange({
+                    splitMaxBytes: Math.round(val * (sizeUnit === 'MB' ? 1024 * 1024 : 1024)),
+                  })
+                }}
+              />
+              <select
+                className="pt-input pt-split-unit"
+                value={sizeUnit}
+                onChange={(e) => {
+                  const nextUnit: SplitSizeUnit = e.target.value === 'KB' ? 'KB' : 'MB'
+                  setSizeUnit(nextUnit)
+                  onChange({
+                    splitMaxBytes: Math.round(sizeInput * (nextUnit === 'MB' ? 1024 * 1024 : 1024)),
+                  })
+                }}
+              >
+                <option value="MB">MB</option>
+                <option value="KB">KB</option>
+              </select>
+            </div>
+          </div>
+          <div className="pt-split-presets">
+            {[5, 10, 20, 50].map((mb) => (
+              <button
+                key={mb}
+                type="button"
+                className={`pt-split-chip${maxBytes === mb * 1024 * 1024 ? ' active' : ''}`}
+                onClick={() => {
+                  setSizeUnit('MB')
+                  onChange({ splitMaxBytes: mb * 1024 * 1024 })
+                }}
+              >
+                {mb} MB
+              </button>
+            ))}
+          </div>
+          <p className="pt-hint">{t('splitMaxSizeNote')}</p>
+        </>
+      )}
+
+      {/* Live output preview */}
+      <div className="pt-split-preview">
+        <div className="pt-split-preview-head">
+          <span className="pt-split-preview-count">
+            {!planned.ok
+              ? mode === 'bookmarks'
+                ? t('splitNoBookmarks')
+                : mode === 'maxSize'
+                  ? t('errInvalidSize')
+                  : t('errRange')
+              : planned.dynamic
+                ? t('splitPreviewDynamic')
+                : planned.parts.length === 1
+                  ? t('splitPreviewOne')
+                  : t('splitPreviewCount', { n: planned.parts.length })}
+          </span>
+          {planned.ok && !planned.dynamic && previewNames.length > 0 && (
+            <button type="button" className="pt-split-link" onClick={() => setShowFiles((v) => !v)}>
+              {showFiles ? t('splitHideFiles') : t('splitShowFiles')}
+            </button>
+          )}
+        </div>
+        {showFiles && planned.ok && !planned.dynamic && (
+          <ul className="pt-split-files">
+            {planned.parts.map((part, idx) => (
+              <li key={idx} className="pt-split-file">
+                <span className="pt-split-file-name" title={previewNames[idx]}>
+                  {previewNames[idx]}
+                </span>
+                <span className="pt-split-file-pages">{formatPartPages(part.pages)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Output naming & subfolder */}
+      <div className="pt-split-output-row">
+        <label className="pt-field">
+          <span className="pt-field-label">{t('splitPrefix')}</span>
+          <input
+            type="text"
+            className="pt-input"
+            value={prefix}
+            onChange={(e) => onChange({ splitPrefix: e.target.value })}
+          />
+        </label>
+        <label className="pt-field">
+          <span className="pt-field-label">{t('splitPattern')}</span>
+          <select
+            className="pt-input"
+            value={pattern}
+            onChange={(e) => {
+              setPatternTouched(true)
+              onChange({ splitPattern: e.target.value as SplitNamingPattern })
+            }}
+          >
+            <option value="numbered">{t('splitPatternNumbered')}</option>
+            <option value="range">{t('splitPatternRange')}</option>
+            {mode === 'bookmarks' && <option value="bookmark">{t('splitPatternBookmark')}</option>}
+          </select>
+        </label>
+      </div>
+
+      {multiOutput && (
+        <label className="pt-check">
+          <input
+            type="checkbox"
+            checked={createSubfolder}
+            onChange={(e) => onChange({ splitCreateSubfolder: e.target.checked })}
+          />
+          {t('splitSubfolder', { folder: subfolder })}
+        </label>
+      )}
+
+      {pages > 1 && (
+        <div>
+          <button type="button" className="pt-btn" onClick={() => onOpenSplitInEditor(sourceId)}>
+            {t('splitVisualInEditor')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Options({
+  tool,
+  t,
+  options,
+  pages,
+  sourceName,
+  sourceId,
+  splitBookmarks,
+  onOpenSplitInEditor,
+  backgroundPages,
+  onChange,
+}: OptionsProps) {
   switch (tool) {
     case 'split':
       return (
-        <label className="pt-field">
-          <span className="pt-field-label">{t('optChunk')}</span>
-          <input
-            type="number"
-            className="pt-input pt-input-short"
-            min={1}
-            max={pages}
-            value={options.chunkSize ?? 1}
-            onChange={(e) =>
-              onChange({ chunkSize: Math.max(1, Math.floor(Number(e.target.value) || 1)) })
-            }
-          />
-        </label>
+        <SplitOptions
+          t={t}
+          options={options}
+          pages={pages}
+          sourceName={sourceName}
+          sourceId={sourceId}
+          splitBookmarks={splitBookmarks}
+          onOpenSplitInEditor={onOpenSplitInEditor}
+          onChange={onChange}
+        />
       )
     case 'extract':
       return (

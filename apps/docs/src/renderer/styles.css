@@ -2334,6 +2334,7 @@ th.cell-rev-del {
   /* one card row tall: wrapped cards land on the hidden second row */
   height: 62px;
   overflow: hidden;
+  contain: layout style;
 }
 
 .style-gallery-more {
@@ -10285,13 +10286,13 @@ body.docs-crop-active
 /* ---- print dialog (Word-style: page preview + range options) ---- */
 
 .modal.print-dialog {
-  width: min(940px, calc(100vw - 64px));
+  width: min(1020px, calc(100vw - 48px));
 }
 
 .print-dialog-body {
   display: flex;
   gap: 18px;
-  height: min(600px, calc(100vh - 220px));
+  height: min(640px, calc(100vh - 200px));
 }
 
 /* while the dialog is open the pagination preview is only its (hidden) print source */
@@ -10358,12 +10359,14 @@ body.docs-crop-active
   cursor: default;
 }
 
-/* the shared layout diagram in place of the page clone (page layout options, printed selection) */
+/* the shared layout diagram or live preview in place of the page clone */
 .print-preview-schematic {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
-  padding: 12px;
+  padding: 10px;
 }
 
 .print-preview-empty {
@@ -10376,7 +10379,7 @@ body.docs-crop-active
 }
 
 .print-options {
-  width: 280px;
+  width: 330px;
   flex-shrink: 0;
   overflow-y: auto;
   display: flex;

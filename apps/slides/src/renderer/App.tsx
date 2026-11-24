@@ -77,6 +77,8 @@ import { SlideShowView } from './components/SlideShowView'
 import { IconNotes, IconPlayBoxed } from './components/icons'
 import { PresenterView } from './components/PresenterView'
 import { CustomShowDialog } from './components/CustomShowDialog'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
+import { renderSlidesToPngBase64 } from './export-render'
 import { PrintDialog } from './components/PrintDialog'
 import { FindReplaceDialog } from './components/FindReplaceDialog'
 import { formatClock, type CustomShow } from './slideshow-utils'
@@ -112,6 +114,7 @@ import { CutoutDialog } from './components/CutoutDialog'
 import {
   createWheelPager,
   createZoomWheelClassifier,
+  printLayoutText,
   useAutoSavePref,
   useSplitPaneFocusPing,
   type AiScopeQuoteData,
@@ -1218,6 +1221,7 @@ export function App() {
   }, [])
 
   const [printDlgOpen, setPrintDlgOpen] = useState(false)
+  const [printDlgInitialDest, setPrintDlgInitialDest] = useState<string | undefined>(undefined)
 
   /** Whether focus is in a text input (input/textarea/contentEditable) — these cases use native undo/delete */
   const inTextField = () => {
@@ -3580,7 +3584,40 @@ export function App() {
         onRedo={() => void redo()}
         onSaveAs={() => void saveAs()}
         onExportPdf={() => void exportPdf()}
-        onPrint={() => setPrintDlgOpen(true)}
+        onPrint={(dest) => {
+          setPrintDlgInitialDest(dest)
+          setPrintDlgOpen(true)
+        }}
+        onQuickPrint={async (printerLabel) => {
+          const visible = slides.filter((s) => !s.hidden)
+          if (visible.length === 0) return
+          setStatus(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+          try {
+            const pngsBase64 = await renderSlidesToPngBase64(visible, images)
+            const first = visible[0]!
+            const result = await window.slidesApi.printLayout.print({
+              options: createDefaultOptions(),
+              editor: {
+                pngsBase64,
+                widthPx: first.widthPx,
+                heightPx: first.heightPx,
+                layout: 'full',
+              },
+              job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+            })
+            if (result.ok) {
+              setStatus(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+            } else if (!('aborted' in result)) {
+              setStatus(t('appPrintFailed', { error: result.error }))
+            }
+          } catch (err) {
+            setStatus(t('appPrintFailed', { error: String(err) }))
+          }
+        }}
+        listPrinters={() => window.slidesApi?.printLayout?.listPrinters?.() ?? Promise.resolve([])}
+        quickPrintPrefStore={window.slidesApi?.printLayout}
+        getPrintPageCount={() => slides.filter((s) => !s.hidden).length}
+        onQuickPrintNotice={setStatus}
         onExportImages={() => void exportImages('png')}
         onExportImagesJpg={() => void exportImages('jpg')}
         onFormat={onFormat}
@@ -5032,7 +5069,11 @@ export function App() {
           images={images}
           current={current}
           selectedSlides={selectedSlides}
-          onClose={() => setPrintDlgOpen(false)}
+          initialDestination={printDlgInitialDest}
+          onClose={() => {
+            setPrintDlgOpen(false)
+            setPrintDlgInitialDest(undefined)
+          }}
           setStatus={setStatus}
         />
       )}

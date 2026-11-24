@@ -30,6 +30,7 @@ Kad dalam kumpulan **Dalam editor PDF** membuka PDF yang dipilih dalam tab edito
 - **Buang halaman kosong** hanya menunjukkan calon. Hanya halaman yang anda pilih dibuang, dan halaman yang ada walau satu aksara tidak pernah menjadi calon.
 - **Buang anotasi** mengekalkan medan borang dan hanya membuang pautan jika anda menandanya. Kandungan anotasi yang dibuang tidak kekal dalam fail baharu.
 - **Simpan sebagai teks** hanya membaca lapisan teks. Halaman yang teksnya ialah imej, seperti halaman imbasan, akan kosong.
+- **Pisahkan PDF** menyokong pemisahan mengikut julat tersuai (boleh digabungkan), bilangan halaman, penanda buku, atau saiz maksimum dengan pilihan penamaan dan subfolder.
 
 ## Sesuai untuk
 

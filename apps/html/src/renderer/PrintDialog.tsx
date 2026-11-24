@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import {
   createDefaultOptions,
+  type ImageExportOptions,
   type PageSize,
   type PrintLayoutErrorCode,
   type PrintLayoutOptions,
@@ -8,10 +9,13 @@ import {
 import {
   SimplePrintDialog,
   printLayoutIssueText,
+  printLayoutText,
+  type OverlayBundle,
   type PrintJobSelection,
   type PrintLabelSpecStore,
   type PrintLayoutPreviewRequest,
   type PrintLayoutProgress,
+  type SimplePrintDialogProps,
   type SimplePrintRange,
 } from '@genoffice/ui'
 import { useI18n } from './i18n/locale'
@@ -29,23 +33,24 @@ export interface HtmlPrintDialogProps {
   onClose: () => void
   /** a line on the editor's status bar */
   onNotice: (text: string) => void
+  /** optional initial destination pre-selected when opened from the Quick Print menu */
+  initialDestination?: string
 }
 
 interface LayoutFailure {
-  kind: 'print' | 'save'
+  kind: 'print' | 'save' | 'save-images'
   detail: string
   code?: PrintLayoutErrorCode
 }
 
 /**
- * The HTML editor's print dialog (decision 0141): all pages or a typed range,
- * and the shared page layout options. With all pages and nothing changed, Print
- * is the print as it was (`onPlainPrint`). An option on, or a typed range, goes
- * the arranged route: the main process makes the job PDF from the page loaded
- * the way the print loads it and prints it with the system dialog.
+ * The HTML editor's print dialog (decision 0141): live preview, unified
+ * destination (printer / Save as PDF / Save as images / System dialog), all
+ * pages or a typed range, and the shared page layout options.
  */
 export function HtmlPrintDialog(props: HtmlPrintDialogProps): ReactElement {
-  const { api, documentText, suggestedName, onPlainPrint, onClose, onNotice } = props
+  const { api, documentText, suggestedName, onPlainPrint, onClose, onNotice, initialDestination } =
+    props
   const { lang, t } = useI18n()
   const [allPages, setAllPages] = useState<PageSize[] | null>(null)
   const [pagesError, setPagesError] = useState<string | null>(null)
@@ -90,25 +95,35 @@ export function HtmlPrintDialog(props: HtmlPrintDialogProps): ReactElement {
     return picked ? picked.map((n) => allPages[n - 1]!) : allPages
   }, [allPages, range, pickedOf])
 
-  const jobOf = (r: SimplePrintRange): HtmlPrintJob => ({
-    html: documentText(),
-    suggestedName: suggestedName(),
-    ...(r.kind === 'custom' ? { ranges: r.ranges.map(({ from, to }) => ({ from, to })) } : {}),
-  })
+  const jobOf = useCallback(
+    (r: SimplePrintRange): HtmlPrintJob => ({
+      html: documentText(),
+      suggestedName: suggestedName(),
+      ...(r.kind === 'custom' ? { ranges: r.ranges.map(({ from, to }) => ({ from, to })) } : {}),
+    }),
+    [documentText, suggestedName],
+  )
 
   /** A typed range with no page of the document is refused before anything is built. */
-  const refusesRange = (r: SimplePrintRange): boolean => {
-    const picked = pickedOf(r)
-    const empty = picked !== null && picked.length === 0
-    setRangeEmpty(empty)
-    return empty
-  }
+  const refusesRange = useCallback(
+    (r: SimplePrintRange): boolean => {
+      const picked = pickedOf(r)
+      const empty = picked !== null && picked.length === 0
+      setRangeEmpty(empty)
+      return empty
+    },
+    [pickedOf],
+  )
 
   const runLayout = async (
-    kind: 'print' | 'save',
+    kind: 'print' | 'save' | 'save-images',
     r: SimplePrintRange,
     options: PrintLayoutOptions,
-    job?: PrintJobSelection,
+    opts?: {
+      job?: PrintJobSelection
+      image?: ImageExportOptions
+      overlays?: OverlayBundle
+    },
   ): Promise<void> => {
     if (runningRef.current || refusesRange(r)) return
     runningRef.current = true
@@ -118,11 +133,17 @@ export function HtmlPrintDialog(props: HtmlPrintDialogProps): ReactElement {
       if (mountedRef.current) setProgress(next)
     })
     try {
-      const request = { options, editor: jobOf(r), ...(kind === 'print' && job ? { job } : {}) }
+      const base = {
+        options,
+        editor: jobOf(r),
+        ...(opts?.overlays ? { overlays: opts.overlays } : {}),
+      }
       const result =
         kind === 'print'
-          ? await api.printLayout.print(request)
-          : await api.printLayout.savePdf(request)
+          ? await api.printLayout.print({ ...base, ...(opts?.job ? { job: opts.job } : {}) })
+          : kind === 'save'
+            ? await api.printLayout.savePdf(base)
+            : await api.printLayout.saveImages!({ ...base, image: opts!.image! })
       if (!mountedRef.current) return
       if (!result.ok) {
         if (!('aborted' in result)) {
@@ -132,6 +153,12 @@ export function HtmlPrintDialog(props: HtmlPrintDialogProps): ReactElement {
       }
       if (kind === 'save') {
         if ('path' in result) onNotice(t('printLayoutSaved'))
+        return
+      }
+      if (kind === 'save-images') {
+        if ('paths' in result) {
+          onNotice(printLayoutText(lang, 'imagesSaved', { count: result.paths.length }))
+        }
         return
       }
       // printed; a cancel in the system dialog keeps this dialog open
@@ -176,6 +203,31 @@ export function HtmlPrintDialog(props: HtmlPrintDialogProps): ReactElement {
     }
   }
 
+  const previewFaces = useCallback<NonNullable<SimplePrintDialogProps['onPreviewFaces']>>(
+    async (r, options, faceIndices, longSidePx, overlays, signal) => {
+      if (refusesRange(r)) throw new Error(t('printRangeEmpty', { count: allPages?.length ?? 0 }))
+      signal.throwIfAborted()
+      const editorKey = r.kind === 'custom' ? `custom:${r.text}` : r.kind
+      const optionsKey = `${JSON.stringify(options)}:${overlays ? overlays.stamps.length : 0}`
+      const result = await api.printLayout.previewFaces!({
+        options,
+        editor: jobOf(r),
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return { totalFaces: result.totalFaces, faceSizes: result.faceSizes, faces: result.faces }
+    },
+    [allPages, api.printLayout, jobOf, refusesRange, t],
+  )
+
+  const closePreview = useCallback(() => {
+    void api.printLayout.closePreview?.()
+  }, [api.printLayout])
+
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
     () => ({
       load: () => api.printLayout.getLabelSpec(),
@@ -209,19 +261,31 @@ export function HtmlPrintDialog(props: HtmlPrintDialogProps): ReactElement {
       rangeChoice="all-custom"
       pages={pages}
       capabilities={{ showPaperAndFit: true }}
+      documentTitle={suggestedName()}
+      initialDestination={initialDestination}
       listPrinters={api.printLayout.listPrinters}
       onRangeChange={(next) => {
         setRange(next)
         setRangeEmpty(false)
       }}
       onPlainPrint={plainPrint}
-      onPrint={(r, options, job) => void runLayout('print', r, options, job)}
-      onSavePdf={(r, options) => void runLayout('save', r, options)}
+      onPrint={(r, options, job, overlays) =>
+        void runLayout('print', r, options, { job, overlays })
+      }
+      onSavePdf={(r, options, overlays) => void runLayout('save', r, options, { overlays })}
+      onSaveImages={
+        api.printLayout.saveImages
+          ? (r, options, image, overlays) =>
+              void runLayout('save-images', r, options, { image, overlays })
+          : undefined
+      }
       onCancel={() => {
         if (runningRef.current) void api.printLayout.cancel()
         onClose()
       }}
       labelSpecStore={labelSpecStore}
+      onPreviewFaces={api.printLayout.previewFaces ? previewFaces : undefined}
+      onClosePreview={api.printLayout.closePreview ? closePreview : undefined}
       onPreviewRequest={preview}
       job={{ progress, onCancel: () => void api.printLayout.cancel(), error }}
     />

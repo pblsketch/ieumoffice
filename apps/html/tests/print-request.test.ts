@@ -37,7 +37,7 @@ describe('HTML print wiring', () => {
     const app = await source(APP)
     expect(app).toContain('window.htmlApi.onPrintRequest(openPrintDialog)')
     expect(app).toMatch(
-      /const openPrintDialog = useCallback\(\(\) => \{[\s\S]{0,300}setPrintDialogOpen\(true\)/,
+      /const openPrintDialog = useCallback\(\(initialDestination\?: string\) => \{[\s\S]{0,300}setPrintDialogState\(\{ initialDestination \}\)/,
     )
     // a print whose system dialog is still open is not doubled by the dialog
     expect(app).toMatch(/if \(statusRef\.current !== 'ready' \|\| printingRef\.current\) return/)
