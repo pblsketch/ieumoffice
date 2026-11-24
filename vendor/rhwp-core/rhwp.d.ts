@@ -1436,6 +1436,15 @@ export class HwpDocument {
      */
     getParagraphCount(section_idx: number): number;
     /**
+     * 번호·개요 문단 앞에 그려지는 번호 문자열(예: `1.`, `가.`, `①`)을 반환한다.
+     *
+     * 쪽 나누기가 문서 순서로 정해 둔 값(`Paragraph::numbering_marker`)을 그대로 읽으므로
+     * 쪽 화면에 그려지는 번호와 같다. 번호·개요 문단이 아니거나 아직 정해지지 않았으면
+     * 빈 문자열이다. 글머리표는 돌려주지 않는다(`getBulletList`로 문자를 얻는다).
+     * `path_json`이 `[]`이면 본문 문단 `para_idx`, 아니면 그 경로의 칸·글상자 문단이다.
+     */
+    getParagraphHeadText(section_idx: number, para_idx: number, path_json: string): string;
+    /**
      * 문단의 글자 수(char 개수)를 반환한다.
      */
     getParagraphLength(section_idx: number, para_idx: number): number;
@@ -3553,6 +3562,7 @@ export interface InitOutput {
     readonly hwpdocument_getParaPropertiesInHf: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_getParaShapeSet: (a: number, b: number, c: number) => [number, number];
     readonly hwpdocument_getParagraphCount: (a: number, b: number) => [number, number, number];
+    readonly hwpdocument_getParagraphHeadText: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_getParagraphLength: (a: number, b: number, c: number) => [number, number, number];
     readonly hwpdocument_getPdfImportDiagnostics: (a: number) => [number, number];
     readonly hwpdocument_getPdfImportPolicy: () => [number, number];

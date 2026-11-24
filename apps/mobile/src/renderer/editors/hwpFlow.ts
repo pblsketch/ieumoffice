@@ -49,6 +49,8 @@ export interface FlowSourceDocument {
   getBulletList(): string
   getFootnoteInfo(sectionIdx: number, paraIdx: number, controlIdx: number): string
   getHeaderFooter(sectionIdx: number, isHeader: boolean, applyTo: number): string
+  /** Number text of a numbered paragraph (patch 0057); '' when it has none. */
+  getParagraphHeadText?(sectionIdx: number, paraIdx: number, cellPathJson: string): string
   getCellParagraphCountByPath(sectionIdx: number, paraIdx: number, pathJson: string): number
   getCellParagraphLengthByPath(sectionIdx: number, paraIdx: number, pathJson: string): number
   exportSelectionInCellHtmlByPath(
@@ -200,15 +202,50 @@ function bulletChar(doc: FlowSourceDocument, id: number): string {
 }
 
 /**
- * The bullet shown before a paragraph, or ''.
+ * The bullet or automatic number (1., 가., ①) shown before a paragraph, or ''.
  *
- * Automatic numbers (1., 가., ①) are not shown: the engine works them out
- * while laying out pages and does not hand out the number text.
+ * The engine works numbers out in document order while laying out pages, so
+ * the number text comes from the engine (`getParagraphHeadText`, patch 0057);
+ * an engine without that call shows no numbers.
  */
-function paragraphMarker(doc: FlowSourceDocument, propsJson: () => string): string {
+function paragraphMarker(
+  doc: FlowSourceDocument,
+  propsJson: () => string,
+  sec: number,
+  para: number,
+  path: readonly CellStep[] | null,
+): ParagraphMarker {
   try {
     const props = JSON.parse(propsJson()) as { headType?: string; numberingId?: number }
-    return props.headType === 'Bullet' ? bulletChar(doc, props.numberingId ?? 0) : ''
+    if (props.headType === 'Bullet') {
+      return { text: bulletChar(doc, props.numberingId ?? 0), numbered: false }
+    }
+    if (props.headType === 'Number' || props.headType === 'Outline') {
+      return { text: paragraphNumber(doc, sec, para, path), numbered: true }
+    }
+  } catch {
+    // no properties: no marker
+  }
+  return NO_MARKER
+}
+
+interface ParagraphMarker {
+  readonly text: string
+  /** An automatic number, which changes when paragraphs before it are added or removed. */
+  readonly numbered: boolean
+}
+
+const NO_MARKER: ParagraphMarker = { text: '', numbered: false }
+
+/** Current number text of a numbered paragraph, or '' (also on an engine without the call). */
+export function paragraphNumber(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  path: readonly CellStep[] | null,
+): string {
+  try {
+    return doc.getParagraphHeadText?.(sec, para, JSON.stringify(path ?? [])) ?? ''
   } catch {
     return ''
   }
@@ -218,9 +255,10 @@ function paragraphMarker(doc: FlowSourceDocument, propsJson: () => string): stri
  * Puts the bullet on the paragraph's first line. It is drawn by CSS
  * (`data-marker`), so it never becomes part of the editable text.
  */
-function withMarker(html: string, marker: string): string {
-  if (!marker) return html
-  const attr = ` data-marker="${escapeAttr(marker).replace(/"/g, '&quot;')}"`
+function withMarker(html: string, marker: ParagraphMarker): string {
+  if (!marker.text) return html
+  // numbers shift when paragraphs are added or removed; the editor refreshes `data-number` ones
+  const attr = ` data-marker="${escapeAttr(marker.text).replace(/"/g, '&quot;')}"${marker.numbered ? ' data-number' : ''}`
   if (!html) return `<p${attr}><br></p>`
   return /<p[\s>]/.test(html) ? html.replace(/<p(?=[\s>])/, `<p${attr}`) : html
 }
@@ -232,7 +270,7 @@ export function bodyParagraphHtml(doc: FlowSourceDocument, sec: number, para: nu
     length > 0 ? stripClipboardFragment(doc.exportSelectionHtml(sec, para, 0, para, length)) : ''
   return withMarker(
     html,
-    paragraphMarker(doc, () => doc.getParaPropertiesAt(sec, para)),
+    paragraphMarker(doc, () => doc.getParaPropertiesAt(sec, para), sec, para, null),
   )
 }
 
@@ -260,7 +298,7 @@ export function cellParagraphHtml(
       doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length),
     )
   }
-  return withMarker(html, paragraphMarker(doc, props))
+  return withMarker(html, paragraphMarker(doc, props, sec, para, path))
 }
 
 function captionTextHtml(
