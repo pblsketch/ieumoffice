@@ -31,6 +31,8 @@ import {
 } from './diagram-lib'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+const SAVE_PDF_DEST = '\u0000save-pdf'
+const SAVE_IMAGES_DEST = '\u0000save-images'
 
 const ALPHA = 'Alpha paragraph stays out of the print'
 const BRAVO = 'Bravo paragraph is the printed selection'
@@ -203,7 +205,8 @@ test.describe('advanced print layout', () => {
       await expect(panel.locator('select[data-pl="nup-count"]')).toHaveValue('2')
       await expect(panel.locator('[data-pl="system-note"]')).toBeVisible()
       await expect(panel.locator('[data-pl="issue"]')).toHaveCount(0)
-      const save = panel.locator('[data-pl="save-pdf"]')
+      await dialog.locator('select[data-print="printer"]').selectOption(SAVE_PDF_DEST)
+      const save = dialog.locator('.modal-actions button.primary')
       await expect(save).toBeEnabled()
       await save.click()
 
@@ -232,6 +235,7 @@ test.describe('advanced print layout', () => {
     await writeFile(pdfPath, await markedPdf(pageCount))
     const bookletPath = join(dir, 'booklet.pdf')
     const grayPath = join(dir, 'booklet-gray.pdf')
+    const imagesZipPath = join(dir, 'booklet-images.zip')
     const faceCount = Math.ceil(pageCount / 4) * 2
 
     const launched = await launchShell({
@@ -244,18 +248,21 @@ test.describe('advanced print layout', () => {
       const page = await waitForPageWithUrl(app, '://pdf/')
       const thumbs = page.locator('.pdf-thumb')
       await expect(thumbs).toHaveCount(pageCount, { timeout: 60_000 })
-      await answerSaveDialogs(app, [bookletPath, grayPath])
+      await answerSaveDialogs(app, [bookletPath, grayPath, imagesZipPath])
 
       await thumbs.first().locator('.pdf-thumb-box').click()
       await page.keyboard.press('ControlOrMeta+p')
       const dialog = page.locator('.pdf-print-dialog')
       await expect(dialog).toBeVisible()
+      await expect(dialog.locator('[data-pl="live-preview"]')).toBeVisible()
       const panel = dialog.locator('.gs-pl')
       await expect(panel.locator('[data-pl="save-pdf"]')).toHaveCount(0)
 
       await panel.locator('input[data-pl="mode"][value="booklet"]').check()
       await expect(panel.locator('[data-pl="booklet-hint"]')).toBeVisible()
-      const save = panel.locator('[data-pl="save-pdf"]')
+      const dest = dialog.locator('select[data-print="printer"]')
+      await dest.selectOption(SAVE_PDF_DEST)
+      const save = dialog.locator('[data-print-confirm]')
       await expect(save).toBeEnabled()
       await save.click()
       await expect.poll(() => existsSync(bookletPath), { timeout: 120_000 }).toBe(true)
@@ -270,10 +277,9 @@ test.describe('advanced print layout', () => {
       // grayscale: the same faces, each one gray picture and no text
       await expect(save).toBeEnabled({ timeout: 30_000 })
       await panel.locator('input[data-pl="grayscale"]').check()
-      await expect(panel.locator('[data-pl="gray-note"]')).toBeVisible()
+      await expect(dialog.locator('[data-pl="gray-note"]')).toBeVisible()
       await save.click()
       await expect.poll(() => existsSync(grayPath), { timeout: 180_000 }).toBe(true)
-      expect(await saveDialogCalls(app)).toHaveLength(2)
 
       const gray = await loadPdf(grayPath)
       expect(gray.getPageCount()).toBe(faceCount)
@@ -282,6 +288,15 @@ test.describe('advanced print layout', () => {
         expect(grayImageCount(gray, i), `face ${i + 1} is a gray picture`).toBeGreaterThan(0)
       }
       expect(await pageTexts(grayPath)).toEqual(Array.from({ length: faceCount }, () => ''))
+
+      // save as images bundled as ZIP (PNG)
+      await dest.selectOption(SAVE_IMAGES_DEST)
+      await dialog.locator('select[data-print="image-bundle"]').selectOption('zip')
+      await save.click()
+      await expect.poll(() => existsSync(imagesZipPath), { timeout: 180_000 }).toBe(true)
+      expect(await saveDialogCalls(app)).toHaveLength(3)
+      const zip = await JSZip.loadAsync(readFileSync(imagesZipPath))
+      expect(Object.keys(zip.files).filter((name) => name.endsWith('.png'))).toHaveLength(faceCount)
       await expect(panel.locator('[data-pl="job-error"]')).toHaveCount(0)
     } finally {
       await closeAndSaveVideo(launched, 'print-layout-pdf')
@@ -312,7 +327,8 @@ test.describe('advanced print layout', () => {
       await expect(dialog.locator('input[data-pl="poster-cols"]')).toHaveValue('2')
       await expect(dialog.locator('input[data-pl="poster-rows"]')).toHaveValue('2')
       await expect(dialog.locator('[data-pl="issue"]')).toHaveCount(0)
-      const save = dialog.locator('[data-pl="save-pdf"]')
+      await dialog.locator('select[data-print="printer"]').selectOption(SAVE_PDF_DEST)
+      const save = dialog.locator('button[data-pl="print"]')
       await expect(save).toBeEnabled()
       await save.click()
 
@@ -364,11 +380,14 @@ test.describe('advanced print layout', () => {
       // one option on shows the arranged route; turned off again it is gone
       const reverse = panel.locator('input[data-pl="reverse"]')
       await reverse.check()
-      await expect(panel.locator('[data-pl="save-pdf"]')).toBeVisible()
       await expect(panel.locator('[data-pl="system-note"]')).toBeVisible()
       await reverse.uncheck()
-      await expect(panel.locator('[data-pl="save-pdf"]')).toHaveCount(0)
       await expect(panel.locator('[data-pl="system-note"]')).toHaveCount(0)
+
+      // unified destination dropdown offers Save as PDF and Save as images directly
+      const dest = dialog.locator('select[data-print="printer"]')
+      await dest.selectOption(SAVE_IMAGES_DEST)
+      await expect(dialog.locator('[data-print="image-options"]')).toBeVisible()
 
       await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
       await expect(dialog).toHaveCount(0)

@@ -9,9 +9,11 @@ import {
   createIpcTransport,
   createKnowledgeBaseSkill,
   type AgentMessage,
+  type AgentToolCall,
   type AgentTransport,
   type CreateDocumentFormat,
   type KbFileInfo,
+  type ToolExecution,
   windowMcpState,
   windowMcpUsableServers,
 } from '@genoffice/agent-core'
@@ -22,6 +24,8 @@ import {
   AiConnectPrompt,
   AiNextSteps,
   AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
   AiToolsUnsupportedNotice,
   AiReplyProgress,
   AiUsageChip,
@@ -67,6 +71,7 @@ import {
   type ProjectMemoryLine,
   type SkillChipRef,
   type SkillUse,
+  type TextQuestionCardState,
 } from '@genoffice/ui'
 import type {
   AddFolderResult,
@@ -160,12 +165,50 @@ interface AskMessage {
   memory?: ProjectMemoryLine[]
   /** tools another editor ran for this message: one summary line, never expanded (spec 5.3.2) */
   otherTools?: { editor: ProjectEditor; fileRef?: string; count: number }
+  /** read back from a saved chat: its question cards are read-only */
+  restored?: boolean
+  /** the question card calls of a saved answer, drawn as read-only cards */
+  questions?: ToolActivity[]
+}
+
+/** a question card call keeps its input and output up to the store's own cut (question card spec 5.1) */
+const QUESTION_TOOL_FIELD_MAX_CHARS = 16_000
+
+/** a tool call's input as the chat keeps it (undefined when it cannot be written out) */
+function toolInputText(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined
+  try {
+    const text = typeof input === 'string' ? input : JSON.stringify(input)
+    return text ? text.slice(0, QUESTION_TOOL_FIELD_MAX_CHARS) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * One tool record of a run as the project chat keeps it: a question card call
+ * also keeps its input and output, so the chat opened again draws its card;
+ * every other tool is kept as `toolRecordOf` says.
+ */
+function askToolRecordOf(call: AgentToolCall, execution: ToolExecution): ToolActivity {
+  const record = toolRecordOf(call, execution)
+  if (!isQuestionToolActivity(call)) return record
+  const input = toolInputText(call.input)
+  return {
+    ...record,
+    ...(input !== undefined ? { input } : {}),
+    ...(execution.output
+      ? { output: execution.output.slice(0, QUESTION_TOOL_FIELD_MAX_CHARS) }
+      : {}),
+  }
 }
 
 /** the in-memory chat set aside while a project chat is shown */
 interface MemoryChat {
   messages: AskMessage[]
   model: AgentMessage[]
+  /** its answered text-block cards, so they stay answered when it shows again */
+  textCards: Record<string, TextQuestionCardState>
 }
 
 /** a person-triggered memory consolidation that went through ("N → M [undo]") */
@@ -205,6 +248,8 @@ export function KbAskPanel({
   const [messages, setMessages] = useState<AskMessage[]>([])
   const [draft, setDraft] = useState('')
   const inlineQuestions = useAiInlineQuestions()
+  const textCardStatesRef = useRef(inlineQuestions.textCardStates)
+  textCardStatesRef.current = inlineQuestions.textCardStates
   const [busy, setBusy] = useState(false)
   const [corpusCount, setCorpusCount] = useState<number | null>(null)
   const corpusRef = useRef<KbFileInfo[]>([])
@@ -304,7 +349,17 @@ export function KbAskPanel({
   const askMessageOf = (entry: ProjectChatEntry): AskMessage => ({
     role: entry.role,
     text: entry.text,
-    toolNotes: entry.role === 'assistant' ? storedToolNotes(entry.tools, toolLabels()) : [],
+    toolNotes:
+      entry.role === 'assistant'
+        ? storedToolNotes(
+            entry.tools?.filter((tool) => !isQuestionToolActivity(tool)),
+            toolLabels(),
+          )
+        : [],
+    restored: true,
+    ...(entry.role === 'assistant' && entry.tools?.some(isQuestionToolActivity)
+      ? { questions: entry.tools.filter(isQuestionToolActivity) }
+      : {}),
     ...(entry.skills && entry.skills.length > 0 ? { skills: entry.skills } : {}),
     ...(entry.memory.length > 0 ? { memory: entry.memory } : {}),
     ...(entry.otherEditorTools ? { otherTools: entry.otherEditorTools } : {}),
@@ -336,6 +391,11 @@ export function KbAskPanel({
       showingProjectRef.current = false
       const kept = memoryChatRef.current
       memoryChatRef.current = null
+      // question cards belong to their chat: an open one answers skip, the shown chat's go
+      inlineQuestions.resetConversation()
+      for (const [key, card] of Object.entries(kept?.textCards ?? {})) {
+        inlineQuestions.markTextCard(key, card.status, card.answer)
+      }
       setMessages(kept?.messages ?? [])
       loop?.reset()
       // another chat shows: no MCP choices of the one before (user MCP spec 7.6)
@@ -348,8 +408,11 @@ export function KbAskPanel({
       memoryChatRef.current = {
         messages: messagesRef.current,
         model: [...(loop?.messages ?? [])],
+        textCards: textCardStatesRef.current,
       }
     }
+    // question cards belong to their chat: an open one answers skip, the shown chat's go
+    inlineQuestions.resetConversation()
     showingProjectRef.current = true
     setMessages(opened.entries.map(askMessageOf))
     loop?.reset()
@@ -510,7 +573,7 @@ export function KbAskPanel({
           }))
         },
         onToolExecuted: ({ call, execution }) => {
-          if (runActiveRef.current) runToolsRef.current.push(toolRecordOf(call, execution))
+          if (runActiveRef.current) runToolsRef.current.push(askToolRecordOf(call, execution))
           if (call.name === CREATE_DOCUMENT_TOOL) {
             // saved into the chosen project's folder: the step is done and says where
             const path = execution.isError ? undefined : docSkill.createdPaths().at(-1)
@@ -637,6 +700,8 @@ export function KbAskPanel({
       return
     }
     streamErrorRef.current = null
+    // a new question closes a card still waiting and allows one card in this run
+    inlineQuestions.supersedeOpen()
     // a held question was left in the composer while it waited: it is sent now
     if (again === undefined || draft.trim() === instruction) setDraft('')
     skills.consume(skillUse)
@@ -1092,6 +1157,9 @@ export function KbAskPanel({
                 ))}
               </div>
             )}
+            {m.questions?.map((tool, j) => (
+              <AiQuestionReceipt key={`q-${j}`} lang={lang} activity={tool} />
+            ))}
             {m.otherTools && (
               <ProjectToolSummaryLine
                 lang={lang}
@@ -1117,15 +1185,16 @@ export function KbAskPanel({
                   text={m.text}
                   navs={[fileNav]}
                   streaming={m.streaming}
+                  restored={m.restored}
                   questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
-                  savedAnswers={inlineQuestions.textCardStates[`m-${i}`]?.answers}
-                  onQuestionSubmit={(spec, answers) => {
-                    inlineQuestions.markTextCard(`m-${i}`, 'submitted', answers)
-                    void ask(inlineQuestions.formatFollowUp(spec, answers, false))
+                  questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                  onQuestionSubmit={(view, answer) => {
+                    inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                    void ask(inlineQuestions.formatFollowUp(lang, view, answer))
                   }}
-                  onQuestionSkip={(spec) => {
+                  onQuestionSkip={(view) => {
                     inlineQuestions.markTextCard(`m-${i}`, 'skipped')
-                    void ask(inlineQuestions.formatFollowUp(spec, {}, true))
+                    void ask(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
                   }}
                 />
               ) : (
@@ -1152,7 +1221,12 @@ export function KbAskPanel({
                 <AiUsageChip usage={m.usage} lang={lang} />
               </div>
             )}
-            <AiReplyProgress reply={m} thinking={t('askHintBusy')} working={t('askHintBusy')} />
+            <AiReplyProgress
+              reply={m}
+              thinking={t('askHintBusy')}
+              working={t('askHintBusy')}
+              paused={inlineQuestions.waitingForPerson}
+            />
             {m.role === 'assistant' &&
               m.text &&
               !m.streaming &&
@@ -1214,10 +1288,11 @@ export function KbAskPanel({
         ))}
         {inlineQuestions.activeToolCard && (
           <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
             lang={lang}
-            spec={inlineQuestions.activeToolCard.spec}
+            view={inlineQuestions.activeToolCard.view}
             status={inlineQuestions.activeToolCard.status}
-            savedAnswers={inlineQuestions.activeToolCard.answers}
+            answer={inlineQuestions.activeToolCard.answer}
             onSubmit={inlineQuestions.submitToolCard}
             onSkip={inlineQuestions.skipToolCard}
           />

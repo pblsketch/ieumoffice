@@ -30,6 +30,7 @@ Las tarjetas de **En el editor de PDF** abren el PDF elegido en una pestaña del
 - **Quitar páginas en blanco** solo muestra candidatas. Solo se quitan las páginas elegidas, y una página con un solo carácter nunca es candidata.
 - **Quitar anotaciones** conserva los campos de formulario y solo quita los vínculos si los marca. El contenido de las anotaciones quitadas no queda en el archivo nuevo.
 - **Guardar como texto** solo lee la capa de texto. Las páginas cuyo texto es una imagen, como las escaneadas, quedarán vacías.
+- **Dividir PDF** permite separar por rangos personalizados (con opción de combinar), cantidad de páginas, marcadores o tamaño máximo, con formato de nombre y subcarpeta.
 
 ## Para qué sirve
 

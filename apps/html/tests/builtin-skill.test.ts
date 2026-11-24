@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { ASK_QUESTIONS_TOOL } from '@genoffice/agent-core'
 import { AGENT_TOOLS } from '../src/renderer/ai/tools'
 
 const SKILL = readFileSync(
@@ -20,7 +21,8 @@ describe('the built-in html-document skill', () => {
   })
 
   it('names only tools this editor has', () => {
-    const known = new Set(AGENT_TOOLS.map((tool) => tool.name))
+    // the question card tool is the shared one every panel adds next to its own
+    const known = new Set([...AGENT_TOOLS.map((tool) => tool.name), ASK_QUESTIONS_TOOL])
     const words = named(SKILL)
     expect(words).toEqual(
       expect.arrayContaining([

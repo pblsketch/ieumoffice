@@ -1,3 +1,4 @@
+import type { ImageExportOptions } from '@genoffice/print-layout/plan'
 import {
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -73,19 +74,34 @@ export interface MarkdownPrintLayoutSetup {
     event: PrintLayoutInvokeEvent,
     job: MarkdownPrintLayoutJob | undefined,
   ) => Promise<string | null>
+  /** save dialog for arranged images (PNG/JPG/ZIP); null when the user cancels */
+  pickImageSavePath?: (
+    event: PrintLayoutInvokeEvent,
+    job: MarkdownPrintLayoutJob | undefined,
+    image: ImageExportOptions,
+  ) => Promise<string | null>
   /** tests only: stands in for `printMarkdownPdf` */
   makePdf?: MarkdownPdfMaker
   runner?: PrintLayoutIpcHandlers<MarkdownPrintLayoutJob>['runner']
   platform?: NodeJS.Platform
 }
 
-/** `markdown:print-layout-preview|print|save|cancel`. */
+/** `markdown:print-layout-preview|preview-faces|close-preview|print|save|save-images|cancel`. */
 export function registerMarkdownPrintLayout(setup: MarkdownPrintLayoutSetup): () => void {
   return registerPrintLayoutIpc<MarkdownPrintLayoutJob>('markdown', {
     ipcMain: setup.ipcMain,
     buildJobPdf: (_event, editor) => markdownJobPdf(editor, setup.makePdf),
     createPrintWindow: setup.createPrintWindow,
     pickSavePath: (event, editor) => setup.pickSavePath(event, editor),
+    ...(setup.pickImageSavePath
+      ? {
+          pickImageSavePath: (
+            event: PrintLayoutInvokeEvent,
+            editor: MarkdownPrintLayoutJob | undefined,
+            image: ImageExportOptions,
+          ) => setup.pickImageSavePath!(event, editor, image),
+        }
+      : {}),
     ...(setup.runner ? { runner: setup.runner } : {}),
     ...(setup.platform ? { platform: setup.platform } : {}),
   })

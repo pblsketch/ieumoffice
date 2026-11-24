@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { LANGS } from '@genoffice/i18n'
-import { SYSTEM_DIALOG } from '@genoffice/ui'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST, SYSTEM_DIALOG } from '@genoffice/ui'
 import { LocaleProvider } from '../src/renderer/i18n/locale'
 import { strings } from '../src/renderer/i18n/strings'
 import { PrintPreview } from '../src/renderer/preview/PrintPreview'
@@ -100,6 +100,7 @@ function fakePrintLayout() {
     })),
     print: vi.fn(async (): Promise<unknown> => ({ ok: true })),
     savePdf: vi.fn(async (): Promise<unknown> => ({ ok: true, path: 'F:/out/arranged.pdf' })),
+    saveImages: vi.fn(async (): Promise<unknown> => ({ ok: true, paths: ['F:/out/p-01.png'] })),
     cancel: vi.fn(async () => {}),
     onProgress: vi.fn(() => () => {}),
     getLabelSpec: vi.fn(async () => null),
@@ -276,10 +277,11 @@ describe('the print preview with a layout option on', () => {
     expect(printLayout.savePdf).not.toHaveBeenCalled()
   })
 
-  it('saves the arranged PDF from the panel and says so', async () => {
+  it('saves the arranged PDF from the destination dropdown and says so', async () => {
     const { onPrint, printLayout } = await mount()
     await click(pl('grayscale'))
-    await click(pl('save-pdf'))
+    await selectValue('select[data-print="printer"]', SAVE_PDF_DEST)
+    await click(button('Save'))
     expect(onPrint).not.toHaveBeenCalled()
     expect(printLayout.savePdf).toHaveBeenCalledWith({
       options: expect.objectContaining({ grayscale: true }),
@@ -288,16 +290,42 @@ describe('the print preview with a layout option on', () => {
     expect(container.textContent).toContain(strings.en.printLayoutSaved)
   })
 
-  it('previews the arranged result from the same pages', async () => {
-    const { printLayout, gatherJob } = await mount()
-    await click(mode('nup'))
-    await click(pl('preview'))
-    expect(gatherJob).toHaveBeenCalledTimes(1)
-    expect(printLayout.preview).toHaveBeenCalledWith({
-      options: expect.objectContaining({ mode: 'nup' }),
+  it('saves arranged images from the destination dropdown', async () => {
+    const { printLayout } = await mount()
+    await selectValue('select[data-print="printer"]', SAVE_IMAGES_DEST)
+    await click(button('Save'))
+    expect(printLayout.saveImages).toHaveBeenCalledWith({
+      options: expect.objectContaining({ mode: 'single' }),
       editor: JOB,
+      image: { format: 'png', quality: 90, bundle: 'files' },
     })
-    expect(container.querySelectorAll('.gs-pl-result-face')).toHaveLength(1)
+    expect(container.textContent).toContain('Saved as images (1).')
+  })
+
+  it('prints only the selected page range (current page or custom range)', async () => {
+    const { onPrint, printLayout } = await mount()
+    await click(container.querySelector<HTMLInputElement>('input[data-hwp-range="current"]')!)
+    await click(button('Print…'))
+    expect(onPrint).not.toHaveBeenCalled()
+    expect(printLayout.print).toHaveBeenCalledWith(
+      expect.objectContaining({
+        editor: { ...JOB, pages: [JOB.pages[0]] },
+      }),
+    )
+
+    await click(container.querySelector<HTMLInputElement>('input[data-hwp-range="custom"]')!)
+    const input = container.querySelector<HTMLInputElement>('input[data-hwp-range="custom-text"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '2-3')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await settle()
+    await click(button('Print…'))
+    expect(printLayout.print).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        editor: { ...JOB, pages: [JOB.pages[1], JOB.pages[2]] },
+      }),
+    )
   })
 
   it('shows why a print failed, and nothing for a canceled one', async () => {
@@ -355,13 +383,12 @@ describe('the print preview with a layout option on', () => {
     expect(faceBox(3).width).toBeLessThan(faceBox(3).height)
   })
 
-  it('gathers the pages once for a preview, a print and a save', async () => {
+  it('gathers the pages once for a print and a save', async () => {
     const { printLayout, gatherJob } = await mount()
     await click(mode('nup'))
-    await click(pl('preview'))
     await click(button('Print…'))
-    await click(pl('save-pdf'))
-    expect(printLayout.preview).toHaveBeenCalledTimes(1)
+    await selectValue('select[data-print="printer"]', SAVE_PDF_DEST)
+    await click(button('Save'))
     expect(printLayout.print).toHaveBeenCalledTimes(1)
     expect(printLayout.savePdf).toHaveBeenCalledTimes(1)
     expect(gatherJob).toHaveBeenCalledTimes(1)

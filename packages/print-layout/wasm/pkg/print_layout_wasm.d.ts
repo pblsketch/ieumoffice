@@ -35,9 +35,20 @@ export function arrange_pdf(pdf_bytes: Uint8Array | number[], faces_json: string
 export function convert_bgrx_pixels(bgrx: Uint8Array | number[], stride: number, width: number, height: number, grayscale: boolean): Uint8Array;
 
 /**
+ * Converts BGRx rows with stride and encodes to baseline JPEG.
+ */
+export function encode_bgrx_to_jpeg(bgrx: Uint8Array | number[], stride: number, width: number, height: number, grayscale: boolean, quality: number): Uint8Array;
+
+/**
  * Fused BGRx-to-PNG encoder without an intermediate full-frame pixel copy.
  */
 export function encode_bgrx_to_png(bgrx: Uint8Array | number[], stride: number, width: number, height: number, grayscale: boolean): Uint8Array;
+
+/**
+ * Encodes tightly packed 8-bit gray (`channels = 1`) or RGB (`channels = 3`)
+ * pixel rows to baseline JPEG.
+ */
+export function encode_jpeg(pixels: Uint8Array | number[], width: number, height: number, channels: number, quality: number): Uint8Array;
 
 /**
  * Encodes tightly packed 8-bit gray (`channels = 1`) or RGB (`channels = 3`)
@@ -55,6 +66,11 @@ export function read_job_page_sizes(pdf_bytes: Uint8Array | number[]): string;
  */
 export function rotate_landscape_faces(pdf_bytes: Uint8Array | number[]): RotateResult;
 
+/**
+ * Stamps pre-rendered PNG overlays (watermark, header/footer) onto PDF faces.
+ */
+export function stamp_pdf_overlays(pdf_bytes: Uint8Array | number[], placements_json: string, stamps_blob: Uint8Array | number[], stamp_lengths: Uint32Array | number[]): Uint8Array;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -63,7 +79,9 @@ export interface InitOutput {
     readonly __wbg_rotateresult_free: (a: number, b: number) => void;
     readonly arrange_pdf: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly convert_bgrx_pixels: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly encode_bgrx_to_jpeg: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly encode_bgrx_to_png: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly encode_jpeg: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly encode_png: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly graypdfbuilder_add_bgrx_face: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly graypdfbuilder_add_gray_face: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
@@ -73,6 +91,7 @@ export interface InitOutput {
     readonly rotate_landscape_faces: (a: number, b: number) => [number, number, number];
     readonly rotateresult_rotated: (a: number) => number;
     readonly rotateresult_take_pdf: (a: number) => [number, number];
+    readonly stamp_pdf_overlays: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

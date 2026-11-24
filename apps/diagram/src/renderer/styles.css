@@ -70,6 +70,17 @@ body,
   min-height: 0;
 }
 
+.dg-quick-print {
+  position: absolute;
+  top: 4px;
+  right: 74px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
 .dg-frame {
   display: block;
   width: 100%;

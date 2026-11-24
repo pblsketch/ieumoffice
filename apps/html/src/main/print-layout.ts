@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readJobPageSizes } from '@genoffice/print-layout'
-import type { PageSize } from '@genoffice/print-layout/plan'
+import type { ImageExportOptions, PageSize } from '@genoffice/print-layout/plan'
 import {
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -154,12 +154,25 @@ export interface HtmlPrintLayoutSetup {
     event: PrintLayoutInvokeEvent,
     suggestedName: string | undefined,
   ) => Promise<string | null>
+  /** save dialog for arranged images (PNG/JPG/ZIP); null when the user cancels */
+  pickImageSavePath?: (
+    event: PrintLayoutInvokeEvent,
+    suggestedName: string | undefined,
+    image: ImageExportOptions,
+  ) => Promise<string | null>
   runner?: PrintLayoutRunner
   platform?: NodeJS.Platform
 }
 
-/** `html:print-layout-preview|print|save|cancel` and `html:print-job-pages`. */
+/** `html:print-layout-preview|preview-faces|close-preview|print|save|save-images|cancel` and `html:print-job-pages`. */
 export function registerHtmlPrintLayout(setup: HtmlPrintLayoutSetup): () => void {
+  const nameOf = (editor: unknown): string | undefined => {
+    const name =
+      typeof editor === 'object' && editor !== null
+        ? (editor as { suggestedName?: unknown }).suggestedName
+        : undefined
+    return typeof name === 'string' ? name : undefined
+  }
   const removeLayout = registerPrintLayoutIpc<HtmlPrintJob>('html', {
     ipcMain: setup.ipcMain,
     buildJobPdf: async (event, editor) => {
@@ -172,13 +185,16 @@ export function registerHtmlPrintLayout(setup: HtmlPrintLayoutSetup): () => void
       return pdf
     },
     createPrintWindow: setup.createPrintWindow,
-    pickSavePath: (event, editor) => {
-      const name =
-        typeof editor === 'object' && editor !== null
-          ? (editor as { suggestedName?: unknown }).suggestedName
-          : undefined
-      return setup.pickSavePath(event, typeof name === 'string' ? name : undefined)
-    },
+    pickSavePath: (event, editor) => setup.pickSavePath(event, nameOf(editor)),
+    ...(setup.pickImageSavePath
+      ? {
+          pickImageSavePath: (
+            event: PrintLayoutInvokeEvent,
+            editor: HtmlPrintJob | undefined,
+            image: ImageExportOptions,
+          ) => setup.pickImageSavePath!(event, nameOf(editor), image),
+        }
+      : {}),
     ...(setup.runner ? { runner: setup.runner } : {}),
     ...(setup.platform ? { platform: setup.platform } : {}),
   })

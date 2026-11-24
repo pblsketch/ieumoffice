@@ -30,7 +30,7 @@ const ipcMain = {
 const jobs: Uint8Array[] = []
 const runner: PrintLayoutRunner = {
   run: vi.fn(async (request) => {
-    jobs.push(request.jobPdf)
+    if ('jobPdf' in request) jobs.push(request.jobPdf)
     return { kind: 'preview', faces: [] } as never
   }),
 }
@@ -49,6 +49,7 @@ const readViewBytes = vi.fn(async (viewId: number, path: string) => {
   throw new Error('pdf: path not granted to this view')
 })
 const pickSavePath = vi.fn(async () => null as string | null)
+const pickImageSavePath = vi.fn(async () => null as string | null)
 const createPrintWindow = vi.fn()
 let unregister: () => void
 
@@ -70,6 +71,7 @@ beforeAll(async () => {
     readViewBytes,
     createPrintWindow,
     pickSavePath,
+    pickImageSavePath,
     runner,
   })
 })
@@ -162,6 +164,20 @@ describe('registerPdfPrintLayout', () => {
     } finally {
       laterBytes = fileBytes
     }
+  })
+
+  it('refuses to save a restricted file as images before asking where, and builds nothing', async () => {
+    jobs.length = 0
+    pickImageSavePath.mockClear()
+    const editor = { path: 'C:/docs/locked.pdf', pages: null, includeAnnotations: true }
+    const result = await handlers.get('pdf:print-layout-save-images')!(event(), {
+      options: nup,
+      editor,
+      image: { format: 'png', quality: 80, bundle: 'files' },
+    })
+    expect(result).toEqual({ ok: false, error: PDF_PRINT_SAVE_RESTRICTED })
+    expect(pickImageSavePath).not.toHaveBeenCalled()
+    expect(jobs).toHaveLength(0)
   })
 
   it('still previews and prints a restricted file', async () => {

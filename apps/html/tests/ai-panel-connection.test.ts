@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -215,6 +216,30 @@ async function sendMessage(text: string) {
   })
   act(() => host.querySelector<HTMLButtonElement>('.ai-send-btn')!.click())
   await settle()
+}
+
+/** an A2UI question card call (spec 3.1) with one choice */
+const QUESTION_SURFACE = {
+  version: '1.0',
+  createSurface: {
+    surfaceId: 'page-scope',
+    catalogId: 'ieumoffice.com:question-card/v1',
+    components: [
+      { id: 'root', component: 'Column', children: ['title', 'audience'] },
+      { id: 'title', component: 'Text', text: 'Page direction' },
+      {
+        id: 'audience',
+        component: 'ChoicePicker',
+        label: 'Who is it for?',
+        options: [
+          { label: 'Kids', value: 'kids' },
+          { label: 'Adults', value: 'adults' },
+        ],
+        value: { '@path': '/audience' },
+      },
+    ],
+    dataModel: { audience: ['kids'] },
+  },
 }
 
 const ready = (patch: Partial<AiSettings> = {}): AiSettings => ({
@@ -701,9 +726,7 @@ describe('AI panel while a card waits on the person', () => {
     await sendMessage('rebuild the whole page')
 
     expect(host.querySelector('.brief-card')).not.toBeNull()
-    expect(liveReply().querySelector('.ai-clarify-chip')?.textContent).toContain(
-      zh.aiWaitingConfirm,
-    )
+    expect(liveReply().querySelector('.ai-wait-chip')?.textContent).toContain(zh.aiWaitingConfirm)
     expect(liveReply().querySelector('.ai-typing')).toBeNull()
     expect(host.querySelector('.ai-typing-elapsed')).toBeNull()
     expect(groupLabels()).toEqual([zh.aiWaitingConfirm])
@@ -721,36 +744,42 @@ describe('AI panel while a card waits on the person', () => {
     // the run goes on: the working indicator is back and nothing says it waits any more
     expect(host.querySelector('.brief-card')).toBeNull()
     expect(main.requests).toHaveLength(3)
-    expect(host.querySelector('.ai-clarify-chip')).toBeNull()
+    expect(host.querySelector('.ai-wait-chip')).toBeNull()
     expect(liveReply().querySelector('.ai-typing')).not.toBeNull()
     expect(groupLabels()).not.toContain(zh.aiWaitingConfirm)
   })
 
-  it('shows the questionnaire as waiting for answers until it is skipped', async () => {
+  it('shows the question card as waiting for answers until it is skipped', async () => {
     const main = fakeMain({
       settings: ready(),
       statuses: statusMap('ready', 'ready'),
-      reply: (_request, nth) =>
-        nth === 1
-          ? toolCall('ask_clarification', {
-              questions: [{ id: 'q1', label: 'Who is it for?', options: ['Kids', 'Adults'] }],
-            })
-          : [],
+      reply: (_request, nth) => (nth === 1 ? toolCall('ask_questions', QUESTION_SURFACE) : []),
     })
     await mountPanel(main)
     await sendMessage('a landing page')
 
-    expect(liveReply().querySelector('.ai-clarify-chip')?.textContent).toContain(zh.aiWaitingAnswer)
+    // the shared tool; the old questionnaire tool is gone
+    const offered = (main.requests[0]!.tools ?? []).map((tool) => tool.name)
+    expect(offered).toContain('ask_questions')
+    expect(offered).not.toContain('ask_clarification')
+    expect(host.querySelector('[data-testid="ai-question-card"]')).not.toBeNull()
+    expect(liveReply().querySelector('.ai-wait-chip')?.textContent).toContain(zh.aiWaitingAnswer)
     expect(liveReply().querySelector('.ai-typing')).toBeNull()
+    expect(host.querySelector('.ai-typing-elapsed')).toBeNull()
     expect(groupLabels()).toEqual([zh.aiWaitingAnswer])
     expect(host.querySelector('.ai-step-title')!.textContent).toBe(zh.aiWaitClarifyStep)
 
-    act(() => host.querySelector<HTMLButtonElement>('.ai-clarify-skip')!.click())
+    act(() => host.querySelector<HTMLButtonElement>('.ai-qcard-btn-secondary')!.click())
     await settle()
 
+    // the model gets the skip action and no next-step text; the clock is back
     expect(main.requests).toHaveLength(2)
-    expect(host.querySelector('.ai-clarify-chip')).toBeNull()
+    const sent = JSON.stringify(main.requests[1])
+    expect(sent).toContain('ieum_skip')
+    expect(sent).not.toContain('Now call plan_page')
+    expect(host.querySelector('.ai-wait-chip')).toBeNull()
     expect(liveReply().querySelector('.ai-typing')).not.toBeNull()
+    expect(groupLabels()).not.toContain(zh.aiWaitingAnswer)
   })
 
   it('shows a page that stopped early as waiting for the keep-or-discard choice', async () => {
@@ -769,7 +798,7 @@ describe('AI panel while a card waits on the person', () => {
     await sendMessage('write the page')
 
     expect(host.querySelector('.ai-partial-card')).not.toBeNull()
-    expect(liveReply().querySelector('.ai-clarify-chip')?.textContent).toContain(zh.aiWaitingChoice)
+    expect(liveReply().querySelector('.ai-wait-chip')?.textContent).toContain(zh.aiWaitingChoice)
     expect(liveReply().querySelector('.ai-typing')).toBeNull()
     expect(groupLabels()).toEqual([zh.aiWaitingChoice])
     const step = host.querySelector('.ai-step-title')!.textContent!
@@ -780,7 +809,144 @@ describe('AI panel while a card waits on the person', () => {
     await settle()
 
     expect(host.querySelector('.ai-partial-card')).toBeNull()
-    expect(host.querySelector('.ai-clarify-chip')).toBeNull()
+    expect(host.querySelector('.ai-wait-chip')).toBeNull()
     expect(liveReply().querySelector('.ai-typing')).not.toBeNull()
+  })
+})
+
+describe('AI panel question cards in the stored chat', () => {
+  /** the per-document chat store, answering `loadChat` with `stored` */
+  function fakeStore(stored: unknown[] = []) {
+    const store = {
+      resolveChat: vi.fn(async () => ({ projectId: 'doc', chatId: 'doc-chat' })),
+      appendChat: vi.fn(async (_args: unknown) => {}),
+      loadChat: vi.fn(async () => stored),
+      rebindChat: vi.fn(async () => null),
+    }
+    Object.assign(window, { projectApi: store })
+    return store
+  }
+  afterEach(() => {
+    delete (window as { projectApi?: unknown }).projectApi
+  })
+
+  const submitAction = JSON.stringify({
+    version: '1.0',
+    action: {
+      name: 'submit',
+      surfaceId: 'page-scope',
+      sourceComponentId: 'ieum_submit',
+      timestamp: '2026-11-24T09:00:00.000Z',
+      context: { answers: { audience: ['adults'] }, decideForMe: [] },
+    },
+  })
+
+  it('stores the question card call with its input and its whole output', async () => {
+    const store = fakeStore()
+    const main = fakeMain({
+      settings: ready(),
+      statuses: statusMap('ready', 'ready'),
+      reply: (_request, nth) =>
+        nth === 1
+          ? [
+              {
+                type: 'tool-call',
+                toolCall: { id: 'q', name: 'ask_questions', input: QUESTION_SURFACE },
+              },
+              { type: 'done' },
+            ]
+          : [{ type: 'delta', text: 'Thanks' }, { type: 'done' }],
+    })
+    await mountPanel(main)
+    await sendMessage('a landing page')
+    act(() => host.querySelector<HTMLButtonElement>('.ai-qcard-btn-primary')!.click())
+    await settle()
+
+    const reply = store.appendChat.mock.calls
+      .map(([args]) => args as { role: string; tools?: Array<Record<string, string>> })
+      .find((args) => args.role === 'assistant')!
+    const tool = reply.tools!.find((t) => t.name === 'ask_questions')!
+    expect(JSON.parse(tool.input!)).toEqual(QUESTION_SURFACE)
+    const action = JSON.parse(tool.output!) as { action: { name: string; context: unknown } }
+    expect(action.action.name).toBe('submit')
+    expect(action.action.context).toEqual({ answers: { audience: ['kids'] }, decideForMe: [] })
+  })
+
+  it('draws stored question cards read-only where their steps were, old and new', async () => {
+    fakeStore([
+      { role: 'user', text: 'a landing page' },
+      {
+        role: 'assistant',
+        text: 'Here it is.',
+        tools: [
+          {
+            name: 'ask_questions',
+            summary: 'Page direction',
+            input: JSON.stringify(QUESTION_SURFACE),
+            output: submitAction,
+          },
+          {
+            name: 'ask_clarification',
+            summary: 'Questionnaire',
+            input: JSON.stringify({
+              questions: [{ id: 'q1', label: 'Which tone?', options: ['Calm', 'Bold'] }],
+            }),
+            output:
+              'User answers:\nWhich tone?: Bold\nNow call plan_page with a brief that follows these choices.',
+          },
+          { name: 'get_outline', summary: 'Read the outline' },
+        ],
+      },
+      {
+        role: 'assistant',
+        text: 'One more thing:\n<a2ui-json>[' + JSON.stringify(QUESTION_SURFACE) + ']</a2ui-json>',
+      },
+    ])
+    const main = fakeMain({ settings: ready(), statuses: statusMap('ready', 'ready') })
+    await mountPanel(main)
+
+    const cards = [...host.querySelectorAll('.ai-qcard-locked')]
+    expect(cards).toHaveLength(3)
+    expect(cards[0]!.textContent).toContain('Who is it for?')
+    expect(cards[0]!.textContent).toContain('Adults')
+    expect(cards[1]!.textContent).toContain('Bold')
+    expect(cards[1]!.textContent).not.toContain('Now call')
+    // nothing can be answered again, and no tag shows as text
+    expect(host.querySelector('.ai-qcard-btn-primary')).toBeNull()
+    expect(host.textContent).not.toContain('<a2ui-json>')
+    // the other step stays one step group, after the cards; the question steps are cards only
+    const reply = cards[0]!.closest('.ai-msg-assistant')!
+    const groups = [...reply.querySelectorAll('.ai-work-group')]
+    expect(groups).toHaveLength(1)
+    expect(cards[1]!.compareDocumentPosition(groups[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+})
+
+/** the source of one function of a panel, from its opening line to its closing brace */
+function panelSection(file: string, start: string, end = '\n  }\n'): string {
+  const src = readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const at = src.indexOf(start)
+  if (at < 0) throw new Error(`${start} not found in ${file}`)
+  return src.slice(at, src.indexOf(end, at))
+}
+
+describe('html AI panel: question cards follow the conversation (a2ui spec 4)', () => {
+  it('a message queued while a card waits closes it without a second card in that run', () => {
+    const queue = panelSection('../src/renderer/ai/AiPanel.tsx', 'const enqueueWith = ')
+    expect(queue).toContain('inlineQuestions.closeOpenCard()')
+    expect(queue).not.toContain('supersedeOpen')
+  })
+
+  it('a queued message that starts its own run gets its one card', () => {
+    const submit = panelSection('../src/renderer/ai/AiPanel.tsx', 'useChatRunQueue<', '\n  })\n')
+    expect(submit).toContain('inlineQuestions.supersedeOpen()')
+  })
+
+  it('new chat and an opened chat drop the cards and reset the one-card limit', () => {
+    expect(panelSection('../src/renderer/ai/AiPanel.tsx', 'const resetConversation = ')).toContain(
+      'inlineQuestions.resetConversation()',
+    )
   })
 })

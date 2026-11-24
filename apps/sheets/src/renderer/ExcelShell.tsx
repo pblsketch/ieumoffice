@@ -4,6 +4,7 @@ import { platformShortcuts } from '@genoffice/i18n'
 import {
   AiMark,
   Dropdown,
+  QuickPrintButton,
   SHAPE_GALLERY_GROUPS,
   ShapePreview,
   useDismissablePopover,
@@ -18,8 +19,11 @@ import {
   type AiTokenUsageView,
   type DriveAttachPicked,
   type OnTemplateSkill,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
   type SkillUse,
   type AiComposerDocs,
+  type AiInlineQuestions,
 } from '@genoffice/ui'
 
 import {
@@ -293,6 +297,8 @@ interface ExcelShellProps {
   readonly historicChat?: readonly AiChatMessage[]
   /** the project folder parts of the AI panel (chip, chat menu, notices) */
   readonly aiProject?: AiPanelProject | undefined
+  /** the run's question card (its skill is in App.tsx's loop) */
+  readonly aiQuestions?: AiInlineQuestions | undefined
   /** the skill card for a key a chat message carries */
   readonly renderSkillCard?: ((key: string) => ReactNode) | undefined
   /** the template flow's lines and its preview card, after the chat's messages */
@@ -472,6 +478,13 @@ interface ExcelShellProps {
   readonly onApplyHeaderFooter: (result: HeaderFooterResult) => string | null
   /// Print with Preview, open while non-null.
   readonly printHost: PrintPreviewHost | null
+  readonly printInitialDestination?: string | undefined
+  readonly onOpenPrint?: ((initialDestination?: string) => void) | undefined
+  readonly onQuickPrint?: ((printerLabel: string) => void | Promise<void>) | undefined
+  readonly getPrintPageCount?: (() => number | null | Promise<number | null>) | undefined
+  readonly listPrinters?: (() => Promise<readonly PrintPrinterInfo[]>) | undefined
+  readonly quickPrintPrefStore?: QuickPrintPrefStore | undefined
+  readonly onQuickPrintNotice?: ((message: string) => void) | undefined
   readonly onClosePrint: () => void
   /// Session page-layout settings of the active sheet, echoed by the Page
   /// Layout tab's controls (untouched fields show the app default).
@@ -548,6 +561,7 @@ export function ExcelShell({
   chat,
   historicChat,
   aiProject,
+  aiQuestions,
   renderSkillCard,
   skillNotes,
   onTemplateSkill,
@@ -597,6 +611,13 @@ export function ExcelShell({
   onGetConsolidateDefault,
   onApplyHeaderFooter,
   printHost,
+  printInitialDestination,
+  onOpenPrint,
+  onQuickPrint,
+  getPrintPageCount,
+  listPrinters,
+  quickPrintPrefStore,
+  onQuickPrintNotice,
   onClosePrint,
   onPromptChange,
   onSend,
@@ -1063,6 +1084,18 @@ export function ExcelShell({
           >
             <CaretIcon />
           </button>
+          {onOpenPrint && onQuickPrint && (
+            <QuickPrintButton
+              lang={getLang()}
+              disabled={openingWorkbook}
+              listPrinters={listPrinters}
+              prefStore={quickPrintPrefStore}
+              getPageCount={getPrintPageCount}
+              onOpenDialog={onOpenPrint}
+              onQuickPrint={onQuickPrint}
+              onNoPrinter={onQuickPrintNotice}
+            />
+          )}
           <label
             className={`autosave-toggle ${autoSave ? 'on' : ''}`}
             data-tip={t('appAutoSaveTip')}
@@ -1184,6 +1217,7 @@ export function ExcelShell({
             onExpand={aiDock.onExpand}
             onCollapse={() => setIsCopilotOpen(false)}
             project={aiProject}
+            inlineQuestions={aiQuestions}
           />
         )}
         <div className="sheet-main">
@@ -1559,6 +1593,7 @@ export function ExcelShell({
       {printHost && (
         <PrintDialog
           host={printHost}
+          initialDestination={printInitialDestination}
           onClose={onClosePrint}
           onPageSetup={() => setShowHeaderFooter(true)}
           revision={printRevision}

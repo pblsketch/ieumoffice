@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { LANGS } from '@genoffice/i18n'
-import { SYSTEM_DIALOG } from '@genoffice/ui'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST, SYSTEM_DIALOG } from '@genoffice/ui'
 import { LocaleProvider } from '../src/renderer/i18n/locale'
 import { strings } from '../src/renderer/i18n/strings'
 import { PrintPreviewDialog } from '../src/renderer/print/PrintPreviewDialog'
@@ -52,6 +52,7 @@ function fakePrintLayout() {
     })),
     print: vi.fn(async (): Promise<unknown> => ({ ok: true })),
     savePdf: vi.fn(async (): Promise<unknown> => ({ ok: true, path: 'F:/out/arranged.pdf' })),
+    saveImages: vi.fn(async (): Promise<unknown> => ({ ok: true, paths: ['F:/out/page-01.png'] })),
     cancel: vi.fn(async () => {}),
     onProgress: vi.fn(() => () => {}),
     getLabelSpec: vi.fn(async () => null),
@@ -238,8 +239,7 @@ describe('the print dialog at default layout options', () => {
     expect(pl('reverse').checked).toBe(false)
     // the dialog's own paper and orientation decide the job's pages
     expect(container.querySelector('[data-pl="paper"]')).toBeNull()
-    expect(container.querySelector('[data-pl="fit"]')).toBeNull()
-    expect(container.querySelector('[data-pl="save-pdf"]')).toBeNull()
+    expect(container.querySelector('[data-pl="scaling"]')).toBeNull()
     expect(container.querySelector('.md-print-schematic')).toBeNull()
   })
 })
@@ -305,10 +305,11 @@ describe('the print dialog with a layout option on', () => {
     expect(api.printDocument).not.toHaveBeenCalled()
   })
 
-  it('saves the arranged PDF from the panel and says so', async () => {
+  it('saves the arranged PDF from the destination dropdown and says so', async () => {
     await mount()
     await click(pl('grayscale'))
-    await click(pl('save-pdf'))
+    await selectValue('select[data-print="printer"]', SAVE_PDF_DEST)
+    await click(button('Save'))
     expect(api.printLayout.savePdf).toHaveBeenCalledWith({
       options: expect.objectContaining({ grayscale: true }),
       editor: { html: HTML, pages: null, options: PAPER, name: 'Notes' },
@@ -316,14 +317,16 @@ describe('the print dialog with a layout option on', () => {
     expect(container.textContent).toContain(en.appPrintPreviewLayoutSaved)
   })
 
-  it('previews the arranged result from the same job', async () => {
+  it('saves arranged images from the destination dropdown', async () => {
     await mount()
-    await click(mode('nup'))
-    await click(pl('preview'))
-    expect(api.printLayout.preview).toHaveBeenCalledWith({
-      options: expect.objectContaining({ mode: 'nup' }),
+    await selectValue('select[data-print="printer"]', SAVE_IMAGES_DEST)
+    await click(button('Save'))
+    expect(api.printLayout.saveImages).toHaveBeenCalledWith({
+      options: expect.objectContaining({ mode: 'single' }),
       editor: { html: HTML, pages: null, options: PAPER, name: 'Notes' },
+      image: { format: 'png', quality: 90, bundle: 'files' },
     })
+    expect(container.textContent).toContain('Saved as images (1).')
   })
 
   it('shows why a print failed, and nothing for a canceled one', async () => {

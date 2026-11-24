@@ -46,17 +46,17 @@ Regels: de extensie blijft automatisch behouden; ongeldige tekens, afsluitende p
 
 ## Afdrukken
 
-Bestand ▸ Afdrukken (⌘P/ctrl+P) opent in elke editor een afdrukvenster. Docs, PDF, Sheets, Slides en Markdown hebben het onderdeel **Pagina-indeling** in hun gewone afdrukvenster, HWP in het afdrukvoorbeeld, en HTML, mindmap en diagram in een nieuw klein afdrukvenster. Kies je niets onder Pagina-indeling, dan wordt er afgedrukt zoals vroeger.
+Bestand ▸ Afdrukken (⌘P/ctrl+P) opent in elke editor — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram en Whiteboard — een afdrukvenster met live voorbeeld. Als je niets onder Pagina-indeling wijzigt en via het systeemvenster afdrukt, werkt afdrukken zoals voorheen.
 
-- **Indeling**: kies Eén pagina per vel, Meerdere pagina's per vel (2, 4, 6, 9 of 16), Boekje (links of rechts binden), Affiche (vellen in de breedte en hoogte, overlapping, snijlijnen) of Etiketten (één pagina per etiket of dezelfde pagina op elk etiket, beginetiket, een gangbaar A4-formaat of eigen maten).
-- **Alleen oneven zijden, alleen even zijden, omgekeerde volgorde**: de zijden worden geteld na het indelen, op wat werkelijk uit de printer komt. Handig bij een printer zonder dubbelzijdig afdrukken: druk de voorkanten af, draai het papier om en druk de achterkanten af.
-- **Verkleinen tot papierformaat**: alleen pagina's die groter zijn dan het gekozen papier worden verkleind; kleinere worden niet vergroot. Sheets en Markdown gebruiken hun eigen velden voor papier en schaal.
-- **Grijstinten en beeldresolutie**: bij afdrukken met opties uit Pagina-indeling wordt elke pagina eerst een afbeelding en zo naar de printer gestuurd. Kies de resolutie uit Automatisch, 150, 300 of 600 dpi.
-- **Alleen selectie**: Docs en Markdown drukken alleen de geselecteerde tekst af, opnieuw verdeeld vanaf de eerste pagina; Slides drukt de geselecteerde dia's af en PDF de geselecteerde pagina's. Sheets drukt zoals vroeger het geselecteerde bereik af.
-- **Indelingsschets en resultaat bekijken**: de schets laat meteen zien waar elk paginanummer op het papier komt, en **Resultaat bekijken** toont wat er echt is gemaakt. Met **Ingedeeld resultaat opslaan als pdf** druk je dezelfde indeling af op een andere pc of bij een drukkerij.
-- **Afdrukvenster van het systeem**: kies voor een boekje dubbelzijdig afdrukken met omslaan over de korte kant. Laat het paginabereik en het aantal pagina's per vel in het systeemvenster zoals ze zijn.
+- **Bestemming (printer, pdf, afbeeldingen)**: kies uit één lijst een geïnstalleerde printer, **Opslaan als PDF**, **Opslaan als afbeeldingen** of het **Systeemafdrukvenster**. Afbeeldingen ondersteunen PNG en JPG (Hoog 90%, Normaal 80%, Klein bestand 65%) als aparte genummerde bestanden of één ZIP-archief. Bij beveiligde pdf’s zijn pdf- en afbeeldingsopslag uitgeschakeld, terwijl afdrukken beschikbaar blijft.
+- **Live afdrukvoorbeeld**: alle tien editors tonen een live voorbeeld vóór uitvoer. Wanneer indeling, grijstinten, watermerk of kop-/voetteksten de uiteindelijke zijden veranderen, rendert het voorbeeld ze op aanvraag met navigatie, zoom en schakelaar voor het indelingsschema.
+- **Indeling**: kies Eén pagina per vel, Meerdere pagina’s per vel (2, 4, 6, 9 of 16, optioneel met randen), Boekje (links of rechts gebonden), Poster (kolommen × rijen, overlap, snijlijnen en tegelcoördinaten) of Etiketten (één pagina per etiket of herhalen, startvak, A4-formaten of eigen maten).
+- **Schaal, richting, zijden en volgorde**: kies Ware grootte (100%), Passend op papier, Alleen te grote pagina’s verkleinen of Aangepaste schaal (10%–400%) en Automatisch, Staand of Liggend. Alleen oneven, alleen even en omgekeerde volgorde tellen op de uiteindelijke zijden.
+- **Watermerk, kop-/voetteksten, grijstinten en resolutie**: plaats een tekst- of beeldwatermerk en 6 velden voor kop- en voetteksten (titel, datum, paginanummer of eigen tekst) alleen bij uitvoer, zonder het document aan te passen. Grijstinten en DPI (Automatisch, 150, 300 of 600 dpi) bepalen de rasterkwaliteit.
+- **Paginabereiken en selectie**: Docs en Markdown hernummeren geselecteerde tekst vanaf pagina 1; Slides drukt gekozen dia’s af; PDF gekozen pagina’s; Hangul ondersteunt Alle, Huidige pagina of Aangepast bereik; Sheets drukt actieve bladen, werkmap of selectie af.
+- **Systeemafdrukvenster**: kies voor een boekje dubbelzijdig afdrukken over de korte zijde en laat paginabereik en pagina’s per vel in het systeemvenster ongewijzigd.
 
-Pdf's worden afgedrukt met de huidige paginavolgorde en draaiingen.
+Pdf’s worden afgedrukt in de huidige paginavolgorde en rotatie.
 
 ## Waar naamloze bestanden staan
 

@@ -27,6 +27,12 @@ export type PrintLayoutErrorCode =
   | 'invalid-dpi'
   | 'fit-needs-paper'
   | 'fit-needs-single'
+  | 'invalid-scaling'
+  | 'scale-percent-out-of-range'
+  | 'invalid-orientation'
+  | 'invalid-watermark'
+  | 'invalid-header-footer'
+  | 'invalid-image-options'
   | 'no-faces'
 
 /** Plain, structured-clone friendly form (safe to send over IPC). */

@@ -1,5 +1,5 @@
 /**
- * Editing inside the HWP flow view (decision 0163, design system 5.3).
+ * Editing inside the HWP flow view (decision 0165, design system 5.3).
  *
  * The flow frame shows body paragraphs as `.flow-p[data-sec][data-para]`. Edits
  * are applied to the rhwp engine document at the same paragraph and character
