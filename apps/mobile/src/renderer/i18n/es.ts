@@ -55,6 +55,13 @@ export const es = {
   pageNumberApply: 'Aplicar',
   pageNumberDone: 'Números de página cambiados. Se ven en la vista de página.',
   pageNumberFailed: 'No se pudieron cambiar los números de página.',
+  markdownToHwp: 'Guardar como documento HWP',
+  markdownToHwpWorking: 'Convirtiendo a documento HWP…',
+  markdownToHwpDone: 'Guardado como documento HWP.',
+  markdownToHwpDoneLoss:
+    'Guardado como documento HWP. Parte del formato no se pudo trasladar tal cual.',
+  markdownToHwpFailed: 'No se pudo convertir a documento HWP.',
+  openNow: 'Abrir',
   formatPanel: 'Formato',
   hideKeyboard: 'Ocultar teclado',
   fmtGroupText: 'Texto',

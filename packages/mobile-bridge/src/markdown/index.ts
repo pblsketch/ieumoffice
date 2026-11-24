@@ -127,6 +127,8 @@ export interface MobileMarkdownApi {
     markdownText: string,
   ): Promise<MobileDocSession>
   shareDocument(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: boolean }>
+  /** Saves a HWPX converted from the Markdown as a new file (system save dialog). */
+  saveConvertedHwpx(suggestedName: string, bytes: Uint8Array): Promise<MobileDocSession>
   writeRecovery(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: boolean }>
   discardRecovery(docKey: string): Promise<{ readonly ok: boolean }>
   insertInlineImage(input: Omit<InlineImageInput, 'maxBytes'>): string
@@ -180,6 +182,14 @@ export function createMobileMarkdownApi(
         await client.recoveryDiscard(session.docKey).catch(() => {})
       }
       return nextSession
+    },
+
+    async saveConvertedHwpx(suggestedName, bytes) {
+      return client.saveAsFileBytes({
+        suggestedName,
+        format: 'hwpx',
+        bytesBase64: bytesToBase64(bytes),
+      })
     },
 
     async shareDocument(session, markdownText) {

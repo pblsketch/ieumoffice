@@ -56,6 +56,13 @@ export const de = {
   pageNumberApply: 'Übernehmen',
   pageNumberDone: 'Seitenzahlen geändert. Sie erscheinen in der Seitenansicht.',
   pageNumberFailed: 'Die Seitenzahlen konnten nicht geändert werden.',
+  markdownToHwp: 'Als HWP-Dokument speichern',
+  markdownToHwpWorking: 'Wird in ein HWP-Dokument umgewandelt…',
+  markdownToHwpDone: 'Als HWP-Dokument gespeichert.',
+  markdownToHwpDoneLoss:
+    'Als HWP-Dokument gespeichert. Einige Formatierungen ließen sich nicht genau übernehmen.',
+  markdownToHwpFailed: 'Umwandlung in ein HWP-Dokument nicht möglich.',
+  openNow: 'Öffnen',
   formatPanel: 'Format',
   hideKeyboard: 'Tastatur ausblenden',
   fmtGroupText: 'Text',

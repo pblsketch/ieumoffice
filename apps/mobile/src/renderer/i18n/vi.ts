@@ -55,6 +55,13 @@ export const vi = {
   pageNumberApply: 'Áp dụng',
   pageNumberDone: 'Đã đổi số trang. Xem trong chế độ trang.',
   pageNumberFailed: 'Không đổi được số trang.',
+  markdownToHwp: 'Lưu thành tài liệu HWP',
+  markdownToHwpWorking: 'Đang chuyển sang tài liệu HWP…',
+  markdownToHwpDone: 'Đã lưu thành tài liệu HWP.',
+  markdownToHwpDoneLoss:
+    'Đã lưu thành tài liệu HWP. Một phần định dạng không chuyển được y nguyên.',
+  markdownToHwpFailed: 'Không chuyển được sang tài liệu HWP.',
+  openNow: 'Mở',
   formatPanel: 'Định dạng',
   hideKeyboard: 'Ẩn bàn phím',
   fmtGroupText: 'Văn bản',

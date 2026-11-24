@@ -56,6 +56,13 @@ export const fr = {
   pageNumberApply: 'Appliquer',
   pageNumberDone: 'Numéros de page modifiés. Ils s’affichent en vue page.',
   pageNumberFailed: 'Impossible de modifier les numéros de page.',
+  markdownToHwp: 'Enregistrer en document HWP',
+  markdownToHwpWorking: 'Conversion en document HWP…',
+  markdownToHwpDone: 'Enregistré en document HWP.',
+  markdownToHwpDoneLoss:
+    'Enregistré en document HWP. Une partie de la mise en forme n’a pas pu être reprise telle quelle.',
+  markdownToHwpFailed: 'Impossible de convertir en document HWP.',
+  openNow: 'Ouvrir',
   formatPanel: 'Mise en forme',
   hideKeyboard: 'Masquer le clavier',
   fmtGroupText: 'Texte',

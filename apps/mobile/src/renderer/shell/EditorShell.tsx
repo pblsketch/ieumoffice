@@ -78,6 +78,8 @@ export interface EditorShellProps {
   readonly quickActions: readonly EditorQuickActionItem[]
   /** Groups for the format panel ([Aa]); none hides the button. */
   readonly formatGroups?: readonly EditorFormatGroup[]
+  /** Format-specific rows for the More sheet (e.g. Markdown to HWP). */
+  readonly moreItems?: readonly EditorQuickActionItem[]
   /** View-mode tools of the document area (page/flow switch, text size, fit width). */
   readonly viewTools?: readonly EditorQuickActionItem[]
   readonly aiPanelContent: ReactNode
@@ -147,6 +149,7 @@ export function EditorShell({
   onDismissNotice,
   quickActions,
   formatGroups = [],
+  moreItems = [],
   viewTools = [],
   aiPanelContent,
   onBack,
@@ -547,6 +550,21 @@ export function EditorShell({
             <IconShare size={19} />
             <span>{t('share')}</span>
           </button>
+          {moreItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="mobile-menu-row-btn"
+              data-testid={`editor-more-${item.id}`}
+              onClick={() => {
+                setMoreOpen(false)
+                item.onPress()
+              }}
+            >
+              {renderQuickActionIcon(item.id)}
+              <span>{item.label}</span>
+            </button>
+          ))}
           {isHwpFamily && (
             <button
               type="button"
