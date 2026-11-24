@@ -30,6 +30,7 @@ Les cartes de **Dans l’éditeur PDF** ouvrent le PDF choisi dans un onglet de 
 - **Supprimer les pages blanches** ne fait que montrer des candidates. Seules les pages choisies sont supprimées, et une page avec au moins un caractère n’est jamais proposée.
 - **Supprimer les annotations** conserve les champs de formulaire et ne supprime les liens que si vous les cochez. Le contenu des annotations supprimées ne reste pas dans le nouveau fichier.
 - **Enregistrer en texte** ne lit que la couche de texte. Les pages dont le texte est une image, comme les pages numérisées, seront vides.
+- **Diviser le PDF** découpe par plages personnalisées (avec fusion possible), nombre de pages, signets ou taille maximale, avec nommage personnalisé et sous-dossier en option.
 
 ## Exemples d’usage
 

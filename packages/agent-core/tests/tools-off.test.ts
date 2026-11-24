@@ -15,6 +15,11 @@ import {
   type AgentTransport,
   type ToolExecution,
 } from '../src'
+import { ASK_QUESTIONS_TOOLS_OFF_PROMPT, createAskQuestionsSkill } from '../src/ask-questions-skill'
+import { guardDriveContent } from '../src/drive-skill'
+import { guardOutbound } from '../src/outbound-guard'
+import { composeSkills } from '../src/skill'
+import { guardReceivedContent } from '../src/user-mcp/keep-inside'
 
 /** A transport that replays one scripted turn per request and records what it was asked */
 function recordingTransport(
@@ -282,5 +287,70 @@ describe('AgentLoop run id', () => {
     const turns = transport.requests.filter((request) => request !== summary)
     expect(turns.length).toBeGreaterThan(0)
     for (const request of turns) expect(request.runId).toBeTruthy()
+  })
+})
+
+describe('AgentLoop tools-off skill prompts', () => {
+  const askSkill = () => createAskQuestionsSkill({ ask: vi.fn() })
+
+  it('swaps the ask-questions section for the question block guide when tools are off', async () => {
+    const ask = askSkill()
+    const transport = recordingTransport([(cb) => cb.onDone()])
+    const loop = new AgentLoop({
+      transport,
+      skill: composeSkills('panel', 'INTRO', [makeSkill(), ask]),
+      toolsAllowed: () => false,
+    })
+    loop.run('q')
+    await flush()
+    const system = transport.requests[0]!.system
+    expect(system).toContain(`INTRO\n\nsystem\n\n${ASK_QUESTIONS_TOOLS_OFF_PROMPT}`)
+    expect(system).not.toContain(ask.systemPrompt)
+    expect(system).toContain(TOOLS_UNAVAILABLE_NOTE)
+    expect(system.match(/<a2ui-json>/g)?.length).toBeGreaterThan(0)
+    expect(transport.requests[0]!.tools).toEqual([])
+  })
+
+  it('keeps the ask_questions section and adds no guide when tools are allowed', async () => {
+    const ask = askSkill()
+    const transport = recordingTransport([(cb) => cb.onDone()])
+    const loop = new AgentLoop({
+      transport,
+      skill: composeSkills('panel', 'INTRO', [makeSkill(), ask]),
+      toolsAllowed: () => true,
+    })
+    loop.run('q')
+    await flush()
+    const system = transport.requests[0]!.system
+    expect(system).toContain(`INTRO\n\nsystem\n\n${ask.systemPrompt}`)
+    expect(system).not.toContain(ASK_QUESTIONS_TOOLS_OFF_PROMPT)
+    expect(system).not.toContain('<a2ui-json>')
+    expect(transport.requests[0]!.tools.map((tool) => tool.name)).toContain('ask_questions')
+  })
+
+  it('adds no guide to a tools-off run without the ask-questions skill', async () => {
+    const plain = composeSkills('qc', 'INTRO', [makeSkill()])
+    expect(plain.toolsOffSystemPrompt).toBeUndefined()
+    const transport = recordingTransport([(cb) => cb.onDone()])
+    const loop = new AgentLoop({ transport, skill: plain, toolsAllowed: () => false })
+    loop.run('q')
+    await flush()
+    const system = transport.requests[0]!.system
+    expect(system).toContain('INTRO\n\nsystem')
+    expect(system).toContain(TOOLS_UNAVAILABLE_NOTE)
+    expect(system).not.toContain('<a2ui-json>')
+  })
+
+  it('keeps the tools-off prompt through the guarded wrappers', async () => {
+    const composed = composeSkills('panel', 'INTRO', [makeSkill(), askSkill()])
+    const bridge = {
+      internetToolsEnabled: () => Promise.resolve(true),
+      confirmAddresses: () => Promise.resolve(false),
+    }
+    const kept = guardReceivedContent(composed, { keepsInside: () => true, messages: () => [] })
+    const drive = guardDriveContent(kept, { driveContentSeen: false } as never)
+    const guarded = guardOutbound(drive, bridge, () => [])
+    expect(guarded.toolsOffSystemPrompt).toBe(composed.toolsOffSystemPrompt)
+    expect(guarded.toolsOffSystemPrompt).toContain(ASK_QUESTIONS_TOOLS_OFF_PROMPT)
   })
 })

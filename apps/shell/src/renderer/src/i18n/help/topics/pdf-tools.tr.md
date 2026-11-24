@@ -30,6 +30,7 @@ Günlük PDF işleri için bir pencere; işi seçerek başlarsınız. Sonuç her
 - **Boş sayfaları kaldır** yalnızca adayları gösterir. Yalnızca seçtiğiniz sayfalar kaldırılır ve tek bir karakter içeren sayfa bile aday olmaz.
 - **Açıklamaları kaldır** form alanlarını korur, bağlantıları ise yalnızca işaretlerseniz kaldırır. Kaldırılan açıklamaların söyledikleri yeni dosyada kalmaz.
 - **Metin olarak kaydet** yalnızca metin katmanını okur. Metni görsel olan sayfalar, örneğin taranmış sayfalar, boş çıkar.
+- **PDF Böl** özel aralıklar (tek dosyada birleştirme dahil), sayfa sayısı, yer imleri veya en fazla dosya boyutuna göre böler; adlandırma ve alt klasör seçeneği sunar.
 
 ## Şu durumlarda deneyin
 

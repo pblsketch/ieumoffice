@@ -7,6 +7,8 @@ import {
   AiPanelSideButton,
   AiQualityBadge,
   AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
   AiReplyFooter,
   AiScrollToBottom,
   AiModelPicker,
@@ -86,12 +88,7 @@ import type {
   SlideComment,
 } from '../../shared/ipc'
 import { ATTACHMENT_IMAGE_EXTS } from '../../shared/ipc'
-import {
-  createSlidesSkill,
-  type DeckAccess,
-  type ClarifyQuestion,
-  type DeckProgressEvent,
-} from './slides-skill'
+import { createSlidesSkill, type DeckAccess, type DeckProgressEvent } from './slides-skill'
 import { slidesCommentsToReviewMemos } from './memo-attach'
 import { runSlidesStaticQualityAudit } from './slides-static-qc'
 import type { QualityFinding } from '@genoffice/agent-core'
@@ -143,6 +140,7 @@ import {
   screenshotAllowed,
   settingsSupportVision,
 } from './slide-qc'
+import type { Lang } from '@genoffice/i18n'
 import { useI18n, t as tGlobal, aiLangDirective, getLang, type TFunc } from '../i18n/locale'
 import {
   AiQueueStrip,
@@ -176,7 +174,9 @@ interface ToolActivity {
   /** still executing: rendered as a spinner chip, replaced in place when the tool finishes */
   running?: boolean
   isError?: boolean
-  /** Full tool output (truncated to 2000 chars) */
+  /** Tool input as JSON: kept for a reopened question card (ask_questions) only */
+  input?: string
+  /** Tool output (truncated to 2000 chars; a reopened question card keeps the stored output) */
   output?: string
   /**
    * Side-channel display data: structured UI data filled by tools, not in LLM context.
@@ -308,6 +308,52 @@ function SentAttachments({
   )
 }
 
+/**
+ * A reopened message's tool steps: question calls come back as read-only
+ * cards where the run asked them, the other tools stay the work-step list.
+ */
+function HistoricToolSteps({
+  lang,
+  tools,
+  hasDetail,
+  renderDetail,
+}: {
+  lang: Lang
+  tools: ToolActivity[] | undefined
+  hasDetail: (step: ToolActivity) => boolean
+  renderDetail: (step: ToolActivity) => React.ReactNode
+}) {
+  if (!tools || tools.length === 0) return null
+  // consecutive other steps stay one list; each question call is its own card
+  const groups: Array<{ steps: ToolActivity[] } | { question: ToolActivity }> = []
+  for (const step of tools) {
+    if (isQuestionToolActivity(step)) {
+      groups.push({ question: step })
+      continue
+    }
+    const last = groups.at(-1)
+    if (last && 'steps' in last) last.steps.push(step)
+    else groups.push({ steps: [step] })
+  }
+  return (
+    <>
+      {groups.map((g, k) =>
+        'question' in g ? (
+          <AiQuestionReceipt key={k} lang={lang} activity={g.question} />
+        ) : (
+          <AiWorkSteps
+            key={k}
+            lang={lang}
+            steps={g.steps}
+            hasDetail={hasDetail}
+            renderDetail={renderDetail}
+          />
+        ),
+      )}
+    </>
+  )
+}
+
 function formatAttachmentSize(bytes: number): string {
   return bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(2)} MB`
@@ -366,12 +412,23 @@ function entryFromStored(
   return {
     role: m.role,
     text: m.text,
-    tools: m.tools?.map((t) => ({
-      name: t.name,
-      summary: t.summary,
-      isError: t.isError,
-      output: t.output ? t.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-    })),
+    tools: m.tools?.map((t) =>
+      // a question card is drawn again from its call and its answer, as stored
+      isQuestionToolActivity(t)
+        ? {
+            name: t.name,
+            summary: t.summary,
+            isError: t.isError,
+            ...(t.input ? { input: t.input } : {}),
+            ...(t.output ? { output: t.output } : {}),
+          }
+        : {
+            name: t.name,
+            summary: t.summary,
+            isError: t.isError,
+            output: t.output ? t.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
+          },
+    ),
     // stored metadata only: no thumbnail read for history, the chips render name/size
     attachments: m.attachments
       ?.filter((a) => a.path)
@@ -545,6 +602,8 @@ export function AiPanel({
       // nothing can run right now: the message stays queued, and in front of "not connected"
       // the queue is paused so it does not start by itself after a sign-in
       if (!sendGate.admitQueued(() => msgQueue.setPaused(true))) return false
+      // the queued message starts its own run: it gets its one card
+      inlineQuestions.supersedeOpen()
       runWith(text, text, { attachments: meta.attachments, scope: meta.scope }, meta.skillUse)
       return true
     },
@@ -689,10 +748,6 @@ export function AiPanel({
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  /* Answered clarify receipts (answered-state card): view-only record, not chat data */
-  const [clarifyAnswers, setClarifyAnswers] = useState<
-    Array<{ afterIdx: number; qa: Array<{ q: string; a: string }> }>
-  >([])
   const logRef = useRef<HTMLDivElement>(null)
   const scrollBottom = useScrollToBottom(logRef)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -1039,12 +1094,6 @@ export function AiPanel({
         /* Diagnostics are best-effort */
       })
   }
-
-  // Resolved when the user submits/cancels; the AI takes the answer and continues.
-  const [activeClarify, setActiveClarify] = useState<ClarifyQuestion[] | null>(null)
-  const clarifyResolverRef = useRef<((r: { answers: string; cancelled?: boolean }) => void) | null>(
-    null,
-  )
 
   /** Synchronous re-entry guard between runWith trigger and loop.run (see the comment inside runWith) */
   const runStartingRef = useRef(false)
@@ -1477,12 +1526,6 @@ export function AiPanel({
         } catch (e) {
           return { ok: false, error: e instanceof Error ? e.message : String(e) }
         }
-      },
-      askClarification: (questions: ClarifyQuestion[]) => {
-        return new Promise<{ answers: string; cancelled?: boolean }>((resolve) => {
-          clarifyResolverRef.current = resolve
-          setActiveClarify(questions)
-        })
       },
       // Single-page generation: one LLM request through the app's own AI transport writes a
       // structured JSON slide spec, and the main process builds it directly into a one-slide
@@ -2082,6 +2125,9 @@ export function AiPanel({
         : undefined
     msgQueue.enqueue(text, { attachments, scope, skillUse })
     setInput('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   /** Image attachments read as base64, sent multimodally with this user message (≤5MB per image, max 20; isomorphic to docs) */
@@ -2496,16 +2542,10 @@ export function AiPanel({
   }
   runQcPassRef.current = runQcPass
 
-  /** Finish pending survey cards as "skipped" (called on stop/new conversation, avoiding leftover cards and orphan promises) */
-  const dismissClarify = () => {
-    clarifyResolverRef.current?.({ answers: '', cancelled: true })
-    clarifyResolverRef.current = null
-    setActiveClarify(null)
-  }
-
   const cancel = () => {
     msgQueue.hold()
-    dismissClarify()
+    // a question card still waiting closes: its tool call answers skip
+    inlineQuestions.supersedeOpen()
     qcAbortRef.current?.abort()
     loopRef.current?.cancel()
   }
@@ -2557,7 +2597,8 @@ export function AiPanel({
   const resetConversation = () => {
     sendGate.reset()
     msgQueue.clear()
-    dismissClarify()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
     qcAbortRef.current?.abort()
     loopRef.current?.reset()
     // servers off in this chat and "always allow in this chat" go too (user MCP spec 7.6)
@@ -2571,10 +2612,6 @@ export function AiPanel({
     skills.resetConversation()
     skillCards.reset()
     skillTemplates.reset()
-    // Answered clarifications are transcript too: they render under their
-    // original message index, so stale entries would re-attach to unrelated
-    // new messages after an index collision.
-    setClarifyAnswers([])
     // Unsent composer attachments would otherwise ride into the next chat's
     // file context (availableAttachments merges sent + live), mirroring docs.
     setAttachments([])
@@ -2764,20 +2801,23 @@ export function AiPanel({
                 {entry.role === 'user' && entry.attachments && entry.attachments.length > 0 && (
                   <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
                 )}
-                {entry.tools && entry.tools.length > 0 && (
-                  <AiWorkSteps
-                    lang={lang}
-                    steps={entry.tools}
-                    hasDetail={hasToolDetail}
-                    renderDetail={renderToolDetail}
-                  />
-                )}
+                <HistoricToolSteps
+                  lang={lang}
+                  tools={entry.tools}
+                  hasDetail={hasToolDetail}
+                  renderDetail={renderToolDetail}
+                />
                 <SkillUsedNotes tools={entry.tools} />
                 {projectPanel.messageParts(entry)}
                 {entry.skillProposals?.map((key) => skillCards.render(key))}
                 {entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} />
+                    {entry.role === 'assistant' ? (
+                      // a restored reply: its question blocks are read-only cards
+                      <AiAssistantBody lang={lang} text={entry.text} restored />
+                    ) : (
+                      <Markdown text={entry.text} />
+                    )}
                   </div>
                 )}
               </div>
@@ -2869,14 +2909,14 @@ export function AiPanel({
                       text={entry.text}
                       streaming={entry.streaming}
                       questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
-                      savedAnswers={inlineQuestions.textCardStates[`m-${i}`]?.answers}
-                      onQuestionSubmit={(spec, answers) => {
-                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answers)
-                        runWith(inlineQuestions.formatFollowUp(spec, answers, false))
+                      questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                        runWith(inlineQuestions.formatFollowUp(lang, view, answer))
                       }}
-                      onQuestionSkip={(spec) => {
+                      onQuestionSkip={(view) => {
                         inlineQuestions.markTextCard(`m-${i}`, 'skipped')
-                        runWith(inlineQuestions.formatFollowUp(spec, {}, true))
+                        runWith(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
                       }}
                     />
                   </div>
@@ -2926,6 +2966,8 @@ export function AiPanel({
                 reply={entry}
                 thinking={t('aiThinking')}
                 working={t('aiContinuing')}
+                // the elapsed count holds while a question card waits for the person
+                paused={inlineQuestions.waitingForPerson}
               />
               {isLast && !busy && qualityFindings.length > 0 && (
                 <AiQualityBadge
@@ -2973,27 +3015,16 @@ export function AiPanel({
                   }
                 />
               )}
-              {clarifyAnswers
-                .filter((c) => c.afterIdx === i)
-                .map((c, k) => (
-                  <div key={`ca${k}`} className="ai-clarify-answered">
-                    {c.qa.map((pair, m) => (
-                      <div key={m} className="ai-clarify-answered-row">
-                        <div className="ai-clarify-answered-q">{pair.q}</div>
-                        <div className="ai-clarify-answered-a">{pair.a}</div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
             </div>
           )
         })}
         {inlineQuestions.activeToolCard && (
           <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
             lang={lang}
-            spec={inlineQuestions.activeToolCard.spec}
+            view={inlineQuestions.activeToolCard.view}
             status={inlineQuestions.activeToolCard.status}
-            savedAnswers={inlineQuestions.activeToolCard.answers}
+            answer={inlineQuestions.activeToolCard.answer}
             onSubmit={inlineQuestions.submitToolCard}
             onSkip={inlineQuestions.skipToolCard}
           />
@@ -3001,14 +3032,6 @@ export function AiPanel({
         {skillTemplates.notes}
         {/* an MCP tool waiting for the person's yes (user MCP spec 7.4) */}
         <McpPermissionCard lang={lang} />
-        {activeClarify && (
-          <div className="ai-clarify-chip" role="status">
-            <span className="ai-clarify-chip-eyebrow">{t('aiClarifyTitle')}</span>
-            <span className="ai-clarify-chip-arrow" aria-hidden>
-              ↓
-            </span>
-          </div>
-        )}
       </div>
 
       <AiScrollToBottom
@@ -3020,275 +3043,255 @@ export function AiPanel({
         }}
       />
 
-      {activeClarify ? (
-        /* Docked in the composer slot with the composer's own outer spacing */
-        <div className="ai-composer">
-          <ClarifyCard
-            questions={activeClarify}
-            onSubmit={(answers, qa) => {
-              clarifyResolverRef.current?.({ answers })
-              clarifyResolverRef.current = null
-              setActiveClarify(null)
-              setClarifyAnswers((prev) => [...prev, { afterIdx: chat.length - 1, qa }])
-            }}
-            onSkip={() => {
-              clarifyResolverRef.current?.({ answers: '', cancelled: true })
-              clarifyResolverRef.current = null
-              setActiveClarify(null)
-            }}
+      <div className="ai-composer">
+        {editQueue && editQueue.length > 0 && (
+          <EditQueueCard
+            items={editQueue}
+            slides={slides}
+            busy={busy}
+            onEditInstruction={(key, instruction) => onQueueEditInstruction?.(key, instruction)}
+            onRemove={(key) => onQueueRemove?.(key)}
+            onDiscardAll={() => onQueueClear?.()}
+            onFocus={(key) => onQueueFocus?.(key)}
+            onSend={() => void sendEditQueue()}
           />
-        </div>
-      ) : (
-        <div className="ai-composer">
-          {editQueue && editQueue.length > 0 && (
-            <EditQueueCard
-              items={editQueue}
-              slides={slides}
-              busy={busy}
-              onEditInstruction={(key, instruction) => onQueueEditInstruction?.(key, instruction)}
-              onRemove={(key) => onQueueRemove?.(key)}
-              onDiscardAll={() => onQueueClear?.()}
-              onFocus={(key) => onQueueFocus?.(key)}
-              onSend={() => void sendEditQueue()}
-            />
-          )}
-          {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
-          {sendGate.connectChoice && (
-            <AiConnectPrompt
-              choice={sendGate.connectChoice}
-              statuses={connection.statuses}
-              lang={lang}
-              disabled={connection.busy}
-              attention={sendGate.connectAttention}
-              onOpenSettings={() => void window.slidesApi.openAiModelSettings().catch(() => {})}
-              onOpenConnectHelp={connection.openConnectHelp}
-              {...connection.actions}
-            />
-          )}
-          {sendGate.noticeDue && (
-            <AiFirstConnectionNotice
-              lang={lang}
-              codexKeepsHistory
-              onAcknowledge={sendGate.acknowledgeNotice}
-            />
-          )}
-          {inputTruncated && (
-            <AiInputTruncatedNotice lang={lang} onDismiss={() => setInputTruncated(false)} />
-          )}
-          {localModelCapabilities(liveSettings).tools === false && (
-            <AiToolsUnsupportedNotice lang={lang} />
-          )}
-          {projectPanel.notices}
-          <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
-          <TemplatePicker
-            deckEmpty={deckEmpty ?? false}
-            galleryShown={!!deckEmpty && chat.length === 0 && historicChat.length === 0}
+        )}
+        {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
+        {sendGate.connectChoice && (
+          <AiConnectPrompt
+            choice={sendGate.connectChoice}
+            statuses={connection.statuses}
+            lang={lang}
+            disabled={connection.busy}
+            attention={sendGate.connectAttention}
+            onOpenSettings={() => void window.slidesApi.openAiModelSettings().catch(() => {})}
+            onOpenConnectHelp={connection.openConnectHelp}
+            {...connection.actions}
           />
-          {projectPanel.hint}
-          <div className="ai-input-box">
-            <AiQueueStrip
-              items={msgQueue.queued}
-              labels={AI_QUEUE_LABELS[lang]}
-              onUpdate={msgQueue.update}
-              onRemove={msgQueue.remove}
-              onClear={msgQueue.clear}
-              paused={msgQueue.paused}
-              onTogglePause={msgQueue.togglePaused}
-              onMove={msgQueue.move}
-            />
-            {attachments.length > 0 && (
-              <div className="ai-attachments" onScroll={onAttachmentsScroll}>
-                {attachments.map((a) =>
-                  ATTACHMENT_IMAGE_EXTS.has(a.ext) ? (
-                    <span key={a.path} className="ai-attachment-thumb" data-tip={a.path}>
-                      {attachmentPreviews[a.path] ? (
-                        <img src={attachmentPreviews[a.path]} alt={a.name} />
-                      ) : (
-                        <span className="ai-attachment-thumb-pending" aria-hidden>
-                          <img src={fileImageIcon} alt="" />
-                        </span>
-                      )}
-                      <button
-                        className="ai-attachment-thumb-remove"
-                        onClick={() => removeAttachment(a.path)}
-                        data-tip={t('aiRemoveAttachment')}
-                        aria-label={t('aiRemoveAttachment')}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden>
-                          <path
-                            d="M24 9.4L22.6 8L16 14.6L9.4 8L8 9.4l6.6 6.6L8 22.6L9.4 24l6.6-6.6l6.6 6.6l1.4-1.4l-6.6-6.6L24 9.4z"
-                            fill="currentColor"
-                            stroke="currentColor"
-                            strokeWidth="0.25"
-                          />
-                        </svg>
-                      </button>
-                    </span>
-                  ) : (
-                    <span key={a.path} className="ai-attachment-card" data-tip={a.path}>
-                      <span className="ai-attachment-card-icon">
-                        <AttachmentCardIcon ext={a.ext} />
+        )}
+        {sendGate.noticeDue && (
+          <AiFirstConnectionNotice
+            lang={lang}
+            codexKeepsHistory
+            onAcknowledge={sendGate.acknowledgeNotice}
+          />
+        )}
+        {inputTruncated && (
+          <AiInputTruncatedNotice lang={lang} onDismiss={() => setInputTruncated(false)} />
+        )}
+        {localModelCapabilities(liveSettings).tools === false && (
+          <AiToolsUnsupportedNotice lang={lang} />
+        )}
+        {projectPanel.notices}
+        <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
+        <TemplatePicker
+          deckEmpty={deckEmpty ?? false}
+          galleryShown={!!deckEmpty && chat.length === 0 && historicChat.length === 0}
+        />
+        {projectPanel.hint}
+        <div className="ai-input-box">
+          <AiQueueStrip
+            items={msgQueue.queued}
+            labels={AI_QUEUE_LABELS[lang]}
+            onUpdate={msgQueue.update}
+            onRemove={msgQueue.remove}
+            onClear={msgQueue.clear}
+            paused={msgQueue.paused}
+            onTogglePause={msgQueue.togglePaused}
+            onMove={msgQueue.move}
+          />
+          {attachments.length > 0 && (
+            <div className="ai-attachments" onScroll={onAttachmentsScroll}>
+              {attachments.map((a) =>
+                ATTACHMENT_IMAGE_EXTS.has(a.ext) ? (
+                  <span key={a.path} className="ai-attachment-thumb" data-tip={a.path}>
+                    {attachmentPreviews[a.path] ? (
+                      <img src={attachmentPreviews[a.path]} alt={a.name} />
+                    ) : (
+                      <span className="ai-attachment-thumb-pending" aria-hidden>
+                        <img src={fileImageIcon} alt="" />
                       </span>
-                      <span className="ai-attachment-card-meta">
-                        <span className="ai-attachment-card-name">{truncateCardName(a.name)}</span>
-                        <span className="ai-attachment-card-size">
-                          {formatAttachmentSize(a.sizeBytes)}
-                        </span>
-                      </span>
-                      <button
-                        className="ai-attachment-thumb-remove"
-                        onClick={() => removeAttachment(a.path)}
-                        data-tip={t('aiRemoveAttachment')}
-                        aria-label={t('aiRemoveAttachment')}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden>
-                          <path
-                            d="M24 9.4L22.6 8L16 14.6L9.4 8L8 9.4l6.6 6.6L8 22.6L9.4 24l6.6-6.6l6.6 6.6l1.4-1.4l-6.6-6.6L24 9.4z"
-                            fill="currentColor"
-                            stroke="currentColor"
-                            strokeWidth="0.25"
-                          />
-                        </svg>
-                      </button>
-                    </span>
-                  ),
-                )}
-              </div>
-            )}
-            {picker.chipRow}
-            {picker.popup}
-            <textarea
-              ref={inputRef}
-              value={input}
-              dir="auto"
-              spellCheck={spellcheck}
-              {...picker.inputProps}
-              data-slides-ai-input="true"
-              data-deck-undo-ready={!busy && !inputEditedSinceRunRef.current ? 'true' : 'false'}
-              placeholder={
-                busy
-                  ? AI_QUEUE_LABELS[lang].queuePlaceholder
-                  : t(deckEmpty ? 'aiInputPlaceholderGen' : 'aiInputPlaceholder')
-              }
-              onChange={(e) => {
-                inputEditedSinceRunRef.current = true
-                setInput(e.target.value)
-                picker.track(e.target)
-              }}
-              onSelect={(e) => picker.track(e.currentTarget)}
-              onCompositionStart={() => {
-                picker.onCompositionStart()
-                ime.handleCompositionStart()
-              }}
-              onCompositionEnd={(e) => {
-                picker.onCompositionEnd(e)
-                ime.handleCompositionEnd()
-              }}
-              onBlur={picker.onBlur}
-              onKeyDown={(e) => {
-                if (picker.onKeyDown(e)) return
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  if (ime.isImeConfirm(e.nativeEvent)) return
-                  if (busy) enqueueDraft()
-                  else run()
-                } else if (e.key === 'Escape' && busy) {
-                  e.preventDefault()
-                  cancel()
-                }
-              }}
-              onPaste={(e) => {
-                const data = e.clipboardData
-                if (
-                  clipboardPictureIsRendering(data.getData('text/html'), data.getData('text/plain'))
-                )
-                  return
-                const files = Array.from(data.files)
-                if (files.length === 0) return
-                e.preventDefault()
-                void onPasteFiles(files)
-              }}
-              rows={1}
-            />
-            <div className="ai-input-footer">
-              <div className="ai-input-footer-start">
-                <AiAttachMenu
-                  lang={lang}
-                  onPickPc={() => void pickAttachments()}
-                  onPickedDocs={attachFromDrive}
-                  onPickedDrive={attachFromDrive}
-                  memoAttach={{
-                    listMemos: async () => {
-                      const all = (await getAllCommentsRef.current?.().catch(() => [])) ?? []
-                      return slidesCommentsToReviewMemos(all)
-                    },
-                    onAttachMemos: (items) =>
-                      setAttachedMemos((prev) => {
-                        const seen = new Set(prev.map((m) => m.id))
-                        return [...prev, ...items.filter((m) => !seen.has(m.id))]
-                      }),
-                  }}
-                />
-                {skills.composer && (
-                  <button
-                    type="button"
-                    className="ai-composer-icon-btn ai-skill-trigger-btn"
-                    aria-haspopup="listbox"
-                    aria-expanded={Boolean(picker.manualOpen)}
-                    onClick={() => picker.toggleSkillMenu?.()}
-                    data-tip={aiPanelText(lang, 'skillButtonLabel')}
-                    aria-label={aiPanelText(lang, 'skillButtonLabel')}
-                  >
-                    <IconSlash size={15} />
-                  </button>
-                )}
-                <McpServerButton lang={lang} />
-              </div>
-              <div className="ai-input-footer-end">
-                <AiModelPicker
-                  bridge={MODEL_BRIDGE}
-                  lang={lang}
-                  subscriptionStatuses={connection.statuses}
-                  onRefreshSubscriptions={connection.refresh}
-                />
-                {busy ? (
-                  <button
-                    type="button"
-                    className="ai-send-btn ai-stop-btn"
-                    onClick={cancel}
-                    data-tip={t('aiStopGeneration')}
-                    aria-label={t('aiStop')}
-                  >
-                    <IconStop size={14} />
-                  </button>
+                    )}
+                    <button
+                      className="ai-attachment-thumb-remove"
+                      onClick={() => removeAttachment(a.path)}
+                      data-tip={t('aiRemoveAttachment')}
+                      aria-label={t('aiRemoveAttachment')}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden>
+                        <path
+                          d="M24 9.4L22.6 8L16 14.6L9.4 8L8 9.4l6.6 6.6L8 22.6L9.4 24l6.6-6.6l6.6 6.6l1.4-1.4l-6.6-6.6L24 9.4z"
+                          fill="currentColor"
+                          stroke="currentColor"
+                          strokeWidth="0.25"
+                        />
+                      </svg>
+                    </button>
+                  </span>
                 ) : (
-                  <button
-                    type="button"
-                    className="ai-send-btn"
-                    onClick={run}
-                    disabled={!input.trim()}
-                    data-tip={t('aiSend')}
-                    aria-label={t('aiSend')}
-                  >
-                    <IconArrowUp size={15} />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-          {/* the row under the input box, as the shared composer's footerBelow renders it */}
-          {(projectPanel.picker || sessionUsage) && (
-            <div className="ai-input-below">
-              {projectPanel.picker}
-              {sessionUsage && (
-                <span className="ai-input-below-end">
-                  <AiUsageChip usage={sessionUsage} session lang={lang} />
-                </span>
+                  <span key={a.path} className="ai-attachment-card" data-tip={a.path}>
+                    <span className="ai-attachment-card-icon">
+                      <AttachmentCardIcon ext={a.ext} />
+                    </span>
+                    <span className="ai-attachment-card-meta">
+                      <span className="ai-attachment-card-name">{truncateCardName(a.name)}</span>
+                      <span className="ai-attachment-card-size">
+                        {formatAttachmentSize(a.sizeBytes)}
+                      </span>
+                    </span>
+                    <button
+                      className="ai-attachment-thumb-remove"
+                      onClick={() => removeAttachment(a.path)}
+                      data-tip={t('aiRemoveAttachment')}
+                      aria-label={t('aiRemoveAttachment')}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden>
+                        <path
+                          d="M24 9.4L22.6 8L16 14.6L9.4 8L8 9.4l6.6 6.6L8 22.6L9.4 24l6.6-6.6l6.6 6.6l1.4-1.4l-6.6-6.6L24 9.4z"
+                          fill="currentColor"
+                          stroke="currentColor"
+                          strokeWidth="0.25"
+                        />
+                      </svg>
+                    </button>
+                  </span>
+                ),
               )}
             </div>
           )}
+          {picker.chipRow}
+          {picker.popup}
+          <textarea
+            ref={inputRef}
+            value={input}
+            dir="auto"
+            spellCheck={spellcheck}
+            {...picker.inputProps}
+            data-slides-ai-input="true"
+            data-deck-undo-ready={!busy && !inputEditedSinceRunRef.current ? 'true' : 'false'}
+            placeholder={
+              busy
+                ? AI_QUEUE_LABELS[lang].queuePlaceholder
+                : t(deckEmpty ? 'aiInputPlaceholderGen' : 'aiInputPlaceholder')
+            }
+            onChange={(e) => {
+              inputEditedSinceRunRef.current = true
+              setInput(e.target.value)
+              picker.track(e.target)
+            }}
+            onSelect={(e) => picker.track(e.currentTarget)}
+            onCompositionStart={() => {
+              picker.onCompositionStart()
+              ime.handleCompositionStart()
+            }}
+            onCompositionEnd={(e) => {
+              picker.onCompositionEnd(e)
+              ime.handleCompositionEnd()
+            }}
+            onBlur={picker.onBlur}
+            onKeyDown={(e) => {
+              if (picker.onKeyDown(e)) return
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                if (ime.isImeConfirm(e.nativeEvent)) return
+                if (busy) enqueueDraft()
+                else run()
+              } else if (e.key === 'Escape' && busy) {
+                e.preventDefault()
+                cancel()
+              }
+            }}
+            onPaste={(e) => {
+              const data = e.clipboardData
+              if (
+                clipboardPictureIsRendering(data.getData('text/html'), data.getData('text/plain'))
+              )
+                return
+              const files = Array.from(data.files)
+              if (files.length === 0) return
+              e.preventDefault()
+              void onPasteFiles(files)
+            }}
+            rows={1}
+          />
+          <div className="ai-input-footer">
+            <div className="ai-input-footer-start">
+              <AiAttachMenu
+                lang={lang}
+                onPickPc={() => void pickAttachments()}
+                onPickedDocs={attachFromDrive}
+                onPickedDrive={attachFromDrive}
+                memoAttach={{
+                  listMemos: async () => {
+                    const all = (await getAllCommentsRef.current?.().catch(() => [])) ?? []
+                    return slidesCommentsToReviewMemos(all)
+                  },
+                  onAttachMemos: (items) =>
+                    setAttachedMemos((prev) => {
+                      const seen = new Set(prev.map((m) => m.id))
+                      return [...prev, ...items.filter((m) => !seen.has(m.id))]
+                    }),
+                }}
+              />
+              {skills.composer && (
+                <button
+                  type="button"
+                  className="ai-composer-icon-btn ai-skill-trigger-btn"
+                  aria-haspopup="listbox"
+                  aria-expanded={Boolean(picker.manualOpen)}
+                  onClick={() => picker.toggleSkillMenu?.()}
+                  data-tip={aiPanelText(lang, 'skillButtonLabel')}
+                  aria-label={aiPanelText(lang, 'skillButtonLabel')}
+                >
+                  <IconSlash size={15} />
+                </button>
+              )}
+              <McpServerButton lang={lang} />
+            </div>
+            <div className="ai-input-footer-end">
+              <AiModelPicker
+                bridge={MODEL_BRIDGE}
+                lang={lang}
+                subscriptionStatuses={connection.statuses}
+                onRefreshSubscriptions={connection.refresh}
+              />
+              {busy ? (
+                <button
+                  type="button"
+                  className="ai-send-btn ai-stop-btn"
+                  onClick={cancel}
+                  data-tip={t('aiStopGeneration')}
+                  aria-label={t('aiStop')}
+                >
+                  <IconStop size={14} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="ai-send-btn"
+                  onClick={run}
+                  disabled={!input.trim()}
+                  data-tip={t('aiSend')}
+                  aria-label={t('aiSend')}
+                >
+                  <IconArrowUp size={15} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
-      )}
+        {/* the row under the input box, as the shared composer's footerBelow renders it */}
+        {(projectPanel.picker || sessionUsage) && (
+          <div className="ai-input-below">
+            {projectPanel.picker}
+            {sessionUsage && (
+              <span className="ai-input-below-end">
+                <AiUsageChip usage={sessionUsage} session lang={lang} />
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </aside>
   )
 }
@@ -3543,219 +3546,6 @@ function DeckProgressCard({ progress }: { progress: DeckProgressSnapshot }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-/** Survey card: options clickable per question (single/multi), with "decide for me" and "Other (fill in)". */
-function ClarifyCard({
-  questions,
-  onSubmit,
-  onSkip,
-}: {
-  questions: ClarifyQuestion[]
-  onSubmit: (answers: string, qa: Array<{ q: string; a: string }>) => void
-  onSkip: () => void
-}) {
-  const { t } = useI18n()
-  const decideAnswer = t('aiClarifyDecideAnswer')
-  // Per question: set of selected options + the "Other" free text
-  const [picked, setPicked] = useState<Record<string, Set<string>>>({})
-  const [other, setOther] = useState<Record<string, string>>({})
-  // Latest selections for the delayed auto-submit (the timer closure would otherwise
-  // read the pre-click state and drop the final pick)
-  const pickedRef = useRef(picked)
-  pickedRef.current = picked
-  const otherRef = useRef(other)
-  otherRef.current = other
-  // Pager view-state (one question at a time): back-nav limited to visited range,
-  // single-select auto-advances after a beat, typing cancels the pending advance
-  const [qIdx, setQIdx] = useState(0)
-  const [furthest, setFurthest] = useState(0)
-  const [slideDir, setSlideDir] = useState<'next' | 'prev'>('next')
-  const advanceTimerRef = useRef<number | null>(null)
-
-  const cancelAdvance = () => {
-    if (advanceTimerRef.current) {
-      window.clearTimeout(advanceTimerRef.current)
-      advanceTimerRef.current = null
-    }
-  }
-
-  const goTo = (i: number) => {
-    cancelAdvance()
-    const clamped = Math.max(0, Math.min(i, questions.length - 1))
-    setSlideDir(clamped >= qIdx ? 'next' : 'prev')
-    setQIdx(clamped)
-    setFurthest((f) => Math.max(f, clamped))
-  }
-
-  // Single-select: picking advances; picking on the LAST question submits after the
-  // same beat (typing in "Other" or navigating cancels the pending action)
-  const scheduleAdvance = (from: number) => {
-    cancelAdvance()
-    const last = from >= questions.length - 1
-    advanceTimerRef.current = window.setTimeout(() => {
-      advanceTimerRef.current = null
-      if (last) submit()
-      else goTo(from + 1)
-    }, 250)
-  }
-
-  useEffect(() => cancelAdvance, [])
-
-  const toggle = (qid: string, opt: string, multi?: boolean, exclusive?: boolean) => {
-    setPicked((prev) => {
-      const cur = new Set(prev[qid] ?? [])
-      if (multi) {
-        if (exclusive) {
-          cur.clear()
-          cur.add(opt)
-        } else {
-          cur.delete(decideAnswer)
-          if (cur.has(opt)) cur.delete(opt)
-          else cur.add(opt)
-        }
-      } else {
-        cur.clear()
-        cur.add(opt)
-      }
-      return { ...prev, [qid]: cur }
-    })
-  }
-
-  const submit = () => {
-    const qa = questions.map((q) => {
-      const chosen = [...(pickedRef.current[q.id] ?? [])]
-      const ot = (otherRef.current[q.id] ?? '').trim()
-      if (ot) chosen.push(ot)
-      const ans = chosen.length ? chosen.join('、') : t('aiClarifyDecideAnswer')
-      return { q: q.label, a: ans }
-    })
-    onSubmit(qa.map(({ q, a }) => `${q}: ${a}`).join('\n'), qa)
-  }
-
-  const q = questions[qIdx]
-  const isLast = qIdx === questions.length - 1
-  const selCount = picked[q.id]?.size ?? 0
-  const hasAnswer = selCount > 0 || !!other[q.id]?.trim()
-
-  const renderOpt = (opt: string, label: string) => (
-    <button
-      key={opt}
-      className={`ai-clarify-opt${q.multi ? ' multi' : ''}${picked[q.id]?.has(opt) ? ' ai-clarify-opt-on' : ''}`}
-      role={q.multi ? 'checkbox' : 'radio'}
-      aria-checked={picked[q.id]?.has(opt) ?? false}
-      onClick={() => {
-        const isDecide = opt === decideAnswer
-        toggle(q.id, opt, q.multi, isDecide)
-        if (isDecide) {
-          setOther((prev) => ({ ...prev, [q.id]: '' }))
-          scheduleAdvance(qIdx)
-        } else if (q.multi) {
-          cancelAdvance()
-        } else {
-          scheduleAdvance(qIdx)
-        }
-      }}
-    >
-      <span className="ai-clarify-opt-box" aria-hidden />
-      <span className="ai-clarify-opt-label">{label}</span>
-      {!q.multi && (
-        <span className="ai-clarify-opt-arrow" aria-hidden>
-          ›
-        </span>
-      )}
-    </button>
-  )
-
-  return (
-    <div className="ai-clarify-card">
-      <div className="ai-clarify-head">
-        <span className="ai-clarify-head-label">{t('aiClarifyTitle')}</span>
-        <span className="ai-clarify-head-progress" aria-live="polite">
-          {`${qIdx + 1} / ${questions.length}`}
-        </span>
-        <span className="ai-clarify-head-arrows">
-          <button
-            type="button"
-            className="ai-clarify-head-arrow"
-            disabled={qIdx === 0}
-            onClick={() => goTo(qIdx - 1)}
-            aria-label={t('aiClarifyPrev')}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            className="ai-clarify-head-arrow"
-            disabled={qIdx >= furthest || !hasAnswer}
-            onClick={() => goTo(qIdx + 1)}
-            aria-label={t('aiClarifyNext')}
-          >
-            ›
-          </button>
-        </span>
-      </div>
-      <div key={q.id} className={`ai-clarify-q slide-${slideDir}`}>
-        <div className="ai-clarify-question-head">
-          <div className="ai-clarify-label">{q.label}</div>
-          {q.multi && <span className="ai-clarify-multi-badge">{t('aiClarifyMulti')}</span>}
-        </div>
-        {q.description && <div className="ai-clarify-desc">{q.description}</div>}
-        <div className="ai-clarify-opts">
-          {q.options.map((opt) => renderOpt(opt, opt))}
-          {renderOpt(decideAnswer, t('aiClarifyDecide'))}
-        </div>
-        <input
-          className="ai-clarify-other"
-          placeholder={t('aiClarifyOther')}
-          value={other[q.id] ?? ''}
-          onChange={(e) => {
-            cancelAdvance()
-            const value = e.target.value
-            setOther((p) => ({ ...p, [q.id]: value }))
-            if (value.trim()) {
-              setPicked((prev) => {
-                const cur = new Set(prev[q.id] ?? [])
-                cur.delete(decideAnswer)
-                return { ...prev, [q.id]: cur }
-              })
-            }
-          }}
-        />
-      </div>
-      <div className={`ai-clarify-actions${q.multi ? ' multi' : ''}`}>
-        {q.multi && selCount > 0 && (
-          <span className="ai-clarify-count">{t('aiClarifySelected', { n: selCount })}</span>
-        )}
-        <span className="ai-clarify-actions-btns">
-          <button className="ai-clarify-skip" onClick={onSkip}>
-            {t('aiClarifySkip')}
-          </button>
-          {isLast ? (
-            <button className="ai-clarify-submit" onClick={submit} disabled={!hasAnswer}>
-              {t('aiClarifySubmit')}
-            </button>
-          ) : (
-            /* Multi-select waits for an explicit Next; single-select advances by picking. */
-            q.multi && (
-              <button
-                type="button"
-                className="ai-clarify-next"
-                onClick={() => goTo(qIdx + 1)}
-                disabled={!hasAnswer}
-                aria-label={t('aiClarifyNext')}
-              >
-                <span>{t('aiClarifyNext')}</span>
-                <span className="ai-clarify-next-arrow" aria-hidden>
-                  →
-                </span>
-              </button>
-            )
-          )}
-        </span>
       </div>
     </div>
   )

@@ -166,7 +166,7 @@ function fakeRunner(): PrintLayoutRunner & { requests: { kind: string; jobPdf: U
   return {
     requests,
     run: async (request) => {
-      requests.push({ kind: request.kind, jobPdf: request.jobPdf })
+      if ('jobPdf' in request) requests.push({ kind: request.kind, jobPdf: request.jobPdf })
       if (request.kind === 'print-images') {
         return {
           kind: 'print-images',

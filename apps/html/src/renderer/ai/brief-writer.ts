@@ -1,5 +1,13 @@
-import { streamText, type AgentMessage, type AgentTransport } from '@genoffice/agent-core'
-import { brandText } from '@genoffice/i18n'
+import {
+  ASK_QUESTIONS_TOOL,
+  readQuestionRecord,
+  streamText,
+  type AgentMessage,
+  type AgentToolCall,
+  type AgentTransport,
+} from '@genoffice/agent-core'
+import { brandText, type Lang } from '@genoffice/i18n'
+import { questionRecordText } from '@genoffice/ui'
 import type { PlanMode } from './tools'
 
 /**
@@ -55,17 +63,44 @@ function clip(text: string, cap: number): string {
   return text.length > cap ? `${text.slice(0, cap)}\n… (truncated)` : text
 }
 
-/** Flatten the agent history into a transcript the writer can read; the newest turns win the budget. */
-export function transcriptOf(messages: readonly AgentMessage[]): string {
+/**
+ * Flatten the agent history into a transcript the writer can read; the newest
+ * turns win the budget. A question card is written as the person's answers
+ * (spec 6.2): the questions come from the call, the answers from its result, in
+ * the answer words of `lang` (the person's UI language); a card the checks
+ * refused leaves nothing.
+ */
+export function transcriptOf(messages: readonly AgentMessage[], lang: Lang = 'en'): string {
   const turns: string[] = []
+  const questionCalls = new Map<string, AgentToolCall>()
   for (const m of messages) {
     if (m.role === 'user') turns.push(`### User\n${clip(m.text, TURN_CAP)}`)
     else if (m.role === 'assistant') {
-      const calls = m.toolCalls?.map((c) => `[called ${c.name} ${JSON.stringify(c.input)}]`) ?? []
+      const calls: string[] = []
+      for (const c of m.toolCalls ?? []) {
+        if (c.name === ASK_QUESTIONS_TOOL) questionCalls.set(c.id, c)
+        else calls.push(`[called ${c.name} ${JSON.stringify(c.input)}]`)
+      }
       const body = [m.text.trim(), ...calls].filter(Boolean).join('\n')
       if (body) turns.push(`### Assistant\n${clip(body, TURN_CAP)}`)
     } else {
-      for (const r of m.results) turns.push(`### Tool result\n${clip(r.output, TURN_CAP)}`)
+      for (const r of m.results) {
+        const asked = questionCalls.get(r.id)
+        if (!asked && r.name !== ASK_QUESTIONS_TOOL) {
+          turns.push(`### Tool result\n${clip(r.output, TURN_CAP)}`)
+          continue
+        }
+        const answers = questionRecordText(
+          lang,
+          readQuestionRecord({
+            name: ASK_QUESTIONS_TOOL,
+            input: asked?.input,
+            output: r.output,
+            isError: r.isError,
+          }),
+        )
+        if (answers) turns.push(`### The user's answers\n${clip(answers, TURN_CAP)}`)
+      }
     }
   }
   const kept: string[] = []
@@ -84,6 +119,8 @@ export function buildBriefWriterRequest(
   spec: BriefPlanSpec,
   messages: readonly AgentMessage[],
   langDirective: string,
+  /** the person's UI language: the words of question card answers in the transcript */
+  lang: Lang = 'en',
 ): { system: string; user: string } {
   const notes = spec.notes?.trim()
     ? `\n\n## Notes from the assistant\n${clip(spec.notes, NOTES_CAP)}`
@@ -94,7 +131,7 @@ export function buildBriefWriterRequest(
       : ''
   return {
     system: brandText(SYSTEM, 'en') + langDirective,
-    user: `## Conversation\n${transcriptOf(messages)}\n\n## Task\n${MODE_TASK[spec.mode]}${notes}${page}\n\nWrite the brief JSON now.`,
+    user: `## Conversation\n${transcriptOf(messages, lang)}\n\n## Task\n${MODE_TASK[spec.mode]}${notes}${page}\n\nWrite the brief JSON now.`,
   }
 }
 

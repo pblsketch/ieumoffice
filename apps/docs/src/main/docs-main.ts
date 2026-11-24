@@ -275,6 +275,7 @@ import { printPdfViaCups } from '@genoffice/electron-utils/print-cups'
 import { printOutcome } from '@genoffice/electron-utils/print-job'
 import {
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   LABEL_SPEC_FILE_NAME,
   registerPrintLayoutIpc,
 } from '@genoffice/electron-utils/print-arranged'
@@ -6235,6 +6236,18 @@ export function registerDocsIpc(): void {
         title: tm('dlgExportPdf'),
         defaultPath: printPdfDefaultName(name),
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      return result.canceled || !result.filePath ? null : result.filePath
+    },
+    pickImageSavePath: async (event, editor, image) => {
+      const name =
+        typeof editor === 'object' && editor !== null
+          ? (editor as { name?: unknown }).name
+          : undefined
+      const spec = imageSaveDialogSpec(printPdfDefaultName(name).replace(/\.pdf$/i, ''), image)
+      const result = await saveDialog(event as IpcMainInvokeEvent, {
+        defaultPath: spec.defaultFileName,
+        filters: spec.filters,
       })
       return result.canceled || !result.filePath ? null : result.filePath
     },

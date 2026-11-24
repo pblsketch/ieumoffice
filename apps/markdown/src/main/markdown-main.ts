@@ -40,6 +40,7 @@ import type { RecoveryIdentity, SaveDiskState } from '@genoffice/electron-utils'
 import {
   LABEL_SPEC_FILE_NAME,
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
 } from '@genoffice/electron-utils/print-arranged'
 import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
 import { createI18n, getUiLang } from '@genoffice/i18n'
@@ -1925,6 +1926,28 @@ function registerMarkdownIpc(): void {
         {
           defaultPath: `${safeName}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+    pickImageSavePath: async (event, job, image) => {
+      const safeName =
+        String(job?.name || tm('untitledFile'))
+          .replace(/[/\\:*?"<>|]/g, '_')
+          .slice(0, 80)
+          .trim() || tm('untitledFile')
+      const spec = imageSaveDialogSpec(safeName, image)
+      const win =
+        BrowserWindow.fromWebContents(event.sender as WebContents) ??
+        BrowserWindow.getFocusedWindow() ??
+        undefined
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: spec.defaultFileName,
+          filters: spec.filters,
         },
         configuredDefaultSaveDir(app),
       )

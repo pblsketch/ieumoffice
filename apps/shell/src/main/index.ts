@@ -301,6 +301,7 @@ import {
   pdfFileRenamed,
   requestPdfPageImages,
   requestPdfSaveAsOutcome,
+  requestPdfSplitDialog,
   pdfCloseCancelled,
   sendPdfPrintRequest,
   setPdfRenamedHook,
@@ -11186,6 +11187,15 @@ app.whenReady().then(async () => {
     openForEditing: (path) => {
       revealShellWindow()
       return openDocumentPath(path)
+    },
+    openSplitInEditor: (path) => {
+      revealShellWindow()
+      const opened = openDocumentPath(path)
+      const tab = tabManager?.findTabByPath(path) ?? findDetachedTabByPath(path)
+      if (tab && !tab.webContents.isDestroyed()) {
+        requestPdfSplitDialog(tab.webContents)
+      }
+      return opened
     },
     runJob: runWindowJob,
     cancelJob: cancelWindowJob,

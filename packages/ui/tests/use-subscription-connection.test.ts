@@ -264,4 +264,29 @@ describe('shared subscription connection', () => {
     expect(connection.failed['claude-code']).toBeUndefined()
     expect(connection.statuses['claude-code'].state).toBe('off')
   })
+
+  it('does not let a stale initial statuses() reply overwrite a newer onChanged event', async () => {
+    let resolveInitial!: (map: SubscriptionStatusMap) => void
+    let push: ((statuses: SubscriptionStatusMap) => void) | null = null
+    const api = {
+      statuses: () =>
+        new Promise<SubscriptionStatusMap>((resolve) => {
+          resolveInitial = resolve
+        }),
+      recheck: async () => statusMap('ready', 'not-installed'),
+      onChanged: (handler: (statuses: SubscriptionStatusMap) => void) => {
+        push = handler
+        return () => undefined
+      },
+    } as unknown as SubscriptionApiLike
+    await mount({ api: () => api })
+    act(() => push?.(statusMap('ready', 'not-installed')))
+    expect(connection.statuses['claude-code'].state).toBe('ready')
+    await act(async () => {
+      resolveInitial(statusMap('not-installed', 'not-installed'))
+      await Promise.resolve()
+    })
+    await settle()
+    expect(connection.statuses['claude-code'].state).toBe('ready')
+  })
 })

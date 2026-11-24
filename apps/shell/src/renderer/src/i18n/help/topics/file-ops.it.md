@@ -46,17 +46,17 @@ Regole: l'estensione viene conservata automaticamente; i caratteri non ammessi, 
 
 ## Stampa
 
-File ▸ Stampa (⌘P/ctrl+P) apre una finestra di stampa in ogni editor. Docs, PDF, Sheets, Slides e Markdown hanno la sezione **Disposizione delle pagine** nella solita finestra di stampa, HWP nell'anteprima di stampa, e HTML, mappa mentale e diagramma in una nuova piccola finestra di stampa. Se in Disposizione delle pagine non scegli nulla, si stampa esattamente come prima.
+File ▸ Stampa (⌘P/ctrl+P) apre una finestra di stampa con anteprima in tempo reale in tutti gli editor — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram e Whiteboard. Senza modificare Layout di pagina e usando la finestra di sistema, la stampa resta identica a prima.
 
-- **Disposizione**: scegli Una pagina per foglio, Più pagine per foglio (2, 4, 6, 9 o 16), Opuscolo (rilegatura a sinistra o a destra), Manifesto (fogli in larghezza e in altezza, sovrapposizione, linee di taglio) o Etichette (una pagina per etichetta o la stessa pagina su ogni etichetta, etichetta iniziale, formato A4 comune o misure personalizzate).
-- **Solo facciate dispari, solo facciate pari, ordine inverso**: le facciate si contano dopo la disposizione, su ciò che esce davvero dalla stampante. Servono con le stampanti senza fronte-retro: stampa i fronti, gira la carta e stampa i retro.
-- **Riduci per adattare alla carta**: si riducono solo le pagine più grandi della carta scelta; quelle più piccole non vengono ingrandite. Sheets e Markdown usano i propri campi di carta e scala.
-- **Scala di grigi e risoluzione immagine**: stampando con le opzioni di Disposizione delle pagine, ogni pagina viene trasformata in immagine prima di andare alla stampante. La risoluzione si sceglie tra Automatica, 150, 300 o 600 dpi.
-- **Solo la selezione**: Docs e Markdown stampano solo il testo selezionato, reimpaginato dalla prima pagina; Slides stampa le diapositive selezionate e PDF le pagine selezionate. Sheets stampa l'intervallo selezionato come prima.
-- **Schema della disposizione e anteprima del risultato**: lo schema mostra subito dove finisce ogni numero di pagina sul foglio, e **Anteprima del risultato** mostra ciò che è stato davvero prodotto. Con **Salva il risultato disposto in PDF** puoi stampare la stessa disposizione su un altro PC o in tipografia.
-- **Finestra di stampa di sistema**: per un opuscolo scegli il fronte-retro capovolgendo sul lato corto. Lascia invariati l'intervallo di pagine e le pagine per foglio nella finestra di sistema.
+- **Destinazione (stampante, PDF, immagini)**: scegli in un solo elenco una stampante installata, **Salva come PDF**, **Salva come immagini** o la **Finestra di stampa di sistema**. Il salvataggio immagini supporta PNG e JPG (Alta 90%, Media 80%, File ridotto 65%) in file numerati separati o in un archivio ZIP. I PDF protetti disabilitano PDF e immagini mantenendo attiva la stampa.
+- **Anteprima di stampa dal vivo**: tutti i dieci editor mostrano un’anteprima prima dell’output. Quando layout, scala di grigi, filigrana o intestazioni/piè di pagina modificano le facciate, l’anteprima renderizza le facciate reali su richiesta con navigazione, zoom e schema di layout.
+- **Layout**: scegli Una pagina per foglio, Più pagine per foglio (2, 4, 6, 9 o 16, con bordi opzionali), Opuscolo (rilegatura a sinistra o destra), Poster (colonne × righe, sovrapposizione, segni di taglio ed etichette riquadri) o Etichette (una pagina per etichetta o ripetuta, cella iniziale, modelli A4 o misure personalizzate).
+- **Scala, orientamento, facciate e ordine**: imposta Dimensioni effettive (100%), Adatta al foglio, Riduci pagine troppo grandi o Scala personalizzata (10%–400%) e orientamento Automatico, Verticale o Orizzontale. Solo dispari, solo pari e ordine inverso si basano sulle facciate finali.
+- **Filigrana, intestazioni/piè di pagina, grigi e risoluzione**: applica filigrane di testo o immagine e 6 campi di intestazione/piè di pagina (titolo, data, numero di pagina o testo libero) solo in stampa, senza modificare il documento. Regola inoltre scala di grigi e DPI (Automatico, 150, 300 o 600 dpi).
+- **Intervalli di pagine e selezione**: Docs e Markdown impaginano il testo selezionato da pagina 1; Slides stampa le diapositive selezionate; PDF le pagine selezionate; Hangul offre Tutte, Pagina corrente o Intervallo personalizzato; Sheets stampa fogli attivi, cartella o selezione.
+- **Finestra di sistema**: per gli opuscoli scegli fronte/retro sul lato corto e lascia invariati intervallo e pagine per foglio nella finestra di sistema.
 
-I PDF si stampano con l'ordine delle pagine e le rotazioni correnti.
+I PDF vengono stampati con l’ordine e la rotazione correnti.
 
 ## Dove finiscono i file senza titolo
 

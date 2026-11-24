@@ -30,6 +30,7 @@ Os cartões de **No editor de PDF** abrem o PDF escolhido em uma aba do editor. 
 - **Remover páginas em branco** só mostra candidatas. Só as páginas escolhidas são removidas, e uma página com um único caractere nunca é candidata.
 - **Remover anotações** mantém os campos de formulário e só remove links quando você os marca. O conteúdo das anotações removidas não fica no novo arquivo.
 - **Salvar como texto** lê apenas a camada de texto. Páginas cujo texto é uma imagem, como as digitalizadas, ficarão vazias.
+- **Dividir PDF** separa por intervalos personalizados (com opção de mesclar), número de páginas, marcadores ou tamanho máximo, com escolha de nomenclatura e subpasta.
 
 ## Experimente para
 

@@ -4,6 +4,7 @@ import { compileOps, type HtmlOp } from '../src/renderer/document/ops'
 import { applyPatches } from '../src/renderer/document/patch'
 import { buildProjection } from '../src/renderer/ai/redact'
 import {
+  AGENT_TOOLS,
   createHtmlSkillCore,
   expandAttachmentRefs,
   findTruncatedDataUrl,
@@ -181,34 +182,12 @@ describe('html skill tools', () => {
 })
 
 describe('generation flow tools', () => {
-  it('ask_clarification hands the card answers (or a skip) back to the model', async () => {
-    const doc = fakeAccess('')
-    let seen: unknown = null
-    doc.access.askClarification = async (questions) => {
-      seen = questions
-      return { answers: 'Audience: board\nTone: executive' }
-    }
-    const core = createHtmlSkillCore(doc.access)
-    const r = await core.executeTool(
-      call('ask_clarification', {
-        questions: [
-          { id: 'aud', label: 'Audience?', options: ['board', 'team', 'customers'] },
-          { label: 'no id', options: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] },
-          { id: 'empty', label: 'no options', options: [] },
-        ],
-      }),
-    )
-    expect(r.isError).toBeFalsy()
-    expect(r.output).toContain('Audience: board')
-    const qs = seen as Array<{ id: string; options: string[] }>
-    expect(qs).toHaveLength(2)
-    expect(qs[1]!.id).toBe('q2')
-    expect(qs[1]!.options).toHaveLength(5)
-    doc.access.askClarification = async () => ({ answers: '', cancelled: true })
-    const skipped = await createHtmlSkillCore(doc.access).executeTool(
+  it('has no questionnaire tool of its own: the shared ask_questions card asks', async () => {
+    expect(AGENT_TOOLS.map((tool) => tool.name)).not.toContain('ask_clarification')
+    const r = await createHtmlSkillCore(fakeAccess('').access).executeTool(
       call('ask_clarification', { questions: [{ id: 'a', label: 'x', options: ['1'] }] }),
     )
-    expect(skipped.output).toMatch(/skipped/)
+    expect(r.isError).toBe(true)
   })
 
   it('plan_page drafts the brief through the writer and relays confirm / redo / dismiss decisions', async () => {
