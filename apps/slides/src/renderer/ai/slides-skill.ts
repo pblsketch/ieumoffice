@@ -152,8 +152,6 @@ export interface DeckAccess {
     slideIndex: number,
     marker: string,
   ): Promise<{ ok: boolean; error?: string; imageFailures?: { page: number; url: string }[] }>
-  /** Survey: shows a card with options and waits for the user's choices, returning an answer summary. */
-  askClarification?(questions: ClarifyQuestion[]): Promise<{ answers: string; cancelled?: boolean }>
   /** Optional PowerPoint-compatible comment reply handler (T10) */
   replyComment?: ReplyCommentDeps
   /** Optional speaker-notes separation toggle (default OFF) (T11) */
@@ -322,17 +320,6 @@ export function attachmentRefName(url: string): string | null {
   } catch {
     return raw
   }
-}
-
-/** Single survey question structure (with options). */
-export interface ClarifyQuestion {
-  id: string
-  label: string
-  description?: string
-  /** Option text array (≤5 per question); the frontend automatically appends "Other (fill in)" */
-  options: string[]
-  /** Multi-select (single-select by default) */
-  multi?: boolean
 }
 
 const TOOLS: AgentToolDef[] = [
@@ -538,37 +525,6 @@ const TOOLS: AgentToolDef[] = [
     },
   },
   {
-    name: 'ask_clarification',
-    description:
-      "[Call before creating a whole new deck] Shows a questionnaire card with options, letting the user make key choices for this deck (audience/scenario/tone/focus etc.); the user's choices directly determine the deck's Core Hook and style. Questions must target the specific topic, each being a real trade-off (options represent different directions). Ask 2–4 questions, ≤5 options each. After calling, wait for the user to finish choosing in the card and generate once you have the answers. Don't repeat the questions in your reply text.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        questions: {
-          type: 'array',
-          description: 'Question list (2–4 questions)',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', description: 'Unique question id (short English/pinyin)' },
-              label: { type: 'string', description: 'Question text' },
-              description: { type: 'string', description: 'Optional one-line note' },
-              options: {
-                type: 'array',
-                items: { type: 'string' },
-                description:
-                  'Options (≤5); the frontend automatically appends "Decide for me" and "Other"',
-              },
-              multi: { type: 'boolean', description: 'Multi-select (single-select by default)' },
-            },
-            required: ['id', 'label', 'options'],
-          },
-        },
-      },
-      required: ['questions'],
-    },
-  },
-  {
     name: 'plan_deck',
     description:
       "[When creating a whole new deck, call after researching material/images and before generate_deck] Outputs a structured plan: the Core Hook + unified style scheme + each page's title/content brief/layout/image keywords. Think the whole deck through first, to avoid starting strong and fizzling out. The plan is echoed to the user.",
@@ -722,7 +678,7 @@ const TOOLS: AgentToolDef[] = [
         style_template: {
           type: 'string',
           description:
-            "Optional: a built-in design template's id or name, or the name of a saved style (both from list_style_templates); when passed, Step 0 is skipped and that template's style is used directly, no style regeneration, and it becomes the document's selected template. A style saved from a finished deck also carries its layout skeleton, which pins the title/brand-image geometry on every page for a consistent look",
+            "Optional: a built-in design template's id or name, or the name of a saved style (both from list_style_templates); when passed, style generation is skipped and that template's style is used directly, no style regeneration, and it becomes the document's selected template. A style saved from a finished deck also carries its layout skeleton, which pins the title/brand-image geometry on every page for a consistent look",
         },
         dataSource: {
           type: 'string',
@@ -1327,7 +1283,7 @@ function buildTemplateNote(access: DeckAccess): string {
   return (
     `<design-template>\n` +
     `The user chose a design template for this document: ${what}. generate_deck and regenerate_slide apply it automatically; this overrides any instruction to define or pass a style.\n` +
-    `- The deck's visual style is settled. Do not ask the user about style (colors, fonts, tone, look), neither in ask_clarification nor in text. Questions about content (audience, scenario, focus) are still fine.\n` +
+    `- The deck's visual style is settled. Do not ask the user about style (colors, fonts, tone, look), neither in ask_questions nor in text. Questions about content (audience, scenario, focus) are still fine.\n` +
     `- Leave generate_deck's style_template empty unless the user names another template or saved style in this conversation and asks to use it; naming one switches the document to it.\n` +
     `- Leave generate_deck's style empty, also when you pass pages, add pages with insert_mode:"append", or follow a plan_deck plan. Never describe or invent a style yourself. Pass style only when the user explicitly asks for a look that differs from the template (e.g. "make it mostly blue"), and then pass just that request in the user's own terms. It is kept with the document as a request added on top of the template.` +
     requests +
@@ -1948,45 +1904,6 @@ async function executeTool(
         output: `Replaced the image of picture ${sourceId} on page ${idx + 1} in place (frame/z-order/effects kept).`,
         mutated: true,
         summary: t('aiSumReplaceImage', { n: idx + 1 }),
-      }
-    }
-
-    case 'ask_clarification': {
-      if (!access.askClarification)
-        return fail(
-          t('aiFailClarify'),
-          'The current environment does not support questionnaire cards',
-        )
-      const raw = Array.isArray(call.input.questions) ? call.input.questions : []
-      const questions: ClarifyQuestion[] = raw
-        .map((q: Record<string, unknown>, i: number) => ({
-          id: String(q.id ?? `q${i + 1}`),
-          label: String(q.label ?? ''),
-          description: q.description ? String(q.description) : undefined,
-          options: Array.isArray(q.options)
-            ? q.options.map((o: unknown) => String(o)).slice(0, 5)
-            : [],
-          multi: !!q.multi,
-        }))
-        .filter((q) => q.label && q.options.length > 0)
-      if (questions.length === 0)
-        return fail(
-          t('aiFailClarify'),
-          'questions must be non-empty and every question needs options',
-        )
-      const r = await access.askClarification(questions)
-      if (r.cancelled) {
-        return {
-          output:
-            'The user skipped the questionnaire. Decide the Core Hook and style yourself based on professional judgment and generate directly.',
-          mutated: false,
-          summary: t('aiSumClarifySkipped'),
-        }
-      }
-      return {
-        output: `User questionnaire answers:\n${r.answers}\nDecide the Core Hook and style accordingly, then generate with generate_deck.`,
-        mutated: false,
-        summary: t('aiSumClarifyDone'),
       }
     }
 

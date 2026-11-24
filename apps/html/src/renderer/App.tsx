@@ -27,6 +27,7 @@ import {
   useSplitPaneRole,
   createZoomWheelClassifier,
   wheelZoomStepPercent,
+  printLayoutText,
   VersionTimelineDrawer,
   tweaksText,
   versionTimelineText,
@@ -34,6 +35,7 @@ import {
   type TemplateDocument,
 } from '@genoffice/ui'
 import '@genoffice/ui/tweaks-panel.css'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import {
   VERSION_TIMELINE_BRIDGE_KEY,
   type VersionTimelineBridge,
@@ -1699,7 +1701,10 @@ export default function App() {
 
   // Shell menu Print / ⌘P / the tab menu open the print dialog first (decision
   // 0141). All pages with nothing changed there is runPrint as before.
-  const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [printDialogState, setPrintDialogState] = useState<{ initialDestination?: string } | null>(
+    null,
+  )
+  const printDialogOpen = printDialogState !== null
   const [tweaksOpen, setTweaksOpen] = useState(false)
   const [tweaksState, setTweaksState] = useState<HtmlTweaksState>(DEFAULT_HTML_TWEAKS)
   const tweaksBaselineRef = useRef<string | null>(null)
@@ -1760,16 +1765,44 @@ export default function App() {
     editorRef.current?.applyPatches([patch], false)
     commitText(applyPatches(base, [patch]), true)
   }, [commitText, flushPending])
-  const openPrintDialog = useCallback(() => {
+  const openPrintDialog = useCallback((initialDestination?: string) => {
     // the system dialog of a print already under way is modal: no second print
     if (statusRef.current !== 'ready' || printingRef.current) return
-    setPrintDialogOpen(true)
+    setPrintDialogState({ initialDestination })
   }, [])
-  const closePrintDialog = useCallback(() => setPrintDialogOpen(false), [])
+  const closePrintDialog = useCallback(() => setPrintDialogState(null), [])
   const printDocumentText = useCallback(() => {
     flushPending()
     return serializeDocText({ text: textRef.current, envelope: envelopeRef.current })
   }, [flushPending])
+  const runQuickPrint = useCallback(
+    async (printerLabel: string) => {
+      if (statusRef.current !== 'ready' || printingRef.current) return
+      setNotice(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+      const result = await window.htmlApi.printLayout.print({
+        options: createDefaultOptions(),
+        editor: {
+          html: printDocumentText(),
+          suggestedName:
+            pathRef.current?.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '') ||
+            deriveAutoFileName(textRef.current) ||
+            t('untitled'),
+        },
+        job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+      })
+      if (result.ok) {
+        setNotice(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+      } else if (!('aborted' in result)) {
+        setNotice(t('printFailed', { error: result.error }))
+      }
+    },
+    [lang, printDocumentText, t],
+  )
+  const getPrintPageCount = useCallback(async () => {
+    if (statusRef.current !== 'ready') return null
+    const res = await window.htmlApi.printJobPages({ html: printDocumentText() })
+    return res.ok ? res.pages.length : null
+  }, [printDocumentText])
   const printSuggestedName = useCallback(
     () =>
       pathRef.current?.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '') ||
@@ -2163,6 +2196,12 @@ export default function App() {
         }}
         canvasMode={canvasMode}
         onPresent={startPresent}
+        onOpenPrintDialog={openPrintDialog}
+        onQuickPrint={runQuickPrint}
+        listPrinters={window.htmlApi?.printLayout?.listPrinters}
+        quickPrintPrefStore={window.htmlApi?.printLayout}
+        getPrintPageCount={getPrintPageCount}
+        onQuickPrintNotice={setNotice}
       />
 
       <div className="app-main">
@@ -2529,6 +2568,7 @@ export default function App() {
           api={window.htmlApi}
           documentText={printDocumentText}
           suggestedName={printSuggestedName}
+          initialDestination={printDialogState?.initialDestination}
           onPlainPrint={() => void runPrint()}
           onClose={closePrintDialog}
           onNotice={setNotice}

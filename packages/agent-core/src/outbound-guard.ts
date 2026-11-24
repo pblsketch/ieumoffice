@@ -149,6 +149,9 @@ export function guardOutbound(
     get systemPrompt() {
       return skill.systemPrompt
     },
+    get toolsOffSystemPrompt() {
+      return skill.toolsOffSystemPrompt
+    },
     get tools() {
       return on
         ? skill.tools

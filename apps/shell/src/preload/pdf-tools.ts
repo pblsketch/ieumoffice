@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import type {
   PdfBlankPagesResult,
+  PdfBookmarksResult,
   PdfPickResult,
   PdfToolRunRequest,
   PdfToolRunResult,
@@ -51,6 +52,14 @@ const api: PdfToolsWindowApi = {
   },
   async openInEditor() {
     await ipcRenderer.invoke(PDF_TOOLS_CHANNELS.openInEditor)
+  },
+  async openSplitInEditor(inputId: string) {
+    await ipcRenderer.invoke(PDF_TOOLS_CHANNELS.openSplitInEditor, inputId)
+  },
+  async readBookmarks(inputId: string) {
+    const result = (await ipcRenderer.invoke(PDF_TOOLS_CHANNELS.readBookmarks, inputId)) as
+      PdfBookmarksResult | undefined
+    return result ?? { ok: false, error: 'failed' }
   },
   async findBlankPages(inputId: string) {
     const result = (await ipcRenderer.invoke(PDF_TOOLS_CHANNELS.findBlankPages, inputId)) as

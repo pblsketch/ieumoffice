@@ -1,18 +1,23 @@
 /**
- * Renders an assistant reply's Markdown body alongside any embedded
- * `<question-form>` text-fallback block as the shared `AiQuestionCard` (T2/T9).
+ * Renders an assistant reply's Markdown body with its question block (spec 3.4,
+ * 5.2): an `<a2ui-json>` block of the live conversation is the answerable
+ * `AiQuestionCard`; an old `<question-form>` block, and every block of a reply
+ * restored from a saved conversation, is a read-only card showing the questions
+ * only. A block still streaming in shows the pending card. All model text is
+ * plain text.
  */
 import React from 'react'
 import type { Lang } from '@genoffice/i18n'
+import type { QuestionCardAnswer, QuestionSurfaceView } from '@genoffice/agent-core'
 import { Markdown, type MarkdownImage, type MarkdownNav } from './Markdown'
-import { AiQuestionCard } from './AiQuestionCard'
 import {
-  parseQuestionFormBlocks,
+  AiQuestionCard,
+  AiQuestionCardPending,
+  AiQuestionCardReadOnly,
   type QuestionCardStatus,
-  type QuestionFormAnswers,
-  type QuestionFormSpec,
-} from './question-form'
-import { questionCardText } from './strings-question-card'
+  type QuestionCardSubmission,
+} from './AiQuestionCard'
+import { parseQuestionBlocks } from './question-blocks'
 
 export interface AiAssistantBodyProps {
   lang: Lang
@@ -21,11 +26,19 @@ export interface AiAssistantBodyProps {
   navs?: readonly MarkdownNav[] | undefined
   images?: MarkdownImage | undefined
   streaming?: boolean | undefined
-  /** Status of any text-embedded `<question-form>` card in this message */
+  /**
+   * The reply was restored from a saved conversation: its question blocks are
+   * read-only cards with the questions alone (no answered/skipped state; the
+   * answer is the person's next message).
+   */
+  restored?: boolean | undefined
+  /** Status of the reply's `<a2ui-json>` card in the live conversation (default `open`). */
   questionStatus?: QuestionCardStatus | undefined
-  savedAnswers?: QuestionFormAnswers | undefined
-  onQuestionSubmit?: ((spec: QuestionFormSpec, answers: QuestionFormAnswers) => void) | undefined
-  onQuestionSkip?: ((spec: QuestionFormSpec) => void) | undefined
+  /** The answer given to that card, shown once it is `submitted`. */
+  questionAnswer?: QuestionCardAnswer | undefined
+  onQuestionSubmit?:
+    ((view: QuestionSurfaceView, answer: QuestionCardSubmission) => void) | undefined
+  onQuestionSkip?: ((view: QuestionSurfaceView) => void) | undefined
 }
 
 export function AiAssistantBody({
@@ -35,8 +48,9 @@ export function AiAssistantBody({
   navs,
   images,
   streaming = false,
+  restored = false,
   questionStatus = 'open',
-  savedAnswers,
+  questionAnswer,
   onQuestionSubmit,
   onQuestionSkip,
 }: AiAssistantBodyProps): React.JSX.Element {
@@ -45,10 +59,11 @@ export function AiAssistantBody({
     ...(navs !== undefined ? { navs } : {}),
     ...(images !== undefined ? { images } : {}),
   }
-  if (!text.includes('<question-form>')) {
-    return <Markdown text={text} {...mdExtras} />
+  const segments = parseQuestionBlocks(text, streaming)
+  const first = segments[0]
+  if (segments.length <= 1 && (!first || first.kind === 'text')) {
+    return <Markdown text={first?.text ?? ''} {...mdExtras} />
   }
-  const segments = parseQuestionFormBlocks(text, streaming)
   return (
     <>
       {segments.map((seg, i) => {
@@ -56,21 +71,23 @@ export function AiAssistantBody({
           return <Markdown key={i} text={seg.text} {...mdExtras} />
         }
         if (seg.kind === 'pending') {
+          return <AiQuestionCardPending key={i} lang={lang} />
+        }
+        const view = seg.view
+        if (restored || seg.format === 'question-form') {
           return (
-            <div key={i} className="ai-question-pending" role="status">
-              {questionCardText(lang, 'preparing')}
-            </div>
+            <AiQuestionCardReadOnly key={i} lang={lang} content={{ kind: 'questions', view }} />
           )
         }
         return (
           <AiQuestionCard
-            key={`${seg.spec.id}-${i}`}
+            key={i}
             lang={lang}
-            spec={seg.spec}
-            status={streaming ? 'open' : questionStatus}
-            savedAnswers={savedAnswers}
-            onSubmit={(answers) => onQuestionSubmit?.(seg.spec, answers)}
-            onSkip={() => onQuestionSkip?.(seg.spec)}
+            view={view}
+            status={questionStatus}
+            answer={questionAnswer}
+            onSubmit={(answer) => onQuestionSubmit?.(view, answer)}
+            onSkip={() => onQuestionSkip?.(view)}
           />
         )
       })}

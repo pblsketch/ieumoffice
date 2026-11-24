@@ -3,12 +3,16 @@
  * folder bridge and a scripted stream: the project skill joins the request,
  * its context is read before the run starts, messages go to the project chat
  * (or, with no project, to the per-document store as before), "New chat"
- * starts a project chat, and the project chip sits under the input. No
- * provider is reached: the stream channel is the fake below.
+ * starts a project chat, and the project chip sits under the input. The
+ * saved chat also keeps a question card call's input and output, and a chat
+ * opened again draws its question cards read-only. No provider is reached:
+ * the stream channel is the fake below.
  */
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
+import { submitAction, validateQuestionSurface } from '@genoffice/agent-core'
 import { defaultAiSettings, type AiStreamChunk, type AiStreamRequest } from '@genoffice/ai-provider'
 import type { SubscriptionStatusMap } from '@genoffice/ai-provider/browser'
 import type {
@@ -27,7 +31,11 @@ const STATUSES = {
   codex: { provider: 'codex', state: 'ready', meteredAccepted: false },
 } as SubscriptionStatusMap
 
-function fakeMindmapApi() {
+type Reply = (request: AiStreamRequest, nth: number) => Array<Record<string, unknown>>
+
+const REPLY_OK: Reply = () => [{ type: 'delta', text: 'ok' }, { type: 'done' }]
+
+function fakeMindmapApi(reply: Reply = REPLY_OK) {
   let streamListener: ((chunk: AiStreamChunk) => void) | null = null
   const requests: AiStreamRequest[] = []
   const api = {
@@ -62,7 +70,7 @@ function fakeMindmapApi() {
     },
     aiStream: async (request: AiStreamRequest) => {
       requests.push(request)
-      for (const chunk of [{ type: 'delta', text: 'ok' }, { type: 'done' }]) {
+      for (const chunk of reply(request, requests.length)) {
         streamListener?.({ requestId: request.requestId, ...chunk } as AiStreamChunk)
       }
     },
@@ -70,6 +78,41 @@ function fakeMindmapApi() {
   }
   return { api: api as unknown as MindmapApi, requests }
 }
+
+/** a question card as the model sends it (question card spec 3.1) */
+const SURFACE = {
+  version: '1.0',
+  createSurface: {
+    surfaceId: 'map-scope',
+    catalogId: 'ieumoffice.com:question-card/v1',
+    components: [
+      { id: 'root', component: 'Column', children: ['title', 'audience'] },
+      { id: 'title', component: 'Text', text: 'Shape the map' },
+      {
+        id: 'audience',
+        component: 'ChoicePicker',
+        label: 'Who reads it?',
+        variant: 'mutuallyExclusive',
+        options: [
+          { label: 'Parents', value: 'parents' },
+          { label: 'Teachers', value: 'teachers' },
+        ],
+        value: { '@path': '/audience' },
+      },
+    ],
+    dataModel: { audience: [] },
+  },
+}
+
+function surfaceView() {
+  const checked = validateQuestionSurface(SURFACE)
+  if (!checked.ok) throw new Error('fixture surface must be valid')
+  return checked.view
+}
+
+const SUBMITTED = JSON.stringify(
+  submitAction(surfaceView(), { audience: ['teachers'] }, [], new Date('2026-11-24T09:00:00Z')),
+)
 
 const CONTEXT: ProjectContextBundle = {
   projectId: 'p1',
@@ -153,11 +196,11 @@ function fakeFolderApi(selection: ProjectSelection, context: ProjectContextBundl
   }
 }
 
-function fakeDocumentStore() {
+function fakeDocumentStore(stored: unknown[] = []) {
   return {
     resolveChat: vi.fn(async () => ({ projectId: 'doc', chatId: 'doc-chat' })),
     appendChat: vi.fn(async (_args: unknown) => {}),
-    loadChat: vi.fn(async () => []),
+    loadChat: vi.fn(async () => stored),
     rebindChat: vi.fn(async () => null),
   }
 }
@@ -192,8 +235,9 @@ async function mountPanel(options: {
   folder?: ReturnType<typeof fakeFolderApi>
   store: ReturnType<typeof fakeDocumentStore>
   request?: MindmapAiRequest
+  reply?: Reply
 }) {
-  const mindmap = fakeMindmapApi()
+  const mindmap = fakeMindmapApi(options.reply)
   Object.assign(window, { mindmapApi: mindmap.api, projectApi: options.store })
   if (options.folder) Object.assign(window, { projectFolderApi: options.folder.api })
   const session = await newMap({ sheetTitle: 'Sheet 1', rootTitle: 'Central Topic' })
@@ -443,5 +487,108 @@ describe('the AI panel with no project chosen', () => {
   it('shows no project chip without the project folder bridge', async () => {
     await mountPanel({ store: fakeDocumentStore() })
     expect(container.querySelector('.ai-project-chip')).toBeNull()
+  })
+})
+
+const cards = () =>
+  Array.from(container.querySelectorAll<HTMLElement>('[data-testid="ai-question-card"]'))
+
+describe('the question card in the mindmap AI panel', () => {
+  it('keeps the question call input and output in the saved chat', async () => {
+    const store = fakeDocumentStore()
+    const mindmap = await mountPanel({
+      store,
+      reply: (_request, nth) =>
+        nth === 1
+          ? [
+              { type: 'tool-call', toolCall: { id: 'q1', name: 'ask_questions', input: SURFACE } },
+              { type: 'done' },
+            ]
+          : [{ type: 'delta', text: 'A map for teachers.' }, { type: 'done' }],
+    })
+    await sendMessage('make a map')
+    expect(cards()).toHaveLength(1)
+    expect(cards()[0]!.dataset.status).toBe('open')
+    const teachers = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('.ai-qcard-opt'),
+    ).find((button) => button.textContent?.includes('Teachers'))!
+    act(() => teachers.click())
+    act(() => container.querySelector<HTMLButtonElement>('.ai-qcard-btn-primary')!.click())
+    await settle(16)
+    expect(mindmap.requests).toHaveLength(2)
+    expect(cards()[0]!.dataset.status).toBe('submitted')
+
+    const saved = store.appendChat.mock.calls
+      .map(([args]) => args as { role: string; tools?: Array<Record<string, unknown>> })
+      .find((args) => args.role === 'assistant' && args.tools)
+    const question = saved?.tools?.find((tool) => tool.name === 'ask_questions')
+    expect(question).toBeDefined()
+    expect(JSON.parse(question!.input as string)).toEqual(SURFACE)
+    const action = JSON.parse(question!.output as string) as {
+      action: { name: string; context: { answers: Record<string, unknown> } }
+    }
+    expect(action.action.name).toBe('submit')
+    expect(action.action.context.answers).toEqual({ audience: ['teachers'] })
+  })
+
+  it('draws a reopened chat question call and question block as read-only cards', async () => {
+    const long = 'x'.repeat(3000)
+    const store = fakeDocumentStore([
+      { seq: 1, ts: '2026-11-24T09:00:00.000Z', role: 'user', text: 'make a map' },
+      {
+        seq: 2,
+        ts: '2026-11-24T09:00:01.000Z',
+        role: 'assistant',
+        text: '',
+        tools: [
+          {
+            name: 'ask_questions',
+            summary: 'Shape the map',
+            input: JSON.stringify(SURFACE),
+            output: SUBMITTED,
+          },
+          { name: 'read_map', summary: 'Read the map', output: long },
+        ],
+      },
+      {
+        seq: 3,
+        ts: '2026-11-24T09:00:02.000Z',
+        role: 'assistant',
+        text: `One more thing.\n<a2ui-json>${JSON.stringify([SURFACE])}</a2ui-json>`,
+      },
+    ])
+    await mountPanel({ store, reply: () => [{ type: 'done' }] })
+    expect(cards()).toHaveLength(2)
+    // the stored call: its question and the answer given, with no buttons
+    expect(cards()[0]!.textContent).toContain('Who reads it?')
+    expect(cards()[0]!.textContent).toContain('Teachers')
+    // the restored block: questions only, never answerable again, no raw tag text
+    expect(cards()[1]!.dataset.status).toBe('read-only')
+    expect(container.querySelectorAll('.ai-qcard-btn-primary')).toHaveLength(0)
+    expect(container.textContent).not.toContain('a2ui-json')
+    // the other tool is still a work step
+    expect(container.querySelector('.ai-work-group')).not.toBeNull()
+  })
+})
+
+/** the source of one function of a panel, from its opening line to its closing brace */
+function panelSection(file: string, start: string, end = '\n  }\n'): string {
+  const src = readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const at = src.indexOf(start)
+  if (at < 0) throw new Error(`${start} not found in ${file}`)
+  return src.slice(at, src.indexOf(end, at))
+}
+
+describe('mindmap AI panel: question cards follow the conversation (a2ui spec 4)', () => {
+  it('a message queued while a card waits closes it without a second card in that run', () => {
+    const queue = panelSection('../src/renderer/ai/AiPanel.tsx', 'const enqueueWith = ')
+    expect(queue).toContain('inlineQuestions.closeOpenCard()')
+    expect(queue).not.toContain('supersedeOpen')
+  })
+
+  it('new chat and an opened chat drop the cards and reset the one-card limit', () => {
+    expect(panelSection('../src/renderer/ai/AiPanel.tsx', 'const resetConversation = ')).toContain(
+      'inlineQuestions.resetConversation()',
+    )
   })
 })

@@ -30,11 +30,14 @@
   max-width: 100%;
 }
 
-:has(> .ai-project-chat-menu) {
+/* Scope :has() to the actual header containers so Blink does not attach
+ * universal :has() invalidation checks to every DOM element in large editors. */
+:is(.ai-panel-header-lead, .kb-ask-headbar):has(> .ai-project-chat-menu) {
   min-width: 0;
 }
 
-:has(> .ai-project-chat-menu) > :not(.ai-project-chat-menu) {
+:is(.ai-panel-header-lead, .kb-ask-headbar):has(> .ai-project-chat-menu)
+  > :not(.ai-project-chat-menu) {
   flex-shrink: 0;
 }
 

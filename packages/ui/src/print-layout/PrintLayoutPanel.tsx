@@ -12,31 +12,54 @@ import {
   BOOKLET_BINDINGS,
   DEFAULT_LABEL_PRESET_ID,
   DPI_CHOICES,
+  hasActiveHeaderFooter,
+  hasActiveWatermark,
+  HEADER_FOOTER_SLOT_KINDS,
   LABEL_FILLS,
   LABEL_PAPERS,
   LABEL_PRESETS,
   LAYOUT_MODES,
   NUP_COUNTS,
   NUP_ORDERS,
+  ORIENTATION_CHOICES,
   PAPER_NAMES,
   POSTER_OVERLAP_MM_MAX,
   POSTER_OVERLAP_MM_MIN,
   POSTER_TILES_MAX,
   POSTER_TILES_MIN,
   resolveLabelSpec,
+  SCALE_PERCENT_MAX,
+  SCALE_PERCENT_MIN,
+  SCALING_MODES,
   SIDES_FILTERS,
   validateLabelSpec,
+  WATERMARK_ANGLE_MAX,
+  WATERMARK_ANGLE_MIN,
+  WATERMARK_FONT_SIZE_MAX,
+  WATERMARK_FONT_SIZE_MIN,
+  WATERMARK_IMAGE_SCALE_MAX,
+  WATERMARK_IMAGE_SCALE_MIN,
+  WATERMARK_KINDS,
+  WATERMARK_OPACITY_MAX,
+  WATERMARK_OPACITY_MIN,
   type DpiChoice,
+  type HeaderFooterOptions,
+  type HeaderFooterSlot,
+  type HeaderFooterSlotKind,
   type LabelPaper,
   type LabelSpec,
   type LayoutMode,
+  type OrientationChoice,
   type PageSize,
   type PaperChoice,
   type PrintLayoutOptions,
+  type ScalingMode,
+  type WatermarkKind,
+  type WatermarkOptions,
 } from '@genoffice/print-layout/plan'
 import { printLayoutText, type PrintLayoutStringKey } from '../strings-print-layout'
-import { ArrangedPreview, PrintLayoutProgressLine } from './ArrangedPreview'
-import { useArrangedPreview, type PrintLayoutPreviewRequest } from './hooks'
+import { PrintLayoutProgressLine } from './ArrangedPreview'
+import { type PrintLayoutPreviewRequest } from './hooks'
 import {
   labelCellsOf,
   labelPresetText,
@@ -75,9 +98,9 @@ export interface PrintLayoutPanelProps {
   labelSpecStore?: PrintLabelSpecStore | undefined
   /** draw the layout diagram inside the panel; editors that put it in their preview pass false */
   showSchematic?: boolean | undefined
-  /** builds the arranged result as one PNG per face; shows the preview button when given */
+  /** @deprecated kept optional for transitional callers; live preview lives in LivePrintPreview */
   onPreviewRequest?: PrintLayoutPreviewRequest | undefined
-  /** saves the arranged PDF; shows the save button while an option is on */
+  /** @deprecated kept optional for transitional callers; PDF save lives in the destination dropdown */
   onSavePdf?: ((options: PrintLayoutOptions) => void) | undefined
   job?: PrintLayoutJob | undefined
   disabled?: boolean | undefined
@@ -90,6 +113,48 @@ const MODE_KEYS: Record<LayoutMode, PrintLayoutStringKey> = {
   poster: 'modePoster',
   labels: 'modeLabels',
 }
+
+const SCALING_KEYS: Record<ScalingMode, PrintLayoutStringKey> = {
+  actual: 'scalingActual',
+  fit: 'scalingFit',
+  shrink: 'scalingShrink',
+  custom: 'scalingCustom',
+}
+
+const ORIENTATION_KEYS: Record<OrientationChoice, PrintLayoutStringKey> = {
+  auto: 'orientationAuto',
+  portrait: 'orientationPortrait',
+  landscape: 'orientationLandscape',
+}
+
+const WATERMARK_KEYS: Record<WatermarkKind, PrintLayoutStringKey> = {
+  none: 'watermarkNone',
+  text: 'watermarkText',
+  image: 'watermarkImage',
+}
+
+const SLOT_KEYS: Record<HeaderFooterSlotKind, PrintLayoutStringKey> = {
+  none: 'slotNone',
+  title: 'slotTitle',
+  date: 'slotDate',
+  pageNumber: 'slotPageNumber',
+  custom: 'slotCustom',
+}
+
+type HfSlotName =
+  'topLeft' | 'topCenter' | 'topRight' | 'bottomLeft' | 'bottomCenter' | 'bottomRight'
+
+const HF_HEADER_SLOTS: ReadonlyArray<[HfSlotName, PrintLayoutStringKey]> = [
+  ['topLeft', 'slotLeft'],
+  ['topCenter', 'slotCenter'],
+  ['topRight', 'slotRight'],
+]
+
+const HF_FOOTER_SLOTS: ReadonlyArray<[HfSlotName, PrintLayoutStringKey]> = [
+  ['bottomLeft', 'slotLeft'],
+  ['bottomCenter', 'slotCenter'],
+  ['bottomRight', 'slotRight'],
+]
 
 type LabelNumberField = Exclude<keyof LabelSpec, 'paper'>
 
@@ -107,6 +172,7 @@ const LABEL_FIELDS: ReadonlyArray<[LabelNumberField, PrintLayoutStringKey, strin
 type LabelDraft = { paper: LabelPaper } & Record<LabelNumberField, string>
 
 const CUSTOM = 'custom'
+const MAX_WATERMARK_IMAGE_BYTES = 10 * 1024 * 1024
 
 /** The grid custom entry starts from when nothing is remembered: the first preset */
 function presetSpec(): LabelSpec {
@@ -171,9 +237,9 @@ function Field(props: { label: string; children: ReactNode }) {
 }
 
 /**
- * The shared "page layout" panel (spec 4). Controlled: the editor holds the
- * options (see `usePrintLayoutOptions` for fresh defaults on every open) and
- * this panel keeps them within the editor's capabilities.
+ * The shared "page layout" panel (decision 0141 + print upgrade). Controlled:
+ * the editor holds the options (see `usePrintLayoutOptions` for fresh defaults
+ * on every open) and this panel keeps them within the editor's capabilities.
  */
 export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
   const {
@@ -184,8 +250,6 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
     capabilities,
     labelSpecStore,
     showSchematic = true,
-    onPreviewRequest,
-    onSavePdf,
     job,
     disabled = false,
   } = props
@@ -193,10 +257,7 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
     printLayoutText(lang, key, params)
   const id = useId()
   const blocked = capabilities.layoutBlockedReason
-  const running = !!job?.progress
 
-  // The latest value and callbacks, for the async custom-spec load and the
-  // normalising effect (an editor's onChange is often a fresh closure).
   const latest = useRef({ value, onChange, capabilities })
   latest.current = { value, onChange, capabilities }
 
@@ -205,32 +266,48 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
     cur.onChange(normalizePanelOptions({ ...cur.value, ...patch }, cur.capabilities))
   }
 
-  // Keep the options inside the capabilities when the editor changes them
-  // (slides switching to handouts) or hands over options that do not fit.
   useEffect(() => {
     const cur = latest.current
     const fixed = normalizePanelOptions(cur.value, cur.capabilities)
     if (fixed !== cur.value) cur.onChange(fixed)
   }, [value, capabilities.showPaperAndFit, capabilities.layoutBlockedReason])
 
-  const preview = useArrangedPreview(onPreviewRequest)
-  const cancelPreview = preview.cancel
-  // A result made for other options or other pages is stale. Pages compare by
-  // their sizes so an editor may hand over a fresh array on every render.
-  const pagesKey = pages ? pages.map((p) => `${p.widthPt}x${p.heightPt}`).join(',') : ''
-  useEffect(() => cancelPreview(), [value, pagesKey, cancelPreview])
-
   const [draft, setDraft] = useState<LabelDraft | null>(() =>
     value.labels.spec.kind === 'custom' ? draftOf(value.labels.spec.spec) : null,
   )
   const savedKey = useRef<string | null>(null)
+  const wmFileRef = useRef<HTMLInputElement | null>(null)
 
   const problem = useMemo(() => printLayoutProblem(value, pages), [value, pages])
   const cellCount = labelCellsOf(value)
   const newRoute = takesNewPrintRoute(value)
+  const wmActive = hasActiveWatermark(value.watermark)
+  const hfActive = hasActiveHeaderFooter(value.headerFooter)
 
   const setLabels = (patch: Partial<PrintLayoutOptions['labels']>) =>
     emit({ labels: { ...latest.current.value.labels, ...patch } })
+
+  const setWatermark = (patch: Partial<WatermarkOptions>) =>
+    emit({ watermark: { ...latest.current.value.watermark, ...patch } })
+
+  const setHeaderFooter = (patch: Partial<HeaderFooterOptions>) =>
+    emit({ headerFooter: { ...latest.current.value.headerFooter, ...patch } })
+
+  const setHfSlot = (slotName: HfSlotName, patch: Partial<HeaderFooterSlot>) => {
+    const cur = latest.current.value.headerFooter
+    setHeaderFooter({ [slotName]: { ...cur[slotName], ...patch } })
+  }
+
+  const pickWatermarkImage = (file: File | undefined) => {
+    if (!file || file.size > MAX_WATERMARK_IMAGE_BYTES) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setWatermark({ kind: 'image', imageDataUrl: reader.result })
+      }
+    }
+    reader.readAsDataURL(file)
+  }
 
   const chooseSpec = async (choice: string) => {
     if (choice !== CUSTOM) {
@@ -241,7 +318,6 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
     if (draft) {
       spec = specOf(draft)
     } else {
-      // an unreadable store starts from the first preset like an empty one
       const loaded = await (labelSpecStore?.load() ?? Promise.resolve(null)).catch(() => null)
       const checked = loaded ? validateLabelSpec(loaded) : null
       spec = checked?.ok ? checked.spec : presetSpec()
@@ -266,7 +342,6 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
     if (key === savedKey.current) return
     savedKey.current = key
     void labelSpecStore.save(checked.spec).catch(() => {
-      // keep the typed value; a later blur tries again
       if (savedKey.current === key) savedKey.current = null
     })
   }
@@ -342,6 +417,16 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
                 ))}
               </select>
             </Field>
+            <label className="gs-pl-check">
+              <input
+                type="checkbox"
+                data-pl="nup-border"
+                checked={value.nup.border === true}
+                disabled={disabled}
+                onChange={(e) => emit({ nup: { ...value.nup, border: e.target.checked } })}
+              />
+              <span>{t('nupBorder')}</span>
+            </label>
           </div>
         )
       case 'booklet':
@@ -411,6 +496,18 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
                 onChange={(e) => emit({ poster: { ...value.poster, cutMarks: e.target.checked } })}
               />
               <span>{t('posterCutMarks')}</span>
+            </label>
+            <label className="gs-pl-check">
+              <input
+                type="checkbox"
+                data-pl="poster-tile-labels"
+                checked={value.poster.tileLabels === true}
+                disabled={disabled}
+                onChange={(e) =>
+                  emit({ poster: { ...value.poster, tileLabels: e.target.checked } })
+                }
+              />
+              <span>{t('posterTileLabels')}</span>
             </label>
           </div>
         )
@@ -502,6 +599,53 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
     }
   }
 
+  const showOrientation = value.mode === 'single' || value.mode === 'nup' || value.mode === 'poster'
+  const showScaling = capabilities.showPaperAndFit && value.mode === 'single'
+  const paperChosen = capabilities.showPaperAndFit && value.paper !== 'source'
+
+  const renderHfRow = (
+    rowLabel: string,
+    slots: ReadonlyArray<[HfSlotName, PrintLayoutStringKey]>,
+  ) => (
+    <div className="gs-pl-hf-row">
+      <div className="gs-pl-legend">{rowLabel}</div>
+      <div className="gs-pl-hf-grid">
+        {slots.map(([slotName, labelKey]) => {
+          const slot = value.headerFooter[slotName]
+          return (
+            <div key={slotName} className="gs-pl-hf-cell">
+              <span className="gs-pl-field-label">{t(labelKey)}</span>
+              <select
+                data-pl={`hf-${slotName}`}
+                value={slot.kind}
+                disabled={disabled || !value.headerFooter.enabled}
+                onChange={(e) =>
+                  setHfSlot(slotName, { kind: e.target.value as HeaderFooterSlotKind })
+                }
+              >
+                {HEADER_FOOTER_SLOT_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {t(SLOT_KEYS[k])}
+                  </option>
+                ))}
+              </select>
+              {slot.kind === 'custom' && (
+                <input
+                  type="text"
+                  className="gs-pl-range-text"
+                  data-pl={`hf-${slotName}-text`}
+                  value={slot.text}
+                  disabled={disabled || !value.headerFooter.enabled}
+                  onChange={(e) => setHfSlot(slotName, { text: e.target.value })}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   return (
     <section className="gs-pl" aria-label={t('panelTitle')}>
       <div className="gs-pl-title">{t('panelTitle')}</div>
@@ -555,8 +699,8 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
           <span>{t('reverse')}</span>
         </label>
       </fieldset>
-      {capabilities.showPaperAndFit && (
-        <div className="gs-pl-sub">
+      <div className="gs-pl-sub">
+        {capabilities.showPaperAndFit && (
           <Field label={t('paperLabel')}>
             <select
               data-pl="paper"
@@ -572,18 +716,61 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
               ))}
             </select>
           </Field>
-          <label className="gs-pl-check">
-            <input
-              type="checkbox"
-              data-pl="fit"
-              checked={value.fitToPaper}
-              disabled={disabled || value.paper === 'source' || value.mode !== 'single'}
-              onChange={(e) => emit({ fitToPaper: e.target.checked })}
-            />
-            <span>{t('fitToPaper')}</span>
-          </label>
-        </div>
-      )}
+        )}
+        {showOrientation && (
+          <Field label={t('orientationLabel')}>
+            <select
+              data-pl="orientation"
+              value={value.orientation}
+              disabled={disabled}
+              onChange={(e) => emit({ orientation: e.target.value as OrientationChoice })}
+            >
+              {ORIENTATION_CHOICES.map((o) => (
+                <option key={o} value={o}>
+                  {t(ORIENTATION_KEYS[o])}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {showScaling && (
+          <>
+            <Field label={t('scalingLabel')}>
+              <select
+                data-pl="scaling"
+                value={value.scaling}
+                disabled={disabled}
+                onChange={(e) => {
+                  const next = e.target.value as ScalingMode
+                  emit({ scaling: next, fitToPaper: next === 'shrink' && paperChosen })
+                }}
+              >
+                {SCALING_MODES.map((s) => (
+                  <option
+                    key={s}
+                    value={s}
+                    disabled={(s === 'fit' || s === 'shrink') && !paperChosen}
+                  >
+                    {t(SCALING_KEYS[s])}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {value.scaling === 'custom' && (
+              <Field label="%">
+                {numberInput(
+                  'scale-percent',
+                  value.scalePercent,
+                  SCALE_PERCENT_MIN,
+                  SCALE_PERCENT_MAX,
+                  (v) => emit({ scalePercent: v }),
+                  5,
+                )}
+              </Field>
+            )}
+          </>
+        )}
+      </div>
       <div className="gs-pl-sub">
         <label className="gs-pl-check">
           <input
@@ -614,6 +801,192 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
           </select>
         </Field>
       </div>
+
+      {/* Collapsible Watermark section */}
+      <details className="gs-pl-details" data-pl="watermark-section">
+        <summary className="gs-pl-details-summary">
+          <span>{t('watermarkTitle')}</span>
+          {wmActive && <span className="gs-pl-badge">{t('activeBadge')}</span>}
+        </summary>
+        <div className="gs-pl-details-body">
+          <div className="gs-pl-group">
+            {WATERMARK_KINDS.map((k) => (
+              <label key={k} className="gs-pl-check">
+                <input
+                  type="radio"
+                  name={`${id}-wm-kind`}
+                  data-pl="wm-kind"
+                  value={k}
+                  checked={value.watermark.kind === k}
+                  disabled={disabled}
+                  onChange={() => setWatermark({ kind: k })}
+                />
+                <span>{t(WATERMARK_KEYS[k])}</span>
+              </label>
+            ))}
+          </div>
+          {value.watermark.kind === 'text' && (
+            <div className="gs-pl-sub">
+              <Field label={t('watermarkTextLabel')}>
+                <input
+                  type="text"
+                  className="gs-pl-range-text"
+                  data-pl="wm-text"
+                  value={value.watermark.text}
+                  placeholder={t('watermarkTextPlaceholder')}
+                  disabled={disabled}
+                  onChange={(e) => setWatermark({ text: e.target.value })}
+                />
+              </Field>
+              <Field label={t('watermarkColor')}>
+                <input
+                  type="color"
+                  className="gs-pl-color"
+                  data-pl="wm-color"
+                  value={value.watermark.color}
+                  disabled={disabled}
+                  onChange={(e) => setWatermark({ color: e.target.value })}
+                />
+              </Field>
+              <Field label={t('watermarkFontSize')}>
+                {numberInput(
+                  'wm-font-size',
+                  value.watermark.fontSize,
+                  WATERMARK_FONT_SIZE_MIN,
+                  WATERMARK_FONT_SIZE_MAX,
+                  (v) =>
+                    setWatermark({
+                      fontSize: Math.min(
+                        WATERMARK_FONT_SIZE_MAX,
+                        Math.max(WATERMARK_FONT_SIZE_MIN, Math.round(v) || 48),
+                      ),
+                    }),
+                  2,
+                )}
+              </Field>
+              <Field label={t('watermarkAngle')}>
+                {numberInput(
+                  'wm-angle',
+                  value.watermark.angle,
+                  WATERMARK_ANGLE_MIN,
+                  WATERMARK_ANGLE_MAX,
+                  (v) =>
+                    setWatermark({
+                      angle: Math.min(
+                        WATERMARK_ANGLE_MAX,
+                        Math.max(WATERMARK_ANGLE_MIN, Number.isFinite(v) ? Math.round(v) : -45),
+                      ),
+                    }),
+                  5,
+                )}
+              </Field>
+            </div>
+          )}
+          {value.watermark.kind === 'image' && (
+            <div className="gs-pl-sub">
+              <input
+                ref={wmFileRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="gs-pl-file-hidden"
+                data-pl="wm-file"
+                onChange={(e) => pickWatermarkImage(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                className="gs-pl-btn"
+                data-pl="wm-pick-image"
+                disabled={disabled}
+                onClick={() => wmFileRef.current?.click()}
+              >
+                {t('watermarkPickImage')}
+              </button>
+              {value.watermark.imageDataUrl && (
+                <button
+                  type="button"
+                  className="gs-pl-btn"
+                  data-pl="wm-clear-image"
+                  disabled={disabled}
+                  onClick={() => setWatermark({ imageDataUrl: undefined })}
+                >
+                  {t('watermarkClearImage')}
+                </button>
+              )}
+              <Field label={t('watermarkImageScale')}>
+                {numberInput(
+                  'wm-image-scale',
+                  value.watermark.imageScale,
+                  WATERMARK_IMAGE_SCALE_MIN,
+                  WATERMARK_IMAGE_SCALE_MAX,
+                  (v) =>
+                    setWatermark({
+                      imageScale: Math.min(
+                        WATERMARK_IMAGE_SCALE_MAX,
+                        Math.max(WATERMARK_IMAGE_SCALE_MIN, Math.round(v) || 50),
+                      ),
+                    }),
+                  5,
+                )}
+              </Field>
+            </div>
+          )}
+          {value.watermark.kind !== 'none' && (
+            <div className="gs-pl-sub">
+              <Field
+                label={`${t('watermarkOpacity')} (${Math.round(value.watermark.opacity * 100)}%)`}
+              >
+                <input
+                  type="range"
+                  data-pl="wm-opacity"
+                  min={Math.round(WATERMARK_OPACITY_MIN * 100)}
+                  max={Math.round(WATERMARK_OPACITY_MAX * 100)}
+                  step={5}
+                  value={Math.round(value.watermark.opacity * 100)}
+                  disabled={disabled}
+                  onChange={(e) => setWatermark({ opacity: Number(e.target.value) / 100 })}
+                />
+              </Field>
+              <label className="gs-pl-check">
+                <input
+                  type="checkbox"
+                  data-pl="wm-tile"
+                  checked={value.watermark.tile}
+                  disabled={disabled}
+                  onChange={(e) => setWatermark({ tile: e.target.checked })}
+                />
+                <span>{t('watermarkTile')}</span>
+              </label>
+            </div>
+          )}
+        </div>
+      </details>
+
+      {/* Collapsible Headers & Footers section */}
+      <details className="gs-pl-details" data-pl="header-footer-section">
+        <summary className="gs-pl-details-summary">
+          <span>{t('headerFooterTitle')}</span>
+          {hfActive && <span className="gs-pl-badge">{t('activeBadge')}</span>}
+        </summary>
+        <div className="gs-pl-details-body">
+          <label className="gs-pl-check">
+            <input
+              type="checkbox"
+              data-pl="hf-enable"
+              checked={value.headerFooter.enabled}
+              disabled={disabled}
+              onChange={(e) => setHeaderFooter({ enabled: e.target.checked })}
+            />
+            <span>{t('headerFooterEnable')}</span>
+          </label>
+          {value.headerFooter.enabled && (
+            <>
+              {renderHfRow(t('headerRow'), HF_HEADER_SLOTS)}
+              {renderHfRow(t('footerRow'), HF_FOOTER_SLOTS)}
+            </>
+          )}
+        </div>
+      </details>
+
       {problem && (
         <p className="gs-pl-issue" role="alert" data-pl="issue">
           {printLayoutIssueText(lang, problem, { pageCount: pages?.length, cellCount })}
@@ -625,43 +998,6 @@ export function PrintLayoutPanel(props: PrintLayoutPanelProps): ReactElement {
         </p>
       )}
       {showSchematic && <PrintLayoutSchematic lang={lang} pages={pages} options={value} />}
-      {newRoute && (onPreviewRequest || onSavePdf) && (
-        <div className="gs-pl-actions">
-          {onPreviewRequest && (
-            <button
-              type="button"
-              className="gs-pl-btn"
-              data-pl="preview"
-              disabled={disabled || !!problem || running || preview.state.status === 'running'}
-              onClick={() => preview.start(value)}
-            >
-              {t('previewButton')}
-            </button>
-          )}
-          {onSavePdf && (
-            <button
-              type="button"
-              className="gs-pl-btn"
-              data-pl="save-pdf"
-              disabled={disabled || !!problem || running}
-              onClick={() => onSavePdf(value)}
-            >
-              {t('savePdf')}
-            </button>
-          )}
-          {onSavePdf && value.grayscale && (
-            <span className="gs-pl-hint" data-pl="gray-note">
-              {t('savePdfGrayNote')}
-            </span>
-          )}
-        </div>
-      )}
-      <ArrangedPreview
-        lang={lang}
-        state={preview.state}
-        onCancel={preview.cancel}
-        onClose={preview.cancel}
-      />
       {job?.progress && (
         <PrintLayoutProgressLine lang={lang} progress={job.progress} onCancel={job.onCancel} />
       )}

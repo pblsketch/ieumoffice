@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Lang } from '@genoffice/i18n'
-import { printLayoutText, SYSTEM_DIALOG } from '@genoffice/ui'
+import { printLayoutText, SAVE_PDF_DEST, SYSTEM_DIALOG } from '@genoffice/ui'
 import { createDefaultOptions, paperSizePt } from '@genoffice/print-layout/plan'
 import App from '../src/renderer/App'
 import { LocaleProvider } from '../src/renderer/i18n/locale'
@@ -270,7 +270,8 @@ describe('Print with a page layout option on', () => {
     await openPrint(fake)
     await click('input[data-pl="grayscale"]')
     fake.answer = { ok: true, path: 'C:/out/test.pdf' }
-    await click('button[data-pl="save-pdf"]')
+    await selectValue('select[data-print="printer"]', SAVE_PDF_DEST)
+    await click('button[data-pl="print"]')
     await until(() => status() === 'Exported', 'the message')
     expect(fake.layout.map((each) => each.kind)).toEqual(['save'])
     expect(fake.layout[0]!.request.editor.html).toBe(snapshotPage(fakeSnapshot()))
