@@ -1,6 +1,6 @@
 {
   "name": "@rhwp/core",
-  "version": "0.9.1-ieum.36",
+  "version": "0.9.1-ieum.37",
   "description": "rhwp v0.9.1 HWP/HWPX engine (WebAssembly) rebuilt with the patches in ./patches",
   "private": true,
   "type": "module",
@@ -57,9 +57,10 @@
       "0054-duplicate-floating-control.patch",
       "0055-nested-table-path-calls.patch",
       "0056-atomic-table-save-verify.patch",
-      "0057-paragraph-head-text.patch"
+      "0057-paragraph-head-text.patch",
+      "0058-path-split-merge-in-text-boxes.patch"
     ],
     "wasmPack": "0.15.0",
-    "wasmSha256": "35b03912de8d9d10ef41081061b51c28ac3cf15f314febdcac80ec740015d349"
+    "wasmSha256": "4d9ab3781e56cb27468c13b5d8bc6040e8706760cef2c0386cc5a1e9e2291771"
   }
 }
