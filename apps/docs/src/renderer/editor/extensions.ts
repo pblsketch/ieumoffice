@@ -3549,6 +3549,8 @@ export const DocTable = Node.create({
       /** explicit dxa w:tblW: a left-aligned table holds its declared width like a fixed layout */
       tblDxaWidth: { default: false },
       indentTwips: { default: null as number | null },
+      /** w:tblInd was edited (AutoFit Window resets it): the save writes indentTwips */
+      tblIndentEdited: { default: false },
       tblStyleId: { default: null as string | null },
       tblLook: { default: null as Record<string, boolean> | null },
       tblLookEdited: { default: false },
