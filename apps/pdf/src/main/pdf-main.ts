@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createHash, randomUUID, type Hash } from 'node:crypto'
-import { open, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
@@ -27,8 +27,10 @@ import {
   printHtmlToPdf,
   recordDiskState,
   safeExternalUrl,
+  saveAsSuggestion,
   shouldDeferAutoSave,
   showOpenDialogWithMemory,
+  showSaveDialogWithMemory,
   installRendererProtocol,
   registerRendererScheme,
   rendererUrl,
@@ -128,8 +130,14 @@ import {
   savePdfToPath,
   setPageSizeBytes,
   splitPagesBytes,
-  splitPdfBytes,
 } from './save-pdf'
+import { executeSplitPlan, uniqueSplitSubfolder } from './split-pdf'
+import {
+  formatSplitOutputNames,
+  planSplitParts,
+  splitSubfolderName,
+  type SplitPlanRequest,
+} from '../shared/split-plan'
 import { readPdfText } from './read-text'
 import { shrinkDocument } from './pdf-shrink'
 import { PDFDocument } from 'pdf-lib'
@@ -152,7 +160,7 @@ import {
 import type { PdfNoteResult, PdfRecoveryCopyResult } from '../shared/ipc'
 import { createPdfRecovery, pdfLooksEncrypted } from './pdf-recovery'
 import { copiedPagesOf, heldCopiedPages, holdCopiedPages } from './page-clipboard'
-import { LABEL_SPEC_FILE_NAME } from '@genoffice/electron-utils/print-arranged'
+import { imageSaveDialogSpec, LABEL_SPEC_FILE_NAME } from '@genoffice/electron-utils/print-arranged'
 import { registerPdfPrintLayout } from './print-layout'
 import { ResultStore, documentHashOfFile } from '../../../../packages/pdf-structure/src/store'
 /** the largest slice readFileChunk hands over IPC (the renderer loops) */
@@ -824,6 +832,17 @@ const imageTargetByWc = new Map<number, string>()
 /** Only a copy produced by this view may receive subsequent in-place redactions. */
 const redactionPathByWc = new Map<number, string>()
 const redactionFlows = new Set<number>()
+/** Active split AbortController per view so long splits (e.g. maxSize) can be canceled */
+const splitAbortByWc = new Map<number, AbortController>()
+/** Queued split-dialog open requests for tabs that have not mounted their listener yet */
+const pendingSplitDialogByWc = new Set<number>()
+
+/** Ask an open PDF editor view to open its Split dialog */
+export function requestPdfSplitDialog(contents: WebContents): void {
+  if (contents.isDestroyed()) return
+  pendingSplitDialogByWc.add(contents.id)
+  contents.send(PDF_CHANNELS.splitDialogRequest)
+}
 
 // ── Split-copy save guard (decision 0036): remember the disk state of every
 // read and write per view and path, so that while the same document is open in
@@ -1658,6 +1677,15 @@ function registerPdfIpc(): void {
         defaultPath: basename(editor.path).replace(/\.pdf$/i, '') + '-print.pdf',
         filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
       }
+      const picked = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+    async pickImageSavePath(event, editor, image) {
+      const parent = BrowserWindow.fromWebContents(event.sender as WebContents)
+      const spec = imageSaveDialogSpec(basename(editor.path).replace(/\.pdf$/i, ''), image)
+      const options = { defaultPath: spec.defaultFileName, filters: spec.filters }
       const picked = parent
         ? await dialog.showSaveDialog(parent, options)
         : await dialog.showSaveDialog(options)
@@ -2568,35 +2596,137 @@ function registerPdfIpc(): void {
     },
   )
 
+  ipcMain.handle(PDF_CHANNELS.splitPdfCancel, (e) => {
+    splitAbortByWc.get(e.sender.id)?.abort()
+  })
+
+  ipcMain.handle(PDF_CHANNELS.takeSplitDialogRequest, (e) => {
+    return pendingSplitDialogByWc.delete(e.sender.id)
+  })
+
   ipcMain.handle(
     PDF_CHANNELS.splitPdf,
     async (e, request: SplitPdfRequest): Promise<SplitPdfResult> => {
-      const { path, chunkSize, baseName } = request ?? {}
+      const { path, chunkSize, baseName, plan: rawPlan, output } = request ?? {}
       if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
         return { ok: false, error: 'pdf: path not granted to this view' }
       }
       const win =
         BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
-      const picked = await showOpenDialogWithMemory(dialog, win, {
-        title: tm('dlgSplit'),
-        properties: ['openDirectory', 'createDirectory'],
-      })
-      const dir = picked.filePaths[0]
-      if (picked.canceled || !dir) return { ok: true, canceled: true }
-      try {
-        const parts = await splitPdfBytes(
-          new Uint8Array(await readFile(path)),
-          typeof chunkSize === 'number' ? chunkSize : 1,
-        )
-        const safeBase = String(baseName || 'split').replace(/[/\\:*?"<>|]/g, '_')
-        for (const [i, bytes] of parts.entries()) {
-          await writeFile(join(dir, `${safeBase}-${i + 1}.pdf`), bytes)
+      const plan: SplitPlanRequest = rawPlan ?? {
+        mode: 'fixed',
+        kind: 'pagesPerFile',
+        value: typeof chunkSize === 'number' ? chunkSize : 1,
+      }
+      const sourceName = String(baseName || basename(path, '.pdf') || 'split')
+      const singleMerged = plan.mode === 'ranges' && plan.mergeRanges === true
+
+      const sameFilePath = (a: string, b: string): boolean => {
+        const ra = resolve(a)
+        const rb = resolve(b)
+        return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb
+      }
+
+      let singleTarget: string | null = null
+      let chosenDir: string | null = null
+      if (singleMerged) {
+        const preview = planSplitParts(plan, Number.MAX_SAFE_INTEGER)
+        const suggested =
+          preview.ok && !preview.dynamic
+            ? formatSplitOutputNames(preview.parts, `${sourceName}.pdf`, output)[0]!
+            : `${sourceName}-split.pdf`
+        const saved = await showSaveDialogWithMemory(dialog, win, {
+          title: tm('dlgSplit'),
+          defaultPath: saveAsSuggestion(path, suggested),
+          filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+        })
+        if (saved.canceled || !saved.filePath) return { ok: true, canceled: true }
+        singleTarget = /\.pdf$/i.test(saved.filePath) ? saved.filePath : `${saved.filePath}.pdf`
+        if (sameFilePath(path, singleTarget)) {
+          return { ok: false, error: 'pdf: cannot overwrite the source file' }
         }
-        // Many output files — don't open tabs; reveal them so success is never silent
-        shell.showItemInFolder(join(dir, `${safeBase}-1.pdf`))
-        return { ok: true, savedDir: dir, count: parts.length }
+      } else {
+        const picked = await showOpenDialogWithMemory(
+          dialog,
+          win,
+          {
+            title: tm('dlgSplit'),
+            defaultPath: dirname(path),
+            properties: ['openDirectory', 'createDirectory'],
+          },
+          dirname(path),
+        )
+        const dir = picked.filePaths[0]
+        if (picked.canceled || !dir) return { ok: true, canceled: true }
+        chosenDir = dir
+      }
+
+      const ac = new AbortController()
+      splitAbortByWc.get(e.sender.id)?.abort()
+      splitAbortByWc.set(e.sender.id, ac)
+      const sender = e.sender
+      try {
+        const sourceBytes = new Uint8Array(await readFile(path))
+        const result = await executeSplitPlan(sourceBytes, plan, {
+          sourceName: `${sourceName}.pdf`,
+          output,
+          signal: ac.signal,
+          onProgress: (done, total) => {
+            if (!sender.isDestroyed()) sender.send(PDF_CHANNELS.splitPdfProgress, { done, total })
+          },
+        })
+        if (result.parts.length === 0) {
+          return { ok: false, error: 'pdf: split produced no output files' }
+        }
+
+        if (singleTarget) {
+          await writePdfAtomically(singleTarget, result.parts[0]!.bytes)
+          shell.showItemInFolder(singleTarget)
+          return {
+            ok: true,
+            savedDir: dirname(singleTarget),
+            count: 1,
+            firstPath: singleTarget,
+            ...(result.oversizedPages.length > 0 ? { oversizedPages: result.oversizedPages } : {}),
+          }
+        }
+
+        let targetDir = chosenDir!
+        if (result.parts.length >= 2 && output?.createSubfolder) {
+          const folder = splitSubfolderName(sourceName, output.prefix)
+          targetDir = uniqueSplitSubfolder(targetDir, folder, existsSync)
+          await mkdir(targetDir, { recursive: true })
+        }
+
+        const written: string[] = []
+        const taken = new Set<string>()
+        for (const part of result.parts) {
+          const target = uniqueGeneratedPdfPath(
+            targetDir,
+            part.name,
+            (candidate) =>
+              existsSync(candidate) || taken.has(candidate) || sameFilePath(path, candidate),
+          )
+          taken.add(target)
+          await writePdfAtomically(target, part.bytes)
+          written.push(target)
+        }
+        const firstPath = written[0]!
+        shell.showItemInFolder(firstPath)
+        return {
+          ok: true,
+          savedDir: targetDir,
+          count: written.length,
+          firstPath,
+          ...(result.oversizedPages.length > 0 ? { oversizedPages: result.oversizedPages } : {}),
+        }
       } catch (err) {
+        if ((err as { name?: string })?.name === 'AbortError' || ac.signal.aborted) {
+          return { ok: true, canceled: true }
+        }
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      } finally {
+        if (splitAbortByWc.get(e.sender.id) === ac) splitAbortByWc.delete(e.sender.id)
       }
     },
   )
@@ -3174,6 +3304,9 @@ function grantAndTrack(wc: WebContents, openPath?: string | null): void {
     openPathByWc.delete(wcId)
     redactionPathByWc.delete(wcId)
     redactionFlows.delete(wcId)
+    splitAbortByWc.get(wcId)?.abort()
+    splitAbortByWc.delete(wcId)
+    pendingSplitDialogByWc.delete(wcId)
     allowedByWc.delete(wcId)
     dirtyByWc.delete(wcId)
     docDiskStates.delete(wcId)

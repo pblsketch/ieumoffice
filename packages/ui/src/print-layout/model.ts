@@ -8,6 +8,7 @@ import {
   changesSheetArrangement,
   isDefaultOptions,
   labelCellCount,
+  needsLivePreview,
   planSheets,
   PrintLayoutError,
   resolveLabelSpec,
@@ -66,6 +67,15 @@ export function takesNewPrintRoute(options: PrintLayoutOptions): boolean {
  */
 export function showsLayoutSchematic(options: PrintLayoutOptions): boolean {
   return changesSheetArrangement(options)
+}
+
+/**
+ * True when an editor with its own native preview should switch to the live
+ * rendered PDF preview (arrangement changed, grayscale, watermark or
+ * header/footer enabled).
+ */
+export function showsLivePrintPreview(options: PrintLayoutOptions): boolean {
+  return needsLivePreview(options)
 }
 
 /** True while the editor's collate field must stay on and locked (spec 4.6). */
@@ -137,10 +147,32 @@ export function normalizePanelOptions(
 ): PrintLayoutOptions {
   let o = options
   if (capabilities.layoutBlockedReason && o.mode !== 'single') o = { ...o, mode: 'single' }
-  if (!capabilities.showPaperAndFit && (o.paper !== 'source' || o.fitToPaper)) {
-    o = { ...o, paper: 'source', fitToPaper: false }
+  if (!capabilities.showPaperAndFit) {
+    if (o.paper !== 'source' || o.fitToPaper || o.scaling === 'fit' || o.scaling === 'shrink') {
+      o = {
+        ...o,
+        paper: 'source',
+        fitToPaper: false,
+        scaling: o.scaling === 'custom' ? 'custom' : 'actual',
+      }
+    }
   }
-  if (o.fitToPaper && (o.paper === 'source' || o.mode !== 'single')) o = { ...o, fitToPaper: false }
+  if (o.mode !== 'single' && (o.fitToPaper || o.scaling !== 'actual')) {
+    o = { ...o, fitToPaper: false, scaling: 'actual' }
+  }
+  if (o.mode === 'single') {
+    if (o.fitToPaper && o.scaling === 'actual' && o.paper !== 'source') {
+      o = { ...o, scaling: 'shrink' }
+    } else if (
+      o.paper === 'source' &&
+      (o.scaling === 'fit' || o.scaling === 'shrink' || o.fitToPaper)
+    ) {
+      o = { ...o, scaling: 'actual', fitToPaper: false }
+    } else {
+      const nextFit = o.paper !== 'source' && o.scaling === 'shrink'
+      if (nextFit !== o.fitToPaper) o = { ...o, fitToPaper: nextFit }
+    }
+  }
   return o
 }
 
@@ -175,6 +207,7 @@ const ISSUE_KEYS: Partial<Record<PrintLayoutIssue['code'], PrintLayoutStringKey>
   'label-spec-invalid': 'issueLabelSpecInvalid',
   'label-pitch-below-cell': 'issueLabelPitch',
   'label-spec-off-paper': 'issueLabelOffPaper',
+  'scale-percent-out-of-range': 'issueScalePercent',
   'no-faces': 'issueNoFaces',
 }
 

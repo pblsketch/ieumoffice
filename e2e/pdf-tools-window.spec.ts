@@ -174,12 +174,14 @@ test.describe('PDF tools window', () => {
         tools.getByText('You cannot save over a source file. Choose another name.'),
       ).toBeVisible()
 
-      // split: one file per page, into a folder the dialog picks
+      // split: one file per page (By pages tab, without subfolder), into a folder the dialog picks
       await tools.getByRole('button', { name: 'All tools' }).click()
       await tools.getByRole('button', { name: /Split PDF/ }).click()
       await queueDialogs(app, { open: [[a], [parts]] })
       await tools.getByRole('button', { name: 'Choose PDF', exact: true }).click()
       await expect(tools.getByText('3 pages', { exact: false })).toBeVisible()
+      await tools.getByRole('tab', { name: 'By pages' }).click()
+      await tools.getByRole('checkbox', { name: /Save into a new subfolder/ }).uncheck()
       await tools.getByRole('button', { name: 'Save as new file' }).click()
       await expect(tools.getByText('Made 3 files.')).toBeVisible()
       for (const n of [1, 2, 3]) {

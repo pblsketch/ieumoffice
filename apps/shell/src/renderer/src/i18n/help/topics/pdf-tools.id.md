@@ -30,6 +30,7 @@ Kartu di grup **Di editor PDF** membuka PDF yang dipilih di tab editor. Pilih pe
 - **Hapus halaman kosong** hanya menampilkan kandidat. Hanya halaman yang Anda pilih yang dihapus, dan halaman dengan satu huruf pun tidak pernah menjadi kandidat.
 - **Hapus anotasi** mempertahankan kolom formulir dan hanya menghapus tautan jika Anda mencentangnya. Isi anotasi yang dihapus tidak tersisa di file baru.
 - **Simpan sebagai teks** hanya membaca lapisan teks. Halaman yang teksnya berupa gambar, seperti halaman pindaian, akan kosong.
+- **Pisahkan PDF** dapat membagi menurut rentang khusus (bisa digabung menjadi satu file), jumlah halaman, markah buku, atau ukuran maksimum dengan opsi penamaan dan subfolder.
 
 ## Cocok untuk
 
