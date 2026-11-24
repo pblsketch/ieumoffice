@@ -1778,3 +1778,53 @@ input:focus-visible {
 .mobile-toast[data-tone='error'] {
   background: var(--danger);
 }
+
+/* Format panel ([Aa]) and fixed buttons at the end of the bottom bar (5.4, 5.6). */
+.mobile-quick-fixed-btn {
+  flex-shrink: 0;
+}
+.mobile-quick-fixed-btn[aria-pressed='true'] {
+  color: var(--m-accent);
+  background: var(--active-bg);
+}
+.mobile-format-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+.mobile-format-group-title {
+  margin: 0 0 var(--m-space-2);
+  font-size: var(--m-text-caption);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.mobile-format-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) + var(--m-space-6)), 1fr));
+  gap: var(--m-space-2);
+}
+.mobile-format-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  height: var(--m-list-item-h);
+  min-height: 0;
+  min-width: 0;
+  padding: var(--m-space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  text-align: center;
+  word-break: keep-all;
+}
+.mobile-format-btn:active {
+  background: var(--pressed);
+}
+.mobile-format-btn svg {
+  flex-shrink: 0;
+}

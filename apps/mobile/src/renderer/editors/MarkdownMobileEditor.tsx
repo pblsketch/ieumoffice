@@ -15,7 +15,24 @@ import {
 } from '@genoffice/mobile-bridge/markdown'
 
 export type MarkdownQuickAction =
-  'undo' | 'redo' | 'bold' | 'italic' | 'heading' | 'list' | 'insertImage'
+  | 'undo'
+  | 'redo'
+  | 'bold'
+  | 'italic'
+  | 'strikethrough'
+  | 'heading'
+  | 'heading2'
+  | 'heading3'
+  | 'list'
+  | 'numberedList'
+  | 'taskList'
+  | 'quote'
+  | 'codeBlock'
+  | 'link'
+  | 'insertImage'
+
+/** A line's block marker: heading, task, bullet, number, or quote. */
+const BLOCK_MARKER = /^(#{1,6} |[-*+] \[[ xX]\] |[-*+] |\d+\. |> )/
 
 export interface MarkdownMobileEditorHandle {
   readonly runAction: (action: MarkdownQuickAction) => void
@@ -89,18 +106,25 @@ export const MarkdownMobileEditor = forwardRef<
     [commitValue],
   )
 
-  const prefixCurrentLine = useCallback(
+  /** Sets the current line's block marker, replacing any other marker; the same marker toggles off. */
+  const setLinePrefix = useCallback(
     (prefix: string) => {
       const el = textareaRef.current
       const cur = valueRef.current
-      if (!el) {
-        commitValue(`${prefix}${cur}`)
-        return
-      }
-      const pos = el.selectionStart ?? 0
+      const pos = el?.selectionStart ?? 0
       const lineStart = cur.lastIndexOf('\n', Math.max(0, pos - 1)) + 1
-      const next = `${cur.slice(0, lineStart)}${prefix}${cur.slice(lineStart)}`
+      const line = cur.slice(lineStart)
+      const existing = BLOCK_MARKER.exec(line)?.[0] ?? ''
+      const nextPrefix = existing === prefix ? '' : prefix
+      const next = `${cur.slice(0, lineStart)}${nextPrefix}${cur.slice(lineStart + existing.length)}`
       commitValue(next)
+      if (el) {
+        const caret = Math.max(lineStart, pos + nextPrefix.length - existing.length)
+        requestAnimationFrame(() => {
+          el.focus()
+          el.setSelectionRange(caret, caret)
+        })
+      }
     },
     [commitValue],
   )
@@ -133,50 +157,100 @@ export const MarkdownMobileEditor = forwardRef<
     [commitValue, maxInlineImageBytes, onErrorNotice],
   )
 
+  const applyAction = useCallback(
+    (action: MarkdownQuickAction) => {
+      switch (action) {
+        case 'undo': {
+          const prev = undoStackRef.current.pop()
+          if (prev !== undefined) {
+            redoStackRef.current.push(valueRef.current)
+            valueRef.current = prev
+            onChange(prev)
+          }
+          break
+        }
+        case 'redo': {
+          const next = redoStackRef.current.pop()
+          if (next !== undefined) {
+            undoStackRef.current.push(valueRef.current)
+            valueRef.current = next
+            onChange(next)
+          }
+          break
+        }
+        case 'bold':
+          wrapSelection('**', '**', 'bold')
+          break
+        case 'italic':
+          wrapSelection('*', '*', 'italic')
+          break
+        case 'strikethrough':
+          wrapSelection('~~', '~~', 'text')
+          break
+        case 'heading':
+          setLinePrefix('# ')
+          break
+        case 'heading2':
+          setLinePrefix('## ')
+          break
+        case 'heading3':
+          setLinePrefix('### ')
+          break
+        case 'list':
+          setLinePrefix('- ')
+          break
+        case 'numberedList':
+          setLinePrefix('1. ')
+          break
+        case 'taskList':
+          setLinePrefix('- [ ] ')
+          break
+        case 'quote':
+          setLinePrefix('> ')
+          break
+        case 'codeBlock':
+          wrapSelection('```\n', '\n```', 'code')
+          break
+        case 'link':
+          wrapSelection('[', '](https://)', 'link')
+          break
+        case 'insertImage':
+          fileInputRef.current?.click()
+          break
+      }
+    },
+    [onChange, setLinePrefix, wrapSelection],
+  )
+
+  // Formatting during Hangul (IME) composition would break the syllable being
+  // typed; hold commands until the composition ends.
+  const composingRef = useRef(false)
+  const pendingActionsRef = useRef<MarkdownQuickAction[]>([])
+  const onCompositionStart = useCallback(() => {
+    composingRef.current = true
+  }, [])
+  const onCompositionEnd = useCallback(() => {
+    composingRef.current = false
+    setTimeout(() => {
+      const queued = pendingActionsRef.current.splice(0)
+      for (const action of queued) applyAction(action)
+    }, 0)
+  }, [applyAction])
+
   useImperativeHandle(
     ref,
     () => ({
       runAction(action) {
-        switch (action) {
-          case 'undo': {
-            const prev = undoStackRef.current.pop()
-            if (prev !== undefined) {
-              redoStackRef.current.push(valueRef.current)
-              valueRef.current = prev
-              onChange(prev)
-            }
-            break
-          }
-          case 'redo': {
-            const next = redoStackRef.current.pop()
-            if (next !== undefined) {
-              undoStackRef.current.push(valueRef.current)
-              valueRef.current = next
-              onChange(next)
-            }
-            break
-          }
-          case 'bold':
-            wrapSelection('**', '**', 'bold')
-            break
-          case 'italic':
-            wrapSelection('*', '*', 'italic')
-            break
-          case 'heading':
-            prefixCurrentLine('## ')
-            break
-          case 'list':
-            prefixCurrentLine('- ')
-            break
-          case 'insertImage':
-            fileInputRef.current?.click()
-            break
+        if (composingRef.current) {
+          pendingActionsRef.current.push(action)
+          return
         }
+        applyAction(action)
       },
       getMarkdown: () => valueRef.current,
       setMarkdown: (next) => commitValue(next),
     }),
-    [commitValue, onChange, prefixCurrentLine, wrapSelection],
+    [applyAction, commitValue],
   )
 
   useEffect(() => {
@@ -217,6 +291,8 @@ export const MarkdownMobileEditor = forwardRef<
           className="mobile-markdown-textarea"
           value={value}
           onChange={(e) => commitValue(e.target.value)}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           spellCheck={false}
           placeholder="# "
           aria-label="Markdown document editor"

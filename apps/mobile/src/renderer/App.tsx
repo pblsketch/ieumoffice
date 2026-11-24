@@ -41,15 +41,26 @@ import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiShe
 import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
-import { HwpMobileEditor, type HwpMobileEditorHandle } from './editors/HwpMobileEditor'
+import {
+  HwpMobileEditor,
+  type HwpMobileEditorHandle,
+  type HwpQuickAction,
+} from './editors/HwpMobileEditor'
 import {
   MarkdownMobileEditor,
   type MarkdownMobileEditorHandle,
+  type MarkdownQuickAction,
 } from './editors/MarkdownMobileEditor'
 import { MobileLocaleProvider, translateMobile } from './i18n'
+import type { MobileStringKey } from './i18n/strings'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
-import { EditorShell, type EditorQuickActionItem, type EditorSaveState } from './shell/EditorShell'
+import {
+  EditorShell,
+  type EditorFormatGroup,
+  type EditorQuickActionItem,
+  type EditorSaveState,
+} from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
 
 const DEFAULT_PREFS: MobileAppPrefs = {
@@ -690,63 +701,114 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       })
     : false
 
-  const quickActions: EditorQuickActionItem[] = useMemo(() => {
-    if (!activeDoc) return []
-    if (activeDoc.session.format === 'md' || activeDoc.session.format === 'txt') {
-      return [
-        {
-          id: 'undo',
-          label: tNow('undo'),
-          onPress: () => markdownEditorRef.current?.runAction('undo'),
-        },
-        {
-          id: 'redo',
-          label: tNow('redo'),
-          onPress: () => markdownEditorRef.current?.runAction('redo'),
-        },
-        {
-          id: 'bold',
-          label: tNow('bold'),
-          onPress: () => markdownEditorRef.current?.runAction('bold'),
-        },
-        {
-          id: 'italic',
-          label: tNow('italic'),
-          onPress: () => markdownEditorRef.current?.runAction('italic'),
-        },
-        {
-          id: 'heading',
-          label: tNow('heading'),
-          onPress: () => markdownEditorRef.current?.runAction('heading'),
-        },
-        {
-          id: 'list',
-          label: '•',
-          onPress: () => markdownEditorRef.current?.runAction('list'),
-        },
-        {
-          id: 'image',
-          label: tNow('insertImage'),
-          onPress: () => markdownEditorRef.current?.runAction('insertImage'),
-        },
+  const activeFormat = activeDoc?.session.format ?? null
+  const isMarkdownDoc = activeFormat === 'md' || activeFormat === 'txt'
+
+  // Toolbar actions and the format panel ([Aa]) of the active editor.
+  const { quickActions, formatGroups } = useMemo((): {
+    quickActions: EditorQuickActionItem[]
+    formatGroups: EditorFormatGroup[]
+  } => {
+    if (!activeFormat) return { quickActions: [], formatGroups: [] }
+    if (isMarkdownDoc) {
+      const md = (id: MarkdownQuickAction, label: MobileStringKey): EditorQuickActionItem => ({
+        id,
+        label: tNow(label),
+        onPress: () => markdownEditorRef.current?.runAction(id),
+      })
+      const quick = [
+        md('undo', 'undo'),
+        md('redo', 'redo'),
+        md('bold', 'bold'),
+        md('italic', 'italic'),
+        md('heading', 'heading'),
+        md('list', 'bulletList'),
+        { ...md('insertImage', 'insertImage'), id: 'image' },
       ]
+      if (activeFormat === 'txt') return { quickActions: quick.slice(0, 2), formatGroups: [] }
+      return {
+        quickActions: quick,
+        formatGroups: [
+          {
+            id: 'text',
+            title: tNow('fmtGroupText'),
+            items: [
+              md('bold', 'bold'),
+              md('italic', 'italic'),
+              md('strikethrough', 'strikethrough'),
+              md('link', 'link'),
+            ],
+          },
+          {
+            id: 'paragraph',
+            title: tNow('fmtGroupParagraph'),
+            items: [
+              md('heading', 'heading'),
+              md('heading2', 'heading2'),
+              md('heading3', 'heading3'),
+              md('list', 'bulletList'),
+              md('numberedList', 'numberedList'),
+              md('taskList', 'taskList'),
+              md('quote', 'quote'),
+              md('codeBlock', 'codeBlock'),
+            ],
+          },
+          {
+            id: 'insert',
+            title: tNow('fmtGroupInsert'),
+            items: [{ ...md('insertImage', 'insertImage'), id: 'image' }],
+          },
+        ],
+      }
     }
-    return [
-      { id: 'undo', label: tNow('undo'), onPress: () => hwpEditorRef.current?.runAction('undo') },
-      { id: 'redo', label: tNow('redo'), onPress: () => hwpEditorRef.current?.runAction('redo') },
-      { id: 'bold', label: tNow('bold'), onPress: () => hwpEditorRef.current?.runAction('bold') },
-      {
-        id: 'italic',
-        label: tNow('italic'),
-        onPress: () => hwpEditorRef.current?.runAction('italic'),
-      },
-      {
-        id: 'underline',
-        label: tNow('underline'),
-        onPress: () => hwpEditorRef.current?.runAction('underline'),
-      },
-    ]
-  }, [activeDoc, tNow])
+    const hwp = (id: HwpQuickAction, label: MobileStringKey): EditorQuickActionItem => ({
+      id,
+      label: tNow(label),
+      onPress: () => hwpEditorRef.current?.runAction(id),
+    })
+    return {
+      quickActions: [
+        hwp('undo', 'undo'),
+        hwp('redo', 'redo'),
+        hwp('bold', 'bold'),
+        hwp('italic', 'italic'),
+        hwp('underline', 'underline'),
+      ],
+      formatGroups: [
+        {
+          id: 'text',
+          title: tNow('fmtGroupText'),
+          items: [
+            hwp('bold', 'bold'),
+            hwp('italic', 'italic'),
+            hwp('underline', 'underline'),
+            hwp('strikethrough', 'strikethrough'),
+            hwp('fontBigger', 'fontBigger'),
+            hwp('fontSmaller', 'fontSmaller'),
+          ],
+        },
+        {
+          id: 'paragraph',
+          title: tNow('fmtGroupParagraph'),
+          items: [
+            hwp('alignLeft', 'alignLeft'),
+            hwp('alignCenter', 'alignCenter'),
+            hwp('alignRight', 'alignRight'),
+            hwp('alignJustify', 'alignJustify'),
+            hwp('lineSpacingWider', 'lineSpacingWider'),
+            hwp('lineSpacingNarrower', 'lineSpacingNarrower'),
+            hwp('bulletList', 'bulletList'),
+            hwp('numberedList', 'numberedList'),
+          ],
+        },
+        {
+          id: 'insert',
+          title: tNow('fmtGroupInsert'),
+          items: [hwp('insertTable', 'insertTable')],
+        },
+      ],
+    }
+  }, [activeFormat, isMarkdownDoc, tNow])
 
   return (
     <MobileLocaleProvider lang={lang}>
@@ -835,6 +897,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             noticeBanner={noticeBanner}
             onDismissNotice={() => setNoticeBanner(null)}
             quickActions={quickActions}
+            formatGroups={formatGroups}
             onBack={() => void handleBackFromEditor()}
             onEnterEdit={() => setMode('edit')}
             onDone={() => void handleDone()}

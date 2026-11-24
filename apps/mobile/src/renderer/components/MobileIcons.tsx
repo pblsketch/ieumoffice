@@ -289,3 +289,24 @@ export function IconStop(props: IconProps) {
     </SvgIcon>
   )
 }
+
+export function IconTextFormat(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M3 19 8.5 5 14 19" />
+      <path d="M5.2 14h6.6" />
+      <circle cx="18" cy="16.5" r="2.5" />
+      <path d="M20.5 13.5V19" />
+    </SvgIcon>
+  )
+}
+
+export function IconKeyboardHide(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="2" y="3" width="20" height="12" rx="2" />
+      <path d="M6 7h.01M10 7h.01M14 7h.01M18 7h.01M7 11h10" />
+      <path d="m9 18 3 3 3-3" />
+    </SvgIcon>
+  )
+}
