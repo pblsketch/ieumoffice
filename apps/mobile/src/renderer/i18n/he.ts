@@ -35,6 +35,8 @@ export const he = {
   insertImageNeedsCaret: 'קודם יש להקיש בטקסט במקום שבו תופיע התמונה.',
   insertImageFailed: 'לא ניתן לקרוא את קובץ התמונה הזה.',
   flowEditRefused: 'אי אפשר לבצע את העריכה הזו כאן, ולכן היא בוטלה.',
+  aiChangedPlaces: 'הבינה המלאכותית שינתה {count} מקומות.',
+  aiUndoRefused: 'המסמך השתנה אחרי העריכות של הבינה המלאכותית, ולכן לא ניתן היה לבטל את כולן.',
   memoTitle: 'הערות',
   memoAdd: 'הוספת הערה',
   memoAuthor: 'שם',

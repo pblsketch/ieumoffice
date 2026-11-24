@@ -5,14 +5,17 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  // Markdown → HWP reuses the Markdown editor's parser and Word exporter (editors/markdownToHwp.ts);
-  // its window globals and module shims come along, as in packages/cli
+  // Markdown → HWP reuses the Markdown editor's parser and Word exporter (editors/markdownToHwp.ts),
+  // and the AI reuses the HWP editor's tools (ai/hwpAgent.ts); their window globals and module
+  // shims come along, as in packages/cli. The phone has no `window.hwpApi`: the tools that use
+  // it are not offered there.
   "include": [
     "src",
     "tests",
     "vite.config.ts",
     "vitest.config.ts",
     "../markdown/src/renderer/env.d.ts",
-    "../markdown/src/renderer/types/wavedrom.d.ts"
+    "../markdown/src/renderer/types/wavedrom.d.ts",
+    "../hwp/src/renderer/env.d.ts"
   ]
 }

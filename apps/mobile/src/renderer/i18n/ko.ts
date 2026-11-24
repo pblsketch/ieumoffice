@@ -35,6 +35,8 @@ export const ko = {
   insertImageNeedsCaret: '그림을 넣을 자리를 글 안에서 먼저 눌러 주세요.',
   insertImageFailed: '이 그림 파일을 읽지 못했습니다.',
   flowEditRefused: '이 자리에서는 할 수 없는 편집이라 되돌렸습니다.',
+  aiChangedPlaces: 'AI가 {count}곳을 고쳤습니다.',
+  aiUndoRefused: 'AI가 고친 뒤 문서가 바뀌어 모두 되돌리지 못했습니다.',
   memoTitle: '메모',
   memoAdd: '메모 넣기',
   memoAuthor: '이름',

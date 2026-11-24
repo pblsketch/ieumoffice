@@ -35,6 +35,8 @@ export const zhTW = {
   insertImageNeedsCaret: '請先在文字中點一下要插入圖片的位置。',
   insertImageFailed: '無法讀取此圖片檔案。',
   flowEditRefused: '這裡無法進行此編輯，已復原。',
+  aiChangedPlaces: 'AI 修改了 {count} 處。',
+  aiUndoRefused: 'AI 修改後文件又有變動，因此無法全部復原。',
   memoTitle: '註解',
   memoAdd: '新增註解',
   memoAuthor: '姓名',

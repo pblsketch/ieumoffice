@@ -35,6 +35,8 @@ export const pl = {
   insertImageNeedsCaret: 'Najpierw stuknij w tekście miejsce, w którym ma być obraz.',
   insertImageFailed: 'Nie udało się odczytać tego pliku obrazu.',
   flowEditRefused: 'Tej zmiany nie można tu wprowadzić, więc została cofnięta.',
+  aiChangedPlaces: 'AI zmieniła {count} miejsc.',
+  aiUndoRefused: 'Dokument zmienił się po zmianach AI, więc nie udało się cofnąć wszystkich.',
   memoTitle: 'Notatki',
   memoAdd: 'Dodaj notatkę',
   memoAuthor: 'Imię',

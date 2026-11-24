@@ -7,12 +7,10 @@ import {
 } from '../src/transport'
 import {
   createMobileHwpApi,
-  createMobileHwpSkill,
   mobileHwpStudioUrl,
   seedMobileHwpStudioSettings,
   type MobileHwpEditorPort,
 } from '../src/hwp'
-import type { DocumentMode } from '../src/view-edit-gate'
 
 function makeHwpSession(overrides: Partial<MobileDocSession> = {}): MobileDocSession {
   return {
@@ -195,53 +193,5 @@ describe('createMobileHwpApi save verification, backup gate, protected guard, an
     expect(await api.openHanjaDict()).toEqual({ ok: false, error: 'unsupported-on-mobile' })
     expect(await api.runDocCheck()).toEqual({ ok: false, error: 'unsupported-on-mobile' })
     expect(await api.copyFormat()).toEqual({ ok: false, error: 'unsupported-on-mobile' })
-  })
-
-  it('strips HWP AI mutation tools on encrypted/distribution docs and auto-switches on writable docs', async () => {
-    let mode: DocumentMode = 'view'
-    let docText = 'Original Korean paragraph.'
-    const port: MobileHwpEditorPort = {
-      isPasswordProtected: async () => false,
-      exportHwp: async () => new Uint8Array(),
-      exportHwpx: async () => new Uint8Array(),
-      exportHwpVerify: async () => ({ pageCountBefore: 1, pageCountAfter: 1, recovered: true }),
-      measureTabs: async () => [],
-      getPlainText: async () => docText,
-      replaceText: async (find, replace) => {
-        if (!docText.includes(find)) return false
-        docText = docText.replace(find, replace)
-        return true
-      },
-      notifySaved: async () => {},
-    }
-
-    const encryptedSkill = createMobileHwpSkill(port, {
-      getMode: () => 'view',
-      getCapabilities: () => ({ writable: true, encrypted: true, distribution: false }),
-      switchToEdit: () => {},
-    })
-    expect(encryptedSkill.tools.map((t) => t.name)).toEqual(['read_hwp_text'])
-    const blocked = await encryptedSkill.executeTool({
-      id: '1',
-      name: 'replace_hwp_text',
-      input: { find: 'Original', replace: 'Edited' },
-    })
-    expect(blocked.isError).toBe(true)
-
-    const writableSkill = createMobileHwpSkill(port, {
-      getMode: () => mode,
-      getCapabilities: () => ({ writable: true, encrypted: false, distribution: false }),
-      switchToEdit: () => {
-        mode = 'edit'
-      },
-    })
-    const res = await writableSkill.executeTool({
-      id: '2',
-      name: 'replace_hwp_text',
-      input: { find: 'Original', replace: 'Updated' },
-    })
-    expect(res.mutated).toBe(true)
-    expect(mode).toBe('edit')
-    expect(docText).toContain('Updated')
   })
 })

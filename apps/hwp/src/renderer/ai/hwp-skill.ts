@@ -120,6 +120,12 @@ export interface HwpSkillDeps {
   /** live predicate: the main process says an image route can run; false hides generate_image */
   imageGenAvailable?: () => boolean
   /**
+   * False where the host has no way to the web (the mobile app): web_search, read_url,
+   * image_search and insert_image are not offered and the model is told so. Unknown
+   * (undefined) offers them, as on the PC.
+   */
+  webAvailable?: () => boolean
+  /**
    * False when no connection can look at pictures: analyze_picture is then not offered and
    * the model is told the document's pictures cannot be seen. Unknown (undefined) offers it.
    */
@@ -206,6 +212,18 @@ export const IMAGE_GEN_OFF_NOTE =
   '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.' +
   ' If the user uses a ChatGPT plan, making pictures needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex).' +
   " The app's direct ChatGPT connection cannot make pictures, because OpenAI does not allow it."
+
+/** The tools that need the host's way to the web (see `HwpSkillDeps.webAvailable`). */
+export const WEB_TOOLS: ReadonlySet<string> = new Set([
+  'web_search',
+  'read_url',
+  'image_search',
+  'insert_image',
+])
+
+/** Told to the model where the host has no way to the web. */
+export const WEB_OFF_NOTE =
+  '\n\nNote: web_search, read_url, image_search and insert_image are not available here: this app cannot reach the web. Do not call or promise them, and do not offer to look something up or to add a picture; work with the document and what the user tells you.'
 
 /** Told to the model when the panel knows that no connection can look at a picture. */
 export const PICTURE_ANALYSIS_OFF_NOTE =
@@ -3259,6 +3277,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
   const imageGenOn = (): boolean => deps.imageGenAvailable?.() !== false
   /** unknown offers it: only a known "no picture reader" hides the tool and says so */
   const pictureAnalysisOn = (): boolean => deps.pictureAnalysisAvailable?.() !== false
+  const webOn = (): boolean => deps.webAvailable?.() !== false
   let context = ''
   /** the runs the user selected, as they stand now (a replacement moves them on) */
   let selection: AgentSegment[] | null = null
@@ -6238,6 +6257,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (deps.importAttachment) base += IMPORT_ATTACHMENT_NOTE
         if (!imageGenOn()) base += IMAGE_GEN_OFF_NOTE
         if (!pictureAnalysisOn()) base += PICTURE_ANALYSIS_OFF_NOTE
+        if (!webOn()) base += WEB_OFF_NOTE
         return base
       },
       get tools(): AgentToolDef[] {
@@ -6247,6 +6267,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (!imageGenOn()) offered = offered.filter((tool) => tool.name !== 'generate_image')
         if (!pictureAnalysisOn())
           offered = offered.filter((tool) => tool.name !== 'analyze_picture')
+        if (!webOn()) offered = offered.filter((tool) => !WEB_TOOLS.has(tool.name))
         return offered
       },
       buildContext: () => [context, selectionContext()].filter(Boolean).join('\n\n'),

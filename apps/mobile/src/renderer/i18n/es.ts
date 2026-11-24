@@ -35,6 +35,9 @@ export const es = {
   insertImageNeedsCaret: 'Primero toca en el texto el lugar donde irá la imagen.',
   insertImageFailed: 'No se pudo leer este archivo de imagen.',
   flowEditRefused: 'Esta edición no se puede hacer aquí, así que se ha deshecho.',
+  aiChangedPlaces: 'La IA cambió {count} lugares.',
+  aiUndoRefused:
+    'El documento cambió después de las ediciones de la IA, así que no se pudieron deshacer todas.',
   memoTitle: 'Notas',
   memoAdd: 'Añadir nota',
   memoAuthor: 'Nombre',

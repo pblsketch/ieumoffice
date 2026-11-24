@@ -35,6 +35,8 @@ export const vi = {
   insertImageNeedsCaret: 'Hãy chạm vào vị trí trong văn bản để đặt ảnh trước.',
   insertImageFailed: 'Không đọc được tệp ảnh này.',
   flowEditRefused: 'Không thể sửa như vậy ở đây nên thay đổi đã được hoàn tác.',
+  aiChangedPlaces: 'AI đã sửa {count} chỗ.',
+  aiUndoRefused: 'Tài liệu đã thay đổi sau khi AI sửa nên không thể hoàn tác tất cả.',
   memoTitle: 'Ghi chú',
   memoAdd: 'Thêm ghi chú',
   memoAuthor: 'Tên',

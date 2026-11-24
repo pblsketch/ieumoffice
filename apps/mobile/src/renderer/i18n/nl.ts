@@ -36,6 +36,9 @@ export const nl = {
   insertImageNeedsCaret: 'Tik eerst in de tekst op de plek waar de afbeelding moet komen.',
   insertImageFailed: 'Dit afbeeldingsbestand kon niet worden gelezen.',
   flowEditRefused: 'Deze bewerking kan hier niet, dus is ze ongedaan gemaakt.',
+  aiChangedPlaces: 'De AI heeft {count} plekken gewijzigd.',
+  aiUndoRefused:
+    'Het document is na de wijzigingen van de AI veranderd, dus ze konden niet allemaal ongedaan worden gemaakt.',
   memoTitle: 'Notities',
   memoAdd: 'Notitie toevoegen',
   memoAuthor: 'Naam',

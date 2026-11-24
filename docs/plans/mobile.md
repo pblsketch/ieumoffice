@@ -15,6 +15,7 @@
 - **AI 도우미**:
   - ChatGPT 공식 모바일 OAuth 구조(OIDC 오리진 고정, HTTP 리다이렉트 차단, PKCE S256, RS256 JWKS, `pendingRefresh` 체크포인트, API 401 세션 비삭제, 사용량 관리 링크 `https://chatgpt.com/settings/usage`), 릴리스 빌드에서 `IEUM_MOBILE_CHATGPT_CLIENT_ID` 미설정 시 카드 숨김, `dev-chatgpt-loopback` 개발 전용 피처 격리.
   - 무료 연결(OpenRouter `freeOnly: true` `:free` 전용, Gemini API 키), HTTPS 클라우드 BYOK, AI 켜기 스위치(**기본 꺼짐**, 결정 0165).
+  - 한글 문서의 AI는 PC 한글 편집기의 도구를 그대로 쓰고(웹·그림·첨부 도구는 뺌), 묻는 것은 공용 A2UI 질문 카드(결정 0164)로 한다.
 - **22개 화면 언어 및 토큰 전용 테마**: `LANGS` 전체 번역과 `packages/ui/src/tokens.css` 토큰 전용 스타일.
 - **CI 검증**: `.github/workflows/mobile-build.yml`에서 Rust 라이선스/테스트, 모바일 TS 테스트, 스튜디오+웹 번들, Android(`aarch64`) 및 iOS(`aarch64-apple-ios`) 미서명 빌드를 검증한다.
 

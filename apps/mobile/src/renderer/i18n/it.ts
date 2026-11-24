@@ -35,6 +35,9 @@ export const it = {
   insertImageNeedsCaret: 'Tocca prima nel testo il punto in cui inserire l’immagine.',
   insertImageFailed: 'Impossibile leggere questo file immagine.',
   flowEditRefused: 'Questa modifica non si può fare qui, quindi è stata annullata.',
+  aiChangedPlaces: "L'IA ha modificato {count} punti.",
+  aiUndoRefused:
+    "Il documento è cambiato dopo le modifiche dell'IA, quindi non è stato possibile annullarle tutte.",
   memoTitle: 'Note',
   memoAdd: 'Aggiungi nota',
   memoAuthor: 'Nome',

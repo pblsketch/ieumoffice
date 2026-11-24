@@ -13,6 +13,8 @@ import type { AgentBridge } from '../src/renderer/ai/agent-bridge'
 import {
   CONTEXT_MAX_CHARS,
   IMAGE_GEN_OFF_NOTE,
+  WEB_OFF_NOTE,
+  WEB_TOOLS,
   READ_PAGE_CHARS,
   createHwpSkill,
   type HwpChange,
@@ -132,6 +134,7 @@ function setup(
   attachmentNames?: () => string[],
   pictureAnalysisAvailable?: () => boolean,
   importAttachment?: HwpSkillDeps['importAttachment'],
+  webAvailable?: () => boolean,
 ) {
   const bridge: AgentBridge = {
     foreignChanges: vi.fn(async () => 0),
@@ -417,6 +420,7 @@ function setup(
     ...(attachmentNames ? { attachmentNames } : {}),
     ...(pictureAnalysisAvailable ? { pictureAnalysisAvailable } : {}),
     ...(importAttachment ? { importAttachment } : {}),
+    ...(webAvailable ? { webAvailable } : {}),
   })
   const call = (name: string, input: Record<string, unknown> = {}) =>
     skill.executeTool({ id: '1', name, input } satisfies AgentToolCall)
@@ -4445,6 +4449,28 @@ describe('pictures', () => {
     const on = setup({}, undefined, () => true).skill
     expect(on.tools.map((tool) => tool.name)).toContain('generate_image')
     expect(on.systemPrompt).not.toContain(IMAGE_GEN_OFF_NOTE)
+  })
+
+  it('offers the web tools unless the host has no way to the web (the mobile app)', () => {
+    const names = (skill: { tools: { name: string }[] }) => skill.tools.map((tool) => tool.name)
+    // the PC passes nothing: everything as before
+    const pc = setup().skill
+    for (const name of WEB_TOOLS) expect(names(pc)).toContain(name)
+    expect(pc.systemPrompt).not.toContain(WEB_OFF_NOTE)
+
+    const off = setup(
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => false,
+    ).skill
+    for (const name of WEB_TOOLS) expect(names(off)).not.toContain(name)
+    expect(names(off)).toContain('insert_paragraphs')
+    expect(off.systemPrompt).toContain(WEB_OFF_NOTE)
   })
 
   it('tells the model how a ChatGPT plan makes pictures when none can be made', () => {

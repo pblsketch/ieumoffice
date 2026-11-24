@@ -35,6 +35,8 @@ export const id = {
   insertImageNeedsCaret: 'Ketuk dulu tempat di teks untuk meletakkan gambar.',
   insertImageFailed: 'File gambar ini tidak dapat dibaca.',
   flowEditRefused: 'Suntingan ini tidak bisa dilakukan di sini, jadi dibatalkan.',
+  aiChangedPlaces: 'AI mengubah {count} tempat.',
+  aiUndoRefused: 'Dokumen berubah setelah suntingan AI, jadi tidak semuanya bisa dibatalkan.',
   memoTitle: 'Memo',
   memoAdd: 'Tambah memo',
   memoAuthor: 'Nama',
