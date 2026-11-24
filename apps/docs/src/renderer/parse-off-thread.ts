@@ -61,6 +61,11 @@ function getWorker(): Worker | null {
   return worker
 }
 
+/** Pre-spawn the parse worker so its module load overlaps byte fetch on open. */
+export function warmParseWorker(): void {
+  getWorker()
+}
+
 /** how parses ran, for probes and troubleshooting */
 export const parseStats = { worker: 0, inline: 0 }
 

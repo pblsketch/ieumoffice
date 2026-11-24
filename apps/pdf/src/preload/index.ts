@@ -202,6 +202,26 @@ const api: PdfApi = {
   reduceFileSize: (path) => ipcRenderer.invoke(PDF_CHANNELS.reduceFileSize, path),
   insertBlankPage: (request) => ipcRenderer.invoke(PDF_CHANNELS.insertBlankPage, request),
   splitPdf: (request) => ipcRenderer.invoke(PDF_CHANNELS.splitPdf, request),
+  cancelSplitPdf: () => ipcRenderer.invoke(PDF_CHANNELS.splitPdfCancel),
+  onSplitPdfProgress: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, value: unknown) => {
+      const v = (value ?? {}) as { done?: unknown; total?: unknown }
+      if (typeof v.done === 'number' && typeof v.total === 'number') {
+        handler({ done: v.done, total: v.total })
+      }
+    }
+    ipcRenderer.on(PDF_CHANNELS.splitPdfProgress, listener)
+    return () => ipcRenderer.removeListener(PDF_CHANNELS.splitPdfProgress, listener)
+  },
+  onSplitDialogRequest: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(PDF_CHANNELS.splitDialogRequest, listener)
+    return () => ipcRenderer.removeListener(PDF_CHANNELS.splitDialogRequest, listener)
+  },
+  takeSplitDialogRequest: () =>
+    (ipcRenderer.invoke(PDF_CHANNELS.takeSplitDialogRequest) as Promise<boolean>).catch(
+      () => false,
+    ),
   mergePdf: (request) => ipcRenderer.invoke(PDF_CHANNELS.mergePdf, request),
   mergePages: (request) => ipcRenderer.invoke(PDF_CHANNELS.mergePages, request),
   replacePages: (request) => ipcRenderer.invoke(PDF_CHANNELS.replacePages, request),

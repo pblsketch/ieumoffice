@@ -36,6 +36,7 @@ import { exportSlidesPdf } from './pdf-export'
 import { printSlidesHtml, slidesPrintHtml, slidesPrintJobPdf } from './print-window'
 import {
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   LABEL_SPEC_FILE_NAME,
   registerPrintLayoutIpc,
 } from '@genoffice/electron-utils/print-arranged'
@@ -5242,6 +5243,25 @@ export function registerSlidesIpc(): void {
           title: tm('dlgExportPdf'),
           defaultPath: `${name}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        getDraftsDir(),
+      )
+      return r.canceled || !r.filePath ? null : r.filePath
+    },
+    pickImageSavePath: async (e, _editor, image) => {
+      const session = sessions.get(e.sender.id)
+      const name = session?.path
+        ? basename(session.path).replace(/\.pptx$/i, '')
+        : session
+          ? untitledRecoveryTitle(session)
+          : tm('untitledDeck')
+      const spec = imageSaveDialogSpec(name, image)
+      const r = await showSaveDialogWithMemory(
+        dialog,
+        dialogParent(),
+        {
+          defaultPath: spec.defaultFileName,
+          filters: spec.filters,
         },
         getDraftsDir(),
       )

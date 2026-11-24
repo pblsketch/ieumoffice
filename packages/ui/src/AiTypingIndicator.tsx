@@ -13,31 +13,37 @@ function withEllipsis(label: string): string {
 /** Thinking indicator, two mutually exclusive phases:
  *  grow/shrink blue dots first, then after ~1.2s only the shimmer label with a " · Ns" elapsed hint after 3s,
  *  and a gentle slow-wait hint line after SLOW_RESPONSE_HINT_AFTER_S (15s).
+ *  `paused` holds the elapsed count (e.g. while a question card waits for the person);
+ *  counting resumes from the held value when it turns false.
  *  The .ai-typing-* style classes are provided by ai-panel.css / each app's styles.css. */
 export function AiTypingIndicator({
   label,
   lang = 'en',
   slowHint,
   slowAfterSeconds = SLOW_RESPONSE_HINT_AFTER_S,
+  paused = false,
 }: {
   readonly label: string
   readonly lang?: Lang | undefined
   readonly slowHint?: string | undefined
   readonly slowAfterSeconds?: number | undefined
+  readonly paused?: boolean | undefined
 }): React.JSX.Element {
   const [elapsed, setElapsed] = useState(0)
   const [showLabel, setShowLabel] = useState(false)
 
   useEffect(() => {
     const phase = setTimeout(() => setShowLabel(true), 1200)
-    const timer = setInterval(() => setElapsed((s) => s + 1), 1000)
-    return () => {
-      clearTimeout(phase)
-      clearInterval(timer)
-    }
+    return () => clearTimeout(phase)
   }, [])
 
-  const showSlowHint = showLabel && elapsed >= slowAfterSeconds
+  useEffect(() => {
+    if (paused) return
+    const timer = setInterval(() => setElapsed((s) => s + 1), 1000)
+    return () => clearInterval(timer)
+  }, [paused])
+
+  const showSlowHint = showLabel && !paused && elapsed >= slowAfterSeconds
   const slowHintText = slowHint ?? aiDiagnosticsText(lang, 'slowResponseHint')
 
   return (
@@ -71,6 +77,7 @@ export function AiReplyProgress({
   thinking,
   working,
   lang,
+  paused,
 }: {
   readonly reply: {
     readonly streaming?: boolean | undefined
@@ -79,11 +86,17 @@ export function AiReplyProgress({
   readonly thinking: string
   readonly working: string
   readonly lang?: Lang | undefined
+  /** Holds the elapsed count, e.g. while a question card waits for the person. */
+  readonly paused?: boolean | undefined
 }): React.JSX.Element | null {
   if (!reply.streaming) return null
   return (
     <span className="ai-typing-row">
-      <AiTypingIndicator label={reply.tools?.length ? working : thinking} lang={lang} />
+      <AiTypingIndicator
+        label={reply.tools?.length ? working : thinking}
+        lang={lang}
+        paused={paused}
+      />
     </span>
   )
 }

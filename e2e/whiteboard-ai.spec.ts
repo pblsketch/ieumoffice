@@ -176,14 +176,14 @@ test.describe('Whiteboard AI panel', () => {
     })
     const { app, page: shell } = launched
     try {
+      await scriptWhiteboardAi(app)
+
       const card = shell.locator('.quick-card', {
         has: shell.locator('.quick-title', { hasText: /^Whiteboard$/ }),
       })
       const before = new Set(app.windows())
       await card.click()
       const board = await waitWhiteboardPage(app, before)
-
-      await scriptWhiteboardAi(app)
 
       // Open AI dock if collapsed
       if ((await board.locator('.ai-rail').count()) > 0) {
@@ -251,6 +251,8 @@ test.describe('Whiteboard AI panel', () => {
     })
     const { app, page: shell } = launched
     try {
+      await scriptWhiteboardAi(app)
+
       // Open a Whiteboard tab via shell home API and a Docs tab for style comparison
       const beforeWb = new Set(app.windows())
       await shell.evaluate(() =>
@@ -268,8 +270,6 @@ test.describe('Whiteboard AI panel', () => {
       board.on('console', (msg) => {
         if (msg.type() === 'error') consoleErrors.push(msg.text())
       })
-
-      await scriptWhiteboardAi(app)
 
       if ((await board.locator('.ai-rail').count()) > 0) {
         await board.locator('.ai-rail').click()

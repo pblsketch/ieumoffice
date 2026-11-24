@@ -2,24 +2,33 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
-import type {
-  PageSize,
-  PrintLayoutErrorCode,
-  PrintLayoutOptions,
+import {
+  hasFaceOverlays,
+  planSheets,
+  validateOptions,
+  type ImageExportOptions,
+  type PageSize,
+  type PrintLayoutErrorCode,
+  type PrintLayoutOptions,
 } from '@genoffice/print-layout/plan'
 import {
+  buildOverlayBundle,
+  LivePrintPreview,
   PrintJobFields,
   PrintLayoutPanel,
   PrintLayoutSchematic,
   printLayoutIssueText,
   printLayoutProblem,
+  printLayoutText,
   showsLayoutSchematic,
+  showsLivePrintPreview,
   takesNewPrintRoute,
   usePrintJob,
   usePrintLayoutOptions,
+  type LivePreviewBatchResult,
+  type OverlayBundle,
   type PrintJobSelection,
   type PrintLabelSpecStore,
-  type PrintLayoutPreviewRequest,
   type PrintLayoutProgress,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
@@ -40,40 +49,67 @@ export interface PrintPreviewContent {
   html: string
   /** the same print HTML of only the selection; null without a selection */
   selectionHtml: string | null
-  /** the document's name, offered when the arranged result is saved as a PDF */
+  /** the document's name, offered when the arranged result is saved */
   title: string
 }
 
 interface Props extends Omit<PrintPreviewContent, 'selectionHtml'> {
   selectionHtml?: string | null
+  initialDestination?: string
   onClose: () => void
 }
 
 /** Why the last arranged print or save failed, put in words when it is shown. */
 interface LayoutFailure {
-  kind: 'print' | 'save'
+  kind: 'print' | 'save' | 'save-images'
   detail: string
   code?: PrintLayoutErrorCode
 }
 
+function plannedFaceSizes(
+  pages: readonly PageSize[] | null,
+  options: PrintLayoutOptions,
+): PageSize[] {
+  if (!pages || pages.length === 0) return []
+  const checked = validateOptions(options, pages.length)
+  if (!checked.ok) return []
+  try {
+    return planSheets(pages, checked.options).output.map((f) => ({
+      widthPt: f.width,
+      heightPt: f.height,
+    }))
+  } catch {
+    return []
+  }
+}
+
 /**
  * The print preview of a Markdown note: the pages of the PDF the export writes,
- * drawn with pdf.js. Printing sends the same HTML and options to the main
- * process, so the paper the printer gets is the paper on screen.
+ * drawn with pdf.js (switching to LivePrintPreview when layout, grayscale,
+ * watermark, or header/footer changes the output faces), unified destination,
+ * paper/orientation, and the shared page layout panel.
  */
 export function PrintPreviewDialog({
   html,
   selectionHtml = null,
   title,
+  initialDestination,
   onClose,
 }: Props): JSX.Element {
   const { t, lang } = useI18n()
   // every print starts at the default layout: nothing carries over from the last one
   const [layout, setLayout] = usePrintLayoutOptions(true)
+  const effectiveLayout = useMemo<PrintLayoutOptions>(
+    () =>
+      title && layout.headerFooter.enabled
+        ? { ...layout, headerFooter: { ...layout.headerFooter, documentTitle: title } }
+        : layout,
+    [layout, title],
+  )
   const [jobPageSize, setJobPageSize] = useState<PageSize | null>(null)
   const [layoutProgress, setLayoutProgress] = useState<PrintLayoutProgress | null>(null)
   const [layoutFailure, setLayoutFailure] = useState<LayoutFailure | null>(null)
-  const [layoutSaved, setLayoutSaved] = useState(false)
+  const [layoutSavedNotice, setLayoutSavedNotice] = useState<string | null>(null)
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
   const [pageCount, setPageCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -223,14 +259,22 @@ export function PrintPreviewDialog({
       jobPageSize && jobPageCount ? Array.from({ length: jobPageCount }, () => jobPageSize) : null,
     [jobPageSize, jobPageCount],
   )
-  const layoutOn = takesNewPrintRoute(layout)
-  const layoutProblem = useMemo(
-    () => (layoutOn ? printLayoutProblem(layout, layoutPages) : null),
-    [layoutOn, layout, layoutPages],
+  const faceSizes = useMemo(
+    () => plannedFaceSizes(layoutPages, effectiveLayout),
+    [layoutPages, effectiveLayout],
   )
-  const showSchematic = showsLayoutSchematic(layout)
+  const layoutOn = takesNewPrintRoute(effectiveLayout)
   const printLayout = window.markdownApi.printLayout
-  const printJob = usePrintJob(layout, printLayout.listPrinters)
+  const printJob = usePrintJob(effectiveLayout, printLayout.listPrinters, {
+    allowSaveDestinations: true,
+    initialDestination,
+  })
+  const layoutProblem = useMemo(
+    () => (layoutOn || printJob.isSave ? printLayoutProblem(effectiveLayout, layoutPages) : null),
+    [layoutOn, printJob.isSave, effectiveLayout, layoutPages],
+  )
+  const useLivePreview = !!printLayout.previewFaces && showsLivePrintPreview(effectiveLayout)
+  const showSchematic = useLivePreview || showsLayoutSchematic(effectiveLayout)
 
   /** The advanced layout's job: the preview's HTML and paper, kept to the range. */
   const job = useMemo(
@@ -249,15 +293,20 @@ export function PrintPreviewDialog({
       mountedRef.current = false
       // a layout job still running when the dialog closes is stopped: nothing is sent
       if (layoutRunningRef.current) void printLayout.cancel()
+      void printLayout.closePreview?.()
     }
   }, [printLayout])
 
   /** Print or save on the advanced print layout's route. */
   const runLayout = useCallback(
     async (
-      kind: 'print' | 'save',
+      kind: 'print' | 'save' | 'save-images',
       options: PrintLayoutOptions,
-      jobSelection?: PrintJobSelection,
+      opts?: {
+        jobSelection?: PrintJobSelection
+        image?: ImageExportOptions
+        overlays?: OverlayBundle
+      },
     ): Promise<void> => {
       if (printingRef.current) return
       printingRef.current = true
@@ -265,18 +314,25 @@ export function PrintPreviewDialog({
       setPrinting(true)
       setError(null)
       setLayoutFailure(null)
-      setLayoutSaved(false)
+      setLayoutSavedNotice(null)
       const off = printLayout.onProgress((next) => {
         if (mountedRef.current) setLayoutProgress(next)
       })
       try {
-        const request = {
+        const base = {
           options,
           editor: job,
-          ...(kind === 'print' && jobSelection ? { job: jobSelection } : {}),
+          ...(opts?.overlays ? { overlays: opts.overlays } : {}),
         }
         const result =
-          kind === 'print' ? await printLayout.print(request) : await printLayout.savePdf(request)
+          kind === 'print'
+            ? await printLayout.print({
+                ...base,
+                ...(opts?.jobSelection ? { job: opts.jobSelection } : {}),
+              })
+            : kind === 'save'
+              ? await printLayout.savePdf(base)
+              : await printLayout.saveImages!({ ...base, image: opts!.image! })
         if (!mountedRef.current) return
         if (!result.ok) {
           if (!('aborted' in result)) {
@@ -288,8 +344,10 @@ export function PrintPreviewDialog({
           }
         } else if (kind === 'print') {
           if (!('canceled' in result)) onClose()
-        } else if ('path' in result) {
-          setLayoutSaved(true)
+        } else if (kind === 'save') {
+          if ('path' in result) setLayoutSavedNotice(t('appPrintPreviewLayoutSaved'))
+        } else if ('paths' in result) {
+          setLayoutSavedNotice(printLayoutText(lang, 'imagesSaved', { count: result.paths.length }))
         }
       } catch (cause) {
         if (mountedRef.current) {
@@ -308,24 +366,34 @@ export function PrintPreviewDialog({
         }
       }
     },
-    [job, onClose, printLayout],
+    [job, lang, onClose, printLayout, t],
   )
 
-  const previewLayout = useCallback<PrintLayoutPreviewRequest>(
-    async (options, { signal, onProgress }) => {
-      const off = printLayout.onProgress(onProgress)
-      const stop = (): void => void printLayout.cancel()
-      signal.addEventListener('abort', stop, { once: true })
-      try {
-        const result = await printLayout.preview({ options, editor: job })
-        if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
-        return result.faces.map((face) => face.png)
-      } finally {
-        off()
-        signal.removeEventListener('abort', stop)
-      }
+  const editorKey = `${rangeMode === 'selection' ? 'sel' : 'all'}|${pages ? `${pages.from}-${pages.to}` : 'all'}|${paper}|${landscape ? 'L' : 'P'}`
+  const previewCacheKey = `${editorKey}|${JSON.stringify(effectiveLayout)}`
+  const fetchFaces = useCallback(
+    async (
+      faceIndices: number[],
+      longSidePx: number,
+      signal: AbortSignal,
+    ): Promise<LivePreviewBatchResult> => {
+      if (!printLayout.previewFaces) throw new Error('preview unavailable')
+      const overlays = await buildOverlayBundle(effectiveLayout, faceSizes)
+      signal.throwIfAborted()
+      const optionsKey = `${JSON.stringify(effectiveLayout)}:${overlays ? overlays.stamps.length : 0}`
+      const result = await printLayout.previewFaces({
+        options: effectiveLayout,
+        editor: job,
+        editorKey,
+        optionsKey,
+        faceIndices,
+        longSidePx,
+        ...(overlays ? { overlays } : {}),
+      })
+      if (!result.ok) throw new Error('aborted' in result ? 'canceled' : result.error)
+      return { totalFaces: result.totalFaces, faceSizes: result.faceSizes, faces: result.faces }
     },
-    [job, printLayout],
+    [printLayout, effectiveLayout, faceSizes, job, editorKey],
   )
 
   const labelSpecStore = useMemo<PrintLabelSpecStore>(
@@ -341,10 +409,28 @@ export function PrintPreviewDialog({
 
   const print = async (): Promise<void> => {
     if (printingRef.current || rangeInvalid || rendering) return
+    const overlays = hasFaceOverlays(effectiveLayout)
+      ? await buildOverlayBundle(effectiveLayout, faceSizes)
+      : undefined
+    if (printJob.isSavePdf) {
+      if (layoutProblem === null) await runLayout('save', effectiveLayout, { overlays })
+      return
+    }
+    if (printJob.isSaveImages) {
+      if (layoutProblem === null && printLayout.saveImages) {
+        await runLayout('save-images', effectiveLayout, {
+          image: printJob.imageOptions,
+          overlays,
+        })
+      }
+      return
+    }
     // a layout option on or an in-app printer chosen: the arranged route;
     // system dialog with all defaults keeps the print as it was
     if (layoutOn || printJob.isSilent) {
-      if (!layoutOn || layoutProblem === null) await runLayout('print', layout, printJob.job)
+      if (!layoutOn || layoutProblem === null) {
+        await runLayout('print', effectiveLayout, { jobSelection: printJob.job, overlays })
+      }
       return
     }
     printingRef.current = true
@@ -408,6 +494,9 @@ export function PrintPreviewDialog({
         )
       : `${t(layoutFailure.kind === 'print' ? 'appPrintPreviewPrintFailed' : 'appPrintPreviewSaveFailed')} ${layoutFailure.detail}`
     : null
+  const problemText = layoutProblem
+    ? printLayoutIssueText(lang, layoutProblem, { pageCount: jobPageCount ?? undefined })
+    : null
 
   return (
     <div className="md-print-backdrop" onClick={onClose}>
@@ -427,7 +516,18 @@ export function PrintPreviewDialog({
             {showSchematic && (
               // the faces are not the pages while the layout moves them: show where they go
               <div className="md-print-schematic">
-                <PrintLayoutSchematic lang={lang} pages={layoutPages} options={layout} />
+                {useLivePreview ? (
+                  <LivePrintPreview
+                    lang={lang}
+                    pages={layoutPages}
+                    options={effectiveLayout}
+                    cacheKey={previewCacheKey}
+                    fetchFaces={!rangeInvalid ? fetchFaces : undefined}
+                    problemText={problemText}
+                  />
+                ) : (
+                  <PrintLayoutSchematic lang={lang} pages={layoutPages} options={effectiveLayout} />
+                )}
               </div>
             )}
             {rendering && <div className="md-print-overlay">{t('appPrintPreviewRendering')}</div>}
@@ -474,7 +574,13 @@ export function PrintPreviewDialog({
                 {t('appPrintPreviewActual')}
               </button>
             </div>
-            <PrintJobFields lang={lang} state={printJob} disabled={printing} />
+            <PrintJobFields
+              lang={lang}
+              state={printJob}
+              faceCount={faceSizes.length > 0 ? faceSizes.length : undefined}
+              grayscale={effectiveLayout.grayscale}
+              disabled={printing}
+            />
             <fieldset className="md-print-fieldset">
               <legend>{t('appPrintPreviewRange')}</legend>
               <label>
@@ -555,15 +661,13 @@ export function PrintPreviewDialog({
             </label>
             <PrintLayoutPanel
               lang={lang}
-              value={layout}
+              value={effectiveLayout}
               onChange={setLayout}
               pages={layoutPages}
               // the dialog's own paper and orientation make the job's pages (spec 4.5)
               capabilities={{ showPaperAndFit: false }}
               labelSpecStore={labelSpecStore}
               showSchematic={false}
-              onPreviewRequest={previewLayout}
-              onSavePdf={(options) => void runLayout('save', options)}
               job={{
                 progress: layoutProgress,
                 onCancel: () => void printLayout.cancel(),
@@ -574,9 +678,9 @@ export function PrintPreviewDialog({
           </div>
         </div>
         <div className="md-print-actions">
-          {layoutSaved && (
+          {layoutSavedNotice && (
             <span className="md-print-saved" role="status">
-              {t('appPrintPreviewLayoutSaved')}
+              {layoutSavedNotice}
             </span>
           )}
           <button type="button" className="md-print-button" onClick={onClose}>
@@ -590,11 +694,12 @@ export function PrintPreviewDialog({
               rangeInvalid ||
               pageCount === 0 ||
               rendering ||
-              (layoutOn && layoutProblem !== null)
+              ((layoutOn || printJob.isSave) && layoutProblem !== null) ||
+              (printJob.isSaveImages && !printLayout.saveImages)
             }
             onClick={() => void print()}
           >
-            {t('appPrintPreviewPrint')}
+            {printJob.isSave ? printLayoutText(lang, 'save') : t('appPrintPreviewPrint')}
           </button>
         </div>
       </div>

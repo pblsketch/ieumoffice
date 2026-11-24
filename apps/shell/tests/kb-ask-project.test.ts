@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+import { readFileSync } from 'node:fs'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Root } from 'react-dom/client'
@@ -389,6 +390,30 @@ describe('the home ask without a project', () => {
   })
 })
 
+const QUESTION_SURFACE = {
+  version: '1.0',
+  createSurface: {
+    surfaceId: 'evening',
+    catalogId: 'ieumoffice.com:question-card/v1',
+    components: [
+      { id: 'root', component: 'Column', children: ['title', 'when'] },
+      { id: 'title', component: 'Text', text: 'Shape the plan' },
+      {
+        id: 'when',
+        component: 'ChoicePicker',
+        label: 'When is it?',
+        variant: 'mutuallyExclusive',
+        options: [
+          { label: 'Morning', value: 'morning' },
+          { label: 'Evening', value: 'evening' },
+        ],
+        value: { '@path': '/when' },
+      },
+    ],
+    dataModel: { when: [] },
+  },
+}
+
 describe('the home ask with a project', () => {
   beforeEach(() => {
     // the last home choice, kept by main
@@ -582,6 +607,81 @@ describe('the home ask with a project', () => {
       await settle()
     })
     expect(texts()).toEqual([expect.stringContaining('Asked in the word editor')])
+  })
+
+  it('records a question card call with its input and output', async () => {
+    await renderPanel()
+    await ask('Plan the parents evening')
+    await answer([
+      { type: 'tool-call', toolCall: { id: 'q1', name: 'ask_questions', input: QUESTION_SURFACE } },
+      { type: 'done' },
+    ])
+    const card = host.querySelector<HTMLElement>('[data-testid="ai-question-card"]')
+    expect(card?.dataset.status).toBe('open')
+    const evening = Array.from(host.querySelectorAll<HTMLButtonElement>('.ai-qcard-opt')).find(
+      (button) => button.textContent?.includes('Evening'),
+    )
+    await click(evening)
+    await click(host.querySelector('.ai-qcard-btn-primary'))
+    await answer([{ type: 'delta', text: 'An evening plan.' }, { type: 'done' }])
+    const record = bridge.appendChat.mock.calls.at(-1)![0] as AppendProjectChatArgs
+    const question = record.tools?.find((tool) => tool.name === 'ask_questions')
+    expect(question).toBeDefined()
+    expect(JSON.parse(question!.input!)).toEqual(QUESTION_SURFACE)
+    expect(JSON.parse(question!.output!)).toMatchObject({
+      action: { name: 'submit', context: { answers: { when: ['evening'] } } },
+    })
+  })
+
+  it('draws a reopened home chat question call and question block read-only', async () => {
+    const output = JSON.stringify({
+      version: '1.0',
+      action: {
+        name: 'submit',
+        surfaceId: 'evening',
+        sourceComponentId: 'root',
+        timestamp: '2026-11-24T09:00:00.000Z',
+        context: { answers: { when: ['morning'] }, decideForMe: [] },
+      },
+    })
+    bridge.openChat.mockImplementationOnce(async (args: ProjectChatRef) => ({
+      status: 'ok',
+      info: { title: 'Parents evening' },
+      foreign: false,
+      chatId: args.chatId,
+      messages: [
+        { seq: 1, ts: '2026-11-24T09:00:00.000Z', role: 'user', text: 'Plan it', editor: 'home' },
+        {
+          seq: 2,
+          ts: '2026-11-24T09:00:01.000Z',
+          role: 'assistant',
+          text: `Before I start.\n<a2ui-json>${JSON.stringify([QUESTION_SURFACE])}</a2ui-json>`,
+          editor: 'home',
+          tools: [
+            {
+              name: 'ask_questions',
+              summary: 'When is it?',
+              input: JSON.stringify(QUESTION_SURFACE),
+              output,
+            },
+          ],
+        },
+      ],
+    }))
+    await renderPanel()
+    await act(async () => {
+      for (const listener of openChatListeners) listener({ projectId: 'p1', chatId: 'old-chat' })
+      await settle()
+    })
+    const cards = Array.from(host.querySelectorAll<HTMLElement>('[data-testid="ai-question-card"]'))
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.textContent).toContain('When is it?')
+    expect(cards[0]!.textContent).toContain('Morning')
+    expect(cards[1]!.dataset.status).toBe('read-only')
+    expect(host.querySelectorAll('.ai-qcard-btn-primary')).toHaveLength(0)
+    expect(host.textContent).not.toContain('a2ui-json')
+    // the question call is a card, not a tool badge
+    expect(host.querySelectorAll('.kb-ask-tool-note')).toHaveLength(0)
   })
 })
 
@@ -788,5 +888,23 @@ describe('a created document and the project folder', () => {
     expect(notesAfterCreate(notes, '/home/me/P/a.md', null, labels)).toBeNull()
     expect(notesAfterCreate(notes, undefined, '/home/me/P', labels)).toBeNull()
     expect(pathInsideFolder('/home/me/Project2/a.md', '/home/me/Project')).toBe(false)
+  })
+})
+
+/** the source of one function of a panel, from its opening line to its closing brace */
+function panelSection(file: string, start: string, end = '\n  }\n'): string {
+  const src = readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const at = src.indexOf(start)
+  if (at < 0) throw new Error(`${start} not found in ${file}`)
+  return src.slice(at, src.indexOf(end, at))
+}
+
+describe('home AI question: question cards follow the conversation (a2ui spec 4)', () => {
+  it('switching chats drops the cards of the chat left and resets the one-card limit', () => {
+    const opened = panelSection('../src/renderer/src/KbAskPanel.tsx', 'const showOpenedChat = ')
+    expect(opened.match(/inlineQuestions\.resetConversation\(\)/g)).toHaveLength(2)
+    // the in-memory chat keeps its answered text-block cards for when it shows again
+    expect(opened).toContain('textCards: textCardStatesRef.current')
+    expect(opened).toContain('inlineQuestions.markTextCard(key, card.status, card.answer)')
   })
 })

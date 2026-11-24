@@ -46,17 +46,17 @@ Zasady: rozszerzenie jest zachowywane automatycznie; niedozwolone znaki, kropki 
 
 ## Drukowanie
 
-Plik ▸ Drukuj (⌘P/ctrl+P) otwiera w każdym edytorze okno drukowania. Docs, PDF, Sheets, Slides i Markdown mają sekcję **Układ stron** w swoim dotychczasowym oknie drukowania, HWP w podglądzie wydruku, a HTML, mapa myśli i diagram w nowym, małym oknie drukowania. Jeśli w sekcji Układ stron nic nie wybierzesz, drukowanie przebiega tak samo jak dotąd.
+Plik ▸ Drukuj (⌘P/ctrl+P) otwiera okno drukowania z podglądem na żywo w każdym edytorze — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram i Whiteboard. Bez zmian w układzie strony i przy użyciu okna systemowego drukowanie działa jak dotychczas.
 
-- **Układ**: wybierz Jedna strona na arkusz, Kilka stron na arkusz (2, 4, 6, 9 lub 16), Broszura (oprawa z lewej lub z prawej), Plakat (arkusze w poziomie i w pionie, zakładka, linie cięcia) albo Etykiety (jedna strona na etykietę lub ta sama strona na każdej etykiecie, etykieta początkowa, popularny format A4 lub własne wymiary).
-- **Tylko nieparzyste strony arkusza, tylko parzyste strony arkusza, odwrotna kolejność**: strony liczy się po ułożeniu, według tego, co faktycznie wychodzi z drukarki. Przydaje się przy drukarce bez druku dwustronnego: wydrukuj przednie strony, odwróć papier i wydrukuj tylne.
-- **Zmniejsz do rozmiaru papieru**: zmniejszane są tylko strony większe niż wybrany papier; mniejsze nie są powiększane. Sheets i Markdown korzystają ze swoich dotychczasowych pól papieru i skali.
-- **Skala szarości i rozdzielczość obrazu**: przy drukowaniu z opcjami sekcji Układ stron każda strona jest zamieniana na obraz i dopiero wtedy trafia do drukarki. Rozdzielczość wybierasz spośród: Automatyczna, 150, 300 lub 600 dpi.
-- **Tylko zaznaczenie**: Docs i Markdown drukują tylko zaznaczony tekst, ułożony od nowa od pierwszej strony; Slides drukuje zaznaczone slajdy, a PDF zaznaczone strony. Sheets jak dotąd drukuje zaznaczony zakres.
-- **Schemat układu i podgląd wyniku**: schemat od razu pokazuje, gdzie na papierze trafia każdy numer strony, a **Podgląd wyniku** pokazuje to, co faktycznie powstało. Użyj **Zapisz ułożony wynik jako PDF**, aby wydrukować ten sam układ na innym komputerze lub w drukarni.
-- **Systemowe okno drukowania**: dla broszury wybierz druk dwustronny z obracaniem wzdłuż krótszej krawędzi. Zakres stron i liczbę stron na arkusz zostaw w oknie systemowym bez zmian.
+- **Miejsce docelowe (drukarka, PDF, obrazy)**: wybierz z jednej listy zainstalowaną drukarkę, **Zapisz jako PDF**, **Zapisz jako obrazy** lub **Systemowe okno drukowania**. Zapis obrazów obsługuje PNG i JPG (Wysoka 90%, Średnia 80%, Mniejszy plik 65%) jako osobne numerowane pliki lub pojedyncze archiwum ZIP. W chronionych PDF-ach zapis do PDF i obrazów jest zablokowany, a drukowanie pozostaje dostępne.
+- **Podgląd wydruku na żywo**: wszystkie dziesięć edytorów pokazuje podgląd przed wyjściem. Gdy układ, skala szarości, znak wodny lub nagłówki/stopki zmieniają wynikowe strony, podgląd renderuje je na żądanie z nawigacją, powiększeniem i przełącznikiem schematu.
+- **Układ**: Jedna strona na arkusz, Wiele stron na arkusz (2, 4, 6, 9 lub 16, z opcjonalnymi obramowaniami), Broszura (oprawa z lewej lub prawej), Plakat (kolumny × wiersze, zakładka, linie cięcia i etykiety kafelków) lub Etykiety (jedna strona na etykietę albo powtórzenie, komórka startowa, szablony A4 lub własne wymiary).
+- **Skala, orientacja, strony i kolejność**: wybierz Rozmiar rzeczywisty (100%), Dopasuj do papieru, Zmniejsz zbyt duże strony lub Skalę niestandardową (10%–400%) oraz orientację Automatyczną, Pionową albo Poziomą. Tylko nieparzyste, parzyste i odwrotna kolejność liczą gotowe strony arkuszy.
+- **Znak wodny, nagłówki/stopki, skala szarości i rozdzielczość**: dodawaj tekstowy lub obrazkowy znak wodny oraz 6 pól nagłówka i stopki (tytuł, data, numer strony lub własny tekst) tylko na wydruku, bez zmiany dokumentu. Skala szarości i DPI (Automatyczna, 150, 300 lub 600 dpi) określają jakość rastra.
+- **Zakresy stron i zaznaczenie**: Docs i Markdown łamią zaznaczony tekst od strony 1; Slides drukuje wybrane slajdy; PDF wybrane strony; Hangul obsługuje Wszystkie, Bieżącą stronę lub Zakres niestandardowy; Sheets drukuje aktywne arkusze, skoroszyt lub zaznaczenie.
+- **Systemowe okno drukowania**: dla broszury włącz druk dwustronny z przewracaniem wzdłuż krótkiej krawędzi i nie zmieniaj zakresu ani liczby stron na arkusz w oknie systemu.
 
-Pliki PDF drukują się z bieżącą kolejnością stron i obrotami.
+Pliki PDF są drukowane w bieżącej kolejności i orientacji stron.
 
 ## Gdzie trafiają pliki bez tytułu
 

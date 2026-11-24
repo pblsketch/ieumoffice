@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react'
 import {
   AiMark,
+  QuickPrintButton,
   RibbonCollapseButton,
   RibbonExpandButton,
   aiSubscriptionText,
   useDismissablePopover,
   useRibbonCollapse,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
 import { useAiVisible } from '../ai-visibility'
@@ -90,6 +93,12 @@ interface Props {
   onAiPreset: (text: string) => void
   canvasMode: CanvasMode
   onPresent: (kind: PresentKind) => void
+  onOpenPrintDialog: (initialDestination?: string) => void
+  onQuickPrint: (printerLabel: string) => void | Promise<void>
+  listPrinters?: () => Promise<readonly PrintPrinterInfo[]>
+  quickPrintPrefStore?: QuickPrintPrefStore
+  getPrintPageCount?: () => number | null | Promise<number | null>
+  onQuickPrintNotice?: (message: string) => void
 }
 
 export type CanvasMode = 'edit' | 'present'
@@ -246,6 +255,16 @@ export function Ribbon(p: Props) {
         >
           <IconSearch size={16} />
         </button>
+        <QuickPrintButton
+          lang={lang}
+          disabled={off}
+          listPrinters={p.listPrinters}
+          prefStore={p.quickPrintPrefStore}
+          getPageCount={p.getPrintPageCount}
+          onOpenDialog={p.onOpenPrintDialog}
+          onQuickPrint={p.onQuickPrint}
+          onNoPrinter={p.onQuickPrintNotice}
+        />
         <label className={`autosave-toggle${p.autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
           <span className="autosave-knob" />
           <span className="autosave-text">{t('autoSave')}</span>

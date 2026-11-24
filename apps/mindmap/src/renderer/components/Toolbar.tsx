@@ -12,7 +12,15 @@
  * The four format buttons show what the topic in hand shows; they keep the
  * focus, so while a title is typed they format its selected characters.
  */
-import { AiMark, aiSubscriptionText, Dropdown, type DropdownOption } from '@genoffice/ui'
+import {
+  AiMark,
+  QuickPrintButton,
+  aiSubscriptionText,
+  Dropdown,
+  type DropdownOption,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
+} from '@genoffice/ui'
 import type { ViewLayout } from '@genoffice/xmind-engine'
 import { useI18n } from '../i18n/locale'
 import type { ExportFormat } from '../../shared/ipc'
@@ -101,6 +109,11 @@ export interface ToolbarProps {
   onExport(format: ExportFormat): void
   /** "make another document from this one": the shell's make window with this map */
   onMakeFromDocument(): void
+  onOpenPrintDialog(initialDestination?: string): void
+  onQuickPrint(printerLabel: string): void | Promise<void>
+  listPrinters?: () => Promise<readonly PrintPrinterInfo[]>
+  quickPrintPrefStore?: QuickPrintPrefStore
+  onQuickPrintNotice?: (message: string) => void
 }
 
 export function Toolbar(p: ToolbarProps) {
@@ -159,6 +172,16 @@ export function Toolbar(p: ToolbarProps) {
         >
           <IconRedo />
         </button>
+        <QuickPrintButton
+          lang={lang}
+          disabled={p.disabled}
+          listPrinters={p.listPrinters}
+          prefStore={p.quickPrintPrefStore}
+          getPageCount={() => 1}
+          onOpenDialog={p.onOpenPrintDialog}
+          onQuickPrint={p.onQuickPrint}
+          onNoPrinter={p.onQuickPrintNotice}
+        />
         <label className={`autosave-toggle${p.autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
           <span className="autosave-knob" />
           <span className="autosave-text">{t('autoSave')}</span>

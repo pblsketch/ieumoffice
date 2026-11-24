@@ -7,11 +7,14 @@ import {
   Dropdown,
   type DropdownOption,
   isSymbolFontFamily,
+  QuickPrintButton,
   RibbonCollapseButton,
   RibbonExpandButton,
   aiSubscriptionText,
   useDismissablePopover,
   useRibbonCollapse,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
 import { SOURCE_VIEW_SHORTCUT } from '../source-view-key'
@@ -103,6 +106,12 @@ interface Props {
   /** withheld spans: right-click a selection to hide it from the model */
   redactEnabled: boolean
   onToggleRedact: (on: boolean) => void
+  onOpenPrintDialog: (initialDestination?: string) => void
+  onQuickPrint: (printerLabel: string) => void | Promise<void>
+  listPrinters?: () => Promise<readonly PrintPrinterInfo[]>
+  quickPrintPrefStore?: QuickPrintPrefStore
+  getPrintPageCount?: () => number | null | Promise<number | null>
+  onQuickPrintNotice?: (message: string) => void
 }
 
 /** doc + sparkle / pen + sparkle / lines + sparkle, same glyphs as the docs ribbon */
@@ -376,6 +385,12 @@ export function Ribbon({
   sourceHistory,
   redactEnabled,
   onToggleRedact,
+  onOpenPrintDialog,
+  onQuickPrint,
+  listPrinters,
+  quickPrintPrefStore,
+  getPrintPageCount,
+  onQuickPrintNotice,
 }: Props) {
   const { t, lang } = useI18n()
   // Settings › Editors and AI: while AI is off the band has no AI entry at all
@@ -691,6 +706,16 @@ export function Ribbon({
         >
           <IconSearch size={16} />
         </button>
+        <QuickPrintButton
+          lang={lang}
+          disabled={disabled}
+          listPrinters={listPrinters}
+          prefStore={quickPrintPrefStore}
+          getPageCount={getPrintPageCount}
+          onOpenDialog={onOpenPrintDialog}
+          onQuickPrint={onQuickPrint}
+          onNoPrinter={onQuickPrintNotice}
+        />
         <label className={`autosave-toggle${autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
           <span className="autosave-knob" />
           <span className="autosave-text">{t('autoSave')}</span>
