@@ -674,6 +674,7 @@ async function blankDocxBytes(): Promise<Uint8Array> {
   return buildBlankDocx({
     eastAsiaFont: defaultEastAsiaFontFor(getLang()),
     paperSize: paperSizeForLocale(await systemLocale()),
+    wordDefaults: true,
   })
 }
 
