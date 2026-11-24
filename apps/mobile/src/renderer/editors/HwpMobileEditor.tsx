@@ -12,7 +12,45 @@ import {
 import blankHwpUrl from '../../../../hwp/src/renderer/assets/blank.hwp?url'
 import { registerMobileKoreanFonts } from '../assets/fonts'
 
-export type HwpQuickAction = 'undo' | 'redo' | 'bold' | 'italic' | 'underline'
+export type HwpQuickAction =
+  | 'undo'
+  | 'redo'
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strikethrough'
+  | 'fontBigger'
+  | 'fontSmaller'
+  | 'alignLeft'
+  | 'alignCenter'
+  | 'alignRight'
+  | 'alignJustify'
+  | 'lineSpacingWider'
+  | 'lineSpacingNarrower'
+  | 'bulletList'
+  | 'numberedList'
+  | 'insertTable'
+
+/** rhwp-studio command for each mobile action. */
+const HWP_ACTION_COMMANDS: Record<HwpQuickAction, string> = {
+  undo: 'edit:undo',
+  redo: 'edit:redo',
+  bold: 'format:bold',
+  italic: 'format:italic',
+  underline: 'format:underline',
+  strikethrough: 'format:strikethrough',
+  fontBigger: 'format:font-size-increase',
+  fontSmaller: 'format:font-size-decrease',
+  alignLeft: 'format:align-left',
+  alignCenter: 'format:align-center',
+  alignRight: 'format:align-right',
+  alignJustify: 'format:align-justify',
+  lineSpacingWider: 'format:line-spacing-increase',
+  lineSpacingNarrower: 'format:line-spacing-decrease',
+  bulletList: 'format:toggle-bullet',
+  numberedList: 'format:toggle-numbering',
+  insertTable: 'table:create',
+}
 
 export interface HwpMobileEditorHandle {
   readonly getSavePort: () => MobileHwpEditorPort
@@ -257,15 +295,8 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
         runAction(action) {
           const ed = editorRef.current
           if (!ed) return
-          const map: Record<HwpQuickAction, string> = {
-            undo: 'edit:undo',
-            redo: 'edit:redo',
-            bold: 'format:bold',
-            italic: 'format:italic',
-            underline: 'format:underline',
-          }
           void ed.commands
-            .execute(map[action])
+            .execute(HWP_ACTION_COMMANDS[action])
             .then(() => onDirtyRef.current())
             .catch(() => {})
         },

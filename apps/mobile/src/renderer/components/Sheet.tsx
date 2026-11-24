@@ -47,8 +47,11 @@ export function Sheet({
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    surfaceRef.current?.focus()
+    // Modal sheets take focus; a non-modal sheet (format panel) leaves it in the
+    // document so the keyboard and the caret stay where they are.
+    const opener =
+      modal && document.activeElement instanceof HTMLElement ? document.activeElement : null
+    if (modal) surfaceRef.current?.focus()
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
@@ -57,7 +60,7 @@ export function Sheet({
       window.removeEventListener('keydown', onKeyDown)
       if (opener?.isConnected) opener.focus()
     }
-  }, [open, onClose])
+  }, [open, onClose, modal])
 
   if (!open) return null
 

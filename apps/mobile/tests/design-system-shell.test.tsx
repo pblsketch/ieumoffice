@@ -176,3 +176,41 @@ describe('editor app bar', () => {
     expect(el.querySelector('[data-testid="tablet-ai-toggle"]')).toBeNull()
   })
 })
+
+describe('format panel', () => {
+  it('opens from [Aa] in edit mode and runs the picked format', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+    const onPress = vi.fn()
+    const { el } = render(
+      <EditorShell
+        {...shellProps({
+          mode: 'edit',
+          formatGroups: [
+            {
+              id: 'text',
+              title: '글자',
+              items: [{ id: 'strikethrough', label: '취소선', onPress }],
+            },
+          ],
+        })}
+      />,
+    )
+    expect(el.querySelector('[data-testid="editor-format-sheet"]')).toBeNull()
+    act(() => el.querySelector<HTMLButtonElement>('[data-testid="format-panel-btn"]')?.click())
+    const sheet = el.querySelector('[data-testid="editor-format-sheet"]')
+    expect(sheet).not.toBeNull()
+    // non-modal: no dimmed backdrop, the document stays usable
+    expect(sheet?.classList.contains('mobile-sheet-backdrop')).toBe(false)
+    const btn = [...(sheet?.querySelectorAll<HTMLButtonElement>('.mobile-format-btn') ?? [])].find(
+      (b) => b.textContent?.includes('취소선'),
+    )
+    act(() => btn?.click())
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no [Aa] button when the editor has no format groups', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+    const { el } = render(<EditorShell {...shellProps({ mode: 'edit' })} />)
+    expect(el.querySelector('[data-testid="format-panel-btn"]')).toBeNull()
+  })
+})

@@ -16,11 +16,13 @@ import {
   IconHistory,
   IconImage,
   IconItalic,
+  IconKeyboardHide,
   IconList,
   IconMore,
   IconRedo,
   IconSave,
   IconShare,
+  IconTextFormat,
   IconUnderline,
   IconUndo,
 } from '../components/MobileIcons'
@@ -31,6 +33,24 @@ export interface EditorQuickActionItem {
   readonly id: string
   readonly label: string
   readonly onPress: () => void
+}
+
+/** One titled group in the format panel ([Aa]). */
+export interface EditorFormatGroup {
+  readonly id: string
+  readonly title: string
+  readonly items: readonly EditorQuickActionItem[]
+}
+
+/** Hides the on-screen keyboard, including when the focus sits inside the HWP editor frame. */
+function hideKeyboard(): void {
+  if (typeof document === 'undefined') return
+  const active = document.activeElement
+  if (active instanceof HTMLIFrameElement) {
+    const inner = active.contentDocument?.activeElement
+    if (inner instanceof HTMLElement) inner.blur()
+  }
+  if (active instanceof HTMLElement) active.blur()
 }
 
 /** What the app bar says about saving (design system 5.2). */
@@ -49,6 +69,8 @@ export interface EditorShellProps {
   readonly noticeBanner?: string | null
   readonly onDismissNotice?: () => void
   readonly quickActions: readonly EditorQuickActionItem[]
+  /** Groups for the format panel ([Aa]); none hides the button. */
+  readonly formatGroups?: readonly EditorFormatGroup[]
   readonly aiPanelContent: ReactNode
   readonly onBack: () => void
   /** [편집]: view -> edit. */
@@ -98,6 +120,7 @@ export function EditorShell({
   noticeBanner,
   onDismissNotice,
   quickActions,
+  formatGroups = [],
   aiPanelContent,
   onBack,
   onEnterEdit,
@@ -114,6 +137,8 @@ export function EditorShell({
   const { isTablet, keyboardInsetPx } = useViewportLayout()
   const [aiOpen, setAiOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [formatOpen, setFormatOpen] = useState(false)
+  const keyboardOpen = keyboardInsetPx > 0
   const isHwpFamily = docFormat === 'hwp' || docFormat === 'hwpx'
   const isEdit = mode === 'edit'
 
@@ -255,6 +280,19 @@ export function EditorShell({
               </button>
             )
           })}
+          {formatGroups.length > 0 && (
+            <button
+              type="button"
+              className="mobile-toolbar-btn"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => setFormatOpen((prev) => !prev)}
+              aria-pressed={formatOpen}
+              data-testid="tablet-format-panel-btn"
+            >
+              <IconTextFormat size={18} />
+              <span>{t('formatPanel')}</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -323,6 +361,33 @@ export function EditorShell({
               )
             })}
           </div>
+          {formatGroups.length > 0 && (
+            <button
+              type="button"
+              className="mobile-quick-icon-btn mobile-quick-fixed-btn"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => setFormatOpen((prev) => !prev)}
+              aria-label={t('formatPanel')}
+              aria-pressed={formatOpen}
+              title={t('formatPanel')}
+              data-testid="format-panel-btn"
+            >
+              <IconTextFormat size={20} />
+            </button>
+          )}
+          {keyboardOpen && (
+            <button
+              type="button"
+              className="mobile-quick-icon-btn mobile-quick-fixed-btn"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={hideKeyboard}
+              aria-label={t('hideKeyboard')}
+              title={t('hideKeyboard')}
+              data-testid="hide-keyboard-btn"
+            >
+              <IconKeyboardHide size={20} />
+            </button>
+          )}
           {aiEnabled && (
             <button
               type="button"
@@ -377,6 +442,37 @@ export function EditorShell({
           {aiPanelContent}
         </Sheet>
       )}
+
+      <Sheet
+        open={isEdit && formatOpen && formatGroups.length > 0}
+        title={t('formatPanel')}
+        closeLabel={t('cancel')}
+        onClose={() => setFormatOpen(false)}
+        modal={false}
+        testId="editor-format-sheet"
+      >
+        <div className="mobile-format-panel">
+          {formatGroups.map((group) => (
+            <section key={group.id} className="mobile-format-group" aria-label={group.title}>
+              <h3 className="mobile-format-group-title">{group.title}</h3>
+              <div className="mobile-format-grid">
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="mobile-format-btn"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={item.onPress}
+                  >
+                    {renderQuickActionIcon(item.id)}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </Sheet>
 
       <Sheet
         open={moreOpen}
