@@ -48,12 +48,14 @@ import {
 import { MobileLocaleProvider, translateMobile } from './i18n'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { EditorShell, type EditorQuickActionItem } from './shell/EditorShell'
+import { useViewportLayout } from './shell/useViewportLayout'
 
 const DEFAULT_PREFS: MobileAppPrefs = {
   lang: 'ko',
   theme: 'system',
   hwpDefaultFormat: 'hwp',
-  aiEnabled: true,
+  // AI starts hidden on mobile; the user turns it on in Settings.
+  aiEnabled: false,
 }
 
 const DEFAULT_AI_SETTINGS: MobileAiSettingsSnapshot = {
@@ -83,6 +85,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const markdownApi = useMemo(() => createMobileMarkdownApi(client), [client])
   const hwpApi = useMemo(() => createMobileHwpApi(client), [client])
   const aiMemoryRef = useRef(createMobileAiMemoryStore())
+  // Publishes data-window and --m-kb on <html> for every screen, not only the editor.
+  useViewportLayout()
 
   const [screen, setScreen] = useState<ScreenView>('home')
   const [prefs, setPrefs] = useState<MobileAppPrefs>(DEFAULT_PREFS)

@@ -380,6 +380,9 @@ fn recovery_lifecycle_and_prefs_persistence() {
     svc.recovery_discard("doc1234567890abc").unwrap();
     assert!(svc.recovery_list().unwrap().is_empty());
 
+    // AI is off until the user turns it on in Settings.
+    assert!(!svc.get_app_prefs().unwrap().ai_enabled);
+
     let prefs = svc
         .set_app_prefs(MobileAppPrefsPatch {
             lang: Some("ko".into()),

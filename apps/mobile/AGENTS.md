@@ -1,6 +1,6 @@
 # apps/mobile (`@genoffice/mobile`)
 
-이음오피스의 Android·iOS 모바일 앱(`com.ieumoffice.mobile`, Tauri 2 Mobile)이다. 바형 스마트폰 세로 화면(`<768px`)부터 태블릿·폴드·DeX(`≥768px`)까지 한 화면에서 한글(`.hwp`/`.hwpx`)과 마크다운(`.md`/`.markdown`/`.txt`) 문서를 열고 고치며, AI 도우미를 함께 쓸 수 있다.
+이음오피스의 Android·iOS 모바일 앱(`com.ieumoffice.mobile`, Tauri 2 Mobile)이다. 스마트폰·작은 태블릿(`<840px`)부터 큰 태블릿·폴드·DeX(`≥840px`)까지 한 화면에서 한글(`.hwp`/`.hwpx`)과 마크다운(`.md`/`.markdown`/`.txt`) 문서를 열고 고치며, AI 도우미를 함께 쓸 수 있다.
 
 ## 맡은 범위
 
@@ -21,7 +21,9 @@
 - **Canvas2D 강제**: 모바일 한글 편집기는 `canvaskit-wasm`을 로드하지 않고 Canvas2D로만 부팅한다. `vite.config.ts`는 `apps/hwp/scripts/rhwp-patches.mjs`의 `rhwpPatches('sdk-scheme')`로 `tauri:` 프로토콜을 허용하고 `apps/hwp/public/studio`를 `dist/studio`로 복사한다.
 - **원본 보호와 백업 게이트**: 암호·배포용 한글 문서는 저장과 편집본 공유를 모두 거절(`PASSWORD_PROTECTED`)하고 원본 공유(`mode: 'original'`)만 허용한다. 최초 덮어쓰기 전 백업이 실패하면(`BACKUP_FAILED`) 원본을 덮어쓰지 않는다.
 - **보안과 요금 경로**: API 키와 OAuth 토큰은 Rust 봉인 저장소에만 두고 WebView로 원문을 내보내지 않는다. `IEUM_MOBILE_CHATGPT_CLIENT_ID`가 없는 릴리스 빌드에서는 ChatGPT 연결 카드를 숨긴다. `dev-chatgpt-loopback` 피처는 릴리스 빌드에서 컴파일하지 않는다. `auto` 선택은 API 키 제공자로 넘어가지 않는다.
-- **스타일과 언어**: 모든 CSS는 `src/renderer/` 아래에 두고 `packages/ui/src/tokens.css` 변수만 사용한다. 22개 언어 문구는 `LANGS` 전체를 유지하고 `brandText`로 제품 이름을 치환한다.
+- **디자인 시스템**(`docs/plans/mobile-design-system.md`, 결정 0165): 겉모습은 두 플랫폼에서 하나이고, 플랫폼별로는 동작만 가른다. 간격·글자 크기·터치 크기·움직임은 `mobile-tokens.css`의 `--m-*` 토큰으로만 쓴다(직접 px 값을 새로 적지 않는다. 글자 크기는 rem 토큰이라 OS 글자 크기를 따른다). 누를 영역은 `--m-hit`(48px) 이상이다. 창 크기는 `useViewportLayout`이 `<html data-window="compact|medium|expanded|large">`(600/840/1200px)와 `--m-kb`(키보드 높이)로 내보내고, 옆 패널 배치(`isTablet`)는 expanded부터다.
+- **AI는 기본 꺼짐**: 새 설치는 `aiEnabled: false`(Rust `MobileAppPrefs::default`와 화면의 초기값)로 시작한다. 꺼져 있으면 AI 진입점을 모두 숨기고, 설정의 켜기 스위치만 남긴다.
+- **스타일과 언어**: 모든 CSS는 `src/renderer/` 아래에 두고 색은 `packages/ui/src/tokens.css` 변수만 사용한다. 22개 언어 문구는 `LANGS` 전체를 유지하고 `brandText`로 제품 이름을 치환한다.
 
 ## 테스트와 빌드
 

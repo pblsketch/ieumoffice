@@ -10,6 +10,7 @@ import type {
 import { MobileLocaleProvider } from '../src/renderer/i18n'
 import { HomeScreen } from '../src/renderer/components/HomeScreen'
 import { EditorShell } from '../src/renderer/shell/EditorShell'
+import { windowClassForWidth } from '../src/renderer/shell/useViewportLayout'
 import { SettingsScreen } from '../src/renderer/settings/SettingsScreen'
 
 const containers: HTMLElement[] = []
@@ -53,8 +54,20 @@ const baseAiSettings: MobileAiSettingsSnapshot = {
   subscriptionNoticeVersion: 0,
 }
 
-describe('responsive mobile shell layout (<768px phone vs >=768px tablet)', () => {
-  it('renders phone quick toolbar in edit mode and bottom sheet AI on <768px', () => {
+describe('window size classes', () => {
+  it('splits widths at 600, 840 and 1200', () => {
+    expect(windowClassForWidth(390)).toBe('compact')
+    expect(windowClassForWidth(599)).toBe('compact')
+    expect(windowClassForWidth(600)).toBe('medium')
+    expect(windowClassForWidth(839)).toBe('medium')
+    expect(windowClassForWidth(840)).toBe('expanded')
+    expect(windowClassForWidth(1199)).toBe('expanded')
+    expect(windowClassForWidth(1200)).toBe('large')
+  })
+})
+
+describe('responsive mobile shell layout (<840px phone layout vs >=840px tablet layout)', () => {
+  it('renders phone quick toolbar in edit mode and bottom sheet AI on <840px', () => {
     Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
     const el = renderInDom(
       <EditorShell
@@ -83,7 +96,36 @@ describe('responsive mobile shell layout (<768px phone vs >=768px tablet)', () =
     expect(el.querySelector('[data-testid="tablet-toolbar"]')).toBeNull()
   })
 
-  it('renders tablet toolbar and docked AI toggle on >=768px', () => {
+  it('keeps the phone layout on a medium window (700px) and publishes data-window', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 700, configurable: true })
+    const el = renderInDom(
+      <EditorShell
+        docTitle="plan.md"
+        docFormat="md"
+        dirty={false}
+        mode="edit"
+        canEdit={true}
+        aiEnabled={false}
+        quickActions={[{ id: 'bold', label: 'B', onPress: () => {} }]}
+        aiPanelContent={<div>AI Content</div>}
+        onBack={() => {}}
+        onToggleMode={() => {}}
+        onSave={() => {}}
+        onSaveAs={() => {}}
+        onShare={() => {}}
+        onFitToWidth={() => {}}
+        onOpenBackups={() => {}}
+      >
+        <div>Doc body</div>
+      </EditorShell>,
+    )
+
+    expect(el.querySelector('[data-layout="phone"]')).not.toBeNull()
+    expect(document.documentElement.dataset.window).toBe('medium')
+    expect(el.textContent).not.toContain('AI Content')
+  })
+
+  it('renders tablet toolbar and docked AI toggle on >=840px', () => {
     Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true })
     const el = renderInDom(
       <EditorShell
