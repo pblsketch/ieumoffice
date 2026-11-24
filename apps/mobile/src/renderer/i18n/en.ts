@@ -32,6 +32,8 @@ export const en = {
   underline: 'Underline',
   heading: 'Heading',
   insertImage: 'Insert image',
+  insertImageNeedsCaret: 'Tap in the text where the picture should go first.',
+  insertImageFailed: 'This picture file could not be read.',
   formatPanel: 'Format',
   hideKeyboard: 'Hide keyboard',
   fmtGroupText: 'Text',

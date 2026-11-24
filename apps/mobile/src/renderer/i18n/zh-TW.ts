@@ -32,6 +32,8 @@ export const zhTW = {
   underline: '底線',
   heading: '標題',
   insertImage: '插入圖片',
+  insertImageNeedsCaret: '請先在文字中點一下要插入圖片的位置。',
+  insertImageFailed: '無法讀取此圖片檔案。',
   formatPanel: '格式',
   hideKeyboard: '收起鍵盤',
   fmtGroupText: '文字',

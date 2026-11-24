@@ -229,6 +229,66 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(JSON.parse(doc.getCellParaPropertiesAt(0, 2, 0, 3, 0)).alignment).toBe('right')
   })
 
+  // a 2x1 PNG
+  const picture = {
+    bytes: Uint8Array.from(
+      atob(
+        'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP8z8DwnwEIGAEAD5wB/6vGcBwAAAAASUVORK5CYII=',
+      ),
+      (ch) => ch.charCodeAt(0),
+    ),
+    widthPx: 2,
+    heightPx: 1,
+    extension: 'png',
+    description: '시험 그림',
+  }
+
+  it('puts a picture in line at the end of the body paragraph with the caret, with undo and redo', () => {
+    placeCaret(pEl(1), 3)
+    expect(editor.insertPicture(picture)).toBe(true)
+    const end = engineText(1).length
+    expect(JSON.parse(doc.getControlTextPositions(0, 1))).toEqual([end])
+    expect(JSON.parse(doc.getPictureProperties(0, 1, 0)).treatAsChar).toBe(true)
+    expect(document.querySelector('.flow-obj[data-para="1"] img')).not.toBeNull()
+    // the text block is still there and the text is unchanged
+    expect(engineText(1)).toBe('작성자 : ○○○ (서명)')
+    expect(pEl(1)).not.toBeNull()
+    editor.undo()
+    expect(JSON.parse(doc.getControlTextPositions(0, 1))).toEqual([])
+    expect(document.querySelector('.flow-obj[data-para="1"]')).toBeNull()
+    editor.redo()
+    expect(JSON.parse(doc.getControlTextPositions(0, 1))).toEqual([end])
+  })
+
+  it('puts a picture in line inside a table cell', () => {
+    placeCaret(cellEl(cellPath(3)), 2)
+    expect(editor.insertPicture(picture)).toBe(true)
+    const json = JSON.stringify(cellPath(3))
+    expect(JSON.parse(doc.getCellPicturePropertiesByPath(0, 2, json, 0)).treatAsChar).toBe(true)
+    const td = document.querySelector(
+      `td[data-cell-path='${JSON.stringify([{ controlIndex: 0, cellIndex: 3 }])}']`,
+    )!
+    expect(td.querySelector('img')).not.toBeNull()
+    editor.undo()
+    expect(() => doc.getCellPicturePropertiesByPath(0, 2, json, 0)).toThrow()
+  })
+
+  it('shrinks a tall picture to half the text height', () => {
+    placeCaret(pEl(1), 0)
+    expect(editor.insertPicture({ ...picture, widthPx: 1000, heightPx: 4000 })).toBe(true)
+    const page = JSON.parse(doc.getPageDef(0))
+    const textHeight =
+      page.height - page.marginTop - page.marginBottom - page.marginHeader - page.marginFooter
+    const props = JSON.parse(doc.getPictureProperties(0, 1, 0))
+    expect(props.height).toBeLessThanOrEqual(Math.round(textHeight / 2))
+    expect(props.width / props.height).toBeCloseTo(0.25, 2)
+  })
+
+  it('refuses a picture without a caret in text', () => {
+    document.getSelection()!.removeAllRanges()
+    expect(editor.insertPicture(picture)).toBe(false)
+  })
+
   it('shows every cell paragraph, empty ones included, at its engine path', () => {
     expect(cellEl(cellPath(0)).textContent).toBe('일 시')
     expect(cellEl(cellPath(9, 1)).textContent).toBe('')

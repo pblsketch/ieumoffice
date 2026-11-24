@@ -32,6 +32,8 @@ export const ar = {
   underline: 'تسطير',
   heading: 'عنوان',
   insertImage: 'إدراج صورة',
+  insertImageNeedsCaret: 'انقر أولاً في النص على المكان الذي ستوضع فيه الصورة.',
+  insertImageFailed: 'تعذّرت قراءة ملف الصورة هذا.',
   formatPanel: 'التنسيق',
   hideKeyboard: 'إخفاء لوحة المفاتيح',
   fmtGroupText: 'النص',

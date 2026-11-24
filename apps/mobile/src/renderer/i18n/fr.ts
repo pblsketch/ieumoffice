@@ -33,6 +33,8 @@ export const fr = {
   underline: 'Souligné',
   heading: 'Titre',
   insertImage: 'Insérer une image',
+  insertImageNeedsCaret: 'Touchez d’abord l’endroit du texte où placer l’image.',
+  insertImageFailed: 'Impossible de lire ce fichier image.',
   formatPanel: 'Mise en forme',
   hideKeyboard: 'Masquer le clavier',
   fmtGroupText: 'Texte',

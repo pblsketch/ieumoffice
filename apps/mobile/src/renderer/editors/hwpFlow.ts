@@ -507,7 +507,7 @@ function noteHtml(doc: FlowSourceDocument, sec: number, para: number, ctrl: numb
     }
     if (!info.ok || !info.texts?.length) return null
     const body = info.texts.map((t) => `<p>${escapeText(t)}</p>`).join('')
-    return `<div class="flow-note" contenteditable="false">${body}</div>`
+    return `<div class="flow-note" data-sec="${sec}" data-para="${para}" contenteditable="false">${body}</div>`
   } catch {
     return null
   }
@@ -586,6 +586,36 @@ export function renderCellContents(
   return parts.join('')
 }
 
+/**
+ * One body paragraph as flow HTML: its text block (unless it only anchors
+ * objects), its tables, pictures and text boxes, then its notes. Every part
+ * carries the paragraph's address so the editor can replace them together.
+ */
+export function renderBodyParagraph(doc: FlowSourceDocument, sec: number, para: number): string {
+  const parts: string[] = []
+  const controls = controlCount(doc.getControlTextPositions(sec, para))
+  const text = bodyParagraphHtml(doc, sec, para)
+  // A paragraph that only anchors a table or picture shows just that object.
+  if (text || controls === 0) parts.push(blockDiv(sec, para, null, text))
+  const notes: string[] = []
+  for (let ctrl = 0; ctrl < controls; ctrl += 1) {
+    const html = exportControl(doc, sec, para, [], ctrl)
+    if (html === null) continue
+    const inner = renderControl(doc, sec, para, [], ctrl, html)
+    if (inner) {
+      parts.push(
+        `<div class="flow-obj" data-sec="${sec}" data-para="${para}" data-ctrl="${ctrl}">${inner}</div>`,
+      )
+      continue
+    }
+    const note = noteHtml(doc, sec, para, ctrl)
+    if (note) notes.push(note)
+  }
+  // notes follow the paragraph that refers to them
+  parts.push(...notes)
+  return parts.join('\n')
+}
+
 /** Builds the flow body HTML. Objects that fail to export are left out, never guessed. */
 export function buildFlowHtml(doc: FlowSourceDocument): string {
   const parts: string[] = []
@@ -594,28 +624,7 @@ export function buildFlowHtml(doc: FlowSourceDocument): string {
     const header = headerFooterHtml(doc, sec, true)
     if (header) parts.push(header)
     const paras = doc.getParagraphCount(sec)
-    for (let para = 0; para < paras; para += 1) {
-      const controls = controlCount(doc.getControlTextPositions(sec, para))
-      const text = bodyParagraphHtml(doc, sec, para)
-      // A paragraph that only anchors a table or picture shows just that object.
-      if (text || controls === 0) parts.push(blockDiv(sec, para, null, text))
-      const notes: string[] = []
-      for (let ctrl = 0; ctrl < controls; ctrl += 1) {
-        const html = exportControl(doc, sec, para, [], ctrl)
-        if (html === null) continue
-        const inner = renderControl(doc, sec, para, [], ctrl, html)
-        if (inner) {
-          parts.push(
-            `<div class="flow-obj" data-sec="${sec}" data-para="${para}" data-ctrl="${ctrl}">${inner}</div>`,
-          )
-          continue
-        }
-        const note = noteHtml(doc, sec, para, ctrl)
-        if (note) notes.push(note)
-      }
-      // notes follow the paragraph that refers to them
-      parts.push(...notes)
-    }
+    for (let para = 0; para < paras; para += 1) parts.push(renderBodyParagraph(doc, sec, para))
     const footer = headerFooterHtml(doc, sec, false)
     if (footer) parts.push(footer)
   }

@@ -32,6 +32,8 @@ export const pl = {
   underline: 'Podkreślenie',
   heading: 'Nagłówek',
   insertImage: 'Wstaw obraz',
+  insertImageNeedsCaret: 'Najpierw stuknij w tekście miejsce, w którym ma być obraz.',
+  insertImageFailed: 'Nie udało się odczytać tego pliku obrazu.',
   formatPanel: 'Formatowanie',
   hideKeyboard: 'Ukryj klawiaturę',
   fmtGroupText: 'Tekst',

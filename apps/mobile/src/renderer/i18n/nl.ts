@@ -33,6 +33,8 @@ export const nl = {
   underline: 'Onderstreept',
   heading: 'Kop',
   insertImage: 'Afbeelding invoegen',
+  insertImageNeedsCaret: 'Tik eerst in de tekst op de plek waar de afbeelding moet komen.',
+  insertImageFailed: 'Dit afbeeldingsbestand kon niet worden gelezen.',
   formatPanel: 'Opmaak',
   hideKeyboard: 'Toetsenbord verbergen',
   fmtGroupText: 'Tekst',

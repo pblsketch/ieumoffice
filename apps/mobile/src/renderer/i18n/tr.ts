@@ -32,6 +32,8 @@ export const tr = {
   underline: 'Altı çizili',
   heading: 'Başlık',
   insertImage: 'Resim ekle',
+  insertImageNeedsCaret: 'Önce metinde resmin gideceği yere dokunun.',
+  insertImageFailed: 'Bu resim dosyası okunamadı.',
   formatPanel: 'Biçim',
   hideKeyboard: 'Klavyeyi gizle',
   fmtGroupText: 'Metin',

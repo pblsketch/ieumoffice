@@ -32,6 +32,8 @@ export const id = {
   underline: 'Garis bawah',
   heading: 'Judul',
   insertImage: 'Sisipkan gambar',
+  insertImageNeedsCaret: 'Ketuk dulu tempat di teks untuk meletakkan gambar.',
+  insertImageFailed: 'File gambar ini tidak dapat dibaca.',
   formatPanel: 'Format',
   hideKeyboard: 'Sembunyikan keyboard',
   fmtGroupText: 'Teks',

@@ -32,6 +32,8 @@ export const vi = {
   underline: 'Gạch chân',
   heading: 'Tiêu đề',
   insertImage: 'Chèn ảnh',
+  insertImageNeedsCaret: 'Hãy chạm vào vị trí trong văn bản để đặt ảnh trước.',
+  insertImageFailed: 'Không đọc được tệp ảnh này.',
   formatPanel: 'Định dạng',
   hideKeyboard: 'Ẩn bàn phím',
   fmtGroupText: 'Văn bản',

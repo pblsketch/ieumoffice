@@ -30,6 +30,7 @@ export type HwpQuickAction =
   | 'bulletList'
   | 'numberedList'
   | 'insertTable'
+  | 'insertImage'
 
 /** rhwp-studio command for each mobile action. */
 const HWP_ACTION_COMMANDS: Record<HwpQuickAction, string> = {
@@ -50,6 +51,7 @@ const HWP_ACTION_COMMANDS: Record<HwpQuickAction, string> = {
   bulletList: 'format:toggle-bullet',
   numberedList: 'format:toggle-numbering',
   insertTable: 'table:create',
+  insertImage: 'insert:image',
 }
 
 export interface HwpMobileEditorHandle {

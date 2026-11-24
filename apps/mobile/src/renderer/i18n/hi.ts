@@ -33,6 +33,8 @@ export const hi = {
   underline: 'रेखांकित',
   heading: 'शीर्षक',
   insertImage: 'छवि डालें',
+  insertImageNeedsCaret: 'पहले टेक्स्ट में उस जगह टैप करें जहाँ चित्र डालना है।',
+  insertImageFailed: 'यह चित्र फ़ाइल पढ़ी नहीं जा सकी।',
   formatPanel: 'फ़ॉर्मेट',
   hideKeyboard: 'कीबोर्ड छिपाएँ',
   fmtGroupText: 'टेक्स्ट',
