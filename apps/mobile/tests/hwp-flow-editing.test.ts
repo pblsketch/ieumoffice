@@ -425,6 +425,36 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(cellCount(0)).toBe(before)
   })
 
+  it('says so when the engine refuses an edit, and shows the engine text again', () => {
+    // the path split takes table cells only; a text box inside a cell is refused like this
+    editor.dispose()
+    const refusing = new Proxy(doc, {
+      get(target, key) {
+        if (key === 'splitParagraphInCellByPath') {
+          return () => {
+            throw new Error('경로: 표가 아닙니다')
+          }
+        }
+        const value: unknown = Reflect.get(target, key)
+        return typeof value === 'function' ? (value as () => unknown).bind(target) : value
+      },
+    })
+    const onRefused = vi.fn<() => void>()
+    editor = createFlowEditor({
+      doc: refusing as unknown as FlowEditDocument,
+      frameDocument: document,
+      onChange,
+      onRefused,
+    })
+    editor.setEditable(true)
+    const path = cellPath(1, 0, true)
+    placeCaret(cellEl(path), 2)
+    expect(beforeInput('insertParagraph')).toBe(true)
+    expect(onRefused).toHaveBeenCalledOnce()
+    expect(cellText(path)).toBe('정기시험')
+    expect(cellEl(path).textContent).toBe('정기시험')
+  })
+
   it('makes cell text bold', () => {
     const el = cellEl(cellPath(2))
     placeCaret(el, 0)

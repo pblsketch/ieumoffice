@@ -35,6 +35,7 @@ export const de = {
   insertImage: 'Bild einfügen',
   insertImageNeedsCaret: 'Tippe zuerst im Text an die Stelle, an der das Bild hin soll.',
   insertImageFailed: 'Diese Bilddatei konnte nicht gelesen werden.',
+  flowEditRefused: 'Diese Änderung ist hier nicht möglich und wurde rückgängig gemacht.',
   memoTitle: 'Notizen',
   memoAdd: 'Notiz hinzufügen',
   memoAuthor: 'Name',

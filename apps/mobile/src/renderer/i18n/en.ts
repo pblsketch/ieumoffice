@@ -34,6 +34,7 @@ export const en = {
   insertImage: 'Insert image',
   insertImageNeedsCaret: 'Tap in the text where the picture should go first.',
   insertImageFailed: 'This picture file could not be read.',
+  flowEditRefused: "This edit can't be made here, so it was undone.",
   memoTitle: 'Memos',
   memoAdd: 'Add memo',
   memoAuthor: 'Name',

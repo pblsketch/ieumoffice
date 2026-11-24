@@ -34,6 +34,7 @@ export const tr = {
   insertImage: 'Resim ekle',
   insertImageNeedsCaret: 'Önce metinde resmin gideceği yere dokunun.',
   insertImageFailed: 'Bu resim dosyası okunamadı.',
+  flowEditRefused: 'Bu düzenleme burada yapılamıyor, bu yüzden geri alındı.',
   memoTitle: 'Notlar',
   memoAdd: 'Not ekle',
   memoAuthor: 'Ad',

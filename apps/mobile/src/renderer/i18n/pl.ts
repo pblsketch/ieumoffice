@@ -34,6 +34,7 @@ export const pl = {
   insertImage: 'Wstaw obraz',
   insertImageNeedsCaret: 'Najpierw stuknij w tekście miejsce, w którym ma być obraz.',
   insertImageFailed: 'Nie udało się odczytać tego pliku obrazu.',
+  flowEditRefused: 'Tej zmiany nie można tu wprowadzić, więc została cofnięta.',
   memoTitle: 'Notatki',
   memoAdd: 'Dodaj notatkę',
   memoAuthor: 'Imię',

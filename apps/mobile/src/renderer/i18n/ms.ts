@@ -34,6 +34,7 @@ export const ms = {
   insertImage: 'Sisipkan imej',
   insertImageNeedsCaret: 'Ketik dahulu tempat dalam teks untuk meletakkan gambar.',
   insertImageFailed: 'Fail gambar ini tidak dapat dibaca.',
+  flowEditRefused: 'Suntingan ini tidak boleh dibuat di sini, jadi ia dibatalkan.',
   memoTitle: 'Memo',
   memoAdd: 'Tambah memo',
   memoAuthor: 'Nama',

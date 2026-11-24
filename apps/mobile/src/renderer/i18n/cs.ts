@@ -34,6 +34,7 @@ export const cs = {
   insertImage: 'Vložit obrázek',
   insertImageNeedsCaret: 'Nejprve klepněte v textu na místo, kam má obrázek přijít.',
   insertImageFailed: 'Tento soubor obrázku se nepodařilo přečíst.',
+  flowEditRefused: 'Tuto úpravu zde nelze provést, proto byla vrácena.',
   memoTitle: 'Poznámky',
   memoAdd: 'Přidat poznámku',
   memoAuthor: 'Jméno',

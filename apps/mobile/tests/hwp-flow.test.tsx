@@ -106,13 +106,25 @@ describe('HWP flow builder (real rhwp engine)', () => {
     expect(box.querySelector('table')).not.toBeNull()
   })
 
-  it('shows header text once at the top of the section', () => {
+  it('shows the header once at the top of the section, picture included, read-only', () => {
     const body = flowOf('header-picture-and-text.hwpx')
     const hf = body.querySelector('.flow-hf')!
-    expect(hf.textContent).toBe('HEADER01')
+    expect(hf.textContent?.trim()).toBe('HEADER01')
+    expect(hf.querySelector('img')).not.toBeNull()
     expect(hf).toBe(body.firstElementChild)
-    // a header that holds only a table has no top-level text: nothing is shown
-    expect(flowOf('header-footer-paper-tables.hwpx').querySelector('.flow-hf')).toBeNull()
+    expect(hf.getAttribute('contenteditable')).toBe('false')
+    // nothing in it carries an address the flow editor would edit
+    expect(hf.querySelector('.flow-p, [data-sec], [data-path], [data-cell-path]')).toBeNull()
+  })
+
+  it('shows a table inside a header or footer', () => {
+    const body = flowOf('header-footer-paper-tables.hwpx')
+    const [header, footer] = [...body.querySelectorAll('.flow-hf')]
+    expect(header).toBe(body.firstElementChild)
+    expect(header.querySelector('table')).not.toBeNull()
+    expect(footer).toBe(body.lastElementChild)
+    expect(footer.querySelector('table')).not.toBeNull()
+    expect(header.querySelector('[data-sec], [data-cell-path]')).toBeNull()
   })
 
   it('strips the clipboard wrapper and builds a script-free frame document', () => {

@@ -34,6 +34,7 @@ export const ja = {
   insertImage: '画像を挿入',
   insertImageNeedsCaret: '先に、画像を入れたい位置の文字をタップしてください。',
   insertImageFailed: 'この画像ファイルを読み込めませんでした。',
+  flowEditRefused: 'ここではこの編集はできないため、元に戻しました。',
   memoTitle: 'メモ',
   memoAdd: 'メモを追加',
   memoAuthor: '名前',

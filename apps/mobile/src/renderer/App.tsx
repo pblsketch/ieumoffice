@@ -1397,6 +1397,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                     openDocument={openFlowDocument}
                     onUnavailable={() => setHwpLayout('page')}
                     onEdit={handleFlowEdit}
+                    onEditRefused={() =>
+                      showToast({ message: tNow('flowEditRefused'), tone: 'error' })
+                    }
                   />
                 )}
                 {/* The page editor stays mounted under the flow view: saving, sharing and

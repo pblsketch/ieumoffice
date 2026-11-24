@@ -35,6 +35,7 @@ export const hi = {
   insertImage: 'छवि डालें',
   insertImageNeedsCaret: 'पहले टेक्स्ट में उस जगह टैप करें जहाँ चित्र डालना है।',
   insertImageFailed: 'यह चित्र फ़ाइल पढ़ी नहीं जा सकी।',
+  flowEditRefused: 'यह बदलाव यहाँ नहीं किया जा सकता, इसलिए इसे पलट दिया गया।',
   memoTitle: 'मेमो',
   memoAdd: 'मेमो जोड़ें',
   memoAuthor: 'नाम',

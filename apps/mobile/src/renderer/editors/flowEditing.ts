@@ -257,6 +257,8 @@ export interface FlowEditorOptions {
   readonly frameDocument: Document
   /** Called after every change that reached the engine. */
   readonly onChange: () => void
+  /** Called when the engine refused an edit and it was undone on screen. */
+  readonly onRefused?: () => void
 }
 
 /** A picture to put into the document, already read from a file. */
@@ -623,7 +625,12 @@ function blockOps(doc: FlowEditDocument) {
 
 // ---------- the editor ----------
 
-export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOptions): FlowEditor {
+export function createFlowEditor({
+  doc,
+  frameDocument,
+  onChange,
+  onRefused,
+}: FlowEditorOptions): FlowEditor {
   const body = frameDocument.body
   const ops = blockOps(doc)
   const undoStack: UndoEntry[] = []
@@ -849,13 +856,14 @@ export function createFlowEditor({ doc, frameDocument, onChange }: FlowEditorOpt
   /**
    * Cancels an edit the engine refused (for example Enter in a text box inside a
    * table, which only the path calls reach and they split table cells only) and
-   * shows the engine's text again.
+   * shows the engine's text again, so the person knows it did not happen.
    */
   const onBeforeInput = (event: Event) => {
     try {
       handleBeforeInput(event as InputEvent)
     } catch {
       event.preventDefault()
+      onRefused?.()
       const info = selectionInfo()
       if (!info) return
       if (info.start.at.path) redrawCell(info.start.at)
