@@ -146,7 +146,7 @@ import {
   selectedWordCount,
 } from './word-count'
 import { CommentsPanel } from './components/CommentsPanel'
-import { EquationModal } from './components/EquationModal'
+import { EquationModal, type MathEditTarget } from './components/EquationModal'
 import { HeaderFooterArea } from './components/HeaderFooterArea'
 import { PageFootnotes, PageEndnotes } from './components/PageNoteAreas'
 import { noteMarkText, type NoteKind } from './note-format'
@@ -1208,11 +1208,7 @@ export function App() {
   const [showTableModal, setShowTableModal] = useState(false)
   const [showZoomDialog, setShowZoomDialog] = useState(false)
   const [showEquationModal, setShowEquationModal] = useState(false)
-  const [eqEditTarget, setEqEditTarget] = useState<{
-    pos: number
-    latex: string
-    kind: 'inline' | 'block'
-  } | null>(null)
+  const [eqEditTarget, setEqEditTarget] = useState<MathEditTarget | null>(null)
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const ctxSeq = useRef(0)
   useEffect(() => {
@@ -6027,11 +6023,18 @@ export function App() {
     trackChangesForced,
   ])
 
-  // double-click an inline equation / click an equation block's edit button (ones with LaTeX source) → reopen the equation dialog for editing
+  // double-click an inline equation / click an equation block's edit button (ones with LaTeX source or MathType OMML) -> reopen the equation dialog for editing
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ pos: number; latex: string; kind?: 'inline' | 'block' }>)
-        .detail
+      const detail = (
+        e as CustomEvent<{
+          pos: number
+          latex: string
+          kind?: 'inline' | 'block'
+          isMathType?: boolean
+          omml?: string
+        }>
+      ).detail
       if (editor && doc && detail) setEqEditTarget({ kind: 'inline', ...detail })
     }
     window.addEventListener('ai-docs-edit-inline-math', handler)

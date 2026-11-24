@@ -8,8 +8,31 @@ import type { PmNode } from './convert'
  * <formula> tag; genXml carries the OMML through the save path.
  */
 /** MathML for inline flow (ommlToMathML emits display="block" for equations) */
-export function inlineMathML(omml: string): string {
-  return ommlToMathML(omml).replace(/ display="block"/g, ' display="inline"')
+export function inlineMathML(omml: string, display = false): string {
+  const mathml = ommlToMathML(omml)
+  return display ? mathml : mathml.replace(/ display="block"/g, ' display="inline"')
+}
+
+/**
+ * Atomic inline formula node built directly from an <m:oMath> fragment (used
+ * when converting a complex MathType equation whose OMML is outside the LaTeX
+ * subset).
+ */
+export function inlineEquationNodeFromOmml(omml: string, latex: string | null = null): PmNode {
+  const normalized = omml.startsWith('<m:oMath') ? omml : `<m:oMath>${omml}</m:oMath>`
+  return {
+    type: 'docInlineMath',
+    attrs: {
+      omml: normalized,
+      mathml: inlineMathML(normalized),
+      latex: latex ? latex.trim() : null,
+      text: mathTokensOf(normalized).join(''),
+      oleXml: null,
+      oleRawRPr: null,
+      oleProgId: null,
+      olePositionHalfPoints: null,
+    },
+  }
 }
 
 /**
@@ -18,34 +41,33 @@ export function inlineMathML(omml: string): string {
  */
 export function inlineEquationNodeJson(latex: string): PmNode {
   const inner = latexToOmml(latex)
-  const omml = `<m:oMath>${inner}</m:oMath>`
-  return {
-    type: 'docInlineMath',
-    attrs: {
-      omml,
-      mathml: inlineMathML(omml),
-      latex: latex.trim(),
-      text: mathTokensOf(omml).join(''),
-    },
-  }
+  return inlineEquationNodeFromOmml(`<m:oMath>${inner}</m:oMath>`, latex)
 }
 
-export function equationBlockJson(latex: string): PmNode {
-  const omml = latexToOmml(latex)
+/** Protected display-equation block built directly from an <m:oMath> fragment */
+export function equationBlockFromOmml(omml: string, latex: string | null = null): PmNode {
+  const inner = omml.replace(/^<m:oMath(?:\s[^>]*)?>/, '').replace(/<\/m:oMath>$/, '')
+  const wrapped = `<m:oMath>${inner}</m:oMath>`
+  const tokens = mathTokensOf(wrapped)
   return {
     type: 'docProtected',
     attrs: {
       docxIndex: null,
       blockType: 'passthrough',
       label: t('editorEquation'),
-      previewText: latex.trim(),
-      genXml: mathParagraphXml(omml),
+      previewText: latex ? latex.trim() : tokens.join(''),
+      genXml: mathParagraphXml(inner),
       formulaDisplay: {
-        tokens: mathTokensOf(omml),
-        mathml: ommlToMathML(`<m:oMath>${omml}</m:oMath>`),
-        omml: `<m:oMath>${omml}</m:oMath>`,
-        latex: latex.trim(),
+        tokens,
+        mathml: ommlToMathML(wrapped),
+        omml: wrapped,
+        ...(latex ? { latex: latex.trim() } : {}),
       },
     },
   }
+}
+
+export function equationBlockJson(latex: string): PmNode {
+  const omml = latexToOmml(latex)
+  return equationBlockFromOmml(`<m:oMath>${omml}</m:oMath>`, latex)
 }
