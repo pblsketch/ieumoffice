@@ -6,7 +6,15 @@
  * the drawing is draw.io's.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { aiVisible, useAppChoice, useAutoSavePref, useSplitPaneFocusPing } from '@genoffice/ui'
+import {
+  aiVisible,
+  printLayoutText,
+  QuickPrintButton,
+  useAppChoice,
+  useAutoSavePref,
+  useSplitPaneFocusPing,
+} from '@genoffice/ui'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import { createDiagramFile, type DiagramFormat } from '@genoffice/drawio-model'
 import type { Lang } from '@genoffice/i18n'
 import type { BridgeEvent, DrawioMenuAction, EmbedEvent } from '../shared/bridge-protocol'
@@ -68,7 +76,9 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
   const [notices, setNotices] = useState<DiagramNotices | null>(null)
   const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null)
   /** the print dialog, open with the diagram's name */
-  const [printing, setPrinting] = useState<{ title: string } | null>(null)
+  const [printing, setPrinting] = useState<{ title: string; initialDestination?: string } | null>(
+    null,
+  )
   const [toast, setToast] = useState<string | null>(null)
   const [frameLang, setFrameLang] = useState<Lang>(lang)
   const [frameKey, setFrameKey] = useState(0)
@@ -393,11 +403,44 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
   )
 
   /** Print (Ctrl+P, the menus): the print dialog, which prints as before unless a layout option is on. */
-  const runPrint = useCallback(() => {
+  const runPrint = useCallback((initialDestination?: string) => {
     if (statusRef.current !== 'ready' || !clientRef.current) return
     const title = suggestedName()
-    setPrinting((open) => open ?? { title })
+    setPrinting((open) => open ?? { title, initialDestination })
   }, [])
+
+  const runQuickPrint = useCallback(
+    async (printerLabel: string) => {
+      if (statusRef.current !== 'ready' || !clientRef.current) return
+      say(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+      try {
+        const pages = await printPagesIn(editorClient(), 'all')
+        const result = await window.diagramApi.printLayout.print({
+          options: createDefaultOptions(),
+          editor: { pages, title: suggestedName() },
+          job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+        })
+        if (result.ok) {
+          say(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+        } else if (!('aborted' in result)) {
+          say(translate('printFailed', { error: result.error }))
+        }
+      } catch (err) {
+        say(translate('printFailed', { error: err instanceof Error ? err.message : String(err) }))
+      }
+    },
+    [editorClient, lang, say],
+  )
+
+  const getPrintPageCount = useCallback(async () => {
+    if (statusRef.current !== 'ready' || !clientRef.current) return null
+    try {
+      const list = await pagesInScope(editorClient(), 'all')
+      return list.length
+    } catch {
+      return null
+    }
+  }, [editorClient])
 
   const askExport = useCallback((format: ExportFormat) => {
     if (statusRef.current === 'ready') setExportFormat(format)
@@ -674,6 +717,20 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
       {notices && <NoticeBar notices={notices} onClose={() => setNotices(null)} />}
       <div className="dg-body">
         <div className="dg-stage">
+          {status === 'ready' && (
+            <div className="dg-quick-print">
+              <QuickPrintButton
+                lang={lang}
+                align="right"
+                listPrinters={window.diagramApi?.printLayout?.listPrinters}
+                prefStore={window.diagramApi?.printLayout}
+                getPageCount={getPrintPageCount}
+                onOpenDialog={(dest) => runPrint(dest)}
+                onQuickPrint={runQuickPrint}
+                onNoPrinter={say}
+              />
+            </div>
+          )}
           <iframe
             key={frameKey}
             ref={frameRef}
@@ -709,6 +766,7 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
           client={printClient}
           api={window.diagramApi}
           title={printing.title}
+          initialDestination={printing.initialDestination}
           onClose={() => setPrinting(null)}
           onMessage={say}
         />

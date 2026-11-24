@@ -3,6 +3,7 @@ import {
   type WithheldMark,
   type WithheldNode,
 } from '@genoffice/agent-core/redact-range'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { REDACT_MARK, placeholderSource } from './redact'
 
 /**
@@ -112,6 +113,39 @@ export function redactTextBetween(
     // an empty container, so the set has to name every one the schema has
     isLeaf: (n) => ATOM_TYPES.has(nameOf(n as RedactableNode) ?? ''),
   })
+}
+
+/**
+ * Model-facing text of a ProseMirror document range without serialising the
+ * whole document to JSON: extracts only the top-level blocks overlapping
+ * `[from, to]` and delegates to `redactTextBetween` with shifted offsets.
+ */
+export function redactDocRange(
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+  blockSeparator = '\n',
+): string {
+  if (to <= from || doc.childCount === 0) return ''
+  const size = doc.content.size
+  const clampedFrom = Math.max(0, Math.min(from, size))
+  const clampedTo = Math.max(clampedFrom, Math.min(to, size))
+  if (clampedTo <= clampedFrom) return ''
+  const $from = doc.resolve(clampedFrom)
+  const $to = doc.resolve(clampedTo)
+  const startIdx = Math.min($from.index(0), doc.childCount - 1)
+  const endIdx = Math.min($to.index(0), doc.childCount - 1)
+  const firstBlockStart = $from.depth === 0 ? clampedFrom : $from.before(1)
+  const blocks: RedactableNode[] = []
+  for (let i = startIdx; i <= endIdx; i++) {
+    blocks.push(doc.child(i).toJSON() as RedactableNode)
+  }
+  return redactTextBetween(
+    { type: 'doc', content: blocks },
+    clampedFrom - firstBlockStart,
+    clampedTo - firstBlockStart,
+    blockSeparator,
+  )
 }
 
 /** The same document with spans replaced, for callers that need the nodes. */

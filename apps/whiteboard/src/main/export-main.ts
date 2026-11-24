@@ -10,6 +10,7 @@ import { configuredDefaultSaveDir, showSaveDialogWithMemory } from '@genoffice/e
 import { atomicWriteFile } from '@genoffice/electron-utils/atomic-write'
 import {
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   LABEL_SPEC_FILE_NAME,
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -272,5 +273,18 @@ export function registerWhiteboardExportIpc(
         event.sender as unknown as WebContents,
         printJobOf(editor)?.title ?? '',
       ),
+    pickImageSavePath: async (event, editor, image) => {
+      const contents = event.sender as unknown as WebContents
+      const file = filePathOf(contents.id)
+      const dir = file ? dirname(file) : configuredDefaultSaveDir(app)
+      const base = safeFileNameBase(printJobOf(editor)?.title ?? '') || tm('untitled')
+      const spec = imageSaveDialogSpec(base, image)
+      const picked = await showSaveDialogWithMemory(dialog, parentOf(contents), {
+        title: tm('dlgExportTitle'),
+        defaultPath: join(dir, spec.defaultFileName),
+        filters: spec.filters,
+      })
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
   })
 }

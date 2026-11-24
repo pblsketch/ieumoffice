@@ -952,6 +952,13 @@ export default function App() {
         }}
         onExport={exporter.exportAs}
         onMakeFromDocument={() => window.mindmapApi.makeFromDocument?.()}
+        onOpenPrintDialog={(dest) => exporter.print(dest)}
+        onQuickPrint={async () => {
+          const result = await exporter.quickPrint()
+          if (!result.ok) say('printFailed')
+        }}
+        listPrinters={window.mindmapApi?.printLayout?.listPrinters}
+        quickPrintPrefStore={window.mindmapApi?.printLayout}
       />
 
       {(notices.preserved > 0 || notices.unknownTheme || notices.imported || picking) && (
@@ -1104,6 +1111,7 @@ export default function App() {
         <MapPrintDialog
           lang={lang}
           job={exporter.printing.job}
+          initialDestination={exporter.printing.initialDestination}
           printLayout={window.mindmapApi.printLayout}
           onPlainPrint={exporter.printing.printPlain}
           onSaved={() => say('exportDone')}

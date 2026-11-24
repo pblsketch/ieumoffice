@@ -61,7 +61,7 @@ import {
 } from './doc-state'
 import { hfSaveOptions } from './hf-sections'
 import { fetchDocBytes } from './doc-bytes'
-import { parseDocxOffThread, parseOdtOffThread } from './parse-off-thread'
+import { parseDocxOffThread, parseOdtOffThread, warmParseWorker } from './parse-off-thread'
 import { captureRenderedObjects } from './odt-objects'
 import {
   beginOdtSession,
@@ -447,6 +447,7 @@ function phasedHostFor(ctx: FileActionContext): PhasedContentHost {
  *  focus (e.g. the user clicked into the AI composer while the file parsed). */
 function focusDocumentStart(editor: Editor): void {
   const startedAt = performance.now()
+  let focusedAttempts = 0
   const attempt = (): void => {
     if (editor.isDestroyed) return
     const active = document.activeElement
@@ -457,10 +458,15 @@ function focusDocumentStart(editor: Editor): void {
     if (dom.isConnected && dom.offsetParent !== null) {
       editor.commands.focus('start', { scrollIntoView: false })
       if (document.activeElement !== document.body) return
+      // Back off once mounted so an unfocused background tab does not spin
+      // 60fps forced layout checks for 10 seconds.
+      if (++focusedAttempts >= 10) return
+      window.setTimeout(attempt, 100)
+      return
     }
     if (performance.now() - startedAt < 10_000) requestAnimationFrame(attempt)
   }
-  attempt()
+  requestAnimationFrame(attempt)
 }
 
 /** bumped when a document replacement starts; a slower one still parsing must not land */
@@ -477,6 +483,8 @@ export async function loadFile(
   }
   const generation = ++openGeneration
   try {
+    // overlap parse-worker module load with the main-process byte handoff fetch
+    warmParseWorker()
     const bytes = await fetchDocBytes(result.dataUrl)
     const format: DocFormat = docFormatOfPath(result.path) ?? 'docx'
     let parsed: ParsedDocFull

@@ -216,9 +216,27 @@ export function useSubscriptionConnection(
 
   useEffect(() => {
     alive.current = true
+    let liveChangeSeq = 0
+    const applyLive = (next: SubscriptionStatusMap) => {
+      liveChangeSeq += 1
+      apply(next)
+    }
+    const readStatuses = () => {
+      const seenBefore = liveChangeSeq
+      void attempt(optionsRef.current.api, (api) => api.statuses()).then((next) => {
+        // Ignore a stale snapshot if a newer live onChanged event arrived while it was in flight.
+        if (liveChangeSeq === seenBefore) apply(next)
+      })
+    }
+    let off: (() => void) | undefined
+    try {
+      off = safeApi(optionsRef.current.api)?.onChanged(applyLive)
+    } catch {
+      // no event source: the statuses still follow the checks
+    }
     const runInitial = () => {
       if (!alive.current) return
-      void attempt(optionsRef.current.api, (api) => api.statuses()).then(apply)
+      readStatuses()
       if (optionsRef.current.checkOnMount) void check()
       if (optionsRef.current.readCodexImageAvailable) {
         void attempt(optionsRef.current.api, (api) =>
@@ -238,12 +256,6 @@ export function useSubscriptionConnection(
     } else {
       runInitial()
     }
-    let off: (() => void) | undefined
-    try {
-      off = safeApi(optionsRef.current.api)?.onChanged(apply)
-    } catch {
-      // no event source: the statuses still follow the checks
-    }
     const onFocus = () => {
       // A program not found may have been installed outside the app (the vendor's
       // guide, a terminal) while the user was away. Looking again runs nothing
@@ -254,7 +266,7 @@ export function useSubscriptionConnection(
       const wanted = new Set([...launched.current.keys(), ...missing])
       if (wanted.size === 0) {
         if (optionsRef.current.refreshOnFocus) {
-          void attempt(optionsRef.current.api, (api) => api.statuses()).then(apply)
+          readStatuses()
         }
         return
       }

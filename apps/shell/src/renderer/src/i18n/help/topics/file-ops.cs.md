@@ -46,17 +46,17 @@ Pravidla: přípona se zachovává automaticky; nepovolené znaky, tečky na kon
 
 ## Tisk
 
-Soubor ▸ Tisk (⌘P/ctrl+P) otevře v každém editoru okno tisku. Docs, PDF, Sheets, Slides a Markdown mají oddíl **Rozložení stránek** ve svém obvyklém okně tisku, HWP v náhledu tisku a HTML, myšlenková mapa a diagram v novém malém okně tisku. Když v oddílu Rozložení stránek nic nezvolíte, tiskne se stejně jako dřív.
+Soubor ▸ Tisk (⌘P/ctrl+P) otevře okno tisku s živým náhledem v každém editoru — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram i Whiteboard. Pokud nic v rozvržení stránky nezměníte a zvolíte systémový dialog, tisk probíhá stejně jako dříve.
 
-- **Rozložení**: zvolte Jedna stránka na list, Více stránek na list (2, 4, 6, 9 nebo 16), Brožura (vazba vlevo nebo vpravo), Plakát (listů vodorovně a svisle, překryv, čáry řezu) nebo Štítky (jedna stránka na štítek nebo stejná stránka na každém štítku, počáteční štítek, běžný formát A4 nebo vlastní rozměry).
-- **Jen liché strany listu, jen sudé strany listu, obrácené pořadí**: strany se počítají po rozložení, podle toho, co skutečně vyjde z tiskárny. Hodí se u tiskárny bez oboustranného tisku: vytiskněte přední strany, papír otočte a vytiskněte zadní strany.
-- **Zmenšit na velikost papíru**: zmenší se jen stránky větší než zvolený papír; menší se nezvětšují. Sheets a Markdown používají svá dosavadní pole pro papír a měřítko.
-- **Odstíny šedi a rozlišení obrázků**: při tisku s volbami Rozložení stránek se každá stránka převede na obrázek a teprve pak jde do tiskárny. Rozlišení volíte z možností Automaticky, 150, 300 nebo 600 dpi.
-- **Jen výběr**: Docs a Markdown vytisknou jen vybraný text, znovu zalomený od první stránky; Slides vytiskne vybrané snímky a PDF vybrané stránky. Sheets tiskne vybranou oblast jako dřív.
-- **Nákres rozložení a náhled výsledku**: nákres hned ukazuje, kam na papíře padne které číslo stránky, a **Náhled výsledku** ukáže, co se skutečně vytvořilo. **Uložit rozložený výsledek jako PDF** umožní vytisknout stejné rozložení na jiném počítači nebo v tiskárně.
-- **Systémové okno tisku**: pro brožuru zvolte oboustranný tisk s otáčením podél krátké hrany. Rozsah stránek a počet stránek na list nechte v systémovém okně beze změny.
+- **Cíl výstupu (tiskárna, PDF, obrázky)**: v jednom seznamu zvolte nainstalovanou tiskárnu, **Uložit jako PDF**, **Uložit jako obrázky** nebo **Systémový dialog tisku**. Uložení obrázků podporuje PNG a JPG (Vysoká 90 %, Střední 80 %, Menší soubor 65 %) jako samostatné číslované soubory nebo jeden ZIP. U PDF s omezením oprávnění je ukládání PDF i obrázků zakázáno, tisk zůstává dostupný.
+- **Živý náhled tisku**: všech deset editorů zobrazuje náhled před výstupem. Pokud rozvržení, stupně šedi, vodoznak nebo záhlaví/zápatí mění výsledné strany, náhled je na vyžádání vykreslí včetně přepínání stran, lupy a přepínače schématu.
+- **Rozvržení**: Jedna stránka na list, Více stránek na list (2, 4, 6, 9 nebo 16, volitelně s okraji), Brožura (vazba vlevo nebo vpravo), Plakát (sloupce × řádky, přesah, ořezové značky a souřadnice dílů) nebo Štítky (stránka na štítek či opakování, počáteční buňka, předvolby A4 nebo vlastní rozměry).
+- **Měřítko, orientace, strany a pořadí**: vyberte Skutečná velikost (100 %), Přizpůsobit papíru, Zmenšit příliš velké stránky nebo Vlastní měřítko (10 %–400 %) a orientaci Automaticky, Na výšku či Na šířku. Pouze liché, sudé a obrácené pořadí se počítají na finálních stranách.
+- **Vodoznak, záhlaví/zápatí, šedotisk a rozlišení**: přidejte textový či obrázkový vodoznak a 6 polí záhlaví a zápatí (název, datum, číslo stránky nebo vlastní text) pouze pro tisk, bez úpravy dokumentu. Stupně šedi a rozlišení (Automaticky, 150, 300 nebo 600 dpi) řídí kvalitu rastru.
+- **Rozsahy stránek a výběr**: Docs a Markdown nově zalomí vybraný text od 1. strany; Slides tiskne zvolené snímky; PDF vybrané stránky; Hangul podporuje Vše, Aktuální stránku i Vlastní rozsah; Sheets tiskne aktivní listy, sešit nebo výběr.
+- **Systémový dialog tisku**: u brožury zapněte oboustranný tisk s překlápěním po krátké hraně a ponechte rozsah i počet stránek na list v systémovém okně beze změny.
 
-Soubory PDF se tisknou s aktuálním pořadím stránek a otočením.
+PDF se tisknou v aktuálním pořadí a natočení stránek.
 
 ## Kam putují soubory bez názvu
 

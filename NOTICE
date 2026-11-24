@@ -35,6 +35,19 @@ distributed in the python-docx repository (ref/xsd), with one marked local
 amendment (see tools/ooxml-validate/README.md). They are used only by tests
 and development tooling and are not shipped in the application.
 
+A2UI
+
+The AI question card uses the A2UI v1.0 message format
+(https://github.com/a2ui-project/a2ui, Copyright 2024 Google LLC, licensed
+under the Apache License, Version 2.0). Its catalog definition,
+packages/agent-core/src/question-card-catalog.json, copies the Column, Text,
+ChoicePicker, CheckBox, TextField and Slider component definitions and the
+required function definition unchanged from catalogs/basic/v1/catalog.json at
+commit c26be2dd087b541c46e0296c164ae13bf35f7836. The folder
+packages/agent-core/tests/fixtures/a2ui-v1_0 holds copies of the A2UI v1.0
+JSON schemas from the same commit; they are used only by tests and are not
+shipped in the application.
+
 IeumOffice brand artwork
 
 The IeumOffice app icon, logo lockup and AI button mark are original

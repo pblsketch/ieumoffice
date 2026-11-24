@@ -9,7 +9,7 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { RenderSlide } from '@genoffice/pptx-render'
 import { LANGS } from '@genoffice/i18n'
-import { SYSTEM_DIALOG } from '@genoffice/ui'
+import { SAVE_IMAGES_DEST, SAVE_PDF_DEST, SYSTEM_DIALOG } from '@genoffice/ui'
 
 vi.mock('../src/renderer/export-render', () => ({
   renderSlidesToPngBase64: vi.fn(async (slides: unknown[]) =>
@@ -39,6 +39,7 @@ interface Api {
     preview: ReturnType<typeof vi.fn>
     print: ReturnType<typeof vi.fn>
     savePdf: ReturnType<typeof vi.fn>
+    saveImages: ReturnType<typeof vi.fn>
     cancel: ReturnType<typeof vi.fn>
     onProgress: ReturnType<typeof vi.fn>
     getLabelSpec: ReturnType<typeof vi.fn>
@@ -58,6 +59,7 @@ beforeEach(() => {
       preview: vi.fn(async () => ({ ok: true, faces: [] })),
       print: vi.fn(async () => ({ ok: true })),
       savePdf: vi.fn(async () => ({ ok: true, canceled: true })),
+      saveImages: vi.fn(async () => ({ ok: true, paths: ['C:/slide-01.png'] })),
       cancel: vi.fn(async () => {}),
       onProgress: vi.fn(() => () => {}),
       getLabelSpec: vi.fn(async () => null),
@@ -332,7 +334,8 @@ describe('options on', () => {
     api.printLayout.savePdf.mockResolvedValueOnce({ ok: true, path: 'C:/out.pdf' })
     const { container, setStatus } = await mount()
     await click(q(container, 'input[data-pl="grayscale"]'))
-    await click(q(container, '[data-pl="save-pdf"]'))
+    await choose(q(container, 'select[data-print="printer"]'), SAVE_PDF_DEST)
+    await click(printButton(container))
     const req = api.printLayout.savePdf.mock.calls[0]![0]
     expect(req.options).toMatchObject({ grayscale: true })
     expect(req.editor).toStrictEqual({
@@ -342,6 +345,18 @@ describe('options on', () => {
       layout: 'full',
     })
     expect(setStatus).toHaveBeenCalledWith(expect.stringContaining('C:/out.pdf'))
+  })
+
+  it('saves arranged images when Save as images is selected', async () => {
+    const { container, setStatus } = await mount()
+    await choose(q(container, 'select[data-print="printer"]'), SAVE_IMAGES_DEST)
+    await click(printButton(container))
+    expect(api.printLayout.saveImages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image: { format: 'png', quality: 90, bundle: 'files' },
+      }),
+    )
+    expect(setStatus).toHaveBeenCalled()
   })
 
   it('starts from the defaults every time the dialog opens', async () => {

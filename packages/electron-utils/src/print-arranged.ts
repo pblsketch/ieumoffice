@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import {
   isDefaultOptions,
@@ -18,9 +18,13 @@ import {
   pdfiumWasmPath,
   RASTER_WORKER_DATA,
   runRasterJob,
+  validateImageExportOptions,
   validateLabelSpec,
   validateOptions,
+  type ImageExportOptions,
   type LabelSpec,
+  type PageSize,
+  type PdfOverlayBundle,
   type PrintImageFace,
   type PrintLayoutOptions,
   type RasterJobRequest,
@@ -36,9 +40,12 @@ import {
   printLayoutChannels,
   type LabelSpecSetResult,
   type PrintLayoutFailure,
+  type PrintLayoutOverlayData,
+  type PrintLayoutPreviewFacesResult,
   type PrintLayoutPreviewResult,
   type PrintLayoutPrintResult,
   type PrintLayoutProgress,
+  type PrintLayoutSaveImagesResult,
   type PrintLayoutSaveResult,
 } from './print-layout-channels'
 import { PRINT_READY_SCRIPT } from './print-window'
@@ -116,8 +123,23 @@ export function workerRunner(spawn: () => RasterWorkerLike): PrintLayoutRunner {
           finish(() => reject(new Error(`the print job stopped (exit code ${code})`))),
         )
         // a Buffer can view Node's shared pool: hand over a copy this side owns
-        const jobPdf = new Uint8Array(request.jobPdf)
-        worker.postMessage({ ...request, jobPdf }, [jobPdf.buffer])
+        if (request.kind === 'preview-arranged') {
+          const arrangedPdf = new Uint8Array(request.arrangedPdf)
+          worker.postMessage({ ...request, arrangedPdf }, [arrangedPdf.buffer])
+        } else {
+          const jobPdf = new Uint8Array(request.jobPdf)
+          const transfer: ArrayBuffer[] = [jobPdf.buffer]
+          let overlays = request.overlays
+          if (overlays) {
+            const stamps = overlays.stamps.map((s) => {
+              const copy = new Uint8Array(s)
+              transfer.push(copy.buffer)
+              return copy
+            })
+            overlays = { stamps, perFace: overlays.perFace }
+          }
+          worker.postMessage({ ...request, jobPdf, ...(overlays ? { overlays } : {}) }, transfer)
+        }
       })
     },
   }
@@ -168,6 +190,8 @@ export interface ArrangedJob {
   jobPdf: Uint8Array
   /** checked options (`validateOptions`) */
   options: PrintLayoutOptions
+  /** pre-rendered transparent PNG overlays (watermark, header/footer) */
+  overlays?: PdfOverlayBundle | undefined
   signal?: AbortSignal | undefined
   onProgress?: ((progress: PrintLayoutProgress) => void) | undefined
   /** default `defaultPrintLayoutRunner()` */
@@ -181,7 +205,10 @@ const wasmOf = (job: ArrangedJob) => job.wasmPath ?? pdfiumWasmPath()
 
 /** Each arranged face (grayscale applied) as a small PNG, not turned. */
 export async function previewArranged(
-  job: ArrangedJob & { longSidePx?: number | undefined },
+  job: ArrangedJob & {
+    longSidePx?: number | undefined
+    faceIndices?: number[] | undefined
+  },
 ): Promise<PrintLayoutPreviewResult> {
   try {
     const result = await runnerOf(job).run(
@@ -189,14 +216,21 @@ export async function previewArranged(
         kind: 'preview',
         jobPdf: job.jobPdf,
         options: job.options,
+        ...(job.overlays ? { overlays: job.overlays } : {}),
         longSidePx: job.longSidePx ?? 0,
+        ...(job.faceIndices ? { faceIndices: job.faceIndices } : {}),
         wasmPath: wasmOf(job),
       },
       { signal: job.signal, onProgress: job.onProgress },
     )
     if (result.kind !== 'preview') throw new Error('the print job answered the wrong request')
     job.signal?.throwIfAborted()
-    return { ok: true, faces: result.faces }
+    return {
+      ok: true,
+      faces: result.faces,
+      ...(result.totalFaces !== undefined ? { totalFaces: result.totalFaces } : {}),
+      ...(result.faceSizes !== undefined ? { faceSizes: result.faceSizes } : {}),
+    }
   } catch (err) {
     return printLayoutFailure(err, job.signal)
   }
@@ -212,6 +246,7 @@ export async function saveArrangedPdf(
         kind: 'pdf',
         jobPdf: job.jobPdf,
         options: job.options,
+        ...(job.overlays ? { overlays: job.overlays } : {}),
         rotateLandscape: false,
         wasmPath: wasmOf(job),
       },
@@ -221,6 +256,33 @@ export async function saveArrangedPdf(
     job.signal?.throwIfAborted()
     await atomicWriteFile(job.path, Buffer.from(result.pdf))
     return { ok: true, path: job.path }
+  } catch (err) {
+    return printLayoutFailure(err, job.signal)
+  }
+}
+
+/** Saves the arranged faces as PNG/JPG files (single, numbered, or UTF-8 STORE ZIP). */
+export async function saveArrangedImages(
+  job: ArrangedJob & { image: ImageExportOptions; path: string },
+): Promise<PrintLayoutSaveImagesResult> {
+  try {
+    const result = await runnerOf(job).run(
+      {
+        kind: 'save-images',
+        jobPdf: job.jobPdf,
+        options: job.options,
+        ...(job.overlays ? { overlays: job.overlays } : {}),
+        format: job.image.format,
+        quality: job.image.quality,
+        bundle: job.image.bundle,
+        outPath: job.path,
+        wasmPath: wasmOf(job),
+      },
+      { signal: job.signal, onProgress: job.onProgress },
+    )
+    if (result.kind !== 'save-images') throw new Error('the print job answered the wrong request')
+    job.signal?.throwIfAborted()
+    return { ok: true, paths: result.paths }
   } catch (err) {
     return printLayoutFailure(err, job.signal)
   }
@@ -343,6 +405,7 @@ export async function printArranged(req: PrintArrangedRequest): Promise<PrintLay
           kind: 'pdf',
           jobPdf: req.jobPdf,
           options: req.options,
+          ...(req.overlays ? { overlays: req.overlays } : {}),
           rotateLandscape: true,
           wasmPath: wasmOf(req),
         },
@@ -366,6 +429,7 @@ export async function printArranged(req: PrintArrangedRequest): Promise<PrintLay
         kind: 'print-images',
         jobPdf: req.jobPdf,
         options: req.options,
+        ...(req.overlays ? { overlays: req.overlays } : {}),
         outDir: tempDir,
         wasmPath: wasmOf(req),
       },
@@ -446,6 +510,7 @@ export interface PrintLayoutSender {
   send(channel: string, ...args: unknown[]): void
   isDestroyed(): boolean
   getPrintersAsync?(): Promise<Array<{ name: string; displayName?: string }>>
+  once?(event: string, listener: () => void): unknown
 }
 
 export interface PrintLayoutInvokeEvent {
@@ -460,6 +525,18 @@ export interface PrintLayoutIpcHandlers<E = unknown> {
   createPrintWindow(event: PrintLayoutInvokeEvent): PrintLayoutWindow
   /** asks where to save the arranged PDF; null = the user canceled */
   pickSavePath(event: PrintLayoutInvokeEvent, editor: E | undefined): Promise<string | null>
+  /** asks where to save PNG/JPG/ZIP output; null = the user canceled */
+  pickImageSavePath?(
+    event: PrintLayoutInvokeEvent,
+    editor: E | undefined,
+    image: ImageExportOptions,
+  ): Promise<string | null>
+  /**
+   * Optional main-process guard for permission-restricted documents (e.g. PDF
+   * with copy/extract restrictions). Returning false rejects both `save` and
+   * `saveImages`.
+   */
+  canSave?(event: PrintLayoutInvokeEvent, editor: E | undefined): Promise<boolean> | boolean
   runner?: PrintLayoutRunner | undefined
   platform?: NodeJS.Platform | undefined
   sendCups?: CupsSender | undefined
@@ -470,18 +547,99 @@ interface ParsedRequest {
   editor: unknown
   job: unknown
   longSidePx: unknown
+  faceIndices: unknown
+  editorKey: unknown
+  optionsKey: unknown
+  overlays: unknown
+  image: unknown
 }
 
 function parseRequest(raw: unknown): ParsedRequest {
   const r = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
-  return { options: r.options, editor: r.editor, job: r.job, longSidePx: r.longSidePx }
+  return {
+    options: r.options,
+    editor: r.editor,
+    job: r.job,
+    longSidePx: r.longSidePx,
+    faceIndices: r.faceIndices,
+    editorKey: r.editorKey,
+    optionsKey: r.optionsKey,
+    overlays: r.overlays,
+    image: r.image,
+  }
+}
+
+function parseOverlays(raw: unknown): PdfOverlayBundle | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const r = raw as Partial<PrintLayoutOverlayData>
+  if (!Array.isArray(r.stamps) || !Array.isArray(r.perFace)) return undefined
+  const stamps: Uint8Array[] = []
+  for (const s of r.stamps) {
+    if (!(s instanceof Uint8Array)) return undefined
+    stamps.push(s)
+  }
+  const perFace = r.perFace.map((list) =>
+    Array.isArray(list)
+      ? list
+          .filter(
+            (p): p is NonNullable<typeof p> =>
+              typeof p === 'object' && p !== null && typeof p.stampIndex === 'number',
+          )
+          .map((p) => ({
+            stampIndex: p.stampIndex,
+            ...(typeof p.x === 'number' ? { x: p.x } : {}),
+            ...(typeof p.y === 'number' ? { y: p.y } : {}),
+            ...(typeof p.width === 'number' ? { width: p.width } : {}),
+            ...(typeof p.height === 'number' ? { height: p.height } : {}),
+            ...(typeof p.opacity === 'number' ? { opacity: p.opacity } : {}),
+          }))
+      : [],
+  )
+  return stamps.length > 0 ? { stamps, perFace } : undefined
+}
+
+function parseFaceIndices(raw: unknown): number[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  return raw.filter((v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0)
+}
+
+interface PreviewSessionCache {
+  editorKey: string | null
+  jobPdf: Uint8Array | null
+  optionsKey: string | null
+  arrangedPdf: Uint8Array | null
+  faceSizes: PageSize[] | null
+}
+
+/** Standard Electron file dialog filters for image export (`png` / `jpg` / `zip`). */
+export function imageSaveDialogSpec(
+  baseName: string,
+  image: ImageExportOptions,
+): { defaultFileName: string; filters: Array<{ name: string; extensions: string[] }> } {
+  const safeBase = baseName.replace(/\.[^./\\]+$/, '') || 'document'
+  if (image.bundle === 'zip') {
+    return {
+      defaultFileName: `${safeBase}.zip`,
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    }
+  }
+  if (image.format === 'jpg') {
+    return {
+      defaultFileName: `${safeBase}.jpg`,
+      filters: [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }],
+    }
+  }
+  return {
+    defaultFileName: `${safeBase}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }],
+  }
 }
 
 const registered = new WeakMap<PrintLayoutIpcMain, Map<string, () => void>>()
 
 /**
- * Registers `<prefix>:print-layout-preview|print|save|cancel` for one editor.
- * Options are checked before anything is built. Progress goes as
+ * Registers `<prefix>:print-layout-preview|preview-faces|close-preview|print|save|save-images|cancel`
+ * for one editor. Options are checked before anything is built. Progress goes as
  * `<prefix>:print-layout-progress` to the asking window only. A window runs one
  * job at a time: a new request cancels its previous one. Registering the same
  * prefix again on the same `ipcMain` returns the first registration's remover.
@@ -501,14 +659,42 @@ export function registerPrintLayoutIpc<E = unknown>(
   if (existing) return existing
 
   const running = new Map<number, AbortController>()
-  const begin = (sender: PrintLayoutSender): AbortController => {
-    running.get(sender.id)?.abort()
+  const previewRunning = new Map<number, AbortController>()
+  const sessions = new Map<number, PreviewSessionCache>()
+
+  const dropSession = (senderId: number) => {
+    previewRunning.get(senderId)?.abort()
+    previewRunning.delete(senderId)
+    sessions.delete(senderId)
+  }
+
+  const ensureSessionCleanup = (sender: PrintLayoutSender) => {
+    if (sessions.has(sender.id)) return
+    sessions.set(sender.id, {
+      editorKey: null,
+      jobPdf: null,
+      optionsKey: null,
+      arrangedPdf: null,
+      faceSizes: null,
+    })
+    sender.once?.('destroyed', () => dropSession(sender.id))
+  }
+
+  const beginIn = (
+    map: Map<number, AbortController>,
+    sender: PrintLayoutSender,
+  ): AbortController => {
+    map.get(sender.id)?.abort()
     const controller = new AbortController()
-    running.set(sender.id, controller)
+    map.set(sender.id, controller)
     return controller
   }
-  const end = (sender: PrintLayoutSender, controller: AbortController) => {
-    if (running.get(sender.id) === controller) running.delete(sender.id)
+  const endIn = (
+    map: Map<number, AbortController>,
+    sender: PrintLayoutSender,
+    controller: AbortController,
+  ) => {
+    if (map.get(sender.id) === controller) map.delete(sender.id)
   }
   const progressTo = (sender: PrintLayoutSender) => (p: PrintLayoutProgress) => {
     if (!sender.isDestroyed()) sender.send(channels.progress, { done: p.done, total: p.total })
@@ -520,13 +706,27 @@ export function registerPrintLayoutIpc<E = unknown>(
     event: PrintLayoutInvokeEvent,
     work: (signal: AbortSignal) => Promise<T>,
   ): Promise<T | PrintLayoutFailure> {
-    const controller = begin(event.sender)
+    const controller = beginIn(running, event.sender)
     try {
       return await work(controller.signal)
     } catch (err) {
       return printLayoutFailure(err, controller.signal)
     } finally {
-      end(event.sender, controller)
+      endIn(running, event.sender, controller)
+    }
+  }
+
+  async function withPreviewJob<T>(
+    event: PrintLayoutInvokeEvent,
+    work: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T | PrintLayoutFailure> {
+    const controller = beginIn(previewRunning, event.sender)
+    try {
+      return await work(controller.signal)
+    } catch (err) {
+      return printLayoutFailure(err, controller.signal)
+    } finally {
+      endIn(previewRunning, event.sender, controller)
     }
   }
 
@@ -534,6 +734,8 @@ export function registerPrintLayoutIpc<E = unknown>(
     const req = parseRequest(raw)
     const options = checked(req.options)
     if (!options.ok) return { ok: false, error: options.error.message, code: options.error.code }
+    const overlays = parseOverlays(req.overlays)
+    const faceIndices = parseFaceIndices(req.faceIndices)
     return withJob(event, async (signal) => {
       const jobPdf = await handlers.buildJobPdf(event, req.editor as E | undefined)
       signal.throwIfAborted()
@@ -541,17 +743,106 @@ export function registerPrintLayoutIpc<E = unknown>(
         ...common,
         jobPdf,
         options: options.options,
+        ...(overlays ? { overlays } : {}),
         longSidePx: typeof req.longSidePx === 'number' ? req.longSidePx : undefined,
+        ...(faceIndices ? { faceIndices } : {}),
         signal,
         onProgress: progressTo(event.sender),
       })
     })
   })
 
+  ipc.handle(
+    channels.previewFaces,
+    async (event: PrintLayoutInvokeEvent, raw: unknown): Promise<PrintLayoutPreviewFacesResult> => {
+      const req = parseRequest(raw)
+      const options = checked(req.options)
+      if (!options.ok) return { ok: false, error: options.error.message, code: options.error.code }
+      const overlays = parseOverlays(req.overlays)
+      const faceIndices = parseFaceIndices(req.faceIndices) ?? [0]
+      const editorKey = typeof req.editorKey === 'string' ? req.editorKey : null
+      const optionsKey =
+        typeof req.optionsKey === 'string'
+          ? req.optionsKey
+          : JSON.stringify(options.options) + (overlays ? `:${overlays.stamps.length}` : '')
+      const longSidePx = typeof req.longSidePx === 'number' ? req.longSidePx : 0
+
+      return withPreviewJob(event, async (signal) => {
+        ensureSessionCleanup(event.sender)
+        const session = sessions.get(event.sender.id)!
+        if (!session.jobPdf || editorKey === null || session.editorKey !== editorKey) {
+          const jobPdf = await handlers.buildJobPdf(event, req.editor as E | undefined)
+          signal.throwIfAborted()
+          session.editorKey = editorKey
+          session.jobPdf = jobPdf
+          session.optionsKey = null
+          session.arrangedPdf = null
+          session.faceSizes = null
+        }
+
+        const runner = handlers.runner ?? defaultPrintLayoutRunner()
+        const wasmPath = pdfiumWasmPath()
+        if (!session.arrangedPdf || !session.faceSizes || session.optionsKey !== optionsKey) {
+          const arranged = await runner.run(
+            {
+              kind: 'arrange',
+              jobPdf: session.jobPdf,
+              options: options.options,
+              ...(overlays ? { overlays } : {}),
+              wasmPath,
+            },
+            { signal },
+          )
+          if (arranged.kind !== 'arrange') {
+            throw new Error('the print job answered the wrong request')
+          }
+          signal.throwIfAborted()
+          session.optionsKey = optionsKey
+          session.arrangedPdf = arranged.pdf
+          session.faceSizes = arranged.faceSizes
+        }
+
+        const rendered = await runner.run(
+          {
+            kind: 'preview-arranged',
+            arrangedPdf: session.arrangedPdf,
+            dpi: options.options.dpi,
+            grayscale: options.options.grayscale,
+            longSidePx,
+            faceIndices,
+            wasmPath,
+          },
+          { signal },
+        )
+        if (rendered.kind !== 'preview-arranged') {
+          throw new Error('the print job answered the wrong request')
+        }
+        signal.throwIfAborted()
+        return {
+          ok: true,
+          totalFaces: rendered.totalFaces,
+          faceSizes: session.faceSizes,
+          faces: rendered.faces.map((f, i) => ({
+            index: f.index ?? faceIndices[i] ?? i,
+            png: f.png,
+            widthPt: f.widthPt,
+            heightPt: f.heightPt,
+          })),
+        }
+      })
+    },
+  )
+
+  ipc.handle(channels.closePreview, (event: PrintLayoutInvokeEvent) => {
+    dropSession(event.sender.id)
+    return { ok: true }
+  })
+
   ipc.handle(channels.print, async (event: PrintLayoutInvokeEvent, raw: unknown) => {
     const req = parseRequest(raw)
     const options = checked(req.options)
     if (!options.ok) return { ok: false, error: options.error.message, code: options.error.code }
+    const overlays = parseOverlays(req.overlays)
     return withJob(event, async (signal) => {
       const jobPdf = await handlers.buildJobPdf(event, req.editor as E | undefined)
       signal.throwIfAborted()
@@ -559,6 +850,7 @@ export function registerPrintLayoutIpc<E = unknown>(
         ...common,
         jobPdf,
         options: options.options,
+        ...(overlays ? { overlays } : {}),
         job: req.job,
         createWindow: () => handlers.createPrintWindow(event),
         platform: handlers.platform,
@@ -573,7 +865,11 @@ export function registerPrintLayoutIpc<E = unknown>(
     const req = parseRequest(raw)
     const options = checked(req.options)
     if (!options.ok) return { ok: false, error: options.error.message, code: options.error.code }
+    const overlays = parseOverlays(req.overlays)
     return withJob(event, async (signal) => {
+      if (handlers.canSave && !(await handlers.canSave(event, req.editor as E | undefined))) {
+        return { ok: false as const, error: 'saving this document is restricted' }
+      }
       const path = await handlers.pickSavePath(event, req.editor as E | undefined)
       if (!path) return { ok: true as const, canceled: true as const }
       signal.throwIfAborted()
@@ -583,6 +879,40 @@ export function registerPrintLayoutIpc<E = unknown>(
         ...common,
         jobPdf,
         options: options.options,
+        ...(overlays ? { overlays } : {}),
+        path,
+        signal,
+        onProgress: progressTo(event.sender),
+      })
+    })
+  })
+
+  ipc.handle(channels.saveImages, async (event: PrintLayoutInvokeEvent, raw: unknown) => {
+    const req = parseRequest(raw)
+    const options = checked(req.options)
+    if (!options.ok) return { ok: false, error: options.error.message, code: options.error.code }
+    const image = validateImageExportOptions(req.image)
+    if (!image.ok) return { ok: false, error: image.error.message, code: image.error.code }
+    const overlays = parseOverlays(req.overlays)
+    return withJob(event, async (signal) => {
+      if (handlers.canSave && !(await handlers.canSave(event, req.editor as E | undefined))) {
+        return { ok: false as const, error: 'saving this document is restricted' }
+      }
+      const pick = handlers.pickImageSavePath
+      if (!pick) {
+        return { ok: false as const, error: 'image export is not configured for this editor' }
+      }
+      const path = await pick(event, req.editor as E | undefined, image.options)
+      if (!path) return { ok: true as const, canceled: true as const }
+      signal.throwIfAborted()
+      const jobPdf = await handlers.buildJobPdf(event, req.editor as E | undefined)
+      signal.throwIfAborted()
+      return saveArrangedImages({
+        ...common,
+        jobPdf,
+        options: options.options,
+        ...(overlays ? { overlays } : {}),
+        image: image.options,
         path,
         signal,
         onProgress: progressTo(event.sender),
@@ -592,15 +922,27 @@ export function registerPrintLayoutIpc<E = unknown>(
 
   ipc.handle(channels.cancel, (event: PrintLayoutInvokeEvent) => {
     running.get(event.sender.id)?.abort()
+    previewRunning.get(event.sender.id)?.abort()
     return { ok: true }
   })
 
   const unregister = () => {
-    for (const c of [channels.preview, channels.print, channels.save, channels.cancel]) {
+    for (const c of [
+      channels.preview,
+      channels.previewFaces,
+      channels.closePreview,
+      channels.print,
+      channels.save,
+      channels.saveImages,
+      channels.cancel,
+    ]) {
       ipc.removeHandler?.(c)
     }
     for (const controller of running.values()) controller.abort()
+    for (const controller of previewRunning.values()) controller.abort()
     running.clear()
+    previewRunning.clear()
+    sessions.clear()
     byPrefix.delete(prefix)
   }
   byPrefix.set(prefix, unregister)
@@ -649,6 +991,57 @@ export function createLabelSpecStore(filePath: string | (() => string)): LabelSp
   }
 }
 
+/** File name of the app-wide quick-print click preference in userData. */
+export const QUICK_PRINT_PREF_FILE_NAME = 'print-quick-pref.json'
+
+const QUICK_PRINT_PREF_VERSION = 1
+
+export interface QuickPrintPrefStore {
+  get(): boolean
+  set(enabled: boolean): boolean
+}
+
+/** App-wide preference: whether clicking the top-bar print icon runs Quick Print directly. */
+export function createQuickPrintPrefStore(filePath: string | (() => string)): QuickPrintPrefStore {
+  const path = () => (typeof filePath === 'function' ? filePath() : filePath)
+  return {
+    get() {
+      try {
+        const raw = JSON.parse(readFileSync(path(), 'utf8')) as { clickToQuickPrint?: unknown }
+        return raw?.clickToQuickPrint === true
+      } catch {
+        return false
+      }
+    },
+    set(enabled: boolean) {
+      const value = enabled === true
+      try {
+        writeJsonAtomic(path(), { version: QUICK_PRINT_PREF_VERSION, clickToQuickPrint: value })
+      } catch {
+        // Ignore write failures; the returned boolean still reflects the requested state.
+      }
+      return value
+    },
+  }
+}
+
+function broadcastQuickPrintPref(enabled: boolean): void {
+  // Load Electron lazily so unit tests running in plain Node never require Electron.
+  void import('electron')
+    .then((electron) => {
+      const all = electron?.webContents?.getAllWebContents?.()
+      if (!Array.isArray(all)) return
+      for (const wc of all) {
+        if (!wc.isDestroyed()) {
+          wc.send(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefChanged, enabled)
+        }
+      }
+    })
+    .catch(() => {
+      // Non-Electron runtime (tests).
+    })
+}
+
 export interface PrintLayoutSharedSetup {
   ipcMain: PrintLayoutIpcMain
   /** full path of the store, e.g. join(app.getPath('userData'), LABEL_SPEC_FILE_NAME) */
@@ -670,6 +1063,12 @@ export function ensurePrintLayoutIpc(setup: PrintLayoutSharedSetup): LabelSpecSt
   const existing = host[SHARED_STORE]
   if (existing) return existing
   const store = createLabelSpecStore(setup.labelSpecPath)
+  const quickPrefPath = () => {
+    const labelPath =
+      typeof setup.labelSpecPath === 'function' ? setup.labelSpecPath() : setup.labelSpecPath
+    return join(dirname(labelPath), QUICK_PRINT_PREF_FILE_NAME)
+  }
+  const quickPref = createQuickPrintPrefStore(quickPrefPath)
   setup.ipcMain.handle(PRINT_LAYOUT_SHARED_CHANNELS.labelSpecGet, () => store.get())
   setup.ipcMain.handle(PRINT_LAYOUT_SHARED_CHANNELS.labelSpecSet, (_event, spec: unknown) =>
     store.set(spec),
@@ -678,7 +1077,23 @@ export function ensurePrintLayoutIpc(setup: PrintLayoutSharedSetup): LabelSpecSt
     PRINT_LAYOUT_SHARED_CHANNELS.listPrinters,
     async (event: PrintLayoutInvokeEvent) => {
       const printers = (await event?.sender?.getPrintersAsync?.()) ?? []
-      return printers.map((p) => ({ name: p.name, displayName: p.displayName || p.name }))
+      return printers.map((p) => {
+        const isDefault = Boolean((p as { isDefault?: unknown }).isDefault)
+        return {
+          name: p.name,
+          displayName: p.displayName || p.name,
+          ...(isDefault ? { isDefault: true } : {}),
+        }
+      })
+    },
+  )
+  setup.ipcMain.handle(PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefGet, () => quickPref.get())
+  setup.ipcMain.handle(
+    PRINT_LAYOUT_SHARED_CHANNELS.quickPrintPrefSet,
+    (_event, enabled: unknown) => {
+      const next = quickPref.set(enabled === true)
+      broadcastQuickPrintPref(next)
+      return next
     },
   )
   host[SHARED_STORE] = store

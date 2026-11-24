@@ -13,8 +13,18 @@ import {
   mergePdfBytes,
   setPageSizeBytes,
   splitPagesBytes,
-  splitPdfBytes,
 } from '../../../../pdf/src/main/save-pdf'
+import { executeSplitPlan, readPdfBookmarks } from '../../../../pdf/src/main/split-pdf'
+import {
+  MAX_SPLIT_MAX_BYTES,
+  MIN_SPLIT_MAX_BYTES,
+  formatSplitRangeList,
+  parseSplitRangeList,
+  sanitizeSplitName,
+  type SplitBookmarkEntry,
+  type SplitOutputOptions,
+  type SplitPlanRequest,
+} from '../../../../pdf/src/shared/split-plan'
 import { imagesToPdfBytes, readImageInfo } from '../../../../pdf/src/main/images-to-pdf'
 import { duplexMergeBytes } from '../../../../pdf/src/main/print-prep'
 import { overlayPdfBytes } from '../../../../pdf/src/main/overlay'
@@ -100,9 +110,14 @@ export function toolOutputExtension(tool: PdfToolId): 'pdf' | 'txt' {
  * or none of the chosen kinds of annotation (stripAnnots)
  */
 export class PdfToolRefusal extends Error {
-  constructor(readonly reason: 'no-text' | 'no-annots' | 'not-smaller') {
+  constructor(readonly reason: 'no-text' | 'no-annots' | 'not-smaller' | 'no-bookmarks') {
     super(reason)
   }
+}
+
+/** Read document bookmarks (/Outlines) from PDF bytes */
+export async function readBookmarksBytes(bytes: Uint8Array): Promise<SplitBookmarkEntry[]> {
+  return readPdfBookmarks(bytes)
 }
 
 export type InspectResult = { ok: true; pages: number } | { ok: false; problem: PdfInputProblem }
@@ -148,6 +163,7 @@ export type CheckedOptions =
         | 'password-empty'
         | 'password-same'
         | 'password-long'
+        | 'invalid-size'
     }
 
 /** Annotation kinds stripAnnots removes when the window sends none (links stay) */
@@ -173,8 +189,79 @@ export function checkOptions(
 ): CheckedOptions {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   switch (tool) {
-    case 'split':
-      return { ok: true, options: { chunkSize: intIn(o.chunkSize, 1, pageCount) ?? 1 } }
+    case 'split': {
+      if (o.splitMode === undefined) {
+        return { ok: true, options: { chunkSize: intIn(o.chunkSize, 1, pageCount) ?? 1 } }
+      }
+      const mode =
+        o.splitMode === 'ranges' ||
+        o.splitMode === 'fixed' ||
+        o.splitMode === 'bookmarks' ||
+        o.splitMode === 'maxSize'
+          ? o.splitMode
+          : 'fixed'
+      const splitPattern =
+        o.splitPattern === 'range' || o.splitPattern === 'bookmark' ? o.splitPattern : 'numbered'
+      const splitPrefix = typeof o.splitPrefix === 'string' ? o.splitPrefix.trim() : ''
+      const splitCreateSubfolder = o.splitCreateSubfolder === true
+      const base: PdfToolOptions = {
+        splitMode: mode,
+        splitPattern,
+        splitCreateSubfolder,
+        ...(splitPrefix ? { splitPrefix } : {}),
+      }
+      if (mode === 'ranges') {
+        const parsed = parseSplitRangeList(
+          typeof o.splitRanges === 'string' ? o.splitRanges : '',
+          pageCount,
+        )
+        if (!parsed.ok) return { ok: false, error: 'range' }
+        return {
+          ok: true,
+          options: {
+            ...base,
+            splitRanges: formatSplitRangeList(parsed.ranges),
+            splitMergeRanges: o.splitMergeRanges === true,
+          },
+        }
+      }
+      if (mode === 'fixed') {
+        const splitFixedKind = o.splitFixedKind === 'fileCount' ? 'fileCount' : 'pagesPerFile'
+        const rawVal = o.splitFixedValue ?? o.chunkSize
+        return {
+          ok: true,
+          options: {
+            ...base,
+            splitFixedKind,
+            splitFixedValue: intIn(rawVal, 1, pageCount) ?? 1,
+          },
+        }
+      }
+      if (mode === 'bookmarks') {
+        return {
+          ok: true,
+          options: {
+            ...base,
+            splitBookmarkLevel: o.splitBookmarkLevel === 2 ? 2 : 1,
+            splitIncludeLeading: o.splitIncludeLeading !== false,
+          },
+        }
+      }
+      const maxBytes =
+        typeof o.splitMaxBytes === 'number' && Number.isFinite(o.splitMaxBytes)
+          ? Math.round(o.splitMaxBytes)
+          : 0
+      if (maxBytes < MIN_SPLIT_MAX_BYTES || maxBytes > MAX_SPLIT_MAX_BYTES) {
+        return { ok: false, error: 'invalid-size' }
+      }
+      return {
+        ok: true,
+        options: {
+          ...base,
+          splitMaxBytes: maxBytes,
+        },
+      }
+    }
     case 'extract': {
       const range = parsePageRange(typeof o.pages === 'string' ? o.pages : '', pageCount)
       return range.ok
@@ -304,6 +391,73 @@ export interface RunDeps {
   signal?: AbortSignal
 }
 
+/** Build a SplitPlanRequest from checked PdfToolOptions */
+export function splitPlanFromOptions(options: PdfToolOptions, pageCount: number): SplitPlanRequest {
+  if (!options.splitMode) {
+    return { mode: 'fixed', kind: 'pagesPerFile', value: options.chunkSize ?? 1 }
+  }
+  switch (options.splitMode) {
+    case 'ranges': {
+      const parsed = parseSplitRangeList(options.splitRanges ?? '', pageCount)
+      return {
+        mode: 'ranges',
+        ranges: parsed.ok ? parsed.ranges : [],
+        mergeRanges: options.splitMergeRanges === true,
+      }
+    }
+    case 'fixed':
+      return {
+        mode: 'fixed',
+        kind: options.splitFixedKind === 'fileCount' ? 'fileCount' : 'pagesPerFile',
+        value: options.splitFixedValue ?? options.chunkSize ?? 1,
+      }
+    case 'bookmarks':
+      return {
+        mode: 'bookmarks',
+        level: options.splitBookmarkLevel === 2 ? 2 : 1,
+        includeLeadingPages: options.splitIncludeLeading !== false,
+      }
+    case 'maxSize':
+      return { mode: 'maxSize', maxBytes: options.splitMaxBytes ?? 0 }
+  }
+}
+
+/** Run the split tool and return output bytes paired with computed filenames and warnings */
+export async function runSplitPdfTool(
+  first: Uint8Array,
+  sourceName: string,
+  options: PdfToolOptions,
+  deps: RunDeps = {},
+): Promise<{ parts: Uint8Array[]; names: string[]; oversizedPages: number[] }> {
+  const doc = await PDFDocument.load(first, { updateMetadata: false })
+  const plan = splitPlanFromOptions(options, doc.getPageCount())
+  const output: SplitOutputOptions = {
+    ...(options.splitPrefix ? { prefix: options.splitPrefix } : {}),
+    ...(options.splitPattern ? { pattern: options.splitPattern } : {}),
+    ...(options.splitCreateSubfolder !== undefined
+      ? { createSubfolder: options.splitCreateSubfolder }
+      : {}),
+  }
+  try {
+    const result = await executeSplitPlan(first, plan, {
+      sourceName,
+      output,
+      ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+      ...(deps.signal ? { signal: deps.signal } : {}),
+    })
+    return {
+      parts: result.parts.map((p) => p.bytes),
+      names: result.parts.map((p) => p.name),
+      oversizedPages: result.oversizedPages,
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === 'split: no-bookmarks') {
+      throw new PdfToolRefusal('no-bookmarks')
+    }
+    throw err
+  }
+}
+
 /** Run `tool` on `inputs` (already checked); one file, or one per part for split */
 export async function runPdfTool(
   tool: PdfToolId,
@@ -317,7 +471,7 @@ export async function runPdfTool(
     case 'merge':
       return [(await mergePdfBytes(first, rest)).merged]
     case 'split':
-      return splitPdfBytes(first, options.chunkSize ?? 1)
+      return (await runSplitPdfTool(first, 'document.pdf', options, deps)).parts
     case 'extract': {
       const pages = (options.pages ?? '').split(',').map((p) => Number(p) - 1)
       return [await extractPagesBytes(first, pages)]
@@ -445,7 +599,14 @@ export function outputNames(
   options: PdfToolOptions,
 ): string[] {
   const base = sourceName.replace(/\.(pdf|jpe?g|png)$/i, '') || 'document'
-  if (tool === 'split') return Array.from({ length: count }, (_, i) => `${base}-${i + 1}.pdf`)
+  if (tool === 'split') {
+    const stem = options.splitPrefix ? sanitizeSplitName(options.splitPrefix, base, 60) : base
+    const padWidth = count >= 10 ? String(count).length : 1
+    return Array.from(
+      { length: count },
+      (_, i) => `${stem}-${String(i + 1).padStart(padWidth, '0')}.pdf`,
+    )
+  }
   if (tool === 'imagesToPdf') return [`${base}.pdf`]
   if (tool === 'toText') return [`${base}.txt`]
   const suffix: Record<Exclude<PdfToolId, 'split' | 'imagesToPdf' | 'toText'>, string> = {

@@ -11,10 +11,13 @@ import {
 import { PDFDict, PDFDocument, PDFName, type PDFRawStream } from 'pdf-lib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  imageSaveDialogSpec,
   inProcessRunner,
   previewArranged,
   printArranged,
   printFacesHtml,
+  registerPrintLayoutIpc,
+  saveArrangedImages,
   saveArrangedPdf,
   workerRunner,
   type PrintArrangedRequest,
@@ -510,7 +513,10 @@ describe('worker runner', () => {
     const run = workerRunner(() => worker).run(request(), {
       onProgress: (p) => progress.push(`${p.done}/${p.total}`),
     })
-    expect(worker.posted[0]!.jobPdf).toEqual(new Uint8Array([1, 2, 3]))
+    expect(worker.posted[0]!.kind).toBe('pdf')
+    if (worker.posted[0]!.kind === 'pdf') {
+      expect(worker.posted[0]!.jobPdf).toEqual(new Uint8Array([1, 2, 3]))
+    }
     worker.emit('message', { type: 'progress', done: 1, total: 2 })
     worker.emit('message', { type: 'done', result: { kind: 'pdf', pdf: new Uint8Array([9]) } })
     await expect(run).resolves.toEqual({ kind: 'pdf', pdf: new Uint8Array([9]) })
@@ -567,5 +573,107 @@ describe('worker runner', () => {
       workerRunner(spawn).run(request(), { signal: controller.signal }),
     ).rejects.toMatchObject({ name: 'AbortError' })
     expect(spawn).not.toHaveBeenCalled()
+  })
+})
+
+describe('preview session cache, image export and save restriction IPC', () => {
+  it('caches jobPdf and arrangedPdf across previewFaces calls and enforces canSave on save & saveImages', async () => {
+    const handlers = new Map<string, (event: any, ...args: any[]) => unknown>()
+    const ipcMain = {
+      handle(ch: string, fn: (event: any, ...args: any[]) => unknown) {
+        handlers.set(ch, fn)
+      },
+      removeHandler(ch: string) {
+        handlers.delete(ch)
+      },
+    }
+    const pdf = await fourA4()
+    const buildJobPdf = vi.fn(async () => pdf)
+    let allowSave = true
+    const dir = await mkdtemp(join(tmpdir(), 'ieum-eu-print-img-'))
+    scratch.push(dir)
+
+    const unregister = registerPrintLayoutIpc('test', {
+      ipcMain,
+      buildJobPdf,
+      createPrintWindow: () => new FakeWindow(),
+      pickSavePath: async () => join(dir, 'out.pdf'),
+      pickImageSavePath: async (_e, _ed, image) =>
+        join(dir, imageSaveDialogSpec('report', image).defaultFileName),
+      canSave: () => allowSave,
+      runner: inProcessRunner,
+    })
+
+    const sender = { id: 42, send: () => {}, isDestroyed: () => false }
+    const event = { sender }
+
+    try {
+      const pf = handlers.get('test:print-layout-preview-faces')!
+      const r1 = (await pf(event, {
+        options: opts(),
+        editorKey: 'rev1',
+        optionsKey: 'opt1',
+        faceIndices: [0],
+        longSidePx: 200,
+      })) as any
+      expect(r1.ok).toBe(true)
+      expect(r1.totalFaces).toBe(4)
+      expect(r1.faces).toHaveLength(1)
+      expect(r1.faces[0].index).toBe(0)
+      expect(buildJobPdf).toHaveBeenCalledTimes(1)
+
+      // Flipping to face 2 with the same editorKey reuses cached jobPdf
+      const r2 = (await pf(event, {
+        options: opts(),
+        editorKey: 'rev1',
+        optionsKey: 'opt1',
+        faceIndices: [2],
+        longSidePx: 200,
+      })) as any
+      expect(r2.ok).toBe(true)
+      expect(r2.faces[0].index).toBe(2)
+      expect(buildJobPdf).toHaveBeenCalledTimes(1)
+
+      // Close session clears cache
+      await handlers.get('test:print-layout-close-preview')!(event)
+
+      // Save images as ZIP works when allowed
+      const saveImg = handlers.get('test:print-layout-save-images')!
+      const imgRes = (await saveImg(event, {
+        options: opts((o) => (o.dpi = 150)),
+        image: { format: 'jpg', quality: 80, bundle: 'zip' },
+      })) as any
+      expect(imgRes.ok).toBe(true)
+      expect(imgRes.paths).toEqual([join(dir, 'report.zip')])
+      expect(existsSync(join(dir, 'report.zip'))).toBe(true)
+
+      // Permission-restricted document rejects both save and saveImages
+      allowSave = false
+      const deniedPdf = (await handlers.get('test:print-layout-save')!(event, {
+        options: opts(),
+      })) as any
+      expect(deniedPdf.ok).toBe(false)
+      const deniedImg = (await saveImg(event, {
+        options: opts(),
+        image: { format: 'png', quality: 90, bundle: 'files' },
+      })) as any
+      expect(deniedImg.ok).toBe(false)
+
+      // Direct saveArrangedImages smoke test
+      const direct = await saveArrangedImages({
+        jobPdf: pdf,
+        options: opts((o) => (o.dpi = 150)),
+        image: { format: 'png', quality: 90, bundle: 'files' },
+        path: join(dir, 'direct.png'),
+        runner: inProcessRunner,
+      })
+      expect(direct.ok).toBe(true)
+      if (direct.ok && 'paths' in direct) {
+        expect(direct.paths).toHaveLength(4)
+        expect(existsSync(direct.paths[0]!)).toBe(true)
+      }
+    } finally {
+      unregister()
+    }
   })
 })

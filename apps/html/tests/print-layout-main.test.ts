@@ -202,7 +202,7 @@ describe('the html print layout channels', () => {
     const jobs: Uint8Array[] = []
     const runner: PrintLayoutRunner = {
       run: vi.fn(async (request) => {
-        jobs.push(request.jobPdf)
+        if ('jobPdf' in request) jobs.push(request.jobPdf)
         return { kind: 'preview', faces: [] } as never
       }),
     }

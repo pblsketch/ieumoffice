@@ -46,17 +46,17 @@ Reglas: la extensión se conserva automáticamente; los caracteres no permitidos
 
 ## Imprimir
 
-Archivo ▸ Imprimir (⌘P/ctrl+P) abre una ventana de impresión en cada editor. Docs, PDF, Sheets, Slides y Markdown tienen la sección **Disposición de páginas** en su ventana de impresión de siempre, HWP en la vista previa de impresión, y HTML, mapa mental y diagrama en una nueva ventana de impresión pequeña. Si no elige nada en Disposición de páginas, se imprime igual que antes.
+Archivo ▸ Imprimir (⌘P/ctrl+P) abre una ventana de impresión con vista previa en vivo en todos los editores: Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram y Whiteboard. Si no cambias Diseño de página y usas el diálogo del sistema, imprime igual que antes.
 
-- **Disposición**: elija Una página por hoja, Varias páginas por hoja (2, 4, 6, 9 o 16), Folleto (encuadernar a la izquierda o a la derecha), Póster (hojas a lo ancho y a lo alto, solapamiento, líneas de corte) o Etiquetas (una página por etiqueta o la misma página en cada etiqueta, etiqueta inicial, un formato A4 habitual o medidas personalizadas).
-- **Solo caras impares, solo caras pares, orden inverso**: las caras se cuentan después de aplicar la disposición, sobre lo que realmente sale de la impresora. Sirve en impresoras sin doble cara: imprima los anversos, dé la vuelta al papel e imprima los reversos.
-- **Reducir para ajustar al papel**: solo se reducen las páginas más grandes que el papel elegido; las más pequeñas no se amplían. Sheets y Markdown usan sus propios ajustes de papel y escala.
-- **Escala de grises y resolución de imagen**: al imprimir con opciones de Disposición de páginas, cada página se convierte en imagen antes de enviarse a la impresora. La resolución se elige entre Automática, 150, 300 o 600 dpi.
-- **Solo la selección**: Docs y Markdown imprimen solo el texto seleccionado, repaginado desde la primera página; Slides imprime las diapositivas seleccionadas y PDF las páginas seleccionadas. Sheets imprime el rango seleccionado como antes.
-- **Esquema de disposición y vista previa del resultado**: el esquema muestra al instante dónde cae cada número de página en el papel, y **Vista previa del resultado** muestra lo que se ha generado de verdad. Con **Guardar el resultado dispuesto como PDF** puede imprimir la misma disposición en otro PC o en una imprenta.
-- **Ventana de impresión del sistema**: para un folleto, elija doble cara volteando por el borde corto. Deje el intervalo de páginas y las páginas por hoja tal como están en la ventana del sistema.
+- **Destino (impresora, PDF, imágenes)**: elige en una sola lista una impresora instalada, **Guardar como PDF**, **Guardar como imágenes** o el **Diálogo de impresión del sistema**. El guardado como imágenes admite PNG y JPG (Alta 90 %, Media 80 %, Archivo pequeño 65 %) en archivos numerados o en un ZIP único. En PDF con restricciones se desactivan PDF e imágenes, pero la impresión sigue activa.
+- **Vista previa en vivo**: los diez editores muestran una vista previa antes de imprimir o guardar. Cuando el diseño, la escala de grises, la marca de agua o los encabezados/pies cambian las caras finales, se renderizan bajo demanda con navegación, zoom y cambio al diagrama.
+- **Diseño**: elige Una página por hoja, Varias páginas por hoja (2, 4, 6, 9 o 16, con bordes opcionales), Folleto (encuadernación izquierda o derecha), Póster (columnas × filas, solapamiento, marcas de corte y etiquetas de mosaico) o Etiquetas (una página por etiqueta o repetida, celda inicial, plantillas A4 o medidas propias).
+- **Escala, orientación, caras y orden**: selecciona Tamaño real (100 %), Ajustar al papel, Reducir páginas grandes o Escala personalizada (10 %–400 %) y orientación Automática, Vertical u Horizontal. Solo impares, solo pares y orden inverso se calculan sobre las caras finales.
+- **Marca de agua, encabezados/pies, escala de grises y resolución**: añade marcas de agua de texto o imagen y 6 espacios de encabezado y pie (título, fecha, número de página o texto propio) solo para la salida, sin alterar el documento. Ajusta también escala de grises y DPI (Automático, 150, 300 o 600 dpi).
+- **Rangos de páginas y selección**: Docs y Markdown remaquetan el texto seleccionado desde la página 1; Slides imprime diapositivas elegidas; PDF páginas elegidas; Hangul admite Todo, Página actual o Rango personalizado; Sheets imprime hojas activas, libro o selección.
+- **Diálogo del sistema**: en folletos, activa doble cara volteando por el borde corto y deja intactos el rango y las páginas por hoja del diálogo del sistema.
 
-Los PDF se imprimen con el orden de páginas y las rotaciones actuales.
+Los PDF se imprimen respetando el orden y la rotación actuales.
 
 ## Dónde viven los archivos sin título
 

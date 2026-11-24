@@ -131,38 +131,68 @@ export function AiAskPopover({
     return empty ? null : rangeRect(editor, from, to)
   }, [editor])
 
-  // floating trigger follows the live selection while the editor is focused
+  const triggerVisibleRef = useRef(false)
+  triggerVisibleRef.current = trigger !== null
+
+  // floating trigger follows the live selection while the editor is focused.
+  // Scroll updates reposition the mounted button directly via DOM style inside
+  // one rAF per frame instead of triggering a React commit on every scroll tick
+  // (React's commitBeforeMutationEffects walks every DOM node of a focused
+  // contentEditable editor).
   useEffect(() => {
-    const update = () => {
+    let raf = 0
+    const applyPos = (allowDomOnly: boolean) => {
       if (openRef.current) {
-        setTrigger(null)
+        if (triggerVisibleRef.current) setTrigger(null)
         return
       }
       const { empty, to } = editor.state.selection
       if (empty || !editor.isFocused) {
-        setTrigger(null)
+        if (triggerVisibleRef.current) setTrigger(null)
         return
       }
       const c = rangeRect(editor, to, to)
       if (!c) {
-        setTrigger(null)
+        if (triggerVisibleRef.current) setTrigger(null)
         return
       }
-      setTrigger({ left: c.right + 6, top: c.bottom + 4 })
+      const left = c.right + 6
+      const top = c.bottom + 4
+      if (allowDomOnly && triggerVisibleRef.current && triggerRef.current) {
+        triggerRef.current.style.transform = `translate3d(${left}px, ${top}px, 0)`
+        return
+      }
+      setTrigger({ left, top })
     }
-    const hide = () => setTrigger(null)
+    const update = () => applyPos(false)
+    const onScrollOrResize = () => {
+      if (!triggerVisibleRef.current || openRef.current) return
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        applyPos(true)
+      })
+    }
+    const hide = () => {
+      if (raf) {
+        cancelAnimationFrame(raf)
+        raf = 0
+      }
+      if (triggerVisibleRef.current) setTrigger(null)
+    }
     editor.on('selectionUpdate', update)
     editor.on('focus', update)
     editor.on('blur', hide)
     const scroller = document.querySelector('.editor-scroll')
-    scroller?.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update)
+    scroller?.addEventListener('scroll', onScrollOrResize, { passive: true })
+    window.addEventListener('resize', onScrollOrResize)
     return () => {
+      if (raf) cancelAnimationFrame(raf)
       editor.off('selectionUpdate', update)
       editor.off('focus', update)
       editor.off('blur', hide)
-      scroller?.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
+      scroller?.removeEventListener('scroll', onScrollOrResize)
+      window.removeEventListener('resize', onScrollOrResize)
     }
   }, [editor])
 
@@ -183,14 +213,48 @@ export function AiAskPopover({
   // popover position follows scroll/resize; a vanished anchor closes it
   useLayoutEffect(() => {
     if (!open) return
+    let raf = 0
+    const placeDom = (r: AnchorRect) => {
+      const el = boxRef.current
+      if (!el) return
+      const height = el.offsetHeight || EST_HEIGHT
+      const below = r.bottom + GAP
+      const above = r.top - GAP - height
+      const top =
+        below + height <= window.innerHeight - EDGE
+          ? below
+          : above >= EDGE
+            ? above
+            : Math.max(EDGE, window.innerHeight - EDGE - height)
+      const left = Math.min(
+        Math.max(EDGE, (r.left + r.right) / 2 - WIDTH / 2),
+        Math.max(EDGE, window.innerWidth - WIDTH - EDGE),
+      )
+      el.style.left = `${left}px`
+      el.style.top = `${top}px`
+    }
     const update = () => setRect(anchorRect())
+    const onScrollOrResize = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const next = anchorRect()
+        if (!next) {
+          setRect(null)
+          return
+        }
+        if (boxRef.current) placeDom(next)
+        else setRect(next)
+      })
+    }
     update()
     const scroller = document.querySelector('.editor-scroll')
-    scroller?.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update)
+    scroller?.addEventListener('scroll', onScrollOrResize, { passive: true })
+    window.addEventListener('resize', onScrollOrResize)
     return () => {
-      scroller?.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
+      if (raf) cancelAnimationFrame(raf)
+      scroller?.removeEventListener('scroll', onScrollOrResize)
+      window.removeEventListener('resize', onScrollOrResize)
     }
   }, [open, anchorRect])
 
@@ -402,7 +466,11 @@ export function AiAskPopover({
         <button
           ref={triggerRef}
           className="ai-ask-trigger"
-          style={{ left: trigger.left, top: trigger.top }}
+          style={{
+            left: 0,
+            top: 0,
+            transform: `translate3d(${trigger.left}px, ${trigger.top}px, 0)`,
+          }}
           // keep the editor focused and the selection alive
           onMouseDown={(e) => e.preventDefault()}
           onClick={openFromSelection}

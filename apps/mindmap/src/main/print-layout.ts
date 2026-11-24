@@ -5,6 +5,7 @@
  * PDF the way the PDF export makes it. The shared print layout arranges it and
  * previews, prints or saves the result.
  */
+import type { ImageExportOptions } from '@genoffice/print-layout/plan'
 import {
   registerPrintLayoutIpc,
   type PrintLayoutInvokeEvent,
@@ -46,11 +47,17 @@ export interface MindmapPrintLayoutSetup {
   createPrintWindow: (event: PrintLayoutInvokeEvent) => PrintLayoutWindow
   /** the PDF export's save dialog, offering this name; null when the user cancels */
   pickSavePath: (event: PrintLayoutInvokeEvent, suggestedName: string) => Promise<string | null>
+  /** save dialog for arranged images (PNG/JPG/ZIP); null when the user cancels */
+  pickImageSavePath?: (
+    event: PrintLayoutInvokeEvent,
+    suggestedName: string,
+    image: ImageExportOptions,
+  ) => Promise<string | null>
   runner?: PrintLayoutIpcHandlers<MindmapPrintJob>['runner']
   platform?: NodeJS.Platform
 }
 
-/** `mindmap:print-layout-preview|print|save|cancel`. */
+/** `mindmap:print-layout-preview|preview-faces|close-preview|print|save|save-images|cancel`. */
 export function registerMindmapPrintLayout(setup: MindmapPrintLayoutSetup): () => void {
   return registerPrintLayoutIpc<MindmapPrintJob>(MINDMAP_PRINT_LAYOUT_PREFIX, {
     ipcMain: setup.ipcMain,
@@ -62,6 +69,19 @@ export function registerMindmapPrintLayout(setup: MindmapPrintLayoutSetup): () =
       if (typeof job === 'string') throw new Error(`mindmap: ${job}`)
       return setup.pickSavePath(event, job.suggestedName)
     },
+    ...(setup.pickImageSavePath
+      ? {
+          pickImageSavePath: async (
+            event: PrintLayoutInvokeEvent,
+            editor: MindmapPrintJob | undefined,
+            image: ImageExportOptions,
+          ) => {
+            const job = printJobOf(editor)
+            if (typeof job === 'string') throw new Error(`mindmap: ${job}`)
+            return setup.pickImageSavePath!(event, job.suggestedName, image)
+          },
+        }
+      : {}),
     ...(setup.runner ? { runner: setup.runner } : {}),
     ...(setup.platform ? { platform: setup.platform } : {}),
   })

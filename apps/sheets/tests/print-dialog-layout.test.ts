@@ -110,7 +110,7 @@ describe('sheets Print dialog with the layout panel', () => {
     expect($('[data-pl="mode"]')).not.toBeNull()
     expect($('[data-pl="grayscale"]')).not.toBeNull()
     expect($('[data-pl="paper"]')).toBeNull()
-    expect($('[data-pl="fit"]')).toBeNull()
+    expect($('[data-pl="scaling"]')).toBeNull()
   })
 
   it('at the defaults Print takes the plain route with the dialog values', async () => {
@@ -182,11 +182,11 @@ describe('sheets Print dialog with the layout panel', () => {
     expect(collateBox().checked).toBe(false)
   })
 
-  it('grayscale alone keeps the page preview but still prints arranged', async () => {
+  it('grayscale switches to live preview and still prints arranged', async () => {
     const { host, print, printArranged } = spiedHost()
     await open(host)
     act(() => $<HTMLInputElement>('[data-pl="grayscale"]')!.click())
-    expect($('[data-print-preview="schematic"]')).toBeNull()
+    expect($('[data-pl="live-preview"]')).not.toBeNull()
     expect(collateBox().disabled).toBe(true)
     clickPrint()
     await settle(0)

@@ -14,7 +14,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
@@ -28,9 +28,12 @@ import {
 import { fileHasUnsavedChanges } from '@genoffice/electron-utils/unsaved-files'
 import { writePdfAtomically } from '../../../../pdf/src/main/atomic-write'
 import { uniqueGeneratedPdfPath } from '../../../../pdf/src/main/generated-output'
+import { uniqueSplitSubfolder } from '../../../../pdf/src/main/split-pdf'
+import { splitSubfolderName } from '../../../../pdf/src/shared/split-plan'
 import {
   PDF_TOOLS_CHANNELS,
   type PdfBlankPagesResult,
+  type PdfBookmarksResult,
   type PdfPickResult,
   type PdfToolInput,
   type PdfToolAccept,
@@ -55,7 +58,9 @@ import {
   jobBytesOf,
   jobFor,
   outputNames,
+  readBookmarksBytes,
   runPdfTool,
+  runSplitPdfTool,
   toolAccepts,
   toolInputKind,
   toolMinInputs,
@@ -79,6 +84,8 @@ export interface PdfToolsWindowDeps {
   openResult(path: string): boolean
   /** Open a PDF the user picked for an editor-only tool; an open tab is only focused */
   openForEditing(path: string): boolean
+  /** Open a PDF in an editor tab and immediately launch its visual Split dialog */
+  openSplitInEditor?(path: string): boolean
   /**
    * A result's "open" while the editor it opens in is off (editor choice spec
    * 7.3): asks, then opens through `open`, shows the file in its folder, or
@@ -269,6 +276,8 @@ async function run(raw: unknown): Promise<PdfToolRunResult> {
       }
     }
     let made: Uint8Array[]
+    let customNames: string[] | null = null
+    let oversizedPages: number[] = []
     if (toolRunsAsJob(tool)) {
       const job = await runToolJob(owner, tool, sources[0]!.path, checked.options)
       if (!job.ok) return job
@@ -278,27 +287,53 @@ async function run(raw: unknown): Promise<PdfToolRunResult> {
         const stop = new AbortController()
         runStop = stop
         const contents = owner.webContents
-        made = await runPdfTool(tool, bytes, checked.options, {
+        const depsRun = {
           recode: recodeWithChromium,
           signal: stop.signal,
-          onProgress: (done, total) => {
+          onProgress: (done: number, total: number) => {
             if (!contents.isDestroyed()) contents.send(PDF_TOOLS_CHANNELS.progress, { done, total })
           },
-        })
+        }
+        if (tool === 'split') {
+          const splitResult = await runSplitPdfTool(
+            bytes[0]!,
+            sources[0]!.name,
+            checked.options,
+            depsRun,
+          )
+          made = splitResult.parts
+          customNames = splitResult.names
+          oversizedPages = splitResult.oversizedPages
+        } else {
+          made = await runPdfTool(tool, bytes, checked.options, depsRun)
+        }
       } catch (err) {
         if (err instanceof PdfToolRefusal) return { ok: false, error: err.reason }
         if (runStop?.signal.aborted) return { ok: false, canceled: true }
         throw err
       }
     }
-    const names = outputNames(tool, sources[0]!.name, made.length, checked.options)
-    const targets = await pickTargets(owner, sources[0]!.path, names, toolOutputExtension(tool))
+    const names = customNames ?? outputNames(tool, sources[0]!.name, made.length, checked.options)
+    const subfolder =
+      tool === 'split' && made.length >= 2 && checked.options.splitCreateSubfolder
+        ? splitSubfolderName(sources[0]!.name, checked.options.splitPrefix)
+        : null
+    const targets = await pickTargets(
+      owner,
+      sources[0]!.path,
+      names,
+      toolOutputExtension(tool),
+      subfolder,
+    )
     if (!targets) return { ok: false, canceled: true }
     for (const target of targets) {
       if (sources.some((source) => samePath(source.path, target))) {
         return { ok: false, error: 'same-as-source' }
       }
       if (await fileHasUnsavedChanges(target)) return { ok: false, error: 'unsaved-target' }
+    }
+    if (subfolder && targets[0]) {
+      await mkdir(dirname(targets[0]), { recursive: true })
     }
     const outputs: { id: string; name: string; size: number }[] = []
     for (let i = 0; i < made.length; i++) {
@@ -307,7 +342,11 @@ async function run(raw: unknown): Promise<PdfToolRunResult> {
       results.set(id, targets[i]!)
       outputs.push({ id, name: basename(targets[i]!), size: made[i]!.length })
     }
-    return { ok: true, outputs }
+    return {
+      ok: true,
+      outputs,
+      ...(oversizedPages.length > 0 ? { oversizedPages } : {}),
+    }
   } catch {
     return { ok: false, error: 'failed' }
   } finally {
@@ -357,6 +396,7 @@ async function pickTargets(
   sourcePath: string,
   names: string[],
   extension: 'pdf' | 'txt',
+  subfolder: string | null = null,
 ): Promise<string[] | null> {
   if (names.length === 1) {
     const saved = await showSaveDialogWithMemory(dialog, owner, {
@@ -377,12 +417,35 @@ async function pickTargets(
   )
   const dir = folder.filePaths[0]
   if (folder.canceled || !dir) return null
+  const destDir = subfolder ? uniqueSplitSubfolder(dir, subfolder, existsSync) : dir
   const taken = new Set<string>()
   return names.map((name) => {
-    const target = uniqueGeneratedPdfPath(dir, name, (p) => existsSync(p) || taken.has(p))
+    const target = uniqueGeneratedPdfPath(destDir, name, (p) => existsSync(p) || taken.has(p))
     taken.add(target)
     return target
   })
+}
+
+async function readBookmarksForInput(inputId: unknown): Promise<PdfBookmarksResult> {
+  const input = typeof inputId === 'string' ? inputs.get(inputId) : undefined
+  if (!input || input.kind !== 'pdf') return { ok: false, error: 'no-input' }
+  if (!existsSync(input.path)) return { ok: false, error: 'missing' }
+  try {
+    const bytes = new Uint8Array(await readFile(input.path))
+    const bookmarks = await readBookmarksBytes(bytes)
+    return { ok: true, bookmarks }
+  } catch {
+    return { ok: false, error: 'failed' }
+  }
+}
+
+async function openSplitForInput(inputId: unknown): Promise<void> {
+  const d = deps
+  const input = typeof inputId === 'string' ? inputs.get(inputId) : undefined
+  if (!d || !input || input.kind !== 'pdf' || !existsSync(input.path)) return
+  if (d.askEditorOn && !(await d.askEditorOn('pdf'))) return
+  if (d.openSplitInEditor) d.openSplitInEditor(input.path)
+  else d.openForEditing(input.path)
 }
 
 /** a candidate's thumbnail as a PNG data URL */
@@ -506,6 +569,13 @@ function registerIpc(): void {
   })
   ipcMain.handle(PDF_TOOLS_CHANNELS.openInEditor, (event) => {
     if (fromWindow(event)) return openInEditor()
+  })
+  ipcMain.handle(PDF_TOOLS_CHANNELS.openSplitInEditor, (event, inputId: unknown) => {
+    if (fromWindow(event)) return openSplitForInput(inputId)
+  })
+  ipcMain.handle(PDF_TOOLS_CHANNELS.readBookmarks, (event, inputId: unknown) => {
+    if (!fromWindow(event)) return { ok: false, error: 'failed' }
+    return readBookmarksForInput(inputId)
   })
   ipcMain.handle(PDF_TOOLS_CHANNELS.findBlankPages, (event, inputId: unknown) => {
     if (!fromWindow(event)) return { ok: false, error: 'failed' }

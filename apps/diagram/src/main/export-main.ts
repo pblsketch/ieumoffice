@@ -24,6 +24,7 @@ import { configuredDefaultSaveDir, showSaveDialogWithMemory } from '@genoffice/e
 import {
   LABEL_SPEC_FILE_NAME,
   ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
   type PrintLayoutInvokeEvent,
 } from '@genoffice/electron-utils/print-arranged'
 import { PRINT_READY_SCRIPT } from '@genoffice/electron-utils/print-window'
@@ -329,5 +330,17 @@ export function registerDiagramExportIpc(options: DiagramExportIpcOptions): void
     createPrintWindow: arrangedPrintWindow,
     pickSavePath: (event: PrintLayoutInvokeEvent, title) =>
       pickPdfPath(options.filePathOf, event.sender as WebContents, title),
+    pickImageSavePath: async (event: PrintLayoutInvokeEvent, title, image) => {
+      const contents = event.sender as WebContents
+      const file = options.filePathOf(contents.id)
+      const dir = file ? dirname(file) : configuredDefaultSaveDir(app)
+      const spec = imageSaveDialogSpec(safeFileNameBase(title) || tm('untitled'), image)
+      const picked = await showSaveDialogWithMemory(dialog, parentOf(contents), {
+        title: tm('dlgExportTitle'),
+        defaultPath: join(dir, spec.defaultFileName),
+        filters: spec.filters,
+      })
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
   })
 }
