@@ -39,6 +39,10 @@ export const pt = {
   unsavedDiscard: 'Descartar',
   cancel: 'Cancelar',
   savedNotice: 'Salvo.',
+  saveStateSaved: 'Salvo',
+  saveStateDirty: 'Não salvo',
+  saveStateSaving: 'Salvando…',
+  saveStateFailed: 'Não foi possível salvar',
   readonlyShareNotice:
     'Arquivos compartilhados temporários não podem ser sobrescritos. Use Salvar como.',
   hwpTrackingDroppedNotice:

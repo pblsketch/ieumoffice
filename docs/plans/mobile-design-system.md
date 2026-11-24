@@ -1,6 +1,6 @@
 # 이음오피스 모바일 디자인 시스템
 
-상태: **확정, 1단계(토큰·창 크기·AI 기본 꺼짐) 구현 중**(2026-11-24). 정한 것과 버린 대안은 결정 [0165](../tracking/decisions/0165-mobile-scope-and-design-system.md)에 있다. 기능 범위는 [mobile-scope.md](mobile-scope.md), 출시 절차는 [mobile.md](mobile.md).
+상태: **확정. 1단계(토큰·창 크기·AI 기본 꺼짐)와 2단계(뒤로 가기 쌓기·하단 시트·알림·상단 바 저장 상태) 구현**(2026-11-24). 정한 것과 버린 대안은 결정 [0165](../tracking/decisions/0165-mobile-scope-and-design-system.md)에 있다. 기능 범위는 [mobile-scope.md](mobile-scope.md), 출시 절차는 [mobile.md](mobile.md).
 
 근거: Android·iOS 플랫폼 지침, 국내외 모바일 문서 앱의 공개 자료(도움말·스토어·리뷰), 이 저장소의 1차 프로토타입 점검.
 

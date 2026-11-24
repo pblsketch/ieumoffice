@@ -11,6 +11,7 @@ import type {
   MobileTheme,
 } from '@genoffice/mobile-bridge/transport'
 import { useMobileLocale } from '../i18n'
+import { useBackLayer } from '../shell/backStack'
 import {
   DocTypeIcon,
   IconBack,
@@ -89,6 +90,7 @@ export function SettingsScreen({
   onDeleteBackup,
 }: SettingsScreenProps) {
   const { t } = useMobileLocale()
+  useBackLayer(true, onBack)
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null)
   const [busyProvider, setBusyProvider] = useState<string | null>(null)

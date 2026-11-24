@@ -39,6 +39,10 @@ export const id = {
   unsavedDiscard: 'Buang',
   cancel: 'Batal',
   savedNotice: 'Tersimpan.',
+  saveStateSaved: 'Tersimpan',
+  saveStateDirty: 'Belum disimpan',
+  saveStateSaving: 'Menyimpan…',
+  saveStateFailed: 'Gagal menyimpan',
   readonlyShareNotice: 'File berbagi sementara tidak dapat ditimpa. Gunakan Simpan Sebagai.',
   hwpTrackingDroppedNotice:
     'Dokumen pelacakan dibuka sebagai teks saat ini. Riwayat perubahan tidak disimpan.',

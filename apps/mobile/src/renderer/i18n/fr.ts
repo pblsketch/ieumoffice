@@ -40,6 +40,10 @@ export const fr = {
   unsavedDiscard: 'Ignorer',
   cancel: 'Annuler',
   savedNotice: 'Enregistré.',
+  saveStateSaved: 'Enregistré',
+  saveStateDirty: 'Non enregistré',
+  saveStateSaving: 'Enregistrement…',
+  saveStateFailed: 'Échec de l’enregistrement',
   readonlyShareNotice:
     'Les fichiers partagés temporaires ne peuvent pas être écrasés. Utilisez Enregistrer sous.',
   hwpTrackingDroppedNotice:

@@ -39,6 +39,10 @@ export const ja = {
   unsavedDiscard: '保存しない',
   cancel: 'キャンセル',
   savedNotice: '保存しました。',
+  saveStateSaved: '保存済み',
+  saveStateDirty: '未保存',
+  saveStateSaving: '保存中…',
+  saveStateFailed: '保存できません',
   readonlyShareNotice:
     '外部共有された一時ファイルは上書きできません。「名前を付けて保存」を使用してください。',
   hwpTrackingDroppedNotice:

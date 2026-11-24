@@ -39,6 +39,7 @@ import {
 } from '@genoffice/mobile-bridge/view-edit-gate'
 import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiSheetPanel'
 import { HomeScreen } from './components/HomeScreen'
+import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
 import { HwpMobileEditor, type HwpMobileEditorHandle } from './editors/HwpMobileEditor'
 import {
@@ -47,7 +48,8 @@ import {
 } from './editors/MarkdownMobileEditor'
 import { MobileLocaleProvider, translateMobile } from './i18n'
 import { SettingsScreen } from './settings/SettingsScreen'
-import { EditorShell, type EditorQuickActionItem } from './shell/EditorShell'
+import { BackStackProvider } from './shell/backStack'
+import { EditorShell, type EditorQuickActionItem, type EditorSaveState } from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
 
 const DEFAULT_PREFS: MobileAppPrefs = {
@@ -67,6 +69,11 @@ const DEFAULT_AI_SETTINGS: MobileAiSettingsSnapshot = {
 }
 
 const DEFAULT_CHATGPT_STATUS: MobileChatGptStatus = { state: 'hidden' }
+
+function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
+  if (saving) return 'saving'
+  return dirty ? 'dirty' : 'saved'
+}
 
 const RECOVERY_IDLE_MS = 2000
 const RECOVERY_PERIODIC_MS = 30000
@@ -103,23 +110,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const [hwpBytes, setHwpBytes] = useState<Uint8Array | null>(null)
   const [zoomScale, setZoomScale] = useState(1)
   const [noticeBanner, setNoticeBanner] = useState<string | null>(null)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const showToast = useCallback((message: string) => {
-    setToastMessage(message)
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    toastTimerRef.current = setTimeout(() => {
-      setToastMessage(null)
-      toastTimerRef.current = null
-    }, 2600)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    }
-  }, [])
+  const { toast, showToast, dismissToast } = useToast()
+  const [saving, setSaving] = useState(false)
 
   const [aiMessages, setAiMessages] = useState<readonly AgentMessage[]>([])
   const [aiStreaming, setAiStreaming] = useState(false)
@@ -278,6 +270,29 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     },
     [hwpApi, hwpVerifyFailed, markdownApi, refreshHomeData, showToast, tNow],
   )
+
+  /** Saves the active document and keeps the app bar's save state in step. */
+  const runSave = useCallback(
+    async (doc: ActiveDocState, forceSaveAs: boolean): Promise<boolean> => {
+      setSaving(true)
+      try {
+        return await saveDocumentInternal(doc, forceSaveAs)
+      } finally {
+        setSaving(false)
+      }
+    },
+    [saveDocumentInternal],
+  )
+
+  /** [완료]: write the original only when there are changes, then go back to view mode. */
+  const handleDone = useCallback(async () => {
+    const doc = activeDocRef.current
+    if (doc?.dirty) {
+      const ok = await runSave(doc, false)
+      if (!ok) return
+    }
+    setMode('view')
+  }, [runSave])
 
   const saveDocumentRef = useRef(saveDocumentInternal)
   saveDocumentRef.current = saveDocumentInternal
@@ -735,166 +750,170 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   return (
     <MobileLocaleProvider lang={lang}>
-      {screen === 'home' && (
-        <HomeScreen
-          recentDocs={recentDocs}
-          recoveryEntries={recoveryEntries}
-          permissionDeniedRecentId={permissionDeniedRecentId}
-          defaultHwpFormat={prefs.hwpDefaultFormat}
-          onCreateNew={(fmt) => void handleCreateNew(fmt)}
-          onOpenFile={() => void handlePickOpenFile()}
-          onOpenRecent={(entry) => void handleOpenRecent(entry)}
-          onRemoveRecent={(id) => void handleRemoveRecent(id)}
-          onRestoreRecovery={(entry) => void handleRestoreRecovery(entry)}
-          onDiscardRecovery={(docKey) => void handleDiscardRecovery(docKey)}
-          onOpenSettings={() => {
-            void refreshAiState()
-            void refreshHomeData()
-            setScreen('settings')
-          }}
-        />
-      )}
+      <BackStackProvider>
+        {screen === 'home' && (
+          <HomeScreen
+            recentDocs={recentDocs}
+            recoveryEntries={recoveryEntries}
+            permissionDeniedRecentId={permissionDeniedRecentId}
+            defaultHwpFormat={prefs.hwpDefaultFormat}
+            onCreateNew={(fmt) => void handleCreateNew(fmt)}
+            onOpenFile={() => void handlePickOpenFile()}
+            onOpenRecent={(entry) => void handleOpenRecent(entry)}
+            onRemoveRecent={(id) => void handleRemoveRecent(id)}
+            onRestoreRecovery={(entry) => void handleRestoreRecovery(entry)}
+            onDiscardRecovery={(docKey) => void handleDiscardRecovery(docKey)}
+            onOpenSettings={() => {
+              void refreshAiState()
+              void refreshHomeData()
+              setScreen('settings')
+            }}
+          />
+        )}
 
-      {screen === 'settings' && (
-        <SettingsScreen
-          prefs={prefs}
-          aiSettings={aiSettings}
-          chatgptStatus={chatgptStatus}
-          backups={backups}
-          onBack={() => setScreen(activeDoc ? 'editor' : 'home')}
-          onUpdatePrefs={(patch) => void handleUpdatePrefs(patch)}
-          onSelectProvider={(provider) => {
-            void client.setAiSettings({ selectedProvider: provider }).then(setAiSettings)
-          }}
-          onValidateAndSaveKey={async ({ provider, apiKey, freeOnly }) => {
-            const validated = await client.validateAiKey({ provider, apiKey, freeOnly })
-            if (!validated.ok) {
-              throw new Error('API key validation failed.')
+        {screen === 'settings' && (
+          <SettingsScreen
+            prefs={prefs}
+            aiSettings={aiSettings}
+            chatgptStatus={chatgptStatus}
+            backups={backups}
+            onBack={() => setScreen(activeDoc ? 'editor' : 'home')}
+            onUpdatePrefs={(patch) => void handleUpdatePrefs(patch)}
+            onSelectProvider={(provider) => {
+              void client.setAiSettings({ selectedProvider: provider }).then(setAiSettings)
+            }}
+            onValidateAndSaveKey={async ({ provider, apiKey, freeOnly }) => {
+              const validated = await client.validateAiKey({ provider, apiKey, freeOnly })
+              if (!validated.ok) {
+                throw new Error('API key validation failed.')
+              }
+              const updated = await client.setAiSettings({
+                selectedProvider: provider,
+                providerKeyPatch: { provider, apiKey, freeOnly },
+                ...(validated.models[0]
+                  ? { modelPatch: { provider, model: validated.models[0] } }
+                  : {}),
+              })
+              setAiSettings(updated)
+            }}
+            onRemoveKey={async (provider) => {
+              const updated = await client.setAiSettings({
+                providerKeyPatch: { provider, apiKey: null },
+              })
+              setAiSettings(updated)
+            }}
+            onChatgptSignIn={async (reconsent) => {
+              await client.chatgptSignIn(reconsent)
+              await refreshAiState()
+            }}
+            onChatgptSignOut={async () => {
+              await client.chatgptSignOut()
+              await refreshAiState()
+            }}
+            onRestoreBackup={async (backupId, target: MobileRestoreTarget) => {
+              const res = await client.hwpBackupRestore(backupId, target)
+              await refreshHomeData()
+              if (res.session) {
+                await openLoadedSession(res.session, { isUntitled: false })
+              }
+            }}
+            onDeleteBackup={async (backupId) => {
+              await client.hwpBackupDelete(backupId)
+              await refreshHomeData()
+            }}
+          />
+        )}
+
+        {screen === 'editor' && activeDoc && (
+          <EditorShell
+            docTitle={activeDoc.session.name}
+            docFormat={activeDoc.session.format}
+            saveState={editorSaveState(saving, activeDoc.dirty)}
+            mode={mode}
+            canEdit={canEditActive}
+            aiEnabled={prefs.aiEnabled}
+            noticeBanner={noticeBanner}
+            onDismissNotice={() => setNoticeBanner(null)}
+            quickActions={quickActions}
+            onBack={() => void handleBackFromEditor()}
+            onEnterEdit={() => setMode('edit')}
+            onDone={() => void handleDone()}
+            onExitEdit={() => setMode('view')}
+            onSave={() => void runSave(activeDoc, false)}
+            onSaveAs={() => void runSave(activeDoc, true)}
+            onShare={() => void handleShare()}
+            onFitToWidth={() => {
+              setZoomScale(1)
+              hwpEditorRef.current?.fitToWidth()
+            }}
+            onOpenBackups={() => {
+              void refreshHomeData()
+              setScreen('settings')
+            }}
+            aiPanelContent={
+              <AiSheetPanel
+                aiEnabled={prefs.aiEnabled}
+                aiSettings={aiSettings}
+                chatgptStatus={chatgptStatus}
+                messages={aiMessages}
+                streaming={aiStreaming}
+                canMutate={canEditActive}
+                autoSwitchedNotice={aiAutoSwitched}
+                recoveryNotice={aiRecoveryNotice}
+                lastChangeSummary={lastAiUndo?.summary ?? null}
+                onUndoLastChange={lastAiUndo?.undo}
+                onSend={(p) => void handleSendAi(p)}
+                onStop={() => activeRunCancelRef.current?.()}
+                onOpenSettings={() => {
+                  void refreshAiState()
+                  setScreen('settings')
+                }}
+                onAcknowledgeSubscriptionNotice={() => {
+                  void client
+                    .setAiSettings({ subscriptionNoticeVersion: AI_SUBSCRIPTION_NOTICE_VERSION })
+                    .then(setAiSettings)
+                }}
+                onChatgptReconsent={() => void client.chatgptSignIn(true).then(refreshAiState)}
+                onChatgptReconnect={() => void client.chatgptSignIn(false).then(refreshAiState)}
+                onRetryLast={lastAiPrompt ? () => void handleSendAi(lastAiPrompt) : undefined}
+              />
             }
-            const updated = await client.setAiSettings({
-              selectedProvider: provider,
-              providerKeyPatch: { provider, apiKey, freeOnly },
-              ...(validated.models[0]
-                ? { modelPatch: { provider, model: validated.models[0] } }
-                : {}),
-            })
-            setAiSettings(updated)
-          }}
-          onRemoveKey={async (provider) => {
-            const updated = await client.setAiSettings({
-              providerKeyPatch: { provider, apiKey: null },
-            })
-            setAiSettings(updated)
-          }}
-          onChatgptSignIn={async (reconsent) => {
-            await client.chatgptSignIn(reconsent)
-            await refreshAiState()
-          }}
-          onChatgptSignOut={async () => {
-            await client.chatgptSignOut()
-            await refreshAiState()
-          }}
-          onRestoreBackup={async (backupId, target: MobileRestoreTarget) => {
-            const res = await client.hwpBackupRestore(backupId, target)
-            await refreshHomeData()
-            if (res.session) {
-              await openLoadedSession(res.session, { isUntitled: false })
-            }
-          }}
-          onDeleteBackup={async (backupId) => {
-            await client.hwpBackupDelete(backupId)
-            await refreshHomeData()
-          }}
+          >
+            {activeDoc.session.format === 'md' || activeDoc.session.format === 'txt' ? (
+              <MarkdownMobileEditor
+                ref={markdownEditorRef}
+                value={markdownText}
+                mode={mode}
+                isPlainText={activeDoc.session.format === 'txt'}
+                zoomScale={zoomScale}
+                onChange={(next) => {
+                  setMarkdownText(next)
+                  sessionControllerRef.current?.markDirty(true)
+                }}
+                onErrorNotice={(key) => setNoticeBanner(tNow(key))}
+              />
+            ) : (
+              <HwpMobileEditor
+                ref={hwpEditorRef}
+                fileName={activeDoc.session.name}
+                documentBytes={hwpBytes}
+                mode={mode}
+                lang={lang}
+                theme={prefs.theme}
+                onDirty={handleHwpDirty}
+                onError={handleHwpError}
+              />
+            )}
+          </EditorShell>
+        )}
+
+        <UnsavedModal
+          open={unsavedPromptDoc !== null}
+          docTitle={unsavedPromptDoc ?? ''}
+          onChoice={resolveUnsavedChoice}
         />
-      )}
-
-      {screen === 'editor' && activeDoc && (
-        <EditorShell
-          docTitle={activeDoc.session.name}
-          docFormat={activeDoc.session.format}
-          dirty={activeDoc.dirty}
-          mode={mode}
-          canEdit={canEditActive}
-          aiEnabled={prefs.aiEnabled}
-          noticeBanner={noticeBanner}
-          onDismissNotice={() => setNoticeBanner(null)}
-          toastMessage={toastMessage}
-          quickActions={quickActions}
-          onBack={() => void handleBackFromEditor()}
-          onToggleMode={() => setMode((prev) => (prev === 'view' ? 'edit' : 'view'))}
-          onSave={() => void saveDocumentInternal(activeDoc, false)}
-          onSaveAs={() => void saveDocumentInternal(activeDoc, true)}
-          onShare={() => void handleShare()}
-          onFitToWidth={() => {
-            setZoomScale(1)
-            hwpEditorRef.current?.fitToWidth()
-          }}
-          onOpenBackups={() => {
-            void refreshHomeData()
-            setScreen('settings')
-          }}
-          aiPanelContent={
-            <AiSheetPanel
-              aiEnabled={prefs.aiEnabled}
-              aiSettings={aiSettings}
-              chatgptStatus={chatgptStatus}
-              messages={aiMessages}
-              streaming={aiStreaming}
-              canMutate={canEditActive}
-              autoSwitchedNotice={aiAutoSwitched}
-              recoveryNotice={aiRecoveryNotice}
-              lastChangeSummary={lastAiUndo?.summary ?? null}
-              onUndoLastChange={lastAiUndo?.undo}
-              onSend={(p) => void handleSendAi(p)}
-              onStop={() => activeRunCancelRef.current?.()}
-              onOpenSettings={() => {
-                void refreshAiState()
-                setScreen('settings')
-              }}
-              onAcknowledgeSubscriptionNotice={() => {
-                void client
-                  .setAiSettings({ subscriptionNoticeVersion: AI_SUBSCRIPTION_NOTICE_VERSION })
-                  .then(setAiSettings)
-              }}
-              onChatgptReconsent={() => void client.chatgptSignIn(true).then(refreshAiState)}
-              onChatgptReconnect={() => void client.chatgptSignIn(false).then(refreshAiState)}
-              onRetryLast={lastAiPrompt ? () => void handleSendAi(lastAiPrompt) : undefined}
-            />
-          }
-        >
-          {activeDoc.session.format === 'md' || activeDoc.session.format === 'txt' ? (
-            <MarkdownMobileEditor
-              ref={markdownEditorRef}
-              value={markdownText}
-              mode={mode}
-              isPlainText={activeDoc.session.format === 'txt'}
-              zoomScale={zoomScale}
-              onChange={(next) => {
-                setMarkdownText(next)
-                sessionControllerRef.current?.markDirty(true)
-              }}
-              onErrorNotice={(key) => setNoticeBanner(tNow(key))}
-            />
-          ) : (
-            <HwpMobileEditor
-              ref={hwpEditorRef}
-              fileName={activeDoc.session.name}
-              documentBytes={hwpBytes}
-              mode={mode}
-              lang={lang}
-              theme={prefs.theme}
-              onDirty={handleHwpDirty}
-              onError={handleHwpError}
-            />
-          )}
-        </EditorShell>
-      )}
-
-      <UnsavedModal
-        open={unsavedPromptDoc !== null}
-        docTitle={unsavedPromptDoc ?? ''}
-        onChoice={resolveUnsavedChoice}
-      />
+        <ToastHost toast={toast} onDismiss={dismissToast} />
+      </BackStackProvider>
     </MobileLocaleProvider>
   )
 }

@@ -39,6 +39,10 @@ export const en = {
   unsavedDiscard: 'Discard',
   cancel: 'Cancel',
   savedNotice: 'Saved.',
+  saveStateSaved: 'Saved',
+  saveStateDirty: 'Not saved',
+  saveStateSaving: 'Saving…',
+  saveStateFailed: 'Could not save',
   readonlyShareNotice: 'Temporary shared files cannot be overwritten in place. Choose Save As.',
   hwpTrackingDroppedNotice:
     'Opened tracked-changes document as current text. Tracked history will not be preserved on save.',

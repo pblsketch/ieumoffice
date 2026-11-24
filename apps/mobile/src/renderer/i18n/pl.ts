@@ -39,6 +39,10 @@ export const pl = {
   unsavedDiscard: 'Nie zapisuj',
   cancel: 'Anuluj',
   savedNotice: 'Zapisano.',
+  saveStateSaved: 'Zapisano',
+  saveStateDirty: 'Nie zapisano',
+  saveStateSaving: 'Zapisywanie…',
+  saveStateFailed: 'Nie udało się zapisać',
   readonlyShareNotice: 'Tymczasowych plików udostępnionych nie można nadpisać. Użyj Zapisz jako.',
   hwpTrackingDroppedNotice:
     'Otwarto bieżącą treść; historia zmian nie zostanie zachowana przy zapisie.',

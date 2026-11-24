@@ -39,6 +39,10 @@ export const th = {
   unsavedDiscard: 'ไม่บันทึก',
   cancel: 'ยกเลิก',
   savedNotice: 'บันทึกแล้ว',
+  saveStateSaved: 'บันทึกแล้ว',
+  saveStateDirty: 'ยังไม่ได้บันทึก',
+  saveStateSaving: 'กำลังบันทึก…',
+  saveStateFailed: 'บันทึกไม่สำเร็จ',
   readonlyShareNotice: 'ไม่สามารถบันทึกทับไฟล์แชร์ชั่วคราวได้ โปรดใช้ บันทึกเป็น',
   hwpTrackingDroppedNotice:
     'เปิดเอกสารติดตามการเปลี่ยนแปลงด้วยข้อความปัจจุบันแล้ว ประวัติจะไม่ถูกเก็บเมื่อบันทึก',

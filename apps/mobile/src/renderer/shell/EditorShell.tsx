@@ -3,7 +3,7 @@ import { AiMark } from '@genoffice/ui'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileDocFormat } from '@genoffice/mobile-bridge/transport'
 import { useMobileLocale } from '../i18n'
-import { BottomSheet } from '../components/BottomSheet'
+import { Sheet } from '../components/Sheet'
 import {
   DocTypeIcon,
   IconBack,
@@ -24,6 +24,7 @@ import {
   IconUnderline,
   IconUndo,
 } from '../components/MobileIcons'
+import { useBackLayer } from './backStack'
 import { useViewportLayout } from './useViewportLayout'
 
 export interface EditorQuickActionItem {
@@ -32,20 +33,30 @@ export interface EditorQuickActionItem {
   readonly onPress: () => void
 }
 
+/** What the app bar says about saving (design system 5.2). */
+export type EditorSaveState = 'saved' | 'dirty' | 'saving' | 'error'
+
+/** Quick action ids that live in the app bar instead of the toolbars. */
+const APP_BAR_ACTION_IDS = new Set(['undo', 'redo'])
+
 export interface EditorShellProps {
   readonly docTitle: string
   readonly docFormat: MobileDocFormat
-  readonly dirty: boolean
+  readonly saveState: EditorSaveState
   readonly mode: DocumentMode
   readonly canEdit: boolean
   readonly aiEnabled: boolean
   readonly noticeBanner?: string | null
-  readonly toastMessage?: string | null
   readonly onDismissNotice?: () => void
   readonly quickActions: readonly EditorQuickActionItem[]
   readonly aiPanelContent: ReactNode
   readonly onBack: () => void
-  readonly onToggleMode: () => void
+  /** [편집]: view -> edit. */
+  readonly onEnterEdit: () => void
+  /** [완료]: save if needed, then leave edit mode. */
+  readonly onDone: () => void
+  /** Back in edit mode: leave edit mode without saving (changes stay marked unsaved). */
+  readonly onExitEdit: () => void
   readonly onSave: () => void
   readonly onSaveAs: () => void
   readonly onShare: () => void
@@ -80,17 +91,18 @@ function renderQuickActionIcon(id: string): ReactNode {
 export function EditorShell({
   docTitle,
   docFormat,
-  dirty,
+  saveState,
   mode,
   canEdit,
   aiEnabled,
   noticeBanner,
-  toastMessage,
   onDismissNotice,
   quickActions,
   aiPanelContent,
   onBack,
-  onToggleMode,
+  onEnterEdit,
+  onDone,
+  onExitEdit,
   onSave,
   onSaveAs,
   onShare,
@@ -103,6 +115,25 @@ export function EditorShell({
   const [aiOpen, setAiOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const isHwpFamily = docFormat === 'hwp' || docFormat === 'hwpx'
+  const isEdit = mode === 'edit'
+
+  // Back order (design system 5.11): sheets close first (they register later),
+  // then edit mode ends, then the editor screen closes.
+  useBackLayer(true, onBack)
+  useBackLayer(isEdit, onExitEdit)
+
+  const barActions = quickActions.filter((item) => APP_BAR_ACTION_IDS.has(item.id))
+  const toolActions = quickActions.filter((item) => !APP_BAR_ACTION_IDS.has(item.id))
+
+  const saveLabel =
+    saveState === 'saving'
+      ? t('saveStateSaving')
+      : saveState === 'error'
+        ? t('saveStateFailed')
+        : saveState === 'dirty'
+          ? t('saveStateDirty')
+          : t('saveStateSaved')
+  const saveActionable = saveState === 'dirty' || saveState === 'error'
 
   return (
     <div
@@ -123,44 +154,74 @@ export function EditorShell({
         </button>
 
         <div className="mobile-header-title-wrap">
-          <DocTypeIcon format={docFormat} size={20} />
-          <span className="mobile-header-title">{docTitle}</span>
-          {dirty && <span className="mobile-dirty-dot" aria-label="unsaved" />}
+          {!isEdit && <DocTypeIcon format={docFormat} size={20} />}
+          <div className="mobile-header-title-stack">
+            <span className="mobile-header-title">{docTitle}</span>
+            {(isEdit || saveActionable || saveState === 'saving') && (
+              <button
+                type="button"
+                className="mobile-save-state"
+                data-state={saveState}
+                onClick={saveActionable ? onSave : undefined}
+                disabled={!saveActionable}
+                aria-live="polite"
+                data-testid="editor-save-btn"
+              >
+                <span className="mobile-save-dot" aria-hidden="true" />
+                <span className="mobile-save-text">{saveLabel}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mobile-header-actions">
-          {canEdit && (
+          {isEdit &&
+            barActions.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="mobile-icon-btn"
+                onClick={item.onPress}
+                aria-label={item.label}
+                title={item.label}
+              >
+                {renderQuickActionIcon(item.id)}
+              </button>
+            ))}
+          {!isEdit && (
             <button
               type="button"
-              className="mobile-pill-btn mobile-btn-secondary"
-              onClick={onToggleMode}
-              data-testid="editor-mode-toggle"
+              className="mobile-icon-btn"
+              onClick={onShare}
+              aria-label={t('share')}
+              title={t('share')}
+              data-testid="editor-share-btn"
             >
-              {mode === 'view' ? <IconEdit size={14} /> : <IconCheck size={14} />}
-              <span>{mode === 'view' ? t('switchToEdit') : t('switchToView')}</span>
+              <IconShare size={20} />
             </button>
           )}
-          <button
-            type="button"
-            className={
-              dirty ? 'mobile-pill-btn mobile-btn-primary' : 'mobile-pill-btn mobile-btn-secondary'
-            }
-            onClick={onSave}
-            aria-label={t('save')}
-            data-testid="editor-save-btn"
-          >
-            <IconSave size={14} />
-            <span>{t('save')}</span>
-          </button>
           {isTablet && aiEnabled && (
             <button
               type="button"
-              className="mobile-pill-btn mobile-btn-ai"
+              className="mobile-icon-btn mobile-btn-ai-icon"
               onClick={() => setAiOpen((prev) => !prev)}
+              aria-label={t('aiTitle')}
+              aria-pressed={aiOpen}
+              title={t('aiTitle')}
               data-testid="tablet-ai-toggle"
             >
-              <AiMark size={15} />
-              <span>{t('aiTitle')}</span>
+              <AiMark size={18} />
+            </button>
+          )}
+          {(isEdit || canEdit) && (
+            <button
+              type="button"
+              className="mobile-text-btn"
+              onClick={isEdit ? onDone : onEnterEdit}
+              data-testid="editor-mode-toggle"
+            >
+              {isEdit ? <IconCheck size={16} /> : <IconEdit size={16} />}
+              <span>{isEdit ? t('switchToView') : t('switchToEdit')}</span>
             </button>
           )}
           <button
@@ -176,9 +237,9 @@ export function EditorShell({
         </div>
       </header>
 
-      {isTablet && mode === 'edit' && quickActions.length > 0 && (
+      {isTablet && isEdit && toolActions.length > 0 && (
         <div className="mobile-tablet-toolbar" role="toolbar" data-testid="tablet-toolbar">
-          {quickActions.map((item) => {
+          {toolActions.map((item) => {
             const icon = renderQuickActionIcon(item.id)
             return (
               <button
@@ -214,15 +275,7 @@ export function EditorShell({
       )}
 
       <div className="mobile-workspace-row">
-        <section className="mobile-editor-stage">
-          {children}
-          {toastMessage && (
-            <div className="mobile-toast" role="status" aria-live="polite">
-              <IconCheck size={15} />
-              <span>{toastMessage}</span>
-            </div>
-          )}
-        </section>
+        <section className="mobile-editor-stage">{children}</section>
 
         {isTablet && aiEnabled && aiOpen && (
           <aside className="mobile-tablet-ai-dock" data-testid="tablet-ai-dock">
@@ -245,21 +298,22 @@ export function EditorShell({
         )}
       </div>
 
-      {!isTablet && mode === 'edit' && (
+      {!isTablet && isEdit && (
         <nav
           className="mobile-quick-toolbar"
           style={keyboardInsetPx > 0 ? { marginBottom: `${keyboardInsetPx}px` } : undefined}
           aria-label="Quick formatting"
           data-testid="phone-quick-toolbar"
         >
-          <div className="mobile-quick-scroll">
-            {quickActions.map((item) => {
+          <div className="mobile-quick-scroll" role="toolbar">
+            {toolActions.map((item) => {
               const icon = renderQuickActionIcon(item.id)
               return (
                 <button
                   key={item.id}
                   type="button"
                   className="mobile-quick-icon-btn"
+                  onPointerDown={(e) => e.preventDefault()}
                   onClick={item.onPress}
                   aria-label={item.label}
                   title={item.label}
@@ -272,19 +326,20 @@ export function EditorShell({
           {aiEnabled && (
             <button
               type="button"
-              className="mobile-pill-btn mobile-btn-ai mobile-quick-ai-btn"
+              className="mobile-quick-icon-btn mobile-btn-ai-icon mobile-quick-ai-btn"
+              onPointerDown={(e) => e.preventDefault()}
               onClick={() => setAiOpen(true)}
               aria-label={t('aiTitle')}
+              title={t('aiTitle')}
               data-testid="phone-ai-open-btn"
             >
-              <AiMark size={15} />
-              <span>AI</span>
+              <AiMark size={18} />
             </button>
           )}
         </nav>
       )}
 
-      {!isTablet && mode === 'view' && (
+      {!isTablet && !isEdit && (isHwpFamily || aiEnabled) && (
         <div className="mobile-view-fab-bar">
           {isHwpFamily && (
             <button
@@ -312,21 +367,23 @@ export function EditorShell({
       )}
 
       {!isTablet && aiEnabled && (
-        <BottomSheet
+        <Sheet
           open={aiOpen}
           title={t('aiTitle')}
           closeLabel={t('cancel')}
           onClose={() => setAiOpen(false)}
+          testId="editor-ai-sheet"
         >
           {aiPanelContent}
-        </BottomSheet>
+        </Sheet>
       )}
 
-      <BottomSheet
+      <Sheet
         open={moreOpen}
         title={t('more')}
         closeLabel={t('cancel')}
         onClose={() => setMoreOpen(false)}
+        testId="editor-more-sheet"
       >
         <div className="mobile-menu-stack">
           <button
@@ -351,17 +408,19 @@ export function EditorShell({
             <IconShare size={19} />
             <span>{t('share')}</span>
           </button>
-          <button
-            type="button"
-            className="mobile-menu-row-btn"
-            onClick={() => {
-              setMoreOpen(false)
-              onFitToWidth()
-            }}
-          >
-            <IconFitWidth size={19} />
-            <span>{t('fitToWidth')}</span>
-          </button>
+          {isHwpFamily && (
+            <button
+              type="button"
+              className="mobile-menu-row-btn"
+              onClick={() => {
+                setMoreOpen(false)
+                onFitToWidth()
+              }}
+            >
+              <IconFitWidth size={19} />
+              <span>{t('fitToWidth')}</span>
+            </button>
+          )}
           {isHwpFamily && (
             <button
               type="button"
@@ -376,7 +435,7 @@ export function EditorShell({
             </button>
           )}
         </div>
-      </BottomSheet>
+      </Sheet>
     </div>
   )
 }

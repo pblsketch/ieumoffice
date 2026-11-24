@@ -1,5 +1,6 @@
 import type { UnsavedSwitchChoice } from '@genoffice/mobile-bridge/session-state'
 import { useMobileLocale } from '../i18n'
+import { useBackLayer } from '../shell/backStack'
 
 export interface UnsavedModalProps {
   readonly open: boolean
@@ -9,6 +10,7 @@ export interface UnsavedModalProps {
 
 export function UnsavedModal({ open, docTitle, onChoice }: UnsavedModalProps) {
   const { t } = useMobileLocale()
+  useBackLayer(open, () => onChoice('cancel'))
   if (!open) return null
 
   return (
