@@ -498,7 +498,7 @@ describe('Text box tool', () => {
     pressTextTool(host)
     tap(host, 40, 200)
     typeInto(await waitFor(() => draftBox(host), 'the insert box'), '열린 상자')
-    // nothing confirmed yet, but [완료] / save must not lose what is being typed
+    // nothing confirmed yet, but [Done] / save must not lose what is being typed
     expect(edit.store.getSnapshot().textInserts).toHaveLength(0)
     expect(await doc.save!(docState(s), false)).toBe(true)
     expect(recorder.requests.at(-1)?.textInserts).toHaveLength(1)
@@ -720,7 +720,7 @@ describe('Text box tool', () => {
       'the edit box',
     )
     expect(box.value.replace(/\s+/g, '')).toBe('안녕Hello')
-    // 세상 is not in the embedded subset: the save draws it in an app font, said up front
+    // the second word is not in the embedded subset: the save draws it in an app font, said up front
     typeInto(box, '안녕 세상')
     click(host, 'pdf-text-confirm')
     await waitFor(
@@ -729,7 +729,7 @@ describe('Text box tool', () => {
     )
     expect(edit.store.getSnapshot().textEdits).toHaveLength(1)
 
-    // even the app fonts lack 뷁: the edit is refused at confirm, not at save
+    // even the app fonts lack the last syllable: the edit is refused at confirm, not at save
     act(() => q(host, 'pdf-text-edit-preview')!.click())
     const again = await waitFor(() => draftBox(host), 'the reopened edit')
     typeInto(again, '안녕 뷁')

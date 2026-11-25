@@ -71,7 +71,7 @@ export interface PdfDocumentOptions {
    * and the sheets hold history entries of the app's back stack, which steps back
    * asynchronously on a close but pushes at once on an open; remounting them would
    * drop and re-arm those entries in one moment, the history would drift from the
-   * stack, and [완료] could go back past the app's first entry.
+   * stack, and [Done] could go back past the app's first entry.
    */
   readonly modelSource?: PdfModelSource
 }

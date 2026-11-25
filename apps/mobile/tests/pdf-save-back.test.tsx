@@ -3,7 +3,7 @@
 // When the Workspace was remounted for the new document, the shell's editor and
 // edit-mode layers were removed (two asynchronous back steps) and armed again (two
 // immediate pushes) in the same moment: the history drifted from the back stack, and in
-// a browser [완료] could step back past the app's first entry (about:blank).
+// a browser [Done] could step back past the app's first entry (about:blank).
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -204,7 +204,7 @@ describe('saving the PDF editor keeps the back history', () => {
     const lengthBefore = window.history.length
     const history = watchHistory()
 
-    // App's [완료] (handleDone): save the pending edits, then back to view mode
+    // App's [Done] (handleDone): save the pending edits, then back to view mode
     let ok = false
     await act(async () => {
       ok = await doc.save!(docState, false)
