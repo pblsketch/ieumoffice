@@ -1,0 +1,249 @@
+/* Mobile PDF annotations (track T2, PDF-T5). Chrome colors come from the design
+   tokens; markup and note colors are document colors set inline (as on the PC). */
+
+.m-pdf-annot-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* pending markups: never in the way of the page underneath */
+.m-pdf-annot-markup {
+  position: absolute;
+  pointer-events: none;
+}
+
+.m-pdf-annot-highlight {
+  mix-blend-mode: multiply;
+}
+
+.m-pdf-annot-strikeout {
+  background-repeat: no-repeat;
+  background-size: 100% 2px;
+  background-position: 0 46%;
+}
+
+.m-pdf-annot-squiggle {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  overflow: visible;
+}
+
+/* a saved markup that the next save removes (PDF.js still paints it) */
+.m-pdf-annot-removed {
+  position: absolute;
+  pointer-events: none;
+  outline: 1px dashed var(--text-secondary);
+  outline-offset: 1px;
+}
+
+.m-pdf-annot-selection {
+  position: absolute;
+  pointer-events: none;
+  background: var(--m-pdf-text-selection);
+}
+
+/* the highlighter tool's gesture surface: vertical swipes still scroll */
+.m-pdf-annot-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-pdf-annot-surface[data-mode='note'] {
+  cursor: crosshair;
+}
+
+.m-pdf-annot-pin {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.m-pdf-annot-pin-face {
+  border-radius: var(--radius-8);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── the floating bar over the stage ── */
+.m-pdf-annot-bar {
+  position: absolute;
+  top: var(--m-space-2);
+  left: calc(var(--m-space-2) + var(--m-safe-left));
+  right: calc(var(--m-space-2) + var(--m-safe-right));
+  z-index: var(--m-z-toolbar);
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  padding: var(--m-space-1) var(--m-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.m-pdf-annot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-half);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.m-pdf-annot-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-8);
+  color: var(--text-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.m-pdf-annot-btn[aria-pressed='true'] {
+  background: var(--active-bg);
+  color: var(--color-btn-primary);
+}
+
+.m-pdf-annot-pen {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+}
+
+.m-pdf-annot-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border: 0;
+  border-radius: var(--m-radius-full);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.m-pdf-annot-mode[aria-checked='true'] {
+  color: var(--color-btn-primary);
+  background: var(--active-bg);
+}
+
+.m-pdf-annot-hint {
+  margin: 0;
+  padding: 0 var(--m-space-2) var(--m-space-1);
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-tight);
+  color: var(--text-secondary);
+}
+
+.m-pdf-annot-swatch {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--m-radius-full);
+  background: transparent;
+  cursor: pointer;
+}
+
+.m-pdf-annot-swatch-face {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+}
+
+.m-pdf-annot-swatch[aria-pressed='true'] .m-pdf-annot-swatch-face {
+  outline: 2px solid var(--color-btn-primary);
+  outline-offset: 2px;
+}
+
+/* ── sheets ── */
+.m-pdf-annot-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.m-pdf-annot-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-space-1);
+}
+
+.m-pdf-annot-text {
+  resize: vertical;
+}
+
+.m-pdf-annot-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
+
+.m-pdf-annot-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.m-pdf-annot-comment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  padding: var(--m-space-2) var(--m-space-3);
+  border-radius: var(--m-radius-card);
+  background: var(--surface-subtle);
+}
+
+.m-pdf-annot-comment[data-reply='true'] {
+  margin-inline-start: var(--m-space-6);
+}
+
+.m-pdf-annot-meta {
+  font-size: var(--m-text-caption);
+  color: var(--text-tertiary);
+}
+
+.m-pdf-annot-body {
+  font-size: var(--m-text-body);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.m-pdf-annot-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
