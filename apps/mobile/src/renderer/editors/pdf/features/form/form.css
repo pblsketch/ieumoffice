@@ -19,6 +19,10 @@
 .m-pdf-form-mark {
   position: absolute;
   box-sizing: border-box;
+  /* the box is the widget's rectangle: no global button minimum (styles/mobile-tokens.css)
+     may grow it; the finger-sized hit area is the invisible ::after below */
+  min-width: 0;
+  min-height: 0;
   margin: 0;
   padding: 0;
   font: inherit;

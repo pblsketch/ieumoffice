@@ -219,6 +219,30 @@ async function settle(until: () => boolean, tries = 200): Promise<void> {
   expect(until()).toBe(true)
 }
 
+/** The declarations of the first rule in `file` whose selector list holds `selector`. */
+function cssRule(file: string, selector: string): Record<string, string> {
+  const css = readFileSync(resolve(__dirname, '../src/renderer/editors/pdf', file), 'utf8')
+  for (const m of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (!m[1]!.split(',').some((s) => s.trim() === selector)) continue
+    const decls = m[2]!.split(';').flatMap((d) => {
+      const i = d.indexOf(':')
+      return i < 0
+        ? []
+        : [
+            [
+              d.slice(0, i).trim(),
+              d
+                .slice(i + 1)
+                .trim()
+                .replace(/\s+/g, ' '),
+            ],
+          ]
+    })
+    return Object.fromEntries(decls)
+  }
+  throw new Error(`no rule for ${selector} in ${file}`)
+}
+
 const q = <T extends Element = HTMLElement>(root: ParentNode, testId: string) =>
   root.querySelector<T & HTMLElement>(`[data-testid="${testId}"]`)
 
@@ -752,6 +776,42 @@ describe('annot feature in the frame', () => {
     expect(edits.annotDeletes).toEqual([{ id: expect.any(String), annot: notes[0] }])
     expect(edits.drawings).toEqual([])
     expect(edits.noteEdits).toEqual([])
+  })
+
+  it('takes presses on glyphs in highlighter mode and shows its bar above the pages', async () => {
+    const { doc } = await startDoc(await textPdf(['Hello world']))
+    const host = mountWorkspace(doc)
+    const { surface } = await openTool(host)
+
+    // the surface is stacked over the PDF.js text layer spans and under the links
+    const textSpan = cssRule('view/pdfView.css', '.m-pdf-page .textLayer > :not(.markedContent)')
+    const links = cssRule('view/pdfView.css', '.m-pdf-link-layer')
+    const surfaceRule = cssRule('features/annot/annot.css', '.m-pdf-annot-surface')
+    expect(Number(surfaceRule['z-index'])).toBeGreaterThan(Number(textSpan['z-index']))
+    expect(Number(surfaceRule['z-index'])).toBeLessThan(Number(links['z-index']))
+    expect(surfaceRule['pointer-events']).toBe('auto')
+    // the layer holding it adds no stacking context of its own (no z-index), so the
+    // surface competes with the spans in the page column
+    expect(cssRule('features/annot/annot.css', '.m-pdf-annot-layer')['z-index']).toBeUndefined()
+    // note pins, drawn after the surface, stay above it
+    const pin = cssRule('features/annot/annot.css', '.m-pdf-annot-pin')
+    expect(Number(pin['z-index'])).toBeGreaterThanOrEqual(Number(surfaceRule['z-index']))
+    expect(surface.closest('.m-pdf-page')).not.toBeNull()
+
+    // the bar sits in the stage column before the document area, not over the pages
+    const bar = q(host, 'pdf-annot-bar')!
+    expect(bar.parentElement).toBe(q(host, 'pdf-stage'))
+    expect(bar.closest('[data-testid="pdf-scroll"]')).toBeNull()
+    const barRule = cssRule('features/annot/annot.css', '.m-pdf-annot-bar')
+    expect(barRule.position).toBe('relative')
+    expect(barRule.order).toBe('-1')
+    expect(barRule['flex-shrink']).toBe('0')
+    expect(barRule.top).toBeUndefined()
+
+    // other modes: no surface, so links and text keep their presses
+    act(() => q(host, 'pdf-tool-highlighter')!.click())
+    expect(q(host, 'pdf-annot-surface-0')).toBeNull()
+    expect(q(host, 'pdf-annot-bar')).toBeNull()
   })
 
   it('changes nothing while viewing: no tool surface, read-only threads', async () => {
