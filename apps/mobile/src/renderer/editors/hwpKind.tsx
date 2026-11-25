@@ -46,6 +46,9 @@ const FLOW_ZOOM_MIN = 0.8
 const FLOW_ZOOM_MAX = 2.4
 const FLOW_ZOOM_STEP = 0.15
 
+/** The flow view's text scale, as before one value for the whole app: the next document keeps it. */
+let lastFlowZoom = FLOW_ZOOM_DEFAULT
+
 /**
  * A failed save check, as before one flag for the whole app: it stays set until a
  * save succeeds, also when another document is opened in between.
@@ -153,12 +156,14 @@ function startHwpDocument(
     hwpLayout:
       rememberedLayout(window.localStorage, openedSession.docKey) ??
       (host.windowClass() === 'compact' || host.windowClass() === 'medium' ? 'flow' : 'page'),
-    flowZoom: FLOW_ZOOM_DEFAULT,
+    flowZoom: lastFlowZoom,
   })
   const setFlowBytes = (flowBytes: Uint8Array | null) => kept.set({ flowBytes })
   const setHwpLayout = (hwpLayout: 'page' | 'flow') => kept.set({ hwpLayout })
-  const setFlowZoom = (next: (zoom: number) => number) =>
-    kept.set({ flowZoom: next(kept.get().flowZoom) })
+  const setFlowZoom = (next: (zoom: number) => number) => {
+    lastFlowZoom = next(kept.get().flowZoom)
+    kept.set({ flowZoom: lastFlowZoom })
+  }
 
   const hwpEditorRef: { current: HwpMobileEditorHandle | null } = { current: null }
   const flowRef: { current: HwpFlowViewHandle | null } = { current: null }
