@@ -43,6 +43,8 @@ pub const KEY_NOT_FOUND: &str = "mobile.home.notFound";
 pub const KEY_FAILED: &str = "mobile.home.failed";
 const KEY_NOT_OPENABLE: &str = "mobile.format.notOpenable";
 
+// The product name is spelled out in these two file names on purpose: Rust cannot read
+// packages/i18n/src/product.ts, so change them together with it if the product name changes.
 /// Name of the bundled sample document for the Korean screen language.
 pub const SAMPLE_NAME_KO: &str = "이음오피스 시작하기.hwpx";
 /// Name of the bundled sample document for every other screen language.

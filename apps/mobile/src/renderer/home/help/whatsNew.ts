@@ -11,16 +11,16 @@ export interface WhatsNewEntry {
   readonly itemKeys: readonly MobileStringKey[]
 }
 
-/** The first mobile release (1판); its notes never show as an update, only from Help. */
+/** The first mobile release; its notes never show as an update, only from Help. */
 export const MOBILE_FIRST_VERSION = '0.1.0'
 
 /**
  * Notes per version, oldest first. Add an entry (and its strings in all languages) for each
  * release that changes something people should know about.
  *
- * The 1판 list follows the 1판 row of docs/plans/mobile-scope.md ("판 나누기"). Before the
- * release, check it against the tracks actually merged into the mobile branch and drop any line
- * whose feature did not make it.
+ * The first-release list follows the first-release row of the release split table in
+ * docs/plans/mobile-scope.md. Before the release, check it against the tracks actually merged
+ * into the mobile branch and drop any line whose feature did not make it.
  */
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
   {
