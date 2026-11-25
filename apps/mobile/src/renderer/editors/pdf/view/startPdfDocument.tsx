@@ -13,7 +13,6 @@ import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../edi
 import { IconPdfGoToPage, IconPdfLock, IconPdfOutline, IconPdfSearch } from './icons'
 import type { PdfOpenedDocument } from './model'
 import { resolveDestPageIndex } from './outline'
-import { afterMoreSheetBack } from './moreSheetBack'
 import { PdfGoToPageSheet } from './PdfGoToPageSheet'
 import { PdfOutlineSheet } from './PdfOutlineSheet'
 import { PdfSearchBar } from './PdfSearchBar'
@@ -234,20 +233,15 @@ export function startPdfDocument(
           id: 'pdfOutline',
           label: t('pdfViewOutline'),
           icon: <IconPdfOutline size={19} />,
-          onPress: () => afterMoreSheetBack(() => setOutlineOpen(true)),
+          onPress: () => setOutlineOpen(true),
         },
         {
           id: 'pdfGoToPage',
           label: t('pdfViewGoToPage'),
           icon: <IconPdfGoToPage size={19} />,
-          onPress: () => afterMoreSheetBack(() => setGoToOpen(true)),
+          onPress: () => setGoToOpen(true),
         },
-        // a row may open a sheet (its own history entry): only after the More sheet's
-        // back step, see moreSheetBack.ts
-        ...(chrome.moreItems ?? []).map((item): EditorQuickActionItem => ({
-          ...item,
-          onPress: () => afterMoreSheetBack(item.onPress),
-        })),
+        ...(chrome.moreItems ?? []),
       ],
       [t, chrome.moreItems],
     )

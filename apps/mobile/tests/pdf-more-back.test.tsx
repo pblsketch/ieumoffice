@@ -1,9 +1,7 @@
-// Back history of sheets opened from the [⋯] More sheet (track T2, PDF-FIX-B). The
-// shell's back stack steps history back asynchronously when the More sheet closes but
-// pushes the next sheet's entry at once; the PDF editor therefore opens what a More row
-// asks for only after that back step (view/moreSheetBack.ts). Without that, jsdom drops
-// the pending back step (a browser may land it on the new entry instead), so each round
-// leaves one entry too many and later Backs close the wrong layer.
+// Back history of sheets opened from the [⋯] More sheet: a row that opens another sheet closes
+// the More sheet and opens the next one in the same tap. The shell's back stack now opens a layer
+// only after the backs still on their way have arrived, so the stack and the history stay in step
+// and Back never leaves past the start.
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,11 +13,6 @@ import { startPdfEditDocument, type PdfEditDocument } from '../src/renderer/edit
 import { setSharedPdfEngine } from '../src/renderer/editors/pdf/engine'
 import { createInThreadPdfEngine } from '../src/renderer/editors/pdf/engine/inThread'
 import type { PdfOpenedDocument } from '../src/renderer/editors/pdf/view/model'
-import {
-  afterMoreSheetBack,
-  MORE_SHEET_BACK_TIMEOUT_MS,
-  noteMoreSheetBack,
-} from '../src/renderer/editors/pdf/view/moreSheetBack'
 import { openPdfModel } from '../src/renderer/editors/pdf/view/openPdf'
 import { pcUnlockProbe } from '../src/renderer/editors/pdf/view/pcEngineHooks'
 import { MobileLocaleProvider } from '../src/renderer/i18n'
@@ -256,62 +249,4 @@ describe('sheets opened from the More sheet', () => {
     await settle()
     expect(window.history.state).toEqual(startState)
   }, 60_000)
-})
-
-describe('afterMoreSheetBack', () => {
-  afterEach(() => {
-    document.body.innerHTML = ''
-    vi.useRealTimers()
-  })
-
-  function showMoreSheet(armed: boolean) {
-    const sheet = document.createElement('div')
-    sheet.setAttribute('data-testid', 'editor-more-sheet')
-    document.body.appendChild(sheet)
-    window.history.replaceState(armed ? { ieumBackLayer: 99 } : null, '')
-  }
-
-  it('opens at once when no More sheet is closing or no back stack holds an entry', () => {
-    const open = vi.fn()
-    window.history.replaceState({ ieumBackLayer: 1 }, '')
-    afterMoreSheetBack(open)
-    expect(open).toHaveBeenCalledTimes(1)
-
-    showMoreSheet(false)
-    afterMoreSheetBack(open)
-    expect(open).toHaveBeenCalledTimes(2)
-    expect(noteMoreSheetBack()).toBeNull()
-  })
-
-  it('waits for the back step (popstate), shared by every open in the same tap', async () => {
-    showMoreSheet(true)
-    const first = vi.fn()
-    const second = vi.fn()
-    afterMoreSheetBack(first)
-    document.body.innerHTML = ''
-    // the sheet is gone by now; the noted wait still holds
-    afterMoreSheetBack(second)
-    await Promise.resolve()
-    expect(first).not.toHaveBeenCalled()
-    expect(second).not.toHaveBeenCalled()
-    window.dispatchEvent(new PopStateEvent('popstate'))
-    await Promise.resolve()
-    expect(first).toHaveBeenCalledTimes(1)
-    expect(second).toHaveBeenCalledTimes(1)
-    // settled: the next open is immediate
-    const third = vi.fn()
-    afterMoreSheetBack(third)
-    expect(third).toHaveBeenCalledTimes(1)
-  })
-
-  it('opens anyway when the back step never arrives', async () => {
-    vi.useFakeTimers()
-    showMoreSheet(true)
-    const open = vi.fn()
-    afterMoreSheetBack(open)
-    await vi.advanceTimersByTimeAsync(MORE_SHEET_BACK_TIMEOUT_MS - 1)
-    expect(open).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(1)
-    expect(open).toHaveBeenCalledTimes(1)
-  })
 })
