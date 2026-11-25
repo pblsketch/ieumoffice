@@ -9,7 +9,7 @@
 
 const { execFileSync } = require('node:child_process')
 const { existsSync, readFileSync, readdirSync, rmSync } = require('node:fs')
-const { join } = require('node:path')
+const { dirname, join } = require('node:path')
 
 // Product identity of the installed app. PRODUCT_NAME must equal PRODUCT_NAME
 // in packages/i18n/src/product.ts and "productName" in ./package.json, and the
@@ -220,6 +220,37 @@ function assertUniversalParseSidecar() {
           'run "npm run native:build:universal -w @genoffice/file-parse" before packaging mac',
       )
     }
+  }
+}
+
+// The draw.io bundle (about 2,900 files, most of them shape pictures) ships
+// as one asar archive that the diagram editor reads through Electron's fs like
+// a folder (drawioBundleDir in apps/diagram/src/main/drawio-protocol.ts,
+// decision 0166). On Windows every shipped file is written by the installer,
+// opened by the virus scan and, at the next update, deleted by the old
+// uninstaller, so one file instead of 2,900 shortens both install and update.
+// electron-builder archives only the app itself, hence this hook.
+const DRAWIO_SOURCE = '../diagram/out/drawio'
+
+function packagedResourcesDir(context) {
+  if (context.electronPlatformName === 'darwin') {
+    const app = `${context.packager.appInfo.productFilename}.app`
+    return join(context.appOutDir, app, 'Contents', 'Resources')
+  }
+  return join(context.appOutDir, 'resources')
+}
+
+async function packDrawioArchive(context) {
+  // the asar tool electron-builder itself packs app.asar with
+  const asar = require(
+    require.resolve('@electron/asar', { paths: [dirname(require.resolve('app-builder-lib'))] }),
+  )
+  const target = join(packagedResourcesDir(context), 'modules', 'diagram', 'drawio.asar')
+  rmSync(target, { force: true })
+  await asar.createPackage(join(__dirname, DRAWIO_SOURCE), target)
+  const index = asar.extractFile(target, 'index.html')
+  if (!index || index.length === 0) {
+    throw new Error(`draw.io archive ${target} has no index.html`)
   }
 }
 
@@ -675,13 +706,14 @@ const config = {
       from: '../epub/out',
       to: 'modules/epub',
     },
-    // the diagram editor with the trimmed draw.io bundle in out/drawio
-    // (vendor/drawio/bundle.mjs), read as resources/modules/diagram/drawio;
+    // the diagram editor; its trimmed draw.io bundle (out/drawio,
+    // vendor/drawio/bundle.mjs) is left out here and packed by afterPack into
+    // resources/modules/diagram/drawio.asar (packDrawioArchive, decision 0166);
     // the stamp only tells the build step the bundle is current
     {
       from: '../diagram/out',
       to: 'modules/diagram',
-      filter: ['**/*', '!drawio.stamp.json'],
+      filter: ['**/*', '!drawio.stamp.json', '!drawio/**'],
     },
     {
       from: '../whiteboard/out',
@@ -1058,6 +1090,9 @@ const config = {
     artifactName: winArm64
       ? '${productName}-Setup-${version}-arm64.${ext}'
       : '${productName}-Setup-${version}.${ext}',
+  },
+  afterPack: async (context) => {
+    await packDrawioArchive(context)
   },
   beforePack: async (context) => {
     ensurePlatformHelpers()

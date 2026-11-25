@@ -20,7 +20,7 @@
 3. `js/extensions.min.js`만 예외다. 아래 "잘라내기"를 본다.
 4. 같은 판·같은 설정으로 이미 만든 결과가 있으면(`apps/diagram/out/drawio.stamp.json`) 아무것도 하지 않는다.
 
-다른 코드는 다이어그램 모듈의 빌드 결과 폴더 아래 `drawio/`에서 찾는다. 개발 실행에서는 `apps/diagram/out/drawio/`, 설치본에서는 `resources/modules/diagram/drawio/`다(`apps/shell/electron-builder.cjs`가 `apps/diagram/out`을 `modules/diagram`으로 싣는다. 도장 파일은 싣지 않는다). 셸이 다른 모듈처럼 `DIAGRAM_OUT`을 정하면 `join(DIAGRAM_OUT, 'drawio')`다.
+다른 코드는 다이어그램 모듈의 빌드 결과 폴더 아래 `drawio/`에서 찾는다. 개발 실행에서는 `apps/diagram/out/drawio/`, 설치본에서는 asar 파일 하나 `resources/modules/diagram/drawio.asar`다(`apps/shell/electron-builder.cjs`가 `apps/diagram/out`을 `drawio/`와 도장 파일을 뺀 채 `modules/diagram`으로 싣고, `afterPack`이 `drawio/`를 그 자리에 asar로 묶는다. 결정 0166). 파일 2,900개를 하나로 묶어 설치·업데이트 때 쓰고 검사하고 지우는 파일 수를 줄이려는 것이다. Electron의 파일 읽기가 asar 안을 폴더처럼 읽으므로 편집기 쪽은 경로만 다르다. 셸은 `drawioBundleDir(DIAGRAM_OUT)`으로 asar가 있으면 그것을, 없으면 `drawio/` 폴더를 쓴다.
 
 ## 잘라내기 (단 하나 승인된 예외)
 

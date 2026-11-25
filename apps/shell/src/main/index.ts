@@ -415,6 +415,7 @@ import { migrateJobRecords } from './pdf-structure/job-migration'
 import {
   DRAWIO_SCHEME_PRIVILEGE,
   configureDiagramRuntime,
+  drawioBundleDir,
   diagramFileRenamed,
   diagramHasRecoveryCopy,
   diagramOpenRefusal,
@@ -832,7 +833,8 @@ const HWP_OUT = app.isPackaged
 const EPUB_OUT = app.isPackaged
   ? join(process.resourcesPath, 'modules', 'epub')
   : join(APPS_ROOT, 'epub', 'out')
-// the draw.io bundle sits beside the renderer (out/drawio; modules/diagram/drawio packaged)
+// the draw.io bundle sits beside the renderer (out/drawio; the archive
+// modules/diagram/drawio.asar packaged, decision 0166)
 const DIAGRAM_OUT = app.isPackaged
   ? join(process.resourcesPath, 'modules', 'diagram')
   : join(APPS_ROOT, 'diagram', 'out')
@@ -998,7 +1000,7 @@ configureDiagramRuntime({
   preloadPath: join(DIAGRAM_OUT, 'preload', 'index.js'),
   rendererUrl: process.env.DIAGRAM_RENDERER_URL,
   rendererFile: join(DIAGRAM_OUT, 'renderer', 'index.html'),
-  drawioDir: join(DIAGRAM_OUT, 'drawio'),
+  drawioDir: drawioBundleDir(DIAGRAM_OUT),
   bridgeFile: join(DIAGRAM_OUT, 'bridge', 'bridge.js'),
   packaged: app.isPackaged,
   newDocumentDir: (id) => newDocumentFolderFor(id),

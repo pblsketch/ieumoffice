@@ -967,9 +967,15 @@ export function initAutoUpdater(
   // installer cannot close the app over a save prompt, and every start is
   // recorded for the next launch to check.
   autoUpdater.autoInstallOnAppQuit = false
-  // full-package policy: never attempt blockmap differential downloads
-  // (a release then needs only the installer and its latest.yml)
-  autoUpdater.disableDifferentialDownload = true
+  // Windows downloads only the blocks of the new installer that differ from
+  // the one this install came from (decision 0166): every NSIS install copies
+  // its installer to <local app data>/ieumoffice-updater/installer.exe, and
+  // the release carries the .blockmap of each installer. Anything missing or
+  // wrong (no cached installer, no old blockmap, a digest mismatch) makes
+  // electron-updater fall back to the full download, which the resume wrapper
+  // below then handles. macOS and Linux keep the full download: their update
+  // paths (mac-update.ts, AppImage) were never tried with a partial one.
+  autoUpdater.disableDifferentialDownload = process.platform !== 'win32'
   installResumeDownload(autoUpdater as unknown as Parameters<typeof installResumeDownload>[0])
 
   // macOS: Squirrel.Mac only installs into an app signed with a Developer ID,

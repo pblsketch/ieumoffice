@@ -143,6 +143,11 @@ jobs:
           feed="apps/shell/release/latest.yml"
           test -f "$installer" || { echo "missing: $installer"; exit 1; }
           test -f "$feed" || { echo "missing: $feed"; exit 1; }
+          # the Windows app downloads only the changed blocks with it (decision 0166)
+          test -s "$installer.blockmap" || { echo "missing: $installer.blockmap"; exit 1; }
+          # the draw.io bundle ships as one archive, not 2,900 files (decision 0166)
+          test -s "$dir/resources/modules/diagram/drawio.asar" || { echo "missing: drawio.asar"; exit 1; }
+          if [ -e "$dir/resources/modules/diagram/drawio" ]; then echo "the draw.io folder shipped beside its archive"; exit 1; fi
           built=$(sed -n 's/^version: *//p' "$feed" | tr -d "'\"")
           [ "$built" = "$version" ] || { echo "latest.yml says $built, package.json $version"; exit 1; }
           grep -q "^path: IeumOffice-Setup-$version.exe$" "$feed" || { echo "latest.yml path does not name the installer"; exit 1; }
@@ -150,8 +155,9 @@ jobs:
           status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature '$installer').Status")
           [ "$(echo "$status" | tr -d '\r')" = "NotSigned" ] || { echo "the installer is signed ($status)"; exit 1; }
 
-      # The packaged app itself, run without a window: a Markdown and a CSV file
-      # (the latter through the xlsx sidecar) are exported to PDF
+      # The packaged app itself, run without a window: a Markdown, a CSV (through
+      # the xlsx sidecar) and a draw.io file (draw.io read from drawio.asar,
+      # decision 0166) are exported to PDF
       - name: Smoke test the packaged app
         run: |
           set -euo pipefail
@@ -160,7 +166,8 @@ jobs:
           mkdir -p "$work"
           printf '# Smoke test\n\nHello from the Windows build.\n' > "$work/note.md"
           printf 'name,count\napple,3\npear,5\n' > "$work/table.csv"
-          for input in note.md table.csv; do
+          printf '%s' '<mxfile><diagram id="p" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="2" value="Smoke" style="rounded=1;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="120" height="60" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>' > "$work/chart.drawio"
+          for input in note.md table.csv chart.drawio; do
             "$exe" --headless-export "$work/$input" --to pdf --out "$work/$input.pdf" --json
             test -s "$work/$input.pdf"
           done

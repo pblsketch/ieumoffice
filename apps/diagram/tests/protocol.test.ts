@@ -1,11 +1,15 @@
 // @vitest-environment node
 // `drawio-app://`: only files under the bundle folder, the bridge put first in
 // index.html, a strict policy on every page.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  DRAWIO_ARCHIVE,
   PRINT_PAGE_CSP,
   contentTypeOf,
+  drawioBundleDir,
   drawioCsp,
   injectBridge,
   resolveDrawioRequest,
@@ -123,5 +127,28 @@ describe('contentTypeOf', () => {
     expect(contentTypeOf('img/a.svg')).toBe('image/svg+xml')
     expect(contentTypeOf('resources/dia_ko.txt')).toMatch(/^text\/plain/)
     expect(contentTypeOf('x.unknown')).toBe('application/octet-stream')
+  })
+})
+
+// the installer packs the bundle into one archive (decision 0166)
+describe('drawioBundleDir', () => {
+  it('reads the archive when the module ships one, else the folder', () => {
+    const out = mkdtempSync(join(tmpdir(), 'drawio-out-'))
+    try {
+      mkdirSync(join(out, 'drawio'))
+      expect(drawioBundleDir(out)).toBe(join(out, 'drawio'))
+      writeFileSync(join(out, DRAWIO_ARCHIVE), '')
+      expect(drawioBundleDir(out)).toBe(join(out, 'drawio.asar'))
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
+  it('serves files inside the archive like a folder', () => {
+    const archive = resolve('/res/modules/diagram/drawio.asar')
+    expect(resolveDrawioRequest(archive, 'drawio-app://editor/img/lib/a.svg')).toMatchObject({
+      kind: 'file',
+      path: join(archive, 'img', 'lib', 'a.svg'),
+    })
   })
 })

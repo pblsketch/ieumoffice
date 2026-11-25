@@ -88,7 +88,7 @@ import {
   withFormatExtension,
 } from '../shared/formats'
 import { openableLink } from '../shared/links'
-import { DRAWIO_SCHEME_PRIVILEGE } from './drawio-protocol'
+import { DRAWIO_SCHEME_PRIVILEGE, drawioBundleDir } from './drawio-protocol'
 import { diagramSession } from './diagram-session'
 import { registerDiagramExportIpc } from './export-main'
 import { registerDiagramAiIpc } from './ai-attachments'
@@ -117,7 +117,7 @@ import {
   writeViewCopy,
 } from './recovery-main'
 
-export { DRAWIO_SCHEME_PRIVILEGE } from './drawio-protocol'
+export { DRAWIO_SCHEME_PRIVILEGE, drawioBundleDir } from './drawio-protocol'
 export { DIAGRAM_PARTITION } from './network-guard'
 export { diagramRequestLog } from './diagram-session'
 export { registerDiagramAiIpc, setDiagramProvisionalTitleHook } from './ai-attachments'
@@ -132,9 +132,9 @@ export interface DiagramRuntime {
   /** the built renderer page (`<module out>/renderer/index.html`) */
   rendererFile?: string
   /**
-   * The trimmed draw.io bundle. Default: `<module out>/drawio`, beside the
-   * renderer folder (`apps/diagram/out/drawio` in a dev run,
-   * `resources/modules/diagram/drawio` in the installer).
+   * The trimmed draw.io bundle. Default: `drawioBundleDir(<module out>)`,
+   * beside the renderer folder (`apps/diagram/out/drawio` in a dev run, the
+   * archive `resources/modules/diagram/drawio.asar` in the installer).
    */
   drawioDir?: string
   /** our bridge script. Default: `<module out>/bridge/bridge.js` */
@@ -167,7 +167,7 @@ function sessionPaths() {
   const out = moduleOutDir()
   return {
     rendererDir: runtime.rendererFile ? dirname(runtime.rendererFile) : join(out, 'renderer'),
-    drawioDir: runtime.drawioDir ?? join(out, 'drawio'),
+    drawioDir: runtime.drawioDir ?? drawioBundleDir(out),
     bridgeFile: runtime.bridgeFile ?? join(out, 'bridge', 'bridge.js'),
     devOrigins: devServerOrigins(
       [runtime.rendererUrl, process.env.DIAGRAM_RENDERER_URL, process.env.ELECTRON_RENDERER_URL],
