@@ -169,4 +169,5 @@ export const zhTW = {
   backupRestoreInPlace: '還原原檔',
   backupRestoreSaveAs: '另存副本',
   backupDelete: '刪除',
+  formatNotOpenable: '無法開啟此類型的檔案。',
 } as const satisfies Record<keyof typeof zh, string>

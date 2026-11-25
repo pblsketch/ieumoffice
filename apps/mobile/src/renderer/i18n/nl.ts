@@ -178,4 +178,5 @@ export const nl = {
   backupRestoreInPlace: 'Origineel herstellen',
   backupRestoreSaveAs: 'Opslaan als kopie',
   backupDelete: 'Verwijderen',
+  formatNotOpenable: 'Dit bestandstype kan niet worden geopend.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -173,4 +173,5 @@ export const hi = {
   backupRestoreInPlace: 'मूल पुनर्स्थापित करें',
   backupRestoreSaveAs: 'प्रति के रूप में सहेजें',
   backupDelete: 'हटाएँ',
+  formatNotOpenable: 'इस प्रकार की फ़ाइल नहीं खोली जा सकती।',
 } as const satisfies Record<keyof typeof zh, string>

@@ -169,4 +169,5 @@ export const he = {
   backupRestoreInPlace: 'שחזר מקור',
   backupRestoreSaveAs: 'שמור כעותק',
   backupDelete: 'מחק',
+  formatNotOpenable: 'לא ניתן לפתוח סוג קובץ זה.',
 } as const satisfies Record<keyof typeof zh, string>

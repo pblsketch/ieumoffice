@@ -171,4 +171,5 @@ export const id = {
   backupRestoreInPlace: 'Pulihkan asli',
   backupRestoreSaveAs: 'Simpan sebagai salinan',
   backupDelete: 'Hapus',
+  formatNotOpenable: 'Jenis file ini tidak dapat dibuka.',
 } as const satisfies Record<keyof typeof zh, string>
