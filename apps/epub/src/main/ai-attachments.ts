@@ -20,7 +20,12 @@
 import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, join, extname } from 'node:path'
 import { BrowserWindow, app, dialog, ipcMain } from 'electron'
-import { assertFileSaved, showOpenDialogWithMemory } from '@genoffice/electron-utils'
+import {
+  assertFileSaved,
+  isBesideDocument,
+  sharedPathGrants,
+  showOpenDialogWithMemory,
+} from '@genoffice/electron-utils'
 import {
   parseFileToText,
   ATTACHABLE_EXTS,
@@ -547,8 +552,18 @@ export function readAttachmentImage(filePath: unknown): AttachmentImageResult {
   }
 }
 
+export interface EpubAiIpcOptions {
+  /** current document path of a view, for neighbor attachment reads */
+  filePathOf?: (webContentsId: number) => string | undefined
+}
+
 /** Registers the attachment channels. Called once, with the editor's other channels. */
-export function registerEpubAiIpc(): void {
+export function registerEpubAiIpc(options: EpubAiIpcOptions = {}): void {
+  const canReadAttachment = (wcId: number, filePath: unknown): boolean =>
+    typeof filePath === 'string' &&
+    (sharedPathGrants().has(wcId, filePath) ||
+      isBesideDocument(options.filePathOf?.(wcId), filePath))
+
   ipcMain.handle(EPUB_CHANNELS.filesPick, async (e): Promise<AttachmentAddResult | null> => {
     const win =
       BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
@@ -561,6 +576,7 @@ export function registerEpubAiIpc(): void {
       properties: ['openFile', 'multiSelections'],
     })
     if (picked.canceled || picked.filePaths.length === 0) return null
+    sharedPathGrants().grant(e.sender.id, picked.filePaths)
     return collectAttachments(picked.filePaths)
   })
 
@@ -570,20 +586,28 @@ export function registerEpubAiIpc(): void {
 
   ipcMain.handle(
     EPUB_CHANNELS.filesAddPastedImage,
-    (_e, data: unknown, ext: unknown): AttachmentAddResult => {
+    (e, data: unknown, ext: unknown): AttachmentAddResult => {
       const saved = savePastedImage(data, ext)
       if (saved === 'too-large') return { accepted: [], rejected: [tm('errImageTooLarge')] }
+      if (saved) sharedPathGrants().grant(e.sender.id, [saved])
       return saved ? collectAttachments([saved]) : { accepted: [], rejected: [tm('errNotImage')] }
     },
   )
 
   ipcMain.handle(
     EPUB_CHANNELS.filesRead,
-    (_e, filePath: unknown, offset: unknown, maxChars: unknown) =>
-      readAttachmentPage(filePath, offset, maxChars),
+    (e, filePath: unknown, offset: unknown, maxChars: unknown) => {
+      if (!canReadAttachment(e.sender.id, filePath)) {
+        return { ok: false, error: 'epub: path not granted to this view' }
+      }
+      return readAttachmentPage(filePath, offset, maxChars)
+    },
   )
 
-  ipcMain.handle(EPUB_CHANNELS.filesReadImage, (_e, filePath: unknown) =>
-    readAttachmentImage(filePath),
-  )
+  ipcMain.handle(EPUB_CHANNELS.filesReadImage, (e, filePath: unknown) => {
+    if (!canReadAttachment(e.sender.id, filePath)) {
+      return { ok: false, error: 'epub: path not granted to this view' }
+    }
+    return readAttachmentImage(filePath)
+  })
 }

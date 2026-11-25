@@ -879,7 +879,7 @@ function registerEpubIpc(): void {
   ipcMain.on(EPUB_CHANNELS.aiJobEnd, (e, jobId: unknown) => screenAiJobs.end(e.sender.id, jobId))
 
   // the AI panel's attachments
-  registerEpubAiIpc()
+  registerEpubAiIpc({ filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) })
 
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(APP_CHANNELS.getLanguage)

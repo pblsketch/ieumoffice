@@ -7,7 +7,12 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join, extname } from 'node:path'
-import { assertFileSaved, showOpenDialogWithMemory } from '@genoffice/electron-utils'
+import {
+  assertFileSaved,
+  isBesideDocument,
+  sharedPathGrants,
+  showOpenDialogWithMemory,
+} from '@genoffice/electron-utils'
 import {
   checkedHwpBytes,
   parseFileToText,
@@ -136,9 +141,15 @@ export interface HwpAttachmentHost {
     path: string,
     request?: string,
   ) => Promise<AttachmentImportResult>
+  /** current document path of a view, for neighbor attachment reads */
+  filePathOf?: (webContentsId: number) => string | null | undefined
 }
 
 export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => ({})): void {
+  const canReadAttachment = (wcId: number, filePath: string): boolean =>
+    sharedPathGrants().has(wcId, filePath) ||
+    isBesideDocument(host().filePathOf?.(wcId) ?? undefined, filePath)
+
   // The AI's import_attachment: the file is checked like any attachment that is
   // read (a kind this editor takes, within the size limit, no unsaved edits in an
   // open tab), then the shell converts it and opens the new tab.
@@ -147,6 +158,9 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
     async (e, filePath: unknown, request: unknown): Promise<AttachmentImportResult> => {
       if (typeof filePath !== 'string' || !/\.(md|markdown)$/i.test(filePath)) {
         return { ok: false, error: 'only a Markdown file can be opened as a Hangul document' }
+      }
+      if (!canReadAttachment(e.sender.id, filePath)) {
+        return { ok: false, error: 'hwp: path not granted to this view' }
       }
       const open = host().openMarkdownAsDocument
       if (!open) return { ok: false, error: 'this window cannot open a new document tab' }
@@ -175,6 +189,7 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
     }
     const r = await showOpenDialogWithMemory(dialog, parent, options)
     if (r.canceled || r.filePaths.length === 0) return null
+    sharedPathGrants().grant(e.sender.id, r.filePaths)
     return collectAttachments(r.filePaths)
   })
 
@@ -187,11 +202,14 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
   ipcMain.handle(
     HWP_CHANNELS.filesRead,
     async (
-      _e,
+      e,
       filePath: string,
       offset: number,
       maxChars: number,
     ): Promise<AttachmentReadResult> => {
+      if (!canReadAttachment(e.sender.id, filePath)) {
+        return { ok: false, error: 'hwp: path not granted to this view' }
+      }
       const name = basename(filePath)
       const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
       if (!ATTACHABLE_EXTS.has(ext)) return { ok: false, error: tm('errUnsupportedExt', { ext }) }
@@ -216,7 +234,10 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
   )
 
   // Image attachments read raw bytes -> base64; AiPanel puts them into the user message's images for multimodal
-  ipcMain.handle(HWP_CHANNELS.filesReadImage, (_e, filePath: string): AttachmentImageResult => {
+  ipcMain.handle(HWP_CHANNELS.filesReadImage, (e, filePath: string): AttachmentImageResult => {
+    if (!canReadAttachment(e.sender.id, filePath)) {
+      return { ok: false, error: 'hwp: path not granted to this view' }
+    }
     const name = basename(filePath)
     const ext = name.split('.').pop()?.toLowerCase() ?? ''
     const mime = ATTACHMENT_IMAGE_MIME[ext]
@@ -236,7 +257,10 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
   // the same saved-file, size and content checks as reading its text
   ipcMain.handle(
     HWP_CHANNELS.filesReadDocument,
-    async (_e, filePath: string): Promise<AttachmentDocumentResult> => {
+    async (e, filePath: string): Promise<AttachmentDocumentResult> => {
+      if (!canReadAttachment(e.sender.id, filePath)) {
+        return { ok: false, error: 'hwp: path not granted to this view' }
+      }
       const name = basename(filePath)
       const ext = name.split('.').pop()?.toLowerCase() ?? ''
       if (ext !== 'hwp' && ext !== 'hwpx') {
@@ -261,7 +285,7 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
   // Clipboard-pasted images (screenshots and other bitmaps without a local path): saved to a temp file then take the regular attachment chain
   ipcMain.handle(
     HWP_CHANNELS.filesAddPastedImage,
-    (_e, data: unknown, ext: unknown): AttachmentAddResult => {
+    (e, data: unknown, ext: unknown): AttachmentAddResult => {
       const saved = savePastedImage(data, ext)
       if ('error' in saved) {
         return {
@@ -269,6 +293,7 @@ export function registerHwpAttachmentIpc(host: () => HwpAttachmentHost = () => (
           rejected: [saved.error === 'too-large' ? tm('errImageTooLarge') : tm('errNotImage')],
         }
       }
+      sharedPathGrants().grant(e.sender.id, [saved.path])
       return collectAttachments([saved.path])
     },
   )

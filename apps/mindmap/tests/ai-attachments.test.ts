@@ -42,7 +42,11 @@ vi.mock('@genoffice/file-parse', async (importOriginal) => {
   }
 })
 
-import { UNSAVED_CHANGES_MESSAGE, setOpenFilesSource } from '@genoffice/electron-utils'
+import {
+  UNSAVED_CHANGES_MESSAGE,
+  setOpenFilesSource,
+  sharedPathGrants,
+} from '@genoffice/electron-utils'
 import { setUiLang } from '@genoffice/i18n'
 import {
   ATTACHMENT_EXTS,
@@ -65,12 +69,15 @@ beforeEach(() => {
   setUiLang('en')
 })
 afterEach(() => {
+  sharedPathGrants().release(7)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })
 
 const call = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   Promise.resolve(handlers.get(channel)!({ sender: { id: 7 } }, ...args) as T)
+
+const grant = (path: string) => sharedPathGrants().grant(7, [path])
 
 async function mapFile(name = 'plan.xmind'): Promise<string> {
   const path = join(dir, name)
@@ -98,8 +105,16 @@ describe('which files are taken', () => {
 })
 
 describe('reading an attachment', () => {
+  it('refuses a path that was never granted to this view', async () => {
+    const path = await mapFile('ungranted.xmind')
+    const read = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
+    expect(read).toEqual({ ok: false, error: 'mindmap: path not granted to this view' })
+    expect(parsed).not.toHaveBeenCalled()
+  })
+
   it('reads a mind map as its outline, through parseFileToText', async () => {
     const path = await mapFile()
+    grant(path)
     const read = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
     expect(read.ok).toBe(true)
     expect(read.text).toContain('# Plan sheet')
@@ -112,6 +127,7 @@ describe('reading an attachment', () => {
     const path = join(dir, 'long.txt')
     const text = 'abcdefghij'.repeat(6_000)
     writeFileSync(path, text)
+    grant(path)
     const first = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
     expect(first).toMatchObject({ ok: true, totalChars: 60_000, offset: 0 })
     expect(first.text).toHaveLength(24_000)
@@ -123,6 +139,7 @@ describe('reading an attachment', () => {
 
   it('does not read a file open elsewhere with unsaved changes', async () => {
     const path = await mapFile()
+    grant(path)
     setOpenFilesSource(() => [{ filePath: path, dirty: true }])
     const read = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
     expect(read).toEqual({ ok: false, error: UNSAVED_CHANGES_MESSAGE })
@@ -137,6 +154,7 @@ describe('reading an attachment', () => {
   it('reads no text out of a picture: it goes to the model as a picture', async () => {
     const path = join(dir, 'shot.png')
     writeFileSync(path, new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+    grant(path)
     const read = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
     expect(read.ok).toBe(false)
     const image = await call<{ ok: boolean; mime?: string }>(MINDMAP_CHANNELS.filesReadImage, path)
@@ -150,6 +168,7 @@ describe('a draw.io diagram kept in a picture', () => {
   it('takes a .drawio.png that holds its diagram as diagram text, not as a picture', async () => {
     const path = join(dir, 'flow.drawio.png')
     writeFileSync(path, readFileSync(join(fixtures, 'out.drawio.png')))
+    grant(path)
     const added = await call<AttachmentAddResult>(MINDMAP_CHANNELS.filesAdd, [path])
     expect(added.accepted.map((a) => a.ext)).toEqual(['drawio.png'])
     const read = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
@@ -160,6 +179,7 @@ describe('a draw.io diagram kept in a picture', () => {
   it('takes a .drawio.svg, which as a plain .svg it would not', async () => {
     const path = join(dir, 'flow.drawio.svg')
     writeFileSync(path, readFileSync(join(fixtures, 'out.drawio.svg')))
+    grant(path)
     const added = await call<AttachmentAddResult>(MINDMAP_CHANNELS.filesAdd, [path])
     expect(added.accepted.map((a) => a.ext)).toEqual(['drawio.svg'])
     const read = await call<AttachmentReadResult>(MINDMAP_CHANNELS.filesRead, path, 0, 24_000)
@@ -169,6 +189,7 @@ describe('a draw.io diagram kept in a picture', () => {
   it('keeps a picture that only carries the name a picture', async () => {
     const path = join(dir, 'shot.drawio.png')
     writeFileSync(path, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    grant(path)
     const added = await call<AttachmentAddResult>(MINDMAP_CHANNELS.filesAdd, [path])
     expect(added.accepted.map((a) => a.ext)).toEqual(['png'])
     const image = await call<{ ok: boolean; mime?: string }>(MINDMAP_CHANNELS.filesReadImage, path)

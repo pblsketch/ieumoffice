@@ -129,14 +129,19 @@ vi.mock('@genoffice/ai-provider/subscription', async (importOriginal) => ({
   sharedSubscriptionStatuses: () => ({}),
 }))
 
-import { UNSAVED_CHANGES_MESSAGE, setOpenFilesSource } from '@genoffice/electron-utils'
+import {
+  UNSAVED_CHANGES_MESSAGE,
+  setOpenFilesSource,
+  sharedPathGrants,
+} from '@genoffice/electron-utils'
 import { createSheetsView } from '../src/main/sheets-main'
 
 type ReadResult = { ok: boolean; text?: string; error?: string }
 let dir: string
 
-function read(path: string): Promise<ReadResult> {
+function read(path: string, grant = true): Promise<ReadResult> {
   if (!lastContents) createSheetsView({ includeAiHandlers: false })
+  if (grant) sharedPathGrants().grant(901, [path])
   const handler = handlers.get(IPC_CHANNELS.filesRead)!
   return handler({ sender: lastContents }, path, 0, 1000) as Promise<ReadResult>
 }
@@ -146,6 +151,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(901)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })
@@ -183,8 +189,9 @@ describe('sheets files-read and a file open with unsaved changes', () => {
 
 describe('merging attached workbooks and a file open with unsaved changes', () => {
   /** how the handler behind merge_attached_workbooks answers: 'opened', or the error text */
-  async function openForMerge(paths: string[]): Promise<string> {
+  async function openForMerge(paths: string[], grant = true): Promise<string> {
     if (!lastContents) createSheetsView({ includeAiHandlers: false })
+    if (grant) sharedPathGrants().grant(901, paths)
     const handler = handlers.get(IPC_CHANNELS.openWorkbooksForMerge)!
     try {
       await handler({ sender: lastContents }, paths)

@@ -222,7 +222,7 @@ export function registerWhiteboardIpc(): void {
 
   registerWhiteboardExportIpc((wcId) => views.get(wcId)?.filePath ?? undefined)
   registerWhiteboardLinkPreviewIpc()
-  registerWhiteboardAiIpc()
+  registerWhiteboardAiIpc({ filePathOf: (wcId) => views.get(wcId)?.filePath ?? undefined })
   registerWhiteboardImageIpc({
     filePathOf: (wcId) => views.get(wcId)?.filePath ?? null,
     pastedImageDir: whiteboardPastedImageDir(),

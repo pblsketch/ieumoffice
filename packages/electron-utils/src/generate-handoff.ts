@@ -29,6 +29,7 @@
  */
 import { resolve } from 'node:path'
 import type { HandoffEditor } from './handoff-editors'
+import { sharedPathGrants } from './path-grants'
 
 export {
   HANDOFF_EDITORS,
@@ -260,6 +261,12 @@ export function takeGenerateHandoff(
   if (!handoff || handoff.target !== target) return null
   s.queued.delete(webContentsId)
   s.taken.set(webContentsId, handoff)
+  if (handoff.materials.length > 0) {
+    sharedPathGrants().grant(
+      webContentsId,
+      handoff.materials.map((m) => m.path),
+    )
+  }
   return handoff
 }
 
@@ -303,6 +310,9 @@ export function takeSkillHandoff(
   const handoff = slots.get(webContentsId)
   if (!handoff || handoff.target !== target) return null
   slots.delete(webContentsId)
+  if (handoff.attach && handoff.attach.length > 0) {
+    sharedPathGrants().grant(webContentsId, handoff.attach)
+  }
   return handoff
 }
 

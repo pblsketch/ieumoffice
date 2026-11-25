@@ -90,12 +90,20 @@ export {
 } from './console-output'
 export {
   DROP_OPEN_CHANNEL,
+  USER_FILE_PATHS_SEEN_CHANNEL,
   droppableFilePaths,
   installDropOpenBridge,
   KNOWN_UNSUPPORTED_DOC_RE,
   OPENABLE_DOC_RE,
   partitionDropPayload,
+  seenFilePaths,
 } from './drop-open'
+export {
+  createPathGrants,
+  isBesideDocument,
+  sharedPathGrants,
+  type PathGrants,
+} from './path-grants'
 export { safeExternalUrl, type SafeExternalUrlOptions } from './safe-external-url'
 export {
   fetchWithSsrfGuard,
