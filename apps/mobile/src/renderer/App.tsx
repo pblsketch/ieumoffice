@@ -2,17 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentLoop, composeSkills, type AgentMessage, type AgentSkill } from '@genoffice/agent-core'
 import { useAiInlineQuestions } from '@genoffice/ui'
 import { AI_SUBSCRIPTION_NOTICE_VERSION } from '@genoffice/ai-provider/browser'
-import { normalizeLang, PRODUCT_NAME, type Lang } from '@genoffice/i18n'
+import { normalizeLang, type Lang } from '@genoffice/i18n'
 import {
   createMobileAgentTransport,
   createMobileAiMemoryStore,
 } from '@genoffice/mobile-bridge/ai-bridge'
-import { createMobileHwpApi } from '@genoffice/mobile-bridge/hwp'
-import {
-  base64ToUtf8,
-  createMobileMarkdownApi,
-  createMobileMarkdownSkill,
-} from '@genoffice/mobile-bridge/markdown'
 import {
   createMobileSessionController,
   type ActiveDocState,
@@ -36,58 +30,20 @@ import {
 import {
   canMutateDocument,
   initialDocumentMode,
-  wrapSkillWithViewEditGate,
   type DocumentMode,
 } from '@genoffice/mobile-bridge/view-edit-gate'
-import type { MobileHwpAgent } from './ai/hwpAgent'
 import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiSheetPanel'
 import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
-import { rememberedLayout, rememberLayout } from './shell/layoutMemory'
-import { pickImageFile, readPicture } from './editors/pickPicture'
-import { MemoSheet } from './components/MemoSheet'
-import { PageNumberSheet } from './components/PageNumberSheet'
-import { DocCheckSheet } from './components/DocCheckSheet'
-import type { DocumentProfile, Place } from '@genoffice/doc-rules'
-import {
-  applyPageNumber,
-  readPageNumber,
-  type PageNumberDocument,
-  type PageNumberSetting,
-} from './editors/pageNumbers'
-import { createFlowSyncedPort } from './editors/flowSyncedPort'
-import { HwpFlowView, type HwpFlowViewHandle } from './editors/HwpFlowView'
-import type { FlowFormatAction, FlowMemo } from './editors/flowEditing'
-import { openFlowDocument } from './editors/rhwpEngine'
-import {
-  HwpMobileEditor,
-  type HwpMobileEditorHandle,
-  type HwpQuickAction,
-} from './editors/HwpMobileEditor'
-import {
-  MarkdownMobileEditor,
-  type MarkdownMobileEditorHandle,
-  type MarkdownQuickAction,
-} from './editors/MarkdownMobileEditor'
+import type { EditorAiRun, EditorDocument, EditorHost, EditorKind } from './editors/editorKind'
+import { findEditorKind, openableExtensions } from './editors/registry'
 import { MobileLocaleProvider, translateMobile } from './i18n'
-import type { MobileStringKey } from './i18n/strings'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
-import {
-  EditorShell,
-  type EditorFormatGroup,
-  type EditorQuickActionItem,
-  type EditorSaveState,
-} from './shell/EditorShell'
+import type { EditorSaveState } from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
 
-/** The engine calls a whole-document change uses. */
-type WholeDocument = PageNumberDocument & {
-  exportHwp(): Uint8Array
-  exportHwpx(): Uint8Array
-  free(): void
-}
 const DEFAULT_PREFS: MobileAppPrefs = {
   lang: 'ko',
   theme: 'system',
@@ -112,15 +68,21 @@ function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
 }
 
 const RECOVERY_IDLE_MS = 2000
-
-/** Text scale of the HWP flow view (document sizes are in pt). */
-const FLOW_ZOOM_DEFAULT = 1.2
-const FLOW_ZOOM_MIN = 0.8
-const FLOW_ZOOM_MAX = 2.4
-const FLOW_ZOOM_STEP = 0.15
 const RECOVERY_PERIODIC_MS = 30000
 
 type ScreenView = 'home' | 'editor' | 'settings'
+
+/** The backend's open gate refused the file (its format has no registered editor). */
+function isFormatNotOpenable(err: unknown): boolean {
+  return isMobileCommandError(err) && err.messageKey === 'mobile.format.notOpenable'
+}
+
+/** The active document, the kind that opened it and which open it was (the Workspace key). */
+interface OpenedDocument {
+  readonly kind: EditorKind
+  readonly doc: EditorDocument
+  readonly seq: number
+}
 
 export interface MobileAppProps {
   readonly client?: MobileClient
@@ -131,8 +93,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     () => injectedClient ?? createMobileClient(createTauriMobileTransport()),
     [injectedClient],
   )
-  const markdownApi = useMemo(() => createMobileMarkdownApi(client), [client])
-  const hwpApi = useMemo(() => createMobileHwpApi(client), [client])
   const aiMemoryRef = useRef(createMobileAiMemoryStore())
   // Publishes data-window and --m-kb on <html> for every screen, not only the editor.
   const viewport = useViewportLayout()
@@ -150,9 +110,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   const [activeDoc, setActiveDoc] = useState<ActiveDocState | null>(null)
   const [mode, setMode] = useState<DocumentMode>('view')
-  const [markdownText, setMarkdownText] = useState('')
-  const [hwpBytes, setHwpBytes] = useState<Uint8Array | null>(null)
-  const [zoomScale, setZoomScale] = useState(1)
+  const [openedDoc, setOpenedDoc] = useState<OpenedDocument | null>(null)
+  const openedDocRef = useRef<OpenedDocument | null>(null)
+  const openSeqRef = useRef(0)
+  // Bumped on every content change the document reports: restarts the recovery idle timer.
+  const [contentVersion, setContentVersion] = useState(0)
   const [noticeBanner, setNoticeBanner] = useState<string | null>(null)
   const { toast, showToast, dismissToast } = useToast()
   const [saving, setSaving] = useState(false)
@@ -167,83 +129,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const inlineQuestionsRef = useRef(inlineQuestions)
   inlineQuestionsRef.current = inlineQuestions
   const [lastAiPrompt, setLastAiPrompt] = useState<string | null>(null)
-  const [hwpVerifyFailed, setHwpVerifyFailed] = useState(false)
 
   const [unsavedPromptDoc, setUnsavedPromptDoc] = useState<string | null>(null)
   const unsavedResolverRef = useRef<((choice: UnsavedSwitchChoice) => void) | null>(null)
 
-  const markdownEditorRef = useRef<MarkdownMobileEditorHandle | null>(null)
-  const hwpEditorRef = useRef<HwpMobileEditorHandle | null>(null)
-  // HWP reading layout: reflowed "flow" view or the page editor (design system 5.3).
-  const [hwpLayout, setHwpLayout] = useState<'page' | 'flow'>('flow')
-  const [flowZoom, setFlowZoom] = useState(FLOW_ZOOM_DEFAULT)
-  const [memoOpen, setMemoOpen] = useState(false)
-  const [memos, setMemos] = useState<readonly FlowMemo[]>([])
-  /** Opens the memo sheet with the memos as the flow editor has them now. */
-  const openMemos = useCallback(() => {
-    setMemos(flowRef.current?.memos() ?? [])
-    setMemoOpen(true)
-  }, [])
-  /** Runs a memo change and lists the memos again. */
-  const memoAction = useCallback((run: (view: HwpFlowViewHandle) => boolean): boolean => {
-    const view = flowRef.current
-    if (!view) return false
-    const ok = run(view)
-    setMemos(view.memos())
-    return ok
-  }, [])
-  const [flowBytes, setFlowBytes] = useState<Uint8Array | null>(null)
-  const studioEditedRef = useRef(false)
-  const flowRef = useRef<HwpFlowViewHandle | null>(null)
-  const hwpLayoutRef = useRef(hwpLayout)
-  hwpLayoutRef.current = hwpLayout
-  const suppressStudioDirtyRef = useRef(false)
-  const flowRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  /** Hands edits made in the flow view to the page editor (the one save/share/AI read). */
-  const flushFlowToStudio = useCallback(async () => {
-    const flow = flowRef.current
-    const studio = hwpEditorRef.current
-    const doc = activeDocRef.current
-    if (!flow || !studio || !doc || !flow.hasPendingEdits()) return
-    const bytes = flow.takeBytes(doc.session.format === 'hwpx' ? 'hwpx' : 'hwp')
-    if (!bytes) return
-    suppressStudioDirtyRef.current = true
-    try {
-      await studio.loadBytes(bytes)
-    } finally {
-      suppressStudioDirtyRef.current = false
-    }
-  }, [])
-
-  /** The page editor's port, after any pending flow edits have been handed over. */
-  const hwpPort = useMemo(
-    () => createFlowSyncedPort(() => hwpEditorRef.current?.getSavePort(), flushFlowToStudio),
-    [flushFlowToStudio],
-  )
-
-  /** Rebuilds the flow view from the page editor after it changed the document. */
-  const refreshFlowFromStudio = useCallback(() => {
-    const doc = activeDocRef.current
-    const port = hwpEditorRef.current?.getSavePort()
-    if (!doc || !port || (doc.session.format !== 'hwp' && doc.session.format !== 'hwpx')) return
-    studioEditedRef.current = false
-    const exportBytes = doc.session.format === 'hwpx' ? port.exportHwpx() : port.exportHwp()
-    exportBytes.then(setFlowBytes).catch(() => {
-      // Keep the last flow; the page view still shows the edits.
-    })
-  }, [])
-
-  const switchHwpLayout = useCallback(
-    async (next: 'page' | 'flow') => {
-      if (next === 'page') await flushFlowToStudio()
-      else if (studioEditedRef.current) refreshFlowFromStudio()
-      setHwpLayout(next)
-      const doc = activeDocRef.current
-      if (doc) rememberLayout(window.localStorage, doc.session.docKey, next)
-    },
-    [flushFlowToStudio, refreshFlowFromStudio],
-  )
   const activeRunCancelRef = useRef<(() => void) | null>(null)
 
   const lang: Lang = normalizeLang(prefs.lang)
@@ -258,8 +147,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   modeRef.current = mode
   const activeDocRef = useRef(activeDoc)
   activeDocRef.current = activeDoc
-  const markdownTextRef = useRef(markdownText)
-  markdownTextRef.current = markdownText
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -309,86 +196,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   const saveDocumentInternal = useCallback(
     async (doc: ActiveDocState, forceSaveAs = false): Promise<boolean> => {
-      const { session } = doc
-      if (session.format === 'md' || session.format === 'txt') {
-        const currentText = markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current
-        if (forceSaveAs || !session.writable || session.ephemeral) {
-          try {
-            const nextSession = await markdownApi.saveAsDocument(session, session.name, currentText)
-            sessionControllerRef.current?.updateSessionMetadata({
-              session: nextSession,
-              dirty: false,
-              isUntitled: false,
-            })
-            showToast(tNow('savedNotice'))
-            await refreshHomeData()
-            return true
-          } catch (err) {
-            if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return false
-            setNoticeBanner(tNow('readonlyShareNotice'))
-            return false
-          }
-        }
-        try {
-          await markdownApi.saveDocument(session, currentText)
-          sessionControllerRef.current?.markDirty(false)
-          showToast(tNow('savedNotice'))
-          await refreshHomeData()
-          return true
-        } catch (err) {
-          if (isMobileCommandError(err) && err.code === 'READ_ONLY_URI') {
-            setNoticeBanner(tNow('readonlyShareNotice'))
-            return saveDocumentInternal(doc, true)
-          }
-          return false
-        }
-      }
-
-      // HWP / HWPX save pipeline
-      const port = hwpEditorRef.current ? hwpPort : null
-      if (!port) return false
-      const flags = { encrypted: doc.encrypted, distribution: doc.distribution }
-      const targetFormat: 'hwp' | 'hwpx' =
-        forceSaveAs && hwpVerifyFailed ? 'hwpx' : session.format === 'hwpx' ? 'hwpx' : 'hwp'
-      const suggestedName =
-        targetFormat === 'hwpx' && session.name.toLowerCase().endsWith('.hwp')
-          ? `${session.name.slice(0, -4)}.hwpx`
-          : session.name
-      const outcome =
-        forceSaveAs || !session.writable || session.ephemeral
-          ? await hwpApi.saveAsDocument(session, suggestedName, targetFormat, port, flags)
-          : await hwpApi.saveDocument(session, port, flags)
-
-      if (outcome.kind === 'saved') {
-        setHwpVerifyFailed(false)
-        if (outcome.session) {
-          sessionControllerRef.current?.updateSessionMetadata({
-            session: outcome.session,
-            dirty: false,
-            isUntitled: false,
-          })
-        } else {
-          sessionControllerRef.current?.markDirty(false)
-        }
-        showToast(tNow('savedNotice'))
-        await refreshHomeData()
-        return true
-      }
-
-      if (outcome.reason === 'protected') {
-        setNoticeBanner(tNow('hwpProtectedSaveError'))
-      } else if (outcome.reason === 'verify') {
-        setHwpVerifyFailed(true)
-        setNoticeBanner(tNow('hwpVerifyFailedPrompt'))
-      } else if (outcome.reason === 'backup-failed') {
-        setNoticeBanner(tNow('hwpBackupFailedError'))
-      } else if (outcome.reason === 'read-only') {
-        setNoticeBanner(tNow('readonlyShareNotice'))
-        if (!forceSaveAs) return saveDocumentInternal(doc, true)
-      }
-      return false
+      // a kind without saving does not save
+      return (await openedDocRef.current?.doc.save?.(doc, forceSaveAs)) ?? false
     },
-    [hwpApi, hwpPort, hwpVerifyFailed, markdownApi, refreshHomeData, showToast, tNow],
+    [],
   )
 
   /** Saves the active document and keeps the app bar's save state in step. */
@@ -439,50 +250,50 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     })
   }
 
+  /** Refusal of a file whose format no registered editor opens (spec: open gate). */
+  const notifyNotOpenable = useCallback(() => {
+    showToast({ message: tNow('formatNotOpenable'), tone: 'error' })
+  }, [showToast, tNow])
+
+  const openLoadedSessionRef = useRef<(session: MobileDocSession) => Promise<void>>(async () => {})
+
+  /** What App lends the open document (stable; reads the latest state through refs). */
+  const editorHost = useMemo<EditorHost>(
+    () => ({
+      client,
+      markDirty: (dirty) => sessionControllerRef.current?.markDirty(dirty),
+      updateSession: (meta) => sessionControllerRef.current?.updateSessionMetadata(meta),
+      setNotice: (text) => setNoticeBanner(text),
+      showToast: (input) => showToast(input),
+      contentChanged: () => setContentVersion((version) => version + 1),
+      refreshHome: () => refreshHomeData(),
+      openSession: (session) => openLoadedSessionRef.current(session),
+      translate: (key, params) => translateMobile(langRef.current, key, params),
+      windowClass: () => windowClassRef.current,
+    }),
+    [client, refreshHomeData, showToast],
+  )
+
   const openLoadedSession = useCallback(
     async (
       session: MobileDocSession,
       options?: { isUntitled?: boolean; recoveryBytesBase64?: string },
     ) => {
       const controller = sessionControllerRef.current!
+      const kind = findEditorKind(session.format)
+      if (!kind) {
+        notifyNotOpenable()
+        return
+      }
       const isUntitled =
         options?.isUntitled ?? (!session.writable && !session.ephemeral && !session.uriHint)
 
-      if (session.format === 'md' || session.format === 'txt') {
-        const text = options?.recoveryBytesBase64
-          ? base64ToUtf8(options.recoveryBytesBase64)
-          : isUntitled
-            ? ''
-            : (await markdownApi.readDocument(session)).text
-        const outcome = await controller.switchTo(async () => ({
-          session,
-          isUntitled,
-        }))
-        if (!outcome.switched) return
-        setMarkdownText(text)
-        setHwpBytes(null)
-        setMode(initialDocumentMode({ isUntitled }))
-        setNoticeBanner(null)
-        setScreen('editor')
-        await refreshHomeData()
-        return
-      }
-
-      const opened = options?.recoveryBytesBase64
-        ? {
-            bytes: Uint8Array.from(atob(options.recoveryBytesBase64), (c) => c.charCodeAt(0)),
-            trackingDropped: false,
-            encrypted: false,
-            distribution: false,
-          }
-        : isUntitled
-          ? {
-              bytes: new Uint8Array(),
-              trackingDropped: false,
-              encrypted: false,
-              distribution: false,
-            }
-          : await hwpApi.readDocument(session)
+      const opened = await kind.open({
+        session,
+        client,
+        isUntitled,
+        recoveryBytesBase64: options?.recoveryBytesBase64,
+      })
 
       const outcome = await controller.switchTo(async () => ({
         session,
@@ -492,25 +303,22 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         isUntitled,
       }))
       if (!outcome.switched) return
-      setHwpBytes(opened.bytes)
-      setFlowBytes(opened.bytes)
-      studioEditedRef.current = false
-      // The layout last chosen for this document; otherwise phones and small tablets
-      // read in the flow view and larger windows keep the page.
-      setHwpLayout(
-        rememberedLayout(window.localStorage, session.docKey) ??
-          (windowClassRef.current === 'compact' || windowClassRef.current === 'medium'
-            ? 'flow'
-            : 'page'),
-      )
-      setMarkdownText('')
+      openSeqRef.current += 1
+      const next: OpenedDocument = {
+        kind,
+        doc: opened.start(editorHost),
+        seq: openSeqRef.current,
+      }
+      openedDocRef.current = next
+      setOpenedDoc(next)
       setMode(initialDocumentMode({ isUntitled }))
-      setNoticeBanner(opened.trackingDropped ? tNow('hwpTrackingDroppedNotice') : null)
+      setNoticeBanner(opened.noticeKey ? tNow(opened.noticeKey) : null)
       setScreen('editor')
       await refreshHomeData()
     },
-    [hwpApi, markdownApi, refreshHomeData, tNow],
+    [client, editorHost, notifyNotOpenable, refreshHomeData, tNow],
   )
+  openLoadedSessionRef.current = openLoadedSession
 
   // Initial load + external Share-In / Open-With intent check.
   useEffect(() => {
@@ -520,11 +328,16 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         client.getAppPrefs().catch(() => DEFAULT_PREFS),
         refreshHomeData(),
         refreshAiState(),
+        // the open gate: only the registered editors' formats open
+        client.setOpenableExtensions(openableExtensions()).catch(() => {}),
       ])
       if (!mounted) return
       setPrefs(loadedPrefs)
 
-      const pending = await client.consumePendingOpenIntent().catch(() => null)
+      const pending = await client.consumePendingOpenIntent().catch((err) => {
+        if (isFormatNotOpenable(err)) notifyNotOpenable()
+        return null
+      })
       if (pending && mounted) {
         await openLoadedSession(pending, { isUntitled: false })
       }
@@ -532,26 +345,15 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     return () => {
       mounted = false
     }
-  }, [client, openLoadedSession, refreshAiState, refreshHomeData])
+  }, [client, notifyNotOpenable, openLoadedSession, refreshAiState, refreshHomeData])
 
   // Write recovery copy on idle, periodic tick, and backgrounding; cancel active AI stream on hide.
   const writeRecoveryNow = useCallback(async () => {
     const doc = activeDocRef.current
     if (!doc || !doc.dirty || doc.encrypted || doc.distribution) return
-    if (doc.session.format === 'md' || doc.session.format === 'txt') {
-      const text = markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current
-      await markdownApi.writeRecovery(doc.session, text).catch(() => {})
-      return
-    }
-    const port = hwpEditorRef.current ? hwpPort : null
-    if (!port) return
-    await hwpApi
-      .writeRecovery(doc.session, port, {
-        encrypted: doc.encrypted,
-        distribution: doc.distribution,
-      })
-      .catch(() => {})
-  }, [hwpApi, hwpPort, markdownApi])
+    // a kind without a recovery copy writes none
+    await openedDocRef.current?.doc.writeRecovery?.(doc)
+  }, [])
 
   useEffect(() => {
     if (!activeDoc?.dirty) return
@@ -565,7 +367,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       clearTimeout(idleTimer)
       clearInterval(periodic)
     }
-  }, [activeDoc?.dirty, markdownText, writeRecoveryNow])
+  }, [activeDoc?.dirty, contentVersion, writeRecoveryNow])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -589,14 +391,18 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   const handlePickOpenFile = useCallback(async () => {
     try {
-      const session = await client.pickOpenFile(['hwp', 'hwpx', 'md', 'markdown', 'txt'])
+      const session = await client.pickOpenFile(openableExtensions())
       setPermissionDeniedRecentId(null)
       await openLoadedSession(session, { isUntitled: false })
     } catch (err) {
       if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
+      if (isFormatNotOpenable(err)) {
+        notifyNotOpenable()
+        return
+      }
       setNoticeBanner(err instanceof Error ? err.message : String(err))
     }
-  }, [client, openLoadedSession])
+  }, [client, notifyNotOpenable, openLoadedSession])
 
   const handleOpenRecent = useCallback(
     async (entry: RecentDocEntry) => {
@@ -609,10 +415,14 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           setPermissionDeniedRecentId(entry.id)
           return
         }
+        if (isFormatNotOpenable(err)) {
+          notifyNotOpenable()
+          return
+        }
         setNoticeBanner(err instanceof Error ? err.message : String(err))
       }
     },
-    [client, openLoadedSession],
+    [client, notifyNotOpenable, openLoadedSession],
   )
 
   const handleRemoveRecent = useCallback(
@@ -626,17 +436,25 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   const handleRestoreRecovery = useCallback(
     async (entry: RecoveryEntry) => {
-      const bytesBase64 = await client.recoveryRead(entry.docKey)
-      const fmt: 'hwp' | 'hwpx' | 'md' =
-        entry.format === 'hwpx' ? 'hwpx' : entry.format === 'hwp' ? 'hwp' : 'md'
-      const session = await client.createUntitledSession(fmt)
-      await openLoadedSession(
-        { ...session, name: entry.title },
-        { isUntitled: true, recoveryBytesBase64: bytesBase64 },
-      )
-      sessionControllerRef.current?.markDirty(true)
+      try {
+        const bytesBase64 = await client.recoveryRead(entry.docKey)
+        const kind = findEditorKind(entry.format)
+        if (!kind) {
+          notifyNotOpenable()
+          return
+        }
+        const session = await client.createUntitledSession(kind.recoveryFormat(entry.format))
+        await openLoadedSession(
+          { ...session, name: entry.title },
+          { isUntitled: true, recoveryBytesBase64: bytesBase64 },
+        )
+        sessionControllerRef.current?.markDirty(true)
+      } catch (err) {
+        if (!isFormatNotOpenable(err)) throw err
+        notifyNotOpenable()
+      }
     },
-    [client, openLoadedSession],
+    [client, notifyNotOpenable, openLoadedSession],
   )
 
   const handleDiscardRecovery = useCallback(
@@ -650,6 +468,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const handleBackFromEditor = useCallback(async () => {
     const outcome = await sessionControllerRef.current!.closeActive()
     if (outcome.switched) {
+      openedDocRef.current = null
+      setOpenedDoc(null)
       setScreen('home')
       setNoticeBanner(null)
       await refreshHomeData()
@@ -659,29 +479,14 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const handleShare = useCallback(async () => {
     const doc = activeDocRef.current
     if (!doc) return
-    if (doc.session.format === 'md' || doc.session.format === 'txt') {
-      const text = markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current
-      await markdownApi.shareDocument(doc.session, text).catch(() => {})
-      return
-    }
-    const port = hwpEditorRef.current ? hwpPort : null
-    if (!port) return
-    try {
-      await hwpApi.shareDocument(doc.session, port, {
-        encrypted: doc.encrypted,
-        distribution: doc.distribution,
-      })
-    } catch (err) {
-      if (isMobileCommandError(err) && err.code === 'PASSWORD_PROTECTED') {
-        setNoticeBanner(tNow('hwpProtectedShareError'))
-      }
-    }
-  }, [hwpApi, hwpPort, markdownApi, tNow])
+    await openedDocRef.current?.doc.share(doc)
+  }, [])
 
   const handleSendAi = useCallback(
     async (prompt: string) => {
       const doc = activeDocRef.current
-      if (!doc || !prefs.aiEnabled) return
+      const editorDoc = openedDocRef.current?.doc
+      if (!doc || !prefs.aiEnabled || !editorDoc?.createAiRun) return
       setLastAiPrompt(prompt)
       setAiRecoveryNotice(null)
       setAiStreaming(true)
@@ -704,62 +509,22 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         setAiAutoSwitched(true)
       }
 
-      let base: AgentSkill
-      let hwpAgent: MobileHwpAgent | null = null
-      if (doc.session.format === 'md' || doc.session.format === 'txt') {
-        base = createMobileMarkdownSkill(
-          {
-            getMarkdown: () => markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current,
-            setMarkdown: (next) => {
-              markdownEditorRef.current?.setMarkdown(next)
-              setMarkdownText(next)
-              sessionControllerRef.current?.markDirty(true)
-            },
-          },
-          {
-            getMode: () => modeRef.current,
-            getCapabilities: () => caps,
-            switchToEdit,
-            onDocumentMutated: (summary, prev) => {
-              setLastAiUndo({
-                summary,
-                undo: () => {
-                  markdownEditorRef.current?.setMarkdown(prev)
-                  setMarkdownText(prev)
-                  setLastAiUndo(null)
-                },
-              })
-            },
-          },
-        )
-      } else {
-        // the PC editor's tools over the page editor's plugin (ai/hwpAgent.ts), after the
-        // flow view's edits have been handed to the page editor
-        try {
-          await flushFlowToStudio()
-          const { createMobileHwpAgent } = await import('./ai/hwpAgent')
-          const agent = createMobileHwpAgent(
-            (method, ...args) => {
-              const studio = hwpEditorRef.current
-              if (!studio) return Promise.reject(new Error('the page editor is not ready'))
-              return studio.callPlugin(method, ...args)
-            },
-            () => langRef.current,
-          )
-          await agent.begin()
-          hwpAgent = agent
-          base = wrapSkillWithViewEditGate(agent.skill, {
-            isMutatingTool: (name) => agent.editTools.has(name),
-            getMode: () => modeRef.current,
-            getCapabilities: () => caps,
-            switchToEdit,
-          })
-        } catch {
-          setAiRecoveryNotice('connection-error')
-          setAiStreaming(false)
-          return
-        }
+      // the document's tools (read before the run; failing to prepare them is a connection error)
+      let run: EditorAiRun
+      try {
+        run = await editorDoc.createAiRun({
+          getMode: () => modeRef.current,
+          getCapabilities: () => caps,
+          switchToEdit,
+          setUndo: (entry) => setLastAiUndo(entry),
+          getLang: () => langRef.current,
+        })
+      } catch {
+        setAiRecoveryNotice('connection-error')
+        setAiStreaming(false)
+        return
       }
+      const base: AgentSkill = run.skill
       // every document can ask through the shared question card
       inlineQuestionsRef.current.supersedeOpen()
       const skill = composeSkills(base.id, '', [base, inlineQuestionsRef.current.askQuestionsSkill])
@@ -808,30 +573,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       })
       activeRunCancelRef.current = null
       setAiStreaming(false)
-      const changed = hwpAgent?.finish() ?? null
-      if (changed) {
-        // the page editor changed: the flow view follows, and the change can be taken back
-        studioEditedRef.current = true
-        sessionControllerRef.current?.markDirty(true)
-        if (hwpLayoutRef.current === 'flow') refreshFlowFromStudio()
-        setLastAiUndo({
-          summary: translateMobile(langRef.current, 'aiChangedPlaces', { count: changed.places }),
-          undo: () => {
-            setLastAiUndo(null)
-            void changed.undo().then((outcome) => {
-              if (hwpLayoutRef.current === 'flow') refreshFlowFromStudio()
-              if (outcome !== 'reverted') {
-                showToast({
-                  message: translateMobile(langRef.current, 'aiUndoRefused'),
-                  tone: 'error',
-                })
-              }
-            })
-          },
-        })
-      }
+      run.finish?.()
     },
-    [client, flushFlowToStudio, prefs.aiEnabled, refreshFlowFromStudio, showToast],
+    [client, prefs.aiEnabled],
   )
 
   const handleUpdatePrefs = useCallback(
@@ -842,430 +586,17 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     [client],
   )
 
-  const handleHwpDirty = useCallback(() => {
-    if (suppressStudioDirtyRef.current) return
-    studioEditedRef.current = true
-    sessionControllerRef.current?.markDirty(true)
-    // the page editor changed while the flow is on screen (e.g. AI): follow it
-    if (hwpLayoutRef.current === 'flow') {
-      if (flowRefreshTimerRef.current) clearTimeout(flowRefreshTimerRef.current)
-      flowRefreshTimerRef.current = setTimeout(refreshFlowFromStudio, 500)
-    }
-  }, [refreshFlowFromStudio])
+  const canEditActive =
+    activeDoc && openedDoc
+      ? canMutateDocument({
+          writable: activeDoc.session.writable,
+          encrypted: activeDoc.encrypted,
+          distribution: activeDoc.distribution,
+          isUntitled: activeDoc.isUntitled,
+        }) && openedDoc.kind.editable
+      : false
 
-  const handleFlowEdit = useCallback(() => {
-    sessionControllerRef.current?.markDirty(true)
-  }, [])
-
-  // After editing in the page editor, rebuild the flow view from the edited document.
-  useEffect(() => {
-    if (mode === 'view' && studioEditedRef.current) refreshFlowFromStudio()
-  }, [mode, refreshFlowFromStudio])
-
-  const handleHwpError = useCallback((msg: string) => {
-    setNoticeBanner(msg)
-  }, [])
-
-  const canEditActive = activeDoc
-    ? canMutateDocument({
-        writable: activeDoc.session.writable,
-        encrypted: activeDoc.encrypted,
-        distribution: activeDoc.distribution,
-        isUntitled: activeDoc.isUntitled,
-      })
-    : false
-
-  const activeFormat = activeDoc?.session.format ?? null
-  const isMarkdownDoc = activeFormat === 'md' || activeFormat === 'txt'
-
-  // Toolbar actions and the format panel ([Aa]) of the active editor.
-  /**
-   * A change to the whole document (page setup and the like): the page editor's
-   * bytes, with flow edits handed over first, changed in an engine copy, then
-   * loaded back into the page editor and the flow view. Undo history restarts.
-   */
-  const changeWholeDocument = useCallback(
-    async (change: (doc: WholeDocument) => void) => {
-      const active = activeDocRef.current
-      const studio = hwpEditorRef.current
-      if (!active || !studio) throw new Error('no HWP document is open')
-      const hwpx = active.session.format === 'hwpx'
-      const bytes = hwpx ? await hwpPort.exportHwpx() : await hwpPort.exportHwp()
-      const engine = (await openFlowDocument(bytes)) as unknown as WholeDocument
-      let changed: Uint8Array
-      try {
-        change(engine)
-        changed = hwpx ? engine.exportHwpx() : engine.exportHwp()
-      } finally {
-        engine.free()
-      }
-      await studio.loadBytes(changed)
-      setFlowBytes(changed)
-      studioEditedRef.current = false
-      sessionControllerRef.current?.markDirty(true)
-    },
-    [hwpPort],
-  )
-
-  /** Markdown: convert to a HWP document (.hwpx) and save it as a new file. */
-  const exportMarkdownToHwp = useCallback(async () => {
-    const active = activeDocRef.current
-    if (!active) return
-    const text = markdownEditorRef.current?.getMarkdown() ?? markdownTextRef.current
-    showToast(tNow('markdownToHwpWorking'))
-    let converted: { bytes: Uint8Array; lossCount: number }
-    try {
-      const { markdownToHwpx } = await import('./editors/markdownToHwp')
-      converted = await markdownToHwpx(text)
-    } catch {
-      showToast({ message: tNow('markdownToHwpFailed'), tone: 'error' })
-      return
-    }
-    try {
-      const name = `${active.session.name.replace(/\.(md|markdown|txt)$/i, '')}.hwpx`
-      const session = await markdownApi.saveConvertedHwpx(name, converted.bytes)
-      showToast({
-        message: tNow(converted.lossCount > 0 ? 'markdownToHwpDoneLoss' : 'markdownToHwpDone'),
-        action: { label: tNow('openNow'), onPress: () => void openLoadedSession(session) },
-      })
-    } catch (err) {
-      if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
-      showToast({ message: tNow('markdownToHwpFailed'), tone: 'error' })
-    }
-  }, [markdownApi, openLoadedSession, showToast, tNow])
-
-  const [docCheckOpen, setDocCheckOpen] = useState(false)
-
-  /** What the document is made of, read by the page editor plugin after flow edits are handed over. */
-  const readDocumentProfile = useCallback(async (): Promise<DocumentProfile> => {
-    const studio = hwpEditorRef.current
-    if (!studio) throw new Error('the page editor is not ready')
-    await flushFlowToStudio()
-    return (await studio.callPlugin('documentProfile')) as DocumentProfile
-  }, [flushFlowToStudio])
-
-  /** Shows a checked place: in the flow view by its block, on the page through the plugin. */
-  const revealCheckedPlace = useCallback((place: Place) => {
-    const path = place.anchor.path?.map((step) => ({
-      controlIndex: step.controlIndex,
-      cellIndex: step.cellIndex,
-      cellParaIndex: step.cellParaIndex ?? 0,
-    }))
-    const sec = place.anchor.section ?? 0
-    if (hwpLayoutRef.current === 'flow') {
-      flowRef.current?.reveal({
-        sec,
-        para: place.anchor.para,
-        path: path && path.length > 0 ? path : null,
-      })
-      return
-    }
-    void hwpEditorRef.current
-      ?.callPlugin('reveal', {
-        sec,
-        para: place.anchor.para,
-        ...(path && path.length > 0 ? { path } : {}),
-        offset: 0,
-        length: 0,
-      })
-      .catch(() => {})
-  }, [])
-
-  /** The check's one fix: a Korean-word-processor-only font replaced everywhere. */
-  const replaceCheckedFont = useCallback(
-    async (from: string, to: string) => {
-      const studio = hwpEditorRef.current
-      if (!studio) throw new Error('the page editor is not ready')
-      await flushFlowToStudio()
-      await studio.callPlugin('replaceFont', from, to)
-      sessionControllerRef.current?.markDirty(true)
-      refreshFlowFromStudio()
-    },
-    [flushFlowToStudio, refreshFlowFromStudio],
-  )
-
-  const [pageNumberOpen, setPageNumberOpen] = useState(false)
-  const [pageNumberNow, setPageNumberNow] = useState<PageNumberSetting | null>(null)
-
-  /** Opens the page number sheet with the document's current setting. */
-  const openPageNumbers = useCallback(async () => {
-    const active = activeDocRef.current
-    if (!active) return
-    try {
-      const bytes =
-        active.session.format === 'hwpx' ? await hwpPort.exportHwpx() : await hwpPort.exportHwp()
-      const engine = (await openFlowDocument(bytes)) as unknown as WholeDocument
-      try {
-        setPageNumberNow(readPageNumber(engine))
-      } finally {
-        engine.free()
-      }
-    } catch {
-      setPageNumberNow(null)
-    }
-    setPageNumberOpen(true)
-  }, [hwpPort])
-
-  const applyPageNumbers = useCallback(
-    async (setting: PageNumberSetting) => {
-      setPageNumberOpen(false)
-      try {
-        await changeWholeDocument((doc) => applyPageNumber(doc, setting))
-        showToast(tNow('pageNumberDone'))
-      } catch {
-        showToast({ message: tNow('pageNumberFailed'), tone: 'error' })
-      }
-    },
-    [changeWholeDocument, showToast, tNow],
-  )
-
-  /** Flow view: pick a picture and put it in line at the caret. */
-  const insertFlowPicture = useCallback(async () => {
-    const file = await pickImageFile()
-    if (!file) return
-    try {
-      const picture = await readPicture(file)
-      if (!flowRef.current?.insertPicture(picture)) {
-        showToast({ message: tNow('insertImageNeedsCaret'), tone: 'error' })
-      }
-    } catch {
-      showToast({ message: tNow('insertImageFailed'), tone: 'error' })
-    }
-  }, [showToast, tNow])
-
-  const { quickActions, formatGroups } = useMemo((): {
-    quickActions: EditorQuickActionItem[]
-    formatGroups: EditorFormatGroup[]
-  } => {
-    if (!activeFormat) return { quickActions: [], formatGroups: [] }
-    if (isMarkdownDoc) {
-      const md = (id: MarkdownQuickAction, label: MobileStringKey): EditorQuickActionItem => ({
-        id,
-        label: tNow(label),
-        onPress: () => markdownEditorRef.current?.runAction(id),
-      })
-      const quick = [
-        md('undo', 'undo'),
-        md('redo', 'redo'),
-        md('bold', 'bold'),
-        md('italic', 'italic'),
-        md('heading', 'heading'),
-        md('list', 'bulletList'),
-        { ...md('insertImage', 'insertImage'), id: 'image' },
-      ]
-      if (activeFormat === 'txt') return { quickActions: quick.slice(0, 2), formatGroups: [] }
-      return {
-        quickActions: quick,
-        formatGroups: [
-          {
-            id: 'text',
-            title: tNow('fmtGroupText'),
-            items: [
-              md('bold', 'bold'),
-              md('italic', 'italic'),
-              md('strikethrough', 'strikethrough'),
-              md('link', 'link'),
-            ],
-          },
-          {
-            id: 'paragraph',
-            title: tNow('fmtGroupParagraph'),
-            items: [
-              md('heading', 'heading'),
-              md('heading2', 'heading2'),
-              md('heading3', 'heading3'),
-              md('list', 'bulletList'),
-              md('numberedList', 'numberedList'),
-              md('taskList', 'taskList'),
-              md('quote', 'quote'),
-              md('codeBlock', 'codeBlock'),
-            ],
-          },
-          {
-            id: 'insert',
-            title: tNow('fmtGroupInsert'),
-            items: [{ ...md('insertImage', 'insertImage'), id: 'image' }],
-          },
-        ],
-      }
-    }
-    if (hwpLayout === 'flow') {
-      // editing in the flow view: character and paragraph formats; tables and pictures need the page view
-      const flow = (
-        id: 'undo' | 'redo' | FlowFormatAction,
-        label: MobileStringKey,
-      ): EditorQuickActionItem => ({
-        id,
-        label: tNow(label),
-        onPress: () => {
-          const view = flowRef.current
-          if (!view) return
-          if (id === 'undo') view.undo()
-          else if (id === 'redo') view.redo()
-          else view.runFormat(id)
-        },
-      })
-      return {
-        quickActions: [
-          flow('undo', 'undo'),
-          flow('redo', 'redo'),
-          flow('bold', 'bold'),
-          flow('italic', 'italic'),
-          flow('underline', 'underline'),
-          flow('bulletList', 'bulletList'),
-          flow('numberedList', 'numberedList'),
-          flow('fontBigger', 'fontBigger'),
-          flow('fontSmaller', 'fontSmaller'),
-        ],
-        formatGroups: [
-          {
-            id: 'text',
-            title: tNow('fmtGroupText'),
-            items: [
-              flow('bold', 'bold'),
-              flow('italic', 'italic'),
-              flow('underline', 'underline'),
-              flow('strikethrough', 'strikethrough'),
-              flow('fontBigger', 'fontBigger'),
-              flow('fontSmaller', 'fontSmaller'),
-            ],
-          },
-          {
-            id: 'paragraph',
-            title: tNow('fmtGroupParagraph'),
-            items: [
-              flow('alignLeft', 'alignLeft'),
-              flow('alignCenter', 'alignCenter'),
-              flow('alignRight', 'alignRight'),
-              flow('alignJustify', 'alignJustify'),
-              flow('lineSpacingWider', 'lineSpacingWider'),
-              flow('lineSpacingNarrower', 'lineSpacingNarrower'),
-              flow('bulletList', 'bulletList'),
-              flow('numberedList', 'numberedList'),
-            ],
-          },
-          {
-            id: 'insert',
-            title: tNow('fmtGroupInsert'),
-            items: [
-              { id: 'image', label: tNow('insertImage'), onPress: () => void insertFlowPicture() },
-              { id: 'memos', label: tNow('memoAdd'), onPress: openMemos },
-              {
-                id: 'pageNumber',
-                label: tNow('pageNumber'),
-                onPress: () => void openPageNumbers(),
-              },
-              // tables are placed on the page
-              {
-                id: 'pageView',
-                label: tNow('pageView'),
-                onPress: () => void switchHwpLayout('page'),
-              },
-            ],
-          },
-        ],
-      }
-    }
-    const hwp = (id: HwpQuickAction, label: MobileStringKey): EditorQuickActionItem => ({
-      id,
-      label: tNow(label),
-      onPress: () => hwpEditorRef.current?.runAction(id),
-    })
-    return {
-      quickActions: [
-        hwp('undo', 'undo'),
-        hwp('redo', 'redo'),
-        hwp('bold', 'bold'),
-        hwp('italic', 'italic'),
-        hwp('underline', 'underline'),
-        hwp('bulletList', 'bulletList'),
-        hwp('numberedList', 'numberedList'),
-        hwp('fontBigger', 'fontBigger'),
-        hwp('fontSmaller', 'fontSmaller'),
-        hwp('insertTable', 'insertTable'),
-      ],
-      formatGroups: [
-        {
-          id: 'text',
-          title: tNow('fmtGroupText'),
-          items: [
-            hwp('bold', 'bold'),
-            hwp('italic', 'italic'),
-            hwp('underline', 'underline'),
-            hwp('strikethrough', 'strikethrough'),
-            hwp('fontBigger', 'fontBigger'),
-            hwp('fontSmaller', 'fontSmaller'),
-          ],
-        },
-        {
-          id: 'paragraph',
-          title: tNow('fmtGroupParagraph'),
-          items: [
-            hwp('alignLeft', 'alignLeft'),
-            hwp('alignCenter', 'alignCenter'),
-            hwp('alignRight', 'alignRight'),
-            hwp('alignJustify', 'alignJustify'),
-            hwp('lineSpacingWider', 'lineSpacingWider'),
-            hwp('lineSpacingNarrower', 'lineSpacingNarrower'),
-            hwp('bulletList', 'bulletList'),
-            hwp('numberedList', 'numberedList'),
-          ],
-        },
-        {
-          id: 'insert',
-          title: tNow('fmtGroupInsert'),
-          items: [
-            hwp('insertTable', 'insertTable'),
-            { ...hwp('insertImage', 'insertImage'), id: 'image' },
-            { id: 'pageNumber', label: tNow('pageNumber'), onPress: () => void openPageNumbers() },
-          ],
-        },
-      ],
-    }
-  }, [
-    activeFormat,
-    hwpLayout,
-    insertFlowPicture,
-    isMarkdownDoc,
-    openMemos,
-    openPageNumbers,
-    switchHwpLayout,
-    tNow,
-  ])
-
-  const isHwpDoc = activeFormat === 'hwp' || activeFormat === 'hwpx'
-  const viewTools = useMemo((): EditorQuickActionItem[] => {
-    if (!isHwpDoc) return []
-    if (hwpLayout === 'flow') {
-      return [
-        {
-          id: 'fontSmaller',
-          label: tNow('fontSmaller'),
-          onPress: () =>
-            setFlowZoom((z) => Math.max(FLOW_ZOOM_MIN, +(z - FLOW_ZOOM_STEP).toFixed(2))),
-        },
-        {
-          id: 'fontBigger',
-          label: tNow('fontBigger'),
-          onPress: () =>
-            setFlowZoom((z) => Math.min(FLOW_ZOOM_MAX, +(z + FLOW_ZOOM_STEP).toFixed(2))),
-        },
-        { id: 'memos', label: tNow('memoTitle'), onPress: openMemos },
-        { id: 'pageView', label: tNow('pageView'), onPress: () => void switchHwpLayout('page') },
-      ]
-    }
-    return [
-      {
-        id: 'fitWidth',
-        label: tNow('fitToWidth'),
-        onPress: () => {
-          setZoomScale(1)
-          hwpEditorRef.current?.fitToWidth()
-        },
-      },
-      { id: 'flowView', label: tNow('flowView'), onPress: () => void switchHwpLayout('flow') },
-    ]
-  }, [hwpLayout, isHwpDoc, openMemos, switchHwpLayout, tNow])
+  const ActiveWorkspace = openedDoc?.doc.Workspace ?? null
 
   return (
     <MobileLocaleProvider lang={lang}>
@@ -1330,10 +661,15 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
               await refreshAiState()
             }}
             onRestoreBackup={async (backupId, target: MobileRestoreTarget) => {
-              const res = await client.hwpBackupRestore(backupId, target)
-              await refreshHomeData()
-              if (res.session) {
-                await openLoadedSession(res.session, { isUntitled: false })
+              try {
+                const res = await client.hwpBackupRestore(backupId, target)
+                await refreshHomeData()
+                if (res.session) {
+                  await openLoadedSession(res.session, { isUntitled: false })
+                }
+              } catch (err) {
+                if (!isFormatNotOpenable(err)) throw err
+                notifyNotOpenable()
               }
             }}
             onDeleteBackup={async (backupId) => {
@@ -1343,174 +679,78 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           />
         )}
 
-        {screen === 'editor' && activeDoc && (
-          <EditorShell
-            docTitle={activeDoc.session.name}
-            docFormat={activeDoc.session.format}
-            saveState={editorSaveState(saving, activeDoc.dirty)}
+        {screen === 'editor' && activeDoc && openedDoc && ActiveWorkspace && (
+          <ActiveWorkspace
+            key={openedDoc.seq}
+            frame={{
+              docTitle: activeDoc.session.name,
+              docFormat: activeDoc.session.format,
+              saveState: editorSaveState(saving, activeDoc.dirty),
+              mode,
+              canEdit: canEditActive,
+              aiEnabled: prefs.aiEnabled && openedDoc.kind.hasAi,
+              noticeBanner,
+              onDismissNotice: () => setNoticeBanner(null),
+              onBack: () => void handleBackFromEditor(),
+              onEnterEdit: () => setMode('edit'),
+              onDone: () => void handleDone(),
+              onExitEdit: () => setMode('view'),
+              onSave: () => void runSave(activeDoc, false),
+              onSaveAs: () => void runSave(activeDoc, true),
+              onShare: () => void handleShare(),
+              onOpenBackups: () => {
+                void refreshHomeData()
+                setScreen('settings')
+              },
+              aiPanelContent: (
+                <AiSheetPanel
+                  aiEnabled={prefs.aiEnabled}
+                  aiSettings={aiSettings}
+                  chatgptStatus={chatgptStatus}
+                  messages={aiMessages}
+                  streaming={aiStreaming}
+                  canMutate={canEditActive}
+                  autoSwitchedNotice={aiAutoSwitched}
+                  recoveryNotice={aiRecoveryNotice}
+                  lastChangeSummary={lastAiUndo?.summary ?? null}
+                  onUndoLastChange={lastAiUndo?.undo}
+                  onSend={(p) => void handleSendAi(p)}
+                  onStop={() => activeRunCancelRef.current?.()}
+                  // a card shows while its run lasts; the reply that follows carries the answer
+                  questionCard={
+                    inlineQuestions.activeToolCard &&
+                    (aiStreaming || inlineQuestions.activeToolCard.status === 'open')
+                      ? inlineQuestions.activeToolCard
+                      : null
+                  }
+                  onQuestionSubmit={inlineQuestions.submitToolCard}
+                  onQuestionSkip={inlineQuestions.skipToolCard}
+                  onOpenSettings={() => {
+                    void refreshAiState()
+                    setScreen('settings')
+                  }}
+                  onAcknowledgeSubscriptionNotice={() => {
+                    void client
+                      .setAiSettings({ subscriptionNoticeVersion: AI_SUBSCRIPTION_NOTICE_VERSION })
+                      .then(setAiSettings)
+                  }}
+                  onChatgptReconsent={() => void client.chatgptSignIn(true).then(refreshAiState)}
+                  onChatgptReconnect={() => void client.chatgptSignIn(false).then(refreshAiState)}
+                  onRetryLast={lastAiPrompt ? () => void handleSendAi(lastAiPrompt) : undefined}
+                />
+              ),
+            }}
             mode={mode}
             canEdit={canEditActive}
-            aiEnabled={prefs.aiEnabled}
-            noticeBanner={noticeBanner}
-            onDismissNotice={() => setNoticeBanner(null)}
-            quickActions={quickActions}
-            formatGroups={formatGroups}
-            moreItems={
-              activeFormat === 'md'
-                ? [
-                    {
-                      id: 'markdownToHwp',
-                      label: tNow('markdownToHwp'),
-                      onPress: () => void exportMarkdownToHwp(),
-                    },
-                  ]
-                : isHwpDoc
-                  ? [
-                      {
-                        id: 'docCheck',
-                        label: tNow('checkTitle'),
-                        onPress: () => setDocCheckOpen(true),
-                      },
-                    ]
-                  : []
-            }
-            viewTools={viewTools}
-            onBack={() => void handleBackFromEditor()}
-            onEnterEdit={() => setMode('edit')}
-            onDone={() => void handleDone()}
-            onExitEdit={() => setMode('view')}
-            onSave={() => void runSave(activeDoc, false)}
-            onSaveAs={() => void runSave(activeDoc, true)}
-            onShare={() => void handleShare()}
-            onFitToWidth={() => {
-              setZoomScale(1)
-              hwpEditorRef.current?.fitToWidth()
-            }}
-            onOpenBackups={() => {
-              void refreshHomeData()
-              setScreen('settings')
-            }}
-            aiPanelContent={
-              <AiSheetPanel
-                aiEnabled={prefs.aiEnabled}
-                aiSettings={aiSettings}
-                chatgptStatus={chatgptStatus}
-                messages={aiMessages}
-                streaming={aiStreaming}
-                canMutate={canEditActive}
-                autoSwitchedNotice={aiAutoSwitched}
-                recoveryNotice={aiRecoveryNotice}
-                lastChangeSummary={lastAiUndo?.summary ?? null}
-                onUndoLastChange={lastAiUndo?.undo}
-                onSend={(p) => void handleSendAi(p)}
-                onStop={() => activeRunCancelRef.current?.()}
-                // a card shows while its run lasts; the reply that follows carries the answer
-                questionCard={
-                  inlineQuestions.activeToolCard &&
-                  (aiStreaming || inlineQuestions.activeToolCard.status === 'open')
-                    ? inlineQuestions.activeToolCard
-                    : null
-                }
-                onQuestionSubmit={inlineQuestions.submitToolCard}
-                onQuestionSkip={inlineQuestions.skipToolCard}
-                onOpenSettings={() => {
-                  void refreshAiState()
-                  setScreen('settings')
-                }}
-                onAcknowledgeSubscriptionNotice={() => {
-                  void client
-                    .setAiSettings({ subscriptionNoticeVersion: AI_SUBSCRIPTION_NOTICE_VERSION })
-                    .then(setAiSettings)
-                }}
-                onChatgptReconsent={() => void client.chatgptSignIn(true).then(refreshAiState)}
-                onChatgptReconnect={() => void client.chatgptSignIn(false).then(refreshAiState)}
-                onRetryLast={lastAiPrompt ? () => void handleSendAi(lastAiPrompt) : undefined}
-              />
-            }
-          >
-            {activeDoc.session.format === 'md' || activeDoc.session.format === 'txt' ? (
-              <MarkdownMobileEditor
-                ref={markdownEditorRef}
-                value={markdownText}
-                mode={mode}
-                isPlainText={activeDoc.session.format === 'txt'}
-                zoomScale={zoomScale}
-                onChange={(next) => {
-                  setMarkdownText(next)
-                  sessionControllerRef.current?.markDirty(true)
-                }}
-                onErrorNotice={(key) => setNoticeBanner(tNow(key))}
-              />
-            ) : (
-              <>
-                {hwpLayout === 'flow' && (
-                  <HwpFlowView
-                    ref={flowRef}
-                    bytes={flowBytes}
-                    title={activeDoc.session.name}
-                    lang={lang}
-                    zoom={flowZoom}
-                    editable={mode === 'edit' && canEditActive}
-                    openDocument={openFlowDocument}
-                    onUnavailable={() => setHwpLayout('page')}
-                    onEdit={handleFlowEdit}
-                    onEditRefused={() =>
-                      showToast({ message: tNow('flowEditRefused'), tone: 'error' })
-                    }
-                  />
-                )}
-                {/* The page editor stays mounted under the flow view: saving, sharing and
-                    AI read the document through it. */}
-                <div
-                  className="mobile-hwp-layer"
-                  data-hidden={hwpLayout === 'flow' ? 'true' : undefined}
-                >
-                  <HwpMobileEditor
-                    ref={hwpEditorRef}
-                    fileName={activeDoc.session.name}
-                    documentBytes={hwpBytes}
-                    mode={mode}
-                    lang={lang}
-                    theme={prefs.theme}
-                    onDirty={handleHwpDirty}
-                    onError={handleHwpError}
-                  />
-                </div>
-              </>
-            )}
-          </EditorShell>
+            lang={lang}
+            theme={prefs.theme}
+          />
         )}
 
         <UnsavedModal
           open={unsavedPromptDoc !== null}
           docTitle={unsavedPromptDoc ?? ''}
           onChoice={resolveUnsavedChoice}
-        />
-        <MemoSheet
-          open={memoOpen && isHwpDoc && hwpLayout === 'flow'}
-          onClose={() => setMemoOpen(false)}
-          memos={memos}
-          canEdit={mode === 'edit' && canEditActive}
-          defaultAuthor={PRODUCT_NAME}
-          onAdd={(text, author) => memoAction((view) => view.addMemo(text, author))}
-          onReply={(id, text, author) => memoAction((view) => view.replyMemo(id, text, author))}
-          onEdit={(id, text) => memoAction((view) => view.editMemo(id, text))}
-          onRemove={(id) => memoAction((view) => view.removeMemo(id))}
-          onReveal={(id) => flowRef.current?.revealMemo(id)}
-        />
-        <DocCheckSheet
-          open={docCheckOpen && isHwpDoc}
-          onClose={() => setDocCheckOpen(false)}
-          format={activeFormat === 'hwpx' ? 'hwpx' : 'hwp'}
-          readProfile={readDocumentProfile}
-          onReveal={revealCheckedPlace}
-          onReplaceFont={mode === 'edit' && canEditActive ? replaceCheckedFont : undefined}
-        />
-        <PageNumberSheet
-          open={pageNumberOpen && isHwpDoc}
-          onClose={() => setPageNumberOpen(false)}
-          current={pageNumberNow}
-          onApply={(setting) => void applyPageNumbers(setting)}
         />
         <ToastHost toast={toast} onDismiss={dismissToast} />
       </BackStackProvider>
