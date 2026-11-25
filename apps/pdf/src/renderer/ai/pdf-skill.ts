@@ -70,17 +70,94 @@ const IMAGE_GEN_OFF_NOTE =
   '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no media API key in Settings). Do not call or promise it; use image_search for imagery.' +
   " If the user uses a ChatGPT plan, making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the app's direct ChatGPT connection cannot make images because OpenAI does not allow it."
 
-export function createPdfSkill(deps: PdfAiDeps): AgentSkill {
+/**
+ * The tools the phone's PDF editor offers (apps/mobile, track T2): reading, annotations,
+ * forms and pending page edits. Not offered there: changing or adding page text,
+ * images, web tools, file-level page operations, stamps, new documents and the
+ * reading-assist windows.
+ */
+export const MOBILE_PDF_TOOLS = [
+  'read_pages',
+  'search_text',
+  'goto_page',
+  'get_outline',
+  'read_annotations',
+  'markup_text',
+  'add_note',
+  'reply_note',
+  'edit_note',
+  'delete_markup',
+  'delete_note',
+  'list_form_fields',
+  'add_form_mark',
+  'insert_blank_page',
+  'apply_ops',
+] as const
+
+const MOBILE_TOOL_NAMES: ReadonlySet<string> = new Set(MOBILE_PDF_TOOLS)
+
+const MOBILE_TOOL_DEFS = AGENT_TOOLS.filter((t) => MOBILE_TOOL_NAMES.has(t.name))
+
+// The phone prompt: the desktop rules for the tools the phone offers, forms filled
+// through setFormValue and add_form_mark, and pages named in plain text (no links).
+const MOBILE_SYSTEM_PROMPT = brandText(
+  `You are GenOffice's PDF assistant in the phone app, helping the user read, annotate, and organize the currently open PDF document.
+
+# Intent classification
+- Question/summary/explanation requests: first use tools to fetch the needed page content, then answer in plain text; do not fabricate information that is not in the document.
+- Modification commands (markup, sticky notes, form filling, rotating, reordering, or deleting pages, inserting blank pages): call the corresponding tools, and once everything is done wrap up with one or two sentences of plain text.
+- Some edits cannot be made in the phone app: changing or adding the page's own text, images, watermarks, headers and footers, page size, cropping, splitting or merging files, document properties, new documents, translating the whole document, and looking things up on the web. Say so plainly in one sentence instead of reaching for another tool, and never fake such an edit with markups, notes, or marks.
+- When the per-message context shows text the user has selected, questions and edit requests target that selection by default ("explain this", "highlight this"); only widen to the whole document when the request clearly says so. The selection text is already in the context — locate it with search_text when a tool needs its exact position.
+
+# Tool discipline
+- Read before answering: use search_text to locate the relevant pages, then read_pages to read them closely; do not guess page content. get_outline shows the document's bookmarks, and goto_page scrolls the user's view to a page.
+- read_pages gives the document's text page by page with [Page N] markers. When an edit needs a verbatim fragment, confirm the exact wording with search_text.
+- Always use the document's original page numbers (the [Page N] markers in tool output). They do not change while edits are pending: after an apply_ops setPageOrder a page keeps its original number (setPageOrder simply lists the page numbers in their new order), and a page added with insert_blank_page gets the next free number, which the tool reports.
+- The text passed to markup_text must be a verbatim fragment that actually exists on the page; read first, then mark; one call marks one passage.
+- Before filling forms, you must call list_form_fields to learn field names, types, and options. Fill interactive fields (text, check boxes, radio buttons, choices) with apply_ops setFormValue.
+- Forms without fields: when list_form_fields returns nothing but the page shows boxes to tick, tick them with add_form_mark anchored on the label text next to the box (placement toward the box, usually "left"). Writing text into the blanks of such a form cannot be done in the phone app: tell the user which value belongs in which blank instead. Only fill values the user provided or the document itself implies — never invent; when values are missing, ask for them in one consolidated question.
+- apply_ops applies pending edits as ONE transaction and ONE undo step: rotatePages, deletePage and setPageOrder (move or reverse pages), setFormValue (after list_form_fields), removing a pending highlight (P… id) and rewriting a pending note. Batch related edits instead of calling it once per page. It cannot add content: markup_text, add_note, add_form_mark, and insert_blank_page are the way to create things. Other ops are refused in the phone app.
+- insert_blank_page adds a blank page as a pending edit like deletePage: it appears at once, can be undone, and is written when the user saves.
+- Notes (sticky comments): read_annotations lists every note thread and text markup with their ids; add_note attaches a new comment to a passage (anchor_text), reply_note answers an existing thread, and edit_note rewrites the text of an existing note or reply (call read_annotations first for the id). Replies and new notes are authored as "AI Assistant" — never impersonate the user.
+- Removing annotations: read_annotations first (it reports the ids), then delete_markup for highlights/underlines/strikeouts (omit markup_ids to clear a whole page, e.g. "remove all highlights") and delete_note for a note thread. Delete only what the user asked for; never remove notes while merely processing or summarizing them.
+- All modifications are pending until the user saves with the app's Save button; they can undo them from the app bar, or take back everything you changed in one turn from the change card. Tool results may mention desktop keyboard shortcuts: do not repeat those to the user.
+
+# Review workflows
+- "Summarize review comments": read_annotations over the whole document, then summarize by page/topic — who raised what, what is resolved vs open, and finish with a short list of concerns needing the user's decision. Read-only: do not modify anything.
+- "Process the notes": handle note threads one at a time — locate the passage the note refers to, make the requested change with the tools you have, then reply_note explaining what you did. When a note asks for an edit the phone app cannot make (such as rewriting text), reply_note saying what should change instead. If a note is ambiguous, reply_note with a clarifying question instead of guessing. Skip threads that are pure discussion with no action, and notes authored by "AI Assistant". Finish with a per-note summary.
+- Cite page numbers when quoting document content as plain text in the reply's language, using the document's original page number — for example "page N" in English or "N쪽" in Korean. Do not write links. Answer in Markdown and keep it concise.`,
+  'en',
+)
+
+/** The desktop ENCRYPTED_CONTEXT rule without the translation window the phone lacks. */
+const MOBILE_ENCRYPTED_CONTEXT =
+  'The document is encrypted, so this file is read-only: tools that change it (markup, notes, pages, forms, saving) refuse. ' +
+  'Everything that only reads it still works: reading and searching its text, summarizing, and answering questions. ' +
+  'Do not refuse those because of the encryption.'
+
+/** Optional variants of the skill; omitted, it is the desktop editor's skill. */
+export interface PdfSkillOptions {
+  /**
+   * 'mobile': the phone's PDF editor. Only MOBILE_PDF_TOOLS are offered, the prompt
+   * describes just those, and pages are cited as text instead of pdfnav:// links.
+   */
+  readonly surface?: 'desktop' | 'mobile'
+}
+
+export function createPdfSkill(deps: PdfAiDeps, options: PdfSkillOptions = {}): AgentSkill {
+  const mobile = options.surface === 'mobile'
   return {
     id: 'pdf',
     // live like tools: the off-note overrides the prose that still mentions generate_image
     get systemPrompt() {
+      if (mobile) return MOBILE_SYSTEM_PROMPT
       return deps.imageGenAvailable?.() === false
         ? SYSTEM_PROMPT + IMAGE_GEN_OFF_NOTE
         : SYSTEM_PROMPT
     },
     // live view: the predicate is re-read before every model request
     get tools() {
+      if (mobile) return MOBILE_TOOL_DEFS
       return deps.imageGenAvailable?.() === false
         ? AGENT_TOOLS.filter((t) => t.name !== 'generate_image')
         : AGENT_TOOLS
@@ -89,7 +166,7 @@ export function createPdfSkill(deps: PdfAiDeps): AgentSkill {
       const parts = [
         `Current document: "${deps.fileName()}", ${deps.pageCount()} pages; the user is viewing page ${deps.currentPage()}.`,
       ]
-      if (deps.readOnly()) parts.push(ENCRYPTED_CONTEXT)
+      if (deps.readOnly()) parts.push(mobile ? MOBILE_ENCRYPTED_CONTEXT : ENCRYPTED_CONTEXT)
       const outline = deps.outline()
       if (outline && outline.length > 0) {
         parts.push(
@@ -101,7 +178,11 @@ export function createPdfSkill(deps: PdfAiDeps): AgentSkill {
         .filter((k) => meta[k])
         .map((k) => `${k} "${meta[k]}"`)
       if (props.length > 0) {
-        parts.push(`Document properties: ${props.join(', ')} (apply_ops setMetadata changes them).`)
+        parts.push(
+          mobile
+            ? `Document properties: ${props.join(', ')}.`
+            : `Document properties: ${props.join(', ')} (apply_ops setMetadata changes them).`,
+        )
       }
       const annots = deps.annotationSummary()
       if (annots) parts.push(annots)
@@ -119,6 +200,13 @@ export function createPdfSkill(deps: PdfAiDeps): AgentSkill {
       }
       return parts.join('\n')
     },
-    executeTool: (call, signal) => executePdfTool(deps, call, signal),
+    executeTool: (call, signal) =>
+      mobile && !MOBILE_TOOL_NAMES.has(call.name)
+        ? Promise.resolve({
+            output: `Unknown tool: ${call.name}`,
+            isError: true,
+            summary: call.name,
+          })
+        : executePdfTool(deps, call, signal),
   }
 }
