@@ -34,7 +34,6 @@ uuid = { version = "1", features = ["v4"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # T1 sheets
-xlsx-sidecar = { path = "../../sheets/native/xlsx-engine" }
 
 # T2 pdf
 

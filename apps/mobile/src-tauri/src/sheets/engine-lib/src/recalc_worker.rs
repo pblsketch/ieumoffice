@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use xlsx_sidecar::recalc::{RecalcCache, RecalcEdit, RecalcRead, recalc_cells_reporting};
 
-use super::dispatch::{Response, to_json_value};
+use crate::dispatch::{Response, to_json_value};
 
 pub(crate) struct RecalcWorker {
     cache: Arc<Mutex<RecalcCache>>,

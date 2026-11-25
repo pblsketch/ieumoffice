@@ -1,117 +1,95 @@
-//! The in-process stand-in for the desktop sidecar process.
-//!
-//! The desktop sidecar has a reader thread (parses lines, answers `cancel`
-//! out of band) and a request loop (runs everything else one at a time in
-//! arrival order). Here each call to [`SheetsEngine::handle_line`] plays the
-//! reader's part on the calling thread, then queues on the request-loop lock.
-//! Callers wait on that lock in place of the desktop's bounded queue, so a
-//! cancel for a request still waiting is caught by `CancelledRequests` and one
-//! for the running `open`/`find_cells` trips the in-flight flag, as before.
+//! The app's side of the engine library's C ABI (`engine-lib/src/lib.rs`).
+//! `build.rs` builds that library and links it; these declarations are all
+//! this crate knows about it.
 
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::ffi::c_void;
+use std::io;
+use std::path::Path;
+use std::ptr::NonNull;
 
-use xlsx_sidecar::{SidecarError, WorkbookSessions};
+/// The ABI this code was written against (`ABI_VERSION` in the library).
+const EXPECTED_ABI_VERSION: u32 = 1;
 
-use super::dispatch::{
-    CancelledRequests, Command, Dispatched, InFlightRequest, PROTOCOL_VERSION, Request, Response,
-    handle_request,
-};
-use super::recalc_worker::RecalcWorker;
-use super::workspace::is_within;
+const NO_ANSWER: &str = r#"{"version":1,"requestId":"","ok":false,"error":{"code":"workbook_error","message":"The spreadsheet engine could not process this request."}}"#;
 
-pub const PATH_OUTSIDE_WORK_FOLDER: &str = "Path is outside the sheets work folder.";
-
-pub struct SheetsEngine {
-    sessions: Mutex<WorkbookSessions>,
-    pub(crate) recalc: RecalcWorker,
-    cancelled: CancelledRequests,
-    in_flight: InFlightRequest,
-    /// When set, every path a request names must lie inside this folder.
-    work_root: Option<PathBuf>,
+unsafe extern "C" {
+    fn ieum_sheets_engine_abi_version() -> u32;
+    fn ieum_sheets_engine_new(work_root_ptr: *const u8, work_root_len: usize) -> *mut c_void;
+    fn ieum_sheets_engine_handle_line(
+        engine: *const c_void,
+        line_ptr: *const u8,
+        line_len: usize,
+        out_len: *mut usize,
+    ) -> *mut u8;
+    fn ieum_sheets_engine_free_response(ptr: *mut u8, len: usize);
+    fn ieum_sheets_engine_free(engine: *mut c_void);
 }
 
+/// One engine instance (the desktop's sidecar process). Thread-safe: the
+/// library serializes requests itself, as the sidecar's request loop does.
+pub struct SheetsEngine {
+    raw: NonNull<c_void>,
+}
+
+// SAFETY: the library's engine handle is safe to use from several threads at
+// once (it holds its own locks) and to drop from any thread.
+unsafe impl Send for SheetsEngine {}
+unsafe impl Sync for SheetsEngine {}
+
 impl SheetsEngine {
-    pub fn new(work_root: Option<PathBuf>) -> Self {
-        Self {
-            sessions: Mutex::new(WorkbookSessions::new()),
-            recalc: RecalcWorker::new(),
-            cancelled: CancelledRequests::new(),
-            in_flight: InFlightRequest::new(),
-            work_root,
+    /// An engine whose requests may only name paths inside `work_root`
+    /// (`None`: no folder rule).
+    pub fn new(work_root: Option<&Path>) -> io::Result<Self> {
+        // SAFETY: takes no arguments.
+        let abi = unsafe { ieum_sheets_engine_abi_version() };
+        if abi != EXPECTED_ABI_VERSION {
+            return Err(io::Error::other(format!(
+                "sheets engine library ABI {abi}, expected {EXPECTED_ABI_VERSION}"
+            )));
         }
+        let root = match work_root {
+            Some(root) => root
+                .to_str()
+                .ok_or_else(|| io::Error::other("sheets work folder is not valid UTF-8"))?,
+            None => "",
+        };
+        // SAFETY: a valid byte slice for the duration of the call.
+        let raw = unsafe { ieum_sheets_engine_new(root.as_ptr(), root.len()) };
+        NonNull::new(raw)
+            .map(|raw| Self { raw })
+            .ok_or_else(|| io::Error::other("sheets engine library could not start"))
     }
 
     /// Answers one protocol line (the JSON object the desktop client writes
-    /// to the sidecar's stdin). Blocks: call it off the async runtime.
-    pub fn handle_line(&self, line: &str) -> Response {
-        let request: Request = match serde_json::from_str(line) {
-            Ok(request) => request,
-            Err(error) => {
-                return Response::failure(
-                    String::new(),
-                    "invalid_json",
-                    format!("Invalid sidecar request: {error}"),
-                );
-            }
+    /// to the sidecar's stdin) with the JSON text of the response (what the
+    /// sidecar writes to stdout, without the newline). Engine failures,
+    /// including a panic inside the engine, come back as `ok: false`
+    /// responses. Blocks: call it off the async runtime.
+    pub fn handle_line(&self, line: &str) -> String {
+        let mut len = 0usize;
+        // SAFETY: a live engine, a valid byte slice and a writable length.
+        let ptr = unsafe {
+            ieum_sheets_engine_handle_line(self.raw.as_ptr(), line.as_ptr(), line.len(), &mut len)
         };
-        if let Command::Cancel { target_request_id } = &request.command {
-            return if request.version == PROTOCOL_VERSION {
-                self.cancelled.insert(target_request_id.clone());
-                self.in_flight.cancel(target_request_id);
-                Response::success(request.request_id, serde_json::json!({ "cancelled": true }))
-            } else {
-                Response::failure(
-                    request.request_id,
-                    "unsupported_version",
-                    "Unsupported sidecar protocol version.".into(),
-                )
-            };
+        if ptr.is_null() {
+            // Only for a null engine or length pointer, which cannot happen
+            // here; answer in the protocol's shape rather than abort.
+            return NO_ANSWER.to_owned();
         }
-        let dispatched = {
-            let mut sessions = self
-                .sessions
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            self.in_flight.begin(&request.request_id);
-            handle_request(
-                request,
-                &mut sessions,
-                &self.recalc,
-                &self.cancelled,
-                &self.in_flight,
-                &|command| self.check_paths(command),
-            )
-        };
-        match dispatched {
-            Dispatched::Done(response) => response,
-            Dispatched::Recalc(job) => job.run(),
-        }
+        // SAFETY: the library returned `len` bytes at `ptr`; it is valid UTF-8
+        // JSON text.
+        let text = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let answer = String::from_utf8_lossy(text).into_owned();
+        // SAFETY: the pair just returned, freed once.
+        unsafe { ieum_sheets_engine_free_response(ptr, len) };
+        answer
     }
+}
 
-    fn check_paths(&self, command: &Command) -> Result<(), SidecarError> {
-        let Some(root) = self.work_root.as_deref() else {
-            return Ok(());
-        };
-        if command
-            .paths()
-            .into_iter()
-            .all(|path| is_within(root, path))
-        {
-            Ok(())
-        } else {
-            Err(SidecarError::InvalidRequest(
-                PATH_OUTSIDE_WORK_FOLDER.into(),
-            ))
-        }
-    }
-
-    pub fn work_root(&self) -> Option<&Path> {
-        self.work_root.as_deref()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn in_flight_for_test(&self) -> &InFlightRequest {
-        &self.in_flight
+impl Drop for SheetsEngine {
+    fn drop(&mut self) {
+        // SAFETY: created by `new`, freed once; `&mut self` means no call is
+        // still running on it.
+        unsafe { ieum_sheets_engine_free(self.raw.as_ptr()) };
     }
 }

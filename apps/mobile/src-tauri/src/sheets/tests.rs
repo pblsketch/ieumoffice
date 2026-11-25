@@ -1,501 +1,28 @@
-//! Tests for the in-process engine dispatch. Fixtures are written by hand
-//! (a minimal SpreadsheetML package) so the tests need no extra crates.
+//! App-side tests for track T1: the work folder, the state setup, the linked
+//! engine library seen through its C ABI, and the app's compressed output.
+//! The engine's protocol behaviour itself is tested in `engine-lib`.
 
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::fs;
+use std::io::{Cursor, Write};
 
 use serde_json::{Value, json};
 
-use super::dispatch::{
-    CancelledRequests, Dispatched, InFlightRequest, Request, Response, handle_request,
-};
-use super::recalc_worker::RecalcWorker;
-use super::workspace::is_within;
-use super::{PATH_OUTSIDE_WORK_FOLDER, SheetsEngine, SheetsState, SheetsWorkspace};
-
-const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>"#;
-
-const ROOT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#;
-
-const WORKBOOK: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#;
-
-const WORKBOOK_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>"#;
-
-const STYLES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"#;
-
-fn sheet_xml(a1: i64) -> String {
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:A2"/><sheetData><row r="1"><c r="A1"><v>{a1}</v></c></row><row r="2"><c r="A2"><f>A1*2</f><v>{}</v></c></row></sheetData></worksheet>"#,
-        a1 * 2
-    )
-}
-
-/// A one-sheet workbook: A1 = `a1`, A2 = `=A1*2` with its cached value.
-fn write_workbook(path: &Path, a1: i64) {
-    let file = File::create(path).unwrap();
-    let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-    let sheet = sheet_xml(a1);
-    for (name, body) in [
-        ("[Content_Types].xml", CONTENT_TYPES),
-        ("_rels/.rels", ROOT_RELS),
-        ("xl/workbook.xml", WORKBOOK),
-        ("xl/_rels/workbook.xml.rels", WORKBOOK_RELS),
-        ("xl/styles.xml", STYLES),
-        ("xl/worksheets/sheet1.xml", sheet.as_str()),
-    ] {
-        zip.start_file(name, options).unwrap();
-        zip.write_all(body.as_bytes()).unwrap();
-    }
-    zip.finish().unwrap();
-}
-
-fn line(value: Value) -> String {
-    value.to_string()
-}
-
-fn expect_ok(response: Response) -> Value {
-    assert!(
-        response.ok,
-        "{:?}",
-        response.error.map(|error| (error.code, error.message))
-    );
-    response.result.unwrap()
-}
-
-fn expect_err(response: Response) -> (&'static str, String) {
-    assert!(
-        !response.ok,
-        "expected a failure, got {:?}",
-        response.result
-    );
-    let error = response.error.unwrap();
-    (error.code, error.message)
-}
-
-struct Fixture {
-    _dir: tempfile::TempDir,
-    root: PathBuf,
-    source: PathBuf,
-    engine: SheetsEngine,
-}
-
-fn fixture() -> Fixture {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().join("work");
-    fs::create_dir_all(&root).unwrap();
-    let source = root.join("book.xlsx");
-    write_workbook(&source, 10);
-    let engine = SheetsEngine::new(Some(root.clone()));
-    Fixture {
-        _dir: dir,
-        root,
-        source,
-        engine,
-    }
-}
-
-fn recalc_request(id: &str, path: &Path, edits: Value) -> String {
-    line(json!({
-        "version": 1,
-        "requestId": id,
-        "command": "recalc_cells",
-        "path": path,
-        "edits": edits,
-        "reads": [{
-            "sheet": "Sheet1",
-            "range": { "startRow": 0, "endRow": 1, "startColumn": 0, "endColumn": 0 },
-        }],
-    }))
-}
-
-fn formatted_cells(result: &Value) -> Vec<String> {
-    result["cells"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|cell| cell["formatted"].as_str().unwrap().to_owned())
-        .collect()
-}
-
-#[test]
-fn round_trip_open_read_manifest_entries_save_recalc() {
-    let fx = fixture();
-    let engine = &fx.engine;
-
-    let opened = expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "o1", "command": "open", "path": fx.source,
-    }))));
-    let session_id = opened["sessionId"].as_str().unwrap().to_owned();
-    let sheet_id = opened["sheets"][0]["id"].as_str().unwrap().to_owned();
-    assert_eq!(sheet_id, "sheet-1");
-
-    let range = expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "r1", "command": "read_range",
-        "sessionId": session_id, "sheetId": sheet_id,
-        "range": { "startRow": 0, "endRow": 1, "startColumn": 0, "endColumn": 0 },
-    }))));
-    let cells = range["cells"].as_array().unwrap();
-    assert_eq!(cells.len(), 2, "{range}");
-    assert_eq!(cells[1]["formula"], json!("=A1*2"));
-
-    let manifest = expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "m1", "command": "archive_manifest", "path": fx.source,
-    }))));
-    let names: Vec<&str> = manifest["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|entry| entry["name"].as_str().unwrap())
-        .collect();
-    assert!(names.contains(&"xl/worksheets/sheet1.xml"), "{names:?}");
-
-    let out_dir = fx.root.join("entries");
-    fs::create_dir(&out_dir).unwrap();
-    let extracted = expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "e1", "command": "read_entries", "path": fx.source,
-        "entries": ["xl/worksheets/sheet1.xml"], "outputDir": out_dir,
-    }))));
-    let entry_path = PathBuf::from(extracted["entries"][0]["path"].as_str().unwrap());
-    let original = fs::read_to_string(&entry_path).unwrap();
-    assert_eq!(original, sheet_xml(10));
-
-    // Patch A1 to 21 (cached A2 left as the file had it, like the host does
-    // before its stale-formula refresh) and save to a new target.
-    let patched_path = fx.root.join("sheet1.patched.xml");
-    fs::write(&patched_path, original.replace("<v>10</v>", "<v>21</v>")).unwrap();
-    let target = fx.root.join("saved.xlsx");
-    let saved = expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "s1", "command": "save_archive",
-        "sourcePath": fx.source, "targetPath": target,
-        "replacements": [{ "name": "xl/worksheets/sheet1.xml", "contentPath": patched_path }],
-        "removals": [], "additions": [],
-    }))));
-    let before = saved["beforeEntries"].as_array().unwrap();
-    let after = saved["afterEntries"].as_array().unwrap();
-    assert_eq!(before.len(), after.len());
-    for (b, a) in before.iter().zip(after) {
-        assert_eq!(b["name"], a["name"]);
-        if b["name"] != json!("xl/worksheets/sheet1.xml") {
-            // Untouched entries are copied byte for byte.
-            assert_eq!(b, a);
-        }
-    }
-
-    let recalced = expect_ok(engine.handle_line(&recalc_request("c1", &target, json!([]))));
-    assert_eq!(formatted_cells(&recalced), vec!["21", "42"]);
-
-    let edited = expect_ok(engine.handle_line(&recalc_request(
-        "c2",
-        &target,
-        json!([{ "sheet": "Sheet1", "row": 0, "column": 0, "input": "5" }]),
-    )));
-    assert_eq!(formatted_cells(&edited), vec!["5", "10"]);
-
-    let closed = expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "x1", "command": "close", "sessionId": session_id,
-    }))));
-    assert_eq!(closed, json!({ "closed": true }));
-}
-
-#[test]
-fn unknown_session_answers_with_the_desktop_sentence() {
-    let fx = fixture();
-    let response = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "r", "command": "read_range",
-        "sessionId": "nope", "sheetId": "sheet-1",
-        "range": { "startRow": 0, "endRow": 0, "startColumn": 0, "endColumn": 0 },
-    })));
-    assert_eq!(response.request_id, "r");
-    assert_eq!(response.version, 1);
-    assert_eq!(
-        expect_err(response),
-        ("invalid_request", "Unknown workbook session.".to_owned())
-    );
-    let closed = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "c", "command": "close", "sessionId": "nope",
-    })));
-    assert_eq!(
-        expect_err(closed),
-        ("invalid_request", "Unknown workbook session.".to_owned())
-    );
-}
-
-#[test]
-fn version_mismatch_is_refused_for_queued_and_cancel_requests() {
-    let fx = fixture();
-    let open = fx.engine.handle_line(&line(json!({
-        "version": 2, "requestId": "o", "command": "open", "path": fx.source,
-    })));
-    assert_eq!(
-        expect_err(open),
-        (
-            "unsupported_version",
-            "Unsupported sidecar protocol version.".to_owned()
-        )
-    );
-    let cancel = fx.engine.handle_line(&line(json!({
-        "version": 0, "requestId": "c", "command": "cancel", "targetRequestId": "o",
-    })));
-    assert_eq!(
-        expect_err(cancel),
-        (
-            "unsupported_version",
-            "Unsupported sidecar protocol version.".to_owned()
-        )
-    );
-}
-
-#[test]
-fn malformed_lines_answer_invalid_json_with_an_empty_request_id() {
-    let fx = fixture();
-    let response = fx.engine.handle_line("{not json");
-    assert_eq!(response.request_id, "");
-    let (code, message) = expect_err(response);
-    assert_eq!(code, "invalid_json");
-    assert!(
-        message.starts_with("Invalid sidecar request: "),
-        "{message}"
-    );
-
-    let unknown = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "u", "command": "no_such_command",
-    })));
-    assert_eq!(expect_err(unknown).0, "invalid_json");
-}
-
-#[test]
-fn overlapping_recalc_answers_busy_and_the_loop_stays_free() {
-    let fx = fixture();
-    let engine = &fx.engine;
-    // A recalculation that has taken the busy flag but not finished yet.
-    let job = engine
-        .recalc
-        .dispatch(
-            "first".into(),
-            fx.source.clone(),
-            Vec::new(),
-            Vec::new(),
-            false,
-        )
-        .ok()
-        .expect("the first recalc takes the flag");
-
-    let busy = engine.handle_line(&recalc_request("second", &fx.source, json!([])));
-    let (code, message) = expect_err(busy);
-    assert_eq!(code, "recalc_busy");
-    assert_eq!(
-        message,
-        "Formula engine is busy with another recalculation."
-    );
-    assert!(message.contains("busy with another recalculation"));
-
-    // Other requests are not held up by the pending recalc.
-    expect_ok(engine.handle_line(&line(json!({
-        "version": 1, "requestId": "m", "command": "archive_manifest", "path": fx.source,
-    }))));
-
-    expect_ok(job.run());
-    // The flag is released once the first one answered.
-    expect_ok(engine.handle_line(&recalc_request("third", &fx.source, json!([]))));
-}
-
-#[test]
-fn concurrent_recalc_from_two_threads_answers_one_busy() {
-    let fx = fixture();
-    let engine = Arc::new(fx.engine);
-    let source = fx.source.clone();
-    // Hold the formula cache so the first recalc parks after taking busy.
-    let guard = engine.recalc.lock_cache_for_test();
-    let first = {
-        let engine = Arc::clone(&engine);
-        let source = source.clone();
-        std::thread::spawn(move || engine.handle_line(&recalc_request("a", &source, json!([]))))
-    };
-    // Wait until the first call holds the busy flag (it then parks on the
-    // cache lock held above).
-    for _ in 0..2500 {
-        if engine.recalc.is_busy_for_test() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    assert!(
-        engine.recalc.is_busy_for_test(),
-        "the first recalc never started"
-    );
-    let busy = engine.handle_line(&recalc_request("b", &source, json!([])));
-    drop(guard);
-    let (code, _) = expect_err(busy);
-    assert_eq!(code, "recalc_busy");
-    expect_ok(first.join().unwrap());
-}
-
-#[test]
-fn cancelled_requests_are_skipped_once() {
-    let fx = fixture();
-    let cancel = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "c", "command": "cancel", "targetRequestId": "victim",
-    })));
-    assert_eq!(expect_ok(cancel), json!({ "cancelled": true }));
-
-    let open = line(json!({
-        "version": 1, "requestId": "victim", "command": "open", "path": fx.source,
-    }));
-    assert_eq!(
-        expect_err(fx.engine.handle_line(&open)),
-        (
-            "cancelled",
-            "Request was cancelled by the client.".to_owned()
-        )
-    );
-    expect_ok(fx.engine.handle_line(&open));
-}
-
-#[test]
-fn a_cancel_for_the_running_request_trips_its_flag() {
-    let fx = fixture();
-    let in_flight = fx.engine.in_flight_for_test();
-    in_flight.begin("running");
-    expect_ok(fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "c", "command": "cancel", "targetRequestId": "running",
-    }))));
-    assert!(in_flight.flag().load(std::sync::atomic::Ordering::Acquire));
-}
-
-#[test]
-fn cancel_during_an_in_flight_open_abandons_it() {
-    let fx = fixture();
-    let mut sessions = xlsx_sidecar::WorkbookSessions::new();
-    let recalc = RecalcWorker::new();
-    let cancelled = CancelledRequests::new();
-    let in_flight = InFlightRequest::new();
-    in_flight.begin("victim");
-    in_flight.cancel("victim");
-    let request: Request = serde_json::from_value(json!({
-        "version": 1, "requestId": "victim", "command": "open", "path": fx.source,
-    }))
-    .unwrap();
-    let Dispatched::Done(response) = handle_request(
-        request,
-        &mut sessions,
-        &recalc,
-        &cancelled,
-        &in_flight,
-        &|_| Ok(()),
-    ) else {
-        panic!("open is answered by the loop");
-    };
-    assert_eq!(
-        expect_err(response),
-        (
-            "cancelled",
-            "Request was cancelled by the client.".to_owned()
-        )
-    );
-}
-
-#[test]
-fn save_archive_keeps_the_source_resident_model_warm() {
-    let fx = fixture();
-    let first = expect_ok(
-        fx.engine
-            .handle_line(&recalc_request("r", &fx.source, json!([]))),
-    );
-    assert_eq!(first["cached"], json!(false));
-    expect_ok(fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "s", "command": "save_archive",
-        "sourcePath": fx.source, "targetPath": fx.root.join("recovery.xlsx"),
-        "replacements": [], "removals": [], "additions": [],
-    }))));
-    let second = expect_ok(
-        fx.engine
-            .handle_line(&recalc_request("r2", &fx.source, json!([]))),
-    );
-    assert_eq!(second["cached"], json!(true));
-}
-
-#[test]
-fn close_purges_the_resident_model() {
-    let fx = fixture();
-    let opened = expect_ok(fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "o", "command": "open", "path": fx.source,
-    }))));
-    expect_ok(
-        fx.engine
-            .handle_line(&recalc_request("r", &fx.source, json!([]))),
-    );
-    expect_ok(fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "x", "command": "close", "sessionId": opened["sessionId"],
-    }))));
-    assert_eq!(fx.engine.recalc.pending_purge_count(), 0);
-    let again = expect_ok(
-        fx.engine
-            .handle_line(&recalc_request("r2", &fx.source, json!([]))),
-    );
-    assert_eq!(again["cached"], json!(false));
-}
-
-#[test]
-fn convert_workbook_answers_through_the_same_envelope() {
-    let fx = fixture();
-    let result = expect_ok(fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "c", "command": "convert_workbook",
-        "path": fx.source, "targetPath": fx.root.join("converted.xlsx"),
-    }))));
-    assert_eq!(result["sheets"], json!(1));
-    assert_eq!(result["cells"], json!(2));
-    assert_eq!(result["formulasDropped"], json!(0));
-}
-
-#[test]
-fn paths_outside_the_work_folder_are_refused() {
-    let fx = fixture();
-    let outside = fx._dir.path().join("outside.xlsx");
-    write_workbook(&outside, 1);
-    let open = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "o", "command": "open", "path": outside,
-    })));
-    assert_eq!(
-        expect_err(open),
-        ("invalid_request", PATH_OUTSIDE_WORK_FOLDER.to_owned())
-    );
-
-    let dotted = fx.root.join("..").join("outside.xlsx");
-    let manifest = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "m", "command": "archive_manifest", "path": dotted,
-    })));
-    assert_eq!(expect_err(manifest).0, "invalid_request");
-
-    let content = fx._dir.path().join("content.xml");
-    fs::write(&content, "<x/>").unwrap();
-    let save = fx.engine.handle_line(&line(json!({
-        "version": 1, "requestId": "s", "command": "save_archive",
-        "sourcePath": fx.source, "targetPath": fx.root.join("out.xlsx"),
-        "replacements": [{ "name": "xl/styles.xml", "contentPath": content }],
-        "removals": [], "additions": [],
-    })));
-    assert_eq!(
-        expect_err(save),
-        ("invalid_request", PATH_OUTSIDE_WORK_FOLDER.to_owned())
-    );
-    assert!(!fx.root.join("out.xlsx").exists());
-}
+use super::path_guard::PATH_OUTSIDE_WORK_FOLDER;
+use super::{SheetsEngine, SheetsState, SheetsWorkspace};
 
 #[test]
 fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
     let dir = tempfile::tempdir().unwrap();
-    let workspace = SheetsWorkspace::new(dir.path().join("ieum-sheets")).unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
     let root = workspace.root().to_path_buf();
+    assert_eq!(root, dir.path().join("ieum-tmp").join("sheets"));
+    let engine_dir = workspace.engine_temp_dir().to_path_buf();
+    assert_eq!(engine_dir, root.join("engine"));
+    assert!(engine_dir.is_dir());
+    // An engine session cache, as the engine would create it.
+    let session_cache = engine_dir.join("genspark-ai-excel-s1");
+    fs::create_dir(&session_cache).unwrap();
+    fs::write(session_cache.join("cells.bin"), "c").unwrap();
 
     let made = workspace.create_dir().unwrap();
     assert!(made.is_dir() && made.starts_with(&root));
@@ -525,6 +52,13 @@ fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
             .into_owned(),
         root.to_string_lossy().into_owned(),
         "relative/path.xml".to_owned(),
+        // The engine's temp directory is not the WebView's.
+        engine_dir.to_string_lossy().into_owned(),
+        session_cache
+            .join("cells.bin")
+            .to_string_lossy()
+            .into_owned(),
+        engine_dir.join("new.xml").to_string_lossy().into_owned(),
     ] {
         let error = workspace.read_bytes(&raw).unwrap_err();
         assert_eq!(error.message_key, "mobile.sheets.pathOutsideWork", "{raw}");
@@ -537,165 +71,213 @@ fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
     assert!(!made.exists());
     workspace.delete(&made.to_string_lossy()).unwrap();
 
+    assert!(session_cache.join("cells.bin").is_file());
+
+    // `clear` keeps the engine's session caches (workbooks may be open)...
     workspace.clear().unwrap();
     assert!(root.is_dir());
-    assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
-}
+    let left: Vec<_> = fs::read_dir(&root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(left, vec![engine_dir.clone()]);
+    assert!(session_cache.is_dir());
+    // ...`clear_all` does not, and leaves an empty engine directory.
+    workspace.clear_all().unwrap();
+    assert!(engine_dir.is_dir());
+    assert_eq!(fs::read_dir(&engine_dir).unwrap().count(), 0);
 
-#[test]
-fn is_within_rejects_the_root_itself_and_parent_steps() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().join("w");
-    fs::create_dir(&root).unwrap();
-    assert!(is_within(&root, &root.join("f.xlsx")));
-    assert!(!is_within(&root, &root));
-    assert!(!is_within(&root, &root.join("x").join("..").join("f.xlsx")));
-    assert!(!is_within(&root, Path::new("f.xlsx")));
+    // Folders removed from outside (the app's "clear temp files") come back.
+    fs::remove_dir_all(dir.path().join("ieum-tmp")).unwrap();
+    workspace.ensure_folders().unwrap();
+    assert!(engine_dir.is_dir());
 }
 
 #[test]
 fn state_setup_empties_the_work_folder_left_by_a_previous_run() {
     let dir = tempfile::tempdir().unwrap();
-    let leftover = dir.path().join(super::WORK_DIR_NAME).join("d-old");
+    let root = dir
+        .path()
+        .join(super::TEMP_ROOT_NAME)
+        .join(super::WORK_DIR_NAME);
+    let leftover = root.join("d-old");
     fs::create_dir_all(&leftover).unwrap();
     fs::write(leftover.join("entry-0.bin"), "x").unwrap();
+    // A session cache the engine left when the OS ended the app.
+    let orphan = root
+        .join(super::ENGINE_DIR_NAME)
+        .join("genspark-ai-excel-old");
+    fs::create_dir_all(&orphan).unwrap();
     let state = SheetsState::new(dir.path()).unwrap();
-    assert!(state.workspace.root().is_dir());
+    assert_eq!(state.workspace.root(), root);
+    assert!(state.workspace.engine_temp_dir().is_dir());
     assert!(!leftover.exists());
-    assert_eq!(state.engine.work_root(), Some(state.workspace.root()));
+    assert!(!orphan.exists());
+    // The engine got the same work folder.
+    let outside = parse(
+        &state
+            .engine
+            .handle_line(&manifest_request(&dir.path().join("x.zip"))),
+    );
+    assert_eq!(outside["error"]["message"], json!(PATH_OUTSIDE_WORK_FOLDER));
 }
 
-/// Optional parity check against the desktop sidecar executable. Runs only
-/// when `IEUM_XLSX_SIDECAR_EXE` names a built `xlsx-sidecar` binary: the same
-/// request lines go to the process and to the in-process dispatch, and the
-/// responses must be equal once per-run values (paths, session ids) are
-/// replaced by placeholders.
-#[test]
-fn responses_match_the_desktop_sidecar_executable() {
-    let Some(exe) = std::env::var_os("IEUM_XLSX_SIDECAR_EXE") else {
-        eprintln!("skipped: IEUM_XLSX_SIDECAR_EXE is not set");
-        return;
-    };
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
+fn parse(text: &str) -> Value {
+    serde_json::from_str(text).unwrap()
+}
 
-    let run = |dir: &Path, send: &dyn Fn(&str) -> Value| -> Vec<Value> {
-        let source = dir.join("book.xlsx");
-        write_workbook(&source, 10);
-        let out_dir = dir.join("entries");
-        fs::create_dir_all(&out_dir).unwrap();
-        let patched = dir.join("patched.xml");
-        fs::write(&patched, sheet_xml(21)).unwrap();
-        let mut answers = Vec::new();
-        let opened = send(&line(json!({
-            "version": 1, "requestId": "o", "command": "open", "path": source,
-        })));
-        let session = opened["result"]["sessionId"].clone();
-        answers.push(opened);
-        // Indexing runs on its own thread; ask again until it is complete,
-        // as the desktop client does, so both sides answer the same thing.
-        let read = line(
-            json!({ "version": 1, "requestId": "r", "command": "read_range",
-            "sessionId": session, "sheetId": "sheet-1",
-            "range": { "startRow": 0, "endRow": 1, "startColumn": 0, "endColumn": 0 } }),
-        );
-        let mut range = send(&read);
-        for _ in 0..500 {
-            if range["result"]["indexingComplete"] == json!(true) {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            range = send(&read);
-        }
-        answers.push(range);
-        for request in [
-            json!({ "version": 1, "requestId": "f", "command": "read_formula_cells",
-                "sessionId": session, "sheetId": "sheet-1" }),
-            json!({ "version": 1, "requestId": "find", "command": "find_cells",
-                "sessionId": session, "query": "2" }),
-            json!({ "version": 1, "requestId": "ro", "command": "read_row_outline",
-                "sessionId": session, "sheetId": "sheet-1" }),
-            json!({ "version": 1, "requestId": "m", "command": "archive_manifest", "path": source }),
-            json!({ "version": 1, "requestId": "e", "command": "read_entries", "path": source,
-                "entries": ["xl/worksheets/sheet1.xml"], "outputDir": out_dir }),
-            json!({ "version": 1, "requestId": "sc", "command": "scan_entries", "path": source,
-                "entries": ["xl/worksheets/sheet1.xml"], "needle": "A1*2" }),
-            json!({ "version": 1, "requestId": "s", "command": "save_archive",
-                "sourcePath": source, "targetPath": dir.join("saved.xlsx"),
-                "replacements": [{ "name": "xl/worksheets/sheet1.xml", "contentPath": patched }],
-                "removals": [], "additions": [] }),
-            json!({ "version": 1, "requestId": "c", "command": "recalc_cells",
-                "path": dir.join("saved.xlsx"), "reportStale": true,
-                "reads": [{ "sheet": "Sheet1",
-                    "range": { "startRow": 0, "endRow": 1, "startColumn": 0, "endColumn": 0 } }] }),
-            json!({ "version": 1, "requestId": "cv", "command": "convert_workbook",
-                "path": source, "targetPath": dir.join("converted.xlsx") }),
-            json!({ "version": 1, "requestId": "od", "command": "convert_to_ods",
-                "path": source, "targetPath": dir.join("book.ods") }),
-            json!({ "version": 1, "requestId": "lx", "command": "list_external_links", "path": source }),
-            json!({ "version": 1, "requestId": "bad", "command": "read_range",
-                "sessionId": "nope", "sheetId": "sheet-1",
-                "range": { "startRow": 0, "endRow": 0, "startColumn": 0, "endColumn": 0 } }),
-            json!({ "version": 9, "requestId": "v", "command": "archive_manifest", "path": source }),
-            json!({ "version": 1, "requestId": "x", "command": "close", "sessionId": session }),
-        ] {
-            answers.push(send(&line(request)));
-        }
-        let saved = fs::read(dir.join("saved.xlsx")).unwrap();
-        answers.push(json!({ "savedBytes": saved.len() }));
-        answers.push(json!({ "savedSha": format!("{:x}", sha2_digest(&saved)) }));
-        answers
-    };
+fn manifest_request(path: &std::path::Path) -> String {
+    json!({ "version": 1, "requestId": "m", "command": "archive_manifest", "path": path })
+        .to_string()
+}
 
-    // The desktop sidecar process.
-    let desktop_dir = tempfile::tempdir().unwrap();
-    let mut child = Command::new(exe)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
+fn write_zip(path: &std::path::Path) {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
+    writer
+        .start_file("a.txt", zip::write::SimpleFileOptions::default())
         .unwrap();
-    let stdin = std::cell::RefCell::new(child.stdin.take().unwrap());
-    let stdout = std::cell::RefCell::new(BufReader::new(child.stdout.take().unwrap()));
-    let desktop = run(desktop_dir.path(), &|request| {
-        writeln!(stdin.borrow_mut(), "{request}").unwrap();
-        stdin.borrow_mut().flush().unwrap();
-        let mut answer = String::new();
-        stdout.borrow_mut().read_line(&mut answer).unwrap();
-        serde_json::from_str(&answer).unwrap()
-    });
-    drop(stdin);
-    let _ = child.wait();
-
-    // The in-process dispatch.
-    let mobile_dir = tempfile::tempdir().unwrap();
-    let engine = SheetsEngine::new(Some(mobile_dir.path().to_path_buf()));
-    let mobile = run(mobile_dir.path(), &|request| {
-        serde_json::to_value(engine.handle_line(request)).unwrap()
-    });
-
-    let normalize = |answers: Vec<Value>, dir: &Path| -> Vec<Value> {
-        let text = serde_json::to_string(&answers).unwrap();
-        let dir_json = serde_json::to_string(&dir.to_string_lossy()).unwrap();
-        let dir_json = &dir_json[1..dir_json.len() - 1];
-        let session = answers[0]["result"]["sessionId"]
-            .as_str()
-            .unwrap_or("")
-            .to_owned();
-        let text = text
-            .replace(dir_json, "<dir>")
-            .replace(&session, "<session>");
-        serde_json::from_str(&text).unwrap()
-    };
-    let desktop = normalize(desktop, desktop_dir.path());
-    let mobile = normalize(mobile, mobile_dir.path());
-    assert_eq!(desktop.len(), mobile.len());
-    for (index, (d, m)) in desktop.iter().zip(&mobile).enumerate() {
-        assert_eq!(d, m, "answer {index} differs");
-    }
+    writer.write_all(b"hello").unwrap();
+    writer.finish().unwrap();
 }
 
-fn sha2_digest(bytes: &[u8]) -> impl std::fmt::LowerHex {
+/// The library `build.rs` linked answers through the C ABI with the
+/// desktop's JSON text.
+#[test]
+fn the_linked_engine_answers_protocol_lines() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SheetsState::new(dir.path()).unwrap();
+    let book = state.workspace.root().join("a.zip");
+    write_zip(&book);
+
+    let text = state.engine.handle_line(&manifest_request(&book));
+    assert!(
+        text.starts_with(r#"{"version":1,"requestId":"m","ok":true,"result":{"entries":[{"#),
+        "{text}"
+    );
+    assert_eq!(parse(&text)["result"]["entries"][0]["name"], json!("a.txt"));
+
+    let malformed = parse(&state.engine.handle_line("{not json"));
+    assert_eq!(malformed["error"]["code"], json!("invalid_json"));
+    assert_eq!(malformed["requestId"], json!(""));
+
+    // An engine without a folder rule (as on the desktop) accepts any path.
+    let free = SheetsEngine::new(None).unwrap();
+    let elsewhere = dir.path().join("b.zip");
+    write_zip(&elsewhere);
+    assert_eq!(
+        parse(&free.handle_line(&manifest_request(&elsewhere)))["ok"],
+        json!(true)
+    );
+}
+
+/// A panic inside the engine fails only that request, even though this crate
+/// may be built with `panic = "abort"` (the library unwinds on its own).
+/// Debug builds link the library with its `test-panic` feature.
+#[cfg(ieum_sheets_test_panic)]
+#[test]
+fn a_panic_inside_the_linked_engine_fails_only_that_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SheetsState::new(dir.path()).unwrap();
+    let answer = parse(&state.engine.handle_line(
+        &json!({ "version": 1, "requestId": "boom", "command": "__ieum_test_panic" }).to_string(),
+    ));
+    assert_eq!(
+        answer,
+        json!({
+            "version": 1, "requestId": "boom", "ok": false,
+            "error": {
+                "code": "workbook_error",
+                "message": "The spreadsheet engine could not process this request.",
+            },
+        })
+    );
+    let book = state.workspace.root().join("a.zip");
+    write_zip(&book);
+    assert_eq!(
+        parse(&state.engine.handle_line(&manifest_request(&book)))["ok"],
+        json!(true)
+    );
+}
+
+/// Compressed bytes the app writes for a fixed payload, through the same
+/// code paths as its saves: `hwp5_wasm::rewrite_streams_inner` (HWP 5 body
+/// streams, flate2 raw deflate) and a zip 2 `Deflated` entry (HWPX parts).
+/// Returns (hwp stream length, hwp stream SHA-256, zip length, zip SHA-256).
+fn app_compression_digests() -> (usize, String, usize, String) {
     use sha2::Digest;
-    let digest = sha2::Sha256::digest(bytes);
-    u128::from_be_bytes(digest[..16].try_into().unwrap())
+
+    fn hex(bytes: &[u8]) -> String {
+        sha2::Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    // Deterministic text with repeats, so the compressor has real choices.
+    let words = ["표 ", "문단", "hello ", "셀", "0123", "가나다라", " ", "\n"];
+    let mut state = 0x2545_f491_u32;
+    let mut payload = Vec::new();
+    while payload.len() < 300_000 {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        payload.extend_from_slice(words[(state % 8) as usize].as_bytes());
+    }
+
+    // A minimal compressed HWP 5 container with one body section.
+    let mut comp = cfb::CompoundFile::create(Cursor::new(Vec::new())).unwrap();
+    let mut header = vec![0u8; 256];
+    header[..hwp5_wasm::SIGNATURE.len()].copy_from_slice(hwp5_wasm::SIGNATURE);
+    header[32..36].copy_from_slice(&[0, 3, 0, 5]);
+    header[36..40].copy_from_slice(&hwp5_wasm::FLAG_COMPRESSED.to_le_bytes());
+    comp.create_stream("/FileHeader")
+        .unwrap()
+        .write_all(&header)
+        .unwrap();
+    comp.create_storage("/BodyText").unwrap();
+    comp.create_stream("/BodyText/Section0")
+        .unwrap()
+        .write_all(&[0x03, 0x00])
+        .unwrap();
+    comp.flush().unwrap();
+    let hwp = comp.into_inner().into_inner();
+    let manifest = format!(
+        r#"[{{"path":"/BodyText/Section0","offset":0,"length":{}}}]"#,
+        payload.len()
+    );
+    let saved = hwp5_wasm::rewrite_streams_inner(&hwp, &manifest, &payload).unwrap();
+    let raw = hwp5_wasm::read_stream_inner(&saved, "/BodyText/Section0", false).unwrap();
+    assert_eq!(
+        hwp5_wasm::read_stream_inner(&saved, "/BodyText/Section0", true).unwrap(),
+        payload
+    );
+
+    let mut zipped = Vec::new();
+    {
+        let mut writer = zip::ZipWriter::new(Cursor::new(&mut zipped));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .last_modified_time(zip::DateTime::default());
+        writer.start_file("Contents/section0.xml", options).unwrap();
+        writer.write_all(&payload).unwrap();
+        writer.finish().unwrap();
+    }
+    (raw.len(), hex(&raw), zipped.len(), hex(&zipped))
+}
+
+/// The engine must not change how the rest of the app compresses. Expected
+/// values were captured from the app before the engine came in (12923b5e6,
+/// flate2 on miniz_oxide). Linking the engine crate into this workspace
+/// switched flate2 to zlib-rs and gave (42418, 65b42a8d…, 42558, d40ca9d0…).
+#[test]
+fn hwp_and_hwpx_compression_matches_the_app_before_the_engine() {
+    assert_eq!(
+        app_compression_digests(),
+        (
+            42923,
+            "7bc0b90ed5225b4cab627102a59929aee3a0cce282000badda0a37ea88c067df".to_owned(),
+            43063,
+            "ff36a6936d87cf2b2de7b7203c9512daf5280e2893c0a517465879abde991ea5".to_owned(),
+        )
+    );
 }
