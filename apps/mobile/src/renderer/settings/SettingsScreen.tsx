@@ -41,8 +41,6 @@ export interface SettingsScreenProps {
   readonly onRestoreBackup: (backupId: string, target: MobileRestoreTarget) => Promise<void>
   readonly onDeleteBackup: (backupId: string) => Promise<void>
   readonly aiSlot?: MobileAiSettingsSlot
-  /** Document key of the open document, if known; clearing recovery copies keeps its copy. */
-  readonly activeDocKey?: string
 }
 
 export function SettingsScreen({
@@ -60,7 +58,6 @@ export function SettingsScreen({
   onRestoreBackup,
   onDeleteBackup,
   aiSlot,
-  activeDocKey,
 }: SettingsScreenProps) {
   const { t } = useMobileLocale()
   useBackLayer(true, onBack)
@@ -109,7 +106,7 @@ export function SettingsScreen({
           onDeleteBackup={onDeleteBackup}
         />
 
-        <StorageSection aiSlot={aiSlot} activeDocKey={activeDocKey} platform={info?.platform} />
+        <StorageSection aiSlot={aiSlot} platform={info?.platform} />
 
         <HelpSection onClose={onBack} />
 

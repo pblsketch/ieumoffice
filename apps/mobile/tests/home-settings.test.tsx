@@ -10,7 +10,11 @@ import type {
 } from '@genoffice/mobile-bridge/transport'
 import type { EditorKind } from '../src/renderer/editors/editorKind'
 import type { HomeHost } from '../src/renderer/home/homeHost'
-import { resetHomeRuntimeForTest, setHomeRuntime } from '../src/renderer/home/homeRuntime'
+import {
+  resetHomeRuntimeForTest,
+  setActiveDocKey,
+  setHomeRuntime,
+} from '../src/renderer/home/homeRuntime'
 import {
   getHomePrefs,
   resetHomePrefsForTest,
@@ -25,6 +29,20 @@ import {
   setCardHidden,
   visibleCardOrder,
 } from '../src/renderer/settings/sections/homeSettingsModel'
+
+// Pin the editor registry to the base kinds (HWP, Markdown) like tests/open-gate.test.tsx, so kinds
+// other tracks register do not change the card rows and the "all editors off" rule tested here.
+vi.mock('../src/renderer/editors/registry', async () => {
+  const { hwpEditorKind } = await import('../src/renderer/editors/hwpKind')
+  const { markdownEditorKind } = await import('../src/renderer/editors/markdownKind')
+  const kinds = [hwpEditorKind, markdownEditorKind]
+  return {
+    EDITOR_KINDS: kinds,
+    findEditorKind: (format: string) =>
+      kinds.find((kind) => (kind.formats as readonly string[]).includes(format)) ?? null,
+    openableExtensions: () => kinds.flatMap((kind) => kind.openExtensions),
+  }
+})
 
 const ko = homeStrings.ko
 
@@ -310,7 +328,9 @@ describe('settings: storage', () => {
       mobile_home_clear_storage: () => ({ freedBytes: 4096 }),
     })
     setHomeRuntime(fake.host)
-    const el = render({ activeDocKey: 'doc-open' })
+    // the app layer reports the open document
+    setActiveDocKey('doc-open')
+    const el = render()
     await flush()
 
     expect(byTestId(el, 'home-set-storage')).not.toBeNull()

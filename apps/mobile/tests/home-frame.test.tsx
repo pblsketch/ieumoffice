@@ -28,6 +28,20 @@ import { resetHomePrefsForTest } from '../src/renderer/home/prefsStore'
 import { MobileLocaleProvider } from '../src/renderer/i18n'
 import { BackStackProvider } from '../src/renderer/shell/backStack'
 
+// Pin the editor registry to the base kinds (HWP, Markdown) like tests/open-gate.test.tsx, so kinds
+// other tracks register do not change the card rows and the "all editors off" rule tested here.
+vi.mock('../src/renderer/editors/registry', async () => {
+  const { hwpEditorKind } = await import('../src/renderer/editors/hwpKind')
+  const { markdownEditorKind } = await import('../src/renderer/editors/markdownKind')
+  const kinds = [hwpEditorKind, markdownEditorKind]
+  return {
+    EDITOR_KINDS: kinds,
+    findEditorKind: (format: string) =>
+      kinds.find((kind) => (kind.formats as readonly string[]).includes(format)) ?? null,
+    openableExtensions: () => kinds.flatMap((kind) => kind.openExtensions),
+  }
+})
+
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 type Handler = (args: Record<string, unknown> | undefined) => unknown

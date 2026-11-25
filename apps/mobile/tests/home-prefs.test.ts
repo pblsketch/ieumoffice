@@ -34,6 +34,20 @@ import {
 } from '../src/renderer/home/prefsStore'
 import { DEFAULT_PREFS } from '../src/renderer/settings/defaultPrefs'
 
+// Pin the editor registry to the base kinds (HWP, Markdown) like tests/open-gate.test.tsx, so kinds
+// other tracks register do not change the card rows and the "all editors off" rule tested here.
+vi.mock('../src/renderer/editors/registry', async () => {
+  const { hwpEditorKind } = await import('../src/renderer/editors/hwpKind')
+  const { markdownEditorKind } = await import('../src/renderer/editors/markdownKind')
+  const kinds = [hwpEditorKind, markdownEditorKind]
+  return {
+    EDITOR_KINDS: kinds,
+    findEditorKind: (format: string) =>
+      kinds.find((kind) => (kind.formats as readonly string[]).includes(format)) ?? null,
+    openableExtensions: () => kinds.flatMap((kind) => kind.openExtensions),
+  }
+})
+
 const KIND_IDS = EDITOR_KINDS.map((kind) => kind.id)
 const KEEP_ON = 'mobile_home_keep_screen_on'
 

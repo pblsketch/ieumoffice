@@ -19,16 +19,13 @@ import './homeSettings.css'
 
 export interface StorageSectionProps {
   readonly aiSlot?: MobileAiSettingsSlot
-  /** Document key of the open document; its recovery copy is kept when clearing. */
-  readonly activeDocKey?: string
   readonly platform?: AppPlatform
 }
 
-export function StorageSection({ aiSlot, activeDocKey, platform }: StorageSectionProps) {
+export function StorageSection({ aiSlot, platform }: StorageSectionProps) {
   const runtime = useHomeRuntime()
-  // without the prop, the document the app layer reports as open
-  const openDocKey = useActiveDocKey()
-  const keepDocKey = activeDocKey ?? openDocKey ?? undefined
+  // the document the app layer reports as open keeps its recovery copy when clearing
+  const keepDocKey = useActiveDocKey() ?? undefined
   return (
     <>
       {runtime && <StorageCard host={runtime} activeDocKey={keepDocKey} platform={platform} />}
