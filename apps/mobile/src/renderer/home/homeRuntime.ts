@@ -44,8 +44,35 @@ export function sessionOrigin(sessionId: string): SessionOrigin | null {
   return origins.get(sessionId) ?? null
 }
 
-/** Tests only: forgets the host and the origins. */
+let activeDocKey: string | null = null
+const docKeyListeners = new Set<() => void>()
+
+function subscribeDocKey(listener: () => void): () => void {
+  docKeyListeners.add(listener)
+  return () => {
+    docKeyListeners.delete(listener)
+  }
+}
+
+/** The app layer publishes the document key of the open document (null when none is open). */
+export function setActiveDocKey(key: string | null): void {
+  if (activeDocKey === key) return
+  activeDocKey = key
+  for (const listener of [...docKeyListeners]) listener()
+}
+
+export function getActiveDocKey(): string | null {
+  return activeDocKey
+}
+
+/** The open document's key for a component (e.g. storage keeps its recovery copy when clearing). */
+export function useActiveDocKey(): string | null {
+  return useSyncExternalStore(subscribeDocKey, getActiveDocKey, getActiveDocKey)
+}
+
+/** Tests only: forgets the host, the origins and the open document's key. */
 export function resetHomeRuntimeForTest(): void {
   origins.clear()
+  setActiveDocKey(null)
   setHomeRuntime(null)
 }
