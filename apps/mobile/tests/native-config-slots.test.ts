@@ -12,8 +12,8 @@ const ANDROID_MARKERS = TRACKS.map((t) => `<!-- ${t} MIME types -->`)
 const IOS_DOCUMENT_MARKERS = TRACKS.map((t) => `<!-- ${t} document types -->`)
 const IOS_IMPORTED_MARKERS = TRACKS.map((t) => `<!-- ${t} imported types -->`)
 
-// The formats declared before any track adds its own. The slots must not add any: a new MIME or
-// content type makes the app show up in the phone's "open with" chooser for those files.
+// The formats declared before any track adds its own. They stay first and unchanged; a track adds
+// its own formats only below its marker, so this test never needs a track's edit.
 const BASE_MIME_TYPES = [
   'application/x-hwp',
   'application/haansofthwp',
@@ -89,18 +89,25 @@ function expectAndroidSlots(xml: string): void {
   const perFilter = mimeTypesPerFilter(xml)
   expect(perFilter).toHaveLength(2)
   for (const types of perFilter) {
-    expect(types).toEqual(BASE_MIME_TYPES)
+    expect(types.slice(0, BASE_MIME_TYPES.length)).toEqual(BASE_MIME_TYPES)
   }
   for (const type of BASE_MIME_TYPES) {
     expect(xml).toContain(`<data android:mimeType="${type}" />`)
   }
-  // The markers sit inside each filter, after its last existing child.
+  // The markers sit inside each filter, after its base formats; anything beyond the base set
+  // sits below the first marker (a track's slot), never among the base lines.
   const filters = xml.match(/<intent-filter[\s\S]*?<\/intent-filter>/g) ?? []
   const withMime = filters.filter((f) => f.includes('android:mimeType'))
   for (const filter of withMime) {
-    const lastData = filter.lastIndexOf('<data ')
+    const lastBase = filter.indexOf(
+      `<data android:mimeType="${BASE_MIME_TYPES[BASE_MIME_TYPES.length - 1]}" />`,
+    )
+    const firstMarker = filter.indexOf(ANDROID_MARKERS[0])
     for (const marker of ANDROID_MARKERS) {
-      expect(filter.indexOf(marker)).toBeGreaterThan(lastData)
+      expect(filter.indexOf(marker)).toBeGreaterThan(lastBase)
+    }
+    for (const m of filter.matchAll(/android:mimeType="([^"]*)"/g)) {
+      if (!BASE_MIME_TYPES.includes(m[1])) expect(m.index).toBeGreaterThan(firstMarker)
     }
   }
 }
@@ -108,20 +115,31 @@ function expectAndroidSlots(xml: string): void {
 function expectIosSlots(plist: string): void {
   const documentTypes = topArrayBody(plist, 'CFBundleDocumentTypes')
   const importedTypes = topArrayBody(plist, 'UTImportedTypeDeclarations')
+  // The markers follow the last base entry of each array; tracks add their dicts below them.
+  const lastBaseDocument = documentTypes.indexOf(
+    `<string>${BASE_ITEM_CONTENT_TYPES[BASE_ITEM_CONTENT_TYPES.length - 1]}</string>`,
+  )
+  const lastBaseImported = importedTypes.indexOf(
+    `<string>${BASE_UT_TYPE_IDS[BASE_UT_TYPE_IDS.length - 1]}</string>`,
+  )
   for (const marker of IOS_DOCUMENT_MARKERS) {
     expect(count(plist, marker)).toBe(1)
-    expect(documentTypes.lastIndexOf('</dict>')).toBeLessThan(documentTypes.indexOf(marker))
+    expect(documentTypes.indexOf(marker)).toBeGreaterThan(lastBaseDocument)
   }
   for (const marker of IOS_IMPORTED_MARKERS) {
     expect(count(plist, marker)).toBe(1)
-    expect(importedTypes.lastIndexOf('</dict>')).toBeLessThan(importedTypes.indexOf(marker))
+    expect(importedTypes.indexOf(marker)).toBeGreaterThan(lastBaseImported)
   }
-  expect(arrayStringsAfterKey(plist, 'LSItemContentTypes')).toEqual(BASE_ITEM_CONTENT_TYPES)
-  expect(stringsAfterKey(plist, 'UTTypeIdentifier')).toEqual(BASE_UT_TYPE_IDS)
+  expect(
+    arrayStringsAfterKey(plist, 'LSItemContentTypes').slice(0, BASE_ITEM_CONTENT_TYPES.length),
+  ).toEqual(BASE_ITEM_CONTENT_TYPES)
+  expect(stringsAfterKey(plist, 'UTTypeIdentifier').slice(0, BASE_UT_TYPE_IDS.length)).toEqual(
+    BASE_UT_TYPE_IDS,
+  )
 }
 
 describe('per-track slots in the open-with declarations', () => {
-  it('the fragments carry every marker and no format beyond the base set', () => {
+  it('the fragments carry every marker, with the base formats first', () => {
     expectAndroidSlots(ANDROID_FRAGMENT)
     expectIosSlots(IOS_FRAGMENT)
   })
