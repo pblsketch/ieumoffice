@@ -491,6 +491,20 @@ describe('Text box tool', () => {
     expect(draftBox(host)?.value).toBe('Hi 뷁 漢')
   }, 60_000)
 
+  it('counts an open box as unsaved and commits it before a save', async () => {
+    const { doc, edit, fake, s } = await startDoc(await textPdf())
+    const host = mountWorkspace(doc)
+    pressTextTool(host)
+    tap(host, 40, 200)
+    typeInto(await waitFor(() => draftBox(host), 'the insert box'), '열린 상자')
+    // nothing confirmed yet, but [완료] / save must not lose what is being typed
+    expect(edit.store.getSnapshot().textInserts).toHaveLength(0)
+    expect(await doc.save!(docState(s), false)).toBe(true)
+    expect(recorder.requests.at(-1)?.textInserts).toHaveLength(1)
+    expect(fake.saved).toHaveLength(1)
+    expect((await pageText(fake.saved[0]!)).replace(/\s+/g, '')).toContain('열린상자')
+  }, 60_000)
+
   it('adds new text with the PC insert shape, then reopens, moves and deletes it', async () => {
     const { doc, edit } = await startDoc(await textPdf())
     const host = mountWorkspace(doc)

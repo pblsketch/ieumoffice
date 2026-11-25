@@ -96,6 +96,9 @@ export interface PdfEditServices {
   engine(): PdfEngine
   setRequestExtras(patch: Partial<PdfRequestExtras>): void
   registerOpContext(provider: PdfOpContextProvider): () => void
+  /** An open input not committed yet (a text box being typed in): the document counts as unsaved
+      while it is registered, and save and share await `flush` first. Returns the unregister call. */
+  registerDraft(flush: () => Promise<void>): () => void
   /** An id in the PC format for additive ops. */
   newId(): string
   showToast(input: ToastRequest | string): void

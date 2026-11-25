@@ -370,6 +370,17 @@ export function useTextFeature(ctx: PdfFeatureContext): PdfFeatureChrome {
     }
   }, [commitEdit, commitInsert])
 
+  // An open box is part of the document: it counts as unsaved, and a save or share commits it first
+  const hasDraft = draft !== null
+  const commitRef = useRef(commit)
+  commitRef.current = commit
+  useEffect(() => {
+    if (!hasDraft) return
+    return services.registerDraft(async () => {
+      await commitRef.current()
+    })
+  }, [hasDraft, services])
+
   // Leaving the tool or edit mode commits the open box; text that cannot be kept is dropped
   useEffect(() => {
     if (active || !draftRef.current) return

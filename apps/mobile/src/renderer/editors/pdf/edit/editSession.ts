@@ -113,10 +113,16 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
   }
 
   const store = createPdfEditStore({ context: opContext, newId: newEditId })
+  /** Open inputs a feature has not committed yet (a text box being typed in). */
+  const drafts = new Set<() => Promise<void>>()
+  // a restored recovery copy is unsaved until it is written somewhere; an open draft is unsaved too
+  const unsaved = () => store.hasEdits() || model.fromRecovery || drafts.size > 0
+  const flushDrafts = async () => {
+    for (const flush of [...drafts]) await flush().catch(() => {})
+  }
   store.subscribe(() => {
     gate.bump()
-    // a restored recovery copy is unsaved until it is written somewhere
-    host.markDirty(store.hasEdits() || model.fromRecovery)
+    host.markDirty(unsaved())
     host.contentChanged()
   })
 
@@ -211,7 +217,7 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
       return null
     }
     await client.recoveryDiscard(doc.session.docKey).catch(() => {})
-    host.markDirty(false)
+    host.markDirty(drafts.size > 0)
     return doc.session
   }
 
@@ -229,7 +235,7 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
     }
     store.reset()
     gate.invalidate()
-    host.markDirty(false)
+    host.markDirty(drafts.size > 0)
   }
 
   const saveOnce = async (doc: ActiveDocState, forceSaveAs: boolean): Promise<boolean> => {
@@ -241,7 +247,7 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
       forceSaveAs || current.isUntitled || !doc.session.writable || doc.session.ephemeral
     if (!saveAs && !hasEdits) {
       // nothing changed: the file is not written (spec 3.11)
-      if (!current.fromRecovery) host.markDirty(false)
+      if (!current.fromRecovery) host.markDirty(drafts.size > 0)
       return true
     }
     let annotations: PdfAnnotationChoice = 'keep'
@@ -285,6 +291,8 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
   }
 
   const save = async (doc: ActiveDocState, forceSaveAs: boolean): Promise<boolean> => {
+    // what is still being typed belongs to this save
+    await flushDrafts()
     // one save at a time: a second one starts from what the first left
     while (saving) await saving.catch(() => false)
     const run = saveOnce(doc, forceSaveAs)
@@ -317,7 +325,7 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
       replaceModel(next)
       store.reset()
       gate.invalidate()
-      host.markDirty(false)
+      host.markDirty(drafts.size > 0)
     },
     async writeFileBytes(bytes) {
       try {
@@ -351,6 +359,14 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
       contextProviders.add(provider)
       return () => contextProviders.delete(provider)
     },
+    registerDraft(flush) {
+      drafts.add(flush)
+      host.markDirty(true)
+      return () => {
+        if (!drafts.delete(flush)) return
+        host.markDirty(unsaved())
+      }
+    },
     newId: newEditId,
     showToast: (input) => host.showToast(input),
     translate: (key, params) => host.translate(key, params),
@@ -372,6 +388,7 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
     save,
 
     async share(doc) {
+      await flushDrafts()
       docSession = doc.session
       const current = model
       if (!store.hasEdits()) {
