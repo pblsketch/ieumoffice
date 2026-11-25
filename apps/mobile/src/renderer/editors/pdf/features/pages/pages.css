@@ -1,0 +1,227 @@
+/* Page organizer sheet and the pending-page marks on the viewer pages (track T2,
+   PDF-T10). Chrome colors come from the design tokens; thumbnails sit on the page
+   paper color the viewer defines (document content, the same in every theme). */
+
+.m-pdf-pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  padding-bottom: var(--m-space-3);
+}
+
+.m-pdf-pages[data-busy='true'] {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.m-pdf-pages-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+}
+
+.m-pdf-pages-count {
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+}
+
+.m-pdf-pages-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: var(--m-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.m-pdf-pages-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--m-radius-control);
+  transition: opacity var(--m-motion-fast) var(--m-ease-standard);
+}
+
+.m-pdf-pages-tile[data-dragging='true'] {
+  z-index: 1;
+  opacity: 0.75;
+}
+
+.m-pdf-pages-tile[data-drop='before']::before,
+.m-pdf-pages-tile[data-drop='after']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--m-radius-full);
+  background: var(--color-btn-primary);
+}
+
+.m-pdf-pages-tile[data-drop='before']::before {
+  left: calc(-1 * var(--m-space-2));
+}
+
+.m-pdf-pages-tile[data-drop='after']::after {
+  right: calc(-1 * var(--m-space-2));
+}
+
+.m-pdf-pages-pick {
+  display: block;
+  width: 100%;
+  padding: var(--m-space-1);
+  border: 2px solid transparent;
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  cursor: pointer;
+}
+
+.m-pdf-pages-tile[data-selected='true'] .m-pdf-pages-pick {
+  border-color: var(--color-btn-primary);
+  background: var(--active-bg);
+}
+
+.m-pdf-pages-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 4;
+}
+
+.m-pdf-pages-paper {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--m-pdf-paper, var(--surface));
+  box-shadow: var(--shadow-sm);
+}
+
+.m-pdf-pages-thumb-bitmap,
+.m-pdf-pages-thumb-bitmap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.m-pdf-pages-check {
+  position: absolute;
+  top: var(--m-space-1);
+  left: var(--m-space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--m-radius-full);
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.m-pdf-pages-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--m-hit);
+}
+
+.m-pdf-pages-no {
+  padding-inline-start: var(--m-space-2);
+  font-size: var(--m-text-caption);
+  color: var(--text-secondary);
+}
+
+.m-pdf-pages-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  color: var(--text-secondary);
+  cursor: grab;
+  /* the grip drags; everywhere else a finger scrolls the grid */
+  touch-action: none;
+}
+
+.m-pdf-pages-actions {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--m-space-1);
+  padding-top: var(--m-space-2);
+  background: var(--surface);
+}
+
+.m-pdf-pages-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-half);
+  min-height: var(--m-hit);
+  padding: var(--m-space-1);
+  border: 0;
+  border-radius: var(--m-radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-tight);
+  text-align: center;
+}
+
+.m-pdf-pages-action[data-danger='true'] {
+  color: var(--danger);
+}
+
+.m-pdf-pages-action:disabled {
+  opacity: 0.4;
+}
+
+/* ── marks on the viewer pages ── */
+
+.m-pdf-pages-deleted {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  padding: var(--m-space-4);
+  text-align: center;
+  background: var(--m-scrim);
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+.m-pdf-pages-deleted strong {
+  padding: var(--m-space-1) var(--m-space-3);
+  border-radius: var(--m-radius-full);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--m-text-body);
+}
+
+.m-pdf-pages-deleted span {
+  padding: var(--m-space-1) var(--m-space-2);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+  font-size: var(--m-text-body-s);
+}
+
+.m-pdf-pages-moved {
+  position: absolute;
+  top: var(--m-space-2);
+  right: var(--m-space-2);
+  padding: var(--m-space-1) var(--m-space-2);
+  border-radius: var(--m-radius-full);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--m-text-caption);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
