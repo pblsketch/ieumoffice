@@ -1,5 +1,8 @@
 pub mod chatgpt;
 pub mod http;
+pub mod relay;
+#[cfg(test)]
+mod relay_tests;
 pub mod settings;
 pub mod stream;
 
@@ -9,9 +12,14 @@ pub use chatgpt::{
     is_chatgpt_visible, requires_reauthentication_on_refresh, verify_rs256_id_token,
 };
 pub use http::{build_safe_http_client, enforce_https_url, extract_safe_error_code};
+pub use relay::{
+    MobileAiRelay, MobileAiRelayEvent, MobileAiRelayEventKind, MobileAiRelayRequest,
+    RELAY_EVENT_NAME, provider_relay_hosts,
+};
 pub use settings::{
-    ConfiguredProviderSummary, MobileAiSettingsPatch, MobileAiSettingsSnapshot,
-    MobileAiSettingsStore, ModelPatch, ProviderKeyPatch, ValidateKeyResult,
+    ConfiguredProviderSummary, MobileAiCustomEndpoint, MobileAiCustomEndpointPatch,
+    MobileAiSettingsPatch, MobileAiSettingsSnapshot, MobileAiSettingsStore, ModelPatch,
+    ProviderKeyPatch, ValidateKeyResult, validate_custom_base_url,
 };
 pub use stream::{MobileAiStreamEvent, MobileAiStreamManager, MobileAiStreamRequest};
 
@@ -25,6 +33,8 @@ pub struct MobileAiService {
     pub settings: Arc<MobileAiSettingsStore>,
     pub chatgpt: Arc<ChatGptService>,
     pub streams: Arc<MobileAiStreamManager>,
+    /// Sealed relay for key-provider requests (T7).
+    pub relay: Arc<MobileAiRelay>,
 }
 
 impl MobileAiService {
@@ -33,10 +43,12 @@ impl MobileAiService {
         let settings = Arc::new(MobileAiSettingsStore::new(app_data_dir, vault.clone()));
         let chatgpt = Arc::new(ChatGptService::new(vault, auth_bridge));
         let streams = Arc::new(MobileAiStreamManager::new(settings.clone(), chatgpt.clone()));
+        let relay = Arc::new(MobileAiRelay::new(settings.clone()));
         Self {
             settings,
             chatgpt,
             streams,
+            relay,
         }
     }
 }

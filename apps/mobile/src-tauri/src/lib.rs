@@ -92,6 +92,11 @@ pub fn run() {
             // T6 home
 
             // T7 ai
+            commands::ai::relay::mobile_ai_relay_start,
+            commands::ai::relay::mobile_ai_relay_cancel,
+            commands::ai::relay::mobile_ai_get_custom_endpoint,
+            commands::ai::relay::mobile_ai_set_custom_endpoint,
+            commands::ai::relay::mobile_ai_clear_custom_endpoint,
         ])
         .run(tauri::generate_context!())
         .expect("error while running IeumOffice mobile application");
