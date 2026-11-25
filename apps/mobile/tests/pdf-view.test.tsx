@@ -32,7 +32,7 @@ import {
   loadPdfOutline,
   resolveDestPageIndex,
 } from '../src/renderer/editors/pdf/view/outline'
-import { parseGoToPage } from '../src/renderer/editors/pdf/view/PdfGoToPageSheet'
+import { PdfGoToPageSheet, parseGoToPage } from '../src/renderer/editors/pdf/view/PdfGoToPageSheet'
 import { pageLinksOf } from '../src/renderer/editors/pdf/view/PdfLinkLayer'
 import { createSheetPasswordPrompt } from '../src/renderer/editors/pdf/view/PdfPasswordSheet'
 import { hitsByPage, searchPdf } from '../src/renderer/editors/pdf/view/PdfSearchBar'
@@ -476,6 +476,23 @@ describe('outline', () => {
     expect(parseGoToPage('0', 5)).toBeNull()
     expect(parseGoToPage('6', 5)).toBeNull()
     expect(parseGoToPage('2a', 5)).toBeNull()
+  })
+
+  it('selects the prefilled page number on focus so typing replaces it', () => {
+    mount(
+      <PdfGoToPageSheet
+        open
+        pageCount={400}
+        currentPage={327}
+        t={(key) => key}
+        onGo={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    const input = document.querySelector<HTMLInputElement>('[data-testid="pdf-goto-input"]')!
+    expect(input.value).toBe('328')
+    act(() => input.focus())
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 3])
   })
 })
 

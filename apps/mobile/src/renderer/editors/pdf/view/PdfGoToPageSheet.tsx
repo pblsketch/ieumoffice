@@ -70,6 +70,8 @@ export function PdfGoToPageSheet({
             inputMode="numeric"
             pattern="[0-9]*"
             value={value}
+            // the field starts with the current page: a tap selects it so typing replaces it
+            onFocus={(e) => e.currentTarget.select()}
             aria-invalid={invalid}
             onChange={(e) => {
               setValue(e.target.value)
