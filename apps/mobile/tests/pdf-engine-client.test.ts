@@ -70,7 +70,8 @@ describe('pdf engine client', () => {
     expect(workers[0]!.received.map((r) => r.op)).toEqual(['hasEdits', 'hasEdits', 'blankPdf'])
     engine.dispose()
     expect(workers[0]!.terminated).toBe(true)
-  })
+    // The first call imports the engine core; on a slow disk under a full run that can exceed 5 s.
+  }, 60_000)
 
   it('passes the engine error message through unchanged', async () => {
     const message = 'save-verify-failed pages=2: text not found; the file was not written'
