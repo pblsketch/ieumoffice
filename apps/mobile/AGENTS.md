@@ -50,6 +50,7 @@
 - **설정**: 절마다 파일(`settings/sections/*.tsx`). AI 절(`AiSection.tsx`의 `AiEnabledRow`·`AiSection`·`AiStorageRows`)은 T7, 나머지(`GeneralSection`·`BackupsSection`·`StorageSection`, `SettingsScreen.tsx`, 기본값 `settings/defaultPrefs.ts`)는 T6. T7은 설정 기능을 `ai/settingsSlot.ts`의 `MobileAiSettingsSlot`과 `useMobileAi`로 늘린다. `tests/settings-sections.test.tsx`의 DOM 고정본(`tests/fixtures/settings-screen-dom.json`)은 S0 이음 확인용이다. 설정 화면을 일부러 바꾸면 그 커밋에서 고정본을 다시 뜨고, 합칠 때 겹치면 합친 코드로 다시 뜬다.
 - **홈**: `home/homeTabs.ts`(탭 목록, 지금은 `HOME_TABS_ENABLED = false`), `home/ToolsTab.tsx`(T3), `home/FoldersTab.tsx`(T6), 들어온 문서 `home/incoming.ts`(T6). 홈 화면과 탭은 `home/homeHost.ts`의 `HomeHost`(문서 열기, `createNew`, 알림, 홈 새로 읽기, 설정 열기)로 앱에 부탁한다.
 - **AI**: AI 실행·대화·AI 창·설정 값은 `ai/useMobileAi.ts`(T7). 편집기 트랙은 자기 종류의 `createAiRun`만 만든다.
+- **S0 시험**(`tests/editor-registry.test.tsx`, `open-gate.test.tsx`, `home-slots.test.tsx`, `i18n-bundles.test.ts`, `native-config-slots.test.ts`)은 트랙이 자기 형식·그림·문구·MIME을 더해도 그대로 통과하게 짰다. 트랙은 이 파일들을 고치지 않고, 자기 시험은 새 파일로 둔다.
 - `App.tsx`, `shell/**`, `editors/editorKind.ts`·`registry.ts`·`hwpKind.tsx`, 기본 사전·`strings.ts`, `components/MobileIcons.tsx`·`components/icons/index.ts`·`types.ts`·`svgIcon.tsx`는 어느 트랙도 고치지 않는다. 바꿔야 하면 기획에서 까닭과 바꿀 줄을 적고 승인을 받아 따로 커밋한다. 트랙별 계획·결정·발견은 `docs/plans/mobile-v1/<트랙ID>.md`(안내는 `docs/plans/mobile-v1/README.md`).
 
 ### T1 엑셀 (1판)
