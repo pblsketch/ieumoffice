@@ -22,3 +22,14 @@ export function aiChangedMarkColors(): { fill: string; stroke: string } {
     stroke: style.getPropertyValue('--color-ai-changed-line').trim(),
   }
 }
+
+/**
+ * Multi-cell table selection tint and outline on the edit canvas (screen-only, follows the UI theme).
+ */
+export function tableCellSelectionColors(): { fill: string; stroke: string } {
+  const style = getComputedStyle(document.documentElement)
+  return {
+    fill: style.getPropertyValue('--slides-table-sel-fill').trim() || 'rgba(196, 62, 28, 0.16)',
+    stroke: style.getPropertyValue('--slides-table-sel-stroke').trim() || '#c43e1c',
+  }
+}

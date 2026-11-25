@@ -1218,3 +1218,37 @@ describe('repeat and selection pane keys', () => {
     expect(setAnimPainter).toHaveBeenCalledWith(null)
   })
 })
+
+describe('Korean and non-Latin keyboard layout shortcuts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.innerHTML = ''
+  })
+
+  it('runs undo, redo, find, and duplicate on Korean IME layouts', () => {
+    const undo = vi.fn(async () => {})
+    const redo = vi.fn(async () => {})
+    const setFindOpen = vi.fn()
+    const ctx = makeCtx({ undo, redo, setFindOpen, selectedIds: ['shape-1'] })
+
+    const eUndo = keydown('ㅋ', { code: 'KeyZ', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eUndo, 'Win32')
+    expect(eUndo.defaultPrevented).toBe(true)
+    expect(undo).toHaveBeenCalledOnce()
+
+    const eRedo = keydown('Process', { code: 'KeyY', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eRedo, 'Win32')
+    expect(eRedo.defaultPrevented).toBe(true)
+    expect(redo).toHaveBeenCalledOnce()
+
+    const eFind = keydown('ㄹ', { code: 'KeyF', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eFind, 'Win32')
+    expect(eFind.defaultPrevented).toBe(true)
+    expect(setFindOpen).toHaveBeenCalledWith(true)
+
+    const eDup = keydown('ㅇ', { code: 'KeyD', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eDup, 'Win32')
+    expect(eDup.defaultPrevented).toBe(true)
+    expect(clipboardActions.duplicateSelected).toHaveBeenCalledWith(ctx, ['shape-1'])
+  })
+})

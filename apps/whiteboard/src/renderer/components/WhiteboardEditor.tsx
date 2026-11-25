@@ -97,9 +97,19 @@ import {
   type ResizeHandle,
   type SnapGuide,
 } from '../canvas/geometry'
-import { QuickPrintButton, type PrintPrinterInfo, type QuickPrintPrefStore } from '@genoffice/ui'
+import {
+  QuickPrintButton,
+  shortcutLetterOf,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
+} from '@genoffice/ui'
 import { buildBuiltinTemplate, type BuiltinTemplateId } from '../canvas/templates'
 import { SHAPE_KINDS, shapePath, shapeTextBox } from '../canvas/shape-paths'
+import {
+  isSpacePanKey,
+  whiteboardHistoryShortcut,
+  whiteboardToolShortcut,
+} from '../canvas/shortcuts'
 import { STICKER_IDS, StickerIcon } from '../canvas/stickers'
 import type { WhiteboardSession } from '../document/session'
 import {
@@ -374,6 +384,8 @@ export function WhiteboardEditor({
   const [, setTick] = useState(0)
   const [tool, setTool] = useState<ToolKind>('select')
   const [spacePanning, setSpacePanning] = useState(false)
+  const spacePanningRef = useRef(false)
+  const [isPanning, setIsPanning] = useState(false)
   const [shapeKind, setShapeKind] = useState<ShapeKind>('rounded_rectangle')
   const [shapePopoverOpen, setShapePopoverOpen] = useState(false)
   const [activeColor, setActiveColor] = useState<string>(PAPER_FILL_SWATCHES[0])
@@ -839,6 +851,16 @@ export function WhiteboardEditor({
     [selectedObjs, session],
   )
 
+  const modalOpen =
+    linkModalOpen || pdfPending !== null || exportModalFormat !== null || templateModalOpen
+
+  useEffect(() => {
+    if (presenting || modalOpen || editingId !== null || editingTableCell !== null) {
+      spacePanningRef.current = false
+      setSpacePanning(false)
+    }
+  }, [editingId, editingTableCell, modalOpen, presenting])
+
   // Space-to-pan temporary mode + comprehensive keyboard shortcuts.
   useEffect(() => {
     const isTypingTarget = (el: HTMLElement | null): boolean =>
@@ -850,6 +872,13 @@ export function WhiteboardEditor({
           el.isContentEditable),
       )
 
+    const releaseSpacePan = () => {
+      if (spacePanningRef.current) {
+        spacePanningRef.current = false
+        setSpacePanning(false)
+      }
+    }
+
     const onKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement as HTMLElement | null
       const typing = isTypingTarget(activeEl)
@@ -858,7 +887,12 @@ export function WhiteboardEditor({
         if (e.key === 'Escape' || e.key === 'F5') {
           e.preventDefault()
           onSetPresenting(false)
-        } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        } else if (
+          e.key === 'ArrowRight' ||
+          e.key === 'PageDown' ||
+          e.code === 'Space' ||
+          e.key === ' '
+        ) {
           e.preventDefault()
           const idx = doc.pages.findIndex((p) => p.id === activePageId)
           if (idx >= 0 && idx + 1 < doc.pages.length) {
@@ -874,20 +908,27 @@ export function WhiteboardEditor({
         return
       }
 
-      const mod = e.ctrlKey || e.metaKey
-      const key = e.key.toLowerCase()
+      if (modalOpen) return
 
-      if (mod && key === 'f') {
+      const mod = e.ctrlKey || e.metaKey
+      const key = shortcutLetterOf(e) ?? e.key.toLowerCase()
+
+      if (mod && !e.altKey && key === 'f') {
         e.preventDefault()
         setSearchOpen(true)
         return
       }
 
-      if (typing) return
+      if (typing || editingId !== null || editingTableCell !== null) return
 
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault()
-        setSpacePanning(true)
+      if (isSpacePanKey(e)) {
+        if (!activeEl?.closest?.('[role="dialog"], [aria-modal="true"]')) {
+          e.preventDefault()
+          if (!spacePanningRef.current) {
+            spacePanningRef.current = true
+            setSpacePanning(true)
+          }
+        }
         return
       }
       if (e.key === 'F5') {
@@ -895,44 +936,40 @@ export function WhiteboardEditor({
         onSetPresenting(true)
         return
       }
-      if (mod && key === 'z') {
+      const historyCmd = whiteboardHistoryShortcut(e)
+      if (historyCmd) {
         e.preventDefault()
-        if (e.shiftKey) session.redo()
-        else session.undo()
+        if (historyCmd === 'undo') session.undo()
+        else session.redo()
         return
       }
-      if (mod && key === 'y') {
-        e.preventDefault()
-        session.redo()
-        return
-      }
-      if (mod && key === 'a') {
+      if (mod && !e.altKey && key === 'a') {
         e.preventDefault()
         handleSelectAll()
         return
       }
-      if (mod && key === 'c') {
+      if (mod && !e.altKey && key === 'c') {
         e.preventDefault()
         handleCopySelected()
         return
       }
-      if (mod && key === 'x') {
+      if (mod && !e.altKey && key === 'x') {
         e.preventDefault()
         handleCutSelected()
         return
       }
-      if (mod && key === 'd') {
+      if (mod && !e.altKey && key === 'd') {
         e.preventDefault()
         handleDuplicateSelected()
         return
       }
-      if (mod && key === 'g') {
+      if (mod && !e.altKey && key === 'g') {
         e.preventDefault()
         if (e.shiftKey) handleUngroupSelected()
         else handleGroupSelected()
         return
       }
-      if (mod && e.shiftKey && key === 'l') {
+      if (mod && !e.altKey && e.shiftKey && key === 'l') {
         e.preventDefault()
         handleToggleLockSelected()
         return
@@ -1010,23 +1047,24 @@ export function WhiteboardEditor({
         if (ops.length > 0) session.applyUserOps(ops)
         return
       }
-      if (!mod && !e.altKey) {
-        if (key === 'v') selectTool('select')
-        else if (key === 'n') selectTool('sticky')
-        else if (key === 't') selectTool('text')
-        else if (key === 'r') selectTool('shape')
-        else if (key === 'l') selectTool('connector')
-        else if (key === 'p') selectTool('pen')
-        else if (key === 'h') selectTool('highlighter')
-        else if (key === 'e') selectTool('eraser')
+      const nextTool = whiteboardToolShortcut(e)
+      if (nextTool) {
+        e.preventDefault()
+        selectTool(nextTool)
       }
     }
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setSpacePanning(false)
+      if (e.code === 'Space' || e.key === ' ') releaseSpacePan()
     }
 
-    const onBlur = () => setSpacePanning(false)
+    const onBlur = () => {
+      releaseSpacePan()
+      if (dragRef.current?.kind === 'pan') {
+        dragRef.current = null
+        setIsPanning(false)
+      }
+    }
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -1039,6 +1077,8 @@ export function WhiteboardEditor({
   }, [
     activePageId,
     doc.pages,
+    editingId,
+    editingTableCell,
     handleCopySelected,
     handleCutSelected,
     handleDeleteSelected,
@@ -1048,6 +1088,7 @@ export function WhiteboardEditor({
     handleSelectAll,
     handleToggleLockSelected,
     handleUngroupSelected,
+    modalOpen,
     onSetPresenting,
     pageObjects,
     presenting,
@@ -1598,13 +1639,24 @@ export function WhiteboardEditor({
         return
       }
 
-      if (e.button === 1 || spacePanning || tool === 'hand' || (tool === 'select' && e.altKey)) {
+      if (
+        e.button === 1 ||
+        (e.button === 0 &&
+          (spacePanningRef.current || tool === 'hand' || (tool === 'select' && e.altKey)))
+      ) {
+        e.preventDefault()
         dragRef.current = {
           kind: 'pan',
           startClientX: e.clientX,
           startClientY: e.clientY,
           startPanX: pan.x,
           startPanY: pan.y,
+        }
+        setIsPanning(true)
+        try {
+          e.currentTarget.setPointerCapture?.(e.pointerId)
+        } catch {
+          // Synthetic events without an active pointer ID cannot be captured.
         }
         return
       }
@@ -1751,7 +1803,6 @@ export function WhiteboardEditor({
       selectedIds,
       session,
       shapeKind,
-      spacePanning,
       tool,
       zoom,
     ],
@@ -1760,7 +1811,8 @@ export function WhiteboardEditor({
   const handleObjectPointerDown = useCallback(
     (e: ReactPointerEvent, obj: BoardObject) => {
       if (
-        spacePanning ||
+        spacePanningRef.current ||
+        e.button === 1 ||
         tool === 'hand' ||
         tool === 'connector' ||
         tool === 'pen' ||
@@ -1863,13 +1915,13 @@ export function WhiteboardEditor({
       pan.y,
       selectedIds,
       session,
-      spacePanning,
       tool,
     ],
   )
 
   const handleResizePointerDown = useCallback(
     (e: ReactPointerEvent, obj: BoardObject, handle: ResizeHandle) => {
+      if (spacePanningRef.current || e.button === 1) return
       e.stopPropagation()
       if (isObjectLocked(obj)) return
       dragRef.current = {
@@ -1888,6 +1940,7 @@ export function WhiteboardEditor({
 
   const handleGroupResizePointerDown = useCallback(
     (e: ReactPointerEvent, bounds: Rect, handle: ResizeHandle) => {
+      if (spacePanningRef.current || e.button === 1) return
       e.stopPropagation()
       const origMap = new Map<string, Rect>()
       for (const o of selectedObjs) {
@@ -2174,6 +2227,18 @@ export function WhiteboardEditor({
       const drag = dragRef.current
       dragRef.current = null
       if (!drag) return
+
+      if (drag.kind === 'pan') {
+        setIsPanning(false)
+        try {
+          if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId)
+          }
+        } catch {
+          // Ignore release failures on synthetic events.
+        }
+        return
+      }
 
       if (drag.kind === 'right-pan') {
         if (!drag.didMove) {
@@ -3989,10 +4054,11 @@ export function WhiteboardEditor({
           )}
 
           <svg
-            className="wb-stage-svg"
+            className={`wb-stage-svg${isPanning ? ' wb-panning' : spacePanning || tool === 'hand' ? ' wb-space-pan' : ''}`}
             style={{
-              cursor:
-                spacePanning || tool === 'hand'
+              cursor: isPanning
+                ? 'grabbing'
+                : spacePanning || tool === 'hand'
                   ? 'grab'
                   : tool === 'connector' ||
                       tool === 'shape' ||
@@ -4010,6 +4076,13 @@ export function WhiteboardEditor({
             onPointerDown={handleStagePointerDown}
             onPointerMove={handleStagePointerMove}
             onPointerUp={handleStagePointerUp}
+            onPointerCancel={handleStagePointerUp}
+            onLostPointerCapture={() => {
+              if (dragRef.current?.kind === 'pan') {
+                dragRef.current = null
+                setIsPanning(false)
+              }
+            }}
             onWheel={(e) => {
               if (e.ctrlKey || e.metaKey) {
                 e.preventDefault()
@@ -4154,8 +4227,9 @@ export function WhiteboardEditor({
                     onDoubleClick={(e) => startInlineEdit(obj, { x: e.clientX, y: e.clientY })}
                     style={{
                       opacity: isErasing ? 0.35 : 1,
-                      cursor:
-                        spacePanning || tool === 'hand'
+                      cursor: isPanning
+                        ? 'grabbing'
+                        : spacePanning || tool === 'hand'
                           ? 'grab'
                           : tool === 'eraser'
                             ? 'crosshair'
@@ -4166,6 +4240,7 @@ export function WhiteboardEditor({
                                   ? 'pointer'
                                   : 'move'
                               : 'inherit',
+                      ...(spacePanning || isPanning ? { pointerEvents: 'none' } : {}),
                     }}
                   >
                     {renderObjectElement(

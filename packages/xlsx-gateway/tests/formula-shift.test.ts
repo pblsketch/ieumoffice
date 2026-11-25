@@ -204,6 +204,16 @@ describe('offsetFormulaRefs', () => {
       '=[Book.xlsx]Sheet1!A4+Table1[@Q1]',
     )
   })
+
+  it('shifts references with unquoted Unicode sheet names and skips Unicode table columns', () => {
+    expect(offsetFormulaRefs('=SUM(매출!A1:A5)+SUM(매출!B:B)+SUM(표1[Q1])', 1, 1)).toBe(
+      '=SUM(매출!B2:B6)+SUM(매출!C:C)+SUM(표1[Q1])',
+    )
+    expect(offsetFormulaRefs('=SUM(매출!2:4)', 1, 0)).toBe('=SUM(매출!3:5)')
+    const shifted = shiftFormulaRefs('=SUM(매출!A1:A5)', insertRows(2, 2), false, '매출')
+    expect(shifted.formula).toBe('=SUM(매출!A1:A7)')
+    expect(shifted.changed).toBe(true)
+  })
 })
 
 describe('shiftFormulaRefs cross-sheet', () => {
@@ -334,6 +344,24 @@ describe('future function markers', () => {
     )
     expect(saved).toContain(
       `<definedName name="FutureTotal">'Data_xlfn.Total'!_xlfn.MINIFS(A1:A3,A1:A3,"&gt;0")</definedName>`,
+    )
+  })
+
+  it('marks Excel 365 regex/ceiling/trimrange functions and restores _xlpm. on LET/LAMBDA params', () => {
+    expect(withFutureFunctionMarkers('=REGEXTEST(A1,"\\d+")')).toBe('=_xlfn.REGEXTEST(A1,"\\d+")')
+    expect(withFutureFunctionMarkers('=ISO.CEILING(A1,2)')).toBe('=_xlfn.ISO.CEILING(A1,2)')
+    expect(withFutureFunctionMarkers('=PERCENTOF(A1:A2,A1:A5)')).toBe(
+      '=_xlfn.PERCENTOF(A1:A2,A1:A5)',
+    )
+    expect(spillsDynamicArray('=TRIMRANGE(A1:D10)')).toBe(true)
+    expect(spillsDynamicArray('=GROUPBY(A1:A5,B1:B5,SUM)')).toBe(true)
+    expect(withFutureFunctionMarkers('=LET(x,A1*2,x+1)')).toBe('=_xlfn.LET(_xlpm.x,A1*2,_xlpm.x+1)')
+    expect(withFutureFunctionMarkers('=MAP(A1:A5,LAMBDA(v,v*2))')).toBe(
+      '=_xlfn.MAP(A1:A5,_xlfn.LAMBDA(_xlpm.v,_xlpm.v*2))',
+    )
+    // Already-marked parameters and sheet names matching a parameter name stay safe.
+    expect(withFutureFunctionMarkers('=_xlfn.LET(_xlpm.x,x!A1,_xlpm.x+1)')).toBe(
+      '=_xlfn.LET(_xlpm.x,x!A1,_xlpm.x+1)',
     )
   })
 })

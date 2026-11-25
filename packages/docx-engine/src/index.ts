@@ -178,6 +178,7 @@ export {
   ommlToLatex,
   ommlToMathML,
 } from './math'
+export { extractEquationNativeStream, isMathTypeProgId, mtefToOmml, oleBytesToOmml } from './mtef'
 export { patchHfPicturesXml, patchRunPictureXml, type RunPictureGeometry } from './run-picture'
 export { scanBody, type BodyElement, type BodyScan } from './scan'
 export {

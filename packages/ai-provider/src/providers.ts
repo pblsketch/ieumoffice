@@ -267,10 +267,14 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
   },
   {
     id: 'upstage',
-    label: 'Solar',
-    // GET api.upstage.ai/v1/models (2026-10-21); every id here answered a
+    label: 'Upstage Solar',
+    // GET api.upstage.ai/v1/models (2026-10-21); every id there answered a
     // tool call. Pro4 is the flagship, Mini4 the fast, cheap tier.
-    models: ['solar-pro4', 'solar-pro3', 'solar-mini4'],
+    // Mini 4.5 Preview (released 2026-11-23) is missing from that list, so it
+    // is named here: Upstage's model page lists tool calling, and it answered
+    // a chat in the app when typed in by hand (2026-11-26). From 2026-12-03
+    // Upstage routes the preview id to `solar-mini-4-5`.
+    models: ['solar-pro4', 'solar-pro3', 'solar-mini-4-5-preview', 'solar-mini4'],
     defaultModel: 'solar-pro4',
     keyPlaceholder: 'up_...',
   },

@@ -70,6 +70,7 @@ import {
   isUntitledIdentity,
   newUntitledRecoveryId,
   readBodyCapped,
+  sharedPathGrants,
   registerRecoveryEditor,
   resolveRecoveryOnOpen,
   type RecoveryDeleteReason,
@@ -1790,6 +1791,9 @@ export function registerSlidesIpc(): void {
 
   ipcMain.handle('slides:open-path', async (e, path: string, fitWidthPx: number) => {
     if (!path || !existsSync(path)) return null
+    // renderer-facing open channel: a deck this view's user put in front of
+    // the app (dropped — the preload bridge records it) or opened before.
+    if (process.env.GENOFFICE_E2E !== '1' && !sharedPathGrants().has(e.sender.id, path)) return null
     if (handOffLegacyPpt(path)) return null
     const prepared = await preparePptxOpen(path)
     if (prepared === 'rejected') return null
@@ -4370,11 +4374,19 @@ export function registerSlidesIpc(): void {
   })
 
   // Media recorded by the renderer (screen-recording webm) or dropped on the canvas: placed like an inserted file
-  ipcMain.handle('slides:add-media-bytes', async (e, op: AddMediaBytesOp) => {
-    const session = sessions.get(e.sender.id)
+  ipcMain.handle('slides:add-media-bytes', async (event, op: AddMediaBytesOp) => {
+    const session = sessions.get(event.sender.id)
     if (!session || !session.opened.deck.slides[op.slideIndex]) return null
     let bytes: Uint8Array
     try {
+      if (
+        'path' in op &&
+        // canvas media drops are OS drops: the preload bridge records their
+        // paths in the ledger, and the embed verifies against it
+        !sharedPathGrants().has(event.sender.id, op.path)
+      ) {
+        return null
+      }
       bytes =
         'path' in op
           ? new Uint8Array(await readFile(op.path))

@@ -235,13 +235,22 @@ export interface Run {
   /**
    * The run is an atomic inline formula. `text` holds the flat OMML token
    * strip (previews / word count); `omml` is the exact <m:oMath> fragment,
-   * emitted verbatim when the paragraph regenerates.
+   * emitted verbatim when the paragraph regenerates. When decoded from a
+   * MathType OLE embed, `oleXml` / `oleRawRPr` carry the original <w:object>
+   * and <w:rPr> so untouched saves round-trip the OLE embed verbatim until the
+   * user explicitly converts/edits it into native OMML.
    */
   math?: {
     omml: string
     display?: boolean
     /** the fragment ends in a <w:br/> run: Word starts the next m:oMath on a new line */
     breakAfter?: boolean
+    /** original <w:object> fragment for a MathType OLE equation decoded to OMML */
+    oleXml?: string
+    /** original <w:rPr> XML of the OLE run, re-emitted verbatim with oleXml */
+    oleRawRPr?: string
+    /** original o:OLEObject ProgID (e.g. "Equation.DSMT4") */
+    oleProgId?: string
   }
   /**
    * The run is a single symbol-font glyph (w:sym). `text` holds the display
@@ -501,6 +510,8 @@ export interface ImageEffects {
   grayscale?: boolean
   /** a:biLevel thresh: luminance at or above it paints white, below it black */
   biLevelThresh?: number
+  /** a:alphaModFix amt (or VML fill opacity) as 0..1 opacity (e.g. 25000 -> 0.25) */
+  alpha?: number
 }
 
 /**
@@ -1105,7 +1116,9 @@ export interface HfImage {
   wrap?: 'none' | 'square' | 'tight' | 'through' | 'topBottom'
   /** v:imagedata gain / blacklevel as fractions (Word's washout preset: 0.3 / 0.35) */
   washout?: { gain: number; blackLevel: number }
-  /** VML style rotation, degrees clockwise about the box center */
+  /** DrawingML blip color/opacity adjustments (a:lum, a:grayscl, a:biLevel, a:alphaModFix), display-only */
+  effects?: ImageEffects
+  /** VML style / DrawingML a:xfrm rotation, degrees clockwise about the box center */
   rotationDeg?: number
   /**
    * v:textpath WordArt (text watermark): the renderer stretches the string's
@@ -1308,6 +1321,8 @@ export interface FormulaDisplay {
   indentRightTwips?: number
   indentFirstLineTwips?: number
   additiveSpacing?: boolean
+  /** true when decoded from a MathType OLE embed (originalXml is <w:object>, not <m:oMath>) */
+  oleMathType?: boolean
 }
 
 /** One axis of an embedded chart (c:catAx / c:valAx / c:dateAx) */

@@ -11,9 +11,10 @@ use xlsx_sidecar::archive::{
     EntryContent, StreamPatchEntry, archive_manifest, read_entries_to_dir, save_archive,
     scan_entries_for_text,
 };
+use xlsx_sidecar::filter::FilterRequest;
 use xlsx_sidecar::find::FindCellsRequest;
 use xlsx_sidecar::recalc::{RecalcCache, RecalcEdit, RecalcRead, recalc_cells_reporting};
-use xlsx_sidecar::{CellRange, SidecarError, WorkbookSessions};
+use xlsx_sidecar::{CellRange, RangeReadMode, SidecarError, WorkbookSessions};
 
 const PROTOCOL_VERSION: u8 = 1;
 
@@ -37,6 +38,9 @@ enum Command {
         #[serde(rename = "sheetId")]
         sheet_id: String,
         range: CellRange,
+        rows: Option<Vec<usize>>,
+        #[serde(default)]
+        mode: RangeReadMode,
     },
     Close {
         #[serde(rename = "sessionId")]
@@ -55,6 +59,7 @@ enum Command {
         sheet_id: String,
     },
     FindCells(FindCellsRequest),
+    FilterRows(FilterRequest),
     ReadRowOutline {
         #[serde(rename = "sessionId")]
         session_id: String,
@@ -589,8 +594,10 @@ fn handle_request(
             session_id,
             sheet_id,
             range,
+            rows,
+            mode,
         } => sessions
-            .read_range(&session_id, &sheet_id, &range)
+            .read_range_with_mode(&session_id, &sheet_id, &range, mode, rows.as_deref())
             .and_then(to_json_value),
         Command::Close { session_id } => {
             // A resident recalc model can dwarf the session itself (an
@@ -614,6 +621,9 @@ fn handle_request(
             sheet_id,
         } => sessions
             .read_formula_cells(&session_id, &sheet_id)
+            .and_then(to_json_value),
+        Command::FilterRows(request) => sessions
+            .filter_rows(request, &in_flight.flag())
             .and_then(to_json_value),
         Command::FindCells(request) => sessions
             .find_cells(&request, &in_flight.flag())

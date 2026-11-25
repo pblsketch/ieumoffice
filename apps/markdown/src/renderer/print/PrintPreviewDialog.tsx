@@ -17,6 +17,7 @@ import {
   PrintJobFields,
   PrintLayoutPanel,
   PrintLayoutSchematic,
+  isShortcutLetter,
   printLayoutIssueText,
   printLayoutProblem,
   printLayoutText,
@@ -476,7 +477,7 @@ export function PrintPreviewDialog({
       } else if (event.key === 'PageDown' || event.key === 'ArrowRight') {
         event.preventDefault()
         setPage((current) => Math.min(Math.max(pageCount, 1), current + 1))
-      } else if (event.ctrlKey && event.key.toLowerCase() === 'p') {
+      } else if (event.ctrlKey && isShortcutLetter(event, 'p')) {
         event.preventDefault()
         void print()
       }

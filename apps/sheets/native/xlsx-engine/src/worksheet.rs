@@ -71,12 +71,10 @@ pub(crate) fn index_worksheet(
     let mut auto_filter_captured = false;
     let mut in_auto_filter = false;
     let mut filter_column: Option<FilterColumnCriteria> = None;
-    let mut sheet_protection: Option<SheetProtectionInfo> = None;
     let mut row_breaks: Vec<usize> = Vec::new();
     let mut col_breaks: Vec<usize> = Vec::new();
     let mut in_row_breaks = false;
     let mut in_col_breaks = false;
-    let mut protected_ranges: Vec<ProtectedRangeInfo> = Vec::new();
     let mut dv_rule: Option<DataValidationRule> = None;
     let mut in_dv_formula = false;
     // x14:dataValidation delivers its sqref as an <xm:sqref> child after the
@@ -489,11 +487,6 @@ pub(crate) fn index_worksheet(
                     }
                 }
             }
-            Event::Start(element) | Event::Empty(element)
-                if element.local_name().as_ref() == b"sheetProtection" =>
-            {
-                sheet_protection = Some(parse_sheet_protection(&reader, &element)?);
-            }
             Event::Start(element) if element.local_name().as_ref() == b"customSheetViews" => {
                 in_custom_sheet_views = true;
             }
@@ -621,34 +614,6 @@ pub(crate) fn index_worksheet(
                             col_breaks.push(id);
                         }
                     }
-                }
-            }
-            Event::Start(element) | Event::Empty(element)
-                if element.local_name().as_ref() == b"protectedRange" =>
-            {
-                if let (Some(name), Some(sqref)) = (
-                    attribute_value(&reader, &element, b"name")?,
-                    attribute_value(&reader, &element, b"sqref")?,
-                ) {
-                    // securityDescriptor carries per-user permissions the
-                    // rewrite cannot preserve — treat like a password.
-                    let has_password = attribute_value(&reader, &element, b"password")?.is_some()
-                        || attribute_value(&reader, &element, b"hashValue")?.is_some()
-                        || attribute_value(&reader, &element, b"securityDescriptor")?.is_some();
-                    protected_ranges.push(ProtectedRangeInfo {
-                        name,
-                        sqref,
-                        has_password,
-                    });
-                }
-            }
-            Event::Start(element) | Event::Empty(element)
-                if element.local_name().as_ref() == b"securityDescriptor" =>
-            {
-                // The child-element form of the ACL, nested in the
-                // protectedRange just pushed.
-                if let Some(range) = protected_ranges.last_mut() {
-                    range.has_password = true;
                 }
             }
             Event::Start(element) if element.local_name().as_ref() == b"ext" => {
@@ -1032,16 +997,13 @@ pub(crate) fn index_worksheet(
     auto_filter_columns
         .retain(|column| column.values.is_some() || column.blank || column.customs.is_some());
     index.auto_filter_columns = auto_filter_columns;
-    index.sheet_protection = sheet_protection;
     // Wire caps (schema and preload reject larger sets; the save side caps
     // at the same sizes) — a pathological file loses tail entries, not the
     // whole sheet.
     row_breaks.truncate(1_023);
     col_breaks.truncate(1_023);
-    protected_ranges.truncate(1_000);
     index.row_breaks = row_breaks;
     index.col_breaks = col_breaks;
-    index.protected_ranges = protected_ranges;
     for text in [
         &mut page_print.odd_header,
         &mut page_print.odd_footer,
@@ -1297,7 +1259,7 @@ pub(crate) fn flush_chunk(
     state: &Arc<(Mutex<SheetIndex>, Condvar)>,
     indexed_through_row: usize,
 ) -> Result<(), SidecarError> {
-    let path = cache_directory.join(format!("sheet-{sheet_index}-chunk-{chunk_index}.json"));
+    let path = cache_directory.join(format!("sheet-{sheet_index}-chunk-{chunk_index}.bin"));
     let has_data = !chunk.cells.is_empty() || !chunk.rows.is_empty();
     let outline_rows: Vec<RowOutlineEntry> = chunk
         .rows
@@ -1311,10 +1273,7 @@ pub(crate) fn flush_chunk(
         })
         .collect();
     if has_data {
-        let file = File::create(&path)?;
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer(&mut writer, chunk)?;
-        writer.flush()?;
+        chunks::write_chunk(&path, chunk)?;
         chunk.cells.clear();
         chunk.rows.clear();
     }
@@ -1472,11 +1431,17 @@ impl CellBuilder {
 }
 
 /// Excel stores post-2007 functions as `_xlfn.NAME` (worksheet-scope ones as
-/// `_xlfn._xlws.NAME`); its UI never shows the markers. Strip them outside
-/// string literals so the formula bar and engine see the plain names — the
-/// save side restores the markers on edited cells.
+/// `_xlfn._xlws.NAME`) and LET/LAMBDA parameters as `_xlpm.PARAM`; its UI never
+/// shows the markers. Strip them outside string literals, quoted sheet names,
+/// and structured references so the formula bar and engine see the plain names
+/// — the save side restores the markers on edited cells.
 pub(crate) fn strip_future_function_markers(formula: &str) -> String {
-    if !formula.contains("_xlfn.") && !formula.contains("_xlws.") {
+    let has_marker = formula.as_bytes().windows(6).any(|window| {
+        window.eq_ignore_ascii_case(b"_xlfn.")
+            || window.eq_ignore_ascii_case(b"_xlws.")
+            || window.eq_ignore_ascii_case(b"_xlpm.")
+    });
+    if !has_marker {
         return formula.to_owned();
     }
     let bytes = formula.as_bytes();
@@ -1501,11 +1466,49 @@ pub(crate) fn strip_future_function_markers(formula: &str) -> String {
             }
             continue;
         }
+        if bytes[index] == b'[' {
+            let mut depth = 0usize;
+            while index < bytes.len() {
+                if bytes[index] == b'[' {
+                    depth += 1;
+                } else if bytes[index] == b']' {
+                    depth -= 1;
+                    if depth == 0 {
+                        index += 1;
+                        break;
+                    }
+                }
+                index += 1;
+            }
+            continue;
+        }
         let start = index;
         let end = formula_name_end(formula, start);
         if end > start {
             let token = &formula[start..end];
+            if token
+                .get(..6)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlpm."))
+            {
+                let rest = &token[6..];
+                let valid_param = !rest.is_empty()
+                    && rest.chars().all(|character| {
+                        character.is_alphanumeric() || matches!(character, '_' | '.' | '\\' | '$')
+                    });
+                if valid_param {
+                    out.push_str(&formula[copied_from..start]);
+                    out.push_str(rest);
+                    copied_from = end;
+                    index = end;
+                    continue;
+                }
+            }
             let marker_len = if token
+                .get(..12)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlfn._xlws."))
+            {
+                12
+            } else if token
                 .get(..6)
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlfn."))
             {
@@ -1517,14 +1520,6 @@ pub(crate) fn strip_future_function_markers(formula: &str) -> String {
                 6
             } else {
                 0
-            };
-            let marker_len = if token
-                .get(..12)
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlfn._xlws."))
-            {
-                12
-            } else {
-                marker_len
             };
             let valid_name = marker_len > 0
                 && !token[marker_len..].is_empty()
@@ -1590,6 +1585,58 @@ fn is_true(value: &Option<String>) -> bool {
 
 fn is_false(value: &Option<String>) -> bool {
     value.as_deref().is_some_and(|v| v == "0" || v == "false")
+}
+
+/// Parse the worksheet-level protection from the XML already collected at
+/// open for sheet metadata. The scan has consumed sheetData before returning.
+pub(crate) fn read_sheet_protection(xml: &str) -> Result<SheetProtectionMetadata, SidecarError> {
+    let mut reader = Reader::from_str(xml);
+    let mut sheet_protection = None;
+    let mut protected_ranges: Vec<ProtectedRangeInfo> = Vec::new();
+    loop {
+        match reader.read_event()? {
+            Event::Start(element) | Event::Empty(element)
+                if element.local_name().as_ref() == b"sheetProtection" =>
+            {
+                sheet_protection = Some(parse_sheet_protection(&reader, &element)?);
+            }
+            Event::Start(element) | Event::Empty(element)
+                if element.local_name().as_ref() == b"protectedRange" =>
+            {
+                if let (Some(name), Some(sqref)) = (
+                    attribute_value(&reader, &element, b"name")?,
+                    attribute_value(&reader, &element, b"sqref")?,
+                ) {
+                    // securityDescriptor carries per-user permissions the
+                    // rewrite cannot preserve — treat like a password.
+                    let has_password = attribute_value(&reader, &element, b"password")?.is_some()
+                        || attribute_value(&reader, &element, b"hashValue")?.is_some()
+                        || attribute_value(&reader, &element, b"securityDescriptor")?.is_some();
+                    protected_ranges.push(ProtectedRangeInfo {
+                        name,
+                        sqref,
+                        has_password,
+                    });
+                }
+            }
+            Event::Start(element) | Event::Empty(element)
+                if element.local_name().as_ref() == b"securityDescriptor" =>
+            {
+                // The child-element form of the ACL, nested in the
+                // protectedRange just pushed.
+                if let Some(range) = protected_ranges.last_mut() {
+                    range.has_password = true;
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    protected_ranges.truncate(1_000);
+    Ok(SheetProtectionMetadata {
+        sheet_protection,
+        protected_ranges,
+    })
 }
 
 /// Lock-style attributes default to 1 (not allowed); objects/scenarios and

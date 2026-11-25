@@ -37,6 +37,11 @@ describe('tab keyboard shortcuts', () => {
     expect(tabShortcutOf(key({ key: 'w', control: true }), 'win32')).toBe('close')
     expect(tabShortcutOf(key({ key: 'w', control: true }), 'linux')).toBe('close')
     expect(tabShortcutOf(key({ key: 'w', meta: true }), 'darwin')).toBe('close')
+    expect(tabShortcutOf(key({ key: 'ㅈ', code: 'KeyW', control: true }), 'win32')).toBe('close')
+    expect(tabShortcutOf(key({ key: 'Process', code: 'KeyW', control: true }), 'win32')).toBe(
+      'close',
+    )
+    expect(tabShortcutOf(key({ key: 'ㅈ', code: 'KeyW', meta: true }), 'darwin')).toBe('close')
     // Ctrl+W is delete-word in a macOS text field, not a tab command
     expect(tabShortcutOf(key({ key: 'w', control: true }), 'darwin')).toBeNull()
     expect(tabShortcutOf(key({ key: 'w', meta: true }), 'win32')).toBeNull()

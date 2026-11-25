@@ -112,50 +112,243 @@ export function parseFormulaReferences(formula: string): FormulaReference[] {
 
 const EXTERNAL_WORKBOOK_PATTERN = /\[(?:\d+|[^[\]]*\.xl\w*)\]/i
 
+const EXCEL_ERROR_LITERAL_PATTERN =
+  /#(?:N\/A|REF!|VALUE!|DIV\/0!|NAME\?|NUM!|NULL!|SPILL!|CALC!|GETTING_DATA)/gi
+
+const STRUCTURED_TABLE_REF_PATTERN =
+  /(?<![\p{L}\p{N}_.$'!])([\p{L}_][\p{L}\p{N}_.]*)?(\[(?:[^\][]|\[[^\][]*\])*\])/gu
+
+function skipQuotedSpan(formula: string, start: number): number {
+  const quote = formula[start]
+  let i = start + 1
+  while (i < formula.length) {
+    if (formula[i] === quote) {
+      if (formula[i + 1] === quote) {
+        i += 2
+        continue
+      }
+      return i + 1
+    }
+    i += 1
+  }
+  return formula.length
+}
+
+function skipBracketSpan(formula: string, start: number): number {
+  let depth = 0
+  let i = start
+  while (i < formula.length) {
+    const ch = formula[i]
+    if (ch === '[') depth += 1
+    else if (ch === ']') {
+      depth -= 1
+      if (depth === 0) return i + 1
+    }
+    i += 1
+  }
+  return formula.length
+}
+
+interface BoundParamScope {
+  readonly start: number
+  readonly end: number
+  readonly names: ReadonlySet<string>
+}
+
+/// Find the matching `)` for an opening `(` at `openParen` and split top-level
+/// comma-separated arguments inside it.
+function splitCallArgs(
+  formula: string,
+  openParen: number,
+): { closeParen: number; args: string[] } | null {
+  const args: string[] = []
+  let depth = 1
+  let argStart = openParen + 1
+  let i = openParen + 1
+  while (i < formula.length) {
+    const ch = formula[i]!
+    if (ch === '"' || ch === "'") {
+      i = skipQuotedSpan(formula, i)
+      continue
+    }
+    if (ch === '[') {
+      i = skipBracketSpan(formula, i)
+      continue
+    }
+    if (ch === '(' || ch === '{') {
+      depth += 1
+    } else if (ch === ')' || ch === '}') {
+      depth -= 1
+      if (depth === 0) {
+        args.push(formula.slice(argStart, i))
+        return { closeParen: i, args }
+      }
+    } else if (ch === ',' && depth === 1) {
+      args.push(formula.slice(argStart, i))
+      argStart = i + 1
+    }
+    i += 1
+  }
+  return null
+}
+
+const SINGLE_PARAM_PATTERN = /^(?:_xlpm\.)?([\p{L}_][\p{L}\p{N}_.]*)$/iu
+
+/// Collect scoped local parameter names declared by LET and LAMBDA calls.
+function boundParameterScopes(formula: string): BoundParamScope[] {
+  if (!/(?:^|[^\p{L}\p{N}_.])(?:_xlfn\.)?(?:LET|LAMBDA)\s*\(/iu.test(formula)) return []
+  const scopes: BoundParamScope[] = []
+  let i = 0
+  while (i < formula.length) {
+    const ch = formula[i]!
+    if (ch === '"' || ch === "'") {
+      i = skipQuotedSpan(formula, i)
+      continue
+    }
+    if (ch === '[') {
+      i = skipBracketSpan(formula, i)
+      continue
+    }
+    if (/[\p{L}_]/u.test(ch)) {
+      const start = i
+      i += 1
+      while (i < formula.length && /[\p{L}\p{N}_.]/u.test(formula[i]!)) i += 1
+      const prev = start === 0 ? '' : (formula[start - 1] ?? '')
+      if (/[\p{L}\p{N}_.$'!]/u.test(prev)) continue
+      const token = formula
+        .slice(start, i)
+        .toUpperCase()
+        .replace(/^_XLFN\./, '')
+      if (token === 'LET' || token === 'LAMBDA') {
+        let after = i
+        while (after < formula.length && /\s/.test(formula[after]!)) after += 1
+        if (formula[after] === '(') {
+          const parsed = splitCallArgs(formula, after)
+          if (parsed && parsed.args.length >= 2) {
+            const names = new Set<string>()
+            const step = token === 'LET' ? 2 : 1
+            for (let idx = 0; idx < parsed.args.length - 1; idx += step) {
+              const paramMatch = SINGLE_PARAM_PATTERN.exec(parsed.args[idx]!.trim())
+              if (paramMatch?.[1]) names.add(paramMatch[1].toLowerCase())
+            }
+            if (names.size > 0) {
+              scopes.push({ start: after, end: parsed.closeParen, names })
+            }
+          }
+          // Step past `(` so nested LET/LAMBDA calls inside arguments are also collected.
+          i = after + 1
+          continue
+        }
+      }
+      continue
+    }
+    i += 1
+  }
+  return scopes
+}
+
+function isBoundAt(scopes: readonly BoundParamScope[], offset: number, lowerName: string): boolean {
+  for (const scope of scopes) {
+    if (offset >= scope.start && offset <= scope.end && scope.names.has(lowerName)) return true
+  }
+  return false
+}
+
+function stripStructuredRefs(
+  segment: string,
+  resolvedTables?: { has(name: string): boolean },
+): { text: string; unresolvedTable: boolean } {
+  if (!segment.includes('[')) return { text: segment, unresolvedTable: false }
+  let unresolvedTable = false
+  const text = segment.replace(
+    STRUCTURED_TABLE_REF_PATTERN,
+    (full, tableName: string | undefined, bracketBody: string) => {
+      // Univer's TableReferenceObject resolves explicit `TableName[...]` forms
+      // (`Table[Col]`, `Table[[#This Row],[Col]]`, etc.), not bare `[@Col]` or
+      // `@` shorthand (`Table[@Col]`). Pad with spaces matching `full.length`
+      // so downstream `isBoundAt` offsets for LET/LAMBDA scopes never drift.
+      if (tableName && !bracketBody.includes('@') && resolvedTables?.has(tableName.toLowerCase())) {
+        return ' '.repeat(full.length)
+      }
+      unresolvedTable = true
+      return full
+    },
+  )
+  return { text, unresolvedTable }
+}
+
 /// Identifiers in an unquoted formula segment that are neither references,
-/// function calls nor TRUE/FALSE: the defined names it uses.
-function namesInSegment(segment: string): string[] {
-  // Strip references (and their qualifiers) so ref letters don't register.
-  const stripped = segment.replace(FORMULA_REFERENCE_PATTERN, (_full, lead: string) => `${lead} `)
+/// function calls, error literals nor TRUE/FALSE: the defined names it uses.
+function namesInSegment(
+  segment: string,
+  segmentOffset = 0,
+  scopes: readonly BoundParamScope[] = [],
+): string[] {
+  // Strip references (and their qualifiers) and error literals so they don't register.
+  const withoutRefs = segment
+    .replace(
+      FORMULA_REFERENCE_PATTERN,
+      (full, lead: string) => lead + ' '.repeat(full.length - lead.length),
+    )
+    .replace(EXCEL_ERROR_LITERAL_PATTERN, (full) => ' '.repeat(full.length))
   const names: string[] = []
-  for (const match of stripped.matchAll(/[\p{L}_][\p{L}\p{N}_.]*/gu)) {
-    const before = match.index === 0 ? '' : (stripped[match.index - 1] ?? '')
+  for (const match of withoutRefs.matchAll(/[\p{L}_][\p{L}\p{N}_.]*/gu)) {
+    const before = match.index === 0 ? '' : (withoutRefs[match.index - 1] ?? '')
     if (/[\p{L}\p{N}_.$'!]/u.test(before)) continue
-    const name = match[0]
+    const rawName = match[0]
+    const name = rawName.replace(/^_xlpm\./i, '')
     if (name === 'TRUE' || name === 'FALSE') continue
-    const rest = stripped.slice(match.index + name.length)
-    if (!/^\s*\(/.test(rest)) names.push(name)
+    const rest = withoutRefs.slice(match.index + rawName.length)
+    if (/^\s*\(/.test(rest)) continue
+    if (isBoundAt(scopes, segmentOffset + match.index, name.toLowerCase())) continue
+    names.push(name)
   }
   return names
 }
 
 /// True when the formula uses an identifier that is not a function call —
 /// a defined name or an external reference the closure cannot resolve.
-/// Names in `resolvedNames` (lowercase) count as resolved.
+/// Names in `resolvedNames` (lowercase) and tables in `resolvedTables`
+/// (lowercase) count as resolved.
 export function containsUnresolvedNames(
   formula: string,
   resolvedNames?: { has(name: string): boolean },
+  resolvedTables?: { has(name: string): boolean },
 ): boolean {
+  const scopes = boundParameterScopes(formula)
   const segments = formula.split('"')
-  for (let index = 0; index < segments.length; index += 2) {
-    // [n]Sheet!ref / '[n]Sheet name'!ref / 'C:\dir\[Book.xlsx]Sheet'!ref is
-    // an external-workbook reference: the reference pattern would swallow it
-    // as an ordinary sheet reference, but the closure can never resolve
-    // another workbook.
-    if (EXTERNAL_WORKBOOK_PATTERN.test(segments[index] ?? '')) return true
-    for (const name of namesInSegment(segments[index] ?? '')) {
-      if (!resolvedNames?.has(name.toLowerCase())) return true
+  let offset = 0
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index] ?? ''
+    if (index % 2 === 0) {
+      // [n]Sheet!ref / '[n]Sheet name'!ref / 'C:\dir\[Book.xlsx]Sheet'!ref is
+      // an external-workbook reference: the reference pattern would swallow it
+      // as an ordinary sheet reference, but the closure can never resolve
+      // another workbook.
+      if (EXTERNAL_WORKBOOK_PATTERN.test(segment)) return true
+      const { text, unresolvedTable } = stripStructuredRefs(segment, resolvedTables)
+      if (unresolvedTable) return true
+      for (const name of namesInSegment(text, offset, scopes)) {
+        if (!resolvedNames?.has(name.toLowerCase())) return true
+      }
     }
+    offset += segment.length + 1
   }
   return false
 }
 
 /// The defined names the formula uses, lowercased.
 export function usedDefinedNames(formula: string): string[] {
+  const scopes = boundParameterScopes(formula)
   const segments = formula.split('"')
   const names: string[] = []
-  for (let index = 0; index < segments.length; index += 2) {
-    for (const name of namesInSegment(segments[index] ?? '')) names.push(name.toLowerCase())
+  let offset = 0
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index] ?? ''
+    if (index % 2 === 0) {
+      for (const name of namesInSegment(segment, offset, scopes)) names.push(name.toLowerCase())
+    }
+    offset += segment.length + 1
   }
   return names
 }
@@ -196,6 +389,15 @@ function callsIndirect(formula: string): boolean {
   return false
 }
 
+function hasErrorLiteral(formula: string): boolean {
+  const segments = formula.split('"')
+  for (let index = 0; index < segments.length; index += 2) {
+    EXCEL_ERROR_LITERAL_PATTERN.lastIndex = 0
+    if (EXCEL_ERROR_LITERAL_PATTERN.test(segments[index] ?? '')) return true
+  }
+  return false
+}
+
 /// Defined names whose formulas the engine recalculates the way Excel does,
 /// lowercased and mapped to their bodies: a single workbook-scoped
 /// definition the engine accepted, with absolute references only, no
@@ -217,7 +419,12 @@ export function recalculableDefinedNames(
   for (const [key, list] of byName) {
     const only = list.length === 1 ? list[0] : undefined
     if (!only || only.sheetIndex !== undefined || rejected.has(only.name)) continue
-    if (hasRelativeReference(only.formula) || callsIndirect(only.formula)) continue
+    if (
+      hasRelativeReference(only.formula) ||
+      callsIndirect(only.formula) ||
+      hasErrorLiteral(only.formula)
+    )
+      continue
     pending.set(key, only.formula)
   }
   // Accept names bottom-up: a name joins once every name its body uses has.

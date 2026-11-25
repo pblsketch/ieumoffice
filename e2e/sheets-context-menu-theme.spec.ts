@@ -66,6 +66,7 @@ test.beforeAll(async ({ browserName }, info) => {
     },
     bundle: true,
     outfile: join(output, 'bundle.js'),
+    external: ['genoffice-app://*'],
     loader: { '.png': 'dataurl', '.svg': 'dataurl', '.ttf': 'file', '.woff2': 'file' },
     define: { 'process.env.NODE_ENV': '"production"' },
   })

@@ -15,8 +15,11 @@ import {
 import {
   formulaKeepsCache,
   setRecalculableNames,
+  setRecalculableTables,
+  setSupportedFunctionProbe,
   usesLocaleDependentFunction,
 } from '../src/renderer/univer-sync'
+import { GOOGLE_ONLY_COMPAT_FUNCTIONS } from '../src/renderer/compat-functions'
 
 const sheet = (
   id: string,
@@ -99,6 +102,38 @@ describe('containsUnresolvedNames', () => {
     expect(containsUnresolvedNames('B2*vat_rate+세율', resolved)).toBe(false)
     expect(containsUnresolvedNames('B2*VAT_RATE*OTHER', resolved)).toBe(true)
     expect(containsUnresolvedNames('[1]Data!A1*VAT_RATE', resolved)).toBe(true)
+  })
+
+  it('recognizes scoped LET and LAMBDA parameter names and _xlpm. markers', () => {
+    expect(containsUnresolvedNames('=LET(x,A1*2,y,x+B1,y*3)')).toBe(false)
+    expect(containsUnresolvedNames('=MAP(A1:A5,LAMBDA(v,v*2))')).toBe(false)
+    expect(containsUnresolvedNames('=_xlfn.LET(_xlpm.x,A1,_xlpm.x+1)')).toBe(false)
+    // Parameter used outside its LET scope is still unresolved.
+    expect(containsUnresolvedNames('=LET(x,A1,x+1)+x')).toBe(true)
+    // Unbound identifier inside LET is still unresolved.
+    expect(containsUnresolvedNames('=LET(x,UnknownName,x+1)')).toBe(true)
+  })
+
+  it('does not treat Excel error literals in cell formulas as unresolved names', () => {
+    expect(containsUnresolvedNames('=IF(A1=0,#N/A,1/A1)')).toBe(false)
+    expect(containsUnresolvedNames('=IFERROR(A1,#VALUE!)')).toBe(false)
+    expect(containsUnresolvedNames('=IF(A1>0,A1,#DIV/0!)')).toBe(false)
+  })
+
+  it('recognizes structured references for registered workbook tables only', () => {
+    const tables = new Set(['sales', '표1'])
+    expect(containsUnresolvedNames('=SUM(Sales[Amount])', undefined, tables)).toBe(false)
+    expect(containsUnresolvedNames('=SUM(표1[금액])', undefined, tables)).toBe(false)
+    expect(containsUnresolvedNames('=Sales[[#This Row],[Amount]]*2', undefined, tables)).toBe(false)
+    // Bare `[@Col]` and `@` shorthand are not evaluated by Univer's TableReferenceObject
+    // and must keep their cached values.
+    expect(containsUnresolvedNames('=[@Amount]*2', undefined, tables)).toBe(true)
+    expect(containsUnresolvedNames('=Sales[@Amount]*2', undefined, tables)).toBe(true)
+    // Stripping a structured ref preserves character offsets for LET scope checks.
+    expect(containsUnresolvedNames('=LET(x,1,x)+Sales[Amount]+x', undefined, tables)).toBe(true)
+    // Unregistered table stays unresolved.
+    expect(containsUnresolvedNames('=SUM(Nope[Amount])', undefined, tables)).toBe(true)
+    expect(containsUnresolvedNames('=SUM(Sales[Amount])')).toBe(true)
   })
 })
 
@@ -213,6 +248,40 @@ describe('formulaKeepsCache', () => {
     }
     // The memo must not carry the previous workbook's verdict.
     expect(formulaKeepsCache('B2*VAT_RATE')).toBe(true)
+  })
+
+  it('recalculates structured references for registered tables and LET/LAMBDA formulas', () => {
+    expect(formulaKeepsCache('=LET(x,A1*2,x+1)')).toBe(false)
+    expect(formulaKeepsCache('=IF(A1=0,#N/A,1/A1)')).toBe(false)
+    expect(formulaKeepsCache('=SUM(Sales[Amount])')).toBe(true)
+    setRecalculableTables(new Set(['sales']))
+    try {
+      expect(formulaKeepsCache('=SUM(Sales[Amount])')).toBe(false)
+      expect(formulaKeepsCache('=SUM(Other[Amount])')).toBe(true)
+    } finally {
+      setRecalculableTables(new Set())
+    }
+    expect(formulaKeepsCache('=SUM(Sales[Amount])')).toBe(true)
+  })
+
+  it('keeps cached values for Google-only compat names (VBA UDF safety) while recalculating Excel 365 ones', () => {
+    const installed = new Set(['SUM', 'JOIN', 'SPLIT', 'REGEXTEST', 'ISO.CEILING'])
+    setSupportedFunctionProbe({
+      ready: () => true,
+      supports: (name) => !GOOGLE_ONLY_COMPAT_FUNCTIONS.has(name) && installed.has(name),
+    })
+    try {
+      // Cached .xlsm VBA UDF named JOIN/SPLIT preserves its cached value on open.
+      expect(formulaKeepsCache('=JOIN("-",A1:A3)', true)).toBe(true)
+      expect(formulaKeepsCache('=SPLIT(A1,",")', true)).toBe(true)
+      // Without a cached value, the live Google compat executor still runs.
+      expect(formulaKeepsCache('=JOIN("-",A1:A3)', false)).toBe(false)
+      // Official Excel 365 functions recalculate even when cached.
+      expect(formulaKeepsCache('=REGEXTEST(A1,"\\d+")', true)).toBe(false)
+      expect(formulaKeepsCache('=ISO.CEILING(A1,2)', true)).toBe(false)
+    } finally {
+      setSupportedFunctionProbe(null)
+    }
   })
 
   it('keeps the cached value for locale-dependent functions (prod_039)', () => {

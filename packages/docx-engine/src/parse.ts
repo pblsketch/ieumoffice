@@ -8,6 +8,7 @@ import { findInkRuns, stripInkRuns } from './ink'
 import { isMetafileMime, metafileToDataUrl } from './metafile'
 import { isTiffMime, tiffToDataUrlAsync } from './tiff'
 import { ommlEndsWithBreak, ommlFragmentsOf, ommlToLatex, ommlToMathML } from './math'
+import { isMathTypeProgId, oleBytesToOmml } from './mtef'
 import { splitXmlChildren } from './generate'
 import { readPropChangeXml } from './revision-xml'
 import {
@@ -276,6 +277,7 @@ import {
   vmlShapeSvg,
   vmlShapeTypeTable,
   vmlStyleDimPx,
+  vmlStyleProp,
   vmlWordArtBox,
   type VmlGroupScale,
   type VmlOrigin,
@@ -436,6 +438,7 @@ export async function parseDocx(
 
   const scan = scanBody(documentXml)
   const mediaByRid = await tableBlipMedia(scan.elements, documentXml, zip, rels, docPath)
+  const oleMathByRid = await tableOleMath(scan.elements, documentXml, zip, rels, docPath)
   const externalTxbxByRid = await externalTxbxParts(documentXml, zip, rels, docPath)
   // sections end at their w:sectPr: the one governing an offset is the first
   // sectPr at or after it (page/margin-anchored drawing placement)
@@ -512,6 +515,7 @@ export async function parseDocx(
     themeColors: theme.colors,
     themeFonts: theme.fonts,
     mediaByRid,
+    oleMathByRid,
     externalTxbxByRid,
     referenceOnlyComments,
     sectionAt,
@@ -781,6 +785,8 @@ interface BuildContext {
   themeFonts?: ThemeFonts | null
   /** pre-resolved a:blip rId -> data/external URL for pictures inside w:tbl (extractCell is sync, media reads are async) */
   mediaByRid?: Map<string, string>
+  /** pre-decoded MathType OLE o:OLEObject rId -> <m:oMath> OMML (extractRuns is sync, zip reads are async) */
+  oleMathByRid?: Map<string, string>
   /** pre-fetched external textbox parts (wps:txbx r:txbx -> word/txbx*.xml content; extractTextboxes is sync) */
   externalTxbxByRid?: Map<string, string>
   /** comment ids anchored only by a bare w:commentReference (no range markers anywhere in document.xml, LibreOffice style) */
@@ -1455,20 +1461,24 @@ async function buildBlock(
       (plainText(stripTextboxes(detect)).trim() !== '' || detect.includes('<w:drawing'))
     ) {
       await resolveBlipMedia(detect, ctx)
+      await resolveOleMath(detect, ctx)
       const objects = detect.match(/<w:object[\s\S]*?<\/w:object>/g) ?? []
       const displayable = objects.every((o) => {
+        const oleTarget = oleMathTargetOf(o)
+        if (oleTarget && ctx.oleMathByRid?.has(oleTarget.rId)) return true
         const rId = /<v:imagedata[^>]*r:id="([^"]+)"/.exec(o)?.[1]
         return rId !== undefined && ctx.mediaByRid?.has(rId)
       })
       if (displayable && objects.length > 0)
         return buildTextParagraph(base, xml, ctx, true, el.start)
     }
+    const ole = await oleDisplay(detect, ctx, xml)
     return {
       ...base,
       type: 'passthrough',
-      label: 'Embedded object',
-      previewText: plainText(detect),
-      ...(await oleDisplay(detect, ctx)),
+      label: ole.formulaDisplay ? 'Equation' : 'Embedded object',
+      previewText: ole.formulaDisplay ? ole.formulaDisplay.tokens.join('') : plainText(detect),
+      ...ole,
     }
   }
   if (detect.includes('<w:drawing')) {
@@ -4751,6 +4761,7 @@ function extractRuns(
         res,
         ctx.xmlSpacePreserve,
         ctx.vmlShapeTypes,
+        withImages ? ctx.oleMathByRid : undefined,
       )
       if (run) {
         // only a w:rtl run reads the cs slot, and it does so for all its text
@@ -4989,6 +5000,7 @@ function buildRun(
   res: RunResolve,
   partPreserve?: boolean,
   vmlShapeTypes?: ReadonlyMap<string, Record<string, string>>,
+  oleMathByRid?: ReadonlyMap<string, string>,
 ): Run | null {
   let text = ''
   let sym: (Run['sym'] & { glyph: string }) | null | undefined
@@ -5016,6 +5028,7 @@ function buildRun(
     }
   }
   let image: Run['image']
+  let oleMath: { omml: string; oleXml: string; oleProgId: string } | undefined
   if (mediaByRid) {
     // Word wraps modern drawings in mc:AlternateContent (Choice + VML twin)
     const choice = findChild(findChild(rNode, 'mc:AlternateContent') ?? {}, 'mc:Choice')
@@ -5057,6 +5070,17 @@ function buildRun(
       ].filter((n): n is XNode => n !== undefined)
       for (const pict of picts) {
         const pictXml = serializeXNode(pict)
+        // MathType / Equation Editor OLE embed whose MTEF stream decoded to OMML:
+        // render as native vector math while carrying the original <w:object> for
+        // byte-preserving round-trip on save.
+        if (nameOf(pict) === 'w:object' && oleMathByRid && text === '') {
+          const oleTarget = oleMathTargetOf(pictXml)
+          const omml = oleTarget ? oleMathByRid.get(oleTarget.rId) : undefined
+          if (omml) {
+            oleMath = { omml, oleXml: pictXml, oleProgId: oleTarget!.progId }
+            break
+          }
+        }
         const rId = /<v:imagedata[^>]*r:id="([^"]+)"/.exec(pictXml)?.[1]
         const dataUrl = rId ? mediaByRid.get(rId) : undefined
         if (dataUrl) {
@@ -5097,15 +5121,23 @@ function buildRun(
       }
     }
   }
-  if (text === '' && !image) return null
+  if (text === '' && !image && !oleMath) return null
 
   const rPr = findChild(rNode, 'w:rPr')
-  const run: Run = { text }
+  const run: Run = { text: oleMath ? mathTokens(oleMath.omml).join('') : text }
   // only a run that is nothing but one w:sym stays a symbol run
   if (sym && text === sym.glyph) run.sym = { font: sym.font, char: sym.char }
   if (image) run.image = image
   if (link) run.link = link
   if (rPr) run.rawRPr = serializeXNode(rPr)
+  if (oleMath) {
+    run.math = {
+      omml: oleMath.omml,
+      oleXml: oleMath.oleXml,
+      oleProgId: oleMath.oleProgId,
+      ...(run.rawRPr ? { oleRawRPr: run.rawRPr } : {}),
+    }
+  }
   // the chain-resolved view: rtl selection, inherited hidden text and borders
   // come from here, the direct fields below are what saves
   const eff = effectiveRunOf(res, rPr, run.rawRPr)
@@ -6254,6 +6286,13 @@ async function hfImages(
       }
       if (crop.l || crop.t || crop.r || crop.b) image.crop = crop
     }
+    const effects = blipEffectsOf(frag)
+    if (effects) image.effects = effects
+    const xfrmRot = parseInt(/<a:xfrm\b[^>]*\brot\s*=\s*["'](-?\d+)["']/.exec(frag)?.[1] ?? '', 10)
+    if (Number.isFinite(xfrmRot) && xfrmRot !== 0) {
+      const deg = Math.round(((((xfrmRot / 60000) % 360) + 360) % 360) * 100) / 100
+      if (deg > 0) image.rotationDeg = deg
+    }
     if (/<wp:anchor[\s>]/.test(frag)) {
       image.floating = true
       const anchorTag = /<wp:anchor[^>]*>/.exec(frag)?.[0] ?? ''
@@ -6300,8 +6339,9 @@ async function hfImages(
       continue
     }
     if (!/position:\s*absolute/.test(frag) && onCellRun(m.index!)) continue
-    const rId = /<v:imagedata[^>]*r:id="([^"]+)"/.exec(frag)?.[1]
-    if (!rId) {
+    const rId = /<v:imagedata[^>]*\br:id\s*=\s*(?:"([^"]+)"|'([^']+)')/.exec(frag)
+    const rIdVal = rId ? (rId[1] ?? rId[2]) : undefined
+    if (!rIdVal) {
       // textless vector shape (mc:Fallback twin of a wps shape the Choice
       // path could not draw, or a plain VML decoration)
       const shape = vmlShapeSvg(frag)
@@ -6320,10 +6360,12 @@ async function hfImages(
       out.push(image)
       continue
     }
-    const dataUrl = await mediaDataUrl(zip, rels, rId, partPath)
+    const dataUrl = await mediaDataUrl(zip, rels, rIdVal, partPath)
     if (!dataUrl) continue
     // VML dimensions live in the v:shape style attribute (pt, in, cm...)
-    const style = /<v:shape[^>]*style="([^"]*)"/.exec(frag)?.[1] ?? ''
+    const shapeTag = /<v:shape\b[^>]*>/.exec(frag)?.[0] ?? ''
+    const styleM = /\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+    const style = styleM ? (styleM[1] ?? styleM[2] ?? '') : ''
     const image: HfImage = { dataUrl }
     const w = vmlStyleDimPx(style, 'width')
     const h = vmlStyleDimPx(style, 'height')
@@ -6337,7 +6379,7 @@ async function hfImages(
     else if (hTw > 0) image.heightPx = Math.round(hTw / 15)
     // absolute-positioned shapes (picture watermarks): must not stack into the
     // header strip nor count toward the header height estimate
-    if (/position:absolute/.test(style)) {
+    if (/position:\s*absolute/.test(style)) {
       image.floating = true
       if (/z-index:\s*-/.test(style)) image.behind = true
       if (isPictureWatermarkShape(frag)) image.watermark = true
@@ -6349,10 +6391,20 @@ async function hfImages(
       if (align) image.align = align
     }
     const imagedata = /<v:imagedata[^>]*>/.exec(frag)?.[0] ?? ''
-    const gain = vmlFraction(/\sgain="([^"]*)"/.exec(imagedata)?.[1])
-    const blackLevel = vmlFraction(/\sblacklevel="([^"]*)"/.exec(imagedata)?.[1])
+    const gainM = /\sgain\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+    const blM = /\sblacklevel\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+    const gain = vmlFraction(gainM ? (gainM[1] ?? gainM[2]) : undefined)
+    const blackLevel = vmlFraction(blM ? (blM[1] ?? blM[2]) : undefined)
     if (gain != null || blackLevel != null) {
       image.washout = { gain: gain ?? 1, blackLevel: blackLevel ?? 0 }
+    }
+    const fillTag = /<v:fill\b[^>]*>/.exec(frag)?.[0] ?? ''
+    const opM =
+      /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(fillTag) ??
+      /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+    const vmlAlpha = vmlFraction(opM ? (opM[1] ?? opM[2]) : undefined)
+    if (vmlAlpha != null && vmlAlpha >= 0 && vmlAlpha < 1) {
+      image.effects = { ...image.effects, alpha: vmlAlpha }
     }
     recordProduced(m.index!)
     out.push(image)
@@ -6468,6 +6520,8 @@ async function hfGroupPictures(
       }
       if (crop.l || crop.t || crop.r || crop.b) image.crop = crop
     }
+    const effects = blipEffectsOf(pic)
+    if (effects) image.effects = effects
     out.push(image)
   }
   return out.length > 0 ? out : null
@@ -8072,7 +8126,7 @@ type ImageMeta = Pick<
   imageNoOverlap?: boolean
 }
 
-/** a:lum / a:grayscl / a:biLevel inside the picture's a:blip → display recolor */
+/** a:lum / a:grayscl / a:biLevel / a:alphaModFix inside the picture's a:blip → display recolor/opacity */
 function blipEffectsOf(xml: string): ImageEffects | undefined {
   // a self-closing first blip must not span to a later picture's closing tag
   const blip = /<a:blip\b[^>]*[^/>]>([\s\S]*?)<\/a:blip>/.exec(xml)?.[1]
@@ -8087,13 +8141,19 @@ function blipEffectsOf(xml: string): ImageEffects | undefined {
   }
   if (/<a:grayscl\b/.test(blip)) out.grayscale = true
   const biLevel = /<a:biLevel\b[^>]*\/?>/.exec(blip)?.[0]
-  if (biLevel) out.biLevelThresh = /\bthresh="/.test(biLevel) ? rectFrac(biLevel, 'thresh') : 0.5
+  if (biLevel) out.biLevelThresh = /\bthresh=/.test(biLevel) ? rectFrac(biLevel, 'thresh') : 0.5
+  const alphaMod = /<a:alphaModFix\b[^>]*\/?>/.exec(blip)?.[0]
+  if (alphaMod && /\bamt=/.test(alphaMod)) {
+    const amt = Math.max(0, Math.min(1, rectFrac(alphaMod, 'amt')))
+    if (amt < 1) out.alpha = amt
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 /** a:srcRect / a:fillRect attribute (1000ths of a percent; some writers emit decimals) → fraction */
 function rectFrac(tag: string, name: string): number {
-  const v = parseFloat(new RegExp(`\\b${name}="(-?[\\d.]+)"`).exec(tag)?.[1] ?? '')
+  const m = new RegExp(`\\b${name}\\s*=\\s*(?:"(-?[\\d.]+)"|'(-?[\\d.]+)')`).exec(tag)
+  const v = parseFloat(m?.[1] ?? m?.[2] ?? '')
   return Number.isFinite(v) ? v / 100000 : 0
 }
 
@@ -8491,34 +8551,56 @@ function imageMeta(xml: string, ctx?: BuildContext): ImageMeta {
  */
 function vmlImageMeta(xml: string): ImageMeta {
   const meta: ImageMeta = {}
-  const style = /<v:shape [^>]*style="([^"]*)"/.exec(xml)?.[1] ?? ''
-  const w = parseFloat(/(?:^|;)width:([\d.]+)pt/.exec(style)?.[1] ?? '')
-  const h = parseFloat(/(?:^|;)height:([\d.]+)pt/.exec(style)?.[1] ?? '')
-  if (w > 0) meta.imageWidthPx = Math.round((w / 72) * 96)
-  if (h > 0) meta.imageHeightPx = Math.round((h / 72) * 96)
+  const shapeTag = /<v:shape\b[^>]*>/.exec(xml)?.[0] ?? ''
+  const styleM = /\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+  const style = styleM ? (styleM[1] ?? styleM[2] ?? '') : ''
+  const w = vmlStyleDimPx(style, 'width')
+  const h = vmlStyleDimPx(style, 'height')
+  if (w) meta.imageWidthPx = w
+  if (h) meta.imageHeightPx = h
   const jc = /<w:jc w:val="([^"]+)"/.exec(xml)?.[1]
   if (jc === 'center') meta.imageAlign = 'center'
   else if (jc === 'right' || jc === 'end') meta.imageAlign = 'right'
-  if (/position:absolute/.test(style)) {
+  if (/position:\s*absolute/.test(style)) {
     meta.imageWrap = /z-index:\s*-/.test(style) ? 'behind' : 'front'
-    const mx = parseFloat(/margin-left:(-?[\d.]+)pt/.exec(style)?.[1] ?? '')
-    const my = parseFloat(/margin-top:(-?[\d.]+)pt/.exec(style)?.[1] ?? '')
-    if (Number.isFinite(mx)) meta.imageOffsetXEmu = Math.round(mx * EMU_PER_PT)
-    if (Number.isFinite(my)) meta.imageOffsetYEmu = Math.round(my * EMU_PER_PT)
-    const posH = /mso-position-horizontal:(\w+)/.exec(style)?.[1]
-    const posV = /mso-position-vertical:(\w+)/.exec(style)?.[1]
-    const relH = /mso-position-horizontal-relative:(\w+)/.exec(style)?.[1]
-    const relV = /mso-position-vertical-relative:(\w+)/.exec(style)?.[1]
-    if (
-      (relH === 'margin' || relH === 'page') &&
-      (relV === 'margin' || relV === 'page') &&
-      (posH === 'left' || posH === 'center' || posH === 'right') &&
-      (posV === 'top' || posV === 'center' || posV === 'bottom')
-    ) {
+    const posH = vmlStyleProp(style, 'mso-position-horizontal')
+    const posV = vmlStyleProp(style, 'mso-position-vertical')
+    const relH = vmlStyleProp(style, 'mso-position-horizontal-relative')
+    const relV = vmlStyleProp(style, 'mso-position-vertical-relative')
+    if (posH === 'left' || posH === 'center' || posH === 'right') {
       meta.imagePosH = posH
-      meta.imagePosV = posV
+      if (relH === 'margin' || relH === 'page') meta.imageRelH = relH
+    } else {
+      const mxPx = vmlLengthPx(vmlStyleProp(style, 'margin-left'))
+      if (mxPx !== undefined) meta.imageOffsetXEmu = Math.round(mxPx * EMU_PER_PX)
+      if (relH === 'margin' || relH === 'page') meta.imageRelH = relH
     }
+    if (posV === 'top' || posV === 'center' || posV === 'bottom') {
+      meta.imagePosV = posV
+      if (relV === 'margin' || relV === 'page') meta.imageRelV = relV
+    } else {
+      const myPx = vmlLengthPx(vmlStyleProp(style, 'margin-top'))
+      if (myPx !== undefined) meta.imageOffsetYEmu = Math.round(myPx * EMU_PER_PX)
+      if (relV === 'margin' || relV === 'page') meta.imageRelV = relV
+    }
+    const rot = vmlRotationDeg(style)
+    if (rot != null) meta.imageRotDeg = rot
   }
+  const imagedata = /<v:imagedata[^>]*>/.exec(xml)?.[0] ?? ''
+  const gainM = /\sgain\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+  const blM = /\sblacklevel\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+  const gain = vmlFraction(gainM ? (gainM[1] ?? gainM[2]) : undefined)
+  const blackLevel = vmlFraction(blM ? (blM[1] ?? blM[2]) : undefined)
+  const fillTag = /<v:fill\b[^>]*>/.exec(xml)?.[0] ?? ''
+  const opM =
+    /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(fillTag) ??
+    /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+  const alpha = vmlFraction(opM ? (opM[1] ?? opM[2]) : undefined)
+  const fx: ImageEffects = {}
+  if (blackLevel != null && blackLevel !== 0) fx.bright = Math.max(-1, Math.min(1, blackLevel * 2))
+  if (gain != null && gain !== 1) fx.contrast = Math.max(-1, Math.min(1, gain - 1))
+  if (alpha != null && alpha >= 0 && alpha < 1) fx.alpha = alpha
+  if (Object.keys(fx).length > 0) meta.imageEffects = fx
   return meta
 }
 
@@ -8671,6 +8753,73 @@ async function tableBlipMedia(
   return out
 }
 
+function oleMathTargetOf(frag: string): { rId: string; progId: string } | null {
+  const tag = /<o:OLEObject\b[^>]*>/.exec(frag)?.[0]
+  if (!tag) return null
+  const progId = /\bProgID\s*=\s*["']([^"']+)["']/.exec(tag)?.[1]
+  const rId = /\br:id\s*=\s*["']([^"']+)["']/.exec(tag)?.[1]
+  if (!rId || !isMathTypeProgId(progId)) return null
+  return { rId, progId: progId! }
+}
+
+async function decodeOleMathPart(
+  zip: JSZip,
+  rels: Map<string, RelInfo>,
+  rId: string,
+  sourcePath: string,
+): Promise<string | null> {
+  const rel = rels.get(rId)
+  if (!rel || rel.targetMode === 'External') return null
+  const path = resolveRelationshipTargetPath(sourcePath, rel.target)
+  const file = path ? zip.file(path) : null
+  if (!file) return null
+  const bytes = await file.async('uint8array')
+  return oleBytesToOmml(bytes)
+}
+
+/** pre-decode MathType OLE embeds inside tables (mirrors tableBlipMedia) */
+async function tableOleMath(
+  elements: BodyElement[],
+  documentXml: string,
+  zip: JSZip,
+  rels: Map<string, RelInfo>,
+  sourcePath: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const rIds = new Set<string>()
+  for (const el of elements) {
+    if (el.name !== 'w:tbl' && el.name !== 'w:sdt') continue
+    let slice = documentXml.slice(el.start, el.end)
+    if (el.name === 'w:sdt') {
+      const from = slice.indexOf('<w:tbl')
+      if (from === -1) continue
+      slice = slice.slice(from, slice.lastIndexOf('</w:tbl>') + '</w:tbl>'.length)
+    }
+    if (!slice.includes('<o:OLEObject')) continue
+    for (const m of slice.matchAll(/<o:OLEObject\b[^>]*>/g)) {
+      const target = oleMathTargetOf(m[0])
+      if (target) rIds.add(target.rId)
+    }
+  }
+  for (const rId of rIds) {
+    const omml = await decodeOleMathPart(zip, rels, rId, sourcePath)
+    if (omml) out.set(rId, omml)
+  }
+  return out
+}
+
+/** resolve a paragraph's MathType OLE rIds into ctx.oleMathByRid so extractRuns (sync) can build math runs */
+async function resolveOleMath(xml: string, ctx: BuildContext): Promise<void> {
+  if (!xml.includes('<o:OLEObject')) return
+  const map = (ctx.oleMathByRid ??= new Map())
+  const sourcePath = ctx.sourcePath ?? 'word/document.xml'
+  for (const m of xml.matchAll(/<o:OLEObject\b[^>]*>/g)) {
+    const target = oleMathTargetOf(m[0])
+    if (!target || map.has(target.rId)) continue
+    const omml = await decodeOleMathPart(ctx.zip, ctx.rels, target.rId, sourcePath)
+    if (omml) map.set(target.rId, omml)
+  }
+}
 /** drawing kinds that need a display path of their own rather than a run image */
 const RICH_DRAWING_RE = /<c:chart|<cx:chart|<dgm:|r:dm=|<lc:lockedCanvas|<wps:wsp|<w:txbxContent/
 
@@ -9101,15 +9250,71 @@ async function extractDiagramDrawing(
 async function oleDisplay(
   xml: string,
   ctx: BuildContext,
+  fullParaXml = xml,
 ): Promise<
-  Pick<Block, 'imageDataUrl' | 'oleProgId' | 'imageWidthPx' | 'imageHeightPx' | 'imageAlign'>
+  Pick<
+    Block,
+    | 'imageDataUrl'
+    | 'oleProgId'
+    | 'imageWidthPx'
+    | 'imageHeightPx'
+    | 'imageAlign'
+    | 'formulaDisplay'
+    | 'styleId'
+  >
 > {
   const out: Pick<
     Block,
-    'imageDataUrl' | 'oleProgId' | 'imageWidthPx' | 'imageHeightPx' | 'imageAlign'
+    | 'imageDataUrl'
+    | 'oleProgId'
+    | 'imageWidthPx'
+    | 'imageHeightPx'
+    | 'imageAlign'
+    | 'formulaDisplay'
+    | 'styleId'
   > = {}
   const progId = /<o:OLEObject[^>]*ProgID="([^"]+)"/.exec(xml)?.[1]
   if (progId) out.oleProgId = progId
+  // MathType / Equation Editor OLE embed: decode MTEF binary to OMML -> MathML
+  // so it renders as crisp vector math while keeping the original <w:object>
+  // untouched on save. Falls through cleanly to the preview picture on null.
+  const oleTarget = oleMathTargetOf(xml)
+  if (oleTarget) {
+    const omml = await decodeOleMathPart(
+      ctx.zip,
+      ctx.rels,
+      oleTarget.rId,
+      ctx.sourcePath ?? 'word/document.xml',
+    )
+    if (omml) {
+      const tokens = mathTokens(omml)
+      const mathml = ommlToMathML(omml)
+      if (tokens.length > 0 && mathml) {
+        const latex = ommlToLatex(omml)
+        const pPr = /<w:pPr>[\s\S]*?<\/w:pPr>/.exec(fullParaXml)?.[0] ?? ''
+        const styleId = tagAttr(pPr, 'w:pStyle', 'w:val')
+        const eff = resolveParagraphPropsXml(fullParaXml, resolverOf(ctx))
+        const sz = parseInt(tagAttr(xml, 'w:sz', 'w:val') ?? '', 10)
+        const sizeHalfPoints = Number.isFinite(sz) ? Math.max(1, sz) : mathSizeHalfPoints(omml, eff)
+        const align =
+          eff.align === 'center' || eff.align === 'right' || eff.align === 'left'
+            ? eff.align
+            : 'left'
+        if (styleId) out.styleId = styleId
+        out.formulaDisplay = {
+          tokens,
+          mathml,
+          omml,
+          ...(latex ? { latex } : {}),
+          ...(sizeHalfPoints ? { sizeHalfPoints } : {}),
+          align,
+          oleMathType: true,
+          ...directParaGeometry(eff),
+          ...additiveSpacingOf(resolverOf(ctx)),
+        }
+      }
+    }
+  }
   const path = relPartPath(ctx, /<v:imagedata[^>]*r:id="([^"]+)"/.exec(xml)?.[1])
   const file = path ? ctx.zip.file(path) : null
   if (file && path) {

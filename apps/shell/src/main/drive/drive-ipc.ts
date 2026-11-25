@@ -7,7 +7,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, net, safeStorage, shell, webContents } from 'electron'
 import type { Lang } from '@genoffice/i18n'
-import { safeExternalUrl } from '@genoffice/electron-utils'
+import { safeExternalUrl, sharedPathGrants } from '@genoffice/electron-utils'
 import {
   DriveConnection,
   FOLDER_MIME,
@@ -392,7 +392,9 @@ export function registerDriveIpc(deps: DriveIpcDeps): DriveService {
     if (blocked) return { ok: false, reason: blocked }
     if ((picking || connecting) && !drivePicker.isOpen()) return { ok: false, reason: 'busy' }
     const parent = BrowserWindow.fromWebContents(event.sender) ?? deps.window()
-    return drivePicker.open(parent)
+    const res = await drivePicker.open(parent)
+    if (res.ok && res.paths.length > 0) sharedPathGrants().grant(event.sender.id, res.paths)
+    return res
   })
 
   ipcMain.handle(DRIVE_CHANNELS.open, async (_event, fileId: unknown): Promise<DriveOpenResult> => {

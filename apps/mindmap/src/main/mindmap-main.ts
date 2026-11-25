@@ -816,7 +816,10 @@ function registerMindmapIpc(): void {
   ipcMain.on(MINDMAP_CHANNELS.recoveryCopyNowDone, (e) => copyNowWaiters.get(e.sender.id)?.())
 
   // the AI panel's attachments and the provisional name of an untitled map (T12)
-  registerMindmapAiIpc({ hasFile: (wcId) => savePathByWc.has(wcId) })
+  registerMindmapAiIpc({
+    hasFile: (wcId) => savePathByWc.has(wcId),
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId),
+  })
   // the AI panel's pictures: search result or generated file → bytes for the renderer
   registerMindmapImageIpc({
     filePathOf: (wcId) => savePathByWc.get(wcId) ?? null,

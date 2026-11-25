@@ -16,6 +16,7 @@ import { IconShapes, IconTextBox } from './components/icons'
 import { defaultShapeStyle } from './default-shape'
 import { isLineDrawKind, type DrawRect } from './draw-shape'
 import { textBoxInsertSpec } from './textbox-insert'
+import type { EditCaret } from './action-context'
 import type { EditParagraph, MasterPartItem } from '../shared/ipc'
 import { t } from './i18n/locale'
 import { setImageSource } from './image-loader'
@@ -31,7 +32,7 @@ export function MasterView({ initialItems, onClose }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [editing, setEditing] = useState<{
     sourceId: string
-    caret?: { x: number; y: number }
+    caret?: EditCaret
   } | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; targetId: string | null } | null>(
     null,

@@ -159,6 +159,7 @@ export interface VisualAddition {
 /// overlay writes, so successive additions compose.
 export interface MutablePackage {
   paths(): Promise<readonly string[]>
+  removedPaths?(): readonly string[]
   has(path: string): Promise<boolean>
   readText(path: string): Promise<string>
   write(path: string, content: string): void

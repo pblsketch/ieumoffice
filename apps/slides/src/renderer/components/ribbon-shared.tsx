@@ -589,6 +589,8 @@ export interface Props {
   tableStyleFlags?: { firstRow: boolean; bandRow: boolean; rtl?: boolean } | null
   /** Cell being edited in the selected table; shading applies to just this cell */
   tableActiveCell?: { row: number; col: number } | null
+  /** One or more targeted table cells (active edited cell or multi-cell selection) */
+  tableActiveCells?: Array<{ row: number; col: number }> | null
   /** Execute a chart edit operation */
   onEditChart?: (op: Omit<EditChartOp, 'slideIndex' | 'sourceId'>) => void
   /** Open the chart data edit dialog */

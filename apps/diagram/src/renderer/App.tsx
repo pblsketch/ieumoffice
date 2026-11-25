@@ -19,7 +19,7 @@ import { createDiagramFile, type DiagramFormat } from '@genoffice/drawio-model'
 import type { Lang } from '@genoffice/i18n'
 import type { BridgeEvent, DrawioMenuAction, EmbedEvent } from '../shared/bridge-protocol'
 import { drawioStartUrl } from '../shared/drawio-start'
-import { isHelpKey } from '../bridge/shortcuts'
+import { isAppShortcut, isHelpKey } from '../bridge/shortcuts'
 import { diagramBaseName, exportKindOf } from '../shared/formats'
 import type {
   DiagramImportKind,
@@ -675,12 +675,11 @@ export default function App({ initialTheme }: { initialTheme: UiTheme }) {
         window.diagramApi.openHelp()
         return
       }
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
-      const key = event.key.toLowerCase()
-      if (key === 's') {
+      const shortcut = isAppShortcut(event)
+      if (shortcut === 'save' || shortcut === 'saveAs') {
         event.preventDefault()
-        void doSave(event.shiftKey ? 'saveAs' : 'save')
-      } else if (key === 'p' && !event.shiftKey) {
+        void doSave(shortcut)
+      } else if (shortcut === 'print') {
         event.preventDefault()
         runPrint()
       }

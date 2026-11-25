@@ -520,6 +520,16 @@ body,
   display: block;
 }
 
+.wb-stage-svg.wb-space-pan,
+.wb-stage-svg.wb-space-pan * {
+  cursor: grab !important;
+}
+
+.wb-stage-svg.wb-panning,
+.wb-stage-svg.wb-panning * {
+  cursor: grabbing !important;
+}
+
 .wb-paper-shadow {
   filter: drop-shadow(0 8px 24px var(--wb-paper-shadow));
 }

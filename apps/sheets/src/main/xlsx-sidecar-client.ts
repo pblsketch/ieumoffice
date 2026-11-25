@@ -1,7 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
 
-import type { ExternalLinksUpdateResult } from '../shared/desktop-api'
+import type {
+  ExternalLinksUpdateResult,
+  WorkbookRangeRequest,
+  WorkbookFilterRequest,
+} from '../shared/desktop-api'
 
 const PROTOCOL_VERSION = 1
 const REQUEST_TIMEOUT_MS = 30_000
@@ -26,6 +30,7 @@ const CANCELLABLE_READS = new Set([
   'read_row_outline',
   'read_media',
   'find_cells',
+  'filter_rows',
 ])
 
 interface SidecarResponse {
@@ -115,16 +120,7 @@ export class XlsxSidecarClient {
     )
   }
 
-  async readRange(input: {
-    readonly sessionId: string
-    readonly sheetId: string
-    readonly range: {
-      readonly startRow: number
-      readonly endRow: number
-      readonly startColumn: number
-      readonly endColumn: number
-    }
-  }): Promise<unknown> {
+  async readRange(input: WorkbookRangeRequest): Promise<unknown> {
     return this.request({ command: 'read_range', ...input })
   }
 
@@ -133,6 +129,10 @@ export class XlsxSidecarClient {
     readonly sheetId: string
   }): Promise<unknown> {
     return this.request({ command: 'read_formula_cells', ...input })
+  }
+
+  async filterRows(input: WorkbookFilterRequest): Promise<unknown> {
+    return this.request({ command: 'filter_rows', ...input })
   }
 
   async findCells(

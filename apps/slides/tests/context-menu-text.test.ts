@@ -117,16 +117,16 @@ describe('text edit context menu', () => {
     expect(openFormat).toHaveBeenCalled()
   })
 
-  it('a cell edit drops bullets/numbering (no cell-scoped path) but keeps selection commands', () => {
+  it('a cell edit keeps bullets/numbering and selection commands (cell-scoped commit)', () => {
     const cell = {
       ...makeTextCtx(false),
       editing: null,
       editingCell: { sourceId: 'tbl', row: 0, col: 0 },
     } as unknown as ActionCtx
     const labels = buildCtxItems(cell).map((i) => i?.label ?? '|')
-    expect(labels).not.toContain(t('ribbonBullets'))
-    expect(labels).not.toContain(t('ribbonNumbering'))
-    expect(labels.filter((l) => l === '|')).toHaveLength(3)
+    expect(labels).toContain(t('ribbonBullets'))
+    expect(labels).toContain(t('ribbonNumbering'))
+    expect(labels.filter((l) => l === '|')).toHaveLength(4)
     expect(labels).toEqual(expect.arrayContaining([t('ribbonBold'), t('appCtxHyperlink')]))
   })
 })

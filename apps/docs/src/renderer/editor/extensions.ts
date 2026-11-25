@@ -1,5 +1,6 @@
 import { ScriptFonts } from './script-fonts'
 import { CrossCellDrag } from './cross-cell-drag'
+import { pictureFilterCss } from './picture-effects'
 import { Editor, Extension, Node } from '@tiptap/core'
 import { SHAPE_INLINE_WRAP } from './floating-z-order'
 import { StreamingTailGuardExtension } from './streaming-tail-guard'
@@ -1274,6 +1275,10 @@ export const DocInlineImage = Node.create({
       rotDeg: { default: null as number | null },
       flipH: { default: false },
       flipV: { default: false },
+      /** lowered inline image/OLE baseline shift (pt, negative = lowered) so line box expands instead of overlapping */
+      baselineShiftPt: { default: null as number | null },
+      /** original w:position (half-points) stripped from docTextStyle for lowered inline images */
+      positionHalfPoints: { default: null as number | null, rendered: false },
       /** the run's raw <w:rPr> slice, re-emitted before the fragment on save (not rendered) */
       rawRPr: { default: null as string | null, rendered: false },
       /** VML horizontal rule (alone or sharing the paragraph): {colorHex?, thicknessPx?, sizeHalfPoints?, widthPx?, align?}; drawn as a rule on its own line */
@@ -1311,6 +1316,10 @@ export const DocInlineImage = Node.create({
     const h = Number(node.attrs.heightPx)
     const styles: string[] = []
     if (w > 0) styles.push(`width:${w}px`, h > 0 ? `height:${h}px` : 'height:auto')
+    const shiftPt = node.attrs.baselineShiftPt as number | null
+    if (shiftPt && shiftPt < 0 && !node.attrs.wrap) {
+      styles.push(`vertical-align:${shiftPt}pt`)
+    }
     const ib = node.attrs.border as { color: string; widthPt: number } | null
     if (ib) {
       // picture outline (document data, not chrome)
@@ -1469,6 +1478,16 @@ export const DocInlineMath = Node.create({
       /** flat token strip (word count / AI read fallback) */
       text: { default: '' },
       sizeHalfPoints: { default: null as number | null },
+      /** original <w:object> XML when decoded from a MathType OLE embed (null for native OMML) */
+      oleXml: { default: null as string | null, rendered: false },
+      /** original <w:rPr> XML of the MathType OLE run */
+      oleRawRPr: { default: null as string | null, rendered: false },
+      /** original o:OLEObject ProgID (e.g. "Equation.DSMT4") */
+      oleProgId: { default: null as string | null, rendered: false },
+      /** original w:position (half-points) stripped from docTextStyle for MathType OLE display */
+      olePositionHalfPoints: { default: null as number | null, rendered: false },
+      /** came from an m:oMathPara (display equation in a table cell) */
+      display: { default: false },
     }
   },
   parseHTML() {
@@ -1494,13 +1513,21 @@ export const DocInlineMath = Node.create({
       }
       render()
       dom.addEventListener('dblclick', () => {
-        // only editor-created formulas carry LaTeX and can be re-edited
+        // formulas with recovered LaTeX can be re-edited; MathType OLE formulas
+        // can also be converted to native OMML even when outside the LaTeX subset
         const latex = currentNode.attrs.latex
+        const isMathType = Boolean(currentNode.attrs.oleXml)
+        const omml = String(currentNode.attrs.omml ?? '')
         const pos = (getPos as () => number | undefined)()
-        if (latex && typeof pos === 'number') {
+        if (typeof pos === 'number' && (latex || (isMathType && omml))) {
           window.dispatchEvent(
             new CustomEvent('ai-docs-edit-inline-math', {
-              detail: { pos, latex: String(latex), kind: 'inline' },
+              detail: {
+                pos,
+                latex: latex ? String(latex) : '',
+                kind: 'inline',
+                ...(isMathType ? { isMathType: true, omml } : {}),
+              },
             }),
           )
         }
@@ -1520,13 +1547,16 @@ export const DocInlineMath = Node.create({
 
 function inlineMathDomAttrs(node: { attrs: Record<string, unknown> }): Record<string, string> {
   const size = node.attrs.sizeHalfPoints as number | null
+  const isMathType = Boolean(node.attrs.oleXml)
   return {
     'data-inline-math': '1',
     class: 'doc-inline-math',
     ...(size ? { style: `font-size:${size / 2}pt` } : {}),
-    title: node.attrs.latex
-      ? t('editorEquationEditHint', { latex: String(node.attrs.latex) })
-      : t('editorEquation'),
+    title: isMathType
+      ? t('appMathTypeEditHint')
+      : node.attrs.latex
+        ? t('editorEquationEditHint', { latex: String(node.attrs.latex) })
+        : t('editorEquation'),
   }
 }
 
@@ -4241,37 +4271,7 @@ const persistableImage = (src: string): boolean =>
   PERSISTABLE_IMAGE_URL.test(src) || isLazyImage(src)
 
 /** display attrs a copied picture needs to round-trip through clipboard HTML */
-/**
- * CSS filter pair for the affine map y = slope * (x + offset - 0.5) + 0.5.
- * contrast() pivots at 0.5 and brightness() at 0, so the two compose to any
- * such line; the order is chosen so the intermediate value never clips.
- */
-function affineFilterCss(slope: number, offset: number): string[] {
-  if (offset >= 0) {
-    const m = 1 + 2 * slope * offset
-    return [`contrast(${(slope / m).toFixed(4)})`, `brightness(${m.toFixed(4)})`]
-  }
-  const k = slope * (1 - 2 * offset)
-  return [`brightness(${(1 / (1 - 2 * offset)).toFixed(4)})`, `contrast(${k.toFixed(4)})`]
-}
-
-/** a:lum / a:grayscl / a:biLevel → `filter:` declaration ('' when none) */
-export function pictureFilterCss(fx: ImageEffects | null | undefined): string {
-  if (!fx) return ''
-  const fns: string[] = []
-  if (fx.grayscale || fx.biLevelThresh !== undefined) fns.push('grayscale(1)')
-  if (fx.bright || fx.contrast) {
-    // Word: contrast scales about mid-grey by (1 + c), brightness then adds b
-    // (measured against Word's rendering of bright/contrast +40%)
-    const slope = Math.max(0.01, 1 + Math.max(-1, Math.min(1, fx.contrast ?? 0)))
-    const bright = Math.max(-1, Math.min(1, fx.bright ?? 0))
-    fns.push(...affineFilterCss(slope, bright / slope))
-  }
-  if (fx.biLevelThresh !== undefined) {
-    fns.push(...affineFilterCss(1000, 0.5 - Math.max(0, Math.min(1, fx.biLevelThresh))))
-  }
-  return fns.length ? `filter:${fns.join(' ')}` : ''
-}
+export { pictureFilterCss }
 
 /** w:framePr box: the paragraph lays out at the frame size, floating beside the text when it wraps */
 function frameBoxCss(json: string): string[] {
@@ -5193,26 +5193,56 @@ function protectedDomSpec(node: PmNode): DomSpec {
       const zi = imageWrap === 'behind' ? Math.min(-1, -1000 + z) : Math.max(1, 2 + z)
       const imgZIndexCss = `;z-index:${Math.round(zi)}`
       const posH = node.attrs.imagePosH
+      const posV = node.attrs.imagePosV
       const tx =
         node.attrs.imageOffsetXEmu != null ? Number(node.attrs.imageOffsetXEmu) / EMU_PER_PX : 0
       const ty =
         node.attrs.imageOffsetYEmu != null ? Number(node.attrs.imageOffsetYEmu) / EMU_PER_PX : 0
-      const topCss =
-        relV === 'page'
-          ? `calc(${ty.toFixed(1)}px - var(--doc-margin-top,0px))`
-          : `${ty.toFixed(1)}px`
-      if (pageRelV) {
+      const usePosV = posV === 'top' || posV === 'center' || posV === 'bottom'
+      let topCss: string
+      let translateY = ''
+      if (posV === 'center') {
+        topCss =
+          relV === 'page'
+            ? 'calc(var(--page-h,1056px) / 2 - var(--doc-margin-top,0px))'
+            : 'calc((var(--page-h,1056px) - var(--doc-margin-top,0px) - var(--doc-margin-bottom,0px)) / 2)'
+        translateY = 'translateY(-50%)'
+      } else if (posV === 'bottom') {
+        topCss =
+          relV === 'page'
+            ? 'calc(var(--page-h,1056px) - var(--doc-margin-top,0px))'
+            : 'calc(var(--page-h,1056px) - var(--doc-margin-top,0px) - var(--doc-margin-bottom,0px))'
+        translateY = 'translateY(-100%)'
+      } else if (posV === 'top') {
+        topCss = relV === 'page' ? 'calc(0px - var(--doc-margin-top,0px))' : '0px'
+      } else {
+        topCss =
+          relV === 'page'
+            ? `calc(${ty.toFixed(1)}px - var(--doc-margin-top,0px))`
+            : `${ty.toFixed(1)}px`
+      }
+      if (pageRelV || usePosV) {
         imgWrapData['data-page-rel-v'] = '1'
         if (relV === 'page') imgWrapData['data-page-rel-from'] = 'page'
       }
+      let translateX = ''
       if (posH === 'center') {
-        imgFloatPos = `left:50%;top:${topCss}${imgZIndexCss}`
-        imgWrapTransform = 'transform:translateX(-50%)'
+        const leftCss = pageRelH
+          ? 'calc(var(--page-w,816px) / 2 - var(--doc-margin-left,0px))'
+          : '50%'
+        imgFloatPos = `left:${leftCss};top:${topCss}${imgZIndexCss}`
+        translateX = 'translateX(-50%)'
       } else if (posH === 'right') {
-        imgFloatPos = `right:0;top:${topCss}${imgZIndexCss}`
+        const rightCss = pageRelH ? 'calc(-1 * var(--doc-margin-right,0px))' : '0'
+        imgFloatPos = `right:${rightCss};top:${topCss}${imgZIndexCss}`
       } else {
-        imgFloatPos = `left:${tx.toFixed(1)}px;top:${topCss}${imgZIndexCss}`
+        const leftCss = pageRelH
+          ? `calc(${tx.toFixed(1)}px - var(--doc-margin-left,0px))`
+          : `${tx.toFixed(1)}px`
+        imgFloatPos = `left:${leftCss};top:${topCss}${imgZIndexCss}`
       }
+      const translates = [translateX, translateY].filter(Boolean)
+      if (translates.length) imgWrapTransform = `transform:${translates.join(' ')}`
     } else if (banded) {
       const tx = Number(node.attrs.imageOffsetXEmu) / EMU_PER_PX
       const ty = Number(node.attrs.imageOffsetYEmu ?? 0) / EMU_PER_PX
@@ -6023,39 +6053,51 @@ function wireFieldEditing(
   }
 }
 
-/** hover button on display formulas whose LaTeX was recovered: full re-edit */
+/** hover button on display formulas whose LaTeX was recovered (or MathType OLE formulas): full re-edit / convert */
 function wireFormulaLatexEdit(
   dom: HTMLElement,
   getNode: () => PmNode,
   getPos: () => number | undefined,
 ): (() => void) | null {
   const formula = getNode().attrs.formulaDisplay as FormulaDisplay | null
-  if (!formula?.latex) return null
+  const isMathType = Boolean(formula?.oleMathType)
+  if (!formula?.latex && !(isMathType && formula?.omml)) return null
   const host = dom.querySelector('.doc-formula-wrap') ?? dom
+  const openModal = (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const pos = getPos()
+    const current = getNode().attrs.formulaDisplay as FormulaDisplay | null
+    const currentMathType = Boolean(current?.oleMathType)
+    if (typeof pos === 'number' && (current?.latex || (currentMathType && current?.omml))) {
+      window.dispatchEvent(
+        new CustomEvent('ai-docs-edit-inline-math', {
+          detail: {
+            pos,
+            latex: current?.latex ?? '',
+            kind: 'block',
+            ...(currentMathType ? { isMathType: true, omml: current?.omml ?? '' } : {}),
+          },
+        }),
+      )
+    }
+  }
   const button = document.createElement('button')
   button.className = 'doc-formula-edit'
-  button.title = t('editorEditFormulaLatex')
+  button.title = isMathType ? t('appMathTypeEditHint') : t('editorEditFormulaLatex')
   button.textContent = t('editorEdit')
   button.setAttribute('contenteditable', 'false')
   button.addEventListener('mousedown', (e) => {
     e.preventDefault()
     e.stopPropagation()
   })
-  button.addEventListener('click', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const pos = getPos()
-    const latex = (getNode().attrs.formulaDisplay as FormulaDisplay | null)?.latex
-    if (typeof pos === 'number' && latex) {
-      window.dispatchEvent(
-        new CustomEvent('ai-docs-edit-inline-math', {
-          detail: { pos, latex, kind: 'block' },
-        }),
-      )
-    }
-  })
+  button.addEventListener('click', openModal)
+  if (isMathType) host.addEventListener('dblclick', openModal)
   host.appendChild(button)
-  return () => button.remove()
+  return () => {
+    if (isMathType) host.removeEventListener('dblclick', openModal)
+    button.remove()
+  }
 }
 
 /** Edit OMML leaf tokens while keeping formula structure outside the editor. */
@@ -6066,7 +6108,9 @@ function wireFormulaEditing(
   view: EditorView,
 ): (ProtectedContentEditor & { cleanup(): void }) | null {
   const formula = getNode().attrs.formulaDisplay as FormulaDisplay | null
-  if (!formula?.tokens.length) return null
+  // MathType OLE blocks have <w:object> in originalXml, not <m:t> tokens;
+  // editing goes through the convert-to-native-equation modal instead.
+  if (!formula?.tokens.length || formula.oleMathType) return null
   const targets = Array.from(dom.querySelectorAll<HTMLElement>('.doc-formula-token'))
   if (targets.length !== formula.tokens.length) return null
 

@@ -1284,6 +1284,7 @@ export function Ribbon({
   onEditTableStyle,
   tableStyleFlags,
   tableActiveCell,
+  tableActiveCells,
   onEditChart,
   onOpenChartDataDialog,
   onArrange,
@@ -2925,88 +2926,108 @@ export function Ribbon({
               />
             </Group>
             <div className="ribbon-sep" />
-            <Group label={tableActiveCell ? t('ribbonGroupShadingCell') : t('ribbonGroupShading')}>
-              <div className="rb-table-shading">
-                {TABLE_SHADING_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    className="rb-color-swatch"
-                    style={{ background: c }}
-                    data-tip={c}
-                    aria-label={c}
-                    disabled={!onEditTableStyle}
-                    // preventDefault keeps a cell text-edit session alive so shading targets that cell
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() =>
-                      onEditTableStyle?.({
-                        shadingColor: c,
-                        ...(tableActiveCell ? { cells: [tableActiveCell] } : {}),
-                      })
-                    }
-                  />
-                ))}
-                <button
-                  className="rb-color-swatch rb-color-none"
-                  data-tip={t('ribbonNoShading')}
-                  aria-label={t('ribbonNoShading')}
-                  disabled={!onEditTableStyle}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() =>
-                    onEditTableStyle?.({
-                      shadingColor: 'none',
-                      ...(tableActiveCell ? { cells: [tableActiveCell] } : {}),
-                    })
-                  }
-                >
-                  <IconNoneX size={12} />
-                </button>
-              </div>
-            </Group>
-            <div className="ribbon-sep" />
-            <Group label={t('ribbonGroupBorders')}>
-              <div className="rb-table-border-row">
-                <button
-                  className="rb-icon"
-                  data-tip={t('ribbonAllBordersTip')}
-                  aria-label={t('ribbonAllBordersTip')}
-                  disabled={!onEditTableStyle}
-                  onClick={() =>
-                    onEditTableStyle?.({
-                      borderPreset: 'all',
-                      borderColor: '#000000',
-                      borderWidthPt: 1,
-                    })
-                  }
-                >
-                  ⊞
-                </button>
-                <button
-                  className="rb-icon"
-                  data-tip={t('ribbonClearBordersTip')}
-                  aria-label={t('ribbonClearBordersTip')}
-                  disabled={!onEditTableStyle}
-                  onClick={() => onEditTableStyle?.({ borderPreset: 'none' })}
-                >
-                  ⊟
-                </button>
-              </div>
-              <div className="rb-table-border-row">
-                <span className="rb-label">{t('ribbonBorderColorLabel')}</span>
-                <input
-                  type="color"
-                  defaultValue="#000000"
-                  className="rb-color-input"
-                  data-tip={t('ribbonBorderColorTip')}
-                  onPointerDown={(e) => armColorInput(e.currentTarget)}
-                  onChange={(e) => onEditTableStyle?.({ borderColor: e.target.value })}
-                />
-                <span className="rb-label">{t('ribbonBorderWeightLabel')}</span>
-                <BorderWeightDropdown
-                  tip={t('ribbonBorderWeightTip')}
-                  onPick={(pt) => onEditTableStyle?.({ borderWidthPt: pt })}
-                />
-              </div>
-            </Group>
+            {(() => {
+              const targetCells =
+                tableActiveCells && tableActiveCells.length > 0
+                  ? tableActiveCells
+                  : tableActiveCell
+                    ? [tableActiveCell]
+                    : null
+              const cellScope = targetCells ? { cells: targetCells } : {}
+              return (
+                <>
+                  <Group
+                    label={targetCells ? t('ribbonGroupShadingCell') : t('ribbonGroupShading')}
+                  >
+                    <div className="rb-table-shading">
+                      {TABLE_SHADING_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          className="rb-color-swatch"
+                          style={{ background: c }}
+                          data-tip={c}
+                          aria-label={c}
+                          disabled={!onEditTableStyle}
+                          // preventDefault keeps a cell text-edit session alive so shading targets that cell
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() =>
+                            onEditTableStyle?.({
+                              shadingColor: c,
+                              ...cellScope,
+                            })
+                          }
+                        />
+                      ))}
+                      <button
+                        className="rb-color-swatch rb-color-none"
+                        data-tip={t('ribbonNoShading')}
+                        aria-label={t('ribbonNoShading')}
+                        disabled={!onEditTableStyle}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          onEditTableStyle?.({
+                            shadingColor: 'none',
+                            ...cellScope,
+                          })
+                        }
+                      >
+                        <IconNoneX size={12} />
+                      </button>
+                    </div>
+                  </Group>
+                  <div className="ribbon-sep" />
+                  <Group label={t('ribbonGroupBorders')}>
+                    <div className="rb-table-border-row">
+                      <button
+                        className="rb-icon"
+                        data-tip={t('ribbonAllBordersTip')}
+                        aria-label={t('ribbonAllBordersTip')}
+                        disabled={!onEditTableStyle}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          onEditTableStyle?.({
+                            borderPreset: 'all',
+                            borderColor: '#000000',
+                            borderWidthPt: 1,
+                            ...cellScope,
+                          })
+                        }
+                      >
+                        ⊞
+                      </button>
+                      <button
+                        className="rb-icon"
+                        data-tip={t('ribbonClearBordersTip')}
+                        aria-label={t('ribbonClearBordersTip')}
+                        disabled={!onEditTableStyle}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => onEditTableStyle?.({ borderPreset: 'none', ...cellScope })}
+                      >
+                        ⊟
+                      </button>
+                    </div>
+                    <div className="rb-table-border-row">
+                      <span className="rb-label">{t('ribbonBorderColorLabel')}</span>
+                      <input
+                        type="color"
+                        defaultValue="#000000"
+                        className="rb-color-input"
+                        data-tip={t('ribbonBorderColorTip')}
+                        onPointerDown={(e) => armColorInput(e.currentTarget)}
+                        onChange={(e) =>
+                          onEditTableStyle?.({ borderColor: e.target.value, ...cellScope })
+                        }
+                      />
+                      <span className="rb-label">{t('ribbonBorderWeightLabel')}</span>
+                      <BorderWeightDropdown
+                        tip={t('ribbonBorderWeightTip')}
+                        onPick={(pt) => onEditTableStyle?.({ borderWidthPt: pt, ...cellScope })}
+                      />
+                    </div>
+                  </Group>
+                </>
+              )
+            })()}
           </>
         ) : tab === 'chartDesign' ? (
           <>
