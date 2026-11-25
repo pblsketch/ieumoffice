@@ -2,7 +2,7 @@
 // area) and sharing. Edit mode, saving and recovery copies come on top of this
 // through `PdfDocumentOptions` (PDF-T4).
 import './pdfView.css'
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { Lang, Params } from '@genoffice/i18n'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileClient, MobileDocSession } from '@genoffice/mobile-bridge/transport'
@@ -66,6 +66,21 @@ export interface PdfDocumentOptions {
    * same one to keep the view when the document is reloaded (after a save).
    */
   readonly keptView?: PdfKeptView
+  /**
+   * The document on screen when it can be replaced (a save reloads it). The Workspace
+   * then stays mounted and swaps only the document area to the new model. The shell
+   * and the sheets hold history entries of the app's back stack, which steps back
+   * asynchronously on a close but pushes at once on an open; remounting them would
+   * drop and re-arm those entries in one moment, the history would drift from the
+   * stack, and [완료] could go back past the app's first entry.
+   */
+  readonly modelSource?: PdfModelSource
+}
+
+/** A replaceable document model (the edit session's). */
+export interface PdfModelSource {
+  getModel(): PdfOpenedDocument
+  subscribeModel(listener: () => void): () => void
 }
 
 /** Zoom and position of a document, kept outside its Workspace. */
@@ -81,6 +96,24 @@ const READ_ONLY_KEYS: Record<PdfReadOnlyReason, MobileStringKey> = {
 }
 
 const noExtension = (): PdfWorkspaceChrome => ({})
+
+/** A key per document model, so the parts drawn from one model restart with the next. */
+const modelKeys = new WeakMap<PdfOpenedDocument, number>()
+let modelKeySeq = 0
+function modelKey(model: PdfOpenedDocument): number {
+  let key = modelKeys.get(model)
+  if (key === undefined) {
+    modelKeySeq += 1
+    key = modelKeySeq
+    modelKeys.set(model, key)
+  }
+  return key
+}
+
+const fixedSource = (model: PdfOpenedDocument): PdfModelSource => ({
+  getModel: () => model,
+  subscribeModel: () => () => {},
+})
 
 export function createKeptView(initial: PdfViewState = INITIAL_PDF_VIEW_STATE): PdfKeptView {
   let value = initial
@@ -129,8 +162,10 @@ export function startPdfDocument(
 ): EditorDocument {
   const kept = options.keptView ?? createKeptView()
   const useExtension = options.useExtension ?? noExtension
+  const source = options.modelSource ?? fixedSource(model)
 
   function PdfWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
+    const model = useSyncExternalStore(source.subscribeModel, source.getModel)
     const t = useCallback(
       (key: MobileStringKey, params?: Params) => translateMobile(lang, key, params),
       [lang],
@@ -141,8 +176,17 @@ export function startPdfDocument(
     const [goToOpen, setGoToOpen] = useState(false)
     const [hits, setHits] = useState<Map<number, PdfPageHits> | null>(null)
     const [currentPage, setCurrentPage] = useState(0)
-    // read once per mount: the view the document had when the Workspace last unmounted
-    const [startView] = useState(kept.get)
+    // the view the document had when its viewer last unmounted (read per mount and per
+    // model: the viewer of a reloaded document starts where the previous one was)
+    const [startView, setStartView] = useState(kept.get)
+    const [shownModel, setShownModel] = useState(model)
+    if (shownModel !== model) {
+      // a reloaded document: the search results and the search of the old one end
+      setShownModel(model)
+      setStartView(kept.get())
+      setHits(null)
+      setSearchOpen(false)
+    }
 
     const effectiveCanEdit = canEdit && model.readOnlyReason === null
     const chrome = useExtension({
@@ -154,10 +198,13 @@ export function startPdfDocument(
       viewer: viewerRef.current,
     })
 
-    const goToDest = useCallback(async (dest: unknown) => {
-      const index = await resolveDestPageIndex(model.proxy, dest)
-      if (index !== null) viewerRef.current?.scrollToPage(index)
-    }, [])
+    const goToDest = useCallback(
+      async (dest: unknown) => {
+        const index = await resolveDestPageIndex(model.proxy, dest)
+        if (index !== null) viewerRef.current?.scrollToPage(index)
+      },
+      [model],
+    )
     const goToMatch = useCallback((match: SearchMatch) => {
       const rect = match.rects[0]
       if (rect) viewerRef.current?.scrollToPageRect(match.pageIndex, rect)
@@ -231,6 +278,7 @@ export function startPdfDocument(
           )}
           {searchOpen && (
             <PdfSearchBar
+              key={`search-${modelKey(model)}`}
               model={model}
               t={t}
               onHitsChange={setHits}
@@ -239,6 +287,7 @@ export function startPdfDocument(
             />
           )}
           <PdfViewer
+            key={`viewer-${modelKey(model)}`}
             ref={viewerRef}
             model={model}
             initialView={startView}
@@ -285,7 +334,7 @@ export function startPdfDocument(
 
   return {
     async share(doc) {
-      await sharePdfOriginal(host.client, doc.session, model).catch(() => {})
+      await sharePdfOriginal(host.client, doc.session, source.getModel()).catch(() => {})
     },
     Workspace: PdfWorkspace,
   }
