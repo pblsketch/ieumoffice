@@ -261,3 +261,26 @@ fn without_a_gate_every_format_opens() {
     assert_eq!(shared.format, MobileDocFormat::Pdf);
     assert_eq!(svc.list_recent_docs().unwrap().len(), ALL_FORMATS.len());
 }
+
+#[test]
+fn gate_does_not_refuse_a_save_under_a_new_name() {
+    // Saving as a name with another extension writes the file and switches to it, as before:
+    // the open gate covers only files the user opens.
+    let (_tmp, bridge, svc) = new_service();
+    let session = open_base_doc(&bridge, &svc);
+    svc.set_openable_formats(&hangul_and_markdown_gate());
+    bridge.set_next_save_as_uri("content://docs/report.pdf");
+    let saved = svc
+        .save_as_file_bytes(
+            Some(&session.session_id),
+            "report.pdf",
+            MobileDocFormat::Md,
+            &{
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode(b"text")
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(saved.format, MobileDocFormat::Pdf);
+}

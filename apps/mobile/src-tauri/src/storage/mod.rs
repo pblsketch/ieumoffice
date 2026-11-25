@@ -166,10 +166,15 @@ impl MobileFileService {
         ))
     }
 
+    /// The open gate for files the user opens (picker, recent list, other apps). It runs before
+    /// activate_picked touches recent docs or the active session; saving under a new name does not
+    /// pass through it, so a save-as keeps working as before.
+    fn ensure_openable_picked(&self, picked: &PickedFile) -> MobileResult<()> {
+        self.ensure_openable(&picked.name, MobileDocFormat::from_name(&picked.name))
+    }
+
     fn activate_picked(&self, picked: PickedFile, register_recent: bool) -> MobileResult<MobileDocSession> {
         let format = MobileDocFormat::from_name(&picked.name);
-        // Refuse before touching recent docs or the active session.
-        self.ensure_openable(&picked.name, format)?;
         let doc_key = if picked.ephemeral {
             untitled_doc_key()
         } else {
@@ -222,6 +227,7 @@ impl MobileFileService {
 
     pub fn pick_open_file(&self, exts: &[String]) -> MobileResult<MobileDocSession> {
         let picked = self.bridge.pick_open_file(exts).map_err(map_fs_error)?;
+        self.ensure_openable_picked(&picked)?;
         self.activate_picked(picked, true)
     }
 
@@ -234,6 +240,7 @@ impl MobileFileService {
             ));
         };
         let picked = self.bridge.open_persistent_uri(&uri).map_err(map_fs_error)?;
+        self.ensure_openable_picked(&picked)?;
         self.activate_picked(picked, true)
     }
 
@@ -243,6 +250,7 @@ impl MobileFileService {
         };
         // Ephemeral or read-only share-in files must never be registered into persistent recent docs automatically.
         let register = !picked.ephemeral && picked.writable;
+        self.ensure_openable_picked(&picked)?;
         Ok(Some(self.activate_picked(picked, register)?))
     }
 
