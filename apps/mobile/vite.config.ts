@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
-import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { rhwpPatches } from '../hwp/scripts/rhwp-patches.mjs'
 
@@ -44,6 +45,36 @@ function sharedRhwpWasmPlugin(): Plugin {
   }
 }
 
+/**
+ * Track T2 (pdf): PDF.js reads CMaps, standard fonts and its wasm decoders from
+ * `pdfjs/` next to the page (apps/pdf/src/renderer/view-config.ts), as in the PC
+ * PDF editor. Copy them into dist/pdfjs on build and serve them in dev.
+ */
+function pdfjsAssetsPlugin(): Plugin {
+  const pdfjsRoot = dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'))
+  const subdirs = ['cmaps', 'standard_fonts', 'wasm']
+  return {
+    name: 'ieum-pdfjs-assets',
+    configureServer(server) {
+      server.middlewares.use('/pdfjs', (req, res, next) => {
+        const rel = decodeURIComponent((req.url ?? '').split('?')[0] ?? '').replace(/^\/+/, '')
+        const [sub] = rel.split('/')
+        const file = resolve(pdfjsRoot, rel)
+        if (!sub || !subdirs.includes(sub) || !file.startsWith(pdfjsRoot) || !existsSync(file)) {
+          next()
+          return
+        }
+        res.end(readFileSync(file))
+      })
+    },
+    closeBundle() {
+      for (const sub of subdirs) {
+        cpSync(resolve(pdfjsRoot, sub), resolve(__dirname, 'dist/pdfjs', sub), { recursive: true })
+      }
+    },
+  }
+}
+
 function studioRhwpWasmPath(): string {
   const assets = resolve(__dirname, '../hwp/public/studio/assets')
   const file = existsSync(assets)
@@ -60,6 +91,7 @@ export default defineConfig({
     rhwpPatches('sdk-scheme') as Plugin,
     sharedRhwpWasmPlugin(),
     copyHwpStudioPlugin(),
+    pdfjsAssetsPlugin(),
   ],
   define: {
     __IEUM_RHWP_WASM__: JSON.stringify(studioRhwpWasmPath()),
