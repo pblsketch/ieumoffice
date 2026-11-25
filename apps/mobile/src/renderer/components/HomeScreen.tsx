@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { htmlLang } from '@genoffice/i18n'
 import type { RecentDocEntry, RecoveryEntry } from '@genoffice/mobile-bridge/transport'
+import type { HomeHost } from '../home/homeHost'
 import { useMobileLocale } from '../i18n'
 import {
   DocTypeIcon,
@@ -46,6 +47,8 @@ export interface HomeScreenProps {
   readonly onRestoreRecovery: (entry: RecoveryEntry) => void
   readonly onDiscardRecovery: (docKey: string) => void
   readonly onOpenSettings: () => void
+  /** For the home's tabs and sheets (T6, T3); the screen does not use it yet. */
+  readonly host?: HomeHost
 }
 
 export function HomeScreen({

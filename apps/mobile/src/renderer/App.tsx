@@ -13,6 +13,7 @@ import {
   type MobileAppPrefs,
   type MobileAppPrefsPatch,
   type MobileClient,
+  type MobileDocFormat,
   type MobileDocSession,
   type MobileRestoreTarget,
   type RecentDocEntry,
@@ -29,19 +30,14 @@ import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
 import type { EditorDocument, EditorHost, EditorKind } from './editors/editorKind'
 import { findEditorKind, openableExtensions } from './editors/registry'
+import type { HomeHost } from './home/homeHost'
+import { takeIncomingDocument } from './home/incoming'
 import { MobileLocaleProvider, translateMobile } from './i18n'
+import { DEFAULT_PREFS } from './settings/defaultPrefs'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
 import type { EditorSaveState } from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
-
-const DEFAULT_PREFS: MobileAppPrefs = {
-  lang: 'ko',
-  theme: 'system',
-  hwpDefaultFormat: 'hwp',
-  // AI starts hidden on mobile; the user turns it on in Settings.
-  aiEnabled: false,
-}
 
 function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
   if (saving) return 'saving'
@@ -311,7 +307,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       if (!mounted) return
       setPrefs(loadedPrefs)
 
-      const pending = await client.consumePendingOpenIntent().catch((err) => {
+      const pending = await takeIncomingDocument(client).catch((err) => {
         if (isFormatNotOpenable(err)) notifyNotOpenable()
         return null
       })
@@ -359,11 +355,30 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   }, [cancelAiRun, writeRecoveryNow])
 
   const handleCreateNew = useCallback(
-    async (format: 'hwp' | 'hwpx' | 'md') => {
+    async (format: MobileDocFormat) => {
       const session = await client.createUntitledSession(format)
       await openLoadedSession(session, { isUntitled: true })
     },
     [client, openLoadedSession],
+  )
+
+  const openSettingsFromHome = useCallback(() => {
+    void refreshAiState()
+    void refreshHomeData()
+    setScreen('settings')
+  }, [refreshAiState, refreshHomeData])
+
+  /** What the home's tabs and sheets (T6, T3) may ask of the app. */
+  const homeHost = useMemo<HomeHost>(
+    () => ({
+      client,
+      openSession: (session) => openLoadedSession(session),
+      createNew: (format) => handleCreateNew(format),
+      showToast: (input) => showToast(input),
+      refreshHome: refreshHomeData,
+      openSettings: openSettingsFromHome,
+    }),
+    [client, handleCreateNew, openLoadedSession, openSettingsFromHome, refreshHomeData, showToast],
   )
 
   const handlePickOpenFile = useCallback(async () => {
@@ -484,11 +499,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
             onRemoveRecent={(id) => void handleRemoveRecent(id)}
             onRestoreRecovery={(entry) => void handleRestoreRecovery(entry)}
             onDiscardRecovery={(docKey) => void handleDiscardRecovery(docKey)}
-            onOpenSettings={() => {
-              void refreshAiState()
-              void refreshHomeData()
-              setScreen('settings')
-            }}
+            onOpenSettings={openSettingsFromHome}
+            host={homeHost}
           />
         )}
 
