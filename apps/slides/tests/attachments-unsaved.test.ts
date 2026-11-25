@@ -82,17 +82,22 @@ vi.mock('@genoffice/file-parse', () => ({
 }))
 vi.mock('@genoffice/cli/agent-skills', () => ({}))
 vi.mock('@genoffice/cli/install', () => ({}))
-// the real unsaved-files helper, by path: the package root reaches Electron
+// the real unsaved-files & path-grants helpers, by path: the package root reaches Electron
 vi.mock('@genoffice/electron-utils', async () => ({
   showOpenDialogWithMemory: vi.fn(),
   ...(await import('../../../packages/electron-utils/src/unsaved-files')),
+  ...(await import('../../../packages/electron-utils/src/path-grants')),
 }))
-vi.mock('../src/main/session-state', () => ({ dialogParent: vi.fn(() => null) }))
+vi.mock('../src/main/session-state', () => ({
+  dialogParent: vi.fn(() => null),
+  sessions: new Map(),
+}))
 
 import {
   UNSAVED_CHANGES_MESSAGE,
   setOpenFilesSource,
 } from '../../../packages/electron-utils/src/unsaved-files'
+import { sharedPathGrants } from '../../../packages/electron-utils/src/path-grants'
 import { registerAttachmentIpc } from '../src/main/attachments-ipc'
 
 type ReadResult = { ok: boolean; text?: string; error?: string }
@@ -100,6 +105,7 @@ let dir: string
 
 function read(path: string): Promise<ReadResult> {
   handlers.clear()
+  sharedPathGrants().grant(5, [path])
   registerAttachmentIpc()
   const fn = handlers.get('slides:files-read') as unknown as (
     e: unknown,
@@ -107,7 +113,7 @@ function read(path: string): Promise<ReadResult> {
     offset: number,
     maxChars: number,
   ) => Promise<ReadResult>
-  return fn({}, path, 0, 1000)
+  return fn({ sender: { id: 5 } }, path, 0, 1000)
 }
 
 beforeEach(() => {
@@ -115,6 +121,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(5)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })

@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { BrowserWindow, ipcMain, shell, webContents } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { productName, type Lang } from '@genoffice/i18n'
-import { safeExternalUrl } from '@genoffice/electron-utils'
+import { safeExternalUrl, sharedPathGrants } from '@genoffice/electron-utils'
 import {
   CONNECTOR_ATTACH_CHANNELS,
   type ConnectorAttachSources,
@@ -384,6 +384,16 @@ export function createConnectorPicker(deps: ConnectorPickerDeps) {
     return lastSources
   })
 
+  async function openAndGrant(
+    kind: ConnectorPickerKind,
+    event: IpcMainInvokeEvent,
+    parent: BrowserWindow,
+  ): Promise<ConnectorAttachWireResult> {
+    const res = await open(kind, parent)
+    if (res.ok && res.paths.length > 0) sharedPathGrants().grant(event.sender.id, res.paths)
+    return res
+  }
+
   ipcMain.handle(
     CONNECTOR_ATTACH_CHANNELS.pickObsidian,
     (event): Promise<ConnectorAttachWireResult> => {
@@ -394,7 +404,7 @@ export function createConnectorPicker(deps: ConnectorPickerDeps) {
       if (!parent || parent.isDestroyed()) {
         return Promise.resolve({ ok: false, reason: 'unavailable' })
       }
-      return open('obsidian', parent)
+      return openAndGrant('obsidian', event, parent)
     },
   )
 
@@ -408,7 +418,7 @@ export function createConnectorPicker(deps: ConnectorPickerDeps) {
       if (!parent || parent.isDestroyed()) {
         return Promise.resolve({ ok: false, reason: 'unavailable' })
       }
-      return open('notion', parent)
+      return openAndGrant('notion', event, parent)
     },
   )
 
@@ -422,7 +432,7 @@ export function createConnectorPicker(deps: ConnectorPickerDeps) {
       if (!parent || parent.isDestroyed()) {
         return Promise.resolve({ ok: false, reason: 'unavailable' })
       }
-      return open('canva', parent)
+      return openAndGrant('canva', event, parent)
     },
   )
 

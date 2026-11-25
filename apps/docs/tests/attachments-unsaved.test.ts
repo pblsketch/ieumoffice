@@ -121,14 +121,19 @@ vi.mock('@genoffice/ai-provider/custom-models', () => ({}))
 vi.mock('../src/main/lazy-media', () => ({ registerLazyMediaProtocol: () => {} }))
 vi.mock('../src/main/lazy-media-inline', () => ({}))
 
-import { UNSAVED_CHANGES_MESSAGE, setOpenFilesSource } from '@genoffice/electron-utils'
+import {
+  UNSAVED_CHANGES_MESSAGE,
+  setOpenFilesSource,
+  sharedPathGrants,
+} from '@genoffice/electron-utils'
 import { registerDocsIpc } from '../src/main/docs-main'
 
 type ReadResult = { ok: boolean; text?: string; error?: string }
 let dir: string
 
-function read(path: string): Promise<ReadResult> {
-  return handlers.get('files:read')!({}, path, 0, 1000) as Promise<ReadResult>
+function read(path: string, grant = true): Promise<ReadResult> {
+  if (grant) sharedPathGrants().grant(11, [path])
+  return handlers.get('files:read')!({ sender: { id: 11 } }, path, 0, 1000) as Promise<ReadResult>
 }
 
 beforeAll(() => {
@@ -139,6 +144,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(11)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })

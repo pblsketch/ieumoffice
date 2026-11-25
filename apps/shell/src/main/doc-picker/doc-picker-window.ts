@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { productName, type Lang } from '@genoffice/i18n'
-import { safeExternalUrl } from '@genoffice/electron-utils'
+import { safeExternalUrl, sharedPathGrants } from '@genoffice/electron-utils'
 import { DOC_ATTACH_CHANNELS } from '@genoffice/electron-utils/doc-attach-channels'
 import type {
   DocAttachResult,
@@ -110,13 +110,15 @@ export function createDocPicker(deps: DocPickerDeps) {
 
   // ---- an editor's AI panel asks the shell for documents to attach ----
   ipcMain.handle(DOC_ATTACH_CHANNELS.available, (): boolean => true)
-  ipcMain.handle(DOC_ATTACH_CHANNELS.pick, (event): Promise<DocAttachResult> => {
+  ipcMain.handle(DOC_ATTACH_CHANNELS.pick, async (event): Promise<DocAttachResult> => {
     const parent = BrowserWindow.fromWebContents(event.sender)
     // a request whose sender is not a window cannot parent a modal picker
     if (!parent || parent.isDestroyed()) {
-      return Promise.resolve({ ok: false, reason: 'unavailable' })
+      return { ok: false, reason: 'unavailable' }
     }
-    return open(parent, askerOf(event))
+    const res = await open(parent, askerOf(event))
+    if (res.ok && res.paths.length > 0) sharedPathGrants().grant(event.sender.id, res.paths)
+    return res
   })
   ipcMain.handle(DOC_ATTACH_CHANNELS.list, async (event): Promise<DocMentionListResult> => {
     try {
@@ -125,7 +127,14 @@ export function createDocPicker(deps: DocPickerDeps) {
       const asker = typeof id === 'number' ? { ...askerOf(event), webContentsId: id } : {}
       const result = await deps.list(asker, { projectFiles: true })
       if (!result.ok) return { ok: false, reason: 'unavailable' }
-      return { ok: true, items: toMentionItems(result.items) }
+      const items = toMentionItems(result.items)
+      if (typeof id === 'number' && items.length > 0) {
+        const paths = items
+          .map((item) => item.path)
+          .filter((p): p is string => typeof p === 'string')
+        if (paths.length > 0) sharedPathGrants().grant(id, paths)
+      }
+      return { ok: true, items }
     } catch {
       return { ok: false, reason: 'unavailable' }
     }
