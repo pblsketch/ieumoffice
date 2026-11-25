@@ -397,13 +397,17 @@ const NBSP = String.fromCharCode(0xa0)
 
 /**
  * HTML collapses spaces at the start and end of a block and runs of spaces, so
+ * the flow would show "2026년  0월" (two spaces in the document) with one, and
  * after a block is redrawn from the engine a just-typed trailing space would
  * vanish under the caret and the next character would land before it. Spaces
- * that would collapse become no-break spaces; `paragraphText` reads them back
- * as spaces, so the engine text is unchanged.
+ * that would collapse become no-break spaces, in reading and editing alike, in
+ * text blocks and in the read-only header, footer and notes; `paragraphText`
+ * reads them back as spaces, so the engine text is unchanged.
  */
+const SPACED_BLOCKS = '.flow-p, .flow-hf-p, .flow-note'
+
 export function keepSpacesVisible(root: Element): void {
-  const blocks = root.matches('.flow-p') ? [root] : [...root.querySelectorAll('.flow-p')]
+  const blocks = root.matches(SPACED_BLOCKS) ? [root] : [...root.querySelectorAll(SPACED_BLOCKS)]
   for (const block of blocks) {
     const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     const nodes: Text[] = []
@@ -1350,7 +1354,8 @@ export function createFlowEditor({
       body.contentEditable = next ? 'true' : 'false'
       body.setAttribute('spellcheck', 'false')
       markObjectsReadOnly(body)
-      if (next) keepSpacesVisible(body)
+      // reading shows the document's spaces too, so going into editing does not move text
+      keepSpacesVisible(body)
     },
     runFormat(action) {
       const info = selectionInfo()

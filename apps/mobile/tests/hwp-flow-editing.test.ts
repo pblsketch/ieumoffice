@@ -425,6 +425,25 @@ describe('editing in the flow view (real rhwp engine)', () => {
     expect(cellCount(0)).toBe(before)
   })
 
+  it('shows the document spaces the same way when reading and when editing', () => {
+    // the date cell holds two spaces between its parts, which HTML would show as one
+    const nbsp = String.fromCharCode(0xa0)
+    editor.dispose()
+    document.body.innerHTML = buildFlowHtml(doc as unknown as FlowEditDocument)
+    editor = createFlowEditor({
+      doc: doc as unknown as FlowEditDocument,
+      frameDocument: document,
+      onChange,
+    })
+    editor.setEditable(false)
+    const reading = cellEl(cellPath(1)).textContent
+    expect(reading).toContain(`2026년${nbsp}${nbsp}0월`)
+    editor.setEditable(true)
+    expect(cellEl(cellPath(1)).textContent).toBe(reading)
+    // the engine text is unchanged
+    expect(cellText(cellPath(1))).toContain('2026년  0월')
+  })
+
   it('says so when the engine refuses an edit, and shows the engine text again', () => {
     // the path split takes table cells only; a text box inside a cell is refused like this
     editor.dispose()
