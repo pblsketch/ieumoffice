@@ -22,7 +22,13 @@ import {
 import { WhatsNewSheet } from './help/WhatsNewSheet'
 import type { HomeHost } from './homeHost'
 import { setActiveDocKey, setHomeRuntime, sessionOrigin } from './homeRuntime'
-import { subscribeIncomingBatches, takeIncomingDocument, takeQueuedIncomingBatch } from './incoming'
+import {
+  incomingStartup,
+  subscribeIncomingBatches,
+  takeIncomingDocument,
+  takeQueuedIncomingBatch,
+  type IncomingStartup,
+} from './incoming'
 import { FirstRunOverlay } from './layer/FirstRunOverlay'
 import { ReadOnlyStrip } from './layer/ReadOnlyStrip'
 import { ReceiveScreen } from './layer/ReceiveScreen'
@@ -122,8 +128,10 @@ export function HomeAppLayer({ host, screen, activeDoc, mode }: HomeAppLayerProp
 
   // --- files other apps send (spec 3.8) ----------------------------------------------------
   const [batch, setBatch] = useState<IncomingBatch | null>(null)
+  const [startup, setStartup] = useState<IncomingStartup>(incomingStartup)
   const pullBatch = useCallback(() => {
     setBatch((current) => current ?? takeQueuedIncomingBatch())
+    setStartup(incomingStartup())
   }, [])
   useEffect(() => {
     pullBatch()
@@ -207,7 +215,20 @@ export function HomeAppLayer({ host, screen, activeDoc, mode }: HomeAppLayerProp
   useEffect(() => {
     if (prefs.firstRunDone) setFirstRunClosed(false)
   }, [prefs.firstRunDone])
-  const showFirstRun = screen === 'home' && loaded && !prefs.firstRunDone && !firstRunClosed
+  // A document received at start-up opens first; the guide waits until the home shows again.
+  const [leftHomeSinceStart, setLeftHomeSinceStart] = useState(false)
+  useEffect(() => {
+    if (screen !== 'home') setLeftHomeSinceStart(true)
+  }, [screen])
+  const showFirstRun =
+    screen === 'home' &&
+    loaded &&
+    !prefs.firstRunDone &&
+    !firstRunClosed &&
+    batch === null &&
+    ask === null &&
+    startup !== 'pending' &&
+    (startup === 'none' || leftHomeSinceStart)
   const finishFirstRun = useCallback(() => {
     setFirstRunClosed(true)
     void updateHomePrefs({ firstRunDone: true }, hostRef.current.client).catch(() => {})

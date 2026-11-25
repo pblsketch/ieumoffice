@@ -8,7 +8,26 @@ import { markSessionOrigin } from './homeRuntime'
 const batches: IncomingBatch[] = []
 const listeners = new Set<() => void>()
 
-/** Calls `listener` whenever a received batch waits for the receive screen. */
+/**
+ * What the first take (App's start-up check) found: still running, nothing, or a document that App
+ * is opening. The app layer waits for it before showing the first-run guide, so the guide neither
+ * covers a receive screen nor flashes before a received document opens.
+ */
+export type IncomingStartup = 'pending' | 'none' | 'document'
+let startup: IncomingStartup = 'pending'
+
+/** What the start-up take found (see `IncomingStartup`); listeners hear when it settles. */
+export function incomingStartup(): IncomingStartup {
+  return startup
+}
+
+function settleStartup(found: IncomingStartup): void {
+  if (startup !== 'pending') return
+  startup = found
+  for (const listener of [...listeners]) listener()
+}
+
+/** Calls `listener` whenever a received batch waits for the receive screen or the start-up take settles. */
 export function subscribeIncomingBatches(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
@@ -41,14 +60,22 @@ export async function takeIncomingDocument(client: MobileClient): Promise<Mobile
       // no batch path here; the single document path below still runs
     }
   }
-  const session = await client.consumePendingOpenIntent()
+  let session: MobileDocSession | null
+  try {
+    session = await client.consumePendingOpenIntent()
+  } catch (err) {
+    settleStartup('none')
+    throw err
+  }
   if (session && typeof session.sessionId === 'string') {
     markSessionOrigin(session.sessionId, 'received')
   }
+  settleStartup(session ? 'document' : 'none')
   return session
 }
 
-/** Tests only: drops queued batches. */
+/** Tests only: drops queued batches and forgets the start-up take. */
 export function resetIncomingForTest(): void {
   batches.length = 0
+  startup = 'pending'
 }

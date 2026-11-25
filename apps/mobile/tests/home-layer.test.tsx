@@ -359,6 +359,24 @@ describe('the receive screen', () => {
 })
 
 describe('the first-run guide', () => {
+  it('waits for a receive screen opened at start-up and shows once it closes', async () => {
+    const { div } = await renderApp({ prefs: { firstRunDone: false }, batch: PICTURES })
+    expect(q(div, 'home-run-receive')).not.toBeNull()
+    expect(q(div, 'home-run-first')).toBeNull()
+    await click(q(div, 'home-run-receive-close'))
+    expect(q(div, 'home-run-receive')).toBeNull()
+    expect(q(div, 'home-run-first')).not.toBeNull()
+  })
+
+  it('lets a document received at start-up open first and shows on the next home', async () => {
+    const { div } = await renderApp({ prefs: { firstRunDone: false }, pendingIntent: SHARED_DOC })
+    expect(q(div, 'editor-header')).not.toBeNull()
+    expect(q(div, 'home-run-first')).toBeNull()
+    await click(q(div, 'editor-back-btn'))
+    expect(q(div, 'mobile-home-screen')).not.toBeNull()
+    expect(q(div, 'home-run-first')).not.toBeNull()
+  })
+
   it('does not show when the settings have no such field', async () => {
     const { div } = await renderApp()
     expect(q(div, 'mobile-home-screen')).not.toBeNull()
