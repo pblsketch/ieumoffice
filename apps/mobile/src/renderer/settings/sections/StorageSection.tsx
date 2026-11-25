@@ -9,7 +9,7 @@ import {
   type StorageUsage,
 } from '@genoffice/mobile-bridge/home'
 import type { MobileAiSettingsSlot } from '../../ai/settingsSlot'
-import { useHomeRuntime } from '../../home/homeRuntime'
+import { useActiveDocKey, useHomeRuntime } from '../../home/homeRuntime'
 import type { HomeHost } from '../../home/homeHost'
 import { useMobileLocale } from '../../i18n'
 import { AiStorageRows } from './AiSection'
@@ -26,9 +26,12 @@ export interface StorageSectionProps {
 
 export function StorageSection({ aiSlot, activeDocKey, platform }: StorageSectionProps) {
   const runtime = useHomeRuntime()
+  // without the prop, the document the app layer reports as open
+  const openDocKey = useActiveDocKey()
+  const keepDocKey = activeDocKey ?? openDocKey ?? undefined
   return (
     <>
-      {runtime && <StorageCard host={runtime} activeDocKey={activeDocKey} platform={platform} />}
+      {runtime && <StorageCard host={runtime} activeDocKey={keepDocKey} platform={platform} />}
       <AiStorageRows slot={aiSlot} />
     </>
   )

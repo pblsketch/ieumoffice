@@ -1,3 +1,35 @@
 import type { zh } from './zh'
 
-export const ar = {} as const satisfies Record<keyof typeof zh, string>
+export const ar = {
+  homeRunEditorOffTitle: 'محرر {name} متوقف',
+  homeRunEditorOffBody: 'شغّله لفتح هذا الملف. يمكنك إيقافه مرة أخرى من الإعدادات.',
+  homeRunEditorOffConfirm: 'التشغيل والفتح',
+  homeRunStripSample: 'مستند نموذجي · للقراءة فقط',
+  homeRunStripReceived: 'ملف مستلم · للقراءة فقط',
+  homeRunStripReadOnly: 'للقراءة فقط',
+  homeRunStripCopy: 'تحرير نسخة',
+  homeRunStripClose: 'إغلاق التنبيه',
+  homeRunReceiveTitle: 'الملفات المستلمة',
+  homeRunReceiveCount: 'عدد الملفات: {count}',
+  homeRunReceiveClose: 'إغلاق الملفات المستلمة',
+  homeRunReceiveOpen: 'فتح',
+  homeRunReceivePdfOff: 'أدوات PDF متوقفة',
+  homeRunReceivePdfOn: 'التشغيل والمتابعة',
+  homeRunGuideLabel: 'دليل البدء',
+  homeRunStep: 'الخطوة {current} من {total}',
+  homeRunWelcomeTitle: 'مرحبًا بك',
+  homeRunWelcomeBody:
+    'افتح مستندات HWP وPDF وMarkdown وغيرها وعدّلها باستخدام GenOffice. بلا حساب ولا إعلانات، وتبقى مستنداتك على هذا الجهاز.',
+  homeRunNext: 'التالي',
+  homeRunSkip: 'تخطٍّ',
+  homeRunFolderTitle: 'ربط مجلد المستندات (اختياري)',
+  homeRunFolderBody: 'اربط مجلدًا تستخدمه كثيرًا لتظهر ملفاته مباشرةً في علامة التبويب [المجلدات].',
+  homeRunFolderPick: 'اختيار مجلد',
+  homeRunLater: 'لاحقًا',
+  homeRunFolderLinked: '✓ تم ربط مجلد المستندات · يمكنك تغييره من الإعدادات',
+  homeRunStart: 'ابدأ',
+  homeRunTipEditButton: 'لإجراء تغييرات، اضغط [تحرير]',
+  homeRunTipFlowView: 'تم التبديل إلى العرض المتدفق لقراءة أسهل · عرض الصفحة هنا',
+  homeRunTipFirstEdit: 'تُنشأ نسخة استرداد تلقائيًا. يُحفظ الأصل عند الضغط على [تم]',
+  homeRunTipFirstKeyboard: 'غيّر تنسيق النص باستخدام [Aa]',
+} as const satisfies Record<keyof typeof zh, string>
