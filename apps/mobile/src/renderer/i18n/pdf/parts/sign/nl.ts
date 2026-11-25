@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const nl = {} as const satisfies Record<keyof typeof zh, string>
+export const nl = {
+  pdfSignTitle: 'Handtekening toevoegen',
+  pdfSignFieldHint: 'De handtekening wordt passend in het veld ‘{field}’ geplaatst.',
+  pdfSignSaved: 'Mijn handtekeningen',
+  pdfSignUseSaved: 'Deze handtekening gebruiken',
+  pdfSignForget: 'Opgeslagen handtekening verwijderen',
+  pdfSignDraw: 'Tekenen',
+  pdfSignPicture: 'Afbeelding',
+  pdfSignPadLabel: 'Tekenvlak voor handtekening',
+  pdfSignPadHint: 'Teken met je vinger of een pen.',
+  pdfSignColor: 'Kleur van handtekening',
+  pdfSignColorBlack: 'Zwart',
+  pdfSignColorBlue: 'Blauw',
+  pdfSignColorRed: 'Rood',
+  pdfSignClear: 'Wissen',
+  pdfSignPickPicture: 'Afbeelding kiezen',
+  pdfSignPictureFailed: 'De afbeelding kan niet worden gelezen.',
+  pdfSignBw: 'Zwart-wit',
+  pdfSignRemember: 'Onthouden op dit apparaat',
+  pdfSignPlace: 'Plaatsen',
+  pdfSignPlaceHint: 'Tik waar de handtekening moet komen.',
+  pdfSignPlaced: 'Handtekening',
+  pdfSignDelete: 'Handtekening verwijderen',
+  pdfSignResize: 'Formaat van handtekening wijzigen',
+  pdfSignFailed: 'De handtekening kan niet worden geplaatst.',
+} as const satisfies Record<keyof typeof zh, string>

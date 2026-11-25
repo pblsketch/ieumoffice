@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const pt = {} as const satisfies Record<keyof typeof zh, string>
+export const pt = {
+  pdfSignTitle: 'Adicionar assinatura',
+  pdfSignFieldHint: 'A assinatura é ajustada ao campo “{field}”.',
+  pdfSignSaved: 'Minhas assinaturas',
+  pdfSignUseSaved: 'Usar esta assinatura',
+  pdfSignForget: 'Excluir assinatura salva',
+  pdfSignDraw: 'Desenhar',
+  pdfSignPicture: 'Imagem',
+  pdfSignPadLabel: 'Área de assinatura',
+  pdfSignPadHint: 'Assine com o dedo ou uma caneta.',
+  pdfSignColor: 'Cor da assinatura',
+  pdfSignColorBlack: 'Preto',
+  pdfSignColorBlue: 'Azul',
+  pdfSignColorRed: 'Vermelho',
+  pdfSignClear: 'Limpar',
+  pdfSignPickPicture: 'Escolher imagem',
+  pdfSignPictureFailed: 'Não foi possível ler a imagem.',
+  pdfSignBw: 'Preto e branco',
+  pdfSignRemember: 'Lembrar neste dispositivo',
+  pdfSignPlace: 'Colocar',
+  pdfSignPlaceHint: 'Toque onde a assinatura deve ficar.',
+  pdfSignPlaced: 'Assinatura',
+  pdfSignDelete: 'Excluir assinatura',
+  pdfSignResize: 'Redimensionar assinatura',
+  pdfSignFailed: 'Não foi possível colocar a assinatura.',
+} as const satisfies Record<keyof typeof zh, string>

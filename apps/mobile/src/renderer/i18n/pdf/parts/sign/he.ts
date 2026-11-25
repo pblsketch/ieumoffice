@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const he = {} as const satisfies Record<keyof typeof zh, string>
+export const he = {
+  pdfSignTitle: 'הוספת חתימה',
+  pdfSignFieldHint: 'החתימה תותאם לשדה „{field}”.',
+  pdfSignSaved: 'החתימות שלי',
+  pdfSignUseSaved: 'שימוש בחתימה זו',
+  pdfSignForget: 'מחיקת חתימה שמורה',
+  pdfSignDraw: 'ציור',
+  pdfSignPicture: 'תמונה',
+  pdfSignPadLabel: 'משטח חתימה',
+  pdfSignPadHint: 'חתמו באצבע או בעט.',
+  pdfSignColor: 'צבע החתימה',
+  pdfSignColorBlack: 'שחור',
+  pdfSignColorBlue: 'כחול',
+  pdfSignColorRed: 'אדום',
+  pdfSignClear: 'ניקוי',
+  pdfSignPickPicture: 'בחירת תמונה',
+  pdfSignPictureFailed: 'לא ניתן לקרוא את התמונה.',
+  pdfSignBw: 'שחור-לבן',
+  pdfSignRemember: 'זכירה במכשיר זה',
+  pdfSignPlace: 'הצבה',
+  pdfSignPlaceHint: 'הקישו במקום שבו תופיע החתימה.',
+  pdfSignPlaced: 'חתימה',
+  pdfSignDelete: 'מחיקת החתימה',
+  pdfSignResize: 'שינוי גודל החתימה',
+  pdfSignFailed: 'לא ניתן להציב את החתימה.',
+} as const satisfies Record<keyof typeof zh, string>

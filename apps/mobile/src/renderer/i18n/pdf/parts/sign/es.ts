@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const es = {} as const satisfies Record<keyof typeof zh, string>
+export const es = {
+  pdfSignTitle: 'Añadir firma',
+  pdfSignFieldHint: 'La firma se ajusta al campo «{field}».',
+  pdfSignSaved: 'Mis firmas',
+  pdfSignUseSaved: 'Usar esta firma',
+  pdfSignForget: 'Eliminar firma guardada',
+  pdfSignDraw: 'Dibujar',
+  pdfSignPicture: 'Imagen',
+  pdfSignPadLabel: 'Panel de firma',
+  pdfSignPadHint: 'Firma con el dedo o un lápiz.',
+  pdfSignColor: 'Color de la firma',
+  pdfSignColorBlack: 'Negro',
+  pdfSignColorBlue: 'Azul',
+  pdfSignColorRed: 'Rojo',
+  pdfSignClear: 'Borrar',
+  pdfSignPickPicture: 'Elegir una imagen',
+  pdfSignPictureFailed: 'No se pudo leer la imagen.',
+  pdfSignBw: 'Blanco y negro',
+  pdfSignRemember: 'Recordar en este dispositivo',
+  pdfSignPlace: 'Colocar',
+  pdfSignPlaceHint: 'Toca donde va la firma.',
+  pdfSignPlaced: 'Firma',
+  pdfSignDelete: 'Eliminar firma',
+  pdfSignResize: 'Cambiar tamaño de la firma',
+  pdfSignFailed: 'No se pudo colocar la firma.',
+} as const satisfies Record<keyof typeof zh, string>
