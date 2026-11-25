@@ -9,6 +9,14 @@ pub enum MobileDocFormat {
     Hwpx,
     Md,
     Txt,
+    Pdf,
+    Html,
+    Xlsx,
+    Xlsm,
+    Xls,
+    Csv,
+    Epub,
+    Pptx,
 }
 
 impl MobileDocFormat {
@@ -20,7 +28,24 @@ impl MobileDocFormat {
             Self::Hwp
         } else if lower.ends_with(".txt") {
             Self::Txt
+        } else if lower.ends_with(".pdf") {
+            Self::Pdf
+        } else if lower.ends_with(".html") || lower.ends_with(".htm") {
+            Self::Html
+        } else if lower.ends_with(".xlsx") {
+            Self::Xlsx
+        } else if lower.ends_with(".xlsm") {
+            Self::Xlsm
+        } else if lower.ends_with(".xls") {
+            Self::Xls
+        } else if lower.ends_with(".csv") {
+            Self::Csv
+        } else if lower.ends_with(".epub") {
+            Self::Epub
+        } else if lower.ends_with(".pptx") {
+            Self::Pptx
         } else {
+            // Unknown extensions (and `.md`/`.markdown`) open as Markdown, as before.
             Self::Md
         }
     }
@@ -31,6 +56,14 @@ impl MobileDocFormat {
             Self::Hwpx => "hwpx",
             Self::Md => "md",
             Self::Txt => "txt",
+            Self::Pdf => "pdf",
+            Self::Html => "html",
+            Self::Xlsx => "xlsx",
+            Self::Xlsm => "xlsm",
+            Self::Xls => "xls",
+            Self::Csv => "csv",
+            Self::Epub => "epub",
+            Self::Pptx => "pptx",
         }
     }
 
@@ -40,6 +73,16 @@ impl MobileDocFormat {
             Self::Hwpx => "application/haansofthwpx",
             Self::Md => "text/markdown",
             Self::Txt => "text/plain",
+            Self::Pdf => "application/pdf",
+            Self::Html => "text/html",
+            Self::Xlsx => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Self::Xlsm => "application/vnd.ms-excel.sheet.macroEnabled.12",
+            Self::Xls => "application/vnd.ms-excel",
+            Self::Csv => "text/csv",
+            Self::Epub => "application/epub+zip",
+            Self::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
         }
     }
 
