@@ -48,18 +48,6 @@ async function appLang(client: MobileClient): Promise<Lang> {
   }
 }
 
-type Releasable = Pick<PdfOpenedDocument, 'destroy'>
-
-/**
- * One document is open at a time (app rule). App has no "closed" call, so the
- * PDF.js document of the previous PDF is released when the next one starts, and a
- * PDF whose switch was refused (never started) when the next open begins.
- */
-const lifecycle = {
-  active: null as Releasable | null,
-  unstarted: null as Releasable | null,
-}
-
 export function createPdfEditorKind(deps: PdfKindDeps = {}): EditorKind {
   return {
     id: 'pdf',
@@ -71,10 +59,6 @@ export function createPdfEditorKind(deps: PdfKindDeps = {}): EditorKind {
     hasAi: true,
     recoveryFormat: (_format: MobileDocFormat) => 'pdf',
     async open({ session, client, isUntitled, recoveryBytesBase64 }): Promise<EditorOpened> {
-      if (lifecycle.unstarted) {
-        void lifecycle.unstarted.destroy().catch(() => {})
-        lifecycle.unstarted = null
-      }
       const lang = await appLang(client)
       const [view, edit] = await Promise.all([import('./view'), import('./edit')])
       let model: PdfOpenedDocument
@@ -99,26 +83,34 @@ export function createPdfEditorKind(deps: PdfKindDeps = {}): EditorKind {
         }
         throw err
       }
-      lifecycle.unstarted = model
       const reason = model.readOnlyReason
+      /** The document to free on close: a save reloads it into a new one. */
+      let current: PdfOpenedDocument = model
+      const release = () => void current.destroy().catch(() => {})
       return {
-        // App treats this flag as "protected": no edit mode, no AI edits, no recovery copy
-        encrypted: reason === 'encrypted' || reason === 'damaged',
+        // "protected, must not be changed": only a PDF whose permissions keep it read-only.
+        // A damaged or unwritable PDF is read-only through `editable: false` below.
+        encrypted: reason === 'encrypted',
         noticeKey: model.failedPages.size > 0 && !model.damaged ? 'pdfViewPagesFailed' : null,
+        // the switch did not go through: this PDF was never shown
+        discard: release,
         start: (host) => {
-          if (lifecycle.unstarted === model) lifecycle.unstarted = null
-          if (lifecycle.active && lifecycle.active !== model) {
-            void lifecycle.active.destroy().catch(() => {})
-          }
-          lifecycle.active = model
-          if (deps.documentOptions) return view.startPdfDocument(host, model, deps.documentOptions)
-          return edit.startPdfEditDocument(host, model, {
-            ...deps.edit,
-            session,
-            unlockProbe: deps.unlockProbe ?? view.pcUnlockProbe,
-            // a save reloads the document: the new model is the one to free next time
-            onModelReplaced: (next, previous) => {
-              if (lifecycle.active === previous) lifecycle.active = next
+          const doc = deps.documentOptions
+            ? view.startPdfDocument(host, model, deps.documentOptions)
+            : edit.startPdfEditDocument(host, model, {
+                ...deps.edit,
+                session,
+                unlockProbe: deps.unlockProbe ?? view.pcUnlockProbe,
+                onModelReplaced: (next) => {
+                  current = next
+                },
+              })
+          return Object.assign(doc, {
+            editable: reason === null,
+            // closed or replaced: free the PDF.js document and the engine worker (PDFium)
+            dispose: () => {
+              release()
+              void import('./engine').then((engine) => engine.disposePdfEngine())
             },
           })
         },

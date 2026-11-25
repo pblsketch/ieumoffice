@@ -336,6 +336,29 @@ describe('opening a damaged PDF', () => {
     expect(text.items.map((it) => ('str' in it ? it.str : '')).join('')).toBe('Page 6')
   })
 
+  it('is read-only through the document, not through the protected flag, and frees itself on close', async () => {
+    const client = fakeClient(await damagedPdf())
+    const kind = createPdfEditorKind({ documentOptions: {} })
+    const result = await kind.open({ session: session(), client, isUntitled: false })
+    // "protected" is only for a PDF its permissions keep read-only
+    expect(result.encrypted).toBe(false)
+    const doc = result.start({ client } as unknown as EditorHost)
+    expect(doc.editable).toBe(false)
+    expect(typeof doc.dispose).toBe('function')
+    doc.dispose!()
+  })
+
+  it('frees a PDF whose switch was refused', async () => {
+    const kind = createPdfEditorKind({ documentOptions: {} })
+    const result = await kind.open({
+      session: session(),
+      client: fakeClient(await (await textPdf(['One'])).save()),
+      isUntitled: false,
+    })
+    expect(typeof result.discard).toBe('function')
+    result.discard!()
+  })
+
   it('rejects bytes that are not a PDF with a readable message', async () => {
     const kind = createPdfEditorKind()
     await expect(
