@@ -169,6 +169,20 @@ export interface MobileAppPrefs {
   readonly theme: MobileTheme
   readonly hwpDefaultFormat: 'hwp' | 'hwpx'
   readonly aiEnabled: boolean
+  // Home fields (track T6). Optional: an older backend or a test double may leave them out, and
+  // the home reads a missing field as described in apps/mobile/src/renderer/home/prefsStore.ts.
+  /** Editor kind ids (and 'pdfTools') the user turned off. */
+  readonly editorsOff?: readonly string[]
+  /** Home card item ids hidden from the new-document cards. */
+  readonly homeKindsHidden?: readonly string[]
+  /** Home card item ids in the user's order; ids not listed follow in registry order. */
+  readonly homeKindsOrder?: readonly string[]
+  readonly keepScreenOnWhileReading?: boolean
+  readonly firstRunDone?: boolean
+  /** Ids of the first-use tips already shown. */
+  readonly tipsSeen?: readonly string[]
+  /** App version whose "what's new" was last seen; '' means none recorded. */
+  readonly lastSeenVersion?: string
 }
 
 export interface MobileAppPrefsPatch {
@@ -176,6 +190,14 @@ export interface MobileAppPrefsPatch {
   readonly theme?: MobileTheme
   readonly hwpDefaultFormat?: 'hwp' | 'hwpx'
   readonly aiEnabled?: boolean
+  /** Lists replace the stored list wholesale. */
+  readonly editorsOff?: readonly string[]
+  readonly homeKindsHidden?: readonly string[]
+  readonly homeKindsOrder?: readonly string[]
+  readonly keepScreenOnWhileReading?: boolean
+  readonly firstRunDone?: boolean
+  readonly tipsSeen?: readonly string[]
+  readonly lastSeenVersion?: string
 }
 
 export interface ConfiguredProviderSummary {
