@@ -17,6 +17,7 @@ import type { IconProps } from '../../../components/icons/svgIcon'
 import type { MobileStringKey } from '../../../i18n/strings'
 import type { EditorQuickActionItem } from '../../../shell/EditorShell'
 import { pdfPageGeom, type PdfWorkspaceChrome, type PdfWorkspaceContext } from '../view'
+import { afterMoreSheetBack } from '../view/moreSheetBack'
 import type { PdfEditSession } from './editSession'
 import {
   PDF_FEATURE_ORDER,
@@ -97,7 +98,10 @@ export function createPdfEditExtension(
           new Promise<PdfAnnotationChoice | null>((resolve) => {
             resolverRef.current?.(null)
             resolverRef.current = resolve
-            setAskOpen(true)
+            // asked from the More sheet's Save As row: open after its back step
+            afterMoreSheetBack(() => {
+              if (resolverRef.current === resolve) setAskOpen(true)
+            })
           }),
       )
       return () => {

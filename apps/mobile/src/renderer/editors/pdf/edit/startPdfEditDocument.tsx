@@ -15,6 +15,7 @@ import {
   type PdfWorkspaceChrome,
   type PdfWorkspaceContext,
 } from '../view'
+import { noteMoreSheetBack } from '../view/moreSheetBack'
 import { createPdfEditSession, type PdfEditSession } from './editSession'
 import type { PdfFeatureSet } from './features'
 import { createPdfEditExtension } from './usePdfEditChrome'
@@ -80,7 +81,12 @@ export function startPdfEditDocument(
 
   return {
     editSession,
-    save: (doc, forceSaveAs) => editSession.save(doc, forceSaveAs),
+    save: (doc, forceSaveAs) => {
+      // Save As comes from the More sheet's row: note its back step now, while the sheet
+      // is still in the page, so the annotation question opens after it (moreSheetBack.ts)
+      if (forceSaveAs) noteMoreSheetBack()
+      return editSession.save(doc, forceSaveAs)
+    },
     share: (doc) => editSession.share(doc),
     writeRecovery: (doc) => editSession.writeRecovery(doc),
     // the AI tools and their strings load only when the AI runs (AI is off by default)

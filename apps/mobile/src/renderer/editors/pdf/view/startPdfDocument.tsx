@@ -13,6 +13,7 @@ import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../edi
 import { IconPdfGoToPage, IconPdfLock, IconPdfOutline, IconPdfSearch } from './icons'
 import type { PdfOpenedDocument } from './model'
 import { resolveDestPageIndex } from './outline'
+import { afterMoreSheetBack } from './moreSheetBack'
 import { PdfGoToPageSheet } from './PdfGoToPageSheet'
 import { PdfOutlineSheet } from './PdfOutlineSheet'
 import { PdfSearchBar } from './PdfSearchBar'
@@ -175,6 +176,8 @@ export function startPdfDocument(
     const moreItems = useMemo(
       (): EditorQuickActionItem[] => [
         {
+          // no sheet and no history entry; focusing the field in the tap itself lets
+          // the on-screen keyboard come up
           id: 'pdfSearch',
           label: t('pdfViewSearch'),
           icon: <IconPdfSearch size={19} />,
@@ -184,15 +187,20 @@ export function startPdfDocument(
           id: 'pdfOutline',
           label: t('pdfViewOutline'),
           icon: <IconPdfOutline size={19} />,
-          onPress: () => setOutlineOpen(true),
+          onPress: () => afterMoreSheetBack(() => setOutlineOpen(true)),
         },
         {
           id: 'pdfGoToPage',
           label: t('pdfViewGoToPage'),
           icon: <IconPdfGoToPage size={19} />,
-          onPress: () => setGoToOpen(true),
+          onPress: () => afterMoreSheetBack(() => setGoToOpen(true)),
         },
-        ...(chrome.moreItems ?? []),
+        // a row may open a sheet (its own history entry): only after the More sheet's
+        // back step, see moreSheetBack.ts
+        ...(chrome.moreItems ?? []).map((item): EditorQuickActionItem => ({
+          ...item,
+          onPress: () => afterMoreSheetBack(item.onPress),
+        })),
       ],
       [t, chrome.moreItems],
     )
