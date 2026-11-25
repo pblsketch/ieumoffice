@@ -1523,6 +1523,12 @@ function parseFormulaCellsResult(input: unknown): WorkbookFormulaCellsResult {
   }
 }
 
+function assertWorkbookSessionRequest(input: unknown): void {
+  if (!isRecord(input) || !isUuid(input.sessionId)) {
+    throw new Error('Invalid workbook session request.')
+  }
+}
+
 function parseFilterResult(input: unknown): WorkbookFilterResult {
   if (!isRecord(input) || typeof input.ready !== 'boolean') {
     throw new Error('Invalid worksheet filter response.')

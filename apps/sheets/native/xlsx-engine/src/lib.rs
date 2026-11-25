@@ -15,7 +15,7 @@ use zip::ZipArchive;
 
 pub mod archive;
 pub mod convert;
-mod filter;
+pub mod filter;
 pub mod find;
 pub mod recalc;
 mod rels_normalize;
@@ -554,7 +554,7 @@ impl WorkbookSessions {
         self.read_range_with_mode(session_id, sheet_id, range, RangeReadMode::Wait, None)
     }
 
-    pub(crate) fn read_range_with_mode(
+    pub fn read_range_with_mode(
         &mut self,
         session_id: &str,
         sheet_id: &str,

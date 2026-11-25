@@ -1375,7 +1375,7 @@ export async function loadVisibleRange(
         generation,
       )
       if (viewportGenerationIs(state, sheetId, generation)) {
-        await loadFrozenRowStrip(lazyWorkbookRef, worksheet, sheet, range)
+        await loadFrozenColumnStrip(lazyWorkbookRef, worksheet, sheet, range)
       }
     } catch (error: unknown) {
       if (lazyWorkbookRef.current === state && viewportGenerationIs(state, sheetId, generation)) {
@@ -1586,9 +1586,6 @@ async function loadFilteredViewport(
       return screen
     }),
   )
-  if (!current()) return
-  const richFamilies = richRunFamilies(reads.flatMap((read) => read?.cells ?? []))
-  if (richFamilies.size) await untilCellFontsLoaded(registerCellFontAliases(richFamilies))
   if (!current()) return
   evictFilteredViewport(worksheet, state, sheet, next)
   for (const [index, band] of bands.entries()) {
@@ -3487,13 +3484,6 @@ async function loadRange(
       waitForRequestedRange ? undefined : 'viewport',
     )
     if (!isCurrent()) return
-    const richFamilies = mapped ? richRunFamilies(mapped.screen.cells) : null
-    if (richFamilies?.size) {
-      await untilCellFontsLoaded(registerCellFontAliases(richFamilies))
-      if (lazyWorkbookRef.current !== state || state.loadingKeys.get(sheetId) !== requestKey) {
-        return
-      }
-    }
     if (!mapped) {
       // The whole range is journal-owned (inserted this session): nothing
       // streams into it, but cells written there may have been evicted by an
@@ -4479,7 +4469,7 @@ function patchWorksheetRange(
   rowColStyleKeys?: ReadonlySet<string>,
   inheritedWrap?: (row: number, column: number) => boolean,
   hiddenRows?: HiddenRowsInfo,
-  isViewportWindow = true,
+  _isViewportWindow = true,
   reuseRows = false,
 ): void {
   noteFormulaStreamChunk()
