@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { rhwpPatches } from '../hwp/scripts/rhwp-patches.mjs'
+import { pdfEngineNodeShims } from './src/renderer/editors/pdf/engine/build/nodeShimPlugin'
 
 /**
  * Copies the prebuilt rhwp-studio bundle from apps/hwp/public/studio into
@@ -92,7 +93,16 @@ export default defineConfig({
     sharedRhwpWasmPlugin(),
     copyHwpStudioPlugin(),
     pdfjsAssetsPlugin(),
+    // Track T2 (pdf): Node built-ins of the PC save code -> mobile stand-ins, only for
+    // apps/pdf/src/main, font-metrics and electron-utils (engine/build/nodeShimPlugin.ts)
+    pdfEngineNodeShims(),
   ],
+  // The PDF engine worker splits into lazy chunks (PDFium, fonts), so it is an ES module
+  // worker, and its bundle gets the same stand-in rule as the page.
+  worker: {
+    format: 'es',
+    plugins: () => [pdfEngineNodeShims()],
+  },
   define: {
     __IEUM_RHWP_WASM__: JSON.stringify(studioRhwpWasmPath()),
   },
