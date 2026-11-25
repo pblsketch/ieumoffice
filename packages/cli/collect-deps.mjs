@@ -3,8 +3,8 @@
 // node_modules so nested versions keep resolving. The packaged app ships the
 // result beside genoffice.cjs (Resources/cli/node_modules); src/dom.ts resolves
 // jsdom from there.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -35,19 +35,39 @@ function walk(name, from) {
     if (resolvePkg(dep, dir)) walk(dep, dir)
   }
 }
-for (const name of EXTERNALS) walk(name, resolve(here, '..', '..'))
-
-rmSync(out, { recursive: true, force: true })
-mkdirSync(out, { recursive: true })
-for (const dir of seen) {
-  const rel = relative(rootModules, dir)
-  if (rel.startsWith('..'))
-    throw new Error(`genoffice deps: ${dir} is outside the root node_modules`)
-  cpSync(dir, join(out, rel), {
-    recursive: true,
-    dereference: true,
-    // nested node_modules are copied by their own closure entries
-    filter: (src) => !relative(dir, src).split(sep).includes('node_modules'),
-  })
+// Files no runtime reads: type declarations, source maps, build caches and
+// the packages' own docs. Each shipped file costs install and update time on
+// Windows (the installer writes it and the virus scan opens it; decision
+// 0166), and these are about a quarter of the tree. License and notice texts
+// stay whatever their extension.
+const NOT_RUNTIME = /(\.d\.[cm]?ts|\.map|\.tsbuildinfo|\.md|\.mdown|\.markdown|^\.gitkeep)$/i
+const KEEP_ALWAYS = /^(licen[cs]e|notice|copying|patents)/i
+export function isRuntimeFile(name) {
+  return KEEP_ALWAYS.test(name) || !NOT_RUNTIME.test(name)
 }
-console.log(`genoffice deps: ${seen.size} packages → ${relative(here, out)}`)
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  for (const name of EXTERNALS) walk(name, resolve(here, '..', '..'))
+  rmSync(out, { recursive: true, force: true })
+  mkdirSync(out, { recursive: true })
+  let skipped = 0
+  for (const dir of seen) {
+    const rel = relative(rootModules, dir)
+    if (rel.startsWith('..'))
+      throw new Error(`genoffice deps: ${dir} is outside the root node_modules`)
+    cpSync(dir, join(out, rel), {
+      recursive: true,
+      dereference: true,
+      filter: (src) => {
+        // nested node_modules are copied by their own closure entries
+        if (relative(dir, src).split(sep).includes('node_modules')) return false
+        if (src === dir || isRuntimeFile(basename(src)) || statSync(src).isDirectory()) return true
+        skipped++
+        return false
+      },
+    })
+  }
+  console.log(
+    `genoffice deps: ${seen.size} packages → ${relative(here, out)} (${skipped} non-runtime files left out)`,
+  )
+}

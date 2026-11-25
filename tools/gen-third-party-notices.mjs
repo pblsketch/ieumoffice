@@ -1020,7 +1020,7 @@ ${self.copyright}
 
 The diagram editor ships the files of the draw.io release asset
 ${config.url}
-(SHA-256 ${config.sha256}) under resources/modules/diagram/drawio.
+(SHA-256 ${config.sha256}) in the archive resources/modules/diagram/drawio.asar.
 ${self.note}
 
 Changes from the release:

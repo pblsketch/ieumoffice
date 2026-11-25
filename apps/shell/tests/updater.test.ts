@@ -450,13 +450,14 @@ describe('initAutoUpdater', () => {
     expect(checkForUpdates).not.toHaveBeenCalled()
   })
 
-  it('configures manual full-package download and checks after the initial delay', async () => {
+  it('configures manual download and checks after the initial delay', async () => {
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     expect(updaterState.autoDownload).toBe(false)
     // the installer is started at will-quit by the updater itself
     expect(updaterState.autoInstallOnAppQuit).toBe(false)
-    expect(updaterState.disableDifferentialDownload).toBe(true)
+    // Windows downloads only the changed blocks of the installer (decision 0166)
+    expect(updaterState.disableDifferentialDownload).toBe(false)
     // full changelog: the window shows the bodies of every skipped release
     expect(updaterState.fullChangelog).toBe(true)
     expect(checkForUpdates).not.toHaveBeenCalled()
@@ -568,6 +569,23 @@ describe('initAutoUpdater', () => {
     initAutoUpdater(() => null)
     updaterState.listeners.get('update-available')!({ version: '0.2.0' })
     expect(lastShownState().strings.restartDesc.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the full download on Linux AppImage and macOS (decision 0166)', async () => {
+    for (const platform of ['linux', 'darwin']) {
+      platformSpy?.restore()
+      setPlatform(platform)
+      if (platform === 'linux') process.env.APPIMAGE = '/tmp/IeumOffice.AppImage'
+      try {
+        updaterState.disableDifferentialDownload = false
+        vi.resetModules()
+        const { initAutoUpdater } = await loadUpdater()
+        initAutoUpdater(() => null)
+        expect(updaterState.disableDifferentialDownload).toBe(true)
+      } finally {
+        delete process.env.APPIMAGE
+      }
+    }
   })
 
   it('keeps the installer silent where no installer window exists (Linux AppImage)', async () => {

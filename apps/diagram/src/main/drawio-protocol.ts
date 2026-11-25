@@ -14,13 +14,29 @@
  * Electron-free apart from the scheme declaration, so the tests read it.
  */
 import type { CustomScheme } from 'electron'
-import { resolve, sep } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
 import {
   BRIDGE_PREFIX,
   BRIDGE_SCRIPT_PATH,
   DRAWIO_HOST,
   DRAWIO_SCHEME,
 } from '../shared/bridge-protocol'
+
+/** The archive the installer packs the draw.io bundle into, beside the module's folders. */
+export const DRAWIO_ARCHIVE = 'drawio.asar'
+
+/**
+ * Where the draw.io bundle is read from under a module build folder. The
+ * installer ships it as one asar archive (decision 0166): its 2,900 files
+ * would otherwise be written, virus-scanned and, on the next update, deleted
+ * one by one. Electron's fs reads into the archive like a folder, so the
+ * scheme handler serves it unchanged. Dev runs build the plain folder.
+ */
+export function drawioBundleDir(moduleOut: string): string {
+  const archive = join(moduleOut, DRAWIO_ARCHIVE)
+  return existsSync(archive) ? archive : join(moduleOut, 'drawio')
+}
 
 /**
  * Standard and secure, so draw.io gets a real origin (`drawio-app://editor`)

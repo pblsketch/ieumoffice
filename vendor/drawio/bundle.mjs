@@ -17,7 +17,8 @@
  *
  * Output: apps/diagram/out/drawio/ (DRAWIO_OUT). The shell resolves the
  * diagram module's out directory (resources/modules/diagram when packaged)
- * and serves `<out>/drawio/` through its own protocol.
+ * and serves `<out>/drawio/` through its own protocol; the installer packs
+ * the folder into `<out>/drawio.asar` (decision 0166).
  */
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'

@@ -161,3 +161,4 @@
 | [0163](0163-print-upgrade-destination-preview-overlays.md)    | 인쇄 출력 대상(프린터·PDF·그림) 통합, 10개 편집기 온디맨드 라이브 미리보기, 워터마크·머리글/바닥글·한글 범위 확장 | 2026-11-23 |
 | [0164](0164-a2ui-question-card.md)                            | AI 질문 카드(`ask_questions`)를 A2UI v1.0 메시지로 주고받고, HTML·슬라이드의 옛 질문 도구를 없앤다                | 2026-11-24 |
 | [0165](0165-pdf-tools-v2-and-drop-input.md)                   | PDF 도구 창을 24개 직접 도구·UX 고도화로 넓히고, 끌어다 놓기는 preload webUtils.getPathForFile로만 허가한다       | 2026-11-24 |
+| [0166](0166-faster-install-and-update.md)                     | Windows 업데이트는 바뀐 부분만 받고, draw.io 묶음은 asar 하나로, CLI의 jsdom 사본은 실행 파일만 싣는다            | 2026-11-26 |
