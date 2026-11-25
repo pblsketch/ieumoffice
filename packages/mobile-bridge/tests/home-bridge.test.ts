@@ -17,6 +17,7 @@ import {
   openExternalUrl,
   openFolderEntry,
   openIncomingEntry,
+  openFavorite,
   openSample,
   readFileRefBytes,
   recentMeta,
@@ -187,6 +188,12 @@ const CASES: readonly Case[] = [
     run: (c) => openIncomingEntry(c, 'b1', 'e1'),
     command: 'mobile_home_open_incoming_entry',
     args: { batchId: 'b1', entryId: 'e1' },
+  },
+  {
+    name: 'openFavorite',
+    run: (c) => openFavorite(c, 'k1'),
+    command: 'mobile_home_open_favorite',
+    args: { docKey: 'k1' },
   },
   {
     name: 'openSample',

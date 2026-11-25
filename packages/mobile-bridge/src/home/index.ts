@@ -258,6 +258,14 @@ export function openIncomingEntry(
   return call(client, 'mobile_home_open_incoming_entry', { batchId, entryId })
 }
 
+/**
+ * Opens a starred file through its stored grant (or its linked folder's), even after it left the
+ * recent list; the file is added back to the recent list.
+ */
+export function openFavorite(client: MobileClient, docKey: string): Promise<MobileDocSession> {
+  return call(client, 'mobile_home_open_favorite', { docKey })
+}
+
 /** Opens the bundled read-only sample document; it is not added to the recent list. */
 export function openSample(client: MobileClient, lang: string): Promise<MobileDocSession> {
   return call(client, 'mobile_home_open_sample', { lang })
