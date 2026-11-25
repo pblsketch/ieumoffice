@@ -15,6 +15,7 @@ use zip::ZipArchive;
 
 pub mod archive;
 pub mod convert;
+pub mod filter;
 pub mod find;
 pub mod recalc;
 mod rels_normalize;
@@ -25,6 +26,7 @@ pub mod stream_patch;
 mod visuals;
 
 mod cell_images;
+mod chunks;
 mod escher;
 pub mod external_links;
 mod odf_formula;
@@ -83,7 +85,7 @@ const RANGE_WAIT: Duration = Duration::from_millis(750);
 const RANGE_WAIT_MAX_LAG_ROWS: usize = 16 * CHUNK_ROW_COUNT;
 const MAX_FORMULA_CELLS: usize = 100_000;
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default)]
 struct ChunkData {
     cells: Vec<CellRecord>,
     rows: Vec<RowProperty>,
@@ -361,6 +363,7 @@ impl WorkbookSessions {
                 .collect();
             let worksheet_without_cells =
                 visuals::read_worksheet_without_cells(&mut archive, &worksheet_path)?;
+            let protection = read_sheet_protection(&worksheet_without_cells)?;
             let sparklines = read_sheet_sparklines(&worksheet_without_cells)?;
             let ole_objects =
                 visuals::read_ole_objects(&mut archive, &worksheet_without_cells, &worksheet_path)?;
@@ -452,6 +455,7 @@ impl WorkbookSessions {
                 print_titles: None,
                 has_scoped_defined_names: false,
                 cell_images,
+                protection,
             });
             visual_sources.push(SheetVisualSource {
                 sheet_id: id,
@@ -509,6 +513,7 @@ impl WorkbookSessions {
                 path: canonical_path,
                 sheets: sheets.clone(),
                 runtimes,
+                filter_columns: Default::default(),
                 shared_strings,
                 styled_xfs,
                 color_context: Arc::new(color_context),
@@ -546,6 +551,17 @@ impl WorkbookSessions {
         sheet_id: &str,
         range: &CellRange,
     ) -> Result<RangeResult, SidecarError> {
+        self.read_range_with_mode(session_id, sheet_id, range, RangeReadMode::Wait, None)
+    }
+
+    pub fn read_range_with_mode(
+        &mut self,
+        session_id: &str,
+        sheet_id: &str,
+        range: &CellRange,
+        mode: RangeReadMode,
+        sparse_rows: Option<&[usize]>,
+    ) -> Result<RangeResult, SidecarError> {
         let session = self
             .sessions
             .get_mut(session_id)
@@ -555,9 +571,9 @@ impl WorkbookSessions {
             .iter()
             .position(|sheet| sheet.id == sheet_id)
             .ok_or_else(|| SidecarError::InvalidRequest("Unknown worksheet.".into()))?;
-        range.validate(&session.sheets[sheet_index])?;
+        range.validate(&session.sheets[sheet_index], sparse_rows)?;
         session.ensure_parser(sheet_index)?;
-        session.read_range(sheet_index, range)
+        session.read_range(sheet_index, range, mode, sparse_rows)
     }
 
     pub fn read_formula_cells(
@@ -681,6 +697,7 @@ struct WorkbookSession {
     path: PathBuf,
     sheets: Vec<SheetMetadata>,
     runtimes: Vec<SheetRuntime>,
+    filter_columns: filter::ColumnCache,
     shared_strings: Arc<Vec<SharedString>>,
     styled_xfs: Arc<Vec<bool>>,
     color_context: Arc<ColorContext>,
@@ -760,6 +777,8 @@ impl WorkbookSession {
         &self,
         sheet_index: usize,
         range: &CellRange,
+        mode: RangeReadMode,
+        sparse_rows: Option<&[usize]>,
     ) -> Result<RangeResult, SidecarError> {
         let runtime = &self.runtimes[sheet_index];
         let (lock, condition) = &*runtime.state;
@@ -772,7 +791,7 @@ impl WorkbookSession {
                 .indexed_through_row
                 .map_or(range.start_row, |row| range.start_row.saturating_sub(row))
                 >= RANGE_WAIT_MAX_LAG_ROWS;
-        let index = if far_ahead {
+        let index = if far_ahead || !matches!(mode, RangeReadMode::Wait) {
             index
         } else {
             condition
@@ -791,6 +810,18 @@ impl WorkbookSession {
         }
         let indexed_through_row = index.indexed_through_row;
         let indexing_complete = index.complete;
+        if matches!(mode, RangeReadMode::Status) {
+            return Ok(RangeResult {
+                indexed_through_row,
+                indexing_complete,
+                ..RangeResult::default()
+            });
+        }
+        let contains_row = |row| {
+            sparse_rows.map_or(row >= range.start_row && row <= range.end_row, |rows| {
+                rows.binary_search(&row).is_ok()
+            })
+        };
         let merges = index
             .merges
             .iter()
@@ -799,6 +830,10 @@ impl WorkbookSession {
                     && merge.end_row >= range.start_row
                     && merge.start_column <= range.end_column
                     && merge.end_column >= range.start_column
+                    && sparse_rows.is_none_or(|rows| {
+                        rows.get(rows.partition_point(|&row| row < merge.start_row))
+                            .is_some_and(|&row| row <= merge.end_row)
+                    })
             })
             .copied()
             .collect::<Vec<_>>();
@@ -806,8 +841,7 @@ impl WorkbookSession {
             .hyperlinks
             .iter()
             .filter(|link| {
-                link.row >= range.start_row
-                    && link.row <= range.end_row
+                contains_row(link.row)
                     && link.column >= range.start_column
                     && link.column <= range.end_column
             })
@@ -834,7 +868,7 @@ impl WorkbookSession {
             Vec::new()
         };
         let sheet_protection = if indexing_complete {
-            index.sheet_protection.clone()
+            self.sheets[sheet_index].protection.sheet_protection.clone()
         } else {
             None
         };
@@ -849,7 +883,7 @@ impl WorkbookSession {
             Vec::new()
         };
         let protected_ranges = if indexing_complete {
-            index.protected_ranges.clone()
+            self.sheets[sheet_index].protection.protected_ranges.clone()
         } else {
             Vec::new()
         };
@@ -865,6 +899,18 @@ impl WorkbookSession {
         let last_chunk = last_available_row / CHUNK_ROW_COUNT;
         let paths = if indexed_through_row.is_none() || last_available_row < range.start_row {
             Vec::new()
+        } else if let Some(rows) = sparse_rows {
+            let mut previous = None;
+            rows.iter()
+                .take_while(|&&row| row <= last_available_row)
+                .filter_map(|&row| {
+                    let chunk = row / CHUNK_ROW_COUNT;
+                    if previous.replace(chunk) == Some(chunk) {
+                        return None;
+                    }
+                    index.chunk_files.get(&chunk).cloned()
+                })
+                .collect::<Vec<_>>()
         } else {
             (first_chunk..=last_chunk)
                 .filter_map(|chunk| index.chunk_files.get(&chunk).cloned())
@@ -875,20 +921,13 @@ impl WorkbookSession {
         let mut cells = Vec::new();
         let mut rows = Vec::new();
         for path in paths {
-            let file = File::open(path)?;
-            let chunk: ChunkData = serde_json::from_reader(BufReader::new(file))?;
+            let chunk = chunks::read_chunk(&path, range.start_column..=range.end_column, true)?;
             cells.extend(chunk.cells.into_iter().filter(|cell| {
-                cell.row >= range.start_row
-                    && cell.row <= range.end_row
+                contains_row(cell.row)
                     && cell.column >= range.start_column
                     && cell.column <= range.end_column
             }));
-            rows.extend(
-                chunk
-                    .rows
-                    .into_iter()
-                    .filter(|row| row.row >= range.start_row && row.row <= range.end_row),
-            );
+            rows.extend(chunk.rows.into_iter().filter(|row| contains_row(row.row)));
         }
         Ok(RangeResult {
             cells,
@@ -995,10 +1034,8 @@ struct SheetIndex {
     auto_filter: Option<MergedRange>,
     auto_filter_columns: Vec<FilterColumnCriteria>,
     data_validations: Vec<DataValidationRule>,
-    sheet_protection: Option<SheetProtectionInfo>,
     row_breaks: Vec<usize>,
     col_breaks: Vec<usize>,
-    protected_ranges: Vec<ProtectedRangeInfo>,
     page_setup: Option<PagePrintInfo>,
     /// Formula cells collected while indexing, capped at MAX_FORMULA_CELLS.
     /// Shared-formula followers are not counted: they live in
