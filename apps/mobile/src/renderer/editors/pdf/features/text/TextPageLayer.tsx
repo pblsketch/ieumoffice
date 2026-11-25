@@ -251,16 +251,20 @@ function DraftBox({
     const lineH = draft.block
       ? draft.block.lineHeight * (size / draft.fontSize) * scale
       : size * 1.2 * scale
+    // A block editor locks to the block width plus the PC's 8px headroom (App.tsx
+    // editorWidth), so its soft wrap shows the block's own lines as it opens and
+    // previews the reflow the commit makes
     box = {
       left: r.left,
       top: r.top,
-      width: draft.block ? r.width : Math.max(r.width, page.width - r.left - 2),
+      width: draft.block ? r.width + 8 : Math.max(r.width, page.width - r.left - 2),
       minHeight: Math.max(r.height, lineH),
       fontSize: size * scale * 0.92,
       lineHeight: `${lineH}px`,
       ...(draft.font ? { fontFamily: fontCss(draft.font) } : {}),
       ...(draft.bold ? { fontWeight: 700 } : {}),
       ...(draft.color || draft.seedInk ? { color: draft.color ?? draft.seedInk } : {}),
+      ...(draft.block && draft.block.align !== 'left' ? { textAlign: draft.block.align } : {}),
     }
     cover = pdfRectToCss(geom, unionCover(draft.rect, draft.cover), scale)
   }

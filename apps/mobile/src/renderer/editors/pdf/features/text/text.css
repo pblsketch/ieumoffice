@@ -79,6 +79,11 @@
   pointer-events: auto;
 }
 
+.m-pdf-text-draft[wrap='soft'] {
+  /* break anywhere like the committed CJK-aware wrap (PC .pdf-textedit-block) */
+  word-break: break-word;
+}
+
 .m-pdf-text-draft[wrap='off'] {
   white-space: pre;
 }
@@ -87,7 +92,9 @@
   z-index: 4;
 }
 
-/* ── secondary bar while typing (design system 5.4) ── */
+/* ── secondary bar while typing (design system 5.4) ──
+   Budget at 390px: seven hit-wide controls plus the size number (about 380px with the
+   side padding), so the buttons sit edge to edge: each hit area is its own spacing. */
 .m-pdf-text-bar {
   position: absolute;
   left: 0;
@@ -96,9 +103,10 @@
   z-index: var(--m-z-toolbar);
   display: flex;
   align-items: center;
-  gap: var(--m-space-1);
+  gap: 0;
   height: var(--m-kbbar-h);
-  padding: 0 var(--m-space-2);
+  padding: 0 calc(var(--m-space-1) + var(--m-safe-right)) 0
+    calc(var(--m-space-1) + var(--m-safe-left));
   background: var(--m-surface-raised);
   border-top: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
@@ -109,7 +117,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--m-space-1);
+  gap: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -172,6 +180,17 @@
 .m-pdf-text-swatch[data-document] {
   outline: 2px dashed var(--border-strong);
   outline-offset: 1px;
+}
+
+.m-pdf-text-font-sample {
+  font-size: var(--m-text-body);
+  line-height: 1;
+}
+
+.m-pdf-text-font-sample[data-document] {
+  /* the document's own face: marked like the document-color swatch */
+  text-decoration: underline dashed var(--border-strong);
+  text-underline-offset: 3px;
 }
 
 .m-pdf-text-font-chip {

@@ -2,6 +2,8 @@
 // bold, size, color and one of the three app fonts, plus delete and confirm. Every
 // button keeps the focus in the input box (pointerdown default prevented), so the
 // keyboard stays up; color and font swap the row in place instead of opening a sheet.
+// The main row fits a 390px phone without scrolling: seven hit-sized controls, the
+// font shown as a sample in its face; delete and confirm never scroll away.
 import { useState, type ReactNode } from 'react'
 import type { Params } from '@genoffice/i18n'
 import { COLOR_PRESETS } from '../../../../../../../pdf/src/renderer/color-presets'
@@ -44,6 +46,9 @@ export interface TextStyleBarProps {
 type Panel = 'main' | 'color' | 'font'
 
 const keepFocus = (e: { preventDefault(): void }) => e.preventDefault()
+
+/** The font button's face sample (a glyph pair, not a sentence: same in every language). */
+const FONT_SAMPLE = 'Aa'
 
 function BarButton({
   label,
@@ -135,16 +140,20 @@ export function TextStyleBar({ state, busy, t, ...on }: TextStyleBarProps) {
                 style={{ background: state.color ?? state.documentInk }}
               />
             </BarButton>
+            {/* A glyph sample in the current face, one hit wide: the full font name
+                would push the bar past a 390px phone; the name lives in the label */}
             <button
               type="button"
-              className="m-pdf-text-font-chip"
+              className="m-pdf-text-btn m-pdf-text-font-sample"
               aria-label={`${t('pdfTextFont')}: ${fontLabel}`}
+              title={fontLabel}
               data-testid="pdf-text-font"
+              data-document={state.font === undefined || undefined}
               onPointerDown={keepFocus}
               onClick={() => setPanel('font')}
               style={{ fontFamily: fontCss(state.font) }}
             >
-              {fontLabel}
+              {FONT_SAMPLE}
             </button>
           </div>
           <BarButton
