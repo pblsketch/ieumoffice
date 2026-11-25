@@ -1,0 +1,170 @@
+/* Mobile PDF form layer (track T2, PDF-T8). The fields sit on the page, which is white
+   paper in every theme, so their colors are document content colors (the PC editor's
+   form colors), defined once here; the floating bars use the chrome tokens. */
+
+.m-pdf-form-layer {
+  --m-pdf-form-border: rgb(60 120 216 / 55%);
+  --m-pdf-form-bg: rgb(235 243 255 / 55%);
+  --m-pdf-form-ink: #222;
+  --m-pdf-form-error: #d13438;
+  --m-pdf-form-selected: rgb(56 108 255 / 90%);
+
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.m-pdf-form-field,
+.m-pdf-form-mark {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--m-pdf-form-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.m-pdf-form-field {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--m-pdf-form-border);
+  border-radius: 2px;
+  background: var(--m-pdf-form-bg);
+  line-height: 1.15;
+  white-space: pre;
+}
+
+.m-pdf-form-layer[data-interactive='true'] .m-pdf-form-field:not(:disabled),
+.m-pdf-form-layer[data-interactive='true'] .m-pdf-form-mark,
+.m-pdf-form-place {
+  pointer-events: auto;
+}
+
+/* view mode: the values show, the page underneath keeps scrolling and selecting */
+.m-pdf-form-layer[data-interactive='false'] .m-pdf-form-field {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* a finger-sized hit area around small fields, never shrinking a larger one */
+.m-pdf-form-field::after,
+.m-pdf-form-mark::after {
+  content: '';
+  position: absolute;
+  inset: min(0px, calc(50% - var(--m-hit) / 2));
+}
+
+.m-pdf-form-field.m-pdf-form-text,
+.m-pdf-form-field.m-pdf-form-choice {
+  padding: 0 3px;
+}
+
+.m-pdf-form-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.m-pdf-form-text.is-multiline {
+  align-items: flex-start;
+  white-space: pre-wrap;
+}
+
+.m-pdf-form-text.is-multiline .m-pdf-form-value {
+  max-height: 100%;
+}
+
+.m-pdf-form-checkbox,
+.m-pdf-form-radio {
+  justify-content: center;
+}
+
+.m-pdf-form-radio {
+  border-radius: 50%;
+}
+
+.m-pdf-form-radio[aria-checked='true'] > span {
+  width: 50%;
+  height: 50%;
+  border-radius: 50%;
+  background: var(--m-pdf-form-ink);
+}
+
+.m-pdf-form-signature {
+  justify-content: center;
+  font-size: var(--m-text-body-s);
+  border-style: dashed;
+}
+
+.m-pdf-form-signature.is-signed {
+  border-color: transparent;
+  background: transparent;
+}
+
+.m-pdf-form-field.is-required-empty {
+  border-color: var(--m-pdf-form-error);
+}
+
+.m-pdf-form-mark {
+  border: 1px solid transparent;
+  background: transparent;
+  touch-action: manipulation;
+}
+
+.m-pdf-form-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.m-pdf-form-mark.is-selected {
+  border: 1px dashed var(--m-pdf-form-selected);
+  touch-action: none;
+}
+
+.m-pdf-form-place {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+}
+
+.m-pdf-form-bar {
+  position: absolute;
+  top: var(--m-space-3);
+  left: 50%;
+  z-index: var(--m-z-toolbar);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  max-width: calc(100% - var(--m-space-4) * 2);
+  min-height: var(--m-hit);
+  padding: var(--m-space-1) var(--m-space-1) var(--m-space-1) var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+  color: var(--text-primary);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.m-pdf-form-bar-text {
+  font-size: var(--m-text-body-s);
+}
+
+.m-pdf-form-text-input {
+  /* 16px or more: the webview does not zoom the page when the field takes focus */
+  font-size: var(--m-text-body);
+}
+
+.m-pdf-form-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.m-pdf-form-option {
+  text-align: start;
+}
