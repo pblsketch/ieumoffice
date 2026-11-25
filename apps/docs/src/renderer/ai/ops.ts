@@ -6,7 +6,6 @@ import { generateTocFieldXml, type TocEntry } from '@genoffice/docx-engine'
 import { isEastAsianFontName } from '../font-list'
 import { t } from '../i18n/locale'
 import { blockRangePositions, isTrackedDeleted, liveText } from './doc-utils'
-import { parseExactLineTwips } from './lengths'
 import { styleOpDefs, type AiStyleAccess } from './style-ops'
 import { fieldOpDefs } from './field-ops'
 import { tableOpDefs } from './table-ops'
@@ -57,8 +56,7 @@ export interface FontFields {
 
 export interface ParagraphFields {
   align?: 'left' | 'center' | 'right' | 'justify' | null
-  /** a number is a multiple of single spacing; a length string ("30pt") is an exact line height */
-  lineSpacing?: number | string | null
+  lineSpacing?: number | null
   indentLeft?: number | null
   indentRight?: number | null
   /** twips; positive = first-line indent, negative = hanging indent */
@@ -340,14 +338,8 @@ function validateParagraphFields(op: Op, where: string): string | null {
   ) {
     return `${where}: align must be left / center / right / justify (or null)`
   }
-  if (
-    op.lineSpacing !== undefined &&
-    !isNumberOrNull(op.lineSpacing) &&
-    parseExactLineTwips(op.lineSpacing) === undefined
-  ) {
-    return `${where}: lineSpacing must be a multiple (e.g. 1.5), an exact positive length (e.g. "30pt"), or null`
-  }
   for (const k of [
+    'lineSpacing',
     'indentLeft',
     'indentRight',
     'indentFirstLine',
@@ -647,19 +639,11 @@ function runSetFont(op: Op, env: RunEnv): OpResult {
   return { op: 'setFont', matched: matched.length, changed, skippedProtected }
 }
 
-/** the line-spacing attr triple: an exact length sets the exact rule, a multiple (or null) drops any fixed rule */
-function lineSpacingPatch(value: unknown): Record<string, unknown> {
-  const exact = parseExactLineTwips(value)
-  if (exact !== undefined) return { lineSpacing: null, lineRule: 'exact', lineRawTwips: exact }
-  return { lineSpacing: (value as number | null) ?? null, lineRule: null, lineRawTwips: null }
-}
-
 function runSetParagraphFormat(op: Op, env: RunEnv): OpResult {
   const patch: Record<string, unknown> = {}
   for (const k of present(op, PARA_KEYS)) {
     if (k === 'shadingFill') patch.shadingFill = normalizeHex(op.shadingFill, op.op, 'shadingFill')
     else if (k === 'pageBreakBefore') patch.pageBreakBefore = op.pageBreakBefore === true
-    else if (k === 'lineSpacing') Object.assign(patch, lineSpacingPatch(op.lineSpacing))
     else patch[k] = op[k] ?? null
   }
   return applyParagraphPatch(env, op, patch)
@@ -1320,7 +1304,7 @@ register({
 register({
   name: 'setParagraphFormat',
   signature:
-    '{ op: "setParagraphFormat", target, align?: "left"|"center"|"right"|"justify"|null, lineSpacing?, indentLeft?, indentRight?, indentFirstLine?, spaceBefore?, spaceAfter?, pageBreakBefore?: boolean, shadingFill?: "#RRGGBB"|null, borders?: subset of "tblr"|null }  // paragraph format of the targeted blocks (whole blocks, even for a partial selection); lengths in twips; lineSpacing is a number = multiple of single spacing (1.5) or a length string = exact line height ("30pt"), null clears it; indentFirstLine positive = first-line indent, negative = hanging; a two-character CJK indent ≈ font size in pt × 40 twips',
+    '{ op: "setParagraphFormat", target, align?: "left"|"center"|"right"|"justify"|null, lineSpacing?, indentLeft?, indentRight?, indentFirstLine?, spaceBefore?, spaceAfter?, pageBreakBefore?: boolean, shadingFill?: "#RRGGBB"|null, borders?: subset of "tblr"|null }  // paragraph format of the targeted blocks (whole blocks, even for a partial selection); lengths in twips, lineSpacing as a multiple; indentFirstLine positive = first-line indent, negative = hanging; a two-character CJK indent ≈ font size in pt × 40 twips',
   keys: PARA_KEYS,
   target: 'required',
   validate(op, where) {

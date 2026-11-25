@@ -206,7 +206,8 @@ function selectionStyle(
 /// edit session itself; the FOCUSING_* bits follow DOM focus, which the
 /// clicked ribbon button holds at this point.
 function cellEditorHoldsText(runtime: UniverRuntime): boolean {
-  const context = runtime.univer.__getInjector().get(IContextService)
+  const context = runtime.univer?.__getInjector()?.get(IContextService)
+  if (!context) return false
   return (
     context.getContextValue(EDITOR_ACTIVATED) &&
     !context.getContextValue(FOCUSING_EDITOR_INPUT_FORMULA) &&

@@ -78,14 +78,7 @@ function cellWithBlanks(withSeparators: boolean, blanks = 2) {
   pm.appendChild(table)
   document.body.replaceChildren(pm)
   const { blocks } = measureBlocks(pm, 0, 1)
-  fillLineBoxes(
-    blocks,
-    [{ contentHeight: 800, forceBreak: false }],
-    1,
-    undefined,
-    undefined,
-    new Set(blocks),
-  )
+  fillLineBoxes(blocks, [{ contentHeight: 200, forceBreak: false }], 1)
   return blocks[0]!.tableRows![0]!
 }
 

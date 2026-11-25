@@ -6,7 +6,7 @@ import { basename, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { defaultRegistry } from '../src/cli'
 import { fetchToFile } from '../src/mcp/files'
-import { startHttp, type HttpHandle } from '../src/mcp/http'
+import { EXPOSED_WITHOUT_TOKEN, startHttp, type HttpHandle } from '../src/mcp/http'
 import { tempDir } from './helpers'
 
 const TOKEN = 'harden-token'
@@ -312,7 +312,7 @@ describe('mcp http non-loopback refusal', () => {
         log: () => {},
         registry: defaultRegistry(),
       }),
-    ).rejects.toThrow(/refusing to serve the MCP HTTP API on a non-loopback address/)
+    ).rejects.toThrow(EXPOSED_WITHOUT_TOKEN)
     // the refusal disposed the FileStore: no new scratch directory remains
     const after = readdirSync(tmpdir()).filter(
       (e) => e.startsWith(`genoffice-mcp-http-${process.pid}-`) && !before.has(e),

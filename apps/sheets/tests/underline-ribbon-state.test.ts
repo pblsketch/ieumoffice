@@ -38,7 +38,7 @@ function visit(node: ts.Node) {
 }
 visit(tree)
 const compiled = ts.transpileModule(
-  `export function Buttons({ selectionFormat, onCommand }) { const t = key => key; return <>${buttons.join('\n')}</> }`,
+  `export function Buttons({ selectionFormat, onCommand }) { const t = key => key; const keepCellEditorFocus = () => {}; return <>${buttons.join('\n')}</> }`,
   { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS } },
 ).outputText
 const exports: { Buttons?: (props: unknown) => unknown } = {}

@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { bindUnboundPrefixes, rootNamespaces } from './xml-namespaces'
 import {
   applyRevisionResolutions,
   cleanMoveRangeMarkers,
@@ -2113,6 +2114,7 @@ export async function saveDocx(
     newDocumentXml = applyPageColor(newDocumentXml, options.pageColor)
   }
   newDocumentXml = fillRevisionIds(newDocumentXml, genCtx.allocateRevisionId)
+  newDocumentXml = bindUnboundPrefixes(newDocumentXml)
 
   const settingsPath = 'word/settings.xml'
   let settingsXml: string | null = null
@@ -2279,6 +2281,14 @@ export async function saveDocx(
   const coreXmlOut = coreEntry
     ? patchCoreProps(await coreEntry.async('string'), options.savedAt)
     : null
+
+  const bodyNamespaces = rootNamespaces(documentXml)
+  const bind = (xml: string) => bindUnboundPrefixes(xml, bodyNamespaces)
+  for (const part of hfParts) part.xml = bind(part.xml)
+  for (const part of notesParts) part.xml = bind(part.xml)
+  if (commentsXml !== null) commentsXml = bind(commentsXml)
+  if (numberingXmlOut !== null) numberingXmlOut = bind(numberingXmlOut)
+  if (stylesXmlOut !== null) stylesXmlOut = bind(stylesXmlOut)
 
   const out = new JSZip()
   for (const [name, entry] of Object.entries(zip.files)) {
