@@ -1,13 +1,16 @@
 import { defineConfig } from 'vitest/config'
-import { pdfEngineNodeShims } from './src/renderer/editors/pdf/engine/build/nodeShimPlugin'
+import { trackAlias, trackDefine, trackPlugins, trackTestSetupFiles } from './config/tracks'
 
 export default defineConfig({
-  // Track T2 (pdf): the PC PDF save code runs on mobile stand-ins for Node
-  // built-ins; the rule applies only to apps/pdf/src/main, font-metrics and
-  // electron-utils, so every other module resolves as before.
-  plugins: [pdfEngineNodeShims()],
+  // each v1 track's own plugins, aliases and setup files (config/tracks/<track>.ts)
+  plugins: trackPlugins,
+  resolve: {
+    alias: trackAlias,
+  },
+  define: trackDefine,
   test: {
     environment: 'jsdom',
     include: ['tests/**/*.test.{ts,tsx}'],
+    setupFiles: trackTestSetupFiles,
   },
 })

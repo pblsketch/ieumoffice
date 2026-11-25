@@ -1,9 +1,7 @@
 // The opened PDF document as the mobile editor holds it. Later tasks (edit state,
 // save, features, AI) build on this object; it is created once per open.
 // The PC PDF types (apps/pdf/src/shared/ipc.ts) reach pdf2docx, whose bidi-js
-// typings the PC tsconfig lists; bring the same file in here.
-// eslint-disable-next-line @typescript-eslint/triple-slash-reference
-/// <reference path="../../../../../../../packages/pdf2docx/src/bidi-js.d.ts" />
+// typings come from src/env/pdf.d.ts.
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { geomDispSize, type PageGeom } from '../../../../../../pdf/src/renderer/annotations'
 import type { PageGeometry } from '../../../../../../pdf/src/renderer/page-probe'

@@ -2,10 +2,8 @@
 // static fills per document, feeds field names to op planning, and adds the page
 // overlay, the sheets, the floating bars and the check/cross rows of [⋯].
 // The PC mark painter (static-form-fill.ts) names its result type through the PC
-// SignatureDialog module, whose PC window globals come along for the type checker only
-// (as the Markdown and HWP editors' env.d.ts do in tsconfig.json); nothing here calls them.
-// eslint-disable-next-line @typescript-eslint/triple-slash-reference
-/// <reference path="../../../../../../../pdf/src/renderer/env.d.ts" />
+// SignatureDialog module; its window globals are declared in src/env/pdf.d.ts for the
+// type checker only, and nothing here calls them.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderStaticFormMark } from '../../../../../../../pdf/src/renderer/static-form-fill'
 import type { FormValueInput, StaticFormFillRecord } from '../../../../../../../pdf/src/shared/ipc'
