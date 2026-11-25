@@ -1,3 +1,42 @@
 import type { zh } from './zh'
 
-export const id = {} as const satisfies Record<keyof typeof zh, string>
+export const id = {
+  pdfPagesSelected: '{n} dipilih',
+  pdfPagesNoneSelected: 'Ketuk halaman untuk memilihnya',
+  pdfPagesSelectAll: 'Pilih semua',
+  pdfPagesClearSelection: 'Hapus pilihan',
+  pdfPagesRotate: 'Putar',
+  pdfPagesDelete: 'Hapus',
+  pdfPagesMoveEarlier: 'Lebih awal',
+  pdfPagesMoveLater: 'Lebih akhir',
+  pdfPagesBlankBefore: 'Halaman kosong sebelum',
+  pdfPagesBlankAfter: 'Halaman kosong sesudah',
+  pdfPagesImport: 'Dari PDF lain',
+  pdfPagesPageLabel: 'Halaman {n}',
+  pdfPagesBlankLabel: 'Halaman kosong',
+  pdfPagesDragHandle: 'Seret untuk memindahkan',
+  pdfPagesKeepOne: 'Halaman terakhir tidak dapat dihapus.',
+  pdfPagesActionFailed: 'Tidak dapat mengubah halaman.',
+  pdfPagesDeletedLabel: 'Akan dihapus',
+  pdfPagesDeletedHint: 'Dihapus saat disimpan. Urungkan untuk mengembalikannya.',
+  pdfPagesMovedLabel: 'Urutan baru: halaman {n}',
+  pdfPagesImportTitle: 'Sisipkan halaman dari PDF lain',
+  pdfPagesImportCount: 'Halaman yang disisipkan: {n}',
+  pdfPagesImportPlace: 'Tempat menyisipkan',
+  pdfPagesImportFront: 'Di awal',
+  pdfPagesImportAfter: 'Setelah halaman {n}',
+  pdfPagesImportEnd: 'Di akhir',
+  pdfPagesImportConfirmHint:
+    'Perubahan Anda sejauh ini disimpan lebih dulu, lalu halaman disisipkan. Halaman yang disisipkan langsung ditulis ke file dan tidak dapat diurungkan.',
+  pdfPagesImportConfirm: 'Simpan dan sisipkan',
+  pdfPagesImportDone: '{n} halaman disisipkan.',
+  pdfPagesImportFailed: 'Tidak dapat menyisipkan halaman.',
+  pdfPagesImportDamaged: 'Halaman dari PDF lain tidak dapat disisipkan ke dokumen yang rusak.',
+  pdfPagesImportEncrypted: 'Halaman dari PDF lain tidak dapat disisipkan ke dokumen terenkripsi.',
+  pdfPagesImportUntitled:
+    'Halaman tidak dapat disisipkan ke dokumen baru yang belum pernah disimpan. Simpan dulu.',
+  pdfPagesImportReadOnly: 'Halaman tidak dapat disisipkan ke dokumen hanya-baca.',
+  pdfPagesImportPickEncrypted:
+    'PDF yang dipilih dilindungi kata sandi, jadi halamannya tidak dapat diimpor.',
+  pdfPagesImportPickUnreadable: 'File yang dipilih tidak dapat dibaca sebagai PDF.',
+} as const satisfies Record<keyof typeof zh, string>

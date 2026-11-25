@@ -1,5 +1,6 @@
-// Feature slot "pages" (PDF-T10 fills this folder only): the page organizer and taking pages from another PDF; More-sheet entry Organize pages.
-// Empty until then; the slot contract is `PdfFeature` in ../../edit/types.ts.
+// Feature slot "pages" (PDF-T10): the page organizer (rotate, delete, reorder, blank
+// pages as pending PC edits) and taking pages from another PDF; [⋯] Organize pages.
 import type { PdfFeature } from '../../edit/types'
+import { usePagesFeature } from './usePagesFeature'
 
-export const pagesFeature: PdfFeature = { id: 'pages' }
+export const pagesFeature: PdfFeature = { id: 'pages', useFeature: usePagesFeature }

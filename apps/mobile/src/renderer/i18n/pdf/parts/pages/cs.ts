@@ -1,3 +1,42 @@
 import type { zh } from './zh'
 
-export const cs = {} as const satisfies Record<keyof typeof zh, string>
+export const cs = {
+  pdfPagesSelected: 'Vybráno: {n}',
+  pdfPagesNoneSelected: 'Klepnutím na stránky je vyberete',
+  pdfPagesSelectAll: 'Vybrat vše',
+  pdfPagesClearSelection: 'Zrušit výběr',
+  pdfPagesRotate: 'Otočit',
+  pdfPagesDelete: 'Smazat',
+  pdfPagesMoveEarlier: 'Dříve',
+  pdfPagesMoveLater: 'Později',
+  pdfPagesBlankBefore: 'Prázdná před',
+  pdfPagesBlankAfter: 'Prázdná za',
+  pdfPagesImport: 'Z jiného PDF',
+  pdfPagesPageLabel: 'Stránka {n}',
+  pdfPagesBlankLabel: 'Prázdná stránka',
+  pdfPagesDragHandle: 'Přetažením přesunete',
+  pdfPagesKeepOne: 'Poslední stránku nelze smazat.',
+  pdfPagesActionFailed: 'Stránky se nepodařilo změnit.',
+  pdfPagesDeletedLabel: 'Ke smazání',
+  pdfPagesDeletedHint: 'Smaže se při uložení. Akce Zpět ji vrátí.',
+  pdfPagesMovedLabel: 'Nové pořadí: stránka {n}',
+  pdfPagesImportTitle: 'Vložit stránky z jiného PDF',
+  pdfPagesImportCount: 'Stránek k vložení: {n}',
+  pdfPagesImportPlace: 'Kam vložit',
+  pdfPagesImportFront: 'Na začátek',
+  pdfPagesImportAfter: 'Za stránku {n}',
+  pdfPagesImportEnd: 'Na konec',
+  pdfPagesImportConfirmHint:
+    'Nejprve se uloží dosavadní změny, potom se vloží stránky. Vložené stránky se zapíší rovnou do souboru a nelze je vrátit zpět.',
+  pdfPagesImportConfirm: 'Uložit a vložit',
+  pdfPagesImportDone: 'Vloženo stránek: {n}.',
+  pdfPagesImportFailed: 'Stránky se nepodařilo vložit.',
+  pdfPagesImportDamaged: 'Do poškozeného dokumentu nelze vložit stránky z jiného PDF.',
+  pdfPagesImportEncrypted: 'Do šifrovaného dokumentu nelze vložit stránky z jiného PDF.',
+  pdfPagesImportUntitled:
+    'Do nového dokumentu, který ještě nebyl uložen, nelze vkládat stránky. Nejprve ho uložte.',
+  pdfPagesImportReadOnly: 'Do dokumentu jen pro čtení nelze vkládat stránky.',
+  pdfPagesImportPickEncrypted:
+    'Vybrané PDF je chráněné heslem, jeho stránky proto nelze importovat.',
+  pdfPagesImportPickUnreadable: 'Vybraný soubor nelze přečíst jako PDF.',
+} as const satisfies Record<keyof typeof zh, string>
