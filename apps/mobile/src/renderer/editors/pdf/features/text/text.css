@@ -1,0 +1,187 @@
+/* Text box tool of the mobile PDF editor (track T2, PDF-T9). Chrome colors come from the
+   design tokens; the ink and paper of previews are document colors, not chrome. */
+
+.m-pdf-text-layer {
+  /* document content: default ink of a run whose own color is unknown */
+  --m-pdf-text-ink: #000;
+
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.m-pdf-text-catcher {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: auto;
+  /* one finger still scrolls the page; a pan cancels the tap */
+  touch-action: pan-x pan-y;
+  cursor: text;
+}
+
+.m-pdf-text-cover {
+  position: absolute;
+  z-index: 3;
+  background: var(--m-pdf-paper);
+  pointer-events: none;
+}
+
+.m-pdf-text-edit-preview {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: pre;
+  line-height: 1;
+  background: var(--m-pdf-paper);
+  color: var(--m-pdf-text-ink);
+}
+
+.m-pdf-text-insert-preview {
+  position: absolute;
+  z-index: 4;
+  min-width: 2px;
+  color: var(--m-pdf-text-ink);
+}
+
+.m-pdf-text-layer[data-active='true'] .m-pdf-text-edit-preview,
+.m-pdf-text-layer[data-active='true'] .m-pdf-text-insert-preview {
+  pointer-events: auto;
+  outline: 1px dashed var(--border-strong);
+  outline-offset: 1px;
+}
+
+.m-pdf-text-layer[data-active='true'] .m-pdf-text-insert-preview {
+  /* a pending insert is dragged to move it */
+  touch-action: none;
+}
+
+.m-pdf-text-insert-preview[data-moving] {
+  opacity: 0.72;
+}
+
+.m-pdf-text-draft {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  outline: 2px solid var(--color-btn-primary);
+  outline-offset: 2px;
+  background: var(--m-pdf-paper);
+  color: var(--m-pdf-text-ink);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  pointer-events: auto;
+}
+
+.m-pdf-text-draft[wrap='off'] {
+  white-space: pre;
+}
+
+.m-pdf-text-draft-cover {
+  z-index: 4;
+}
+
+/* ── secondary bar while typing (design system 5.4) ── */
+.m-pdf-text-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--m-z-toolbar);
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  height: var(--m-kbbar-h);
+  padding: 0 var(--m-space-2);
+  background: var(--m-surface-raised);
+  border-top: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.m-pdf-text-bar-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.m-pdf-text-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--m-hit);
+  height: var(--m-hit);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.m-pdf-text-btn[aria-pressed='true'],
+.m-pdf-text-btn[aria-checked='true'],
+.m-pdf-text-font-chip[aria-checked='true'] {
+  background: var(--active-bg);
+  color: var(--color-btn-primary);
+}
+
+.m-pdf-text-btn:disabled {
+  opacity: 0.4;
+}
+
+.m-pdf-text-btn-primary {
+  color: var(--color-btn-primary);
+}
+
+.m-pdf-text-btn-danger {
+  color: var(--danger);
+}
+
+.m-pdf-text-size {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.m-pdf-text-size-value {
+  min-width: 2.5em;
+  text-align: center;
+  font-size: var(--m-text-body-s);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.m-pdf-text-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--m-radius-full);
+  border: 1px solid var(--border-strong);
+}
+
+.m-pdf-text-swatch[data-document] {
+  outline: 2px dashed var(--border-strong);
+  outline-offset: 1px;
+}
+
+.m-pdf-text-font-chip {
+  flex: none;
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  white-space: nowrap;
+}
