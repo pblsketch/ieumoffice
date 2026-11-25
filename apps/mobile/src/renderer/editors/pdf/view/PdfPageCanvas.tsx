@@ -38,6 +38,16 @@ export interface PdfPageCanvasProps {
   readonly annotationMode?: number
 }
 
+/** Zero a canvas's backing store: iOS WebKit frees canvas memory only on GC otherwise. */
+function releaseCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = 0
+  canvas.height = 0
+}
+
+function releaseCanvases(holder: HTMLElement): void {
+  for (const canvas of holder.querySelectorAll('canvas')) releaseCanvas(canvas)
+}
+
 export function PdfPageCanvas({
   doc,
   pageNo,
@@ -51,6 +61,7 @@ export function PdfPageCanvas({
     const holder = holderRef.current
     if (!holder) return
     if (!rendered) {
+      releaseCanvases(holder)
       holder.replaceChildren()
       return
     }
@@ -76,11 +87,16 @@ export function PdfPageCanvas({
         try {
           await renderTask.promise
         } catch {
+          releaseCanvas(canvas)
           return // cancelled
         }
-        if (cancelled) return
+        if (cancelled) {
+          releaseCanvas(canvas)
+          return
+        }
         const textDiv = document.createElement('div')
         textDiv.className = 'textLayer'
+        releaseCanvases(holder)
         holder.replaceChildren(canvas, textDiv)
         // the text layer lets a long press select and copy the page's text
         const textLayer = new TextLayer({
