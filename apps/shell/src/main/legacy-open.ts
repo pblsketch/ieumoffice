@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { open } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 
 /**
@@ -42,10 +42,26 @@ export type LegacyConvertResult =
       error: string
     }
 
+const MAX_LEGACY_IMPORT_BYTES = 512 * 1024 * 1024
+
+async function readLegacySource(path: string): Promise<Uint8Array> {
+  const file = await open(path, 'r')
+  try {
+    const info = await file.stat()
+    if (!info.isFile()) throw new Error('Expected a regular file')
+    if (info.size > MAX_LEGACY_IMPORT_BYTES) {
+      throw new Error('File exceeds the 512 MB import limit')
+    }
+    return await file.readFile()
+  } finally {
+    await file.close()
+  }
+}
+
 /** Read and convert one legacy file; never throws for a file the converter refuses. */
 export async function convertLegacyFile(
   filePath: string,
-  read: (path: string) => Promise<Uint8Array> = readFile,
+  read: (path: string) => Promise<Uint8Array> = readLegacySource,
 ): Promise<LegacyConvertResult | null> {
   const editor = legacyEditorFor(filePath)
   if (!editor) return null

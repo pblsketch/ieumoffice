@@ -32,6 +32,7 @@ import {
   installWrapMeasureLifecycle,
   noteSidecarCrash,
 } from './univer-sync'
+import { installEditorScrollFollow } from './editor-scroll-follow'
 import { installGridGrowth } from './grid-growth'
 import { installAltEnterWrap } from './alt-enter-wrap'
 import {
@@ -523,6 +524,8 @@ import { installRichTextBidiFix } from './rich-text-bidi-fix'
 import { installHanjaCompositionRestart } from './hanja-composition-restart'
 import { installRtlTextDirectionFix } from './rtl-text-fix'
 import { installRtlGridMirror } from './rtl-grid-mirror'
+import { installGridlinePrecision } from './gridline-precision'
+import { installDeferredVerticalThumb } from './vertical-thumb-scroll'
 import { installVertAlignRender } from './vert-align-render'
 import { installMultiRowAutofit } from './autofit-multi-row'
 import { installDisjointLineRemoval } from './remove-disjoint-lines'
@@ -565,6 +568,8 @@ import { installFormulaNullResultFix } from './formula-null-result'
 import { installKoreanDateInput } from './korean-date-input'
 import { installNumberFormatFix } from './numfmt-fix'
 import { installIfsEmptySetFix } from './ifs-empty-set'
+import { installExcel365Aggregators } from './excel-365-aggregators'
+import { installExcel365Functions } from './excel-365-functions'
 import { installCriteriaCompareCacheFix } from './criteria-compare-cache'
 import { installRateFallback } from './rate-function'
 import {
@@ -579,7 +584,11 @@ import {
   type PrintPreviewHost,
   type PageLayoutContext,
 } from './page-layout-actions'
-import { handleExportCsv as handleExportCsvImpl, type CsvExportContext } from './csv-export'
+import {
+  csvNeutralizeFormulasEnabled,
+  handleExportCsv as handleExportCsvImpl,
+  type CsvExportContext,
+} from './csv-export'
 import {
   handleExportOds as handleExportOdsImpl,
   saveThenExportOds,
@@ -602,6 +611,7 @@ import {
   readChartVector as readChartVectorImpl,
   type VisualSyncContext,
 } from './visual-edit-sync'
+import { formulaResultSyncBounds } from './chart-sync-pending'
 import {
   frameChangeEdit,
   handleVisualCommand,
@@ -2365,6 +2375,9 @@ export function App({
     // the grid is sized to the data, so a blank sheet stops scrolling a few
     // columns past its last cell; this extends it ahead of the viewport
     const gridGrowthDispose = installGridGrowth(runtime)
+    // Univer places the open cell editor once; keep it on its cell while the
+    // grid scrolls (the bridge refresh is a no-op when no editor is open)
+    const editorScrollFollow = installEditorScrollFollow(runtime)
     // Load-time wrap-row measures queue until Univer's auto-height
     // interceptor exists (lifecycle Rendered).
     const wrapMeasureDisposable = installWrapMeasureLifecycle(runtime)
@@ -2422,7 +2435,9 @@ export function App({
     installRtlTextDirectionFix()
     // sheetView rightToLeft="1": mirror the grid geometry (column A on the
     // right, headers on the right) while keeping logical indices.
+    installGridlinePrecision()
     installRtlGridMirror()
+    installDeferredVerticalThumb()
     // Univer defines the right-to-left command/mutation pair but never
     // registers it; without this the View tab's toggle would silently no-op.
     installRightToLeftCommand(runtime)
@@ -2523,6 +2538,9 @@ export function App({
     const rateFallbackDisposable = installRateFallback(runtime)
     // MINIFS/MAXIFS over zero matching cells return 0, not blank.
     const ifsEmptySetDisposable = installIfsEmptySetFix(runtime)
+    // GROUPBY/PIVOTBY with Excel's bare-function argument shape.
+    const excel365AggregatorsDisposable = installExcel365Aggregators(runtime)
+    const excel365Disposable = installExcel365Functions(runtime)
     // Excel 2013-365 and Google Sheets compatibility functions omitted by Univer.
     const compatFunctionsDisposable = installCompatFunctions(runtime)
     // Repeated *IF(S) '=' compares on text columns survive the inverted-
@@ -2857,8 +2875,16 @@ export function App({
       (event) => {
         if (journalSuppression.active) return
         // The formula engine re-applies cached results with these execution
-        // options; they are derived state, never user edits.
+        // options; they are derived state, never user edits. They can still
+        // land inside a chart series' c:f range, so dirty those cells for the
+        // live chart sync (the user's own edit already queued its bounds).
         const options = event.options as { fromFormula?: boolean } | undefined
+        const resultSync = formulaResultSyncBounds(
+          { id: event.id, options, params: event.params },
+          (id) => id === SET_RANGE_VALUES_MUTATION,
+          cellValueBounds,
+        )
+        if (resultSync) queueChartDataSync(resultSync.sheetId, resultSync.bounds)
         if (options?.fromFormula) return
         // The copy finished (or failed); a stale source must not claim a
         // later, unrelated insert-sheet.
@@ -3824,6 +3850,7 @@ export function App({
       undoRedoSub.unsubscribe()
       findRevealDispose()
       gridGrowthDispose()
+      editorScrollFollow.dispose()
       wrapMeasureDisposable.dispose()
       templateFontRefreshDispose()
       prefersDark.removeEventListener('change', applyUniverDark)
@@ -3844,6 +3871,8 @@ export function App({
       cellFilenameDisposable.dispose()
       rateFallbackDisposable.dispose()
       ifsEmptySetDisposable.dispose()
+      excel365AggregatorsDisposable.dispose()
+      excel365Disposable.dispose()
       compatFunctionsDisposable.dispose()
       criteriaCompareCacheDisposable.dispose()
       formulaLexerFixDisposable.dispose()
@@ -5127,7 +5156,8 @@ export function App({
     loadWorkbookSkeleton(univerRef.current, selected)
     applyWorkbookNotes(univerRef.current, selected)
     threadStore.load(selected)
-    threadPane.close()
+    // a save reopens the same workbook: the user goes on with the comment they were on
+    if (!opts?.continueChat) threadPane.close()
     applyDefinedNames(univerRef.current, selected, state)
     const runtime = univerRef.current
     if (runtime) {
@@ -5392,7 +5422,9 @@ export function App({
     } else if (action === 'export-pdf') {
       void handleExportPdfImpl(pageLayoutContext())
     } else if (action === 'export-csv') {
-      void handleExportCsvImpl(csvExportContext())
+      void handleExportCsvImpl(csvExportContext(), undefined, {
+        neutralizeFormulas: csvNeutralizeFormulasEnabled(),
+      })
     } else if (action === 'export-ods') {
       void handleExportOdsImpl(odsExportContext())
     } else if (action === 'undo' || action === 'redo') {

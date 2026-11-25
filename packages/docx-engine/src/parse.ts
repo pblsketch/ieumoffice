@@ -4898,7 +4898,22 @@ function extractRuns(
             ? `#${anchor}`
             : ''
         const first = runs.length
-        walk(childrenOf(node), { href, rId, ...(tooltip ? { tooltip } : {}) }, rev)
+        const history = attrs['w:history']
+        const targetFrame = attrs['w:tgtFrame']
+        const docLocation = attrs['w:docLocation']
+        walk(
+          childrenOf(node),
+          {
+            href,
+            rId,
+            ...(rId && anchor !== undefined ? { anchor } : {}),
+            ...(rId && history !== undefined ? { history } : {}),
+            ...(targetFrame !== undefined ? { targetFrame } : {}),
+            ...(docLocation !== undefined ? { docLocation } : {}),
+            ...(tooltip ? { tooltip } : {}),
+          },
+          rev,
+        )
         // Word paints a bookmark link only through its character style: an
         // unstyled run (TOC entries under \h) keeps the paragraph's ink
         if (!rId && anchor) {
@@ -4917,6 +4932,7 @@ function extractRuns(
         pushRun({ ...(base ?? {}), text: control.glyph, sdtCheckboxXml: control.sdtPrXml }, rev)
       } else if (
         name === 'w:smartTag' ||
+        name === 'w:customXml' ||
         name === 'w:sdt' ||
         name === 'w:sdtContent' ||
         name === 'w:dir' ||
@@ -6057,9 +6073,19 @@ function extractCell(
       : undefined
     const emptyFont = markSized ? emptyParaMarkFont(p, pPr, ctx.themeFonts, spaceOnly) : undefined
     const markSz = cellRef ? markSizeOf(eff, pPr) : undefined
+    // bookmark anchors opening in the cell paragraph (REF/TOC targets): carried
+    // on the model like the body paragraphs' names so a cell rebuild re-emits
+    // them instead of silently dropping the anchor its REF fields point at
+    const cellBookmarkNames = hasDeepChild(p, new Set(['w:bookmarkStart']))
+      ? bookmarkNamesOf(serializeXNode(p))
+      : { bookmarks: undefined, hiddenBookmarks: undefined }
     richParas.push({
       ...format,
       ...(cellStyleId ? { styleId: cellStyleId } : {}),
+      ...(cellBookmarkNames.bookmarks ? { bookmarks: cellBookmarkNames.bookmarks } : {}),
+      ...(cellBookmarkNames.hiddenBookmarks
+        ? { hiddenBookmarks: cellBookmarkNames.hiddenBookmarks }
+        : {}),
       ...(emptySz ? { emptyRunSizeHalfPoints: emptySz } : {}),
       ...(emptyFont ? { emptyRunFontFamily: emptyFont } : {}),
       ...(markSz ? { markSizeHalfPoints: markSz } : {}),

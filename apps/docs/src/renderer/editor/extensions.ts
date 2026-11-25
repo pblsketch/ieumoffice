@@ -3550,6 +3550,8 @@ export const DocTable = Node.create({
       /** explicit dxa w:tblW: a left-aligned table holds its declared width like a fixed layout */
       tblDxaWidth: { default: false },
       indentTwips: { default: null as number | null },
+      /** w:tblInd was edited (AutoFit Window resets it): the save writes indentTwips */
+      tblIndentEdited: { default: false },
       tblStyleId: { default: null as string | null },
       tblLook: { default: null as Record<string, boolean> | null },
       tblLookEdited: { default: false },
@@ -6418,8 +6420,9 @@ function imageResizePlugin(): Plugin {
             const lockH = !isChart && isStraightLineKind(boxes![0].prst)
             const minW = isChart ? 120 : 24
             const minH = isChart ? 80 : 8
-            // charts never draw wider than the render cap, so don't let the model exceed it
-            const maxW = isChart ? CHART_MAX_WIDTH_PX : Infinity
+            // the resize UI caps at the render cap, but a chart authored wider
+            // than it (its extent is honored now) must not snap down mid-drag
+            const maxW = isChart ? Math.max(CHART_MAX_WIDTH_PX, chart?.widthPx ?? 0) : Infinity
             const sizeAt = (e: MouseEvent) => ({
               w: Math.min(maxW, Math.max(minW, startW + (e.clientX - startX) / zoom)),
               h: lockH ? startH : Math.max(minH, startH + (e.clientY - startY) / zoom),

@@ -333,6 +333,7 @@ const lastSlidePaste = new Map<number, { afterIndex: number; undoLen: number; ch
 // by slides:local-page-generate are readable (the renderer can't point the reader at arbitrary files)
 const CLOUD_PAGE_PREFIX = 'cloudpptx:'
 const issuedCloudPages = new Set<string>()
+import { isSlidesScreenRecordingSource } from './display-media-gate'
 import { registerPresenterIpc } from './presenter-show'
 import { registerAttachmentIpc } from './attachments-ipc'
 import { registerGenerateHandoffIpc } from './generate-handoff-ipc'
@@ -1687,7 +1688,11 @@ export function registerSlidesIpc(): void {
     })
     try {
       electronSession.defaultSession.setDisplayMediaRequestHandler(
-        (_request, callback) => {
+        (request, callback) => {
+          if (!isSlidesScreenRecordingSource(request.frame?.url, runtime.rendererDevUrl)) {
+            callback({})
+            return
+          }
           desktopCapturer
             .getSources({ types: ['screen', 'window'] })
             .then((sources) => {

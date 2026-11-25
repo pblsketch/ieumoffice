@@ -173,6 +173,8 @@ const XLFN_FUNCTIONS = new Set([
   'WRAPROWS',
   'XLOOKUP',
   'XMATCH',
+  'ARRAYTOTEXT',
+  'VALUETOTEXT',
   // Storage forms of the @ implicit-intersection and # spill operators.
   'SINGLE',
   'ANCHORARRAY',
@@ -196,6 +198,7 @@ const SPILL_FUNCTIONS = new Set([
   'MAP',
   'PIVOTBY',
   'RANDARRAY',
+  'REGEXEXTRACT',
   'SCAN',
   'SEQUENCE',
   'SORT',

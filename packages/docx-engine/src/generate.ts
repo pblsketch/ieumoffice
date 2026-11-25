@@ -704,13 +704,13 @@ function patchCellXml(tcXml: string, paras: readonly CellParaPatch[]): string | 
   const body = paras
     .map((entry, i) => {
       if (entry === null) return originals[i] ?? ''
+      const template = originals[Math.min(i, originals.length - 1)] ?? ''
+      const bookmarks = aligned ? cellBookmarkEdges(template) : { before: '', after: '' }
       if (typeof entry === 'string') {
         const keep = i === 0 ? drawingRuns : ''
-        return entry === ''
-          ? `<w:p>${firstPPr}${keep}</w:p>`
-          : `<w:p>${firstPPr}<w:r>${rPr}${cellRunContentXml(entry)}</w:r>${keep}</w:p>`
+        const runs = entry === '' ? '' : `<w:r>${rPr}${cellRunContentXml(entry)}</w:r>`
+        return `<w:p>${firstPPr}${bookmarks.before}${runs}${keep}${bookmarks.after}</w:p>`
       }
-      const template = originals[Math.min(i, originals.length - 1)] ?? ''
       const pPr = entry.format
         ? mergeCellParaFormat(pPrOf(template), entry.format, entry.original)
         : pPrOf(template)
@@ -721,10 +721,27 @@ function patchCellXml(tcXml: string, paras: readonly CellParaPatch[]): string | 
         : i === 0
           ? originals.map((p) => carriedRunsOf(p, emittedMedia)).join('')
           : ''
-      return `<w:p>${pPr}${emitted}${keep}</w:p>`
+      return `<w:p>${pPr}${bookmarks.before}${emitted}${keep}${bookmarks.after}</w:p>`
     })
     .join('')
   return openTag + tcPr + body + '</w:tc>'
+}
+
+function cellBookmarkEdges(paragraph: string): { before: string; after: string } {
+  let before = ''
+  let after = ''
+  if (!paragraph.includes('<w:bookmark')) return { before, after }
+  const children = splitXmlChildren(paragraph.slice(paragraph.indexOf('>') + 1, -'</w:p>'.length))
+  let reachedContent = false
+  for (const child of children) {
+    if (child.name === 'w:bookmarkStart' || child.name === 'w:bookmarkEnd') {
+      if (reachedContent) after += child.xml
+      else before += child.xml
+    } else if (child.name !== 'w:pPr') {
+      reachedContent = true
+    }
+  }
+  return { before, after }
 }
 
 /** cell paragraph texts carry tabs/breaks as control chars (extractRuns encoding);
@@ -1045,7 +1062,7 @@ function injectShapeText(
       const bodyPrAt = shapeXml.search(/<wps:bodyPr[\s/>]/)
       shapeXml =
         bodyPrAt === -1
-          ? shapeXml.replace('</wps:wsp>', `${txbx}<wps:bodyPr anchor="ctr"/></wps:wsp>`)
+          ? shapeXml.replace('</wps:wsp>', () => `${txbx}<wps:bodyPr anchor="ctr"/></wps:wsp>`)
           : shapeXml.slice(0, bodyPrAt) +
             txbx +
             shapeXml
@@ -2361,11 +2378,14 @@ export function generateParagraphXml(block: GeneratedBlock, ctx: GenerateContext
  */
 let standaloneBookmarkSeq = 0
 
-function bookmarksXml(ctx: GenerateContext, names: string[] | undefined): string {
+function bookmarksXml(
+  ctx: Pick<GenerateContext, 'allocateBookmarkId'> | null,
+  names: string[] | undefined,
+): string {
   if (!names?.length) return ''
   return names
     .map((name) => {
-      const id = ctx.allocateBookmarkId?.(name) ?? ++standaloneBookmarkSeq
+      const id = ctx?.allocateBookmarkId?.(name) ?? ++standaloneBookmarkSeq
       return `<w:bookmarkStart w:id="${id}" w:name="${escapeXmlAttr(name)}"/><w:bookmarkEnd w:id="${id}"/>`
     })
     .join('')
@@ -2486,6 +2506,7 @@ function tableCellXml(
   cell: TableCell,
   width: number,
   verticalMerge?: 'restart' | 'continue',
+  ctx?: Pick<GenerateContext, 'allocateBookmarkId'>,
 ): string {
   // Surgical rawTcPr patch: modeled children are replaced/inserted in schema order;
   // unmodeled ones (tcMar/textDirection/noWrap…) keep their original bytes
@@ -2556,8 +2577,17 @@ function tableCellXml(
     // (rich paragraphs carry their own align; the plain-paras fallback above sets it).
     // The parsed format, not just w:jc: hand-building the pPr here dropped w:bidi and
     // discarded every other paragraph property the model carries.
-    const pPr = mergePPrFormat(`<w:pPr>${numPr}</w:pPr>`, paragraph)
-    return `<w:p>${pPr}${runsXml(paragraph.runs, null)}</w:p>`
+    const styleId = 'styleId' in paragraph ? paragraph.styleId : undefined
+    const pStyle = styleId ? `<w:pStyle w:val="${escapeXmlAttr(styleId)}"/>` : ''
+    const pPr = mergePPrFormat(`<w:pPr>${pStyle}${numPr}</w:pPr>`, paragraph)
+    // the cell's bookmark anchors ride the rebuilt paragraph: a caller writing
+    // into an existing document supplies the document's allocator, whose ids
+    // never collide with the bookmarks the untouched blocks keep (REF fields
+    // match by name, but bookmarkStart / bookmarkEnd pair by id)
+    const anchors =
+      ('hiddenBookmarks' in paragraph ? bookmarksXml(ctx ?? null, paragraph.hiddenBookmarks) : '') +
+      ('bookmarks' in paragraph ? bookmarksXml(ctx ?? null, paragraph.bookmarks) : '')
+    return `<w:p>${pPr}${anchors}${runsXml(paragraph.runs, null)}</w:p>`
   })
   // nested tables are regenerated from the model at their paragraph anchors (reverse
   // insertion keeps anchor indexes valid); OOXML requires tc to end with w:p
@@ -2565,7 +2595,7 @@ function tableCellXml(
   const items = paraXmls.map((xml) => ({ tbl: false, xml }))
   for (let i = nested.length - 1; i >= 0; i--) {
     const at = Math.min(cell.nestedTableAnchors?.[i] ?? paraXmls.length, paraXmls.length)
-    items.splice(at, 0, { tbl: true, xml: generateTableModelXml(nested[i]) })
+    items.splice(at, 0, { tbl: true, xml: generateTableModelXml(nested[i], undefined, ctx) })
   }
   const tail = items.length === 0 || items[items.length - 1].tbl ? '<w:p/>' : ''
   const content = items.map((item) => item.xml).join('')
@@ -2642,7 +2672,11 @@ function originalTblPrOf(tableXml: string): string | undefined {
     ?.xml
 }
 
-export function generateTableModelXml(model: TableModel, originalTableXml?: string): string {
+export function generateTableModelXml(
+  model: TableModel,
+  originalTableXml?: string,
+  ctx?: Pick<GenerateContext, 'allocateBookmarkId'>,
+): string {
   // the widest row decides the column count; folding it in a loop keeps the
   // argument count off the call (a spread here blew the stack past ~125k rows)
   let columnCount = Math.max(1, model.colWidthsPct?.length ?? 0)
@@ -2718,7 +2752,7 @@ export function generateTableModelXml(model: TableModel, originalTableXml?: stri
           }
           continue
         }
-        cells.push(tableCellXml(cell, width))
+        cells.push(tableCellXml(cell, width, undefined, ctx))
       }
       // trPr: original bytes passed through (tblHeader/cantSplit etc.); row height is
       // replaced/inserted/removed per the model
@@ -2851,6 +2885,12 @@ export function generateTableModelXml(model: TableModel, originalTableXml?: stri
       'w:tblLayout',
       `<w:tblLayout w:type="${effectiveAutoFit === 'fixed' ? 'fixed' : 'autofit'}"/>`,
     )
+  }
+  // an edited indent replaces the original w:tblInd; AutoFit Window resets it to
+  // zero, and Word then drops the element (probe 2026-11-23)
+  if (originalTblPr && model.indentTwips !== undefined) {
+    const ind = Math.round(model.indentTwips)
+    tblPr = setTblPrChild(tblPr, 'w:tblInd', ind ? `<w:tblInd w:w="${ind}" w:type="dxa"/>` : null)
   }
   if (model.cellMarTwips !== undefined) {
     tblPr = setTblPrChild(tblPr, 'w:tblCellMar', cellMar || null)
@@ -3160,8 +3200,16 @@ function runsXml(
         const group: Run[] = []
         const groupStart = i
         const href = run.link.href
+        const { anchor, history, targetFrame, docLocation } = run.link
         let rId = run.link.rId
-        while (i < to && runs[i].link && runs[i].link!.href === href) {
+        while (
+          i < to &&
+          runs[i].link?.href === href &&
+          runs[i].link?.anchor === anchor &&
+          runs[i].link?.history === history &&
+          runs[i].link?.targetFrame === targetFrame &&
+          runs[i].link?.docLocation === docLocation
+        ) {
           const next = runs[i].link!.rId
           if (group.length > 0 && next !== undefined && rId !== undefined && next !== rId) break
           rId = rId ?? next
@@ -3172,17 +3220,24 @@ function runsXml(
         for (let j = groupStart; j < i; j++) parts.push(startsAt(j))
         const tooltip = group[0]?.link?.tooltip
         const tipAttr = tooltip ? ` w:tooltip="${escapeXmlAttr(tooltip)}"` : ''
+        const frameAttr =
+          targetFrame === undefined ? '' : ` w:tgtFrame="${escapeXmlAttr(targetFrame)}"`
+        const locationAttr =
+          docLocation === undefined ? '' : ` w:docLocation="${escapeXmlAttr(docLocation)}"`
         if (href.startsWith('#')) {
           const inner = group.map((r) => runFragmentXml(r, true)).join('')
           parts.push(
-            `<w:hyperlink w:anchor="${escapeXmlAttr(href.slice(1))}"${tipAttr}>${inner}</w:hyperlink>`,
+            `<w:hyperlink w:anchor="${escapeXmlAttr(href.slice(1))}"${tipAttr}${frameAttr}${locationAttr}>${inner}</w:hyperlink>`,
           )
         } else {
           const finalRId = rId ?? allocate?.(href)
           if (finalRId) {
+            const anchorAttr = anchor === undefined ? '' : ` w:anchor="${escapeXmlAttr(anchor)}"`
+            const historyAttr =
+              history === undefined ? '' : ` w:history="${escapeXmlAttr(history)}"`
             const inner = group.map((r) => runFragmentXml(r, true)).join('')
             parts.push(
-              `<w:hyperlink r:id="${escapeXmlAttr(finalRId)}"${tipAttr}>${inner}</w:hyperlink>`,
+              `<w:hyperlink r:id="${escapeXmlAttr(finalRId)}"${anchorAttr}${tipAttr}${historyAttr}${frameAttr}${locationAttr}>${inner}</w:hyperlink>`,
             )
           } else {
             parts.push(group.map((r) => runFragmentXml(r, false)).join(''))
@@ -3639,14 +3694,23 @@ function modelRPrChildren(run: Run, insideLink: boolean): PPrChild[] {
     })
   }
   // the Cs twins carry the same flag for complex-script text; without them clicking Bold
-  // on Arabic or Hebrew changes nothing on screen, which is what Word writes too
-  if (run.bold) {
-    out.push({ name: 'w:b', xml: '<w:b/>' }, { name: 'w:bCs', xml: '<w:bCs/>' })
+  // on Arabic or Hebrew changes nothing on screen, which is what Word writes too.
+  // Explicit false is written as val="0": a run whose paragraph rides a style
+  // that turns the toggle on must be able to state its own off.
+  if (run.bold !== undefined) {
+    out.push(
+      { name: 'w:b', xml: run.bold ? '<w:b/>' : '<w:b w:val="0"/>' },
+      { name: 'w:bCs', xml: run.bold ? '<w:bCs/>' : '<w:bCs w:val="0"/>' },
+    )
   }
-  if (run.italic) {
-    out.push({ name: 'w:i', xml: '<w:i/>' }, { name: 'w:iCs', xml: '<w:iCs/>' })
+  if (run.italic !== undefined) {
+    out.push(
+      { name: 'w:i', xml: run.italic ? '<w:i/>' : '<w:i w:val="0"/>' },
+      { name: 'w:iCs', xml: run.italic ? '<w:iCs/>' : '<w:iCs w:val="0"/>' },
+    )
   }
-  if (run.strike) out.push({ name: 'w:strike', xml: '<w:strike/>' })
+  if (run.strike !== undefined)
+    out.push({ name: 'w:strike', xml: run.strike ? '<w:strike/>' : '<w:strike w:val="0"/>' })
   if (run.caps === 'all') out.push({ name: 'w:caps', xml: '<w:caps/>' })
   else if (run.caps === 'small') out.push({ name: 'w:smallCaps', xml: '<w:smallCaps/>' })
   else if (run.caps === 'none') {

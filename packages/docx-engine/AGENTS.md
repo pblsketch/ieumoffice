@@ -53,7 +53,8 @@ docx 한 파일의 읽기와 쓰기 전부를 맡는다.
 
 ## 원본과 다른 점 (결정 0092)
 
-- 결정 0092의 네 수정(머리글·꼬리말의 `SECTIONPAGES`, 직접 만든 스타일의 목차 줄, 쪽 기준 도형의 감싸기, 대체 글꼴)은 원본 #2364로 원본에 들어갔다.
+- 결정 0092의 네 수정(머리글·꼬리말의 `SECTIONPAGES`, 직접 만든 스타일의 목차 줄, 쪽 기준 도형의 감싸기, 대체 글꼴)은 원본 #2364로 원본에 들어갔다. 그 시험(`tests/hf-section-pages.test.ts`, `tests/field-display.test.ts`, `tests/page-anchored-wrap.test.ts`, `tests/wrap-topbottom-band.test.ts`)은 원본의 것으로 남는다.
+- 원본 #2810을 받아온 뒤, 같은 개수의 표 셀 문단에서 글자를 바꿀 때 기존 책갈피 태그와 ID를 유지한다. ODT 변환용 DOCX는 숨은 책갈피로 문단을 식별하므로 이 태그가 빠지면 저장 뒤 편집기 화면과 되돌리기 기록을 다시 만든다. `tests/table-cell-anchors.test.ts`와 `apps/docs/tests/odt-open-save.test.ts`가 지킨다.
 - **워터마크·그림 투명도 파싱(표시 전용, 저장·왕복 바이트 무변경)**:
   - `types.ts`: `ImageEffects.alpha`(DrawingML `a:alphaModFix`·VML 불투명도), `HfImage.effects`(머리글·꼬리말 DrawingML 재색상·투명도).
   - `parse-vml.ts`: `vmlFraction`이 백분율 표기(`50%`, `30%`)를 읽는다.

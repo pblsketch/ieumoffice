@@ -115,6 +115,10 @@ export const LinkMark = Mark.create({
     return {
       href: { default: '' },
       rId: { default: null as string | null },
+      anchor: { default: null as string | null },
+      history: { default: null as string | null },
+      targetFrame: { default: null as string | null },
+      docLocation: { default: null as string | null },
       tooltip: { default: null as string | null },
       plain: { default: false },
     }

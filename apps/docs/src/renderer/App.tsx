@@ -8650,6 +8650,7 @@ export function App() {
 
       {doc && showPrintDialog && (
         <PrintDialog
+          editor={editor}
           onClose={closePrintDialog}
           setStatus={setStatus}
           docName={doc.fileName}

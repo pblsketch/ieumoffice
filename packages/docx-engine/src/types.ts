@@ -148,7 +148,16 @@ export interface Run {
   em?: 'dot' | 'comma' | 'circle' | 'underDot'
   /** hyperlink info; rId references an existing relationship in the original docx.
    *  plain: unstyled run of a bookmark link (Word shows it in the paragraph's ink) */
-  link?: { href: string; rId?: string; tooltip?: string; plain?: boolean }
+  link?: {
+    href: string
+    rId?: string
+    anchor?: string
+    history?: string
+    targetFrame?: string
+    docLocation?: string
+    tooltip?: string
+    plain?: boolean
+  }
   /**
    * ids of comments whose range covers this run. Only set when the whole
    * commentRangeStart..End pair lives inside the same paragraph, so an edited
@@ -1449,6 +1458,10 @@ export interface TableParagraph extends ParaFormat {
   runs: Run[]
   /** w:pStyle of the cell paragraph (style CSS: fonts/spacing reach cell content) */
   styleId?: string
+  /** bookmark names whose w:bookmarkStart/End sit in the cell paragraph (REF/TOC anchors) */
+  bookmarks?: string[]
+  /** _-prefixed Word-internal bookmark names (_Ref/_Toc/_Hlk), re-emitted for the same reason */
+  hiddenBookmarks?: string[]
   /** list paragraph inside the cell (w:numPr) */
   list?: { kind: 'bullet' | 'ordered'; numId: string; ilvl: number }
 }

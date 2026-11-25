@@ -531,7 +531,7 @@ const noteRectsClose = (a: readonly number[], b: readonly number[]): boolean =>
   Math.abs(Math.min(a[0]!, a[2]!) - Math.min(b[0]!, b[2]!)) <= NOTE_RECT_TOL &&
   Math.abs(Math.max(a[1]!, a[3]!) - Math.max(b[1]!, b[3]!)) <= NOTE_RECT_TOL
 
-/** Locate the saved Text annotation a reply points at (/IRT target). Earlier pdfium
+/** Locate the saved comment annotation a reply points at (/IRT target). Earlier pdfium
     stages may have renumbered objects, so candidates match by rect + contents; the
     object-number hint only breaks ties between identical-looking notes. */
 function findNoteAnnotRef(
@@ -546,7 +546,14 @@ function findNoteAnnotRef(
     const ref = annots.get(i)
     if (!(ref instanceof PDFRef)) continue
     const dict = pdfDoc.context.lookupMaybe(ref, PDFDict)
-    if (!dict || dict.lookupMaybe(PDFName.of('Subtype'), PDFName) !== PDFName.of('Text')) continue
+    const subtype = {
+      note: 'Text',
+      highlight: 'Highlight',
+      underline: 'Underline',
+      squiggly: 'Squiggly',
+      strikeout: 'StrikeOut',
+    }[target.subtype ?? 'note']
+    if (!dict || dict.lookupMaybe(PDFName.of('Subtype'), PDFName) !== PDFName.of(subtype)) continue
     const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray)
     if (!rectArr || rectArr.size() !== 4) continue
     const rect: number[] = []
@@ -554,7 +561,24 @@ function findNoteAnnotRef(
       const v = rectArr.lookupMaybe(j, PDFNumber)
       if (v) rect.push(v.asNumber())
     }
-    if (rect.length !== 4 || !noteRectsClose(rect, target.rect)) continue
+    if (rect.length !== 4) continue
+    const sameRect =
+      !target.subtype || target.subtype === 'note'
+        ? noteRectsClose(rect, target.rect)
+        : rect.every((value, index) => Math.abs(value - target.rect[index]!) <= NOTE_RECT_TOL)
+    if (target.quadPoints?.length) {
+      if (target.quadPoints.some((value) => !Number.isFinite(value))) continue
+      const quads = dict.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)
+      if (
+        !quads ||
+        quads.size() !== target.quadPoints.length ||
+        target.quadPoints.some((value, index) => {
+          const point = quads.lookupMaybe(index, PDFNumber)
+          return !point || Math.abs(point.asNumber() - value) > NOTE_RECT_TOL
+        })
+      )
+        continue
+    } else if (!sameRect) continue
     const contents = dict.lookup(PDFName.of('Contents'))
     const text =
       contents instanceof PDFString || contents instanceof PDFHexString ? contents.decodeText() : ''
@@ -1457,7 +1481,7 @@ function finalPageIndex(request: SavePdfRequest, p: number): number | null {
     const i = request.pageOrder.indexOf(p)
     return i >= 0 ? i : null
   }
-  const del = request.deletedPages ?? []
+  const del = [...new Set(request.deletedPages ?? [])]
   if (del.includes(p)) return null
   return p - del.filter((d) => d < p).length
 }
@@ -1802,6 +1826,8 @@ export async function applySaveRequest(
     if (!page) continue
     const ref = findNoteAnnotRef(pdfDoc, page, {
       objNum: e.objNum,
+      subtype: e.subtype,
+      quadPoints: e.quadPoints,
       rect: e.rect,
       contents: e.oldContents,
     })
@@ -1839,7 +1865,7 @@ export async function applySaveRequest(
     page.node.delete(PDFName.of('PieceInfo'))
   }
   // Deletions go last, in descending order; earlier ops all address original page indices
-  for (const idx of [...(request.deletedPages ?? [])].sort((a, b) => b - a)) {
+  for (const idx of [...new Set(request.deletedPages ?? [])].sort((a, b) => b - a)) {
     if (idx >= 0 && idx < pdfDoc.getPageCount() && pdfDoc.getPageCount() > 1) pdfDoc.removePage(idx)
   }
   // Reorder last: pageOrder gives the new order of remaining-after-delete pages by original index.
@@ -1848,11 +1874,22 @@ export async function applySaveRequest(
   const order = request.pageOrder
   if (order && order.length > 0) {
     const deletedSet = new Set(request.deletedPages ?? [])
-    const target = order
-      .filter((o) => !deletedSet.has(o))
-      .map((o) => pages[o])
-      .filter((p) => p !== undefined)
-    if (target.length === pdfDoc.getPageCount()) {
+    const surviving = order.filter((o) => !deletedSet.has(o))
+    if (surviving.length > 0) {
+      // a non-empty order must be a permutation of the pages that survive the
+      // deletion: with only the length checked, a duplicate index passed the
+      // guard and the rebuild replaced an omitted page with a copy of another
+      // one — real content gone, no failure indicated. The request fails
+      // instead of writing. An empty surviving list stays the guarded
+      // last-page skip (deleting every page keeps one no order can address).
+      const inRange = surviving.every((o) => Number.isInteger(o) && o >= 0 && o < pages.length)
+      const unique = new Set(surviving).size === surviving.length
+      if (!inRange || !unique || surviving.length !== pdfDoc.getPageCount()) {
+        throw new Error(
+          `pageOrder must be a permutation of the surviving pages (${pdfDoc.getPageCount()} of ${pages.length}); got [${order.join(', ')}]`,
+        )
+      }
+      const target = surviving.map((o) => pages[o]!)
       while (pdfDoc.getPageCount() > 0) pdfDoc.removePage(0)
       for (const p of target) pdfDoc.addPage(p)
     }

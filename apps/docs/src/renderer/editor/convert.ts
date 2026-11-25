@@ -21,6 +21,7 @@ import {
   type TextboxSizePatch,
   patchTextboxParas,
   generateTableModelXml,
+  nextBookmarkIdAllocator,
   symbolGlyph,
   symbolPuaChar,
   type Block,
@@ -1207,12 +1208,21 @@ function cellContentNodes(cell: TableCell): PmNode[] {
   ).map((paragraph) => {
     const list = 'list' in paragraph ? paragraph.list : undefined
     const styleId = ('styleId' in paragraph ? paragraph.styleId : undefined) ?? null
+    // bookmark names ride the paragraph attrs so pmTableToModel can carry them
+    // back into the save model (the regenerated cell XML re-emits the anchors)
+    const bookmarks = 'bookmarks' in paragraph ? paragraph.bookmarks : undefined
+    const hiddenBookmarks = 'hiddenBookmarks' in paragraph ? paragraph.hiddenBookmarks : undefined
+    const bookmarkAttrs = {
+      ...(bookmarks?.length ? { bookmarks } : {}),
+      ...(hiddenBookmarks?.length ? { hiddenBookmarks } : {}),
+    }
     return list
       ? {
           type: 'docListItem',
           attrs: {
             ...formatAttrs(paragraph, paragraph.runs),
             styleId,
+            ...bookmarkAttrs,
             kind: list.kind,
             numId: list.numId,
             ilvl: list.ilvl,
@@ -1221,7 +1231,7 @@ function cellContentNodes(cell: TableCell): PmNode[] {
         }
       : {
           type: 'docParagraph',
-          attrs: { ...formatAttrs(paragraph, paragraph.runs), styleId },
+          attrs: { ...formatAttrs(paragraph, paragraph.runs), styleId, ...bookmarkAttrs },
           content: runsToInline(paragraph.runs),
         }
   })
@@ -1336,6 +1346,9 @@ export function tableFormattingSignature(table: PmNode): string {
       (row.content ?? []).map((cell) =>
         (cell.content ?? []).map((paragraph) => [
           normalizedFormat(nodeFormat(paragraph)),
+          // a style-only edit must regenerate too: without this the
+          // unchanged-formatting path would freeze the paragraph's old style
+          paragraph.attrs?.styleId ?? null,
           // list toggles must force regeneration (the text patch keeps old pPr)
           paragraph.type === 'docListItem'
             ? [paragraph.attrs?.kind, paragraph.attrs?.numId, paragraph.attrs?.ilvl]
@@ -1548,19 +1561,30 @@ export function pmTableToModel(table: PmNode): TableModel {
         cell: {
           ...style,
           paras: cellParas.map(paragraphText),
-          richParas: cellParas.map((paragraph) => ({
-            ...nodeFormat(paragraph),
-            ...(paragraph.type === 'docListItem' && paragraph.attrs?.numId
-              ? {
-                  list: {
-                    kind: (paragraph.attrs.kind as 'bullet' | 'ordered') ?? 'bullet',
-                    numId: String(paragraph.attrs.numId),
-                    ilvl: Number(paragraph.attrs.ilvl) || 0,
-                  },
-                }
-              : {}),
-            runs: inlineToRuns(paragraph.content ?? []),
-          })),
+          richParas: cellParas.map((paragraph) => {
+            const bookmarks = nodeBookmarks(paragraph, 'bookmarks')
+            const hiddenBookmarks = nodeBookmarks(paragraph, 'hiddenBookmarks')
+            return {
+              ...nodeFormat(paragraph),
+              // the cell paragraph's w:pStyle rides along (generate.ts writes it
+              // back); without it a style-only edit is lost on regeneration
+              ...(paragraph.attrs?.styleId ? { styleId: String(paragraph.attrs.styleId) } : {}),
+              // bookmark names opening inside the cell paragraph (REF/TOC anchors
+              // would otherwise disappear when the cell rebuilds)
+              ...(bookmarks?.length ? { bookmarks } : {}),
+              ...(hiddenBookmarks?.length ? { hiddenBookmarks } : {}),
+              ...(paragraph.type === 'docListItem' && paragraph.attrs?.numId
+                ? {
+                    list: {
+                      kind: (paragraph.attrs.kind as 'bullet' | 'ordered') ?? 'bullet',
+                      numId: String(paragraph.attrs.numId),
+                      ilvl: Number(paragraph.attrs.ilvl) || 0,
+                    },
+                  }
+                : {}),
+              runs: inlineToRuns(paragraph.content ?? []),
+            }
+          }),
           ...(nestedModels.length > 0
             ? { nestedTables: nestedModels, nestedTableAnchors: nestedAnchors }
             : {}),
@@ -1691,6 +1715,9 @@ export function pmTableToModel(table: PmNode): TableModel {
     ...(table.attrs?.tblAlign ? { align: table.attrs.tblAlign as TableModel['align'] } : {}),
     ...(tablePropsEdited('tblAutoFitEdited')
       ? { autoFit: table.attrs?.tblAutoFit as NonNullable<TableModel['autoFit']> }
+      : {}),
+    ...(tablePropsEdited('tblIndentEdited') && !isNew
+      ? { indentTwips: Number(table.attrs?.indentTwips) || 0 }
       : {}),
     ...(tablePropsEdited('cellMarEdited') && table.attrs?.cellMar
       ? { cellMarTwips: table.attrs.cellMar as NonNullable<TableModel['cellMarTwips']> }
@@ -1835,6 +1862,10 @@ function runMarks(run: Run): PmMark[] {
       attrs: {
         href: run.link.href,
         rId: run.link.rId ?? null,
+        anchor: run.link.anchor ?? null,
+        history: run.link.history ?? null,
+        targetFrame: run.link.targetFrame ?? null,
+        docLocation: run.link.docLocation ?? null,
         tooltip: run.link.tooltip ?? null,
         plain: run.link.plain === true,
       },
@@ -2173,6 +2204,18 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
     if (!block.hidden && block.docxIndex !== null) originalByIndex.set(block.docxIndex, block)
   }
 
+  // A rebuilt table's cell bookmark anchors get ids from the document's own
+  // allocator, seeded past every id the untouched blocks keep — the engine's
+  // process-level counter does not know the document, and a colliding id makes
+  // Word pair bookmarkStart / bookmarkEnd across the wrong anchors. The save's
+  // generated paragraphs seed past these too (the engine reads them off the
+  // pre-rendered blocks), so one save never mints the same id twice.
+  const tableBookmarkCtx = {
+    allocateBookmarkId: nextBookmarkIdAllocator(
+      originalBlocks.map((b) => b.originalXml ?? '').join(''),
+    ),
+  }
+
   // Mixed-encoding guard: parse compresses wild producer relativeHeight values
   // (LibreOffice writes 1, 2, …) to compact ranks, but the raw XML keeps the
   // wild bytes. Word paints by the raw value, so rewriting ONE anchor to the
@@ -2328,12 +2371,12 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
           changedCount++
           pushBlock({
             kind: 'xml',
-            xml: generateTableModelXml(model, original.originalXml ?? undefined),
+            xml: generateTableModelXml(model, original.originalXml ?? undefined, tableBookmarkCtx),
           })
         }
       } else {
         changedCount++
-        pushBlock({ kind: 'xml', xml: generateTableModelXml(model) })
+        pushBlock({ kind: 'xml', xml: generateTableModelXml(model, undefined, tableBookmarkCtx) })
       }
       continue
     }
@@ -3826,6 +3869,14 @@ function runFromMarks(text: string, marks: PmMark[]): Run {
       run.link = {
         href: String(mark.attrs?.href ?? ''),
         rId: (mark.attrs?.rId as string) ?? undefined,
+        ...(typeof mark.attrs?.anchor === 'string' ? { anchor: mark.attrs.anchor } : {}),
+        ...(typeof mark.attrs?.history === 'string' ? { history: mark.attrs.history } : {}),
+        ...(typeof mark.attrs?.targetFrame === 'string'
+          ? { targetFrame: mark.attrs.targetFrame }
+          : {}),
+        ...(typeof mark.attrs?.docLocation === 'string'
+          ? { docLocation: mark.attrs.docLocation }
+          : {}),
         tooltip: (mark.attrs?.tooltip as string) ?? undefined,
         ...(mark.attrs?.plain ? { plain: true } : {}),
       }
@@ -3989,6 +4040,10 @@ function runStyleKey(run: Run): string {
     run.vertAlign ?? null,
     run.link?.href ?? null,
     run.link?.rId ?? null,
+    run.link?.anchor ?? null,
+    run.link?.history ?? null,
+    run.link?.targetFrame ?? null,
+    run.link?.docLocation ?? null,
     run.commentIds?.join(' ') ?? null,
     revisionKey(run),
     run.noteRef ? [run.noteRef.kind, run.noteRef.id] : null,

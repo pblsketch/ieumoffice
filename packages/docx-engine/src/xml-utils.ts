@@ -37,10 +37,23 @@ export function attrsOf(node: XNode): Record<string, string> {
 }
 
 export function textOf(node: XNode): string {
+  // Iterative on purpose: deepXmlParser legitimately builds very deep trees
+  // (POI stress files nest 5000 table levels — see deepXmlParser's note), and
+  // fxp builds those iteratively, so the walk must not re-introduce a
+  // per-level stack frame or hostile depth kills us where the parser held.
   let out = ''
-  for (const child of childrenOf(node)) {
-    if ('#text' in child) out += String(child['#text'])
-    else out += textOf(child)
+  const stack: (string | XNode)[] = [node]
+  while (stack.length > 0) {
+    const item = stack.pop()!
+    if (typeof item === 'string') {
+      out += item
+      continue
+    }
+    const children = childrenOf(item)
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i]!
+      stack.push('#text' in child ? String(child['#text']) : child)
+    }
   }
   return out
 }
@@ -54,10 +67,11 @@ export function findChildren(node: XNode, name: string): XNode[] {
 }
 
 /**
- * Direct children with `name`, looking through w:sdt → w:sdtContent wrappers
- * (nested sdt included). Structured document tags may wrap table rows, cells
- * or paragraphs at any level; for display purposes the wrapper is transparent
- * (research-report templates wrap every field in an sdt).
+ * Direct children with `name`, looking through transparent OOXML wrappers:
+ * w:sdt → w:sdtContent and w:customXml (nested wrappers included). Both may
+ * wrap table rows, cells or paragraphs at any level; for display purposes the
+ * wrapper is transparent (research-report templates wrap every field in an
+ * sdt; Word's custom XML markup wraps block/row/cell content directly).
  */
 export function childrenThroughSdt(node: XNode, name: string | readonly string[]): XNode[] {
   const names = Array.isArray(name) ? (name as readonly string[]) : [name as string]
@@ -69,6 +83,9 @@ export function childrenThroughSdt(node: XNode, name: string | readonly string[]
       else if (cn === 'w:sdt') {
         const content = findChild(child, 'w:sdtContent')
         if (content) visit(content)
+      } else if (cn === 'w:customXml') {
+        // CT_CustomXmlBlock holds its block content directly (no sdtContent).
+        visit(child)
       }
     }
   }

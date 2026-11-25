@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   GAP_BAND,
@@ -1001,9 +1004,18 @@ describe('pageBorderStyleOf', () => {
 
 describe('rowFillAttrs', () => {
   it('measures the stored split extra against the rounded CSS height', () => {
-    expect(rowFillAttrs(310.4, 10.4)).toEqual({ style: 'height:310px', 'data-split-extra': '10.0' })
-    expect(rowFillAttrs(309.6, 9.6)).toEqual({ style: 'height:310px', 'data-split-extra': '10.0' })
-    expect(rowFillAttrs(310.4)).toEqual({ style: 'height:310px' })
+    const fill = { 'data-row-fill': '1' }
+    expect(rowFillAttrs(310.4, 10.4)).toEqual({
+      style: 'height:310px',
+      ...fill,
+      'data-split-extra': '10.0',
+    })
+    expect(rowFillAttrs(309.6, 9.6)).toEqual({
+      style: 'height:310px',
+      ...fill,
+      'data-split-extra': '10.0',
+    })
+    expect(rowFillAttrs(310.4)).toEqual({ style: 'height:310px', ...fill })
   })
 
   // border-spacing 2px: the measured pitch is tr height + 2, so the tr gets the
@@ -1011,8 +1023,22 @@ describe('rowFillAttrs', () => {
   it('takes the border-spacing gap out of a separate-borders row height', () => {
     expect(rowFillAttrs(310.4, 10.4, 2)).toEqual({
       style: 'height:308px',
+      'data-row-fill': '1',
       'data-split-extra': '10.0',
     })
-    expect(rowFillAttrs(310.4, 0, 2)).toEqual({ style: 'height:308px' })
+    expect(rowFillAttrs(310.4, 0, 2)).toEqual({ style: 'height:308px', 'data-row-fill': '1' })
+  })
+})
+
+describe('split-row fill alignment', () => {
+  it('top-aligns a filled row so the fill lands below the content', () => {
+    // Word aligns per fragment; a centered tr would push every fragment down
+    const css = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../src/renderer/styles.css'),
+      'utf8',
+    )
+    const at = css.indexOf('.doc-table tr[data-row-fill] > td,')
+    expect(at).toBeGreaterThan(-1)
+    expect(css.slice(at, css.indexOf('}', at))).toMatch(/vertical-align: top !important;/)
   })
 })

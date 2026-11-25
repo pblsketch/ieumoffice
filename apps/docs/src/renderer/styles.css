@@ -5573,6 +5573,18 @@ body.docs-crop-active .doc-protected[data-doc-protected='image'] .doc-img-wrap {
   --doc-grid-pitch: 0.0001px;
 }
 
+/* a row split over pages and filled to its declared height (setRowFills): Word
+   aligns a cell within each fragment, and the fill is the last fragment's own
+   minimum. Centered or bottom-aligned across the whole tr, the fill's extra
+   would push every fragment's content down (a center-aligned form cell
+   spanning four pages started 29px low on each, and a page lost two
+   references). The fill goes below the content instead. Inline vAlign styles,
+   hence the override. */
+.doc-table tr[data-row-fill] > td,
+.doc-table tr[data-row-fill] > th {
+  vertical-align: top !important;
+}
+
 /* empty paragraph in a cell: LO sizes it near the Latin single line, so it must
    not out-grow the row's content cells via the inherited CJK factor */
 .doc-table td .doc-p-empty,
@@ -6637,10 +6649,11 @@ body.docs-crop-active .doc-protected[data-doc-protected='image'] .doc-img-wrap {
   clear: both;
 }
 
-/* a column break ending a paragraph is one line in Word (the mark opens the
-   next column); the trailing-break phantom after it would add a second */
+/* Keep the trailing break as the browser's caret anchor: hiding it sends
+   native typing before the column break. It must not add another line. */
 .doc-page br.doc-col-br + br.ProseMirror-trailingBreak {
-  display: none;
+  font-size: 0;
+  line-height: 0;
 }
 
 /* a column break leading a paragraph with text (.doc-lead-col-br) has no
@@ -10882,12 +10895,22 @@ body.docs-crop-active
 /* ---- print / export PDF: only the document itself ---- */
 
 @media print {
+  /* paper-white behind the page boxes, and the light scheme: an A4 sheet is
+   * 841.92pt tall, so its last device row is only partly covered by the page
+   * box, and `none` let the canvas behind it show through — Chromium's
+   * dark-scheme color when the app theme was dark (#2837) */
+  html {
+    /* !important: the theme rules ([data-theme='dark'] and the system-mode
+     * :root fallback) are more specific than this @media print selector and
+     * would keep the scheme dark in print; the pin must beat them (#2837) */
+    color-scheme: light !important;
+  }
   html,
   body,
   #root {
     height: auto !important;
     overflow: visible !important;
-    background: none !important;
+    background: var(--docs-paper) !important;
   }
 
   .ribbon,

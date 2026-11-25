@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { bindUnboundPrefixes, rootNamespaces } from './xml-namespaces'
 import {
   applyRevisionResolutions,
   cleanMoveRangeMarkers,
@@ -615,7 +616,7 @@ function replaceAbstractNumLevel(
   )
   let body = abs[0]
   const existing = lvlRe.exec(body)?.[0]
-  if (existing) body = body.replace(existing, mergeLevelXml(existing, level, ilvl))
+  if (existing) body = body.replace(existing, () => mergeLevelXml(existing, level, ilvl))
   else {
     const lvlXml = customLevelXml(level, ilvl)
     const later = new RegExp(`<w:lvl [^>]*w:ilvl="(\\d)"`, 'g')
@@ -628,7 +629,7 @@ function replaceAbstractNumLevel(
     }
     body = body.slice(0, insertAt) + lvlXml + body.slice(insertAt)
   }
-  return xml.replace(abs[0], body)
+  return xml.replace(abs[0], () => body)
 }
 
 const IMAGE_EXT: Record<NewImage['mime'], string> = {
@@ -886,11 +887,18 @@ export async function saveDocx(
   }
   const styleUpserts = [...(options.styleUpserts ?? []), ...headingUpserts]
 
+  // Pre-rendered xml blocks (a rebuilt table's model xml) carry bookmark ids an
+  // editor-side allocator minted above the original document's: seed past those
+  // too, or a generated paragraph's bookmark would collide with one of them.
+  const preRenderedXml = finalBlocks
+    .filter((b) => b.kind === 'xml')
+    .map((b) => b.xml)
+    .join('')
   const genCtx = {
     headingStyleIds,
     listParagraphStyleId: parsed.listParagraphStyleId,
     allocateHyperlinkRel,
-    allocateBookmarkId: nextBookmarkIdAllocator(documentXml),
+    allocateBookmarkId: nextBookmarkIdAllocator(documentXml + preRenderedXml),
     allocateRevisionId: nextRevisionIdAllocator(
       [documentXml, ...(await storyPartsXml(zip))],
       options.revisionIdFloor,
@@ -1185,12 +1193,13 @@ export async function saveDocx(
   const resolveHfNewPictures = async (partPath: string, xml: string, hf: HeaderFooter) => {
     const pictures = hf.newPictures
     if (!pictures || !xml.includes(NEW_PICTURE_TOKEN_PREFIX)) return xml
-    const relsPath = partPath.replace(/^word\/([^/]+)$/, 'word/_rels/$1.rels')
+    const relsPath = partPath.replace(/([^/]+)$/, '_rels/$1.rels')
     let relsXml =
       hfRelsOut.get(relsPath) ??
       (await zip.file(relsPath)?.async('string')) ??
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'
+    relsXml = relsXml.replace(/<Relationships\b([^>]*)\/>/, '<Relationships$1></Relationships>')
     const rIds = new Map<string, string>()
     const docPrIds = new Map<string, number>()
     const out = xml.replace(
@@ -2105,6 +2114,7 @@ export async function saveDocx(
     newDocumentXml = applyPageColor(newDocumentXml, options.pageColor)
   }
   newDocumentXml = fillRevisionIds(newDocumentXml, genCtx.allocateRevisionId)
+  newDocumentXml = bindUnboundPrefixes(newDocumentXml)
 
   const settingsPath = 'word/settings.xml'
   let settingsXml: string | null = null
@@ -2179,7 +2189,7 @@ export async function saveDocx(
           `<Relationship Id="${escapeXmlAttr(r.rId)}" Type="${r.type}" Target="${escapeXmlAttr(r.target)}"${r.external ? ' TargetMode="External"' : ''}/>`,
       )
       .join('')
-    relsXml = relsXml.replace('</Relationships>', `${inserts}</Relationships>`)
+    relsXml = relsXml.replace('</Relationships>', () => `${inserts}</Relationships>`)
     relsChanged = true
   }
 
@@ -2271,6 +2281,14 @@ export async function saveDocx(
   const coreXmlOut = coreEntry
     ? patchCoreProps(await coreEntry.async('string'), options.savedAt)
     : null
+
+  const bodyNamespaces = rootNamespaces(documentXml)
+  const bind = (xml: string) => bindUnboundPrefixes(xml, bodyNamespaces)
+  for (const part of hfParts) part.xml = bind(part.xml)
+  for (const part of notesParts) part.xml = bind(part.xml)
+  if (commentsXml !== null) commentsXml = bind(commentsXml)
+  if (numberingXmlOut !== null) numberingXmlOut = bind(numberingXmlOut)
+  if (stylesXmlOut !== null) stylesXmlOut = bind(stylesXmlOut)
 
   const out = new JSZip()
   for (const [name, entry] of Object.entries(zip.files)) {
@@ -3248,7 +3266,7 @@ function maxDocPrId(documentXml: string): number {
  * bookmark that reused an id already in use made Word pair the two bookmarks
  * wrongly and land a cross-reference on the wrong target.
  */
-function nextBookmarkIdAllocator(documentXml: string): (name: string) => number {
+export function nextBookmarkIdAllocator(documentXml: string): (name: string) => number {
   let next = maxBookmarkId(documentXml) + 1
   return () => next++
 }

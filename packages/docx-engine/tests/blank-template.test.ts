@@ -187,6 +187,7 @@ describe('blank document template (new-document / AI generation base)', () => {
     expect(app).toContain(`<Template>${NEW_DOCUMENT_TEMPLATE}</Template>`)
     expect(app).toContain(`<Application>${NEW_DOCUMENT_APPLICATION}</Application>`)
     expect(app).toContain(`<AppVersion>${NEW_DOCUMENT_APP_VERSION}</AppVersion>`)
+    expect(app.match(/<AppVersion>([^<]+)<\/AppVersion>/)?.[1]).toMatch(/^\d+\.\d{4}$/)
     expect(app).not.toContain('Company')
     expect(app).not.toContain('Manager')
   })
@@ -209,8 +210,9 @@ describe('blank document template (new-document / AI generation base)', () => {
     )
   })
 
-  it('parses back as document properties, keeping the app version pinned to the package', async () => {
-    expect(NEW_DOCUMENT_APP_VERSION).toBe(enginePackage.version)
+  it('parses back as document properties, keeping the app version pinned to the package major/minor', async () => {
+    const [major, minor] = enginePackage.version.split('.')
+    expect(NEW_DOCUMENT_APP_VERSION).toBe(`${major}.${minor!.padEnd(4, '0')}`)
     const doc = await parseDocx(await buildBlankDocx({ createdAt: CREATED }))
     expect(doc.properties.core).toEqual({
       created: '2026-01-02T03:04:05Z',
@@ -243,7 +245,45 @@ describe('blank document template (new-document / AI generation base)', () => {
     )
     expect(core).toContain('<cp:revision>1</cp:revision>')
     expect(zip.file('docProps/app.xml')).not.toBeNull()
+    expect((await parseDocx(saved)).properties.app.appVersion).toMatch(/^\d+\.\d{4}$/)
   })
+
+  it('changes only the default AppVersion part compared with the legacy stamp', async () => {
+    const current = await JSZip.loadAsync(await buildBlankDocx({ createdAt: CREATED }))
+    const legacy = await JSZip.loadAsync(
+      await buildBlankDocx({ createdAt: CREATED, appVersion: '0.1.0' }),
+    )
+    expect(Object.keys(current.files).sort()).toEqual(Object.keys(legacy.files).sort())
+    for (const [name, file] of Object.entries(current.files)) {
+      if (file.dir) continue
+      if (name === 'docProps/app.xml') {
+        expect(await file.async('string')).toBe(
+          (await legacy.file(name)!.async('string')).replace(
+            '<AppVersion>0.1.0</AppVersion>',
+            `<AppVersion>${NEW_DOCUMENT_APP_VERSION}</AppVersion>`,
+          ),
+        )
+      } else {
+        expect(await file.async('uint8array'), name).toEqual(
+          await legacy.file(name)!.async('uint8array'),
+        )
+      }
+    }
+  })
+
+  it.each(['12.3456', '9.9.9', '', '1&2.3'])(
+    'preserves explicit AppVersion %j through a real save',
+    async (appVersion) => {
+      const doc = await parseDocx(await buildBlankDocx({ createdAt: CREATED, appVersion }))
+      expect(doc.properties.app.appVersion).toBe(appVersion)
+      const saved = await saveDocx(
+        doc,
+        [{ kind: 'generated', block: { type: 'paragraph', runs: [{ text: 'Saved content' }] } }],
+        { savedAt: '2026-07-28T08:30:00Z' },
+      )
+      expect((await parseDocx(saved)).properties.app.appVersion).toBe(appVersion)
+    },
+  )
 
   it('omitGeneratorFields drops Application and AppVersion, keeping the Template', async () => {
     const zip = await JSZip.loadAsync(await buildBlankDocx({ omitGeneratorFields: true }))
@@ -267,5 +307,53 @@ describe('blank document template (new-document / AI generation base)', () => {
     const app = await zip.file('docProps/app.xml')!.async('string')
     expect(app).toContain('<Application>GenOffice Docs</Application>')
     expect(app).toContain('<AppVersion>9.9.9</AppVersion>')
+  })
+})
+
+describe('a new document starts in the current Word layout mode', () => {
+  it("writes compatibilityMode 15 and Word's Normal Table style when asked", async () => {
+    const bytes = await buildBlankDocx({ wordDefaults: true })
+    const zip = await JSZip.loadAsync(bytes)
+    expect(await zip.file('word/settings.xml')!.async('string')).toContain(
+      'w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"',
+    )
+    expect(await zip.file('[Content_Types].xml')!.async('string')).toContain(
+      'PartName="/word/settings.xml"',
+    )
+    expect(await zip.file('word/_rels/document.xml.rels')!.async('string')).toContain(
+      'Target="settings.xml"',
+    )
+    const styles = await zip.file('word/styles.xml')!.async('string')
+    expect(styles).toContain('w:styleId="TableNormal"')
+    expect(styles).toContain('<w:left w:w="108" w:type="dxa"/>')
+
+    const parsed = await parseDocx(bytes)
+    expect(parsed.compatibilityMode).toBe(15)
+  })
+
+  it('carries the current Office theme Word lays a theme-less document out in', async () => {
+    const bytes = await buildBlankDocx({ wordDefaults: true, eastAsiaFont: 'Yu Mincho' })
+    const zip = await JSZip.loadAsync(bytes)
+    const theme = await zip.file('word/theme/theme1.xml')!.async('string')
+    expect(theme).toContain('<a:accent1><a:srgbClr val="156082"/></a:accent1>')
+    expect(theme).toContain('<a:hlink><a:srgbClr val="467886"/></a:hlink>')
+    expect(theme).toContain('<a:minorFont><a:latin typeface="Aptos"/><a:ea typeface="Yu Mincho"/>')
+    expect(await zip.file('[Content_Types].xml')!.async('string')).toContain(
+      'PartName="/word/theme/theme1.xml"',
+    )
+    expect(await zip.file('word/_rels/document.xml.rels')!.async('string')).toContain(
+      'Target="theme/theme1.xml"',
+    )
+    const parsed = await parseDocx(bytes)
+    expect(parsed.themeColors).toMatchObject({ accent1: '156082', accent2: 'E97132' })
+    expect(parsed.themeFonts).toMatchObject({ major: 'Aptos Display', minor: 'Aptos' })
+  })
+
+  it("leaves the converters' blank without a settings part or table style", async () => {
+    const zip = await JSZip.loadAsync(await buildBlankDocx())
+    expect(zip.file('word/settings.xml')).toBeNull()
+    expect(zip.file('word/theme/theme1.xml')).toBeNull()
+    expect(await zip.file('[Content_Types].xml')!.async('string')).not.toContain('settings')
+    expect(await zip.file('word/styles.xml')!.async('string')).not.toContain('TableNormal')
   })
 })

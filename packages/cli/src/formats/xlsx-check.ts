@@ -7,7 +7,7 @@ import {
 } from '@genoffice/xlsx-gateway/gateway/xlsx-structure'
 import { resolveRelTarget } from '@genoffice/xlsx-gateway/gateway/xlsx-drawing-add'
 import { normalizeOoxmlPartPrefix } from '@genoffice/xlsx-gateway/gateway/xlsx-namespace'
-import JSZip from 'jszip'
+import { loadUserZip } from './gated-zip'
 import { excerpt, PLACEHOLDER, textWidthPx, type IssueDraft } from '../check'
 import { displayText } from './xlsx'
 
@@ -63,7 +63,7 @@ export interface WorkbookCheck {
 }
 
 export async function checkWorkbook(bytes: Uint8Array): Promise<WorkbookCheck> {
-  const zip = await JSZip.loadAsync(bytes)
+  const zip = await loadUserZip(bytes)
   const text = async (path: string, required = false): Promise<string> => {
     const part = zip.file(path)
     if (!part) {

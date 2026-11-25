@@ -188,12 +188,18 @@ export function rowFillAttrs(
   targetPx: number,
   extraPx = 0,
   gapPx = 0,
-): { style: string; 'data-split-extra'?: string } {
+): { style: string; 'data-row-fill': '1'; 'data-split-extra'?: string } {
   // the target is a row pitch (tr top to tr top): a separate-borders row owns the
   // border-spacing below it, which the tr height would otherwise add once per pass
   const h = Math.round(targetPx - gapPx)
   const extra = extraPx > 0 ? h + gapPx - (targetPx - extraPx) : 0
-  return { style: `height:${h}px`, ...(extra > 0 ? { 'data-split-extra': extra.toFixed(1) } : {}) }
+  // data-row-fill: the fill belongs to the row's last fragment, so its cells
+  // align to the top (styles.css) instead of centering the whole row's content
+  return {
+    style: `height:${h}px`,
+    'data-row-fill': '1',
+    ...(extra > 0 ? { 'data-split-extra': extra.toFixed(1) } : {}),
+  }
 }
 
 /** vertical border-spacing of the row's table (w:tblCellSpacing tables), else 0 */

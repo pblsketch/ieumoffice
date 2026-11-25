@@ -51,6 +51,8 @@ export interface Pdfium {
   _PDFiumExt_CloseFileWriter(writer: number): void
   _FPDF_LoadMemDocument(ptr: number, size: number, password: number): number
   _FPDF_CloseDocument(doc: number): void
+  _FPDFAnnot_CountAttachmentPoints(annot: number): number
+  _FPDFAnnot_GetAttachmentPoints(annot: number, index: number, points: number): number
   _FPDF_LoadPage(doc: number, index: number): number
   _FPDF_ClosePage(page: number): void
   _FPDF_GetPageCount(doc: number): number
@@ -636,6 +638,51 @@ interface PageTextObj {
   ordinals: readonly number[]
 }
 
+/**
+ * The codepoints pdfium puts in place of a hyphen it folded into a line break:
+ * U+FFFE from the textpage read (`FPDFText_GetText`), U+0002 from the per-object
+ * read (`FPDFTextObj_GetText`). Neither can be a painted character.
+ */
+const HYPHEN_MARKERS = ['\u0002', '\uFFFE'] as const
+
+function replaceMarkers(s: string, replacement: string): string {
+  let out = s
+  for (const marker of HYPHEN_MARKERS) out = out.replaceAll(marker, replacement)
+  return out
+}
+
+/**
+ * Restore the hyphen and the break the marker stands for. Every consumer that
+ * reads whole page text — extraction, search, save verification — compares
+ * against the hyphen the page really draws and the line boundary the break
+ * names, and got a noncharacter instead.
+ */
+export const restoreLineHyphens = (s: string): string => replaceMarkers(s, '-\n')
+
+/**
+ * Restore just the hyphen. One object's text ends where its own glyphs end — the
+ * break falls between objects — and the page char list carries one entry for the
+ * hyphen glyph, so keeping one codepoint here is what holds the advance/origin
+ * attribution 1:1 (see `cpLen` below).
+ */
+const restoreObjectHyphens = (s: string): string => replaceMarkers(s, '-')
+
+/** Two-pass read: FPDFTextObj_GetText's length argument and return value are BYTES
+ *  including the 2-byte NUL terminator, and a too-small buffer is left untouched
+ *  (not truncated) — a fixed buffer would silently yield garbage for long runs. */
+function readTextObject(m: Pdfium, obj: number, textPage: number): string {
+  const len = m._FPDFTextObj_GetText(obj, textPage, 0, 0)
+  if (len <= 2) return ''
+  const buf = m._malloc(len)
+  if (!buf) return ''
+  try {
+    m._FPDFTextObj_GetText(obj, textPage, buf, len)
+    return restoreObjectHyphens(Buffer.from(m.HEAPU8.buffer, buf, len - 2).toString('utf16le'))
+  } finally {
+    m._free(buf)
+  }
+}
+
 function collectTextObjects(m: Pdfium, page: number, textPage: number): PageTextObj[] {
   const out: PageTextObj[] = []
   const bl = m._malloc(4)
@@ -643,17 +690,7 @@ function collectTextObjects(m: Pdfium, page: number, textPage: number): PageText
   const br = m._malloc(4)
   const bt = m._malloc(4)
   walkPageText(m, page, FPDF_PAGEOBJ_TEXT, ({ obj, chain, ordinals, topIndex, toPage }) => {
-    // Two-pass read: FPDFTextObj_GetText's length argument and return value are BYTES
-    // including the 2-byte NUL terminator, and a too-small buffer is left untouched
-    // (not truncated) — a fixed buffer would silently yield garbage for long runs
-    const len = m._FPDFTextObj_GetText(obj, textPage, 0, 0)
-    let text = ''
-    if (len > 2) {
-      const buf = m._malloc(len)
-      m._FPDFTextObj_GetText(obj, textPage, buf, len)
-      text = Buffer.from(m.HEAPU8.buffer, buf, len - 2).toString('utf16le')
-      m._free(buf)
-    }
+    const text = readTextObject(m, obj, textPage)
     if (!m._FPDFPageObj_GetBounds(obj, bl, bb, br, bt)) return
     const local: [number, number, number, number] = [
       m.HEAPF32[bl >> 2]!,
@@ -1106,6 +1143,8 @@ function loadStandardFont(m: Pdfium, doc: number, name: string): number {
   }
 }
 
+class UndrawableTextError extends Error {}
+
 /** Rebuild font plus whether bold must be synthesized by stroking. A bold toggle on
     "keep original" never swaps the face: the same glyphs with a thin same-color
     stroke keep every advance, so the surrounding layout survives (a bold face file
@@ -1230,7 +1269,7 @@ async function resolveRebuildFont(
   // and block the whole save — reject this one edit instead (it is reported as
   // skipped with this reason, everything else saves)
   if (!fallback) {
-    throw new Error('the replacement contains characters no available font can draw')
+    throw new UndrawableTextError('the replacement contains characters no available font can draw')
   }
   const sub = await subsetTtf(fallback, drawn)
   try {
@@ -2312,7 +2351,10 @@ let applyChain: Promise<unknown> = Promise.resolve()
 /** Serialize a pdfium operation behind every previously queued one (shared with image-edit) */
 export function chainPdfium<T>(fn: () => Promise<T>): Promise<T> {
   const run = applyChain.then(fn)
-  applyChain = run.catch(() => undefined)
+  applyChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
   return run
 }
 
@@ -2351,6 +2393,30 @@ export function textInsertAxes(rotate = 0): readonly [number, number, number, nu
     default:
       return [1, 0, 0, 1]
   }
+}
+
+/**
+ * A strong right-to-left letter: Hebrew (incl. the presentation forms), Arabic
+ * (incl. the presentation forms) and the RTL scripts that sit between them —
+ * Syriac, Thaana, NKo, Samaritan, Mandaic and Arabic Extended-A/B.
+ */
+const RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/u
+
+/**
+ * The line in the order pdfium must be handed it. `FPDFText_SetText` lays a text
+ * object's glyphs out left to right in the order it receives, so a Hebrew phrase
+ * passed in logical order reads mirrored on the page (and extracts mirrored,
+ * which then fails save verification). When every letter of the line is RTL and
+ * the line holds no digits — bidi leaves pure-RTL text as one run, and digits
+ * would stay left-to-right inside it — reverse the grapheme clusters. Mixed
+ * directions and numbers are left untouched: they need a full bidi pass.
+ */
+export function visualLine(line: string): string {
+  const letters = line.match(/\p{L}/gu)
+  if (!letters || !letters.every((ch) => RTL_LETTER.test(ch))) return line
+  if (/\p{N}/u.test(line)) return line
+  const clusters = line.match(/.\p{M}*/gsu) ?? []
+  return clusters.reverse().join('')
 }
 
 /** Insert new searchable text objects without matching/removing existing page content. */
@@ -2393,15 +2459,25 @@ export function applyTextInserts(
       const keysOf = new Map<TextInsertInput, Set<string>>()
       const faces = new Map<
         string,
-        { sample: TextInsertInput; face: ReturnType<typeof faceOf>; text: string }
+        {
+          sample: TextInsertInput
+          face: ReturnType<typeof faceOf>
+          text: string
+          entries: Map<number, { input: TextInsertInput; editIndex: number; text: string }>
+        }
       >()
       for (const pageInserts of byPage.values())
-        for (const { input } of pageInserts) {
+        for (const { input, editIndex } of pageInserts) {
           const styles = insertCharStyles(input)
           charStylesOf.set(input, styles)
           const keys = new Set<string>([faceKeyOf(input)])
           if (!faces.has(faceKeyOf(input)))
-            faces.set(faceKeyOf(input), { sample: input, face: faceOf(input, null), text: '' })
+            faces.set(faceKeyOf(input), {
+              sample: input,
+              face: faceOf(input, null),
+              text: '',
+              entries: new Map(),
+            })
           for (let k = 0; k < input.text.length; k++) {
             const ch = input.text[k]!
             if (ch === '\n') continue
@@ -2409,8 +2485,15 @@ export function applyTextInserts(
             const key = faceKeyOf(input, s)
             keys.add(key)
             let f = faces.get(key)
-            if (!f) faces.set(key, (f = { sample: input, face: faceOf(input, s), text: '' }))
+            if (!f)
+              faces.set(
+                key,
+                (f = { sample: input, face: faceOf(input, s), text: '', entries: new Map() }),
+              )
             f.text += ch
+            let entry = f.entries.get(editIndex)
+            if (!entry) f.entries.set(editIndex, (entry = { input, editIndex, text: '' }))
+            entry.text += ch
           }
           keysOf.set(input, keys)
         }
@@ -2418,7 +2501,9 @@ export function applyTextInserts(
         string,
         { font: number; truetype: boolean; syntheticBold: boolean; failed?: string }
       >()
-      for (const [key, { sample, face, text: merged }] of faces) {
+      const unsupportedInserts = new Set<number>()
+      for (const [key, { sample, face, text: merged, entries }] of faces) {
+        let group = [...entries.values()]
         const pseudoEdit: TextEditInput = {
           pageIndex: 0,
           rect: [0, 0, 0, 0],
@@ -2432,12 +2517,31 @@ export function applyTextInserts(
           newItalic: face.italic,
         }
         try {
-          const { bytes: fontBytes, syntheticBold } = await resolveRebuildFont(
-            m,
-            0,
-            pseudoEdit,
-            merged,
-          )
+          let resolved: { bytes: Buffer; syntheticBold: boolean }
+          try {
+            resolved = await resolveRebuildFont(m, 0, pseudoEdit, merged)
+          } catch (err) {
+            if (!(err instanceof UndrawableTextError)) throw err
+            // Diagnose coverage only on the failed path. Keep the drawable lines
+            // together so a single unsupported insert does not discard their face.
+            const drawable = group.filter(({ text }) =>
+              canDrawText(text, face.font, face.bold, face.italic),
+            )
+            if (drawable.length === group.length) throw err
+            const drawableIndexes = new Set(drawable.map(({ editIndex }) => editIndex))
+            for (const { input, editIndex } of group) {
+              if (drawableIndexes.has(editIndex)) continue
+              if (!unsupportedInserts.has(editIndex)) {
+                unsupportedInserts.add(editIndex)
+                skipped.push({ editIndex, pageIndex: input.pageIndex, reason: errMsg(err) })
+              }
+            }
+            group = drawable
+            if (!group.length) continue
+            const text = group.map(({ text: t }) => t).join('')
+            resolved = await resolveRebuildFont(m, 0, { ...pseudoEdit, newText: text }, text)
+          }
+          const { bytes: fontBytes, syntheticBold } = resolved
           const fontPtr = m._malloc(fontBytes.length)
           m.HEAPU8.set(fontBytes, fontPtr)
           const font = m._FPDFText_LoadFont(
@@ -2462,6 +2566,7 @@ export function applyTextInserts(
           let applied = 0
           try {
             for (const { input, editIndex } of pageInserts) {
+              if (unsupportedInserts.has(editIndex)) continue
               const text = input.text.trim()
               if (!text) {
                 skipped.push({ editIndex, pageIndex, reason: 'empty inserted text' })
@@ -2497,8 +2602,21 @@ export function applyTextInserts(
                       : null
                     lineStart += line.length + 1
                     if (!line) continue
-                    const segs = segmentLine(line, lineStyles, advancePt)
-                    const stretch = fitStretch(line, lineStyles, input.fitWidth, advancePt)
+                    const drawnLine = visualLine(line)
+                    let drawnStyles = lineStyles
+                    if (drawnStyles && drawnLine !== line) {
+                      const clusters = line.match(/.\p{M}*/gsu) ?? []
+                      const reordered: (RunStyle | null)[] = []
+                      let pos = line.length
+                      for (let ci = clusters.length - 1; ci >= 0; ci--) {
+                        const len = clusters[ci]!.length
+                        pos -= len
+                        for (let k = 0; k < len; k++) reordered.push(drawnStyles[pos + k] ?? null)
+                      }
+                      drawnStyles = reordered
+                    }
+                    const segs = segmentLine(drawnLine, drawnStyles, advancePt)
+                    const stretch = fitStretch(drawnLine, drawnStyles, input.fitWidth, advancePt)
                     const offset = input.lineXOffsets?.[lineIndex] ?? 0
                     const drop = lineIndex * leading
                     for (const seg of segs) {
@@ -2968,6 +3086,32 @@ async function validateTextEditsInner(
 }
 
 /**
+ * PDFium builds one shared text page for the whole page. When two text objects
+ * paint the same origin and share a prefix, that text page keeps the first
+ * object's string and gives the second only its distinct tail ("abc" + "d" for
+ * a pair of abc/abd objects), so FPDFTextObj_GetText on the shared text page
+ * cannot report what the second object really carries. Reading an object with
+ * the other page-owned objects removed from a temporarily rebuilt page gives the
+ * complete string; every object is put back before returning.
+ */
+function isolatedPageObjectText(m: Pdfium, page: number, objects: readonly number[]): string {
+  let out = ''
+  for (const target of objects) {
+    const others = objects.filter((obj) => obj !== target)
+    for (const obj of others) m._FPDFPage_RemoveObject(page, obj)
+    let isolatedTextPage = 0
+    try {
+      isolatedTextPage = m._FPDFText_LoadPage(page)
+      if (isolatedTextPage) out += readTextObject(m, target, isolatedTextPage)
+    } finally {
+      if (isolatedTextPage) m._FPDFText_ClosePage(isolatedTextPage)
+      for (const obj of others) m._FPDFPage_InsertObject(page, obj)
+    }
+  }
+  return out
+}
+
+/**
  * Read-back verification: confirm every applied edit's replacement text is actually
  * extractable from the produced bytes. Runs on the final output (after the pdf-lib
  * round-trip), before it reaches disk — a failure aborts the save with the original
@@ -3003,7 +3147,7 @@ export function verifyTextEdits(
             failures.push({ pageIndex, reason: 'page unreadable in saved output' })
           continue
         }
-        const textPage = m._FPDFText_LoadPage(page)
+        let textPage = m._FPDFText_LoadPage(page)
         try {
           // NFC on both sides: ToUnicode CMaps canonicalize singleton codepoints (e.g.
           // compatibility ideograph U+F900 extracts as U+8C48) — the glyph on the page is
@@ -3014,12 +3158,31 @@ export function verifyTextEdits(
           // The object-preserving rebuild can leave a reflowed line contiguous
           // only visually, not in stream order — accept either
           const visualText = canon(joinRows(objects))
+          // Last resort for overlapping objects: only rebuild the page when a
+          // line is genuinely absent from the shared text page, so normal saves
+          // never pay for the per-object reads.
+          let isolated: string | null = null
+          const isolatedCanon = (): string => {
+            if (isolated === null) {
+              m._FPDFText_ClosePage(textPage)
+              textPage = 0
+              const pageOwned = objects.filter((o) => o.chain.length === 0).map((o) => o.obj)
+              isolated = canon(isolatedPageObjectText(m, page, pageOwned))
+            }
+            return isolated
+          }
           for (const newText of texts) {
             // Every non-empty line must be extractable (rebuilt runs are one object per line)
             const missing = newText
               .split('\n')
               .map(canon)
-              .filter((l) => l.length > 0 && !pageText.includes(l) && !visualText.includes(l))
+              .filter(
+                (l) =>
+                  l.length > 0 &&
+                  !pageText.includes(l) &&
+                  !visualText.includes(l) &&
+                  !isolatedCanon().includes(l),
+              )
             if (missing.length > 0) {
               const snippet = missing[0]!.slice(0, 20)
               failures.push({
@@ -3029,7 +3192,7 @@ export function verifyTextEdits(
             }
           }
         } finally {
-          m._FPDFText_ClosePage(textPage)
+          if (textPage) m._FPDFText_ClosePage(textPage)
           m._FPDF_ClosePage(page)
         }
       }
