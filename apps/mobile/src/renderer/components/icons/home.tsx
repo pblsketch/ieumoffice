@@ -114,3 +114,33 @@ export function HomeActImagesToPdfIcon(props: IconProps) {
     </SvgIcon>
   )
 }
+
+// HOME-T6 home frame (home/frame)
+/** The [Tools] tab: a wrench. */
+export function HomeFrameToolsIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M14.7 6.3a4 4 0 0 0 5 5L21 12.6a6 6 0 0 1-7.6 1.6L7 20.6a2 2 0 0 1-2.8-2.8l6.4-6.4A6 6 0 0 1 12.2 3.8z" />
+    </SvgIcon>
+  )
+}
+
+/** The [+] button and "new" tiles. */
+export function HomeFramePlusIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </SvgIcon>
+  )
+}
+
+/** The sample document button: an open book. */
+export function HomeFrameSampleIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H9a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H4.5A1.5 1.5 0 0 1 3 16z" />
+      <path d="M21 5.5A1.5 1.5 0 0 0 19.5 4H15a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5h5a1.5 1.5 0 0 0 1.5-1.5z" />
+    </SvgIcon>
+  )
+}

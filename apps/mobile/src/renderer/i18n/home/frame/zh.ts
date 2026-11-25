@@ -1,2 +1,23 @@
 // Track T6 home strings, part "frame". zh defines the keys.
-export const zh = {} as const
+export const zh = {
+  homeTabNav: '主页菜单',
+  homeTabRecent: '最近',
+  homeTabFolders: '文件夹',
+  homeTabTools: '工具',
+  homeTabSettings: '设置',
+  homeListAll: '全部',
+  homeListFavorites: '收藏',
+  homeListChips: '筛选列表',
+  homeListFamilyHwp: 'HWP',
+  homeListFamilyMd: 'Markdown',
+  homeListFavoritesEmpty: '还没有收藏的文件。可以在文件的 [⋯] 中添加到收藏。',
+  homeListGroupEmpty: '这个分组里还没有文件。',
+  homeListFavoriteLost: '无法打开这个文件。它可能已被移动或删除。',
+  homeEmptyText: '还没有打开过文档。可以先看看示例文档，或打开一个文件。',
+  homeEmptySample: '打开示例文档',
+  homeEmptyCreate: '新建',
+  homeCreateFab: '新建',
+  homeCreateTitle: '新建',
+  homeCreateClose: '关闭',
+  homeCreatePdfTools: 'PDF 工具',
+} as const

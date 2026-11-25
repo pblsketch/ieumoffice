@@ -1,3 +1,25 @@
 import type { zh } from './zh'
 
-export const ms = {} as const satisfies Record<keyof typeof zh, string>
+export const ms = {
+  homeTabNav: 'Menu skrin utama',
+  homeTabRecent: 'Terkini',
+  homeTabFolders: 'Folder',
+  homeTabTools: 'Alat',
+  homeTabSettings: 'Tetapan',
+  homeListAll: 'Semua',
+  homeListFavorites: 'Kegemaran',
+  homeListChips: 'Tapis senarai',
+  homeListFamilyHwp: 'HWP',
+  homeListFamilyMd: 'Markdown',
+  homeListFavoritesEmpty:
+    'Belum ada kegemaran. Gunakan [⋯] pada fail untuk menambahkannya ke kegemaran.',
+  homeListGroupEmpty: 'Belum ada fail dalam kumpulan ini.',
+  homeListFavoriteLost: 'Fail ini tidak dapat dibuka. Ia mungkin telah dialihkan atau dipadam.',
+  homeEmptyText: 'Anda belum membuka sebarang dokumen. Cuba dokumen contoh atau buka fail.',
+  homeEmptySample: 'Buka dokumen contoh',
+  homeEmptyCreate: 'Cipta baharu',
+  homeCreateFab: 'Cipta baharu',
+  homeCreateTitle: 'Cipta baharu',
+  homeCreateClose: 'Tutup',
+  homeCreatePdfTools: 'Alat PDF',
+} as const satisfies Record<keyof typeof zh, string>

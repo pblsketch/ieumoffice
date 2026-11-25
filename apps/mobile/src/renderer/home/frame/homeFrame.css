@@ -1,0 +1,287 @@
+/* Home frame (HOME-T6): tabs or rail, card row, chips, [+] button, create sheet, tools layer. */
+
+.home-frame {
+  position: relative;
+}
+
+.home-frame[data-layout='rail'] {
+  flex-direction: row;
+}
+
+.home-frame-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Room under the last row so the [+] button never covers it. */
+.home-frame-body {
+  padding-bottom: calc(var(--m-fab-size) + var(--m-space-8) + var(--m-safe-bottom));
+}
+
+.home-frame-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Tabs (compact) and rail (medium and up) ── */
+
+.home-frame-tabs {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--chrome-bg);
+  z-index: var(--m-z-toolbar);
+}
+
+.home-frame-tabs-bottom {
+  flex-direction: row;
+  align-items: stretch;
+  min-height: var(--m-nav-h);
+  padding: 0 var(--m-safe-right) var(--m-safe-bottom) var(--m-safe-left);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.home-frame-tabs-rail {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--m-space-2);
+  width: calc(var(--m-rail-w) + var(--m-safe-left));
+  padding: calc(var(--m-safe-top) + var(--m-space-3)) 0 var(--m-safe-bottom) var(--m-safe-left);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.home-frame-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: var(--m-space-1) var(--m-space-1);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  line-height: var(--m-line-tight);
+  text-align: center;
+  cursor: pointer;
+}
+
+.home-frame-tabs-bottom .home-frame-tab {
+  flex: 1;
+}
+
+.home-frame-tabs-rail .home-frame-tab {
+  width: var(--m-rail-w);
+  min-height: var(--m-nav-h);
+}
+
+/* The current tab: a filled pill behind the icon plus the accent color (shape and color, design system 8). */
+.home-frame-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--m-hit);
+  height: var(--m-control-s);
+  border-radius: var(--m-radius-full);
+  transition: background var(--m-motion-fast) var(--m-ease-standard);
+}
+
+.home-frame-tab[data-active='true'] {
+  color: var(--m-accent);
+}
+
+.home-frame-tab[data-active='true'] .home-frame-tab-icon {
+  background: var(--active-bg);
+}
+
+.home-frame-tab[data-active='true'] .home-frame-tab-label {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.home-frame-tab:focus-visible,
+.home-frame-chip:focus-visible,
+.home-frame-fab:focus-visible,
+.home-frame-create-tile:focus-visible {
+  outline: var(--m-space-half) solid var(--m-accent);
+  outline-offset: var(--m-space-half);
+}
+
+/* ── New-document card row ── */
+
+.home-frame-card-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(calc(var(--m-hit) * 2.75), 1fr);
+  gap: var(--m-space-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.home-frame-card-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Filter chips ── */
+
+.home-frame-chips {
+  display: flex;
+  gap: var(--m-space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 calc(-1 * var(--m-space-1));
+  padding: 0 var(--m-space-1);
+}
+
+.home-frame-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.home-frame-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  flex-shrink: 0;
+  min-height: var(--m-control-s);
+  margin: var(--m-space-2) 0;
+  padding: 0 var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The press area reaches --m-hit although the chip looks smaller. */
+.home-frame-chip::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--m-hit));
+  height: max(100%, var(--m-hit));
+  transform: translate(-50%, -50%);
+}
+
+.home-frame-chip[aria-pressed='true'] {
+  background: var(--active-bg);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.home-frame-list-empty {
+  padding: var(--m-space-4) var(--m-space-1);
+}
+
+/* ── Empty state ── */
+
+.home-frame-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--m-space-2);
+}
+
+/* ── [+] button ── */
+
+.home-frame-fab {
+  position: absolute;
+  right: calc(var(--m-space-4) + var(--m-safe-right));
+  bottom: calc(var(--m-nav-h) + var(--m-space-4) + var(--m-safe-bottom));
+  z-index: var(--m-z-toolbar);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-fab-size);
+  height: var(--m-fab-size);
+  border: 0;
+  border-radius: var(--m-radius-card);
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.home-frame[data-layout='rail'] .home-frame-fab {
+  bottom: calc(var(--m-space-6) + var(--m-safe-bottom));
+  right: calc(var(--m-space-6) + var(--m-safe-right));
+}
+
+/* ── Create sheet ── */
+
+.home-frame-create-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) * 2.25), 1fr));
+  gap: var(--m-space-2);
+  margin-bottom: var(--m-space-3);
+}
+
+.home-frame-create-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-2);
+  min-height: calc(var(--m-hit) * 2);
+  padding: var(--m-space-3) var(--m-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.home-frame-create-tile:hover {
+  background: var(--bg-hover-subtle);
+}
+
+.home-frame-create-tile-title {
+  line-height: var(--m-line-tight);
+  word-break: keep-all;
+}
+
+.home-frame-create-rows {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--m-space-2);
+}
+
+.home-frame-create-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.home-frame-create-row-sub {
+  font-size: var(--m-text-caption);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── T3 tools screen above the home ── */
+
+.home-frame-flow {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-modal);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-content);
+}

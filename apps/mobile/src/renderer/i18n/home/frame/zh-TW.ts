@@ -1,3 +1,24 @@
 import type { zh } from './zh'
 
-export const zhTW = {} as const satisfies Record<keyof typeof zh, string>
+export const zhTW = {
+  homeTabNav: '首頁選單',
+  homeTabRecent: '最近',
+  homeTabFolders: '資料夾',
+  homeTabTools: '工具',
+  homeTabSettings: '設定',
+  homeListAll: '全部',
+  homeListFavorites: '我的最愛',
+  homeListChips: '篩選清單',
+  homeListFamilyHwp: 'HWP',
+  homeListFamilyMd: 'Markdown',
+  homeListFavoritesEmpty: '還沒有加入我的最愛的檔案。可以在檔案的 [⋯] 中加入。',
+  homeListGroupEmpty: '這個群組裡還沒有檔案。',
+  homeListFavoriteLost: '無法開啟這個檔案。它可能已被移動或刪除。',
+  homeEmptyText: '還沒有開啟過文件。可以先看看範例文件，或開啟一個檔案。',
+  homeEmptySample: '開啟範例文件',
+  homeEmptyCreate: '新增',
+  homeCreateFab: '新增',
+  homeCreateTitle: '新增',
+  homeCreateClose: '關閉',
+  homeCreatePdfTools: 'PDF 工具',
+} as const satisfies Record<keyof typeof zh, string>
