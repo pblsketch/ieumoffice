@@ -1,3 +1,40 @@
 import type { zh } from './zh'
 
-export const hi = {} as const satisfies Record<keyof typeof zh, string>
+export const hi = {
+  pdfViewEditorName: 'PDF संपादक',
+  pdfViewLoading: 'खोला जा रहा है…',
+  pdfViewOpenFailed: 'यह PDF नहीं खुल सका। फ़ाइल खराब हो सकती है या PDF नहीं है।',
+  pdfViewCertEncrypted:
+    'यह PDF प्रमाणपत्र से सुरक्षित है, पासवर्ड से नहीं। इसे जारी करने वाले ऐप में खोलें।',
+  pdfViewBlankUnavailable: 'नया PDF नहीं बनाया जा सका।',
+  pdfViewPagesFailed: 'कुछ पेज पढ़े नहीं जा सके और खाली दिखते हैं।',
+  pdfViewPageBroken: 'यह पेज दिखाया नहीं जा सकता',
+  pdfViewPageLabel: 'पेज {page}',
+  pdfViewPageIndicator: '{count} में से पेज {page}',
+  pdfViewInternalLink: 'लिंक किए गए पेज पर जाएँ',
+  pdfViewPasswordTitle: 'यह PDF एन्क्रिप्टेड है',
+  pdfViewPasswordBody: '"{name}" पासवर्ड से सुरक्षित है। खोलने के लिए पासवर्ड दर्ज करें।',
+  pdfViewPasswordLabel: 'पासवर्ड',
+  pdfViewPasswordPlaceholder: 'खोलने के लिए पासवर्ड दर्ज करें',
+  pdfViewPasswordShow: 'पासवर्ड दिखाएँ',
+  pdfViewPasswordHide: 'पासवर्ड छिपाएँ',
+  pdfViewPasswordOpen: 'खोलें',
+  pdfViewPasswordWrong: 'गलत पासवर्ड, पुनः प्रयास करें',
+  pdfViewReadOnlyEncrypted: 'एन्क्रिप्टेड दस्तावेज़ केवल देखने के लिए है',
+  pdfViewReadOnlyDamaged:
+    'क्षतिग्रस्त फ़ाइल: न पढ़े जा सकने वाले पृष्ठ खाली दिखते हैं, केवल देखने के लिए',
+  pdfViewReadOnlyNotWritable: 'यह फ़ाइल अपनी जगह पर सहेजी नहीं जा सकती, इसलिए केवल देखी जा सकती है',
+  pdfViewSearch: 'खोजें',
+  pdfViewSearchPlaceholder: 'दस्तावेज़ में खोजें',
+  pdfViewSearching: 'खोज रहे हैं…',
+  pdfViewSearchNone: 'कोई परिणाम नहीं',
+  pdfViewSearchPrev: 'पिछला',
+  pdfViewSearchNext: 'अगला',
+  pdfViewSearchClose: 'खोज बंद करें',
+  pdfViewOutline: 'रूपरेखा',
+  pdfViewOutlineEmpty: 'इस दस्तावेज़ में रूपरेखा नहीं है',
+  pdfViewGoToPage: 'पेज पर जाएँ',
+  pdfViewGoToPageLabel: 'पेज संख्या (1–{count})',
+  pdfViewGoToPageGo: 'जाएँ',
+  pdfViewGoToPageInvalid: '1 से {count} तक की संख्या दर्ज करें',
+} as const satisfies Record<keyof typeof zh, string>

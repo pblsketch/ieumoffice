@@ -1,3 +1,41 @@
 import type { zh } from './zh'
 
-export const id = {} as const satisfies Record<keyof typeof zh, string>
+export const id = {
+  pdfViewEditorName: 'Editor PDF',
+  pdfViewLoading: 'Membuka…',
+  pdfViewOpenFailed: 'PDF ini tidak dapat dibuka. Berkas mungkin rusak atau bukan PDF.',
+  pdfViewCertEncrypted:
+    'PDF ini dilindungi dengan sertifikat, bukan kata sandi. Buka di aplikasi yang menerbitkannya.',
+  pdfViewBlankUnavailable: 'Tidak dapat membuat PDF baru.',
+  pdfViewPagesFailed: 'Beberapa halaman tidak dapat dibaca dan ditampilkan kosong.',
+  pdfViewPageBroken: 'Halaman ini tidak dapat ditampilkan',
+  pdfViewPageLabel: 'Halaman {page}',
+  pdfViewPageIndicator: 'Halaman {page} dari {count}',
+  pdfViewInternalLink: 'Buka halaman yang ditautkan',
+  pdfViewPasswordTitle: 'PDF ini terenkripsi',
+  pdfViewPasswordBody: '"{name}" dilindungi kata sandi. Masukkan kata sandi untuk membukanya.',
+  pdfViewPasswordLabel: 'Kata sandi',
+  pdfViewPasswordPlaceholder: 'Masukkan kata sandi',
+  pdfViewPasswordShow: 'Tampilkan kata sandi',
+  pdfViewPasswordHide: 'Sembunyikan kata sandi',
+  pdfViewPasswordOpen: 'Buka',
+  pdfViewPasswordWrong: 'Kata sandi salah, coba lagi',
+  pdfViewReadOnlyEncrypted: 'Dokumen terenkripsi hanya bisa dilihat',
+  pdfViewReadOnlyDamaged:
+    'File rusak: halaman yang tidak terbaca tampil kosong, hanya bisa dilihat',
+  pdfViewReadOnlyNotWritable:
+    'Berkas ini tidak dapat disimpan di tempatnya, jadi hanya bisa dilihat',
+  pdfViewSearch: 'Cari',
+  pdfViewSearchPlaceholder: 'Cari di dokumen',
+  pdfViewSearching: 'Mencari…',
+  pdfViewSearchNone: 'Tidak ada hasil',
+  pdfViewSearchPrev: 'Sebelumnya',
+  pdfViewSearchNext: 'Berikutnya',
+  pdfViewSearchClose: 'Tutup pencarian',
+  pdfViewOutline: 'Kerangka',
+  pdfViewOutlineEmpty: 'Dokumen ini tidak memiliki kerangka',
+  pdfViewGoToPage: 'Buka halaman',
+  pdfViewGoToPageLabel: 'Nomor halaman (1–{count})',
+  pdfViewGoToPageGo: 'Buka',
+  pdfViewGoToPageInvalid: 'Masukkan angka 1 sampai {count}',
+} as const satisfies Record<keyof typeof zh, string>

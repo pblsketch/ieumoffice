@@ -1,0 +1,273 @@
+// The opened PDF as App holds it: the view-mode Workspace (EditorShell + document
+// area) and sharing. Edit mode, saving and recovery copies come on top of this
+// through `PdfDocumentOptions` (PDF-T4).
+import './pdfView.css'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import type { Lang, Params } from '@genoffice/i18n'
+import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
+import type { MobileClient, MobileDocSession } from '@genoffice/mobile-bridge/transport'
+import type { SearchMatch } from '../../../../../../pdf/src/renderer/search'
+import { translateMobile, type MobileStringKey } from '../../../i18n/strings'
+import { EditorShell, type EditorQuickActionItem } from '../../../shell/EditorShell'
+import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../editorKind'
+import { IconPdfGoToPage, IconPdfLock, IconPdfOutline, IconPdfSearch } from './icons'
+import type { PdfOpenedDocument } from './model'
+import { resolveDestPageIndex } from './outline'
+import { PdfGoToPageSheet } from './PdfGoToPageSheet'
+import { PdfOutlineSheet } from './PdfOutlineSheet'
+import { PdfSearchBar } from './PdfSearchBar'
+import {
+  INITIAL_PDF_VIEW_STATE,
+  PdfViewer,
+  type PdfPageHits,
+  type PdfPageOverlayContext,
+  type PdfViewerHandle,
+  type PdfViewState,
+} from './PdfViewer'
+import type { PdfReadOnlyReason } from './readOnly'
+
+/** What the Workspace hands an extension (edit mode, features) on every render. */
+export interface PdfWorkspaceContext {
+  readonly model: PdfOpenedDocument
+  readonly mode: DocumentMode
+  /** App's permission and the document's own read-only judgment together. */
+  readonly canEdit: boolean
+  readonly lang: Lang
+  readonly t: (key: MobileStringKey, params?: Params) => string
+  /** The document area; null before it mounted. */
+  readonly viewer: PdfViewerHandle | null
+}
+
+/** What an extension adds to the Workspace. Every field is optional. */
+export interface PdfWorkspaceChrome {
+  /** Edit toolbar buttons (App shows them in edit mode; 'undo'/'redo' go to the app bar). */
+  readonly quickActions?: readonly EditorQuickActionItem[]
+  /** Rows appended to the [⋯] sheet after search, outline and go to page. */
+  readonly moreItems?: readonly EditorQuickActionItem[]
+  /** Drawn inside the document stage above the pages (floating bars, sheets). */
+  readonly stageExtras?: ReactNode
+  /** Drawn inside each page box, over the bitmap, links and search hits. */
+  readonly renderPageOverlay?: (page: PdfPageOverlayContext) => ReactNode
+  /** Unsaved page rotations (clockwise degrees) by 0-based page. */
+  readonly rotationDeltas?: ReadonlyMap<number, number>
+  /** PDF.js annotation mode of the page bitmaps (see PdfPageCanvas). */
+  readonly annotationMode?: number
+}
+
+export interface PdfDocumentOptions {
+  /**
+   * A hook called on every Workspace render (keep its identity stable per
+   * document); it may use React state. Later tasks bring edit mode through it.
+   */
+  readonly useExtension?: (ctx: PdfWorkspaceContext) => PdfWorkspaceChrome
+}
+
+const READ_ONLY_KEYS: Record<PdfReadOnlyReason, MobileStringKey> = {
+  encrypted: 'pdfViewReadOnlyEncrypted',
+  damaged: 'pdfViewReadOnlyDamaged',
+  notWritable: 'pdfViewReadOnlyNotWritable',
+}
+
+const noExtension = (): PdfWorkspaceChrome => ({})
+
+function createKeptView(initial: PdfViewState) {
+  let value = initial
+  return {
+    get: () => value,
+    set: (next: PdfViewState) => {
+      value = next
+    },
+  }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let text = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    text += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(text)
+}
+
+/** Share: the file as it is on disk, or — for a document with no file yet — its bytes. */
+export async function sharePdfOriginal(
+  client: MobileClient,
+  session: MobileDocSession,
+  model: Pick<PdfOpenedDocument, 'isUntitled' | 'fromRecovery' | 'originalBytes'>,
+): Promise<void> {
+  if (model.isUntitled || model.fromRecovery) {
+    await client.shareFile({
+      sessionId: session.sessionId,
+      suggestedName: session.name,
+      mode: 'edited',
+      bytesBase64: bytesToBase64(model.originalBytes),
+    })
+    return
+  }
+  await client.shareFile({
+    sessionId: session.sessionId,
+    suggestedName: session.name,
+    mode: 'original',
+  })
+}
+
+export function startPdfDocument(
+  host: EditorHost,
+  model: PdfOpenedDocument,
+  options: PdfDocumentOptions = {},
+): EditorDocument {
+  const kept = createKeptView(INITIAL_PDF_VIEW_STATE)
+  const useExtension = options.useExtension ?? noExtension
+
+  function PdfWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
+    const t = useCallback(
+      (key: MobileStringKey, params?: Params) => translateMobile(lang, key, params),
+      [lang],
+    )
+    const viewerRef = useRef<PdfViewerHandle>(null)
+    const [searchOpen, setSearchOpen] = useState(false)
+    const [outlineOpen, setOutlineOpen] = useState(false)
+    const [goToOpen, setGoToOpen] = useState(false)
+    const [hits, setHits] = useState<Map<number, PdfPageHits> | null>(null)
+    const [currentPage, setCurrentPage] = useState(0)
+    // read once per mount: the view the document had when the Workspace last unmounted
+    const [startView] = useState(kept.get)
+
+    const effectiveCanEdit = canEdit && model.readOnlyReason === null
+    const chrome = useExtension({
+      model,
+      mode,
+      canEdit: effectiveCanEdit,
+      lang,
+      t,
+      viewer: viewerRef.current,
+    })
+
+    const goToDest = useCallback(async (dest: unknown) => {
+      const index = await resolveDestPageIndex(model.proxy, dest)
+      if (index !== null) viewerRef.current?.scrollToPage(index)
+    }, [])
+    const goToMatch = useCallback((match: SearchMatch) => {
+      const rect = match.rects[0]
+      if (rect) viewerRef.current?.scrollToPageRect(match.pageIndex, rect)
+      else viewerRef.current?.scrollToPage(match.pageIndex)
+    }, [])
+    const onViewChange = useCallback((view: PdfViewState) => kept.set(view), [])
+    const labels = useMemo(
+      () => ({
+        page: (pageNo: number) => t('pdfViewPageLabel', { page: pageNo }),
+        brokenPage: t('pdfViewPageBroken'),
+        internalLink: t('pdfViewInternalLink'),
+      }),
+      [t],
+    )
+
+    const moreItems = useMemo(
+      (): EditorQuickActionItem[] => [
+        {
+          id: 'pdfSearch',
+          label: t('pdfViewSearch'),
+          icon: <IconPdfSearch size={19} />,
+          onPress: () => setSearchOpen(true),
+        },
+        {
+          id: 'pdfOutline',
+          label: t('pdfViewOutline'),
+          icon: <IconPdfOutline size={19} />,
+          onPress: () => setOutlineOpen(true),
+        },
+        {
+          id: 'pdfGoToPage',
+          label: t('pdfViewGoToPage'),
+          icon: <IconPdfGoToPage size={19} />,
+          onPress: () => setGoToOpen(true),
+        },
+        ...(chrome.moreItems ?? []),
+      ],
+      [t, chrome.moreItems],
+    )
+    const fitToWidth = useCallback(() => viewerRef.current?.fitToWidth(), [])
+    const viewTools = useMemo(
+      (): EditorQuickActionItem[] => [
+        { id: 'fitWidth', label: t('fitToWidth'), onPress: fitToWidth },
+      ],
+      [t, fitToWidth],
+    )
+
+    const pageCount = model.pages.length
+    return (
+      <EditorShell
+        {...frame}
+        canEdit={effectiveCanEdit}
+        quickActions={chrome.quickActions ?? []}
+        moreItems={moreItems}
+        viewTools={viewTools}
+        onFitToWidth={fitToWidth}
+      >
+        <div className="m-pdf-stage" data-testid="pdf-stage">
+          {model.readOnlyReason !== null && (
+            <div className="m-pdf-readonly" role="status" data-testid="pdf-readonly-reason">
+              <IconPdfLock size={16} />
+              <span>{t(READ_ONLY_KEYS[model.readOnlyReason])}</span>
+            </div>
+          )}
+          {searchOpen && (
+            <PdfSearchBar
+              model={model}
+              t={t}
+              onHitsChange={setHits}
+              onGoToMatch={goToMatch}
+              onClose={() => setSearchOpen(false)}
+            />
+          )}
+          <PdfViewer
+            ref={viewerRef}
+            model={model}
+            initialView={startView}
+            onViewChange={onViewChange}
+            onCurrentPageChange={setCurrentPage}
+            onGoToDest={(dest) => void goToDest(dest)}
+            hits={hits ?? undefined}
+            rotationDeltas={chrome.rotationDeltas}
+            annotationMode={chrome.annotationMode}
+            renderPageOverlay={chrome.renderPageOverlay}
+            labels={labels}
+          />
+          {pageCount > 0 && (
+            <button
+              type="button"
+              className="m-pdf-page-chip"
+              onClick={() => setGoToOpen(true)}
+              aria-label={t('pdfViewPageIndicator', { page: currentPage + 1, count: pageCount })}
+              data-testid="pdf-page-chip"
+            >
+              {currentPage + 1} / {pageCount}
+            </button>
+          )}
+          {chrome.stageExtras}
+        </div>
+        <PdfOutlineSheet
+          open={outlineOpen}
+          model={model}
+          t={t}
+          onGoToDest={(dest) => void goToDest(dest)}
+          onClose={() => setOutlineOpen(false)}
+        />
+        <PdfGoToPageSheet
+          open={goToOpen}
+          pageCount={pageCount}
+          currentPage={currentPage}
+          t={t}
+          onGo={(index) => viewerRef.current?.scrollToPage(index)}
+          onClose={() => setGoToOpen(false)}
+        />
+      </EditorShell>
+    )
+  }
+
+  return {
+    async share(doc) {
+      await sharePdfOriginal(host.client, doc.session, model).catch(() => {})
+    },
+    Workspace: PdfWorkspace,
+  }
+}
