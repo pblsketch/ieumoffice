@@ -68,7 +68,8 @@ export function parseMobileCommandError(raw: unknown): MobileCommandError {
   })
 }
 
-export type MobileDocFormat = 'hwp' | 'hwpx' | 'md' | 'txt'
+export type MobileDocFormat =
+  'hwp' | 'hwpx' | 'md' | 'txt' | 'pdf' | 'html' | 'xlsx' | 'xlsm' | 'xls' | 'csv' | 'epub' | 'pptx'
 export type MobileShareMode = 'edited' | 'original'
 export type MobileRestoreTarget = 'in-place' | 'save-as'
 export type MobileTheme = 'light' | 'dark' | 'system'
@@ -262,8 +263,9 @@ export interface MobileTransport {
 
 export interface MobileClient {
   readonly transport: MobileTransport
-  createUntitledSession(format: 'hwp' | 'hwpx' | 'md'): Promise<MobileDocSession>
+  createUntitledSession(format: MobileDocFormat): Promise<MobileDocSession>
   pickOpenFile(exts: readonly string[]): Promise<MobileDocSession>
+  setOpenableExtensions(exts: readonly string[]): Promise<{ ok: boolean }>
   openRecentDoc(id: string): Promise<MobileDocSession>
   consumePendingOpenIntent(): Promise<MobileDocSession | null>
   readFileBytes(sessionId: string): Promise<ReadFileBytesResult>
@@ -318,7 +320,12 @@ export interface MobileClient {
   chatgptSignOut(): Promise<{ ok: boolean }>
 }
 
-async function invokeChecked<T>(
+/**
+ * Invokes a Tauri command and turns any rejection into a `MobileCommandError`.
+ * Tracks build their own command wrappers with `client.transport` and this helper
+ * instead of widening `MobileClient`.
+ */
+export async function invokeMobileCommand<T>(
   transport: MobileTransport,
   command: string,
   args?: Record<string, unknown>,
@@ -334,21 +341,26 @@ export function createMobileClient(transport: MobileTransport): MobileClient {
   return {
     transport,
     createUntitledSession: (format) =>
-      invokeChecked(transport, 'mobile_create_untitled_session', { format }),
-    pickOpenFile: (exts) => invokeChecked(transport, 'mobile_pick_open_file', { exts: [...exts] }),
-    openRecentDoc: (id) => invokeChecked(transport, 'mobile_open_recent_doc', { id }),
-    consumePendingOpenIntent: () => invokeChecked(transport, 'mobile_consume_pending_open_intent'),
-    readFileBytes: (sessionId) => invokeChecked(transport, 'mobile_read_file_bytes', { sessionId }),
+      invokeMobileCommand(transport, 'mobile_create_untitled_session', { format }),
+    pickOpenFile: (exts) =>
+      invokeMobileCommand(transport, 'mobile_pick_open_file', { exts: [...exts] }),
+    setOpenableExtensions: (exts) =>
+      invokeMobileCommand(transport, 'mobile_set_openable_formats', { exts: [...exts] }),
+    openRecentDoc: (id) => invokeMobileCommand(transport, 'mobile_open_recent_doc', { id }),
+    consumePendingOpenIntent: () =>
+      invokeMobileCommand(transport, 'mobile_consume_pending_open_intent'),
+    readFileBytes: (sessionId) =>
+      invokeMobileCommand(transport, 'mobile_read_file_bytes', { sessionId }),
     hwpNewTabs: (sessionId, bytesBase64, format) =>
-      invokeChecked(transport, 'mobile_hwp_new_tabs', { sessionId, bytesBase64, format }),
+      invokeMobileCommand(transport, 'mobile_hwp_new_tabs', { sessionId, bytesBase64, format }),
     saveFileBytes: (sessionId, bytesBase64, hwpFix) =>
-      invokeChecked(transport, 'mobile_save_file_bytes', {
+      invokeMobileCommand(transport, 'mobile_save_file_bytes', {
         sessionId,
         bytesBase64,
         ...(hwpFix ? { hwpFix } : {}),
       }),
     saveAsFileBytes: (params) =>
-      invokeChecked(transport, 'mobile_save_as_file_bytes', {
+      invokeMobileCommand(transport, 'mobile_save_as_file_bytes', {
         sessionId: params.sessionId ?? null,
         suggestedName: params.suggestedName,
         format: params.format,
@@ -356,44 +368,48 @@ export function createMobileClient(transport: MobileTransport): MobileClient {
         ...(params.hwpFix ? { hwpFix: params.hwpFix } : {}),
       }),
     shareFile: (params) =>
-      invokeChecked(transport, 'mobile_share_file', {
+      invokeMobileCommand(transport, 'mobile_share_file', {
         sessionId: params.sessionId,
         suggestedName: params.suggestedName,
         mode: params.mode,
         bytesBase64: params.bytesBase64 ?? null,
       }),
-    listRecentDocs: () => invokeChecked(transport, 'mobile_list_recent_docs'),
-    removeRecentDoc: (id) => invokeChecked(transport, 'mobile_remove_recent_doc', { id }),
-    recoveryWrite: (params) => invokeChecked(transport, 'mobile_recovery_write', { ...params }),
-    recoveryList: () => invokeChecked(transport, 'mobile_recovery_list'),
-    recoveryRead: (docKey) => invokeChecked(transport, 'mobile_recovery_read', { docKey }),
-    recoveryDiscard: (docKey) => invokeChecked(transport, 'mobile_recovery_discard', { docKey }),
-    hwpBackupList: () => invokeChecked(transport, 'mobile_hwp_backup_list'),
+    listRecentDocs: () => invokeMobileCommand(transport, 'mobile_list_recent_docs'),
+    removeRecentDoc: (id) => invokeMobileCommand(transport, 'mobile_remove_recent_doc', { id }),
+    recoveryWrite: (params) =>
+      invokeMobileCommand(transport, 'mobile_recovery_write', { ...params }),
+    recoveryList: () => invokeMobileCommand(transport, 'mobile_recovery_list'),
+    recoveryRead: (docKey) => invokeMobileCommand(transport, 'mobile_recovery_read', { docKey }),
+    recoveryDiscard: (docKey) =>
+      invokeMobileCommand(transport, 'mobile_recovery_discard', { docKey }),
+    hwpBackupList: () => invokeMobileCommand(transport, 'mobile_hwp_backup_list'),
     hwpBackupRestore: (backupId, target) =>
-      invokeChecked(transport, 'mobile_hwp_backup_restore', { backupId, target }),
+      invokeMobileCommand(transport, 'mobile_hwp_backup_restore', { backupId, target }),
     hwpBackupDelete: (backupId) =>
-      invokeChecked(transport, 'mobile_hwp_backup_delete', { backupId }),
-    getAppPrefs: () => invokeChecked(transport, 'mobile_get_app_prefs'),
-    setAppPrefs: (patch) => invokeChecked(transport, 'mobile_set_app_prefs', { ...patch }),
-    getAiSettings: () => invokeChecked(transport, 'mobile_get_ai_settings'),
-    setAiSettings: (patch) => invokeChecked(transport, 'mobile_set_ai_settings', { ...patch }),
+      invokeMobileCommand(transport, 'mobile_hwp_backup_delete', { backupId }),
+    getAppPrefs: () => invokeMobileCommand(transport, 'mobile_get_app_prefs'),
+    setAppPrefs: (patch) => invokeMobileCommand(transport, 'mobile_set_app_prefs', { ...patch }),
+    getAiSettings: () => invokeMobileCommand(transport, 'mobile_get_ai_settings'),
+    setAiSettings: (patch) =>
+      invokeMobileCommand(transport, 'mobile_set_ai_settings', { ...patch }),
     validateAiKey: (params) =>
-      invokeChecked(transport, 'mobile_ai_validate_key', {
+      invokeMobileCommand(transport, 'mobile_ai_validate_key', {
         provider: params.provider,
         apiKey: params.apiKey,
         freeOnly: params.freeOnly ?? null,
       }),
-    startAiStream: (request) => invokeChecked(transport, 'mobile_ai_stream_start', { ...request }),
+    startAiStream: (request) =>
+      invokeMobileCommand(transport, 'mobile_ai_stream_start', { ...request }),
     cancelAiStream: (requestId) =>
-      invokeChecked(transport, 'mobile_ai_stream_cancel', { requestId }),
+      invokeMobileCommand(transport, 'mobile_ai_stream_cancel', { requestId }),
     onAiStreamChunk: (handler) =>
       transport.listen<MobileAiStreamChunk>('mobile:ai-stream-chunk', handler),
-    chatgptStatus: () => invokeChecked(transport, 'mobile_chatgpt_status'),
+    chatgptStatus: () => invokeMobileCommand(transport, 'mobile_chatgpt_status'),
     chatgptSignIn: (reconsent) =>
-      invokeChecked(transport, 'mobile_chatgpt_sign_in', { reconsent: reconsent ?? false }),
+      invokeMobileCommand(transport, 'mobile_chatgpt_sign_in', { reconsent: reconsent ?? false }),
     chatgptCompleteCallback: (url) =>
-      invokeChecked(transport, 'mobile_chatgpt_complete_callback', { url }),
-    chatgptSignOut: () => invokeChecked(transport, 'mobile_chatgpt_sign_out'),
+      invokeMobileCommand(transport, 'mobile_chatgpt_complete_callback', { url }),
+    chatgptSignOut: () => invokeMobileCommand(transport, 'mobile_chatgpt_sign_out'),
   }
 }
 

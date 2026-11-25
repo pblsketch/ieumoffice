@@ -12,7 +12,13 @@
     "./view-edit-gate": "./src/view-edit-gate.ts",
     "./ai-bridge": "./src/ai-bridge.ts",
     "./markdown": "./src/markdown/index.ts",
-    "./hwp": "./src/hwp/index.ts"
+    "./hwp": "./src/hwp/index.ts",
+    "./sheets": "./src/sheets/index.ts",
+    "./pdf": "./src/pdf/index.ts",
+    "./pdf-tools": "./src/pdf-tools/index.ts",
+    "./html": "./src/html/index.ts",
+    "./readers": "./src/readers/index.ts",
+    "./home": "./src/home/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
