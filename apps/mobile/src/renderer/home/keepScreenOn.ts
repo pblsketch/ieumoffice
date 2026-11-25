@@ -2,10 +2,9 @@
 // from their reading screens; the count covers several screens at once. Nothing happens while the
 // setting is off, and the screen is let go while the app is in the background.
 import { useEffect } from 'react'
-import { invokeMobileCommand, type MobileClient } from '@genoffice/mobile-bridge/transport'
+import { setKeepScreenOn } from '@genoffice/mobile-bridge/home'
+import type { MobileClient } from '@genoffice/mobile-bridge/transport'
 import { ensureLoaded, getHomePrefs, subscribeHomePrefs } from './prefsStore'
-
-const KEEP_SCREEN_ON_COMMAND = 'mobile_home_keep_screen_on'
 
 let holders = 0
 // What the OS was last asked for.
@@ -25,7 +24,7 @@ function sync(): void {
   const client = lastClient
   if (!client) return
   // a platform without the command (or a test double) refuses; the screen just follows the OS
-  void invokeMobileCommand(client.transport, KEEP_SCREEN_ON_COMMAND, { on }).catch(() => {})
+  void setKeepScreenOn(client, on).catch(() => {})
 }
 
 function bind(): void {

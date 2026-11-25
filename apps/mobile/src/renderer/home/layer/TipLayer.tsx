@@ -4,7 +4,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MobileClient } from '@genoffice/mobile-bridge/transport'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import { useMobileLocale } from '../../i18n'
-import { getHomePrefs, updateHomePrefs, useHomePrefs, type HomeTipId } from '../prefsStore'
+import {
+  getHomePrefs,
+  HOME_TIP_IDS,
+  updateHomePrefs,
+  useHomePrefs,
+  type HomeTipId,
+} from '../prefsStore'
 import { modalOpen, nextTip, tipAnchor, TIP_TEXT_KEYS } from './tipModel'
 import { useDomTick } from './useDomTick'
 import './layer.css'
@@ -42,12 +48,16 @@ export interface TipLayerProps {
 export function TipLayer({ active, mode, client }: TipLayerProps) {
   const { t } = useMobileLocale()
   const { prefs, loaded } = useHomePrefs()
-  const tick = useDomTick(active && loaded)
+  // Closed in this run; kept even if saving `tipsSeen` fails.
+  const closedRef = useRef(new Set<string>())
+  // Once every tip was seen, stop watching the editor's DOM for the rest of the run.
+  const tipsLeft = HOME_TIP_IDS.some(
+    (id) => !prefs.tipsSeen.includes(id) && !closedRef.current.has(id),
+  )
+  const tick = useDomTick(active && loaded && tipsLeft)
   const [current, setCurrent] = useState<HomeTipId | null>(null)
   const [placement, setPlacement] = useState<Placement | null>(null)
   const bubbleRef = useRef<HTMLDivElement | null>(null)
-  // Closed in this run; kept even if saving `tipsSeen` fails.
-  const closedRef = useRef(new Set<string>())
   const pageViewLabel = t('pageView')
 
   useLayoutEffect(() => {

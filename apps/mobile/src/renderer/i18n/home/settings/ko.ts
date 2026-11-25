@@ -19,7 +19,7 @@ export const ko = {
   homeSetFolderRemove: '빼기',
   homeSetFolderRemoveNamed: '{name} 빼기',
   homeSetFolderOk: '연결됨',
-  homeSetFolderLost: '이 폴더에 들어갈 수 없습니다. 옮기거나 지웠다면 다시 연결하세요.',
+  homeSetFolderLost: '이 폴더에 들어갈 수 없습니다. 옮기거나 지웠다면 다시 연결해 주세요.',
   homeSetFolderRemoveTitle: '{name} 폴더를 뺄까요?',
   homeSetFolderRemoveBody:
     '이 폴더 안 파일의 최근·즐겨찾기 {count}개 줄도 함께 빠집니다. 파일은 지워지지 않습니다.',
