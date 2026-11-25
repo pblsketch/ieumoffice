@@ -115,6 +115,9 @@ export function createMobileUniver(options: MobileUniverOptions): UniverRuntime 
           toolbar: false,
           footer: true,
           contextMenu: true,
+          // Univer focuses its hidden cell input at start, which raises the
+          // virtual keyboard on open (seen on Android); the grid opens to read.
+          disableAutoFocus: true,
         },
       ],
       UniverDocsUIPlugin,
