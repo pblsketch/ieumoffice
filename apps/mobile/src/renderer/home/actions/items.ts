@@ -136,14 +136,15 @@ export function incomingFileItem(batchId: string, entry: IncomingEntry): HomeFil
 
 /**
  * A row's [⋯] items (spec 3.6). Received files are temporary copies, so they only share and select.
- * "Move to group" needs a starred file; "remove from list" is for the recent and favorites lists.
+ * "Move to group" needs a starred file; "remove from list" is for the recent list (in the favorites
+ * list it would repeat "remove from favorites", so that list shows only the latter).
  */
 export function rowMenuActions(item: HomeFileItem, listKind: HomeListKind): HomeRowAction[] {
   if (listKind === 'incoming') return ['select', 'share']
   const actions: HomeRowAction[] = ['select', 'share', 'rename', 'duplicate']
   actions.push(item.favorite ? 'favoriteRemove' : 'favoriteAdd')
   if (item.favorite) actions.push('moveToGroup')
-  if (listKind === 'recent' || listKind === 'favorites') actions.push('removeFromList')
+  if (listKind === 'recent') actions.push('removeFromList')
   actions.push('delete')
   return actions
 }

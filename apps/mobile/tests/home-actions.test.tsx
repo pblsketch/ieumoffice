@@ -248,7 +248,7 @@ describe('selection bar composition', () => {
 })
 
 describe('row menu', () => {
-  it('shows "move to group" only for starred files and "remove from list" only in recent lists', () => {
+  it('shows "move to group" only for starred files and "remove from list" only in the recent list', () => {
     expect(rowMenuActions(recentItem('a', 'a.md'), 'recent')).not.toContain('moveToGroup')
     expect(rowMenuActions(recentItem('a', 'a.md', true), 'recent')).toContain('moveToGroup')
     expect(rowMenuActions(recentItem('a', 'a.md'), 'recent')).toContain('removeFromList')
@@ -257,7 +257,7 @@ describe('row menu', () => {
         favoriteFileItem({ docKey: 'k', name: 'x.md', format: 'md', groupId: null, addedAt: 1 }),
         'favorites',
       ),
-    ).toContain('removeFromList')
+    ).not.toContain('removeFromList')
     expect(rowMenuActions(folderItem('1', 'a.md', false), 'folder')).not.toContain('removeFromList')
     for (const kind of ['recent', 'favorites', 'folder'] as const) {
       const actions = rowMenuActions(recentItem('a', 'a.md', true), kind)
