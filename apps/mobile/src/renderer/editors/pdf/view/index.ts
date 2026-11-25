@@ -8,6 +8,7 @@ export {
   startPdfDocument,
   type PdfDocumentOptions,
   type PdfKeptView,
+  type PdfModelSource,
   type PdfWorkspaceChrome,
   type PdfWorkspaceContext,
 } from './startPdfDocument'

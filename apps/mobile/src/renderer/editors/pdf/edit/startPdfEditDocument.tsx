@@ -1,10 +1,10 @@
 // The opened PDF as App holds it once editing is possible: the viewer Workspace
 // with the edit frame on top, and save / Save As / share / recovery copies from the
 // edit session. A save reloads the document from the written bytes; the Workspace
-// then shows the new document model in place of the old one, at the same position.
-import { useSyncExternalStore } from 'react'
+// then shows the new document model in place of the old one, at the same position,
+// without remounting the shell or the sheets (they hold back-stack entries).
 import type { MobileDocSession } from '@genoffice/mobile-bridge/transport'
-import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../editorKind'
+import type { EditorDocument, EditorHost } from '../../editorKind'
 import { createPdfAiRun, type PdfAiEnv } from '../ai/createAiRun'
 import type { PdfUnlockProbe } from '../openTypes'
 import {
@@ -62,22 +62,13 @@ export function startPdfEditDocument(
     return editExtension(ctx)
   }
   const keptView = createKeptView()
-  // one viewer document per model; the model changes only after a save or a reload
-  const viewers = new WeakMap<PdfOpenedDocument, EditorDocument>()
-  const viewerFor = (current: PdfOpenedDocument): EditorDocument => {
-    let viewer = viewers.get(current)
-    if (!viewer) {
-      viewer = startPdfDocument(host, current, { useExtension, keptView })
-      viewers.set(current, viewer)
-    }
-    return viewer
-  }
-
-  function PdfEditWorkspace(props: EditorWorkspaceProps) {
-    const current = useSyncExternalStore(editSession.subscribeModel, editSession.getModel)
-    const ViewerWorkspace = viewerFor(current).Workspace
-    return <ViewerWorkspace {...props} />
-  }
+  // one viewer Workspace for every model of the session: a save swaps the document
+  // inside it (one Workspace per model remounted the shell and its back layers)
+  const viewer = startPdfDocument(host, model, {
+    useExtension,
+    keptView,
+    modelSource: editSession,
+  })
 
   return {
     editSession,
@@ -101,6 +92,6 @@ export function startPdfEditDocument(
         },
         ctx,
       ),
-    Workspace: PdfEditWorkspace,
+    Workspace: viewer.Workspace,
   }
 }

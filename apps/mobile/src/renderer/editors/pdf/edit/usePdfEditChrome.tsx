@@ -82,6 +82,13 @@ export function createPdfEditExtension(
     useEffect(() => {
       if (!editing) setActiveTool(null)
     }, [editing])
+    // a reloaded document (after a save) starts with the tools off; the Workspace stays
+    // mounted through the reload, so this is the hook's own reset
+    const [toolModel, setToolModel] = useState(model)
+    if (toolModel !== model) {
+      setToolModel(model)
+      setActiveTool(null)
+    }
 
     // Save As asks here while the Workspace is mounted
     const [askOpen, setAskOpen] = useState(false)
