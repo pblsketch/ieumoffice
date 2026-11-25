@@ -23,7 +23,7 @@ use xlsx_sidecar::find::FindCellsRequest;
 use xlsx_sidecar::recalc::{RecalcEdit, RecalcRead};
 use xlsx_sidecar::{CellRange, SidecarError, WorkbookSessions};
 
-use super::recalc_worker::{RecalcJob, RecalcWorker};
+use crate::recalc_worker::{RecalcJob, RecalcWorker};
 
 pub const PROTOCOL_VERSION: u8 = 1;
 

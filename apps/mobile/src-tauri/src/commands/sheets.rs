@@ -7,7 +7,7 @@
 //! requests) may name.
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
-use crate::sheets::{Response, SheetsState};
+use crate::sheets::SheetsState;
 use crate::storage::MobileFileService;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::Serialize;
@@ -60,15 +60,17 @@ fn bad_base64(error: base64::DecodeError) -> MobileError {
     )
 }
 
-/// Sends one engine request line and returns the engine's response. Engine
-/// failures come back inside the response (`ok: false`), as on the desktop.
+/// Sends one engine request line and returns the engine's response, passed
+/// to the WebView as the engine wrote it (the same JSON text the desktop
+/// sidecar prints). Engine failures come back inside the response
+/// (`ok: false`), as on the desktop.
 #[tauri::command]
 pub async fn mobile_sheets_request(
     state: State<'_, Arc<SheetsState>>,
     line: String,
-) -> MobileResult<Response> {
+) -> MobileResult<tauri::ipc::Response> {
     let sheets = state.inner().clone();
-    run_blocking(move || Ok(sheets.engine.handle_line(&line))).await
+    run_blocking(move || Ok(tauri::ipc::Response::new(sheets.engine.handle_line(&line)))).await
 }
 
 /// Copies the active document into a fresh working copy in the work folder

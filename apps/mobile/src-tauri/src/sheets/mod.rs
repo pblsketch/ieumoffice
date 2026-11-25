@@ -3,13 +3,23 @@
 //! On the desktop the engine runs as a child process that reads one JSON
 //! request per stdin line and writes one JSON response per stdout line. The
 //! phone starts no process: it passes the same request line to
-//! [`SheetsEngine::handle_line`] and gets the same response back, with the
-//! same command names, fields, response shape, error sentences and protocol
-//! version (see `dispatch.rs`).
+//! [`SheetsEngine::handle_line`] and gets the same response line back, with
+//! the same command names, fields, response shape, error sentences and
+//! protocol version.
+//!
+//! The engine itself lives in `engine-lib/`, a separate crate built in its own
+//! cargo workspace by `build.rs` and linked as a native library (see
+//! `engine_build.rs`). Two reasons: its dependency features must not unify
+//! with this crate's (the engine's zip 9 would switch flate2 to zlib-rs for the
+//! whole app and change HWP/HWPX saved bytes), and it must unwind (this app's
+//! release profile aborts on panic; the library catches a panic at its C
+//! boundary and answers only that request with an error). This module only
+//! sees the C ABI (`engine.rs`).
 
-mod dispatch;
 mod engine;
-mod recalc_worker;
+#[cfg_attr(not(test), allow(dead_code))]
+#[path = "engine-lib/src/path_guard.rs"]
+mod path_guard;
 pub mod workspace;
 
 #[cfg(test)]
@@ -18,8 +28,7 @@ mod tests;
 use std::path::Path;
 use std::sync::Arc;
 
-pub use dispatch::{ErrorBody, PROTOCOL_VERSION, Response};
-pub use engine::{PATH_OUTSIDE_WORK_FOLDER, SheetsEngine};
+pub use engine::SheetsEngine;
 pub use workspace::{SheetsWorkspace, WORK_DIR_NAME};
 
 /// Managed Tauri state for track T1.
@@ -37,7 +46,7 @@ impl SheetsState {
         workspace
             .clear()
             .map_err(|error| std::io::Error::other(error.to_string()))?;
-        let engine = SheetsEngine::new(Some(workspace.root().to_path_buf()));
+        let engine = SheetsEngine::new(Some(workspace.root()))?;
         Ok(Self { engine, workspace })
     }
 
@@ -56,9 +65,10 @@ impl SheetsState {
 }
 
 /// The engine keeps each open workbook's session cache under
-/// `std::env::temp_dir()`. On Android that falls back to `/data/local/tmp`,
-/// which an app cannot write, so the app cache directory takes its place.
-/// iOS already gives the app a writable sandbox `TMPDIR`.
+/// `std::env::temp_dir()` (the library's own std reads the same process
+/// environment). On Android that falls back to `/data/local/tmp`, which an
+/// app cannot write, so the app cache directory takes its place. iOS already
+/// gives the app a writable sandbox `TMPDIR`.
 #[cfg(target_os = "android")]
 fn use_as_temp_dir(cache_dir: &Path) {
     // SAFETY: called once from the Tauri `setup` hook on the main thread,

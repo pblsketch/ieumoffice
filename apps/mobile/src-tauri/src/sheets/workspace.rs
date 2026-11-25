@@ -4,7 +4,7 @@
 
 use std::fs;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
 
@@ -17,29 +17,7 @@ pub struct SheetsWorkspace {
     root: PathBuf,
 }
 
-/// True when `path` is an absolute path strictly inside `root`, with no `.`
-/// or `..` steps, and (when it already exists) still inside `root` after
-/// symlinks are resolved.
-pub fn is_within(root: &Path, path: &Path) -> bool {
-    if !path.is_absolute() || path == root || !path.starts_with(root) {
-        return false;
-    }
-    if path
-        .components()
-        .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
-    {
-        return false;
-    }
-    match (path.canonicalize(), root.canonicalize()) {
-        (Ok(resolved), Ok(resolved_root)) => {
-            resolved != resolved_root && resolved.starts_with(&resolved_root)
-        }
-        // A path that does not exist yet (a save target, a new content file):
-        // its lexical position was checked above.
-        (Err(_), _) => true,
-        (Ok(_), Err(_)) => false,
-    }
-}
+pub use super::path_guard::is_within;
 
 fn io_error(error: io::Error) -> MobileError {
     MobileError::with_detail(
