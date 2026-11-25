@@ -30,6 +30,8 @@ import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
 import type { EditorDocument, EditorHost, EditorKind } from './editors/editorKind'
 import { findEditorKind, openableExtensions } from './editors/registry'
+import { confirmEditorOn } from './home/editorGate'
+import { HomeAppLayer } from './home/HomeAppLayer'
 import type { HomeHost } from './home/homeHost'
 import { takeIncomingDocument } from './home/incoming'
 import { MobileLocaleProvider, translateMobile } from './i18n'
@@ -258,6 +260,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         notifyNotOpenable()
         return
       }
+      if (!(await confirmEditorOn(kind, client))) return
       const isUntitled =
         options?.isUntitled ?? (!session.writable && !session.ephemeral && !session.uriHint)
 
@@ -377,8 +380,29 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       showToast: (input) => showToast(input),
       refreshHome: refreshHomeData,
       openSettings: openSettingsFromHome,
+      openUntitledCopy: async ({ format, name, bytesBase64 }) => {
+        const kind = findEditorKind(format)
+        if (!kind) {
+          notifyNotOpenable()
+          return
+        }
+        const session = await client.createUntitledSession(kind.recoveryFormat(format))
+        await openLoadedSession(
+          { ...session, name },
+          { isUntitled: true, recoveryBytesBase64: bytesBase64 },
+        )
+        sessionControllerRef.current?.markDirty(true)
+      },
     }),
-    [client, handleCreateNew, openLoadedSession, openSettingsFromHome, refreshHomeData, showToast],
+    [
+      client,
+      handleCreateNew,
+      notifyNotOpenable,
+      openLoadedSession,
+      openSettingsFromHome,
+      refreshHomeData,
+      showToast,
+    ],
   )
 
   const handlePickOpenFile = useCallback(async () => {
@@ -567,6 +591,21 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           open={unsavedPromptDoc !== null}
           docTitle={unsavedPromptDoc ?? ''}
           onChoice={resolveUnsavedChoice}
+        />
+        <HomeAppLayer
+          host={homeHost}
+          screen={screen}
+          activeDoc={
+            activeDoc
+              ? {
+                  session: activeDoc.session,
+                  encrypted: activeDoc.encrypted,
+                  distribution: activeDoc.distribution,
+                  isUntitled: activeDoc.isUntitled,
+                }
+              : null
+          }
+          mode={mode}
         />
         <ToastHost toast={toast} onDismiss={dismissToast} />
       </BackStackProvider>
