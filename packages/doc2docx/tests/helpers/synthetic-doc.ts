@@ -213,6 +213,8 @@ export interface SyntheticFloatingShape {
   pib?: number
   /** extra OfficeArt properties ([pid, value]) of a non-picture shape */
   props?: Array<[number, number]>
+  /** complex OfficeArt properties ([pid, payload]) appended after the fixed OPT entries */
+  complexProps?: Array<[number, Uint8Array]>
 }
 
 /** One synthetic list level (encoded as LVLF + papx + chpx + Xst). */
@@ -1094,14 +1096,26 @@ function rectBytes(rect: [number, number, number, number]): Uint8Array {
   return out
 }
 
-function optRecord(entries: Array<[number, number]>): Uint8Array {
-  const out = new Uint8Array(entries.length * 6)
-  const view = new DataView(out.buffer)
+function optRecord(
+  entries: Array<[number, number]>,
+  complexEntries: Array<[number, Uint8Array]> = [],
+): Uint8Array {
+  const count = entries.length + complexEntries.length
+  const fixed = new Uint8Array(count * 6)
+  const view = new DataView(fixed.buffer)
   entries.forEach(([pid, value], index) => {
     view.setUint16(index * 6, pid, true)
     view.setUint32(index * 6 + 2, value, true)
   })
-  return officeArtRecord(0xf00b, entries.length, out)
+  complexEntries.forEach(([pid, payload], index) => {
+    const slot = (entries.length + index) * 6
+    view.setUint16(slot, (pid & 0x3fff) | 0x8000, true)
+    view.setUint32(slot + 2, payload.length, true)
+  })
+  const body = complexEntries.length
+    ? concatBytes([fixed, ...complexEntries.map(([, payload]) => payload)])
+    : fixed
+  return officeArtRecord(0xf00b, count, body)
 }
 
 function fspRecord(spid: number, flags: number, shapeType: number): Uint8Array {
@@ -1141,13 +1155,14 @@ export function encodeFloatingShapes(
     pib: number | undefined,
     extra: Uint8Array[],
     props: Array<[number, number]> = [],
+    complexProps: Array<[number, Uint8Array]> = [],
   ): Uint8Array => {
     const pibValue = pib ?? (blip ? registerBlip(blip) : undefined)
     const parts = [
       fspRecord(spid, flags, pibValue !== undefined ? 75 : flags & 1 ? 0 : 202),
       ...(pibValue !== undefined
-        ? [optRecord([[0x4104, pibValue], ...props])]
-        : [optRecord([[0x01bf, 0x00010000], ...props])]),
+        ? [optRecord([[0x4104, pibValue], ...props], complexProps)]
+        : [optRecord([[0x01bf, 0x00010000], ...props], complexProps)]),
       ...extra,
     ]
     return officeArtRecord(0xf004, 0, concatBytes(parts), true)
@@ -1185,6 +1200,7 @@ export function encodeFloatingShapes(
           shape.pib,
           [officeArtRecord(0xf010, 0, new Uint8Array(4))],
           shape.props,
+          shape.complexProps,
         )
     drawings.set(label, [...(drawings.get(label) ?? []), container])
     anchors.set(label, [...(anchors.get(label) ?? []), { shape, spid }])

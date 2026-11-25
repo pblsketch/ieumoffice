@@ -45,6 +45,15 @@ export const PICTURE_EXTENSIONS: Record<PictureMediaType, PictureExtension> = {
   'image/tiff': 'tiff',
 }
 
+/** color/opacity adjustments read from OfficeArt blip properties (1/1000 of a percent) */
+export interface PictureEffects {
+  bright?: number
+  contrast?: number
+  grayscale?: boolean
+  biLevel?: boolean
+  alpha?: number
+}
+
 interface FloatingShapeBase {
   /** CP of the \x08 anchor in its story (header CPs are relative to the header document) */
   cp: number
@@ -56,6 +65,10 @@ interface FloatingShapeBase {
   heightTwips: number
   horizontalRelative: 'margin' | 'page' | 'column' | 'character'
   verticalRelative: 'margin' | 'page' | 'paragraph' | 'line'
+  horizontalAlign?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'center' | 'bottom'
+  /** clockwise rotation in degrees in (0, 360) */
+  rotationDeg?: number
   wrap: 'square' | 'topAndBottom' | 'none' | 'tight' | 'through'
   behindText: boolean
 }
@@ -64,6 +77,7 @@ export interface FloatingPicture extends FloatingShapeBase {
   kind: 'picture'
   media: PictureMedia
   crop?: PictureCrop
+  effects?: PictureEffects
 }
 
 export interface FloatingTextBox extends FloatingShapeBase {
@@ -71,6 +85,8 @@ export interface FloatingTextBox extends FloatingShapeBase {
   geometry: 'rect' | 'roundRect' | 'ellipse'
   /** RRGGBB fill; undefined = no fill */
   fill?: string
+  /** fill alpha in 1/1000 of a percent (0..99999) when semi-transparent */
+  fillAlpha?: number
   /** outline; undefined = no line */
   line?: { color: string; widthEmu: number }
   /** left, top, right, bottom text insets in EMU */
@@ -82,7 +98,19 @@ export interface FloatingTextBox extends FloatingShapeBase {
   content: HeaderFooterStory
 }
 
-export type FloatingShape = FloatingPicture | FloatingTextBox
+export interface FloatingWordArt extends FloatingShapeBase {
+  kind: 'wordArt'
+  text: string
+  fontFamily?: string
+  bold?: boolean
+  italic?: boolean
+  /** RRGGBB fill color */
+  colorHex?: string
+  /** 0..1 fill opacity */
+  opacity?: number
+}
+
+export type FloatingShape = FloatingPicture | FloatingTextBox | FloatingWordArt
 
 export interface FloatingPicturesResult {
   body: FloatingShape[]
@@ -113,12 +141,16 @@ const REC_CHILD_ANCHOR = 0xf00f
 const REC_SECONDARY_OPT = 0xf121
 const REC_TERTIARY_OPT = 0xf122
 const FBSE_BYTES = 36
+const OPT_ROTATION = 0x0004
 const OPT_PIB = 0x0104
 /** cropFromTop/Bottom/Left/Right: 16.16 fixed-point fractions of the source picture */
 const OPT_CROP_FROM_TOP = 0x0100
 const OPT_CROP_FROM_BOTTOM = 0x0101
 const OPT_CROP_FROM_LEFT = 0x0102
 const OPT_CROP_FROM_RIGHT = 0x0103
+const OPT_PICTURE_CONTRAST = 0x0108
+const OPT_PICTURE_BRIGHTNESS = 0x0109
+const OPT_PICTURE_FLAGS = 0x013f
 const OPT_TXID = 0x0080
 const OPT_DX_TEXT_LEFT = 0x0081
 const OPT_DY_TEXT_TOP = 0x0082
@@ -127,12 +159,18 @@ const OPT_DY_TEXT_BOTTOM = 0x0084
 const OPT_ANCHOR_TEXT = 0x0087
 const OPT_TEXT_FLOW = 0x0088
 const OPT_TEXT_BOOLEANS = 0x00bf
+const OPT_GTEXT_UNICODE = 0x00c0
+const OPT_GTEXT_FONT = 0x00c5
+const OPT_GTEXT_BOOLEANS = 0x00ff
 const OPT_FILL_COLOR = 0x0181
+const OPT_FILL_OPACITY = 0x0182
 const OPT_FILL_BOOLEANS = 0x01bf
 const OPT_LINE_COLOR = 0x01c0
 const OPT_LINE_WIDTH = 0x01cb
 const OPT_LINE_BOOLEANS = 0x01ff
+const OPT_POS_H = 0x038f
 const OPT_POS_REL_H = 0x0390
+const OPT_POS_V = 0x0391
 const OPT_POS_REL_V = 0x0392
 const DEFAULT_LINE_WIDTH_EMU = 9525
 const DEFAULT_INSETS_EMU: [number, number, number, number] = [91440, 45720, 91440, 45720]
@@ -382,6 +420,8 @@ interface Shape {
   shapeType: number
   /** OfficeArt property table (pid -> value) */
   props: Map<number, number>
+  /** OfficeArt complex property payloads (pid -> bytes) */
+  complexProps: Map<number, Uint8Array>
   pib?: number
   childAnchor?: Rect
   groupBounds?: Rect
@@ -452,7 +492,14 @@ export function inlineShapeCrop(
 }
 
 function parseSpContainer(bytes: Uint8Array, record: RecordHeader): Shape {
-  const shape: Shape = { spid: 0, flags: 0, shapeType: 0, props: new Map(), children: [] }
+  const shape: Shape = {
+    spid: 0,
+    flags: 0,
+    shapeType: 0,
+    props: new Map(),
+    complexProps: new Map(),
+    children: [],
+  }
   const dv = view(bytes)
   for (const child of records(bytes, record.start, record.end)) {
     if (child.type === REC_FSP && child.end - child.start >= 8) {
@@ -468,13 +515,23 @@ function parseSpContainer(bytes: Uint8Array, record: RecordHeader): Shape {
       child.type === REC_SECONDARY_OPT ||
       child.type === REC_TERTIARY_OPT
     ) {
+      let complexOffset = child.start + child.instance * 6
       for (let index = 0; index < child.instance; index++) {
         const at = child.start + index * 6
         if (at + 6 > child.end) break
-        const pid = dv.getUint16(at, true) & 0x3fff
+        const rawPid = dv.getUint16(at, true)
+        const pid = rawPid & 0x3fff
+        const isComplex = (rawPid & 0x8000) !== 0
         const value = dv.getUint32(at + 2, true)
-        shape.props.set(pid, value)
-        if (pid === OPT_PIB) shape.pib = value
+        if (isComplex) {
+          if (value > 0 && complexOffset + value <= child.end) {
+            shape.complexProps.set(pid, bytes.slice(complexOffset, complexOffset + value))
+          }
+          complexOffset += value
+        } else {
+          shape.props.set(pid, value)
+          if (pid === OPT_PIB) shape.pib = value
+        }
       }
     }
   }
@@ -612,12 +669,66 @@ function optBoolean(
   return (value & bit) !== 0
 }
 
+/** OfficeArt 16.16 fixed-point opacity -> 0..1 when semi-transparent; undefined when opaque/absent */
+function fillOpacityFrac(props: Map<number, number>): number | undefined {
+  const raw = props.get(OPT_FILL_OPACITY)
+  if (raw === undefined || raw >= 0x10000) return undefined
+  return Math.max(0, Math.min(1, raw / 0x10000))
+}
+
+/** OfficeArt 16.16 fixed-point clockwise rotation -> degrees in (0, 360) */
+function shapeRotationDeg(props: Map<number, number>): number | undefined {
+  const raw = props.get(OPT_ROTATION)
+  if (raw === undefined) return undefined
+  const signed = raw | 0
+  if (signed === 0) return undefined
+  const deg = Math.round(((((signed / 65536) % 360) + 360) % 360) * 100) / 100
+  return deg > 0 ? deg : undefined
+}
+
+/** OfficeArt picture brightness/contrast/grayscale/bilevel/opacity -> OOXML blip effects */
+function pictureEffects(props: Map<number, number>): PictureEffects | undefined {
+  const out: PictureEffects = {}
+  const contrastRaw = props.get(OPT_PICTURE_CONTRAST)
+  if (contrastRaw !== undefined && contrastRaw !== 0x10000) {
+    const gain = contrastRaw / 0x10000
+    const contrast = Math.max(-100000, Math.min(100000, Math.round((gain - 1) * 100000)))
+    if (contrast !== 0) out.contrast = contrast
+  }
+  const brightRaw = props.get(OPT_PICTURE_BRIGHTNESS)
+  if (brightRaw !== undefined && brightRaw !== 0) {
+    const blackLevel = (brightRaw | 0) / 0x10000
+    const bright = Math.max(-100000, Math.min(100000, Math.round(blackLevel * 2 * 100000)))
+    if (bright !== 0) out.bright = bright
+  }
+  if (optBoolean(props, OPT_PICTURE_FLAGS, 0x04, false)) out.grayscale = true
+  if (optBoolean(props, OPT_PICTURE_FLAGS, 0x02, false)) out.biLevel = true
+  const opacity = fillOpacityFrac(props)
+  if (opacity !== undefined) out.alpha = Math.round(opacity * 100000)
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** decode a NUL-terminated UTF-16LE complex property string */
+function decodeUtf16Z(bytes: Uint8Array | undefined): string | undefined {
+  if (!bytes || bytes.length < 2) return undefined
+  const dv = view(bytes)
+  const units: number[] = []
+  for (let offset = 0; offset + 1 < bytes.length; offset += 2) {
+    const code = dv.getUint16(offset, true)
+    if (code === 0) break
+    units.push(code)
+  }
+  const text = String.fromCharCode(...units)
+  return text.length > 0 ? text : undefined
+}
+
 function textBoxStyle(
   shape: Shape,
 ): Omit<FloatingTextBox, keyof FloatingShapeBase | 'kind' | 'content'> {
   const { props } = shape
   const filled = optBoolean(props, OPT_FILL_BOOLEANS, 0x10, true)
   const lined = optBoolean(props, OPT_LINE_BOOLEANS, 0x08, true)
+  const fillOpacity = filled ? fillOpacityFrac(props) : undefined
   const inset = (pid: number, index: number): number => {
     const value = props.get(pid)
     return value === undefined || value > 0x7fffffff ? DEFAULT_INSETS_EMU[index]! : value
@@ -633,6 +744,7 @@ function textBoxStyle(
   return {
     geometry: SHAPE_GEOMETRY[shape.shapeType] ?? 'rect',
     ...(filled ? { fill: colorHex(props.get(OPT_FILL_COLOR) ?? 0xffffff) ?? 'FFFFFF' } : {}),
+    ...(fillOpacity !== undefined ? { fillAlpha: Math.round(fillOpacity * 100000) } : {}),
     ...(lined
       ? {
           line: {
@@ -658,6 +770,17 @@ const VERTICAL_RELATIVE: FloatingPicture['verticalRelative'][] = ['margin', 'pag
 /** MSOPRH and MSOPRV: the shape's own origin, which overrides the FSPA's bx and by. */
 const POS_REL_H: FloatingPicture['horizontalRelative'][] = ['margin', 'page', 'column', 'character']
 const POS_REL_V: FloatingPicture['verticalRelative'][] = ['margin', 'page', 'paragraph', 'line']
+/** MSOPH and MSOPV alignment keywords (0 = absolute offset, 1..3 = left/center/right or top/center/bottom) */
+const POS_ALIGN_H: Record<number, NonNullable<FloatingShapeBase['horizontalAlign']>> = {
+  1: 'left',
+  2: 'center',
+  3: 'right',
+}
+const POS_ALIGN_V: Record<number, NonNullable<FloatingShapeBase['verticalAlign']>> = {
+  1: 'top',
+  2: 'center',
+  3: 'bottom',
+}
 const WRAPS: FloatingPicture['wrap'][] = [
   'square',
   'topAndBottom',
@@ -761,7 +884,11 @@ export function parseFloatingPictures(
       for (const leaf of found) {
         const isPicture = leaf.shape.pib !== undefined && leaf.shape.pib > 0
         const claim = claims.claim(leaf.shape)
-        if (!isPicture && !claim) {
+        const wordArtText =
+          !isPicture && !claim
+            ? decodeUtf16Z(leaf.shape.complexProps.get(OPT_GTEXT_UNICODE))
+            : undefined
+        if (!isPicture && !claim && !wordArtText) {
           skippedShapes = true
           continue
         }
@@ -774,6 +901,9 @@ export function parseFloatingPictures(
           warnings.push('a floating shape has no size and was omitted')
           continue
         }
+        const horizontalAlign = POS_ALIGN_H[shape.props.get(OPT_POS_H) ?? -1]
+        const verticalAlign = POS_ALIGN_V[shape.props.get(OPT_POS_V) ?? -1]
+        const rotationDeg = shapeRotationDeg(leaf.shape.props)
         const base: FloatingShapeBase = {
           cp: anchor.cp,
           story,
@@ -790,8 +920,30 @@ export function parseFloatingPictures(
             POS_REL_V[shape.props.get(OPT_POS_REL_V) ?? -1] ??
             VERTICAL_RELATIVE[anchor.by] ??
             'paragraph',
+          ...(horizontalAlign ? { horizontalAlign } : {}),
+          ...(verticalAlign ? { verticalAlign } : {}),
+          ...(rotationDeg !== undefined ? { rotationDeg } : {}),
           wrap: WRAPS[anchor.wr] ?? 'square',
           behindText: anchor.belowText,
+        }
+        if (wordArtText) {
+          const fontFamily = decodeUtf16Z(leaf.shape.complexProps.get(OPT_GTEXT_FONT))
+          const bold = optBoolean(leaf.shape.props, OPT_GTEXT_BOOLEANS, 0x20, false)
+          const italic = optBoolean(leaf.shape.props, OPT_GTEXT_BOOLEANS, 0x10, false)
+          const fillRaw = leaf.shape.props.get(OPT_FILL_COLOR)
+          const color = fillRaw !== undefined ? colorHex(fillRaw) : undefined
+          const opacity = fillOpacityFrac(leaf.shape.props)
+          out.push({
+            ...base,
+            kind: 'wordArt',
+            text: wordArtText,
+            ...(fontFamily ? { fontFamily } : {}),
+            ...(bold ? { bold: true } : {}),
+            ...(italic ? { italic: true } : {}),
+            ...(color ? { colorHex: color } : {}),
+            ...(opacity !== undefined ? { opacity } : {}),
+          })
+          continue
         }
         if (claim && !isPicture) {
           if (claim.continuation)
@@ -809,7 +961,14 @@ export function parseFloatingPictures(
         const media = mediaFor(leaf.shape.pib!)
         if (!media) continue
         const crop = shapeCrop(leaf.shape.props)
-        out.push({ ...base, kind: 'picture', media, ...(crop ? { crop } : {}) })
+        const effects = pictureEffects(leaf.shape.props)
+        out.push({
+          ...base,
+          kind: 'picture',
+          media,
+          ...(crop ? { crop } : {}),
+          ...(effects ? { effects } : {}),
+        })
       }
     }
     if (claims.unclaimed().length > 0)
