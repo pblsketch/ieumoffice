@@ -3,7 +3,8 @@ use crate::storage::recent::now_millis;
 use crate::storage::session::MobileDocFormat;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,5 +128,76 @@ impl RecoveryStore {
         let _ = fs::remove_file(self.data_path(doc_key));
         let _ = fs::remove_file(self.meta_path(doc_key));
         Ok(())
+    }
+
+    pub(crate) fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Moves the recovery copy of a renamed document to its new docKey.
+    pub(crate) fn rekey(&self, old_key: &str, new_key: &str) -> MobileResult<()> {
+        if old_key == new_key
+            || Self::validate_key(old_key).is_err()
+            || Self::validate_key(new_key).is_err()
+            || !self.data_path(old_key).exists()
+        {
+            return Ok(());
+        }
+        let meta = fs::read_to_string(self.meta_path(old_key))
+            .ok()
+            .and_then(|text| serde_json::from_str::<RecoveryEntry>(&text).ok());
+        fs::rename(self.data_path(old_key), self.data_path(new_key)).map_err(|e| {
+            MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.renameFailed", e.to_string())
+        })?;
+        if let Some(mut entry) = meta {
+            entry.doc_key = new_key.to_string();
+            let json = serde_json::to_string_pretty(&entry).map_err(|e| {
+                MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.encodeFailed", e.to_string())
+            })?;
+            fs::write(self.meta_path(new_key), json).map_err(|e| {
+                MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.metaWriteFailed", e.to_string())
+            })?;
+        }
+        let _ = fs::remove_file(self.meta_path(old_key));
+        Ok(())
+    }
+
+    /// Deletes recovery copies whose files were all last modified before `cutoff`, except
+    /// `keep`'s. Returns the bytes freed.
+    pub(crate) fn clear_older_than(&self, cutoff: SystemTime, keep: Option<&str>) -> u64 {
+        let Ok(read) = fs::read_dir(&self.dir) else {
+            return 0;
+        };
+        // docKey -> (files, all older than cutoff)
+        let mut groups: std::collections::BTreeMap<String, (Vec<(PathBuf, u64)>, bool)> =
+            std::collections::BTreeMap::new();
+        for item in read.flatten() {
+            let name = item.file_name().to_string_lossy().to_string();
+            let Ok(meta) = item.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            let key = [".meta.json.tmp", ".bin.tmp", ".meta.json", ".bin"]
+                .iter()
+                .find_map(|suffix| name.strip_suffix(suffix))
+                .unwrap_or(&name)
+                .to_string();
+            let old = meta.modified().is_ok_and(|m| m < cutoff);
+            let group = groups.entry(key).or_insert_with(|| (Vec::new(), true));
+            group.0.push((item.path(), meta.len()));
+            group.1 &= old;
+        }
+        let mut freed = 0;
+        for (key, (paths, all_old)) in groups {
+            if !all_old || keep == Some(key.as_str()) {
+                continue;
+            }
+            for (path, len) in paths {
+                if fs::remove_file(&path).is_ok() {
+                    freed += len;
+                }
+            }
+        }
+        freed
     }
 }

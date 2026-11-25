@@ -19,13 +19,17 @@ pub struct RecentDocEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredRecentDoc {
-    id: String,
-    doc_key: String,
-    uri: String,
-    name: String,
-    format: MobileDocFormat,
-    opened_at: u64,
+pub(crate) struct StoredRecentDoc {
+    pub(crate) id: String,
+    pub(crate) doc_key: String,
+    pub(crate) uri: String,
+    pub(crate) name: String,
+    pub(crate) format: MobileDocFormat,
+    pub(crate) opened_at: u64,
+    /// Linked folder (track T6) the document was opened through; reopening goes through that
+    /// folder's grant. Absent in recent.json files written before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) folder_id: Option<String>,
 }
 
 pub struct RecentStore {
@@ -78,6 +82,18 @@ impl RecentStore {
         name: &str,
         format: MobileDocFormat,
     ) -> MobileResult<RecentDocEntry> {
+        self.upsert_in_folder(doc_key, uri, name, format, None)
+    }
+
+    /// `upsert` that also records the linked folder the document was opened through.
+    pub(crate) fn upsert_in_folder(
+        &self,
+        doc_key: &str,
+        uri: &str,
+        name: &str,
+        format: MobileDocFormat,
+        folder_id: Option<&str>,
+    ) -> MobileResult<RecentDocEntry> {
         let mut items = self.load_raw()?;
         let now = now_millis();
         items.retain(|entry| entry.doc_key != doc_key && entry.uri != uri);
@@ -91,6 +107,7 @@ impl RecentStore {
                 name: name.to_string(),
                 format,
                 opened_at: now,
+                folder_id: folder_id.map(str::to_string),
             },
         );
         items.truncate(MAX_RECENT_DOCS);
@@ -130,6 +147,53 @@ impl RecentStore {
         let mut items = self.load_raw()?;
         items.retain(|e| e.id != id);
         self.save_raw(&items)
+    }
+
+    /// All stored rows, newest first (locations included; never sent to the WebView).
+    pub(crate) fn rows(&self) -> MobileResult<Vec<StoredRecentDoc>> {
+        self.load_raw()
+    }
+
+    pub(crate) fn row(&self, id: &str) -> MobileResult<Option<StoredRecentDoc>> {
+        Ok(self.load_raw()?.into_iter().find(|e| e.id == id))
+    }
+
+    /// Removes every row `pred` matches and returns how many went.
+    pub(crate) fn remove_where(&self, pred: impl Fn(&StoredRecentDoc) -> bool) -> MobileResult<usize> {
+        let mut items = self.load_raw()?;
+        let before = items.len();
+        items.retain(|e| !pred(e));
+        let removed = before - items.len();
+        if removed > 0 {
+            self.save_raw(&items)?;
+        }
+        Ok(removed)
+    }
+
+    /// Points the rows of a renamed document at its new location and docKey; row ids stay.
+    pub(crate) fn rekey(
+        &self,
+        old_key: &str,
+        old_uri: &str,
+        new_key: &str,
+        new_uri: &str,
+        new_name: &str,
+    ) -> MobileResult<()> {
+        let mut items = self.load_raw()?;
+        let mut changed = false;
+        for item in items.iter_mut() {
+            if item.doc_key == old_key || item.uri == old_uri {
+                item.doc_key = new_key.to_string();
+                item.uri = new_uri.to_string();
+                item.name = new_name.to_string();
+                item.format = MobileDocFormat::from_name(new_name);
+                changed = true;
+            }
+        }
+        if changed {
+            self.save_raw(&items)?;
+        }
+        Ok(())
     }
 }
 

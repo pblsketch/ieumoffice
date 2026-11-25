@@ -43,6 +43,11 @@ pub fn run() {
             // T5 readers state
 
             // T6 home state
+            let home_files = app.state::<Arc<MobileFileService>>().inner().clone();
+            let home_version = app.package_info().version.to_string();
+            let home_service = crate::storage::home::HomeService::new(home_files, home_version)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            app.manage(Arc::new(home_service));
 
             // T7 ai state
 
@@ -90,6 +95,33 @@ pub fn run() {
             // T5 readers
 
             // T6 home
+            commands::home::mobile_home_list_folders,
+            commands::home::mobile_home_link_folder,
+            commands::home::mobile_home_unlink_folder,
+            commands::home::mobile_home_count_folder_entries,
+            commands::home::mobile_home_list_folder,
+            commands::home::mobile_home_open_folder_entry,
+            commands::home::mobile_home_open_favorite,
+            commands::home::mobile_home_list_favorites,
+            commands::home::mobile_home_set_favorite,
+            commands::home::mobile_home_list_groups,
+            commands::home::mobile_home_save_group,
+            commands::home::mobile_home_delete_group,
+            commands::home::mobile_home_move_to_group,
+            commands::home::mobile_home_rename,
+            commands::home::mobile_home_duplicate,
+            commands::home::mobile_home_delete,
+            commands::home::mobile_home_share_files,
+            commands::home::mobile_home_read_bytes,
+            commands::home::mobile_home_recent_meta,
+            commands::home::mobile_home_take_incoming,
+            commands::home::mobile_home_open_incoming_entry,
+            commands::home::mobile_home_open_sample,
+            commands::home::mobile_home_storage_usage,
+            commands::home::mobile_home_clear_storage,
+            commands::home::mobile_home_app_info,
+            commands::home::mobile_home_keep_screen_on,
+            commands::home::mobile_home_open_external_url,
 
             // T7 ai
         ])
