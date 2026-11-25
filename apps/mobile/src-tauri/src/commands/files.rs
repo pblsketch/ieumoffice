@@ -203,3 +203,12 @@ pub fn mobile_hwp_backup_delete(
     state.hwp_backup_delete(&backup_id)?;
     Ok(OkResult { ok: true })
 }
+
+#[tauri::command]
+pub fn mobile_set_openable_formats(
+    state: State<'_, Arc<MobileFileService>>,
+    exts: Vec<String>,
+) -> MobileResult<OkResult> {
+    state.set_openable_formats(&exts);
+    Ok(OkResult { ok: true })
+}

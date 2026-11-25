@@ -4,7 +4,8 @@
 
 ## 맡은 범위
 
-- `src/transport.ts`: 16종 고정 오류 코드(`MobileErrorCode`), Tauri `invoke`/이벤트 추상화(`MobileTransport`, `createMobileClient`, `createTauriMobileTransport`).
+- `src/transport.ts`: 16종 고정 오류 코드(`MobileErrorCode`), Tauri `invoke`/이벤트 추상화(`MobileTransport`, `createMobileClient`, `createTauriMobileTransport`), 명령 호출 도우미(`invokeMobileCommand` — 실패를 `MobileCommandError`로), 문서 형식(`MobileDocFormat`: 한글·마크다운·텍스트와 1판 형식 pdf·html·xlsx·xlsm·xls·csv·epub·pptx), 열 수 있는 형식 알리기(`setOpenableExtensions` → `mobile_set_openable_formats`). 앱 설정 형(`MobileAppPrefs`·`MobileAppPrefsPatch`)은 모바일 1판 T6 소유다.
+- 트랙 모듈 `src/{sheets,pdf,pdf-tools,html,readers,home}/index.ts`(내보내기 `./sheets` 등): 모바일 1판 트랙(T1~T6)이 자기 Tauri 명령 감싸개를 `invokeMobileCommand(client.transport, …)`로 둔다. `MobileClient`는 넓히지 않고, 루트 `src/index.ts`는 이 모듈들을 다시 내보내지 않는다(이름 부딪힘 방지).
 - `src/session-state.ts`: 단일 활성 문서 상태 기계(`MobileSessionController`), 미저장 전환 충돌 확인 게이트, 문서 전환·닫기 시 AI 대화 메모리 초기화 훅.
 - `src/view-edit-gate.ts`: 보기 우선 열기(`initialDocumentMode`), 보기 모드 × AI 수정 도구 자동 전환 및 읽기 전용·암호·배포용 문서 수정 차단(`wrapSkillWithViewEditGate`).
 - `src/ai-bridge.ts`: Rust 키 비노출 스냅샷(`MobileAiSettingsSnapshot`)을 `@genoffice/ai-provider/browser`의 `selectAiProvider`와 `@genoffice/ui`의 `aiSendGate` 계약으로 투영(`claude-code`·`codex` `'off'`, `__sealed__` 자리표시자, `subscriptionNoticeVersion` 영속화, OpenRouter `freeOnly` 강제), 스트림 전송기(`createMobileAgentTransport`), 문서 한정 메모리 대화 저장소(`MobileAiMemoryStore`).

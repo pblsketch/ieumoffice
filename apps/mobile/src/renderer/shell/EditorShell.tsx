@@ -40,6 +40,8 @@ export interface EditorQuickActionItem {
   readonly id: string
   readonly label: string
   readonly onPress: () => void
+  /** Drawn instead of the built-in icon for `id` (lets a kind bring its own icons). */
+  readonly icon?: ReactNode
 }
 
 /** One titled group in the format panel ([Aa]). */
@@ -240,7 +242,7 @@ export function EditorShell({
                 aria-label={item.label}
                 title={item.label}
               >
-                {renderQuickActionIcon(item.id)}
+                {item.icon ?? renderQuickActionIcon(item.id)}
               </button>
             ))}
           {isTablet &&
@@ -254,7 +256,7 @@ export function EditorShell({
                 aria-label={item.label}
                 title={item.label}
               >
-                {renderQuickActionIcon(item.id)}
+                {item.icon ?? renderQuickActionIcon(item.id)}
               </button>
             ))}
           {!isEdit && (
@@ -309,7 +311,7 @@ export function EditorShell({
       {isTablet && isEdit && toolActions.length > 0 && (
         <div className="mobile-tablet-toolbar" role="toolbar" data-testid="tablet-toolbar">
           {toolActions.map((item) => {
-            const icon = renderQuickActionIcon(item.id)
+            const icon = item.icon ?? renderQuickActionIcon(item.id)
             return (
               <button
                 key={item.id}
@@ -389,7 +391,7 @@ export function EditorShell({
         >
           <div className="mobile-quick-scroll" role="toolbar">
             {toolActions.map((item) => {
-              const icon = renderQuickActionIcon(item.id)
+              const icon = item.icon ?? renderQuickActionIcon(item.id)
               return (
                 <button
                   key={item.id}
@@ -460,7 +462,7 @@ export function EditorShell({
               title={item.label}
               data-testid={`view-tool-${item.id}`}
             >
-              {renderQuickActionIcon(item.id)}
+              {item.icon ?? renderQuickActionIcon(item.id)}
             </button>
           ))}
           {aiEnabled && (
@@ -510,7 +512,7 @@ export function EditorShell({
                     onPointerDown={(e) => e.preventDefault()}
                     onClick={item.onPress}
                   >
-                    {renderQuickActionIcon(item.id)}
+                    {item.icon ?? renderQuickActionIcon(item.id)}
                     <span>{item.label}</span>
                   </button>
                 ))}
@@ -561,7 +563,7 @@ export function EditorShell({
                 item.onPress()
               }}
             >
-              {renderQuickActionIcon(item.id)}
+              {item.icon ?? renderQuickActionIcon(item.id)}
               <span>{item.label}</span>
             </button>
           ))}

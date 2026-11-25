@@ -33,6 +33,20 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# T1 sheets
+
+# T2 pdf
+
+# T3 pdf tools
+
+# T4 html
+
+# T5 readers
+
+# T6 home
+
+# T7 ai
+
 [dev-dependencies]
 cfb = "0.15"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

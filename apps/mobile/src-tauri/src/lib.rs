@@ -3,6 +3,7 @@ pub mod commands;
 pub mod error;
 pub mod hwp;
 pub mod secrets;
+pub mod sheets;
 pub mod storage;
 
 use crate::ai::MobileAiService;
@@ -30,6 +31,21 @@ pub fn run() {
             let ai_service = Arc::new(MobileAiService::new(app_data_dir, auth_bridge));
             app.manage(file_service);
             app.manage(ai_service);
+
+            // T1 sheets state
+
+            // T2 pdf state
+
+            // T3 pdf tools state
+
+            // T4 html state
+
+            // T5 readers state
+
+            // T6 home state
+
+            // T7 ai state
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -51,6 +67,7 @@ pub fn run() {
             commands::files::mobile_hwp_backup_list,
             commands::files::mobile_hwp_backup_restore,
             commands::files::mobile_hwp_backup_delete,
+            commands::files::mobile_set_openable_formats,
             commands::prefs::mobile_get_app_prefs,
             commands::prefs::mobile_set_app_prefs,
             commands::ai::mobile_get_ai_settings,
@@ -62,6 +79,19 @@ pub fn run() {
             commands::ai::mobile_chatgpt_sign_in,
             commands::ai::mobile_chatgpt_complete_callback,
             commands::ai::mobile_chatgpt_sign_out,
+            // T1 sheets
+
+            // T2 pdf
+
+            // T3 pdf tools
+
+            // T4 html
+
+            // T5 readers
+
+            // T6 home
+
+            // T7 ai
         ])
         .run(tauri::generate_context!())
         .expect("error while running IeumOffice mobile application");

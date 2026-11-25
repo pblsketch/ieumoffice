@@ -7,9 +7,10 @@
 - 모바일 렌더러(`src/renderer/`):
   - 반응형 셸(`shell/EditorShell.tsx`, `shell/useViewportLayout.ts`), 홈·바텀시트·AI 패널·미저장 전환 모달(`components/`), 설정·AI 연결·HWP 원본 백업 관리(`settings/SettingsScreen.tsx`), 종단 통합(`App.tsx`).
   - 편집기 호스트(`editors/MarkdownMobileEditor.tsx`, `editors/HwpMobileEditor.tsx`): 보기 우선 열기, 마크다운 인라인 그림 첨부, 한글 Canvas2D 강제 부팅(`dist/studio/`).
+  - 편집기 등록표(`editors/registry.ts`, 형은 `editors/editorKind.ts`)와 형식 종류(`editors/hwpKind.tsx`, `editors/markdownKind.tsx`): 열기·저장·공유·복구 사본·AI 스킬·도구 막대·편집 화면을 종류마다 갖는다. `App.tsx`는 등록표에서 종류를 찾아 부르기만 한다. AI 실행과 AI 설정 상태는 `ai/useMobileAi.ts`, 설정 화면은 절마다 `settings/sections/*.tsx`.
   - 22개 언어 문구(`i18n/`), 토큰 전용 스타일(`styles/mobile-tokens.css`), OFL-1.1 한글 글꼴(`assets/fonts/`).
 - Tauri 2 Rust 백엔드(`src-tauri/`):
-  - 단일 활성 문서 세션·최근 목록·자동 복구·HWP 최초 덮어쓰기 전 백업(`src/storage/`).
+  - 단일 활성 문서 세션·최근 목록·자동 복구·HWP 최초 덮어쓰기 전 백업(`src/storage/`). 형식 목록(`storage/session.rs`)에 1판 형식(pdf·html·xlsx·xlsm·xls·csv·epub·pptx)이 있고, 열 수 있는 형식 문지기(`mobile_set_openable_formats`)가 등록표에 없는 형식을 최근 목록에 넣기 전에 거절한다(`mobile.format.notOpenable`).
   - `packages/hwp5-wasm`(`rlib`) 직접 링크 기반 HWP 컨테이너 검사·암호/배포용 판정·변경 추적 제거·저장 보정(`src/hwp/`).
   - AES-256-GCM 봉인 저장소(`src/secrets/`)와 HTTPS 전용 AI 스트리밍·ChatGPT 공식 모바일 OAuth(`src/ai/`).
   - 로컬 모바일 플러그인(`src-tauri/plugins/tauri-plugin-ieum-mobile/`): Android Kotlin(SAF·FileProvider·Keystore·Custom Tabs) / iOS Swift(`UIDocumentPicker`·보안 북마크·`UIActivityViewController`·Keychain·`ASWebAuthenticationSession`) + 호스트 테스트 스텁.
@@ -36,3 +37,48 @@
 - TS 타입·단위·통합: `npm run typecheck -w @genoffice/mobile`, `npm run test -w @genoffice/mobile`
 - Rust 백엔드: `cargo test --manifest-path apps/mobile/src-tauri/Cargo.toml`, `cargo check --manifest-path apps/mobile/src-tauri/Cargo.toml`
 - 웹 번들(한글 스튜디오 포함): `npm run studio -w @genoffice/hwp && npm run build -w @genoffice/mobile`
+
+## 1판 트랙 자리
+
+모바일 1판은 트랙 일곱(T1 엑셀, T2 PDF, T3 PDF 도구, T4 HTML·마크다운, T5 EPUB·PPT 읽기, T6 홈·설정, T7 AI)이 나란히 만든다. 서로 같은 줄을 고치지 않도록 공용 파일을 트랙 자리로 갈라 두었다(S0, 바탕 공사). 트랙은 **자기 폴더의 파일만 채운다.** 등록표·문구 묶음·아이콘 지도·다리 내보내기·`commands/mod.rs`는 이미 이어 두었으므로 고치지 않는다. 공용 파일에 줄을 더하는 곳은 셋뿐이고, 모두 자기 표시 주석 바로 아래다: `src-tauri/src/lib.rs`(`// T1 sheets` 등 명령 등록, `// T1 sheets state` 등 관리 상태), `src-tauri/Cargo.toml`(`# T1 sheets` 등, "deps:" 커밋), `native-config/`(Android `<!-- T1 sheets MIME types -->` 등 두 거르개 모두, iOS `<!-- T1 sheets document types -->`·`<!-- T1 sheets imported types -->` 등).
+
+- **편집기 종류**: `editors/<트랙>/index.ts`의 배열(`sheetsEditorKinds`, `pdfEditorKinds`, `htmlEditorKinds`, `readersEditorKinds`)에 `EditorKind`를 넣는다. 형식·확장자(`openExtensions`)가 등록되면 파일 고르기 창과 열 수 있는 형식 문지기에 저절로 들어간다. 등록 전에는 그 형식을 열지 않고 "이 파일 형식은 열 수 없습니다" 알림(`formatNotOpenable`)을 띄운다. 무거운 편집기는 처음 쓸 때 불러오는 덩어리(동적 `import`)로 둔다(앱 시작 크기를 늘리지 않게). 불러오기는 `open()` 안에서 하거나, Workspace 안에서 `React.lazy`를 쓰면 그 Workspace 안에 `Suspense`를 둔다(App은 `Suspense`로 감싸지 않는다). 읽기 전용 종류는 `editable: false`로, 저장·복구 사본 함수를 두지 않는다. AI가 없으면 `hasAi: false`.
+- **문구**: `i18n/<트랙>/<언어>.ts`(22개 언어, `zh`가 키를 정함). 키 앞머리는 `sheets…`·`pdf…`(`pdfTools…`로 시작하지 않게)·`pdfTools…`·`web…`·`readers…`·`home…`·`ai…`(기본 사전의 `ai…` 키와 같은 이름 금지). 겹침은 `tests/i18n-bundles.test.ts`가 잡는다. 기본 사전(`i18n/<언어>.ts`)과 `strings.ts`에는 더하지 않는다.
+- **다리**: `@genoffice/mobile-bridge/<트랙>`(`src/<트랙>/index.ts`)에 자기 명령 감싸개를 `invokeMobileCommand(client.transport, …)`로 만든다. `MobileClient`는 넓히지 않는다.
+- **Rust 명령**: `src-tauri/src/commands/<트랙>.rs`. 하위 모듈은 `commands/<트랙>/` 폴더에(`lib.rs` 머리의 `pub mod`를 고치지 않게). T1은 `src/sheets/`도 쓴다. `cargo fmt`를 크레이트 전체에 돌리지 않는다(기존 파일들이 rustfmt 모양이 아니라 다른 줄까지 바뀐다).
+- **아이콘**: `components/icons/<트랙>.tsx`(`sheets`·`pdf`·`pdfTools`·`web`·`readers`·`home`·`ai`). 선 아이콘은 `components/icons/svgIcon.tsx`의 `SvgIcon`으로 그린다(`MobileIcons.tsx`에서 가져오지 않는다 — 서로 물린다). 파일 형식 그림은 그 파일의 `<이름>DocTypeIcons` 지도에. 편집 도구 막대 단추의 아이콘은 `EditorQuickActionItem.icon`으로 넘긴다(`EditorShell.tsx`를 고치지 않는다).
+- **설정**: 절마다 파일(`settings/sections/*.tsx`). AI 절(`AiSection.tsx`의 `AiEnabledRow`·`AiSection`·`AiStorageRows`)은 T7, 나머지(`GeneralSection`·`BackupsSection`·`StorageSection`, `SettingsScreen.tsx`, 기본값 `settings/defaultPrefs.ts`)는 T6. T7은 설정 기능을 `ai/settingsSlot.ts`의 `MobileAiSettingsSlot`과 `useMobileAi`로 늘린다.
+- **홈**: `home/homeTabs.ts`(탭 목록, 지금은 `HOME_TABS_ENABLED = false`), `home/ToolsTab.tsx`(T3), `home/FoldersTab.tsx`(T6), 들어온 문서 `home/incoming.ts`(T6). 홈 화면과 탭은 `home/homeHost.ts`의 `HomeHost`(문서 열기, `createNew`, 알림, 홈 새로 읽기, 설정 열기)로 앱에 부탁한다.
+- **AI**: AI 실행·대화·AI 창·설정 값은 `ai/useMobileAi.ts`(T7). 편집기 트랙은 자기 종류의 `createAiRun`만 만든다.
+- **문서마다 다른 것**: 열린 문서(`EditorDocument`)가 `editable: false`(이 문서만 읽기 전용, 보기 모드로 열림)·`aiAvailable: false`(이 문서에서는 AI 진입점 숨김, 예: 암호를 풀어 연 파일)를 낼 수 있다. 문서를 닫거나 다른 문서로 바꿀 때 앱이 `dispose()`를 부른다(엔진·임시 파일 정리). `open()`이 준비한 것을 쓰기 전에 전환이 취소되면(저장 안 함 확인에서 취소) `EditorOpened.discard()`를 부른다. `open()` 안에서 사람이 취소하면(예: 암호 창) `USER_CANCELLED`를 던지면 앱이 조용히 넘긴다. `EditorOpened.encrypted`는 "보호된 문서라 고칠 수 없음"(한글 규칙)이라, 풀어서 고칠 수 있는 문서는 켜지 않는다.
+- **빌드 설정**: Vite 플러그인·가져오기 별칭(PC 전용 모듈의 모바일 대역 등)·`define`·Vitest 준비 파일은 `config/tracks/<트랙>.ts`(`sheets`·`pdf`·`pdfTools`·`web`·`readers`·`home`·`ai`)의 `TrackBuild`에 둔다. 묶음과 시험이 모두 읽는다(`vite.config.ts`·`vitest.config.ts`·`tsconfig.json`은 고치지 않는다). 플러그인은 자기 모듈에만 걸리게 짠다. 다른 편집기의 전역 선언(`env.d.ts`)이 필요하면 `src/env/<트랙>.d.ts`에 `/// <reference path="…" />`로 둔다.
+- **S0 시험**(`tests/editor-registry.test.tsx`, `open-gate.test.tsx`, `home-slots.test.tsx`, `i18n-bundles.test.ts`, `native-config-slots.test.ts`, `settings-sections.test.tsx`, `document-lifecycle.test.tsx`, `track-build.test.ts`)은 트랙이 자기 형식·그림·문구·MIME을 더해도 그대로 통과하게 짰다. 트랙은 이 파일들을 고치지 않고, 자기 시험은 새 파일로 둔다.
+- `App.tsx`, `shell/**`, `editors/editorKind.ts`·`registry.ts`·`hwpKind.tsx`, 기본 사전·`strings.ts`, `components/MobileIcons.tsx`·`components/icons/index.ts`·`types.ts`·`svgIcon.tsx`, `config/tracks/index.ts`·`types.ts`, `vite.config.ts`·`vitest.config.ts`·`tsconfig.json`은 어느 트랙도 고치지 않는다. 바꿔야 하면 기획에서 까닭과 바꿀 줄을 적고 승인을 받아 따로 커밋한다. 트랙별 계획·결정·발견은 `docs/plans/mobile-v1/<트랙ID>.md`(안내는 `docs/plans/mobile-v1/README.md`).
+
+### T1 엑셀 (1판)
+
+(이 트랙이 채운다)
+
+### T2 PDF (1판)
+
+(이 트랙이 채운다)
+
+### T3 PDF 도구 (1판)
+
+(이 트랙이 채운다)
+
+### T4 HTML·마크다운 (1판)
+
+(이 트랙이 채운다)
+
+### T5 EPUB·PPT 읽기 (1판)
+
+(이 트랙이 채운다)
+
+### T6 홈·설정 (1판)
+
+(이 트랙이 채운다)
+
+### T7 AI (1판)
+
+(이 트랙이 채운다)

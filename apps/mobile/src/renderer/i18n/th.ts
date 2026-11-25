@@ -170,4 +170,5 @@ export const th = {
   backupRestoreInPlace: 'กู้คืนต้นฉบับ',
   backupRestoreSaveAs: 'บันทึกเป็นสำเนา',
   backupDelete: 'ลบ',
+  formatNotOpenable: 'ไม่สามารถเปิดไฟล์ประเภทนี้ได้',
 } as const satisfies Record<keyof typeof zh, string>

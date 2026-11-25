@@ -170,4 +170,5 @@ export const tr = {
   backupRestoreInPlace: 'Orijinali geri yükle',
   backupRestoreSaveAs: 'Kopya olarak kaydet',
   backupDelete: 'Sil',
+  formatNotOpenable: 'Bu dosya türü açılamaz.',
 } as const satisfies Record<keyof typeof zh, string>

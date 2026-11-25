@@ -108,6 +108,8 @@ pub struct MobileFileService {
     active: Mutex<Option<ActiveSession>>,
     backed_up_keys: Mutex<BTreeSet<String>>,
     fail_backup_for_test: AtomicBool,
+    /// Formats the WebView can open; `None` until the first `set_openable_formats` call (accept all).
+    openable: Mutex<Option<Vec<MobileDocFormat>>>,
 }
 
 impl MobileFileService {
@@ -124,11 +126,51 @@ impl MobileFileService {
             active: Mutex::new(None),
             backed_up_keys: Mutex::new(BTreeSet::new()),
             fail_backup_for_test: AtomicBool::new(false),
+            openable: Mutex::new(None),
         })
     }
 
     pub fn set_fail_backup_for_test(&self, fail: bool) {
         self.fail_backup_for_test.store(fail, Ordering::SeqCst);
+    }
+
+    /// Replaces the openable-format gate. Each ext maps through `from_name("x.<ext>")`.
+    pub fn set_openable_formats(&self, exts: &[String]) {
+        let mut formats: Vec<MobileDocFormat> = Vec::new();
+        for ext in exts {
+            let format = MobileDocFormat::from_name(&format!("x.{ext}"));
+            if !formats.contains(&format) {
+                formats.push(format);
+            }
+        }
+        *self.openable.lock().unwrap() = Some(formats);
+    }
+
+    fn ensure_openable(&self, name: &str, format: MobileDocFormat) -> MobileResult<()> {
+        let guard = self.openable.lock().unwrap();
+        let Some(formats) = guard.as_ref() else {
+            return Ok(());
+        };
+        if formats.contains(&format) {
+            return Ok(());
+        }
+        let ext = name
+            .rsplit_once('.')
+            .map(|(_, ext)| ext.to_ascii_lowercase())
+            .filter(|ext| !ext.is_empty())
+            .unwrap_or_else(|| format.ext().to_string());
+        Err(MobileError::with_detail(
+            MobileErrorCode::InvalidArgument,
+            "mobile.format.notOpenable",
+            ext,
+        ))
+    }
+
+    /// The open gate for files the user opens (picker, recent list, other apps). It runs before
+    /// activate_picked touches recent docs or the active session; saving under a new name does not
+    /// pass through it, so a save-as keeps working as before.
+    fn ensure_openable_picked(&self, picked: &PickedFile) -> MobileResult<()> {
+        self.ensure_openable(&picked.name, MobileDocFormat::from_name(&picked.name))
     }
 
     fn activate_picked(&self, picked: PickedFile, register_recent: bool) -> MobileResult<MobileDocSession> {
@@ -185,6 +227,7 @@ impl MobileFileService {
 
     pub fn pick_open_file(&self, exts: &[String]) -> MobileResult<MobileDocSession> {
         let picked = self.bridge.pick_open_file(exts).map_err(map_fs_error)?;
+        self.ensure_openable_picked(&picked)?;
         self.activate_picked(picked, true)
     }
 
@@ -197,6 +240,7 @@ impl MobileFileService {
             ));
         };
         let picked = self.bridge.open_persistent_uri(&uri).map_err(map_fs_error)?;
+        self.ensure_openable_picked(&picked)?;
         self.activate_picked(picked, true)
     }
 
@@ -206,6 +250,7 @@ impl MobileFileService {
         };
         // Ephemeral or read-only share-in files must never be registered into persistent recent docs automatically.
         let register = !picked.ephemeral && picked.writable;
+        self.ensure_openable_picked(&picked)?;
         Ok(Some(self.activate_picked(picked, register)?))
     }
 

@@ -171,4 +171,5 @@ export const ko = {
   backupRestoreInPlace: '원본으로 되돌리기',
   backupRestoreSaveAs: '사본으로 저장',
   backupDelete: '삭제',
+  formatNotOpenable: '이 파일 형식은 열 수 없습니다.',
 } as const satisfies Record<keyof typeof zh, string>

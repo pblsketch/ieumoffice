@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { rhwpPatches } from '../hwp/scripts/rhwp-patches.mjs'
+import { trackAlias, trackDefine, trackPlugins } from './config/tracks'
 
 /**
  * Copies the prebuilt rhwp-studio bundle from apps/hwp/public/studio into
@@ -60,9 +61,15 @@ export default defineConfig({
     rhwpPatches('sdk-scheme') as Plugin,
     sharedRhwpWasmPlugin(),
     copyHwpStudioPlugin(),
+    // each v1 track's own plugins (config/tracks/<track>.ts)
+    ...trackPlugins,
   ],
+  resolve: {
+    alias: trackAlias,
+  },
   define: {
     __IEUM_RHWP_WASM__: JSON.stringify(studioRhwpWasmPath()),
+    ...trackDefine,
   },
   build: {
     outDir: resolve(__dirname, 'dist'),

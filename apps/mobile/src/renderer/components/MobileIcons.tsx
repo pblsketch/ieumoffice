@@ -1,30 +1,12 @@
-import type { SVGProps } from 'react'
 import type { MobileDocFormat } from '@genoffice/mobile-bridge/transport'
 import appIconSvg from '../assets/brand/app-icon.svg'
 import fileHwpSvg from '../assets/brand/file-hwp.svg'
 import fileMdSvg from '../assets/brand/file-md.svg'
 import fileTxtSvg from '../assets/brand/file-txt.svg'
+import { TRACK_DOC_TYPE_ICONS } from './icons'
+import { SvgIcon, type IconProps } from './icons/svgIcon'
 
-type IconProps = SVGProps<SVGSVGElement> & { readonly size?: number }
-
-function SvgIcon({ size = 20, children, ...rest }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.85}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...rest}
-    >
-      {children}
-    </svg>
-  )
-}
+export { SvgIcon, type IconProps }
 
 export function IeumAppIcon({ size = 28 }: { readonly size?: number }) {
   return (
@@ -48,7 +30,8 @@ export function DocTypeIcon({
   readonly size?: number
 }) {
   const src =
-    format === 'hwp' || format === 'hwpx' ? fileHwpSvg : format === 'txt' ? fileTxtSvg : fileMdSvg
+    TRACK_DOC_TYPE_ICONS[format] ??
+    (format === 'hwp' || format === 'hwpx' ? fileHwpSvg : format === 'txt' ? fileTxtSvg : fileMdSvg)
   return (
     <img
       src={src}
