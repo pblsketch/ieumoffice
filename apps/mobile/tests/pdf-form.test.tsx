@@ -467,9 +467,10 @@ describe('AcroForm fields', () => {
   it('hands an unsigned signature field to the sign feature', async () => {
     const { doc, edit } = await startDoc(await formPdf())
     const handler = vi.fn()
-    edit.services.registerSignatureHandler(handler)
     const host = mountWorkspace(doc)
     await fieldsReady(host)
+    // registered after the sign feature mounted its own handler, so this one answers
+    edit.services.registerSignatureHandler(handler)
     const button = q(host, '[data-field="Sig1"]')
     expect(button.textContent).toBe(translateMobile('ko', 'pdfFormSignField'))
     click(button)

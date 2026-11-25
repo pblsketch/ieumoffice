@@ -237,7 +237,8 @@ describe('opening an encrypted PDF', () => {
       { fileName: 'sample.pdf', wrong: false },
       { fileName: 'sample.pdf', wrong: true },
     ])
-  })
+    // two key derivations and a decrypt on a slow disk under a full run can exceed 5 s
+  }, 60_000)
 
   it('opens view-only with the user password when /P forbids modifying', async () => {
     const bytes = await encryptedPdf(false)

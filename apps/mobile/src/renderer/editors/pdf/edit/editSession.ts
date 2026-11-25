@@ -291,8 +291,9 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
   }
 
   const save = async (doc: ActiveDocState, forceSaveAs: boolean): Promise<boolean> => {
-    // what is still being typed belongs to this save
-    await flushDrafts()
+    // what is still being typed belongs to this save (only awaited when a box is open, so a
+    // save without drafts still marks itself as writing at once)
+    if (drafts.size > 0) await flushDrafts()
     // one save at a time: a second one starts from what the first left
     while (saving) await saving.catch(() => false)
     const run = saveOnce(doc, forceSaveAs)
@@ -388,7 +389,7 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
     save,
 
     async share(doc) {
-      await flushDrafts()
+      if (drafts.size > 0) await flushDrafts()
       docSession = doc.session
       const current = model
       if (!store.hasEdits()) {
