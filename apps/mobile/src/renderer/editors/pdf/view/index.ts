@@ -3,9 +3,11 @@ export { openPdfModel, type PdfOpenInput } from './openPdf'
 export { pcBlankPdfBytes, pcUnlockProbe } from './pcEngineHooks'
 export { createSheetPasswordPrompt, PdfPasswordSheet } from './PdfPasswordSheet'
 export {
+  createKeptView,
   sharePdfOriginal,
   startPdfDocument,
   type PdfDocumentOptions,
+  type PdfKeptView,
   type PdfWorkspaceChrome,
   type PdfWorkspaceContext,
 } from './startPdfDocument'

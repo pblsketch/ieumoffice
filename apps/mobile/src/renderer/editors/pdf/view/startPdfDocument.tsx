@@ -60,6 +60,17 @@ export interface PdfDocumentOptions {
    * document); it may use React state. Later tasks bring edit mode through it.
    */
   readonly useExtension?: (ctx: PdfWorkspaceContext) => PdfWorkspaceChrome
+  /**
+   * Where the zoom and position live while the Workspace is not mounted; pass the
+   * same one to keep the view when the document is reloaded (after a save).
+   */
+  readonly keptView?: PdfKeptView
+}
+
+/** Zoom and position of a document, kept outside its Workspace. */
+export interface PdfKeptView {
+  get(): PdfViewState
+  set(view: PdfViewState): void
 }
 
 const READ_ONLY_KEYS: Record<PdfReadOnlyReason, MobileStringKey> = {
@@ -70,7 +81,7 @@ const READ_ONLY_KEYS: Record<PdfReadOnlyReason, MobileStringKey> = {
 
 const noExtension = (): PdfWorkspaceChrome => ({})
 
-function createKeptView(initial: PdfViewState) {
+export function createKeptView(initial: PdfViewState = INITIAL_PDF_VIEW_STATE): PdfKeptView {
   let value = initial
   return {
     get: () => value,
@@ -115,7 +126,7 @@ export function startPdfDocument(
   model: PdfOpenedDocument,
   options: PdfDocumentOptions = {},
 ): EditorDocument {
-  const kept = createKeptView(INITIAL_PDF_VIEW_STATE)
+  const kept = options.keptView ?? createKeptView()
   const useExtension = options.useExtension ?? noExtension
 
   function PdfWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
