@@ -22,13 +22,15 @@ where
     let svc = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || op(&svc))
         .await
-        .map_err(|e| {
-            MobileError::with_detail(
-                MobileErrorCode::InternalError,
-                "mobile.internalError",
-                e.to_string(),
-            )
-        })?
+        .map_err(|_| MobileError::new(MobileErrorCode::InternalError, "mobile.internalError"))?
+        .map_err(scrub)
+}
+
+/// Drops the native detail text before an error reaches the WebView: Android and iOS refusal
+/// messages often carry the document location, which spec 5.4 keeps out of the WebView. The
+/// code and message key are all the screen uses.
+fn scrub(e: MobileError) -> MobileError {
+    MobileError::new(e.code, e.message_key)
 }
 
 #[tauri::command]
@@ -57,7 +59,7 @@ pub fn mobile_home_count_folder_entries(
     state: Home<'_>,
     id: String,
 ) -> MobileResult<CountFolderEntriesResult> {
-    state.count_folder_entries(&id)
+    state.count_folder_entries(&id).map_err(scrub)
 }
 
 #[tauri::command]
@@ -89,7 +91,7 @@ pub async fn mobile_home_open_favorite(
 
 #[tauri::command]
 pub fn mobile_home_list_favorites(state: Home<'_>) -> MobileResult<Vec<FavoriteEntry>> {
-    state.list_favorites()
+    state.list_favorites().map_err(scrub)
 }
 
 #[tauri::command]
@@ -98,12 +100,12 @@ pub fn mobile_home_set_favorite(
     file_ref: FileRef,
     on: bool,
 ) -> MobileResult<Vec<FavoriteEntry>> {
-    state.set_favorite(&file_ref, on)
+    state.set_favorite(&file_ref, on).map_err(scrub)
 }
 
 #[tauri::command]
 pub fn mobile_home_list_groups(state: Home<'_>) -> MobileResult<Vec<FavoriteGroup>> {
-    state.list_groups()
+    state.list_groups().map_err(scrub)
 }
 
 #[tauri::command]
@@ -112,12 +114,12 @@ pub fn mobile_home_save_group(
     id: Option<String>,
     name: String,
 ) -> MobileResult<Vec<FavoriteGroup>> {
-    state.save_group(id.as_deref(), &name)
+    state.save_group(id.as_deref(), &name).map_err(scrub)
 }
 
 #[tauri::command]
 pub fn mobile_home_delete_group(state: Home<'_>, id: String) -> MobileResult<Vec<FavoriteGroup>> {
-    state.delete_group(&id)
+    state.delete_group(&id).map_err(scrub)
 }
 
 #[tauri::command]
@@ -126,7 +128,9 @@ pub fn mobile_home_move_to_group(
     refs: Vec<FileRef>,
     group_id: Option<String>,
 ) -> MobileResult<Vec<FavoriteEntry>> {
-    state.move_to_group(&refs, group_id.as_deref())
+    state
+        .move_to_group(&refs, group_id.as_deref())
+        .map_err(scrub)
 }
 
 #[tauri::command]
@@ -173,7 +177,7 @@ pub async fn mobile_home_read_bytes(
 
 #[tauri::command]
 pub fn mobile_home_recent_meta(state: Home<'_>) -> MobileResult<Vec<RecentMetaEntry>> {
-    state.recent_meta()
+    state.recent_meta().map_err(scrub)
 }
 
 #[tauri::command]
@@ -192,7 +196,7 @@ pub async fn mobile_home_open_incoming_entry(
 
 #[tauri::command]
 pub fn mobile_home_open_sample(state: Home<'_>, lang: String) -> MobileResult<MobileDocSession> {
-    state.open_sample(&lang)
+    state.open_sample(&lang).map_err(scrub)
 }
 
 #[tauri::command]
@@ -228,4 +232,24 @@ pub async fn mobile_home_open_external_url(
     url: String,
 ) -> MobileResult<HomeOkResult> {
     blocking(state, move |s| s.open_external_url(&url)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrub_keeps_code_and_key_but_drops_the_native_detail() {
+        let e = MobileError::with_detail(
+            MobileErrorCode::PermissionDenied,
+            "mobile.home.folderLost",
+            "Permission Denial: content://com.android.externalstorage.documents/tree/primary%3ADocs",
+        );
+        let clean = scrub(e);
+        assert_eq!(clean.code, MobileErrorCode::PermissionDenied);
+        assert_eq!(clean.message_key, "mobile.home.folderLost");
+        assert!(clean.detail.is_none());
+        let json = serde_json::to_string(&clean).unwrap();
+        assert!(!json.contains("content://"), "{json}");
+    }
 }
