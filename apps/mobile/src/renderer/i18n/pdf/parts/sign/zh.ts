@@ -1,2 +1,27 @@
 // Keys of the "sign" part of the T2 pdf strings; every key starts with `pdfSign`.
-export const zh = {} as const
+export const zh = {
+  pdfSignTitle: '添加签名',
+  pdfSignFieldHint: '签名将按“{field}”字段大小放入。',
+  pdfSignSaved: '我的签名',
+  pdfSignUseSaved: '使用此签名',
+  pdfSignForget: '删除已保存的签名',
+  pdfSignDraw: '手绘',
+  pdfSignPicture: '图片',
+  pdfSignPadLabel: '签名板',
+  pdfSignPadHint: '用手指或笔签名。',
+  pdfSignColor: '签名颜色',
+  pdfSignColorBlack: '黑色',
+  pdfSignColorBlue: '蓝色',
+  pdfSignColorRed: '红色',
+  pdfSignClear: '清除',
+  pdfSignPickPicture: '选择图片',
+  pdfSignPictureFailed: '无法读取该图片。',
+  pdfSignBw: '黑白',
+  pdfSignRemember: '在此设备上记住签名',
+  pdfSignPlace: '放置',
+  pdfSignPlaceHint: '点按要放置签名的位置。',
+  pdfSignPlaced: '签名',
+  pdfSignDelete: '删除签名',
+  pdfSignResize: '调整签名大小',
+  pdfSignFailed: '无法放置签名。',
+} as const

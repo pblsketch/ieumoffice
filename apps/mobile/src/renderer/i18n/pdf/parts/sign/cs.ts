@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const cs = {} as const satisfies Record<keyof typeof zh, string>
+export const cs = {
+  pdfSignTitle: 'Přidat podpis',
+  pdfSignFieldHint: 'Podpis se vloží do pole „{field}“.',
+  pdfSignSaved: 'Moje podpisy',
+  pdfSignUseSaved: 'Použít tento podpis',
+  pdfSignForget: 'Smazat uložený podpis',
+  pdfSignDraw: 'Kreslit',
+  pdfSignPicture: 'Obrázek',
+  pdfSignPadLabel: 'Plocha pro podpis',
+  pdfSignPadHint: 'Podepište se prstem nebo perem.',
+  pdfSignColor: 'Barva podpisu',
+  pdfSignColorBlack: 'Černá',
+  pdfSignColorBlue: 'Modrá',
+  pdfSignColorRed: 'Červená',
+  pdfSignClear: 'Vymazat',
+  pdfSignPickPicture: 'Vybrat obrázek',
+  pdfSignPictureFailed: 'Obrázek se nepodařilo načíst.',
+  pdfSignBw: 'Černobíle',
+  pdfSignRemember: 'Zapamatovat v tomto zařízení',
+  pdfSignPlace: 'Umístit',
+  pdfSignPlaceHint: 'Klepněte na místo, kam patří podpis.',
+  pdfSignPlaced: 'Podpis',
+  pdfSignDelete: 'Smazat podpis',
+  pdfSignResize: 'Změnit velikost podpisu',
+  pdfSignFailed: 'Podpis se nepodařilo umístit.',
+} as const satisfies Record<keyof typeof zh, string>

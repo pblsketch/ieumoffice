@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const hi = {} as const satisfies Record<keyof typeof zh, string>
+export const hi = {
+  pdfSignTitle: 'हस्ताक्षर जोड़ें',
+  pdfSignFieldHint: 'हस्ताक्षर “{field}” फ़ील्ड में फ़िट किया जाता है।',
+  pdfSignSaved: 'मेरे हस्ताक्षर',
+  pdfSignUseSaved: 'यह हस्ताक्षर इस्तेमाल करें',
+  pdfSignForget: 'सहेजा गया हस्ताक्षर हटाएँ',
+  pdfSignDraw: 'बनाएँ',
+  pdfSignPicture: 'चित्र',
+  pdfSignPadLabel: 'हस्ताक्षर पैड',
+  pdfSignPadHint: 'उँगली या पेन से हस्ताक्षर करें।',
+  pdfSignColor: 'हस्ताक्षर का रंग',
+  pdfSignColorBlack: 'काला',
+  pdfSignColorBlue: 'नीला',
+  pdfSignColorRed: 'लाल',
+  pdfSignClear: 'साफ़ करें',
+  pdfSignPickPicture: 'चित्र चुनें',
+  pdfSignPictureFailed: 'चित्र पढ़ा नहीं जा सका।',
+  pdfSignBw: 'श्वेत-श्याम',
+  pdfSignRemember: 'इस डिवाइस पर याद रखें',
+  pdfSignPlace: 'रखें',
+  pdfSignPlaceHint: 'जहाँ हस्ताक्षर रखना है वहाँ टैप करें।',
+  pdfSignPlaced: 'हस्ताक्षर',
+  pdfSignDelete: 'हस्ताक्षर हटाएँ',
+  pdfSignResize: 'हस्ताक्षर का आकार बदलें',
+  pdfSignFailed: 'हस्ताक्षर नहीं रखा जा सका।',
+} as const satisfies Record<keyof typeof zh, string>

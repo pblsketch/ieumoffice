@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const ar = {} as const satisfies Record<keyof typeof zh, string>
+export const ar = {
+  pdfSignTitle: 'إضافة توقيع',
+  pdfSignFieldHint: 'يُضبط التوقيع ليناسب الحقل «{field}».',
+  pdfSignSaved: 'توقيعاتي',
+  pdfSignUseSaved: 'استخدام هذا التوقيع',
+  pdfSignForget: 'حذف التوقيع المحفوظ',
+  pdfSignDraw: 'رسم',
+  pdfSignPicture: 'صورة',
+  pdfSignPadLabel: 'لوحة التوقيع',
+  pdfSignPadHint: 'وقّع بإصبعك أو بقلم.',
+  pdfSignColor: 'لون التوقيع',
+  pdfSignColorBlack: 'أسود',
+  pdfSignColorBlue: 'أزرق',
+  pdfSignColorRed: 'أحمر',
+  pdfSignClear: 'مسح',
+  pdfSignPickPicture: 'اختيار صورة',
+  pdfSignPictureFailed: 'تعذّرت قراءة الصورة.',
+  pdfSignBw: 'أبيض وأسود',
+  pdfSignRemember: 'التذكر على هذا الجهاز',
+  pdfSignPlace: 'وضع',
+  pdfSignPlaceHint: 'اضغط على المكان الذي تريد وضع التوقيع فيه.',
+  pdfSignPlaced: 'توقيع',
+  pdfSignDelete: 'حذف التوقيع',
+  pdfSignResize: 'تغيير حجم التوقيع',
+  pdfSignFailed: 'تعذّر وضع التوقيع.',
+} as const satisfies Record<keyof typeof zh, string>

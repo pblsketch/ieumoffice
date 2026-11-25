@@ -1,3 +1,28 @@
 import type { zh } from './zh'
 
-export const th = {} as const satisfies Record<keyof typeof zh, string>
+export const th = {
+  pdfSignTitle: 'เพิ่มลายเซ็น',
+  pdfSignFieldHint: 'ลายเซ็นจะถูกใส่ให้พอดีกับช่อง “{field}”',
+  pdfSignSaved: 'ลายเซ็นของฉัน',
+  pdfSignUseSaved: 'ใช้ลายเซ็นนี้',
+  pdfSignForget: 'ลบลายเซ็นที่บันทึกไว้',
+  pdfSignDraw: 'วาด',
+  pdfSignPicture: 'รูปภาพ',
+  pdfSignPadLabel: 'พื้นที่เซ็นชื่อ',
+  pdfSignPadHint: 'เซ็นด้วยนิ้วหรือปากกา',
+  pdfSignColor: 'สีลายเซ็น',
+  pdfSignColorBlack: 'ดำ',
+  pdfSignColorBlue: 'น้ำเงิน',
+  pdfSignColorRed: 'แดง',
+  pdfSignClear: 'ล้าง',
+  pdfSignPickPicture: 'เลือกรูปภาพ',
+  pdfSignPictureFailed: 'อ่านรูปภาพไม่ได้',
+  pdfSignBw: 'ขาวดำ',
+  pdfSignRemember: 'จำไว้ในอุปกรณ์นี้',
+  pdfSignPlace: 'วาง',
+  pdfSignPlaceHint: 'แตะตำแหน่งที่จะวางลายเซ็น',
+  pdfSignPlaced: 'ลายเซ็น',
+  pdfSignDelete: 'ลบลายเซ็น',
+  pdfSignResize: 'ปรับขนาดลายเซ็น',
+  pdfSignFailed: 'วางลายเซ็นไม่ได้',
+} as const satisfies Record<keyof typeof zh, string>
