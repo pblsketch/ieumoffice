@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AgentLoop, composeSkills, type AgentMessage, type AgentSkill } from '@genoffice/agent-core'
-import { useAiInlineQuestions } from '@genoffice/ui'
-import { AI_SUBSCRIPTION_NOTICE_VERSION } from '@genoffice/ai-provider/browser'
 import { normalizeLang, type Lang } from '@genoffice/i18n'
-import {
-  createMobileAgentTransport,
-  createMobileAiMemoryStore,
-} from '@genoffice/mobile-bridge/ai-bridge'
 import {
   createMobileSessionController,
   type ActiveDocState,
@@ -17,10 +10,8 @@ import {
   createTauriMobileTransport,
   isMobileCommandError,
   type HwpBackupEntry,
-  type MobileAiSettingsSnapshot,
   type MobileAppPrefs,
   type MobileAppPrefsPatch,
-  type MobileChatGptStatus,
   type MobileClient,
   type MobileDocSession,
   type MobileRestoreTarget,
@@ -32,11 +23,11 @@ import {
   initialDocumentMode,
   type DocumentMode,
 } from '@genoffice/mobile-bridge/view-edit-gate'
-import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from './components/AiSheetPanel'
+import { useMobileAi } from './ai/useMobileAi'
 import { HomeScreen } from './components/HomeScreen'
 import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
-import type { EditorAiRun, EditorDocument, EditorHost, EditorKind } from './editors/editorKind'
+import type { EditorDocument, EditorHost, EditorKind } from './editors/editorKind'
 import { findEditorKind, openableExtensions } from './editors/registry'
 import { MobileLocaleProvider, translateMobile } from './i18n'
 import { SettingsScreen } from './settings/SettingsScreen'
@@ -51,16 +42,6 @@ const DEFAULT_PREFS: MobileAppPrefs = {
   // AI starts hidden on mobile; the user turns it on in Settings.
   aiEnabled: false,
 }
-
-const DEFAULT_AI_SETTINGS: MobileAiSettingsSnapshot = {
-  selectedProvider: 'auto',
-  modelByProvider: {},
-  configuredProviders: {},
-  chatgptVisible: false,
-  subscriptionNoticeVersion: 0,
-}
-
-const DEFAULT_CHATGPT_STATUS: MobileChatGptStatus = { state: 'hidden' }
 
 function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
   if (saving) return 'saving'
@@ -93,7 +74,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     () => injectedClient ?? createMobileClient(createTauriMobileTransport()),
     [injectedClient],
   )
-  const aiMemoryRef = useRef(createMobileAiMemoryStore())
   // Publishes data-window and --m-kb on <html> for every screen, not only the editor.
   const viewport = useViewportLayout()
   const windowClassRef = useRef(viewport.windowClass)
@@ -101,8 +81,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   const [screen, setScreen] = useState<ScreenView>('home')
   const [prefs, setPrefs] = useState<MobileAppPrefs>(DEFAULT_PREFS)
-  const [aiSettings, setAiSettings] = useState<MobileAiSettingsSnapshot>(DEFAULT_AI_SETTINGS)
-  const [chatgptStatus, setChatgptStatus] = useState<MobileChatGptStatus>(DEFAULT_CHATGPT_STATUS)
   const [recentDocs, setRecentDocs] = useState<RecentDocEntry[]>([])
   const [recoveryEntries, setRecoveryEntries] = useState<RecoveryEntry[]>([])
   const [backups, setBackups] = useState<HwpBackupEntry[]>([])
@@ -119,21 +97,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const { toast, showToast, dismissToast } = useToast()
   const [saving, setSaving] = useState(false)
 
-  const [aiMessages, setAiMessages] = useState<readonly AgentMessage[]>([])
-  const [aiStreaming, setAiStreaming] = useState(false)
-  const [aiAutoSwitched, setAiAutoSwitched] = useState(false)
-  const [aiRecoveryNotice, setAiRecoveryNotice] = useState<ChatGptRecoveryNoticeKind>(null)
-  const [lastAiUndo, setLastAiUndo] = useState<{ summary: string; undo: () => void } | null>(null)
-  // the shared A2UI question card (ask_questions, decision 0164)
-  const inlineQuestions = useAiInlineQuestions()
-  const inlineQuestionsRef = useRef(inlineQuestions)
-  inlineQuestionsRef.current = inlineQuestions
-  const [lastAiPrompt, setLastAiPrompt] = useState<string | null>(null)
-
   const [unsavedPromptDoc, setUnsavedPromptDoc] = useState<string | null>(null)
   const unsavedResolverRef = useRef<((choice: UnsavedSwitchChoice) => void) | null>(null)
-
-  const activeRunCancelRef = useRef<(() => void) | null>(null)
 
   const lang: Lang = normalizeLang(prefs.lang)
   const langRef = useRef(lang)
@@ -147,6 +112,32 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   modeRef.current = mode
   const activeDocRef = useRef(activeDoc)
   activeDocRef.current = activeDoc
+
+  const canEditActive =
+    activeDoc && openedDoc
+      ? canMutateDocument({
+          writable: activeDoc.session.writable,
+          encrypted: activeDoc.encrypted,
+          distribution: activeDoc.distribution,
+          isUntitled: activeDoc.isUntitled,
+        }) && openedDoc.kind.editable
+      : false
+
+  const ai = useMobileAi({
+    client,
+    aiEnabled: prefs.aiEnabled,
+    canMutate: canEditActive,
+    getActiveDoc: () => activeDocRef.current,
+    getOpenedDocument: () => openedDocRef.current?.doc ?? null,
+    getMode: () => modeRef.current,
+    setModeEdit: () => {
+      setMode('edit')
+      modeRef.current = 'edit'
+    },
+    getLang: () => langRef.current,
+    openSettings: () => setScreen('settings'),
+  })
+  const { refreshAiState, resetForDocument: resetAiForDocument, cancel: cancelAiRun } = ai
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -166,15 +157,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     setRecentDocs(recent)
     setRecoveryEntries(recovery)
     setBackups(bk)
-  }, [client])
-
-  const refreshAiState = useCallback(async () => {
-    const [settings, cgStatus] = await Promise.all([
-      client.getAiSettings().catch(() => DEFAULT_AI_SETTINGS),
-      client.chatgptStatus().catch(() => DEFAULT_CHATGPT_STATUS),
-    ])
-    setAiSettings(settings)
-    setChatgptStatus(cgStatus)
   }, [client])
 
   const requestUnsavedChoice = useCallback(
@@ -237,12 +219,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         await client.recoveryDiscard(docKey).catch(() => {})
       },
       onResetAiMemory: (_prev, nextDocKey) => {
-        activeRunCancelRef.current?.()
-        aiMemoryRef.current.resetForDoc(nextDocKey)
-        inlineQuestionsRef.current.resetConversation()
-        setAiMessages([])
-        setLastAiUndo(null)
-        setAiAutoSwitched(false)
+        resetAiForDocument(nextDocKey)
       },
       onSessionChanged: (next) => {
         setActiveDoc(next)
@@ -373,13 +350,13 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     if (typeof document === 'undefined') return
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        activeRunCancelRef.current?.()
+        cancelAiRun()
         void writeRecoveryNow()
       }
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [writeRecoveryNow])
+  }, [cancelAiRun, writeRecoveryNow])
 
   const handleCreateNew = useCallback(
     async (format: 'hwp' | 'hwpx' | 'md') => {
@@ -482,102 +459,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     await openedDocRef.current?.doc.share(doc)
   }, [])
 
-  const handleSendAi = useCallback(
-    async (prompt: string) => {
-      const doc = activeDocRef.current
-      const editorDoc = openedDocRef.current?.doc
-      if (!doc || !prefs.aiEnabled || !editorDoc?.createAiRun) return
-      setLastAiPrompt(prompt)
-      setAiRecoveryNotice(null)
-      setAiStreaming(true)
-      let classifiedError = false
-      // the message shows at once; reading the document for the tools comes after
-      const history = [...aiMemoryRef.current.getMessages()]
-      aiMemoryRef.current.append({ role: 'user', text: prompt })
-      setAiMessages(aiMemoryRef.current.getMessages())
-
-      const caps = {
-        writable: doc.session.writable,
-        encrypted: doc.encrypted,
-        distribution: doc.distribution,
-        isUntitled: doc.isUntitled,
-      }
-
-      const switchToEdit = () => {
-        setMode('edit')
-        modeRef.current = 'edit'
-        setAiAutoSwitched(true)
-      }
-
-      // the document's tools (read before the run; failing to prepare them is a connection error)
-      let run: EditorAiRun
-      try {
-        run = await editorDoc.createAiRun({
-          getMode: () => modeRef.current,
-          getCapabilities: () => caps,
-          switchToEdit,
-          setUndo: (entry) => setLastAiUndo(entry),
-          getLang: () => langRef.current,
-        })
-      } catch {
-        setAiRecoveryNotice('connection-error')
-        setAiStreaming(false)
-        return
-      }
-      const base: AgentSkill = run.skill
-      // every document can ask through the shared question card
-      inlineQuestionsRef.current.supersedeOpen()
-      const skill = composeSkills(base.id, '', [base, inlineQuestionsRef.current.askQuestionsSkill])
-
-      const transport = createMobileAgentTransport(client, {
-        onStreamError: (detail) => {
-          classifiedError = true
-          if (detail.errorCode === 'rate-limit') {
-            setAiRecoveryNotice('usage-limit')
-          } else if (detail.errorCode === 'signed-out') {
-            setAiRecoveryNotice('reauth')
-          } else {
-            setAiRecoveryNotice('connection-error')
-          }
-        },
-      })
-
-      await new Promise<void>((resolve) => {
-        const loop = new AgentLoop({
-          transport,
-          skill,
-          events: {
-            onDone: (result) => {
-              if (result.text) {
-                aiMemoryRef.current.append({ role: 'assistant', text: result.text })
-                setAiMessages(aiMemoryRef.current.getMessages())
-              }
-              resolve()
-            },
-            onError: () => {
-              if (!classifiedError) {
-                setAiRecoveryNotice((prev) => prev ?? 'connection-error')
-              }
-              resolve()
-            },
-          },
-        })
-        if (history.length > 0) {
-          loop.appendHistory(history)
-        }
-        activeRunCancelRef.current = () => {
-          loop.cancel()
-          resolve()
-        }
-        loop.run(prompt)
-      })
-      activeRunCancelRef.current = null
-      setAiStreaming(false)
-      run.finish?.()
-    },
-    [client, prefs.aiEnabled],
-  )
-
   const handleUpdatePrefs = useCallback(
     async (patch: MobileAppPrefsPatch) => {
       const updated = await client.setAppPrefs(patch)
@@ -585,16 +466,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     },
     [client],
   )
-
-  const canEditActive =
-    activeDoc && openedDoc
-      ? canMutateDocument({
-          writable: activeDoc.session.writable,
-          encrypted: activeDoc.encrypted,
-          distribution: activeDoc.distribution,
-          isUntitled: activeDoc.isUntitled,
-        }) && openedDoc.kind.editable
-      : false
 
   const ActiveWorkspace = openedDoc?.doc.Workspace ?? null
 
@@ -624,42 +495,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         {screen === 'settings' && (
           <SettingsScreen
             prefs={prefs}
-            aiSettings={aiSettings}
-            chatgptStatus={chatgptStatus}
+            {...ai.settingsProps}
             backups={backups}
             onBack={() => setScreen(activeDoc ? 'editor' : 'home')}
             onUpdatePrefs={(patch) => void handleUpdatePrefs(patch)}
-            onSelectProvider={(provider) => {
-              void client.setAiSettings({ selectedProvider: provider }).then(setAiSettings)
-            }}
-            onValidateAndSaveKey={async ({ provider, apiKey, freeOnly }) => {
-              const validated = await client.validateAiKey({ provider, apiKey, freeOnly })
-              if (!validated.ok) {
-                throw new Error('API key validation failed.')
-              }
-              const updated = await client.setAiSettings({
-                selectedProvider: provider,
-                providerKeyPatch: { provider, apiKey, freeOnly },
-                ...(validated.models[0]
-                  ? { modelPatch: { provider, model: validated.models[0] } }
-                  : {}),
-              })
-              setAiSettings(updated)
-            }}
-            onRemoveKey={async (provider) => {
-              const updated = await client.setAiSettings({
-                providerKeyPatch: { provider, apiKey: null },
-              })
-              setAiSettings(updated)
-            }}
-            onChatgptSignIn={async (reconsent) => {
-              await client.chatgptSignIn(reconsent)
-              await refreshAiState()
-            }}
-            onChatgptSignOut={async () => {
-              await client.chatgptSignOut()
-              await refreshAiState()
-            }}
             onRestoreBackup={async (backupId, target: MobileRestoreTarget) => {
               try {
                 const res = await client.hwpBackupRestore(backupId, target)
@@ -676,6 +515,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
               await client.hwpBackupDelete(backupId)
               await refreshHomeData()
             }}
+            aiSlot={ai.settingsSlot}
           />
         )}
 
@@ -702,43 +542,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                 void refreshHomeData()
                 setScreen('settings')
               },
-              aiPanelContent: (
-                <AiSheetPanel
-                  aiEnabled={prefs.aiEnabled}
-                  aiSettings={aiSettings}
-                  chatgptStatus={chatgptStatus}
-                  messages={aiMessages}
-                  streaming={aiStreaming}
-                  canMutate={canEditActive}
-                  autoSwitchedNotice={aiAutoSwitched}
-                  recoveryNotice={aiRecoveryNotice}
-                  lastChangeSummary={lastAiUndo?.summary ?? null}
-                  onUndoLastChange={lastAiUndo?.undo}
-                  onSend={(p) => void handleSendAi(p)}
-                  onStop={() => activeRunCancelRef.current?.()}
-                  // a card shows while its run lasts; the reply that follows carries the answer
-                  questionCard={
-                    inlineQuestions.activeToolCard &&
-                    (aiStreaming || inlineQuestions.activeToolCard.status === 'open')
-                      ? inlineQuestions.activeToolCard
-                      : null
-                  }
-                  onQuestionSubmit={inlineQuestions.submitToolCard}
-                  onQuestionSkip={inlineQuestions.skipToolCard}
-                  onOpenSettings={() => {
-                    void refreshAiState()
-                    setScreen('settings')
-                  }}
-                  onAcknowledgeSubscriptionNotice={() => {
-                    void client
-                      .setAiSettings({ subscriptionNoticeVersion: AI_SUBSCRIPTION_NOTICE_VERSION })
-                      .then(setAiSettings)
-                  }}
-                  onChatgptReconsent={() => void client.chatgptSignIn(true).then(refreshAiState)}
-                  onChatgptReconnect={() => void client.chatgptSignIn(false).then(refreshAiState)}
-                  onRetryLast={lastAiPrompt ? () => void handleSendAi(lastAiPrompt) : undefined}
-                />
-              ),
+              aiPanelContent: ai.panel,
             }}
             mode={mode}
             canEdit={canEditActive}
