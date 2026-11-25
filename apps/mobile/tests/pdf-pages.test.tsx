@@ -159,8 +159,11 @@ async function startDoc(
   docs.push(doc)
   const edit = doc.editSession
   const writes: Uint8Array[] = []
-  if (options.writer !== false) {
-    // stands in for the frame addition `services.writeFileBytes` (client.saveFileBytes)
+  if (options.writer === false) {
+    // a frame without a file writer: the import entry must stay hidden
+    delete (edit.services as Partial<typeof edit.services>).writeFileBytes
+  } else {
+    // records the writes; the frame's own `services.writeFileBytes` goes through client.saveFileBytes the same way
     Object.assign(edit.services, {
       async writeFileBytes(next: Uint8Array) {
         writes.push(next)

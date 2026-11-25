@@ -926,6 +926,19 @@ describe('feature slots', () => {
     expect(log.dirty.at(-1)).toBe(false)
   })
 
+  it('writes bytes over the open file in place and reports a refused write', async () => {
+    const { edit, fake, log, s } = await startDoc(await textPdf(['Hello']))
+    const bytes = await textPdf(['One', 'Two'])
+    await expect(edit.services.writeFileBytes(bytes)).resolves.toBe(true)
+    expect(fake.saved.at(-1)?.sessionId).toBe(s.sessionId)
+    expect(fake.saved.at(-1)?.bytes).toEqual(bytes)
+    expect(fake.savedAs).toHaveLength(0)
+
+    fake.failSave = new Error('write refused')
+    await expect(edit.services.writeFileBytes(bytes)).resolves.toBe(false)
+    expect(log.toasts.at(-1)).toBe(translateMobile('ko', 'pdfEditSaveFailed'))
+  })
+
   it('picks a PDF through the web view file input, never the app document picker', async () => {
     const { pickPdfFile } = await import('../src/renderer/editors/pdf/edit')
     const created: HTMLInputElement[] = []

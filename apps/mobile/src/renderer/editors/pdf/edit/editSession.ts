@@ -319,6 +319,16 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
       gate.invalidate()
       host.markDirty(false)
     },
+    async writeFileBytes(bytes) {
+      try {
+        await host.client.saveFileBytes(docSession.sessionId, bytesToBase64(bytes))
+      } catch {
+        toastError(t('pdfEditSaveFailed'))
+        return false
+      }
+      await host.client.recoveryDiscard(docSession.docKey).catch(() => {})
+      return true
+    },
     async requestSignature(target) {
       if (signatureHandler) {
         await signatureHandler(target)

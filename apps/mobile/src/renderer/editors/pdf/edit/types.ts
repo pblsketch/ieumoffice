@@ -84,6 +84,8 @@ export interface PdfEditServices {
   saveNow(): Promise<boolean>
   /** The file was already rewritten with `bytes`: reload this session from them, edits and undo cleared. */
   reopenFromBytes(bytes: Uint8Array): Promise<void>
+  /** Writes bytes over the open file in place (never Save As); false when the write failed (a toast already said why). */
+  writeFileBytes(bytes: Uint8Array): Promise<boolean>
   /** Asks the sign feature to sign into a signature field; a toast until it registered. */
   requestSignature(target: PdfSignatureTarget): Promise<void>
   /** The sign feature registers here; returns the unregister call. */
