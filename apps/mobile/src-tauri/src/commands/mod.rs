@@ -1,3 +1,9 @@
 pub mod ai;
 pub mod files;
+pub mod home;
+pub mod html;
+pub mod pdf;
+pub mod pdf_tools;
 pub mod prefs;
+pub mod readers;
+pub mod sheets;

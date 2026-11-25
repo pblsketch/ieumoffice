@@ -108,6 +108,8 @@ pub struct MobileFileService {
     active: Mutex<Option<ActiveSession>>,
     backed_up_keys: Mutex<BTreeSet<String>>,
     fail_backup_for_test: AtomicBool,
+    /// Formats the WebView can open; `None` until the first `set_openable_formats` call (accept all).
+    openable: Mutex<Option<Vec<MobileDocFormat>>>,
 }
 
 impl MobileFileService {
@@ -124,6 +126,7 @@ impl MobileFileService {
             active: Mutex::new(None),
             backed_up_keys: Mutex::new(BTreeSet::new()),
             fail_backup_for_test: AtomicBool::new(false),
+            openable: Mutex::new(None),
         })
     }
 
@@ -131,8 +134,42 @@ impl MobileFileService {
         self.fail_backup_for_test.store(fail, Ordering::SeqCst);
     }
 
+    /// Replaces the openable-format gate. Each ext maps through `from_name("x.<ext>")`.
+    pub fn set_openable_formats(&self, exts: &[String]) {
+        let mut formats: Vec<MobileDocFormat> = Vec::new();
+        for ext in exts {
+            let format = MobileDocFormat::from_name(&format!("x.{ext}"));
+            if !formats.contains(&format) {
+                formats.push(format);
+            }
+        }
+        *self.openable.lock().unwrap() = Some(formats);
+    }
+
+    fn ensure_openable(&self, name: &str, format: MobileDocFormat) -> MobileResult<()> {
+        let guard = self.openable.lock().unwrap();
+        let Some(formats) = guard.as_ref() else {
+            return Ok(());
+        };
+        if formats.contains(&format) {
+            return Ok(());
+        }
+        let ext = name
+            .rsplit_once('.')
+            .map(|(_, ext)| ext.to_ascii_lowercase())
+            .filter(|ext| !ext.is_empty())
+            .unwrap_or_else(|| format.ext().to_string());
+        Err(MobileError::with_detail(
+            MobileErrorCode::InvalidArgument,
+            "mobile.format.notOpenable",
+            ext,
+        ))
+    }
+
     fn activate_picked(&self, picked: PickedFile, register_recent: bool) -> MobileResult<MobileDocSession> {
         let format = MobileDocFormat::from_name(&picked.name);
+        // Refuse before touching recent docs or the active session.
+        self.ensure_openable(&picked.name, format)?;
         let doc_key = if picked.ephemeral {
             untitled_doc_key()
         } else {
