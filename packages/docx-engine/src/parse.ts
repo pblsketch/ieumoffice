@@ -4898,6 +4898,8 @@ function extractRuns(
             : ''
         const first = runs.length
         const history = attrs['w:history']
+        const targetFrame = attrs['w:tgtFrame']
+        const docLocation = attrs['w:docLocation']
         walk(
           childrenOf(node),
           {
@@ -4905,6 +4907,8 @@ function extractRuns(
             rId,
             ...(rId && anchor !== undefined ? { anchor } : {}),
             ...(rId && history !== undefined ? { history } : {}),
+            ...(targetFrame !== undefined ? { targetFrame } : {}),
+            ...(docLocation !== undefined ? { docLocation } : {}),
             ...(tooltip ? { tooltip } : {}),
           },
           rev,
