@@ -105,8 +105,12 @@ export function createPdfEditorKind(deps: PdfKindDeps = {}): EditorKind {
                   current = next
                 },
               })
+          // read on every App render: a Save As of an unwritable PDF reloads a writable copy
+          Object.defineProperty(doc, 'editable', {
+            get: () => current.readOnlyReason === null,
+            enumerable: true,
+          })
           return Object.assign(doc, {
-            editable: reason === null,
             // closed or replaced: free the PDF.js document and the engine worker (PDFium)
             dispose: () => {
               release()

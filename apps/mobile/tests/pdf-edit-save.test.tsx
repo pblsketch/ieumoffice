@@ -619,6 +619,23 @@ describe('untitled PDF', () => {
     expect(log.sessions.at(-1)).toMatchObject({ isUntitled: false, dirty: false })
     expect(doc.editSession.getModel().isUntitled).toBe(false)
   })
+
+  it('makes the writable copy editable after a Save As of an unwritable PDF', async () => {
+    const fake = fakeClient(await textPdf(['Hello']))
+    const { host } = fakeHost(fake.client)
+    const kind = createPdfEditorKind({ askPassword: () => async () => null })
+    const s = session({ writable: false })
+    const opened = await kind.open({ session: s, client: fake.client, isUntitled: false })
+    const doc = opened.start(host) as PdfEditDocument
+    docs.push(doc)
+    expect(doc.editable).toBe(false)
+    act(() => void doc.editSession.services.dispatch([rectOp()]))
+    // an unwritable file falls back to Save As; the copy reopens in a writable session
+    expect(await doc.save!(docState(s), false)).toBe(true)
+    expect(fake.savedAs).toHaveLength(1)
+    expect(doc.editSession.getModel().readOnlyReason).toBeNull()
+    expect(doc.editable).toBe(true)
+  })
 })
 
 // ── share ───────────────────────────────────────────────────────────────────
