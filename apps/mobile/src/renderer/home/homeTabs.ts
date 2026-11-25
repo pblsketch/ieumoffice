@@ -2,6 +2,7 @@
 import type { ComponentType } from 'react'
 import { FoldersTab } from './FoldersTab'
 import type { HomeHost } from './homeHost'
+import { PDF_TOOLS_ID } from './prefsStore'
 import { ToolsTab } from './ToolsTab'
 
 export type HomeTabId = 'recent' | 'folders' | 'tools' | 'settings'
@@ -23,5 +24,10 @@ export const HOME_TABS: readonly HomeTabDef[] = [
   { id: 'settings', Component: null },
 ]
 
-/** Off until T6 draws the tab bar; the home screen looks as before. */
-export const HOME_TABS_ENABLED = false
+/** The home draws the tab bar (bottom tabs on compact, a rail from medium up). */
+export const HOME_TABS_ENABLED = true
+
+/** The tabs shown now: [Tools] goes away (rail included) while the PDF tools are turned off. */
+export function visibleHomeTabs(isEditorOn: (id: string) => boolean): readonly HomeTabDef[] {
+  return HOME_TABS.filter((tab) => tab.id !== 'tools' || isEditorOn(PDF_TOOLS_ID))
+}
