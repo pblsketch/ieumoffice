@@ -1,0 +1,108 @@
+/* Settings > Help (track T6): rows, article text, feedback dialog, what's new list. */
+
+.home-help-card {
+  gap: var(--m-space-2);
+  padding: var(--m-space-2);
+}
+
+.home-help-actions {
+  padding-top: var(--m-space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.home-help-row {
+  justify-content: space-between;
+  min-height: var(--m-hit);
+}
+
+.home-help-row-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.home-help-article {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  font-size: var(--m-text-body);
+  line-height: var(--m-line-body);
+  color: var(--text-primary);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.home-help-article p {
+  margin: 0;
+}
+
+.home-help-dialog {
+  outline: none;
+}
+
+.home-help-details {
+  margin: 0;
+  padding: var(--m-space-3);
+  border-radius: var(--radius-8);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  white-space: pre-line;
+}
+
+.home-help-details-text {
+  width: 100%;
+  min-height: calc(var(--m-hit) * 2);
+  padding: var(--m-space-3);
+  border-radius: var(--radius-8);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  resize: none;
+}
+
+/* Android: right-aligned, the action at the far right. iOS: [Cancel] left, action right, full width. */
+.home-help-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
+
+.home-help-dialog-actions[data-platform='ios'] > button {
+  flex: 1 1 0;
+}
+
+.home-help-whats-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.home-help-whats-new-entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.home-help-whats-new-version {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.home-help-whats-new-list {
+  margin: 0;
+  padding-inline-start: var(--m-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  font-size: var(--m-text-body);
+  line-height: var(--m-line-body);
+  color: var(--text-primary);
+}
