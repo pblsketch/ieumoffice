@@ -11,6 +11,7 @@ import {
   type PdfUnlockProbe,
 } from './openTypes'
 import type { PdfDocumentOptions, PdfOpenedDocument } from './view'
+import type { PdfEditDocumentOptions } from './edit'
 
 /** Replaceable parts of the open path (tests, and PDF-T4 wiring the engine worker). */
 export interface PdfKindDeps {
@@ -20,8 +21,10 @@ export interface PdfKindDeps {
   readonly unlockProbe?: PdfUnlockProbe
   /** Default: the PC blank PDF (apps/pdf/src/main/blank-pdf.ts). */
   readonly blankPdf?: () => Promise<Uint8Array>
-  /** Edit mode and features on top of the viewer (PDF-T4). */
+  /** Replaces the edit frame with the bare viewer and these options (view-only tests). */
   readonly documentOptions?: PdfDocumentOptions
+  /** Options of the edit frame (tests: feature slots, the recovery clock). */
+  readonly edit?: Pick<PdfEditDocumentOptions, 'features' | 'now' | 'engine'>
 }
 
 const OPEN_ERROR_KEYS: Record<PdfOpenErrorKind, MobileStringKey> = {
@@ -73,7 +76,7 @@ export function createPdfEditorKind(deps: PdfKindDeps = {}): EditorKind {
         lifecycle.unstarted = null
       }
       const lang = await appLang(client)
-      const view = await import('./view')
+      const [view, edit] = await Promise.all([import('./view'), import('./edit')])
       let model: PdfOpenedDocument
       try {
         const bytes = recoveryBytesBase64
@@ -108,7 +111,16 @@ export function createPdfEditorKind(deps: PdfKindDeps = {}): EditorKind {
             void lifecycle.active.destroy().catch(() => {})
           }
           lifecycle.active = model
-          return view.startPdfDocument(host, model, deps.documentOptions)
+          if (deps.documentOptions) return view.startPdfDocument(host, model, deps.documentOptions)
+          return edit.startPdfEditDocument(host, model, {
+            ...deps.edit,
+            session,
+            unlockProbe: deps.unlockProbe ?? view.pcUnlockProbe,
+            // a save reloads the document: the new model is the one to free next time
+            onModelReplaced: (next, previous) => {
+              if (lifecycle.active === previous) lifecycle.active = next
+            },
+          })
         },
       }
     },
