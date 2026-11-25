@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const ko = {
+  pdfSignTitle: '서명 넣기',
+  pdfSignFieldHint: '서명을 “{field}” 칸에 맞춰 넣습니다.',
+  pdfSignSaved: '내 서명',
+  pdfSignUseSaved: '이 서명 쓰기',
+  pdfSignForget: '기억한 서명 지우기',
+  pdfSignDraw: '그리기',
+  pdfSignPicture: '사진',
+  pdfSignPadLabel: '서명 그리는 곳',
+  pdfSignPadHint: '손가락이나 펜으로 서명하세요.',
+  pdfSignColor: '서명 색',
+  pdfSignColorBlack: '검정',
+  pdfSignColorBlue: '파랑',
+  pdfSignColorRed: '빨강',
+  pdfSignClear: '지우기',
+  pdfSignPickPicture: '사진 고르기',
+  pdfSignPictureFailed: '사진을 읽지 못했습니다.',
+  pdfSignBw: '흑백으로',
+  pdfSignRemember: '이 기기에 서명 기억하기',
+  pdfSignPlace: '놓기',
+  pdfSignPlaceHint: '서명을 놓을 곳을 누르세요.',
+  pdfSignPlaced: '서명',
+  pdfSignDelete: '서명 지우기',
+  pdfSignResize: '서명 크기 바꾸기',
+  pdfSignFailed: '서명을 놓지 못했습니다.',
+} as const satisfies Record<keyof typeof zh, string>

@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const zhTW = {
+  pdfSignTitle: '新增簽名',
+  pdfSignFieldHint: '簽名將依「{field}」欄位大小放入。',
+  pdfSignSaved: '我的簽名',
+  pdfSignUseSaved: '使用此簽名',
+  pdfSignForget: '刪除已儲存的簽名',
+  pdfSignDraw: '手寫',
+  pdfSignPicture: '圖片',
+  pdfSignPadLabel: '簽名板',
+  pdfSignPadHint: '用手指或觸控筆簽名。',
+  pdfSignColor: '簽名顏色',
+  pdfSignColorBlack: '黑色',
+  pdfSignColorBlue: '藍色',
+  pdfSignColorRed: '紅色',
+  pdfSignClear: '清除',
+  pdfSignPickPicture: '選擇圖片',
+  pdfSignPictureFailed: '無法讀取這張圖片。',
+  pdfSignBw: '黑白',
+  pdfSignRemember: '在此裝置上記住簽名',
+  pdfSignPlace: '放置',
+  pdfSignPlaceHint: '點一下要放置簽名的位置。',
+  pdfSignPlaced: '簽名',
+  pdfSignDelete: '刪除簽名',
+  pdfSignResize: '調整簽名大小',
+  pdfSignFailed: '無法放置簽名。',
+} as const satisfies Record<keyof typeof zh, string>

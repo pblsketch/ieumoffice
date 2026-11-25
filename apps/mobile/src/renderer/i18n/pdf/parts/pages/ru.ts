@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const ru = {
+  pdfPagesSelected: 'Выбрано: {n}',
+  pdfPagesNoneSelected: 'Коснитесь страниц, чтобы выбрать их',
+  pdfPagesSelectAll: 'Выбрать все',
+  pdfPagesClearSelection: 'Снять выбор',
+  pdfPagesRotate: 'Повернуть',
+  pdfPagesDelete: 'Удалить',
+  pdfPagesMoveEarlier: 'Раньше',
+  pdfPagesMoveLater: 'Позже',
+  pdfPagesBlankBefore: 'Пустая перед',
+  pdfPagesBlankAfter: 'Пустая после',
+  pdfPagesImport: 'Из другого PDF',
+  pdfPagesPageLabel: 'Страница {n}',
+  pdfPagesBlankLabel: 'Пустая страница',
+  pdfPagesDragHandle: 'Перетащите, чтобы переместить',
+  pdfPagesKeepOne: 'Последнюю страницу удалить нельзя.',
+  pdfPagesActionFailed: 'Не удалось изменить страницы.',
+  pdfPagesDeletedLabel: 'Будет удалена',
+  pdfPagesDeletedHint: 'Удаляется при сохранении. «Отменить» вернёт её.',
+  pdfPagesMovedLabel: 'Новый порядок: страница {n}',
+  pdfPagesImportTitle: 'Вставить страницы из другого PDF',
+  pdfPagesImportCount: 'Страниц для вставки: {n}',
+  pdfPagesImportPlace: 'Куда вставить',
+  pdfPagesImportFront: 'В начало',
+  pdfPagesImportAfter: 'После страницы {n}',
+  pdfPagesImportEnd: 'В конец',
+  pdfPagesImportConfirmHint:
+    'Сначала сохраняются сделанные изменения, затем вставляются страницы. Вставленные страницы сразу записываются в файл, и это нельзя отменить.',
+  pdfPagesImportConfirm: 'Сохранить и вставить',
+  pdfPagesImportDone: 'Вставлено страниц: {n}.',
+  pdfPagesImportFailed: 'Не удалось вставить страницы.',
+  pdfPagesImportDamaged: 'Нельзя вставить страницы из другого PDF в повреждённый документ.',
+  pdfPagesImportEncrypted: 'Нельзя вставить страницы из другого PDF в зашифрованный документ.',
+  pdfPagesImportUntitled:
+    'Нельзя вставить страницы в новый документ, который ещё ни разу не сохранялся. Сначала сохраните его.',
+  pdfPagesImportReadOnly: 'Нельзя вставить страницы в документ только для чтения.',
+  pdfPagesImportPickEncrypted:
+    'Выбранный PDF защищён паролем, поэтому его страницы нельзя импортировать.',
+  pdfPagesImportPickUnreadable: 'Выбранный файл не удаётся прочитать как PDF.',
+} as const satisfies Record<keyof typeof zh, string>

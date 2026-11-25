@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const tr = {
+  pdfSignTitle: 'İmza ekle',
+  pdfSignFieldHint: 'İmza “{field}” alanına sığdırılır.',
+  pdfSignSaved: 'İmzalarım',
+  pdfSignUseSaved: 'Bu imzayı kullan',
+  pdfSignForget: 'Kayıtlı imzayı sil',
+  pdfSignDraw: 'Çiz',
+  pdfSignPicture: 'Resim',
+  pdfSignPadLabel: 'İmza pedi',
+  pdfSignPadHint: 'Parmağınızla veya kalemle imzalayın.',
+  pdfSignColor: 'İmza rengi',
+  pdfSignColorBlack: 'Siyah',
+  pdfSignColorBlue: 'Mavi',
+  pdfSignColorRed: 'Kırmızı',
+  pdfSignClear: 'Temizle',
+  pdfSignPickPicture: 'Resim seç',
+  pdfSignPictureFailed: 'Resim okunamadı.',
+  pdfSignBw: 'Siyah beyaz',
+  pdfSignRemember: 'Bu cihazda hatırla',
+  pdfSignPlace: 'Yerleştir',
+  pdfSignPlaceHint: 'İmzanın konacağı yere dokunun.',
+  pdfSignPlaced: 'İmza',
+  pdfSignDelete: 'İmzayı sil',
+  pdfSignResize: 'İmzayı yeniden boyutlandır',
+  pdfSignFailed: 'İmza yerleştirilemedi.',
+} as const satisfies Record<keyof typeof zh, string>

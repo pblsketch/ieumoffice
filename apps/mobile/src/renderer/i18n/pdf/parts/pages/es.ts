@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const es = {
+  pdfPagesSelected: '{n} seleccionadas',
+  pdfPagesNoneSelected: 'Toca las páginas para seleccionarlas',
+  pdfPagesSelectAll: 'Seleccionar todo',
+  pdfPagesClearSelection: 'Quitar selección',
+  pdfPagesRotate: 'Girar',
+  pdfPagesDelete: 'Eliminar',
+  pdfPagesMoveEarlier: 'Antes',
+  pdfPagesMoveLater: 'Después',
+  pdfPagesBlankBefore: 'Página en blanco antes',
+  pdfPagesBlankAfter: 'Página en blanco después',
+  pdfPagesImport: 'Desde un PDF',
+  pdfPagesPageLabel: 'Página {n}',
+  pdfPagesBlankLabel: 'Página en blanco',
+  pdfPagesDragHandle: 'Arrastra para mover',
+  pdfPagesKeepOne: 'No se puede eliminar la última página.',
+  pdfPagesActionFailed: 'No se pudieron cambiar las páginas.',
+  pdfPagesDeletedLabel: 'Se eliminará',
+  pdfPagesDeletedHint: 'Se elimina al guardar. Deshacer la recupera.',
+  pdfPagesMovedLabel: 'Nuevo orden: página {n}',
+  pdfPagesImportTitle: 'Insertar páginas de otro PDF',
+  pdfPagesImportCount: 'Páginas que se insertarán: {n}',
+  pdfPagesImportPlace: 'Dónde insertar',
+  pdfPagesImportFront: 'Al principio',
+  pdfPagesImportAfter: 'Después de la página {n}',
+  pdfPagesImportEnd: 'Al final',
+  pdfPagesImportConfirmHint:
+    'Primero se guardan tus cambios hasta ahora y luego se insertan las páginas. Las páginas insertadas se escriben directamente en el archivo y no se pueden deshacer.',
+  pdfPagesImportConfirm: 'Guardar e insertar',
+  pdfPagesImportDone: 'Se insertaron {n} páginas.',
+  pdfPagesImportFailed: 'No se pudieron insertar las páginas.',
+  pdfPagesImportDamaged: 'No se pueden insertar páginas de otro PDF en un documento dañado.',
+  pdfPagesImportEncrypted: 'No se pueden insertar páginas de otro PDF en un documento cifrado.',
+  pdfPagesImportUntitled:
+    'No se pueden insertar páginas en un documento nuevo que nunca se ha guardado. Guárdalo primero.',
+  pdfPagesImportReadOnly: 'No se pueden insertar páginas en un documento de solo lectura.',
+  pdfPagesImportPickEncrypted:
+    'El PDF elegido está protegido con contraseña, así que no se pueden importar sus páginas.',
+  pdfPagesImportPickUnreadable: 'El archivo elegido no se puede leer como PDF.',
+} as const satisfies Record<keyof typeof zh, string>

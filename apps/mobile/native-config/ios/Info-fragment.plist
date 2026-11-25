@@ -78,6 +78,16 @@
     <!-- T1 sheets document types -->
 
     <!-- T2 pdf document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PDF Document</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.adobe.pdf</string>
+      </array>
+    </dict>
 
     <!-- T4 html document types -->
 

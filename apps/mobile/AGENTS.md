@@ -61,7 +61,12 @@
 
 ### T2 PDF (1판)
 
-(이 트랙이 채운다)
+PDF 보기·주석·그리기·서명·양식·글자 넣기와 고치기·쪽 작업·링크·AI(읽기·주석·양식·쪽). 계획과 결정 후보는 `docs/plans/mobile-v1/T2.md`.
+
+- **저장은 PC 코드 그대로**: 저장 본체는 PC `apps/pdf/src/main/save-pdf.ts`와 그것이 부르는 파일(`pdf-crypt.ts`, `text-edit.ts`, `annot-flatten.ts`, `annot-strip.ts`, `blank-pdf.ts`)이다. **PC 파일을 고치지 않고** 불러 쓴다. PC 전용 이름(`fs`, `crypto`, `zlib`, `module`, `path`, `os`, `process`, `buffer`, `electron`)은 `editors/pdf/engine/node-shims/`의 대신 부품으로 돌린다(`engine/build/nodeShimPlugin.ts`, 걸리는 곳은 `apps/pdf/src/main`·`packages/font-metrics`·`packages/electron-utils`에서 오는 import뿐). 파일 읽기는 가상 파일 표(PDFium·harfbuzz WASM, 앱 글꼴)이고, 쓰기는 저장 결과를 받는 메모리 자리(`/ieum-mobile/save-sink`) 밖에서는 오류다. 저장 계산은 웹 워커(`engine/worker.ts`, ES 모듈 워커)에서 하고 PDFium은 필요한 요청에서만 싣는다. 같은 원본·같은 요청·같은 바깥 입력(시각·난수·글꼴)이면 PC와 바이트가 같아야 한다 — `tests/pdf-engine-parity.test.ts`가 대신 부품 없는 Node 실행과 비교한다. 빌드 설정은 `config/tracks/pdf.ts`(대신 부품, 워커 설정, PDF.js 자산 `dist/pdfjs`), 전역 선언은 `src/env/pdf.d.ts`.
+- **글꼴**: 휴대폰에는 설치 글꼴이 없어 앱 글꼴 셋만 쓴다. PC 편집 글꼴 id는 그대로 두고 뜻만 바꾼다(`arial`→GenOffice Sans KR, `times`→Serif KR, `courier`→Gothic KR, 대체 글꼴 첫 경로도 Sans). 흔한 한글 2,350자·영문·숫자만 그리므로, 그리지 못하는 글자는 넣기 전에 막고 문서 글꼴이 모자라 앱 글꼴로 바뀌면 알린다.
+- **구조**: 종류 `editors/pdf/kind.ts`(가벼움, 화면은 `open()` 안 동적 import) → 보기 `view/`(PDF.js, 이어 넘기기, 보이는 쪽 ±1만 그림, 찾기·목차·링크, 암호 시트) → 편집 틀 `edit/`(PC `edit-ops` 연산과 되돌리기, `SavePdfRequest` 만들기, 저장·다른 이름으로 저장(주석 그대로·굽기·빼기)·공유·복구 사본) → 기능 `features/<annot|draw|sign|form|text|pages|link>/`(각자 `PdfFeature` 하나, 쓰기는 `services.dispatch`만) → AI `ai/`(PC `pdf-skill.ts`의 `surface: 'mobile'`). 편집 막대는 [펜][형광펜][글상자][서명]·[AI]이고, 쪽 정리·링크 넣기·체크 표시는 [⋯]에 있다.
+- **지킬 것**: 고친 것이 없으면 쓰지 않는다(원본 바이트 그대로). 주석 굽기·빼기는 다른 이름으로 저장에서만, 암호 문서의 사본은 늘 그대로 두기. 암호 문서는 복구 사본을 쓰지 않는다. 읽기 전용(권한·손상·쓸 수 없는 파일)은 `editable: false`, `encrypted`는 권한 때문에 읽기 전용인 암호 PDF에만. 다른 PDF에서 쪽 가져오기는 확인을 받고 먼저 저장한 뒤 파일에 바로 쓴다. 파일 고르기는 웹뷰 파일 입력이다(`pickOpenFile`을 쓰면 열린 세션이 바뀐다). 열린 글상자는 저장·공유 전에 확정한다(`services.registerDraft`). 펜을 한 번 쓰면 펜은 그리고 손가락은 화면을 옮긴다(`features/draw/penInput.ts`, 기기에 기억, 스위치로 손가락도 그림). AI 도구는 15개만 내놓고 `apply_ops`는 정한 13개 연산만 받는다.
 
 ### T3 PDF 도구 (1판)
 

@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const hi = {
+  pdfPagesSelected: '{n} चुने गए',
+  pdfPagesNoneSelected: 'चुनने के लिए पेजों पर टैप करें',
+  pdfPagesSelectAll: 'सभी चुनें',
+  pdfPagesClearSelection: 'चुनाव हटाएँ',
+  pdfPagesRotate: 'घुमाएँ',
+  pdfPagesDelete: 'हटाएँ',
+  pdfPagesMoveEarlier: 'पहले',
+  pdfPagesMoveLater: 'बाद में',
+  pdfPagesBlankBefore: 'पहले खाली पेज',
+  pdfPagesBlankAfter: 'बाद में खाली पेज',
+  pdfPagesImport: 'दूसरी PDF से',
+  pdfPagesPageLabel: 'पेज {n}',
+  pdfPagesBlankLabel: 'खाली पेज',
+  pdfPagesDragHandle: 'खिसकाने के लिए खींचें',
+  pdfPagesKeepOne: 'आखिरी पेज हटाया नहीं जा सकता।',
+  pdfPagesActionFailed: 'पेज बदले नहीं जा सके।',
+  pdfPagesDeletedLabel: 'हटाया जाएगा',
+  pdfPagesDeletedHint: 'सहेजने पर हटेगा। पूर्ववत करने से वापस आता है।',
+  pdfPagesMovedLabel: 'नया क्रम: पेज {n}',
+  pdfPagesImportTitle: 'दूसरी PDF से पेज डालें',
+  pdfPagesImportCount: 'डाले जाने वाले पेज: {n}',
+  pdfPagesImportPlace: 'कहाँ डालें',
+  pdfPagesImportFront: 'शुरू में',
+  pdfPagesImportAfter: 'पेज {n} के बाद',
+  pdfPagesImportEnd: 'अंत में',
+  pdfPagesImportConfirmHint:
+    'अब तक के आपके बदलाव पहले सहेजे जाते हैं, फिर पेज डाले जाते हैं। डाले गए पेज सीधे फ़ाइल में लिखे जाते हैं और इन्हें पूर्ववत नहीं किया जा सकता।',
+  pdfPagesImportConfirm: 'सहेजें और डालें',
+  pdfPagesImportDone: '{n} पेज डाले गए।',
+  pdfPagesImportFailed: 'पेज डाले नहीं जा सके।',
+  pdfPagesImportDamaged: 'खराब दस्तावेज़ में दूसरी PDF के पेज नहीं डाले जा सकते।',
+  pdfPagesImportEncrypted: 'एन्क्रिप्ट किए गए दस्तावेज़ में दूसरी PDF के पेज नहीं डाले जा सकते।',
+  pdfPagesImportUntitled:
+    'जो नया दस्तावेज़ कभी सहेजा नहीं गया, उसमें पेज नहीं डाले जा सकते। पहले उसे सहेजें।',
+  pdfPagesImportReadOnly: 'केवल-पढ़ने वाले दस्तावेज़ में पेज नहीं डाले जा सकते।',
+  pdfPagesImportPickEncrypted:
+    'चुनी गई PDF पासवर्ड से सुरक्षित है, इसलिए उसके पेज आयात नहीं किए जा सकते।',
+  pdfPagesImportPickUnreadable: 'चुनी गई फ़ाइल को PDF के रूप में पढ़ा नहीं जा सका।',
+} as const satisfies Record<keyof typeof zh, string>

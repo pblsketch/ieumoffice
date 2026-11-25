@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const id = {
+  pdfSignTitle: 'Tambah tanda tangan',
+  pdfSignFieldHint: 'Tanda tangan disesuaikan ke kolom “{field}”.',
+  pdfSignSaved: 'Tanda tangan saya',
+  pdfSignUseSaved: 'Gunakan tanda tangan ini',
+  pdfSignForget: 'Hapus tanda tangan tersimpan',
+  pdfSignDraw: 'Tulis tangan',
+  pdfSignPicture: 'Gambar',
+  pdfSignPadLabel: 'Bidang coret tanda tangan',
+  pdfSignPadHint: 'Tanda tangani dengan jari atau pena.',
+  pdfSignColor: 'Warna tanda tangan',
+  pdfSignColorBlack: 'Hitam',
+  pdfSignColorBlue: 'Biru',
+  pdfSignColorRed: 'Merah',
+  pdfSignClear: 'Bersihkan',
+  pdfSignPickPicture: 'Pilih gambar',
+  pdfSignPictureFailed: 'Gambar tidak dapat dibaca.',
+  pdfSignBw: 'Hitam putih',
+  pdfSignRemember: 'Ingat di perangkat ini',
+  pdfSignPlace: 'Tempatkan',
+  pdfSignPlaceHint: 'Ketuk tempat tanda tangan diletakkan.',
+  pdfSignPlaced: 'Tanda tangan',
+  pdfSignDelete: 'Hapus tanda tangan',
+  pdfSignResize: 'Ubah ukuran tanda tangan',
+  pdfSignFailed: 'Tanda tangan tidak dapat ditempatkan.',
+} as const satisfies Record<keyof typeof zh, string>

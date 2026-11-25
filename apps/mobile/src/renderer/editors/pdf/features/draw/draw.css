@@ -1,0 +1,104 @@
+/* Mobile PDF drawing layer and the [Pen] sheet (track T2, PDF-T6).
+   Chrome colors come from the design tokens; stroke and swatch colors are document
+   colors set inline. */
+
+.m-pdf-draw-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.m-pdf-draw-layer[data-active='true'] {
+  pointer-events: auto;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-pdf-draw-chip {
+  position: absolute;
+  right: calc(var(--m-space-4) + var(--m-safe-right));
+  top: var(--m-space-3);
+  z-index: var(--m-z-toolbar);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-2);
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+  color: var(--text-primary);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+
+.m-pdf-draw-sheet {
+  gap: var(--m-space-4);
+}
+
+.m-pdf-draw-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--m-space-2);
+}
+
+.m-pdf-draw-tool {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+}
+
+.m-pdf-draw-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}
+
+.m-pdf-draw-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-full);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.m-pdf-draw-swatch[aria-checked='true'] {
+  border-color: var(--color-btn-primary);
+  box-shadow: inset 0 0 0 2px var(--color-btn-primary);
+}
+
+.m-pdf-draw-swatch-dot {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--m-radius-full);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.m-pdf-draw-width-bar {
+  display: block;
+  width: 24px;
+  border-radius: var(--m-radius-full);
+  background: currentColor;
+}
+
+.m-pdf-draw-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+}

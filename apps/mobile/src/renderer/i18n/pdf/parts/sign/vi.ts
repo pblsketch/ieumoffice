@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const vi = {
+  pdfSignTitle: 'Thêm chữ ký',
+  pdfSignFieldHint: 'Chữ ký được đặt vừa vào trường “{field}”.',
+  pdfSignSaved: 'Chữ ký của tôi',
+  pdfSignUseSaved: 'Dùng chữ ký này',
+  pdfSignForget: 'Xóa chữ ký đã lưu',
+  pdfSignDraw: 'Vẽ',
+  pdfSignPicture: 'Hình ảnh',
+  pdfSignPadLabel: 'Khung ký',
+  pdfSignPadHint: 'Ký bằng ngón tay hoặc bút.',
+  pdfSignColor: 'Màu chữ ký',
+  pdfSignColorBlack: 'Đen',
+  pdfSignColorBlue: 'Xanh dương',
+  pdfSignColorRed: 'Đỏ',
+  pdfSignClear: 'Xóa nét',
+  pdfSignPickPicture: 'Chọn ảnh',
+  pdfSignPictureFailed: 'Không đọc được ảnh.',
+  pdfSignBw: 'Đen trắng',
+  pdfSignRemember: 'Ghi nhớ trên thiết bị này',
+  pdfSignPlace: 'Đặt',
+  pdfSignPlaceHint: 'Chạm vào chỗ cần đặt chữ ký.',
+  pdfSignPlaced: 'Chữ ký',
+  pdfSignDelete: 'Xóa chữ ký',
+  pdfSignResize: 'Đổi kích thước chữ ký',
+  pdfSignFailed: 'Không thể đặt chữ ký.',
+} as const satisfies Record<keyof typeof zh, string>
