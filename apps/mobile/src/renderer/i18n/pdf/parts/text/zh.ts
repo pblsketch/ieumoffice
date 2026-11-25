@@ -1,2 +1,23 @@
 // Keys of the "text" part of the T2 pdf strings; every key starts with `pdfText`.
-export const zh = {} as const
+export const zh = {
+  pdfTextHint: '点按空白处添加文字，点按文字即可修改。',
+  pdfTextInputLabel: '要添加的文字',
+  pdfTextEditLabel: '要修改的文字',
+  pdfTextStyleBar: '文字样式',
+  pdfTextBold: '加粗',
+  pdfTextSize: '字号',
+  pdfTextSizeDown: '缩小字号',
+  pdfTextSizeUp: '放大字号',
+  pdfTextColor: '文字颜色',
+  pdfTextColorDocument: '保持文档颜色',
+  pdfTextFont: '字体',
+  pdfTextFontDocument: '文档字体',
+  pdfTextBack: '返回',
+  pdfTextDelete: '删除',
+  pdfTextDone: '确定',
+  pdfTextCannotDraw: '无法添加这些字符：{chars}',
+  pdfTextFontSubstituted: '这些字符将改用其他字体：{chars}',
+  pdfTextScannedPage: '此页没有文字。只能添加新文字。',
+  pdfTextNoMatch: '无法修改此文字：在文档中找不到它。',
+  pdfTextOverflow: '修改后的文字会与下方内容重叠，请缩短文字。',
+} as const
