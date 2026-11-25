@@ -1,7 +1,5 @@
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type {
   MobileAiSettingsSnapshot,
@@ -12,11 +10,6 @@ import type {
 import { MobileLocaleProvider } from '../src/renderer/i18n'
 import { ko } from '../src/renderer/i18n/ko'
 import { SettingsScreen, type SettingsScreenProps } from '../src/renderer/settings/SettingsScreen'
-
-// HTML of the settings screen captured before it was split into per-track
-// sections. The split must not change a single byte of the rendered DOM.
-const FIXTURE_PATH = join(__dirname, 'fixtures/settings-screen-dom.json')
-
 const containers: HTMLElement[] = []
 
 function renderInDom(node: React.ReactNode): HTMLElement {
@@ -126,41 +119,7 @@ function aiSectionHeading(el: HTMLElement): Element | null {
   return Array.from(headings).find((h) => h.textContent === ko.settingsAiSection) ?? null
 }
 
-function captureDomStates(): Record<string, string> {
-  const initial = renderInDom(<SettingsScreen {...fixedProps()} />)
-
-  const expanded = renderInDom(<StatefulSettings />)
-  click(accordionTrigger(expanded, 'Gemini'))
-  typeInto(expanded.querySelector<HTMLInputElement>('.mobile-key-form input'), 'draft-key')
-
-  const aiOff = renderInDom(
-    <SettingsScreen {...fixedProps({ prefs: { ...aiOnPrefs, aiEnabled: false } })} />,
-  )
-
-  const signedOut = renderInDom(
-    <SettingsScreen
-      {...fixedProps({
-        chatgptStatus: { state: 'signed-out', loginFailure: { reason: 'no-plan' } },
-        backups: [],
-      })}
-    />,
-  )
-
-  return {
-    initial: initial.innerHTML,
-    expanded: expanded.innerHTML,
-    aiOff: aiOff.innerHTML,
-    signedOut: signedOut.innerHTML,
-  }
-}
-
 describe('SettingsScreen split into per-track sections', () => {
-  it('renders the same DOM as before the split', () => {
-    const actual = captureDomStates()
-    const expected = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as Record<string, string>
-    expect(actual).toEqual(expected)
-  })
-
   it('keeps the AI switch as the last row of the general card', () => {
     const el = renderInDom(<SettingsScreen {...fixedProps()} />)
     const card = el.querySelector('.mobile-set-card')

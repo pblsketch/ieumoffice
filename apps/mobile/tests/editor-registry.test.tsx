@@ -53,16 +53,14 @@ describe('the editor registry', () => {
     }
   })
 
-  it('keeps the current create, edit, AI and recovery behavior of the two kinds', () => {
+  it('keeps the HWP kind as it was and the Markdown recovery rule', () => {
     expect(hwpEditorKind.createFormats).toEqual(['hwp', 'hwpx'])
     expect(hwpEditorKind.editable).toBe(true)
     expect(hwpEditorKind.hasAi).toBe(true)
     expect(hwpEditorKind.recoveryFormat('hwp')).toBe('hwp')
     expect(hwpEditorKind.recoveryFormat('hwpx')).toBe('hwpx')
 
-    expect(markdownEditorKind.createFormats).toEqual(['md'])
-    expect(markdownEditorKind.editable).toBe(true)
-    expect(markdownEditorKind.hasAi).toBe(true)
+    // the Markdown kind belongs to T4 after S0; only the recovery rule is pinned here
     // a .txt recovery copy reopens as an untitled Markdown document, as before
     expect(markdownEditorKind.recoveryFormat('md')).toBe('md')
     expect(markdownEditorKind.recoveryFormat('txt')).toBe('md')

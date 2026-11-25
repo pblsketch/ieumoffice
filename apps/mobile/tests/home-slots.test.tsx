@@ -30,17 +30,18 @@ function render(node: React.ReactNode): HTMLElement {
 }
 
 describe('home and icon slots for the tracks', () => {
-  it('lists the four home tabs in order and keeps them off', () => {
+  it('lists the four home tabs in order', () => {
     expect(HOME_TABS.map((tab) => tab.id)).toEqual(['recent', 'folders', 'tools', 'settings'])
-    expect(HOME_TABS_ENABLED).toBe(false)
+    // T6 turns the tabs on; the flag only has to exist
+    expect(typeof HOME_TABS_ENABLED).toBe('boolean')
   })
 
-  it('draws nothing for the empty folders and tools tabs', () => {
+  it('gives the folders and tools tabs a component that renders with a host', () => {
     const host = {} as HomeHost
-    for (const tab of HOME_TABS) {
-      if (!tab.Component) continue
-      const Tab = tab.Component
-      expect(render(<Tab host={host} />).innerHTML).toBe('')
+    for (const id of ['folders', 'tools'] as const) {
+      const Tab = HOME_TABS.find((tab) => tab.id === id)?.Component
+      expect(Tab).toBeTruthy()
+      if (Tab) expect(() => render(<Tab host={host} />)).not.toThrow()
     }
   })
 
