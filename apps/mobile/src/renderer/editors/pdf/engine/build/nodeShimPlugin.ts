@@ -36,11 +36,20 @@ const SHIM_FILES: Readonly<Record<string, string>> = {
   electron: 'electron.ts',
 }
 
-/** Stand-in file for a specifier, or null when the specifier is not one we replace */
+/** A path in Vite's id form (forward slashes), without loading vite (jsdom tests import this file) */
+const viteId = (path: string): string => path.replace(/\\/g, '/')
+
+/**
+ * Stand-in file for a specifier, or null when the specifier is not one we replace.
+ * The id is in Vite's form (forward slashes), the same id the engine's own
+ * relative imports of a stand-in get: on Windows a backslash id would be a
+ * second copy of the module in the Rollup bundle, so state set through one
+ * copy (the brotli decoder engine/fonts.ts registers) is missing in the other.
+ */
 export function shimFileFor(specifier: string): string | null {
   const bare = specifier.startsWith('node:') ? specifier.slice(5) : specifier
   const file = SHIM_FILES[bare]
-  return file ? resolve(SHIM_DIR, file) : null
+  return file ? viteId(resolve(SHIM_DIR, file)) : null
 }
 
 const comparable = (id: string): string => {
