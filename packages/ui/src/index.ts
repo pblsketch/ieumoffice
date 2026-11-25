@@ -678,6 +678,7 @@ export {
   type SuggestSkillName,
 } from './skill-name-from-title'
 export { createImeEnterGuard, useImeEnterGuard, type ImeEnterGuard } from './ime-enter'
+export { isShortcutLetter, shortcutLetterOf, type ShortcutLetterEvent } from './shortcut-letter'
 export * from './print-layout'
 export {
   PRINT_LAYOUT_STRINGS,

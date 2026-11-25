@@ -44,7 +44,9 @@ import {
   PICTURE_EXTENSIONS,
   type FloatingShape,
   type FloatingTextBox,
+  type FloatingWordArt,
   type PictureCrop,
+  type PictureEffects,
   type PictureMediaType,
 } from './drawings'
 import {
@@ -567,7 +569,8 @@ const STORY_NAMESPACES =
   `xmlns:w="${W_NAMESPACE}" xmlns:r="${WORD_REL_NAMESPACE}"` +
   ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"' +
   ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
-  ` xmlns:pic="${DRAWING_URI}" xmlns:wps="${WPS_NAMESPACE}"`
+  ` xmlns:pic="${DRAWING_URI}" xmlns:wps="${WPS_NAMESPACE}"` +
+  ' xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"'
 
 /** the paragraphs of a header/footer or text box story (plain text when the story has no formatted read) */
 function storyParagraphsXml(
@@ -1076,14 +1079,36 @@ function srcRectXml(crop: PictureCrop | undefined): string {
   return sides === '' ? '' : `<a:srcRect${sides}/>`
 }
 
+/** DrawingML blip children for picture brightness/contrast/grayscale/bilevel/opacity */
+function blipEffectsXml(effects: PictureEffects | undefined): string {
+  if (!effects) return ''
+  let out = ''
+  if (effects.grayscale) out += '<a:grayscl/>'
+  if (effects.biLevel) out += '<a:biLevel thresh="50000"/>'
+  if (effects.bright || effects.contrast) {
+    out +=
+      '<a:lum' +
+      (effects.bright ? ` bright="${effects.bright}"` : '') +
+      (effects.contrast ? ` contrast="${effects.contrast}"` : '') +
+      '/>'
+  }
+  if (effects.alpha !== undefined) out += `<a:alphaModFix amt="${effects.alpha}"/>`
+  return out
+}
+
 function pictureGraphicXml(
   rId: string,
   docPrId: number,
   cx: number,
   cy: number,
   crop?: PictureCrop,
+  effects?: PictureEffects,
+  rotationDeg?: number,
 ): string {
   const name = 'Picture ' + docPrId
+  const fx = blipEffectsXml(effects)
+  const blip = fx ? `<a:blip r:embed="${rId}">${fx}</a:blip>` : `<a:blip r:embed="${rId}"/>`
+  const rotAttr = rotationDeg ? ` rot="${Math.round(rotationDeg * 60000)}"` : ''
   return (
     '<wp:docPr id="' +
     docPrId +
@@ -1099,12 +1124,13 @@ function pictureGraphicXml(
     name +
     '"/>' +
     '<pic:cNvPicPr/></pic:nvPicPr>' +
-    '<pic:blipFill><a:blip r:embed="' +
-    rId +
-    '"/>' +
+    '<pic:blipFill>' +
+    blip +
     srcRectXml(crop) +
     '<a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
-    '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' +
+    '<pic:spPr><a:xfrm' +
+    rotAttr +
+    '><a:off x="0" y="0"/><a:ext cx="' +
     cx +
     '" cy="' +
     cy +
@@ -1141,17 +1167,20 @@ function textBoxGraphicXml(
 ): string {
   const name = 'Text Box ' + docPrId
   const fill = box.fill
-    ? `<a:solidFill><a:srgbClr val="${box.fill}"/></a:solidFill>`
+    ? box.fillAlpha !== undefined
+      ? `<a:solidFill><a:srgbClr val="${box.fill}"><a:alpha val="${box.fillAlpha}"/></a:srgbClr></a:solidFill>`
+      : `<a:solidFill><a:srgbClr val="${box.fill}"/></a:solidFill>`
     : '<a:noFill/>'
   const line = box.line
     ? `<a:ln w="${box.line.widthEmu}"><a:solidFill><a:srgbClr val="${box.line.color}"/></a:solidFill></a:ln>`
     : '<a:ln><a:noFill/></a:ln>'
   const [left, top, right, bottom] = box.insetsEmu
+  const rotAttr = box.rotationDeg ? ` rot="${Math.round(box.rotationDeg * 60000)}"` : ''
   return (
     `<wp:docPr id="${docPrId}" name="${name}"/><wp:cNvGraphicFramePr/>` +
     `<a:graphic><a:graphicData uri="${WPS_NAMESPACE}"><wps:wsp>` +
     `<wps:cNvPr id="${docPrId}" name="${name}"/><wps:cNvSpPr txBox="1"/>` +
-    `<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<wps:spPr><a:xfrm${rotAttr}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `<a:prstGeom prst="${box.geometry}"><a:avLst/></a:prstGeom>${fill}${line}</wps:spPr>` +
     `<wps:txbx><w:txbxContent>${storyParagraphsXml(box.content, pictures, story)}</w:txbxContent></wps:txbx>` +
     `<wps:bodyPr rot="0" vert="${box.textDirection ?? 'horz'}" wrap="square" lIns="${left}" tIns="${top}" rIns="${right}" bIns="${bottom}"` +
@@ -1161,15 +1190,60 @@ function textBoxGraphicXml(
   )
 }
 
+/** a legacy OfficeArt WordArt shape (e.g. text watermark) as VML v:textpath */
+function wordArtRunXml(
+  art: FloatingWordArt,
+  docPrId: number,
+  story: 'body' | 'header' | 'footer',
+): string {
+  const widthPt = Math.round((art.widthTwips / 20) * 100) / 100
+  const heightPt = Math.round((art.heightTwips / 20) * 100) / 100
+  const posH = art.horizontalAlign
+    ? `mso-position-horizontal:${art.horizontalAlign};mso-position-horizontal-relative:${art.horizontalRelative}`
+    : `margin-left:${Math.round((art.leftTwips / 20) * 100) / 100}pt;mso-position-horizontal-relative:${art.horizontalRelative}`
+  const vRel =
+    story === 'header' && art.verticalRelative === 'paragraph' ? 'page' : art.verticalRelative
+  const posV = art.verticalAlign
+    ? `mso-position-vertical:${art.verticalAlign};mso-position-vertical-relative:${vRel}`
+    : `margin-top:${Math.round((art.topTwips / 20) * 100) / 100}pt;mso-position-vertical-relative:${vRel}`
+  const rot = art.rotationDeg ? `rotation:${art.rotationDeg};` : ''
+  const zIndex = art.behindText ? 'z-index:-251656192;' : ''
+  const fill = art.colorHex ? `#${art.colorHex}` : 'silver'
+  const opacity = art.opacity !== undefined ? Math.round(art.opacity * 1000) / 1000 : 1
+  const tpStyle = [
+    art.fontFamily ? `font-family:&quot;${escapeXmlText(art.fontFamily)}&quot;` : '',
+    'font-size:1pt',
+    art.bold ? 'font-weight:bold' : '',
+    art.italic ? 'font-style:italic' : '',
+  ]
+    .filter(Boolean)
+    .join(';')
+  const pictOpen =
+    story === 'body'
+      ? '<w:pict xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">'
+      : '<w:pict>'
+  return (
+    `<w:r>${pictOpen}` +
+    `<v:shape id="PowerPlusWaterMarkObject${docPrId}" type="#_x0000_t136"` +
+    ` style="position:absolute;width:${widthPt}pt;height:${heightPt}pt;${rot}${zIndex}${posH};${posV}"` +
+    ` fillcolor="${fill}" stroked="f">` +
+    `<v:fill opacity="${opacity}"/>` +
+    `<v:textpath style="${tpStyle}" string="${escapeXmlText(art.text)}"/>` +
+    '</v:shape></w:pict></w:r>'
+  )
+}
+
 /** Word's base z-order for anchored drawings */
 const ANCHOR_RELATIVE_HEIGHT = 251658240
 
-/** a floating picture or text box run: wp:anchor positioned from the FSPA rectangle */
+/** a floating picture, text box, or WordArt run: wp:anchor positioned from the FSPA rectangle */
 function anchoredShapeRunXml(
   picture: FloatingShape,
   pictures: PictureRefs,
   story: 'body' | 'header' | 'footer' = 'body',
 ): string {
+  const docPrId = pictures.nextDocPrId()
+  if (picture.kind === 'wordArt') return wordArtRunXml(picture, docPrId, story)
   // Word positions a header shape's "text"-relative top from the page top
   const verticalRelative =
     story === 'header' && picture.verticalRelative === 'paragraph'
@@ -1177,13 +1251,18 @@ function anchoredShapeRunXml(
       : picture.verticalRelative
   const cx = picture.widthTwips * EMU_PER_TWIP
   const cy = picture.heightTwips * EMU_PER_TWIP
-  const docPrId = pictures.nextDocPrId()
   const wrap =
     picture.wrap === 'topAndBottom'
       ? '<wp:wrapTopAndBottom/>'
       : picture.wrap === 'none'
         ? '<wp:wrapNone/>'
         : '<wp:wrapSquare wrapText="bothSides"/>'
+  const posH = picture.horizontalAlign
+    ? `<wp:align>${picture.horizontalAlign}</wp:align>`
+    : `<wp:posOffset>${picture.leftTwips * EMU_PER_TWIP}</wp:posOffset>`
+  const posV = picture.verticalAlign
+    ? `<wp:align>${picture.verticalAlign}</wp:align>`
+    : `<wp:posOffset>${picture.topTwips * EMU_PER_TWIP}</wp:posOffset>`
   return (
     '<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="' +
     (ANCHOR_RELATIVE_HEIGHT + docPrId) +
@@ -1193,14 +1272,14 @@ function anchoredShapeRunXml(
     '<wp:simplePos x="0" y="0"/>' +
     '<wp:positionH relativeFrom="' +
     picture.horizontalRelative +
-    '"><wp:posOffset>' +
-    picture.leftTwips * EMU_PER_TWIP +
-    '</wp:posOffset></wp:positionH>' +
+    '">' +
+    posH +
+    '</wp:positionH>' +
     '<wp:positionV relativeFrom="' +
     verticalRelative +
-    '"><wp:posOffset>' +
-    picture.topTwips * EMU_PER_TWIP +
-    '</wp:posOffset></wp:positionV>' +
+    '">' +
+    posV +
+    '</wp:positionV>' +
     '<wp:extent cx="' +
     cx +
     '" cy="' +
@@ -1208,7 +1287,15 @@ function anchoredShapeRunXml(
     '"/><wp:effectExtent l="0" t="0" r="0" b="0"/>' +
     wrap +
     (picture.kind === 'picture'
-      ? pictureGraphicXml(pictures.relIdFor(picture.media), docPrId, cx, cy, picture.crop)
+      ? pictureGraphicXml(
+          pictures.relIdFor(picture.media),
+          docPrId,
+          cx,
+          cy,
+          picture.crop,
+          picture.effects,
+          picture.rotationDeg,
+        )
       : textBoxGraphicXml(picture, pictures, docPrId, cx, cy, story)) +
     '</wp:anchor></w:drawing></w:r>'
   )

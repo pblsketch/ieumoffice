@@ -200,6 +200,22 @@ fn preserves_future_function_markers_in_sheet_and_defined_names() {
 }
 
 #[test]
+fn strips_xlpm_parameter_markers_outside_strings_and_brackets() {
+    assert_eq!(
+        strip_future_function_markers("_xlfn.LET(_xlpm.x,A1*2,_xlpm.x+1)"),
+        "LET(x,A1*2,x+1)"
+    );
+    assert_eq!(
+        strip_future_function_markers("_xlfn.MAP(A1:A5,_xlfn.LAMBDA(_xlpm.v,_xlpm.v*2))"),
+        "MAP(A1:A5,LAMBDA(v,v*2))"
+    );
+    assert_eq!(
+        strip_future_function_markers("CONCAT(\"_xlpm.x\",Table1[_xlpm.col],Budget_xlpm.Total)"),
+        "CONCAT(\"_xlpm.x\",Table1[_xlpm.col],Budget_xlpm.Total)"
+    );
+}
+
+#[test]
 fn normalizes_worksheet_paths_with_forward_slashes() {
     assert_eq!(
         normalize_worksheet_path("worksheets/sheet1.xml").unwrap(),

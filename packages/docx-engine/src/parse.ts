@@ -276,6 +276,7 @@ import {
   vmlShapeSvg,
   vmlShapeTypeTable,
   vmlStyleDimPx,
+  vmlStyleProp,
   vmlWordArtBox,
   type VmlGroupScale,
   type VmlOrigin,
@@ -6254,6 +6255,13 @@ async function hfImages(
       }
       if (crop.l || crop.t || crop.r || crop.b) image.crop = crop
     }
+    const effects = blipEffectsOf(frag)
+    if (effects) image.effects = effects
+    const xfrmRot = parseInt(/<a:xfrm\b[^>]*\brot\s*=\s*["'](-?\d+)["']/.exec(frag)?.[1] ?? '', 10)
+    if (Number.isFinite(xfrmRot) && xfrmRot !== 0) {
+      const deg = Math.round(((((xfrmRot / 60000) % 360) + 360) % 360) * 100) / 100
+      if (deg > 0) image.rotationDeg = deg
+    }
     if (/<wp:anchor[\s>]/.test(frag)) {
       image.floating = true
       const anchorTag = /<wp:anchor[^>]*>/.exec(frag)?.[0] ?? ''
@@ -6300,8 +6308,9 @@ async function hfImages(
       continue
     }
     if (!/position:\s*absolute/.test(frag) && onCellRun(m.index!)) continue
-    const rId = /<v:imagedata[^>]*r:id="([^"]+)"/.exec(frag)?.[1]
-    if (!rId) {
+    const rId = /<v:imagedata[^>]*\br:id\s*=\s*(?:"([^"]+)"|'([^']+)')/.exec(frag)
+    const rIdVal = rId ? (rId[1] ?? rId[2]) : undefined
+    if (!rIdVal) {
       // textless vector shape (mc:Fallback twin of a wps shape the Choice
       // path could not draw, or a plain VML decoration)
       const shape = vmlShapeSvg(frag)
@@ -6320,10 +6329,12 @@ async function hfImages(
       out.push(image)
       continue
     }
-    const dataUrl = await mediaDataUrl(zip, rels, rId, partPath)
+    const dataUrl = await mediaDataUrl(zip, rels, rIdVal, partPath)
     if (!dataUrl) continue
     // VML dimensions live in the v:shape style attribute (pt, in, cm...)
-    const style = /<v:shape[^>]*style="([^"]*)"/.exec(frag)?.[1] ?? ''
+    const shapeTag = /<v:shape\b[^>]*>/.exec(frag)?.[0] ?? ''
+    const styleM = /\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+    const style = styleM ? (styleM[1] ?? styleM[2] ?? '') : ''
     const image: HfImage = { dataUrl }
     const w = vmlStyleDimPx(style, 'width')
     const h = vmlStyleDimPx(style, 'height')
@@ -6337,7 +6348,7 @@ async function hfImages(
     else if (hTw > 0) image.heightPx = Math.round(hTw / 15)
     // absolute-positioned shapes (picture watermarks): must not stack into the
     // header strip nor count toward the header height estimate
-    if (/position:absolute/.test(style)) {
+    if (/position:\s*absolute/.test(style)) {
       image.floating = true
       if (/z-index:\s*-/.test(style)) image.behind = true
       if (isPictureWatermarkShape(frag)) image.watermark = true
@@ -6349,10 +6360,20 @@ async function hfImages(
       if (align) image.align = align
     }
     const imagedata = /<v:imagedata[^>]*>/.exec(frag)?.[0] ?? ''
-    const gain = vmlFraction(/\sgain="([^"]*)"/.exec(imagedata)?.[1])
-    const blackLevel = vmlFraction(/\sblacklevel="([^"]*)"/.exec(imagedata)?.[1])
+    const gainM = /\sgain\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+    const blM = /\sblacklevel\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+    const gain = vmlFraction(gainM ? (gainM[1] ?? gainM[2]) : undefined)
+    const blackLevel = vmlFraction(blM ? (blM[1] ?? blM[2]) : undefined)
     if (gain != null || blackLevel != null) {
       image.washout = { gain: gain ?? 1, blackLevel: blackLevel ?? 0 }
+    }
+    const fillTag = /<v:fill\b[^>]*>/.exec(frag)?.[0] ?? ''
+    const opM =
+      /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(fillTag) ??
+      /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+    const vmlAlpha = vmlFraction(opM ? (opM[1] ?? opM[2]) : undefined)
+    if (vmlAlpha != null && vmlAlpha >= 0 && vmlAlpha < 1) {
+      image.effects = { ...image.effects, alpha: vmlAlpha }
     }
     recordProduced(m.index!)
     out.push(image)
@@ -6468,6 +6489,8 @@ async function hfGroupPictures(
       }
       if (crop.l || crop.t || crop.r || crop.b) image.crop = crop
     }
+    const effects = blipEffectsOf(pic)
+    if (effects) image.effects = effects
     out.push(image)
   }
   return out.length > 0 ? out : null
@@ -8072,7 +8095,7 @@ type ImageMeta = Pick<
   imageNoOverlap?: boolean
 }
 
-/** a:lum / a:grayscl / a:biLevel inside the picture's a:blip → display recolor */
+/** a:lum / a:grayscl / a:biLevel / a:alphaModFix inside the picture's a:blip → display recolor/opacity */
 function blipEffectsOf(xml: string): ImageEffects | undefined {
   // a self-closing first blip must not span to a later picture's closing tag
   const blip = /<a:blip\b[^>]*[^/>]>([\s\S]*?)<\/a:blip>/.exec(xml)?.[1]
@@ -8087,13 +8110,19 @@ function blipEffectsOf(xml: string): ImageEffects | undefined {
   }
   if (/<a:grayscl\b/.test(blip)) out.grayscale = true
   const biLevel = /<a:biLevel\b[^>]*\/?>/.exec(blip)?.[0]
-  if (biLevel) out.biLevelThresh = /\bthresh="/.test(biLevel) ? rectFrac(biLevel, 'thresh') : 0.5
+  if (biLevel) out.biLevelThresh = /\bthresh=/.test(biLevel) ? rectFrac(biLevel, 'thresh') : 0.5
+  const alphaMod = /<a:alphaModFix\b[^>]*\/?>/.exec(blip)?.[0]
+  if (alphaMod && /\bamt=/.test(alphaMod)) {
+    const amt = Math.max(0, Math.min(1, rectFrac(alphaMod, 'amt')))
+    if (amt < 1) out.alpha = amt
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 /** a:srcRect / a:fillRect attribute (1000ths of a percent; some writers emit decimals) → fraction */
 function rectFrac(tag: string, name: string): number {
-  const v = parseFloat(new RegExp(`\\b${name}="(-?[\\d.]+)"`).exec(tag)?.[1] ?? '')
+  const m = new RegExp(`\\b${name}\\s*=\\s*(?:"(-?[\\d.]+)"|'(-?[\\d.]+)')`).exec(tag)
+  const v = parseFloat(m?.[1] ?? m?.[2] ?? '')
   return Number.isFinite(v) ? v / 100000 : 0
 }
 
@@ -8491,34 +8520,56 @@ function imageMeta(xml: string, ctx?: BuildContext): ImageMeta {
  */
 function vmlImageMeta(xml: string): ImageMeta {
   const meta: ImageMeta = {}
-  const style = /<v:shape [^>]*style="([^"]*)"/.exec(xml)?.[1] ?? ''
-  const w = parseFloat(/(?:^|;)width:([\d.]+)pt/.exec(style)?.[1] ?? '')
-  const h = parseFloat(/(?:^|;)height:([\d.]+)pt/.exec(style)?.[1] ?? '')
-  if (w > 0) meta.imageWidthPx = Math.round((w / 72) * 96)
-  if (h > 0) meta.imageHeightPx = Math.round((h / 72) * 96)
+  const shapeTag = /<v:shape\b[^>]*>/.exec(xml)?.[0] ?? ''
+  const styleM = /\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+  const style = styleM ? (styleM[1] ?? styleM[2] ?? '') : ''
+  const w = vmlStyleDimPx(style, 'width')
+  const h = vmlStyleDimPx(style, 'height')
+  if (w) meta.imageWidthPx = w
+  if (h) meta.imageHeightPx = h
   const jc = /<w:jc w:val="([^"]+)"/.exec(xml)?.[1]
   if (jc === 'center') meta.imageAlign = 'center'
   else if (jc === 'right' || jc === 'end') meta.imageAlign = 'right'
-  if (/position:absolute/.test(style)) {
+  if (/position:\s*absolute/.test(style)) {
     meta.imageWrap = /z-index:\s*-/.test(style) ? 'behind' : 'front'
-    const mx = parseFloat(/margin-left:(-?[\d.]+)pt/.exec(style)?.[1] ?? '')
-    const my = parseFloat(/margin-top:(-?[\d.]+)pt/.exec(style)?.[1] ?? '')
-    if (Number.isFinite(mx)) meta.imageOffsetXEmu = Math.round(mx * EMU_PER_PT)
-    if (Number.isFinite(my)) meta.imageOffsetYEmu = Math.round(my * EMU_PER_PT)
-    const posH = /mso-position-horizontal:(\w+)/.exec(style)?.[1]
-    const posV = /mso-position-vertical:(\w+)/.exec(style)?.[1]
-    const relH = /mso-position-horizontal-relative:(\w+)/.exec(style)?.[1]
-    const relV = /mso-position-vertical-relative:(\w+)/.exec(style)?.[1]
-    if (
-      (relH === 'margin' || relH === 'page') &&
-      (relV === 'margin' || relV === 'page') &&
-      (posH === 'left' || posH === 'center' || posH === 'right') &&
-      (posV === 'top' || posV === 'center' || posV === 'bottom')
-    ) {
+    const posH = vmlStyleProp(style, 'mso-position-horizontal')
+    const posV = vmlStyleProp(style, 'mso-position-vertical')
+    const relH = vmlStyleProp(style, 'mso-position-horizontal-relative')
+    const relV = vmlStyleProp(style, 'mso-position-vertical-relative')
+    if (posH === 'left' || posH === 'center' || posH === 'right') {
       meta.imagePosH = posH
-      meta.imagePosV = posV
+      if (relH === 'margin' || relH === 'page') meta.imageRelH = relH
+    } else {
+      const mxPx = vmlLengthPx(vmlStyleProp(style, 'margin-left'))
+      if (mxPx !== undefined) meta.imageOffsetXEmu = Math.round(mxPx * EMU_PER_PX)
+      if (relH === 'margin' || relH === 'page') meta.imageRelH = relH
     }
+    if (posV === 'top' || posV === 'center' || posV === 'bottom') {
+      meta.imagePosV = posV
+      if (relV === 'margin' || relV === 'page') meta.imageRelV = relV
+    } else {
+      const myPx = vmlLengthPx(vmlStyleProp(style, 'margin-top'))
+      if (myPx !== undefined) meta.imageOffsetYEmu = Math.round(myPx * EMU_PER_PX)
+      if (relV === 'margin' || relV === 'page') meta.imageRelV = relV
+    }
+    const rot = vmlRotationDeg(style)
+    if (rot != null) meta.imageRotDeg = rot
   }
+  const imagedata = /<v:imagedata[^>]*>/.exec(xml)?.[0] ?? ''
+  const gainM = /\sgain\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+  const blM = /\sblacklevel\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(imagedata)
+  const gain = vmlFraction(gainM ? (gainM[1] ?? gainM[2]) : undefined)
+  const blackLevel = vmlFraction(blM ? (blM[1] ?? blM[2]) : undefined)
+  const fillTag = /<v:fill\b[^>]*>/.exec(xml)?.[0] ?? ''
+  const opM =
+    /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(fillTag) ??
+    /\sopacity\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(shapeTag)
+  const alpha = vmlFraction(opM ? (opM[1] ?? opM[2]) : undefined)
+  const fx: ImageEffects = {}
+  if (blackLevel != null && blackLevel !== 0) fx.bright = Math.max(-1, Math.min(1, blackLevel * 2))
+  if (gain != null && gain !== 1) fx.contrast = Math.max(-1, Math.min(1, gain - 1))
+  if (alpha != null && alpha >= 0 && alpha < 1) fx.alpha = alpha
+  if (Object.keys(fx).length > 0) meta.imageEffects = fx
   return meta
 }
 

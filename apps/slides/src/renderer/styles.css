@@ -90,6 +90,8 @@
   --slides-select-hover-bg: color-mix(in srgb, var(--accent) 6%, var(--surface));
   --slides-select-active-bg: var(--accent-soft);
   --slides-cell-focus-bg: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  --slides-table-sel-fill: rgb(196 62 28 / 16%);
+  --slides-table-sel-stroke: #c43e1c;
   --slides-ok: #2e9e44;
   --slides-error: #ef4444;
   --slides-error-bg: #fdecec;
@@ -224,6 +226,8 @@
   --slides-select-hover-bg: color-mix(in srgb, var(--accent) 12%, var(--surface));
   --slides-select-active-bg: var(--accent-soft);
   --slides-cell-focus-bg: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --slides-table-sel-fill: rgb(232 102 63 / 22%);
+  --slides-table-sel-stroke: #e8663f;
   --slides-ok: #58b380;
   --slides-error: #e57373;
   --slides-error-bg: rgb(229 115 115 / 12%);
@@ -273,6 +277,8 @@
     --slides-select-hover-bg: color-mix(in srgb, var(--accent) 12%, var(--surface));
     --slides-select-active-bg: var(--accent-soft);
     --slides-cell-focus-bg: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    --slides-table-sel-fill: rgb(232 102 63 / 22%);
+    --slides-table-sel-stroke: #e8663f;
     --slides-ok: #58b380;
     --slides-error: #e57373;
     --slides-error-bg: rgb(229 115 115 / 12%);

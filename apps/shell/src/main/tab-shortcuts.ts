@@ -22,13 +22,22 @@ export interface TabShortcutInput {
   /** Electron's Input.type: keyDown / keyUp / char */
   type: string
   key: string
+  code?: string
   control: boolean
   meta: boolean
   alt: boolean
   shift: boolean
+  isComposing?: boolean
 }
 
 export type TabShortcut = 'next' | 'previous' | 'close' | 'settings'
+
+function isCloseLetter(input: TabShortcutInput): boolean {
+  const lower = input.key.toLowerCase()
+  if (/^[a-z]$/.test(lower)) return lower === 'w'
+  if (input.isComposing) return false
+  return input.code === 'KeyW' || input.key === 'ㅈ' || input.key === 'ㅉ'
+}
 
 export function tabShortcutOf(
   input: TabShortcutInput,
@@ -48,7 +57,7 @@ export function tabShortcutOf(
     return input.control && !input.meta ? 'settings' : null
   }
 
-  if (input.key.toLowerCase() !== 'w' || input.shift) return null
+  if (!isCloseLetter(input) || input.shift) return null
   // the platform's own close chord: ⌘W on macOS, Ctrl+W elsewhere
   if (platform === 'darwin') return input.meta && !input.control ? 'close' : null
   return input.control && !input.meta ? 'close' : null

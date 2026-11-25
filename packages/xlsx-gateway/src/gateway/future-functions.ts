@@ -105,6 +105,7 @@ const XLFN_FUNCTIONS = new Set([
   'IMSINH',
   'IMTAN',
   'ISFORMULA',
+  'ISO.CEILING',
   'ISOWEEKNUM',
   'MUNIT',
   'NUMBERVALUE',
@@ -148,9 +149,13 @@ const XLFN_FUNCTIONS = new Set([
   'LET',
   'MAKEARRAY',
   'MAP',
+  'PERCENTOF',
   'PIVOTBY',
   'RANDARRAY',
   'REDUCE',
+  'REGEXEXTRACT',
+  'REGEXREPLACE',
+  'REGEXTEST',
   'SCAN',
   'SEQUENCE',
   'SORTBY',
@@ -161,6 +166,7 @@ const XLFN_FUNCTIONS = new Set([
   'TEXTSPLIT',
   'TOCOL',
   'TOROW',
+  'TRIMRANGE',
   'UNIQUE',
   'VSTACK',
   'WRAPCOLS',
@@ -168,10 +174,6 @@ const XLFN_FUNCTIONS = new Set([
   'XLOOKUP',
   'XMATCH',
   'ARRAYTOTEXT',
-  'PERCENTOF',
-  'REGEXEXTRACT',
-  'REGEXREPLACE',
-  'REGEXTEST',
   'VALUETOTEXT',
   // Storage forms of the @ implicit-intersection and # spill operators.
   'SINGLE',
@@ -205,6 +207,7 @@ const SPILL_FUNCTIONS = new Set([
   'TEXTSPLIT',
   'TOCOL',
   'TOROW',
+  'TRIMRANGE',
   'UNIQUE',
   'VSTACK',
   'WRAPCOLS',
@@ -283,8 +286,172 @@ export function spillsDynamicArray(formula: string): boolean {
   return functionCalls(formula).some((call) => SPILL_FUNCTIONS.has(call.name.toUpperCase()))
 }
 
-/// Prefixes future-function calls with their storage markers, outside
-/// string literals. Marked calls store the canonical uppercase name.
+function bracketedEnd(formula: string, start: number): number {
+  let depth = 0
+  let index = start
+  while (index < formula.length) {
+    const ch = formula[index]
+    if (ch === '[') depth += 1
+    else if (ch === ']') {
+      depth -= 1
+      if (depth === 0) return index + 1
+    }
+    index += 1
+  }
+  return formula.length
+}
+
+interface ParamScope {
+  readonly start: number
+  readonly end: number
+  readonly names: ReadonlySet<string>
+}
+
+function splitTopLevelArgs(
+  formula: string,
+  openParen: number,
+): { closeParen: number; args: string[] } | null {
+  const args: string[] = []
+  let depth = 1
+  let argStart = openParen + 1
+  let cursor = openParen + 1
+  while (cursor < formula.length) {
+    const ch = formula[cursor]!
+    if (ch === '"' || ch === "'") {
+      cursor = quotedEnd(formula, cursor)
+      continue
+    }
+    if (ch === '[') {
+      cursor = bracketedEnd(formula, cursor)
+      continue
+    }
+    if (ch === '(' || ch === '{') {
+      depth += 1
+    } else if (ch === ')' || ch === '}') {
+      depth -= 1
+      if (depth === 0) {
+        args.push(formula.slice(argStart, cursor))
+        return { closeParen: cursor, args }
+      }
+    } else if (ch === ',' && depth === 1) {
+      args.push(formula.slice(argStart, cursor))
+      argStart = cursor + 1
+    }
+    cursor += 1
+  }
+  return null
+}
+
+const SIMPLE_PARAM_RE = /^(?:_xlpm\.)?([\p{L}_][\p{L}\p{N}_.]*)$/iu
+
+/// Collect scopes for LET/LAMBDA bound parameters so OOXML serialization can
+/// restore Excel's required `_xlpm.` prefix on parameter declarations and uses.
+function collectParamScopes(formula: string): ParamScope[] {
+  if (!/(?:^|[^\p{L}\p{N}_.])(?:_xlfn\.)?(?:LET|LAMBDA)\s*\(/iu.test(formula)) return []
+  const scopes: ParamScope[] = []
+  let cursor = 0
+  while (cursor < formula.length) {
+    const ch = formula[cursor]!
+    if (ch === '"' || ch === "'") {
+      cursor = quotedEnd(formula, cursor)
+      continue
+    }
+    if (ch === '[') {
+      cursor = bracketedEnd(formula, cursor)
+      continue
+    }
+    const symbol = String.fromCodePoint(formula.codePointAt(cursor)!)
+    if (!isNameCharacter(symbol)) {
+      cursor += symbol.length
+      continue
+    }
+    const start = cursor
+    let end = cursor
+    while (end < formula.length) {
+      const current = String.fromCodePoint(formula.codePointAt(end)!)
+      if (!isNameCharacter(current)) break
+      end += current.length
+    }
+    const token = formula
+      .slice(start, end)
+      .toUpperCase()
+      .replace(/^_XLFN\./, '')
+    if (token === 'LET' || token === 'LAMBDA') {
+      let after = end
+      while (after < formula.length && /\s/.test(formula[after]!)) after += 1
+      if (formula[after] === '(') {
+        const parsed = splitTopLevelArgs(formula, after)
+        if (parsed && parsed.args.length >= 2) {
+          const names = new Set<string>()
+          const step = token === 'LET' ? 2 : 1
+          for (let idx = 0; idx < parsed.args.length - 1; idx += step) {
+            const m = SIMPLE_PARAM_RE.exec(parsed.args[idx]!.trim())
+            if (m?.[1]) names.add(m[1].toLowerCase())
+          }
+          if (names.size > 0) scopes.push({ start: after, end: parsed.closeParen, names })
+        }
+        cursor = after + 1
+        continue
+      }
+    }
+    cursor = end
+  }
+  return scopes
+}
+
+function withXlpmParamMarkers(formula: string): string {
+  const scopes = collectParamScopes(formula)
+  if (scopes.length === 0) return formula
+  let out = ''
+  let cursor = 0
+  let copiedFrom = 0
+  while (cursor < formula.length) {
+    const ch = formula[cursor]!
+    if (ch === '"' || ch === "'") {
+      cursor = quotedEnd(formula, cursor)
+      continue
+    }
+    if (ch === '[') {
+      cursor = bracketedEnd(formula, cursor)
+      continue
+    }
+    const symbol = String.fromCodePoint(formula.codePointAt(cursor)!)
+    if (!isNameCharacter(symbol)) {
+      cursor += symbol.length
+      continue
+    }
+    const start = cursor
+    let end = cursor
+    while (end < formula.length) {
+      const current = String.fromCodePoint(formula.codePointAt(end)!)
+      if (!isNameCharacter(current)) break
+      end += current.length
+    }
+    const token = formula.slice(start, end)
+    const prev = start === 0 ? '' : (formula[start - 1] ?? '')
+    const nextChar = formula[end] ?? ''
+    if (
+      !/^_xl(?:fn|ws|pm)\./i.test(token) &&
+      !/[\p{L}\p{N}_.$'!]/u.test(prev) &&
+      nextChar !== '!'
+    ) {
+      const lower = token.toLowerCase()
+      const inScope = scopes.some(
+        (scope) => start >= scope.start && end <= scope.end && scope.names.has(lower),
+      )
+      if (inScope) {
+        out += formula.slice(copiedFrom, start) + `_xlpm.${token}`
+        copiedFrom = end
+      }
+    }
+    cursor = end
+  }
+  return out + formula.slice(copiedFrom)
+}
+
+/// Prefixes future-function calls with their storage markers (and LET/LAMBDA
+/// parameters with `_xlpm.`), outside string literals. Marked calls store the
+/// canonical uppercase name.
 export function withFutureFunctionMarkers(formula: string): string {
   let out = ''
   let cursor = 0
@@ -303,5 +470,5 @@ export function withFutureFunctionMarkers(formula: string): string {
     }
     cursor = call.end
   }
-  return out + formula.slice(cursor)
+  return withXlpmParamMarkers(out + formula.slice(cursor))
 }

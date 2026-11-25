@@ -14,6 +14,7 @@ import {
   projectPanelText,
   templateDocumentOf,
   presentationKeyOf,
+  shortcutLetterOf,
   useAppChoice,
   useAutoSavePref,
   useSplitPaneFocusPing,
@@ -724,7 +725,7 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return
-      const key = event.key.toLowerCase()
+      const key = shortcutLetterOf(event)
       if (key === 's') {
         event.preventDefault()
         void doSave(event.shiftKey ? 'saveAs' : 'save')

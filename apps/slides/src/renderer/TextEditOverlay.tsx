@@ -18,6 +18,7 @@ import {
   type FontSizeStep,
 } from '@genoffice/pptx-ops/font-size'
 import { bulletRunText } from './bullet-presets'
+import { isCaretAtEditorEdge, parseTsvGrid, type CellNavDir } from './table-selection'
 
 interface Props {
   node: ShapeRenderNode
@@ -47,6 +48,18 @@ interface Props {
   onContextMenu?: (x: number, y: number, collapsed: boolean) => void
   /** Left press on the frame around the text (not on a line box) commits the edit and hands the press over as a shape drag */
   onFrameDrag?: (ev: MouseEvent) => void
+  /** Editing a table cell (disables fresh-autoshape centering and keeps width pinned to the cell box) */
+  isTableCell?: boolean
+  /** Arrow key at cell text edge: commit current cell (if changed) and jump to the adjacent cell. Returns true if navigation happened. */
+  onArrowNav?: (paragraphs: EditParagraph[] | null, dir: CellNavDir) => boolean
+  /** Shift+arrow past cell edge: commit current cell and switch to multi-cell selection. Returns true if selection switched. */
+  onExtendCellSelection?: (paragraphs: EditParagraph[] | null, dir: CellNavDir) => boolean
+  /** Second Ctrl/Cmd+A inside cell editor: commit and select all cells of the table */
+  onSelectAllCells?: (paragraphs: EditParagraph[] | null) => void
+  /** Dragging pointer into another cell of the same table: return true to commit and hand off to multi-cell drag selection. */
+  onDragExitCell?: (paragraphs: EditParagraph[] | null, ev: MouseEvent) => boolean
+  /** Pasting tabular (TSV) text into a table cell: spread across neighboring cells */
+  onPasteTableGrid?: (paragraphs: EditParagraph[] | null, grid: string[][]) => void
 }
 
 /**
@@ -340,6 +353,7 @@ export function populateEditorDom(
   anchorDy = 0,
   innerW?: number,
   vertical = false,
+  naturalFlow = false,
 ): void {
   div.innerHTML = ''
   delete div.dataset.layoutReleased
@@ -430,7 +444,9 @@ export function populateEditorDom(
       domBaseline = Math.max(domBaseline, (cssLineH - m.height) / 2 + m.ascent)
     }
     const dyFix =
-      !vertical && canvasBaseline > 0 && domBaseline > 0 ? canvasBaseline - domBaseline : 0
+      !vertical && dominant && canvasBaseline > 0 && domBaseline > 0
+        ? canvasBaseline - domBaseline
+        : 0
     // Horizontal: nowrap overflow — the canvas centers/right-aligns within the box and
     // spills both ways; the DOM block is max-content wide and anchored at the box's left.
     // The difference is a constant per box (zero when the content fits or the box wraps).
@@ -533,7 +549,7 @@ export function populateEditorDom(
         // Vertical editing skips fixed advances entirely: the engine's widthPx is a horizontal
         // measure, and inline-block cells would break writing-mode glyph orientation. Restored
         // wrap-swallowed spaces (natural) also flow free: their run's widthPx excludes them.
-        if (!run.rtl && !vertical && !natural) {
+        if (!run.rtl && !vertical && !natural && !naturalFlow) {
           fragment.style.display = 'inline-block'
           fragment.style.width = `${run.widthPx}px`
           // The UA sheet gives contentEditable overflow-wrap: break-word, and a fixed-width
@@ -652,9 +668,19 @@ export function TextEditOverlay({
   zoom = 1,
   onFrameDrag,
   onContextMenu,
+  isTableCell = false,
+  onArrowNav,
+  onExtendCellSelection,
+  onSelectAllCells,
+  onDragExitCell,
+  onPasteTableGrid,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
+  const exitingRef = useRef(false)
+  const populatedIdRef = useRef<string | null>(null)
+  const dragExitCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => dragExitCleanupRef.current?.(), [])
 
   // The edit frame lives inside the CSS-scaled stage: during a zoom gesture only the
   // transform advances, so the zoom-compensated outline would thicken and then snap at
@@ -675,7 +701,7 @@ export function TextEditOverlay({
   // content does not jump between typing and commit. Every fresh body gets the standard
   // bodyPr insets (createTextBody writes them unconditionally); only an autoshape also
   // gets the centered anchor/alignment — keep both halves in step with setText.
-  const freshBody = !node.text && node.type === 'shape'
+  const freshBody = !isTableCell && !node.text && node.type === 'shape'
   const fresh = freshBody && !node.placeholder && !node.txBox
   const insets =
     node.text?.insets ??
@@ -719,6 +745,10 @@ export function TextEditOverlay({
   useEffect(() => {
     const div = ref.current
     if (!div) return
+    // Background slide updates (e.g. previous cell's async commit landing) must not wipe live DOM edits
+    if (populatedIdRef.current === node.id) return
+    populatedIdRef.current = node.id
+    exitingRef.current = false
     div.dataset.norm = String(norm) // The ribbon helpers for font size increase/decrease/set take the conversion factor from here
     // Same anchor offset as the engine (the dy text-layout bakes into line tops), removed back
     // during populate — the engine anchors against the glyph extent (inkBottom), so mirror it
@@ -734,6 +764,7 @@ export function TextEditOverlay({
       vertText ? 0 : anchorDy,
       vertText ? undefined : box.w - insets.l - insets.r,
       vertText,
+      isTableCell,
     )
     initialRef.current = JSON.stringify(extractParagraphs(div, norm))
     div.focus()
@@ -748,8 +779,34 @@ export function TextEditOverlay({
       return
     }
     if (sel) {
+      if (caretPoint?.from && caretPoint.x != null && caretPoint.y != null) {
+        const r1 = document.caretRangeFromPoint?.(caretPoint.from.x, caretPoint.from.y) ?? null
+        const r2 = document.caretRangeFromPoint?.(caretPoint.x, caretPoint.y) ?? null
+        if (r1 && r2 && div.contains(r1.startContainer) && div.contains(r2.startContainer)) {
+          const forward = r1.compareBoundaryPoints(Range.START_TO_START, r2) <= 0
+          const start = forward ? r1 : r2
+          const end = forward ? r2 : r1
+          const range = document.createRange()
+          range.setStart(start.startContainer, start.startOffset)
+          range.setEnd(end.startContainer, end.endOffset)
+          sel.removeAllRanges()
+          sel.addRange(range)
+          return
+        }
+      }
+      if (caretPoint?.place === 'start' || caretPoint?.place === 'end') {
+        const range = document.createRange()
+        range.selectNodeContents(div)
+        range.collapse(caretPoint.place === 'start')
+        sel.removeAllRanges()
+        sel.addRange(range)
+        return
+      }
       // Caret at the click point (double-click selects the word there); no coordinates/no hit → caret to end
-      const hit = caretPoint ? document.caretRangeFromPoint(caretPoint.x, caretPoint.y) : null
+      const hit =
+        caretPoint?.x != null && caretPoint?.y != null
+          ? (document.caretRangeFromPoint?.(caretPoint.x, caretPoint.y) ?? null)
+          : null
       if (hit && div.contains(hit.startContainer)) {
         sel.removeAllRanges()
         sel.addRange(hit)
@@ -771,6 +828,9 @@ export function TextEditOverlay({
   }, [node, norm, caretPoint, replaceWith, selectAll])
 
   const commit = () => {
+    if (exitingRef.current) return
+    exitingRef.current = true
+    dragExitCleanupRef.current?.()
     savedSel = null
     const div = ref.current
     if (!div) return onCancel()
@@ -860,6 +920,39 @@ export function TextEditOverlay({
         frame.style.cursor = pressOnEditFrame(div, e.target, e.clientX, e.clientY) ? 'move' : ''
       }}
       onMouseDown={(e) => {
+        if (onDragExitCell && e.button === 0 && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+          dragExitCleanupRef.current?.()
+          const onMove = (ev: MouseEvent) => {
+            if ((ev.buttons & 1) === 0) {
+              dragExitCleanupRef.current?.()
+              return
+            }
+            const frame = frameRef.current
+            if (!frame) return
+            const r = frame.getBoundingClientRect()
+            const outside =
+              ev.clientX < r.left - 2 ||
+              ev.clientX > r.right + 2 ||
+              ev.clientY < r.top - 2 ||
+              ev.clientY > r.bottom + 2
+            if (!outside) return
+            if (exitingRef.current) return
+            const paras = changedParagraphs()
+            if (!onDragExitCell(paras ?? null, ev)) return
+            dragExitCleanupRef.current?.()
+            exitingRef.current = true
+            savedSel = null
+            window.getSelection()?.removeAllRanges()
+          }
+          const onUp = () => dragExitCleanupRef.current?.()
+          window.addEventListener('mousemove', onMove)
+          window.addEventListener('mouseup', onUp)
+          dragExitCleanupRef.current = () => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            dragExitCleanupRef.current = null
+          }
+        }
         if (!onFrameDrag || e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return
         const div = ref.current
         if (!div || !pressOnEditFrame(div, e.target, e.clientX, e.clientY)) return
@@ -881,6 +974,16 @@ export function TextEditOverlay({
           if (to?.closest('[data-keep-edit]')) return
           commit()
         }}
+        onPaste={(e) => {
+          if (!onPasteTableGrid) return
+          const text = e.clipboardData?.getData('text/plain')
+          if (!text || !text.includes('\t')) return
+          e.preventDefault()
+          if (exitingRef.current) return
+          exitingRef.current = true
+          savedSel = null
+          onPasteTableGrid(changedParagraphs() ?? null, parseTsvGrid(text))
+        }}
         onContextMenu={(e) => {
           if (!onContextMenu) return
           e.preventDefault()
@@ -899,24 +1002,91 @@ export function TextEditOverlay({
           }
         }}
         onKeyDown={(e) => {
+          const arrowDir: CellNavDir | null =
+            e.key === 'ArrowLeft'
+              ? 'left'
+              : e.key === 'ArrowRight'
+                ? 'right'
+                : e.key === 'ArrowUp'
+                  ? 'up'
+                  : e.key === 'ArrowDown'
+                    ? 'down'
+                    : null
+          if (e.key === 'Home' || e.key === 'End') {
+            // Fixed-width inline-block fragments trap Chromium's Home/End inside one word span
+            if (ref.current) releaseEditorLayoutConstraints(ref.current)
+          }
           if (e.key === 'Escape' || e.key === 'F2') {
             // Esc / F2 = commit the text and return to shape-selected state (input not lost);
             // when unchanged, commit internally goes through onCancel and produces no history step
             e.preventDefault()
+            e.stopPropagation()
             commit()
           } else if (e.key === 'Enter' && e.ctrlKey && onNextPlaceholder) {
             e.preventDefault()
+            if (exitingRef.current) return
+            exitingRef.current = true
             const paras = changedParagraphs()
             if (paras !== undefined) onNextPlaceholder(paras)
           } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault()
             commit()
+          } else if (
+            onSelectAllCells &&
+            (e.metaKey || e.ctrlKey) &&
+            !e.altKey &&
+            !e.shiftKey &&
+            e.key.toLowerCase() === 'a'
+          ) {
+            const div = ref.current
+            const sel = window.getSelection()
+            const allText = div?.textContent ?? ''
+            const selectedAll = !allText || (sel?.toString() ?? '').length >= allText.length
+            if (selectedAll) {
+              e.preventDefault()
+              if (exitingRef.current) return
+              exitingRef.current = true
+              savedSel = null
+              onSelectAllCells(changedParagraphs() ?? null)
+            }
+          } else if (arrowDir && !e.metaKey && !e.ctrlKey && !e.altKey && ref.current) {
+            const div = ref.current
+            if (!e.shiftKey && onArrowNav && isCaretAtEditorEdge(div, arrowDir)) {
+              if (exitingRef.current) return
+              if (onArrowNav(changedParagraphs() ?? null, arrowDir)) {
+                e.preventDefault()
+                exitingRef.current = true
+                savedSel = null
+              }
+              return
+            }
+            if (e.shiftKey && onExtendCellSelection) {
+              const sel = window.getSelection()
+              const allText = div.textContent ?? ''
+              const atEdge =
+                !allText ||
+                (sel?.isCollapsed && isCaretAtEditorEdge(div, arrowDir)) ||
+                (sel && !sel.isCollapsed && sel.toString().length >= allText.length)
+              if (atEdge) {
+                if (exitingRef.current) return
+                if (onExtendCellSelection(changedParagraphs() ?? null, arrowDir)) {
+                  e.preventDefault()
+                  exitingRef.current = true
+                  savedSel = null
+                }
+                return
+              }
+            }
           } else if (e.key === 'Tab' && onTabNav) {
             // Table cells: Tab commits and jumps to the next cell / Shift+Tab previous;
             // block the default focus move (otherwise blur falsely triggers commit-and-exit)
             e.preventDefault()
+            if (exitingRef.current) return
             const paras = changedParagraphs()
-            if (paras !== undefined) onTabNav(paras, e.shiftKey ? -1 : 1)
+            if (paras !== undefined) {
+              savedSel = null
+              onTabNav(paras, e.shiftKey ? -1 : 1)
+            }
           } else if (e.key === 'Tab') {
             // Multi-level lists: Tab/⇧Tab adjust the caret paragraph's indent level (lvl written on commit;
             // editing only shows a marginLeft visual hint, real indentation is laid out by the canvas per master styles)
@@ -959,7 +1129,11 @@ export function TextEditOverlay({
         style={{
           // wrap=none: no wrapping (width follows content, same as the canvas overflow behavior); soft-break \n still breaks via pre.
           // insets use padding not margin: paragraph divs' marginTop (paragraph spacing) must not collapse with the root node
-          width: wrap ? Math.max(box.w, 40 + insets.l + insets.r) : 'max-content',
+          width: wrap
+            ? isTableCell
+              ? box.w
+              : Math.max(box.w, 40 + insets.l + insets.r)
+            : 'max-content',
           // nowrap keeps max-content growth for overflow, but never below the box width:
           // a narrower block would defeat per-paragraph text-align (centered titles would
           // visually snap left on entering edit) — the canvas centers within the box.

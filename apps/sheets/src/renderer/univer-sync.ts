@@ -34,6 +34,7 @@ import { SheetSkeletonManagerService } from '@univerjs/sheets-ui'
 import { CFValueType, type IValueConfig } from '@univerjs/preset-sheets-conditional-formatting'
 
 import { CENTER_ACROSS_END_KEY } from './center-continuous'
+import { planFileTableRegistrations } from './file-tables'
 import { notifyCfStreamWindow } from './cf-formula-fold'
 import {
   THRESHOLD_RANGE_CELL_CAP,
@@ -1120,6 +1121,15 @@ export function applyDefinedNames(
   state: LazyWorkbookState,
 ): void {
   setRecalculableNames(new Map())
+  const sessionTables = state.editJournal?.tableAdds?.map((table) => table.name) ?? []
+  const sheetsWithTables = (file.sheets ?? []).filter((sheet) => Array.isArray(sheet.tables))
+  const registeredTables = new Set<string>(
+    planFileTableRegistrations(sheetsWithTables, sessionTables).map((entry) =>
+      entry.tableName.toLowerCase(),
+    ),
+  )
+  for (const name of sessionTables) registeredTables.add(name.toLowerCase())
+  setRecalculableTables(registeredTables)
   const workbook = runtime?.univerAPI.getActiveWorkbook()
   if (!workbook) return
   // Excel allows one definition per (name, scope) and resolves sheet-scope
@@ -4420,10 +4430,17 @@ export function setSupportedFunctionProbe(probe: SupportedFunctionProbe | null):
 /// lowercase name to body (see recalculableDefinedNames). A formula using
 /// any other name keeps the file's cached value.
 let recalculableNames: ReadonlyMap<string, string> = new Map()
+let recalculableTables: ReadonlySet<string> = new Set()
 
 export function setRecalculableNames(names: ReadonlyMap<string, string>): void {
   recalculableNames = names
   // Verdicts memoised under the previous workbook's names are stale.
+  keepsCacheMemo.clear()
+}
+
+export function setRecalculableTables(tables: ReadonlySet<string>): void {
+  recalculableTables = tables
+  // Verdicts memoised under the previous workbook's tables are stale.
   keepsCacheMemo.clear()
 }
 
@@ -4464,7 +4481,11 @@ export function formulaKeepsCache(formula: string, hasCachedValue = true): boole
     const texts = withNameBodies(formula)
     const always =
       texts.some((text) => text.includes('__xludf.') || usesLocaleDependentFunction(text)) ||
-      containsUnresolvedNames(formula, recalculableNames)
+      containsUnresolvedNames(
+        formula,
+        recalculableNames,
+        recalculableTables.size > 0 ? recalculableTables : undefined,
+      )
     const probe = supportedFunctionProbe
     const registryReady = probe === null || probe.ready()
     verdict = {

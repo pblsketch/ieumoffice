@@ -1,3 +1,5 @@
+import { isShortcutLetter } from '@genoffice/ui'
+
 /** What a plain (no-modifier) navigation key should do in the viewer */
 export type NavAction =
   | { type: 'scrollBy'; delta: number }
@@ -25,8 +27,9 @@ export function shouldHandleDocumentUndo(
   target: EventTarget | null,
   key: string,
   modifier: boolean,
+  code?: string,
 ): boolean {
-  if (!modifier || key.toLowerCase() !== 'z') return true
+  if (!modifier || !isShortcutLetter({ key, code }, 'z')) return true
   return !usesNativeTextUndo(target)
 }
 

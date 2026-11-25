@@ -2591,6 +2591,9 @@ th.cell-rev-del {
   direction: ltr;
   flex: 1;
   overflow-y: auto;
+  /* pagination passes collapse/rebuild inline page-gap widgets during measurement;
+     disable browser scroll anchoring so layout measurement never pulls the viewport */
+  overflow-anchor: none;
   /* classic (non-overlay) scrollbars change clientWidth as they come and go,
      which would make the zoom auto-refit oscillate — reserve the gutter */
   scrollbar-gutter: stable;

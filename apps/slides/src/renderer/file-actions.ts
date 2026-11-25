@@ -49,6 +49,10 @@ export function adoptSavedSlides(ctx: ActionCtx, next: RenderSlide[]): void {
     const id = c && remap(c.sourceId)
     return id && c ? { ...c, sourceId: id } : null
   })
+  ctx.setTableSelection?.((sel) => {
+    const id = sel && remap(sel.sourceId)
+    return id && sel ? { ...sel, sourceId: id } : null
+  })
   ctx.setSlides(next)
 }
 

@@ -16,8 +16,14 @@ import { batched } from './history-batch'
 import { t } from './i18n/locale'
 import { rememberRepeat } from './repeat-action'
 import { applySelectionRunFormat, selectionRunFormat } from './TextEditOverlay'
+import * as tableActions from './table-actions'
+import { parseTsvGrid } from './table-selection'
 
 export async function deleteSelected(ctx: ActionCtx): Promise<void> {
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    await tableActions.clearSelectedTableCells(ctx)
+    return
+  }
   if (ctx.selectedIds.length) {
     const updated = await window.slidesApi.deleteElements({
       slideIndex: ctx.current,
@@ -29,6 +35,10 @@ export async function deleteSelected(ctx: ActionCtx): Promise<void> {
 }
 
 export async function copySelected(ctx: ActionCtx): Promise<void> {
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    await tableActions.copySelectedTableCells(ctx)
+    return
+  }
   if (ctx.selectedIds.length === 0) return
   const clipboardToken = crypto.randomUUID()
   const sourceIds = [...ctx.selectedIds]
@@ -52,6 +62,10 @@ export async function copySelected(ctx: ActionCtx): Promise<void> {
 }
 
 export async function cutSelected(ctx: ActionCtx): Promise<void> {
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    await tableActions.cutSelectedTableCells(ctx)
+    return
+  }
   if (ctx.selectedIds.length === 0) return
   const n = await window.slidesApi.copyElements({
     slideIndex: ctx.current,
@@ -184,6 +198,13 @@ export async function pasteClipboard(ctx: ActionCtx): Promise<void> {
     return
   }
   if (external.kind === 'text') {
+    if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+      const start = ctx.tableSelection.cells[0]!
+      const grid = parseTsvGrid(external.text)
+      if (await tableActions.pasteGridIntoTable(ctx, ctx.tableSelection.sourceId, start, grid)) {
+        return
+      }
+    }
     const w = 400
     const { paragraphs, truncated } = pasteParagraphs(external.text)
     const r = await window.slidesApi.addElement({

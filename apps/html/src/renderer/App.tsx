@@ -20,6 +20,7 @@ import {
   onAiRailClick,
   presentationKeyOf,
   rememberAiPanelOpen,
+  shortcutLetterOf,
   skillTemplateText,
   templateDocumentOf,
   useAiSidebarEnabled,
@@ -1889,7 +1890,7 @@ export default function App() {
     })
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
-      const key = event.key.toLowerCase()
+      const key = shortcutLetterOf(event) ?? event.key.toLowerCase()
       if (key === 's') {
         event.preventDefault()
         void doSave(event.shiftKey ? 'saveAs' : 'save')

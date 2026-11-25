@@ -67,6 +67,13 @@ describe('shouldHandleDocumentUndo', () => {
     expect(shouldHandleDocumentUndo(target, 'z', true)).toBe(true)
     expect(shouldHandleDocumentUndo(target, 'y', true)).toBe(true)
     expect(shouldHandleDocumentUndo(document.createElement('input'), 'z', false)).toBe(true)
+    // Korean layout Ctrl+Z inside a text field still belongs to native text undo
+    expect(shouldHandleDocumentUndo(document.createElement('textarea'), 'ㅋ', true, 'KeyZ')).toBe(
+      false,
+    )
+    expect(
+      shouldHandleDocumentUndo(document.createElement('textarea'), 'Process', true, 'KeyZ'),
+    ).toBe(false)
   })
 })
 

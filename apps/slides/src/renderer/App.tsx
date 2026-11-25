@@ -36,6 +36,7 @@ import { baseName } from '../shared/base-name'
 import { mergeBroadcastUpdate, mergeSlideUpdate, setDeckRefresh } from '../shared/slide-update'
 import { SlideCanvas, selectionChromeColor, type SlideCanvasHandle } from './SlideCanvas'
 import { tableCellOverlayBox } from './table-hit'
+import { isCellSelected, type TableCellSelection } from './table-selection'
 import { ZOOM_PREVIEW_EVENT } from './zoom-preview'
 import {
   ZOOM_MAX,
@@ -431,6 +432,17 @@ export function App() {
   )
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [editingCell, setEditingCell] = useState<EditingCellState | null>(null)
+  const [tableSelection, setTableSelection] = useState<TableCellSelection | null>(null)
+  useEffect(() => {
+    setTableSelection(null)
+    setEditingCell(null)
+  }, [current])
+  useEffect(() => {
+    if (!tableSelection) return
+    if (selectedIds.length !== 1 || selectedIds[0] !== tableSelection.sourceId) {
+      setTableSelection(null)
+    }
+  }, [selectedIds, tableSelection])
   /** Element-scoped AI edits waiting to be submitted (session-only, see the queue helpers below) */
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
   /** What the AI panel's last run changed: marked on the canvas and the thumbnails, screen only */
@@ -2565,18 +2577,22 @@ export function App() {
   /** Canvas right-click: select the hit element first (replace the selection if it isn't in it), clear selection on blank */
   const onCanvasContextMenu = useCallback(
     (sourceId: string | null, x: number, y: number, cell?: { row: number; col: number }) => {
-      if (editing) return
+      if (editing || editingCell) return
       // The clipboard may have been filled from another window (or externally) since our last copy
       void window.slidesApi.clipboardProbe().then(setHasClipboard)
       if (sourceId) {
         setSelectedIds((prev) => (prev.includes(sourceId) ? prev : [sourceId]))
+        if (!cell || !isCellSelected(tableSelection, sourceId, cell.row, cell.col)) {
+          setTableSelection(null)
+        }
         setCtxMenu({ kind: 'element', x, y, targetId: sourceId, ...(cell ? { cell } : {}) })
       } else {
         setSelectedIds([])
+        setTableSelection(null)
         setCtxMenu({ kind: 'canvas', x, y })
       }
     },
-    [editing],
+    [editing, editingCell, tableSelection],
   )
 
   const onTextContextMenu = useCallback((x: number, y: number, collapsed: boolean) => {
@@ -2607,15 +2623,15 @@ export function App() {
       else if (cmd === 'undo') void undo()
       else if (cmd === 'redo') void redo()
       else if (cmd === 'cut') {
-        if (editing || inTextField() || hasDomTextSelection())
+        if (editing || editingCell || inTextField() || hasDomTextSelection())
           void window.slidesApi.nativeClipboard('cut')
         else void cutSelected()
       } else if (cmd === 'copy') {
-        if (editing || inTextField() || hasDomTextSelection())
+        if (editing || editingCell || inTextField() || hasDomTextSelection())
           void window.slidesApi.nativeClipboard('copy')
         else void copySelected()
       } else if (cmd === 'paste') {
-        if (editing || inTextField()) void window.slidesApi.nativeClipboard('paste')
+        if (editing || editingCell || inTextField()) void window.slidesApi.nativeClipboard('paste')
         else void pasteClipboard()
       }
     })
@@ -2628,6 +2644,7 @@ export function App() {
     undo,
     redo,
     editing,
+    editingCell,
     cutSelected,
     copySelected,
     pasteClipboard,
@@ -2751,9 +2768,28 @@ export function App() {
   useEscOverlay(!!mediaPlay || !!drawKind || viewMode === 'reading')
   const overlayOpen = useEscOverlayOpen()
 
-  const startEditCell = useCallback((sourceId: string, row: number, col: number) => {
-    setEditing(null)
-    setEditingCell({ sourceId, row, col })
+  const startEditCell = useCallback(
+    (sourceId: string, row: number, col: number, caret?: EditCaret) => {
+      if (brushMode || animPainter) return
+      setEditing(null)
+      setTableSelection(null)
+      setEditingCell({
+        sourceId,
+        row,
+        col,
+        ...(caret ? { caret } : {}),
+        session: tableActions.nextCellSession(),
+      })
+    },
+    [brushMode, animPainter],
+  )
+
+  const handleSelectTableCells = useCallback((sel: TableCellSelection | null) => {
+    setTableSelection(sel)
+    if (sel) {
+      setEditing(null)
+      setEditingCell(null)
+    }
   }, [])
 
   /** Pseudo-node for the cell edit overlay: table box + cell local box → absolute page box */
@@ -2764,8 +2800,8 @@ export function App() {
     const cell = tbl.cells.find((c) => c.row === editingCell.row && c.col === editingCell.col)
     if (!cell) return null
     return {
-      id: `cellEdit_${tbl.sourceId}_${cell.row}_${cell.col}`,
-      type: 'shape',
+      id: `cellEdit_${tbl.sourceId}_${cell.row}_${cell.col}_${editingCell.session ?? 0}`,
+      type: 'text',
       sourceId: tbl.sourceId,
       box: {
         ...tableCellOverlayBox(tbl.box, cell),
@@ -2787,7 +2823,8 @@ export function App() {
     [],
   )
   const commitCellEdit = useCallback(
-    (paragraphs: EditParagraph[]) => tableActions.commitCellEdit(ctxRef.current, paragraphs),
+    (paragraphs: EditParagraph[], target?: EditingCellState) =>
+      tableActions.commitCellEdit(ctxRef.current, paragraphs, target),
     [],
   )
   const navigateCell = useCallback(
@@ -3217,6 +3254,21 @@ export function App() {
     [editingCell, selectedNode],
   )
 
+  const tableActiveCells = useMemo(() => {
+    if (selectedNode?.type !== 'table') return null
+    if (editingCell && editingCell.sourceId === selectedNode.sourceId) {
+      return [{ row: editingCell.row, col: editingCell.col }]
+    }
+    if (
+      tableSelection &&
+      tableSelection.sourceId === selectedNode.sourceId &&
+      tableSelection.cells.length > 0
+    ) {
+      return tableSelection.cells
+    }
+    return null
+  }, [editingCell, tableSelection, selectedNode])
+
   // Theme-derived chart colors (fetched when a chart is selected; re-selecting after applying a theme refreshes)
   const [chartColorSchemes, setChartColorSchemes] = useState<Array<{
     key: string
@@ -3277,6 +3329,25 @@ export function App() {
     let st: { family: string; sizePt: number; sizeMixed?: boolean } | null = null
     if (inTextEdit) {
       st = selFont
+    } else if (tableSelection && tableSelection.cells.length > 0 && slide) {
+      const tbl = slide.nodes.find((n) => n.sourceId === tableSelection.sourceId)
+      if (tbl?.type === 'table') {
+        const runs: Array<{ family: string; sizePt: number }> = []
+        const selCells = tbl.cells.filter((c) =>
+          tableSelection.cells.some((s) => s.row === c.row && s.col === c.col),
+        )
+        collectFontRuns({ ...tbl, cells: selCells }, slide.scale ?? 1, runs)
+        if (runs.length) {
+          const families = new Set(runs.map((r) => r.family))
+          const sizes = runs.map((r) => r.sizePt)
+          const minSize = Math.min(...sizes)
+          st = {
+            family: families.size === 1 ? runs[0]!.family : '',
+            sizePt: minSize,
+            sizeMixed: sizes.some((s) => s !== minSize),
+          }
+        }
+      }
     } else if (selectedIds.length) {
       const runs: Array<{ family: string; sizePt: number }> = []
       for (const n of slide?.nodes ?? []) {
@@ -3298,7 +3369,7 @@ export function App() {
     if (!st && defaultFont) st = { family: defaultFont, sizePt: 18 }
     if (st) lastFontRef.current = st
     return st
-  }, [inTextEdit, selFont, selectedIds, slide, defaultFont])
+  }, [inTextEdit, selFont, tableSelection, selectedIds, slide, defaultFont])
 
   // Current bullet char for the ribbon bullet gallery highlight: '' = no bullet
   // (None tile), a glyph = its preset tile, null = mixed/unknown (no highlight)
@@ -3319,6 +3390,17 @@ export function App() {
       collectBodyBulletChars(cell.text, cellFound)
       return cellFound.size === 1 ? [...cellFound][0]! : null
     }
+    if (tableSelection && tableSelection.cells.length > 0) {
+      const tbl = findNodeCtx(tableSelection.sourceId)?.node
+      if (tbl?.type === 'table') {
+        const cellFound = new Set<string>()
+        for (const coord of tableSelection.cells) {
+          const cell = tbl.cells.find((c) => c.row === coord.row && c.col === coord.col)
+          if (cell) collectBodyBulletChars(cell.text, cellFound)
+        }
+        return cellFound.size === 1 ? [...cellFound][0]! : null
+      }
+    }
     const ids = selectedIds.length ? selectedIds : editing ? [editing.sourceId] : []
     if (!ids.length) return null
     const found = new Set<string>()
@@ -3329,12 +3411,23 @@ export function App() {
     }
     if (found.size !== 1) return null
     return [...found][0]!
-  }, [selectedIds, editing, editingCell, inTextEdit, findNodeCtx, paraFmtTick])
+  }, [selectedIds, editing, editingCell, tableSelection, inTextEdit, findNodeCtx, paraFmtTick])
 
   // Current paragraph alignment for the ribbon highlight: unset text defaults to 'left',
   // so text always has exactly one alignment current; null = mixed/no text (no highlight)
   const curAlign = useMemo((): ParaAlign | null => {
     if (inTextEdit) return selAlign
+    if (tableSelection && tableSelection.cells.length > 0) {
+      const tbl = findNodeCtx(tableSelection.sourceId)?.node
+      if (tbl?.type === 'table') {
+        const found = new Set<ParaAlign>()
+        for (const coord of tableSelection.cells) {
+          const cell = tbl.cells.find((c) => c.row === coord.row && c.col === coord.col)
+          if (cell) collectBodyAligns(cell.text, found)
+        }
+        return found.size === 1 ? [...found][0]! : null
+      }
+    }
     if (!selectedIds.length) return null
     const found = new Set<ParaAlign>()
     for (const id of selectedIds) {
@@ -3342,11 +3435,22 @@ export function App() {
       if (node) collectAligns(node, found)
     }
     return found.size === 1 ? [...found][0]! : null
-  }, [inTextEdit, selAlign, selectedIds, findNodeCtx])
+  }, [inTextEdit, selAlign, tableSelection, selectedIds, findNodeCtx])
 
   // Effective base direction for the ribbon LTR/RTL toggle; null = mixed/no text
   const curRtl = useMemo((): boolean | null => {
     if (inTextEdit) return selRtl
+    if (tableSelection && tableSelection.cells.length > 0) {
+      const tbl = findNodeCtx(tableSelection.sourceId)?.node
+      if (tbl?.type === 'table') {
+        const found = new Set<boolean>()
+        for (const coord of tableSelection.cells) {
+          const cell = tbl.cells.find((c) => c.row === coord.row && c.col === coord.col)
+          if (cell) collectBodyRtls(cell.text, found)
+        }
+        return found.size === 1 ? [...found][0]! : null
+      }
+    }
     if (!selectedIds.length) return null
     const found = new Set<boolean>()
     for (const id of selectedIds) {
@@ -3354,7 +3458,7 @@ export function App() {
       if (node) collectRtls(node, found)
     }
     return found.size === 1 ? [...found][0]! : null
-  }, [inTextEdit, selRtl, selectedIds, findNodeCtx])
+  }, [inTextEdit, selRtl, tableSelection, selectedIds, findNodeCtx])
 
   // Refresh the action-module context every render so extracted actions never see stale state
   ctxRef.current = {
@@ -3376,6 +3480,8 @@ export function App() {
     setEditing,
     editingCell,
     setEditingCell,
+    tableSelection,
+    setTableSelection,
     enteredGroupId,
     setEnteredGroupId,
     enteredGroupNode,
@@ -3921,6 +4027,7 @@ export function App() {
         onEditTableStyle={(op) => void onEditTableStyle(op)}
         tableStyleFlags={tableStyleFlags}
         tableActiveCell={tableActiveCell}
+        tableActiveCells={tableActiveCells}
         onEditChart={(op) => void onEditChart(op)}
         onOpenChartDataDialog={() => void openChartDataDialog()}
         onArrange={(op) => void alignSelected(op)}
@@ -4426,6 +4533,8 @@ export function App() {
                               onEditText={startEdit}
                               onTransform={onTransform}
                               onEditTableCell={startEditCell}
+                              tableSelection={tableSelection}
+                              onSelectTableCells={handleSelectTableCells}
                               onTableColResize={onTableColResize}
                               onTableRowResize={(id, row, hPx) =>
                                 void onTableRowResize(id, row, hPx)
@@ -4569,11 +4678,70 @@ export function App() {
                             )}
                             {editingCell && cellEditNode && (
                               <TextEditOverlay
+                                key={`${editingCell.sourceId}_${editingCell.row}_${editingCell.col}_${editingCell.session ?? 0}`}
                                 node={cellEditNode}
                                 scale={slide.scale}
-                                onCommit={commitCellEdit}
-                                onCancel={() => setEditingCell(null)}
+                                isTableCell
+                                caretPoint={editingCell.caret}
+                                replaceWith={editingCell.replaceWith}
+                                selectAll={editingCell.selectAll}
+                                onCommit={(paragraphs) =>
+                                  void commitCellEdit(paragraphs, editingCell)
+                                }
+                                onCancel={() =>
+                                  setEditingCell((cur) =>
+                                    cur?.session === editingCell.session ? null : cur,
+                                  )
+                                }
                                 onTabNav={(paragraphs, dir) => void navigateCell(paragraphs, dir)}
+                                onArrowNav={(paragraphs, dir) =>
+                                  tableActions.navigateCellArrow(ctxRef.current, paragraphs, dir)
+                                }
+                                onExtendCellSelection={(paragraphs, dir) =>
+                                  tableActions.extendCellSelectionFromEdit(
+                                    ctxRef.current,
+                                    paragraphs,
+                                    dir,
+                                  )
+                                }
+                                onSelectAllCells={(paragraphs) =>
+                                  tableActions.selectAllCellsFromEdit(ctxRef.current, paragraphs)
+                                }
+                                onDragExitCell={(paragraphs, ev) => {
+                                  const hit = canvasRef.current?.tableCellAtClientPoint(
+                                    editingCell.sourceId,
+                                    ev.clientX,
+                                    ev.clientY,
+                                  )
+                                  if (
+                                    !hit ||
+                                    (hit.row === editingCell.row && hit.col === editingCell.col)
+                                  ) {
+                                    return false
+                                  }
+                                  const anchor = { row: editingCell.row, col: editingCell.col }
+                                  const sourceId = editingCell.sourceId
+                                  void tableActions.commitCellSilently(
+                                    ctxRef.current,
+                                    editingCell,
+                                    paragraphs,
+                                  )
+                                  setEditingCell(null)
+                                  setSelectedIds([sourceId])
+                                  canvasRef.current?.startTableCellDrag(sourceId, anchor, ev)
+                                  return true
+                                }}
+                                onPasteTableGrid={(_paragraphs, grid) => {
+                                  const start = { row: editingCell.row, col: editingCell.col }
+                                  const sourceId = editingCell.sourceId
+                                  setEditingCell(null)
+                                  void tableActions.pasteGridIntoTable(
+                                    ctxRef.current,
+                                    sourceId,
+                                    start,
+                                    grid,
+                                  )
+                                }}
                                 onFollowLink={followRunLink}
                                 frameColor={selectionChromeColor(slide, images, cellEditNode.box)}
                                 zoom={zoom}
