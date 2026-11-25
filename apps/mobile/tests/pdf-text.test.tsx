@@ -53,12 +53,13 @@ const ko = (key: Parameters<typeof translateMobile>[1], params?: Record<string, 
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
-/** 400×500 pages; 'Hello World' in unembedded Helvetica at (40, 400), 14 pt. */
-async function textPdf(lines: string[] = ['Hello World']): Promise<Uint8Array> {
+/** 400×500 pages; 'Hello World' in unembedded Helvetica at (40, 400), 14 pt; further
+    lines `leading` pt apart (40 keeps them separate blocks, 17 makes one paragraph). */
+async function textPdf(lines: string[] = ['Hello World'], leading = 40): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const page = doc.addPage([400, 500])
-  lines.forEach((text, i) => page.drawText(text, { x: 40, y: 400 - i * 40, size: 14, font }))
+  lines.forEach((text, i) => page.drawText(text, { x: 40, y: 400 - i * leading, size: 14, font }))
   return doc.save({ useObjectStreams: false })
 }
 
@@ -620,6 +621,53 @@ describe('Text box tool', () => {
     click(host, 'pdf-text-confirm')
     await waitFor(() => edit.store.getSnapshot().textEdits.length === 0, 'the revert')
   }, 60_000)
+
+  it('edits one word of a two-line paragraph and keeps both lines where they were', async () => {
+    // Helvetica capitals run wider than jsdom's half-em measuring estimate, so the
+    // reflow measured here keeps the block's own break, as a matching face does
+    const { doc, edit, fake, s } = await startDoc(
+      await textPdf(['Second page line', 'MORE TEXT HERE'], 17),
+    )
+    const host = mountWorkspace(doc)
+    pressTextTool(host)
+    tap(host, 60, 95)
+    const box = await waitFor(() => draftBox(host), 'the paragraph box')
+    expect(box.dataset.kind).toBe('edit')
+    // the PC block editor: one logical paragraph, soft-wrapped at the block width
+    expect(box.value).toBe('Second page line MORE TEXT HERE')
+    expect(box.getAttribute('wrap')).toBe('soft')
+    // the font button is one hit wide: a sample in the face, the name in its label
+    const font = q(host, 'pdf-text-font')!
+    expect(font.classList.contains('m-pdf-text-btn')).toBe(true)
+    expect(font.textContent).toBe('Aa')
+    expect(font.getAttribute('aria-label')).toBe(
+      `${ko('pdfTextFont')}: ${ko('pdfTextFontDocument')}`,
+    )
+
+    typeInto(box, 'Second sheet line MORE TEXT HERE')
+    click(host, 'pdf-text-confirm')
+    const edits = await waitFor(
+      () => edit.store.getSnapshot().textEdits.length === 1 && edit.store.getSnapshot().textEdits,
+      'the paragraph edit',
+    )
+    const te = edits[0]!.input
+    expect(te.oldText).toBe('Second page line MORE TEXT HERE')
+    expect(te.blockSource).toBe('Second sheet line MORE TEXT HERE')
+    // two lines from the first baseline with the block's own leading: line 2 stays put
+    expect(te.newText).toBe('Second sheet line\nMORE TEXT HERE')
+    expect(te.origin![0]).toBeCloseTo(40, 0)
+    expect(te.origin![1]).toBeCloseTo(400, 0)
+    expect(te.lineLeading).toBeCloseTo(17, 0)
+
+    expect(await doc.save!(docState(s), false)).toBe(true)
+    const model = await openModel(fake.saved[0]!)
+    const content = await (await model.proxy.getPage(1)).getTextContent()
+    const baselines = new Map<string, number>()
+    for (const it of content.items)
+      if ('str' in it && it.str.trim()) baselines.set(it.str.trim(), it.transform[5] as number)
+    expect(baselines.get('Second sheet line')).toBeCloseTo(400, 0)
+    expect(baselines.get('MORE TEXT HERE')).toBeCloseTo(383, 0)
+  }, 120_000)
 
   it('tells the person a scanned page has no text and only inserts there', async () => {
     const { doc, edit, toasts } = await startDoc(await scannedPdf())
