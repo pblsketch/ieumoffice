@@ -1,7 +1,11 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { MobileClient, MobileDocSession } from '@genoffice/mobile-bridge/transport'
+import type {
+  MobileClient,
+  MobileDocFormat,
+  MobileDocSession,
+} from '@genoffice/mobile-bridge/transport'
 import { DocTypeIcon } from '../src/renderer/components/MobileIcons'
 import { TRACK_DOC_TYPE_ICONS } from '../src/renderer/components/icons'
 import type { HomeHost } from '../src/renderer/home/homeHost'
@@ -50,21 +54,22 @@ describe('home and icon slots for the tracks', () => {
     expect(DEFAULT_PREFS.aiEnabled).toBe(false)
   })
 
-  it('has no track file-type pictures yet, so the pictures stay as before', () => {
-    expect(TRACK_DOC_TYPE_ICONS).toEqual({})
-    const md = render(<DocTypeIcon format="md" />)
-      .querySelector('img')
-      ?.getAttribute('src')
-    const hwp = render(<DocTypeIcon format="hwp" />)
-      .querySelector('img')
-      ?.getAttribute('src')
-    expect(md).toBeTruthy()
-    expect(hwp).not.toBe(md)
-    // a format with no picture of its own falls back to the markdown picture, as before
-    expect(
-      render(<DocTypeIcon format="pdf" />)
+  it('keeps the HWP, Markdown and text pictures, and falls back to the Markdown picture', () => {
+    // tracks add pictures only for their own formats
+    for (const format of ['hwp', 'hwpx', 'md', 'txt'] as const) {
+      expect(TRACK_DOC_TYPE_ICONS[format]).toBeUndefined()
+    }
+    const src = (format: MobileDocFormat) =>
+      render(<DocTypeIcon format={format} />)
         .querySelector('img')
-        ?.getAttribute('src'),
-    ).toBe(md)
+        ?.getAttribute('src')
+    const md = src('md')
+    expect(md).toBeTruthy()
+    expect(src('hwp')).not.toBe(md)
+    // a format with no picture of its own shows the Markdown picture, as before
+    const withoutPicture = (
+      ['pdf', 'html', 'xlsx', 'xlsm', 'xls', 'csv', 'epub', 'pptx'] as const
+    ).find((format) => !TRACK_DOC_TYPE_ICONS[format])
+    if (withoutPicture) expect(src(withoutPicture)).toBe(md)
   })
 })

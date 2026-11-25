@@ -11,6 +11,20 @@ import {
 } from '@genoffice/mobile-bridge/transport'
 import { MobileApp } from '../src/renderer/App'
 
+// The app's open wiring is pinned against a registry of only the two kinds S0 shipped, so the
+// tracks registering their formats in the real registry never have to edit this file.
+vi.mock('../src/renderer/editors/registry', async () => {
+  const { hwpEditorKind } = await import('../src/renderer/editors/hwpKind')
+  const { markdownEditorKind } = await import('../src/renderer/editors/markdownKind')
+  const kinds = [hwpEditorKind, markdownEditorKind]
+  return {
+    EDITOR_KINDS: kinds,
+    findEditorKind: (format: string) =>
+      kinds.find((kind) => (kind.formats as readonly string[]).includes(format)) ?? null,
+    openableExtensions: () => kinds.flatMap((kind) => kind.openExtensions),
+  }
+})
+
 const NOT_OPENABLE_KO = '이 파일 형식은 열 수 없습니다.'
 const NOT_OPENABLE_ERROR = {
   code: 'INVALID_ARGUMENT',

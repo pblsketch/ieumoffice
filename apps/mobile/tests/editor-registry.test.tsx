@@ -17,8 +17,9 @@ describe('the editor registry', () => {
     expect(markdownEditorKind.id).toBe('markdown')
   })
 
-  it('has no kind yet for the formats the tracks will register', () => {
-    const unregistered: MobileDocFormat[] = [
+  it('leaves the formats the tracks register to the tracks', () => {
+    // the HWP and Markdown kinds never claim them; a track's own kind may (or none yet)
+    const trackFormats: MobileDocFormat[] = [
       'pdf',
       'html',
       'xlsx',
@@ -28,11 +29,16 @@ describe('the editor registry', () => {
       'epub',
       'pptx',
     ]
-    for (const format of unregistered) expect(findEditorKind(format)).toBeNull()
+    for (const format of trackFormats) {
+      expect(findEditorKind(format)).not.toBe(hwpEditorKind)
+      expect(findEditorKind(format)).not.toBe(markdownEditorKind)
+    }
   })
 
-  it('opens exactly the extensions the picker offered before the registry', () => {
-    expect(openableExtensions()).toEqual(['hwp', 'hwpx', 'md', 'markdown', 'txt'])
+  it('opens the extensions the picker offered before the registry first, without repeats', () => {
+    const exts = openableExtensions()
+    expect(exts.slice(0, 5)).toEqual(['hwp', 'hwpx', 'md', 'markdown', 'txt'])
+    expect(new Set(exts).size).toBe(exts.length)
   })
 
   it('lets no two kinds claim the same format', () => {
