@@ -11,6 +11,13 @@ import { createContext, useContext, useEffect, useRef, type ReactNode } from 're
  *
  * A layer stays armed until its owner deactivates it, so an `onBack` that asks
  * first (for example "save changes?") and is cancelled keeps the layer.
+ *
+ * `history.back()` is answered later, by a `popstate`, while `pushState` takes
+ * effect at once. A layer opened while such a back is still on its way would
+ * have its new entry popped instead (closing one sheet and opening another in
+ * the same tap, or a screen remounting), and the stack and the history would
+ * drift apart until Back leaves the app. So a layer opened while backs are
+ * pending gets its entry only after the last of them has arrived.
  */
 export interface BackStack {
   push(onBack: () => void): number
@@ -28,7 +35,10 @@ const HISTORY_KEY = 'ieumBackLayer'
 export function createBackStack(win: Window): BackStack {
   const layers: Layer[] = []
   let seq = 0
+  // history.back() calls made by remove() whose popstate has not arrived yet
   let ignorePops = 0
+  // layers opened while those backs were pending; they get their entries afterwards
+  let unarmed: number[] = []
 
   const arm = (id: number) => {
     win.history.pushState({ [HISTORY_KEY]: id }, '')
@@ -37,6 +47,11 @@ export function createBackStack(win: Window): BackStack {
   win.addEventListener('popstate', () => {
     if (ignorePops > 0) {
       ignorePops -= 1
+      if (ignorePops === 0 && unarmed.length > 0) {
+        const waiting = unarmed
+        unarmed = []
+        for (const id of waiting) arm(id)
+      }
       return
     }
     const top = layers[layers.length - 1]
@@ -52,13 +67,20 @@ export function createBackStack(win: Window): BackStack {
       seq += 1
       const id = seq
       layers.push({ id, onBack })
-      arm(id)
+      if (ignorePops > 0) unarmed.push(id)
+      else arm(id)
       return id
     },
     remove(id) {
       const index = layers.findIndex((layer) => layer.id === id)
       if (index < 0) return
       layers.splice(index, 1)
+      // A layer that never got its entry has nothing to pop.
+      const waiting = unarmed.indexOf(id)
+      if (waiting >= 0) {
+        unarmed.splice(waiting, 1)
+        return
+      }
       // Entries are interchangeable; dropping any one keeps the count aligned.
       ignorePops += 1
       win.history.back()
