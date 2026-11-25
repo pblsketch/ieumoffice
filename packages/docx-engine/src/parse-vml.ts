@@ -109,13 +109,15 @@ export function vmlFloatAnchor(
   else out.posYPx = Math.round(vmlLengthPx(vmlStyleProp(style, 'margin-top')) ?? 0)
 }
 
-/** VML fixed-point or fraction ("32768f" = 0.5, ".5", "1") → number */
+/** VML fixed-point, percentage, or fraction ("32768f" = 0.5, "50%" = 0.5, ".5", "1") → number */
 export function vmlFraction(value: string | undefined): number | undefined {
-  const m = /^\s*(-?[\d.]+)(f)?\s*$/.exec(value ?? '')
+  const m = /^\s*(-?[\d.]+)(f|%)?\s*$/.exec(value ?? '')
   if (!m) return undefined
   const v = parseFloat(m[1]!)
   if (!Number.isFinite(v)) return undefined
-  return m[2] ? v / 65536 : v
+  if (m[2] === 'f') return v / 65536
+  if (m[2] === '%') return v / 100
+  return v
 }
 
 /** HTML color names VML attributes use ("silver", "blue"…) */

@@ -137,6 +137,9 @@ export type {
   FloatingPicturesResult,
   FloatingShape,
   FloatingTextBox,
+  FloatingWordArt,
+  PictureCrop,
+  PictureEffects,
   PictureMedia,
   PictureMediaType,
 } from './drawings'

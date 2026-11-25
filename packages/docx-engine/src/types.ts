@@ -492,6 +492,8 @@ export interface ImageEffects {
   grayscale?: boolean
   /** a:biLevel thresh: luminance at or above it paints white, below it black */
   biLevelThresh?: number
+  /** a:alphaModFix amt (or VML fill opacity) as 0..1 opacity (e.g. 25000 -> 0.25) */
+  alpha?: number
 }
 
 /**
@@ -1096,7 +1098,9 @@ export interface HfImage {
   wrap?: 'none' | 'square' | 'tight' | 'through' | 'topBottom'
   /** v:imagedata gain / blacklevel as fractions (Word's washout preset: 0.3 / 0.35) */
   washout?: { gain: number; blackLevel: number }
-  /** VML style rotation, degrees clockwise about the box center */
+  /** DrawingML blip color/opacity adjustments (a:lum, a:grayscl, a:biLevel, a:alphaModFix), display-only */
+  effects?: ImageEffects
+  /** VML style / DrawingML a:xfrm rotation, degrees clockwise about the box center */
   rotationDeg?: number
   /**
    * v:textpath WordArt (text watermark): the renderer stretches the string's
