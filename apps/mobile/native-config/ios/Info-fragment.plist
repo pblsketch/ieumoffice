@@ -74,6 +74,14 @@
         <string>public.plain-text</string>
       </array>
     </dict>
+
+    <!-- T1 sheets document types -->
+
+    <!-- T2 pdf document types -->
+
+    <!-- T4 html document types -->
+
+    <!-- T5 readers document types -->
   </array>
   <key>UTImportedTypeDeclarations</key>
   <array>
@@ -122,5 +130,13 @@
         </array>
       </dict>
     </dict>
+
+    <!-- T1 sheets imported types -->
+
+    <!-- T2 pdf imported types -->
+
+    <!-- T4 html imported types -->
+
+    <!-- T5 readers imported types -->
   </array>
 <!-- IEUM_MOBILE_IOS_PLIST_END -->

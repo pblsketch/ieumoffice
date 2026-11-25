@@ -31,6 +31,14 @@
     <data android:mimeType="text/markdown" />
     <data android:mimeType="text/plain" />
     <data android:mimeType="application/octet-stream" />
+
+    <!-- T1 sheets MIME types -->
+
+    <!-- T2 pdf MIME types -->
+
+    <!-- T4 html MIME types -->
+
+    <!-- T5 readers MIME types -->
 </intent-filter>
 
 <intent-filter>
@@ -44,5 +52,13 @@
     <data android:mimeType="text/markdown" />
     <data android:mimeType="text/plain" />
     <data android:mimeType="application/octet-stream" />
+
+    <!-- T1 sheets MIME types -->
+
+    <!-- T2 pdf MIME types -->
+
+    <!-- T4 html MIME types -->
+
+    <!-- T5 readers MIME types -->
 </intent-filter>
 <!-- IEUM_MOBILE_INTENT_FILTERS_END -->
