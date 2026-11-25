@@ -33,6 +33,7 @@ pub fn run() {
             app.manage(ai_service);
 
             // T1 sheets state
+            app.manage(crate::sheets::SheetsState::for_app(app.handle())?);
 
             // T2 pdf state
 
@@ -80,6 +81,16 @@ pub fn run() {
             commands::ai::mobile_chatgpt_complete_callback,
             commands::ai::mobile_chatgpt_sign_out,
             // T1 sheets
+            commands::sheets::mobile_sheets_request,
+            commands::sheets::mobile_sheets_copy_session_to_temp,
+            commands::sheets::mobile_sheets_temp_create_dir,
+            commands::sheets::mobile_sheets_temp_new_path,
+            commands::sheets::mobile_sheets_temp_read_text,
+            commands::sheets::mobile_sheets_temp_read_bytes,
+            commands::sheets::mobile_sheets_temp_write_text,
+            commands::sheets::mobile_sheets_temp_write_bytes,
+            commands::sheets::mobile_sheets_temp_delete,
+            commands::sheets::mobile_sheets_temp_clear,
 
             // T2 pdf
 
