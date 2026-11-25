@@ -16,7 +16,11 @@ export function pdfjsAssetsPlugin(): Plugin {
   return {
     name: 'ieum-pdfjs-assets',
     configResolved(config) {
-      outDir = resolve(config.root, config.build.outDir)
+      // only a real bundle copies: Vitest resolves a config too (with a placeholder outDir)
+      outDir =
+        config.command === 'build' && !process.env.VITEST
+          ? resolve(config.root, config.build.outDir)
+          : null
     },
     configureServer(server) {
       server.middlewares.use('/pdfjs', (req, res, next) => {
@@ -31,7 +35,6 @@ export function pdfjsAssetsPlugin(): Plugin {
       })
     },
     closeBundle() {
-      // set once the config resolves; a Vitest run never bundles
       if (!outDir) return
       for (const sub of SUBDIRS) {
         cpSync(resolve(pdfjsRoot, sub), resolve(outDir, 'pdfjs', sub), { recursive: true })
