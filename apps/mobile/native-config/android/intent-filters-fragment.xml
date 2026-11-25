@@ -35,6 +35,7 @@
     <!-- T1 sheets MIME types -->
 
     <!-- T2 pdf MIME types -->
+    <data android:mimeType="application/pdf" />
 
     <!-- T4 html MIME types -->
 
@@ -56,6 +57,7 @@
     <!-- T1 sheets MIME types -->
 
     <!-- T2 pdf MIME types -->
+    <data android:mimeType="application/pdf" />
 
     <!-- T4 html MIME types -->
 
