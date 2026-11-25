@@ -29,16 +29,18 @@ vi.mock('@genoffice/file-parse', () => ({
   diagramPictureExtOf: () => null,
   diagramPictureExtOfName: () => null,
 }))
-// the real unsaved-files helper, by path: the package root reaches Electron
+// the real unsaved-files & path-grants helpers, by path: the package root reaches Electron
 vi.mock('@genoffice/electron-utils', async () => ({
   showOpenDialogWithMemory: vi.fn(),
   ...(await import('../../../packages/electron-utils/src/unsaved-files')),
+  ...(await import('../../../packages/electron-utils/src/path-grants')),
 }))
 
 import {
   UNSAVED_CHANGES_MESSAGE,
   setOpenFilesSource,
 } from '../../../packages/electron-utils/src/unsaved-files'
+import { sharedPathGrants } from '../../../packages/electron-utils/src/path-grants'
 import { registerHwpAttachmentIpc, type HwpAttachmentHost } from '../src/main/attachments-ipc'
 
 type ImportResult = { ok: true; title: string; handed: boolean } | { ok: false; error: string }
@@ -49,8 +51,10 @@ function importDocument(
   path: unknown,
   request?: unknown,
   host: HwpAttachmentHost = { openMarkdownAsDocument: open },
+  grant = true,
 ): Promise<ImportResult> {
   handlers.clear()
+  if (grant && typeof path === 'string') sharedPathGrants().grant(3, [path])
   registerHwpAttachmentIpc(() => host)
   const fn = handlers.get('hwp:files-import-document') as unknown as (
     e: unknown,
@@ -66,6 +70,7 @@ beforeEach(() => {
   open.mockResolvedValue({ ok: true, title: 'note', handed: false })
 })
 afterEach(() => {
+  sharedPathGrants().release(3)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })
@@ -90,6 +95,16 @@ describe('hwp:files-import-document', () => {
     expect(open).toHaveBeenCalledWith(3, path, undefined)
     await importDocument(path, '   ')
     expect(open).toHaveBeenLastCalledWith(3, path, undefined)
+  })
+
+  it('refuses a Markdown path that was never granted to this view', async () => {
+    const path = join(dir, 'secret.md')
+    writeFileSync(path, '# secret')
+    expect(await importDocument(path, undefined, { openMarkdownAsDocument: open }, false)).toEqual({
+      ok: false,
+      error: 'hwp: path not granted to this view',
+    })
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('refuses anything that is not a Markdown file path', async () => {

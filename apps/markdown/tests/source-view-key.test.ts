@@ -18,6 +18,8 @@ describe('source view shortcut', () => {
     expect(isSourceViewKey(key())).toBe(true)
     expect(isSourceViewKey(key({ ctrlKey: false, metaKey: true }))).toBe(true)
     expect(isSourceViewKey(key({ key: 'E' }))).toBe(true)
+    expect(isSourceViewKey(key({ key: 'ㄷ', code: 'KeyE' }))).toBe(true)
+    expect(isSourceViewKey(key({ key: 'Process', code: 'KeyE' }))).toBe(true)
   })
 
   it('leaves Shift, Alt and paste-style chords alone', () => {

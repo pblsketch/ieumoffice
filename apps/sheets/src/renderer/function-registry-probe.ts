@@ -10,6 +10,7 @@
  */
 import { FUNCTION_NAMES_MATH, IFunctionService } from '@univerjs/engine-formula'
 
+import { GOOGLE_ONLY_COMPAT_FUNCTIONS } from './compat-functions'
 import { setSupportedFunctionProbe } from './univer-sync'
 import type { UniverRuntime } from './univer-state'
 
@@ -23,7 +24,11 @@ export function installSupportedFunctionProbe(runtime: UniverRuntime): { dispose
   const functionService = runtime.univer.__getInjector().get(IFunctionService)
   setSupportedFunctionProbe({
     ready: () => functionService.hasExecutor(BUILTIN_SENTINEL),
-    supports: (name) => functionService.hasExecutor(name),
+    // Google-only stand-ins run live for typed/pasted/uncached formulas, but
+    // keep cached values when opening Excel workbooks so same-named VBA UDFs
+    // (e.g. JOIN, SPLIT) are never overwritten with Google semantics.
+    supports: (name) =>
+      !GOOGLE_ONLY_COMPAT_FUNCTIONS.has(name) && functionService.hasExecutor(name),
   })
   return {
     dispose() {

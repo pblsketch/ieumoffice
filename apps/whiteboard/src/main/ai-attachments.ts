@@ -12,7 +12,12 @@ import {
   webSearchTool,
   withMediaCallSignal,
 } from '@genoffice/ai-search'
-import { assertFileSaved, showOpenDialogWithMemory } from '@genoffice/electron-utils'
+import {
+  assertFileSaved,
+  isBesideDocument,
+  sharedPathGrants,
+  showOpenDialogWithMemory,
+} from '@genoffice/electron-utils'
 import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
 import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
@@ -106,8 +111,15 @@ export function whiteboardPastedImageDir(): string {
   return dir
 }
 
-export function registerWhiteboardAiIpc(): void {
+export interface WhiteboardAiIpcOptions {
+  /** current document path of a view, for neighbor attachment reads */
+  filePathOf?: (webContentsId: number) => string | undefined
+}
+
+export function registerWhiteboardAiIpc(options: WhiteboardAiIpcOptions = {}): void {
   const pastedDir = whiteboardPastedImageDir()
+  const canReadAttachment = (wcId: number, filePath: string): boolean =>
+    sharedPathGrants().has(wcId, filePath) || isBesideDocument(options.filePathOf?.(wcId), filePath)
 
   ipcMain.on(WHITEBOARD_CHANNELS.provisionalTitle, (e, rawTitle: unknown) => {
     if (typeof rawTitle === 'string') {
@@ -124,6 +136,7 @@ export function registerWhiteboardAiIpc(): void {
       ],
     })
     if (picked.canceled || picked.filePaths.length === 0) return { added: [], rejected: [] }
+    sharedPathGrants().grant(e.sender.id, picked.filePaths)
     return classifyPaths(picked.filePaths)
   })
 
@@ -139,13 +152,16 @@ export function registerWhiteboardAiIpc(): void {
   ipcMain.handle(
     WHITEBOARD_CHANNELS.aiReadAttachment,
     async (
-      _e,
+      e,
       rawPath: unknown,
       rawOffset?: unknown,
       rawMaxChars?: unknown,
     ): Promise<AttachmentReadResult> => {
       if (typeof rawPath !== 'string' || !rawPath.trim()) {
         return { ok: false, error: 'missing attachment path' }
+      }
+      if (!canReadAttachment(e.sender.id, rawPath)) {
+        return { ok: false, error: 'whiteboard: path not granted to this view' }
       }
       try {
         assertFileSaved(rawPath)
@@ -178,9 +194,12 @@ export function registerWhiteboardAiIpc(): void {
 
   ipcMain.handle(
     WHITEBOARD_CHANNELS.aiReadAttachmentImage,
-    async (_e, rawPath: unknown): Promise<AttachmentImageResult> => {
+    async (e, rawPath: unknown): Promise<AttachmentImageResult> => {
       if (typeof rawPath !== 'string' || !rawPath.trim()) {
         return { ok: false, error: 'missing image path' }
+      }
+      if (!canReadAttachment(e.sender.id, rawPath)) {
+        return { ok: false, error: 'whiteboard: path not granted to this view' }
       }
       const ext = extname(rawPath).slice(1).toLowerCase()
       const mime = IMAGE_MIMES[ext]
@@ -200,7 +219,7 @@ export function registerWhiteboardAiIpc(): void {
 
   ipcMain.handle(
     WHITEBOARD_CHANNELS.aiSavePastedImage,
-    async (_e, rawBytes: unknown, rawMime: unknown): Promise<AttachmentMeta | null> => {
+    async (e, rawBytes: unknown, rawMime: unknown): Promise<AttachmentMeta | null> => {
       const bytes =
         rawBytes instanceof Uint8Array
           ? rawBytes
@@ -223,6 +242,7 @@ export function registerWhiteboardAiIpc(): void {
       const name = `pasted-${id.slice(0, 8)}.${ext}`
       const target = join(pastedDir, name)
       writeFileSync(target, Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+      sharedPathGrants().grant(e.sender.id, [target])
       return {
         id,
         name,

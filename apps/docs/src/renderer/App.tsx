@@ -4237,6 +4237,8 @@ export function App() {
     const remeasurePass = (dirty: number | null) => {
       const pm = pmEl()
       if (!pm) return
+      const savedScrollTop = scroller.scrollTop
+      const savedScrollLeft = scroller.scrollLeft
       followUps = selfScheduled ? followUps + 1 : 0
       selfScheduled = false
       retrigger = []
@@ -4541,7 +4543,7 @@ export function App() {
             imgs
               .map(
                 (f) =>
-                  `${f.dataUrl.length}:${hashStr(f.dataUrl.slice(0, 1024) + f.dataUrl.slice(-1024))}:${f.posXPx ?? f.posH ?? ''}:${f.posYPx ?? f.posV ?? ''}:${f.posHRel ?? ''}${f.posVRel ?? ''}:${f.widthPx ?? ''}x${f.heightPx ?? ''}${f.washout ? ':w' : ''}${f.rotationDeg ? `:r${f.rotationDeg}` : ''}${f.wordArt ? `:t${f.wordArt.text}` : ''}`,
+                  `${f.dataUrl.length}:${hashStr(f.dataUrl.slice(0, 1024) + f.dataUrl.slice(-1024))}:${f.posXPx ?? f.posH ?? ''}:${f.posYPx ?? f.posV ?? ''}:${f.posHRel ?? ''}${f.posVRel ?? ''}:${f.widthPx ?? ''}x${f.heightPx ?? ''}${f.washout ? ':w' : ''}${f.effects ? `:e${f.effects.bright ?? ''},${f.effects.contrast ?? ''},${f.effects.alpha ?? ''},${f.effects.grayscale ? 1 : 0},${f.effects.biLevelThresh ?? ''}` : ''}${f.rotationDeg ? `:r${f.rotationDeg}` : ''}${f.wordArt ? `:t${f.wordArt.text}` : ''}`,
               )
               .join('|')
           const visiblePages = visiblePageCount(slices)
@@ -4837,13 +4839,15 @@ export function App() {
               let cutRow: Element | null = null
               for (const tr of Array.from(b.el.querySelectorAll('tr')).filter(
                 (r) =>
-                  !r.closest('.doc-nested-table') && !r.classList.contains('page-repeat-header'),
+                  !r.closest('.doc-nested-table') &&
+                  !r.classList.contains('page-gap') &&
+                  !r.classList.contains('page-repeat-header'),
               )) {
                 const trTop = tr.getBoundingClientRect().top
                 const gapsAbove = gapRects.reduce((s, g) => (g.top <= trTop ? s + g.height : s), 0)
                 const off = (trTop - elTop - gapsAbove) / factor
                 // last real row starting at/above the cut = the row the cut falls inside
-                if (!tr.classList.contains('page-gap') && off <= cutOff + 0.5) cutRow = tr
+                if (off <= cutOff + 0.5) cutRow = tr
                 if (Math.abs(off - cutOff) < 1.5) {
                   matched = true
                   try {
@@ -5316,6 +5320,10 @@ export function App() {
         } else {
           pm.style.removeProperty('min-height')
         }
+        // restore any scroll clamping that happened while .measuring-natural or
+        // .measuring-columns briefly collapsed page gaps during this synchronous pass
+        if (scroller.scrollTop !== savedScrollTop) scroller.scrollTop = savedScrollTop
+        if (scroller.scrollLeft !== savedScrollLeft) scroller.scrollLeft = savedScrollLeft
         // endnote area: Word puts it right after the last body line, not at the page
         // bottom — anchor it to the flow end measured in the final display state
         setEndnotesAreaTop(
@@ -7739,7 +7747,7 @@ export function App() {
       )}
       {doc && section && (
         // over-wide tables may spill into the margins (Word/LO), capped at the paper edge
-        <style>{`.doc-page { --doc-margin-left:${twipsToPx(section.marginLeft)}px; --doc-margin-right:${twipsToPx(section.marginRight)}px; --doc-margin-top:${twipsToPx((canvasSection ?? section).marginTop)}px }`}</style>
+        <style>{`.doc-page { --doc-margin-left:${twipsToPx(section.marginLeft)}px; --doc-margin-right:${twipsToPx(section.marginRight)}px; --doc-margin-top:${twipsToPx((canvasSection ?? section).marginTop)}px; --doc-margin-bottom:${twipsToPx((canvasSection ?? section).marginBottom)}px }`}</style>
       )}
       {/* Theme CSS comes from live state, so a Design ▸ Themes/Fonts/Colors pick shows
           on the page immediately instead of only in the saved file */}

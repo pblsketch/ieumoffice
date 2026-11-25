@@ -107,7 +107,11 @@ vi.mock('@genoffice/ai-provider/subscription', async (importOriginal) => ({
   sharedSubscriptionStatuses: () => ({}),
 }))
 
-import { UNSAVED_CHANGES_MESSAGE, setOpenFilesSource } from '@genoffice/electron-utils'
+import {
+  UNSAVED_CHANGES_MESSAGE,
+  setOpenFilesSource,
+  sharedPathGrants,
+} from '@genoffice/electron-utils'
 import { createHtmlView } from '../src/main/html-main'
 import { HTML_CHANNELS } from '../src/shared/ipc'
 
@@ -116,7 +120,13 @@ let dir: string
 
 function read(path: string): Promise<ReadResult> {
   if (!handlers.has(HTML_CHANNELS.filesRead)) createHtmlView(null)
-  return handlers.get(HTML_CHANNELS.filesRead)!({}, path, 0, 1000) as Promise<ReadResult>
+  sharedPathGrants().grant(1, [path])
+  return handlers.get(HTML_CHANNELS.filesRead)!(
+    { sender: { id: 1 } },
+    path,
+    0,
+    1000,
+  ) as Promise<ReadResult>
 }
 
 beforeEach(() => {
@@ -124,6 +134,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(1)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })

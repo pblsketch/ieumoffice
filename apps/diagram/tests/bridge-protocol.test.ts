@@ -191,6 +191,11 @@ describe('helpers', () => {
     expect(isAppShortcut(key('s', { ctrlKey: true }))).toBe('save')
     expect(isAppShortcut(key('S', { ctrlKey: true, shiftKey: true }))).toBe('saveAs')
     expect(isAppShortcut(key('p', { metaKey: true }))).toBe('print')
+    expect(isAppShortcut({ ...key('ㄴ', { ctrlKey: true }), code: 'KeyS' })).toBe('save')
+    expect(
+      isAppShortcut({ ...key('Process', { ctrlKey: true, shiftKey: true }), code: 'KeyS' }),
+    ).toBe('saveAs')
+    expect(isAppShortcut({ ...key('ㅔ', { metaKey: true }), code: 'KeyP' })).toBe('print')
     expect(isAppShortcut(key('z', { ctrlKey: true }))).toBeNull()
     expect(isAppShortcut(key('s'))).toBeNull()
     expect(isAppShortcut(key('s', { ctrlKey: true, altKey: true }))).toBeNull()

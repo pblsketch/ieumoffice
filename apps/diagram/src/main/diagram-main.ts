@@ -929,7 +929,10 @@ function registerDiagramIpc(): void {
   registerDiagramExportIpc({ filePathOf: (wcId) => savePathByWc.get(wcId) })
   // the AI panel's attachments and the provisional name of an untitled diagram
   // (a tab with a file, or made from an imported file, keeps its name)
-  registerDiagramAiIpc({ hasFile: (wcId) => savePathByWc.has(wcId) || importByWc.has(wcId) })
+  registerDiagramAiIpc({
+    hasFile: (wcId) => savePathByWc.has(wcId) || importByWc.has(wcId),
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId),
+  })
 
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(APP_CHANNELS.getLanguage)

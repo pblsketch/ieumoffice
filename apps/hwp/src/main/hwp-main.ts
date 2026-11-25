@@ -572,6 +572,7 @@ function registerHwpIpc(): void {
     ...(runtime.openMarkdownAsDocument
       ? { openMarkdownAsDocument: runtime.openMarkdownAsDocument }
       : {}),
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) ?? null,
   }))
   // the AI panel's pictures: search result or generated file → bytes for the plugin
   registerHwpImageIpc({

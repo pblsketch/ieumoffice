@@ -1059,10 +1059,19 @@
     'keydown',
     (e) => {
       if (pressingDeckKey) return
+      const shortcutLetter = (ev) => {
+        const k = (ev.key || '').toLowerCase()
+        if (/^[a-z]$/.test(k)) return k
+        if (ev.altKey || ev.isComposing) return ''
+        const m = /^Key([A-Z])$/.exec(ev.code || '')
+        if (m) return m[1].toLowerCase()
+        return { ㅠ: 'b', ㅑ: 'i', ㅋ: 'z', ㅛ: 'y', ㅏ: 'k' }[ev.key] || ''
+      }
       if (editing) {
         e.stopPropagation()
         editKeys.add(e.code)
         const mod = (e.metaKey || e.ctrlKey) && !e.altKey
+        const editLetter = shortcutLetter(e)
         if (e.key === 'Escape') {
           // Esc = commit the text and return to the selected state (typed input is not lost, as in
           // Slides); an unchanged run goes out as a cancel and produces no history step
@@ -1071,7 +1080,7 @@
         } else if (e.key === 'Enter' && mod) {
           e.preventDefault()
           finishEdit(true)
-        } else if (mod && (e.key.toLowerCase() === 'b' || e.key.toLowerCase() === 'i')) {
+        } else if (mod && (editLetter === 'b' || editLetter === 'i')) {
           // bold / italic on a range selected inside the edited run: commit the run first, then
           // hand the host the range again (its re-select after the commit cleared it) and the command
           const range = textSelection()
@@ -1079,7 +1088,7 @@
           e.preventDefault()
           finishEdit(true)
           post(range)
-          post({ type: 'gx:keyCommand', command: e.key.toLowerCase() === 'b' ? 'bold' : 'italic' })
+          post({ type: 'gx:keyCommand', command: editLetter === 'b' ? 'bold' : 'italic' })
         }
         return
       }
@@ -1094,15 +1103,15 @@
         e.target &&
         (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable)
       const mod = (e.metaKey || e.ctrlKey) && !e.altKey
+      const letter = shortcutLetter(e)
       // the host owns history and zoom; the frame has keyboard focus, so relay the shortcuts
       if (mod && !inField) {
-        const lower = e.key.toLowerCase()
         const hostCommand =
-          lower === 'z'
+          letter === 'z'
             ? e.shiftKey
               ? 'redo'
               : 'undo'
-            : lower === 'y' && !e.shiftKey
+            : letter === 'y' && !e.shiftKey
               ? 'redo'
               : { '=': 'zoomIn', '+': 'zoomIn', '-': 'zoomOut', _: 'zoomOut', 0: 'zoomReset' }[
                   e.key
@@ -1127,7 +1136,7 @@
         ArrowRight: 'child',
         Escape: 'escape',
       }
-      const modKey = mod ? { k: 'askAi', b: 'bold', i: 'italic' }[e.key.toLowerCase()] : undefined
+      const modKey = mod ? { k: 'askAi', b: 'bold', i: 'italic' }[letter] : undefined
       const altKey =
         e.altKey && !mod ? { ArrowUp: 'moveUp', ArrowDown: 'moveDown' }[e.key] : undefined
       const command = modKey || altKey || map[e.key]

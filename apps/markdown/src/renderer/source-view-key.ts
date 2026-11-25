@@ -1,3 +1,5 @@
+import { isShortcutLetter } from '@genoffice/ui'
+
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
 
 /** Shown in the ribbon tip; the key itself is handled by `isSourceViewKey`. */
@@ -5,10 +7,12 @@ export const SOURCE_VIEW_SHORTCUT = IS_MAC ? '⌘E' : 'Ctrl+E'
 
 export interface SourceViewKeyInput {
   key: string
+  code?: string
   ctrlKey: boolean
   metaKey: boolean
   altKey: boolean
   shiftKey: boolean
+  isComposing?: boolean
   /** the OS repeating a held key must not toggle the view on and off */
   repeat?: boolean
 }
@@ -22,5 +26,5 @@ export interface SourceViewKeyInput {
 export function isSourceViewKey(input: SourceViewKeyInput): boolean {
   if (input.repeat || input.altKey || input.shiftKey) return false
   if (!(input.ctrlKey || input.metaKey)) return false
-  return input.key.toLowerCase() === 'e'
+  return isShortcutLetter(input, 'e')
 }

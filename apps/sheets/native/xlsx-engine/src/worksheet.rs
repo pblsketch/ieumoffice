@@ -1431,11 +1431,17 @@ impl CellBuilder {
 }
 
 /// Excel stores post-2007 functions as `_xlfn.NAME` (worksheet-scope ones as
-/// `_xlfn._xlws.NAME`); its UI never shows the markers. Strip them outside
-/// string literals so the formula bar and engine see the plain names — the
-/// save side restores the markers on edited cells.
+/// `_xlfn._xlws.NAME`) and LET/LAMBDA parameters as `_xlpm.PARAM`; its UI never
+/// shows the markers. Strip them outside string literals, quoted sheet names,
+/// and structured references so the formula bar and engine see the plain names
+/// — the save side restores the markers on edited cells.
 pub(crate) fn strip_future_function_markers(formula: &str) -> String {
-    if !formula.contains("_xlfn.") && !formula.contains("_xlws.") {
+    let has_marker = formula.as_bytes().windows(6).any(|window| {
+        window.eq_ignore_ascii_case(b"_xlfn.")
+            || window.eq_ignore_ascii_case(b"_xlws.")
+            || window.eq_ignore_ascii_case(b"_xlpm.")
+    });
+    if !has_marker {
         return formula.to_owned();
     }
     let bytes = formula.as_bytes();
@@ -1460,11 +1466,49 @@ pub(crate) fn strip_future_function_markers(formula: &str) -> String {
             }
             continue;
         }
+        if bytes[index] == b'[' {
+            let mut depth = 0usize;
+            while index < bytes.len() {
+                if bytes[index] == b'[' {
+                    depth += 1;
+                } else if bytes[index] == b']' {
+                    depth -= 1;
+                    if depth == 0 {
+                        index += 1;
+                        break;
+                    }
+                }
+                index += 1;
+            }
+            continue;
+        }
         let start = index;
         let end = formula_name_end(formula, start);
         if end > start {
             let token = &formula[start..end];
+            if token
+                .get(..6)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlpm."))
+            {
+                let rest = &token[6..];
+                let valid_param = !rest.is_empty()
+                    && rest.chars().all(|character| {
+                        character.is_alphanumeric() || matches!(character, '_' | '.' | '\\' | '$')
+                    });
+                if valid_param {
+                    out.push_str(&formula[copied_from..start]);
+                    out.push_str(rest);
+                    copied_from = end;
+                    index = end;
+                    continue;
+                }
+            }
             let marker_len = if token
+                .get(..12)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlfn._xlws."))
+            {
+                12
+            } else if token
                 .get(..6)
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlfn."))
             {
@@ -1476,14 +1520,6 @@ pub(crate) fn strip_future_function_markers(formula: &str) -> String {
                 6
             } else {
                 0
-            };
-            let marker_len = if token
-                .get(..12)
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("_xlfn._xlws."))
-            {
-                12
-            } else {
-                marker_len
             };
             let valid_name = marker_len > 0
                 && !token[marker_len..].is_empty()

@@ -321,6 +321,7 @@ import {
   printLayoutIssueText,
   printLayoutText,
   QuickPrintButton,
+  shortcutLetterOf,
   useAutoSavePref,
   useDismissablePopover,
   useRibbonCollapse,
@@ -9709,9 +9710,9 @@ export default function App() {
           target.tagName === 'TEXTAREA' ||
           target.tagName === 'SELECT' ||
           target.isContentEditable)
-      if (!shouldHandleDocumentUndo(e.target, e.key, e.metaKey || e.ctrlKey)) return
+      if (!shouldHandleDocumentUndo(e.target, e.key, e.metaKey || e.ctrlKey, e.code)) return
       if (e.metaKey || e.ctrlKey) {
-        const k = e.key.toLowerCase()
+        const k = shortcutLetterOf(e) ?? e.key.toLowerCase()
         if (ribbonTab === 'formDesign' && !formDesignPreview && !inEditable) {
           if (k === 'c' && selectedFormFieldIds.length > 0) {
             e.preventDefault()

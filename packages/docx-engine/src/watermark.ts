@@ -24,9 +24,9 @@ export const WATERMARK_NS =
 /** read the watermark text from a header part; null when it has none */
 export function readWatermarkText(headerXml: string): string | null {
   if (!headerXml.includes('<v:textpath')) return null
-  const m = /<v:textpath[^>]*\bstring="([^"]*)"/.exec(headerXml)
+  const m = /<v:textpath[^>]*\bstring\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(headerXml)
   if (!m) return null
-  const text = m[1]
+  const text = (m[1] ?? m[2] ?? '')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
@@ -46,16 +46,21 @@ export function readWatermarkShape(pictXml: string): HfImage | null {
   const body = pictXml.replace(/<v:shapetype\b[\s\S]*?<\/v:shapetype>/g, '')
   const shapeTag = /<v:shape\b[^>]*>/.exec(body)?.[0]
   if (!shapeTag) return null
-  const attr = (tag: string, key: string): string | undefined =>
-    new RegExp(`\\s${key}="([^"]*)"`).exec(tag)?.[1]
+  const attr = (tag: string, key: string): string | undefined => {
+    const m = new RegExp(`\\s${key}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag)
+    return m ? (m[1] ?? m[2]) : undefined
+  }
   const style = attr(shapeTag, 'style') ?? ''
   const widthPx = vmlStyleDimPx(style, 'width')
   const heightPx = vmlStyleDimPx(style, 'height')
   if (!widthPx || !heightPx) return null
   const fillTag = /<v:fill\b[^>]*>/.exec(body)?.[0]
-  const tpTag = /<v:textpath\b[^>]*\bstring="[^>]*>/.exec(body)?.[0] ?? ''
+  const tpTag = /<v:textpath\b[^>]*\bstring\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>/.exec(body)?.[0] ?? ''
   const tpStyle = (attr(tpTag, 'style') ?? '').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
   const family = vmlStyleProp(tpStyle, 'font-family')?.replace(/^"|"$/g, '')
+  const rawOpacity =
+    (fillTag ? vmlFraction(attr(fillTag, 'opacity')) : undefined) ??
+    vmlFraction(attr(shapeTag, 'opacity'))
   const img: HfImage = {
     dataUrl: '',
     widthPx,
@@ -66,17 +71,16 @@ export function readWatermarkShape(pictXml: string): HfImage | null {
       colorHex:
         attr(shapeTag, 'filled') === 'f'
           ? 'FFFFFF'
-          : (vmlColorHex(attr(shapeTag, 'fillcolor')) ?? '000000'),
-      opacity: Math.max(
-        0,
-        Math.min(1, (fillTag ? vmlFraction(attr(fillTag, 'opacity')) : undefined) ?? 1),
-      ),
+          : (vmlColorHex(attr(shapeTag, 'fillcolor')) ??
+            vmlColorHex(fillTag ? attr(fillTag, 'color') : undefined) ??
+            '000000'),
+      opacity: Math.max(0, Math.min(1, rawOpacity ?? 1)),
       ...(family ? { fontFamily: family } : {}),
       ...(/font-weight:\s*bold/.test(tpStyle) ? { bold: true } : {}),
       ...(/font-style:\s*italic/.test(tpStyle) ? { italic: true } : {}),
     },
   }
-  if (/z-index:\s*-/.test(style)) img.behind = true
+  if (/z-index:\s*-/.test(style) || !/z-index\s*:/.test(style)) img.behind = true
   const rot = vmlRotationDeg(style)
   if (rot != null) img.rotationDeg = rot
   vmlFloatAnchor(style, img)

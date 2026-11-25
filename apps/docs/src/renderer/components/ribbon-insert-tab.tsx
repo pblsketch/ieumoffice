@@ -548,7 +548,13 @@ export function LinkInsertModal({ editor, onClose }: { editor: Editor; onClose: 
           .chain()
           .focus()
           .setTextSelection({ from: linkAtOpen.from, to: linkAtOpen.to })
-          .setMark('link', { href, rId: null, anchor: null, history: null, tooltip: linkAtOpen.tooltip })
+          .setMark('link', {
+            href,
+            rId: null,
+            anchor: null,
+            history: null,
+            tooltip: linkAtOpen.tooltip,
+          })
           .run()
       } else {
         editor
@@ -561,7 +567,13 @@ export function LinkInsertModal({ editor, onClose }: { editor: Editor; onClose: 
             marks: [
               {
                 type: 'link',
-                attrs: { href, rId: null, anchor: null, history: null, tooltip: linkAtOpen.tooltip },
+                attrs: {
+                  href,
+                  rId: null,
+                  anchor: null,
+                  history: null,
+                  tooltip: linkAtOpen.tooltip,
+                },
               },
             ],
           })

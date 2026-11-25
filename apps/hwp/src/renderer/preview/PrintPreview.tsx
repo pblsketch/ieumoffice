@@ -16,6 +16,7 @@ import {
   PrintLayoutPanel,
   PrintLayoutSchematic,
   createZoomWheelClassifier,
+  isShortcutLetter,
   parsePrintRanges,
   printLayoutIssueText,
   printLayoutProblem,
@@ -697,7 +698,7 @@ export function PrintPreview({
         setZoomMode(nextZoom(percent, -1))
         return
       }
-      if (event.ctrlKey && event.key.toLowerCase() === 'p') {
+      if (event.ctrlKey && isShortcutLetter(event, 'p')) {
         event.preventDefault()
         void doPrint('print')
       }

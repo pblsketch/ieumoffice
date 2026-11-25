@@ -31,6 +31,7 @@ import { t } from './i18n/locale'
 import { batched } from './history-batch'
 import { rememberRepeat } from './repeat-action'
 import { caseChangedParagraphs, changeCase, type CaseMode } from './text-case'
+import * as tableActions from './table-actions'
 
 export function onFormat(cmd: FormatCmd): void {
   rememberRepeat(() => onFormat(cmd))
@@ -39,11 +40,21 @@ export function onFormat(cmd: FormatCmd): void {
   else document.execCommand(cmd)
 }
 
-// While editing, change the caret selection; with only an element selected, change it wholesale (applies to all the element's text runs)
+// While editing, change the caret selection; with table cells selected, change those cells;
+// with only an element selected, change it wholesale (applies to all the element's text runs)
 export function onFontFamily(ctx: ActionCtx, family: string): void {
   rememberRepeat((c) => onFontFamily(c, family))
   if (ctx.editing || ctx.editingCell) {
     applySelectionFontFamily(family)
+    return
+  }
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      { fontFamily: family },
+    )
     return
   }
   if (!ctx.selectedIds.length) return
@@ -62,6 +73,15 @@ export function onFontSize(ctx: ActionCtx, pt: number): void {
   rememberRepeat((c) => onFontSize(c, pt))
   if (ctx.editing || ctx.editingCell) {
     setSelectionFontSizePt(pt)
+    return
+  }
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      { fontSizePt: pt },
+    )
     return
   }
   if (!ctx.selectedIds.length) return
@@ -83,6 +103,15 @@ export function onFontSizeStep(ctx: ActionCtx, step: FontSizeStep): void {
     resizeSelectionFont(step.dir, step.mode)
     return
   }
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      { fontSizeStep: step },
+    )
+    return
+  }
   if (!ctx.selectedIds.length) return
   const groupId = ctx.groupIdOf(ctx.selectedIds[0]!)
   void window.slidesApi
@@ -100,7 +129,8 @@ export function onGrowShrinkFont(ctx: ActionCtx, cmd: 'fontSizeUp' | 'fontSizeDo
   onFontSizeStep(ctx, { dir: cmd === 'fontSizeUp' ? 1 : -1, mode: 'ladder' })
 }
 
-// While editing, change the caret's paragraph; with only an element selected, use the element-level paragraph format op (all paragraphs)
+// While editing, change the caret's paragraph; with table cells selected, change those cells;
+// with only an element selected, use the element-level paragraph format op (all paragraphs)
 export function onAlign(ctx: ActionCtx, align: 'left' | 'center' | 'right' | 'justify'): void {
   rememberRepeat((c) => onAlign(c, align))
   if (ctx.editing || ctx.editingCell) {
@@ -112,6 +142,15 @@ export function onAlign(ctx: ActionCtx, align: 'left' | 'center' | 'right' | 'ju
           : align === 'right'
             ? 'justifyRight'
             : 'justifyFull',
+    )
+    return
+  }
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      { align },
     )
     return
   }
@@ -127,22 +166,47 @@ export function onAlign(ctx: ActionCtx, align: 'left' | 'center' | 'right' | 'ju
     .then((r) => r && ctx.applySlide(ctx.current, r))
 }
 
-// Toggling B/I/U/strikethrough on a selected element without editing: if all runs have it on, turn off, else turn all on
+// Toggling B/I/U/strikethrough on selected table cells or elements without editing: if all runs have it on, turn off, else turn all on
 export function onTextToggle(
   ctx: ActionCtx,
   kind: 'bold' | 'italic' | 'underline' | 'strike',
 ): void {
   rememberRepeat((c) => onTextToggle(c, kind))
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0 && ctx.slide) {
+    const tbl = ctx.slide.nodes.find((n) => n.sourceId === ctx.tableSelection!.sourceId)
+    if (tbl?.type === 'table') {
+      const runs = ctx.tableSelection.cells.flatMap((coord) => {
+        const c = tbl.cells.find((x) => x.row === coord.row && x.col === coord.col)
+        return (
+          c?.text?.lines.flatMap((l) => l.runs).filter((r) => !r.isBullet && r.text.trim()) ?? []
+        )
+      })
+      const allOn = runs.length > 0 && runs.every((r) => !!r[kind])
+      void tableActions.applyPatchToTableCells(
+        ctx,
+        ctx.tableSelection.sourceId,
+        ctx.tableSelection.cells,
+        { [kind]: !allOn },
+      )
+      return
+    }
+  }
   if (!ctx.selectedIds.length) return
   let allOn = true
   for (const id of ctx.selectedIds) {
     const node = ctx.findNodeCtx(id)?.node
-    const text =
-      node && (node.type === 'text' || node.type === 'shape')
-        ? (node as ShapeRenderNode).text
-        : undefined
     const runs =
-      text?.lines.flatMap((l) => l.runs).filter((r) => !r.isBullet && r.text.trim()) ?? []
+      node && (node.type === 'text' || node.type === 'shape')
+        ? ((node as ShapeRenderNode).text?.lines
+            .flatMap((l) => l.runs)
+            .filter((r) => !r.isBullet && r.text.trim()) ?? [])
+        : node?.type === 'table'
+          ? node.cells.flatMap(
+              (c) =>
+                c.text?.lines.flatMap((l) => l.runs).filter((r) => !r.isBullet && r.text.trim()) ??
+                [],
+            )
+          : []
     if (!runs.length || runs.some((r) => !r[kind])) allOn = false
   }
   const groupId = ctx.groupIdOf(ctx.selectedIds[0]!)
@@ -156,9 +220,18 @@ export function onTextToggle(
     .then((r) => r && ctx.applySlide(ctx.current, r))
 }
 
-// Change font color directly on a selected element (editing mode goes through execCommand on the selection)
+// Change font color directly on selected table cells or elements (editing mode goes through execCommand on the selection)
 export function onElementTextColor(ctx: ActionCtx, hex: string): void {
   rememberRepeat((c) => onElementTextColor(c, hex))
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      { color: hex },
+    )
+    return
+  }
   if (!ctx.selectedIds.length) return
   const groupId = ctx.groupIdOf(ctx.selectedIds[0]!)
   void window.slidesApi
@@ -230,6 +303,15 @@ function setFontOnSelection(
   ctx: ActionCtx,
   font: { highlight?: string | null; letterSpacingPt?: number },
 ): void {
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      font,
+    )
+    return
+  }
   if (!ctx.selectedIds.length) return
   const groupId = ctx.groupIdOf(ctx.selectedIds[0]!)
   void window.slidesApi
@@ -243,7 +325,7 @@ function setFontOnSelection(
 }
 
 /**
- * Change Case: the selection while editing, every run of the selected text boxes otherwise.
+ * Change Case: the selection while editing, selected table cells, or every run of the selected text boxes otherwise.
  * Each box's runs keep their formatting (the paragraphs go back with srcPara/srcRun only).
  */
 export function onChangeCase(ctx: ActionCtx, mode: CaseMode): void {
@@ -252,6 +334,15 @@ export function onChangeCase(ctx: ActionCtx, mode: CaseMode): void {
     const active = document.activeElement
     if (!(active instanceof HTMLElement && active.isContentEditable)) restoreEditSelection()
     applySelectionCase((text) => changeCase(text, mode))
+    return
+  }
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0) {
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      { caseMode: mode },
+    )
     return
   }
   const slideIndex = ctx.current
@@ -289,15 +380,49 @@ export function onChangeCase(ctx: ActionCtx, mode: CaseMode): void {
 // editing mode judges by the paragraph div's marks, element mode by the render tree's bullet glyphs
 export function onParagraphFormat(ctx: ActionCtx, patch: ParagraphFormatPatch): void {
   rememberRepeat((c) => onParagraphFormat(c, patch))
-  // Cell editing commits regenerate whole paragraphs from the overlay DOM, which round-trips
-  // the rtl mark; the other selection keys keep their historical element-wide semantics there
-  const selectable = ctx.editing
-    ? Object.keys(patch).every((k) => SELECTION_PATCH_KEYS.has(k))
-    : ctx.editingCell != null && Object.keys(patch).every((k) => k === 'rtl')
+  // Both shape and table-cell editing round-trip per-paragraph marks through setText / setTableCell
+  const selectable =
+    (ctx.editing != null || ctx.editingCell != null) &&
+    Object.keys(patch).every((k) => SELECTION_PATCH_KEYS.has(k))
   if (selectable) {
     const active = document.activeElement
     if (!(active instanceof HTMLElement && active.isContentEditable)) restoreEditSelection()
     if (applySelectionParagraphFormat(patch)) return
+  }
+  if (
+    ctx.tableSelection &&
+    ctx.tableSelection.cells.length > 0 &&
+    Object.keys(patch).every((k) => SELECTION_PATCH_KEYS.has(k))
+  ) {
+    const tbl = ctx.slide?.nodes.find((n) => n.sourceId === ctx.tableSelection!.sourceId)
+    let nextPatch = patch
+    if (
+      tbl?.type === 'table' &&
+      patch.bullet &&
+      patch.bullet !== 'none' &&
+      !patch.bulletChar &&
+      !patch.numType &&
+      !patch.bulletImage
+    ) {
+      const firstCoord = ctx.tableSelection.cells[0]!
+      const firstCell = tbl.cells.find((c) => c.row === firstCoord.row && c.col === firstCoord.col)
+      const bulletRun = firstCell?.text?.lines.flatMap((l) => l.runs).find((r) => r.isBullet)
+      const cur = bulletRun
+        ? bulletRun.numType
+          ? 'number'
+          : bulletRun.image
+            ? 'blip'
+            : 'char'
+        : null
+      if (cur === patch.bullet) nextPatch = { ...patch, bullet: 'none' }
+    }
+    void tableActions.applyPatchToTableCells(
+      ctx,
+      ctx.tableSelection.sourceId,
+      ctx.tableSelection.cells,
+      nextPatch,
+    )
+    return
   }
   if (!ctx.selectedIds.length) return
   // Picking an explicit glyph / scheme / picture always applies (no toggle-off)
@@ -437,6 +562,8 @@ export async function onEditTableStyle(
       ctx.setSelectedIds([result.sourceId])
       if (ctx.editingCell?.sourceId === oldId)
         ctx.setEditingCell({ ...ctx.editingCell, sourceId: result.sourceId })
+      if (ctx.tableSelection?.sourceId === oldId)
+        ctx.setTableSelection({ ...ctx.tableSelection, sourceId: result.sourceId })
     }
   }
 }
