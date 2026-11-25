@@ -1,0 +1,96 @@
+/* Track T1 sheets: the grid stage and its keyboard bar. Colors are tokens only. */
+
+.m-sheets-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.m-sheets-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.m-sheets-grid-host {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.m-sheets-loading {
+  margin: auto;
+  padding: var(--m-space-10) var(--m-space-4);
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.m-sheets-kbbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--m-kb);
+  z-index: var(--m-z-sheet);
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-kbbar-h);
+  padding: 0 calc(var(--m-space-2) + var(--m-safe-right)) 0
+    calc(var(--m-space-2) + var(--m-safe-left));
+  background: var(--chrome-bg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.m-sheets-kbbar-keys {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-half);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.m-sheets-kbbar-keys::-webkit-scrollbar {
+  display: none;
+}
+
+.m-sheets-kbbar-key,
+.m-sheets-kbbar-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-2);
+  border: 0;
+  border-radius: var(--m-radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--m-text-body);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.m-sheets-kbbar-key[aria-pressed='true'] {
+  background: var(--bg-hover-subtle);
+}
+
+.m-sheets-kbbar-fixed {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  flex-shrink: 0;
+}
+
+.m-sheets-kbbar-action {
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+}
+
+.m-sheets-kbbar-confirm {
+  color: var(--m-accent);
+}
