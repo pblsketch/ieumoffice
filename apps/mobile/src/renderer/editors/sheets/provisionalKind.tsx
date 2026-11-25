@@ -36,8 +36,25 @@ export const provisionalSheetsKind: EditorKind = {
   },
 }
 
+/**
+ * Prototype driver hook (XLS-T5, no user interface): the PDF chunk loads only
+ * when a preview or emulator script calls it.
+ */
+function installSheetsPdfProbeHook(): void {
+  ;(window as unknown as Record<string, unknown>).__ieumSheetsPdf = {
+    run: async (options?: { batchPages?: number; documentName?: string }) =>
+      (await import('./pdf/debugHook')).runSheetsPdfProbe(options),
+    chunk: async (offset: number, length: number) =>
+      (await import('./pdf/debugHook')).readSheetsPdfProbeChunk(offset, length),
+    drop: async () => (await import('./pdf/debugHook')).dropSheetsPdfProbe(),
+    desktopHtml: async (documentName?: string) =>
+      (await import('./pdf/debugHook')).readDesktopPrintHtml(documentName),
+  }
+}
+
 function startSheetsDocument(host: EditorHost, opened: OpenedSheetsWorkbook): EditorDocument {
   const gridRef: { current: SheetsGridHandle | null } = { current: null }
+  installSheetsPdfProbeHook()
 
   function SheetsWorkspace({ frame, mode, lang, theme }: EditorWorkspaceProps) {
     const t = (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key)
