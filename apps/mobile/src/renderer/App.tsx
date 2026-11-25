@@ -116,7 +116,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           encrypted: activeDoc.encrypted,
           distribution: activeDoc.distribution,
           isUntitled: activeDoc.isUntitled,
-        }) && openedDoc.kind.editable
+        }) &&
+        openedDoc.kind.editable &&
+        openedDoc.doc.editable !== false
       : false
 
   const ai = useMobileAi({
@@ -261,12 +263,19 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       const isUntitled =
         options?.isUntitled ?? (!session.writable && !session.ephemeral && !session.uriHint)
 
-      const opened = await kind.open({
-        session,
-        client,
-        isUntitled,
-        recoveryBytesBase64: options?.recoveryBytesBase64,
-      })
+      let opened: Awaited<ReturnType<EditorKind['open']>>
+      try {
+        opened = await kind.open({
+          session,
+          client,
+          isUntitled,
+          recoveryBytesBase64: options?.recoveryBytesBase64,
+        })
+      } catch (err) {
+        // the editor asked something while opening (e.g. a password) and the user cancelled
+        if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
+        throw err
+      }
 
       const outcome = await controller.switchTo(async () => ({
         session,
@@ -275,7 +284,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         trackingDropped: opened.trackingDropped,
         isUntitled,
       }))
-      if (!outcome.switched) return
+      if (!outcome.switched) {
+        opened.discard?.()
+        return
+      }
+      openedDocRef.current?.doc.dispose?.()
       openSeqRef.current += 1
       const next: OpenedDocument = {
         kind,
@@ -284,7 +297,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       }
       openedDocRef.current = next
       setOpenedDoc(next)
-      setMode(initialDocumentMode({ isUntitled }))
+      // a read-only kind or document opens in view mode, even when untitled
+      setMode(
+        kind.editable && next.doc.editable !== false ? initialDocumentMode({ isUntitled }) : 'view',
+      )
       setNoticeBanner(opened.noticeKey ? tNow(opened.noticeKey) : null)
       setScreen('editor')
       await refreshHomeData()
@@ -460,6 +476,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const handleBackFromEditor = useCallback(async () => {
     const outcome = await sessionControllerRef.current!.closeActive()
     if (outcome.switched) {
+      openedDocRef.current?.doc.dispose?.()
       openedDocRef.current = null
       setOpenedDoc(null)
       setScreen('home')
@@ -540,7 +557,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
               saveState: editorSaveState(saving, activeDoc.dirty),
               mode,
               canEdit: canEditActive,
-              aiEnabled: prefs.aiEnabled && openedDoc.kind.hasAi,
+              aiEnabled:
+                prefs.aiEnabled && openedDoc.kind.hasAi && openedDoc.doc.aiAvailable !== false,
               noticeBanner,
               onDismissNotice: () => setNoticeBanner(null),
               onBack: () => void handleBackFromEditor(),

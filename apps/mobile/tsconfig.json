@@ -14,6 +14,7 @@
     "tests",
     "vite.config.ts",
     "vitest.config.ts",
+    "config",
     "../markdown/src/renderer/env.d.ts",
     "../markdown/src/renderer/types/wavedrom.d.ts",
     "../hwp/src/renderer/env.d.ts",
