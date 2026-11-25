@@ -16,6 +16,7 @@
   "dependencies": {
     "@genoffice/agent-core": "*",
     "@genoffice/doc-rules": "*",
+    "@genoffice/font-metrics": "*",
     "@genoffice/docx2hwp": "*",
     "@genoffice/ai-provider": "*",
     "@genoffice/i18n": "*",
