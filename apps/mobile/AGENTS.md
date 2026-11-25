@@ -75,7 +75,16 @@
 
 ### T6 홈·설정 (1판)
 
-(이 트랙이 채운다)
+계획·결정 후보·발견은 `docs/plans/mobile-v1/T6.md`.
+
+- **홈**: `components/HomeScreen.tsx`가 탭(`home/homeTabs.ts`, `visibleHomeTabs`)과 `home/frame/`(탭 막대·레일, 형식 카드, [+] 만들기 시트, 거르개 칩, 빈 상태, T3 도구 층)을 그린다. 형식 카드 항목 id와 순서·숨김 규칙은 `settings/sections/homeSettingsModel.ts` 하나에 있다(한글은 카드 하나 `hwp`가 `.hwp`/`.hwpx`를 대표). `host`가 없으면(시험) 탭 없이 최근 목록만 그린다. 기존 시험이 쓰는 testid(`home-new-hwp-btn`, `home-new-md-btn`, `home-open-file-btn`, `recent-expired-<id>` 등)는 기본 설정의 첫 그림에 있어야 한다.
+- **파일 다루기**: 줄·메뉴·여러 개 고르기·막대·시트는 `home/actions/`(목록 종류는 `listKind`). 목록은 `useHomeFileActions`의 `element`를 한 번 그린다. 다리 답이 배열이 아니면 빈 목록이다(가짜 다리는 모르는 명령에 `{ok:true}`).
+- **설정 값**: T6 칸(`editorsOff`, `homeKindsHidden`, `homeKindsOrder`, `keepScreenOnWhileReading`, `firstRunDone`, `tipsSeen`, `lastSeenVersion`)은 `home/prefsStore.ts`로 읽고 쓴다(App의 `prefs`는 옛 네 칸용). TS 칸은 모두 선택이고, 없으면 "보여 주지 않음" 쪽으로 읽는다(첫 실행·말풍선·바뀐 것). Rust는 `MobileHomePrefsPatch`로 따로 고친다(기존 통합 시험이 `MobileAppPrefsPatch`를 구조체 그대로 만든다).
+- **앱 층**: `App.tsx`가 `home/HomeAppLayer.tsx`를 한 번 그린다(첫 실행, 말풍선, 받는 화면, 읽기 전용 띠와 [사본으로 편집], 꺼진 편집기 묻기, 바뀐 것). 앱 층이 `home/homeRuntime.ts`에 `HomeHost`와 열린 문서 키를 넣고, 설정 절처럼 client를 받지 않는 화면은 `useHomeRuntime()`으로 읽는다(시험에서는 null → 그 줄을 숨김). 말풍선·띠는 편집 화면 파일을 고치지 않고 testid와 "쪽 보기" 단추 이름으로 자리를 찾는다 — 셸의 그 이름을 바꾸면 `tests/home-layer.test.tsx`가 알린다.
+- **받기**: `home/incoming.ts`의 `takeIncomingDocument`가 묶음(여러 개·사진)을 먼저 가져가 앱 층의 대기열에 두고, 하나짜리 문서는 전처럼 돌려준다(출처 `received` 기록). Android SEND 거르개에 `SEND_MULTIPLE`과 `image/*`가 있다(새 `<intent-filter>`를 만들지 않는다 — `native-config-slots` 시험).
+- **다른 트랙 약속**: T3는 `home/pdfToolsLink.ts`의 `providePdfToolsLink({ Flow })`를 `ToolsTab.tsx`에서 부른다(없으면 T6이 단추를 숨김). T2·T5는 읽는 화면에서 `home/keepScreenOn.ts`의 `useKeepScreenOn(client, active)`를 부른다. 임시 파일은 앱 캐시 `ieum-tmp/<트랙>/`.
+- **Rust**: `src/storage/home/`의 `HomeService`(관리 상태는 `lib.rs`의 `// T6 home state`), 명령 `commands/home.rs`(`mobile_home_*`). 화면에 문서 위치(URI·경로·책갈피)를 내보내지 않고 불투명한 id만 준다. 이름 바꾸기로 문서 키가 바뀌면 최근·즐겨찾기·복구 사본·원본 백업을 다시 묶는다. 예시 문서는 `storage/samples/welcome-{ko,en}.hwpx`를 `include_bytes!`로 넣어 앱 안 바이트로 세션을 만든다.
+- **네이티브**: 플러그인 트레잇 `NativeFileBridge`의 T6 메서드(폴더·이름 바꾸기·복사·지우기·여러 파일 공유·받은 묶음·화면 켜 둠·바깥 주소)는 호스트 시험 구현 `HostFileBridge`에 같은 뜻으로 있다. iOS Swift는 빌드 확인이 안 된 코드다.
 
 ### T7 AI (1판)
 
