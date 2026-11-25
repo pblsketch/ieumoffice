@@ -66,6 +66,10 @@ export interface PdfEditStore {
   subscribe(listener: () => void): () => void
   /** Validates the whole batch (PC `planEditOps`) and applies it as one undo step. */
   dispatch(ops: Op[], options?: PdfDispatchOptions): PlanResult
+  /** Plans the batch against the current edits without applying it (PC `applyOps` dry run). */
+  plan(ops: Op[]): PlanResult
+  /** The snapshots Undo would restore, oldest first (the AI run's undo-as-one check reads them). */
+  undoSnapshots(): readonly EditSnapshot[]
   undo(): boolean
   redo(): boolean
   canUndo(): boolean
@@ -125,6 +129,8 @@ export function createPdfEditStore(options: PdfEditStoreOptions): PdfEditStore {
       commit(reduceEditOps(state, plan.ops))
       return plan
     },
+    plan: (ops) => planEditOps(ops, options.context(state), newId),
+    undoSnapshots: () => undoStack,
     undo() {
       const top = undoStack[undoStack.length - 1]
       if (locked || !top) return false

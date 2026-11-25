@@ -5,8 +5,16 @@
 import { useSyncExternalStore } from 'react'
 import type { MobileDocSession } from '@genoffice/mobile-bridge/transport'
 import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../editorKind'
+import { createPdfAiRun, type PdfAiEnv } from '../ai/createAiRun'
 import type { PdfUnlockProbe } from '../openTypes'
-import { createKeptView, startPdfDocument, type PdfOpenedDocument } from '../view'
+import {
+  createKeptView,
+  startPdfDocument,
+  type PdfOpenedDocument,
+  type PdfViewerHandle,
+  type PdfWorkspaceChrome,
+  type PdfWorkspaceContext,
+} from '../view'
 import { createPdfEditSession, type PdfEditSession } from './editSession'
 import type { PdfFeatureSet } from './features'
 import { createPdfEditExtension } from './usePdfEditChrome'
@@ -22,6 +30,8 @@ export interface PdfEditDocumentOptions {
   /** Clock of the recovery-copy rules (tests). */
   readonly now?: () => number
   readonly engine?: () => PdfEngine
+  /** The AI's check/cross painter (tests: jsdom has no canvas); default the PC painter. */
+  readonly aiMarkPainter?: PdfAiEnv['paintMark']
 }
 
 /** The document App holds, plus its edit session (tests and later tasks reach it here). */
@@ -43,7 +53,13 @@ export function startPdfEditDocument(
     engine: options.engine,
     onModelReplaced: options.onModelReplaced,
   })
-  const useExtension = createPdfEditExtension(editSession, options.features)
+  const editExtension = createPdfEditExtension(editSession, options.features)
+  // the AI tools scroll the viewer of the mounted Workspace (goto_page and after an edit)
+  let viewerHandle: PdfViewerHandle | null = null
+  const useExtension = (ctx: PdfWorkspaceContext): PdfWorkspaceChrome => {
+    if (ctx.viewer) viewerHandle = ctx.viewer
+    return editExtension(ctx)
+  }
   const keptView = createKeptView()
   // one viewer document per model; the model changes only after a save or a reload
   const viewers = new WeakMap<PdfOpenedDocument, EditorDocument>()
@@ -67,6 +83,18 @@ export function startPdfEditDocument(
     save: (doc, forceSaveAs) => editSession.save(doc, forceSaveAs),
     share: (doc) => editSession.share(doc),
     writeRecovery: (doc) => editSession.writeRecovery(doc),
+    // the AI tools and their strings load only when the AI runs (AI is off by default)
+    createAiRun: (ctx) =>
+      createPdfAiRun(
+        {
+          host,
+          editSession,
+          viewer: () => viewerHandle,
+          keptView,
+          paintMark: options.aiMarkPainter,
+        },
+        ctx,
+      ),
     Workspace: PdfEditWorkspace,
   }
 }
