@@ -17,8 +17,6 @@
     "config",
     "../markdown/src/renderer/env.d.ts",
     "../markdown/src/renderer/types/wavedrom.d.ts",
-    "../hwp/src/renderer/env.d.ts",
-    // T1 sheets
-    "../sheets/src/renderer/env.d.ts"
+    "../hwp/src/renderer/env.d.ts"
   ]
 }
