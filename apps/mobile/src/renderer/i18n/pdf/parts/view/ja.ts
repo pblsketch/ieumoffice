@@ -1,3 +1,41 @@
 import type { zh } from './zh'
 
-export const ja = {} as const satisfies Record<keyof typeof zh, string>
+export const ja = {
+  pdfViewEditorName: 'PDF エディター',
+  pdfViewLoading: '開いています…',
+  pdfViewOpenFailed:
+    'この PDF を開けませんでした。ファイルが壊れているか、PDF ではない可能性があります。',
+  pdfViewCertEncrypted:
+    'この PDF はパスワードではなく証明書で保護されています。発行したアプリで開いてください。',
+  pdfViewBlankUnavailable: '新しい PDF を作成できませんでした。',
+  pdfViewPagesFailed: '読み込めなかったページがあり、空白で表示しています。',
+  pdfViewPageBroken: 'このページは表示できません',
+  pdfViewPageLabel: '{page} ページ',
+  pdfViewPageIndicator: '{count} ページ中 {page} ページ',
+  pdfViewInternalLink: 'リンク先のページへ移動',
+  pdfViewPasswordTitle: 'この PDF は暗号化されています',
+  pdfViewPasswordBody:
+    '「{name}」はパスワードで保護されています。開くにはパスワードを入力してください。',
+  pdfViewPasswordLabel: 'パスワード',
+  pdfViewPasswordPlaceholder: 'パスワードを入力',
+  pdfViewPasswordShow: 'パスワードを表示',
+  pdfViewPasswordHide: 'パスワードを非表示',
+  pdfViewPasswordOpen: '開く',
+  pdfViewPasswordWrong: 'パスワードが違います',
+  pdfViewReadOnlyEncrypted: '暗号化文書は閲覧のみ',
+  pdfViewReadOnlyDamaged: '破損したファイル: 読めないページは空白で表示、閲覧のみ',
+  pdfViewReadOnlyNotWritable: 'このファイルは元の場所に保存できないため、閲覧のみです',
+  pdfViewSearch: '検索',
+  pdfViewSearchPlaceholder: '文書内を検索',
+  pdfViewSearching: '検索中…',
+  pdfViewSearchNone: '結果なし',
+  pdfViewSearchPrev: '前へ',
+  pdfViewSearchNext: '次へ',
+  pdfViewSearchClose: '検索を閉じる',
+  pdfViewOutline: 'アウトライン',
+  pdfViewOutlineEmpty: 'この文書にはしおりがありません',
+  pdfViewGoToPage: 'ページへ移動',
+  pdfViewGoToPageLabel: 'ページ番号（1–{count}）',
+  pdfViewGoToPageGo: '移動',
+  pdfViewGoToPageInvalid: '1 から {count} までの数字を入力してください',
+} as const satisfies Record<keyof typeof zh, string>
