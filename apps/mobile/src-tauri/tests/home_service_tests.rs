@@ -376,6 +376,38 @@ fn folder_listing_shows_folders_then_openable_files_and_pictures_newest_first() 
 }
 
 #[test]
+fn folder_listing_marks_starred_files_and_their_group() {
+    let e = env();
+    let folder = e.link(TREE, "Docs");
+    e.bridge
+        .add_tree_file(TREE, "a.hwpx", b"PK", "application/haansofthwpx", 100);
+    e.bridge
+        .add_tree_file(TREE, "b.hwpx", b"PK", "application/haansofthwpx", 200);
+    e.files.set_openable_formats(&["hwpx".into()]);
+
+    let entries = e.home.list_folder(&folder.id, &[]).unwrap();
+    assert!(entries.iter().all(|x| !x.favorite));
+    let a = entries.iter().find(|x| x.name == "a.hwpx").unwrap();
+    let a_ref = folder_ref(&folder.id, &a.id);
+    e.home.set_favorite(&a_ref, true).unwrap();
+    let groups = e.home.save_group(None, "Work").unwrap();
+    e.home
+        .move_to_group(&[a_ref], Some(groups[0].id.as_str()))
+        .unwrap();
+
+    let entries = e.home.list_folder(&folder.id, &[]).unwrap();
+    let a = entries.iter().find(|x| x.name == "a.hwpx").unwrap();
+    let b = entries.iter().find(|x| x.name == "b.hwpx").unwrap();
+    assert!(a.favorite);
+    assert_eq!(a.group_id.as_deref(), Some(groups[0].id.as_str()));
+    assert!(!b.favorite);
+    assert_eq!(b.group_id, None);
+    let json = serde_json::to_string(&entries).unwrap();
+    assert!(json.contains("\"favorite\":true"), "{json}");
+    assert!(json.contains("\"groupId\""), "{json}");
+}
+
+#[test]
 fn opening_a_folder_entry_uses_the_gate_and_remembers_the_folder() {
     let e = env();
     let folder = e.link(TREE, "Docs");

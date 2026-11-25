@@ -124,6 +124,11 @@ pub struct FolderEntry {
     pub size_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<i64>,
+    /// The file is starred (same document key as its favorite row).
+    pub favorite: bool,
+    /// The starred file's group, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -700,9 +705,16 @@ impl HomeService {
             .bridge()
             .list_folder(&folder.uri, path)
             .map_err(|e| map_home_error(e, true, KEY_NOT_FOUND))?;
+        let favorites = self.files.favorite_store().load()?.favorites;
         let mut out = Vec::new();
         for item in raw {
             let picture = !item.is_dir && is_picture(&item.name, item.mime.as_deref());
+            let starred = if item.is_dir {
+                None
+            } else {
+                let key = persistent_doc_key(&item.uri);
+                favorites.iter().find(|f| f.doc_key == key)
+            };
             let format = if item.is_dir || picture {
                 None
             } else {
@@ -719,6 +731,8 @@ impl HomeService {
                 is_picture: picture,
                 size_bytes: if item.is_dir { None } else { item.size_bytes },
                 modified_at: item.modified_ms,
+                favorite: starred.is_some(),
+                group_id: starred.and_then(|f| f.group_id.clone()),
             });
         }
         out.sort_by(|a, b| {

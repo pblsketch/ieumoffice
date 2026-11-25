@@ -24,6 +24,10 @@ export interface FolderEntry {
   readonly isPicture: boolean
   readonly sizeBytes?: number
   readonly modifiedAt?: number
+  /** The file is starred (absent from older backends: not starred). */
+  readonly favorite?: boolean
+  /** The starred file's group. */
+  readonly groupId?: string | null
 }
 
 export interface FavoriteEntry {

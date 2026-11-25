@@ -116,8 +116,8 @@ export function folderFileItem(
     sizeBytes: entry.sizeBytes,
     time: entry.modifiedAt,
     location: extras.location,
-    favorite: extras.favorite ?? false,
-    groupId: extras.groupId ?? null,
+    favorite: extras.favorite ?? entry.favorite ?? false,
+    groupId: extras.groupId ?? entry.groupId ?? null,
   }
 }
 

@@ -248,6 +248,23 @@ describe('selection bar composition', () => {
 })
 
 describe('row menu', () => {
+  it('reads the star and group the backend reports for a folder file', () => {
+    const starred = folderFileItem('f1', {
+      id: 'e1',
+      name: 'a.md',
+      isDir: false,
+      isPicture: false,
+      format: 'md',
+      favorite: true,
+      groupId: 'g1',
+    })
+    expect(starred.favorite).toBe(true)
+    expect(starred.groupId).toBe('g1')
+    expect(rowMenuActions(starred, 'folder')).toContain('moveToGroup')
+    expect(rowMenuActions(starred, 'folder')).toContain('favoriteRemove')
+    expect(folderItem('e2', 'b.md', false).favorite).toBe(false)
+  })
+
   it('shows "move to group" only for starred files and "remove from list" only in the recent list', () => {
     expect(rowMenuActions(recentItem('a', 'a.md'), 'recent')).not.toContain('moveToGroup')
     expect(rowMenuActions(recentItem('a', 'a.md', true), 'recent')).toContain('moveToGroup')
