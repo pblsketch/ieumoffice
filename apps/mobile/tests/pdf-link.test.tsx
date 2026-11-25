@@ -211,9 +211,16 @@ function click(selector: string) {
   act(() => el!.click())
 }
 
-function openInsertLink() {
+/** [⋯] Insert link: placing starts once the More sheet's back step has arrived. */
+async function openInsertLink() {
   click('[data-testid="editor-more-btn"]')
   click('[data-testid="editor-more-pdfEdit-link"]')
+  for (let i = 0; i < 20 && !q('[data-testid="pdf-link-placing"]'); i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+  }
+  expect(q('[data-testid="pdf-link-placing"]')).not.toBeNull()
 }
 
 function pointer(type: string, target: Element, x: number, y: number) {
@@ -360,7 +367,7 @@ describe('insert link', () => {
   it('drags a box, refuses a disallowed address, then adds kind "link" with the url', async () => {
     const { doc, edit } = await startDoc()
     const { host } = mountWorkspace(doc)
-    openInsertLink()
+    await openInsertLink()
     expect(q('[data-testid="pdf-link-placing"]')?.textContent).toContain(t('pdfLinkPlaceHint'))
 
     // a tap is not a box: still placing, no sheet
@@ -401,7 +408,7 @@ describe('insert link', () => {
     mountWorkspace(doc)
     // pending order: the third page shows first
     act(() => void edit.services.dispatch([{ op: 'setPageOrder', order: [2, 0, 1] }]))
-    openInsertLink()
+    await openInsertLink()
     drag(1, [10, 10], [90, 50])
 
     typeInto('[data-testid="pdf-link-page"]', '4')
@@ -428,7 +435,7 @@ describe('insert link', () => {
   it('edits a pending link target in one undo step and deletes it', async () => {
     const { doc, edit } = await startDoc()
     mountWorkspace(doc)
-    openInsertLink()
+    await openInsertLink()
     drag(0, [20, 20], [120, 80])
     typeInto('[data-testid="pdf-link-url"]', 'www.example.com')
     click('[data-testid="pdf-link-apply"]')
@@ -471,11 +478,11 @@ describe('insert link', () => {
   it('writes a Link annotation through the PC save (url and page target)', async () => {
     const { doc, edit, saved, s } = await startDoc()
     mountWorkspace(doc)
-    openInsertLink()
+    await openInsertLink()
     drag(0, [20, 20], [120, 80])
     typeInto('[data-testid="pdf-link-url"]', 'mailto:someone@example.com')
     click('[data-testid="pdf-link-apply"]')
-    openInsertLink()
+    await openInsertLink()
     drag(2, [20, 20], [120, 80])
     typeInto('[data-testid="pdf-link-page"]', '1')
     click('[data-testid="pdf-link-apply"]')
@@ -497,23 +504,23 @@ describe('placing mode and view mode', () => {
     const { doc } = await startDoc()
     const { render } = mountWorkspace(doc)
 
-    // Back: the entry pressed straight from the hook, so the More sheet's own history
-    // step (jsdom never answers its history.back()) does not sit on the back stack
+    // Back: the entry pressed straight from the hook, so placing is the top layer at once
+    // (no More sheet and no pending back step of it; see pdf-more-back.test.tsx)
     act(() => lastChrome!.onMorePress!())
     expect(q('[data-testid="pdf-link-placing"]')).not.toBeNull()
     act(() => void window.dispatchEvent(new PopStateEvent('popstate')))
     expect(q('[data-testid="pdf-link-placing"]')).toBeNull()
 
-    openInsertLink()
+    await openInsertLink()
     click('[data-testid="pdf-tool-pen"]')
     expect(q('[data-testid="pdf-link-placing"]')).toBeNull()
     click('[data-testid="pdf-tool-pen"]')
 
-    openInsertLink()
+    await openInsertLink()
     click('[data-testid="pdf-link-placing-cancel"]')
     expect(q('[data-testid="pdf-link-placing"]')).toBeNull()
 
-    openInsertLink()
+    await openInsertLink()
     render('view')
     expect(q('[data-testid="pdf-link-placing"]')).toBeNull()
     expect(q('[data-testid="pdf-link-layer-0"]')).toBeNull()

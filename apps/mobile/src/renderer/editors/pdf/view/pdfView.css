@@ -209,6 +209,12 @@
   background: transparent;
 }
 
+/* the find bar is the field: the global focus ring would only show as two bars at the
+   input's sides (the bar clips the rest); the caret marks the focus */
+.m-pdf-find-input:focus-visible {
+  outline: none;
+}
+
 .m-pdf-find-count {
   flex-shrink: 0;
   font-size: var(--m-text-caption);

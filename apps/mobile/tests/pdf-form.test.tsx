@@ -270,6 +270,30 @@ async function fieldsReady(host: HTMLElement) {
   })
 }
 
+/** The declarations of the first rule in `file` whose selector list holds `selector`. */
+function cssRule(file: string, selector: string): Record<string, string> {
+  const css = readFileSync(resolve(__dirname, '../src/renderer/editors/pdf', file), 'utf8')
+  for (const m of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (!m[1]!.split(',').some((s) => s.trim() === selector)) continue
+    const decls = m[2]!.split(';').flatMap((d) => {
+      const i = d.indexOf(':')
+      return i < 0
+        ? []
+        : [
+            [
+              d.slice(0, i).trim(),
+              d
+                .slice(i + 1)
+                .trim()
+                .replace(/\s+/g, ' '),
+            ],
+          ]
+    })
+    return Object.fromEntries(decls)
+  }
+  throw new Error(`no rule for ${selector} in ${file}`)
+}
+
 const q = <T extends HTMLElement = HTMLElement>(root: ParentNode, selector: string): T => {
   const el = root.querySelector<T>(selector)
   if (!el) throw new Error(`not found: ${selector}`)
@@ -346,6 +370,33 @@ afterEach(async () => {
 // ── AcroForm fields ─────────────────────────────────────────────────────────
 
 describe('AcroForm fields', () => {
+  it('draws each field box on its widget rectangle, with an invisible finger-sized hit area', async () => {
+    const { doc } = await startDoc(await formPdf())
+    const host = mountWorkspace(doc)
+    await fieldsReady(host)
+    const page = q(host, '.m-pdf-page[data-page="0"]')
+    const scale = parseFloat(page.style.width) / 400
+    // the 16 × 16 check box and the 200 × 24 text field are drawn at their widget sizes
+    // (pdf-lib's widget rect adds its border), far below the 48 px finger minimum the
+    // global button rule of styles/mobile-tokens.css would force on them
+    const agree = q(host, '[data-field="agree"]')
+    expect(parseFloat(agree.style.width) / scale).toBeCloseTo(17, 0)
+    expect(parseFloat(agree.style.height) / scale).toBeCloseTo(17, 0)
+    const name = q(host, '[data-field="name"]')
+    expect(parseFloat(name.style.height) / scale).toBeLessThan(26)
+    for (const selector of ['.m-pdf-form-field', '.m-pdf-form-mark']) {
+      const rule = cssRule('features/form/form.css', selector)
+      expect(rule['min-width'], selector).toBe('0')
+      expect(rule['min-height'], selector).toBe('0')
+      expect(rule['box-sizing']).toBe('border-box')
+    }
+    // the hit area grows around a small box without moving or resizing it
+    const hit = cssRule('features/form/form.css', '.m-pdf-form-field::after')
+    expect(hit.position).toBe('absolute')
+    expect(hit.inset).toBe('min(0px, calc(50% - var(--m-hit) / 2))')
+    expect(hit.background).toBeUndefined()
+  })
+
   it('fills text, check box, radio and choice fields as PC formValues and saves them into the fields', async () => {
     const { doc, edit, fake, s } = await startDoc(await formPdf())
     const host = mountWorkspace(doc)

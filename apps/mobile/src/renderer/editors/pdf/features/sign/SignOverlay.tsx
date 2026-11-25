@@ -3,7 +3,12 @@
 // kept, PC DrawLayer rules) or delete it. While a new signature waits, a tap on the
 // page drops it there. A plain tap on the page never starts a drag, so scrolling the
 // document over unselected stamps keeps working.
-import { useState, type PointerEvent as ReactPointerEvent } from 'react'
+//
+// The drop answers the tap's pointerup, not its click: right after the signature sheet
+// closes, a web view may deliver the first tap's pointerdown/pointerup without a click.
+// A finger that moves further than a tap is a scroll (the browser then cancels the
+// pointer), so scrolling over the page keeps working while a signature waits.
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { pdfRectToCss } from '../../../../../../../pdf/src/renderer/annotations'
 import type { PdfFeaturePage } from '../../edit/types'
 import { IconClose } from '../../../../components/MobileIcons'
@@ -47,6 +52,8 @@ export interface SignOverlayProps {
 
 /** A drag shorter than this (CSS px) is a tap. */
 const TAP_SLOP = 3
+/** Finger travel (CSS px) up to which a press on the page still drops the signature. */
+export const SIGN_PLACE_SLOP = 10
 /** Smallest side a resize may shrink a stamp to (CSS px; PC DrawLayer). */
 const MIN_SIDE = 16
 
@@ -83,6 +90,14 @@ export function SignOverlay({
     start: Box
     box: Box
   } | null>(null)
+  // the press on the placing catcher, and whether its pointerup already dropped it
+  const placePress = useRef<{ id: number; x: number; y: number } | null>(null)
+  const placedByPointer = useRef(false)
+
+  const placeAt = (e: { clientX: number; clientY: number; currentTarget: Element }) => {
+    const at = e.currentTarget.getBoundingClientRect()
+    onPlace((e.clientX - at.left) / scale, (e.clientY - at.top) / scale)
+  }
 
   const bodyDown = (e: ReactPointerEvent<HTMLElement>, id: string) => {
     if (!interactive || id !== selectedId) return
@@ -212,9 +227,29 @@ export function SignOverlay({
           role="button"
           tabIndex={-1}
           aria-label={labels.place}
+          onPointerDown={(e) => {
+            placedByPointer.current = false
+            placePress.current = { id: e.pointerId, x: e.clientX, y: e.clientY }
+          }}
+          onPointerUp={(e) => {
+            const press = placePress.current
+            placePress.current = null
+            if (!press || press.id !== e.pointerId) return
+            if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > SIGN_PLACE_SLOP) return
+            placedByPointer.current = true
+            placeAt(e)
+          }}
+          onPointerCancel={() => {
+            placePress.current = null
+          }}
           onClick={(e) => {
-            const at = e.currentTarget.getBoundingClientRect()
-            onPlace((e.clientX - at.left) / scale, (e.clientY - at.top) / scale)
+            // the click of a tap its pointerup already answered; a click without a
+            // pointer press (assistive technology) still drops it
+            if (placedByPointer.current) {
+              placedByPointer.current = false
+              return
+            }
+            placeAt(e)
           }}
           data-testid={`pdf-sign-catch-${page.pageIndex}`}
         />

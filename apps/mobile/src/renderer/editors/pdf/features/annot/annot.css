@@ -44,10 +44,14 @@
   background: var(--m-pdf-text-selection);
 }
 
-/* the highlighter tool's gesture surface: vertical swipes still scroll */
+/* the highlighter tool's gesture surface: vertical swipes still scroll. It sits above
+   the PDF.js text layer (its spans have z-index 1, view/pdfView.css), or a press on
+   glyphs would go to the text layer; it stays below the link layer (z-index 3). Only
+   there while the highlighter is on. */
 .m-pdf-annot-surface {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: auto;
   touch-action: pan-y;
   user-select: none;
@@ -59,8 +63,10 @@
   cursor: crosshair;
 }
 
+/* note pins stay tappable over the text layer and the highlighter surface */
 .m-pdf-annot-pin {
   position: absolute;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -79,13 +85,16 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* ── the floating bar over the stage ── */
+/* ── the bar at the top of the stage ── */
+/* In the stage's column above the document area (not floating over it): the pages
+   scroll below the bar, so it never hides the first lines of page 1. */
 .m-pdf-annot-bar {
-  position: absolute;
-  top: var(--m-space-2);
-  left: calc(var(--m-space-2) + var(--m-safe-left));
-  right: calc(var(--m-space-2) + var(--m-safe-right));
+  position: relative;
+  order: -1;
+  flex-shrink: 0;
   z-index: var(--m-z-toolbar);
+  margin: var(--m-space-2) calc(var(--m-space-2) + var(--m-safe-right)) 0
+    calc(var(--m-space-2) + var(--m-safe-left));
   display: flex;
   flex-direction: column;
   gap: var(--m-space-1);

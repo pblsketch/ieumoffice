@@ -1,6 +1,8 @@
 // Mobile PDF viewer (track T2, PDF-T3): registration, the open rules shared with the
 // PC editor (password, permissions, damaged files), search, outline, links, and the
 // render window that releases far-away page bitmaps.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, createRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -686,6 +688,14 @@ describe('view-mode workspace', () => {
       document.querySelector<HTMLButtonElement>('[data-testid="editor-more-pdfSearch"]')!.click(),
     )
     const input = host.querySelector<HTMLInputElement>('[data-testid="pdf-search-input"]')!
+    // the field opens in the row's own tap (keyboard), and its focus draws no ring
+    // that the bar would clip into two bars at its sides
+    expect(document.activeElement).toBe(input)
+    const css = readFileSync(
+      resolve(__dirname, '../src/renderer/editors/pdf/view/pdfView.css'),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(css).toMatch(/\.m-pdf-find-input:focus-visible\s*\{\s*outline:\s*none;\s*\}/)
     act(() => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
       setter.call(input, 'APPLE')
