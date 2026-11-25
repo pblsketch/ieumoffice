@@ -46,6 +46,8 @@ export interface EditorOpenRequest {
 }
 
 export interface EditorOpened {
+  /** The document is protected and must not be changed (the HWP rule: save and edited share refused).
+   *  A kind that unlocks a file and lets it be edited leaves this unset. */
   readonly encrypted?: boolean
   readonly distribution?: boolean
   readonly trackingDropped?: boolean
@@ -53,6 +55,9 @@ export interface EditorOpened {
   readonly noticeKey: MobileStringKey | null
   /** Called once, after the session switch went through. */
   start(host: EditorHost): EditorDocument
+  /** Called instead of start when the switch did not go through (the user kept the current document):
+   *  free whatever open() prepared. */
+  discard?(): void
 }
 
 /** One opened document. Lives in App for as long as the document is active,
@@ -65,6 +70,12 @@ export interface EditorDocument {
   createAiRun?(ctx: EditorAiContext): Promise<EditorAiRun>
   /** Created once per document; renders EditorShell with `frame` plus its own bars and sheets. */
   readonly Workspace: ComponentType<EditorWorkspaceProps>
+  /** false: this document is read-only even though its kind can edit. */
+  readonly editable?: boolean
+  /** false: the AI entry points stay hidden for this document (e.g. a file opened with a password). */
+  readonly aiAvailable?: boolean
+  /** Called once when the document is closed or replaced by another: free engines, delete temp files. */
+  dispose?(): void
 }
 
 export interface EditorWorkspaceProps {
