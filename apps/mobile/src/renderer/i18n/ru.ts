@@ -169,4 +169,5 @@ export const ru = {
   backupRestoreInPlace: 'Восстановить оригинал',
   backupRestoreSaveAs: 'Сохранить копию',
   backupDelete: 'Удалить',
+  formatNotOpenable: 'Файлы этого типа нельзя открыть.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -167,4 +167,5 @@ export const zh = {
   backupRestoreInPlace: '恢复原文件',
   backupRestoreSaveAs: '另存为副本',
   backupDelete: '删除',
+  formatNotOpenable: '无法打开此类型的文件。',
 } as const

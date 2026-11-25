@@ -170,4 +170,5 @@ export const ms = {
   backupRestoreInPlace: 'Pulihkan asal',
   backupRestoreSaveAs: 'Simpan sebagai salinan',
   backupDelete: 'Padam',
+  formatNotOpenable: 'Jenis fail ini tidak boleh dibuka.',
 } as const satisfies Record<keyof typeof zh, string>

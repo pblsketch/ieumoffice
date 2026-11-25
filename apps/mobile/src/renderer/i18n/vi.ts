@@ -170,4 +170,5 @@ export const vi = {
   backupRestoreInPlace: 'Khôi phục tệp gốc',
   backupRestoreSaveAs: 'Lưu thành bản sao',
   backupDelete: 'Xóa',
+  formatNotOpenable: 'Không thể mở loại tệp này.',
 } as const satisfies Record<keyof typeof zh, string>

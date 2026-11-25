@@ -171,4 +171,5 @@ export const ja = {
   backupRestoreInPlace: '元に戻す',
   backupRestoreSaveAs: 'コピーとして保存',
   backupDelete: '削除',
+  formatNotOpenable: 'このファイル形式は開けません。',
 } as const satisfies Record<keyof typeof zh, string>

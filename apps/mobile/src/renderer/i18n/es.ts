@@ -175,4 +175,5 @@ export const es = {
   backupRestoreInPlace: 'Restaurar original',
   backupRestoreSaveAs: 'Guardar como copia',
   backupDelete: 'Eliminar',
+  formatNotOpenable: 'No se puede abrir este tipo de archivo.',
 } as const satisfies Record<keyof typeof zh, string>

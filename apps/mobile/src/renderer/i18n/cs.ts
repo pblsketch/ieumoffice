@@ -169,4 +169,5 @@ export const cs = {
   backupRestoreInPlace: 'Obnovit originál',
   backupRestoreSaveAs: 'Uložit jako kopii',
   backupDelete: 'Smazat',
+  formatNotOpenable: 'Tento typ souboru nelze otevřít.',
 } as const satisfies Record<keyof typeof zh, string>

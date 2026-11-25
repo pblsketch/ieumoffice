@@ -172,4 +172,5 @@ export const pl = {
   backupRestoreInPlace: 'Przywróć oryginał',
   backupRestoreSaveAs: 'Zapisz jako kopię',
   backupDelete: 'Usuń',
+  formatNotOpenable: 'Nie można otworzyć pliku tego typu.',
 } as const satisfies Record<keyof typeof zh, string>
