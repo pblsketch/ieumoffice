@@ -25,6 +25,7 @@ import {
   type SignatureData,
   type SignatureStorage,
 } from '../src/renderer/editors/pdf/features/sign/store'
+import { SIGN_PLACE_SLOP } from '../src/renderer/editors/pdf/features/sign/SignOverlay'
 import type { PdfOpenedDocument } from '../src/renderer/editors/pdf/view/model'
 import { openPdfModel } from '../src/renderer/editors/pdf/view/openPdf'
 import { pcUnlockProbe } from '../src/renderer/editors/pdf/view/pcEngineHooks'
@@ -431,6 +432,60 @@ describe('placing a signature', () => {
     click(q('pdf-tool-sign'))
     click(q('pdf-sign-saved-forget'))
     expect(loadSavedSignatures(window.localStorage)).toHaveLength(0)
+  })
+
+  it('drops on the pointerup of the first tap even when no click follows; a scroll-sized move does not', async () => {
+    rememberSignature(imageSig('UkVN', 300, 100), window.localStorage, 1)
+    const { doc, edit } = await startDoc()
+    const host = mountWorkspace(doc)
+    const scale = pageScale(host)
+    click(q('pdf-tool-sign'))
+    click(q('pdf-sign-saved-pick'))
+    const catcher = q('pdf-sign-catch-0')!
+
+    // a finger that travels is a scroll, and a cancelled pointer drops nothing
+    pointer(catcher, 'pointerdown', 100, 100)
+    pointer(catcher, 'pointerup', 100, 100 + SIGN_PLACE_SLOP + 5)
+    pointer(catcher, 'pointerdown', 100, 100)
+    pointer(catcher, 'pointercancel', 100, 100)
+    pointer(catcher, 'pointerup', 100, 100)
+    expect(edit.store.getSnapshot().drawings).toHaveLength(0)
+    expect(q('pdf-sign-catch-0')).not.toBeNull()
+
+    // the web view's first tap after the sheet: pointerdown and pointerup, no click
+    pointer(catcher, 'pointerdown', 150 * scale, 200 * scale)
+    pointer(catcher, 'pointerup', 150 * scale + 2, 200 * scale + 2)
+    const drawings = edit.store.getSnapshot().drawings
+    expect(drawings).toHaveLength(1)
+    const input = drawings[0]!.input as Extract<DrawingInput, { kind: 'image' }>
+    // centered on the pointerup point (300 × 100 picture: a third of the page wide)
+    const w = PAGE_W / 3
+    const left = 150 + 2 / scale - w / 2
+    expect(input.rect[0]).toBeCloseTo(left, 6)
+    expect(q('pdf-sign-catch-0')).toBeNull()
+    expect(q('pdf-sign-place-hint')).toBeNull()
+  })
+
+  it('places once when the click of the tap does follow its pointerup', async () => {
+    rememberSignature(imageSig('UkVN', 300, 100), window.localStorage, 1)
+    const { doc, edit } = await startDoc()
+    mountWorkspace(doc)
+    click(q('pdf-tool-sign'))
+    click(q('pdf-sign-saved-pick'))
+    const catcher = q('pdf-sign-catch-0')!
+    // a catcher that stays (another page's, or a refused drop) ignores the tap's click
+    act(() => {
+      catcher.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 50, pointerId: 1 }),
+      )
+      catcher.dispatchEvent(
+        new PointerEvent('pointerup', { bubbles: true, clientX: 50, clientY: 50, pointerId: 1 }),
+      )
+      catcher.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }),
+      )
+    })
+    expect(edit.store.getSnapshot().drawings).toHaveLength(1)
   })
 
   it('moves, resizes (aspect kept) and deletes a pending stamp through the PC ops', async () => {
