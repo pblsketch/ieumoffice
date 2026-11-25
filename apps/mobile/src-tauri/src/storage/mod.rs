@@ -5,7 +5,7 @@ pub mod recovery;
 pub mod session;
 
 pub use backup::{HwpBackupEntry, HwpBackupStore, MAX_HWP_BACKUPS};
-pub use prefs::{MobileAppPrefs, MobileAppPrefsPatch, PrefsStore};
+pub use prefs::{MobileAppPrefs, MobileAppPrefsPatch, MobileHomePrefsPatch, PrefsStore};
 pub use recent::{RecentDocEntry, RecentStore};
 pub use recovery::{RecoveryEntry, RecoveryStore};
 pub use session::{MobileDocFormat, MobileDocSession, persistent_doc_key, untitled_doc_key};
@@ -669,5 +669,14 @@ impl MobileFileService {
 
     pub fn set_app_prefs(&self, patch: MobileAppPrefsPatch) -> MobileResult<MobileAppPrefs> {
         self.prefs.update(patch)
+    }
+
+    /// `set_app_prefs` with the home fields (track T6) in the same write.
+    pub fn set_app_prefs_with_home(
+        &self,
+        patch: MobileAppPrefsPatch,
+        home: MobileHomePrefsPatch,
+    ) -> MobileResult<MobileAppPrefs> {
+        self.prefs.update_with_home(patch, home)
     }
 }
