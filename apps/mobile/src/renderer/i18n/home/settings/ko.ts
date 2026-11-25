@@ -1,3 +1,42 @@
 import type { zh } from './zh'
 
-export const ko = {} as const satisfies Record<keyof typeof zh, string>
+export const ko = {
+  homeSetEditorsTitle: '편집기',
+  homeSetEditorsHint: '끈 편집기는 새 문서 목록에서 빠집니다. 모두 끄면 모두 켜진 것으로 봅니다.',
+  homeSetEditorHwp: '한글',
+  homeSetEditorMarkdown: '마크다운',
+  homeSetEditorPdfTools: 'PDF 도구',
+  homeSetCardsTitle: '홈 화면의 새 문서',
+  homeSetCardShow: '{name} 홈 화면에 보이기',
+  homeSetCardUp: '{name} 위로',
+  homeSetCardDown: '{name} 아래로',
+  homeSetKeepScreenOn: '읽는 동안 화면 꺼짐 막기',
+  homeSetKeepScreenOnDesc: 'PDF·EPUB를 읽거나 PPT를 발표하는 동안 화면이 꺼지지 않습니다.',
+  homeSetFoldersTitle: '문서 폴더',
+  homeSetFoldersEmpty: '연결한 폴더가 없습니다. 폴더를 연결하면 폴더 탭에서 바로 볼 수 있어요.',
+  homeSetFolderLink: '폴더 연결',
+  homeSetFolderRelink: '다시 연결',
+  homeSetFolderRemove: '빼기',
+  homeSetFolderRemoveNamed: '{name} 빼기',
+  homeSetFolderOk: '연결됨',
+  homeSetFolderLost: '이 폴더에 들어갈 수 없습니다. 옮기거나 지웠다면 다시 연결하세요.',
+  homeSetFolderRemoveTitle: '{name} 폴더를 뺄까요?',
+  homeSetFolderRemoveBody:
+    '이 폴더 안 파일의 최근·즐겨찾기 {count}개 줄도 함께 빠집니다. 파일은 지워지지 않습니다.',
+  homeSetBackupsTotal: '합계 {size}',
+  homeSetStorageTitle: '저장 공간',
+  homeSetStorageRecovery: '복구 사본',
+  homeSetStorageTemp: '임시 파일',
+  homeSetStorageBackups: '한글 원본 백업',
+  homeSetStorageClearTemp: '임시 파일 지우기',
+  homeSetStorageClearRecovery: '복구 사본 모두 지우기',
+  homeSetStorageClearTempTitle: '임시 파일을 지울까요?',
+  homeSetStorageClearTempBody:
+    '공유하거나 받을 때 잠깐 만든 파일을 지웁니다. 문서 파일은 그대로입니다.',
+  homeSetStorageClearRecoveryTitle: '복구 사본을 모두 지울까요?',
+  homeSetStorageClearRecoveryBody:
+    '저장하지 않은 고침이 사라집니다. 지금 열린 문서의 복구 사본은 남깁니다.',
+  homeSetStorageClearAction: '지우기',
+  homeSetStorageCleared: '공간을 {size} 비웠습니다.',
+  homeSetFailed: '처리하지 못했습니다. 잠시 뒤 다시 해 보세요.',
+} as const satisfies Record<keyof typeof zh, string>
