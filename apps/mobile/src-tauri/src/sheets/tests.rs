@@ -13,8 +13,16 @@ use super::{SheetsEngine, SheetsState, SheetsWorkspace};
 #[test]
 fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
     let dir = tempfile::tempdir().unwrap();
-    let workspace = SheetsWorkspace::new(dir.path().join("ieum-sheets")).unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
     let root = workspace.root().to_path_buf();
+    assert_eq!(root, dir.path().join("ieum-tmp").join("sheets"));
+    let engine_dir = workspace.engine_temp_dir().to_path_buf();
+    assert_eq!(engine_dir, root.join("engine"));
+    assert!(engine_dir.is_dir());
+    // An engine session cache, as the engine would create it.
+    let session_cache = engine_dir.join("genspark-ai-excel-s1");
+    fs::create_dir(&session_cache).unwrap();
+    fs::write(session_cache.join("cells.bin"), "c").unwrap();
 
     let made = workspace.create_dir().unwrap();
     assert!(made.is_dir() && made.starts_with(&root));
@@ -44,6 +52,13 @@ fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
             .into_owned(),
         root.to_string_lossy().into_owned(),
         "relative/path.xml".to_owned(),
+        // The engine's temp directory is not the WebView's.
+        engine_dir.to_string_lossy().into_owned(),
+        session_cache
+            .join("cells.bin")
+            .to_string_lossy()
+            .into_owned(),
+        engine_dir.join("new.xml").to_string_lossy().into_owned(),
     ] {
         let error = workspace.read_bytes(&raw).unwrap_err();
         assert_eq!(error.message_key, "mobile.sheets.pathOutsideWork", "{raw}");
@@ -56,20 +71,48 @@ fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
     assert!(!made.exists());
     workspace.delete(&made.to_string_lossy()).unwrap();
 
+    assert!(session_cache.join("cells.bin").is_file());
+
+    // `clear` keeps the engine's session caches (workbooks may be open)...
     workspace.clear().unwrap();
     assert!(root.is_dir());
-    assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+    let left: Vec<_> = fs::read_dir(&root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(left, vec![engine_dir.clone()]);
+    assert!(session_cache.is_dir());
+    // ...`clear_all` does not, and leaves an empty engine directory.
+    workspace.clear_all().unwrap();
+    assert!(engine_dir.is_dir());
+    assert_eq!(fs::read_dir(&engine_dir).unwrap().count(), 0);
+
+    // Folders removed from outside (the app's "clear temp files") come back.
+    fs::remove_dir_all(dir.path().join("ieum-tmp")).unwrap();
+    workspace.ensure_folders().unwrap();
+    assert!(engine_dir.is_dir());
 }
 
 #[test]
 fn state_setup_empties_the_work_folder_left_by_a_previous_run() {
     let dir = tempfile::tempdir().unwrap();
-    let leftover = dir.path().join(super::WORK_DIR_NAME).join("d-old");
+    let root = dir
+        .path()
+        .join(super::TEMP_ROOT_NAME)
+        .join(super::WORK_DIR_NAME);
+    let leftover = root.join("d-old");
     fs::create_dir_all(&leftover).unwrap();
     fs::write(leftover.join("entry-0.bin"), "x").unwrap();
+    // A session cache the engine left when the OS ended the app.
+    let orphan = root
+        .join(super::ENGINE_DIR_NAME)
+        .join("genspark-ai-excel-old");
+    fs::create_dir_all(&orphan).unwrap();
     let state = SheetsState::new(dir.path()).unwrap();
-    assert!(state.workspace.root().is_dir());
+    assert_eq!(state.workspace.root(), root);
+    assert!(state.workspace.engine_temp_dir().is_dir());
     assert!(!leftover.exists());
+    assert!(!orphan.exists());
     // The engine got the same work folder.
     let outside = parse(
         &state

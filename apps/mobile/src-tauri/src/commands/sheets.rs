@@ -70,7 +70,11 @@ pub async fn mobile_sheets_request(
     line: String,
 ) -> MobileResult<tauri::ipc::Response> {
     let sheets = state.inner().clone();
-    run_blocking(move || Ok(tauri::ipc::Response::new(sheets.engine.handle_line(&line)))).await
+    run_blocking(move || {
+        sheets.workspace.ensure_folders()?;
+        Ok(tauri::ipc::Response::new(sheets.engine.handle_line(&line)))
+    })
+    .await
 }
 
 /// Copies the active document into a fresh working copy in the work folder
