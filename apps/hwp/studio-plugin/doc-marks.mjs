@@ -59,6 +59,36 @@ export function isAppMarkName(name) {
   return markPrefixOf(name) !== null
 }
 
+/** Extract the unescaped destination before the first unescaped `;` of a HWP hyperlink command. */
+function unescapeHyperlinkTarget(command) {
+  if (typeof command !== 'string' || command.length === 0) return ''
+  let out = ''
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    if (ch === '\\' && i + 1 < command.length) {
+      out += command[i + 1]
+      i += 1
+      continue
+    }
+    if (ch === ';') break
+    out += ch
+  }
+  return out
+}
+
+/**
+ * Whether a field entry from `doc.getFieldList()` is an app-owned TOC hyperlink
+ * targeting a `제목:` heading bookmark (inserted via `bookmark: '제목:...'` or `uri: '#제목:...'`).
+ */
+export function isAppTocHyperlinkField(field) {
+  if (!field || field.fieldType !== 'hyperlink') return false
+  const target = unescapeHyperlinkTarget(field.command)
+  if (target.startsWith('?') || target.startsWith('#')) {
+    return target.slice(1).startsWith(MARK_PREFIXES.heading)
+  }
+  return false
+}
+
 /** Escape characters reserved by mark syntax (`%`, `:`, CR, LF) while keeping text readable. */
 export function encodeMarkField(value) {
   return String(value)
@@ -442,7 +472,13 @@ export function resolveBodyPlace(doc, place) {
     place.inTextBox === true ||
     place.isTextBox === true ||
     place.inNote === true ||
+    place.inFootnote === true ||
+    place.inEndnote === true ||
     place.inHeaderFooter === true ||
+    place.isHeader === true ||
+    place.isFooter === true ||
+    place.cellContext != null ||
+    place.equationControl != null ||
     place.parentParaIndex != null ||
     place.cellIndex != null ||
     place.cellParaIndex != null ||
@@ -534,27 +570,228 @@ export function removeMark(doc, mark) {
   }
 }
 
+function uniqueRangePairNames(usedNames, prefix, idParts, maxLen = MAX_MARK_NAME_LEN) {
+  const startTail = `:${RANGE_START}`
+  const endTail = `:${RANGE_END}`
+  const longestTail = Math.max(startTail.length, endTail.length)
+  const encodedMiddle = idParts.map(encodeMarkField).join(':')
+
+  for (let n = 2; ; n++) {
+    const numPart = String(n)
+    let startName
+    let endName
+    if (encodedMiddle.length === 0) {
+      startName = `${prefix}${numPart}${startTail}`
+      endName = `${prefix}${numPart}${endTail}`
+    } else {
+      const numSuffix = `:${numPart}`
+      const maxMiddle = maxLen - prefix.length - numSuffix.length - longestTail
+      const trimmed = safeTruncate(encodedMiddle, Math.max(0, maxMiddle))
+      startName = `${prefix}${trimmed}${numSuffix}${startTail}`
+      endName = `${prefix}${trimmed}${numSuffix}${endTail}`
+    }
+    if (
+      startName.length <= maxLen &&
+      endName.length <= maxLen &&
+      !usedNames.has(startName) &&
+      !usedNames.has(endName)
+    ) {
+      return { startName, endName }
+    }
+  }
+}
+
+function allocateFreshChunkId(usedNames, prefix, oldChunkId, chunks, maxLen = MAX_MARK_NAME_LEN) {
+  const maxGrowth = chunks.reduce(
+    (minRoom, ch) => Math.min(minRoom, maxLen - ch.name.length),
+    maxLen,
+  )
+  const maxIdLen = Math.max(1, oldChunkId.length + maxGrowth)
+  const targetLen = Math.min(6, maxIdLen)
+  for (let salt = 1; salt <= 10000; salt++) {
+    const raw =
+      targetLen <= 4
+        ? salt.toString(36).padStart(targetLen, '0').slice(-targetLen)
+        : shortHash(`${prefix}\0${oldChunkId}\0${salt}`).slice(0, targetLen)
+    const candidateId = raw || String(salt)
+    if (candidateId === oldChunkId) continue
+    const candidateNames = chunks.map(
+      (ch) => `${prefix}${CHUNK_TAG}:${candidateId}:${ch.index}/${ch.total}:${ch.slice}`,
+    )
+    if (
+      candidateNames.every((name) => name.length <= maxLen && !usedNames.has(name)) &&
+      ![...usedNames].some((name) => name.startsWith(`${prefix}${CHUNK_TAG}:${candidateId}:`))
+    ) {
+      return { chunkId: candidateId, names: candidateNames }
+    }
+  }
+  throw new RangeError('Failed to allocate unique chunkId within maxLen')
+}
+
 /**
- * Repair copy/paste duplicates among app marks by renaming later occurrences uniquely.
- * Returns `{ renamed }` listing each renamed bookmark.
+ * Repair copy/paste duplicates among app marks without corrupting structured mark formats:
+ * - Range marks (`:시작`/`:끝`): renumber the ID *before* `:시작`/`:끝`, keeping duplicated pairs matched.
+ * - Chunked marks (`%c:<id>:i/n:<slice>`): assign a fresh `chunkId` while preserving every `<slice>` intact.
+ * - Setting marks (`설정:`): remove earlier exact duplicates so valid JSON and last-in-document-order survive.
+ * - Regular point marks: append `:2`, `:3`, ... within `MAX_MARK_NAME_LEN`.
+ *
+ * Returns `{ renamed, removed }`.
  */
 export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
   const allowed = normalizePrefixes(prefixes)
   const all = readRawBookmarks(doc)
   const usedNames = new Set(all.map((bm) => bm.name))
-  const seen = new Set()
-  const renamed = []
+  const allowedMarks = all.filter(
+    (bm) => bm.prefix !== null && allowed.some((p) => bm.name.startsWith(p)),
+  )
 
-  for (const bm of all) {
-    if (bm.prefix === null || !allowed.some((p) => bm.name.startsWith(p))) continue
+  const renamed = []
+  const toDelete = []
+
+  // 1. Identify exact duplicate setting marks (both single and chunked):
+  //    keep the LAST occurrence in document order so valid JSON and last-wins semantics hold.
+  const lastSettingByName = new Map()
+  for (const bm of allowedMarks) {
+    if (bm.prefix === MARK_PREFIXES.setting) {
+      lastSettingByName.set(bm.name, `${bm.sec}:${bm.para}:${bm.ctrlIdx}`)
+    }
+  }
+  const settingDeleteLocs = new Set()
+  for (const bm of allowedMarks) {
+    if (bm.prefix !== MARK_PREFIXES.setting) continue
+    const loc = `${bm.sec}:${bm.para}:${bm.ctrlIdx}`
+    if (lastSettingByName.get(bm.name) !== loc) {
+      settingDeleteLocs.add(loc)
+      toDelete.push(bm)
+    }
+  }
+
+  // 2. Group non-setting chunked marks in document order so duplicated chunk groups get a fresh chunkId.
+  const openChunkGroups = new Map()
+  const completedChunkGroups = []
+  const chunkLocs = new Set()
+  for (const bm of allowedMarks) {
+    if (bm.prefix === MARK_PREFIXES.setting) continue
+    const decoded = decodeMarkName(bm.name)
+    if (!decoded || !decoded.isChunk) continue
+    chunkLocs.add(`${bm.sec}:${bm.para}:${bm.ctrlIdx}`)
+    const groupKey = `${decoded.prefix}\0${decoded.chunkId}\0${decoded.total}`
+    let group = openChunkGroups.get(groupKey)
+    if (group && group.indices.has(decoded.index)) {
+      completedChunkGroups.push(group)
+      openChunkGroups.delete(groupKey)
+      group = null
+    }
+    if (!group) {
+      group = {
+        prefix: decoded.prefix,
+        chunkId: decoded.chunkId,
+        total: decoded.total,
+        indices: new Set(),
+        items: [],
+      }
+      openChunkGroups.set(groupKey, group)
+    }
+    group.indices.add(decoded.index)
+    group.items.push({
+      bm,
+      index: decoded.index,
+      total: decoded.total,
+      slice: decoded.slice,
+      name: bm.name,
+    })
+    if (group.indices.size === group.total) {
+      completedChunkGroups.push(group)
+      openChunkGroups.delete(groupKey)
+    }
+  }
+  for (const group of openChunkGroups.values()) {
+    completedChunkGroups.push(group)
+  }
+
+  const seenChunkKeys = new Set()
+  for (const group of completedChunkGroups) {
+    const key = `${group.prefix}\0${group.chunkId}\0${group.total}`
+    if (!seenChunkKeys.has(key)) {
+      seenChunkKeys.add(key)
+      continue
+    }
+    const allocated = allocateFreshChunkId(
+      usedNames,
+      group.prefix,
+      group.chunkId,
+      group.items,
+      MAX_MARK_NAME_LEN,
+    )
+    for (let i = 0; i < group.items.length; i++) {
+      const { bm } = group.items[i]
+      const newName = allocated.names[i]
+      const res = parseJson(doc.renameBookmark(bm.sec, bm.para, bm.ctrlIdx, newName), null)
+      if (res && res.ok === true) {
+        usedNames.add(newName)
+        renamed.push({
+          from: bm.name,
+          to: newName,
+          sec: bm.sec,
+          para: bm.para,
+          offset: bm.offset,
+          ctrlIdx: bm.ctrlIdx,
+        })
+      }
+    }
+  }
+
+  // 3. Handle remaining non-setting, non-chunked marks (range marks and regular point marks).
+  const seen = new Set()
+  const pendingDupEnds = new Map()
+  for (const bm of allowedMarks) {
+    if (bm.prefix === MARK_PREFIXES.setting) continue
+    const loc = `${bm.sec}:${bm.para}:${bm.ctrlIdx}`
+    if (chunkLocs.has(loc)) continue
+
     if (!seen.has(bm.name)) {
       seen.add(bm.name)
       continue
     }
-    const newName = uniqueMarkName(usedNames, bm.name, MAX_MARK_NAME_LEN)
+
+    const decoded = decodeMarkName(bm.name)
+    const lastPart =
+      decoded && !decoded.isChunk && decoded.parts.length > 0
+        ? decoded.parts[decoded.parts.length - 1]
+        : null
+
+    let newName
+    if (lastPart === RANGE_START || lastPart === RANGE_END) {
+      const idParts = decoded.parts.slice(0, -1)
+      const rangeKey = `${bm.prefix}${idParts.map(encodeMarkField).join(':')}`
+      if (lastPart === RANGE_START) {
+        const pair = uniqueRangePairNames(usedNames, bm.prefix, idParts, MAX_MARK_NAME_LEN)
+        newName = pair.startName
+        usedNames.add(pair.startName)
+        usedNames.add(pair.endName)
+        let queue = pendingDupEnds.get(rangeKey)
+        if (!queue) {
+          queue = []
+          pendingDupEnds.set(rangeKey, queue)
+        }
+        queue.push(pair.endName)
+      } else {
+        const queue = pendingDupEnds.get(rangeKey)
+        if (queue && queue.length > 0) {
+          newName = queue.shift()
+        } else {
+          const pair = uniqueRangePairNames(usedNames, bm.prefix, idParts, MAX_MARK_NAME_LEN)
+          newName = pair.endName
+          usedNames.add(pair.endName)
+        }
+      }
+    } else {
+      newName = uniqueMarkName(usedNames, bm.name, MAX_MARK_NAME_LEN)
+      usedNames.add(newName)
+    }
+
     const res = parseJson(doc.renameBookmark(bm.sec, bm.para, bm.ctrlIdx, newName), null)
     if (res && res.ok === true) {
-      usedNames.add(newName)
       seen.add(newName)
       renamed.push({
         from: bm.name,
@@ -566,7 +803,35 @@ export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
       })
     }
   }
-  return { renamed }
+
+  // 4. Delete earlier duplicate setting marks LAST in reverse control order so no ctrlIdx shifts earlier renames.
+  const removed = []
+  if (toDelete.length > 0) {
+    const deleteOrder = [...toDelete].sort(compareReverseControlOrder)
+    const deletedLocs = new Set()
+    for (const bm of deleteOrder) {
+      const res = parseJson(doc.deleteBookmark(bm.sec, bm.para, bm.ctrlIdx), null)
+      if (res && res.ok === true) {
+        deletedLocs.add(`${bm.sec}:${bm.para}:${bm.ctrlIdx}`)
+      }
+    }
+    for (const bm of toDelete) {
+      if (deletedLocs.has(`${bm.sec}:${bm.para}:${bm.ctrlIdx}`)) {
+        removed.push({
+          name: bm.name,
+          prefix: bm.prefix,
+          sec: bm.sec,
+          para: bm.para,
+          offset: bm.offset,
+          ctrlIdx: bm.ctrlIdx,
+        })
+      }
+    }
+  }
+
+  renamed.sort(compareMarks)
+  removed.sort(compareMarks)
+  return { renamed, removed }
 }
 
 function comparePlaces(a, b) {

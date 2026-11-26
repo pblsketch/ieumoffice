@@ -24,6 +24,7 @@ import {
   encodeMarkName,
   findRangeMarks,
   isAppMarkName,
+  isAppTocHyperlinkField,
   listMarks,
   readAllDocSettings,
   readDocSetting,
@@ -194,6 +195,137 @@ describe('uniqueMarkName and deduplicateMarks', () => {
     expect(listMarks(dupDoc).map((m) => m.name)).toEqual(['색인:교육학:1', '색인:교육학:1:2'])
     const allNames = JSON.parse(dupDoc.getBookmarks()).map((b: { name: string }) => b.name)
     expect(allNames).toContain('사용자책갈피')
+  })
+
+  it('deduplicates range marks before :시작/:끝, chunked marks via fresh chunkId, and settings without corrupting JSON', async () => {
+    const doc = makeDoc([
+      '원본 차례',
+      '복사 차례',
+      '원본 인용',
+      '복사 인용',
+      '원본 청크',
+      '복사 청크',
+      '원본 설정',
+      '복사 설정',
+    ])
+
+    // Original + placeholder copies for unkeyed TOC range, keyed citation range, chunked citation, and setting
+    expect(
+      addRangeMark(
+        doc,
+        MARK_PREFIXES.toc,
+        '',
+        { sec: 0, para: 0, offset: 0 },
+        { sec: 0, para: 0, offset: 4 },
+      ).ok,
+    ).toBe(true)
+    expect(
+      addRangeMark(
+        doc,
+        MARK_PREFIXES.toc,
+        '임시차례',
+        { sec: 0, para: 1, offset: 0 },
+        { sec: 0, para: 1, offset: 4 },
+      ).ok,
+    ).toBe(true)
+
+    expect(
+      addRangeMark(
+        doc,
+        MARK_PREFIXES.citation,
+        '홍길동2020',
+        { sec: 0, para: 2, offset: 0 },
+        { sec: 0, para: 2, offset: 4 },
+      ).ok,
+    ).toBe(true)
+    expect(
+      addRangeMark(
+        doc,
+        MARK_PREFIXES.citation,
+        '임시인용',
+        { sec: 0, para: 3, offset: 0 },
+        { sec: 0, para: 3, offset: 4 },
+      ).ok,
+    ).toBe(true)
+
+    const longCitationPayload = [
+      '홍길동2020',
+      '매우 긴 인용 메타데이터 문자열로 64자를 넘겨 청크 중복 복구를 검증합니다. 추가 본문 내용입니다.',
+    ]
+    const origChunks = encodeMarkChunks(MARK_PREFIXES.citation, longCitationPayload)
+    const placeholderChunks = encodeMarkChunks(MARK_PREFIXES.citation, longCitationPayload, {
+      chunkId: 'tmpdup',
+    })
+    expect(origChunks.length).toBeGreaterThan(1)
+    for (const name of origChunks) {
+      expect(addMark(doc, { sec: 0, para: 4, offset: 0 }, name).ok).toBe(true)
+    }
+    for (const name of placeholderChunks) {
+      expect(addMark(doc, { sec: 0, para: 5, offset: 0 }, name).ok).toBe(true)
+    }
+
+    expect(addMark(doc, { sec: 0, para: 6, offset: 0 }, '설정:outline={"maxLevel"%3A3}').ok).toBe(
+      true,
+    )
+    expect(addMark(doc, { sec: 0, para: 7, offset: 0 }, '설정:tmp={"maxLevel"%3A3}').ok).toBe(true)
+
+    // Turn all placeholders into exact copy/paste duplicates in HWPX XML
+    const zip = await JSZip.loadAsync(doc.exportHwpx())
+    let sec0 = await zip.file('Contents/section0.xml')!.async('string')
+    sec0 = sec0
+      .replace('차례:임시차례:시작', '차례:시작')
+      .replace('차례:임시차례:끝', '차례:끝')
+      .replace('인용:임시인용:시작', '인용:홍길동2020:시작')
+      .replace('인용:임시인용:끝', '인용:홍길동2020:끝')
+      .replace('설정:tmp={&quot;maxLevel&quot;%3A3}', '설정:outline={&quot;maxLevel&quot;%3A3}')
+      .replace('설정:tmp={"maxLevel"%3A3}', '설정:outline={"maxLevel"%3A3}')
+    for (let i = 0; i < placeholderChunks.length; i++) {
+      sec0 = sec0.replace(placeholderChunks[i]!, origChunks[i]!)
+    }
+    zip.file('Contents/section0.xml', sec0)
+    const dupDoc = new HwpDocument(await zip.generateAsync({ type: 'uint8array' }))
+
+    const res = deduplicateMarks(dupDoc)
+    expect(res.renamed.length).toBeGreaterThanOrEqual(4 + origChunks.length)
+    expect(res.removed).toHaveLength(1)
+    expect(res.removed[0]).toMatchObject({
+      name: '설정:outline={"maxLevel"%3A3}',
+      para: 6,
+    })
+
+    // No duplicate bookmark names remain, and all stay <= 64 chars
+    const allMarks = listMarks(dupDoc)
+    const nameSet = new Set(allMarks.map((m) => m.name))
+    expect(nameSet.size).toBe(allMarks.length)
+    for (const m of allMarks) {
+      expect(m.name.length).toBeLessThanOrEqual(MAX_MARK_NAME_LEN)
+    }
+
+    // 1. Both duplicated range pairs remain valid and paired
+    const ranges = findRangeMarks(dupDoc)
+    expect(ranges.broken).toEqual([])
+    expect(ranges.ranges).toHaveLength(4)
+    expect(ranges.ranges.map((r) => [r.start.name, r.end.name])).toEqual([
+      ['차례:시작', '차례:끝'],
+      ['차례:2:시작', '차례:2:끝'],
+      ['인용:홍길동2020:시작', '인용:홍길동2020:끝'],
+      ['인용:홍길동2020:2:시작', '인용:홍길동2020:2:끝'],
+    ])
+
+    // 2. Both duplicated chunked marks decode losslessly with no incomplete chunks
+    const citationMarks = listMarks(dupDoc, [MARK_PREFIXES.citation]).filter((m) =>
+      m.name.startsWith('인용:%c:'),
+    )
+    const decodedChunks = decodeMarkChunks(citationMarks)
+    expect(decodedChunks.incomplete).toEqual([])
+    expect(decodedChunks.entries).toHaveLength(2)
+    expect(decodedChunks.entries[0]?.parts).toEqual(longCitationPayload)
+    expect(decodedChunks.entries[1]?.parts).toEqual(longCitationPayload)
+    expect(decodedChunks.entries[0]?.chunkId).not.toBe(decodedChunks.entries[1]?.chunkId)
+
+    // 3. Setting JSON remained intact and readable
+    expect(readDocSetting(dupDoc, 'outline')).toEqual({ maxLevel: 3 })
+    expect(readAllDocSettings(dupDoc)).toEqual({ outline: { maxLevel: 3 } })
   })
 })
 
@@ -409,7 +541,12 @@ describe('unsupported placement and validation', () => {
       { sec: 0, para: 0, offset: 0, inTextBox: true },
       { sec: 0, para: 0, offset: 0, isTextBox: true },
       { sec: 0, para: 0, offset: 0, inNote: true },
+      { sec: 0, para: 0, offset: 0, inFootnote: true },
+      { sec: 0, para: 0, offset: 0, inEndnote: true },
       { sec: 0, para: 0, offset: 0, inHeaderFooter: true },
+      { sec: 0, para: 0, offset: 0, isHeader: true },
+      { sec: 0, para: 0, offset: 0, isFooter: true },
+      { sec: 0, para: 0, offset: 0, equationControl: { ctrlIdx: 0 } },
       { sec: 0, para: 0, offset: 0, parentParaIndex: 0, cellIndex: 0, cellParaIndex: 0 },
       { sec: 5, para: 0, offset: 0 },
       { sec: 0, para: 99, offset: 0 },
@@ -421,6 +558,20 @@ describe('unsupported placement and validation', () => {
         reason: 'unsupported_place',
       })
     }
+
+    // Real doc.searchAllText() hit inside a table cell (carries cellContext) must be refused
+    const tableDoc = makeDoc(['본문', ''])
+    tableDoc.pasteHtml(0, 1, 0, '<table><tr><td>표셀텍스트</td></tr></table>')
+    const cellHits = JSON.parse(tableDoc.searchAllText('표셀텍스트', false, true)) as Array<
+      Record<string, unknown>
+    >
+    expect(cellHits).toHaveLength(1)
+    expect(cellHits[0]?.cellContext).toBeTruthy()
+    expect(addMark(tableDoc, cellHits[0]!, '색인:셀금지:1')).toEqual({
+      ok: false,
+      reason: 'unsupported_place',
+    })
+    expect(JSON.parse(tableDoc.getBookmarks())).toEqual([])
 
     expect(
       addRangeMark(
@@ -480,5 +631,70 @@ describe('agent-plugin object-guard exemption for app marks', () => {
     // Deleting paragraph with a non-app user bookmark is still refused
     const delUserBookmark = api.deleteParagraph('사용자 책갈피 문단', 1)
     expect(delUserBookmark).toMatchObject({ ok: false, reason: 'has_objects' })
+  })
+
+  it('exempts app TOC hyperlinks targeting 제목: bookmarks while still protecting normal user hyperlinks', () => {
+    const doc = makeDoc([
+      '제1장 서론',
+      '차례 북마크 링크',
+      '차례 해시 링크',
+      '외부 웹 링크',
+      '사용자 북마크 링크',
+      '꼬리 문단',
+    ])
+    expect(addMark(doc, { sec: 0, para: 0, offset: 0 }, '제목:서론').ok).toBe(true)
+    doc.addBookmark(0, 0, 2, '사용자책갈피')
+
+    doc.insertHyperlinkEx(
+      JSON.stringify({
+        target: { section: 0, para: 1, cellPath: [] },
+        start: 0,
+        end: 8,
+        bookmark: '제목:서론',
+      }),
+    )
+    doc.insertHyperlinkEx(
+      JSON.stringify({
+        target: { section: 0, para: 2, cellPath: [] },
+        start: 0,
+        end: 7,
+        uri: '#제목:서론',
+      }),
+    )
+    doc.insertHyperlinkEx(
+      JSON.stringify({
+        target: { section: 0, para: 3, cellPath: [] },
+        start: 0,
+        end: 6,
+        uri: 'https://example.com',
+      }),
+    )
+    doc.insertHyperlinkEx(
+      JSON.stringify({
+        target: { section: 0, para: 4, cellPath: [] },
+        start: 0,
+        end: 9,
+        bookmark: '사용자책갈피',
+      }),
+    )
+
+    const fields = JSON.parse(doc.getFieldList()) as Array<{ fieldType?: string; command?: string }>
+    expect(fields.filter(isAppTocHyperlinkField)).toHaveLength(2)
+
+    const { api } = makePluginHarness(doc)
+
+    // Paragraphs containing app-owned TOC hyperlinks to 제목: bookmarks may be deleted freely
+    expect(api.deleteParagraph('차례 북마크 링크', 1)).toMatchObject({ ok: true })
+    expect(api.deleteParagraph('차례 해시 링크', 1)).toMatchObject({ ok: true })
+
+    // Paragraphs containing regular user hyperlinks remain protected
+    expect(api.deleteParagraph('외부 웹 링크', 1)).toMatchObject({
+      ok: false,
+      reason: 'has_objects',
+    })
+    expect(api.deleteParagraph('사용자 북마크 링크', 1)).toMatchObject({
+      ok: false,
+      reason: 'has_objects',
+    })
   })
 })

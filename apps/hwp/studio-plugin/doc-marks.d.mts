@@ -39,7 +39,13 @@ export interface MarkPlaceInput {
   inTextBox?: boolean
   isTextBox?: boolean
   inNote?: boolean
+  inFootnote?: boolean
+  inEndnote?: boolean
   inHeaderFooter?: boolean
+  isHeader?: boolean
+  isFooter?: boolean
+  cellContext?: unknown
+  equationControl?: unknown
   path?: unknown
   cellPath?: unknown
   parentParaIndex?: number
@@ -139,6 +145,7 @@ export interface RenamedMark {
 
 export interface DeduplicateMarksResult {
   renamed: RenamedMark[]
+  removed: MarkEntry[]
 }
 
 export type AddRangeMarkResult =
@@ -219,6 +226,15 @@ export interface StripMarksResult {
 
 export declare function markPrefixOf(name: unknown): MarkPrefix | null
 export declare function isAppMarkName(name: unknown): boolean
+export declare function isAppTocHyperlinkField(
+  field:
+    | {
+        fieldType?: string
+        command?: string
+      }
+    | null
+    | undefined,
+): boolean
 export declare function encodeMarkField(value: string | number | boolean): string
 export declare function decodeMarkField(value: string): string
 export declare function encodeMarkName(
