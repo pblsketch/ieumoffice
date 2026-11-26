@@ -921,7 +921,6 @@ describe('hwp outline and multi-scope find ops', () => {
 
   it('reads app-wide hwpOutlineStyleMap from app-settings.json in GENOFFICE_USER_DATA', async () => {
     const dir = tempDir()
-    const userData = join(dir, 'user-data')
     const doc = HwpDocument.createEmpty()
     doc.createBlankDocument()
     doc.insertText(0, 0, 0, '커스텀 장 제목')
@@ -943,7 +942,42 @@ describe('hwp outline and multi-scope find ops', () => {
     expect(r.code, r.stdout).toBe(0)
     expect(r.json().detail.results[0].output).toContain('커스텀 장 제목')
     expect(r.json().detail.results[0].output).toContain('"style":"논문장"')
-    void userData
+  })
+
+  it('forwards ctx.env to blankHwpForEdit so create --type hwpx respects hwpOutlineStyleMap', async () => {
+    const dir = tempDir()
+    const out = join(dir, 'created-outline.hwpx')
+    writeFileSync(
+      join(dir, 'app-settings.json'),
+      JSON.stringify({ hwpOutlineStyleMap: { 논문장: 1 } }),
+      'utf8',
+    )
+    const r = await run(
+      [
+        'create',
+        '--type',
+        'hwpx',
+        '--ops',
+        ops(dir, [
+          { op: 'insert_paragraphs', where: 'end', paragraphs: ['새 커스텀 장'] },
+          {
+            op: 'style_paragraphs',
+            styles: [{ name: '논문장', size: 16, bold: true }],
+            apply: [{ style: '논문장', find: '새 커스텀 장' }],
+          },
+          { op: 'read_outline' },
+        ]),
+        '--out',
+        out,
+        '--json',
+      ],
+      { env: { GENOFFICE_USER_DATA: dir } },
+    )
+    expect(r.code, r.stdout).toBe(0)
+    const results = r.json().detail.results as Array<{ op: string; output: string }>
+    const readRes = results.find((entry) => entry.op === 'read_outline')
+    expect(readRes?.output).toContain('새 커스텀 장')
+    expect(readRes?.output).toContain('"style":"논문장"')
   })
 
   it('rejects 0 and out-of-range numeric arguments on outline and find_in_document ops', async () => {

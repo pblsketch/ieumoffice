@@ -32,7 +32,8 @@ export const FIND_FALLBACK_VIEWPORT_HEIGHT = 400
 export type FindTabBridge = Pick<
   AgentBridge,
   'findMatches' | 'replaceFindMatches' | 'revealFindMatch' | 'listStyles'
->
+> &
+  Partial<Pick<AgentBridge, 'documentRevision'>>
 
 export interface FindTabProps {
   bridge: FindTabBridge
@@ -150,6 +151,7 @@ export function FindTab({
   const searchSeqRef = useRef(0)
   const hasSearchedRef = useRef(false)
   const selfReplacingRef = useRef(false)
+  const lastSearchRevisionRef = useRef<number | null>(null)
   const lastChangeTickRef = useRef(changeTick)
 
   hasSearchedRef.current = hasSearched
@@ -191,12 +193,33 @@ export function FindTab({
   }, [focusTick, visible])
 
   // Mark results stale on external document changes; never auto-re-search.
+  // When `documentRevision` is available, compare revisions so a debounced
+  // changeTick echo from our own replace does not falsely mark fresh results stale.
   useEffect(() => {
     if (changeTick === lastChangeTickRef.current) return
     lastChangeTickRef.current = changeTick
     if (!hasSearchedRef.current || selfReplacingRef.current) return
+    const readRevision = bridge.documentRevision
+    const recordedRevision = lastSearchRevisionRef.current
+    if (typeof readRevision === 'function' && recordedRevision !== null) {
+      let cancelled = false
+      const seqAtEffect = searchSeqRef.current
+      void readRevision()
+        .then((currentRevision) => {
+          if (cancelled || searchSeqRef.current !== seqAtEffect) return
+          if (typeof currentRevision === 'number' && currentRevision <= recordedRevision) return
+          setStale(true)
+        })
+        .catch(() => {
+          if (!cancelled && searchSeqRef.current === seqAtEffect) setStale(true)
+        })
+      return () => {
+        cancelled = true
+      }
+    }
     setStale(true)
-  }, [changeTick])
+    return undefined
+  }, [changeTick, bridge])
 
   const hasMatches = matches.length > 0
 
@@ -298,8 +321,18 @@ export function FindTab({
       if (!opts?.keepNotice) setReplaceNotice(null)
 
       try {
+        let revBefore: number | null = null
+        if (typeof bridge.documentRevision === 'function') {
+          try {
+            const rev = await bridge.documentRevision()
+            if (typeof rev === 'number') revBefore = rev
+          } catch {
+            // Fall back to changeTick tracking when revision lookup fails.
+          }
+        }
         const result = await bridge.findMatches(options)
         if (seq !== searchSeqRef.current) return
+        lastSearchRevisionRef.current = revBefore
         if (!result.ok) {
           setRegexError(result.error)
           setMatches([])

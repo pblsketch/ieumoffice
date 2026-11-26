@@ -574,4 +574,52 @@ describe('FindTab component', () => {
 
     expect(container.querySelector('[data-find-stale="true"]')).toBeNull()
   })
+
+  it('ignores a debounced changeTick echo arriving after self-replace settles when documentRevision is unchanged', async () => {
+    let revision = 1
+    let currentTick = 1
+    const { bridge, findMatches, replaceFindMatches } = createFakeBridge()
+    const bridgeWithRevision = {
+      ...bridge,
+      documentRevision: vi.fn(async () => revision),
+    }
+    findMatches
+      .mockResolvedValueOnce({ ok: true, total: 1, matches: [makeMatch(0)] })
+      .mockResolvedValueOnce({ ok: true, total: 0, matches: [] })
+    replaceFindMatches.mockImplementationOnce(async () => {
+      // Replace bumps the plugin revision immediately; App.tsx debounces docTick by ~500ms.
+      revision += 1
+      return { ok: true, replaced: 1, skippedObjects: 0, skippedCitations: 0 }
+    })
+
+    await renderFindTab({ bridge: bridgeWithRevision, visible: true, changeTick: currentTick })
+    await act(async () => {
+      setInputValue(
+        container.querySelector<HTMLInputElement>('[data-find-input="query"]')!,
+        'Alpha',
+      )
+    })
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-find-action="search"]')!.click()
+    })
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-find-action="replace-all"]')!.click()
+    })
+    // Simulate debounced docTick echo arriving AFTER runReplace finished (revision is still 2).
+    currentTick += 1
+    await renderFindTab({ bridge: bridgeWithRevision, visible: true, changeTick: currentTick })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(container.querySelector('[data-find-stale="true"]')).toBeNull()
+
+    // A subsequent external edit advances documentRevision and bumps changeTick -> banner appears.
+    revision += 1
+    currentTick += 1
+    await renderFindTab({ bridge: bridgeWithRevision, visible: true, changeTick: currentTick })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(container.querySelector('[data-find-stale="true"]')).not.toBeNull()
+  })
 })

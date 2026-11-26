@@ -256,7 +256,7 @@ async function createHwp(
   }
   const ops = hwpOpsOf(args, ctx)
   const { blankHwpForEdit, closeHwpSession } = await import('../formats/hwp-edit')
-  const session = await blankHwpForEdit()
+  const session = await blankHwpForEdit(ctx.env)
   try {
     const result = await runHwpBatch(session, ops, args, { output, format: type })
     return { ...result, summary: `created ${basename(output)}` }

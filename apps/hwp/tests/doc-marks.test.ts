@@ -614,9 +614,12 @@ describe('agent-plugin object-guard exemption for app marks', () => {
 
     const { api, doc: getDoc } = makePluginHarness(doc)
 
-    // Deleting paragraph with app marks succeeds without has_objects
+    // Deleting paragraph with app marks succeeds without has_objects and reports removed marks
     const delAppMark = api.deleteParagraph('앱 표시가 있는 지울 문단', 1)
-    expect(delAppMark).toMatchObject({ ok: true })
+    expect(delAppMark).toMatchObject({
+      ok: true,
+      removedAppMarks: ['색인:교육학:1', '인용:홍길동2020:1'],
+    })
     expect(listMarks(getDoc()).map((m) => m.name)).not.toContain('색인:교육학:1')
     expect(listMarks(getDoc()).map((m) => m.name)).not.toContain('인용:홍길동2020:1')
 
@@ -684,8 +687,15 @@ describe('agent-plugin object-guard exemption for app marks', () => {
     const { api } = makePluginHarness(doc)
 
     // Paragraphs containing app-owned TOC hyperlinks to 제목: bookmarks may be deleted freely
-    expect(api.deleteParagraph('차례 북마크 링크', 1)).toMatchObject({ ok: true })
-    expect(api.deleteParagraph('차례 해시 링크', 1)).toMatchObject({ ok: true })
+    // and report the removed TOC link targets for AI replies.
+    expect(api.deleteParagraph('차례 북마크 링크', 1)).toMatchObject({
+      ok: true,
+      removedAppMarks: ['TOC link -> 제목:서론'],
+    })
+    expect(api.deleteParagraph('차례 해시 링크', 1)).toMatchObject({
+      ok: true,
+      removedAppMarks: ['TOC link -> 제목:서론'],
+    })
 
     // Paragraphs containing regular user hyperlinks remain protected
     expect(api.deleteParagraph('외부 웹 링크', 1)).toMatchObject({

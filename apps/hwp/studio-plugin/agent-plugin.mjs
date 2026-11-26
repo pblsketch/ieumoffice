@@ -1767,6 +1767,55 @@ function appTocHyperlinkFieldsOf(doc) {
   }
 }
 
+/** Readable label for an app-owned TOC hyperlink field (e.g. `TOC link -> 제목:서론`). */
+function appTocHyperlinkLabelOf(field) {
+  const raw = typeof field?.command === 'string' ? field.command : ''
+  let target = ''
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]
+    if (ch === '\\' && i + 1 < raw.length) {
+      target += raw[i + 1]
+      i += 1
+      continue
+    }
+    if (ch === ';') break
+    target += ch
+  }
+  const clean = target.startsWith('?') || target.startsWith('#') ? target.slice(1) : target
+  return clean ? `TOC link -> ${clean}` : 'TOC link'
+}
+
+/** Snapshot of all app-owned mark labels (bookmarks + TOC links) in `doc`. */
+function appMarkLabelsOf(doc) {
+  const labels = []
+  for (const mark of appMarkBookmarksOf(doc)) {
+    if (typeof mark?.name === 'string' && mark.name.length > 0) labels.push(mark.name)
+  }
+  for (const field of appTocHyperlinkFieldsOf(doc)) {
+    labels.push(appTocHyperlinkLabelOf(field))
+  }
+  return labels
+}
+
+/** Multiset difference: labels present in `before` that are no longer present in `after`. */
+function diffRemovedLabels(before, after) {
+  if (before.length === 0) return []
+  const remaining = new Map()
+  for (const label of after) {
+    remaining.set(label, (remaining.get(label) ?? 0) + 1)
+  }
+  const removed = []
+  for (const label of before) {
+    const count = remaining.get(label) ?? 0
+    if (count > 0) {
+      remaining.set(label, count - 1)
+    } else {
+      removed.push(label)
+    }
+  }
+  return removed
+}
+
 /**
  * Control keys (`${list}:${para}:${controlIndex}`) for unnamed controls belonging to
  * app-owned TOC hyperlinks (`제목:...`), matched by raw stream position when available.
@@ -8832,6 +8881,8 @@ export const agentPlugin = {
       const approvedMemos = Array.isArray(options?.approvedMemoIds)
         ? new Set(options.approvedMemoIds)
         : null
+      const isWorkpaneUserEdit = WORKPANE_CHANGES.has(label) || options?.foreign === true
+      const trackAppMarks = !isWorkpaneUserEdit && !MEMO_CHANGES.has(label)
       own = true
       // not left to the editor's event alone: a stale text would send the model after
       // words that are no longer there
@@ -8847,6 +8898,7 @@ export const agentPlugin = {
             const marked = marks
             const before = paragraphCounts(doc, marked)
             const watched = MEMO_CHANGES.has(label) || allowMemoRemoval ? null : memoEntriesOf(doc)
+            const appMarksBefore = trackAppMarks ? appMarkLabelsOf(doc) : null
             const known = headsBefore(doc)
             const changed = fn(doc)
             const { heads, taller } = settleHeads(doc, known)
@@ -8865,11 +8917,20 @@ export const agentPlugin = {
                 throw failure
               }
             }
+            const removedAppMarks =
+              appMarksBefore && appMarksBefore.length > 0 && result?.ok === true
+                ? diffRemovedLabels(appMarksBefore, appMarkLabelsOf(doc))
+                : []
+            const finalResult =
+              result?.ok === true && (taller.length > 0 || removedAppMarks.length > 0)
+                ? {
+                    ...result,
+                    ...(taller.length > 0 ? { tallerRows: taller } : {}),
+                    ...(removedAppMarks.length > 0 ? { removedAppMarks } : {}),
+                  }
+                : result
             return {
-              result:
-                taller.length > 0 && result?.ok === true
-                  ? { ...result, tallerRows: taller }
-                  : result,
+              result: finalResult,
               before,
               after: paragraphCounts(doc, marked),
               heads,
@@ -8891,13 +8952,12 @@ export const agentPlugin = {
         }
         headsKnown = done.heads
         headsRevision = revision
-        const isWorkpaneUserEdit = WORKPANE_CHANGES.has(label) || options?.foreign === true
         if (isWorkpaneUserEdit) {
           if (marks.length > 0) {
             setMarks([])
             refreshMarks()
           }
-          syncMemos({ notify: false })
+          syncMemos({ notify: label === 'workpane-replace' })
           refreshMemoAnchors()
           foreign += 1
         } else {

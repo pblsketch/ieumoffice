@@ -6335,4 +6335,19 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
     expect(ok.output).toContain('"kind":"footnote"')
     expect(ok.output).toContain('"page":3')
   })
+
+  it('names removed app marks in the AI tool output when an edit deletes them', async () => {
+    const deleteParagraph = vi.fn(async () => ({
+      ok: true as const,
+      text: '지울 문단',
+      emptied: false,
+      inTable: false,
+      removedAppMarks: ['색인:교육학:1', '인용:홍길동2020:1'],
+    }))
+    const env = setup({ deleteParagraph })
+    const res = await env.call('delete_paragraph', { find: '지울 문단' })
+    expect(res.isError).toBeUndefined()
+    expect(res.mutated).toBe(true)
+    expect(res.output).toContain('Removed app mark(s): 색인:교육학:1, 인용:홍길동2020:1.')
+  })
 })

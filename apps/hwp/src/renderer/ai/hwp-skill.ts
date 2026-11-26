@@ -3165,6 +3165,22 @@ function tallerRowsNote(rows: AgentTallerRow[]): string {
   return ` ${named.charAt(0).toUpperCase()}${named.slice(1)} ${verb}, which only format_cells row_height_mm lowers.`
 }
 
+/** App-owned document marks (bookmarks or TOC links) removed as a side effect of an edit. */
+function removedAppMarksOf(result: unknown): string[] {
+  const marks =
+    typeof result === 'object' && result !== null
+      ? (result as { removedAppMarks?: unknown }).removedAppMarks
+      : undefined
+  return Array.isArray(marks)
+    ? marks.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : []
+}
+
+function removedAppMarksNote(marks: string[]): string {
+  if (marks.length === 0) return ''
+  return ` Removed app mark(s): ${marks.join(', ')}.`
+}
+
 function noSuchTable(table: number, count: number): string {
   return count === 0
     ? 'This document has no tables.'
@@ -3400,6 +3416,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
   let cutAtStart: number | 'unmeasured' | 'unknown' = 'unmeasured'
   // what the change of the call being run said about the rows of a head across the columns
   let tallerRows: AgentTallerRow[] = []
+  // app-owned document marks removed by the change of the call being run
+  let removedAppMarks: string[] = []
   const cutCellsNow = async (): Promise<AgentCutCell[] | null> => {
     try {
       return await bridge.cutCells()
@@ -3452,6 +3470,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
   ): Promise<ChangeOutcome<T>> => {
     const firstResult = await first()
     tallerRows = tallerRowsOf(firstResult)
+    removedAppMarks = removedAppMarksOf(firstResult)
     if (!isMemoRemovalRefusal(firstResult)) return { kind: 'done', result: firstResult }
     const approved = await deps.confirmMemoRemoval(firstResult)
     if (!approved) return { kind: 'declined', refusal: firstResult }
@@ -3459,6 +3478,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
     // would now take another one, it is refused again and nothing is changed
     const second = await retry({ approvedMemoIds: firstResult.memos.map((memo) => memo.id) })
     tallerRows = tallerRowsOf(second)
+    removedAppMarks = removedAppMarksOf(second)
     if (isMemoRemovalRefusal(second)) return { kind: 'changed', refusal: second }
     return { kind: 'done', result: second }
   }
@@ -6662,9 +6682,14 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           }
           const pagesBefore = tool.edits ? await pagesNow() : null
           tallerRows = []
+          removedAppMarks = []
           const done = await run(withDoubledEscapesUndone(call), signal)
           if (done.isError) return done
-          const output = done.output + unusedNote(tool, prepared) + tallerRowsNote(tallerRows)
+          const output =
+            done.output +
+            unusedNote(tool, prepared) +
+            tallerRowsNote(tallerRows) +
+            removedAppMarksNote(removedAppMarks)
           // read once the change returned: the editor pages the document when it commits
           const pages = pagesBefore !== null && done.mutated ? await pagesNow() : null
           if (pages === null || pages === pagesBefore) return { ...done, output }
