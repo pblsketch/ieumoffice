@@ -136,6 +136,20 @@ pub fn run() {
             commands::home::mobile_home_open_external_url,
 
             // T7 ai
+            commands::ai::relay::mobile_ai_relay_start,
+            commands::ai::relay::mobile_ai_relay_cancel,
+            commands::ai::relay::mobile_ai_get_custom_endpoint,
+            commands::ai::relay::mobile_ai_set_custom_endpoint,
+            commands::ai::relay::mobile_ai_clear_custom_endpoint,
+            commands::ai::web::mobile_ai_search_start,
+            commands::ai::web::mobile_ai_web_fetch_start,
+            commands::ai::web::mobile_ai_web_cancel,
+            commands::ai::tools::mobile_ai_get_tool_settings,
+            commands::ai::tools::mobile_ai_set_tool_settings,
+            commands::ai::tools::mobile_ai_results_size,
+            commands::ai::tools::mobile_ai_results_clear,
+            commands::ai::tools::mobile_ai_results_put_image,
+            commands::ai::tools::mobile_ai_results_read_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running IeumOffice mobile application");

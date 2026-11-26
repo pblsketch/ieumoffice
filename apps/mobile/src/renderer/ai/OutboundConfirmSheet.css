@@ -1,0 +1,42 @@
+/* The address question over the AI sheet (decision 0062); tokens only. */
+.mobile-ai-outbound {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-ai-outbound-intro,
+.mobile-ai-outbound-hint {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+}
+
+.mobile-ai-outbound-hint {
+  color: var(--text-secondary);
+}
+
+.mobile-ai-outbound-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mobile-ai-outbound-address {
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  overflow-wrap: anywhere;
+}
+
+.mobile-ai-outbound-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}

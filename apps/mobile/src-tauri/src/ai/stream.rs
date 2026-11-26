@@ -1,8 +1,6 @@
 use crate::ai::chatgpt::{ChatGptService, ResponsesInputMessage};
-use crate::ai::http::{build_safe_http_client, enforce_https_url, extract_safe_error_code};
-use crate::ai::settings::{MobileAiSettingsStore, provider_chat_url};
+use crate::ai::settings::MobileAiSettingsStore;
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -36,7 +34,7 @@ pub struct MobileAiStreamEvent {
     pub stop_reason: Option<String>,
 }
 
-/// Manages active AI stream requests and cancellation across ChatGPT Direct and HTTPS BYOK providers.
+/// Manages active ChatGPT Direct stream requests and their cancellation (key providers use the relay).
 pub struct MobileAiStreamManager {
     settings: Arc<MobileAiSettingsStore>,
     chatgpt: Arc<ChatGptService>,
@@ -149,119 +147,13 @@ impl MobileAiStreamManager {
                 }
             }
         } else {
-            if provider == "openrouter"
-                && self.settings.is_openrouter_free_only()?
-                && !model.ends_with(":free")
-            {
-                self.cancels.lock().unwrap().remove(&req.request_id);
-                return Err(MobileError::with_detail(
-                    MobileErrorCode::InvalidArgument,
-                    "mobile.ai.openrouterFreeOnly",
-                    "OpenRouter free-only connection permits only :free models",
-                ));
-            }
-            let api_key = self
-                .settings
-                .get_api_key(&provider)?
-                .filter(|k| !k.trim().is_empty())
-                .ok_or_else(|| MobileError::new(MobileErrorCode::AuthNotConfigured, "mobile.ai.missingKey"))?;
-            let endpoint = provider_chat_url(&provider)?;
-            let _ = enforce_https_url(endpoint, false)?;
-            let client = build_safe_http_client(120)?;
-            let mut body = if provider == "anthropic" {
-                let mut obj = serde_json::json!({
-                    "model": model,
-                    "system": req.system,
-                    "messages": req.messages,
-                    "max_tokens": req.max_tokens.unwrap_or(4096),
-                    "stream": true,
-                });
-                if !req.tools.is_empty() {
-                    obj["tools"] = serde_json::json!(req.tools);
-                }
-                obj
-            } else {
-                let mut chat_messages = vec![serde_json::json!({ "role": "system", "content": req.system })];
-                chat_messages.extend(req.messages.clone());
-                let mut obj = serde_json::json!({
-                    "model": model,
-                    "messages": chat_messages,
-                    "stream": true,
-                });
-                if let Some(max_t) = req.max_tokens {
-                    obj["max_tokens"] = serde_json::json!(max_t);
-                }
-                if !req.tools.is_empty() {
-                    obj["tools"] = serde_json::json!(req.tools);
-                }
-                obj
-            };
-            let _ = &mut body;
-            let mut builder = client
-                .post(endpoint)
-                .header("accept", "text/event-stream")
-                .header("content-type", "application/json")
-                .json(&body);
-            if provider == "anthropic" {
-                builder = builder
-                    .header("x-api-key", api_key)
-                    .header("anthropic-version", "2023-06-01");
-            } else {
-                builder = builder.bearer_auth(api_key);
-            }
-            let req_id = req.request_id.clone();
-            tokio::select! {
-                _ = &mut rx => Err(MobileError::new(MobileErrorCode::UserCancelled, "mobile.ai.cancelled")),
-                send_res = builder.send() => {
-                    let resp = send_res.map_err(|_| MobileError::new(MobileErrorCode::NetworkError, "mobile.ai.networkError"))?;
-                    let status = resp.status().as_u16();
-                    if !(200..300).contains(&status) {
-                        let err_body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
-                        let code = extract_safe_error_code(&err_body).unwrap_or_else(|| format!("http_{status}"));
-                        let err_code = if status == 429 { MobileErrorCode::RateLimited } else if status == 401 || status == 403 { MobileErrorCode::AuthDenied } else { MobileErrorCode::NetworkError };
-                        Err(MobileError::with_detail(err_code, "mobile.ai.providerError", code))
-                    } else {
-                        let mut stream = resp.bytes_stream();
-                        let mut buf = String::new();
-                        while let Some(chunk) = stream.next().await {
-                            let bytes = chunk.map_err(|_| MobileError::new(MobileErrorCode::NetworkError, "mobile.ai.streamInterrupted"))?;
-                            buf.push_str(&String::from_utf8_lossy(&bytes));
-                            while let Some(pos) = buf.find('\n') {
-                                let line = buf[..pos].trim_end_matches('\r').to_string();
-                                buf.drain(..=pos);
-                                let Some(data) = line.strip_prefix("data:") else { continue };
-                                let data = data.trim();
-                                if data.is_empty() || data == "[DONE]" { continue; }
-                                if let Ok(ev) = serde_json::from_str::<serde_json::Value>(data) {
-                                    let delta = ev
-                                        .pointer("/choices/0/delta/content")
-                                        .or_else(|| ev.pointer("/delta/text"))
-                                        .and_then(|v| v.as_str());
-                                    if let Some(text) = delta {
-                                        emit(MobileAiStreamEvent {
-                                            request_id: req_id.clone(),
-                                            kind: "delta".to_string(),
-                                            text: Some(text.to_string()),
-                                            error: None,
-                                            error_code: None,
-                                            stop_reason: None,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        emit(MobileAiStreamEvent {
-                            request_id: req_id,
-                            kind: "done".to_string(),
-                            text: None,
-                            error: None,
-                            error_code: None,
-                            stop_reason: Some("end_turn".to_string()),
-                        });
-                        Ok(())
-                    }
-                }
-            }
+            // Key providers run the PC protocol code in the webview and send through the
+            // sealed relay (`mobile_ai_relay_start`); this command serves ChatGPT only.
+            Err(MobileError::with_detail(
+                MobileErrorCode::InvalidArgument,
+                "mobile.ai.useRelay",
+                "key providers stream through mobile_ai_relay_start",
+            ))
         };
 
         self.cancels.lock().unwrap().remove(&req.request_id);
