@@ -40,6 +40,7 @@ const EXPORTS: &[&str] = &[
     "ieum_sheets_engine_abi_version",
     "ieum_sheets_engine_new",
     "ieum_sheets_engine_handle_line",
+    "ieum_sheets_engine_crypto_line",
     "ieum_sheets_engine_free_response",
     "ieum_sheets_engine_free",
 ];

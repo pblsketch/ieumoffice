@@ -23,15 +23,22 @@
 //! - [`ieum_sheets_engine_handle_line`] — answers one request line. Never
 //!   null for a non-null engine; the caller frees the answer with
 //!   [`ieum_sheets_engine_free_response`]. Thread-safe: calls may overlap.
+//! - [`ieum_sheets_engine_crypto_line`] — answers one password request
+//!   (probe, decrypt, encrypt; see `crypto.rs`) under the engine's work-folder
+//!   rule. Same buffer contract as `handle_line`.
 //! - [`ieum_sheets_engine_free`] — drops the engine.
 //!
 //! No panic ever crosses these functions.
 
+mod cfb_fat;
+pub mod crypto;
 mod dispatch;
 mod engine;
 pub mod path_guard;
 mod recalc_worker;
 
+#[cfg(test)]
+mod crypto_tests;
 #[cfg(test)]
 mod tests;
 
@@ -42,8 +49,8 @@ pub use dispatch::{ErrorBody, PROTOCOL_VERSION, Response};
 pub use engine::SheetsEngine;
 pub use path_guard::PATH_OUTSIDE_WORK_FOLDER;
 
-/// Bumped whenever a signature below changes.
-pub const ABI_VERSION: u32 = 1;
+/// Bumped whenever a signature below changes (2: `ieum_sheets_engine_crypto_line`).
+pub const ABI_VERSION: u32 = 2;
 
 /// The answer to a request whose handling panicked. Same code family and
 /// sentence style as the engine's own `workbook_error` for an IronCalc
@@ -166,9 +173,54 @@ pub unsafe extern "C" fn ieum_sheets_engine_handle_line(
     Box::into_raw(answer).cast::<u8>()
 }
 
+/// Answers one crypto request line as JSON text, turning a panic into an
+/// error answer of the same shape.
+pub fn answer_crypto_line(engine: &SheetsEngine, line: &str) -> String {
+    catch_unwind(AssertUnwindSafe(|| {
+        crypto::handle_crypto_line(engine.work_root(), line)
+    }))
+    .unwrap_or_else(|_| {
+        serde_json::json!({
+            "ok": false,
+            "error": { "code": crypto::CODE_UNSUPPORTED, "message": PANIC_MESSAGE },
+        })
+        .to_string()
+    })
+}
+
+/// # Safety
+/// Same as [`ieum_sheets_engine_handle_line`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ieum_sheets_engine_crypto_line(
+    engine: *const IeumSheetsEngine,
+    line_ptr: *const u8,
+    line_len: usize,
+    out_len: *mut usize,
+) -> *mut u8 {
+    if engine.is_null() || out_len.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: the caller guarantees a live engine.
+    let engine = unsafe { &(*engine).0 };
+    let bytes: &[u8] = if line_ptr.is_null() || line_len == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller guarantees the pointer and length.
+        unsafe { std::slice::from_raw_parts(line_ptr, line_len) }
+    };
+    let line = String::from_utf8_lossy(bytes);
+    let answer = answer_crypto_line(engine, &line)
+        .into_bytes()
+        .into_boxed_slice();
+    // SAFETY: checked non-null above.
+    unsafe { *out_len = answer.len() };
+    Box::into_raw(answer).cast::<u8>()
+}
+
 /// # Safety
 /// `ptr` and `len` must be a pair returned by
-/// [`ieum_sheets_engine_handle_line`], freed once.
+/// [`ieum_sheets_engine_handle_line`] or [`ieum_sheets_engine_crypto_line`],
+/// freed once.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ieum_sheets_engine_free_response(ptr: *mut u8, len: usize) {
     if ptr.is_null() {

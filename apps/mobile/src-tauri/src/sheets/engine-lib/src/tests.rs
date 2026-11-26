@@ -704,9 +704,10 @@ unsafe impl Send for FfiEngine {}
 unsafe impl Sync for FfiEngine {}
 
 #[test]
-fn abi_version_is_one() {
+fn abi_version_is_two() {
     assert_eq!(crate::ieum_sheets_engine_abi_version(), crate::ABI_VERSION);
-    assert_eq!(crate::ABI_VERSION, 1);
+    // 2: `ieum_sheets_engine_crypto_line` (the app's `engine.rs` expects it).
+    assert_eq!(crate::ABI_VERSION, 2);
 }
 
 #[test]

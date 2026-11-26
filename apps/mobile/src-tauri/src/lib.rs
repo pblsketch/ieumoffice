@@ -82,6 +82,7 @@ pub fn run() {
             commands::ai::mobile_chatgpt_sign_out,
             // T1 sheets
             commands::sheets::mobile_sheets_request,
+            commands::sheets::mobile_sheets_crypto,
             commands::sheets::mobile_sheets_copy_session_to_temp,
             commands::sheets::mobile_sheets_temp_create_dir,
             commands::sheets::mobile_sheets_temp_new_path,

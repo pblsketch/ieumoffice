@@ -81,6 +81,73 @@ export function sheetsEngineRequest<T = unknown>(
   return invokeMobileCommand(client.transport, 'mobile_sheets_request', { line })
 }
 
+/** The engine library's answer to a password request (`engine-lib/src/crypto.rs`). */
+export type SheetsCryptoAnswer<T> =
+  | { readonly ok: true; readonly result: T }
+  | { readonly ok: false; readonly error: SheetsEngineErrorBody }
+
+/**
+ * Failure codes of a password request: `wrong_password` (ask again),
+ * `unsupported` (an encryption this app cannot open), `damaged` (the
+ * integrity check failed), `not_encrypted`, `io`, `invalid_request`.
+ */
+export type SheetsCryptoErrorCode =
+  | 'wrong_password'
+  | 'unsupported'
+  | 'damaged'
+  | 'not_encrypted'
+  | 'io'
+  | 'invalid_request'
+
+export interface SheetsEncryptionProbe {
+  readonly encrypted: boolean
+  /** Encrypted in a way this app can decrypt. */
+  readonly supported: boolean
+  /** `ooxml` (an encrypted .xlsx/.xlsm package), `xls` (Excel 97-2003) or `other`. */
+  readonly document: 'ooxml' | 'xls' | 'other'
+}
+
+function sheetsCrypto<T>(
+  client: Pick<MobileClient, 'transport'>,
+  request: Readonly<Record<string, unknown>>,
+): Promise<SheetsCryptoAnswer<T>> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_crypto', {
+    line: JSON.stringify(request),
+  })
+}
+
+/** Whether a file in the work folder is password protected, and whether the app can open it. */
+export function sheetsProbeEncryption(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+): Promise<SheetsCryptoAnswer<SheetsEncryptionProbe>> {
+  return sheetsCrypto(client, { op: 'probe', path })
+}
+
+/**
+ * Decrypts `source` into the new file `target` (both in the work folder; the
+ * plain workbook never crosses the bridge). `document` tells what came out:
+ * an OOXML package, or a plain `.xls` still to convert.
+ */
+export function sheetsDecrypt(
+  client: Pick<MobileClient, 'transport'>,
+  source: string,
+  target: string,
+  password: string,
+): Promise<SheetsCryptoAnswer<{ readonly document: 'ooxml' | 'xls' }>> {
+  return sheetsCrypto(client, { op: 'decrypt', source, target, password })
+}
+
+/** Encrypts the plain workbook package `source` into the new file `target` (ECMA-376 agile, as the desktop). */
+export function sheetsEncrypt(
+  client: Pick<MobileClient, 'transport'>,
+  source: string,
+  target: string,
+  password: string,
+): Promise<SheetsCryptoAnswer<Record<string, never>>> {
+  return sheetsCrypto(client, { op: 'encrypt', source, target, password })
+}
+
 /** Copies the active document into a fresh working copy in the work folder. */
 export function sheetsCopySessionToTemp(
   client: Pick<MobileClient, 'transport'>,

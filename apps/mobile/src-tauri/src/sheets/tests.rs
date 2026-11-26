@@ -170,6 +170,53 @@ fn the_linked_engine_answers_protocol_lines() {
     );
 }
 
+/// The password commands of the linked library: a workbook the desktop
+/// encrypted is probed, refused with a wrong password, decrypted into the work
+/// folder with the right one, and encrypted again; paths outside the work
+/// folder are refused.
+#[test]
+fn the_linked_engine_decrypts_and_encrypts_inside_the_work_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SheetsState::new(dir.path()).unwrap();
+    let root = state.workspace.root().to_path_buf();
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/sheets/engine-lib/tests/fixtures/crypto");
+    let locked = root.join("locked.xlsx");
+    fs::copy(fixtures.join("small.pc-agile.xlsx"), &locked).unwrap();
+    let crypto = |request: Value| parse(&state.engine.crypto_line(&request.to_string()));
+
+    assert_eq!(
+        crypto(json!({ "op": "probe", "path": locked }))["result"],
+        json!({ "encrypted": true, "supported": true, "document": "ooxml" })
+    );
+    let plain = root.join("plain.xlsx");
+    let wrong =
+        crypto(json!({ "op": "decrypt", "source": locked, "target": plain, "password": "nope" }));
+    assert_eq!(wrong["error"]["code"], json!("wrong_password"));
+    assert!(!plain.exists());
+    let opened = crypto(
+        json!({ "op": "decrypt", "source": locked, "target": plain, "password": "비밀번호 pw1" }),
+    );
+    assert_eq!(opened["result"]["document"], json!("ooxml"));
+    assert_eq!(
+        fs::read(&plain).unwrap(),
+        fs::read(fixtures.join("small.xlsx")).unwrap()
+    );
+    let relocked = root.join("relocked.xlsx");
+    let encrypted =
+        crypto(json!({ "op": "encrypt", "source": plain, "target": relocked, "password": "pw" }));
+    assert_eq!(encrypted["ok"], json!(true));
+    assert_eq!(
+        crypto(json!({ "op": "probe", "path": relocked }))["result"]["encrypted"],
+        json!(true)
+    );
+    let outside = dir.path().join("outside.xlsx");
+    let refused =
+        crypto(json!({ "op": "decrypt", "source": locked, "target": outside, "password": "pw" }));
+    assert_eq!(refused["error"]["code"], json!("invalid_request"));
+    assert!(!outside.exists());
+}
+
 /// A panic inside the engine fails only that request, even though this crate
 /// may be built with `panic = "abort"` (the library unwinds on its own).
 /// Debug builds link the library with its `test-panic` feature.
