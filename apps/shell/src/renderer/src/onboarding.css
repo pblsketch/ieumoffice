@@ -42,7 +42,7 @@
   min-height: 420px;
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 48px);
-  border-radius: 14px;
+  border-radius: 16px;
   background: #fff;
   box-shadow:
     0 24px 64px rgba(35, 36, 37, 0.22),
@@ -233,7 +233,7 @@
   height: 6px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--onb-border-strong);
   cursor: pointer;
   transition: background var(--onb-transition);

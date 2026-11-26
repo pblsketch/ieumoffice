@@ -154,7 +154,7 @@ body {
   width: 18px;
   height: 18px;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--checkbox-bg);
   font-size: 12px;
   line-height: 1;
