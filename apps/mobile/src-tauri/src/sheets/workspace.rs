@@ -9,9 +9,10 @@
 //! open workbook keeps a session cache; the WebView may not name paths in it.
 
 use std::fs;
-use std::io;
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
@@ -26,6 +27,15 @@ pub const ENGINE_DIR_NAME: &str = "engine";
 pub struct SheetsWorkspace {
     root: PathBuf,
     engine_dir: PathBuf,
+}
+
+/// What `SheetsWorkspace::stat` found at a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SheetsTempStat {
+    pub size: u64,
+    pub is_file: bool,
+    pub is_dir: bool,
 }
 
 pub use super::path_guard::is_within;
@@ -179,6 +189,104 @@ impl SheetsWorkspace {
             self.resolve(raw)?;
         }
         fs::write(&path, bytes).map_err(io_error)
+    }
+
+    /// Appends to a file inside the work folder (creating it and its parent
+    /// folders inside the work folder as needed). A save writes large patched
+    /// entries in pieces so no single WebView message holds a whole part.
+    pub fn append_bytes(&self, raw: &str, bytes: &[u8]) -> MobileResult<()> {
+        let path = self.resolve(raw)?;
+        if let Some(parent) = path.parent()
+            && parent != self.root
+        {
+            fs::create_dir_all(parent).map_err(io_error)?;
+            self.resolve(raw)?;
+        }
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(io_error)?;
+        file.write_all(bytes).map_err(io_error)
+    }
+
+    /// Reads `length` bytes from `offset` (both optional: the whole file from
+    /// the start). Reading past the end returns what is there.
+    pub fn read_range(
+        &self,
+        raw: &str,
+        offset: Option<u64>,
+        length: Option<u64>,
+    ) -> MobileResult<Vec<u8>> {
+        let path = self.resolve(raw)?;
+        if offset.is_none() && length.is_none() {
+            return fs::read(&path).map_err(io_error);
+        }
+        let mut file = fs::File::open(&path).map_err(io_error)?;
+        file.seek(SeekFrom::Start(offset.unwrap_or(0)))
+            .map_err(io_error)?;
+        let mut bytes = Vec::new();
+        match length {
+            Some(length) => {
+                file.take(length)
+                    .read_to_end(&mut bytes)
+                    .map_err(io_error)?;
+            }
+            None => {
+                file.read_to_end(&mut bytes).map_err(io_error)?;
+            }
+        }
+        Ok(bytes)
+    }
+
+    /// Creates a folder (and its missing parents) inside the work folder.
+    pub fn make_dir(&self, raw: &str) -> MobileResult<()> {
+        let path = self.resolve(raw)?;
+        fs::create_dir_all(&path).map_err(io_error)?;
+        self.resolve(raw).map(|_| ())
+    }
+
+    /// Moves a file inside the work folder, replacing the target.
+    pub fn rename(&self, from: &str, to: &str) -> MobileResult<()> {
+        let from = self.resolve(from)?;
+        let to = self.resolve(to)?;
+        fs::rename(&from, &to).map_err(io_error)
+    }
+
+    /// Copies a file inside the work folder, replacing the target; returns
+    /// the number of bytes copied.
+    pub fn copy(&self, from: &str, to: &str) -> MobileResult<u64> {
+        let from = self.resolve(from)?;
+        let to = self.resolve(to)?;
+        fs::copy(&from, &to).map_err(io_error)
+    }
+
+    /// What is at a path inside the work folder, or `None` when nothing is.
+    pub fn stat(&self, raw: &str) -> MobileResult<Option<SheetsTempStat>> {
+        let path = self.resolve(raw)?;
+        match fs::metadata(&path) {
+            Ok(metadata) => Ok(Some(SheetsTempStat {
+                size: metadata.len(),
+                is_file: metadata.is_file(),
+                is_dir: metadata.is_dir(),
+            })),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(io_error(error)),
+        }
+    }
+
+    /// Lowercase hex SHA-256 of a file inside the work folder, streamed.
+    pub fn sha256(&self, raw: &str) -> MobileResult<String> {
+        use sha2::{Digest, Sha256};
+        let path = self.resolve(raw)?;
+        let mut file = fs::File::open(&path).map_err(io_error)?;
+        let mut hasher = Sha256::new();
+        io::copy(&mut file, &mut hasher).map_err(io_error)?;
+        Ok(hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect())
     }
 
     /// Deletes a file or a whole folder inside the work folder. A path that is

@@ -281,3 +281,194 @@ fn hwp_and_hwpx_compression_matches_the_app_before_the_engine() {
         )
     );
 }
+
+#[test]
+fn workspace_file_operations_for_the_save_path_stay_inside_its_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let root = workspace.root().to_path_buf();
+    let raw = |path: &std::path::Path| path.to_string_lossy().into_owned();
+
+    // Folders and appended pieces (a large patched entry arrives in pieces).
+    let save_dir = root.join("ai-excel-save-abc").join("extract-0");
+    workspace.make_dir(&raw(&save_dir)).unwrap();
+    assert!(save_dir.is_dir());
+    let part = root.join("ai-excel-save-abc").join("replace-0.bin");
+    workspace.append_bytes(&raw(&part), b"<sheet>").unwrap();
+    workspace
+        .append_bytes(&raw(&part), "\u{d55c}</sheet>".as_bytes())
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(&part).unwrap(),
+        "<sheet>\u{d55c}</sheet>"
+    );
+
+    // Ranged and whole reads.
+    assert_eq!(
+        workspace.read_range(&raw(&part), None, None).unwrap(),
+        fs::read(&part).unwrap()
+    );
+    assert_eq!(
+        workspace.read_range(&raw(&part), Some(1), Some(5)).unwrap(),
+        b"sheet"
+    );
+    assert_eq!(
+        workspace
+            .read_range(&raw(&part), Some(100), Some(5))
+            .unwrap(),
+        b""
+    );
+
+    // Stat, copy, rename (replacing), digest.
+    let stat = workspace.stat(&raw(&part)).unwrap().unwrap();
+    assert!(stat.is_file && !stat.is_dir);
+    assert_eq!(stat.size, fs::metadata(&part).unwrap().len());
+    assert!(
+        workspace
+            .stat(&raw(&root.join("missing.xml")))
+            .unwrap()
+            .is_none()
+    );
+    let copy = root.join("copy.bin");
+    workspace.copy(&raw(&part), &raw(&copy)).unwrap();
+    assert_eq!(fs::read(&copy).unwrap(), fs::read(&part).unwrap());
+    let moved = root.join("moved.bin");
+    fs::write(&moved, "old").unwrap();
+    workspace.rename(&raw(&copy), &raw(&moved)).unwrap();
+    assert!(!copy.exists());
+    assert_eq!(fs::read(&moved).unwrap(), fs::read(&part).unwrap());
+    fs::write(&copy, "abc").unwrap();
+    assert_eq!(
+        workspace.sha256(&raw(&copy)).unwrap(),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+
+    // None of them reaches outside the work folder or into the engine's folder.
+    let outside = dir.path().join("secret.txt");
+    fs::write(&outside, "x").unwrap();
+    let engine_file = workspace.engine_temp_dir().join("cells.bin");
+    for target in [
+        raw(&outside),
+        raw(&engine_file),
+        raw(&root.join("..").join("y")),
+    ] {
+        assert!(workspace.make_dir(&target).is_err(), "{target}");
+        assert!(workspace.append_bytes(&target, b"y").is_err(), "{target}");
+        assert!(
+            workspace.read_range(&target, Some(0), Some(1)).is_err(),
+            "{target}"
+        );
+        assert!(workspace.stat(&target).is_err(), "{target}");
+        assert!(workspace.sha256(&target).is_err(), "{target}");
+        assert!(workspace.copy(&raw(&part), &target).is_err(), "{target}");
+        assert!(workspace.copy(&target, &raw(&part)).is_err(), "{target}");
+        assert!(workspace.rename(&raw(&part), &target).is_err(), "{target}");
+        assert!(workspace.rename(&target, &raw(&part)).is_err(), "{target}");
+    }
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "x");
+    assert!(!engine_file.exists());
+}
+
+fn host_file_service(
+    dir: &std::path::Path,
+) -> (
+    std::sync::Arc<tauri_plugin_ieum_mobile::fs::HostFileBridge>,
+    crate::storage::MobileFileService,
+) {
+    let bridge = std::sync::Arc::new(tauri_plugin_ieum_mobile::fs::HostFileBridge::new());
+    let files = crate::storage::MobileFileService::new(dir.join("data"), bridge.clone()).unwrap();
+    (bridge, files)
+}
+
+/// The verified save reaches the original through the storage service, byte
+/// for byte, and only for the active session.
+#[test]
+fn a_verified_save_is_written_back_to_the_sessions_original() {
+    use tauri_plugin_ieum_mobile::fs::MockPickedDoc;
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let (bridge, files) = host_file_service(dir.path());
+    bridge.set_next_pick_open(MockPickedDoc {
+        uri: "host://picked/book.xlsx".into(),
+        name: "book.xlsx".into(),
+        bytes: b"original".to_vec(),
+        writable: true,
+        ephemeral: false,
+    });
+    let session = files.pick_open_file(&["xlsx".into()]).unwrap();
+    let saved = workspace.root().join("f-saved.xlsx");
+    let bytes: Vec<u8> = (0..=255u8).cycle().take(70_000).collect();
+    fs::write(&saved, &bytes).unwrap();
+
+    let raw = saved.to_string_lossy().into_owned();
+    let unknown = super::save::write_back_to_original(&files, &workspace, "not-a-session", &raw);
+    assert!(unknown.is_err());
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        b"original"
+    );
+
+    let written =
+        super::save::write_back_to_original(&files, &workspace, &session.session_id, &raw).unwrap();
+    assert!(written.ok);
+    assert_eq!(written.size, bytes.len() as u64);
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        bytes
+    );
+
+    // A path outside the work folder is refused before the original is touched.
+    let outside = dir.path().join("elsewhere.xlsx");
+    fs::write(&outside, "x").unwrap();
+    assert!(
+        super::save::write_back_to_original(
+            &files,
+            &workspace,
+            &session.session_id,
+            &outside.to_string_lossy()
+        )
+        .is_err()
+    );
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        bytes
+    );
+}
+
+/// An export copy is a new document; the active session's original stays.
+#[test]
+fn an_export_copy_goes_to_a_new_document_and_leaves_the_original() {
+    use tauri_plugin_ieum_mobile::fs::MockPickedDoc;
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let (bridge, files) = host_file_service(dir.path());
+    bridge.set_next_pick_open(MockPickedDoc {
+        uri: "host://picked/book.xlsx".into(),
+        name: "book.xlsx".into(),
+        bytes: b"original".to_vec(),
+        writable: true,
+        ephemeral: false,
+    });
+    files.pick_open_file(&["xlsx".into()]).unwrap();
+    bridge.set_next_save_as_uri("host://saved/book.csv");
+    let csv = workspace.root().join("f-copy.csv");
+    fs::write(&csv, "a,b\n1,2\n").unwrap();
+    let written = super::save::write_copy(
+        bridge.as_ref(),
+        &workspace,
+        &csv.to_string_lossy(),
+        "book.csv",
+        "text/csv",
+    )
+    .unwrap();
+    assert_eq!(written.name, "book.csv");
+    assert_eq!(written.size, 8);
+    assert_eq!(
+        bridge.read_stored_uri("host://saved/book.csv").unwrap(),
+        b"a,b\n1,2\n"
+    );
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        b"original"
+    );
+}

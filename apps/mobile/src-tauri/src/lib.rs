@@ -91,6 +91,17 @@ pub fn run() {
             commands::sheets::mobile_sheets_temp_write_bytes,
             commands::sheets::mobile_sheets_temp_delete,
             commands::sheets::mobile_sheets_temp_clear,
+            commands::sheets::mobile_sheets_temp_root,
+            commands::sheets::mobile_sheets_temp_mkdir,
+            commands::sheets::mobile_sheets_temp_rename,
+            commands::sheets::mobile_sheets_temp_copy,
+            commands::sheets::mobile_sheets_temp_stat,
+            commands::sheets::mobile_sheets_temp_read_raw,
+            commands::sheets::mobile_sheets_temp_append_text,
+            commands::sheets::mobile_sheets_temp_append_bytes,
+            commands::sheets::mobile_sheets_temp_sha256,
+            commands::sheets::mobile_sheets_save_to_original,
+            commands::sheets::mobile_sheets_write_copy,
 
             // T2 pdf
 
