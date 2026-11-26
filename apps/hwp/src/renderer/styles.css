@@ -78,6 +78,7 @@ body {
    here the AI dock, the memo column and notices leave the stage to the document. */
 .hwp-app.hwp-presenting .ai-dock,
 .hwp-app.hwp-presenting .memo-side,
+.hwp-app.hwp-presenting .workpane-side,
 .hwp-app.hwp-presenting .hwp-topbar,
 .hwp-app.hwp-presenting .doc-check,
 .hwp-app.hwp-presenting .hwp-notice {
@@ -98,6 +99,36 @@ body {
 }
 
 /* the memo column's button, at the start of the row; the autosave toggle keeps the end */
+.workpane-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-6);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.workpane-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workpane-toggle.on {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.workpane-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .memo-toggle {
   display: inline-flex;
   align-items: center;
@@ -860,4 +891,235 @@ body {
   50% {
     opacity: 0.9;
   }
+}
+
+/* ---- left workpane shell: Outline / Find tabs beside the document ---- */
+
+.workpane-side {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--gs-font-sans);
+}
+
+.workpane-side.collapsed {
+  display: none;
+}
+
+.workpane-side-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+}
+
+.workpane-side-resizer:hover {
+  background: var(--fill-muted);
+}
+
+.workpane-side-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.workpane-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--text);
+  border-right: 1px solid var(--border-strong);
+}
+
+.workpane-panel[hidden] {
+  display: none;
+}
+
+.workpane-panel-flyout {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  bottom: 0;
+  z-index: 30;
+  box-shadow: var(--shadow-menu);
+}
+
+.workpane-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workpane-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.workpane-close-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-6);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.workpane-close-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workpane-close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workpane-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+.workpane-tab {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-6);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.workpane-tab:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workpane-tab.active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.workpane-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workpane-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workpane-tabpanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.workpane-tabpanel[hidden] {
+  display: none;
+}
+
+.workpane-placeholder {
+  margin: 0;
+  padding: 20px 14px;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+/* Auto-collapsed icon rail when the window is too narrow to keep MIN_DOC_WIDTH for the page */
+.workpane-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 4px;
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.workpane-rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-6);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.workpane-rail-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workpane-rail-btn.active {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.workpane-rail-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workpane-rail-close {
+  margin-top: auto;
 }

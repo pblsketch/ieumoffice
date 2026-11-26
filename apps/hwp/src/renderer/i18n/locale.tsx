@@ -62,6 +62,10 @@ export function LocaleProvider({ initial, children }: { initial: Lang; children:
   return <LocaleContext.Provider value={lang}>{children}</LocaleContext.Provider>
 }
 
+export function useLang(): Lang {
+  return useContext(LocaleContext)
+}
+
 export function useI18n(): { lang: Lang; t: TFunc } {
   const lang = useContext(LocaleContext)
   return { lang, t: (key, params) => translate(lang, key, params) }
