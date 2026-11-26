@@ -8,6 +8,7 @@
  * are classified by name and code rather than by class, so this module does
  * not load the PDF packages.
  */
+import type { PageResult } from '../../../../../packages/pdf2docx/src/pipeline'
 import type { DocumentTree, InlineRun } from '../../../../../packages/pdf-structure/src/tree/types'
 import type { PageFingerprint } from '../../../../../packages/pdf-structure/src/tree/extract'
 import type { MarkdownWarning } from '../../../../../packages/pdf-structure/src/markdown/write'
@@ -198,6 +199,10 @@ export interface RenderPagesJobValue {
 
 export interface ConvertDocJobValue {
   outPath: string
+  pages: number
+  warnings: string[]
+  pageResults: PageResult[]
+  scannedDocument: boolean
 }
 
 // ── validation ──

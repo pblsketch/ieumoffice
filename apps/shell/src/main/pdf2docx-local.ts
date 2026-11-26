@@ -8,9 +8,17 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PdfLoadError } from '../../../../packages/pdf2docx/src/extract/pdfium'
+import {
+  FPDF_ERR_FORMAT,
+  FPDF_ERR_PASSWORD,
+  FPDF_ERR_SECURITY,
+  PdfLoadError,
+  type PdfLoadErrorCode,
+} from '../../../../packages/pdf2docx/src/extract/pdfium'
 import type { ConvertResult, OcrEngine, PdfiumModule } from '../../../../packages/pdf2docx/src'
 import { pdfiumWasmPath } from '../../../pdf/src/main/wasm-path'
+import type { ConvertDocJobValue, StructureJob } from './pdf-structure/protocol'
+import type { JobRunOutcome } from './pdf-structure/runner'
 
 export type { ConvertResult, PageResult } from '../../../../packages/pdf2docx/src'
 export { PdfLoadError } from '../../../../packages/pdf2docx/src/extract/pdfium'
@@ -137,4 +145,86 @@ export function convertPdfFileToDocxLocalWithPrompt(
     (password) => convertPdfFileToDocxLocal(pdfPath, onProgress, password),
     promptPassword,
   )
+}
+
+export type OfficeExportFormat = 'docx' | 'pptx' | 'xlsx'
+
+export type RunConvertDocJob = (
+  job: Extract<StructureJob, { op: 'convertDoc' }>,
+  onProgress?: (page: number, total: number) => void,
+) => Promise<JobRunOutcome>
+
+class ExportJobCancelledError extends Error {
+  constructor() {
+    super('export cancelled')
+    this.name = 'ExportJobCancelledError'
+  }
+}
+
+const LOAD_ERROR_NUM: Record<PdfLoadErrorCode, number> = {
+  'password-required': FPDF_ERR_PASSWORD,
+  corrupt: FPDF_ERR_FORMAT,
+  unsupported: FPDF_ERR_SECURITY,
+}
+
+/**
+ * Run PDF -> Word/PowerPoint/Excel conversion through the pdf-structure
+ * utility-process runner so PDFium and the sync OCR helper never block the
+ * shell main process. Translates structured runner failures back to
+ * PdfLoadError so the caller's password loop and error dialogs stay identical.
+ */
+export async function convertPdfFileViaJob(
+  runJob: RunConvertDocJob,
+  format: OfficeExportFormat,
+  pdfPath: string,
+  outPath: string,
+  onProgress?: (page: number, total: number) => void,
+  password?: string,
+): Promise<ConvertDocJobValue> {
+  const outcome = await runJob(
+    {
+      op: 'convertDoc',
+      source: {
+        pdfPath,
+        ...(password !== undefined ? { password } : {}),
+      },
+      format,
+      outPath,
+    },
+    onProgress,
+  )
+  if (outcome.ok) return outcome.value as ConvertDocJobValue
+  if (outcome.error === 'cancelled') throw new ExportJobCancelledError()
+  if (
+    outcome.error === 'password-required' ||
+    outcome.error === 'corrupt' ||
+    outcome.error === 'unsupported'
+  ) {
+    throw new PdfLoadError(outcome.error, LOAD_ERROR_NUM[outcome.error])
+  }
+  throw new Error(outcome.message || outcome.error)
+}
+
+/**
+ * Out-of-process PDF -> Office export with the same interactive password retry
+ * loop as the legacy in-process path. Resolves null when the user cancels the
+ * password prompt or the job is cancelled (e.g. the tab closed or app quit).
+ */
+export async function convertPdfFileViaJobWithPrompt(
+  runJob: RunConvertDocJob,
+  format: OfficeExportFormat,
+  pdfPath: string,
+  outPath: string,
+  promptPassword: (retry: boolean) => Promise<string | null>,
+  onProgress?: (page: number, total: number) => void,
+): Promise<ConvertDocJobValue | null> {
+  try {
+    return await convertWithPasswordRetry(
+      (password) => convertPdfFileViaJob(runJob, format, pdfPath, outPath, onProgress, password),
+      promptPassword,
+    )
+  } catch (err) {
+    if (err instanceof ExportJobCancelledError) return null
+    throw err
+  }
 }

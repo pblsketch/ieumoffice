@@ -313,10 +313,8 @@ import {
   setPdfSaveAsInFlight,
 } from '../../../pdf/src/main/pdf-main'
 import { PDF_CHANNELS } from '../../../pdf/src/shared/ipc'
-import { convertPdfFileToDocxLocalWithPrompt, PdfLoadError } from './pdf2docx-local'
+import { convertPdfFileViaJobWithPrompt, PdfLoadError } from './pdf2docx-local'
 import { insertIntoNoteTab, openNoteTab, type NoteTabHost } from './pdf-note-tabs'
-import { convertPdfFileToPptxLocalWithPrompt } from './pdf2pptx-local'
-import { convertPdfFileToXlsxLocalWithPrompt } from './pdf2xlsx-local'
 import { closePdfPasswordDialog, promptPdfPassword } from './pdf-password-dialog'
 import { createDocumentPasswordPrompt } from './document-password-prompt'
 import {
@@ -10127,8 +10125,9 @@ interface PdfExportPreset {
 
 /**
  * Export as Word for pdf tabs, fully local (pdf2docx P4): flush pending
- * edits, pick the destination, convert in-process via PDFium wasm, write the
- * file and open it in a Docs tab. No login, no credits.
+ * edits, pick the destination, convert in the pdf-structure utilityProcess so
+ * PDFium and the sync OCR helper never stall the shell main process, and open
+ * the file in a Docs tab. No login, no credits.
  */
 async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
   const tab = preset?.tab ?? activePdfTarget()
@@ -10166,10 +10165,14 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
     }
     host.setProgressBar(2)
     // encrypted PDFs prompt for the password (P23), looping on wrong entries;
-    // null result = user cancelled the prompt → abort silently
+    // null result = user cancelled the prompt or tab closed → abort silently
     const pdfPath = tab.filePath
-    const result = await convertPdfFileToDocxLocalWithPrompt(
+    const result = await convertPdfFileViaJobWithPrompt(
+      (job, onProgress) =>
+        runWindowJob(tab.webContents, `pdf-export-docx-${randomUUID()}`, job, onProgress),
+      'docx',
       pdfPath,
+      picked.filePath,
       (retry) =>
         promptPdfPassword(host, {
           fileName: basename(pdfPath),
@@ -10196,7 +10199,6 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
       },
     )
     if (result === null) return
-    await atomicWriteFile(picked.filePath, result.docx)
 
     // degrade transparency (plan §7.6 dual-track split): whole scan → say so
     // once; individual image-fallback pages → name them;
@@ -10271,10 +10273,10 @@ async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
 
 /**
  * Export as PowerPoint for pdf tabs, fully local (pdf2pptx P25): flush
- * pending edits, pick the destination, convert in-process via PDFium wasm,
- * write the file and open it in a Slides tab. No login, no credits. Shares
- * the in-flight guard with the Word exports so pdfium never runs two
- * conversions at once.
+ * pending edits, pick the destination, convert in the pdf-structure
+ * utilityProcess so PDFium never stalls the shell main process, and open the
+ * file in a Slides tab. No login, no credits. Shares the in-flight guard with
+ * the Word exports so only one office export runs at a time.
  */
 async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
   const tab = preset?.tab ?? activePdfTarget()
@@ -10311,10 +10313,14 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
     }
     host.setProgressBar(2)
     // encrypted PDFs prompt for the password (P23), looping on wrong entries;
-    // null result = user cancelled the prompt → abort silently
+    // null result = user cancelled the prompt or tab closed → abort silently
     const pdfPath = tab.filePath
-    const result = await convertPdfFileToPptxLocalWithPrompt(
+    const result = await convertPdfFileViaJobWithPrompt(
+      (job, onProgress) =>
+        runWindowJob(tab.webContents, `pdf-export-pptx-${randomUUID()}`, job, onProgress),
+      'pptx',
       pdfPath,
+      picked.filePath,
       (retry) =>
         promptPdfPassword(host, {
           fileName: basename(pdfPath),
@@ -10341,7 +10347,6 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
       },
     )
     if (result === null) return
-    await atomicWriteFile(picked.filePath, result.pptx)
 
     // degrade transparency (same split as the Word export): whole scan vs
     // individual image-fallback pages
@@ -10388,10 +10393,10 @@ async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
 
 /**
  * Export as Excel for pdf tabs, fully local (pdf2xlsx P26): flush pending
- * edits, pick the destination, convert in-process via PDFium wasm, write the
- * file and open it in a Sheets tab. No login, no credits. Shares the
- * in-flight guard with the Word/PowerPoint exports so pdfium never runs two
- * conversions at once.
+ * edits, pick the destination, convert in the pdf-structure utilityProcess so
+ * PDFium never stalls the shell main process, and open the file in a Sheets
+ * tab. No login, no credits. Shares the in-flight guard with the
+ * Word/PowerPoint exports so only one office export runs at a time.
  */
 async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
   const tab = preset?.tab ?? activePdfTarget()
@@ -10428,10 +10433,14 @@ async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
     }
     host.setProgressBar(2)
     // encrypted PDFs prompt for the password (P23), looping on wrong entries;
-    // null result = user cancelled the prompt → abort silently
+    // null result = user cancelled the prompt or tab closed → abort silently
     const pdfPath = tab.filePath
-    const result = await convertPdfFileToXlsxLocalWithPrompt(
+    const result = await convertPdfFileViaJobWithPrompt(
+      (job, onProgress) =>
+        runWindowJob(tab.webContents, `pdf-export-xlsx-${randomUUID()}`, job, onProgress),
+      'xlsx',
       pdfPath,
+      picked.filePath,
       (retry) =>
         promptPdfPassword(host, {
           fileName: basename(pdfPath),
@@ -10458,7 +10467,6 @@ async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
       },
     )
     if (result === null) return
-    await atomicWriteFile(picked.filePath, result.xlsx)
 
     // degrade transparency: pages that could not become cells got a notice
     // row on their worksheet instead of an image (a spreadsheet has none)

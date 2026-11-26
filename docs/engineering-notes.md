@@ -103,6 +103,7 @@
 - **한 쪽이 망가진 PDF에서 그 뒤의 여러 쪽까지 열리지 않는다.** 디스크에서 쪽 객체 하나가 지워지면(0으로 덮인 구역 등) PDF.js는 쪽 나무를 따라가다 그 자식에서 예외를 내, 같은 가지의 뒤쪽 쪽들까지 잃는다. Acrobat·MuPDF는 그 쪽만 비운다. → 쪽을 읽다 실패하면 `page-tree-patch.ts`가 메모리의 사본 뒤에 빈 쪽을 정의하는 증분 갱신을 붙여 다시 연다. 디스크 파일은 그대로이고, 저장 쪽이 보는 쪽 번호가 화면과 어긋나므로 그 문서는 읽기 전용이다. 인쇄·AI 읽기처럼 파일을 다시 읽는 기능은 여전히 그 쪽들에서 실패한다.
 - **한국 프로그램이 만든 PDF에서 글꼴 이름이 깨진다.** PDFium의 `FPDFFont_GetBaseFontName`은 PDF 이름의 바이트를 그대로 돌려주고, 한국 프로그램은 이름을 CP949로 적는다(`/#B9#D9#C5#C1`). UTF-8로 읽으면 `�`만 남아 이름이 같은 글꼴도, 비슷한 글꼴도 찾지 못한다. → `src/shared/font-classes.ts`의 `decodeFontName`으로 UTF-8 → CP949 → Latin-1 순으로 푼다. PDF.js는 같은 이름을 바이트당 한 글자로 주므로 화면 쪽은 `redecodeByteString`을 거친다.
 - **글꼴이 들어 있지 않은 PDF에서 PDFium의 글꼴 정보 일부는 문서의 것이 아니다.** `FPDFFont_GetFamilyName`은 PDFium이 대신 그린 글꼴 이름(`Chrome Serif MM`, `Chrome Sans MM`)을 주고, `FPDFFont_GetWeight`는 글꼴 설명의 `FontWeight`를 반영하지 않는다(시험 2026-11-07, 700을 적어도 400). 글자 폭이 모두 같으면 Flags에 고정폭 비트가 더해진다. → 비슷한 글꼴은 이름, 넣어 둔 글꼴의 OS/2, Flags의 바탕·붓글씨 비트로 고르고, 고정폭 비트는 라틴 글자에만 믿는다.
+- **스캔 PDF를 열면 자동 OCR이 도는 동안 스크롤과 입력이 수 초씩 멈춘다.** PDF 편집기 메인 프로세스의 페이지 OCR(`apps/pdf/src/main/ocr.ts`)이 OS OCR 도우미(`win-ocr.exe`·`vision-ocr`)를 `spawnSync`로 부르면, 쪽마다 1~3초 넘게 Electron 메인 프로세스(= 브라우저 UI 스레드)가 막혀 창 전체의 휠·입력이 밀린다. → 메인 프로세스에서는 OCR 도우미를 `spawnSync`로 실행하지 않고 비동기 `spawn`(`windowsHide: true`)과 단일 동시성 대기열로 실행하며, `will-quit`·`exit`에서 살아 있는 도우미를 끝낸다. `packages/pdf2docx`의 동기 `OcrEngine`(`spawnSync`)은 변환 파이프라인용이라 그대로 두되, 셸의 PDF → 워드·파워포인트·엑셀 내보내기도 `pdf-structure`의 별도 `utilityProcess`(`convertDoc` 작업)에서 실행해 메인 프로세스를 막지 않는다.
 
 ## 마크다운 인쇄
 
