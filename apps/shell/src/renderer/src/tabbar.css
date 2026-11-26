@@ -102,7 +102,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
   border-radius: 10px 10px 0 0;
   cursor: pointer;
   color: var(--tabstrip-text);
-  font-size: 12.5px;
+  font-size: 13px;
   user-select: none;
 }
 
@@ -177,7 +177,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
   position: absolute;
   /* hover shape: flush with the tab top, 28px tall, 9px radius */
   inset: 0 3px 6px;
-  border-radius: 9px;
+  border-radius: 8px;
   z-index: -1;
   pointer-events: none;
 }
@@ -476,7 +476,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
   bottom: 8px;
   width: 14px;
   height: 2px;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--accent);
   pointer-events: none;
 }

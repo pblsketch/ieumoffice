@@ -604,7 +604,13 @@ export async function runStructureJob(
           onProgress,
         })
         await atomicWriteFile(job.outPath, res.docx)
-        return { outPath: job.outPath } satisfies ConvertDocJobValue
+        return {
+          outPath: job.outPath,
+          pages: res.pages,
+          warnings: res.warnings,
+          pageResults: res.pageResults,
+          scannedDocument: res.scannedDocument,
+        } satisfies ConvertDocJobValue
       }
       if (job.format === 'xlsx') {
         const res = await convertPdfToXlsx(working, {
@@ -613,7 +619,13 @@ export async function runStructureJob(
           onProgress,
         })
         await atomicWriteFile(job.outPath, res.xlsx)
-        return { outPath: job.outPath } satisfies ConvertDocJobValue
+        return {
+          outPath: job.outPath,
+          pages: res.pages,
+          warnings: res.warnings,
+          pageResults: res.pageResults,
+          scannedDocument: res.scannedDocument,
+        } satisfies ConvertDocJobValue
       }
       if (job.format === 'pptx') {
         const res = await convertPdfToPptx(working, {
@@ -622,7 +634,13 @@ export async function runStructureJob(
           onProgress,
         })
         await atomicWriteFile(job.outPath, res.pptx)
-        return { outPath: job.outPath } satisfies ConvertDocJobValue
+        return {
+          outPath: job.outPath,
+          pages: res.pages,
+          warnings: res.warnings,
+          pageResults: res.pageResults,
+          scannedDocument: res.scannedDocument,
+        } satisfies ConvertDocJobValue
       }
       if (!deps.rhwpWasmPath) throw new NotAvailableError('HWP engine is not available')
       const docxRes = await convertPdfToDocx(working, {
@@ -637,7 +655,13 @@ export async function runStructureJob(
       )
       const hwp = await docxToHwp(docxRes.docx, 'hwpx', engine)
       await atomicWriteFile(job.outPath, hwp.bytes)
-      return { outPath: job.outPath } satisfies ConvertDocJobValue
+      return {
+        outPath: job.outPath,
+        pages: docxRes.pages,
+        warnings: docxRes.warnings,
+        pageResults: docxRes.pageResults,
+        scannedDocument: docxRes.scannedDocument,
+      } satisfies ConvertDocJobValue
     }
     case 'blankPages': {
       const m = await deps.pdfium()

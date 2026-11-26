@@ -242,7 +242,7 @@
 .ql-badge {
   flex-shrink: 0;
   padding: 3px 7px;
-  border-radius: 5px;
+  border-radius: 6px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -289,7 +289,7 @@
 }
 
 .ql-filename {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -381,7 +381,7 @@
 
 .ql-tab {
   padding: 4px 10px;
-  border-radius: 5px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
@@ -490,7 +490,7 @@
   margin: 0 auto;
   line-height: 1.65;
   color: var(--text-primary);
-  font-size: 13.5px;
+  font-size: 14px;
 }
 
 .ql-doc-h1 {

@@ -1659,7 +1659,7 @@ body.vib .home {
   background: none;
   padding: 8px 11px;
   font-size: 13px;
-  border-radius: 7px;
+  border-radius: 8px;
   cursor: pointer;
   color: var(--text);
 }
@@ -2083,7 +2083,7 @@ html[dir='rtl'] .quick-title-row {
 }
 .kb-ask-hero > p {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-secondary);
   max-width: 46ch;
   line-height: 1.6;
@@ -2108,10 +2108,10 @@ html[dir='rtl'] .quick-title-row {
   flex-shrink: 0;
   width: 21px;
   height: 21px;
-  border-radius: 99px;
+  border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   display: flex;
@@ -2135,7 +2135,7 @@ html[dir='rtl'] .quick-title-row {
   appearance: none;
   border: none;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
@@ -2155,12 +2155,12 @@ html[dir='rtl'] .quick-title-row {
 .kb-ask-hint {
   margin: auto 0;
   text-align: center;
-  font-size: 12.5px;
+  font-size: 13px;
   opacity: 0.65;
 }
 .kb-ask-login {
   margin: 0 2px 8px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 .kb-ask-login-link {
@@ -2187,7 +2187,7 @@ html[dir='rtl'] .quick-title-row {
 }
 
 .kb-ask-msg {
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   max-width: 92%;
   white-space: normal;
@@ -2278,10 +2278,10 @@ html[dir='rtl'] .quick-title-row {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-secondary);
   padding: 3px 9px;
-  border-radius: 99px;
+  border-radius: 999px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-subtle);
 }
@@ -2327,10 +2327,10 @@ html[dir='rtl'] .quick-title-row {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-secondary);
   padding: 3px 9px;
-  border-radius: 99px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
@@ -2356,7 +2356,7 @@ html[dir='rtl'] .quick-title-row {
   color: var(--accent);
 }
 .kb-ask-action-error {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--danger);
 }
 
@@ -2385,13 +2385,20 @@ html[dir='rtl'] .quick-title-row {
   gap: 4px;
   color: var(--accent);
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 13px;
   background: var(--accent-soft);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 1px 7px;
   margin: 0 1px;
   vertical-align: 1px;
 }
 .kb-ask-assistant a:hover {
   text-decoration: underline;
+}
+
+/* thin scrollbars without arrow buttons, as in the AI panel */
+.content,
+.sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }

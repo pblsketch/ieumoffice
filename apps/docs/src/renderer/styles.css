@@ -12389,10 +12389,11 @@ tr > .page-gap-cut {
   pointer-events: auto;
   cursor: pointer;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--docs-paper-comment-line);
+  /* the whole edge in the leader line's colour ties the bubble to its anchor
+     without a thick stripe down one side */
+  border: 1px solid var(--docs-paper-comment-line);
   border-radius: 4px;
-  padding: 5px 8px;
+  padding: 5px 10px;
   font-size: 10px;
   line-height: 1.35;
   color: var(--text);
@@ -13225,8 +13226,7 @@ tr > .page-gap-cut {
 .comment-reply {
   margin: 4px 8px 4px 26px;
   padding: 6px 8px;
-  border-left: 2px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-subtle);
   border-radius: 4px;
   font-size: 12px;
 }

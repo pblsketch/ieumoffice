@@ -74,7 +74,7 @@ body {
 
 .pt-title {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -194,7 +194,7 @@ body {
 
 .pt-tool-title {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -518,6 +518,14 @@ body {
 .pt-dropzone.is-drag-over {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* files picked: the list is the box, so the zone around it drops its own
+ * frame instead of nesting one card in another; a drag still lights it up */
+.pt-dropzone:has(.pt-list):not(.is-drag-over) {
+  padding: 0;
+  border-color: transparent;
+  background: none;
 }
 
 /* nothing picked yet: a roomy target, the button and its hint centred */
@@ -896,7 +904,7 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -964,7 +972,7 @@ body {
 }
 
 .pt-split-preview-count {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -1018,4 +1026,11 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+/* thin scrollbars without arrow buttons, as in the AI panel */
+.pt-body,
+.pt-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }

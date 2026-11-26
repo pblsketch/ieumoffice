@@ -3019,12 +3019,13 @@ body.vib .slide-list {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--active-bg);
-  font-size: 10.5px;
-  color: var(--color-text-secondary);
+  font-size: 11px;
+  /* on the active fill the panel grey fell to 3.7:1 in dark */
+  color: var(--text-secondary);
 }
 
 .ai-tpl-card-date {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--color-text-tertiary);
 }
 
@@ -3039,7 +3040,7 @@ body.vib .slide-list {
 
 .ai-tpl-foot-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-secondary);
 }

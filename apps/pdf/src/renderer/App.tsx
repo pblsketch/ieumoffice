@@ -24,7 +24,6 @@ import {
   type SavedAnnotCounts,
 } from './annotation-catalog'
 import {
-  AUTO_OCR_PAGE_CAP,
   OcrTextLayer,
   renderPageForOcr,
   runAutoOcr,
@@ -1575,15 +1574,12 @@ export default function App() {
   const [searchIndexCache] = useState(createSearchIndexCache)
   /** In-flight auto-OCR pass, so its toast can stop it */
   const ocrAbortRef = useRef<AbortController | null>(null)
-  /** Auto-OCR progress: `stop: null` while the pass runs (the toast offers Stop),
-      then the reason it ended, for the cap and a user cancel alike. `pending` is
-      the queue a capped pass can be continued over. */
+  /** Auto-OCR progress: `stop: null` while the pass runs (the toast offers Cancel),
+      then `'cancelled'` when the user stops it. */
   const [ocrRun, setOcrRun] = useState<{
     done: number
     total: number
-    stop: Extract<AutoOcrStop, 'cap' | 'cancelled'> | null
-    /** The pages the pass left, which its Continue button hands to the next pass */
-    pending?: number[] | null
+    stop: Extract<AutoOcrStop, 'cancelled'> | null
   } | null>(null)
   const warnedXfaPathRef = useRef('')
   const searchJumpRef = useRef<{ matches: SearchMatch[]; cur: number } | null>(null)
@@ -3272,82 +3268,59 @@ export default function App() {
   // reproject. The pass runs renderer-side, one page at a time, so the user's
   // Stop only has to abort this signal.
 
-  /** Start a pass over the document's scanned pages. `pending` continues a
-      capped pass over the pages it left; `null` starts at the current page.
-      `doneBefore` is what the passes already recognized, so a continued
-      pass keeps reporting the count for the whole document and not just for
-      itself. A cap is a pause and not a cancel, so a continuation reuses the
-      finished pass's signal while that signal is still live, which is also what
-      keeps the toast's Stop working on the resumed pass. A signal torn down in
-      between (the document or its page count changed) is already aborted and
-      would cancel the pass on its first check, so a fresh one replaces it. */
-  const startOcrPass = useCallback(
-    (pending: number[] | null, doneBefore = 0) => {
-      if (!doc) return
-      const live = ocrAbortRef.current
-      const controller = live && !live.signal.aborted ? live : new AbortController()
-      ocrAbortRef.current = controller
-      setOcrRun((prev) => ({
-        done: doneBefore,
-        total: prev?.total ?? 0,
-        stop: null,
-        pending: null,
-      }))
-      void (async () => {
-        let result: AutoOcrResult | null = null
-        try {
-          result = await runAutoOcr({
-            doc,
-            cache: searchIndexCache,
-            fromPage: () => currentOrigIdxRef.current,
-            ...(pending === null ? {} : { pending }),
-            signal: controller.signal,
-            geom: (origIdx) => pageGeomRef.current(origIdx),
-            render: renderPageForOcr,
-            ocrPage: (png) => window.pdfApi.ocrPage(png),
-            onPage: (origIdx, data) => {
-              setOcrPages((prev) => new Map(prev).set(origIdx, data))
-              // blocks clustered before the words were recognized are empty: redo them
-              setPageBlocks((prev) => {
-                if (!prev.has(origIdx)) return prev
-                const next = new Map(prev)
-                next.delete(origIdx)
-                return next
-              })
-            },
-            onProgress: (done, total) =>
-              setOcrRun({ done: doneBefore + done, total, stop: null, pending: null }),
-          })
-        } catch {
-          // the document is gone or unreadable: nothing left to recognize
-        }
-        if (ocrAbortRef.current !== controller) return // a newer pass took over
-        // A finished pass and a platform without an OCR engine are not worth a
-        // toast; a cap or a user cancel is, and it says how far the pass got
-        setOcrRun(
-          result && (result.stop === 'cap' || result.stop === 'cancelled')
-            ? {
-                done: doneBefore + result.done,
-                total: result.total,
-                stop: result.stop,
-                pending: result.pending,
-              }
-            : null,
-        )
-      })()
-    },
-    [doc, searchIndexCache],
-  )
-
-  /** The pages the toast's Continue resumes over: only a capped pass has any,
-      and a scan that ran out has nothing left to resume. */
-  const ocrPending = ocrRun?.stop === 'cap' ? (ocrRun.pending ?? null) : null
+  /** Start a background OCR pass over every scanned page in the document
+      (decision 0171: no page cap; checks the current page before each step). */
+  const startOcrPass = useCallback(() => {
+    if (!doc) return
+    const controller = new AbortController()
+    ocrAbortRef.current = controller
+    setOcrRun({ done: 0, total: 0, stop: null })
+    void (async () => {
+      let result: AutoOcrResult | null = null
+      try {
+        result = await runAutoOcr({
+          doc,
+          cache: searchIndexCache,
+          fromPage: () => currentOrigIdxRef.current,
+          signal: controller.signal,
+          geom: (origIdx) => pageGeomRef.current(origIdx),
+          render: renderPageForOcr,
+          ocrPage: (png) => window.pdfApi.ocrPage(png),
+          onPage: (origIdx, data) => {
+            setOcrPages((prev) => new Map(prev).set(origIdx, data))
+            // blocks clustered before the words were recognized are empty: redo them
+            setPageBlocks((prev) => {
+              if (!prev.has(origIdx)) return prev
+              const next = new Map(prev)
+              next.delete(origIdx)
+              return next
+            })
+          },
+          onProgress: (done, total) => setOcrRun({ done, total, stop: null }),
+        })
+      } catch {
+        // the document is gone or unreadable: nothing left to recognize
+      }
+      if (ocrAbortRef.current !== controller) return // a newer pass took over
+      // A finished pass and a platform without an OCR engine are not worth a
+      // toast; a user cancel is, and it says how far the pass got
+      setOcrRun(
+        result && result.stop === 'cancelled'
+          ? {
+              done: result.done,
+              total: result.total,
+              stop: result.stop,
+            }
+          : null,
+      )
+    })()
+  }, [doc, searchIndexCache])
 
   useEffect(() => {
     setOcrPages(new Map())
     setOcrRun(null)
     if (!doc || sizes.length !== doc.numPages) return
-    startOcrPass(null)
+    startOcrPass()
     return () => {
       // tears down the pass this effect started, so its teardown still cancels
       ocrAbortRef.current?.abort()
@@ -14309,32 +14282,16 @@ export default function App() {
                 <span>
                   {ocrRun.stop === null
                     ? t('ocrRunning', { done: ocrRun.done, total: ocrRun.total })
-                    : ocrRun.stop === 'cap'
-                      ? t('ocrPageCap', {
-                          done: ocrRun.done,
-                          total: ocrRun.total,
-                          limit: AUTO_OCR_PAGE_CAP,
-                        })
-                      : t('ocrStopped', { done: ocrRun.done, total: ocrRun.total })}
+                    : t('ocrStopped', { done: ocrRun.done, total: ocrRun.total })}
                 </span>
                 {ocrRun.stop === null ? (
                   <button type="button" onClick={() => ocrAbortRef.current?.abort()}>
                     {t('cancel')}
                   </button>
                 ) : (
-                  <>
-                    {ocrPending !== null && (
-                      <button
-                        type="button"
-                        onClick={() => startOcrPass(ocrPending, ocrRun?.done ?? 0)}
-                      >
-                        {t('ocrContinue')}
-                      </button>
-                    )}
-                    <button type="button" onClick={() => setOcrRun(null)}>
-                      {t('ok')}
-                    </button>
-                  </>
+                  <button type="button" onClick={() => setOcrRun(null)}>
+                    {t('ok')}
+                  </button>
                 )}
               </div>
             )}

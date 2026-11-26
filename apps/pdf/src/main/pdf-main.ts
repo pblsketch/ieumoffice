@@ -58,6 +58,7 @@ import { copyFileExclusiveSync } from '@genoffice/electron-utils/copy-file'
 import { sharedSubscriptionStatuses } from '@genoffice/ai-provider/subscription'
 import { PDF_CHANNELS, PDF_TOOLS_HANDOFF, type PdfToolsHandoffTool } from '../shared/ipc'
 import { CertificateEncryptionError, WrongPasswordError, decryptDocument } from './pdf-crypt'
+import { killAllOcrHelpers, ocrPagePng } from './ocr'
 import { AI_OFF_FALLBACK, createScreenAiJobs } from './screen-ai-jobs'
 import {
   buildExportImagePaths,
@@ -2266,7 +2267,6 @@ function registerPdfIpc(): void {
   ipcMain.handle(PDF_CHANNELS.ocrPage, async (_e, png: unknown) => {
     // bad payload = failed page ([]), never "no engine" (null) — null stops the caller's pass
     if (typeof png !== 'string' || png.length === 0 || png.length > 64 * 1024 * 1024) return []
-    const { ocrPagePng } = await import('./ocr')
     return ocrPagePng(png)
   })
 
@@ -3286,6 +3286,13 @@ function registerPdfIpc(): void {
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(PDF_CHANNELS.getLanguage)
   ipcMain.handle(PDF_CHANNELS.getLanguage, () => getUiLang())
+
+  // no OCR helper process outlives the app: will-quit for normal exit, 'exit'
+  // for app.exit() / process.exit() (which skip will-quit)
+  if (typeof app.on === 'function') {
+    app.on('will-quit', () => killAllOcrHelpers())
+  }
+  process.on('exit', () => killAllOcrHelpers())
 }
 
 function grantAndTrack(wc: WebContents, openPath?: string | null): void {
