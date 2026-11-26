@@ -1,17 +1,17 @@
 # تثبيت GenOffice
 
-كل إصدار يُنشر على [صفحة الإصدارات](https://github.com/pblsketch/ieumoffice/releases/latest) الخاصة بالمشروع على GitHub. تُنشر نسخة Windows مع نسختَي Mac وLinux اللتين تصدران بوصفهما إصدارين تجريبيين. لا يستطيع المطوّر اختبار نسختَي Mac وLinux بنفسه مباشرةً؛ وإنما يُتأكَّد منهما عبر بلاغات المستخدمين.
+كل إصدار يُنشر على [صفحة الإصدارات](https://github.com/pblsketch/ieumoffice/releases/latest) الخاصة بالمشروع على GitHub. تُنشر نسخ Windows وMac وLinux معًا. لا يستطيع المطوّر اختبار نسختَي Mac وLinux بنفسه مباشرةً؛ وإنما يُتأكَّد منهما عبر بلاغات المستخدمين.
 
 ## اختر الملف المناسب لجهازك
 
-| النظام                                   | المتطلبات                                    | الملف                             |
-| ---------------------------------------- | -------------------------------------------- | --------------------------------- |
-| **Windows**                              | Windows 10 أو أحدث، Intel/AMD بمعمارية 64 بت | `GenOffice-Setup-<version>.exe`   |
-| **Mac (تجريبي)**، Apple Silicon          | macOS 12 أو أحدث، شريحة M1 أو أحدث           | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (تجريبي)**، Intel                  | macOS 12 أو أحدث، معالج Intel                | `GenOffice-<version>-x64.dmg`     |
-| **Linux (تجريبي)**، أي توزيعة            | 64 بت (x86_64)                               | `GenOffice-<version>.AppImage`    |
-| **Linux (تجريبي)**، عائلة Ubuntu/Debian  | 64 بت (x86_64)                               | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (تجريبي)**، Fedora/RHEL/openSUSE | 64 بت (x86_64)                               | `ieumoffice-<version>.x86_64.rpm` |
+| النظام                          | المتطلبات                                    | الملف                             |
+| ------------------------------- | -------------------------------------------- | --------------------------------- |
+| **Windows**                     | Windows 10 أو أحدث، Intel/AMD بمعمارية 64 بت | `GenOffice-Setup-<version>.exe`   |
+| **Mac**، Apple Silicon          | macOS 12 أو أحدث، شريحة M1 أو أحدث           | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**، Intel                  | macOS 12 أو أحدث، معالج Intel                | `GenOffice-<version>-x64.dmg`     |
+| **Linux**، أي توزيعة            | 64 بت (x86_64)                               | `GenOffice-<version>.AppImage`    |
+| **Linux**، عائلة Ubuntu/Debian  | 64 بت (x86_64)                               | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**، Fedora/RHEL/openSUSE | 64 بت (x86_64)                               | `ieumoffice-<version>.x86_64.rpm` |
 
 لمعرفة نوع جهاز Mac لديك، افتح قائمة Apple ▸ **حول هذا Mac** (About This Mac). إذا ظهر في «الشريحة» Apple M…، فخذ الملف المنتهي بـ `-arm64.dmg`؛ وإذا ظهر في «المعالج» Intel …، فخذ الملف المنتهي بـ `-x64.dmg`. أما الملفات الأخرى على صفحة الإصدارات (`.zip` و`.yml` و`.blockmap`) فيستخدمها التطبيق نفسه للتحديث، ولا حاجة إلى تنزيلها. تبقى الإصدارات الأقدم على صفحة الإصدارات.
 
@@ -50,7 +50,7 @@
 
 عندما يكون Smart App Control في Windows 11 مفعّلًا، فإنه يوقف برامج التثبيت غير الموقَّعة ولا يوفّر مسار **مزيد من المعلومات** (More info). وتقول Microsoft إنه لا توجد طريقة للسماح بتطبيق واحد: الخيار الوحيد هو إيقاف Smart App Control، من **أمان Windows ▸ التحكم في التطبيق والمتصفح ▸ إعدادات Smart App Control** (Windows Security ▸ App & browser control ▸ Smart App Control settings). وهذا يُزيل هذه الحماية عن كل التطبيقات الأخرى أيضًا. ومع تحديثات Windows الحديثة يمكن إعادة تشغيله دون إعادة تثبيت Windows.
 
-## على Mac (تجريبي)
+## على Mac
 
 تحتاج إلى macOS 12 (Monterey) أو أحدث. لا يحمل إصدار Mac توقيع مطوّر من Apple، لذا عند أول فتح يقول macOS إنه لا يستطيع التحقق من خلوّ التطبيق من البرامج الضارة، ولا يفتحه. اسمح به مرة واحدة كما يلي.
 
@@ -77,7 +77,7 @@ xattr -dr com.apple.quarantine /Applications/GenOffice.app
 - ليس في بطاقات اتصال الذكاء الاصطناعي زر تثبيت. اتبع رابط دليل التثبيت الرسمي في البطاقة لتثبيت Claude Code أو Codex. تطبيق Claude لسطح المكتب ليس Claude Code، لذلك يجب تثبيت Claude Code على حدة حتى لو كان تطبيق سطح المكتب مثبتًا.
 - يكتمل تسجيل الدخول في المتصفح. إذا طلب منك المتصفح لصق رمز، فنفّذ `claude auth login` أو `codex login` في Terminal بنفسك. انظر [الاتصال بالاشتراك](help://subscription).
 
-## على Linux (تجريبي)
+## على Linux
 
 - **AppImage**: اجعله قابلًا للتنفيذ (`chmod +x GenOffice-<version>.AppImage`) وشغّل الملف. لا توجد خطوة تثبيت.
 - **deb**: ثبّته بالأمر `sudo apt install ./ieumoffice_<version>_amd64.deb`.

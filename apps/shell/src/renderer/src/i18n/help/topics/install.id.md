@@ -1,17 +1,17 @@
 # Memasang GenOffice
 
-Setiap versi dipublikasikan di [halaman Rilis](https://github.com/pblsketch/ieumoffice/releases/latest) proyek ini di GitHub. Build Windows dipublikasikan bersama build Mac dan Linux yang dirilis sebagai beta. Pengembang tidak dapat menguji build Mac dan Linux secara langsung; keduanya dipastikan lewat laporan para pengguna.
+Setiap versi dipublikasikan di [halaman Rilis](https://github.com/pblsketch/ieumoffice/releases/latest) proyek ini di GitHub. Build untuk Windows, Mac, dan Linux dipublikasikan bersama. Pengembang tidak dapat menguji build Mac dan Linux secara langsung; keduanya dipastikan lewat laporan para pengguna.
 
 ## Pilih berkas untuk komputer Anda
 
-| Platform                                 | Kebutuhan                                         | Berkas                            |
-| ---------------------------------------- | ------------------------------------------------- | --------------------------------- |
-| **Windows**                              | Windows 10 atau lebih baru, Intel/AMD 64-bit      | `GenOffice-Setup-<version>.exe`   |
-| **Mac (beta)**, Apple Silicon            | macOS 12 atau lebih baru, chip M1 atau lebih baru | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (beta)**, Intel                    | macOS 12 atau lebih baru, prosesor Intel          | `GenOffice-<version>-x64.dmg`     |
-| **Linux (beta)**, distribusi apa pun     | 64-bit (x86_64)                                   | `GenOffice-<version>.AppImage`    |
-| **Linux (beta)**, keluarga Ubuntu/Debian | 64-bit (x86_64)                                   | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (beta)**, Fedora/RHEL/openSUSE   | 64-bit (x86_64)                                   | `ieumoffice-<version>.x86_64.rpm` |
+| Platform                          | Kebutuhan                                         | Berkas                            |
+| --------------------------------- | ------------------------------------------------- | --------------------------------- |
+| **Windows**                       | Windows 10 atau lebih baru, Intel/AMD 64-bit      | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon            | macOS 12 atau lebih baru, chip M1 atau lebih baru | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                    | macOS 12 atau lebih baru, prosesor Intel          | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, distribusi apa pun     | 64-bit (x86_64)                                   | `GenOffice-<version>.AppImage`    |
+| **Linux**, keluarga Ubuntu/Debian | 64-bit (x86_64)                                   | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE   | 64-bit (x86_64)                                   | `ieumoffice-<version>.x86_64.rpm` |
 
 Untuk mengetahui Mac Anda yang mana, buka menu Apple ▸ **Tentang Mac Ini**. Jika "Chip" menyebut Apple M…, ambil berkas yang berakhiran `-arm64.dmg`; jika "Prosesor" menyebut Intel …, ambil yang berakhiran `-x64.dmg`. Berkas lain di halaman Rilis (`.zip`, `.yml`, `.blockmap`) dipakai oleh aplikasi itu sendiri untuk memperbarui diri; Anda tidak perlu mengunduhnya. Versi lama tetap ada di halaman Rilis.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen menampilkan jendela ini saat pertama kali menemuk
 
 Saat Smart App Control di Windows 11 aktif, fitur itu menghentikan installer yang tidak ditandatangani dan tidak menyediakan jalur **Info selengkapnya**. Microsoft menyatakan tidak ada cara untuk mengizinkan satu aplikasi saja: satu-satunya pilihan adalah mematikan Smart App Control, di **Windows Security ▸ App & browser control ▸ Smart App Control settings**. Itu juga menghapus perlindungan ini untuk semua aplikasi lain. Dengan pembaruan Windows terbaru, fitur ini dapat dinyalakan kembali tanpa memasang ulang Windows.
 
-## Di Mac (beta)
+## Di Mac
 
 Anda memerlukan macOS 12 (Monterey) atau lebih baru. Build Mac tidak memiliki tanda tangan pengembang Apple, jadi saat pertama kali dibuka macOS menyatakan tidak dapat memastikan aplikasi bebas dari malware dan tidak membukanya. Anda mengizinkannya sekali, seperti di bawah ini.
 
@@ -77,7 +77,7 @@ Juga di Mac:
 - Kartu koneksi AI tidak punya tombol instal. Ikuti tautan panduan instalasi resmi di kartu untuk memasang Claude Code atau Codex. Aplikasi desktop Claude bukan Claude Code, jadi Claude Code tetap harus dipasang terpisah walaupun aplikasi desktopnya sudah ada.
 - Proses masuk diselesaikan di peramban. Jika peramban meminta Anda menempelkan kode, jalankan sendiri `claude auth login` atau `codex login` di Terminal. Lihat [Koneksi langganan](help://subscription).
 
-## Di Linux (beta)
+## Di Linux
 
 - **AppImage**: jadikan dapat dieksekusi (`chmod +x GenOffice-<version>.AppImage`) lalu jalankan berkasnya. Tidak ada langkah pemasangan.
 - **deb**: pasang dengan `sudo apt install ./ieumoffice_<version>_amd64.deb`.

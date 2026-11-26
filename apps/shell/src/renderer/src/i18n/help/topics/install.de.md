@@ -1,17 +1,17 @@
 # GenOffice installieren
 
-Jede Version wird auf der [Releases-Seite](https://github.com/pblsketch/ieumoffice/releases/latest) des Projekts auf GitHub veröffentlicht. Zur Windows-Version gibt es Mac- und Linux-Versionen, die als Beta erscheinen. Die Mac- und Linux-Versionen kann der Entwickler nicht selbst testen; sie werden anhand von Rückmeldungen der Nutzer bestätigt.
+Jede Version wird auf der [Releases-Seite](https://github.com/pblsketch/ieumoffice/releases/latest) des Projekts auf GitHub veröffentlicht. Die Versionen für Windows, Mac und Linux erscheinen gemeinsam. Die Mac- und Linux-Versionen kann der Entwickler nicht selbst testen; sie werden anhand von Rückmeldungen der Nutzer bestätigt.
 
 ## Die Datei für Ihren Rechner wählen
 
-| Plattform                                | Voraussetzungen                         | Datei                             |
-| ---------------------------------------- | --------------------------------------- | --------------------------------- |
-| **Windows**                              | Windows 10 oder neuer, 64-Bit Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac (Beta)**, Apple Silicon            | macOS 12 oder neuer, Chip M1 oder neuer | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (Beta)**, Intel                    | macOS 12 oder neuer, Intel-Prozessor    | `GenOffice-<version>-x64.dmg`     |
-| **Linux (Beta)**, jede Distribution      | 64-Bit (x86_64)                         | `GenOffice-<version>.AppImage`    |
-| **Linux (Beta)**, Ubuntu-/Debian-Familie | 64-Bit (x86_64)                         | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (Beta)**, Fedora/RHEL/openSUSE   | 64-Bit (x86_64)                         | `ieumoffice-<version>.x86_64.rpm` |
+| Plattform                         | Voraussetzungen                         | Datei                             |
+| --------------------------------- | --------------------------------------- | --------------------------------- |
+| **Windows**                       | Windows 10 oder neuer, 64-Bit Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon            | macOS 12 oder neuer, Chip M1 oder neuer | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                    | macOS 12 oder neuer, Intel-Prozessor    | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, jede Distribution      | 64-Bit (x86_64)                         | `GenOffice-<version>.AppImage`    |
+| **Linux**, Ubuntu-/Debian-Familie | 64-Bit (x86_64)                         | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE   | 64-Bit (x86_64)                         | `ieumoffice-<version>.x86_64.rpm` |
 
 Welchen Mac Sie haben, sehen Sie im Apple-Menü unter **Über diesen Mac**. Steht bei „Chip“ Apple M…, nehmen Sie die Datei, die auf `-arm64.dmg` endet; steht bei „Prozessor“ Intel …, die Datei, die auf `-x64.dmg` endet. Die übrigen Dateien auf der Releases-Seite (`.zip`, `.yml`, `.blockmap`) verwendet die App selbst für Updates; Sie müssen sie nicht herunterladen. Ältere Versionen bleiben auf der Releases-Seite.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen zeigt dieses Fenster, wenn es ein nicht signierte
 
 Ist die Intelligente App-Steuerung von Windows 11 eingeschaltet, hält sie nicht signierte Installationsprogramme an und bietet keinen Weg über **Weitere Informationen** an. Laut Microsoft lässt sich keine einzelne App zulassen: Die einzige Möglichkeit ist, die Intelligente App-Steuerung unter **Windows-Sicherheit ▸ App- & Browsersteuerung ▸ Einstellungen für intelligente App-Steuerung** auszuschalten. Dadurch entfällt dieser Schutz auch für alle anderen Apps. Mit aktuellen Windows-Updates lässt sie sich wieder einschalten, ohne Windows neu zu installieren.
 
-## Auf einem Mac (Beta)
+## Auf einem Mac
 
 Sie benötigen macOS 12 (Monterey) oder neuer. Die Mac-Version hat keine Entwicklersignatur von Apple. Deshalb meldet macOS beim ersten Öffnen, es könne nicht überprüfen, ob die App frei von Schadsoftware ist, und öffnet sie nicht. Erlauben Sie sie einmalig, wie unten beschrieben.
 
@@ -77,7 +77,7 @@ Außerdem auf dem Mac:
 - Die KI-Verbindungskarten haben keine Installationsschaltfläche. Folgen Sie dem Link zur offiziellen Installationsanleitung auf der Karte, um Claude Code oder Codex zu installieren. Die Claude-Desktop-App ist nicht Claude Code, daher muss Claude Code auch dann eigens installiert werden, wenn die Desktop-App vorhanden ist.
 - Die Anmeldung wird im Browser abgeschlossen. Fordert der Browser Sie auf, einen Code einzufügen, führen Sie `claude auth login` oder `codex login` selbst im Terminal aus. Siehe [Abonnement-Verbindung](help://subscription).
 
-## Unter Linux (Beta)
+## Unter Linux
 
 - **AppImage**: Machen Sie die Datei ausführbar (`chmod +x GenOffice-<version>.AppImage`) und starten Sie sie. Es gibt keinen Installationsschritt.
 - **deb**: Installieren Sie mit `sudo apt install ./ieumoffice_<version>_amd64.deb`.

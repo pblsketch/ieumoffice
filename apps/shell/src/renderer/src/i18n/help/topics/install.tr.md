@@ -1,17 +1,17 @@
 # GenOffice kurulumu
 
-Her sürüm, projenin GitHub’daki [Sürümler sayfasında](https://github.com/pblsketch/ieumoffice/releases/latest) yayımlanır. Windows yapısı, beta olarak çıkarılan Mac ve Linux yapılarıyla birlikte yayımlanır. Geliştirici Mac ve Linux yapılarını doğrudan deneyemez; bunlar kullanıcıların bildirimleriyle doğrulanır.
+Her sürüm, projenin GitHub’daki [Sürümler sayfasında](https://github.com/pblsketch/ieumoffice/releases/latest) yayımlanır. Windows, Mac ve Linux yapıları birlikte yayımlanır. Geliştirici Mac ve Linux yapılarını doğrudan deneyemez; bunlar kullanıcıların bildirimleriyle doğrulanır.
 
 ## Makineniz için dosyayı seçin
 
-| Platform                               | Gereksinimler                           | Dosya                             |
-| -------------------------------------- | --------------------------------------- | --------------------------------- |
-| **Windows**                            | Windows 10 veya üzeri, 64 bit Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac (beta)**, Apple Silicon          | macOS 12 veya üzeri, M1 ya da daha yeni | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (beta)**, Intel                  | macOS 12 veya üzeri, Intel işlemci      | `GenOffice-<version>-x64.dmg`     |
-| **Linux (beta)**, tüm dağıtımlar       | 64 bit (x86_64)                         | `GenOffice-<version>.AppImage`    |
-| **Linux (beta)**, Ubuntu/Debian ailesi | 64 bit (x86_64)                         | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (beta)**, Fedora/RHEL/openSUSE | 64 bit (x86_64)                         | `ieumoffice-<version>.x86_64.rpm` |
+| Platform                        | Gereksinimler                           | Dosya                             |
+| ------------------------------- | --------------------------------------- | --------------------------------- |
+| **Windows**                     | Windows 10 veya üzeri, 64 bit Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon          | macOS 12 veya üzeri, M1 ya da daha yeni | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                  | macOS 12 veya üzeri, Intel işlemci      | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, tüm dağıtımlar       | 64 bit (x86_64)                         | `GenOffice-<version>.AppImage`    |
+| **Linux**, Ubuntu/Debian ailesi | 64 bit (x86_64)                         | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE | 64 bit (x86_64)                         | `ieumoffice-<version>.x86_64.rpm` |
 
 Hangi Mac’e sahip olduğunuzu görmek için Apple menüsü ▸ **Bu Mac Hakkında**’yı açın. "Çip" Apple M… diyorsa sonu `-arm64.dmg` ile biten dosyayı, "İşlemci" Intel … diyorsa sonu `-x64.dmg` ile biteni alın. Sürümler sayfasındaki diğer dosyalar (`.zip`, `.yml`, `.blockmap`) uygulamanın kendini güncellemek için kullandıklarıdır; onları indirmeniz gerekmez. Eski sürümler Sürümler sayfasında kalır.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen, imzasız bir yükleyiciyi ilk gördüğünde bu 
 
 Windows 11’in Akıllı Uygulama Denetimi açıkken imzasız yükleyicileri durdurur ve **Daha fazla bilgi** yolu sunmaz. Microsoft, tek bir uygulamaya izin vermenin yolu olmadığını söyler: tek seçenek **Windows Güvenliği ▸ Uygulama ve tarayıcı denetimi ▸ Akıllı Uygulama Denetimi ayarları** altında Akıllı Uygulama Denetimi’ni kapatmaktır. Bu, korumayı diğer tüm uygulamalar için de kaldırır. Son Windows güncellemeleriyle Windows’u yeniden kurmadan yeniden açılabilir.
 
-## Mac’te (beta)
+## Mac’te
 
 macOS 12 (Monterey) veya üzeri gerekir. Mac yapısının Apple geliştirici imzası yoktur; bu yüzden onu ilk açtığınızda macOS, uygulamanın kötü amaçlı yazılım içermediğini doğrulayamadığını söyler ve açmaz. Aşağıdaki gibi bir kez izin verin.
 
@@ -77,7 +77,7 @@ Mac’te ayrıca:
 - AI bağlantı kartlarında kurulum düğmesi yoktur. Claude Code veya Codex’i kurmak için kartın resmî kurulum kılavuzu bağlantısını izleyin. Claude masaüstü uygulaması Claude Code değildir; bu yüzden masaüstü uygulaması kurulu olsa bile Claude Code’un kurulması gerekir.
 - Oturum açma tarayıcıda biter. Tarayıcı bir kod yapıştırmanızı isterse Terminal’de `claude auth login` veya `codex login` komutunu kendiniz çalıştırın. Bkz. [Abonelik bağlantısı](help://subscription).
 
-## Linux’ta (beta)
+## Linux’ta
 
 - **AppImage**: dosyayı çalıştırılabilir yapın (`chmod +x GenOffice-<version>.AppImage`) ve çalıştırın. Kurulum adımı yoktur.
 - **deb**: `sudo apt install ./ieumoffice_<version>_amd64.deb` ile kurun.
