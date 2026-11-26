@@ -161,3 +161,12 @@
 | [0163](0163-print-upgrade-destination-preview-overlays.md)    | 인쇄 출력 대상(프린터·PDF·그림) 통합, 10개 편집기 온디맨드 라이브 미리보기, 워터마크·머리글/바닥글·한글 범위 확장 | 2026-11-23 |
 | [0164](0164-a2ui-question-card.md)                            | AI 질문 카드(`ask_questions`)를 A2UI v1.0 메시지로 주고받고, HTML·슬라이드의 옛 질문 도구를 없앤다                | 2026-11-24 |
 | [0165](0165-mobile-scope-and-design-system.md)                | 모바일판은 PC 기능 맞추기를 기본으로 1판·2판으로 나누고, AI는 기본 꺼짐, 겉모습은 하나인 디자인 시스템을 쓴다     | 2026-11-24 |
+| [0171](0171-mobile-v1-track-slots-and-format-gate.md)         | 모바일 1판 바탕 공사: 편집기 등록표와 트랙 자리를 나누고, 열 수 있는 형식은 등록표가 정해 Rust가 지킨다           | 2026-11-26 |
+| [0172](0172-mobile-v1-design-system-tokens-and-components.md) | 모바일 1판 디자인 시스템: 토큰 층·공용 부품(`ds/`)·검사를 세우고, 주 동작 색·보기 도구·넓은 창 폭을 정한다        | 2026-11-26 |
+| [0173](0173-mobile-v1-sheets-editor.md)                       | 모바일 1판 엑셀: 엔진을 별도 정적 라이브러리로 빌드해 패닉을 격리하고, PC 화면·목록 검증 저장을 재사용한다        | 2026-11-26 |
+| [0174](0174-mobile-v1-pdf-editor.md)                          | 모바일 1판 PDF 편집기: PC 저장 코드를 대역으로 재사용하고, 앱 글꼴 셋·펜 자동 구분·1판 편집 범위를 둔다           | 2026-11-26 |
+| [0175](0175-mobile-v1-pdf-tools-and-shared-ops.md)            | 모바일 1판 PDF 도구: 이음오피스 파일만 `@genoffice/pdf-ops`로 빼고 원본 공유는 거울 함수·기준선 시험으로 지킨다   | 2026-11-26 |
+| [0176](0176-mobile-v1-html-and-markdown.md)                   | 모바일 1판 HTML·마크다운: 세션 무변경 내보내기, 스크립트 없는 HTML 변환, 바이트 보존과 마크다운 AI 숨김 규칙      | 2026-11-26 |
+| [0177](0177-mobile-v1-epub-and-pptx-readers.md)               | 모바일 1판 EPUB·PPT 읽기: EPUB 쪽 넘기기·`blob:` 격리, PPT Konva 재사용·추정 치수·Rust 읽던 자리, 1판 AI 없음     | 2026-11-26 |
+| [0178](0178-mobile-v1-home-files-and-settings.md)             | 모바일 1판 홈·파일·설정: 꺼진 편집기 열기 확인, 사본으로 편집, 폴더·최근 삭제 구분과 파일 경로 기반 안전 쓰기     | 2026-11-26 |
+| [0179](0179-mobile-v1-ai-relay-and-tools.md)                  | 모바일 1판 AI: PC 프로토콜과 Rust 봉인 중계, 키 없는 검색·모바일 공개 주소 판정, 즉시 적용 카드와 가리기 경계     | 2026-11-26 |
