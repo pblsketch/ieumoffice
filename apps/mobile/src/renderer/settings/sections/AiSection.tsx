@@ -1,5 +1,5 @@
 // Owner: track T7 (AI switch, AI connections and AI storage rows).
-import { useState } from 'react'
+import { useCallback, useState, useSyncExternalStore } from 'react'
 import { SUBSCRIPTION_CHATGPT_USAGE_URL } from '@genoffice/ai-provider/browser'
 import type {
   MobileAiSettingsSnapshot,
@@ -7,9 +7,25 @@ import type {
   MobileAppPrefsPatch,
   MobileChatGptStatus,
 } from '@genoffice/mobile-bridge/transport'
+import { AiConfirmSheet } from '../../ai/AiConfirmSheet'
+import { AiResultsRows } from '../../ai/AiResultsRows'
+import { AiToolsCard } from '../../ai/AiToolsCard'
+import {
+  CustomServerRow,
+  EMPTY_CUSTOM_DRAFT,
+  type CustomServerDraft,
+} from '../../ai/CustomServerRow'
+import {
+  isMobileAiRunning,
+  mobileAiQueuedCount,
+  mobileAiRunState,
+  stopAllMobileAi,
+  subscribeMobileAiRunState,
+} from '../../ai/runState'
 import type { MobileAiSettingsSlot } from '../../ai/settingsSlot'
 import { useMobileLocale } from '../../i18n'
 import { IconChevronDown, IconChevronRight } from '../../components/MobileIcons'
+import './AiSection.css'
 
 const BYOK_PROVIDERS = [
   { id: 'openai', label: 'OpenAI' },
@@ -25,20 +41,67 @@ export interface AiEnabledRowProps {
   readonly onUpdatePrefs: (patch: MobileAppPrefsPatch) => void
 }
 
-/** The AI on/off switch: one row inside the general settings card. */
+/**
+ * The AI on/off switch: one row inside the general settings card, with the
+ * one-line hint of design system 6.1 under its label. Turning AI off while a
+ * run is going or messages wait in the queue asks "stop and turn off?" first;
+ * cancelling (or Back) leaves AI on and the work running.
+ */
 export function AiEnabledRow({ prefs, onUpdatePrefs }: AiEnabledRowProps) {
   const { t } = useMobileLocale()
+  const run = useSyncExternalStore(subscribeMobileAiRunState, mobileAiRunState, mobileAiRunState)
+  const [askOff, setAskOff] = useState(false)
+
+  const onSwitch = (on: boolean) => {
+    if (on) {
+      onUpdatePrefs({ aiEnabled: true })
+      return
+    }
+    const busy = run.running || run.queued > 0 || isMobileAiRunning() || mobileAiQueuedCount() > 0
+    if (busy) {
+      setAskOff(true)
+      return
+    }
+    onUpdatePrefs({ aiEnabled: false })
+  }
+
+  const stopAndTurnOff = () => {
+    setAskOff(false)
+    // stop the run and empty the queue, then save off
+    stopAllMobileAi()
+    onUpdatePrefs({ aiEnabled: false })
+  }
+
+  const keepOn = useCallback(() => setAskOff(false), [])
+
   return (
-    <label className="mobile-set-row">
-      <span className="mobile-set-label">{t('settingsAiEnabled')}</span>
-      <input
-        type="checkbox"
-        className="mobile-switch"
-        checked={prefs.aiEnabled}
-        onChange={(e) => onUpdatePrefs({ aiEnabled: e.target.checked })}
-        data-testid="settings-ai-enabled-toggle"
+    <>
+      <label className="mobile-set-row">
+        <span className="ai-set-switch-text">
+          <span className="mobile-set-label">{t('settingsAiEnabled')}</span>
+          <span className="ai-set-hint" data-testid="ai-enabled-hint">
+            {t('aiEnabledHint')}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          className="mobile-switch"
+          checked={prefs.aiEnabled}
+          onChange={(e) => onSwitch(e.target.checked)}
+          data-testid="settings-ai-enabled-toggle"
+        />
+      </label>
+      <AiConfirmSheet
+        open={askOff}
+        title={t('aiStopOffTitle')}
+        body={t('aiStopOffBody')}
+        confirmLabel={t('aiStopOffConfirm')}
+        cancelLabel={t('cancel')}
+        onConfirm={stopAndTurnOff}
+        onCancel={keepOn}
+        testId="ai-stop-off-sheet"
       />
-    </label>
+    </>
   )
 }
 
@@ -71,9 +134,11 @@ export function AiSection({
   onRemoveKey,
   onChatgptSignIn,
   onChatgptSignOut,
+  slot: aiSlot,
 }: AiSectionProps) {
   const { t } = useMobileLocale()
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
+  const [customDraft, setCustomDraft] = useState<CustomServerDraft>(EMPTY_CUSTOM_DRAFT)
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null)
   const [busyProvider, setBusyProvider] = useState<string | null>(null)
   const [keyError, setKeyError] = useState<string | null>(null)
@@ -103,6 +168,12 @@ export function AiSection({
   }
 
   const openRouterConfigured = aiSettings.configuredProviders.openrouter
+  // the providers with a key, so the AI tools card reads the ready image providers again
+  const keysVersion = Object.entries(aiSettings.configuredProviders)
+    .filter(([, info]) => info?.hasKey)
+    .map(([id]) => id)
+    .sort()
+    .join(',')
   const geminiConfigured = aiSettings.configuredProviders.gemini
 
   const renderProviderAccordion = (opts: {
@@ -118,7 +189,7 @@ export function AiSection({
       <div key={opts.slot} className="mobile-accordion-item">
         <button
           type="button"
-          className="mobile-accordion-trigger"
+          className="mobile-accordion-trigger ai-set-provider"
           onClick={() => toggleSlot(opts.slot)}
           aria-expanded={isExpanded}
         >
@@ -304,8 +375,21 @@ export function AiSection({
               freeOnly: id === 'openrouter' ? false : undefined,
             })
           })}
+          {aiSlot?.client && (
+            <CustomServerRow
+              client={aiSlot.client}
+              selectedProvider={aiSettings.selectedProvider}
+              applyAiSettings={aiSlot.applyAiSettings}
+              draft={customDraft}
+              onDraft={(patch) => setCustomDraft((prev) => ({ ...prev, ...patch }))}
+              expanded={expandedSlot === 'custom'}
+              onToggle={() => toggleSlot('custom')}
+            />
+          )}
         </div>
       </div>
+
+      {aiSlot?.client && <AiToolsCard keysVersion={keysVersion} />}
     </section>
   )
 }
@@ -314,7 +398,18 @@ export interface AiStorageRowsProps {
   readonly slot?: MobileAiSettingsSlot
 }
 
-/** AI result store size and clear rows, drawn by the storage section. Empty for now. */
-export function AiStorageRows(_props: AiStorageRowsProps) {
-  return null
+/**
+ * The AI result store card. The storage section draws it after its own card,
+ * so it brings its own card and heading. Shown while AI is off too; nothing
+ * without the app's client.
+ */
+export function AiStorageRows({ slot }: AiStorageRowsProps) {
+  const { t } = useMobileLocale()
+  if (!slot?.client) return null
+  return (
+    <div className="mobile-card" data-testid="ai-results-card">
+      <h3 className="mobile-card-subtitle">{t('aiResultsTitle')}</h3>
+      <AiResultsRows client={slot.client} />
+    </div>
+  )
 }
