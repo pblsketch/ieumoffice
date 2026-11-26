@@ -66,4 +66,17 @@ export const hi = {
   webHtmlViewSource: 'सोर्स देखें',
   webHtmlFrameTitle: 'दस्तावेज़ पूर्वावलोकन',
   webHtmlSourceLabel: 'HTML सोर्स',
+  webHtmlEditText: 'पाठ संपादित करें',
+  webHtmlDelete: 'हटाएँ',
+  webHtmlEditTextField: 'पाठ',
+  webHtmlEditTextPart: 'पाठ भाग {n}',
+  webHtmlEditTextMixedHint:
+    'इसके अंदर किसी दूसरे एलिमेंट का पाठ बदलने के लिए उस एलिमेंट पर टैप करें।',
+  webHtmlEditTextApply: 'लागू करें',
+  webHtmlEditTextCancel: 'रद्द करें',
+  webHtmlEditInSource: 'इस एलिमेंट को सोर्स में संपादित करें।',
+  webHtmlGoToSource: 'सोर्स में संपादित करें',
+  webHtmlCannotDelete: 'html, head और body एलिमेंट हटाए नहीं जा सकते।',
+  webHtmlEditFailed: 'बदलाव नहीं हो सका। एलिमेंट फिर से चुनें।',
+  webHtmlDeleted: 'एलिमेंट हटा दिया गया। पूर्ववत करके उसे वापस ला सकते हैं।',
 } as const satisfies Record<keyof typeof zh, string>

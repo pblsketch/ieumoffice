@@ -68,4 +68,17 @@ export const fr = {
   webHtmlViewSource: 'Afficher la source',
   webHtmlFrameTitle: 'Aperçu du document',
   webHtmlSourceLabel: 'Source HTML',
+  webHtmlEditText: 'Modifier le texte',
+  webHtmlDelete: 'Supprimer',
+  webHtmlEditTextField: 'Texte',
+  webHtmlEditTextPart: 'Partie de texte {n}',
+  webHtmlEditTextMixedHint:
+    'Pour modifier le texte d’un élément contenu dans celui-ci, touchez cet élément.',
+  webHtmlEditTextApply: 'Appliquer',
+  webHtmlEditTextCancel: 'Annuler',
+  webHtmlEditInSource: 'Modifiez cet élément dans la source.',
+  webHtmlGoToSource: 'Modifier dans la source',
+  webHtmlCannotDelete: 'Les éléments html, head et body ne peuvent pas être supprimés.',
+  webHtmlEditFailed: 'Impossible d’appliquer la modification. Sélectionnez à nouveau l’élément.',
+  webHtmlDeleted: 'Élément supprimé. Annuler le rétablit.',
 } as const satisfies Record<keyof typeof zh, string>

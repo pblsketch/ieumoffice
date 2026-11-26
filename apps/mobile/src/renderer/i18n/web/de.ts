@@ -69,4 +69,17 @@ export const de = {
   webHtmlViewSource: 'Quelltext anzeigen',
   webHtmlFrameTitle: 'Dokumentvorschau',
   webHtmlSourceLabel: 'HTML-Quelltext',
+  webHtmlEditText: 'Text bearbeiten',
+  webHtmlDelete: 'Löschen',
+  webHtmlEditTextField: 'Text',
+  webHtmlEditTextPart: 'Textteil {n}',
+  webHtmlEditTextMixedHint:
+    'Um den Text eines Elements darin zu bearbeiten, tippen Sie auf dieses Element.',
+  webHtmlEditTextApply: 'Übernehmen',
+  webHtmlEditTextCancel: 'Abbrechen',
+  webHtmlEditInSource: 'Bearbeiten Sie dieses Element im Quelltext.',
+  webHtmlGoToSource: 'Im Quelltext bearbeiten',
+  webHtmlCannotDelete: 'Die Elemente html, head und body können nicht gelöscht werden.',
+  webHtmlEditFailed: 'Die Änderung war nicht möglich. Wählen Sie das Element erneut aus.',
+  webHtmlDeleted: 'Element gelöscht. Mit Rückgängig holen Sie es zurück.',
 } as const satisfies Record<keyof typeof zh, string>

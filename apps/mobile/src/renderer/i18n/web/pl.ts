@@ -66,4 +66,17 @@ export const pl = {
   webHtmlViewSource: 'Pokaż źródło',
   webHtmlFrameTitle: 'Podgląd dokumentu',
   webHtmlSourceLabel: 'Źródło HTML',
+  webHtmlEditText: 'Edytuj tekst',
+  webHtmlDelete: 'Usuń',
+  webHtmlEditTextField: 'Tekst',
+  webHtmlEditTextPart: 'Część tekstu {n}',
+  webHtmlEditTextMixedHint:
+    'Aby edytować tekst elementu znajdującego się w środku, dotknij tego elementu.',
+  webHtmlEditTextApply: 'Zastosuj',
+  webHtmlEditTextCancel: 'Anuluj',
+  webHtmlEditInSource: 'Edytuj ten element w źródle.',
+  webHtmlGoToSource: 'Edytuj w źródle',
+  webHtmlCannotDelete: 'Nie można usunąć elementów html, head i body.',
+  webHtmlEditFailed: 'Nie udało się wprowadzić zmiany. Zaznacz element ponownie.',
+  webHtmlDeleted: 'Element usunięty. Cofnij, aby go przywrócić.',
 } as const satisfies Record<keyof typeof zh, string>

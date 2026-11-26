@@ -68,4 +68,17 @@ export const nl = {
   webHtmlViewSource: 'Bron weergeven',
   webHtmlFrameTitle: 'Documentvoorbeeld',
   webHtmlSourceLabel: 'HTML-bron',
+  webHtmlEditText: 'Tekst bewerken',
+  webHtmlDelete: 'Verwijderen',
+  webHtmlEditTextField: 'Tekst',
+  webHtmlEditTextPart: 'Tekstdeel {n}',
+  webHtmlEditTextMixedHint:
+    'Tik op een element binnen dit element om de tekst daarvan te bewerken.',
+  webHtmlEditTextApply: 'Toepassen',
+  webHtmlEditTextCancel: 'Annuleren',
+  webHtmlEditInSource: 'Bewerk dit element in de bron.',
+  webHtmlGoToSource: 'Bewerken in bron',
+  webHtmlCannotDelete: 'De elementen html, head en body kunnen niet worden verwijderd.',
+  webHtmlEditFailed: 'De wijziging is niet gelukt. Selecteer het element opnieuw.',
+  webHtmlDeleted: 'Element verwijderd. Met Ongedaan maken komt het terug.',
 } as const satisfies Record<keyof typeof zh, string>

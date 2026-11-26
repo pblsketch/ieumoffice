@@ -66,4 +66,17 @@ export const pt = {
   webHtmlViewSource: 'Ver código-fonte',
   webHtmlFrameTitle: 'Pré-visualização do documento',
   webHtmlSourceLabel: 'Código-fonte HTML',
+  webHtmlEditText: 'Editar texto',
+  webHtmlDelete: 'Excluir',
+  webHtmlEditTextField: 'Texto',
+  webHtmlEditTextPart: 'Parte do texto {n}',
+  webHtmlEditTextMixedHint:
+    'Para editar o texto de um elemento dentro deste, toque nesse elemento.',
+  webHtmlEditTextApply: 'Aplicar',
+  webHtmlEditTextCancel: 'Cancelar',
+  webHtmlEditInSource: 'Edite este elemento no código-fonte.',
+  webHtmlGoToSource: 'Editar no código-fonte',
+  webHtmlCannotDelete: 'Os elementos html, head e body não podem ser excluídos.',
+  webHtmlEditFailed: 'Não foi possível fazer a alteração. Selecione o elemento de novo.',
+  webHtmlDeleted: 'Elemento excluído. Desfazer o traz de volta.',
 } as const satisfies Record<keyof typeof zh, string>
