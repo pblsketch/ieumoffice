@@ -20,4 +20,5 @@ export const id = {
   resizePanel: 'Ubah lebar panel file',
   noRecent: 'Tidak ada dokumen terbaru',
   searching: 'Mencari…',
+  quickLook: 'Pratinjau Cepat',
 } satisfies Record<keyof typeof zh, string>

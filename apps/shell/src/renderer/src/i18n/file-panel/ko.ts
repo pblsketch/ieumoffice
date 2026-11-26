@@ -19,4 +19,5 @@ export const ko = {
   resizePanel: '파일 목록 너비 조절',
   noRecent: '최근 문서가 없습니다',
   searching: '찾는 중…',
+  quickLook: '빠른 미리보기',
 } satisfies Record<keyof typeof zh, string>

@@ -77,6 +77,7 @@ import {
   FILE_PANEL_CHANNELS,
   type FilePanelApi,
   type FilePanelItemAction,
+  type FilePanelQuickLookState,
   type FilePanelState,
 } from '../shared/file-panel-api'
 import type { SplitHint, SplitViewState } from '../shared/split-view-api'
@@ -1014,6 +1015,7 @@ contextBridge.exposeInMainWorld('aiOfficeTabs', tabsApi)
 
 const ITEM_ACTIONS: ReadonlySet<FilePanelItemAction> = new Set([
   'open',
+  'quickLook',
   'reveal',
   'copyPath',
   'addRoot',
@@ -1053,6 +1055,31 @@ const filePanelApi: FilePanelApi = {
     return typeof result === 'string' && ITEM_ACTIONS.has(result as FilePanelItemAction)
       ? (result as FilePanelItemAction)
       : null
+  },
+  async quickLookOpen(path, nav) {
+    return (await ipcRenderer.invoke(FILE_PANEL_CHANNELS.quickLookOpen, path, nav)) === true
+  },
+  quickLookClose() {
+    ipcRenderer.send(FILE_PANEL_CHANNELS.quickLookClose)
+  },
+  onQuickLookChanged(handler) {
+    const listener = (_event: IpcRendererEvent, state: unknown) => {
+      if (!state || typeof state !== 'object') return
+      const rec = state as Partial<FilePanelQuickLookState>
+      handler({
+        open: rec.open === true,
+        path: typeof rec.path === 'string' ? rec.path : null,
+      })
+    }
+    ipcRenderer.on(FILE_PANEL_CHANNELS.quickLookChanged, listener)
+    return () => ipcRenderer.removeListener(FILE_PANEL_CHANNELS.quickLookChanged, listener)
+  },
+  onQuickLookStep(handler) {
+    const listener = (_event: IpcRendererEvent, delta: unknown) => {
+      if (delta === -1 || delta === 1) handler(delta)
+    }
+    ipcRenderer.on(FILE_PANEL_CHANNELS.quickLookStep, listener)
+    return () => ipcRenderer.removeListener(FILE_PANEL_CHANNELS.quickLookStep, listener)
   },
 }
 

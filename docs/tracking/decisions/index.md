@@ -167,3 +167,4 @@
 | [0169](0169-hwp-ruler-paragraph-marks.md)                     | 한글 눈금자에 한컴식 문단 마커 넷과 이름을 두고, AI가 둘째 줄 시작 위치를 맞추고 점검한다                         | 2026-11-26 |
 | [0170](0170-antigravity-acp-subscription.md)                  | Google Antigravity 구독을 공식 ACP 클라이언트(`agy acp`)로 기본 AI 창과 에이전트 모드에 연동한다                  | 2026-11-26 |
 | [0171](0171-pdf-auto-ocr-no-cap.md)                           | 스캔 PDF 자동 OCR의 40페이지 상한을 없애고, 보고 있는 쪽부터 낮은 우선순위로 끝까지 인식한다                      | 2026-11-26 |
+| [0172](0172-file-panel-quick-look.md)                         | 편집기 탭 옆 파일 목록 칸에서 스페이스바로 기존 미리보기 창을 칸 옆 문서 위에 띄운다                              | 2026-11-27 |

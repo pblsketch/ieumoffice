@@ -8,6 +8,7 @@ const strings = defineStrings({
   zh: {
     menuToggle: '文件面板',
     itemOpen: '打开',
+    itemQuickLook: '快速预览',
     itemRevealExplorer: '在资源管理器中显示',
     itemRevealFinder: '在访达中显示',
     itemCopyPath: '复制路径',
@@ -16,6 +17,7 @@ const strings = defineStrings({
   en: {
     menuToggle: 'Files Panel',
     itemOpen: 'Open',
+    itemQuickLook: 'Quick Look',
     itemRevealExplorer: 'Show in File Explorer',
     itemRevealFinder: 'Show in Finder',
     itemCopyPath: 'Copy Path',
@@ -24,6 +26,7 @@ const strings = defineStrings({
   ja: {
     menuToggle: 'ファイルパネル',
     itemOpen: '開く',
+    itemQuickLook: 'クイックルック',
     itemRevealExplorer: 'エクスプローラーで表示',
     itemRevealFinder: 'Finder で表示',
     itemCopyPath: 'パスをコピー',
@@ -32,6 +35,7 @@ const strings = defineStrings({
   ko: {
     menuToggle: '파일 목록',
     itemOpen: '열기',
+    itemQuickLook: '빠른 미리보기',
     itemRevealExplorer: '탐색기에서 보기',
     itemRevealFinder: 'Finder에서 보기',
     itemCopyPath: '경로 복사',
@@ -40,6 +44,7 @@ const strings = defineStrings({
   fr: {
     menuToggle: 'Panneau Fichiers',
     itemOpen: 'Ouvrir',
+    itemQuickLook: 'Coup d’œil',
     itemRevealExplorer: "Afficher dans l'Explorateur de fichiers",
     itemRevealFinder: 'Afficher dans le Finder',
     itemCopyPath: 'Copier le chemin',
@@ -48,6 +53,7 @@ const strings = defineStrings({
   de: {
     menuToggle: 'Dateibereich',
     itemOpen: 'Öffnen',
+    itemQuickLook: 'Schnellvorschau',
     itemRevealExplorer: 'Im Explorer anzeigen',
     itemRevealFinder: 'Im Finder anzeigen',
     itemCopyPath: 'Pfad kopieren',
@@ -56,6 +62,7 @@ const strings = defineStrings({
   es: {
     menuToggle: 'Panel de archivos',
     itemOpen: 'Abrir',
+    itemQuickLook: 'Vista rápida',
     itemRevealExplorer: 'Mostrar en el Explorador de archivos',
     itemRevealFinder: 'Mostrar en Finder',
     itemCopyPath: 'Copiar ruta',
@@ -64,6 +71,7 @@ const strings = defineStrings({
   th: {
     menuToggle: 'แผงไฟล์',
     itemOpen: 'เปิด',
+    itemQuickLook: 'ดูตัวอย่างด่วน',
     itemRevealExplorer: 'แสดงใน File Explorer',
     itemRevealFinder: 'แสดงใน Finder',
     itemCopyPath: 'คัดลอกเส้นทาง',
@@ -72,6 +80,7 @@ const strings = defineStrings({
   id: {
     menuToggle: 'Panel File',
     itemOpen: 'Buka',
+    itemQuickLook: 'Pratinjau Cepat',
     itemRevealExplorer: 'Tampilkan di File Explorer',
     itemRevealFinder: 'Tampilkan di Finder',
     itemCopyPath: 'Salin Jalur',
@@ -80,6 +89,7 @@ const strings = defineStrings({
   ru: {
     menuToggle: 'Панель файлов',
     itemOpen: 'Открыть',
+    itemQuickLook: 'Быстрый просмотр',
     itemRevealExplorer: 'Показать в проводнике',
     itemRevealFinder: 'Показать в Finder',
     itemCopyPath: 'Копировать путь',
@@ -88,6 +98,7 @@ const strings = defineStrings({
   ar: {
     menuToggle: 'لوحة الملفات',
     itemOpen: 'فتح',
+    itemQuickLook: 'معاينة سريعة',
     itemRevealExplorer: 'إظهار في مستكشف الملفات',
     itemRevealFinder: 'إظهار في Finder',
     itemCopyPath: 'نسخ المسار',
@@ -96,6 +107,7 @@ const strings = defineStrings({
   pt: {
     menuToggle: 'Painel de arquivos',
     itemOpen: 'Abrir',
+    itemQuickLook: 'Visualização Rápida',
     itemRevealExplorer: 'Mostrar no Explorador de Arquivos',
     itemRevealFinder: 'Mostrar no Finder',
     itemCopyPath: 'Copiar caminho',
@@ -104,6 +116,7 @@ const strings = defineStrings({
   it: {
     menuToggle: 'Pannello file',
     itemOpen: 'Apri',
+    itemQuickLook: 'Visualizzazione rapida',
     itemRevealExplorer: 'Mostra in Esplora file',
     itemRevealFinder: 'Mostra nel Finder',
     itemCopyPath: 'Copia percorso',
@@ -112,6 +125,7 @@ const strings = defineStrings({
   pl: {
     menuToggle: 'Panel plików',
     itemOpen: 'Otwórz',
+    itemQuickLook: 'Szybki podgląd',
     itemRevealExplorer: 'Pokaż w Eksploratorze plików',
     itemRevealFinder: 'Pokaż w Finderze',
     itemCopyPath: 'Kopiuj ścieżkę',
@@ -120,6 +134,7 @@ const strings = defineStrings({
   cs: {
     menuToggle: 'Panel souborů',
     itemOpen: 'Otevřít',
+    itemQuickLook: 'Rychlý náhled',
     itemRevealExplorer: 'Zobrazit v Průzkumníku souborů',
     itemRevealFinder: 'Zobrazit ve Finderu',
     itemCopyPath: 'Kopírovat cestu',
@@ -128,6 +143,7 @@ const strings = defineStrings({
   nl: {
     menuToggle: 'Bestandenpaneel',
     itemOpen: 'Openen',
+    itemQuickLook: 'Snelle weergave',
     itemRevealExplorer: 'Weergeven in Verkenner',
     itemRevealFinder: 'Weergeven in Finder',
     itemCopyPath: 'Pad kopiëren',
@@ -136,6 +152,7 @@ const strings = defineStrings({
   ms: {
     menuToggle: 'Panel Fail',
     itemOpen: 'Buka',
+    itemQuickLook: 'Pratonton Pantas',
     itemRevealExplorer: 'Tunjukkan dalam File Explorer',
     itemRevealFinder: 'Tunjukkan dalam Finder',
     itemCopyPath: 'Salin Laluan',
@@ -144,6 +161,7 @@ const strings = defineStrings({
   he: {
     menuToggle: 'חלונית קבצים',
     itemOpen: 'פתיחה',
+    itemQuickLook: 'הצצה מהירה',
     itemRevealExplorer: 'הצגה בסייר הקבצים',
     itemRevealFinder: 'הצגה ב-Finder',
     itemCopyPath: 'העתקת נתיב',
@@ -152,6 +170,7 @@ const strings = defineStrings({
   hi: {
     menuToggle: 'फ़ाइल पैनल',
     itemOpen: 'खोलें',
+    itemQuickLook: 'त्वरित पूर्वावलोकन',
     itemRevealExplorer: 'फ़ाइल एक्सप्लोरर में दिखाएँ',
     itemRevealFinder: 'Finder में दिखाएँ',
     itemCopyPath: 'पथ कॉपी करें',
@@ -160,6 +179,7 @@ const strings = defineStrings({
   'zh-TW': {
     menuToggle: '檔案面板',
     itemOpen: '開啟',
+    itemQuickLook: '快速預覽',
     itemRevealExplorer: '在檔案總管中顯示',
     itemRevealFinder: '在 Finder 中顯示',
     itemCopyPath: '複製路徑',
@@ -168,6 +188,7 @@ const strings = defineStrings({
   vi: {
     menuToggle: 'Bảng tệp',
     itemOpen: 'Mở',
+    itemQuickLook: 'Xem nhanh',
     itemRevealExplorer: 'Hiện trong File Explorer',
     itemRevealFinder: 'Hiện trong Finder',
     itemCopyPath: 'Sao chép đường dẫn',
@@ -176,6 +197,7 @@ const strings = defineStrings({
   tr: {
     menuToggle: 'Dosya Paneli',
     itemOpen: 'Aç',
+    itemQuickLook: 'Hızlı Bakış',
     itemRevealExplorer: 'Dosya Gezgini’nde göster',
     itemRevealFinder: 'Finder’da göster',
     itemCopyPath: 'Yolu kopyala',

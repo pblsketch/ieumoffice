@@ -20,4 +20,5 @@ export const fr = {
   resizePanel: 'Redimensionner le panneau Fichiers',
   noRecent: 'Aucun document récent',
   searching: 'Recherche…',
+  quickLook: 'Coup d’œil',
 } satisfies Record<keyof typeof zh, string>

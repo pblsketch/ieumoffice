@@ -5,7 +5,7 @@
  * out through the tab manager, answers the renderer's channels and adds the
  * View-menu toggle.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { BrowserWindow, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { isBesideDocument } from '@genoffice/electron-utils'
@@ -18,6 +18,8 @@ import {
   readFilePanelChoice,
   type FilePanelChoice,
   type FilePanelItemAction,
+  type FilePanelQuickLookNav,
+  type FilePanelQuickLookState,
   type FilePanelState,
 } from '../shared/file-panel-api'
 import type { FolderListing } from '../shared/home-api'
@@ -33,6 +35,26 @@ export function isDocumentFolder(dir: string, openFilePaths: readonly string[]):
   const wanted = resolve(dir)
   return openFilePaths.some(
     (open) => resolve(dirname(resolve(open))) === wanted || isBesideDocument(open, wanted),
+  )
+}
+
+/**
+ * Whether `target` lies within the scope the file panel may reveal or preview:
+ * inside a configured folder root, revealable from Home (recents, starred,
+ * projects, or beside an open document), or inside an open document's folder
+ * subtree.
+ */
+export function isPanelAllowedPath(
+  target: string,
+  insideAnyRoot: (path: string) => boolean,
+  isRevealable: (path: string) => boolean,
+  openFilePaths: readonly string[],
+): boolean {
+  return (
+    insideAnyRoot(target) ||
+    isRevealable(target) ||
+    isDocumentFolder(target, openFilePaths) ||
+    isDocumentFolder(dirname(resolve(target)), openFilePaths)
   )
 }
 
@@ -53,6 +75,10 @@ export interface FilePanelDeps {
   listFolder: (dir: string) => FolderListing
   /** whether the home screen may already show this path (roots, recents, projects) */
   isRevealable: (path: string) => boolean
+  /** show or update the floating Quick Look window beside the file panel */
+  openQuickLook?: (path: string, nav: FilePanelQuickLookNav) => Promise<boolean>
+  /** close the Quick Look window if it was opened by the file panel */
+  closeQuickLook?: () => void
 }
 
 let deps: FilePanelDeps | null = null
@@ -96,6 +122,7 @@ function apply(next: FilePanelChoice, store: 'now' | 'later' | 'no'): void {
 
 export function setFilePanelOpen(open: boolean): void {
   if (choice.open === open) return
+  if (!open) deps?.closeQuickLook?.()
   apply({ ...choice, open }, 'now')
 }
 
@@ -106,6 +133,22 @@ export function toggleFilePanel(): void {
 /** the interface scale changed: the painted width changes with it */
 export function filePanelScaleChanged(): void {
   broadcast()
+}
+
+/** push preview open/update/close state to the shell renderer */
+export function notifyFilePanelQuickLookChanged(state: FilePanelQuickLookState): void {
+  const win = deps?.shellWindow()
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(FILE_PANEL_CHANNELS.quickLookChanged, state)
+  }
+}
+
+/** ask the file panel renderer to step to the previous or next visible file */
+export function notifyFilePanelQuickLookStep(delta: -1 | 1): void {
+  const win = deps?.shellWindow()
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(FILE_PANEL_CHANNELS.quickLookStep, delta)
+  }
 }
 
 /**
@@ -155,10 +198,7 @@ export function registerFilePanelIpc(insideAnyRoot: (path: string) => boolean): 
         if (typeof path !== 'string' || !path || path.length > 4096) return done(null)
         const current = deps
         const canReveal = (target: string): boolean =>
-          insideAnyRoot(target) ||
-          current.isRevealable(target) ||
-          isDocumentFolder(target, current.openFilePaths()) ||
-          isDocumentFolder(dirname(resolve(target)), current.openFilePaths())
+          isPanelAllowedPath(target, insideAnyRoot, current.isRevealable, current.openFilePaths())
         const lang = deps.lang()
         let picked: FilePanelItemAction | null = null
         const item = (label: string, action: FilePanelItemAction): MenuItemConstructorOptions => ({
@@ -168,7 +208,12 @@ export function registerFilePanelIpc(insideAnyRoot: (path: string) => boolean): 
           },
         })
         const template: MenuItemConstructorOptions[] = [
-          ...(kind === 'file' ? [item(filePanelMenuText(lang, 'itemOpen'), 'open')] : []),
+          ...(kind === 'file'
+            ? [
+                item(filePanelMenuText(lang, 'itemOpen'), 'open'),
+                item(filePanelMenuText(lang, 'itemQuickLook'), 'quickLook'),
+              ]
+            : []),
           item(
             filePanelMenuText(
               lang,
@@ -198,6 +243,39 @@ export function registerFilePanelIpc(insideAnyRoot: (path: string) => boolean): 
         })
       }),
   )
+  ipcMain.handle(
+    FILE_PANEL_CHANNELS.quickLookOpen,
+    async (event, rawPath: unknown, rawNav: unknown): Promise<boolean> => {
+      if (!deps || !fromShell(event.sender)) return false
+      if (typeof rawPath !== 'string' || !rawPath || rawPath.length > 4096) return false
+      if (!isPanelAllowedPath(rawPath, insideAnyRoot, deps.isRevealable, deps.openFilePaths())) {
+        return false
+      }
+      try {
+        if (!statSync(rawPath).isFile()) return false
+      } catch {
+        return false
+      }
+      const rec =
+        rawNav && typeof rawNav === 'object' ? (rawNav as Partial<FilePanelQuickLookNav>) : {}
+      const direction = rec.direction === 'up' || rec.direction === 'down' ? rec.direction : 'none'
+      const nav: FilePanelQuickLookNav = {
+        canPrev: rec.canPrev === true,
+        canNext: rec.canNext === true,
+        direction,
+        ...(typeof rec.index === 'number' && Number.isInteger(rec.index) && rec.index >= 0
+          ? { index: rec.index }
+          : {}),
+        ...(typeof rec.total === 'number' && Number.isInteger(rec.total) && rec.total > 0
+          ? { total: rec.total }
+          : {}),
+      }
+      return (await deps.openQuickLook?.(rawPath, nav)) ?? false
+    },
+  )
+  ipcMain.on(FILE_PANEL_CHANNELS.quickLookClose, (event) => {
+    if (fromShell(event.sender)) deps?.closeQuickLook?.()
+  })
 }
 
 /**

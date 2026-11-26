@@ -19,4 +19,5 @@ export const nl = {
   resizePanel: 'Breedte van het bestandenpaneel wijzigen',
   noRecent: 'Geen recente documenten',
   searching: 'Zoeken…',
+  quickLook: 'Snelle weergave',
 } satisfies Record<keyof typeof zh, string>

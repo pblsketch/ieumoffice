@@ -20,4 +20,5 @@ export const ja = {
   resizePanel: 'ファイルパネルの幅を変更',
   noRecent: '最近の文書はありません',
   searching: '検索中…',
+  quickLook: 'クイックルック',
 } satisfies Record<keyof typeof zh, string>

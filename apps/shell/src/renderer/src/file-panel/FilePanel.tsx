@@ -16,11 +16,13 @@ import { filePanelText, type FilePanelStringKey } from '../i18n/strings-file-pan
 import { useI18n } from '../locale'
 import {
   baseName,
+  filePreviewNav,
   isAtOrUnder,
   mergeFileMatches,
   parentDir,
   rootFor,
   samePath,
+  stepPreviewPath,
   treeOrder,
 } from './file-panel-model'
 import './file-panel.css'
@@ -105,6 +107,12 @@ export function FilePanel({
   const [indexHits, setIndexHits] = useState<RecentEntry[] | null>([])
   const bodyRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const hoveredFilePathRef = useRef<string | null>(null)
+  const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const previewPathRef = useRef<string | null>(null)
+  previewPathRef.current = previewPath
+  const previewRowElRef = useRef<HTMLElement | null>(null)
+  const lastPreviewPathRef = useRef<string | null>(null)
 
   // dir -> whether a reload was asked for while its request was in flight
   const inflight = useRef(new Map<string, boolean>())
@@ -247,21 +255,168 @@ export function FilePanel({
     return mergeFileMatches(needle, local, indexHits ?? [])
   }, [needle, currentDir, listings, recents, indexHits])
 
+  // ── quick look ──
+  const getVisibleFileRows = useCallback(
+    () => Array.from(bodyRef.current?.querySelectorAll<HTMLElement>('[data-fp-file-path]') ?? []),
+    [],
+  )
+
+  const closePreview = useCallback(() => {
+    if (!previewPathRef.current) return
+    setPreviewPath(null)
+    previewPathRef.current = null
+    window.aiOfficeFilePanel.quickLookClose()
+  }, [])
+
+  const openPreview = useCallback(
+    (path: string, direction: 'up' | 'down' | 'none' = 'none', rowEl?: HTMLElement | null) => {
+      const rows = getVisibleFileRows()
+      const paths = rows.map((el) => el.dataset.fpFilePath ?? '')
+      let idx = rowEl && rows.includes(rowEl) ? rows.indexOf(rowEl) : -1
+      let canPrev: boolean
+      let canNext: boolean
+      const total = paths.length
+      if (idx !== -1) {
+        canPrev = idx > 0
+        canNext = idx < total - 1
+      } else {
+        const nav = filePreviewNav(paths, path)
+        idx = nav.index
+        canPrev = nav.canPrev
+        canNext = nav.canNext
+      }
+      const targetRow = idx !== -1 ? rows[idx] : null
+      if (targetRow) {
+        previewRowElRef.current = targetRow
+        targetRow.scrollIntoView({ block: 'nearest' })
+        if (document.activeElement !== targetRow) {
+          targetRow.focus({ preventScroll: true })
+        }
+      } else {
+        previewRowElRef.current = null
+      }
+      lastPreviewPathRef.current = path
+      setPreviewPath(path)
+      previewPathRef.current = path
+      void window.aiOfficeFilePanel
+        .quickLookOpen(path, {
+          canPrev,
+          canNext,
+          direction,
+          ...(idx !== -1 ? { index: idx, total } : {}),
+        })
+        .then((ok) => {
+          if (!ok && previewPathRef.current && samePath(previewPathRef.current, path)) {
+            setPreviewPath(null)
+            previewPathRef.current = null
+          }
+        })
+        .catch(() => {
+          if (previewPathRef.current && samePath(previewPathRef.current, path)) {
+            setPreviewPath(null)
+            previewPathRef.current = null
+          }
+        })
+    },
+    [getVisibleFileRows],
+  )
+
+  const togglePreview = useCallback(
+    (path: string, rowEl?: HTMLElement | null) => {
+      if (previewPathRef.current && samePath(previewPathRef.current, path)) {
+        closePreview()
+        return
+      }
+      openPreview(path, 'none', rowEl)
+    },
+    [closePreview, openPreview],
+  )
+
+  const stepPreview = useCallback(
+    (delta: -1 | 1) => {
+      const current = previewPathRef.current
+      if (!current) return
+      const rows = getVisibleFileRows()
+      const paths = rows.map((el) => el.dataset.fpFilePath ?? '')
+      const anchored = previewRowElRef.current
+      const anchoredIdx =
+        anchored && rows.includes(anchored) && samePath(anchored.dataset.fpFilePath ?? '', current)
+          ? rows.indexOf(anchored)
+          : -1
+      if (anchoredIdx !== -1) {
+        const nextIdx = anchoredIdx + delta
+        const nextRow = rows[nextIdx]
+        const nextPath = paths[nextIdx]
+        if (!nextRow || !nextPath) return
+        openPreview(nextPath, delta < 0 ? 'up' : 'down', nextRow)
+        return
+      }
+      const next = stepPreviewPath(paths, current, delta)
+      if (!next) return
+      openPreview(next.path, next.direction, rows[next.index] ?? null)
+    },
+    [getVisibleFileRows, openPreview],
+  )
+
+  // Close Quick Look when the panel hides (e.g. switched to Home or closed)
+  useEffect(() => {
+    if (hidden && previewPathRef.current) {
+      closePreview()
+    }
+  }, [hidden, closePreview])
+
+  // Sync preview open/close state driven from main or the preview window itself
+  useEffect(() => {
+    const offChanged = window.aiOfficeFilePanel.onQuickLookChanged((next) => {
+      const wasOpen = previewPathRef.current !== null
+      const nextPath = next.open ? next.path : null
+      setPreviewPath(nextPath)
+      previewPathRef.current = nextPath
+      if (nextPath) {
+        lastPreviewPathRef.current = nextPath
+      } else if (wasOpen && !hidden) {
+        // Restore keyboard focus to the last previewed file row if the window returned focus to body
+        const active = document.activeElement
+        if (!active || active === document.body) {
+          const anchor = previewRowElRef.current
+          if (anchor && anchor.isConnected) {
+            anchor.focus({ preventScroll: true })
+          } else if (lastPreviewPathRef.current) {
+            const match = getVisibleFileRows().find((el) =>
+              samePath(el.dataset.fpFilePath ?? '', lastPreviewPathRef.current ?? ''),
+            )
+            match?.focus({ preventScroll: true })
+          }
+        }
+      }
+    })
+    const offStep = window.aiOfficeFilePanel.onQuickLookStep((delta) => {
+      stepPreview(delta)
+    })
+    return () => {
+      offChanged()
+      offStep()
+    }
+  }, [hidden, getVisibleFileRows, stepPreview])
+
   // ── row actions ──
   const isOpen = (path: string) => openPaths.some((open) => samePath(open, path))
   const isActive = (path: string) => !!activeFilePath && samePath(activeFilePath, path)
 
   const openFile = (path: string) => {
+    if (previewPathRef.current) closePreview()
     void window.aiOffice.openPath(path)
   }
 
   const showMenu = (event: ReactMouseEvent, kind: 'file' | 'folder', path: string): void => {
     event.preventDefault()
+    const rowEl = event.currentTarget as HTMLElement
     const canAddRoot = kind === 'folder' && rootFor(path, roots) === undefined
     void window.aiOfficeFilePanel
       .showItemMenu(kind, path, event.clientX, event.clientY, canAddRoot)
       .then((action) => {
         if (action === 'open') openFile(path)
+        else if (action === 'quickLook') openPreview(path, 'none', rowEl)
         else if (action === 'copyPath') void navigator.clipboard?.writeText(path)
         else if (action === 'addRoot') {
           void window.aiOffice.dropFolderRoots([path]).then(loadRoots)
@@ -283,17 +438,42 @@ export function FilePanel({
   const rowKeys = (
     event: ReactKeyboardEvent<HTMLElement>,
     activate: () => void,
-    folder?: { path: string; open: boolean },
+    options?: {
+      filePath?: string
+      folder?: { path: string; open: boolean }
+    },
   ) => {
     const target = event.currentTarget
+    const folder = options?.folder
+    const filePath = options?.filePath
+    const noMods = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
     switch (event.key) {
+      case ' ':
+        if (!noMods || event.nativeEvent.isComposing) break
+        if (filePath) {
+          event.preventDefault()
+          if (!event.repeat) togglePreview(filePath, target)
+        } else if (previewPathRef.current) {
+          event.preventDefault()
+          if (!event.repeat) closePreview()
+        }
+        break
+      case 'Escape':
+        if (previewPathRef.current) {
+          event.preventDefault()
+          closePreview()
+        }
+        break
       case 'ArrowDown':
         event.preventDefault()
-        moveFocus(target, 1)
+        if (previewPathRef.current) stepPreview(1)
+        else moveFocus(target, 1)
         break
       case 'ArrowUp':
         event.preventDefault()
-        if (bodyRef.current?.querySelector('[data-fp-row]') === target) searchRef.current?.focus()
+        if (previewPathRef.current) stepPreview(-1)
+        else if (bodyRef.current?.querySelector('[data-fp-row]') === target)
+          searchRef.current?.focus()
         else moveFocus(target, -1)
         break
       case 'Home':
@@ -323,23 +503,70 @@ export function FilePanel({
     }
   }
 
+  // Fallback for Space / Esc when focus is inside the panel (not an input/button/row)
+  const onPanelKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing) return
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+    const target = event.target as HTMLElement | null
+    const tag = target?.tagName
+    if (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      tag === 'BUTTON' ||
+      target?.isContentEditable
+    ) {
+      return
+    }
+    if (event.key === ' ') {
+      if (previewPathRef.current) {
+        event.preventDefault()
+        if (!event.repeat) closePreview()
+      } else if (hoveredFilePathRef.current) {
+        event.preventDefault()
+        if (!event.repeat) {
+          const hovered = hoveredFilePathRef.current
+          const match = getVisibleFileRows().find((el) =>
+            samePath(el.dataset.fpFilePath ?? '', hovered),
+          )
+          openPreview(hovered, 'none', match ?? null)
+        }
+      }
+    } else if (event.key === 'Escape' && previewPathRef.current) {
+      event.preventDefault()
+      closePreview()
+    }
+  }
+
   // ── rows ──
   function renderFile(entry: RecentEntry, depth: number, detail?: string): ReactElement {
     const active = isActive(entry.path)
     const open = isOpen(entry.path)
+    const previewing = !!previewPath && samePath(previewPath, entry.path)
     return (
       <li key={entry.path} role="none">
         <div
-          className={`fp-row fp-file${active ? ' active' : ''}`}
+          className={`fp-row fp-file${active ? ' active' : ''}${previewing ? ' previewing' : ''}`}
           role="treeitem"
           aria-current={active ? 'page' : undefined}
           aria-level={depth + 1}
           tabIndex={-1}
           data-fp-row=""
+          data-fp-file-path={entry.path}
           title={entry.path}
           style={{ paddingInlineStart: 8 + depth * INDENT_PX }}
           onClick={() => openFile(entry.path)}
-          onKeyDown={(event) => rowKeys(event, () => openFile(entry.path))}
+          onMouseEnter={() => {
+            hoveredFilePathRef.current = entry.path
+          }}
+          onMouseLeave={() => {
+            if (hoveredFilePathRef.current === entry.path) {
+              hoveredFilePathRef.current = null
+            }
+          }}
+          onKeyDown={(event) =>
+            rowKeys(event, () => openFile(entry.path), { filePath: entry.path })
+          }
           onContextMenu={(event) => showMenu(event, 'file', entry.path)}
         >
           <span className="fp-twisty" aria-hidden="true" />
@@ -351,6 +578,29 @@ export function FilePanel({
           {open && !active && (
             <span className="fp-open-dot" role="img" aria-label={tx('openMark')} />
           )}
+          <button
+            type="button"
+            className="fp-preview-btn"
+            tabIndex={-1}
+            title={`${tx('quickLook')} (Space)`}
+            aria-label={tx('quickLook')}
+            onClick={(event) => {
+              event.stopPropagation()
+              const rowEl = event.currentTarget.closest<HTMLElement>('[data-fp-file-path]')
+              togglePreview(entry.path, rowEl)
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4S1.5 8 1.5 8Z"
+                stroke="currentColor"
+                strokeWidth="1.25"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.25" />
+            </svg>
+          </button>
         </div>
       </li>
     )
@@ -403,7 +653,9 @@ export function FilePanel({
             if (!unavailable) toggleExpanded(path)
           }}
           onKeyDown={(event) =>
-            rowKeys(event, () => !unavailable && toggleExpanded(path), { path, open })
+            rowKeys(event, () => !unavailable && toggleExpanded(path), {
+              folder: { path, open },
+            })
           }
           onContextMenu={(event) => showMenu(event, 'folder', path)}
         >
@@ -512,6 +764,7 @@ export function FilePanel({
       aria-label={tx('panelTitle')}
       hidden={hidden}
       style={{ top, width: inset, height: Math.max(0, viewportHeight - top) }}
+      onKeyDown={onPanelKeyDown}
     >
       <div
         className="file-panel-inner"

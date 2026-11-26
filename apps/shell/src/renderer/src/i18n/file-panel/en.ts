@@ -19,4 +19,5 @@ export const en = {
   resizePanel: 'Resize files panel',
   noRecent: 'No recent documents',
   searching: 'Searching…',
+  quickLook: 'Quick Look',
 } satisfies Record<keyof typeof zh, string>

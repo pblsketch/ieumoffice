@@ -19,4 +19,5 @@ export const hi = {
   resizePanel: 'फ़ाइल पैनल की चौड़ाई बदलें',
   noRecent: 'कोई हाल का दस्तावेज़ नहीं',
   searching: 'खोज रहे हैं…',
+  quickLook: 'त्वरित पूर्वावलोकन',
 } satisfies Record<keyof typeof zh, string>

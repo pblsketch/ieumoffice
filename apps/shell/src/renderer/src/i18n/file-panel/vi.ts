@@ -19,4 +19,5 @@ export const vi = {
   resizePanel: 'Đổi độ rộng bảng tệp',
   noRecent: 'Không có tài liệu gần đây',
   searching: 'Đang tìm…',
+  quickLook: 'Xem nhanh',
 } satisfies Record<keyof typeof zh, string>

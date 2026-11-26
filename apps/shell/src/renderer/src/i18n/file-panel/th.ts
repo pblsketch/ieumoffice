@@ -19,4 +19,5 @@ export const th = {
   resizePanel: 'ปรับความกว้างแผงไฟล์',
   noRecent: 'ไม่มีเอกสารล่าสุด',
   searching: 'กำลังค้นหา…',
+  quickLook: 'ดูตัวอย่างด่วน',
 } satisfies Record<keyof typeof zh, string>

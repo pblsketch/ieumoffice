@@ -95,3 +95,58 @@ export function mergeFileMatches(
   for (const entry of indexed) take(entry)
   return out
 }
+
+export interface FilePreviewNavInfo {
+  index: number
+  total: number
+  canPrev: boolean
+  canNext: boolean
+}
+
+/**
+ * Position and prev/next availability of `currentPath` inside the ordered list
+ * of visible file rows. Returns `index: -1` if the path is not in the list.
+ */
+export function filePreviewNav(
+  visibleFilePaths: readonly string[],
+  currentPath: string,
+): FilePreviewNavInfo {
+  const index = visibleFilePaths.findIndex((path) => samePath(path, currentPath))
+  const total = visibleFilePaths.length
+  return {
+    index,
+    total,
+    canPrev: index > 0,
+    canNext: index !== -1 && index < total - 1,
+  }
+}
+
+export interface FilePreviewStepResult extends FilePreviewNavInfo {
+  path: string
+  direction: 'up' | 'down'
+}
+
+/**
+ * Resolve the previous (-1) or next (+1) file to preview from the visible file
+ * rows in screen order. Returns null when already at the boundary or missing.
+ */
+export function stepPreviewPath(
+  visibleFilePaths: readonly string[],
+  currentPath: string,
+  delta: -1 | 1,
+): FilePreviewStepResult | null {
+  const index = visibleFilePaths.findIndex((path) => samePath(path, currentPath))
+  if (index === -1) return null
+  const nextIndex = index + delta
+  const nextPath = visibleFilePaths[nextIndex]
+  if (!nextPath) return null
+  const total = visibleFilePaths.length
+  return {
+    path: nextPath,
+    index: nextIndex,
+    total,
+    canPrev: nextIndex > 0,
+    canNext: nextIndex < total - 1,
+    direction: delta < 0 ? 'up' : 'down',
+  }
+}

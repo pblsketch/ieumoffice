@@ -19,4 +19,5 @@ export const zhTW = {
   resizePanel: '調整檔案面板寬度',
   noRecent: '沒有最近的文件',
   searching: '正在尋找…',
+  quickLook: '快速預覽',
 } satisfies Record<keyof typeof zh, string>
