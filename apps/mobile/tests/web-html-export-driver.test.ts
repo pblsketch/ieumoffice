@@ -16,6 +16,15 @@ import zlib, {
   deflateSync,
 } from '../src/renderer/editors/html/html2docxNode'
 import { Packer } from '../src/renderer/editors/html/html2docxPacker'
+import {
+  clipOwners,
+  keepCapturedText,
+  shotIdOfSelector,
+  visibleText,
+} from '../src/renderer/editors/html/htmlExportCaptures'
+
+/** The stand-in marker for a picture without words (the app passes webExportPictureMissing). */
+const MARK = '[MARK]'
 
 // jsdom does not load srcdoc: in this file, setting it writes the text into the frame's own
 // document (jsdom runs no scripts) once jsdom's own about:blank load is over, then fires load,
@@ -62,7 +71,7 @@ afterEach(async () => {
 })
 
 async function loaded(html: string): Promise<SandboxFrameDriver> {
-  const driver = new SandboxFrameDriver({ html })
+  const driver = new SandboxFrameDriver({ html, missingPictureText: MARK })
   drivers.push(driver)
   await driver.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 })
   await driver.goto(EXPORT_DOCUMENT_URL, { timeoutMs: 5000 })
@@ -93,7 +102,7 @@ describe('the export frame', () => {
   })
 
   it('loads nothing but the document it was given', async () => {
-    const driver = new SandboxFrameDriver({ html: PAGE })
+    const driver = new SandboxFrameDriver({ html: PAGE, missingPictureText: MARK })
     drivers.push(driver)
     await expect(driver.goto('https://example.com/', { timeoutMs: 100 })).rejects.toThrow()
     await expect(driver.goto('file:///etc/passwd', { timeoutMs: 100 })).rejects.toThrow()
@@ -205,7 +214,7 @@ describe('the converter over the export frame (jsdom: no layout, plumbing only)'
 <script>document.write('<p>SCRIPT-RAN</p>')</script></head>
 <body><h1>보고서 제목</h1><p>본문 문단</p><table><tr><td>칸 하나</td></tr></table></body></html>`
     const html = buildExportCopy(source, mapDocument(source, 0, null))
-    const driver = new SandboxFrameDriver({ html })
+    const driver = new SandboxFrameDriver({ html, missingPictureText: MARK })
     drivers.push(driver)
     const { docx } = await convertHtmlToDocx({ url: EXPORT_DOCUMENT_URL }, driver)
     const zip = await JSZip.loadAsync(docx)
@@ -217,6 +226,153 @@ describe('the converter over the export frame (jsdom: no layout, plumbing only)'
     // the converter closes nothing; the caller does
     expect(driver.frameElement).not.toBeNull()
   }, 60_000)
+})
+
+describe('a failed capture keeps its words (the extracted tree)', () => {
+  function tree() {
+    return [
+      { type: 'image', shotId: 'h2d-0', width: 100, height: 50 },
+      {
+        type: 'para',
+        runs: [
+          { text: 'before ' },
+          { text: '', inlineImage: true, shotId: 'h2d-1', width: 20, height: 10 },
+          { text: '', inlineImage: true, shotId: 'h2d-2', width: 16, height: 16 },
+        ],
+      },
+      {
+        type: 'table',
+        rows: [
+          { cells: [{ children: [{ type: 'image', shotId: 'h2d-3', width: 5, height: 5 }] }] },
+        ],
+      },
+      {
+        type: 'image',
+        shotId: 'h2d-4',
+        width: 100,
+        height: 600,
+        clip: { x: 10, y: 0, width: 100, height: 600 },
+      },
+      {
+        type: 'image',
+        shotId: 'h2d-5',
+        width: 100,
+        height: 200,
+        clip: { x: 10, y: 600, width: 100, height: 200 },
+      },
+      { type: 'image', shotId: 'h2d-6', width: 9, height: 9, fallbackText: 'Video' },
+      { type: 'image', shotId: 'h2d-7', width: 9, height: 9, href: 'https://e.com/v' },
+      {
+        type: 'image',
+        shotId: 'h2d-8',
+        width: 9,
+        height: 9,
+        clip: { x: 0, y: 900, width: 9, height: 9 },
+      },
+    ] as any[]
+  }
+
+  it('a block takes its visible text; nothing else in the tree changes', () => {
+    const ir = tree()
+    const before = JSON.parse(JSON.stringify(ir))
+    expect(keepCapturedText(ir, 'h2d-0', 'Gradient Hero Heading Hero tagline', true, MARK)).toBe(1)
+    expect(ir[0].fallbackText).toBe('Gradient Hero Heading Hero tagline')
+    expect({ ...ir[0], fallbackText: undefined }).toEqual({ ...before[0], fallbackText: undefined })
+    expect(ir.slice(1)).toEqual(before.slice(1))
+  })
+
+  it('a block without words gets the marker, also deep in a table', () => {
+    const ir = tree()
+    keepCapturedText(ir, 'h2d-3', '', true, MARK)
+    expect(ir[2].rows[0].cells[0].children[0].fallbackText).toBe(MARK)
+  })
+
+  it('a later slice of a tall block is a blank line; a lone clip without element is the marker', () => {
+    const ir = tree()
+    keepCapturedText(ir, 'h2d-4', '긴 구역의 글', true, MARK)
+    keepCapturedText(ir, 'h2d-5', '', false, MARK)
+    keepCapturedText(ir, 'h2d-8', '', false, MARK)
+    expect(ir[3].fallbackText).toBe('긴 구역의 글')
+    expect(ir[4].fallbackText).toBe('\u00a0')
+    expect(ir[7].fallbackText).toBe(MARK)
+  })
+
+  it('the converter’s own words (a title, a link) stay', () => {
+    const ir = tree()
+    expect(keepCapturedText(ir, 'h2d-6', 'x', true, MARK)).toBe(0)
+    expect(keepCapturedText(ir, 'h2d-7', 'x', true, MARK)).toBe(0)
+    expect(ir[5].fallbackText).toBe('Video')
+    expect(ir[6].fallbackText).toBeUndefined()
+  })
+
+  it('an inline label becomes its words; an inline picture without words is left out as before', () => {
+    const ir = tree()
+    keepCapturedText(ir, 'h2d-1', 'NEW', true, MARK)
+    keepCapturedText(ir, 'h2d-2', '', true, MARK)
+    expect(ir[1].runs[1]).toMatchObject({ text: 'NEW', inlineImage: false })
+    expect(ir[1].runs[2]).toMatchObject({ text: '', inlineImage: true })
+  })
+
+  it('names captures by their clip objects and selectors, and reads text as one line', () => {
+    const ir = tree()
+    const owners = clipOwners(ir)
+    expect(owners.get(ir[3].clip)).toBe('h2d-4')
+    expect(owners.get({ ...ir[3].clip })).toBeUndefined()
+    expect(shotIdOfSelector('[data-h2d-id="h2d-12"]')).toBe('h2d-12')
+    expect(shotIdOfSelector('img')).toBeNull()
+    const div = document.createElement('div')
+    div.innerHTML = '<h1>  제목 </h1>\n<p>문단\n둘</p>'
+    expect(visibleText(div)).toBe('제목 문단 둘')
+    expect(visibleText(null)).toBe('')
+  })
+
+  it('the driver mends the tree the converter got back, only for captures that failed', async () => {
+    const html = `<!DOCTYPE html><html><body>
+<div data-h2d-id="h2d-0"><h1>Hero heading</h1>
+<p>tag line</p></div>
+<span data-h2d-id="h2d-1">NEW</span>
+<div data-h2d-id="h2d-4">tall</div></body></html>`
+    const fakeExtractor = `(${JSON.stringify([
+      { type: 'image', shotId: 'h2d-0', width: 100, height: 50 },
+      {
+        type: 'para',
+        runs: [{ text: '', inlineImage: true, shotId: 'h2d-1', width: 20, height: 10 }],
+      },
+      {
+        type: 'image',
+        shotId: 'h2d-4',
+        width: 100,
+        height: 600,
+        clip: { x: 0, y: 0, width: 100, height: 600 },
+      },
+      {
+        type: 'image',
+        shotId: 'h2d-5',
+        width: 100,
+        height: 100,
+        clip: { x: 0, y: 600, width: 100, height: 100 },
+      },
+    ])})`
+    const driver = new SandboxFrameDriver({
+      html,
+      missingPictureText: MARK,
+      extractorCall: fakeExtractor,
+    })
+    drivers.push(driver)
+    await driver.goto(EXPORT_DOCUMENT_URL, { timeoutMs: 5000 })
+    const ir = await driver.evaluate<any[]>(fakeExtractor)
+    // an element capture (jsdom: an empty box) and a clip capture, as the converter asks for them
+    expect(await driver.elementExists('[data-h2d-id="h2d-0"]')).toBe(true)
+    expect(await driver.screenshotElement('[data-h2d-id="h2d-0"]', {})).toBeNull()
+    expect(await driver.elementExists('[data-h2d-id="h2d-1"]')).toBe(true)
+    expect(await driver.screenshotElement('[data-h2d-id="h2d-1"]', {})).toBeNull()
+    await expect(driver.screenshot({ clip: ir[2].clip })).rejects.toThrow()
+    await expect(driver.screenshot({ clip: ir[3].clip })).rejects.toThrow()
+    expect(ir[0].fallbackText).toBe('Hero heading tag line')
+    expect(ir[1].runs[0]).toMatchObject({ text: 'NEW', inlineImage: false })
+    expect(ir[2].fallbackText).toBe('tall')
+    expect(ir[3].fallbackText).toBe('\u00a0')
+  })
 })
 
 describe('the export copy', () => {

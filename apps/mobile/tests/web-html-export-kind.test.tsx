@@ -34,11 +34,11 @@ const exporter = vi.hoisted(() => ({
   fail: false,
 }))
 vi.mock('../src/renderer/editors/html/htmlExport', () => ({
-  htmlToDocx: vi.fn(async (_html: string) => {
+  htmlToDocx: vi.fn(async (_html: string, _options?: { missingPictureText: string }) => {
     if (exporter.fail) throw new Error('conversion failed')
     return { bytes: DOCX_BYTES, lostCaptures: exporter.lostCaptures }
   }),
-  htmlToOdt: vi.fn(async (_html: string) => {
+  htmlToOdt: vi.fn(async (_html: string, _options?: { missingPictureText: string }) => {
     if (exporter.fail) throw new Error('conversion failed')
     return { bytes: ODT_BYTES, lostCaptures: exporter.lostCaptures, report: exporter.odtReport }
   }),
@@ -279,6 +279,11 @@ describe('HTML → Word export keeps the open document', () => {
     const { htmlToDocx } = await import('../src/renderer/editors/html/htmlExport')
     expect(htmlToDocx).toHaveBeenCalledTimes(1)
     const converted = vi.mocked(htmlToDocx).mock.calls[0]![0]
+    // a picture without words stands as a marker in the screen language, not in English
+    expect(vi.mocked(htmlToDocx).mock.calls[0]![1]).toEqual({
+      missingPictureText: ko('webExportPictureMissing'),
+    })
+    expect(ko('webExportPictureMissing')).toBe('[옮기지 못한 그림]')
     // the export copy of the source on screen: unsaved edits, the preview's policy, no element ids
     expect(converted).toContain('<p>고친 문단</p>')
     expect(converted).toContain('<meta http-equiv="Content-Security-Policy"')

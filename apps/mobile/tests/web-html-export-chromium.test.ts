@@ -38,7 +38,9 @@ function base64(bytes) {
 
 window.runExport = async (source, format) => {
   const html = buildExportCopy(source, mapDocument(source, 0, null))
-  const result = format === 'odt' ? await htmlToOdt(html) : await htmlToDocx(html)
+  const options = { missingPictureText: 'MISSING-PICTURE-MARK' }
+  const result =
+    format === 'odt' ? await htmlToOdt(html, options) : await htmlToDocx(html, options)
   return {
     bytes: base64(result.bytes),
     lostCaptures: result.lostCaptures,
@@ -161,9 +163,11 @@ describe.skipIf(!CHROMIUM)('HTML export in a real Chromium', () => {
 
   afterAll(async () => {
     await browser?.close()
+    // keep-alive connections would hold close() open
+    server?.closeAllConnections()
     await new Promise<void>((done) => (server ? server.close(() => done()) : done()))
     if (work) rmSync(work, { recursive: true, force: true })
-  })
+  }, 60_000)
 
   it('runs where there are no Node globals, and leaves no frame behind', async () => {
     const result = await run(STRUCTURE, 'docx')
@@ -202,9 +206,17 @@ describe.skipIf(!CHROMIUM)('HTML export in a real Chromium', () => {
     // the data: image is drawn from its pixels; the page color is painted as a PNG
     expect(docx.media.length).toBeGreaterThanOrEqual(2)
     expect(docx.xml).toContain('<w:background ')
+    // the gradient banner could not be captured: its words stay, not an English placeholder
+    expect(docx.xml).toContain('Gradient Hero Heading')
+    expect(docx.xml).toContain('Hero tagline')
+    expect(docx.xml).not.toContain('Unavailable embedded content')
+    // the drawing has no words: the marker stands once (the drawn image needs none)
+    expect(docx.xml.split('MISSING-PICTURE-MARK')).toHaveLength(2)
 
     const odt = await run(VISUAL, 'odt')
     expect(odt.xml).toContain('Card Heading')
+    expect(odt.xml).toContain('Gradient Hero Heading')
+    expect(odt.xml).not.toContain('Unavailable embedded content')
     expect(odt.lostCaptures).toBe(docx.lostCaptures)
     expect(odt.report?.some((item) => item.feature === 'page_color')).toBe(true)
   }, 60_000)
