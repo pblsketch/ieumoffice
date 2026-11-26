@@ -46,6 +46,7 @@ import { runHeaderAction, selectHeaderLine } from '../src/renderer/editors/sheet
 import {
   installViewModeGuard,
   isViewModeEdit,
+  withAiUndoPass,
 } from '../src/renderer/editors/sheets/grid/viewModeGuard'
 
 const SHEET = {
@@ -201,7 +202,7 @@ describe('view mode on the grid', () => {
     expect(menu.disabled).toBe(false)
   }, 180_000)
 
-  it("lets the loader's writes, zoom, freeze and undo through in view mode", async () => {
+  it("lets the loader's writes, zoom, freeze and the AI panel's undo through in view mode", async () => {
     const { runtime, commands, guard, sheet } = boot(false)
     sheet.getRange(2, 1).setValue('edited')
     guard.setViewMode(true)
@@ -225,8 +226,30 @@ describe('view mode on the grid', () => {
 
     // The AI panel's undo of a run, pressed after going back to view.
     // Undo replays mutations: the freeze, then the edit made in edit mode.
-    await runtime.univerAPI.undo()
+    await withAiUndoPass(() => runtime.univerAPI.undo())
     expect(readFreeze(runtime)).toEqual({ rows: 0, columns: 0 })
+    await withAiUndoPass(() => runtime.univerAPI.undo())
+    expect(sheet.getRange(2, 1).getValue()).not.toBe('edited')
+  }, 180_000)
+
+  it('blocks any other undo and redo in view mode (a tablet keyboard Ctrl+Z, say)', async () => {
+    const { runtime, commands, guard, sheet } = boot(false)
+    sheet.getRange(2, 1).setValue('edited')
+    sheet.getRange(3, 1).setValue('second')
+    await runtime.univerAPI.undo()
+    expect(sheet.getRange(3, 1).getValue()).toBeNull()
+    guard.setViewMode(true)
+
+    expect(await attempt(commands, 'univer.command.undo')).toBe(false)
+    expect(sheet.getRange(2, 1).getValue()).toBe('edited')
+    expect(await attempt(commands, 'univer.command.redo')).toBe(false)
+    expect(sheet.getRange(3, 1).getValue()).toBeNull()
+
+    // The stacks were left alone: back in edit mode both still work.
+    guard.setViewMode(false)
+    await runtime.univerAPI.redo()
+    expect(sheet.getRange(3, 1).getValue()).toBe('second')
+    await runtime.univerAPI.undo()
     await runtime.univerAPI.undo()
     expect(sheet.getRange(2, 1).getValue()).not.toBe('edited')
   }, 180_000)

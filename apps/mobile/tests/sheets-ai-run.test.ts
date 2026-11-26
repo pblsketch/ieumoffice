@@ -35,6 +35,7 @@ import { pcUniverSync } from '../src/renderer/editors/sheets/grid/pcGridModules'
 import { pcSaveActions } from '../src/renderer/editors/sheets/save/documentSlot'
 import { createSheetsAiRun } from '../src/renderer/editors/sheets/ai/documentSlot'
 import type { MobileGrid } from '../src/renderer/editors/sheets/grid/mobileGrid'
+import { installViewModeGuard } from '../src/renderer/editors/sheets/grid/viewModeGuard'
 import type { SheetsDocumentContext } from '../src/renderer/editors/sheets/workspace/slots'
 import type { OpenedSheetsWorkbook } from '../src/renderer/editors/sheets/session'
 import type { EditorAiContext, EditorHost } from '../src/renderer/editors/editorKind'
@@ -295,6 +296,24 @@ describe('the phone spreadsheet AI run', () => {
     expect(ai.undo()).toBeNull()
     expect(toasts).toEqual([])
     expect(currentMarkRanges().size).toBe(0)
+  }, 180_000)
+
+  it('its one undo still runs after the document went back to view mode', async () => {
+    const { runtime, sheet, grid } = boot()
+    const guard = installViewModeGuard(runtime, { initialView: false, contextMenu: null })
+    const { host } = fakeHost()
+    const ai = aiContext()
+    await runScript(documentContext(grid, host), ai.ctx, [WRITE, 'Done.'])
+    expect(sheet.getRange('A1').getValue()).toBe(42)
+    guard.setViewMode(true)
+    // A keyboard Ctrl+Z in view mode does nothing…
+    await runtime.univerAPI.undo().catch(() => false)
+    expect(sheet.getRange('A1').getValue()).toBe(42)
+    // …the AI panel's undo takes the run back.
+    ai.undo()!.undo()
+    for (let i = 0; i < 20; i += 1) await flush()
+    expect(sheet.getRange('A1').getValue() ?? null).toBeNull()
+    guard.dispose()
   }, 180_000)
 
   it('refuses to undo and says so when the sheet changed after the run', async () => {
