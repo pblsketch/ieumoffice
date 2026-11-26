@@ -206,17 +206,22 @@ describe('opening a deck through the stand-ins (jsdom)', () => {
     expect(decks.length).toBeGreaterThan(0)
   })
 
-  it.each(decks)('opens %s with the slide count and hash Node computes', async (name) => {
-    const bytes = new Uint8Array(readFileSync(join(fixtures, name)))
-    const zip = await JSZip.loadAsync(bytes)
-    const expectedSlides = Object.keys(zip.files).filter((p) =>
-      /^ppt\/slides\/slide\d+\.xml$/.test(p),
-    ).length
-    const before = hashCalls.count
-    const { openPptx } = await import('@genoffice/pptx-engine')
-    const opened = await openPptx(bytes)
-    expect(hashCalls.count).toBeGreaterThan(before)
-    expect(opened.deck.slides).toHaveLength(expectedSlides)
-    expect(opened.deck.originalHash).toBe(nodeHex(bytes))
-  })
+  it.each(decks)(
+    'opens %s with the slide count and hash Node computes',
+    async (name) => {
+      const bytes = new Uint8Array(readFileSync(join(fixtures, name)))
+      const zip = await JSZip.loadAsync(bytes)
+      const expectedSlides = Object.keys(zip.files).filter((p) =>
+        /^ppt\/slides\/slide\d+\.xml$/.test(p),
+      ).length
+      const before = hashCalls.count
+      const { openPptx } = await import('@genoffice/pptx-engine')
+      const opened = await openPptx(bytes)
+      expect(hashCalls.count).toBeGreaterThan(before)
+      expect(opened.deck.slides).toHaveLength(expectedSlides)
+      expect(opened.deck.originalHash).toBe(nodeHex(bytes))
+      // The first case pays the cold transform of the whole engine (slow disks take well over 5 s)
+    },
+    60_000,
+  )
 })
