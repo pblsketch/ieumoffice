@@ -33,6 +33,11 @@
     <data android:mimeType="application/octet-stream" />
 
     <!-- T1 sheets MIME types -->
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+    <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+    <data android:mimeType="application/vnd.ms-excel" />
+    <data android:mimeType="text/csv" />
+    <data android:mimeType="text/comma-separated-values" />
 
     <!-- T2 pdf MIME types -->
     <data android:mimeType="application/pdf" />
@@ -59,6 +64,11 @@
     <data android:mimeType="application/octet-stream" />
 
     <!-- T1 sheets MIME types -->
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+    <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+    <data android:mimeType="application/vnd.ms-excel" />
+    <data android:mimeType="text/csv" />
+    <data android:mimeType="text/comma-separated-values" />
 
     <!-- T2 pdf MIME types -->
     <data android:mimeType="application/pdf" />

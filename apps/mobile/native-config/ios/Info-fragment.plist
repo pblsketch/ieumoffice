@@ -76,6 +76,46 @@
     </dict>
 
     <!-- T1 sheets document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Spreadsheet (XLSX)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.spreadsheetml.sheet</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Macro-Enabled Spreadsheet (XLSM)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.spreadsheetml.sheet.macroenabled</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Spreadsheet 97-2003 (XLS)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.microsoft.excel.xls</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Comma-Separated Values (CSV)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.comma-separated-values-text</string>
+      </array>
+    </dict>
 
     <!-- T2 pdf document types -->
     <dict>
@@ -176,6 +216,28 @@
     </dict>
 
     <!-- T1 sheets imported types -->
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.openxmlformats.spreadsheetml.sheet.macroenabled</string>
+      <key>UTTypeDescription</key>
+      <string>Macro-Enabled Spreadsheet (XLSM)</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>org.openxmlformats.openxml</string>
+        <string>public.zip-archive</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>xlsm</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>application/vnd.ms-excel.sheet.macroEnabled.12</string>
+        </array>
+      </dict>
+    </dict>
 
     <!-- T2 pdf imported types -->
 
