@@ -28,6 +28,7 @@
 //! Errors carry machine codes only. The key never appears in errors, events
 //! or response headers, and a key echoed in a response body is masked.
 
+use crate::ai::cancel::{CancelRegistry, cancelled};
 use crate::ai::settings::{MobileAiSettingsStore, is_supported_mobile_cloud_provider};
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
 use base64::Engine as _;
@@ -36,10 +37,9 @@ use futures_util::StreamExt;
 use reqwest::header::{HeaderName, HeaderValue};
 use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::oneshot;
 use url::Url;
 
 /// Tauri event that carries [`MobileAiRelayEvent`] payloads to the webview.
@@ -47,8 +47,6 @@ pub const RELAY_EVENT_NAME: &str = "mobile:ai-relay-event";
 
 const PLACEHOLDER_MARKER: &str = "__sealed__";
 const REDACTED: &[u8] = b"[redacted]";
-/// Cancels that arrive before their start are remembered briefly (bounded bookkeeping, not content).
-const EARLY_CANCEL_MEMORY: usize = 64;
 
 /// Fixed official hosts per provider, matching the PC adapter table base URLs.
 pub fn provider_relay_hosts(provider: &str) -> &'static [&'static str] {
@@ -165,12 +163,6 @@ impl std::fmt::Debug for PlannedRelayRequest {
     }
 }
 
-#[derive(Default)]
-struct CancelBook {
-    active: BTreeMap<String, oneshot::Sender<()>>,
-    early: VecDeque<String>,
-}
-
 struct Placeholder {
     start: usize,
     end: usize,
@@ -189,17 +181,13 @@ struct TestRoute {
 pub struct MobileAiRelay {
     settings: Arc<MobileAiSettingsStore>,
     client: Mutex<Option<reqwest::Client>>,
-    cancels: Mutex<CancelBook>,
+    cancels: CancelRegistry,
     #[cfg(test)]
     test_routes: Mutex<Vec<TestRoute>>,
 }
 
 fn refuse(key: &str) -> MobileError {
     MobileError::new(MobileErrorCode::InvalidArgument, key)
-}
-
-fn cancelled() -> MobileError {
-    MobileError::new(MobileErrorCode::UserCancelled, "mobile.ai.cancelled")
 }
 
 fn find_placeholders(text: &str) -> MobileResult<Vec<Placeholder>> {
@@ -248,7 +236,7 @@ fn replace_placeholders(text: &str, found: &[Placeholder], with: &str) -> String
 }
 
 /// Request headers the relay never forwards (transport-owned or credential-bearing for other origins).
-fn is_dropped_request_header(name: &str) -> bool {
+pub(crate) fn is_dropped_request_header(name: &str) -> bool {
     matches!(
         name,
         "host"
@@ -335,7 +323,7 @@ impl MobileAiRelay {
         Self {
             settings,
             client: Mutex::new(None),
-            cancels: Mutex::new(CancelBook::default()),
+            cancels: CancelRegistry::default(),
             #[cfg(test)]
             test_routes: Mutex::new(Vec::new()),
         }
@@ -538,32 +526,7 @@ impl MobileAiRelay {
     /// Cancels a running request, or one whose start has not arrived yet.
     /// Request ids must be unique per request (a late cancel is remembered briefly).
     pub fn cancel(&self, request_id: &str) {
-        let mut book = self.cancels.lock().unwrap();
-        if let Some(tx) = book.active.remove(request_id) {
-            let _ = tx.send(());
-            return;
-        }
-        if !book.early.iter().any(|id| id == request_id) {
-            if book.early.len() >= EARLY_CANCEL_MEMORY {
-                book.early.pop_front();
-            }
-            book.early.push_back(request_id.to_string());
-        }
-    }
-
-    /// Registers a cancel handle; refuses an id that was already cancelled or is running.
-    fn register(&self, request_id: &str) -> MobileResult<oneshot::Receiver<()>> {
-        let mut book = self.cancels.lock().unwrap();
-        if let Some(pos) = book.early.iter().position(|id| id == request_id) {
-            book.early.remove(pos);
-            return Err(cancelled());
-        }
-        if book.active.contains_key(request_id) {
-            return Err(refuse("mobile.ai.relayDuplicateId"));
-        }
-        let (tx, rx) = oneshot::channel();
-        book.active.insert(request_id.to_string(), tx);
-        Ok(rx)
+        self.cancels.cancel(request_id);
     }
 
     /// Relays one request. Refusals return `Err` without emitting events; once the
@@ -573,12 +536,14 @@ impl MobileAiRelay {
     where
         F: FnMut(MobileAiRelayEvent) + Send,
     {
-        let mut rx = self.register(&req.request_id)?;
+        let mut rx = self
+            .cancels
+            .register(&req.request_id, "mobile.ai.relayDuplicateId")?;
         let prepared = self.plan(&req).and_then(|p| Ok((p, self.client()?)));
         let (planned, client) = match prepared {
             Ok(ready) => ready,
             Err(err) => {
-                self.cancels.lock().unwrap().active.remove(&req.request_id);
+                self.cancels.finish(&req.request_id);
                 return Err(err);
             }
         };
@@ -601,7 +566,7 @@ impl MobileAiRelay {
                 res = exchange => res,
             }
         };
-        self.cancels.lock().unwrap().active.remove(&req.request_id);
+        self.cancels.finish(&req.request_id);
         match outcome {
             Ok(()) => {
                 send(MobileAiRelayEventKind::End);
