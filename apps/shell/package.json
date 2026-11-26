@@ -29,6 +29,7 @@
     "@genoffice/google-drive": "*",
     "@genoffice/cli": "*",
     "@genoffice/i18n": "*",
+    "@genoffice/pdf-ops": "*",
     "@genoffice/pipelines": "*",
     "@genoffice/pptx-engine": "*",
     "@genoffice/pptx-render": "*",

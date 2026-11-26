@@ -84,6 +84,8 @@ pub fn run() {
             // T2 pdf
 
             // T3 pdf tools
+            commands::pdf_tools::mobile_pdf_tools_share,
+            commands::pdf_tools::mobile_pdf_tools_save_copy,
 
             // T4 html
 

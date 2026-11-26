@@ -1,0 +1,3518 @@
+{
+  "about": "Recorded once by pdf-tools-golden.test.ts from the PC PDF tools before the shared package; never edit by hand.",
+  "entries": {
+    "samples": {
+      "rich": "e8f0136ea7a2263f8bc22bd7beb41e1117d24852ae4a023eda7a93f07c2a252f",
+      "text3": "99a26727502733c7a435ab6fa3d47dd6e92bcf824bdc0792fcf8f3bb42cfecb7",
+      "noText": "5b40f46b7fa489e5de0d57dbeab9d3c9a582bc21585468438a19099b17280608",
+      "plain6": "c8aa28ab75d0c6a3c1fdf5d1a960d4dc1f9ca8fa8586d3797796a322e605af88",
+      "plainSample": "cbda671ea8a8b7d4f6ac7bc5addf99c217372ad24dc750fae35381b2a38ea28e",
+      "background": "d11ab81e408973a2c022f008df5cae0d24a0725f8178acf780220411d1a56b6f",
+      "blank": "50ba003c0cae6f0570202701f683525e17ba2f3ae0f6ccc43d428463ac489c0f",
+      "manyEmpty": "76e7a54cd5575e4645115381a707d4e46bc22056d16b2f78767d97881fc7ae4d",
+      "compress": "e4f8e51c0d98b74496fef57323512d6d5d9c650de4b992b26e1dbbf12a0b1d32",
+      "tight": "60fbc1e9a45c2ae17ddbea24af03b69af96018dcb29192a99e7af1ceae394ba5",
+      "pngRgb": "1a27a55870ff2656407fa8bf089ab485cedcbf974674cfd261b1f77e29dcce31",
+      "pngWide": "62910c89422a03aad93dc9485fd34dde69c24f7dc70a94d8121abd8b87d3286b",
+      "pngRgba": "80c4043dec614c236495ebfe6905111bbc127eb87ead001d66a8056a7498e9fd",
+      "jpegPlain": "1d31a4d9d41948e7d70496ef51f80776a408c604919070822be5ed221b205e01",
+      "jpegTurned": "9bddf35bfba50e235a496631b61ff7604c7cb652ae45884afa16b6c789dddcff",
+      "jpegMirrored": "45d839809b86876f0cc6ed8dd8781a36891201483118a58e8f339f264c8fe9f7",
+      "shifted": "6958e0e131a94291a84b06f0ab92c2af2e04583918fda031748d993c0e0b1962",
+      "badStartxref": "99a12997f65814dff1f1718d09c12faa15207d19d7cbd93b1112e5e8eb0d7d20",
+      "truncated": "505608a2670ff5772ec4917e2af0558aa89c2860754c505c87fe8b59bce46f31",
+      "truncatedRich": "0535f1ca3ff4da6de08bb76720cb9fab01967b432989a0963a6321b49351b622",
+      "junk": "badc93a14a3dc55998aef6b8ad76871f1a7e52e828a3c35365778d83b29f9672",
+      "corrupt": "070d35db701f6ccb5ed5e15de2048fe4ad6f4f97ccc7bdfd8687af362377b6ab",
+      "enc256": "0144033da02f6f49865213d3b433c1f82dee55403272a9f4652b6d986bb53c0f",
+      "enc128": "acc1a11b5d4d85259264b005a2156a03b859bdfa54dfb3c67b9b46a460f449aa",
+      "encRc4": "ac017229e256cc6f5762e101ea710e54b79ed1531a19d0374b2c3cb4a4a0ce44",
+      "encR3": "40eff0ded464ffca309e9185416a82b236fe15243bc430781eb0cb2e92b4a1ea",
+      "encR4": "301ffbeaf16a171e110bd77ab6359e76541fb08c0fb82292e97456ef831b6956",
+      "encR5": "ab6489540dd6e396083a194c9ae0eaaed0e5597ecdaaf8d4496290dc698a847c",
+      "encOwnerOnly": "f033e83cd881551f98eae48e2e6b2f2f2ae6427864f7ade6d71002c7f989d88c",
+      "encSpaces": "d5a2e3fd2aaa7a94b7c2e1bb28f64c01d34ce416654b67d45a66e57c8bf6412d"
+    },
+    "constants": {
+      "MAX_TOOL_INPUT_BYTES": 1073741824,
+      "MAX_PASSWORD_BYTES": 127,
+      "DEFAULT_ANNOT_KINDS": ["comments", "highlights", "drawings", "stamps", "other"],
+      "PDF_TOOL_IDS": [
+        "merge",
+        "split",
+        "extract",
+        "reverse",
+        "nup",
+        "rotate",
+        "pageSize",
+        "splitPages",
+        "imagesToPdf",
+        "toText",
+        "duplex",
+        "overlay",
+        "stripAnnots",
+        "blankPages",
+        "compress",
+        "encrypt",
+        "decrypt",
+        "repair"
+      ],
+      "PDF_TOOL_PAPERS": ["A3", "A4", "A5", "Letter", "Legal"],
+      "PDF_TOOL_MARGINS": ["none", "small", "large"],
+      "PDF_TOOL_SHEET_PAGES": [1, 2, 4, 6, 8, 9, 16],
+      "PDF_TOOL_ANNOT_KINDS": ["comments", "highlights", "drawings", "stamps", "links", "other"]
+    },
+    "tool-table": {
+      "merge": {
+        "isPdfToolId": true,
+        "takesMany": true,
+        "minInputs": 2,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "split": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "extract": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "reverse": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "nup": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "rotate": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "pageSize": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "splitPages": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "imagesToPdf": {
+        "isPdfToolId": true,
+        "takesMany": true,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "image",
+        "outputExtension": "pdf"
+      },
+      "toText": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "txt"
+      },
+      "duplex": {
+        "isPdfToolId": true,
+        "takesMany": true,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "overlay": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "stripAnnots": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "blankPages": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "compress": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": false,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "encrypt": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "pdf",
+        "runsAsJob": true,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "decrypt": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "encrypted",
+        "runsAsJob": true,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      },
+      "repair": {
+        "isPdfToolId": true,
+        "takesMany": false,
+        "minInputs": 1,
+        "accepts": "damaged",
+        "runsAsJob": true,
+        "inputKind": "pdf",
+        "outputExtension": "pdf"
+      }
+    },
+    "is-pdf-tool-id": [true, false, false, false, false, false, false, false],
+    "inspect": {
+      "rich": { "ok": true, "pages": 8 },
+      "text3": { "ok": true, "pages": 3 },
+      "plainSample": { "ok": true, "pages": 1 },
+      "enc256": { "ok": false, "problem": "encrypted" },
+      "encOwnerOnly": { "ok": false, "problem": "encrypted" },
+      "shifted": { "ok": true, "pages": 2 },
+      "truncated": { "ok": false, "problem": "unreadable" },
+      "corrupt": { "ok": false, "problem": "unreadable" },
+      "junk": { "ok": false, "problem": "unreadable" },
+      "empty": { "ok": false, "problem": "unreadable" },
+      "imagePng": { "ok": true, "pages": 1 },
+      "imageJpeg": { "ok": true, "pages": 1 },
+      "imageNot": { "ok": false, "problem": "not-image" },
+      "encryptedPageCount": { "enc256": 0, "encR5": 1, "rich": 8, "junk": 0 }
+    },
+    "bookmarks": {
+      "rich": [
+        { "title": "Part A", "level": 1, "page": 2 },
+        { "title": "Section A.1", "level": 2, "page": 3 },
+        { "title": "Section A.2", "level": 2, "page": 4 },
+        { "title": "부록 B", "level": 1, "page": 5 },
+        { "title": "Section B.1", "level": 2, "page": 7 },
+        { "title": "Section B.2", "level": 2, "page": 8 }
+      ],
+      "text3": []
+    },
+    "check-options": [
+      {
+        "tool": "split",
+        "raw": {},
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "chunkSize": 1 } }
+      },
+      {
+        "tool": "split",
+        "raw": null,
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "chunkSize": 1 } }
+      },
+      {
+        "tool": "split",
+        "raw": { "chunkSize": 3 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "chunkSize": 3 } }
+      },
+      {
+        "tool": "split",
+        "raw": { "chunkSize": 0 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "chunkSize": 1 } }
+      },
+      {
+        "tool": "split",
+        "raw": { "chunkSize": 9 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "chunkSize": 1 } }
+      },
+      {
+        "tool": "split",
+        "raw": { "chunkSize": 2.5 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "chunkSize": 1 } }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "ranges", "splitRanges": "1-2, 4-6" },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "ranges",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitRanges": "1-2, 4-6",
+            "splitMergeRanges": false
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "ranges", "splitRanges": "6-4,1", "splitMergeRanges": true },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "ranges",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitRanges": "4-6, 1",
+            "splitMergeRanges": true
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "ranges", "splitRanges": "1-9" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "range" }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "ranges", "splitRanges": "" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "range" }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "ranges", "splitRanges": "a-b" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "range" }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "fixed", "splitFixedKind": "fileCount", "splitFixedValue": 3 },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "fixed",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitFixedKind": "fileCount",
+            "splitFixedValue": 3
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "fixed", "splitFixedValue": 99, "splitPattern": "range" },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "fixed",
+            "splitPattern": "range",
+            "splitCreateSubfolder": false,
+            "splitFixedKind": "pagesPerFile",
+            "splitFixedValue": 1
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "fixed", "chunkSize": 4, "splitPrefix": "  Part  " },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "fixed",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitPrefix": "Part",
+            "splitFixedKind": "pagesPerFile",
+            "splitFixedValue": 4
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "odd", "splitPattern": "weird", "splitCreateSubfolder": "yes" },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "fixed",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitFixedKind": "pagesPerFile",
+            "splitFixedValue": 1
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "bookmarks" },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "bookmarks",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitBookmarkLevel": 1,
+            "splitIncludeLeading": true
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": {
+          "splitMode": "bookmarks",
+          "splitBookmarkLevel": 2,
+          "splitIncludeLeading": false,
+          "splitPattern": "bookmark",
+          "splitCreateSubfolder": true
+        },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "bookmarks",
+            "splitPattern": "bookmark",
+            "splitCreateSubfolder": true,
+            "splitBookmarkLevel": 2,
+            "splitIncludeLeading": false
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "bookmarks", "splitBookmarkLevel": 3 },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "bookmarks",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitBookmarkLevel": 1,
+            "splitIncludeLeading": true
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "maxSize", "splitMaxBytes": 100 },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "invalid-size" }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "maxSize", "splitMaxBytes": 10240 },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "maxSize",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitMaxBytes": 10240
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "maxSize", "splitMaxBytes": 20480.6 },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "splitMode": "maxSize",
+            "splitPattern": "numbered",
+            "splitCreateSubfolder": false,
+            "splitMaxBytes": 20481
+          }
+        }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "maxSize", "splitMaxBytes": 2147483648 },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "invalid-size" }
+      },
+      {
+        "tool": "split",
+        "raw": { "splitMode": "maxSize" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "invalid-size" }
+      },
+      {
+        "tool": "extract",
+        "raw": { "pages": "3-1, 5" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "pages": "1,2,3,5" } }
+      },
+      {
+        "tool": "extract",
+        "raw": { "pages": "8,1,1" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "pages": "1,8" } }
+      },
+      {
+        "tool": "extract",
+        "raw": { "pages": "2-9" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "range" }
+      },
+      {
+        "tool": "extract",
+        "raw": { "pages": "abc" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "range" }
+      },
+      { "tool": "extract", "raw": {}, "pageCount": 8, "result": { "ok": false, "error": "range" } },
+      {
+        "tool": "extract",
+        "raw": { "pages": "1；3、5" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "pages": "1,3,5" } }
+      },
+      {
+        "tool": "reverse",
+        "raw": { "pages": "1", "chunkSize": 2 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": {} }
+      },
+      {
+        "tool": "nup",
+        "raw": {},
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": { "perSheet": 2, "direction": "horizontal", "separator": false }
+        }
+      },
+      {
+        "tool": "nup",
+        "raw": { "perSheet": 9, "direction": "vertical", "separator": true },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": { "perSheet": 9, "direction": "vertical", "separator": true }
+        }
+      },
+      {
+        "tool": "nup",
+        "raw": { "perSheet": 40, "direction": "diagonal", "separator": "yes" },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": { "perSheet": 2, "direction": "horizontal", "separator": false }
+        }
+      },
+      {
+        "tool": "nup",
+        "raw": { "perSheet": 1 },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": { "perSheet": 2, "direction": "horizontal", "separator": false }
+        }
+      },
+      {
+        "tool": "rotate",
+        "raw": {},
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "rotation": 90 } }
+      },
+      {
+        "tool": "rotate",
+        "raw": { "rotation": 180 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "rotation": 180 } }
+      },
+      {
+        "tool": "rotate",
+        "raw": { "rotation": 270 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "rotation": 270 } }
+      },
+      {
+        "tool": "rotate",
+        "raw": { "rotation": 45 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "rotation": 90 } }
+      },
+      {
+        "tool": "pageSize",
+        "raw": {},
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "paper": "A4" } }
+      },
+      {
+        "tool": "pageSize",
+        "raw": { "paper": "Legal" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "paper": "Legal" } }
+      },
+      {
+        "tool": "pageSize",
+        "raw": { "paper": "B5" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "paper": "A4" } }
+      },
+      {
+        "tool": "splitPages",
+        "raw": {},
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "perPage": 2 } }
+      },
+      {
+        "tool": "splitPages",
+        "raw": { "perPage": 4 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "perPage": 4 } }
+      },
+      {
+        "tool": "splitPages",
+        "raw": { "perPage": 9 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "perPage": 9 } }
+      },
+      {
+        "tool": "splitPages",
+        "raw": { "perPage": 3 },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "perPage": 2 } }
+      },
+      {
+        "tool": "imagesToPdf",
+        "raw": {},
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "imagePaper": "A4", "margin": "small" } }
+      },
+      {
+        "tool": "imagesToPdf",
+        "raw": { "imagePaper": "image", "margin": "none" },
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "imagePaper": "image", "margin": "none" } }
+      },
+      {
+        "tool": "imagesToPdf",
+        "raw": { "imagePaper": "Letter", "margin": "large" },
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "imagePaper": "Letter", "margin": "large" } }
+      },
+      {
+        "tool": "imagesToPdf",
+        "raw": { "imagePaper": "B5", "margin": "huge" },
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "imagePaper": "A4", "margin": "small" } }
+      },
+      {
+        "tool": "toText",
+        "raw": { "pages": "1" },
+        "pageCount": 3,
+        "result": { "ok": true, "options": {} }
+      },
+      {
+        "tool": "duplex",
+        "raw": {},
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "sheetPages": 1 } }
+      },
+      {
+        "tool": "duplex",
+        "raw": { "sheetPages": 4 },
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "sheetPages": 4 } }
+      },
+      {
+        "tool": "duplex",
+        "raw": { "sheetPages": 3 },
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "sheetPages": 1 } }
+      },
+      {
+        "tool": "overlay",
+        "raw": {},
+        "pageCount": 8,
+        "bg": 2,
+        "result": {
+          "ok": true,
+          "options": { "layer": "behind", "backgroundPage": 1, "applyPages": "" }
+        }
+      },
+      {
+        "tool": "overlay",
+        "raw": { "layer": "front", "backgroundPage": 2, "applyPages": "3,1" },
+        "pageCount": 8,
+        "bg": 2,
+        "result": {
+          "ok": true,
+          "options": { "layer": "front", "backgroundPage": 2, "applyPages": "1,3" }
+        }
+      },
+      {
+        "tool": "overlay",
+        "raw": { "layer": "side", "backgroundPage": 5 },
+        "pageCount": 8,
+        "bg": 2,
+        "result": {
+          "ok": true,
+          "options": { "layer": "behind", "backgroundPage": 1, "applyPages": "" }
+        }
+      },
+      {
+        "tool": "overlay",
+        "raw": { "applyPages": "9" },
+        "pageCount": 8,
+        "bg": 2,
+        "result": { "ok": false, "error": "range" }
+      },
+      {
+        "tool": "overlay",
+        "raw": { "applyPages": "   " },
+        "pageCount": 8,
+        "bg": 2,
+        "result": {
+          "ok": true,
+          "options": { "layer": "behind", "backgroundPage": 1, "applyPages": "" }
+        }
+      },
+      {
+        "tool": "stripAnnots",
+        "raw": {},
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "annotKinds": ["comments", "highlights", "drawings", "stamps", "other"],
+            "applyPages": ""
+          }
+        }
+      },
+      {
+        "tool": "stripAnnots",
+        "raw": { "annotKinds": ["links", "bogus"], "applyPages": "3" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "annotKinds": ["links"], "applyPages": "3" } }
+      },
+      {
+        "tool": "stripAnnots",
+        "raw": { "annotKinds": [] },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "no-kinds" }
+      },
+      {
+        "tool": "stripAnnots",
+        "raw": { "annotKinds": "comments" },
+        "pageCount": 8,
+        "result": {
+          "ok": true,
+          "options": {
+            "annotKinds": ["comments", "highlights", "drawings", "stamps", "other"],
+            "applyPages": ""
+          }
+        }
+      },
+      {
+        "tool": "stripAnnots",
+        "raw": { "applyPages": "0" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "range" }
+      },
+      {
+        "tool": "blankPages",
+        "raw": { "removePages": "4, 2,2,9" },
+        "pageCount": 8,
+        "result": { "ok": true, "options": { "removePages": "2,4" } }
+      },
+      {
+        "tool": "blankPages",
+        "raw": { "removePages": "" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "none-chosen" }
+      },
+      {
+        "tool": "blankPages",
+        "raw": {},
+        "pageCount": 8,
+        "result": { "ok": false, "error": "none-chosen" }
+      },
+      {
+        "tool": "blankPages",
+        "raw": { "removePages": "1,2" },
+        "pageCount": 2,
+        "result": { "ok": false, "error": "all-pages" }
+      },
+      {
+        "tool": "blankPages",
+        "raw": { "removePages": "1.5, x" },
+        "pageCount": 8,
+        "result": { "ok": false, "error": "none-chosen" }
+      },
+      {
+        "tool": "compress",
+        "raw": {},
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "compressLevel": "medium" } }
+      },
+      {
+        "tool": "compress",
+        "raw": { "compressLevel": "light" },
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "compressLevel": "light" } }
+      },
+      {
+        "tool": "compress",
+        "raw": { "compressLevel": "strong" },
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "compressLevel": "strong" } }
+      },
+      {
+        "tool": "compress",
+        "raw": { "compressLevel": "max" },
+        "pageCount": 3,
+        "result": { "ok": true, "options": { "compressLevel": "medium" } }
+      },
+      {
+        "tool": "encrypt",
+        "raw": { "password": " a b ", "passwordConfirm": "x" },
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "password": " a b " } }
+      },
+      {
+        "tool": "encrypt",
+        "raw": { "password": "" },
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-empty" }
+      },
+      {
+        "tool": "encrypt",
+        "raw": {},
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-empty" }
+      },
+      {
+        "tool": "encrypt",
+        "raw": { "password": "a", "restrict": true },
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-empty" }
+      },
+      {
+        "tool": "encrypt",
+        "raw": { "password": "a", "restrict": true, "permissionPassword": "a" },
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-same" }
+      },
+      {
+        "tool": "encrypt",
+        "raw": { "password": "a", "restrict": true, "permissionPassword": "b" },
+        "pageCount": 1,
+        "result": {
+          "ok": true,
+          "options": { "password": "a", "restrict": true, "permissionPassword": "b" }
+        }
+      },
+      {
+        "tool": "encrypt",
+        "raw": { "password": "a", "restrict": false, "permissionPassword": "b" },
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "password": "a" } }
+      },
+      {
+        "tool": "encrypt",
+        "raw": {
+          "password": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+        },
+        "pageCount": 1,
+        "result": {
+          "ok": true,
+          "options": {
+            "password": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+          }
+        }
+      },
+      {
+        "tool": "encrypt",
+        "raw": {
+          "password": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+        },
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-long" }
+      },
+      {
+        "tool": "encrypt",
+        "raw": {
+          "password": "a",
+          "restrict": true,
+          "permissionPassword": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-long" }
+      },
+      {
+        "tool": "decrypt",
+        "raw": {},
+        "pageCount": 1,
+        "result": { "ok": false, "error": "password-empty" }
+      },
+      {
+        "tool": "decrypt",
+        "raw": { "password": "p", "restrict": true },
+        "pageCount": 1,
+        "result": { "ok": true, "options": { "password": "p" } }
+      },
+      {
+        "tool": "repair",
+        "raw": { "password": "p" },
+        "pageCount": 0,
+        "result": { "ok": true, "options": {} }
+      },
+      {
+        "tool": "merge",
+        "raw": { "pages": "1" },
+        "pageCount": 3,
+        "result": { "ok": true, "options": {} }
+      }
+    ],
+    "output-names": [
+      { "tool": "merge", "source": "Report.pdf", "names": ["Report-merged.pdf"] },
+      { "tool": "merge", "source": "Photo 1.JPEG", "names": ["Photo 1-merged.pdf"] },
+      { "tool": "merge", "source": "scan.png", "names": ["scan-merged.pdf"] },
+      { "tool": "merge", "source": "x.jpg", "names": ["x-merged.pdf"] },
+      { "tool": "merge", "source": ".pdf", "names": ["document-merged.pdf"] },
+      { "tool": "merge", "source": "notes", "names": ["notes-merged.pdf"] },
+      { "tool": "split", "source": "Report.pdf", "names": ["Report-1.pdf"] },
+      { "tool": "split", "source": "Photo 1.JPEG", "names": ["Photo 1-1.pdf"] },
+      { "tool": "split", "source": "scan.png", "names": ["scan-1.pdf"] },
+      { "tool": "split", "source": "x.jpg", "names": ["x-1.pdf"] },
+      { "tool": "split", "source": ".pdf", "names": ["document-1.pdf"] },
+      { "tool": "split", "source": "notes", "names": ["notes-1.pdf"] },
+      { "tool": "extract", "source": "Report.pdf", "names": ["Report-pages.pdf"] },
+      { "tool": "extract", "source": "Photo 1.JPEG", "names": ["Photo 1-pages.pdf"] },
+      { "tool": "extract", "source": "scan.png", "names": ["scan-pages.pdf"] },
+      { "tool": "extract", "source": "x.jpg", "names": ["x-pages.pdf"] },
+      { "tool": "extract", "source": ".pdf", "names": ["document-pages.pdf"] },
+      { "tool": "extract", "source": "notes", "names": ["notes-pages.pdf"] },
+      { "tool": "reverse", "source": "Report.pdf", "names": ["Report-reversed.pdf"] },
+      { "tool": "reverse", "source": "Photo 1.JPEG", "names": ["Photo 1-reversed.pdf"] },
+      { "tool": "reverse", "source": "scan.png", "names": ["scan-reversed.pdf"] },
+      { "tool": "reverse", "source": "x.jpg", "names": ["x-reversed.pdf"] },
+      { "tool": "reverse", "source": ".pdf", "names": ["document-reversed.pdf"] },
+      { "tool": "reverse", "source": "notes", "names": ["notes-reversed.pdf"] },
+      { "tool": "nup", "source": "Report.pdf", "names": ["Report-2up.pdf"] },
+      { "tool": "nup", "source": "Photo 1.JPEG", "names": ["Photo 1-2up.pdf"] },
+      { "tool": "nup", "source": "scan.png", "names": ["scan-2up.pdf"] },
+      { "tool": "nup", "source": "x.jpg", "names": ["x-2up.pdf"] },
+      { "tool": "nup", "source": ".pdf", "names": ["document-2up.pdf"] },
+      { "tool": "nup", "source": "notes", "names": ["notes-2up.pdf"] },
+      { "tool": "rotate", "source": "Report.pdf", "names": ["Report-rotated.pdf"] },
+      { "tool": "rotate", "source": "Photo 1.JPEG", "names": ["Photo 1-rotated.pdf"] },
+      { "tool": "rotate", "source": "scan.png", "names": ["scan-rotated.pdf"] },
+      { "tool": "rotate", "source": "x.jpg", "names": ["x-rotated.pdf"] },
+      { "tool": "rotate", "source": ".pdf", "names": ["document-rotated.pdf"] },
+      { "tool": "rotate", "source": "notes", "names": ["notes-rotated.pdf"] },
+      { "tool": "pageSize", "source": "Report.pdf", "names": ["Report-A4.pdf"] },
+      { "tool": "pageSize", "source": "Photo 1.JPEG", "names": ["Photo 1-A4.pdf"] },
+      { "tool": "pageSize", "source": "scan.png", "names": ["scan-A4.pdf"] },
+      { "tool": "pageSize", "source": "x.jpg", "names": ["x-A4.pdf"] },
+      { "tool": "pageSize", "source": ".pdf", "names": ["document-A4.pdf"] },
+      { "tool": "pageSize", "source": "notes", "names": ["notes-A4.pdf"] },
+      { "tool": "splitPages", "source": "Report.pdf", "names": ["Report-split.pdf"] },
+      { "tool": "splitPages", "source": "Photo 1.JPEG", "names": ["Photo 1-split.pdf"] },
+      { "tool": "splitPages", "source": "scan.png", "names": ["scan-split.pdf"] },
+      { "tool": "splitPages", "source": "x.jpg", "names": ["x-split.pdf"] },
+      { "tool": "splitPages", "source": ".pdf", "names": ["document-split.pdf"] },
+      { "tool": "splitPages", "source": "notes", "names": ["notes-split.pdf"] },
+      { "tool": "imagesToPdf", "source": "Report.pdf", "names": ["Report.pdf"] },
+      { "tool": "imagesToPdf", "source": "Photo 1.JPEG", "names": ["Photo 1.pdf"] },
+      { "tool": "imagesToPdf", "source": "scan.png", "names": ["scan.pdf"] },
+      { "tool": "imagesToPdf", "source": "x.jpg", "names": ["x.pdf"] },
+      { "tool": "imagesToPdf", "source": ".pdf", "names": ["document.pdf"] },
+      { "tool": "imagesToPdf", "source": "notes", "names": ["notes.pdf"] },
+      { "tool": "toText", "source": "Report.pdf", "names": ["Report.txt"] },
+      { "tool": "toText", "source": "Photo 1.JPEG", "names": ["Photo 1.txt"] },
+      { "tool": "toText", "source": "scan.png", "names": ["scan.txt"] },
+      { "tool": "toText", "source": "x.jpg", "names": ["x.txt"] },
+      { "tool": "toText", "source": ".pdf", "names": ["document.txt"] },
+      { "tool": "toText", "source": "notes", "names": ["notes.txt"] },
+      { "tool": "duplex", "source": "Report.pdf", "names": ["Report-duplex.pdf"] },
+      { "tool": "duplex", "source": "Photo 1.JPEG", "names": ["Photo 1-duplex.pdf"] },
+      { "tool": "duplex", "source": "scan.png", "names": ["scan-duplex.pdf"] },
+      { "tool": "duplex", "source": "x.jpg", "names": ["x-duplex.pdf"] },
+      { "tool": "duplex", "source": ".pdf", "names": ["document-duplex.pdf"] },
+      { "tool": "duplex", "source": "notes", "names": ["notes-duplex.pdf"] },
+      { "tool": "overlay", "source": "Report.pdf", "names": ["Report-background.pdf"] },
+      { "tool": "overlay", "source": "Photo 1.JPEG", "names": ["Photo 1-background.pdf"] },
+      { "tool": "overlay", "source": "scan.png", "names": ["scan-background.pdf"] },
+      { "tool": "overlay", "source": "x.jpg", "names": ["x-background.pdf"] },
+      { "tool": "overlay", "source": ".pdf", "names": ["document-background.pdf"] },
+      { "tool": "overlay", "source": "notes", "names": ["notes-background.pdf"] },
+      { "tool": "stripAnnots", "source": "Report.pdf", "names": ["Report-clean.pdf"] },
+      { "tool": "stripAnnots", "source": "Photo 1.JPEG", "names": ["Photo 1-clean.pdf"] },
+      { "tool": "stripAnnots", "source": "scan.png", "names": ["scan-clean.pdf"] },
+      { "tool": "stripAnnots", "source": "x.jpg", "names": ["x-clean.pdf"] },
+      { "tool": "stripAnnots", "source": ".pdf", "names": ["document-clean.pdf"] },
+      { "tool": "stripAnnots", "source": "notes", "names": ["notes-clean.pdf"] },
+      { "tool": "blankPages", "source": "Report.pdf", "names": ["Report-no-blank.pdf"] },
+      { "tool": "blankPages", "source": "Photo 1.JPEG", "names": ["Photo 1-no-blank.pdf"] },
+      { "tool": "blankPages", "source": "scan.png", "names": ["scan-no-blank.pdf"] },
+      { "tool": "blankPages", "source": "x.jpg", "names": ["x-no-blank.pdf"] },
+      { "tool": "blankPages", "source": ".pdf", "names": ["document-no-blank.pdf"] },
+      { "tool": "blankPages", "source": "notes", "names": ["notes-no-blank.pdf"] },
+      { "tool": "compress", "source": "Report.pdf", "names": ["Report-smaller.pdf"] },
+      { "tool": "compress", "source": "Photo 1.JPEG", "names": ["Photo 1-smaller.pdf"] },
+      { "tool": "compress", "source": "scan.png", "names": ["scan-smaller.pdf"] },
+      { "tool": "compress", "source": "x.jpg", "names": ["x-smaller.pdf"] },
+      { "tool": "compress", "source": ".pdf", "names": ["document-smaller.pdf"] },
+      { "tool": "compress", "source": "notes", "names": ["notes-smaller.pdf"] },
+      { "tool": "encrypt", "source": "Report.pdf", "names": ["Report-locked.pdf"] },
+      { "tool": "encrypt", "source": "Photo 1.JPEG", "names": ["Photo 1-locked.pdf"] },
+      { "tool": "encrypt", "source": "scan.png", "names": ["scan-locked.pdf"] },
+      { "tool": "encrypt", "source": "x.jpg", "names": ["x-locked.pdf"] },
+      { "tool": "encrypt", "source": ".pdf", "names": ["document-locked.pdf"] },
+      { "tool": "encrypt", "source": "notes", "names": ["notes-locked.pdf"] },
+      { "tool": "decrypt", "source": "Report.pdf", "names": ["Report-unlocked.pdf"] },
+      { "tool": "decrypt", "source": "Photo 1.JPEG", "names": ["Photo 1-unlocked.pdf"] },
+      { "tool": "decrypt", "source": "scan.png", "names": ["scan-unlocked.pdf"] },
+      { "tool": "decrypt", "source": "x.jpg", "names": ["x-unlocked.pdf"] },
+      { "tool": "decrypt", "source": ".pdf", "names": ["document-unlocked.pdf"] },
+      { "tool": "decrypt", "source": "notes", "names": ["notes-unlocked.pdf"] },
+      { "tool": "repair", "source": "Report.pdf", "names": ["Report-repaired.pdf"] },
+      { "tool": "repair", "source": "Photo 1.JPEG", "names": ["Photo 1-repaired.pdf"] },
+      { "tool": "repair", "source": "scan.png", "names": ["scan-repaired.pdf"] },
+      { "tool": "repair", "source": "x.jpg", "names": ["x-repaired.pdf"] },
+      { "tool": "repair", "source": ".pdf", "names": ["document-repaired.pdf"] },
+      { "tool": "repair", "source": "notes", "names": ["notes-repaired.pdf"] },
+      {
+        "tool": "split",
+        "source": "a.pdf",
+        "count": 3,
+        "opts": {},
+        "names": ["a-1.pdf", "a-2.pdf", "a-3.pdf"]
+      },
+      {
+        "tool": "split",
+        "source": "a.pdf",
+        "count": 12,
+        "opts": {},
+        "names": [
+          "a-01.pdf",
+          "a-02.pdf",
+          "a-03.pdf",
+          "a-04.pdf",
+          "a-05.pdf",
+          "a-06.pdf",
+          "a-07.pdf",
+          "a-08.pdf",
+          "a-09.pdf",
+          "a-10.pdf",
+          "a-11.pdf",
+          "a-12.pdf"
+        ]
+      },
+      {
+        "tool": "split",
+        "source": "a.pdf",
+        "count": 100,
+        "opts": {},
+        "names": [
+          "a-001.pdf",
+          "a-002.pdf",
+          "a-003.pdf",
+          "a-004.pdf",
+          "a-005.pdf",
+          "a-006.pdf",
+          "a-007.pdf",
+          "a-008.pdf",
+          "a-009.pdf",
+          "a-010.pdf",
+          "a-011.pdf",
+          "a-012.pdf",
+          "a-013.pdf",
+          "a-014.pdf",
+          "a-015.pdf",
+          "a-016.pdf",
+          "a-017.pdf",
+          "a-018.pdf",
+          "a-019.pdf",
+          "a-020.pdf",
+          "a-021.pdf",
+          "a-022.pdf",
+          "a-023.pdf",
+          "a-024.pdf",
+          "a-025.pdf",
+          "a-026.pdf",
+          "a-027.pdf",
+          "a-028.pdf",
+          "a-029.pdf",
+          "a-030.pdf",
+          "a-031.pdf",
+          "a-032.pdf",
+          "a-033.pdf",
+          "a-034.pdf",
+          "a-035.pdf",
+          "a-036.pdf",
+          "a-037.pdf",
+          "a-038.pdf",
+          "a-039.pdf",
+          "a-040.pdf",
+          "a-041.pdf",
+          "a-042.pdf",
+          "a-043.pdf",
+          "a-044.pdf",
+          "a-045.pdf",
+          "a-046.pdf",
+          "a-047.pdf",
+          "a-048.pdf",
+          "a-049.pdf",
+          "a-050.pdf",
+          "a-051.pdf",
+          "a-052.pdf",
+          "a-053.pdf",
+          "a-054.pdf",
+          "a-055.pdf",
+          "a-056.pdf",
+          "a-057.pdf",
+          "a-058.pdf",
+          "a-059.pdf",
+          "a-060.pdf",
+          "a-061.pdf",
+          "a-062.pdf",
+          "a-063.pdf",
+          "a-064.pdf",
+          "a-065.pdf",
+          "a-066.pdf",
+          "a-067.pdf",
+          "a-068.pdf",
+          "a-069.pdf",
+          "a-070.pdf",
+          "a-071.pdf",
+          "a-072.pdf",
+          "a-073.pdf",
+          "a-074.pdf",
+          "a-075.pdf",
+          "a-076.pdf",
+          "a-077.pdf",
+          "a-078.pdf",
+          "a-079.pdf",
+          "a-080.pdf",
+          "a-081.pdf",
+          "a-082.pdf",
+          "a-083.pdf",
+          "a-084.pdf",
+          "a-085.pdf",
+          "a-086.pdf",
+          "a-087.pdf",
+          "a-088.pdf",
+          "a-089.pdf",
+          "a-090.pdf",
+          "a-091.pdf",
+          "a-092.pdf",
+          "a-093.pdf",
+          "a-094.pdf",
+          "a-095.pdf",
+          "a-096.pdf",
+          "a-097.pdf",
+          "a-098.pdf",
+          "a-099.pdf",
+          "a-100.pdf"
+        ]
+      },
+      {
+        "tool": "split",
+        "source": "Book.pdf",
+        "count": 2,
+        "opts": { "splitPrefix": "Chapter" },
+        "names": ["Chapter-1.pdf", "Chapter-2.pdf"]
+      },
+      {
+        "tool": "split",
+        "source": "Book.pdf",
+        "count": 2,
+        "opts": { "splitPrefix": "a/b:c*?\"<>|" },
+        "names": ["a_b_c______-1.pdf", "a_b_c______-2.pdf"]
+      },
+      {
+        "tool": "split",
+        "source": "Book.pdf",
+        "count": 2,
+        "opts": {
+          "splitPrefix": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "names": [
+          "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-1.pdf",
+          "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-2.pdf"
+        ]
+      },
+      {
+        "tool": "nup",
+        "source": "a.pdf",
+        "count": 1,
+        "opts": { "perSheet": 4 },
+        "names": ["a-4up.pdf"]
+      },
+      {
+        "tool": "nup",
+        "source": "a.pdf",
+        "count": 1,
+        "opts": { "perSheet": 16 },
+        "names": ["a-16up.pdf"]
+      },
+      {
+        "tool": "pageSize",
+        "source": "a.pdf",
+        "count": 1,
+        "opts": { "paper": "Letter" },
+        "names": ["a-Letter.pdf"]
+      },
+      {
+        "tool": "pageSize",
+        "source": "a.pdf",
+        "count": 1,
+        "opts": { "paper": "A3" },
+        "names": ["a-A3.pdf"]
+      }
+    ],
+    "split-plan": [
+      { "mode": "fixed", "kind": "pagesPerFile", "value": 1 },
+      { "mode": "fixed", "kind": "pagesPerFile", "value": 3 },
+      {
+        "mode": "ranges",
+        "ranges": [
+          { "start": 1, "end": 2 },
+          { "start": 4, "end": 6 }
+        ],
+        "mergeRanges": true
+      },
+      { "mode": "ranges", "ranges": [], "mergeRanges": false },
+      { "mode": "fixed", "kind": "fileCount", "value": 3 },
+      { "mode": "fixed", "kind": "pagesPerFile", "value": 2 },
+      { "mode": "bookmarks", "level": 2, "includeLeadingPages": false },
+      { "mode": "bookmarks", "level": 1, "includeLeadingPages": true },
+      { "mode": "maxSize", "maxBytes": 20000 },
+      { "mode": "maxSize", "maxBytes": 0 }
+    ],
+    "job-for": {
+      "repair": { "op": "repair", "source": { "pdfPath": "C:/x/a.pdf" } },
+      "decrypt": { "op": "decrypt", "source": { "pdfPath": "a.pdf" }, "password": "p" },
+      "decryptEmpty": { "op": "decrypt", "source": { "pdfPath": "a.pdf" }, "password": "" },
+      "encrypt": { "op": "encrypt", "source": { "pdfPath": "a.pdf" }, "userPassword": "a" },
+      "encryptRestrict": {
+        "op": "encrypt",
+        "source": { "pdfPath": "a.pdf" },
+        "userPassword": "a",
+        "ownerPassword": "b"
+      },
+      "encryptRestrictNoPermission": {
+        "op": "encrypt",
+        "source": { "pdfPath": "a.pdf" },
+        "userPassword": "a"
+      }
+    },
+    "job-bytes-of": [true, null, null, null, null],
+    "found-blank-pages-of": [
+      {
+        "pageCount": 3,
+        "candidates": [
+          {
+            "page": 2,
+            "reason": "empty",
+            "thumb": {
+              "width": 2,
+              "height": 1,
+              "bgra": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+            }
+          }
+        ]
+      },
+      { "pageCount": 3, "candidates": [{ "page": 3, "reason": "nearly-white", "thumb": null }] },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "pages-to-text": ["a\nb\n\nc\n", "\n", "\n\nx\n"],
+    "run/merge/rich+text3": {
+      "files": [
+        {
+          "sha256": "7ced5cc14a126355096f6fe709a29eb69c709c9e934c82710cbf1db7fa640f6f",
+          "size": 13022
+        }
+      ]
+    },
+    "run/merge/plain-sample+rich+background": {
+      "files": [
+        {
+          "sha256": "48adfd5af5c7da0d5526e00452a1415cd7bb2ad9cbcdde2a9c9e599f34cd2b72",
+          "size": 25906
+        }
+      ]
+    },
+    "run/merge/one-input": {
+      "files": [
+        {
+          "sha256": "99a26727502733c7a435ab6fa3d47dd6e92bcf824bdc0792fcf8f3bb42cfecb7",
+          "size": 1809
+        }
+      ]
+    },
+    "run/no-input": { "error": "Error", "message": "no input" },
+    "run/split/default": {
+      "files": [
+        {
+          "sha256": "50b5fa8800ad0a565286c5881c86b75b7033dec5f8ff426518b28b8d6f76274f",
+          "size": 1496
+        },
+        {
+          "sha256": "216a048b5c88797e360ac8f4155c2b8aa517bc8e8dd4e5b4cdd15f8e682d4f85",
+          "size": 2635
+        },
+        {
+          "sha256": "8c2e2b3e309fcfa17af0f3a3470f95a8d3be6de207ccc95d9e9e1bd2fcc08d31",
+          "size": 6656
+        },
+        {
+          "sha256": "529942108c2c28cd12248ac6845638bd04d1f829158aac60448d4ab48ffbdb9c",
+          "size": 1307
+        },
+        {
+          "sha256": "99fa85d253ceaad8ea7c8eaec37ac9edf902ea2676c016ca4ffd7f9b8515f4d5",
+          "size": 1532
+        },
+        {
+          "sha256": "ad7fb1f92779280838dbe88e8f5fe32f97615ed7d04c0a7387b27a528e09decc",
+          "size": 863
+        },
+        {
+          "sha256": "110ccbe8d2a8e8258c190246c9e946c52291a7ab6e36ce4aa41f8b989a75711e",
+          "size": 1126
+        },
+        {
+          "sha256": "afcd1e800b588d01e57277ec57129ad7c17ab35a718d01454b573b9734f49c4f",
+          "size": 1298
+        }
+      ]
+    },
+    "run/split/chunk-3": {
+      "files": [
+        {
+          "sha256": "b3c8793227ef7d72d07b12efc013c356545e90a884a1fd84c9585394a93e72dd",
+          "size": 8691
+        },
+        {
+          "sha256": "19ea8d36ecfb75392a266143784e64150bdf11a9c2d92032c95f5f5711db6ce3",
+          "size": 2095
+        },
+        {
+          "sha256": "0cf590e8c3c84ea9380391f777ebe66df365637449dd0b60aaa19b5d527cf731",
+          "size": 1678
+        }
+      ]
+    },
+    "run/split/ranges": {
+      "files": [
+        {
+          "sha256": "1037fd6829bcf3c3c40b1075897b2b5179bf2cda403043fcbfee02ea27a24fc6",
+          "size": 3265
+        },
+        {
+          "sha256": "7bddc21509c8bcab885dd2298a9173e9b8ff21bd8aa8e0ec920edd8eaae389e5",
+          "size": 2470
+        }
+      ]
+    },
+    "run/split/bookmarks": {
+      "files": [
+        {
+          "sha256": "50b5fa8800ad0a565286c5881c86b75b7033dec5f8ff426518b28b8d6f76274f",
+          "size": 1496
+        },
+        {
+          "sha256": "6166bd5e085bd01e3e1862fe8e09345fcacec9330c3f22ea0009c9c97161ec33",
+          "size": 8878
+        },
+        {
+          "sha256": "7bddc21509c8bcab885dd2298a9173e9b8ff21bd8aa8e0ec920edd8eaae389e5",
+          "size": 2470
+        }
+      ]
+    },
+    "run/split/no-bookmarks": { "refused": "no-bookmarks" },
+    "split/ranges-range-names": {
+      "result": {
+        "names": ["Report_p1-2.pdf", "Report_p5-6.pdf"],
+        "parts": [
+          {
+            "sha256": "1037fd6829bcf3c3c40b1075897b2b5179bf2cda403043fcbfee02ea27a24fc6",
+            "size": 3265
+          },
+          {
+            "sha256": "b960c8903e010fd82aabfa5ac25aba263fca757ccc23c3cba4c329b73ae44c4c",
+            "size": 1649
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 2],
+        [2, 2]
+      ]
+    },
+    "split/ranges-merged": {
+      "result": {
+        "names": ["Report_p6-8,1-2.pdf"],
+        "parts": [
+          {
+            "sha256": "35ff4f4a24a7a42885d4a1cbd99b5909625c655b658404a3462add0d13a3a4e7",
+            "size": 4206
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [[1, 1]]
+    },
+    "split/ranges-overlap": {
+      "result": {
+        "names": ["Report-1.pdf", "Report-2.pdf", "Report-3.pdf"],
+        "parts": [
+          {
+            "sha256": "49aa989fd3855f6b0a59625c58bad47553c22e0aebde18fdb35f3d86a65a166f",
+            "size": 9137
+          },
+          {
+            "sha256": "790b33c38bfa2095507a54ec21f0f34e562256c702a4b2dcb2632d76e4008ccf",
+            "size": 7651
+          },
+          {
+            "sha256": "afcd1e800b588d01e57277ec57129ad7c17ab35a718d01454b573b9734f49c4f",
+            "size": 1298
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 3],
+        [2, 3],
+        [3, 3]
+      ]
+    },
+    "split/fixed-pages-per-file-prefix": {
+      "result": {
+        "names": ["Part-1.pdf", "Part-2.pdf", "Part-3.pdf"],
+        "parts": [
+          {
+            "sha256": "b3c8793227ef7d72d07b12efc013c356545e90a884a1fd84c9585394a93e72dd",
+            "size": 8691
+          },
+          {
+            "sha256": "19ea8d36ecfb75392a266143784e64150bdf11a9c2d92032c95f5f5711db6ce3",
+            "size": 2095
+          },
+          {
+            "sha256": "0cf590e8c3c84ea9380391f777ebe66df365637449dd0b60aaa19b5d527cf731",
+            "size": 1678
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 3],
+        [2, 3],
+        [3, 3]
+      ]
+    },
+    "split/fixed-file-count": {
+      "result": {
+        "names": ["Report-1.pdf", "Report-2.pdf", "Report-3.pdf"],
+        "parts": [
+          {
+            "sha256": "b3c8793227ef7d72d07b12efc013c356545e90a884a1fd84c9585394a93e72dd",
+            "size": 8691
+          },
+          {
+            "sha256": "19ea8d36ecfb75392a266143784e64150bdf11a9c2d92032c95f5f5711db6ce3",
+            "size": 2095
+          },
+          {
+            "sha256": "0cf590e8c3c84ea9380391f777ebe66df365637449dd0b60aaa19b5d527cf731",
+            "size": 1678
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 3],
+        [2, 3],
+        [3, 3]
+      ]
+    },
+    "split/fixed-range-names-subfolder": {
+      "result": {
+        "names": ["Six pages_p1-4.pdf", "Six pages_p5-6.pdf"],
+        "parts": [
+          {
+            "sha256": "db8041b037cdf8b6dcfe22ebda3f016e0db42de775d9854ff8855e30fd1d5894",
+            "size": 1214
+          },
+          {
+            "sha256": "ada74aaee5a825adf6836b6ad813cc7711ed9966161b90ad3a149dcff90ddc16",
+            "size": 980
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 2],
+        [2, 2]
+      ]
+    },
+    "split/fixed-twelve-parts": {
+      "result": {
+        "names": [
+          "many-01.pdf",
+          "many-02.pdf",
+          "many-03.pdf",
+          "many-04.pdf",
+          "many-05.pdf",
+          "many-06.pdf",
+          "many-07.pdf",
+          "many-08.pdf",
+          "many-09.pdf",
+          "many-10.pdf",
+          "many-11.pdf",
+          "many-12.pdf"
+        ],
+        "parts": [
+          {
+            "sha256": "879338a184424966431de0786b33997b7908a179e1f8b3b1f4712813a3e338ae",
+            "size": 2047
+          },
+          {
+            "sha256": "879338a184424966431de0786b33997b7908a179e1f8b3b1f4712813a3e338ae",
+            "size": 2047
+          },
+          {
+            "sha256": "879338a184424966431de0786b33997b7908a179e1f8b3b1f4712813a3e338ae",
+            "size": 2047
+          },
+          {
+            "sha256": "879338a184424966431de0786b33997b7908a179e1f8b3b1f4712813a3e338ae",
+            "size": 2047
+          },
+          {
+            "sha256": "879338a184424966431de0786b33997b7908a179e1f8b3b1f4712813a3e338ae",
+            "size": 2047
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          },
+          {
+            "sha256": "513750e2980b8331e53fe91ae866b3d7781e72709507eb9cfd2ce8067c51f419",
+            "size": 1928
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 12],
+        [2, 12],
+        [3, 12],
+        [4, 12],
+        [5, 12],
+        [6, 12],
+        [7, 12],
+        [8, 12],
+        [9, 12],
+        [10, 12],
+        [11, 12],
+        [12, 12]
+      ]
+    },
+    "split/bookmarks-level-1-with-leading": {
+      "result": {
+        "names": ["1_Book_p1.pdf", "2_Part A.pdf", "3_부록 B.pdf"],
+        "parts": [
+          {
+            "sha256": "50b5fa8800ad0a565286c5881c86b75b7033dec5f8ff426518b28b8d6f76274f",
+            "size": 1496
+          },
+          {
+            "sha256": "6166bd5e085bd01e3e1862fe8e09345fcacec9330c3f22ea0009c9c97161ec33",
+            "size": 8878
+          },
+          {
+            "sha256": "7bddc21509c8bcab885dd2298a9173e9b8ff21bd8aa8e0ec920edd8eaae389e5",
+            "size": 2470
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 3],
+        [2, 3],
+        [3, 3]
+      ]
+    },
+    "split/bookmarks-level-2-no-leading": {
+      "result": {
+        "names": [
+          "1_Part A.pdf",
+          "2_Section A.1.pdf",
+          "3_Section A.2.pdf",
+          "4_부록 B.pdf",
+          "5_Section B.1.pdf",
+          "6_Section B.2.pdf"
+        ],
+        "parts": [
+          {
+            "sha256": "216a048b5c88797e360ac8f4155c2b8aa517bc8e8dd4e5b4cdd15f8e682d4f85",
+            "size": 2635
+          },
+          {
+            "sha256": "8c2e2b3e309fcfa17af0f3a3470f95a8d3be6de207ccc95d9e9e1bd2fcc08d31",
+            "size": 6656
+          },
+          {
+            "sha256": "529942108c2c28cd12248ac6845638bd04d1f829158aac60448d4ab48ffbdb9c",
+            "size": 1307
+          },
+          {
+            "sha256": "b960c8903e010fd82aabfa5ac25aba263fca757ccc23c3cba4c329b73ae44c4c",
+            "size": 1649
+          },
+          {
+            "sha256": "110ccbe8d2a8e8258c190246c9e946c52291a7ab6e36ce4aa41f8b989a75711e",
+            "size": 1126
+          },
+          {
+            "sha256": "afcd1e800b588d01e57277ec57129ad7c17ab35a718d01454b573b9734f49c4f",
+            "size": 1298
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 6],
+        [2, 6],
+        [3, 6],
+        [4, 6],
+        [5, 6],
+        [6, 6]
+      ]
+    },
+    "split/bookmarks-numbered-prefix": {
+      "result": {
+        "names": ["장-1.pdf", "장-2.pdf", "장-3.pdf"],
+        "parts": [
+          {
+            "sha256": "50b5fa8800ad0a565286c5881c86b75b7033dec5f8ff426518b28b8d6f76274f",
+            "size": 1496
+          },
+          {
+            "sha256": "6166bd5e085bd01e3e1862fe8e09345fcacec9330c3f22ea0009c9c97161ec33",
+            "size": 8878
+          },
+          {
+            "sha256": "7bddc21509c8bcab885dd2298a9173e9b8ff21bd8aa8e0ec920edd8eaae389e5",
+            "size": 2470
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 3],
+        [2, 3],
+        [3, 3]
+      ]
+    },
+    "split/bookmarks-none": { "result": { "refused": "no-bookmarks" }, "progress": [] },
+    "split/max-size-10k-rich": {
+      "result": {
+        "names": ["Sized-1.pdf", "Sized-2.pdf"],
+        "parts": [
+          {
+            "sha256": "b3c0f7d6063da558f0f1f09484ba1f31789f0af9ffbce77dde8cc1e784d8fb95",
+            "size": 10188
+          },
+          {
+            "sha256": "afcd1e800b588d01e57277ec57129ad7c17ab35a718d01454b573b9734f49c4f",
+            "size": 1298
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [7, 8],
+        [8, 8]
+      ]
+    },
+    "split/max-size-20k-compress-sample": {
+      "result": {
+        "names": ["Pictures_p1.pdf", "Pictures_p2.pdf"],
+        "parts": [
+          {
+            "sha256": "9a312f56a91829166e4ea554c0839d287bc67e20a417b670a43424ea259d46c6",
+            "size": 408893
+          },
+          {
+            "sha256": "fffef9cdb74e2d4b9543611e7a641d0cdd570d85ecd17608976ddbd0161eec83",
+            "size": 121593
+          }
+        ],
+        "oversizedPages": [1, 2]
+      },
+      "progress": [
+        [1, 2],
+        [2, 2]
+      ]
+    },
+    "split/max-size-generous": {
+      "result": {
+        "names": ["Sized_p1-8.pdf"],
+        "parts": [
+          {
+            "sha256": "e1f4e366d9e2ef4783ee4a40f15d97ead3c39e72618185dc007377aba2f9fb89",
+            "size": 10625
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [[8, 8]]
+    },
+    "split/max-size-unchecked-too-small": {
+      "result": { "error": "Error", "message": "split: invalid-size" },
+      "progress": []
+    },
+    "split/legacy-chunk": {
+      "result": {
+        "names": ["Old-1.pdf", "Old-2.pdf"],
+        "parts": [
+          {
+            "sha256": "3ba369ece12035d99c0d4a187c00859c48042034e845d24f078c413be779e790",
+            "size": 9685
+          },
+          {
+            "sha256": "f5c932e9f03e8ecd837f173571c8c83b9c6e5f63332aa8ea0da34acb8d939ef2",
+            "size": 1797
+          }
+        ],
+        "oversizedPages": []
+      },
+      "progress": [
+        [1, 2],
+        [2, 2]
+      ]
+    },
+    "run/extract/some": {
+      "files": [
+        {
+          "sha256": "a4dd680ba0953e707879178f81cc135e8645bf1eb7c4a965795d4d218fc63af0",
+          "size": 4184
+        }
+      ]
+    },
+    "run/extract/reordered-input": {
+      "files": [
+        {
+          "sha256": "1c1075c93d8d9353fc295f0d2896c772bc6cddf49be60b6d22450ca1d2c7d681",
+          "size": 9128
+        }
+      ]
+    },
+    "run/extract/form-page": {
+      "files": [
+        {
+          "sha256": "8c2e2b3e309fcfa17af0f3a3470f95a8d3be6de207ccc95d9e9e1bd2fcc08d31",
+          "size": 6656
+        }
+      ]
+    },
+    "run/extract/unchecked-order": {
+      "files": [
+        {
+          "sha256": "16d5a4f2e94407b50a173041b3352889aec8ea517cdb1f226f8df85f5608f9a1",
+          "size": 7357
+        }
+      ]
+    },
+    "run/reverse/rich": {
+      "files": [
+        {
+          "sha256": "d821bd7233f1df734f6851151bab50fc44f44e963d6bc2265ba7ba8b08a1ff31",
+          "size": 10629
+        }
+      ]
+    },
+    "run/reverse/plain-sample": {
+      "files": [
+        {
+          "sha256": "6b05b8480c01e6f707a2c32689ae7ae3866c3082f642ae7a00be286617f281a6",
+          "size": 8762
+        }
+      ]
+    },
+    "run/rotate/90/rich": {
+      "files": [
+        {
+          "sha256": "feaa2688ec74cd532a8e91e1122cfa5619abf856b69b28a6f868601b52489686",
+          "size": 12145
+        }
+      ]
+    },
+    "run/rotate/90/plain-sample": {
+      "files": [
+        {
+          "sha256": "e48651bff9e965c01dc41f63ba2579606fb870d1c086afb8a722652ab8a7e76a",
+          "size": 14943
+        }
+      ]
+    },
+    "run/rotate/180/rich": {
+      "files": [
+        {
+          "sha256": "22022c83efc6a233b52555ce8f6e20807c2ed8943e40c776e2238da82da2d5f0",
+          "size": 12152
+        }
+      ]
+    },
+    "run/rotate/180/plain-sample": {
+      "files": [
+        {
+          "sha256": "33d310b6fd4eb0e9b54ab5e1a5bf8e9e41695218dad25ee7684bdbbff026ffde",
+          "size": 14944
+        }
+      ]
+    },
+    "run/rotate/270/rich": {
+      "files": [
+        {
+          "sha256": "dd4e48e1fbe7444e20289a1559e5b4a12f6adc66180226d60da01020befbc5cb",
+          "size": 12150
+        }
+      ]
+    },
+    "run/rotate/270/plain-sample": {
+      "files": [
+        {
+          "sha256": "a1869f90cb22596f3e700ed4c4557fcf3bc1685b964c0a4bcff652a14375f649",
+          "size": 14944
+        }
+      ]
+    },
+    "run/rotate/default": {
+      "files": [
+        {
+          "sha256": "4e1e6f6d2c7148a585e0c26d1d34dd9ef7ee5b37087e5f0f361c7eb2e9b60c5f",
+          "size": 1842
+        }
+      ]
+    },
+    "run/nup/2-horizontal-plain": {
+      "files": [
+        {
+          "sha256": "5b890fb45a58c2810210b35adf5eb360dc5f586a86d659ffbdc9fffb18056c99",
+          "size": 14154
+        }
+      ]
+    },
+    "run/nup/3-horizontal-plain": {
+      "files": [
+        {
+          "sha256": "4fe8f23765bfb912f6a60ce3708bb8e686e48090c10a7d5503d8dcd9c45fdc32",
+          "size": 13791
+        }
+      ]
+    },
+    "run/nup/4-vertical-lines": {
+      "files": [
+        {
+          "sha256": "9eceea857e61246d2fb8f09b90e9a9a3ba1de99b3d8398853b0f8d39be1a2fc0",
+          "size": 13515
+        }
+      ]
+    },
+    "run/nup/6-horizontal-lines": {
+      "files": [
+        {
+          "sha256": "bd6adb9af288113853c0938051c811625eed3519187a935d93e996c940b87186",
+          "size": 13543
+        }
+      ]
+    },
+    "run/nup/9-vertical-plain": {
+      "files": [
+        {
+          "sha256": "b2fa663b80b60347f50f7656da7dfeaafa60e63e1280a62d835889c3b704b8ab",
+          "size": 13092
+        }
+      ]
+    },
+    "run/nup/16-horizontal-plain": {
+      "files": [
+        {
+          "sha256": "3869bc570e4ad289c2f6b13d0962936c551b46eb2c40771968ce0d7f702add62",
+          "size": 13072
+        }
+      ]
+    },
+    "run/nup/defaults": {
+      "files": [
+        {
+          "sha256": "299451c57f54fdae720ceb799500b7f91c29e065b63e1fc1b26daa1536a02ff2",
+          "size": 3363
+        }
+      ]
+    },
+    "run/page-size/A3": {
+      "files": [
+        {
+          "sha256": "be27567f6caf2ca0daaab01329f33b0bfbc28a66077465b8804caaaf52a8ecfc",
+          "size": 16407
+        }
+      ]
+    },
+    "run/page-size/A4": {
+      "files": [
+        {
+          "sha256": "04ed594241a161d280059c444e9f127061596c1311c79f889ccb64c97cc778a3",
+          "size": 16430
+        }
+      ]
+    },
+    "run/page-size/A5": {
+      "files": [
+        {
+          "sha256": "e8791b462b4a13fcf4f66988ed5d07869456f84a6a38e00295c4019e9c0a4ea9",
+          "size": 15463
+        }
+      ]
+    },
+    "run/page-size/Letter": {
+      "files": [
+        {
+          "sha256": "970ae229dc0cbff40eade2cafa4c28ae7b558639eec738459a4b762dc5af9181",
+          "size": 15371
+        }
+      ]
+    },
+    "run/page-size/Legal": {
+      "files": [
+        {
+          "sha256": "abcce99c1eb62d073f9fa3ec2b83ef3070fa253be0f36591207d4f8190e14da2",
+          "size": 15378
+        }
+      ]
+    },
+    "run/page-size/default": {
+      "files": [
+        {
+          "sha256": "d0702f69682819e93ce0e44eac1ea1e4e5800facf43a2aefffc5397c283b8e62",
+          "size": 15706
+        }
+      ]
+    },
+    "run/split-pages/2": {
+      "files": [
+        {
+          "sha256": "a3de192239ed58a5e86c720fbcf1d18d013308d3bf976658d628cded05756b54",
+          "size": 14063
+        }
+      ]
+    },
+    "run/split-pages/4": {
+      "files": [
+        {
+          "sha256": "497b03ea37261cd2ac2bbb127899aa123612a01f910e19de315b7b7541fe8b1f",
+          "size": 18342
+        }
+      ]
+    },
+    "run/split-pages/9": {
+      "files": [
+        {
+          "sha256": "ead0fa917a36b3a74a34b452966bf88439b363a9e37b0c12f8de675990db077b",
+          "size": 32225
+        }
+      ]
+    },
+    "run/split-pages/default": {
+      "files": [
+        {
+          "sha256": "6c890837d6d75c1f181be2df45454ddca591e7726f0d2ffaeb079c102556f9c5",
+          "size": 2658
+        }
+      ]
+    },
+    "run/images-to-pdf/A4-small": {
+      "files": [
+        {
+          "sha256": "0c204cc006c8385efcafb658cdce8d457a01583cba64c90eba29ff1ecaee9df7",
+          "size": 5220
+        }
+      ]
+    },
+    "run/images-to-pdf/A5-large": {
+      "files": [
+        {
+          "sha256": "a7829d0bc725a2e0118371345996299e54bf1d5039eb88708d4da097b6a26651",
+          "size": 5230
+        }
+      ]
+    },
+    "run/images-to-pdf/Letter-none": {
+      "files": [
+        {
+          "sha256": "5808aa1ec312f24fa75388e08d519adcd7e3699bfc141496b063e543ed706039",
+          "size": 5196
+        }
+      ]
+    },
+    "run/images-to-pdf/A3-small": {
+      "files": [
+        {
+          "sha256": "5db473d4a6f685db61d93761360e3d42a40f072eb6c44f4b7cdfdfddb87f7eb0",
+          "size": 5239
+        }
+      ]
+    },
+    "run/images-to-pdf/Legal-large": {
+      "files": [
+        {
+          "sha256": "6538df4b6033bd865f8dec0d7ddce9af0741cb3faadf9b898a58b07cc7e7ded4",
+          "size": 5215
+        }
+      ]
+    },
+    "run/images-to-pdf/image-small": {
+      "files": [
+        {
+          "sha256": "97de9130f8bf665ac2fbb3cf39e5c1f41ffd12877b7f63ee54423016cb202597",
+          "size": 5171
+        }
+      ]
+    },
+    "run/images-to-pdf/image-none": {
+      "files": [
+        {
+          "sha256": "97de9130f8bf665ac2fbb3cf39e5c1f41ffd12877b7f63ee54423016cb202597",
+          "size": 5171
+        }
+      ]
+    },
+    "run/images-to-pdf/rgba-default": {
+      "files": [
+        {
+          "sha256": "fab667dcf85b259c32ae7a7379b2b6e7a206aaafd0d8619074061dc4276ec085",
+          "size": 2501
+        }
+      ]
+    },
+    "run/images-to-pdf/exif-image-size": {
+      "files": [
+        {
+          "sha256": "c5d0477023e5d9a90453f96cc306853f7f6e77b70bd03f9abea42744322ecd56",
+          "size": 1959
+        }
+      ]
+    },
+    "run/images-to-pdf/not-an-image": { "error": "Error", "message": "not a JPEG or PNG image" },
+    "run/duplex/1": {
+      "files": [
+        {
+          "sha256": "71021585af941d4be42b7971dc1b3fc5ffc8222d2dfe18867f0bcff852b63076",
+          "size": 20008
+        }
+      ]
+    },
+    "run/duplex/2": {
+      "files": [
+        {
+          "sha256": "81ea898da97e7089b86c71787f51cc293a13a8fef2f5f66ac64a64fa17884a9f",
+          "size": 20318
+        }
+      ]
+    },
+    "run/duplex/4": {
+      "files": [
+        {
+          "sha256": "252af61c9f8985effaf6cb11ce84180de9468c5d2215c579f274f116a3aaaa25",
+          "size": 21454
+        }
+      ]
+    },
+    "run/duplex/9": {
+      "files": [
+        {
+          "sha256": "32279e2f97c9e132eeb2957cfd8aa0ee4323e2c073edc5cb4d5d84828d8e2735",
+          "size": 25598
+        }
+      ]
+    },
+    "run/duplex/one-file": {
+      "files": [
+        {
+          "sha256": "babbd20e1e2136e46f693bee45591c70584fe30b725ca0f7c4127193bf9805c3",
+          "size": 1938
+        }
+      ]
+    },
+    "run/overlay/behind-all": {
+      "files": [
+        {
+          "sha256": "ff5ce1fa7624470760367919d1bb0d0b9b6959e1eaa5fb0d18565d1cbbee6b2c",
+          "size": 14571
+        }
+      ]
+    },
+    "run/overlay/front-some": {
+      "files": [
+        {
+          "sha256": "0adb30c02fc1fbc6faffd78357989b5730ff6bac455eba88ae3e7c8422d1ee4d",
+          "size": 13512
+        }
+      ]
+    },
+    "run/overlay/plain-sample-on-text": {
+      "files": [
+        {
+          "sha256": "2bccb7599d8939adc081415520d37e90a5873a673bdf9853338f6860cf2d1a9f",
+          "size": 11166
+        }
+      ]
+    },
+    "run/overlay/no-background": { "error": "Error", "message": "no background" },
+    "run/strip-annots/default-kinds": {
+      "files": [
+        {
+          "sha256": "fcdc0c5bf66251c1310fd61cb25ab9e30c3940e6e68f08a251cee66b420cfd09",
+          "size": 10390
+        }
+      ]
+    },
+    "run/strip-annots/with-links": {
+      "files": [
+        {
+          "sha256": "f4ede8b80b9ce156a36674804dc51ca7e1f577af87ff6560748279833cc6d31d",
+          "size": 10062
+        }
+      ]
+    },
+    "run/strip-annots/only-comments": {
+      "files": [
+        {
+          "sha256": "8e7b7f4fed998a9e8f317d13d14d8039ddd0fb1705258d861de05f9a44afcb39",
+          "size": 11398
+        }
+      ]
+    },
+    "run/strip-annots/only-highlights": {
+      "files": [
+        {
+          "sha256": "86e35a611a80e44678a528eeda06e85c7ac7f4dde5d5fcc99d786b7eb7616177",
+          "size": 11787
+        }
+      ]
+    },
+    "run/strip-annots/only-drawings": {
+      "files": [
+        {
+          "sha256": "c443dcd6870ff456551a89fac2740f820b20686ff616f361139913b8cdbb027d",
+          "size": 11375
+        }
+      ]
+    },
+    "run/strip-annots/only-stamps": {
+      "files": [
+        {
+          "sha256": "a8c185a46debbfd00bec2aa385249d9d2bb1a391d9dd9e3faef6437c075342b4",
+          "size": 11833
+        }
+      ]
+    },
+    "run/strip-annots/only-links": {
+      "files": [
+        {
+          "sha256": "2db2249aa9333619bb9c0cbe718d77c772765df3a582429ffa917e42cc533af0",
+          "size": 11631
+        }
+      ]
+    },
+    "run/strip-annots/only-other": {
+      "files": [
+        {
+          "sha256": "3f7affa4763ca30757a38389bbf8346826298a49762362d7484266bdd249e010",
+          "size": 11814
+        }
+      ]
+    },
+    "run/strip-annots/links-on-other-pages": { "refused": "no-annots" },
+    "run/strip-annots/none-in-file": { "refused": "no-annots" },
+    "run/strip-annots/unchecked-defaults": {
+      "files": [
+        {
+          "sha256": "fcdc0c5bf66251c1310fd61cb25ab9e30c3940e6e68f08a251cee66b420cfd09",
+          "size": 10390
+        }
+      ]
+    },
+    "compress/light/sample": {
+      "result": {
+        "files": [
+          {
+            "sha256": "5893e9cf210949b416b14c74d9a7d99d1225d5f5504f0f240eb641c70740dd8f",
+            "size": 88132
+          }
+        ]
+      },
+      "requests": [
+        {
+          "kind": "jpeg",
+          "width": 1200,
+          "height": 900,
+          "components": null,
+          "data": "f6c1a1cec5ad4b99db6bde7d9b6feacc5bdd54d0cfc81790baed1e0d85148d4f",
+          "target": { "longSide": 3000, "quality": 85 }
+        },
+        {
+          "kind": "raw",
+          "width": 220,
+          "height": 220,
+          "components": 3,
+          "data": "50df63f9ce87dcdfdb88f2e036faa03d9e327c9e0585fc40d47cb20828936289",
+          "target": { "longSide": 3000, "quality": 85 }
+        },
+        {
+          "kind": "raw",
+          "width": 260,
+          "height": 260,
+          "components": 3,
+          "data": "38fe0250f15663f635621458c33aaffd831d717103a01ba00653453c8c412eb6",
+          "target": { "longSide": 3000, "quality": 85 }
+        },
+        {
+          "kind": "raw",
+          "width": 200,
+          "height": 200,
+          "components": 3,
+          "data": "533c655ab4cc39b5ee63a4b99568c930e356167ec827b3aeeaf35a53f20a24c5",
+          "target": { "longSide": 3000, "quality": 85 }
+        }
+      ],
+      "progress": [
+        [1, 4],
+        [2, 4],
+        [3, 4],
+        [4, 4]
+      ]
+    },
+    "compress/medium/sample": {
+      "result": {
+        "files": [
+          {
+            "sha256": "24dc9ad846124460940ce16eed13555896c0fb3fc6dcbda8bba53c3b185ed8ef",
+            "size": 87733
+          }
+        ]
+      },
+      "requests": [
+        {
+          "kind": "jpeg",
+          "width": 1200,
+          "height": 900,
+          "components": null,
+          "data": "f6c1a1cec5ad4b99db6bde7d9b6feacc5bdd54d0cfc81790baed1e0d85148d4f",
+          "target": { "longSide": 2000, "quality": 75 }
+        },
+        {
+          "kind": "raw",
+          "width": 220,
+          "height": 220,
+          "components": 3,
+          "data": "50df63f9ce87dcdfdb88f2e036faa03d9e327c9e0585fc40d47cb20828936289",
+          "target": { "longSide": 2000, "quality": 75 }
+        },
+        {
+          "kind": "raw",
+          "width": 260,
+          "height": 260,
+          "components": 3,
+          "data": "38fe0250f15663f635621458c33aaffd831d717103a01ba00653453c8c412eb6",
+          "target": { "longSide": 2000, "quality": 75 }
+        },
+        {
+          "kind": "raw",
+          "width": 200,
+          "height": 200,
+          "components": 3,
+          "data": "533c655ab4cc39b5ee63a4b99568c930e356167ec827b3aeeaf35a53f20a24c5",
+          "target": { "longSide": 2000, "quality": 75 }
+        }
+      ],
+      "progress": [
+        [1, 4],
+        [2, 4],
+        [3, 4],
+        [4, 4]
+      ]
+    },
+    "compress/strong/sample": {
+      "result": {
+        "files": [
+          {
+            "sha256": "10c3d40f6934afd278641e5f89b0ff02095b2cb51a61d7dac984f5874d4f9029",
+            "size": 87132
+          }
+        ]
+      },
+      "requests": [
+        {
+          "kind": "jpeg",
+          "width": 1200,
+          "height": 900,
+          "components": null,
+          "data": "f6c1a1cec5ad4b99db6bde7d9b6feacc5bdd54d0cfc81790baed1e0d85148d4f",
+          "target": { "longSide": 1400, "quality": 60 }
+        },
+        {
+          "kind": "raw",
+          "width": 220,
+          "height": 220,
+          "components": 3,
+          "data": "50df63f9ce87dcdfdb88f2e036faa03d9e327c9e0585fc40d47cb20828936289",
+          "target": { "longSide": 1400, "quality": 60 }
+        },
+        {
+          "kind": "raw",
+          "width": 260,
+          "height": 260,
+          "components": 3,
+          "data": "38fe0250f15663f635621458c33aaffd831d717103a01ba00653453c8c412eb6",
+          "target": { "longSide": 1400, "quality": 60 }
+        },
+        {
+          "kind": "raw",
+          "width": 200,
+          "height": 200,
+          "components": 3,
+          "data": "533c655ab4cc39b5ee63a4b99568c930e356167ec827b3aeeaf35a53f20a24c5",
+          "target": { "longSide": 1400, "quality": 60 }
+        }
+      ],
+      "progress": [
+        [1, 4],
+        [2, 4],
+        [3, 4],
+        [4, 4]
+      ]
+    },
+    "compress/medium/rich": {
+      "result": {
+        "files": [
+          {
+            "sha256": "2726e92e3fa8246ebd87f36f3cd70081b5bfe070fe07fdbc3f3e395a935c0bc7",
+            "size": 6720
+          }
+        ]
+      },
+      "requests": [],
+      "progress": []
+    },
+    "compress/default/unchecked": {
+      "result": {
+        "files": [
+          {
+            "sha256": "24dc9ad846124460940ce16eed13555896c0fb3fc6dcbda8bba53c3b185ed8ef",
+            "size": 87733
+          }
+        ]
+      },
+      "requests": [
+        {
+          "kind": "jpeg",
+          "width": 1200,
+          "height": 900,
+          "components": null,
+          "data": "f6c1a1cec5ad4b99db6bde7d9b6feacc5bdd54d0cfc81790baed1e0d85148d4f",
+          "target": { "longSide": 2000, "quality": 75 }
+        },
+        {
+          "kind": "raw",
+          "width": 220,
+          "height": 220,
+          "components": 3,
+          "data": "50df63f9ce87dcdfdb88f2e036faa03d9e327c9e0585fc40d47cb20828936289",
+          "target": { "longSide": 2000, "quality": 75 }
+        },
+        {
+          "kind": "raw",
+          "width": 260,
+          "height": 260,
+          "components": 3,
+          "data": "38fe0250f15663f635621458c33aaffd831d717103a01ba00653453c8c412eb6",
+          "target": { "longSide": 2000, "quality": 75 }
+        },
+        {
+          "kind": "raw",
+          "width": 200,
+          "height": 200,
+          "components": 3,
+          "data": "533c655ab4cc39b5ee63a4b99568c930e356167ec827b3aeeaf35a53f20a24c5",
+          "target": { "longSide": 2000, "quality": 75 }
+        }
+      ],
+      "progress": [
+        [1, 4],
+        [2, 4],
+        [3, 4],
+        [4, 4]
+      ]
+    },
+    "compress/recoder-gives-up": {
+      "result": {
+        "files": [
+          {
+            "sha256": "1811b1b8c7a19a33b9bf5e4717b8a293a6b6c8e2411c77634c6c87f6f51e1bc6",
+            "size": 528947
+          }
+        ]
+      },
+      "requests": [],
+      "progress": [
+        [1, 4],
+        [2, 4],
+        [3, 4],
+        [4, 4]
+      ]
+    },
+    "compress/not-smaller": {
+      "result": { "refused": "not-smaller" },
+      "requests": [],
+      "progress": []
+    },
+    "compress/no-picture-code": {
+      "result": { "error": "Error", "message": "no picture code" },
+      "requests": [],
+      "progress": []
+    },
+    "compress/stopped": {
+      "result": { "error": "AbortError", "message": "This operation was aborted", "code": 20 },
+      "requests": [],
+      "progress": []
+    },
+    "run/blank-pages/rich-empty-and-specks": {
+      "files": [
+        {
+          "sha256": "b37ff2299481747ed0b9a65efde0480b975b730134ea7a6bbce037769180fe1f",
+          "size": 12053
+        }
+      ]
+    },
+    "run/blank-pages/rich-first": {
+      "files": [
+        {
+          "sha256": "acdf8426d00c6c4352dc655f97489bd1d08fc31f5718a9251a08d0f42e158fa9",
+          "size": 12061
+        }
+      ]
+    },
+    "run/blank-pages/rich-form-page": {
+      "files": [
+        {
+          "sha256": "80aa764bed4ef46f4bf3c3568ba6a6070ed2948464e217455ae5ab8109297712",
+          "size": 12053
+        }
+      ]
+    },
+    "run/blank-pages/blank-sample": {
+      "files": [
+        {
+          "sha256": "59fc1d69fda7ef464edc32dee3744c94e9ddf83d8ddbea7703810f41bf6ad71b",
+          "size": 4173
+        }
+      ]
+    },
+    "run/to-text/rich": {
+      "files": [
+        {
+          "sha256": "f6420f4a50a58b925fc29b0547a023216be932e2ac692823431844daa4730af1",
+          "size": 210,
+          "text": "Cover page\nPrepared for the baseline test.\n\nPart A: a picture\n\nSection A.1: notes and a form\n\nSection A.2: a turned page\n\nPart B: plain text\nLine one of part B.\nLine two of part B.\n\nfine print on the last page\n"
+        }
+      ]
+    },
+    "run/to-text/text3": {
+      "files": [
+        {
+          "sha256": "b722def25155e99f94174dd327cdee3124a4e98d3dc7463868891b1abecd7dd0",
+          "size": 21,
+          "text": "Page one\n\nPage three\n"
+        }
+      ]
+    },
+    "run/to-text/plain-sample": {
+      "files": [
+        {
+          "sha256": "169d8f04e75a0fd0a17d04e110c2c4389e3330503a44ae5d081238dfac85404b",
+          "size": 98,
+          "text": "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison.\n"
+        }
+      ]
+    },
+    "run/to-text/blank-sample": {
+      "files": [
+        {
+          "sha256": "7114a14d3b7c7e0233090dc3a7f4d54ff1fa2d29e5082cc95f7d37e411a3497d",
+          "size": 19,
+          "text": "Real content\n\ntiny\n"
+        }
+      ]
+    },
+    "run/to-text/no-text": { "refused": "no-text" },
+    "run/encrypt/is-a-job": { "error": "Error", "message": "encrypt runs as a job" },
+    "run/decrypt/is-a-job": { "error": "Error", "message": "decrypt runs as a job" },
+    "run/repair/is-a-job": { "error": "Error", "message": "repair runs as a job" },
+    "blank/rich": {
+      "pageCount": 8,
+      "candidates": [
+        {
+          "page": 6,
+          "reason": "empty",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "07a38b70bc25eaddf9c4c4184b18fd9015598d321c56e013eac1b284f1eabe9b"
+          }
+        },
+        {
+          "page": 7,
+          "reason": "nearly-white",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "31195dd8fc2d96439ea86120362ed7426e0e359c2a9445bcb955b2d06e54879e"
+          }
+        }
+      ],
+      "progress": [
+        [1, 8],
+        [2, 8],
+        [3, 8],
+        [4, 8],
+        [5, 8],
+        [6, 8],
+        [7, 8],
+        [8, 8]
+      ]
+    },
+    "blank/blank-sample": {
+      "pageCount": 10,
+      "candidates": [
+        {
+          "page": 2,
+          "reason": "empty",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "07a38b70bc25eaddf9c4c4184b18fd9015598d321c56e013eac1b284f1eabe9b"
+          }
+        },
+        {
+          "page": 3,
+          "reason": "nearly-white",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "daf971f35a2cd766599cbfa82b0f91363decca1a1b9a520049a6e7304893737d"
+          }
+        },
+        {
+          "page": 5,
+          "reason": "nearly-white",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "07a38b70bc25eaddf9c4c4184b18fd9015598d321c56e013eac1b284f1eabe9b"
+          }
+        },
+        {
+          "page": 7,
+          "reason": "nearly-white",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "07a38b70bc25eaddf9c4c4184b18fd9015598d321c56e013eac1b284f1eabe9b"
+          }
+        },
+        {
+          "page": 8,
+          "reason": "empty",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "07a38b70bc25eaddf9c4c4184b18fd9015598d321c56e013eac1b284f1eabe9b"
+          }
+        },
+        {
+          "page": 9,
+          "reason": "empty",
+          "thumb": {
+            "width": 240,
+            "height": 160,
+            "sha256": "c4091db183efc400377abbe2c82f580d2d99445a7a7221f7efecd249f4405184"
+          }
+        },
+        {
+          "page": 10,
+          "reason": "nearly-white",
+          "thumb": {
+            "width": 180,
+            "height": 240,
+            "sha256": "93cbe21a286f08252ca040dfc9f15ff1959b591ea5848f19b8aa10b2ac9d7c35"
+          }
+        }
+      ],
+      "progress": [
+        [1, 10],
+        [2, 10],
+        [3, 10],
+        [4, 10],
+        [5, 10],
+        [6, 10],
+        [7, 10],
+        [8, 10],
+        [9, 10],
+        [10, 10]
+      ]
+    },
+    "blank/plain-sample": { "pageCount": 1, "candidates": [], "progress": [[1, 1]] },
+    "blank/compress-sample": {
+      "pageCount": 2,
+      "candidates": [],
+      "progress": [
+        [1, 2],
+        [2, 2]
+      ]
+    },
+    "blank/many-empty": {
+      "pageCount": 125,
+      "candidateCount": 125,
+      "withThumb": 120,
+      "candidates": "66bd7b344db04b719c0032e1b2043a8e8f8c5a836179aea5cb7df8307cedef0a",
+      "progress": "7adce377b9c6db1f7387870ee0870a3ee65f267d15abfc71c0b4e848d575d57e"
+    },
+    "decrypt/enc256": {
+      "file": {
+        "sha256": "34446e1601dbfad0fd561326b9c7cbffbe58b24e6f405a0f00f52f8ca01267be",
+        "size": 1339
+      },
+      "inspect": { "ok": true, "pages": 2 },
+      "opened": {
+        "pages": 2,
+        "text": [
+          "Page 1: confidential content that must survive decryption.",
+          "Page 2: confidential content that must survive decryption."
+        ],
+        "objects": "526ee4eb20aaf67de833ae828e6e5de00bda4ec58d63e1985f65ef09404a9763"
+      }
+    },
+    "decrypt/enc128": {
+      "file": {
+        "sha256": "1fd415fa2b8eac6826c4f5dbcec4c89414c4520dd70f4c92f7018fbc3ec9ffa5",
+        "size": 1274
+      },
+      "inspect": { "ok": true, "pages": 2 },
+      "opened": {
+        "pages": 2,
+        "text": [
+          "Page 1: confidential content that must survive decryption.",
+          "Page 2: confidential content that must survive decryption."
+        ],
+        "objects": "0784df153dcc7159a4f788a9db32335758cdb184c1d3c0d1a653ca6eaf6626a6"
+      }
+    },
+    "decrypt/encrc4": {
+      "file": {
+        "sha256": "627d542914cf28cd77c38e3617371bcf5b4428b59867f6dd99ce34581f3cf6cd",
+        "size": 1274
+      },
+      "inspect": { "ok": true, "pages": 2 },
+      "opened": {
+        "pages": 2,
+        "text": [
+          "Page 1: confidential content that must survive decryption.",
+          "Page 2: confidential content that must survive decryption."
+        ],
+        "objects": "0784df153dcc7159a4f788a9db32335758cdb184c1d3c0d1a653ca6eaf6626a6"
+      }
+    },
+    "decrypt/enc-r3-rc4": {
+      "file": {
+        "sha256": "93d047c37b3ff5c72089c0da2b14c8d05d0bfbba16efca92b17403943576daa9",
+        "size": 13598
+      },
+      "inspect": { "ok": true, "pages": 1 },
+      "opened": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "1deece5da70cd09bb7b9acd02c265a2ea1ba22677acfbbb230b45bae7801f971"
+      }
+    },
+    "decrypt/enc-r4-aes128": {
+      "file": {
+        "sha256": "3876ab03a89a5857767cb86849166c31eaf9e32b821401a8f22e2d1c6d91c3c4",
+        "size": 14808
+      },
+      "inspect": { "ok": true, "pages": 1 },
+      "opened": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "0419a6000eaa4e358811415d3f609e58fc23eb539e866d03809ec0cfbf1cd399"
+      }
+    },
+    "decrypt/enc-r5-aes256": {
+      "file": {
+        "sha256": "3876ab03a89a5857767cb86849166c31eaf9e32b821401a8f22e2d1c6d91c3c4",
+        "size": 14808
+      },
+      "inspect": { "ok": true, "pages": 1 },
+      "opened": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "0419a6000eaa4e358811415d3f609e58fc23eb539e866d03809ec0cfbf1cd399"
+      }
+    },
+    "decrypt/enc-r5-owneronly-empty": {
+      "file": {
+        "sha256": "3876ab03a89a5857767cb86849166c31eaf9e32b821401a8f22e2d1c6d91c3c4",
+        "size": 14808
+      },
+      "inspect": { "ok": true, "pages": 1 },
+      "opened": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "0419a6000eaa4e358811415d3f609e58fc23eb539e866d03809ec0cfbf1cd399"
+      }
+    },
+    "decrypt/four-spaces": {
+      "file": {
+        "sha256": "abf745ed32675b8cb627002cf11de8a2b22d1cc03ba8528976be3915f3936b5d",
+        "size": 17617
+      },
+      "inspect": { "ok": true, "pages": 1 },
+      "opened": {
+        "pages": 1,
+        "text": ["Just some text."],
+        "objects": "dc25ae8212e69ec10c948b6fa94ec547af7f563f133fc26f6f4f1b2e97cd534c"
+      }
+    },
+    "decrypt/wrong-password": {
+      "error": "PdfLoadError",
+      "message": "the password does not open this PDF",
+      "code": "password-required"
+    },
+    "decrypt/not-encrypted": {
+      "file": {
+        "sha256": "6bc1ec0ca1269c3fba77b3d02bf597b8d8a26a03791f786ba95606d8415f17f1",
+        "size": 1871
+      },
+      "inspect": { "ok": true, "pages": 3 },
+      "opened": {
+        "pages": 3,
+        "text": ["Page one", "", "Page three"],
+        "objects": "760b4285e7a2d8e093c974d3180aea2ff7d427e54b99d29342ce057c9e31b803"
+      }
+    },
+    "decrypt/junk": { "error": "Error", "message": "qpdf could not write the file" },
+    "encrypt/rich-user": {
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "encryptedPageCount": 8,
+      "opens": { "none": "wrong-password", "wrong": "wrong-password", "user": "ok", "owner": null },
+      "encryption": {
+        "CF": { "StdCF": { "AuthEvent": "/DocOpen", "CFM": "/AESV3", "Length": 32 } },
+        "Filter": "/Standard",
+        "Length": 256,
+        "P": -4,
+        "R": 6,
+        "StmF": "/StdCF",
+        "StrF": "/StdCF",
+        "V": 5
+      },
+      "decryptWithWrongPassword": {
+        "error": "PdfLoadError",
+        "message": "the password does not open this PDF",
+        "code": "password-required"
+      },
+      "unlocked": {
+        "pages": 8,
+        "text": [
+          "Cover page\nPrepared for the baseline test.",
+          "Part A: a picture",
+          "Section A.1: notes and a form",
+          "Section A.2: a turned page",
+          "Part B: plain text\nLine one of part B.\nLine two of part B.",
+          "",
+          "",
+          "fine print on the last page"
+        ],
+        "objects": "88662d1b299dc92aa3f32b59f8d8bb5d8a3bdcea302f7a419762d0f3daef6101"
+      },
+      "unlockedWithOwner": null
+    },
+    "encrypt/rich-restrict": {
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "encryptedPageCount": 8,
+      "opens": { "none": "wrong-password", "wrong": "wrong-password", "user": "ok", "owner": "ok" },
+      "encryption": {
+        "CF": { "StdCF": { "AuthEvent": "/DocOpen", "CFM": "/AESV3", "Length": 32 } },
+        "Filter": "/Standard",
+        "Length": 256,
+        "P": -3392,
+        "R": 6,
+        "StmF": "/StdCF",
+        "StrF": "/StdCF",
+        "V": 5
+      },
+      "decryptWithWrongPassword": {
+        "error": "PdfLoadError",
+        "message": "the password does not open this PDF",
+        "code": "password-required"
+      },
+      "unlocked": {
+        "pages": 8,
+        "text": [
+          "Cover page\nPrepared for the baseline test.",
+          "Part A: a picture",
+          "Section A.1: notes and a form",
+          "Section A.2: a turned page",
+          "Part B: plain text\nLine one of part B.\nLine two of part B.",
+          "",
+          "",
+          "fine print on the last page"
+        ],
+        "objects": "88662d1b299dc92aa3f32b59f8d8bb5d8a3bdcea302f7a419762d0f3daef6101"
+      },
+      "unlockedWithOwner": {
+        "pages": 8,
+        "text": [
+          "Cover page\nPrepared for the baseline test.",
+          "Part A: a picture",
+          "Section A.1: notes and a form",
+          "Section A.2: a turned page",
+          "Part B: plain text\nLine one of part B.\nLine two of part B.",
+          "",
+          "",
+          "fine print on the last page"
+        ],
+        "objects": "88662d1b299dc92aa3f32b59f8d8bb5d8a3bdcea302f7a419762d0f3daef6101"
+      }
+    },
+    "encrypt/text3-user": {
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "encryptedPageCount": 3,
+      "opens": { "none": "wrong-password", "wrong": "wrong-password", "user": "ok", "owner": null },
+      "encryption": {
+        "CF": { "StdCF": { "AuthEvent": "/DocOpen", "CFM": "/AESV3", "Length": 32 } },
+        "Filter": "/Standard",
+        "Length": 256,
+        "P": -4,
+        "R": 6,
+        "StmF": "/StdCF",
+        "StrF": "/StdCF",
+        "V": 5
+      },
+      "decryptWithWrongPassword": {
+        "error": "PdfLoadError",
+        "message": "the password does not open this PDF",
+        "code": "password-required"
+      },
+      "unlocked": {
+        "pages": 3,
+        "text": ["Page one", "", "Page three"],
+        "objects": "303eda809bbe96e53c84f003e031cfeb6f0c87153186c8067cf81ce2da83f5a7"
+      },
+      "unlockedWithOwner": null
+    },
+    "encrypt/text3-restrict": {
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "encryptedPageCount": 3,
+      "opens": { "none": "wrong-password", "wrong": "wrong-password", "user": "ok", "owner": "ok" },
+      "encryption": {
+        "CF": { "StdCF": { "AuthEvent": "/DocOpen", "CFM": "/AESV3", "Length": 32 } },
+        "Filter": "/Standard",
+        "Length": 256,
+        "P": -3392,
+        "R": 6,
+        "StmF": "/StdCF",
+        "StrF": "/StdCF",
+        "V": 5
+      },
+      "decryptWithWrongPassword": {
+        "error": "PdfLoadError",
+        "message": "the password does not open this PDF",
+        "code": "password-required"
+      },
+      "unlocked": {
+        "pages": 3,
+        "text": ["Page one", "", "Page three"],
+        "objects": "303eda809bbe96e53c84f003e031cfeb6f0c87153186c8067cf81ce2da83f5a7"
+      },
+      "unlockedWithOwner": {
+        "pages": 3,
+        "text": ["Page one", "", "Page three"],
+        "objects": "303eda809bbe96e53c84f003e031cfeb6f0c87153186c8067cf81ce2da83f5a7"
+      }
+    },
+    "encrypt/plain-sample-user": {
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "encryptedPageCount": 1,
+      "opens": { "none": "wrong-password", "wrong": "wrong-password", "user": "ok", "owner": null },
+      "encryption": {
+        "CF": { "StdCF": { "AuthEvent": "/DocOpen", "CFM": "/AESV3", "Length": 32 } },
+        "Filter": "/Standard",
+        "Length": 256,
+        "P": -4,
+        "R": 6,
+        "StmF": "/StdCF",
+        "StrF": "/StdCF",
+        "V": 5
+      },
+      "decryptWithWrongPassword": {
+        "error": "PdfLoadError",
+        "message": "the password does not open this PDF",
+        "code": "password-required"
+      },
+      "unlocked": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "403182fcba64938daa46f2f293e0e32dfef5ad83751d907e2ff85f632720f459"
+      },
+      "unlockedWithOwner": null
+    },
+    "encrypt/plain-sample-restrict": {
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "encryptedPageCount": 1,
+      "opens": { "none": "wrong-password", "wrong": "wrong-password", "user": "ok", "owner": "ok" },
+      "encryption": {
+        "CF": { "StdCF": { "AuthEvent": "/DocOpen", "CFM": "/AESV3", "Length": 32 } },
+        "Filter": "/Standard",
+        "Length": 256,
+        "P": -3392,
+        "R": 6,
+        "StmF": "/StdCF",
+        "StrF": "/StdCF",
+        "V": 5
+      },
+      "decryptWithWrongPassword": {
+        "error": "PdfLoadError",
+        "message": "the password does not open this PDF",
+        "code": "password-required"
+      },
+      "unlocked": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "403182fcba64938daa46f2f293e0e32dfef5ad83751d907e2ff85f632720f459"
+      },
+      "unlockedWithOwner": {
+        "pages": 1,
+        "text": [
+          "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison."
+        ],
+        "objects": "403182fcba64938daa46f2f293e0e32dfef5ad83751d907e2ff85f632720f459"
+      }
+    },
+    "repair/shifted-xref": {
+      "opens": { "none": "ok", "wrong": "ok" },
+      "inspect": { "ok": true, "pages": 2 },
+      "repaired": {
+        "file": {
+          "sha256": "00f0875c1476432289d6ab5a334c1e9a5f6fc034e482345d29d3a675b06ecb5f",
+          "size": 1229
+        },
+        "pages": 2,
+        "opened": {
+          "pages": 2,
+          "text": ["first page", "second page"],
+          "objects": "7ad96d7cf508718aa31606a4a1ba9722f331c00b34bf202ce82ff3a3719973ac"
+        }
+      },
+      "salvaged": {
+        "file": {
+          "sha256": "6983b5cd4e08e94d02ea6fc138919adc5c8590a705b1c63e3053bdc5f5810f0e",
+          "size": 927
+        },
+        "pages": 2,
+        "opened": {
+          "pages": 2,
+          "text": ["first page", "second page"],
+          "objects": "c123bfc95245edaba2098c97966ed3f36c358806841ffadc32aa025e8b5b6df7"
+        }
+      }
+    },
+    "repair/wrong-startxref": {
+      "opens": { "none": "ok", "wrong": "ok" },
+      "inspect": { "ok": true, "pages": 2 },
+      "repaired": {
+        "file": {
+          "sha256": "00f0875c1476432289d6ab5a334c1e9a5f6fc034e482345d29d3a675b06ecb5f",
+          "size": 1229
+        },
+        "pages": 2,
+        "opened": {
+          "pages": 2,
+          "text": ["first page", "second page"],
+          "objects": "7ad96d7cf508718aa31606a4a1ba9722f331c00b34bf202ce82ff3a3719973ac"
+        }
+      },
+      "salvaged": {
+        "file": {
+          "sha256": "6983b5cd4e08e94d02ea6fc138919adc5c8590a705b1c63e3053bdc5f5810f0e",
+          "size": 927
+        },
+        "pages": 2,
+        "opened": {
+          "pages": 2,
+          "text": ["first page", "second page"],
+          "objects": "c123bfc95245edaba2098c97966ed3f36c358806841ffadc32aa025e8b5b6df7"
+        }
+      }
+    },
+    "repair/truncated-text": {
+      "opens": { "none": "unreadable", "wrong": "unreadable" },
+      "inspect": { "ok": false, "problem": "unreadable" },
+      "repaired": {
+        "error": "Error",
+        "message": "PDFium could not read the PDF",
+        "reason": "unreadable"
+      },
+      "salvaged": {
+        "file": {
+          "sha256": "4137ce77992e1e71a81685fcf3546b4a049c1ce1723ef027c1970a53386b8ff7",
+          "size": 908
+        },
+        "pages": 2,
+        "opened": {
+          "pages": 2,
+          "text": ["page 1", "page 2"],
+          "objects": "2430ddb67df4092c0f2cfa53cd74eec98edaf19abb1edb997cb827b4bddf7a16"
+        }
+      }
+    },
+    "repair/truncated-rich": {
+      "opens": { "none": "unreadable", "wrong": "unreadable" },
+      "inspect": { "ok": false, "problem": "unreadable" },
+      "repaired": {
+        "error": "Error",
+        "message": "PDFium could not read the PDF",
+        "reason": "unreadable"
+      },
+      "salvaged": {
+        "file": {
+          "sha256": "2dc171d5b28788a6eaf6c48022ec6f396da91f46914d473e0e5b664f9f858a63",
+          "size": 4390
+        },
+        "pages": 3,
+        "opened": {
+          "pages": 3,
+          "text": [
+            "Cover page\nPrepared for the baseline test.",
+            "Part A: a picture",
+            "Section A.1: notes and a form"
+          ],
+          "objects": "8015bc9a475680a802e9878e76a9748549260210e14fc672167ef26bff8f6a44"
+        }
+      }
+    },
+    "repair/corrupt-example": {
+      "opens": { "none": "unreadable", "wrong": "unreadable" },
+      "inspect": { "ok": false, "problem": "unreadable" },
+      "repaired": {
+        "error": "Error",
+        "message": "PDFium could not read the PDF",
+        "reason": "unreadable"
+      },
+      "salvaged": null
+    },
+    "repair/junk": {
+      "opens": { "none": "unreadable", "wrong": "unreadable" },
+      "inspect": { "ok": false, "problem": "unreadable" },
+      "repaired": {
+        "error": "Error",
+        "message": "PDFium could not read the PDF",
+        "reason": "unreadable"
+      },
+      "salvaged": null
+    },
+    "repair/encrypted": {
+      "opens": { "none": "wrong-password", "wrong": "wrong-password" },
+      "inspect": { "ok": false, "problem": "encrypted" },
+      "repaired": {
+        "error": "Error",
+        "message": "the PDF is password-protected",
+        "reason": "encrypted"
+      },
+      "salvaged": null
+    },
+    "repair/healthy": {
+      "opens": { "none": "ok", "wrong": "ok" },
+      "inspect": { "ok": true, "pages": 8 },
+      "repaired": {
+        "file": {
+          "sha256": "43252b171373adbbd923a29c072ae672bf353486dcd858f51ce70e3d10a4d5ec",
+          "size": 11114
+        },
+        "pages": 8,
+        "opened": {
+          "pages": 8,
+          "text": [
+            "Cover page\nPrepared for the baseline test.",
+            "Part A: a picture",
+            "Section A.1: notes and a form",
+            "Section A.2: a turned page",
+            "Part B: plain text\nLine one of part B.\nLine two of part B.",
+            "",
+            "",
+            "fine print on the last page"
+          ],
+          "objects": "90d1a9484264f9be6dd9e2721ee91c9415c6e829a239da8fa2b34c422e345948"
+        }
+      },
+      "salvaged": {
+        "file": {
+          "sha256": "21c6ea4b496cfac41c146362ffd8a8acf762898c8c1c8d5ab286d819ad3f74bb",
+          "size": 6267
+        },
+        "pages": 8,
+        "opened": {
+          "pages": 8,
+          "text": [
+            "Cover page\nPrepared for the baseline test.",
+            "Part A: a picture",
+            "Section A.1: notes and a form",
+            "Section A.2: a turned page",
+            "Part B: plain text\nLine one of part B.\nLine two of part B.",
+            "",
+            "",
+            "fine print on the last page"
+          ],
+          "objects": "b8cffeb78c64e8e19d5383c574f80b2e3bce47c7f89eb57e0ae39a333b317cac"
+        }
+      }
+    },
+    "text/rich": {
+      "pageCount": 8,
+      "info": { "title": "Golden sample", "author": "IeumOffice tests" },
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 43,
+          "text": "Cover page\nPrepared for the baseline test.",
+          "hasTextLayer": true
+        },
+        {
+          "page": 2,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 17,
+          "text": "Part A: a picture",
+          "hasTextLayer": true
+        },
+        {
+          "page": 3,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 29,
+          "text": "Section A.1: notes and a form",
+          "hasTextLayer": true
+        },
+        {
+          "page": 4,
+          "widthPt": 400,
+          "heightPt": 300,
+          "chars": 26,
+          "text": "Section A.2: a turned page",
+          "hasTextLayer": true
+        },
+        {
+          "page": 5,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 60,
+          "text": "Part B: plain text\nLine one of part B.\nLine two of part B.",
+          "hasTextLayer": true
+        },
+        {
+          "page": 6,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 7,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 8,
+          "widthPt": 400,
+          "heightPt": 300,
+          "chars": 27,
+          "text": "fine print on the last page",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": false
+    },
+    "text/rich-pages": {
+      "pageCount": 8,
+      "info": { "title": "Golden sample", "author": "IeumOffice tests" },
+      "pages": [
+        {
+          "page": 3,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 29,
+          "text": "Section A.1: notes and a form",
+          "hasTextLayer": true
+        },
+        {
+          "page": 7,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        }
+      ],
+      "truncated": false
+    },
+    "text/rich-span": {
+      "pageCount": 8,
+      "info": { "title": "Golden sample", "author": "IeumOffice tests" },
+      "pages": [
+        {
+          "page": 2,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 17,
+          "text": "Part A: a picture",
+          "hasTextLayer": true
+        },
+        {
+          "page": 3,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 29,
+          "text": "Section A.1: notes and a form",
+          "hasTextLayer": true
+        },
+        {
+          "page": 4,
+          "widthPt": 400,
+          "heightPt": 300,
+          "chars": 26,
+          "text": "Section A.2: a turned page",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": false
+    },
+    "text/rich-budget": {
+      "pageCount": 8,
+      "info": { "title": "Golden sample", "author": "IeumOffice tests" },
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 43,
+          "text": "Cover page\nPrepared ",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": true
+    },
+    "text/text3": {
+      "pageCount": 3,
+      "info": {},
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 300,
+          "heightPt": 300,
+          "chars": 8,
+          "text": "Page one",
+          "hasTextLayer": true
+        },
+        {
+          "page": 2,
+          "widthPt": 300,
+          "heightPt": 300,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 3,
+          "widthPt": 300,
+          "heightPt": 300,
+          "chars": 10,
+          "text": "Page three",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": false
+    },
+    "text/blank-sample": {
+      "pageCount": 10,
+      "info": {},
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 12,
+          "text": "Real content",
+          "hasTextLayer": true
+        },
+        {
+          "page": 2,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 3,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 4,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 5,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 1,
+          "text": "",
+          "hasTextLayer": true
+        },
+        {
+          "page": 6,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 4,
+          "text": "tiny",
+          "hasTextLayer": true
+        },
+        {
+          "page": 7,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 8,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 9,
+          "widthPt": 300,
+          "heightPt": 200,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 10,
+          "widthPt": 300,
+          "heightPt": 400,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        }
+      ],
+      "truncated": false
+    },
+    "text/plain-sample": {
+      "pageCount": 1,
+      "info": {},
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 595.303955078125,
+          "heightPt": 841.8897705078125,
+          "chars": 99,
+          "text": "Encrypted Edit Probe\nThis line must survive the round trip.\nSecond paragraph for text comparison.",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": false
+    },
+    "text/compress-sample": {
+      "pageCount": 2,
+      "info": {},
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 600,
+          "heightPt": 800,
+          "chars": 0,
+          "text": "",
+          "hasTextLayer": false
+        },
+        {
+          "page": 2,
+          "widthPt": 600,
+          "heightPt": 800,
+          "chars": 20,
+          "text": "Text stays as it is.",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": false
+    },
+    "text/enc256-password": {
+      "pageCount": 2,
+      "info": {},
+      "pages": [
+        {
+          "page": 1,
+          "widthPt": 595,
+          "heightPt": 842,
+          "chars": 58,
+          "text": "Page 1: confidential content that must survive decryption.",
+          "hasTextLayer": true
+        },
+        {
+          "page": 2,
+          "widthPt": 595,
+          "heightPt": 842,
+          "chars": 58,
+          "text": "Page 2: confidential content that must survive decryption.",
+          "hasTextLayer": true
+        }
+      ],
+      "truncated": false
+    },
+    "text/enc256-no-password": {
+      "error": "Error",
+      "message": "PDFium could not load the document"
+    },
+    "text/junk": { "error": "Error", "message": "PDFium could not load the document" }
+  }
+}
