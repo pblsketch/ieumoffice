@@ -173,6 +173,8 @@ export function askSheetsPassword(t: SheetsTranslate, retry: boolean): Promise<s
     const finish = (result: { password: string } | null) => {
       if (done) return
       done = true
+      // Drop the field's focus first, so the on-screen keyboard closes with the sheet.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       // After this render pass: unmounting a root from inside its own event handler warns.
       setTimeout(() => mounted.remove(), 0)
       if (result) resolve(result.password)
