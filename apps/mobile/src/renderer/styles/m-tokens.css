@@ -76,6 +76,59 @@
   --m-z-toolbar: 30;
   --m-z-sheet: 40;
   --m-z-modal: 50;
+
+  /* ── Design system layer (docs/plans/mobile-v1/DSN.md, section "tokens") ──
+   * Names are the contract; numbers are tunable defaults. Colors only point at
+   * @genoffice/ui tokens, so light, dark and follow-system need no extra blocks. */
+
+  /* line icon sizes: the size table in ds/Icon.tsx is the source, these mirror it */
+  --m-icon-s: 16px;
+  --m-icon-m: 20px;
+  --m-icon-l: 24px;
+  --m-icon-xl: 32px;
+  --m-icon-stroke: 1.85;
+
+  /* control heights (the visible compact sizes stay --m-icon-btn and --m-control-s;
+   * the press area is always at least --m-hit) */
+  --m-btn-h: 48px;
+  --m-control-h: 48px;
+  --m-row-h: 56px;
+
+  /* main action and current place */
+  --m-primary: var(--color-btn-primary);
+  --m-on-primary: var(--color-btn-primary-text);
+  --m-current: var(--m-accent);
+
+  /* selected state: fill for list-like choices, ring for choice tiles and swatches */
+  --m-selected-bg: var(--active-bg);
+  --m-selected-fg: var(--text-primary);
+  --m-selected-ring: var(--color-btn-primary);
+  --m-selected-ring-w: 2px;
+
+  /* elevation: 0 bars and cards, 1 floating buttons, 2 attached menus and tips, 3 sheets */
+  --m-elev-0: none;
+  --m-elev-1: var(--shadow-sm);
+  --m-elev-2: var(--shadow-menu);
+  --m-elev-3: var(--shadow-modal-strong);
+
+  /* reading width and content width on expanded windows and up */
+  --m-measure: 40rem;
+  --m-content-max: 720px;
+
+  /* floating row: floating tools (right) and the page indicator (left) share one line */
+  --m-floating-bottom: calc(var(--m-safe-bottom) + var(--m-space-4));
+  --m-floating-inset: var(--m-space-4);
+  --m-floating-h: var(--m-hit);
+  --m-floating-tools-w: 0px;
+
+  /* stacking inside a page (same numbers as the current overlays) and on screen */
+  --m-z-page-1: 1;
+  --m-z-page-2: 2;
+  --m-z-page-3: 3;
+  --m-z-page-4: 4;
+  --m-z-page-5: 5;
+  --m-z-floating: 15;
+  --m-z-tip: 60;
 }
 
 * {
