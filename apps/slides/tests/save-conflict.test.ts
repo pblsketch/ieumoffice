@@ -81,7 +81,7 @@ vi.mock('../src/main/shaped-metrics', () => ({
 }))
 
 import { createBlankPptx } from '@genoffice/pptx-engine'
-import { setOpenPathProbe } from '@genoffice/electron-utils'
+import { setOpenPathProbe, sharedPathGrants } from '@genoffice/electron-utils'
 import { registerSlidesIpc } from '../src/main/slides-main'
 import { sessions } from '../src/main/session-state'
 
@@ -99,6 +99,9 @@ interface SaveResult {
 function call(channel: string, ...args: unknown[]): unknown {
   const fn = handlers.get(channel)
   if (!fn) throw new Error(`handler not registered: ${channel}`)
+  // a deck reaches slides:open-path only after the user put it in front of
+  // this view (drop, open dialog), which records the path as granted
+  if (channel === 'slides:open-path') sharedPathGrants().grant(WC, [args[0] as string])
   return (fn as (...a: unknown[]) => unknown)(event, ...args)
 }
 

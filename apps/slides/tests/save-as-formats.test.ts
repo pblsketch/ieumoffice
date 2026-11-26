@@ -83,7 +83,7 @@ vi.mock('../src/main/shaped-metrics', () => ({
 }))
 
 import { createBlankPptx } from '@genoffice/pptx-engine'
-import { resetAppShuttingDown } from '@genoffice/electron-utils'
+import { resetAppShuttingDown, sharedPathGrants } from '@genoffice/electron-utils'
 import { registerSlidesIpc, runSlidesRecoveryPass, slidesIsDirty } from '../src/main/slides-main'
 import { sessions } from '../src/main/session-state'
 import {
@@ -109,6 +109,9 @@ class FakeContents {
 function call<T>(sender: FakeContents, channel: string, ...args: unknown[]): T {
   const fn = handlers.get(channel)
   if (!fn) throw new Error(`handler not registered: ${channel}`)
+  // a deck reaches slides:open-path only after the user put it in front of
+  // this view (drop, open dialog), which records the path as granted
+  if (channel === 'slides:open-path') sharedPathGrants().grant(sender.id, [args[0] as string])
   return (fn as (...a: unknown[]) => T)({ sender }, ...args)
 }
 
