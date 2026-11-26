@@ -189,7 +189,7 @@ export function AiSection({
       <div key={opts.slot} className="mobile-accordion-item">
         <button
           type="button"
-          className="mobile-accordion-trigger"
+          className="mobile-accordion-trigger ai-set-provider"
           onClick={() => toggleSlot(opts.slot)}
           aria-expanded={isExpanded}
         >

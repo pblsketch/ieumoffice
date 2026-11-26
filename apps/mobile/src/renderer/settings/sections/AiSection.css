@@ -76,3 +76,30 @@
   justify-content: flex-end;
   gap: var(--m-space-2);
 }
+
+/* A provider row: the name is shown whole (it wraps rather than being cut); the long "connected" badge takes at most the rest and wraps too. */
+.ai-set-provider .mobile-accordion-left {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-set-provider .mobile-accordion-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.ai-set-provider .mobile-accordion-right {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+}
+
+.ai-set-provider .mobile-badge {
+  flex-shrink: 1;
+  min-width: 0;
+  white-space: normal;
+  word-break: keep-all;
+  text-align: end;
+  line-height: var(--m-line-body);
+}
