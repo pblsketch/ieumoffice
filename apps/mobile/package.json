@@ -17,6 +17,7 @@
     "@genoffice/agent-core": "*",
     "@genoffice/doc-rules": "*",
     "@genoffice/docx2hwp": "*",
+    "@genoffice/html2docx": "*",
     "@genoffice/ai-provider": "*",
     "@genoffice/i18n": "*",
     "@genoffice/mobile-bridge": "*",
