@@ -346,3 +346,32 @@ describe('the keyboard stays down while a workbook reloads', () => {
     }
   }, 180_000)
 })
+
+describe('the virtual keyboard comes only for a cell edit', () => {
+  it("marks Univer's focus outside an edit inputmode none, and lifts it for the edit", async () => {
+    const { installKeyboardOnlyWhileEditing } =
+      await import('../src/renderer/editors/sheets/grid/keyboardHold')
+    const input = document.createElement('div')
+    input.contentEditable = 'true'
+    input.tabIndex = 0
+    input.dataset.uComp = 'editor'
+    document.body.appendChild(input)
+    let editing = false
+    const rule = installKeyboardOnlyWhileEditing(() => editing)
+    // Selecting a cell (or opening the workbook): focus stays, no keyboard.
+    input.focus()
+    expect(document.activeElement).toBe(input)
+    expect(input.getAttribute('inputmode')).toBe('none')
+    // A double tap starts the edit: the keyboard may come.
+    editing = true
+    rule.editingStarted()
+    expect(input.getAttribute('inputmode')).toBeNull()
+    expect(document.activeElement).toBe(input)
+    // A focus during the edit keeps the keyboard.
+    input.blur()
+    input.focus()
+    expect(input.getAttribute('inputmode')).toBeNull()
+    rule.dispose()
+    input.remove()
+  })
+})

@@ -1,6 +1,15 @@
 /**
- * Keeping the virtual keyboard down while a workbook (re)loads (see
- * `holdKeyboardDuringLoad`). Its own module so it loads without Univer.
+ * The virtual keyboard rises only for a cell edit. Univer keeps its hidden
+ * cell-editor input focused whenever a cell is selected (so a hardware
+ * keyboard can type into the cell), and on a phone that focus raises the
+ * virtual keyboard: on open, on a tap in view mode, after a reload.
+ * - `installKeyboardOnlyWhileEditing`: when Univer focuses the input while no
+ *   cell is being edited, the input gets `inputmode="none"` (focus and
+ *   hardware typing stay, the virtual keyboard does not come); a cell edit
+ *   takes it off again and refocuses, so the keyboard comes for the edit.
+ * - `holdKeyboardDuringLoad`: while a workbook (re)loads, that focus is taken
+ *   back altogether.
+ * Its own module so it loads without Univer.
  */
 /** Univer's hidden cell-editor input (docs-ui marks it `data-u-comp="editor"`). */
 function isUniverEditorInput(node: Element | null): node is HTMLElement {
@@ -48,5 +57,36 @@ export function holdKeyboardDuringLoad(
       if (timer === null) timer = setTimeout(end, RELOAD_FOCUS_QUIET_MS)
     },
     end,
+  }
+}
+
+/** The grid's handle on the keyboard rule (installKeyboardOnlyWhileEditing). */
+export interface KeyboardWhileEditing {
+  /** A cell edit started: the keyboard may come. */
+  editingStarted(): void
+  dispose(): void
+}
+
+export function installKeyboardOnlyWhileEditing(isEditing: () => boolean): KeyboardWhileEditing {
+  const onFocusIn = (event: FocusEvent) => {
+    const target = event.target as Element | null
+    if (isUniverEditorInput(target) && !isEditing()) target.setAttribute('inputmode', 'none')
+  }
+  document.addEventListener('focusin', onFocusIn, true)
+  return {
+    editingStarted() {
+      for (const input of document.querySelectorAll<HTMLElement>('[data-u-comp="editor"]')) {
+        if (input.getAttribute('inputmode') !== 'none') continue
+        input.removeAttribute('inputmode')
+        // The virtual keyboard reads `inputmode` when the field gains focus.
+        if (document.activeElement === input) {
+          input.blur()
+          input.focus({ preventScroll: true })
+        }
+      }
+    },
+    dispose() {
+      document.removeEventListener('focusin', onFocusIn, true)
+    },
   }
 }

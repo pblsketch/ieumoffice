@@ -16,7 +16,7 @@ import { installEditJournal } from '../journal/editJournal'
 import { installEditReveal } from './editReveal'
 import { installGestureLayer } from './gestureLayer'
 import { installViewModeGuard } from './viewModeGuard'
-import { holdKeyboardDuringLoad } from './keyboardHold'
+import { holdKeyboardDuringLoad, installKeyboardOnlyWhileEditing } from './keyboardHold'
 import type { HeaderAxis } from './headerMenu'
 
 export interface MobileGridOptions {
@@ -107,8 +107,10 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
     options.onEditRequestInView()
   })
   let cellEditing = false
+  const keyboard = installKeyboardOnlyWhileEditing(() => cellEditing)
   const editStarted = api.addEvent(api.Event.SheetEditStarted, () => {
     cellEditing = true
+    keyboard.editingStarted()
     options.onCellEditing(true)
   })
   const editEnded = api.addEvent(api.Event.SheetEditEnded, () => {
@@ -148,6 +150,7 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
       if (disposed) return
       disposed = true
       quietFocus?.end()
+      keyboard.dispose()
       beforeEdit.dispose()
       viewGuard.dispose()
       gestures.dispose()
