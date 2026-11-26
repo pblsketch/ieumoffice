@@ -87,7 +87,9 @@ describe('buttons', () => {
     )
     const button = host.querySelector('button')
     expect(button?.className).toContain('mobile-btn-primary')
-    expect(button?.disabled).toBe(true)
+    // busy keeps focus: aria-disabled, not disabled
+    expect(button?.disabled).toBe(false)
+    expect(button?.getAttribute('aria-disabled')).toBe('true')
     expect(button?.getAttribute('aria-busy')).toBe('true')
     expect(host.querySelector('.ds-btn-label')?.textContent).toBe('Save')
     expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Working')
@@ -209,6 +211,28 @@ describe('rows and groups', () => {
     expect(host.querySelector('.ds-settings-note')?.textContent).toBe('Kept on this device')
   })
 
+  it('a settings list row keeps the settings card markup', () => {
+    draw(
+      <SettingsGroup title="Help">
+        <ListRow title="Open files" variant="settings" onPress={() => {}} />
+      </SettingsGroup>,
+    )
+    expect(
+      host.querySelector('.mobile-set-card')?.querySelectorAll(':scope > .mobile-set-row'),
+    ).toHaveLength(1)
+  })
+
+  it('a busy button ignores presses', () => {
+    const onClick = vi.fn()
+    draw(
+      <Button busy onClick={onClick}>
+        Save
+      </Button>,
+    )
+    act(() => host.querySelector('button')?.click())
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
   it('list rows take the two heights and mark selected, current and danger', () => {
     const onPress = vi.fn()
     draw(
@@ -243,7 +267,7 @@ describe('rows and groups', () => {
         ]}
       />,
     )
-    const items = host.querySelectorAll('[role="menuitem"]')
+    const items = host.querySelectorAll('.mobile-menu-row-btn')
     expect(items).toHaveLength(2)
     expect(host.querySelector('[data-testid="ds-action-check"]')).toBeNull()
     expect(items[0].className).toContain('mobile-menu-row-btn')
@@ -303,7 +327,8 @@ describe('screen parts', () => {
     expect(tools?.getAttribute('aria-label')).toBe('View tools')
     expect(tools?.className).toContain('ds-floating-dimmed')
     expect(host.querySelector('.ds-icon-btn-round')).not.toBeNull()
-    expect(host.querySelector('.ds-page-indicator-text')?.getAttribute('aria-label')).toBe(
+    expect(host.querySelector('.ds-page-indicator-text')?.getAttribute('aria-hidden')).toBe('true')
+    expect(host.querySelector('.ds-page-indicator .mobile-sr-only')?.textContent).toBe(
       'Page 3 of 12',
     )
   })
@@ -330,8 +355,8 @@ describe('progress', () => {
     expect(host.querySelector('[data-testid="ds-spinner"]')?.getAttribute('role')).toBe(
       'progressbar',
     )
-    expect(host.querySelector('[data-testid="ds-doc-skeleton"]')?.getAttribute('aria-busy')).toBe(
-      'true',
+    expect(host.querySelector('[data-testid="ds-doc-skeleton"]')?.getAttribute('role')).toBe(
+      'status',
     )
     draw(<DocSkeleton label="Opening" active={false} />)
     expect(host.querySelector('[data-testid="ds-doc-skeleton"]')).toBeNull()

@@ -19,7 +19,6 @@ export function Switch({ checked, onChange, disabled, label, testId }: SwitchPro
       checked={checked}
       disabled={disabled}
       aria-label={label}
-      aria-checked={checked}
       onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.checked)}
       data-testid={testId}
     />
@@ -81,6 +80,8 @@ export interface ListRowProps {
   readonly current?: boolean
   readonly danger?: boolean
   readonly disabled?: boolean
+  /** `settings` draws the `mobile-set-row` look so the row can sit in a SettingsGroup card. */
+  readonly variant?: 'list' | 'settings'
   readonly testId?: string
 }
 
@@ -95,9 +96,14 @@ export function ListRow({
   current,
   danger,
   disabled,
+  variant = 'list',
   testId,
 }: ListRowProps) {
-  const classes = ['ds-list-row', subtitle ? 'ds-list-row-two' : 'ds-list-row-one']
+  const classes = [
+    variant === 'settings' ? 'mobile-set-row' : 'mobile-list-row',
+    'ds-list-row',
+    subtitle ? 'ds-list-row-two' : 'ds-list-row-one',
+  ]
   if (danger) classes.push('ds-list-row-danger')
   if (current) classes.push('ds-list-row-current')
   const body = (
@@ -153,14 +159,13 @@ export interface ActionListProps {
  */
 export function ActionList({ items, testId }: ActionListProps) {
   return (
-    <div className="mobile-menu-stack ds-action-list" role="menu" data-testid={testId}>
+    <div className="mobile-menu-stack ds-action-list" data-testid={testId}>
       {items
         .filter((item) => item.icon !== null && item.icon !== undefined && item.icon !== false)
         .map((item) => (
           <button
             key={item.id}
             type="button"
-            role="menuitem"
             className={item.danger ? 'mobile-menu-row-btn ds-action-danger' : 'mobile-menu-row-btn'}
             disabled={item.disabled}
             onClick={item.onSelect}

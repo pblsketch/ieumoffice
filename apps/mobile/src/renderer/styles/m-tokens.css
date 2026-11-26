@@ -104,6 +104,7 @@
   --m-selected-fg: var(--text-primary);
   --m-selected-ring: var(--color-btn-primary);
   --m-selected-ring-w: 2px;
+  --m-selected-border: var(--border-strong);
 
   /* elevation: 0 bars and cards, 1 floating buttons, 2 attached menus and tips, 3 sheets */
   --m-elev-0: none;

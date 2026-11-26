@@ -34,18 +34,22 @@ export function Button({
   className,
   children,
   type = 'button',
+  onClick,
   ...rest
 }: ButtonProps) {
   const classes = ['mobile-touch-btn', VARIANT_CLASS[variant], 'ds-btn']
   if (wide) classes.push('ds-btn-wide')
   if (busy) classes.push('ds-btn-busy')
   if (className) classes.push(className)
+  // A busy button keeps keyboard focus (aria-disabled, not disabled) but ignores presses.
   return (
     <button
       type={type}
       className={classes.join(' ')}
-      disabled={disabled || busy}
+      disabled={disabled}
+      aria-disabled={busy || undefined}
       aria-busy={busy || undefined}
+      onClick={busy ? undefined : onClick}
       {...rest}
     >
       {icon && <span className="ds-btn-icon">{icon}</span>}

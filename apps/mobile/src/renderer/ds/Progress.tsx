@@ -76,7 +76,7 @@ export function DocSkeleton({ label, active }: DocSkeletonProps) {
   const visible = useDelayedVisible(active)
   if (!visible) return null
   return (
-    <div className="ds-doc-skeleton" role="status" aria-busy="true" data-testid="ds-doc-skeleton">
+    <div className="ds-doc-skeleton" role="status" data-testid="ds-doc-skeleton">
       <div className="ds-doc-skeleton-page" aria-hidden="true">
         <span className="ds-doc-skeleton-line ds-doc-skeleton-title" />
         <span className="ds-doc-skeleton-line" />

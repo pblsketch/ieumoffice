@@ -31,12 +31,13 @@ const PICTURE_ICONS = new Set(['DocTypeIcon', 'IeumAppIcon'])
 /** (a) Literal numeric `size` on a JSX element that is not a picture icon. */
 export function literalIconSizes(source: string): string[] {
   const found: string[] = []
-  const re = /\bsize=(?:\{\s*(\d+(?:\.\d+)?)\s*\}|"(\d+(?:\.\d+)?)")/g
+  const re = /(?<![\w-])size=(?:\{\s*(\d+(?:\.\d+)?)\s*\}|"(\d+(?:\.\d+)?)")/g
   for (let m = re.exec(source); m; m = re.exec(source)) {
     const before = source.slice(0, m.index)
     const open = before.lastIndexOf('<')
     const tag = /^<([A-Za-z][\w.]*)/.exec(before.slice(open))?.[1] ?? '?'
-    if (PICTURE_ICONS.has(tag)) continue
+    // lowercase tags are HTML elements (an <input size>), not icons
+    if (PICTURE_ICONS.has(tag) || /^[a-z]/.test(tag)) continue
     found.push(`${tag} size=${m[1] ?? m[2]}`)
   }
   return found
@@ -121,6 +122,7 @@ const SELECTED_PROPS = new Set([
   'border-color',
   'outline-color',
   'outline',
+  'border',
   'color',
   'box-shadow',
 ])
@@ -129,6 +131,7 @@ const SELECTED_TOKENS = new Set([
   '--m-selected-fg',
   '--m-selected-ring',
   '--m-selected-ring-w',
+  '--m-selected-border',
   '--m-current',
   '--m-primary',
   '--m-on-primary',
@@ -139,7 +142,9 @@ const SELECTED_TOKENS = new Set([
 export function offTokenSelected(css: string): string[] {
   const found: string[] = []
   for (const rule of cssRules(css)) {
-    if (!SELECTED.test(rule.selector)) continue
+    // a :not(...) part names the unselected state, so it does not make the rule a selected one
+    const selector = rule.selector.replace(/:not([^)]*)/g, '')
+    if (!SELECTED.test(selector)) continue
     for (const [prop, value] of rule.decls) {
       if (!SELECTED_PROPS.has(prop)) continue
       const vars = [...value.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
@@ -252,7 +257,7 @@ function violations(
   return out
 }
 
-const tsxFiles = walk(renderer, '.tsx').filter((f) => !rel(f).startsWith('ds/'))
+const tsxFiles = walk(renderer, '.tsx')
 const cssFiles = walk(renderer, '.css').filter((f) => !rel(f).startsWith('assets/fonts/'))
 
 describe('design system guard', () => {
@@ -283,6 +288,7 @@ describe('guard rules themselves', () => {
     expect(literalIconSizes('<Icon\n  name="x"\n  size="18"\n/>')).toEqual(['Icon size=18'])
     expect(literalIconSizes('<Icon size={size} /><Icon size={box.h * 0.9} />')).toEqual([])
     expect(literalIconSizes('<DocTypeIcon format="pdf" size={26} />')).toEqual([])
+    expect(literalIconSizes('<input size={20} /><Box data-size="2" />')).toEqual([])
   })
 
   it('(b) allows tokens, rings and stacking keywords', () => {
@@ -309,6 +315,12 @@ describe('guard rules themselves', () => {
       ".a[aria-pressed='true'] background: var(--active-bg)",
     ])
     expect(offTokenSelected('.a:checked { background: var(--active-bg) }')).toEqual([])
+    expect(
+      offTokenSelected(".a:not([aria-pressed='true']):hover { background: var(--bg-hover) }"),
+    ).toEqual([])
+    expect(offTokenSelected(".a[aria-pressed='true'] { border: 1px solid var(--border) }")).toEqual(
+      [".a[aria-pressed='true'] border: 1px solid var(--border)"],
+    )
     expect(offTokenSelected('.tab.active-x { color: var(--text) }')).toEqual([])
     expect(offTokenSelected('.tab.active { color: var(--text) }')).toEqual([
       '.tab.active color: var(--text)',

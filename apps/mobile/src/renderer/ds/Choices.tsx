@@ -38,10 +38,14 @@ export function ChoiceGroup<T extends string>({
   const focusIndex = current >= 0 && !options[current].disabled ? current : (enabled[0] ?? -1)
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    // right and left swap in right-to-left languages (ar, he)
+    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl'
+    const forward = rtl ? 'ArrowLeft' : 'ArrowRight'
+    const backward = rtl ? 'ArrowRight' : 'ArrowLeft'
     const step =
-      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+      event.key === forward || event.key === 'ArrowDown'
         ? 1
-        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+        : event.key === backward || event.key === 'ArrowUp'
           ? -1
           : 0
     if (step === 0 || enabled.length === 0) return

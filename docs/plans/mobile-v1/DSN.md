@@ -52,24 +52,24 @@
 
 이름이 약속이고 숫자는 조정 가능한 기본값이다. 색은 `packages/ui` 토큰을 `var()`로만 가리키므로 밝게·어둡게·시스템 따르기를 따로 적지 않는다.
 
-| 묶음           | 토큰                                                             | 값                                                                 | 쓰임                                                                                                                                                 |
-| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 선 아이콘 크기 | `--m-icon-s` / `-m` / `-l` / `-xl`                               | 16 / 20 / 24 / 32px                                                | s 줄 안 보조(칩·배지), m 모든 바·막대·목록 줄, l 떠 있는 단추, xl 빈 상태·첫 실행. 기준은 `ds/sizes.ts`의 `ICON_SIZE`이고 토큰은 그 거울이다         |
-| 선 굵기        | `--m-icon-stroke`                                                | 1.85                                                               | 크기마다 바꾸지 않는다                                                                                                                               |
-| 높이           | `--m-btn-h` / `--m-control-h` / `--m-row-h`                      | 48 / 48 / 56px                                                     | 단추 / 입력·선택 상자 / 한 줄 줄. 바 안 글 단추의 보이는 높이는 기존 `--m-icon-btn`(40), 칩은 기존 `--m-control-s`(32). 누를 영역은 늘 `--m-hit`(48) |
-| 주 동작        | `--m-primary` / `--m-on-primary`                                 | `--color-btn-primary` / `--color-btn-primary-text`                 | 채움 단추·스위치 켬·[+]·빈 상태 주 단추                                                                                                              |
-| 지금 위치      | `--m-current`                                                    | `var(--m-accent)`                                                  | 지금 탭, 목차 지금 장, PPT 지금 슬라이드                                                                                                             |
-| 고른 것        | `--m-selected-bg` / `-fg` / `-ring` / `-ring-w`                  | `--active-bg` / `--text-primary` / `--color-btn-primary` / 2px     | 규칙 1                                                                                                                                               |
-| 그림자         | `--m-elev-0` … `-3`                                              | `none` / `--shadow-sm` / `--shadow-menu` / `--shadow-modal-strong` | 0 바·막대·카드, 1 떠 있는 단추·알약, 2 붙은 메뉴·말풍선, 3 시트·확인 창                                                                              |
-| 폭             | `--m-measure` / `--m-content-max`                                | 40rem / 720px                                                      | 본문 글 / 목록·설정·도구 화면(840px 이상)                                                                                                            |
-| 떠 있는 줄     | `--m-floating-bottom` / `-inset` / `-h` / `--m-floating-tools-w` | 아래 안전 영역 + 16px / 16px / 48px / 0                            | 서로 다른 파일이 그리는 떠 있는 도구와 쪽 표시를 한 줄에 세우는 약속                                                                                 |
-| 겹침(쪽 안)    | `--m-z-page-1` … `-5`                                            | 1 … 5                                                              | 지금 쪽 위 겹침층의 숫자를 그대로 이름으로. 바꿔도 쌓이는 순서는 같다                                                                                |
-| 겹침(화면)     | `--m-z-floating` / `--m-z-tip`                                   | 15 / 60                                                            | 떠 있는 도구·쪽 표시 / 말풍선(시트·확인 창 위)                                                                                                       |
+| 묶음           | 토큰                                                             | 값                                                                                 | 쓰임                                                                                                                                                 |
+| -------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 선 아이콘 크기 | `--m-icon-s` / `-m` / `-l` / `-xl`                               | 16 / 20 / 24 / 32px                                                                | s 줄 안 보조(칩·배지), m 모든 바·막대·목록 줄, l 떠 있는 단추, xl 빈 상태·첫 실행. 기준은 `ds/sizes.ts`의 `ICON_SIZE`이고 토큰은 그 거울이다         |
+| 선 굵기        | `--m-icon-stroke`                                                | 1.85                                                                               | 크기마다 바꾸지 않는다                                                                                                                               |
+| 높이           | `--m-btn-h` / `--m-control-h` / `--m-row-h`                      | 48 / 48 / 56px                                                                     | 단추 / 입력·선택 상자 / 한 줄 줄. 바 안 글 단추의 보이는 높이는 기존 `--m-icon-btn`(40), 칩은 기존 `--m-control-s`(32). 누를 영역은 늘 `--m-hit`(48) |
+| 주 동작        | `--m-primary` / `--m-on-primary`                                 | `--color-btn-primary` / `--color-btn-primary-text`                                 | 채움 단추·스위치 켬·[+]·빈 상태 주 단추                                                                                                              |
+| 지금 위치      | `--m-current`                                                    | `var(--m-accent)`                                                                  | 지금 탭, 목차 지금 장, PPT 지금 슬라이드                                                                                                             |
+| 고른 것        | `--m-selected-bg` / `-fg` / `-ring` / `-ring-w` / `-border`      | `--active-bg` / `--text-primary` / `--color-btn-primary` / 2px / `--border-strong` | 규칙 1                                                                                                                                               |
+| 그림자         | `--m-elev-0` … `-3`                                              | `none` / `--shadow-sm` / `--shadow-menu` / `--shadow-modal-strong`                 | 0 바·막대·카드, 1 떠 있는 단추·알약, 2 붙은 메뉴·말풍선, 3 시트·확인 창                                                                              |
+| 폭             | `--m-measure` / `--m-content-max`                                | 40rem / 720px                                                                      | 본문 글 / 목록·설정·도구 화면(840px 이상)                                                                                                            |
+| 떠 있는 줄     | `--m-floating-bottom` / `-inset` / `-h` / `--m-floating-tools-w` | 아래 안전 영역 + 16px / 16px / 48px / 0                                            | 서로 다른 파일이 그리는 떠 있는 도구와 쪽 표시를 한 줄에 세우는 약속                                                                                 |
+| 겹침(쪽 안)    | `--m-z-page-1` … `-5`                                            | 1 … 5                                                                              | 지금 쪽 위 겹침층의 숫자를 그대로 이름으로. 바꿔도 쌓이는 순서는 같다                                                                                |
+| 겹침(화면)     | `--m-z-floating` / `--m-z-tip`                                   | 15 / 60                                                                            | 떠 있는 도구·쪽 표시 / 말풍선(시트·확인 창 위)                                                                                                       |
 
 ## 쓰는 규칙
 
 1. **고른 것은 두 모양뿐이다.**
-   - 목록 줄·칩·메뉴 줄·탭 안 선택은 바탕 `--m-selected-bg`와 글 `--m-selected-fg`.
+   - 목록 줄·칩·메뉴 줄·탭 안 선택은 바탕 `--m-selected-bg`와 글 `--m-selected-fg`. 칩은 테두리 `--m-selected-border`도 쓴다.
    - 선택지 타일과 칸 나눔은 안쪽 고리(`--m-selected-ring-w` `--m-selected-ring`).
    - 색 견본은 바깥 고리. 고르지 않은 견본에도 1px 둘레가 있어 어두운 시트 위 검정 견본이 보인다.
    - "지금 열린 것"은 고른 것과 따로 `--m-current`와 `aria-current`로 나타낸다.
@@ -108,13 +108,13 @@
 | `Switch`, `SwitchRow`                      | `input[type=checkbox][role=switch].mobile-switch`, 줄은 `label.mobile-set-row` | 켬·끔·끔(누를 수 없음)                                              |
 | `SettingsGroup`                            | `h2.mobile-section-heading` + `.mobile-set-card`(줄이 곧바로 아래) + 설명      | S0 설정 시험의 모양 그대로                                          |
 | `ListRow`                                  | 한 줄·두 줄                                                                    | 고름 `aria-pressed`, 지금 `aria-current`, 위험, 끔                  |
-| `ActionList`                               | `mobile-menu-stack` + `mobile-menu-row-btn`                                    | `menu`/`menuitem`, 아이콘 없는 줄은 그리지 않음                     |
+| `ActionList`                               | `mobile-menu-stack` + `mobile-menu-row-btn`                                    | 기존 메뉴 줄과 같은 단추 목록, 아이콘 없는 줄은 그리지 않음         |
 | `ScreenHeader`                             | 제목 `h1`                                                                      | —                                                                   |
 | `EmptyState`                               | `mobile-empty-state` + `mobile-empty-icon`                                     | 제목 `h2`                                                           |
 | `StickyActions`                            | 아래 고정 줄(키보드·안전 영역 위)                                              | —                                                                   |
 | `InlineNotice`                             | 문서 위 알림 띠                                                                | `role="status"`                                                     |
-| `FloatingTools`, `PageIndicator`           | 떠 있는 줄                                                                     | `toolbar` 이름, 쪽 글 낭독 이름                                     |
-| `Spinner`, `LinearProgress`, `DocSkeleton` | 진행                                                                           | `progressbar`, `aria-busy`, 300ms 지연                              |
+| `FloatingTools`, `PageIndicator`           | 떠 있는 줄                                                                     | `toolbar` 이름, 쪽 표시는 숨긴 낭독 글(바뀔 때마다 읽지 않음)       |
+| `Spinner`, `LinearProgress`, `DocSkeleton` | 진행                                                                           | `progressbar`, 자리표시는 `status`, 300ms 지연                      |
 | `canShowTip`, `pickTipBox`                 | 말풍선 자리 판정                                                               | —                                                                   |
 
 **떠 있는 줄의 약속.** 셸의 보기 도구와 트랙의 쪽 표시는 서로 다른 파일이 그린다. `EditorKind`에 자리를 더하지 않고, 둘 다 `--m-floating-*`와 `--m-z-floating`으로 자리를 잡는다. 셸 묶음과 트랙 묶음이 함께 나오면 트랙 묶음이 셸 묶음 왼쪽에 붙는다(셸이 `--m-floating-tools-w`를 내보냄, 뒤 단계).
@@ -122,9 +122,9 @@
 ## 지키는 시험
 
 - `apps/mobile/tests/ds-guard.test.ts` — 화면 코드 전체를 훑는다.
-  - (a) 선 아이콘에 숫자 크기를 적으면 위반이다(`size={20}`, `size="20"`, 여러 줄 포함). 식은 위반이 아니다.
+  - (a) 선 아이콘(대문자로 시작하는 부품)에 숫자 크기를 적으면 위반이다(`size={20}`, `size="20"`, 여러 줄 포함). 식, HTML 요소(`<input size>`), `data-size`는 위반이 아니다. `ds/` 안도 검사한다.
   - (b) z-index는 토큰(`auto`·`0`·`-1`은 허용), 그림자는 `--m-elev-*`이거나 번짐 없는 고리여야 한다.
-  - (c) 고른 상태 규칙(`[aria-pressed='true']` 등)이 고른 것·지금·주 동작 토큰만 써야 한다. 스위치 `:checked`는 대상이 아니다.
+  - (c) 고른 상태 규칙(`[aria-pressed='true']` 등, `:not(…)` 안은 빼고 본다)의 바탕·글·테두리(`border` 묶음 포함)·고리 색이 고른 것·지금·주 동작 토큰만 써야 한다. 스위치 `:checked`는 대상이 아니다.
   - 앞 단계 전부터 어기던 파일은 **파일마다** 허용 목록에 있다(선 아이콘 47, 겹침·그림자 19, 고른 것 11). 새 파일은 처음부터 검사받는다. 허용 목록에 새 파일을 더하지 않는다. 뒤 단계에서 고친 파일부터 목록에서 뺀다.
 - `apps/mobile/tests/ds-components.test.tsx` — 부품의 상태·접근성, `ICON_SIZE` = `--m-icon-*`, `ds.css`는 `ds-*`만, 움직임 줄이기·줄 바꿈 규칙, `ds/`의 가져오기(React, 자기 파일, `svgIcon`만).
 

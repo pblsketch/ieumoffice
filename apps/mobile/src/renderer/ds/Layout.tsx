@@ -140,9 +140,10 @@ export function PageIndicator({ text, label, previous, next, testId }: PageIndic
   return (
     <div className="ds-page-indicator" data-testid={testId}>
       {previous}
-      <span className="ds-page-indicator-text" role="status" aria-label={label}>
+      <span className="ds-page-indicator-text" aria-hidden="true">
         {text}
       </span>
+      <span className="mobile-sr-only">{label}</span>
       {next}
     </div>
   )

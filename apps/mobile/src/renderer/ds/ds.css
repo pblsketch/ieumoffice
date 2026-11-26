@@ -44,15 +44,10 @@
   box-shadow: var(--m-elev-1);
 }
 
-/* chip: 32 visible, 48 pressable */
-.ds-chip::before {
-  content: '';
-  position: absolute;
-  inset: calc((var(--m-control-s) - var(--m-hit)) / 2) 0;
-}
-
+/* chip: 32 visible; the home chip rule already widens the press area to --m-hit */
 .ds-chip[aria-pressed='true'] {
   background: var(--m-selected-bg);
+  border-color: var(--m-selected-border);
   color: var(--m-selected-fg);
 }
 
@@ -102,7 +97,7 @@
   width: calc(var(--m-hit) - var(--m-space-4));
   height: calc(var(--m-hit) - var(--m-space-4));
   border-radius: var(--m-radius-full);
-  box-shadow: 0 0 0 1px var(--border-strong);
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 .ds-swatch[aria-pressed='true'] .ds-swatch-face {
@@ -150,7 +145,7 @@
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  text-align: left;
+  text-align: start;
 }
 
 button.ds-list-row {
@@ -326,8 +321,8 @@ html[data-window='large'] .ds-screen-header {
 
 /* ── Progress ── */
 .ds-spinner-s {
-  width: var(--m-icon-m);
-  height: var(--m-icon-m);
+  width: var(--m-icon-s);
+  height: var(--m-icon-s);
   border-width: 2px;
 }
 
