@@ -33,7 +33,7 @@ import { normalizeQuery, searchBook, type BookSearchResult } from './search'
 import { DEFAULT_READER_SETTINGS, snapReaderSettings } from './epubView'
 
 /** Tunable timing: how long position writes are gathered before one is sent (ms). */
-export const EPUB_READER_TUNING = { positionWriteMs: 1000 }
+export const EPUB_READER_TUNING = { positionWriteMs: 1000, searchDelayMs: 200 }
 
 /** Where the reader is: a spine item and the first block on screen. */
 export interface EpubPlace {
@@ -192,6 +192,12 @@ export class EpubReader {
     return { view, fixed }
   }
 
+  /** No chapter on screen (it failed to draw): the one shown before releases its URLs. */
+  clearShown(): void {
+    this.current?.view.release()
+    this.current = null
+  }
+
   /** The chapter now on screen; the one shown before releases its URLs. */
   showChapter(chapter: LoadedChapter): void {
     if (this.current && this.current.view !== chapter.view) this.current.view.release()
@@ -251,8 +257,15 @@ export class EpubReader {
       return
     }
     this.set({ search: { query, running: true, result: null } })
-    void searchBook(book, { query, isCancelled: () => token !== this.searchToken })
+    // wait for a short pause in typing before walking the book
+    void new Promise<void>((resolve) => setTimeout(resolve, EPUB_READER_TUNING.searchDelayMs))
+      .then(() =>
+        token === this.searchToken
+          ? searchBook(book, { query, isCancelled: () => token !== this.searchToken })
+          : null,
+      )
       .then((result) => {
+        if (!result) return
         if (token !== this.searchToken || result.cancelled) return
         this.set({ search: { query, running: false, result } })
       })

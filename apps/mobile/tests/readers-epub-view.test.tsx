@@ -895,6 +895,35 @@ describe('reading a book', () => {
     doc.dispose?.()
   })
 
+  it('lets go of the chapter before when the next one cannot be drawn', async () => {
+    const env = makeEnv(await buildBook(), newStore())
+    const { view, doc } = await openDocument(env)
+    const frameDoc = await loadFrame(view.el)
+    const before = [...blobs]
+    expect(before.length).toBeGreaterThan(0)
+    h.failChapter = 2
+    clickLink(frameDoc, 'three.xhtml')
+    await waitFor(() => byTestId('epub-chapter-failed'))
+    expect(before.every((url) => revoked.includes(url))).toBe(true)
+    doc.dispose?.()
+  })
+
+  it('treats any element with an href as a link (MathML links never navigate the frame)', async () => {
+    const env = makeEnv(await buildBook(), newStore())
+    const { view, doc } = await openDocument(env)
+    const frameDoc = await loadFrame(view.el)
+    const math = frameDoc.createElementNS('http://www.w3.org/1998/Math/MathML', 'mi')
+    math.setAttribute('href', 'https://remote.example/')
+    frameDoc.body.append(math)
+    const win = frameDoc.defaultView as Window & typeof globalThis
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true })
+    act(() => {
+      math.dispatchEvent(event)
+    })
+    expect(event.defaultPrevented).toBe(true)
+    doc.dispose?.()
+  })
+
   it('turns off text size, line height and mode for a fixed-layout book', async () => {
     const env = makeEnv(await buildBook({ fixedLayout: true }), newStore())
     const { view, doc } = await openDocument(env)

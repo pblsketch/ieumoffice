@@ -429,6 +429,7 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
       docRef.current = null
       shownRef.current = null
       setShown(null)
+      reader.clearShown()
       failedRef.current = spineIndex
       setFailed(spineIndex)
       reader.record({ spineIndex, blockId: null })
@@ -610,7 +611,7 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
   const wire = (doc: Document) => {
     const api = () => apiRef.current
     const onClick = (e: MouseEvent) => {
-      const anchor = (e.target as Element | null)?.closest?.('a, area')
+      const anchor = (e.target as Element | null)?.closest?.('a, area, [href]')
       if (!anchor) return
       e.preventDefault()
       if (e.type === 'click') api().onLink(linkHref(anchor))
