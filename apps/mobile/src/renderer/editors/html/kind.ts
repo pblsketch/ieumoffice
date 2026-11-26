@@ -44,7 +44,7 @@ export const htmlEditorKind: EditorKind = {
     const prepared = prepareHtmlSource({ text, readOnly })
     return {
       noticeKey: prepared.noticeKey,
-      start: (host) => startHtmlDocument(host, htmlApi, prepared),
+      start: (host) => startHtmlDocument(host, htmlApi, session, prepared),
     }
   },
 }

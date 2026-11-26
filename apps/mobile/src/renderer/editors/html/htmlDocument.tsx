@@ -1,8 +1,9 @@
 // One opened HTML document (spec 5): its source, the preview copy shown in a script-less frame,
 // the source view, undo and redo, and the file side. Loaded only when an HTML document opens.
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import type { MobileHtmlApi } from '@genoffice/mobile-bridge/html'
-import { isMobileCommandError } from '@genoffice/mobile-bridge/transport'
+import { WEB_EXPORT_MIME, saveNewFile, type MobileHtmlApi } from '@genoffice/mobile-bridge/html'
+import { isMobileCommandError, type MobileDocSession } from '@genoffice/mobile-bridge/transport'
+import type { ConversionReport } from '@genoffice/odt-engine'
 import { translateMobile } from '../../i18n'
 import type { MobileStringKey } from '../../i18n/strings'
 import { EditorShell, type EditorQuickActionItem } from '../../shell/EditorShell'
@@ -24,6 +25,7 @@ import {
   IconWebUnhide,
 } from '../../components/icons/web'
 import { MarkdownHideSheet } from '../markdownHideSheet'
+import { OdtConfirmSheet } from '../markdownOdtConfirmSheet'
 import { HtmlPreviewFrame } from './HtmlPreviewFrame'
 import { HtmlSourceView } from './HtmlSourceView'
 import { HtmlTextEditSheet } from './HtmlTextEditSheet'
@@ -44,7 +46,7 @@ import {
   planHide,
   planUnhide,
 } from './htmlHide'
-import { buildPreviewCopy, hasDocumentScript, mapDocument } from './htmlPreview'
+import { buildExportCopy, buildPreviewCopy, hasDocumentScript, mapDocument } from './htmlPreview'
 import './htmlEditor.css'
 
 /** Same depth as the Markdown editor's history (a value that may change). */
@@ -56,6 +58,17 @@ const SCRIPT_TAG = /<script[\s>/]/i
 /** What the document area shows: the preview copy in its frame, or the source text. */
 export type HtmlView = 'preview' | 'source'
 
+/** The formats an HTML document exports to, each written as a new file (spec 3.2, 5.7). */
+type HtmlExportFormat = 'docx' | 'odt'
+
+const EXPORT_TEXT: Record<
+  HtmlExportFormat,
+  { readonly working: MobileStringKey; readonly failed: MobileStringKey }
+> = {
+  docx: { working: 'webExportDocxWorking', failed: 'webExportDocxFailed' },
+  odt: { working: 'webExportOdtWorking', failed: 'webExportOdtFailed' },
+}
+
 interface HtmlKeptState {
   readonly source: string
   /** Bumped by every edit; the element map and patch sets carry it. */
@@ -63,6 +76,8 @@ interface HtmlKeptState {
   readonly view: HtmlView
   /** The element selected in the preview (edit mode), held by its place in the source. */
   readonly selection: HtmlSelection | null
+  /** The ODT conversion report waiting for [Save] or [Cancel]; null when nothing is asked. */
+  readonly odtReport: ConversionReport | null
 }
 
 function createKeptState<T extends object>(initial: T) {
@@ -109,6 +124,7 @@ export function prepareHtmlSource(opened: HtmlOpenedSource): PreparedHtmlSource 
 export function startHtmlDocument(
   host: EditorHost,
   htmlApi: MobileHtmlApi,
+  openedSession: MobileDocSession,
   opened: PreparedHtmlSource,
 ): EditorDocument {
   const tNow = host.translate
@@ -122,8 +138,11 @@ export function startHtmlDocument(
     version: 0,
     view: 'preview',
     selection: null,
+    odtReport: null,
   })
   const readSource = () => kept.get().source
+  /** The session of this document as App's active document has it (it changes on save as). */
+  let currentSession = openedSession
 
   // ---- the element map of the current version; ids of unchanged elements carry over ----
   let mapCache: ParseMap | null = opened.map
@@ -351,10 +370,12 @@ export function startHtmlDocument(
     forceSaveAs = false,
   ) => {
     const { session } = doc
+    currentSession = session
     const source = readSource()
     if (forceSaveAs || !session.writable || session.ephemeral) {
       try {
         const nextSession = await htmlApi.saveAsDocument(session, session.name, source)
+        currentSession = nextSession
         host.updateSession({ session: nextSession, dirty: false, isUntitled: false })
         showToast(tNow('savedNotice'))
         await refreshHomeData()
@@ -380,13 +401,81 @@ export function startHtmlDocument(
     }
   }
 
+  // ---- Word and ODT export (spec 5.7): a new file; the open document stays as it is ----
+  /** The answer to the ODT confirm sheet that is open now. */
+  let resolveOdtConfirm: ((save: boolean) => void) | null = null
+  const confirmOdtReport = (report: ConversionReport) =>
+    new Promise<boolean>((resolve) => {
+      resolveOdtConfirm?.(false)
+      resolveOdtConfirm = resolve
+      kept.set({ odtReport: report })
+    })
+  const answerOdtConfirm = (save: boolean) => {
+    const resolve = resolveOdtConfirm
+    resolveOdtConfirm = null
+    if (kept.get().odtReport !== null) kept.set({ odtReport: null })
+    resolve?.(save)
+  }
+
+  /** Converts on demand; the converter and its frame are a chunk loaded only here. */
+  const convertHtml = async (
+    format: HtmlExportFormat,
+    html: string,
+  ): Promise<{ bytes: Uint8Array; lostCaptures: number; report: ConversionReport | null }> => {
+    const exporter = await import('./htmlExport')
+    if (format === 'odt') return exporter.htmlToOdt(html)
+    return { ...(await exporter.htmlToDocx(html)), report: null }
+  }
+
+  /**
+   * The source on screen (unsaved edits included) as Word or ODT, written as a new file with the
+   * system save dialog. The document's session, source, undo history and dirty state stay as
+   * they are, so saving and sharing it go on to the original file.
+   */
+  const exportHtml = async (format: HtmlExportFormat) => {
+    const { source, version } = kept.get()
+    const { working, failed } = EXPORT_TEXT[format]
+    showToast(tNow(working))
+    let converted: Awaited<ReturnType<typeof convertHtml>>
+    try {
+      converted = await convertHtml(format, buildExportCopy(source, mapFor(source, version)))
+    } catch {
+      showToast({ message: tNow(failed), tone: 'error' })
+      return
+    }
+    const reported = converted.report !== null && converted.report.length > 0
+    if (converted.report && reported && !(await confirmOdtReport(converted.report))) return
+    try {
+      const suggestedName = `${currentSession.name.replace(/\.(html|htm)$/i, '')}.${format}`
+      const { name } = await saveNewFile(host.client, {
+        suggestedName,
+        mime: WEB_EXPORT_MIME[format],
+        bytes: converted.bytes,
+      })
+      // pictures the phone could not capture are what the reader misses first (owner, 11-26 Q3)
+      const doneKey: MobileStringKey =
+        converted.lostCaptures > 0
+          ? 'webExportSavedShapeLoss'
+          : reported
+            ? 'webExportSavedLoss'
+            : 'webExportSaved'
+      showToast(tNow(doneKey, { name }))
+    } catch (err) {
+      if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
+      showToast({ message: tNow(failed), tone: 'error' })
+    }
+  }
+
   const setView = (view: HtmlView) => {
     kept.set({ view })
     resolveSelection()
   }
 
   function HtmlWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
-    const { source, version, view, selection } = useSyncExternalStore(kept.subscribe, kept.get)
+    const { source, version, view, selection, odtReport } = useSyncExternalStore(
+      kept.subscribe,
+      kept.get,
+    )
     const t = useCallback((key: MobileStringKey) => translateMobile(lang, key), [lang])
     const editing = mode === 'edit' && canEdit && !readOnly
     const [textPlan, setTextPlan] = useState<{ plan: HtmlTextEditPlan; version: number } | null>(
@@ -493,12 +582,29 @@ export function startHtmlDocument(
       return items
     }, [t, toggleView, hasSelection, hideAvailable, selectionHidden])
 
+    // Word and ODT in both modes, after "view source" in view mode
+    const moreItems = useMemo((): EditorQuickActionItem[] => {
+      const exports: EditorQuickActionItem[] = [
+        {
+          id: 'webExportDocx',
+          label: t('webExportDocx'),
+          onPress: () => void exportHtml('docx'),
+        },
+        {
+          id: 'webExportOdt',
+          label: t('webExportOdt'),
+          onPress: () => void exportHtml('odt'),
+        },
+      ]
+      return mode === 'view' ? [toggleView, ...exports] : exports
+    }, [mode, toggleView, t])
+
     return (
       <EditorShell
         {...frame}
         quickActions={quickActions}
         formatGroups={[]}
-        moreItems={mode === 'view' ? [toggleView] : []}
+        moreItems={moreItems}
         viewTools={[]}
         onFitToWidth={() => {}}
       >
@@ -543,6 +649,12 @@ export function startHtmlDocument(
             hideSelected(label)
           }}
           onCancel={() => setHideLabel(null)}
+        />
+        <OdtConfirmSheet
+          open={odtReport !== null}
+          items={odtReport ?? []}
+          onConfirm={() => answerOdtConfirm(true)}
+          onCancel={() => answerOdtConfirm(false)}
         />
       </EditorShell>
     )
@@ -603,6 +715,8 @@ export function startHtmlDocument(
     Workspace: HtmlWorkspace,
 
     dispose() {
+      // a confirm sheet still open when the document closes writes nothing
+      answerOdtConfirm(false)
       mapCache = null
       mapSource = null
     },
