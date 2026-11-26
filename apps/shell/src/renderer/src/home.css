@@ -496,9 +496,12 @@ body.vib .home {
    A 40px rail on the recents page. */
 .filter-pills {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  height: 40px;
-  padding: 0 3px;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 3px;
+  row-gap: 2px;
   border-radius: 10px;
   background: var(--checkbox-bg);
   flex-shrink: 0;
@@ -536,6 +539,9 @@ body.vib .home {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+  /* a narrow window wraps the pills inside their track instead of widening the page */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* group list inside the move-to-group modal (visual language of .picker-tree) */
