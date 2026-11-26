@@ -13,7 +13,7 @@ export {
   rangesToCutAfter,
   sanitizeSplitName,
   splitSubfolderName,
-} from '@genoffice/pdf-ops'
+} from '@genoffice/pdf-ops/split-plan'
 export type {
   SplitBookmarkEntry,
   SplitFixedKind,
@@ -26,4 +26,4 @@ export type {
   SplitPlanResult,
   SplitRange,
   SplitSizeUnit,
-} from '@genoffice/pdf-ops'
+} from '@genoffice/pdf-ops/split-plan'
