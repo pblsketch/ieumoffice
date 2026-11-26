@@ -1,4 +1,12 @@
-import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import type { AgentMessage } from '@genoffice/agent-core'
 import { SUBSCRIPTION_CHATGPT_USAGE_URL } from '@genoffice/ai-provider/browser'
 import { htmlLang, type Lang } from '@genoffice/i18n'
@@ -23,6 +31,9 @@ import { QueueStrip, type QueueStripItem } from '../ai/QueueStrip'
 import { IconAiPhoto } from './icons/ai'
 import { IconChevronDown, IconClose, IconSend, IconStop } from './MobileIcons'
 import './AiSheetPanel.css'
+
+/** How close to the end the message list must be to keep following new messages (one hit size). */
+const FOLLOW_SLACK_PX = 48
 
 /** The notice the panel shows; the name stays for the ChatGPT notices it started with. */
 export type ChatGptRecoveryNoticeKind = AiNoticeKind | null
@@ -178,6 +189,27 @@ export function AiSheetPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restoreNonce])
 
+  // The message list follows what arrives (replies, change cards, a question card)
+  // while the person is at its end; scrolled up to read, it stays where it is.
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const followRef = useRef(true)
+  const last = messages[messages.length - 1]
+  const contentKey = [
+    messages.length,
+    last && last.role !== 'tool' ? last.text.length : 0,
+    changeCards.map((card) => `${card.id}${card.state}`).join(),
+    questionCard?.id ?? '',
+  ].join('|')
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (list && followRef.current) list.scrollTop = list.scrollHeight
+  }, [contentKey])
+  const onListScroll = () => {
+    const list = listRef.current
+    if (!list) return
+    followRef.current = list.scrollHeight - list.scrollTop - list.clientHeight <= FOLLOW_SLACK_PX
+  }
+
   if (!aiEnabled) {
     return (
       <div className="mobile-ai-panel" data-testid="mobile-ai-off">
@@ -212,6 +244,8 @@ export function AiSheetPanel({
       return false
     }
     if (photoBlocked) return false
+    // the person's own message always brings the list to its end
+    followRef.current = true
     onSend(trimmed)
     return true
   }
@@ -481,7 +515,12 @@ export function AiSheetPanel({
         </div>
       )}
 
-      <div className="mobile-ai-messages" data-testid="ai-message-list">
+      <div
+        className="mobile-ai-messages"
+        data-testid="ai-message-list"
+        ref={listRef}
+        onScroll={onListScroll}
+      >
         {messages.length === 0 ? (
           <>
             <div className="mobile-ai-empty">
