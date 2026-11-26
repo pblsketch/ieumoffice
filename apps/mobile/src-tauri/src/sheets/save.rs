@@ -242,7 +242,16 @@ pub fn copy_original_to_work_folder(
     let target_path = workspace.new_file_path(ext)?;
     let target = target_path.to_string_lossy().into_owned();
     let started = Instant::now();
-    let size = files.copy_session_to_file(session_id, &target_path)?;
+    let size = match files.copy_session_to_file(session_id, &target_path) {
+        Ok(size) => size,
+        // Untitled new workbooks have no backing URI yet; write an empty working copy so the
+        // frontend seeds a blank workbook, matching the pre-migration read_file_bytes behaviour.
+        Err(err) if err.message_key == "mobile.save.noUri" => {
+            workspace.write_bytes(&target, &[])?;
+            0
+        }
+        Err(err) => return Err(err),
+    };
     let read_ms = elapsed_ms(started);
     let digest = workspace.sha256(&target)?;
     digests.record(session_id, digest);

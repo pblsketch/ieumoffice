@@ -1044,3 +1044,26 @@ fn a_password_workbook_never_sends_out_its_plain_bytes() {
     .unwrap_err();
     assert_eq!(refused.message_key, super::save::MESSAGE_NOT_LOCKED);
 }
+
+#[test]
+fn untitled_xlsx_session_copies_empty_working_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let (_bridge, files) = host_file_service(dir.path());
+    let digests = super::save::OriginalDigests::default();
+
+    let untitled = files
+        .create_untitled_session(crate::storage::MobileDocFormat::Xlsx)
+        .unwrap();
+    let copy = super::save::copy_original_to_work_folder(
+        &files,
+        &workspace,
+        &digests,
+        &untitled.session_id,
+        "xlsx",
+        &|_| None,
+    )
+    .unwrap();
+    assert_eq!(copy.size, 0);
+    assert_eq!(fs::read(&copy.path).unwrap(), Vec::<u8>::new());
+}
