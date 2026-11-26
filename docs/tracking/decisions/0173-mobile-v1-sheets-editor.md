@@ -1,0 +1,33 @@
+# 0173. 모바일 1판 엑셀 편집기: 별도 엔진 빌드, 암호, PC 모듈 재사용과 저장·보기 규칙
+
+- 날짜: 2026-11-26
+- 상태: 모바일 1판(배포 전), 주인 승인(2026-11-26)
+
+## 맥락
+
+결정 [0165](0165-mobile-scope-and-design-system.md)에서 엑셀(`.xlsx`·`.xlsm`·`.xls`·`.csv`)을 모바일 1판에 넣기로 하면서 격자 터치 사용성, 메모리, Rust 엔진(`apps/sheets/native/xlsx-engine`)의 모바일 빌드, 저장 경로의 원본 바이트 보존, 암호 문서, PDF 내보내기 여섯 가지 위험을 시제품으로 먼저 확인했다. 시제품 과정에서 엔진을 앱 크레이트에 직접 넣으면 `zip 9`이 `flate2`의 `zlib-rs` 기능을 켜 앱 전체의 압축 구현이 바뀌고 한글 HWP 5 저장 바이트가 달라지는 문제(42,923 B → 42,418 B)가 드러났고, PC의 `officecrypto-tool`이 쓴 암호 파일은 Rust `cfb` 0.15가 FAT 오류로 거절했다. 2026-11-26 시제품 결과를 바탕으로 범위 조정안과 구현 방식을 저장소 주인이 모두 권장대로 승인했다.
+
+## 결정
+
+1. **엑셀 엔진을 별도 정적 라이브러리로 빌드해 C 경계로 붙이고 패닉을 격리한다(주인 승인 2026-11-26).** 원본 `apps/sheets/native/xlsx-engine` 크레이트는 한 줄도 고치지 않는다. `src-tauri/src/sheets/engine-lib/`가 별도 작업 공간과 `Cargo.lock`으로 정적 라이브러리를 빌드해 공개 심볼 `ieum_sheets_engine_*`만 남기고 앱에 링크한다. 앱 크레이트의 `Cargo.toml`·`Cargo.lock`과 기능 나무는 바꾸지 않으며, 한글 압축 동일성 시험(`hwp_and_hwpx_compression_matches_the_app_before_the_engine`)으로 지킨다. 엔진 라이브러리는 `panic = "unwind"`로 빌드해 C 경계에서 `catch_unwind`로 받아 그 요청만 `workbook_error`로 실패시키고 앱(`panic = "abort"`)은 살린다.
+2. **암호 부품은 `msoffice-crypto =0.1.0`(`legacy-binary`) + CFB FAT 보정을 엔진 라이브러리 쪽에 둔다(주인 승인 2026-11-26).** 앱 크레이트 의존과 섞지 않는다. PC와 같은 매개변수(Agile, AES-256, SHA-512, spinCount 100000)로 잠그고, `.xls`(RC4 CryptoAPI·RC4-97·XOR)도 푼다. 평문은 앱 임시 폴더 파일(`ieum-tmp/sheets/`)로만 쓰고 웹뷰로 보내지 않는다.
+3. **PC 화면 모듈과 편집 기록을 고치지 않고 가져다 쓴다(주인 승인 2026-11-26).** Univer 0.25.1 모바일 UI 플러그인 위에 PC 엑셀 모듈 44개와 PC 편집 기록·리본 명령 처리(`handleRibbonCommand`)를 재사용한다. `packages/xlsx-gateway`와 `legacy-import.ts`에만 Node 대역(`config/tracks/sheets.ts`)을 건다. PC가 내보내지 않는 `writeWorkbookTo` 등은 옮겨 적은 뒤 원문·요약값 시험으로 PC 변경을 감지한다. 격자의 부족한 터치 조작(머리글 길게 누르기 줄 메뉴, 빠른 밀기 오인 방지, 편집 칸 키보드 위 스크롤, 틀 고정선 간섭 방지, 두 손가락 확대, 수식 입력줄 48px)은 모바일 손짓 층으로 메우고, 칸 길게 누르기 메뉴의 자체 시트 교체는 2판으로 미룬다.
+4. **덮어쓰기 보호는 백업 없이 목록 비교와 다시 열어 확인으로 한다(주인 승인 2026-11-26).** PC와 같이 게이트웨이 패치 저장 → `assertManifestPreserved` 목록 비교 → 엔진으로 다시 열어 확인 뒤 원본에 쓴다. 바뀐 것이 없으면 엔진을 거치지 않고 스냅숏 바이트를 그대로 쓴다.
+5. **`.xls`·`.csv` 저장 규칙은 PC와 같게 둔다.** `.xls`·`.csv`·웹 HTML `.xls`는 임시 `.xlsx`로 변환해 열고, `.xls`의 첫 저장은 `.xlsx` 다른 이름으로 저장, `.csv`는 저장마다 묻는다.
+6. **휴대폰 PDF 내보내기는 PC 인쇄 HTML → 숨은 iframe → `pdf-lib` 벡터 PDF로 만든다(주인 승인 2026-11-26).** 네이티브 OS 인쇄 틀은 쓰지 않는다. 저장소에 이미 있는 열린 글꼴(Carlito·Liberation·Caladea·한글 글꼴)을 쓰며, 한글 2,350자 밖 빠진 글자가 있으면 만든 뒤 한 번 알린다.
+7. **보기 모드 잠금, 외부 연결 거절, Rust 마지막 방어선.** 보기 모드는 확대·틀 고정·불러오기 쓰기를 제외한 모든 편집 기록 변경을 막고, 되돌리기·다시 하기는 AI 창의 한 번 되돌리기만 통과시킨다. 모바일 엔진 분기는 외부 파일을 읽는 `update_external_links`·`read_external_links`를 거절한다. Rust(`DocumentMark`)는 원본을 읽을 때 확인한 형식을 기준으로 `.xls` 원본 쓰기, 암호 문서의 평문 내보내기와 복구 사본 쓰기를 마지막 단계에서 거절한다.
+8. **큰 파일 저장과 저장 메모리(주인 승인 2026-11-26).** T6의 파일 경로 기반 저장 부품(결정 [0178](0178-mobile-v1-home-files-and-settings.md))으로 갈아타기 전까지 base64 한도(약 14 MiB) 초과는 원본 무손상을 알리며 실패 처리하되 T1 자체 상한은 두지 않는다. 100,000행 편집 저장 시 웹뷰 메모리(Android 약 1.1 GB)는 PC와 같은 구조로 1판에서 받아들이고, iPhone 실측 뒤 2판에서 `streamPatches`를 검토한다.
+
+## 버린 대안
+
+- **엑셀 엔진을 앱 `Cargo.toml`에 직접 추가:** `zlib-rs` 기능 전파로 한글 HWP 5 저장 압축 바이트가 달라졌다.
+- **웹뷰 JavaScript에서 암호 복호·암호화:** 4.6 MB 파일 풀기에 2.7~3.3초가 걸렸고(Rust 30~46 ms) 평문이 웹뷰 메모리를 거친다.
+- **OS 인쇄 API로 엑셀 PDF 생성:** T6 소유 네이티브 플러그인에 Android·iOS 인쇄 어댑터를 추가해야 하며 구현 비용이 크다.
+- **엑셀 저장 시 별도 원본 백업 보관:** PC와 같은 목록 비교 + 다시 열기 검증으로 충분하다는 주인 결정에 따라 두지 않았다.
+
+## 결과
+
+- `feat/mobile-v1-t1`에 XLS-T1~T12가 구현되었고, Android 16 에뮬레이터에서 `.xlsx`·`.xls` 열기·편집·저장·PC 사이드카 재열기가 확인됐다.
+- arm64 release `.so` 크기는 약 8.01 MiB(gzip 약 3.1 MiB) 늘어난다.
+- T6이 바탕 가지에 합쳐진 뒤 `src-tauri/src/sheets/save.rs`와 `commands/sheets.rs`의 5곳을 T6의 파일 경로 기반 저장·복사 함수로 갈아타면 약 14 MiB 한도가 사라진다.
+- iOS 빌드·링크(`ld -r -exported_symbols_list`)와 실기기·iPhone 메모리 확인은 남는다.

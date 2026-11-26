@@ -1,6 +1,6 @@
 # 이음오피스 모바일 기능 범위 (PC판과 맞추기)
 
-상태: **확정**(2026-11-24). 결정 [0165](../tracking/decisions/0165-mobile-scope-and-design-system.md). 화면 설계는 [mobile-design-system.md](mobile-design-system.md).
+상태: **확정**(2026-11-24) · **1판 트랙 구현 완료(바탕 S0, 디자인 시스템 앞 단계, 트랙 T1~T7 — 통합 수정·디자인 뒤 단계·병합·실기기 확인 남음, 2026-11-27)**. 결정 [0165](../tracking/decisions/0165-mobile-scope-and-design-system.md), 1판 트랙 결정 [0171](../tracking/decisions/0171-mobile-v1-track-slots-and-format-gate.md)~[0179](../tracking/decisions/0179-mobile-v1-ai-relay-and-tools.md). 화면 설계는 [mobile-design-system.md](mobile-design-system.md).
 
 원칙: **PC판 기능을 모바일에도 두는 것이 기본이다.** 아래 세 가지만 예외로 따로 적는다.
 

@@ -1,5 +1,7 @@
 # 이음오피스 모바일 앱 (Android · iOS) 계획
 
+상태: **1판 트랙 구현 완료(바탕 S0, 디자인 시스템 앞 단계, 트랙 T1~T7 — 통합 수정·디자인 뒤 단계·병합·실기기 확인 남음, 2026-11-27)**. 결정 [0165](../tracking/decisions/0165-mobile-scope-and-design-system.md), 1판 트랙 결정 [0171](../tracking/decisions/0171-mobile-v1-track-slots-and-format-gate.md)~[0179](../tracking/decisions/0179-mobile-v1-ai-relay-and-tools.md).
+
 ## 개요
 
 이음오피스(`com.ieumoffice.mobile`)를 **Tauri 2 Mobile** 기반으로 Android와 iOS에 공식 스토어(Google Play Store · Apple App Store) 출시하기 위한 단계별 계획과 외부 계약을 정리한다. 데스크톱은 Electron을 유지하고, 모바일만 Tauri 2를 사용해 Rust 문서 엔진(`hwp5-wasm`, 추후 `xlsx-engine` 등)과 OAuth·HTTPS 스트리밍·보안 저장소를 단일 Rust 백엔드로 통합한다.
