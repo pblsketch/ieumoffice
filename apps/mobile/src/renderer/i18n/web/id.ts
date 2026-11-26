@@ -80,4 +80,6 @@ export const id = {
   webHtmlCannotHide: 'Elemen html, head, dan body tidak dapat disembunyikan dari AI.',
   webHtmlEditFailed: 'Perubahan tidak dapat dibuat. Pilih elemen lagi.',
   webHtmlDeleted: 'Elemen dihapus. Urungkan untuk mengembalikannya.',
+  webExportSavedShapeLoss:
+    'Disimpan sebagai {name}. Beberapa elemen visual tidak dapat dipindahkan.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -79,4 +79,6 @@ export const ru = {
   webHtmlCannotHide: 'Элементы html, head и body нельзя скрыть от ИИ.',
   webHtmlEditFailed: 'Не удалось внести изменение. Выберите элемент ещё раз.',
   webHtmlDeleted: 'Элемент удалён. Его можно вернуть отменой.',
+  webExportSavedShapeLoss:
+    'Сохранено как {name}. Некоторые графические элементы перенести не удалось.',
 } as const satisfies Record<keyof typeof zh, string>

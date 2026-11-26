@@ -79,4 +79,5 @@ export const cs = {
   webHtmlCannotHide: 'Prvky html, head a body nelze před AI skrýt.',
   webHtmlEditFailed: 'Změnu se nepodařilo provést. Vyberte prvek znovu.',
   webHtmlDeleted: 'Prvek byl smazán. Vrácením zpět ho obnovíte.',
+  webExportSavedShapeLoss: 'Uloženo jako {name}. Některé grafické prvky se nepodařilo přenést.',
 } as const satisfies Record<keyof typeof zh, string>

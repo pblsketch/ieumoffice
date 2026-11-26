@@ -79,4 +79,6 @@ export const vi = {
   webHtmlCannotHide: 'Không thể ẩn các phần tử html, head và body khỏi AI.',
   webHtmlEditFailed: 'Không thể thực hiện thay đổi. Hãy chọn lại phần tử.',
   webHtmlDeleted: 'Đã xóa phần tử. Hoàn tác để lấy lại.',
+  webExportSavedShapeLoss:
+    'Đã lưu thành {name}. Không chuyển sang được một số thành phần hình ảnh.',
 } as const satisfies Record<keyof typeof zh, string>

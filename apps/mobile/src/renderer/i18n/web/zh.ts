@@ -76,4 +76,5 @@ export const zh = {
   webHtmlCannotHide: '无法对 AI 隐藏 html、head 和 body 元素。',
   webHtmlEditFailed: '无法修改。请重新选择元素。',
   webHtmlDeleted: '已删除元素。可用撤销恢复。',
+  webExportSavedShapeLoss: '已保存为 {name}。部分图形和装饰未能保留。',
 } as const

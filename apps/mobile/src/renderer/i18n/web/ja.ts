@@ -80,4 +80,5 @@ export const ja = {
   webHtmlCannotHide: 'html・head・body 要素は AI から隠せません。',
   webHtmlEditFailed: '変更できませんでした。要素を選び直してください。',
   webHtmlDeleted: '要素を削除しました。元に戻すで復元できます。',
+  webExportSavedShapeLoss: '{name} として保存しました。一部の図や装飾は移せませんでした。',
 } as const satisfies Record<keyof typeof zh, string>

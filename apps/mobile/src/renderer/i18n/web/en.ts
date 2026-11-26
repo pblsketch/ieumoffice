@@ -79,4 +79,5 @@ export const en = {
   webHtmlCannotHide: 'The html, head and body elements cannot be hidden from the AI.',
   webHtmlEditFailed: "Couldn't make the change. Select the element again.",
   webHtmlDeleted: 'Element deleted. Undo brings it back.',
+  webExportSavedShapeLoss: 'Saved as {name}. Some visuals could not be carried over.',
 } as const satisfies Record<keyof typeof zh, string>

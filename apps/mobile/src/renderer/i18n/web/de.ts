@@ -83,4 +83,6 @@ export const de = {
   webHtmlCannotHide: 'Die Elemente html, head und body können nicht vor der KI verborgen werden.',
   webHtmlEditFailed: 'Die Änderung war nicht möglich. Wählen Sie das Element erneut aus.',
   webHtmlDeleted: 'Element gelöscht. Mit Rückgängig holen Sie es zurück.',
+  webExportSavedShapeLoss:
+    'Als {name} gespeichert. Einige grafische Elemente konnten nicht übernommen werden.',
 } as const satisfies Record<keyof typeof zh, string>

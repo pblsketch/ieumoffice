@@ -79,4 +79,5 @@ export const tr = {
   webHtmlCannotHide: 'html, head ve body öğeleri AI’dan gizlenemez.',
   webHtmlEditFailed: 'Değişiklik yapılamadı. Öğeyi yeniden seçin.',
   webHtmlDeleted: 'Öğe silindi. Geri al ile geri getirebilirsiniz.',
+  webExportSavedShapeLoss: '{name} olarak kaydedildi. Bazı görsel öğeler aktarılamadı.',
 } as const satisfies Record<keyof typeof zh, string>

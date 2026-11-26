@@ -79,4 +79,5 @@ export const ar = {
   webHtmlCannotHide: 'لا يمكن إخفاء العناصر html وhead وbody عن الذكاء الاصطناعي.',
   webHtmlEditFailed: 'تعذّر إجراء التغيير. اختر العنصر مرة أخرى.',
   webHtmlDeleted: 'حُذف العنصر. يمكنك استعادته بالتراجع.',
+  webExportSavedShapeLoss: 'تم الحفظ باسم {name}. تعذر نقل بعض العناصر المرئية.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -78,4 +78,5 @@ export const th = {
   webHtmlCannotHide: 'ซ่อนองค์ประกอบ html, head และ body จาก AI ไม่ได้',
   webHtmlEditFailed: 'แก้ไขไม่สำเร็จ โปรดเลือกองค์ประกอบอีกครั้ง',
   webHtmlDeleted: 'ลบองค์ประกอบแล้ว เลิกทำเพื่อกู้คืนได้',
+  webExportSavedShapeLoss: 'บันทึกเป็น {name} แล้ว องค์ประกอบภาพบางส่วนย้ายมาไม่ได้',
 } as const satisfies Record<keyof typeof zh, string>

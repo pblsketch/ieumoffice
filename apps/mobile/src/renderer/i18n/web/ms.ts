@@ -82,4 +82,6 @@ export const ms = {
   webHtmlCannotHide: 'Elemen html, head dan body tidak boleh disembunyikan daripada AI.',
   webHtmlEditFailed: 'Perubahan tidak dapat dibuat. Pilih elemen sekali lagi.',
   webHtmlDeleted: 'Elemen dipadam. Buat asal untuk mengembalikannya.',
+  webExportSavedShapeLoss:
+    'Disimpan sebagai {name}. Sesetengah elemen visual tidak dapat dipindahkan.',
 } as const satisfies Record<keyof typeof zh, string>

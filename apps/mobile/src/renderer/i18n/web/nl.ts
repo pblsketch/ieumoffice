@@ -82,4 +82,6 @@ export const nl = {
   webHtmlCannotHide: 'De elementen html, head en body kunnen niet voor de AI worden verborgen.',
   webHtmlEditFailed: 'De wijziging is niet gelukt. Selecteer het element opnieuw.',
   webHtmlDeleted: 'Element verwijderd. Met Ongedaan maken komt het terug.',
+  webExportSavedShapeLoss:
+    'Opgeslagen als {name}. Sommige visuele elementen konden niet worden overgenomen.',
 } as const satisfies Record<keyof typeof zh, string>

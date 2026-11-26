@@ -80,4 +80,6 @@ export const pl = {
   webHtmlCannotHide: 'Nie można ukryć elementów html, head i body przed AI.',
   webHtmlEditFailed: 'Nie udało się wprowadzić zmiany. Zaznacz element ponownie.',
   webHtmlDeleted: 'Element usunięty. Cofnij, aby go przywrócić.',
+  webExportSavedShapeLoss:
+    'Zapisano jako {name}. Nie udało się przenieść niektórych elementów graficznych.',
 } as const satisfies Record<keyof typeof zh, string>

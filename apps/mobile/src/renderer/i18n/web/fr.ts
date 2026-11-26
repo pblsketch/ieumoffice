@@ -82,4 +82,6 @@ export const fr = {
   webHtmlCannotHide: 'Les éléments html, head et body ne peuvent pas être masqués à l’IA.',
   webHtmlEditFailed: 'Impossible d’appliquer la modification. Sélectionnez à nouveau l’élément.',
   webHtmlDeleted: 'Élément supprimé. Annuler le rétablit.',
+  webExportSavedShapeLoss:
+    'Enregistré sous {name}. Certains éléments visuels n’ont pas pu être repris.',
 } as const satisfies Record<keyof typeof zh, string>

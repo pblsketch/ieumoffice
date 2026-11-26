@@ -80,4 +80,5 @@ export const hi = {
   webHtmlCannotHide: 'html, head और body एलिमेंट AI से छिपाए नहीं जा सकते।',
   webHtmlEditFailed: 'बदलाव नहीं हो सका। एलिमेंट फिर से चुनें।',
   webHtmlDeleted: 'एलिमेंट हटा दिया गया। पूर्ववत करके उसे वापस ला सकते हैं।',
+  webExportSavedShapeLoss: '{name} के रूप में सहेजा गया। कुछ दृश्य तत्व नहीं लाए जा सके।',
 } as const satisfies Record<keyof typeof zh, string>
