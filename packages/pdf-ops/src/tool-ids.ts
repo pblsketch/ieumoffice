@@ -119,3 +119,13 @@ export interface PdfToolOptions {
 
 export type PdfInputProblem =
   'encrypted' | 'unreadable' | 'too-large' | 'not-image' | 'not-encrypted'
+
+export const COMPRESS_LEVELS = ['light', 'medium', 'strong'] as const
+export type CompressLevel = (typeof COMPRESS_LEVELS)[number]
+
+/** Longest side in pixels and JPEG quality each level asks for */
+export const LEVEL_TARGETS: Record<CompressLevel, { longSide: number; quality: number }> = {
+  light: { longSide: 3000, quality: 85 },
+  medium: { longSide: 2000, quality: 75 },
+  strong: { longSide: 1400, quality: 60 },
+}

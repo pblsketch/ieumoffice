@@ -17,7 +17,7 @@
  *   `passwordConfirm` and `permissionPassword` from `raw`.
  * - blankPages has no form: its sheet is just [Find].
  */
-import type { CheckedOptions } from '@genoffice/pdf-ops'
+import type { CheckedOptions } from '@genoffice/pdf-ops/tool-rules'
 import type { PdfToolId } from '@genoffice/pdf-ops/tool-ids'
 import type { ReactElement } from 'react'
 import type { ToolFile } from '../engine/types'

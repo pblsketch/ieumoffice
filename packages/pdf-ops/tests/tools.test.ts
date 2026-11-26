@@ -16,14 +16,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { mirrorPageEngine } from '../src/mirror-pages'
 import type { PdfTextPdfium } from '../src/mirror-text'
 import { checkToolResult, inspectToolInput } from '../src/rules'
-import {
-  PdfToolRefusal,
-  checkOptions,
-  outputNames,
-  runPdfTool,
-  runSplitPdfTool,
-  type PageEngine,
-} from '../src/tools'
+import { PdfToolRefusal, checkOptions, outputNames } from '../src/tool-rules'
+import { runPdfTool, runSplitPdfTool, type PageEngine } from '../src/tools'
 import type { PdfToolId, PdfToolOptions } from '../src/tool-ids'
 
 const FIXED_NOW = new Date('2026-01-02T03:04:05Z')

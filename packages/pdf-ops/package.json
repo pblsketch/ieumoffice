@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./split-plan": "./src/split-plan.ts",
     "./page-range": "./src/page-range.ts",
-    "./tool-ids": "./src/tool-ids.ts"
+    "./tool-ids": "./src/tool-ids.ts",
+    "./tool-rules": "./src/tool-rules.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

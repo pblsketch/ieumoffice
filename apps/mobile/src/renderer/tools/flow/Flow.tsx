@@ -11,7 +11,12 @@
  * running)`; it is wired when T6 is merged (docs/plans/mobile-v1/T3.md).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { checkOptions, toolInputKind, toolMinInputs, toolTakesMany } from '@genoffice/pdf-ops'
+import {
+  checkOptions,
+  toolInputKind,
+  toolMinInputs,
+  toolTakesMany,
+} from '@genoffice/pdf-ops/tool-rules'
 import {
   bytesToBase64,
   savePdfToolResultCopy,
