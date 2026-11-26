@@ -42,6 +42,11 @@ pub fn run() {
             app.manage(Arc::new(commands::html::MobileWebState::new(resolve_file_bridge(app.handle()))));
 
             // T5 readers state
+            app.manage(commands::readers::store::ReaderStore::new(
+                &app.path()
+                    .app_data_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir().join("ieumoffice-mobile")),
+            ));
 
             // T6 home state
             let home_files = app.state::<Arc<MobileFileService>>().inner().clone();
@@ -97,6 +102,9 @@ pub fn run() {
             commands::html::mobile_web_save_new_file,
 
             // T5 readers
+            commands::readers::mobile_readers_get_state,
+            commands::readers::mobile_readers_set_position,
+            commands::readers::mobile_readers_set_settings,
 
             // T6 home
             commands::home::mobile_home_list_folders,

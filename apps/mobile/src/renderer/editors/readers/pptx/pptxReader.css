@@ -1,0 +1,340 @@
+/* PPTX reader (track T5). Slide colors are document data; everything here is the surround. */
+
+.mobile-pptx {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+
+/* the phone's floating view tools sit over the bottom right: keep the nav line clear of them */
+.mobile-shell-phone .mobile-pptx {
+  padding-bottom: calc(var(--m-hit) + var(--m-space-5) + var(--m-safe-bottom));
+}
+
+.mobile-pptx[data-notes='side'] {
+  flex-direction: row;
+}
+
+.mobile-pptx-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-pptx-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-pptx-fit {
+  position: absolute;
+  inset: var(--m-space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-pptx-zoom {
+  transform-origin: center center;
+}
+
+.mobile-pptx-slide {
+  position: relative;
+  box-shadow: var(--shadow-sm);
+}
+
+.mobile-pptx-slide-picture {
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-pptx-slide-failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--m-space-4);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  text-align: center;
+}
+
+.mobile-pptx-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-4);
+}
+
+.mobile-pptx-position {
+  min-width: calc(var(--m-hit) * 2);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+  font-variant-numeric: tabular-nums;
+}
+
+/* notes: under the slide on phones, a right column from expanded windows */
+.mobile-pptx-notes {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.mobile-pptx-notes[data-open='true'] {
+  max-height: 40%;
+}
+
+.mobile-pptx[data-notes='side'] .mobile-pptx-notes {
+  width: var(--m-panel-w);
+  max-height: none;
+  border-top: none;
+  border-left: 1px solid var(--border);
+}
+
+.mobile-pptx-notes-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  width: 100%;
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-4);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-pptx-notes-title {
+  flex: 1;
+}
+
+.mobile-pptx-notes-chevron {
+  display: inline-flex;
+  transition: transform var(--m-motion-fast) var(--m-ease-standard);
+}
+
+.mobile-pptx-notes[data-open='true'] .mobile-pptx-notes-chevron {
+  transform: rotate(180deg);
+}
+
+.mobile-pptx-notes-body {
+  overflow-y: auto;
+  padding: 0 var(--m-space-4) var(--m-space-4);
+}
+
+.mobile-pptx-notes-text,
+.mobile-pptx-notes-empty {
+  margin: 0;
+  font-size: var(--m-text-body);
+  line-height: var(--m-line-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mobile-pptx-notes-text {
+  color: var(--text);
+}
+
+.mobile-pptx-notes-empty {
+  color: var(--text-tertiary);
+}
+
+/* slide list */
+.mobile-pptx-grid {
+  list-style: none;
+  margin: 0;
+  padding: var(--m-space-2) 0 var(--m-space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-panel-w) / 2.5), 1fr));
+  gap: var(--m-space-3);
+}
+
+.mobile-pptx-grid-cell {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+  padding: var(--m-space-1);
+  border: 2px solid transparent;
+  border-radius: var(--m-radius-control);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.mobile-pptx-grid-cell[aria-current='true'] {
+  border-color: var(--m-accent);
+}
+
+.mobile-pptx-grid-cell[data-hidden='true'] .mobile-pptx-grid-thumb {
+  opacity: 0.4;
+}
+
+.mobile-pptx-grid-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--m-space-1);
+  background: var(--surface-subtle);
+}
+
+.mobile-pptx-grid-thumb .mobile-pptx-slide {
+  box-shadow: none;
+}
+
+.mobile-pptx-grid-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--m-space-1);
+  font-size: var(--m-text-caption);
+  color: var(--text-secondary);
+}
+
+.mobile-pptx-badge {
+  padding: 0 var(--m-space-1);
+  border-radius: var(--m-radius-full);
+  background: var(--fill-muted);
+  color: var(--text-secondary);
+  font-size: var(--m-text-caption);
+}
+
+/* search */
+.mobile-pptx-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.mobile-pptx-search-input {
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--m-radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--m-text-body);
+}
+
+.mobile-pptx-search-status {
+  margin: 0;
+  min-height: var(--m-line-body);
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.mobile-pptx-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mobile-pptx-search-hit {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--m-space-half);
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-1);
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-pptx-search-slide {
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mobile-pptx-search-snippet {
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  overflow-wrap: anywhere;
+}
+
+.mobile-pptx-search-snippet mark {
+  background: var(--search-hit-bg);
+  color: inherit;
+}
+
+/* full-screen show */
+.mobile-pptx-show {
+  --pptx-show-ground: #000000;
+  --pptx-show-ink: #ffffff;
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--m-z-modal) + 1);
+  background: var(--pptx-show-ground);
+  color: var(--pptx-show-ink);
+}
+
+.mobile-pptx-show-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-pptx-show .mobile-pptx-slide {
+  box-shadow: none;
+}
+
+.mobile-pptx-show-end {
+  text-align: center;
+  padding: var(--m-space-6);
+}
+
+.mobile-pptx-show-end-title {
+  margin: 0 0 var(--m-space-2);
+  font-size: var(--m-text-title-m);
+  font-weight: 600;
+}
+
+.mobile-pptx-show-end-hint {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  opacity: 0.7;
+}
+
+.mobile-pptx-show-close {
+  position: absolute;
+  top: calc(var(--m-space-2) + var(--m-safe-top));
+  right: calc(var(--m-space-2) + var(--m-safe-right));
+  width: var(--m-hit);
+  height: var(--m-hit);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--m-radius-full);
+  background: transparent;
+  color: var(--pptx-show-ink);
+  opacity: 0.6;
+  cursor: pointer;
+}
