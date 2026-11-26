@@ -7,15 +7,16 @@ struct ReadUriArgs: Decodable {
     let uri: String
 }
 
-struct WriteUriArgs: Decodable {
+/// A document and a local file inside the app's own directories (bytes travel through the file).
+struct UriPathArgs: Decodable {
     let uri: String
-    let bytesBase64: String
+    let path: String
 }
 
-struct ShareFileArgs: Decodable {
+struct SharePathArgs: Decodable {
+    let path: String
     let suggestedName: String
     let mime: String
-    let bytesBase64: String
 }
 
 struct FolderListArgs: Decodable {
@@ -152,42 +153,74 @@ public final class IeumFilePlugin: Plugin {
         ])
     }
 
-    @objc public func readUriBytes(_ invoke: Invoke) throws {
-        let args = try invoke.parseArgs(ReadUriArgs.self)
+    /// A file URL inside the app's Caches or tmp directory, or nil for any other path.
+    private func appLocalFile(_ path: String) -> URL? {
+        let file = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+        let roots = [
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
+            FileManager.default.temporaryDirectory
+        ].compactMap { $0?.standardizedFileURL.resolvingSymlinksInPath().path }
+        return roots.contains(where: { file.path.hasPrefix($0 + "/") }) ? file : nil
+    }
+
+    /// Copies a document into a local file (replaced if it exists). No size limit: the bytes never
+    /// travel as one string argument.
+    @objc public func copyUriToFile(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(UriPathArgs.self)
+        guard let dest = appLocalFile(args.path) else {
+            invoke.reject("INVALID_ARGUMENT: the copy must go into the app's own directories")
+            return
+        }
         guard let location = resolveScoped(args.uri) else {
             invoke.reject("PERMISSION_DENIED: invalid bookmark or URL")
             return
         }
         defer { location.stop() }
         var coordinatorError: NSError?
-        var readData: Data?
-        var readError: Error?
+        var copyError: Error?
         NSFileCoordinator().coordinate(readingItemAt: location.url, options: [], error: &coordinatorError) { coordinatedUrl in
             do {
-                readData = try Data(contentsOf: coordinatedUrl)
+                try FileManager.default.createDirectory(
+                    at: dest.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if FileManager.default.fileExists(atPath: dest.path) {
+                    try FileManager.default.removeItem(at: dest)
+                }
+                try FileManager.default.copyItem(at: coordinatedUrl, to: dest)
             } catch {
-                readError = error
+                copyError = error
             }
         }
-        if let err = coordinatorError ?? readError {
+        if let err = coordinatorError ?? copyError {
             invoke.reject("PERMISSION_DENIED: \(err.localizedDescription)")
             return
         }
-        guard let data = readData else {
-            invoke.reject("INTERNAL_ERROR: empty read result")
-            return
-        }
-        invoke.resolve(["bytesBase64": data.base64EncodedString()])
+        let size = (try? FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? NSNumber)?
+            .int64Value ?? 0
+        invoke.resolve(["size": size])
     }
 
-    @objc public func writeUriBytesAtomic(_ invoke: Invoke) throws {
-        let args = try invoke.parseArgs(WriteUriArgs.self)
-        guard let location = resolveScoped(args.uri),
-              let data = Data(base64Encoded: args.bytesBase64) else {
-            invoke.reject("INVALID_ARGUMENT: invalid bookmark or base64 payload")
+    /// Writes a local file over a document. The write itself is atomic here (temporary file, then
+    /// replace); the Rust side also keeps a copy of the original and checks the result.
+    @objc public func writeUriFromFile(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(UriPathArgs.self)
+        guard let src = appLocalFile(args.path) else {
+            invoke.reject("INVALID_ARGUMENT: the source must be in the app's own directories")
+            return
+        }
+        guard let location = resolveScoped(args.uri) else {
+            invoke.reject("INVALID_ARGUMENT: invalid bookmark or URL")
             return
         }
         defer { location.stop() }
+        let data: Data
+        do {
+            data = try Data(contentsOf: src, options: .mappedIfSafe)
+        } catch {
+            invoke.reject("INTERNAL_ERROR: \(error.localizedDescription)")
+            return
+        }
         var coordinatorError: NSError?
         var writeError: Error?
         NSFileCoordinator().coordinate(writingItemAt: location.url, options: .forReplacing, error: &coordinatorError) { coordinatedUrl in
@@ -201,21 +234,17 @@ public final class IeumFilePlugin: Plugin {
             invoke.reject("READ_ONLY_URI: \(err.localizedDescription)")
             return
         }
-        invoke.resolve(["ok": true])
+        invoke.resolve(["size": data.count])
     }
 
-    @objc public func shareFileBytes(_ invoke: Invoke) throws {
-        let args = try invoke.parseArgs(ShareFileArgs.self)
-        guard let data = Data(base64Encoded: args.bytesBase64) else {
-            invoke.reject("INVALID_ARGUMENT: invalid base64 payload")
+    /// Shares one file the Rust side wrote into the share-out directory.
+    @objc public func shareFileFromPath(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(SharePathArgs.self)
+        guard let file = appLocalFile(args.path), FileManager.default.fileExists(atPath: file.path) else {
+            invoke.reject("INVALID_ARGUMENT: nothing to share at this location")
             return
         }
-        let safeName = args.suggestedName.replacingOccurrences(of: "/", with: "_")
-        let tmpUrl = shareTempDirectory()
-        try FileManager.default.createDirectory(at: tmpUrl, withIntermediateDirectories: true)
-        let fileUrl = tmpUrl.appendingPathComponent(safeName)
-        try data.write(to: fileUrl, options: .atomic)
-        presentShareSheet(items: [fileUrl], invoke: invoke)
+        presentShareSheet(items: [file], invoke: invoke)
     }
 
     @objc public func pickFolder(_ invoke: Invoke) {

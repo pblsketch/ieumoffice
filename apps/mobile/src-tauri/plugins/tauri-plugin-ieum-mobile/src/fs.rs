@@ -41,6 +41,10 @@ impl NativeFsError {
 /// (`<cache>/ieum-tmp/home/incoming/<batchId>/<name>`).
 pub const INCOMING_RELATIVE_DIR: &str = "ieum-tmp/home/incoming";
 
+/// Where documents are copied while being read or written, relative to the app cache directory.
+/// A copy of the original stays here only when a failed write could not be undone.
+pub const WRITE_WORK_RELATIVE_DIR: &str = "ieum-tmp/home/write";
+
 /// A folder the user linked through the system folder picker. `uri` is the Android tree URI
 /// (with a persisted read/write grant) or the base64 iOS security-scoped bookmark.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,6 +210,13 @@ pub trait NativeFileBridge: Send + Sync {
         mime: &str,
         bytes: &[u8],
     ) -> Result<(), NativeFsError>;
+    /// Streams the document at `uri` into the local file `dest` (replaced if it exists) and
+    /// returns its size. The bytes never travel as one string argument, so size is no limit.
+    fn copy_uri_to_file(&self, uri: &str, dest: &Path) -> Result<u64, NativeFsError>;
+    /// Streams the local file `src` over the document at `uri` (truncate, then write) and
+    /// returns the bytes written. On its own a failure can leave the document cut short: write
+    /// through `write_uri_from_file`, which keeps a copy of the original and puts it back.
+    fn stream_file_to_uri(&self, uri: &str, src: &Path) -> Result<u64, NativeFsError>;
     /// Pops the oldest single document received through VIEW/SEND (or iOS open-in). Several
     /// files and pictures never land here; they arrive through `take_incoming_batch`.
     fn take_pending_open_intent(&self) -> Option<PickedFile>;
@@ -315,6 +326,19 @@ struct HostFsState {
     opened_urls: Vec<String>,
     last_shared_files: Vec<SharedFile>,
     cache_dir: Option<PathBuf>,
+    stream_plans: VecDeque<StreamPlan>,
+    stream_count: usize,
+}
+
+/// What the next `HostFileBridge::stream_file_to_uri` calls do (test hooks).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum StreamPlan {
+    #[default]
+    Normal,
+    /// Truncate, write this many bytes, then fail.
+    FailAfter(usize),
+    /// Write different bytes but report success.
+    Corrupt,
 }
 
 impl HostFsState {
@@ -484,6 +508,34 @@ impl HostFileBridge {
     pub fn revoke_uri(&self, uri: &str) {
         let mut guard = self.state.lock().unwrap();
         guard.revoked_uris.insert(uri.to_string(), true);
+    }
+
+    fn plan_stream(&self, index: usize, plan: StreamPlan) {
+        let mut guard = self.state.lock().unwrap();
+        while guard.stream_plans.len() <= index {
+            guard.stream_plans.push_back(StreamPlan::Normal);
+        }
+        guard.stream_plans[index] = plan;
+    }
+
+    /// The next `stream_file_to_uri` truncates the document, writes `bytes` bytes, then fails.
+    pub fn fail_next_stream_after(&self, bytes: usize) {
+        self.plan_stream(0, StreamPlan::FailAfter(bytes));
+    }
+
+    /// The `stream_file_to_uri` after the next one fails the same way (e.g. the restore).
+    pub fn fail_stream_after_next(&self, bytes: usize) {
+        self.plan_stream(1, StreamPlan::FailAfter(bytes));
+    }
+
+    /// The next `stream_file_to_uri` writes different bytes but reports success.
+    pub fn corrupt_next_stream(&self) {
+        self.plan_stream(0, StreamPlan::Corrupt);
+    }
+
+    /// How many times `stream_file_to_uri` was called.
+    pub fn stream_count(&self) -> usize {
+        self.state.lock().unwrap().stream_count
     }
 
     pub fn read_stored_uri(&self, uri: &str) -> Option<Vec<u8>> {
@@ -759,6 +811,59 @@ impl NativeFileBridge for HostFileBridge {
         Ok(())
     }
 
+    fn copy_uri_to_file(&self, uri: &str, dest: &Path) -> Result<u64, NativeFsError> {
+        let bytes = self.read_uri_bytes(uri)?;
+        std::fs::write(dest, &bytes)
+            .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        Ok(bytes.len() as u64)
+    }
+
+    fn stream_file_to_uri(&self, uri: &str, src: &Path) -> Result<u64, NativeFsError> {
+        let data = std::fs::read(src)
+            .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        let mut guard = self.state.lock().unwrap();
+        guard.stream_count += 1;
+        let plan = guard.stream_plans.pop_front().unwrap_or_default();
+        guard.check_tree_for_fs(uri)?;
+        if guard.revoked_uris.get(uri).copied().unwrap_or(false) {
+            return Err(NativeFsError::new(
+                NativeFsErrorKind::PermissionDenied,
+                "URI permission expired",
+            ));
+        }
+        let entry = guard.files.get_mut(uri).ok_or_else(|| {
+            NativeFsError::new(NativeFsErrorKind::PermissionDenied, "URI missing")
+        })?;
+        if !entry.writable || entry.ephemeral {
+            return Err(NativeFsError::new(
+                NativeFsErrorKind::ReadOnlyUri,
+                "URI is not writable",
+            ));
+        }
+        match plan {
+            StreamPlan::Normal => {
+                entry.bytes = data;
+                Ok(entry.bytes.len() as u64)
+            }
+            StreamPlan::FailAfter(n) => {
+                entry.bytes = data[..n.min(data.len())].to_vec();
+                Err(NativeFsError::new(
+                    NativeFsErrorKind::IoError,
+                    "stream broke while writing",
+                ))
+            }
+            StreamPlan::Corrupt => {
+                let mut wrong = data;
+                match wrong.last_mut() {
+                    Some(last) => *last ^= 0xff,
+                    None => wrong.push(0),
+                }
+                entry.bytes = wrong;
+                Ok(entry.bytes.len() as u64)
+            }
+        }
+    }
+
     fn take_pending_open_intent(&self) -> Option<PickedFile> {
         let mut guard = self.state.lock().unwrap();
         guard.pending_intents.pop_front().map(|doc| PickedFile {
@@ -1008,4 +1113,120 @@ impl NativeFileBridge for HostFileBridge {
             cache_dir,
         })
     }
+}
+
+/// Writes the local file `src` over the document at `uri` so that a failure never leaves it
+/// half-written. Android providers truncate a document before writing, so the original is first
+/// copied into `work_dir`; after writing, the document is read back and compared with `src`. If
+/// the write fails or the document differs, the copy is written back. When even that fails, the
+/// copy stays in `work_dir` and the error says so. A document that cannot be read first is not
+/// touched. Bytes travel through local files, never as one size-limited string argument.
+pub fn write_uri_from_file(
+    bridge: &dyn NativeFileBridge,
+    uri: &str,
+    src: &Path,
+    work_dir: &Path,
+) -> Result<(), NativeFsError> {
+    std::fs::create_dir_all(work_dir).map_err(io_error)?;
+    let rollback = unique_work_path(work_dir, "rollback");
+    if let Err(err) = bridge.copy_uri_to_file(uri, &rollback) {
+        let _ = std::fs::remove_file(&rollback);
+        return Err(err);
+    }
+    match stream_and_verify(bridge, uri, src, work_dir) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&rollback);
+            Ok(())
+        }
+        Err(err) => {
+            let restored = stream_and_verify(bridge, uri, &rollback, work_dir).is_ok();
+            let note = if restored {
+                let _ = std::fs::remove_file(&rollback);
+                "original restored".to_string()
+            } else {
+                format!(
+                    "original NOT restored; its copy is kept at {}",
+                    rollback.display()
+                )
+            };
+            Err(NativeFsError::new(err.kind, format!("{}; {note}", err.detail)))
+        }
+    }
+}
+
+fn stream_and_verify(
+    bridge: &dyn NativeFileBridge,
+    uri: &str,
+    src: &Path,
+    work_dir: &Path,
+) -> Result<(), NativeFsError> {
+    bridge.stream_file_to_uri(uri, src)?;
+    let check = unique_work_path(work_dir, "verify");
+    let result = bridge.copy_uri_to_file(uri, &check).and_then(|_| {
+        if files_equal(src, &check)? {
+            Ok(())
+        } else {
+            Err(NativeFsError::new(
+                NativeFsErrorKind::IoError,
+                "the written document differs from the saved file",
+            ))
+        }
+    });
+    let _ = std::fs::remove_file(&check);
+    result
+}
+
+fn files_equal(a: &Path, b: &Path) -> Result<bool, NativeFsError> {
+    use std::io::Read;
+    let (meta_a, meta_b) = (
+        std::fs::metadata(a).map_err(io_error)?,
+        std::fs::metadata(b).map_err(io_error)?,
+    );
+    if meta_a.len() != meta_b.len() {
+        return Ok(false);
+    }
+    let mut fa = std::io::BufReader::new(std::fs::File::open(a).map_err(io_error)?);
+    let mut fb = std::io::BufReader::new(std::fs::File::open(b).map_err(io_error)?);
+    let (mut ba, mut bb) = (vec![0u8; 64 * 1024], vec![0u8; 64 * 1024]);
+    loop {
+        let na = read_full(&mut fa, &mut ba)?;
+        let nb = read_full(&mut fb, &mut bb)?;
+        if na != nb || ba[..na] != bb[..nb] {
+            return Ok(false);
+        }
+        if na == 0 {
+            return Ok(true);
+        }
+    }
+
+    fn read_full(r: &mut impl Read, buf: &mut [u8]) -> Result<usize, NativeFsError> {
+        let mut filled = 0;
+        while filled < buf.len() {
+            let n = r.read(&mut buf[filled..]).map_err(io_error)?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        Ok(filled)
+    }
+}
+
+fn io_error(e: std::io::Error) -> NativeFsError {
+    NativeFsError::new(NativeFsErrorKind::IoError, e.to_string())
+}
+
+/// A file name in `work_dir` no other write of this process uses.
+pub fn unique_work_path(work_dir: &Path, tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    work_dir.join(format!(
+        "{tag}-{}-{nanos}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::SeqCst)
+    ))
 }

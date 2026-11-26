@@ -19,11 +19,12 @@ use crate::hwp::{
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri_plugin_ieum_mobile::fs::{
     FolderGrantState, NativeFileBridge, NativeFsError, NativeFsErrorKind, PickedFile,
+    WRITE_WORK_RELATIVE_DIR, write_uri_from_file,
 };
 use uuid::Uuid;
 
@@ -107,6 +108,10 @@ struct ActiveSession {
     encrypted: bool,
     distribution: bool,
     hwp_baseline: Option<HwpBaseline>,
+}
+
+fn io_error(e: std::io::Error) -> MobileError {
+    MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
 }
 
 pub(crate) fn map_fs_error(err: NativeFsError) -> MobileError {
@@ -447,20 +452,95 @@ impl MobileFileService {
         bytes_base64: &str,
         hwp_fix: Option<HwpFixPayload>,
     ) -> MobileResult<SaveFileBytesResult> {
-        let active = {
-            let guard = self.active.lock().unwrap();
-            guard
-                .as_ref()
-                .filter(|a| a.session.session_id == session_id)
-                .cloned()
-                .ok_or_else(|| {
-                    MobileError::with_detail(
-                        MobileErrorCode::InvalidArgument,
-                        "mobile.session.notFound",
-                        "unknown active sessionId",
-                    )
-                })?
-        };
+        let raw_bytes = B64.decode(bytes_base64).map_err(|e| {
+            MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
+        })?;
+        self.save_decoded(session_id, raw_bytes, hwp_fix)
+    }
+
+    /// Saves the local file `src` over the active document, with the same checks as
+    /// `save_file_bytes` (for editors whose engine writes a file, e.g. a spreadsheet working
+    /// copy). HWP documents go through the same fixes and first-overwrite backup; other formats
+    /// stream from the file without loading it into memory.
+    pub fn save_file_from_path(
+        &self,
+        session_id: &str,
+        src: &Path,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<SaveFileBytesResult> {
+        let (active, uri) = self.writable_active(session_id)?;
+        let format = hwp_fix
+            .as_ref()
+            .map(|f| f.format)
+            .unwrap_or(active.session.format);
+        if format.is_hwp_family() {
+            let raw_bytes = std::fs::read(src).map_err(io_error)?;
+            return self.save_decoded(session_id, raw_bytes, hwp_fix);
+        }
+        let work_dir = self.write_work_dir()?;
+        write_uri_from_file(self.bridge.as_ref(), &uri, src, &work_dir).map_err(map_fs_error)?;
+        let _ = self.recovery.discard(&active.session.doc_key);
+        Ok(SaveFileBytesResult {
+            ok: true,
+            backup_id: None,
+            tails_lost: None,
+            memos_lost: None,
+        })
+    }
+
+    /// "Save as" from a local file: the same as `save_as_file_bytes` with the file's bytes.
+    pub fn save_as_file_from_path(
+        &self,
+        session_id: Option<&str>,
+        suggested_name: &str,
+        format: MobileDocFormat,
+        src: &Path,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<MobileDocSession> {
+        let raw_bytes = std::fs::read(src).map_err(io_error)?;
+        self.save_as_decoded(session_id, suggested_name, format, raw_bytes, hwp_fix)
+    }
+
+    /// Copies the active document into the local file `dest` (replaced if it exists), e.g. a
+    /// working copy for an engine that reads files. Returns the byte count.
+    pub fn copy_session_to_file(&self, session_id: &str, dest: &Path) -> MobileResult<u64> {
+        let active = self.active_session(session_id)?;
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(io_error)?;
+        }
+        match (&active.local, &active.uri) {
+            (Some(local), _) => {
+                let bytes = local.read()?;
+                std::fs::write(dest, &bytes).map_err(io_error)?;
+                Ok(bytes.len() as u64)
+            }
+            (None, Some(uri)) => self.bridge.copy_uri_to_file(uri, dest).map_err(map_fs_error),
+            (None, None) => Err(MobileError::with_detail(
+                MobileErrorCode::InvalidArgument,
+                "mobile.save.noUri",
+                "untitled session has no document to copy",
+            )),
+        }
+    }
+
+    fn active_session(&self, session_id: &str) -> MobileResult<ActiveSession> {
+        let guard = self.active.lock().unwrap();
+        guard
+            .as_ref()
+            .filter(|a| a.session.session_id == session_id)
+            .cloned()
+            .ok_or_else(|| {
+                MobileError::with_detail(
+                    MobileErrorCode::InvalidArgument,
+                    "mobile.session.notFound",
+                    "unknown active sessionId",
+                )
+            })
+    }
+
+    /// The active session and its document location, when it can be written in place.
+    fn writable_active(&self, session_id: &str) -> MobileResult<(ActiveSession, String)> {
+        let active = self.active_session(session_id)?;
         if active.session.ephemeral || !active.session.writable {
             return Err(MobileError::with_detail(
                 MobileErrorCode::ReadOnlyUri,
@@ -475,9 +555,26 @@ impl MobileFileService {
                 "untitled session requires Save As",
             ));
         };
-        let raw_bytes = B64.decode(bytes_base64).map_err(|e| {
-            MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
+        Ok((active, uri))
+    }
+
+    /// `<cache>/ieum-tmp/home/write`, where a document's original is kept while it is written.
+    fn write_work_dir(&self) -> MobileResult<PathBuf> {
+        let dirs = self.bridge.native_dirs().map_err(|e| {
+            MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.detail)
         })?;
+        let dir = dirs.cache_dir.join(WRITE_WORK_RELATIVE_DIR);
+        std::fs::create_dir_all(&dir).map_err(io_error)?;
+        Ok(dir)
+    }
+
+    fn save_decoded(
+        &self,
+        session_id: &str,
+        raw_bytes: Vec<u8>,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<SaveFileBytesResult> {
+        let (active, uri) = self.writable_active(session_id)?;
 
         let format = hwp_fix
             .as_ref()
@@ -596,6 +693,44 @@ impl MobileFileService {
         let raw_bytes = B64.decode(bytes_base64).map_err(|e| {
             MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
         })?;
+        self.save_as_checked(prev_active, suggested_name, format, raw_bytes, hwp_fix)
+    }
+
+    fn save_as_decoded(
+        &self,
+        session_id: Option<&str>,
+        suggested_name: &str,
+        format: MobileDocFormat,
+        raw_bytes: Vec<u8>,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<MobileDocSession> {
+        let prev_active = {
+            let guard = self.active.lock().unwrap();
+            match session_id {
+                Some(sid) => guard.as_ref().filter(|a| a.session.session_id == sid).cloned(),
+                None => guard.clone(),
+            }
+        };
+        if let Some(prev) = &prev_active
+            && (prev.encrypted || prev.distribution)
+        {
+            return Err(MobileError::with_detail(
+                MobileErrorCode::PasswordProtected,
+                "mobile.hwp.passwordProtected",
+                "encrypted or distribution HWP documents cannot be saved",
+            ));
+        }
+        self.save_as_checked(prev_active, suggested_name, format, raw_bytes, hwp_fix)
+    }
+
+    fn save_as_checked(
+        &self,
+        prev_active: Option<ActiveSession>,
+        suggested_name: &str,
+        format: MobileDocFormat,
+        raw_bytes: Vec<u8>,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<MobileDocSession> {
 
         let mut final_bytes = raw_bytes;
         if format.is_hwp_family() {

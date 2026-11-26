@@ -15,10 +15,11 @@ mod mobile_bridge {
     use crate::fs::{
         FolderGrantState, NativeDirs, NativeFileBridge, NativeFolderEntry, NativeFsError,
         NativeFsErrorKind, NativeHomeError, NativeHomeErrorKind, NativeIncomingBatch, PickedFile,
-        PickedFolder, is_https_url,
+        PickedFolder, WRITE_WORK_RELATIVE_DIR, is_https_url, unique_work_path, write_uri_from_file,
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use serde::{Deserialize, Serialize};
+    use std::path::{Path, PathBuf};
     use tauri::{Runtime, plugin::PluginHandle};
 
     #[derive(Serialize)]
@@ -40,25 +41,27 @@ mod mobile_bridge {
         uri: &'a str,
     }
 
+    /// A document and a local file inside the app cache. Bytes travel through the file, never as
+    /// one string argument (Android refuses strings over 20,000,000 characters).
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct WriteArgs<'a> {
+    struct UriPathArgs<'a> {
         uri: &'a str,
-        bytes_base64: String,
+        path: &'a str,
     }
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct ShareArgs<'a> {
+    struct SharePathArgs<'a> {
+        path: &'a str,
         suggested_name: &'a str,
         mime: &'a str,
-        bytes_base64: String,
     }
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct BytesResp {
-        bytes_base64: String,
+    struct SizeResp {
+        size: u64,
     }
 
     #[derive(Deserialize)]
@@ -174,6 +177,28 @@ mod mobile_bridge {
         pub fn new(handle: PluginHandle<R>) -> Self {
             Self { handle }
         }
+
+        /// `<cache>/ieum-tmp/home/write`: temporary copies of a document being read or written.
+        fn write_work_dir(&self) -> Result<PathBuf, NativeFsError> {
+            let dirs = self.native_dirs().map_err(home_to_fs_error)?;
+            let dir = dirs.cache_dir.join(WRITE_WORK_RELATIVE_DIR);
+            std::fs::create_dir_all(&dir).map_err(io_error)?;
+            Ok(dir)
+        }
+    }
+
+    fn io_error(e: std::io::Error) -> NativeFsError {
+        NativeFsError::new(NativeFsErrorKind::IoError, e.to_string())
+    }
+
+    fn home_to_fs_error(e: NativeHomeError) -> NativeFsError {
+        NativeFsError::new(NativeFsErrorKind::IoError, e.detail)
+    }
+
+    fn path_arg(path: &Path) -> Result<&str, NativeFsError> {
+        path.to_str().ok_or_else(|| {
+            NativeFsError::new(NativeFsErrorKind::IoError, "non-UTF-8 cache path")
+        })
     }
 
     impl<R: Runtime> NativeFileBridge for MobilePluginFileBridge<R> {
@@ -200,26 +225,40 @@ mod mobile_bridge {
         }
 
         fn read_uri_bytes(&self, uri: &str) -> Result<Vec<u8>, NativeFsError> {
-            let resp: BytesResp = self
-                .handle
-                .run_mobile_plugin("readUriBytes", UriArgs { uri })
-                .map_err(map_invoke_err)?;
-            B64.decode(&resp.bytes_base64)
-                .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))
+            let work = self.write_work_dir()?;
+            let tmp = unique_work_path(&work, "read");
+            let result = self
+                .copy_uri_to_file(uri, &tmp)
+                .and_then(|_| std::fs::read(&tmp).map_err(io_error));
+            let _ = std::fs::remove_file(&tmp);
+            result
         }
 
         fn write_uri_bytes_atomic(&self, uri: &str, bytes: &[u8]) -> Result<(), NativeFsError> {
-            let _: serde_json::Value = self
+            let work = self.write_work_dir()?;
+            let src = unique_work_path(&work, "write");
+            std::fs::write(&src, bytes).map_err(io_error)?;
+            let result = write_uri_from_file(self, uri, &src, &work);
+            let _ = std::fs::remove_file(&src);
+            result
+        }
+
+        fn copy_uri_to_file(&self, uri: &str, dest: &Path) -> Result<u64, NativeFsError> {
+            let path = path_arg(dest)?;
+            let resp: SizeResp = self
                 .handle
-                .run_mobile_plugin(
-                    "writeUriBytesAtomic",
-                    WriteArgs {
-                        uri,
-                        bytes_base64: B64.encode(bytes),
-                    },
-                )
+                .run_mobile_plugin("copyUriToFile", UriPathArgs { uri, path })
                 .map_err(map_invoke_err)?;
-            Ok(())
+            Ok(resp.size)
+        }
+
+        fn stream_file_to_uri(&self, uri: &str, src: &Path) -> Result<u64, NativeFsError> {
+            let path = path_arg(src)?;
+            let resp: SizeResp = self
+                .handle
+                .run_mobile_plugin("writeUriFromFile", UriPathArgs { uri, path })
+                .map_err(map_invoke_err)?;
+            Ok(resp.size)
         }
 
         fn share_file_bytes(
@@ -228,14 +267,24 @@ mod mobile_bridge {
             mime: &str,
             bytes: &[u8],
         ) -> Result<(), NativeFsError> {
+            let dirs = self.native_dirs().map_err(home_to_fs_error)?;
+            let dir = unique_work_path(&dirs.share_temp_dir, "share");
+            std::fs::create_dir_all(&dir).map_err(io_error)?;
+            let safe_name: String = suggested_name
+                .chars()
+                .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+                .collect();
+            let file = dir.join(safe_name);
+            std::fs::write(&file, bytes).map_err(io_error)?;
+            let path = path_arg(&file)?;
             let _: serde_json::Value = self
                 .handle
                 .run_mobile_plugin(
-                    "shareFileBytes",
-                    ShareArgs {
+                    "shareFileFromPath",
+                    SharePathArgs {
+                        path,
                         suggested_name,
                         mime,
-                        bytes_base64: B64.encode(bytes),
                     },
                 )
                 .map_err(map_invoke_err)?;

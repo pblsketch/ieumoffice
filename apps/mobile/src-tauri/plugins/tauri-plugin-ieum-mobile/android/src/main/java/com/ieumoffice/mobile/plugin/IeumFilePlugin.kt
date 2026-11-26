@@ -9,7 +9,6 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
-import android.util.Base64
 import android.view.View
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
@@ -30,6 +29,7 @@ import app.tauri.plugin.Plugin
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
@@ -51,17 +51,18 @@ class UriArgs {
     var uri: String = ""
 }
 
+/** A document and a local file inside the app cache (bytes travel through the file). */
 @InvokeArg
-class WriteUriArgs {
+class UriPathArgs {
     var uri: String = ""
-    var bytesBase64: String = ""
+    var path: String = ""
 }
 
 @InvokeArg
-class ShareArgs {
+class SharePathArgs {
+    var path: String = ""
     var suggestedName: String = "document.hwp"
     var mime: String = "application/octet-stream"
-    var bytesBase64: String = ""
 }
 
 @InvokeArg
@@ -755,61 +756,97 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    /** A file under the app cache directory, or null for any other path. */
+    private fun cacheFile(path: String): File? {
+        val root = activity.cacheDir.canonicalFile
+        val file = File(path).canonicalFile
+        return if (file.path.startsWith(root.path + File.separator)) file else null
+    }
+
+    /**
+     * Streams a document into a file inside the app cache (replaced if it exists). The bytes never
+     * travel as one string argument, so there is no size limit.
+     */
     @Command
-    fun readUriBytes(invoke: Invoke) {
-        val args = invoke.parseArgs(UriArgs::class.java)
-        val uri = Uri.parse(args.uri)
-        try {
-            val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw SecurityException("Unable to open input stream")
-            val result = JSObject()
-            result.put("bytesBase64", Base64.encodeToString(bytes, Base64.NO_WRAP))
-            invoke.resolve(result)
-        } catch (err: SecurityException) {
-            invoke.reject("PERMISSION_DENIED: ${err.message}")
-        } catch (err: Exception) {
-            invoke.reject("INTERNAL_ERROR: ${err.message}")
+    fun copyUriToFile(invoke: Invoke) {
+        val args = invoke.parseArgs(UriPathArgs::class.java)
+        workExecutor.execute {
+            val dest = cacheFile(args.path)
+            if (dest == null) {
+                invoke.reject("INVALID_ARGUMENT: the copy must go into the app cache")
+                return@execute
+            }
+            try {
+                dest.parentFile?.mkdirs()
+                val input = activity.contentResolver.openInputStream(Uri.parse(args.uri))
+                    ?: throw SecurityException("Unable to open input stream")
+                val size = input.use { stream -> dest.outputStream().use { stream.copyTo(it) } }
+                invoke.resolve(JSObject().apply { put("size", size) })
+            } catch (err: SecurityException) {
+                invoke.reject("PERMISSION_DENIED: ${err.message}")
+            } catch (err: FileNotFoundException) {
+                invoke.reject("PERMISSION_DENIED: ${err.message}")
+            } catch (err: Exception) {
+                invoke.reject("INTERNAL_ERROR: ${err.message}")
+            }
         }
     }
 
+    /**
+     * Streams a file from the app cache over a document ("wt": truncate, then write) and syncs it.
+     * This alone can leave a document cut short when it fails halfway; the Rust side
+     * (`write_uri_from_file`) keeps a copy of the original first, reads the result back and puts
+     * the original back on any failure.
+     */
     @Command
-    fun writeUriBytesAtomic(invoke: Invoke) {
-        val args = invoke.parseArgs(WriteUriArgs::class.java)
-        val uri = Uri.parse(args.uri)
-        try {
-            val bytes = Base64.decode(args.bytesBase64, Base64.DEFAULT)
-            activity.contentResolver.openOutputStream(uri, "wt")?.use { out ->
-                out.write(bytes)
-                out.flush()
-            } ?: throw SecurityException("Unable to open output stream")
-            invoke.resolve(JSObject().apply { put("ok", true) })
-        } catch (err: SecurityException) {
-            invoke.reject("READ_ONLY_URI: ${err.message}")
-        } catch (err: Exception) {
-            invoke.reject("INTERNAL_ERROR: ${err.message}")
+    fun writeUriFromFile(invoke: Invoke) {
+        val args = invoke.parseArgs(UriPathArgs::class.java)
+        workExecutor.execute {
+            val src = cacheFile(args.path)
+            if (src == null || !src.isFile) {
+                invoke.reject("INVALID_ARGUMENT: the source must be a file in the app cache")
+                return@execute
+            }
+            try {
+                val out = activity.contentResolver.openOutputStream(Uri.parse(args.uri), "wt")
+                    ?: throw SecurityException("Unable to open output stream")
+                val size = out.use { stream ->
+                    val written = src.inputStream().use { it.copyTo(stream) }
+                    stream.flush()
+                    if (stream is FileOutputStream) stream.fd.sync()
+                    written
+                }
+                invoke.resolve(JSObject().apply { put("size", size) })
+            } catch (err: SecurityException) {
+                invoke.reject("READ_ONLY_URI: ${err.message}")
+            } catch (err: Exception) {
+                invoke.reject("INTERNAL_ERROR: ${err.message}")
+            }
         }
     }
 
+    /** Shares one file the Rust side wrote under `<cache>/shared/` (the FileProvider path). */
     @Command
-    fun shareFileBytes(invoke: Invoke) {
-        val args = invoke.parseArgs(ShareArgs::class.java)
+    fun shareFileFromPath(invoke: Invoke) {
+        val args = invoke.parseArgs(SharePathArgs::class.java)
+        val file = cacheFile(args.path)
+        val sharedRoot = File(activity.cacheDir, "shared").canonicalFile
+        if (file == null || !file.isFile || !file.path.startsWith(sharedRoot.path + File.separator)) {
+            invoke.reject("INVALID_ARGUMENT: the file must be under the shared cache folder")
+            return
+        }
         try {
-            // Directory matches `res/xml/file_paths.xml` (`<cache-path name="shared_docs" path="shared/" />`).
-            val shareDir = File(activity.cacheDir, "shared").apply { mkdirs() }
-            val safeName = args.suggestedName.replace(Regex("[/\\\\]"), "_")
-            val target = File(shareDir, safeName)
-            target.writeBytes(Base64.decode(args.bytesBase64, Base64.DEFAULT))
             val contentUri = FileProvider.getUriForFile(
                 activity,
                 "${activity.packageName}.fileprovider",
-                target
+                file
             )
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = args.mime
                 putExtra(Intent.EXTRA_STREAM, contentUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            activity.startActivity(Intent.createChooser(shareIntent, safeName))
+            activity.startActivity(Intent.createChooser(shareIntent, safeFileName(args.suggestedName)))
             invoke.resolve(JSObject().apply { put("ok", true) })
         } catch (err: Exception) {
             invoke.reject("INTERNAL_ERROR: ${err.message}")
