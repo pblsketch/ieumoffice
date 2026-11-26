@@ -100,4 +100,7 @@ export const ko = {
   connOff: '이 앱에서 꺼 두었습니다. 설정 → AI에서 다시 쓸 수 있습니다.',
   errOffInApp:
     '이 프로그램을 이 앱에서 꺼 두어 더 보내지 않았습니다. 설정 → AI에서 다시 쓸 수 있습니다.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    '공식 ACP 프로토콜로 Antigravity의 터미널 격리 공간에서 실행되며 PC의 ~/.gemini 개인 설정과 분리됩니다. 데이터 학습과 초과 크레딧은 Antigravity 설정을 따릅니다.',
 } satisfies Record<keyof typeof zh, string>

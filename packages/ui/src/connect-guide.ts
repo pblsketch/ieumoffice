@@ -23,7 +23,12 @@ export type AiConnectPath = AiSubscriptionProviderId | 'free'
  * directly, and the Codex program is a way within it (a link on that path),
  * so nobody has to choose between two ChatGPT answers (decision 0081).
  */
-export const AI_CONNECT_PATHS: readonly AiConnectPath[] = ['claude-code', 'chatgpt', 'free']
+export const AI_CONNECT_PATHS: readonly AiConnectPath[] = [
+  'claude-code',
+  'chatgpt',
+  'antigravity',
+  'free',
+]
 
 export interface AiConnectPathOption {
   readonly path: AiConnectPath
@@ -47,6 +52,7 @@ const PATH_TEXT: Record<
   'claude-code': { titleKey: 'guidePathClaudeTitle', bodyKey: 'guidePathClaudeBody' },
   chatgpt: { titleKey: 'guidePathCodexTitle', bodyKey: 'guidePathChatGptBody' },
   codex: { titleKey: 'guidePathCodexTitle', bodyKey: 'guidePathCodexBody' },
+  antigravity: { titleKey: 'guidePathAntigravityTitle', bodyKey: 'guidePathAntigravityBody' },
   free: { titleKey: 'guidePathFreeTitle', bodyKey: 'guidePathFreeBody' },
 }
 
@@ -119,7 +125,9 @@ export function aiConnectGuideView(
           : undefined
         : path === 'chatgpt'
           ? chatGptAnswerBadge(statuses)
-          : badgeOf(aiSubscriptionStatusOf(statuses, path))
+          : path === 'antigravity' && !statuses.antigravity
+            ? undefined
+            : badgeOf(aiSubscriptionStatusOf(statuses, path))
     return { path, ...PATH_TEXT[path], ...(badgeKey ? { badgeKey } : {}) }
   })
   return { open, options }

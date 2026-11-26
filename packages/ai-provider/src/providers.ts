@@ -62,6 +62,16 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     needsCliPath: true,
   },
   {
+    id: 'antigravity',
+    label: 'Antigravity',
+    // Populated at runtime from `agy acp` session/new metadata. Empty leaves
+    // the choice to the CLI's own default model.
+    models: [],
+    defaultModel: '',
+    keyPlaceholder: '',
+    needsCliPath: true,
+  },
+  {
     id: 'anthropic',
     label: 'Claude',
     // current lineup per platform.claude.com models overview (2026-10-27):
@@ -657,18 +667,34 @@ export function headlessSubscriptionOn(
 }
 
 /**
- * Providers that run on the user's subscription, in the order `auto` tries
- * them. ChatGPT reached directly comes before Codex: both draw on the same
- * ChatGPT plan, and the direct one starts no program and has no shell tool.
+ * Providers that run on the user's subscription, in `auto` preference order
+ * for interactive surfaces (Basic AI Panel and Agent Mode).
+ * `AI_BRAIN_SUBSCRIPTION_PROVIDERS` (= `AI_BATCH_SUBSCRIPTION_PROVIDERS`) is
+ * the subset allowed for non-interactive batch jobs (PDF/EPUB document jobs)
+ * and headless CLI commands; Antigravity runs strictly interactively via ACP.
  */
 export const AI_SUBSCRIPTION_PROVIDERS: readonly AiSubscriptionProviderId[] = [
   'claude-code',
   'chatgpt',
   'codex',
+  'antigravity',
 ]
 
+/** Subscription providers eligible for batch jobs and headless single-turn calls */
+export const AI_BRAIN_SUBSCRIPTION_PROVIDERS: readonly AiSubscriptionProviderId[] = [
+  'claude-code',
+  'chatgpt',
+  'codex',
+]
+
+export const AI_BATCH_SUBSCRIPTION_PROVIDERS = AI_BRAIN_SUBSCRIPTION_PROVIDERS
+
 /** The subscription providers behind a vendor CLI */
-export const AI_SUBSCRIPTION_CLIS: readonly AiSubscriptionCliId[] = ['claude-code', 'codex']
+export const AI_SUBSCRIPTION_CLIS: readonly AiSubscriptionCliId[] = [
+  'claude-code',
+  'codex',
+  'antigravity',
+]
 
 /** A subscription provider behind a vendor CLI (found, installed, updated and signed in through the program) */
 export function isSubscriptionCli(id: unknown): id is AiSubscriptionCliId {
@@ -682,7 +708,11 @@ export function isSubscriptionCli(id: unknown): id is AiSubscriptionCliId {
  */
 export function sanitizeMeteredAccepted(stored: unknown): Record<AiSubscriptionCliId, boolean> {
   const raw = isRecord(stored) ? stored : {}
-  return { 'claude-code': raw['claude-code'] === true, codex: raw.codex === true }
+  return {
+    'claude-code': raw['claude-code'] === true,
+    codex: raw.codex === true,
+    antigravity: raw.antigravity === true,
+  }
 }
 
 /**

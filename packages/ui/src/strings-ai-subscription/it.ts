@@ -48,12 +48,12 @@ export const it = {
     'Questo accesso usa una chiave API o un account a consumo, oppure non è stato possibile confermarne il tipo. Con “Usa comunque” l’IA funziona su questa connessione e ogni richiesta viene addebitata a quell’account.',
   connectTitle: 'Collega un’IA per iniziare',
   connectBody:
-    'L’IA funziona con l’abbonamento Claude o ChatGPT che hai già. Non serve alcuna chiave API.',
+    'L’IA funziona con l’abbonamento Claude, ChatGPT o Google Antigravity che hai già. Non serve alcuna chiave API.',
   connectProviderTitle: 'La connessione {provider} non è utilizzabile al momento',
   connectKeyBody:
     'La configurazione di {provider} non è completa. Completala nelle Impostazioni oppure scegli un’altra IA.',
   errNotConnected:
-    'Nessuna IA è collegata. Collega prima un abbonamento Claude o Codex, oppure un’IA gratuita.',
+    'Nessuna IA connessa. Collega prima un abbonamento Claude, ChatGPT, Codex o Antigravity, oppure un’IA gratuita.',
   errNotInstalled: 'Il programma {provider} non è stato trovato su questo PC.',
   errSignedOut: 'L’accesso a {provider} è scaduto. Accedi di nuovo per continuare.',
   errRateLimit: 'Il limite dell’abbonamento {provider} è stato raggiunto.',
@@ -86,7 +86,7 @@ export const it = {
   usageWindowSevenDay: 'Limite di 7 giorni',
   noticeTitle: 'Prima di usare l’IA con il tuo abbonamento',
   noticeSend:
-    "Il contenuto del documento e la conversazione vengono inviati ad Anthropic o a OpenAI con il tuo account personale. Ogni richiesta porta anche nome, titolo e descrizione di ogni abilità impostata su “Decide l'IA”; vengono inviate anche le abilità in uso e i file delle abilità letti dall’IA.",
+    "Il contenuto del documento e la conversazione vengono inviati ad Anthropic, OpenAI o Google con il tuo account personale. Ogni richiesta porta anche nome, titolo e descrizione di ogni abilità impostata su “Decide l'IA”; vengono inviate anche le abilità in uso e i file delle abilità letti dall’IA.",
   noticeTraining:
     'L’uso di questi contenuti per addestrare l’IA dipende dalle impostazioni del tuo account presso quell’azienda.',
   noticeCodexHistory:
@@ -113,7 +113,7 @@ export const it = {
   guidePathCodexTitle: 'Uso ChatGPT',
   guidePathCodexBody:
     'Accedi al programma Codex di OpenAI con il tuo account ChatGPT. Il piano gratuito consente solo un uso limitato.',
-  guidePathFreeTitle: 'Nessuno dei due, per ora',
+  guidePathFreeTitle: 'Nessuno di questi, per ora',
   guidePathFreeBody:
     'Collega un’IA gratuita in circa un minuto. Finché la usi gratis, ciò che invii può essere usato per migliorare l’IA di quell’azienda.',
   guideBack: 'Scegli un altro modo',
@@ -196,4 +196,9 @@ export const it = {
   errOffInApp:
     '{provider} è disattivato in questa app, quindi non è stato eseguito nulla. Puoi riattivarlo da Impostazioni → IA.',
   guideBadgeOff: 'Disattivato',
+  guidePathAntigravityTitle: 'Uso Google Antigravity',
+  guidePathAntigravityBody:
+    'Accedi al programma Antigravity di Google con il tuo account Google per usare il tuo piano Google AI.',
+  antigravityCardNote:
+    'Funziona nel pannello IA e in modalità Agente tramite il protocollo ufficiale ACP di Antigravity CLI. Modelli disponibili, uso dei dati e crediti extra seguono le impostazioni di Antigravity.',
 } satisfies Record<keyof typeof zh, string>

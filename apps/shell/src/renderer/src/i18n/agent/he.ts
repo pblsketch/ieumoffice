@@ -95,4 +95,7 @@ export const he = {
   connOff: 'כבוי באפליקציה הזו. אפשר להשתמש בו שוב בהגדרות → AI.',
   errOffInApp:
     'התוכנה הזו כבויה באפליקציה, ולכן לא נשלח דבר נוסף. אפשר להשתמש בה שוב בהגדרות → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'פועל דרך פרוטוקול ה-ACP הרשמי בארגז החול של Antigravity, מבודד מהגדרות ~/.gemini שלך. השימוש בנתונים וקרדיטים חורגים נקבעים לפי הגדרות Antigravity.',
 } satisfies Record<keyof typeof zh, string>

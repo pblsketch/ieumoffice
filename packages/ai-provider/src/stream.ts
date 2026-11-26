@@ -7,9 +7,11 @@ import { streamOpenAiResponses } from './protocols/openai-responses'
 import { streamCodexAppServer } from './codex-app-server'
 import { streamClaudeCodeCli } from './claude-code-cli'
 import { streamChatGpt } from './chatgpt/responses'
+import { streamAntigravityPanel } from './antigravity-panel'
 import type { StreamCallbacks } from './protocols/shared'
 import { keyEffortBody } from './key-effort'
 import { getProviderAdapter, type AiProtocol } from './registry'
+import { AiRunError } from './run-error'
 import type { AiProviderConfig, AiProviderSelection } from './types'
 
 export { streamAnthropic } from './protocols/anthropic'
@@ -56,9 +58,22 @@ export async function streamForProvider(
   if (endpoint.protocol === 'chatgpt-responses') {
     return streamChatGpt(config, system, messages, tools, maxTokens, cb)
   }
+  if (endpoint.protocol === 'antigravity-acp') {
+    // Google Antigravity runs strictly as an official ACP client (decision 0170):
+    // interactive panels opt in via `onAcpNativeDone` / `onAcpToolCall`, while
+    // brain-only single-turn callers without the ACP bridge are refused.
+    if (!cb.onAcpNativeDone && !cb.onAcpToolCall) {
+      throw new AiRunError(
+        'not-connected',
+        'Antigravity runs via ACP and is not used as a brain-only stream provider',
+        { provider: 'antigravity' },
+      )
+    }
+    return streamAntigravityPanel(config, system, messages, tools, cb)
+  }
   const protocol: Exclude<
     AiProtocol,
-    'codex-app-server' | 'claude-code-cli' | 'chatgpt-responses'
+    'codex-app-server' | 'claude-code-cli' | 'chatgpt-responses' | 'antigravity-acp'
   > = endpoint.protocol
   return withOutputCapFallback(baseUrl, config.model, maxTokens, (cap) => {
     switch (protocol) {

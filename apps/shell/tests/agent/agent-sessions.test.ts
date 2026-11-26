@@ -65,7 +65,7 @@ afterEach(() => {
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-const ready = (provider: 'claude-code' | 'codex'): AiSubscriptionStatus =>
+const ready = (provider: 'claude-code' | 'codex' | 'antigravity'): AiSubscriptionStatus =>
   ({ provider, state: 'ready', meteredAccepted: false }) as AiSubscriptionStatus
 
 describe('project folders', () => {
@@ -86,12 +86,14 @@ describe('project folders', () => {
     const home = temp()
     const userData = join(home, 'AppData', 'IeumOffice')
     mkdirSync(join(home, '.codex'), { recursive: true })
+    mkdirSync(join(home, '.gemini'), { recursive: true })
     mkdirSync(userData, { recursive: true })
     const guards = agentProtectedPaths(home, userData)
     expect(projectFolderProblem(join(home, '..', '..').slice(0, 3), home, guards)).toBeDefined()
     expect(projectFolderProblem(home, home, guards)).toBe('home-folder')
     expect(projectFolderProblem(join(home, 'AppData'), home, guards)).toBe('protected')
     expect(projectFolderProblem(join(home, '.codex'), home, guards)).toBe('protected')
+    expect(projectFolderProblem(join(home, '.gemini'), home, guards)).toBe('protected')
   })
 
   it('refuses a folder in a protected folder whose name starts with ".."', () => {
@@ -310,6 +312,12 @@ function manager(
     ...session,
     provider: 'codex' as const,
   }))
+  const antigravity = vi.fn(
+    async (_options: AgentSessionOptions & { meteredAccepted: boolean }) => ({
+      ...session,
+      provider: 'antigravity' as const,
+    }),
+  )
   const emitted: Array<[number, string, AgentSessionEvent]> = []
   const mcpStop = vi.fn(async () => undefined)
   const startAppMcp = vi.fn(
@@ -320,9 +328,13 @@ function manager(
     }),
   )
   const m = createAgentManager({
-    runners: { claude, codex },
+    runners: { claude, codex, antigravity },
     statuses: () =>
-      overrides.statuses ?? { 'claude-code': ready('claude-code'), codex: ready('codex') },
+      overrides.statuses ?? {
+        'claude-code': ready('claude-code'),
+        codex: ready('codex'),
+        antigravity: ready('antigravity'),
+      },
     aiSettings: () => ({ ...normalizeAiSettings({ providers: {} }), ...overrides.settings }),
     openDocuments: overrides.openDocuments ?? (() => [join(project, 'open.docx')]),
     userData: join(home, 'AppData', 'IeumOffice'),
@@ -348,10 +360,30 @@ function manager(
     emit: (owner, id, event) => emitted.push([owner, id, event]),
   })
   managers.push(m)
-  return { m, project, home, session, claude, codex, emitted, mcpStop, startAppMcp }
+  return { m, project, home, session, claude, codex, antigravity, emitted, mcpStop, startAppMcp }
 }
 
 describe('starting a session', () => {
+  it('starts Antigravity in the project with isolated ACP runner, skills in instructions, and ~/.gemini protected', async () => {
+    const { m, project, home, antigravity } = manager()
+    const result = await m.start(1, {
+      provider: 'antigravity',
+      projectRoot: project,
+      mode: 'ask-commands',
+    })
+    expect(result.ok).toBe(true)
+    const options = antigravity.mock.calls[0]![0]
+    expect(options).toMatchObject({
+      projectRoot: project,
+      mode: 'ask-commands',
+      meteredAccepted: false,
+      appMcp: { url: 'http://127.0.0.1:5/mcp', token: 't' },
+      openDocuments: [join(project, 'open.docx')],
+    })
+    expect(options.protectedPaths).toContain(join(home, '.gemini'))
+    expect(options.instructions).toContain('SKILL.md')
+  })
+
   it('starts Claude in the project with skills, the app MCP server and the protected folders', async () => {
     const { m, project, home, claude } = manager()
     const result = await m.start(1, {

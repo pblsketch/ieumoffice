@@ -41,6 +41,10 @@ import {
   writeJsonAtomic,
 } from '@genoffice/electron-utils'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import {
+  ACP_TOOL_RESULT_CHANNEL,
+  createAcpToolBroker,
+} from '@genoffice/electron-utils/acp-tool-channels'
 import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
 import { screenMediaCall } from './screen-media-call'
 import {
@@ -204,6 +208,11 @@ export function registerAiIpc(): void {
     appendRunFailure(entry)
   })
 
+  const acpToolBroker = createAcpToolBroker()
+  ipcMain.handle(ACP_TOOL_RESULT_CHANNEL, (event, raw: unknown) => {
+    acpToolBroker.resolve(event.sender.id, raw)
+  })
+
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
     // per-request settings get the same schema check as the persisted ones: a
     // compromised renderer could otherwise hand cliPath/baseUrl straight to
@@ -250,8 +259,26 @@ export function registerAiIpc(): void {
         statuses: sharedSubscriptionStatuses(),
         signal: controller.signal,
         send,
+        onAcpToolCall: async (toolCall) => {
+          const callId = globalThis.crypto.randomUUID()
+          const pending = acpToolBroker.waitForResult({
+            senderId: event.sender.id,
+            requestId,
+            callId,
+            signal: controller.signal,
+          })
+          send({ requestId, type: 'acp-tool-call', callId, toolCall })
+          const result = await pending
+          return {
+            id: toolCall.id,
+            name: toolCall.name,
+            output: result.output,
+            ...(result.isError ? { isError: true } : {}),
+          }
+        },
       })
     } finally {
+      acpToolBroker.cancelRequest(requestId)
       unregisterJob()
       unwatchSender()
       activeAiStreams.delete(requestId)

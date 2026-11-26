@@ -178,7 +178,7 @@ describe('sheets AI panel: not connected', () => {
     const prompt = host.querySelector('.ai-sub-prompt')
     expect(prompt?.getAttribute('data-reason')).toBe('no-subscription')
     // which AI the user has comes first; each answer leads to its own card
-    expect(prompt?.querySelectorAll('.ai-sub-guide-path')).toHaveLength(3)
+    expect(prompt?.querySelectorAll('.ai-sub-guide-path')).toHaveLength(4)
     expect(scrolled).toEqual([])
 
     // App.tsx refused the send and counted it

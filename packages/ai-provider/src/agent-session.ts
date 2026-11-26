@@ -44,3 +44,13 @@ export {
 } from './agent-session/codex'
 export * from './agent-session/codex-sandbox-probe'
 export * from './agent-session/skills'
+export {
+  antigravityAgentAction,
+  antigravityAgentMcpServers,
+  antigravityRelayToolOf,
+  antigravitySessionSettings,
+  isAntigravityAppMcpTool,
+  startAntigravityAgentSession,
+  type AntigravityAgentDeps,
+  type AntigravityAgentSessionOptions,
+} from './agent-session/antigravity'

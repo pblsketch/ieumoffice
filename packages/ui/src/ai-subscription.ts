@@ -36,12 +36,14 @@ const SUBSCRIPTION_NAMES: Record<AiSubscriptionProviderId, string> = {
   'claude-code': 'Claude',
   codex: 'Codex',
   chatgpt: 'ChatGPT',
+  antigravity: 'Antigravity',
 }
 
 const SUBSCRIPTION_VENDORS: Record<AiSubscriptionProviderId, string> = {
   'claude-code': 'Anthropic',
   codex: 'OpenAI',
   chatgpt: 'OpenAI',
+  antigravity: 'Google',
 }
 
 /**
@@ -53,6 +55,7 @@ export const AI_SUBSCRIPTION_INSTALL_HELP_URLS: Record<AiSubscriptionProviderId,
   'claude-code': 'https://code.claude.com/docs/en/setup',
   codex: 'https://developers.openai.com/codex/cli',
   chatgpt: SUBSCRIPTION_CHATGPT_USAGE_URL,
+  antigravity: 'https://antigravity.google/docs/install?tab=cli',
 }
 
 /** Usage at or above this share of a window is shown; below it the panel stays quiet */
@@ -255,7 +258,14 @@ function cliCardView(
 ): AiSubscriptionCardView {
   const terminalWindows = options.terminalWindows !== false
   if (status.signingIn) return signingInCardView(status, terminalWindows, options)
-  const view = connectionCardView(status, terminalWindows)
+  const baseView = connectionCardView(status, terminalWindows)
+  const isSettingsCard = Boolean(options.account || options.accountActions || options.offSwitch)
+  const view: AiSubscriptionCardView =
+    status.provider === 'antigravity' &&
+    isSettingsCard &&
+    (status.state === 'ready' || status.state === 'signed-out' || status.state === 'not-installed')
+      ? { ...baseView, noteKeys: [...baseView.noteKeys, 'antigravityCardNote'] }
+      : baseView
   if (status.state === 'not-installed' && !terminalWindows) {
     return {
       ...view,

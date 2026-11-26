@@ -348,10 +348,11 @@ describe('selectAiProvider with an explicit selection', () => {
 
 describe('subscription helpers', () => {
   it('lists the subscription providers in auto order', () => {
-    expect(AI_SUBSCRIPTION_PROVIDERS).toEqual(['claude-code', 'chatgpt', 'codex'])
+    expect(AI_SUBSCRIPTION_PROVIDERS).toEqual(['claude-code', 'chatgpt', 'codex', 'antigravity'])
     expect(isSubscriptionProvider('claude-code')).toBe(true)
     expect(isSubscriptionProvider('chatgpt')).toBe(true)
     expect(isSubscriptionProvider('codex')).toBe(true)
+    expect(isSubscriptionProvider('antigravity')).toBe(true)
     expect(isSubscriptionProvider('anthropic')).toBe(false)
     expect(isSubscriptionProvider('auto')).toBe(false)
   })

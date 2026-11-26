@@ -42,10 +42,11 @@ export const zhTW = {
   meteredMeaning:
     '目前是以 API 金鑰或依用量付費的帳戶登入，或無法確認登入方式。選擇「仍要使用」後，AI 會透過這個連線執行，每次要求都會向該帳戶計費。',
   connectTitle: '連結 AI 即可開始使用',
-  connectBody: 'AI 會以你現有的 Claude 或 ChatGPT 訂閱執行，不需要 API 金鑰。',
+  connectBody: 'AI 會以你現有的 Claude、ChatGPT 或 Google Antigravity 訂閱執行，不需要 API 金鑰。',
   connectProviderTitle: '{provider} 連線目前無法使用',
   connectKeyBody: '{provider} 的設定尚未完成。請在設定中完成，或選擇其他 AI。',
-  errNotConnected: '尚未連結任何 AI。請先連結 Claude 或 Codex 訂閱，或連結免費 AI。',
+  errNotConnected:
+    '尚未連結任何 AI。請先連結 Claude、ChatGPT、Codex 或 Antigravity 訂閱，或連結免費 AI。',
   errNotInstalled: '在這台電腦上找不到 {provider} 程式。',
   errSignedOut: '{provider} 的登入已失效。請重新登入後繼續。',
   errRateLimit: '{provider} 的訂閱額度已用完。',
@@ -71,7 +72,7 @@ export const zhTW = {
   usageWindowSevenDay: '7 天額度',
   noticeTitle: '以訂閱使用 AI 之前',
   noticeSend:
-    '文件內容和對話會以你本人的帳戶傳送給 Anthropic 或 OpenAI。每次請求也會附上設為「自動使用」的每個技能的名稱、標題和說明；使用的技能內容和 AI 讀取的技能檔案也會一併傳送。',
+    '文件內容和對話會以你本人的帳戶傳送給 Anthropic、OpenAI 或 Google。每次請求也會附上設為「自動使用」的每個技能的名稱、標題和說明；使用的技能內容和 AI 讀取的技能檔案也會一併傳送。',
   noticeTraining: '這些內容是否用於 AI 訓練，取決於你在該公司帳戶中的設定。',
   noticeCodexHistory:
     '本應用程式會關閉 Codex 的對話記錄儲存，但 Codex 仍可能在這台電腦上保留自己的診斷記錄檔。',
@@ -94,7 +95,7 @@ export const zhTW = {
   guidePathClaudeBody: '需要 Pro 或 Max 方案。免費的 Claude 帳戶無法連線。',
   guidePathCodexTitle: '我在用 ChatGPT',
   guidePathCodexBody: '用你的 ChatGPT 帳戶登入 OpenAI 的 Codex 程式來使用。免費方案可用量很少。',
-  guidePathFreeTitle: '兩者都還沒有',
+  guidePathFreeTitle: '都還沒有',
   guidePathFreeBody:
     '大約一分鐘就能連結免費 AI。免費使用期間，你傳送的內容可能會被該公司用來改進其 AI。',
   guideBack: '選擇其他方式',
@@ -171,4 +172,9 @@ export const zhTW = {
   connectOffBody: '在「設定 → AI」的 {provider} 卡片上按「重新使用」，或選擇其他 AI。',
   errOffInApp: '{provider} 已在本應用程式中關閉，因此沒有執行。可以在「設定 → AI」中重新使用。',
   guideBadgeOff: '已關閉',
+  guidePathAntigravityTitle: '我在用 Google Antigravity',
+  guidePathAntigravityBody:
+    '使用 Google 帳號登入 Google 的 Antigravity 程式，即可使用您的 Google AI 方案。',
+  antigravityCardNote:
+    '在 AI 面板與代理模式中透過官方 Antigravity CLI ACP 協定運作。可用模型、資料使用偏好與超額點數設定均遵循您的 Antigravity 設定。',
 } satisfies Record<keyof typeof zh, string>

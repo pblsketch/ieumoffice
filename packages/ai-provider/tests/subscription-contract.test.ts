@@ -33,7 +33,7 @@ describe('claude-code provider', () => {
 
   it('sits next to Codex, ahead of the key providers', () => {
     const ids = AI_PROVIDERS.map((meta) => meta.id)
-    expect(ids.slice(0, 4)).toEqual(['claude-code', 'chatgpt', 'codex', 'anthropic'])
+    expect(ids.slice(0, 5)).toEqual(['claude-code', 'chatgpt', 'codex', 'antigravity', 'anthropic'])
     expect(Object.keys(AI_PROVIDER_ADAPTERS).sort()).toEqual([...ids].sort())
     expect(AI_PROVIDER_ADAPTERS.codex.capabilities.auth).toBe('codex-chatgpt')
     expect(AI_PROVIDER_ADAPTERS.anthropic.capabilities.auth).toBe('api-key')
@@ -55,7 +55,11 @@ describe('defaults', () => {
   it('new settings default to auto with the subscription settings off', () => {
     const settings = defaultAiSettings()
     expect(settings.provider).toBe('auto')
-    expect(settings.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(settings.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(settings.headlessSubscriptionEnabled).toBe(false)
     expect(settings.subscriptionNoticeSeen).toBe(false)
   })
@@ -71,14 +75,22 @@ describe('defaults', () => {
     }
     const settings = resolveAiSettings(stored, defaultAiSettings())
     expect(settings.provider).toBe('auto')
-    expect(settings.meteredAccepted).toEqual({ 'claude-code': false, codex: true })
+    expect(settings.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: true,
+      antigravity: false,
+    })
     expect(settings.headlessSubscriptionEnabled).toBe(true)
     expect(settings.subscriptionNoticeSeen).toBe(true)
   })
 
   it('resolveAiSettings falls back to the defaults for files without them', () => {
     const settings = resolveAiSettings({ provider: 'codex', providers: {} }, defaultAiSettings())
-    expect(settings.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(settings.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(settings.headlessSubscriptionEnabled).toBe(false)
     expect(settings.subscriptionNoticeSeen).toBe(false)
   })

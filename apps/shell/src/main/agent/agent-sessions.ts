@@ -142,6 +142,12 @@ export interface AgentRunners {
     },
     onEvent: (event: AgentSessionEvent) => void,
   ) => Promise<AgentSession>
+  antigravity?: (
+    options: AgentSessionOptions & {
+      meteredAccepted: boolean
+    },
+    onEvent: (event: AgentSessionEvent) => void,
+  ) => Promise<AgentSession>
 }
 
 export interface AgentManagerDeps {
@@ -191,6 +197,7 @@ export function agentProtectedPaths(homeDir: string, userData: string): string[]
   return [
     join(homeDir, '.claude'),
     join(homeDir, '.codex'),
+    join(homeDir, '.gemini'),
     join(homeDir, '.genoffice'),
     join(homeDir, '.ieumoffice'),
     userData,
@@ -363,11 +370,13 @@ export async function agentInstructionsAndCuts(
   }
   // the same note every skill gets on its way to the model in the other AI windows (spec 8)
   lines.push(`When you follow a skill: ${SKILL_SKIPPED_STEPS_SENTENCE}`)
-  // Claude Code finds the skills in the plugin it is given; Codex is told about them
-  if (provider === 'codex') lines.push(...codexSkillInstructions(skills))
-  // Claude Code runs with no project settings, so it does not read these files itself; Codex
-  // reads AGENTS.md on its own, so only CLAUDE.md is added for it
-  const files = provider === 'claude-code' ? PROJECT_NOTE_FILES : ['CLAUDE.md']
+  // Claude Code finds the skills in the plugin it is given; Codex and Antigravity are told about them
+  if (provider === 'codex' || provider === 'antigravity') {
+    lines.push(...codexSkillInstructions(skills))
+  }
+  // Claude Code and isolated Antigravity run with no user project settings; Codex reads AGENTS.md on its own
+  const files =
+    provider === 'claude-code' || provider === 'antigravity' ? PROJECT_NOTE_FILES : ['CLAUDE.md']
   const notes: string[] = []
   const truncated: string[] = []
   for (const name of files) {
@@ -572,7 +581,12 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           ? await prepared('user-mcp', () =>
               startRelays(
                 { ownerId, sessionId: id },
-                relayAskOf(entry, request.provider === 'claude-code' ? 'claude-code' : 'codex'),
+                relayAskOf(
+                  entry,
+                  request.provider === 'claude-code' || request.provider === 'antigravity'
+                    ? request.provider
+                    : 'codex',
+                ),
               ),
             )
           : undefined
@@ -621,22 +635,30 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           cleanup(entry)
           return offInAppFailure()
         }
-        entry.session =
+        const session =
           request.provider === 'claude-code'
             ? await deps.runners.claude(options, onEvent)
-            : await deps.runners.codex(
-                {
-                  ...options,
-                  meteredAccepted: connection === 'metered',
-                  webSearch: request.codex?.webSearch ?? 'cached',
-                  network: request.codex?.network === true,
-                },
-                onEvent,
-              )
+            : request.provider === 'antigravity'
+              ? await (deps.runners.antigravity
+                  ? deps.runners.antigravity(
+                      { ...options, meteredAccepted: connection === 'metered' },
+                      onEvent,
+                    )
+                  : Promise.reject(new Error('Antigravity agent runner is not configured')))
+              : await deps.runners.codex(
+                  {
+                    ...options,
+                    meteredAccepted: connection === 'metered',
+                    webSearch: request.codex?.webSearch ?? 'cached',
+                    network: request.codex?.network === true,
+                  },
+                  onEvent,
+                )
+        entry.session = session
         if (stopped()) return STOPPED_WHILE_STARTING
         // turned off while the runner prepared its files and found the program: it ends now
         if (offInApp(request.provider)) {
-          entry.session.stop()
+          session.stop()
           cleanup(entry)
           return offInAppFailure()
         }

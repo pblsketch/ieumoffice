@@ -105,4 +105,7 @@ export const nl = {
   connOff: 'Uit in deze app. Je kunt het weer gebruiken via Instellingen → AI.',
   errOffInApp:
     'Dit programma staat uit in deze app, dus er is niets meer verstuurd. Je kunt het weer gebruiken via Instellingen → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Draait via het officiële ACP-protocol in de terminalsandbox van Antigravity, gescheiden van uw ~/.gemini-instellingen. Gegevensgebruik en extra tegoed volgen uw Antigravity-instellingen.',
 } satisfies Record<keyof typeof zh, string>

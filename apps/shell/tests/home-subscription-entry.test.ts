@@ -276,7 +276,7 @@ describe('home settings entry', () => {
     await click(entry())
     const active = await waitForSelector('.set-nav-item.active')
     expect(active.textContent).toContain('AI')
-    expect(host.querySelectorAll('.set-sub-cards .ai-sub-card')).toHaveLength(3)
+    expect(host.querySelectorAll('.set-sub-cards .ai-sub-card')).toHaveLength(4)
 
     await click(host.querySelector('.set-close'))
     expect(host.querySelector('.set-sub-cards')).toBeNull()
@@ -411,6 +411,7 @@ describe('ask panel without a connection', () => {
     expect(badges).toEqual([
       ['claude-code', null],
       ['chatgpt', null],
+      ['antigravity', null],
       ['free', null],
     ])
     // the Codex program is a way within the one ChatGPT answer

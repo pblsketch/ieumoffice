@@ -610,11 +610,11 @@ describe('aiConnectPromptView', () => {
     expect(aiConnectPromptView(choice)).toBeNull()
   })
 
-  it('offers both subscriptions under the automatic selection', () => {
+  it('offers all subscriptions under the automatic selection', () => {
     expect(aiConnectPromptView(selectAiProvider(defaultAiSettings(), {}))).toEqual({
       titleKey: 'connectTitle',
       bodyKey: 'connectBody',
-      providers: ['claude-code', 'chatgpt', 'codex'],
+      providers: ['claude-code', 'chatgpt', 'codex', 'antigravity'],
       settings: false,
       // with nothing connected, the free connections are the other way in
       free: true,
@@ -733,7 +733,7 @@ describe('aiRunErrorText', () => {
 
   it('words every kind of the subscription contract in English', () => {
     expect(aiRunErrorText('en', { kind: 'not-connected' })).toBe(
-      'No AI is connected. Connect a Claude or Codex subscription, or a free AI, first.',
+      'No AI is connected. Connect a Claude, ChatGPT, Codex, or Antigravity subscription, or a free AI, first.',
     )
     expect(aiRunErrorText('en', { kind: 'not-installed', provider: 'codex' })).toBe(
       'The Codex program was not found on this PC.',
@@ -1053,5 +1053,72 @@ describe('a CLI turned off in this app (decision 0114)', () => {
         'claude-code',
       ),
     ).toBeNull()
+  })
+})
+
+describe('the Antigravity card and Phase 1 ACP boundary (decision 0170)', () => {
+  it('names Antigravity and Google in plain text and points install help at antigravity.google', () => {
+    expect(aiSubscriptionProviderName('antigravity')).toBe('Antigravity')
+    expect(aiSubscriptionVendorName('antigravity')).toBe('Google')
+    expect(AI_SUBSCRIPTION_INSTALL_HELP_URLS.antigravity).toMatch(
+      /^https:\/\/antigravity\.google\//,
+    )
+  })
+
+  it('appends antigravityCardNote to the Settings card view and supports Antigravity in Phase 2 auto and continue options', () => {
+    const readyView = aiSubscriptionCardView(
+      status('antigravity', 'ready', { planName: 'ultra' }),
+      {
+        terminalWindows: true,
+        offSwitch: true,
+      },
+    )
+    expect(readyView.noteKeys).toContain('antigravityCardNote')
+    expect(readyView.actions).toContain('turn-off')
+
+    // Compact guide/panel cards stay concise and omit the Settings-only antigravityCardNote
+    for (const compactState of ['not-installed', 'signed-out', 'ready'] as const) {
+      const compactView = aiSubscriptionCardView(status('antigravity', compactState), {
+        terminalWindows: true,
+      })
+      expect(compactView.noteKeys).not.toContain('antigravityCardNote')
+    }
+
+    // Phase 2: auto falls through to Antigravity when it is the only ready subscription
+    const choice = selectAiProvider(defaultAiSettings(), {
+      'claude-code': status('claude-code', 'signed-out'),
+      chatgpt: status('chatgpt', 'signed-out'),
+      codex: status('codex', 'signed-out'),
+      antigravity: status('antigravity', 'ready', { planName: 'ultra' }),
+    })
+    expect(choice).toEqual({ connected: true, provider: 'antigravity', metered: false })
+
+    // When nothing is connected, the connect prompt includes all 4 subscription providers
+    const noneConnected = selectAiProvider(defaultAiSettings(), {
+      'claude-code': status('claude-code', 'signed-out'),
+      chatgpt: status('chatgpt', 'signed-out'),
+      codex: status('codex', 'signed-out'),
+      antigravity: status('antigravity', 'signed-out'),
+    })
+    expect(aiConnectPromptView(noneConnected)?.providers).toEqual([
+      'claude-code',
+      'chatgpt',
+      'codex',
+      'antigravity',
+    ])
+
+    // Continue option offers Antigravity when another subscription is blocked
+    expect(
+      aiContinueOption(
+        defaultAiSettings(),
+        {
+          'claude-code': status('claude-code', 'signed-out'),
+          chatgpt: status('chatgpt', 'signed-out'),
+          codex: status('codex', 'signed-out'),
+          antigravity: status('antigravity', 'ready', { planName: 'ultra' }),
+        },
+        'claude-code',
+      ),
+    ).toEqual({ provider: 'antigravity', metered: false })
   })
 })

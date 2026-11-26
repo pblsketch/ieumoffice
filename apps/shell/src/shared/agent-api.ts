@@ -44,10 +44,10 @@ export const AGENT_CHANNELS = {
   statusesChanged: 'ai:subscription-changed',
 } as const
 
-export type AgentProvider = 'claude-code' | 'codex'
+export type AgentProvider = 'claude-code' | 'codex' | 'antigravity'
 export type AgentMode = 'ask-commands' | 'ask-writes' | 'trust-project'
 
-export const AGENT_PROVIDERS: readonly AgentProvider[] = ['claude-code', 'codex']
+export const AGENT_PROVIDERS: readonly AgentProvider[] = ['claude-code', 'codex', 'antigravity']
 export const AGENT_MODES: readonly AgentMode[] = ['ask-commands', 'ask-writes', 'trust-project']
 
 /**

@@ -64,7 +64,7 @@ apps/sheets/native/xlsx-engine   엑셀 계산·입출력을 맡는 별도 프�
 ```
 
 - 의존 방향은 한쪽이다. `apps/*` → `packages/*`. 패키지끼리는 `ai-provider` → `agent-core`·`i18n`(그래서 `agent-core`는 `ai-provider`를 가져올 수 없다), `ai-search` → `ai-provider`·`electron-utils`, `ui` → `ai-provider`·`agent-core`·`i18n`·`pptx-render`, `odt-engine` → `docx-engine`·`zip-gate`, `cli` → 엔진 패키지·`pdf-structure`·`ai-search`·`ai-provider`·`i18n`·`hwp5-wasm`, `electron-utils` → `i18n`, `file-parse` → `agent-core`(가리기 이름표)·`xmind-engine`·`epub-engine`·`drawio-model`·`docx-engine`, `xmind-engine` → `zip-gate`·`i18n`, `epub-engine` → `zip-gate`·`pdf-structure`(이름으로. 번역 작업 엔진, 보관소 열쇠의 형, 묶기·답 읽기 도우미). `pdf-structure`는 `pdf2docx`·`i18n`·`ai-provider`(그림 입력 판정)·`agent-core`(형)·`font-metrics`의 소스를 상대 경로로 가져오고, `apps/pdf`·`apps/shell`·`cli`도 `pdf-structure`를 상대 경로로 가져온다. `pdf-structure`는 다른 작업 공간 패키지를 이름으로 가져오지 않고 Electron에 기대지 않는다. `i18n`, `agent-core`, `hwp5-wasm`은 다른 작업 공간 패키지에 기대지 않는다.
-- `ai-provider`는 진입점이 나뉘어 있다. 화면(renderer)과 preload가 **값**으로 가져오는 것은 `@genoffice/ai-provider/browser`뿐이다. 대표 진입점에서는 형(`import type`)만 가져온다. 프로그램을 실행하는 코드(`/subscription`, `/claude-code-cli`, `/codex-app-server`)는 뒷단에서만 가져온다.
+- `ai-provider`는 진입점이 나뉘어 있다. 화면(renderer)과 preload가 **값**으로 가져오는 것은 `@genoffice/ai-provider/browser`뿐이다. 대표 진입점에서는 형(`import type`)만 가져온다. 프로그램을 실행하는 코드(`/subscription`, `/claude-code-cli`, `/codex-app-server`, `/antigravity-acp`, `/antigravity-panel`)는 뒷단에서만 가져온다.
 - 편집기들의 뒷단 코드는 따로 실행되지 않는다. 껍데기 앱을 빌드할 때 함께 묶여, 껍데기 앱의 한 프로세스 안에서 돈다. 그래서 창구 이름(IPC 채널)은 프로세스 전체에서 하나뿐이어야 한다.
 - 편집기 화면은 껍데기 창 위에 얹히는 별도 화면(WebContentsView)이다. 홈 탭만 껍데기 앱 자신의 화면이다.
 

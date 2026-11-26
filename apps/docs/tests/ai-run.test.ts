@@ -276,7 +276,11 @@ describe('stored settings', () => {
     })
     expect(read.provider).toBe('auto')
     expect('retiredSwitch' in read).toBe(false)
-    expect(read.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(read.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(read.subscriptionNoticeSeen).toBe(false)
   })
 
@@ -306,13 +310,25 @@ describe('stored settings', () => {
   it('records and withdraws "use anyway" per provider', () => {
     const accepted = withMeteredAccepted(settings({ provider: 'codex' }), 'codex', true)
     expect(accepted.provider).toBe('codex')
-    expect(accepted.meteredAccepted).toEqual({ 'claude-code': false, codex: true })
+    expect(accepted.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: true,
+      antigravity: false,
+    })
 
     const both = withMeteredAccepted(accepted, 'claude-code', true)
-    expect(both.meteredAccepted).toEqual({ codex: true, 'claude-code': true })
+    expect(both.meteredAccepted).toEqual({
+      codex: true,
+      'claude-code': true,
+      antigravity: false,
+    })
 
     const withdrawn = withMeteredAccepted(both, 'codex', false)
-    expect(withdrawn.meteredAccepted).toEqual({ codex: false, 'claude-code': true })
+    expect(withdrawn.meteredAccepted).toEqual({
+      codex: false,
+      'claude-code': true,
+      antigravity: false,
+    })
   })
 
   it('recording an answer on a legacy file also drops the removed switch', () => {
@@ -334,7 +350,11 @@ describe('stored settings', () => {
     const next = withMeteredAccepted({}, 'claude-code', true)
     expect(next.provider).toBe('auto')
     expect(next.providers.codex).toBeDefined()
-    expect(next.meteredAccepted).toEqual({ 'claude-code': true, codex: false })
+    expect(next.meteredAccepted).toEqual({
+      'claude-code': true,
+      codex: false,
+      antigravity: false,
+    })
     // what was written reads back the same way
     expect(normalizeAiSettings(JSON.parse(JSON.stringify(next))).meteredAccepted).toEqual(
       next.meteredAccepted,

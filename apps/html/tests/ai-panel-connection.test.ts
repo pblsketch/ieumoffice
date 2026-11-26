@@ -256,7 +256,7 @@ describe('AI panel without a connection', () => {
     const prompt = host.querySelector('.ai-sub-prompt')
     expect(prompt).not.toBeNull()
     // which AI the user has comes first; each answer leads to its own card
-    expect(prompt!.querySelectorAll('.ai-sub-guide-path')).toHaveLength(3)
+    expect(prompt!.querySelectorAll('.ai-sub-guide-path')).toHaveLength(4)
     expect(scrolled).toEqual([])
 
     await sendMessage('make it blue')

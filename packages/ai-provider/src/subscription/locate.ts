@@ -95,6 +95,7 @@ const LAYOUTS: Record<AiSubscriptionCliId, ProviderLayout> = {
     npmEntry: ['bin', 'claude.exe'],
   },
   codex: { name: 'codex', npmPackage: ['@openai', 'codex'], npmEntry: ['bin', 'codex.js'] },
+  antigravity: { name: 'agy', npmPackage: [], npmEntry: [] },
 }
 
 const SHIM_READ_LIMIT = 64 * 1024
@@ -631,6 +632,10 @@ async function windowsFallbackDirs(
   if (provider === 'claude-code' && home) {
     dirs.push({ dir: join(home, '.local', 'bin'), source: 'native-installer' })
   }
+  // where `irm https://antigravity.google/cli/install.ps1 | iex` puts agy.exe
+  if (provider === 'antigravity' && localAppData) {
+    dirs.push({ dir: join(localAppData, 'agy', 'bin'), source: 'native-installer' })
+  }
   if (appData) dirs.push({ dir: join(appData, 'npm'), source: 'npm' })
   for (const dir of await npmPrefixDirs(env, 'win32', home)) dirs.push({ dir, source: 'npm' })
   if (localAppData) {
@@ -820,6 +825,7 @@ const PROVIDER_LABELS: Record<AiSubscriptionProviderId, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   chatgpt: 'ChatGPT',
+  antigravity: 'Antigravity',
 }
 
 /** Display name of a subscription provider, for messages */

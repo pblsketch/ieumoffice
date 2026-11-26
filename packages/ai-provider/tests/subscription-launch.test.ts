@@ -303,6 +303,7 @@ describe('launchSubscriptionInstall', () => {
     expect(SUBSCRIPTION_INSTALL_COMMANDS).toEqual({
       'claude-code': 'irm https://claude.ai/install.ps1 | iex',
       codex: 'winget install OpenAI.Codex',
+      antigravity: 'irm https://antigravity.google/cli/install.ps1 | iex',
     })
   })
 
@@ -421,7 +422,11 @@ describe('launchSubscriptionInstall', () => {
     for (const url of Object.values(SUBSCRIPTION_INSTALL_URLS)) {
       expect(url).toMatch(/^https:\/\//)
     }
-    expect(Object.keys(SUBSCRIPTION_INSTALL_URLS).sort()).toEqual(['claude-code', 'codex'])
+    expect(Object.keys(SUBSCRIPTION_INSTALL_URLS).sort()).toEqual([
+      'antigravity',
+      'claude-code',
+      'codex',
+    ])
   })
 })
 

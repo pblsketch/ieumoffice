@@ -99,4 +99,7 @@ export const tr = {
   connOff: 'Bu uygulamada kapatıldı. Ayarlar → AI bölümünden yeniden açın.',
   errOffInApp:
     'Bu program bu uygulamada kapalı olduğu için başka bir şey gönderilmedi. Ayarlar → AI bölümünden yeniden açın.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Resmi ACP protokolü üzerinden Antigravity terminal sanal alanında çalışır ve ~/.gemini kişisel ayarlarınızdan ayrılır. Veri kullanımı ve aşım kredileri Antigravity ayarlarınıza uyar.',
 } satisfies Record<keyof typeof zh, string>

@@ -47,12 +47,12 @@ export const nl = {
     'Deze aanmelding gebruikt een API-sleutel of een account met betaling per verbruik, of het type kon niet worden vastgesteld. Met ‘Toch gebruiken’ draait AI via deze verbinding en wordt elk verzoek bij dat account in rekening gebracht.',
   connectTitle: 'Koppel een AI om te beginnen',
   connectBody:
-    'AI draait op het Claude- of ChatGPT-abonnement dat je al hebt. Een API-sleutel is niet nodig.',
+    'De AI werkt met het Claude-, ChatGPT- of Google Antigravity-abonnement dat je al hebt. Er is geen API-sleutel nodig.',
   connectProviderTitle: 'De verbinding {provider} is nu niet bruikbaar',
   connectKeyBody:
     'De configuratie van {provider} is nog niet af. Rond die af in Instellingen of kies een andere AI.',
   errNotConnected:
-    'Er is geen AI verbonden. Koppel eerst een Claude- of Codex-abonnement, of een gratis AI.',
+    'Er is geen AI verbonden. Verbind eerst een Claude-, ChatGPT-, Codex- of Antigravity-abonnement, of een gratis AI.',
   errNotInstalled: 'Het programma {provider} is niet gevonden op deze pc.',
   errSignedOut: 'De aanmelding bij {provider} is verlopen. Meld je opnieuw aan om door te gaan.',
   errRateLimit: 'De limiet van het abonnement {provider} is bereikt.',
@@ -85,7 +85,7 @@ export const nl = {
   usageWindowSevenDay: 'Limiet per 7 dagen',
   noticeTitle: 'Voordat je AI met je abonnement gebruikt',
   noticeSend:
-    'De inhoud van het document en je gesprek worden onder je eigen account naar Anthropic of OpenAI verzonden. Elk verzoek bevat ook de naam, titel en beschrijving van elke vaardigheid die op ‘AI beslist’ staat; gebruikte vaardigheden en vaardigheidsbestanden die de AI leest, worden ook verzonden.',
+    'De inhoud van het document en je gesprek worden onder je eigen account naar Anthropic, OpenAI of Google verzonden. Elk verzoek bevat ook de naam, titel en beschrijving van elke vaardigheid die op ‘AI beslist’ staat; gebruikte vaardigheden en vaardigheidsbestanden die de AI leest, worden ook verzonden.',
   noticeTraining:
     'Of die inhoud wordt gebruikt om AI te trainen, wordt bepaald door de instellingen van je eigen account bij dat bedrijf.',
   noticeCodexHistory:
@@ -112,7 +112,7 @@ export const nl = {
   guidePathCodexTitle: 'Ik gebruik ChatGPT',
   guidePathCodexBody:
     'Meld je met je ChatGPT-account aan bij het Codex-programma van OpenAI. Met het gratis abonnement kun je maar weinig gebruiken.',
-  guidePathFreeTitle: 'Nog geen van beide',
+  guidePathFreeTitle: 'Nog geen van deze',
   guidePathFreeBody:
     'Koppel in ongeveer een minuut een gratis AI. Zolang je die gratis gebruikt, kan wat je verstuurt worden gebruikt om de AI van dat bedrijf te verbeteren.',
   guideBack: 'Een andere manier kiezen',
@@ -195,4 +195,9 @@ export const nl = {
   errOffInApp:
     '{provider} staat uit in deze app, dus er is niets uitgevoerd. Je kunt het weer gebruiken via Instellingen → AI.',
   guideBadgeOff: 'Uit',
+  guidePathAntigravityTitle: 'Ik gebruik Google Antigravity',
+  guidePathAntigravityBody:
+    'Log met je Google-account in bij het Antigravity-programma van Google om je Google AI-abonnement te gebruiken.',
+  antigravityCardNote:
+    'Werkt in het AI-paneel en in de agentmodus via het officiële ACP-protocol van Antigravity CLI. Beschikbare modellen, gegevensgebruik en extra tegoed volgen uw Antigravity-instellingen.',
 } satisfies Record<keyof typeof zh, string>

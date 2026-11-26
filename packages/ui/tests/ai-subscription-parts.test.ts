@@ -583,6 +583,7 @@ describe('AiConnectPrompt', () => {
     expect(paths()).toEqual([
       ['claude-code', en.guideBadgeInstalled],
       ['chatgpt', null],
+      ['antigravity', null],
       ['free', null],
     ])
     expect(host.textContent).toContain(en.guidePathCodexTitle)
@@ -733,6 +734,7 @@ describe('AiConnectPrompt', () => {
     expect(paths()).toEqual([
       ['claude-code', null],
       ['chatgpt', null],
+      ['antigravity', null],
       ['free', null],
     ])
     click('[data-path="claude-code"]')

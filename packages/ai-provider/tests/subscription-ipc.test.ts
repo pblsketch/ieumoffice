@@ -61,6 +61,7 @@ const READY: SubscriptionStatusMap = {
   },
   codex: { provider: 'codex', state: 'signed-out', version: '0.159.2', meteredAccepted: false },
   chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'not-installed', meteredAccepted: false },
 }
 
 /** what reached the launchers and the service, without the reads of the last known statuses */
@@ -295,6 +296,7 @@ describe('registerSubscriptionIpc', () => {
       'claude-code': checkingSubscriptionStatus('claude-code'),
       codex: READY.codex,
       chatgpt: READY.chatgpt,
+      antigravity: READY.antigravity,
     }
     deps.service.getStatuses = () => unchecked
     registerSubscriptionIpc(ipc, deps)
@@ -470,7 +472,7 @@ describe('registerSubscriptionIpc', () => {
   })
 
   it('the provider ids in the payload types are the subscription ids', () => {
-    const providers: AiSubscriptionProviderId[] = ['claude-code', 'chatgpt', 'codex']
+    const providers: AiSubscriptionProviderId[] = ['claude-code', 'chatgpt', 'codex', 'antigravity']
     expect(Object.keys(READY).sort()).toEqual(providers.sort())
   })
 })

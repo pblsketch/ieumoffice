@@ -4,6 +4,8 @@ import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
 import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
 import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
 import {
   PROJECT_FOLDER_BRIDGE_KEY,
@@ -287,6 +289,7 @@ contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
 // the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
 contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)

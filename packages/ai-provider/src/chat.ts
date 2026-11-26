@@ -43,6 +43,11 @@ export async function chatForProvider(
         return chatClaudeCodeCli(wd, config, system, user)
       case 'chatgpt-responses':
         return chatChatGpt(config, system, user, wd.signal)
+      case 'antigravity-acp':
+        return Promise.resolve({
+          ok: false as const,
+          error: 'Antigravity runs via ACP and does not support brain-only chat calls',
+        })
       case 'anthropic':
         return chatAnthropic(wd, config, system, user, endpoint.baseUrl, effortBody)
       case 'gemini':

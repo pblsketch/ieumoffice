@@ -97,4 +97,7 @@ export const ar = {
   connOff: 'متوقف في هذا التطبيق. يمكنك استخدامه مجددًا من الإعدادات → الذكاء الاصطناعي.',
   errOffInApp:
     'هذا البرنامج متوقف في هذا التطبيق، لذلك لم يُرسَل شيء آخر. يمكنك استخدامه مجددًا من الإعدادات → الذكاء الاصطناعي.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'يعمل عبر بروتوكول ACP الرسمي داخل بيئة الطرفية المعزولة في Antigravity، معزولاً عن إعدادات ~/.gemini الخاصة بك. يتبع استخدام البيانات والرصيد الإضافي إعدادات Antigravity.',
 } satisfies Record<keyof typeof zh, string>

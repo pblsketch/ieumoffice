@@ -45,12 +45,12 @@ export const tr = {
     'Bu oturum bir API anahtarı, kullanım başına ödeme yapan bir hesap ya da türü doğrulanamayan bir oturum olabilir. “Yine de kullan” AI’ın bu bağlantıyla çalışmasına izin verir ve her istek o hesaba faturalandırılır.',
   connectTitle: 'Başlamak için bir AI bağlayın',
   connectBody:
-    'AI, zaten sahip olduğunuz Claude veya Codex aboneliğiyle çalışır. API anahtarı gerekmez.',
+    'AI, zaten sahip olduğunuz Claude, ChatGPT veya Google Antigravity aboneliğinizle çalışır. API anahtarı gerekmez.',
   connectProviderTitle: '{provider} bağlantısı şu anda kullanılamıyor',
   connectKeyBody:
     '{provider} kurulumu tamamlanmadı. Ayarlar’da tamamlayın veya başka bir AI seçin.',
   errNotConnected:
-    'Bağlı AI yok. Önce bir Claude veya Codex aboneliği ya da ücretsiz bir AI bağlayın.',
+    'Bağlı bir AI yok. Önce bir Claude, ChatGPT, Codex veya Antigravity aboneliği ya da ücretsiz bir AI bağlayın.',
   errNotInstalled: 'Bu bilgisayarda {provider} programı bulunamadı.',
   errSignedOut: '{provider} oturumunun süresi doldu. Devam etmek için yeniden oturum açın.',
   errRateLimit: '{provider} abonelik kotası tükendi.',
@@ -82,7 +82,7 @@ export const tr = {
   usageWindowSevenDay: '7 günlük sınır',
   noticeTitle: 'AI’ı aboneliğinizle kullanmadan önce',
   noticeSend:
-    'Belge içeriği ve sohbetiniz kendi hesabınız üzerinden Anthropic veya OpenAI’a gönderilir. Her istek ayrıca “AI karar verir” olarak ayarlanmış her becerinin adını, başlığını ve açıklamasını taşır; kullanımdaki beceriler ve AI’ın okuduğu beceri dosyaları da bunlarla birlikte gider.',
+    'Belge içeriği ve sohbetiniz kendi hesabınız üzerinden Anthropic, OpenAI veya Google’a gönderilir. Her istek ayrıca “AI karar verir” olarak ayarlanmış her becerinin adını, başlığını ve açıklamasını taşır; kullanımdaki beceriler ve AI’ın okuduğu beceri dosyaları da bunlarla birlikte gider.',
   noticeTraining:
     'Bu içeriğin AI eğitmek için kullanılıp kullanılmayacağına o şirketteki kendi hesap ayarlarınız karar verir.',
   noticeCodexHistory:
@@ -191,4 +191,9 @@ export const tr = {
   errOffInApp:
     '{provider} bu uygulamada kapalı, bu yüzden hiçbir şey çalıştırılmadı. Ayarlar → AI bölümünden yeniden açabilirsiniz.',
   guideBadgeOff: 'Kapalı',
+  guidePathAntigravityTitle: 'Google Antigravity kullanıyorum',
+  guidePathAntigravityBody:
+    'Google AI planınızı kullanmak için Google hesabınızla Google’ın Antigravity programında oturum açın.',
+  antigravityCardNote:
+    'AI panelinde ve Ajan modunda resmi Antigravity CLI ACP protokolü üzerinden çalışır. Kullanılabilir modeller, veri kullanımı tercihleri ve aşım kredisi ayarları Antigravity ayarlarınızı izler.',
 } satisfies Record<keyof typeof zh, string>

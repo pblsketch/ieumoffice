@@ -48,8 +48,8 @@ export type IpcStreamErrorKind =
   /** the person turned the subscription CLI off in this app (decision 0114) */
   | 'off-in-app'
 
-/** Subscription providers (ai-provider's AiSubscriptionProviderId): the two vendor CLIs, and ChatGPT reached directly */
-export type IpcSubscriptionProviderId = 'claude-code' | 'codex' | 'chatgpt'
+/** Subscription providers (ai-provider's AiSubscriptionProviderId): vendor CLIs and ChatGPT reached directly */
+export type IpcSubscriptionProviderId = 'claude-code' | 'codex' | 'chatgpt' | 'antigravity'
 
 /** What an error chunk says about its cause, without the message */
 export interface IpcStreamErrorCause {
@@ -91,6 +91,7 @@ export interface IpcStreamChunk {
     | 'delta'
     | 'reasoning'
     | 'tool-call'
+    | 'acp-tool-call'
     | 'usage'
     | 'subscription-usage'
     | 'input-truncated'
@@ -99,6 +100,10 @@ export interface IpcStreamChunk {
     | 'ping'
   text?: string
   toolCall?: AgentToolCall
+  /** correlation id for an ACP-native live tool call ('acp-tool-call') */
+  callId?: string
+  /** true on 'done' when an ACP-native agent drove its own tool loop for this run */
+  acpNative?: boolean
   error?: string
   /** machine-readable error cause; maps to a localized message (see errorText) */
   errorCode?: IpcStreamErrorKind
@@ -188,6 +193,17 @@ export interface IpcTransportOptions<S> {
   confirmContext?(warning: ContextWarning): boolean
   /** confirmation memory shared across transports (see IpcContextGate) */
   contextGate?: IpcContextGate
+  /**
+   * Optional override for returning an ACP-native live tool result to the main
+   * process. When omitted, reads `window.aiOfficeAcpTool.sendResult` exposed
+   * by the shared preload bridge.
+   */
+  sendAcpToolResult?(payload: {
+    requestId: string
+    callId: string
+    output: string
+    isError?: boolean
+  }): void | Promise<unknown>
 }
 
 /**
@@ -301,12 +317,38 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
         }
         cb.onError(error)
       }
+      let inFlightLiveTools = 0
       const armSilence = () => {
         clearTimeout(silenceTimer)
+        if (inFlightLiveTools > 0) return
         silenceTimer = setTimeout(() => {
           options.cancel(requestId)
           fail(timeoutText(), { kind: 'timeout' })
         }, IPC_STREAM_SILENCE_TIMEOUT_MS)
+      }
+      const sendLiveToolResult = (payload: {
+        requestId: string
+        callId: string
+        output: string
+        isError?: boolean
+      }) => {
+        if (options.sendAcpToolResult) {
+          return Promise.resolve(options.sendAcpToolResult(payload))
+        }
+        const bridge = (
+          globalThis as {
+            aiOfficeAcpTool?: {
+              sendResult(p: {
+                requestId: string
+                callId: string
+                output: string
+                isError?: boolean
+              }): Promise<void>
+            }
+          }
+        ).aiOfficeAcpTool
+        if (!bridge) return Promise.resolve()
+        return bridge.sendResult(payload)
       }
       const unsubscribe = options.onStream((chunk) => {
         if (chunk.requestId !== requestId || settled) return
@@ -321,6 +363,41 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
         } else if (chunk.type === 'tool-call') {
           armSilence()
           if (chunk.toolCall) cb.onToolCall(chunk.toolCall)
+        } else if (chunk.type === 'acp-tool-call') {
+          const callId = chunk.callId
+          const toolCall = chunk.toolCall
+          if (!callId || !toolCall) return
+          inFlightLiveTools++
+          clearTimeout(silenceTimer)
+          const runTool = cb.onLiveToolCall
+            ? Promise.resolve()
+                .then(() => cb.onLiveToolCall!(toolCall))
+                .catch((err: unknown) => ({
+                  id: toolCall.id,
+                  name: toolCall.name,
+                  output: err instanceof Error ? err.message : String(err),
+                  isError: true,
+                }))
+            : Promise.resolve({
+                id: toolCall.id,
+                name: toolCall.name,
+                output: 'Tool execution is not available in this panel',
+                isError: true,
+              })
+          void runTool
+            .then((res) =>
+              sendLiveToolResult({
+                requestId,
+                callId,
+                output: res.output,
+                ...(res.isError ? { isError: true } : {}),
+              }),
+            )
+            .catch(() => undefined)
+            .finally(() => {
+              inFlightLiveTools = Math.max(0, inFlightLiveTools - 1)
+              if (!settled) armSilence()
+            })
         } else if (chunk.type === 'usage') {
           armSilence()
           if (chunk.usage) cb.onUsage?.(chunk.usage)
@@ -333,7 +410,7 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
         } else if (chunk.type === 'done') {
           settle()
           if (chunk.stopReason) cb.onStopReason?.(chunk.stopReason)
-          cb.onDone()
+          cb.onDone(chunk.acpNative ? { acpNative: true } : undefined)
         } else if (chunk.type === 'error') {
           if (!chunk.errorCode) {
             fail(chunk.error ?? options.unknownErrorText())

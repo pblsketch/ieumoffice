@@ -101,4 +101,7 @@ export const pl = {
   connOff: 'Wyłączone w tej aplikacji. Możesz ponownie z niego korzystać w Ustawienia → AI.',
   errOffInApp:
     'Ten program jest wyłączony w tej aplikacji, więc nic więcej nie zostało wysłane. Możesz ponownie z niego korzystać w Ustawienia → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Działa przez oficjalny protokół ACP w piaskownicy terminala Antigravity, z izolacją od ustawień ~/.gemini. Wykorzystanie danych i kredyty ponad limit zależą od ustawień Antigravity.',
 } satisfies Record<keyof typeof zh, string>

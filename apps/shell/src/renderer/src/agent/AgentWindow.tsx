@@ -70,10 +70,12 @@ import { agentStartErrorView, runErrorKey } from './start-error'
 const PROVIDER_LABEL: Record<AgentProvider, AgentStringKey> = {
   'claude-code': 'providerClaude',
   codex: 'providerCodex',
+  antigravity: 'providerAntigravity',
 }
 const PROVIDER_NOTE: Record<AgentProvider, AgentStringKey> = {
   'claude-code': 'providerClaudeNote',
   codex: 'providerCodexNote',
+  antigravity: 'providerAntigravityNote',
 }
 const MODE_LABEL: Record<AgentMode, [AgentStringKey, AgentStringKey]> = {
   'ask-commands': ['modeAskCommands', 'modeAskCommandsDesc'],

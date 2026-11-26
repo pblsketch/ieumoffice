@@ -48,12 +48,12 @@ export const fr = {
     'Cette connexion utilise une clé API ou un compte facturé à l’usage, ou son type n’a pas pu être confirmé. « Utiliser quand même » permet à l’IA de fonctionner avec cette connexion, et chaque requête est facturée à ce compte.',
   connectTitle: 'Connectez une IA pour commencer',
   connectBody:
-    'L’IA fonctionne avec l’abonnement Claude ou ChatGPT que vous avez déjà. Aucune clé API n’est nécessaire.',
+    'L’IA fonctionne avec votre abonnement Claude, ChatGPT ou Google Antigravity existant. Aucune clé API n’est nécessaire.',
   connectProviderTitle: 'La connexion {provider} n’est pas utilisable pour le moment',
   connectKeyBody:
     'La configuration de {provider} n’est pas terminée. Terminez-la dans les paramètres ou choisissez une autre IA.',
   errNotConnected:
-    'Aucune IA n’est connectée. Connectez d’abord un abonnement Claude ou Codex, ou une IA gratuite.',
+    'Aucune IA n’est connectée. Connectez d’abord un abonnement Claude, ChatGPT, Codex ou Antigravity, ou une IA gratuite.',
   errNotInstalled: 'Le programme {provider} est introuvable sur ce PC.',
   errSignedOut: 'La connexion à {provider} a expiré. Reconnectez-vous pour continuer.',
   errRateLimit: 'La limite de l’abonnement {provider} est atteinte.',
@@ -87,7 +87,7 @@ export const fr = {
   usageWindowSevenDay: 'Limite sur 7 jours',
   noticeTitle: 'Avant d’utiliser l’IA avec votre abonnement',
   noticeSend:
-    'Le contenu du document et votre conversation sont envoyés à Anthropic ou à OpenAI sous votre propre compte. Chaque requête contient aussi le nom, le titre et la description de chaque compétence réglée sur « L’IA décide » ; les compétences utilisées et les fichiers de compétence lus par l’IA sont envoyés avec eux.',
+    'Le contenu du document et votre conversation sont envoyés à Anthropic, OpenAI ou Google sous votre propre compte. Chaque requête contient aussi le nom, le titre et la description de chaque compétence réglée sur « L’IA décide » ; les compétences utilisées et les fichiers de compétence lus par l’IA sont envoyés avec eux.',
   noticeTraining:
     'L’utilisation de ce contenu pour entraîner l’IA dépend des paramètres de votre propre compte auprès de cette société.',
   noticeCodexHistory:
@@ -114,7 +114,7 @@ export const fr = {
   guidePathCodexTitle: 'J’utilise ChatGPT',
   guidePathCodexBody:
     'Connectez-vous au programme Codex d’OpenAI avec votre compte ChatGPT. Le forfait gratuit ne permet qu’une utilisation limitée.',
-  guidePathFreeTitle: 'Ni l’un ni l’autre pour l’instant',
+  guidePathFreeTitle: 'Aucun pour l’instant',
   guidePathFreeBody:
     'Connectez une IA gratuite en une minute environ. Tant que vous l’utilisez gratuitement, ce que vous envoyez peut servir à améliorer l’IA de cette entreprise.',
   guideBack: 'Choisir une autre méthode',
@@ -197,4 +197,9 @@ export const fr = {
   errOffInApp:
     '{provider} est désactivé dans cette application : rien n’a été lancé. Vous pouvez le réactiver dans Paramètres → IA.',
   guideBadgeOff: 'Désactivé',
+  guidePathAntigravityTitle: 'J’utilise Google Antigravity',
+  guidePathAntigravityBody:
+    'Connectez-vous au programme Antigravity de Google avec votre compte Google pour utiliser votre offre Google AI.',
+  antigravityCardNote:
+    'Fonctionne dans le panneau IA et en mode Agent via le protocole officiel ACP de la CLI Antigravity. Les modèles disponibles, le partage de données et les crédits supplémentaires suivent vos réglages Antigravity.',
 } satisfies Record<keyof typeof zh, string>

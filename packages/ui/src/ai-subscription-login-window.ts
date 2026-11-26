@@ -35,6 +35,7 @@ const STEPS: Record<AiSubscriptionProviderId, readonly AiSubscriptionStringKey[]
   codex: ['loginWindowStepBrowser', 'loginWindowStepAddress'],
   // the app signs in to ChatGPT itself: there is no program window to guide
   chatgpt: [],
+  antigravity: ['loginWindowStepBrowser', 'loginWindowStepAddress'],
 }
 
 /** The visible sign-in window's words for `provider`, in `lang` where a console can show it */

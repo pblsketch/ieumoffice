@@ -430,7 +430,7 @@ describe('Onboarding', () => {
       Array.from(step.querySelectorAll<HTMLElement>('.ai-sub-guide-path')).map(
         (el) => el.dataset.path,
       ),
-    ).toEqual(['claude-code', 'chatgpt', 'free'])
+    ).toEqual(['claude-code', 'chatgpt', 'antigravity', 'free'])
     expect(cards()).toEqual([])
     // the ChatGPT answer connects directly: the line about Codex belongs to the Codex way alone
     expect(step.querySelector('.ai-sub-codex')).toBeNull()

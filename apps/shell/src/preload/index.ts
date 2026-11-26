@@ -20,6 +20,8 @@ import type {
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
 import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import { VERSION_TIMELINE_BRIDGE_KEY } from '@genoffice/electron-utils/version-timeline-channels'
@@ -840,6 +842,7 @@ contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(i
 // the home AI question's outbound guard: the internet-tools switch and the address
 // question (decision 0062); without it the guard in the renderer blocks nothing
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
 // the person's MCP servers for the home AI question: list and call approved tools
 // (the main process checks each). The home window gets no Drive bridge.
 contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())

@@ -44,12 +44,13 @@ export const vi = {
   meteredMeaning:
     'Lần đăng nhập này dùng khóa API hoặc tài khoản trả phí theo mức sử dụng, hoặc không xác định được loại đăng nhập. Chọn "Vẫn sử dụng" để AI chạy qua kết nối này, và mỗi yêu cầu sẽ được tính vào tài khoản đó.',
   connectTitle: 'Kết nối AI để bắt đầu',
-  connectBody: 'AI chạy bằng gói đăng ký Claude hoặc ChatGPT mà bạn đã có. Không cần khóa API.',
+  connectBody:
+    'AI chạy bằng gói đăng ký Claude, ChatGPT hoặc Google Antigravity mà bạn đã có. Không cần khóa API.',
   connectProviderTitle: 'Kết nối {provider} hiện chưa dùng được',
   connectKeyBody:
     'Thiết lập {provider} chưa hoàn tất. Hãy hoàn tất trong Cài đặt hoặc chọn AI khác.',
   errNotConnected:
-    'Chưa có AI nào được kết nối. Hãy kết nối gói đăng ký Claude hoặc Codex, hoặc một AI miễn phí trước.',
+    'Chưa có AI nào được kết nối. Hãy kết nối gói Claude, ChatGPT, Codex hoặc Antigravity, hoặc một AI miễn phí trước.',
   errNotInstalled: 'Không tìm thấy chương trình {provider} trên máy tính này.',
   errSignedOut: 'Phiên đăng nhập {provider} đã hết hạn. Hãy đăng nhập lại để tiếp tục.',
   errRateLimit: 'Đã dùng hết giới hạn của gói đăng ký {provider}.',
@@ -82,7 +83,7 @@ export const vi = {
   usageWindowSevenDay: 'Giới hạn 7 ngày',
   noticeTitle: 'Trước khi dùng AI bằng gói đăng ký của bạn',
   noticeSend:
-    'Nội dung tài liệu và cuộc trò chuyện được gửi đến Anthropic hoặc OpenAI bằng chính tài khoản của bạn. Mỗi yêu cầu còn kèm tên, tiêu đề và mô tả của mọi kỹ năng đặt ở "AI tự quyết định"; kỹ năng đang dùng và các tệp kỹ năng mà AI đọc cũng được gửi kèm.',
+    'Nội dung tài liệu và cuộc trò chuyện được gửi đến Anthropic, OpenAI hoặc Google bằng chính tài khoản của bạn. Mỗi yêu cầu còn kèm tên, tiêu đề và mô tả của mọi kỹ năng đặt ở "AI tự quyết định"; kỹ năng đang dùng và các tệp kỹ năng mà AI đọc cũng được gửi kèm.',
   noticeTraining:
     'Nội dung đó có được dùng để huấn luyện AI hay không tùy thuộc vào cài đặt tài khoản của bạn tại công ty đó.',
   noticeCodexHistory:
@@ -190,4 +191,9 @@ export const vi = {
   errOffInApp:
     '{provider} đang tắt trong ứng dụng này nên không có gì được chạy. Bạn có thể dùng lại trong Cài đặt → AI.',
   guideBadgeOff: 'Đã tắt',
+  guidePathAntigravityTitle: 'Tôi dùng Google Antigravity',
+  guidePathAntigravityBody:
+    'Đăng nhập vào chương trình Antigravity của Google bằng tài khoản Google để dùng gói Google AI của bạn.',
+  antigravityCardNote:
+    'Chạy trong bảng AI và chế độ Tác tử qua giao thức ACP chính thức của Antigravity CLI. Các mô hình khả dụng, tùy chọn dữ liệu và tín dụng vượt mức tuân theo cài đặt Antigravity của bạn.',
 } satisfies Record<keyof typeof zh, string>

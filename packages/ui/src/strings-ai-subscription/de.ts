@@ -48,12 +48,12 @@ export const de = {
     'Diese Anmeldung nutzt einen API-Schlüssel oder ein Konto mit nutzungsbasierter Abrechnung, oder ihre Art ließ sich nicht feststellen. Mit „Trotzdem verwenden“ läuft die KI über diese Verbindung, und jede Anfrage wird diesem Konto berechnet.',
   connectTitle: 'KI verbinden, um loszulegen',
   connectBody:
-    'Die KI läuft über Ihr vorhandenes Claude- oder ChatGPT-Abonnement. Ein API-Schlüssel ist nicht nötig.',
+    'Die KI läuft über Ihr bestehendes Claude-, ChatGPT- oder Google-Antigravity-Abonnement. Ein API-Schlüssel ist nicht erforderlich.',
   connectProviderTitle: 'Die Verbindung {provider} ist derzeit nicht nutzbar',
   connectKeyBody:
     'Die Einrichtung von {provider} ist noch nicht abgeschlossen. Schließen Sie sie in den Einstellungen ab oder wählen Sie eine andere KI.',
   errNotConnected:
-    'Es ist keine KI verbunden. Verbinden Sie zuerst ein Claude- oder Codex-Abonnement oder eine kostenlose KI.',
+    'Es ist keine KI verbunden. Verbinden Sie zuerst ein Claude-, ChatGPT-, Codex- oder Antigravity-Abonnement oder eine kostenlose KI.',
   errNotInstalled: 'Das Programm {provider} wurde auf diesem PC nicht gefunden.',
   errSignedOut:
     'Die Anmeldung bei {provider} ist abgelaufen. Melden Sie sich erneut an, um fortzufahren.',
@@ -88,7 +88,7 @@ export const de = {
   usageWindowSevenDay: '7-Tage-Limit',
   noticeTitle: 'Bevor Sie die KI mit Ihrem Abonnement nutzen',
   noticeSend:
-    'Dokumentinhalte und Ihre Unterhaltung werden über Ihr eigenes Konto an Anthropic oder OpenAI gesendet. Jede Anfrage enthält außerdem Name, Titel und Beschreibung jedes Skills mit der Einstellung „KI entscheidet“; verwendete Skills und Skill-Dateien, die die KI liest, werden mitgesendet.',
+    'Dokumentinhalte und Ihre Unterhaltung werden über Ihr eigenes Konto an Anthropic, OpenAI oder Google gesendet. Jede Anfrage enthält außerdem Name, Titel und Beschreibung jedes Skills mit der Einstellung „KI entscheidet“; verwendete Skills und Skill-Dateien, die die KI liest, werden mitgesendet.',
   noticeTraining:
     'Ob diese Inhalte zum Training von KI verwendet werden, bestimmen die Einstellungen Ihres eigenen Kontos bei dem jeweiligen Unternehmen.',
   noticeCodexHistory:
@@ -115,7 +115,7 @@ export const de = {
   guidePathCodexTitle: 'Ich nutze ChatGPT',
   guidePathCodexBody:
     'Melden Sie sich mit Ihrem ChatGPT-Konto beim Codex-Programm von OpenAI an. Der kostenlose Tarif erlaubt nur wenig Nutzung.',
-  guidePathFreeTitle: 'Noch keins von beiden',
+  guidePathFreeTitle: 'Noch keins davon',
   guidePathFreeBody:
     'Verbinden Sie in etwa einer Minute eine kostenlose KI. Solange Sie sie kostenlos nutzen, kann das Gesendete zur Verbesserung der KI dieses Unternehmens verwendet werden.',
   guideBack: 'Anderen Weg wählen',
@@ -198,4 +198,9 @@ export const de = {
   errOffInApp:
     '{provider} ist in dieser App ausgeschaltet, daher wurde nichts ausgeführt. Unter Einstellungen → KI können Sie es wieder verwenden.',
   guideBadgeOff: 'Aus',
+  guidePathAntigravityTitle: 'Ich nutze Google Antigravity',
+  guidePathAntigravityBody:
+    'Melden Sie sich mit Ihrem Google-Konto im Antigravity-Programm von Google an, um Ihren Google-AI-Tarif zu nutzen.',
+  antigravityCardNote:
+    'Läuft im AI-Bereich und im Agentenmodus über das offizielle Antigravity-CLI-ACP-Protokoll. Verfügbare Modelle, Datennutzung und Guthaben für Mehrverbrauch folgen Ihren Antigravity-Einstellungen.',
 } satisfies Record<keyof typeof zh, string>

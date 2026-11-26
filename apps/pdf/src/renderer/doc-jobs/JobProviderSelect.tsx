@@ -15,7 +15,8 @@
  */
 import type { ReactElement } from 'react'
 import {
-  AI_SUBSCRIPTION_PROVIDERS,
+  AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  selectAiProvider,
   subscriptionConnection,
   subscriptionOffIn,
   subscriptionStateOf,
@@ -63,17 +64,21 @@ export function jobProviderOptions(
   const groups = aiProviderPickerGroups(settings, statuses)
   const current = aiProviderPickerSelection(settings, statuses)
   const options: JobProviderOption[] = []
-  const auto = groups.find((g) => g.kind === 'auto')
+  const autoChoice = selectAiProvider({ ...settings, provider: 'auto' }, statuses, {
+    subscriptions: AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  })
   options.push({
     value: 'auto',
-    label: auto
-      ? aiSubscriptionText(lang, 'pickerAutoUsing', { provider: auto.label })
+    label: autoChoice.connected
+      ? aiSubscriptionText(lang, 'pickerAutoUsing', {
+          provider: aiProviderDisplayName(autoChoice.provider),
+        })
       : aiSubscriptionText(lang, 'pickerAuto'),
     selection: { provider: 'auto' },
     notConnected: false,
     off: false,
   })
-  for (const id of AI_SUBSCRIPTION_PROVIDERS) {
+  for (const id of AI_BATCH_SUBSCRIPTION_PROVIDERS) {
     const name = aiProviderDisplayName(id)
     if (subscriptionOffIn(settings, id)) {
       options.push({

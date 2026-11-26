@@ -44,12 +44,13 @@ export const cs = {
   meteredMeaning:
     'Toto přihlášení používá klíč API nebo účet s platbou podle spotřeby, případně se jeho typ nepodařilo zjistit. Volbou „Přesto použít“ poběží AI přes toto připojení a každý požadavek se naúčtuje tomuto účtu.',
   connectTitle: 'Začněte připojením AI',
-  connectBody: 'AI běží na předplatném Claude nebo ChatGPT, které už máte. Klíč API není potřeba.',
+  connectBody:
+    'AI běží na předplatném Claude, ChatGPT nebo Google Antigravity, které už máte. Klíč API není potřeba.',
   connectProviderTitle: 'Připojení {provider} teď nelze použít',
   connectKeyBody:
     'Nastavení poskytovatele {provider} není dokončeno. Dokončete ho v Nastavení, nebo zvolte jinou AI.',
   errNotConnected:
-    'Není připojena žádná AI. Nejprve připojte předplatné Claude nebo Codex, nebo bezplatnou AI.',
+    'Není připojena žádná AI. Nejprve připojte předplatné Claude, ChatGPT, Codex nebo Antigravity, případně bezplatnou AI.',
   errNotInstalled: 'Program {provider} nebyl na tomto počítači nalezen.',
   errSignedOut: 'Přihlášení k {provider} vypršelo. Přihlaste se znovu a pokračujte.',
   errRateLimit: 'Limit předplatného {provider} je vyčerpán.',
@@ -80,7 +81,7 @@ export const cs = {
   usageWindowSevenDay: '7denní limit',
   noticeTitle: 'Než začnete AI používat s předplatným',
   noticeSend:
-    'Obsah dokumentu a konverzace se odesílají společnosti Anthropic nebo OpenAI pod vaším vlastním účtem. Každý požadavek nese také název, nadpis a popis každé dovednosti s nastavením „Rozhoduje AI“; odesílají se také použité dovednosti a soubory dovedností, které AI přečte.',
+    'Obsah dokumentu a konverzace se odesílají společnosti Anthropic, OpenAI nebo Google pod vaším vlastním účtem. Každý požadavek nese také název, nadpis a popis každé dovednosti s nastavením „Rozhoduje AI“; odesílají se také použité dovednosti a soubory dovedností, které AI přečte.',
   noticeTraining:
     'Zda se tento obsah použije k trénování AI, určuje nastavení vašeho účtu u dané společnosti.',
   noticeCodexHistory:
@@ -189,4 +190,9 @@ export const cs = {
   errOffInApp:
     '{provider} je v této aplikaci vypnutý, proto se nic nespustilo. Znovu ho můžete zapnout v Nastavení → AI.',
   guideBadgeOff: 'Vypnuto',
+  guidePathAntigravityTitle: 'Používám Google Antigravity',
+  guidePathAntigravityBody:
+    'Přihlaste se účtem Google do programu Antigravity od Googlu a využívejte svůj tarif Google AI.',
+  antigravityCardNote:
+    'Běží v panelu AI a v režimu Agenta přes oficiální protokol ACP nástroje Antigravity CLI. Dostupné modely, nastavení využití dat a doplňkové kredity se řídí vaším nastavením Antigravity.',
 } satisfies Record<keyof typeof zh, string>

@@ -100,4 +100,7 @@ export const ms = {
   connOff: 'Dimatikan dalam aplikasi ini. Anda boleh menggunakannya semula di Tetapan → AI.',
   errOffInApp:
     'Program ini dimatikan dalam aplikasi ini, jadi tiada lagi yang dihantar. Anda boleh menggunakannya semula di Tetapan → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Berjalan melalui protokol ACP rasmi dalam kotak pasir terminal Antigravity, diasingkan daripada tetapan ~/.gemini anda. Penggunaan data dan kredit lebihan mengikut tetapan Antigravity.',
 } satisfies Record<keyof typeof zh, string>

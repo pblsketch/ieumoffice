@@ -104,4 +104,7 @@ export const ja = {
   connOff: 'このアプリではオフになっています。設定 → AI で再び使えるようにできます。',
   errOffInApp:
     'このプログラムはこのアプリでオフになっているため、これ以上送信しませんでした。設定 → AI で再び使えるようにできます。',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    '公式 ACP プロトコルで Antigravity のターミナルサンドボックス内で動作し、PC の ~/.gemini 個人設定から分離されます。データ利用と超過クレジットは Antigravity の設定に従います。',
 } satisfies Record<keyof typeof zh, string>

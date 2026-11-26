@@ -98,4 +98,7 @@ export const cs = {
   connOff: 'V této aplikaci vypnuto. Znovu ho můžete zapnout v Nastavení → AI.',
   errOffInApp:
     'Tento program je v této aplikaci vypnutý, proto se už nic neodeslalo. Znovu ho můžete zapnout v Nastavení → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Běží přes oficiální protokol ACP v terminálovém sandboxu Antigravity, odděleně od vašeho nastavení ~/.gemini. Využití dat a kredity nad limit se řídí nastavením Antigravity.',
 } satisfies Record<keyof typeof zh, string>

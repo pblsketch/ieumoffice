@@ -130,6 +130,7 @@ function harness(): Harness {
       'claude-code': apiKeyLogin,
       codex: { provider: 'codex', state: 'not-installed' },
       chatgpt: { provider: 'chatgpt', state: 'signed-out' },
+      antigravity: { provider: 'antigravity', state: 'not-installed' },
     },
     changes: [],
   }
@@ -158,6 +159,7 @@ describe('the status service', () => {
       'claude-code': { provider: 'claude-code', state: 'checking', meteredAccepted: false },
       chatgpt: { provider: 'chatgpt', state: 'checking', meteredAccepted: false },
       codex: { provider: 'codex', state: 'checking', meteredAccepted: false },
+      antigravity: { provider: 'antigravity', state: 'checking', meteredAccepted: false },
     })
     const statuses = await h.service.check()
     expect(statuses['claude-code'].state).toBe('metered')
@@ -310,7 +312,11 @@ describe('the status service', () => {
       state: 'metered',
       meteredAccepted: false,
     })
-    expect(h.settings.meteredAccepted).toEqual({ 'claude-code': false, codex: true })
+    expect(h.settings.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: true,
+      antigravity: false,
+    })
     expect(h.record).toEqual({ codex: 'metered:unknown' })
     expect(h.changes).toHaveLength(before + 1)
     expect(h.changes.at(-1)!['claude-code']?.meteredAccepted).toBe(false)
@@ -388,7 +394,7 @@ describe('the status service', () => {
     const [first, second] = await Promise.all([service.check(), service.check()])
     expect(first).toEqual(second)
     // one detection per provider, shared by both callers
-    expect(detections).toBe(3)
+    expect(detections).toBe(4)
   })
 
   it('a fresh check does not share one already under way: it waits for that one, then asks again', async () => {
@@ -444,8 +450,9 @@ describe('the status service', () => {
     })
     await service.check()
     expect(seen.sort()).toEqual([
+      ['antigravity', ''],
       ['chatgpt', undefined],
-      // both CLIs have a path field, so an untouched Claude slot sends an empty one
+      // all CLIs have a path field, so untouched slots send an empty one
       ['claude-code', ''],
       ['codex', 'D:\\tools\\codex.exe'],
     ])

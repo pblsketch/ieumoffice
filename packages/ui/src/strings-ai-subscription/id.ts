@@ -44,12 +44,12 @@ export const id = {
     'Login ini memakai kunci API atau akun bayar sesuai pemakaian, atau jenisnya tidak dapat dipastikan. Dengan "Tetap gunakan", AI berjalan melalui koneksi ini dan setiap permintaan ditagihkan ke akun tersebut.',
   connectTitle: 'Hubungkan AI untuk memulai',
   connectBody:
-    'AI berjalan dengan langganan Claude atau ChatGPT yang sudah Anda miliki. Kunci API tidak diperlukan.',
+    'AI berjalan dengan langganan Claude, ChatGPT, atau Google Antigravity yang sudah Anda miliki. Tidak perlu kunci API.',
   connectProviderTitle: 'Koneksi {provider} belum bisa dipakai saat ini',
   connectKeyBody:
     'Penyiapan {provider} belum selesai. Selesaikan di Pengaturan, atau pilih AI lain.',
   errNotConnected:
-    'Belum ada AI yang terhubung. Hubungkan dulu langganan Claude atau Codex, atau AI gratis.',
+    'Belum ada AI yang terhubung. Hubungkan langganan Claude, ChatGPT, Codex, atau Antigravity, atau AI gratis terlebih dahulu.',
   errNotInstalled: 'Program {provider} tidak ditemukan di PC ini.',
   errSignedOut: 'Sesi masuk {provider} sudah berakhir. Masuk lagi untuk melanjutkan.',
   errRateLimit: 'Batas langganan {provider} sudah habis.',
@@ -80,7 +80,7 @@ export const id = {
   usageWindowSevenDay: 'Batas 7 hari',
   noticeTitle: 'Sebelum memakai AI dengan langganan Anda',
   noticeSend:
-    'Isi dokumen dan percakapan Anda dikirim ke Anthropic atau OpenAI dengan akun Anda sendiri. Setiap permintaan juga membawa nama, judul, dan deskripsi setiap skill yang disetel ke "AI yang menentukan"; skill yang dipakai dan file skill yang dibaca AI juga ikut dikirim.',
+    'Isi dokumen dan percakapan Anda dikirim ke Anthropic, OpenAI, atau Google dengan akun Anda sendiri. Setiap permintaan juga membawa nama, judul, dan deskripsi setiap skill yang disetel ke "AI yang menentukan"; skill yang dipakai dan file skill yang dibaca AI juga ikut dikirim.',
   noticeTraining:
     'Apakah isi itu dipakai untuk melatih AI ditentukan oleh pengaturan akun Anda sendiri di perusahaan tersebut.',
   noticeCodexHistory:
@@ -106,7 +106,7 @@ export const id = {
   guidePathCodexTitle: 'Saya memakai ChatGPT',
   guidePathCodexBody:
     'Masuk ke program Codex dari OpenAI dengan akun ChatGPT Anda. Paket gratis hanya memberi sedikit pemakaian.',
-  guidePathFreeTitle: 'Belum punya keduanya',
+  guidePathFreeTitle: 'Belum pakai yang mana pun',
   guidePathFreeBody:
     'Hubungkan AI gratis dalam sekitar satu menit. Selama Anda memakainya secara gratis, konten yang Anda kirim dapat digunakan untuk meningkatkan AI perusahaan tersebut.',
   guideBack: 'Pilih cara lain',
@@ -189,4 +189,9 @@ export const id = {
   errOffInApp:
     '{provider} dimatikan di aplikasi ini, jadi tidak ada yang dijalankan. Anda bisa memakainya lagi di Pengaturan → AI.',
   guideBadgeOff: 'Dimatikan',
+  guidePathAntigravityTitle: 'Saya memakai Google Antigravity',
+  guidePathAntigravityBody:
+    'Masuk ke program Antigravity dari Google dengan akun Google Anda untuk memakai paket Google AI Anda.',
+  antigravityCardNote:
+    'Berjalan di panel AI dan mode Agen melalui protokol ACP resmi Antigravity CLI. Model yang tersedia, preferensi penggunaan data, dan pengaturan kredit tambahan mengikuti pengaturan Antigravity Anda.',
 } satisfies Record<keyof typeof zh, string>

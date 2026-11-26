@@ -40,10 +40,11 @@ export const zh = {
   meteredMeaning:
     '当前登录使用的是 API 密钥或按量付费账户，或者无法确认登录方式。选择“仍然使用”后，AI 将通过此连接运行，每次请求都会向该账户计费。',
   connectTitle: '连接 AI 即可开始使用',
-  connectBody: 'AI 使用你已有的 Claude 或 ChatGPT 订阅运行，无需 API 密钥。',
+  connectBody: 'AI 使用你已有的 Claude、ChatGPT 或 Google Antigravity 订阅运行，无需 API 密钥。',
   connectProviderTitle: '{provider} 连接目前无法使用',
   connectKeyBody: '{provider} 的设置尚未完成。请在设置中完成配置，或选择其他 AI。',
-  errNotConnected: '尚未连接任何 AI。请先连接 Claude 或 Codex 订阅，或连接免费 AI。',
+  errNotConnected:
+    '尚未连接任何 AI。请先连接 Claude、ChatGPT、Codex 或 Antigravity 订阅，或连接免费 AI。',
   errNotInstalled: '在这台电脑上找不到 {provider} 程序。',
   errSignedOut: '{provider} 的登录已失效。请重新登录后继续。',
   errRateLimit: '{provider} 的订阅额度已用完。',
@@ -69,7 +70,7 @@ export const zh = {
   usageWindowSevenDay: '7 天额度',
   noticeTitle: '使用订阅运行 AI 之前',
   noticeSend:
-    '文档内容和对话会以你本人的账户发送给 Anthropic 或 OpenAI。每次请求也会附上设为“自动使用”的每个技能的名称、标题和说明；使用的技能内容和 AI 读取的技能文件也会一并发送。',
+    '文档内容和对话会以你本人的账户发送给 Anthropic、OpenAI 或 Google。每次请求也会附上设为“自动使用”的每个技能的名称、标题和说明；使用的技能内容和 AI 读取的技能文件也会一并发送。',
   noticeTraining: '这些内容是否用于 AI 训练，取决于你在该公司账户中的设置。',
   noticeCodexHistory:
     '本应用会关闭 Codex 的对话历史保存，但 Codex 仍可能在这台电脑上保留自己的诊断日志。',
@@ -168,4 +169,9 @@ export const zh = {
   connectOffBody: '在“设置 → AI”的 {provider} 卡片上点击“重新使用”，或选择其他 AI。',
   errOffInApp: '{provider} 已在本应用中关闭，因此没有运行。可以在“设置 → AI”中重新使用。',
   guideBadgeOff: '已关闭',
+  guidePathAntigravityTitle: '我在用 Google Antigravity',
+  guidePathAntigravityBody:
+    '使用 Google 账号登录 Google 的 Antigravity 程序，即可使用您的 Google AI 方案。',
+  antigravityCardNote:
+    '在 AI 面板和智能体模式中通过官方 Antigravity CLI ACP 协议运行。可用模型、数据使用偏好与超额额度设置均遵循您的 Antigravity 设置。',
 }

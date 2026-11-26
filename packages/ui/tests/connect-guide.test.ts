@@ -37,6 +37,11 @@ describe('aiConnectGuideView', () => {
       },
       // one ChatGPT answer: it connects directly, and a Codex that needs work is no badge of it
       { path: 'chatgpt', titleKey: 'guidePathCodexTitle', bodyKey: 'guidePathChatGptBody' },
+      {
+        path: 'antigravity',
+        titleKey: 'guidePathAntigravityTitle',
+        bodyKey: 'guidePathAntigravityBody',
+      },
       { path: 'free', titleKey: 'guidePathFreeTitle', bodyKey: 'guidePathFreeBody' },
     ])
   })
@@ -79,7 +84,7 @@ describe('aiConnectGuideView', () => {
     expect(aiConnectGuideView({ codex: status('codex', 'ready') }, null, true).open).toBe('codex')
     const free = aiConnectGuideView({ codex: status('codex', 'not-installed') }, null, true)
     expect(free.open).toBe('free')
-    expect(free.options[2]!.badgeKey).toBe('guideBadgeReady')
+    expect(free.options[3]!.badgeKey).toBe('guideBadgeReady')
   })
 
   it('the user’s own choice wins, and "ask" brings the question back over anything', () => {
@@ -142,6 +147,7 @@ describe('aiConnectInfoText', () => {
         'claude-code: state=signed-out version=2.1.250 signing-in=browser',
         'chatgpt: state=signed-out',
         'codex: state=checking',
+        'antigravity: state=signed-out',
         'platform: Win32',
         'app: Mozilla/5.0 (Windows NT 10.0) Electron/38',
       ].join('\n'),
@@ -210,6 +216,7 @@ describe('aiConnectInfoText', () => {
         'claude-code: state=ready',
         'chatgpt: state=signed-out',
         'codex: state=error error=failed',
+        'antigravity: state=signed-out',
       ].join('\n'),
     )
   })

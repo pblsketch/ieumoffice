@@ -99,4 +99,7 @@ export const id = {
   connOff: 'Dimatikan di aplikasi ini. Anda bisa memakainya lagi di Pengaturan → AI.',
   errOffInApp:
     'Program ini dimatikan di aplikasi ini, jadi tidak ada lagi yang dikirim. Anda bisa memakainya lagi di Pengaturan → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Berjalan melalui protokol ACP resmi di dalam sandbox terminal Antigravity, terpisah dari pengaturan ~/.gemini Anda. Penggunaan data dan kredit tambahan mengikuti pengaturan Antigravity.',
 } satisfies Record<keyof typeof zh, string>

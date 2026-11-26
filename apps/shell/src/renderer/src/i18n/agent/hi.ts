@@ -103,4 +103,7 @@ export const hi = {
   connOff: 'इस ऐप में बंद है। सेटिंग्स → AI में इसे फिर से उपयोग के लिए चालू कर सकते हैं।',
   errOffInApp:
     'यह प्रोग्राम इस ऐप में बंद है, इसलिए आगे कुछ नहीं भेजा गया। सेटिंग्स → AI में इसे फिर से उपयोग के लिए चालू कर सकते हैं।',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'आधिकारिक ACP प्रोटोकॉल से Antigravity के टर्मिनल सैंडबॉक्स में चलता है और आपकी ~/.gemini सेटिंग्स से अलग रहता है। डेटा उपयोग और अतिरिक्त क्रेडिट Antigravity की सेटिंग्स के अनुसार होते हैं।',
 } satisfies Record<keyof typeof zh, string>

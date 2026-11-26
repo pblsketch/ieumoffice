@@ -43,11 +43,13 @@ export const ko = {
   meteredMeaning:
     'API 키나 종량제 계정으로 로그인되어 있거나, 로그인 방식을 확인하지 못한 상태입니다. "그래도 사용"을 누르면 이 연결로 AI를 쓰게 되고, 요청할 때마다 그 계정에 요금이 청구됩니다.',
   connectTitle: 'AI를 쓰려면 먼저 연결하세요',
-  connectBody: '이미 쓰고 있는 Claude 또는 ChatGPT 구독으로 AI를 씁니다. API 키는 필요 없습니다.',
+  connectBody:
+    '이미 쓰고 있는 Claude, ChatGPT 또는 Google Antigravity 구독으로 AI를 씁니다. API 키는 필요 없습니다.',
   connectProviderTitle: '{provider} 연결을 지금 쓸 수 없습니다',
   connectKeyBody:
     '{provider} 설정이 아직 끝나지 않았습니다. 설정에서 마무리하거나 다른 AI를 선택하세요.',
-  errNotConnected: '연결된 AI가 없습니다. Claude·Codex 구독이나 무료 AI를 먼저 연결하세요.',
+  errNotConnected:
+    '연결된 AI가 없습니다. Claude·ChatGPT·Codex·Antigravity 구독이나 무료 AI를 먼저 연결하세요.',
   errNotInstalled: '이 PC에서 {provider} 프로그램을 찾지 못했습니다.',
   errSignedOut: '{provider} 로그인이 풀렸습니다. 다시 로그인한 뒤 계속하세요.',
   errRateLimit: '{provider} 구독 한도를 모두 썼습니다.',
@@ -76,7 +78,7 @@ export const ko = {
   usageWindowSevenDay: '7일 한도',
   noticeTitle: '구독으로 AI를 쓰기 전에',
   noticeSend:
-    '문서 내용과 대화는 사용자 본인 계정으로 Anthropic 또는 OpenAI에 전송됩니다. 요청마다 "스스로 쓰기"로 둔 스킬의 이름·제목·설명이 함께 가고, 쓰는 스킬의 글과 AI가 읽은 스킬 파일도 함께 전송됩니다.',
+    '문서 내용과 대화는 사용자 본인 계정으로 Anthropic, OpenAI 또는 Google에 전송됩니다. 요청마다 "스스로 쓰기"로 둔 스킬의 이름·제목·설명이 함께 가고, 쓰는 스킬의 글과 AI가 읽은 스킬 파일도 함께 전송됩니다.',
   noticeTraining: '그 내용이 AI 학습에 쓰이는지는 해당 회사의 사용자 계정 설정에 따라 정해집니다.',
   noticeCodexHistory:
     '이 앱은 Codex의 대화 기록 저장을 꺼 둡니다. 다만 Codex가 자체 진단 로그를 이 PC에 남길 수 있습니다.',
@@ -183,4 +185,9 @@ export const ko = {
   errOffInApp:
     '{provider}를 이 앱에서 꺼 두어 실행하지 않았습니다. 설정 → AI에서 다시 쓸 수 있습니다.',
   guideBadgeOff: '꺼 둠',
+  guidePathAntigravityTitle: 'Google Antigravity를 써요',
+  guidePathAntigravityBody:
+    'Google 계정으로 Antigravity 프로그램에 로그인해서 Google AI 요금제를 씁니다.',
+  antigravityCardNote:
+    '기본 AI 창과 에이전트 모드에서 Antigravity CLI의 공식 ACP 프로토콜로 동작합니다. 사용 가능한 모델, 데이터 학습, 한도 초과 크레딧 설정은 Antigravity 설정을 따릅니다.',
 } satisfies Record<keyof typeof zh, string>

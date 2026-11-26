@@ -335,7 +335,7 @@ describe('AiPanel subscription gate (slides)', () => {
     expect(agentHarness.run).not.toHaveBeenCalled()
     expect(container.querySelector('.ai-sub-prompt')).not.toBeNull()
     // which AI the user has comes first; each answer leads to its own card
-    expect(container.querySelectorAll('.ai-sub-guide-path')).toHaveLength(3)
+    expect(container.querySelectorAll('.ai-sub-guide-path')).toHaveLength(4)
     expect(container.querySelector('.ai-msg-error')).toBeNull()
     expect(container.querySelector('.ai-sub-first')).toBeNull()
   })

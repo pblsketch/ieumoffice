@@ -44,12 +44,28 @@ import {
 const LOGIN_ARGS: Record<AiSubscriptionCliId, string[]> = {
   'claude-code': ['auth', 'login'],
   codex: ['login'],
+  antigravity: ['acp', '--login'],
 }
 
-/** The CLI's own sign-out command */
-const LOGOUT_ARGS: Record<AiSubscriptionCliId, string[]> = {
+/** The CLI's own sign-out command (Antigravity logs out over ACP `auth/logout`) */
+const LOGOUT_ARGS: Record<Exclude<AiSubscriptionCliId, 'antigravity'>, string[]> = {
   'claude-code': ['auth', 'logout'],
   codex: ['logout'],
+}
+
+/** ACP logout runner supplied by `antigravity-acp.ts` */
+export type AntigravityLogoutSource = (context: {
+  program: SubscriptionProgram
+  timeoutMs: number
+  baseEnv?: NodeJS.ProcessEnv | undefined
+  spawn?: SubscriptionSpawn | undefined
+}) => Promise<boolean>
+
+let antigravityLogoutSource: AntigravityLogoutSource | null = null
+
+/** Register the Antigravity ACP logout runner. Pass null to clear it. */
+export function setAntigravityLogoutSource(source: AntigravityLogoutSource | null): void {
+  antigravityLogoutSource = source
 }
 
 /** A logout that has not finished by then is given up and its program ended */
@@ -398,6 +414,16 @@ export async function launchSubscriptionLogout(
     return { ok: false, reason: 'not-installed', installUrl: SUBSCRIPTION_INSTALL_URLS[provider] }
   }
   try {
+    if (provider === 'antigravity') {
+      if (!antigravityLogoutSource) return { ok: false, reason: 'unsupported' }
+      const ok = await antigravityLogoutSource({
+        program,
+        timeoutMs: options.timeoutMs ?? SUBSCRIPTION_LOGOUT_TIMEOUT_MS,
+        baseEnv: options.baseEnv,
+        spawn: options.spawn,
+      })
+      return ok ? { ok: true } : { ok: false, reason: 'failed' }
+    }
     const result = await (options.run ?? runSubscriptionProgram)(program, LOGOUT_ARGS[provider], {
       signal: new AbortController().signal,
       timeoutMs: options.timeoutMs ?? SUBSCRIPTION_LOGOUT_TIMEOUT_MS,
@@ -516,8 +542,10 @@ const WINGET_CODEX_PACKAGE = /[\\/]microsoft[\\/]winget[\\/]packages[\\/]openai\
 export function subscriptionUpdatePlan(
   program: SubscriptionProgram,
 ): SubscriptionUpdatePlan | null {
-  // `claude update` updates a native install and an npm one alike
-  if (program.provider === 'claude-code') return { kind: 'program', args: ['update'] }
+  // `claude update` and `agy update` update the located copy directly
+  if (program.provider === 'claude-code' || program.provider === 'antigravity') {
+    return { kind: 'program', args: ['update'] }
+  }
   const paths = [program.entry, program.command]
   if (paths.some((path) => NPM_CODEX.test(path))) {
     return { kind: 'command', command: SUBSCRIPTION_CODEX_UPDATE_COMMANDS.npm }

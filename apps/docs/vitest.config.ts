@@ -20,6 +20,12 @@ export default defineConfig({
       ),
       '@genoffice/font-metrics': local('../../packages/font-metrics/src/index.ts'),
       // subpath before the bare name: string aliases are prefix replacements
+      '@genoffice/electron-utils/acp-tool-bridge': local(
+        '../../packages/electron-utils/src/acp-tool-bridge.ts',
+      ),
+      '@genoffice/electron-utils/acp-tool-channels': local(
+        '../../packages/electron-utils/src/acp-tool-channels.ts',
+      ),
       '@genoffice/electron-utils/doc-attach-channels': local(
         '../../packages/electron-utils/src/doc-attach-channels.ts',
       ),

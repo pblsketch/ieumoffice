@@ -46,6 +46,9 @@ import {
 /** A status check that has not answered by then is an `error` */
 export const SUBSCRIPTION_STATUS_TIMEOUT_MS = 20_000
 
+/** Antigravity ACP `session/new` can fall back across Google endpoints (~12-15s) */
+const ANTIGRAVITY_STATUS_TIMEOUT_MS = 30_000
+
 /** What a CLI says about its login; of the account identity only the e-mail address is kept */
 export type SubscriptionLogin =
   | { signedIn: false }
@@ -93,6 +96,17 @@ export type CodexAccountSource = (context: {
   signal: AbortSignal
 }) => Promise<unknown>
 
+/**
+ * Antigravity login check supplied by the ACP module (`antigravity-acp.ts`).
+ * Runs `agy acp` initialize + session/new (no model call) to read login state
+ * and tier without invoking a separate unsupported CLI subcommand.
+ */
+export type AntigravityStatusSource = (context: {
+  program: SubscriptionProgram
+  signal: AbortSignal
+  timeoutMs: number
+}) => Promise<SubscriptionLogin | null>
+
 export interface SubscriptionDetectOptions {
   /** the user's own path to the CLI (the Codex `cliPath` setting) */
   configuredPath?: string | undefined
@@ -101,6 +115,8 @@ export interface SubscriptionDetectOptions {
   run?: SubscriptionRunner | undefined
   /** overrides the source set with `setCodexAccountSource`; null turns it off */
   codexAccount?: CodexAccountSource | null | undefined
+  /** overrides the source set with `setAntigravityStatusSource`; null turns it off */
+  antigravityStatus?: AntigravityStatusSource | null | undefined
 }
 
 export type SubscriptionDetector = (
@@ -142,12 +158,19 @@ const CODEX_LOGIN_KINDS = [
   'no-account',
 ] as const
 
+const ANTIGRAVITY_LOGIN_KINDS = [
+  'antigravity-subscription',
+  'antigravity-enterprise',
+  'antigravity-api-key',
+  'no-account',
+] as const
+
 type CodexLoginKind = (typeof CODEX_LOGIN_KINDS)[number]
 
 /**
  * Every value a `loginKind` can take. Claude: `<authMethod>/<apiProvider>`, each
- * half from its list above or `unknown`. Codex: one of its list. All of them
- * are constants of this file; none is built from what a CLI printed.
+ * half from its list above or `unknown`. Codex and Antigravity: one of their
+ * listed constants. None is built from what a CLI printed.
  */
 export const SUBSCRIPTION_LOGIN_KINDS: readonly string[] = [
   UNKNOWN_KIND,
@@ -155,6 +178,7 @@ export const SUBSCRIPTION_LOGIN_KINDS: readonly string[] = [
     [...CLAUDE_API_PROVIDER_KINDS, UNKNOWN_KIND].map((api) => `${auth}/${api}`),
   ),
   ...CODEX_LOGIN_KINDS,
+  ...ANTIGRAVITY_LOGIN_KINDS,
 ]
 
 /** `value` when it is one of the listed kinds, the fixed token `unknown` otherwise */
@@ -293,6 +317,7 @@ export function codexAccountInfo(accountRead: unknown): SubscriptionLogin | null
 }
 
 let codexAccountSource: CodexAccountSource | null = null
+let antigravityStatusSource: AntigravityStatusSource | null = null
 
 /**
  * Let the Codex bridge supply `account/read` to the status check (plan name,
@@ -301,6 +326,14 @@ let codexAccountSource: CodexAccountSource | null = null
  */
 export function setCodexAccountSource(source: CodexAccountSource | null): void {
   codexAccountSource = source
+}
+
+/**
+ * Let the Antigravity ACP bridge supply the sign-in and tier status check
+ * (`initialize` + `session/new`, no model call). Pass null to remove it.
+ */
+export function setAntigravityStatusSource(source: AntigravityStatusSource | null): void {
+  antigravityStatusSource = source
 }
 
 /**
@@ -381,13 +414,13 @@ function errorCodeSuffix(error: unknown): string {
   return typeof code === 'string' && /^E[A-Z0-9_]{1,30}$/.test(code) ? ` (${code})` : ''
 }
 
-const STATUS_ARGS: Record<AiSubscriptionCliId, string[]> = {
+const STATUS_ARGS: Record<Exclude<AiSubscriptionCliId, 'antigravity'>, string[]> = {
   'claude-code': ['auth', 'status', '--json'],
   codex: ['login', 'status'],
 }
 
 function parseStatus(
-  provider: AiSubscriptionCliId,
+  provider: Exclude<AiSubscriptionCliId, 'antigravity'>,
   result: SubscriptionCommandResult,
 ): SubscriptionLogin | null {
   return provider === 'claude-code'
@@ -444,8 +477,30 @@ async function inspect(
           await programFileOf(program),
         )
       }
+      if (provider === 'antigravity') {
+        const source =
+          options.antigravityStatus === undefined
+            ? antigravityStatusSource
+            : options.antigravityStatus
+        if (!source) {
+          return errorDetection(provider, 'failed', `${name} status check is unavailable`, version)
+        }
+        const agyLogin = await source({ program, signal, timeoutMs })
+        if (!agyLogin) {
+          return errorDetection(
+            provider,
+            'failed',
+            `${name} did not report its login status`,
+            version,
+          )
+        }
+        return loginDetection(provider, version, agyLogin)
+      }
       status = await ask(STATUS_ARGS[provider])
     } else {
+      if (provider === 'antigravity') {
+        return errorDetection(provider, 'failed', `${name} status check is unavailable`, version)
+      }
       const source = options.codexAccount === undefined ? codexAccountSource : options.codexAccount
       const [versionResult, statusResult, accountResult] = await Promise.all([
         ask(['--version']).catch(() => null),
@@ -504,7 +559,9 @@ async function inspect(
 export const detectSubscriptionLogin: SubscriptionDetector = async (provider, options = {}) => {
   // no program: the app's own sign-in is what there is to look at
   if (provider === 'chatgpt') return detectChatGptConnection()
-  const timeoutMs = options.timeoutMs ?? SUBSCRIPTION_STATUS_TIMEOUT_MS
+  const timeoutMs =
+    options.timeoutMs ??
+    (provider === 'antigravity' ? ANTIGRAVITY_STATUS_TIMEOUT_MS : SUBSCRIPTION_STATUS_TIMEOUT_MS)
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<SubscriptionDetection>((resolve) => {
