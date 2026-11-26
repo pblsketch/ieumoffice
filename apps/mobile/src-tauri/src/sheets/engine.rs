@@ -8,7 +8,7 @@ use std::path::Path;
 use std::ptr::NonNull;
 
 /// The ABI this code was written against (`ABI_VERSION` in the library).
-const EXPECTED_ABI_VERSION: u32 = 1;
+const EXPECTED_ABI_VERSION: u32 = 2;
 
 const NO_ANSWER: &str = r#"{"version":1,"requestId":"","ok":false,"error":{"code":"workbook_error","message":"The spreadsheet engine could not process this request."}}"#;
 
@@ -16,6 +16,12 @@ unsafe extern "C" {
     fn ieum_sheets_engine_abi_version() -> u32;
     fn ieum_sheets_engine_new(work_root_ptr: *const u8, work_root_len: usize) -> *mut c_void;
     fn ieum_sheets_engine_handle_line(
+        engine: *const c_void,
+        line_ptr: *const u8,
+        line_len: usize,
+        out_len: *mut usize,
+    ) -> *mut u8;
+    fn ieum_sheets_engine_crypto_line(
         engine: *const c_void,
         line_ptr: *const u8,
         line_len: usize,
@@ -76,14 +82,36 @@ impl SheetsEngine {
             // here; answer in the protocol's shape rather than abort.
             return NO_ANSWER.to_owned();
         }
-        // SAFETY: the library returned `len` bytes at `ptr`; it is valid UTF-8
-        // JSON text.
-        let text = unsafe { std::slice::from_raw_parts(ptr, len) };
-        let answer = String::from_utf8_lossy(text).into_owned();
-        // SAFETY: the pair just returned, freed once.
-        unsafe { ieum_sheets_engine_free_response(ptr, len) };
-        answer
+        take_answer(ptr, len)
     }
+
+    /// Answers one password request (probe, decrypt, encrypt; see the
+    /// library's `crypto.rs`) with its JSON answer text. Paths must lie inside
+    /// the work folder. Blocks: call it off the async runtime.
+    pub fn crypto_line(&self, line: &str) -> String {
+        let mut len = 0usize;
+        // SAFETY: a live engine, a valid byte slice and a writable length.
+        let ptr = unsafe {
+            ieum_sheets_engine_crypto_line(self.raw.as_ptr(), line.as_ptr(), line.len(), &mut len)
+        };
+        if ptr.is_null() {
+            return NO_CRYPTO_ANSWER.to_owned();
+        }
+        take_answer(ptr, len)
+    }
+}
+
+const NO_CRYPTO_ANSWER: &str = r#"{"ok":false,"error":{"code":"unsupported","message":"The spreadsheet engine could not process this request."}}"#;
+
+/// Copies an answer the library handed out and frees it.
+fn take_answer(ptr: *mut u8, len: usize) -> String {
+    // SAFETY: the library returned `len` bytes at `ptr`; it is valid UTF-8
+    // JSON text.
+    let text = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let answer = String::from_utf8_lossy(text).into_owned();
+    // SAFETY: the pair just returned, freed once.
+    unsafe { ieum_sheets_engine_free_response(ptr, len) };
+    answer
 }
 
 impl Drop for SheetsEngine {

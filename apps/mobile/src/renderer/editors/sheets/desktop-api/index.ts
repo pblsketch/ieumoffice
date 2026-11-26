@@ -1,11 +1,17 @@
 import type { DesktopApi } from '../../../../../../sheets/src/shared/desktop-api'
+import { createMobileAiApi } from './ai'
 import type { SheetsEngineClient } from './engine'
 import { createMobileReadApi } from './read'
 import { createMobileSaveApi, type MobileSaveApiOptions } from './save'
 import { MobileWorkbookSessions } from './sessions'
+import { createMobileToolbarApi } from './toolbar'
 
 export { callSheetsEngine, SheetsEngineError, type SheetsEngineClient } from './engine'
-export { openMobileWorkbook, type OpenMobileWorkbookInput } from './open'
+export {
+  openMobileWorkbook,
+  type MobileWorkbookUnlockedCopy,
+  type OpenMobileWorkbookInput,
+} from './open'
 export { createMobileSaveApi, type MobileSaveApiOptions } from './save'
 export {
   MobileWorkbookSessions,
@@ -13,14 +19,18 @@ export {
   type MobileWorkbookSession,
 } from './sessions'
 
-/** The desktop API methods the phone implements so far (one file per area). */
+/** The desktop API methods the phone implements (one file per area). */
 export type MobileDesktopApi = ReturnType<typeof createMobileReadApi> &
-  ReturnType<typeof createMobileSaveApi>
+  ReturnType<typeof createMobileSaveApi> &
+  ReturnType<typeof createMobileToolbarApi> &
+  ReturnType<typeof createMobileAiApi>
 
 /**
- * The phone's `window.desktopApi`: the methods the reused PC grid modules call,
- * each one over the in-process engine. Areas live in their own files and are
- * spread here: the read side (`read.ts`) and the save side (`save.ts`).
+ * The phone's `window.desktopApi`: the methods the reused PC modules call,
+ * each one over the in-process engine. Each area lives in its own file and
+ * only that area's task changes it; this file spreads them:
+ * `read.ts` (grid reads, XLS-T8), `toolbar.ts` (XLS-T9), `save.ts` (save,
+ * export, XLS-T10), `ai.ts` (AI tools, XLS-T11).
  */
 export function createMobileDesktopApi(
   client: SheetsEngineClient,
@@ -29,7 +39,9 @@ export function createMobileDesktopApi(
 ): MobileDesktopApi {
   return {
     ...createMobileReadApi(client, sessions),
+    ...createMobileToolbarApi(client, sessions),
     ...createMobileSaveApi(client, sessions, saveOptions),
+    ...createMobileAiApi(client, sessions),
   }
 }
 

@@ -22,6 +22,26 @@ export interface OpenMobileWorkbookInput {
   readonly locale: string
   /** A recovery copy (base64 .xlsx) to open instead of the session's file. */
   readonly recoveryBytesBase64?: string
+  /**
+   * Runs on the working copy before anything else reads it: a
+   * password-protected workbook is replaced by its decrypted copy (see
+   * `open/unlock.ts`). Resolves `null` for a plain file.
+   */
+  readonly unlock?: (copy: {
+    readonly path: string
+    readonly ext: string
+  }) => Promise<MobileWorkbookUnlockedCopy | null>
+  /** Called once a step has a file in the work folder, so an abandoned open can delete it. */
+  readonly onTempFile?: (path: string) => void
+}
+
+/** A decrypted working copy (`open/unlock.ts`). */
+export interface MobileWorkbookUnlockedCopy {
+  readonly path: string
+  readonly size: number
+  /** The plain file's kind: the package's extension, or `xls` (converted next). */
+  readonly ext: string
+  readonly password: string
 }
 
 /** The last working copy made at open, with where its time went (prototype diagnostics). */
@@ -51,21 +71,42 @@ export async function openMobileWorkbook(
   input: OpenMobileWorkbookInput,
 ): Promise<WorkbookFile> {
   const { session } = input
-  const ext = session.ext.toLowerCase()
+  let ext = session.ext.toLowerCase()
   let snapshot: { path: string; size: number }
+  let unlocked: MobileWorkbookUnlockedCopy | null = null
   if (input.recoveryBytesBase64 !== undefined) {
     const { path } = await sheetsTempNewPath(client, 'xlsx')
+    input.onTempFile?.(path)
     await sheetsTempWriteBytes(client, path, input.recoveryBytesBase64)
     snapshot = { path, size: Math.floor((input.recoveryBytesBase64.length * 3) / 4) }
   } else {
     const started = Date.now()
     const copied = await sheetsCopySessionToTemp(client, session.sessionId, ext)
+    input.onTempFile?.(copied.path)
     lastWorkingCopy = { ...copied, totalMs: Date.now() - started }
     snapshot = { path: copied.path, size: copied.size }
+    try {
+      if (copied.size === 0 && ext === 'xlsx') {
+        // A new, untitled workbook: its session has no bytes yet.
+        const { writeBlankWorkbook } = await import('../convert/convertForOpen')
+        snapshot = { path: copied.path, size: await writeBlankWorkbook(client, copied.path) }
+      } else if (input.unlock) {
+        unlocked = await input.unlock({ path: copied.path, ext })
+        if (unlocked) {
+          input.onTempFile?.(unlocked.path)
+          snapshot = { path: unlocked.path, size: unlocked.size }
+          ext = unlocked.ext
+        }
+      }
+    } catch (error) {
+      await sheetsTempDelete(client, copied.path).catch(() => undefined)
+      throw error
+    }
   }
   const needsSaveAs = input.recoveryBytesBase64 === undefined && CONVERTED_EXTS.has(ext)
   if (needsSaveAs) {
     const { path: targetPath } = await sheetsTempNewPath(client, 'xlsx')
+    input.onTempFile?.(targetPath)
     try {
       // Loaded on first use: the gateway's import code and JSZip stay out of
       // the open chunk for .xlsx files.
@@ -90,6 +131,7 @@ export async function openMobileWorkbook(
     docKey: session.docKey,
     writable: session.writable,
     converted: needsSaveAs,
+    ...(unlocked ? { unlocked: { password: unlocked.password } } : {}),
   }
   try {
     const opened = engineOpenResultSchema.parse(

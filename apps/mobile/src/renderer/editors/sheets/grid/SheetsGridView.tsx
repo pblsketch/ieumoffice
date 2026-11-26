@@ -1,6 +1,9 @@
 /**
- * The grid screen of the provisional spreadsheet kind (lazy chunk: Univer and
- * the reused PC grid modules load only when a workbook opens).
+ * The spreadsheet grid screen (lazy chunk: Univer and the reused PC grid
+ * modules load only when a workbook opens). The grid itself belongs to the
+ * document (`SheetsGridAccess.grid`): this view builds it on first mount,
+ * attaches it while mounted and detaches it after (the settings screen), and
+ * the document's `dispose()` tears it down.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { Lang } from '@genoffice/i18n'
@@ -8,8 +11,9 @@ import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileTheme } from '@genoffice/mobile-bridge/transport'
 import type { EditorHost } from '../../editorKind'
 import type { OpenedSheetsWorkbook } from '../session'
+import type { SheetsGridAccess } from '../workspace/slots'
 import { FormulaKeyboardBar } from './FormulaKeyboardBar'
-import { createMobileGrid, type MobileGrid } from './mobileGrid'
+import { createMobileGrid } from './mobileGrid'
 import '../sheets.css'
 
 export interface SheetsGridHandle {
@@ -26,7 +30,7 @@ export interface SheetsGridViewProps {
   readonly lang: Lang
   readonly theme: MobileTheme
   readonly onEnterEdit: () => void
-  readonly handleRef: { current: SheetsGridHandle | null }
+  readonly access: SheetsGridAccess
 }
 
 function prefersDark(theme: MobileTheme): boolean {
@@ -35,9 +39,6 @@ function prefersDark(theme: MobileTheme): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-/** One grid per opened workbook, kept while the workbook stays open (also off screen). */
-const grids = new WeakMap<OpenedSheetsWorkbook, MobileGrid>()
-
 export default function SheetsGridView({
   opened,
   host,
@@ -45,7 +46,7 @@ export default function SheetsGridView({
   lang,
   theme,
   onEnterEdit,
-  handleRef,
+  access,
 }: SheetsGridViewProps) {
   const slotRef = useRef<HTMLDivElement | null>(null)
   const [editing, setEditing] = useState(false)
@@ -53,7 +54,7 @@ export default function SheetsGridView({
   onEnterEditRef.current = onEnterEdit
 
   useEffect(() => {
-    let grid = grids.get(opened)
+    let grid = access.grid
     if (!grid) {
       grid = createMobileGrid({
         lang,
@@ -61,13 +62,14 @@ export default function SheetsGridView({
         onMessage: (message) => console.info('[sheets]', message),
         onEditRequestInView: () => onEnterEditRef.current(),
         onCellEditing: (next) => setEditing(next),
+        onEdited: () => {
+          host.markDirty(true)
+          host.contentChanged()
+        },
+        onNotice: (message) => host.showToast(message),
       })
-      grids.set(opened, grid)
-      const started = performance.now()
-      void grid.load(opened.file).then(() => {
-        ;(window as unknown as Record<string, unknown>).__ieumSheetsFirstWindowMs =
-          performance.now() - started
-      })
+      access.grid = grid
+      void grid.load(opened.file)
     }
     const slot = slotRef.current
     if (slot) {
@@ -78,7 +80,7 @@ export default function SheetsGridView({
       grid.relayout()
     }
     const live = grid
-    handleRef.current = {
+    access.handle = {
       freeze(kind) {
         const sheet = live.runtime.univerAPI.getActiveWorkbook()?.getActiveSheet()
         if (!sheet) return
@@ -90,23 +92,18 @@ export default function SheetsGridView({
       redo: () => void live.runtime.univerAPI.redo(),
       resetZoom: () => live.runtime.univerAPI.getActiveWorkbook()?.getActiveSheet()?.zoom(1),
     }
-    // Diagnostics hook for the prototype drivers (preview and emulator).
-    ;(window as unknown as Record<string, unknown>).__ieumSheetsGrid = live
     return () => {
-      handleRef.current = null
-      // Detach only: the grid lives as long as the workbook (back from settings re-attaches it).
+      access.handle = null
+      // Detach only: the grid lives as long as the document (back from settings re-attaches it).
       live.element.remove()
     }
-  }, [opened, handleRef, lang, theme])
+  }, [opened, host, access, lang, theme])
 
   useEffect(() => {
-    grids.get(opened)?.setViewMode(mode === 'view')
-  }, [opened, mode])
+    access.grid?.setViewMode(mode === 'view')
+  }, [access, mode])
 
-  // The provisional kind does not save: the grid's edits stay on screen only.
-  void host
-
-  const grid = grids.get(opened)
+  const grid = access.grid
   return (
     <div className="m-sheets-stage" data-testid="sheets-stage">
       <div ref={slotRef} className="m-sheets-slot" />

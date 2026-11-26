@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { cs as open } from './open/cs'
+import { cs as grid } from './grid/cs'
+import { cs as toolbar } from './toolbar/cs'
+import { cs as save } from './save/cs'
+import { cs as ai } from './ai/cs'
 
-export const cs = {
-  sheetsProvisionalNotice: 'Zkušební mřížka: změny se zatím neukládají.',
-  sheetsLoading: 'Načítání mřížky…',
-  sheetsShareFailed: 'Tento soubor se nepodařilo sdílet.',
-  sheetsFreezeTopRow: 'Ukotvit horní řádek',
-  sheetsFreezeFirstColumn: 'Ukotvit první sloupec',
-  sheetsUnfreeze: 'Uvolnit příčky',
-  sheetsKeyboardBar: 'Nástroje pro zadávání vzorců',
-  sheetsInsertSum: 'Funkce součtu',
-  sheetsInsertParens: 'Závorky',
-  sheetsNumericKeys: 'Číselná klávesnice',
-  sheetsCancelEdit: 'Zrušit',
-  sheetsConfirmEdit: 'Hotovo',
-} as const satisfies Record<keyof typeof zh, string>
+export const cs = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

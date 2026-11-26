@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { ms as open } from './open/ms'
+import { ms as grid } from './grid/ms'
+import { ms as toolbar } from './toolbar/ms'
+import { ms as save } from './save/ms'
+import { ms as ai } from './ai/ms'
 
-export const ms = {
-  sheetsProvisionalNotice: 'Grid percubaan: perubahan anda belum disimpan.',
-  sheetsLoading: 'Memuatkan grid…',
-  sheetsShareFailed: 'Tidak dapat berkongsi fail ini.',
-  sheetsFreezeTopRow: 'Bekukan baris atas',
-  sheetsFreezeFirstColumn: 'Bekukan lajur pertama',
-  sheetsUnfreeze: 'Nyahbeku anak tetingkap',
-  sheetsKeyboardBar: 'Alat input formula',
-  sheetsInsertSum: 'Fungsi jumlah',
-  sheetsInsertParens: 'Kurungan',
-  sheetsNumericKeys: 'Papan kekunci nombor',
-  sheetsCancelEdit: 'Batal',
-  sheetsConfirmEdit: 'Selesai',
-} as const satisfies Record<keyof typeof zh, string>
+export const ms = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

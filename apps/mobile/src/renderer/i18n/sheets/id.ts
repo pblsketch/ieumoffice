@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { id as open } from './open/id'
+import { id as grid } from './grid/id'
+import { id as toolbar } from './toolbar/id'
+import { id as save } from './save/id'
+import { id as ai } from './ai/id'
 
-export const id = {
-  sheetsProvisionalNotice: 'Kisi uji coba: perubahan Anda belum disimpan.',
-  sheetsLoading: 'Memuat kisi…',
-  sheetsShareFailed: 'Tidak dapat membagikan file ini.',
-  sheetsFreezeTopRow: 'Bekukan baris atas',
-  sheetsFreezeFirstColumn: 'Bekukan kolom pertama',
-  sheetsUnfreeze: 'Lepaskan bekuan panel',
-  sheetsKeyboardBar: 'Alat input rumus',
-  sheetsInsertSum: 'Fungsi jumlah',
-  sheetsInsertParens: 'Tanda kurung',
-  sheetsNumericKeys: 'Keyboard angka',
-  sheetsCancelEdit: 'Batal',
-  sheetsConfirmEdit: 'Selesai',
-} as const satisfies Record<keyof typeof zh, string>
+export const id = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

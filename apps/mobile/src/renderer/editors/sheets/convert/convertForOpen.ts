@@ -16,7 +16,11 @@ import {
   sheetsTempStat,
   sheetsTempWriteBytes,
 } from '@genoffice/mobile-bridge/sheets'
-import { csvToXlsxBufferForOpen, decodeCsvBuffer } from '@genoffice/xlsx-gateway/gateway/csv-import'
+import {
+  blankXlsxBuffer,
+  csvToXlsxBufferForOpen,
+  decodeCsvBuffer,
+} from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { convertLegacyWorkbook } from '../../../../../../sheets/src/main/legacy-import'
 import { callSheetsEngine, type SheetsEngineClient } from '../desktop-api/engine'
 import { bytesToBase64 } from '../node-shims/buffer'
@@ -94,4 +98,17 @@ export async function convertToXlsxForOpen(
   )
   if (conversion.kind === 'html-too-large') throw new SheetsOpenConversionError('too-large')
   if (conversion.kind === 'html-no-table') throw new SheetsOpenConversionError('html-no-table')
+}
+
+/**
+ * A new, untitled workbook (one empty `Sheet1`), written to `targetPath`: the
+ * gateway's `blankXlsxBuffer`, the bytes the desktop's new workbook starts from.
+ */
+export async function writeBlankWorkbook(
+  client: SheetsEngineClient,
+  targetPath: string,
+): Promise<number> {
+  const bytes = new Uint8Array(await blankXlsxBuffer())
+  await sheetsTempWriteBytes(client, targetPath, bytesToBase64(bytes))
+  return bytes.byteLength
 }

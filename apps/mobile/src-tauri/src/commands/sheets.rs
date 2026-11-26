@@ -91,6 +91,23 @@ pub async fn mobile_sheets_request(
     .await
 }
 
+/// Answers one password request of the engine library (`probe`, `decrypt`,
+/// `encrypt`; JSON in, JSON out, see `engine-lib/src/crypto.rs`). Paths must
+/// lie inside the work folder, so a decrypted workbook only exists as a file
+/// there. Failures (a wrong password included) come back inside the answer.
+#[tauri::command]
+pub async fn mobile_sheets_crypto(
+    state: State<'_, Arc<SheetsState>>,
+    line: String,
+) -> MobileResult<tauri::ipc::Response> {
+    let sheets = state.inner().clone();
+    run_blocking(move || {
+        sheets.workspace.ensure_folders()?;
+        Ok(tauri::ipc::Response::new(sheets.engine.crypto_line(&line)))
+    })
+    .await
+}
+
 /// Copies the active document into a fresh working copy in the work folder
 /// and returns its path (the file the engine opens and saves from).
 #[tauri::command]

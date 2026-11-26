@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { ar as open } from './open/ar'
+import { ar as grid } from './grid/ar'
+import { ar as toolbar } from './toolbar/ar'
+import { ar as save } from './save/ar'
+import { ar as ai } from './ai/ar'
 
-export const ar = {
-  sheetsProvisionalNotice: 'شبكة تجريبية: لا تُحفظ تغييراتك بعد.',
-  sheetsLoading: 'جارٍ تحميل الشبكة…',
-  sheetsShareFailed: 'تعذّرت مشاركة هذا الملف.',
-  sheetsFreezeTopRow: 'تجميد الصف العلوي',
-  sheetsFreezeFirstColumn: 'تجميد العمود الأول',
-  sheetsUnfreeze: 'إلغاء تجميد الأجزاء',
-  sheetsKeyboardBar: 'أدوات إدخال الصيغ',
-  sheetsInsertSum: 'دالة الجمع',
-  sheetsInsertParens: 'أقواس',
-  sheetsNumericKeys: 'لوحة مفاتيح رقمية',
-  sheetsCancelEdit: 'إلغاء',
-  sheetsConfirmEdit: 'تم',
-} as const satisfies Record<keyof typeof zh, string>
+export const ar = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

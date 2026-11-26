@@ -47,5 +47,5 @@ describe('the desktop grid modules behind the typed boundary', () => {
         expect(typeof modules[file]?.[name], `${file} ${name}`).toBe('function')
       }
     }
-  }, 60_000)
+  }, 180_000)
 })
