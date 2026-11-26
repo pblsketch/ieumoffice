@@ -1,4 +1,5 @@
 import type { Lang } from '@genoffice/i18n'
+import { DeviceInputEventType } from '@univerjs/engine-render'
 import type { WorkbookFile } from '../../../../../../sheets/src/shared/desktop-api'
 import { setModuleLang } from '../../../../../../sheets/src/renderer/i18n/locale'
 import { applyUniverLocale } from '../../../../../../sheets/src/renderer/univer-locales'
@@ -12,6 +13,9 @@ import { installPinchZoom } from './pinchZoom'
 import { installViewportStreaming, openLazyWorkbookOnPhone } from './lazyWorkbook'
 import { pcUniverSync } from './pcGridModules'
 import { installEditJournal } from '../journal/editJournal'
+import { installEditReveal } from './editReveal'
+import { installGestureLayer } from './gestureLayer'
+import type { HeaderAxis } from './headerMenu'
 
 export interface MobileGridOptions {
   readonly lang: Lang
@@ -26,6 +30,8 @@ export interface MobileGridOptions {
   readonly onEdited?: (pending: number) => void
   /** An edit gate refused a command (the desktop's status-bar text). */
   readonly onNotice?: (message: string) => void
+  /** A long press on a row or column header in edit mode (the line menu). */
+  readonly onHeaderLongPress?: (axis: HeaderAxis, index: number, wasSelected: boolean) => void
 }
 
 /**
@@ -79,7 +85,19 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
 
   let viewMode = true
   const api = runtime.univerAPI
+  const gestures = installGestureLayer(element, runtime, {
+    isViewMode: () => viewMode,
+    onHeaderLongPress: (axis, index, wasSelected) =>
+      options.onHeaderLongPress?.(axis, index, wasSelected),
+  })
+  const disposeReveal = installEditReveal(runtime, element)
   const beforeEdit = api.addEvent(api.Event.BeforeSheetEditStart, (params) => {
+    // Univer reads two quick presses as a double click even when the first
+    // was a swipe; only a judged double tap opens the editor (spec 2.8-1).
+    if (params.eventType === DeviceInputEventType.Dblclick && !gestures.acceptsDoubleTap()) {
+      params.cancel = true
+      return
+    }
     if (!viewMode) return
     params.cancel = true
     options.onEditRequestInView()
@@ -104,6 +122,8 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
       if (disposed) return
       disposed = true
       beforeEdit.dispose()
+      gestures.dispose()
+      disposeReveal()
       editStarted.dispose()
       editEnded.dispose()
       disposePinch()
