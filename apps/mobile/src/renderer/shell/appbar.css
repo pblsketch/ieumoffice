@@ -1,0 +1,159 @@
+/* App bar, toast action, format panel.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* App bar: one primary text button, save state next to the title (5.2). */
+.mobile-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-icon-btn);
+  min-width: 0;
+  padding: 0 var(--m-space-3);
+  border: 0;
+  border-radius: var(--m-radius-full);
+  background: transparent;
+  color: var(--m-accent);
+  font-size: var(--m-text-body-s);
+  font-weight: 700;
+  position: relative;
+}
+.mobile-text-btn:active {
+  background: var(--pressed);
+}
+.mobile-text-btn::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--m-hit));
+  height: max(100%, var(--m-hit));
+  transform: translate(-50%, -50%);
+}
+.mobile-header-title-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.mobile-header-title-stack .mobile-header-title {
+  max-width: 100%;
+}
+.mobile-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  line-height: var(--m-line-tight);
+  white-space: nowrap;
+  position: relative;
+}
+.mobile-save-state:disabled {
+  opacity: 1;
+}
+.mobile-save-state:not(:disabled)::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--m-hit));
+  height: max(100%, var(--m-hit));
+  transform: translate(-50%, -50%);
+}
+.mobile-save-state[data-state='dirty'] {
+  color: var(--m-accent);
+}
+.mobile-save-state[data-state='error'] {
+  color: var(--danger);
+}
+
+.mobile-save-dot {
+  width: var(--m-space-2);
+  height: var(--m-space-2);
+  border-radius: 50%;
+  background: currentColor;
+}
+.mobile-save-state[data-state='saved'] .mobile-save-dot {
+  background: var(--success);
+}
+.mobile-btn-ai-icon {
+  color: var(--color-ai-action);
+}
+
+/* Toast action (undo etc.). */
+.mobile-toast-text {
+  min-width: 0;
+}
+.mobile-toast-action {
+  flex-shrink: 0;
+  min-height: var(--m-icon-btn);
+  min-width: 0;
+  padding: 0 var(--m-space-3);
+  border: 0;
+  border-radius: var(--m-radius-control);
+  background: transparent;
+  color: inherit;
+  font-size: var(--m-text-body-s);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.mobile-toast[data-tone='error'] {
+  background: var(--danger);
+}
+
+/* Format panel ([Aa]) and fixed buttons at the end of the bottom bar (5.4, 5.6). */
+.mobile-quick-fixed-btn {
+  flex-shrink: 0;
+}
+.mobile-quick-fixed-btn[aria-pressed='true'] {
+  color: var(--m-accent);
+  background: var(--active-bg);
+}
+.mobile-format-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+.mobile-format-group-title {
+  margin: 0 0 var(--m-space-2);
+  font-size: var(--m-text-caption);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.mobile-format-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) + var(--m-space-6)), 1fr));
+  gap: var(--m-space-2);
+}
+.mobile-format-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  height: var(--m-list-item-h);
+  min-height: 0;
+  min-width: 0;
+  padding: var(--m-space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  text-align: center;
+  word-break: keep-all;
+}
+.mobile-format-btn:active {
+  background: var(--pressed);
+}
+.mobile-format-btn svg {
+  flex-shrink: 0;
+}

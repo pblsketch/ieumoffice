@@ -1,0 +1,152 @@
+/* Mobile tokens and base element rules.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* Mobile layout, touch target, safe area, and elevation tokens.
+ * All color values reference @genoffice/ui/tokens.css variables exclusively. */
+:root {
+  /* Mobile design system tokens (.dryforge/mobile/design-system/design.md, section 3).
+   * Colors only reference @genoffice/ui/tokens.css; platform never changes these values. */
+
+  /* accent of the shell (home, settings); editors keep their desktop accent */
+  --m-accent: var(--color-brand-secondary);
+
+  /* spacing, 4px grid */
+  --m-space-half: 2px;
+  --m-space-1: 4px;
+  --m-space-2: 8px;
+  --m-space-3: 12px;
+  --m-space-4: 16px;
+  --m-space-5: 20px;
+  --m-space-6: 24px;
+  --m-space-8: 32px;
+  --m-space-10: 40px;
+
+  /* type scale (rem, so the OS text size setting scales it) */
+  --m-text-caption: 0.75rem;
+  --m-text-body-s: 0.875rem;
+  --m-text-body: 1rem;
+  --m-text-title-m: 1.0625rem;
+  --m-text-title-l: 1.375rem;
+  --m-line-tight: 1.25;
+  --m-line-body: 1.5;
+
+  /* shape */
+  --m-radius-control: var(--radius-12);
+  --m-radius-card: var(--radius-12);
+  --m-radius-sheet: 20px;
+  --m-radius-full: 999px;
+
+  /* touch target: one value on both platforms (covers iOS 44pt and Android 48dp) */
+  --m-hit: 48px;
+  --m-icon-btn: 40px;
+  --m-control-s: 32px;
+  --m-panel-w: 360px;
+
+  /* component sizes */
+  --m-appbar-h: 56px;
+  --m-toolbar-h: 56px;
+  --m-kbbar-h: 48px;
+  --m-nav-h: 64px;
+  --m-rail-w: 80px;
+  --m-fab-size: 56px;
+  --m-list-item-h: 64px;
+
+  /* motion */
+  --m-motion-fast: 120ms;
+  --m-motion-standard: 220ms;
+  --m-motion-sheet: 280ms;
+  --m-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --m-ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+
+  /* surfaces */
+  --m-scrim: var(--color-bg-overlay);
+  --m-surface-raised: var(--surface);
+  --m-system-bar: var(--surface);
+
+  /* safe area and keyboard (--m-kb is written by useViewportLayout) */
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --m-safe-left: env(safe-area-inset-left, 0px);
+  --m-safe-right: env(safe-area-inset-right, 0px);
+  --m-kb: 0px;
+
+  /* stacking */
+  --m-z-header: 20;
+  --m-z-toolbar: 30;
+  --m-z-sheet: 40;
+  --m-z-modal: 50;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--gs-font-sans);
+  background: var(--surface);
+  color: var(--text-primary);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+textarea,
+input,
+.mobile-markdown-preview,
+.mobile-plain-text-view,
+.mobile-ai-bubble {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+button {
+  font-family: inherit;
+  min-height: var(--m-hit);
+  min-width: var(--m-hit);
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+  opacity: 0.88;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-border-brand);
+  outline-offset: 2px;
+}
+
+.mobile-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: calc(-1 * var(--m-space-half));
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}

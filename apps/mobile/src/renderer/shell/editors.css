@@ -1,0 +1,186 @@
+/* Markdown and HWP editor hosts.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* ── Markdown & HWP Editors ────────────────────────────────────────────── */
+
+.mobile-md-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.mobile-markdown-preview {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--m-space-5) var(--m-space-5) calc(var(--m-fab-size) + var(--m-space-8));
+  font-size: var(--m-text-body);
+  line-height: 1.72;
+  color: var(--text-primary);
+}
+
+.mobile-markdown-preview h1,
+.mobile-markdown-preview .ai-md-h1 {
+  margin: 0 0 var(--m-space-4);
+  font-size: var(--m-text-title-l);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  padding-bottom: var(--m-space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mobile-markdown-preview h2,
+.mobile-markdown-preview .ai-md-h2 {
+  margin: var(--m-space-6) 0 var(--m-space-3);
+  font-size: var(--m-text-title-m);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.mobile-markdown-preview h3,
+.mobile-markdown-preview .ai-md-h3 {
+  margin: var(--m-space-5) 0 var(--m-space-2);
+  font-size: var(--m-text-body);
+  font-weight: 600;
+}
+
+.mobile-markdown-preview p {
+  margin: 0 0 var(--m-space-3);
+}
+
+.mobile-markdown-preview ul,
+.mobile-markdown-preview ol {
+  margin: 0 0 var(--m-space-4);
+  padding-left: var(--m-space-6);
+}
+
+.mobile-markdown-preview li + li {
+  margin-top: var(--m-space-1);
+}
+
+.mobile-markdown-preview blockquote {
+  margin: var(--m-space-3) 0;
+  padding: var(--m-space-2) var(--m-space-4);
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  border-radius: 0 var(--radius-8) var(--radius-8) 0;
+}
+
+.mobile-markdown-preview pre {
+  margin: var(--m-space-3) 0;
+  padding: var(--m-space-3) var(--m-space-4);
+  border-radius: var(--radius-8);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  font-size: var(--m-text-body-s);
+  line-height: 1.55;
+}
+
+.mobile-markdown-preview code {
+  padding: var(--m-space-half) var(--m-space-1);
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  font-size: 0.9em;
+}
+
+.mobile-markdown-preview pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.mobile-markdown-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-8);
+}
+
+.mobile-plain-text-view {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: var(--m-text-body);
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+.mobile-markdown-textarea {
+  flex: 1;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  min-height: 100%;
+  border: 0;
+  outline: none;
+  padding: var(--m-space-5) var(--m-space-5) var(--m-space-10);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--m-text-body);
+  line-height: 1.7;
+  resize: none;
+}
+
+.mobile-markdown-textarea:focus,
+.mobile-markdown-textarea:focus-visible {
+  outline: none;
+}
+
+.mobile-hwp-viewport {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+.mobile-hwp-frame-host {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--canvas);
+}
+
+.mobile-hwp-frame-host iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.mobile-hwp-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--canvas);
+  z-index: 5;
+}
+
+.mobile-spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--color-brand-secondary);
+  animation: mobile-spin 0.8s linear infinite;
+}
+
+@keyframes mobile-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

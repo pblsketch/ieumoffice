@@ -1,0 +1,262 @@
+/* Editor shell and bottom quick formatting bar.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* ── Editor Shell ──────────────────────────────────────────────────────── */
+
+.mobile-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.mobile-editor-header {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-appbar-h);
+  padding: var(--m-safe-top) calc(var(--m-space-2) + var(--m-safe-right)) 0
+    calc(var(--m-space-1) + var(--m-safe-left));
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  z-index: var(--m-z-header);
+}
+
+.mobile-header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-width: 0;
+  flex: 1;
+  padding-right: var(--m-space-1);
+}
+
+.mobile-header-title {
+  margin: 0;
+  font-size: var(--m-text-body);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--m-space-1);
+  flex-shrink: 0;
+}
+
+.mobile-editor-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-space-2);
+  padding: var(--m-space-2) var(--m-space-3) var(--m-space-2) var(--m-space-4);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.mobile-editor-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-banner-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-control-s);
+  height: var(--m-control-s);
+  min-width: var(--m-control-s);
+  min-height: var(--m-control-s);
+  border: 0;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mobile-workspace-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mobile-editor-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  position: relative;
+}
+
+.mobile-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--m-kb) + var(--m-safe-bottom) + var(--m-toolbar-h) + var(--m-space-6));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  max-width: min(calc(100vw - 2 * var(--m-space-4)), 560px);
+  min-height: var(--m-icon-btn);
+  padding: var(--m-space-2) var(--m-space-2) var(--m-space-2) var(--m-space-4);
+  border-radius: var(--m-radius-card);
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  box-shadow: var(--shadow-menu);
+  z-index: var(--m-z-modal);
+}
+
+.mobile-tablet-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  padding: var(--m-space-2) var(--m-space-3);
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.mobile-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-icon-btn);
+  padding: 0 var(--m-space-3);
+  border: 0;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.mobile-toolbar-btn:hover {
+  background: var(--bg-hover-subtle);
+}
+
+.mobile-tablet-ai-dock {
+  width: var(--m-panel-w);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  padding: var(--m-space-3);
+  min-height: 0;
+}
+
+/* ── Bottom Quick Formatting Bar ───────────────────────────────────────── */
+
+.mobile-quick-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  padding: var(--m-space-1) calc(var(--m-space-3) + var(--m-safe-right))
+    calc(var(--m-space-1) + var(--m-safe-bottom)) calc(var(--m-space-2) + var(--m-safe-left));
+  min-height: var(--m-toolbar-h);
+  background: var(--chrome-bg);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  z-index: var(--m-z-toolbar);
+}
+
+.mobile-quick-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-half);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mobile-quick-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-quick-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-primary);
+  flex-shrink: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mobile-quick-icon-btn:hover {
+  background: var(--bg-hover-subtle);
+}
+
+.mobile-quick-ai-btn {
+  flex-shrink: 0;
+}
+
+.mobile-view-fab-bar {
+  position: fixed;
+  right: calc(var(--m-space-4) + var(--m-safe-right));
+  bottom: calc(var(--m-space-5) + var(--m-safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  z-index: var(--m-z-toolbar);
+}
+
+.mobile-fab-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-menu);
+  cursor: pointer;
+}
+
+.mobile-fab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-5);
+  border: 0;
+  border-radius: var(--radius-30);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-menu);
+  cursor: pointer;
+}

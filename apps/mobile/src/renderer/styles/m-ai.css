@@ -1,0 +1,150 @@
+/* AI panel.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* ── AI Panel (IeumOffice AiPanel aesthetic) ───────────────────────────── */
+
+.mobile-ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  height: 100%;
+  min-height: 280px;
+}
+
+.mobile-ai-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-3);
+  padding: var(--m-space-8) var(--m-space-4);
+  text-align: center;
+  word-break: keep-all;
+}
+
+.mobile-ai-empty-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mobile-ai-connect-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  padding: var(--m-space-4);
+  border-radius: var(--radius-12);
+  border: 1px solid var(--border);
+  background: var(--ai-card-bg);
+}
+
+.mobile-ai-connect-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+}
+
+.mobile-ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-ai-bubble {
+  padding: var(--m-space-3) var(--m-space-4);
+  border-radius: var(--radius-12);
+  font-size: var(--m-text-body-s);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 90%;
+}
+
+.mobile-ai-user {
+  align-self: flex-end;
+  background: var(--ai-user-bubble-bg);
+  border: 1px solid var(--ai-user-bubble-border);
+}
+
+.mobile-ai-assistant {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.mobile-changes-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-space-3);
+  padding: var(--m-space-3) var(--m-space-3);
+  border-radius: var(--radius-12);
+  border: 1px solid var(--border);
+  background: var(--ai-card-bg);
+  font-size: var(--m-text-body-s);
+}
+
+.mobile-changes-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-ai-composer {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  padding: var(--m-space-1) var(--m-space-1) var(--m-space-1) var(--m-space-4);
+  border-radius: var(--radius-30);
+  border: 1px solid var(--border-strong);
+  background: var(--ai-composer-bg);
+  box-shadow: var(--ai-composer-shadow);
+}
+
+.mobile-ai-composer:focus-within {
+  border-color: var(--color-border-brand);
+  box-shadow: 0 0 0 3px var(--ai-composer-focus-ring);
+}
+
+.mobile-ai-composer-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--m-text-body-s);
+}
+
+.mobile-ai-composer-input:focus-visible {
+  outline: none;
+}
+
+.mobile-ai-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}

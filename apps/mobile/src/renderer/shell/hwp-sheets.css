@@ -1,0 +1,183 @@
+/* HWP flow view, memo, single-choice and document check sheets.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* HWP flow (reading) view over the page editor (design system 5.3). */
+.mobile-hwp-flow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+.mobile-hwp-flow-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--surface);
+}
+.mobile-hwp-layer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mobile-hwp-layer[data-hidden='true'] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* HWP memo sheet */
+.mobile-memo-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-memo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.mobile-memo {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+}
+
+.mobile-memo[data-reply] {
+  margin-inline-start: var(--m-space-6);
+  background: var(--surface-subtle);
+}
+
+.mobile-memo-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  width: 100%;
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-memo-meta {
+  color: var(--text-secondary);
+  font-size: var(--m-text-caption);
+}
+
+.mobile-memo-text {
+  font-size: var(--m-text-body-s);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mobile-memo-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-1);
+  padding: 0 var(--m-space-2) var(--m-space-2);
+}
+
+.mobile-memo-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.mobile-memo-composer .mobile-memo-actions {
+  padding: 0;
+}
+
+.mobile-memo-input {
+  resize: vertical;
+}
+
+.mobile-memo-empty,
+.mobile-memo-error {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.mobile-memo-error {
+  color: var(--danger);
+}
+
+/* single-choice sheets (page numbers) */
+.mobile-choice-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) * 2.5), 1fr));
+  gap: var(--m-space-2);
+}
+
+.mobile-choice-btn {
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  cursor: pointer;
+}
+
+.mobile-choice-btn[aria-checked='true'] {
+  border-color: var(--color-btn-primary);
+  box-shadow: inset 0 0 0 1px var(--color-btn-primary);
+  font-weight: 700;
+}
+
+/* HWP document check sheet */
+.mobile-check-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.mobile-check-summary,
+.mobile-check-head,
+.mobile-check-places,
+.mobile-check-place-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--m-space-2);
+}
+
+.mobile-check-finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  padding: var(--m-space-3);
+}
+
+.mobile-check-badge {
+  padding: 0 var(--m-space-2);
+  border-radius: var(--radius-8);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--m-text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.mobile-check-badge[data-severity='violation'] {
+  color: var(--danger);
+  border-color: var(--danger);
+}

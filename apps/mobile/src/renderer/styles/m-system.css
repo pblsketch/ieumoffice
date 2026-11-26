@@ -1,0 +1,75 @@
+/* Touch targets, window classes, reduced motion, sheet stops.
+ * Moved verbatim from mobile-tokens.css (design system split); the import order there
+ * keeps the original cascade. Colors only reference @genoffice/ui/tokens.css variables. */
+
+/* Touch target: small-looking controls still take a --m-hit square press. */
+.mobile-pill-btn,
+.mobile-filter-pill,
+.mobile-toolbar-btn {
+  position: relative;
+}
+.mobile-pill-btn::before,
+.mobile-filter-pill::before,
+.mobile-toolbar-btn::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--m-hit));
+  height: max(100%, var(--m-hit));
+  transform: translate(-50%, -50%);
+}
+
+/* Window classes (data-window on <html>, written by useViewportLayout). */
+:root[data-window='medium'] .mobile-page-body,
+:root[data-window='expanded'] .mobile-page-body,
+:root[data-window='large'] .mobile-page-body {
+  padding-left: calc(var(--m-space-6) + var(--m-safe-left));
+  padding-right: calc(var(--m-space-6) + var(--m-safe-right));
+}
+
+/* Reduce motion: no sliding or scaling, only instant changes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Sheet stops, drag and keyboard (design system 5.5). */
+.mobile-sheet-layer {
+  padding-bottom: var(--m-kb);
+}
+.mobile-sheet-surface[data-detent='large'] {
+  height: calc(100dvh - var(--m-safe-top) - var(--m-kb) - var(--m-space-6));
+}
+.mobile-sheet-surface[data-dragging='true'] {
+  transition: none;
+}
+.mobile-sheet-grip {
+  padding-top: var(--m-space-2);
+  touch-action: none;
+  cursor: grab;
+}
+.mobile-sheet-layer-nonmodal {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: var(--m-z-sheet);
+}
+.mobile-sheet-layer-nonmodal .mobile-sheet-surface {
+  pointer-events: auto;
+}
+:root[data-window='medium'] .mobile-sheet-surface,
+:root[data-window='expanded'] .mobile-sheet-surface,
+:root[data-window='large'] .mobile-sheet-surface {
+  max-width: 640px;
+}
