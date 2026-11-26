@@ -17,6 +17,31 @@ export interface OutlineDoc extends MarkDoc {
   getPageInfo?(pageNum: number): string
   getPageNumberPos?(sec: number): string
   getPageNumberPosition?(sec: number): string
+  applyStyle?(sec: number, para: number, styleId: number): string
+  getParaPropertiesAt?(sec: number, para: number): string
+  setParaShapeId?(sec: number, para: number, paraShapeId: number): string
+  getLogicalLength?(sec: number, para: number): number
+  copySelection?(
+    sec: number,
+    startPara: number,
+    startCharOffset: number,
+    endPara: number,
+    endCharOffset: number,
+  ): string
+  copySelectionLogical?(
+    sec: number,
+    startPara: number,
+    startLogicalOffset: number,
+    endPara: number,
+    endLogicalOffset: number,
+  ): string
+  pasteInternal?(sec: number, para: number, charOffset: number): string
+  clearClipboard?(): void
+  insertParagraph?(sec: number, para: number): string
+  deleteParagraph?(sec: number, para: number): string
+  getControls?(): string
+  getFieldList?(): string
+  getMemoList?(): string
 }
 
 export interface OutlineItem {
@@ -77,7 +102,92 @@ export declare function readOutline(
   options?: ReadOutlineOptions,
 ): ReadOutlineResult
 
+export interface OutlinePlace {
+  sec: number
+  para: number
+  offset: number
+  length: number
+}
+
+export interface OutlineLevelChange {
+  sec: number
+  para: number
+  fromLevel: number
+  toLevel: number
+  styleName: string
+}
+
+export interface ChangeOutlineLevelParams {
+  sec: number
+  para: number
+  delta: 1 | -1
+  singleOnly?: boolean
+  appStyleMap?: OutlineStyleMap | null
+}
+
+export type ChangeOutlineLevelResult =
+  | {
+      ok: true
+      changed: OutlineLevelChange[]
+      place: OutlinePlace
+    }
+  | {
+      ok: false
+      reason:
+        | 'not_found'
+        | 'unsupported_place'
+        | 'level_out_of_range'
+        | 'no_mapped_style'
+        | 'missing_style_in_doc'
+      title?: string
+      sec?: number
+      para?: number
+      fromLevel?: number
+      targetLevel?: number
+      styleName?: string
+    }
+
+export interface MoveOutlineSectionParams {
+  source: { sec: number; para: number }
+  target: { sec: number; para: number }
+  position: 'before' | 'after'
+  appStyleMap?: OutlineStyleMap | null
+}
+
+export type MoveOutlineSectionResult =
+  | {
+      ok: true
+      movedParagraphs: number
+      newStart: { sec: number; para: number }
+      place: OutlinePlace
+    }
+  | {
+      ok: false
+      reason:
+        | 'not_found'
+        | 'unsupported_place'
+        | 'cross_section'
+        | 'first_para_layout'
+        | 'target_inside_source'
+        | 'no_change'
+        | 'objects_changed'
+        | 'bookmarks_lost'
+        | 'engine_error'
+      error?: string
+      mutated?: boolean
+    }
+
 export declare function findActiveOutlineIndex(
   items: readonly Pick<OutlineItem, 'sec' | 'para'>[],
   caret: OutlineCaret | null | undefined,
 ): number
+
+export declare function changeOutlineLevel(
+  doc: OutlineDoc | null | undefined,
+  params: ChangeOutlineLevelParams,
+): ChangeOutlineLevelResult
+
+export declare function moveOutlineSection(
+  doc: OutlineDoc | null | undefined,
+  params: MoveOutlineSectionParams,
+): MoveOutlineSectionResult
