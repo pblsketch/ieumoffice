@@ -95,6 +95,21 @@ describe('the HTML preview copy', () => {
     expect(source).toContain('http-equiv="refresh"')
   })
 
+  it.each([
+    ['a slash before the attribute', '<meta/http-equiv="refresh" content="0;url=https://e.com">'],
+    ['a ">" in an earlier quoted value', '<meta content="a>b" http-equiv=refresh>'],
+    ['upper case and spaces', "<META HTTP-EQUIV = ' Refresh ' content='0'>"],
+  ])('takes away a meta refresh spelled with %s', (_name, tag) => {
+    const copy = copyOf(`<head>${tag}</head><p>a</p>`)
+    const metas = copy.match(/<meta(?:[^>"']|"[^"]*"|'[^']*')*>/gi) ?? []
+    const refresh = metas.filter((m) =>
+      /(?:^|[\s/])http-equiv\s*=\s*["']?\s*refresh/i.test(m.slice(5)),
+    )
+    expect(refresh).toHaveLength(0)
+    // the copy's own policy tag keeps working
+    expect(copy).toContain('<meta http-equiv="Content-Security-Policy"')
+  })
+
   it('tells whether the source has a script element', () => {
     expect(hasDocumentScript(mapDocument(PAGE, 0, null))).toBe(true)
     expect(hasDocumentScript(mapDocument('<!-- <script> --><p>a</p>', 0, null))).toBe(false)

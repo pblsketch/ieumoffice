@@ -23,8 +23,32 @@ const EMPTY_INSPECTOR = '<script data-gx-inspector></script>'
 /** A doctype after any leading whitespace and comments. */
 const LEADING_DOCTYPE = /^(?:\s|<!--[\s\S]*?-->)*<!doctype[^>]*>/i
 
-/** `<meta http-equiv="refresh">` would move the frame to another page; the copy drops its effect. */
-const META_REFRESH = /(<meta\b[^>]*?\s)http-equiv(\s*=\s*(["']?)\s*refresh\b)/gi
+/** A `<meta>` start tag, reading quoted values whole (a `>` inside one does not end the tag). */
+const META_TAG = /<meta(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>?/gi
+
+/** One attribute of a start tag: its name, then an optional quoted or unquoted value. */
+const TAG_ATTRIBUTE = /([^\s/>"'=]+)(\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*)))?/g
+
+/**
+ * `<meta http-equiv="refresh">` would move the frame to another page. In the copies only, the
+ * `http-equiv` attribute of such a tag is renamed, however it is spelled (`<meta/http-equiv=…>`,
+ * a `>` in an earlier quoted value, any case or quoting). Other `<meta>` tags stay as they are.
+ */
+function neutraliseMetaRefresh(html: string): string {
+  return html.replace(META_TAG, (tag) => {
+    TAG_ATTRIBUTE.lastIndex = 5 // after `<meta`
+    let out = ''
+    let copied = 0
+    for (let m = TAG_ATTRIBUTE.exec(tag); m; m = TAG_ATTRIBUTE.exec(tag)) {
+      const value = m[3] ?? m[4] ?? m[5]
+      if (m[1].toLowerCase() === 'http-equiv' && value?.trim().toLowerCase() === 'refresh') {
+        out += `${tag.slice(copied, m.index)}data-gx-${m[1]}`
+        copied = m.index + m[1].length
+      }
+    }
+    return out + tag.slice(copied)
+  })
+}
 
 /**
  * The desktop instrumenter with no inspector: its element ids, without the `<script
@@ -69,10 +93,7 @@ export function buildPreviewCopy(source: string, map: ParseMap): string {
         : entry,
     ),
   }
-  return instrumentWithoutInspector(withMeta, shifted).replace(
-    META_REFRESH,
-    '$1data-gx-http-equiv$2',
-  )
+  return neutraliseMetaRefresh(instrumentWithoutInspector(withMeta, shifted))
 }
 
 /**
@@ -82,10 +103,7 @@ export function buildPreviewCopy(source: string, map: ParseMap): string {
  */
 export function buildExportCopy(source: string, map: ParseMap): string {
   const at = cspOffset(source, map)
-  return (source.slice(0, at) + CSP_META + source.slice(at)).replace(
-    META_REFRESH,
-    '$1data-gx-http-equiv$2',
-  )
+  return neutraliseMetaRefresh(source.slice(0, at) + CSP_META + source.slice(at))
 }
 
 /** The source (not a preview copy) has a script element that the phone does not run. */
