@@ -262,7 +262,7 @@ describe('mobile PDF tools strings', () => {
   })
 
   it('keeps every reused key equal to the PC window text in all 22 languages', () => {
-    expect(LANGS).toHaveLength(22)
+    expect(Object.keys(pdfToolsStrings).sort()).toEqual([...LANGS].sort())
     expect(LANGS).toContain('tr')
     for (const lang of LANGS) {
       const mobile: Record<string, string> = pdfToolsStrings[lang]
