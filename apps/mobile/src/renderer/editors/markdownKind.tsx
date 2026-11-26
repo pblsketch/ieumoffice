@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import {
-  base64ToUtf8,
+  base64ToBytes,
   createMobileMarkdownApi,
   createMobileMarkdownSkill,
   type MobileMarkdownApi,
+  type MobileMarkdownOpenedText,
 } from '@genoffice/mobile-bridge/markdown'
 import { isMobileCommandError, type MobileDocSession } from '@genoffice/mobile-bridge/transport'
 import { translateMobile } from '../i18n'
@@ -55,14 +56,17 @@ export const markdownEditorKind: EditorKind = {
   recoveryFormat: () => 'md',
   async open({ session, client, isUntitled, recoveryBytesBase64 }) {
     const markdownApi = createMobileMarkdownApi(client)
-    const text = recoveryBytesBase64
-      ? base64ToUtf8(recoveryBytesBase64)
+    // A recovery copy's own bytes decide its envelope (BOM, line ends), like a file's do.
+    const opened: MobileMarkdownOpenedText = recoveryBytesBase64
+      ? markdownApi.openFromBytes(session, base64ToBytes(recoveryBytesBase64))
       : isUntitled
-        ? ''
-        : (await markdownApi.readDocument(session)).text
+        ? { text: '' }
+        : await markdownApi.readDocument(session)
+    // Not UTF-8: edited text would be saved garbled, so this document is view and share only.
+    const readOnly = opened.utf8 === false
     return {
-      noticeKey: null,
-      start: (host) => startMarkdownDocument(host, markdownApi, session, text),
+      noticeKey: readOnly ? 'webNotUtf8Notice' : null,
+      start: (host) => startMarkdownDocument(host, markdownApi, session, opened.text, readOnly),
     }
   },
 }
@@ -72,6 +76,7 @@ function startMarkdownDocument(
   markdownApi: MobileMarkdownApi,
   openedSession: MobileDocSession,
   openedText: string,
+  readOnly: boolean,
 ): EditorDocument {
   const tNow = host.translate
   const showToast = host.showToast
@@ -268,6 +273,7 @@ function startMarkdownDocument(
 
   return {
     save: saveDocumentInternal,
+    editable: !readOnly,
 
     async share(doc) {
       const text = readMarkdown()
