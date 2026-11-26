@@ -39,6 +39,7 @@ pub fn run() {
             // T3 pdf tools state
 
             // T4 html state
+            app.manage(Arc::new(commands::html::MobileWebState::new(resolve_file_bridge(app.handle()))));
 
             // T5 readers state
 
@@ -86,6 +87,7 @@ pub fn run() {
             // T3 pdf tools
 
             // T4 html
+            commands::html::mobile_web_save_new_file,
 
             // T5 readers
 

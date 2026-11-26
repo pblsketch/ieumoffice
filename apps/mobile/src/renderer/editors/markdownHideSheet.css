@@ -1,0 +1,50 @@
+/* The name sheet of "hide from AI" in the Markdown editor (spec 4.4). */
+.mobile-sheet-layer[data-testid='web-hide-sheet'] .mobile-sheet-surface {
+  height: auto;
+}
+
+.web-hide-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  padding-bottom: var(--m-space-2);
+}
+
+.web-hide-hint {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+}
+
+.web-hide-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+}
+
+.web-hide-field-label {
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+}
+
+/* the placeholder the model will read, as it is typed */
+.web-hide-marker {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--m-text-body-s);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.web-hide-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
+
+.web-hide-actions .mobile-pill-btn {
+  height: var(--m-hit);
+}
+
+.web-hide-actions .mobile-pill-btn:disabled {
+  opacity: 0.4;
+}
