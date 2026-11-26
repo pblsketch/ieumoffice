@@ -24,3 +24,9 @@ PC "PDF 도구" 창과 모바일 [도구] 화면이 함께 쓰는 PDF 도구 처
 
 - `npm run typecheck -w @genoffice/pdf-ops`, `npm run test -w @genoffice/pdf-ops`
 - PC 쪽: `apps/pdf`, `apps/shell`의 vitest 전부, `npm run build -w @genoffice/shell`
+
+## 진입점과 pdf-lib
+
+- `.`(`src/index.ts`)는 모든 모듈을 내보낸다. pdf-lib을 쓰는 모듈(`tools.ts`의 실행기, `split.ts`, `images.ts`, `compress.ts` …)도 들어 있다. 패키지는 `"sideEffects": false`다.
+- 화면·preload 코드는 pdf-lib 없는 진입점만 가져온다: `./tool-ids`(도구 id·선택지·옵션 형·용량 단계), `./tool-rules`(`checkOptions`, `outputNames`, 입력 수, `splitPlanFromOptions`, `PdfToolRefusal` …), `./split-plan`(분할 계획·이름), `./page-range`. 이 넷은 pdf-lib·다른 무거운 모듈을 가져오지 않는다. pdf-lib 모듈을 여기에 섞으면 PC 도구 창 화면 묶음(0.35MB → 1.1MB)과 모바일 도구 화면 덩어리가 다시 커진다.
+- 모듈 사이에서 같은 이름을 두 번 내보내지 않는다(`index.ts`가 `export *`로 모은다).
