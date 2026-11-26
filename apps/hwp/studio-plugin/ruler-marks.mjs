@@ -63,8 +63,9 @@ const PAGE_HIT_X = 4
 
 /**
  * px (zoom 1, 96 dpi) to the paragraph's stored unit (200 to a point), on a tenth of a point
- * as the paragraph dialog shows it. The value must be even: the engine draws a paragraph whose
- * margin or indent is odd in that unit five times as far in.
+ * as the paragraph dialog shows it. The value must be even: the lowest bit of the stored value
+ * marks its unit, and an odd one counts characters of the base style (rhwp #7816, as Hancom
+ * Hangul reads it), so a dropped mark would land about five times as far in.
  */
 const toParaUnits = (px) => 20 * Math.round((px * 150) / 20)
 

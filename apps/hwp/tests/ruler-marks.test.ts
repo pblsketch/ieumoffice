@@ -97,7 +97,7 @@ describe('ruler paragraph marks', () => {
   })
 
   it('writes even values on a tenth of a point, which the engine draws where they are', () => {
-    // 12.34 pt and 7.77 pt: px * 150 would be odd units, which the engine draws five times as far in
+    // 12.34 pt and 7.77 pt: px * 150 would be odd, which reads as character units
     const state = { first: 12.34 * PT, rest: 19.77 * PT, right: 7.77 * PT }
     const left = paraMarkProps('paraRest', state)
     const right = paraMarkProps('paraRight', state)

@@ -1797,9 +1797,10 @@ const FONT_LANGUAGES = 7
 /** Paragraph indents, margins and spacing come to the engine at twice their HWPUNIT, 100 to a point. */
 const PARA_UNITS_PER_PT = 200
 /**
- * Points as the paragraph unit, always an even number: the engine draws a paragraph whose
- * margin or indent is odd in that unit five times as far in (a margin of 1999 sits at 66.6 pt,
- * not 10), and the paragraph dialog writes even values only.
+ * Points as the paragraph unit, always an even number: the lowest bit of the stored value marks
+ * its unit, and an odd one counts characters of the base style (rhwp #7816, as Hancom Hangul
+ * reads it), so a margin of 1999 sits at 66.6 pt, not 10. The paragraph dialog writes even
+ * values only.
  */
 const paraUnitsOf = (points) => 2 * Math.round((points * PARA_UNITS_PER_PT) / 2)
 /** What a paragraph's indent, margins and spacing may be set to, in points. */
