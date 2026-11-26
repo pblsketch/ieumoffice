@@ -92,12 +92,7 @@ export type SheetsCryptoAnswer<T> =
  * integrity check failed), `not_encrypted`, `io`, `invalid_request`.
  */
 export type SheetsCryptoErrorCode =
-  | 'wrong_password'
-  | 'unsupported'
-  | 'damaged'
-  | 'not_encrypted'
-  | 'io'
-  | 'invalid_request'
+  'wrong_password' | 'unsupported' | 'damaged' | 'not_encrypted' | 'io' | 'invalid_request'
 
 export interface SheetsEncryptionProbe {
   readonly encrypted: boolean
