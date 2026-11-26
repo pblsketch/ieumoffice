@@ -10,6 +10,17 @@ import type { MobilePdfToolId } from '../catalog'
 import type { ToolOptionsError } from '../options'
 import { optionsErrorKey } from './format'
 
+/** Errors the option forms show under their own field; the sheet then only announces them */
+const FIELD_ERRORS: ReadonlySet<string> = new Set([
+  'range',
+  'invalid-size',
+  'no-kinds',
+  'password-empty',
+  'password-long',
+  'password-same',
+  'password-mismatch',
+])
+
 export interface OptionsSheetProps {
   readonly title: string
   readonly tool: MobilePdfToolId
@@ -46,7 +57,11 @@ export function OptionsSheet({
         {finding && <p className="mobile-muted">{t('pdfToolsNoteBlank')}</p>}
         {children}
         {error && (
-          <p className="pdf-tools-error" role="alert" data-testid="pdf-tools-options-error">
+          <p
+            className={FIELD_ERRORS.has(error) ? 'mobile-sr-only' : 'pdf-tools-error'}
+            role="alert"
+            data-testid="pdf-tools-options-error"
+          >
             {t(optionsErrorKey(error))}
           </p>
         )}
