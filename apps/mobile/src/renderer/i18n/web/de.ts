@@ -85,4 +85,5 @@ export const de = {
   webHtmlDeleted: 'Element gelöscht. Mit Rückgängig holen Sie es zurück.',
   webExportSavedShapeLoss:
     'Als {name} gespeichert. Einige grafische Elemente konnten nicht übernommen werden.',
+  webExportPictureMissing: '[Grafik nicht übernommen]',
 } as const satisfies Record<keyof typeof zh, string>

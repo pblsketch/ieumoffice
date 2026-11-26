@@ -82,4 +82,5 @@ export const pt = {
   webHtmlDeleted: 'Elemento excluído. Desfazer o traz de volta.',
   webExportSavedShapeLoss:
     'Salvo como {name}. Alguns elementos visuais não puderam ser transferidos.',
+  webExportPictureMissing: '[Imagem não transferida]',
 } as const satisfies Record<keyof typeof zh, string>

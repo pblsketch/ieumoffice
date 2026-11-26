@@ -80,4 +80,5 @@ export const en = {
   webHtmlEditFailed: "Couldn't make the change. Select the element again.",
   webHtmlDeleted: 'Element deleted. Undo brings it back.',
   webExportSavedShapeLoss: 'Saved as {name}. Some visuals could not be carried over.',
+  webExportPictureMissing: '[Picture not carried over]',
 } as const satisfies Record<keyof typeof zh, string>

@@ -81,4 +81,5 @@ export const vi = {
   webHtmlDeleted: 'Đã xóa phần tử. Hoàn tác để lấy lại.',
   webExportSavedShapeLoss:
     'Đã lưu thành {name}. Không chuyển sang được một số thành phần hình ảnh.',
+  webExportPictureMissing: '[Hình không chuyển sang được]',
 } as const satisfies Record<keyof typeof zh, string>

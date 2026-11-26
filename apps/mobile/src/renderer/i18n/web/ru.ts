@@ -81,4 +81,5 @@ export const ru = {
   webHtmlDeleted: 'Элемент удалён. Его можно вернуть отменой.',
   webExportSavedShapeLoss:
     'Сохранено как {name}. Некоторые графические элементы перенести не удалось.',
+  webExportPictureMissing: '[Изображение не перенесено]',
 } as const satisfies Record<keyof typeof zh, string>

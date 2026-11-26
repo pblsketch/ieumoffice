@@ -80,4 +80,5 @@ export const cs = {
   webHtmlEditFailed: 'Změnu se nepodařilo provést. Vyberte prvek znovu.',
   webHtmlDeleted: 'Prvek byl smazán. Vrácením zpět ho obnovíte.',
   webExportSavedShapeLoss: 'Uloženo jako {name}. Některé grafické prvky se nepodařilo přenést.',
+  webExportPictureMissing: '[Obrázek nebyl přenesen]',
 } as const satisfies Record<keyof typeof zh, string>

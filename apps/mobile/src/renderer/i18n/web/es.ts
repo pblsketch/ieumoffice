@@ -82,4 +82,5 @@ export const es = {
   webHtmlDeleted: 'Elemento eliminado. Deshacer lo recupera.',
   webExportSavedShapeLoss:
     'Guardado como {name}. Algunos elementos visuales no se pudieron conservar.',
+  webExportPictureMissing: '[Imagen no conservada]',
 } as const satisfies Record<keyof typeof zh, string>

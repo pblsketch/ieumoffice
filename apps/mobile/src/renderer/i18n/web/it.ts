@@ -82,4 +82,5 @@ export const it = {
   webHtmlDeleted: 'Elemento eliminato. Annulla lo ripristina.',
   webExportSavedShapeLoss:
     'Salvato come {name}. Non è stato possibile riportare alcuni elementi grafici.',
+  webExportPictureMissing: '[Immagine non riportata]',
 } as const satisfies Record<keyof typeof zh, string>

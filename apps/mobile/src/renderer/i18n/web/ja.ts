@@ -81,4 +81,5 @@ export const ja = {
   webHtmlEditFailed: '変更できませんでした。要素を選び直してください。',
   webHtmlDeleted: '要素を削除しました。元に戻すで復元できます。',
   webExportSavedShapeLoss: '{name} として保存しました。一部の図や装飾は移せませんでした。',
+  webExportPictureMissing: '[移せなかった図]',
 } as const satisfies Record<keyof typeof zh, string>

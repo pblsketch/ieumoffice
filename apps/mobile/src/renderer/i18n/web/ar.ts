@@ -80,4 +80,5 @@ export const ar = {
   webHtmlEditFailed: 'تعذّر إجراء التغيير. اختر العنصر مرة أخرى.',
   webHtmlDeleted: 'حُذف العنصر. يمكنك استعادته بالتراجع.',
   webExportSavedShapeLoss: 'تم الحفظ باسم {name}. تعذر نقل بعض العناصر المرئية.',
+  webExportPictureMissing: '[صورة تعذر نقلها]',
 } as const satisfies Record<keyof typeof zh, string>

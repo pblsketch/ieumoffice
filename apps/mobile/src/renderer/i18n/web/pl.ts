@@ -82,4 +82,5 @@ export const pl = {
   webHtmlDeleted: 'Element usunięty. Cofnij, aby go przywrócić.',
   webExportSavedShapeLoss:
     'Zapisano jako {name}. Nie udało się przenieść niektórych elementów graficznych.',
+  webExportPictureMissing: '[Nie przeniesiono grafiki]',
 } as const satisfies Record<keyof typeof zh, string>

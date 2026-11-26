@@ -80,4 +80,5 @@ export const he = {
   webHtmlEditFailed: 'לא ניתן היה לבצע את השינוי. בחרו את הרכיב שוב.',
   webHtmlDeleted: 'הרכיב נמחק. ביטול הפעולה יחזיר אותו.',
   webExportSavedShapeLoss: 'נשמר בשם {name}. לא ניתן היה להעביר חלק מהרכיבים החזותיים.',
+  webExportPictureMissing: '[תמונה שלא הועברה]',
 } as const satisfies Record<keyof typeof zh, string>

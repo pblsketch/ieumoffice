@@ -79,4 +79,5 @@ export const zhTW = {
   webHtmlEditFailed: '無法修改。請重新選取元素。',
   webHtmlDeleted: '已刪除元素。可用復原找回。',
   webExportSavedShapeLoss: '已儲存為 {name}。部分圖形和裝飾未能保留。',
+  webExportPictureMissing: '[未能保留的圖形]',
 } as const satisfies Record<keyof typeof zh, string>

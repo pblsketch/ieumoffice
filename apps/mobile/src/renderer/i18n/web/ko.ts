@@ -79,4 +79,5 @@ export const ko = {
   webHtmlEditFailed: '고치지 못했습니다. 요소를 다시 골라 보세요.',
   webHtmlDeleted: '요소를 지웠습니다. 되돌리기로 되살릴 수 있습니다.',
   webExportSavedShapeLoss: '{name}(으)로 저장했습니다. 일부 모양은 옮기지 못했습니다.',
+  webExportPictureMissing: '[옮기지 못한 그림]',
 } as const satisfies Record<keyof typeof zh, string>

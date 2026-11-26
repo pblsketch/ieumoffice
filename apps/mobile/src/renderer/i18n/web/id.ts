@@ -82,4 +82,5 @@ export const id = {
   webHtmlDeleted: 'Elemen dihapus. Urungkan untuk mengembalikannya.',
   webExportSavedShapeLoss:
     'Disimpan sebagai {name}. Beberapa elemen visual tidak dapat dipindahkan.',
+  webExportPictureMissing: '[Gambar tidak dapat dipindahkan]',
 } as const satisfies Record<keyof typeof zh, string>

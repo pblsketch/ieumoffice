@@ -84,4 +84,5 @@ export const fr = {
   webHtmlDeleted: 'Élément supprimé. Annuler le rétablit.',
   webExportSavedShapeLoss:
     'Enregistré sous {name}. Certains éléments visuels n’ont pas pu être repris.',
+  webExportPictureMissing: '[Image non reprise]',
 } as const satisfies Record<keyof typeof zh, string>

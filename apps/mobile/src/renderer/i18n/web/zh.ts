@@ -77,4 +77,5 @@ export const zh = {
   webHtmlEditFailed: '无法修改。请重新选择元素。',
   webHtmlDeleted: '已删除元素。可用撤销恢复。',
   webExportSavedShapeLoss: '已保存为 {name}。部分图形和装饰未能保留。',
+  webExportPictureMissing: '[未能保留的图形]',
 } as const

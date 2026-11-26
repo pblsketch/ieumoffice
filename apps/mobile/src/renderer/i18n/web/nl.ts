@@ -84,4 +84,5 @@ export const nl = {
   webHtmlDeleted: 'Element verwijderd. Met Ongedaan maken komt het terug.',
   webExportSavedShapeLoss:
     'Opgeslagen als {name}. Sommige visuele elementen konden niet worden overgenomen.',
+  webExportPictureMissing: '[Afbeelding niet overgenomen]',
 } as const satisfies Record<keyof typeof zh, string>

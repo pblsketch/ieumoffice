@@ -80,4 +80,5 @@ export const tr = {
   webHtmlEditFailed: 'Değişiklik yapılamadı. Öğeyi yeniden seçin.',
   webHtmlDeleted: 'Öğe silindi. Geri al ile geri getirebilirsiniz.',
   webExportSavedShapeLoss: '{name} olarak kaydedildi. Bazı görsel öğeler aktarılamadı.',
+  webExportPictureMissing: '[Görsel aktarılamadı]',
 } as const satisfies Record<keyof typeof zh, string>
