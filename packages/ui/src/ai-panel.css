@@ -136,17 +136,11 @@
   text-align: center;
 }
 
+/* The empty state opens with its title. A rounded icon tile stacked over a
+ * heading is the stock look of generated screens, and the panel header above
+ * already carries the same mark. The editors still render the element. */
 .ai-chat-empty-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 14px;
-  border-radius: var(--radius-12);
-  border: 1px solid var(--border-subtle);
-  background: var(--ai-card-bg);
-  color: var(--color-text-primary);
+  display: none;
 }
 
 .ai-chat-empty-title {
@@ -956,4 +950,12 @@
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-tertiary);
+}
+
+/* Thin scrollbars without arrow buttons: the platform default (arrowed, on
+   Windows) looked like a form control in the middle of the panel. */
+.ai-chat,
+.ai-composer {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }

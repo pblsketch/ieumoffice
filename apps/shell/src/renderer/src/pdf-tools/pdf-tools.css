@@ -520,6 +520,14 @@ body {
   background: var(--accent-soft);
 }
 
+/* files picked: the list is the box, so the zone around it drops its own
+ * frame instead of nesting one card in another; a drag still lights it up */
+.pt-dropzone:has(.pt-list):not(.is-drag-over) {
+  padding: 0;
+  border-color: transparent;
+  background: none;
+}
+
 /* nothing picked yet: a roomy target, the button and its hint centred */
 .pt-dropzone:not(:has(.pt-list)) {
   min-height: 120px;
@@ -1018,4 +1026,11 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+/* thin scrollbars without arrow buttons, as in the AI panel */
+.pt-body,
+.pt-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }

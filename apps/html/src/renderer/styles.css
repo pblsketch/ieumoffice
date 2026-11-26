@@ -2426,6 +2426,12 @@ button.status-item[aria-pressed='true'] {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ai-wait-chip-arrow {
+    animation: none;
+  }
+}
+
 /* ---- brief card (plan_page) ---- */
 
 .brief-card {

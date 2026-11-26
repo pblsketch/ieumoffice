@@ -1483,3 +1483,10 @@
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+/* thin scrollbars without arrow buttons, as in the AI panel */
+.set-pane,
+.set-nav {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}

@@ -2395,3 +2395,10 @@ html[dir='rtl'] .quick-title-row {
 .kb-ask-assistant a:hover {
   text-decoration: underline;
 }
+
+/* thin scrollbars without arrow buttons, as in the AI panel */
+.content,
+.sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}

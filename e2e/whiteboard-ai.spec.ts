@@ -275,9 +275,9 @@ test.describe('Whiteboard AI panel', () => {
         await board.locator('.ai-rail').click()
       }
 
-      // Wait for empty state badge & starters
+      // Wait for the empty state title & starters (the badge tile is hidden by design)
       await expect(board.locator('.ai-panel-header')).toBeVisible()
-      await expect(board.locator('.ai-chat-empty-badge')).toBeVisible()
+      await expect(board.locator('.ai-chat-empty-title')).toBeVisible()
       await expect(board.locator('.ai-starter')).toHaveCount(4)
       await expect(board.locator('.ai-chat-empty-hints')).toBeVisible()
 
