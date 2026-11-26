@@ -13,8 +13,13 @@ import type { EditorHost } from '../../editorKind'
 import type { OpenedSheetsWorkbook } from '../session'
 import type { SheetsGridAccess } from '../workspace/slots'
 import { FormulaKeyboardBar } from './FormulaKeyboardBar'
-import { createMobileGrid } from './mobileGrid'
+import { HeaderMenuSheet } from './HeaderMenuSheet'
+import { SheetSwitcher } from './SheetSwitcher'
+import { applyFreeze } from './ViewMenuSheet'
+import { selectHeaderLine, type HeaderAxis } from './headerMenu'
+import { createMobileGrid, type MobileGrid } from './mobileGrid'
 import '../sheets.css'
+import './grid.css'
 
 export interface SheetsGridHandle {
   freeze(kind: 'row' | 'column' | 'none'): void
@@ -50,6 +55,9 @@ export default function SheetsGridView({
 }: SheetsGridViewProps) {
   const slotRef = useRef<HTMLDivElement | null>(null)
   const [editing, setEditing] = useState(false)
+  const [headerMenu, setHeaderMenu] = useState<HeaderAxis | null>(null)
+  // The grid is built in the effect below; this re-renders the bars around it once it is.
+  const [grid, setGrid] = useState<MobileGrid | null>(access.grid)
   const onEnterEditRef = useRef(onEnterEdit)
   onEnterEditRef.current = onEnterEdit
 
@@ -67,6 +75,12 @@ export default function SheetsGridView({
           host.contentChanged()
         },
         onNotice: (message) => host.showToast(message),
+        onHeaderLongPress: (axis, index, wasSelected) => {
+          const live = access.grid
+          if (!live) return
+          selectHeaderLine(live.runtime, axis, index, wasSelected)
+          setHeaderMenu(axis)
+        },
       })
       access.grid = grid
       void grid.load(opened.file)
@@ -80,14 +94,9 @@ export default function SheetsGridView({
       grid.relayout()
     }
     const live = grid
+    setGrid(live)
     access.handle = {
-      freeze(kind) {
-        const sheet = live.runtime.univerAPI.getActiveWorkbook()?.getActiveSheet()
-        if (!sheet) return
-        if (kind === 'none') sheet.cancelFreeze()
-        else if (kind === 'row') sheet.setFrozenRows(1)
-        else sheet.setFrozenColumns(1)
-      },
+      freeze: (kind) => applyFreeze(live.runtime, kind),
       undo: () => void live.runtime.univerAPI.undo(),
       redo: () => void live.runtime.univerAPI.redo(),
       resetZoom: () => live.runtime.univerAPI.getActiveWorkbook()?.getActiveSheet()?.zoom(1),
@@ -101,13 +110,22 @@ export default function SheetsGridView({
 
   useEffect(() => {
     access.grid?.setViewMode(mode === 'view')
+    if (mode === 'view') setHeaderMenu(null)
   }, [access, mode])
 
-  const grid = access.grid
   return (
     <div className="m-sheets-stage" data-testid="sheets-stage">
       <div ref={slotRef} className="m-sheets-slot" />
+      {grid && <SheetSwitcher runtime={grid.runtime} mode={mode} lang={lang} />}
       {editing && grid && mode === 'edit' && <FormulaKeyboardBar grid={grid} lang={lang} />}
+      {grid && (
+        <HeaderMenuSheet
+          runtime={grid.runtime}
+          axis={mode === 'edit' ? headerMenu : null}
+          lang={lang}
+          onClose={() => setHeaderMenu(null)}
+        />
+      )}
     </div>
   )
 }

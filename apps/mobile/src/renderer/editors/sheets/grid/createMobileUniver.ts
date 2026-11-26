@@ -113,7 +113,9 @@ export function createMobileUniver(options: MobileUniverOptions): UniverRuntime 
           container: options.container,
           header: true,
           toolbar: false,
-          footer: true,
+          // The sheet switcher is ours (grid/SheetSwitcher.tsx: 48 px tabs,
+          // add and rename in edit mode); Univer's mobile sheet bar is not shown.
+          footer: false,
           contextMenu: true,
           // Univer focuses its hidden cell input at start, which raises the
           // virtual keyboard on open (seen on Android); the grid opens to read.
@@ -124,10 +126,7 @@ export function createMobileUniver(options: MobileUniverOptions): UniverRuntime 
       UniverFormulaEnginePlugin,
       // OOXML resolves style defaults as cell over row over column (as on the desktop).
       [UniverSheetsPlugin, { isRowStylePrecedeColumnStyle: true }],
-      [
-        UniverSheetsMobileUIPlugin,
-        { formulaBar: true, footer: { sheetBar: true, statisticBar: false, menus: false } },
-      ],
+      [UniverSheetsMobileUIPlugin, { formulaBar: true, footer: false }],
       UniverSheetsNumfmtPlugin,
       UniverSheetsFormulaPlugin,
       // Desktop plugin: Univer's cell editor (EditorContainer) draws the
