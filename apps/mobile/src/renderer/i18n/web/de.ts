@@ -37,4 +37,17 @@ export const de = {
   webOdtFeatProtection: 'Bearbeitungseinschränkungen und Schreibschutzempfehlung',
   webOdtFeatFormField: 'Formularfelder',
   webOdtFeatObject: 'Andere Objekte',
+  webFindReplace: 'Suchen und ersetzen',
+  webFindQuery: 'Suchen',
+  webFindReplacement: 'Ersetzen durch',
+  webFindPrev: 'Vorheriger Treffer',
+  webFindNext: 'Nächster Treffer',
+  webFindNoMatch: 'Keine Treffer',
+  webFindReplaceOne: 'Ersetzen',
+  webFindReplaceAll: 'Alle ersetzen',
+  webFindEditToReplace: 'Zum Ersetzen bearbeiten',
+  webFindReplacedCount: '{count} ersetzt.',
+  webFindReplaceBlocked:
+    'Nicht ersetzt: Dadurch würde ein vor der KI verborgener Abschnitt beschädigt.',
+  webFindClose: 'Schließen',
 } as const satisfies Record<keyof typeof zh, string>

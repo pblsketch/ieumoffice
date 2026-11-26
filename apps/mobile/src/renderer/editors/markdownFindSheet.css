@@ -1,0 +1,57 @@
+/* Find and replace sheet of the Markdown editor (spec 4.2). Non-modal and only as tall
+ * as its rows, so the match stays visible above it; Sheet keeps it above the keyboard. */
+.mobile-sheet-layer[data-testid='web-find-sheet'] .mobile-sheet-surface {
+  height: auto;
+}
+
+.web-find-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  padding-bottom: var(--m-space-2);
+}
+
+.web-find-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-width: 0;
+}
+
+.web-find-row-end {
+  justify-content: flex-end;
+}
+
+.web-find-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.web-find-count {
+  flex-shrink: 0;
+  min-width: var(--m-space-10);
+  text-align: center;
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.web-find-row .mobile-pill-btn {
+  flex-shrink: 0;
+  height: var(--m-hit);
+}
+
+.web-find-row .mobile-icon-btn:disabled,
+.web-find-row .mobile-pill-btn:disabled {
+  opacity: 0.4;
+}
+
+/* matches in the view-mode preview (CSS Custom Highlight API, the DOM is unchanged) */
+::highlight(web-find) {
+  background-color: var(--search-hit-bg);
+}
+
+::highlight(web-find-current) {
+  background-color: var(--search-hit-active-bg);
+  color: var(--search-hit-active-ink);
+}

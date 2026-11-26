@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import type { ConversionReport } from '@genoffice/odt-engine'
 import { WEB_EXPORT_MIME, saveNewFile } from '@genoffice/mobile-bridge/html'
 import {
@@ -22,7 +22,9 @@ import {
   type MarkdownMobileEditorHandle,
   type MarkdownQuickAction,
 } from './MarkdownMobileEditor'
+import { MarkdownFindSheet } from './markdownFindSheet'
 import { OdtConfirmSheet } from './markdownOdtConfirmSheet'
+import { IconWebFind } from '../components/icons/web'
 
 /** Values of one open document that outlive its Workspace (unmounted on the settings screen). */
 interface MarkdownKeptState {
@@ -240,8 +242,11 @@ function startMarkdownDocument(
     }
   }
 
-  function MarkdownWorkspace({ frame, mode, lang }: EditorWorkspaceProps) {
+  function MarkdownWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
     const { markdownText, zoomScale, odtReport } = useSyncExternalStore(kept.subscribe, kept.get)
+    const [findOpen, setFindOpen] = useState(false)
+    const closeFind = useCallback(() => setFindOpen(false), [])
+    const getEditor = useCallback(() => markdownEditorRef.current, [])
     const activeFormat = frame.docFormat
     const tNow = useCallback(
       (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key),
@@ -310,8 +315,14 @@ function startMarkdownDocument(
           {...frame}
           quickActions={quickActions}
           formatGroups={formatGroups}
-          moreItems={
-            activeFormat === 'md'
+          moreItems={[
+            {
+              id: 'webFindReplace',
+              label: tNow('webFindReplace'),
+              icon: <IconWebFind size={19} />,
+              onPress: () => setFindOpen(true),
+            },
+            ...(activeFormat === 'md'
               ? [
                   {
                     id: 'markdownToHwp',
@@ -329,8 +340,8 @@ function startMarkdownDocument(
                     onPress: () => void exportMarkdown('odt'),
                   },
                 ]
-              : []
-          }
+              : []),
+          ]}
           viewTools={[]}
           onFitToWidth={() => {
             kept.set({ zoomScale: 1 })
@@ -349,6 +360,16 @@ function startMarkdownDocument(
             onErrorNotice={(key) => setNoticeBanner(tNow(key))}
           />
         </EditorShell>
+        <MarkdownFindSheet
+          open={findOpen}
+          onClose={closeFind}
+          mode={mode}
+          canEdit={canEdit}
+          text={markdownText}
+          getEditor={getEditor}
+          onEnterEdit={frame.onEnterEdit}
+          notify={showToast}
+        />
         <OdtConfirmSheet
           open={odtReport !== null}
           items={odtReport ?? []}

@@ -37,4 +37,17 @@ export const ms = {
   webOdtFeatProtection: 'Sekatan pengeditan dan cadangan baca sahaja',
   webOdtFeatFormField: 'Medan borang',
   webOdtFeatObject: 'Objek lain',
+  webFindReplace: 'Cari dan ganti',
+  webFindQuery: 'Cari',
+  webFindReplacement: 'Ganti dengan',
+  webFindPrev: 'Hasil sebelumnya',
+  webFindNext: 'Hasil seterusnya',
+  webFindNoMatch: 'Tiada hasil',
+  webFindReplaceOne: 'Ganti',
+  webFindReplaceAll: 'Ganti semua',
+  webFindEditToReplace: 'Sunting untuk ganti',
+  webFindReplacedCount: '{count} diganti.',
+  webFindReplaceBlocked:
+    'Tidak diganti: ini akan merosakkan bahagian yang disembunyikan daripada AI.',
+  webFindClose: 'Tutup',
 } as const satisfies Record<keyof typeof zh, string>
