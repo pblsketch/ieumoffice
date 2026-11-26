@@ -1,11 +1,6 @@
 import type { AgentSkill, AgentToolCall, AgentToolDef, ToolExecution } from '@genoffice/agent-core'
 import { brandText } from '@genoffice/i18n'
-import {
-  IDENTITY_TEXT_ENVELOPE,
-  parseTextEnvelope,
-  serializeTextEnvelope,
-  type TextEnvelope,
-} from '../html/text-envelope'
+import { createTextSessionStore, type OpenedText } from '../html/text-sessions'
 import { WEB_EXPORT_MIME, saveNewFile, type SaveNewFileResult } from '../html/save-new-file'
 import { MobileCommandError, type MobileClient, type MobileDocSession } from '../transport'
 import {
@@ -134,10 +129,7 @@ export interface MobileMarkdownApiOptions {
 }
 
 /** The text of an opened document; `utf8: false` when the file is not valid UTF-8 (view only). */
-export interface MobileMarkdownOpenedText {
-  readonly text: string
-  readonly utf8?: false
-}
+export type MobileMarkdownOpenedText = OpenedText
 
 export interface MobileMarkdownApi {
   /** Reads the file and remembers its envelope (BOM, line ends) and bytes for this session. */
@@ -172,15 +164,6 @@ export interface MobileMarkdownApi {
   printDocument(): Promise<UnsupportedMobileResult>
 }
 
-interface TextRecord {
-  readonly envelope: TextEnvelope
-  /** The body as the editor got it (no BOM, LF). */
-  readonly body: string
-  /** The bytes the body came from; written back unchanged while the body is unchanged. */
-  readonly bytes: Uint8Array
-  readonly utf8: boolean
-}
-
 export function createMobileMarkdownApi(
   client: MobileClient,
   options: MobileMarkdownApiOptions = {},
@@ -188,38 +171,9 @@ export function createMobileMarkdownApi(
   const maxInlineImageBytes = options.maxInlineImageBytes ?? MAX_MOBILE_INLINE_IMAGE_BYTES
 
   /** Per session: the envelope, the body as read and the bytes it was read from (spec 3.1). */
-  const texts = new Map<string, TextRecord>()
-
-  const remember = (sessionId: string, bytes: Uint8Array): MobileMarkdownOpenedText => {
-    const { body, envelope, utf8 } = parseTextEnvelope(bytes)
-    texts.set(sessionId, { envelope, body, bytes, utf8 })
-    return utf8 ? { text: body } : { text: body, utf8: false }
-  }
-
-  /** The bytes to write for `text`: the original bytes when unchanged, else the text in its envelope. */
-  const bytesFor = (session: MobileDocSession | null, text: string): Uint8Array => {
-    const record = session ? texts.get(session.sessionId) : undefined
-    if (!record) return serializeTextEnvelope(text, IDENTITY_TEXT_ENVELOPE)
-    if (text === record.body) return record.bytes
-    if (!record.utf8) {
-      throw new MobileCommandError({
-        code: 'INVALID_ARGUMENT',
-        messageKey: 'webNotUtf8Notice',
-        detail: 'Edited text of a non-UTF-8 file cannot be written in its encoding.',
-      })
-    }
-    return serializeTextEnvelope(text, record.envelope)
-  }
-
-  /** After a write: what is on disk now is this session's original. */
-  const written = (sessionId: string, text: string, bytes: Uint8Array, from?: TextRecord) => {
-    texts.set(sessionId, {
-      envelope: from?.envelope ?? IDENTITY_TEXT_ENVELOPE,
-      body: text,
-      bytes,
-      utf8: from?.utf8 ?? true,
-    })
-  }
+  const texts = createTextSessionStore()
+  const remember = texts.remember
+  const bytesFor = texts.bytesFor
 
   return {
     async readDocument(session) {
@@ -241,7 +195,7 @@ export function createMobileMarkdownApi(
       }
       const bytes = bytesFor(session, markdownText)
       await client.saveFileBytes(session.sessionId, bytesToBase64(bytes))
-      written(session.sessionId, markdownText, bytes, texts.get(session.sessionId))
+      texts.written(session.sessionId, markdownText, bytes)
       await client.recoveryDiscard(session.docKey).catch(() => {})
       return { ok: true }
     },
@@ -255,9 +209,8 @@ export function createMobileMarkdownApi(
         format,
         bytesBase64: bytesToBase64(bytes),
       })
-      const from = session ? texts.get(session.sessionId) : undefined
-      if (session) texts.delete(session.sessionId)
-      written(nextSession.sessionId, markdownText, bytes, from)
+      texts.written(nextSession.sessionId, markdownText, bytes, session)
+      if (session && session.sessionId !== nextSession.sessionId) texts.forget(session.sessionId)
       if (session) {
         await client.recoveryDiscard(session.docKey).catch(() => {})
       }
