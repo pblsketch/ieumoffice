@@ -1,0 +1,277 @@
+/*
+ * The EPUB reading screen (track T5). Chrome colours are tokens of
+ * @genoffice/ui (tokens.css). The papers below are the reading view's own
+ * values, the same names and values as the PC EPUB editor
+ * (apps/epub/src/renderer/styles.css), read by the PC frameColors() for the
+ * chapter frame; they do not follow the app theme.
+ */
+
+:root {
+  --epub-paper: #ffffff;
+  --epub-ink: #1b1b1b;
+  --epub-night-paper: #1c1c1e;
+  --epub-night-ink: #d9d7d2;
+  --epub-night-link: #8ab4f8;
+  --epub-sepia-paper: #f5ecd7;
+  --epub-sepia-ink: #4a3b2a;
+}
+
+.epub-reader {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--epub-paper);
+  color: var(--epub-ink);
+}
+
+.epub-reader[data-theme='sepia'] {
+  background: var(--epub-sepia-paper);
+  color: var(--epub-sepia-ink);
+}
+
+.epub-reader[data-theme='dark'] {
+  background: var(--epub-night-paper);
+  color: var(--epub-night-ink);
+}
+
+.epub-reader-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.epub-reader-frame {
+  display: block;
+  border: 0;
+  background: transparent;
+}
+
+.epub-reader-frame[data-fixed='true'] {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+  background: var(--epub-paper);
+}
+
+.epub-reader-failed {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-3);
+  padding: var(--m-space-6);
+  text-align: center;
+  font-size: var(--m-text-body);
+}
+
+.epub-reader-failed p {
+  margin: 0;
+}
+
+/* the position line: always takes its space, so hiding it does not re-paginate */
+.epub-reader-line {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-2) var(--m-safe-bottom);
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-tight);
+}
+
+/* keep clear of the floating view tools on phones (contents, search, settings) */
+.mobile-shell-phone .epub-reader-line {
+  padding-inline-end: calc(var(--m-hit) * 3 + var(--m-space-2) * 2 + var(--m-space-4));
+}
+
+.epub-reader-line[data-hidden='true'] > * {
+  visibility: hidden;
+}
+
+.epub-reader-turn {
+  width: var(--m-hit);
+  height: var(--m-hit);
+  color: inherit;
+}
+
+.epub-reader-turn[data-side='left'] svg {
+  transform: scaleX(-1);
+}
+
+.epub-reader-chapter {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epub-reader-where {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* opening placeholder (design system 5.12) */
+.epub-reader-opening {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-4);
+  padding: var(--m-space-6);
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.epub-reader-opening-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  width: min(100%, calc(var(--m-panel-w) * 0.6));
+  aspect-ratio: 3 / 4;
+  padding: var(--m-space-6) var(--m-space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--surface-subtle);
+}
+
+.epub-reader-opening-line {
+  display: block;
+  height: var(--m-space-2);
+  border-radius: var(--m-radius-full);
+  background: var(--border-subtle);
+}
+
+.epub-reader-opening-line[data-short='true'] {
+  width: 60%;
+}
+
+/* sheets */
+.epub-sheet-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.epub-toc-list,
+.epub-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.epub-toc-entry,
+.epub-search-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--m-space-1);
+  width: 100%;
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 0;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  text-align: start;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.epub-toc-entry[aria-current='true'] {
+  background: var(--active-bg);
+  font-weight: 700;
+}
+
+.epub-toc-entry:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.epub-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.epub-search-chapter {
+  color: var(--text-secondary);
+  font-size: var(--m-text-caption);
+}
+
+.epub-search-snippet {
+  overflow-wrap: anywhere;
+}
+
+.epub-search-snippet mark {
+  background: var(--search-hit-active-bg);
+  color: var(--search-hit-active-ink);
+}
+
+.epub-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.epub-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.epub-settings-title {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+}
+
+.epub-font-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+}
+
+.epub-font-value {
+  min-width: calc(var(--m-hit) * 1.5);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.epub-settings .mobile-choice-btn:disabled,
+.epub-font-row button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.epub-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.epub-link-url {
+  margin: 0;
+  padding: var(--m-space-2) var(--m-space-3);
+  border-radius: var(--radius-8);
+  background: var(--surface-subtle);
+  font-size: var(--m-text-body-s);
+  overflow-wrap: anywhere;
+}
+
+.epub-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
