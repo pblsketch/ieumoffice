@@ -543,7 +543,12 @@ test.describe('mind map editor in the shell', () => {
       // message the drop bridge sends from the preload is sent here instead
       await app.evaluate(
         ({ ipcMain }, dropped) => {
-          ipcMain.emit('app:open-dropped-files', {}, [dropped, 'C:\\not-a-document.png'])
+          // a real preload message carries its window as the sender; the drop
+          // handler records the dropped paths as granted to that window
+          ipcMain.emit('app:open-dropped-files', { sender: { id: -1 } }, [
+            dropped,
+            'C:\\not-a-document.png',
+          ])
         },
         join(outside, 'dropped.xmind'),
       )
