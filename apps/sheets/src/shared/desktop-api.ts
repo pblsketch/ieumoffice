@@ -2868,7 +2868,11 @@ export const aiSettingsInputSchema = z
     meteredAccepted: z.record(z.string(), z.boolean()).optional(),
     // decision 0114: only a vendor CLI, and only a literal true, turns one off
     subscriptionOff: z
-      .object({ 'claude-code': z.literal(true).optional(), codex: z.literal(true).optional() })
+      .object({
+        'claude-code': z.literal(true).optional(),
+        codex: z.literal(true).optional(),
+        antigravity: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
     headlessSubscriptionEnabled: z.boolean().optional(),

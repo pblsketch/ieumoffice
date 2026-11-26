@@ -96,7 +96,11 @@ describe('aiSettingsFromStored (ai:get-settings)', () => {
       file({ provider: 'codex', meteredAccepted: { codex: true }, subscriptionNoticeSeen: true }),
     )
     const parsed = aiSettingsInputSchema.parse(JSON.parse(JSON.stringify(settings)))
-    expect(parsed.meteredAccepted).toEqual({ 'claude-code': false, codex: true })
+    expect(parsed.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: true,
+      antigravity: false,
+    })
     expect(parsed.subscriptionNoticeSeen).toBe(true)
     expect(parsed.headlessSubscriptionEnabled).toBe(false)
     expect(parsed.headlessSubscriptionConsentVersion).toBe(0)
@@ -441,7 +445,11 @@ describe('withMeteredAccepted', () => {
       meteredAccepted: { 'claude-code': true },
     })
     const next = withMeteredAccepted(stored, 'codex', true)
-    expect(next.meteredAccepted).toEqual({ 'claude-code': true, codex: true })
+    expect(next.meteredAccepted).toEqual({
+      'claude-code': true,
+      codex: true,
+      antigravity: false,
+    })
     expect(next.provider).toBe('codex')
     expect(next.providers.codex.model).toBe('gpt-5')
     expect(stored.meteredAccepted).toEqual({ 'claude-code': true })
@@ -449,7 +457,11 @@ describe('withMeteredAccepted', () => {
 
   it('takes the acceptance back', () => {
     const next = withMeteredAccepted(file({ meteredAccepted: { codex: true } }), 'codex', false)
-    expect(next.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(next.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
   })
 
   it('writes settings that still carry the flag when read back, even from no file at all', () => {
@@ -458,6 +470,7 @@ describe('withMeteredAccepted', () => {
       expect(aiSettingsFromStored(written).meteredAccepted).toEqual({
         'claude-code': true,
         codex: false,
+        antigravity: false,
       })
       // and the strict save schema of the settings channel takes them
       expect(() => aiSettingsInputSchema.parse(written)).not.toThrow()
