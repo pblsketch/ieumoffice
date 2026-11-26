@@ -77,6 +77,7 @@ export const hi = {
   webHtmlEditInSource: 'इस एलिमेंट को सोर्स में संपादित करें।',
   webHtmlGoToSource: 'सोर्स में संपादित करें',
   webHtmlCannotDelete: 'html, head और body एलिमेंट हटाए नहीं जा सकते।',
+  webHtmlCannotHide: 'html, head और body एलिमेंट AI से छिपाए नहीं जा सकते।',
   webHtmlEditFailed: 'बदलाव नहीं हो सका। एलिमेंट फिर से चुनें।',
   webHtmlDeleted: 'एलिमेंट हटा दिया गया। पूर्ववत करके उसे वापस ला सकते हैं।',
 } as const satisfies Record<keyof typeof zh, string>

@@ -76,6 +76,7 @@ export const tr = {
   webHtmlEditInSource: 'Bu öğeyi kaynakta düzenleyin.',
   webHtmlGoToSource: 'Kaynakta düzenle',
   webHtmlCannotDelete: 'html, head ve body öğeleri silinemez.',
+  webHtmlCannotHide: 'html, head ve body öğeleri AI’dan gizlenemez.',
   webHtmlEditFailed: 'Değişiklik yapılamadı. Öğeyi yeniden seçin.',
   webHtmlDeleted: 'Öğe silindi. Geri al ile geri getirebilirsiniz.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -77,6 +77,7 @@ export const id = {
   webHtmlEditInSource: 'Edit elemen ini di sumber.',
   webHtmlGoToSource: 'Edit di sumber',
   webHtmlCannotDelete: 'Elemen html, head, dan body tidak dapat dihapus.',
+  webHtmlCannotHide: 'Elemen html, head, dan body tidak dapat disembunyikan dari AI.',
   webHtmlEditFailed: 'Perubahan tidak dapat dibuat. Pilih elemen lagi.',
   webHtmlDeleted: 'Elemen dihapus. Urungkan untuk mengembalikannya.',
 } as const satisfies Record<keyof typeof zh, string>

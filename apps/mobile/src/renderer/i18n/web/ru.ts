@@ -76,6 +76,7 @@ export const ru = {
   webHtmlEditInSource: 'Измените этот элемент в исходном коде.',
   webHtmlGoToSource: 'Изменить в исходном коде',
   webHtmlCannotDelete: 'Элементы html, head и body удалить нельзя.',
+  webHtmlCannotHide: 'Элементы html, head и body нельзя скрыть от ИИ.',
   webHtmlEditFailed: 'Не удалось внести изменение. Выберите элемент ещё раз.',
   webHtmlDeleted: 'Элемент удалён. Его можно вернуть отменой.',
 } as const satisfies Record<keyof typeof zh, string>

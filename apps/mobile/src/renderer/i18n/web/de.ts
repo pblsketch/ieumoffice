@@ -80,6 +80,7 @@ export const de = {
   webHtmlEditInSource: 'Bearbeiten Sie dieses Element im Quelltext.',
   webHtmlGoToSource: 'Im Quelltext bearbeiten',
   webHtmlCannotDelete: 'Die Elemente html, head und body können nicht gelöscht werden.',
+  webHtmlCannotHide: 'Die Elemente html, head und body können nicht vor der KI verborgen werden.',
   webHtmlEditFailed: 'Die Änderung war nicht möglich. Wählen Sie das Element erneut aus.',
   webHtmlDeleted: 'Element gelöscht. Mit Rückgängig holen Sie es zurück.',
 } as const satisfies Record<keyof typeof zh, string>

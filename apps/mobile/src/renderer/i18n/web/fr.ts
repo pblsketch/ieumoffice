@@ -79,6 +79,7 @@ export const fr = {
   webHtmlEditInSource: 'Modifiez cet élément dans la source.',
   webHtmlGoToSource: 'Modifier dans la source',
   webHtmlCannotDelete: 'Les éléments html, head et body ne peuvent pas être supprimés.',
+  webHtmlCannotHide: 'Les éléments html, head et body ne peuvent pas être masqués à l’IA.',
   webHtmlEditFailed: 'Impossible d’appliquer la modification. Sélectionnez à nouveau l’élément.',
   webHtmlDeleted: 'Élément supprimé. Annuler le rétablit.',
 } as const satisfies Record<keyof typeof zh, string>

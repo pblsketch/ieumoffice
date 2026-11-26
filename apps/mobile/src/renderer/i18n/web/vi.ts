@@ -76,6 +76,7 @@ export const vi = {
   webHtmlEditInSource: 'Hãy sửa phần tử này trong mã nguồn.',
   webHtmlGoToSource: 'Sửa trong mã nguồn',
   webHtmlCannotDelete: 'Không thể xóa các phần tử html, head và body.',
+  webHtmlCannotHide: 'Không thể ẩn các phần tử html, head và body khỏi AI.',
   webHtmlEditFailed: 'Không thể thực hiện thay đổi. Hãy chọn lại phần tử.',
   webHtmlDeleted: 'Đã xóa phần tử. Hoàn tác để lấy lại.',
 } as const satisfies Record<keyof typeof zh, string>

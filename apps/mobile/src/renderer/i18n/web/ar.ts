@@ -76,6 +76,7 @@ export const ar = {
   webHtmlEditInSource: 'عدّل هذا العنصر في المصدر.',
   webHtmlGoToSource: 'التعديل في المصدر',
   webHtmlCannotDelete: 'لا يمكن حذف العناصر html وhead وbody.',
+  webHtmlCannotHide: 'لا يمكن إخفاء العناصر html وhead وbody عن الذكاء الاصطناعي.',
   webHtmlEditFailed: 'تعذّر إجراء التغيير. اختر العنصر مرة أخرى.',
   webHtmlDeleted: 'حُذف العنصر. يمكنك استعادته بالتراجع.',
 } as const satisfies Record<keyof typeof zh, string>

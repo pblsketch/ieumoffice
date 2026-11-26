@@ -75,6 +75,7 @@ export const zhTW = {
   webHtmlEditInSource: '請在原始碼中編輯此元素。',
   webHtmlGoToSource: '在原始碼中編輯',
   webHtmlCannotDelete: '無法刪除 html、head 和 body 元素。',
+  webHtmlCannotHide: '無法對 AI 隱藏 html、head 和 body 元素。',
   webHtmlEditFailed: '無法修改。請重新選取元素。',
   webHtmlDeleted: '已刪除元素。可用復原找回。',
 } as const satisfies Record<keyof typeof zh, string>

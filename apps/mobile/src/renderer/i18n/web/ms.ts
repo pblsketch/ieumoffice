@@ -79,6 +79,7 @@ export const ms = {
   webHtmlEditInSource: 'Edit elemen ini dalam sumber.',
   webHtmlGoToSource: 'Edit dalam sumber',
   webHtmlCannotDelete: 'Elemen html, head dan body tidak boleh dipadam.',
+  webHtmlCannotHide: 'Elemen html, head dan body tidak boleh disembunyikan daripada AI.',
   webHtmlEditFailed: 'Perubahan tidak dapat dibuat. Pilih elemen sekali lagi.',
   webHtmlDeleted: 'Elemen dipadam. Buat asal untuk mengembalikannya.',
 } as const satisfies Record<keyof typeof zh, string>

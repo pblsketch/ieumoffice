@@ -79,6 +79,7 @@ export const nl = {
   webHtmlEditInSource: 'Bewerk dit element in de bron.',
   webHtmlGoToSource: 'Bewerken in bron',
   webHtmlCannotDelete: 'De elementen html, head en body kunnen niet worden verwijderd.',
+  webHtmlCannotHide: 'De elementen html, head en body kunnen niet voor de AI worden verborgen.',
   webHtmlEditFailed: 'De wijziging is niet gelukt. Selecteer het element opnieuw.',
   webHtmlDeleted: 'Element verwijderd. Met Ongedaan maken komt het terug.',
 } as const satisfies Record<keyof typeof zh, string>

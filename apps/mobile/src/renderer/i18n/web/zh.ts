@@ -73,6 +73,7 @@ export const zh = {
   webHtmlEditInSource: '请在源代码中编辑此元素。',
   webHtmlGoToSource: '在源代码中编辑',
   webHtmlCannotDelete: '无法删除 html、head 和 body 元素。',
+  webHtmlCannotHide: '无法对 AI 隐藏 html、head 和 body 元素。',
   webHtmlEditFailed: '无法修改。请重新选择元素。',
   webHtmlDeleted: '已删除元素。可用撤销恢复。',
 } as const

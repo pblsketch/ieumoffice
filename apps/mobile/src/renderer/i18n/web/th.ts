@@ -75,6 +75,7 @@ export const th = {
   webHtmlEditInSource: 'โปรดแก้ไของค์ประกอบนี้ในซอร์ส',
   webHtmlGoToSource: 'แก้ไขในซอร์ส',
   webHtmlCannotDelete: 'ลบองค์ประกอบ html, head และ body ไม่ได้',
+  webHtmlCannotHide: 'ซ่อนองค์ประกอบ html, head และ body จาก AI ไม่ได้',
   webHtmlEditFailed: 'แก้ไขไม่สำเร็จ โปรดเลือกองค์ประกอบอีกครั้ง',
   webHtmlDeleted: 'ลบองค์ประกอบแล้ว เลิกทำเพื่อกู้คืนได้',
 } as const satisfies Record<keyof typeof zh, string>

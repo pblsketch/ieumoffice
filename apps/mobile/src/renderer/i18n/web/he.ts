@@ -76,6 +76,7 @@ export const he = {
   webHtmlEditInSource: 'ערכו רכיב זה בקוד המקור.',
   webHtmlGoToSource: 'עריכה בקוד המקור',
   webHtmlCannotDelete: 'אי אפשר למחוק את הרכיבים html, head ו-body.',
+  webHtmlCannotHide: 'אי אפשר להסתיר את הרכיבים html, head ו-body מה-AI.',
   webHtmlEditFailed: 'לא ניתן היה לבצע את השינוי. בחרו את הרכיב שוב.',
   webHtmlDeleted: 'הרכיב נמחק. ביטול הפעולה יחזיר אותו.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -76,6 +76,7 @@ export const en = {
   webHtmlEditInSource: 'Edit this element in the source.',
   webHtmlGoToSource: 'Edit in source',
   webHtmlCannotDelete: 'The html, head and body elements cannot be deleted.',
+  webHtmlCannotHide: 'The html, head and body elements cannot be hidden from the AI.',
   webHtmlEditFailed: "Couldn't make the change. Select the element again.",
   webHtmlDeleted: 'Element deleted. Undo brings it back.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -77,6 +77,7 @@ export const ja = {
   webHtmlEditInSource: 'この要素はソースで編集してください。',
   webHtmlGoToSource: 'ソースで編集',
   webHtmlCannotDelete: 'html・head・body 要素は削除できません。',
+  webHtmlCannotHide: 'html・head・body 要素は AI から隠せません。',
   webHtmlEditFailed: '変更できませんでした。要素を選び直してください。',
   webHtmlDeleted: '要素を削除しました。元に戻すで復元できます。',
 } as const satisfies Record<keyof typeof zh, string>

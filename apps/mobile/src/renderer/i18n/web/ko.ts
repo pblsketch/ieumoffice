@@ -75,6 +75,7 @@ export const ko = {
   webHtmlEditInSource: '이 요소는 소스에서 고치세요.',
   webHtmlGoToSource: '소스에서 고치기',
   webHtmlCannotDelete: 'html·head·body 요소는 지울 수 없습니다.',
+  webHtmlCannotHide: 'html·head·body 요소는 AI에게 숨길 수 없습니다.',
   webHtmlEditFailed: '고치지 못했습니다. 요소를 다시 골라 보세요.',
   webHtmlDeleted: '요소를 지웠습니다. 되돌리기로 되살릴 수 있습니다.',
 } as const satisfies Record<keyof typeof zh, string>
