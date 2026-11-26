@@ -166,3 +166,4 @@
 | [0168](0168-files-panel-beside-editors.md)                    | 편집기 탭 옆에 파일 목록 칸을 두고, 칸은 문서를 덮지 않고 옆으로 민다                                             | 2026-11-26 |
 | [0169](0169-hwp-ruler-paragraph-marks.md)                     | 한글 눈금자에 한컴식 문단 마커 넷과 이름을 두고, AI가 둘째 줄 시작 위치를 맞추고 점검한다                         | 2026-11-26 |
 | [0170](0170-antigravity-acp-subscription.md)                  | Google Antigravity 구독을 공식 ACP 클라이언트(`agy acp`)로 기본 AI 창과 에이전트 모드에 연동한다                  | 2026-11-26 |
+| [0172](0172-hwp-workpane.md)                                  | 한글 왼쪽 작업창(개요·찾기), 문서 안 표시(`doc-marks`), 개요 수준 연결·편집과 다범위 찾기·바꾸기를 둔다           | 2026-11-27 |

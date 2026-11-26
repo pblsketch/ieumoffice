@@ -309,7 +309,7 @@ async function apply(
   })
   const format = hwpOutputFormat(output)
   const { openHwpForEdit, closeHwpSession } = await import('../formats/hwp-edit')
-  const session = await openHwpForEdit(readInput(path))
+  const session = await openHwpForEdit(readInput(path), ctx.env)
   try {
     return await runHwpBatch(session, ops, args, { output, format, input: path })
   } finally {

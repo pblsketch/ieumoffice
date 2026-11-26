@@ -54,6 +54,7 @@ import type {
   AgentWhere,
 } from '../../../studio-plugin/agent-plugin.mjs'
 import type { AgentBridge } from './agent-bridge'
+import type { OutlineStyleMap } from '../../../studio-plugin/outline.mjs'
 import { appendHwpMemoReply } from './memo-attach'
 import type { StringKey } from '../i18n/locale'
 
@@ -160,6 +161,11 @@ export interface HwpSkillDeps {
   ) => Promise<
     { ok: true; mode: 'current' | 'new-tab'; title: string } | { ok: false; error: string }
   >
+  /**
+   * App-wide outline style-to-level mapping from app-settings.json (used by outline tools;
+   * document-level `설정:개요수준` still takes precedence over this map).
+   */
+  getOutlineStyleMap?: () => Promise<OutlineStyleMap | null> | OutlineStyleMap | null
 }
 
 export interface HwpSkill {
@@ -236,6 +242,7 @@ const SYSTEM_PROMPT = [
   '- Merge table cells into one (merge_cells; their text goes into it, one cell after another) or split a cell into several, or a merged cell back (split_cell). Read the table first: rows and columns count as read_table shows them.',
   '- Fill the form fields of the document (list_fields, fill_field). In Hangul these are called 누름틀. A field is picked by its number in list_fields, because several fields often share one name.',
   '- Make a table of contents (차례, 목차) from the headings you pick, with their page numbers, and write its page numbers again after the document changed (insert_toc, refresh_toc).',
+  '- Read and reorganize the document outline (read_outline, change_outline_level, move_outline_section), and search across body, tables, text boxes, footnotes and endnotes with regex, style or character format filters (find_in_document).',
   '- Add footnotes and endnotes (각주, 미주) with their mark right after a piece of body text (insert_note), list the notes with their text (list_notes), and rewrite or remove one (edit_note, delete_note). The text of the document does not show the notes; list_notes does.',
   '- Change the settings of all footnotes or endnotes (각주·미주 모양): number format such as 1) or ①, the characters around the number, superscript, start number, numbering, placement and separator line (read_note_settings, set_note_settings).',
   '- Change the page setup (쪽 설정, 편집 용지): paper size, orientation and margins, for the whole document or one section (read_page_setup, set_page_setup).',
@@ -1896,6 +1903,100 @@ const TOOLS: HwpToolDef[] = [
         every_word: EVERY_WORD_SCHEMA,
       },
       required: ['look'],
+    },
+  },
+  {
+    name: 'read_outline',
+    edits: false,
+    description:
+      'List document outline headings (native outline paragraphs and mapped styles) in reading order: section, paragraph, level, number, title, page, source and style.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'change_outline_level',
+    edits: true,
+    description:
+      'Promote or demote a heading (and its subheadings by default, or single_only for that heading alone) by one level (1–10), using section and paragraph from read_outline. One undo step.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section: {
+          type: 'integer',
+          description: '1-based section number from read_outline (default 1)',
+        },
+        paragraph: {
+          type: 'integer',
+          description: '1-based paragraph number from read_outline',
+        },
+        direction: {
+          type: 'string',
+          enum: ['promote', 'demote'],
+          description: 'promote (level -1) or demote (level +1)',
+        },
+        single_only: {
+          type: 'boolean',
+          description: 'true to change only this heading; default false includes subheadings',
+        },
+      },
+      required: ['paragraph', 'direction'],
+    },
+  },
+  {
+    name: 'move_outline_section',
+    edits: true,
+    description:
+      'Move a heading and its section (body and subheadings) before or after another heading in the same section without changing levels, using section and paragraph from read_outline. One undo step.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section: {
+          type: 'integer',
+          description: '1-based source section from read_outline (default 1)',
+        },
+        paragraph: {
+          type: 'integer',
+          description: '1-based source heading paragraph from read_outline',
+        },
+        target_section: {
+          type: 'integer',
+          description: '1-based target section (default: same as section)',
+        },
+        target_paragraph: {
+          type: 'integer',
+          description: '1-based target heading paragraph from read_outline',
+        },
+        position: {
+          type: 'string',
+          enum: ['before', 'after'],
+          description: 'place source section before or after target heading',
+        },
+      },
+      required: ['paragraph', 'target_paragraph', 'position'],
+    },
+  },
+  {
+    name: 'find_in_document',
+    edits: false,
+    description:
+      'Search across body, tables (nested included), text boxes, footnotes and endnotes with optional regex, whole_word, case_sensitive, paragraph style or character format filters.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'text or regex pattern to find (optional with style or format filters)',
+        },
+        case_sensitive: { type: 'boolean', description: 'match exact letter case' },
+        whole_word: { type: 'boolean', description: 'match whole words only' },
+        regex: { type: 'boolean', description: 'treat query as a JavaScript regular expression' },
+        style: { type: 'string', description: 'paragraph style name filter' },
+        bold: { type: 'boolean', description: 'character bold filter' },
+        italic: { type: 'boolean', description: 'character italic filter' },
+        underline: { type: 'boolean', description: 'character underline filter' },
+        font: { type: 'string', description: 'font family filter' },
+        size: { type: 'number', description: 'font size filter in points' },
+        color: { type: 'string', description: 'text color filter (#RRGGBB)' },
+      },
     },
   },
 ]
@@ -6245,6 +6346,260 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               : `Formatted ${result.paragraphs} paragraph(s) of that look.${keptOwnLookNote(result.keptOwnLook)}${hangNote(result.hang)} These paragraphs have a new look id now; the other looks keep theirs.`,
           mutated: true,
           summary: label('aiToolFormatLook', { count: result.paragraphs }),
+        }
+      }
+      case 'read_outline': {
+        const appStyleMap = await Promise.resolve(deps.getOutlineStyleMap?.()).catch(() => null)
+        const listed = await bridge.readOutline(
+          appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : undefined,
+        )
+        const headings = listed.items.map((item) => ({
+          section: item.sec + 1,
+          paragraph: item.para + 1,
+          level: item.level,
+          number: item.number,
+          title: item.title,
+          page: item.page,
+          ...(item.pageLabel ? { page_label: item.pageLabel } : {}),
+          source: item.source,
+          style: item.styleName,
+        }))
+        return {
+          output:
+            headings.length === 0
+              ? 'This document has no outline headings.'
+              : `${headings.length} heading(s) (section and paragraph are 1-based for change_outline_level and move_outline_section):\n${JSON.stringify(headings)}`,
+          summary: label('aiToolParagraphLooks', { count: headings.length }),
+        }
+      }
+      case 'change_outline_level': {
+        const rawSection = call.input.section
+        const section = rawSection === undefined ? 1 : rawSection
+        if (typeof section !== 'number' || !Number.isInteger(section) || section < 1) {
+          return bad(call, 'section must be a whole number from 1')
+        }
+        const paragraph = call.input.paragraph
+        if (typeof paragraph !== 'number' || !Number.isInteger(paragraph) || paragraph < 1) {
+          return bad(call, 'paragraph must be a whole number from 1')
+        }
+        const direction = call.input.direction
+        if (direction !== 'promote' && direction !== 'demote') {
+          return bad(call, 'direction must be "promote" or "demote"')
+        }
+        const singleOnly = call.input.single_only === true
+        const appStyleMap = await Promise.resolve(deps.getOutlineStyleMap?.()).catch(() => null)
+        const params = {
+          sec: section - 1,
+          para: paragraph - 1,
+          delta: (direction === 'promote' ? -1 : 1) as 1 | -1,
+          singleOnly,
+          ...(appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : {}),
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.changeOutlineLevel(params, { foreign: false }),
+          (options) => bridge.changeOutlineLevel(params, { ...options, foreign: false }),
+        )
+        if (outcome.kind !== 'done') {
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          const who = result.title ? ` ("${quote(result.title)}")` : ''
+          if (result.reason === 'level_out_of_range') {
+            return bad(
+              call,
+              `Nothing was changed: heading${who} would move to level ${result.targetLevel ?? '?'}, outside 1–10.`,
+            )
+          }
+          if (result.reason === 'no_mapped_style') {
+            return bad(
+              call,
+              `Nothing was changed: no paragraph style is mapped to level ${result.targetLevel ?? '?'} for heading${who}.`,
+            )
+          }
+          if (result.reason === 'missing_style_in_doc') {
+            return bad(
+              call,
+              `Nothing was changed: target style "${result.styleName ?? ''}" does not exist in this document.`,
+            )
+          }
+          if (result.reason === 'unsupported_place') {
+            return bad(
+              call,
+              'Nothing was changed: outline level changes only apply to body headings.',
+            )
+          }
+          return bad(
+            call,
+            `Nothing was changed: no outline heading at section ${section}, paragraph ${paragraph}. Call read_outline first.`,
+          )
+        }
+        deps.onChange({
+          kind: 'format',
+          from: `section ${section}, paragraph ${paragraph}`,
+          to: `${direction} (${result.changed.length})`,
+          count: result.changed.length,
+          place: result.place,
+        })
+        return {
+          output: `Changed outline level of ${result.changed.length} heading(s): ${result.changed.map((c) => `p.${c.para + 1} (${c.fromLevel}->${c.toLevel}, ${c.styleName})`).join(', ')}.`,
+          mutated: true,
+          summary: label('aiToolStyleParagraphs', { count: result.changed.length }),
+        }
+      }
+      case 'move_outline_section': {
+        const rawSection = call.input.section
+        const section = rawSection === undefined ? 1 : rawSection
+        if (typeof section !== 'number' || !Number.isInteger(section) || section < 1) {
+          return bad(call, 'section must be a whole number from 1')
+        }
+        const paragraph = call.input.paragraph
+        if (typeof paragraph !== 'number' || !Number.isInteger(paragraph) || paragraph < 1) {
+          return bad(call, 'paragraph must be a whole number from 1')
+        }
+        const rawTargetSection = call.input.target_section
+        const targetSection = rawTargetSection === undefined ? section : rawTargetSection
+        if (
+          typeof targetSection !== 'number' ||
+          !Number.isInteger(targetSection) ||
+          targetSection < 1
+        ) {
+          return bad(call, 'target_section must be a whole number from 1')
+        }
+        const targetParagraph = call.input.target_paragraph
+        if (
+          typeof targetParagraph !== 'number' ||
+          !Number.isInteger(targetParagraph) ||
+          targetParagraph < 1
+        ) {
+          return bad(call, 'target_paragraph must be a whole number from 1')
+        }
+        const position = call.input.position
+        if (position !== 'before' && position !== 'after') {
+          return bad(call, 'position must be "before" or "after"')
+        }
+        const appStyleMap = await Promise.resolve(deps.getOutlineStyleMap?.()).catch(() => null)
+        const params = {
+          source: { sec: section - 1, para: paragraph - 1 },
+          target: { sec: targetSection - 1, para: targetParagraph - 1 },
+          position: position as 'before' | 'after',
+          ...(appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : {}),
+        }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.moveOutlineSection(params, { foreign: false }),
+          (options) => bridge.moveOutlineSection(params, { ...options, foreign: false }),
+        )
+        if (outcome.kind !== 'done') {
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          const messages: Record<string, string> = {
+            not_found:
+              'Nothing was changed: source or target heading was not found. Call read_outline first.',
+            unsupported_place:
+              'Nothing was changed: outline section moves only apply to body headings.',
+            cross_section:
+              'Nothing was changed: cannot move an outline section across a document section boundary.',
+            first_para_layout:
+              'Nothing was changed: cannot move or displace the first paragraph carrying section or column layout definitions.',
+            target_inside_source:
+              'Nothing was changed: cannot move a heading onto itself or one of its own subheadings.',
+            no_change: 'Nothing was changed: the section is already at that position.',
+            objects_changed:
+              'Nothing was changed: moving the section would lose or alter objects (tables, pictures, footnotes or equations).',
+            bookmarks_lost:
+              'Nothing was changed: moving the section would lose bookmarks inside the moved range.',
+            engine_error: `Nothing was changed: ${'error' in result && result.error ? result.error : 'engine error'}.`,
+          }
+          return bad(call, messages[result.reason] ?? 'Nothing was changed.')
+        }
+        deps.onChange({
+          kind: 'insert',
+          from: `section ${section}, paragraph ${paragraph}`,
+          to: `${position} paragraph ${targetParagraph}`,
+          count: result.movedParagraphs,
+          place: result.place,
+        })
+        return {
+          output: `Moved ${result.movedParagraphs} paragraph(s) to section ${result.newStart.sec + 1}, paragraph ${result.newStart.para + 1}.`,
+          mutated: true,
+          summary: label('aiToolInsert', { count: result.movedParagraphs }),
+        }
+      }
+      case 'find_in_document': {
+        const query = textArg(call, 'query') ?? ''
+        const style = textArg(call, 'style')?.trim() || undefined
+        const charFormat: {
+          bold?: boolean
+          italic?: boolean
+          underline?: boolean
+          font?: string
+          size?: number
+          color?: string
+        } = {}
+        if (typeof call.input.bold === 'boolean') charFormat.bold = call.input.bold
+        if (typeof call.input.italic === 'boolean') charFormat.italic = call.input.italic
+        if (typeof call.input.underline === 'boolean') charFormat.underline = call.input.underline
+        const font = textArg(call, 'font')?.trim()
+        if (font) charFormat.font = font
+        if (call.input.size !== undefined) {
+          if (
+            typeof call.input.size !== 'number' ||
+            !Number.isFinite(call.input.size) ||
+            call.input.size <= 0
+          ) {
+            return bad(call, 'size must be a positive font size in points')
+          }
+          charFormat.size = call.input.size
+        }
+        const color = textArg(call, 'color')?.trim()
+        if (color) charFormat.color = color
+        const hasCharFormat = Object.keys(charFormat).length > 0
+        if (!query && !style && !hasCharFormat) {
+          return bad(call, 'Provide query, style, or at least one character format filter.')
+        }
+        const found = await bridge.findMatches({
+          ...(query ? { query } : {}),
+          ...(call.input.case_sensitive === true ? { caseSensitive: true } : {}),
+          ...(call.input.whole_word === true ? { wholeWord: true } : {}),
+          ...(call.input.regex === true ? { regex: true } : {}),
+          ...(style ? { style } : {}),
+          ...(hasCharFormat ? { charFormat } : {}),
+        })
+        if (!found.ok) {
+          return bad(call, `Invalid regular expression: ${found.error}`)
+        }
+        const MAX_RETURNED = 50
+        const shown = found.matches.slice(0, MAX_RETURNED).map((m) => ({
+          index: m.index + 1,
+          kind: m.kind,
+          section: m.sec + 1,
+          paragraph: m.para + 1,
+          page: m.page,
+          text: m.matchText,
+          before: m.beforeText,
+          after: m.afterText,
+          ...(m.spansObject ? { spans_object: true } : {}),
+          ...(m.inCitation ? { in_citation: true } : {}),
+        }))
+        const tail =
+          found.total > shown.length ? `\n(showing first ${shown.length} of ${found.total})` : ''
+        return {
+          output:
+            found.total === 0
+              ? 'No matches found.'
+              : `${found.total} match(es).\n${JSON.stringify(shown)}${tail}`,
+          summary: label('aiToolFind', {
+            text: quote(query || style || font || 'format'),
+            count: found.total,
+          }),
         }
       }
       default:

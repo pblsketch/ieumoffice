@@ -17,6 +17,7 @@ import {
 import { classifyOpError, type OpFailure } from '../op-errors'
 import { CliError, EXIT } from '../result'
 import type { BatchMode } from '../batch'
+import { genofficeUserDataDir } from '../gui'
 import { hwp5WasmPath, rhwpWasmPath } from '../resources'
 
 /**
@@ -63,21 +64,44 @@ function loadEngine(): Promise<Engine> {
 }
 
 async function appModules() {
-  const [plugin, skill, saveFixes, savePlan, tails, kinds, tabs, tracked, memos, hwp5File] =
-    await Promise.all([
-      import('../../../../apps/hwp/studio-plugin/agent-plugin.mjs'),
-      import('../../../../apps/hwp/src/renderer/ai/hwp-skill'),
-      import('../../../../apps/hwp/src/main/save-fixes'),
-      import('../../../../apps/hwp/src/main/save-plan'),
-      import('../../../../apps/hwp/src/main/section-tails'),
-      import('../../../../apps/hwp/src/main/field-kinds'),
-      import('../../../../apps/hwp/src/main/tab-widths'),
-      import('../../../../apps/hwp/src/main/tracked-changes'),
-      import('../../../../apps/hwp/src/main/memos'),
-      import('../../../../apps/hwp/src/main/hwp5-file'),
-    ])
+  const [
+    plugin,
+    skill,
+    saveFixes,
+    savePlan,
+    tails,
+    kinds,
+    tabs,
+    tracked,
+    memos,
+    hwp5File,
+    outlineSettings,
+  ] = await Promise.all([
+    import('../../../../apps/hwp/studio-plugin/agent-plugin.mjs'),
+    import('../../../../apps/hwp/src/renderer/ai/hwp-skill'),
+    import('../../../../apps/hwp/src/main/save-fixes'),
+    import('../../../../apps/hwp/src/main/save-plan'),
+    import('../../../../apps/hwp/src/main/section-tails'),
+    import('../../../../apps/hwp/src/main/field-kinds'),
+    import('../../../../apps/hwp/src/main/tab-widths'),
+    import('../../../../apps/hwp/src/main/tracked-changes'),
+    import('../../../../apps/hwp/src/main/memos'),
+    import('../../../../apps/hwp/src/main/hwp5-file'),
+    import('../../../../apps/hwp/src/main/outline-settings'),
+  ])
   hwp5File.setHwp5WasmPathResolver(() => hwp5WasmPath())
-  return { plugin, skill, saveFixes, savePlan, tails, kinds, tabs, tracked, memos }
+  return {
+    plugin,
+    skill,
+    saveFixes,
+    savePlan,
+    tails,
+    kinds,
+    tabs,
+    tracked,
+    memos,
+    outlineSettings,
+  }
 }
 
 type AppModules = Awaited<ReturnType<typeof appModules>>
@@ -164,8 +188,12 @@ async function sessionOf(
   doc: HwpDocument,
   mods: AppModules,
   extra: Pick<HwpEditSession, 'base' | 'originalHwpx' | 'trackingDropped'>,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<HwpEditSession> {
   const surface = mods.plugin.agentPlugin.activate(headlessHost(doc)) as AgentPluginSurface
+  const appOutlineStyleMap = mods.outlineSettings.readHwpOutlineStyleMap({
+    getPath: () => genofficeUserDataDir(env),
+  })
   const { skill } = mods.skill.createHwpSkill({
     bridge: bridgeOf(surface),
     // activity labels are for the app's panel; the op results carry the model-facing text
@@ -174,12 +202,16 @@ async function sessionOf(
     // a scripted batch has no one to ask: a change that would take memos is refused
     confirmMemoRemoval: async () => false,
     imageGenAvailable: () => false,
+    getOutlineStyleMap: () => appOutlineStyleMap,
   })
   return { doc, surface, skill, mods, ...extra }
 }
 
 /** Open an `.hwp` / `.hwpx` for editing, as the app's editor tab opens it. */
-export async function openHwpForEdit(bytes: Uint8Array): Promise<HwpEditSession> {
+export async function openHwpForEdit(
+  bytes: Uint8Array,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<HwpEditSession> {
   const [{ HwpDocument }, mods] = await Promise.all([loadEngine(), appModules()])
   let data = bytes
   let trackingDropped = false
@@ -214,15 +246,17 @@ export async function openHwpForEdit(bytes: Uint8Array): Promise<HwpEditSession>
     throw openFailure(thrown)
   }
   const originalHwpx = mods.savePlan.bytesMatchFormat(data, 'hwpx') ? data : null
-  return sessionOf(doc, mods, { base, originalHwpx, trackingDropped })
+  return sessionOf(doc, mods, { base, originalHwpx, trackingDropped }, env)
 }
 
 /** A new document: the engine's blank one (one empty paragraph on an A4 page), as a new HWP tab starts. */
-export async function blankHwpForEdit(): Promise<HwpEditSession> {
+export async function blankHwpForEdit(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<HwpEditSession> {
   const [{ HwpDocument }, mods] = await Promise.all([loadEngine(), appModules()])
   const doc = HwpDocument.createEmpty()
   doc.createBlankDocument()
-  return sessionOf(doc, mods, { base: {}, originalHwpx: null, trackingDropped: false })
+  return sessionOf(doc, mods, { base: {}, originalHwpx: null, trackingDropped: false }, env)
 }
 
 export function closeHwpSession(session: HwpEditSession): void {
@@ -259,7 +293,9 @@ const HWP_GROUPS: { name: string; summary: string; ops: string[] }[] = [
     ops: [
       'read_document',
       'read_memos',
+      'read_outline',
       'find_text',
+      'find_in_document',
       'list_tables',
       'read_table',
       'check_layout',
@@ -331,6 +367,11 @@ const HWP_GROUPS: { name: string; summary: string; ops: string[] }[] = [
     name: 'notes',
     summary: 'footnotes and endnotes, and a table of contents',
     ops: ['insert_note', 'edit_note', 'delete_note', 'insert_toc', 'refresh_toc'],
+  },
+  {
+    name: 'outline',
+    summary: 'headings by 1-based section and paragraph from read_outline',
+    ops: ['change_outline_level', 'move_outline_section'],
   },
 ]
 
