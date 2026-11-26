@@ -184,7 +184,7 @@ function fixedViewportWidth(): number {
   return document.documentElement.clientWidth
 }
 
-function FileBadge({ ext, size }: { ext: string; size: number }) {
+export function FileBadge({ ext, size }: { ext: string; size: number }) {
   const icon = FILE_ICONS[ext]
   if (icon) {
     return <img src={icon} width={size} height={size} alt="" aria-hidden="true" />
@@ -209,7 +209,7 @@ function FileBadge({ ext, size }: { ext: string; size: number }) {
   )
 }
 
-function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean }) {
+export function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
@@ -224,7 +224,7 @@ function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean
   )
 }
 
-function Chevron({ open }: { open: boolean }) {
+export function Chevron({ open }: { open: boolean }) {
   return (
     <svg
       width="12"
