@@ -216,6 +216,9 @@ const READING_CALLS: ReadonlySet<string> = new Set([
   'showMemoAnchors',
   'selectMemo',
   'setMemoLock',
+  'installWorkpaneMenu',
+  'findMatches',
+  'revealFindMatch',
 ])
 
 /**

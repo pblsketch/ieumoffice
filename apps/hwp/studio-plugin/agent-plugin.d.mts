@@ -1,6 +1,15 @@
 ﻿export declare const AGENT_PLUGIN_ID: 'ieum-agent'
 
 import type { DocumentProfile } from '@genoffice/doc-rules'
+import type {
+  FindMatch,
+  FindOptions,
+  FindReplaceResult,
+  FindReplaceSelection,
+  FindResult,
+  RevealFindResult,
+} from './find.mjs'
+import type { WorkpaneMenuLabels } from './workpane-menu.mjs'
 
 /**
  * What the document is made of, for the format checks of `@genoffice/doc-rules`. The
@@ -2029,6 +2038,19 @@ export interface AgentPluginSurface {
   selectMemo(id: number | null): { ok: true; id: number | null }
   /** take the editor's input away while the app's memo modal is open */
   setMemoLock(locked: boolean): { ok: true; locked: boolean }
+  /** register View menu items for the left workpane (Outline / Find) */
+  installWorkpaneMenu(labels: WorkpaneMenuLabels): { ok: boolean }
+  /** search across body, tables (including nested), text boxes, and footnotes/endnotes */
+  findMatches(options?: FindOptions): FindResult
+  /** replace one, selected, or all matches in a single user undo step */
+  replaceFindMatches(
+    options: FindOptions,
+    replacement: string,
+    selection?: FindReplaceSelection,
+    changeOptions?: AgentChangeOptions,
+  ): FindReplaceResult
+  /** move caret and select a find match (entering footnote edit when supported) */
+  revealFindMatch(match: FindMatch): RevealFindResult
 }
 
 /** Pages drawn for printing: SVG, and each page's size in CSS pixels. */

@@ -75,6 +75,8 @@ import {
   whenPcFontsSettled,
 } from './pc-fonts.mjs'
 import { printSvgForThisPc, screenFonts } from './print-fonts.mjs'
+import { findMatches, replaceFindMatches, revealFindMatch } from './find.mjs'
+import { installWorkpaneMenu } from './workpane-menu.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
 
@@ -158,6 +160,10 @@ const MAX_BOX_CHOICE_CHARS = 40
 const FLOATING_KINDS = new Set(['image', 'picture', 'shape', 'group', 'ole', 'textbox'])
 /** The command this plugin registers with the editor to move its caret to a place. */
 const REVEAL_COMMAND = 'ext:ieum-reveal'
+/** The command this plugin registers to reveal and select a workpane Find match (including notes). */
+const REVEAL_FIND_COMMAND = 'ext:ieum-reveal-find'
+/** Changes triggered from the user's workpane UI: recorded as foreign edits, not AI changes. */
+const WORKPANE_CHANGES = new Set(['workpane-replace'])
 /**
  * The event the File menu items this plugin adds fire on the editor's window, with the
  * command as its detail: the app hears it and saves or prints the way Ctrl+S and Ctrl+P do.
@@ -8448,6 +8454,23 @@ export const agentPlugin = {
       // registered by an earlier activation of this plugin, or a host without commands
     }
 
+    let shownFind = { ok: false }
+    try {
+      host.automation.registerCommand({
+        id: REVEAL_FIND_COMMAND,
+        label: 'Show a find match',
+        execute: (services, match) => {
+          try {
+            shownFind = revealFindMatch(services, match)
+          } catch {
+            shownFind = { ok: false }
+          }
+        },
+      })
+    } catch {
+      // registered by an earlier activation of this plugin, or a host without commands
+    }
+
     // what the selection command saw, and the selection this plugin made itself by showing
     // a change: that one is not something the user picked
     let picked = null
@@ -8839,10 +8862,21 @@ export const agentPlugin = {
         }
         headsKnown = done.heads
         headsRevision = revision
-        noteChange(label, done.result, done.before, done.after)
-        // a memo the user added, changed or removed in the panel is the user's own edit: an
-        // AI run's undo must not take it back in place of the run's changes
-        if (MEMO_CHANGES.has(label)) foreign += 1
+        const isWorkpaneUserEdit = WORKPANE_CHANGES.has(label) || options?.foreign === true
+        if (isWorkpaneUserEdit) {
+          if (marks.length > 0) {
+            setMarks([])
+            refreshMarks()
+          }
+          syncMemos({ notify: false })
+          refreshMemoAnchors()
+          foreign += 1
+        } else {
+          noteChange(label, done.result, done.before, done.after)
+          // a memo the user added, changed or removed in the panel is the user's own edit: an
+          // AI run's undo must not take it back in place of the run's changes
+          if (MEMO_CHANGES.has(label)) foreign += 1
+        }
         if (
           done.result &&
           typeof done.result === 'object' &&
@@ -13566,6 +13600,54 @@ export const agentPlugin = {
 
       /** Take the editor's input away while the app's memo modal is open. */
       setMemoLock: guarded((locked) => setMemoLock(locked === true)),
+
+      /** Register the editor's View menu entries for the left workpane (Outline / Find). */
+      installWorkpaneMenu: guarded((labels) => installWorkpaneMenu(host, labels)),
+
+      /** Search across body, tables (including nested), text boxes, and footnotes/endnotes. */
+      findMatches: guarded((options) => host.read((doc) => findMatches(doc, options))),
+
+      /**
+       * Replace one, selected, or all matches from findMatches in a single undo step.
+       * Recorded as a user edit (foreign) so AI undo does not revert workpane replacements.
+       */
+      replaceFindMatches: guarded((options, replacement, selection, changeOptions) => {
+        const preview = host.read((doc) => findMatches(doc, options))
+        if (!preview.ok) return preview
+        if (preview.total === 0) {
+          return { ok: true, replaced: 0, skippedObjects: 0, skippedCitations: 0 }
+        }
+        const noop = Symbol('noop')
+        let noopResult = null
+        try {
+          return change(
+            'workpane-replace',
+            (doc) => {
+              const result = replaceFindMatches(doc, options, replacement, selection)
+              if (!result.ok || result.replaced === 0) {
+                noopResult = result
+                throw noop
+              }
+              return result
+            },
+            { ...changeOptions, foreign: true, allowMemoRemoval: true },
+          )
+        } catch (thrown) {
+          if (thrown === noop) return noopResult
+          throw thrown
+        }
+      }),
+
+      /** Move the caret to a workpane find match and select it (entering footnote edit when supported). */
+      revealFindMatch: guarded((match) => {
+        shownFind = { ok: false }
+        try {
+          host.automation.execute(REVEAL_FIND_COMMAND, match)
+        } catch {
+          return { ok: false }
+        }
+        return shownFind
+      }),
 
       /** Take the marks of the changes made so far off the pages. */
       clearMarks: guarded(() => {

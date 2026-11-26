@@ -1154,17 +1154,12 @@ export default function App() {
     if (phase !== 'ready') return
     const frame = editorRef.current?.element.contentWindow
     if (frame) {
-      const maybeInstall = (
-        pluginBridge as unknown as {
-          installWorkpaneMenu?: (labels: { outline: string; find: string }) => Promise<unknown>
-        }
-      ).installWorkpaneMenu
-      if (typeof maybeInstall === 'function') {
-        void maybeInstall({
+      void pluginBridge
+        .installWorkpaneMenu({
           outline: translateWorkpane(lang, 'workpaneMenuOutline'),
           find: translateWorkpane(lang, 'workpaneMenuFind'),
-        }).catch(() => {})
-      }
+        })
+        .catch(() => {})
     }
     const onWorkpaneCommand = (event: Event): void => {
       if (presentingRef.current || previewRef.current) return

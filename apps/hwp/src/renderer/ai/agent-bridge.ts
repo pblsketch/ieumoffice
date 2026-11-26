@@ -104,6 +104,10 @@ const METHODS = [
   'showMemoAnchors',
   'selectMemo',
   'setMemoLock',
+  'installWorkpaneMenu',
+  'findMatches',
+  'replaceFindMatches',
+  'revealFindMatch',
 ] as const satisfies readonly (keyof AgentPluginSurface)[]
 
 export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): AgentBridge {
