@@ -162,7 +162,7 @@ vi.mock('@genoffice/ai-provider/subscription', async (importOriginal) => ({
 }))
 
 import { setOpenPathProbe } from '@genoffice/electron-utils'
-import { createSheetsView } from '../src/main/sheets-main'
+import { createSheetsView, queueWorkbookForView } from '../src/main/sheets-main'
 
 let dir: string
 
@@ -180,7 +180,11 @@ function writeWorkbook(name = 'book.xlsx', bytes = 'original-bytes'): string {
 }
 
 async function openWorkbook(path: string): Promise<{ sessionId: string }> {
-  return (await call(IPC_CHANNELS.reopenWorkbook, path)) as { sessionId: string }
+  // the way a shell-routed open reaches the tab: the crash re-open channel
+  // only continues a workbook this view already has open (path grants)
+  if (!lastContents) createSheetsView({ includeAiHandlers: false })
+  queueWorkbookForView(lastContents as never, path)
+  return (await call(IPC_CHANNELS.selectWorkbook)) as { sessionId: string }
 }
 
 /** an in-place save with one real cell edit, the way the renderer sends it */

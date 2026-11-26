@@ -12,6 +12,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sharedPathGrants } from '@genoffice/electron-utils'
 import { IPC_CHANNELS } from '../src/shared/ipc-channels'
 
 type Handler = (event: { sender: FakeContents }, ...args: unknown[]) => unknown
@@ -482,6 +483,8 @@ describe('the pickers keep .ods where it belongs', () => {
 
     await call(contents, IPC_CHANNELS.selectWorkbooksForMerge)
     expect(openDialogs[0]?.filters?.[0]?.extensions).not.toContain('ods')
+    // even an .ods the user attached to this tab (a granted path) is refused
+    sharedPathGrants().grant(contents.id, [ods])
     await expect(call(contents, IPC_CHANNELS.openWorkbooksForMerge, [ods])).rejects.toThrow(
       'Unsupported merge source: ods',
     )

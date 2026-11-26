@@ -130,6 +130,7 @@ import {
   recoveryEditor,
   resetAppShuttingDown,
   resumeDiscardedCopies,
+  sharedPathGrants,
   type RecoveryIdentity,
 } from '@genoffice/electron-utils'
 import {
@@ -173,6 +174,9 @@ interface OpenResult {
 function call<T>(sender: FakeContents, channel: string, ...args: unknown[]): T {
   const fn = handlers.get(channel)
   if (!fn) throw new Error(`handler not registered: ${channel}`)
+  // a deck reaches slides:open-path only after the user put it in front of
+  // this view (drop, open dialog), which records the path as granted
+  if (channel === 'slides:open-path') sharedPathGrants().grant(sender.id, [args[0] as string])
   return (fn as (...a: unknown[]) => T)({ sender }, ...args)
 }
 

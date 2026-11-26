@@ -304,7 +304,10 @@ async function openWorkbook(
   contents: FakeContents,
   path: string,
 ): Promise<{ sessionId: string; path: string }> {
-  return (await call(contents, IPC_CHANNELS.reopenWorkbook, path)) as {
+  // the way a shell-routed open reaches the tab: the crash re-open channel
+  // only continues a workbook this view already has open (path grants)
+  queueWorkbookForView(contents as never, path)
+  return (await call(contents, IPC_CHANNELS.selectWorkbook)) as {
     sessionId: string
     path: string
   }
