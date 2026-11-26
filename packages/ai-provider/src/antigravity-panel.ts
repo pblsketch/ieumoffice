@@ -29,7 +29,10 @@
  */
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+// node:http is imported where a server starts: on Node 22 a static ESM import of
+// it evaluates its WebSocket getter, which compiles undici's WebAssembly parser,
+// and the command line reaches this module via @genoffice/ai-provider.
+import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
@@ -217,6 +220,7 @@ interface PanelMcpServer {
 }
 
 async function startPanelMcpServer(initialTools: readonly AgentToolDef[]): Promise<PanelMcpServer> {
+  const { createServer } = await import('node:http')
   const token = randomBytes(24).toString('hex')
   let activeTools: readonly AgentToolDef[] = initialTools
   let activeAllowed: ReadonlySet<string> = new Set(initialTools.map((t) => t.name))
