@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const vi = {
+  pdfPagesSelected: 'Đã chọn {n}',
+  pdfPagesNoneSelected: 'Chạm vào trang để chọn',
+  pdfPagesSelectAll: 'Chọn tất cả',
+  pdfPagesClearSelection: 'Bỏ chọn',
+  pdfPagesRotate: 'Xoay',
+  pdfPagesDelete: 'Xóa',
+  pdfPagesMoveEarlier: 'Lên trước',
+  pdfPagesMoveLater: 'Ra sau',
+  pdfPagesBlankBefore: 'Trang trắng phía trước',
+  pdfPagesBlankAfter: 'Trang trắng phía sau',
+  pdfPagesImport: 'Từ PDF khác',
+  pdfPagesPageLabel: 'Trang {n}',
+  pdfPagesBlankLabel: 'Trang trắng',
+  pdfPagesDragHandle: 'Kéo để di chuyển',
+  pdfPagesKeepOne: 'Không thể xóa trang cuối cùng.',
+  pdfPagesActionFailed: 'Không thể thay đổi các trang.',
+  pdfPagesDeletedLabel: 'Sẽ bị xóa',
+  pdfPagesDeletedHint: 'Bị xóa khi lưu. Hoàn tác để lấy lại.',
+  pdfPagesMovedLabel: 'Thứ tự mới: trang {n}',
+  pdfPagesImportTitle: 'Chèn trang từ PDF khác',
+  pdfPagesImportCount: 'Số trang sẽ chèn: {n}',
+  pdfPagesImportPlace: 'Vị trí chèn',
+  pdfPagesImportFront: 'Ở đầu',
+  pdfPagesImportAfter: 'Sau trang {n}',
+  pdfPagesImportEnd: 'Ở cuối',
+  pdfPagesImportConfirmHint:
+    'Các thay đổi của bạn đến lúc này sẽ được lưu trước, sau đó các trang mới được chèn. Các trang đã chèn được ghi thẳng vào tệp và không thể hoàn tác.',
+  pdfPagesImportConfirm: 'Lưu và chèn',
+  pdfPagesImportDone: 'Đã chèn {n} trang.',
+  pdfPagesImportFailed: 'Không thể chèn các trang.',
+  pdfPagesImportDamaged: 'Không thể chèn trang từ PDF khác vào tài liệu bị hỏng.',
+  pdfPagesImportEncrypted: 'Không thể chèn trang từ PDF khác vào tài liệu đã mã hóa.',
+  pdfPagesImportUntitled:
+    'Không thể chèn trang vào tài liệu mới chưa từng được lưu. Hãy lưu trước.',
+  pdfPagesImportReadOnly: 'Không thể chèn trang vào tài liệu chỉ đọc.',
+  pdfPagesImportPickEncrypted:
+    'PDF đã chọn được bảo vệ bằng mật khẩu nên không thể nhập các trang của nó.',
+  pdfPagesImportPickUnreadable: 'Không thể đọc tệp đã chọn dưới dạng PDF.',
+} as const satisfies Record<keyof typeof zh, string>

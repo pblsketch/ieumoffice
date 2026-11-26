@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const de = {
+  pdfSignTitle: 'Unterschrift hinzufügen',
+  pdfSignFieldHint: 'Die Unterschrift wird in das Feld „{field}“ eingepasst.',
+  pdfSignSaved: 'Meine Unterschriften',
+  pdfSignUseSaved: 'Diese Unterschrift verwenden',
+  pdfSignForget: 'Gespeicherte Unterschrift löschen',
+  pdfSignDraw: 'Zeichnen',
+  pdfSignPicture: 'Bild',
+  pdfSignPadLabel: 'Zeichenfläche für die Unterschrift',
+  pdfSignPadHint: 'Mit Finger oder Stift unterschreiben.',
+  pdfSignColor: 'Farbe der Unterschrift',
+  pdfSignColorBlack: 'Schwarz',
+  pdfSignColorBlue: 'Blau',
+  pdfSignColorRed: 'Rot',
+  pdfSignClear: 'Leeren',
+  pdfSignPickPicture: 'Bild auswählen',
+  pdfSignPictureFailed: 'Das Bild konnte nicht gelesen werden.',
+  pdfSignBw: 'Schwarzweiß',
+  pdfSignRemember: 'Auf diesem Gerät merken',
+  pdfSignPlace: 'Platzieren',
+  pdfSignPlaceHint: 'Tippen Sie auf die Stelle für die Unterschrift.',
+  pdfSignPlaced: 'Unterschrift',
+  pdfSignDelete: 'Unterschrift löschen',
+  pdfSignResize: 'Größe der Unterschrift ändern',
+  pdfSignFailed: 'Die Unterschrift konnte nicht platziert werden.',
+} as const satisfies Record<keyof typeof zh, string>

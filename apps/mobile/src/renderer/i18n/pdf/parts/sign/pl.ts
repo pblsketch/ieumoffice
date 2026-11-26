@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const pl = {
+  pdfSignTitle: 'Dodaj podpis',
+  pdfSignFieldHint: 'Podpis zostanie dopasowany do pola „{field}”.',
+  pdfSignSaved: 'Moje podpisy',
+  pdfSignUseSaved: 'Użyj tego podpisu',
+  pdfSignForget: 'Usuń zapisany podpis',
+  pdfSignDraw: 'Rysuj',
+  pdfSignPicture: 'Obraz',
+  pdfSignPadLabel: 'Obszar podpisu',
+  pdfSignPadHint: 'Podpisz się palcem lub rysikiem.',
+  pdfSignColor: 'Kolor podpisu',
+  pdfSignColorBlack: 'Czarny',
+  pdfSignColorBlue: 'Niebieski',
+  pdfSignColorRed: 'Czerwony',
+  pdfSignClear: 'Wyczyść',
+  pdfSignPickPicture: 'Wybierz obraz',
+  pdfSignPictureFailed: 'Nie udało się odczytać obrazu.',
+  pdfSignBw: 'Czarno-biały',
+  pdfSignRemember: 'Zapamiętaj na tym urządzeniu',
+  pdfSignPlace: 'Umieść',
+  pdfSignPlaceHint: 'Dotknij miejsca, w którym ma być podpis.',
+  pdfSignPlaced: 'Podpis',
+  pdfSignDelete: 'Usuń podpis',
+  pdfSignResize: 'Zmień rozmiar podpisu',
+  pdfSignFailed: 'Nie udało się umieścić podpisu.',
+} as const satisfies Record<keyof typeof zh, string>

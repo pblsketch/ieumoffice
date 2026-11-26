@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const en = {
+  pdfPagesSelected: '{n} selected',
+  pdfPagesNoneSelected: 'Tap pages to select them',
+  pdfPagesSelectAll: 'Select all',
+  pdfPagesClearSelection: 'Clear selection',
+  pdfPagesRotate: 'Rotate',
+  pdfPagesDelete: 'Delete',
+  pdfPagesMoveEarlier: 'Earlier',
+  pdfPagesMoveLater: 'Later',
+  pdfPagesBlankBefore: 'Blank before',
+  pdfPagesBlankAfter: 'Blank after',
+  pdfPagesImport: 'From a PDF',
+  pdfPagesPageLabel: 'Page {n}',
+  pdfPagesBlankLabel: 'Blank page',
+  pdfPagesDragHandle: 'Drag to move',
+  pdfPagesKeepOne: 'The last page cannot be deleted.',
+  pdfPagesActionFailed: 'Could not change the pages.',
+  pdfPagesDeletedLabel: 'To be deleted',
+  pdfPagesDeletedHint: 'Deleted when you save. Undo brings it back.',
+  pdfPagesMovedLabel: 'New order: page {n}',
+  pdfPagesImportTitle: 'Insert pages from another PDF',
+  pdfPagesImportCount: 'Pages to insert: {n}',
+  pdfPagesImportPlace: 'Where to insert',
+  pdfPagesImportFront: 'At the start',
+  pdfPagesImportAfter: 'After page {n}',
+  pdfPagesImportEnd: 'At the end',
+  pdfPagesImportConfirmHint:
+    'Your changes so far are saved first, then the pages are inserted. The inserted pages go straight into the file and cannot be undone.',
+  pdfPagesImportConfirm: 'Save and insert',
+  pdfPagesImportDone: 'Inserted {n} pages.',
+  pdfPagesImportFailed: 'Could not insert the pages.',
+  pdfPagesImportDamaged: 'Pages from another PDF cannot be inserted into a damaged document.',
+  pdfPagesImportEncrypted: 'Pages from another PDF cannot be inserted into an encrypted document.',
+  pdfPagesImportUntitled:
+    'Pages cannot be inserted into a new document that has never been saved. Save it first.',
+  pdfPagesImportReadOnly: 'Pages cannot be inserted into a read-only document.',
+  pdfPagesImportPickEncrypted:
+    'The chosen PDF is password-protected, so its pages cannot be imported.',
+  pdfPagesImportPickUnreadable: 'The chosen file could not be read as a PDF.',
+} as const satisfies Record<keyof typeof zh, string>

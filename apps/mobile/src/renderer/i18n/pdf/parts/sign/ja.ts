@@ -1,0 +1,28 @@
+import type { zh } from './zh'
+
+export const ja = {
+  pdfSignTitle: '署名を追加',
+  pdfSignFieldHint: '署名を「{field}」欄に合わせて入れます。',
+  pdfSignSaved: 'マイ署名',
+  pdfSignUseSaved: 'この署名を使う',
+  pdfSignForget: '保存した署名を削除',
+  pdfSignDraw: '手書き',
+  pdfSignPicture: '画像',
+  pdfSignPadLabel: '署名パッド',
+  pdfSignPadHint: '指またはペンで署名してください。',
+  pdfSignColor: '署名の色',
+  pdfSignColorBlack: '黒',
+  pdfSignColorBlue: '青',
+  pdfSignColorRed: '赤',
+  pdfSignClear: 'クリア',
+  pdfSignPickPicture: '画像を選ぶ',
+  pdfSignPictureFailed: '画像を読み込めませんでした。',
+  pdfSignBw: '白黒',
+  pdfSignRemember: 'この端末に署名を保存',
+  pdfSignPlace: '配置',
+  pdfSignPlaceHint: '署名を置く場所をタップしてください。',
+  pdfSignPlaced: '署名',
+  pdfSignDelete: '署名を削除',
+  pdfSignResize: '署名のサイズを変更',
+  pdfSignFailed: '署名を配置できませんでした。',
+} as const satisfies Record<keyof typeof zh, string>
