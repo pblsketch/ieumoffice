@@ -316,10 +316,10 @@ const SYSTEM_PROMPT = [
   '## The look of a document you write',
   '- When you write a document from scratch (an empty document, or one whose text is all in the default look) and neither a template nor a skill fixes its look, give it the look that kind of document has, without being asked: a run of default text is not a finished report. Decide the look from what the document is and who reads it, and keep it through the whole document.',
   '- A report or a plan inside a public office, a school or a company (보고서, 계획서, written in 개조식): a title box; heading lines marked □ in a heavy gothic of 15 to 16 pt with space above; items marked ○ in a serif text face of 13 to 15 pt; sub-items marked - and notes marked ※ a little smaller; line spacing of 160 to 180 percent; each level set further in with margin_left (the top level at 0, where the text of the page starts) and given indent "mark", so that a second line starts under the text and not under the mark; tables with a shaded header row.',
-  '- Numbered levels, when the user asks for them or the organisation writes that way (Ⅰ, 1., 가., 1), 가), (1), (가), ① from the top level down, the order of Korean official documents): type the number as text at the start of each paragraph, and count each level from its first value again under a new parent. Give each level a style of its own and apply it with one rule by numbered ("1." is every 1. 2. 3. … paragraph, "가." every 가. 나. 다. …): the top level heaviest and largest and at margin_left 0, each level below lighter and with a margin_left about two characters larger than the one above, and each with indent "mark" so that a second line starts under the text. Bold is for levels that hold short headings: a level whose lines are sentences stays regular.',
+  '- Numbered levels, when the user asks for them or the organisation writes that way (Ⅰ, 1., 가., 1), 가), (1), (가), ① from the top level down, the order of Korean official documents): type the number as text at the start of each paragraph, and count each level from its first value again under a new parent. Give each level a style of its own and apply it with one rule by numbered ("1." is every 1. 2. 3. … paragraph, "가." every 가. 나. 다. …): the top level heaviest and largest and at margin_left 0, each level below lighter and set in from the one above by two half-width spaces (2타, one Hangul character: a margin_left larger by the size of its text in points, 13 pt more for 13 pt text), one space between each mark and its words, and each with indent "mark" so that a second line starts under the first letter of its words and not under the mark, as the official rules (행정업무운영 편람) want. Bold is for levels that hold short headings: a level whose lines are sentences stays regular.',
   '- A test paper (시험지, 평가, 고사), from scratch or in a form that is open: read the skill hwp-exam-paper with use_skill before the first change, and follow it. A worksheet (학습지) or a quiz sheet is an ordinary document: the test-paper form (B4, approval box, points, page border, end mark) only when asked.',
   '- A notice or a letter to people outside (안내문, 가정통신문): a centred title with a frame or lines, full sentences in one text face of 11 to 12 pt at about 160 percent, the date and the sender centred or right-aligned at the end, and little decoration. A reply slip goes under a cut line: one paragraph of dashes with 절취선 in the middle, centred (type it as "- - - 절취선 - - -": the app writes as many dashes on each side as fit one line), and is a table of plain grid lines with the blanks to fill in.',
-  '- An official letter (공문): no decoration; its fixed parts in one text face of 12 to 13 pt.',
+  '- An official letter (공문): no decoration; its fixed parts in one text face of 12 to 13 pt. Its body items are the numbered levels above (1., 가., 1), 가) …): the first level at margin_left 0 with no space before its mark, and a single item with no mark at all.',
   '- The Ministry of the Interior and Safety guideline format (행안부 형식), or when the user asks for a plain document: no title box, no shading and no colour, prose paragraphs, fonts every PC has. A skill that says how the document must look is followed before these lines.',
   '- Anything else (minutes, a proposal, a paper): what such documents usually look like; when unsure, a centred bold title, bold headings and body text of 10 to 11 pt.',
   '- Build it in this order: all the text with insert_paragraphs; set_columns when the look has columns; the tables with insert_table (look, header_color, column_widths, size); then one style_paragraphs call that makes the styles (those of headings with keep_with_next, so that a heading is not left alone at the foot of a page) and applies each by the mark or the number its lines start with (and the title by find); then insert_title_box when the look has one; then read_page_layout, which says how many pages the document has now and what is left alone at the foot of a page, and set_page_number when it runs over one page. A few calls style the whole document: do not format it paragraph by paragraph.',
@@ -335,6 +335,8 @@ const SYSTEM_PROMPT = [
   '- In a document that already has a look (text the user or a template formatted), format only what the user asked for and do not restyle text on your own: a new paragraph already looks like its neighbour, and official documents keep one look throughout.',
   '- When new content needs a look of its own (a heading, an emphasised line), insert the text first, then format it with a second call.',
   '- For emphasis prefer bold. Use colour and highlight only when the user asks for them.',
+  '- Hangul names four places of a paragraph on its ruler: 첫 줄 시작 위치 (where the first line starts), 나머지 줄 시작 위치 (where the lines after it start), 문단 왼쪽 여백 and 문단 오른쪽 여백 (margin_right). The tools set the first two as margin_left and indent: margin_left is the nearer of the two starts, and indent is how much further in the first line starts (positive, 들여쓰기) or the lines after it start (negative, 내어쓰기). A first line at F and the lines after it at R, in points from the edge of the text, is margin_left the smaller of F and R and indent F − R.',
+  '- A line that starts with a mark (1., 가., □, ○, -, ※) and runs on to a second line starts that line under the first letter of its words, not under the mark: give it indent "mark" (on its style, or on the paragraph). Never line up a second line with typed spaces or a line break. After writing or restyling such lines, read_page_layout names the ones that still do not hang right.',
   '- To take formatting away, pass false (bold, italic, underline, strikethrough) or "none" (highlight, cell background).',
   '- For a font prefer one the document already uses, or one every Korean Windows PC has (맑은 고딕, 바탕, 돋움, 굴림, 궁서); a font the PC lacks is shown in another one.',
   '- A paragraph style (the "Paragraph styles" line of the context) sets the look the document defines for that kind of paragraph; prefer it to setting the same things one by one. A character style (the "Character styles" line) does the same for a piece of text, for example a term or an emphasis; apply it with char_style.',
@@ -1668,7 +1670,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'read_page_layout',
     edits: false,
     description:
-      'Show how many pages the document has and where its body falls on them as printed: first what to mind (a heading or caption left alone at the foot of a page, tables past the foot or over two pages, text past the foot, empty pages), then per page the first words of its first and of its last paragraph on it ("continues" when that paragraph began on the page before). Also the columns its text starts in and the line between them (changes_within: a later part, such as the body under the head of a test-paper form, runs in other columns), the line round its pages, its page number (place, shape, dashes or not) and the text of its header and footer; plain says whether set_header_footer may rewrite it.',
+      'Show how many pages the document has and where its body falls on them as printed: first what to mind (a heading or caption left alone at the foot of a page, tables past the foot or over two pages, text past the foot, empty pages, marked lines (1., 가., □, ○) whose second line does not start under their words, lines set in with typed spaces), then per page the first words of its first and of its last paragraph on it ("continues" when that paragraph began on the page before). Also the columns its text starts in and the line between them (changes_within: a later part, such as the body under the head of a test-paper form, runs in other columns), the line round its pages, its page number (place, shape, dashes or not) and the text of its header and footer; plain says whether set_header_footer may rewrite it.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -2398,6 +2400,31 @@ const pageEndText = (end: AgentPageEnd): string =>
  * The page map as lines: what to mind first, so that an answer cut short keeps it, then a
  * line per page.
  */
+/** What read_page_layout says about lines whose second line does not start under their words. */
+function hangLines(hangs: AgentPageMap['hangs'] | undefined): string[] {
+  if (!hangs) return []
+  const off = hangs.off.map(
+    (line) =>
+      `The lines after the first of “${line.text}” start ${line.hangPt} pt in from its first line, but its mark with the space after it is ${line.markPt} pt wide, so they do not start under its words.`,
+  )
+  if (hangs.offMore) off.push(`${hangs.offMore} more paragraph(s) like these.`)
+  if (off.length > 0) {
+    off.push(
+      'Hang them by their marks: indent "mark" on their style (edit_style, or in style_paragraphs) when the lines of that style start with marks, else format_paragraph with find and indent "mark". Never type spaces to line a second line up.',
+    )
+  }
+  const spaced = hangs.spaced.map(
+    (line) => `“${line.text}” is set in with spaces typed at its start.`,
+  )
+  if (hangs.spacedMore) spaced.push(`${hangs.spacedMore} more paragraph(s) like these.`)
+  if (spaced.length > 0) {
+    spaced.push(
+      'Take the typed spaces out (replace_text) and set these lines in with margin_left on their style instead, with indent "mark" when they start with a mark.',
+    )
+  }
+  return [...off, ...spaced]
+}
+
 function pageMapLines(map: AgentPageMap): string[] {
   const alone = map.alone.map((line) => {
     const where = line.column === undefined ? '' : ` of column ${line.column}`
@@ -2432,6 +2459,7 @@ function pageMapLines(map: AgentPageMap): string[] {
     ...below,
     ...map.spans.map((span) => `Table ${span.table} runs over pages ${span.from} to ${span.to}.`),
     ...empty,
+    ...hangLines(map.hangs),
     'Pages as printed:',
     ...map.pages.map((page) =>
       'empty' in page

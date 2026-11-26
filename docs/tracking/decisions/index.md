@@ -163,3 +163,4 @@
 | [0165](0165-pdf-tools-v2-and-drop-input.md)                   | PDF 도구 창을 24개 직접 도구·UX 고도화로 넓히고, 끌어다 놓기는 preload webUtils.getPathForFile로만 허가한다       | 2026-11-24 |
 | [0166](0166-faster-install-and-update.md)                     | Windows 업데이트는 바뀐 부분만 받고, draw.io 묶음은 asar 하나로, CLI의 jsdom 사본은 실행 파일만 싣는다            | 2026-11-26 |
 | [0167](0167-mac-linux-out-of-beta.md)                         | Mac과 Linux 배포판에서 베타 표시를 뗀다                                                                           | 2026-11-26 |
+| [0169](0169-hwp-ruler-paragraph-marks.md)                     | 한글 눈금자에 한컴식 문단 마커 넷과 이름을 두고, AI가 둘째 줄 시작 위치를 맞추고 점검한다                         | 2026-11-26 |

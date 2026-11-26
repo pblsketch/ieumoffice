@@ -827,6 +827,8 @@ describe('the studio source the build fetched', () => {
     'src/i18n/locales/en.ts',
     'src/view/canvas-view.ts',
     'src/view/viewport-manager.ts',
+    'src/view/ruler.ts',
+    'src/view/ruler-pin-geometry.ts',
   ].map((file) => join(studio, file))
 
   // only where a build has fetched it; a fresh checkout has nothing to look at

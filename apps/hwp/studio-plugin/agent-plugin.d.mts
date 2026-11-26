@@ -393,6 +393,22 @@ export interface AgentPageMap {
   /** tables drawn over more than one page, from page to page */
   spans: { table: number; from: number; to: number }[]
   past: AgentTablePastFoot[]
+  hangs: AgentHangs
+}
+
+/**
+ * Where the later lines of the body paragraphs start (an official document sets a second line
+ * under the first letter of the item's words). `off`: paragraphs that start with a mark (1.,
+ * 가., □, ○, -) and run over two lines or more, aligned left or justified, whose later lines do
+ * not start under the words after the mark; `hangPt` how far in from the first line they start
+ * now, `markPt` how wide the mark is with its space. `spaced`: paragraphs set in with typed
+ * spaces. Ten of each at most; `offMore` and `spacedMore` count the rest. Table cells are left out.
+ */
+export interface AgentHangs {
+  off: { text: string; hangPt: number; markPt: number }[]
+  offMore?: number
+  spaced: { text: string }[]
+  spacedMore?: number
 }
 
 /**

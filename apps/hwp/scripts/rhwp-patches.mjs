@@ -212,6 +212,16 @@
  *   now ask the module first, which takes a real selection out (as typing over a selection
  *   does) and drops an empty one.
  *
+ * studio-ruler-para-kinds, studio-ruler-para-marks
+ *   The studio's horizontal ruler had one paragraph mark (▽, the first line, only right of
+ *   the left margin) and two △ for the page margins, and named none of them. A hanging
+ *   paragraph, whose later lines start under the words after its mark, could be neither seen
+ *   nor set there. The ruler now draws Hancom Hangul's four paragraph marks (▽ first line
+ *   start, △ other lines start, □ paragraph left margin, △ paragraph right margin), the page
+ *   margins are dragged at the edges of the white band, and each one shows its name when the
+ *   mouse rests on it (decision 0169). The marks, their hit test, the drop and the name box
+ *   live in studio-plugin/ruler-marks.mjs; these patches only hook it in.
+ *
  * studio-wheel-zoom
  *   The studio scales its zoom by the wheel's pixel delta, so how far one notch zoomed
  *   followed the OS scroll setting. Ctrl/⌘+wheel now goes through the app's shared
@@ -235,6 +245,7 @@ import { EASY_WORDS_COMMAND } from '../studio-plugin/agent-plugin.mjs'
 import { HANCOM_KEYS_MODULE, studioCommandIds } from '../studio-plugin/hancom-keys.mjs'
 import { NOTE_TEXT_MODULE } from '../studio-plugin/note-text.mjs'
 import { PC_FONTS_MODULE } from '../studio-plugin/pc-fonts.mjs'
+import { RULER_MARKS_MODULE } from '../studio-plugin/ruler-marks.mjs'
 import { TEXTBOX_EDIT_MODULE } from '../studio-plugin/textbox-edit.mjs'
 
 /** Must equal RENDERER_SCHEME in packages/electron-utils/src/renderer-scheme.ts. */
@@ -266,6 +277,9 @@ export { NOTE_TEXT_MODULE }
 
 /** Module specifier the studio-textbox-edit-* patches import; build-studio.mjs aliases it. */
 export { TEXTBOX_EDIT_MODULE }
+
+/** Module specifier the studio-ruler-para-marks patch imports; build-studio.mjs aliases it. */
+export { RULER_MARKS_MODULE }
 
 /** Module specifier the studio-wheel-zoom patch imports; build-studio.mjs aliases it. */
 export const WHEEL_ZOOM_MODULE = '@ieum/wheel-zoom'
@@ -2274,6 +2288,210 @@ const PATCHES = {
       },
     ],
   },
+  // The ruler's paragraph marks as Hancom Hangul has them, each named on hover
+  // (studio-plugin/ruler-marks.mjs, decision 0169).
+  'studio-ruler-para-kinds': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]ruler-pin-geometry\.ts$/,
+    find: "export type HPinKind = 'paraIndent' | 'pageMarginLeft' | 'pageMarginRight';",
+    replace:
+      "export type HPinKind = 'paraIndent' | 'pageMarginLeft' | 'pageMarginRight'\n" +
+      "  | 'paraFirst' | 'paraRest' | 'paraLeft' | 'paraRight';",
+  },
+  'studio-ruler-para-marks': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]ruler\.ts$/,
+    edits: [
+      {
+        find: "import { isRulerLabelInsidePage } from './ruler-label-geometry.ts';",
+        replace: [
+          "import { isRulerLabelInsidePage } from './ruler-label-geometry.ts';",
+          "import { getLocale } from '@/i18n/core';",
+          'import {',
+          '  createRulerTip,',
+          '  dragParaMark,',
+          '  drawParaMarks,',
+          '  hitRulerMark,',
+          '  isParaMark,',
+          '  paraMarkProps,',
+          '  paraMarkRange,',
+          '  paraMarkXs,',
+          '  paraState,',
+          '  rulerMarkLabel,',
+          `} from '${RULER_MARKS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: ['  /** 문단 정보가 유효한지 여부 */', '  private hasParaInfo = false;'].join('\n'),
+        replace: [
+          '  /** 현재 커서 문단의 오른쪽 여백 (px, zoom=1 기준) */',
+          '  private paraMarginRightPx = 0;',
+          '  /** 마커에 마우스를 올리면 뜨는 이름 */',
+          '  private rulerTip = createRulerTip();',
+          '  private onHLeaveBound = (): void => this.rulerTip.hide();',
+          '  /** 문단 정보가 유효한지 여부 */',
+          '  private hasParaInfo = false;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const ml = props.marginLeft ?? 0;',
+          '    const ind = props.indent ?? 0;',
+          '    if (this.hasParaInfo && ml === this.paraMarginLeftPx && ind === this.paraIndentPx) return;',
+          '    this.paraMarginLeftPx = ml;',
+          '    this.paraIndentPx = ind;',
+          '    this.hasParaInfo = true;',
+          '    this.scheduleUpdate();',
+          '  }',
+        ].join('\n'),
+        replace: [
+          '    const ml = props.marginLeft ?? 0;',
+          '    const ind = props.indent ?? 0;',
+          '    const mr = props.marginRight ?? 0;',
+          '    if (',
+          '      this.hasParaInfo && ml === this.paraMarginLeftPx && ind === this.paraIndentPx',
+          '      && mr === this.paraMarginRightPx',
+          '    ) return;',
+          '    this.paraMarginLeftPx = ml;',
+          '    this.paraIndentPx = ind;',
+          '    this.paraMarginRightPx = mr;',
+          '    this.hasParaInfo = true;',
+          '    this.scheduleUpdate();',
+          '  }',
+          '',
+          '  /** 커서 문단의 여백과 들여쓰기 (px, zoom=1) */',
+          '  private paraValues(): { marginLeftPx: number; indentPx: number; marginRightPx: number } {',
+          '    return {',
+          '      marginLeftPx: this.paraMarginLeftPx,',
+          '      indentPx: this.paraIndentPx,',
+          '      marginRightPx: this.paraMarginRightPx,',
+          '    };',
+          '  }',
+          '',
+          '  /** 문단이 놓인 영역의 화면 좌표, 드래그를 시작한 x와 함께 */',
+          '  private paraArea(startX?: number): { refLeft: number; refRight: number; zoom: number; startX?: number } {',
+          '    return {',
+          '      refLeft: this.hRefLeft,',
+          '      refRight: this.hRefRight,',
+          '      zoom: this.viewportManager.getZoom(),',
+          '      startX,',
+          '    };',
+          '  }',
+        ].join('\n'),
+      },
+      {
+        find: "    this.hCanvas.addEventListener('pointermove', this.onHPinHoverBound);",
+        replace: [
+          "    this.hCanvas.addEventListener('pointermove', this.onHPinHoverBound);",
+          "    this.hCanvas.addEventListener('pointerleave', this.onHLeaveBound);",
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const hit = this.hPins.find(',
+          '      (p) => Math.abs(p.x - x) <= PIN_HIT_RADIUS && Math.abs(p.y - y) <= PIN_HIT_RADIUS,',
+          '    );',
+          '    if (!hit) return;',
+          '    this.hDrag = { kind: hit.kind, pageIdx: this.hPageIdx, x, startX: x };',
+        ].join('\n'),
+        replace: [
+          '    const hit = hitRulerMark(this.hPins, x, y, RULER_SIZE);',
+          '    if (!hit) return;',
+          '    this.rulerTip.hide();',
+          '    this.hDrag = { kind: hit.kind, pageIdx: this.hPageIdx, x, startX: x };',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    // ▽ 첫 줄은 문단이 놓인 영역 안 — 왼쪽은 문단 여백(첫 줄은 그 왼쪽으로 못 간다),',
+          '    // 오른쪽은 영역 끝에서 본문 최소 폭만큼 앞.',
+          '    return {',
+          '      min: this.hRefLeft + this.paraMarginLeftPx * this.viewportManager.getZoom(),',
+          '      max: this.hRefRight - minBody,',
+          '    };',
+        ].join('\n'),
+        replace: [
+          '    // 문단 마커는 문단이 놓인 영역 안에서, 줄 끝과 본문 최소 폭만큼 떨어진 곳까지.',
+          '    return paraMarkRange(kind, this.paraValues(), this.paraArea(this.hDrag?.startX), minBody);',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    this.hCanvas.style.cursor =',
+          '      this.hPins.some((p) => Math.abs(p.x - x) <= PIN_HIT_RADIUS && Math.abs(p.y - y) <= PIN_HIT_RADIUS)',
+          "        ? 'ew-resize' : 'default';",
+        ].join('\n'),
+        replace: [
+          '    const hit = hitRulerMark(this.hPins, x, y, RULER_SIZE);',
+          "    this.hCanvas.style.cursor = hit ? 'ew-resize' : 'default';",
+          '    if (hit) this.rulerTip.show(rulerMarkLabel(hit.kind, getLocale()), rect.left + hit.x, rect.bottom);',
+          '    else this.rulerTip.hide();',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  private commitHDrag(drag: { kind: HPinKind; pageIdx: number; x: number }): void {',
+          '    this.onCommitPin?.(',
+        ].join('\n'),
+        replace: [
+          '  private commitHDrag(drag: { kind: HPinKind; pageIdx: number; x: number; startX: number }): void {',
+          '    if (isParaMark(drag.kind)) {',
+          '      const area = this.paraArea(drag.startX);',
+          '      this.onCommitPin?.({',
+          "        kind: 'paraProps',",
+          '        props: paraMarkProps(drag.kind, dragParaMark(drag.kind, drag.x, this.paraValues(), area)),',
+          '      });',
+          '      return;',
+          '    }',
+          '    this.onCommitPin?.(',
+        ].join('\n'),
+      },
+      {
+        find: "      || (this.hDrag?.kind === 'paraIndent' && this.hDrag.pageIdx === pageIdx);",
+        replace: '      || (isParaMark(this.hDrag?.kind) && this.hDrag?.pageIdx === pageIdx);',
+      },
+      {
+        find: [
+          '    this.drawTriangleUp(ctx, pageLeftPinX, canvasH, MARKER_SIZE);',
+          '    this.drawTriangleUp(ctx, pageRightPinX, canvasH, MARKER_SIZE);',
+        ].join('\n'),
+        replace: '    // 쪽 여백은 흰 띠의 가장자리를 끌어 바꾼다. △는 한글처럼 문단 마커가 쓴다.',
+      },
+      {
+        find: [
+          '      let firstX = paraIndentPinX(refLeft, this.paraMarginLeftPx, this.paraIndentPx, zoom);',
+          "      if (this.hDrag?.kind === 'paraIndent') firstX = this.hDrag.x;",
+          '',
+          '      this.hRefLeft = refLeft;',
+          '      this.hRefRight = refRight;',
+          "      this.hPins.push({ kind: 'paraIndent', x: firstX, y: 0 });",
+          '      this.drawTriangleDown(ctx, firstX, 0, MARKER_SIZE);',
+        ].join('\n'),
+        replace: [
+          '      this.hRefLeft = refLeft;',
+          '      this.hRefRight = refRight;',
+          '      const drag = this.hDrag;',
+          '      const area = this.paraArea(drag?.startX);',
+          '      const marks = paraMarkXs(',
+          '        drag && isParaMark(drag.kind)',
+          '          ? dragParaMark(drag.kind, drag.x, this.paraValues(), area)',
+          '          : paraState(this.paraValues()),',
+          '        area,',
+          '      );',
+          '      for (const [kind, markX] of Object.entries(marks)) {',
+          '        this.hPins.push({ kind: kind as HPinKind, x: markX, y: 0 });',
+          '      }',
+          '      drawParaMarks(ctx, marks, canvasH);',
+        ].join('\n'),
+      },
+      {
+        find: "    this.hCanvas.removeEventListener('pointermove', this.onHPinHoverBound);",
+        replace: [
+          "    this.hCanvas.removeEventListener('pointermove', this.onHPinHoverBound);",
+          "    this.hCanvas.removeEventListener('pointerleave', this.onHLeaveBound);",
+          '    this.rulerTip.dispose();',
+        ].join('\n'),
+      },
+    ],
+  },
 }
 
 /** The patches the studio build applies, in order; the SDK's own is applied by the renderer builds. */
@@ -2336,6 +2554,8 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-textbox-edit-keyboard',
   'studio-textbox-edit-handler',
   'studio-textbox-edit-cursor',
+  'studio-ruler-para-kinds',
+  'studio-ruler-para-marks',
 ])
 
 /** Whether a patch is written against this file. */
