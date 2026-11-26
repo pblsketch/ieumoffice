@@ -1,0 +1,138 @@
+/* Track T1 sheets, grid area (XLS-T8): sheet switcher, header menu, view menu,
+   and touch sizes for Univer's formula bar. Colors are tokens only. */
+
+/* Sheet switcher under the grid: 48 px tabs that slide sideways. */
+.m-sheets-tabs {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  min-height: var(--m-hit);
+  background: var(--chrome-bg);
+  border-top: 1px solid var(--border-subtle);
+  padding: 0 var(--m-safe-right) 0 var(--m-safe-left);
+}
+
+.m-sheets-tabs-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: var(--m-space-half);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* keep tabs out of the screen-edge band of the back gesture */
+  padding: 0 var(--m-space-6);
+}
+
+.m-sheets-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.m-sheets-tab {
+  flex-shrink: 0;
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  max-width: 50vw;
+  padding: 0 var(--m-space-3);
+  border: 0;
+  border-radius: 0 0 var(--m-radius-control) var(--m-radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.m-sheets-tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.m-sheets-tab-add {
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: var(--m-space-4);
+  color: var(--text-primary);
+}
+
+/* Header menu: the size field under the entries. */
+.m-sheets-size-row,
+.m-sheets-rename {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  margin-top: var(--m-space-3);
+  padding: var(--m-space-3) var(--m-space-3) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.m-sheets-rename {
+  border-top: 0;
+  margin-top: 0;
+}
+
+.m-sheets-size-label {
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.m-sheets-size-field {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+}
+
+.m-sheets-size-field .mobile-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.m-sheets-size-unit {
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.m-sheets-rename-problem {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--m-text-body-s);
+}
+
+.mobile-menu-row-btn.m-sheets-danger-row {
+  color: var(--danger);
+}
+
+.m-sheets-view-row[aria-checked='true'] {
+  background: var(--bg-hover-subtle);
+  font-weight: 700;
+}
+
+/* Univer's formula bar (the desktop part the phone mounts): its ✕ ✓ fx and
+   fold buttons are about 24 px; give each a 48 px press area (spec 2.8-1). */
+.m-sheets-grid-host [data-u-comp='formula-bar'] {
+  min-height: var(--m-hit);
+}
+
+.m-sheets-grid-host [data-u-comp='formula-bar'] > div:nth-child(2) > div:first-child {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.m-sheets-grid-host [data-u-comp='formula-bar'] > div:nth-child(2) > div:first-child > div {
+  width: auto;
+}
+
+.m-sheets-grid-host [data-u-comp='formula-bar'] > div:nth-child(2) > div:first-child > div > span,
+.m-sheets-grid-host
+  [data-u-comp='formula-bar']
+  > div:nth-child(2)
+  > div:last-child
+  > div:last-child {
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+}

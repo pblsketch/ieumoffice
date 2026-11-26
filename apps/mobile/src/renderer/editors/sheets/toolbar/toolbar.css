@@ -1,0 +1,263 @@
+/* Track T1 sheets: the edit toolbar groups and their sheets (XLS-T9). Colors are tokens only. */
+
+/* Group buttons carry their name beside the icon (design system 5.6), so the
+   bar's square icon button widens for them. */
+.mobile-quick-icon-btn:has(> .m-sheets-tb-group) {
+  width: auto;
+  padding: 0 var(--m-space-2);
+}
+
+.m-sheets-tb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* On a phone a group's sheet stands on the toolbar instead of covering it,
+   so another group is one tap away (design system 5.6). */
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-format'],
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-rows'],
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-sort'],
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-insert'] {
+  bottom: calc(var(--m-toolbar-h) + var(--m-safe-bottom));
+}
+
+/* The tablet toolbar already writes the name under the icon. */
+.mobile-tablet-toolbar .m-sheets-tb-group-label {
+  display: none;
+}
+
+.m-sheets-tb-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+  padding: 0 var(--m-space-4) var(--m-space-4);
+}
+
+.m-sheets-tb-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.m-sheets-tb-section-title {
+  margin: 0;
+  font-size: var(--m-text-caption);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.m-sheets-tb-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}
+
+.m-sheets-tb-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-body);
+}
+
+.m-sheets-tb-face[data-face='bold'] {
+  font-weight: 700;
+}
+.m-sheets-tb-face[data-face='italic'] {
+  font-style: italic;
+}
+.m-sheets-tb-face[data-face='underline'] {
+  text-decoration: underline;
+}
+.m-sheets-tb-face[data-face='strike'] {
+  text-decoration: line-through;
+}
+
+.m-sheets-tb-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--m-space-2);
+}
+
+.m-sheets-tb-row,
+.m-sheets-tb-picker,
+.m-sheets-tb-back,
+.m-sheets-tb-choice,
+.m-sheets-tb-swatch-clear {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-tight);
+  text-align: start;
+}
+
+.m-sheets-tb-key[aria-pressed='true'],
+.m-sheets-tb-row[aria-pressed='true'],
+.m-sheets-tb-choice[aria-checked='true'],
+.m-sheets-tb-swatch-clear[aria-pressed='true'] {
+  background: var(--active-bg);
+  border-color: var(--m-accent);
+  color: var(--m-accent);
+}
+
+.m-sheets-tb-key:active,
+.m-sheets-tb-row:active,
+.m-sheets-tb-picker:active,
+.m-sheets-tb-choice:active,
+.m-sheets-tb-back:active,
+.m-sheets-tb-swatch:active,
+.m-sheets-tb-swatch-clear:active {
+  background: var(--pressed);
+}
+
+.m-sheets-tb-picker-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.m-sheets-tb-picker-value {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+
+[dir='rtl'] .m-sheets-tb-chevron {
+  transform: scaleX(-1);
+}
+
+.m-sheets-tb-back {
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+}
+
+.m-sheets-tb-back-title {
+  flex: 1;
+  text-align: end;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.m-sheets-tb-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.m-sheets-tb-choice {
+  justify-content: space-between;
+}
+
+.m-sheets-tb-choice-detail {
+  color: var(--text-secondary);
+  font-size: var(--m-text-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+  direction: ltr;
+}
+
+.m-sheets-tb-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--m-space-1);
+}
+
+.m-sheets-tb-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--m-radius-full);
+  background: transparent;
+}
+
+.m-sheets-tb-swatch-chip {
+  width: var(--m-space-8);
+  height: var(--m-space-8);
+  border-radius: var(--m-radius-full);
+  border: 1px solid var(--border-strong);
+}
+
+.m-sheets-tb-swatch[aria-pressed='true'] .m-sheets-tb-swatch-chip {
+  outline: 2px solid var(--m-accent);
+  outline-offset: 2px;
+}
+
+.m-sheets-tb-note,
+.m-sheets-tb-body,
+.m-sheets-tb-find-status {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+.m-sheets-tb-find-status {
+  min-height: var(--m-space-6);
+}
+
+.m-sheets-tb-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  font-size: var(--m-text-caption);
+  color: var(--text-secondary);
+}
+
+.m-sheets-tb-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.m-sheets-tb-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+  min-height: var(--m-hit);
+  font-size: var(--m-text-body-s);
+  color: var(--text-primary);
+}
+
+.m-sheets-tb-toggle input {
+  width: var(--m-space-5);
+  height: var(--m-space-5);
+  margin: 0;
+  accent-color: var(--m-accent);
+}
+
+.m-sheets-tb-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}
+
+.m-sheets-tb-action {
+  min-height: var(--m-hit);
+  height: auto;
+}

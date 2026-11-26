@@ -1,0 +1,54 @@
+# Track T1 (sheets): the spreadsheet engine (`xlsx-sidecar`) behind a small
+# C ABI, built in its own cargo workspace.
+#
+# Why a separate build: inside the app's workspace cargo unifies dependency
+# features, and the engine's zip 9 "deflate" switches flate2 to zlib-rs for
+# the whole app (HWP and HWPX saves would compress differently). Built here,
+# the engine keeps its own dependency graph (this Cargo.lock starts from the
+# engine's own lock) and the app's crates compile exactly as without it.
+#
+# It also lets the engine unwind: the app's release profile aborts on panic,
+# while this library catches every panic at its C boundary and answers that
+# one request with an error (see `src/lib.rs`).
+#
+# The app's build script (`../engine_build.rs`, called from `build.rs`) builds
+# this crate with `cargo rustc --crate-type staticlib|cdylib` and links it.
+
+[package]
+name = "ieum-sheets-engine"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[lib]
+name = "ieum_sheets_engine"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+xlsx-sidecar = { path = "../../../../../sheets/native/xlsx-engine" }
+# Password-protected workbooks (`src/crypto.rs`): OOXML agile/standard decrypt and
+# encrypt, legacy .xls FILEPASS decrypt. Pinned: a young crate whose behaviour
+# `src/crypto_tests.rs` holds.
+msoffice-crypto = { version = "=0.1.0", default-features = false, features = ["legacy-binary"] }
+
+[dev-dependencies]
+tempfile = "3"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+
+[features]
+default = []
+# Debug builds only: a request whose command is `__ieum_test_panic` panics
+# inside the engine, so a device test can show that the app survives it.
+test-panic = []
+
+[profile.release]
+panic = "unwind"
+codegen-units = 1
+lto = true
+opt-level = "s"
+debug = false
