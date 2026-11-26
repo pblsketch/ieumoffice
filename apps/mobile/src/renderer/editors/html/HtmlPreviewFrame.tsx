@@ -72,6 +72,16 @@ function sameBox(a: SelectionBox | null, b: SelectionBox | null): boolean {
   return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
 }
 
+interface HiddenBox extends SelectionBox {
+  readonly sid: number
+}
+
+function sameBoxes(a: readonly HiddenBox[], b: readonly HiddenBox[]): boolean {
+  return a.length === b.length && a.every((box, i) => box.sid === b[i]!.sid && sameBox(box, b[i]!))
+}
+
+const NO_SIDS: readonly number[] = []
+
 export interface HtmlPreviewFrameProps {
   /** The preview copy (CSP and element ids), never the saved text. */
   readonly srcDoc: string
@@ -79,6 +89,8 @@ export interface HtmlPreviewFrameProps {
   readonly onElementPress?: (sid: number | null) => void
   /** The selected element (edit mode): drawn as a box over the frame, not inside it. */
   readonly selectedSid?: number | null
+  /** The elements hidden from the AI (spec 5.6): marked in the same layer, never in the frame. */
+  readonly hiddenSids?: readonly number[]
 }
 
 /**
@@ -91,6 +103,7 @@ export function HtmlPreviewFrame({
   title,
   onElementPress,
   selectedSid = null,
+  hiddenSids = NO_SIDS,
 }: HtmlPreviewFrameProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const layerRef = useRef<HTMLDivElement | null>(null)
@@ -99,7 +112,10 @@ export function HtmlPreviewFrame({
   onElementPressRef.current = onElementPress
   const selectedSidRef = useRef(selectedSid)
   selectedSidRef.current = selectedSid
+  const hiddenSidsRef = useRef(hiddenSids)
+  hiddenSidsRef.current = hiddenSids
   const [box, setBox] = useState<SelectionBox | null>(null)
+  const [hiddenBoxes, setHiddenBoxes] = useState<readonly HiddenBox[]>([])
 
   const measure = useCallback(() => {
     const sid = selectedSidRef.current
@@ -107,6 +123,14 @@ export function HtmlPreviewFrame({
     const layer = layerRef.current
     const next = sid !== null && frame && layer ? measureSelection(frame, layer, sid) : null
     setBox((prev) => (sameBox(prev, next) ? prev : next))
+    const hidden: HiddenBox[] = []
+    if (frame && layer) {
+      for (const hiddenSid of hiddenSidsRef.current) {
+        const measured = measureSelection(frame, layer, hiddenSid)
+        if (measured) hidden.push({ ...measured, sid: hiddenSid })
+      }
+    }
+    setHiddenBoxes((prev) => (sameBoxes(prev, hidden) ? prev : hidden))
   }, [])
 
   const onLoad = useCallback(() => {
@@ -131,7 +155,7 @@ export function HtmlPreviewFrame({
     measure()
   }, [measure])
 
-  useEffect(measure, [selectedSid, measure])
+  useEffect(measure, [selectedSid, hiddenSids, measure])
 
   // the app's own layout (rotation, keyboard, tablet panes) moves or resizes the frame
   useEffect(() => {
@@ -166,6 +190,19 @@ export function HtmlPreviewFrame({
         data-testid="web-html-preview"
       />
       <div ref={layerRef} className="web-html-overlay" aria-hidden="true">
+        {hiddenBoxes.map((hidden) => (
+          <div
+            key={hidden.sid}
+            className="web-html-hidden"
+            data-testid="web-html-hidden"
+            data-sid={hidden.sid}
+            style={{
+              transform: `translate(${hidden.left}px, ${hidden.top}px)`,
+              width: `${hidden.width}px`,
+              height: `${hidden.height}px`,
+            }}
+          />
+        ))}
         {selectedSid !== null && box && (
           <div
             className="web-html-selection"

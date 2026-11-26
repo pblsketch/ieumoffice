@@ -18,9 +18,12 @@ import { compileOps } from '../../../../../html/src/renderer/document/ops'
 import {
   IconWebDelete,
   IconWebEditText,
+  IconWebHide,
   IconWebPreview,
   IconWebSource,
+  IconWebUnhide,
 } from '../../components/icons/web'
+import { MarkdownHideSheet } from '../markdownHideSheet'
 import { HtmlPreviewFrame } from './HtmlPreviewFrame'
 import { HtmlSourceView } from './HtmlSourceView'
 import { HtmlTextEditSheet } from './HtmlTextEditSheet'
@@ -34,6 +37,13 @@ import {
   type HtmlSelection,
   type HtmlTextEditPlan,
 } from './htmlElementEdit'
+import {
+  hiddenElementSids,
+  nextHtmlHiddenLabel,
+  ownHideMarks,
+  planHide,
+  planUnhide,
+} from './htmlHide'
 import { buildPreviewCopy, hasDocumentScript, mapDocument } from './htmlPreview'
 import './htmlEditor.css'
 
@@ -137,6 +147,8 @@ export function startHtmlDocument(
   // ---- undo and redo: one step per patch set ----
   const undoStack: string[] = []
   const redoStack: string[] = []
+  /** The version of the last edit that did not come from the AI (the AI tools' freshness check). */
+  let lastManualVersion = 0
 
   /**
    * Finds the selected element again in the current version: the element that now starts where
@@ -153,10 +165,12 @@ export function startHtmlDocument(
   /**
    * Writes a new source. `patches` describe the change when it is a patch set; otherwise (undo,
    * redo, a whole-source replace) the selection follows the one patch between the two texts.
+   * `manual`: the edit did not come from the AI (the AI re-reads before it edits again).
    */
-  const writeSource = (next: string, patches: readonly Patch[] | null = null) => {
+  const writeSource = (next: string, patches: readonly Patch[] | null = null, manual = true) => {
     const { source: before, version: prevVersion, selection } = kept.get()
     const version = prevVersion + 1
+    if (manual) lastManualVersion = version
     let followed: HtmlSelection | null = null
     if (selection) {
       const start = mapOffsetThroughPatches(selection.start, patches ?? [diffAsPatch(before, next)])
@@ -171,7 +185,7 @@ export function startHtmlDocument(
 
   /**
    * Every edit of the source goes down to one patch set against the current version: the
-   * source view's whole-source replace now, element edits and AI edits later. Nothing is parsed
+   * source view's whole-source replace, element edits, hide marks and AI edits. Nothing is parsed
    * and serialized again; untouched source stays character for character. false: refused.
    */
   const applyPatches = (patches: readonly Patch[], origin: PatchOrigin, label: string): boolean => {
@@ -190,7 +204,7 @@ export function startHtmlDocument(
     redoStack.length = 0
     const wholeSource =
       patches.length === 1 && patches[0]!.from === 0 && patches[0]!.to === source.length
-    writeSource(next, wholeSource ? null : patches)
+    writeSource(next, wholeSource ? null : patches, origin !== 'ai')
     return true
   }
 
@@ -260,6 +274,61 @@ export function startHtmlDocument(
     return true
   }
 
+  // ---- hide from AI (spec 5.6): the desktop marks on the selected element ----
+  /** The selected element carries a hide mark of its own: the entry is "unhide". */
+  const selectedIsHidden = (): boolean => {
+    const entry = selectedEntry()
+    return entry ? ownHideMarks(readSource(), entry).length > 0 : false
+  }
+
+  /** The label offered first for hiding the selected element, or null (a toast said why). */
+  const prepareHide = (): string | null => {
+    const entry = selectedEntry()
+    if (!entry) return null
+    const { source, version } = kept.get()
+    const map = mapFor(source, version)
+    const label = nextHtmlHiddenLabel(source, map, tNow('webHideLabelPrefix'))
+    const check = planHide(source, map, entry.sid, label)
+    if (!check.ok) {
+      showToast({
+        message: tNow(check.reason === 'structural' ? 'webHtmlCannotHide' : 'webHideCannot'),
+        tone: 'error',
+      })
+      return null
+    }
+    return label
+  }
+
+  /** Hides the selected element under `label` (one undo step). false: refused (a toast said why). */
+  const hideSelected = (label: string): boolean => {
+    const entry = selectedEntry()
+    if (!entry) return false
+    const { source, version } = kept.get()
+    const result = planHide(source, mapFor(source, version), entry.sid, label)
+    if (!result.ok || !applyPatches(result.patches, 'manual', 'hide')) {
+      const structural = !result.ok && result.reason === 'structural'
+      showToast({
+        message: tNow(structural ? 'webHtmlCannotHide' : 'webHideCannot'),
+        tone: 'error',
+      })
+      return false
+    }
+    return true
+  }
+
+  /** Takes the selected element's own hide marks off (one undo step); its words stay. */
+  const unhideSelected = (): boolean => {
+    const entry = selectedEntry()
+    if (!entry) return false
+    const { source, version } = kept.get()
+    const result = planUnhide(source, mapFor(source, version), entry.sid)
+    if (!result.ok || !applyPatches(result.patches, 'manual', 'unhide')) {
+      showToast({ message: tNow('webHtmlEditFailed'), tone: 'error' })
+      return false
+    }
+    return true
+  }
+
   const replaceSource = (next: string) =>
     applyPatches([{ from: 0, to: readSource().length, text: next }], 'manual', 'source')
 
@@ -323,13 +392,21 @@ export function startHtmlDocument(
     const [textPlan, setTextPlan] = useState<{ plan: HtmlTextEditPlan; version: number } | null>(
       null,
     )
+    /** The hide sheet is open with this label offered first. */
+    const [hideLabel, setHideLabel] = useState<string | null>(null)
+    // hiding means something to the model only: no entry while the AI is off (owner, 11-26 Q6)
+    const hideAvailable = editing && frame.aiEnabled
 
-    // Selecting is an edit-mode thing: leaving edit mode drops the selection and the sheet.
+    // Selecting is an edit-mode thing: leaving edit mode drops the selection and the sheets.
     useEffect(() => {
       if (editing) return
       selectElement(null)
       setTextPlan(null)
+      setHideLabel(null)
     }, [editing])
+    useEffect(() => {
+      if (!hideAvailable) setHideLabel(null)
+    }, [hideAvailable])
 
     const selectedSid = editing && view === 'preview' ? (selection?.sid ?? null) : null
     const showSource = view === 'source'
@@ -343,6 +420,14 @@ export function startHtmlDocument(
         return ''
       }
     }, [showSource, source, version])
+
+    // hidden elements stay marked in the preview also with the AI off (owner, 11-26 Q6)
+    const hiddenSids = useMemo(
+      () => (showSource ? [] : hiddenElementSids(source, mapFor(source, version))),
+      [showSource, source, version],
+    )
+    // read on every render: the source changes whenever the selected element's marks can
+    const selectionHidden = selectedSid !== null && selectedIsHidden()
 
     const toggleView = useMemo((): EditorQuickActionItem => {
       return showSource
@@ -360,7 +445,7 @@ export function startHtmlDocument(
           }
     }, [showSource, mode, t])
 
-    // [글 고치기] and [지우기] act on the selected element; with none selected they are not offered
+    // [글 고치기], [지우기] and the hide entry act on the selected element; none selected, none offered
     const hasSelection = selectedSid !== null
     const quickActions = useMemo((): EditorQuickActionItem[] => {
       const items: EditorQuickActionItem[] = [
@@ -385,9 +470,28 @@ export function startHtmlDocument(
             },
           },
         )
+        if (hideAvailable) {
+          items.push(
+            selectionHidden
+              ? {
+                  id: 'webUnhide',
+                  label: t('webUnhide'),
+                  icon: <IconWebUnhide size={19} />,
+                  onPress: () => {
+                    unhideSelected()
+                  },
+                }
+              : {
+                  id: 'webHideFromAi',
+                  label: t('webHideFromAi'),
+                  icon: <IconWebHide size={19} />,
+                  onPress: () => setHideLabel(prepareHide()),
+                },
+          )
+        }
       }
       return items
-    }, [t, toggleView, hasSelection])
+    }, [t, toggleView, hasSelection, hideAvailable, selectionHidden])
 
     return (
       <EditorShell
@@ -413,6 +517,7 @@ export function startHtmlDocument(
               // view mode: a press selects nothing
               onElementPress={editing ? selectElement : undefined}
               selectedSid={selectedSid}
+              hiddenSids={hiddenSids}
             />
           )}
         </div>
@@ -429,6 +534,16 @@ export function startHtmlDocument(
             setView('source')
           }}
         />
+        <MarkdownHideSheet
+          open={hideAvailable && hideLabel !== null}
+          defaultLabel={hideLabel ?? ''}
+          onConfirm={(label) => {
+            setHideLabel(null)
+            // a refused mark has told why in a toast
+            hideSelected(label)
+          }}
+          onCancel={() => setHideLabel(null)}
+        />
       </EditorShell>
     )
   }
@@ -436,8 +551,46 @@ export function startHtmlDocument(
   return {
     save: saveDocumentInternal,
     editable: !readOnly,
-    // The HTML AI tools come with their own task; until then no AI entry is shown for HTML.
-    aiAvailable: false,
+
+    async createAiRun(ctx) {
+      // the desktop HTML skill and its strings load with the first run (AI is off by default)
+      const { createMobileHtmlSkill } = await import('./htmlAi')
+      // one run goes back to the source it started from (spec 5.6, as in Markdown)
+      const before = readSource()
+      const skill = createMobileHtmlSkill(
+        {
+          getText: readSource,
+          getVersion: () => kept.get().version,
+          getMap: () => {
+            const { source, version } = kept.get()
+            return mapFor(source, version)
+          },
+          getLastManualVersion: () => lastManualVersion,
+          getSelectedSid: () => kept.get().selection?.sid ?? null,
+          applyPatches,
+        },
+        {
+          getMode: () => ctx.getMode(),
+          // a document that is not UTF-8 is read-only whatever its file allows
+          getCapabilities: () =>
+            readOnly
+              ? { ...ctx.getCapabilities(), writable: false, isUntitled: false }
+              : ctx.getCapabilities(),
+          switchToEdit: () => ctx.switchToEdit(),
+          getLang: () => ctx.getLang(),
+          onMutated: (summary) => {
+            ctx.setUndo({
+              summary,
+              undo: () => {
+                replaceSource(before)
+                ctx.setUndo(null)
+              },
+            })
+          },
+        },
+      )
+      return { skill }
+    },
 
     async share(doc) {
       await htmlApi.shareDocument(doc.session, readSource()).catch(() => {})

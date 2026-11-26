@@ -49,6 +49,20 @@
   border-radius: var(--m-space-half);
 }
 
+/* An element hidden from the AI (spec 5.6): a dashed line on every side, drawn by the parent
+ * like the selection box, so neither the file nor the frame document changes for it. */
+.web-html-hidden {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  min-width: var(--m-space-1);
+  min-height: var(--m-space-1);
+  outline: var(--m-space-half) dashed var(--color-ai-action);
+  outline-offset: var(--m-space-half);
+  border-radius: var(--m-space-half);
+}
+
 .web-html-source {
   flex: 1;
   width: 100%;
