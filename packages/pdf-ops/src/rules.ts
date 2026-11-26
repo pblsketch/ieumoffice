@@ -4,14 +4,8 @@
  * have changed), and whether a password or repair job answered with what the
  * tool promises.
  */
-import {
-  encryptedPageCount,
-  inspectImage,
-  inspectPdf,
-  type InspectResult,
-  type PdfToolAccept,
-  type PdfToolInputKind,
-} from './tools'
+import { encryptedPageCount, inspectImage, inspectPdf, type InspectResult } from './tools'
+import { type PdfToolAccept, type PdfToolInputKind } from './tool-ids'
 
 /**
  * How many pages a picked file has for a tool that takes `accept`, or why the

@@ -23,9 +23,8 @@ import {
   runPdfTool,
   runSplitPdfTool,
   type PageEngine,
-  type PdfToolId,
-  type PdfToolOptions,
 } from '../src/tools'
+import type { PdfToolId, PdfToolOptions } from '../src/tool-ids'
 
 const FIXED_NOW = new Date('2026-01-02T03:04:05Z')
 

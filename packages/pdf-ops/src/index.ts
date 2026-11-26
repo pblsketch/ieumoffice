@@ -1,6 +1,8 @@
 // Public surface of @genoffice/pdf-ops. Each module is filled by its own task; this list is fixed.
+export * from './tool-ids'
 export * from './tools'
 export * from './rules'
+export * from './split-plan'
 export * from './split'
 export * from './page-range'
 export * from './images'
