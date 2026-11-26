@@ -168,6 +168,7 @@ export function createMobileSaveApi(
       try {
         staged = (await stageWorkbookCopy(context(), request)).path
         await sheetsWriteRecovery(client, {
+          sessionId: document.sessionId,
           docKey: document.docKey,
           title: recoveryTitle(document),
           path: staged,

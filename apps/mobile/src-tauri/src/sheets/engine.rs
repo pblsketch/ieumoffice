@@ -101,6 +101,21 @@ impl SheetsEngine {
     }
 }
 
+impl SheetsEngine {
+    /// The library's `probe` of a work-folder file: whether it is encrypted
+    /// and whether it is a legacy `.xls`. `None` when the library cannot say
+    /// (a file it cannot read, a path it refuses).
+    pub fn probe_original(&self, path: &Path) -> Option<super::save::OriginalProbe> {
+        let request = serde_json::json!({ "op": "probe", "path": path }).to_string();
+        let answer: serde_json::Value = serde_json::from_str(&self.crypto_line(&request)).ok()?;
+        let result = answer.get("result")?;
+        Some(super::save::OriginalProbe {
+            encrypted: result.get("encrypted")?.as_bool()?,
+            legacy_xls: result.get("document")?.as_str()? == "xls",
+        })
+    }
+}
+
 const NO_CRYPTO_ANSWER: &str = r#"{"ok":false,"error":{"code":"unsupported","message":"The spreadsheet engine could not process this request."}}"#;
 
 /// Copies an answer the library handed out and frees it.

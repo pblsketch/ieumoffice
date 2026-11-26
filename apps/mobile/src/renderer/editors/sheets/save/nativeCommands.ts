@@ -42,10 +42,19 @@ export function sheetsShareFile(
   return invokeMobileCommand(client.transport, 'mobile_sheets_share_file', { ...input })
 }
 
-/** Keeps a work-folder workbook as the document's recovery copy (an `.xlsx`). */
+/**
+ * Keeps a work-folder workbook as the document's recovery copy (an `.xlsx`).
+ * `sessionId` is the app's document session: Rust refuses the copy for a
+ * document whose original was encrypted.
+ */
 export function sheetsWriteRecovery(
   client: Client,
-  input: { readonly docKey: string; readonly title: string; readonly path: string },
+  input: {
+    readonly sessionId: string
+    readonly docKey: string
+    readonly title: string
+    readonly path: string
+  },
 ): Promise<{ readonly ok: boolean }> {
   return invokeMobileCommand(client.transport, 'mobile_sheets_write_recovery', { ...input })
 }

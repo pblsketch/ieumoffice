@@ -304,7 +304,12 @@ describe('the recovery copy', () => {
       api.writeWorkbookRecovery(valueEdit(file.sessionId, 'sheet-1', 0, 0, 'Draft')),
     ).resolves.toEqual({ ok: true })
     expect(device.recoveries).toHaveLength(1)
-    expect(device.recoveries[0]).toMatchObject({ docKey: 'key-1', title: 'ledger.xlsx' })
+    // The document session goes along: Rust refuses the copy for a password document.
+    expect(device.recoveries[0]).toMatchObject({
+      sessionId: DOC,
+      docKey: 'key-1',
+      title: 'ledger.xlsx',
+    })
     const sheet = (await zipEntries(device.recoveries[0]!.bytes)).get('xl/worksheets/sheet1.xml')
     expect(decoder.decode(sheet)).toContain('Draft')
     expect(sessions.ids()).toEqual([file.sessionId])

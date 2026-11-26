@@ -20,6 +20,15 @@
 //! refused when the document changed after it was opened (or last saved):
 //! the digest of what the app read or wrote is kept per document session.
 //!
+//! The WebView keeps the save rules (spec 2.3, 5.1); Rust holds a last line
+//! of defence for the two that must never break, from what it saw itself
+//! when it read the original (`DocumentMark`):
+//! - an `.xls` original is never written (the engine cannot write `.xls`;
+//!   its first save is a Save As to `.xlsx`);
+//! - a document whose original was encrypted never sends a plain workbook
+//!   (a ZIP package) to its original, a Save As or the share sheet, and
+//!   never writes a recovery copy. A CSV or PDF the person chose still goes.
+//!
 //! The storage calls sit in the small functions at the end ("storage
 //! calls"); each one becomes a single call to track T6's file-path functions
 //! (`copy_session_to_file`, `save_file_from_path`, `save_as_file_from_path`,
@@ -47,6 +56,15 @@ pub const MESSAGE_DISK_CHANGED: &str = "mobile.sheets.diskChanged";
 /// `messageKey` of a write the native file bridge could not take because of
 /// the file's size.
 pub const MESSAGE_TOO_LARGE: &str = "mobile.sheets.tooLargeToWrite";
+
+/// `messageKey` of a write over an `.xls` original (never allowed).
+pub const MESSAGE_LEGACY_ORIGINAL: &str = "mobile.sheets.legacyOriginal";
+
+/// `messageKey` of a plain workbook a password document tried to send out.
+pub const MESSAGE_NOT_LOCKED: &str = "mobile.sheets.notLocked";
+
+/// `messageKey` of a recovery copy a password document asked for.
+pub const MESSAGE_NO_RECOVERY: &str = "mobile.sheets.noRecoveryForLocked";
 
 /// About the largest file the native file bridge passes today: it carries the
 /// bytes as one base64 JSON string, and the Android side refuses strings over
@@ -82,11 +100,31 @@ pub struct SheetsCopyWritten {
     pub size: u64,
 }
 
+/// What the engine library's `probe` says about an original's bytes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OriginalProbe {
+    pub encrypted: bool,
+    /// A legacy `.xls` (BIFF in a compound file), encrypted or not.
+    pub legacy_xls: bool,
+}
+
+/// What Rust saw of a document's original when it read it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DocumentMark {
+    /// An `.xls` (by its name or its content): never written back.
+    pub legacy_xls: bool,
+    /// Encrypted: the session edits a decrypted copy, and only locked
+    /// workbooks may leave the work folder.
+    pub locked: bool,
+}
+
 /// SHA-256 of each document's original as the app last read or wrote it,
-/// by document session id (the desktop keeps `session.sha256` the same way).
+/// by document session id (the desktop keeps `session.sha256` the same way),
+/// and the document's `DocumentMark`.
 #[derive(Debug, Default)]
 pub struct OriginalDigests {
     digests: Mutex<HashMap<String, String>>,
+    marks: Mutex<HashMap<String, DocumentMark>>,
 }
 
 impl OriginalDigests {
@@ -103,7 +141,77 @@ impl OriginalDigests {
 
     pub fn forget(&self, session_id: &str) {
         self.digests.lock().unwrap().remove(session_id);
+        self.marks.lock().unwrap().remove(session_id);
     }
+
+    pub fn record_mark(&self, session_id: &str, mark: DocumentMark) {
+        self.marks
+            .lock()
+            .unwrap()
+            .insert(session_id.to_owned(), mark);
+    }
+
+    /// The document's mark (the default for one Rust never read, such as an
+    /// untitled or restored workbook).
+    pub fn mark(&self, session_id: &str) -> DocumentMark {
+        self.marks
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .copied()
+            .unwrap_or_default()
+    }
+}
+
+/// The compound-file signature (an encrypted OOXML package, an `.xls`).
+const CFB_MAGIC: [u8; 8] = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+/// The signature of a ZIP package (a plain workbook).
+const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
+
+/// The mark of an original read as `ext` with these bytes. Without the
+/// library's answer, a compound file named anything but `.xls` counts as
+/// encrypted (a plain OOXML package is a ZIP).
+fn mark_for(ext: &str, bytes: &[u8], probe: Option<OriginalProbe>) -> DocumentMark {
+    let legacy_name = ext.eq_ignore_ascii_case("xls");
+    match probe {
+        Some(probe) => DocumentMark {
+            legacy_xls: legacy_name || probe.legacy_xls,
+            locked: probe.encrypted,
+        },
+        None => DocumentMark {
+            legacy_xls: legacy_name,
+            locked: !legacy_name && bytes.starts_with(&CFB_MAGIC),
+        },
+    }
+}
+
+/// True when the work-folder file at `raw_path` is a ZIP package (a plain
+/// workbook; an encrypted one is a compound file).
+fn is_plain_package(workspace: &SheetsWorkspace, raw_path: &str) -> MobileResult<bool> {
+    Ok(workspace
+        .read_range(raw_path, Some(0), Some(4))?
+        .starts_with(&ZIP_MAGIC))
+}
+
+fn refused(message_key: &'static str, detail: &str) -> MobileError {
+    MobileError::with_detail(MobileErrorCode::InvalidArgument, message_key, detail)
+}
+
+/// Refuses a plain workbook leaving a password document (see the module note).
+fn ensure_locked_if_needed(
+    digests: &OriginalDigests,
+    workspace: &SheetsWorkspace,
+    session_id: &str,
+    raw_path: &str,
+) -> MobileResult<()> {
+    if digests.mark(session_id).locked && is_plain_package(workspace, raw_path)? {
+        return Err(refused(
+            MESSAGE_NOT_LOCKED,
+            "a workbook opened with a password leaves the app locked again",
+        ));
+    }
+    Ok(())
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -127,13 +235,15 @@ fn bad_base64(error: base64::DecodeError) -> MobileError {
 
 /// Copies the active document into a fresh working copy with extension
 /// `ext` in the work folder and remembers the digest of what was read (the
-/// base of the "changed since it was opened" check).
+/// base of the "changed since it was opened" check) and its `DocumentMark`
+/// (`probe`: the engine library's answer for the copy, `None` without one).
 pub fn copy_original_to_work_folder(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
     digests: &OriginalDigests,
     session_id: &str,
     ext: &str,
+    probe: &dyn Fn(&Path) -> Option<OriginalProbe>,
 ) -> MobileResult<SheetsWorkingCopy> {
     let target = workspace.new_file_path(ext)?.to_string_lossy().into_owned();
     let started = Instant::now();
@@ -149,6 +259,12 @@ pub fn copy_original_to_work_folder(
     workspace.write_bytes(&target, &bytes)?;
     let write_ms = elapsed_ms(started);
     digests.record(session_id, sha256_hex(&bytes));
+    let probed = if bytes.is_empty() {
+        None
+    } else {
+        probe(Path::new(&target))
+    };
+    digests.record_mark(session_id, mark_for(ext, &bytes, probed));
     Ok(SheetsWorkingCopy {
         path: target,
         size: bytes.len() as u64,
@@ -214,7 +330,8 @@ fn file_size(workspace: &SheetsWorkspace, raw_path: &str) -> MobileResult<u64> {
 /// session's original document. Call it only after the file passed the save
 /// checks (manifest comparison and the engine reopening it): this is the
 /// first moment the original changes. Refused when the original changed
-/// since the app read or last wrote it.
+/// since the app read or last wrote it, for an `.xls` original, and for a
+/// plain workbook over a password document's original.
 pub fn write_back_to_original(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
@@ -223,6 +340,13 @@ pub fn write_back_to_original(
     raw_path: &str,
 ) -> MobileResult<SheetsOriginalWritten> {
     workspace.resolve(raw_path)?;
+    if digests.mark(session_id).legacy_xls {
+        return Err(refused(
+            MESSAGE_LEGACY_ORIGINAL,
+            "an .xls original is never written; save as .xlsx",
+        ));
+    }
+    ensure_locked_if_needed(digests, workspace, session_id, raw_path)?;
     ensure_original_unchanged(files, digests, session_id)?;
     let size = file_size(workspace, raw_path)?;
     let digest = workspace.sha256(raw_path)?;
@@ -234,7 +358,8 @@ pub fn write_back_to_original(
 
 /// Saves the workbook at `raw_path` as a new document the person places in
 /// the system save dialog (`suggested_name`: `.xlsx` or `.xlsm`). The new
-/// document becomes the active session; the old original is not written.
+/// document becomes the active session (keeping the old one's password
+/// mark); the old original is not written.
 pub fn save_as_new_document(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
@@ -252,6 +377,10 @@ pub fn save_as_new_document(
             suggested_name.to_owned(),
         ));
     }
+    let locked = session_id.is_some_and(|previous| digests.mark(previous).locked);
+    if let Some(previous) = session_id {
+        ensure_locked_if_needed(digests, workspace, previous, raw_path)?;
+    }
     let size = file_size(workspace, raw_path)?;
     let digest = workspace.sha256(raw_path)?;
     let session = store_as_new_document(
@@ -267,17 +396,27 @@ pub fn save_as_new_document(
         digests.forget(previous);
     }
     digests.record(&session.session_id, digest);
+    digests.record_mark(
+        &session.session_id,
+        DocumentMark {
+            legacy_xls: false,
+            locked,
+        },
+    );
     Ok(session)
 }
 
-/// Hands the file at `raw_path` to the system share sheet as `suggested_name`.
+/// Hands the file at `raw_path` to the system share sheet as `suggested_name`
+/// (never a plain workbook of a password document).
 pub fn share_from_work_folder(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
+    digests: &OriginalDigests,
     session_id: &str,
     raw_path: &str,
     suggested_name: &str,
 ) -> MobileResult<()> {
+    ensure_locked_if_needed(digests, workspace, session_id, raw_path)?;
     let size = file_size(workspace, raw_path)?;
     share_file(files, workspace, session_id, raw_path, suggested_name)
         .map_err(|error| explain_write_failure(error, size))
@@ -285,14 +424,23 @@ pub fn share_from_work_folder(
 
 /// Keeps the workbook at `raw_path` as the document's recovery copy (an
 /// `.xlsx`, whatever the document's own format: see the kind's
-/// `recoveryFormat`).
+/// `recoveryFormat`). Refused for a password document (`session_id`): its
+/// workbook must not land outside the work folder in plain form.
 pub fn write_recovery_copy(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
+    digests: &OriginalDigests,
+    session_id: &str,
     doc_key: &str,
     title: &str,
     raw_path: &str,
 ) -> MobileResult<()> {
+    if digests.mark(session_id).locked {
+        return Err(refused(
+            MESSAGE_NO_RECOVERY,
+            "a workbook opened with a password has no recovery copy",
+        ));
+    }
     store_recovery_copy(files, workspace, doc_key, title, raw_path)
 }
 

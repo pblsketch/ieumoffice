@@ -114,6 +114,7 @@ pub async fn mobile_sheets_copy_session_to_temp(
             &sheets.originals,
             &session_id,
             &ext,
+            &|path| sheets.engine.probe_original(path),
         )
     })
     .await
@@ -428,6 +429,7 @@ pub async fn mobile_sheets_share_file(
         share_from_work_folder(
             &files,
             &sheets.workspace,
+            &sheets.originals,
             &session_id,
             &path,
             &suggested_name,
@@ -437,11 +439,13 @@ pub async fn mobile_sheets_share_file(
     .await
 }
 
-/// Keeps a workbook in the work folder as the document's recovery copy.
+/// Keeps a workbook in the work folder as the document's recovery copy
+/// (refused for a document opened with a password, `session_id`).
 #[tauri::command]
 pub async fn mobile_sheets_write_recovery(
     files: State<'_, Arc<MobileFileService>>,
     state: State<'_, Arc<SheetsState>>,
+    session_id: String,
     doc_key: String,
     title: String,
     path: String,
@@ -449,7 +453,15 @@ pub async fn mobile_sheets_write_recovery(
     let files = files.inner().clone();
     let sheets = state.inner().clone();
     run_blocking(move || {
-        write_recovery_copy(&files, &sheets.workspace, &doc_key, &title, &path)?;
+        write_recovery_copy(
+            &files,
+            &sheets.workspace,
+            &sheets.originals,
+            &session_id,
+            &doc_key,
+            &title,
+            &path,
+        )?;
         Ok(SheetsOk { ok: true })
     })
     .await

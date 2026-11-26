@@ -557,6 +557,7 @@ fn a_save_over_an_original_changed_since_it_was_opened_is_refused() {
         &digests,
         &session.session_id,
         "xlsx",
+        &|_| None,
     )
     .unwrap();
     assert_eq!(fs::read(&copy.path).unwrap(), b"original");
@@ -590,6 +591,7 @@ fn a_save_over_an_original_changed_since_it_was_opened_is_refused() {
         &digests,
         &session.session_id,
         "xlsx",
+        &|_| None,
     )
     .unwrap();
     super::save::write_back_to_original(&files, &workspace, &digests, &session.session_id, &raw)
@@ -625,6 +627,7 @@ fn save_as_makes_a_new_document_and_leaves_the_original() {
         &digests,
         &session.session_id,
         "xls",
+        &|_| None,
     )
     .unwrap();
     let saved = workspace.root().join("f-saved.xlsx");
@@ -690,16 +693,31 @@ fn share_and_recovery_read_the_work_folder_file() {
     let staged = workspace.root().join("f-share.xlsx");
     fs::write(&staged, b"edited copy").unwrap();
     let raw = staged.to_string_lossy().into_owned();
-    super::save::share_from_work_folder(&files, &workspace, &session.session_id, &raw, "book.xlsx")
-        .unwrap();
+    super::save::share_from_work_folder(
+        &files,
+        &workspace,
+        &super::save::OriginalDigests::default(),
+        &session.session_id,
+        &raw,
+        "book.xlsx",
+    )
+    .unwrap();
     assert_eq!(bridge.last_shared_bytes().unwrap(), b"edited copy");
     assert_eq!(
         bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
         b"original"
     );
 
-    super::save::write_recovery_copy(&files, &workspace, &session.doc_key, "book.xlsx", &raw)
-        .unwrap();
+    super::save::write_recovery_copy(
+        &files,
+        &workspace,
+        &super::save::OriginalDigests::default(),
+        &session.session_id,
+        &session.doc_key,
+        "book.xlsx",
+        &raw,
+    )
+    .unwrap();
     let listed = files.recovery_list().unwrap();
     assert!(listed.iter().any(|entry| entry.doc_key == session.doc_key));
     let read = base64::engine::general_purpose::STANDARD
@@ -712,6 +730,8 @@ fn share_and_recovery_read_the_work_folder_file() {
         super::save::write_recovery_copy(
             &files,
             &workspace,
+            &super::save::OriginalDigests::default(),
+            &session.session_id,
             &session.doc_key,
             "book.xlsx",
             &outside.to_string_lossy()
@@ -772,6 +792,7 @@ fn a_password_workbook_is_saved_locked_again_with_its_password() {
         &state.originals,
         &session.session_id,
         "xlsx",
+        &|path| state.engine.probe_original(path),
     )
     .unwrap();
     let crypto = |request: Value| parse(&state.engine.crypto_line(&request.to_string()));
@@ -827,4 +848,199 @@ fn a_password_workbook_is_saved_locked_again_with_its_password() {
         fs::read(&sample_plain).unwrap(),
         fs::read(fixtures.join("small.xlsx")).unwrap()
     );
+}
+
+fn crypto_fixture(name: &str) -> Vec<u8> {
+    fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/sheets/engine-lib/tests/fixtures/crypto")
+            .join(name),
+    )
+    .unwrap()
+}
+
+/// Last line of defence for spec 2.3: an `.xls` original is never written,
+/// whatever the WebView asks, and whether the app learns it from the name
+/// or from the file itself. Save As to an `.xlsx` is the way out, and that
+/// new document saves in place.
+#[test]
+fn an_xls_original_is_never_written_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SheetsState::new(dir.path()).unwrap();
+    let workspace = &state.workspace;
+    let (bridge, files) = host_file_service(dir.path());
+    let legacy = crypto_fixture("plain.xls");
+    let probe = |path: &std::path::Path| state.engine.probe_original(path);
+    let saved = workspace.root().join("f-saved.xlsx");
+    fs::write(&saved, crypto_fixture("small.xlsx")).unwrap();
+    let raw = saved.to_string_lossy().into_owned();
+
+    // Named .xls, and an .xls file the WebView calls .xlsx.
+    for (name, claimed) in [("book.xls", "xls"), ("book2.xls", "xlsx")] {
+        let uri = format!("host://picked/{name}");
+        bridge.set_next_pick_open(tauri_plugin_ieum_mobile::fs::MockPickedDoc {
+            uri: uri.clone(),
+            name: name.into(),
+            bytes: legacy.clone(),
+            writable: true,
+            ephemeral: false,
+        });
+        let session = files.pick_open_file(&["xls".into()]).unwrap();
+        super::save::copy_original_to_work_folder(
+            &files,
+            workspace,
+            &state.originals,
+            &session.session_id,
+            claimed,
+            &probe,
+        )
+        .unwrap();
+        let refused = super::save::write_back_to_original(
+            &files,
+            workspace,
+            &state.originals,
+            &session.session_id,
+            &raw,
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused.message_key,
+            super::save::MESSAGE_LEGACY_ORIGINAL,
+            "{name}"
+        );
+        assert_eq!(bridge.read_stored_uri(&uri).unwrap(), legacy, "{name}");
+
+        bridge.set_next_save_as_uri(&format!("host://saved/{name}x"));
+        let next = super::save::save_as_new_document(
+            &files,
+            workspace,
+            &state.originals,
+            Some(&session.session_id),
+            &raw,
+            "book.xlsx",
+        )
+        .unwrap();
+        super::save::write_back_to_original(
+            &files,
+            workspace,
+            &state.originals,
+            &next.session_id,
+            &raw,
+        )
+        .unwrap();
+        assert_eq!(bridge.read_stored_uri(&uri).unwrap(), legacy, "{name}");
+    }
+}
+
+/// Last line of defence for spec 5.1: a document opened with a password
+/// never sends a plain workbook out — not over the original, not to Save
+/// As (nor the new document after it), not to the share sheet, and never
+/// as a recovery copy. Locked files, and a CSV or PDF the person chose,
+/// still go.
+#[test]
+fn a_password_workbook_never_sends_out_its_plain_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SheetsState::new(dir.path()).unwrap();
+    let workspace = &state.workspace;
+    let digests = &state.originals;
+    let (bridge, files) = host_file_service(dir.path());
+    let pc_locked = crypto_fixture("small.pc-agile.xlsx");
+    picked_book(&bridge, &pc_locked);
+    let session = files.pick_open_file(&["xlsx".into()]).unwrap();
+    let copy = super::save::copy_original_to_work_folder(
+        &files,
+        workspace,
+        digests,
+        &session.session_id,
+        "xlsx",
+        &|path| state.engine.probe_original(path),
+    )
+    .unwrap();
+    let crypto = |request: Value| parse(&state.engine.crypto_line(&request.to_string()));
+    let password = "비밀번호 pw1";
+    let plain = workspace.root().join("plain.xlsx");
+    crypto(json!({ "op": "decrypt", "source": copy.path, "target": plain, "password": password }));
+    let plain_raw = plain.to_string_lossy().into_owned();
+    let relocked = workspace.root().join("relocked.xlsx");
+    crypto(json!({ "op": "encrypt", "source": plain, "target": relocked, "password": password }));
+    let relocked_raw = relocked.to_string_lossy().into_owned();
+    let id = session.session_id.as_str();
+
+    let refused = super::save::write_back_to_original(&files, workspace, digests, id, &plain_raw)
+        .unwrap_err();
+    assert_eq!(refused.message_key, super::save::MESSAGE_NOT_LOCKED);
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        pc_locked
+    );
+    let refused = super::save::share_from_work_folder(
+        &files,
+        workspace,
+        digests,
+        id,
+        &plain_raw,
+        "book.xlsx",
+    )
+    .unwrap_err();
+    assert_eq!(refused.message_key, super::save::MESSAGE_NOT_LOCKED);
+    assert!(bridge.last_shared_bytes().is_none());
+    let refused = super::save::write_recovery_copy(
+        &files,
+        workspace,
+        digests,
+        id,
+        &session.doc_key,
+        "book.xlsx",
+        &plain_raw,
+    )
+    .unwrap_err();
+    assert_eq!(refused.message_key, super::save::MESSAGE_NO_RECOVERY);
+    assert!(files.recovery_list().unwrap().is_empty());
+    let refused = super::save::save_as_new_document(
+        &files,
+        workspace,
+        digests,
+        Some(id),
+        &plain_raw,
+        "book.xlsx",
+    )
+    .unwrap_err();
+    assert_eq!(refused.message_key, super::save::MESSAGE_NOT_LOCKED);
+
+    // A CSV of the sheet is the person's own choice (as on the desktop).
+    let csv = workspace.root().join("f-sheet.csv");
+    fs::write(&csv, "a,b\n1,2\n").unwrap();
+    super::save::share_from_work_folder(
+        &files,
+        workspace,
+        digests,
+        id,
+        &csv.to_string_lossy(),
+        "book.csv",
+    )
+    .unwrap();
+    // The locked file goes everywhere a workbook goes.
+    super::save::write_back_to_original(&files, workspace, digests, id, &relocked_raw).unwrap();
+    super::save::share_from_work_folder(&files, workspace, digests, id, &relocked_raw, "book.xlsx")
+        .unwrap();
+    bridge.set_next_save_as_uri("host://saved/copy.xlsx");
+    let next = super::save::save_as_new_document(
+        &files,
+        workspace,
+        digests,
+        Some(id),
+        &relocked_raw,
+        "copy.xlsx",
+    )
+    .unwrap();
+    // The new document is still the password workbook.
+    let refused = super::save::write_back_to_original(
+        &files,
+        workspace,
+        digests,
+        &next.session_id,
+        &plain_raw,
+    )
+    .unwrap_err();
+    assert_eq!(refused.message_key, super::save::MESSAGE_NOT_LOCKED);
 }
