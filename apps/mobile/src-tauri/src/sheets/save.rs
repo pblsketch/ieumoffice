@@ -1,21 +1,70 @@
-//! Writing a finished save out of the T1 work folder.
+//! Reading a document into, and writing a finished save out of, the T1 work
+//! folder.
 //!
-//! The WebView never carries a saved workbook's bytes: it names a verified
-//! file in the work folder and Rust reads it there. Writing back to the
-//! document the user opened goes through the storage service
-//! (`MobileFileService::save_file_bytes`, which keeps the active session);
-//! a copy (CSV, ODS or PDF export) goes through the plugin's file bridge
-//! directly (`create_save_file` + `write_uri_bytes_atomic`), which leaves the
-//! active session as it is. Neither is changed here; both are only called.
+//! The WebView never carries a workbook's bytes: it names a file in the work
+//! folder and Rust reads it there. Every write to a place the person sees
+//! goes through a function that is only called here, never changed:
+//!
+//! - over the document the person opened: the storage service
+//!   (`MobileFileService::save_file_bytes`, which keeps the active session);
+//! - as a new document (Save As of the workbook, the first save of an `.xls`
+//!   or a `.csv` kept as Excel): `MobileFileService::save_as_file_bytes`,
+//!   which makes the new file the active session;
+//! - a copy (CSV, ODS or PDF export): the plugin's file bridge directly
+//!   (`create_save_file` + `write_uri_bytes_atomic`), which leaves the active
+//!   session as it is;
+//! - the share sheet and the recovery copy: `share_file` and
+//!   `recovery_write` of the storage service.
+//!
+//! Like the desktop's `errDiskChanged` guard, a write over the original is
+//! refused when the document changed after it was opened (or last saved):
+//! the digest of what the app read or wrote is kept per document session.
+//!
+//! The storage calls sit in the small functions at the end ("storage
+//! calls"); each one becomes a single call to track T6's file-path functions
+//! (`copy_session_to_file`, `save_file_from_path`, `save_as_file_from_path`,
+//! `write_uri_from_file`) once they reach this branch.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Mutex;
+use std::time::Instant;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri_plugin_ieum_mobile::fs::{NativeFileBridge, NativeFsError, NativeFsErrorKind};
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
-use crate::storage::MobileFileService;
+use crate::storage::{MobileDocFormat, MobileDocSession, MobileFileService, MobileShareMode};
 
 use super::SheetsWorkspace;
+
+/// `messageKey` of a write refused because the original changed since the
+/// app read it (the WebView shows its own sentence for it).
+pub const MESSAGE_DISK_CHANGED: &str = "mobile.sheets.diskChanged";
+
+/// `messageKey` of a write the native file bridge could not take because of
+/// the file's size.
+pub const MESSAGE_TOO_LARGE: &str = "mobile.sheets.tooLargeToWrite";
+
+/// About the largest file the native file bridge passes today: it carries the
+/// bytes as one base64 JSON string, and the Android side refuses strings over
+/// 20,000,000 characters (15,000,000 bytes; the other arguments take a little
+/// more). Only used to explain a write that failed, never to refuse one.
+pub const BRIDGE_WRITE_SIZE_HINT: u64 = 14_900_000;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SheetsWorkingCopy {
+    pub path: String,
+    pub size: u64,
+    /// Where the copy's time went (diagnostics): the storage read through the
+    /// native file bridge, the base64 decode, the write into the work folder.
+    pub read_ms: u64,
+    pub decode_ms: u64,
+    pub write_ms: u64,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,27 +82,218 @@ pub struct SheetsCopyWritten {
     pub size: u64,
 }
 
+/// SHA-256 of each document's original as the app last read or wrote it,
+/// by document session id (the desktop keeps `session.sha256` the same way).
+#[derive(Debug, Default)]
+pub struct OriginalDigests {
+    digests: Mutex<HashMap<String, String>>,
+}
+
+impl OriginalDigests {
+    pub fn record(&self, session_id: &str, digest: String) {
+        self.digests
+            .lock()
+            .unwrap()
+            .insert(session_id.to_owned(), digest);
+    }
+
+    pub fn get(&self, session_id: &str) -> Option<String> {
+        self.digests.lock().unwrap().get(session_id).cloned()
+    }
+
+    pub fn forget(&self, session_id: &str) {
+        self.digests.lock().unwrap().remove(session_id);
+    }
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    started.elapsed().as_millis() as u64
+}
+
+fn bad_base64(error: base64::DecodeError) -> MobileError {
+    MobileError::with_detail(
+        MobileErrorCode::InvalidArgument,
+        "mobile.sheets.badBase64",
+        error.to_string(),
+    )
+}
+
+/// Copies the active document into a fresh working copy with extension
+/// `ext` in the work folder and remembers the digest of what was read (the
+/// base of the "changed since it was opened" check).
+pub fn copy_original_to_work_folder(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    digests: &OriginalDigests,
+    session_id: &str,
+    ext: &str,
+) -> MobileResult<SheetsWorkingCopy> {
+    let target = workspace.new_file_path(ext)?.to_string_lossy().into_owned();
+    let started = Instant::now();
+    let read = files.read_file_bytes(session_id)?;
+    let read_ms = elapsed_ms(started);
+    let started = Instant::now();
+    let bytes = B64
+        .decode(read.bytes_base64.as_bytes())
+        .map_err(bad_base64)?;
+    drop(read);
+    let decode_ms = elapsed_ms(started);
+    let started = Instant::now();
+    workspace.write_bytes(&target, &bytes)?;
+    let write_ms = elapsed_ms(started);
+    digests.record(session_id, sha256_hex(&bytes));
+    Ok(SheetsWorkingCopy {
+        path: target,
+        size: bytes.len() as u64,
+        read_ms,
+        decode_ms,
+        write_ms,
+    })
+}
+
+/// Refuses a write over the original when it is no longer what the app read
+/// or last wrote. An original that cannot be read now (deleted, say) is not
+/// a refusal: the write recreates it, as on the desktop.
+fn ensure_original_unchanged(
+    files: &MobileFileService,
+    digests: &OriginalDigests,
+    session_id: &str,
+) -> MobileResult<()> {
+    let Some(expected) = digests.get(session_id) else {
+        return Ok(());
+    };
+    let Some(current) = current_original_digest(files, session_id) else {
+        return Ok(());
+    };
+    if current == expected {
+        return Ok(());
+    }
+    Err(MobileError::with_detail(
+        MobileErrorCode::InvalidArgument,
+        MESSAGE_DISK_CHANGED,
+        "the document changed after it was opened",
+    ))
+}
+
+/// A failed write of `size` bytes, told as "too large for the phone's file
+/// bridge" when that is what happened (see `BRIDGE_WRITE_SIZE_HINT`).
+pub fn explain_write_failure(error: MobileError, size: u64) -> MobileError {
+    if error.code == MobileErrorCode::UserCancelled {
+        return error;
+    }
+    let says_too_long = error
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.contains("exceeds the maximum length"));
+    if size > BRIDGE_WRITE_SIZE_HINT || says_too_long {
+        let detail = error.detail.unwrap_or_default();
+        return MobileError::with_detail(
+            MobileErrorCode::FileTooLarge,
+            MESSAGE_TOO_LARGE,
+            format!("{size} bytes: {detail}"),
+        );
+    }
+    error
+}
+
+fn file_size(workspace: &SheetsWorkspace, raw_path: &str) -> MobileResult<u64> {
+    Ok(workspace
+        .stat(raw_path)?
+        .map(|stat| stat.size)
+        .unwrap_or_default())
+}
+
 /// Writes the file at `raw_path` (inside the work folder) over the active
 /// session's original document. Call it only after the file passed the save
 /// checks (manifest comparison and the engine reopening it): this is the
-/// first moment the original changes.
+/// first moment the original changes. Refused when the original changed
+/// since the app read or last wrote it.
 pub fn write_back_to_original(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    digests: &OriginalDigests,
+    session_id: &str,
+    raw_path: &str,
+) -> MobileResult<SheetsOriginalWritten> {
+    workspace.resolve(raw_path)?;
+    ensure_original_unchanged(files, digests, session_id)?;
+    let size = file_size(workspace, raw_path)?;
+    let digest = workspace.sha256(raw_path)?;
+    store_over_original(files, workspace, session_id, raw_path)
+        .map_err(|error| explain_write_failure(error, size))?;
+    digests.record(session_id, digest);
+    Ok(SheetsOriginalWritten { ok: true, size })
+}
+
+/// Saves the workbook at `raw_path` as a new document the person places in
+/// the system save dialog (`suggested_name`: `.xlsx` or `.xlsm`). The new
+/// document becomes the active session; the old original is not written.
+pub fn save_as_new_document(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    digests: &OriginalDigests,
+    session_id: Option<&str>,
+    raw_path: &str,
+    suggested_name: &str,
+) -> MobileResult<MobileDocSession> {
+    workspace.resolve(raw_path)?;
+    let format = MobileDocFormat::from_name(suggested_name);
+    if !matches!(format, MobileDocFormat::Xlsx | MobileDocFormat::Xlsm) {
+        return Err(MobileError::with_detail(
+            MobileErrorCode::InvalidArgument,
+            "mobile.sheets.saveAsFormat",
+            suggested_name.to_owned(),
+        ));
+    }
+    let size = file_size(workspace, raw_path)?;
+    let digest = workspace.sha256(raw_path)?;
+    let session = store_as_new_document(
+        files,
+        workspace,
+        session_id,
+        suggested_name,
+        format,
+        raw_path,
+    )
+    .map_err(|error| explain_write_failure(error, size))?;
+    if let Some(previous) = session_id {
+        digests.forget(previous);
+    }
+    digests.record(&session.session_id, digest);
+    Ok(session)
+}
+
+/// Hands the file at `raw_path` to the system share sheet as `suggested_name`.
+pub fn share_from_work_folder(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
     session_id: &str,
     raw_path: &str,
-) -> MobileResult<SheetsOriginalWritten> {
-    let bytes = workspace.read_bytes(raw_path)?;
-    let size = bytes.len() as u64;
-    // The storage service takes base64 (its WebView command's shape); the
-    // encoding stays inside Rust.
-    let encoded = B64.encode(&bytes);
-    drop(bytes);
-    let result = files.save_file_bytes(session_id, &encoded, None)?;
-    Ok(SheetsOriginalWritten {
-        ok: result.ok,
-        size,
-    })
+    suggested_name: &str,
+) -> MobileResult<()> {
+    let size = file_size(workspace, raw_path)?;
+    share_file(files, workspace, session_id, raw_path, suggested_name)
+        .map_err(|error| explain_write_failure(error, size))
+}
+
+/// Keeps the workbook at `raw_path` as the document's recovery copy (an
+/// `.xlsx`, whatever the document's own format: see the kind's
+/// `recoveryFormat`).
+pub fn write_recovery_copy(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    doc_key: &str,
+    title: &str,
+    raw_path: &str,
+) -> MobileResult<()> {
+    store_recovery_copy(files, workspace, doc_key, title, raw_path)
 }
 
 /// Asks where to put a copy (system save dialog) and writes the file at
@@ -66,17 +306,101 @@ pub fn write_copy(
     suggested_name: &str,
     mime: &str,
 ) -> MobileResult<SheetsCopyWritten> {
-    let bytes = workspace.read_bytes(raw_path)?;
+    let path = workspace.resolve(raw_path)?;
+    let size = file_size(workspace, raw_path)?;
     let picked = bridge
         .create_save_file(suggested_name, mime)
         .map_err(fs_error)?;
-    bridge
-        .write_uri_bytes_atomic(&picked.uri, &bytes)
-        .map_err(fs_error)?;
+    write_copy_into(bridge, workspace, &picked.uri, &path)
+        .map_err(|error| explain_write_failure(error, size))?;
     Ok(SheetsCopyWritten {
         name: picked.name,
-        size: bytes.len() as u64,
+        size,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Storage calls. Today they move the bytes as base64 (the shape of the
+// storage service's WebView commands), all inside Rust. Each body becomes one
+// call to T6's file-path functions; the comment above each names it.
+
+/// T6: `files.copy_session_to_file(session_id, &tmp)` + `sha256` of `tmp`.
+fn current_original_digest(files: &MobileFileService, session_id: &str) -> Option<String> {
+    let read = files.read_file_bytes(session_id).ok()?;
+    let bytes = B64.decode(read.bytes_base64.as_bytes()).ok()?;
+    Some(sha256_hex(&bytes))
+}
+
+/// T6: `files.save_file_from_path(session_id, &workspace.resolve(raw_path)?, None)`.
+fn store_over_original(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    session_id: &str,
+    raw_path: &str,
+) -> MobileResult<()> {
+    let encoded = B64.encode(workspace.read_bytes(raw_path)?);
+    files
+        .save_file_bytes(session_id, &encoded, None)
+        .map(|_| ())
+}
+
+/// T6: `files.save_as_file_from_path(session_id, suggested_name, format, &workspace.resolve(raw_path)?, None)`.
+fn store_as_new_document(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    session_id: Option<&str>,
+    suggested_name: &str,
+    format: MobileDocFormat,
+    raw_path: &str,
+) -> MobileResult<MobileDocSession> {
+    let encoded = B64.encode(workspace.read_bytes(raw_path)?);
+    files.save_as_file_bytes(session_id, suggested_name, format, &encoded, None)
+}
+
+/// T6: `write_uri_from_file(bridge, uri, path, workspace.root())`.
+fn write_copy_into(
+    bridge: &dyn NativeFileBridge,
+    _workspace: &SheetsWorkspace,
+    uri: &str,
+    path: &Path,
+) -> MobileResult<()> {
+    let bytes = std::fs::read(path).map_err(|error| {
+        MobileError::with_detail(
+            MobileErrorCode::InternalError,
+            "mobile.sheets.ioError",
+            error.to_string(),
+        )
+    })?;
+    bridge.write_uri_bytes_atomic(uri, &bytes).map_err(fs_error)
+}
+
+/// T6 publishes no file-path share or recovery function; these keep the
+/// base64 step inside Rust.
+fn share_file(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    session_id: &str,
+    raw_path: &str,
+    suggested_name: &str,
+) -> MobileResult<()> {
+    let encoded = B64.encode(workspace.read_bytes(raw_path)?);
+    files.share_file(
+        session_id,
+        suggested_name,
+        MobileShareMode::Edited,
+        Some(&encoded),
+    )
+}
+
+fn store_recovery_copy(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    doc_key: &str,
+    title: &str,
+    raw_path: &str,
+) -> MobileResult<()> {
+    let encoded = B64.encode(workspace.read_bytes(raw_path)?);
+    files.recovery_write(doc_key, MobileDocFormat::Xlsx, title, &encoded)
 }
 
 /// Same mapping as the storage service uses for bridge failures.

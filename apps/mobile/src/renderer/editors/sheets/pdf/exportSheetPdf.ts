@@ -1,5 +1,5 @@
 /**
- * PROTOTYPE (XLS-T5): the active sheet as a PDF, with the content the
+ * The active sheet as a PDF (the XLS-T5 method), with the content the
  * desktop's "current sheet PDF" has (apps/sheets/src/renderer/page-layout-actions.ts
  * `activeSheetPrintPayload` → `handleExportPdf`).
  *
@@ -12,6 +12,11 @@
  * becomes vector PDF pages (domToPdf.ts) instead of Chromium's `printToPDF`.
  * The result is a byte copy; nothing here touches the session, the unsaved
  * edits or the recovery copy.
+ *
+ * The phone's grid draws no floating pictures, charts or shapes, so the
+ * print layout gets none: the result counts the sheet's ones it left out
+ * (`skippedVisuals`), and characters no bundled font has (`stats.missingGlyphs`),
+ * for the one notice after the PDF is made.
  */
 import { PDFDocument, type PDFFont, type PDFImage } from 'pdf-lib'
 import type { FWorksheet } from '@univerjs/sheets/facade'
@@ -92,6 +97,8 @@ export interface SheetPdfResult {
   readonly pageCount: number
   readonly scale: number
   readonly stats: RenderStats
+  /** The sheet's pictures, charts and shapes the PDF does not hold. */
+  readonly skippedVisuals: number
   readonly timings: SheetPdfTimings
   /** Largest JS heap seen between batches (MB), where the engine reports it. */
   readonly peakHeapMb: number | null
@@ -100,6 +107,8 @@ export interface SheetPdfResult {
 /** The sheet ready to lay out, prepared the way the desktop prepares it. */
 interface PreparedSheet {
   readonly worksheet: PrintWorksheet
+  /** Floating objects of this sheet in the file (the phone prints none of them). */
+  readonly visualCount: number
   readonly setup: ReturnType<typeof resolveEffectivePageSetup>
   readonly breaks: { rowBreaks: number[]; colBreaks: number[] } | null
   readonly fileName: string
@@ -161,6 +170,7 @@ async function prepareActiveSheet(
     : new Map<string, HeaderFooterPictureImage>()
   return {
     worksheet: worksheet as unknown as PrintWorksheet,
+    visualCount: state?.file.visuals.filter((visual) => visual.sheetId === sheetId).length ?? 0,
     setup,
     breaks: state ? effectivePageBreaks(state, sheetId) : null,
     fileName,
@@ -268,6 +278,7 @@ export async function exportActiveSheetPdf(
     pageCount: plan.pages.length,
     scale: plan.scale,
     stats: sink.stats,
+    skippedVisuals: sheet.visualCount + sink.stats.skippedVisuals,
     timings,
     peakHeapMb,
   }
