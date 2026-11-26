@@ -1,0 +1,43 @@
+/* HTML editor (spec 5.2, 5.3): the preview frame fills the document area at the screen width;
+ * a page wider than that scrolls sideways inside the frame. */
+.web-html-viewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+/* An HTML page is drawn on the browser's own light canvas in every app theme, as on the desktop:
+ * a page without its own colours stays readable in the dark theme. */
+.web-html-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  color-scheme: light;
+  background: Canvas;
+}
+
+.web-html-source {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  border: 0;
+  outline: none;
+  padding: var(--m-space-4) var(--m-space-4) var(--m-space-10);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: var(--m-text-body-s);
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  resize: none;
+  tab-size: 2;
+}
+
+.web-html-source:focus,
+.web-html-source:focus-visible {
+  outline: none;
+}
