@@ -37,6 +37,7 @@ import { translateWorkpane } from './i18n/workpane'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
 import {
+  FindTab,
   WorkpaneSide,
   WorkpaneToggle,
   isWorkpaneFindShortcut,
@@ -1327,6 +1328,16 @@ export default function App() {
             onClose={() => setWorkpaneOpen(false)}
             focusFindTick={focusFindTick}
             layoutHint={`${aiOn ? (aiOpen ? 'a1' : 'a0') : 'ax'}-${memoOpen ? 'm1' : 'm0'}`}
+            renderTab={(tab, ctx) =>
+              tab === 'find' ? (
+                <FindTab
+                  bridge={agentBridge}
+                  changeTick={docTick}
+                  focusTick={ctx.focusFindTick}
+                  visible={ctx.visible && ctx.activeTab === 'find'}
+                />
+              ) : undefined
+            }
           />
         )}
         <div className="hwp-stage">

@@ -1,6 +1,13 @@
 export { WorkpaneSide, WorkpaneToggle } from './WorkpaneSide'
 export type { WorkpaneSideProps, WorkpaneSlotContext } from './WorkpaneSide'
 export {
+  FindTab,
+  FIND_FALLBACK_VIEWPORT_HEIGHT,
+  FIND_ROW_HEIGHT,
+  FIND_VIRTUAL_OVERSCAN,
+} from './FindTab'
+export type { FindTabBridge, FindTabProps } from './FindTab'
+export {
   DEFAULT_WORKPANE_TAB,
   DEFAULT_WORKPANE_TABS,
   MIN_DOC_WIDTH,

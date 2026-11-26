@@ -108,6 +108,9 @@ const METHODS = [
   'findMatches',
   'replaceFindMatches',
   'revealFindMatch',
+  'readOutline',
+  'setDocOutlineMap',
+  'caretPosition',
 ] as const satisfies readonly (keyof AgentPluginSurface)[]
 
 export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): AgentBridge {

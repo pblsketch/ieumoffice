@@ -76,6 +76,7 @@ import {
 } from './pc-fonts.mjs'
 import { printSvgForThisPc, screenFonts } from './print-fonts.mjs'
 import { findMatches, replaceFindMatches, revealFindMatch } from './find.mjs'
+import { readOutline, writeDocOutlineMap } from './outline.mjs'
 import { installWorkpaneMenu } from './workpane-menu.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
@@ -162,8 +163,10 @@ const FLOATING_KINDS = new Set(['image', 'picture', 'shape', 'group', 'ole', 'te
 const REVEAL_COMMAND = 'ext:ieum-reveal'
 /** The command this plugin registers to reveal and select a workpane Find match (including notes). */
 const REVEAL_FIND_COMMAND = 'ext:ieum-reveal-find'
+/** The command this plugin registers to read the current caret paragraph (sec, para). */
+const CARET_POSITION_COMMAND = 'ext:ieum-caret-position'
 /** Changes triggered from the user's workpane UI: recorded as foreign edits, not AI changes. */
-const WORKPANE_CHANGES = new Set(['workpane-replace'])
+const WORKPANE_CHANGES = new Set(['workpane-replace', 'outline-style-map'])
 /**
  * The event the File menu items this plugin adds fire on the editor's window, with the
  * command as its detail: the app hears it and saves or prints the way Ctrl+S and Ctrl+P do.
@@ -8471,6 +8474,27 @@ export const agentPlugin = {
       // registered by an earlier activation of this plugin, or a host without commands
     }
 
+    let caretNow = null
+    try {
+      host.automation.registerCommand({
+        id: CARET_POSITION_COMMAND,
+        label: 'Read the caret paragraph',
+        execute: (services) => {
+          try {
+            const input = services && services.getInputHandler ? services.getInputHandler() : null
+            const cursor = input ? input.cursor : null
+            const pos = cursor && cursor.getPosition ? cursor.getPosition() : null
+            const at = endOf(pos)
+            caretNow = at ? { sec: at.sec, para: at.para } : null
+          } catch {
+            caretNow = null
+          }
+        },
+      })
+    } catch {
+      // registered by an earlier activation of this plugin, or a host without commands
+    }
+
     // what the selection command saw, and the selection this plugin made itself by showing
     // a change: that one is not something the user picked
     let picked = null
@@ -13647,6 +13671,43 @@ export const agentPlugin = {
           return { ok: false }
         }
         return shownFind
+      }),
+
+      /** Read document headings (native outline paragraphs + mapped paragraph styles) in reading order. */
+      readOutline: guarded((options) => host.read((doc) => readOutline(doc, options))),
+
+      /** Write or clear the document-scoped outline style-to-level map (`설정:개요수준`) in one undo step. */
+      setDocOutlineMap: guarded((map, changeOptions) => {
+        const noop = Symbol('noop')
+        let failedResult = null
+        try {
+          return change(
+            'outline-style-map',
+            (doc) => {
+              const result = writeDocOutlineMap(doc, map)
+              if (!result.ok) {
+                failedResult = result
+                throw noop
+              }
+              return result
+            },
+            { ...changeOptions, foreign: true, allowMemoRemoval: true },
+          )
+        } catch (thrown) {
+          if (thrown === noop) return failedResult
+          throw thrown
+        }
+      }),
+
+      /** Read the current body paragraph `(sec, para)` containing the caret, or null if unavailable. */
+      caretPosition: guarded(() => {
+        caretNow = null
+        try {
+          host.automation.execute(CARET_POSITION_COMMAND)
+        } catch {
+          return null
+        }
+        return caretNow
       }),
 
       /** Take the marks of the changes made so far off the pages. */

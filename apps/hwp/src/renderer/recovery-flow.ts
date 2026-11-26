@@ -219,6 +219,8 @@ const READING_CALLS: ReadonlySet<string> = new Set([
   'installWorkpaneMenu',
   'findMatches',
   'revealFindMatch',
+  'readOutline',
+  'caretPosition',
 ])
 
 /**

@@ -9,6 +9,13 @@ import type {
   FindResult,
   RevealFindResult,
 } from './find.mjs'
+import type {
+  OutlineCaret,
+  OutlineStyleMap,
+  ReadOutlineOptions,
+  ReadOutlineResult,
+  WriteDocOutlineMapResult,
+} from './outline.mjs'
 import type { WorkpaneMenuLabels } from './workpane-menu.mjs'
 
 /**
@@ -2051,6 +2058,15 @@ export interface AgentPluginSurface {
   ): FindReplaceResult
   /** move caret and select a find match (entering footnote edit when supported) */
   revealFindMatch(match: FindMatch): RevealFindResult
+  /** read document outline items (native outline paragraphs + mapped styles) */
+  readOutline(options?: ReadOutlineOptions): ReadOutlineResult
+  /** write or clear the document-scoped outline style-to-level map (`설정:개요수준`) */
+  setDocOutlineMap(
+    map: OutlineStyleMap | null,
+    changeOptions?: AgentChangeOptions,
+  ): WriteDocOutlineMapResult
+  /** current caret body paragraph `(sec, para)`, or null if unavailable */
+  caretPosition(): OutlineCaret | null
 }
 
 /** Pages drawn for printing: SVG, and each page's size in CSS pixels. */

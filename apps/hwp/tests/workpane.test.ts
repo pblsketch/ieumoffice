@@ -701,7 +701,7 @@ describe('App workpane integration (AI-off, Ctrl+F, editor frame events, present
   })
 
   it('hides the workpane in presentation mode CSS', () => {
-    const css = readFileSync(resolve(process.cwd(), 'src/renderer/styles.css'), 'utf8')
+    const css = readFileSync(resolve(__dirname, '../src/renderer/styles.css'), 'utf8')
     expect(css).toContain('.hwp-app.hwp-presenting .workpane-side')
   })
 })
