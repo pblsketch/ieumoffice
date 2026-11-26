@@ -105,6 +105,8 @@
 
 [data-theme='dark'] {
   --accent: #34a853;
+  /* the dark accent is light: white on it does not read */
+  --sheets-on-accent: #141414;
   --accent-dark: #58b380;
   --accent-soft: #1d3328;
   --surface-hover: #333;
@@ -137,6 +139,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #34a853;
+    --sheets-on-accent: #141414;
     --accent-dark: #58b380;
     --accent-soft: #1d3328;
     --surface-hover: #333;
@@ -1887,7 +1890,6 @@ button.check-item:hover {
 .status-msg {
   display: block;
   min-width: 0;
-  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

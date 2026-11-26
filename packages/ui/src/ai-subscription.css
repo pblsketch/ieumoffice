@@ -168,6 +168,43 @@
   color: var(--text);
 }
 
+/* Nothing connected and nothing said yet: the connect prompt is the panel's
+ * whole job. The prompt lives in the composer, so the starter screen above it
+ * (greeting, suggestions, templates, none of which can run without a
+ * connection) used to keep whatever height the prompt left over and both
+ * scrolled on their own. Drop the starter screen and let the composer take the
+ * height as one scroll area, its input pinned to the bottom. Every editor's
+ * panel has the same `.ai-chat` / `.ai-composer` siblings. */
+.ai-chat:has(.ai-chat-empty):has(~ .ai-composer .ai-sub-prompt) {
+  display: none;
+}
+
+.ai-chat:has(.ai-chat-empty) ~ .ai-composer:has(.ai-sub-prompt) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 16px;
+}
+
+.ai-chat:has(.ai-chat-empty) ~ .ai-composer:has(.ai-sub-prompt) > .ai-sub-prompt {
+  margin-bottom: auto;
+  padding-bottom: 16px;
+}
+
+.ai-chat:has(.ai-chat-empty) ~ .ai-composer:has(.ai-sub-prompt) .ai-input-box {
+  position: sticky;
+  bottom: 0;
+}
+
+/* The editors that put the prompt in the chat log itself (hwp, markdown, pdf,
+ * sheets) already share one scroll area; there the starter screen only pushed
+ * the prompt below the fold. */
+.ai-chat:has(.ai-sub-prompt) :is(.ai-chat-empty, .ai-chat-empty-hints) {
+  display: none;
+}
+
 /* shown in an AI panel in place of an error while no provider can run */
 .ai-sub-prompt {
   display: flex;

@@ -88,6 +88,8 @@
 
 [data-theme='dark'] {
   --accent: #e8663f;
+  /* the dark accent is light: white on it does not read */
+  --pdf-on-accent: #141414;
   --accent-dark: #d4552f;
   --accent-soft: #43261d;
   --pdf-error: #e57373;
@@ -114,6 +116,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #e8663f;
+    --pdf-on-accent: #141414;
     --accent-dark: #d4552f;
     --accent-soft: #43261d;
     --pdf-error: #e57373;

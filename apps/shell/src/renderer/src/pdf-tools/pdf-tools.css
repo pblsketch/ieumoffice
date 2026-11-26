@@ -2,21 +2,21 @@
  * the shell's brand accent and this window's notice tints are defined here,
  * with light, dark and system-dark values. */
 :root {
-  --accent: #0f7fff;
-  --accent-hover: #0e72e5;
+  --accent: #0a68d4;
+  --accent-hover: #0959b8;
   --accent-soft: #eaf0fd;
 }
 
 [data-theme='dark'] {
-  --accent: #3f99ff;
-  --accent-hover: #5ba5ff;
+  --accent: #4a9eff;
+  --accent-hover: #6aaeff;
   --accent-soft: #24354d;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --accent: #3f99ff;
-    --accent-hover: #5ba5ff;
+    --accent: #4a9eff;
+    --accent-hover: #6aaeff;
     --accent-soft: #24354d;
   }
 }
@@ -398,6 +398,32 @@ body {
   justify-content: flex-start;
 }
 
+/* A tool's run button is the step the whole screen leads to, so it is the
+ * window's bottom bar: pinned under the options however long they get, with
+ * progress and results above it, in place of the footer's lone Close (the
+ * window's own close and "All tools" are still there). */
+.pt:has(.pt-run-row) > .pt-foot {
+  display: none;
+}
+
+.pt-body:has(.pt-run-row) {
+  padding-bottom: 0;
+}
+
+.pt-section:has(> .pt-run-row) {
+  flex: 1 0 auto;
+}
+
+.pt-run-row {
+  order: 1;
+  position: sticky;
+  bottom: 0;
+  margin: auto -22px 0;
+  padding: 10px 22px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface);
+}
+
 .pt-btn {
   height: 30px;
   padding: 0 14px;
@@ -474,6 +500,11 @@ body {
   max-width: 360px;
 }
 
+/* the browser default placeholder grey fell to 3.6:1 on the dark surface */
+.pt-search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
 .pt-dropzone {
   display: flex;
   flex-direction: column;
@@ -489,10 +520,14 @@ body {
   background: var(--accent-soft);
 }
 
-.pt-drop-hint {
-  margin: 6px 0;
-  color: var(--text-secondary);
-  font-size: 12px;
+/* nothing picked yet: a roomy target, the button and its hint centred */
+.pt-dropzone:not(:has(.pt-list)) {
+  min-height: 120px;
+  justify-content: center;
+}
+
+.pt-dropzone:not(:has(.pt-list)) > .pt-actions {
+  justify-content: center;
 }
 
 .pt-drop-inline {
