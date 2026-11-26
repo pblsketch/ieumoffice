@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { it as open } from './open/it'
+import { it as grid } from './grid/it'
+import { it as toolbar } from './toolbar/it'
+import { it as save } from './save/it'
+import { it as ai } from './ai/it'
 
-export const it = {
-  sheetsProvisionalNotice: 'Griglia di prova: le modifiche non vengono ancora salvate.',
-  sheetsLoading: 'Caricamento della griglia…',
-  sheetsShareFailed: 'Impossibile condividere questo file.',
-  sheetsFreezeTopRow: 'Blocca riga superiore',
-  sheetsFreezeFirstColumn: 'Blocca prima colonna',
-  sheetsUnfreeze: 'Sblocca riquadri',
-  sheetsKeyboardBar: 'Strumenti per le formule',
-  sheetsInsertSum: 'Funzione somma',
-  sheetsInsertParens: 'Parentesi',
-  sheetsNumericKeys: 'Tastiera numerica',
-  sheetsCancelEdit: 'Annulla',
-  sheetsConfirmEdit: 'Fine',
-} as const satisfies Record<keyof typeof zh, string>
+export const it = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

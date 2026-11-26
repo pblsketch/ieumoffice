@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { he as open } from './open/he'
+import { he as grid } from './grid/he'
+import { he as toolbar } from './toolbar/he'
+import { he as save } from './save/he'
+import { he as ai } from './ai/he'
 
-export const he = {
-  sheetsProvisionalNotice: 'רשת ניסיון: השינויים שלך עדיין לא נשמרים.',
-  sheetsLoading: 'טוען את הרשת…',
-  sheetsShareFailed: 'לא ניתן לשתף את הקובץ הזה.',
-  sheetsFreezeTopRow: 'הקפא את השורה העליונה',
-  sheetsFreezeFirstColumn: 'הקפא את העמודה הראשונה',
-  sheetsUnfreeze: 'בטל הקפאת חלוניות',
-  sheetsKeyboardBar: 'כלי הזנת נוסחאות',
-  sheetsInsertSum: 'פונקציית סכום',
-  sheetsInsertParens: 'סוגריים',
-  sheetsNumericKeys: 'מקלדת מספרים',
-  sheetsCancelEdit: 'ביטול',
-  sheetsConfirmEdit: 'סיום',
-} as const satisfies Record<keyof typeof zh, string>
+export const he = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

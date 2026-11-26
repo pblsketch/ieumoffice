@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { tr as open } from './open/tr'
+import { tr as grid } from './grid/tr'
+import { tr as toolbar } from './toolbar/tr'
+import { tr as save } from './save/tr'
+import { tr as ai } from './ai/tr'
 
-export const tr = {
-  sheetsProvisionalNotice: 'Deneme ızgarası: değişiklikleriniz henüz kaydedilmiyor.',
-  sheetsLoading: 'Izgara yükleniyor…',
-  sheetsShareFailed: 'Bu dosya paylaşılamadı.',
-  sheetsFreezeTopRow: 'Üst satırı dondur',
-  sheetsFreezeFirstColumn: 'İlk sütunu dondur',
-  sheetsUnfreeze: 'Bölmeleri çöz',
-  sheetsKeyboardBar: 'Formül giriş araçları',
-  sheetsInsertSum: 'Toplam işlevi',
-  sheetsInsertParens: 'Parantez',
-  sheetsNumericKeys: 'Sayı klavyesi',
-  sheetsCancelEdit: 'İptal',
-  sheetsConfirmEdit: 'Tamam',
-} as const satisfies Record<keyof typeof zh, string>
+export const tr = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

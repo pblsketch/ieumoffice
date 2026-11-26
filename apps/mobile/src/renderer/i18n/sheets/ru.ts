@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { ru as open } from './open/ru'
+import { ru as grid } from './grid/ru'
+import { ru as toolbar } from './toolbar/ru'
+import { ru as save } from './save/ru'
+import { ru as ai } from './ai/ru'
 
-export const ru = {
-  sheetsProvisionalNotice: 'Пробная таблица: изменения пока не сохраняются.',
-  sheetsLoading: 'Загрузка таблицы…',
-  sheetsShareFailed: 'Не удалось поделиться этим файлом.',
-  sheetsFreezeTopRow: 'Закрепить верхнюю строку',
-  sheetsFreezeFirstColumn: 'Закрепить первый столбец',
-  sheetsUnfreeze: 'Снять закрепление',
-  sheetsKeyboardBar: 'Инструменты ввода формул',
-  sheetsInsertSum: 'Функция суммы',
-  sheetsInsertParens: 'Скобки',
-  sheetsNumericKeys: 'Цифровая клавиатура',
-  sheetsCancelEdit: 'Отмена',
-  sheetsConfirmEdit: 'Готово',
-} as const satisfies Record<keyof typeof zh, string>
+export const ru = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>

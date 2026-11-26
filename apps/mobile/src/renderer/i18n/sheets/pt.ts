@@ -1,16 +1,11 @@
 import type { zh } from './zh'
+import { pt as open } from './open/pt'
+import { pt as grid } from './grid/pt'
+import { pt as toolbar } from './toolbar/pt'
+import { pt as save } from './save/pt'
+import { pt as ai } from './ai/pt'
 
-export const pt = {
-  sheetsProvisionalNotice: 'Grade de teste: suas alterações ainda não são salvas.',
-  sheetsLoading: 'Carregando a grade…',
-  sheetsShareFailed: 'Não foi possível compartilhar este arquivo.',
-  sheetsFreezeTopRow: 'Congelar linha superior',
-  sheetsFreezeFirstColumn: 'Congelar primeira coluna',
-  sheetsUnfreeze: 'Descongelar painéis',
-  sheetsKeyboardBar: 'Ferramentas de fórmula',
-  sheetsInsertSum: 'Função soma',
-  sheetsInsertParens: 'Parênteses',
-  sheetsNumericKeys: 'Teclado numérico',
-  sheetsCancelEdit: 'Cancelar',
-  sheetsConfirmEdit: 'Concluir',
-} as const satisfies Record<keyof typeof zh, string>
+export const pt = { ...open, ...grid, ...toolbar, ...save, ...ai } as const satisfies Record<
+  keyof typeof zh,
+  string
+>
