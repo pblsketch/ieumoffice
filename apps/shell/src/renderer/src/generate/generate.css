@@ -2,8 +2,8 @@
  * the shell's brand accent and this window's notice tint are defined here,
  * with light, dark and system-dark values. */
 :root {
-  --accent: #0f7fff;
-  --accent-hover: #0e72e5;
+  --accent: #0a68d4;
+  --accent-hover: #0959b8;
   --accent-soft: #eaf0fd;
   --gen-notice-bg: #fff7e6;
   --gen-notice-border: #f3d69a;
@@ -11,8 +11,8 @@
 }
 
 [data-theme='dark'] {
-  --accent: #3f99ff;
-  --accent-hover: #5ba5ff;
+  --accent: #4a9eff;
+  --accent-hover: #6aaeff;
   --accent-soft: #24354d;
   --gen-notice-bg: #3a2f17;
   --gen-notice-border: #6b5424;
@@ -21,8 +21,8 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --accent: #3f99ff;
-    --accent-hover: #5ba5ff;
+    --accent: #4a9eff;
+    --accent-hover: #6aaeff;
     --accent-soft: #24354d;
     --gen-notice-bg: #3a2f17;
     --gen-notice-border: #6b5424;

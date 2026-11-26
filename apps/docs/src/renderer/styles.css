@@ -77,6 +77,8 @@
   --docs-on-accent-dim: rgb(255 255 255 / 75%);
   --docs-comment-accent: #e8a33d;
   --docs-badge-gradient: linear-gradient(135deg, #6a5cff 0%, #2b88f8 55%, #29c3a6 120%);
+  /* the badge gradient is the same in both themes, so its ink is too */
+  --docs-on-gradient: #fff;
   --docs-shadow-badge: 0 2px 6px rgb(74 92 255 / 25%);
   --docs-shadow-badge-strong: 0 2px 6px rgb(74 92 255 / 35%);
   --docs-chip-remove-bg: #000;
@@ -173,6 +175,8 @@
 [data-theme='dark'] {
   --word-blue: #4a9eff;
   --word-blue-dark: #3a8eef;
+  /* the dark accent is light: white on it fell to 2.8:1 */
+  --docs-on-accent: #141414;
   --word-heading: #6cabf0;
   --accent-soft: #1e3a5f;
 
@@ -244,6 +248,7 @@
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --word-blue: #4a9eff;
     --word-blue-dark: #3a8eef;
+    --docs-on-accent: #141414;
     --word-heading: #6cabf0;
     --accent-soft: #1e3a5f;
 
@@ -926,7 +931,7 @@ html.genoffice-popover-open .ribbon-tabs {
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  color: var(--docs-on-accent);
+  color: var(--docs-on-gradient);
   background: var(--docs-badge-gradient);
   box-shadow: var(--docs-shadow-badge-strong);
 }
@@ -2423,7 +2428,7 @@ th.cell-rev-del {
 .style-card-label {
   max-width: 100%;
   padding: 0 3px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -9637,7 +9642,6 @@ body.docs-crop-active
 }
 
 .status-msg {
-  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
 }

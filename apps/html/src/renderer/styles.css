@@ -59,6 +59,8 @@
   --hx-code-inline-bg: rgb(129 139 152 / 22%);
   --hx-link: #4a9eff;
   --accent: #e4e4e4;
+  /* the dark accent is light: white on it does not read */
+  --hx-on-accent: #141414;
   --accent-dark: #ffffff;
   --accent-soft: rgba(228, 228, 228, 0.16);
   --cm-tag: #7ee787;
@@ -95,6 +97,7 @@
     --hx-code-inline-bg: rgb(129 139 152 / 22%);
     --hx-link: #4a9eff;
     --accent: #e4e4e4;
+    --hx-on-accent: #141414;
     --accent-dark: #ffffff;
     --accent-soft: rgba(228, 228, 228, 0.16);
     --cm-tag: #7ee787;

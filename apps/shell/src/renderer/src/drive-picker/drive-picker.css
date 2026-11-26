@@ -2,18 +2,18 @@
  * @genoffice/ui/tokens.css; the few shell tokens the buttons and check boxes
  * use are defined here, with light, dark and system-dark values. */
 :root {
-  --accent: #0f7fff;
+  --accent: #0a68d4;
   --checkbox-bg: #ececec;
 }
 
 [data-theme='dark'] {
-  --accent: #3f99ff;
+  --accent: #4a9eff;
   --checkbox-bg: #333;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --accent: #3f99ff;
+    --accent: #4a9eff;
     --checkbox-bg: #333;
   }
 }

@@ -2,8 +2,8 @@
  * before this file in main.tsx); only shell-specific tokens live here. */
 :root {
   /* guide/onboarding accent is the brand blue */
-  --accent: #0f7fff;
-  --accent-hover: #0e72e5;
+  --accent: #0a68d4;
+  --accent-hover: #0959b8;
   /* selected-option tint for the shared dropdown (gs-dd) */
   --accent-soft: #eaf0fd;
   --modal-width-sm: 480px;
@@ -25,11 +25,11 @@
 
 /* Explicit dark: [data-theme="dark"] on <html> */
 [data-theme='dark'] {
-  --accent: #3f99ff;
-  --accent-hover: #5ba5ff;
+  --accent: #4a9eff;
+  --accent-hover: #6aaeff;
   --accent-soft: #24354d;
   --avatar-bg: #333;
-  --badge-bg: #2a3a4a;
+  --badge-bg: #24354d;
   --checkbox-bg: #333;
   --timeline-user-bg: #2a2a3a;
   --timeline-user-text: #b0b0c0;
@@ -41,11 +41,11 @@
 /* System dark: no data-theme or data-theme="system" — follow OS preference */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --accent: #3f99ff;
-    --accent-hover: #5ba5ff;
+    --accent: #4a9eff;
+    --accent-hover: #6aaeff;
     --accent-soft: #24354d;
     --avatar-bg: #333;
-    --badge-bg: #2a3a4a;
+    --badge-bg: #24354d;
     --checkbox-bg: #333;
     --timeline-user-bg: #2a2a3a;
     --timeline-user-text: #b0b0c0;

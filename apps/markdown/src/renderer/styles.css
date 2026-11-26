@@ -46,6 +46,9 @@
 
 [data-theme='dark'] {
   --accent: #4a9eff;
+  /* the dark accent is light: white on it does not read */
+  --md-on-accent: #141414;
+  --image-host-on-accent: #141414;
   --accent-dark: #3a8eef;
   --accent-soft: #1e3a5f;
 
@@ -82,6 +85,8 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #4a9eff;
+    --md-on-accent: #141414;
+    --image-host-on-accent: #141414;
     --accent-dark: #3a8eef;
     --accent-soft: #1e3a5f;
 
@@ -225,7 +230,7 @@ html[data-doc-theme='light'] .doc-page {
   --text-secondary: #606366;
   --text-muted: #616870;
   --text-primary: #232425;
-  --text-tertiary: #909499;
+  --text-tertiary: #6b7079;
   --text-dim: #605e5c;
   --surface-subtle: #f6f7f9;
   --bg-content: #fafafa;

@@ -186,6 +186,8 @@
   --slides-toast-ok: #34c759;
   --slides-mask-bg: rgb(0 0 0 / 50%);
   --slides-copilot-grad: linear-gradient(135deg, #6a5cff 0%, #2b88f8 55%, #29c3a6 120%);
+  /* the gradient is the same in both themes, so its ink is too */
+  --slides-on-gradient: #fff;
   --slides-shadow-badge: 0 2px 6px rgb(74 92 255 / 35%);
   --slides-shadow-badge-soft: 0 2px 6px rgb(74 92 255 / 25%);
   --slides-shadow-menu: 0 8px 24px rgb(0 0 0 / 18%);
@@ -206,6 +208,8 @@
 [data-theme='dark'] {
   --accent: #e8663f;
   --accent-dark: #d4552f;
+  /* the dark accent is light: white on it fell to 3.3:1 */
+  --slides-on-accent: #141414;
   --accent-soft: #43261d;
   --slides-statusbar-bg: #252525;
   --slides-rail-bg: #252525;
@@ -257,6 +261,7 @@
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #e8663f;
     --accent-dark: #d4552f;
+    --slides-on-accent: #141414;
     --accent-soft: #43261d;
     --slides-statusbar-bg: #252525;
     --slides-rail-bg: #252525;
@@ -609,7 +614,7 @@ button {
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  color: var(--slides-on-accent);
+  color: var(--slides-on-gradient);
   background: var(--slides-copilot-grad);
   box-shadow: var(--slides-shadow-badge);
 }
@@ -6168,7 +6173,8 @@ body.vib .slide-list {
 }
 
 .notes-pane textarea::placeholder {
-  color: var(--text-tertiary);
+  /* the notes pane sits on the grey canvas, where the tertiary grey reads too faint */
+  color: var(--text-secondary);
 }
 
 /* Long notes must stay readable at any pane height: native wheel scrolling
