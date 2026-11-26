@@ -621,6 +621,16 @@ import {
   type SplitMemory,
 } from './split-memory'
 import { SPLIT_EVEN_RATIO, decideSplitDrop, paneRects, splitDropZone } from './split-layout'
+import {
+  currentFilePanelInset,
+  filePanelKeyAction,
+  filePanelScaleChanged,
+  installFilePanel,
+  registerFilePanelIpc,
+  toggleFilePanel,
+  withFilePanelMenuItem,
+} from './file-panel'
+import { FILE_PANEL_SETTINGS_KEY } from '../shared/file-panel-api'
 import { configureGenerateWindow } from './generate/generate-window'
 import {
   cleanupPdfToolsOnQuit,
@@ -5474,6 +5484,7 @@ function applyMenuFor(kind: TabKind): void {
   }
   withHelpItems()
   withViewMenu()
+  withFilePanelMenuItem(kind)
 }
 
 /**
@@ -5586,6 +5597,7 @@ function installUiScale(): void {
   onUiScaleChanged((scale) => {
     currentUiScale = scale
     tabManager?.layout()
+    filePanelScaleChanged()
     refreshTitleBarOverlay()
   })
 }
@@ -5659,6 +5671,23 @@ function installTabShortcuts(): void {
     contents.on('before-input-event', (event, input) => {
       const manager = tabManager
       if (!manager) return
+      // Ctrl+Shift+E (⇧⌘E): the files panel beside editor tabs. The shell's own
+      // strip and the tab views only; Home has its own sidebar.
+      if (
+        manager.tabIdForWebContents(contents.id) ||
+        (!!shellWindow && !shellWindow.isDestroyed() && shellWindow.webContents.id === contents.id)
+      ) {
+        const action = filePanelKeyAction(
+          contents.id,
+          input,
+          manager.describeWebContents(contents.id)?.kind === 'hwp',
+        )
+        if (action !== 'pass' && manager.list().find((tab) => tab.active)?.kind !== 'home') {
+          event.preventDefault()
+          if (action === 'toggle') toggleFilePanel()
+          return
+        }
+      }
       // Global Quick Switcher (Ctrl+Shift+P / Cmd+Shift+P), preserving Ctrl+K hyperlink in editors
       if (
         input.type === 'keyDown' &&
@@ -5876,6 +5905,21 @@ function createShellWindow(): void {
   )
   tabManager = manager
   manager.setClosedListener((closed) => recentlyClosed.push(closed))
+  // the file panel beside editor views: applied before any view is shown so a
+  // panel left open does not shift the first document after launch
+  installFilePanel({
+    settingsPath: APP_SETTINGS_PATH,
+    readSetting: (path) => readAppSettings(path)[FILE_PANEL_SETTINGS_KEY],
+    writeSetting: (path, value) => writeAppSetting(path, FILE_PANEL_SETTINGS_KEY, value),
+    shellWindow: () => shellWindow,
+    applyLayout: (choice) => manager.setFilePanel(choice),
+    uiScale: () => currentUiScale,
+    lang: currentLang,
+    viewMenuLabel: () => tm('menuView'),
+    openFilePaths: () => [...manager.openFilePaths(), ...detachedFilePaths()],
+    listFolder: (dir) => listFolder(dir, new Set(readStarredFiles())),
+    isRevealable: (path) => isRevealablePath(path) || isBesideOpenDocument(path),
+  })
 
   // Docking: a detached window dragged over this window's tab strip hands its
   // document back. The strip reports the insertion slot for each preview
@@ -8364,11 +8408,13 @@ function updateSplitHint(screenX: number, screenY: number): void {
   // the hint marks the b-side pane the drop would land in — the same window
   // content coordinates the pane views are laid out in (bounding the space
   // below the strip, like TabManager.contentBounds)
+  // the open file panel keeps the left of the window, so the panes start after it
+  const inset = currentFilePanelInset(bounds.width)
   const rects = paneRects(
     {
-      x: 0,
+      x: inset,
       y: TAB_STRIP_HEIGHT,
-      width: bounds.width,
+      width: Math.max(0, bounds.width - inset),
       height: Math.max(0, bounds.height - TAB_STRIP_HEIGHT),
     },
     zone,
@@ -10805,6 +10851,7 @@ registerGenerateEditorIpc(ipcMain, {
 })
 registerTabsIpc()
 registerSplitIpc()
+registerFilePanelIpc(insideAnyRoot)
 registerDroppedFilesIpc()
 registerPdfStructureIpc()
 registerPdfConvertUiIpc({

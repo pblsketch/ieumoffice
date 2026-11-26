@@ -79,6 +79,11 @@ import {
 import { rendererUrl, safeExternalUrl } from '@genoffice/electron-utils'
 import type { DocumentTabKind, OpenDocumentTab, TabKind, TabSummary } from '../shared/tabs-api'
 import { isSettledRect, tabStripHeight } from '../shared/tab-drag-geometry'
+import {
+  DEFAULT_FILE_PANEL_CHOICE,
+  filePanelInset,
+  type FilePanelChoice,
+} from '../shared/file-panel-api'
 import type {
   SplitDropIntent,
   SplitOrientation,
@@ -250,6 +255,8 @@ export class TabManager {
   private promptActiveIdSnapshot: string | null = null
   /** unloaded tabs whose opener is running (an opener that activates its own tab must not recurse) */
   private readonly loadingIds = new Set<string>()
+  /** the file panel beside editor views; closed until the shell applies the stored choice */
+  private filePanel: FilePanelChoice = { ...DEFAULT_FILE_PANEL_CHOICE }
 
   constructor(
     private readonly shellWindow: BrowserWindow,
@@ -340,6 +347,17 @@ export class TabManager {
     return { x: 0, y: 0, width, height }
   }
 
+  /**
+   * Open or close the file panel, or change its width. The panel is shell DOM
+   * painted left of the views, so the views make room for it here.
+   */
+  setFilePanel(choice: FilePanelChoice): void {
+    const prev = this.filePanel
+    if (prev.open === choice.open && prev.width === choice.width) return
+    this.filePanel = { ...choice }
+    this.layout()
+  }
+
   /** the layout space normal tab views live in: the window below the strip */
   private contentBounds(): Rectangle {
     const { width, height } = this.shellWindow.getContentBounds()
@@ -347,7 +365,15 @@ export class TabManager {
     // grows with it — positioning the view at the unscaled constant would
     // paint the document underneath a taller tab strip.
     const strip = tabStripHeight(this.uiScale())
-    return { x: 0, y: strip, width, height: Math.max(0, height - strip) }
+    // Home paints itself and has no view, so the inset only ever moves editor
+    // views; the shell hides the panel while Home is on screen.
+    const inset = filePanelInset({ ...this.filePanel, scale: this.uiScale() }, width)
+    return {
+      x: inset,
+      y: strip,
+      width: Math.max(0, width - inset),
+      height: Math.max(0, height - strip),
+    }
   }
 
   /** the tab whose view covers the whole window right now (HTML fullscreen / slides show) */

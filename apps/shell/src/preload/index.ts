@@ -71,6 +71,12 @@ import type { ResultStoreApi } from '../shared/result-store-api'
 import type { TabsApi, TabSummary } from '../shared/tabs-api'
 import { TABS_CHANNELS } from '../shared/tabs-api'
 import { SPLIT_TABS_CHANNELS } from '../shared/split-view-api'
+import {
+  FILE_PANEL_CHANNELS,
+  type FilePanelApi,
+  type FilePanelItemAction,
+  type FilePanelState,
+} from '../shared/file-panel-api'
 import type { SplitHint, SplitViewState } from '../shared/split-view-api'
 import type { GenerateHomeApi } from '../shared/generate-api'
 import { GENERATE_HOME_CHANNELS } from '../shared/generate-home-channels'
@@ -1002,6 +1008,52 @@ const tabsApi: TabsApi = {
 }
 
 contextBridge.exposeInMainWorld('aiOfficeTabs', tabsApi)
+
+const ITEM_ACTIONS: ReadonlySet<FilePanelItemAction> = new Set([
+  'open',
+  'reveal',
+  'copyPath',
+  'addRoot',
+])
+
+const filePanelApi: FilePanelApi = {
+  async get() {
+    return (await ipcRenderer.invoke(FILE_PANEL_CHANNELS.get)) as FilePanelState
+  },
+  setOpen(open) {
+    ipcRenderer.send(FILE_PANEL_CHANNELS.setOpen, open)
+  },
+  setWidth(width, commit) {
+    ipcRenderer.send(FILE_PANEL_CHANNELS.setWidth, width, commit)
+  },
+  onChanged(handler) {
+    const listener = (_event: IpcRendererEvent, state: FilePanelState) => handler(state)
+    ipcRenderer.on(FILE_PANEL_CHANNELS.changed, listener)
+    return () => ipcRenderer.removeListener(FILE_PANEL_CHANNELS.changed, listener)
+  },
+  async listDocumentFolder(dir) {
+    const result = (await ipcRenderer.invoke(
+      FILE_PANEL_CHANNELS.listDocumentFolder,
+      dir,
+    )) as FolderListing | null
+    return result ?? { dir, folders: [], files: [], missing: true }
+  },
+  async showItemMenu(kind, path, x, y, canAddRoot) {
+    const result: unknown = await ipcRenderer.invoke(
+      FILE_PANEL_CHANNELS.itemMenu,
+      kind,
+      path,
+      x,
+      y,
+      canAddRoot,
+    )
+    return typeof result === 'string' && ITEM_ACTIONS.has(result as FilePanelItemAction)
+      ? (result as FilePanelItemAction)
+      : null
+  },
+}
+
+contextBridge.exposeInMainWorld('aiOfficeFilePanel', filePanelApi)
 
 // Home's entry points into the generate window ("make a new document from these files")
 const generateHomeApi: GenerateHomeApi = {

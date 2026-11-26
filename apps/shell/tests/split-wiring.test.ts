@@ -169,9 +169,12 @@ describe('the tear-off split drop', () => {
   })
 
   it('hints the b pane in the pane-layout coordinates the renderer shares', () => {
-    // panes live below the strip: the content rect carries TAB_STRIP_HEIGHT,
-    // the orientation is the drop zone and the ratio is the live one (or half)
-    expect(source).toMatch(/paneRects\(\s*\{\s*x: 0,\s*y: TAB_STRIP_HEIGHT,/)
+    // panes live below the strip and right of an open files panel: the content
+    // rect carries TAB_STRIP_HEIGHT and the panel inset, the orientation is the
+    // drop zone and the ratio is the live one (or half)
+    expect(source).toMatch(/const inset = currentFilePanelInset\(bounds\.width\)/)
+    expect(source).toMatch(/paneRects\(\s*\{\s*x: inset,\s*y: TAB_STRIP_HEIGHT,/)
+    expect(source).toMatch(/width: Math\.max\(0, bounds\.width - inset\),/)
     expect(source).toMatch(/height: Math\.max\(0, bounds\.height - TAB_STRIP_HEIGHT\),/)
     expect(source).toMatch(/},\s*zone,\s*split\?\.ratio \?\? SPLIT_EVEN_RATIO,/)
     expect(source).toMatch(/left: rects\.b\.x,\s*top: rects\.b\.y,/)

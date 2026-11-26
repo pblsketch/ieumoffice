@@ -728,6 +728,49 @@ describe('activation', () => {
   })
 })
 
+describe('files panel inset', () => {
+  it('moves the document view right of the open panel and back when it closes', () => {
+    manager.openDocsTab()
+    const view = lastCreatedView(createDocsView)
+    manager.setFilePanel({ open: true, width: 250 })
+    expect(view.setBounds).toHaveBeenLastCalledWith({
+      x: 250,
+      y: TAB_STRIP_HEIGHT,
+      width: WINDOW_WIDTH - 250,
+      height: WINDOW_HEIGHT - TAB_STRIP_HEIGHT,
+    })
+    manager.setFilePanel({ open: false, width: 250 })
+    expect(view.setBounds).toHaveBeenLastCalledWith({
+      x: 0,
+      y: TAB_STRIP_HEIGHT,
+      width: WINDOW_WIDTH,
+      height: WINDOW_HEIGHT - TAB_STRIP_HEIGHT,
+    })
+  })
+
+  it('leaves a covering view (slideshow) over the whole window', () => {
+    manager.openSlidesTab()
+    const view = lastCreatedView(createSlidesView)
+    manager.setFilePanel({ open: true, width: 250 })
+    view.webContents.listeners.get('enter-html-full-screen')!()
+    expect(view.setBounds).toHaveBeenLastCalledWith({
+      x: 0,
+      y: 0,
+      width: WINDOW_WIDTH,
+      height: WINDOW_HEIGHT,
+    })
+  })
+
+  it('keeps room for the document in a narrow window', () => {
+    manager.openDocsTab()
+    const view = lastCreatedView(createDocsView)
+    manager.setFilePanel({ open: true, width: 560 })
+    const bounds = view.setBounds.mock.calls.at(-1)![0] as { x: number; width: number }
+    expect(bounds.x).toBe(WINDOW_WIDTH - 360)
+    expect(bounds.width).toBe(360)
+  })
+})
+
 describe('window resize layout', () => {
   function resizeHandler(): () => void {
     const call = shellWindow.on.mock.calls.find((c) => c[0] === 'resize')

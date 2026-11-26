@@ -6,6 +6,8 @@ import { TEAR_OFF_SLACK, insertionIndexForX, isBeyondBand } from '../../shared/t
 import { notifyFilesChanged } from './file-events'
 import { productName } from '@genoffice/i18n'
 import { useI18n } from './locale'
+import { filePanelText } from './i18n/strings-file-panel'
+import { filePanelShortcutLabel } from '../../shared/file-panel-api'
 import iconDocx from './assets/file-docx.svg'
 import iconXlsx from './assets/file-xlsx.svg'
 import iconPptx from './assets/file-pptx.svg'
@@ -120,9 +122,30 @@ export function renamedFileName(currentPath: string, typedName: string): string 
 interface TabBarProps {
   /** the window's two-pane split; its tab ids decide the pane markers */
   split: SplitViewState | null
+  /** the files panel toggle; null while Home is on screen (it has its own sidebar) */
+  filePanel?: { open: boolean; toggle: () => void } | null
 }
 
-export function TabBar({ split }: TabBarProps) {
+/** A window outline with its left column filled while the files panel is open. */
+function FilePanelIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3.5"
+        y="4.5"
+        width="17"
+        height="15"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path d="M9.5 4.5v15" stroke="currentColor" strokeWidth="1.5" />
+      {open && <path d="M4.5 6.5h4v11h-4z" fill="currentColor" fillOpacity="0.35" />}
+    </svg>
+  )
+}
+
+export function TabBar({ split, filePanel = null }: TabBarProps) {
   const { t, lang } = useI18n()
   const [tabs, setTabs] = useState<TabSummary[]>([])
   // where a tab drag would split the window (main sends it while dragging)
@@ -428,6 +451,20 @@ export function TabBar({ split }: TabBarProps) {
           </svg>
         </button>
       )}
+      {/* kept in the strip on Home too (hidden) so the tabs never shift sideways */}
+      <button
+        className={`tab-file-panel-btn${filePanel?.open ? ' active' : ''}`}
+        style={{ visibility: filePanel ? undefined : 'hidden' }}
+        tabIndex={filePanel ? undefined : -1}
+        aria-hidden={filePanel ? undefined : true}
+        aria-pressed={filePanel ? filePanel.open : undefined}
+        title={`${filePanelText(lang, filePanel?.open ? 'hidePanel' : 'showPanel')} (${filePanelShortcutLabel(IS_MAC)})`}
+        aria-label={filePanelText(lang, filePanel?.open ? 'hidePanel' : 'showPanel')}
+        aria-keyshortcuts={IS_MAC ? 'Meta+Shift+E' : 'Control+Shift+E'}
+        onClick={() => filePanel?.toggle()}
+      >
+        <FilePanelIcon open={!!filePanel?.open} />
+      </button>
       <div
         className={`tab-strip ${dragVisual ? 'dragging' : ''} ${dockX !== null ? 'dock-target' : ''}`}
         ref={stripRef}
