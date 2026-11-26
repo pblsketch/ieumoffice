@@ -4,7 +4,9 @@
  * cannot hand its system fonts' bytes to a PDF writer. So the print page lays
  * out with bundled open faces under the desktop's family names, metric-
  * compatible where one exists (Carlito for Calibri, Liberation Sans for Arial,
- * GenOffice Sans KR, normalized to Malgun Gothic's metrics, for Korean), and
+ * Caladea for Cambria, Liberation Serif for Times New Roman, Liberation Mono
+ * for Courier New, GenOffice Sans KR, normalized to Malgun Gothic's metrics,
+ * for Korean), and
  * the PDF embeds the same faces, subset to the glyphs it uses.
  */
 import { create, registerFormat, type FontkitFont } from 'fontkit/core'
@@ -33,6 +35,10 @@ export interface LoadedFace {
 
 const CALIBRI = ['calibri', 'carlito']
 const ARIAL = ['arial', 'helvetica', 'liberation sans']
+/** Metric-compatible stand-ins: Caladea for Cambria, Liberation Serif/Mono for Times New Roman and Courier New. */
+const CAMBRIA = ['cambria', 'caladea']
+const TIMES = ['times new roman', 'times', 'liberation serif']
+const COURIER = ['courier new', 'courier', 'liberation mono']
 /**
  * The desktop's CJK stacks (print-html.ts `printCjkFonts`) and common Korean
  * sheet fonts. The bundled subset covers the 2,350 KS X 1001 syllables and
@@ -65,24 +71,60 @@ export function bundledFaceSpecs(urls: {
   readonly arial: string
   readonly arialBold: string
   readonly korean: string
+  readonly cambria?: string
+  readonly cambriaBold?: string
+  readonly times?: string
+  readonly timesBold?: string
+  readonly courier?: string
+  readonly courierBold?: string
 }): readonly FaceSpec[] {
+  const optional = (
+    id: string,
+    families: readonly string[],
+    bold: boolean,
+    url: string | undefined,
+  ): FaceSpec[] => (url === undefined ? [] : [{ id, families, bold, url }])
   return [
     { id: 'calibri', families: CALIBRI, bold: false, url: urls.calibri },
     { id: 'calibri-bold', families: CALIBRI, bold: true, url: urls.calibriBold },
     { id: 'arial', families: ARIAL, bold: false, url: urls.arial },
     { id: 'arial-bold', families: ARIAL, bold: true, url: urls.arialBold },
     { id: 'korean', families: KOREAN, bold: false, url: urls.korean },
+    ...optional('cambria', CAMBRIA, false, urls.cambria),
+    ...optional('cambria-bold', CAMBRIA, true, urls.cambriaBold),
+    ...optional('times', TIMES, false, urls.times),
+    ...optional('times-bold', TIMES, true, urls.timesBold),
+    ...optional('courier', COURIER, false, urls.courier),
+    ...optional('courier-bold', COURIER, true, urls.courierBold),
   ]
 }
 
 /** The bundled faces' asset URLs (each file loads only when a PDF is made). */
 export async function defaultFaceSpecs(): Promise<readonly FaceSpec[]> {
-  const [calibri, calibriBold, arial, arialBold, korean] = await Promise.all([
+  const [
+    calibri,
+    calibriBold,
+    arial,
+    arialBold,
+    korean,
+    cambria,
+    cambriaBold,
+    times,
+    timesBold,
+    courier,
+    courierBold,
+  ] = await Promise.all([
     import('../../../../../../../packages/ui/src/fonts/Carlito-Regular.ttf?url'),
     import('../../../../../../../packages/ui/src/fonts/Carlito-Bold.ttf?url'),
     import('../../../../../../docs/src/renderer/fonts/LiberationSans-Regular.ttf?url'),
     import('../../../../../../docs/src/renderer/fonts/LiberationSans-Bold.ttf?url'),
     import('../../../assets/fonts/GenOfficeSansKR-Regular-subset.woff2?url'),
+    import('../../../../../../docs/src/renderer/fonts/Caladea-Regular.ttf?url'),
+    import('../../../../../../docs/src/renderer/fonts/Caladea-Bold.ttf?url'),
+    import('../../../../../../docs/src/renderer/fonts/LiberationSerif-Regular.ttf?url'),
+    import('../../../../../../docs/src/renderer/fonts/LiberationSerif-Bold.ttf?url'),
+    import('../../../../../../docs/src/renderer/fonts/LiberationMono-Regular.ttf?url'),
+    import('../../../../../../docs/src/renderer/fonts/LiberationMono-Bold.ttf?url'),
   ])
   return bundledFaceSpecs({
     calibri: calibri.default,
@@ -90,6 +132,12 @@ export async function defaultFaceSpecs(): Promise<readonly FaceSpec[]> {
     arial: arial.default,
     arialBold: arialBold.default,
     korean: korean.default,
+    cambria: cambria.default,
+    cambriaBold: cambriaBold.default,
+    times: times.default,
+    timesBold: timesBold.default,
+    courier: courier.default,
+    courierBold: courierBold.default,
   })
 }
 

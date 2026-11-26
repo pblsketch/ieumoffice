@@ -246,7 +246,16 @@ describe('the phone save path', () => {
     if (result.canceled) return
     expect(result.touchedEntries).toEqual(['xl/workbook.xml', 'xl/worksheets/sheet1.xml'])
     expect(result.file.name).toBe('ledger.xlsx')
-    // No Save As dialog yet: Save As answers like a dismissed dialog.
+    // A Save As whose system dialog is closed answers like a dismissed desktop dialog.
+    const inner = device.client.transport
+    device.client.transport = {
+      ...inner,
+      invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+        return command === 'mobile_sheets_save_as'
+          ? Promise.reject({ code: 'USER_CANCELLED', messageKey: 'mobile.fs.cancelled' })
+          : inner.invoke<T>(command, args)
+      },
+    }
     await expect(
       api.saveWorkbookEdits({ ...emptySaveRequest(result.file.sessionId), mode: 'save-as' }),
     ).resolves.toEqual({ canceled: true })

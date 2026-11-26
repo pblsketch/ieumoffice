@@ -10,6 +10,7 @@ import {
   workbookFileSchema,
   type WorkbookFile,
 } from '../../../../../../sheets/src/shared/desktop-api'
+import { phoneShortDateFormat } from '../save/shortDate'
 import { callSheetsEngine, type SheetsEngineClient } from './engine'
 import type { MobileWorkbookDocument, MobileWorkbookSessions } from './sessions'
 
@@ -135,7 +136,12 @@ export async function openMobileWorkbook(
   }
   try {
     const opened = engineOpenResultSchema.parse(
-      await callSheetsEngine(client, 'open', { path: snapshot.path, locale: input.locale }),
+      await callSheetsEngine(client, 'open', {
+        path: snapshot.path,
+        locale: input.locale,
+        // The desktop opens with the OS short-date pattern (sheets-main.ts `systemShortDate`).
+        shortDateFormat: phoneShortDateFormat(),
+      }),
     )
     sessions.add({
       sessionId: opened.sessionId,

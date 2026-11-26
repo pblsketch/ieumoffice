@@ -1,0 +1,64 @@
+/* Track T1 sheets: the save area's question sheets. Colors are tokens only. */
+
+.m-sheets-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  padding: var(--m-space-2) var(--m-space-4) var(--m-space-4);
+}
+
+.m-sheets-choice-message {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+.m-sheets-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.m-sheets-choice-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--m-space-half);
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--m-radius-control);
+  background: var(--m-surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.m-sheets-choice-row:disabled {
+  cursor: default;
+  color: var(--text-secondary);
+}
+
+.m-sheets-choice-label {
+  font-size: var(--m-text-body);
+  line-height: var(--m-line-tight);
+}
+
+.m-sheets-choice-detail {
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+.m-sheets-choice-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.m-sheets-choice-cancel {
+  min-height: var(--m-hit);
+  height: auto;
+}
