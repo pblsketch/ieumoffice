@@ -1908,6 +1908,12 @@ export function SettingsModal({
   // the media area is part of the AI section: a target naming it lights the AI entry
   const navSection = section && navSectionOf(section)
 
+  // a new section starts at its top, not at the scroll offset the last one was left at
+  const paneRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (paneRef.current) paneRef.current.scrollTop = 0
+  }, [navSection])
+
   const defaultAppDesc = (() => {
     if (!defaultApp) return ''
     if (defaultAppFailed) return t('setDefaultAppFailed')
@@ -1957,7 +1963,7 @@ export function SettingsModal({
               </button>
             ))}
           </nav>
-          <div className="set-pane">
+          <div className="set-pane" ref={paneRef}>
             {/* one live view of the two subscription connections for the whole
                 dialog, only once AI is known to be on: AI off starts no subscription check */}
             {choice?.aiFeatures && (
@@ -2341,8 +2347,10 @@ export function SettingsModal({
                 />
                 <div className="set-field">
                   <div className="set-field-text">
-                    <label className="set-field-label">{t('setFeedback')}</label>
-                    <div className="set-field-desc">{t('setFeedbackDesc')}</div>
+                    <div className="set-field-stack">
+                      <div className="set-field-label">{t('setFeedback')}</div>
+                      <div className="set-field-desc">{t('setFeedbackDesc')}</div>
+                    </div>
                   </div>
                   <button
                     className="set-btn"
@@ -2354,8 +2362,10 @@ export function SettingsModal({
                 <DiagnosticsExportRow lang={lang} />
                 <div className="set-field">
                   <div className="set-field-text">
-                    <label className="set-field-label">{t('setLicenses')}</label>
-                    <div className="set-field-desc">{t('setLicensesDesc')}</div>
+                    <div className="set-field-stack">
+                      <div className="set-field-label">{t('setLicenses')}</div>
+                      <div className="set-field-desc">{t('setLicensesDesc')}</div>
+                    </div>
                   </div>
                   <button
                     className="set-btn"
@@ -2366,9 +2376,11 @@ export function SettingsModal({
                 </div>
                 <div className="set-field">
                   <div className="set-field-text">
-                    <label className="set-field-label">{t('setRightsContact')}</label>
-                    <div className="set-field-desc">{t('setRightsContactDesc')}</div>
-                    <div className="set-field-value">{PRODUCT_CONTACT_EMAIL}</div>
+                    <div className="set-field-stack">
+                      <div className="set-field-label">{t('setRightsContact')}</div>
+                      <div className="set-field-desc">{t('setRightsContactDesc')}</div>
+                      <div className="set-field-desc set-field-email">{PRODUCT_CONTACT_EMAIL}</div>
+                    </div>
                   </div>
                   <button
                     className="set-btn"
@@ -2379,10 +2391,12 @@ export function SettingsModal({
                 </div>
                 <div className="set-field">
                   <div className="set-field-text">
-                    <div className="set-field-desc">{t('setBasedOn')}</div>
-                    <div className="set-field-desc">{t('setHwpNotice')}</div>
-                    <div className="set-field-desc">{t('setTrademarks')}</div>
-                    <div className="set-field-desc">{t('setDisclaimer')}</div>
+                    <div className="set-field-stack set-legal">
+                      <div className="set-field-desc">{t('setBasedOn')}</div>
+                      <div className="set-field-desc">{t('setHwpNotice')}</div>
+                      <div className="set-field-desc">{t('setTrademarks')}</div>
+                      <div className="set-field-desc">{t('setDisclaimer')}</div>
+                    </div>
                   </div>
                 </div>
               </>

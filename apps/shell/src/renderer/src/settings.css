@@ -235,6 +235,18 @@
   color: var(--text-secondary);
 }
 
+/* About: the contact address is copied, so it reads as a value */
+.set-field-email {
+  color: var(--text-primary);
+  user-select: text;
+}
+
+/* About: the notices are one paragraph after another, not columns */
+.set-legal {
+  gap: 8px;
+  padding: 4px 0;
+}
+
 /* MCP service row: the label + description + status stack reads better with the
    switch aligned to the label line instead of centered against three lines */
 .set-field-top {
