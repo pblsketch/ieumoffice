@@ -39,6 +39,8 @@
     <!-- T4 html MIME types -->
 
     <!-- T5 readers MIME types -->
+    <data android:mimeType="application/epub+zip" />
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
 </intent-filter>
 
 <intent-filter>
@@ -60,5 +62,7 @@
     <!-- T4 html MIME types -->
 
     <!-- T5 readers MIME types -->
+    <data android:mimeType="application/epub+zip" />
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
 </intent-filter>
 <!-- IEUM_MOBILE_INTENT_FILTERS_END -->
