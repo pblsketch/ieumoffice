@@ -15,11 +15,7 @@ import { Sheet } from '../../../components/Sheet'
 import { IconChevronNext, IconChevronPrevious } from '../../../components/icons/sheets'
 import type { MobileStringKey } from '../../../i18n'
 import type { EditorHost } from '../../editorKind'
-import {
-  t as pcModuleT,
-  tFor,
-  type StringKey,
-} from '../../../../../../sheets/src/renderer/i18n/locale'
+import { tFor, type StringKey } from '../../../../../../sheets/src/renderer/i18n/locale'
 import {
   categoryOptionForPattern,
   NUMBER_FORMAT_LABEL,
@@ -30,6 +26,7 @@ import {
   type SelectionFormat,
 } from '../../../../../../sheets/src/renderer/selection-format'
 import type { MobileGrid } from '../grid/mobileGrid'
+import { toastUnlessStatus } from '../journal/statusLines'
 import type { SheetsGridAccess } from '../workspace/slots'
 import {
   findInWorkbook,
@@ -123,11 +120,8 @@ export default function ToolbarSheets(props: ToolbarSheetsProps) {
         ? createToolbarCommands({
             runtime: live.runtime,
             lazyWorkbookRef: live.lazyWorkbookRef,
-            setMessage: (message) => {
-              // The desktop's status bar confirms every format click; a toast each time is noise.
-              if (message === pcModuleT('appAppliedToSelection')) return
-              host.showToast(message)
-            },
+            // The desktop's progress and per-click confirmations are not toasts (journal/statusLines.ts).
+            setMessage: toastUnlessStatus((message) => host.showToast(message)),
             setPendingEdits: (count) => {
               if (count > 0) host.markDirty(true)
               host.contentChanged()
@@ -535,7 +529,7 @@ function FindSheet({
     },
     [],
   )
-  const setMessage = (message: string) => host.showToast(message)
+  const setMessage = toastUnlessStatus((message) => host.showToast(message))
 
   const search = async (next: FindOptions = options): Promise<readonly FindHit[]> => {
     const mine = ++generation.current

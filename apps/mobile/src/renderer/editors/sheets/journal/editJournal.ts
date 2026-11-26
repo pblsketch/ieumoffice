@@ -83,6 +83,12 @@ export interface EditJournalOptions {
   readonly onRecorded?: (pending: number) => void
   /** A gate refused a command; the desktop shows the same text in its status bar. */
   readonly onMessage?: (message: string) => void
+  /**
+   * The loader's progress after a structural edit (the visible range is read
+   * again: "streaming…", "indexing…"). It is the same load the viewport
+   * streamer runs, so its lines go where the streamer's go, not to `onMessage`.
+   */
+  readonly onStatus?: (message: string) => void
 }
 
 type LazyRef = { current: LazyWorkbookState | null }
@@ -101,6 +107,36 @@ export function installEditJournal(
   }
 }
 
+/**
+ * The command ids the journal listener records (App.tsx `journalDisposable`'s
+ * first filter, in its order). The view-mode guard (grid/viewModeGuard.ts)
+ * reads the same list, so "an edit" means the same thing in both places.
+ */
+export function journalListensTo(id: string): boolean {
+  const C = pcAppConstants
+  return (
+    id === C.SET_RANGE_VALUES_MUTATION ||
+    id === C.SET_NUMFMT_MUTATION ||
+    C.ROW_COLUMN_MUTATIONS[id] !== undefined ||
+    C.MERGE_MUTATIONS[id] !== undefined ||
+    C.AXIS_ATTR_MUTATIONS[id] !== undefined ||
+    C.SHEET_LIFECYCLE_MUTATIONS.has(id) ||
+    id === C.REORDER_RANGE_MUTATION ||
+    C.FILTER_MUTATIONS.has(id) ||
+    C.CF_MUTATIONS.has(id) ||
+    C.DV_MUTATIONS.has(id) ||
+    C.DEFINED_NAME_MUTATIONS.has(id) ||
+    C.NOTE_MUTATIONS.has(id) ||
+    id === C.MOVE_RANGE_MUTATION ||
+    id === C.MOVE_ROWS_MUTATION ||
+    id === C.SET_FROZEN_MUTATION ||
+    id === C.TOGGLE_GRIDLINES_MUTATION ||
+    id === C.SET_RIGHT_TO_LEFT_MUTATION ||
+    id === C.SET_ZOOM_OPERATION ||
+    id === C.SET_ZOOM_COMMAND
+  )
+}
+
 /** App.tsx `journalDisposable` (CommandExecuted). */
 function installJournalListener(
   runtime: UniverRuntime,
@@ -108,7 +144,7 @@ function installJournalListener(
   options: EditJournalOptions,
 ): () => void {
   const C = pcAppConstants
-  const setMessage = (message: string) => options.onMessage?.(message)
+  const setStatus = (message: string) => options.onStatus?.(message)
   const setPendingEdits = (pending: number) => options.onRecorded?.(pending)
   const api = runtime.univerAPI
   const disposable = api.addEvent(api.Event.CommandExecuted, (event) => {
@@ -120,29 +156,7 @@ function installJournalListener(
     const rowColumn = C.ROW_COLUMN_MUTATIONS[event.id]
     const merge = C.MERGE_MUTATIONS[event.id]
     const axisAttr = C.AXIS_ATTR_MUTATIONS[event.id]
-    if (
-      event.id !== C.SET_RANGE_VALUES_MUTATION &&
-      event.id !== C.SET_NUMFMT_MUTATION &&
-      !rowColumn &&
-      !merge &&
-      !axisAttr &&
-      !C.SHEET_LIFECYCLE_MUTATIONS.has(event.id) &&
-      event.id !== C.REORDER_RANGE_MUTATION &&
-      !C.FILTER_MUTATIONS.has(event.id) &&
-      !C.CF_MUTATIONS.has(event.id) &&
-      !C.DV_MUTATIONS.has(event.id) &&
-      !C.DEFINED_NAME_MUTATIONS.has(event.id) &&
-      !C.NOTE_MUTATIONS.has(event.id) &&
-      event.id !== C.MOVE_RANGE_MUTATION &&
-      event.id !== C.MOVE_ROWS_MUTATION &&
-      event.id !== C.SET_FROZEN_MUTATION &&
-      event.id !== C.TOGGLE_GRIDLINES_MUTATION &&
-      event.id !== C.SET_RIGHT_TO_LEFT_MUTATION &&
-      event.id !== C.SET_ZOOM_OPERATION &&
-      event.id !== C.SET_ZOOM_COMMAND
-    ) {
-      return
-    }
+    if (!journalListensTo(event.id)) return
     const state = lazyWorkbookRef.current
     if (!state) return
     const params = event.params as
@@ -522,7 +536,7 @@ function installJournalListener(
       state.recalc.formulaCells.clear()
       const activeSheet = api.getActiveWorkbook()?.getActiveSheet()
       if (activeSheet?.getSheetId() === params.subUnitId) {
-        void pcUniverSyncJournal.loadVisibleRange(runtime, lazyWorkbookRef, activeSheet, setMessage)
+        void pcUniverSyncJournal.loadVisibleRange(runtime, lazyWorkbookRef, activeSheet, setStatus)
       }
       setPendingEdits(journalSize(state.editJournal))
       return

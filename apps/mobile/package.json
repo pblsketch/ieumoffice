@@ -36,6 +36,7 @@
     "@univerjs/docs-ui": "^0.25.1",
     "@univerjs/engine-formula": "^0.25.1",
     "@univerjs/engine-render": "^0.25.1",
+    "@univerjs/find-replace": "^0.25.1",
     "@univerjs/network": "^0.25.1",
     "@univerjs/preset-sheets-conditional-formatting": "^0.25.1",
     "@univerjs/preset-sheets-core": "^0.25.1",

@@ -18,6 +18,7 @@ import { SheetSwitcher } from './SheetSwitcher'
 import { applyFreeze } from './ViewMenuSheet'
 import { selectHeaderLine, type HeaderAxis } from './headerMenu'
 import { createMobileGrid, type MobileGrid } from './mobileGrid'
+import { toastUnlessStatus } from '../journal/statusLines'
 import '../sheets.css'
 import './grid.css'
 
@@ -74,7 +75,8 @@ export default function SheetsGridView({
           host.markDirty(true)
           host.contentChanged()
         },
-        onNotice: (message) => host.showToast(message),
+        // Gate refusals; a desktop status line that comes this way stays out of the toasts.
+        onNotice: toastUnlessStatus((message) => host.showToast(message)),
         onHeaderLongPress: (axis, index, wasSelected) => {
           const live = access.grid
           if (!live) return

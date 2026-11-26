@@ -15,6 +15,8 @@ import { pcUniverSync } from './pcGridModules'
 import { installEditJournal } from '../journal/editJournal'
 import { installEditReveal } from './editReveal'
 import { installGestureLayer } from './gestureLayer'
+import { installViewModeGuard } from './viewModeGuard'
+import { holdKeyboardDuringLoad, installKeyboardOnlyWhileEditing } from './keyboardHold'
 import type { HeaderAxis } from './headerMenu'
 
 export interface MobileGridOptions {
@@ -81,9 +83,11 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
   const disposeJournal = installEditJournal(runtime, lazyWorkbookRef, {
     ...(options.onEdited ? { onRecorded: options.onEdited } : {}),
     ...(options.onNotice ? { onMessage: options.onNotice } : {}),
+    onStatus: options.onMessage,
   })
 
   let viewMode = true
+  const viewGuard = installViewModeGuard(runtime, { initialView: viewMode })
   const api = runtime.univerAPI
   const gestures = installGestureLayer(element, runtime, {
     isViewMode: () => viewMode,
@@ -102,18 +106,42 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
     params.cancel = true
     options.onEditRequestInView()
   })
-  const editStarted = api.addEvent(api.Event.SheetEditStarted, () => options.onCellEditing(true))
-  const editEnded = api.addEvent(api.Event.SheetEditEnded, () => options.onCellEditing(false))
+  let cellEditing = false
+  const keyboard = installKeyboardOnlyWhileEditing(() => cellEditing)
+  const editStarted = api.addEvent(api.Event.SheetEditStarted, () => {
+    cellEditing = true
+    keyboard.editingStarted()
+    options.onCellEditing(true)
+  })
+  const editEnded = api.addEvent(api.Event.SheetEditEnded, () => {
+    cellEditing = false
+    options.onCellEditing(false)
+  })
 
   let disposed = false
+  let quietFocus: { end(): void } | null = null
   const grid: MobileGrid = {
     element,
     runtime,
     lazyWorkbookRef,
-    load: (file) => openLazyWorkbookOnPhone(runtime, lazyWorkbookRef, file, options.onMessage),
+    async load(file) {
+      quietFocus?.end()
+      const quiet = holdKeyboardDuringLoad(element, () => cellEditing)
+      quietFocus = quiet
+      await openLazyWorkbookOnPhone(runtime, lazyWorkbookRef, file, options.onMessage)
+      if (disposed) quiet.end()
+      else quiet.settle()
+    },
     setViewMode(view) {
       viewMode = view
-      if (view) void api.getActiveWorkbook()?.endEditingAsync(true)
+      if (!view) {
+        viewGuard.setViewMode(false)
+        return
+      }
+      // The open cell edit is kept (as before); the guard closes after it lands.
+      void Promise.resolve(api.getActiveWorkbook()?.endEditingAsync(true)).finally(() => {
+        if (viewMode) viewGuard.setViewMode(true)
+      })
     },
     relayout() {
       window.dispatchEvent(new Event('resize'))
@@ -121,7 +149,10 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
     dispose() {
       if (disposed) return
       disposed = true
+      quietFocus?.end()
+      keyboard.dispose()
       beforeEdit.dispose()
+      viewGuard.dispose()
       gestures.dispose()
       disposeReveal()
       editStarted.dispose()
