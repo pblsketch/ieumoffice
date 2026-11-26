@@ -8,7 +8,9 @@
  *   workbook must not land outside the work folder) and keeps AI available;
  *   it is not marked `encrypted` (that flag means "cannot be edited");
  * - `dispose()` (closed or replaced) tears down the grid, closes the engine
- *   session and deletes its working copy, once.
+ *   session the document uses now (each save swaps it; a save still running
+ *   closes the one it swaps in), deletes its working copy and drops the
+ *   password, once.
  */
 import type { EditorDocument, EditorHost } from '../../editorKind'
 import { createSheetsAiRun } from '../ai/documentSlot'

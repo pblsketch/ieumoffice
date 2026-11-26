@@ -27,6 +27,13 @@ use crate::recalc_worker::{RecalcJob, RecalcWorker};
 
 pub const PROTOCOL_VERSION: u8 = 1;
 
+/// The phone's answer (`invalid_request`) to `update_external_links` and
+/// `read_external_links`. Mobile only: both read or probe the files a
+/// workbook's external links name, outside the work folder; the phone shows
+/// the values last saved in the file and never reads the linked files
+/// (spec 2.1). The desktop sidecar answers both.
+pub const EXTERNAL_LINKS_NOT_READ: &str = "External links are not read again on the phone.";
+
 fn default_locale() -> String {
     "zh".to_owned()
 }
@@ -455,11 +462,11 @@ pub(crate) fn handle_request(
                 Err(busy) => Dispatched::Done(busy),
             };
         }
-        Command::UpdateExternalLinks { path } => {
-            xlsx_sidecar::external_links::update_external_link_values(&path).and_then(to_json_value)
-        }
-        Command::ReadExternalLinks { path } => {
-            xlsx_sidecar::external_links::read_external_link_statuses(&path).and_then(to_json_value)
+        // Mobile only: both reach the linked files outside the work folder
+        // (the desktop runs `update_external_link_values` and
+        // `read_external_link_statuses` here).
+        Command::UpdateExternalLinks { .. } | Command::ReadExternalLinks { .. } => {
+            Err(SidecarError::InvalidRequest(EXTERNAL_LINKS_NOT_READ.into()))
         }
         Command::ListExternalLinks { path } => {
             xlsx_sidecar::external_links::list_external_link_statuses(&path).and_then(to_json_value)

@@ -11,6 +11,26 @@ export interface MobileWorkbookSession {
   readonly sheetNames: ReadonlyMap<string, string>
   /** The document this session edits (the app's active document session). */
   readonly document?: MobileWorkbookDocument
+  /**
+   * The opened workbook this session belongs to. Every save swaps the
+   * session for a new one; the new one carries the same owner, so closing
+   * the document finds (and closes) the session it uses now.
+   */
+  readonly owner?: MobileWorkbookOwner
+}
+
+/**
+ * One opened workbook, across the engine sessions its saves swap through.
+ * `closed` is set once the document is closed: a save still running then
+ * closes the session it swapped in instead of keeping it.
+ */
+export interface MobileWorkbookOwner {
+  closed: boolean
+}
+
+/** The password of a workbook opened with one; emptied when the document closes. */
+export interface MobileWorkbookPassword {
+  password: string
 }
 
 /** What a save needs to know about the document behind an engine session. */
@@ -30,9 +50,10 @@ export interface MobileWorkbookDocument {
   /**
    * Opened with a password: the session edits the decrypted copy, and a save
    * must lock the result again with the same password before it reaches the
-   * original (the save task). Never written anywhere.
+   * original (the save task). Never written anywhere; emptied when the
+   * document closes (`forgetWorkbookPassword`), after which no lock runs.
    */
-  readonly unlocked?: { readonly password: string }
+  readonly unlocked?: MobileWorkbookPassword
 }
 
 export class MobileWorkbookSessions {
@@ -62,4 +83,17 @@ export class MobileWorkbookSessions {
   ids(): string[] {
     return [...this.sessions.keys()]
   }
+
+  /** The sessions an opened workbook holds now (normally one). */
+  ownedBy(owner: MobileWorkbookOwner): MobileWorkbookSession[] {
+    return [...this.sessions.values()].filter((session) => session.owner === owner)
+  }
+}
+
+/**
+ * Drops the password a document was opened with. JavaScript cannot wipe a
+ * string, so this removes the app's last reference to it.
+ */
+export function forgetWorkbookPassword(document: MobileWorkbookDocument): void {
+  if (document.unlocked) document.unlocked.password = ''
 }

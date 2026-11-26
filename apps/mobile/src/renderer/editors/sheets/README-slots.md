@@ -22,8 +22,9 @@ XLS-T7이 편집기 종류·열기·문서 뼈대를 깔았고, XLS-T8~T11이 �
 
 - `OpenedSheetsWorkbook.document.unlocked`(암호): 저장은 같은 암호로 다시 잠가 원본에 쓴다(`@genoffice/mobile-bridge/sheets`의 `sheetsEncrypt`, 작업 폴더 안 파일 → 파일). 잠기지 않은 바이트는 원본·복구 사본·공유로 내보내지 않는다. ODS는 PC처럼 거절한다. AI는 보통 문서처럼 쓴다.
 - `document.converted`(.xls·.csv에서 온 세션): 첫 저장은 다른 이름으로 저장이다.
-- 저장(`save/documentSlot.ts`)은 PC `handleSave`·`handleExportCsv`·`handleExportOds`를 그대로 부르고, 휴대폰 `desktopApi`가 받는다. 쓸 수 있는 `.xlsx`·`.xlsm`은 원본에, `.xls`·읽기 전용·제목 없음·되살린 문서는 `원래이름.xlsx`(매크로면 `.xlsm`)를 채운 다른 이름으로 저장으로 간다. `.csv`는 저장할 때마다 CSV·엑셀·취소를 묻는다. 한 문서에 저장 일은 한 번에 하나다(저장 중 복구 사본은 건너뛰고, 두 번째 저장은 `sheetsSaveBusy`로 거절).
-- 보기 모드는 고치지 않는다: Univer의 칸 길게 누르기 메뉴를 끄고, 편집 기록이 기록하는 변경(`journalListensTo`)은 무엇이 보냈든 취소한다(`grid/viewModeGuard.ts`). 확대·틀 고정·되돌리기와 불러오기 쓰기는 지나간다.
+- 닫기(`OpenedSheetsWorkbook.close`): 저장마다 바뀌는 엔진 세션은 문서의 주인 표시(`MobileWorkbookSession.owner`)를 이어받는다. 닫기는 그 표시가 붙은 세션을 모두 닫고 암호를 버린다. 세션을 새로 만드는 길을 더하면 `owner`를 꼭 옮긴다.
+- 저장(`save/documentSlot.ts`)은 PC `handleSave`·`handleExportCsv`·`handleExportOds`를 그대로 부르고, 휴대폰 `desktopApi`가 받는다. 쓸 수 있는 `.xlsx`·`.xlsm`은 원본에, `.xls`·읽기 전용·제목 없음·되살린 문서는 `원래이름.xlsx`(매크로면 `.xlsm`)를 채운 다른 이름으로 저장으로 간다. `.csv`는 저장할 때마다 CSV·엑셀·취소를 묻는다(CSV는 세션에 먼저 넣고 원본에 마지막으로 쓴다. 읽기 전용이면 새 파일로 내보낸다). 한 문서에 저장 일은 한 번에 하나다(저장 중 복구 사본은 건너뛰고, 두 번째 저장은 `sheetsSaveBusy`로 거절).
+- 보기 모드는 고치지 않는다: Univer의 칸 길게 누르기 메뉴를 끄고, 편집 기록이 기록하는 변경(`journalListensTo`)은 무엇이 보냈든 취소한다(`grid/viewModeGuard.ts`). 확대·틀 고정과 불러오기 쓰기는 지나간다. 되돌리기·다시 하기는 AI 창의 한 번 되돌리기(`withAiUndoPass`)만 지나가고, 키보드 Ctrl+Z 같은 나머지는 취소한다.
 - PC 상태 표시줄 글 가운데 진행·확인 줄(스트리밍·색인·재계산 대체·"적용했습니다")은 알림으로 띄우지 않는다(`journal/statusLines.ts`). 문지기의 거절과 오류는 알림이다.
 
 ## 편집 기록(journal/)에서 아직 다시 적지 않은 PC 동작

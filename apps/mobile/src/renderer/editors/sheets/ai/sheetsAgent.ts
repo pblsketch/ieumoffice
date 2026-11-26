@@ -64,6 +64,7 @@ import {
   type LazyWorkbookState,
   type UniverRuntime,
 } from '../../../../../../sheets/src/renderer/univer-state'
+import { withAiUndoPass } from '../grid/viewModeGuard'
 import {
   pcAggregateRange,
   pcAiUniverSync,
@@ -448,7 +449,10 @@ export function createMobileSheetsAgent(
           await commitActiveCellEditor(runtime.univerAPI.getActiveWorkbook())
           const verdict = univerRevertVerdict(guard, undoStackItems(runtime))
           if (verdict !== 'ok') return verdict
-          for (let step = 0; step < guard.steps; step += 1) await runtime.univerAPI.undo()
+          // the one undo view mode lets through (grid/viewModeGuard.ts)
+          await withAiUndoPass(async () => {
+            for (let step = 0; step < guard.steps; step += 1) await runtime.univerAPI.undo()
+          })
           marks.clear()
           return univerRevertOutcome(guard, undoStackItems(runtime))
         },

@@ -53,7 +53,7 @@ export interface SaveDevice extends FakeDevice {
   readonly savedAs: (SavedCopy & { readonly session: MobileDocSession })[]
   readonly copies: SavedCopy[]
   readonly shared: SavedCopy[]
-  readonly recoveries: { docKey: string; title: string; bytes: Uint8Array }[]
+  readonly recoveries: { sessionId: string; docKey: string; title: string; bytes: Uint8Array }[]
 }
 
 function cancelled() {
@@ -212,6 +212,7 @@ export function createSaveDevice(options: SaveDeviceOptions = {}): SaveDevice {
         case 'mobile_sheets_write_recovery': {
           device.log.push(command)
           device.recoveries.push({
+            sessionId: String(args.sessionId),
             docKey: String(args.docKey),
             title: String(args.title),
             bytes: file(args.path).slice(),

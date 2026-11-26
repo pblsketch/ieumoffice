@@ -386,6 +386,79 @@ describe('a .csv document asks every time', HEAVY, () => {
     expect(asked).toEqual(['csv', 'csv'])
   })
 
+  /** Makes one Tauri command fail (or answer) as given. */
+  function intercept(
+    device: SaveDevice,
+    when: (command: string, args: Record<string, unknown>) => boolean,
+    error: unknown,
+  ): void {
+    const inner = device.client.transport
+    device.client.transport = {
+      ...inner,
+      invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+        if (when(command, args)) return Promise.reject(error)
+        return inner.invoke<T>(command, args)
+      },
+    }
+  }
+
+  it('CSV: when the session cannot take the edits, the original is not written', async () => {
+    const h = await harness('csv', csv)
+    answers.csv = 'csv'
+    intercept(
+      h.device,
+      (command, args) =>
+        command === 'mobile_sheets_request' && String(args.line).includes('"save_archive"'),
+      new Error('engine refused the save'),
+    )
+    await expect(h.actions.save!(h.doc(), false)).resolves.toBe(false)
+    expect([...h.device.originals.get(DOC)!]).toEqual([...csv])
+    expect(h.device.log).not.toContain('mobile_sheets_save_to_original')
+    expect(h.host.errors).toHaveLength(1)
+    expect(h.host.dirty).toEqual([])
+  })
+
+  it('CSV: when the CSV cannot be written after the session took the edits, it says so and stays unsaved', async () => {
+    const h = await harness('csv', csv)
+    answers.csv = 'csv'
+    intercept(h.device, (command) => command === 'mobile_sheets_save_to_original', {
+      code: 'PERMISSION_DENIED',
+      messageKey: 'mobile.fs.permissionDenied',
+    })
+    await expect(h.actions.save!(h.doc(), false)).resolves.toBe(false)
+    expect(h.calls).toEqual(['save'])
+    expect([...h.device.originals.get(DOC)!]).toEqual([...csv])
+    expect(h.host.errors).toEqual(['sheetsSaveFailed'])
+    expect(h.host.dirty).toEqual([])
+    expect(h.host.toasts).toEqual([])
+  })
+
+  it('CSV on a read-only or share-in .csv: a CSV copy in a new file, no error', async () => {
+    for (const session of [{ writable: false }, { ephemeral: true }]) {
+      asked.length = 0
+      const h = await harness('csv', csv, { session })
+      answers.csv = 'csv'
+      await h.actions.save!(h.doc(), false)
+      expect(asked).toEqual(['csv'])
+      expect(h.device.copies.map((copy) => copy.name)).toEqual(['ledger.csv'])
+      expect(h.device.log).not.toContain('mobile_sheets_save_to_original')
+      expect([...h.device.originals.get(DOC)!]).toEqual([...csv])
+      expect(h.host.errors).toEqual([])
+    }
+  })
+
+  it('CSV: a refusal to write in place turns into a CSV copy in a new file', async () => {
+    const h = await harness('csv', csv)
+    answers.csv = 'csv'
+    intercept(h.device, (command) => command === 'mobile_sheets_save_to_original', {
+      code: 'READ_ONLY_URI',
+      messageKey: 'mobile.fs.readOnly',
+    })
+    await h.actions.save!(h.doc(), false)
+    expect(h.device.copies.map((copy) => copy.name)).toEqual(['ledger.csv'])
+    expect(h.host.errors).toEqual([])
+  })
+
   it('Excel: Save As name.xlsx, which becomes the document (no more CSV question)', async () => {
     const h = await harness('csv', csv)
     answers.csv = 'xlsx'

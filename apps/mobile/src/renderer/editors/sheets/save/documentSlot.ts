@@ -12,7 +12,11 @@
  *     written); the saved file becomes the document;
  *   - a `.csv`: asked every time — CSV (the current sheet's visible values,
  *     the desktop's csv-export rules, over the original), an Excel file
- *     (Save As `name.xlsx`, which becomes the document), or cancel.
+ *     (Save As `name.xlsx`, which becomes the document), or cancel. CSV
+ *     takes the edits into the session's `.xlsx` first and writes the
+ *     original last, so a failure leaves the original as it was; a `.csv`
+ *     the app cannot write in place (read-only, shared in) gets a CSV copy
+ *     in a new file instead (the desktop's CSV export).
  * - Save As (and share) first ask the format: the workbook in its own
  *   format (`.xlsm` for a macro workbook), CSV of the current sheet, ODS of
  *   the whole workbook, PDF of the current sheet (save-as-formats.ts rules).
@@ -213,6 +217,19 @@ export function saveGoesToSaveAs(
   return document.converted || doc.isUntitled || !doc.session.writable || doc.session.ephemeral
 }
 
+/**
+ * Whether a `.csv` kept as CSV cannot go over its original: another app's
+ * read-only or shared-in copy (and an untitled one). Its CSV goes to a new
+ * file instead, as a plain save goes to Save As.
+ */
+export function csvGoesToCopy(
+  doc: Pick<ActiveDocState, 'isUntitled'> & {
+    readonly session: Pick<ActiveDocState['session'], 'writable' | 'ephemeral'>
+  },
+): boolean {
+  return doc.isUntitled || !doc.session.writable || doc.session.ephemeral
+}
+
 type Running = { readonly kind: 'user' | 'recovery'; readonly done: Promise<void> }
 
 export function createSheetsSaveActions(
@@ -352,28 +369,37 @@ export function createSheetsSaveActions(
     return path
   }
 
-  /** A `.csv` document kept as CSV: the current sheet over the original, the edits into the session. */
+  /**
+   * A `.csv` document kept as CSV: the current sheet over the original, the
+   * edits into the session. In this order: the CSV text (from the grid as it
+   * is now, before the save reloads it), the session's `.xlsx` (nothing
+   * reaches the original: the session is converted), then the original. A
+   * failure before the last step leaves the original as it was; a failure
+   * of the last step says why and leaves the document unsaved.
+   */
   async function saveCsvInPlace(grid: MobileGrid, document: MobileWorkbookDocument) {
     const path = await csvFile(grid)
     if (path === null) return false
     try {
-      await sheetsSaveToOriginal(client, document.sessionId, path)
-    } catch (error) {
-      fail(saveFailureMessage(error, t))
-      return false
+      const { result, messages } = await runPcSave(grid, 'save')
+      if (!result.ok && !(await nothingToSave(result, messages))) {
+        reportFailure(result, messages)
+        return false
+      }
+      try {
+        await sheetsSaveToOriginal(client, document.sessionId, path)
+      } catch (error) {
+        // The storage refused to write in place: a CSV copy in a new file.
+        if (saveFailureKind(error) === 'read-only') return await exportCsvCopy(grid)
+        fail(saveFailureMessage(error, t))
+        return false
+      }
     } finally {
       await sheetsTempDelete(client, path).catch(() => undefined)
     }
-    // The session's .xlsx takes the edits too (nothing reaches the original:
-    // the session is converted), so the next save starts from them.
-    const { result, messages } = await runPcSave(grid, 'save')
-    if (result.ok || (await nothingToSave(result, messages))) {
-      host.markDirty(false)
-      saved()
-      return true
-    }
-    reportFailure(result, messages)
-    return false
+    host.markDirty(false)
+    saved()
+    return true
   }
 
   function copyWritten(name: string): void {
@@ -599,6 +625,7 @@ export function createSheetsSaveActions(
           const answer = await sheetsSavePrompts().askCsvSave()
           if (answer === 'cancel') return false
           if (answer === 'xlsx') return saveAsWorkbook(grid)
+          if (csvGoesToCopy(doc)) return exportCsvCopy(grid)
           return saveCsvInPlace(grid, document)
         }
         if (saveGoesToSaveAs(doc, document)) return saveAsWorkbook(grid)

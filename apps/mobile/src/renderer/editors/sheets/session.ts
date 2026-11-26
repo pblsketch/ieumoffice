@@ -6,7 +6,9 @@
  * One document at a time is the app's rule, but `open()` runs before the
  * session switch, which the person may still cancel ("keep editing"): the
  * previous workbook's engine session stays until App disposes that document.
- * Each opened workbook closes only its own session and files (`close()`).
+ * Each opened workbook closes only its own session and files (`close()`):
+ * every engine session it opened carries its owner tag, so the session a
+ * save swapped in is the one that closes.
  */
 import type { MobileClient, MobileDocSession } from '@genoffice/mobile-bridge/transport'
 import { sheetsTempClear, sheetsTempDelete } from '@genoffice/mobile-bridge/sheets'
@@ -14,9 +16,11 @@ import type { WorkbookFile } from '../../../../../sheets/src/shared/desktop-api'
 import {
   MobileWorkbookSessions,
   createMobileDesktopApi,
+  forgetWorkbookPassword,
   installMobileDesktopApi,
   openMobileWorkbook,
   type MobileWorkbookDocument,
+  type MobileWorkbookOwner,
   type MobileWorkbookUnlockedCopy,
 } from './desktop-api'
 
@@ -26,7 +30,12 @@ export interface OpenedSheetsWorkbook {
   readonly document: MobileWorkbookDocument
   /** Opened with a password (the decrypted copy is in the work folder only). */
   readonly unlocked: boolean
-  /** Closes the engine session and deletes its working copy. Runs once. */
+  /**
+   * Closes the engine session the document uses now (each save swaps it),
+   * deletes its working copy and the open's other files, and drops the
+   * password. Runs once. A save still running then closes the session it
+   * swaps in (`MobileWorkbookOwner.closed`).
+   */
   close(): Promise<void>
 }
 
@@ -71,10 +80,12 @@ export async function openSheetsWorkbook(
     await sheetsTempClear(input.client).catch(() => undefined)
   }
   const tempFiles: string[] = []
+  const owner: MobileWorkbookOwner = { closed: false }
   let file: WorkbookFile
   try {
     file = await openMobileWorkbook(input.client, sheetsSessions, {
       session: input.session,
+      owner,
       locale: uiLang(),
       ...(input.recoveryBytesBase64 === undefined
         ? {}
@@ -97,10 +108,15 @@ export async function openSheetsWorkbook(
     unlocked: document.unlocked !== undefined,
     close() {
       closing ??= (async () => {
+        owner.closed = true
         live.delete(opened)
-        // The session's working copy may have moved on (each save swaps it);
-        // closeWorkbook deletes whichever one the session holds now.
-        await api.closeWorkbook(file.sessionId)
+        forgetWorkbookPassword(document)
+        // Each save swaps the engine session and its working copy; every
+        // session this document holds now carries its owner tag.
+        for (const session of sheetsSessions.ownedBy(owner)) {
+          if (session.document) forgetWorkbookPassword(session.document)
+          await api.closeWorkbook(session.sessionId)
+        }
         for (const path of tempFiles) {
           await sheetsTempDelete(input.client, path).catch(() => undefined)
         }

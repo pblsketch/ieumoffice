@@ -9,8 +9,9 @@ use std::path::{Component, Path};
 pub const PATH_OUTSIDE_WORK_FOLDER: &str = "Path is outside the sheets work folder.";
 
 /// True when `path` is an absolute path strictly inside `root`, with no `.`
-/// or `..` steps, and (when it already exists) still inside `root` after
-/// symlinks are resolved.
+/// or `..` steps, and still inside `root` after links are resolved: the path
+/// itself when it exists, else its nearest existing folder (a save target
+/// that does not exist yet must not sit behind a link that leaves `root`).
 pub fn is_within(root: &Path, path: &Path) -> bool {
     if !path.is_absolute() || path == root || !path.starts_with(root) {
         return false;
@@ -21,13 +22,24 @@ pub fn is_within(root: &Path, path: &Path) -> bool {
     {
         return false;
     }
-    match (path.canonicalize(), root.canonicalize()) {
-        (Ok(resolved), Ok(resolved_root)) => {
-            resolved != resolved_root && resolved.starts_with(&resolved_root)
-        }
-        // A path that does not exist yet (a save target, a new content file):
-        // its lexical position was checked above.
-        (Err(_), _) => true,
-        (Ok(_), Err(_)) => false,
+    let Ok(resolved_root) = root.canonicalize() else {
+        return false;
+    };
+    if let Ok(resolved) = path.canonicalize() {
+        return resolved != resolved_root && resolved.starts_with(&resolved_root);
     }
+    // A path that does not exist yet (a save target, a new content file):
+    // the nearest folder above it that exists must resolve inside the root
+    // (the root itself included); the steps below it were checked above.
+    let mut ancestor = path.parent();
+    while let Some(folder) = ancestor {
+        if let Ok(resolved) = folder.canonicalize() {
+            return resolved.starts_with(&resolved_root);
+        }
+        if folder == root {
+            return false;
+        }
+        ancestor = folder.parent();
+    }
+    false
 }
