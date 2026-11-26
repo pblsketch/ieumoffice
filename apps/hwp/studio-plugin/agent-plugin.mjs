@@ -21,6 +21,7 @@ import {
   countCollector,
 } from './char-count.mjs'
 import { documentStats, engineChars, engineLength, engineSlice } from './document-info.mjs'
+import { isAppMarkName } from './doc-marks.mjs'
 import { installDialogTheme } from './dialog-theme.mjs'
 import {
   BORDER_LINES,
@@ -1693,6 +1694,55 @@ function containerOf(doc, hit) {
 }
 
 /**
+ * The app-owned bookmarks of `doc` (table-of-contents, index, citation, setting marks).
+ * These are document metadata rather than content objects, so edits that add, shift, or
+ * remove paragraphs carrying them are not blocked by the object guard.
+ */
+function appMarkBookmarksOf(doc) {
+  if (typeof doc.getBookmarks !== 'function') return []
+  try {
+    const marks = parse(doc.getBookmarks())
+    return Array.isArray(marks) ? marks.filter((mark) => isAppMarkName(mark?.name)) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Control keys (`${globalPara}:${controlIndex}`) for app-owned bookmarks in `doc`,
+ * matching the flat paragraph numbering of `doc.getControls()` (`list === 0`).
+ */
+function appMarkControlKeys(doc) {
+  const marks = appMarkBookmarksOf(doc)
+  if (marks.length === 0) return new Set()
+  const bases = [0]
+  const keys = new Set()
+  for (const mark of marks) {
+    const sec = mark.sec ?? mark.sectionIndex ?? 0
+    const para = mark.para ?? mark.paraIndex ?? 0
+    const ctrlIdx = mark.ctrlIdx ?? mark.controlIndex
+    if (!Number.isInteger(sec) || !Number.isInteger(para) || !Number.isInteger(ctrlIdx)) continue
+    while (bases.length <= sec) {
+      bases.push(bases[bases.length - 1] + doc.getParagraphCount(bases.length - 1))
+    }
+    keys.add(`${bases[sec] + para}:${ctrlIdx}`)
+  }
+  return keys
+}
+
+/** Control indices of app-owned bookmarks inside body paragraph `(sec, para)`. */
+function appMarkIndicesIn(doc, sec, para) {
+  const indices = new Set()
+  for (const mark of appMarkBookmarksOf(doc)) {
+    const mSec = mark.sec ?? mark.sectionIndex ?? 0
+    const mPara = mark.para ?? mark.paraIndex ?? 0
+    const ctrlIdx = mark.ctrlIdx ?? mark.controlIndex
+    if (mSec === sec && mPara === para && Number.isInteger(ctrlIdx)) indices.add(ctrlIdx)
+  }
+  return indices
+}
+
+/**
  * What an edit must leave alone: the objects of the document and the field values. An edit
  * that fills cells names the fields it sets itself (`ignore`, by field id); the value of a
  * named cell is its text, so those are not watched then either.
@@ -1722,8 +1772,22 @@ function objectsOf(doc, ignore = null) {
     used.add(index)
     memoControls += 1
   }
+  // App-owned metadata bookmarks are not content objects and may come or go with edits.
+  const appMarks = appMarkControlKeys(doc)
+  let appMarkControls = 0
+  if (appMarks.size > 0) {
+    for (const control of controls) {
+      if (
+        control.ctrlId === 'bokm' &&
+        control.list === 0 &&
+        appMarks.has(`${control.para}:${control.controlIndex}`)
+      ) {
+        appMarkControls += 1
+      }
+    }
+  }
   return {
-    controls: controls.length - memoControls,
+    controls: controls.length - memoControls - appMarkControls,
     fields: JSON.stringify(watched.map((field) => field.value ?? '')),
   }
 }
@@ -1744,7 +1808,7 @@ function bodyControlsOf(doc, sec, para) {
 /**
  * Whether body paragraph `para` of section `sec` holds an object drawn before character
  * `end`: a field (a click-here field shows its guide there), a table, a picture or any other
- * control but those that set up the page and the memos, which take no room in the line.
+ * control but those that set up the page, app marks, and memos, which take no room in the line.
  */
 function bodyObjectBefore(doc, sec, para, end) {
   const positions = parse(doc.getControlTextPositions(sec, para))
@@ -1753,10 +1817,12 @@ function bodyObjectBefore(doc, sec, para, end) {
     bodyControlsOf(doc, sec, para).map((control) => [control.controlIndex, control.ctrlId]),
   )
   const besideMemos = memoFreeObjectPositions(doc, sec, para)
+  const appMarks = appMarkIndicesIn(doc, sec, para)
   return positions.some(
     (at, index) =>
       at < end &&
       !PAGE_CONTROLS.has(kinds.get(index)) &&
+      !appMarks.has(index) &&
       (kinds.get(index) !== '' || besideMemos.includes(at)),
   )
 }
@@ -1772,8 +1838,8 @@ function holdsObjectOutOfLine(doc, sec, para) {
 }
 
 /**
- * The places of the controls of a body paragraph, without the memos: a memo is a field
- * that the memo guard watches, not an object that a paragraph edit must step around.
+ * The places of the controls of a body paragraph, without memos or app-owned bookmarks:
+ * memos are watched by the memo guard and app marks are metadata, not content objects.
  */
 function memoFreeObjectPositions(doc, sec, para) {
   const positions = parse(doc.getControlTextPositions(sec, para))
@@ -1783,7 +1849,8 @@ function memoFreeObjectPositions(doc, sec, para) {
     )
     .map((entry) => entry.startCharIdx)
     .filter((offset) => Number.isInteger(offset))
-  return positions.filter((position) => !starts.includes(position))
+  const appMarks = appMarkIndicesIn(doc, sec, para)
+  return positions.filter((position, index) => !starts.includes(position) && !appMarks.has(index))
 }
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
@@ -4334,9 +4401,13 @@ function holdsContentObject(doc, sec, para) {
   if (memoFreeObjectPositions(doc, sec, para).length === 0) return false
   if (sec !== 0) return true
   try {
+    const appMarks = appMarkControlKeys(doc)
     return parse(doc.getControls()).some(
       (control) =>
-        control.list === 0 && control.para === para && !PAGE_CONTROLS.has(control.ctrlId),
+        control.list === 0 &&
+        control.para === para &&
+        !PAGE_CONTROLS.has(control.ctrlId) &&
+        !(control.ctrlId === 'bokm' && appMarks.has(`${control.para}:${control.controlIndex}`)),
     )
   } catch {
     return true
@@ -8713,12 +8784,24 @@ export const agentPlugin = {
      * header set before any text). Text added at the end of such a document goes into that
      * paragraph, as typing would, instead of leaving it in front as an empty first line.
      */
-    const isEmptyDocument = (doc, box) =>
-      !box.inTable &&
-      doc.getSectionCount() === 1 &&
-      doc.getParagraphCount(0) === 1 &&
-      box.length(box.index) === 0 &&
-      parse(doc.getControls()).every((control) => PAGE_CONTROLS.has(control.ctrlId))
+    const isEmptyDocument = (doc, box) => {
+      if (
+        box.inTable ||
+        doc.getSectionCount() !== 1 ||
+        doc.getParagraphCount(0) !== 1 ||
+        box.length(box.index) !== 0
+      ) {
+        return false
+      }
+      const appMarks = appMarkControlKeys(doc)
+      return parse(doc.getControls()).every(
+        (control) =>
+          PAGE_CONTROLS.has(control.ctrlId) ||
+          (control.ctrlId === 'bokm' &&
+            control.list === 0 &&
+            appMarks.has(`${control.para}:${control.controlIndex}`)),
+      )
+    }
 
     /** Make an empty paragraph after paragraph `k` of `box`; its index is k + 1. */
     const openAfter = (box, k, plain) => {
