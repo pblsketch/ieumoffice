@@ -27,6 +27,12 @@ export interface MobileWorkbookDocument {
    * copy, and the original cannot take the saved workbook in its format.
    */
   readonly converted: boolean
+  /**
+   * Opened with a password: the session edits the decrypted copy, and a save
+   * must lock the result again with the same password before it reaches the
+   * original (the save task). Never written anywhere.
+   */
+  readonly unlocked?: { readonly password: string }
 }
 
 export class MobileWorkbookSessions {

@@ -1,9 +1,20 @@
 // Icons of track T1 sheets. Draw them with SvgIcon from './svgIcon' (not from MobileIcons, which
 // imports this folder's index). File-type pictures go in the map below.
+import fileXlsxSvg from '../../editors/sheets/assets/file-xlsx.svg'
 import { SvgIcon, type IconProps } from './svgIcon'
 import type { DocTypeIconMap } from './types'
 
-export const sheetsDocTypeIcons: DocTypeIconMap = {}
+/**
+ * The spreadsheet file picture (the desktop's file-xlsx.svg, made by
+ * tools/gen-file-association-icons.mjs); like the desktop, .xlsm, .xls and
+ * .csv share it.
+ */
+export const sheetsDocTypeIcons: DocTypeIconMap = {
+  xlsx: fileXlsxSvg,
+  xlsm: fileXlsxSvg,
+  xls: fileXlsxSvg,
+  csv: fileXlsxSvg,
+}
 
 /** Grid with its top row held (freeze top row). */
 export function IconFreezeRow(props: IconProps) {

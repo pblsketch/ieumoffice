@@ -11,7 +11,7 @@ import { installExcelCompat } from './excelCompat'
 import { installPinchZoom } from './pinchZoom'
 import { installViewportStreaming, openLazyWorkbookOnPhone } from './lazyWorkbook'
 import { pcUniverSync } from './pcGridModules'
-import { installValueJournal } from '../save/journalRecorder'
+import { installEditJournal } from '../journal/editJournal'
 
 export interface MobileGridOptions {
   readonly lang: Lang
@@ -22,6 +22,10 @@ export interface MobileGridOptions {
   readonly onEditRequestInView: () => void
   /** The cell editor opened or closed (the keyboard bar follows it). */
   readonly onCellEditing: (editing: boolean) => void
+  /** An edit went into the journal (`pending`: the journal's size). */
+  readonly onEdited?: (pending: number) => void
+  /** An edit gate refused a command (the desktop's status-bar text). */
+  readonly onNotice?: (message: string) => void
 }
 
 /**
@@ -43,8 +47,8 @@ export interface MobileGrid {
 let liveGrid: MobileGrid | null = null
 
 /**
- * The app keeps one document open; a new grid replaces the previous one
- * (EditorDocument has no close hook yet, so the replaced grid is torn down here).
+ * The app keeps one document open. The document's `dispose()` tears its grid
+ * down; a new grid still replaces a leftover one, so two never run at once.
  */
 export function createMobileGrid(options: MobileGridOptions): MobileGrid {
   liveGrid?.dispose()
@@ -68,7 +72,10 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
   void applyUniverLocale(runtime, options.lang)
   const disposeStreaming = installViewportStreaming(runtime, lazyWorkbookRef, options.onMessage)
   const disposePinch = installPinchZoom(element, runtime)
-  const disposeJournal = installValueJournal(runtime, lazyWorkbookRef)
+  const disposeJournal = installEditJournal(runtime, lazyWorkbookRef, {
+    ...(options.onEdited ? { onRecorded: options.onEdited } : {}),
+    ...(options.onNotice ? { onMessage: options.onNotice } : {}),
+  })
 
   let viewMode = true
   const api = runtime.univerAPI
