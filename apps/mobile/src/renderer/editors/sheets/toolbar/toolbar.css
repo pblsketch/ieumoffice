@@ -16,6 +16,15 @@
   white-space: nowrap;
 }
 
+/* On a phone a group's sheet stands on the toolbar instead of covering it,
+   so another group is one tap away (design system 5.6). */
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-format'],
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-rows'],
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-sort'],
+.mobile-shell-phone [data-testid='sheets-toolbar-sheet-insert'] {
+  bottom: calc(var(--m-toolbar-h) + var(--m-safe-bottom));
+}
+
 /* The tablet toolbar already writes the name under the icon. */
 .mobile-tablet-toolbar .m-sheets-tb-group-label {
   display: none;
