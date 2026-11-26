@@ -1,5 +1,14 @@
 // Owned by track T7: App.tsx is frozen after S0, so the AI run, AI settings and AI panel live here and T7's model picker, queue, change cards and "stop and turn off?" grow in this file.
-import { createElement, useCallback, useMemo, useRef, useState, type ReactElement } from 'react'
+import {
+  Fragment,
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react'
 import { AgentLoop, composeSkills, type AgentMessage, type AgentSkill } from '@genoffice/agent-core'
 import { useAiInlineQuestions } from '@genoffice/ui'
 import { AI_SUBSCRIPTION_NOTICE_VERSION } from '@genoffice/ai-provider/browser'
@@ -19,6 +28,19 @@ import { AiSheetPanel, type ChatGptRecoveryNoticeKind } from '../components/AiSh
 import type { EditorAiRun, EditorDocument } from '../editors/editorKind'
 import type { SettingsScreenProps } from '../settings/SettingsScreen'
 import type { MobileAiSettingsSlot } from './settingsSlot'
+import { OutboundConfirmHost } from './OutboundConfirmSheet'
+import {
+  createMobileOutboundBridge,
+  guardMobileOutbound,
+  type MobileOutboundBridge,
+} from './outbound'
+import {
+  bindMobileAiTools,
+  clearMobileAiAttachments,
+  onMobileAiToolSettingsChanged,
+  refreshMobileAiToolSettings,
+  resetMobileAiTools,
+} from './tools/state'
 
 const DEFAULT_AI_SETTINGS: MobileAiSettingsSnapshot = {
   selectedProvider: 'auto',
@@ -96,6 +118,44 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
 
   const activeRunCancelRef = useRef<(() => void) | null>(null)
 
+  // the shared AI tools (ai/tools) read the latest AI state through these
+  const aiEnabledRef = useRef(aiEnabled)
+  aiEnabledRef.current = aiEnabled
+  const aiSettingsRef = useRef(aiSettings)
+  aiSettingsRef.current = aiSettings
+  const chatgptStatusRef = useRef(chatgptStatus)
+  chatgptStatusRef.current = chatgptStatus
+
+  // decision 0062: the internet switch and the address question; the allowed
+  // addresses live here for the conversation (every run gets a new guard)
+  const outboundRef = useRef<MobileOutboundBridge | null>(null)
+  outboundRef.current ??= createMobileOutboundBridge({
+    readInternetTools: async () => {
+      const settings = await refreshMobileAiToolSettings()
+      return aiEnabledRef.current && settings?.internetTools === true
+    },
+  })
+  const outbound = outboundRef.current
+
+  useEffect(
+    () =>
+      bindMobileAiTools({
+        client,
+        getAiEnabled: () => aiEnabledRef.current,
+        getAiSettings: () => aiSettingsRef.current,
+        getChatgptStatus: () => chatgptStatusRef.current,
+      }),
+    [client],
+  )
+  // a switch changed in settings during a run reaches that run's guard
+  useEffect(
+    () =>
+      onMobileAiToolSettingsChanged((settings) =>
+        outbound.notifyInternetTools(aiEnabledRef.current && settings?.internetTools === true),
+      ),
+    [outbound],
+  )
+
   const refreshAiState = useCallback(async () => {
     const [settings, cgStatus] = await Promise.all([
       client.getAiSettings().catch(() => DEFAULT_AI_SETTINGS),
@@ -109,6 +169,10 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     activeRunCancelRef.current?.()
     aiMemoryRef.current.resetForDoc(nextDocKey)
     inlineQuestionsRef.current.resetConversation()
+    // a new conversation: the allowed addresses, the attached photos and the pages read go
+    outboundRef.current?.reset()
+    clearMobileAiAttachments()
+    resetMobileAiTools()
     setAiMessages([])
     setLastAiUndo(null)
     setAiAutoSwitched(false)
@@ -144,6 +208,10 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
         setAiAutoSwitched(true)
       }
 
+      // the tool settings first: the document's tools ask availability() while they are made,
+      // and the guard's first tool list needs the internet switch already read
+      await outbound.prime()
+
       // the document's tools (read before the run; failing to prepare them is a connection error)
       let run: EditorAiRun
       try {
@@ -162,7 +230,13 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
       const base: AgentSkill = run.skill
       // every document can ask through the shared question card
       inlineQuestionsRef.current.supersedeOpen()
-      const skill = composeSkills(base.id, '', [base, inlineQuestionsRef.current.askQuestionsSkill])
+      const composed = composeSkills(base.id, '', [
+        base,
+        inlineQuestionsRef.current.askQuestionsSkill,
+      ])
+      // the address check reads the loop's whole history, tool results included
+      let activeLoop: AgentLoop | null = null
+      const skill = guardMobileOutbound(composed, outbound, () => activeLoop?.messages ?? [])
 
       const transport = createMobileAgentTransport(client, {
         onStreamError: (detail) => {
@@ -197,6 +271,7 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
             },
           },
         })
+        activeLoop = loop
         if (history.length > 0) {
           loop.appendHistory(history)
         }
@@ -207,10 +282,11 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
         loop.run(prompt)
       })
       activeRunCancelRef.current = null
+      outbound.endRun()
       setAiStreaming(false)
       run.finish?.()
     },
-    [client, aiEnabled],
+    [client, aiEnabled, outbound],
   )
 
   const settingsSlot = useMemo<MobileAiSettingsSlot>(() => ({}), [])
@@ -249,7 +325,7 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     },
   }
 
-  const panel = createElement(AiSheetPanel, {
+  const sheetPanel = createElement(AiSheetPanel, {
     aiEnabled,
     aiSettings,
     chatgptStatus,
@@ -283,6 +359,13 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     onChatgptReconnect: () => void client.chatgptSignIn(false).then(refreshAiState),
     onRetryLast: lastAiPrompt ? () => void handleSendAi(lastAiPrompt) : undefined,
   })
+  // the address question sits with the panel: while the panel is off screen nothing is asked
+  const panel = createElement(
+    Fragment,
+    null,
+    sheetPanel,
+    createElement(OutboundConfirmHost, { bridge: outbound }),
+  )
 
   return {
     panel,
