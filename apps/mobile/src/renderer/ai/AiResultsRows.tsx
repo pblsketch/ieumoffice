@@ -12,12 +12,19 @@ import { formatAiBytes } from './settingsText'
 
 /**
  * The AI result store (`ai-results/`: pictures the AI made or fetched, copies
- * of attached photos): its size and a [clear] behind a confirm sheet. Rows
- * only; `AiStorageRows` draws the card and its heading around them. It shows
- * while AI is off too (it is storage). Clearing waits while an AI run is
- * going, since that run may be writing or reading a picture there.
+ * of attached photos): its size and a [clear] behind a confirm sheet. Hidden
+ * when AI is off and the store is empty (design system: no AI UI when AI is off);
+ * still shown when AI was turned off after creating files so the user can clear
+ * them. Clearing waits while an AI run is going, since that run may be writing
+ * or reading a picture there.
  */
-export function AiResultsRows({ client }: { readonly client: MobileAiCommandClient }) {
+export function AiResultsRows({
+  client,
+  aiEnabled = true,
+}: {
+  readonly client: MobileAiCommandClient
+  readonly aiEnabled?: boolean
+}) {
   const { t, lang } = useMobileLocale()
   const run = useSyncExternalStore(subscribeMobileAiRunState, mobileAiRunState, mobileAiRunState)
   const [size, setSize] = useState<MobileAiResultsSize | null>(null)
@@ -61,6 +68,8 @@ export function AiResultsRows({ client }: { readonly client: MobileAiCommandClie
   }
 
   const empty = size !== null && size.bytes === 0 && size.files === 0
+  const hasStoredFiles = size !== null && (size.bytes > 0 || size.files > 0)
+  if (!aiEnabled && !hasStoredFiles) return null
   const sizeText = size
     ? t('aiResultsSize', { size: formatAiBytes(size.bytes, lang), count: size.files })
     : unreadable
@@ -68,7 +77,8 @@ export function AiResultsRows({ client }: { readonly client: MobileAiCommandClie
       : ''
 
   return (
-    <>
+    <div className="mobile-card" data-testid="ai-results-card">
+      <h3 className="mobile-card-subtitle">{t('aiResultsTitle')}</h3>
       <div className="mobile-list-row ai-set-results-row" data-testid="ai-results-row">
         <span className="mobile-set-label" data-testid="ai-results-size">
           {sizeText}
@@ -105,6 +115,6 @@ export function AiResultsRows({ client }: { readonly client: MobileAiCommandClie
         danger
         testId="ai-results-clear-sheet"
       />
-    </>
+    </div>
   )
 }

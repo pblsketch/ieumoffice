@@ -19,17 +19,18 @@ import './homeSettings.css'
 
 export interface StorageSectionProps {
   readonly aiSlot?: MobileAiSettingsSlot
+  readonly aiEnabled?: boolean
   readonly platform?: AppPlatform
 }
 
-export function StorageSection({ aiSlot, platform }: StorageSectionProps) {
+export function StorageSection({ aiSlot, aiEnabled = false, platform }: StorageSectionProps) {
   const runtime = useHomeRuntime()
   // the document the app layer reports as open keeps its recovery copy when clearing
   const keepDocKey = useActiveDocKey() ?? undefined
   return (
     <>
       {runtime && <StorageCard host={runtime} activeDocKey={keepDocKey} platform={platform} />}
-      <AiStorageRows slot={aiSlot} />
+      <AiStorageRows slot={aiSlot} aiEnabled={aiEnabled} />
     </>
   )
 }

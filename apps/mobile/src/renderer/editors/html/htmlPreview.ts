@@ -29,10 +29,22 @@ const META_TAG = /<meta(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>?/gi
 /** One attribute of a start tag: its name, then an optional quoted or unquoted value. */
 const TAG_ATTRIBUTE = /([^\s/>"'=]+)(\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*)))?/g
 
+/** Decodes HTML numeric character references and ASCII whitespace entities in an attribute value. */
+function decodeMetaAttributeValue(value: string): string {
+  return value
+    .replace(/&#(?:x([0-9a-f]+)|(\d+));?/gi, (_match, hex: string | undefined, dec: string | undefined) => {
+      const codePoint = hex ? Number.parseInt(hex, 16) : Number.parseInt(dec ?? '', 10)
+      if (!Number.isFinite(codePoint) || codePoint <= 0 || codePoint > 0x10ffff) return ''
+      return String.fromCodePoint(codePoint)
+    })
+    .replace(/&(?:tab|newline);/gi, ' ')
+}
+
 /**
  * `<meta http-equiv="refresh">` would move the frame to another page. In the copies only, the
  * `http-equiv` attribute of such a tag is renamed, however it is spelled (`<meta/http-equiv=…>`,
- * a `>` in an earlier quoted value, any case or quoting). Other `<meta>` tags stay as they are.
+ * character references like `&#114;efresh`, a `>` in an earlier quoted value, any case or quoting).
+ * Other `<meta>` tags stay as they are.
  */
 function neutraliseMetaRefresh(html: string): string {
   return html.replace(META_TAG, (tag) => {
@@ -41,7 +53,11 @@ function neutraliseMetaRefresh(html: string): string {
     let copied = 0
     for (let m = TAG_ATTRIBUTE.exec(tag); m; m = TAG_ATTRIBUTE.exec(tag)) {
       const value = m[3] ?? m[4] ?? m[5]
-      if (m[1].toLowerCase() === 'http-equiv' && value?.trim().toLowerCase() === 'refresh') {
+      if (
+        m[1].toLowerCase() === 'http-equiv' &&
+        value !== undefined &&
+        decodeMetaAttributeValue(value).trim().toLowerCase() === 'refresh'
+      ) {
         out += `${tag.slice(copied, m.index)}data-gx-${m[1]}`
         copied = m.index + m[1].length
       }
@@ -66,9 +82,11 @@ function instrumentWithoutInspector(text: string, map: ParseMap): string {
   throw new Error('The preview instrumenter added its inspector in an unexpected place.')
 }
 
-/** Where the CSP goes, in source offsets: first in `<head>`, else after the doctype, else at the start. */
+/** Where the CSP goes, in source offsets: first in top-level `<head>`, else after the doctype, else at the start. */
 function cspOffset(source: string, map: ParseMap): number {
-  const head = map.elements.find((entry) => entry.tag === 'head')
+  const head = map.elements.find(
+    (entry) => entry.tag === 'head' && (entry.path === 'head' || entry.path === 'html > head'),
+  )
   if (head) return head.startTag[1]
   return LEADING_DOCTYPE.exec(source)?.[0].length ?? 0
 }

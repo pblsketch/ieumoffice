@@ -250,7 +250,7 @@ describe('the engine client', () => {
       {},
     )
     if (!remote.ok || !local.ok) throw new Error('compress failed')
-    expect(remote.files[0]!.bytes).toEqual(local.files[0]!.bytes)
+    expect(Buffer.compare(remote.files[0]!.bytes, local.files[0]!.bytes)).toBe(0)
     expect(remote.sizeBefore).toBe(compress.length)
     expect(screenRecode).toHaveBeenCalled()
     const ops = workers.made[0]!.fromWorker.flatMap((m) =>

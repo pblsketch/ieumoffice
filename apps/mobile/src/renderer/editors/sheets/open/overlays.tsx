@@ -14,6 +14,7 @@ import { flushSync } from 'react-dom'
 import { MobileCommandError } from '@genoffice/mobile-bridge/transport'
 import { Sheet } from '../../../components/Sheet'
 import type { MobileStringKey } from '../../../i18n'
+import { ActiveBackStackPortal } from '../../../shell/backStack'
 import './open.css'
 
 export type SheetsTranslate = (key: MobileStringKey) => string
@@ -182,12 +183,14 @@ export function askSheetsPassword(t: SheetsTranslate, retry: boolean): Promise<s
     }
     flushSync(() =>
       mounted.root.render(
-        <PasswordSheet
-          t={t}
-          retry={retry}
-          onSubmit={(password) => finish({ password })}
-          onCancel={() => finish(null)}
-        />,
+        <ActiveBackStackPortal>
+          <PasswordSheet
+            t={t}
+            retry={retry}
+            onSubmit={(password) => finish({ password })}
+            onCancel={() => finish(null)}
+          />
+        </ActiveBackStackPortal>,
       ),
     )
   })

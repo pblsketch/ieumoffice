@@ -243,6 +243,23 @@ impl ReaderStore {
         file.settings = Some(settings);
         write_file_atomic(&self.dir, &file)
     }
+
+    /// Moves a saved reading position to the document's new docKey after a rename.
+    pub fn rekey(&self, old_key: &str, new_key: &str) -> MobileResult<()> {
+        if old_key == new_key
+            || validate_doc_key(old_key).is_err()
+            || validate_doc_key(new_key).is_err()
+        {
+            return Ok(());
+        }
+        let _guard = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        let mut file = load_file(&self.dir);
+        let Some(entry) = file.entries.remove(old_key) else {
+            return Ok(());
+        };
+        file.entries.insert(new_key.to_string(), entry);
+        write_file_atomic(&self.dir, &file)
+    }
 }
 
 #[cfg(test)]

@@ -359,6 +359,24 @@ export async function invokeMobileCommand<T>(
   }
 }
 
+/** Promotes a staged pending session to active once the frontend confirms switching to it. */
+export async function commitMobileSession(
+  client: Pick<MobileClient, 'transport'>,
+  sessionId: string,
+): Promise<{ ok: boolean }> {
+  if (!client.transport) return { ok: true }
+  return invokeMobileCommand(client.transport, 'mobile_commit_session', { sessionId })
+}
+
+/** Discards a cancelled pending session or closed active session on the Rust side. */
+export async function discardMobileSession(
+  client: Pick<MobileClient, 'transport'>,
+  sessionId: string,
+): Promise<{ ok: boolean }> {
+  if (!client.transport) return { ok: true }
+  return invokeMobileCommand(client.transport, 'mobile_discard_session', { sessionId })
+}
+
 export function createMobileClient(transport: MobileTransport): MobileClient {
   return {
     transport,

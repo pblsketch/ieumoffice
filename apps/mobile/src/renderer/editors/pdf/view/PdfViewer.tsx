@@ -85,6 +85,7 @@ export interface PdfViewerProps {
   readonly onViewChange: (view: PdfViewState) => void
   readonly onCurrentPageChange?: (pageIndex: number) => void
   readonly onGoToDest: (dest: unknown) => void
+  readonly onOpenExternalUrl?: (url: string) => void
   readonly hits?: ReadonlyMap<number, PdfPageHits>
   /** Unsaved rotations (clockwise degrees) by page; none while viewing. */
   readonly rotationDeltas?: ReadonlyMap<number, number>
@@ -141,6 +142,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     onViewChange,
     onCurrentPageChange,
     onGoToDest,
+    onOpenExternalUrl,
     hits,
     rotationDeltas,
     annotationMode,
@@ -420,6 +422,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   geom={geom}
                   scale={scale}
                   onGoToDest={onGoToDest}
+                  onOpenExternalUrl={onOpenExternalUrl}
                   internalLinkLabel={labels.internalLink}
                 />
               )}

@@ -8,6 +8,7 @@ pub mod store;
 use crate::error::MobileResult;
 use serde::Serialize;
 use serde_json::Value;
+use std::sync::Arc;
 use store::{ReaderState, ReaderStore, now_ms, parse_position, parse_settings};
 use tauri::State;
 
@@ -20,7 +21,7 @@ const OK: ReadersOk = ReadersOk { ok: true };
 
 #[tauri::command]
 pub fn mobile_readers_get_state(
-    state: State<'_, ReaderStore>,
+    state: State<'_, Arc<ReaderStore>>,
     doc_key: String,
 ) -> MobileResult<ReaderState> {
     state.get_state(&doc_key)
@@ -28,7 +29,7 @@ pub fn mobile_readers_get_state(
 
 #[tauri::command]
 pub fn mobile_readers_set_position(
-    state: State<'_, ReaderStore>,
+    state: State<'_, Arc<ReaderStore>>,
     doc_key: String,
     position: Value,
 ) -> MobileResult<ReadersOk> {
@@ -39,7 +40,7 @@ pub fn mobile_readers_set_position(
 
 #[tauri::command]
 pub fn mobile_readers_set_settings(
-    state: State<'_, ReaderStore>,
+    state: State<'_, Arc<ReaderStore>>,
     settings: Value,
 ) -> MobileResult<ReadersOk> {
     let settings = parse_settings(settings)?;

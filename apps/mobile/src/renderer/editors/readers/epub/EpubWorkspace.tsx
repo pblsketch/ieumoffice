@@ -441,6 +441,7 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
     setFailed(null)
     const next = { chapter, key: token }
     shownRef.current = next
+    reader.showChapter(chapter)
     setShown(next)
     reader.record({ spineIndex, blockId: target.kind === 'block' ? target.id : null })
   }
@@ -610,8 +611,13 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
   /** Wires a chapter document: links, touches, keys, wheel, scroll, late resources. */
   const wire = (doc: Document) => {
     const api = () => apiRef.current
+    const targetElement = (target: EventTarget | null): Element | null => {
+      if (!target) return null
+      const node = target as Node
+      return node.nodeType === 1 ? (target as Element) : (node.parentElement ?? null)
+    }
     const onClick = (e: MouseEvent) => {
-      const anchor = (e.target as Element | null)?.closest?.('a, area, [href]')
+      const anchor = targetElement(e.target)?.closest?.('a, area, [href]')
       if (!anchor) return
       e.preventDefault()
       if (e.type === 'click') api().onLink(linkHref(anchor))
@@ -640,7 +646,7 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
         y,
         at: Date.now(),
         selected: hasSelection(doc),
-        onLink: !!(target as Element | null)?.closest?.('a, area'),
+        onLink: !!targetElement(target)?.closest?.('a, area'),
         edges: frameEdges(doc),
       }
     }
@@ -753,6 +759,7 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
       const next = { chapter: kept, key: ++tokenRef.current }
       targetRef.current = target
       shownRef.current = next
+      reader.showChapter(kept)
       setShown(next)
     } else {
       void apiLoad.current(place.spineIndex, target)
@@ -768,10 +775,6 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
       timers.scroll = null
     }
   }, [reader])
-  // the chapter on screen is the document's; the one before releases its URLs
-  useEffect(() => {
-    if (shown) reader.showChapter(shown.chapter)
-  }, [shown, reader])
 
   // a new chapter frame: wire it once its document is there
   useEffect(() => {

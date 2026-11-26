@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import type { Lang, Params } from '@genoffice/i18n'
 import { Sheet } from '../../../components/Sheet'
 import { translateMobile, type MobileStringKey } from '../../../i18n/strings'
+import { ActiveBackStackPortal } from '../../../shell/backStack'
 import type { PdfPasswordPrompt } from '../openTypes'
 import { IconPdfEye, IconPdfEyeOff } from './icons'
 
@@ -118,13 +119,15 @@ export function createSheetPasswordPrompt(lang: Lang): PdfPasswordPrompt {
         resolve(answer)
       }
       root.render(
-        <PdfPasswordSheet
-          fileName={fileName}
-          wrong={wrong}
-          t={t}
-          onSubmit={(password) => finish(password)}
-          onCancel={() => finish(null)}
-        />,
+        <ActiveBackStackPortal>
+          <PdfPasswordSheet
+            fileName={fileName}
+            wrong={wrong}
+            t={t}
+            onSubmit={(password) => finish(password)}
+            onCancel={() => finish(null)}
+          />
+        </ActiveBackStackPortal>,
       )
     })
 }

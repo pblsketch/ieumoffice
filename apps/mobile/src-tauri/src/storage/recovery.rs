@@ -134,10 +134,9 @@ impl RecoveryStore {
         &self.dir
     }
 
-    /// Moves the recovery copy of a renamed document to its new docKey.
-    pub(crate) fn rekey(&self, old_key: &str, new_key: &str) -> MobileResult<()> {
-        if old_key == new_key
-            || Self::validate_key(old_key).is_err()
+    /// Moves the recovery copy of a renamed document to its new docKey and updates its title.
+    pub(crate) fn rekey(&self, old_key: &str, new_key: &str, new_title: &str) -> MobileResult<()> {
+        if Self::validate_key(old_key).is_err()
             || Self::validate_key(new_key).is_err()
             || !self.data_path(old_key).exists()
         {
@@ -146,11 +145,14 @@ impl RecoveryStore {
         let meta = fs::read_to_string(self.meta_path(old_key))
             .ok()
             .and_then(|text| serde_json::from_str::<RecoveryEntry>(&text).ok());
-        fs::rename(self.data_path(old_key), self.data_path(new_key)).map_err(|e| {
-            MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.renameFailed", e.to_string())
-        })?;
+        if old_key != new_key {
+            fs::rename(self.data_path(old_key), self.data_path(new_key)).map_err(|e| {
+                MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.renameFailed", e.to_string())
+            })?;
+        }
         if let Some(mut entry) = meta {
             entry.doc_key = new_key.to_string();
+            entry.title = new_title.to_string();
             let json = serde_json::to_string_pretty(&entry).map_err(|e| {
                 MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.encodeFailed", e.to_string())
             })?;
@@ -158,7 +160,9 @@ impl RecoveryStore {
                 MobileError::with_detail(MobileErrorCode::InternalError, "mobile.recovery.metaWriteFailed", e.to_string())
             })?;
         }
-        let _ = fs::remove_file(self.meta_path(old_key));
+        if old_key != new_key {
+            let _ = fs::remove_file(self.meta_path(old_key));
+        }
         Ok(())
     }
 

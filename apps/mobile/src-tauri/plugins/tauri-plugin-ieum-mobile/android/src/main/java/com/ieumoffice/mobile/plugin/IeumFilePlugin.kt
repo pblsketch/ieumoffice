@@ -114,6 +114,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     private val pendingIntents = ConcurrentLinkedQueue<JSObject>()
     private val incomingBatches = ConcurrentLinkedQueue<JSObject>()
     private val batchCounter = AtomicLong(0)
+    @Volatile private var activeWebView: WebView? = null
 
     // One worker for received files: copies run in arrival order, and a batch query queued
     // after them answers only once they are done.
@@ -124,8 +125,20 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun load(webView: WebView) {
         super.load(webView)
+        activeWebView = webView
         applySystemBarInsets()
-        captureIncomingIntent(activity.intent)
+        captureIncomingIntent(activity.intent, notifyWebView = false)
+    }
+
+    /** Notifies the foreground WebView when a new intent arrives without a visibility transition. */
+    private fun notifyIncomingDocument() {
+        val webView = activeWebView ?: return
+        activity.runOnUiThread {
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('ieum:incoming-document'))",
+                null
+            )
+        }
     }
 
     private fun applySystemBarInsets() {
@@ -155,10 +168,10 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        captureIncomingIntent(intent)
+        captureIncomingIntent(intent, notifyWebView = true)
     }
 
-    fun captureIncomingIntent(intent: Intent?) {
+    fun captureIncomingIntent(intent: Intent?, notifyWebView: Boolean = false) {
         if (intent == null) return
         val action = intent.action ?: return
         if (action == Intent.ACTION_SEND_MULTIPLE) {
@@ -166,9 +179,9 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
             if (uris.isEmpty()) return
             // A lone non-picture document keeps the single-document path.
             if (uris.size == 1 && !isPicture(uris[0], intent.type)) {
-                queueSingleDocument(intent, uris[0])
+                queueSingleDocument(intent, uris[0], notifyWebView)
             } else {
-                queueIncomingBatch(uris)
+                queueIncomingBatch(uris, notifyWebView)
             }
             return
         }
@@ -180,13 +193,13 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
         }
         if (uri == null) return
         if (action == Intent.ACTION_SEND && isPicture(uri, intent.type)) {
-            queueIncomingBatch(listOf(uri))
+            queueIncomingBatch(listOf(uri), notifyWebView)
             return
         }
-        queueSingleDocument(intent, uri)
+        queueSingleDocument(intent, uri, notifyWebView)
     }
 
-    private fun queueSingleDocument(intent: Intent, uri: Uri) {
+    private fun queueSingleDocument(intent: Intent, uri: Uri, notifyWebView: Boolean) {
         val flags = intent.flags
         val writable = (flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0
         val persistable = (flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0
@@ -206,6 +219,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
             put("ephemeral", !persistable)
         }
         pendingIntents.add(payload)
+        if (notifyWebView) notifyIncomingDocument()
     }
 
     @Suppress("DEPRECATION")
@@ -230,7 +244,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
      * worker and queues the batch for `takePendingIncomingBatch`. Files that cannot be read are
      * left out; a batch with no readable file is not queued.
      */
-    private fun queueIncomingBatch(uris: List<Uri>) {
+    private fun queueIncomingBatch(uris: List<Uri>, notifyWebView: Boolean) {
         val batchId = "b${System.currentTimeMillis()}-${batchCounter.incrementAndGet()}"
         val resolver = activity.contentResolver
         // Names and types are read now, while the share grant is surely valid.
@@ -274,6 +288,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
                     put("id", batchId)
                     put("files", files)
                 })
+                if (notifyWebView) notifyIncomingDocument()
             }
         }
     }

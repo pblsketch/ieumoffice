@@ -20,34 +20,41 @@ pub enum MobileDocFormat {
 }
 
 impl MobileDocFormat {
-    pub fn from_name(name: &str) -> Self {
+    /// Maps a file name with a known document extension to its format; returns `None` for
+    /// unknown or missing extensions so the open gate can refuse unsupported files.
+    pub fn from_known_name(name: &str) -> Option<Self> {
         let lower = name.to_ascii_lowercase();
         if lower.ends_with(".hwpx") {
-            Self::Hwpx
+            Some(Self::Hwpx)
         } else if lower.ends_with(".hwp") {
-            Self::Hwp
+            Some(Self::Hwp)
+        } else if lower.ends_with(".md") || lower.ends_with(".markdown") {
+            Some(Self::Md)
         } else if lower.ends_with(".txt") {
-            Self::Txt
+            Some(Self::Txt)
         } else if lower.ends_with(".pdf") {
-            Self::Pdf
+            Some(Self::Pdf)
         } else if lower.ends_with(".html") || lower.ends_with(".htm") {
-            Self::Html
+            Some(Self::Html)
         } else if lower.ends_with(".xlsx") {
-            Self::Xlsx
+            Some(Self::Xlsx)
         } else if lower.ends_with(".xlsm") {
-            Self::Xlsm
+            Some(Self::Xlsm)
         } else if lower.ends_with(".xls") {
-            Self::Xls
+            Some(Self::Xls)
         } else if lower.ends_with(".csv") {
-            Self::Csv
+            Some(Self::Csv)
         } else if lower.ends_with(".epub") {
-            Self::Epub
+            Some(Self::Epub)
         } else if lower.ends_with(".pptx") {
-            Self::Pptx
+            Some(Self::Pptx)
         } else {
-            // Unknown extensions (and `.md`/`.markdown`) open as Markdown, as before.
-            Self::Md
+            None
         }
+    }
+
+    pub fn from_name(name: &str) -> Self {
+        Self::from_known_name(name).unwrap_or(Self::Md)
     }
 
     pub fn ext(self) -> &'static str {

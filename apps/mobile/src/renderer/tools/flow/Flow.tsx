@@ -57,7 +57,7 @@ type HostWithCopy = HomeHost & {
     format: MobileDocFormat
     name: string
     bytesBase64: string
-  }): Promise<void>
+  }): Promise<boolean | void>
 }
 
 type Phase = 'files' | 'options' | 'running' | 'review' | 'result'
@@ -422,12 +422,12 @@ export default function PdfToolsFlowScreen({ host, start, onClose }: PdfToolsFlo
     const open = copyHost.openUntitledCopy
     if (!file || !open) return
     try {
-      await open.call(copyHost, {
+      const opened = await open.call(copyHost, {
         format: extOf(file),
         name: file.name,
         bytesBase64: bytesToBase64(file.bytes),
       })
-      if (mountedRef.current) onClose()
+      if (opened !== false && mountedRef.current) onClose()
     } catch (err) {
       if (isCancelled(err)) return
       host.showToast({ message: t('pdfToolsErrFailed'), tone: 'error' })

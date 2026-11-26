@@ -108,8 +108,7 @@ export const markdownEditorKind: EditorKind = {
   createFormats: ['md'],
   editable: true,
   hasAi: true,
-  // a .txt recovery copy reopens as an untitled Markdown document, as before
-  recoveryFormat: () => 'md',
+  recoveryFormat: (format) => (format === 'txt' ? 'txt' : 'md'),
   async open({ session, client, isUntitled, recoveryBytesBase64 }) {
     const markdownApi = createMobileMarkdownApi(client)
     // A recovery copy's own bytes decide its envelope (BOM, line ends), like a file's do.

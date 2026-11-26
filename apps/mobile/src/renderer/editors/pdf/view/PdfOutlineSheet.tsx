@@ -10,12 +10,14 @@ export function PdfOutlineSheet({
   model,
   t,
   onGoToDest,
+  onOpenExternalUrl,
   onClose,
 }: {
   readonly open: boolean
   readonly model: PdfOpenedDocument
   readonly t: (key: MobileStringKey) => string
   readonly onGoToDest: (dest: unknown) => void
+  readonly onOpenExternalUrl?: (url: string) => void
   readonly onClose: () => void
 }) {
   const [rows, setRows] = useState<PdfOutlineRow[] | null>(null)
@@ -67,7 +69,13 @@ export function PdfOutlineSheet({
                 href={row.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={onClose}
+                onClick={(e) => {
+                  if (onOpenExternalUrl) {
+                    e.preventDefault()
+                    onOpenExternalUrl(row.url!)
+                  }
+                  onClose()
+                }}
               >
                 {row.title}
               </a>

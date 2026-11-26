@@ -72,14 +72,14 @@ afterEach(() => {
 
 describe('Step 2 cross-track integration wiring', () => {
   it('B2: ToolsTab registers the PDF tools link for T6 home/create/receive entry points', () => {
-    let seen: ReturnType<typeof usePdfToolsLink> = null
+    const box: { seen: ReturnType<typeof usePdfToolsLink> } = { seen: null }
     function Probe() {
-      seen = usePdfToolsLink()
+      box.seen = usePdfToolsLink()
       return null
     }
     mount(<Probe />)
-    expect(seen).not.toBeNull()
-    expect(typeof seen?.Flow).toBe('function')
+    expect(box.seen).not.toBeNull()
+    expect(typeof box.seen?.Flow).toBe('function')
   })
 
   it('B3: markdown hidden-text verification failure is recognized by T7 isMobileAiBlocked', () => {

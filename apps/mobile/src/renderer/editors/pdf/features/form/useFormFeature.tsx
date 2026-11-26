@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderStaticFormMark } from '../../../../../../../pdf/src/renderer/static-form-fill'
 import type { FormValueInput, StaticFormFillRecord } from '../../../../../../../pdf/src/shared/ipc'
+import { useBackLayer } from '../../../../shell/backStack'
 import type { EditorQuickActionItem } from '../../../../shell/EditorShell'
 import type { PdfFeatureChrome, PdfFeatureContext } from '../../edit/types'
 import { AnnotationMode } from '../../view/pdfjs'
@@ -52,6 +53,8 @@ export function createUseFormFeature(deps: FormFeatureDeps = {}) {
     const [choiceTarget, setChoiceTarget] = useState<FormWidget | null>(null)
     const [placing, setPlacing] = useState<FormMarkKind | null>(null)
     const [selectedMark, setSelectedMark] = useState<string | null>(null)
+    const cancelPlacing = useCallback(() => setPlacing(null), [])
+    useBackLayer(placing !== null, cancelPlacing)
 
     // the catalog of the document on screen (replaced after every save)
     useEffect(() => {

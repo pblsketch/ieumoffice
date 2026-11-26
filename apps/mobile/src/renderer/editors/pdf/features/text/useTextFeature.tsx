@@ -17,6 +17,7 @@ import {
 import type { TextBlock } from '../../../../../../../pdf/src/renderer/text-block'
 import { joinBlockLines, spliceBlockText } from '../../../../../../../pdf/src/renderer/text-wrap'
 import type { TextEditInput } from '../../../../../../../pdf/src/shared/ipc'
+import { useBackLayer } from '../../../../shell/backStack'
 import type { Op, PdfFeatureChrome, PdfFeatureContext, PdfFeaturePage } from '../../edit/types'
 import { createPageText, type PageText } from './pageText'
 import { TextPageLayer } from './TextPageLayer'
@@ -78,6 +79,8 @@ export function useTextFeature(ctx: PdfFeatureContext): PdfFeatureChrome {
     },
     [setDraft],
   )
+  const cancelDraft = useCallback(() => setUserDraft(null), [setUserDraft])
+  useBackLayer(active && draft !== null, cancelDraft)
   const [busy, setBusyState] = useState(false)
   const busyRef = useRef(false)
   const setBusy = (b: boolean) => {

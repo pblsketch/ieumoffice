@@ -30,6 +30,7 @@ export function PdfLinkLayer({
   geom,
   scale,
   onGoToDest,
+  onOpenExternalUrl,
   internalLinkLabel,
 }: {
   readonly doc: PDFDocumentProxy
@@ -37,6 +38,7 @@ export function PdfLinkLayer({
   readonly geom: PageGeom
   readonly scale: number
   readonly onGoToDest: (dest: unknown) => void
+  readonly onOpenExternalUrl?: (url: string) => void
   /** Accessible name of a link inside the document. */
   readonly internalLinkLabel: string
 }) {
@@ -74,6 +76,14 @@ export function PdfLinkLayer({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={link.url}
+            onClick={
+              onOpenExternalUrl
+                ? (e) => {
+                    e.preventDefault()
+                    onOpenExternalUrl(link.url!)
+                  }
+                : undefined
+            }
           />
         ) : (
           <button

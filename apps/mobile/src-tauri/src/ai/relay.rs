@@ -265,6 +265,12 @@ fn free_only_body_ok(body: Option<&str>) -> bool {
     if !model.ends_with(":free") {
         return false;
     }
+    // Reject OpenRouter plugins (e.g. web search) on free-only accounts: plugins can incur fees.
+    match value.get("plugins") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(serde_json::Value::Array(list)) if list.is_empty() => {}
+        Some(_) => return false,
+    }
     match value.get("models") {
         None | Some(serde_json::Value::Null) => true,
         Some(serde_json::Value::Array(list)) => list
@@ -274,22 +280,41 @@ fn free_only_body_ok(body: Option<&str>) -> bool {
     }
 }
 
-/// Masks a key inside a streamed body without holding back more than a partial match.
+/// Raw and URL-encoded forms of an API key so echoed query-param secrets cannot slip past redaction.
+fn secret_variants(key: Option<&str>) -> Vec<String> {
+    let Some(raw) = key.filter(|k| !k.is_empty()) else {
+        return Vec::new();
+    };
+    let mut out = vec![raw.to_string()];
+    let encoded: String = url::form_urlencoded::byte_serialize(raw.as_bytes()).collect();
+    if !encoded.is_empty() && encoded != raw {
+        out.push(encoded);
+    }
+    // Longest first so a shorter variant does not partially mask a longer one.
+    out.sort_by(|a, b| b.len().cmp(&a.len()));
+    out
+}
+
+/// Masks a key (raw and percent-encoded forms) inside a streamed body without holding back more
+/// than a partial match.
 struct Redactor {
-    needle: Vec<u8>,
+    needles: Vec<Vec<u8>>,
     carry: Vec<u8>,
 }
 
 impl Redactor {
     fn new(key: Option<&str>) -> Self {
         Self {
-            needle: key.map(|k| k.as_bytes().to_vec()).unwrap_or_default(),
+            needles: secret_variants(key)
+                .into_iter()
+                .map(|s| s.into_bytes())
+                .collect(),
             carry: Vec::new(),
         }
     }
 
     fn push(&mut self, chunk: &[u8]) -> Vec<u8> {
-        if self.needle.is_empty() {
+        if self.needles.is_empty() {
             return chunk.to_vec();
         }
         let mut buf = std::mem::take(&mut self.carry);
@@ -297,20 +322,22 @@ impl Redactor {
         let mut out = Vec::with_capacity(buf.len());
         let mut i = 0;
         while i < buf.len() {
-            if buf[i..].starts_with(&self.needle) {
+            if let Some(matched) = self.needles.iter().find(|n| buf[i..].starts_with(n)) {
                 out.extend_from_slice(REDACTED);
-                i += self.needle.len();
+                i += matched.len();
             } else {
                 out.push(buf[i]);
                 i += 1;
             }
         }
-        // Hold back the longest tail that could still grow into the key.
-        let max = self.needle.len().saturating_sub(1).min(out.len());
-        let hold = (1..=max)
-            .rev()
-            .find(|&k| out.ends_with(&self.needle[..k]))
-            .unwrap_or(0);
+        // Hold back the longest tail that could still grow into any key form.
+        let mut hold = 0usize;
+        for needle in &self.needles {
+            let max = needle.len().saturating_sub(1).min(out.len());
+            if let Some(k) = (1..=max).rev().find(|&k| out.ends_with(&needle[..k])) {
+                hold = hold.max(k);
+            }
+        }
         self.carry = out.split_off(out.len() - hold);
         out
     }
@@ -632,6 +659,7 @@ impl MobileAiRelay {
                 "mobile.ai.relayRedirect",
             ));
         }
+        let secret_forms = secret_variants(key.as_deref());
         let mut out_headers = Vec::new();
         for (name, value) in resp.headers() {
             let lower = name.as_str();
@@ -639,7 +667,7 @@ impl MobileAiRelay {
                 continue;
             }
             let Ok(text) = value.to_str() else { continue };
-            if key.as_deref().is_some_and(|k| text.contains(k)) {
+            if secret_forms.iter().any(|s| text.contains(s.as_str())) {
                 continue;
             }
             out_headers.push((lower.to_string(), text.to_string()));
@@ -679,7 +707,7 @@ impl MobileAiRelay {
 
 #[cfg(test)]
 mod redactor_tests {
-    use super::Redactor;
+    use super::{Redactor, free_only_body_ok};
 
     #[test]
     fn masks_a_key_split_across_pieces_and_passes_other_bytes_at_once() {
@@ -692,5 +720,31 @@ mod redactor_tests {
         assert_eq!(String::from_utf8(out).unwrap(), "abc [redacted] def SE");
         let mut plain = Redactor::new(None);
         assert_eq!(plain.push(b"SECRETKEY"), b"SECRETKEY");
+    }
+
+    #[test]
+    fn masks_percent_encoded_key_echoed_in_body() {
+        let mut r = Redactor::new(Some("sk+abc/def="));
+        let mut out = r.push(b"echo raw sk+abc/def= and url sk%2Babc%2F");
+        out.extend(r.push(b"def%3D end"));
+        out.extend(r.finish());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "echo raw [redacted] and url [redacted] end"
+        );
+    }
+
+    #[test]
+    fn free_only_rejects_paid_openrouter_plugins() {
+        assert!(free_only_body_ok(Some(r#"{"model":"qwen/a:free"}"#)));
+        assert!(free_only_body_ok(Some(
+            r#"{"model":"qwen/a:free","plugins":[]}"#
+        )));
+        assert!(!free_only_body_ok(Some(
+            r#"{"model":"qwen/a:free","plugins":[{"id":"web"}]}"#
+        )));
+        assert!(!free_only_body_ok(Some(
+            r#"{"model":"qwen/a:free","plugins":"web"}"#
+        )));
     }
 }

@@ -25,5 +25,5 @@ export interface HomeHost {
     format: MobileDocFormat
     name: string
     bytesBase64: string
-  }): Promise<void>
+  }): Promise<boolean | void>
 }

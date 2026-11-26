@@ -42,12 +42,8 @@ pub fn run() {
             // T4 html state
             app.manage(Arc::new(commands::html::MobileWebState::new(resolve_file_bridge(app.handle()))));
 
-            // T5 readers state
-            app.manage(commands::readers::store::ReaderStore::new(
-                &app.path()
-                    .app_data_dir()
-                    .unwrap_or_else(|_| std::env::temp_dir().join("ieumoffice-mobile")),
-            ));
+            // T5 readers state (shared with MobileFileService so renames rekey reading positions)
+            app.manage(app.state::<Arc<MobileFileService>>().reader_store());
 
             // T6 home state
             let home_files = app.state::<Arc<MobileFileService>>().inner().clone();
@@ -80,6 +76,8 @@ pub fn run() {
             commands::files::mobile_hwp_backup_restore,
             commands::files::mobile_hwp_backup_delete,
             commands::files::mobile_set_openable_formats,
+            commands::files::mobile_commit_session,
+            commands::files::mobile_discard_session,
             commands::prefs::mobile_get_app_prefs,
             commands::prefs::mobile_set_app_prefs,
             commands::ai::mobile_get_ai_settings,

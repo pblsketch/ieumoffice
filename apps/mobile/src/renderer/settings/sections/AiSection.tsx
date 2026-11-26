@@ -1,6 +1,7 @@
 // Owner: track T7 (AI switch, AI connections and AI storage rows).
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { SUBSCRIPTION_CHATGPT_USAGE_URL } from '@genoffice/ai-provider/browser'
+import { openExternalUrl } from '@genoffice/mobile-bridge/home'
 import type {
   MobileAiSettingsSnapshot,
   MobileAppPrefs,
@@ -295,6 +296,16 @@ export function AiSection({
                   rel="noopener noreferrer"
                   className="mobile-link-btn"
                   data-testid="chatgpt-manage-usage-link"
+                  onClick={
+                    aiSlot?.client
+                      ? (e) => {
+                          e.preventDefault()
+                          void openExternalUrl(aiSlot.client!, SUBSCRIPTION_CHATGPT_USAGE_URL).catch(
+                            () => {},
+                          )
+                        }
+                      : undefined
+                  }
                 >
                   {t('aiManageUsage')}
                 </a>
@@ -396,20 +407,14 @@ export function AiSection({
 
 export interface AiStorageRowsProps {
   readonly slot?: MobileAiSettingsSlot
+  readonly aiEnabled?: boolean
 }
 
 /**
- * The AI result store card. The storage section draws it after its own card,
- * so it brings its own card and heading. Shown while AI is off too; nothing
- * without the app's client.
+ * The AI result store card. Shown when AI is enabled or when stored AI result files remain to
+ * clear (hidden on fresh installs with AI off and an empty store).
  */
-export function AiStorageRows({ slot }: AiStorageRowsProps) {
-  const { t } = useMobileLocale()
+export function AiStorageRows({ slot, aiEnabled = false }: AiStorageRowsProps) {
   if (!slot?.client) return null
-  return (
-    <div className="mobile-card" data-testid="ai-results-card">
-      <h3 className="mobile-card-subtitle">{t('aiResultsTitle')}</h3>
-      <AiResultsRows client={slot.client} />
-    </div>
-  )
+  return <AiResultsRows client={slot.client} aiEnabled={aiEnabled} />
 }

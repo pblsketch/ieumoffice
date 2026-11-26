@@ -6,8 +6,10 @@ import {
   type UnsavedSwitchChoice,
 } from '@genoffice/mobile-bridge/session-state'
 import {
+  commitMobileSession,
   createMobileClient,
   createTauriMobileTransport,
+  discardMobileSession,
   isMobileCommandError,
   type HwpBackupEntry,
   type MobileAppPrefs,
@@ -232,7 +234,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     showToast({ message: tNow('formatNotOpenable'), tone: 'error' })
   }, [showToast, tNow])
 
-  const openLoadedSessionRef = useRef<(session: MobileDocSession) => Promise<void>>(async () => {})
+  const openLoadedSessionRef = useRef<(session: MobileDocSession) => Promise<boolean>>(
+    async () => false,
+  )
 
   /** What App lends the open document (stable; reads the latest state through refs). */
   const editorHost = useMemo<EditorHost>(
@@ -244,7 +248,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       showToast: (input) => showToast(input),
       contentChanged: () => setContentVersion((version) => version + 1),
       refreshHome: () => refreshHomeData(),
-      openSession: (session) => openLoadedSessionRef.current(session),
+      openSession: async (session) => {
+        await openLoadedSessionRef.current(session)
+      },
       translate: (key, params) => translateMobile(langRef.current, key, params),
       windowClass: () => windowClassRef.current,
     }),
@@ -255,14 +261,21 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     async (
       session: MobileDocSession,
       options?: { isUntitled?: boolean; recoveryBytesBase64?: string },
-    ) => {
+    ): Promise<boolean> => {
       const controller = sessionControllerRef.current!
+      const discardStaged = () => {
+        void discardMobileSession(client, session.sessionId).catch(() => {})
+      }
       const kind = findEditorKind(session.format)
       if (!kind) {
+        discardStaged()
         notifyNotOpenable()
-        return
+        return false
       }
-      if (!(await confirmEditorOn(kind, client))) return
+      if (!(await confirmEditorOn(kind, client))) {
+        discardStaged()
+        return false
+      }
       const isUntitled =
         options?.isUntitled ?? (!session.writable && !session.ephemeral && !session.uriHint)
 
@@ -275,8 +288,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           recoveryBytesBase64: options?.recoveryBytesBase64,
         })
       } catch (err) {
+        discardStaged()
         // the editor asked something while opening (e.g. a password) and the user cancelled
-        if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
+        if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return false
         throw err
       }
 
@@ -289,8 +303,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       }))
       if (!outcome.switched) {
         opened.discard?.()
-        return
+        discardStaged()
+        return false
       }
+      void commitMobileSession(client, session.sessionId).catch(() => {})
       openedDocRef.current?.doc.dispose?.()
       openSeqRef.current += 1
       const next: OpenedDocument = {
@@ -307,6 +323,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setNoticeBanner(opened.noticeKey ? tNow(opened.noticeKey) : null)
       setScreen('editor')
       await refreshHomeData()
+      return true
     },
     [client, editorHost, notifyNotOpenable, refreshHomeData, tNow],
   )
@@ -391,7 +408,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const homeHost = useMemo<HomeHost>(
     () => ({
       client,
-      openSession: (session) => openLoadedSession(session),
+      openSession: async (session) => {
+        await openLoadedSession(session)
+      },
       createNew: (format) => handleCreateNew(format),
       showToast: (input) => showToast(input),
       refreshHome: refreshHomeData,
@@ -400,14 +419,15 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         const kind = findEditorKind(format)
         if (!kind) {
           notifyNotOpenable()
-          return
+          return false
         }
         const session = await client.createUntitledSession(kind.recoveryFormat(format))
-        await openLoadedSession(
+        const switched = await openLoadedSession(
           { ...session, name },
           { isUntitled: true, recoveryBytesBase64: bytesBase64 },
         )
-        sessionControllerRef.current?.markDirty(true)
+        if (switched) sessionControllerRef.current?.markDirty(true)
+        return switched
       },
     }),
     [
@@ -476,11 +496,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           return
         }
         const session = await client.createUntitledSession(kind.recoveryFormat(entry.format))
-        await openLoadedSession(
+        const switched = await openLoadedSession(
           { ...session, name: entry.title },
           { isUntitled: true, recoveryBytesBase64: bytesBase64 },
         )
-        sessionControllerRef.current?.markDirty(true)
+        if (switched) sessionControllerRef.current?.markDirty(true)
       } catch (err) {
         if (!isFormatNotOpenable(err)) throw err
         notifyNotOpenable()
@@ -498,8 +518,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   )
 
   const handleBackFromEditor = useCallback(async () => {
+    const closingSessionId = activeDocRef.current?.session.sessionId ?? null
     const outcome = await sessionControllerRef.current!.closeActive()
     if (outcome.switched) {
+      if (closingSessionId) {
+        void discardMobileSession(client, closingSessionId).catch(() => {})
+      }
       openedDocRef.current?.doc.dispose?.()
       openedDocRef.current = null
       setOpenedDoc(null)
@@ -507,7 +531,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setNoticeBanner(null)
       await refreshHomeData()
     }
-  }, [refreshHomeData])
+  }, [client, refreshHomeData])
 
   const handleShare = useCallback(async () => {
     const doc = activeDocRef.current

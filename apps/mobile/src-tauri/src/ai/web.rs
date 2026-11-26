@@ -700,7 +700,7 @@ impl MobileAiWeb {
             content_type,
             headers,
         });
-        stream_body(resp, sink, None).await
+        stream_body(resp, sink, Some(WEB_MAX_BYTES)).await
     }
 
     fn plan_fetch(&self, req: &MobileAiWebFetchRequest) -> MobileResult<PlannedFetch> {

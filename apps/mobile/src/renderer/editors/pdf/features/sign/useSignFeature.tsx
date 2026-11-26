@@ -5,6 +5,7 @@
 // the signature is fitted into the field like the PC. Nothing changes outside editing.
 import './sign.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useBackLayer } from '../../../../shell/backStack'
 import type {
   Op,
   PdfFeatureChrome,
@@ -161,6 +162,11 @@ export function useSignFeature(ctx: PdfFeatureContext): PdfFeatureChrome {
       : [],
   )
   const placing = editing && pending !== null
+  const cancelPlacing = useCallback(() => {
+    setPending(null)
+    setActiveTool(null)
+  }, [setActiveTool])
+  useBackLayer(placing, cancelPlacing)
   const interactive = editing && !placing && (activeTool === null || toolActive)
   const labels = {
     placed: t('pdfSignPlaced'),

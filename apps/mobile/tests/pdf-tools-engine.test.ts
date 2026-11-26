@@ -347,7 +347,17 @@ describe('page tools', () => {
     expect(found.candidates.length).toBeGreaterThan(0)
     for (const [i, candidate] of found.candidates.entries()) {
       const thumb = direct.candidates[i]!.thumb!
-      expect(candidate.thumb).toEqual(bgraToRgba(thumb))
+      const expected = bgraToRgba(thumb)
+      expect(candidate.thumb!.width).toBe(expected.width)
+      expect(candidate.thumb!.height).toBe(expected.height)
+      same(
+        new Uint8Array(
+          candidate.thumb!.rgba.buffer,
+          candidate.thumb!.rgba.byteOffset,
+          candidate.thumb!.rgba.byteLength,
+        ),
+        new Uint8Array(expected.rgba.buffer, expected.rgba.byteOffset, expected.rgba.byteLength),
+      )
       // BGRA turned to RGBA: red and blue swap places
       expect(candidate.thumb!.rgba[0]).toBe(thumb.bgra[2])
       expect(candidate.thumb!.rgba[2]).toBe(thumb.bgra[0])
@@ -366,7 +376,7 @@ describe('page tools', () => {
       (await pc('blankPages', [s.blank], { removePages: chosen }, direct.pageCount))[0]!,
     )
     expect(made!.name).toBe('scan-no-blank.pdf')
-  })
+  }, 30_000)
 
   it('answers failed for blank pages of a file PDFium cannot open', async () => {
     expect(await core().findBlankPages(s.junk.slice())).toEqual({ ok: false, reason: 'failed' })

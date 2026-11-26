@@ -11,6 +11,7 @@ pub use recent::{RecentDocEntry, RecentStore};
 pub use recovery::{RecoveryEntry, RecoveryStore};
 pub use session::{MobileDocFormat, MobileDocSession, persistent_doc_key, untitled_doc_key};
 
+use crate::commands::readers::store::ReaderStore;
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
 use crate::hwp::{
     HwpBaseline, HwpFixPayload, TabSpot, apply_hwp_save_fixes, extract_hwp_baseline, find_new_tabs,
@@ -110,6 +111,75 @@ struct ActiveSession {
     hwp_baseline: Option<HwpBaseline>,
 }
 
+/// Active and staged-pending sessions. Opening a second document while one is active stages the
+/// new session in `pending` so saving or cancelling the previous document never loses its slot
+/// before the frontend confirms the switch.
+#[derive(Debug, Default)]
+struct SessionSlots {
+    active: Option<ActiveSession>,
+    pending: Option<ActiveSession>,
+}
+
+impl SessionSlots {
+    fn find(&self, session_id: &str) -> Option<&ActiveSession> {
+        if let Some(p) = self.pending.as_ref()
+            && p.session.session_id == session_id
+        {
+            return Some(p);
+        }
+        self.active
+            .as_ref()
+            .filter(|a| a.session.session_id == session_id)
+    }
+
+    fn find_mut(&mut self, session_id: &str) -> Option<&mut ActiveSession> {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.session.session_id == session_id)
+        {
+            return self.pending.as_mut();
+        }
+        self.active
+            .as_mut()
+            .filter(|a| a.session.session_id == session_id)
+    }
+
+    fn stage(&mut self, next: ActiveSession) {
+        if self.active.is_none() {
+            self.active = Some(next);
+        } else {
+            self.pending = Some(next);
+        }
+    }
+
+    fn commit(&mut self, session_id: &str) {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.session.session_id == session_id)
+        {
+            self.active = self.pending.take();
+        }
+    }
+
+    fn discard(&mut self, session_id: &str) {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.session.session_id == session_id)
+        {
+            self.pending = None;
+        } else if self
+            .active
+            .as_ref()
+            .is_some_and(|a| a.session.session_id == session_id)
+        {
+            self.active = None;
+        }
+    }
+}
+
 fn io_error(e: std::io::Error) -> MobileError {
     MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
 }
@@ -140,7 +210,8 @@ pub struct MobileFileService {
     recovery: RecoveryStore,
     backups: HwpBackupStore,
     prefs: PrefsStore,
-    active: Mutex<Option<ActiveSession>>,
+    readers: Arc<ReaderStore>,
+    sessions: Mutex<SessionSlots>,
     backed_up_keys: Mutex<BTreeSet<String>>,
     fail_backup_for_test: AtomicBool,
     /// Formats the WebView can open; `None` until the first `set_openable_formats` call (accept all).
@@ -155,15 +226,17 @@ impl MobileFileService {
         std::fs::create_dir_all(&app_data_dir).map_err(|e| {
             MobileError::with_detail(MobileErrorCode::InternalError, "mobile.storage.initFailed", e.to_string())
         })?;
+        let readers = Arc::new(ReaderStore::new(&app_data_dir));
         Ok(Self {
             bridge,
             recent: RecentStore::new(app_data_dir.clone()),
             recovery: RecoveryStore::new(app_data_dir.clone()),
             backups: HwpBackupStore::new(app_data_dir.clone()),
             prefs: PrefsStore::new(app_data_dir.clone()),
+            readers,
             folders: home::FolderStore::new(&app_data_dir),
             favorites: home::FavoriteStore::new(&app_data_dir),
-            active: Mutex::new(None),
+            sessions: Mutex::new(SessionSlots::default()),
             backed_up_keys: Mutex::new(BTreeSet::new()),
             fail_backup_for_test: AtomicBool::new(false),
             openable: Mutex::new(None),
@@ -171,35 +244,53 @@ impl MobileFileService {
         })
     }
 
+    pub fn reader_store(&self) -> Arc<ReaderStore> {
+        self.readers.clone()
+    }
+
+    /// Promotes a staged pending session to active once the WebView has committed the switch.
+    pub fn commit_session(&self, session_id: &str) {
+        self.sessions.lock().unwrap().commit(session_id);
+    }
+
+    /// Discards a cancelled pending session or a closed active session without touching the other.
+    pub fn discard_session(&self, session_id: &str) {
+        self.sessions.lock().unwrap().discard(session_id);
+    }
+
     pub fn set_fail_backup_for_test(&self, fail: bool) {
         self.fail_backup_for_test.store(fail, Ordering::SeqCst);
     }
 
-    /// Replaces the openable-format gate. Each ext maps through `from_name("x.<ext>")`.
+    /// Replaces the openable-format gate. Each ext maps through `from_known_name("x.<ext>")`.
     pub fn set_openable_formats(&self, exts: &[String]) {
         let mut formats: Vec<MobileDocFormat> = Vec::new();
         for ext in exts {
-            let format = MobileDocFormat::from_name(&format!("x.{ext}"));
-            if !formats.contains(&format) {
+            if let Some(format) = MobileDocFormat::from_known_name(&format!("x.{ext}"))
+                && !formats.contains(&format)
+            {
                 formats.push(format);
             }
         }
         *self.openable.lock().unwrap() = Some(formats);
     }
 
-    fn ensure_openable(&self, name: &str, format: MobileDocFormat) -> MobileResult<()> {
+    fn ensure_openable_name(&self, name: &str) -> MobileResult<MobileDocFormat> {
         let guard = self.openable.lock().unwrap();
+        let known = MobileDocFormat::from_known_name(name);
         let Some(formats) = guard.as_ref() else {
-            return Ok(());
+            return Ok(known.unwrap_or(MobileDocFormat::Md));
         };
-        if formats.contains(&format) {
-            return Ok(());
+        if let Some(format) = known
+            && formats.contains(&format)
+        {
+            return Ok(format);
         }
         let ext = name
             .rsplit_once('.')
             .map(|(_, ext)| ext.to_ascii_lowercase())
             .filter(|ext| !ext.is_empty())
-            .unwrap_or_else(|| format.ext().to_string());
+            .unwrap_or_else(|| known.map(|f| f.ext().to_string()).unwrap_or_default());
         Err(MobileError::with_detail(
             MobileErrorCode::InvalidArgument,
             "mobile.format.notOpenable",
@@ -211,19 +302,19 @@ impl MobileFileService {
     /// activate_picked touches recent docs or the active session; saving under a new name does not
     /// pass through it, so a save-as keeps working as before.
     fn ensure_openable_picked(&self, picked: &PickedFile) -> MobileResult<()> {
-        self.ensure_openable(&picked.name, MobileDocFormat::from_name(&picked.name))
+        self.ensure_openable_name(&picked.name).map(|_| ())
     }
 
     fn activate_picked(&self, picked: PickedFile, register_recent: bool) -> MobileResult<MobileDocSession> {
         self.activate_picked_in(picked, register_recent, None)
     }
 
-    fn activate_picked_in(
+    fn build_picked_session(
         &self,
         picked: PickedFile,
         register_recent: bool,
         folder_id: Option<&str>,
-    ) -> MobileResult<MobileDocSession> {
+    ) -> MobileResult<ActiveSession> {
         let format = MobileDocFormat::from_name(&picked.name);
         let doc_key = if picked.ephemeral {
             untitled_doc_key()
@@ -244,14 +335,51 @@ impl MobileFileService {
             self.recent
                 .upsert_in_folder(&doc_key, &picked.uri, &picked.name, format, folder_id)?;
         }
-        *self.active.lock().unwrap() = Some(ActiveSession {
-            session: session.clone(),
+        Ok(ActiveSession {
+            session,
             uri: Some(picked.uri),
             local: None,
             encrypted: false,
             distribution: false,
             hwp_baseline: None,
-        });
+        })
+    }
+
+    fn activate_picked_in(
+        &self,
+        picked: PickedFile,
+        register_recent: bool,
+        folder_id: Option<&str>,
+    ) -> MobileResult<MobileDocSession> {
+        let entry = self.build_picked_session(picked, register_recent, folder_id)?;
+        let session = entry.session.clone();
+        self.sessions.lock().unwrap().stage(entry);
+        Ok(session)
+    }
+
+    /// Replaces the slot that `prev_session_id` occupied (active or pending) after Save As so an
+    /// active untitled document saved during an unsaved-switch prompt preserves the pending switch.
+    fn replace_saved_as_slot(
+        &self,
+        prev_session_id: Option<&str>,
+        picked: PickedFile,
+    ) -> MobileResult<MobileDocSession> {
+        let entry = self.build_picked_session(picked, true, None)?;
+        let session = entry.session.clone();
+        let mut guard = self.sessions.lock().unwrap();
+        if let Some(prev_id) = prev_session_id {
+            if guard
+                .pending
+                .as_ref()
+                .is_some_and(|p| p.session.session_id == prev_id)
+            {
+                guard.pending = Some(entry);
+            } else {
+                guard.active = Some(entry);
+            }
+        } else {
+            guard.active = Some(entry);
+        }
         Ok(session)
     }
 
@@ -267,7 +395,7 @@ impl MobileFileService {
             ephemeral: false,
             uri_hint: None,
         };
-        *self.active.lock().unwrap() = Some(ActiveSession {
+        self.sessions.lock().unwrap().stage(ActiveSession {
             session: session.clone(),
             uri: None,
             local: None,
@@ -324,8 +452,7 @@ impl MobileFileService {
     /// Opens bytes that have no document location as a read-only, ephemeral session that is
     /// not added to the recent list. The open gate applies.
     pub(crate) fn open_local(&self, name: &str, source: LocalSource) -> MobileResult<MobileDocSession> {
-        let format = MobileDocFormat::from_name(name);
-        self.ensure_openable(name, format)?;
+        let format = self.ensure_openable_name(name)?;
         let session = MobileDocSession {
             session_id: Uuid::new_v4().to_string(),
             doc_key: untitled_doc_key(),
@@ -336,7 +463,7 @@ impl MobileFileService {
             ephemeral: true,
             uri_hint: Some(name.to_string()),
         };
-        *self.active.lock().unwrap() = Some(ActiveSession {
+        self.sessions.lock().unwrap().stage(ActiveSession {
             session: session.clone(),
             uri: None,
             local: Some(source),
@@ -372,15 +499,8 @@ impl MobileFileService {
 
     pub fn read_file_bytes(&self, session_id: &str) -> MobileResult<ReadFileBytesResult> {
         let (uri, local, format) = {
-            let guard = self.active.lock().unwrap();
-            let active = guard.as_ref().filter(|a| a.session.session_id == session_id).ok_or_else(|| {
-                MobileError::with_detail(
-                    MobileErrorCode::InvalidArgument,
-                    "mobile.session.notFound",
-                    "unknown active sessionId",
-                )
-            })?;
-            (active.uri.clone(), active.local.clone(), active.session.format)
+            let active = self.active_session(session_id)?;
+            (active.uri, active.local, active.session.format)
         };
         let raw = match (local, uri) {
             (Some(local), _) => local.read()?,
@@ -401,9 +521,7 @@ impl MobileFileService {
             } else {
                 None
             };
-            if let Some(active) = self.active.lock().unwrap().as_mut()
-                && active.session.session_id == session_id
-            {
+            if let Some(active) = self.sessions.lock().unwrap().find_mut(session_id) {
                 active.encrypted = prepared.encrypted;
                 active.distribution = prepared.distribution;
                 active.hwp_baseline = baseline;
@@ -429,14 +547,7 @@ impl MobileFileService {
         bytes_base64: &str,
         format: MobileDocFormat,
     ) -> MobileResult<Vec<TabSpot>> {
-        let guard = self.active.lock().unwrap();
-        let active = guard.as_ref().filter(|a| a.session.session_id == session_id).ok_or_else(|| {
-            MobileError::with_detail(
-                MobileErrorCode::InvalidArgument,
-                "mobile.session.notFound",
-                "unknown active sessionId",
-            )
-        })?;
+        let active = self.active_session(session_id)?;
         if active.encrypted || active.distribution {
             return Ok(Vec::new());
         }
@@ -502,13 +613,7 @@ impl MobileFileService {
             let raw_bytes = std::fs::read(src).map_err(io_error)?;
             return self.save_as_decoded(session_id, suggested_name, format, raw_bytes, hwp_fix);
         }
-        let prev_active = {
-            let guard = self.active.lock().unwrap();
-            match session_id {
-                Some(sid) => guard.as_ref().filter(|a| a.session.session_id == sid).cloned(),
-                None => guard.clone(),
-            }
-        };
+        let prev_active = self.lookup_prev_session(session_id);
         if let Some(prev) = &prev_active
             && (prev.encrypted || prev.distribution)
         {
@@ -528,7 +633,8 @@ impl MobileFileService {
         if let Some(prev) = &prev_active {
             let _ = self.recovery.discard(&prev.session.doc_key);
         }
-        self.activate_picked(picked, true)
+        let prev_id = prev_active.as_ref().map(|p| p.session.session_id.as_str());
+        self.replace_saved_as_slot(prev_id, picked)
     }
 
     /// Copies the active document into the local file `dest` (replaced if it exists), e.g. a
@@ -553,19 +659,23 @@ impl MobileFileService {
         }
     }
 
+    fn lookup_prev_session(&self, session_id: Option<&str>) -> Option<ActiveSession> {
+        let guard = self.sessions.lock().unwrap();
+        match session_id {
+            Some(sid) => guard.find(sid).cloned(),
+            None => guard.active.clone().or_else(|| guard.pending.clone()),
+        }
+    }
+
     fn active_session(&self, session_id: &str) -> MobileResult<ActiveSession> {
-        let guard = self.active.lock().unwrap();
-        guard
-            .as_ref()
-            .filter(|a| a.session.session_id == session_id)
-            .cloned()
-            .ok_or_else(|| {
-                MobileError::with_detail(
-                    MobileErrorCode::InvalidArgument,
-                    "mobile.session.notFound",
-                    "unknown active sessionId",
-                )
-            })
+        let guard = self.sessions.lock().unwrap();
+        guard.find(session_id).cloned().ok_or_else(|| {
+            MobileError::with_detail(
+                MobileErrorCode::InvalidArgument,
+                "mobile.session.notFound",
+                "unknown active sessionId",
+            )
+        })
     }
 
     /// The active session and its document location, when it can be written in place.
@@ -704,13 +814,7 @@ impl MobileFileService {
         bytes_base64: &str,
         hwp_fix: Option<HwpFixPayload>,
     ) -> MobileResult<MobileDocSession> {
-        let prev_active = {
-            let guard = self.active.lock().unwrap();
-            match session_id {
-                Some(sid) => guard.as_ref().filter(|a| a.session.session_id == sid).cloned(),
-                None => guard.clone(),
-            }
-        };
+        let prev_active = self.lookup_prev_session(session_id);
         if let Some(prev) = &prev_active
             && (prev.encrypted || prev.distribution)
         {
@@ -734,13 +838,7 @@ impl MobileFileService {
         raw_bytes: Vec<u8>,
         hwp_fix: Option<HwpFixPayload>,
     ) -> MobileResult<MobileDocSession> {
-        let prev_active = {
-            let guard = self.active.lock().unwrap();
-            match session_id {
-                Some(sid) => guard.as_ref().filter(|a| a.session.session_id == sid).cloned(),
-                None => guard.clone(),
-            }
-        };
+        let prev_active = self.lookup_prev_session(session_id);
         if let Some(prev) = &prev_active
             && (prev.encrypted || prev.distribution)
         {
@@ -792,7 +890,8 @@ impl MobileFileService {
         if let Some(prev) = &prev_active {
             let _ = self.recovery.discard(&prev.session.doc_key);
         }
-        self.activate_picked(picked, true)
+        let prev_id = prev_active.as_ref().map(|p| p.session.session_id.as_str());
+        self.replace_saved_as_slot(prev_id, picked)
     }
 
     pub fn share_file(
@@ -802,20 +901,7 @@ impl MobileFileService {
         mode: MobileShareMode,
         bytes_base64: Option<&str>,
     ) -> MobileResult<()> {
-        let active = {
-            let guard = self.active.lock().unwrap();
-            guard
-                .as_ref()
-                .filter(|a| a.session.session_id == session_id)
-                .cloned()
-                .ok_or_else(|| {
-                    MobileError::with_detail(
-                        MobileErrorCode::InvalidArgument,
-                        "mobile.session.notFound",
-                        "unknown active sessionId",
-                    )
-                })?
-        };
+        let active = self.active_session(session_id)?;
 
         if (active.encrypted || active.distribution) && mode == MobileShareMode::Edited {
             return Err(MobileError::with_detail(
@@ -879,11 +965,15 @@ impl MobileFileService {
         bytes_base64: &str,
     ) -> MobileResult<()> {
         // Encrypted documents never write recovery copies.
-        if let Some(active) = self.active.lock().unwrap().as_ref()
-            && active.session.doc_key == doc_key
-            && (active.encrypted || active.distribution)
         {
-            return Ok(());
+            let guard = self.sessions.lock().unwrap();
+            let is_protected = [guard.active.as_ref(), guard.pending.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|s| s.session.doc_key == doc_key && (s.encrypted || s.distribution));
+            if is_protected {
+                return Ok(());
+            }
         }
         let bytes = B64.decode(bytes_base64).map_err(|e| {
             MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
@@ -990,7 +1080,8 @@ impl MobileFileService {
     }
 
     /// Moves everything keyed by a renamed document (recent and favorite rows, the recovery
-    /// copy, HWP backups, the active session) to its new location. Returns the new docKey.
+    /// copy, HWP backups, saved reader positions, and active/pending sessions) to its new
+    /// location. Returns the new docKey.
     pub(crate) fn rekey_document(
         &self,
         old_key: &str,
@@ -1001,24 +1092,31 @@ impl MobileFileService {
         let new_key = persistent_doc_key(new_uri);
         self.recent.rekey(old_key, old_uri, &new_key, new_uri, new_name)?;
         self.favorites.rekey(old_key, old_uri, &new_key, new_uri, new_name)?;
-        self.recovery.rekey(old_key, &new_key)?;
-        self.backups.rekey(old_key, old_uri, &new_key, new_uri)?;
+        self.recovery.rekey(old_key, &new_key, new_name)?;
+        self.backups
+            .rekey(old_key, old_uri, &new_key, new_uri, new_name)?;
+        self.readers.rekey(old_key, &new_key)?;
         {
             let mut keys = self.backed_up_keys.lock().unwrap();
             if keys.remove(old_key) {
                 keys.insert(new_key.clone());
             }
         }
-        if let Some(active) = self.active.lock().unwrap().as_mut()
-            && active.uri.as_deref() == Some(old_uri)
+        let mut guard = self.sessions.lock().unwrap();
+        let slots = &mut *guard;
+        let format = MobileDocFormat::from_name(new_name);
+        for slot in [slots.active.as_mut(), slots.pending.as_mut()]
+            .into_iter()
+            .flatten()
         {
-            let format = MobileDocFormat::from_name(new_name);
-            active.uri = Some(new_uri.to_string());
-            active.session.doc_key = new_key.clone();
-            active.session.name = new_name.to_string();
-            active.session.ext = format.ext().to_string();
-            active.session.format = format;
-            active.session.uri_hint = Some(new_name.to_string());
+            if slot.uri.as_deref() == Some(old_uri) {
+                slot.uri = Some(new_uri.to_string());
+                slot.session.doc_key = new_key.clone();
+                slot.session.name = new_name.to_string();
+                slot.session.ext = format.ext().to_string();
+                slot.session.format = format;
+                slot.session.uri_hint = Some(new_name.to_string());
+            }
         }
         Ok(new_key)
     }

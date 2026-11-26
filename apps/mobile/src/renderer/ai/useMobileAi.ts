@@ -453,11 +453,12 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     )
     const images: AgentImage[] = photos.map((p) => ({ base64: p.base64, mime: p.mime }))
 
+    const canEdit = optionsRef.current.canMutate
     const caps = {
-      writable: doc.session.writable,
+      writable: Boolean(doc.session.writable && canEdit),
       encrypted: doc.encrypted,
       distribution: doc.distribution,
-      isUntitled: doc.isUntitled,
+      isUntitled: Boolean(doc.isUntitled && canEdit),
     }
     const switchToEdit = () => {
       optionsRef.current.setModeEdit()
@@ -571,6 +572,12 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
   /** The panel's send (composer, quick requests, resend): now, or into the queue. */
   const submitPrompt = useCallback(
     (prompt: string): Promise<void> => {
+      if (
+        !optionsRef.current.aiEnabled ||
+        optionsRef.current.getOpenedDocument()?.aiAvailable === false
+      ) {
+        return Promise.resolve()
+      }
       const photos = pendingPhotosRef.current
       setPending([])
       if (runningRef.current) {
@@ -695,8 +702,10 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     }
   })
 
+  const effectiveAiEnabled = aiEnabled && options.getOpenedDocument()?.aiAvailable !== false
+
   const sheetPanel = createElement(AiSheetPanel, {
-    aiEnabled,
+    aiEnabled: effectiveAiEnabled,
     aiSettings,
     chatgptStatus,
     messages: aiMessages,

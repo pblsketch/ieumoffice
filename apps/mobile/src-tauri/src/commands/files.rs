@@ -212,3 +212,21 @@ pub fn mobile_set_openable_formats(
     state.set_openable_formats(&exts);
     Ok(OkResult { ok: true })
 }
+
+#[tauri::command]
+pub fn mobile_commit_session(
+    state: State<'_, Arc<MobileFileService>>,
+    session_id: String,
+) -> MobileResult<OkResult> {
+    state.commit_session(&session_id);
+    Ok(OkResult { ok: true })
+}
+
+#[tauri::command]
+pub fn mobile_discard_session(
+    state: State<'_, Arc<MobileFileService>>,
+    session_id: String,
+) -> MobileResult<OkResult> {
+    state.discard_session(&session_id);
+    Ok(OkResult { ok: true })
+}

@@ -1604,12 +1604,18 @@ input:focus-visible {
 /* Touch target: small-looking controls still take a --m-hit square press. */
 .mobile-pill-btn,
 .mobile-filter-pill,
-.mobile-toolbar-btn {
+.mobile-toolbar-btn,
+.mobile-banner-close,
+.mobile-ai-send-btn,
+.mobile-toast-action {
   position: relative;
 }
 .mobile-pill-btn::before,
 .mobile-filter-pill::before,
-.mobile-toolbar-btn::before {
+.mobile-toolbar-btn::before,
+.mobile-banner-close::before,
+.mobile-ai-send-btn::before,
+.mobile-toast-action::before {
   content: '';
   position: absolute;
   left: 50%;

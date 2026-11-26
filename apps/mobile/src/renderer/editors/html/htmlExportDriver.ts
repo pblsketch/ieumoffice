@@ -56,7 +56,26 @@ function parentTimers(): Timers {
   return timers
 }
 
-/** What `executeJavaScript` would hand back: a copy of the value, nothing that refers into the frame. */
+/** Internal html2docx globals shadowed on the frame window so `<div id="...">` cannot clobber them. */
+const SHADOWED_H2D_GLOBALS = [
+  '__h2dTraceSelector',
+  '__h2dTrace',
+  '__h2dWordFontLineWidth',
+] as const
+
+function shadowInternalGlobals(win: Window): void {
+  for (const name of SHADOWED_H2D_GLOBALS) {
+    try {
+      Object.defineProperty(win, name, {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      })
+    } catch {
+      // ignore non-configurable environments
+    }
+  }
+}
 function cloneResult<T>(value: unknown): T {
   if (value === undefined || value === null || typeof value !== 'object') return value as T
   try {
@@ -203,6 +222,8 @@ export class SandboxFrameDriver implements BrowserDriver {
     this.holder.appendChild(frame)
     // a stalled resource ends the wait: the converter goes on with what has rendered
     await Promise.race([loaded, sleep(timeoutMs)])
+    const win = this.frame?.contentWindow
+    if (win) shadowInternalGlobals(win)
   }
 
   private run(body: string): unknown {

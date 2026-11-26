@@ -106,7 +106,7 @@ export function SettingsScreen({
           onDeleteBackup={onDeleteBackup}
         />
 
-        <StorageSection aiSlot={aiSlot} platform={info?.platform} />
+        <StorageSection aiSlot={aiSlot} aiEnabled={prefs.aiEnabled} platform={info?.platform} />
 
         <HelpSection onClose={onBack} />
 

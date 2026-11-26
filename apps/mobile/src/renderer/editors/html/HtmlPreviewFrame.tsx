@@ -1,11 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PREVIEW_SANDBOX, SID_ATTR } from './htmlPreview'
 
+const XLINK_NS = 'http://www.w3.org/1999/xlink'
+
+function hasNavigationTarget(element: Element): boolean {
+  for (let cur: Element | null = element; cur; cur = cur.parentElement) {
+    const tag = cur.localName.toLowerCase()
+    if (
+      tag === 'a' ||
+      tag === 'area' ||
+      cur.hasAttribute('href') ||
+      cur.hasAttribute('xlink:href') ||
+      cur.hasAttributeNS(XLINK_NS, 'href')
+    ) {
+      if (
+        cur.hasAttribute('href') ||
+        cur.hasAttribute('xlink:href') ||
+        cur.hasAttributeNS(XLINK_NS, 'href')
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 /**
- * The parent's guards on the frame document: a link press never moves the frame (v1: links are
- * not followed), and forms cannot submit (the sandbox does not grant form submission; the submit
- * is stopped here as well). `onElementPress` gets the element id under a press (element editing
- * hooks in here).
+ * The parent's guards on the frame document: a link press (HTML, SVG `xlink:href`, MathML
+ * `[href]`, click or auxclick) never moves the frame (v1: links are not followed), and forms
+ * cannot submit (the sandbox does not grant form submission; the submit is stopped here as well).
+ * `onElementPress` gets the element id under a press (element editing hooks in here).
  * Returns the function that removes the guards.
  */
 export function attachFrameGuards(
@@ -18,8 +42,8 @@ export function attachFrameGuards(
       target && (target as Node).nodeType === 1
         ? (target as Element)
         : ((target as Node | null)?.parentElement ?? null)
-    if (element?.closest('a[href], area[href]')) event.preventDefault()
-    if (onElementPress) {
+    if (element && hasNavigationTarget(element)) event.preventDefault()
+    if (event.type === 'click' && onElementPress) {
       const owner = element?.closest(`[${SID_ATTR}]`)
       const sid = owner ? Number(owner.getAttribute(SID_ATTR)) : NaN
       onElementPress(Number.isFinite(sid) ? sid : null)
@@ -27,9 +51,11 @@ export function attachFrameGuards(
   }
   const onSubmit = (event: Event) => event.preventDefault()
   frameDocument.addEventListener('click', onClick, true)
+  frameDocument.addEventListener('auxclick', onClick, true)
   frameDocument.addEventListener('submit', onSubmit, true)
   return () => {
     frameDocument.removeEventListener('click', onClick, true)
+    frameDocument.removeEventListener('auxclick', onClick, true)
     frameDocument.removeEventListener('submit', onSubmit, true)
   }
 }
@@ -133,15 +159,22 @@ export function HtmlPreviewFrame({
     setHiddenBoxes((prev) => (sameBoxes(prev, hidden) ? prev : hidden))
   }, [])
 
-  const onLoad = useCallback(() => {
-    detachRef.current?.()
-    detachRef.current = null
+  const attachedDocRef = useRef<Document | null>(null)
+
+  const attachCurrentDocument = useCallback(() => {
     const frame = frameRef.current
     const frameDocument = frame?.contentDocument
     if (!frameDocument) {
       measure()
       return
     }
+    if (attachedDocRef.current === frameDocument) {
+      measure()
+      return
+    }
+    detachRef.current?.()
+    detachRef.current = null
+    attachedDocRef.current = frameDocument
     const detachGuards = attachFrameGuards(frameDocument, (sid) => onElementPressRef.current?.(sid))
     // scrolling of the page or of any box in it, and the frame's own size, move the element
     const frameWindow = frameDocument.defaultView
@@ -151,9 +184,26 @@ export function HtmlPreviewFrame({
       detachGuards()
       frameDocument.removeEventListener('scroll', measure, true)
       frameWindow?.removeEventListener('resize', measure)
+      if (attachedDocRef.current === frameDocument) attachedDocRef.current = null
     }
     measure()
   }, [measure])
+
+  const onLoad = useCallback(() => {
+    attachCurrentDocument()
+  }, [attachCurrentDocument])
+
+  // Attach guards as soon as the parsed frame document exists rather than waiting for slow
+  // external resources to fire `load`.
+  useEffect(() => {
+    attachCurrentDocument()
+    const frameDoc = frameRef.current?.contentDocument
+    if (!frameDoc || frameDoc.readyState === 'complete') return
+    frameDoc.addEventListener('DOMContentLoaded', attachCurrentDocument, { once: true })
+    return () => {
+      frameDoc.removeEventListener('DOMContentLoaded', attachCurrentDocument)
+    }
+  }, [srcDoc, attachCurrentDocument])
 
   useEffect(measure, [selectedSid, hiddenSids, measure])
 

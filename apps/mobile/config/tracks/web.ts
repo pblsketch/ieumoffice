@@ -7,10 +7,19 @@ import type { TrackBuild } from './types'
 const here = dirname(fileURLToPath(import.meta.url))
 const PC_HTML_RENDERER = resolve(here, '../../../html/src/renderer')
 const PC_HTML_LOCALE = resolve(PC_HTML_RENDERER, 'i18n/locale')
-const HTML_AI_LOCALE = resolve(here, '../../src/renderer/editors/html/htmlAiLocale.ts')
+const HTML_AI_LOCALE = resolve(here, '../../src/renderer/editors/html/htmlAiLocale.ts').replace(
+  /\\/g,
+  '/',
+)
 const HTML2DOCX_SRC = resolve(here, '../../../../packages/html2docx/src')
-const HTML2DOCX_NODE_SHIM = resolve(here, '../../src/renderer/editors/html/html2docxNode.ts')
-const HTML2DOCX_PACKER_SHIM = resolve(here, '../../src/renderer/editors/html/html2docxPacker.ts')
+const HTML2DOCX_NODE_SHIM = resolve(
+  here,
+  '../../src/renderer/editors/html/html2docxNode.ts',
+).replace(/\\/g, '/')
+const HTML2DOCX_PACKER_SHIM = resolve(
+  here,
+  '../../src/renderer/editors/html/html2docxPacker.ts',
+).replace(/\\/g, '/')
 
 /** One spelling of a path for comparing: forward slashes, no query, no case on Windows. */
 function samePathKey(path: string): string {

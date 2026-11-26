@@ -91,7 +91,10 @@ interface Harness {
 
 const cleanups: Array<() => void> = []
 beforeAll(async () => {
-  await import('../src/renderer/editors/html/htmlDocument')
+  await Promise.all([
+    import('../src/renderer/editors/html/htmlDocument'),
+    import('../src/renderer/editors/html/htmlAi'),
+  ])
 }, 120_000)
 beforeEach(() => {
   Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })

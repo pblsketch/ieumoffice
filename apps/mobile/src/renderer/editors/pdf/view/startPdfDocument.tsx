@@ -4,11 +4,13 @@
 import './pdfView.css'
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { Lang, Params } from '@genoffice/i18n'
+import { openExternalUrl } from '@genoffice/mobile-bridge/home'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileClient, MobileDocSession } from '@genoffice/mobile-bridge/transport'
 import type { SearchMatch } from '../../../../../../pdf/src/renderer/search'
 import { translateMobile, type MobileStringKey } from '../../../i18n/strings'
 import { useKeepScreenOn } from '../../../home/keepScreenOn'
+import { useBackLayer } from '../../../shell/backStack'
 import { EditorShell, type EditorQuickActionItem } from '../../../shell/EditorShell'
 import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../editorKind'
 import { IconPdfGoToPage, IconPdfLock, IconPdfOutline, IconPdfSearch } from './icons'
@@ -175,6 +177,14 @@ export function startPdfDocument(
     const [searchOpen, setSearchOpen] = useState(false)
     const [outlineOpen, setOutlineOpen] = useState(false)
     const [goToOpen, setGoToOpen] = useState(false)
+    const closeSearch = useCallback(() => setSearchOpen(false), [])
+    useBackLayer(searchOpen, closeSearch)
+    const handleOpenExternalUrl = useCallback(
+      (url: string) => {
+        void openExternalUrl(host.client, url).catch(() => {})
+      },
+      [],
+    )
     const [hits, setHits] = useState<Map<number, PdfPageHits> | null>(null)
     const [currentPage, setCurrentPage] = useState(0)
     // the view the document had when its viewer last unmounted (read per mount and per
@@ -290,6 +300,7 @@ export function startPdfDocument(
             onViewChange={onViewChange}
             onCurrentPageChange={setCurrentPage}
             onGoToDest={(dest) => void goToDest(dest)}
+            onOpenExternalUrl={handleOpenExternalUrl}
             hits={hits ?? undefined}
             rotationDeltas={chrome.rotationDeltas}
             annotationMode={chrome.annotationMode}
@@ -314,6 +325,7 @@ export function startPdfDocument(
           model={model}
           t={t}
           onGoToDest={(dest) => void goToDest(dest)}
+          onOpenExternalUrl={handleOpenExternalUrl}
           onClose={() => setOutlineOpen(false)}
         />
         <PdfGoToPageSheet

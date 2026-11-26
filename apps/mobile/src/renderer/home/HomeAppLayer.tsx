@@ -145,23 +145,37 @@ export function HomeAppLayer({ host, screen, activeDoc, mode }: HomeAppLayerProp
     setTimeout(pullBatch, 0)
   }, [pullBatch])
 
-  // App takes what is waiting at start; files sent while the app runs are taken when it comes back.
+  // App takes what is waiting at start; files sent while the app runs are taken on return or
+  // immediately when Android delivers an intent to the already-visible activity (onNewIntent).
+  const takingIncomingRef = useRef(false)
   useEffect(() => {
     if (typeof document === 'undefined') return
-    const onVisibility = () => {
-      if (document.visibilityState !== 'visible') return
+    const pullIncoming = () => {
+      if (takingIncomingRef.current) return
+      takingIncomingRef.current = true
       const current = hostRef.current
-      takeIncomingDocument(current.client).then(
-        (session) => (session ? current.openSession(session) : undefined),
-        (err: unknown) => {
-          if (isFormatNotOpenable(err)) {
-            current.showToast({ message: t('formatNotOpenable'), tone: 'error' })
-          }
-        },
-      )
+      void takeIncomingDocument(current.client)
+        .then(
+          (session) => (session ? current.openSession(session) : undefined),
+          (err: unknown) => {
+            if (isFormatNotOpenable(err)) {
+              current.showToast({ message: t('formatNotOpenable'), tone: 'error' })
+            }
+          },
+        )
+        .finally(() => {
+          takingIncomingRef.current = false
+        })
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') pullIncoming()
     }
     document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
+    window.addEventListener('ieum:incoming-document', pullIncoming)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('ieum:incoming-document', pullIncoming)
+    }
   }, [t])
 
   // Opening a document from the receive screen (or from a tool's result) closes it.
