@@ -271,12 +271,17 @@ async function harness(
   return state
 }
 
+// Each test runs the real save path (the desktop save modules, the gateway
+// and the stand-in engine); the first one also loads those modules. Alone a
+// test takes about 2 s; a full parallel run on a slow disk can pass 5 s.
+const HEAVY = { timeout: 60_000 }
+
 let original: Uint8Array
 beforeEach(async () => {
   original = new Uint8Array(await buildEditFixture())
 })
 
-describe('where a save goes', () => {
+describe('where a save goes', HEAVY, () => {
   it('a writable .xlsx saves over the original', async () => {
     const h = await harness('xlsx', original)
     await expect(h.actions.save!(h.doc(), false)).resolves.toBe(true)
@@ -351,7 +356,7 @@ describe('where a save goes', () => {
   })
 })
 
-describe('a .csv document asks every time', () => {
+describe('a .csv document asks every time', HEAVY, () => {
   const csv = new TextEncoder().encode('name,score\nKim,10\n')
 
   it('cancel: nothing is written', async () => {
@@ -394,7 +399,7 @@ describe('a .csv document asks every time', () => {
   })
 })
 
-describe('Save As and share offer the desktop formats', () => {
+describe('Save As and share offer the desktop formats', HEAVY, () => {
   const t = (key: string) => key
   it('the workbook first, then CSV, ODS and PDF; a macro workbook offers .xlsm and no CSV', () => {
     expect(outputFormatChoices({ macro: false, unlocked: false, t }).map((c) => c.id)).toEqual([
@@ -458,7 +463,7 @@ describe('Save As and share offer the desktop formats', () => {
   })
 })
 
-describe('share', () => {
+describe('share', HEAVY, () => {
   it('an untouched workbook shares its original file', async () => {
     const h = await harness('xlsx', original)
     answers.format = 'workbook'
@@ -500,7 +505,7 @@ describe('share', () => {
   })
 })
 
-describe('the recovery copy', () => {
+describe('the recovery copy', HEAVY, () => {
   it('is written by the timer through the save writer', async () => {
     const h = await harness('xlsx', original)
     await h.actions.writeRecovery!(h.doc())
