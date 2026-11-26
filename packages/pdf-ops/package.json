@@ -1,0 +1,30 @@
+{
+  "name": "@genoffice/pdf-ops",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "PDF tools shared by the desktop PDF tools window and the mobile app: page work, split, pictures to PDF, compress, annotation strip, blank pages, repair and passwords, with no Node, Electron or network dependency",
+  "exports": {
+    ".": "./src/index.ts",
+    "./split-plan": "./src/split-plan.ts",
+    "./page-range": "./src/page-range.ts",
+    "./tool-ids": "./src/tool-ids.ts",
+    "./tool-rules": "./src/tool-rules.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@embedpdf/pdfium": "^2.15.1",
+    "@neslinesli93/qpdf-wasm": "0.3.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

@@ -70,7 +70,17 @@ PDF 보기·주석·그리기·서명·양식·글자 넣기와 고치기·쪽 �
 
 ### T3 PDF 도구 (1판)
 
-(이 트랙이 채운다)
+PC "PDF 도구"의 1판 묶음(병합·분할·추출·역순·모두 회전·빈 페이지 찾아 지우기·이미지로 PDF·텍스트로 저장·용량 줄이기·암호 걸기·풀기·파일 복구·주석 한꺼번에 지우기)과 "편집·서명" 카드. 계획·약속은 `docs/plans/mobile-v1/T3.md`.
+
+- **처리 코드는 PC와 같은 것**: `@genoffice/pdf-ops`(`packages/pdf-ops`)를 쓴다. 원본 GenOffice와 함께 쓰는 `apps/pdf/src/main/save-pdf.ts`·`read-text.ts`의 함수(병합·추출·회전·쪽 지우기·텍스트 읽기)는 pdf-ops의 거울 함수(`mirrorPageEngine`)로 부르고, 시험이 PC 원래 함수와 같은 바이트를 지킨다. 모바일 코드는 `apps/pdf/src/main/**`·`apps/shell/**`를 가져오지 않는다(시험이 지킴). 화면(`tools/` 엔진 밖)은 pdf-lib 없는 진입점(`@genoffice/pdf-ops/tool-ids`·`/tool-rules`·`/split-plan`·`/page-range`)만 가져와 pdf-lib이 화면 덩어리에 들어가지 않는다.
+- **엔진**(`tools/engine/`): ES 모듈 Web Worker 하나에서 한 번에 작업 하나. `createPdfToolsEngine()`의 `inspect`·`run`·`findBlankPages`·`zip`·`stop`·`dispose`. PDFium·qpdf wasm은 앱 묶음의 자산 주소에서 처음 필요할 때만 불러온다(네트워크 없음). 입력은 하나씩 읽어 넘겨준다(복사하지 않음, `readBytes`는 부를 때마다 새 배열). [멈추기]는 워커를 끝낸다. 메모리 부족(워커 오류·`RangeError`)은 "이 기기에서 처리하기에 너무 큼"으로 알리고 고정 상한은 두지 않는다. 용량 줄이기·사진 JPEG 바꾸기는 워커의 `OffscreenCanvas`, 없으면(iOS 15~16.3) 화면 스레드의 `<canvas>`로 한다. 암호 걸기에서 막기를 고르지 않을 때의 주인 암호는 `crypto.getRandomValues` 32바이트.
+- **화면**(`tools/`): `ToolsList`(홈 [도구] 탭 안, `home/ToolsTab.tsx`)와 전체 화면 `PdfToolsFlow`(`tools/link.ts`, 시작은 `menu`·`merge`·`imagesToPdf`·`tool`). 단계: 도구 → 파일(`<input type="file">` 시스템 선택 창, 권한 창 없음) → 옵션 시트(`tools/options/`, PC 창과 같은 기본값·문구) → 처리(막대·[멈추기], 처리 중 뒤로 가기는 확인 창) → 결과 시트. 빈 페이지는 찾기 → 축소판 검토(`tools/blank/`) → 지우기. 층마다 `useBackLayer`.
+- **결과**: 메모리에만 둔다. [열기]는 `HomeHost.openUntitledCopy`(T6)로 이름 없는 문서로 열고, 그 함수가 없거나 그 확장자를 여는 편집기 종류가 없으면 숨긴다. [공유]·[다른 곳에 저장]은 `@genoffice/mobile-bridge/pdf-tools`(`sharePdfToolResult`, `savePdfToolResultCopy` → Rust `mobile_pdf_tools_share`·`mobile_pdf_tools_save_copy`, `commands/pdf_tools.rs`)로, 열린 문서 세션·최근 목록·복구 사본을 건드리지 않는다(PDF·텍스트·ZIP만). 분할처럼 여러 파일이면 조각마다 + "ZIP 하나로 모두". 저장도 공유도 안 한 결과를 버리기 전에 한 번 묻는다. 결과 이름은 PC 규칙 그대로(`원본-merged.pdf` 등).
+- **암호 칸**은 `type="password"`·`autocomplete="off"`, 실행이 끝나면 비운다. 암호는 로그·오류·알림에 싣지 않는다.
+- **문구**: `i18n/pdfTools/`. 도구 이름·설명·선택지·오류는 PC 도구 창 문구(`apps/shell/src/renderer/src/i18n/pdf-tools/`)를 그대로 가져온다(`tests/pdf-tools-i18n.test.ts`가 같음을 지킴). PC 전용 문장은 가져오지 않는다.
+- **빌드**: `config/tracks/pdfTools.ts`는 워커 형식(`worker.format: 'es'`)만 정한다(`worker.plugins`는 다른 트랙 것). `src/env/pdfTools.d.ts`는 두 wasm의 `?url` 선언.
+- **시험**: `tests/pdf-tools-engine.test.ts`(Node에서 실제 wasm으로 도구마다, PC 경로와 같은 바이트), `pdf-tools-engine-client.test.ts`(가짜 워커), `pdf-tools-flow.test.tsx`, `pdf-tools-options.test.tsx`, `pdf-tools-screen-fixes.test.tsx`, `pdf-tools-i18n.test.ts`, 다리 `packages/mobile-bridge/tests/pdf-tools.test.ts`(Rust 명령 인자 이름·등록과의 대조 포함). 엔진 시험은 화면 쪽(`tools/**`, `home/ToolsTab.tsx`)이 pdf-lib·PC 앱을 가져오지 않는지도 본다. PC 쪽은 `apps/shell/tests/pdf-tools-golden.test.ts`(PC 결과 기준선, 표는 고치지 않음).
+- T6이 합쳐지면 `home/ToolsTab.tsx` 맨 위에서 `providePdfToolsLink(pdfToolsLink)`를 부르고, 처리 중에 `useKeepScreenOn(client, 처리 중)`을 잇는다(T3.md "합칠 때").
 
 ### T4 HTML·마크다운 (1판)
 
