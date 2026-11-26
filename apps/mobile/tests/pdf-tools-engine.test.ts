@@ -802,4 +802,31 @@ describe('imports', () => {
       }
     }
   })
+
+  it('keeps the tools screens off the PC apps and off pdf-lib (only the pdf-lib-free pdf-ops entries)', () => {
+    const toolsDir = resolve(ENGINE_DIR, '..')
+    const screens = [
+      ...engineFiles(toolsDir).filter((path) => !relative(ENGINE_DIR, path).match(/^[^.]/)),
+      resolve(toolsDir, '../home/ToolsTab.tsx'),
+    ].filter((path) => /\.(ts|tsx)$/.test(path))
+    expect(screens.length).toBeGreaterThan(10)
+    for (const path of screens) {
+      const text = readFileSync(path, 'utf8')
+      const specifiers = [
+        ...text.matchAll(/(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]/g),
+        ...text.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g),
+      ].map((m) => m[1]!)
+      const name = relative(toolsDir, path)
+      for (const spec of specifiers) {
+        expect(spec, `${name} imports ${spec}`).not.toMatch(
+          /apps[\\/](pdf[\\/]src[\\/]main|shell)|^electron$|^node:|^pdf-lib$|^@embedpdf\/|^@neslinesli93\/|^jszip$/,
+        )
+        if (spec.startsWith('@genoffice/pdf-ops')) {
+          expect(spec, `${name} imports ${spec}`).toMatch(
+            /^@genoffice\/pdf-ops\/(tool-ids|tool-rules|split-plan|page-range)$/,
+          )
+        }
+      }
+    }
+  })
 })

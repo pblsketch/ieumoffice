@@ -134,8 +134,13 @@ export function createPdfToolsEngine(options: PdfToolsEngineOptions = {}): PdfTo
     worker = null
   }
 
+  /** Workers that have spoken at least once: their script loaded */
+  const heard = new WeakSet<WorkerLike>()
+
   const onMessage = (from: WorkerLike, message: FromWorker) => {
     if (from !== worker) return
+    heard.add(from)
+    if (message.type === 'ready') return
     if (message.type === 'picture') {
       screenPictures ??= canvasPictures(elementSurface)
       void answerPicture(screenPictures, message.request).then(({ result, transfer }) => {
@@ -153,11 +158,13 @@ export function createPdfToolsEngine(options: PdfToolsEngineOptions = {}): PdfTo
     if (worker) return worker
     const made = createWorker()
     made.addEventListener('message', (event) => onMessage(made, event.data))
-    // a worker that dies (out of memory) ends its job as too large
+    // a worker that dies after it loaded ran out of memory: its job ends as too large;
+    // one that never loaded (its script or a chunk failed) ends as failed
     made.addEventListener('error', () => {
       if (made !== worker) return
+      const loaded = heard.has(made)
       dropWorker()
-      endRunning('too-large')
+      endRunning(loaded ? 'too-large' : 'failed')
     })
     made.addEventListener('messageerror', () => {
       if (made === worker) endRunning('failed')

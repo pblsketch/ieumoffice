@@ -199,4 +199,5 @@ export function serveEngine(
       }
     }
   })
+  post({ type: 'ready' })
 }

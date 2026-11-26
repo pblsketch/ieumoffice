@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { bytesToBase64, savePdfToolResultCopy, sharePdfToolResult } from '../src/pdf-tools/index'
 import {
@@ -159,4 +162,43 @@ describe('bytesToBase64', () => {
     const args = spy.mock.calls[0][1] as { bytesBase64: string }
     expect(firstMismatch(decodeBase64(args.bytesBase64), big)).toBe(-1)
   })
+})
+
+describe('the Rust side of the PDF tools commands', () => {
+  // Tauri maps snake_case Rust parameters to camelCase arguments; this keeps both
+  // sides of the contract in one place, so a rename on either side fails here.
+  const root = fileURLToPath(new URL('../../../apps/mobile/src-tauri/src/', import.meta.url))
+  const commands = readFileSync(join(root, 'commands/pdf_tools.rs'), 'utf8')
+  const lib = readFileSync(join(root, 'lib.rs'), 'utf8')
+  const camel = (name: string) => name.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
+
+  it.each(['mobile_pdf_tools_share', 'mobile_pdf_tools_save_copy'])(
+    '%s takes the arguments the bridge sends and is registered',
+    async (command) => {
+      const start = commands.indexOf(`pub async fn ${command}<R: Runtime>(`)
+      const signature =
+        start < 0
+          ? null
+          : /\(([^)]*)\)/.exec(commands.slice(start + `pub async fn ${command}`.length))
+      expect(signature, `${command} in commands/pdf_tools.rs`).not.toBeNull()
+      const params = [...signature![1]!.matchAll(/(\w+):\s*([\w<>]+)/g)]
+        .map((m) => m[1]!)
+        .filter((name) => name !== 'app')
+      const { client, spy } = makeClient(async () =>
+        command.endsWith('share') ? { ok: true } : { name: 'x.pdf' },
+      )
+      const payload = { name: 'x.pdf', mime: 'application/pdf', bytes: new Uint8Array([1]) }
+      if (command.endsWith('share')) await sharePdfToolResult(client, payload)
+      else await savePdfToolResultCopy(client, payload)
+      const [sent, args] = spy.mock.calls[0]!
+      expect(sent).toBe(command)
+      expect(Object.keys(args ?? {}).sort()).toEqual(params.map(camel).sort())
+      // registered in generate_handler! between the T3 slot comment and the next track's
+      const slot = lib.indexOf('// T3 pdf tools\n')
+      const next = lib.indexOf('// T4 html\n', slot)
+      const line = lib.indexOf(`commands::pdf_tools::${command},`, slot)
+      expect(slot, 'the T3 slot in lib.rs').toBeGreaterThan(-1)
+      expect(line > slot && line < next, `${command} under // T3 pdf tools`).toBe(true)
+    },
+  )
 })

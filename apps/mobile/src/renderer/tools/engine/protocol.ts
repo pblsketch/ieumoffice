@@ -55,6 +55,8 @@ export type JobResult =
     }
 
 export type FromWorker =
+  /** the worker script loaded and is listening (sent once, first) */
+  | { type: 'ready' }
   | { type: 'need-input'; job: number; index: number }
   | { type: 'progress'; job: number; done: number; total: number }
   | { type: 'done'; job: number; result: JobResult }

@@ -346,6 +346,27 @@ describe('the engine client', () => {
     engine.dispose()
   })
 
+  it('answers failed, not too large, when the worker script never loads', async () => {
+    const errors: ((event: unknown) => void)[] = []
+    let terminated = false
+    const silent: WorkerLike = {
+      postMessage: () => {},
+      addEventListener: (type: string, listener: (event: never) => void) => {
+        if (type === 'error') errors.push(listener as (event: unknown) => void)
+      },
+      terminate: () => {
+        terminated = true
+      },
+    }
+    const engine = createPdfToolsEngine({ createWorker: () => silent })
+    const running = engine.run('reverse', [file('a.pdf', text3)], {})
+    await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0))
+    for (const listener of errors) listener(new Event('error'))
+    expect(await running).toEqual({ ok: false, reason: 'failed' })
+    expect(terminated).toBe(true)
+    engine.dispose()
+  })
+
   it('answers too large for a RangeError in the worker, and does not reuse that worker', async () => {
     const full = async (): Promise<EnginePdfium> => {
       throw new RangeError('Array buffer allocation failed')
