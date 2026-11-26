@@ -5,7 +5,7 @@ import type {
   PdfToolId,
   PdfToolInputKind,
   PdfToolOptions,
-} from '@genoffice/pdf-ops'
+} from '@genoffice/pdf-ops/tool-ids'
 
 /**
  * The PDF tools window: pick a task first, then the files it needs, then get
@@ -48,7 +48,7 @@ export {
   PDF_TOOL_MARGINS,
   PDF_TOOL_PAPERS,
   PDF_TOOL_SHEET_PAGES,
-} from '@genoffice/pdf-ops'
+} from '@genoffice/pdf-ops/tool-ids'
 export type {
   PdfInputProblem,
   PdfToolAccept,
@@ -58,7 +58,7 @@ export type {
   PdfToolMargin,
   PdfToolOptions,
   PdfToolPaper,
-} from '@genoffice/pdf-ops'
+} from '@genoffice/pdf-ops/tool-ids'
 
 /** Tools that need the PDF editor's view; their cards open the file in a PDF tab */
 export const PDF_EDITOR_TOOL_IDS = ['stamps', 'crop', 'exportImages', 'convert', 'edit'] as const
