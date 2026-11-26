@@ -37,7 +37,63 @@ const BLOCK_MARKER = /^(#{1,6} |[-*+] \[[ xX]\] |[-*+] |\d+\. |> )/
 export interface MarkdownMobileEditorHandle {
   readonly runAction: (action: MarkdownQuickAction) => void
   readonly getMarkdown: () => string
+  /** Replaces the whole text as one undo step (also how find's replace and replace-all write). */
   readonly setMarkdown: (next: string) => void
+  /**
+   * Edit mode: selects `[start, end)` of the source and scrolls it into view. `focus`
+   * moves the focus into the text (a selection in an unfocused field is not drawn on phones).
+   */
+  readonly selectRange: (start: number, end: number, options?: { focus?: boolean }) => void
+  /** View mode: the rendered preview, for find; null in edit mode. */
+  readonly getPreviewElement: () => HTMLElement | null
+}
+
+/** CSS properties that decide where text wraps inside the textarea. */
+const MIRROR_PROPS = [
+  'box-sizing',
+  'width',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'border-style',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'font-style',
+  'letter-spacing',
+  'line-height',
+  'text-transform',
+  'word-spacing',
+  'tab-size',
+  'text-indent',
+] as const
+
+/** The top of the line holding `offset` in the textarea's content, measured on a hidden copy. */
+function textOffsetTop(el: HTMLTextAreaElement, offset: number): number {
+  const doc = el.ownerDocument
+  const style = doc.defaultView?.getComputedStyle(el)
+  if (!style) return 0
+  const mirror = doc.createElement('div')
+  for (const prop of MIRROR_PROPS) mirror.style.setProperty(prop, style.getPropertyValue(prop))
+  mirror.style.position = 'absolute'
+  mirror.style.visibility = 'hidden'
+  mirror.style.top = '0'
+  mirror.style.left = '-99999px'
+  mirror.style.whiteSpace = 'pre-wrap'
+  mirror.style.overflowWrap = 'break-word'
+  mirror.textContent = el.value.slice(0, offset)
+  const marker = doc.createElement('span')
+  marker.textContent = el.value.slice(offset, offset + 1) || '.'
+  mirror.appendChild(marker)
+  doc.body.appendChild(mirror)
+  const top = marker.offsetTop
+  mirror.remove()
+  return top
 }
 
 export interface MarkdownMobileEditorProps {
@@ -68,6 +124,7 @@ export const MarkdownMobileEditor = forwardRef<
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const previewRef = useRef<HTMLElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const undoStackRef = useRef<string[]>([])
   const redoStackRef = useRef<string[]>([])
@@ -249,6 +306,15 @@ export const MarkdownMobileEditor = forwardRef<
       },
       getMarkdown: () => valueRef.current,
       setMarkdown: (next) => commitValue(next),
+      selectRange(start, end, options) {
+        const el = textareaRef.current
+        if (!el) return
+        if (options?.focus) el.focus({ preventScroll: true })
+        el.setSelectionRange(start, end)
+        // a third of the way down, so the match is not hidden under the find sheet
+        el.scrollTop = Math.max(0, textOffsetTop(el, start) - el.clientHeight / 3)
+      },
+      getPreviewElement: () => previewRef.current,
     }),
     [applyAction, commitValue],
   )
@@ -278,7 +344,7 @@ export const MarkdownMobileEditor = forwardRef<
         aria-label="Insert image"
       />
       {mode === 'view' ? (
-        <article className="mobile-markdown-preview" style={contentStyle}>
+        <article ref={previewRef} className="mobile-markdown-preview" style={contentStyle}>
           {isPlainText ? (
             <pre className="mobile-plain-text-view">{value}</pre>
           ) : (
