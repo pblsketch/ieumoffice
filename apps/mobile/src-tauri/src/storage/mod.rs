@@ -488,7 +488,8 @@ impl MobileFileService {
         })
     }
 
-    /// "Save as" from a local file: the same as `save_as_file_bytes` with the file's bytes.
+    /// "Save as" from a local file: HWP documents go through HWP save fixes, while other formats
+    /// stream directly from `src` to the picked location without loading the file into memory.
     pub fn save_as_file_from_path(
         &self,
         session_id: Option<&str>,
@@ -497,8 +498,37 @@ impl MobileFileService {
         src: &Path,
         hwp_fix: Option<HwpFixPayload>,
     ) -> MobileResult<MobileDocSession> {
-        let raw_bytes = std::fs::read(src).map_err(io_error)?;
-        self.save_as_decoded(session_id, suggested_name, format, raw_bytes, hwp_fix)
+        if format.is_hwp_family() {
+            let raw_bytes = std::fs::read(src).map_err(io_error)?;
+            return self.save_as_decoded(session_id, suggested_name, format, raw_bytes, hwp_fix);
+        }
+        let prev_active = {
+            let guard = self.active.lock().unwrap();
+            match session_id {
+                Some(sid) => guard.as_ref().filter(|a| a.session.session_id == sid).cloned(),
+                None => guard.clone(),
+            }
+        };
+        if let Some(prev) = &prev_active
+            && (prev.encrypted || prev.distribution)
+        {
+            return Err(MobileError::with_detail(
+                MobileErrorCode::PasswordProtected,
+                "mobile.hwp.passwordProtected",
+                "encrypted or distribution HWP documents cannot be saved",
+            ));
+        }
+        let picked = self
+            .bridge
+            .create_save_file(suggested_name, format.mime())
+            .map_err(map_fs_error)?;
+        let work_dir = self.write_work_dir()?;
+        write_uri_from_file(self.bridge.as_ref(), &picked.uri, src, &work_dir)
+            .map_err(map_fs_error)?;
+        if let Some(prev) = &prev_active {
+            let _ = self.recovery.discard(&prev.session.doc_key);
+        }
+        self.activate_picked(picked, true)
     }
 
     /// Copies the active document into the local file `dest` (replaced if it exists), e.g. a

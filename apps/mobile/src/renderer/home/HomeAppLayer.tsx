@@ -43,6 +43,8 @@ export interface HomeAppDoc {
   readonly encrypted: boolean
   readonly distribution: boolean
   readonly isUntitled: boolean
+  /** false when the document itself is read-only (e.g. damaged PDF, non-UTF-8 text). */
+  readonly editable?: boolean
 }
 
 export interface HomeAppLayerProps {
@@ -188,6 +190,7 @@ export function HomeAppLayer({ host, screen, activeDoc, mode }: HomeAppLayerProp
     !activeDoc.isUntitled &&
     !activeDoc.encrypted &&
     !activeDoc.distribution &&
+    activeDoc.editable !== false &&
     !!kind?.editable &&
     stripClosedFor !== activeDoc.session.sessionId
   const editCopy = useCallback(async () => {

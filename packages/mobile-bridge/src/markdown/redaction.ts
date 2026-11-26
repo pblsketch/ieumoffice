@@ -22,9 +22,18 @@ export { sanitizeLabel }
 export const HIDDEN_TEXT_UNVERIFIED_MESSAGE =
   'Hidden text marks could not be verified; nothing was sent.'
 
-function hiddenTextUnverified(): Error {
-  // Plain Error for now; becomes the shared blocked error once track T7 is merged.
-  return new Error(HIDDEN_TEXT_UNVERIFIED_MESSAGE)
+/** Matches `MobileAiBlockedError` (`apps/mobile/src/renderer/ai/blocked.ts`) across chunks. */
+export type HiddenTextBlockedError = Error & {
+  readonly kind: 'hidden-unverified'
+}
+
+function hiddenTextUnverified(): HiddenTextBlockedError {
+  const err = new Error(HIDDEN_TEXT_UNVERIFIED_MESSAGE) as Error & {
+    kind: 'hidden-unverified'
+  }
+  err.name = 'MobileAiBlockedError'
+  err.kind = 'hidden-unverified'
+  return err
 }
 
 // The span markup, paired the way `redactMarkdownSource` pairs it: an opening

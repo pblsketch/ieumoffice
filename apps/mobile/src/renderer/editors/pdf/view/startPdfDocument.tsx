@@ -8,6 +8,7 @@ import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileClient, MobileDocSession } from '@genoffice/mobile-bridge/transport'
 import type { SearchMatch } from '../../../../../../pdf/src/renderer/search'
 import { translateMobile, type MobileStringKey } from '../../../i18n/strings'
+import { useKeepScreenOn } from '../../../home/keepScreenOn'
 import { EditorShell, type EditorQuickActionItem } from '../../../shell/EditorShell'
 import type { EditorDocument, EditorHost, EditorWorkspaceProps } from '../../editorKind'
 import { IconPdfGoToPage, IconPdfLock, IconPdfOutline, IconPdfSearch } from './icons'
@@ -164,6 +165,7 @@ export function startPdfDocument(
   const source = options.modelSource ?? fixedSource(model)
 
   function PdfWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
+    useKeepScreenOn(host.client, mode === 'view')
     const model = useSyncExternalStore(source.subscribeModel, source.getModel)
     const t = useCallback(
       (key: MobileStringKey, params?: Params) => translateMobile(lang, key, params),

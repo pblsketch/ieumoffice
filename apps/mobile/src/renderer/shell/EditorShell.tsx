@@ -93,7 +93,8 @@ export interface EditorShellProps {
   /** Back in edit mode: leave edit mode without saving (changes stay marked unsaved). */
   readonly onExitEdit: () => void
   readonly onSave: () => void
-  readonly onSaveAs: () => void
+  /** Absent for read-only kinds without a save function: hides Save As in [⋯]. */
+  readonly onSaveAs?: () => void
   readonly onShare: () => void
   readonly onFitToWidth: () => void
   readonly onOpenBackups: () => void
@@ -530,17 +531,19 @@ export function EditorShell({
         testId="editor-more-sheet"
       >
         <div className="mobile-menu-stack">
-          <button
-            type="button"
-            className="mobile-menu-row-btn"
-            onClick={() => {
-              setMoreOpen(false)
-              onSaveAs()
-            }}
-          >
-            <IconSave size={19} />
-            <span>{t('saveAs')}</span>
-          </button>
+          {onSaveAs && (
+            <button
+              type="button"
+              className="mobile-menu-row-btn"
+              onClick={() => {
+                setMoreOpen(false)
+                onSaveAs()
+              }}
+            >
+              <IconSave size={19} />
+              <span>{t('saveAs')}</span>
+            </button>
+          )}
           <button
             type="button"
             className="mobile-menu-row-btn"

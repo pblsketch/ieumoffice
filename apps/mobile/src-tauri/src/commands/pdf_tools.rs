@@ -149,8 +149,12 @@ pub async fn mobile_pdf_tools_save_copy<R: Runtime>(
 mod tests {
     use super::*;
     use crate::storage::MobileFileService;
+    use std::path::Path;
     use std::sync::{Arc, Mutex};
-    use tauri_plugin_ieum_mobile::fs::{HostFileBridge, MockPickedDoc, PickedFile};
+    use tauri_plugin_ieum_mobile::fs::{
+        FolderGrantState, HostFileBridge, MockPickedDoc, NativeDirs, NativeFolderEntry,
+        NativeHomeError, NativeHomeErrorKind, NativeIncomingBatch, PickedFile, PickedFolder,
+    };
 
     /// Records every bridge call; the save dialog can be set to report a cancel.
     #[derive(Default)]
@@ -215,6 +219,102 @@ mod tests {
 
         fn take_pending_open_intent(&self) -> Option<PickedFile> {
             None
+        }
+
+        fn copy_uri_to_file(&self, _uri: &str, _dest: &Path) -> Result<u64, NativeFsError> {
+            Err(NativeFsError::new(
+                NativeFsErrorKind::IoError,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn stream_file_to_uri(&self, _uri: &str, _src: &Path) -> Result<u64, NativeFsError> {
+            Err(NativeFsError::new(
+                NativeFsErrorKind::IoError,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn pick_folder(&self) -> Result<PickedFolder, NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn release_folder(&self, _folder_uri: &str) -> Result<(), NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn check_folder_grant(&self, _folder_uri: &str) -> FolderGrantState {
+            FolderGrantState::Revoked
+        }
+
+        fn list_folder(
+            &self,
+            _folder_uri: &str,
+            _sub_path: &[String],
+        ) -> Result<Vec<NativeFolderEntry>, NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn rename_document(&self, _uri: &str, _new_name: &str) -> Result<String, NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn copy_document(&self, _uri: &str, _new_name: &str) -> Result<String, NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn delete_document(&self, _uri: &str) -> Result<(), NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn share_files(&self, _uris: &[String]) -> Result<(), NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn take_incoming_batch(&self) -> Option<NativeIncomingBatch> {
+            None
+        }
+
+        fn set_keep_screen_on(&self, _on: bool) -> Result<(), NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn open_external_url(&self, _url: &str) -> Result<(), NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
+        }
+
+        fn native_dirs(&self) -> Result<NativeDirs, NativeHomeError> {
+            Err(NativeHomeError::new(
+                NativeHomeErrorKind::NotSupportedHere,
+                "unused in pdf_tools tests",
+            ))
         }
     }
 

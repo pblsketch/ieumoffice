@@ -133,9 +133,13 @@ pub async fn mobile_web_save_new_file(
 mod tests {
     use super::*;
     use crate::storage::{MobileDocFormat, MobileFileService};
+    use std::path::Path;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tauri_plugin_ieum_mobile::fs::{HostFileBridge, MockPickedDoc, PickedFile};
+    use tauri_plugin_ieum_mobile::fs::{
+        FolderGrantState, HostFileBridge, MockPickedDoc, NativeDirs, NativeFolderEntry,
+        NativeHomeError, NativeIncomingBatch, PickedFile, PickedFolder,
+    };
 
     /// Test bridge: the host bridge plus a switchable cancel on the save dialog and a call log.
     struct FakeBridge {
@@ -204,6 +208,66 @@ mod tests {
 
         fn take_pending_open_intent(&self) -> Option<PickedFile> {
             self.inner.take_pending_open_intent()
+        }
+
+        fn copy_uri_to_file(&self, uri: &str, dest: &Path) -> Result<u64, NativeFsError> {
+            self.inner.copy_uri_to_file(uri, dest)
+        }
+
+        fn stream_file_to_uri(&self, uri: &str, src: &Path) -> Result<u64, NativeFsError> {
+            self.inner.stream_file_to_uri(uri, src)
+        }
+
+        fn pick_folder(&self) -> Result<PickedFolder, NativeHomeError> {
+            self.inner.pick_folder()
+        }
+
+        fn release_folder(&self, folder_uri: &str) -> Result<(), NativeHomeError> {
+            self.inner.release_folder(folder_uri)
+        }
+
+        fn check_folder_grant(&self, folder_uri: &str) -> FolderGrantState {
+            self.inner.check_folder_grant(folder_uri)
+        }
+
+        fn list_folder(
+            &self,
+            folder_uri: &str,
+            sub_path: &[String],
+        ) -> Result<Vec<NativeFolderEntry>, NativeHomeError> {
+            self.inner.list_folder(folder_uri, sub_path)
+        }
+
+        fn rename_document(&self, uri: &str, new_name: &str) -> Result<String, NativeHomeError> {
+            self.inner.rename_document(uri, new_name)
+        }
+
+        fn copy_document(&self, uri: &str, new_name: &str) -> Result<String, NativeHomeError> {
+            self.inner.copy_document(uri, new_name)
+        }
+
+        fn delete_document(&self, uri: &str) -> Result<(), NativeHomeError> {
+            self.inner.delete_document(uri)
+        }
+
+        fn share_files(&self, uris: &[String]) -> Result<(), NativeHomeError> {
+            self.inner.share_files(uris)
+        }
+
+        fn take_incoming_batch(&self) -> Option<NativeIncomingBatch> {
+            self.inner.take_incoming_batch()
+        }
+
+        fn set_keep_screen_on(&self, on: bool) -> Result<(), NativeHomeError> {
+            self.inner.set_keep_screen_on(on)
+        }
+
+        fn open_external_url(&self, url: &str) -> Result<(), NativeHomeError> {
+            self.inner.open_external_url(url)
+        }
+
+        fn native_dirs(&self) -> Result<NativeDirs, NativeHomeError> {
+            self.inner.native_dirs()
         }
     }
 

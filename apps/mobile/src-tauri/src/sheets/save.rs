@@ -42,7 +42,9 @@ use std::time::Instant;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tauri_plugin_ieum_mobile::fs::{NativeFileBridge, NativeFsError, NativeFsErrorKind};
+use tauri_plugin_ieum_mobile::fs::{
+    NativeFileBridge, NativeFsError, NativeFsErrorKind, write_uri_from_file,
+};
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
 use crate::storage::{MobileDocFormat, MobileDocSession, MobileFileService, MobileShareMode};
@@ -225,14 +227,6 @@ fn elapsed_ms(started: Instant) -> u64 {
     started.elapsed().as_millis() as u64
 }
 
-fn bad_base64(error: base64::DecodeError) -> MobileError {
-    MobileError::with_detail(
-        MobileErrorCode::InvalidArgument,
-        "mobile.sheets.badBase64",
-        error.to_string(),
-    )
-}
-
 /// Copies the active document into a fresh working copy with extension
 /// `ext` in the work folder and remembers the digest of what was read (the
 /// base of the "changed since it was opened" check) and its `DocumentMark`
@@ -245,32 +239,30 @@ pub fn copy_original_to_work_folder(
     ext: &str,
     probe: &dyn Fn(&Path) -> Option<OriginalProbe>,
 ) -> MobileResult<SheetsWorkingCopy> {
-    let target = workspace.new_file_path(ext)?.to_string_lossy().into_owned();
+    let target_path = workspace.new_file_path(ext)?;
+    let target = target_path.to_string_lossy().into_owned();
     let started = Instant::now();
-    let read = files.read_file_bytes(session_id)?;
+    let size = files.copy_session_to_file(session_id, &target_path)?;
     let read_ms = elapsed_ms(started);
-    let started = Instant::now();
-    let bytes = B64
-        .decode(read.bytes_base64.as_bytes())
-        .map_err(bad_base64)?;
-    drop(read);
-    let decode_ms = elapsed_ms(started);
-    let started = Instant::now();
-    workspace.write_bytes(&target, &bytes)?;
-    let write_ms = elapsed_ms(started);
-    digests.record(session_id, sha256_hex(&bytes));
-    let probed = if bytes.is_empty() {
+    let digest = workspace.sha256(&target)?;
+    digests.record(session_id, digest);
+    let head = if size == 0 {
+        Vec::new()
+    } else {
+        workspace.read_range(&target, Some(0), Some(8))?
+    };
+    let probed = if size == 0 {
         None
     } else {
-        probe(Path::new(&target))
+        probe(&target_path)
     };
-    digests.record_mark(session_id, mark_for(ext, &bytes, probed));
+    digests.record_mark(session_id, mark_for(ext, &head, probed));
     Ok(SheetsWorkingCopy {
         path: target,
-        size: bytes.len() as u64,
+        size,
         read_ms,
-        decode_ms,
-        write_ms,
+        decode_ms: 0,
+        write_ms: 0,
     })
 }
 
@@ -279,13 +271,14 @@ pub fn copy_original_to_work_folder(
 /// a refusal: the write recreates it, as on the desktop.
 fn ensure_original_unchanged(
     files: &MobileFileService,
+    workspace: &SheetsWorkspace,
     digests: &OriginalDigests,
     session_id: &str,
 ) -> MobileResult<()> {
     let Some(expected) = digests.get(session_id) else {
         return Ok(());
     };
-    let Some(current) = current_original_digest(files, session_id) else {
+    let Some(current) = current_original_digest(files, workspace, session_id) else {
         return Ok(());
     };
     if current == expected {
@@ -347,7 +340,7 @@ pub fn write_back_to_original(
         ));
     }
     ensure_locked_if_needed(digests, workspace, session_id, raw_path)?;
-    ensure_original_unchanged(files, digests, session_id)?;
+    ensure_original_unchanged(files, workspace, digests, session_id)?;
     let size = file_size(workspace, raw_path)?;
     let digest = workspace.sha256(raw_path)?;
     store_over_original(files, workspace, session_id, raw_path)
@@ -468,31 +461,34 @@ pub fn write_copy(
 }
 
 // ---------------------------------------------------------------------------
-// Storage calls. Today they move the bytes as base64 (the shape of the
-// storage service's WebView commands), all inside Rust. Each body becomes one
-// call to T6's file-path functions; the comment above each names it.
+// Storage calls: file-path streaming through track T6's storage/bridge helpers
+// so large workbooks never cross the bridge as a single base64 string.
 
-/// T6: `files.copy_session_to_file(session_id, &tmp)` + `sha256` of `tmp`.
-fn current_original_digest(files: &MobileFileService, session_id: &str) -> Option<String> {
-    let read = files.read_file_bytes(session_id).ok()?;
-    let bytes = B64.decode(read.bytes_base64.as_bytes()).ok()?;
-    Some(sha256_hex(&bytes))
+fn current_original_digest(
+    files: &MobileFileService,
+    workspace: &SheetsWorkspace,
+    session_id: &str,
+) -> Option<String> {
+    let tmp = workspace.new_file_path("tmp").ok()?;
+    let digest = files
+        .copy_session_to_file(session_id, &tmp)
+        .ok()
+        .and_then(|_| workspace.sha256(&tmp.to_string_lossy()).ok());
+    let _ = std::fs::remove_file(&tmp);
+    digest
 }
 
-/// T6: `files.save_file_from_path(session_id, &workspace.resolve(raw_path)?, None)`.
 fn store_over_original(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
     session_id: &str,
     raw_path: &str,
 ) -> MobileResult<()> {
-    let encoded = B64.encode(workspace.read_bytes(raw_path)?);
     files
-        .save_file_bytes(session_id, &encoded, None)
+        .save_file_from_path(session_id, &workspace.resolve(raw_path)?, None)
         .map(|_| ())
 }
 
-/// T6: `files.save_as_file_from_path(session_id, suggested_name, format, &workspace.resolve(raw_path)?, None)`.
 fn store_as_new_document(
     files: &MobileFileService,
     workspace: &SheetsWorkspace,
@@ -501,25 +497,22 @@ fn store_as_new_document(
     format: MobileDocFormat,
     raw_path: &str,
 ) -> MobileResult<MobileDocSession> {
-    let encoded = B64.encode(workspace.read_bytes(raw_path)?);
-    files.save_as_file_bytes(session_id, suggested_name, format, &encoded, None)
+    files.save_as_file_from_path(
+        session_id,
+        suggested_name,
+        format,
+        &workspace.resolve(raw_path)?,
+        None,
+    )
 }
 
-/// T6: `write_uri_from_file(bridge, uri, path, workspace.root())`.
 fn write_copy_into(
     bridge: &dyn NativeFileBridge,
-    _workspace: &SheetsWorkspace,
+    workspace: &SheetsWorkspace,
     uri: &str,
     path: &Path,
 ) -> MobileResult<()> {
-    let bytes = std::fs::read(path).map_err(|error| {
-        MobileError::with_detail(
-            MobileErrorCode::InternalError,
-            "mobile.sheets.ioError",
-            error.to_string(),
-        )
-    })?;
-    bridge.write_uri_bytes_atomic(uri, &bytes).map_err(fs_error)
+    write_uri_from_file(bridge, uri, path, workspace.root()).map_err(fs_error)
 }
 
 /// T6 publishes no file-path share or recovery function; these keep the

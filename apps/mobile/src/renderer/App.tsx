@@ -590,7 +590,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
               onDone: () => void handleDone(),
               onExitEdit: () => setMode('view'),
               onSave: () => void runSave(activeDoc, false),
-              onSaveAs: () => void runSave(activeDoc, true),
+              ...(openedDoc.kind.editable && typeof openedDoc.doc.save === 'function'
+                ? { onSaveAs: () => void runSave(activeDoc, true) }
+                : {}),
               onShare: () => void handleShare(),
               onOpenBackups: () => {
                 void refreshHomeData()
@@ -620,6 +622,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                   encrypted: activeDoc.encrypted,
                   distribution: activeDoc.distribution,
                   isUntitled: activeDoc.isUntitled,
+                  editable: openedDoc ? openedDoc.doc.editable !== false : true,
                 }
               : null
           }

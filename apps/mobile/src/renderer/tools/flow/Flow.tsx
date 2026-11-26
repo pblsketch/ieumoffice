@@ -7,8 +7,8 @@
  * until they are opened, shared or saved, and nothing here writes a file of
  * its own. No AI, no permission prompt: files come from the system picker.
  *
- * Keeping the screen on while a tool runs is T6's `useKeepScreenOn(client,
- * running)`; it is wired when T6 is merged (docs/plans/mobile-v1/T3.md).
+ * Keeping the screen on while a tool runs is wired via T6's
+ * `useKeepScreenOn(host.client, phase === 'running')`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -25,6 +25,7 @@ import {
 import { isMobileCommandError, type MobileDocFormat } from '@genoffice/mobile-bridge/transport'
 import { IconBack } from '../../components/MobileIcons'
 import type { HomeHost } from '../../home/homeHost'
+import { useKeepScreenOn } from '../../home/keepScreenOn'
 import { useMobileLocale, type MobileStringKey } from '../../i18n'
 import { useBackLayer } from '../../shell/backStack'
 import { BlankReview, initialBlankChoice } from '../blank'
@@ -270,6 +271,7 @@ export default function PdfToolsFlowScreen({ host, start, onClose }: PdfToolsFlo
   useBackLayer(true, backFromBase)
   useBackLayer(phase === 'running', askStop)
   useBackLayer(phase === 'review', backFromReview)
+  useKeepScreenOn(host.client, phase === 'running')
 
   const onAppBarBack = () => {
     if (phase === 'running') askStop()
