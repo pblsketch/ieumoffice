@@ -215,9 +215,9 @@ describe('the HTML editor kind', () => {
       expect(opened.noticeKey).toBeNull()
       const doc = opened.start(fakeHost(client))
       expect(doc.editable).not.toBe(false)
-      // no AI entry until the HTML AI tools exist
-      expect(doc.aiAvailable).toBe(false)
-      expect(doc.createAiRun).toBeUndefined()
+      // the HTML AI tools are offered (spec 5.6); the AI itself stays off by default
+      expect(doc.aiAvailable).not.toBe(false)
+      expect(typeof doc.createAiRun).toBe('function')
 
       expect(await doc.save?.(activeDoc(session), false)).toBe(true)
       expect(bytesOf(last(calls, 'mobile_save_file_bytes').args?.bytesBase64)).toEqual(
