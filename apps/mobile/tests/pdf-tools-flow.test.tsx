@@ -32,6 +32,26 @@ import { failureKey, formatBytes } from '../src/renderer/tools/flow/format'
 import { pdfToolsLink, type PdfToolsFlowStart } from '../src/renderer/tools/link'
 import { ToolsList } from '../src/renderer/tools/ToolsList'
 
+// The editor registry fixed to the base kinds (HWP, Markdown), so a track that registers
+// another editor (e.g. T2's PDF editor) does not change what these tests see. A test that
+// wants a PDF editor adds one through `registry.withPdf`.
+const registry = vi.hoisted(() => ({ withPdf: false }))
+vi.mock('../src/renderer/editors/registry', async () => {
+  const { hwpEditorKind } = await import('../src/renderer/editors/hwpKind')
+  const { markdownEditorKind } = await import('../src/renderer/editors/markdownKind')
+  const base = [hwpEditorKind, markdownEditorKind]
+  const pdfKind = { ...markdownEditorKind, id: 'pdf', formats: ['pdf'], openExtensions: ['pdf'] }
+  const kinds = () => (registry.withPdf ? [...base, pdfKind] : base)
+  return {
+    get EDITOR_KINDS() {
+      return kinds()
+    },
+    findEditorKind: (format: string) =>
+      kinds().find((kind) => (kind.formats as readonly string[]).includes(format)) ?? null,
+    openableExtensions: () => kinds().flatMap((kind) => kind.openExtensions),
+  }
+})
+
 // React's act() checks this flag
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -307,6 +327,18 @@ describe('tools list', () => {
     expect(cards[0]!.textContent).toContain(en('pdfToolsDescMerge'))
     expect(cards[0]!.querySelector('svg')).not.toBeNull()
     expect(body().querySelector('[data-tool="edit"]')).toBeNull()
+  })
+
+  it('shows the edit card once the registry has an editor that opens .pdf', async () => {
+    registry.withPdf = true
+    try {
+      const { host } = makeHost()
+      await render(<ToolsList host={host} onPickTool={() => {}} />, {})
+      expect(body().textContent).toContain(en('pdfToolsGroupEditor'))
+      expect(body().querySelector('[data-tool="edit"]')).not.toBeNull()
+    } finally {
+      registry.withPdf = false
+    }
   })
 
   it('shows the edit card with a PDF editor and opens a picked PDF there', async () => {
