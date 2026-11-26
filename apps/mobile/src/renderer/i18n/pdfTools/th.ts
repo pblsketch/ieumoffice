@@ -176,6 +176,7 @@ export const th = {
   pdfToolsProblemNotEncrypted: 'PDF นี้ไม่มีรหัสผ่าน',
   pdfToolsStart: 'สร้าง',
   pdfToolsRemoveChosenPages: 'ลบหน้าที่เลือก',
+  pdfToolsBlankChosenCount: 'เลือกแล้ว {n} หน้า',
   pdfToolsStop: 'หยุด',
   pdfToolsStopped: 'หยุดแล้ว',
   pdfToolsStopConfirm: 'หยุดการประมวลผลหรือไม่',

@@ -177,6 +177,7 @@ export const ru = {
   pdfToolsProblemNotEncrypted: 'У этого PDF нет пароля.',
   pdfToolsStart: 'Создать',
   pdfToolsRemoveChosenPages: 'Удалить выбранные страницы',
+  pdfToolsBlankChosenCount: 'Выбрано страниц: {n}',
   pdfToolsStop: 'Остановить',
   pdfToolsStopped: 'Остановлено.',
   pdfToolsStopConfirm: 'Остановить обработку?',

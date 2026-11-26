@@ -177,6 +177,7 @@ export const ar = {
   pdfToolsProblemNotEncrypted: 'ملف PDF هذا ليس له كلمة مرور.',
   pdfToolsStart: 'إنشاء',
   pdfToolsRemoveChosenPages: 'حذف الصفحات المختارة',
+  pdfToolsBlankChosenCount: 'الصفحات المختارة: {n}',
   pdfToolsStop: 'إيقاف',
   pdfToolsStopped: 'تم الإيقاف.',
   pdfToolsStopConfirm: 'هل تريد إيقاف المعالجة؟',

@@ -177,6 +177,7 @@ export const nl = {
   pdfToolsProblemNotEncrypted: 'Deze pdf heeft geen wachtwoord.',
   pdfToolsStart: 'Maken',
   pdfToolsRemoveChosenPages: 'Gekozen pagina’s verwijderen',
+  pdfToolsBlankChosenCount: "Gekozen pagina's: {n}",
   pdfToolsStop: 'Stoppen',
   pdfToolsStopped: 'Gestopt.',
   pdfToolsStopConfirm: 'Verwerking stoppen?',

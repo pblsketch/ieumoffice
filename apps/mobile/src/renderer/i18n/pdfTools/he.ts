@@ -176,6 +176,7 @@ export const he = {
   pdfToolsProblemNotEncrypted: 'ל-PDF הזה אין סיסמה.',
   pdfToolsStart: 'יצירה',
   pdfToolsRemoveChosenPages: 'מחיקת העמודים שנבחרו',
+  pdfToolsBlankChosenCount: 'עמודים שנבחרו: {n}',
   pdfToolsStop: 'עצירה',
   pdfToolsStopped: 'העיבוד נעצר.',
   pdfToolsStopConfirm: 'לעצור את העיבוד?',

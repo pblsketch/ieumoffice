@@ -176,6 +176,7 @@ export const zhTW = {
   pdfToolsProblemNotEncrypted: '這個 PDF 沒有密碼。',
   pdfToolsStart: '建立',
   pdfToolsRemoveChosenPages: '刪除所選頁面',
+  pdfToolsBlankChosenCount: '已選 {n} 頁',
   pdfToolsStop: '停止',
   pdfToolsStopped: '已停止。',
   pdfToolsStopConfirm: '要停止處理嗎？',

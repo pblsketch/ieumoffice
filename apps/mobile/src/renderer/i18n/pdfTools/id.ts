@@ -177,6 +177,7 @@ export const id = {
   pdfToolsProblemNotEncrypted: 'PDF ini tidak memiliki kata sandi.',
   pdfToolsStart: 'Buat',
   pdfToolsRemoveChosenPages: 'Hapus halaman yang dipilih',
+  pdfToolsBlankChosenCount: '{n} halaman dipilih',
   pdfToolsStop: 'Hentikan',
   pdfToolsStopped: 'Dihentikan.',
   pdfToolsStopConfirm: 'Hentikan pemrosesan?',

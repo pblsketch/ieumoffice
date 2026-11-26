@@ -177,6 +177,7 @@ export const cs = {
   pdfToolsProblemNotEncrypted: 'Toto PDF nemá heslo.',
   pdfToolsStart: 'Vytvořit',
   pdfToolsRemoveChosenPages: 'Smazat vybrané stránky',
+  pdfToolsBlankChosenCount: 'Vybrané stránky: {n}',
   pdfToolsStop: 'Zastavit',
   pdfToolsStopped: 'Zastaveno.',
   pdfToolsStopConfirm: 'Zastavit zpracování?',

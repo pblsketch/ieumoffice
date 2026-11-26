@@ -177,6 +177,7 @@ export const pt = {
   pdfToolsProblemNotEncrypted: 'Este PDF não tem senha.',
   pdfToolsStart: 'Criar',
   pdfToolsRemoveChosenPages: 'Excluir as páginas escolhidas',
+  pdfToolsBlankChosenCount: 'Páginas escolhidas: {n}',
   pdfToolsStop: 'Parar',
   pdfToolsStopped: 'Parado.',
   pdfToolsStopConfirm: 'Parar o processamento?',

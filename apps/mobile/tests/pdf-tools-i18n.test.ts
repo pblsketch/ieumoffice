@@ -186,6 +186,7 @@ const MOBILE_ONLY_KEYS: readonly string[] = [
   'pdfToolsProblemNotEncrypted',
   'pdfToolsStart',
   'pdfToolsRemoveChosenPages',
+  'pdfToolsBlankChosenCount',
   'pdfToolsStop',
   'pdfToolsStopped',
   'pdfToolsStopConfirm',

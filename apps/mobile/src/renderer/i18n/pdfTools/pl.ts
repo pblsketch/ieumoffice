@@ -177,6 +177,7 @@ export const pl = {
   pdfToolsProblemNotEncrypted: 'Ten PDF nie ma hasła.',
   pdfToolsStart: 'Utwórz',
   pdfToolsRemoveChosenPages: 'Usuń wybrane strony',
+  pdfToolsBlankChosenCount: 'Wybrane strony: {n}',
   pdfToolsStop: 'Zatrzymaj',
   pdfToolsStopped: 'Zatrzymano.',
   pdfToolsStopConfirm: 'Zatrzymać przetwarzanie?',

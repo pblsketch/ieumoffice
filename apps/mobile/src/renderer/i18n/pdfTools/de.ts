@@ -177,6 +177,7 @@ export const de = {
   pdfToolsProblemNotEncrypted: 'Dieses PDF hat kein Passwort.',
   pdfToolsStart: 'Erstellen',
   pdfToolsRemoveChosenPages: 'Gewählte Seiten löschen',
+  pdfToolsBlankChosenCount: 'Ausgewählte Seiten: {n}',
   pdfToolsStop: 'Anhalten',
   pdfToolsStopped: 'Angehalten.',
   pdfToolsStopConfirm: 'Verarbeitung anhalten?',

@@ -177,6 +177,7 @@ export const tr = {
   pdfToolsProblemNotEncrypted: 'Bu PDF’in parolası yok.',
   pdfToolsStart: 'Oluştur',
   pdfToolsRemoveChosenPages: 'Seçilen sayfaları sil',
+  pdfToolsBlankChosenCount: 'Seçilen sayfa: {n}',
   pdfToolsStop: 'Durdur',
   pdfToolsStopped: 'Durduruldu.',
   pdfToolsStopConfirm: 'İşlem durdurulsun mu?',

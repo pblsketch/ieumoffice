@@ -176,6 +176,7 @@ export const hi = {
   pdfToolsProblemNotEncrypted: 'इस PDF पर कोई पासवर्ड नहीं है।',
   pdfToolsStart: 'बनाएँ',
   pdfToolsRemoveChosenPages: 'चुने गए पेज हटाएँ',
+  pdfToolsBlankChosenCount: 'चुने गए पेज: {n}',
   pdfToolsStop: 'रोकें',
   pdfToolsStopped: 'रोक दिया गया।',
   pdfToolsStopConfirm: 'प्रोसेसिंग रोकें?',

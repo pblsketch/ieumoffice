@@ -175,6 +175,7 @@ export const zh = {
   pdfToolsProblemNotEncrypted: '此 PDF 没有密码。',
   pdfToolsStart: '生成',
   pdfToolsRemoveChosenPages: '删除所选页面',
+  pdfToolsBlankChosenCount: '已选 {n} 页',
   pdfToolsStop: '停止',
   pdfToolsStopped: '已停止。',
   pdfToolsStopConfirm: '要停止处理吗？',

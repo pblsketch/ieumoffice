@@ -177,6 +177,7 @@ export const ms = {
   pdfToolsProblemNotEncrypted: 'PDF ini tiada kata laluan.',
   pdfToolsStart: 'Cipta',
   pdfToolsRemoveChosenPages: 'Padam halaman yang dipilih',
+  pdfToolsBlankChosenCount: '{n} halaman dipilih',
   pdfToolsStop: 'Henti',
   pdfToolsStopped: 'Dihentikan.',
   pdfToolsStopConfirm: 'Hentikan pemprosesan?',

@@ -176,6 +176,7 @@ export const vi = {
   pdfToolsProblemNotEncrypted: 'PDF này không có mật khẩu.',
   pdfToolsStart: 'Tạo',
   pdfToolsRemoveChosenPages: 'Xóa các trang đã chọn',
+  pdfToolsBlankChosenCount: 'Đã chọn {n} trang',
   pdfToolsStop: 'Dừng',
   pdfToolsStopped: 'Đã dừng.',
   pdfToolsStopConfirm: 'Dừng xử lý?',

@@ -176,6 +176,7 @@ export const ja = {
   pdfToolsProblemNotEncrypted: 'この PDF にはパスワードがありません。',
   pdfToolsStart: '作成',
   pdfToolsRemoveChosenPages: '選んだページを削除',
+  pdfToolsBlankChosenCount: '選んだページ: {n}',
   pdfToolsStop: '中止',
   pdfToolsStopped: '中止しました。',
   pdfToolsStopConfirm: '処理を中止しますか？',

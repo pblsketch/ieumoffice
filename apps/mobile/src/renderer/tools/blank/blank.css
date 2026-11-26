@@ -1,0 +1,95 @@
+/* Blank-page review grid. Tokens only (mobile-tokens.css, packages/ui tokens.css). */
+
+.pdf-tools-blank {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.pdf-tools-blank-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-blank-count {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pdf-tools-blank-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) * 2.5), 1fr));
+  gap: var(--m-space-3);
+}
+
+.pdf-tools-blank-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  height: 100%;
+  padding: var(--m-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pdf-tools-blank-tile:has(input:checked) {
+  border-color: var(--color-btn-primary);
+  background: var(--active-bg);
+}
+
+.pdf-tools-blank-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--surface-subtle);
+}
+
+.pdf-tools-blank-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 210 / 297;
+  font-size: var(--m-text-title-l);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pdf-tools-blank-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+}
+
+.pdf-tools-blank-meta > input {
+  flex-shrink: 0;
+  margin: 0;
+  width: var(--m-space-5);
+  height: var(--m-space-5);
+  accent-color: var(--color-btn-primary);
+}
+
+.pdf-tools-blank-page {
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+}
+
+.pdf-tools-blank-reason {
+  font-size: var(--m-text-caption);
+  color: var(--text-secondary);
+}

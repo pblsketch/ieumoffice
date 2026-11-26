@@ -176,6 +176,7 @@ export const ko = {
   pdfToolsProblemNotEncrypted: '암호가 걸려 있지 않습니다.',
   pdfToolsStart: '만들기',
   pdfToolsRemoveChosenPages: '고른 페이지 지우기',
+  pdfToolsBlankChosenCount: '고른 페이지 {n}개',
   pdfToolsStop: '멈추기',
   pdfToolsStopped: '멈췄습니다.',
   pdfToolsStopConfirm: '처리를 멈출까요?',
