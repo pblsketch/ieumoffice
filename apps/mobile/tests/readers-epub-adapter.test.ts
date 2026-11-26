@@ -148,7 +148,7 @@ async function buildBook(options: BookOptions = {}): Promise<Uint8Array> {
     'OEBPS/text/three.xhtml': CHAPTER_THREE,
     'OEBPS/text/notes.xhtml': NOTES,
     'OEBPS/styles/book.css':
-      '@import url("more.css");\n@import "../code/app.js";\n@import url(https://evil.example/r.css);\nbody { margin: 0 }\n/* url(../images/pic.png) */\n' +
+      '@import url("more.css");\n@import "../code/app.js";\n@import url(https://evil.example/r.css);\n@namespace epub url(http://www.idpf.org/2007/ops);\nbody { margin: 0 }\n/* url(../images/pic.png) */\n' +
       '.q::after { content: "</style><script>alert(2)</script>" }\n',
     'OEBPS/styles/more.css':
       '@import "book.css";\n.more { background: url("../images/bg.png") no-repeat }\n',
@@ -384,6 +384,8 @@ describe('the drawing copy of a chapter', () => {
     expect(imports).toHaveLength(1)
     expect(linked).not.toContain('app.js')
     expect(linked).not.toContain('evil.example')
+    // an @namespace rule names a namespace and loads nothing: kept as written
+    expect(linked).toContain('@namespace epub url(http://www.idpf.org/2007/ops);')
     // a comment is left as it is and loads nothing
     expect(linked).toContain('/* url(../images/pic.png) */')
     const more = await blobText(imports[0]!)

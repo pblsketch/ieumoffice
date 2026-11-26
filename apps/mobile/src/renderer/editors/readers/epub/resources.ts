@@ -115,6 +115,8 @@ const URL_ARG = String.raw`\s*(${QUOTED}|[^)"'\s]*)\s*\)`
 const CSS_TOKENS = new RegExp(
   [
     String.raw`\/\*[\s\S]*?\*\/`,
+    // `@namespace p url(...)` names a namespace and loads nothing: kept as written
+    String.raw`@namespace\b[^;{}]*;?`,
     String.raw`@import\s*(?:url\(${URL_ARG}|(${QUOTED}))([^;{}]*;?)`,
     QUOTED,
     String.raw`\burl\(${URL_ARG}`,
@@ -249,7 +251,7 @@ export class ChapterResources {
           )
         }
       } else {
-        // a comment or a string
+        // a comment, a string or an @namespace rule
         parts.push(whole)
       }
     }
