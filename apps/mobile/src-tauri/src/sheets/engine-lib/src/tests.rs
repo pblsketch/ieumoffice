@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
+use crate::dispatch::EXTERNAL_LINKS_NOT_READ;
 use crate::dispatch::{
     CancelledRequests, Dispatched, InFlightRequest, Request, Response, handle_request,
 };
@@ -518,11 +519,107 @@ fn is_within_rejects_the_root_itself_and_parent_steps() {
     assert!(!is_within(&root, Path::new("f.xlsx")));
 }
 
+/// Links `link` to the folder `target` (a symlink; on Windows a junction
+/// when symlinks need a privilege the test run lacks). False when neither
+/// can be made here.
+fn link_dir(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(target, link).is_ok()
+            || std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .is_ok_and(|output| output.status.success())
+    }
+}
+
+#[test]
+fn is_within_checks_the_nearest_existing_folder_of_a_new_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("w");
+    fs::create_dir_all(root.join("sub")).unwrap();
+    // New files under folders that exist (or not yet) inside the root.
+    assert!(is_within(&root, &root.join("new.xlsx")));
+    assert!(is_within(&root, &root.join("sub").join("new.xlsx")));
+    assert!(is_within(
+        &root,
+        &root.join("missing").join("deeper").join("new.xlsx")
+    ));
+
+    let outside = dir.path().join("outside");
+    fs::create_dir(&outside).unwrap();
+    let link = root.join("link");
+    if !link_dir(&outside, &link) {
+        eprintln!("skipped the link part: no symlink or junction could be made here");
+        return;
+    }
+    // A target that does not exist yet behind a link that leaves the root.
+    assert!(!is_within(&root, &link.join("new.xlsx")));
+    assert!(!is_within(&root, &link.join("missing").join("new.xlsx")));
+    // An existing file behind the link was already refused.
+    fs::write(outside.join("there.xlsx"), b"x").unwrap();
+    assert!(!is_within(&root, &link.join("there.xlsx")));
+}
+
+#[test]
+fn a_save_target_behind_a_link_out_of_the_work_folder_is_refused() {
+    let fx = fixture();
+    let outside = fx._dir.path().join("outside");
+    fs::create_dir(&outside).unwrap();
+    let link = fx.root.join("out");
+    if !link_dir(&outside, &link) {
+        eprintln!("skipped: no symlink or junction could be made here");
+        return;
+    }
+    let content = fx.root.join("content.xml");
+    fs::write(&content, sheet_xml(3)).unwrap();
+    let save = fx.engine.handle_line(&line(json!({
+        "version": 1, "requestId": "s", "command": "save_archive",
+        "sourcePath": fx.source, "targetPath": link.join("escaped.xlsx"),
+        "replacements": [{ "name": "xl/worksheets/sheet1.xml", "contentPath": content }],
+        "removals": [], "additions": [],
+    })));
+    assert_eq!(
+        expect_err(save),
+        ("invalid_request", PATH_OUTSIDE_WORK_FOLDER.to_owned())
+    );
+    assert!(!outside.join("escaped.xlsx").exists());
+}
+
+#[test]
+fn external_link_sources_are_never_read() {
+    let fx = fixture();
+    for command in ["update_external_links", "read_external_links"] {
+        let answer = fx.engine.handle_line(&line(json!({
+            "version": 1, "requestId": command, "command": command, "path": fx.source,
+        })));
+        assert_eq!(
+            expect_err(answer),
+            ("invalid_request", EXTERNAL_LINKS_NOT_READ.to_owned()),
+            "{command}"
+        );
+    }
+    // The listing reads only the workbook itself and still answers.
+    let listing = fx.engine.handle_line(&line(json!({
+        "version": 1, "requestId": "l", "command": "list_external_links", "path": fx.source,
+    })));
+    assert_eq!(expect_ok(listing), json!({ "links": [] }));
+}
+
 /// Optional parity check against the desktop sidecar executable. Runs only
 /// when `IEUM_XLSX_SIDECAR_EXE` names a built `xlsx-sidecar` binary: the same
 /// request lines go to the process and to the in-process dispatch, and the
 /// responses must be equal once per-run values (paths, session ids) are
-/// replaced by placeholders.
+/// replaced by placeholders. `update_external_links` and
+/// `read_external_links` are left out on purpose: the phone refuses them
+/// (they read or probe the linked files outside the work folder; see
+/// `external_link_sources_are_never_read`).
 #[test]
 fn responses_match_the_desktop_sidecar_executable() {
     let Some(exe) = std::env::var_os("IEUM_XLSX_SIDECAR_EXE") else {
