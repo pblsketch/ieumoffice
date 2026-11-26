@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PREVIEW_SANDBOX, SID_ATTR } from './htmlPreview'
 
 /**
@@ -34,27 +34,117 @@ export function attachFrameGuards(
   }
 }
 
+/** Where the selection box goes, in the overlay layer's coordinates (px). */
+export interface SelectionBox {
+  readonly left: number
+  readonly top: number
+  readonly width: number
+  readonly height: number
+}
+
+/**
+ * The box of the element `sid` in the frame, measured from outside: the element's rectangle in
+ * the frame's viewport plus where the frame sits in `layer`. Only reads the frame document.
+ */
+export function measureSelection(
+  frame: HTMLIFrameElement,
+  layer: HTMLElement,
+  sid: number,
+): SelectionBox | null {
+  const frameDocument = frame.contentDocument
+  if (!frameDocument || !Number.isInteger(sid)) return null
+  const element = frameDocument.querySelector(`[${SID_ATTR}="${sid}"]`)
+  if (!element) return null
+  const rect = element.getBoundingClientRect()
+  const frameRect = frame.getBoundingClientRect()
+  const layerRect = layer.getBoundingClientRect()
+  return {
+    left: rect.left + frameRect.left + frame.clientLeft - layerRect.left,
+    top: rect.top + frameRect.top + frame.clientTop - layerRect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function sameBox(a: SelectionBox | null, b: SelectionBox | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
+}
+
 export interface HtmlPreviewFrameProps {
   /** The preview copy (CSP and element ids), never the saved text. */
   readonly srcDoc: string
   readonly title: string
   readonly onElementPress?: (sid: number | null) => void
+  /** The selected element (edit mode): drawn as a box over the frame, not inside it. */
+  readonly selectedSid?: number | null
 }
 
-/** The document in a frame that cannot run scripts (spec 5.2). Fits the screen width. */
-export function HtmlPreviewFrame({ srcDoc, title, onElementPress }: HtmlPreviewFrameProps) {
+/**
+ * The document in a frame that cannot run scripts (spec 5.2). Fits the screen width. The
+ * selection (spec 5.3) is a box in a layer above the frame that follows the frame's scrolling
+ * and size; the frame document itself is never changed for it.
+ */
+export function HtmlPreviewFrame({
+  srcDoc,
+  title,
+  onElementPress,
+  selectedSid = null,
+}: HtmlPreviewFrameProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  const layerRef = useRef<HTMLDivElement | null>(null)
   const detachRef = useRef<(() => void) | null>(null)
   const onElementPressRef = useRef(onElementPress)
   onElementPressRef.current = onElementPress
+  const selectedSidRef = useRef(selectedSid)
+  selectedSidRef.current = selectedSid
+  const [box, setBox] = useState<SelectionBox | null>(null)
+
+  const measure = useCallback(() => {
+    const sid = selectedSidRef.current
+    const frame = frameRef.current
+    const layer = layerRef.current
+    const next = sid !== null && frame && layer ? measureSelection(frame, layer, sid) : null
+    setBox((prev) => (sameBox(prev, next) ? prev : next))
+  }, [])
 
   const onLoad = useCallback(() => {
     detachRef.current?.()
     detachRef.current = null
-    const frameDocument = frameRef.current?.contentDocument
-    if (!frameDocument) return
-    detachRef.current = attachFrameGuards(frameDocument, (sid) => onElementPressRef.current?.(sid))
-  }, [])
+    const frame = frameRef.current
+    const frameDocument = frame?.contentDocument
+    if (!frameDocument) {
+      measure()
+      return
+    }
+    const detachGuards = attachFrameGuards(frameDocument, (sid) => onElementPressRef.current?.(sid))
+    // scrolling of the page or of any box in it, and the frame's own size, move the element
+    const frameWindow = frameDocument.defaultView
+    frameDocument.addEventListener('scroll', measure, true)
+    frameWindow?.addEventListener('resize', measure)
+    detachRef.current = () => {
+      detachGuards()
+      frameDocument.removeEventListener('scroll', measure, true)
+      frameWindow?.removeEventListener('resize', measure)
+    }
+    measure()
+  }, [measure])
+
+  useEffect(measure, [selectedSid, measure])
+
+  // the app's own layout (rotation, keyboard, tablet panes) moves or resizes the frame
+  useEffect(() => {
+    const frame = frameRef.current
+    window.addEventListener('resize', measure)
+    const observer =
+      typeof ResizeObserver === 'undefined' || !frame ? null : new ResizeObserver(() => measure())
+    if (observer && frame) observer.observe(frame)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
+  }, [measure])
 
   useEffect(
     () => () => {
@@ -65,14 +155,30 @@ export function HtmlPreviewFrame({ srcDoc, title, onElementPress }: HtmlPreviewF
   )
 
   return (
-    <iframe
-      ref={frameRef}
-      className="web-html-frame"
-      title={title}
-      sandbox={PREVIEW_SANDBOX}
-      srcDoc={srcDoc}
-      onLoad={onLoad}
-      data-testid="web-html-preview"
-    />
+    <div className="web-html-stage">
+      <iframe
+        ref={frameRef}
+        className="web-html-frame"
+        title={title}
+        sandbox={PREVIEW_SANDBOX}
+        srcDoc={srcDoc}
+        onLoad={onLoad}
+        data-testid="web-html-preview"
+      />
+      <div ref={layerRef} className="web-html-overlay" aria-hidden="true">
+        {selectedSid !== null && box && (
+          <div
+            className="web-html-selection"
+            data-testid="web-html-selection"
+            data-sid={selectedSid}
+            style={{
+              transform: `translate(${box.left}px, ${box.top}px)`,
+              width: `${box.width}px`,
+              height: `${box.height}px`,
+            }}
+          />
+        )}
+      </div>
+    </div>
   )
 }

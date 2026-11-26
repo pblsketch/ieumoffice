@@ -79,3 +79,28 @@ export function IconWebPreview(props: IconProps) {
     </SvgIcon>
   )
 }
+
+/** Edit the selected element's text (a "T" with a pen stroke). */
+export function IconWebEditText(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="4 7 4 4 14 4 14 7" />
+      <line x1="9" y1="4" x2="9" y2="16" />
+      <line x1="6.5" y1="16" x2="11.5" y2="16" />
+      <path d="M18.5 10.5a1.6 1.6 0 0 1 2.3 2.3L15 18.6l-3 .8.8-3 5.7-5.9z" />
+    </SvgIcon>
+  )
+}
+
+/** Delete the selected element (a bin). */
+export function IconWebDelete(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="4 7 20 7" />
+      <path d="M9 7V4.5h6V7" />
+      <path d="M6.5 7l1 12.5h9l1-12.5" />
+      <line x1="10" y1="11" x2="10" y2="16" />
+      <line x1="14" y1="11" x2="14" y2="16" />
+    </SvgIcon>
+  )
+}

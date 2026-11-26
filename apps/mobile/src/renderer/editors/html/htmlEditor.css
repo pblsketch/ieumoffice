@@ -19,6 +19,36 @@
   background: Canvas;
 }
 
+/* The frame and, above it, the layer that draws the selection (spec 5.3): the box is the
+ * parent's, so the document in the frame is never changed to show it. */
+.web-html-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.web-html-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.web-html-selection {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  min-width: var(--m-space-1);
+  min-height: var(--m-space-1);
+  /* the same line on every side, just outside the element so its text stays clear */
+  outline: var(--m-space-half) solid var(--color-border-brand);
+  outline-offset: var(--m-space-half);
+  border-radius: var(--m-space-half);
+}
+
 .web-html-source {
   flex: 1;
   width: 100%;

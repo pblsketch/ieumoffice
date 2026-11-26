@@ -1,6 +1,6 @@
 // One opened HTML document (spec 5): its source, the preview copy shown in a script-less frame,
 // the source view, undo and redo, and the file side. Loaded only when an HTML document opens.
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { MobileHtmlApi } from '@genoffice/mobile-bridge/html'
 import { isMobileCommandError } from '@genoffice/mobile-bridge/transport'
 import { translateMobile } from '../../i18n'
@@ -14,9 +14,26 @@ import {
   type PatchOrigin,
 } from '../../../../../html/src/renderer/document/patch'
 import type { ParseMap } from '../../../../../html/src/renderer/document/parse-map'
-import { IconWebPreview, IconWebSource } from '../../components/icons/web'
+import { compileOps } from '../../../../../html/src/renderer/document/ops'
+import {
+  IconWebDelete,
+  IconWebEditText,
+  IconWebPreview,
+  IconWebSource,
+} from '../../components/icons/web'
 import { HtmlPreviewFrame } from './HtmlPreviewFrame'
 import { HtmlSourceView } from './HtmlSourceView'
+import { HtmlTextEditSheet } from './HtmlTextEditSheet'
+import {
+  compileRemove,
+  diffAsPatch,
+  findSelectedEntry,
+  mapOffsetThroughPatches,
+  planTextEdit,
+  textEditOps,
+  type HtmlSelection,
+  type HtmlTextEditPlan,
+} from './htmlElementEdit'
 import { buildPreviewCopy, hasDocumentScript, mapDocument } from './htmlPreview'
 import './htmlEditor.css'
 
@@ -34,6 +51,8 @@ interface HtmlKeptState {
   /** Bumped by every edit; the element map and patch sets carry it. */
   readonly version: number
   readonly view: HtmlView
+  /** The element selected in the preview (edit mode), held by its place in the source. */
+  readonly selection: HtmlSelection | null
 }
 
 function createKeptState<T extends object>(initial: T) {
@@ -92,6 +111,7 @@ export function startHtmlDocument(
     source: opened.text,
     version: 0,
     view: 'preview',
+    selection: null,
   })
   const readSource = () => kept.get().source
 
@@ -117,9 +137,33 @@ export function startHtmlDocument(
   // ---- undo and redo: one step per patch set ----
   const undoStack: string[] = []
   const redoStack: string[] = []
-  const writeSource = (next: string) => {
-    const version = kept.get().version + 1
-    kept.set({ source: next, version })
+
+  /**
+   * Finds the selected element again in the current version: the element that now starts where
+   * the selected one's start tag moved to, with the same tag. None: the selection is cleared.
+   * In the source view the element map is not needed, so this waits for the preview.
+   */
+  const resolveSelection = () => {
+    const { selection, source, version, view } = kept.get()
+    if (!selection || selection.sid !== null || view !== 'preview') return
+    const entry = findSelectedEntry(mapFor(source, version), selection)
+    kept.set({ selection: entry ? { ...selection, sid: entry.sid } : null })
+  }
+
+  /**
+   * Writes a new source. `patches` describe the change when it is a patch set; otherwise (undo,
+   * redo, a whole-source replace) the selection follows the one patch between the two texts.
+   */
+  const writeSource = (next: string, patches: readonly Patch[] | null = null) => {
+    const { source: before, version: prevVersion, selection } = kept.get()
+    const version = prevVersion + 1
+    let followed: HtmlSelection | null = null
+    if (selection) {
+      const start = mapOffsetThroughPatches(selection.start, patches ?? [diffAsPatch(before, next)])
+      followed = start === null ? null : { start, tag: selection.tag, sid: null }
+    }
+    kept.set({ source: next, version, selection: followed })
+    resolveSelection()
     host.markDirty(true)
     host.contentChanged()
     noticeScriptOnce(next, version)
@@ -144,7 +188,75 @@ export function startHtmlDocument(
     undoStack.push(source)
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
     redoStack.length = 0
-    writeSource(next)
+    const wholeSource =
+      patches.length === 1 && patches[0]!.from === 0 && patches[0]!.to === source.length
+    writeSource(next, wholeSource ? null : patches)
+    return true
+  }
+
+  // ---- element editing (spec 5.4): selection, edit text, delete ----
+  const selectElement = (sid: number | null) => {
+    if (sid === null) {
+      if (kept.get().selection) kept.set({ selection: null })
+      return
+    }
+    const { source, version } = kept.get()
+    const entry = mapFor(source, version).bySid.get(sid)
+    kept.set({ selection: entry ? { start: entry.startTag[0], tag: entry.tag, sid } : null })
+  }
+
+  /** The selected element's entry in the current version, or null. */
+  const selectedEntry = () => {
+    const { selection, source, version } = kept.get()
+    if (!selection || selection.sid === null) return null
+    return mapFor(source, version).bySid.get(selection.sid) ?? null
+  }
+
+  /** What "edit text" offers for the selection, with the version it was read from. */
+  const planForSelection = (): { plan: HtmlTextEditPlan; version: number } | null => {
+    const entry = selectedEntry()
+    if (!entry) return null
+    const { source, version } = kept.get()
+    const plan = planTextEdit(source, mapFor(source, version), entry.sid)
+    return plan ? { plan, version } : null
+  }
+
+  /** Applies the edited fields as one patch set (one undo step). false: refused (a toast said why). */
+  const applyTextEdit = (
+    planned: { plan: HtmlTextEditPlan; version: number },
+    values: readonly string[],
+  ): boolean => {
+    const { source, version } = kept.get()
+    if (planned.version !== version) {
+      showToast(tNow('webHtmlEditFailed'))
+      return false
+    }
+    const ops = textEditOps(planned.plan, values)
+    if (ops.length === 0) return true
+    const compiled = compileOps(source, mapFor(source, version), ops)
+    if (compiled.errors.length > 0 || !applyPatches(compiled.patches, 'manual', 'edit-text')) {
+      showToast(tNow('webHtmlEditFailed'))
+      return false
+    }
+    return true
+  }
+
+  /** Removes the selected element (one undo step); the document's html, head and body stay. */
+  const deleteSelected = (): boolean => {
+    const entry = selectedEntry()
+    if (!entry) return false
+    const { source, version } = kept.get()
+    const result = compileRemove(source, mapFor(source, version), entry.sid)
+    if (!result.ok) {
+      showToast(tNow(result.reason === 'structural' ? 'webHtmlCannotDelete' : 'webHtmlEditFailed'))
+      return false
+    }
+    const { patches, errors } = result.compiled
+    if (errors.length > 0 || !applyPatches(patches, 'manual', 'remove')) {
+      showToast(tNow('webHtmlEditFailed'))
+      return false
+    }
+    showToast(tNow('webHtmlDeleted'))
     return true
   }
 
@@ -199,12 +311,27 @@ export function startHtmlDocument(
     }
   }
 
-  const setView = (view: HtmlView) => kept.set({ view })
+  const setView = (view: HtmlView) => {
+    kept.set({ view })
+    resolveSelection()
+  }
 
   function HtmlWorkspace({ frame, mode, canEdit, lang }: EditorWorkspaceProps) {
-    const { source, version, view } = useSyncExternalStore(kept.subscribe, kept.get)
+    const { source, version, view, selection } = useSyncExternalStore(kept.subscribe, kept.get)
     const t = useCallback((key: MobileStringKey) => translateMobile(lang, key), [lang])
     const editing = mode === 'edit' && canEdit && !readOnly
+    const [textPlan, setTextPlan] = useState<{ plan: HtmlTextEditPlan; version: number } | null>(
+      null,
+    )
+
+    // Selecting is an edit-mode thing: leaving edit mode drops the selection and the sheet.
+    useEffect(() => {
+      if (editing) return
+      selectElement(null)
+      setTextPlan(null)
+    }, [editing])
+
+    const selectedSid = editing && view === 'preview' ? (selection?.sid ?? null) : null
     const showSource = view === 'source'
 
     const previewCopy = useMemo(() => {
@@ -233,14 +360,34 @@ export function startHtmlDocument(
           }
     }, [showSource, mode, t])
 
-    const quickActions = useMemo(
-      (): EditorQuickActionItem[] => [
+    // [글 고치기] and [지우기] act on the selected element; with none selected they are not offered
+    const hasSelection = selectedSid !== null
+    const quickActions = useMemo((): EditorQuickActionItem[] => {
+      const items: EditorQuickActionItem[] = [
         { id: 'undo', label: t('undo'), onPress: undo },
         { id: 'redo', label: t('redo'), onPress: redo },
         toggleView,
-      ],
-      [t, toggleView],
-    )
+      ]
+      if (hasSelection) {
+        items.push(
+          {
+            id: 'webHtmlEditText',
+            label: t('webHtmlEditText'),
+            icon: <IconWebEditText size={19} />,
+            onPress: () => setTextPlan(planForSelection()),
+          },
+          {
+            id: 'webHtmlDelete',
+            label: t('webHtmlDelete'),
+            icon: <IconWebDelete size={19} />,
+            onPress: () => {
+              deleteSelected()
+            },
+          },
+        )
+      }
+      return items
+    }, [t, toggleView, hasSelection])
 
     return (
       <EditorShell
@@ -260,9 +407,28 @@ export function startHtmlDocument(
               onChange={replaceSource}
             />
           ) : (
-            <HtmlPreviewFrame srcDoc={previewCopy} title={t('webHtmlFrameTitle')} />
+            <HtmlPreviewFrame
+              srcDoc={previewCopy}
+              title={t('webHtmlFrameTitle')}
+              // view mode: a press selects nothing
+              onElementPress={editing ? selectElement : undefined}
+              selectedSid={selectedSid}
+            />
           )}
         </div>
+        <HtmlTextEditSheet
+          plan={editing ? (textPlan?.plan ?? null) : null}
+          onApply={(values) => {
+            // a refused edit has told why in a toast; either way the sheet is done
+            if (textPlan) applyTextEdit(textPlan, values)
+            setTextPlan(null)
+          }}
+          onCancel={() => setTextPlan(null)}
+          onEditInSource={() => {
+            setTextPlan(null)
+            setView('source')
+          }}
+        />
       </EditorShell>
     )
   }
