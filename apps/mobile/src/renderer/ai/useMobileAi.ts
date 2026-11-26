@@ -629,7 +629,11 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     })()
   }
 
-  const settingsSlot = useMemo<MobileAiSettingsSlot>(() => ({}), [])
+  // what the settings' AI rows need beyond SettingsScreen's props (ai/settingsSlot.ts)
+  const settingsSlot = useMemo<MobileAiSettingsSlot>(
+    () => ({ client, applyAiSettings: setAiSettings }),
+    [client],
+  )
 
   const settingsProps: MobileAiSettingsProps = {
     aiSettings,

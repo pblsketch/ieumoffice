@@ -1,0 +1,78 @@
+/* The settings' AI rows (track T7): hints, the self-hosted server form, the AI tool switches, the AI result store rows and their confirm sheets. Tokens only. */
+
+.ai-set-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  min-width: 0;
+}
+
+.ai-set-hint {
+  margin: 0;
+  font-size: var(--m-text-caption);
+  font-weight: 400;
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+.ai-set-reason {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  color: var(--danger);
+}
+
+.ai-set-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-space-4);
+  min-height: var(--m-hit);
+  cursor: pointer;
+}
+
+.ai-set-switch-row .mobile-switch {
+  flex-shrink: 0;
+}
+
+.ai-set-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.ai-set-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+}
+
+.ai-set-field-label {
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ai-set-results-row {
+  min-height: var(--m-hit);
+}
+
+.ai-set-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.ai-set-confirm-body {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  color: var(--text-primary);
+}
+
+.ai-set-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
