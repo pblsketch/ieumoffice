@@ -51,4 +51,12 @@ describe('pdf structure wiring', () => {
   it("checks the view's grants with the pdf editor's own table", () => {
     expect(ipc).toContain('pdfPathGranted(owner, path)')
   })
+
+  it('routes PDF -> Word/PowerPoint/Excel exports through runWindowJob instead of in-process PDFium', () => {
+    const index = main('index.ts')
+    expect(index).not.toMatch(/convertPdfFileTo(Docx|Pptx|Xlsx)LocalWithPrompt/)
+    expect(index).toMatch(/convertPdfFileViaJobWithPrompt\([\s\S]*?runWindowJob\([\s\S]*?'docx'/)
+    expect(index).toMatch(/convertPdfFileViaJobWithPrompt\([\s\S]*?runWindowJob\([\s\S]*?'pptx'/)
+    expect(index).toMatch(/convertPdfFileViaJobWithPrompt\([\s\S]*?runWindowJob\([\s\S]*?'xlsx'/)
+  })
 })

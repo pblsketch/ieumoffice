@@ -340,7 +340,7 @@ describe('PDF tools v2 structure jobs', () => {
         deps,
         noProgress,
       )
-      expect(res).toEqual({ outPath })
+      expect(res).toMatchObject({ outPath, pages: 1 })
       expect(existsSync(outPath)).toBe(true)
       const bytes = readFileSync(outPath)
       // All four output formats are ZIP containers (PK..)
@@ -379,7 +379,7 @@ describe('PDF tools v2 structure jobs', () => {
       deps,
       noProgress,
     )
-    expect(encConvertRes).toEqual({ outPath: encDocxPath })
+    expect(encConvertRes).toMatchObject({ outPath: encDocxPath, pages: 1 })
     expect(existsSync(encDocxPath)).toBe(true)
   })
 })
