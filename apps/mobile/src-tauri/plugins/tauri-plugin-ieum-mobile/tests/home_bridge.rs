@@ -454,16 +454,25 @@ fn keep_screen_on_is_recorded() {
 }
 
 #[test]
-fn only_https_urls_are_opened() {
+fn only_http_https_and_mailto_urls_are_opened() {
     let bridge = HostFileBridge::new();
-    bridge
-        .open_external_url("https://ieumoffice.com/help")
-        .unwrap();
+    for ok in [
+        "https://ieumoffice.com/help",
+        "http://ieumoffice.com/legacy",
+        "mailto:support@ieumoffice.com",
+    ] {
+        bridge.open_external_url(ok).unwrap();
+    }
     for bad in [
-        "http://ieumoffice.com",
         "javascript:alert(1)",
         "file:///etc/passwd",
+        "data:text/html,hi",
+        "content://docs/1",
+        "tel:123456",
         "https://",
+        "http://",
+        "mailto:",
+        "http://user@ieumoffice.com",
         "",
         "https://exa mple.com",
         "intent://x#Intent;end",
@@ -471,7 +480,14 @@ fn only_https_urls_are_opened() {
         let err = bridge.open_external_url(bad).unwrap_err();
         assert_eq!(err.kind, NativeHomeErrorKind::InvalidArgument, "{bad:?}");
     }
-    assert_eq!(bridge.opened_urls(), vec!["https://ieumoffice.com/help"]);
+    assert_eq!(
+        bridge.opened_urls(),
+        vec![
+            "https://ieumoffice.com/help",
+            "http://ieumoffice.com/legacy",
+            "mailto:support@ieumoffice.com",
+        ]
+    );
 }
 
 #[test]

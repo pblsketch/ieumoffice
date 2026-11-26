@@ -535,8 +535,8 @@ public final class IeumFilePlugin: Plugin {
 
     @objc public func openExternalUrl(_ invoke: Invoke) throws {
         let args = try invoke.parseArgs(UrlArgs.self)
-        guard isHttpsUrl(args.url), let url = URL(string: args.url) else {
-            invoke.reject("INVALID_ARGUMENT: only https URLs are opened")
+        guard isOpenableExternalUrl(args.url), let url = URL(string: args.url) else {
+            invoke.reject("INVALID_ARGUMENT: only http, https, and mailto URLs are opened")
             return
         }
         DispatchQueue.main.async {
@@ -693,19 +693,28 @@ public final class IeumFilePlugin: Plugin {
         }
     }
 
-    private func isHttpsUrl(_ raw: String) -> Bool {
+    private func isOpenableExternalUrl(_ raw: String) -> Bool {
         if raw.unicodeScalars.contains(where: {
             CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
         }) {
             return false
         }
         guard let components = URLComponents(string: raw),
-              components.scheme?.lowercased() == "https",
-              let host = components.host, !host.isEmpty,
-              components.user == nil, components.password == nil else {
+              let scheme = components.scheme?.lowercased() else {
             return false
         }
-        return true
+        switch scheme {
+        case "https", "http":
+            guard let host = components.host, !host.isEmpty,
+                  components.user == nil, components.password == nil else {
+                return false
+            }
+            return true
+        case "mailto":
+            return !components.path.isEmpty
+        default:
+            return false
+        }
     }
 
     private func homeFailure(_ error: Error) -> String {

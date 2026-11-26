@@ -15,7 +15,8 @@ mod mobile_bridge {
     use crate::fs::{
         FolderGrantState, NativeDirs, NativeFileBridge, NativeFolderEntry, NativeFsError,
         NativeFsErrorKind, NativeHomeError, NativeHomeErrorKind, NativeIncomingBatch, PickedFile,
-        PickedFolder, WRITE_WORK_RELATIVE_DIR, is_https_url, unique_work_path, write_uri_from_file,
+        PickedFolder, WRITE_WORK_RELATIVE_DIR, is_openable_external_url, unique_work_path,
+        write_uri_from_file,
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use serde::{Deserialize, Serialize};
@@ -392,10 +393,10 @@ mod mobile_bridge {
 
         fn open_external_url(&self, url: &str) -> Result<(), NativeHomeError> {
             // Refused here too, so a bad URL never reaches the native side.
-            if !is_https_url(url) {
+            if !is_openable_external_url(url) {
                 return Err(NativeHomeError::new(
                     NativeHomeErrorKind::InvalidArgument,
-                    "only https URLs are opened",
+                    "only http, https, and mailto URLs are opened",
                 ));
             }
             let _: serde_json::Value = self

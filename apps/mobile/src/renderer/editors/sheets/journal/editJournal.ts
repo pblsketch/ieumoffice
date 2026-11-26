@@ -392,19 +392,7 @@ function installJournalListener(
       return
     }
     if (event.id === C.SET_ZOOM_OPERATION || event.id === C.SET_ZOOM_COMMAND) {
-      // Excel persists the normal-view zoom in the file.
-      const zoom = event.params as { subUnitId?: string; zoomRatio?: number } | undefined
-      if (
-        zoom?.subUnitId &&
-        typeof zoom.zoomRatio === 'number' &&
-        Number.isFinite(zoom.zoomRatio) &&
-        !isSheetRemoved(state.editJournal, zoom.subUnitId)
-      ) {
-        recordPageSetup(state.editJournal, zoom.subUnitId, {
-          zoomScale: Math.min(400, Math.max(10, Math.round(zoom.zoomRatio * 100))),
-        })
-        setPendingEdits(journalSize(state.editJournal))
-      }
+      // On mobile, sheet zoom is view-only state and never marks the workbook dirty.
       return
     }
     if (event.id === C.REORDER_RANGE_MUTATION) {

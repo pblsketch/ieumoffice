@@ -26,7 +26,7 @@ use std::time::SystemTime;
 use stores::StoredFavorite;
 use tauri_plugin_ieum_mobile::fs::{
     FolderGrantState, INCOMING_RELATIVE_DIR, NativeDirs, NativeFsError, NativeFsErrorKind,
-    NativeHomeError, NativeHomeErrorKind, is_https_url, is_valid_document_name,
+    NativeHomeError, NativeHomeErrorKind, is_openable_external_url, is_valid_document_name,
 };
 use uuid::Uuid;
 
@@ -1312,11 +1312,11 @@ impl HomeService {
 
     /// Opens an `https://` URL in the system browser; anything else is `mobile.home.urlRefused`.
     pub fn open_external_url(&self, url: &str) -> MobileResult<HomeOkResult> {
-        if !is_https_url(url) {
+        if !is_openable_external_url(url) {
             return Err(err(
                 MobileErrorCode::InvalidArgument,
                 KEY_URL_REFUSED,
-                "only https URLs are opened",
+                "only http, https, and mailto URLs are opened",
             ));
         }
         self.files

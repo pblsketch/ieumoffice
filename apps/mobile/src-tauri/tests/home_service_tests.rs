@@ -1027,21 +1027,32 @@ fn app_info_screen_and_external_links() {
     e.home.keep_screen_on(false).unwrap();
     assert!(!e.bridge.keep_screen_on());
 
-    for bad in ["http://example.com", "javascript:alert(1)", "file:///etc"] {
+    for bad in [
+        "javascript:alert(1)",
+        "file:///etc",
+        "intent://x#Intent;end",
+        "data:text/html,x",
+        "mailto:",
+    ] {
         assert_err(
             e.home.open_external_url(bad).unwrap_err(),
             MobileErrorCode::InvalidArgument,
             "mobile.home.urlRefused",
         );
     }
-    assert!(
-        e.home
-            .open_external_url("https://example.com/a")
-            .unwrap()
-            .ok
-    );
+    for ok in [
+        "https://example.com/a",
+        "http://example.com/b",
+        "mailto:reader@example.com",
+    ] {
+        assert!(e.home.open_external_url(ok).unwrap().ok);
+    }
     assert_eq!(
         e.bridge.opened_urls(),
-        vec!["https://example.com/a".to_string()]
+        vec![
+            "https://example.com/a".to_string(),
+            "http://example.com/b".to_string(),
+            "mailto:reader@example.com".to_string(),
+        ]
     );
 }

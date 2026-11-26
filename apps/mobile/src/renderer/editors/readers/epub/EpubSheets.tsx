@@ -7,7 +7,7 @@ import type { MobileClient } from '@genoffice/mobile-bridge/transport'
 import { Sheet } from '../../../components/Sheet'
 import type { ToastRequest } from '../../../components/Toast'
 import type { MobileStringKey } from '../../../i18n/strings'
-import { copyText, readerExternalUrlOpener } from '../shared/externalUrl'
+import { copyText, isOpenableExternalUrl, readerExternalUrlOpener } from '../shared/externalUrl'
 import type { ReaderTocEntry } from './book'
 import type { EpubSearchState } from './epubReader'
 import { FONT_SCALES, LINE_HEIGHTS, READER_LAYOUTS, READER_THEMES } from './epubView'
@@ -284,15 +284,6 @@ export function EpubSettingsSheet({
   )
 }
 
-/** True for the addresses T6's bridge opens: https only. */
-function opensOutside(url: string): boolean {
-  try {
-    return new URL(url).protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 export function EpubLinkSheet({
   url,
   client,
@@ -310,7 +301,7 @@ export function EpubLinkSheet({
   useEffect(() => setOpenFailed(false), [url])
   // read at use: the opener is present once track T6 is on this branch
   const opener = readerExternalUrlOpener
-  const canOpen = url !== null && opener !== null && !openFailed && opensOutside(url)
+  const canOpen = url !== null && opener !== null && !openFailed && isOpenableExternalUrl(url)
   return (
     <Sheet
       open={url !== null}

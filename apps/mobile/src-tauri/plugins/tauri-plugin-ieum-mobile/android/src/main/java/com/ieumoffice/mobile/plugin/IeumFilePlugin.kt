@@ -737,12 +737,16 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun openExternalUrl(invoke: Invoke) {
         val args = invoke.parseArgs(UrlArgs::class.java)
-        if (!isHttpsUrl(args.url)) {
-            invoke.reject("INVALID_ARGUMENT: only https URLs are opened")
+        if (!isOpenableExternalUrl(args.url)) {
+            invoke.reject("INVALID_ARGUMENT: only http, https, and mailto URLs are opened")
             return
         }
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(args.url))
-            .addCategory(Intent.CATEGORY_BROWSABLE)
+        val parsed = Uri.parse(args.url)
+        val intent = Intent(Intent.ACTION_VIEW, parsed).apply {
+            if (!parsed.scheme.equals("mailto", ignoreCase = true)) {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            }
+        }
         activity.runOnUiThread {
             try {
                 activity.startActivity(intent)
@@ -1037,12 +1041,15 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
         return if (majors.size == 1) "${majors[0]}/*" else "*/*"
     }
 
-    private fun isHttpsUrl(url: String): Boolean {
+    private fun isOpenableExternalUrl(url: String): Boolean {
         if (url.any { it.isWhitespace() || it.isISOControl() }) return false
         val uri = Uri.parse(url)
-        return uri.scheme.equals("https", ignoreCase = true) &&
-            !uri.host.isNullOrEmpty() &&
-            uri.userInfo == null
+        val scheme = uri.scheme?.lowercase() ?: return false
+        return when (scheme) {
+            "https", "http" -> !uri.host.isNullOrEmpty() && uri.userInfo == null
+            "mailto" -> !uri.schemeSpecificPart.isNullOrEmpty()
+            else -> false
+        }
     }
 
     private fun queryDisplayName(uri: Uri): String {

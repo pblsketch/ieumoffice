@@ -232,6 +232,16 @@ describe('view mode on the grid', () => {
     expect(sheet.getRange(2, 1).getValue()).not.toBe('edited')
   }, 180_000)
 
+  it('keeps the workbook clean (not dirty) when zooming in view mode', async () => {
+    const { runtime, commands, state } = boot(true)
+    const unitId = runtime.univerAPI.getActiveWorkbook()!.getId()
+    expect(journalSize(state.editJournal)).toBe(0)
+    expect(
+      await attempt(commands, ZOOM_OPERATION.id, { unitId, subUnitId: 'sheet-1', zoomRatio: 1.8 }),
+    ).toBe(true)
+    expect(journalSize(state.editJournal)).toBe(0)
+  }, 180_000)
+
   it('blocks any other undo and redo in view mode (a tablet keyboard Ctrl+Z, say)', async () => {
     const { runtime, commands, guard, sheet } = boot(false)
     sheet.getRange(2, 1).setValue('edited')

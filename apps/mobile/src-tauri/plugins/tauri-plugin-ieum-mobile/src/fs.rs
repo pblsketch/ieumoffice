@@ -164,7 +164,7 @@ impl From<NativeFsError> for NativeHomeError {
 }
 
 /// True for an absolute `https://` URL with a host and no whitespace, control characters,
-/// or user info. Everything else is refused by `open_external_url`.
+/// or user info.
 pub fn is_https_url(url: &str) -> bool {
     let Some(scheme) = url.get(..8) else {
         return false;
@@ -178,6 +178,31 @@ pub fn is_https_url(url: &str) -> bool {
     let rest = &url[8..];
     let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
     !authority.is_empty() && !authority.contains('@') && !authority.starts_with(':')
+}
+
+/// True for an absolute `https://`, `http://` (with a host and no user info), or `mailto:` URL
+/// with no whitespace or control characters. Everything else is refused by `open_external_url`.
+pub fn is_openable_external_url(url: &str) -> bool {
+    if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    if is_https_url(url) {
+        return true;
+    }
+    if let Some(scheme) = url.get(..7)
+        && scheme.eq_ignore_ascii_case("http://")
+    {
+        let rest = &url[7..];
+        let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+        return !authority.is_empty() && !authority.contains('@') && !authority.starts_with(':');
+    }
+    if let Some(scheme) = url.get(..7)
+        && scheme.eq_ignore_ascii_case("mailto:")
+    {
+        let rest = &url[7..];
+        return !rest.is_empty();
+    }
+    false
 }
 
 /// True when `name` can be a document name: not blank, no path separators, not `.`/`..`,
@@ -1096,10 +1121,10 @@ impl NativeFileBridge for HostFileBridge {
     }
 
     fn open_external_url(&self, url: &str) -> Result<(), NativeHomeError> {
-        if !is_https_url(url) {
+        if !is_openable_external_url(url) {
             return Err(NativeHomeError::new(
                 NativeHomeErrorKind::InvalidArgument,
-                "only https URLs are opened",
+                "only http, https, and mailto URLs are opened",
             ));
         }
         self.state.lock().unwrap().opened_urls.push(url.to_string());

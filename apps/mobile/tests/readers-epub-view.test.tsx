@@ -625,6 +625,13 @@ describe('the EPUB kind', () => {
 describe('reading a book', () => {
   it('opens at the first reading item and keeps the screen on while reading', async () => {
     const env = makeEnv(await buildBook(), newStore())
+    // Hold book parsing for one macrotask so EpubWorkspace deterministically renders the
+    // opening state (keepScreenOn=false) before transitioning to ready (keepScreenOn=true).
+    const realOpenBook = vi.mocked(openBook).getMockImplementation()!
+    vi.mocked(openBook).mockImplementationOnce(async (bytes) => {
+      await sleep(20)
+      return realOpenBook(bytes)
+    })
     const { view, doc } = await openDocument(env)
     await loadFrame(view.el)
     expect(chapterName(view.el)).toBe('Chapter One')
@@ -976,28 +983,21 @@ describe('links in a chapter', () => {
     doc.dispose?.()
   })
 
-  it('opens https addresses with the opener, never http or mailto', async () => {
+  it('opens https, http, and mailto addresses with the opener', async () => {
     const opener = vi.fn(async () => {})
     h.opener = opener
     const env = makeEnv(await buildBook(), newStore())
     const { view, doc } = await openDocument(env)
     const frameDoc = await loadFrame(view.el)
 
-    clickLink(frameDoc, 'http://example.com/y')
-    expect(byTestId('epub-link-url')?.textContent).toBe('http://example.com/y')
-    expect(byTestId('epub-link-open')).toBeNull()
-    click(document.querySelector('[data-testid="epub-link-sheet"] .mobile-icon-btn'))
-    expect(byTestId('epub-link-sheet')).toBeNull()
-
-    clickLink(frameDoc, 'mailto:a@example.com')
-    expect(byTestId('epub-link-open')).toBeNull()
-    expect(byTestId('epub-link-copy')).not.toBeNull()
-    click(document.querySelector('[data-testid="epub-link-sheet"] .mobile-icon-btn'))
-
-    clickLink(frameDoc, 'https://example.com/x')
-    click(byTestId('epub-link-open'))
-    await waitFor(() => byTestId('epub-link-sheet') === null)
-    expect(opener).toHaveBeenCalledWith(env.client, 'https://example.com/x')
+    for (const url of ['http://example.com/y', 'mailto:a@example.com', 'https://example.com/x']) {
+      clickLink(frameDoc, url)
+      expect(byTestId('epub-link-url')?.textContent).toBe(url)
+      expect(byTestId('epub-link-open')).not.toBeNull()
+      click(byTestId('epub-link-open'))
+      await waitFor(() => byTestId('epub-link-sheet') === null)
+      expect(opener).toHaveBeenCalledWith(env.client, url)
+    }
     doc.dispose?.()
   })
 
