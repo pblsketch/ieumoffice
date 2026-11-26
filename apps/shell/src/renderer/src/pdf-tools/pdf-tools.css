@@ -74,7 +74,7 @@ body {
 
 .pt-title {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -194,7 +194,7 @@ body {
 
 .pt-tool-title {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -896,7 +896,7 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -964,7 +964,7 @@ body {
 }
 
 .pt-split-preview-count {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }
