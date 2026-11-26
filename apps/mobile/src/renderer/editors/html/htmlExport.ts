@@ -20,6 +20,8 @@ export interface HtmlOdtResult extends HtmlDocxResult {
 }
 
 export interface HtmlExportOptions {
+  /** What stands where a picture without words could not be captured (screen language). */
+  readonly missingPictureText: string
   /** Where the hidden frame goes (default: this document's body). */
   readonly host?: HTMLElement
   readonly timeoutMs?: number
@@ -28,10 +30,14 @@ export interface HtmlExportOptions {
 /** The HTML (the export copy of the source on screen) as a Word document. */
 export async function htmlToDocx(
   html: string,
-  options: HtmlExportOptions = {},
+  options: HtmlExportOptions,
 ): Promise<HtmlDocxResult> {
   const { convertHtmlToDocx } = await import('@genoffice/html2docx')
-  const driver = new SandboxFrameDriver({ html, host: options.host })
+  const driver = new SandboxFrameDriver({
+    html,
+    host: options.host,
+    missingPictureText: options.missingPictureText,
+  })
   const abort = new AbortController()
   let watchdog: ReturnType<typeof setTimeout> | undefined
   try {
@@ -53,10 +59,7 @@ export async function htmlToDocx(
 }
 
 /** The HTML as an ODT: its Word document converted by `docxToOdt`, as the desktop ODT export does. */
-export async function htmlToOdt(
-  html: string,
-  options: HtmlExportOptions = {},
-): Promise<HtmlOdtResult> {
+export async function htmlToOdt(html: string, options: HtmlExportOptions): Promise<HtmlOdtResult> {
   const [docx, { docxToOdt }] = await Promise.all([
     htmlToDocx(html, options),
     import('@genoffice/odt-engine'),

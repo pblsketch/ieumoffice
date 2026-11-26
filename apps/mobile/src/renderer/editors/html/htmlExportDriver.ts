@@ -3,8 +3,15 @@
 // a hidden frame that cannot run scripts (the same sandbox as the preview), and the converter's
 // in-page code runs in this window with the frame's globals in scope. The document's own scripts
 // never run. There is no page capture, so pictures that the converter would capture are lost,
-// except plain images, which are drawn from their own pixels when the browser allows it.
-import type { BrowserDriver, ScreenshotOptions, Viewport } from '@genoffice/html2docx'
+// except plain images, which are drawn from their own pixels when the browser allows it. A block
+// whose capture fails keeps its words (htmlExportCaptures.ts).
+import {
+  EXTRACTOR_CALL,
+  type BrowserDriver,
+  type ScreenshotOptions,
+  type Viewport,
+} from '@genoffice/html2docx'
+import { clipOwners, keepCapturedText, shotIdOfSelector, visibleText } from './htmlExportCaptures'
 import { PREVIEW_SANDBOX } from './htmlPreview'
 
 /** The only "address" this driver loads: the HTML it was given, as the frame's srcdoc. */
@@ -87,6 +94,10 @@ export interface FrameDriverOptions {
   readonly html: string
   /** Where the hidden frame goes (default: this document's body). */
   readonly host?: HTMLElement
+  /** What stands in the document where a picture without words could not be captured. */
+  readonly missingPictureText: string
+  /** The converter's extraction call (tests hand a stand-in; default html2docx's own). */
+  readonly extractorCall?: string
 }
 
 /**
@@ -101,12 +112,23 @@ export class SandboxFrameDriver implements BrowserDriver {
   private frame: HTMLIFrameElement | null = null
   private readonly timers = parentTimers()
   private closed = false
+  private readonly missingPictureText: string
+  private readonly extractorCall: string
+  /** The intent tree the converter extracted (the very objects it goes on to generate from). */
+  private ir: unknown = null
+  /** The capture each of the tree's clip rectangles belongs to. */
+  private clips = new Map<object, string>()
+  /** The capture the converter is working on: its last element lookup. */
+  private currentShotId: string | null = null
+  private readonly failedShots = new Set<string>()
   /** Captures the converter asked for that this driver could not make. */
   lostCaptures = 0
 
   constructor(options: FrameDriverOptions) {
     this.html = options.html
     this.host = options.host ?? document.body
+    this.missingPictureText = options.missingPictureText
+    this.extractorCall = options.extractorCall ?? EXTRACTOR_CALL
   }
 
   /** The frame now in use (tests look at its sandbox). */
@@ -194,7 +216,30 @@ export class SandboxFrameDriver implements BrowserDriver {
         ? fn
         : `(${fn.toString()}\n)(${arg === undefined ? '' : JSON.stringify(arg)})`
     const value = await this.run(`return (${expression}\n)`)
-    return cloneResult<T>(value)
+    const result = cloneResult<T>(value)
+    if (fn === this.extractorCall) {
+      // the converter generates from these very objects: a failed capture can still mend them
+      this.ir = result
+      this.clips = clipOwners(result)
+    }
+    return result
+  }
+
+  /**
+   * The capture `shotId` failed: its nodes in the extracted tree keep the element's words, or a
+   * marker in the screen language, instead of the generator's English placeholder.
+   */
+  private captureFailed(shotId: string | null): void {
+    if (!shotId || this.failedShots.has(shotId) || this.ir === null) return
+    this.failedShots.add(shotId)
+    const element = this.frame?.contentDocument?.querySelector(`[data-h2d-id="${shotId}"]`) ?? null
+    keepCapturedText(
+      this.ir,
+      shotId,
+      visibleText(element),
+      element !== null,
+      this.missingPictureText,
+    )
   }
 
   async addScript(source: string): Promise<void> {
@@ -205,9 +250,11 @@ export class SandboxFrameDriver implements BrowserDriver {
     // debug tracing only; nothing runs in the frame before its document
   }
 
-  async screenshot(_options: ScreenshotOptions): Promise<Uint8Array> {
-    // no page capture in a web view; the converter skips the picture and goes on
+  async screenshot(options: ScreenshotOptions): Promise<Uint8Array> {
+    // no page capture in a web view; the converter skips the picture and goes on. A node's own
+    // clip names its capture; another clip (an overhang, right to left) is the current one's.
     this.lostCaptures++
+    this.captureFailed((options.clip && this.clips.get(options.clip)) ?? this.currentShotId)
     throw new Error('html export: page capture is not available on the phone')
   }
 
@@ -217,10 +264,18 @@ export class SandboxFrameDriver implements BrowserDriver {
   ): Promise<Uint8Array | null> {
     const element = this.frameDocument().querySelector(selector)
     if (!element) return null
+    const shotId = shotIdOfSelector(selector)
     const rect = element.getBoundingClientRect()
-    if (Math.round(rect.width) <= 0 || Math.round(rect.height) <= 0) return null
+    if (Math.round(rect.width) <= 0 || Math.round(rect.height) <= 0) {
+      // an empty box has no picture on any device; its node still gets no English placeholder
+      this.captureFailed(shotId)
+      return null
+    }
     const drawn = await this.drawImage(element, rect)
-    if (!drawn) this.lostCaptures++
+    if (!drawn) {
+      this.lostCaptures++
+      this.captureFailed(shotId)
+    }
     return drawn
   }
 
@@ -254,6 +309,7 @@ export class SandboxFrameDriver implements BrowserDriver {
   }
 
   async elementExists(selector: string): Promise<boolean> {
+    this.currentShotId = shotIdOfSelector(selector) ?? this.currentShotId
     return this.frameDocument().querySelector(selector) !== null
   }
 

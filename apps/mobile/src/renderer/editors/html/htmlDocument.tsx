@@ -423,8 +423,10 @@ export function startHtmlDocument(
     html: string,
   ): Promise<{ bytes: Uint8Array; lostCaptures: number; report: ConversionReport | null }> => {
     const exporter = await import('./htmlExport')
-    if (format === 'odt') return exporter.htmlToOdt(html)
-    return { ...(await exporter.htmlToDocx(html)), report: null }
+    // a picture without words that the phone cannot capture: a marker, not an English placeholder
+    const options = { missingPictureText: tNow('webExportPictureMissing') }
+    if (format === 'odt') return exporter.htmlToOdt(html, options)
+    return { ...(await exporter.htmlToDocx(html, options)), report: null }
   }
 
   /**
