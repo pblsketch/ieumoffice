@@ -59,4 +59,11 @@ export const hi = {
   webHideMultiLine: 'सिर्फ़ एक पंक्ति के भीतर का टेक्स्ट छिपाया जा सकता है।',
   webHideOverlap: 'चयन पहले से छिपे टेक्स्ट पर पड़ रहा है।',
   webHideCannot: 'यहाँ का टेक्स्ट छिपाया नहीं जा सकता।',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'इस दस्तावेज़ की स्क्रिप्ट फ़ोन पर नहीं चलतीं।',
+  webHtmlShowSource: 'सोर्स',
+  webHtmlShowPreview: 'पूर्वावलोकन',
+  webHtmlViewSource: 'सोर्स देखें',
+  webHtmlFrameTitle: 'दस्तावेज़ पूर्वावलोकन',
+  webHtmlSourceLabel: 'HTML सोर्स',
 } as const satisfies Record<keyof typeof zh, string>

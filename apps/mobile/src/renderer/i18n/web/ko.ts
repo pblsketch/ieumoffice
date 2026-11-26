@@ -58,4 +58,11 @@ export const ko = {
   webHideMultiLine: '한 줄 안의 글만 숨길 수 있습니다.',
   webHideOverlap: '이미 숨긴 글과 겹쳐서 숨길 수 없습니다.',
   webHideCannot: '이 자리는 숨길 수 없습니다.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: '이 문서의 스크립트는 휴대폰에서 실행하지 않습니다.',
+  webHtmlShowSource: '소스',
+  webHtmlShowPreview: '미리보기',
+  webHtmlViewSource: '소스 보기',
+  webHtmlFrameTitle: '문서 미리보기',
+  webHtmlSourceLabel: 'HTML 소스',
 } as const satisfies Record<keyof typeof zh, string>

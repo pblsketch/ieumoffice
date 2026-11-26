@@ -60,4 +60,11 @@ export const id = {
   webHideMultiLine: 'Hanya teks dalam satu baris yang bisa disembunyikan.',
   webHideOverlap: 'Pilihan ini tumpang tindih dengan teks yang sudah disembunyikan.',
   webHideCannot: 'Teks di sini tidak bisa disembunyikan.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Skrip dalam dokumen ini tidak dijalankan di ponsel.',
+  webHtmlShowSource: 'Sumber',
+  webHtmlShowPreview: 'Pratinjau',
+  webHtmlViewSource: 'Lihat sumber',
+  webHtmlFrameTitle: 'Pratinjau dokumen',
+  webHtmlSourceLabel: 'Sumber HTML',
 } as const satisfies Record<keyof typeof zh, string>

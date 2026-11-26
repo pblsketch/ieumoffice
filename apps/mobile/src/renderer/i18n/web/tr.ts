@@ -59,4 +59,11 @@ export const tr = {
   webHideMultiLine: 'Yalnızca tek satır içindeki metin gizlenebilir.',
   webHideOverlap: 'Seçim zaten gizlenmiş bir metinle çakışıyor.',
   webHideCannot: 'Bu metin burada gizlenemez.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Bu belgedeki betikler telefonda çalıştırılmaz.',
+  webHtmlShowSource: 'Kaynak',
+  webHtmlShowPreview: 'Önizleme',
+  webHtmlViewSource: 'Kaynağı görüntüle',
+  webHtmlFrameTitle: 'Belge önizlemesi',
+  webHtmlSourceLabel: 'HTML kaynağı',
 } as const satisfies Record<keyof typeof zh, string>

@@ -60,4 +60,11 @@ export const ja = {
   webHideMultiLine: '隠せるのは1行の中の文字だけです。',
   webHideOverlap: 'すでに隠した文字と重なるため隠せません。',
   webHideCannot: 'この位置の文字は隠せません。',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'この文書のスクリプトはスマートフォンでは実行されません。',
+  webHtmlShowSource: 'ソース',
+  webHtmlShowPreview: 'プレビュー',
+  webHtmlViewSource: 'ソースを表示',
+  webHtmlFrameTitle: '文書のプレビュー',
+  webHtmlSourceLabel: 'HTML ソース',
 } as const satisfies Record<keyof typeof zh, string>

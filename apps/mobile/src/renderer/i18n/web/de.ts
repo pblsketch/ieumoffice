@@ -62,4 +62,11 @@ export const de = {
   webHideMultiLine: 'Nur Text innerhalb einer Zeile kann verborgen werden.',
   webHideOverlap: 'Die Auswahl überschneidet sich mit bereits verborgenem Text.',
   webHideCannot: 'Dieser Text kann hier nicht verborgen werden.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Skripte in diesem Dokument werden auf dem Telefon nicht ausgeführt.',
+  webHtmlShowSource: 'Quelltext',
+  webHtmlShowPreview: 'Vorschau',
+  webHtmlViewSource: 'Quelltext anzeigen',
+  webHtmlFrameTitle: 'Dokumentvorschau',
+  webHtmlSourceLabel: 'HTML-Quelltext',
 } as const satisfies Record<keyof typeof zh, string>

@@ -58,4 +58,11 @@ export const th = {
   webHideMultiLine: 'ซ่อนได้เฉพาะข้อความภายในบรรทัดเดียว',
   webHideOverlap: 'ส่วนที่เลือกทับกับข้อความที่ซ่อนไว้แล้ว',
   webHideCannot: 'ไม่สามารถซ่อนข้อความตรงนี้ได้',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'สคริปต์ในเอกสารนี้จะไม่ทำงานบนโทรศัพท์',
+  webHtmlShowSource: 'ซอร์ส',
+  webHtmlShowPreview: 'ตัวอย่าง',
+  webHtmlViewSource: 'ดูซอร์ส',
+  webHtmlFrameTitle: 'ตัวอย่างเอกสาร',
+  webHtmlSourceLabel: 'ซอร์ส HTML',
 } as const satisfies Record<keyof typeof zh, string>

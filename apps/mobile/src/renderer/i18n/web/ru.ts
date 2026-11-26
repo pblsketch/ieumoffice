@@ -59,4 +59,11 @@ export const ru = {
   webHideMultiLine: 'Скрыть можно только текст в пределах одной строки.',
   webHideOverlap: 'Выделение пересекается с уже скрытым текстом.',
   webHideCannot: 'Этот текст нельзя скрыть здесь.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Скрипты этого документа не выполняются на телефоне.',
+  webHtmlShowSource: 'Исходный код',
+  webHtmlShowPreview: 'Просмотр',
+  webHtmlViewSource: 'Показать исходный код',
+  webHtmlFrameTitle: 'Просмотр документа',
+  webHtmlSourceLabel: 'Исходный код HTML',
 } as const satisfies Record<keyof typeof zh, string>

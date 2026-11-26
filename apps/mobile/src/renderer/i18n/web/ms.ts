@@ -62,4 +62,11 @@ export const ms = {
   webHideMultiLine: 'Hanya teks dalam satu baris boleh disembunyikan.',
   webHideOverlap: 'Pilihan ini bertindih dengan teks yang sudah disembunyikan.',
   webHideCannot: 'Teks di sini tidak boleh disembunyikan.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Skrip dalam dokumen ini tidak dijalankan pada telefon.',
+  webHtmlShowSource: 'Sumber',
+  webHtmlShowPreview: 'Pratonton',
+  webHtmlViewSource: 'Lihat sumber',
+  webHtmlFrameTitle: 'Pratonton dokumen',
+  webHtmlSourceLabel: 'Sumber HTML',
 } as const satisfies Record<keyof typeof zh, string>

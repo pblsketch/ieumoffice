@@ -59,4 +59,11 @@ export const he = {
   webHideMultiLine: 'אפשר להסתיר רק טקסט בתוך שורה אחת.',
   webHideOverlap: 'הבחירה חופפת לטקסט שכבר מוסתר.',
   webHideCannot: 'אי אפשר להסתיר את הטקסט הזה כאן.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'הסקריפטים במסמך זה לא פועלים בטלפון.',
+  webHtmlShowSource: 'מקור',
+  webHtmlShowPreview: 'תצוגה מקדימה',
+  webHtmlViewSource: 'הצגת המקור',
+  webHtmlFrameTitle: 'תצוגה מקדימה של המסמך',
+  webHtmlSourceLabel: 'מקור HTML',
 } as const satisfies Record<keyof typeof zh, string>

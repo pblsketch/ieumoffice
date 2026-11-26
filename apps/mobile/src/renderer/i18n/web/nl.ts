@@ -61,4 +61,11 @@ export const nl = {
   webHideMultiLine: 'Alleen tekst binnen één regel kan worden verborgen.',
   webHideOverlap: 'De selectie overlapt met tekst die al verborgen is.',
   webHideCannot: 'Deze tekst kan hier niet worden verborgen.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Scripts in dit document worden niet uitgevoerd op de telefoon.',
+  webHtmlShowSource: 'Bron',
+  webHtmlShowPreview: 'Voorbeeld',
+  webHtmlViewSource: 'Bron weergeven',
+  webHtmlFrameTitle: 'Documentvoorbeeld',
+  webHtmlSourceLabel: 'HTML-bron',
 } as const satisfies Record<keyof typeof zh, string>

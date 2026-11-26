@@ -59,4 +59,11 @@ export const ar = {
   webHideMultiLine: 'يمكن إخفاء النص داخل سطر واحد فقط.',
   webHideOverlap: 'التحديد يتداخل مع نص مخفي بالفعل.',
   webHideCannot: 'لا يمكن إخفاء هذا النص هنا.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'لا تُشغَّل البرامج النصية في هذا المستند على الهاتف.',
+  webHtmlShowSource: 'المصدر',
+  webHtmlShowPreview: 'معاينة',
+  webHtmlViewSource: 'عرض المصدر',
+  webHtmlFrameTitle: 'معاينة المستند',
+  webHtmlSourceLabel: 'مصدر HTML',
 } as const satisfies Record<keyof typeof zh, string>

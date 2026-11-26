@@ -60,4 +60,11 @@ export const it = {
   webHideMultiLine: 'Si può nascondere solo testo all’interno di una riga.',
   webHideOverlap: 'La selezione si sovrappone a un testo già nascosto.',
   webHideCannot: 'Questo testo non può essere nascosto qui.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Gli script di questo documento non vengono eseguiti sul telefono.',
+  webHtmlShowSource: 'Sorgente',
+  webHtmlShowPreview: 'Anteprima',
+  webHtmlViewSource: 'Visualizza sorgente',
+  webHtmlFrameTitle: 'Anteprima del documento',
+  webHtmlSourceLabel: 'Sorgente HTML',
 } as const satisfies Record<keyof typeof zh, string>

@@ -59,4 +59,11 @@ export const cs = {
   webHideMultiLine: 'Skrýt lze jen text v rámci jednoho řádku.',
   webHideOverlap: 'Výběr se překrývá s již skrytým textem.',
   webHideCannot: 'Tento text zde nelze skrýt.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Skripty v tomto dokumentu se v telefonu nespouštějí.',
+  webHtmlShowSource: 'Zdroj',
+  webHtmlShowPreview: 'Náhled',
+  webHtmlViewSource: 'Zobrazit zdroj',
+  webHtmlFrameTitle: 'Náhled dokumentu',
+  webHtmlSourceLabel: 'Zdroj HTML',
 } as const satisfies Record<keyof typeof zh, string>

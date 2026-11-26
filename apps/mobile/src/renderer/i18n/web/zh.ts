@@ -56,4 +56,11 @@ export const zh = {
   webHideMultiLine: '只能隐藏同一行内的内容。',
   webHideOverlap: '与已隐藏的内容重叠，无法隐藏。',
   webHideCannot: '此处的内容无法隐藏。',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: '此文档中的脚本不会在手机上运行。',
+  webHtmlShowSource: '源代码',
+  webHtmlShowPreview: '预览',
+  webHtmlViewSource: '查看源代码',
+  webHtmlFrameTitle: '文档预览',
+  webHtmlSourceLabel: 'HTML 源代码',
 } as const

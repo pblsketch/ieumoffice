@@ -59,4 +59,11 @@ export const vi = {
   webHideMultiLine: 'Chỉ ẩn được chữ nằm trong một dòng.',
   webHideOverlap: 'Phần chọn chồng lên chữ đã được ẩn.',
   webHideCannot: 'Không thể ẩn phần chữ ở đây.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Các tập lệnh trong tài liệu này không chạy trên điện thoại.',
+  webHtmlShowSource: 'Mã nguồn',
+  webHtmlShowPreview: 'Xem trước',
+  webHtmlViewSource: 'Xem mã nguồn',
+  webHtmlFrameTitle: 'Xem trước tài liệu',
+  webHtmlSourceLabel: 'Mã nguồn HTML',
 } as const satisfies Record<keyof typeof zh, string>

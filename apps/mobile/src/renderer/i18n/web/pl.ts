@@ -59,4 +59,11 @@ export const pl = {
   webHideMultiLine: 'Można ukryć tylko tekst w obrębie jednego wiersza.',
   webHideOverlap: 'Zaznaczenie nachodzi na już ukryty tekst.',
   webHideCannot: 'Tego tekstu nie można tu ukryć.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Skrypty w tym dokumencie nie są uruchamiane na telefonie.',
+  webHtmlShowSource: 'Źródło',
+  webHtmlShowPreview: 'Podgląd',
+  webHtmlViewSource: 'Pokaż źródło',
+  webHtmlFrameTitle: 'Podgląd dokumentu',
+  webHtmlSourceLabel: 'Źródło HTML',
 } as const satisfies Record<keyof typeof zh, string>

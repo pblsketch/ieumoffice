@@ -59,4 +59,11 @@ export const en = {
   webHideMultiLine: 'Only text within one line can be hidden.',
   webHideOverlap: 'This overlaps text that is already hidden.',
   webHideCannot: 'This text cannot be hidden here.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: "Scripts in this document don't run on the phone.",
+  webHtmlShowSource: 'Source',
+  webHtmlShowPreview: 'Preview',
+  webHtmlViewSource: 'View source',
+  webHtmlFrameTitle: 'Document preview',
+  webHtmlSourceLabel: 'HTML source',
 } as const satisfies Record<keyof typeof zh, string>

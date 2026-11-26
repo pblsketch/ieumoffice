@@ -61,4 +61,11 @@ export const fr = {
   webHideMultiLine: 'Seul un texte sur une seule ligne peut être masqué.',
   webHideOverlap: 'Cette sélection chevauche un texte déjà masqué.',
   webHideCannot: 'Ce texte ne peut pas être masqué ici.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Les scripts de ce document ne s’exécutent pas sur le téléphone.',
+  webHtmlShowSource: 'Source',
+  webHtmlShowPreview: 'Aperçu',
+  webHtmlViewSource: 'Afficher la source',
+  webHtmlFrameTitle: 'Aperçu du document',
+  webHtmlSourceLabel: 'Source HTML',
 } as const satisfies Record<keyof typeof zh, string>

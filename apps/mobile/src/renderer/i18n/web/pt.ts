@@ -59,4 +59,11 @@ export const pt = {
   webHideMultiLine: 'Só é possível ocultar texto dentro de uma linha.',
   webHideOverlap: 'A seleção se sobrepõe a um texto já oculto.',
   webHideCannot: 'Este texto não pode ser ocultado aqui.',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: 'Os scripts deste documento não são executados no celular.',
+  webHtmlShowSource: 'Código-fonte',
+  webHtmlShowPreview: 'Pré-visualização',
+  webHtmlViewSource: 'Ver código-fonte',
+  webHtmlFrameTitle: 'Pré-visualização do documento',
+  webHtmlSourceLabel: 'Código-fonte HTML',
 } as const satisfies Record<keyof typeof zh, string>

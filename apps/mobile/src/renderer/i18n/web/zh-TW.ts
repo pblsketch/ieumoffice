@@ -58,4 +58,11 @@ export const zhTW = {
   webHideMultiLine: '只能隱藏同一行內的內容。',
   webHideOverlap: '與已隱藏的內容重疊，無法隱藏。',
   webHideCannot: '此處的內容無法隱藏。',
+  webHtmlEditorLabel: 'HTML',
+  webHtmlScriptNotice: '此文件中的指令碼不會在手機上執行。',
+  webHtmlShowSource: '原始碼',
+  webHtmlShowPreview: '預覽',
+  webHtmlViewSource: '檢視原始碼',
+  webHtmlFrameTitle: '文件預覽',
+  webHtmlSourceLabel: 'HTML 原始碼',
 } as const satisfies Record<keyof typeof zh, string>
