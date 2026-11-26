@@ -49,20 +49,26 @@ import {
 // Rules
 
 /** The editor's "page size" list (apps/pdf/src/renderer/view-config.ts PAPER_SIZES) */
-const PAPER_POINTS: Record<PdfToolPaper, { w: number; h: number }> = {
-  A3: { w: 842, h: 1191 },
-  A4: { w: 595, h: 842 },
-  A5: { w: 420, h: 595 },
-  Letter: { w: 612, h: 792 },
-  Legal: { w: 612, h: 1008 },
-}
+export const PAPER_POINTS: Readonly<Record<PdfToolPaper, { w: number; h: number }>> = Object.freeze(
+  {
+    A3: { w: 842, h: 1191 },
+    A4: { w: 595, h: 842 },
+    A5: { w: 420, h: 595 },
+    Letter: { w: 612, h: 792 },
+    Legal: { w: 612, h: 1008 },
+  },
+)
 
 export function isPdfToolId(value: unknown): value is PdfToolId {
   return typeof value === 'string' && (PDF_TOOL_IDS as readonly string[]).includes(value)
 }
 
 /** Points of space around a picture for each margin choice (imagesToPdf) */
-const MARGIN_POINTS: Record<PdfToolMargin, number> = { none: 0, small: 18, large: 36 }
+export const MARGIN_POINTS: Readonly<Record<PdfToolMargin, number>> = Object.freeze({
+  none: 0,
+  small: 18,
+  large: 36,
+})
 
 /** Merge, imagesToPdf and duplex take several files; every other tool takes one */
 export function toolTakesMany(tool: PdfToolId): boolean {

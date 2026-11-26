@@ -39,8 +39,9 @@ import {
   type PdfTextPdfium,
   type PdfToolId,
   type PdfToolOptions,
-  type PdfToolPaper,
   type RepairPdfium,
+  MARGIN_POINTS,
+  PAPER_POINTS,
 } from '@genoffice/pdf-ops'
 import type { PictureOps } from './picture'
 import { isOutOfMemory } from './protocol'
@@ -94,20 +95,6 @@ export interface EngineCore {
   ): Promise<CoreBlankOutcome>
   zip(files: readonly ToolResultFile[], zipName: string): Promise<ToolResultFile>
 }
-
-/**
- * Paper sizes and margins of "images to PDF", the values runPdfTool uses
- * (pdf-ops tools.ts keeps them private). The engine test holds this run to
- * runPdfTool's bytes for every paper and margin, so a change there fails it.
- */
-const PAPER_POINTS: Record<PdfToolPaper, { w: number; h: number }> = {
-  A3: { w: 842, h: 1191 },
-  A4: { w: 595, h: 842 },
-  A5: { w: 420, h: 595 },
-  Letter: { w: 612, h: 792 },
-  Legal: { w: 612, h: 1008 },
-}
-const MARGIN_POINTS = { none: 0, small: 18, large: 36 } as const
 
 /** Bytes of the owner password made when no restriction is asked for (as hex, twice as long) */
 export const OWNER_PASSWORD_BYTES = 32
