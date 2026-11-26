@@ -9,10 +9,18 @@ import {
 import { WEB_EXPORT_MIME, saveNewFile, type SaveNewFileResult } from '../html/save-new-file'
 import { MobileCommandError, type MobileClient, type MobileDocSession } from '../transport'
 import {
+  markdownPlaceholderInstruction,
+  redactedMarkdownView,
+  restoreRedactedEdit,
+  type MarkdownRedactedView,
+} from './redaction'
+import {
   wrapSkillWithViewEditGate,
   type DocumentEditCapabilities,
   type DocumentMode,
 } from '../view-edit-gate'
+
+export * from './redaction'
 
 export const MAX_MOBILE_INLINE_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -378,28 +386,72 @@ const MOBILE_MARKDOWN_TOOLS: AgentToolDef[] = [
 
 const MARKDOWN_MUTATING_TOOLS = new Set(['replace_text', 'append_markdown', 'replace_document'])
 
+const MOBILE_MARKDOWN_PROMPT = [
+  brandText('You are the writing assistant inside GenOffice Mobile Markdown editor.', 'en'),
+  'You may only inspect and edit the currently open Markdown document.',
+  'Use read_document to inspect content, and replace_text, append_markdown, or replace_document for edits.',
+  'Keep existing relative image links intact and never emit raw HTML tags.',
+].join('\n')
+
 export function createMobileMarkdownSkill(
   editor: MobileMarkdownEditorPort,
   gate: MobileMarkdownSkillGate,
 ): AgentSkill {
+  // Fails closed before anything is sent: a document whose hidden spans cannot be
+  // verified gets no skill at all (spec 4.4, 6.2).
+  redactedMarkdownView(editor.getMarkdown())
+
+  /** The model's view of the text as it is now; rebuilt on every read, throws when unverifiable. */
+  const currentView = () => {
+    const source = editor.getMarkdown()
+    return { source, view: redactedMarkdownView(source) }
+  }
+
+  /**
+   * Applies the model's edited view: mapped back to source when the document has
+   * hidden spans (refused when a placeholder would change), as is otherwise.
+   */
+  const applyViewEdit = (
+    prev: { source: string; view: MarkdownRedactedView },
+    nextView: string,
+    summary: string,
+    done: string,
+    toolSummary: string,
+    toolName: string,
+  ): ToolExecution => {
+    let next = nextView
+    if (prev.view.spans.length > 0) {
+      const restored = restoreRedactedEdit(prev.view, nextView)
+      if (!restored.ok) return { output: restored.message, isError: true, summary: toolName }
+      next = restored.source
+    }
+    editor.setMarkdown(next)
+    gate.onDocumentMutated?.(summary, prev.source, next)
+    return { output: done, mutated: true, summary: toolSummary }
+  }
+
   const baseSkill: AgentSkill = {
     id: 'mobile-markdown',
-    systemPrompt: [
-      brandText('You are the writing assistant inside GenOffice Mobile Markdown editor.', 'en'),
-      'You may only inspect and edit the currently open Markdown document.',
-      'Use read_document to inspect content, and replace_text, append_markdown, or replace_document for edits.',
-      'Keep existing relative image links intact and never emit raw HTML tags.',
-    ].join('\n'),
+    get systemPrompt() {
+      const base = MOBILE_MARKDOWN_PROMPT
+      let labels: readonly string[] = []
+      try {
+        labels = redactedMarkdownView(editor.getMarkdown()).labels
+      } catch {
+        // buildContext and every tool refuse this document; the prompt holds no text either way
+      }
+      return labels.length > 0 ? `${base}\n\n${markdownPlaceholderInstruction(labels)}` : base
+    },
     tools: MOBILE_MARKDOWN_TOOLS,
     buildContext() {
-      const text = editor.getMarkdown()
+      const text = currentView().view.text
       const preview = text.length > 6000 ? `${text.slice(0, 6000)}\n...[truncated]` : text
       return `Current Markdown document (${text.length} chars):\n\n${preview}`
     },
     executeTool(call: AgentToolCall): ToolExecution {
       if (call.name === 'read_document') {
         return {
-          output: editor.getMarkdown(),
+          output: currentView().view.text,
           mutated: false,
           summary: 'Read Markdown document',
         }
@@ -411,15 +463,24 @@ export function createMobileMarkdownSkill(
         if (!find) {
           return { output: 'Missing non-empty "find" text.', isError: true, summary: call.name }
         }
-        const prev = editor.getMarkdown()
-        if (!prev.includes(find)) {
+        const prev = currentView()
+        const prevView = prev.view.text
+        if (!prevView.includes(find)) {
           return { output: `Text not found: ${find}`, isError: true, summary: call.name }
         }
-        const rawNext = replaceAll ? prev.split(find).join(replace) : prev.replace(find, replace)
-        const next = preserveRelativeImageLinks(prev, rawNext)
-        editor.setMarkdown(next)
-        gate.onDocumentMutated?.(`Replaced "${find.slice(0, 24)}"`, prev, next)
-        return { output: 'Replaced text in document.', mutated: true, summary: 'Replace text' }
+        // a function replacement: "$&" and the like in the model's text stay literal
+        const rawNext = replaceAll
+          ? prevView.split(find).join(replace)
+          : prevView.replace(find, () => replace)
+        const nextView = preserveRelativeImageLinks(prevView, rawNext)
+        return applyViewEdit(
+          prev,
+          nextView,
+          `Replaced "${find.slice(0, 24)}"`,
+          'Replaced text in document.',
+          'Replace text',
+          call.name,
+        )
       }
       if (call.name === 'append_markdown') {
         const addition = typeof call.input.markdown === 'string' ? call.input.markdown : ''
@@ -430,20 +491,30 @@ export function createMobileMarkdownSkill(
             summary: call.name,
           }
         }
-        const prev = editor.getMarkdown()
-        const sep = prev.endsWith('\n') || prev.length === 0 ? '' : '\n\n'
-        const next = `${prev}${sep}${addition}`
-        editor.setMarkdown(next)
-        gate.onDocumentMutated?.('Appended markdown content', prev, next)
-        return { output: 'Appended content to document.', mutated: true, summary: 'Append content' }
+        const prev = currentView()
+        const prevView = prev.view.text
+        const sep = prevView.endsWith('\n') || prevView.length === 0 ? '' : '\n\n'
+        return applyViewEdit(
+          prev,
+          `${prevView}${sep}${addition}`,
+          'Appended markdown content',
+          'Appended content to document.',
+          'Append content',
+          call.name,
+        )
       }
       if (call.name === 'replace_document') {
         const rawNext = typeof call.input.markdown === 'string' ? call.input.markdown : ''
-        const prev = editor.getMarkdown()
-        const next = preserveRelativeImageLinks(prev, rawNext)
-        editor.setMarkdown(next)
-        gate.onDocumentMutated?.('Updated document content', prev, next)
-        return { output: 'Updated full document.', mutated: true, summary: 'Update document' }
+        const prev = currentView()
+        const nextView = preserveRelativeImageLinks(prev.view.text, rawNext)
+        return applyViewEdit(
+          prev,
+          nextView,
+          'Updated document content',
+          'Updated full document.',
+          'Update document',
+          call.name,
+        )
       }
       return { output: `Unknown tool: ${call.name}`, isError: true, summary: call.name }
     },
