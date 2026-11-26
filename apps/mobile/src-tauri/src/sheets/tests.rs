@@ -19,8 +19,8 @@ fn workspace_keeps_reads_writes_and_deletes_inside_its_root() {
     let engine_dir = workspace.engine_temp_dir().to_path_buf();
     assert_eq!(engine_dir, root.join("engine"));
     assert!(engine_dir.is_dir());
-    // An engine session cache, as the engine would create it.
-    let session_cache = engine_dir.join("genspark-ai-excel-s1");
+    // An engine session cache directory inside engine_dir.
+    let session_cache = engine_dir.join("sheets-session-s1");
     fs::create_dir(&session_cache).unwrap();
     fs::write(session_cache.join("cells.bin"), "c").unwrap();
 
@@ -106,7 +106,7 @@ fn state_setup_empties_the_work_folder_left_by_a_previous_run() {
     // A session cache the engine left when the OS ended the app.
     let orphan = root
         .join(super::ENGINE_DIR_NAME)
-        .join("genspark-ai-excel-old");
+        .join("sheets-session-old");
     fs::create_dir_all(&orphan).unwrap();
     let state = SheetsState::new(dir.path()).unwrap();
     assert_eq!(state.workspace.root(), root);
