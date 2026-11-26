@@ -8,7 +8,7 @@
  * deck is opened inside the document after the session switch, and the Workspace shows the
  * refusal (toast, then back) when the engine does not take the file.
  */
-import { lazy, Suspense, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { isMobileCommandError, type MobileDocSession } from '@genoffice/mobile-bridge/transport'
 import { EditorShell } from '../../../shell/EditorShell'
 import type { EditorDocument, EditorHost, EditorKind, EditorWorkspaceProps } from '../../editorKind'
@@ -66,33 +66,57 @@ function startPptxDocument(
   let disposed = false
   let controller: PptxController | null = null
 
-  const controllerReady: Promise<PptxController> = import('./pptxDocument').then((mod) => {
-    const created = mod.createPptxController({
-      client: host.client,
-      docKey: session.docKey,
-      // closed before the module arrived: open nothing
-      base64: disposed ? null : pending,
-      positionDelayMs: options.positionDelayMs,
-    })
-    pending = null
-    controller = created
-    if (disposed) created.dispose()
-    return created
-  })
+  const controllerReady: Promise<PptxController | null> = import('./pptxDocument').then(
+    (mod) => {
+      const created = mod.createPptxController({
+        client: host.client,
+        docKey: session.docKey,
+        // closed before the module arrived: open nothing
+        base64: disposed ? null : pending,
+        positionDelayMs: options.positionDelayMs,
+      })
+      pending = null
+      controller = created
+      if (disposed) created.dispose()
+      return created
+    },
+    () => {
+      // the reader's code could not be loaded (e.g. a missing chunk): the Workspace says so
+      pending = null
+      return null
+    },
+  )
+
+  /** Shown when the reading screen's code could not be loaded: the deck cannot be opened. */
+  function LoadFailed({ frame }: EditorWorkspaceProps) {
+    useEffect(() => {
+      host.showToast(host.translate('readersErrPptxOpen'))
+      frame.onBack()
+      // once per mount
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+    return null
+  }
 
   // One lazy component per document: once loaded, a Workspace that mounts again renders at once.
-  const LoadedWorkspace = lazy(async () => {
-    const [ready, mod] = await Promise.all([controllerReady, import('./PptxWorkspace')])
-    const Bound: ComponentType<EditorWorkspaceProps> = (props) => (
-      <mod.PptxWorkspace
-        {...props}
-        controller={ready}
-        host={host}
-        openingDelayMs={openingDelayMs}
-      />
-    )
-    return { default: Bound }
-  })
+  const LoadedWorkspace = lazy(
+    async (): Promise<{ default: ComponentType<EditorWorkspaceProps> }> => {
+      const [ready, mod] = await Promise.all([
+        controllerReady,
+        import('./PptxWorkspace').catch(() => null),
+      ])
+      if (!ready || !mod) return { default: LoadFailed }
+      const Bound: ComponentType<EditorWorkspaceProps> = (props) => (
+        <mod.PptxWorkspace
+          {...props}
+          controller={ready}
+          host={host}
+          openingDelayMs={openingDelayMs}
+        />
+      )
+      return { default: Bound }
+    },
+  )
 
   function PptxWorkspaceHost(props: EditorWorkspaceProps) {
     return (
