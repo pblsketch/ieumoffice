@@ -1,7 +1,8 @@
 // The preview copy of an HTML document (spec 5.2): the source with the desktop editor's element
 // ids and a Content-Security-Policy that keeps the document's scripts, plugins, frames, forms and
 // base URL out. It goes into a script-less sandboxed frame only; save, share, recovery copies,
-// AI and export always use the source itself.
+// AI and export always use the source itself (the export frame gets the source with the same
+// policy and no element ids, buildExportCopy).
 import { buildParseMap, type ParseMap } from '../../../../../html/src/renderer/document/parse-map'
 import { instrumentForPreview, SID_ATTR } from '../../../../../html/src/renderer/preview/instrument'
 
@@ -69,6 +70,19 @@ export function buildPreviewCopy(source: string, map: ParseMap): string {
     ),
   }
   return instrumentWithoutInspector(withMeta, shifted).replace(
+    META_REFRESH,
+    '$1data-gx-http-equiv$2',
+  )
+}
+
+/**
+ * The Word and ODT exports' copy of `source` (spec 5.7): the preview's policy and meta-refresh
+ * guard, without the element ids. The converter then sees the document the preview shows.
+ * Never written anywhere; the exported file is made from what the frame shows.
+ */
+export function buildExportCopy(source: string, map: ParseMap): string {
+  const at = cspOffset(source, map)
+  return (source.slice(0, at) + CSP_META + source.slice(at)).replace(
     META_REFRESH,
     '$1data-gx-http-equiv$2',
   )
