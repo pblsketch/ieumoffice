@@ -24,7 +24,7 @@ import {
 } from '@univerjs/sheets'
 import sheetsEnUS from '@univerjs/sheets/locale/en-US'
 import '@univerjs/sheets/facade'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { WorkbookFile } from '../../sheets/src/shared/desktop-api'
 import { setModuleLang, t } from '../../sheets/src/renderer/i18n/locale'
 import {
@@ -286,5 +286,63 @@ describe('desktop status lines on the phone', () => {
     // Whatever the reload reported, none of it reached the toast channel.
     expect(notices.filter(isPcStatusLine)).toEqual([])
     expect(notices).toEqual([])
+  }, 180_000)
+})
+
+describe('the keyboard stays down while a workbook reloads', () => {
+  function editorInput(): HTMLElement {
+    // Univer's hidden cell-editor input (docs-ui marks it this way).
+    const input = document.createElement('div')
+    input.contentEditable = 'true'
+    input.tabIndex = 0
+    input.dataset.uComp = 'editor'
+    document.body.appendChild(input)
+    return input
+  }
+
+  it("takes Univer's focus back until the person touches the grid", async () => {
+    const { holdKeyboardDuringLoad } =
+      await import('../src/renderer/editors/sheets/grid/keyboardHold')
+    const grid = document.createElement('div')
+    document.body.appendChild(grid)
+    const input = editorInput()
+    let editing = false
+    const quiet = holdKeyboardDuringLoad(grid, () => editing)
+    input.focus()
+    expect(document.activeElement).not.toBe(input)
+    // A cell edit keeps its focus.
+    editing = true
+    input.focus()
+    expect(document.activeElement).toBe(input)
+    input.blur()
+    editing = false
+    quiet.settle()
+    input.focus()
+    expect(document.activeElement).not.toBe(input)
+    // The person's own touch ends the quiet window.
+    grid.dispatchEvent(new Event('pointerdown'))
+    input.focus()
+    expect(document.activeElement).toBe(input)
+    quiet.end()
+    input.remove()
+    grid.remove()
+  }, 180_000)
+
+  it('ends on its own a few seconds after the load', async () => {
+    const { holdKeyboardDuringLoad } =
+      await import('../src/renderer/editors/sheets/grid/keyboardHold')
+    vi.useFakeTimers()
+    try {
+      const grid = document.createElement('div')
+      const input = editorInput()
+      const quiet = holdKeyboardDuringLoad(grid, () => false)
+      quiet.settle()
+      vi.advanceTimersByTime(5000)
+      input.focus()
+      expect(document.activeElement).toBe(input)
+      input.remove()
+    } finally {
+      vi.useRealTimers()
+    }
   }, 180_000)
 })

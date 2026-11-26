@@ -16,6 +16,7 @@ import { installEditJournal } from '../journal/editJournal'
 import { installEditReveal } from './editReveal'
 import { installGestureLayer } from './gestureLayer'
 import { installViewModeGuard } from './viewModeGuard'
+import { holdKeyboardDuringLoad } from './keyboardHold'
 import type { HeaderAxis } from './headerMenu'
 
 export interface MobileGridOptions {
@@ -52,31 +53,6 @@ export interface MobileGrid {
 }
 
 let liveGrid: MobileGrid | null = null
-
-/** Univer's hidden cell-editor input (docs-ui marks it `data-u-comp="editor"`). */
-function isUniverEditorInput(node: Element | null): node is HTMLElement {
-  return node instanceof HTMLElement && node.dataset.uComp === 'editor'
-}
-
-/**
- * Takes the focus off Univer's hidden cell input unless a cell is being
- * edited. Univer focuses that input when a workbook unit is (re)built and
- * retries over the next frames, which raises the virtual keyboard; after a
- * reopen (Save As of an `.xls`, a CSV saved as Excel) the grid is for
- * reading until the person taps a cell.
- */
-function releaseEditorFocus(isEditing: () => boolean): void {
-  const release = () => {
-    if (isEditing()) return
-    const active = document.activeElement
-    if (isUniverEditorInput(active)) active.blur()
-  }
-  release()
-  requestAnimationFrame(() => {
-    release()
-    requestAnimationFrame(release)
-  })
-}
 
 /**
  * The app keeps one document open. The document's `dispose()` tears its grid
@@ -141,15 +117,18 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
   })
 
   let disposed = false
+  let quietFocus: { end(): void } | null = null
   const grid: MobileGrid = {
     element,
     runtime,
     lazyWorkbookRef,
     async load(file) {
-      const loading = openLazyWorkbookOnPhone(runtime, lazyWorkbookRef, file, options.onMessage)
-      releaseEditorFocus(() => cellEditing)
-      await loading
-      if (!disposed) releaseEditorFocus(() => cellEditing)
+      quietFocus?.end()
+      const quiet = holdKeyboardDuringLoad(element, () => cellEditing)
+      quietFocus = quiet
+      await openLazyWorkbookOnPhone(runtime, lazyWorkbookRef, file, options.onMessage)
+      if (disposed) quiet.end()
+      else quiet.settle()
     },
     setViewMode(view) {
       viewMode = view
@@ -168,6 +147,7 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
     dispose() {
       if (disposed) return
       disposed = true
+      quietFocus?.end()
       beforeEdit.dispose()
       viewGuard.dispose()
       gestures.dispose()
