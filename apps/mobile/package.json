@@ -28,7 +28,16 @@
     "@tiptap/react": "3.31.0",
     "@tiptap/starter-kit": "3.31.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "@genoffice/epub-engine": "*",
+    "@genoffice/pptx-engine": "*",
+    "@genoffice/pptx-render": "*",
+    "@genoffice/zip-gate": "*",
+    "@noble/hashes": "^2.2.0",
+    "buffer": "^6.0.3",
+    "jszip": "^3.10.1",
+    "konva": "^9.3.20",
+    "react-konva": "^19.0.10"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

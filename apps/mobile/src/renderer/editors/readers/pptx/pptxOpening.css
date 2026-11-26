@@ -1,0 +1,28 @@
+/* Opening placeholder of the PPTX reader (design system 5.12): a slide-shaped block and a line. */
+.mobile-pptx-opening {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-4);
+  padding: var(--m-space-6) var(--m-space-4);
+  background: var(--canvas);
+}
+
+.mobile-pptx-opening-page {
+  width: 100%;
+  max-width: calc(var(--m-panel-w) * 2);
+  aspect-ratio: 16 / 9;
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.mobile-pptx-opening-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+}
