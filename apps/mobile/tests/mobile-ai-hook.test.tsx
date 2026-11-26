@@ -1,10 +1,13 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  preloadMobileKeyProviderProtocols,
+  type MobileAiNetEvent,
+} from '@genoffice/mobile-bridge/ai-bridge'
 import {
   createMobileClient,
   type MobileAiSettingsSnapshot,
-  type MobileAiStreamChunk,
   type MobileAppPrefs,
   type MobileTransport,
 } from '@genoffice/mobile-bridge/transport'
@@ -15,6 +18,8 @@ import { MobileApp } from '../src/renderer/App'
 // the AI-off gate, a kind without createAiRun, a failed preparation, the reset on a
 // document change and the cancel when the app goes to the background.
 // Every stream here is a scripted mock; no provider or key is ever called.
+// The free OpenRouter key runs on PC's protocol code over the sealed relay (track T7
+// AI-T3), so the mock answers the relay commands with an OpenAI-style SSE body.
 
 type AiRunMode = 'normal' | 'absent' | 'throw'
 
@@ -78,7 +83,7 @@ function makeTransport(options: { aiEnabled: boolean; stream: StreamScript }) {
     subscriptionNoticeVersion: 0,
   }
   let untitled = 0
-  let chunkListener: ((chunk: MobileAiStreamChunk) => void) | null = null
+  let relayListener: ((event: MobileAiNetEvent) => void) | null = null
 
   const transport: MobileTransport = {
     async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -111,12 +116,22 @@ function makeTransport(options: { aiEnabled: boolean; stream: StreamScript }) {
             writable: false,
             ephemeral: false,
           } as T
-        case 'mobile_ai_stream_start': {
+        case 'mobile_ai_relay_start': {
           const requestId = String((args as { requestId: string }).requestId)
           if (options.stream === 'reply') {
+            const body =
+              'data: {"choices":[{"delta":{"content":"Mock reply"},"finish_reason":"stop"}]}\n\n' +
+              'data: [DONE]\n\n'
             queueMicrotask(() => {
-              chunkListener?.({ requestId, type: 'delta', text: 'Mock reply' })
-              chunkListener?.({ requestId, type: 'done', stopReason: 'end_turn' })
+              const send = (seq: number, event: Record<string, unknown>) =>
+                relayListener?.({ requestId, seq, ...event } as MobileAiNetEvent)
+              send(0, {
+                type: 'head',
+                status: 200,
+                headers: [['content-type', 'text/event-stream']],
+              })
+              send(1, { type: 'chunk', dataBase64: Buffer.from(body).toString('base64') })
+              send(2, { type: 'end' })
             })
           }
           return { ok: true } as T
@@ -126,10 +141,10 @@ function makeTransport(options: { aiEnabled: boolean; stream: StreamScript }) {
       }
     },
     async listen<T>(event: string, handler: (payload: T) => void) {
-      if (event !== 'mobile:ai-stream-chunk') return () => {}
-      chunkListener = handler as (chunk: MobileAiStreamChunk) => void
+      if (event !== 'mobile:ai-relay-event') return () => {}
+      relayListener = handler as (event: MobileAiNetEvent) => void
       return () => {
-        chunkListener = null
+        relayListener = null
       }
     },
   }
@@ -138,6 +153,12 @@ function makeTransport(options: { aiEnabled: boolean; stream: StreamScript }) {
 
 const containers: HTMLElement[] = []
 const originalWidth = window.innerWidth
+
+beforeAll(async () => {
+  // the PC protocol code loads on the first key-provider turn; warm it so the
+  // short settle waits below measure the run, not a cold module load
+  await preloadMobileKeyProviderProtocols()
+}, 60_000)
 
 beforeEach(() => {
   aiRun.mode = 'normal'
@@ -194,7 +215,7 @@ async function sendPrompt(div: HTMLElement, prompt: string) {
 }
 
 const streamStarts = (calls: Array<{ command: string }>) =>
-  calls.filter((c) => c.command === 'mobile_ai_stream_start').length
+  calls.filter((c) => c.command === 'mobile_ai_relay_start').length
 
 describe('the mobile AI run', () => {
   it('keeps every AI entry point hidden and sends nothing while AI is off', async () => {
@@ -266,7 +287,7 @@ describe('the mobile AI run', () => {
       document.dispatchEvent(new Event('visibilitychange'))
       await settle()
     })
-    expect(calls.some((c) => c.command === 'mobile_ai_stream_cancel')).toBe(true)
+    expect(calls.some((c) => c.command === 'mobile_ai_relay_cancel')).toBe(true)
     expect(div.querySelector('.mobile-ai-composer button[type="submit"]')).not.toBeNull()
   })
 })
