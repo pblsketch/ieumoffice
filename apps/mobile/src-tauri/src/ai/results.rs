@@ -1,7 +1,11 @@
 //! AI result store: the `ai-results/` folder in the app data directory.
 //!
-//! Holds images the AI made or fetched and copies of attached photos, so the
-//! webview does not keep large bytes around (it reads them back when needed).
+//! Holds the pictures the AI made (`generate_image`), so the webview does not
+//! keep their bytes around (it reads them back when needed). Pictures fetched
+//! from the web and photos attached in the AI sheet stay in the webview's
+//! memory for the conversation and are not written here. Editor tracks that
+//! need to keep AI results may use the same folder.
+//!
 //! An image is addressed as `ai-result://<uuid>.<ext>`: a lower-case
 //! hyphenated v4 UUID and one of `png`, `jpg`, `webp`, `gif`. Addresses are
 //! checked strictly and only name files directly inside `ai-results/`.

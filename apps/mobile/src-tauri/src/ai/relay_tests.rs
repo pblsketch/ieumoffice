@@ -1045,3 +1045,29 @@ async fn the_old_stream_command_no_longer_sends_key_provider_requests() {
     assert!(events.is_empty());
     assert_no_key(&serde_json::to_string(&err).unwrap());
 }
+
+#[tokio::test]
+async fn test_builds_never_send_to_a_real_provider_host() {
+    let f = fixture();
+    set_key(&f.store, "openai", OPENAI_KEY, None);
+    // planned like any official request, but no loopback route was injected
+    let (res, events) = run(
+        &f.relay,
+        request(
+            "https://api.openai.com/v1/models",
+            &[("Authorization", "Bearer __sealed__:openai")],
+            None,
+        ),
+    )
+    .await;
+    let err = res.expect_err("a test build must not reach the network");
+    assert_eq!(err.code, MobileErrorCode::NetworkError);
+    assert_eq!(err.message_key, "mobile.ai.networkError");
+    assert_no_key(&serde_json::to_string(&err).unwrap());
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.event, MobileAiRelayEventKind::Head { .. })),
+        "no answer may arrive"
+    );
+}

@@ -139,6 +139,8 @@ pub struct PlannedRelayRequest {
     pub headers: Vec<(HeaderName, HeaderValue)>,
     pub body: Option<String>,
     key: Option<String>,
+    /// The host matched a loopback route a test injected (test builds only).
+    via_test_route: bool,
 }
 
 /// Prints no key: the query (which may hold it) and header values are left out.
@@ -502,6 +504,7 @@ impl MobileAiRelay {
             headers,
             body,
             key,
+            via_test_route: via_test,
         })
     }
 
@@ -596,8 +599,16 @@ impl MobileAiRelay {
             headers,
             body,
             key,
+            via_test_route,
             ..
         } = planned;
+        // Test builds only ever send to an injected loopback route.
+        if cfg!(test) && !via_test_route {
+            return Err(MobileError::new(
+                MobileErrorCode::NetworkError,
+                "mobile.ai.networkError",
+            ));
+        }
         let mut builder = client.request(method, url);
         for (name, value) in headers {
             builder = builder.header(name, value);
