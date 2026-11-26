@@ -8,14 +8,14 @@
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
 use crate::sheets::save::{
-    SheetsCopyWritten, SheetsOriginalWritten, write_back_to_original, write_copy,
+    SheetsCopyWritten, SheetsOriginalWritten, copy_original_to_work_folder, save_as_new_document,
+    share_from_work_folder, write_back_to_original, write_copy, write_recovery_copy,
 };
 use crate::sheets::{SheetsState, SheetsTempStat};
-use crate::storage::MobileFileService;
+use crate::storage::{MobileDocSession, MobileFileService};
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::Serialize;
 use std::sync::Arc;
-use std::time::Instant;
 use tauri::State;
 use tauri_plugin_ieum_mobile::resolve_file_bridge;
 
@@ -25,21 +25,7 @@ pub struct SheetsTempPath {
     pub path: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SheetsWorkingCopy {
-    pub path: String,
-    pub size: u64,
-    /// Where the copy's time went (diagnostics): the storage read through the
-    /// native file bridge, the base64 decode, the write into the work folder.
-    pub read_ms: u64,
-    pub decode_ms: u64,
-    pub write_ms: u64,
-}
-
-fn elapsed_ms(started: Instant) -> u64 {
-    started.elapsed().as_millis() as u64
-}
+pub use crate::sheets::save::SheetsWorkingCopy;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SheetsOk {
@@ -109,7 +95,9 @@ pub async fn mobile_sheets_crypto(
 }
 
 /// Copies the active document into a fresh working copy in the work folder
-/// and returns its path (the file the engine opens and saves from).
+/// and returns its path (the file the engine opens and saves from). The
+/// digest of what was read is kept for the "changed since it was opened"
+/// check of the save.
 #[tauri::command]
 pub async fn mobile_sheets_copy_session_to_temp(
     files: State<'_, Arc<MobileFileService>>,
@@ -120,27 +108,13 @@ pub async fn mobile_sheets_copy_session_to_temp(
     let files = files.inner().clone();
     let sheets = state.inner().clone();
     run_blocking(move || {
-        let target = sheets.workspace.new_file_path(&ext)?;
-        let started = Instant::now();
-        let read = files.read_file_bytes(&session_id)?;
-        let read_ms = elapsed_ms(started);
-        let started = Instant::now();
-        let bytes = B64
-            .decode(read.bytes_base64.as_bytes())
-            .map_err(bad_base64)?;
-        drop(read);
-        let decode_ms = elapsed_ms(started);
-        let started = Instant::now();
-        let target = path_string(target);
-        sheets.workspace.write_bytes(&target, &bytes)?;
-        let write_ms = elapsed_ms(started);
-        Ok(SheetsWorkingCopy {
-            path: target,
-            size: bytes.len() as u64,
-            read_ms,
-            decode_ms,
-            write_ms,
-        })
+        copy_original_to_work_folder(
+            &files,
+            &sheets.workspace,
+            &sheets.originals,
+            &session_id,
+            &ext,
+        )
     })
     .await
 }
@@ -400,8 +374,85 @@ pub async fn mobile_sheets_save_to_original(
 ) -> MobileResult<SheetsOriginalWritten> {
     let files = files.inner().clone();
     let sheets = state.inner().clone();
-    run_blocking(move || write_back_to_original(&files, &sheets.workspace, &session_id, &path))
-        .await
+    run_blocking(move || {
+        write_back_to_original(
+            &files,
+            &sheets.workspace,
+            &sheets.originals,
+            &session_id,
+            &path,
+        )
+    })
+    .await
+}
+
+/// Saves a verified workbook (a file in the work folder) as a new document
+/// the person places in the system save dialog; the new document becomes the
+/// active session (Save As, the first save of an `.xls` or `.csv` kept as
+/// Excel, a recovered or read-only document).
+#[tauri::command]
+pub async fn mobile_sheets_save_as(
+    files: State<'_, Arc<MobileFileService>>,
+    state: State<'_, Arc<SheetsState>>,
+    session_id: Option<String>,
+    path: String,
+    suggested_name: String,
+) -> MobileResult<MobileDocSession> {
+    let files = files.inner().clone();
+    let sheets = state.inner().clone();
+    run_blocking(move || {
+        save_as_new_document(
+            &files,
+            &sheets.workspace,
+            &sheets.originals,
+            session_id.as_deref(),
+            &path,
+            &suggested_name,
+        )
+    })
+    .await
+}
+
+/// Hands a file in the work folder to the system share sheet.
+#[tauri::command]
+pub async fn mobile_sheets_share_file(
+    files: State<'_, Arc<MobileFileService>>,
+    state: State<'_, Arc<SheetsState>>,
+    session_id: String,
+    path: String,
+    suggested_name: String,
+) -> MobileResult<SheetsOk> {
+    let files = files.inner().clone();
+    let sheets = state.inner().clone();
+    run_blocking(move || {
+        share_from_work_folder(
+            &files,
+            &sheets.workspace,
+            &session_id,
+            &path,
+            &suggested_name,
+        )?;
+        Ok(SheetsOk { ok: true })
+    })
+    .await
+}
+
+/// Keeps a workbook in the work folder as the document's recovery copy.
+#[tauri::command]
+pub async fn mobile_sheets_write_recovery(
+    files: State<'_, Arc<MobileFileService>>,
+    state: State<'_, Arc<SheetsState>>,
+    doc_key: String,
+    title: String,
+    path: String,
+) -> MobileResult<SheetsOk> {
+    let files = files.inner().clone();
+    let sheets = state.inner().clone();
+    run_blocking(move || {
+        write_recovery_copy(&files, &sheets.workspace, &doc_key, &title, &path)?;
+        Ok(SheetsOk { ok: true })
+    })
+    .await
 }
 
 /// Writes a file in the work folder as a new document the person places in

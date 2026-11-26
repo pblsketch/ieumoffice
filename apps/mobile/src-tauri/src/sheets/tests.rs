@@ -443,20 +443,28 @@ fn a_verified_save_is_written_back_to_the_sessions_original() {
         ephemeral: false,
     });
     let session = files.pick_open_file(&["xlsx".into()]).unwrap();
+    let digests = super::save::OriginalDigests::default();
     let saved = workspace.root().join("f-saved.xlsx");
     let bytes: Vec<u8> = (0..=255u8).cycle().take(70_000).collect();
     fs::write(&saved, &bytes).unwrap();
 
     let raw = saved.to_string_lossy().into_owned();
-    let unknown = super::save::write_back_to_original(&files, &workspace, "not-a-session", &raw);
+    let unknown =
+        super::save::write_back_to_original(&files, &workspace, &digests, "not-a-session", &raw);
     assert!(unknown.is_err());
     assert_eq!(
         bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
         b"original"
     );
 
-    let written =
-        super::save::write_back_to_original(&files, &workspace, &session.session_id, &raw).unwrap();
+    let written = super::save::write_back_to_original(
+        &files,
+        &workspace,
+        &digests,
+        &session.session_id,
+        &raw,
+    )
+    .unwrap();
     assert!(written.ok);
     assert_eq!(written.size, bytes.len() as u64);
     assert_eq!(
@@ -471,6 +479,7 @@ fn a_verified_save_is_written_back_to_the_sessions_original() {
         super::save::write_back_to_original(
             &files,
             &workspace,
+            &digests,
             &session.session_id,
             &outside.to_string_lossy()
         )
@@ -517,5 +526,305 @@ fn an_export_copy_goes_to_a_new_document_and_leaves_the_original() {
     assert_eq!(
         bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
         b"original"
+    );
+}
+
+fn picked_book(bridge: &tauri_plugin_ieum_mobile::fs::HostFileBridge, bytes: &[u8]) {
+    bridge.set_next_pick_open(tauri_plugin_ieum_mobile::fs::MockPickedDoc {
+        uri: "host://picked/book.xlsx".into(),
+        name: "book.xlsx".into(),
+        bytes: bytes.to_vec(),
+        writable: true,
+        ephemeral: false,
+    });
+}
+
+/// Like the desktop's `errDiskChanged`: a document another app changed after
+/// it was opened is not overwritten; once the app wrote it, its own write is
+/// the new base.
+#[test]
+fn a_save_over_an_original_changed_since_it_was_opened_is_refused() {
+    use tauri_plugin_ieum_mobile::fs::NativeFileBridge;
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let (bridge, files) = host_file_service(dir.path());
+    let digests = super::save::OriginalDigests::default();
+    picked_book(&bridge, b"original");
+    let session = files.pick_open_file(&["xlsx".into()]).unwrap();
+    let copy = super::save::copy_original_to_work_folder(
+        &files,
+        &workspace,
+        &digests,
+        &session.session_id,
+        "xlsx",
+    )
+    .unwrap();
+    assert_eq!(fs::read(&copy.path).unwrap(), b"original");
+    let saved = workspace.root().join("f-saved.xlsx");
+    fs::write(&saved, b"saved once").unwrap();
+    let raw = saved.to_string_lossy().into_owned();
+
+    // Another app rewrites the document.
+    bridge
+        .write_uri_bytes_atomic("host://picked/book.xlsx", b"changed elsewhere")
+        .unwrap();
+    let refused = super::save::write_back_to_original(
+        &files,
+        &workspace,
+        &digests,
+        &session.session_id,
+        &raw,
+    )
+    .unwrap_err();
+    assert_eq!(refused.message_key, super::save::MESSAGE_DISK_CHANGED);
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        b"changed elsewhere"
+    );
+
+    // Reopened (a fresh read records the new base), the save goes through,
+    // and the app's own write does not count as a change next time.
+    super::save::copy_original_to_work_folder(
+        &files,
+        &workspace,
+        &digests,
+        &session.session_id,
+        "xlsx",
+    )
+    .unwrap();
+    super::save::write_back_to_original(&files, &workspace, &digests, &session.session_id, &raw)
+        .unwrap();
+    fs::write(&saved, b"saved twice").unwrap();
+    super::save::write_back_to_original(&files, &workspace, &digests, &session.session_id, &raw)
+        .unwrap();
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        b"saved twice"
+    );
+}
+
+/// Save As writes a new document that becomes the session; the old original
+/// is not written, and only workbook names are taken.
+#[test]
+fn save_as_makes_a_new_document_and_leaves_the_original() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let (bridge, files) = host_file_service(dir.path());
+    let digests = super::save::OriginalDigests::default();
+    bridge.set_next_pick_open(tauri_plugin_ieum_mobile::fs::MockPickedDoc {
+        uri: "host://picked/book.xls".into(),
+        name: "book.xls".into(),
+        bytes: b"legacy".to_vec(),
+        writable: true,
+        ephemeral: false,
+    });
+    let session = files.pick_open_file(&["xls".into()]).unwrap();
+    super::save::copy_original_to_work_folder(
+        &files,
+        &workspace,
+        &digests,
+        &session.session_id,
+        "xls",
+    )
+    .unwrap();
+    let saved = workspace.root().join("f-saved.xlsx");
+    fs::write(&saved, b"new workbook").unwrap();
+    let raw = saved.to_string_lossy().into_owned();
+
+    let refused = super::save::save_as_new_document(
+        &files,
+        &workspace,
+        &digests,
+        Some(&session.session_id),
+        &raw,
+        "book.xls",
+    )
+    .unwrap_err();
+    assert_eq!(refused.message_key, "mobile.sheets.saveAsFormat");
+
+    bridge.set_next_save_as_uri("host://saved/book.xlsx");
+    let next = super::save::save_as_new_document(
+        &files,
+        &workspace,
+        &digests,
+        Some(&session.session_id),
+        &raw,
+        "book.xlsx",
+    )
+    .unwrap();
+    assert_eq!(next.name, "book.xlsx");
+    assert_ne!(next.session_id, session.session_id);
+    assert!(next.writable);
+    assert_eq!(
+        bridge.read_stored_uri("host://saved/book.xlsx").unwrap(),
+        b"new workbook"
+    );
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xls").unwrap(),
+        b"legacy"
+    );
+    assert!(digests.get(&session.session_id).is_none());
+    assert_eq!(
+        digests.get(&next.session_id),
+        Some(super::save::sha256_hex(b"new workbook"))
+    );
+    // The new document saves in place afterwards.
+    fs::write(&saved, b"edited again").unwrap();
+    super::save::write_back_to_original(&files, &workspace, &digests, &next.session_id, &raw)
+        .unwrap();
+    assert_eq!(
+        bridge.read_stored_uri("host://saved/book.xlsx").unwrap(),
+        b"edited again"
+    );
+}
+
+/// The share sheet and the recovery copy take a work-folder file.
+#[test]
+fn share_and_recovery_read_the_work_folder_file() {
+    use base64::Engine as _;
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = SheetsWorkspace::for_cache_dir(dir.path()).unwrap();
+    let (bridge, files) = host_file_service(dir.path());
+    picked_book(&bridge, b"original");
+    let session = files.pick_open_file(&["xlsx".into()]).unwrap();
+    let staged = workspace.root().join("f-share.xlsx");
+    fs::write(&staged, b"edited copy").unwrap();
+    let raw = staged.to_string_lossy().into_owned();
+    super::save::share_from_work_folder(&files, &workspace, &session.session_id, &raw, "book.xlsx")
+        .unwrap();
+    assert_eq!(bridge.last_shared_bytes().unwrap(), b"edited copy");
+    assert_eq!(
+        bridge.read_stored_uri("host://picked/book.xlsx").unwrap(),
+        b"original"
+    );
+
+    super::save::write_recovery_copy(&files, &workspace, &session.doc_key, "book.xlsx", &raw)
+        .unwrap();
+    let listed = files.recovery_list().unwrap();
+    assert!(listed.iter().any(|entry| entry.doc_key == session.doc_key));
+    let read = base64::engine::general_purpose::STANDARD
+        .decode(files.recovery_read(&session.doc_key).unwrap())
+        .unwrap();
+    assert_eq!(read, b"edited copy");
+    let outside = dir.path().join("outside.xlsx");
+    fs::write(&outside, "x").unwrap();
+    assert!(
+        super::save::write_recovery_copy(
+            &files,
+            &workspace,
+            &session.doc_key,
+            "book.xlsx",
+            &outside.to_string_lossy()
+        )
+        .is_err()
+    );
+}
+
+/// A failed write of a large file is told as such (the native bridge's
+/// argument limit); a small one keeps its own error, a cancel stays a cancel.
+#[test]
+fn a_large_failed_write_is_explained_as_too_large() {
+    use crate::error::{MobileError, MobileErrorCode};
+    let bridge_limit = MobileError::with_detail(
+        MobileErrorCode::InternalError,
+        "mobile.fs.ioError",
+        "String length (20051115) exceeds the maximum length (20000000)",
+    );
+    let explained = super::save::explain_write_failure(bridge_limit, 15_038_336);
+    assert_eq!(explained.code, MobileErrorCode::FileTooLarge);
+    assert_eq!(explained.message_key, super::save::MESSAGE_TOO_LARGE);
+    let small = MobileError::with_detail(
+        MobileErrorCode::PermissionDenied,
+        "mobile.fs.permissionDenied",
+        "revoked",
+    );
+    assert_eq!(
+        super::save::explain_write_failure(small, 1_000).code,
+        MobileErrorCode::PermissionDenied
+    );
+    let cancel = MobileError::new(MobileErrorCode::UserCancelled, "mobile.fs.cancelled");
+    assert_eq!(
+        super::save::explain_write_failure(cancel, 30_000_000).code,
+        MobileErrorCode::UserCancelled
+    );
+}
+
+/// The Rust half of saving a workbook opened with a password: the desktop's
+/// encrypted file is decrypted into the work folder, the save is locked again
+/// with the same password (`encrypt`, as the WebView asks) and only the locked
+/// file reaches the original. The result decrypts to the saved workbook.
+/// `IEUM_WRITE_SHEETS_FIXTURES=1` keeps it as `small.mobile-relocked.xlsx`,
+/// which the desktop decryption opens in `tests/sheets-save-relock.test.ts`.
+#[test]
+fn a_password_workbook_is_saved_locked_again_with_its_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SheetsState::new(dir.path()).unwrap();
+    let workspace = &state.workspace;
+    let (bridge, files) = host_file_service(dir.path());
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/sheets/engine-lib/tests/fixtures/crypto");
+    let pc_locked = fs::read(fixtures.join("small.pc-agile.xlsx")).unwrap();
+    picked_book(&bridge, &pc_locked);
+    let session = files.pick_open_file(&["xlsx".into()]).unwrap();
+    let copy = super::save::copy_original_to_work_folder(
+        &files,
+        workspace,
+        &state.originals,
+        &session.session_id,
+        "xlsx",
+    )
+    .unwrap();
+    let crypto = |request: Value| parse(&state.engine.crypto_line(&request.to_string()));
+    let password = "비밀번호 pw1";
+    let plain = workspace.root().join("plain.xlsx");
+    let opened = crypto(
+        json!({ "op": "decrypt", "source": copy.path, "target": plain, "password": password }),
+    );
+    assert_eq!(opened["ok"], json!(true));
+    let relocked = workspace.root().join("relocked.xlsx");
+    let locked = crypto(
+        json!({ "op": "encrypt", "source": plain, "target": relocked, "password": password }),
+    );
+    assert_eq!(locked["ok"], json!(true));
+    super::save::write_back_to_original(
+        &files,
+        workspace,
+        &state.originals,
+        &session.session_id,
+        &relocked.to_string_lossy(),
+    )
+    .unwrap();
+    let stored = bridge.read_stored_uri("host://picked/book.xlsx").unwrap();
+    assert_ne!(stored, fs::read(&plain).unwrap());
+    let back = workspace.root().join("stored.xlsx");
+    fs::write(&back, &stored).unwrap();
+    assert_eq!(
+        crypto(json!({ "op": "probe", "path": back }))["result"]["encrypted"],
+        json!(true)
+    );
+    let reopened = workspace.root().join("reopened.xlsx");
+    let decrypted = crypto(
+        json!({ "op": "decrypt", "source": back, "target": reopened, "password": password }),
+    );
+    assert_eq!(decrypted["ok"], json!(true));
+    assert_eq!(
+        fs::read(&reopened).unwrap(),
+        fs::read(fixtures.join("small.xlsx")).unwrap()
+    );
+    let kept = fixtures.join("small.mobile-relocked.xlsx");
+    if std::env::var_os("IEUM_WRITE_SHEETS_FIXTURES").is_some() {
+        fs::write(&kept, &stored).unwrap();
+    }
+    // The committed sample still opens with the password (the desktop test reads it).
+    let sample = workspace.root().join("sample.xlsx");
+    fs::copy(&kept, &sample).unwrap();
+    let sample_plain = workspace.root().join("sample-plain.xlsx");
+    let sample_open = crypto(
+        json!({ "op": "decrypt", "source": sample, "target": sample_plain, "password": password }),
+    );
+    assert_eq!(sample_open["ok"], json!(true));
+    assert_eq!(
+        fs::read(&sample_plain).unwrap(),
+        fs::read(fixtures.join("small.xlsx")).unwrap()
     );
 }

@@ -102,6 +102,9 @@ pub fn run() {
             commands::sheets::mobile_sheets_temp_append_bytes,
             commands::sheets::mobile_sheets_temp_sha256,
             commands::sheets::mobile_sheets_save_to_original,
+            commands::sheets::mobile_sheets_save_as,
+            commands::sheets::mobile_sheets_share_file,
+            commands::sheets::mobile_sheets_write_recovery,
             commands::sheets::mobile_sheets_write_copy,
 
             // T2 pdf

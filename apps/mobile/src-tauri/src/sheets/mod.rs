@@ -38,6 +38,8 @@ pub use workspace::{
 pub struct SheetsState {
     pub engine: SheetsEngine,
     pub workspace: SheetsWorkspace,
+    /// What each document's original was when the app last read or wrote it.
+    pub originals: save::OriginalDigests,
 }
 
 impl SheetsState {
@@ -51,7 +53,11 @@ impl SheetsState {
             .clear_all()
             .map_err(|error| std::io::Error::other(error.to_string()))?;
         let engine = SheetsEngine::new(Some(workspace.root()))?;
-        Ok(Self { engine, workspace })
+        Ok(Self {
+            engine,
+            workspace,
+            originals: save::OriginalDigests::default(),
+        })
     }
 
     /// Setup-time constructor: resolves the app cache directory, builds the
