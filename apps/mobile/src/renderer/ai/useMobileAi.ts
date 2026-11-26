@@ -52,6 +52,7 @@ import {
 import { pickPhotoFile, preparePhoto, type PendingPhoto } from './photos'
 import { publishMobileAiRunState, registerMobileAiStopAll } from './runState'
 import {
+  abortMobileAiToolCalls,
   addMobileAiAttachment,
   bindMobileAiTools,
   clearMobileAiAttachments,
@@ -378,6 +379,8 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
       // the queue goes first, so the settle of the stopped run starts nothing
       queueRef.current.clear()
       activeRunCancelRef.current?.()
+      // the stopped run's tool requests (a picture being made, a page being read) end too
+      abortMobileAiToolCalls()
       aiMemoryRef.current.resetForDoc(nextDocKey)
       aiMemoryRef.current.clear()
       messageRunsRef.current = []
@@ -404,6 +407,7 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
   const cancel = useCallback(() => {
     queueRef.current.hold()
     activeRunCancelRef.current?.()
+    abortMobileAiToolCalls()
   }, [])
 
   // ── one run ───────────────────────────────────────────────────────────────
@@ -443,8 +447,9 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
     const history = [...aiMemoryRef.current.getMessages()]
     appendMessage({ role: 'user', text: prompt }, runId)
     // the photos of this message stay with the conversation (the tools' attachments())
+    // one copy of each photo: the store keeps the same base64 string the message sends
     const attached = photos.map((p) =>
-      addMobileAiAttachment({ name: p.name, mime: p.mime, bytes: p.bytes }),
+      addMobileAiAttachment({ name: p.name, mime: p.mime, base64: p.base64 }),
     )
     const images: AgentImage[] = photos.map((p) => ({ base64: p.base64, mime: p.mime }))
 
@@ -462,6 +467,7 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
       if (blocked) return
       blocked = true
       loop?.cancel()
+      abortMobileAiToolCalls()
     }
 
     try {
@@ -579,6 +585,7 @@ export function useMobileAi(options: UseMobileAiOptions): MobileAi {
   const stopAll = useCallback(() => {
     queueRef.current.clear()
     activeRunCancelRef.current?.()
+    abortMobileAiToolCalls()
   }, [])
 
   // AI-T6's "stop and turn off?" reads this store and stops through it

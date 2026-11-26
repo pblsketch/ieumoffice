@@ -6,6 +6,8 @@
  * address check, the sealed relay); the webview holds no key and never uses
  * its own network. A tool never throws: failures and tools that are off answer
  * `{ error, errorCode }` (`unavailable` when off or not bound yet).
+ * `abortMobileAiToolCalls()` (useMobileAi, on every stop) cuts the Rust
+ * requests of the calls in flight; they answer `cancelled` and keep nothing.
  *
  * useMobileAi binds the tools (`bindMobileAiTools`, from ./state so this
  * module stays out of the app's first load) and refreshes the tool settings
@@ -17,6 +19,7 @@ import { mobileImageModelChoice } from './imageModel'
 import { AI_RESULT_SCHEME, mobileFetchStoredImage, mobileFetchWebImage } from './pictures'
 import { mobileImageSearch, mobileWebSearch } from './search'
 import {
+  beginMobileAiToolCall,
   boundMobileAiTools,
   listMobileAiAttachments,
   mobileAiToolAvailability,
@@ -57,10 +60,12 @@ export type {
 } from './types'
 export { isMobileAiToolError } from './types'
 export {
+  abortMobileAiToolCalls,
   addMobileAiAttachment,
   bindMobileAiTools,
   clearMobileAiAttachments,
   listMobileAiAttachments,
+  mobileAiAttachmentBase64,
   mobileAiToolSettings,
   onMobileAiAttachmentsChanged,
   onMobileAiToolSettingsChanged,
@@ -81,12 +86,39 @@ function failed(err: unknown): ReturnType<typeof toolError> {
   return toolError('failed', `The tool failed: ${detail.slice(0, 300)}`)
 }
 
-/** Runs a tool body; anything it throws becomes a `failed` answer. */
-async function safely<T>(body: () => Promise<T>): Promise<T | ReturnType<typeof toolError>> {
+function cancelled(): ReturnType<typeof toolError> {
+  return toolError('cancelled', 'The AI run was stopped, so this tool call was cancelled.')
+}
+
+/**
+ * Runs a tool body as one tracked call: its signal aborts when the run stops
+ * (abortMobileAiToolCalls), and the call then answers `cancelled` at once,
+ * whatever the body still does. Anything the body throws becomes `failed`.
+ */
+async function safely<T>(
+  body: (signal: AbortSignal) => Promise<T>,
+): Promise<T | ReturnType<typeof toolError>> {
+  const call = beginMobileAiToolCall()
+  const { signal } = call
+  let onAbort: () => void = () => {}
+  const stopped = new Promise<ReturnType<typeof toolError>>((resolve) => {
+    onAbort = () => resolve(cancelled())
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
   try {
-    return await body()
-  } catch (err) {
-    return failed(err)
+    const ran = (async () => {
+      try {
+        return await body(signal)
+      } catch (err) {
+        return signal.aborted ? cancelled() : failed(err)
+      }
+    })()
+    const answer = await Promise.race([ran, stopped])
+    // an answer that arrives with the stop is not handed to a run that is over
+    return signal.aborted ? cancelled() : answer
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    call.end()
   }
 }
 
@@ -113,32 +145,32 @@ const tools: MobileAiTools = {
   availability: () => mobileAiToolAvailability(),
 
   webSearch: (query, maxResults) =>
-    safely<WebSearchAnswer>(async () => {
+    safely<WebSearchAnswer>(async (signal) => {
       const bound = boundMobileAiTools()
       if (!bound) return toolError('unavailable', NOT_BOUND)
       if (!mobileWebToolsOn()) return toolError('unavailable', WEB_OFF)
-      return mobileWebSearch(bound.client, query, maxResults)
+      return mobileWebSearch(bound.client, query, maxResults, signal)
     }),
 
   imageSearch: (query, maxResults) =>
-    safely<ImageSearchAnswer>(async () => {
+    safely<ImageSearchAnswer>(async (signal) => {
       const bound = boundMobileAiTools()
       if (!bound) return toolError('unavailable', NOT_BOUND)
       if (!mobileWebToolsOn()) return toolError('unavailable', WEB_OFF)
-      return mobileImageSearch(bound.client, query, maxResults)
+      return mobileImageSearch(bound.client, query, maxResults, signal)
     }),
 
   readUrl: (url, offset) =>
-    safely<ReadUrlAnswer>(async () => {
+    safely<ReadUrlAnswer>(async (signal) => {
       const bound = boundMobileAiTools()
       if (!bound) return toolError('unavailable', NOT_BOUND)
       if (!mobileWebToolsOn()) return toolError('unavailable', WEB_OFF)
       const { mobileReadUrl } = await loadReadUrl()
-      return mobileReadUrl(bound.client, url, offset)
+      return mobileReadUrl(bound.client, url, offset, signal)
     }),
 
   fetchImage: (url) =>
-    safely<FetchImageAnswer>(async () => {
+    safely<FetchImageAnswer>(async (signal) => {
       const bound = boundMobileAiTools()
       if (!bound) return toolError('unavailable', NOT_BOUND)
       if (typeof url !== 'string' || !url.trim()) {
@@ -150,11 +182,11 @@ const tools: MobileAiTools = {
         return mobileFetchStoredImage(bound.client, address)
       }
       if (!mobileWebToolsOn()) return toolError('unavailable', WEB_OFF)
-      return mobileFetchWebImage(bound.client, address)
+      return mobileFetchWebImage(bound.client, address, signal)
     }),
 
   generateImage: (request: GenerateImageRequest) =>
-    safely<GenerateImageAnswer>(async () => {
+    safely<GenerateImageAnswer>(async (signal) => {
       const bound = boundMobileAiTools()
       if (!bound) return toolError('unavailable', NOT_BOUND)
       const route = mobileImageRoute()
@@ -169,15 +201,21 @@ const tools: MobileAiTools = {
       const choice = mobileImageModelChoice(request.model, route.provider, route.model)
       if (choice.kind === 'refuse') return toolError('invalid_model', choice.message)
       const { mobileGenerateImage } = await loadGenerate()
-      return mobileGenerateImage(bound.client, route.provider, choice.model, {
-        prompt,
-        size: typeof request.size === 'string' ? request.size : undefined,
-        transparent: request.transparent === true,
-      })
+      return mobileGenerateImage(
+        bound.client,
+        route.provider,
+        choice.model,
+        {
+          prompt,
+          size: typeof request.size === 'string' ? request.size : undefined,
+          transparent: request.transparent === true,
+        },
+        signal,
+      )
     }),
 
   analyzeMedia: (request: AnalyzeMediaRequest) =>
-    safely<AnalyzeMediaAnswer>(async () => {
+    safely<AnalyzeMediaAnswer>(async (signal) => {
       const bound = boundMobileAiTools()
       if (!bound) return toolError('unavailable', NOT_BOUND)
       if (!mobileAiToolAvailability().pictureAnalysis) {
@@ -197,7 +235,7 @@ const tools: MobileAiTools = {
       if (images.some((p) => !p.mime.toLowerCase().startsWith('image/'))) {
         return toolError('unavailable', 'Video and audio analysis is not available on the phone.')
       }
-      return mobileAnalyzePictures(bound.client, prompt, images)
+      return mobileAnalyzePictures(bound.client, prompt, images, signal)
     }),
 
   attachments: () => {

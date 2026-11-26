@@ -46,11 +46,26 @@ export function normalizeSearchArgs(
   return { query: typeof query === 'string' ? query.slice(0, 500) : '', max }
 }
 
-/** A deadline for one search step; `done` must run when the step ends. */
-function deadline(ms: number): { signal: AbortSignal; done: () => void } {
+/**
+ * A deadline for one search step that also ends when the tool call is
+ * stopped (`stop`); `done` must run when the step ends.
+ */
+function deadline(
+  ms: number,
+  stop: AbortSignal | undefined,
+): { signal: AbortSignal; done: () => void } {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
-  return { signal: controller.signal, done: () => clearTimeout(timer) }
+  const onStop = () => controller.abort()
+  if (stop?.aborted) controller.abort()
+  else stop?.addEventListener('abort', onStop, { once: true })
+  return {
+    signal: controller.signal,
+    done: () => {
+      clearTimeout(timer)
+      stop?.removeEventListener('abort', onStop)
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +137,12 @@ function toolCallData(result: unknown): unknown {
   return null
 }
 
-async function parallelMcpSearch(client: MobileClient, query: string): Promise<unknown> {
-  const { signal, done } = deadline(PARALLEL_TIMEOUT_MS)
+async function parallelMcpSearch(
+  client: MobileClient,
+  query: string,
+  stop: AbortSignal | undefined,
+): Promise<unknown> {
+  const { signal, done } = deadline(PARALLEL_TIMEOUT_MS, stop)
   let sessionId: string | null = null
   let protocolVersion: string | null = null
   const headers = (): Record<string, string> => ({
@@ -196,9 +215,10 @@ async function parallelWebSearch(
   client: MobileClient,
   query: string,
   maxResults: number,
+  stop: AbortSignal | undefined,
 ): Promise<WebSearchResult[] | null> {
   try {
-    const data = asRecord(await parallelMcpSearch(client, query))
+    const data = asRecord(await parallelMcpSearch(client, query, stop))
     const raw: unknown[] = Array.isArray(data.results) ? data.results : []
     const results: WebSearchResult[] = []
     for (const item of raw) {
@@ -228,8 +248,9 @@ async function duckText(
   client: MobileClient,
   url: string,
   headers: Record<string, string>,
+  stop: AbortSignal | undefined,
 ): Promise<string> {
-  const { signal, done } = deadline(FALLBACK_TIMEOUT_MS)
+  const { signal, done } = deadline(FALLBACK_TIMEOUT_MS, stop)
   try {
     const resp = await mobileSearchFetch(client, url, { headers, signal })
     if (!resp.ok) {
@@ -271,11 +292,13 @@ async function duckWebSearch(
   client: MobileClient,
   query: string,
   maxResults: number,
+  stop: AbortSignal | undefined,
 ): Promise<WebSearchResult[]> {
   const html = await duckText(
     client,
     `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
     BROWSER_HEADERS,
+    stop,
   )
   const results: WebSearchResult[] = []
   const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
@@ -292,12 +315,14 @@ async function duckImageSearch(
   client: MobileClient,
   query: string,
   maxResults: number,
+  stop: AbortSignal | undefined,
 ): Promise<ImageSearchResult[]> {
   // DuckDuckGo i.js needs a vqd token, so it takes two steps
   const tokenHtml = await duckText(
     client,
     `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
     BROWSER_HEADERS,
+    stop,
   )
   const vqd = /vqd=["']?([\d-]+)["']?/.exec(tokenHtml)?.[1]
   if (!vqd) throw new Error('no vqd token')
@@ -305,6 +330,7 @@ async function duckImageSearch(
     client,
     `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}`,
     { ...BROWSER_HEADERS, Referer: 'https://duckduckgo.com/' },
+    stop,
   )
   const data = asRecord(JSON.parse(json))
   const list: unknown[] = Array.isArray(data.results) ? data.results : []
@@ -348,14 +374,17 @@ export async function mobileWebSearch(
   client: MobileClient,
   query: unknown,
   maxResults: unknown,
+  stop?: AbortSignal,
 ): Promise<WebSearchAnswer> {
   // PC webSearch defaults to six results
   const { query: q, max } = normalizeSearchArgs(query, maxResults, 6)
   if (!q.trim()) return toolError('invalid_input', 'The search query is empty.')
-  const parallel = await parallelWebSearch(client, q, max)
+  const parallel = await parallelWebSearch(client, q, max, stop)
   if (parallel) return { results: parallel, method: 'parallel' }
+  // a stopped search does not go on to the fallback
+  if (stop?.aborted) return toolError('cancelled', 'The web search was stopped.')
   try {
-    return { results: await duckWebSearch(client, q, max), method: 'duckduckgo' }
+    return { results: await duckWebSearch(client, q, max, stop), method: 'duckduckgo' }
   } catch (err) {
     // an unreachable backend must not read as an empty result set
     return toolError('network', `The web search could not be reached: ${failureText(err)}`)
@@ -366,13 +395,14 @@ export async function mobileImageSearch(
   client: MobileClient,
   query: unknown,
   maxResults: unknown,
+  stop?: AbortSignal,
 ): Promise<ImageSearchAnswer> {
   // PC imageSearch defaults to eight results
   const { query: q, max } = normalizeSearchArgs(query, maxResults, 8)
   if (!q.trim()) return toolError('invalid_input', 'The search query is empty.')
   try {
     return {
-      images: filterUsableImages(await duckImageSearch(client, q, max)),
+      images: filterUsableImages(await duckImageSearch(client, q, max, stop)),
       method: 'duckduckgo',
     }
   } catch (err) {

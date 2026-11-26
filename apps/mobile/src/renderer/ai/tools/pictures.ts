@@ -80,6 +80,7 @@ export async function mobileFetchStoredImage(
 export async function mobileFetchWebImage(
   client: MobileAiCommandClient,
   url: string,
+  signal?: AbortSignal,
 ): Promise<FetchImageAnswer> {
   let target: URL
   try {
@@ -94,6 +95,7 @@ export async function mobileFetchWebImage(
   try {
     response = await mobileWebFetch(client, target.toString(), {
       headers: { Accept: PICTURE_ACCEPT },
+      signal,
     })
   } catch (err) {
     return webFetchFailure(err)

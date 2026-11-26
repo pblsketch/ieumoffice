@@ -157,6 +157,7 @@ export async function mobileReadUrl(
   client: MobileAiCommandClient,
   url: unknown,
   offset: unknown,
+  signal?: AbortSignal,
 ): Promise<ReadUrlAnswer> {
   const start = normalizeOffset(offset)
   if (typeof url !== 'string') {
@@ -178,7 +179,10 @@ export async function mobileReadUrl(
 
   let response: Response
   try {
-    response = await mobileWebFetch(client, requestUrl, { headers: { 'User-Agent': USER_AGENT } })
+    response = await mobileWebFetch(client, requestUrl, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal,
+    })
   } catch (err) {
     return webFetchFailure(err)
   }

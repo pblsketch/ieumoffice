@@ -175,6 +175,36 @@ export function mobileAiToolAvailability(): MobileAiToolAvailability {
 }
 
 // ---------------------------------------------------------------------------
+// Tool calls in flight: a Stop cuts their Rust requests (PC abortMediaCalls)
+// ---------------------------------------------------------------------------
+
+const inFlightToolCalls = new Set<AbortController>()
+
+/**
+ * One tool call starts: its signal feeds the Rust requests it sends (the
+ * relay, search and public address requests send Rust's cancel on abort).
+ * `end` must run when the call settles.
+ */
+export function beginMobileAiToolCall(): { readonly signal: AbortSignal; end(): void } {
+  const controller = new AbortController()
+  inFlightToolCalls.add(controller)
+  return { signal: controller.signal, end: () => inFlightToolCalls.delete(controller) }
+}
+
+/**
+ * The AI run stopped (Stop, stop everything, a document change, AI turned
+ * off): every tool call in flight is aborted and answers `cancelled`. A run
+ * executes its tools after its model turn ended, so cancelling the turn alone
+ * would leave a picture being made or a page being read.
+ */
+export function abortMobileAiToolCalls(): void {
+  for (const controller of [...inFlightToolCalls]) {
+    inFlightToolCalls.delete(controller)
+    controller.abort()
+  }
+}
+
+// ---------------------------------------------------------------------------
 // What the tools remember between calls (pages read), forgotten on a new conversation
 // ---------------------------------------------------------------------------
 
@@ -198,26 +228,64 @@ export function resetMobileAiTools(): void {
 let attachments: MobileAiAttachment[] = []
 let attachmentSeq = 0
 const attachmentListeners = new Set<() => void>()
+/** the base64 an attachment was added with: the one copy it keeps (shared with the sent message) */
+const attachmentBase64 = new WeakMap<MobileAiAttachment, string>()
 
 function attachmentsChanged(): void {
   for (const listener of [...attachmentListeners]) listener()
 }
 
-export function addMobileAiAttachment(photo: {
-  readonly name: string
-  readonly mime: string
-  readonly bytes: Uint8Array
-}): MobileAiAttachment {
+function decodeBase64(b64: string): Uint8Array {
+  const binary = atob(b64)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
+  return out
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  }
+  return btoa(binary)
+}
+
+/**
+ * Adds a photo of this conversation. Given as base64 (the AI sheet's photos),
+ * the store keeps that same string, the one the sent message's picture holds,
+ * and decodes `bytes` only when a tool reads them; given as bytes, it keeps
+ * those.
+ */
+export function addMobileAiAttachment(
+  photo:
+    | { readonly name: string; readonly mime: string; readonly bytes: Uint8Array }
+    | { readonly name: string; readonly mime: string; readonly base64: string },
+): MobileAiAttachment {
   attachmentSeq += 1
-  const added: MobileAiAttachment = {
-    id: `photo-${attachmentSeq}`,
-    name: photo.name,
-    mime: photo.mime,
-    bytes: photo.bytes,
+  const id = `photo-${attachmentSeq}`
+  let added: MobileAiAttachment
+  if ('base64' in photo) {
+    const b64 = photo.base64
+    added = {
+      id,
+      name: photo.name,
+      mime: photo.mime,
+      get bytes() {
+        return decodeBase64(b64)
+      },
+    }
+    attachmentBase64.set(added, b64)
+  } else {
+    added = { id, name: photo.name, mime: photo.mime, bytes: photo.bytes }
   }
   attachments = [...attachments, added]
   attachmentsChanged()
   return added
+}
+
+/** An attachment's picture as base64: the kept string when it was added so, else encoded. */
+export function mobileAiAttachmentBase64(attachment: MobileAiAttachment): string {
+  return attachmentBase64.get(attachment) ?? encodeBase64(attachment.bytes)
 }
 
 export function removeMobileAiAttachment(id: string): void {

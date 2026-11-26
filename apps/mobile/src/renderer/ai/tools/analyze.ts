@@ -22,7 +22,9 @@ export async function mobileAnalyzePictures(
   client: MobileClient,
   prompt: string,
   pictures: readonly MobileAiPicture[],
+  signal?: AbortSignal,
 ): Promise<AnalyzeMediaAnswer> {
+  if (signal?.aborted) return toolError('cancelled', 'Image analysis was stopped.')
   const total = pictures.reduce((n, p) => n + p.bytes.byteLength, 0)
   if (total > CHAT_ANALYSIS_MAX_BYTES) {
     // refused whole: nothing is dropped or downscaled behind the person's back
@@ -41,12 +43,19 @@ export async function mobileAnalyzePictures(
       handle?.cancel()
       settle(toolError('timeout', 'Image analysis timed out.'))
     }, CHAT_ANALYSIS_TIMEOUT_MS)
+    // a stop ends the turn, which sends Rust's relay cancel
+    const onStop = () => {
+      settle(toolError('cancelled', 'Image analysis was stopped.'))
+      handle?.cancel()
+    }
     const settle = (answer: AnalyzeMediaAnswer) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      signal?.removeEventListener('abort', onStop)
       resolve(answer)
     }
+    signal?.addEventListener('abort', onStop, { once: true })
     handle = transport.stream(
       {
         system: SYSTEM_PROMPT,

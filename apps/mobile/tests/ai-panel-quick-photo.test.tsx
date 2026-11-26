@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { preloadMobileKeyProviderProtocols } from '@genoffice/mobile-bridge/ai-bridge'
 import { translateMobile } from '../src/renderer/i18n'
 import { PHOTO_LONG_SIDE_PX } from '../src/renderer/ai/photos'
-import { listMobileAiAttachments } from '../src/renderer/ai/tools/state'
+import { listMobileAiAttachments, mobileAiAttachmentBase64 } from '../src/renderer/ai/tools/state'
 import {
   byTestId,
   click,
@@ -120,6 +120,10 @@ describe('photos', () => {
     expect(listMobileAiAttachments().map((a) => [a.name, a.mime])).toEqual([
       ['board.png', 'image/jpeg'],
     ])
+    // the conversation keeps the base64 the message sent, its bytes read on demand
+    const [kept] = listMobileAiAttachments()
+    expect(mobileAiAttachmentBase64(kept!)).toBe('/9j/2Q==')
+    expect(kept!.bytes).toEqual(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]))
   })
 
   it('takes a chip away before sending', async () => {

@@ -32,6 +32,8 @@ export type NetReply =
   | { readonly refuse: { readonly code: string; readonly messageKey: string } }
   /** failed after the start: an `error` event and a rejection with the same code */
   | { readonly fail: { readonly code: string; readonly messageKey: string } }
+  /** never answers (no events, the start stays pending): only a cancel ends it */
+  | { readonly hang: true }
 
 export type NetScript = (start: NetStart) => NetReply
 
@@ -124,6 +126,7 @@ export function makeFakeRust(init: Partial<Omit<FakeRust, 'client'>> = {}): Fake
           : fake.relay
     const reply = script(start)
     if ('refuse' in reply) return Promise.reject(reply.refuse)
+    if ('hang' in reply) return new Promise<T>(() => {})
     let seq = 0
     const send = (body: Record<string, unknown>) =>
       emit(event, { requestId: start.requestId, seq: seq++, ...body })

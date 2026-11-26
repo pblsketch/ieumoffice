@@ -20,6 +20,10 @@ import { generateImageWithProvider } from '../../../../../../packages/ai-provide
 import { bytesToBase64, sniffPictureMime } from './pictures'
 import { toolError, type GenerateImageAnswer } from './types'
 
+function stoppedAnswer(): GenerateImageAnswer {
+  return toolError('cancelled', 'Picture making was stopped; no picture was kept.')
+}
+
 /** The formats the result store keeps */
 const STORABLE = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
@@ -62,11 +66,13 @@ export async function mobileGenerateImage(
   provider: MobileAiImageProvider,
   model: string,
   request: { prompt: string; size?: string | undefined; transparent?: boolean | undefined },
+  signal?: AbortSignal,
 ): Promise<GenerateImageAnswer> {
   const meta = AI_MEDIA_PROVIDERS.find((m) => m.id === provider)
   if (!meta?.defaultBaseUrl) {
     return toolError('unavailable', 'Picture making is not available for this provider.')
   }
+  if (signal?.aborted) return stoppedAnswer()
   const providerHost = new URL(meta.defaultBaseUrl).host.toLowerCase()
   let askedForeign = false
   bindMobileAiRelay(
@@ -74,6 +80,9 @@ export async function mobileGenerateImage(
       askedForeign = true
     }),
   )
+  // a stop gives the relay back at once (the chat may send again before this call settles)
+  const unbindOnStop = () => bindMobileAiRelay(client)
+  signal?.addEventListener('abort', unbindOnStop, { once: true })
   let blob: { bytes: Uint8Array; mime: string }
   try {
     blob = await generateImageWithProvider(
@@ -84,8 +93,10 @@ export async function mobileGenerateImage(
         ...(request.size ? { aspectRatio: request.size } : {}),
         ...(request.transparent ? { transparent: true } : {}),
       },
+      signal,
     )
   } catch (err) {
+    if (signal?.aborted) return stoppedAnswer()
     if (askedForeign) {
       return toolError(
         'unavailable',
@@ -95,9 +106,12 @@ export async function mobileGenerateImage(
     const detail = err instanceof Error ? err.message : String(err)
     return toolError('failed', `Image generation failed: ${detail.slice(0, 500)}`)
   } finally {
+    signal?.removeEventListener('abort', unbindOnStop)
     // the chat transport binds the plain client before each turn; leave it bound too
     bindMobileAiRelay(client)
   }
+  // a picture that came back after the stop is not kept
+  if (signal?.aborted) return stoppedAnswer()
   const mime = sniffPictureMime(blob.bytes) ?? blob.mime
   if (!STORABLE.has(mime)) {
     return toolError('failed', `The image provider answered with an unusable format (${mime}).`)

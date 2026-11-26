@@ -24,7 +24,12 @@ import { hwpChangeCount, undoOutcome } from '../../../../hwp/src/renderer/ai/run
 import { aiLangDirective } from '../../../../hwp/src/renderer/i18n/locale'
 import { strings } from '../../../../hwp/src/renderer/i18n/strings'
 import type { HwpApi } from '../../../../hwp/src/shared/ipc'
-import { getMobileAiTools, isMobileAiToolError, type MobileAiPicture } from './tools'
+import {
+  getMobileAiTools,
+  isMobileAiToolError,
+  mobileAiAttachmentBase64,
+  type MobileAiPicture,
+} from './tools'
 import { base64ToBytes, bytesToBase64 } from './tools/pictures'
 
 const label = createI18n(strings)
@@ -192,7 +197,7 @@ function mobileHwpToolApi(): HwpToolApi {
         if (!photo.mime.toLowerCase().startsWith('image/')) {
           return { ok: false, error: 'That attachment is not a picture.' }
         }
-        return { ok: true, base64: bytesToBase64(photo.bytes), mime: photo.mime }
+        return { ok: true, base64: mobileAiAttachmentBase64(photo), mime: photo.mime }
       } catch (err) {
         return { ok: false, error: failure(err) }
       }

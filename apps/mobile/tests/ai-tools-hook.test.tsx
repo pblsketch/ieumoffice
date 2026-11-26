@@ -11,9 +11,18 @@ import { useMobileAi, type MobileAi } from '../src/renderer/ai/useMobileAi'
 import {
   addMobileAiAttachment,
   getMobileAiTools,
+  isMobileAiToolError,
   listMobileAiAttachments,
 } from '../src/renderer/ai/tools'
-import { PNG_BYTES, SSE_HEADERS, makeFakeRust, sse, type NetStart } from './ai-tools-fake'
+import { stopAllMobileAi } from '../src/renderer/ai/runState'
+import {
+  PNG_BYTES,
+  SSE_HEADERS,
+  makeFakeRust,
+  sse,
+  type NetScript,
+  type NetStart,
+} from './ai-tools-fake'
 
 // useMobileAi binds the shared AI tools and wraps every run with the internet
 // guard (decision 0062): the first turn lists the web tools, an address the
@@ -105,16 +114,36 @@ async function waitFor<T>(find: () => T | null | undefined, ms = 5000): Promise<
 const byTestId = <T extends Element = HTMLElement>(id: string) =>
   document.querySelector<T>(`[data-testid="${id}"]`)
 
-async function mount(turns: string[], executed: string[]) {
+/** A skill whose read_url really runs the shared tool (its request goes to the fake Rust). */
+function readingSkill(answers: string[]): AgentSkill {
+  return {
+    id: 'doc',
+    systemPrompt: 'You read pages.',
+    tools: [{ name: 'read_url', description: 'read_url', inputSchema: { type: 'object' } }],
+    executeTool: async (call) => {
+      const page = await getMobileAiTools().readUrl(String(call.input.url))
+      const output = isMobileAiToolError(page) ? `error ${page.errorCode}` : page.text
+      answers.push(output)
+      return { output, summary: 'read_url' }
+    },
+  }
+}
+
+async function mount(
+  turns: string[],
+  executed: string[],
+  extra: { skill?: AgentSkill; web?: NetScript } = {},
+) {
   const relayBodies: string[] = []
   const rust = makeFakeRust({
     relay: (start: NetStart) => {
       relayBodies.push(start.body ?? '')
       return { status: 200, headers: SSE_HEADERS, body: turns.shift() ?? TEXT_TURN }
     },
+    ...(extra.web ? { web: extra.web } : {}),
   })
   const editorDoc = {
-    createAiRun: async () => ({ skill: docSkill(executed) }),
+    createAiRun: async () => ({ skill: extra.skill ?? docSkill(executed) }),
   } as unknown as EditorDocument
   const holder: { ai: MobileAi | null } = { ai: null }
   function Harness() {
@@ -215,5 +244,31 @@ describe('useMobileAi with the AI tools', () => {
     await act(async () => block.click())
     await act(async () => sent)
     expect(executed).toEqual(['read_url', 'read_url'])
+  })
+
+  it.each([
+    ['the panel Stop', (ai: MobileAi) => ai.cancel()],
+    ['stop everything (turning AI off)', () => stopAllMobileAi()],
+    ['a document change', (ai: MobileAi) => ai.resetForDocument('doc-2')],
+  ])('%s cuts the tool request in flight', async (_label, stop) => {
+    const answers: string[] = []
+    const { rust, ai } = await mount(
+      [toolCallTurn('read_url', { url: 'https://known.example/a' })],
+      [],
+      { skill: readingSkill(answers), web: () => ({ hang: true }) },
+    )
+    let sent!: Promise<void>
+    act(() => {
+      // the address is in the conversation: nothing is asked
+      sent = ai().send('read https://known.example/a')
+    })
+    const fetchStart = await waitFor(() =>
+      rust.starts.find((s) => s.command === 'mobile_ai_web_fetch_start'),
+    )
+    act(() => stop(ai()))
+    await act(async () => sent)
+    await waitFor(() => (answers.length > 0 ? answers : null))
+    expect(rust.cancels).toContain(fetchStart.requestId)
+    expect(answers).toEqual(['error cancelled'])
   })
 })

@@ -2,7 +2,9 @@
  * Photos attached in the AI sheet: picked with the system picture picker (no
  * OS permission prompt, no camera), shrunk to a JPEG whose long side is at
  * most PHOTO_LONG_SIDE_PX and held as base64 until the next message sends it
- * as the user turn's pictures (AgentMessage `images`).
+ * as the user turn's pictures (AgentMessage `images`). The base64 string is the
+ * only copy: the sent message and the conversation's attachments share it, and
+ * the bytes are decoded only when a tool reads them.
  */
 import { pickImageFile } from '../editors/pickPicture'
 
@@ -15,9 +17,8 @@ export interface PendingPhoto {
   readonly id: string
   readonly name: string
   readonly mime: 'image/jpeg'
-  /** raw base64, no data: prefix (AgentImage) */
+  /** raw base64, no data: prefix (AgentImage); the one copy of the picture */
   readonly base64: string
-  readonly bytes: Uint8Array
   readonly width: number
   readonly height: number
 }
@@ -84,7 +85,6 @@ export async function preparePhoto(file: File): Promise<PendingPhoto> {
       name: file.name || `photo-${photoSeq}.jpg`,
       mime: 'image/jpeg',
       base64: toBase64(bytes),
-      bytes,
       width: size.width,
       height: size.height,
     }

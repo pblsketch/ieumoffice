@@ -29,6 +29,8 @@ export type MobileAiToolErrorCode =
   | 'empty'
   /** an AI result address that is not in the store */
   | 'not_found'
+  /** the AI run was stopped while the tool ran; its requests were cut and nothing was kept */
+  | 'cancelled'
   /** anything else (a provider refusal, a broken answer) */
   | 'failed'
 

@@ -7,6 +7,7 @@ import {
   getMobileAiTools,
   isMobileAiToolError,
   listMobileAiAttachments,
+  mobileAiAttachmentBase64,
   mobileReadUrlModelText,
   refreshMobileAiToolSettings,
   removeMobileAiAttachment,
@@ -769,5 +770,17 @@ describe('attached photos', () => {
     expect(listMobileAiAttachments().map((x) => x.id)).toEqual([b.id])
     clearMobileAiAttachments()
     expect(getMobileAiTools().attachments()).toEqual([])
+  })
+
+  it('keeps one copy of a photo added as base64: the same string, bytes decoded on demand', () => {
+    const sent = `${PNG_BASE64}`
+    const photo = addMobileAiAttachment({ name: 'c.png', mime: 'image/png', base64: sent })
+    expect(photo.bytes).toEqual(PNG_BYTES)
+    // no bytes are held: each read decodes the kept string anew
+    expect(photo.bytes).not.toBe(photo.bytes)
+    expect(mobileAiAttachmentBase64(photo)).toBe(sent)
+    // a photo added as bytes is encoded when asked
+    const raw = addMobileAiAttachment({ name: 'd.png', mime: 'image/png', bytes: PNG_BYTES })
+    expect(mobileAiAttachmentBase64(raw)).toBe(PNG_BASE64)
   })
 })
