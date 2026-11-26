@@ -4961,3 +4961,60 @@ describe('a test paper in two columns', () => {
     }
   })
 })
+
+describe('read_page_layout on second lines (hangs)', () => {
+  it('names marked lines whose second line starts under the mark, and lines set in with spaces', () => {
+    const lines = [
+      `1. ${WRAPPING}`,
+      `가. ${WRAPPING}`,
+      '  나. 띄어 쓴 줄',
+      '짧은 줄',
+      `본문 ${WRAPPING}`,
+    ]
+    const { plugin } = open(blank(lines))
+    const { hangs } = plugin.pageLayout().map
+    expect(hangs.off.map((line) => line.text.slice(0, 3))).toEqual(['1. ', '가. '])
+    for (const line of hangs.off) {
+      expect(line.hangPt).toBe(0)
+      expect(line.markPt).toBeGreaterThan(3)
+    }
+    expect(hangs.spaced).toEqual([{ text: '나. 띄어 쓴 줄' }])
+    expect(hangs.offMore).toBeUndefined()
+  })
+
+  it('names none once indent "mark" hangs them', () => {
+    const lines = [`1. ${WRAPPING}`, `가. ${WRAPPING}`, '짧은 줄']
+    const { plugin } = open(blank(lines))
+    plugin.styleParagraphs({
+      styles: [
+        { name: '번호', format: { size: 13, align: 'justify', indent: 'mark' } },
+        { name: '가나', format: { size: 13, align: 'justify', marginLeft: 13, indent: 'mark' } },
+      ],
+      apply: [
+        { style: '번호', numbered: '1.' },
+        { style: '가나', numbered: '가.' },
+      ],
+    })
+    expect(plugin.pageLayout().map.hangs).toEqual({ off: [], spaced: [] })
+  })
+
+  it('stores an indent of any points as an even unit, so the engine draws it where asked', () => {
+    const { plugin, doc } = open(blank([`1. ${WRAPPING}`]))
+    plugin.formatParagraph('1. 연수', null, { align: 'left', marginLeft: 10.005, indent: -14.255 })
+    const runs = JSON.parse(doc().getPageTextLayout(0)).runs as { x: number; y: number }[]
+    const starts = [...new Set(runs.map((run) => run.y))].map((y) =>
+      Math.min(...runs.filter((run) => run.y === y).map((run) => run.x)),
+    )
+    // the second line 14.26 pt (19 px) further in than the first, not five times as far
+    expect(Math.abs(starts[1]! - starts[0]! - (14.26 * 96) / 72)).toBeLessThan(0.5)
+  })
+
+  it('names a hang that no longer fits its mark after the mark grew', () => {
+    const { plugin } = open(blank([`1. ${WRAPPING}`]))
+    plugin.formatParagraph('1. 연수', null, { size: 11, align: 'left', indent: 'mark' })
+    expect(plugin.pageLayout().map.hangs.off).toEqual([])
+    plugin.formatParagraph('1. 연수', null, { size: 16 })
+    const [off] = plugin.pageLayout().map.hangs.off
+    expect(off.markPt).toBeGreaterThan(off.hangPt + 1)
+  })
+})

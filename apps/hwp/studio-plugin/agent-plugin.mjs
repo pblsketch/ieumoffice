@@ -1796,6 +1796,12 @@ const MAX_FONT_NAME = 64
 const FONT_LANGUAGES = 7
 /** Paragraph indents, margins and spacing come to the engine at twice their HWPUNIT, 100 to a point. */
 const PARA_UNITS_PER_PT = 200
+/**
+ * Points as the paragraph unit, always an even number: the engine draws a paragraph whose
+ * margin or indent is odd in that unit five times as far in (a margin of 1999 sits at 66.6 pt,
+ * not 10), and the paragraph dialog writes even values only.
+ */
+const paraUnitsOf = (points) => 2 * Math.round((points * PARA_UNITS_PER_PT) / 2)
 /** What a paragraph's indent, margins and spacing may be set to, in points. */
 const PARA_LENGTHS = {
   indent: { min: -100, max: 100, key: 'indent' },
@@ -1975,7 +1981,7 @@ function formatOf(format, allowParagraph) {
       const mark = name === 'indent' ? `, or "${HANG_BY_MARK}"` : ''
       throw fail('BAD_ARGUMENT', `${name} must be ${min} to ${max} points${mark}`)
     }
-    paragraph[key] = Math.round(points * PARA_UNITS_PER_PT)
+    paragraph[key] = paraUnitsOf(points)
   }
   if (given('list')) {
     if (!LIST_KINDS.includes(format.list)) {
@@ -2475,7 +2481,7 @@ function hangByMarks(doc, items, styleId = null, existed = true) {
     common = measured.reduce((best, entry) =>
       alike(entry.width) > alike(best.width) ? entry : best,
     ).width
-    const indent = -Math.round(common * PARA_UNITS_PER_PT)
+    const indent = -paraUnitsOf(common)
     const unreached = shapesOutOfReach(doc)
     if (existed && unreached > 0) outcome.unreachedShapes = unreached
     outcome.kept = keepingIndents([...left, ...nestedTableItems(doc)], () => {
@@ -2486,7 +2492,7 @@ function hangByMarks(doc, items, styleId = null, existed = true) {
   }
   for (const { box, k, width } of measured) {
     if (common !== null && Math.abs(width - common) <= SAME_MARK_PT) continue
-    box.formatParagraph(k, JSON.stringify({ indent: -Math.round(width * PARA_UNITS_PER_PT) }))
+    box.formatParagraph(k, JSON.stringify({ indent: -paraUnitsOf(width) }))
     if (styleId !== null) outcome.apart += 1
   }
   return { ...outcome, hung: measured.length }
@@ -5151,6 +5157,79 @@ function pageMapOf(doc) {
       .filter(([, on]) => on.length > 1)
       .map(([table, on]) => ({ table, from: on[0], to: on.at(-1) })),
     past,
+    hangs: hangsOf(doc),
+  }
+}
+
+/** Most paragraphs read_page_layout names in each list of hangsOf. */
+const HANG_LIST_MAX = 10
+/**
+ * A hang this close to the width of its mark, in points, is set right: marks are measured to
+ * a tenth of a point, and a hang written by indent "mark" is rounded to the stored unit.
+ */
+const HANG_SLACK_PT = 0.6
+/** Typed spaces at the start of a line that set it in: two half-width ones, or a full-width one. */
+const TYPED_INDENT = /^(?: {2,}|\u3000+)\S/
+
+/**
+ * Where the later lines of the body paragraphs start, as an official document needs them
+ * (행정업무운영 편람: a second line starts under the first letter of the item's words):
+ * `off`, the paragraphs that start with a mark (1., 가., □, ○, -) and run over two lines or
+ * more, aligned left or justified, whose later lines do not start under the words after the
+ * mark, with how far in they start now and how wide the mark is with its space, in points;
+ * `spaced`, the paragraphs set in with typed spaces. Each list names HANG_LIST_MAX at most and
+ * counts the rest in `offMore` and `spacedMore`. Body paragraphs only; table cells are left
+ * out. Reads only.
+ */
+function hangsOf(doc) {
+  const candidates = []
+  const spaced = []
+  let spacedCount = 0
+  for (let sec = 0; sec < doc.getSectionCount(); sec++) {
+    for (let para = 0; para < doc.getParagraphCount(sec); para++) {
+      let text
+      try {
+        const length = doc.getParagraphLength(sec, para)
+        if (length <= 0) continue
+        text = doc.getTextRange(sec, para, 0, length).replace(CONTROL_HEAD, '')
+      } catch {
+        continue
+      }
+      if (!text.trim()) continue
+      if (TYPED_INDENT.test(text)) {
+        spacedCount += 1
+        if (spaced.length < HANG_LIST_MAX) spaced.push({ text: paragraphText(doc, sec, para) })
+        continue
+      }
+      if (markLengthOf(text) === 0) continue
+      const box = containerOf(doc, { sec, para })
+      try {
+        if (box.line(para, 0).lineCount < 2) continue
+      } catch {
+        continue
+      }
+      candidates.push([box, para, null, sec])
+    }
+  }
+  const off = []
+  let offCount = 0
+  if (candidates.length > 0) {
+    const { measured } = measureHangs(candidates)
+    const secOf = new Map(candidates.map(([box, , , sec]) => [box, sec]))
+    for (const { box, k, width } of measured) {
+      const hang = 0 - ptOfPx(Number(box.props(k).indent) || 0)
+      if (Math.abs(hang - width) <= HANG_SLACK_PT) continue
+      offCount += 1
+      if (off.length < HANG_LIST_MAX) {
+        off.push({ text: paragraphText(doc, secOf.get(box), k), hangPt: hang, markPt: width })
+      }
+    }
+  }
+  return {
+    off,
+    ...(offCount > off.length ? { offMore: offCount - off.length } : {}),
+    spaced,
+    ...(spacedCount > spaced.length ? { spacedMore: spacedCount - spaced.length } : {}),
   }
 }
 
