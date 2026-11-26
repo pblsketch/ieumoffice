@@ -6,7 +6,8 @@
  * `null` removes the key to restore `DEFAULT_OUTLINE_STYLE_MAP`.
  */
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { SettingsPathProvider } from '@genoffice/electron-utils'
 import { atomicWriteFile } from './atomic-write'
 import {
@@ -59,6 +60,7 @@ export async function writeHwpOutlineStyleMap(
 ): Promise<OutlineStyleMap> {
   const path = settingsPathOf(app)
   const settings = readSettingsObject(path)
+  await mkdir(dirname(path), { recursive: true })
   if (map === null) {
     delete settings[HWP_OUTLINE_STYLE_MAP_KEY]
     await atomicWriteFile(path, Buffer.from(JSON.stringify(settings, null, 2), 'utf8'))

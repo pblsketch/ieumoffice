@@ -254,16 +254,29 @@ function readParaStyleName(doc, sec, para, styleById) {
   return ''
 }
 
-function readSectionPageFormat(doc, sec, cache) {
-  if (cache.has(sec)) return cache.get(sec)
-  let format = 0
+function readExplicitSectionPageFormat(doc, sec) {
   if (typeof doc.getPageNumberPos === 'function') {
     const res = tryOr(() => parseJson(doc.getPageNumberPos(sec), null), null)
     const fmt = res?.pageNumber?.format
-    if (Number.isInteger(fmt)) format = fmt
-  } else if (typeof doc.getPageNumberPosition === 'function') {
+    if (Number.isInteger(fmt)) return fmt
+    return null
+  }
+  if (typeof doc.getPageNumberPosition === 'function') {
     const res = tryOr(() => parseJson(doc.getPageNumberPosition(sec), null), null)
-    if (res?.exists && Number.isInteger(res.format)) format = res.format
+    if (res?.exists && Number.isInteger(res.format)) return res.format
+    return null
+  }
+  return null
+}
+
+function readSectionPageFormat(doc, sec, cache) {
+  if (cache.has(sec)) return cache.get(sec)
+  const explicit = readExplicitSectionPageFormat(doc, sec)
+  let format = 0
+  if (explicit !== null) {
+    format = explicit
+  } else if (sec > 0) {
+    format = readSectionPageFormat(doc, sec - 1, cache)
   }
   cache.set(sec, format)
   return format

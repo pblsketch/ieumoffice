@@ -1031,12 +1031,10 @@ function registerHwpIpc(): void {
 
   ipcMain.handle(HWP_CHANNELS.getOutlineStyleMap, () => readHwpOutlineStyleMap(app))
   ipcMain.handle(HWP_CHANNELS.setOutlineStyleMap, async (_e, rawMap: unknown) => {
-    const input =
-      rawMap === null
-        ? null
-        : rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)
-          ? (rawMap as Record<string, number>)
-          : null
+    if (rawMap !== null && (typeof rawMap !== 'object' || Array.isArray(rawMap))) {
+      return readHwpOutlineStyleMap(app)
+    }
+    const input = rawMap === null ? null : (rawMap as Record<string, number>)
     const next = await writeHwpOutlineStyleMap(app, input)
     if (typeof webContents?.fromId === 'function') {
       for (const id of hwpViews) {

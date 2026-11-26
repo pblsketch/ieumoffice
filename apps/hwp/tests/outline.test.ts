@@ -310,6 +310,26 @@ describe('readOutline against real @rhwp/core documents', () => {
     expect(afterClear.items.map((item) => item.title)).toEqual(['기본 제목 1'])
   })
 
+  it('persists an explicit empty document map {} across HWP and HWPX reload and overrides appStyleMap', () => {
+    const doc = makeDoc(['기본 제목 1', '네이티브 개요'])
+    const title1Id = ensureStyle(doc, '제목 1', 'Heading 1')
+    const outline1Id = styleIdByName(doc, '개요 1')
+    doc.applyStyle(0, 0, title1Id)
+    doc.applyStyle(0, 1, outline1Id)
+
+    expect(writeDocOutlineMap(doc, {}).ok).toBe(true)
+    expect(readDocOutlineMap(doc)).toEqual({})
+
+    for (const reloaded of [new HwpDocument(doc.exportHwp()), new HwpDocument(doc.exportHwpx())]) {
+      expect(readDocOutlineMap(reloaded)).toEqual({})
+      const res = readOutline(reloaded, { appStyleMap: DEFAULT_OUTLINE_STYLE_MAP })
+      expect(res.hasDocStyleMap).toBe(true)
+      expect(res.docStyleMap).toEqual({})
+      expect(res.effectiveStyleMap).toEqual({})
+      expect(res.items.map((item) => item.title)).toEqual(['네이티브 개요'])
+    }
+  })
+
   it('excludes default 제목 1 / Heading 1 headings when removed from appStyleMap', () => {
     const doc = makeDoc(['한국어 제목', 'English Heading', '개요 문단'])
     const title1Id = ensureStyle(doc, '제목 1', 'Heading 1')
@@ -401,6 +421,46 @@ describe('readOutline against real @rhwp/core documents', () => {
     expect(romanResult.items[0]).toMatchObject({ page: 1, pageLabel: 'i', physicalPage: 1 })
     expect(romanResult.items[1]).toMatchObject({ page: 10, pageLabel: 'x', physicalPage: 2 })
     expect(romanResult.items[2]).toMatchObject({ page: 11, pageLabel: 'xi', physicalPage: 3 })
+  })
+
+  it('inherits page-number format across sections when a later section has no explicit pgnp', () => {
+    const doc = makeDoc(['앞 구역 개요'])
+    const outline1Id = styleIdByName(doc, '개요 1')
+    doc.applyStyle(0, 0, outline1Id)
+    doc.setPageNumberPos(0, 3, 5, false)
+
+    // Split into section 1 without setting pageNumberPos on section 1
+    doc.splitSection(0, 0, doc.getParagraphLength(0, 0))
+    expect(doc.getSectionCount()).toBe(2)
+    doc.insertText(1, 0, 0, '둘째 구역 개요')
+    doc.applyStyle(1, 0, outline1Id)
+    doc.insertNewNumber(1, 0, 0, 5)
+
+    expect(JSON.parse(doc.getPageNumberPos(1)).pageNumber).toBeNull()
+
+    const inherited = readOutline(doc)
+    expect(inherited.items).toHaveLength(2)
+    expect(inherited.items[0]).toMatchObject({
+      sec: 0,
+      para: 0,
+      page: 1,
+      pageLabel: 'i',
+      physicalPage: 1,
+    })
+    expect(inherited.items[1]).toMatchObject({
+      sec: 1,
+      para: 0,
+      page: 5,
+      pageLabel: 'v',
+      physicalPage: 2,
+    })
+
+    // Explicitly resetting section 1 to Arabic (format 0) stops inheritance for section 1
+    doc.setPageNumberPos(1, 0, 5, false)
+    const explicitArabic = readOutline(doc)
+    expect(explicitArabic.items[0]).toMatchObject({ page: 1, pageLabel: 'i' })
+    expect(explicitArabic.items[1]).toMatchObject({ page: 5, physicalPage: 2 })
+    expect(explicitArabic.items[1]!.pageLabel).toBeUndefined()
   })
 
   it('tracks the active heading index for a given (sec, para) caret position', () => {

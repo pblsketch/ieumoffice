@@ -191,6 +191,14 @@ describe('outline-settings persistence in userData/app-settings.json', () => {
     expect(saved).toEqual({ 장제목: 1, maxLevel: 10 })
     expect(readHwpOutlineStyleMap(settingsApp())).toEqual({ 장제목: 1, maxLevel: 10 })
   })
+
+  it('creates missing userData directories before writing app-settings.json', async () => {
+    const missingUserData = join(dir, 'nested', 'not-created-yet')
+    const missingApp = { getPath: (): string => missingUserData }
+    const saved = await writeHwpOutlineStyleMap(missingApp, { 장제목: 1 })
+    expect(saved).toEqual({ 장제목: 1 })
+    expect(readHwpOutlineStyleMap(missingApp)).toEqual({ 장제목: 1 })
+  })
 })
 
 describe('outline style map IPC handlers and view broadcasts', () => {
@@ -234,5 +242,26 @@ describe('outline style map IPC handlers and view broadcasts', () => {
       HWP_CHANNELS.outlineStyleMapChanged,
       DEFAULT_OUTLINE_STYLE_MAP,
     )
+  })
+
+  it('ignores malformed setOutlineStyleMap IPC payloads without wiping settings or broadcasting', async () => {
+    const v1 = createHwpView().webContents as unknown as FakeContents
+    const v2 = createHwpView().webContents as unknown as FakeContents
+    const getHandler = handlers.get(HWP_CHANNELS.getOutlineStyleMap)!
+    const setHandler = handlers.get(HWP_CHANNELS.setOutlineStyleMap)!
+
+    await setHandler({ sender: v1 }, { 장제목: 1, 절제목: 2 })
+    v1.send.mockClear()
+    v2.send.mockClear()
+
+    for (const badPayload of [undefined, 'bad', 42, true, ['제목 1']]) {
+      const result = await setHandler({ sender: v1 }, badPayload)
+      expect(result).toEqual({ 장제목: 1, 절제목: 2 })
+    }
+
+    expect(await getHandler({ sender: v2 })).toEqual({ 장제목: 1, 절제목: 2 })
+    expect(readRawSettings()[HWP_OUTLINE_STYLE_MAP_KEY]).toEqual({ 장제목: 1, 절제목: 2 })
+    expect(v1.send).not.toHaveBeenCalled()
+    expect(v2.send).not.toHaveBeenCalled()
   })
 })
