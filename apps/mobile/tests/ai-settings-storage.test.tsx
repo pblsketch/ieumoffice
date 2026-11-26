@@ -1,4 +1,4 @@
-// The AI result store rows the storage section draws (track T7 AI-T6, spec
+// The AI result store card the storage section draws (track T7 AI-T6, spec
 // 3.5): size and file count even while AI is off, [clear] behind a confirm
 // sheet, no clearing while an AI run is going, the size read again after.
 import { act } from 'react'
@@ -30,10 +30,10 @@ describe('the AI result store rows', () => {
     expect(size?.textContent).toContain(formatAiBytes(MB3, 'ko'))
     expect(size?.textContent).toContain('4')
     expect(formatAiBytes(MB3, 'ko')).toBe('3.3 MB')
-    // rows only: the storage section owns the card around them
-    const row = byTestId('ai-results-row')
-    expect(row?.closest('.mobile-card')).toBeNull()
-    expect(row?.closest('section')).toBeNull()
+    // its own card with a heading: the storage section draws it after its own card
+    const card = byTestId('ai-results-row')?.closest('.mobile-card')
+    expect(card?.getAttribute('data-testid')).toBe('ai-results-card')
+    expect(card?.querySelector('.mobile-card-subtitle')?.textContent).toBe(aiKo.aiResultsTitle)
   })
 
   it('clears behind a confirm sheet and reads the size again', async () => {

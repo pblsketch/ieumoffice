@@ -91,6 +91,20 @@ beforeAll(async () => {
 
 const settle = () => act(async () => new Promise((r) => setTimeout(r, 30)))
 
+/** Waits (inside act) until `find` returns something; a slow disk can take longer than one settle. */
+async function waitFor<T>(find: () => T | null | undefined, ms = 5000): Promise<T> {
+  const start = Date.now()
+  for (;;) {
+    const found = find()
+    if (found !== null && found !== undefined) return found
+    if (Date.now() - start > ms) throw new Error('waitFor timed out')
+    await act(async () => new Promise((r) => setTimeout(r, 20)))
+  }
+}
+
+const byTestId = <T extends Element = HTMLElement>(id: string) =>
+  document.querySelector<T>(`[data-testid="${id}"]`)
+
 async function mount(turns: string[], executed: string[]) {
   const relayBodies: string[] = []
   const rust = makeFakeRust({
@@ -145,19 +159,15 @@ describe('useMobileAi with the AI tools', () => {
     act(() => {
       sent = ai().send('read that page')
     })
-    await settle()
+    const sheet = await waitFor(() => byTestId('ai-outbound-sheet'))
     const firstTools = (
       JSON.parse(relayBodies[0]!) as { tools: Array<{ function: { name: string } }> }
     ).tools.map((t) => t.function.name)
     expect(firstTools).toContain('read_url')
     expect(getMobileAiTools().availability().web).toBe(true)
 
-    const sheet = document.querySelector('[data-testid="ai-outbound-sheet"]')
-    expect(sheet).not.toBeNull()
-    expect(sheet!.textContent).toContain('https://unknown.example/a')
-    await act(async () =>
-      document.querySelector<HTMLButtonElement>('[data-testid="ai-outbound-allow"]')!.click(),
-    )
+    expect(sheet.textContent).toContain('https://unknown.example/a')
+    await act(async () => byTestId<HTMLButtonElement>('ai-outbound-allow')!.click())
     await act(async () => sent)
     expect(executed).toEqual(['read_url'])
   })
@@ -175,10 +185,8 @@ describe('useMobileAi with the AI tools', () => {
       executed,
     )
     const allowNext = async () => {
-      await settle()
-      const allow = document.querySelector<HTMLButtonElement>('[data-testid="ai-outbound-allow"]')
-      expect(allow).not.toBeNull()
-      await act(async () => allow!.click())
+      const allow = await waitFor(() => byTestId<HTMLButtonElement>('ai-outbound-allow'))
+      await act(async () => allow.click())
     }
     let sent!: Promise<void>
     act(() => {
@@ -203,11 +211,8 @@ describe('useMobileAi with the AI tools', () => {
     act(() => {
       sent = ai().send('read it on the new document')
     })
-    await settle()
-    expect(document.querySelector('[data-testid="ai-outbound-sheet"]')).not.toBeNull()
-    await act(async () =>
-      document.querySelector<HTMLButtonElement>('[data-testid="ai-outbound-block"]')!.click(),
-    )
+    const block = await waitFor(() => byTestId<HTMLButtonElement>('ai-outbound-block'))
+    await act(async () => block.click())
     await act(async () => sent)
     expect(executed).toEqual(['read_url', 'read_url'])
   })

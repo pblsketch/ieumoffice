@@ -12,10 +12,10 @@ import { formatAiBytes } from './settingsText'
 
 /**
  * The AI result store (`ai-results/`: pictures the AI made or fetched, copies
- * of attached photos) as rows of the storage section: its size and a [clear]
- * behind a confirm sheet. Rows only; the storage section draws the card. It
- * shows while AI is off too (it is storage). Clearing waits while an AI run
- * is going, since that run may be writing or reading a picture there.
+ * of attached photos): its size and a [clear] behind a confirm sheet. Rows
+ * only; `AiStorageRows` draws the card and its heading around them. It shows
+ * while AI is off too (it is storage). Clearing waits while an AI run is
+ * going, since that run may be writing or reading a picture there.
  */
 export function AiResultsRows({ client }: { readonly client: MobileAiCommandClient }) {
   const { t, lang } = useMobileLocale()
@@ -70,11 +70,8 @@ export function AiResultsRows({ client }: { readonly client: MobileAiCommandClie
   return (
     <>
       <div className="mobile-list-row ai-set-results-row" data-testid="ai-results-row">
-        <span className="ai-set-switch-text">
-          <span className="mobile-set-label">{t('aiResultsTitle')}</span>
-          <span className="ai-set-hint" data-testid="ai-results-size">
-            {sizeText}
-          </span>
+        <span className="mobile-set-label" data-testid="ai-results-size">
+          {sizeText}
         </span>
         <button
           type="button"

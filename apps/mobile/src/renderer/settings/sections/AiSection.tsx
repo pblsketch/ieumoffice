@@ -399,9 +399,17 @@ export interface AiStorageRowsProps {
 }
 
 /**
- * The AI result store rows, drawn by the storage section inside its own card
- * (rows only). Shown while AI is off too; nothing without the app's client.
+ * The AI result store card. The storage section draws it after its own card,
+ * so it brings its own card and heading. Shown while AI is off too; nothing
+ * without the app's client.
  */
 export function AiStorageRows({ slot }: AiStorageRowsProps) {
-  return slot?.client ? <AiResultsRows client={slot.client} /> : null
+  const { t } = useMobileLocale()
+  if (!slot?.client) return null
+  return (
+    <div className="mobile-card" data-testid="ai-results-card">
+      <h3 className="mobile-card-subtitle">{t('aiResultsTitle')}</h3>
+      <AiResultsRows client={slot.client} />
+    </div>
+  )
 }
