@@ -174,6 +174,54 @@ describe('findMatches — scopes and reading order', () => {
       matches: [],
     })
   })
+
+  it('finds and replaces a nested table appearing after more than 1,000 outer cell paragraphs', () => {
+    const doc = makeDoc(['', ''])
+    // 400 rows x 3 cols = 1,200 outer cell paragraphs before the nested table
+    const bigRows = Array.from(
+      { length: 400 },
+      (_, i) => `<tr><td>행${i}</td><td>항목</td><td>값</td></tr>`,
+    )
+    expect(JSON.parse(doc.pasteHtml(0, 0, 0, `<table>${bigRows.join('')}</table>`)).ok).toBe(true)
+
+    // Second table with a nested table inside cell 0
+    expect(JSON.parse(doc.pasteHtml(0, 1, 0, '<table><tr><td>외부셀</td></tr></table>')).ok).toBe(
+      true,
+    )
+    const outerCellPath = JSON.stringify([{ controlIndex: 0, cellIndex: 0, cellParaIndex: 0 }])
+    const nested = JSON.parse(
+      doc.createTableInCellByPath(
+        0,
+        1,
+        outerCellPath,
+        doc.getCellParagraphLengthByPath(0, 1, outerCellPath),
+        JSON.stringify({ rowCount: 1, colCount: 1 }),
+      ),
+    )
+    expect(nested.ok).toBe(true)
+    const nestedPathJson = JSON.stringify(nested.cellPath)
+    doc.insertTextInCellByPath(0, 1, nestedPathJson, 0, '후반부 중첩표 표적')
+
+    const found = findMatches(doc, { query: '표적' })
+    expect(found.ok).toBe(true)
+    if (!found.ok) return
+    expect(found.total).toBe(1)
+    expect(found.matches[0]!.kind).toBe('table')
+    expect(found.matches[0]!.path).toHaveLength(2)
+    expect(found.matches[0]!.matchText).toBe('표적')
+
+    const replaced = replaceFindMatches(doc, { query: '표적' }, '교체됨', 'all')
+    expect(replaced).toMatchObject({
+      ok: true,
+      replaced: 1,
+      skippedObjects: 0,
+      skippedCitations: 0,
+    })
+    const updatedLen = doc.getCellParagraphLengthByPath(0, 1, nestedPathJson)
+    expect(doc.getTextInCellByPath(0, 1, nestedPathJson, 0, updatedLen)).toBe(
+      '후반부 중첩표 교체됨',
+    )
+  }, 30000)
 })
 
 describe('findMatches — case sensitivity, wholeWord, code points, and regex', () => {

@@ -16,7 +16,7 @@
 const CONTEXT_CHARS = 28
 const MAX_TABLE_DEPTH = 4
 const NESTED_CONTROLS_TRIED = 4
-const MAX_NESTED_LOOKUPS = 4000
+const MAX_NESTED_LOOKUPS = 100000
 const MAX_CELL_REPLACE_CHARS = 8
 const NOTE_NUMBER_CHARS = 2
 const FONT_SIZE_TOLERANCE_PT = 0.2
@@ -476,12 +476,15 @@ function followsInlineObject(doc, sec, para, offset, length) {
 }
 
 /**
- * Group body controls (`list === 0`) by `${sec}:${para}`, sorted by `controlIndex`.
+ * Group body controls (`list === 0`) by `${sec}:${para}`, sorted by `controlIndex`,
+ * and count non-body table controls (`ctrlId === 'tbl' && list !== 0`) so nested
+ * table probing can be skipped or stopped as soon as all nested tables are found.
  */
 function indexBodyControls(doc) {
   const byPara = new Map()
+  let nestedTablesTotal = 0
   const all = tryOr(() => parse(doc.getControls()), [])
-  if (!Array.isArray(all) || all.length === 0) return byPara
+  if (!Array.isArray(all) || all.length === 0) return { byPara, nestedTablesTotal }
 
   const sections = doc.getSectionCount()
   const sectionStarts = []
@@ -493,7 +496,12 @@ function indexBodyControls(doc) {
   }
 
   for (const ctrl of all) {
-    if (!ctrl || ctrl.list !== 0 || !Number.isInteger(ctrl.para)) continue
+    if (!ctrl) continue
+    if (ctrl.list !== 0) {
+      if (ctrl.ctrlId === 'tbl') nestedTablesTotal += 1
+      continue
+    }
+    if (!Number.isInteger(ctrl.para)) continue
     let sec = -1
     let localPara = -1
     for (const range of sectionStarts) {
@@ -516,7 +524,7 @@ function indexBodyControls(doc) {
   for (const list of byPara.values()) {
     list.sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
   }
-  return byPara
+  return { byPara, nestedTablesTotal }
 }
 
 function cellPathStep(path, cellIndex, cellParaIndex) {
@@ -581,8 +589,9 @@ function runFind(doc, options = {}, keepExecMeta = false) {
   const pageCache = new Map()
   const charShapeCache = new Map()
   const citationRanges = citationRangesOf(doc)
-  const controlsByPara = indexBodyControls(doc)
+  const { byPara: controlsByPara, nestedTablesTotal } = indexBodyControls(doc)
   let nestedLookups = MAX_NESTED_LOOKUPS
+  let nestedTablesFound = 0
 
   const pageOf = (sec, para) => {
     const key = `${sec}:${para}`
@@ -719,8 +728,19 @@ function runFind(doc, options = {}, keepExecMeta = false) {
   }
 
   const searchNestedTables = (sec, para, parentCellPath, depth) => {
-    if (depth >= MAX_TABLE_DEPTH || nestedLookups <= 0) return
-    for (let inner = 0; inner < NESTED_CONTROLS_TRIED && nestedLookups > 0; inner++) {
+    if (
+      nestedTablesTotal === 0 ||
+      nestedTablesFound >= nestedTablesTotal ||
+      depth >= MAX_TABLE_DEPTH ||
+      nestedLookups <= 0
+    ) {
+      return
+    }
+    for (
+      let inner = 0;
+      inner < NESTED_CONTROLS_TRIED && nestedLookups > 0 && nestedTablesFound < nestedTablesTotal;
+      inner++
+    ) {
       nestedLookups -= 1
       const innerTablePath = [
         ...parentCellPath,
@@ -731,6 +751,7 @@ function runFind(doc, options = {}, keepExecMeta = false) {
         null,
       )
       if (dims && Number.isInteger(dims.cellCount) && dims.cellCount > 0) {
+        nestedTablesFound += 1
         searchTable(sec, para, innerTablePath, dims, depth + 1)
       }
     }
