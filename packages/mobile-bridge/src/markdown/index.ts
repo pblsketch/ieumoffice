@@ -1,5 +1,11 @@
 import type { AgentSkill, AgentToolCall, AgentToolDef, ToolExecution } from '@genoffice/agent-core'
 import { brandText } from '@genoffice/i18n'
+import {
+  IDENTITY_TEXT_ENVELOPE,
+  parseTextEnvelope,
+  serializeTextEnvelope,
+  type TextEnvelope,
+} from '../html/text-envelope'
 import { MobileCommandError, type MobileClient, type MobileDocSession } from '../transport'
 import {
   wrapSkillWithViewEditGate,
@@ -41,7 +47,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   if (typeof Buffer !== 'undefined') {
     return new Uint8Array(Buffer.from(b64, 'base64'))
   }
@@ -118,8 +124,17 @@ export interface MobileMarkdownApiOptions {
   readonly maxInlineImageBytes?: number
 }
 
+/** The text of an opened document; `utf8: false` when the file is not valid UTF-8 (view only). */
+export interface MobileMarkdownOpenedText {
+  readonly text: string
+  readonly utf8?: false
+}
+
 export interface MobileMarkdownApi {
-  readDocument(session: MobileDocSession): Promise<{ readonly text: string }>
+  /** Reads the file and remembers its envelope (BOM, line ends) and bytes for this session. */
+  readDocument(session: MobileDocSession): Promise<MobileMarkdownOpenedText>
+  /** Same as readDocument for bytes the caller already has (a recovery copy reopened in `session`). */
+  openFromBytes(session: MobileDocSession, bytes: Uint8Array): MobileMarkdownOpenedText
   saveDocument(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: true }>
   saveAsDocument(
     session: MobileDocSession | null,
@@ -145,16 +160,63 @@ export interface MobileMarkdownApi {
   printDocument(): Promise<UnsupportedMobileResult>
 }
 
+interface TextRecord {
+  readonly envelope: TextEnvelope
+  /** The body as the editor got it (no BOM, LF). */
+  readonly body: string
+  /** The bytes the body came from; written back unchanged while the body is unchanged. */
+  readonly bytes: Uint8Array
+  readonly utf8: boolean
+}
+
 export function createMobileMarkdownApi(
   client: MobileClient,
   options: MobileMarkdownApiOptions = {},
 ): MobileMarkdownApi {
   const maxInlineImageBytes = options.maxInlineImageBytes ?? MAX_MOBILE_INLINE_IMAGE_BYTES
 
+  /** Per session: the envelope, the body as read and the bytes it was read from (spec 3.1). */
+  const texts = new Map<string, TextRecord>()
+
+  const remember = (sessionId: string, bytes: Uint8Array): MobileMarkdownOpenedText => {
+    const { body, envelope, utf8 } = parseTextEnvelope(bytes)
+    texts.set(sessionId, { envelope, body, bytes, utf8 })
+    return utf8 ? { text: body } : { text: body, utf8: false }
+  }
+
+  /** The bytes to write for `text`: the original bytes when unchanged, else the text in its envelope. */
+  const bytesFor = (session: MobileDocSession | null, text: string): Uint8Array => {
+    const record = session ? texts.get(session.sessionId) : undefined
+    if (!record) return serializeTextEnvelope(text, IDENTITY_TEXT_ENVELOPE)
+    if (text === record.body) return record.bytes
+    if (!record.utf8) {
+      throw new MobileCommandError({
+        code: 'INVALID_ARGUMENT',
+        messageKey: 'webNotUtf8Notice',
+        detail: 'Edited text of a non-UTF-8 file cannot be written in its encoding.',
+      })
+    }
+    return serializeTextEnvelope(text, record.envelope)
+  }
+
+  /** After a write: what is on disk now is this session's original. */
+  const written = (sessionId: string, text: string, bytes: Uint8Array, from?: TextRecord) => {
+    texts.set(sessionId, {
+      envelope: from?.envelope ?? IDENTITY_TEXT_ENVELOPE,
+      body: text,
+      bytes,
+      utf8: from?.utf8 ?? true,
+    })
+  }
+
   return {
     async readDocument(session) {
       const result = await client.readFileBytes(session.sessionId)
-      return { text: base64ToUtf8(result.bytesBase64) }
+      return remember(session.sessionId, base64ToBytes(result.bytesBase64))
+    },
+
+    openFromBytes(session, bytes) {
+      return remember(session.sessionId, bytes)
     },
 
     async saveDocument(session, markdownText) {
@@ -165,19 +227,25 @@ export function createMobileMarkdownApi(
           detail: 'Read-only or ephemeral URI requires Save As.',
         })
       }
-      await client.saveFileBytes(session.sessionId, utf8ToBase64(markdownText))
+      const bytes = bytesFor(session, markdownText)
+      await client.saveFileBytes(session.sessionId, bytesToBase64(bytes))
+      written(session.sessionId, markdownText, bytes, texts.get(session.sessionId))
       await client.recoveryDiscard(session.docKey).catch(() => {})
       return { ok: true }
     },
 
     async saveAsDocument(session, suggestedName, markdownText) {
       const format = session?.format === 'txt' ? 'txt' : 'md'
+      const bytes = bytesFor(session, markdownText)
       const nextSession = await client.saveAsFileBytes({
         sessionId: session?.sessionId,
         suggestedName,
         format,
-        bytesBase64: utf8ToBase64(markdownText),
+        bytesBase64: bytesToBase64(bytes),
       })
+      const from = session ? texts.get(session.sessionId) : undefined
+      if (session) texts.delete(session.sessionId)
+      written(nextSession.sessionId, markdownText, bytes, from)
       if (session) {
         await client.recoveryDiscard(session.docKey).catch(() => {})
       }
@@ -197,7 +265,7 @@ export function createMobileMarkdownApi(
         sessionId: session.sessionId,
         suggestedName: session.name,
         mode: 'edited',
-        bytesBase64: utf8ToBase64(markdownText),
+        bytesBase64: bytesToBase64(bytesFor(session, markdownText)),
       })
     },
 
@@ -206,7 +274,7 @@ export function createMobileMarkdownApi(
         docKey: session.docKey,
         format: session.format === 'txt' ? 'txt' : 'md',
         title: session.name,
-        bytesBase64: utf8ToBase64(markdownText),
+        bytesBase64: bytesToBase64(bytesFor(session, markdownText)),
       })
     },
 
