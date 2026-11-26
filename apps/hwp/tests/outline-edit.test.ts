@@ -324,6 +324,70 @@ describe('changeOutlineLevel against real @rhwp/core documents', () => {
       reason: 'not_found',
     })
   })
+
+  it('matches style-mapped targets strictly by canonical style name without falling back to englishName', () => {
+    const doc = makeBlankDoc(['제1장 서론'])
+    const title1Id = ensureStyle(doc, '제목 1', 'Heading 1')
+    ensureStyle(doc, '제목 2', 'Heading 2')
+    doc.applyStyle(0, 0, title1Id)
+
+    // User removed the Korean level-2 style from the map while keeping 'Heading 2'.
+    // Because the doc only has a Korean-named level-2 style with englishName 'Heading 2',
+    // its canonical name does not match 'Heading 2', so demoting must refuse with
+    // missing_style_in_doc instead of applying it (which would vanish from readOutline).
+    const before = readAllParagraphs(doc, 0)
+    const missing = changeOutlineLevel(doc, {
+      sec: 0,
+      para: 0,
+      delta: 1,
+      appStyleMap: { '제목 1': 1, 'Heading 2': 2 },
+    })
+    expect(missing).toMatchObject({
+      ok: false,
+      reason: 'missing_style_in_doc',
+      styleName: 'Heading 2',
+      fromLevel: 1,
+      targetLevel: 2,
+    })
+    expect(readAllParagraphs(doc, 0)).toEqual(before)
+
+    // When another mapped style exists with a matching canonical name, demoting picks it
+    // instead of wrongly matching the Korean level-2 style via its englishName.
+    const subId = ensureStyle(doc, '소제목', 'SubTitle')
+    const picked = changeOutlineLevel(doc, {
+      sec: 0,
+      para: 0,
+      delta: 1,
+      appStyleMap: { '제목 1': 1, 'Heading 2': 2, 소제목: 2 },
+    })
+    expect(picked.ok).toBe(true)
+    if (!picked.ok) return
+    expect(picked.changed).toEqual([
+      { sec: 0, para: 0, fromLevel: 1, toLevel: 2, styleName: '소제목' },
+    ])
+    expect((JSON.parse(doc.getStyleAt(0, 0)) as { id: number }).id).toBe(subId)
+  })
+
+  it('keeps empty native outline paragraphs visible when demoting from level 8 to level 9', () => {
+    const doc = makeBlankDoc([''])
+    doc.applyStyle(0, 0, styleIdByName(doc, '개요 8'))
+
+    const before = readOutline(doc)
+    expect(before.items).toHaveLength(1)
+    expect(before.items[0]).toMatchObject({ level: 8, title: '', source: 'outline' })
+
+    const demote = changeOutlineLevel(doc, { sec: 0, para: 0, delta: 1 })
+    expect(demote.ok).toBe(true)
+
+    const after = readOutline(doc)
+    expect(after.items).toHaveLength(1)
+    expect(after.items[0]).toMatchObject({
+      level: 9,
+      title: '',
+      source: 'outline',
+      styleName: '개요 9',
+    })
+  })
 })
 
 describe('moveOutlineSection against real @rhwp/core documents', () => {

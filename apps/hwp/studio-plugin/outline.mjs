@@ -415,24 +415,23 @@ export function readOutline(doc, options = {}) {
           paraLevel + 1 <= MAX_OUTLINE_LEVEL
         ) {
           const len = tryOr(() => doc.getParagraphLength(sec, para), 0)
-          if (Number.isInteger(len) && len > 0) {
-            const rawText = tryOr(() => doc.getTextRange(sec, para, 0, len), '')
-            const cleaned = cleanHeadingText(rawText)
-            if (cleaned) {
-              const pageInfo = readPrintedPage(doc, sec, para, null, pageInfoCache, pageFormatCache)
-              items.push({
-                level: paraLevel + 1,
-                number: '',
-                title: cleaned,
-                ...pageInfo,
-                sec,
-                para,
-                source: 'outline',
-                styleName,
-              })
-              continue
-            }
-          }
+          const rawText =
+            Number.isInteger(len) && len > 0
+              ? tryOr(() => doc.getTextRange(sec, para, 0, len), '')
+              : ''
+          const cleaned = cleanHeadingText(rawText)
+          const pageInfo = readPrintedPage(doc, sec, para, null, pageInfoCache, pageFormatCache)
+          items.push({
+            level: paraLevel + 1,
+            number: '',
+            title: cleaned,
+            ...pageInfo,
+            sec,
+            para,
+            source: 'outline',
+            styleName,
+          })
+          continue
         }
       }
 
@@ -512,9 +511,7 @@ function listParagraphStyles(doc) {
 }
 
 function findParagraphStyleByName(paraStyles, name) {
-  const byName = paraStyles.find((s) => s.name === name)
-  if (byName) return byName
-  return paraStyles.find((s) => s.englishName === name) ?? null
+  return paraStyles.find((s) => (s.name || s.englishName) === name) ?? null
 }
 
 function findNativeOutlineStyle(paraStyles, level) {
