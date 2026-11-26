@@ -90,6 +90,16 @@
     </dict>
 
     <!-- T4 html document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>HTML Document</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.html</string>
+      </array>
+    </dict>
 
     <!-- T5 readers document types -->
   </array>

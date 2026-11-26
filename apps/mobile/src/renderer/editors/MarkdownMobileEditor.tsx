@@ -12,6 +12,7 @@ import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import {
   inlineImageToMarkdown,
   MAX_MOBILE_INLINE_IMAGE_BYTES,
+  revealHiddenSpans,
 } from '@genoffice/mobile-bridge/markdown'
 
 export type MarkdownQuickAction =
@@ -37,7 +38,65 @@ const BLOCK_MARKER = /^(#{1,6} |[-*+] \[[ xX]\] |[-*+] |\d+\. |> )/
 export interface MarkdownMobileEditorHandle {
   readonly runAction: (action: MarkdownQuickAction) => void
   readonly getMarkdown: () => string
+  /** Replaces the whole text as one undo step (also how find's replace and replace-all write). */
   readonly setMarkdown: (next: string) => void
+  /**
+   * Edit mode: selects `[start, end)` of the source and scrolls it into view. `focus`
+   * moves the focus into the text (a selection in an unfocused field is not drawn on phones).
+   */
+  readonly selectRange: (start: number, end: number, options?: { focus?: boolean }) => void
+  /** View mode: the rendered preview, for find; null in edit mode. */
+  readonly getPreviewElement: () => HTMLElement | null
+  /** Edit mode: the textarea's selection; null in view mode. */
+  readonly getSelection: () => { readonly start: number; readonly end: number } | null
+}
+
+/** CSS properties that decide where text wraps inside the textarea. */
+const MIRROR_PROPS = [
+  'box-sizing',
+  'width',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'border-style',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'font-style',
+  'letter-spacing',
+  'line-height',
+  'text-transform',
+  'word-spacing',
+  'tab-size',
+  'text-indent',
+] as const
+
+/** The top of the line holding `offset` in the textarea's content, measured on a hidden copy. */
+function textOffsetTop(el: HTMLTextAreaElement, offset: number): number {
+  const doc = el.ownerDocument
+  const style = doc.defaultView?.getComputedStyle(el)
+  if (!style) return 0
+  const mirror = doc.createElement('div')
+  for (const prop of MIRROR_PROPS) mirror.style.setProperty(prop, style.getPropertyValue(prop))
+  mirror.style.position = 'absolute'
+  mirror.style.visibility = 'hidden'
+  mirror.style.top = '0'
+  mirror.style.left = '-99999px'
+  mirror.style.whiteSpace = 'pre-wrap'
+  mirror.style.overflowWrap = 'break-word'
+  mirror.textContent = el.value.slice(0, offset)
+  const marker = doc.createElement('span')
+  marker.textContent = el.value.slice(offset, offset + 1) || '.'
+  mirror.appendChild(marker)
+  doc.body.appendChild(mirror)
+  const top = marker.offsetTop
+  mirror.remove()
+  return top
 }
 
 export interface MarkdownMobileEditorProps {
@@ -48,6 +107,8 @@ export interface MarkdownMobileEditorProps {
   readonly onErrorNotice?: (messageKey: 'imageTooLargeError' | 'imageUnsupportedTypeError') => void
   readonly maxInlineImageBytes?: number
   readonly zoomScale?: number
+  /** Edit mode: the selection of the source moved (caret moves, selecting, typing). */
+  readonly onSelectionChange?: (start: number, end: number) => void
 }
 
 const HISTORY_LIMIT = 50
@@ -64,10 +125,12 @@ export const MarkdownMobileEditor = forwardRef<
     onErrorNotice,
     maxInlineImageBytes = MAX_MOBILE_INLINE_IMAGE_BYTES,
     zoomScale = 1,
+    onSelectionChange,
   },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const previewRef = useRef<HTMLElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const undoStackRef = useRef<string[]>([])
   const redoStackRef = useRef<string[]>([])
@@ -249,6 +312,20 @@ export const MarkdownMobileEditor = forwardRef<
       },
       getMarkdown: () => valueRef.current,
       setMarkdown: (next) => commitValue(next),
+      selectRange(start, end, options) {
+        const el = textareaRef.current
+        if (!el) return
+        if (options?.focus) el.focus({ preventScroll: true })
+        el.setSelectionRange(start, end)
+        // a third of the way down, so the match is not hidden under the find sheet
+        el.scrollTop = Math.max(0, textOffsetTop(el, start) - el.clientHeight / 3)
+      },
+      getPreviewElement: () => previewRef.current,
+      getSelection() {
+        const el = textareaRef.current
+        if (!el) return null
+        return { start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }
+      },
     }),
     [applyAction, commitValue],
   )
@@ -258,6 +335,35 @@ export const MarkdownMobileEditor = forwardRef<
       textareaRef.current?.focus()
     }
   }, [mode])
+
+  // Reports the textarea's selection: whether the hide-from-AI entry offers hide or unhide depends on it.
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+  useEffect(() => {
+    const el = textareaRef.current
+    if (mode !== 'edit' || !el) return
+    const doc = el.ownerDocument
+    const report = () => {
+      onSelectionChangeRef.current?.(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+    }
+    const onDocSelection = () => {
+      if (doc.activeElement === el) report()
+    }
+    const events = ['select', 'keyup', 'pointerup', 'input', 'focus'] as const
+    for (const name of events) el.addEventListener(name, report)
+    doc.addEventListener('selectionchange', onDocSelection)
+    report()
+    return () => {
+      for (const name of events) el.removeEventListener(name, report)
+      doc.removeEventListener('selectionchange', onDocSelection)
+    }
+  }, [mode])
+
+  // The preview shows hidden words as plain text; the source keeps the span markup.
+  const previewText = useMemo(
+    () => (mode === 'view' ? revealHiddenSpans(value) : value),
+    [mode, value],
+  )
 
   const contentStyle = useMemo(
     () => ({
@@ -278,11 +384,11 @@ export const MarkdownMobileEditor = forwardRef<
         aria-label="Insert image"
       />
       {mode === 'view' ? (
-        <article className="mobile-markdown-preview" style={contentStyle}>
+        <article ref={previewRef} className="mobile-markdown-preview" style={contentStyle}>
           {isPlainText ? (
-            <pre className="mobile-plain-text-view">{value}</pre>
+            <pre className="mobile-plain-text-view">{previewText}</pre>
           ) : (
-            <Markdown text={value} />
+            <Markdown text={previewText} />
           )}
         </article>
       ) : (

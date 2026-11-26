@@ -38,6 +38,7 @@
     <data android:mimeType="application/pdf" />
 
     <!-- T4 html MIME types -->
+    <data android:mimeType="text/html" />
 
     <!-- T5 readers MIME types -->
 </intent-filter>
@@ -61,6 +62,7 @@
     <data android:mimeType="application/pdf" />
 
     <!-- T4 html MIME types -->
+    <data android:mimeType="text/html" />
 
     <!-- T5 readers MIME types -->
     <data android:mimeType="image/*" />

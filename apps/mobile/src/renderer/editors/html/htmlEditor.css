@@ -1,0 +1,87 @@
+/* HTML editor (spec 5.2, 5.3): the preview frame fills the document area at the screen width;
+ * a page wider than that scrolls sideways inside the frame. */
+.web-html-viewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+/* An HTML page is drawn on the browser's own light canvas in every app theme, as on the desktop:
+ * a page without its own colours stays readable in the dark theme. */
+.web-html-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  color-scheme: light;
+  background: Canvas;
+}
+
+/* The frame and, above it, the layer that draws the selection (spec 5.3): the box is the
+ * parent's, so the document in the frame is never changed to show it. */
+.web-html-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.web-html-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.web-html-selection {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  min-width: var(--m-space-1);
+  min-height: var(--m-space-1);
+  /* the same line on every side, just outside the element so its text stays clear */
+  outline: var(--m-space-half) solid var(--color-border-brand);
+  outline-offset: var(--m-space-half);
+  border-radius: var(--m-space-half);
+}
+
+/* An element hidden from the AI (spec 5.6): a dashed line on every side, drawn by the parent
+ * like the selection box, so neither the file nor the frame document changes for it. */
+.web-html-hidden {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  min-width: var(--m-space-1);
+  min-height: var(--m-space-1);
+  outline: var(--m-space-half) dashed var(--color-ai-action);
+  outline-offset: var(--m-space-half);
+  border-radius: var(--m-space-half);
+}
+
+.web-html-source {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  border: 0;
+  outline: none;
+  padding: var(--m-space-4) var(--m-space-4) var(--m-space-10);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: var(--m-text-body-s);
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  resize: none;
+  tab-size: 2;
+}
+
+.web-html-source:focus,
+.web-html-source:focus-visible {
+  outline: none;
+}
