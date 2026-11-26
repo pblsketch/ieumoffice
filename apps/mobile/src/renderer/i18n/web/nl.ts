@@ -49,4 +49,16 @@ export const nl = {
   webFindReplacedCount: 'Vervangen: {count}.',
   webFindReplaceBlocked: 'Niet vervangen: dit zou een voor AI verborgen stuk beschadigen.',
   webFindClose: 'Sluiten',
+  webHideFromAi: 'Verbergen voor AI',
+  webUnhide: 'Niet meer verbergen',
+  webHideLabel: 'Naam',
+  webHideLabelPrefix: 'Verborgen',
+  webHideHint:
+    'De AI ziet alleen deze naam in plaats van de geselecteerde tekst. Het bestand houdt de tekst.',
+  webHideConfirm: 'Verbergen',
+  webHideCancel: 'Annuleren',
+  webHideNoSelection: 'Selecteer eerst de tekst die je wilt verbergen.',
+  webHideMultiLine: 'Alleen tekst binnen één regel kan worden verborgen.',
+  webHideOverlap: 'De selectie overlapt met tekst die al verborgen is.',
+  webHideCannot: 'Deze tekst kan hier niet worden verborgen.',
 } as const satisfies Record<keyof typeof zh, string>

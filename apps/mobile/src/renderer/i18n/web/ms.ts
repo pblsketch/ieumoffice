@@ -50,4 +50,16 @@ export const ms = {
   webFindReplaceBlocked:
     'Tidak diganti: ini akan merosakkan bahagian yang disembunyikan daripada AI.',
   webFindClose: 'Tutup',
+  webHideFromAi: 'Sembunyikan daripada AI',
+  webUnhide: 'Nyahsembunyi',
+  webHideLabel: 'Nama',
+  webHideLabelPrefix: 'Tersembunyi',
+  webHideHint:
+    'AI hanya melihat nama ini sebagai ganti teks yang dipilih. Fail masih menyimpan teks itu.',
+  webHideConfirm: 'Sembunyikan',
+  webHideCancel: 'Batal',
+  webHideNoSelection: 'Pilih teks yang hendak disembunyikan dahulu.',
+  webHideMultiLine: 'Hanya teks dalam satu baris boleh disembunyikan.',
+  webHideOverlap: 'Pilihan ini bertindih dengan teks yang sudah disembunyikan.',
+  webHideCannot: 'Teks di sini tidak boleh disembunyikan.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -48,4 +48,16 @@ export const it = {
   webFindReplacedCount: 'Sostituzioni: {count}.',
   webFindReplaceBlocked: "Non sostituito: si romperebbe una parte nascosta all'IA.",
   webFindClose: 'Chiudi',
+  webHideFromAi: 'Nascondi all’IA',
+  webUnhide: 'Non nascondere più',
+  webHideLabel: 'Nome',
+  webHideLabelPrefix: 'Nascosto',
+  webHideHint:
+    'L’IA vede solo questo nome al posto del testo selezionato. Il file conserva il testo.',
+  webHideConfirm: 'Nascondi',
+  webHideCancel: 'Annulla',
+  webHideNoSelection: 'Seleziona prima il testo da nascondere.',
+  webHideMultiLine: 'Si può nascondere solo testo all’interno di una riga.',
+  webHideOverlap: 'La selezione si sovrappone a un testo già nascosto.',
+  webHideCannot: 'Questo testo non può essere nascosto qui.',
 } as const satisfies Record<keyof typeof zh, string>

@@ -32,3 +32,24 @@ export function IconWebFindNext(props: IconProps) {
     </SvgIcon>
   )
 }
+
+/** Hide from AI (eye struck through). */
+export function IconWebHide(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M3 12s3.5-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.5 6-9 6c-1.6 0-3-.5-4.2-1.2" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <line x1="4" y1="20" x2="20" y2="4" />
+    </SvgIcon>
+  )
+}
+
+/** Unhide (open eye). */
+export function IconWebUnhide(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" />
+      <circle cx="12" cy="12" r="3" />
+    </SvgIcon>
+  )
+}

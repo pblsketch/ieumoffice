@@ -1,10 +1,15 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ConversionReport } from '@genoffice/odt-engine'
 import { WEB_EXPORT_MIME, saveNewFile } from '@genoffice/mobile-bridge/html'
 import {
   base64ToBytes,
   createMobileMarkdownApi,
   createMobileMarkdownSkill,
+  hiddenSpanAt,
+  hideSelection,
+  nextHiddenLabel,
+  unhideSpan,
+  type HideRefusal,
   type MobileMarkdownApi,
   type MobileMarkdownOpenedText,
 } from '@genoffice/mobile-bridge/markdown'
@@ -23,8 +28,9 @@ import {
   type MarkdownQuickAction,
 } from './MarkdownMobileEditor'
 import { MarkdownFindSheet } from './markdownFindSheet'
+import { MarkdownHideSheet } from './markdownHideSheet'
 import { OdtConfirmSheet } from './markdownOdtConfirmSheet'
-import { IconWebFind } from '../components/icons/web'
+import { IconWebFind, IconWebHide, IconWebUnhide } from '../components/icons/web'
 
 /** Values of one open document that outlive its Workspace (unmounted on the settings screen). */
 interface MarkdownKeptState {
@@ -44,6 +50,14 @@ const EXPORT_TEXT: Record<
   hwpx: { working: 'markdownToHwpWorking', failed: 'markdownToHwpFailed' },
   docx: { working: 'webExportDocxWorking', failed: 'webExportDocxFailed' },
   odt: { working: 'webExportOdtWorking', failed: 'webExportOdtFailed' },
+}
+
+/** Why "hide from AI" did nothing, as told to the reader. */
+const HIDE_REFUSAL_TEXT: Record<HideRefusal, MobileStringKey> = {
+  empty: 'webHideNoSelection',
+  multiline: 'webHideMultiLine',
+  overlap: 'webHideOverlap',
+  unreadable: 'webHideCannot',
 }
 
 interface ConvertedExport {
@@ -253,6 +267,95 @@ function startMarkdownDocument(
       [lang],
     )
 
+    // ---- hide from AI (spec 4.4): only while editing with the AI turned on ----
+    const hideAvailable = frame.aiEnabled && mode === 'edit' && canEdit
+    const [selection, setSelection] = useState({ start: 0, end: 0 })
+    const onSelectionChange = useCallback((start: number, end: number) => {
+      setSelection((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
+    }, [])
+    const caretInHidden = useMemo(
+      () => hideAvailable && hiddenSpanAt(markdownText, selection.start, selection.end) !== null,
+      [hideAvailable, markdownText, selection],
+    )
+    /** The selection waiting for a name in the hide sheet. */
+    const [hidePending, setHidePending] = useState<{
+      readonly start: number
+      readonly end: number
+      readonly defaultLabel: string
+    } | null>(null)
+    /** Selects `[start, end)` once the editor shows `text` (a write re-renders the textarea first). */
+    const selectAfterWrite = useRef<{ text: string; start: number; end: number } | null>(null)
+    useEffect(() => {
+      const pending = selectAfterWrite.current
+      if (!pending || pending.text !== markdownText) return
+      selectAfterWrite.current = null
+      markdownEditorRef.current?.selectRange(pending.start, pending.end, { focus: true })
+      onSelectionChange(pending.start, pending.end)
+    }, [markdownText, onSelectionChange])
+    const writeWithSelection = useCallback((text: string, start: number, end: number) => {
+      selectAfterWrite.current = { text, start, end }
+      // one undo step, like every other edit of the source
+      markdownEditorRef.current?.setMarkdown(text)
+    }, [])
+    const refuseHide = useCallback(
+      (reason: HideRefusal) =>
+        showToast({ message: tNow(HIDE_REFUSAL_TEXT[reason]), tone: 'error' }),
+      [tNow],
+    )
+
+    const pressHide = useCallback(() => {
+      const sel = markdownEditorRef.current?.getSelection()
+      if (!sel) return
+      const text = readMarkdown()
+      const span = hiddenSpanAt(text, sel.start, sel.end)
+      if (span) {
+        // the caret is in a hidden span: the entry is "unhide"
+        const shown = unhideSpan(text, span)
+        writeWithSelection(shown.source, shown.wordsStart, shown.wordsEnd)
+        return
+      }
+      const defaultLabel = nextHiddenLabel(text, tNow('webHideLabelPrefix'))
+      const check = hideSelection(text, sel.start, sel.end, defaultLabel)
+      if (!check.ok) {
+        refuseHide(check.reason)
+        return
+      }
+      setHidePending({ start: sel.start, end: sel.end, defaultLabel })
+    }, [refuseHide, tNow, writeWithSelection])
+
+    const confirmHide = useCallback(
+      (label: string) => {
+        const pending = hidePending
+        setHidePending(null)
+        if (!pending) return
+        const hidden = hideSelection(readMarkdown(), pending.start, pending.end, label)
+        if (!hidden.ok) {
+          refuseHide(hidden.reason)
+          return
+        }
+        writeWithSelection(hidden.source, hidden.wordsStart, hidden.wordsEnd)
+      },
+      [hidePending, refuseHide, writeWithSelection],
+    )
+    const cancelHide = useCallback(() => setHidePending(null), [])
+
+    const hideItem = useMemo((): EditorQuickActionItem | null => {
+      if (!hideAvailable) return null
+      return caretInHidden
+        ? {
+            id: 'webUnhide',
+            label: tNow('webUnhide'),
+            icon: <IconWebUnhide size={19} />,
+            onPress: pressHide,
+          }
+        : {
+            id: 'webHideFromAi',
+            label: tNow('webHideFromAi'),
+            icon: <IconWebHide size={19} />,
+            onPress: pressHide,
+          }
+    }, [hideAvailable, caretInHidden, tNow, pressHide])
+
     // Toolbar actions and the format panel ([Aa]) of the editor.
     const { quickActions, formatGroups } = useMemo((): {
       quickActions: EditorQuickActionItem[]
@@ -284,6 +387,7 @@ function startMarkdownDocument(
               md('italic', 'italic'),
               md('strikethrough', 'strikethrough'),
               md('link', 'link'),
+              ...(hideItem ? [hideItem] : []),
             ],
           },
           {
@@ -307,7 +411,7 @@ function startMarkdownDocument(
           },
         ],
       }
-    }, [activeFormat, tNow])
+    }, [activeFormat, tNow, hideItem])
 
     return (
       <>
@@ -322,6 +426,7 @@ function startMarkdownDocument(
               icon: <IconWebFind size={19} />,
               onPress: () => setFindOpen(true),
             },
+            ...(hideItem ? [hideItem] : []),
             ...(activeFormat === 'md'
               ? [
                   {
@@ -358,6 +463,7 @@ function startMarkdownDocument(
               textChanged()
             }}
             onErrorNotice={(key) => setNoticeBanner(tNow(key))}
+            onSelectionChange={onSelectionChange}
           />
         </EditorShell>
         <MarkdownFindSheet
@@ -369,6 +475,12 @@ function startMarkdownDocument(
           getEditor={getEditor}
           onEnterEdit={frame.onEnterEdit}
           notify={showToast}
+        />
+        <MarkdownHideSheet
+          open={hidePending !== null}
+          defaultLabel={hidePending?.defaultLabel ?? ''}
+          onConfirm={confirmHide}
+          onCancel={cancelHide}
         />
         <OdtConfirmSheet
           open={odtReport !== null}
@@ -395,6 +507,8 @@ function startMarkdownDocument(
     },
 
     async createAiRun(ctx) {
+      // Throws before anything is sent when the hidden spans cannot be verified
+      // (spec 4.4); the AI panel shows that, not this editor.
       const skill = createMobileMarkdownSkill(
         {
           getMarkdown: () => readMarkdown(),

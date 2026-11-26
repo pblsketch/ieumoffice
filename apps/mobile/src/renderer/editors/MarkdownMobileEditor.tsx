@@ -12,6 +12,7 @@ import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import {
   inlineImageToMarkdown,
   MAX_MOBILE_INLINE_IMAGE_BYTES,
+  revealHiddenSpans,
 } from '@genoffice/mobile-bridge/markdown'
 
 export type MarkdownQuickAction =
@@ -46,6 +47,8 @@ export interface MarkdownMobileEditorHandle {
   readonly selectRange: (start: number, end: number, options?: { focus?: boolean }) => void
   /** View mode: the rendered preview, for find; null in edit mode. */
   readonly getPreviewElement: () => HTMLElement | null
+  /** Edit mode: the textarea's selection; null in view mode. */
+  readonly getSelection: () => { readonly start: number; readonly end: number } | null
 }
 
 /** CSS properties that decide where text wraps inside the textarea. */
@@ -104,6 +107,8 @@ export interface MarkdownMobileEditorProps {
   readonly onErrorNotice?: (messageKey: 'imageTooLargeError' | 'imageUnsupportedTypeError') => void
   readonly maxInlineImageBytes?: number
   readonly zoomScale?: number
+  /** Edit mode: the selection of the source moved (caret moves, selecting, typing). */
+  readonly onSelectionChange?: (start: number, end: number) => void
 }
 
 const HISTORY_LIMIT = 50
@@ -120,6 +125,7 @@ export const MarkdownMobileEditor = forwardRef<
     onErrorNotice,
     maxInlineImageBytes = MAX_MOBILE_INLINE_IMAGE_BYTES,
     zoomScale = 1,
+    onSelectionChange,
   },
   ref,
 ) {
@@ -315,6 +321,11 @@ export const MarkdownMobileEditor = forwardRef<
         el.scrollTop = Math.max(0, textOffsetTop(el, start) - el.clientHeight / 3)
       },
       getPreviewElement: () => previewRef.current,
+      getSelection() {
+        const el = textareaRef.current
+        if (!el) return null
+        return { start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }
+      },
     }),
     [applyAction, commitValue],
   )
@@ -324,6 +335,35 @@ export const MarkdownMobileEditor = forwardRef<
       textareaRef.current?.focus()
     }
   }, [mode])
+
+  // Reports the textarea's selection: whether the hide-from-AI entry offers hide or unhide depends on it.
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+  useEffect(() => {
+    const el = textareaRef.current
+    if (mode !== 'edit' || !el) return
+    const doc = el.ownerDocument
+    const report = () => {
+      onSelectionChangeRef.current?.(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+    }
+    const onDocSelection = () => {
+      if (doc.activeElement === el) report()
+    }
+    const events = ['select', 'keyup', 'pointerup', 'input', 'focus'] as const
+    for (const name of events) el.addEventListener(name, report)
+    doc.addEventListener('selectionchange', onDocSelection)
+    report()
+    return () => {
+      for (const name of events) el.removeEventListener(name, report)
+      doc.removeEventListener('selectionchange', onDocSelection)
+    }
+  }, [mode])
+
+  // The preview shows hidden words as plain text; the source keeps the span markup.
+  const previewText = useMemo(
+    () => (mode === 'view' ? revealHiddenSpans(value) : value),
+    [mode, value],
+  )
 
   const contentStyle = useMemo(
     () => ({
@@ -346,9 +386,9 @@ export const MarkdownMobileEditor = forwardRef<
       {mode === 'view' ? (
         <article ref={previewRef} className="mobile-markdown-preview" style={contentStyle}>
           {isPlainText ? (
-            <pre className="mobile-plain-text-view">{value}</pre>
+            <pre className="mobile-plain-text-view">{previewText}</pre>
           ) : (
-            <Markdown text={value} />
+            <Markdown text={previewText} />
           )}
         </article>
       ) : (

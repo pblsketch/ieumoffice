@@ -48,4 +48,16 @@ export const ja = {
   webFindReplacedCount: '{count} 件を置換しました。',
   webFindReplaceBlocked: 'AI から隠した部分の目印が壊れるため、置換しませんでした。',
   webFindClose: '閉じる',
+  webHideFromAi: 'AIから隠す',
+  webUnhide: '非表示を解除',
+  webHideLabel: '名前',
+  webHideLabelPrefix: '非表示',
+  webHideHint:
+    'AIには選択した文字の代わりにこの名前だけが見えます。ファイルには文字がそのまま残ります。',
+  webHideConfirm: '隠す',
+  webHideCancel: 'キャンセル',
+  webHideNoSelection: '先に隠す文字を選択してください。',
+  webHideMultiLine: '隠せるのは1行の中の文字だけです。',
+  webHideOverlap: 'すでに隠した文字と重なるため隠せません。',
+  webHideCannot: 'この位置の文字は隠せません。',
 } as const satisfies Record<keyof typeof zh, string>

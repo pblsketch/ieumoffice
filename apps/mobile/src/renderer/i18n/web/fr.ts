@@ -49,4 +49,16 @@ export const fr = {
   webFindReplacedCount: 'Remplacements : {count}.',
   webFindReplaceBlocked: "Non remplacé : cela casserait un passage masqué à l'IA.",
   webFindClose: 'Fermer',
+  webHideFromAi: 'Masquer à l’IA',
+  webUnhide: 'Ne plus masquer',
+  webHideLabel: 'Nom',
+  webHideLabelPrefix: 'Masqué',
+  webHideHint:
+    'L’IA ne voit que ce nom à la place du texte sélectionné. Le fichier garde le texte.',
+  webHideConfirm: 'Masquer',
+  webHideCancel: 'Annuler',
+  webHideNoSelection: 'Sélectionnez d’abord le texte à masquer.',
+  webHideMultiLine: 'Seul un texte sur une seule ligne peut être masqué.',
+  webHideOverlap: 'Cette sélection chevauche un texte déjà masqué.',
+  webHideCannot: 'Ce texte ne peut pas être masqué ici.',
 } as const satisfies Record<keyof typeof zh, string>

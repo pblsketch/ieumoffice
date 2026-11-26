@@ -50,4 +50,16 @@ export const de = {
   webFindReplaceBlocked:
     'Nicht ersetzt: Dadurch würde ein vor der KI verborgener Abschnitt beschädigt.',
   webFindClose: 'Schließen',
+  webHideFromAi: 'Vor der KI verbergen',
+  webUnhide: 'Nicht mehr verbergen',
+  webHideLabel: 'Name',
+  webHideLabelPrefix: 'Verborgen',
+  webHideHint:
+    'Die KI sieht statt des markierten Textes nur diesen Namen. Die Datei behält den Text.',
+  webHideConfirm: 'Verbergen',
+  webHideCancel: 'Abbrechen',
+  webHideNoSelection: 'Markieren Sie zuerst den Text, der verborgen werden soll.',
+  webHideMultiLine: 'Nur Text innerhalb einer Zeile kann verborgen werden.',
+  webHideOverlap: 'Die Auswahl überschneidet sich mit bereits verborgenem Text.',
+  webHideCannot: 'Dieser Text kann hier nicht verborgen werden.',
 } as const satisfies Record<keyof typeof zh, string>
