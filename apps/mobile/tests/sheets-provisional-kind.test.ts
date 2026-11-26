@@ -6,20 +6,19 @@ import { pinchZoomRatio } from '../src/renderer/editors/sheets/grid/pinchZoom'
 import { FORMULA_KEYS } from '../src/renderer/editors/sheets/grid/FormulaKeyboardBar'
 
 describe('the provisional spreadsheet kind', () => {
-  it('is the one kind of track T1 and opens .xlsx, .xlsm and .xls', () => {
+  it('is the one kind of track T1 and opens .xlsx, .xlsm, .xls and .csv', () => {
     expect(sheetsEditorKinds).toEqual([provisionalSheetsKind])
     expect(findEditorKind('xlsx')).toBe(provisionalSheetsKind)
     expect(findEditorKind('xlsm')).toBe(provisionalSheetsKind)
     expect(findEditorKind('xls')).toBe(provisionalSheetsKind)
-    // CSV waits for the full kind
-    expect(findEditorKind('csv')).toBeNull()
+    // CSV opens through the gateway's CSV import (XLS-T3)
+    expect(findEditorKind('csv')).toBe(provisionalSheetsKind)
   })
 
   it('adds its extensions to the picker and the open gate after the base kinds', () => {
     const exts = openableExtensions()
     expect(exts.slice(0, 5)).toEqual(['hwp', 'hwpx', 'md', 'markdown', 'txt'])
-    expect(exts).toEqual(expect.arrayContaining(['xlsx', 'xlsm', 'xls']))
-    expect(exts).not.toContain('csv')
+    expect(exts).toEqual(expect.arrayContaining(['xlsx', 'xlsm', 'xls', 'csv']))
   })
 
   it('opens view-first with AI hidden, and creates no new documents', () => {

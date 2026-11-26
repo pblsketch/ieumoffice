@@ -9,6 +9,24 @@ export interface MobileWorkbookSession {
   /** The working copy the engine streams from (inside the T1 work folder). */
   readonly snapshotPath: string
   readonly sheetNames: ReadonlyMap<string, string>
+  /** The document this session edits (the app's active document session). */
+  readonly document?: MobileWorkbookDocument
+}
+
+/** What a save needs to know about the document behind an engine session. */
+export interface MobileWorkbookDocument {
+  /** The app's document session id (`MobileDocSession.sessionId`), for writing back. */
+  readonly sessionId: string
+  /** The name the person sees (`MobileDocSession.name`). */
+  readonly name: string
+  /** The identity the Univer unit id derives from (`MobileDocSession.docKey`). */
+  readonly docKey: string
+  readonly writable: boolean
+  /**
+   * Opened through a conversion (.xls, .csv): the session edits an .xlsx
+   * copy, and the original cannot take the saved workbook in its format.
+   */
+  readonly converted: boolean
 }
 
 export class MobileWorkbookSessions {

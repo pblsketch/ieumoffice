@@ -45,6 +45,27 @@ export interface SheetsTempPath {
 export interface SheetsWorkingCopy {
   readonly path: string
   readonly size: number
+  /** Where the copy's time went (diagnostics): native read, base64 decode, write. */
+  readonly readMs?: number
+  readonly decodeMs?: number
+  readonly writeMs?: number
+}
+
+export interface SheetsTempStat {
+  readonly size: number
+  readonly isFile: boolean
+  readonly isDir: boolean
+}
+
+export interface SheetsOriginalWritten {
+  readonly ok: boolean
+  readonly size: number
+}
+
+export interface SheetsCopyWritten {
+  /** The name the person gave the copy in the system save dialog. */
+  readonly name: string
+  readonly size: number
 }
 
 export interface SheetsOk {
@@ -132,4 +153,135 @@ export function sheetsTempDelete(
 /** Empties the work folder. Only when no workbook is open. */
 export function sheetsTempClear(client: Pick<MobileClient, 'transport'>): Promise<SheetsOk> {
   return invokeMobileCommand(client.transport, 'mobile_sheets_temp_clear')
+}
+
+/** The work folder's own path (the stand-in for `os.tmpdir()` of the save code). */
+export function sheetsTempRoot(client: Pick<MobileClient, 'transport'>): Promise<SheetsTempPath> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_root')
+}
+
+/** Creates a folder (and missing parents) inside the work folder. */
+export function sheetsTempMkdir(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+): Promise<SheetsOk> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_mkdir', { path })
+}
+
+/** Moves a file inside the work folder, replacing the target. */
+export function sheetsTempRename(
+  client: Pick<MobileClient, 'transport'>,
+  from: string,
+  to: string,
+): Promise<SheetsOk> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_rename', { from, to })
+}
+
+/** Copies a file inside the work folder, replacing the target. */
+export function sheetsTempCopy(
+  client: Pick<MobileClient, 'transport'>,
+  from: string,
+  to: string,
+): Promise<SheetsOk> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_copy', { from, to })
+}
+
+/** Size and kind of what is at a path in the work folder; `null` when nothing is. */
+export function sheetsTempStat(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+): Promise<SheetsTempStat | null> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_stat', { path })
+}
+
+/**
+ * A file's bytes (or `length` bytes from `offset`) as raw bytes. The command
+ * answers with a raw IPC response (an `ArrayBuffer` in the WebView), so no
+ * base64 or JSON copy of the content is made on the way.
+ */
+export async function sheetsTempReadRaw(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+  range?: { readonly offset?: number; readonly length?: number },
+): Promise<Uint8Array> {
+  const answer = await invokeMobileCommand<ArrayBuffer | ArrayBufferView | readonly number[]>(
+    client.transport,
+    'mobile_sheets_temp_read_raw',
+    {
+      path,
+      ...(range?.offset === undefined ? {} : { offset: range.offset }),
+      ...(range?.length === undefined ? {} : { length: range.length }),
+    },
+  )
+  // Checked by tag, not instanceof: the buffer may come from another realm (a test host, a frame).
+  if (Object.prototype.toString.call(answer) === '[object ArrayBuffer]') {
+    return new Uint8Array(answer as ArrayBuffer)
+  }
+  if (ArrayBuffer.isView(answer)) {
+    return new Uint8Array(answer.buffer, answer.byteOffset, answer.byteLength)
+  }
+  // A transport that serializes raw answers as a number list.
+  return Uint8Array.from(answer as readonly number[])
+}
+
+/** Appends UTF-8 text to a file in the work folder (created if missing). */
+export function sheetsTempAppendText(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+  text: string,
+): Promise<SheetsOk> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_append_text', { path, text })
+}
+
+/** Appends base64 bytes to a file in the work folder (created if missing). */
+export function sheetsTempAppendBytes(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+  bytesBase64: string,
+): Promise<SheetsOk> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_append_bytes', {
+    path,
+    bytesBase64,
+  })
+}
+
+/** Lowercase hex SHA-256 of a file in the work folder. */
+export function sheetsTempSha256(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+): Promise<string> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_temp_sha256', { path })
+}
+
+/**
+ * Writes a verified save (a file in the work folder) over the active
+ * session's original document. Call it only after the manifest check and the
+ * engine's reopen of that file passed.
+ */
+export function sheetsSaveToOriginal(
+  client: Pick<MobileClient, 'transport'>,
+  sessionId: string,
+  path: string,
+): Promise<SheetsOriginalWritten> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_save_to_original', {
+    sessionId,
+    path,
+  })
+}
+
+/**
+ * Writes a file in the work folder as a new document the person places in the
+ * system save dialog (an export copy). The active session stays as it is.
+ */
+export function sheetsWriteCopy(
+  client: Pick<MobileClient, 'transport'>,
+  path: string,
+  suggestedName: string,
+  mime: string,
+): Promise<SheetsCopyWritten> {
+  return invokeMobileCommand(client.transport, 'mobile_sheets_write_copy', {
+    path,
+    suggestedName,
+    mime,
+  })
 }

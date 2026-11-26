@@ -264,6 +264,10 @@ describe('opening a workbook on the phone', () => {
     const files = {
       mobile_sheets_copy_session_to_temp: { path: '/work/a.xls', size: 100 },
       mobile_sheets_temp_new_path: { path: '/work/b.xlsx' },
+      // The desktop legacy conversion reads the head of the copy (an OLE2 container, not HTML).
+      mobile_sheets_temp_root: { path: '/work' },
+      mobile_sheets_temp_stat: { size: 100, isFile: true, isDir: false },
+      mobile_sheets_temp_read_raw: new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]).buffer,
     }
     const { client, engineRequests, sent } = fakeClient(
       (request) =>
@@ -314,8 +318,9 @@ describe('installing the phone desktop API', () => {
     installMobileDesktopApi(createMobileDesktopApi(client, new MobileWorkbookSessions()))
     const api = window.desktopApi as unknown as Record<string, unknown>
     expect(typeof api.readWorkbookRange).toBe('function')
-    expect(api.saveWorkbookEdits).toBeUndefined()
-    expect(missingDesktopApiMethods()).toContain('saveWorkbookEdits')
+    expect(typeof api.saveWorkbookEdits).toBe('function')
+    expect(api.confirmCsvSave).toBeUndefined()
+    expect(missingDesktopApiMethods()).toContain('confirmCsvSave')
   })
 })
 

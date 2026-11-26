@@ -11,6 +11,7 @@ import { installExcelCompat } from './excelCompat'
 import { installPinchZoom } from './pinchZoom'
 import { installViewportStreaming, openLazyWorkbookOnPhone } from './lazyWorkbook'
 import { pcUniverSync } from './pcGridModules'
+import { installValueJournal } from '../save/journalRecorder'
 
 export interface MobileGridOptions {
   readonly lang: Lang
@@ -67,6 +68,7 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
   void applyUniverLocale(runtime, options.lang)
   const disposeStreaming = installViewportStreaming(runtime, lazyWorkbookRef, options.onMessage)
   const disposePinch = installPinchZoom(element, runtime)
+  const disposeJournal = installValueJournal(runtime, lazyWorkbookRef)
 
   let viewMode = true
   const api = runtime.univerAPI
@@ -98,6 +100,7 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
       editStarted.dispose()
       editEnded.dispose()
       disposePinch()
+      disposeJournal()
       formulaBar.dispose()
       disposeStreaming()
       disposeCompat()

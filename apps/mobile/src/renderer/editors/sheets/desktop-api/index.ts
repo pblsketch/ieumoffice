@@ -1,26 +1,35 @@
 import type { DesktopApi } from '../../../../../../sheets/src/shared/desktop-api'
 import type { SheetsEngineClient } from './engine'
 import { createMobileReadApi } from './read'
+import { createMobileSaveApi, type MobileSaveApiOptions } from './save'
 import { MobileWorkbookSessions } from './sessions'
 
 export { callSheetsEngine, SheetsEngineError, type SheetsEngineClient } from './engine'
 export { openMobileWorkbook, type OpenMobileWorkbookInput } from './open'
-export { MobileWorkbookSessions, type MobileWorkbookSession } from './sessions'
+export { createMobileSaveApi, type MobileSaveApiOptions } from './save'
+export {
+  MobileWorkbookSessions,
+  type MobileWorkbookDocument,
+  type MobileWorkbookSession,
+} from './sessions'
 
-/** The desktop API methods the phone implements so far (one file per area; saving comes later). */
-export type MobileDesktopApi = ReturnType<typeof createMobileReadApi>
+/** The desktop API methods the phone implements so far (one file per area). */
+export type MobileDesktopApi = ReturnType<typeof createMobileReadApi> &
+  ReturnType<typeof createMobileSaveApi>
 
 /**
  * The phone's `window.desktopApi`: the methods the reused PC grid modules call,
  * each one over the in-process engine. Areas live in their own files and are
- * spread here (read side now; the save side is a later file).
+ * spread here: the read side (`read.ts`) and the save side (`save.ts`).
  */
 export function createMobileDesktopApi(
   client: SheetsEngineClient,
   sessions: MobileWorkbookSessions,
+  saveOptions: MobileSaveApiOptions = { locale: () => 'en' },
 ): MobileDesktopApi {
   return {
     ...createMobileReadApi(client, sessions),
+    ...createMobileSaveApi(client, sessions, saveOptions),
   }
 }
 

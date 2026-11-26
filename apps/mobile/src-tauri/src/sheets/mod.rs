@@ -20,6 +20,7 @@ mod engine;
 #[cfg_attr(not(test), allow(dead_code))]
 #[path = "engine-lib/src/path_guard.rs"]
 mod path_guard;
+pub mod save;
 pub mod workspace;
 
 #[cfg(test)]
@@ -29,7 +30,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub use engine::SheetsEngine;
-pub use workspace::{ENGINE_DIR_NAME, SheetsWorkspace, TEMP_ROOT_NAME, WORK_DIR_NAME};
+pub use workspace::{
+    ENGINE_DIR_NAME, SheetsTempStat, SheetsWorkspace, TEMP_ROOT_NAME, WORK_DIR_NAME,
+};
 
 /// Managed Tauri state for track T1.
 pub struct SheetsState {

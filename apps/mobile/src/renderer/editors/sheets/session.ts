@@ -13,6 +13,7 @@ import {
   missingDesktopApiMethods,
   openMobileWorkbook,
 } from './desktop-api'
+import { installSheetsSaveProbeHook, rememberSaveOutcome } from './save/debugHook'
 
 export interface OpenedSheetsWorkbook {
   readonly file: WorkbookFile
@@ -23,10 +24,18 @@ export interface OpenedSheetsWorkbook {
 const sessions = new MobileWorkbookSessions()
 let installedFor: Pick<MobileClient, 'transport'> | null = null
 
-function desktopApiFor(client: Pick<MobileClient, 'transport'>) {
-  const api = createMobileDesktopApi(client, sessions)
+function uiLang(): string {
+  return document.documentElement.lang || 'en'
+}
+
+function desktopApiFor(client: MobileClient) {
+  const api = createMobileDesktopApi(client, sessions, {
+    locale: uiLang,
+    onSaved: rememberSaveOutcome,
+  })
   if (installedFor !== client) {
     installMobileDesktopApi(api)
+    installSheetsSaveProbeHook(client)
     installedFor = client
     // Diagnostics for the prototype drivers: which desktop methods the reused modules asked for.
     ;(window as unknown as Record<string, unknown>).__ieumSheetsDesktopApiMisses =
@@ -44,7 +53,7 @@ export async function openSheetsWorkbook(input: {
   // One document at a time: the previous workbook's session and working copy go first.
   for (const id of sessions.ids()) await api.closeWorkbook(id)
   await sheetsTempClear(input.client).catch(() => undefined)
-  const lang = document.documentElement.lang || 'en'
+  const lang = uiLang()
   const file = await openMobileWorkbook(input.client, sessions, {
     session: input.session,
     locale: lang,
