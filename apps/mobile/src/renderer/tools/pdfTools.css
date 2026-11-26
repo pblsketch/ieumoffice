@@ -1,0 +1,288 @@
+/* PDF tools screens (track T3): tools list, files, running, results. Tokens only. */
+
+/* ── Tools list ───────────────────────────────────────────────────────── */
+
+.pdf-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-6);
+}
+
+.pdf-tools-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+}
+
+.pdf-tools-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.pdf-tools-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+  min-height: var(--m-list-item-h);
+  padding: var(--m-space-3) var(--m-space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+  color: var(--text-primary);
+  text-align: start;
+  cursor: pointer;
+}
+
+.pdf-tools-card:hover {
+  background: var(--bg-hover-subtle);
+}
+
+.pdf-tools-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-icon-btn);
+  height: var(--m-icon-btn);
+  flex-shrink: 0;
+  color: var(--m-accent);
+}
+
+.pdf-tools-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-half);
+  min-width: 0;
+}
+
+.pdf-tools-card-name {
+  font-size: var(--m-text-body);
+  font-weight: 600;
+  line-height: var(--m-line-tight);
+}
+
+.pdf-tools-card-desc {
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+/* ── Full-screen layer ─────────────────────────────────────────────────── */
+
+.pdf-tools-flow {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-sheet);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-content);
+}
+
+.pdf-tools-flow-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--m-space-5) calc(var(--m-space-4) + var(--m-safe-right))
+    calc(var(--m-space-8) + var(--m-safe-bottom)) calc(var(--m-space-4) + var(--m-safe-left));
+}
+
+/* ── Files ─────────────────────────────────────────────────────────────── */
+
+.pdf-tools-files,
+.pdf-tools-review,
+.pdf-tools-options,
+.pdf-tools-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.pdf-tools-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: var(--m-list-item-h);
+  padding: var(--m-space-2) var(--m-space-2) var(--m-space-2) var(--m-space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+}
+
+.pdf-tools-file-row[data-problem] {
+  background: var(--surface-subtle);
+}
+
+.pdf-tools-file-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-half);
+}
+
+.pdf-tools-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pdf-tools-file-meta {
+  font-size: var(--m-text-caption);
+  color: var(--text-secondary);
+}
+
+.pdf-tools-file-problem,
+.pdf-tools-error {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  color: var(--danger);
+}
+
+.pdf-tools-file-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.pdf-tools-icon-up {
+  transform: rotate(180deg);
+}
+
+.pdf-tools-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-notice {
+  margin: 0;
+  padding: var(--m-space-3);
+  border-radius: var(--m-radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+}
+
+/* ── Running ───────────────────────────────────────────────────────────── */
+
+.pdf-tools-running {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+  padding-top: var(--m-space-8);
+}
+
+.pdf-tools-running-label {
+  margin: 0;
+  font-size: var(--m-text-body);
+  color: var(--text-primary);
+}
+
+.pdf-tools-progress {
+  position: relative;
+  height: var(--m-space-1);
+  border-radius: var(--m-radius-full);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.pdf-tools-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--m-accent);
+  transition: width var(--m-motion-standard) var(--m-ease-standard);
+}
+
+.pdf-tools-progress[data-indeterminate] .pdf-tools-progress-fill {
+  width: 40%;
+  animation: pdf-tools-progress-move calc(var(--m-motion-standard) * 6) var(--m-ease-standard)
+    infinite;
+}
+
+@keyframes pdf-tools-progress-move {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-tools-progress[data-indeterminate] .pdf-tools-progress-fill {
+    animation: none;
+  }
+
+  .pdf-tools-progress-fill {
+    transition: none;
+  }
+}
+
+/* ── Results and blank pages ──────────────────────────────────────────── */
+
+.pdf-tools-result-done,
+.pdf-tools-result-size,
+.pdf-tools-confirm-text {
+  margin: 0;
+  font-size: var(--m-text-body);
+  color: var(--text-primary);
+}
+
+.pdf-tools-result-size {
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+}
+
+.pdf-tools-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-blank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+}
+
+.pdf-tools-blank-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-2);
+  cursor: pointer;
+}
+
+.pdf-tools-blank-page {
+  font-weight: 600;
+}
