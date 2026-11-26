@@ -1,8 +1,10 @@
 /**
- * The tools window's two checks around a run, shared with the phone: what a
- * picked file is for a tool (read again before every run, as the file may
- * have changed), and whether a password or repair job answered with what the
- * tool promises.
+ * The PDF tools' two checks around a run: what a picked file is for a tool
+ * (read again before every run, as the file may have changed), and whether a
+ * password or repair job answered with what the tool promises. The phone uses
+ * these; the PC tools window (apps/shell/src/main/pdf-tools/pdf-tools-window.ts)
+ * still keeps its own copy with the same logic, because a wiring test reads
+ * that file's text (see docs/plans/mobile-v1/T3.md).
  */
 import { type PdfToolAccept, type PdfToolInputKind } from './tool-ids'
 import { type InspectResult } from './tool-rules'

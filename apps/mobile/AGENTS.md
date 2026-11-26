@@ -74,7 +74,7 @@ PC "PDF 도구"의 1판 묶음(병합·분할·추출·역순·모두 회전·�
 - **암호 칸**은 `type="password"`·`autocomplete="off"`, 실행이 끝나면 비운다. 암호는 로그·오류·알림에 싣지 않는다.
 - **문구**: `i18n/pdfTools/`. 도구 이름·설명·선택지·오류는 PC 도구 창 문구(`apps/shell/src/renderer/src/i18n/pdf-tools/`)를 그대로 가져온다(`tests/pdf-tools-i18n.test.ts`가 같음을 지킴). PC 전용 문장은 가져오지 않는다.
 - **빌드**: `config/tracks/pdfTools.ts`는 워커 형식(`worker.format: 'es'`)만 정한다(`worker.plugins`는 다른 트랙 것). `src/env/pdfTools.d.ts`는 두 wasm의 `?url` 선언.
-- **시험**: `tests/pdf-tools-engine.test.ts`(Node에서 실제 wasm으로 도구마다, PC 경로와 같은 바이트), `pdf-tools-engine-client.test.ts`(가짜 워커), `pdf-tools-flow.test.tsx`, `pdf-tools-options.test.tsx`, `pdf-tools-i18n.test.ts`. PC 쪽은 `apps/shell/tests/pdf-tools-golden.test.ts`(PC 결과 기준선, 표는 고치지 않음).
+- **시험**: `tests/pdf-tools-engine.test.ts`(Node에서 실제 wasm으로 도구마다, PC 경로와 같은 바이트), `pdf-tools-engine-client.test.ts`(가짜 워커), `pdf-tools-flow.test.tsx`, `pdf-tools-options.test.tsx`, `pdf-tools-screen-fixes.test.tsx`, `pdf-tools-i18n.test.ts`, 다리 `packages/mobile-bridge/tests/pdf-tools.test.ts`(Rust 명령 인자 이름·등록과의 대조 포함). 엔진 시험은 화면 쪽(`tools/**`, `home/ToolsTab.tsx`)이 pdf-lib·PC 앱을 가져오지 않는지도 본다. PC 쪽은 `apps/shell/tests/pdf-tools-golden.test.ts`(PC 결과 기준선, 표는 고치지 않음).
 - T6이 합쳐지면 `home/ToolsTab.tsx` 맨 위에서 `providePdfToolsLink(pdfToolsLink)`를 부르고, 처리 중에 `useKeepScreenOn(client, 처리 중)`을 잇는다(T3.md "합칠 때").
 
 ### T4 HTML·마크다운 (1판)

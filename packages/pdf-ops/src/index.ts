@@ -1,4 +1,5 @@
-// Public surface of @genoffice/pdf-ops. Each module is filled by its own task; this list is fixed.
+// Public surface of @genoffice/pdf-ops: every module. Screens import the pdf-lib-free entries
+// (./tool-ids, ./tool-rules, ./split-plan, ./page-range) instead; see AGENTS.md.
 export * from './tool-ids'
 export * from './tool-rules'
 export * from './tools'

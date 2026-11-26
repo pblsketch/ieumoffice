@@ -1,6 +1,6 @@
 /**
- * The options sheet (spec 5.3, options sheet): the tool's form (tools/options,
- * filled by PTL-T9), the error of the options as they are, why the last run
+ * The options sheet (spec 5.3, options sheet): the tool's form (tools/options),
+ * the error of the options as they are, why the last run
  * ended without a result, and [Start] ([Find] for blank pages). Failures read
  * as errors (ProblemNote); [Start] stays in a row stuck to the bottom of the
  * sheet's scroll area, so a long form never hides it below the fold.

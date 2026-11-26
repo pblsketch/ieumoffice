@@ -25,6 +25,17 @@ PC "PDF 도구" 창과 모바일 [도구] 화면이 함께 쓰는 PDF 도구 처
 - `npm run typecheck -w @genoffice/pdf-ops`, `npm run test -w @genoffice/pdf-ops`
 - PC 쪽: `apps/pdf`, `apps/shell`의 vitest 전부, `npm run build -w @genoffice/shell`
 
+## 거울 함수와 대조 시험
+
+| 거울 함수(pdf-ops)                    | PC 원래 함수                                 | 대조 시험                                     |
+| ------------------------------------- | -------------------------------------------- | --------------------------------------------- |
+| `mergePdfInOrder(inputs)`             | `save-pdf.ts` `mergePdfBytes(first, others)` | `tests/mirror-pages.test.ts`                  |
+| `extractPdfPages(bytes, pages)`       | `save-pdf.ts` `extractPagesBytes`            | `tests/mirror-pages.test.ts`                  |
+| `rotateAllPdfPages(bytes, delta)`     | `applySaveRequest`에 `rotations`만           | `tests/mirror-pages.test.ts`                  |
+| `removePdfPages(bytes, pages)`        | `applySaveRequest`에 `deletedPages`만        | `tests/mirror-pages.test.ts`                  |
+| `readPdfTextWith(m, bytes, options?)` | `read-text.ts` `readPdfText`                 | `tests/mirror-text.test.ts`                   |
+| `mirrorPageEngine(loadPdfium)`        | PC 셸 `tools.ts`의 `pcPageEngine`            | `tests/tools.test.ts`(`runPdfTool` 결과 비교) |
+
 ## 진입점과 pdf-lib
 
 - `.`(`src/index.ts`)는 모든 모듈을 내보낸다. pdf-lib을 쓰는 모듈(`tools.ts`의 실행기, `split.ts`, `images.ts`, `compress.ts` …)도 들어 있다. 패키지는 `"sideEffects": false`다.

@@ -43,7 +43,9 @@
  * smaller" gets a fake picture recoder that answers the same bytes for the
  * same request; its requests are recorded too.
  *
- * To record the table again (only before the first commit of this file):
+ * To record the table again — only when a person has confirmed that a PC output
+ * change is intended (e.g. after taking upstream changes), never to make a
+ * refactor pass:
  * PDF_TOOLS_GOLDEN_WRITE=1 npx vitest run tests/pdf-tools-golden.test.ts
  */
 import { createHash } from 'node:crypto'

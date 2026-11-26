@@ -3,9 +3,10 @@
  * have the same shape as T6's home/pdfToolsLink.ts, so once T6 is merged
  * `providePdfToolsLink(pdfToolsLink)` in home/ToolsTab.tsx type-checks as is.
  *
- * The screen itself (flow/Flow.tsx) checks options with @genoffice/pdf-ops,
- * which brings pdf-lib along, so it is a chunk loaded on first use: the home
- * keeps its start-up size.
+ * The screen itself (flow/Flow.tsx, with its forms, sheets and the engine
+ * client) is a chunk loaded on first use, so the home keeps its start-up size;
+ * it uses only the pdf-lib-free pdf-ops entries, and pdf-lib ships in the
+ * engine worker alone.
  */
 import { createElement, lazy, Suspense, type ComponentType } from 'react'
 import type { HomeHost } from '../home/homeHost'
