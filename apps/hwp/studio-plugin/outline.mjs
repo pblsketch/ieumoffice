@@ -8,11 +8,23 @@
  * 2. Body paragraphs whose style name appears in the effective style-to-level map
  *    (document setting > app-wide setting > default mapping).
  */
-import { deleteDocSetting, readDocSetting, writeDocSetting } from './doc-marks.mjs'
+import {
+  deleteDocSetting,
+  isAppTocHyperlinkField,
+  readDocSetting,
+  writeDocSetting,
+} from './doc-marks.mjs'
 
 export const DOC_OUTLINE_MAP_KEY = '개요수준'
 export const MIN_OUTLINE_LEVEL = 1
 export const MAX_OUTLINE_LEVEL = 10
+
+// Layout-defining controls attached to paragraph 0 of a section that must not be moved or displaced.
+const FIRST_PARA_LAYOUT_CONTROLS = new Set(['secd', 'cold', 'pgnp', 'head', 'foot', 'pghd', 'nwno'])
+
+// Engine `getOutlineNavigation()` caps native outline reporting at level 8 (paraLevel 0..7);
+// match levels 9 and 10 via style name + `getParaPropertiesAt` so 1..10 round-trip cleanly.
+const HIGH_OUTLINE_STYLE_RE = /^(?:개요|Outline)\s+(9|10)$/
 
 function buildDefaultOutlineStyleMap() {
   const map = {}
@@ -389,9 +401,42 @@ export function readOutline(doc, options = {}) {
         continue
       }
 
+      const styleName = readParaStyleName(doc, sec, para, styleById)
+      if (styleName && HIGH_OUTLINE_STYLE_RE.test(styleName)) {
+        const props =
+          typeof doc.getParaPropertiesAt === 'function'
+            ? tryOr(() => parseJson(doc.getParaPropertiesAt(sec, para), null), null)
+            : null
+        const paraLevel = props?.paraLevel
+        if (
+          props?.headType === 'Outline' &&
+          Number.isInteger(paraLevel) &&
+          paraLevel + 1 >= MIN_OUTLINE_LEVEL &&
+          paraLevel + 1 <= MAX_OUTLINE_LEVEL
+        ) {
+          const len = tryOr(() => doc.getParagraphLength(sec, para), 0)
+          const rawText =
+            Number.isInteger(len) && len > 0
+              ? tryOr(() => doc.getTextRange(sec, para, 0, len), '')
+              : ''
+          const cleaned = cleanHeadingText(rawText)
+          const pageInfo = readPrintedPage(doc, sec, para, null, pageInfoCache, pageFormatCache)
+          items.push({
+            level: paraLevel + 1,
+            number: '',
+            title: cleaned,
+            ...pageInfo,
+            sec,
+            para,
+            source: 'outline',
+            styleName,
+          })
+          continue
+        }
+      }
+
       if (!hasMappedStyles) continue
 
-      const styleName = readParaStyleName(doc, sec, para, styleById)
       if (!styleName || !Object.prototype.hasOwnProperty.call(effectiveStyleMap, styleName)) {
         continue
       }
@@ -445,4 +490,597 @@ export function findActiveOutlineIndex(items, caret) {
     }
   }
   return active
+}
+
+function listParagraphStyles(doc) {
+  if (!doc || typeof doc.getStyleList !== 'function') return []
+  const list = tryOr(() => parseJson(doc.getStyleList(), []), [])
+  if (!Array.isArray(list)) return []
+  const out = []
+  for (const style of list) {
+    if (!style || typeof style !== 'object' || !Number.isInteger(style.id)) continue
+    // type 0 = paragraph style, type 1 = character style
+    if (style.type !== undefined && style.type !== 0) continue
+    out.push({
+      id: style.id,
+      name: typeof style.name === 'string' ? style.name.trim() : '',
+      englishName: typeof style.englishName === 'string' ? style.englishName.trim() : '',
+    })
+  }
+  return out
+}
+
+function findParagraphStyleByName(paraStyles, name) {
+  return paraStyles.find((s) => (s.name || s.englishName) === name) ?? null
+}
+
+function findNativeOutlineStyle(paraStyles, level) {
+  const koName = `개요 ${level}`
+  const enName = `Outline ${level}`
+  return (
+    paraStyles.find((s) => s.name === koName) ??
+    paraStyles.find((s) => s.englishName === enName || s.name === enName) ??
+    null
+  )
+}
+
+function resolveTargetStyleForItem(item, targetLevel, effectiveStyleMap, appWideMap, paraStyles) {
+  if (item.source === 'outline') {
+    const found = findNativeOutlineStyle(paraStyles, targetLevel)
+    if (!found) {
+      return { ok: false, reason: 'missing_style_in_doc', styleName: `개요 ${targetLevel}` }
+    }
+    return {
+      ok: true,
+      id: found.id,
+      name: found.name || found.englishName || `개요 ${targetLevel}`,
+    }
+  }
+
+  const mappedAtTarget = Object.entries(effectiveStyleMap)
+    .filter(([, lv]) => lv === targetLevel)
+    .map(([name]) => name)
+  if (mappedAtTarget.length === 0) {
+    return { ok: false, reason: 'no_mapped_style' }
+  }
+
+  // Tie-breaker: among styles mapped to `targetLevel` in `effectiveStyleMap`,
+  // prefer the earliest one mapped to `targetLevel` in the app-wide map.
+  const mappedSet = new Set(mappedAtTarget)
+  const orderedCandidates = []
+  const seen = new Set()
+  for (const [name, lv] of Object.entries(appWideMap)) {
+    if (lv === targetLevel && mappedSet.has(name) && !seen.has(name)) {
+      orderedCandidates.push(name)
+      seen.add(name)
+    }
+  }
+  for (const name of mappedAtTarget) {
+    if (!seen.has(name)) {
+      orderedCandidates.push(name)
+      seen.add(name)
+    }
+  }
+
+  for (const candidate of orderedCandidates) {
+    const found = findParagraphStyleByName(paraStyles, candidate)
+    if (found) {
+      return { ok: true, id: found.id, name: found.name || candidate }
+    }
+  }
+  return { ok: false, reason: 'missing_style_in_doc', styleName: orderedCandidates[0] }
+}
+
+/**
+ * Promote (`delta: -1`) or demote (`delta: 1`) an outline heading (and its entire subtree by
+ * default, or only the target heading when `singleOnly: true`).
+ *
+ * Pre-validates every affected heading before applying any style change so out-of-range
+ * levels or unmapped/missing styles refuse atomically with zero mutations.
+ */
+export function changeOutlineLevel(doc, params) {
+  if (
+    !doc ||
+    typeof doc.getSectionCount !== 'function' ||
+    typeof doc.getParagraphCount !== 'function' ||
+    typeof doc.applyStyle !== 'function'
+  ) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  if (!params || typeof params !== 'object') {
+    return { ok: false, reason: 'not_found' }
+  }
+  const { sec, para, delta, singleOnly = false, appStyleMap } = params
+  if (delta !== 1 && delta !== -1) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  if (!Number.isInteger(sec) || !Number.isInteger(para)) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  const secCount = doc.getSectionCount()
+  if (sec < 0 || sec >= secCount) {
+    return { ok: false, reason: 'unsupported_place', sec, para }
+  }
+  const paraCount = doc.getParagraphCount(sec)
+  if (para < 0 || para >= paraCount) {
+    return { ok: false, reason: 'unsupported_place', sec, para }
+  }
+
+  const outline = readOutline(doc, { appStyleMap })
+  const targetIdx = outline.items.findIndex((item) => item.sec === sec && item.para === para)
+  if (targetIdx < 0) {
+    return { ok: false, reason: 'not_found', sec, para }
+  }
+
+  const target = outline.items[targetIdx]
+  const affected = [target]
+  if (singleOnly !== true) {
+    for (let i = targetIdx + 1; i < outline.items.length; i++) {
+      const next = outline.items[i]
+      if (next.level <= target.level) break
+      affected.push(next)
+    }
+  }
+
+  const paraStyles = listParagraphStyles(doc)
+  const appWideMap =
+    appStyleMap != null ? normalizeOutlineStyleMap(appStyleMap) : DEFAULT_OUTLINE_STYLE_MAP
+
+  // Pre-validate every affected heading before mutating the document.
+  const plan = []
+  for (const item of affected) {
+    const targetLevel = item.level + delta
+    if (targetLevel < MIN_OUTLINE_LEVEL || targetLevel > MAX_OUTLINE_LEVEL) {
+      return {
+        ok: false,
+        reason: 'level_out_of_range',
+        title: item.title,
+        sec: item.sec,
+        para: item.para,
+        fromLevel: item.level,
+        targetLevel,
+      }
+    }
+    const resolved = resolveTargetStyleForItem(
+      item,
+      targetLevel,
+      outline.effectiveStyleMap,
+      appWideMap,
+      paraStyles,
+    )
+    if (!resolved.ok) {
+      return {
+        ok: false,
+        reason: resolved.reason,
+        title: item.title,
+        sec: item.sec,
+        para: item.para,
+        fromLevel: item.level,
+        targetLevel,
+        ...(resolved.styleName ? { styleName: resolved.styleName } : {}),
+      }
+    }
+    plan.push({
+      sec: item.sec,
+      para: item.para,
+      fromLevel: item.level,
+      toLevel: targetLevel,
+      styleId: resolved.id,
+      styleName: resolved.name,
+    })
+  }
+
+  const changed = []
+  for (const step of plan) {
+    const raw = doc.applyStyle(step.sec, step.para, step.styleId)
+    const parsed = parseJson(raw, null)
+    if (parsed && parsed.ok === false) {
+      throw new Error(parsed.error || `Failed to apply style ${step.styleName}`)
+    }
+    changed.push({
+      sec: step.sec,
+      para: step.para,
+      fromLevel: step.fromLevel,
+      toLevel: step.toLevel,
+      styleName: step.styleName,
+    })
+  }
+
+  const targetLen = tryOr(() => doc.getParagraphLength(target.sec, target.para), 0)
+  return {
+    ok: true,
+    changed,
+    place: { sec: target.sec, para: target.para, offset: 0, length: targetLen },
+  }
+}
+
+function resolveHeadingRange(items, idx, paraCount) {
+  const head = items[idx]
+  let crossesSection = false
+  let endPara = paraCount - 1
+  for (let j = idx + 1; j < items.length; j++) {
+    const next = items[j]
+    if (next.level <= head.level) {
+      if (next.sec === head.sec) {
+        endPara = next.para - 1
+      }
+      break
+    }
+    if (next.sec !== head.sec) {
+      crossesSection = true
+      break
+    }
+  }
+  return { start: head.para, end: Math.max(head.para, endPara), crossesSection }
+}
+
+function flatBodyParaIndex(doc, sec, para) {
+  let flat = para
+  for (let s = 0; s < sec; s++) {
+    flat += doc.getParagraphCount(s)
+  }
+  return flat
+}
+
+function paragraphHasLayoutControls(doc, sec, para) {
+  if (typeof doc.getControls !== 'function') return false
+  const controls = tryOr(() => parseJson(doc.getControls(), []), [])
+  if (!Array.isArray(controls)) return false
+  const flatPara = flatBodyParaIndex(doc, sec, para)
+  return controls.some(
+    (ctrl) =>
+      ctrl &&
+      ctrl.list === 0 &&
+      ctrl.para === flatPara &&
+      FIRST_PARA_LAYOUT_CONTROLS.has(ctrl.ctrlId),
+  )
+}
+
+function readAllBookmarks(doc) {
+  if (typeof doc.getBookmarks !== 'function') return []
+  const raw = tryOr(() => parseJson(doc.getBookmarks(), []), [])
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((bm) => bm && typeof bm.name === 'string')
+    .map((bm) => ({
+      name: bm.name,
+      sec: bm.sec ?? bm.sectionIndex ?? 0,
+      para: bm.para ?? bm.paraIndex ?? 0,
+      offset: bm.charPos ?? bm.charOffset ?? bm.offset ?? 0,
+      ctrlIdx: bm.ctrlIdx ?? bm.controlIndex ?? 0,
+    }))
+}
+
+function bookmarkMultiset(bookmarks) {
+  const counts = new Map()
+  for (const bm of bookmarks) {
+    counts.set(bm.name, (counts.get(bm.name) ?? 0) + 1)
+  }
+  return counts
+}
+
+function sameCountMap(a, b) {
+  if (a.size !== b.size) return false
+  for (const [key, count] of a.entries()) {
+    if (b.get(key) !== count) return false
+  }
+  return true
+}
+
+function snapshotObjects(doc) {
+  const allFields =
+    typeof doc.getFieldList === 'function' ? tryOr(() => parseJson(doc.getFieldList(), []), []) : []
+  const fieldsList = Array.isArray(allFields) ? allFields : []
+  const watchedFields = fieldsList
+    .filter((f) => f && f.fieldType !== 'memo' && !isAppTocHyperlinkField(f))
+    .map((f) => `${f.fieldType ?? ''}\0${f.name ?? ''}\0${f.value ?? ''}`)
+    .sort()
+
+  const controls =
+    typeof doc.getControls === 'function' ? tryOr(() => parseJson(doc.getControls(), []), []) : []
+  const controlList = Array.isArray(controls) ? controls : []
+
+  const unnamed = controlList.filter((c) => c && c.ctrlId === '' && c.ctrlCh === 0)
+  const usedUnnamed = new Set()
+  const exemptUnnamedControls = new Set()
+  for (const field of fieldsList.filter(
+    (entry) => entry && (entry.fieldType === 'memo' || isAppTocHyperlinkField(entry)),
+  )) {
+    let index = -1
+    if (Number.isInteger(field.startPos)) {
+      index = unnamed.findIndex(
+        (ctrl, at) =>
+          !usedUnnamed.has(at) &&
+          Number.isInteger(field.listId) &&
+          ctrl.list === field.listId &&
+          ctrl.para === field.paraInList &&
+          ctrl.pos + 8 === field.startPos,
+      )
+    }
+    if (index < 0) {
+      index = unnamed.findIndex(
+        (ctrl, at) =>
+          !usedUnnamed.has(at) &&
+          Number.isInteger(field.listId) &&
+          ctrl.list === field.listId &&
+          ctrl.para === field.paraInList,
+      )
+    }
+    if (index < 0) continue
+    usedUnnamed.add(index)
+    const matched = unnamed[index]
+    exemptUnnamedControls.add(`${matched.list}:${matched.para}:${matched.controlIndex}`)
+  }
+
+  // Bookmarks (`bokm`) are verified strictly by name multiset in `moveOutlineSection`
+  // so bookmark loss is reported as `bookmarks_lost` rather than `objects_changed`.
+  const controlsById = new Map()
+  for (const ctrl of controlList) {
+    if (!ctrl) continue
+    if (ctrl.ctrlId === 'bokm') continue
+    if (
+      ctrl.ctrlId === '' &&
+      ctrl.ctrlCh === 0 &&
+      exemptUnnamedControls.has(`${ctrl.list}:${ctrl.para}:${ctrl.controlIndex}`)
+    ) {
+      continue
+    }
+    const id = typeof ctrl.ctrlId === 'string' ? ctrl.ctrlId : ''
+    controlsById.set(id, (controlsById.get(id) ?? 0) + 1)
+  }
+
+  const memos =
+    typeof doc.getMemoList === 'function' ? tryOr(() => parseJson(doc.getMemoList(), []), []) : []
+  const memoCount = Array.isArray(memos) ? memos.length : 0
+
+  return {
+    controlsById,
+    watchedFields: JSON.stringify(watchedFields),
+    memoCount,
+  }
+}
+
+function sameObjectSnapshot(a, b) {
+  return (
+    a.memoCount === b.memoCount &&
+    a.watchedFields === b.watchedFields &&
+    sameCountMap(a.controlsById, b.controlsById)
+  )
+}
+
+/**
+ * Move an outline heading together with its body paragraphs and descendant headings before or
+ * after another heading in the same section, preserving objects, styles, and bookmarks.
+ *
+ * Refuses cross-section moves, moves involving layout-bearing paragraph 0 (`secd`/`cold`),
+ * drops into the source's own subtree, and no-op drops without mutating the document.
+ * If a post-move integrity check detects lost objects or bookmarks, returns `ok: false`
+ * with `mutated: true` so the caller's transaction wrapper can roll back.
+ */
+export function moveOutlineSection(doc, params) {
+  if (
+    !doc ||
+    typeof doc.getSectionCount !== 'function' ||
+    typeof doc.getParagraphCount !== 'function' ||
+    typeof doc.getParagraphLength !== 'function' ||
+    typeof doc.insertParagraph !== 'function' ||
+    typeof doc.deleteParagraph !== 'function' ||
+    typeof doc.pasteInternal !== 'function' ||
+    (typeof doc.copySelectionLogical !== 'function' && typeof doc.copySelection !== 'function')
+  ) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  if (!params || typeof params !== 'object') {
+    return { ok: false, reason: 'not_found' }
+  }
+  const { source, target, position, appStyleMap } = params
+  if (position !== 'before' && position !== 'after') {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  if (
+    !source ||
+    !target ||
+    !Number.isInteger(source.sec) ||
+    !Number.isInteger(source.para) ||
+    !Number.isInteger(target.sec) ||
+    !Number.isInteger(target.para)
+  ) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+
+  const secCount = doc.getSectionCount()
+  if (source.sec < 0 || source.sec >= secCount || target.sec < 0 || target.sec >= secCount) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  if (
+    source.para < 0 ||
+    source.para >= doc.getParagraphCount(source.sec) ||
+    target.para < 0 ||
+    target.para >= doc.getParagraphCount(target.sec)
+  ) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+
+  const outline = readOutline(doc, { appStyleMap })
+  const sourceIdx = outline.items.findIndex(
+    (item) => item.sec === source.sec && item.para === source.para,
+  )
+  const targetIdx = outline.items.findIndex(
+    (item) => item.sec === target.sec && item.para === target.para,
+  )
+  if (sourceIdx < 0 || targetIdx < 0) {
+    return { ok: false, reason: 'not_found' }
+  }
+
+  const sourceItem = outline.items[sourceIdx]
+  const targetItem = outline.items[targetIdx]
+  if (sourceItem.sec !== targetItem.sec) {
+    return { ok: false, reason: 'cross_section' }
+  }
+
+  const sec = sourceItem.sec
+  const beforeParaCount = doc.getParagraphCount(sec)
+  const sourceRange = resolveHeadingRange(outline.items, sourceIdx, beforeParaCount)
+  const targetRange = resolveHeadingRange(outline.items, targetIdx, beforeParaCount)
+  if (sourceRange.crossesSection || (position === 'after' && targetRange.crossesSection)) {
+    return { ok: false, reason: 'cross_section' }
+  }
+
+  if (targetRange.start >= sourceRange.start && targetRange.start <= sourceRange.end) {
+    return { ok: false, reason: 'target_inside_source' }
+  }
+
+  const insertPara = position === 'before' ? targetRange.start : targetRange.end + 1
+  if (insertPara === sourceRange.start || insertPara === sourceRange.end + 1) {
+    return { ok: false, reason: 'no_change' }
+  }
+
+  // Paragraph 0 carries section/column definitions (secd/cold); neither moving it out nor
+  // inserting before it (which shifts secd/cold down to paragraph 1) is safe.
+  if ((sourceRange.start === 0 || insertPara === 0) && paragraphHasLayoutControls(doc, sec, 0)) {
+    return { ok: false, reason: 'first_para_layout' }
+  }
+
+  const beforeBookmarks = readAllBookmarks(doc)
+  const beforeBookmarkCounts = bookmarkMultiset(beforeBookmarks)
+  const beforeObjects = snapshotObjects(doc)
+  const movedBookmarks = beforeBookmarks
+    .filter((bm) => bm.sec === sec && bm.para >= sourceRange.start && bm.para <= sourceRange.end)
+    .map((bm) => ({
+      name: bm.name,
+      relPara: bm.para - sourceRange.start,
+      offset: bm.offset,
+    }))
+
+  const firstStyleInfo =
+    typeof doc.getStyleAt === 'function'
+      ? tryOr(() => parseJson(doc.getStyleAt(sec, sourceRange.start), null), null)
+      : null
+  const firstStyleId = Number.isInteger(firstStyleInfo?.id) ? firstStyleInfo.id : null
+  const firstParaProps =
+    typeof doc.getParaPropertiesAt === 'function'
+      ? tryOr(() => parseJson(doc.getParaPropertiesAt(sec, sourceRange.start), null), null)
+      : null
+  const firstParaShapeId = Number.isInteger(firstParaProps?.paraShapeId)
+    ? firstParaProps.paraShapeId
+    : null
+
+  const count = sourceRange.end - sourceRange.start + 1
+  const useLogicalCopy =
+    typeof doc.copySelectionLogical === 'function' && typeof doc.getLogicalLength === 'function'
+  const endOffset = useLogicalCopy
+    ? doc.getLogicalLength(sec, sourceRange.end)
+    : doc.getParagraphLength(sec, sourceRange.end)
+
+  try {
+    const copyRaw = useLogicalCopy
+      ? doc.copySelectionLogical(sec, sourceRange.start, 0, sourceRange.end, endOffset)
+      : doc.copySelection(sec, sourceRange.start, 0, sourceRange.end, endOffset)
+    const copyRes = parseJson(copyRaw, null)
+    if (!copyRes || copyRes.ok === false) {
+      return {
+        ok: false,
+        reason: 'engine_error',
+        error: copyRes?.error ?? 'copySelection failed',
+      }
+    }
+
+    const insRes = parseJson(doc.insertParagraph(sec, insertPara), null)
+    if (!insRes || insRes.ok === false) {
+      return {
+        ok: false,
+        reason: 'engine_error',
+        error: insRes?.error ?? 'insertParagraph failed',
+      }
+    }
+
+    // Apply the source heading's style and paragraph shape to the blank target paragraph
+    // before pasting so the first pasted paragraph keeps its exact heading style and layout.
+    if (firstStyleId !== null && typeof doc.applyStyle === 'function') {
+      doc.applyStyle(sec, insertPara, firstStyleId)
+    }
+    if (firstParaShapeId !== null && typeof doc.setParaShapeId === 'function') {
+      doc.setParaShapeId(sec, insertPara, firstParaShapeId)
+    }
+
+    const pasteRes = parseJson(doc.pasteInternal(sec, insertPara, 0), null)
+    if (!pasteRes || pasteRes.ok === false) {
+      return {
+        ok: false,
+        reason: 'engine_error',
+        error: pasteRes?.error ?? 'pasteInternal failed',
+        mutated: true,
+      }
+    }
+  } finally {
+    if (typeof doc.clearClipboard === 'function') {
+      tryOr(() => doc.clearClipboard(), undefined)
+    }
+  }
+
+  const afterPasteCount = doc.getParagraphCount(sec)
+  const addedCount = afterPasteCount - beforeParaCount
+  if (addedCount !== count) {
+    return {
+      ok: false,
+      reason: 'engine_error',
+      error: `Expected ${count} inserted paragraphs, got ${addedCount}`,
+      mutated: true,
+    }
+  }
+
+  const movingUp = insertPara < sourceRange.start
+  const delStart = movingUp ? sourceRange.start + addedCount : sourceRange.start
+  const delEnd = movingUp ? sourceRange.end + addedCount : sourceRange.end
+  const newStartPara = movingUp ? insertPara : insertPara - count
+
+  for (let p = delEnd; p >= delStart; p--) {
+    const delRes = parseJson(doc.deleteParagraph(sec, p), null)
+    if (!delRes || delRes.ok === false) {
+      return {
+        ok: false,
+        reason: 'engine_error',
+        error: delRes?.error ?? `deleteParagraph(${sec}, ${p}) failed`,
+        mutated: true,
+      }
+    }
+  }
+
+  // Restore any bookmarks from the moved range that pasteInternal did not carry over.
+  if (movedBookmarks.length > 0 && typeof doc.addBookmark === 'function') {
+    const currentCounts = bookmarkMultiset(readAllBookmarks(doc))
+    for (const bm of movedBookmarks) {
+      const expected = beforeBookmarkCounts.get(bm.name) ?? 0
+      const current = currentCounts.get(bm.name) ?? 0
+      if (current < expected) {
+        const destPara = newStartPara + bm.relPara
+        const destLen = tryOr(() => doc.getParagraphLength(sec, destPara), bm.offset)
+        const addRes = parseJson(
+          doc.addBookmark(sec, destPara, Math.min(bm.offset, destLen), bm.name),
+          null,
+        )
+        if (addRes && addRes.ok === true) {
+          currentCounts.set(bm.name, current + 1)
+        }
+      }
+    }
+  }
+
+  const afterBookmarks = readAllBookmarks(doc)
+  const afterObjects = snapshotObjects(doc)
+  if (!sameObjectSnapshot(beforeObjects, afterObjects)) {
+    return { ok: false, reason: 'objects_changed', mutated: true }
+  }
+  const afterBookmarkCounts = bookmarkMultiset(afterBookmarks)
+  if (!sameCountMap(beforeBookmarkCounts, afterBookmarkCounts)) {
+    return { ok: false, reason: 'bookmarks_lost', mutated: true }
+  }
+
+  const newHeadingLen = tryOr(() => doc.getParagraphLength(sec, newStartPara), 0)
+  return {
+    ok: true,
+    movedParagraphs: count,
+    newStart: { sec, para: newStartPara },
+    place: { sec, para: newStartPara, offset: 0, length: newHeadingLen },
+  }
 }
