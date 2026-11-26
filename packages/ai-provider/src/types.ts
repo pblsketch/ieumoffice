@@ -10,6 +10,7 @@ export type AiProviderId =
   | 'codex'
   | 'claude-code'
   | 'chatgpt'
+  | 'antigravity'
   | 'anthropic'
   | 'gemini'
   | 'deepseek'
@@ -47,10 +48,10 @@ export type AiProviderId =
  * locally installed, already signed-in vendor CLIs, and the ChatGPT plan
  * reached directly with the app's own sign-in (decision 0081)
  */
-export type AiSubscriptionProviderId = 'claude-code' | 'codex' | 'chatgpt'
+export type AiSubscriptionProviderId = 'claude-code' | 'codex' | 'chatgpt' | 'antigravity'
 
 /** The subscription providers behind a vendor CLI: found, installed, updated and signed in through the program */
-export type AiSubscriptionCliId = 'claude-code' | 'codex'
+export type AiSubscriptionCliId = 'claude-code' | 'codex' | 'antigravity'
 
 /** What the provider setting holds: `auto` (first ready subscription) or one provider id */
 export type AiProviderSelection = 'auto' | AiProviderId
@@ -528,6 +529,7 @@ export interface AiStreamChunk {
     | 'delta'
     | 'reasoning'
     | 'tool-call'
+    | 'acp-tool-call'
     | 'usage'
     | 'subscription-usage'
     | 'input-truncated'
@@ -537,6 +539,10 @@ export interface AiStreamChunk {
   text?: string
   /** complete parsed tool call (emitted once its arguments finish streaming) */
   toolCall?: AgentToolCall
+  /** correlation id for an 'acp-tool-call' chunk; echoed back over ai:acp-tool-result */
+  callId?: string
+  /** true on 'done' when an ACP-native session already executed its own tool loop */
+  acpNative?: boolean
   error?: string
   /** machine-readable error cause ('timeout', exhausted 'credits', 'network' connectivity failure, 'overloaded' capacity/rate limit, or a subscription cause); lets the renderer localize the message */
   errorCode?: AiRunErrorKind

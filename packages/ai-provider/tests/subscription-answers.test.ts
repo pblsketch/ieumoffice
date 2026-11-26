@@ -18,12 +18,14 @@ const CHECKING = {
   'claude-code': { provider: 'claude-code', state: 'checking', meteredAccepted: false },
   chatgpt: { provider: 'chatgpt', state: 'checking', meteredAccepted: false },
   codex: { provider: 'codex', state: 'checking', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'checking', meteredAccepted: false },
 }
 
-/** an answer that names the two CLIs alone: they are being checked, ChatGPT is not there */
+/** an answer that names the legacy CLIs alone: they are being checked, ChatGPT and Antigravity are not there */
 const ANSWERED_WITHOUT_CHATGPT = {
   ...CHECKING,
   chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'signed-out', meteredAccepted: false },
 }
 
 describe('checkingSubscriptionStatuses', () => {
@@ -186,7 +188,7 @@ describe('subscriptionStatusMapOf', () => {
     const map = subscriptionStatusMapOf({
       openai: { provider: 'openai', state: 'ready', meteredAccepted: false },
     })
-    expect(Object.keys(map).sort()).toEqual(['chatgpt', 'claude-code', 'codex'])
+    expect(Object.keys(map).sort()).toEqual(['antigravity', 'chatgpt', 'claude-code', 'codex'])
   })
 })
 

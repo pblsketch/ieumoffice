@@ -158,11 +158,22 @@ export function registerSubscriptionIpc(
     // A check of its own time: one already under way may have asked before the logout ended.
     [SUBSCRIPTION_IPC_CHANNELS.logout]: (event, payload) =>
       launchOn(async (provider) => {
+        let result: SubscriptionLaunchResult = { ok: false, reason: 'failed' }
         try {
-          return await deps.launchLogout(provider)
+          result = await deps.launchLogout(provider)
         } finally {
-          await service.check([provider], { fresh: true }).catch(() => undefined)
+          const statuses = await service.check([provider], { fresh: true }).catch(() => undefined)
+          // Antigravity CLI may report RPC success without clearing the OS keyring
+          // while another CLI session is active; report failure honestly if still signed in.
+          if (
+            provider === 'antigravity' &&
+            result.ok &&
+            (statuses?.[provider]?.state === 'ready' || statuses?.[provider]?.state === 'metered')
+          ) {
+            result = { ok: false, reason: 'failed' }
+          }
         }
+        return result
       })(event, payload),
     [SUBSCRIPTION_IPC_CHANNELS.install]: (event, payload) =>
       launchOn((provider) => deps.launchInstall(provider))(event, payload),

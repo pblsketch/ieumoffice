@@ -17,6 +17,7 @@ import {
   type AiStreamRequest,
   type AiSubscriptionProviderId,
   type AiSubscriptionStatuses,
+  type StreamCallbacks,
 } from '@genoffice/ai-provider'
 
 /** What ai-settings.json holds, as the app reads it: removed and unknown selections fall to their defaults */
@@ -76,6 +77,8 @@ export interface AiStreamRun {
   statuses: AiSubscriptionStatuses
   signal: AbortSignal
   send(chunk: AiStreamChunk): void
+  /** execute one ACP-native live tool call in the originating renderer */
+  onAcpToolCall?: StreamCallbacks['onAcpToolCall']
   /** test seam; the provider router by default */
   stream?: typeof streamForProvider
 }
@@ -103,12 +106,21 @@ export async function runAiStream(run: AiStreamRun): Promise<void> {
   }
   try {
     let stopReason: string | undefined
+    let acpNative = false
     await (run.stream ?? streamForProvider)(provider, config, system, messages, tools, maxTokens, {
       ...(request.sessionId ? { sessionId: request.sessionId } : {}),
       signal,
       onDelta: (text) => send({ requestId, type: 'delta', text }),
       onReasoningDelta: (text) => send({ requestId, type: 'reasoning', text }),
       onToolCall: (toolCall) => send({ requestId, type: 'tool-call', toolCall }),
+      ...(run.onAcpToolCall
+        ? {
+            onAcpToolCall: run.onAcpToolCall,
+            onAcpNativeDone: () => {
+              acpNative = true
+            },
+          }
+        : {}),
       onActivity: ping,
       onStopReason: (reason) => {
         stopReason = reason
@@ -118,11 +130,12 @@ export async function runAiStream(run: AiStreamRun): Promise<void> {
         send({ requestId, type: 'subscription-usage', subscriptionUsage }),
       onInputTruncated: () => send({ requestId, type: 'input-truncated' }),
     })
-    send(
-      stopReason === undefined
-        ? { requestId, type: 'done' }
-        : { requestId, type: 'done', stopReason },
-    )
+    send({
+      requestId,
+      type: 'done',
+      ...(stopReason !== undefined ? { stopReason } : {}),
+      ...(acpNative ? { acpNative: true } : {}),
+    })
   } catch (err) {
     if (signal.aborted) {
       send({ requestId, type: 'done' })

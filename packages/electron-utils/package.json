@@ -7,6 +7,8 @@
   "description": "Shared helpers for the Electron main processes (no Electron dependency, pure TS)",
   "exports": {
     ".": "./src/index.ts",
+    "./acp-tool-bridge": "./src/acp-tool-bridge.ts",
+    "./acp-tool-channels": "./src/acp-tool-channels.ts",
     "./ai-activity": "./src/ai-activity.ts",
     "./ai-create-guard": "./src/ai-create-guard.ts",
     "./ai-run-guard": "./src/ai-run-guard.ts",

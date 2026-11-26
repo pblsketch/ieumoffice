@@ -409,6 +409,12 @@ describe('accepting a metered login of an unrecognised kind', () => {
         programPath: path,
       },
       chatgpt: { provider: 'chatgpt', state: 'error', error: 'failed: read', programPath: path },
+      antigravity: {
+        provider: 'antigravity',
+        state: 'error',
+        error: 'failed: spawn',
+        programPath: path,
+      },
     }
     const service = createSubscriptionStatusService({
       getSettings: () => defaultAiSettings(),
@@ -619,6 +625,11 @@ describe('the account shown on the Settings card', () => {
       chatgpt: {
         provider: 'chatgpt' as const,
         state: 'signed-out' as const,
+        meteredAccepted: false,
+      },
+      antigravity: {
+        provider: 'antigravity' as const,
+        state: 'not-installed' as const,
         meteredAccepted: false,
       },
     }

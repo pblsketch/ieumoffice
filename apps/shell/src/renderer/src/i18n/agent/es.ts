@@ -104,4 +104,7 @@ export const es = {
   connOff: 'Desactivado en esta aplicación. Puedes volver a usarlo en Configuración → IA.',
   errOffInApp:
     'Este programa está desactivado en esta aplicación, así que no se envió nada más. Puedes volver a usarlo en Configuración → IA.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Se ejecuta mediante el protocolo ACP oficial en el entorno aislado de terminal de Antigravity, separado de tu configuración ~/.gemini. El uso de datos y los créditos extra siguen la configuración de Antigravity.',
 } satisfies Record<keyof typeof zh, string>

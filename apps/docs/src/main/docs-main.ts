@@ -118,6 +118,7 @@ import {
   AI_MEDIA_PROVIDERS,
   AI_SEARCH_PROVIDERS,
   activeCustomEndpoint,
+  closeAllAntigravityPanelSessions,
   inspectLocalModelForIpc,
   isAiOverloadedError,
   chatForProvider,
@@ -150,6 +151,10 @@ import {
   withMigratedSubscriptionNoticeVersion,
 } from '@genoffice/ai-provider'
 import { listCodexModels, shutdownCodexAppServers } from '@genoffice/ai-provider/codex-app-server'
+import {
+  ACP_TOOL_RESULT_CHANNEL,
+  createAcpToolBroker,
+} from '@genoffice/electron-utils/acp-tool-channels'
 import { listCustomModelsForIpc } from '@genoffice/ai-provider/custom-models'
 import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
@@ -4631,6 +4636,11 @@ export function registerAiIpc(): void {
     cancelLocalTestForIpc(input, event.sender.id),
   )
 
+  const acpToolBroker = createAcpToolBroker()
+  ipcMain.handle(ACP_TOOL_RESULT_CHANNEL, (event, raw: unknown) => {
+    acpToolBroker.resolve(event.sender.id, raw)
+  })
+
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
     // per-request settings get the same schema check as the persisted ones: a
     // compromised renderer could otherwise hand cliPath/baseUrl straight to
@@ -4695,6 +4705,7 @@ export function registerAiIpc(): void {
     }
     try {
       let stopReason: string | undefined
+      let acpNative = false
       await streamForProvider(
         provider,
         config,
@@ -4717,6 +4728,28 @@ export function registerAiIpc(): void {
             answerStarted()
             out.push({ requestId, type: 'tool-call', toolCall })
           },
+          onAcpToolCall: async (toolCall) => {
+            answerStarted()
+            const callId = globalThis.crypto.randomUUID()
+            const pending = acpToolBroker.waitForResult({
+              senderId: event.sender.id,
+              requestId,
+              callId,
+              signal: controller.signal,
+            })
+            out.flush()
+            send({ requestId, type: 'acp-tool-call', callId, toolCall })
+            const result = await pending
+            return {
+              id: toolCall.id,
+              name: toolCall.name,
+              output: result.output,
+              ...(result.isError ? { isError: true } : {}),
+            }
+          },
+          onAcpNativeDone: () => {
+            acpNative = true
+          },
           onActivity: () => {
             // Headers are not an answer: a local server may send them while it is
             // still loading the model. Keep pinging until the first real chunk.
@@ -4730,7 +4763,12 @@ export function registerAiIpc(): void {
         },
         localTimeoutMs === undefined ? undefined : { timeoutMs: localTimeoutMs },
       )
-      out.push({ requestId, type: 'done', stopReason })
+      out.push({
+        requestId,
+        type: 'done',
+        ...(stopReason !== undefined ? { stopReason } : {}),
+        ...(acpNative ? { acpNative: true } : {}),
+      })
     } catch (err) {
       if (controller.signal.aborted) {
         out.push({ requestId, type: 'done' })
@@ -4739,6 +4777,7 @@ export function registerAiIpc(): void {
       }
     } finally {
       // success, error and cancel all leave through here: the timer never survives the turn
+      acpToolBroker.cancelRequest(requestId)
       keepalive?.stop()
       out.flush()
       unwatchSender()
@@ -7815,6 +7854,9 @@ export function startDocsStandalone(): void {
   // No subscription CLI this app started outlives it. app.exit() and
   // process.exit() skip will-quit, and 'exit' is the one event every such way
   // out still emits (the shell hooks the same two for its own process).
-  app.on('will-quit', () => shutdownSubscriptionChildren())
+  app.on('will-quit', () => {
+    void closeAllAntigravityPanelSessions()
+    shutdownSubscriptionChildren()
+  })
   process.on('exit', () => shutdownSubscriptionChildren())
 }

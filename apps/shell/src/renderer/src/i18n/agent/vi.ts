@@ -101,4 +101,7 @@ export const vi = {
   connOff: 'Đã tắt trong ứng dụng này. Bạn có thể dùng lại trong Cài đặt → AI.',
   errOffInApp:
     'Chương trình này đang tắt trong ứng dụng này nên không gửi thêm gì nữa. Bạn có thể dùng lại trong Cài đặt → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Chạy qua giao thức ACP chính thức trong hộp cát dòng lệnh của Antigravity, tách biệt khỏi cài đặt ~/.gemini của bạn. Việc dùng dữ liệu và tín dụng vượt mức tuân theo cài đặt Antigravity.',
 } satisfies Record<keyof typeof zh, string>

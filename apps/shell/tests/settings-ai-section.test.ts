@@ -289,7 +289,7 @@ describe('the default view', () => {
 
     expect(card('claude-code').dataset.state).toBe('ready')
     expect(card('codex').dataset.state).toBe('signed-out')
-    expect(host.querySelectorAll('.ai-sub-card:not(.free-ai-card)')).toHaveLength(3)
+    expect(host.querySelectorAll('.ai-sub-card:not(.free-ai-card)')).toHaveLength(4)
     // the free connections sit outside Advanced (decision 0009); Gemini's key field is theirs
     expect(host.querySelectorAll('.free-ai-card')).toHaveLength(2)
 
@@ -403,12 +403,13 @@ describe('the default view', () => {
       'ClaudeConnected · max',
       'ChatGPTNot signed in',
       'CodexNot installed',
+      'AntigravityNot signed in',
     ])
     expect(host.textContent).not.toMatch(/credits/i)
 
     await click(button('Manage connections'))
     expect(nav('AI')?.classList.contains('active')).toBe(true)
-    expect(host.querySelectorAll('.ai-sub-card:not(.free-ai-card)')).toHaveLength(3)
+    expect(host.querySelectorAll('.ai-sub-card:not(.free-ai-card)')).toHaveLength(4)
   })
 })
 
@@ -514,7 +515,7 @@ describe('"AI to use"', () => {
     expect(host.querySelector('.ai-sub-first')).toBeNull()
     await click(button('View again'))
     expect(host.querySelector('.ai-sub-first')?.textContent).toContain(
-      'sent to Anthropic or OpenAI under your own account',
+      'sent to Anthropic, OpenAI, or Google under your own account',
     )
     await click(button('Dismiss'))
     expect(host.querySelector('.ai-sub-first')).toBeNull()
@@ -1065,6 +1066,7 @@ describe('media providers', () => {
         'claude-code': status('claude-code', 'signed-out'),
         chatgpt: status('chatgpt', chatgpt),
         codex: status('codex', codex),
+        antigravity: status('antigravity', 'signed-out'),
       }
     }
 
@@ -1318,9 +1320,9 @@ describe('without the main-process handlers', () => {
     installHome(defaultAiSettings())
     delete window.aiOfficeSubscription
     await openModal()
-    expect(host.querySelectorAll('.set-field[data-provider]')).toHaveLength(3)
+    expect(host.querySelectorAll('.set-field[data-provider]')).toHaveLength(4)
     await openAiSection()
-    expect(host.querySelectorAll('.ai-sub-card[data-state="checking"]')).toHaveLength(3)
+    expect(host.querySelectorAll('.ai-sub-card[data-state="checking"]')).toHaveLength(4)
     await settle()
     expect(unhandled).toEqual([])
   })
@@ -1345,7 +1347,7 @@ describe('without the main-process handlers', () => {
     installSubscription(statusMap('ready', 'ready'))
     await openModal()
     await openAiSection()
-    expect(host.querySelectorAll('.ai-sub-card')).toHaveLength(3)
+    expect(host.querySelectorAll('.ai-sub-card')).toHaveLength(4)
     expect(dropdown('AI to use')).toBeNull()
     await settle()
     expect(unhandled).toEqual([])

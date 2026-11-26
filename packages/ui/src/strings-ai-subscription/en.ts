@@ -44,12 +44,12 @@ export const en = {
     'This login is an API key or a pay-as-you-go account, or its type could not be confirmed. "Use anyway" lets AI run on this connection, and every request is billed to that account.',
   connectTitle: 'Connect an AI to get started',
   connectBody:
-    'AI runs on the Claude or ChatGPT subscription you already have. No API key is needed.',
+    'AI runs on the Claude, ChatGPT, or Google Antigravity subscription you already have. No API key is needed.',
   connectProviderTitle: 'The {provider} connection cannot be used right now',
   connectKeyBody:
     'The {provider} setup is not finished. Complete it in Settings, or choose another AI.',
   errNotConnected:
-    'No AI is connected. Connect a Claude or Codex subscription, or a free AI, first.',
+    'No AI is connected. Connect a Claude, ChatGPT, Codex, or Antigravity subscription, or a free AI, first.',
   errNotInstalled: 'The {provider} program was not found on this PC.',
   errSignedOut: 'The {provider} sign-in has expired. Sign in again to continue.',
   errRateLimit: 'The {provider} subscription limit has been used up.',
@@ -80,7 +80,7 @@ export const en = {
   usageWindowSevenDay: '7-day limit',
   noticeTitle: 'Before you use AI with your subscription',
   noticeSend:
-    'Document content and your conversation are sent to Anthropic or OpenAI under your own account. Each request also carries the name, title and description of every skill set to “AI decides”; skills in use, and skill files the AI reads, go along with them.',
+    'Document content and your conversation are sent to Anthropic, OpenAI, or Google under your own account. Each request also carries the name, title and description of every skill set to “AI decides”; skills in use, and skill files the AI reads, go along with them.',
   noticeTraining:
     'Whether that content is used to train AI is decided by your own account settings at that company.',
   noticeCodexHistory:
@@ -106,7 +106,7 @@ export const en = {
   guidePathCodexTitle: 'I use ChatGPT',
   guidePathCodexBody:
     "Sign in to OpenAI's Codex program with your ChatGPT account. The free plan allows only a little use.",
-  guidePathFreeTitle: 'Neither yet',
+  guidePathFreeTitle: 'None of these yet',
   guidePathFreeBody:
     "Connect a free AI in about a minute. While you use it for free, what you send may be used to improve that company's AI.",
   guideBack: 'Choose another way',
@@ -189,4 +189,9 @@ export const en = {
   errOffInApp:
     '{provider} is turned off in this app, so nothing was run. You can turn it back on in Settings → AI.',
   guideBadgeOff: 'Off',
+  guidePathAntigravityTitle: 'I use Google Antigravity',
+  guidePathAntigravityBody:
+    "Sign in to Google's Antigravity program with your Google account to use your Google AI plan.",
+  antigravityCardNote:
+    'Runs in the AI panel and Agent mode through the official Antigravity CLI ACP protocol. Available models, data-use preferences, and overage credit settings follow your Antigravity settings.',
 } satisfies Record<keyof typeof zh, string>

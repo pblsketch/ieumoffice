@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path'
 import {
-  AI_SUBSCRIPTION_PROVIDERS,
+  AI_BRAIN_SUBSCRIPTION_PROVIDERS,
   headlessSubscriptionOn,
   isSubscriptionProvider,
   normalizeAiSettings,
@@ -133,10 +133,12 @@ export function subscriptionProvidersInPlay(
       !aiToolCapabilities(settings, { path: 'headless', dataDir }).imageAnalysis.available)
   ) {
     const selection = providerSelectionOf(settings)
-    if (isSubscriptionProvider(selection)) wanted.add(selection)
-    else if (selection === 'auto' && on) for (const id of AI_SUBSCRIPTION_PROVIDERS) wanted.add(id)
+    if (isSubscriptionProvider(selection) && selection !== 'antigravity') wanted.add(selection)
+    else if (selection === 'auto' && on) {
+      for (const id of AI_BRAIN_SUBSCRIPTION_PROVIDERS) wanted.add(id)
+    }
   }
-  return AI_SUBSCRIPTION_PROVIDERS.filter((id) => wanted.has(id))
+  return AI_BRAIN_SUBSCRIPTION_PROVIDERS.filter((id) => wanted.has(id))
 }
 
 /**

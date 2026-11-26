@@ -46,12 +46,12 @@ export const ja = {
     'API キーまたは従量課金のアカウントでログインしているか、ログイン方法を確認できませんでした。「それでも使用」を選ぶと AI がこの接続で動作し、リクエストのたびにそのアカウントへ課金されます。',
   connectTitle: 'AI を接続して始めましょう',
   connectBody:
-    'お持ちの Claude または ChatGPT のサブスクリプションで AI を利用します。API キーは不要です。',
+    'すでにお持ちの Claude、ChatGPT、または Google Antigravity のサブスクリプションで AI が動きます。API キーは不要です。',
   connectProviderTitle: '{provider} の接続は現在使用できません',
   connectKeyBody:
     '{provider} の設定がまだ完了していません。設定で完了するか、別の AI を選んでください。',
   errNotConnected:
-    '接続されている AI がありません。先に Claude または Codex のサブスクリプションか、無料の AI を接続してください。',
+    '接続された AI がありません。Claude・ChatGPT・Codex・Antigravity のサブスクリプション、または無料 AI を先に接続してください。',
   errNotInstalled: 'この PC で {provider} のプログラムが見つかりませんでした。',
   errSignedOut: '{provider} のログインが切れました。もう一度ログインしてから続けてください。',
   errRateLimit: '{provider} のサブスクリプションの上限に達しました。',
@@ -83,7 +83,7 @@ export const ja = {
   usageWindowSevenDay: '7 日間の上限',
   noticeTitle: 'サブスクリプションで AI を使う前に',
   noticeSend:
-    '文書の内容と会話は、ご自身のアカウントで Anthropic または OpenAI に送信されます。リクエストごとに「AI に任せる」にしたスキルの名前・タイトル・説明も送られ、使うスキルの内容と、AI が読んだスキルのファイルも一緒に送信されます。',
+    '文書の内容と会話は、ご自身のアカウントで Anthropic、OpenAI、または Google に送信されます。リクエストごとに「AI に任せる」にしたスキルの名前・タイトル・説明も送られ、使うスキルの内容と、AI が読んだスキルのファイルも一緒に送信されます。',
   noticeTraining:
     'その内容が AI の学習に使われるかどうかは、その会社でのご自身のアカウント設定によって決まります。',
   noticeCodexHistory:
@@ -193,4 +193,9 @@ export const ja = {
   errOffInApp:
     '{provider} はこのアプリでオフになっているため、実行しませんでした。設定 → AI で再び使えるようにできます。',
   guideBadgeOff: 'オフ',
+  guidePathAntigravityTitle: 'Google Antigravity を使っています',
+  guidePathAntigravityBody:
+    'Google アカウントで Google の Antigravity プログラムにサインインし、Google AI プランを使います。',
+  antigravityCardNote:
+    'AI パネルとエージェントモードで公式の Antigravity CLI ACP プロトコルにより動作します。利用可能なモデル、データ利用設定、超過クレジット設定は Antigravity の設定に従います。',
 } satisfies Record<keyof typeof zh, string>

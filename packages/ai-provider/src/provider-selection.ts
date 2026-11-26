@@ -20,7 +20,11 @@ import type {
   AiSubscriptionStatuses,
 } from './types'
 
-export { AI_SUBSCRIPTION_PROVIDERS } from './providers'
+export {
+  AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  AI_BRAIN_SUBSCRIPTION_PROVIDERS,
+  AI_SUBSCRIPTION_PROVIDERS,
+} from './providers'
 
 /**
  * Why no provider can run; `no-subscription` is the `auto` case, the rest name
@@ -132,7 +136,9 @@ export function subscriptionStateOf(
   statuses: AiSubscriptionStatuses,
   id: AiSubscriptionProviderId,
 ): AiSubscriptionStatus['state'] {
-  return statuses[id]?.state ?? (id === 'chatgpt' ? 'signed-out' : 'checking')
+  return (
+    statuses[id]?.state ?? (id === 'chatgpt' || id === 'antigravity' ? 'signed-out' : 'checking')
+  )
 }
 
 const SUBSCRIPTION_BLOCKERS: Record<
@@ -160,14 +166,25 @@ const SUBSCRIPTION_BLOCKERS: Record<
  *   accepted metered login, a configured key provider) and is reported as not
  *   connected otherwise. There is no fallback from an explicit selection.
  */
+export interface SelectAiProviderOptions {
+  /**
+   * Subscription providers eligible for this surface. Defaults to every
+   * interactive subscription provider (`AI_SUBSCRIPTION_PROVIDERS`); batch and
+   * headless callers pass `AI_BATCH_SUBSCRIPTION_PROVIDERS`.
+   */
+  readonly subscriptions?: readonly AiSubscriptionProviderId[] | undefined
+}
+
 export function selectAiProvider(
   settings: Pick<AiSettings, 'provider' | 'providers' | 'meteredAccepted' | 'subscriptionOff'>,
   statuses: AiSubscriptionStatuses,
+  options?: SelectAiProviderOptions,
 ): AiProviderChoice {
+  const allowedSubscriptions = options?.subscriptions ?? AI_SUBSCRIPTION_PROVIDERS
   const selection = providerSelectionOf(settings)
   if (selection === 'auto') {
     let ready: AiSubscriptionProviderId | undefined
-    for (const id of AI_SUBSCRIPTION_PROVIDERS) {
+    for (const id of allowedSubscriptions) {
       const state = subscriptionOffIn(settings, id) ? 'off' : subscriptionStateOf(statuses, id)
       if (state === 'ready') ready = id
       if (state === 'ready' || state === 'checking') break
@@ -191,6 +208,14 @@ export function selectAiProvider(
           reason: 'not-configured',
           errorKind: 'not-connected',
         }
+  }
+  if (!allowedSubscriptions.includes(selection)) {
+    return {
+      connected: false,
+      selection,
+      reason: 'no-subscription',
+      errorKind: 'not-connected',
+    }
   }
   const status = statuses[selection]
   const connection = subscriptionConnection(settings, status)

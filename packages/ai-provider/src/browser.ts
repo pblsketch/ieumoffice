@@ -30,6 +30,8 @@ export type {
   AiVideoAnalysisProviderSelection,
 } from './types'
 export {
+  AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  AI_BRAIN_SUBSCRIPTION_PROVIDERS,
   AI_SUBSCRIPTION_PROVIDERS,
   isKeyProviderConfigured,
   isSubscriptionProvider,
@@ -39,7 +41,11 @@ export {
   subscriptionOffIn,
   subscriptionStateOf,
 } from './provider-selection'
-export type { AiNotConnectedReason, AiProviderChoice } from './provider-selection'
+export type {
+  AiNotConnectedReason,
+  AiProviderChoice,
+  SelectAiProviderOptions,
+} from './provider-selection'
 export {
   DEFAULT_AI_ANALYSIS_PROVIDER,
   DEFAULT_AI_IMAGE_PROVIDER,

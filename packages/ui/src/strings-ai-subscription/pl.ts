@@ -46,12 +46,12 @@ export const pl = {
     'To logowanie korzysta z klucza API lub konta rozliczanego za zużycie albo nie udało się ustalić jego rodzaju. Po wybraniu „Użyj mimo to” AI będzie działać przez to połączenie, a każde żądanie obciąży to konto.',
   connectTitle: 'Połącz AI, aby zacząć',
   connectBody:
-    'AI działa w ramach subskrypcji Claude lub ChatGPT, którą już masz. Klucz API nie jest potrzebny.',
+    'AI działa na Twojej istniejącej subskrypcji Claude, ChatGPT lub Google Antigravity. Klucz API nie jest potrzebny.',
   connectProviderTitle: 'Połączenie {provider} jest teraz niedostępne',
   connectKeyBody:
     'Konfiguracja dostawcy {provider} nie została ukończona. Dokończ ją w Ustawieniach lub wybierz inne AI.',
   errNotConnected:
-    'Żadne AI nie jest połączone. Najpierw połącz subskrypcję Claude lub Codex albo darmowe AI.',
+    'Żadne AI nie jest połączone. Najpierw połącz subskrypcję Claude, ChatGPT, Codex lub Antigravity albo bezpłatne AI.',
   errNotInstalled: 'Na tym komputerze nie znaleziono programu {provider}.',
   errSignedOut: 'Logowanie do {provider} wygasło. Zaloguj się ponownie, aby kontynuować.',
   errRateLimit: 'Limit subskrypcji {provider} został wyczerpany.',
@@ -83,7 +83,7 @@ export const pl = {
   usageWindowSevenDay: 'Limit 7-dniowy',
   noticeTitle: 'Zanim użyjesz AI w ramach subskrypcji',
   noticeSend:
-    'Treść dokumentu i rozmowa są wysyłane do Anthropic lub OpenAI z Twojego własnego konta. Każde żądanie zawiera też nazwę, tytuł i opis każdej umiejętności ustawionej na „Decyduje AI”; wysyłane są też używane umiejętności i pliki umiejętności odczytane przez AI.',
+    'Treść dokumentu i rozmowa są wysyłane do Anthropic, OpenAI lub Google z Twojego własnego konta. Każde żądanie zawiera też nazwę, tytuł i opis każdej umiejętności ustawionej na „Decyduje AI”; wysyłane są też używane umiejętności i pliki umiejętności odczytane przez AI.',
   noticeTraining:
     'To, czy te treści służą do trenowania AI, zależy od ustawień Twojego konta w danej firmie.',
   noticeCodexHistory:
@@ -194,4 +194,9 @@ export const pl = {
   errOffInApp:
     '{provider} jest wyłączony w tej aplikacji, więc nic nie zostało uruchomione. Możesz ponownie z niego korzystać w Ustawienia → AI.',
   guideBadgeOff: 'Wyłączone',
+  guidePathAntigravityTitle: 'Korzystam z Google Antigravity',
+  guidePathAntigravityBody:
+    'Zaloguj się kontem Google w programie Antigravity firmy Google, aby korzystać ze swojego planu Google AI.',
+  antigravityCardNote:
+    'Działa w panelu AI oraz w trybie Agenta przez oficjalny protokół ACP narzędzia Antigravity CLI. Dostępne modele, ustawienia danych i dodatkowe limity wynikają z ustawień Antigravity.',
 } satisfies Record<keyof typeof zh, string>

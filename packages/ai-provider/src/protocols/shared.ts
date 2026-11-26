@@ -1,4 +1,4 @@
-import type { AgentToolCall } from '@genoffice/agent-core'
+import type { AgentToolCall, AgentToolResult } from '@genoffice/agent-core'
 import type { AiSubscriptionUsage, AiTokenUsage } from '../types'
 
 // ---- endpoint URL composition ----
@@ -268,6 +268,13 @@ export interface StreamCallbacks {
   onActivity?: () => void
   /** Stable renderer transport id for providers with native sessions. */
   sessionId?: string
+  /**
+   * Live tool executor for ACP-native providers (Google Antigravity) where the
+   * ACP agent runs its own tool loop and calls editor tools via loopback MCP.
+   */
+  onAcpToolCall?: (call: AgentToolCall) => Promise<AgentToolResult>
+  /** Signals that an ACP-native provider completed the full multi-step run */
+  onAcpNativeDone?: () => void
   signal: AbortSignal
 }
 

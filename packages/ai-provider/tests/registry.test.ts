@@ -378,6 +378,7 @@ describe('provider registry', () => {
       codex: 'codex-chatgpt',
       'claude-code': 'claude-subscription',
       chatgpt: 'chatgpt-plan',
+      antigravity: 'antigravity-subscription',
     }
     for (const [id, adapter] of Object.entries(AI_PROVIDER_ADAPTERS)) {
       expect(adapter.capabilities.auth).toBe(subscription[id] ?? 'api-key')

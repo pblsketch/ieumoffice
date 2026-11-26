@@ -43,12 +43,13 @@ export const th = {
   meteredMeaning:
     'การเข้าสู่ระบบนี้ใช้คีย์ API หรือบัญชีที่จ่ายตามการใช้งาน หรือไม่สามารถยืนยันประเภทได้ เมื่อเลือก "ใช้ต่อไป" AI จะทำงานผ่านการเชื่อมต่อนี้ และทุกคำขอจะถูกเรียกเก็บจากบัญชีนั้น',
   connectTitle: 'เชื่อมต่อ AI เพื่อเริ่มต้นใช้งาน',
-  connectBody: 'AI ทำงานด้วยการสมัครสมาชิก Claude หรือ ChatGPT ที่คุณมีอยู่แล้ว ไม่ต้องใช้คีย์ API',
+  connectBody:
+    'AI ทำงานด้วยการสมัครสมาชิก Claude, ChatGPT หรือ Google Antigravity ที่คุณมีอยู่แล้ว ไม่ต้องใช้คีย์ API',
   connectProviderTitle: 'การเชื่อมต่อ {provider} ยังใช้งานไม่ได้ในขณะนี้',
   connectKeyBody:
     'การตั้งค่า {provider} ยังไม่เสร็จสมบูรณ์ โปรดตั้งค่าให้เสร็จในการตั้งค่า หรือเลือก AI อื่น',
   errNotConnected:
-    'ยังไม่มี AI ที่เชื่อมต่ออยู่ โปรดเชื่อมต่อการสมัครสมาชิก Claude หรือ Codex หรือ AI ฟรีก่อน',
+    'ยังไม่ได้เชื่อมต่อ AI ใดๆ โปรดเชื่อมต่อการสมัครสมาชิก Claude, ChatGPT, Codex หรือ Antigravity หรือ AI ฟรีก่อน',
   errNotInstalled: 'ไม่พบโปรแกรม {provider} ในคอมพิวเตอร์เครื่องนี้',
   errSignedOut: 'การเข้าสู่ระบบ {provider} หมดอายุแล้ว โปรดเข้าสู่ระบบอีกครั้งเพื่อดำเนินการต่อ',
   errRateLimit: 'ใช้โควตาการสมัครสมาชิก {provider} ครบแล้ว',
@@ -79,7 +80,7 @@ export const th = {
   usageWindowSevenDay: 'โควตา 7 วัน',
   noticeTitle: 'ก่อนใช้ AI ด้วยการสมัครสมาชิกของคุณ',
   noticeSend:
-    'เนื้อหาเอกสารและบทสนทนาจะถูกส่งไปยัง Anthropic หรือ OpenAI ภายใต้บัญชีของคุณเอง ทุกคำขอจะมีชื่อ หัวข้อ และคำอธิบายของสกิลทุกตัวที่ตั้งเป็น "ให้ AI ตัดสินใจ" ไปด้วย สกิลที่ใช้และไฟล์สกิลที่ AI อ่านก็จะถูกส่งไปด้วย',
+    'เนื้อหาเอกสารและบทสนทนาจะถูกส่งไปยัง Anthropic, OpenAI หรือ Google ภายใต้บัญชีของคุณเอง ทุกคำขอจะมีชื่อ หัวข้อ และคำอธิบายของสกิลทุกตัวที่ตั้งเป็น "ให้ AI ตัดสินใจ" ไปด้วย สกิลที่ใช้และไฟล์สกิลที่ AI อ่านก็จะถูกส่งไปด้วย',
   noticeTraining:
     'เนื้อหานั้นจะถูกนำไปใช้ฝึก AI หรือไม่ ขึ้นอยู่กับการตั้งค่าบัญชีของคุณเองกับบริษัทนั้น',
   noticeCodexHistory:
@@ -104,7 +105,7 @@ export const th = {
   guidePathCodexTitle: 'ฉันใช้ ChatGPT',
   guidePathCodexBody:
     'เข้าสู่ระบบโปรแกรม Codex ของ OpenAI ด้วยบัญชี ChatGPT ของคุณ แพ็กเกจฟรีใช้งานได้เพียงเล็กน้อย',
-  guidePathFreeTitle: 'ยังไม่มีทั้งสองอย่าง',
+  guidePathFreeTitle: 'ยังไม่มีเลย',
   guidePathFreeBody:
     'เชื่อมต่อ AI ฟรีได้ในเวลาประมาณหนึ่งนาที ระหว่างที่ใช้ฟรี เนื้อหาที่คุณส่งอาจถูกนำไปใช้ปรับปรุง AI ของบริษัทนั้น',
   guideBack: 'เลือกวิธีอื่น',
@@ -186,4 +187,9 @@ export const th = {
   errOffInApp:
     'ปิด {provider} ไว้ในแอปนี้ จึงไม่ได้เรียกใช้อะไร เปิดใช้อีกครั้งได้ที่ การตั้งค่า → AI',
   guideBadgeOff: 'ปิดไว้',
+  guidePathAntigravityTitle: 'ฉันใช้ Google Antigravity',
+  guidePathAntigravityBody:
+    'ลงชื่อเข้าใช้โปรแกรม Antigravity ของ Google ด้วยบัญชี Google เพื่อใช้งานแผน Google AI ของคุณ',
+  antigravityCardNote:
+    'ทำงานในแผง AI และโหมดเอเจนต์ผ่านโปรโตคอล ACP อย่างเป็นทางการของ Antigravity CLI โมเดลที่ใช้ได้ การตั้งค่าการใช้ข้อมูล และเครดิตส่วนเกินจะเป็นไปตามการตั้งค่า Antigravity ของคุณ',
 } satisfies Record<keyof typeof zh, string>

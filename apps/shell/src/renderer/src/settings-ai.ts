@@ -50,6 +50,7 @@ const SUBSCRIPTION_PROGRAM_NAMES: Record<AiSubscriptionProviderId, string> = {
   codex: 'Codex',
   // no program: its sign-out is the app's own and asks with words of its own
   chatgpt: 'ChatGPT',
+  antigravity: 'Antigravity CLI',
 }
 
 export function subscriptionProgramName(provider: AiSubscriptionProviderId): string {

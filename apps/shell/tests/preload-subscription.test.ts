@@ -39,6 +39,7 @@ const READY = {
   'claude-code': { provider: 'claude-code', state: 'ready', meteredAccepted: false },
   chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
   codex: { provider: 'codex', state: 'signed-out', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'signed-out', meteredAccepted: false },
 }
 
 beforeEach(() => {
@@ -60,6 +61,7 @@ describe('subscription preload API', () => {
       // an answer without it comes from an app that has no ChatGPT connection
       chatgpt: READY.chatgpt,
       codex: checkingSubscriptionStatuses().codex,
+      antigravity: READY.antigravity,
     })
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(SUBSCRIPTION_IPC_CHANNELS.statuses)
   })

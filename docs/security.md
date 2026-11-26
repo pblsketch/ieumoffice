@@ -4,7 +4,7 @@
 
 ## 구독 로그인: 앱은 로그인에 관여하지 않는다
 
-로그인은 Anthropic·OpenAI의 프로그램이 한다. 앱이 하는 일은 그 프로그램을 실행하는 것뿐이다. 예외는 ChatGPT 직접 연결 하나이고, 아래 "ChatGPT 직접 연결"에 따로 적는다(결정 0081).
+로그인은 Anthropic·OpenAI·Google의 프로그램이 한다. 앱이 하는 일은 그 프로그램을 실행하는 것뿐이다. 예외는 ChatGPT 직접 연결 하나이고, 아래 "ChatGPT 직접 연결"에 따로 적는다(결정 0081). Antigravity는 공식 ACP 클라이언트(`agy acp`)로만 연동한다(결정 0170).
 
 | 단계           | 앱이 하는 일                                                                                                                   | 실패하면                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
@@ -18,7 +18,7 @@
 
 **하지 않는 일 (어떤 이유로도, 시험·디버깅 중에도):**
 
-- Codex의 로그인 파일(`~/.codex/auth.json`)과 Claude의 로그인 저장소를 읽거나, 복사하거나, 다른 곳에 저장하지 않는다. 로그인 파일을 임시 폴더로 복사해 다른 실행에 쓰는 방식도 여기에 든다.
+- Codex의 로그인 파일(`~/.codex/auth.json`), Claude의 로그인 저장소, Antigravity의 OS 키링·`~/.gemini` 인증 정보를 읽거나, 복사하거나, 다른 곳에 저장하지 않는다. 로그인 파일을 임시 폴더로 복사해 다른 실행에 쓰는 방식도 여기에 든다.
 - 앱 화면에 Claude·ChatGPT 로그인 양식을 만들지 않는다.
 - 두 회사의 프로그램을 고치거나 감싸서 로그인 방식을 바꾸지 않는다. 배포된 그대로 실행한다.
 - 프로그램이 알려 준 조직 이름을 상태 값, 파일, 로그에 남기지 않는다. 프로그램의 답에서 상태에 담는 것은 다섯 가지뿐이다. 프로그램 버전, 로그인 방식의 종류(정해진 목록 안의 값. 모르는 값은 `unknown`), 요금제 이름(식별자 모양일 때만), 계정 이메일(이메일 주소 모양일 때만), 모델 목록(프로그램이 받는 식별자 모양의 값과 길이를 자른 표시 이름).
@@ -57,7 +57,7 @@
 - 실행 중 막혀도 요금이 나가는 연결로 넘어가는 버튼은 만들지 않는다.
 - 그림 도구에 모델 이름이 와도 경로(Codex인지 어느 키 제공자인지)는 설정이 정한다(결정 0145). 다른 경로의 모델이거나 모르는 이름이면 요청을 보내기 전에 거절하고, 쓸 수 있는 모델을 알린다. AI가 대화를 해석해 돈이 드는 키 제공자로 옮기는 일이 없게 하기 위해서다. Codex 그림은 구독 로그인일 때만 만들고, 종량 로그인은 허용했어도 그림에 쓰지 않는다.
 - 무료 연결로 만든 OpenRouter 설정은 `:free` 모델만 고를 수 있다. 그 계정에 충전된 돈이 있어도 무료 연결이 유료 모델로 가지 않게 하기 위해서다. Gemini 키는 무료와 유료를 구분할 수 없으므로 카드에 요금 가능성을 적는다.
-- 프로그램을 실행할 때 요금 경로를 바꾸는 환경변수를 넘기지 않는다. 대상: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CODE_USE_MANTLE`, `CLAUDE_CODE_USE_ANTHROPIC_AWS`, `CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_PROFILE`, `ANTHROPIC_FEDERATION_RULE_ID`, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`. Windows에서는 대소문자를 가리지 않고 뺀다. 원래 환경은 바꾸지 않고 사본을 만든다.
+- 프로그램을 실행할 때 요금 경로를 바꾸는 환경변수를 넘기지 않는다. 대상: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CODE_USE_MANTLE`, `CLAUDE_CODE_USE_ANTHROPIC_AWS`, `CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_PROFILE`, `ANTHROPIC_FEDERATION_RULE_ID`, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, `AGY_ADC_AUTH`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_GENAI_USE_VERTEXAI`. Windows에서는 대소문자를 가리지 않고 뺀다. 원래 환경은 바꾸지 않고 사본을 만든다.
 - Codex는 실행 직전에 계정 종류를 다시 읽는다. 상태 확인 때와 달라졌으면(구독이었는데 종량으로 바뀜) 그 실행은 `metered-not-accepted`로 거부된다. Claude에는 이 재확인이 없다. 상태 확인(앱 시작, 설정 열기, 창으로 돌아오기) 사이에 로그인 방식을 바꾼 경우는 다음 확인 때까지 잡히지 않는다.
 - 종량 허용은 설정값 하나만으로 유효하지 않다. 데이터 폴더의 기록에 적힌 로그인 종류와 지금 감지된 종류가 같을 때만 유효하다.
 
@@ -257,7 +257,7 @@
 - 폴더는 사람이 대화 상자로 고른 절대 경로여야 한다. 드라이브 전체, 사용자 폴더 전체, 아래의 보호 폴더이거나 그것을 품은 폴더는 거절한다.
 - 구독 로그인(`ready`)이거나 사람이 허용한 종량 로그인일 때만 시작한다(`subscriptionConnection`). Codex는 대화를 열기 전에 계정 종류를 다시 읽는다.
 
-**보호 폴더**: `~/.claude`(로그인 저장소 포함), `~/.codex`, `~/.genoffice`, `~/.ieumoffice`, 앱 데이터 폴더(키가 든 `ai-settings.json` 포함). 앱의 판단은 이 경로를 읽거나 쓰는 요청과 이 경로를 적은 명령을 어느 허락 방식에서든 거절한다. Claude에는 같은 경로의 읽기·쓰기 거부 규칙을, Codex에는 권한 프로필의 거부(`deny`) 경로로 함께 준다.
+**보호 폴더**: `~/.claude`(로그인 저장소 포함), `~/.codex`, `~/.gemini`, `~/.genoffice`, `~/.ieumoffice`, 앱 데이터 폴더(키가 든 `ai-settings.json` 포함). 앱의 판단은 이 경로를 읽거나 쓰는 요청과 이 경로를 적은 명령을 어느 허락 방식에서든 거절한다. Claude에는 같은 경로의 읽기·쓰기 거부 규칙을, Codex에는 권한 프로필의 거부(`deny`) 경로로 함께 준다.
 
 **Claude Code**
 
@@ -279,6 +279,15 @@
 - 승인 정책은 묻는 두 방식에서 `untrusted`, "믿고 맡기기"에서 `never`다. `on-request`는 쓰지 않는다. 그 정책에서 허락받은 명령은 격리 밖에서 실행된다(2026-10-15 확인: 허락한 문서 폴더 쓰기가 됐다). `untrusted`에서는 허락받은 명령도 격리 안에서 실행되어 같은 쓰기가 거부됐다. 대화가 요청한 프로필이나 승인 정책과 다르게 열리면 끝낸다.
 - 앱 MCP 서버와 중계 서버에는 `default_tools_approval_mode = "approve"`를 준다. 앱 MCP 서버는 앱이 만든 도구이고 스스로 제한(가리기, 열린 문서만)을 지키기 때문이고, 중계 서버는 허락을 중계가 사람에게 묻기 때문이다(아래 "사용자 MCP 서버 중계"). 이것이 없으면 `never` 정책("믿고 맡기기")에서 Codex가 앱 도구를 묻지 않고 거절한다(2026-10-15 확인).
 - Codex가 보내는 요청 가운데 앱이 답하는 것은 명령·파일 변경 승인(앱의 판단을 거친다)과 앱 MCP 서버와 이번 세션 중계 서버의 도구 호출 확인(MCP elicitation 중 `codex_approval_kind: mcp_tool_call`, 허락. 위 설정이 있으면 보통 오지 않는다)뿐이다. 더 넓은 권한, 질문, 다른 서버의 elicitation, 로그인 토큰 갱신 요청은 거절한다.
+
+**Antigravity (결정 0170)**
+
+- 공식 ACP 클라이언트(`agy acp --process-per-session --sandbox --disable-telemetry --include-default-customizations=false --gemini-dir <세션 격리 폴더>`)로만 실행한다. 한 턴짜리 두뇌 래퍼(`chatForProvider`, 일괄·자동 호출 경로)는 거부한다. `--dangerously-skip-permissions`는 어떤 경로에도 넘기지 않는다.
+- 세션 격리 폴더에 `antigravity-cli/settings.json`(`toolPermission: 'request-review'`, `allowNonWorkspaceAccess: false`, `enableTerminalSandbox: true`)을 써서 사용자 `~/.gemini` 설정·훅·플러그인·MCP를 배제하고, OS 키링 로그인은 앱이 자격 증명에 손대지 않은 채 `agy`가 그대로 쓴다.
+- `session/new`의 `_meta.antigravity.tier`가 소비자 요금제(`g1-*`)일 때만 구독(`ready`)으로 보고, 없거나 알 수 없는 티어는 종량(`metered`)으로 취급해 사용자가 허용하지 않으면 `metered-not-accepted`로 시작을 멈춘다.
+- **에이전트 모드**: 앱 MCP 서버(`ieumoffice-editor`)와 이번 세션의 사용자 MCP 중계 서버를 표준 ACP HTTP `mcpServers`(루프백 주소와 세션 Bearer 토큰)로 전달하고, 모든 `session/request_permission` 요청은 `agentPolicyVerdict`를 거친다. 허용된 앱 MCP·세션 중계 도구 외의 알 수 없는 `mcp_*` 도구는 무조건 거절한다.
+- **기본 AI 창 (2단계)**: 세션마다 루프백 HTTP MCP 서버(`ieumoffice_panel`, `127.0.0.1:0/mcp`, 세션별 24바이트 Bearer 토큰)를 열어 현재 턴의 편집기 도구(`AgentToolDef[]`)만 노출한다. `session/request_permission`은 현재 턴에 등록된 `mcp_ieumoffice_panel_<도구>`만 허용하고(`matchPanelMcpTool`), `agy` 자체 도구(`read_file`, `write_file`, `run_command`, `search_web`, `read_url` 등)와 알 수 없는 `mcp_*`는 무조건 거절한다. 다층 방어로 허용 목록 밖 도구가 `session/update`에서 `completed`로 보고되면 즉시 프로세스 트리를 종료하고 `unsafe-tools`를 던진다. 실제 도구 실행은 원 발신 탭 렌더러(`sender.id` + `requestId` + `callId` 검증)의 `AgentLoop`가 맡아 가리기(`{{label}}`), 되돌리기 스냅샷, 인터넷 스위치, 드라이브 반출 차단, 사용자 MCP 허락 카드를 그대로 적용한다.
+- 상태·모델 목록 조회는 모델 호출 없는 `initialize` + `session/new` 후 `session/close`로 끝내고, 로그아웃은 ACP `logout`(예비 `auth/logout`)을 부른다.
 
 **허락 방식**과 앱의 판단은 `docs/business-rules.md`의 "에이전트 모드"에 있다. 어느 방식에서든 탭에 열린 문서의 파일 쓰기, 프로젝트 폴더 밖 쓰기, 보호 폴더는 거절된다.
 

@@ -3,7 +3,7 @@ import { GEMINI_BASE_URL } from './protocols/gemini'
 import { AI_PROVIDERS, DEEPSEEK_V41_FLASH } from './providers'
 import type { AiProviderConfig, AiProviderId, AiProviderMeta, AiProviderSelection } from './types'
 
-/** Wire protocols every provider maps onto, including the Codex app-server and Claude Code CLI bridges. */
+/** Wire protocols every provider maps onto, including the subscription bridges. */
 export type AiProtocol =
   | 'anthropic'
   | 'gemini'
@@ -12,10 +12,16 @@ export type AiProtocol =
   | 'codex-app-server'
   | 'claude-code-cli'
   | 'chatgpt-responses'
+  | 'antigravity-acp'
 
 export interface ProviderCapabilities {
-  /** How the provider authenticates: user key, the Codex / Claude Code CLI's existing login, or the app's own ChatGPT sign-in. */
-  auth: 'api-key' | 'codex-chatgpt' | 'claude-subscription' | 'chatgpt-plan'
+  /** How the provider authenticates: user key, a local subscription CLI, or the app's own ChatGPT sign-in. */
+  auth:
+    | 'api-key'
+    | 'codex-chatgpt'
+    | 'claude-subscription'
+    | 'chatgpt-plan'
+    | 'antigravity-subscription'
   /** chat models accept image input (declarative; for custom endpoints it is assumed, not known) */
   vision: boolean
 }
@@ -245,6 +251,13 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
     capabilities: { auth: 'codex-chatgpt', vision: true },
     resolveEndpoint() {
       return { protocol: 'codex-app-server', baseUrl: '' }
+    },
+  },
+  antigravity: {
+    meta: metaOf('antigravity'),
+    capabilities: { auth: 'antigravity-subscription', vision: true },
+    resolveEndpoint() {
+      return { protocol: 'antigravity-acp', baseUrl: '' }
     },
   },
   anthropic: {

@@ -168,6 +168,7 @@ export interface SubscriptionIpcContract {
 export const SUBSCRIPTION_INSTALL_COMMANDS = {
   'claude-code': 'irm https://claude.ai/install.ps1 | iex',
   codex: 'winget install OpenAI.Codex',
+  antigravity: 'irm https://antigravity.google/cli/install.ps1 | iex',
 } as const satisfies Record<AiSubscriptionCliId, string>
 
 /**
@@ -184,6 +185,8 @@ export const SUBSCRIPTION_MIN_VERSIONS: Record<AiSubscriptionProviderId, string 
   codex: null,
   // no program
   chatgpt: null,
+  // ACP --process-per-session, --gemini-dir and Windows sandbox require 1.5.0+
+  antigravity: '1.5.0',
 }
 
 /**
@@ -194,6 +197,7 @@ export const SUBSCRIPTION_UPDATE_COMMANDS: Record<AiSubscriptionProviderId, stri
   'claude-code': 'claude update',
   codex: null,
   chatgpt: null,
+  antigravity: 'agy update',
 }
 
 /** The dotted version number in what a CLI printed for `--version` */
@@ -216,6 +220,7 @@ export function subscriptionVersionAtLeast(version: string, minimum: string): bo
 export const SUBSCRIPTION_INSTALL_URLS = {
   'claude-code': 'https://code.claude.com/docs/en/setup',
   codex: 'https://developers.openai.com/codex/cli',
+  antigravity: 'https://antigravity.google/docs/install?tab=cli',
 } as const satisfies Record<AiSubscriptionCliId, string>
 
 /**
@@ -319,6 +324,7 @@ const SUBSCRIPTION_PROVIDER_IDS: readonly AiSubscriptionProviderId[] = [
   'claude-code',
   'chatgpt',
   'codex',
+  'antigravity',
 ]
 
 const SUBSCRIPTION_STATES: readonly AiSubscriptionState[] = [
@@ -348,6 +354,7 @@ export function checkingSubscriptionStatuses(): SubscriptionStatusMap {
     'claude-code': checkingSubscriptionStatus('claude-code'),
     chatgpt: checkingSubscriptionStatus('chatgpt'),
     codex: checkingSubscriptionStatus('codex'),
+    antigravity: checkingSubscriptionStatus('antigravity'),
   }
 }
 
@@ -479,8 +486,12 @@ export function subscriptionStatusMapOf(result: unknown): SubscriptionStatusMap 
   const raw = isRecord(result) ? result : {}
   const statusOf = (provider: AiSubscriptionProviderId): AiSubscriptionStatus => {
     const status = raw[provider]
-    // a main process that answered without a ChatGPT status has no such connection (an older app)
-    if (isRecord(result) && status === undefined && provider === 'chatgpt') {
+    // a main process that answered without a newer provider has no such connection (an older app)
+    if (
+      isRecord(result) &&
+      status === undefined &&
+      (provider === 'chatgpt' || provider === 'antigravity')
+    ) {
       return { provider, state: 'signed-out', meteredAccepted: false }
     }
     if (!isRecord(status) || !SUBSCRIPTION_STATES.includes(status.state as AiSubscriptionState)) {
@@ -523,6 +534,7 @@ export function subscriptionStatusMapOf(result: unknown): SubscriptionStatusMap 
     'claude-code': statusOf('claude-code'),
     chatgpt: statusOf('chatgpt'),
     codex: statusOf('codex'),
+    antigravity: statusOf('antigravity'),
   }
 }
 

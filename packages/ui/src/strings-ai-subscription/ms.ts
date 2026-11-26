@@ -46,12 +46,12 @@ export const ms = {
     'Log masuk ini menggunakan kunci API atau akaun bayar ikut guna, atau jenisnya tidak dapat disahkan. Dengan "Guna juga", AI berjalan melalui sambungan ini dan setiap permintaan dicaj kepada akaun tersebut.',
   connectTitle: 'Sambungkan AI untuk bermula',
   connectBody:
-    'AI berjalan dengan langganan Claude atau ChatGPT yang anda sudah ada. Kunci API tidak diperlukan.',
+    'AI berjalan dengan langganan Claude, ChatGPT atau Google Antigravity yang sudah anda miliki. Tiada kunci API diperlukan.',
   connectProviderTitle: 'Sambungan {provider} tidak boleh digunakan sekarang',
   connectKeyBody:
     'Persediaan {provider} belum selesai. Lengkapkannya dalam Tetapan, atau pilih AI lain.',
   errNotConnected:
-    'Tiada AI yang disambungkan. Sambungkan langganan Claude atau Codex, atau AI percuma, dahulu.',
+    'Tiada AI yang disambungkan. Sambungkan langganan Claude, ChatGPT, Codex atau Antigravity, atau AI percuma terlebih dahulu.',
   errNotInstalled: 'Program {provider} tidak ditemui pada PC ini.',
   errSignedOut: 'Log masuk {provider} telah tamat. Log masuk semula untuk meneruskan.',
   errRateLimit: 'Had langganan {provider} telah habis digunakan.',
@@ -84,7 +84,7 @@ export const ms = {
   usageWindowSevenDay: 'Had 7 hari',
   noticeTitle: 'Sebelum menggunakan AI dengan langganan anda',
   noticeSend:
-    'Kandungan dokumen dan perbualan anda dihantar kepada Anthropic atau OpenAI di bawah akaun anda sendiri. Setiap permintaan juga membawa nama, tajuk dan penerangan setiap kemahiran yang ditetapkan kepada "AI tentukan"; kemahiran yang digunakan dan fail kemahiran yang dibaca oleh AI turut dihantar.',
+    'Kandungan dokumen dan perbualan anda dihantar kepada Anthropic, OpenAI atau Google di bawah akaun anda sendiri. Setiap permintaan juga membawa nama, tajuk dan penerangan setiap kemahiran yang ditetapkan kepada "AI tentukan"; kemahiran yang digunakan dan fail kemahiran yang dibaca oleh AI turut dihantar.',
   noticeTraining:
     'Sama ada kandungan itu digunakan untuk melatih AI ditentukan oleh tetapan akaun anda sendiri di syarikat tersebut.',
   noticeCodexHistory:
@@ -111,7 +111,7 @@ export const ms = {
   guidePathCodexTitle: 'Saya guna ChatGPT',
   guidePathCodexBody:
     'Log masuk ke program Codex OpenAI dengan akaun ChatGPT anda. Pelan percuma hanya membenarkan sedikit penggunaan.',
-  guidePathFreeTitle: 'Belum ada kedua-duanya',
+  guidePathFreeTitle: 'Belum ada mana-mana',
   guidePathFreeBody:
     'Sambungkan AI percuma dalam masa kira-kira seminit. Semasa anda menggunakannya secara percuma, kandungan yang anda hantar mungkin digunakan untuk menambah baik AI syarikat itu.',
   guideBack: 'Pilih cara lain',
@@ -193,4 +193,9 @@ export const ms = {
   errOffInApp:
     '{provider} dimatikan dalam aplikasi ini, jadi tiada apa yang dijalankan. Anda boleh menggunakannya semula di Tetapan → AI.',
   guideBadgeOff: 'Dimatikan',
+  guidePathAntigravityTitle: 'Saya guna Google Antigravity',
+  guidePathAntigravityBody:
+    'Log masuk ke program Antigravity daripada Google dengan akaun Google anda untuk menggunakan pelan Google AI anda.',
+  antigravityCardNote:
+    'Berjalan dalam panel AI dan mod Ejen melalui protokol ACP rasmi Antigravity CLI. Model yang tersedia, keutamaan penggunaan data dan tetapan kredit lebihan mengikut tetapan Antigravity anda.',
 } satisfies Record<keyof typeof zh, string>

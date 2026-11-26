@@ -160,7 +160,11 @@ describe('normalizeAiSettings', () => {
 
   it('fills the new settings with their defaults', () => {
     const settings = normalizeAiSettings(gensparkEraFile())
-    expect(settings.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(settings.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(settings.headlessSubscriptionEnabled).toBe(false)
     expect(settings.subscriptionNoticeSeen).toBe(false)
   })
@@ -173,7 +177,11 @@ describe('normalizeAiSettings', () => {
       headlessSubscriptionConsentVersion: HEADLESS_SUBSCRIPTION_CONSENT_VERSION,
       subscriptionNoticeSeen: true,
     })
-    expect(kept.meteredAccepted).toEqual({ 'claude-code': true, codex: false })
+    expect(kept.meteredAccepted).toEqual({
+      'claude-code': true,
+      codex: false,
+      antigravity: false,
+    })
     expect(kept.headlessSubscriptionEnabled).toBe(true)
     expect(kept.subscriptionNoticeSeen).toBe(true)
 
@@ -183,7 +191,11 @@ describe('normalizeAiSettings', () => {
       headlessSubscriptionEnabled: 'true',
       subscriptionNoticeSeen: 1,
     })
-    expect(malformed.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(malformed.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(malformed.headlessSubscriptionEnabled).toBe(false)
     expect(malformed.subscriptionNoticeSeen).toBe(false)
   })

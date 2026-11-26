@@ -21,6 +21,8 @@ import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import {
   PROJECT_FOLDER_BRIDGE_KEY,
@@ -240,6 +242,7 @@ contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBrid
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
 contextBridge.exposeInMainWorld(VERSION_TIMELINE_BRIDGE_KEY, versionTimelineBridge())
 contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 

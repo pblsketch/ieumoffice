@@ -19,6 +19,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 export const TRACKED_TEMP_PREFIXES = [
   'genoffice-codex-app-server-',
   'genoffice-claude-code-',
+  'genoffice-antigravity-acp-',
 ] as const
 
 const RECORD_PREFIX = 'ai-temp-dir-'

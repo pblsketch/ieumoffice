@@ -501,6 +501,7 @@ import {
   subscriptionConnectHelpUrl,
   trackedSubscriptionChildCount,
 } from '@genoffice/ai-provider/subscription'
+import { closeAllAntigravityPanelSessions } from '@genoffice/ai-provider'
 import { showErrorDialog } from './error-dialog'
 import { startRendererWatchdog } from './renderer-watchdog'
 import { crashLogPath, memoryFigures, startCrashWatch, startLowMemoryWatch } from './crash-watch'
@@ -655,6 +656,7 @@ import { sweepAgentSessionFolders } from './agent/agent-session-folders'
 import { userSkillsManageGate } from './agent/agent-skills'
 import {
   buildAgentSkillBundle,
+  startAntigravityAgentSession,
   startClaudeAgentSession,
   startCodexAgentSession,
 } from '@genoffice/ai-provider/agent-session'
@@ -11543,6 +11545,7 @@ app.whenReady().then(async () => {
     runners: {
       claude: (options, onEvent) => startClaudeAgentSession(options, onEvent),
       codex: (options, onEvent) => startCodexAgentSession(options, onEvent),
+      antigravity: (options, onEvent) => startAntigravityAgentSession(options, onEvent),
     },
     // the session's skill tools only show a card or an install proposal in the agent window
     startAppMcp: async (projectRoot, { skillTools }) => {
@@ -11785,6 +11788,7 @@ function releaseAppResources(): void {
   // a second instance that lost the lock quits too; it must not delete the running editor's list
   if (ownsOpenDocumentsRegistry) clearOpenDocuments(OPEN_DOCUMENTS_PATH())
   stopAgentSessions()
+  void closeAllAntigravityPanelSessions()
   driveService?.stop()
   void mcpHub?.stopAll()
   stopQuickLookRuntime()

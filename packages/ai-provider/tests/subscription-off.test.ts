@@ -28,6 +28,7 @@ const READY: Record<AiSubscriptionProviderId, SubscriptionDetection> = {
   },
   codex: { provider: 'codex', state: 'ready', loginMethod: 'subscription', loginKind: 'chatgpt' },
   chatgpt: { provider: 'chatgpt', state: 'signed-out' },
+  antigravity: { provider: 'antigravity', state: 'not-installed' },
 }
 
 function harness(

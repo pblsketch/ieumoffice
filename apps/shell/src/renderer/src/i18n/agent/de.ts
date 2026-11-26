@@ -107,4 +107,7 @@ export const de = {
   connOff: 'In dieser App ausgeschaltet. Unter Einstellungen → KI können Sie es wieder verwenden.',
   errOffInApp:
     'Dieses Programm ist in dieser App ausgeschaltet, daher wurde nichts mehr gesendet. Unter Einstellungen → KI können Sie es wieder verwenden.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Läuft über das offizielle ACP-Protokoll in der Terminal-Sandbox von Antigravity, getrennt von Ihren ~/.gemini-Einstellungen. Datennutzung und Zusatzguthaben richten sich nach Antigravity.',
 } satisfies Record<keyof typeof zh, string>

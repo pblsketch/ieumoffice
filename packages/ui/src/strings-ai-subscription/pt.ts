@@ -46,12 +46,12 @@ export const pt = {
     'Este login usa uma chave de API ou uma conta de pagamento por consumo, ou não foi possível confirmar o tipo. “Usar mesmo assim” permite que a IA funcione com esta conexão, e cada solicitação é cobrada dessa conta.',
   connectTitle: 'Conecte uma IA para começar',
   connectBody:
-    'A IA funciona com a assinatura do Claude ou do ChatGPT que você já tem. Nenhuma chave de API é necessária.',
+    'A IA funciona com a assinatura Claude, ChatGPT ou Google Antigravity que você já tem. Não é preciso chave API.',
   connectProviderTitle: 'A conexão {provider} não pode ser usada agora',
   connectKeyBody:
     'A configuração de {provider} não foi concluída. Conclua-a nas Configurações ou escolha outra IA.',
   errNotConnected:
-    'Nenhuma IA está conectada. Conecte primeiro uma assinatura do Claude ou do Codex, ou uma IA gratuita.',
+    'Nenhuma IA está conectada. Conecte primeiro uma assinatura Claude, ChatGPT, Codex ou Antigravity, ou uma IA gratuita.',
   errNotInstalled: 'O programa {provider} não foi encontrado neste PC.',
   errSignedOut: 'O login em {provider} expirou. Entre novamente para continuar.',
   errRateLimit: 'O limite da assinatura {provider} foi atingido.',
@@ -84,7 +84,7 @@ export const pt = {
   usageWindowSevenDay: 'Limite de 7 dias',
   noticeTitle: 'Antes de usar a IA com a sua assinatura',
   noticeSend:
-    'O conteúdo do documento e a sua conversa são enviados à Anthropic ou à OpenAI pela sua própria conta. Cada solicitação leva também o nome, o título e a descrição de cada habilidade configurada como “A IA decide”; também são enviadas as habilidades em uso e os arquivos de habilidade que a IA lê.',
+    'O conteúdo do documento e a sua conversa são enviados à Anthropic, à OpenAI ou ao Google pela sua própria conta. Cada solicitação leva também o nome, o título e a descrição de cada habilidade configurada como “A IA decide”; também são enviadas as habilidades em uso e os arquivos de habilidade que a IA lê.',
   noticeTraining:
     'Se esse conteúdo é usado para treinar IA depende das configurações da sua própria conta nessa empresa.',
   noticeCodexHistory:
@@ -194,4 +194,9 @@ export const pt = {
   errOffInApp:
     'O {provider} está desativado neste aplicativo, então nada foi executado. Você pode voltar a usá-lo em Configurações → IA.',
   guideBadgeOff: 'Desativado',
+  guidePathAntigravityTitle: 'Uso o Google Antigravity',
+  guidePathAntigravityBody:
+    'Entre no programa Antigravity do Google com sua conta Google para usar seu plano do Google AI.',
+  antigravityCardNote:
+    'Funciona no painel de IA e no modo Agente pelo protocolo oficial ACP da CLI do Antigravity. Modelos disponíveis, uso de dados e créditos excedentes seguem as configurações do Antigravity.',
 } satisfies Record<keyof typeof zh, string>

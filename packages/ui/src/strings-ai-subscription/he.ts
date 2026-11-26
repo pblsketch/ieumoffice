@@ -43,12 +43,13 @@ export const he = {
   meteredMeaning:
     'הכניסה הזו משתמשת במפתח API או בחשבון בתשלום לפי שימוש, או שלא ניתן היה לאמת את סוגה. בחירה ב"להשתמש בכל זאת" מאפשרת לבינה המלאכותית לפעול דרך החיבור הזה, וכל בקשה תחויב בחשבון הזה.',
   connectTitle: 'חברו בינה מלאכותית כדי להתחיל',
-  connectBody: 'הבינה המלאכותית פועלת עם מינוי Claude או ChatGPT שכבר יש לכם. אין צורך במפתח API.',
+  connectBody:
+    'הבינה המלאכותית פועלת עם מינוי Claude, ChatGPT או Google Antigravity שכבר יש לכם. אין צורך במפתח API.',
   connectProviderTitle: 'החיבור {provider} אינו זמין לשימוש כרגע',
   connectKeyBody:
     'ההגדרה של {provider} עדיין לא הושלמה. השלימו אותה בהגדרות או בחרו בינה מלאכותית אחרת.',
   errNotConnected:
-    'אין בינה מלאכותית מחוברת. חברו תחילה מינוי Claude או Codex, או בינה מלאכותית בחינם.',
+    'אין בינה מלאכותית מחוברת. חברו תחילה מינוי Claude, ChatGPT, Codex או Antigravity, או בינה מלאכותית חינמית.',
   errNotInstalled: 'התוכנה {provider} לא נמצאה במחשב הזה.',
   errSignedOut: 'תוקף הכניסה אל {provider} פג. היכנסו שוב כדי להמשיך.',
   errRateLimit: 'מכסת המינוי של {provider} נוצלה במלואה.',
@@ -76,7 +77,7 @@ export const he = {
   usageWindowSevenDay: 'מכסה ל-7 ימים',
   noticeTitle: 'לפני השימוש בבינה המלאכותית עם המינוי שלכם',
   noticeSend:
-    'תוכן המסמך והשיחה נשלחים אל Anthropic או אל OpenAI באמצעות החשבון האישי שלכם. כל בקשה כוללת גם את השם, הכותרת והתיאור של כל מיומנות שמוגדרת "ה-AI מחליט"; גם המיומנויות שבשימוש וקובצי המיומנויות שהבינה המלאכותית קוראת נשלחים יחד איתם.',
+    'תוכן המסמך והשיחה נשלחים אל Anthropic, OpenAI או Google באמצעות החשבון האישי שלכם. כל בקשה כוללת גם את השם, הכותרת והתיאור של כל מיומנות שמוגדרת "ה-AI מחליט"; גם המיומנויות שבשימוש וקובצי המיומנויות שהבינה המלאכותית קוראת נשלחים יחד איתם.',
   noticeTraining:
     'השאלה אם התוכן הזה ישמש לאימון בינה מלאכותית נקבעת בהגדרות החשבון שלכם באותה חברה.',
   noticeCodexHistory:
@@ -182,4 +183,9 @@ export const he = {
   errOffInApp:
     '{provider} כבוי באפליקציה הזו, ולכן שום דבר לא הופעל. אפשר להשתמש בו שוב בהגדרות → AI.',
   guideBadgeOff: 'כבוי',
+  guidePathAntigravityTitle: 'יש לי Google Antigravity',
+  guidePathAntigravityBody:
+    'התחבר לתוכנת Antigravity של Google עם חשבון Google שלך כדי להשתמש בתוכנית Google AI שלך.',
+  antigravityCardNote:
+    'פועל בחלונית ה-AI ובמצב הסוכן באמצעות פרוטוקול ACP הרשמי של Antigravity CLI. המודלים הזמינים, העדפות השימוש בנתונים והגדרות האשראי החורג נקבעים לפי הגדרות Antigravity שלך.',
 } satisfies Record<keyof typeof zh, string>

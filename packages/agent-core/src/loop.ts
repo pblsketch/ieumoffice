@@ -1097,11 +1097,125 @@ export class AgentLoop<TSnapshot = unknown> {
     // A call this model emitted with tools off is delivered but never executed;
     // the retry guards below must not replay the turn as if nothing arrived.
     let ignoredToolCall = false
+    const liveToolRecords: Array<{
+      text: string
+      call: AgentToolCall
+      result: AgentToolResult
+    }> = []
+    let liveToolChain: Promise<void> = Promise.resolve()
     try {
       // A model that cannot call tools gets none, plus a paragraph saying so,
       // and the skill's tools-off prompt where it has one; true or absent keeps
       // the skill's tools and prompt exactly as before.
       const toolsAllowed = this.options.toolsAllowed?.() !== false
+      const runLiveTool = async (rawCall: AgentToolCall): Promise<AgentToolResult> => {
+        if (generation !== this.generation || settled || !toolsAllowed) {
+          return {
+            id: rawCall.id,
+            name: rawCall.name,
+            output: 'Tool execution is not allowed for this turn',
+            isError: true,
+          }
+        }
+        const { events, skill, captureSnapshot } = this.options
+        const tool = skill.tools.find((t) => t.name === rawCall.name)
+        const call =
+          rawCall.truncated || rawCall.inputError
+            ? rawCall
+            : { ...rawCall, input: coerceArgumentFields(tool, rawCall.input) }
+        if (this.cancelled) {
+          return {
+            id: call.id,
+            name: call.name,
+            output: '(the user stopped the run; this tool was not executed)',
+            isError: true,
+          }
+        }
+        if (!tool) {
+          const output = `Unknown tool "${call.name}"; it is not available in this editor.`
+          const result: AgentToolResult = { id: call.id, name: call.name, output, isError: true }
+          events?.onToolExecuted?.({
+            call,
+            execution: { output, isError: true, summary: call.name },
+          })
+          return result
+        }
+        const unreadable = call.truncated || call.inputError
+        const missing = unreadable ? [] : missingRequiredFields(tool, call.input)
+        const invalid =
+          unreadable || missing.length > 0 ? [] : invalidArgumentFields(tool, call.input)
+        if (unreadable || missing.length > 0 || invalid.length > 0) {
+          const output = call.truncated
+            ? 'Tool arguments were cut off by the output length limit; the tool was not executed.'
+            : call.inputError
+              ? `Tool input JSON failed to parse; the tool was not executed: ${call.inputError}`
+              : missing.length > 0
+                ? `Tool call ${call.name} is missing the required argument(s) ${missing.map((f) => `"${f}"`).join(', ')}; the tool was not executed.`
+                : `Tool call ${call.name} got ${invalid.length === 1 ? 'an argument' : 'arguments'} that do not match the tool's input schema — ${invalid.join('; ')}; the tool was not executed.`
+          const result: AgentToolResult = { id: call.id, name: call.name, output, isError: true }
+          events?.onToolExecuted?.({
+            call,
+            execution: { output, isError: true, summary: call.name },
+          })
+          return result
+        }
+        const textBeforeTool = this.turnText
+        events?.onToolStart?.(call)
+        const snapshot = !this.mutationSeen ? captureSnapshot?.() : undefined
+        let raced: ToolExecution | typeof ABORTED
+        try {
+          raced = await awaitOrAbort(
+            skill.executeTool(call, this.abortController?.signal),
+            this.abortController?.signal,
+          )
+        } catch (e) {
+          raced = {
+            output: e instanceof Error ? e.message : String(e),
+            isError: true,
+            summary: call.name,
+          }
+        }
+        if (generation !== this.generation) {
+          return { id: call.id, name: call.name, output: TOOL_ABORTED_OUTPUT, isError: true }
+        }
+        if (raced === ABORTED) {
+          const aborted: ToolExecution = {
+            output: TOOL_ABORTED_OUTPUT,
+            isError: true,
+            summary: call.name,
+          }
+          this.executedCalls.push({ name: call.name, ok: false })
+          const result: AgentToolResult = {
+            id: call.id,
+            name: call.name,
+            output: aborted.output,
+            isError: true,
+          }
+          events?.onToolExecuted?.({ call, execution: aborted })
+          liveToolRecords.push({ text: textBeforeTool, call, result })
+          this.turnText = ''
+          return result
+        }
+        const execution = raced
+        this.executedCalls.push({ name: call.name, ok: !execution.isError })
+        const firstMutation = !!execution.mutated && !this.mutationSeen
+        if (execution.mutated) this.mutationSeen = true
+        const result: AgentToolResult = {
+          id: call.id,
+          name: call.name,
+          output: execution.output,
+          isError: execution.isError,
+        }
+        events?.onToolExecuted?.({
+          call,
+          execution,
+          snapshotBefore: firstMutation ? snapshot : undefined,
+        })
+        liveToolRecords.push({ text: textBeforeTool, call, result })
+        this.turnText = ''
+        if (!this.cancelled) events?.onTurnEnd?.()
+        return result
+      }
       this.handle = this.options.transport.stream(
         {
           system:
@@ -1154,6 +1268,18 @@ export class AgentLoop<TSnapshot = unknown> {
             }
             this.toolCalls.push(call)
           },
+          onLiveToolCall: (call) => {
+            // Serialize live MCP tool calls so document mutations and snapshots never race
+            let resolveResult!: (res: AgentToolResult) => void
+            const resultPromise = new Promise<AgentToolResult>((res) => {
+              resolveResult = res
+            })
+            liveToolChain = liveToolChain.then(async () => {
+              const res = await runLiveTool(call)
+              resolveResult(res)
+            })
+            return resultPromise
+          },
           onStopReason: (reason) => {
             if (generation !== this.generation || settled) return
             this.turnStopReason = reason
@@ -1168,9 +1294,44 @@ export class AgentLoop<TSnapshot = unknown> {
               this.failRun(err instanceof Error ? err.message : String(err))
             }
           },
-          onDone: () => {
+          onDone: (meta) => {
             if (generation !== this.generation || settled) return
             settled = true
+            if (meta?.acpNative) {
+              void liveToolChain
+                .then(() => {
+                  if (generation !== this.generation) return
+                  for (const rec of liveToolRecords) {
+                    this.history.push({
+                      role: 'assistant',
+                      text: rec.text,
+                      toolCalls: [{ id: rec.call.id, name: rec.call.name, input: rec.call.input }],
+                    })
+                    this.history.push({ role: 'tool', results: [rec.result] })
+                  }
+                  this.dropTurnLimitNote()
+                  this.history.push({
+                    role: 'assistant',
+                    text: this.turnText || COMPLETED_VIA_TOOLS_TEXT,
+                  })
+                  this.running = false
+                  this.runUserMsg = null
+                  this.mergeRunUsage()
+                  this.options.events?.onDone?.({
+                    text: this.turnText,
+                    cancelled: this.cancelled,
+                    turnLimit: false,
+                    ...(this.turnStopReason === 'max_tokens' && !this.cancelled
+                      ? { truncated: true }
+                      : {}),
+                    ...(this.runUsage ? { usage: this.runUsage } : {}),
+                  })
+                })
+                .catch((err: unknown) => {
+                  this.failRun(err instanceof Error ? err.message : String(err))
+                })
+              return
+            }
             this.settleTurn()
           },
           onError: (error) => {

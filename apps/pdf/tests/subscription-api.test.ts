@@ -35,6 +35,7 @@ const CHECKING = checkingSubscriptionStatuses()
 const ANSWERED = {
   ...CHECKING,
   chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'signed-out', meteredAccepted: false },
 }
 
 describe('subscriptionStatusMapOf', () => {
@@ -193,6 +194,7 @@ describe('pdf preload bridge', () => {
         'claude-code': CHECKING['claude-code'],
         chatgpt: ANSWERED.chatgpt,
         codex: { provider: 'codex', state: 'signed-out', meteredAccepted: false },
+        antigravity: ANSWERED.antigravity,
       },
     ])
     off()

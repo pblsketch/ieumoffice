@@ -98,6 +98,10 @@ import {
 } from '@genoffice/electron-utils'
 import { aiCreateRefusal } from '@genoffice/electron-utils/ai-create-guard'
 import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import {
+  ACP_TOOL_RESULT_CHANNEL,
+  createAcpToolBroker,
+} from '@genoffice/electron-utils/acp-tool-channels'
 import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
 import { copyFileExclusive } from '@genoffice/electron-utils/copy-file'
 import { screenMediaCall } from './screen-media-call'
@@ -125,6 +129,7 @@ import {
 } from '@genoffice/ui/ai-subscription-login-window'
 
 import {
+  closeAllAntigravityPanelSessions,
   isAiOverloadedError,
   chatForProvider,
   maxOutputTokensOf,
@@ -5576,6 +5581,11 @@ export function registerSheetsAiIpc(): void {
     }
   })
 
+  const acpToolBroker = createAcpToolBroker()
+  ipcMain.handle(ACP_TOOL_RESULT_CHANNEL, (event, raw: unknown) => {
+    acpToolBroker.resolve(event.sender.id, raw)
+  })
+
   ipcMain.handle(IPC_CHANNELS.aiStream, async (event, input: unknown) => {
     const entry = sessionFor(event)
     const request = aiStreamRequestSchema.parse(input)
@@ -5620,12 +5630,33 @@ export function registerSheetsAiIpc(): void {
     }
     try {
       let stopReason: string | undefined
+      let acpNative = false
       await streamForProvider(provider, config, system, messages, tools, maxTokens, {
         ...(request.sessionId ? { sessionId: request.sessionId } : {}),
         signal: controller.signal,
         onDelta: (text) => send({ requestId, type: 'delta', text }),
         onReasoningDelta: (text) => send({ requestId, type: 'reasoning', text }),
         onToolCall: (toolCall) => send({ requestId, type: 'tool-call', toolCall }),
+        onAcpToolCall: async (toolCall) => {
+          const callId = globalThis.crypto.randomUUID()
+          const pending = acpToolBroker.waitForResult({
+            senderId: event.sender.id,
+            requestId,
+            callId,
+            signal: controller.signal,
+          })
+          send({ requestId, type: 'acp-tool-call', callId, toolCall })
+          const result = await pending
+          return {
+            id: toolCall.id,
+            name: toolCall.name,
+            output: result.output,
+            ...(result.isError ? { isError: true } : {}),
+          }
+        },
+        onAcpNativeDone: () => {
+          acpNative = true
+        },
         onActivity: ping,
         onStopReason: (reason) => {
           stopReason = reason
@@ -5636,11 +5667,12 @@ export function registerSheetsAiIpc(): void {
       // sheets tsconfig sets exactOptionalPropertyTypes: an explicit
       // `stopReason: undefined` is not assignable to AiStreamChunk, so only
       // include the property when a reason was actually reported.
-      send(
-        stopReason === undefined
-          ? { requestId, type: 'done' }
-          : { requestId, type: 'done', stopReason },
-      )
+      send({
+        requestId,
+        type: 'done',
+        ...(stopReason !== undefined ? { stopReason } : {}),
+        ...(acpNative ? { acpNative: true } : {}),
+      })
     } catch (err) {
       if (controller.signal.aborted) {
         send({ requestId, type: 'done' })
@@ -5648,6 +5680,7 @@ export function registerSheetsAiIpc(): void {
         send(aiStreamErrorChunk(requestId, err))
       }
     } finally {
+      acpToolBroker.cancelRequest(requestId)
       unregisterJob()
       unwatchSender()
       entry.aiStreams.delete(requestId)
@@ -6908,7 +6941,10 @@ export function startSheetsStandalone(): void {
     stopSheetsSidecar()
   })
   // a subscription program started for an AI run must not outlive the app
-  app.on('will-quit', shutdownSubscriptionChildren)
+  app.on('will-quit', () => {
+    void closeAllAntigravityPanelSessions()
+    shutdownSubscriptionChildren()
+  })
   process.on('exit', shutdownSubscriptionChildren)
   app.on('activate', () => {
     if (!mainWindow) void createSheetsWindow()

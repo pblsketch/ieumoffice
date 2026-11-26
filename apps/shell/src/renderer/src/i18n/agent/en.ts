@@ -99,4 +99,7 @@ export const en = {
   connOff: 'Turned off in this app. Turn it back on under Settings → AI.',
   errOffInApp:
     'This program is turned off in this app, so nothing more was sent. Turn it back on under Settings → AI.',
+  providerAntigravity: 'Antigravity',
+  providerAntigravityNote:
+    'Runs through the official ACP protocol inside Antigravity’s terminal sandbox, isolated from your ~/.gemini settings. Data use and overage credits follow your Antigravity settings.',
 } satisfies Record<keyof typeof zh, string>

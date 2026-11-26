@@ -14,6 +14,7 @@ const CONNECT_HELP_SECTIONS: Record<SubscriptionConnectHelpPath, string> = {
   'claude-code': 'claude',
   codex: 'codex',
   chatgpt: 'chatgpt',
+  antigravity: 'antigravity',
   free: 'free',
 }
 

@@ -130,13 +130,19 @@ export interface AgentStreamCallbacks {
   onReasoning?(text: string): void
   /** complete parsed tool call (arguments finished streaming) */
   onToolCall(call: AgentToolCall): void
+  /**
+   * Live tool execution hook for ACP-native transports where the external ACP
+   * agent drives its own multi-step loop and invokes editor tools via MCP
+   * within a single stream turn (decision 0170).
+   */
+  onLiveToolCall?(call: AgentToolCall): Promise<AgentToolResult>
   /** Phase changes within the model stream (thinking / responding / tool-input); older transports may omit this */
   onPhase?(phase: AgentPhase): void
   /** normalized stop reason of the turn ('max_tokens' = cut off by the token limit); transports may omit this */
   onStopReason?(reason: string): void
   /** tokens the provider billed for this turn; transports whose provider does not report usage omit this */
   onUsage?(usage: AgentTokenUsage): void
-  onDone(): void
+  onDone(meta?: { acpNative?: boolean }): void
   onError(error: string): void
 }
 
