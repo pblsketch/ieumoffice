@@ -6,6 +6,7 @@ import {
   serializeTextEnvelope,
   type TextEnvelope,
 } from '../html/text-envelope'
+import { WEB_EXPORT_MIME, saveNewFile, type SaveNewFileResult } from '../html/save-new-file'
 import { MobileCommandError, type MobileClient, type MobileDocSession } from '../transport'
 import {
   wrapSkillWithViewEditGate,
@@ -142,8 +143,11 @@ export interface MobileMarkdownApi {
     markdownText: string,
   ): Promise<MobileDocSession>
   shareDocument(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: boolean }>
-  /** Saves a HWPX converted from the Markdown as a new file (system save dialog). */
-  saveConvertedHwpx(suggestedName: string, bytes: Uint8Array): Promise<MobileDocSession>
+  /**
+   * Saves a HWPX converted from the Markdown as a new file (system save dialog) without
+   * changing the open document's session; resolves with the name of the written file.
+   */
+  saveConvertedHwpx(suggestedName: string, bytes: Uint8Array): Promise<SaveNewFileResult>
   writeRecovery(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: boolean }>
   discardRecovery(docKey: string): Promise<{ readonly ok: boolean }>
   insertInlineImage(input: Omit<InlineImageInput, 'maxBytes'>): string
@@ -253,11 +257,8 @@ export function createMobileMarkdownApi(
     },
 
     async saveConvertedHwpx(suggestedName, bytes) {
-      return client.saveAsFileBytes({
-        suggestedName,
-        format: 'hwpx',
-        bytesBase64: bytesToBase64(bytes),
-      })
+      // a new file: the open Markdown session stays the one the editor saves to
+      return saveNewFile(client, { suggestedName, mime: WEB_EXPORT_MIME.hwpx, bytes })
     },
 
     async shareDocument(session, markdownText) {

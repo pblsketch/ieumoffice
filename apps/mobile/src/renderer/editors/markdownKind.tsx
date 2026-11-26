@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import type { ConversionReport } from '@genoffice/odt-engine'
+import { WEB_EXPORT_MIME, saveNewFile } from '@genoffice/mobile-bridge/html'
 import {
   base64ToBytes,
   createMobileMarkdownApi,
@@ -20,11 +22,49 @@ import {
   type MarkdownMobileEditorHandle,
   type MarkdownQuickAction,
 } from './MarkdownMobileEditor'
+import { OdtConfirmSheet } from './markdownOdtConfirmSheet'
 
 /** Values of one open document that outlive its Workspace (unmounted on the settings screen). */
 interface MarkdownKeptState {
   readonly markdownText: string
   readonly zoomScale: number
+  /** The ODT conversion report waiting for [Save] or [Cancel]; null when nothing is asked. */
+  readonly odtReport: ConversionReport | null
+}
+
+/** The formats a Markdown document exports to, each written as a new file (spec 3.2). */
+type MarkdownExportFormat = 'hwpx' | 'docx' | 'odt'
+
+const EXPORT_TEXT: Record<
+  MarkdownExportFormat,
+  { readonly working: MobileStringKey; readonly failed: MobileStringKey }
+> = {
+  hwpx: { working: 'markdownToHwpWorking', failed: 'markdownToHwpFailed' },
+  docx: { working: 'webExportDocxWorking', failed: 'webExportDocxFailed' },
+  odt: { working: 'webExportOdtWorking', failed: 'webExportOdtFailed' },
+}
+
+interface ConvertedExport {
+  readonly bytes: Uint8Array
+  /** Something could not be carried over exactly. */
+  readonly lossy: boolean
+  /** ODT only: what changes or is left out, confirmed before anything is written. */
+  readonly report?: ConversionReport
+}
+
+/** Converts on demand; the converters are a chunk loaded only here. */
+async function convertMarkdown(
+  format: MarkdownExportFormat,
+  markdown: string,
+): Promise<ConvertedExport> {
+  const converters = await import('./markdownToHwp')
+  if (format === 'docx') return { bytes: await converters.markdownToDocx(markdown), lossy: false }
+  if (format === 'odt') {
+    const { bytes, report } = await converters.markdownToOdt(markdown)
+    return { bytes, lossy: report.length > 0, report }
+  }
+  const { bytes, lossCount } = await converters.markdownToHwpx(markdown)
+  return { bytes, lossy: lossCount > 0 }
 }
 
 function createKeptState<T extends object>(initial: T) {
@@ -95,7 +135,11 @@ function startMarkdownDocument(
     host.updateSession(meta)
   }
 
-  const kept = createKeptState<MarkdownKeptState>({ markdownText: openedText, zoomScale: 1 })
+  const kept = createKeptState<MarkdownKeptState>({
+    markdownText: openedText,
+    zoomScale: 1,
+    odtReport: null,
+  })
   const setMarkdownText = (markdownText: string) => kept.set({ markdownText })
   const markdownEditorRef: { current: MarkdownMobileEditorHandle | null } = { current: null }
   /** The editor's text while it is mounted, else the last text it had (e.g. on the settings screen). */
@@ -145,33 +189,59 @@ function startMarkdownDocument(
     }
   }
 
-  /** Markdown: convert to a HWP document (.hwpx) and save it as a new file. */
-  const exportMarkdownToHwp = async () => {
+  /** The answer to the ODT confirm sheet that is open now. */
+  let resolveOdtConfirm: ((save: boolean) => void) | null = null
+  const confirmOdtReport = (report: ConversionReport) =>
+    new Promise<boolean>((resolve) => {
+      resolveOdtConfirm?.(false)
+      resolveOdtConfirm = resolve
+      kept.set({ odtReport: report })
+    })
+  const answerOdtConfirm = (save: boolean) => {
+    const resolve = resolveOdtConfirm
+    resolveOdtConfirm = null
+    if (kept.get().odtReport !== null) kept.set({ odtReport: null })
+    resolve?.(save)
+  }
+
+  /**
+   * Markdown → Hangul, Word or ODT, written as a new file with the system save dialog.
+   * The open document keeps its session, so saving and sharing it go on to the original file.
+   */
+  const exportMarkdown = async (format: MarkdownExportFormat) => {
+    // the text on screen, unsaved edits included
     const text = readMarkdown()
-    showToast(tNow('markdownToHwpWorking'))
-    let converted: { bytes: Uint8Array; lossCount: number }
+    const { working, failed } = EXPORT_TEXT[format]
+    showToast(tNow(working))
+    let converted: ConvertedExport
     try {
-      const { markdownToHwpx } = await import('./markdownToHwp')
-      converted = await markdownToHwpx(text)
+      converted = await convertMarkdown(format, text)
     } catch {
-      showToast({ message: tNow('markdownToHwpFailed'), tone: 'error' })
+      showToast({ message: tNow(failed), tone: 'error' })
       return
     }
+    if (converted.report && converted.report.length > 0) {
+      if (!(await confirmOdtReport(converted.report))) return
+    }
     try {
-      const name = `${currentSession.name.replace(/\.(md|markdown|txt)$/i, '')}.hwpx`
-      const session = await markdownApi.saveConvertedHwpx(name, converted.bytes)
-      showToast({
-        message: tNow(converted.lossCount > 0 ? 'markdownToHwpDoneLoss' : 'markdownToHwpDone'),
-        action: { label: tNow('openNow'), onPress: () => void host.openSession(session) },
-      })
+      const suggestedName = `${currentSession.name.replace(/\.(md|markdown|txt)$/i, '')}.${format}`
+      const { name } =
+        format === 'hwpx'
+          ? await markdownApi.saveConvertedHwpx(suggestedName, converted.bytes)
+          : await saveNewFile(host.client, {
+              suggestedName,
+              mime: WEB_EXPORT_MIME[format],
+              bytes: converted.bytes,
+            })
+      showToast(tNow(converted.lossy ? 'webExportSavedLoss' : 'webExportSaved', { name }))
     } catch (err) {
       if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
-      showToast({ message: tNow('markdownToHwpFailed'), tone: 'error' })
+      showToast({ message: tNow(failed), tone: 'error' })
     }
   }
 
   function MarkdownWorkspace({ frame, mode, lang }: EditorWorkspaceProps) {
-    const { markdownText, zoomScale } = useSyncExternalStore(kept.subscribe, kept.get)
+    const { markdownText, zoomScale, odtReport } = useSyncExternalStore(kept.subscribe, kept.get)
     const activeFormat = frame.docFormat
     const tNow = useCallback(
       (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key),
@@ -235,39 +305,57 @@ function startMarkdownDocument(
     }, [activeFormat, tNow])
 
     return (
-      <EditorShell
-        {...frame}
-        quickActions={quickActions}
-        formatGroups={formatGroups}
-        moreItems={
-          activeFormat === 'md'
-            ? [
-                {
-                  id: 'markdownToHwp',
-                  label: tNow('markdownToHwp'),
-                  onPress: () => void exportMarkdownToHwp(),
-                },
-              ]
-            : []
-        }
-        viewTools={[]}
-        onFitToWidth={() => {
-          kept.set({ zoomScale: 1 })
-        }}
-      >
-        <MarkdownMobileEditor
-          ref={markdownEditorRef}
-          value={markdownText}
-          mode={mode}
-          isPlainText={activeFormat === 'txt'}
-          zoomScale={zoomScale}
-          onChange={(next) => {
-            setMarkdownText(next)
-            textChanged()
+      <>
+        <EditorShell
+          {...frame}
+          quickActions={quickActions}
+          formatGroups={formatGroups}
+          moreItems={
+            activeFormat === 'md'
+              ? [
+                  {
+                    id: 'markdownToHwp',
+                    label: tNow('markdownToHwp'),
+                    onPress: () => void exportMarkdown('hwpx'),
+                  },
+                  {
+                    id: 'webExportDocx',
+                    label: tNow('webExportDocx'),
+                    onPress: () => void exportMarkdown('docx'),
+                  },
+                  {
+                    id: 'webExportOdt',
+                    label: tNow('webExportOdt'),
+                    onPress: () => void exportMarkdown('odt'),
+                  },
+                ]
+              : []
+          }
+          viewTools={[]}
+          onFitToWidth={() => {
+            kept.set({ zoomScale: 1 })
           }}
-          onErrorNotice={(key) => setNoticeBanner(tNow(key))}
+        >
+          <MarkdownMobileEditor
+            ref={markdownEditorRef}
+            value={markdownText}
+            mode={mode}
+            isPlainText={activeFormat === 'txt'}
+            zoomScale={zoomScale}
+            onChange={(next) => {
+              setMarkdownText(next)
+              textChanged()
+            }}
+            onErrorNotice={(key) => setNoticeBanner(tNow(key))}
+          />
+        </EditorShell>
+        <OdtConfirmSheet
+          open={odtReport !== null}
+          items={odtReport ?? []}
+          onConfirm={() => answerOdtConfirm(true)}
+          onCancel={() => answerOdtConfirm(false)}
         />
-      </EditorShell>
+      </>
     )
   }
 
@@ -316,5 +404,10 @@ function startMarkdownDocument(
     },
 
     Workspace: MarkdownWorkspace,
+
+    dispose() {
+      // a confirm sheet still open when the document closes writes nothing
+      answerOdtConfirm(false)
+    },
   }
 }
