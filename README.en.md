@@ -97,9 +97,9 @@ The author's own account, in Korean, is at
 - **22 interface languages.** Korean and English were written by hand; the
   other 20 are machine translations.
 
-Released for **Windows**, with separate **betas for Macs (Apple Silicon and
-Intel) and 64-bit Linux (x64)**. The developer has not been able to check the
-Mac or Linux builds on those machines; please report problems as
+Released for **Windows**, **Macs (Apple Silicon and Intel)** and
+**64-bit Linux (x64)**. The developer cannot test the Mac or Linux builds
+directly and confirms them through user reports; please report problems as
 [issues](https://github.com/pblsketch/ieumoffice/issues).
 
 ## Connecting your subscription
@@ -267,7 +267,7 @@ choose **More info → Run anyway** (the wording differs between Windows
 versions). Download the installer only from the Releases page of this
 repository.
 
-### Mac (beta)
+### Mac
 
 The same Releases page carries two disk images, both for macOS 12 or newer:
 
@@ -315,7 +315,7 @@ What differs on a Mac:
 - Signing in finishes in the browser. If the browser asks you to paste a code,
   run `claude auth login` or `codex login` in Terminal yourself.
 
-### Linux (beta)
+### Linux
 
 The same Releases page carries three 64-bit (x86_64) Linux packages:
 
@@ -402,8 +402,7 @@ project easy to take.
 
 ## Known limitations
 
-- **Windows, Macs (beta, Apple Silicon and Intel) and 64-bit Linux (beta)
-  only.** The developer cannot check the Mac or Linux builds directly; they are
+- **Windows, Macs (Apple Silicon and Intel) and 64-bit Linux only.** The developer cannot check the Mac or Linux builds directly; they are
   checked through user reports.
 - **Unsigned installers**, as described above. That is also why the Mac build
   swaps in its updates itself instead of using Apple's update mechanism.

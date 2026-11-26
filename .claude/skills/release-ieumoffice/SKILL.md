@@ -37,7 +37,7 @@ description: IeumOffice의 새 버전을 내는 작업(버전 올리기, Windows
 - 이번 버전에 직접 기여한 분이 있으면 `## 도움 주신 분`에 GitHub 핸들로 적는다. 실명·이메일은 본인 동의 없이 적지 않는다. 전체 목록은 `CONTRIBUTORS.md`에 있다.
 - 한 화면에 핵심이 보이게 쓴다. 창의 내용 상자는 200px에서 스크롤되고, 상한은 원문 256KB·표시 48,000자·12섹션이다.
 - 한국어로 쓴다.
-- `## 설치`에는 그 릴리스에 올리는 플랫폼을 모두 적는다. 지금은 Windows, Mac(베타, Apple Silicon·Intel 두 dmg), Linux(베타) 셋이다. 도름스 업데이트 소식이나 사이트처럼 본문을 옮겨 쓰는 곳도 같다.
+- `## 설치`에는 그 릴리스에 올리는 플랫폼을 모두 적는다. 지금은 Windows, Mac(Apple Silicon·Intel 두 dmg), Linux 셋이다. 도름스 업데이트 소식이나 사이트처럼 본문을 옮겨 쓰는 곳도 같다.
 
 본문 골격:
 
@@ -63,8 +63,8 @@ description: IeumOffice의 새 버전을 내는 작업(버전 올리기, Windows
 ## 설치
 
 - Windows: …
-- Mac (베타): … (Apple Silicon은 `-arm64.dmg`, Intel은 `-x64.dmg`)
-- Linux (베타): … (AppImage·deb·rpm, README의 "Linux (베타)")
+- Mac: … (Apple Silicon은 `-arm64.dmg`, Intel은 `-x64.dmg`)
+- Linux: … (AppImage·deb·rpm, README의 "Linux")
 ```
 
 ## 릴리스 전에 확인하는 것

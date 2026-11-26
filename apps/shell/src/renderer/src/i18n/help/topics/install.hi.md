@@ -1,17 +1,17 @@
 # GenOffice इंस्टॉल करना
 
-हर संस्करण GitHub पर प्रोजेक्ट के [Releases पेज](https://github.com/pblsketch/ieumoffice/releases/latest) पर प्रकाशित होता है। Windows बिल्ड के साथ Mac और Linux के बिल्ड भी प्रकाशित होते हैं, जो बीटा के रूप में जारी किए जाते हैं। डेवलपर Mac और Linux के बिल्ड सीधे नहीं जाँच सकता; उनकी पुष्टि उपयोगकर्ताओं की रिपोर्टों से होती है।
+हर संस्करण GitHub पर प्रोजेक्ट के [Releases पेज](https://github.com/pblsketch/ieumoffice/releases/latest) पर प्रकाशित होता है। Windows, Mac और Linux के बिल्ड एक साथ प्रकाशित होते हैं। डेवलपर Mac और Linux के बिल्ड सीधे नहीं जाँच सकता; उनकी पुष्टि उपयोगकर्ताओं की रिपोर्टों से होती है।
 
 ## अपने मशीन के लिए फ़ाइल चुनें
 
-| प्लेटफ़ॉर्म                             | आवश्यकताएँ                          | फ़ाइल                             |
-| --------------------------------------- | ----------------------------------- | --------------------------------- |
-| **Windows**                             | Windows 10 या नया, 64-बिट Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac (बीटा)**, Apple Silicon           | macOS 12 या नया, M1 या नई चिप       | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (बीटा)**, Intel                   | macOS 12 या नया, Intel प्रोसेसर     | `GenOffice-<version>-x64.dmg`     |
-| **Linux (बीटा)**, कोई भी डिस्ट्रीब्यूशन | 64-बिट (x86_64)                     | `GenOffice-<version>.AppImage`    |
-| **Linux (बीटा)**, Ubuntu/Debian परिवार  | 64-बिट (x86_64)                     | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (बीटा)**, Fedora/RHEL/openSUSE  | 64-बिट (x86_64)                     | `ieumoffice-<version>.x86_64.rpm` |
+| प्लेटफ़ॉर्म                      | आवश्यकताएँ                          | फ़ाइल                             |
+| -------------------------------- | ----------------------------------- | --------------------------------- |
+| **Windows**                      | Windows 10 या नया, 64-बिट Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon           | macOS 12 या नया, M1 या नई चिप       | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                   | macOS 12 या नया, Intel प्रोसेसर     | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, कोई भी डिस्ट्रीब्यूशन | 64-बिट (x86_64)                     | `GenOffice-<version>.AppImage`    |
+| **Linux**, Ubuntu/Debian परिवार  | 64-बिट (x86_64)                     | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE  | 64-बिट (x86_64)                     | `ieumoffice-<version>.x86_64.rpm` |
 
 यह देखने के लिए कि आपके पास कौन-सा Mac है, Apple मेन्यू ▸ **About This Mac** खोलें। अगर "Chip" में Apple M… लिखा है, तो `-arm64.dmg` पर खत्म होने वाली फ़ाइल लें; अगर "Processor" में Intel … लिखा है, तो `-x64.dmg` पर खत्म होने वाली फ़ाइल लें। Releases पेज की बाकी फ़ाइलें (`.zip`, `.yml`, `.blockmap`) ऐप खुद अपडेट के लिए इस्तेमाल करता है; उन्हें डाउनलोड करने की ज़रूरत नहीं है। पुराने संस्करण Releases पेज पर ही बने रहते हैं।
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen यह विंडो तब दिखाता 
 
 जब Windows 11 का Smart App Control चालू होता है, तो वह बिना साइन किए इंस्टॉलर रोक देता है और **More info** का कोई रास्ता नहीं देता। Microsoft के अनुसार किसी एक ऐप को अनुमति देने का कोई तरीका नहीं है: एकमात्र विकल्प Smart App Control को बंद करना है, जो **Windows Security ▸ App & browser control ▸ Smart App Control settings** में होता है। इससे यह सुरक्षा बाकी सभी ऐप के लिए भी हट जाती है। हाल के Windows अपडेट के साथ इसे Windows दोबारा इंस्टॉल किए बिना फिर से चालू किया जा सकता है।
 
-## Mac पर (बीटा)
+## Mac पर
 
 आपको macOS 12 (Monterey) या नया चाहिए। Mac बिल्ड पर Apple डेवलपर का हस्ताक्षर नहीं है, इसलिए पहली बार खोलने पर macOS कहता है कि वह सत्यापित नहीं कर सकता कि ऐप में मैलवेयर नहीं है, और उसे नहीं खोलता। नीचे बताए अनुसार एक बार अनुमति दें।
 
@@ -77,7 +77,7 @@ Mac पर यह भी:
 - AI कनेक्शन कार्डों में इंस्टॉल बटन नहीं है। Claude Code या Codex इंस्टॉल करने के लिए कार्ड पर दिए आधिकारिक इंस्टॉल गाइड के लिंक का पालन करें। Claude डेस्कटॉप ऐप Claude Code नहीं है, इसलिए डेस्कटॉप ऐप होने पर भी Claude Code अलग से इंस्टॉल करना पड़ता है।
 - साइन-इन ब्राउज़र में पूरा होता है। अगर ब्राउज़र कोई कोड चिपकाने को कहे, तो Terminal में खुद `claude auth login` या `codex login` चलाएँ। देखें [सदस्यता कनेक्शन](help://subscription)।
 
-## Linux पर (बीटा)
+## Linux पर
 
 - **AppImage**: उसे एक्ज़ीक्यूटेबल बनाएँ (`chmod +x GenOffice-<version>.AppImage`) और फ़ाइल चलाएँ। इंस्टॉल का कोई चरण नहीं है।
 - **deb**: `sudo apt install ./ieumoffice_<version>_amd64.deb` से इंस्टॉल करें।

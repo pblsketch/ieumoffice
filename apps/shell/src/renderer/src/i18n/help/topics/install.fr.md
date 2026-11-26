@@ -1,17 +1,17 @@
 # Installer GenOffice
 
-Chaque version est publiée sur la [page Releases](https://github.com/pblsketch/ieumoffice/releases/latest) du projet sur GitHub. La version Windows est accompagnée de versions Mac et Linux publiées en bêta. Le développeur ne peut pas tester directement les versions Mac et Linux ; elles sont confirmées grâce aux retours des utilisateurs.
+Chaque version est publiée sur la [page Releases](https://github.com/pblsketch/ieumoffice/releases/latest) du projet sur GitHub. Les versions Windows, Mac et Linux sont publiées ensemble. Le développeur ne peut pas tester directement les versions Mac et Linux ; elles sont confirmées grâce aux retours des utilisateurs.
 
 ## Choisir le fichier pour votre machine
 
-| Plateforme                              | Prérequis                                               | Fichier                           |
-| --------------------------------------- | ------------------------------------------------------- | --------------------------------- |
-| **Windows**                             | Windows 10 ou version ultérieure, Intel/AMD 64 bits     | `GenOffice-Setup-<version>.exe`   |
-| **Mac (bêta)**, Apple Silicon           | macOS 12 ou version ultérieure, puce M1 ou plus récente | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (bêta)**, Intel                   | macOS 12 ou version ultérieure, processeur Intel        | `GenOffice-<version>-x64.dmg`     |
-| **Linux (bêta)**, toute distribution    | 64 bits (x86_64)                                        | `GenOffice-<version>.AppImage`    |
-| **Linux (bêta)**, famille Ubuntu/Debian | 64 bits (x86_64)                                        | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (bêta)**, Fedora/RHEL/openSUSE  | 64 bits (x86_64)                                        | `ieumoffice-<version>.x86_64.rpm` |
+| Plateforme                       | Prérequis                                               | Fichier                           |
+| -------------------------------- | ------------------------------------------------------- | --------------------------------- |
+| **Windows**                      | Windows 10 ou version ultérieure, Intel/AMD 64 bits     | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon           | macOS 12 ou version ultérieure, puce M1 ou plus récente | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                   | macOS 12 ou version ultérieure, processeur Intel        | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, toute distribution    | 64 bits (x86_64)                                        | `GenOffice-<version>.AppImage`    |
+| **Linux**, famille Ubuntu/Debian | 64 bits (x86_64)                                        | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE  | 64 bits (x86_64)                                        | `ieumoffice-<version>.x86_64.rpm` |
 
 Pour savoir quel Mac vous avez, ouvrez le menu Pomme ▸ **À propos de ce Mac**. Si « Puce » indique Apple M…, prenez le fichier qui se termine par `-arm64.dmg` ; si « Processeur » indique Intel …, prenez celui qui se termine par `-x64.dmg`. Les autres fichiers de la page Releases (`.zip`, `.yml`, `.blockmap`) servent à l’application elle-même pour se mettre à jour ; vous n’avez pas besoin de les télécharger. Les versions antérieures restent sur la page Releases.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen affiche cette fenêtre la première fois qu’il 
 
 Lorsque le Contrôle intelligent des applications de Windows 11 est activé, il arrête les installeurs non signés et ne propose aucun chemin par **Informations complémentaires**. Selon Microsoft, il n’est pas possible d’autoriser une seule application : la seule option est de désactiver le Contrôle intelligent des applications, sous **Sécurité Windows ▸ Contrôle des applications et du navigateur ▸ Paramètres du Contrôle intelligent des applications**. Cela retire aussi cette protection pour toutes les autres applications. Avec les mises à jour récentes de Windows, il peut être réactivé sans réinstaller Windows.
 
-## Sur un Mac (bêta)
+## Sur un Mac
 
 Il vous faut macOS 12 (Monterey) ou version ultérieure. La version Mac n’a pas de signature de développeur Apple : la première fois que vous l’ouvrez, macOS indique qu’il ne peut pas vérifier que l’application est exempte de logiciels malveillants et ne l’ouvre pas. Autorisez-la une seule fois, comme ci-dessous.
 
@@ -77,7 +77,7 @@ Si macOS indique que l’application n’est pas prise en charge sur ce Mac, vé
 - Les cartes de connexion IA n’ont pas de bouton d’installation. Suivez le lien du guide d’installation officiel sur la carte pour installer Claude Code ou Codex. L’application de bureau Claude n’est pas Claude Code, il faut donc installer Claude Code même si l’application de bureau est déjà là.
 - La connexion se termine dans le navigateur. Si le navigateur vous demande de coller un code, exécutez vous-même `claude auth login` ou `codex login` dans le Terminal. Voir [Connexion par abonnement](help://subscription).
 
-## Sous Linux (bêta)
+## Sous Linux
 
 - **AppImage** : rendez-le exécutable (`chmod +x GenOffice-<version>.AppImage`) et lancez le fichier. Il n’y a pas d’étape d’installation.
 - **deb** : installez avec `sudo apt install ./ieumoffice_<version>_amd64.deb`.

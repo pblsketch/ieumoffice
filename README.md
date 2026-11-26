@@ -92,9 +92,9 @@ AI는 **이미 쓰고 있는 Claude 구독이나 ChatGPT 요금제**로 돌아�
   파일을 읽고 만들고 고칠 수 있습니다.
 - **화면 언어 22개.** 한국어와 영어는 직접 썼고, 나머지 20개는 기계 번역입니다.
 
-배포하는 운영체제는 **Windows**이고, **Mac용 베타**(Apple Silicon과 Intel)와
-**Linux(64비트 x64)용 베타**가 따로 있습니다. Mac판과 Linux판은 개발자가 직접
-확인하지 못했습니다. 문제가 있으면
+배포하는 운영체제는 **Windows**, **Mac**(Apple Silicon과 Intel),
+**Linux(64비트 x64)**입니다. Mac판과 Linux판은 개발자가 직접
+확인하지 못하고 사용자 보고로 확인합니다. 문제가 있으면
 [이슈](https://github.com/pblsketch/ieumoffice/issues)로 알려 주세요.
 
 ## 구독 연결하기
@@ -255,7 +255,7 @@ MCP 도구 호출은 화면을 보는 사람이 아니라 프로그램이 보내
 실행**을 눌러야 설치가 시작됩니다(문구는 Windows 버전에 따라 조금 다릅니다).
 설치 파일은 반드시 이 저장소의 릴리스 페이지에서만 받으세요.
 
-### Mac (베타)
+### Mac
 
 같은 릴리스 페이지에 두 가지로 올라옵니다. 둘 다 macOS 12 이상용입니다.
 
@@ -301,7 +301,7 @@ Mac판에서 다른 점:
 - 로그인은 브라우저에서 끝납니다. 브라우저가 코드를 붙여 넣으라고 하면 터미널에서
   `claude auth login` 또는 `codex login`을 직접 실행합니다.
 
-### Linux (베타)
+### Linux
 
 같은 릴리스 페이지에 64비트(x86_64) Linux용 파일 세 가지가 올라옵니다.
 
@@ -381,7 +381,7 @@ Actions에서 "macOS build"를, Linux 패키지는 "Linux build"를 실행해 �
 
 ## 알려진 한계
 
-- **Windows와 Mac(베타, Apple Silicon·Intel)·Linux x64(베타)만 지원합니다.**
+- **Windows, Mac(Apple Silicon·Intel), Linux x64만 지원합니다.**
   Mac판과 Linux판은 개발자가 직접 확인하지 못하고 사용자들의 보고로 확인합니다.
 - **설치 파일에 서명이 없습니다.** 위에서 설명한 대로입니다. Mac판은 그래서
   Apple의 업데이트 장치 대신 앱이 직접 새 버전으로 바꿔 끼웁니다.

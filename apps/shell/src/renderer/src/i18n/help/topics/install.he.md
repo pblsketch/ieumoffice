@@ -1,17 +1,17 @@
 # התקנת GenOffice
 
-כל גרסה מתפרסמת ב[עמוד ההפצות](https://github.com/pblsketch/ieumoffice/releases/latest) של הפרויקט ב-GitHub. גרסת Windows מתפרסמת יחד עם גרסאות Mac ו-Linux שיוצאות כבטא. המפתח אינו יכול לבדוק את גרסאות Mac ו-Linux בעצמו; הן מאומתות על סמך דיווחים של משתמשים.
+כל גרסה מתפרסמת ב[עמוד ההפצות](https://github.com/pblsketch/ieumoffice/releases/latest) של הפרויקט ב-GitHub. גרסאות Windows, Mac ו-Linux מתפרסמות יחד. המפתח אינו יכול לבדוק את גרסאות Mac ו-Linux בעצמו; הן מאומתות על סמך דיווחים של משתמשים.
 
 ## בחירת הקובץ למחשב שלך
 
-| פלטפורמה                              | דרישות                                 | קובץ                              |
-| ------------------------------------- | -------------------------------------- | --------------------------------- |
-| **Windows**                           | Windows 10 ומעלה, 64 סיביות, Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac (בטא)**, Apple Silicon          | macOS 12 ומעלה, שבב M1 ואילך           | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (בטא)**, Intel                  | macOS 12 ומעלה, מעבד Intel             | `GenOffice-<version>-x64.dmg`     |
-| **Linux (בטא)**, כל הפצה              | 64 סיביות (x86_64)                     | `GenOffice-<version>.AppImage`    |
-| **Linux (בטא)**, משפחת Ubuntu/Debian  | 64 סיביות (x86_64)                     | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (בטא)**, Fedora/RHEL/openSUSE | 64 סיביות (x86_64)                     | `ieumoffice-<version>.x86_64.rpm` |
+| פלטפורמה                        | דרישות                                 | קובץ                              |
+| ------------------------------- | -------------------------------------- | --------------------------------- |
+| **Windows**                     | Windows 10 ומעלה, 64 סיביות, Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon          | macOS 12 ומעלה, שבב M1 ואילך           | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                  | macOS 12 ומעלה, מעבד Intel             | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, כל הפצה              | 64 סיביות (x86_64)                     | `GenOffice-<version>.AppImage`    |
+| **Linux**, משפחת Ubuntu/Debian  | 64 סיביות (x86_64)                     | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE | 64 סיביות (x86_64)                     | `ieumoffice-<version>.x86_64.rpm` |
 
 כדי לדעת איזה Mac יש לכם, פתחו את תפריט Apple ▸ **אודות Mac זה** (About This Mac). אם ב"שבב" כתוב Apple M…, קחו את הקובץ שמסתיים ב-`-arm64.dmg`; אם ב"מעבד" כתוב Intel …, קחו את הקובץ שמסתיים ב-`-x64.dmg`. שאר הקבצים בעמוד ההפצות (`.zip`, `.yml`, `.blockmap`) משמשים את האפליקציה עצמה לעדכון; אין צורך להוריד אותם. גרסאות ישנות יותר נשארות בעמוד ההפצות.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen מציג את החלון הזה בפעם הראש
 
 כש-Smart App Control של Windows 11 פועל, הוא עוצר מתקינים לא חתומים ואינו מציע את נתיב **מידע נוסף**. לפי Microsoft אין דרך לאפשר אפליקציה אחת: האפשרות היחידה היא לכבות את Smart App Control, תחת **אבטחת Windows ▸ בקרת אפליקציות ודפדפן ▸ הגדרות Smart App Control** (Windows Security ▸ App & browser control ▸ Smart App Control settings). כך ההגנה הזו מוסרת גם מכל שאר האפליקציות. עם עדכוני Windows עדכניים אפשר להפעיל אותו שוב בלי להתקין מחדש את Windows.
 
-## ב-Mac (בטא)
+## ב-Mac
 
 נדרש macOS 12 (Monterey) ומעלה. לגרסת Mac אין חתימת מפתח של Apple, ולכן בפעם הראשונה שפותחים אותה macOS אומר שאינו יכול לוודא שהאפליקציה נקייה מתוכנות זדוניות, ואינו פותח אותה. מאשרים זאת פעם אחת, כמתואר להלן.
 
@@ -77,7 +77,7 @@ xattr -dr com.apple.quarantine /Applications/GenOffice.app
 - בכרטיסי החיבור ל-AI אין כפתור התקנה. עקבו אחרי הקישור למדריך ההתקנה הרשמי בכרטיס כדי להתקין את Claude Code או את Codex. אפליקציית Claude לשולחן העבודה אינה Claude Code, ולכן צריך להתקין את Claude Code בנפרד גם אם אפליקציית שולחן העבודה כבר מותקנת.
 - ההתחברות מסתיימת בדפדפן. אם הדפדפן מבקש להדביק קוד, הריצו בעצמכם `claude auth login` או `codex login` ב-Terminal. ראו [חיבור מינוי](help://subscription).
 
-## ב-Linux (בטא)
+## ב-Linux
 
 - **AppImage**: הפכו אותו להרצה (`chmod +x GenOffice-<version>.AppImage`) והריצו את הקובץ. אין שלב התקנה.
 - **deb**: התקינו בעזרת `sudo apt install ./ieumoffice_<version>_amd64.deb`.

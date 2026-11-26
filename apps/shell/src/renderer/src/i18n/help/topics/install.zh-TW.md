@@ -1,17 +1,17 @@
 # 安裝 GenOffice
 
-每個版本都發布在專案 GitHub 的 [Releases 頁面](https://github.com/pblsketch/ieumoffice/releases/latest)上。除了 Windows 版，也以 Beta 形式發布 Mac 版和 Linux 版。Mac 版和 Linux 版開發者沒有親自測試，而是透過使用者的回報來確認。
+每個版本都發布在專案 GitHub 的 [Releases 頁面](https://github.com/pblsketch/ieumoffice/releases/latest)上。同時發布 Windows 版、Mac 版和 Linux 版。Mac 版和 Linux 版開發者沒有親自測試，而是透過使用者的回報來確認。
 
 ## 選擇適合你電腦的檔案
 
-| 平台                                    | 需求                                     | 檔案                              |
-| --------------------------------------- | ---------------------------------------- | --------------------------------- |
-| **Windows**                             | Windows 10 或更新版本，64 位元 Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac（Beta）**，Apple 晶片             | macOS 12 或更新版本，M1 或更新的晶片     | `GenOffice-<version>-arm64.dmg`   |
-| **Mac（Beta）**，Intel                  | macOS 12 或更新版本，Intel 處理器        | `GenOffice-<version>-x64.dmg`     |
-| **Linux（Beta）**，任何發行版           | 64 位元（x86_64）                        | `GenOffice-<version>.AppImage`    |
-| **Linux（Beta）**，Ubuntu/Debian 系列   | 64 位元（x86_64）                        | `ieumoffice_<version>_amd64.deb`  |
-| **Linux（Beta）**，Fedora/RHEL/openSUSE | 64 位元（x86_64）                        | `ieumoffice-<version>.x86_64.rpm` |
+| 平台                            | 需求                                     | 檔案                              |
+| ------------------------------- | ---------------------------------------- | --------------------------------- |
+| **Windows**                     | Windows 10 或更新版本，64 位元 Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**，Apple 晶片             | macOS 12 或更新版本，M1 或更新的晶片     | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**，Intel                  | macOS 12 或更新版本，Intel 處理器        | `GenOffice-<version>-x64.dmg`     |
+| **Linux**，任何發行版           | 64 位元（x86_64）                        | `GenOffice-<version>.AppImage`    |
+| **Linux**，Ubuntu/Debian 系列   | 64 位元（x86_64）                        | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**，Fedora/RHEL/openSUSE | 64 位元（x86_64）                        | `ieumoffice-<version>.x86_64.rpm` |
 
 想知道自己用的是哪一種 Mac，請開啟蘋果選單 ▸ **關於這台 Mac**。如果「晶片」顯示 Apple M…，請下載以 `-arm64.dmg` 結尾的檔案；如果「處理器」顯示 Intel …，請下載以 `-x64.dmg` 結尾的檔案。Releases 頁面上的其他檔案（`.zip`、`.yml`、`.blockmap`）是應用程式自己更新時使用的，你不需要下載。舊版本仍保留在 Releases 頁面上。
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen 第一次遇到沒有簽章的安裝程式時，�
 
 Windows 11 的智慧型應用程式控制開啟時，會阻止沒有簽章的安裝程式，也不提供**其他資訊**這條路徑。Microsoft 表示無法只放行某一個應用程式：唯一的辦法是在 **Windows 安全性 ▸ 應用程式與瀏覽器控制 ▸ 智慧型應用程式控制設定** 中關閉智慧型應用程式控制。這樣一來，對其他所有應用程式的這項保護也會一併失效。安裝了最新更新的 Windows 可以在不重新安裝 Windows 的情況下重新開啟它。
 
-## 在 Mac 上（Beta）
+## 在 Mac 上
 
 需要 macOS 12（Monterey）或更新版本。Mac 版沒有 Apple 開發者簽章，所以第一次開啟時，macOS 會提示無法驗證該 App 不含惡意軟體，並且不會打開它。照下面的步驟允許一次即可。
 
@@ -77,7 +77,7 @@ xattr -dr com.apple.quarantine /Applications/GenOffice.app
 - AI 連線卡片上沒有安裝按鈕。請依照卡片上的官方安裝指南連結來安裝 Claude Code 或 Codex。Claude 桌面應用程式不是 Claude Code，所以即使裝了桌面應用程式，也需要另外安裝 Claude Code。
 - 登入會在瀏覽器中完成。如果瀏覽器要求你貼上代碼，請自己在「終端機」中執行 `claude auth login` 或 `codex login`。請見[訂閱連線](help://subscription)。
 
-## 在 Linux 上（Beta）
+## 在 Linux 上
 
 - **AppImage**：給它加上可執行權限（`chmod +x GenOffice-<version>.AppImage`），然後執行該檔案。沒有安裝步驟。
 - **deb**：用 `sudo apt install ./ieumoffice_<version>_amd64.deb` 安裝。

@@ -1,17 +1,17 @@
 # Instalace GenOffice
 
-Každá verze je zveřejněna na [stránce Releases](https://github.com/pblsketch/ieumoffice/releases/latest) projektu na GitHubu. Verze pro Windows vychází spolu s verzemi pro Mac a Linux, které vycházejí jako beta. Verze pro Mac a Linux vývojář nemůže přímo testovat; potvrzují se hlášeními uživatelů.
+Každá verze je zveřejněna na [stránce Releases](https://github.com/pblsketch/ieumoffice/releases/latest) projektu na GitHubu. Vycházejí zde verze pro Windows, Mac a Linux. Verze pro Mac a Linux vývojář nemůže přímo testovat; potvrzují se hlášeními uživatelů.
 
 ## Vyberte soubor pro svůj počítač
 
-| Platforma                              | Požadavky                                   | Soubor                            |
-| -------------------------------------- | ------------------------------------------- | --------------------------------- |
-| **Windows**                            | Windows 10 nebo novější, 64bitový Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac (beta)**, Apple Silicon          | macOS 12 nebo novější, čip M1 nebo novější  | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (beta)**, Intel                  | macOS 12 nebo novější, procesor Intel       | `GenOffice-<version>-x64.dmg`     |
-| **Linux (beta)**, libovolná distribuce | 64bitový (x86_64)                           | `GenOffice-<version>.AppImage`    |
-| **Linux (beta)**, rodina Ubuntu/Debian | 64bitový (x86_64)                           | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (beta)**, Fedora/RHEL/openSUSE | 64bitový (x86_64)                           | `ieumoffice-<version>.x86_64.rpm` |
+| Platforma                       | Požadavky                                   | Soubor                            |
+| ------------------------------- | ------------------------------------------- | --------------------------------- |
+| **Windows**                     | Windows 10 nebo novější, 64bitový Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon          | macOS 12 nebo novější, čip M1 nebo novější  | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                  | macOS 12 nebo novější, procesor Intel       | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, libovolná distribuce | 64bitový (x86_64)                           | `GenOffice-<version>.AppImage`    |
+| **Linux**, rodina Ubuntu/Debian | 64bitový (x86_64)                           | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE | 64bitový (x86_64)                           | `ieumoffice-<version>.x86_64.rpm` |
 
 Chcete-li zjistit, jaký máte Mac, otevřete nabídku Apple ▸ **O tomto Macu**. Pokud je u položky „Čip“ uvedeno Apple M…, vezměte soubor končící na `-arm64.dmg`; pokud je u položky „Procesor“ uvedeno Intel …, vezměte soubor končící na `-x64.dmg`. Ostatní soubory na stránce Releases (`.zip`, `.yml`, `.blockmap`) používá k aktualizaci sama aplikace; stahovat je nemusíte. Starší verze zůstávají na stránce Releases.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen zobrazí toto okno, když poprvé vidí nepodepsa
 
 Když je ve Windows 11 zapnuté inteligentní ovládání aplikací (Smart App Control), zastavuje nepodepsané instalátory a nenabízí cestu přes **Další informace**. Microsoft uvádí, že jednu aplikaci povolit nelze: jedinou možností je inteligentní ovládání aplikací vypnout, a to v **Zabezpečení Windows ▸ Ovládání aplikací a prohlížeče ▸ Nastavení inteligentního ovládání aplikací**. Tím tuto ochranu odeberete i všem ostatním aplikacím. S nejnovějšími aktualizacemi Windows ho lze znovu zapnout bez přeinstalace Windows.
 
-## Na Macu (beta)
+## Na Macu
 
 Potřebujete macOS 12 (Monterey) nebo novější. Verze pro Mac nemá vývojářský podpis Apple, takže při prvním otevření macOS oznámí, že nemůže ověřit, zda aplikace neobsahuje malware, a neotevře ji. Povolíte ji jednou, jak je uvedeno níže.
 
@@ -77,7 +77,7 @@ Dále na Macu:
 - Karty připojení AI nemají tlačítko instalace. Claude Code nebo Codex nainstalujete podle odkazu na oficiální návod k instalaci na kartě. Desktopová aplikace Claude není Claude Code, takže Claude Code je potřeba nainstalovat zvlášť, i když desktopovou aplikaci už máte.
 - Přihlášení se dokončí v prohlížeči. Pokud vás prohlížeč požádá o vložení kódu, spusťte sami v Terminálu `claude auth login` nebo `codex login`. Viz [Připojení předplatného](help://subscription).
 
-## V Linuxu (beta)
+## V Linuxu
 
 - **AppImage**: nastavte mu právo ke spuštění (`chmod +x GenOffice-<version>.AppImage`) a soubor spusťte. Žádný krok instalace není.
 - **deb**: nainstalujte příkazem `sudo apt install ./ieumoffice_<version>_amd64.deb`.

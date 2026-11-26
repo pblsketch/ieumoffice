@@ -1,17 +1,17 @@
 # Cài đặt GenOffice
 
-Mọi phiên bản đều được công bố trên [trang phát hành (Releases)](https://github.com/pblsketch/ieumoffice/releases/latest) của dự án trên GitHub. Bản dựng cho Windows được công bố cùng với bản dựng cho Mac và Linux, được phát hành dưới dạng beta. Nhà phát triển không thể trực tiếp thử bản Mac và Linux; chúng được xác nhận qua báo cáo của người dùng.
+Mọi phiên bản đều được công bố trên [trang phát hành (Releases)](https://github.com/pblsketch/ieumoffice/releases/latest) của dự án trên GitHub. Bản dựng cho Windows, Mac và Linux được công bố cùng nhau. Nhà phát triển không thể trực tiếp thử bản Mac và Linux; chúng được xác nhận qua báo cáo của người dùng.
 
 ## Chọn tệp cho máy của bạn
 
-| Nền tảng                               | Yêu cầu                                | Tệp                               |
-| -------------------------------------- | -------------------------------------- | --------------------------------- |
-| **Windows**                            | Windows 10 trở lên, Intel/AMD 64-bit   | `GenOffice-Setup-<version>.exe`   |
-| **Mac (beta)**, Apple Silicon          | macOS 12 trở lên, chip M1 hoặc mới hơn | `GenOffice-<version>-arm64.dmg`   |
-| **Mac (beta)**, Intel                  | macOS 12 trở lên, bộ xử lý Intel       | `GenOffice-<version>-x64.dmg`     |
-| **Linux (beta)**, bản phân phối bất kỳ | 64-bit (x86_64)                        | `GenOffice-<version>.AppImage`    |
-| **Linux (beta)**, họ Ubuntu/Debian     | 64-bit (x86_64)                        | `ieumoffice_<version>_amd64.deb`  |
-| **Linux (beta)**, Fedora/RHEL/openSUSE | 64-bit (x86_64)                        | `ieumoffice-<version>.x86_64.rpm` |
+| Nền tảng                        | Yêu cầu                                | Tệp                               |
+| ------------------------------- | -------------------------------------- | --------------------------------- |
+| **Windows**                     | Windows 10 trở lên, Intel/AMD 64-bit   | `GenOffice-Setup-<version>.exe`   |
+| **Mac**, Apple Silicon          | macOS 12 trở lên, chip M1 hoặc mới hơn | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**, Intel                  | macOS 12 trở lên, bộ xử lý Intel       | `GenOffice-<version>-x64.dmg`     |
+| **Linux**, bản phân phối bất kỳ | 64-bit (x86_64)                        | `GenOffice-<version>.AppImage`    |
+| **Linux**, họ Ubuntu/Debian     | 64-bit (x86_64)                        | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**, Fedora/RHEL/openSUSE | 64-bit (x86_64)                        | `ieumoffice-<version>.x86_64.rpm` |
 
 Để biết máy Mac của bạn là loại nào, mở menu Apple ▸ **Giới thiệu về máy Mac này**. Nếu mục "Chip" ghi Apple M…, hãy lấy tệp có đuôi `-arm64.dmg`; nếu mục "Bộ xử lý" ghi Intel …, hãy lấy tệp có đuôi `-x64.dmg`. Các tệp khác trên trang phát hành (`.zip`, `.yml`, `.blockmap`) là những tệp mà chính ứng dụng dùng để cập nhật; bạn không cần tải chúng về. Các bản cũ hơn vẫn nằm trên trang phát hành.
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen hiện cửa sổ này lần đầu tiên nó th�
 
 Khi Smart App Control của Windows 11 đang bật, nó chặn các trình cài đặt chưa ký và không có đường **Thông tin thêm**. Microsoft cho biết không có cách nào cho phép riêng một ứng dụng: lựa chọn duy nhất là tắt Smart App Control, tại **Windows Security ▸ App & browser control ▸ Smart App Control settings**. Việc đó cũng gỡ sự bảo vệ này khỏi mọi ứng dụng khác. Với các bản cập nhật Windows gần đây, có thể bật lại tính năng này mà không cần cài lại Windows.
 
-## Trên Mac (beta)
+## Trên Mac
 
 Bạn cần macOS 12 (Monterey) trở lên. Bản Mac không có chữ ký nhà phát triển của Apple, nên lần đầu mở, macOS báo rằng không thể xác minh ứng dụng không chứa phần mềm độc hại và không mở nó. Bạn cho phép một lần, như dưới đây.
 
@@ -77,7 +77,7 @@ Ngoài ra trên Mac:
 - Các thẻ kết nối AI không có nút cài đặt. Hãy theo liên kết hướng dẫn cài đặt chính thức trên thẻ để cài Claude Code hoặc Codex. Ứng dụng Claude cho máy tính không phải là Claude Code, nên vẫn phải cài Claude Code riêng dù đã có ứng dụng máy tính.
 - Việc đăng nhập hoàn tất trong trình duyệt. Nếu trình duyệt yêu cầu bạn dán một mã, hãy tự chạy `claude auth login` hoặc `codex login` trong Terminal. Xem [Kết nối gói đăng ký](help://subscription).
 
-## Trên Linux (beta)
+## Trên Linux
 
 - **AppImage**: cho tệp quyền thực thi (`chmod +x GenOffice-<version>.AppImage`) rồi chạy tệp đó. Không có bước cài đặt.
 - **deb**: cài bằng `sudo apt install ./ieumoffice_<version>_amd64.deb`.

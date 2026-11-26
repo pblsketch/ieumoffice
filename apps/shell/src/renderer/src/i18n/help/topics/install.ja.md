@@ -1,17 +1,17 @@
 # GenOffice のインストール
 
-すべてのバージョンは、GitHub にあるプロジェクトの [Releases ページ](https://github.com/pblsketch/ieumoffice/releases/latest) で公開されています。Windows 版に加えて、Mac 版と Linux 版もベータとして公開しています。Mac 版と Linux 版は開発者自身が動作を確認しているわけではなく、利用者からの報告で確認しています。
+すべてのバージョンは、GitHub にあるプロジェクトの [Releases ページ](https://github.com/pblsketch/ieumoffice/releases/latest) で公開されています。Windows 版、Mac 版、Linux 版をまとめて公開しています。Mac 版と Linux 版は開発者自身が動作を確認しているわけではなく、利用者からの報告で確認しています。
 
 ## 自分のマシンに合わせてファイルを選ぶ
 
-| プラットフォーム                                    | 要件                                 | ファイル                          |
-| --------------------------------------------------- | ------------------------------------ | --------------------------------- |
-| **Windows**                                         | Windows 10 以降、64 ビット Intel/AMD | `GenOffice-Setup-<version>.exe`   |
-| **Mac（ベータ）**、Apple シリコン                   | macOS 12 以降、M1 以降のチップ       | `GenOffice-<version>-arm64.dmg`   |
-| **Mac（ベータ）**、Intel                            | macOS 12 以降、Intel プロセッサ      | `GenOffice-<version>-x64.dmg`     |
-| **Linux（ベータ）**、どのディストリビューションでも | 64 ビット（x86_64）                  | `GenOffice-<version>.AppImage`    |
-| **Linux（ベータ）**、Ubuntu/Debian 系               | 64 ビット（x86_64）                  | `ieumoffice_<version>_amd64.deb`  |
-| **Linux（ベータ）**、Fedora/RHEL/openSUSE           | 64 ビット（x86_64）                  | `ieumoffice-<version>.x86_64.rpm` |
+| プラットフォーム                          | 要件                                 | ファイル                          |
+| ----------------------------------------- | ------------------------------------ | --------------------------------- |
+| **Windows**                               | Windows 10 以降、64 ビット Intel/AMD | `GenOffice-Setup-<version>.exe`   |
+| **Mac**、Apple シリコン                   | macOS 12 以降、M1 以降のチップ       | `GenOffice-<version>-arm64.dmg`   |
+| **Mac**、Intel                            | macOS 12 以降、Intel プロセッサ      | `GenOffice-<version>-x64.dmg`     |
+| **Linux**、どのディストリビューションでも | 64 ビット（x86_64）                  | `GenOffice-<version>.AppImage`    |
+| **Linux**、Ubuntu/Debian 系               | 64 ビット（x86_64）                  | `ieumoffice_<version>_amd64.deb`  |
+| **Linux**、Fedora/RHEL/openSUSE           | 64 ビット（x86_64）                  | `ieumoffice-<version>.x86_64.rpm` |
 
 お使いの Mac の種類は、Apple メニュー ▸ **このMacについて** を開いて確認します。「チップ」が Apple M… なら末尾が `-arm64.dmg` のファイルを、「プロセッサ」が Intel … なら末尾が `-x64.dmg` のファイルを選びます。Releases ページにあるそのほかのファイル（`.zip`、`.yml`、`.blockmap`）は、アプリ自身が更新に使うものなので、ダウンロードする必要はありません。古いバージョンは Releases ページにそのまま残っています。
 
@@ -50,7 +50,7 @@ Microsoft Defender SmartScreen は、署名のないインストーラーを初�
 
 Windows 11 のスマート アプリ コントロールがオンのときは、署名のないインストーラーの実行が止められ、**詳細情報** からの手順も表示されません。Microsoft によると、1 つのアプリだけを許可する方法はなく、**Windows セキュリティ ▸ アプリとブラウザー コントロール ▸ スマート アプリ コントロールの設定** でスマート アプリ コントロールをオフにするしかありません。オフにすると、ほかのすべてのアプリに対するこの保護も外れます。最近の更新を適用した Windows では、Windows を再インストールしなくてもオンに戻せます。
 
-## Mac で（ベータ）
+## Mac で
 
 macOS 12（Monterey）以降が必要です。Mac 版には Apple の開発者署名がないため、最初に開くときに macOS は、アプリにマルウェアが含まれていないことを検証できないと表示し、アプリを開きません。次の手順で、一度だけ許可します。
 
@@ -77,7 +77,7 @@ Mac ではほかにも次の点に注意してください。
 - AI 接続のカードにはインストールボタンがありません。カードにある公式のインストールガイドのリンクに従って、Claude Code や Codex をインストールしてください。Claude デスクトップアプリは Claude Code ではないため、デスクトップアプリがあっても Claude Code は別にインストールする必要があります。
 - サインインはブラウザーで完了します。ブラウザーでコードを貼り付けるよう求められたら、ターミナル で `claude auth login` または `codex login` をご自身で実行してください。[サブスクリプションの接続](help://subscription) を参照してください。
 
-## Linux で（ベータ）
+## Linux で
 
 - **AppImage**：実行権限を付け（`chmod +x GenOffice-<version>.AppImage`）、そのファイルを実行します。インストールの手順はありません。
 - **deb**：`sudo apt install ./ieumoffice_<version>_amd64.deb` でインストールします。

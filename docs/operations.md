@@ -1,6 +1,6 @@
 # 운영
 
-배포하는 운영체제는 Windows이고, Mac용(Apple Silicon·Intel)은 Apple 개발자 서명 없는 베타로 낸다(결정 0031, 0065). Mac판은 GitHub Actions의 Mac 빌드 기계에서 두 가지를 함께 만들고, Mac 사용자들의 보고로 확인한다.
+배포하는 운영체제는 Windows, Mac(Apple Silicon·Intel), Linux(x64)다(결정 0031, 0065, 0167). Mac판은 Apple 개발자 서명 없이 GitHub Actions의 Mac 빌드 기계에서 두 가지를 함께 만들고, Mac·Linux판은 사용자들의 보고로 확인한다.
 
 ## 처음 한 번
 
