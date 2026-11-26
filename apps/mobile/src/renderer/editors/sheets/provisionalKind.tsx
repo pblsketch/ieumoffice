@@ -1,8 +1,9 @@
 /**
- * PROVISIONAL spreadsheet kind (XLS-T2 grid prototype). It opens .xlsx, .xlsm
- * and .xls in the phone's Univer grid so the grid can be tried from the file
- * picker and the home list. It does not save, share an edited copy, write
- * recovery copies or offer AI yet; the full kind replaces this file.
+ * PROVISIONAL spreadsheet kind (XLS-T2 grid prototype). It opens .xlsx, .xlsm,
+ * .xls and .csv in the phone's Univer grid so the grid can be tried from the
+ * file picker and the home list. It has no save button, edited-copy sharing,
+ * recovery copies or AI yet (the save path runs from the XLS-T3 prototype
+ * hook `window.__ieumSheetsSave`); the full kind replaces this file.
  *
  * Nothing heavy loads at app start: the engine session opens in `open()`
  * (desktop API chunk) and the grid (Univer) is a lazy chunk the Workspace
@@ -21,8 +22,8 @@ const SheetsGridView = lazy(() => import('./grid/SheetsGridView'))
 
 export const provisionalSheetsKind: EditorKind = {
   id: 'sheets',
-  formats: ['xlsx', 'xlsm', 'xls'],
-  openExtensions: ['xlsx', 'xlsm', 'xls'],
+  formats: ['xlsx', 'xlsm', 'xls', 'csv'],
+  openExtensions: ['xlsx', 'xlsm', 'xls', 'csv'],
   editable: true,
   hasAi: false,
   recoveryFormat: () => 'xlsx',
