@@ -12,7 +12,11 @@ import {
 } from '../../../../../../sheets/src/shared/desktop-api'
 import { phoneShortDateFormat } from '../save/shortDate'
 import { callSheetsEngine, type SheetsEngineClient } from './engine'
-import type { MobileWorkbookDocument, MobileWorkbookSessions } from './sessions'
+import type {
+  MobileWorkbookDocument,
+  MobileWorkbookOwner,
+  MobileWorkbookSessions,
+} from './sessions'
 
 /** The engine's `open` answer: everything but the digest and the read-only flag (as on the desktop). */
 export const engineOpenResultSchema = workbookFileSchema.omit({ sha256: true, readOnly: true })
@@ -34,6 +38,8 @@ export interface OpenMobileWorkbookInput {
   }) => Promise<MobileWorkbookUnlockedCopy | null>
   /** Called once a step has a file in the work folder, so an abandoned open can delete it. */
   readonly onTempFile?: (path: string) => void
+  /** The opened workbook the engine session belongs to (see `MobileWorkbookSession.owner`). */
+  readonly owner?: MobileWorkbookOwner
 }
 
 /** A decrypted working copy (`open/unlock.ts`). */
@@ -148,6 +154,7 @@ export async function openMobileWorkbook(
       snapshotPath: snapshot.path,
       sheetNames: new Map(opened.sheets.map((sheet) => [sheet.id, sheet.name])),
       document,
+      ...(input.owner ? { owner: input.owner } : {}),
     })
     return await workbookFileFromOpen(opened, document, snapshot)
   } catch (error) {

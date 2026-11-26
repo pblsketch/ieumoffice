@@ -15,7 +15,9 @@ export {
 export { createMobileSaveApi, type MobileSaveApiOptions } from './save'
 export {
   MobileWorkbookSessions,
+  forgetWorkbookPassword,
   type MobileWorkbookDocument,
+  type MobileWorkbookOwner,
   type MobileWorkbookSession,
 } from './sessions'
 

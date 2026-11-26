@@ -194,6 +194,8 @@ export async function lockWorkbookCopy(
   plainPath: string,
   password: string,
 ): Promise<string> {
+  // An empty password is one the closed document dropped: never lock with it.
+  if (password === '') throw new SheetsLockError('The workbook was closed.')
   const { path } = await sheetsTempNewPath(client, 'xlsx')
   let answer: Awaited<ReturnType<typeof sheetsEncrypt>>
   try {
@@ -220,6 +222,10 @@ export async function saveMobileWorkbook(
   if (!document) throw new Error('This workbook session has no document to save to.')
   const unchanged = saveRequestChangeCount(request) === 0
   const vfs = context.vfs ?? mobileVfs
+  // Taken now: closing the document empties it (forgetWorkbookPassword), and
+  // a save already running still locks its result with the real password.
+  const password = document.unlocked?.password
+  if (password === '') throw new SheetsLockError('The workbook was closed.')
 
   // 1. The staged file, patched from the snapshot.
   const { path: stagedPath } = await sheetsTempNewPath(client, 'xlsx')
@@ -270,9 +276,10 @@ export async function saveMobileWorkbook(
   let lockedPath: string | null = null
   if (write) {
     try {
-      const source = document.unlocked
-        ? (lockedPath = await lockWorkbookCopy(client, stagedPath, document.unlocked.password))
-        : stagedPath
+      const source =
+        password !== undefined
+          ? (lockedPath = await lockWorkbookCopy(client, stagedPath, password))
+          : stagedPath
       if (saveAs) {
         savedAs = await sheetsSaveAs(client, {
           sessionId: document.sessionId,
@@ -309,12 +316,24 @@ export async function saveMobileWorkbook(
     snapshotPath: stagedPath,
     sheetNames: new Map(reopened.sheets.map((sheet) => [sheet.id, sheet.name])),
     document: nextDocument,
+    ...(session.owner ? { owner: session.owner } : {}),
   }
   sessions.delete(session.sessionId)
-  sessions.add(next)
-  if (savedAs) savedAsSessions.set(reopened.sessionId, savedAs)
+  // The document was closed while this save ran: its close already ran on the
+  // old session, so the session swapped in goes too instead of staying behind.
+  const orphaned = session.owner?.closed === true
+  if (!orphaned) {
+    sessions.add(next)
+    if (savedAs) savedAsSessions.set(reopened.sessionId, savedAs)
+  }
   await callSheetsEngine(client, 'close', { sessionId: session.sessionId }).catch(() => undefined)
   await sheetsTempDelete(client, session.snapshotPath).catch(() => undefined)
+  if (orphaned) {
+    await callSheetsEngine(client, 'close', { sessionId: reopened.sessionId }).catch(
+      () => undefined,
+    )
+    await sheetsTempDelete(client, stagedPath).catch(() => undefined)
+  }
   const size = (await sheetsTempStat(client, stagedPath).catch(() => null))?.size ?? 0
   return {
     file: await workbookFileFromOpen(reopened, nextDocument, { path: stagedPath, size }),
