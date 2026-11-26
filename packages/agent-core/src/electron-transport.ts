@@ -195,6 +195,25 @@ export interface IpcTransportOptions<S> {
  * LLM providers (avoids renderer CORS) and streams chunks back per requestId.
  * Each app wires in its own preload bridge and i18n via the options.
  */
+/** what Electron puts in front of an error thrown by an `ipcMain.handle` handler */
+const IPC_INVOKE_PREFIX = /^Error invoking remote method '[^']*': (?:Error: )?/
+/** a JavaScript runtime error: a bug, not something the person can act on */
+const RUNTIME_ERROR = /^(?:ReferenceError|TypeError|RangeError|SyntaxError|EvalError|URIError):/
+
+/**
+ * The text for a run whose start was rejected. Electron's IPC wrapper
+ * ("Error invoking remote method 'ai:stream': …") is noise in a chat panel, so
+ * it is dropped. A message the main process wrote on purpose is shown as it
+ * is; a runtime error leads with the editor's own "unknown error" sentence and
+ * keeps the original in brackets, so a screenshot still says what broke.
+ */
+export function startFailureText(err: unknown, unknownErrorText: () => string): string {
+  if (!(err instanceof Error) || !err.message) return unknownErrorText()
+  const message = err.message.replace(IPC_INVOKE_PREFIX, '').trim()
+  if (!message) return unknownErrorText()
+  return RUNTIME_ERROR.test(message) ? `${unknownErrorText()} (${message})` : message
+}
+
 export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTransport {
   const timeoutText = () =>
     options.timeoutErrorText?.() ??
@@ -344,10 +363,10 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
             tools: request.tools,
           }),
         ).catch((err: unknown) => {
-          fail(err instanceof Error ? err.message : options.unknownErrorText())
+          fail(startFailureText(err, options.unknownErrorText))
         })
       } catch (err) {
-        fail(err instanceof Error ? err.message : options.unknownErrorText())
+        fail(startFailureText(err, options.unknownErrorText))
       }
       return { cancel: () => options.cancel(requestId) }
     },

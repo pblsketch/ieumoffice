@@ -5,6 +5,7 @@ import {
   type IpcStreamChunk,
   type IpcStreamStart,
 } from '../src'
+import { startFailureText } from '../src/electron-transport'
 
 interface FakeSettings {
   provider: string
@@ -234,6 +235,43 @@ describe('createIpcTransport', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(cb.onError).toHaveBeenCalledWith('no handler registered')
     expect(cb.onDone).not.toHaveBeenCalled()
+  })
+
+  it("a rejected start loses Electron's IPC wrapper", async () => {
+    const { cb } = setup(() =>
+      Promise.reject(
+        new Error("Error invoking remote method 'ai:stream': Error: the model list is empty"),
+      ),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(cb.onError).toHaveBeenCalledWith('the model list is empty')
+  })
+})
+
+describe('startFailureText', () => {
+  const unknown = () => 'Unknown error'
+
+  it('leads a runtime error with the unknown-error sentence and keeps the original', () => {
+    const err = new Error(
+      "Error invoking remote method 'ai:stream': ReferenceError: __name is not defined",
+    )
+    expect(startFailureText(err, unknown)).toBe(
+      'Unknown error (ReferenceError: __name is not defined)',
+    )
+  })
+
+  it('shows a message written on purpose as it is', () => {
+    expect(startFailureText(new Error('no handler registered'), unknown)).toBe(
+      'no handler registered',
+    )
+  })
+
+  it('falls back to the unknown-error sentence when there is nothing to show', () => {
+    expect(startFailureText('boom', unknown)).toBe('Unknown error')
+    expect(startFailureText(new Error(''), unknown)).toBe('Unknown error')
+    expect(startFailureText(new Error("Error invoking remote method 'x': "), unknown)).toBe(
+      'Unknown error',
+    )
   })
 })
 

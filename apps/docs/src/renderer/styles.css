@@ -8673,8 +8673,14 @@ body.docs-crop-active
 
 .ai-msg-error {
   margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-8);
+  background: var(--danger-bg);
   color: var(--docs-ai-error);
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .ai-msg-actions {
