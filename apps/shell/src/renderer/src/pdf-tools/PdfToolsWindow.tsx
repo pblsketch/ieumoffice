@@ -825,7 +825,8 @@ export function PdfToolsWindow({ lang }: { lang: Lang }) {
     <div className="pt">
       <header className="pt-head">
         <h1 className="pt-title">{t('windowTitle')}</h1>
-        <p className="pt-intro">{t('intro')}</p>
+        {/* "pick a task first" is stale once a task is open */}
+        {view.kind === 'home' && <p className="pt-intro">{t('intro')}</p>}
         <p className="pt-local">{t('localNote')}</p>
       </header>
       <main className="pt-body">
@@ -1385,14 +1386,13 @@ function ToolPanel(p: ToolPanelProps) {
               )
             })}
           </ul>
-        ) : (
-          <p className="pt-drop-hint">{t('dropZoneHint')}</p>
-        )}
+        ) : null}
+        {/* the button first: the hint reads "or drop files here" */}
         <div className="pt-actions pt-actions-start">
           <button type="button" className="pt-btn" onClick={p.onPick} disabled={p.busy}>
             {t(pickLabel)}
           </button>
-          {inputs.length > 0 && <span className="pt-drop-inline">{t('dropZoneHint')}</span>}
+          <span className="pt-drop-inline">{t('dropZoneHint')}</span>
         </div>
       </div>
 
@@ -1558,7 +1558,7 @@ function ToolPanel(p: ToolPanelProps) {
       )}
 
       {tool !== 'organize' && (
-        <div className="pt-actions">
+        <div className="pt-actions pt-run-row">
           {(tool === 'pdfToImages' || tool === 'convertFromPdf') && first && (
             <button
               type="button"
