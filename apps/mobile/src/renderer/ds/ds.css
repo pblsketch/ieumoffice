@@ -1,0 +1,417 @@
+/* Mobile design system parts (docs/plans/mobile-v1/DSN.md). Only ds-* classes live here,
+ * so loading this file never changes the shared mobile-* look. Tokens only. */
+
+/* ── Buttons ── */
+.ds-btn {
+  position: relative;
+  min-height: var(--m-btn-h);
+  transition-duration: var(--m-motion-fast);
+}
+
+.ds-btn-wide {
+  flex: 1 1 0;
+  width: 100%;
+}
+
+.ds-btn-icon {
+  display: inline-flex;
+}
+
+.ds-btn-busy .ds-btn-label,
+.ds-btn-busy .ds-btn-icon {
+  visibility: hidden;
+}
+
+.ds-btn-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ds-icon-btn[aria-pressed='true'] {
+  background: var(--m-selected-bg);
+  color: var(--m-accent);
+}
+
+.ds-icon-btn-round {
+  width: var(--m-floating-h);
+  height: var(--m-floating-h);
+  border-radius: var(--m-radius-full);
+  background: var(--m-surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--m-elev-1);
+}
+
+/* chip: 32 visible, 48 pressable */
+.ds-chip::before {
+  content: '';
+  position: absolute;
+  inset: calc((var(--m-control-s) - var(--m-hit)) / 2) 0;
+}
+
+.ds-chip[aria-pressed='true'] {
+  background: var(--m-selected-bg);
+  color: var(--m-selected-fg);
+}
+
+/* ── Choices ── */
+.ds-choice-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--m-hit) * 2.5), 1fr));
+  gap: var(--m-space-2);
+}
+
+.ds-choice-group-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.ds-choice-group-row .ds-choice {
+  flex: 1 1 0;
+}
+
+.ds-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  overflow-wrap: anywhere;
+}
+
+.ds-choice[aria-checked='true'] {
+  border-color: var(--m-selected-ring);
+  box-shadow: inset 0 0 0 var(--m-selected-ring-w) var(--m-selected-ring);
+}
+
+.ds-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--m-radius-full);
+  background: transparent;
+  cursor: pointer;
+}
+
+.ds-swatch-face {
+  width: calc(var(--m-hit) - var(--m-space-4));
+  height: calc(var(--m-hit) - var(--m-space-4));
+  border-radius: var(--m-radius-full);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.ds-swatch[aria-pressed='true'] .ds-swatch-face {
+  outline: var(--m-selected-ring-w) solid var(--m-selected-ring);
+  outline-offset: 2px;
+}
+
+/* ── Rows and groups ── */
+.ds-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-half);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ds-row-hint {
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+  line-height: var(--m-line-body);
+}
+
+.ds-switch-row {
+  min-height: var(--m-row-h);
+  cursor: pointer;
+}
+
+.ds-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.ds-settings-note {
+  padding: 0 var(--m-space-1);
+}
+
+.ds-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+  width: 100%;
+  padding: var(--m-space-2) var(--m-space-4);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+
+button.ds-list-row {
+  cursor: pointer;
+}
+
+.ds-list-row-one {
+  min-height: var(--m-row-h);
+}
+
+.ds-list-row-two {
+  min-height: var(--m-list-item-h);
+}
+
+.ds-list-row-title {
+  font-size: var(--m-text-body);
+  overflow-wrap: anywhere;
+}
+
+.ds-list-row-leading,
+.ds-list-row-trailing {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.ds-list-row[aria-pressed='true'] {
+  background: var(--m-selected-bg);
+  color: var(--m-selected-fg);
+}
+
+.ds-list-row-current .ds-list-row-title {
+  color: var(--m-current);
+  font-weight: 600;
+}
+
+.ds-list-row-danger,
+.ds-list-row-danger .ds-list-row-leading,
+.ds-action-danger,
+.ds-action-danger .ds-action-icon {
+  color: var(--danger);
+}
+
+.ds-action-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/* ── Screen head, empty state, sticky actions ── */
+.ds-screen-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--m-space-3);
+  padding: var(--m-space-4) var(--m-space-4) var(--m-space-2);
+}
+
+html[data-window='medium'] .ds-screen-header,
+html[data-window='expanded'] .ds-screen-header,
+html[data-window='large'] .ds-screen-header {
+  padding-inline: var(--m-space-6);
+}
+
+html[data-window='expanded'] .ds-screen-header,
+html[data-window='large'] .ds-screen-header {
+  max-width: var(--m-content-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+.ds-screen-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  min-width: 0;
+}
+
+.ds-screen-title {
+  margin: 0;
+  font-size: var(--m-text-title-l);
+  line-height: var(--m-line-tight);
+  font-weight: 700;
+}
+
+.ds-screen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}
+
+.ds-empty-plain {
+  border: 0;
+  background: transparent;
+}
+
+.ds-empty-title {
+  margin: 0;
+  font-size: var(--m-text-body);
+  font-weight: 600;
+}
+
+.ds-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--m-space-2);
+}
+
+.ds-sticky-actions {
+  position: sticky;
+  bottom: var(--m-kb);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+  padding: var(--m-space-3) var(--m-space-4) calc(var(--m-space-3) + var(--m-safe-bottom));
+  background: var(--m-surface-raised);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Notice ── */
+.ds-inline-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+  padding: var(--m-space-2) var(--m-space-4);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--m-text-body-s);
+}
+
+.ds-inline-notice-warning .ds-inline-notice-text {
+  color: var(--danger);
+}
+
+.ds-inline-notice-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ── Floating row: tools on the right, page pill on the left ── */
+.ds-floating-tools {
+  position: absolute;
+  right: calc(var(--m-floating-inset) + var(--m-safe-right));
+  bottom: var(--m-floating-bottom);
+  z-index: var(--m-z-floating);
+  display: flex;
+  gap: var(--m-space-2);
+  transition: opacity var(--m-motion-standard) var(--m-ease-standard);
+}
+
+.ds-floating-dimmed {
+  opacity: 0.4;
+}
+
+.ds-page-indicator {
+  position: absolute;
+  left: calc(var(--m-floating-inset) + var(--m-safe-left));
+  bottom: var(--m-floating-bottom);
+  z-index: var(--m-z-floating);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--m-floating-h);
+  padding: 0 var(--m-space-3);
+  border-radius: var(--m-radius-full);
+  background: var(--m-surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--m-elev-1);
+  font-size: var(--m-text-body-s);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Progress ── */
+.ds-spinner-s {
+  width: var(--m-icon-m);
+  height: var(--m-icon-m);
+  border-width: 2px;
+}
+
+.ds-progress {
+  position: relative;
+  width: 100%;
+  height: var(--m-space-1);
+  overflow: hidden;
+  border-radius: var(--m-radius-full);
+  background: var(--active-bg);
+}
+
+.ds-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--m-accent);
+  border-radius: inherit;
+  transition: width var(--m-motion-standard) var(--m-ease-standard);
+}
+
+.ds-progress-flowing .ds-progress-fill {
+  width: 40%;
+  animation: ds-progress-flow 1.2s var(--m-ease-standard) infinite;
+}
+
+@keyframes ds-progress-flow {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.ds-doc-skeleton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--m-space-4);
+  padding: var(--m-space-8) var(--m-space-4);
+}
+
+.ds-doc-skeleton-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  width: min(100%, var(--m-measure));
+  aspect-ratio: 1 / 1.414;
+  padding: var(--m-space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+}
+
+.ds-doc-skeleton-line {
+  height: var(--m-space-3);
+  border-radius: var(--m-radius-full);
+  background: var(--active-bg);
+}
+
+.ds-doc-skeleton-title {
+  width: 60%;
+  height: var(--m-space-5);
+}
+
+.ds-doc-skeleton-short {
+  width: 40%;
+}
+
+/* ── Reduced motion: fade only, no moving bars ── */
+@media (prefers-reduced-motion: reduce) {
+  .ds-progress-flowing .ds-progress-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+
+  .ds-floating-tools,
+  .ds-progress-fill,
+  .ds-btn {
+    transition-duration: var(--m-motion-fast);
+  }
+
+  .ds-spinner {
+    animation-duration: 2.4s;
+  }
+}
