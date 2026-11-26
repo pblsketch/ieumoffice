@@ -1,0 +1,26 @@
+import type { zh } from './zh'
+
+export const fr = {
+  homeTabNav: "Menu d'accueil",
+  homeTabRecent: 'Récents',
+  homeTabFolders: 'Dossiers',
+  homeTabTools: 'Outils',
+  homeTabSettings: 'Paramètres',
+  homeListAll: 'Tout',
+  homeListFavorites: 'Favoris',
+  homeListChips: 'Filtrer la liste',
+  homeListFamilyHwp: 'HWP',
+  homeListFamilyMd: 'Markdown',
+  homeListFavoritesEmpty:
+    "Aucun favori pour l'instant. Utilisez le menu [⋯] d'un fichier pour l'ajouter aux favoris.",
+  homeListGroupEmpty: "Aucun fichier dans ce groupe pour l'instant.",
+  homeListFavoriteLost: "Impossible d'ouvrir ce fichier. Il a peut-être été déplacé ou supprimé.",
+  homeEmptyText:
+    "Vous n'avez encore ouvert aucun document. Essayez le document d'exemple ou ouvrez un fichier.",
+  homeEmptySample: "Ouvrir le document d'exemple",
+  homeEmptyCreate: 'Créer',
+  homeCreateFab: 'Créer',
+  homeCreateTitle: 'Créer',
+  homeCreateClose: 'Fermer',
+  homeCreatePdfTools: 'Outils PDF',
+} as const satisfies Record<keyof typeof zh, string>

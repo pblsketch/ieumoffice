@@ -1,0 +1,25 @@
+import type { zh } from './zh'
+
+export const ar = {
+  homeTabNav: 'قائمة الشاشة الرئيسية',
+  homeTabRecent: 'الأخيرة',
+  homeTabFolders: 'المجلدات',
+  homeTabTools: 'الأدوات',
+  homeTabSettings: 'الإعدادات',
+  homeListAll: 'الكل',
+  homeListFavorites: 'المفضّلة',
+  homeListChips: 'تصفية القائمة',
+  homeListFamilyHwp: 'HWP',
+  homeListFamilyMd: 'Markdown',
+  homeListFavoritesEmpty:
+    'لا توجد ملفات مفضّلة بعد. استخدم [⋯] الخاصة بالملف لإضافته إلى المفضّلة.',
+  homeListGroupEmpty: 'لا توجد ملفات في هذه المجموعة بعد.',
+  homeListFavoriteLost: 'تعذّر فتح هذا الملف. ربما نُقل أو حُذف.',
+  homeEmptyText: 'لم تفتح أي مستند بعد. جرّب المستند النموذجي أو افتح ملفًا.',
+  homeEmptySample: 'فتح المستند النموذجي',
+  homeEmptyCreate: 'إنشاء جديد',
+  homeCreateFab: 'إنشاء جديد',
+  homeCreateTitle: 'إنشاء جديد',
+  homeCreateClose: 'إغلاق',
+  homeCreatePdfTools: 'أدوات PDF',
+} as const satisfies Record<keyof typeof zh, string>

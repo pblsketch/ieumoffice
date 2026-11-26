@@ -43,6 +43,7 @@
 
 <intent-filter>
     <action android:name="android.intent.action.SEND" />
+    <action android:name="android.intent.action.SEND_MULTIPLE" />
     <category android:name="android.intent.category.DEFAULT" />
     <data android:mimeType="application/x-hwp" />
     <data android:mimeType="application/haansofthwp" />
@@ -60,5 +61,6 @@
     <!-- T4 html MIME types -->
 
     <!-- T5 readers MIME types -->
+    <data android:mimeType="image/*" />
 </intent-filter>
 <!-- IEUM_MOBILE_INTENT_FILTERS_END -->

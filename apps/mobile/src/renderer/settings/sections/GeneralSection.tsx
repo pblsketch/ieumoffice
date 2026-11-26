@@ -1,4 +1,5 @@
-// Owner: track T6 (general settings: language, theme, new HWP default format).
+// Owner: track T6 (general settings: language, theme, new HWP default format, editors, home cards,
+// keeping the screen on).
 import type { ReactNode } from 'react'
 import { LANGS, type Lang } from '@genoffice/i18n'
 import type {
@@ -8,6 +9,9 @@ import type {
 } from '@genoffice/mobile-bridge/transport'
 import { useMobileLocale } from '../../i18n'
 import { IconChevronDown } from '../../components/MobileIcons'
+import { EditorsRows } from './EditorsRows'
+import { HomeKindsRows } from './HomeKindsRows'
+import { KeepScreenOnRow } from './KeepScreenOnRow'
 
 const LANG_NATIVE_LABELS: Record<Lang, string> = {
   ar: 'العربية',
@@ -37,7 +41,7 @@ const LANG_NATIVE_LABELS: Record<Lang, string> = {
 export interface GeneralSectionProps {
   readonly prefs: MobileAppPrefs
   readonly onUpdatePrefs: (patch: MobileAppPrefsPatch) => void
-  /** Extra rows drawn at the end of the general card (the AI switch today). */
+  /** Extra rows drawn at the end of the general card (the AI switch, which stays the last row). */
   readonly children?: ReactNode
 }
 
@@ -108,6 +112,10 @@ export function GeneralSection({ prefs, onUpdatePrefs, children }: GeneralSectio
           </select>
         </span>
       </label>
+
+      <EditorsRows />
+      <HomeKindsRows />
+      <KeepScreenOnRow />
 
       {children}
     </section>

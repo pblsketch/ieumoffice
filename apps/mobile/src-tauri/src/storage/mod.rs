@@ -1,11 +1,12 @@
 pub mod backup;
+pub mod home;
 pub mod prefs;
 pub mod recent;
 pub mod recovery;
 pub mod session;
 
 pub use backup::{HwpBackupEntry, HwpBackupStore, MAX_HWP_BACKUPS};
-pub use prefs::{MobileAppPrefs, MobileAppPrefsPatch, PrefsStore};
+pub use prefs::{MobileAppPrefs, MobileAppPrefsPatch, MobileHomePrefsPatch, PrefsStore};
 pub use recent::{RecentDocEntry, RecentStore};
 pub use recovery::{RecoveryEntry, RecoveryStore};
 pub use session::{MobileDocFormat, MobileDocSession, persistent_doc_key, untitled_doc_key};
@@ -17,11 +18,14 @@ use crate::hwp::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::collections::{BTreeSet, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri_plugin_ieum_mobile::fs::{NativeFileBridge, NativeFsError, NativeFsErrorKind, PickedFile};
+use tauri_plugin_ieum_mobile::fs::{
+    FolderGrantState, NativeFileBridge, NativeFsError, NativeFsErrorKind, PickedFile,
+    WRITE_WORK_RELATIVE_DIR, write_uri_from_file,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,16 +74,47 @@ pub struct RestoreBackupResult {
     pub session: Option<MobileDocSession>,
 }
 
+/// Bytes of a session that has no document location (track T6): the bundled sample document,
+/// or a received file's copy in the app cache.
+#[derive(Debug, Clone)]
+pub(crate) enum LocalSource {
+    Bundled(&'static [u8]),
+    CacheFile(PathBuf),
+}
+
+impl LocalSource {
+    pub(crate) fn read(&self) -> MobileResult<Vec<u8>> {
+        match self {
+            Self::Bundled(bytes) => Ok(bytes.to_vec()),
+            Self::CacheFile(path) => std::fs::read(path).map_err(|e| {
+                MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
+            }),
+        }
+    }
+}
+
+/// A single received document parked by `mobile_home_take_incoming` for the pending-open path.
+#[derive(Debug, Clone)]
+struct DeferredDoc {
+    name: String,
+    path: PathBuf,
+}
+
 #[derive(Debug, Clone)]
 struct ActiveSession {
     session: MobileDocSession,
     uri: Option<String>,
+    local: Option<LocalSource>,
     encrypted: bool,
     distribution: bool,
     hwp_baseline: Option<HwpBaseline>,
 }
 
-fn map_fs_error(err: NativeFsError) -> MobileError {
+fn io_error(e: std::io::Error) -> MobileError {
+    MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
+}
+
+pub(crate) fn map_fs_error(err: NativeFsError) -> MobileError {
     match err.kind {
         NativeFsErrorKind::UserCancelled => {
             MobileError::with_detail(MobileErrorCode::UserCancelled, "mobile.fs.cancelled", err.detail)
@@ -110,6 +145,9 @@ pub struct MobileFileService {
     fail_backup_for_test: AtomicBool,
     /// Formats the WebView can open; `None` until the first `set_openable_formats` call (accept all).
     openable: Mutex<Option<Vec<MobileDocFormat>>>,
+    folders: home::FolderStore,
+    favorites: home::FavoriteStore,
+    deferred_docs: Mutex<VecDeque<DeferredDoc>>,
 }
 
 impl MobileFileService {
@@ -122,11 +160,14 @@ impl MobileFileService {
             recent: RecentStore::new(app_data_dir.clone()),
             recovery: RecoveryStore::new(app_data_dir.clone()),
             backups: HwpBackupStore::new(app_data_dir.clone()),
-            prefs: PrefsStore::new(app_data_dir),
+            prefs: PrefsStore::new(app_data_dir.clone()),
+            folders: home::FolderStore::new(&app_data_dir),
+            favorites: home::FavoriteStore::new(&app_data_dir),
             active: Mutex::new(None),
             backed_up_keys: Mutex::new(BTreeSet::new()),
             fail_backup_for_test: AtomicBool::new(false),
             openable: Mutex::new(None),
+            deferred_docs: Mutex::new(VecDeque::new()),
         })
     }
 
@@ -174,6 +215,15 @@ impl MobileFileService {
     }
 
     fn activate_picked(&self, picked: PickedFile, register_recent: bool) -> MobileResult<MobileDocSession> {
+        self.activate_picked_in(picked, register_recent, None)
+    }
+
+    fn activate_picked_in(
+        &self,
+        picked: PickedFile,
+        register_recent: bool,
+        folder_id: Option<&str>,
+    ) -> MobileResult<MobileDocSession> {
         let format = MobileDocFormat::from_name(&picked.name);
         let doc_key = if picked.ephemeral {
             untitled_doc_key()
@@ -191,11 +241,13 @@ impl MobileFileService {
             uri_hint: Some(picked.name.clone()),
         };
         if register_recent && !picked.ephemeral && picked.writable {
-            self.recent.upsert(&doc_key, &picked.uri, &picked.name, format)?;
+            self.recent
+                .upsert_in_folder(&doc_key, &picked.uri, &picked.name, format, folder_id)?;
         }
         *self.active.lock().unwrap() = Some(ActiveSession {
             session: session.clone(),
             uri: Some(picked.uri),
+            local: None,
             encrypted: false,
             distribution: false,
             hwp_baseline: None,
@@ -218,6 +270,7 @@ impl MobileFileService {
         *self.active.lock().unwrap() = Some(ActiveSession {
             session: session.clone(),
             uri: None,
+            local: None,
             encrypted: false,
             distribution: false,
             hwp_baseline: None,
@@ -232,19 +285,82 @@ impl MobileFileService {
     }
 
     pub fn open_recent_doc(&self, id: &str) -> MobileResult<MobileDocSession> {
-        let Some((uri, _fmt)) = self.recent.resolve_uri(id)? else {
+        let Some(row) = self.recent.row(id)? else {
             return Err(MobileError::with_detail(
                 MobileErrorCode::PermissionDenied,
                 "mobile.recent.notFound",
                 "recent document entry missing",
             ));
         };
-        let picked = self.bridge.open_persistent_uri(&uri).map_err(map_fs_error)?;
+        self.open_document_uri(&row.uri, row.folder_id.as_deref())
+    }
+
+    /// Reopens a document through a grant the app holds (its own, or the linked folder's when
+    /// `folder_id` is set), applies the open gate, and puts it at the top of the recent list.
+    pub(crate) fn open_document_uri(&self, uri: &str, folder_id: Option<&str>) -> MobileResult<MobileDocSession> {
+        if let Some(folder_id) = folder_id {
+            self.ensure_folder_alive(folder_id)?;
+        }
+        let picked = self
+            .bridge
+            .open_persistent_uri(uri)
+            .map_err(|e| home::map_fs_error_in(e, folder_id.is_some()))?;
         self.ensure_openable_picked(&picked)?;
-        self.activate_picked(picked, true)
+        self.activate_picked_in(picked, true, folder_id)
+    }
+
+    /// Fails with `mobile.home.folderLost` when the linked folder is gone or its grant is lost.
+    pub(crate) fn ensure_folder_alive(&self, folder_id: &str) -> MobileResult<home::StoredFolder> {
+        let folder = self
+            .folders
+            .get(folder_id)?
+            .ok_or_else(|| home::folder_lost("folder is not linked"))?;
+        match self.bridge.check_folder_grant(&folder.uri) {
+            FolderGrantState::Alive => Ok(folder),
+            _ => Err(home::folder_lost("folder grant lost")),
+        }
+    }
+
+    /// Opens bytes that have no document location as a read-only, ephemeral session that is
+    /// not added to the recent list. The open gate applies.
+    pub(crate) fn open_local(&self, name: &str, source: LocalSource) -> MobileResult<MobileDocSession> {
+        let format = MobileDocFormat::from_name(name);
+        self.ensure_openable(name, format)?;
+        let session = MobileDocSession {
+            session_id: Uuid::new_v4().to_string(),
+            doc_key: untitled_doc_key(),
+            name: name.to_string(),
+            ext: format.ext().to_string(),
+            format,
+            writable: false,
+            ephemeral: true,
+            uri_hint: Some(name.to_string()),
+        };
+        *self.active.lock().unwrap() = Some(ActiveSession {
+            session: session.clone(),
+            uri: None,
+            local: Some(source),
+            encrypted: false,
+            distribution: false,
+            hwp_baseline: None,
+        });
+        Ok(session)
+    }
+
+    /// Parks a single received document (copied into the app cache) for
+    /// `consume_pending_open_intent`, the path single documents always take.
+    pub(crate) fn defer_received_document(&self, name: String, path: PathBuf) {
+        self.deferred_docs
+            .lock()
+            .unwrap()
+            .push_back(DeferredDoc { name, path });
     }
 
     pub fn consume_pending_open_intent(&self) -> MobileResult<Option<MobileDocSession>> {
+        let deferred = self.deferred_docs.lock().unwrap().pop_front();
+        if let Some(doc) = deferred {
+            return Ok(Some(self.open_local(&doc.name, LocalSource::CacheFile(doc.path))?));
+        }
         let Some(picked) = self.bridge.take_pending_open_intent() else {
             return Ok(None);
         };
@@ -255,7 +371,7 @@ impl MobileFileService {
     }
 
     pub fn read_file_bytes(&self, session_id: &str) -> MobileResult<ReadFileBytesResult> {
-        let (uri, format) = {
+        let (uri, local, format) = {
             let guard = self.active.lock().unwrap();
             let active = guard.as_ref().filter(|a| a.session.session_id == session_id).ok_or_else(|| {
                 MobileError::with_detail(
@@ -264,17 +380,20 @@ impl MobileFileService {
                     "unknown active sessionId",
                 )
             })?;
-            (active.uri.clone(), active.session.format)
+            (active.uri.clone(), active.local.clone(), active.session.format)
         };
-        let Some(uri) = uri else {
-            return Ok(ReadFileBytesResult {
-                bytes_base64: B64.encode([]),
-                tracking_dropped: None,
-                encrypted: None,
-                distribution: None,
-            });
+        let raw = match (local, uri) {
+            (Some(local), _) => local.read()?,
+            (None, Some(uri)) => self.bridge.read_uri_bytes(&uri).map_err(map_fs_error)?,
+            (None, None) => {
+                return Ok(ReadFileBytesResult {
+                    bytes_base64: B64.encode([]),
+                    tracking_dropped: None,
+                    encrypted: None,
+                    distribution: None,
+                });
+            }
         };
-        let raw = self.bridge.read_uri_bytes(&uri).map_err(map_fs_error)?;
         if format.is_hwp_family() {
             let prepared = prepare_hwp_for_open(raw, format)?;
             let baseline = if !prepared.encrypted && !prepared.distribution {
@@ -333,20 +452,95 @@ impl MobileFileService {
         bytes_base64: &str,
         hwp_fix: Option<HwpFixPayload>,
     ) -> MobileResult<SaveFileBytesResult> {
-        let active = {
-            let guard = self.active.lock().unwrap();
-            guard
-                .as_ref()
-                .filter(|a| a.session.session_id == session_id)
-                .cloned()
-                .ok_or_else(|| {
-                    MobileError::with_detail(
-                        MobileErrorCode::InvalidArgument,
-                        "mobile.session.notFound",
-                        "unknown active sessionId",
-                    )
-                })?
-        };
+        let raw_bytes = B64.decode(bytes_base64).map_err(|e| {
+            MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
+        })?;
+        self.save_decoded(session_id, raw_bytes, hwp_fix)
+    }
+
+    /// Saves the local file `src` over the active document, with the same checks as
+    /// `save_file_bytes` (for editors whose engine writes a file, e.g. a spreadsheet working
+    /// copy). HWP documents go through the same fixes and first-overwrite backup; other formats
+    /// stream from the file without loading it into memory.
+    pub fn save_file_from_path(
+        &self,
+        session_id: &str,
+        src: &Path,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<SaveFileBytesResult> {
+        let (active, uri) = self.writable_active(session_id)?;
+        let format = hwp_fix
+            .as_ref()
+            .map(|f| f.format)
+            .unwrap_or(active.session.format);
+        if format.is_hwp_family() {
+            let raw_bytes = std::fs::read(src).map_err(io_error)?;
+            return self.save_decoded(session_id, raw_bytes, hwp_fix);
+        }
+        let work_dir = self.write_work_dir()?;
+        write_uri_from_file(self.bridge.as_ref(), &uri, src, &work_dir).map_err(map_fs_error)?;
+        let _ = self.recovery.discard(&active.session.doc_key);
+        Ok(SaveFileBytesResult {
+            ok: true,
+            backup_id: None,
+            tails_lost: None,
+            memos_lost: None,
+        })
+    }
+
+    /// "Save as" from a local file: the same as `save_as_file_bytes` with the file's bytes.
+    pub fn save_as_file_from_path(
+        &self,
+        session_id: Option<&str>,
+        suggested_name: &str,
+        format: MobileDocFormat,
+        src: &Path,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<MobileDocSession> {
+        let raw_bytes = std::fs::read(src).map_err(io_error)?;
+        self.save_as_decoded(session_id, suggested_name, format, raw_bytes, hwp_fix)
+    }
+
+    /// Copies the active document into the local file `dest` (replaced if it exists), e.g. a
+    /// working copy for an engine that reads files. Returns the byte count.
+    pub fn copy_session_to_file(&self, session_id: &str, dest: &Path) -> MobileResult<u64> {
+        let active = self.active_session(session_id)?;
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(io_error)?;
+        }
+        match (&active.local, &active.uri) {
+            (Some(local), _) => {
+                let bytes = local.read()?;
+                std::fs::write(dest, &bytes).map_err(io_error)?;
+                Ok(bytes.len() as u64)
+            }
+            (None, Some(uri)) => self.bridge.copy_uri_to_file(uri, dest).map_err(map_fs_error),
+            (None, None) => Err(MobileError::with_detail(
+                MobileErrorCode::InvalidArgument,
+                "mobile.save.noUri",
+                "untitled session has no document to copy",
+            )),
+        }
+    }
+
+    fn active_session(&self, session_id: &str) -> MobileResult<ActiveSession> {
+        let guard = self.active.lock().unwrap();
+        guard
+            .as_ref()
+            .filter(|a| a.session.session_id == session_id)
+            .cloned()
+            .ok_or_else(|| {
+                MobileError::with_detail(
+                    MobileErrorCode::InvalidArgument,
+                    "mobile.session.notFound",
+                    "unknown active sessionId",
+                )
+            })
+    }
+
+    /// The active session and its document location, when it can be written in place.
+    fn writable_active(&self, session_id: &str) -> MobileResult<(ActiveSession, String)> {
+        let active = self.active_session(session_id)?;
         if active.session.ephemeral || !active.session.writable {
             return Err(MobileError::with_detail(
                 MobileErrorCode::ReadOnlyUri,
@@ -361,9 +555,26 @@ impl MobileFileService {
                 "untitled session requires Save As",
             ));
         };
-        let raw_bytes = B64.decode(bytes_base64).map_err(|e| {
-            MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
+        Ok((active, uri))
+    }
+
+    /// `<cache>/ieum-tmp/home/write`, where a document's original is kept while it is written.
+    fn write_work_dir(&self) -> MobileResult<PathBuf> {
+        let dirs = self.bridge.native_dirs().map_err(|e| {
+            MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.detail)
         })?;
+        let dir = dirs.cache_dir.join(WRITE_WORK_RELATIVE_DIR);
+        std::fs::create_dir_all(&dir).map_err(io_error)?;
+        Ok(dir)
+    }
+
+    fn save_decoded(
+        &self,
+        session_id: &str,
+        raw_bytes: Vec<u8>,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<SaveFileBytesResult> {
+        let (active, uri) = self.writable_active(session_id)?;
 
         let format = hwp_fix
             .as_ref()
@@ -482,6 +693,44 @@ impl MobileFileService {
         let raw_bytes = B64.decode(bytes_base64).map_err(|e| {
             MobileError::with_detail(MobileErrorCode::InvalidArgument, "mobile.decode.base64", e.to_string())
         })?;
+        self.save_as_checked(prev_active, suggested_name, format, raw_bytes, hwp_fix)
+    }
+
+    fn save_as_decoded(
+        &self,
+        session_id: Option<&str>,
+        suggested_name: &str,
+        format: MobileDocFormat,
+        raw_bytes: Vec<u8>,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<MobileDocSession> {
+        let prev_active = {
+            let guard = self.active.lock().unwrap();
+            match session_id {
+                Some(sid) => guard.as_ref().filter(|a| a.session.session_id == sid).cloned(),
+                None => guard.clone(),
+            }
+        };
+        if let Some(prev) = &prev_active
+            && (prev.encrypted || prev.distribution)
+        {
+            return Err(MobileError::with_detail(
+                MobileErrorCode::PasswordProtected,
+                "mobile.hwp.passwordProtected",
+                "encrypted or distribution HWP documents cannot be saved",
+            ));
+        }
+        self.save_as_checked(prev_active, suggested_name, format, raw_bytes, hwp_fix)
+    }
+
+    fn save_as_checked(
+        &self,
+        prev_active: Option<ActiveSession>,
+        suggested_name: &str,
+        format: MobileDocFormat,
+        raw_bytes: Vec<u8>,
+        hwp_fix: Option<HwpFixPayload>,
+    ) -> MobileResult<MobileDocSession> {
 
         let mut final_bytes = raw_bytes;
         if format.is_hwp_family() {
@@ -548,14 +797,18 @@ impl MobileFileService {
 
         let bytes = match mode {
             MobileShareMode::Original => {
-                let uri = active.uri.as_deref().ok_or_else(|| {
-                    MobileError::with_detail(
-                        MobileErrorCode::InvalidArgument,
-                        "mobile.share.noOriginalUri",
-                        "untitled session has no original file to share",
-                    )
-                })?;
-                self.bridge.read_uri_bytes(uri).map_err(map_fs_error)?
+                if let Some(local) = &active.local {
+                    local.read()?
+                } else {
+                    let uri = active.uri.as_deref().ok_or_else(|| {
+                        MobileError::with_detail(
+                            MobileErrorCode::InvalidArgument,
+                            "mobile.share.noOriginalUri",
+                            "untitled session has no original file to share",
+                        )
+                    })?;
+                    self.bridge.read_uri_bytes(uri).map_err(map_fs_error)?
+                }
             }
             MobileShareMode::Edited => {
                 let raw = bytes_base64.ok_or_else(|| {
@@ -669,5 +922,83 @@ impl MobileFileService {
 
     pub fn set_app_prefs(&self, patch: MobileAppPrefsPatch) -> MobileResult<MobileAppPrefs> {
         self.prefs.update(patch)
+    }
+
+    // Track T6 home helpers (used by `home::HomeService`).
+
+    pub(crate) fn bridge(&self) -> &Arc<dyn NativeFileBridge> {
+        &self.bridge
+    }
+
+    pub(crate) fn recent_store(&self) -> &RecentStore {
+        &self.recent
+    }
+
+    pub(crate) fn recovery_store(&self) -> &RecoveryStore {
+        &self.recovery
+    }
+
+    pub(crate) fn backup_store(&self) -> &HwpBackupStore {
+        &self.backups
+    }
+
+    pub(crate) fn folder_store(&self) -> &home::FolderStore {
+        &self.folders
+    }
+
+    pub(crate) fn favorite_store(&self) -> &home::FavoriteStore {
+        &self.favorites
+    }
+
+    /// Whether the open gate lets `format` through (`true` before the WebView sets the list).
+    pub(crate) fn is_openable_format(&self, format: MobileDocFormat) -> bool {
+        self.openable
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_none_or(|formats| formats.contains(&format))
+    }
+
+    /// Moves everything keyed by a renamed document (recent and favorite rows, the recovery
+    /// copy, HWP backups, the active session) to its new location. Returns the new docKey.
+    pub(crate) fn rekey_document(
+        &self,
+        old_key: &str,
+        old_uri: &str,
+        new_uri: &str,
+        new_name: &str,
+    ) -> MobileResult<String> {
+        let new_key = persistent_doc_key(new_uri);
+        self.recent.rekey(old_key, old_uri, &new_key, new_uri, new_name)?;
+        self.favorites.rekey(old_key, old_uri, &new_key, new_uri, new_name)?;
+        self.recovery.rekey(old_key, &new_key)?;
+        self.backups.rekey(old_key, old_uri, &new_key, new_uri)?;
+        {
+            let mut keys = self.backed_up_keys.lock().unwrap();
+            if keys.remove(old_key) {
+                keys.insert(new_key.clone());
+            }
+        }
+        if let Some(active) = self.active.lock().unwrap().as_mut()
+            && active.uri.as_deref() == Some(old_uri)
+        {
+            let format = MobileDocFormat::from_name(new_name);
+            active.uri = Some(new_uri.to_string());
+            active.session.doc_key = new_key.clone();
+            active.session.name = new_name.to_string();
+            active.session.ext = format.ext().to_string();
+            active.session.format = format;
+            active.session.uri_hint = Some(new_name.to_string());
+        }
+        Ok(new_key)
+    }
+
+    /// `set_app_prefs` with the home fields (track T6) in the same write.
+    pub fn set_app_prefs_with_home(
+        &self,
+        patch: MobileAppPrefsPatch,
+        home: MobileHomePrefsPatch,
+    ) -> MobileResult<MobileAppPrefs> {
+        self.prefs.update_with_home(patch, home)
     }
 }

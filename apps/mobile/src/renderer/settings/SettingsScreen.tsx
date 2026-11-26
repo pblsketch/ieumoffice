@@ -10,10 +10,17 @@ import type { MobileAiSettingsSlot } from '../ai/settingsSlot'
 import { useMobileLocale } from '../i18n'
 import { useBackLayer } from '../shell/backStack'
 import { IconBack, IeumAppIcon } from '../components/MobileIcons'
+import { useHomeRuntime } from '../home/homeRuntime'
 import { AiEnabledRow, AiSection } from './sections/AiSection'
 import { BackupsSection } from './sections/BackupsSection'
+import { FoldersSection } from './sections/FoldersSection'
 import { GeneralSection } from './sections/GeneralSection'
+import { HelpSection } from './sections/HelpSection'
 import { StorageSection } from './sections/StorageSection'
+import { useAppInfo } from './sections/settingsHooks'
+
+/** Shown in the about footer until the backend tells the real version (and in tests). */
+const FALLBACK_VERSION = '0.1.0'
 
 export interface SettingsScreenProps {
   readonly prefs: MobileAppPrefs
@@ -54,6 +61,9 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const { t } = useMobileLocale()
   useBackLayer(true, onBack)
+  // Sections that need a client are drawn only when the app layer put a runtime host in.
+  const runtime = useHomeRuntime()
+  const info = useAppInfo(runtime?.client ?? null)
 
   return (
     <div className="mobile-page" data-testid="mobile-settings-screen">
@@ -88,18 +98,22 @@ export function SettingsScreen({
           slot={aiSlot}
         />
 
+        {runtime && <FoldersSection host={runtime} platform={info?.platform} />}
+
         <BackupsSection
           backups={backups}
           onRestoreBackup={onRestoreBackup}
           onDeleteBackup={onDeleteBackup}
         />
 
-        <StorageSection aiSlot={aiSlot} />
+        <StorageSection aiSlot={aiSlot} platform={info?.platform} />
+
+        <HelpSection onClose={onBack} />
 
         <footer className="mobile-about-footer">
           <IeumAppIcon size={24} />
           <span className="mobile-about-name">{t('appTitle')}</span>
-          <span className="mobile-about-ver">v0.1.0</span>
+          <span className="mobile-about-ver">v{info?.version ?? FALLBACK_VERSION}</span>
         </footer>
       </main>
     </div>

@@ -1,0 +1,26 @@
+import type { zh } from './zh'
+
+export const cs = {
+  homeTabNav: 'Nabídka úvodní obrazovky',
+  homeTabRecent: 'Nedávné',
+  homeTabFolders: 'Složky',
+  homeTabTools: 'Nástroje',
+  homeTabSettings: 'Nastavení',
+  homeListAll: 'Vše',
+  homeListFavorites: 'Oblíbené',
+  homeListChips: 'Filtrovat seznam',
+  homeListFamilyHwp: 'HWP',
+  homeListFamilyMd: 'Markdown',
+  homeListFavoritesEmpty:
+    'Zatím nemáte žádné oblíbené. Soubor přidáte do oblíbených v jeho nabídce [⋯].',
+  homeListGroupEmpty: 'V této skupině zatím nejsou žádné soubory.',
+  homeListFavoriteLost: 'Tento soubor nelze otevřít. Mohl být přesunut nebo smazán.',
+  homeEmptyText:
+    'Zatím jste neotevřeli žádný dokument. Podívejte se na ukázkový dokument nebo otevřete soubor.',
+  homeEmptySample: 'Otevřít ukázkový dokument',
+  homeEmptyCreate: 'Vytvořit nový',
+  homeCreateFab: 'Vytvořit nový',
+  homeCreateTitle: 'Vytvořit nový',
+  homeCreateClose: 'Zavřít',
+  homeCreatePdfTools: 'Nástroje PDF',
+} as const satisfies Record<keyof typeof zh, string>

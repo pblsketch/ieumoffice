@@ -1,0 +1,81 @@
+/* The home's [Folders] tab (HOME-T8): linked folder rows, the path bar, the selection bar, and
+   the PDF tools layer drawn above the tab. */
+
+.home-folders,
+.home-folders-browse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.home-folders-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-folders-row-line {
+  display: flex;
+  align-items: center;
+  padding-right: var(--m-space-1);
+}
+
+.home-folders-row-open,
+.home-folders-row-static {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-folders-row-static {
+  cursor: default;
+}
+
+.home-folders-empty-title {
+  margin: 0;
+  font-size: var(--m-text-title-m);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.home-folders-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.home-folders-pathbar {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+}
+
+.home-folders-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--m-text-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.home-folders-entries .mobile-doc-row-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.home-folders-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--m-z-toolbar);
+}
+
+.home-folders-tool-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-sheet);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-content);
+}
