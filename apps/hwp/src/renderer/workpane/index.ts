@@ -8,6 +8,14 @@ export {
 } from './FindTab'
 export type { FindTabBridge, FindTabProps } from './FindTab'
 export {
+  OutlineTab,
+  OUTLINE_CARET_POLL_MS,
+  OUTLINE_IDLE_DEADLINE_MS,
+  OUTLINE_PAUSE_PER_READ,
+  OUTLINE_REFRESH_PAUSE_MS,
+} from './OutlineTab'
+export type { OutlineSettingsApi, OutlineTabBridge, OutlineTabProps } from './OutlineTab'
+export {
   DEFAULT_WORKPANE_TAB,
   DEFAULT_WORKPANE_TABS,
   MIN_DOC_WIDTH,

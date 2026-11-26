@@ -111,6 +111,8 @@ const METHODS = [
   'readOutline',
   'setDocOutlineMap',
   'caretPosition',
+  'changeOutlineLevel',
+  'moveOutlineSection',
 ] as const satisfies readonly (keyof AgentPluginSurface)[]
 
 export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): AgentBridge {

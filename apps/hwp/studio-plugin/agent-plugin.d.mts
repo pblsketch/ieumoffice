@@ -10,6 +10,10 @@ import type {
   RevealFindResult,
 } from './find.mjs'
 import type {
+  ChangeOutlineLevelParams,
+  ChangeOutlineLevelResult,
+  MoveOutlineSectionParams,
+  MoveOutlineSectionResult,
   OutlineCaret,
   OutlineStyleMap,
   ReadOutlineOptions,
@@ -2067,6 +2071,16 @@ export interface AgentPluginSurface {
   ): WriteDocOutlineMapResult
   /** current caret body paragraph `(sec, para)`, or null if unavailable */
   caretPosition(): OutlineCaret | null
+  /** promote or demote an outline heading (and subtree by default) in one undo step */
+  changeOutlineLevel(
+    params: ChangeOutlineLevelParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): ChangeOutlineLevelResult | AgentMemoRemovalRefusal
+  /** move an outline heading and its section before or after another heading in one undo step */
+  moveOutlineSection(
+    params: MoveOutlineSectionParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): MoveOutlineSectionResult | AgentMemoRemovalRefusal
 }
 
 /** Pages drawn for printing: SVG, and each page's size in CSS pixels. */

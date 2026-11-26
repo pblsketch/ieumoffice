@@ -76,7 +76,12 @@ import {
 } from './pc-fonts.mjs'
 import { printSvgForThisPc, screenFonts } from './print-fonts.mjs'
 import { findMatches, replaceFindMatches, revealFindMatch } from './find.mjs'
-import { readOutline, writeDocOutlineMap } from './outline.mjs'
+import {
+  changeOutlineLevel,
+  moveOutlineSection,
+  readOutline,
+  writeDocOutlineMap,
+} from './outline.mjs'
 import { installWorkpaneMenu } from './workpane-menu.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
@@ -13708,6 +13713,68 @@ export const agentPlugin = {
           return null
         }
         return caretNow
+      }),
+
+      /**
+       * Promote or demote a heading (with its subtree by default, or singleOnly).
+       * Defaults to a user (foreign) workpane edit; AI callers pass `{ foreign: false }`.
+       */
+      changeOutlineLevel: guarded((params, changeOptions) => {
+        const isForeign = changeOptions?.foreign !== false
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return change(
+            'outline-level',
+            (doc) => {
+              const result = changeOutlineLevel(doc, params)
+              if (!result.ok) {
+                refused = result
+                throw abort
+              }
+              return result
+            },
+            isForeign
+              ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
+              : { ...changeOptions, foreign: false },
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /**
+       * Move a heading and its section (body + subheadings) before or after another heading
+       * in a single undo step, rolling back automatically on any post-check failure.
+       * Defaults to a user (foreign) workpane edit; AI callers pass `{ foreign: false }`.
+       */
+      moveOutlineSection: guarded((params, changeOptions) => {
+        const isForeign = changeOptions?.foreign !== false
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return change(
+            'outline-move',
+            (doc) => {
+              const result = moveOutlineSection(doc, params)
+              if (!result.ok) {
+                refused = result
+                throw abort
+              }
+              return result
+            },
+            isForeign
+              ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
+              : { ...changeOptions, foreign: false },
+          )
+        } catch (thrown) {
+          if (thrown === abort) {
+            const { mutated: _mutated, ...clean } = refused
+            return clean
+          }
+          throw thrown
+        }
       }),
 
       /** Take the marks of the changes made so far off the pages. */

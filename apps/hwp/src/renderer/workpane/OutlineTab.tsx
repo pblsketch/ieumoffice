@@ -111,8 +111,12 @@ export type OutlineTabBridge = Pick<
   AgentBridge,
   'readOutline' | 'setDocOutlineMap' | 'caretPosition' | 'reveal' | 'listStyles'
 > & {
-  changeOutlineLevel?(params: ChangeOutlineLevelParams): Promise<ChangeOutlineLevelResult>
-  moveOutlineSection?(params: MoveOutlineSectionParams): Promise<MoveOutlineSectionResult>
+  changeOutlineLevel?(
+    params: ChangeOutlineLevelParams,
+  ): Promise<ChangeOutlineLevelResult | { ok: false; reason: string }>
+  moveOutlineSection?(
+    params: MoveOutlineSectionParams,
+  ): Promise<MoveOutlineSectionResult | { ok: false; reason: string; error?: string }>
 }
 
 export interface OutlineSettingsApi {
@@ -163,7 +167,7 @@ function nowMs(): number {
 }
 
 function mapLevelRefusalToNotice(
-  result: Extract<ChangeOutlineLevelResult, { ok: false }>,
+  result: Extract<ChangeOutlineLevelResult, { ok: false }> | { ok: false; reason: string },
   fallbackTargetLevel: number,
 ): NoticeState {
   switch (result.reason) {
@@ -177,21 +181,30 @@ function mapLevelRefusalToNotice(
       return {
         kind: 'error',
         key: 'outlineLevelNoMappedStyle',
-        params: { level: result.targetLevel ?? fallbackTargetLevel },
+        params: {
+          level:
+            'targetLevel' in result && result.targetLevel !== undefined
+              ? result.targetLevel
+              : fallbackTargetLevel,
+        },
         reason: result.reason,
       }
     case 'missing_style_in_doc':
       return {
         kind: 'error',
         key: 'outlineLevelMissingStyle',
-        params: { style: result.styleName ?? '' },
+        params: { style: 'styleName' in result ? (result.styleName ?? '') : '' },
         reason: result.reason,
       }
+    default:
+      return { kind: 'error', key: 'outlineLevelUnsupported', reason: result.reason }
   }
 }
 
 function mapMoveRefusalToNotice(
-  result: Extract<MoveOutlineSectionResult, { ok: false }>,
+  result:
+    | Extract<MoveOutlineSectionResult, { ok: false }>
+    | { ok: false; reason: string; error?: string },
 ): NoticeState {
   switch (result.reason) {
     case 'not_found':
@@ -214,9 +227,11 @@ function mapMoveRefusalToNotice(
       return {
         kind: 'error',
         key: 'outlineMoveEngineError',
-        params: { error: result.error ?? '' },
+        params: { error: 'error' in result ? (result.error ?? '') : '' },
         reason: result.reason,
       }
+    default:
+      return { kind: 'error', key: 'outlineMoveUnsupported', reason: result.reason }
   }
 }
 
@@ -318,10 +333,10 @@ export function OutlineTab({
         const result = await bridge.readOutline({ appStyleMap: mapToUse })
         lastReadCostMsRef.current = Math.max(0, nowMs() - started)
         if (!mountedRef.current || seq !== readSeqRef.current) return
-        setItems(result.items)
-        setEffectiveStyleMap(result.effectiveStyleMap)
-        setHasDocStyleMap(result.hasDocStyleMap)
-        setDocStyleMap(result.docStyleMap)
+        setItems(Array.isArray(result?.items) ? result.items : [])
+        setEffectiveStyleMap(result?.effectiveStyleMap ?? {})
+        setHasDocStyleMap(result?.hasDocStyleMap === true)
+        setDocStyleMap(result?.docStyleMap ?? null)
         setLoaded(true)
         hasLoadedRef.current = true
         dirtyWhileHiddenRef.current = false

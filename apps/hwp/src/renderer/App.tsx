@@ -38,6 +38,7 @@ import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
 import {
   FindTab,
+  OutlineTab,
   WorkpaneSide,
   WorkpaneToggle,
   isWorkpaneFindShortcut,
@@ -1328,16 +1329,28 @@ export default function App() {
             onClose={() => setWorkpaneOpen(false)}
             focusFindTick={focusFindTick}
             layoutHint={`${aiOn ? (aiOpen ? 'a1' : 'a0') : 'ax'}-${memoOpen ? 'm1' : 'm0'}`}
-            renderTab={(tab, ctx) =>
-              tab === 'find' ? (
-                <FindTab
-                  bridge={agentBridge}
-                  changeTick={docTick}
-                  focusTick={ctx.focusFindTick}
-                  visible={ctx.visible && ctx.activeTab === 'find'}
-                />
-              ) : undefined
-            }
+            renderTab={(tab, ctx) => {
+              if (tab === 'outline') {
+                return (
+                  <OutlineTab
+                    bridge={agentBridge}
+                    changeTick={docTick}
+                    visible={ctx.visible && ctx.activeTab === 'outline'}
+                  />
+                )
+              }
+              if (tab === 'find') {
+                return (
+                  <FindTab
+                    bridge={agentBridge}
+                    changeTick={docTick}
+                    focusTick={ctx.focusFindTick}
+                    visible={ctx.visible && ctx.activeTab === 'find'}
+                  />
+                )
+              }
+              return undefined
+            }}
           />
         )}
         <div className="hwp-stage">
