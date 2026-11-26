@@ -1,5 +1,30 @@
 /* PDF tools screens (track T3): tools list, files, running, results. Tokens only. */
 
+/* Korean wraps between words, not inside them (as .mobile-empty-state does).
+   Only for Korean: Chinese and Japanese have no spaces, so keep-all would stop
+   them wrapping at all. Sheets and dialogs are drawn inside .pdf-tools-flow. */
+.pdf-tools-list:lang(ko),
+.pdf-tools-flow:lang(ko) {
+  word-break: keep-all;
+}
+
+/* A tap leaves :hover on a touch screen, so hover is drawn only where there is
+   a pointer that hovers, and never on a disabled button. The shared icon button
+   hover (mobile-tokens.css) is taken back inside the tools layer the same way. */
+.pdf-tools-flow .mobile-icon-btn:hover {
+  background: transparent;
+}
+
+@media (hover: hover) {
+  .pdf-tools-flow .mobile-icon-btn:not(:disabled):hover {
+    background: var(--bg-hover-subtle);
+  }
+
+  .pdf-tools-card:not(:disabled):hover {
+    background: var(--bg-hover-subtle);
+  }
+}
+
 /* ── Tools list ───────────────────────────────────────────────────────── */
 
 .pdf-tools-list {
@@ -42,10 +67,6 @@
   color: var(--text-primary);
   text-align: start;
   cursor: pointer;
-}
-
-.pdf-tools-card:hover {
-  background: var(--bg-hover-subtle);
 }
 
 .pdf-tools-card-icon {
@@ -153,11 +174,27 @@
   color: var(--text-secondary);
 }
 
-.pdf-tools-file-problem,
-.pdf-tools-error {
+/* Something went wrong (flow/ProblemNote.tsx): the error colour and an alert
+   mark, so it is not told by colour alone. Field errors, refusals, file rows. */
+.pdf-tools-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--m-space-1);
   margin: 0;
   font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
   color: var(--danger);
+}
+
+.pdf-tools-problem-icon {
+  flex-shrink: 0;
+  width: 1.25em;
+  height: 1.25em;
+  margin-top: 0.125em;
+}
+
+.pdf-tools-problem-text {
+  min-width: 0;
 }
 
 .pdf-tools-file-actions {
@@ -177,6 +214,7 @@
   gap: var(--m-space-2);
 }
 
+/* A neutral note (nothing went wrong): no blank pages found */
 .pdf-tools-notice {
   margin: 0;
   padding: var(--m-space-3);
@@ -185,6 +223,34 @@
   background: var(--surface-subtle);
   color: var(--text-primary);
   font-size: var(--m-text-body-s);
+}
+
+/* ── Options sheet ─────────────────────────────────────────────────────── */
+
+/* The sheet's own scroll area must not move the form when an error appears
+   above what is in view (scroll anchoring pushed the first label out of sight). */
+.pdf-tools-options {
+  position: relative;
+  overflow-anchor: none;
+}
+
+/* [Start] stays reachable on long forms at the medium stop: the row sticks to
+   the bottom of the sheet's scroll area on the sheet's own surface colour.
+   The sheet surface already keeps the safe area below its scroll area. */
+.pdf-tools-sheet-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-block: var(--m-space-3);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--m-surface-raised);
+}
+
+/* A focused field is scrolled into view with its label above it and clear of
+   the sticky action row below it. */
+.pdf-tools-options :is(input, select, textarea) {
+  scroll-margin-top: calc(var(--m-space-3) + var(--m-space-1) + var(--m-text-body-s) * 1.5);
+  scroll-margin-bottom: calc(var(--m-hit) + var(--m-space-8));
 }
 
 /* ── Running ───────────────────────────────────────────────────────────── */
@@ -244,6 +310,11 @@
 }
 
 /* ── Results and blank pages ──────────────────────────────────────────── */
+
+/* The result line carries the file name, which may be one long word */
+.pdf-tools-result-done {
+  overflow-wrap: anywhere;
+}
 
 .pdf-tools-result-done,
 .pdf-tools-result-size,

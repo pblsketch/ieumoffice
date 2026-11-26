@@ -8,6 +8,7 @@
 import { useId, type ReactNode } from 'react'
 import { useMobileLocale } from '../../i18n'
 import { optionsErrorKey } from '../flow/format'
+import { ProblemNote } from '../flow/ProblemNote'
 import type { ToolOptionsError } from './index'
 
 /** The ids a field's hint and error take, joined for aria-describedby */
@@ -30,9 +31,9 @@ function FieldError({
   const { t } = useMobileLocale()
   if (!error) return null
   return (
-    <p id={id} className="pdf-tools-field-error" data-testid="pdf-tools-field-error">
+    <ProblemNote id={id} className="pdf-tools-field-error" testId="pdf-tools-field-error">
       {t(optionsErrorKey(error))}
-    </p>
+    </ProblemNote>
   )
 }
 

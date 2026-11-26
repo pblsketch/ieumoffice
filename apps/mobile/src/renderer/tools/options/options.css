@@ -35,13 +35,6 @@
   color: var(--text-secondary);
 }
 
-.pdf-tools-field-error {
-  margin: 0;
-  font-size: var(--m-text-body-s);
-  line-height: var(--m-line-body);
-  color: var(--danger);
-}
-
 /* ── Choice groups ─────────────────────────────────────────────────────── */
 
 .pdf-tools-choices {

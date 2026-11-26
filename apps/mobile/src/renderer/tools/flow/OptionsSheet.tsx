@@ -1,7 +1,9 @@
 /**
  * The options sheet (spec 5.3, options sheet): the tool's form (tools/options,
  * filled by PTL-T9), the error of the options as they are, why the last run
- * ended without a result, and [Start] ([Find] for blank pages).
+ * ended without a result, and [Start] ([Find] for blank pages). Failures read
+ * as errors (ProblemNote); [Start] stays in a row stuck to the bottom of the
+ * sheet's scroll area, so a long form never hides it below the fold.
  */
 import type { ReactNode } from 'react'
 import { Sheet } from '../../components/Sheet'
@@ -9,6 +11,7 @@ import { useMobileLocale, type MobileStringKey } from '../../i18n'
 import type { MobilePdfToolId } from '../catalog'
 import type { ToolOptionsError } from '../options'
 import { optionsErrorKey } from './format'
+import { ProblemNote } from './ProblemNote'
 
 /** Errors the option forms show under their own field; the sheet then only announces them */
 const FIELD_ERRORS: ReadonlySet<string> = new Set([
@@ -56,21 +59,22 @@ export function OptionsSheet({
       <div className="pdf-tools-options" data-tool={tool}>
         {finding && <p className="mobile-muted">{t('pdfToolsNoteBlank')}</p>}
         {children}
-        {error && (
-          <p
-            className={FIELD_ERRORS.has(error) ? 'mobile-sr-only' : 'pdf-tools-error'}
-            role="alert"
-            data-testid="pdf-tools-options-error"
-          >
-            {t(optionsErrorKey(error))}
-          </p>
-        )}
+        {error &&
+          (FIELD_ERRORS.has(error) ? (
+            <p className="mobile-sr-only" role="alert" data-testid="pdf-tools-options-error">
+              {t(optionsErrorKey(error))}
+            </p>
+          ) : (
+            <ProblemNote role="alert" testId="pdf-tools-options-error">
+              {t(optionsErrorKey(error))}
+            </ProblemNote>
+          ))}
         {notice && (
-          <p className="pdf-tools-notice" role="alert" data-testid="pdf-tools-notice">
+          <ProblemNote role="alert" testId="pdf-tools-notice">
             {t(notice)}
-          </p>
+          </ProblemNote>
         )}
-        <div className="pdf-tools-step-actions">
+        <div className="pdf-tools-step-actions pdf-tools-sheet-actions">
           <button type="button" className="mobile-touch-btn mobile-btn-primary" onClick={onStart}>
             {t(finding ? 'pdfToolsFindBlank' : 'pdfToolsStart')}
           </button>

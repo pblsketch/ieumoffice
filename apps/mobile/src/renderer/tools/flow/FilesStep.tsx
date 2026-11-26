@@ -12,6 +12,7 @@ import { useMobileLocale, type MobileStringKey } from '../../i18n'
 import type { ToolFile } from '../engine/types'
 import type { MobilePdfToolId } from '../catalog'
 import { formatBytes, problemKey } from './format'
+import { ProblemNote } from './ProblemNote'
 
 export interface FileEntry {
   readonly id: number
@@ -64,11 +65,12 @@ export function FilesStep({
   const addLabel =
     !takesMany && entries.length > 0 ? t('pdfToolsReplaceFile') : t('pdfToolsAddFiles')
 
+  // the page count only when there is one: an encrypted input reads as 0 pages
   const meta = (entry: FileEntry): string => {
     const parts: string[] = []
     if (entry.sizeBytes !== null) parts.push(formatBytes(entry.sizeBytes, lang))
     if (entry.check === 'pending') parts.push(t('pdfToolsRunning'))
-    else if (entry.check.ok && inputKind === 'pdf') {
+    else if (entry.check.ok && inputKind === 'pdf' && entry.check.pages > 0) {
       parts.push(
         entry.check.pages === 1
           ? t('pdfToolsPageCountOne')
@@ -101,7 +103,9 @@ export function FilesStep({
                   </span>
                   <span className="pdf-tools-file-meta">{meta(entry)}</span>
                   {problem && (
-                    <span className="pdf-tools-file-problem">{t(problemKey(problem))}</span>
+                    <ProblemNote as="span" className="pdf-tools-file-problem">
+                      {t(problemKey(problem))}
+                    </ProblemNote>
                   )}
                 </div>
                 {takesMany && (

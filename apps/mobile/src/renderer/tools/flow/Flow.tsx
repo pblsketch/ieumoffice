@@ -46,6 +46,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { FilesStep, type FileEntry } from './FilesStep'
 import { failureKey, optionsErrorKey, toolFileOf } from './format'
 import { OptionsSheet } from './OptionsSheet'
+import { ProblemNote } from './ProblemNote'
 import { ResultSheet } from './ResultSheet'
 import { RunningStep } from './RunningStep'
 
@@ -168,12 +169,17 @@ export default function PdfToolsFlowScreen({ host, start, onClose }: PdfToolsFlo
     engineRef.current ??= (env.createEngine ?? createPdfToolsEngine)()
     return engineRef.current
   }, [env.createEngine])
+  // the inspection under way: its own token, so an answer from a disposed engine is dropped
+  const checkingRef = useRef<object | null>(null)
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
       engineRef.current?.dispose()
       engineRef.current = null
+      // StrictMode mounts twice in development: the disposed engine's inspection
+      // is let go here, and the remount inspects the same file with a new engine
+      checkingRef.current = null
     }
   }, [])
 
@@ -183,12 +189,12 @@ export default function PdfToolsFlowScreen({ host, start, onClose }: PdfToolsFlo
   }, [tool])
 
   // inspect the picked files one at a time
-  const checkingRef = useRef<number | null>(null)
   useEffect(() => {
     if (!tool || checkingRef.current !== null) return
     const next = entries.find((entry) => entry.check === 'pending')
     if (!next) return
-    checkingRef.current = next.id
+    const token = {}
+    checkingRef.current = token
     void getEngine()
       .inspect(next.file, tool)
       .then(
@@ -196,6 +202,8 @@ export default function PdfToolsFlowScreen({ host, start, onClose }: PdfToolsFlo
         () => null,
       )
       .then((found) => {
+        // let go when the screen unmounted (its engine was disposed)
+        if (checkingRef.current !== token) return
         checkingRef.current = null
         if (!mountedRef.current) return
         setEntries((list) =>
@@ -523,11 +531,7 @@ export default function PdfToolsFlowScreen({ host, start, onClose }: PdfToolsFlo
             />
           </>
         )}
-        {notice && (
-          <p className="pdf-tools-notice" role="alert">
-            {t(notice)}
-          </p>
-        )}
+        {notice && <ProblemNote role="alert">{t(notice)}</ProblemNote>}
         <div className="pdf-tools-step-actions">
           <button
             type="button"
