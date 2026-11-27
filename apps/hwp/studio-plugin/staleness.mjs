@@ -30,12 +30,9 @@ function normalizeCheckResult(checkerId, raw) {
   const items = rawItems.map((item, idx) => {
     const id =
       typeof item?.id === 'string' && item.id.length > 0 ? item.id : `${checkerId}:${idx + 1}`
-    const kind =
-      typeof item?.kind === 'string' && item.kind.length > 0 ? item.kind : checkerId
+    const kind = typeof item?.kind === 'string' && item.kind.length > 0 ? item.kind : checkerId
     const reason =
-      typeof item?.reason === 'string' && item.reason.length > 0
-        ? item.reason
-        : 'entries_changed'
+      typeof item?.reason === 'string' && item.reason.length > 0 ? item.reason : 'entries_changed'
     const normalized = {
       id,
       checkerId,
@@ -287,7 +284,9 @@ export function createStalenessRegistry() {
               id: entry?.id ?? checker.id,
               kind: entry?.kind ?? checker.id,
               ...(typeof entry?.label === 'string' ? { label: entry.label } : {}),
-              ...(Array.isArray(entry?.modifiedLines) ? { modifiedLines: entry.modifiedLines } : {}),
+              ...(Array.isArray(entry?.modifiedLines)
+                ? { modifiedLines: entry.modifiedLines }
+                : {}),
               ...(entry?.range !== undefined ? { range: entry.range } : {}),
             }))
           : []
@@ -361,7 +360,12 @@ export function stripSubmissionMarksInPlace(cloneDoc) {
  * TOC range marks, heading anchors, and TOC internal hyperlinks. For `'hwp'`, reloads the
  * exported bytes to verify recovery and page-count parity unless `options.verify === false`.
  */
-export function buildSubmissionCopy(doc, format = 'hwpx', HwpDocumentCtor = undefined, options = {}) {
+export function buildSubmissionCopy(
+  doc,
+  format = 'hwpx',
+  HwpDocumentCtor = undefined,
+  options = {},
+) {
   if (!doc || typeof doc !== 'object') {
     throw new TypeError('Document instance is required to build a submission copy')
   }
@@ -378,8 +382,7 @@ export function buildSubmissionCopy(doc, format = 'hwpx', HwpDocumentCtor = unde
     throw new TypeError(`Document does not support exporting ${format}`)
   }
 
-  const pageCountBefore =
-    typeof doc.pageCount === 'function' ? Number(doc.pageCount()) : undefined
+  const pageCountBefore = typeof doc.pageCount === 'function' ? Number(doc.pageCount()) : undefined
   const sourceBytes = exportLive.call(doc)
 
   const clone = new Ctor(sourceBytes)
@@ -402,8 +405,7 @@ export function buildSubmissionCopy(doc, format = 'hwpx', HwpDocumentCtor = unde
     let reloaded = null
     try {
       reloaded = new Ctor(outBytes)
-      const after =
-        typeof reloaded.pageCount === 'function' ? Number(reloaded.pageCount()) : before
+      const after = typeof reloaded.pageCount === 'function' ? Number(reloaded.pageCount()) : before
       verify = {
         pageCountBefore: before,
         pageCountAfter: after,

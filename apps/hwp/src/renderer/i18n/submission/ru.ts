@@ -20,8 +20,7 @@ export const ru = {
   staleKindIndex: 'Указатель',
   staleKindBibliography: 'Список литературы',
   staleManualConfirmTitle: 'Обнаружены ручные правки',
-  staleManualConfirmBody:
-    'Обнаружены ручные изменения в: {items}. Перезаписать их и обновить?',
+  staleManualConfirmBody: 'Обнаружены ручные изменения в: {items}. Перезаписать их и обновить?',
   staleManualOverwrite: 'Перезаписать и обновить',
   staleManualSkip: 'Пропустить',
   staleRefreshDone: 'Обновлено элементов: {count}.',
@@ -33,10 +32,8 @@ export const ru = {
   submissionSaved: 'Копия для подачи сохранена: {name}',
   submissionSavedTailsLost:
     'Копия для подачи сохранена ({name}). Некоторые мастер-страницы или примечания могли не сохраниться.',
-  submissionFailedProtected:
-    'Защищённые паролем документы нельзя сохранить как копию для подачи.',
-  submissionFailedTracked:
-    'Документы с режимом исправлений нельзя сохранить как копию для подачи.',
+  submissionFailedProtected: 'Защищённые паролем документы нельзя сохранить как копию для подачи.',
+  submissionFailedTracked: 'Документы с режимом исправлений нельзя сохранить как копию для подачи.',
   submissionFailedVerify:
     'Проверка копии для подачи не удалась ({before} → {after} стр.). Попробуйте формат HWPX.',
   submissionFailedExport: 'Не удалось создать копию для подачи: {error}',

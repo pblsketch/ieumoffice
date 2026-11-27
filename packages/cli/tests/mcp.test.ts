@@ -295,8 +295,10 @@ describe('mcp server', () => {
     // the HWP equations, tab stops, page border, cell diagonal and picture width (about
     // 1.7 KiB, decision 0137); 130 KiB before the HWP tools that change what was written:
     // list_equations, edit_equation, column widths of a table and contents entries (under
-    // 1 KiB), and map_read, map_apply with its typed ops and map_create (decision 0150)
-    expect(bytes).toBeLessThanOrEqual(140 * 1024)
+    // 1 KiB), and map_read, map_apply with its typed ops and map_create (decision 0150);
+    // 140 KiB before HWP outline/find ops (decision 0172) and TOC/index ops (decision 0174,
+    // about 4 KiB)
+    expect(bytes).toBeLessThanOrEqual(145 * 1024)
     expect(bytes).toBeGreaterThan(60 * 1024)
   })
 

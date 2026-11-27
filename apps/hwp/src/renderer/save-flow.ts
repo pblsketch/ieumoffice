@@ -197,8 +197,10 @@ export interface SubmissionCopyExport {
   verify?: SaveVerifyInfo
 }
 
-export interface SubmissionSaveEditorPort
-  extends Pick<SaveEditorPort, 'isPasswordProtected' | 'measureTabs' | 'savePreview'> {
+export interface SubmissionSaveEditorPort extends Pick<
+  SaveEditorPort,
+  'isPasswordProtected' | 'measureTabs' | 'savePreview'
+> {
   /**
    * Build stripped submission copy bytes on an isolated clone without touching the live document.
    * For `'hwp'`, includes `verify` (self-read-back page count check on the stripped bytes).
@@ -255,7 +257,7 @@ export async function runSave(
 
   // manual saves check staleness before saving; auto-save must never prompt or interrupt
   if (!automatic && typeof options?.onStaleCheck === 'function') {
-    let verdict: 'continue' | 'cancel' = 'continue'
+    let verdict: 'continue' | 'cancel'
     try {
       verdict = await options.onStaleCheck()
     } catch {
@@ -348,7 +350,7 @@ export async function runSubmissionSave(
   }
 
   if (typeof options?.onStaleCheck === 'function') {
-    let verdict: 'continue' | 'cancel' = 'continue'
+    let verdict: 'continue' | 'cancel'
     try {
       verdict = await options.onStaleCheck()
     } catch {

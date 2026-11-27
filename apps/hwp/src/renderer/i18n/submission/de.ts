@@ -27,8 +27,7 @@ export const de = {
   staleRefreshDone: '{count} Elemente aktualisiert.',
   staleRefreshFailed: 'Einige Elemente konnten nicht aktualisiert werden: {error}',
   submissionMenuLabel: 'Als Einreichungskopie speichern…',
-  submissionMenuDesc:
-    'Speichert eine bereinigte Kopie ohne Index-, Zitat- und Einstellungsmarken.',
+  submissionMenuDesc: 'Speichert eine bereinigte Kopie ohne Index-, Zitat- und Einstellungsmarken.',
   submissionSaving: 'Einreichungskopie wird erstellt…',
   submissionSaved: 'Einreichungskopie gespeichert: {name}',
   submissionSavedTailsLost:

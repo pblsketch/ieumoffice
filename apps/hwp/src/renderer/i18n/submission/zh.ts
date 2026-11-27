@@ -29,7 +29,8 @@ export const zh = {
   submissionSavedTailsLost: '已保存提交版（{name}）。部分母版页或批注可能未能保留。',
   submissionFailedProtected: '受密码保护的文档无法另存为提交版。',
   submissionFailedTracked: '包含修订记录的文档无法另存为提交版。',
-  submissionFailedVerify: '提交版校验失败，已取消保存（{before} 页 → {after} 页）。请改用 HWPX 格式重试。',
+  submissionFailedVerify:
+    '提交版校验失败，已取消保存（{before} 页 → {after} 页）。请改用 HWPX 格式重试。',
   submissionFailedExport: '无法生成提交版：{error}',
   submissionFailedWrite: '无法保存提交版：{error}',
 }

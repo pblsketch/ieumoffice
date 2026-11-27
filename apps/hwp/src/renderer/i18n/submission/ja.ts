@@ -2,7 +2,8 @@ import type { zh } from './zh'
 
 export const ja = {
   staleDialogTitle: '更新が必要な項目があります',
-  staleDialogBody: '文書の編集後に以下の項目が最新の状態になっていません。続行する前に更新しますか？',
+  staleDialogBody:
+    '文書の編集後に以下の項目が最新の状態になっていません。続行する前に更新しますか？',
   staleActionSave: '保存',
   staleActionPrint: '印刷',
   staleActionPdf: 'PDF 書き出し',
@@ -19,13 +20,15 @@ export const ja = {
   staleKindIndex: '索引',
   staleKindBibliography: '参考文献',
   staleManualConfirmTitle: '手動での編集が検出されました',
-  staleManualConfirmBody: '次の項目に手動の編集があるため上書きしませんでした：{items}。上書きして更新しますか？',
+  staleManualConfirmBody:
+    '次の項目に手動の編集があるため上書きしませんでした：{items}。上書きして更新しますか？',
   staleManualOverwrite: '上書きして更新',
   staleManualSkip: 'スキップ',
   staleRefreshDone: '{count} 件の項目を更新しました。',
   staleRefreshFailed: '一部の項目を更新できませんでした：{error}',
   submissionMenuLabel: '提出用コピーとして保存…',
-  submissionMenuDesc: '索引・引用・設定マークを除いたクリーンなコピーを別ファイルとして保存します。',
+  submissionMenuDesc:
+    '索引・引用・設定マークを除いたクリーンなコピーを別ファイルとして保存します。',
   submissionSaving: '提出用コピーを作成中…',
   submissionSaved: '提出用コピーを保存しました：{name}',
   submissionSavedTailsLost:

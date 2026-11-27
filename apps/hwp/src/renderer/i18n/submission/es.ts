@@ -27,8 +27,7 @@ export const es = {
   staleRefreshDone: 'Se actualizaron {count} elementos.',
   staleRefreshFailed: 'No se pudieron actualizar algunos elementos: {error}',
   submissionMenuLabel: 'Guardar como copia de entrega…',
-  submissionMenuDesc:
-    'Guarda una copia limpia aparte sin marcas de índice, citas ni ajustes.',
+  submissionMenuDesc: 'Guarda una copia limpia aparte sin marcas de índice, citas ni ajustes.',
   submissionSaving: 'Creando copia de entrega…',
   submissionSaved: 'Copia de entrega guardada: {name}',
   submissionSavedTailsLost:

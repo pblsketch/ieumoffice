@@ -20,19 +20,16 @@ export const he = {
   staleKindIndex: 'אינדקס',
   staleKindBibliography: 'ביבליוגרפיה',
   staleManualConfirmTitle: 'זוהו עריכות ידניות',
-  staleManualConfirmBody:
-    'נמצאו עריכות ידניות ב: {items}. לדרוס אותן ולרענן בכל זאת?',
+  staleManualConfirmBody: 'נמצאו עריכות ידניות ב: {items}. לדרוס אותן ולרענן בכל זאת?',
   staleManualOverwrite: 'דריסה ורענון',
   staleManualSkip: 'דילוג',
   staleRefreshDone: 'עודכנו {count} פריטים.',
   staleRefreshFailed: 'לא ניתן לעדכן חלק מהפריטים: {error}',
   submissionMenuLabel: 'שמירה כעותק להגשה…',
-  submissionMenuDesc:
-    'שומר עותק נקי ונפרד ללא סימוני אינדקס, ציטוטים או הגדרות.',
+  submissionMenuDesc: 'שומר עותק נקי ונפרד ללא סימוני אינדקס, ציטוטים או הגדרות.',
   submissionSaving: 'יוצר עותק להגשה…',
   submissionSaved: 'עותק להגשה נשמר: {name}',
-  submissionSavedTailsLost:
-    'עותק להגשה נשמר ({name}). ייתכן שחלק מעמודי האב או ההערות לא נשמרו.',
+  submissionSavedTailsLost: 'עותק להגשה נשמר ({name}). ייתכן שחלק מעמודי האב או ההערות לא נשמרו.',
   submissionFailedProtected: 'לא ניתן לשמור מסמכים מוגנים בסיסמה כעותק להגשה.',
   submissionFailedTracked: 'לא ניתן לשמור מסמכים עם עקוב אחר שינויים כעותק להגשה.',
   submissionFailedVerify:

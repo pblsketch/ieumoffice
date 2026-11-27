@@ -20,15 +20,13 @@ export const pl = {
   staleKindIndex: 'Indeks',
   staleKindBibliography: 'Bibliografia',
   staleManualConfirmTitle: 'Wykryto ręczne zmiany',
-  staleManualConfirmBody:
-    'Wykryto ręczne modyfikacje w: {items}. Czy nadpisać je i odświeżyć?',
+  staleManualConfirmBody: 'Wykryto ręczne modyfikacje w: {items}. Czy nadpisać je i odświeżyć?',
   staleManualOverwrite: 'Nadpisz i odśwież',
   staleManualSkip: 'Pomiń',
   staleRefreshDone: 'Zaktualizowano {count} elementów.',
   staleRefreshFailed: 'Nie udało się zaktualizować niektórych elementów: {error}',
   submissionMenuLabel: 'Zapisz jako kopię do złożenia…',
-  submissionMenuDesc:
-    'Zapisuje osobną czystą kopię bez znaczników indeksu, cytowań i ustawień.',
+  submissionMenuDesc: 'Zapisuje osobną czystą kopię bez znaczników indeksu, cytowań i ustawień.',
   submissionSaving: 'Tworzenie kopii do złożenia…',
   submissionSaved: 'Zapisano kopię do złożenia: {name}',
   submissionSavedTailsLost:

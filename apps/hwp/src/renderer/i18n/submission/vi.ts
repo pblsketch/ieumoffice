@@ -20,8 +20,7 @@ export const vi = {
   staleKindIndex: 'Chỉ mục',
   staleKindBibliography: 'Tài liệu tham khảo',
   staleManualConfirmTitle: 'Phát hiện chỉnh sửa thủ công',
-  staleManualConfirmBody:
-    'Đã phát hiện chỉnh sửa thủ công trong: {items}. Ghi đè và làm mới?',
+  staleManualConfirmBody: 'Đã phát hiện chỉnh sửa thủ công trong: {items}. Ghi đè và làm mới?',
   staleManualOverwrite: 'Ghi đè và làm mới',
   staleManualSkip: 'Bỏ qua',
   staleRefreshDone: 'Đã cập nhật {count} mục.',

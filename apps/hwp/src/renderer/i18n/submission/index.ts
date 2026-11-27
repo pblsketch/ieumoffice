@@ -54,11 +54,7 @@ const translate = createI18n(submissionStrings)
 export type SubmissionStringKey = keyof typeof zh
 export type SubmissionTFunc = (key: SubmissionStringKey, params?: Params) => string
 
-export function translateSubmission(
-  lang: Lang,
-  key: SubmissionStringKey,
-  params?: Params,
-): string {
+export function translateSubmission(lang: Lang, key: SubmissionStringKey, params?: Params): string {
   return translate(lang, key, params)
 }
 

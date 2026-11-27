@@ -1233,6 +1233,7 @@ body {
   flex-direction: column;
   gap: 12px;
   overflow: auto;
+  scrollbar-width: thin;
   padding: 16px 18px;
 }
 

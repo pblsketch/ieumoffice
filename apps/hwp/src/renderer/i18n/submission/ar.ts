@@ -20,15 +20,13 @@ export const ar = {
   staleKindIndex: 'الفهرس',
   staleKindBibliography: 'قائمة المراجع',
   staleManualConfirmTitle: 'تم اكتشاف تعديلات يدوية',
-  staleManualConfirmBody:
-    'تم العثور على تعديلات يدوية في: {items}. هل تريد استبدالها والتحديث؟',
+  staleManualConfirmBody: 'تم العثور على تعديلات يدوية في: {items}. هل تريد استبدالها والتحديث؟',
   staleManualOverwrite: 'استبدال وتحديث',
   staleManualSkip: 'تخطّي',
   staleRefreshDone: 'تم تحديث {count} عنصر.',
   staleRefreshFailed: 'تعذّر تحديث بعض العناصر: {error}',
   submissionMenuLabel: 'حفظ كنسخة للتقديم…',
-  submissionMenuDesc:
-    'يحفظ نسخة نظيفة منفصلة بدون علامات الفهرس أو الاقتباس أو الإعدادات.',
+  submissionMenuDesc: 'يحفظ نسخة نظيفة منفصلة بدون علامات الفهرس أو الاقتباس أو الإعدادات.',
   submissionSaving: 'جارٍ إنشاء نسخة التقديم…',
   submissionSaved: 'تم حفظ نسخة التقديم: {name}',
   submissionSavedTailsLost:

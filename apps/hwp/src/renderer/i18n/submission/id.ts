@@ -20,8 +20,7 @@ export const id = {
   staleKindIndex: 'Indeks',
   staleKindBibliography: 'Daftar pustaka',
   staleManualConfirmTitle: 'Suntingan manual terdeteksi',
-  staleManualConfirmBody:
-    'Suntingan manual ditemukan pada: {items}. Timpa dan tetap perbarui?',
+  staleManualConfirmBody: 'Suntingan manual ditemukan pada: {items}. Timpa dan tetap perbarui?',
   staleManualOverwrite: 'Timpa dan perbarui',
   staleManualSkip: 'Lewati',
   staleRefreshDone: '{count} item diperbarui.',

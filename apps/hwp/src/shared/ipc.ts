@@ -128,13 +128,7 @@ export type BeginSaveMode = SaveMode | 'saveAsHwpx'
  * the shell for a file and opens it in a tab of its own, as Ctrl+O does. `importPdf` asks
  * the shell for a PDF and opens it as a new Hangul document in a tab of its own.
  */
-export type FileCommand =
-  | SaveMode
-  | 'saveSubmission'
-  | PrintMode
-  | 'preview'
-  | 'importPdf'
-  | 'open'
+export type FileCommand = SaveMode | 'saveSubmission' | PrintMode | 'preview' | 'importPdf' | 'open'
 
 /** Where the pages go: a PDF file, or the printer through the system print dialog. */
 export type PrintMode = 'pdf' | 'print'
@@ -263,8 +257,7 @@ export interface CommitSubmissionSaveOptions {
 }
 
 export type CommitSubmissionSaveResult =
-  | { ok: true; path: string; tailsLost?: true }
-  | { ok: false; error: string }
+  { ok: true; path: string; tailsLost?: true } | { ok: false; error: string }
 
 /**
  * A tab the engine saved without a width, as the editor can find it again: the body

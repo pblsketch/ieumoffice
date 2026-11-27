@@ -27,8 +27,7 @@ export const hi = {
   staleRefreshDone: '{count} आइटम अपडेट किए गए।',
   staleRefreshFailed: 'कुछ आइटम अपडेट नहीं हो सके: {error}',
   submissionMenuLabel: 'जमा करने की प्रति के रूप में सहेजें…',
-  submissionMenuDesc:
-    'अनुक्रमणिका, उद्धरण और सेटिंग चिह्नों के बिना एक अलग स्वच्छ प्रति सहेजें।',
+  submissionMenuDesc: 'अनुक्रमणिका, उद्धरण और सेटिंग चिह्नों के बिना एक अलग स्वच्छ प्रति सहेजें।',
   submissionSaving: 'जमा करने की प्रति बनाई जा रही है…',
   submissionSaved: 'जमा करने की प्रति सहेजी गई: {name}',
   submissionSavedTailsLost:

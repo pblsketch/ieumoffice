@@ -20,8 +20,7 @@ export const ms = {
   staleKindIndex: 'Indeks',
   staleKindBibliography: 'Bibliografi',
   staleManualConfirmTitle: 'Suntingan manual dikesan',
-  staleManualConfirmBody:
-    'Suntingan manual ditemui dalam: {items}. Tulis ganti dan segarkan?',
+  staleManualConfirmBody: 'Suntingan manual ditemui dalam: {items}. Tulis ganti dan segarkan?',
   staleManualOverwrite: 'Tulis ganti dan segarkan',
   staleManualSkip: 'Langkau',
   staleRefreshDone: '{count} item dikemas kini.',

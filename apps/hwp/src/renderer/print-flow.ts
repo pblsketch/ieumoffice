@@ -198,12 +198,7 @@ export async function checkStalenessBeforePrint(
   promptUser: (report: StaleCheckReport, action: PrintMode) => Promise<StalenessPromptChoice>,
   options?: StalenessGateOptions,
 ): Promise<'continue' | 'cancel'> {
-  return checkStalenessBeforeAction(
-    mode,
-    checkStale,
-    (report) => promptUser(report, mode),
-    options,
-  )
+  return checkStalenessBeforeAction(mode, checkStale, (report) => promptUser(report, mode), options)
 }
 
 /**
@@ -215,7 +210,7 @@ export async function runWithPrintStalenessCheck<T>(
   run: () => Promise<T>,
 ): Promise<{ canceled: true } | { canceled: false; value: T }> {
   if (typeof onStaleCheck === 'function') {
-    let verdict: 'continue' | 'cancel' = 'continue'
+    let verdict: 'continue' | 'cancel'
     try {
       verdict = await onStaleCheck()
     } catch {

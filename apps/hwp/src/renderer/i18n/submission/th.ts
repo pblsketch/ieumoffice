@@ -20,8 +20,7 @@ export const th = {
   staleKindIndex: 'ดัชนี',
   staleKindBibliography: 'บรรณานุกรม',
   staleManualConfirmTitle: 'พบการแก้ไขด้วยตนเอง',
-  staleManualConfirmBody:
-    'พบการแก้ไขด้วยตนเองใน: {items} ต้องการเขียนทับและรีเฟรชหรือไม่?',
+  staleManualConfirmBody: 'พบการแก้ไขด้วยตนเองใน: {items} ต้องการเขียนทับและรีเฟรชหรือไม่?',
   staleManualOverwrite: 'เขียนทับและรีเฟรช',
   staleManualSkip: 'ข้าม',
   staleRefreshDone: 'อัปเดตแล้ว {count} รายการ',

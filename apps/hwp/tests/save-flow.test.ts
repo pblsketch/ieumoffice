@@ -508,7 +508,11 @@ describe('staleness pre-action gate', () => {
   it('skips prompt when nothing is stale and fails open when checkStale throws', async () => {
     const promptUser = vi.fn(async () => 'cancel' as const)
     expect(
-      await checkStalenessBeforeAction('save', async () => ({ stale: false, items: [] }), promptUser),
+      await checkStalenessBeforeAction(
+        'save',
+        async () => ({ stale: false, items: [] }),
+        promptUser,
+      ),
     ).toBe('continue')
     expect(promptUser).not.toHaveBeenCalled()
 
@@ -549,9 +553,7 @@ describe('staleness pre-action gate', () => {
     expect(promptUser).toHaveBeenCalledWith(report, 'print')
 
     const run = vi.fn(async () => 'printed')
-    expect(
-      await runWithPrintStalenessCheck(async () => 'cancel', run),
-    ).toEqual({ canceled: true })
+    expect(await runWithPrintStalenessCheck(async () => 'cancel', run)).toEqual({ canceled: true })
     expect(run).not.toHaveBeenCalled()
 
     expect(

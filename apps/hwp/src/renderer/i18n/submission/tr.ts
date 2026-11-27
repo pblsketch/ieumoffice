@@ -27,16 +27,13 @@ export const tr = {
   staleRefreshDone: '{count} öğe güncellendi.',
   staleRefreshFailed: 'Bazı öğeler güncellenemedi: {error}',
   submissionMenuLabel: 'Teslim kopyası olarak kaydet…',
-  submissionMenuDesc:
-    'Dizin, alıntı ve ayar işaretleri olmadan ayrı ve temiz bir kopya kaydeder.',
+  submissionMenuDesc: 'Dizin, alıntı ve ayar işaretleri olmadan ayrı ve temiz bir kopya kaydeder.',
   submissionSaving: 'Teslim kopyası oluşturuluyor…',
   submissionSaved: 'Teslim kopyası kaydedildi: {name}',
   submissionSavedTailsLost:
     'Teslim kopyası kaydedildi ({name}). Bazı ana sayfalar veya notlar korunamamış olabilir.',
-  submissionFailedProtected:
-    'Parola korumalı belgeler teslim kopyası olarak kaydedilemez.',
-  submissionFailedTracked:
-    'Değişiklik izleme içeren belgeler teslim kopyası olarak kaydedilemez.',
+  submissionFailedProtected: 'Parola korumalı belgeler teslim kopyası olarak kaydedilemez.',
+  submissionFailedTracked: 'Değişiklik izleme içeren belgeler teslim kopyası olarak kaydedilemez.',
   submissionFailedVerify:
     'Teslim kopyası doğrulaması başarısız oldu ({before} → {after} sayfa). HWPX biçimini deneyin.',
   submissionFailedExport: 'Teslim kopyası oluşturulamadı: {error}',

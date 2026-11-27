@@ -20,8 +20,7 @@ export const en = {
   staleKindIndex: 'Index',
   staleKindBibliography: 'Bibliography',
   staleManualConfirmTitle: 'Manual edits detected',
-  staleManualConfirmBody:
-    'Manual edits were found in: {items}. Overwrite them and refresh anyway?',
+  staleManualConfirmBody: 'Manual edits were found in: {items}. Overwrite them and refresh anyway?',
   staleManualOverwrite: 'Overwrite and refresh',
   staleManualSkip: 'Skip',
   staleRefreshDone: 'Updated {count} items.',
@@ -33,8 +32,7 @@ export const en = {
   submissionSavedTailsLost:
     'Saved submission copy ({name}). Some master pages or memos could not be kept.',
   submissionFailedProtected: 'Password-protected documents cannot be saved as a submission copy.',
-  submissionFailedTracked:
-    'Documents with tracked changes cannot be saved as a submission copy.',
+  submissionFailedTracked: 'Documents with tracked changes cannot be saved as a submission copy.',
   submissionFailedVerify:
     'Submission copy verification failed ({before} → {after} pages). Try saving in HWPX format instead.',
   submissionFailedExport: 'Could not build submission copy: {error}',

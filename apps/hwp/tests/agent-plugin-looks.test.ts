@@ -3808,14 +3808,29 @@ describe('removing what follows a table', () => {
   })
 
   it('removes the title line of a table of contents once its table is gone', () => {
-    const { plugin, doc } = open(
-      blank(['보고서 제목', '1. 추진 배경', '배경 글입니다.', '2. 추진 계획', '계획 글입니다.']),
-    )
-    plugin.insertTitleBox('보고서 제목', null, { look: 'box' })
-    plugin.insertToc('1. 추진 배경', null, 'before', '차 례', [
-      { find: '1. 추진 배경', level: 1 },
-      { find: '2. 추진 계획', level: 1 },
+    const start = blank([
+      '보고서 제목',
+      '1. 추진 배경',
+      '배경 글입니다.',
+      '2. 추진 계획',
+      '계획 글입니다.',
     ])
+    const styles = JSON.parse(start.getStyleList()) as Array<{ id: number; name: string }>
+    const h1 = styles.find((s) => s.name === '개요 1')!.id
+    start.applyStyle(0, 1, h1)
+    start.applyStyle(0, 3, h1)
+    const { plugin, doc } = open(start)
+    plugin.insertTitleBox('보고서 제목', null, { look: 'box' })
+    expect(
+      plugin.insertToc({
+        anchor: '1. 추진 배경',
+        occurrence: null,
+        where: 'before',
+        title: '차 례',
+        layout: 'table',
+        links: false,
+      }),
+    ).toMatchObject({ ok: true })
     expect(plugin.listTables().count).toBe(2)
     expect(bodyText(doc()).slice(0, 3)).toEqual(['', '차 례', ''])
     expect(plugin.deleteTable(2)).toMatchObject({ ok: true })
@@ -4088,7 +4103,14 @@ describe('what a change leaves on the pages', () => {
   })
 
   it('gives the number of the table it made and says how many there are', () => {
-    const { plugin } = open()
+    const { plugin, doc } = open()
+    const styles = JSON.parse(doc().getStyleList()) as Array<{ id: number; name: string }>
+    const h1 = styles.find((s) => s.name === '개요 1')!.id
+    for (let p = 0; p < doc().getParagraphCount(0); p++) {
+      const len = doc().getParagraphLength(0, p)
+      const text = len > 0 ? doc().getTextRange(0, p, 0, len) : ''
+      if (text.includes('□ 세부 일정')) doc().applyStyle(0, p, h1)
+    }
     expect(plugin.insertTable('□ 세부 일정', null, 'after', ROWS, true)).toMatchObject({
       table: 1,
       tables: 1,
@@ -4098,7 +4120,13 @@ describe('what a change leaves on the pages', () => {
       tables: 2,
     })
     expect(
-      plugin.insertToc('□ 추진 배경', null, 'before', '차 례', [{ find: '□ 세부 일정', level: 1 }]),
+      plugin.insertToc({
+        anchor: '□ 추진 배경',
+        occurrence: null,
+        where: 'before',
+        title: '차 례',
+        layout: 'table',
+      }),
     ).toMatchObject({ ok: true, table: 1, tables: 3 })
     expect(plugin.insertTitleBox(TITLE, null, { look: 'box' })).toMatchObject({
       ok: true,
