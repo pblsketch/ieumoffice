@@ -170,9 +170,14 @@ jobs:
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
 
-          # Set Korean locale before launching the app.
+          # Set Korean locale, enable WKWebView accessibility tree exposure for AXe,
+          # and forward WebKit page console messages to the unified simulator log.
           xcrun simctl spawn "$UDID" defaults write -g AppleLanguages -array "ko-KR" "ko" "en" || true
           xcrun simctl spawn "$UDID" defaults write -g AppleLocale -string "ko_KR" || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.Accessibility AccessibilityEnabled -bool true || true
+          xcrun simctl spawn "$UDID" defaults write com.ieumoffice.mobile WebKitDebugLogsPageMessagesToSystemConsoleEnabled -bool true || true
+          xcrun simctl spawn "$UDID" defaults write com.ieumoffice.mobile WebKit2LogsPageMessagesToSystemConsoleEnabled -bool true || true
           xcrun simctl ui "$UDID" appearance light || true
 
           # Install the built .app.
@@ -250,22 +255,32 @@ jobs:
           def record_memory(label):
               rc, out, _ = run_cmd(["ps", "-axo", "pid,ppid,rss,vsz,comm"])
               rows = []
+              web_pids = []
               if rc == 0:
                   for line in out.splitlines():
                       if any(k in line for k in ("IeumOffice", "WebContent", "Networking", "GPU")):
                           if "grep" not in line:
-                              rows.append(line.strip())
+                              s = line.strip()
+                              rows.append(s)
+                              if "WebContent" in s:
+                                  parts = s.split()
+                                  if parts and parts[0].isdigit():
+                                      web_pids.append(parts[0])
               sample = {"label": label, "time": time.strftime("%H:%M:%S"), "ps": rows}
               if app_pid.isdigit():
                   rc_fp, out_fp, _ = run_cmd(["footprint", "-p", app_pid], timeout=15)
                   if rc_fp == 0:
-                      sample["footprint_head"] = "\n".join(out_fp.splitlines()[:25])
+                      sample["footprint_head"] = "\n".join(out_fp.splitlines()[:20])
+              if web_pids:
+                  rc_wfp, out_wfp, _ = run_cmd(["footprint", "-p", web_pids[0]], timeout=15)
+                  if rc_wfp == 0:
+                      sample["webcontent_footprint_head"] = "\n".join(out_wfp.splitlines()[:20])
               summary["memory_samples"].append(sample)
 
           def describe_ui(tag):
               if not axe_ready:
                   return None, "AXe is not installed"
-              rc, out, err = run_cmd(["axe", "describe-ui", "--udid", udid], timeout=20)
+              rc, out, err = run_cmd(["axe", "describe-ui", "--udid", udid], timeout=45)
               (logs_dir / f"ui-{tag}.json").write_text(out if out else err, encoding="utf-8")
               if rc != 0 or not out.strip():
                   return None, f"axe describe-ui failed (rc={rc}): {err.strip()}"
@@ -368,14 +383,25 @@ jobs:
 
           def run_flow():
               # Step 1: Wait for initial screen (welcome overlay or home) and screenshot.
-              time.sleep(5)
+              time.sleep(8)
               found, _, err = wait_for_any(
                   "01-first-screen",
                   ["시작하기", "Get started", "예시 문서 열어 보기", "Open the sample document"],
-                  timeout_s=30,
+                  timeout_s=75,
+                  poll_s=2.0,
               )
               shot1 = screenshot("01-first-screen.png")
               record_memory("01-first-screen")
+              if not found:
+                  # One gentle wake-up tap in empty top area in case WKWebView lazily attaches AX tree.
+                  run_cmd(["axe", "tap", "-x", "30", "-y", "130", "--udid", udid], timeout=15)
+                  time.sleep(3)
+                  found, _, err = wait_for_any(
+                      "01-first-screen-retry",
+                      ["시작하기", "Get started", "예시 문서 열어 보기", "Open the sample document"],
+                      timeout_s=30,
+                      poll_s=2.0,
+                  )
               if not found:
                   fail_step("01-first-screen", f"Initial screen controls not found: {err}")
                   return
@@ -558,8 +584,11 @@ jobs:
               mem_lines.append(f"=== {m['label']} ({m['time']}) ===")
               mem_lines.extend(m["ps"] or ["(no matching processes)"])
               if m.get("footprint_head"):
-                  mem_lines.append("--- footprint ---")
+                  mem_lines.append("--- app footprint ---")
                   mem_lines.append(m["footprint_head"])
+              if m.get("webcontent_footprint_head"):
+                  mem_lines.append("--- webcontent footprint ---")
+                  mem_lines.append(m["webcontent_footprint_head"])
               mem_lines.append("")
           (logs_dir / "memory.txt").write_text("\n".join(mem_lines), encoding="utf-8")
 
@@ -569,8 +598,8 @@ jobs:
           # Extract potential console / JS / Rust error lines after log stream settles.
           sleep 2
           {
-            echo "=== Filtered errors from sim-log-stream.txt ==="
-            grep -iE "error|exception|panic|uncaught|failed|rejected|crash|console|javascript|webkit" "$LOG_STREAM" | head -n 400 || true
+            echo "=== Filtered WebKit console & error lines from sim-log-stream.txt ==="
+            grep -v "found no value for key" "$LOG_STREAM" | grep -iE "error|exception|panic|uncaught|failed|rejected|crash|console|javascript|page message" | head -n 400 || true
             echo ""
             echo "=== app-stderr.txt ==="
             cat "$ART_DIR/logs/app-stderr.txt" || true
