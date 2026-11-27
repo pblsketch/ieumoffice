@@ -932,7 +932,7 @@ export function buildFlowHtml(doc: FlowSourceDocument): string {
 /** Reading styles inside the sandboxed flow frame. Document colors stay as the document set them. */
 export const FLOW_FRAME_CSS = `
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; max-width: 100%; overflow-x: clip; }
+html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; max-width: 100%; overflow-x: clip; background: #ffffff; }
 body {
   margin: 0;
   padding: 16px 16px 96px;
@@ -943,6 +943,13 @@ body {
   word-break: keep-all;
   overflow-wrap: anywhere;
   zoom: var(--flow-zoom, 1.2);
+}
+@media (min-width: 840px) {
+  body {
+    max-width: min(100%, calc(40rem / var(--flow-zoom, 1.2)));
+    margin-inline: auto;
+    padding-inline: 24px;
+  }
 }
 body[contenteditable='true'] { outline: none; caret-color: #1a73e8; }
 .flow-p p { margin: 0; }

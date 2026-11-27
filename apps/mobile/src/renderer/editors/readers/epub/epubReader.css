@@ -40,6 +40,8 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
 }
 
 .epub-reader-frame {

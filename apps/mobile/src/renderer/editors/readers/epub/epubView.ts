@@ -123,7 +123,12 @@ export function scrollCss(
 ): string {
   const prefs = { fontScale: settings.fontScale, lineHeight: settings.lineHeight, dark: false }
   const rest = viewPrefsCss(prefs, colors).split('\n').slice(themeCss('light', colors).length)
-  return [...themeCss(theme, colors), ...rest, 'html { touch-action: pan-x pan-y; }'].join('\n')
+  return [
+    ...themeCss(theme, colors),
+    ...rest,
+    'html { touch-action: pan-x pan-y; }',
+    '@media (min-width: 840px) { body { max-width: min(100%, 40rem); margin-inline: auto; } }',
+  ].join('\n')
 }
 
 /** The pages advance this way: vertical writing runs downwards, rtl and vertical-rl turn leftwards. */

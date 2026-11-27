@@ -145,9 +145,17 @@ function measure(el: HTMLElement | null): Size {
   return width > 0 && height > 0 ? { width, height } : FALLBACK_STAGE
 }
 
+/** DSN Q5: wide single-column reading screens (>= 840px) cap line measure around 40rem/720px. */
+const WIDE_SINGLE_COL_MIN = 840
+const WIDE_SINGLE_COL_MAX = 720
+
 /** The screen pages are laid out on: even widths, so two pages side by side are whole pixels. */
-function screenOf(stage: Size): Size {
-  return { width: Math.max(2, Math.floor(stage.width / 2) * 2), height: Math.floor(stage.height) }
+function screenOf(stage: Size, capSingleColumn = false): Size {
+  const capped =
+    capSingleColumn && stage.width >= WIDE_SINGLE_COL_MIN && stage.width <= stage.height
+      ? Math.min(stage.width, WIDE_SINGLE_COL_MAX)
+      : stage.width
+  return { width: Math.max(2, Math.floor(capped / 2) * 2), height: Math.floor(stage.height) }
 }
 
 function scroller(doc: Document): Element {
@@ -281,13 +289,16 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
   const blockingRef = useRef(false)
   blockingRef.current = sheet !== null || linkUrl !== null
 
-  const screen = screenOf(stage)
+  const screen = screenOf(stage, settings.layout === 'paged')
   const geom = pageGeometry(screen, flow.axis)
 
   // ---- geometry and CSS (handlers run between renders: everything from refs) ----
 
   const currentGeometry = (): PageGeometry =>
-    pageGeometry(screenOf(stageSizeRef.current), flowRef.current.axis)
+    pageGeometry(
+      screenOf(stageSizeRef.current, settingsRef.current.layout === 'paged'),
+      flowRef.current.axis,
+    )
 
   const modeFor = (fixed: Size | null): LaidMode =>
     fixed ? 'fixed' : settingsRef.current.layout === 'scroll' ? 'scroll' : 'paged'
@@ -881,7 +892,7 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
   const rightStep = sideStep('right', flow.rtl)
   const stepLabel = (step: 1 | -1) => t(step > 0 ? 'readersA11yNextPage' : 'readersA11yPrevPage')
   const fixedScale = fixed
-    ? Math.min(screen.width / fixed.width, screen.height / fixed.height) * fixedPinchZoom
+    ? Math.min(stage.width / fixed.width, stage.height / fixed.height) * fixedPinchZoom
     : 1
   const failedNext = failed !== null ? nextChapter(book, failed, 1) : null
 
