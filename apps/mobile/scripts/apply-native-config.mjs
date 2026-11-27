@@ -37,6 +37,17 @@ function replaceOrInsertBlock(content, startMarker, endMarker, block, anchorRege
 
 const GRADLE_SIGNING_BLOCK = `// IEUM_MOBILE_GRADLE_SIGNING_START
 android {
+    // Google Play requires targetSdk >= 36 (Android 16) for new apps since Aug 31, 2026.
+    compileSdk = 36
+    defaultConfig {
+        targetSdk = 36
+    }
+    // Keep native .so libraries uncompressed and 16KB-aligned in APK/AAB for Android 15+ devices.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
     val ieumVersionCode = System.getenv("IEUM_ANDROID_VERSION_CODE")?.toIntOrNull()
     if (ieumVersionCode != null && ieumVersionCode > 0) {
         defaultConfig {
@@ -302,7 +313,14 @@ export function applyIosConfig(genRoot = GEN_DIR) {
     cpSync(brandAppIconSrc, appIconOut, { recursive: true, force: true })
   }
 
-  return { applied: true, plistPath, entitlementsOut, privacyManifestOut, pbxprojPatched, appIconOut }
+  return {
+    applied: true,
+    plistPath,
+    entitlementsOut,
+    privacyManifestOut,
+    pbxprojPatched,
+    appIconOut,
+  }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)

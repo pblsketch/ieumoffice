@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyIosConfig } from '../scripts/apply-native-config.mjs'
+import { applyAndroidConfig, applyIosConfig } from '../scripts/apply-native-config.mjs'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -153,6 +153,52 @@ describe('store readiness native config', () => {
       } finally {
         rmSync(tmp, { recursive: true, force: true })
       }
+    })
+  })
+
+  describe('Android targetSdk and 16KB page alignment', () => {
+    it('sets compileSdk 36, targetSdk 36, and uncompressed 16KB jniLibs packaging in build.gradle.kts', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'ieum-android-sdk-'))
+      try {
+        const androidApp = join(tmp, 'android', 'app')
+        const androidMain = join(androidApp, 'src', 'main')
+        mkdirSync(androidMain, { recursive: true })
+        writeFileSync(
+          join(androidMain, 'AndroidManifest.xml'),
+          '<manifest><application><activity android:name=".MainActivity"></activity></application></manifest>',
+          'utf8',
+        )
+        writeFileSync(
+          join(androidApp, 'build.gradle.kts'),
+          'android {\n  compileSdk = 34\n  defaultConfig {\n    targetSdk = 34\n  }\n}\napply(from = file("tauri.build.gradle.kts"))\n',
+          'utf8',
+        )
+
+        expect(applyAndroidConfig(tmp).applied).toBe(true)
+        expect(applyAndroidConfig(tmp).applied).toBe(true)
+        const gradle = readFileSync(join(androidApp, 'build.gradle.kts'), 'utf8')
+        expect(gradle.match(/IEUM_MOBILE_GRADLE_SIGNING_START/g)?.length).toBe(1)
+        expect(gradle).toContain('compileSdk = 36')
+        expect(gradle).toContain('targetSdk = 36')
+        expect(gradle).toContain('useLegacyPackaging = false')
+      } finally {
+        rmSync(tmp, { recursive: true, force: true })
+      }
+    })
+
+    it('passes -Wl,-z,max-page-size=16384 for Android in build.rs and verifies 16KB zipalign in CI', () => {
+      const appDir = resolve(NATIVE_CONFIG, '..')
+      const repoRoot = resolve(appDir, '..', '..')
+      const buildRs = readFileSync(join(appDir, 'src-tauri', 'build.rs'), 'utf8')
+      expect(buildRs).toContain('CARGO_CFG_TARGET_OS')
+      expect(buildRs).toContain('-Wl,-z,max-page-size=16384')
+
+      const workflow = readFileSync(
+        join(repoRoot, '.github', 'workflows', 'mobile-build.yml'),
+        'utf8',
+      )
+      expect(workflow).toContain('zipalign" -c -P 16 4')
+      expect(workflow).toContain('zipalign" -f -P 16 4')
     })
   })
 })
