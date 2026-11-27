@@ -18,7 +18,11 @@ vi.mock('@rhwp/editor', () => ({
     container.appendChild(iframe)
     const doc = iframe.contentDocument!
     const textarea = doc.createElement('textarea')
+    const caret = doc.createElement('div')
+    caret.className = 'caret'
+    caret.style.display = 'block'
     doc.body.appendChild(textarea)
+    doc.body.appendChild(caret)
     studioMock.lastIframe = iframe
     studioMock.lastTextarea = textarea
     return {
@@ -106,9 +110,16 @@ describe('HwpMobileEditor view/read-only guard', () => {
 
     const textarea = studioMock.lastTextarea!
     const iframe = studioMock.lastIframe!
+    const studioDoc = iframe.contentDocument!
+    const caret = studioDoc.querySelector('.caret') as HTMLElement
     expect(textarea.readOnly).toBe(true)
     expect(textarea.inputMode).toBe('none')
     expect(textarea.tabIndex).toBe(-1)
+    expect(studioDoc.documentElement.getAttribute('data-ieum-readonly')).toBe('true')
+    expect(studioDoc.getElementById('ieum-mobile-studio-style')?.textContent).toContain(
+      ':root[data-ieum-readonly="true"] .caret',
+    )
+    expect(studioDoc.defaultView?.getComputedStyle(caret).display).toBe('none')
 
     // Keydown and beforeinput inside the iframe are blocked in view/read-only mode.
     const keydown = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
@@ -142,6 +153,8 @@ describe('HwpMobileEditor view/read-only guard', () => {
     expect(textarea.readOnly).toBe(false)
     expect(textarea.inputMode).toBe('')
     expect(textarea.tabIndex).toBe(0)
+    expect(studioDoc.documentElement.hasAttribute('data-ieum-readonly')).toBe(false)
+    expect(studioDoc.defaultView?.getComputedStyle(caret).display).toBe('block')
 
     const editKeydown = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
     textarea.dispatchEvent(editKeydown)

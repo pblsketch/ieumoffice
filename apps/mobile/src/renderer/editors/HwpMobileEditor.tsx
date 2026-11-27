@@ -183,6 +183,12 @@ function applyMobileStudioCanvasStyle(editor: RhwpEditor): void {
       #scroll-container {
         touch-action: pan-x pan-y;
       }
+      /* Hide rhwp-studio's text caret and IME composition caret in view and read-only modes. */
+      :root[data-ieum-readonly="true"] .caret,
+      :root[data-ieum-readonly="true"] .caret-composition {
+        display: none !important;
+        visibility: hidden !important;
+      }
       /* compact and medium window classes (< 840px, see useViewportLayout) */
       @media (max-width: 839px) {
         #ruler-corner,
@@ -252,6 +258,11 @@ function syncStudioEditLock(editor: RhwpEditor, interactive: boolean): void {
     const iframe = editor.element
     const doc = iframe?.contentDocument
     if (!doc) return
+    if (interactive) {
+      doc.documentElement.removeAttribute('data-ieum-readonly')
+    } else {
+      doc.documentElement.setAttribute('data-ieum-readonly', 'true')
+    }
     const fields = doc.querySelectorAll('textarea, input:not([type="range"]), [contenteditable]')
     for (const node of fields) {
       const tag = node.tagName
