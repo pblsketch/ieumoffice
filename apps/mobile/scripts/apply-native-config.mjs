@@ -112,10 +112,29 @@ export function applyAndroidConfig(genRoot = GEN_DIR) {
     intentBlock,
     /<\/activity>/,
   )
+  // Strip any template-generated FileProvider outside our managed markers so AndroidManifest.xml
+  // does not declare two FileProvider entries with the same authority.
+  const startMarker = '<!-- IEUM_MOBILE_NATIVE_CONFIG_START -->'
+  const endMarker = '<!-- IEUM_MOBILE_NATIVE_CONFIG_END -->'
+  const existingStart = manifest.indexOf(startMarker)
+  const existingEnd = manifest.indexOf(endMarker)
+  const stripTemplateProvider = (chunk) =>
+    chunk.replace(
+      /\s*<provider\b[^>]*android:name="androidx\.core\.content\.FileProvider"[\s\S]*?<\/provider>/g,
+      '',
+    )
+  if (existingStart !== -1 && existingEnd !== -1 && existingEnd > existingStart) {
+    manifest =
+      stripTemplateProvider(manifest.slice(0, existingStart)) +
+      manifest.slice(existingStart, existingEnd + endMarker.length) +
+      stripTemplateProvider(manifest.slice(existingEnd + endMarker.length))
+  } else {
+    manifest = stripTemplateProvider(manifest)
+  }
   manifest = replaceOrInsertBlock(
     manifest,
-    '<!-- IEUM_MOBILE_NATIVE_CONFIG_START -->',
-    '<!-- IEUM_MOBILE_NATIVE_CONFIG_END -->',
+    startMarker,
+    endMarker,
     providerBlock,
     /<\/application>/,
   )

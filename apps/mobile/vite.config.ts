@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { rhwpPatches } from '../hwp/scripts/rhwp-patches.mjs'
-import { trackAlias, trackDefine, trackPlugins } from './config/tracks'
+import { trackAlias, trackDefine, trackPlugins, trackWorkerPlugins } from './config/tracks'
 
 /**
  * Copies the prebuilt rhwp-studio bundle from apps/hwp/public/studio into
@@ -75,6 +75,10 @@ export default defineConfig({
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
     target: 'es2022',
+  },
+  worker: {
+    format: 'es',
+    plugins: trackWorkerPlugins,
   },
   server: {
     port: 5185,

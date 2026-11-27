@@ -40,7 +40,8 @@
 }
 
 .m-pdf-draw-sheet {
-  gap: var(--m-space-4);
+  gap: var(--m-space-3);
+  padding-bottom: var(--m-space-4);
 }
 
 .m-pdf-draw-group {

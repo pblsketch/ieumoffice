@@ -20,6 +20,7 @@ const BASE_MIME_TYPES = [
   'application/vnd.hancom.hwp',
   'application/hwp+zip',
   'application/vnd.hancom.hwpx',
+  'application/haansofthwpx',
   'text/markdown',
   'text/plain',
   'application/octet-stream',
@@ -152,7 +153,9 @@ describe('per-track slots in the open-with declarations', () => {
       mkdirSync(androidMain, { recursive: true })
       writeFileSync(
         join(androidMain, 'AndroidManifest.xml'),
-        '<manifest><application><activity android:name=".MainActivity"></activity></application></manifest>',
+        '<manifest><application><activity android:name=".MainActivity"></activity>' +
+          '<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>' +
+          '</application></manifest>',
         'utf8',
       )
       const iosApp = join(tmp, 'apple', 'ieumoffice-mobile_iOS')
@@ -171,8 +174,10 @@ describe('per-track slots in the open-with declarations', () => {
 
       const manifest = readFileSync(join(androidMain, 'AndroidManifest.xml'), 'utf8')
       expectAndroidSlots(manifest)
+      expect(count(manifest, 'androidx.core.content.FileProvider')).toBe(1)
       const plist = readFileSync(join(iosApp, 'Info.plist'), 'utf8')
       expectIosSlots(plist)
+      expect(stringsAfterKey(plist, 'UTTypeIdentifier')).toContain('net.daringfireball.markdown')
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }

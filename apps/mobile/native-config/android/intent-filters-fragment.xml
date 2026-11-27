@@ -28,6 +28,7 @@
     <data android:mimeType="application/vnd.hancom.hwp" />
     <data android:mimeType="application/hwp+zip" />
     <data android:mimeType="application/vnd.hancom.hwpx" />
+    <data android:mimeType="application/haansofthwpx" />
     <data android:mimeType="text/markdown" />
     <data android:mimeType="text/plain" />
     <data android:mimeType="application/octet-stream" />
@@ -59,6 +60,7 @@
     <data android:mimeType="application/vnd.hancom.hwp" />
     <data android:mimeType="application/hwp+zip" />
     <data android:mimeType="application/vnd.hancom.hwpx" />
+    <data android:mimeType="application/haansofthwpx" />
     <data android:mimeType="text/markdown" />
     <data android:mimeType="text/plain" />
     <data android:mimeType="application/octet-stream" />

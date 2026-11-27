@@ -4,7 +4,8 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri_plugin_ieum_mobile::fs::{
-    HostFileBridge, MockPickedDoc, NativeFileBridge, NativeFsErrorKind, write_uri_from_file,
+    HostFileBridge, MockPickedDoc, NativeFileBridge, NativeFsError, NativeFsErrorKind,
+    write_new_uri_from_file, write_uri_from_file,
 };
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -155,4 +156,167 @@ fn does_not_touch_a_document_it_cannot_read_first() {
 
     assert_eq!(err.kind, NativeFsErrorKind::PermissionDenied);
     assert_eq!(bridge.stream_count(), 0);
+}
+
+#[test]
+fn write_new_uri_skips_preread_for_uninitialized_cloud_documents_and_verifies_after_write() {
+    struct UnreadableUntilWritten {
+        inner: HostFileBridge,
+    }
+    impl NativeFileBridge for UnreadableUntilWritten {
+        fn pick_open_file(
+            &self,
+            exts: &[String],
+        ) -> Result<tauri_plugin_ieum_mobile::fs::PickedFile, NativeFsError> {
+            self.inner.pick_open_file(exts)
+        }
+        fn create_save_file(
+            &self,
+            suggested_name: &str,
+            mime: &str,
+        ) -> Result<tauri_plugin_ieum_mobile::fs::PickedFile, NativeFsError> {
+            self.inner.create_save_file(suggested_name, mime)
+        }
+        fn open_persistent_uri(
+            &self,
+            uri: &str,
+        ) -> Result<tauri_plugin_ieum_mobile::fs::PickedFile, NativeFsError> {
+            self.inner.open_persistent_uri(uri)
+        }
+        fn read_uri_bytes(&self, uri: &str) -> Result<Vec<u8>, NativeFsError> {
+            self.inner.read_uri_bytes(uri)
+        }
+        fn write_uri_bytes_atomic(&self, uri: &str, bytes: &[u8]) -> Result<(), NativeFsError> {
+            self.inner.write_uri_bytes_atomic(uri, bytes)
+        }
+        fn copy_uri_to_file(&self, uri: &str, dest: &std::path::Path) -> Result<u64, NativeFsError> {
+            if self.inner.stream_count() == 0 {
+                return Err(NativeFsError::new(
+                    NativeFsErrorKind::IoError,
+                    "uninitialized cloud document cannot be read before first write",
+                ));
+            }
+            self.inner.copy_uri_to_file(uri, dest)
+        }
+        fn stream_file_to_uri(
+            &self,
+            uri: &str,
+            src: &std::path::Path,
+        ) -> Result<u64, NativeFsError> {
+            self.inner.stream_file_to_uri(uri, src)
+        }
+        fn share_file_bytes(
+            &self,
+            suggested_name: &str,
+            mime: &str,
+            bytes: &[u8],
+        ) -> Result<(), NativeFsError> {
+            self.inner.share_file_bytes(suggested_name, mime, bytes)
+        }
+        fn take_pending_open_intent(
+            &self,
+        ) -> Option<tauri_plugin_ieum_mobile::fs::PickedFile> {
+            self.inner.take_pending_open_intent()
+        }
+        fn pick_folder(
+            &self,
+        ) -> Result<
+            tauri_plugin_ieum_mobile::fs::PickedFolder,
+            tauri_plugin_ieum_mobile::fs::NativeHomeError,
+        > {
+            self.inner.pick_folder()
+        }
+        fn release_folder(
+            &self,
+            tree_uri: &str,
+        ) -> Result<(), tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.release_folder(tree_uri)
+        }
+        fn check_folder_grant(
+            &self,
+            tree_uri: &str,
+        ) -> tauri_plugin_ieum_mobile::fs::FolderGrantState {
+            self.inner.check_folder_grant(tree_uri)
+        }
+        fn list_folder(
+            &self,
+            tree_uri: &str,
+            sub_path: &[String],
+        ) -> Result<
+            Vec<tauri_plugin_ieum_mobile::fs::NativeFolderEntry>,
+            tauri_plugin_ieum_mobile::fs::NativeHomeError,
+        > {
+            self.inner.list_folder(tree_uri, sub_path)
+        }
+        fn rename_document(
+            &self,
+            uri: &str,
+            new_name: &str,
+        ) -> Result<String, tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.rename_document(uri, new_name)
+        }
+        fn copy_document(
+            &self,
+            uri: &str,
+            new_name: &str,
+        ) -> Result<String, tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.copy_document(uri, new_name)
+        }
+        fn delete_document(
+            &self,
+            uri: &str,
+        ) -> Result<(), tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.delete_document(uri)
+        }
+        fn share_files(
+            &self,
+            paths: &[String],
+        ) -> Result<(), tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.share_files(paths)
+        }
+        fn take_incoming_batch(
+            &self,
+        ) -> Option<tauri_plugin_ieum_mobile::fs::NativeIncomingBatch> {
+            self.inner.take_incoming_batch()
+        }
+        fn set_keep_screen_on(
+            &self,
+            on: bool,
+        ) -> Result<(), tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.set_keep_screen_on(on)
+        }
+        fn open_external_url(
+            &self,
+            url: &str,
+        ) -> Result<(), tauri_plugin_ieum_mobile::fs::NativeHomeError> {
+            self.inner.open_external_url(url)
+        }
+        fn native_dirs(
+            &self,
+        ) -> Result<
+            tauri_plugin_ieum_mobile::fs::NativeDirs,
+            tauri_plugin_ieum_mobile::fs::NativeHomeError,
+        > {
+            self.inner.native_dirs()
+        }
+    }
+
+    let dir = work_dir();
+    let inner = HostFileBridge::new();
+    inner.set_next_save_as_uri("content://cloud/new.pdf");
+    let created = inner
+        .create_save_file("new.pdf", "application/pdf")
+        .unwrap();
+    let bridge = UnreadableUntilWritten { inner };
+    let src = dir.join("payload.pdf");
+    std::fs::write(&src, b"%PDF-1.7 new cloud document").unwrap();
+    let scratch = dir.join("work");
+
+    write_new_uri_from_file(&bridge, &created.uri, &src, &scratch).unwrap();
+
+    assert_eq!(
+        bridge.inner.read_uri_bytes(&created.uri).unwrap(),
+        b"%PDF-1.7 new cloud document"
+    );
+    assert!(left_over_files(&scratch).is_empty());
 }

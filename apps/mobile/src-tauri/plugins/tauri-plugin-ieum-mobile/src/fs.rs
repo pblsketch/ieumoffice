@@ -1179,6 +1179,21 @@ pub fn write_uri_from_file(
     }
 }
 
+/// Writes the local file `src` into a newly created document at `uri` (from `create_save_file`)
+/// and reads it back to verify the written bytes match `src`. Unlike `write_uri_from_file`, this
+/// skips the pre-write rollback copy because there is no prior content and some cloud
+/// `DocumentsProvider` implementations reject reads on an uninitialized 0-byte document before
+/// the first write.
+pub fn write_new_uri_from_file(
+    bridge: &dyn NativeFileBridge,
+    uri: &str,
+    src: &Path,
+    work_dir: &Path,
+) -> Result<(), NativeFsError> {
+    std::fs::create_dir_all(work_dir).map_err(io_error)?;
+    stream_and_verify(bridge, uri, src, work_dir)
+}
+
 fn stream_and_verify(
     bridge: &dyn NativeFileBridge,
     uri: &str,
