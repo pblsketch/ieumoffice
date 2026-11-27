@@ -249,6 +249,7 @@ jobs:
               "axe_ready": axe_ready,
               "inspector_connected": False,
               "steps": [],
+              "findings": [],
               "stuck_at": None,
               "stuck_reason": None,
               "memory_samples": [],
@@ -588,6 +589,8 @@ jobs:
                     x: r.left, y: r.top, width: r.width, height: r.height,
                     cx: Math.round(r.left + r.width / 2),
                     cy: Math.round(r.top + r.height / 2),
+                    vvh: Math.round(window.visualViewport ? window.visualViewport.height : window.innerHeight),
+                    ih: window.innerHeight,
                   }};
                 }};
                 for (const sel of selectors) {{
@@ -661,6 +664,16 @@ jobs:
 
           def tap_element(insp, info, selectors, labels):
               cx, cy = int(info["cx"]), int(info["cy"])
+              vvh = int(info.get("vvh") or info.get("ih") or 9999)
+              ih = int(info.get("ih") or vvh)
+              # If an on-screen keyboard covers the target button (e.g. iOS keyboard popping up
+              # in HWP view mode), sending a blind HID tap hits keyboard keys instead of the UI.
+              if vvh < ih - 100 and cy >= vvh - 40:
+                  note = f"Keyboard occluded {info.get('testId') or info.get('ariaLabel') or info.get('text')} at y={cy} (visualViewport.height={vvh}/{ih}); used JS click"
+                  trace(f"[FINDING] {note}")
+                  summary["findings"].append(note)
+                  res = click_element_js(insp, selectors, labels)
+                  return res != "not-found", f"js_click_kb_occluded({res})"
               if axe_ready:
                   rc, out, err = run_cmd(["axe", "tap", "-x", str(cx), "-y", str(cy), "--udid", udid], timeout=15)
                   trace(f"axe tap ({cx},{cy}) rc={rc} msg={(err or out).strip()}")
@@ -676,16 +689,20 @@ jobs:
                     const iframes = Array.from(document.querySelectorAll('iframe')).map(f => {
                       let innerLen = -1;
                       let hasCanvas = false;
+                      let innerActive = '';
                       try {
                         innerLen = (f.contentDocument?.body?.innerText || '').trim().length;
                         hasCanvas = !!f.contentDocument?.querySelector('canvas');
+                        innerActive = f.contentDocument?.activeElement?.tagName || '';
                       } catch {}
-                      return { src: f.getAttribute('src') || '', cls: f.className, hidden: f.closest('[data-hidden="true"]') !== null, innerLen, hasCanvas };
+                      return { src: f.getAttribute('src') || '', cls: f.className, hidden: f.closest('[data-hidden="true"]') !== null, innerLen, hasCanvas, innerActive };
                     });
                     return {
                       lang: document.documentElement.lang,
                       navLang: navigator.language,
                       viewport: [window.innerWidth, window.innerHeight],
+                      visualViewport: window.visualViewport ? [Math.round(window.visualViewport.width), Math.round(window.visualViewport.height)] : null,
+                      activeTag: document.activeElement?.tagName || '',
                       title: document.title,
                       bodyTextHead: (document.body?.innerText || '').trim().slice(0, 300),
                       iframes,
@@ -878,6 +895,16 @@ jobs:
                       return
                   ok, via = tap_element(insp, el_back, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
                   time.sleep(2.0)
+                  # If an unexpected Unsaved Changes modal appeared on the read-only sample doc,
+                  # record it and tap Discard so the walk-through can still verify Markdown & Settings.
+                  el_discard = wait_for_element(insp, "06-check-unsaved", [], ["저장 안 함", "Discard"], timeout_s=2.0, poll_s=0.5)
+                  if el_discard:
+                      note = "Unexpected Unsaved Changes modal appeared when leaving read-only sample HWP"
+                      trace(f"[FINDING] {note}")
+                      summary["findings"].append(note)
+                      screenshot("06a-unsaved-modal.png")
+                      tap_element(insp, el_discard, [], ["저장 안 함", "Discard"])
+                      time.sleep(2.0)
                   el_md = wait_for_element(
                       insp,
                       "06-home-after-hwp",
@@ -1014,8 +1041,11 @@ jobs:
           # Extract potential console / JS / Rust error lines after log stream settles.
           sleep 2
           {
-            echo "=== Filtered WebKit console & error lines from sim-log-stream.txt ==="
-            grep -v "found no value for key" "$LOG_STREAM" | grep -iE "error|exception|panic|uncaught|failed|rejected|crash|console|javascript|page message" | head -n 400 || true
+            echo "=== WebKit CONSOLE messages from sim-log-stream.txt ==="
+            grep "CONSOLE " "$LOG_STREAM" | head -n 400 || true
+            echo ""
+            echo "=== Filtered WebKit/app error lines from sim-log-stream.txt ==="
+            grep -v "found no value for key" "$LOG_STREAM" | grep -iE "error|exception|panic|uncaught|failed|rejected|crash" | head -n 300 || true
             echo ""
             echo "=== app-stderr.txt ==="
             cat "$ART_DIR/logs/app-stderr.txt" || true
