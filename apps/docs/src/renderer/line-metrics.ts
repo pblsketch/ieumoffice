@@ -906,12 +906,16 @@ function fontTableAltName(font: string): string | undefined {
  * lays it out in Batang even when the named face is installed (corpus
  * 2026-09-24, a Nanum Myeongjo declared by its Korean name with altName Batang
  * pitched 1.3029 with Batang advances), so the installed head must not lead.
+ * Batang and BatangChe themselves (and altName "BatangChe") are excluded so
+ * Korean Word's native BatangChe keeps its own face instead of collapsing into
+ * Batang / GenOffice Serif KR.
  */
 export function krBatangAltNamed(font: string): boolean {
   const head = font.split(',')[0].replace(/['"]/g, '').normalize('NFKC').trim()
   if (!/[\uac00-\ud7a3]/.test(head)) return false
+  if (/^\ubc14\ud0d5\uccb4?$/.test(head)) return false
   const alt = docFontTable.get(head.toLowerCase())?.altName?.normalize('NFKC').toLowerCase()
-  return !!alt && /batang|\ubc14\ud0d5/.test(alt)
+  return !!alt && /^(?:batang|\ubc14\ud0d5)$/.test(alt)
 }
 
 /** PANOSE serif-style byte (2nd): 0B-0F sans, 02-0A serif, 00/01/none unknown */

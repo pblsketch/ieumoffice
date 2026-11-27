@@ -1099,6 +1099,20 @@ describe('document fontTable substitution hints', () => {
     expect(cssFontFamily('NanumMyeongjo')).toContain("'NanumMyeongjo'")
   })
 
+  it('keeps BatangChe and Batang on their own chains despite fontTable altName', () => {
+    setDocFontTable([
+      { name: '\ubc14\ud0d5\uccb4', altName: 'BatangChe' },
+      { name: '\ubc14\ud0d5', altName: 'Batang' },
+    ])
+    expect(lineHeightFactor('\ubc14\ud0d5\uccb4')).toBe(1.3029)
+    expect(cssFontFamily('\ubc14\ud0d5\uccb4')).toBe(
+      "'\ubc14\ud0d5\uccb4','GenOffice Che Latin KR','GenOffice Batang','GenOffice Serif KR','GenOffice Myungjo','Noto Serif KR',serif",
+    )
+    expect(cssFontFamily('\ubc14\ud0d5')).toBe(
+      "'\ubc14\ud0d5','GenOffice Batang','GenOffice Serif KR','GenOffice Myungjo','Noto Serif KR',serif",
+    )
+  })
+
   it('missing hangul-named face with a sans PANOSE takes the Malgun class', () => {
     setDocFontTable([{ name: '원신한 Light', panose: '020B0303000000000000' }])
     expect(cssFontFamily('원신한 Light')).toBe(

@@ -5655,6 +5655,18 @@ describe('page-bottom fit: the last line needs only its single-spacing extent (l
     document.body.appendChild(el)
     try {
       expect(lineLeadPx(el)).toBeCloseTo(10, 5)
+      // typed line grid (18pt = 24px pitch at 1.5x = 36px): half of the
+      // centered 12px extra sits below the cell and does not force a break
+      el.style.lineHeight = '36px'
+      el.style.setProperty('--doc-grid-pitch', '18pt')
+      expect(lineLeadPx(el)).toBeCloseTo(6, 5)
+      // taller snapped single cell (e.g. 2 cells = 48px > 1.5 * 24px): no multiple extra
+      el.style.lineHeight = '48px'
+      expect(lineLeadPx(el)).toBe(0)
+      // off-grid opt-out (0.0001px) restores the non-grid auto-multiple rule
+      el.style.lineHeight = '30px'
+      el.style.setProperty('--doc-grid-pitch', '0.0001px')
+      expect(lineLeadPx(el)).toBeCloseTo(10, 5)
       el.classList.add('doc-lh-fixed')
       expect(lineLeadPx(el)).toBe(0)
     } finally {
