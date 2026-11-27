@@ -1441,6 +1441,151 @@ jobs:
                   trace(f"[OK] 08-home-before-open ({el_open_btn['how']})")
 
                   # ============================================================
+                  # Scenario (1b): Reopen saved Untitled.md from Home Recent Docs
+                  #                -> verify persisted text -> edit -> in-place
+                  #                overwrite save (no picker) -> return to Home
+                  # ============================================================
+                  if md_saved_ok:
+                      el_recent_md = wait_for_element(
+                          insp,
+                          "08b-find-recent-md",
+                          ['[data-testid="home-recent-list"] [data-testid^="home-file-row-open-"]'],
+                          ["Untitled.md"],
+                          timeout_s=8.0,
+                      )
+                      reopen_ok = False
+                      overwrite_ok = False
+                      reopen_note = ""
+                      if el_recent_md:
+                          ok_r, via_r = tap_element(
+                              insp,
+                              el_recent_md,
+                              ['[data-testid="home-recent-list"] [data-testid^="home-file-row-open-"]'],
+                              ["Untitled.md"],
+                          )
+                          el_edit_btn = wait_for_element(
+                              insp,
+                              "08b-recent-reopen",
+                              ['[data-testid="editor-mode-toggle"]'],
+                              ["편집", "Edit"],
+                              timeout_s=12.0,
+                          )
+                          time.sleep(1.2)
+                          shot8b = screenshot("08b-recent-reopen.png")
+                          st8b = dump_page_state(insp, "08b-recent-reopen")
+                          body8b = (st8b or {}).get("bodyTextHead") or ""
+                          reopen_ok = bool(
+                              el_edit_btn
+                              and (st8b or {}).get("shellMode") == "view"
+                              and sample_text in body8b
+                          )
+                          summary["checks"]["recent_md_reopen"] = {
+                              "ok": reopen_ok,
+                              "shellMode": (st8b or {}).get("shellMode"),
+                              "bodyHead": body8b[:120],
+                          }
+                          summary["steps"].append({
+                              "step": "08b-recent-reopen",
+                              "ok": reopen_ok,
+                              "via": via_r,
+                              "reason": f"mode={(st8b or {}).get('shellMode')}, containsText={sample_text in body8b}",
+                              "screenshot": shot8b,
+                          })
+                          trace(f"[STEP] 08b-recent-reopen ok={reopen_ok} mode={(st8b or {}).get('shellMode')} hasText={sample_text in body8b}")
+
+                          if reopen_ok and el_edit_btn:
+                              # Switch to edit mode, append text, and verify in-place overwrite save.
+                              tap_element(insp, el_edit_btn, ['[data-testid="editor-mode-toggle"]'], ["편집", "Edit"])
+                              el_ta2 = wait_for_element(insp, "08c-find-ta", ['[data-testid="markdown-editor-textarea"]'], [], timeout_s=10.0)
+                              if el_ta2:
+                                  time.sleep(0.8)
+                                  st8c_pre = dump_page_state(insp, "08c-before-edit")
+                                  if (st8c_pre or {}).get("activeTestId") != "markdown-editor-textarea":
+                                      axe_tap_xy(el_ta2["cx"], int(el_ta2["y"] + 40), "focus-reopened-md-ta")
+                                      time.sleep(0.8)
+                                  append_token = " v2"
+                                  if axe_ready:
+                                      rc_t3, out_t3, err_t3 = run_cmd(["axe", "type", append_token, "--udid", udid], timeout=20)
+                                      trace(f"axe type (reopen) rc={rc_t3} out={out_t3.strip()[:80]} err={err_t3.strip()[:80]}")
+                                      time.sleep(1.0)
+                                  st8c_dirty = dump_page_state(insp, "08c-after-edit")
+                                  md_val2 = (st8c_dirty or {}).get("mdValue") or ""
+                                  if "v2" not in md_val2:
+                                      # Fallback if keyboard cursor was inactive.
+                                      insp.eval_js(f"""(() => {{
+                                        const ta = document.querySelector('[data-testid="markdown-editor-textarea"]');
+                                        if (!ta) return false;
+                                        ta.focus();
+                                        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                                        setter.call(ta, {json.dumps(sample_text + append_token)});
+                                        ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                        return true;
+                                      }})()""")
+                                      time.sleep(0.8)
+                                      st8c_dirty = dump_page_state(insp, "08c-after-edit-fallback")
+                                      md_val2 = (st8c_dirty or {}).get("mdValue") or ""
+
+                                  el_done2 = wait_for_element(insp, "08c-find-done", ['[data-testid="editor-mode-toggle"]'], ["완료", "Done"], timeout_s=8.0)
+                                  if el_done2:
+                                      ok_ow, via_ow = tap_element(insp, el_done2, ['[data-testid="editor-mode-toggle"]'], ["완료", "Done"])
+                                      st8c_saved = None
+                                      ow_deadline = time.time() + 8.0
+                                      while time.time() < ow_deadline:
+                                          time.sleep(1.0)
+                                          st8c_saved = dump_page_state(insp, "08c-after-overwrite")
+                                          if (st8c_saved or {}).get("shellMode") == "view" and (st8c_saved or {}).get("saveBtnState") != "saving":
+                                              break
+                                      shot8c = screenshot("08c-recent-overwrite-saved.png")
+                                      body8c = (st8c_saved or {}).get("bodyTextHead") or ""
+                                      has_ro_notice = "외부 앱에서 공유된" in body8c
+                                      overwrite_ok = bool(
+                                          (st8c_saved or {}).get("shellMode") == "view"
+                                          and "v2" in body8c
+                                          and not has_ro_notice
+                                      )
+                                      reopen_note = f"mdVal2={md_val2!r}, mode={(st8c_saved or {}).get('shellMode')}, hasV2={'v2' in body8c}, roNotice={has_ro_notice}"
+                                      summary["checks"]["recent_md_overwrite"] = {
+                                          "ok": overwrite_ok,
+                                          "mdValueEdited": md_val2,
+                                          "shellMode": (st8c_saved or {}).get("shellMode"),
+                                          "hasV2": "v2" in body8c,
+                                          "readonlyNotice": has_ro_notice,
+                                          "bodyHead": body8c[:140],
+                                      }
+                                      summary["steps"].append({
+                                          "step": "08c-recent-overwrite-save",
+                                          "ok": overwrite_ok,
+                                          "via": via_ow,
+                                          "reason": reopen_note,
+                                          "screenshot": shot8c,
+                                      })
+                                      trace(f"[STEP] 08c-recent-overwrite-save ok={overwrite_ok} {reopen_note}")
+
+                                      # If overwrite unexpectedly opened a picker, dismiss it before returning Home.
+                                      if not overwrite_ok:
+                                          dismiss_native_picker_if_open("08c-dismiss-unexpected-picker")
+
+                              # Return to Home before Scenario (2)
+                              el_back_r = wait_for_element(insp, "08d-find-back", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=8.0)
+                              if el_back_r:
+                                  tap_element(insp, el_back_r, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                                  time.sleep(1.2)
+                                  el_disc_r = wait_for_element(insp, "08d-check-unsaved", [], ["저장 안 함", "Discard"], timeout_s=1.5, poll_s=0.5)
+                                  if el_disc_r:
+                                      tap_element(insp, el_disc_r, [], ["저장 안 함", "Discard"])
+                                      time.sleep(1.2)
+                              el_open_btn = wait_for_element(
+                                  insp,
+                                  "08d-home-after-overwrite",
+                                  ['[data-testid="home-open-file-btn"]', '[data-testid="home-empty-open"]'],
+                                  ["파일 열기", "Open file"],
+                                  timeout_s=12.0,
+                              ) or el_open_btn
+                      else:
+                          trace("[FINDING] 08b-recent-reopen: saved Untitled.md row not found in home-recent-list")
+                          summary["findings"].append("Saved Untitled.md row not found in home-recent-list")
+
+                  # ============================================================
                   # Scenario (2): Home [Open file] -> iOS File picker (pickOpenFile)
                   #               -> open saved .md if visible, else cancel
                   # ============================================================
