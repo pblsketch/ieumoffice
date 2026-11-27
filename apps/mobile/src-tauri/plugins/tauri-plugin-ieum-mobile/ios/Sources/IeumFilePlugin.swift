@@ -230,8 +230,9 @@ public final class IeumFilePlugin: Plugin {
         invoke.resolve(["size": size])
     }
 
-    /// Writes a local file over a document. The write itself is atomic here (temporary file, then
-    /// replace); the Rust side also keeps a copy of the original and checks the result.
+    /// Writes a local file over a document. Uses atomic replacement inside linked folders (where
+    /// the folder's security scope covers sibling temp files), and direct coordinated writes for
+    /// single-file security-scoped URLs where iOS denies creating temp files in the parent folder.
     @objc public func writeUriFromFile(_ invoke: Invoke) throws {
         let args = try invoke.parseArgs(UriPathArgs.self)
         guard let src = appLocalFile(args.path) else {
@@ -250,16 +251,21 @@ public final class IeumFilePlugin: Plugin {
             invoke.reject("INTERNAL_ERROR: \(error.localizedDescription)")
             return
         }
+        let hasFolderScope = location.treeBookmark != nil
+        let coordOptions: NSFileCoordinator.WritingOptions = hasFolderScope ? .forReplacing : []
+        let writeOptions: Data.WritingOptions = hasFolderScope ? .atomic : []
         var coordinatorError: NSError?
         var writeError: Error?
-        NSFileCoordinator().coordinate(writingItemAt: location.url, options: .forReplacing, error: &coordinatorError) { coordinatedUrl in
+        NSFileCoordinator().coordinate(writingItemAt: location.url, options: coordOptions, error: &coordinatorError) { coordinatedUrl in
             do {
-                try data.write(to: coordinatedUrl, options: .atomic)
+                try data.write(to: coordinatedUrl, options: writeOptions)
             } catch {
                 writeError = error
             }
         }
         if let err = coordinatorError ?? writeError {
+            let ns = err as NSError
+            NSLog("[IeumFilePlugin] writeUriFromFile failed domain=%@ code=%ld folderScope=%d accessed=%d", ns.domain, ns.code, hasFolderScope ? 1 : 0, location.accessed ? 1 : 0)
             invoke.reject("READ_ONLY_URI: \(err.localizedDescription)")
             return
         }
@@ -352,7 +358,9 @@ public final class IeumFilePlugin: Plugin {
                 invoke.reject("INTERNAL_ERROR: missing presenter")
                 return
             }
-            let picker = UIDocumentPickerViewController(forExporting: [placeholder], asCopy: true)
+            // Move the placeholder (asCopy: false) so iOS grants persistent security-scoped
+            // read/write access to the chosen destination URL for bookmarkData and writeUriFromFile.
+            let picker = UIDocumentPickerViewController(forExporting: [placeholder], asCopy: false)
             let delegate = DocumentPickerDelegate { [weak self] url in
                 self?.activePickerDelegate = nil
                 try? FileManager.default.removeItem(at: tempDir)
@@ -377,6 +385,8 @@ public final class IeumFilePlugin: Plugin {
                         "ephemeral": false
                     ])
                 } catch {
+                    let ns = error as NSError
+                    NSLog("[IeumFilePlugin] createSaveFile bookmark failed domain=%@ code=%ld accessed=%d", ns.domain, ns.code, accessed ? 1 : 0)
                     invoke.reject("PERMISSION_DENIED: \(error.localizedDescription)")
                 }
             }
