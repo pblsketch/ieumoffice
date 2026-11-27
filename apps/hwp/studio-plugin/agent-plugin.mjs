@@ -6908,7 +6908,7 @@ function pageNumberOf(doc, sec, para) {
 }
 
 /** The width of the text of a section's page, in points. */
-function textWidthPt(doc, sec) {
+export function textWidthPt(doc, sec) {
   const page = parse(doc.getPageDef(sec))
   const width = (page.landscape ? page.height : page.width) - page.marginLeft - page.marginRight
   return Math.max(100, Math.round((width - (page.marginGutter ?? 0)) / 100))
@@ -7070,7 +7070,7 @@ function columnsWhereLaid(doc, sec, para) {
  * The width one column of a section takes in the engine's units, not rounded to points:
  * a tab stop at the right edge must not stand past it.
  */
-function columnWidthUnits(doc, sec) {
+export function columnWidthUnits(doc, sec) {
   const page = parse(doc.getPageDef(sec))
   const text =
     (page.landscape ? page.height : page.width) -
@@ -7387,7 +7387,7 @@ function checkTocEntries(entries) {
  * it reads as a list. Not lines with a right tab, as Hangul makes them: rhwp writes a new
  * tab without the width Hangul keeps in it, and Hangul then shows the tab as nothing.
  */
-function tocHtml(rows, widthPt) {
+export function tocHtml(rows, widthPt) {
   const textOf = ({ font }) =>
     [
       font.family ? `font-family:${font.family};mso-fareast-font-family:${font.family}` : '',
@@ -7417,7 +7417,7 @@ const tocLevelStyle = (level) => `차례 ${level}`
  * Else in the body font (bodyFontOf), indented per level, the title in bold body text.
  * `levels` maps a level to its style id (null without), font and indent.
  */
-function tocLookOf(doc, entries) {
+export function tocLookOf(doc, entries) {
   const used = [...new Set(entries.map((entry) => entry.level))]
   const ids = used.map((level) => styleIdOf(doc, tocLevelStyle(level)))
   const styled = ids.every((id) => id !== null)
@@ -7497,7 +7497,7 @@ function lineAbove(doc, tables, sec, para) {
  * (its number and the line of text right above it), or Hangul's own contents under a 차례 or
  * 목차 line, whose first line with text ends in a tab and a page number.
  */
-function contentsOf(doc, made) {
+export function contentsOf(doc, made) {
   if (made.length > 0) {
     const { tables } = tablesOf(doc)
     for (let i = 0; i < tables.length; i++) {
@@ -7538,7 +7538,7 @@ const emsOf = (ch) => (ch.codePointAt(0) > 0x2e7f ? 1 : 0.55)
  * another, and the two then also count different pages. Headings are short; a whole
  * paragraph taken for one is not, and is cut.
  */
-function oneLine(text, look, widthPt) {
+export function oneLine(text, look, widthPt) {
   const room = (widthPt - TOC_PAGE_COLUMN_PT - look.indentPt - TOC_CELL_SLACK_PT) / look.font.points
   let used = 0
   let out = ''
@@ -7887,7 +7887,7 @@ let memoProbeTimer = null
  * do so): with the widths measured on this screen on, pages could break differently. They
  * are put back afterwards.
  */
-function withPortableWidths(doc, fn) {
+export function withPortableWidths(doc, fn) {
   const measured = doc.canvasMetricsActive?.() ?? false
   if (measured) doc.selectCanvasMetrics(false)
   try {

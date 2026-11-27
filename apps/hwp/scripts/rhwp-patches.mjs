@@ -228,7 +228,7 @@
  *   classifier (packages/ui/src/wheel-zoom.ts), as in the other editors: five percentage
  *   points per notch onto the 5% grid, a trackpad pinch in the same steps.
  *
- * studio-hyperlink-open, studio-hyperlink-preview
+ * studio-hyperlink-open, studio-hyperlink-preview, studio-hyperlink-bookmark
  *   Clicking a web hyperlink in the document or the preview button in the hyperlink dialog
  *   calls `window.open('about:blank', '_blank')` and then writes the real URL into the popup
  *   window. In Electron `setWindowOpenHandler` routes the opened URL through `safeExternalUrl`
@@ -237,7 +237,10 @@
  *   and nothing opened. Open the validated URL directly with `window.open(url, '_blank',
  *   'noopener,noreferrer')` without expecting a window handle back; route `mailto:` the same
  *   way so it goes through `safeExternalUrl` + `shell.openExternal` instead of navigating the
- *   editor iframe.
+ *   editor iframe. Internal document bookmark links (`#name`, `?name`, or `link.bookmark`)
+ *   are recognized even when `classifyHyperlinkDestination` returns null for `?name`, match
+ *   exact raw names before percent-decoded fallback, move and scroll the caret to the target
+ *   bookmark, and skip applying visited-link purple formatting so TOC lines stay clean.
  */
 
 import { CLIPBOARD_HTML_MODULE } from '../studio-plugin/clipboard-html.mjs'
@@ -1918,6 +1921,46 @@ const PATCHES = {
       "      mail: uri => { window.open(uri, '_blank', 'noopener,noreferrer'); return true; },",
     ].join('\n'),
   },
+  'studio-hyperlink-bookmark': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-hyperlink\.ts$/,
+    edits: [
+      {
+        find: '      if (!self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+        replace: [
+          "      const isBookmarkLink = Boolean(link.bookmark) || link.uri.startsWith('?');",
+          '      if (!isBookmarkLink && !self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const destination = self.wasm.classifyHyperlinkDestination(current.link.uri);',
+          '    if (!destination) return;',
+        ].join('\n'),
+        replace: [
+          "    const bookmarkName = current.link.bookmark || (current.link.uri.startsWith('?') ? current.link.uri.slice(1) : null);",
+          '    const destination = bookmarkName',
+          "      ? { kind: 'documentAnchor' as const, uri: `#${bookmarkName}` }",
+          '      : self.wasm.classifyHyperlinkDestination(current.link.uri);',
+          '    if (!destination) return;',
+          "    if (destination.kind === 'documentAnchor') {",
+          '      const rawName = bookmarkName ?? destination.uri.slice(1);',
+          '      let decodedName = rawName;',
+          '      try { decodedName = decodeURIComponent(rawName); } catch { /* keep raw */ }',
+          '      const bookmarks = self.wasm.getBookmarks();',
+          '      const bookmark =',
+          '        bookmarks.find((item: any) => item.name === rawName)',
+          '        ?? bookmarks.find((item: any) => item.name === decodedName);',
+          '      if (!bookmark || !self.moveCursorTo({ sectionIndex: bookmark.sec, paragraphIndex: bookmark.para, charOffset: bookmark.charPos })) {',
+          "        showToast({ message: '연결된 문서 책갈피를 찾거나 이동할 수 없습니다.' });",
+          '      } else {',
+          '        self.updateCaret?.();',
+          '      }',
+          '      return;',
+          '    }',
+        ].join('\n'),
+      },
+    ],
+  },
   'studio-hyperlink-preview': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]hyperlink-dialog\.ts$/,
     find: [
@@ -2548,6 +2591,7 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-object-duplicate',
   'studio-wheel-zoom',
   'studio-hyperlink-open',
+  'studio-hyperlink-bookmark',
   'studio-hyperlink-preview',
   'studio-textbox-edit-mouse',
   'studio-textbox-edit-picture',

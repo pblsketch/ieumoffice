@@ -9629,6 +9629,30 @@ export class HwpDocument {
         }
     }
     /**
+     * Lists all objects carrying a caption in document reading order.
+     *
+     * Read-only query: never mutates document content, layout, or serialization state.
+     * @returns {string}
+     */
+    listObjectCaptions() {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ret = wasm.hwpdocument_listObjectCaptions(this.__wbg_ptr);
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
      * 논리적 오프셋 → 텍스트 오프셋 변환.
      * @param {number} section_idx
      * @param {number} para_idx

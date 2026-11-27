@@ -413,6 +413,7 @@ export const hwpdocument_insertTextInHeaderFooter: (a: number, b: number, c: num
 export const hwpdocument_insertTextLogical: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
 export const hwpdocument_isEmptyDocument: (a: number) => number;
 export const hwpdocument_listCharts: (a: number) => [number, number, number, number];
+export const hwpdocument_listObjectCaptions: (a: number) => [number, number, number, number];
 export const hwpdocument_logicalToTextOffset: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const hwpdocument_measureWidthDiagnostic: (a: number, b: number, c: number) => [number, number, number, number];
 export const hwpdocument_mergeParagraph: (a: number, b: number, c: number) => [number, number, number, number];

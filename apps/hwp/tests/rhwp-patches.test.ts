@@ -1594,6 +1594,79 @@ describe('rhwp hyperlink open patches', () => {
       /studio-hyperlink-preview/,
     )
     expect(STUDIO_PATCHES).toContain('studio-hyperlink-open')
+    expect(STUDIO_PATCHES).toContain('studio-hyperlink-bookmark')
     expect(STUDIO_PATCHES).toContain('studio-hyperlink-preview')
+  })
+})
+
+describe('rhwp hyperlink bookmark navigation patch', () => {
+  const snippet = [
+    '    for (const link of context.links as HyperlinkInfo[]) {',
+    '      if (!self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+    '    }',
+    '    const destination = self.wasm.classifyHyperlinkDestination(current.link.uri);',
+    '    if (!destination) return;',
+    '    const generation = self.wasm.documentGeneration;',
+  ].join('\n')
+
+  it('recognizes ?bookmark links, resolves exact raw names before decode fallback, scrolls caret, and skips visited purple color', () => {
+    const patched = applyPatch('studio-hyperlink-bookmark', snippet)
+    expect(patched).toContain(
+      "const isBookmarkLink = Boolean(link.bookmark) || link.uri.startsWith('?');",
+    )
+    expect(patched).toContain(
+      'if (!isBookmarkLink && !self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+    )
+    expect(patched).toContain("if (destination.kind === 'documentAnchor') {")
+    expect(patched).toContain('bookmarks.find((item: any) => item.name === rawName)')
+    expect(patched).toContain('bookmarks.find((item: any) => item.name === decodedName)')
+    expect(patched).toContain(
+      'self.moveCursorTo({ sectionIndex: bookmark.sec, paragraphIndex: bookmark.para, charOffset: bookmark.charPos })',
+    )
+    expect(patched).toContain('self.updateCaret?.();')
+    // Returns before navigateLink / visitHyperlink so internal bookmark links do not turn purple.
+    expect(patched.indexOf('return;\n    }')).toBeLessThan(
+      patched.indexOf('const generation = self.wasm.documentGeneration;'),
+    )
+  })
+
+  it('keeps CRLF sources working, fails when the text is gone, and composes cleanly on cached studio source', () => {
+    const crlf = applyPatch('studio-hyperlink-bookmark', snippet.replaceAll('\n', '\r\n'))
+    expect(crlf).toContain("if (destination.kind === 'documentAnchor') {\r\n")
+    expect(crlf).not.toMatch(/[^\r]\n/)
+    expect(() => applyPatch('studio-hyperlink-bookmark', 'if (!destination) return;')).toThrow(
+      /studio-hyperlink-bookmark/,
+    )
+
+    const core = JSON.parse(
+      readFileSync(
+        join(__dirname, '..', '..', '..', 'vendor', 'rhwp-core', 'package.json'),
+        'utf8',
+      ),
+    )
+    const hyperlinkFile = join(
+      __dirname,
+      '..',
+      'node_modules',
+      '.cache',
+      'rhwp-studio',
+      core.rhwp.tag,
+      'rhwp-studio',
+      'src',
+      'engine',
+      'input-handler-hyperlink.ts',
+    )
+    if (existsSync(hyperlinkFile)) {
+      const raw = readFileSync(hyperlinkFile, 'utf8')
+      const combined = applyPatch(
+        'studio-hyperlink-bookmark',
+        applyPatch('studio-hyperlink-open', raw),
+      )
+      const out = ts.transpileModule(combined, {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 },
+        reportDiagnostics: true,
+      })
+      expect(out.diagnostics ?? []).toEqual([])
+    }
   })
 })

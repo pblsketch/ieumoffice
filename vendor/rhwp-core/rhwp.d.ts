@@ -2078,6 +2078,12 @@ export class HwpDocument {
      */
     listCharts(): string;
     /**
+     * Lists all objects carrying a caption in document reading order.
+     *
+     * Read-only query: never mutates document content, layout, or serialization state.
+     */
+    listObjectCaptions(): string;
+    /**
      * 논리적 오프셋 → 텍스트 오프셋 변환.
      */
     logicalToTextOffset(section_idx: number, para_idx: number, logical_offset: number): number;
@@ -3663,6 +3669,7 @@ export interface InitOutput {
     readonly hwpdocument_insertTextLogical: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly hwpdocument_isEmptyDocument: (a: number) => number;
     readonly hwpdocument_listCharts: (a: number) => [number, number, number, number];
+    readonly hwpdocument_listObjectCaptions: (a: number) => [number, number, number, number];
     readonly hwpdocument_logicalToTextOffset: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly hwpdocument_measureWidthDiagnostic: (a: number, b: number, c: number) => [number, number, number, number];
     readonly hwpdocument_mergeParagraph: (a: number, b: number, c: number) => [number, number, number, number];
