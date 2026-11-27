@@ -50,6 +50,10 @@ export const id = {
     'Tidak dapat menyisipkan daftar isi di dalam tabel. Letakkan kursor di paragraf isi.',
   tocErrorUnsupportedPlace:
     'Tidak dapat menyisipkan daftar isi di sini. Letakkan kursor di paragraf isi.',
+  tocErrorHasObjects:
+    'Daftar isi tidak diganti karena berisi objek pengguna seperti catatan kaki, gambar, atau tabel.',
+  tocErrorMultiSection:
+    'Tidak dapat memperbarui secara otomatis karena daftar isi mencakup beberapa bagian.',
   tocErrorNoHeadings: 'Tidak ada judul yang cocok ditemukan.',
   tocErrorNoCaptions: 'Tidak ada keterangan yang cocok ditemukan.',
   tocErrorGeneric: 'Tidak dapat memperbarui daftar isi: {error}',
@@ -60,6 +64,13 @@ export const id = {
   indexMarkSubTermLabel: 'Sub-entri (opsional)',
   indexMarkSubTermPlaceholder: 'Kosongkan untuk entri utama saja',
   indexMarkAllLabel: 'Tandai semua kemunculan yang sama',
+  indexMarkAllPreviewTitle: 'Konfirmasi Tandai Semua Entri Indeks',
+  indexMarkAllPreviewMessage: 'Tandai {count} kemunculan yang cocok di isi dokumen?',
+  indexMarkAllPreviewParticlesNote: 'Bentuk kata dengan partikel tata bahasa juga disertakan.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} kemunculan di dalam tabel, kotak teks, atau catatan akan dilewati.',
+  indexMarkAllPreviewConfirm: 'Tandai semua',
+  indexMarkAllPreviewMore: 'dan {count} kemunculan lainnya',
   indexMarksListTitle: 'Tanda indeks yang ada ({count})',
   indexMarksListEmpty: 'Belum ada tanda indeks dalam dokumen ini.',
   indexMarkPageBadge: 'hal. {page}',
@@ -80,6 +91,10 @@ export const id = {
   indexColumnsLabel: 'Kolom',
   indexColumnsOption: '{count} kolom',
   indexGroupHeadingsLabel: 'Sertakan judul kelompok abjad',
+  indexPageSplitConfirmTitle: 'Konfirmasi Pemisahan Halaman Indeks Multikolom',
+  indexPageSplitConfirmMessage:
+    'Halaman baru akan disisipkan sebelum dan sesudah indeks multikolom. Lanjutkan?',
+  indexPageSplitConfirmAction: 'Lanjutkan',
   indexCreatedToast: 'Indeks dibuat ({count} entri).',
   indexRefreshedToast: 'Indeks diperbarui ({count} entri).',
   indexRefreshNotFound: 'Tidak ada indeks yang ditemukan untuk diperbarui.',
@@ -88,6 +103,8 @@ export const id = {
     'Tidak dapat menyisipkan indeks di dalam tabel. Letakkan kursor di paragraf isi.',
   indexErrorUnsupportedPlace:
     'Tidak dapat menyisipkan indeks di sini. Letakkan kursor di paragraf isi.',
+  indexErrorHasObjects:
+    'Indeks tidak diganti karena berisi objek pengguna seperti catatan kaki, gambar, atau tabel.',
   indexErrorAlreadyExists: 'Indeks sudah ada di dokumen ini. Gunakan "Perbarui Indeks".',
   indexErrorGeneric: 'Tidak dapat memperbarui indeks: {error}',
 } satisfies Record<keyof typeof zh, string>

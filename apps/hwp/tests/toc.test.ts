@@ -470,7 +470,71 @@ describe('legacy unmarked TOC detection and replacement', () => {
     expect(JSON.parse(doc.getStyleAt(0, 3)).name).toBe('개요 1')
   })
 
-  it('detects an unmarked 2-column TOC table and replaces it when replaceLegacy: true', () => {
+  it('never misclassifies arbitrary user 2-column tables under 차례/목차 as a legacy TOC', () => {
+    // Case A: 2-column roster table with numeric/letter values under a `차례` heading
+    const rosterDoc = makeDoc(['차례', '', '서론', '결론'])
+    rosterDoc.applyStyle(0, 2, styleIdByName(rosterDoc, '개요 1'))
+    rosterDoc.applyStyle(0, 3, styleIdByName(rosterDoc, '개요 1'))
+    rosterDoc.pasteHtml(
+      0,
+      1,
+      0,
+      '<table><tr><td><p>김민수</p></td><td><p>1</p></td></tr><tr><td><p>이서연</p></td><td><p>2</p></td></tr><tr><td><p>박지훈</p></td><td><p>A</p></td></tr></table>',
+    )
+
+    expect(detectLegacyToc(rosterDoc)).toBeNull()
+    const insertedA = insertTocBlock(rosterDoc, { sec: 0, para: 0 })
+    expect(insertedA.ok).toBe(true)
+    // User's 2-column table stayed completely intact after inserting the TOC.
+    const rosterTables = tablesOf(rosterDoc).tables
+    expect(rosterTables).toHaveLength(1)
+    expect(rosterTables[0].rows).toBe(3)
+    expect(rosterTables[0].cols).toBe(2)
+    const ciA = rosterTables[0].path[0].controlIndex
+    expect(
+      rosterDoc.getTextInCell(
+        rosterTables[0].sec,
+        rosterTables[0].para,
+        ciA,
+        0,
+        0,
+        0,
+        rosterDoc.getCellParagraphLength(rosterTables[0].sec, rosterTables[0].para, ciA, 0, 0),
+      ),
+    ).toBe('김민수')
+
+    // Case B: borderless 2-column score/count table under a `차례` heading
+    const scoreDoc = makeDoc(['차례', '', '서론', '결론'])
+    scoreDoc.applyStyle(0, 2, styleIdByName(scoreDoc, '개요 1'))
+    scoreDoc.applyStyle(0, 3, styleIdByName(scoreDoc, '개요 1'))
+    scoreDoc.pasteHtml(
+      0,
+      1,
+      0,
+      '<table style="border:none"><tr><td style="border:none"><p>출석</p></td><td style="border:none"><p>10</p></td></tr><tr><td style="border:none"><p>과제</p></td><td style="border:none"><p>20</p></td></tr><tr><td style="border:none"><p>시험</p></td><td style="border:none"><p>70</p></td></tr></table>',
+    )
+
+    expect(detectLegacyToc(scoreDoc)).toBeNull()
+    const insertedB = insertTocBlock(scoreDoc, { sec: 0, para: 0 })
+    expect(insertedB.ok).toBe(true)
+    const scoreTables = tablesOf(scoreDoc).tables
+    expect(scoreTables).toHaveLength(1)
+    expect(scoreTables[0].rows).toBe(3)
+    const ciB = scoreTables[0].path[0].controlIndex
+    expect(
+      scoreDoc.getTextInCell(
+        scoreTables[0].sec,
+        scoreTables[0].para,
+        ciB,
+        0,
+        0,
+        0,
+        scoreDoc.getCellParagraphLength(scoreTables[0].sec, scoreTables[0].para, ciB, 0, 0),
+      ),
+    ).toBe('출석')
+  })
+
+  it('detects a legacy 2-column TOC table only via contentsOf/made history and replaces it when replaceLegacy: true', () => {
     const doc = makeDoc(['목차', '', '서론', '결론'])
     doc.applyStyle(0, 2, styleIdByName(doc, '개요 1'))
     doc.applyStyle(0, 3, styleIdByName(doc, '개요 1'))
@@ -481,20 +545,29 @@ describe('legacy unmarked TOC detection and replacement', () => {
       '<table><tr><td><p>서론</p></td><td><p>1</p></td></tr><tr><td><p>결론</p></td><td><p>2</p></td></tr></table>',
     )
 
-    const legacy = detectLegacyToc(doc)
-    expect(legacy).not.toBeNull()
-    expect(legacy?.source).toBe('table')
-    expect(legacy?.startPara).toBe(0)
-    expect(legacy?.endPara).toBe(1)
+    // Without session `made` history, a 2-column table is never classified as a legacy TOC.
+    expect(detectLegacyToc(doc)).toBeNull()
 
-    const refused = insertTocBlock(doc, { sec: 0, para: 0 })
+    const made = [['서론', '결론']]
+    // Detected both via registered contentsOf helper and standalone fallback when `made` matches.
+    const legacyViaHelper = detectLegacyToc(doc, { made, helpers: { contentsOf, tablesOf } })
+    expect(legacyViaHelper).not.toBeNull()
+    expect(legacyViaHelper?.source).toBe('table')
+    expect(legacyViaHelper?.startPara).toBe(0)
+    expect(legacyViaHelper?.endPara).toBe(1)
+
+    const legacyStandalone = detectLegacyToc(doc, { made })
+    expect(legacyStandalone).not.toBeNull()
+    expect(legacyStandalone?.source).toBe('table')
+
+    const refused = insertTocBlock(doc, { sec: 0, para: 0 }, { made })
     expect(refused.ok).toBe(false)
     if (!refused.ok) expect(refused.reason).toBe('legacy_toc_found')
 
-    const replaced = insertTocBlock(doc, { sec: 0, para: 0 }, { replaceLegacy: true })
+    const replaced = insertTocBlock(doc, { sec: 0, para: 0 }, { made, replaceLegacy: true })
     expect(replaced.ok).toBe(true)
     if (!replaced.ok) return
-    // Old 2-col table was removed and replaced by dotted-tab marked TOC.
+    // Old session-made 2-col table was removed and replaced by dotted-tab marked TOC.
     expect(tablesOf(doc).tables).toHaveLength(0)
     expect(findTocRange(doc, 'body')).not.toBeNull()
     expect(replaced.count).toBe(2)
@@ -533,6 +606,45 @@ describe('refusals and staleness transitions', () => {
       ok: false,
       reason: 'no_entries',
     })
+  })
+
+  it('refuses replaceExisting and refreshTocBlock with multi_section_range without mutating when existing TOC spans sections', () => {
+    const doc = makeDoc(['차례 시작', '서론', '결론'])
+    doc.applyStyle(0, 1, styleIdByName(doc, '개요 1'))
+    doc.applyStyle(0, 2, styleIdByName(doc, '개요 1'))
+    doc.splitSection(0, 2, 0)
+    expect(doc.getSectionCount()).toBe(2)
+
+    doc.addBookmark(0, 0, 0, '차례:본문:시작')
+    doc.addBookmark(1, 0, 0, '차례:본문:끝')
+
+    const sec0CountBefore = doc.getParagraphCount(0)
+    const sec1CountBefore = doc.getParagraphCount(1)
+    const sec0Para0Before = paraText(doc, 0, 0)
+    const sec1Para0Before = paraText(doc, 1, 0)
+
+    const insertRefused = insertTocBlock(doc, { sec: 0, para: 0 }, { replaceExisting: true })
+    expect(insertRefused.ok).toBe(false)
+    if (!insertRefused.ok) {
+      expect(insertRefused.reason).toBe('multi_section_range')
+      expect(insertRefused.range?.start.sec).toBe(0)
+      expect(insertRefused.range?.end.sec).toBe(1)
+    }
+
+    const refreshRefused = refreshTocBlock(doc)
+    expect(refreshRefused.ok).toBe(false)
+    if (!refreshRefused.ok) {
+      expect(refreshRefused.reason).toBe('multi_section_range')
+      expect(refreshRefused.range?.start.sec).toBe(0)
+      expect(refreshRefused.range?.end.sec).toBe(1)
+    }
+
+    // Document remained completely untouched.
+    expect(doc.getSectionCount()).toBe(2)
+    expect(doc.getParagraphCount(0)).toBe(sec0CountBefore)
+    expect(doc.getParagraphCount(1)).toBe(sec1CountBefore)
+    expect(paraText(doc, 0, 0)).toBe(sec0Para0Before)
+    expect(paraText(doc, 1, 0)).toBe(sec1Para0Before)
   })
 
   it('reports entries_changed staleness when headings are renamed or added', () => {

@@ -181,9 +181,20 @@ describe('staleness checker registry', () => {
       const tocEntryPara = bodyStart!.para + 1
       doc.insertText(0, tocEntryPara, 0, '[수동] ')
 
+      // Read-only check() pre-reports manual edits before calling refreshAll.
+      const hwpBeforeCheck = doc.exportHwp()
+      const preCheck = defaultStalenessRegistry.check(doc)
+      expect(preCheck.stale).toBe(true)
+      expect(preCheck.manualEdits.some((m) => m.id === 'toc:body')).toBe(true)
+      const tocItem = preCheck.items.find((i) => i.id === 'toc:body')
+      expect(tocItem?.hasManualEdits).toBe(true)
+      expect((tocItem?.modifiedLines ?? []).length).toBeGreaterThan(0)
+      expect(bytesEqual(doc.exportHwp(), hwpBeforeCheck)).toBe(true)
+
       const blocked = defaultStalenessRegistry.refreshAll(doc)
       expect(blocked.ok).toBe(false)
       expect(blocked.reason).toBe('manual_edits')
+      expect(blocked.refreshed).toBe(0)
       expect(blocked.manualEdits.length).toBeGreaterThan(0)
       expect(blocked.manualEdits.some((m) => m.id === 'toc:body')).toBe(true)
 
@@ -198,6 +209,81 @@ describe('staleness checker registry', () => {
     } finally {
       doc.free()
     }
+  })
+
+  it('converges multi-pass page shifts in one refreshAll call and fails atomically when any checker fails', () => {
+    // Build a document with a body TOC at the top and an index block at the end.
+    const doc = makeDoc(['초기 제목', '색인 대상 본문 문단'])
+    try {
+      const h1 = styleIdByName(doc, '개요 1')
+      doc.applyStyle(0, 0, h1)
+      expect(insertTocBlock(doc, { sec: 0, para: 0 }, { maxLevel: 3 }).ok).toBe(true)
+
+      const bodyPara = doc.getParagraphCount(0) - 1
+      expect(
+        addIndexMark(doc, { sec: 0, para: bodyPara, offset: 0 }, { term: '대상용어' }).ok,
+      ).toBe(true)
+      expect(
+        buildIndexBlock(doc, { sec: 0, para: bodyPara }, { where: 'after', columns: 1 }).ok,
+      ).toBe(true)
+      expect(defaultStalenessRegistry.check(doc).stale).toBe(false)
+
+      // Add 45 headings before the indexed paragraph so refreshing the TOC expands it onto
+      // page 2 and shifts the indexed paragraph onto a later page.
+      let insertAt = bodyPara
+      for (let i = 1; i <= 45; i++) {
+        doc.insertParagraph(0, insertAt)
+        doc.insertText(0, insertAt, 0, `추가 장 ${i}`)
+        doc.applyStyle(0, insertAt, h1)
+        insertAt += 1
+      }
+
+      const refreshed = defaultStalenessRegistry.refreshAll(doc)
+      expect(refreshed.ok).toBe(true)
+      expect(refreshed.refreshed).toBeGreaterThanOrEqual(2)
+      // Immediately converged after one refreshAll call!
+      expect(defaultStalenessRegistry.check(doc).stale).toBe(false)
+    } finally {
+      doc.free()
+    }
+
+    // Atomic failure: if any checker fails during refreshAll, stop immediately and return ok: false, refreshed: 0.
+    const registry = createStalenessRegistry()
+    let thirdCalled = false
+    registry.register({
+      id: 'first',
+      check: () => ({
+        stale: true,
+        items: [{ id: 'first', kind: 'first', reason: 'entries_changed' }],
+      }),
+      refresh: () => ({ ok: true, refreshed: 1 }),
+    })
+    registry.register({
+      id: 'second',
+      check: () => ({
+        stale: true,
+        items: [{ id: 'second', kind: 'second', reason: 'entries_changed' }],
+      }),
+      refresh: () => ({ ok: false, refreshed: 0, failed: 'has_objects' }),
+    })
+    registry.register({
+      id: 'third',
+      check: () => ({
+        stale: true,
+        items: [{ id: 'third', kind: 'third', reason: 'entries_changed' }],
+      }),
+      refresh: () => {
+        thirdCalled = true
+        return { ok: true, refreshed: 1 }
+      },
+    })
+
+    const atomicFail = registry.refreshAll({})
+    expect(atomicFail.ok).toBe(false)
+    expect(atomicFail.reason).toBe('refresh_failed')
+    expect(atomicFail.refreshed).toBe(0)
+    expect(atomicFail.failed).toEqual([{ id: 'second', error: 'has_objects' }])
+    expect(thirdCalled).toBe(false)
   })
 
   it('supports registering and unregistering custom checkers (e.g. bibliography)', () => {
@@ -302,11 +388,12 @@ describe('buildSubmissionCopy (HWP and HWPX)', () => {
 
       for (const format of ['hwpx', 'hwp'] as const) {
         const result = buildSubmissionCopy(doc, format, HwpDocument)
+        expect(result.ok).toBe(true)
+        if (!result.ok) continue
         expect(result.format).toBe(format)
         expect(result.bytes).toBeInstanceOf(Uint8Array)
         expect(result.bytes.length).toBeGreaterThan(0)
         expect(result.removed).toBeGreaterThan(0)
-        expect(result.failed).toBeUndefined()
 
         if (format === 'hwp') {
           expect(result.verify).toBeDefined()
@@ -356,6 +443,79 @@ describe('buildSubmissionCopy (HWP and HWPX)', () => {
       expect(res.removed).toBe(beforeStripped)
       expect(listMarks(doc, SUBMISSION_STRIP_PREFIXES)).toEqual([])
       expect(listMarks(doc, [MARK_PREFIXES.toc, MARK_PREFIXES.heading]).length).toBe(beforeKept)
+    } finally {
+      doc.free()
+    }
+  })
+
+  it('refuses submission copy with strip_failed when any mark fails to strip on the clone', () => {
+    const doc = makeRichDocument()
+    try {
+      class FailingStripDoc {
+        inner: HwpDocument
+        constructor(bytes: Uint8Array) {
+          this.inner = new HwpDocument(bytes)
+        }
+        getSectionCount() {
+          return this.inner.getSectionCount()
+        }
+        getParagraphCount(sec: number) {
+          return this.inner.getParagraphCount(sec)
+        }
+        getBookmarks() {
+          return this.inner.getBookmarks()
+        }
+        addBookmark(sec: number, para: number, offset: number, name: string) {
+          return this.inner.addBookmark(sec, para, offset, name)
+        }
+        removeBookmark() {
+          return JSON.stringify({ ok: false, error: 'simulated bookmark removal failure' })
+        }
+        exportHwp() {
+          return this.inner.exportHwp()
+        }
+        exportHwpx() {
+          return this.inner.exportHwpx()
+        }
+        pageCount() {
+          return this.inner.pageCount()
+        }
+        free() {
+          this.inner.free()
+        }
+      }
+
+      const result = buildSubmissionCopy(
+        doc,
+        'hwpx',
+        FailingStripDoc as unknown as typeof HwpDocument,
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('strip_failed')
+        expect(result.format).toBe('hwpx')
+        expect(result.failed.length).toBeGreaterThan(0)
+        expect('bytes' in result).toBe(false)
+      }
+    } finally {
+      doc.free()
+    }
+  })
+
+  it('measures HWP verification pageCountBefore on the pre-strip portable clone rather than mismatched live canvas metrics', () => {
+    const doc = makeRichDocument()
+    try {
+      // Simulate live editor having different canvas-metrics pagination than portable default metrics.
+      const liveProxy = Object.create(doc) as HwpDocument
+      liveProxy.pageCount = () => 99
+
+      const result = buildSubmissionCopy(liveProxy, 'hwp', HwpDocument)
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.verify).toBeDefined()
+      expect(result.verify?.recovered).toBe(true)
+      expect(result.verify?.pageCountBefore).toBe(result.verify?.pageCountAfter)
+      expect(result.verify?.pageCountBefore).not.toBe(99)
     } finally {
       doc.free()
     }
@@ -516,6 +676,50 @@ describe('agent-plugin Bundle 2 wiring (checkStaleItems, refreshAllStale, export
     }
   })
 
+  it('rolls back refreshAllStale atomically with has_objects and 0 undo steps when a footnote sits inside a TOC line', () => {
+    const start = makeRichDocument()
+    const { plugin, doc, steps } = openPluginHost(start)
+    try {
+      // Make both TOC and index stale, and place a real footnote inside the body TOC line.
+      const totalParas = doc().getParagraphCount(0)
+      let conclusionPara = -1
+      for (let p = 0; p < totalParas; p++) {
+        const len = doc().getParagraphLength(0, p)
+        if (len > 0 && doc().getTextRange(0, p, 0, len) === '결론') {
+          conclusionPara = p
+          break
+        }
+      }
+      expect(conclusionPara).toBeGreaterThan(-1)
+      doc().insertText(0, conclusionPara, doc().getParagraphLength(0, conclusionPara), ' 보완')
+      expect(
+        addIndexMark(doc(), { sec: 0, para: conclusionPara, offset: 0 }, { term: '보완' }).ok,
+      ).toBe(true)
+
+      const tocMarks = listMarks(doc(), [MARK_PREFIXES.toc])
+      const bodyStart = tocMarks.find((m) => m.name === '차례:본문:시작')
+      expect(bodyStart).toBeDefined()
+      const fnRes = JSON.parse(doc().insertFootnote(0, bodyStart!.para + 1, 0)) as { ok: boolean }
+      expect(fnRes.ok).toBe(true)
+
+      const countFootnotes = (d: HwpDocument) =>
+        (JSON.parse(d.getControls()) as Array<{ ctrlId: string }>).filter((c) => c.ctrlId === 'fn')
+          .length
+      expect(countFootnotes(doc())).toBe(1)
+
+      const bytesBefore = doc().exportHwp()
+      const blocked = plugin.refreshAllStale({ allowOverwriteManual: true })
+      expect(blocked.ok).toBe(false)
+      expect(blocked.reason).toBe('has_objects')
+      expect(blocked.refreshed).toBe(0)
+      expect(steps()).toBe(0)
+      expect(countFootnotes(doc())).toBe(1)
+      expect(bytesEqual(doc().exportHwp(), bytesBefore)).toBe(true)
+    } finally {
+      doc().free()
+    }
+  })
+
   it('exports a clean submission copy via exportSubmissionCopy without mutating live doc or undo stack', () => {
     const start = makeRichDocument()
     const { plugin, doc, steps } = openPluginHost(start)
@@ -524,11 +728,15 @@ describe('agent-plugin Bundle 2 wiring (checkStaleItems, refreshAllStale, export
       const liveHwpx = doc().exportHwpx()
 
       const hwpxCopy = plugin.exportSubmissionCopy('hwpx')
+      expect(hwpxCopy.ok).toBe(true)
+      if (!hwpxCopy.ok) return
       expect(hwpxCopy.format).toBe('hwpx')
       expect(hwpxCopy.removed).toBeGreaterThan(0)
       expect(steps()).toBe(0)
 
       const hwpCopy = plugin.exportSubmissionCopy('hwp')
+      expect(hwpCopy.ok).toBe(true)
+      if (!hwpCopy.ok) return
       expect(hwpCopy.format).toBe('hwp')
       expect(hwpCopy.removed).toBeGreaterThan(0)
       expect(hwpCopy.verify?.recovered).toBe(true)

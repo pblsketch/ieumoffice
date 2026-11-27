@@ -296,9 +296,9 @@ const SYSTEM_PROMPT = [
   '- Remove a whole table only when the user asks for it, for example the tables of a form that offers several to choose from. Text between the tables, such as an "or" line, is a paragraph of its own: remove it with delete_paragraph.',
   '',
   '## Table of contents and index',
-  '- Make a table of contents (insert_toc) only when the user asks. Body TOC (kind "body", default) collects outline headings and mapped heading styles up to maxLevel (1–10, default 3); caption TOCs (kind "table", "figure", "equation") collect object and caption-paragraph entries automatically with printed page numbers. Default layout is dotted-tab with internal bookmark links (layout "table" uses a borderless two-column table). Place it by 1-based section/paragraph or anchor/where.',
-  '- Call refresh_toc to rebuild a marked TOC in place when headings, captions, or page numbers change. If insert_toc or refresh_toc reports an existing unmarked legacy TOC, do not pass overwriteLegacy unless the user wants to replace it. If refresh_toc reports manual edits inside the TOC, do not pass overwriteManual unless the user confirms overwriting them.',
-  '- For a document index (찾아보기), mark body terms with mark_index (single position via 1-based section/paragraph + offset or find, or markAll: true for all whole-word body occurrences), inspect marks with list_index_marks, remove marks with remove_index_mark, generate the index block with insert_index (columns 1–3, groupHeadings, dotted-tab or table), and update it in place with refresh_index (pass overwriteManual only when the user confirms overwriting manual edits).',
+  '- Make a table of contents (insert_toc) only when the user asks. Body TOC (kind "body", default) collects outline headings and mapped heading styles up to max_level (1–10, default 3); caption TOCs (kind "table", "figure", "equation") collect object and caption-paragraph entries automatically with printed page numbers. Default layout is dotted-tab with internal bookmark links (layout "table" uses a borderless two-column table). Place it by 1-based section/paragraph or anchor/where.',
+  '- Call refresh_toc to rebuild a marked TOC in place when headings, captions, or page numbers change. If insert_toc or refresh_toc reports an existing unmarked legacy TOC, do not pass overwrite_legacy unless the user wants to replace it. If refresh_toc reports manual edits inside the TOC, do not pass overwrite_manual unless the user confirms overwriting them.',
+  '- For a document index (찾아보기), mark body terms with mark_index (single position via 1-based section/paragraph + offset or find, or mark_all: true for all whole-word body occurrences including Korean particle-attached forms unless include_particles: false), inspect marks with list_index_marks, remove marks with remove_index_mark, generate the index block with insert_index (columns 1–3, group_headings, dotted-tab or table; pass allow_page_split: true only after the user confirms new page breaks when placing a multi-column index before trailing body text), and update it in place with refresh_index (pass overwrite_manual only when the user confirms overwriting manual edits).',
   '',
   '## Footnotes and endnotes',
   '- A footnote explains or gives the source of the words it follows and shows at the foot of the page; an endnote does the same at the end of the document. Use the kind the user asks for; when they do not say, use a footnote, and use endnotes where the document already has them.',
@@ -1493,7 +1493,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'insert_toc',
     edits: true,
     description:
-      'Insert a marked table of contents (body outline headings, or table/figure/equation captions) with printed page numbers and optional bookmark links. Place by 1-based section/paragraph or by anchor/where (default start of document). Refuses if a TOC of the same kind or an unmarked legacy TOC exists unless overwriteExisting/overwriteLegacy is true.',
+      'Insert a marked table of contents (body outline headings, or table/figure/equation captions) with printed page numbers and optional bookmark links. Place by 1-based section/paragraph or by anchor/where (default start of document). Refuses if a TOC of the same kind or an unmarked legacy TOC exists unless overwrite_existing/overwrite_legacy is true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1507,7 +1507,7 @@ const TOOLS: HwpToolDef[] = [
           enum: ['dotted-tab', 'table'],
           description: 'layout style (default "dotted-tab")',
         },
-        maxLevel: {
+        max_level: {
           type: 'integer',
           description: 'maximum heading level 1–10 for body TOC (default 3)',
         },
@@ -1540,11 +1540,11 @@ const TOOLS: HwpToolDef[] = [
           enum: ['after', 'before', 'end'],
           description: 'placement relative to anchor, or "end"',
         },
-        overwriteLegacy: {
+        overwrite_legacy: {
           type: 'boolean',
           description: 'replace a detected unmarked legacy TOC (only when confirmed)',
         },
-        overwriteExisting: {
+        overwrite_existing: {
           type: 'boolean',
           description: 'replace an existing marked TOC of the same kind (only when confirmed)',
         },
@@ -1555,7 +1555,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'refresh_toc',
     edits: true,
     description:
-      'Rebuild an existing marked table of contents in place with fresh entries and printed page numbers, keeping saved options unless overridden. Refuses if manual edits are detected unless overwriteManual is true, or if only an unmarked legacy TOC exists unless overwriteLegacy is true.',
+      'Rebuild an existing marked table of contents in place with fresh entries and printed page numbers, keeping saved options unless overridden. Refuses if manual edits are detected unless overwrite_manual is true, or if only an unmarked legacy TOC exists unless overwrite_legacy is true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1569,7 +1569,7 @@ const TOOLS: HwpToolDef[] = [
           enum: ['dotted-tab', 'table'],
           description: 'optional layout override',
         },
-        maxLevel: {
+        max_level: {
           type: 'integer',
           description: 'optional maximum heading level 1–10 override',
         },
@@ -1581,11 +1581,11 @@ const TOOLS: HwpToolDef[] = [
           type: 'string',
           description: 'optional title override ("" removes title)',
         },
-        overwriteManual: {
+        overwrite_manual: {
           type: 'boolean',
           description: 'overwrite manual edits inside the TOC (only when confirmed)',
         },
-        overwriteLegacy: {
+        overwrite_legacy: {
           type: 'boolean',
           description: 'replace a detected unmarked legacy TOC (only when confirmed)',
         },
@@ -2076,29 +2076,34 @@ const TOOLS: HwpToolDef[] = [
     name: 'mark_index',
     edits: true,
     description:
-      'Add body index mark(s) for a term (and optional subTerm): either at a single position (1-based section/paragraph + 0-based offset, or find/occurrence) or across all whole-word body occurrences with markAll: true (reporting skipped non-body matches).',
+      'Add body index mark(s) for a term (and optional sub_term): either at a single position (1-based section/paragraph + 0-based offset, or find/occurrence) or across all whole-word body occurrences with mark_all: true (includes Korean particle-attached forms such as 연구는/연구를/연구의 while excluding compound words such as 연구자; reports skipped non-body matches).',
     inputSchema: {
       type: 'object',
       properties: {
         term: { type: 'string', description: 'primary index term' },
-        subTerm: { type: 'string', description: 'optional sub-entry under term' },
+        sub_term: { type: 'string', description: 'optional sub-entry under term' },
         section: { type: 'integer', description: '1-based section number for single mark' },
         paragraph: { type: 'integer', description: '1-based paragraph number for single mark' },
         offset: { type: 'integer', description: '0-based character offset (default 0)' },
         find: { type: 'string', description: 'body text to mark instead of section/paragraph' },
         occurrence: { type: 'integer', description: 'which occurrence of find (1-based)' },
-        markAll: {
+        mark_all: {
           type: 'boolean',
           description: 'mark every whole-word body occurrence (skips tables, text boxes, notes)',
         },
         query: {
           type: 'string',
-          description: 'search text for markAll when different from term',
+          description: 'search text for mark_all when different from term',
         },
-        caseSensitive: { type: 'boolean', description: 'case-sensitive match for markAll' },
-        wholeWord: {
+        case_sensitive: { type: 'boolean', description: 'case-sensitive match for mark_all' },
+        whole_word: {
           type: 'boolean',
-          description: 'whole-word match for markAll (default true)',
+          description: 'whole-word match for mark_all (default true)',
+        },
+        include_particles: {
+          type: 'boolean',
+          description:
+            'include Korean particle-attached forms in whole_word mark_all (default true)',
         },
       },
     },
@@ -2107,20 +2112,23 @@ const TOOLS: HwpToolDef[] = [
     name: 'list_index_marks',
     edits: false,
     description:
-      'List all index marks in document order with id, term, subTerm, 1-based section and paragraph, 0-based offset, and printed page.',
+      'List all index marks in document order with id, term, sub_term, 1-based section and paragraph, 0-based offset, and printed page (plus page_label when non-numeric).',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'remove_index_mark',
     edits: true,
     description:
-      'Remove index mark(s) by id from list_index_marks, or remove all marks matching term (and optional subTerm).',
+      'Remove index mark(s) by id from list_index_marks, or remove all marks matching term (and optional sub_term).',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'mark id from list_index_marks' },
         term: { type: 'string', description: 'primary term to remove (when id omitted)' },
-        subTerm: { type: 'string', description: 'optional sub-term filter when removing by term' },
+        sub_term: {
+          type: 'string',
+          description: 'optional sub-term filter when removing by term',
+        },
       },
     },
   },
@@ -2128,7 +2136,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'insert_index',
     edits: true,
     description:
-      'Generate and insert an index block from all index marks, placed by 1-based section/paragraph or anchor/where (default end of document). Supports 1–3 columns, group headings, and dotted-tab or table layout.',
+      'Generate and insert an index block from all index marks, placed by 1-based section/paragraph or anchor/where (default end of document). Supports 1–3 columns, group_headings, and dotted-tab or table layout. Multi-column placement before trailing body text requires allow_page_split: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2146,7 +2154,7 @@ const TOOLS: HwpToolDef[] = [
           description: 'title line above index ("" for none; default 찾아보기)',
         },
         columns: { type: 'integer', description: 'column count 1–3 (default 2)' },
-        groupHeadings: {
+        group_headings: {
           type: 'boolean',
           description: 'show consonant/alphabet group headings (default true)',
         },
@@ -2155,6 +2163,11 @@ const TOOLS: HwpToolDef[] = [
           enum: ['dotted-tab', 'table'],
           description: 'layout style (default "dotted-tab")',
         },
+        allow_page_split: {
+          type: 'boolean',
+          description:
+            'allow new page breaks around a multi-column index before trailing text (when confirmed)',
+        },
       },
     },
   },
@@ -2162,19 +2175,19 @@ const TOOLS: HwpToolDef[] = [
     name: 'refresh_index',
     edits: true,
     description:
-      'Rebuild the existing index block in place from current index marks and printed pages. Refuses if manual edits are detected unless overwriteManual is true.',
+      'Rebuild the existing index block in place from current index marks and printed pages. Refuses if manual edits are detected unless overwrite_manual is true.',
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'optional title override ("" removes title)' },
         columns: { type: 'integer', description: 'optional column count 1–3 override' },
-        groupHeadings: { type: 'boolean', description: 'optional group headings override' },
+        group_headings: { type: 'boolean', description: 'optional group headings override' },
         layout: {
           type: 'string',
           enum: ['dotted-tab', 'table'],
           description: 'optional layout override',
         },
-        overwriteManual: {
+        overwrite_manual: {
           type: 'boolean',
           description: 'overwrite manual edits inside the index (only when confirmed)',
         },
@@ -2235,6 +2248,14 @@ const DECLARED_NAME_OF_PLUGIN_ARGUMENT = new Map([
   ['verticalAlign', 'vertical_align'],
   ['keepWithNext', 'keep_with_next'],
   ['listPictures', 'list_pictures'],
+  ['maxLevel', 'max_level'],
+  ['subTerm', 'sub_term'],
+  ['markAll', 'mark_all'],
+  ['caseSensitive', 'case_sensitive'],
+  ['wholeWord', 'whole_word'],
+  ['includeParticles', 'include_particles'],
+  ['groupHeadings', 'group_headings'],
+  ['allowPageSplit', 'allow_page_split'],
 ])
 const PLUGIN_ARGUMENT = new RegExp(
   `\\b(?:${[...DECLARED_NAME_OF_PLUGIN_ARGUMENT.keys()].join('|')})\\b`,
@@ -3030,7 +3051,7 @@ function withDoubledEscapesUndone(call: AgentToolCall): AgentToolCall {
       break
     case 'mark_index':
       fix('term')
-      fix('subTerm')
+      fix('sub_term')
       break
     default:
       return call
@@ -3310,17 +3331,30 @@ function tocInsertSummaryKey(kind: TocKind): StringKey {
   }
 }
 
+/** Maximum signed 32-bit integer accepted for numeric position and count arguments. */
+const MAX_INT32 = 2147483647
+
+const isBoundedInt = (value: unknown, min: number, max: number = MAX_INT32): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
+
 function tocExistsRefusal(kind: TocKind, range?: TocRangeInfo): string {
   const where = range
     ? ` (section ${range.start.sec + 1}, paragraphs ${range.start.para + 1}–${range.end.para + 1})`
     : ''
-  return `Nothing was changed: a ${kind} table of contents already exists${where}. Call refresh_toc to update it in place, or pass overwriteExisting: true only if the user wants to replace it.`
+  return `Nothing was changed: a ${kind} table of contents already exists${where}. Call refresh_toc to update it in place, or pass overwrite_existing: true only if the user wants to replace it.`
 }
 
 function legacyTocRefusal(legacy: LegacyTocInfo): string {
   const where = `section ${legacy.sec + 1}, paragraphs ${legacy.startPara + 1}–${legacy.endPara + 1}`
   const titlePart = legacy.title ? `, title "${legacy.title}"` : ''
-  return `Nothing was changed: an unmarked legacy table of contents was detected (${where}, source: ${legacy.source}${titlePart}). Pass overwriteLegacy: true only if the user wants to replace it.`
+  return `Nothing was changed: an unmarked legacy table of contents was detected (${where}, source: ${legacy.source}${titlePart}). Pass overwrite_legacy: true only if the user wants to replace it.`
+}
+
+function multiSectionTocRefusal(kind: TocKind, range?: TocRangeInfo): string {
+  const where = range
+    ? ` (section ${range.start.sec + 1}, paragraph ${range.start.para + 1} to section ${range.end.sec + 1}, paragraph ${range.end.para + 1})`
+    : ''
+  return `Nothing was changed: the existing ${kind} table of contents spans multiple sections${where}, so it cannot be replaced automatically. Remove or fix the section break inside the table of contents first.`
 }
 
 function manualTocEditsRefusal(lines: readonly TocModifiedLine[]): string {
@@ -3329,7 +3363,7 @@ function manualTocEditsRefusal(lines: readonly TocModifiedLine[]): string {
     .map((m) => `line ${m.index + 1}: expected "${quote(m.expected)}", found "${quote(m.actual)}"`)
     .join('; ')
   const more = lines.length > 5 ? ` (+${lines.length - 5} more)` : ''
-  return `Nothing was changed: manual edits were detected inside the table of contents (${preview}${more}). Pass overwriteManual: true only after the user confirms overwriting them.`
+  return `Nothing was changed: manual edits were detected inside the table of contents (${preview}${more}). Pass overwrite_manual: true only after the user confirms overwriting them.`
 }
 
 function manualIndexEditsRefusal(lines: readonly ModifiedIndexLine[]): string {
@@ -3341,8 +3375,11 @@ function manualIndexEditsRefusal(lines: readonly ModifiedIndexLine[]): string {
     )
     .join('; ')
   const more = lines.length > 5 ? ` (+${lines.length - 5} more)` : ''
-  return `Nothing was changed: manual edits were detected inside the index (${preview}${more}). Pass overwriteManual: true only after the user confirms overwriting them.`
+  return `Nothing was changed: manual edits were detected inside the index (${preview}${more}). Pass overwrite_manual: true only after the user confirms overwriting them.`
 }
+
+const INDEX_PAGE_SPLIT_CONFIRM_REFUSAL =
+  'Nothing was changed: placing a multi-column index before trailing body text isolates it into its own section, so new pages start before and after the index (색인 앞뒤가 새 쪽으로 나뉩니다). Ask the user to confirm and re-call insert_index with allow_page_split: true, or use columns: 1 or place it at the end of the document (where: "end").'
 
 /** Why rows or columns were not added or removed, as the model reads it. */
 function linesRefusal(table: number, what: string, result: AgentTableLinesRefusal): string {
@@ -5586,16 +5623,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (layout !== undefined && layout !== 'dotted-tab' && layout !== 'table') {
           return bad(call, 'layout must be "dotted-tab" or "table"')
         }
-        const rawMaxLevel = call.input.maxLevel
+        const rawMaxLevel = call.input.max_level
         let maxLevel: number | undefined
-        if (rawMaxLevel !== undefined && rawMaxLevel !== null) {
-          if (
-            typeof rawMaxLevel !== 'number' ||
-            !Number.isInteger(rawMaxLevel) ||
-            rawMaxLevel < 1 ||
-            rawMaxLevel > 10
-          ) {
-            return bad(call, 'maxLevel must be a whole number from 1 to 10')
+        if (isGiven(rawMaxLevel)) {
+          if (!isBoundedInt(rawMaxLevel, 1, 10)) {
+            return bad(call, 'max_level must be a whole number from 1 to 10')
           }
           maxLevel = rawMaxLevel
         }
@@ -5608,12 +5640,20 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           title = rawTitle.trim() === '' ? null : rawTitle
         }
 
-        const hasSection = call.input.section !== undefined && call.input.section !== null
-        const hasParagraph = call.input.paragraph !== undefined && call.input.paragraph !== null
+        let occurrence: number | null | undefined
+        if (isGiven(call.input.occurrence)) {
+          if (!isBoundedInt(call.input.occurrence, 1)) {
+            return bad(call, `occurrence must be a whole number from 1 to ${MAX_INT32}`)
+          }
+          occurrence = call.input.occurrence
+        }
+
+        const hasSection = isGiven(call.input.section)
+        const hasParagraph = isGiven(call.input.paragraph)
         const hasCoords = hasSection || hasParagraph
         const rawAnchor = textArg(call, 'anchor')
         const rawWhere = call.input.where
-        const hasAnchor = rawAnchor !== null || (rawWhere !== undefined && rawWhere !== null)
+        const hasAnchor = rawAnchor !== null || isGiven(rawWhere)
 
         if (hasCoords && hasAnchor) {
           return bad(
@@ -5625,22 +5665,22 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         let sec: number | undefined
         let para: number | undefined
         let anchor: string | undefined
-        let occurrence: number | null | undefined
         let where: AgentWhere | undefined
 
         if (hasCoords) {
           const sectionNum = hasSection ? call.input.section : 1
           const paraNum = hasParagraph ? call.input.paragraph : 1
-          if (typeof sectionNum !== 'number' || !Number.isInteger(sectionNum) || sectionNum < 1) {
-            return bad(call, 'section must be a whole number from 1')
+          if (!isBoundedInt(sectionNum, 1)) {
+            return bad(call, `section must be a whole number from 1 to ${MAX_INT32}`)
           }
-          if (typeof paraNum !== 'number' || !Number.isInteger(paraNum) || paraNum < 1) {
-            return bad(call, 'paragraph must be a whole number from 1')
+          if (!isBoundedInt(paraNum, 1)) {
+            return bad(call, `paragraph must be a whole number from 1 to ${MAX_INT32}`)
           }
           sec = sectionNum - 1
           para = paraNum - 1
+          occurrence = undefined
         } else if (hasAnchor) {
-          if (rawWhere !== undefined && rawWhere !== null) {
+          if (isGiven(rawWhere)) {
             if (rawWhere !== 'after' && rawWhere !== 'before' && rawWhere !== 'end') {
               return bad(call, WHERE_HELP)
             }
@@ -5653,24 +5693,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             if (hasLineBreak(rawAnchor)) return bad(call, ONE_LINE_FIND_HELP('anchor'))
             anchor = rawAnchor
           }
-          if (call.input.occurrence !== undefined && call.input.occurrence !== null) {
-            if (
-              typeof call.input.occurrence !== 'number' ||
-              !Number.isInteger(call.input.occurrence) ||
-              call.input.occurrence < 1
-            ) {
-              return bad(call, 'occurrence must be a whole number from 1')
-            }
-            occurrence = call.input.occurrence
-          }
-        } else if (call.input.occurrence !== undefined && call.input.occurrence !== null) {
-          if (
-            typeof call.input.occurrence !== 'number' ||
-            !Number.isInteger(call.input.occurrence) ||
-            call.input.occurrence < 1
-          ) {
-            return bad(call, 'occurrence must be a whole number from 1')
-          }
+        } else {
+          occurrence = undefined
         }
 
         const appStyleMap = await Promise.resolve(deps.getOutlineStyleMap?.()).catch(() => null)
@@ -5685,8 +5709,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           ...(anchor !== undefined ? { anchor } : {}),
           ...(occurrence !== undefined ? { occurrence } : {}),
           ...(appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : {}),
-          ...(call.input.overwriteLegacy === true ? { replaceLegacy: true } : {}),
-          ...(call.input.overwriteExisting === true ? { replaceExisting: true } : {}),
+          ...(call.input.overwrite_legacy === true ? { replaceLegacy: true } : {}),
+          ...(call.input.overwrite_existing === true ? { replaceExisting: true } : {}),
         }
 
         const outcome = await changeWithMemoApproval(
@@ -5704,6 +5728,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           if (result.reason === 'in_table') return bad(call, IN_TABLE_HELP)
           if (result.reason === 'toc_exists') {
             return bad(call, tocExistsRefusal(result.kind ?? kind, result.range))
+          }
+          if (result.reason === 'multi_section_range') {
+            return bad(call, multiSectionTocRefusal(result.kind ?? kind, result.range))
           }
           if (result.reason === 'legacy_toc_found' && result.legacy) {
             return bad(call, legacyTocRefusal(result.legacy))
@@ -5782,16 +5809,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         if (layout !== undefined && layout !== 'dotted-tab' && layout !== 'table') {
           return bad(call, 'layout must be "dotted-tab" or "table"')
         }
-        const rawMaxLevel = call.input.maxLevel
+        const rawMaxLevel = call.input.max_level
         let maxLevel: number | undefined
-        if (rawMaxLevel !== undefined && rawMaxLevel !== null) {
-          if (
-            typeof rawMaxLevel !== 'number' ||
-            !Number.isInteger(rawMaxLevel) ||
-            rawMaxLevel < 1 ||
-            rawMaxLevel > 10
-          ) {
-            return bad(call, 'maxLevel must be a whole number from 1 to 10')
+        if (isGiven(rawMaxLevel)) {
+          if (!isBoundedInt(rawMaxLevel, 1, 10)) {
+            return bad(call, 'max_level must be a whole number from 1 to 10')
           }
           maxLevel = rawMaxLevel
         }
@@ -5812,8 +5834,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           ...(typeof call.input.links === 'boolean' ? { links: call.input.links } : {}),
           ...(title !== undefined ? { title } : {}),
           ...(appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : {}),
-          ...(call.input.overwriteManual === true ? { allowOverwriteManual: true } : {}),
-          ...(call.input.overwriteLegacy === true ? { replaceLegacy: true } : {}),
+          ...(call.input.overwrite_manual === true ? { allowOverwriteManual: true } : {}),
+          ...(call.input.overwrite_legacy === true ? { replaceLegacy: true } : {}),
         }
 
         const outcome = await changeWithMemoApproval(
@@ -5833,6 +5855,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               call,
               `Nothing was changed: no marked ${kind} table of contents was found. Call insert_toc to create one.`,
             )
+          }
+          if (result.reason === 'multi_section_range') {
+            return bad(call, multiSectionTocRefusal(result.kind ?? kind, result.range))
           }
           if (result.reason === 'legacy_toc_found' && result.legacy) {
             return bad(call, legacyTocRefusal(result.legacy))
@@ -7060,17 +7085,17 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       }
       case 'mark_index': {
         const term = textArg(call, 'term')?.trim() ?? ''
-        const rawSubTerm = textArg(call, 'subTerm')
+        const rawSubTerm = textArg(call, 'sub_term')
         const subTerm = rawSubTerm !== null ? rawSubTerm.trim() : undefined
         if (term && hasLineBreak(term)) return bad(call, ONE_LINE_HELP)
         if (subTerm !== undefined && hasLineBreak(subTerm)) return bad(call, ONE_LINE_HELP)
-        const markAll = call.input.markAll === true
+        const markAll = call.input.mark_all === true
 
         if (markAll) {
           const query = textArg(call, 'query')?.trim() || undefined
           if (query && hasLineBreak(query)) return bad(call, ONE_LINE_FIND_HELP('query'))
           if (!term && !query) {
-            return bad(call, 'term (or query) is required when markAll is true')
+            return bad(call, 'term (or query) is required when mark_all is true')
           }
           if (
             isGiven(call.input.section) ||
@@ -7081,19 +7106,26 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           ) {
             return bad(
               call,
-              'Do not pass section, paragraph, offset, find, or occurrence when markAll is true.',
+              'Do not pass section, paragraph, offset, find, or occurrence when mark_all is true.',
             )
           }
+          const wholeWord =
+            typeof call.input.whole_word === 'boolean' ? call.input.whole_word : undefined
+          const includeParticles =
+            typeof call.input.include_particles === 'boolean'
+              ? call.input.include_particles
+              : wholeWord !== false
+                ? true
+                : undefined
           const params = {
             ...(term ? { term } : {}),
             ...(query ? { query } : {}),
             ...(subTerm !== undefined ? { subTerm } : {}),
-            ...(typeof call.input.caseSensitive === 'boolean'
-              ? { caseSensitive: call.input.caseSensitive }
+            ...(typeof call.input.case_sensitive === 'boolean'
+              ? { caseSensitive: call.input.case_sensitive }
               : {}),
-            ...(typeof call.input.wholeWord === 'boolean'
-              ? { wholeWord: call.input.wholeWord }
-              : {}),
+            ...(wholeWord !== undefined ? { wholeWord } : {}),
+            ...(includeParticles !== undefined ? { includeParticles } : {}),
           }
           const outcome = await changeWithMemoApproval(
             () => bridge.addIndexMarksAll(params, { foreign: false }),
@@ -7118,6 +7150,19 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             skipped > 0
               ? ` Skipped ${skipped} non-body occurrence(s) (table cells: ${sc.tableCell}, text boxes: ${sc.textBox}, footnotes: ${sc.footnote}, endnotes: ${sc.endnote}).`
               : ''
+          const usedParticles =
+            typeof result.includeParticles === 'boolean'
+              ? result.includeParticles
+              : wholeWord !== false && includeParticles !== false
+          const particleMatches =
+            typeof result.particleMatches === 'number' ? result.particleMatches : 0
+          const particleNote = usedParticles
+            ? particleMatches > 0
+              ? ` Korean particle-attached forms included (${particleMatches} with particle).`
+              : ' Korean particle-attached forms included.'
+            : wholeWord !== false
+              ? ' Exact whole-word match without Korean particles.'
+              : ''
           const displayTerm = term || query || ''
           if (result.added > 0) {
             deps.onChange({
@@ -7131,11 +7176,19 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return {
             output:
               result.added === 0
-                ? `Added 0 index marks for "${displayTerm}" (no unmarked body occurrences found).${skipNote}`
-                : `Marked ${result.added} body occurrence(s) for "${displayTerm}"${subTerm ? ` (${subTerm})` : ''}.${skipNote}`,
+                ? `Added 0 index marks for "${displayTerm}" (no unmarked body occurrences found).${particleNote}${skipNote}`
+                : `Marked ${result.added} body occurrence(s) for "${displayTerm}"${subTerm ? ` (${subTerm})` : ''}.${particleNote}${skipNote}`,
             mutated: result.added > 0,
             summary: label('aiToolIndexMark', { term: quote(displayTerm), count: result.added }),
           }
+        }
+
+        let occurrence: number | null = null
+        if (isGiven(call.input.occurrence)) {
+          if (!isBoundedInt(call.input.occurrence, 1)) {
+            return bad(call, `occurrence must be a whole number from 1 to ${MAX_INT32}`)
+          }
+          occurrence = call.input.occurrence
         }
 
         // Single mark mode: either (section, paragraph, offset?) or (find, occurrence?)
@@ -7149,7 +7202,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, 'Specify either section/paragraph or find, not both.')
         }
         if (!hasCoords && find === null) {
-          return bad(call, 'Specify markAll: true, find, or 1-based section and paragraph.')
+          return bad(call, 'Specify mark_all: true, find, or 1-based section and paragraph.')
         }
 
         let params: {
@@ -7166,14 +7219,14 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           const sectionNum = hasSection ? call.input.section : 1
           const paraNum = hasParagraph ? call.input.paragraph : 1
           const offsetNum = hasOffset ? call.input.offset : 0
-          if (typeof sectionNum !== 'number' || !Number.isInteger(sectionNum) || sectionNum < 1) {
-            return bad(call, 'section must be a whole number from 1')
+          if (!isBoundedInt(sectionNum, 1)) {
+            return bad(call, `section must be a whole number from 1 to ${MAX_INT32}`)
           }
-          if (typeof paraNum !== 'number' || !Number.isInteger(paraNum) || paraNum < 1) {
-            return bad(call, 'paragraph must be a whole number from 1')
+          if (!isBoundedInt(paraNum, 1)) {
+            return bad(call, `paragraph must be a whole number from 1 to ${MAX_INT32}`)
           }
-          if (typeof offsetNum !== 'number' || !Number.isInteger(offsetNum) || offsetNum < 0) {
-            return bad(call, 'offset must be a whole number from 0')
+          if (!isBoundedInt(offsetNum, 0)) {
+            return bad(call, `offset must be a whole number from 0 to ${MAX_INT32}`)
           }
           params = {
             sec: sectionNum - 1,
@@ -7185,17 +7238,6 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         } else {
           if (!find) return bad(call, 'find must be non-empty body text')
           if (hasLineBreak(find)) return bad(call, ONE_LINE_FIND_HELP('find'))
-          let occurrence: number | null = null
-          if (isGiven(call.input.occurrence)) {
-            if (
-              typeof call.input.occurrence !== 'number' ||
-              !Number.isInteger(call.input.occurrence) ||
-              call.input.occurrence < 1
-            ) {
-              return bad(call, 'occurrence must be a whole number from 1')
-            }
-            occurrence = call.input.occurrence
-          }
           params = {
             find,
             occurrence,
@@ -7264,12 +7306,12 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const listed = marks.map((m) => ({
           id: m.id,
           term: m.term,
-          subTerm: m.subTerm,
+          sub_term: m.subTerm,
           section: m.sec + 1,
           paragraph: m.para + 1,
           offset: m.offset,
           page: m.page,
-          ...(m.pageLabel && m.pageLabel !== String(m.page) ? { pageLabel: m.pageLabel } : {}),
+          ...(m.pageLabel && m.pageLabel !== String(m.page) ? { page_label: m.pageLabel } : {}),
         }))
         return {
           output:
@@ -7282,7 +7324,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'remove_index_mark': {
         const id = textArg(call, 'id')?.trim() || undefined
         const term = textArg(call, 'term')?.trim() || undefined
-        const rawSubTerm = textArg(call, 'subTerm')
+        const rawSubTerm = textArg(call, 'sub_term')
         const subTerm = rawSubTerm !== null ? rawSubTerm.trim() : undefined
         if (!id && !term) {
           return bad(call, 'Provide id (from list_index_marks) or term to remove.')
@@ -7327,13 +7369,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'insert_index': {
         const rawColumns = call.input.columns
         let columns: IndexColumnCount | undefined
-        if (rawColumns !== undefined && rawColumns !== null) {
-          if (
-            typeof rawColumns !== 'number' ||
-            !Number.isInteger(rawColumns) ||
-            rawColumns < 1 ||
-            rawColumns > 3
-          ) {
+        if (isGiven(rawColumns)) {
+          if (!isBoundedInt(rawColumns, 1, 3)) {
             return bad(call, 'columns must be a whole number from 1 to 3')
           }
           columns = rawColumns as IndexColumnCount
@@ -7353,6 +7390,14 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           title = rawTitle.trim() === '' ? null : rawTitle
         }
 
+        let occurrence: number | null | undefined
+        if (isGiven(call.input.occurrence)) {
+          if (!isBoundedInt(call.input.occurrence, 1)) {
+            return bad(call, `occurrence must be a whole number from 1 to ${MAX_INT32}`)
+          }
+          occurrence = call.input.occurrence
+        }
+
         const hasSection = isGiven(call.input.section)
         const hasParagraph = isGiven(call.input.paragraph)
         const hasCoords = hasSection || hasParagraph
@@ -7370,20 +7415,20 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         let sec: number | undefined
         let para: number | undefined
         let anchor: string | undefined
-        let occurrence: number | null | undefined
         let where: AgentWhere | undefined
 
         if (hasCoords) {
           const sectionNum = hasSection ? call.input.section : 1
           const paraNum = hasParagraph ? call.input.paragraph : 1
-          if (typeof sectionNum !== 'number' || !Number.isInteger(sectionNum) || sectionNum < 1) {
-            return bad(call, 'section must be a whole number from 1')
+          if (!isBoundedInt(sectionNum, 1)) {
+            return bad(call, `section must be a whole number from 1 to ${MAX_INT32}`)
           }
-          if (typeof paraNum !== 'number' || !Number.isInteger(paraNum) || paraNum < 1) {
-            return bad(call, 'paragraph must be a whole number from 1')
+          if (!isBoundedInt(paraNum, 1)) {
+            return bad(call, `paragraph must be a whole number from 1 to ${MAX_INT32}`)
           }
           sec = sectionNum - 1
           para = paraNum - 1
+          occurrence = undefined
         } else if (hasAnchor) {
           if (isGiven(rawWhere)) {
             if (rawWhere !== 'after' && rawWhere !== 'before' && rawWhere !== 'end') {
@@ -7398,24 +7443,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             if (hasLineBreak(rawAnchor)) return bad(call, ONE_LINE_FIND_HELP('anchor'))
             anchor = rawAnchor
           }
-          if (isGiven(call.input.occurrence)) {
-            if (
-              typeof call.input.occurrence !== 'number' ||
-              !Number.isInteger(call.input.occurrence) ||
-              call.input.occurrence < 1
-            ) {
-              return bad(call, 'occurrence must be a whole number from 1')
-            }
-            occurrence = call.input.occurrence
-          }
-        } else if (isGiven(call.input.occurrence)) {
-          if (
-            typeof call.input.occurrence !== 'number' ||
-            !Number.isInteger(call.input.occurrence) ||
-            call.input.occurrence < 1
-          ) {
-            return bad(call, 'occurrence must be a whole number from 1')
-          }
+        } else {
+          occurrence = undefined
         }
 
         const params = {
@@ -7425,10 +7454,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           ...(occurrence !== undefined ? { occurrence } : {}),
           ...(title !== undefined ? { title } : {}),
           ...(columns !== undefined ? { columns } : {}),
-          ...(typeof call.input.groupHeadings === 'boolean'
-            ? { groupHeadings: call.input.groupHeadings }
+          ...(typeof call.input.group_headings === 'boolean'
+            ? { groupHeadings: call.input.group_headings }
             : {}),
           ...(layout !== undefined ? { layout } : {}),
+          ...(call.input.allow_page_split === true ? { allowPageSplit: true } : {}),
         }
 
         const outcome = await changeWithMemoApproval(
@@ -7455,6 +7485,9 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
               call,
               'Nothing was changed: an index block already exists in this document. Call refresh_index to update it in place.',
             )
+          }
+          if (result.reason === 'page_split_confirm') {
+            return bad(call, INDEX_PAGE_SPLIT_CONFIRM_REFUSAL)
           }
           if (result.reason === 'not_found' && hasCoords) {
             return bad(
@@ -7500,13 +7533,8 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
       case 'refresh_index': {
         const rawColumns = call.input.columns
         let columns: IndexColumnCount | undefined
-        if (rawColumns !== undefined && rawColumns !== null) {
-          if (
-            typeof rawColumns !== 'number' ||
-            !Number.isInteger(rawColumns) ||
-            rawColumns < 1 ||
-            rawColumns > 3
-          ) {
+        if (isGiven(rawColumns)) {
+          if (!isBoundedInt(rawColumns, 1, 3)) {
             return bad(call, 'columns must be a whole number from 1 to 3')
           }
           columns = rawColumns as IndexColumnCount
@@ -7529,11 +7557,11 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         const params = {
           ...(title !== undefined ? { title } : {}),
           ...(columns !== undefined ? { columns } : {}),
-          ...(typeof call.input.groupHeadings === 'boolean'
-            ? { groupHeadings: call.input.groupHeadings }
+          ...(typeof call.input.group_headings === 'boolean'
+            ? { groupHeadings: call.input.group_headings }
             : {}),
           ...(layout !== undefined ? { layout } : {}),
-          ...(call.input.overwriteManual === true ? { allowOverwriteManual: true } : {}),
+          ...(call.input.overwrite_manual === true ? { allowOverwriteManual: true } : {}),
         }
 
         const outcome = await changeWithMemoApproval(

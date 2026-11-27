@@ -19,6 +19,7 @@ export type StalenessModalState =
       phase: 'stale'
       action: StalenessAction
       items: StaleCheckItem[]
+      initialManualEdits?: StalenessManualEdit[]
       busy: boolean
       onChoice: (choice: StalenessPromptChoice) => void
     }

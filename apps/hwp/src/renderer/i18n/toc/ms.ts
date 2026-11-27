@@ -51,6 +51,10 @@ export const ms = {
     'Tidak boleh menyisipkan jadual kandungan di dalam jadual. Letakkan kursor di perenggan badan.',
   tocErrorUnsupportedPlace:
     'Tidak boleh menyisipkan jadual kandungan di sini. Letakkan kursor di perenggan badan.',
+  tocErrorHasObjects:
+    'Jadual kandungan tidak diganti kerana mengandungi objek pengguna seperti nota kaki, gambar atau jadual.',
+  tocErrorMultiSection:
+    'Tidak dapat disegar semula secara automatik kerana jadual kandungan merentasi beberapa bahagian.',
   tocErrorNoHeadings: 'Tiada tajuk yang sepadan ditemui.',
   tocErrorNoCaptions: 'Tiada kapsyen yang sepadan ditemui.',
   tocErrorGeneric: 'Tidak dapat mengemas kini jadual kandungan: {error}',
@@ -61,6 +65,14 @@ export const ms = {
   indexMarkSubTermLabel: 'Sub-entri (pilihan)',
   indexMarkSubTermPlaceholder: 'Biarkan kosong untuk entri utama sahaja',
   indexMarkAllLabel: 'Tanda semua kejadian yang sama',
+  indexMarkAllPreviewTitle: 'Sahkan Penandaan Semua Entri Indeks',
+  indexMarkAllPreviewMessage:
+    'Tambah tanda indeks pada {count} lokasi sepadan dalam badan dokumen?',
+  indexMarkAllPreviewParticlesNote: 'Bentuk perkataan dengan partikel tatabahasa turut disertakan.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} kejadian dalam jadual, kotak teks atau nota akan dilangkau.',
+  indexMarkAllPreviewConfirm: 'Tanda semua',
+  indexMarkAllPreviewMore: 'dan {count} lagi lokasi',
   indexMarksListTitle: 'Tanda indeks sedia ada ({count})',
   indexMarksListEmpty: 'Belum ada tanda indeks dalam dokumen ini.',
   indexMarkPageBadge: 'm.s. {page}',
@@ -81,6 +93,10 @@ export const ms = {
   indexColumnsLabel: 'Lajur',
   indexColumnsOption: '{count} lajur',
   indexGroupHeadingsLabel: 'Sertakan tajuk kumpulan abjad',
+  indexPageSplitConfirmTitle: 'Sahkan Pemisah Halaman untuk Indeks Berbilang Lajur',
+  indexPageSplitConfirmMessage:
+    'Halaman baharu akan disisipkan sebelum dan selepas indeks berbilang lajur. Teruskan?',
+  indexPageSplitConfirmAction: 'Teruskan',
   indexCreatedToast: 'Indeks dicipta ({count} entri).',
   indexRefreshedToast: 'Indeks disegar semula ({count} entri).',
   indexRefreshNotFound: 'Tiada indeks ditemui untuk disegar semula.',
@@ -89,6 +105,8 @@ export const ms = {
     'Tidak boleh menyisipkan indeks di dalam jadual. Letakkan kursor di perenggan badan.',
   indexErrorUnsupportedPlace:
     'Tidak boleh menyisipkan indeks di sini. Letakkan kursor di perenggan badan.',
+  indexErrorHasObjects:
+    'Indeks tidak diganti kerana mengandungi objek pengguna seperti nota kaki, gambar atau jadual.',
   indexErrorAlreadyExists: 'Indeks sudah wujud dalam dokumen ini. Gunakan "Segar Semula Indeks".',
   indexErrorGeneric: 'Tidak dapat mengemas kini indeks: {error}',
 } satisfies Record<keyof typeof zh, string>

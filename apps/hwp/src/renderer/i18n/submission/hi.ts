@@ -26,16 +26,23 @@ export const hi = {
   staleManualSkip: 'छोड़ें',
   staleRefreshDone: '{count} आइटम अपडेट किए गए।',
   staleRefreshFailed: 'कुछ आइटम अपडेट नहीं हो सके: {error}',
+  staleRefreshBlockedObjects:
+    'रीफ़्रेश छोड़ा गया क्योंकि विषय-सूची या अनुक्रमणिका की सीमा में फ़ुटनोट, चित्र या तालिका जैसे उपयोगकर्ता ऑब्जेक्ट मौजूद हैं।',
   submissionMenuLabel: 'जमा करने की प्रति के रूप में सहेजें…',
   submissionMenuDesc: 'अनुक्रमणिका, उद्धरण और सेटिंग चिह्नों के बिना एक अलग स्वच्छ प्रति सहेजें।',
   submissionSaving: 'जमा करने की प्रति बनाई जा रही है…',
   submissionSaved: 'जमा करने की प्रति सहेजी गई: {name}',
+  submissionBackupKept: 'पिछली फ़ाइल का बैकअप सहेजा गया: {name}',
   submissionSavedTailsLost:
     'जमा करने की प्रति सहेजी गई ({name})। कुछ मास्टर पृष्ठ या टिप्पणियाँ सुरक्षित नहीं रह पाईं।',
   submissionFailedProtected:
     'पासवर्ड से सुरक्षित दस्तावेज़ों को जमा करने की प्रति के रूप में नहीं सहेजा जा सकता।',
   submissionFailedTracked:
     'बदलाव ट्रैकिंग वाले दस्तावेज़ों को जमा करने की प्रति के रूप में नहीं सहेजा जा सकता।',
+  submissionFailedSameAsOpen:
+    'खुले हुए दस्तावेज़ पर जमा करने की प्रति ओवरराइट नहीं की जा सकती। कृपया कोई दूसरा फ़ाइल नाम चुनें।',
+  submissionFailedStrip:
+    'कुछ आंतरिक चिह्न हटाए नहीं जा सके, इसलिए जमा करने की प्रति सहेजी नहीं गई: {marks}',
   submissionFailedVerify:
     'जमा करने की प्रति का सत्यापन विफल रहा ({before} → {after} पृष्ठ)। HWPX प्रारूप में सहेजकर देखें।',
   submissionFailedExport: 'जमा करने की प्रति नहीं बन सकी: {error}',

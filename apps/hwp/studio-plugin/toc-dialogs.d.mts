@@ -62,6 +62,8 @@ export interface TocIndexDialogLabels {
   tocRefreshNotFound: string
   tocErrorInTable: string
   tocErrorUnsupportedPlace: string
+  tocErrorHasObjects: string
+  tocErrorMultiSection: string
   tocErrorNoHeadings: string
   tocErrorNoCaptions: string
   tocErrorGeneric: string
@@ -72,6 +74,12 @@ export interface TocIndexDialogLabels {
   indexMarkSubTermLabel: string
   indexMarkSubTermPlaceholder: string
   indexMarkAllLabel: string
+  indexMarkAllPreviewTitle: string
+  indexMarkAllPreviewMessage: string
+  indexMarkAllPreviewParticlesNote: string
+  indexMarkAllPreviewSkippedNote: string
+  indexMarkAllPreviewConfirm: string
+  indexMarkAllPreviewMore: string
   indexMarksListTitle: string
   indexMarksListEmpty: string
   indexMarkPageBadge: string
@@ -91,12 +99,16 @@ export interface TocIndexDialogLabels {
   indexColumnsLabel: string
   indexColumnsOption: string
   indexGroupHeadingsLabel: string
+  indexPageSplitConfirmTitle: string
+  indexPageSplitConfirmMessage: string
+  indexPageSplitConfirmAction: string
   indexCreatedToast: string
   indexRefreshedToast: string
   indexRefreshNotFound: string
   indexErrorNoMarks: string
   indexErrorInTable: string
   indexErrorUnsupportedPlace: string
+  indexErrorHasObjects: string
   indexErrorAlreadyExists: string
   indexErrorGeneric: string
 }
@@ -139,6 +151,7 @@ export interface TocIndexDialogOptions {
   getSelectionText?: () => { text: string } | null
   highlightRange?: (range: { sec: number; startPara: number; endPara: number }) => boolean
   tocHelpers?: Record<string, unknown>
+  getMadeContents?: () => readonly (readonly string[])[]
   appStyleMap?: Record<string, number> | (() => Record<string, number> | undefined)
   onEdited?: (action: string, result: unknown) => void
   place?: TocIndexCaretPosition
@@ -187,12 +200,15 @@ export declare function openConfirmActionDialog(
     title: string
     message: string
     hint?: string
+    hints?: readonly string[]
     confirmLabel?: string
     cancelLabel?: string
     beforeLabel?: string
     afterLabel?: string
     moreLinesText?: string
     modifiedLines?: Array<{ expected?: string | null; actual?: string | null }>
+    previewItems?: Array<{ matchedText?: string; context?: string; pageLabel?: string }>
+    moreItemsText?: string
     width?: number
     onConfirm?: () => void
     onCancel?: () => void

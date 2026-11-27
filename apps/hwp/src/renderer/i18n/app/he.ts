@@ -77,7 +77,6 @@ export const he = {
   aiToolAnalyzePictureFail: 'לא ניתן היה לצפות בתמונה {picture}',
   aiToolFields: 'שדות הטופס נבדקו · {count}',
   aiToolToc: 'נוסף תוכן עניינים · {count} כותרות',
-  aiToolTocRefresh: 'מספרי העמודים של תוכן העניינים נכתבו מחדש · {count}',
   aiTocName: 'תוכן עניינים',
   aiTocPagesChanged: 'עודכנו {count} מספרי עמודים',
   aiToolNotes: 'נבדקו הערות שוליים · {count}',

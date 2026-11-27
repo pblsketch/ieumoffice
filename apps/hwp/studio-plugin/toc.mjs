@@ -69,7 +69,6 @@ const MAX_CONVERGENCE_PASSES = 2
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_RE = /[\u0000-\u0008\u000b-\u001f\u007f]/g
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i
-const PAGE_LABEL_RE = /^(?:\d+|[IVXLCDM]+|[ivxlcdm]+|[①-⑳]|[A-Za-z]|[Ⓐ-Ⓩⓐ-ⓩ])$/
 const LEGACY_TAB_LINE_RE = /\t\s*(?:\d+|[IVXLCDM]+|[ivxlcdm]+|[①-⑳]|[A-Za-z]|[Ⓐ-Ⓩⓐ-ⓩ])\s*$/
 const LEGACY_DOTTED_LINE_RE =
   /(?:\.{3,}|…{2,}|·{3,})\s*(?:\d+|[IVXLCDM]+|[ivxlcdm]+|[①-⑳]|[A-Za-z]|[Ⓐ-Ⓩⓐ-ⓩ])\s*$/
@@ -998,8 +997,8 @@ function findTopLevelTableAt(doc, sec, para, helpers) {
   return tables.find((t) => t.sec === sec && t.para === para && t.path.length === 1) ?? null
 }
 
-function isPageLabelTable(doc, table) {
-  if (!table || table.cols !== 2 || table.rows < 1 || table.path.length !== 1) return false
+function headingColumnOf(doc, table) {
+  if (!table || table.cols !== 2 || table.rows < 1 || table.path.length !== 1) return null
   const controlIndex = table.path[0].controlIndex
   const grid = tableGridOf(
     doc,
@@ -1010,15 +1009,38 @@ function isPageLabelTable(doc, table) {
     table.cols,
     table.cells,
   )
-  let checked = 0
+  const rows = []
   for (let row = 0; row < table.rows; row++) {
-    const pageCell = grid.find((c) => c.row === row && c.col === 1)
-    if (!pageCell) return false
-    const pageText = cellTextOf(doc, table.sec, table.para, controlIndex, pageCell.cell)
-    if (!PAGE_LABEL_RE.test(pageText)) return false
-    checked += 1
+    const headingCell = grid.find((c) => c.row === row && c.col === 0)
+    if (!headingCell) return null
+    rows.push(cellTextOf(doc, table.sec, table.para, controlIndex, headingCell.cell))
   }
-  return checked > 0
+  return rows
+}
+
+function defaultContentsOf(doc, made, tables) {
+  if (!Array.isArray(made) || made.length === 0) return null
+  for (let i = 0; i < tables.length; i++) {
+    const table = tables[i]
+    const rows = headingColumnOf(doc, table)
+    if (!rows) continue
+    const matched = made.some(
+      (record) =>
+        Array.isArray(record) &&
+        record.length === rows.length &&
+        record.every((text, idx) => cleanText(text) === rows[idx]),
+    )
+    if (!matched) continue
+    const hasTableAbove =
+      table.para === 0 || tables.some((t) => t.sec === table.sec && t.para === table.para - 1)
+    const title = hasTableAbove ? '' : cleanText(bodyText(doc, table.sec, table.para - 1))
+    return {
+      table: i + 1,
+      ...(title ? { title } : {}),
+      ...(table.sec === 0 && table.para === 0 ? { first: true } : {}),
+    }
+  }
+  return null
 }
 
 function isLegacyTocLine(text) {
@@ -1038,8 +1060,11 @@ function isInsideMarkedToc(sec, para, markedRanges) {
 }
 
 /**
- * Detect an unmarked legacy or externally created TOC (either dotted/tab lines
- * under a `차례`/`목차` heading or a 2-column TOC table). Returns `null` when none exists.
+ * Detect an unmarked legacy or externally created TOC:
+ * - A session-made 2-column TOC table matched strictly via `contentsOf(doc, made)`
+ *   (arbitrary user 2-column tables under `차례`/`목차` are never classified by heuristic).
+ * - Unmarked dotted/tab page-number lines under a `차례`/`목차` heading.
+ * Returns `null` when none exists.
  */
 export function detectLegacyToc(doc, options = {}) {
   if (!doc || typeof doc.getSectionCount !== 'function') return null
@@ -1048,9 +1073,11 @@ export function detectLegacyToc(doc, options = {}) {
   const { tables } = helpers.tablesOf(doc)
   const topTables = tables.filter((t) => t.path.length === 1)
 
-  // Check tables made by the legacy `insertToc` call when `made` history is provided.
-  if (helpers.contentsOf && Array.isArray(options.made) && options.made.length > 0) {
-    const found = tryOr(() => helpers.contentsOf(doc, options.made), null)
+  // Recognize an unmarked 2-column table ONLY when `made` history matches via `contentsOf`.
+  if (Array.isArray(options.made) && options.made.length > 0) {
+    const found = helpers.contentsOf
+      ? tryOr(() => helpers.contentsOf(doc, options.made), null)
+      : tryOr(() => defaultContentsOf(doc, options.made, tables), null)
     if (found && Number.isInteger(found.table) && found.table >= 1) {
       const table = tables[found.table - 1]
       if (table && !isInsideMarkedToc(table.sec, table.para, markedRanges)) {
@@ -1090,24 +1117,7 @@ export function detectLegacyToc(doc, options = {}) {
       }
       if (next >= paraCount || isInsideMarkedToc(sec, next, markedRanges)) continue
 
-      // Check for a legacy 2-column TOC table immediately below the title line.
-      const candidateTable = topTables.find((t) => t.sec === sec && t.para === next)
-      if (candidateTable && isPageLabelTable(doc, candidateTable)) {
-        const tableIndex = tables.indexOf(candidateTable) + 1
-        return {
-          found: true,
-          source: 'table',
-          sec,
-          startPara: para,
-          endPara: next,
-          title: cleanText(rawTitle),
-          tableIndex,
-          tablePara: next,
-          tableControlIndex: candidateTable.path[0].controlIndex,
-        }
-      }
-
-      // Check for legacy dotted or tabbed TOC entry lines.
+      // Check for legacy dotted or tabbed TOC entry lines (never match arbitrary 2-column tables).
       if (isLegacyTocLine(bodyText(doc, sec, next))) {
         let endPara = next
         while (
@@ -1743,8 +1753,13 @@ export function insertTocBlock(doc, place, options = {}) {
 
   // Check for an already-marked TOC of the same kind.
   const existingMarked = findTocRange(doc, kind)
-  if (existingMarked && options.replaceExisting !== true) {
-    return { ok: false, reason: 'toc_exists', kind, kindId, range: existingMarked }
+  if (existingMarked) {
+    if (options.replaceExisting !== true) {
+      return { ok: false, reason: 'toc_exists', kind, kindId, range: existingMarked }
+    }
+    if (existingMarked.start.sec !== existingMarked.end.sec) {
+      return { ok: false, reason: 'multi_section_range', kind, kindId, range: existingMarked }
+    }
   }
 
   // Check for an unmarked legacy TOC when inserting a body TOC.
@@ -1892,6 +1907,40 @@ function diffTocLines(expectedLines, actualLines) {
 }
 
 /**
+ * Read-only check reporting whether a marked TOC block of `kind` has manual edits
+ * compared against its saved snapshot lines in `설정:차례:<kind>`.
+ */
+export function detectTocManualEdits(doc, kind = 'body', options = {}) {
+  if (!doc || typeof doc.getSectionCount !== 'function') {
+    return { hasManualEdits: false, modifiedLines: [] }
+  }
+  const resolvedKind = resolveTocKind(kind)
+  if (!resolvedKind) {
+    return { hasManualEdits: false, modifiedLines: [] }
+  }
+  const range = findTocRange(doc, resolvedKind.kind)
+  if (!range || range.start.sec !== range.end.sec) {
+    return { hasManualEdits: false, modifiedLines: [] }
+  }
+  const meta = readTocMeta(doc, resolvedKind.kind)
+  if (!Array.isArray(meta?.lines)) {
+    return { hasManualEdits: false, modifiedLines: [], range }
+  }
+  const helpers = resolveHelpers(options)
+  const savedLayout =
+    meta.layout && TOC_LAYOUTS.includes(meta.layout)
+      ? meta.layout
+      : inferTocLayout(doc, range, helpers)
+  const actualLines = readTocRangeLines(doc, range, savedLayout, helpers)
+  const modifiedLines = diffTocLines(meta.lines, actualLines)
+  return {
+    hasManualEdits: modifiedLines.length > 0,
+    modifiedLines,
+    range,
+  }
+}
+
+/**
  * Refresh an existing marked TOC block in place (or replace a detected unmarked legacy TOC
  * when `replaceLegacy: true`). Refuses without mutating when manual edits are detected
  * inside the TOC range unless `allowOverwriteManual: true`.
@@ -1927,7 +1976,7 @@ export function refreshTocBlock(doc, options = {}) {
   }
 
   if (range.start.sec !== range.end.sec) {
-    return { ok: false, reason: 'unsupported_place', kind, kindId }
+    return { ok: false, reason: 'multi_section_range', kind, kindId, range }
   }
 
   const meta = readTocMeta(doc, kind)

@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
+import { MARK_PREFIXES, stripMarks } from '../studio-plugin/doc-marks.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -216,6 +217,176 @@ describe('plugin TOC methods (T10/T11)', () => {
     expect(forced).toMatchObject({ ok: true, kind: 'body', count: CHAPTERS })
     expect(plugin.foreignChanges()).toBe(1)
     expect(steps()).toBe(2)
+  })
+
+  it('makes contents beside a table of page-like numbers under a 차례 line and leaves it', () => {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    const h1 = styleIdOf(doc, '개요 1')
+    const body = styleIdOf(doc, '바탕글')
+    const lines: Array<[string, number]> = [
+      ['학급 회의 보고', body],
+      ['1. 회의 안건', h1],
+      ['차례', body],
+      ['2. 결정 사항', h1],
+      ['김민수가 회장을 맡는다.', body],
+    ]
+    lines.forEach(([text, styleId], k) => {
+      if (k > 0) doc.splitParagraph(0, k - 1, doc.getParagraphLength(0, k - 1))
+      doc.insertText(0, k, 0, text)
+      doc.applyStyle(0, k, styleId)
+    })
+
+    const { plugin } = open(doc)
+    plugin.insertTable('차례', null, 'after', [
+      ['김민수', '1'],
+      ['이서연', '2'],
+      ['박지훈', '3'],
+    ])
+    // Also verify a mixed page-like / text table under a 차례 line is never treated as legacy TOC.
+    expect(plugin.detectLegacyToc()).toBeNull()
+
+    const inserted = plugin.insertToc({
+      anchor: '학급 회의 보고',
+      where: 'after',
+      layout: 'table',
+      title: '차 례',
+    })
+    expect(inserted).toMatchObject({ ok: true, table: 1, tables: 2, count: 2 })
+
+    // User table (now table 2) stays completely intact.
+    const userTable = plugin.readTable(2)
+    expect(userTable.ok).toBe(true)
+    if (userTable.ok) {
+      expect(userTable.cells.map((c) => c.text)).toEqual([
+        '김민수',
+        '1',
+        '이서연',
+        '2',
+        '박지훈',
+        '3',
+      ])
+    }
+
+    // Refuses a second body TOC without replaceExisting.
+    const second = plugin.insertToc({
+      anchor: '김민수가',
+      where: 'after',
+      layout: 'table',
+      title: '목 차',
+    })
+    expect(second).toMatchObject({ ok: false, reason: 'toc_exists' })
+
+    // Variant with non-numeric second-column cell (`['이서연', 'A']`) under a 차례 line.
+    const doc2 = HwpDocument.createEmpty()
+    doc2.createBlankDocument()
+    const h1b = styleIdOf(doc2, '개요 1')
+    const bodyb = styleIdOf(doc2, '바탕글')
+    ;[
+      ['보고서', bodyb] as const,
+      ['1. 안건', h1b] as const,
+      ['차례', bodyb] as const,
+      ['2. 결론', h1b] as const,
+    ].forEach(([text, styleId], k) => {
+      if (k > 0) doc2.splitParagraph(0, k - 1, doc2.getParagraphLength(0, k - 1))
+      doc2.insertText(0, k, 0, text)
+      doc2.applyStyle(0, k, styleId)
+    })
+    const { plugin: plugin2 } = open(doc2)
+    plugin2.insertTable('차례', null, 'after', [
+      ['김민수', '1'],
+      ['이서연', 'A'],
+    ])
+    expect(plugin2.detectLegacyToc()).toBeNull()
+    expect(
+      plugin2.insertToc({ anchor: '보고서', where: 'after', layout: 'table', title: '차 례' }),
+    ).toMatchObject({ ok: true, table: 1, tables: 2 })
+    const kept = plugin2.readTable(2)
+    expect(kept.ok && kept.cells.map((c) => c.text)).toEqual(['김민수', '1', '이서연', 'A'])
+  })
+
+  it('leaves a count table as it is', () => {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    const h1 = styleIdOf(doc, '개요 1')
+    const body = styleIdOf(doc, '바탕글')
+    const lines: Array<[string, number]> = [
+      ['보고서', body],
+      ['1. 평가 기준', h1],
+      ['평가 비율은 다음과 같다.', body],
+      ['2. 요약', h1],
+    ]
+    lines.forEach(([text, styleId], k) => {
+      if (k > 0) doc.splitParagraph(0, k - 1, doc.getParagraphLength(0, k - 1))
+      doc.insertText(0, k, 0, text)
+      doc.applyStyle(0, k, styleId)
+    })
+
+    const { plugin } = open(doc)
+    plugin.insertTable('평가 비율은', null, 'after', [
+      ['출석', '10'],
+      ['과제', '20'],
+      ['시험', '70'],
+    ])
+    plugin.formatCells(1, null, { borders: [{ sides: 'all', line: 'none' }] })
+
+    expect(plugin.detectLegacyToc()).toBeNull()
+    const inserted = plugin.insertToc({
+      anchor: '보고서',
+      where: 'after',
+      layout: 'table',
+      title: '차 례',
+    })
+    expect(inserted).toMatchObject({ ok: true, table: 1, tables: 2, count: 2 })
+
+    const countTable = plugin.readTable(2)
+    expect(countTable.ok).toBe(true)
+    if (countTable.ok) {
+      expect(countTable.cells.map((c) => c.text)).toEqual([
+        '출석',
+        '10',
+        '과제',
+        '20',
+        '시험',
+        '70',
+      ])
+    }
+  })
+
+  it('clears contentsMade when another document is opened (document-swapped)', () => {
+    const handlers = new Map<string, () => void>()
+    const { plugin, doc } = open(reportWithOutline(), (event, fn) => {
+      handlers.set(event, fn)
+      return 0
+    })
+
+    const inserted = plugin.insertToc({
+      sec: 0,
+      para: 1,
+      layout: 'table',
+      maxLevel: 1,
+      title: '차 례',
+    })
+    expect(inserted).toMatchObject({ ok: true, layout: 'table', table: 1 })
+
+    // Strip TOC marks so the 2-column table becomes unmarked; session `contentsMade` still recognizes it.
+    stripMarks(doc(), [MARK_PREFIXES.toc, MARK_PREFIXES.setting])
+    expect(plugin.listTocRanges()).toEqual([])
+    expect(plugin.detectLegacyToc()).toMatchObject({ found: true, source: 'table' })
+
+    // Opening another document fires `document-swapped` and clears `contentsMade`.
+    handlers.get('document-swapped')?.()
+    expect(plugin.detectLegacyToc()).toBeNull()
+
+    // Now inserting a new TOC succeeds beside the unmarked table instead of confusing it with a previous session's TOC.
+    const next = plugin.insertToc({
+      sec: 0,
+      para: 0,
+      layout: 'table',
+      maxLevel: 1,
+      title: '목 차',
+    })
+    expect(next).toMatchObject({ ok: true, layout: 'table', tables: 2 })
   })
 })
 

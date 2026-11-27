@@ -452,30 +452,51 @@ describe('a number that counts from 1, and a number with a range', () => {
     ],
     [{ op: 'insert_break', find: '시행', occurrence: 0, kind: 'page' }, /occurrence must be/],
     [{ op: 'insert_toc', where: 'after', anchor: '시행', occurrence: 0 }, /occurrence must be/],
-    [{ op: 'insert_toc', maxLevel: 0 }, /maxLevel must be/],
-    [{ op: 'insert_toc', maxLevel: 11 }, /maxLevel must be/],
+    [{ op: 'insert_toc', section: 1, paragraph: 1, occurrence: 0 }, /occurrence must be/],
+    [{ op: 'insert_toc', section: 1, paragraph: 1, occurrence: 2147483648 }, /occurrence must be/],
+    [{ op: 'insert_toc', max_level: 0 }, /max_level must be/],
+    [{ op: 'insert_toc', max_level: 999 }, /max_level must be/],
+    [{ op: 'insert_toc', max_level: 2147483648 }, /max_level must be/],
     [{ op: 'insert_toc', section: 0, paragraph: 1 }, /section must be/],
-    [{ op: 'insert_toc', section: 1, paragraph: 0 }, /paragraph must be/],
     [{ op: 'insert_toc', section: 999, paragraph: 1 }, /out of range/],
+    [{ op: 'insert_toc', section: 2147483648, paragraph: 1 }, /section must be/],
+    [{ op: 'insert_toc', section: 1, paragraph: 0 }, /paragraph must be/],
     [{ op: 'insert_toc', section: 1, paragraph: 999 }, /out of range/],
-    [{ op: 'refresh_toc', maxLevel: 0 }, /maxLevel must be/],
-    [{ op: 'refresh_toc', maxLevel: 11 }, /maxLevel must be/],
+    [{ op: 'insert_toc', section: 1, paragraph: 2147483648 }, /paragraph must be/],
+    [{ op: 'refresh_toc', max_level: 0 }, /max_level must be/],
+    [{ op: 'refresh_toc', max_level: 999 }, /max_level must be/],
+    [{ op: 'refresh_toc', max_level: 2147483648 }, /max_level must be/],
     [{ op: 'mark_index', section: 0, paragraph: 1, term: '특송' }, /section must be/],
-    [{ op: 'mark_index', section: 1, paragraph: 0, term: '특송' }, /paragraph must be/],
-    [{ op: 'mark_index', section: 1, paragraph: 1, offset: -1, term: '특송' }, /offset must be/],
-    [{ op: 'mark_index', find: '시행', occurrence: 0, term: '시행' }, /occurrence must be/],
     [{ op: 'mark_index', section: 999, paragraph: 1, term: '특송' }, /out of range/],
+    [{ op: 'mark_index', section: 2147483648, paragraph: 1, term: '특송' }, /section must be/],
+    [{ op: 'mark_index', section: 1, paragraph: 0, term: '특송' }, /paragraph must be/],
     [{ op: 'mark_index', section: 1, paragraph: 999, term: '특송' }, /out of range/],
+    [{ op: 'mark_index', section: 1, paragraph: 2147483648, term: '특송' }, /paragraph must be/],
+    [{ op: 'mark_index', section: 1, paragraph: 1, offset: -1, term: '특송' }, /offset must be/],
     [{ op: 'mark_index', section: 1, paragraph: 1, offset: 999, term: '특송' }, /out of range/],
-    [{ op: 'insert_index', columns: 0 }, /columns must be/],
-    [{ op: 'insert_index', columns: 4 }, /columns must be/],
+    [
+      { op: 'mark_index', section: 1, paragraph: 1, offset: 2147483648, term: '특송' },
+      /offset must be/,
+    ],
+    [{ op: 'mark_index', find: '특송', occurrence: 0, term: '특송' }, /occurrence must be/],
+    [
+      { op: 'mark_index', find: '특송', occurrence: 2147483648, term: '특송' },
+      /occurrence must be/,
+    ],
     [{ op: 'insert_index', section: 0, paragraph: 1 }, /section must be/],
-    [{ op: 'insert_index', section: 1, paragraph: 0 }, /paragraph must be/],
     [{ op: 'insert_index', section: 999, paragraph: 1 }, /out of range/],
+    [{ op: 'insert_index', section: 2147483648, paragraph: 1 }, /section must be/],
+    [{ op: 'insert_index', section: 1, paragraph: 0 }, /paragraph must be/],
     [{ op: 'insert_index', section: 1, paragraph: 999 }, /out of range/],
+    [{ op: 'insert_index', section: 1, paragraph: 2147483648 }, /paragraph must be/],
+    [{ op: 'insert_index', section: 1, paragraph: 1, occurrence: 0 }, /occurrence must be/],
     [{ op: 'insert_index', where: 'after', anchor: '시행', occurrence: 0 }, /occurrence must be/],
+    [{ op: 'insert_index', columns: 0 }, /columns must be/],
+    [{ op: 'insert_index', columns: 999 }, /columns must be/],
+    [{ op: 'insert_index', columns: 2147483648 }, /columns must be/],
     [{ op: 'refresh_index', columns: 0 }, /columns must be/],
-    [{ op: 'refresh_index', columns: 4 }, /columns must be/],
+    [{ op: 'refresh_index', columns: 999 }, /columns must be/],
+    [{ op: 'refresh_index', columns: 2147483648 }, /columns must be/],
     [
       { op: 'insert_equations', equations: [{ find: '시행', occurrence: 0, script: 'x' }] },
       /occurrence must be/,
@@ -1079,7 +1100,7 @@ describe('hwp migrated TOC and index ops (T15)', () => {
           paragraph: 2,
           kind: 'body',
           layout: 'dotted-tab',
-          maxLevel: 2,
+          max_level: 2,
           links: true,
           title: '차례',
         },
@@ -1091,8 +1112,8 @@ describe('hwp migrated TOC and index ops (T15)', () => {
           title: '표 차례',
         },
         { op: 'refresh_toc', kind: 'body' },
-        { op: 'mark_index', term: '알고리즘', markAll: true },
-        { op: 'mark_index', find: '연구 배경', term: '배경', subTerm: '개요' },
+        { op: 'mark_index', term: '알고리즘', mark_all: true },
+        { op: 'mark_index', find: '연구 배경', term: '배경', sub_term: '개요' },
         { op: 'list_index_marks' },
         { op: 'remove_index_mark', term: '배경' },
         { op: 'insert_index', where: 'end', title: '찾아보기', columns: 2, layout: 'dotted-tab' },
@@ -1110,7 +1131,9 @@ describe('hwp migrated TOC and index ops (T15)', () => {
     expect(results[1]!.output).toContain('Inserted table table of contents')
     expect(results[2]!.output).toContain('Refreshed body table of contents')
     expect(results[3]!.output).toContain('Marked 2 body occurrence(s) for "알고리즘"')
+    expect(results[3]!.output).toContain('Korean particle-attached forms included')
     expect(results[5]!.output).toContain('3 index mark(s)')
+    expect(results[5]!.output).toContain('"sub_term":"개요"')
     expect(results[6]!.output).toContain('Removed 1 index mark(s)')
     expect(results[7]!.output).toContain('Inserted index (dotted-tab, 2 column(s))')
     expect(results[8]!.output).toContain('Refreshed index (table, 1 column(s))')
@@ -1120,6 +1143,100 @@ describe('hwp migrated TOC and index ops (T15)', () => {
     expect(text).toContain('표 차례')
     expect(text).toContain('찾아보기')
     expect(text).toContain('알고리즘')
+  })
+
+  it('refuses multi-column insert_index before trailing text until allow_page_split is true', async () => {
+    const dir = tempDir()
+    const path = write(dir, 'thesis-split.hwpx', thesisDoc().exportHwpx())
+
+    const refused = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'mark_index', term: '알고리즘', mark_all: true },
+        { op: 'insert_index', section: 1, paragraph: 2, columns: 2 },
+      ]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(refused.code).toBe(1)
+    expect(refused.stdout).toContain('allow_page_split: true')
+    expect(refused.stdout).toContain('색인 앞뒤가 새 쪽으로 나뉩니다')
+
+    const allowed = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'mark_index', term: '알고리즘', mark_all: true },
+        { op: 'insert_index', section: 1, paragraph: 2, columns: 2, allow_page_split: true },
+      ]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(allowed.code, allowed.stdout).toBe(0)
+    expect(allowed.json().detail.results[1].output).toContain(
+      'Inserted index (dotted-tab, 2 column(s))',
+    )
+
+    const endOk = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'mark_index', term: '알고리즘', mark_all: true },
+        { op: 'insert_index', where: 'end', columns: 2 },
+      ]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(endOk.code, endOk.stdout).toBe(0)
+  })
+
+  it('includes Korean particle-attached forms in mark_index mark_all while excluding compounds', async () => {
+    const dir = tempDir()
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    doc.insertText(0, 0, 0, '연구는 중요하고 연구를 계속하며 연구자는 제외한다.')
+    const path = write(dir, 'particles.hwpx', doc.exportHwpx())
+
+    const withParticles = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [{ op: 'mark_index', term: '연구', mark_all: true }]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(withParticles.code, withParticles.stdout).toBe(0)
+    expect(withParticles.json().detail.results[0].output).toContain(
+      'Marked 2 body occurrence(s) for "연구"',
+    )
+    expect(withParticles.json().detail.results[0].output).toContain(
+      'Korean particle-attached forms included (2 with particle)',
+    )
+
+    const withoutParticles = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [{ op: 'mark_index', term: '연구', mark_all: true, include_particles: false }]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(withoutParticles.code, withoutParticles.stdout).toBe(0)
+    expect(withoutParticles.json().detail.results[0].output).toContain(
+      'Added 0 index marks for "연구"',
+    )
+    expect(withoutParticles.json().detail.results[0].output).toContain(
+      'Exact whole-word match without Korean particles.',
+    )
   })
 
   it('passes app-wide hwpOutlineStyleMap from app-settings.json to insert_toc and refresh_toc in CLI', async () => {
@@ -1147,7 +1264,7 @@ describe('hwp migrated TOC and index ops (T15)', () => {
         path,
         '--ops',
         ops(dir, [
-          { op: 'insert_toc', section: 1, paragraph: 2, kind: 'body', maxLevel: 1 },
+          { op: 'insert_toc', section: 1, paragraph: 2, kind: 'body', max_level: 1 },
           { op: 'refresh_toc', kind: 'body' },
         ]),
         '--dry-run',

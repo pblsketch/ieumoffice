@@ -79,7 +79,6 @@ export const tr = {
   aiToolAnalyzePictureFail: '{picture} resmine bakılamadı',
   aiToolFields: 'Form alanları denetlendi · {count}',
   aiToolToc: 'İçindekiler eklendi · {count} başlık',
-  aiToolTocRefresh: 'İçindekiler sayfa numaraları yeniden yazıldı · {count}',
   aiTocName: 'İçindekiler',
   aiTocPagesChanged: '{count} sayfa numarası güncellendi',
   aiToolNotes: 'Dipnotlar ve sonnotlar denetlendi · {count}',

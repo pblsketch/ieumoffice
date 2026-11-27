@@ -51,6 +51,10 @@ export const de = {
     'Ein Inhaltsverzeichnis kann nicht innerhalb einer Tabelle eingefügt werden. Setzen Sie den Cursor in einen Textabsatz.',
   tocErrorUnsupportedPlace:
     'An dieser Stelle kann kein Inhaltsverzeichnis eingefügt werden. Setzen Sie den Cursor in einen Textabsatz.',
+  tocErrorHasObjects:
+    'Das Inhaltsverzeichnis wurde nicht ersetzt, da es Benutzerobjekte wie Fußnoten, Bilder oder Tabellen enthält.',
+  tocErrorMultiSection:
+    'Das Inhaltsverzeichnis erstreckt sich über mehrere Abschnitte und kann nicht automatisch aktualisiert werden.',
   tocErrorNoHeadings: 'Keine passenden Überschriften gefunden.',
   tocErrorNoCaptions: 'Keine passenden Beschriftungen gefunden.',
   tocErrorGeneric: 'Inhaltsverzeichnis konnte nicht aktualisiert werden: {error}',
@@ -61,6 +65,13 @@ export const de = {
   indexMarkSubTermLabel: 'Untereintrag (optional)',
   indexMarkSubTermPlaceholder: 'Leer lassen für nur den Haupteintrag',
   indexMarkAllLabel: 'Alle gleichen Vorkommen markieren',
+  indexMarkAllPreviewTitle: 'Alle Indexeinträge bestätigen',
+  indexMarkAllPreviewMessage: 'An {count} gefundenen Textstellen Indexeinträge setzen?',
+  indexMarkAllPreviewParticlesNote: 'Vorkommen mit angehängten Partikeln werden ebenfalls erfasst.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} Stelle(n) in Tabellen, Textfeldern oder Fußnoten werden übersprungen.',
+  indexMarkAllPreviewConfirm: 'Alle markieren',
+  indexMarkAllPreviewMore: 'und {count} weitere Stelle(n)',
   indexMarksListTitle: 'Vorhandene Indexeinträge ({count})',
   indexMarksListEmpty: 'In diesem Dokument gibt es noch keine Indexeinträge.',
   indexMarkPageBadge: 'S. {page}',
@@ -81,6 +92,10 @@ export const de = {
   indexColumnsLabel: 'Spalten',
   indexColumnsOption: '{count} Spalte(n)',
   indexGroupHeadingsLabel: 'Gruppenüberschriften nach Buchstaben einfügen',
+  indexPageSplitConfirmTitle: 'Seitenumbruch für mehrspaltigen Index bestätigen',
+  indexPageSplitConfirmMessage:
+    'Vor und nach dem mehrspaltigen Index wird jeweils eine neue Seite begonnen. Fortfahren?',
+  indexPageSplitConfirmAction: 'Fortfahren',
   indexCreatedToast: 'Index erstellt ({count} Einträge).',
   indexRefreshedToast: 'Index aktualisiert ({count} Einträge).',
   indexRefreshNotFound: 'Kein Index zum Aktualisieren gefunden.',
@@ -90,6 +105,8 @@ export const de = {
     'Ein Index kann nicht innerhalb einer Tabelle eingefügt werden. Setzen Sie den Cursor in einen Textabsatz.',
   indexErrorUnsupportedPlace:
     'An dieser Stelle kann kein Index eingefügt werden. Setzen Sie den Cursor in einen Textabsatz.',
+  indexErrorHasObjects:
+    'Der Index wurde nicht ersetzt, da er Benutzerobjekte wie Fußnoten, Bilder oder Tabellen enthält.',
   indexErrorAlreadyExists:
     'In diesem Dokument gibt es bereits einen Index. Verwenden Sie „Index aktualisieren“.',
   indexErrorGeneric: 'Index konnte nicht aktualisiert werden: {error}',

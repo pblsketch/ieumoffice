@@ -18,6 +18,7 @@ import {
   DEFAULT_INDEX_LAYOUT,
   DEFAULT_INDEX_TITLE,
   INDEX_BLOCK_SETTING_KEY,
+  KOREAN_PARTICLES,
   addIndexMark,
   addIndexMarksAll,
   buildIndexBlock,
@@ -26,10 +27,12 @@ import {
   groupIndexEntries,
   indexGroupHeadingOf,
   listIndexMarks,
+  previewIndexMarksAll,
   refreshIndexBlock,
   removeIndexMark,
   removeIndexMarksByTerm,
   resolveIndexWordAt,
+  willMultiColumnIndexSplitPages,
 } from '../studio-plugin/index-marks.mjs'
 
 const require = createRequire(import.meta.url)
@@ -345,6 +348,91 @@ describe('addIndexMarksAll (whole-word matching & non-body skip counts)', () => 
     expect(second.added).toBe(0)
     expect(listIndexMarks(doc)).toHaveLength(3)
   })
+
+  it('matches Korean postpositions by default, excludes compound words, and provides a read-only preview', () => {
+    expect(KOREAN_PARTICLES.length).toBeGreaterThan(20)
+    for (let i = 1; i < KOREAN_PARTICLES.length; i++) {
+      expect(KOREAN_PARTICLES[i - 1]!.length).toBeGreaterThanOrEqual(KOREAN_PARTICLES[i]!.length)
+    }
+
+    const doc = makeDoc([
+      '연구는 중요하다. 연구를 통해 연구의 깊이를 더하는 연구 방법은 연구자가 정한다.',
+      '표 자리',
+    ])
+    const tbl = JSON.parse(
+      doc.createTableEx(
+        JSON.stringify({
+          sectionIdx: 0,
+          paraIdx: 1,
+          charOffset: 0,
+          rowCount: 1,
+          colCount: 1,
+          treatAsChar: true,
+        }),
+      ),
+    ) as { ok: boolean; controlIdx: number }
+    expect(tbl.ok).toBe(true)
+    doc.insertTextInCell(
+      0,
+      1,
+      tbl.controlIdx,
+      0,
+      0,
+      0,
+      '연구에서는 결과를 기록하고 연구자는 제외한다.',
+    )
+
+    // Read-only preview matches addIndexMarksAll and never mutates doc.
+    const preview = previewIndexMarksAll(doc, { term: '연구' })
+    expect(preview.ok).toBe(true)
+    if (!preview.ok) return
+    expect(preview.includeParticles).toBe(true)
+    expect(preview.matches).toHaveLength(4)
+    expect(preview.matches.map((m) => m.matchedText)).toEqual([
+      '연구는',
+      '연구를',
+      '연구의',
+      '연구',
+    ])
+    expect(preview.matches.map((m) => m.particle)).toEqual(['는', '를', '의', null])
+    expect(preview.matches.every((m) => m.alreadyMarked === false)).toBe(true)
+    expect(preview.matches.every((m) => m.page === 1 && m.pageLabel === '1')).toBe(true)
+    expect(preview.skippedCounts.tableCell).toBe(1)
+    expect(preview.skippedNonBody).toBe(1)
+    expect(listIndexMarks(doc)).toHaveLength(0)
+
+    // Opting out of particle matching only matches exact boundary ('연구 방법').
+    const strictPreview = previewIndexMarksAll(doc, { term: '연구', includeParticles: false })
+    expect(strictPreview.ok).toBe(true)
+    if (strictPreview.ok) {
+      expect(strictPreview.includeParticles).toBe(false)
+      expect(strictPreview.matches).toHaveLength(1)
+      expect(strictPreview.matches[0]!.matchedText).toBe('연구')
+      expect(strictPreview.skippedCounts.tableCell).toBe(0)
+    }
+
+    // Applying marks adds exactly 4 marks (3 particle matches + 1 exact) and skips '연구자가'.
+    const added = addIndexMarksAll(doc, { term: '연구' })
+    expect(added.ok).toBe(true)
+    if (!added.ok) return
+    expect(added.added).toBe(4)
+    expect(added.includeParticles).toBe(true)
+    expect(added.particleMatches).toBe(3)
+    expect(added.skippedCounts.tableCell).toBe(1)
+    expect(added.marks.map((m) => m.offset)).toEqual(preview.matches.map((m) => m.offset))
+    const para0 = paraText(doc, 0, 0)
+    const researcherOffset = para0.indexOf('연구자')
+    expect(researcherOffset).toBeGreaterThan(0)
+    expect(added.marks.some((m) => m.offset === researcherOffset)).toBe(false)
+
+    // Subsequent preview marks all 4 occurrences as alreadyMarked.
+    const afterPreview = previewIndexMarksAll(doc, { term: '연구' })
+    expect(afterPreview.ok).toBe(true)
+    if (afterPreview.ok) {
+      expect(afterPreview.matches).toHaveLength(4)
+      expect(afterPreview.matches.every((m) => m.alreadyMarked === true)).toBe(true)
+    }
+  })
 })
 
 describe('sorting, double-consonant folding, and page deduplication', () => {
@@ -443,7 +531,7 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     })
 
     // Build index before para 4 (middle of document, trailing para 4 must stay 1-column!)
-    const built = buildIndexBlock(doc, { sec: 0, para: 4 })
+    const built = buildIndexBlock(doc, { sec: 0, para: 4 }, { allowPageSplit: true })
     expect(built.ok).toBe(true)
     if (!built.ok) return
     expect(built.columns).toBe(DEFAULT_INDEX_COLUMNS)
@@ -508,7 +596,7 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     addIndexMark(doc, { sec: 0, para: 1, offset: 0 }, { term: '둘용어' })
 
     // Insert 2-column index at (0, 0) BEFORE all body content
-    const built = buildIndexBlock(doc, { sec: 0, para: 0 }, { columns: 2 })
+    const built = buildIndexBlock(doc, { sec: 0, para: 0 }, { columns: 2, allowPageSplit: true })
     expect(built.ok).toBe(true)
     if (!built.ok) return
 
@@ -534,7 +622,11 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     const doc3 = makeDoc(['앞 본문', '뒤 본문'])
     addIndexMark(doc3, { sec: 0, para: 0, offset: 0 }, { term: '표항목' })
     addIndexMark(doc3, { sec: 0, para: 0, offset: 2 }, { term: '표항목', subTerm: '하위항목' })
-    const b3 = buildIndexBlock(doc3, { sec: 0, para: 1 }, { columns: 3, layout: 'table' })
+    const b3 = buildIndexBlock(
+      doc3,
+      { sec: 0, para: 1 },
+      { columns: 3, layout: 'table', allowPageSplit: true },
+    )
     expect(b3.ok).toBe(true)
     if (!b3.ok) return
     expect(sectionColumnCounts(doc3)).toEqual([1, 3, 1])
@@ -575,7 +667,7 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     // No index block yet -> not stale
     expect(checkIndexStaleness(doc)).toEqual({ stale: false })
 
-    const built = buildIndexBlock(doc, { sec: 0, para: 2 }, { columns: 2 })
+    const built = buildIndexBlock(doc, { sec: 0, para: 2 }, { columns: 2, allowPageSplit: true })
     expect(built.ok).toBe(true)
     if (!built.ok) return
     expect(sectionColumnCounts(doc)).toEqual([1, 2, 1])
@@ -643,7 +735,11 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     addIndexMark(doc, { sec: 0, para: 0, offset: 0 }, { term: '서론용어' })
     addIndexMark(doc, { sec: 0, para: 1, offset: 0 }, { term: longTerm, subTerm: '세부:1' })
 
-    const built = buildIndexBlock(doc, { sec: 0, para: 2 }, { columns: 2, layout: 'dotted-tab' })
+    const built = buildIndexBlock(
+      doc,
+      { sec: 0, para: 2 },
+      { columns: 2, layout: 'dotted-tab', allowPageSplit: true },
+    )
     expect(built.ok).toBe(true)
     if (!built.ok) return
 
@@ -744,6 +840,7 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
           title: emptyTitle,
           layout: 'table',
           columns: 2,
+          allowPageSplit: true,
         },
       )
       expect(built.ok).toBe(true)
@@ -794,7 +891,11 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
       expect(refreshOrphan.reason).toBe('not_found')
       expect(refreshOrphan.cleanedMarks?.brokenRemoved).toBe(1)
     }
-    const rebuiltAfterRefresh = buildIndexBlock(docOrphan1, { sec: 0, para: 1 })
+    const rebuiltAfterRefresh = buildIndexBlock(
+      docOrphan1,
+      { sec: 0, para: 1 },
+      { allowPageSplit: true },
+    )
     expect(rebuiltAfterRefresh.ok).toBe(true)
 
     // Case B: Orphan `색인블록:기본:끝` auto-cleaned directly by buildIndexBlock (no duplicate_name lockout)
@@ -802,7 +903,7 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     addIndexMark(docOrphan2, { sec: 0, para: 0, offset: 0 }, { term: '복구어' })
     docOrphan2.addBookmark(0, 1, 0, '색인블록:기본:끝')
 
-    const builtDirect = buildIndexBlock(docOrphan2, { sec: 0, para: 1 })
+    const builtDirect = buildIndexBlock(docOrphan2, { sec: 0, para: 1 }, { allowPageSplit: true })
     expect(builtDirect.ok).toBe(true)
     if (builtDirect.ok) {
       expect(builtDirect.cleanedMarks?.brokenRemoved).toBe(1)
@@ -857,5 +958,140 @@ describe('index block builder (multi-column scoping, layouts, printed pages, ref
     expect(sectionColumnCounts(doc)).toEqual([1, 2])
     expect(paraText(doc, 0, 1)).toBe('마지막 본문 문단')
     expect(checkIndexStaleness(doc)).toEqual({ stale: false })
+  })
+
+  it('requires page_split_confirm for mid-document multi-column indexes, allows end-of-document directly, and inherits section attributes', () => {
+    const doc = makeDoc(['앞 본문 문단', '중간 본문 문단', '뒤쪽 부록 문단'])
+    addIndexMark(doc, { sec: 0, para: 0, offset: 0 }, { term: '머리말용어' })
+
+    // Configure custom landscape pageDef, header, multi-line footer, and page number position.
+    doc.setPageDef(
+      0,
+      JSON.stringify({
+        width: 59528,
+        height: 84186,
+        marginLeft: 5000,
+        marginRight: 5200,
+        marginTop: 4000,
+        marginBottom: 4200,
+        landscape: true,
+      }),
+    )
+    doc.createHeaderFooter(0, true, 0)
+    doc.insertTextInHeaderFooter(0, true, 0, 0, 0, '학위논문 머리말')
+    doc.applyCharFormatInHeaderFooter(
+      0,
+      true,
+      0,
+      0,
+      0,
+      0,
+      '학위논문 머리말'.length,
+      JSON.stringify({ bold: true, fontSize: 1100 }),
+    )
+    doc.createHeaderFooter(0, false, 0)
+    doc.insertTextInHeaderFooter(0, false, 0, 0, 0, '꼬리말 첫 줄')
+    doc.splitParagraphInHeaderFooter(0, false, 0, 0, '꼬리말 첫 줄'.length)
+    doc.insertTextInHeaderFooter(0, false, 0, 1, 0, '꼬리말 둘째 줄')
+    doc.setPageNumberPos(0, 0, 5, true)
+
+    // Mid-document multi-column splits pages; end-of-document and 1-column do not.
+    expect(willMultiColumnIndexSplitPages(doc, { sec: 0, para: 1 }, 2)).toBe(true)
+    expect(willMultiColumnIndexSplitPages(doc, { sec: 0, para: 1 }, 1)).toBe(false)
+    expect(willMultiColumnIndexSplitPages(doc, { sec: 0, para: 2 }, 2, { where: 'after' })).toBe(
+      false,
+    )
+
+    // Mid-document multi-column refuses without allowPageSplit and does not mutate doc.
+    const refused = buildIndexBlock(doc, { sec: 0, para: 1 }, { columns: 2 })
+    expect(refused).toEqual({
+      ok: false,
+      reason: 'page_split_confirm',
+      splitsPages: true,
+    })
+    expect(doc.getSectionCount()).toBe(1)
+    expect(findRangeMarks(doc, [MARK_PREFIXES.indexBlock]).ranges).toHaveLength(0)
+
+    // Confirming allowPageSplit: true succeeds and inherits section attributes on all split sections.
+    const built = buildIndexBlock(doc, { sec: 0, para: 1 }, { columns: 2, allowPageSplit: true })
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    expect(doc.getSectionCount()).toBe(3)
+    expect(sectionColumnCounts(doc)).toEqual([1, 2, 1])
+
+    const verifyInheritance = (targetDoc: HwpDocument, label: string) => {
+      expect(targetDoc.getSectionCount(), label).toBe(3)
+      for (let s = 0; s < 3; s++) {
+        const pd = JSON.parse(targetDoc.getPageDef(s)) as {
+          landscape: boolean
+          marginLeft: number
+          marginRight: number
+        }
+        expect(pd.landscape, `${label}:sec${s}:landscape`).toBe(true)
+        expect(pd.marginLeft, `${label}:sec${s}:marginLeft`).toBe(5000)
+        expect(pd.marginRight, `${label}:sec${s}:marginRight`).toBe(5200)
+
+        const header = JSON.parse(targetDoc.getHeaderFooter(s, true, 0)) as {
+          exists: boolean
+          text: string
+        }
+        expect(header.exists, `${label}:sec${s}:headerExists`).toBe(true)
+        expect(header.text, `${label}:sec${s}:headerText`).toBe('학위논문 머리말')
+
+        const footer = JSON.parse(targetDoc.getHeaderFooter(s, false, 0)) as {
+          exists: boolean
+          text: string
+        }
+        expect(footer.exists, `${label}:sec${s}:footerExists`).toBe(true)
+        expect(footer.text, `${label}:sec${s}:footerText`).toBe('꼬리말 첫 줄\n꼬리말 둘째 줄')
+
+        const pgnp = JSON.parse(targetDoc.getPageNumberPos(s)) as {
+          pageNumber: { format: number; position: number; dash: boolean } | null
+        }
+        expect(pgnp.pageNumber, `${label}:sec${s}:pgnp`).toEqual({
+          format: 0,
+          position: 5,
+          dash: true,
+        })
+
+        const sd = JSON.parse(targetDoc.getSectionDef(s)) as { pageNum: number }
+        expect(sd.pageNum, `${label}:sec${s}:pageNum`).toBe(0)
+      }
+
+      // Continuous page numbers 1, 2, 3 across the 3 sections.
+      expect(targetDoc.pageCount(), `${label}:pageCount`).toBe(3)
+      const printedPages = [0, 1, 2].map(
+        (p) => (JSON.parse(targetDoc.getPageInfo(p)) as { pageNumber: number }).pageNumber,
+      )
+      expect(printedPages, `${label}:printedPages`).toEqual([1, 2, 3])
+    }
+
+    verifyInheritance(doc, 'live')
+    const reopenedHwp = new HwpDocument(doc.exportHwp())
+    const reopenedHwpx = new HwpDocument(doc.exportHwpx())
+    try {
+      verifyInheritance(reopenedHwp, 'hwp')
+      verifyInheritance(reopenedHwpx, 'hwpx')
+    } finally {
+      reopenedHwp.free()
+      reopenedHwpx.free()
+    }
+
+    // End-of-document multi-column succeeds directly without allowPageSplit and inherits attributes.
+    const endDoc = makeDoc(['첫 문단', '마지막 문단'])
+    addIndexMark(endDoc, { sec: 0, para: 0, offset: 0 }, { term: '끝용어' })
+    endDoc.createHeaderFooter(0, true, 0)
+    endDoc.insertTextInHeaderFooter(0, true, 0, 0, 0, '문서 끝 머리말')
+    endDoc.setPageNumberPos(0, 0, 5, false)
+
+    const endBuilt = buildIndexBlock(endDoc, { sec: 0, para: 1 }, { where: 'after', columns: 2 })
+    expect(endBuilt.ok).toBe(true)
+    expect(sectionColumnCounts(endDoc)).toEqual([1, 2])
+    const endHeader = JSON.parse(endDoc.getHeaderFooter(1, true, 0)) as {
+      exists: boolean
+      text: string
+    }
+    expect(endHeader.exists).toBe(true)
+    expect(endHeader.text).toBe('문서 끝 머리말')
   })
 })

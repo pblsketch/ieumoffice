@@ -78,7 +78,6 @@ export const ar = {
   aiToolAnalyzePictureFail: 'تعذّر عرض الصورة {picture}',
   aiToolFields: 'تم فحص حقول النموذج · {count}',
   aiToolToc: 'أُضيف جدول محتويات · {count} عناوين',
-  aiToolTocRefresh: 'أُعيدت كتابة أرقام صفحات جدول المحتويات · {count}',
   aiTocName: 'جدول المحتويات',
   aiTocPagesChanged: 'تم تحديث {count} من أرقام الصفحات',
   aiToolNotes: 'تم فحص الحواشي · {count}',

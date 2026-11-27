@@ -8,8 +8,10 @@
  * produce one undo step.
  */
 import { SUBMISSION_STRIP_PREFIXES, stripMarks } from './doc-marks.mjs'
-import { checkTocStaleness, listTocRanges, refreshTocBlock } from './toc.mjs'
-import { checkIndexStaleness, refreshIndexBlock } from './index-marks.mjs'
+import { checkTocStaleness, detectTocManualEdits, listTocRanges, refreshTocBlock } from './toc.mjs'
+import { checkIndexStaleness, detectIndexManualEdits, refreshIndexBlock } from './index-marks.mjs'
+
+const MAX_CONVERGENCE_PASSES = 3
 
 const TOC_KIND_LABELS = Object.freeze({
   body: '차례',
@@ -22,9 +24,20 @@ function errorMessage(err) {
   return err instanceof Error ? err.message : String(err)
 }
 
+function normalizeManualEditEntry(checkerId, entry) {
+  return {
+    checkerId: entry?.checkerId ?? checkerId,
+    id: entry?.id ?? checkerId,
+    kind: entry?.kind ?? checkerId,
+    ...(typeof entry?.label === 'string' ? { label: entry.label } : {}),
+    ...(Array.isArray(entry?.modifiedLines) ? { modifiedLines: entry.modifiedLines } : {}),
+    ...(entry?.range !== undefined ? { range: entry.range } : {}),
+  }
+}
+
 function normalizeCheckResult(checkerId, raw) {
   if (!raw || typeof raw !== 'object') {
-    return { stale: false, items: [] }
+    return { stale: false, items: [], manualEdits: [] }
   }
   const rawItems = Array.isArray(raw.items) ? raw.items : []
   const items = rawItems.map((item, idx) => {
@@ -45,11 +58,31 @@ function normalizeCheckResult(checkerId, raw) {
     if (item?.details !== undefined) {
       normalized.details = item.details
     }
+    if (typeof item?.hasManualEdits === 'boolean') {
+      normalized.hasManualEdits = item.hasManualEdits
+    }
+    if (Array.isArray(item?.modifiedLines)) {
+      normalized.modifiedLines = item.modifiedLines
+    }
     return normalized
   })
+  const manualEdits = Array.isArray(raw.manualEdits)
+    ? raw.manualEdits.map((entry) => normalizeManualEditEntry(checkerId, entry))
+    : items
+        .filter((item) => item.hasManualEdits === true)
+        .map((item) =>
+          normalizeManualEditEntry(checkerId, {
+            checkerId,
+            id: item.id,
+            kind: item.kind,
+            label: item.label,
+            modifiedLines: item.modifiedLines,
+          }),
+        )
   return {
     stale: Boolean(raw.stale) && items.length > 0,
     items,
+    manualEdits,
   }
 }
 
@@ -62,16 +95,34 @@ export const tocStalenessChecker = Object.freeze({
       collectors: options?.collectors,
       helpers: options?.helpers,
     })
-    const items = (res.items ?? []).map((item) => ({
-      id: `toc:${item.kind}`,
-      kind: item.kind,
-      reason: item.reason,
-      label: TOC_KIND_LABELS[item.kind] ?? item.kindId ?? item.kind,
-      details: item.details,
-    }))
+    const manualEdits = []
+    const items = (res.items ?? []).map((item) => {
+      const label = TOC_KIND_LABELS[item.kind] ?? item.kindId ?? item.kind
+      const manual = detectTocManualEdits(doc, item.kind, options)
+      if (manual.hasManualEdits) {
+        manualEdits.push({
+          checkerId: 'toc',
+          id: `toc:${item.kind}`,
+          kind: item.kind,
+          label,
+          modifiedLines: manual.modifiedLines,
+          range: manual.range ?? item.range,
+        })
+      }
+      return {
+        id: `toc:${item.kind}`,
+        kind: item.kind,
+        reason: item.reason,
+        label,
+        details: item.details,
+        hasManualEdits: manual.hasManualEdits,
+        ...(manual.hasManualEdits ? { modifiedLines: manual.modifiedLines } : {}),
+      }
+    })
     return {
       stale: Boolean(res.stale) && items.length > 0,
       items,
+      manualEdits,
     }
   },
   refresh(doc, options = {}) {
@@ -90,8 +141,6 @@ export const tocStalenessChecker = Object.freeze({
     }
 
     let refreshed = 0
-    const skippedManual = []
-    const failures = []
 
     for (const kind of uniqueKinds) {
       const res = refreshTocBlock(doc, {
@@ -103,24 +152,32 @@ export const tocStalenessChecker = Object.freeze({
       if (res.ok) {
         refreshed += 1
       } else if (res.reason === 'manual_edits') {
-        skippedManual.push({
-          checkerId: 'toc',
-          id: `toc:${kind}`,
-          kind,
-          label: TOC_KIND_LABELS[kind] ?? kind,
-          modifiedLines: res.modifiedLines ?? [],
-          range: res.range,
-        })
+        return {
+          ok: false,
+          refreshed: 0,
+          skippedManual: [
+            {
+              checkerId: 'toc',
+              id: `toc:${kind}`,
+              kind,
+              label: TOC_KIND_LABELS[kind] ?? kind,
+              modifiedLines: res.modifiedLines ?? [],
+              range: res.range,
+            },
+          ],
+        }
       } else {
-        failures.push(`${kind}:${res.reason ?? res.error ?? 'refresh_failed'}`)
+        return {
+          ok: false,
+          refreshed: 0,
+          failed: `${kind}:${res.reason ?? res.error ?? 'refresh_failed'}`,
+        }
       }
     }
 
     return {
-      ok: failures.length === 0 && skippedManual.length === 0,
+      ok: true,
       refreshed,
-      ...(skippedManual.length > 0 ? { skippedManual } : {}),
-      ...(failures.length > 0 ? { failed: failures.join('; ') } : {}),
     }
   },
 })
@@ -131,8 +188,21 @@ export const indexStalenessChecker = Object.freeze({
   check(doc) {
     const res = checkIndexStaleness(doc)
     if (!res.stale) {
-      return { stale: false, items: [] }
+      return { stale: false, items: [], manualEdits: [] }
     }
+    const manual = detectIndexManualEdits(doc)
+    const manualEdits = manual.hasManualEdits
+      ? [
+          {
+            checkerId: 'index',
+            id: 'index',
+            kind: 'index',
+            label: '찾아보기',
+            modifiedLines: manual.modifiedLines,
+            range: manual.range,
+          },
+        ]
+      : []
     return {
       stale: true,
       items: [
@@ -141,8 +211,11 @@ export const indexStalenessChecker = Object.freeze({
           kind: 'index',
           reason: res.reason ?? 'entries_changed',
           label: '찾아보기',
+          hasManualEdits: manual.hasManualEdits,
+          ...(manual.hasManualEdits ? { modifiedLines: manual.modifiedLines } : {}),
         },
       ],
+      manualEdits,
     }
   },
   refresh(doc, options = {}) {
@@ -230,6 +303,7 @@ export function createStalenessRegistry() {
   /** Read-only staleness check across all registered checkers. Never mutates `doc`. */
   function check(doc, options = {}) {
     const items = []
+    const manualEdits = []
     const errors = []
 
     for (const checker of selectedCheckers(options)) {
@@ -237,6 +311,9 @@ export function createStalenessRegistry() {
         const result = normalizeCheckResult(checker.id, checker.check(doc, options))
         if (result.stale) {
           items.push(...result.items)
+          if (result.manualEdits.length > 0) {
+            manualEdits.push(...result.manualEdits)
+          }
         }
       } catch (err) {
         errors.push({ id: checker.id, error: errorMessage(err) })
@@ -246,79 +323,112 @@ export function createStalenessRegistry() {
     return {
       stale: items.length > 0,
       items,
+      manualEdits,
       ...(errors.length > 0 ? { errors } : {}),
     }
   }
 
   /**
-   * Sequentially refresh every stale checker on `doc`.
-   * Checks each checker immediately before refreshing so earlier refreshes that shift
-   * pagination (for example a growing TOC) are reflected by later checkers (for example index).
+   * Sequentially refresh every stale checker on `doc` in a bounded convergence loop
+   * (up to 3 passes) so page shifts caused by earlier blocks are absorbed cleanly.
+   * Stops immediately on any failure or unapproved manual edit and returns `ok: false`
+   * with `refreshed: 0` so a wrapping editor transaction rolls back atomically.
    */
   function refreshAll(doc, options = {}) {
-    let refreshed = 0
-    const manualEdits = []
-    const failed = []
+    let totalRefreshed = 0
     const results = []
+    const activeCheckers = selectedCheckers(options)
 
-    for (const checker of selectedCheckers(options)) {
-      let shouldRefresh = options?.force === true
-      if (!shouldRefresh) {
+    for (let pass = 0; pass < MAX_CONVERGENCE_PASSES; pass++) {
+      let passRefreshed = 0
+      const passOptions = pass === 0 ? options : { ...options, force: false }
+
+      for (const checker of activeCheckers) {
+        let shouldRefresh = pass === 0 && options?.force === true
+        if (!shouldRefresh) {
+          try {
+            const checkRes = normalizeCheckResult(checker.id, checker.check(doc, passOptions))
+            shouldRefresh = checkRes.stale
+          } catch (err) {
+            return {
+              ok: false,
+              reason: 'refresh_failed',
+              refreshed: 0,
+              manualEdits: [],
+              failed: [{ id: checker.id, error: errorMessage(err) }],
+              results,
+            }
+          }
+        }
+        if (!shouldRefresh) continue
+
+        let res
         try {
-          const checkRes = normalizeCheckResult(checker.id, checker.check(doc, options))
-          shouldRefresh = checkRes.stale
+          res = checker.refresh(doc, passOptions)
         } catch (err) {
-          failed.push({ id: checker.id, error: errorMessage(err) })
-          continue
+          return {
+            ok: false,
+            reason: 'refresh_failed',
+            refreshed: 0,
+            manualEdits: [],
+            failed: [{ id: checker.id, error: errorMessage(err) }],
+            results,
+          }
         }
-      }
-      if (!shouldRefresh) continue
 
-      try {
-        const res = checker.refresh(doc, options)
         const count = Number.isInteger(res?.refreshed) ? res.refreshed : 0
-        refreshed += count
         const skipped = Array.isArray(res?.skippedManual)
-          ? res.skippedManual.map((entry) => ({
-              checkerId: entry?.checkerId ?? checker.id,
-              id: entry?.id ?? checker.id,
-              kind: entry?.kind ?? checker.id,
-              ...(typeof entry?.label === 'string' ? { label: entry.label } : {}),
-              ...(Array.isArray(entry?.modifiedLines)
-                ? { modifiedLines: entry.modifiedLines }
-                : {}),
-              ...(entry?.range !== undefined ? { range: entry.range } : {}),
-            }))
+          ? res.skippedManual.map((entry) => normalizeManualEditEntry(checker.id, entry))
           : []
-        if (skipped.length > 0) {
-          manualEdits.push(...skipped)
-        }
-        if (typeof res?.failed === 'string' && res.failed.length > 0) {
-          failed.push({ id: checker.id, error: res.failed })
-        } else if (res?.ok === false && skipped.length === 0) {
-          failed.push({ id: checker.id, error: 'refresh_failed' })
-        }
+        const failedMsg =
+          typeof res?.failed === 'string' && res.failed.length > 0
+            ? res.failed
+            : res?.ok === false && skipped.length === 0
+              ? 'refresh_failed'
+              : null
+
         results.push({
           id: checker.id,
-          ok: Boolean(res?.ok),
+          ok: Boolean(res?.ok) && skipped.length === 0 && !failedMsg,
           refreshed: count,
           ...(skipped.length > 0 ? { skippedManual: skipped } : {}),
-          ...(typeof res?.failed === 'string' && res.failed.length > 0
-            ? { failed: res.failed }
-            : {}),
+          ...(failedMsg ? { failed: failedMsg } : {}),
         })
-      } catch (err) {
-        failed.push({ id: checker.id, error: errorMessage(err) })
+
+        if (skipped.length > 0) {
+          return {
+            ok: false,
+            reason: 'manual_edits',
+            refreshed: 0,
+            manualEdits: skipped,
+            ...(failedMsg ? { failed: [{ id: checker.id, error: failedMsg }] } : {}),
+            results,
+          }
+        }
+        if (failedMsg || res?.ok === false) {
+          return {
+            ok: false,
+            reason: 'refresh_failed',
+            refreshed: 0,
+            manualEdits: [],
+            failed: [{ id: checker.id, error: failedMsg ?? 'refresh_failed' }],
+            results,
+          }
+        }
+
+        totalRefreshed += count
+        passRefreshed += count
       }
+
+      if (passRefreshed === 0) break
+      const afterPass = check(doc, passOptions)
+      if (!afterPass.stale) break
     }
 
-    const ok = failed.length === 0 && manualEdits.length === 0
     return {
-      ok,
-      refreshed,
-      manualEdits,
-      ...(manualEdits.length > 0 ? { reason: 'manual_edits' } : {}),
-      ...(failed.length > 0 ? { failed } : {}),
+      ok: true,
+      refreshed: totalRefreshed,
+      manualEdits: [],
       results,
     }
   }
@@ -382,14 +492,31 @@ export function buildSubmissionCopy(
     throw new TypeError(`Document does not support exporting ${format}`)
   }
 
-  const pageCountBefore = typeof doc.pageCount === 'function' ? Number(doc.pageCount()) : undefined
   const sourceBytes = exportLive.call(doc)
 
   const clone = new Ctor(sourceBytes)
+  const shouldVerify = format === 'hwp' && options?.verify !== false
+  let pageCountBefore
   let stripped
   let outBytes
   try {
+    // Measure pre-strip page count on the isolated clone so both before and after use
+    // identical portable/default layout metrics (avoiding false mismatches when live doc
+    // uses canvas metrics).
+    if (shouldVerify && typeof clone.pageCount === 'function') {
+      pageCountBefore = Number(clone.pageCount())
+    }
     stripped = stripSubmissionMarksInPlace(clone)
+    if (Array.isArray(stripped.failed) && stripped.failed.length > 0) {
+      return {
+        ok: false,
+        reason: 'strip_failed',
+        failed: stripped.failed,
+        format,
+        removed: stripped.removed,
+        names: stripped.names,
+      }
+    }
     const exportClone = format === 'hwp' ? clone.exportHwp : clone.exportHwpx
     outBytes = exportClone.call(clone)
   } finally {
@@ -399,7 +526,6 @@ export function buildSubmissionCopy(
   }
 
   let verify
-  const shouldVerify = format === 'hwp' && options?.verify !== false
   if (shouldVerify) {
     const before = Number.isFinite(pageCountBefore) ? pageCountBefore : 0
     let reloaded = null
@@ -425,11 +551,11 @@ export function buildSubmissionCopy(
   }
 
   return {
+    ok: true,
     bytes: outBytes,
     format,
     removed: stripped.removed,
     names: stripped.names,
-    ...(stripped.failed ? { failed: stripped.failed } : {}),
     ...(verify ? { verify } : {}),
   }
 }

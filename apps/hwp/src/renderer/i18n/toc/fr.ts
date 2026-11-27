@@ -51,6 +51,10 @@ export const fr = {
     'Impossible d’insérer une table des matières dans un tableau. Placez le curseur dans le corps du texte.',
   tocErrorUnsupportedPlace:
     'Impossible d’insérer une table des matières ici. Placez le curseur dans le corps du texte.',
+  tocErrorHasObjects:
+    'Impossible de remplacer la table des matières car elle contient des objets utilisateur (notes de bas de page, images ou tableaux).',
+  tocErrorMultiSection:
+    'Impossible de mettre à jour automatiquement car la table des matières s’étend sur plusieurs sections.',
   tocErrorNoHeadings: 'Aucun titre correspondant trouvé.',
   tocErrorNoCaptions: 'Aucune légende correspondante trouvée.',
   tocErrorGeneric: 'Impossible de mettre à jour la table des matières : {error}',
@@ -61,6 +65,14 @@ export const fr = {
   indexMarkSubTermLabel: 'Sous-entrée (facultatif)',
   indexMarkSubTermPlaceholder: 'Laisser vide pour l’entrée principale seule',
   indexMarkAllLabel: 'Marquer toutes les occurrences identiques',
+  indexMarkAllPreviewTitle: 'Confirmer le marquage de toutes les occurrences',
+  indexMarkAllPreviewMessage:
+    'Marquer les {count} occurrence(s) trouvée(s) dans le corps du document ?',
+  indexMarkAllPreviewParticlesNote: 'Les formes suivies de particules grammaticales sont incluses.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} occurrence(s) dans les tableaux, zones de texte ou notes seront ignorées.',
+  indexMarkAllPreviewConfirm: 'Tout marquer',
+  indexMarkAllPreviewMore: 'et {count} autre(s) occurrence(s)',
   indexMarksListTitle: 'Entrées d’index existantes ({count})',
   indexMarksListEmpty: 'Aucune entrée d’index dans ce document pour le moment.',
   indexMarkPageBadge: 'p. {page}',
@@ -82,6 +94,10 @@ export const fr = {
   indexColumnsLabel: 'Colonnes',
   indexColumnsOption: '{count} colonne(s)',
   indexGroupHeadingsLabel: 'Inclure les en-têtes de groupe alphabétiques',
+  indexPageSplitConfirmTitle: 'Confirmer le saut de page de l’index multicolonne',
+  indexPageSplitConfirmMessage:
+    'Des sauts de page seront insérés avant et après l’index multicolonne. Continuer ?',
+  indexPageSplitConfirmAction: 'Continuer',
   indexCreatedToast: 'Index créé ({count} entrées).',
   indexRefreshedToast: 'Index mis à jour ({count} entrées).',
   indexRefreshNotFound: 'Aucun index à mettre à jour.',
@@ -91,6 +107,8 @@ export const fr = {
     'Impossible d’insérer un index dans un tableau. Placez le curseur dans le corps du texte.',
   indexErrorUnsupportedPlace:
     'Impossible d’insérer un index ici. Placez le curseur dans le corps du texte.',
+  indexErrorHasObjects:
+    'Impossible de remplacer l’index car il contient des objets utilisateur (notes de bas de page, images ou tableaux).',
   indexErrorAlreadyExists:
     'Un index existe déjà dans ce document. Utilisez « Mettre à jour l’index ».',
   indexErrorGeneric: 'Impossible de mettre à jour l’index : {error}',

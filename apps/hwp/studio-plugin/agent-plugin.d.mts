@@ -1809,6 +1809,10 @@ export type AgentRefreshIndexBlockResult =
   | AgentPlaceRefusal
   | AgentMemoRemovalRefusal
 
+export type AgentRefreshAllStaleResult = Omit<StalenessRefreshAllResult, 'reason'> & {
+  reason?: StalenessRefreshAllResult['reason'] | 'has_objects' | 'memo_removal_requires_approval'
+}
+
 export type AgentUndoResult =
   { ok: boolean; undone: number } | { ok: false; reason: 'changed'; undone: 0 }
 
@@ -2159,11 +2163,11 @@ export interface AgentPluginSurface {
   ): { ok: boolean }
   /** read-only staleness check across all registered checkers (TOC, index, and extensions) */
   checkStaleItems(options?: StalenessCheckOptions): StalenessCheckResult
-  /** refresh all stale items in one undo step (rolls back without an undo entry when 0 refreshed) */
+  /** refresh all stale items in one undo step (rolls back atomically on failure, manual edits, or object loss) */
   refreshAllStale(
     options?: StalenessRefreshOptions,
     changeOptions?: AgentChangeOptions & { foreign?: boolean },
-  ): StalenessRefreshAllResult
+  ): AgentRefreshAllStaleResult
   /** build a clean submission copy on an isolated clone without mutating the live document */
   exportSubmissionCopy(format?: 'hwp' | 'hwpx'): SubmissionCopyResult
   /** search across body, tables (including nested), text boxes, and footnotes/endnotes */

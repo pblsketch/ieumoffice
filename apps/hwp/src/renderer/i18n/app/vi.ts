@@ -79,7 +79,6 @@ export const vi = {
   aiToolAnalyzePictureFail: 'Không thể xem hình {picture}',
   aiToolFields: 'Đã kiểm tra trường biểu mẫu · {count}',
   aiToolToc: 'Đã thêm mục lục · {count} đề mục',
-  aiToolTocRefresh: 'Đã viết lại số trang của mục lục · {count}',
   aiTocName: 'Mục lục',
   aiTocPagesChanged: 'Đã cập nhật {count} số trang',
   aiToolNotes: 'Đã kiểm tra chú thích · {count}',

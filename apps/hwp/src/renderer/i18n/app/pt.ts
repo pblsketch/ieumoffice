@@ -82,7 +82,6 @@ export const pt = {
   aiToolAnalyzePictureFail: 'Não foi possível ver a imagem {picture}',
   aiToolFields: 'Campos de formulário verificados · {count}',
   aiToolToc: 'Sumário adicionado · {count} títulos',
-  aiToolTocRefresh: 'Números de página do sumário reescritos · {count}',
   aiTocName: 'Sumário',
   aiTocPagesChanged: '{count} número(s) de página atualizado(s)',
   aiToolNotes: 'Notas verificadas · {count}',

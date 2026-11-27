@@ -48,6 +48,9 @@ export const ja = {
   tocErrorInTable: '表の中には目次を挿入できません。本文の段落にカーソルを置いてください。',
   tocErrorUnsupportedPlace:
     '現在の位置には目次を挿入できません。本文の段落にカーソルを置いてください。',
+  tocErrorHasObjects:
+    '目次の範囲内に脚注・画像・表などのユーザーオブジェクトがあるため、置き換えませんでした。',
+  tocErrorMultiSection: '目次の範囲が複数のセクションにまたがっているため、自動更新できません。',
   tocErrorNoHeadings: '対象となる見出しが見つかりませんでした。',
   tocErrorNoCaptions: '対象となるキャプションが見つかりませんでした。',
   tocErrorGeneric: '目次を処理できませんでした: {error}',
@@ -58,6 +61,12 @@ export const ja = {
   indexMarkSubTermLabel: '副見出し語（任意）',
   indexMarkSubTermPlaceholder: '空欄の場合は見出し語のみ登録',
   indexMarkAllLabel: '同じ語句をすべて登録',
+  indexMarkAllPreviewTitle: '一括索引登録の確認',
+  indexMarkAllPreviewMessage: '本文で見つかった {count} か所に索引を登録しますか？',
+  indexMarkAllPreviewParticlesNote: '助詞が付いた表現も含まれます。',
+  indexMarkAllPreviewSkippedNote: '表・テキストボックス・注釈内の {count} か所は除外されます。',
+  indexMarkAllPreviewConfirm: '登録する',
+  indexMarkAllPreviewMore: 'ほか {count} か所',
   indexMarksListTitle: '登録済みの索引項目 ({count})',
   indexMarksListEmpty: 'この文書にはまだ索引登録がありません。',
   indexMarkPageBadge: '{page}ページ',
@@ -78,6 +87,9 @@ export const ja = {
   indexColumnsLabel: '段数',
   indexColumnsOption: '{count} 段',
   indexGroupHeadingsLabel: '頭文字グループ見出しを含める',
+  indexPageSplitConfirmTitle: '段組み索引の改ページ確認',
+  indexPageSplitConfirmMessage: '索引の前後で新しいページに分かれます。続けますか？',
+  indexPageSplitConfirmAction: '続行',
   indexCreatedToast: '索引を作成しました（{count} 件）。',
   indexRefreshedToast: '索引を更新しました（{count} 件）。',
   indexRefreshNotFound: '更新する索引が文書内に見つかりませんでした。',
@@ -85,6 +97,8 @@ export const ja = {
   indexErrorInTable: '表の中には索引を挿入できません。本文の段落にカーソルを置いてください。',
   indexErrorUnsupportedPlace:
     '現在の位置には索引を挿入できません。本文の段落にカーソルを置いてください。',
+  indexErrorHasObjects:
+    '索引の範囲内に脚注・画像・表などのユーザーオブジェクトがあるため、置き換えませんでした。',
   indexErrorAlreadyExists: 'この文書にはすでに索引があります。「索引を更新」を使用してください。',
   indexErrorGeneric: '索引を処理できませんでした: {error}',
 } satisfies Record<keyof typeof zh, string>

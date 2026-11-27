@@ -282,6 +282,7 @@ export type TocWriteResult =
         | 'not_found'
         | 'invalid_options'
         | 'toc_exists'
+        | 'multi_section_range'
         | 'legacy_toc_found'
         | 'no_entries'
         | 'manual_edits'
@@ -406,6 +407,17 @@ export declare function refreshTocBlock(
   doc: TocDoc | null | undefined,
   options?: TocOptions,
 ): TocWriteResult
+export interface TocManualEditsResult {
+  hasManualEdits: boolean
+  modifiedLines: TocModifiedLine[]
+  range?: TocRangeInfo
+}
+
+export declare function detectTocManualEdits(
+  doc: TocDoc | null | undefined,
+  kind?: TocKind | TocKindId,
+  options?: { helpers?: TocHelpers },
+): TocManualEditsResult
 export declare function checkTocStaleness(
   doc: TocDoc | null | undefined,
   options?: CheckTocStalenessOptions,

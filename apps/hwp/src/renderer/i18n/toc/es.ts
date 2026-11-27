@@ -51,6 +51,10 @@ export const es = {
     'No se puede insertar una tabla de contenido dentro de una tabla. Coloque el cursor en un párrafo del cuerpo.',
   tocErrorUnsupportedPlace:
     'No se puede insertar una tabla de contenido aquí. Coloque el cursor en un párrafo del cuerpo.',
+  tocErrorHasObjects:
+    'No se reemplazó la tabla de contenido porque contiene objetos del usuario (notas al pie, imágenes o tablas).',
+  tocErrorMultiSection:
+    'No se puede actualizar automáticamente porque la tabla de contenido abarca varias secciones.',
   tocErrorNoHeadings: 'No se encontraron encabezados coincidentes.',
   tocErrorNoCaptions: 'No se encontraron rótulos coincidentes.',
   tocErrorGeneric: 'No se pudo actualizar la tabla de contenido: {error}',
@@ -61,6 +65,15 @@ export const es = {
   indexMarkSubTermLabel: 'Subentrada (opcional)',
   indexMarkSubTermPlaceholder: 'Dejar vacío solo para entrada principal',
   indexMarkAllLabel: 'Marcar todas las coincidencias',
+  indexMarkAllPreviewTitle: 'Confirmar marcado de todas las coincidencias',
+  indexMarkAllPreviewMessage:
+    '¿Desea agregar marcas de índice en las {count} coincidencia(s) encontradas en el cuerpo?',
+  indexMarkAllPreviewParticlesNote:
+    'También se incluyen las formas seguidas de partículas gramaticales.',
+  indexMarkAllPreviewSkippedNote:
+    'Se omitirán {count} coincidencia(s) en tablas, cuadros de texto o notas.',
+  indexMarkAllPreviewConfirm: 'Marcar todo',
+  indexMarkAllPreviewMore: 'y {count} coincidencia(s) más',
   indexMarksListTitle: 'Marcas de índice existentes ({count})',
   indexMarksListEmpty: 'Aún no hay marcas de índice en este documento.',
   indexMarkPageBadge: 'pág. {page}',
@@ -82,6 +95,10 @@ export const es = {
   indexColumnsLabel: 'Columnas',
   indexColumnsOption: '{count} columna(s)',
   indexGroupHeadingsLabel: 'Incluir encabezados alfabéticos de grupo',
+  indexPageSplitConfirmTitle: 'Confirmar salto de página del índice en columnas',
+  indexPageSplitConfirmMessage:
+    'Se insertarán saltos de página antes y después del índice en varias columnas. ¿Continuar?',
+  indexPageSplitConfirmAction: 'Continuar',
   indexCreatedToast: 'Índice creado ({count} entradas).',
   indexRefreshedToast: 'Índice actualizado ({count} entradas).',
   indexRefreshNotFound: 'No se encontró ningún índice para actualizar.',
@@ -90,6 +107,8 @@ export const es = {
     'No se puede insertar un índice dentro de una tabla. Coloque el cursor en un párrafo del cuerpo.',
   indexErrorUnsupportedPlace:
     'No se puede insertar un índice aquí. Coloque el cursor en un párrafo del cuerpo.',
+  indexErrorHasObjects:
+    'No se reemplazó el índice porque contiene objetos del usuario (notas al pie, imágenes o tablas).',
   indexErrorAlreadyExists: 'Ya existe un índice en este documento. Use «Actualizar índice».',
   indexErrorGeneric: 'No se pudo actualizar el índice: {error}',
 } satisfies Record<keyof typeof zh, string>

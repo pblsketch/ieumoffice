@@ -49,6 +49,10 @@ export const ru = {
     'Нельзя вставить оглавление внутри таблицы. Поместите курсор в абзац основного текста.',
   tocErrorUnsupportedPlace:
     'Нельзя вставить оглавление в этом месте. Поместите курсор в абзац основного текста.',
+  tocErrorHasObjects:
+    'Оглавление не заменено, так как внутри содержатся пользовательские объекты (сноски, рисунки или таблицы).',
+  tocErrorMultiSection:
+    'Невозможно обновить автоматически, так как оглавление охватывает несколько разделов.',
   tocErrorNoHeadings: 'Подходящие заголовки не найдены.',
   tocErrorNoCaptions: 'Подходящие подписи не найдены.',
   tocErrorGeneric: 'Не удалось обновить оглавление: {error}',
@@ -59,6 +63,14 @@ export const ru = {
   indexMarkSubTermLabel: 'Подэлемент (необязательно)',
   indexMarkSubTermPlaceholder: 'Оставьте пустым для основного элемента',
   indexMarkAllLabel: 'Пометить все совпадения',
+  indexMarkAllPreviewTitle: 'Подтверждение массовой разметки',
+  indexMarkAllPreviewMessage:
+    'Добавить метки указателя для {count} найденных совпадений в основном тексте?',
+  indexMarkAllPreviewParticlesNote: 'Также учитываются формы со служебными частицами.',
+  indexMarkAllPreviewSkippedNote:
+    'Совпадений в таблицах, надписях и сносках будет пропущено: {count}.',
+  indexMarkAllPreviewConfirm: 'Пометить все',
+  indexMarkAllPreviewMore: 'и ещё {count} совпадений',
   indexMarksListTitle: 'Существующие метки указателя ({count})',
   indexMarksListEmpty: 'В этом документе пока нет меток указателя.',
   indexMarkPageBadge: 'с. {page}',
@@ -80,6 +92,10 @@ export const ru = {
   indexColumnsLabel: 'Колонки',
   indexColumnsOption: '{count} кол.',
   indexGroupHeadingsLabel: 'Добавить алфавитные заголовки групп',
+  indexPageSplitConfirmTitle: 'Подтверждение разрыва страниц для многоколоночного указателя',
+  indexPageSplitConfirmMessage:
+    'До и после многоколоночного указателя будут вставлены разрывы страниц. Продолжить?',
+  indexPageSplitConfirmAction: 'Продолжить',
   indexCreatedToast: 'Указатель создан ({count} элементов).',
   indexRefreshedToast: 'Указатель обновлён ({count} элементов).',
   indexRefreshNotFound: 'В документе не найден указатель для обновления.',
@@ -89,6 +105,8 @@ export const ru = {
     'Нельзя вставить указатель внутри таблицы. Поместите курсор в абзац основного текста.',
   indexErrorUnsupportedPlace:
     'Нельзя вставить указатель в этом месте. Поместите курсор в абзац основного текста.',
+  indexErrorHasObjects:
+    'Указатель не заменён, так как внутри содержатся пользовательские объекты (сноски, рисунки или таблицы).',
   indexErrorAlreadyExists:
     'Указатель уже существует в этом документе. Используйте «Обновить указатель».',
   indexErrorGeneric: 'Не удалось обновить указатель: {error}',

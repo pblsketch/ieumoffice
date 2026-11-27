@@ -1,4 +1,92 @@
-import { describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+type IpcHandler = (event: unknown, ...args: unknown[]) => unknown
+const ipcHandlers = new Map<string, IpcHandler>()
+const showSaveDialog = vi.fn(
+  async (..._args: unknown[]): Promise<{ canceled: boolean; filePath?: string }> => ({
+    canceled: true,
+  }),
+)
+
+interface FakeWebContents {
+  id: number
+  destroyed: boolean
+  isDestroyed(): boolean
+  setWindowOpenHandler(handler: unknown): void
+  loadURL(url: string): Promise<void>
+  send(channel: string, ...args: unknown[]): void
+  on(event: string, listener: (...args: unknown[]) => void): void
+  once(event: string, listener: (...args: unknown[]) => void): void
+}
+
+let nextWcId = 100
+function makeFakeWebContents(): FakeWebContents {
+  const listeners = new Map<string, Array<(...args: unknown[]) => void>>()
+  const wc: FakeWebContents = {
+    id: nextWcId++,
+    destroyed: false,
+    isDestroyed: () => wc.destroyed,
+    setWindowOpenHandler: () => {},
+    loadURL: async () => {},
+    send: () => {},
+    on: (event, listener) => {
+      const list = listeners.get(event) ?? []
+      list.push(listener)
+      listeners.set(event, list)
+    },
+    once: (event, listener) => {
+      const list = listeners.get(event) ?? []
+      list.push(listener)
+      listeners.set(event, list)
+    },
+  }
+  return wc
+}
+
+const mainTestUserData = { dir: '' }
+
+vi.mock('electron', () => ({
+  app: {
+    on: vi.fn(),
+    whenReady: () => new Promise(() => {}),
+    getPath: (name: string) =>
+      name === 'userData' ? mainTestUserData.dir : join(tmpdir(), `hwp-save-flow-${name}`),
+    getLocale: () => 'en-US',
+  },
+  dialog: {
+    showMessageBox: vi.fn(async () => ({ response: 1 })),
+    showSaveDialog: (...args: unknown[]) => showSaveDialog(...args),
+  },
+  shell: { openExternal: vi.fn(async () => {}), showItemInFolder: vi.fn() },
+  protocol: { handle: vi.fn(), registerSchemesAsPrivileged: vi.fn() },
+  net: {},
+  ipcRenderer: {},
+  webUtils: {},
+  BrowserWindow: { fromWebContents: () => null, getFocusedWindow: () => null },
+  WebContentsView: class {
+    webContents = makeFakeWebContents()
+  },
+  ipcMain: {
+    handle: (channel: string, fn: IpcHandler) => ipcHandlers.set(channel, fn),
+    on: (channel: string, fn: IpcHandler) => ipcHandlers.set(channel, fn),
+    removeHandler: vi.fn(),
+  },
+}))
+
+vi.mock('@genoffice/file-parse', () => ({
+  hwpToText: vi.fn(async () => ''),
+  parseFileToText: vi.fn(async () => ({ kind: 'text', text: '' })),
+  ATTACHABLE_EXTS: new Set<string>(),
+  ATTACHABLE_IMAGE_EXTS: new Set<string>(),
+  ATTACHABLE_MAX_BYTES: 25 * 1024 * 1024,
+  attachableMaxBytes: () => 25 * 1024 * 1024,
+  ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+}))
+
+import { createHwpView, hwpIsDirty, matchesOpenHwpPath } from '../src/main/hwp-main'
 import {
   checkStalenessBeforeAction,
   runSave,
@@ -7,6 +95,7 @@ import {
   type SubmissionSaveEditorPort,
 } from '../src/renderer/save-flow'
 import { checkStalenessBeforePrint, runWithPrintStalenessCheck } from '../src/renderer/print-flow'
+import { HWP_CHANNELS } from '../src/shared/ipc'
 import type {
   BeginSaveResult,
   BeginSubmissionSaveResult,
@@ -723,5 +812,244 @@ describe('runSubmissionSave', () => {
       detail: 'ENOSPC: no space left on device',
     })
     expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('refuses and writes nothing when beginSubmissionSave reports same_as_open', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi({
+      ok: false,
+      reason: 'same_as_open',
+      error: 'hwp: submission target matches an open document',
+    })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'same_as_open',
+    })
+    expect(ed.exportSubmissionCopy).not.toHaveBeenCalled()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('refuses when commitSubmissionSave detects same_as_open mid-export', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi(
+      { ok: true, path: 'C:/d/other.hwpx', format: 'hwpx' },
+      {
+        ok: false,
+        reason: 'same_as_open',
+        error: 'hwp: submission target matches an open document',
+      },
+    )
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'same_as_open',
+    })
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('aborts and writes nothing when mark stripping returns strip_failed', async () => {
+    const ed = submissionEditor({
+      exportSubmissionCopy: vi.fn(async () => ({
+        ok: false,
+        reason: 'strip_failed' as const,
+        failed: [{ name: '색인:테스트:1', error: 'removeBookmark returned false' }],
+      })),
+    })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'strip_failed',
+      failedMarks: ['색인:테스트:1'],
+    })
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('aborts and writes nothing when failed marks are non-empty even if bytes are returned', async () => {
+    const ed = submissionEditor({
+      exportSubmissionCopy: vi.fn(async () => ({
+        bytes: HWPX,
+        failed: [{ name: '설정:차례:body', error: 'still present' }],
+      })),
+    })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'strip_failed',
+      failedMarks: ['설정:차례:body'],
+    })
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+  })
+
+  it('forwards backupPath when commitSubmissionSave backs up an existing file', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi(
+      { ok: true, path: 'C:/d/a_submission.hwpx', format: 'hwpx' },
+      {
+        ok: true,
+        path: 'C:/d/a_submission.hwpx',
+        backupPath: 'C:/d/a_submission.hwpx.bak',
+      },
+    )
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'saved',
+      path: 'C:/d/a_submission.hwpx',
+      backupPath: 'C:/d/a_submission.hwpx.bak',
+    })
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+})
+
+describe('open-tab path matching and main submission save guards', () => {
+  const ZIP_BYTES = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x11, 0x22, 0x33])
+  let tempDir = ''
+
+  const invokeMain = <T>(channel: string, wc: FakeWebContents, ...args: unknown[]): T =>
+    ipcHandlers.get(channel)!({ sender: wc }, ...args) as T
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'genoffice-hwp-sub-guard-'))
+    mainTestUserData.dir = tempDir
+    showSaveDialog.mockReset()
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('normalizes relative segments and matches case-insensitively on win32 only', () => {
+    const open = [join(tempDir, 'Thesis.hwpx')]
+    expect(matchesOpenHwpPath(join(tempDir, 'sub', '..', 'Thesis.hwpx'), open, 'win32')).toBe(true)
+    expect(matchesOpenHwpPath(join(tempDir, 'thesis.HWPX'), open, 'win32')).toBe(true)
+    expect(matchesOpenHwpPath(join(tempDir, 'thesis.HWPX'), open, 'linux')).toBe(false)
+    expect(matchesOpenHwpPath(join(tempDir, 'Thesis.hwpx'), open, 'linux')).toBe(true)
+    expect(matchesOpenHwpPath(join(tempDir, 'Thesis_submission.hwpx'), open, 'win32')).toBe(false)
+  })
+
+  it('refuses overwriting the current tab or another open tab in beginSubmissionSave', async () => {
+    const docA = join(tempDir, 'Thesis.hwpx')
+    const docB = join(tempDir, 'Appendix.hwpx')
+    writeFileSync(docA, Buffer.from('original-a'))
+    writeFileSync(docB, Buffer.from('original-b'))
+
+    const viewA = createHwpView(docA)
+    const viewB = createHwpView(docB)
+    const wcA = viewA.webContents as unknown as FakeWebContents
+    expect(viewB.webContents).toBeDefined()
+
+    // Picking the same tab's path (even with different case on Windows) is blocked.
+    const sameCaseVariant = process.platform === 'win32' ? join(tempDir, 'thesis.HWPX') : docA
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: sameCaseVariant })
+    const resSelf = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wcA,
+    )
+    expect(resSelf.ok).toBe(false)
+    if (!resSelf.ok) expect(resSelf.reason).toBe('same_as_open')
+
+    // Picking another open tab's path is also blocked.
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: docB })
+    const resOther = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wcA,
+    )
+    expect(resOther.ok).toBe(false)
+    if (!resOther.ok) expect(resOther.reason).toBe('same_as_open')
+
+    // Neither open file was touched.
+    expect(readFileSync(docA, 'utf8')).toBe('original-a')
+    expect(readFileSync(docB, 'utf8')).toBe('original-b')
+  })
+
+  it('blocks commitSubmissionSave if another tab opens the target path mid-export', async () => {
+    const docA = join(tempDir, 'Main.hwpx')
+    const raceTarget = join(tempDir, 'RaceTarget.hwpx')
+    writeFileSync(docA, Buffer.from('main-doc'))
+    writeFileSync(raceTarget, Buffer.from('race-original'))
+
+    const viewA = createHwpView(docA)
+    const wcA = viewA.webContents as unknown as FakeWebContents
+
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: raceTarget })
+    const begin = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wcA,
+    )
+    expect(begin).toEqual({ ok: true, path: raceTarget, format: 'hwpx' })
+
+    // Another tab opens the target before commit runs.
+    createHwpView(raceTarget)
+
+    const commit = await invokeMain<Promise<CommitSubmissionSaveResult>>(
+      HWP_CHANNELS.commitSubmissionSave,
+      wcA,
+      ZIP_BYTES,
+      [],
+      {},
+    )
+    expect(commit.ok).toBe(false)
+    if (!commit.ok) expect(commit.reason).toBe('same_as_open')
+    expect(readFileSync(raceTarget, 'utf8')).toBe('race-original')
+    expect(existsSync(`${raceTarget}.bak`)).toBe(false)
+  })
+
+  it('creates a .bak backup when overwriting an existing non-open file and keeps tab state untouched', async () => {
+    const openDoc = join(tempDir, 'Working.hwpx')
+    const existingSub = join(tempDir, 'Working_submission.hwpx')
+    const brandNewSub = join(tempDir, 'Working_clean.hwpx')
+    writeFileSync(openDoc, Buffer.from('working-original'))
+    writeFileSync(existingSub, Buffer.from('prior-submission'))
+
+    const view = createHwpView(openDoc)
+    const wc = view.webContents as unknown as FakeWebContents
+    invokeMain(HWP_CHANNELS.dirtyChanged, wc, true)
+    expect(hwpIsDirty(wc.id)).toBe(true)
+
+    // Overwriting an existing non-open file creates .bak and returns backupPath.
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: existingSub })
+    const beginExisting = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wc,
+    )
+    expect(beginExisting).toEqual({ ok: true, path: existingSub, format: 'hwpx' })
+
+    const commitExisting = await invokeMain<Promise<CommitSubmissionSaveResult>>(
+      HWP_CHANNELS.commitSubmissionSave,
+      wc,
+      ZIP_BYTES,
+      [],
+      {},
+    )
+    expect(commitExisting).toEqual({
+      ok: true,
+      path: existingSub,
+      backupPath: `${existingSub}.bak`,
+    })
+    expect(readFileSync(`${existingSub}.bak`, 'utf8')).toBe('prior-submission')
+    expect(Uint8Array.from(readFileSync(existingSub))).toEqual(ZIP_BYTES)
+    // Original tab remains dirty and untouched on disk.
+    expect(hwpIsDirty(wc.id)).toBe(true)
+    expect(readFileSync(openDoc, 'utf8')).toBe('working-original')
+
+    // Writing a brand-new submission target creates no .bak file.
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: brandNewSub })
+    const beginNew = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wc,
+    )
+    expect(beginNew).toEqual({ ok: true, path: brandNewSub, format: 'hwpx' })
+
+    const commitNew = await invokeMain<Promise<CommitSubmissionSaveResult>>(
+      HWP_CHANNELS.commitSubmissionSave,
+      wc,
+      ZIP_BYTES,
+      [],
+      {},
+    )
+    expect(commitNew).toEqual({ ok: true, path: brandNewSub })
+    expect(existsSync(`${brandNewSub}.bak`)).toBe(false)
+    expect(Uint8Array.from(readFileSync(brandNewSub))).toEqual(ZIP_BYTES)
   })
 })

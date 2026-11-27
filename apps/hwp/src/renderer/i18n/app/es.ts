@@ -83,7 +83,6 @@ export const es = {
   aiToolAnalyzePictureFail: 'No se pudo ver la imagen {picture}',
   aiToolFields: 'Campos de formulario revisados · {count}',
   aiToolToc: 'Se añadió un índice · {count} títulos',
-  aiToolTocRefresh: 'Se reescribieron los números de página del índice · {count}',
   aiTocName: 'Índice',
   aiTocPagesChanged: '{count} número(s) de página actualizado(s)',
   aiToolNotes: 'Notas revisadas · {count}',

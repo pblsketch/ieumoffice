@@ -12,6 +12,7 @@ export declare const INDEX_BLOCK_SETTING_KEY: '색인블록'
 export declare const DEFAULT_INDEX_TITLE: '찾아보기'
 export declare const DEFAULT_INDEX_COLUMNS: 2
 export declare const DEFAULT_INDEX_LAYOUT: 'dotted-tab'
+export declare const KOREAN_PARTICLES: readonly string[]
 
 export type IndexLayout = 'dotted-tab' | 'table'
 export type IndexColumnCount = 1 | 2 | 3
@@ -34,6 +35,9 @@ export interface IndexDoc extends MarkDoc {
   splitSection(sec: number, para: number, charOffset: number): string
   mergeSection(sec: number): string
   getPageDef(sec: number): string
+  setPageDef?(sec: number, json: string): string
+  getSectionDef?(sec: number): string
+  setSectionDef?(sec: number, json: string): string
   getColumnDef(sec: number): string
   setColumnDef(
     sec: number,
@@ -41,6 +45,56 @@ export interface IndexDoc extends MarkDoc {
     columnType: number,
     sameWidth: number,
     spacingHu: number,
+  ): string
+  getPageNumberPos?(sec: number): string
+  setPageNumberPos?(sec: number, format: number, position: number, dash: boolean): string
+  getHeaderFooter?(sec: number, isHeader: boolean, applyTo: number): string
+  createHeaderFooter?(sec: number, isHeader: boolean, applyTo: number): string
+  getHeaderFooterParaInfo?(sec: number, isHeader: boolean, applyTo: number, paraIdx: number): string
+  insertTextInHeaderFooter?(
+    sec: number,
+    isHeader: boolean,
+    applyTo: number,
+    paraIdx: number,
+    charOffset: number,
+    text: string,
+  ): string
+  splitParagraphInHeaderFooter?(
+    sec: number,
+    isHeader: boolean,
+    applyTo: number,
+    paraIdx: number,
+    charOffset: number,
+  ): string
+  getCharPropertiesInHeaderFooter?(
+    sec: number,
+    isHeader: boolean,
+    applyTo: number,
+    paraIdx: number,
+    charOffset: number,
+  ): string
+  applyCharFormatInHeaderFooter?(
+    sec: number,
+    isHeader: boolean,
+    applyTo: number,
+    startParaIdx: number,
+    startCharOffset: number,
+    endParaIdx: number,
+    endCharOffset: number,
+    propsJson: string,
+  ): string
+  getParaPropertiesInHeaderFooter?(
+    sec: number,
+    isHeader: boolean,
+    applyTo: number,
+    paraIdx: number,
+  ): string
+  applyParaFormatInHeaderFooter?(
+    sec: number,
+    isHeader: boolean,
+    applyTo: number,
+    paraIdx: number,
+    propsJson: string,
   ): string
   applyCharFormat(
     sec: number,
@@ -118,7 +172,6 @@ export interface IndexDoc extends MarkDoc {
   pageCount?(): number
   getPageOfPosition?(sec: number, para: number): string
   getPageInfo?(pageNum: number): string
-  getPageNumberPos?(sec: number): string
   getPageNumberPosition?(sec: number): string
   canvasMetricsActive?(): boolean
   selectCanvasMetrics?(enabled: boolean): boolean
@@ -171,7 +224,38 @@ export interface AddIndexMarksAllOptions {
   subTerm?: string
   caseSensitive?: boolean
   wholeWord?: boolean
+  includeParticles?: boolean
 }
+
+export interface PreviewIndexMarkMatch {
+  sec: number
+  para: number
+  offset: number
+  length: number
+  matchedText: string
+  particle: string | null
+  context: string
+  page: number
+  pageLabel: string
+  alreadyMarked: boolean
+}
+
+export type PreviewIndexMarksAllResult =
+  | {
+      ok: true
+      term: string
+      subTerm: string
+      query: string
+      includeParticles: boolean
+      matches: PreviewIndexMarkMatch[]
+      skippedNonBody: number
+      skippedCounts: SkippedNonBodyCounts
+    }
+  | {
+      ok: false
+      reason: string
+      error?: string
+    }
 
 export interface AddedIndexMarkSummary {
   id: string
@@ -194,6 +278,8 @@ export type AddIndexMarksAllResult =
   | {
       ok: true
       added: number
+      includeParticles: boolean
+      particleMatches: number
       skippedNonBody: number
       skippedCounts: SkippedNonBodyCounts
       marks: AddedIndexMarkSummary[]
@@ -263,6 +349,7 @@ export interface BuildIndexBlockOptions {
   groupHeadings?: boolean
   layout?: IndexLayout
   where?: 'before' | 'after'
+  allowPageSplit?: boolean
 }
 
 export interface RefreshIndexBlockOptions extends BuildIndexBlockOptions {
@@ -314,6 +401,7 @@ export type BuildIndexBlockResult =
         | 'not_found'
         | 'no_index_marks'
         | 'index_block_exists'
+        | 'page_split_confirm'
         | 'invalid_options'
         | 'manual_edits'
         | 'broken_range'
@@ -322,11 +410,18 @@ export type BuildIndexBlockResult =
         | 'duplicate_name'
         | 'invalid_name'
         | 'engine_error'
+      splitsPages?: true
       error?: string
       modifiedLines?: ModifiedIndexLine[]
       range?: MatchedRangeMark
       cleanedMarks?: CleanedIndexMarksSummary
     }
+
+export interface IndexManualEditsResult {
+  hasManualEdits: boolean
+  modifiedLines: ModifiedIndexLine[]
+  range?: MatchedRangeMark
+}
 
 export interface IndexStalenessResult {
   stale: boolean
@@ -356,10 +451,26 @@ export declare function addIndexMark(
   termOrOptions?: string | AddIndexMarkOptions,
 ): AddIndexMarkResult
 
+export declare function previewIndexMarksAll(
+  doc: IndexDoc,
+  termOrOptions: string | AddIndexMarksAllOptions,
+): PreviewIndexMarksAllResult
+
 export declare function addIndexMarksAll(
   doc: IndexDoc,
   termOrOptions: string | AddIndexMarksAllOptions,
 ): AddIndexMarksAllResult
+
+export declare function willMultiColumnIndexSplitPages(
+  doc: IndexDoc,
+  place: MarkPlaceInput,
+  columns?: IndexColumnCount,
+  options?: { where?: 'before' | 'after' },
+): boolean
+
+export declare function detectIndexManualEdits(
+  doc: IndexDoc | null | undefined,
+): IndexManualEditsResult
 
 export declare function listIndexMarks(doc: IndexDoc | null | undefined): IndexMarkItem[]
 

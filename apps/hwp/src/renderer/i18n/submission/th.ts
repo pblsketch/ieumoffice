@@ -25,15 +25,22 @@ export const th = {
   staleManualSkip: 'ข้าม',
   staleRefreshDone: 'อัปเดตแล้ว {count} รายการ',
   staleRefreshFailed: 'ไม่สามารถอัปเดตบางรายการได้: {error}',
+  staleRefreshBlockedObjects:
+    'ข้ามการรีเฟรชเนื่องจากช่วงสารบัญหรือดัชนีมีวัตถุของผู้ใช้ เช่น เชิงอรรถ รูปภาพ หรือตาราง',
   submissionMenuLabel: 'บันทึกเป็นสำเนาสำหรับส่ง…',
   submissionMenuDesc:
     'บันทึกสำเนาที่สะอาดแยกต่างหากโดยนำเครื่องหมายดัชนี การอ้างอิง และการตั้งค่าออก',
   submissionSaving: 'กำลังสร้างสำเนาสำหรับส่ง…',
   submissionSaved: 'บันทึกสำเนาสำหรับส่งแล้ว: {name}',
+  submissionBackupKept: 'เก็บไฟล์สำรองของไฟล์เดิมไว้แล้ว: {name}',
   submissionSavedTailsLost:
     'บันทึกสำเนาสำหรับส่งแล้ว ({name}) บางหน้าต้นแบบหรือความคิดเห็นอาจไม่ได้ถูกเก็บไว้',
   submissionFailedProtected: 'ไม่สามารถบันทึกเอกสารที่มีรหัสผ่านเป็นสำเนาสำหรับส่งได้',
   submissionFailedTracked: 'ไม่สามารถบันทึกเอกสารที่มีการติดตามการเปลี่ยนแปลงเป็นสำเนาสำหรับส่งได้',
+  submissionFailedSameAsOpen:
+    'ไม่สามารถบันทึกสำเนาสำหรับส่งทับเอกสารที่เปิดอยู่ได้ กรุณาเลือกชื่อไฟล์อื่น',
+  submissionFailedStrip:
+    'ไม่ได้บันทึกสำเนาสำหรับส่งเนื่องจากไม่สามารถนำเครื่องหมายภายในบางรายการออกได้: {marks}',
   submissionFailedVerify:
     'ตรวจสอบสำเนาสำหรับส่งไม่ผ่าน ({before} → {after} หน้า) ลองบันทึกเป็นรูปแบบ HWPX แทน',
   submissionFailedExport: 'ไม่สามารถสร้างสำเนาสำหรับส่งได้: {error}',

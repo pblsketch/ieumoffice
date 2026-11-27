@@ -25,13 +25,19 @@ export const he = {
   staleManualSkip: 'דילוג',
   staleRefreshDone: 'עודכנו {count} פריטים.',
   staleRefreshFailed: 'לא ניתן לעדכן חלק מהפריטים: {error}',
+  staleRefreshBlockedObjects:
+    'הרענון דולג מכיוון שטווח תוכן העניינים או האינדקס מכיל אובייקטים של המשתמש כגון הערות שוליים, תמונות או טבלאות.',
   submissionMenuLabel: 'שמירה כעותק להגשה…',
   submissionMenuDesc: 'שומר עותק נקי ונפרד ללא סימוני אינדקס, ציטוטים או הגדרות.',
   submissionSaving: 'יוצר עותק להגשה…',
   submissionSaved: 'עותק להגשה נשמר: {name}',
+  submissionBackupKept: 'נשמר גיבוי של הקובץ הקודם: {name}',
   submissionSavedTailsLost: 'עותק להגשה נשמר ({name}). ייתכן שחלק מעמודי האב או ההערות לא נשמרו.',
   submissionFailedProtected: 'לא ניתן לשמור מסמכים מוגנים בסיסמה כעותק להגשה.',
   submissionFailedTracked: 'לא ניתן לשמור מסמכים עם עקוב אחר שינויים כעותק להגשה.',
+  submissionFailedSameAsOpen: 'לא ניתן לדרוס מסמך פתוח באמצעות עותק להגשה. יש לבחור שם קובץ אחר.',
+  submissionFailedStrip:
+    'עותק ההגשה לא נשמר מכיוון שלא ניתן היה להסיר חלק מהסימונים הפנימיים: {marks}',
   submissionFailedVerify:
     'אימות עותק ההגשה נכשל ({before} → {after} עמודים). נסו לשמור בפורמט HWPX.',
   submissionFailedExport: 'לא ניתן ליצור עותק להגשה: {error}',

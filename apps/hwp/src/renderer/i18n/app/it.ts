@@ -82,7 +82,6 @@ export const it = {
   aiToolAnalyzePictureFail: "Impossibile esaminare l'immagine {picture}",
   aiToolFields: 'Campi modulo controllati · {count}',
   aiToolToc: 'Aggiunto un indice · {count} titoli',
-  aiToolTocRefresh: "Riscritti i numeri di pagina dell'indice · {count}",
   aiTocName: 'Indice',
   aiTocPagesChanged: '{count} numero/i di pagina aggiornato/i',
   aiToolNotes: 'Note controllate · {count}',

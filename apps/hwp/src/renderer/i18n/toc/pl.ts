@@ -50,6 +50,10 @@ export const pl = {
     'Nie można wstawić spisu treści wewnątrz tabeli. Umieść kursor w akapicie tekstu głównego.',
   tocErrorUnsupportedPlace:
     'Nie można tu wstawić spisu treści. Umieść kursor w akapicie tekstu głównego.',
+  tocErrorHasObjects:
+    'Nie zastąpiono spisu treści, ponieważ zawiera obiekty użytkownika (przypisy, obrazy lub tabele).',
+  tocErrorMultiSection:
+    'Nie można zaktualizować automatycznie, ponieważ spis treści obejmuje wiele sekcji.',
   tocErrorNoHeadings: 'Nie znaleziono pasujących nagłówków.',
   tocErrorNoCaptions: 'Nie znaleziono pasujących podpisów.',
   tocErrorGeneric: 'Nie udało się zaktualizować spisu treści: {error}',
@@ -60,6 +64,14 @@ export const pl = {
   indexMarkSubTermLabel: 'Podhasło (opcjonalnie)',
   indexMarkSubTermPlaceholder: 'Pozostaw puste dla samego hasła głównego',
   indexMarkAllLabel: 'Oznacz wszystkie pasujące wystąpienia',
+  indexMarkAllPreviewTitle: 'Potwierdź oznaczenie wszystkich wystąpień',
+  indexMarkAllPreviewMessage: 'Oznaczyć {count} znalezionych wystąpień w tekście głównym?',
+  indexMarkAllPreviewParticlesNote:
+    'Uwzględniono również formy z dołączonymi partykułami gramatycznymi.',
+  indexMarkAllPreviewSkippedNote:
+    'Pominiętych wystąpień w tabelach, polach tekstowych lub przypisach: {count}.',
+  indexMarkAllPreviewConfirm: 'Oznacz wszystkie',
+  indexMarkAllPreviewMore: 'i jeszcze {count} wystąpień',
   indexMarksListTitle: 'Istniejące znaczniki indeksu ({count})',
   indexMarksListEmpty: 'W tym dokumencie nie ma jeszcze znaczników indeksu.',
   indexMarkPageBadge: 'str. {page}',
@@ -81,6 +93,10 @@ export const pl = {
   indexColumnsLabel: 'Kolumny',
   indexColumnsOption: '{count} kol.',
   indexGroupHeadingsLabel: 'Dołącz alfabetyczne nagłówki grup',
+  indexPageSplitConfirmTitle: 'Potwierdź podział strony dla indeksu wielokolumnowego',
+  indexPageSplitConfirmMessage:
+    'Przed i po indeksie wielokolumnowym zostaną wstawione podziały stron. Kontynuować?',
+  indexPageSplitConfirmAction: 'Kontynuuj',
   indexCreatedToast: 'Utworzono indeks ({count} haseł).',
   indexRefreshedToast: 'Zaktualizowano indeks ({count} haseł).',
   indexRefreshNotFound: 'Nie znaleziono indeksu do aktualizacji.',
@@ -89,6 +105,8 @@ export const pl = {
     'Nie można wstawić indeksu wewnątrz tabeli. Umieść kursor w akapicie tekstu głównego.',
   indexErrorUnsupportedPlace:
     'Nie można tu wstawić indeksu. Umieść kursor w akapicie tekstu głównego.',
+  indexErrorHasObjects:
+    'Nie zastąpiono indeksu, ponieważ zawiera obiekty użytkownika (przypisy, obrazy lub tabele).',
   indexErrorAlreadyExists: 'Indeks już istnieje w tym dokumencie. Użyj opcji „Aktualizuj indeks”.',
   indexErrorGeneric: 'Nie udało się zaktualizować indeksu: {error}',
 } satisfies Record<keyof typeof zh, string>

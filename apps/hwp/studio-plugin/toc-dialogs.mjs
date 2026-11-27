@@ -19,6 +19,7 @@ import {
   addIndexMarksAll,
   buildIndexBlock,
   listIndexMarks,
+  previewIndexMarksAll,
   refreshIndexBlock,
   removeIndexMark,
   resolveIndexWordAt,
@@ -53,6 +54,7 @@ export const TOC_INDEX_MENU_ITEMS = Object.freeze([
 ])
 
 const MAX_DIFF_PREVIEW_LINES = 16
+const MAX_MARK_ALL_PREVIEW_ITEMS = 20
 const EDIT_ABORT = Symbol('ieum-toc-edit-abort')
 
 const TOC_DIALOG_CSS = `
@@ -155,6 +157,46 @@ const TOC_DIALOG_CSS = `
 .ieum-toc-diff-text {
   color: var(--ieum-dialog-ink);
   word-break: break-word;
+}
+
+.ieum-toc-preview-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ieum-dialog-line-soft);
+  font-size: 11px;
+}
+
+.ieum-toc-preview-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.ieum-toc-preview-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ieum-toc-preview-match {
+  color: var(--ieum-dialog-ink);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.ieum-toc-preview-context {
+  color: var(--ieum-dialog-ink-muted);
+  word-break: break-word;
+}
+
+.ieum-toc-preview-page {
+  flex: 0 0 auto;
+  color: var(--ieum-dialog-ink-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .ieum-toc-marks-section {
@@ -414,6 +456,10 @@ function resolveAppStyleMap(options) {
   return typeof options?.appStyleMap === 'function' ? options.appStyleMap() : options?.appStyleMap
 }
 
+function resolveMadeContents(options) {
+  return typeof options?.getMadeContents === 'function' ? options.getMadeContents() : undefined
+}
+
 function defaultTocTitleForKind(kind, labels) {
   const map = {
     body: labelOf(labels, 'tocDefaultTitleBody', DEFAULT_TOC_TITLES.body),
@@ -515,11 +561,59 @@ export function openConfirmActionDialog(config, options = {}) {
       msg.textContent = config.message
       body.appendChild(msg)
 
-      if (config.hint) {
+      const hints = Array.isArray(config.hints)
+        ? config.hints.filter((h) => typeof h === 'string' && h.length > 0)
+        : config.hint
+          ? [config.hint]
+          : []
+      for (const hintText of hints) {
         const hint = DOC.createElement('p')
         hint.className = 'ieum-toc-hint'
-        hint.textContent = config.hint
+        hint.textContent = hintText
         body.appendChild(hint)
+      }
+
+      if (Array.isArray(config.previewItems) && config.previewItems.length > 0) {
+        const list = DOC.createElement('div')
+        list.className = 'ieum-toc-diff-list'
+        list.dataset.role = 'preview-items'
+        const visible = config.previewItems.slice(0, MAX_MARK_ALL_PREVIEW_ITEMS)
+        for (const item of visible) {
+          const row = DOC.createElement('div')
+          row.className = 'ieum-toc-preview-row'
+
+          const main = DOC.createElement('div')
+          main.className = 'ieum-toc-preview-main'
+          if (item.matchedText) {
+            const matchEl = DOC.createElement('span')
+            matchEl.className = 'ieum-toc-preview-match'
+            matchEl.dataset.preview = 'match'
+            matchEl.textContent = item.matchedText
+            main.appendChild(matchEl)
+          }
+          if (item.context) {
+            const ctxEl = DOC.createElement('span')
+            ctxEl.className = 'ieum-toc-preview-context'
+            ctxEl.dataset.preview = 'context'
+            ctxEl.textContent = item.context
+            main.appendChild(ctxEl)
+          }
+
+          const pageEl = DOC.createElement('span')
+          pageEl.className = 'ieum-toc-preview-page'
+          pageEl.dataset.preview = 'page'
+          pageEl.textContent = item.pageLabel ?? ''
+
+          row.append(main, pageEl)
+          list.appendChild(row)
+        }
+        if (config.previewItems.length > visible.length && config.moreItemsText) {
+          const more = DOC.createElement('div')
+          more.className = 'ieum-toc-hint'
+          more.textContent = config.moreItemsText
+          list.appendChild(more)
+        }
+        body.appendChild(list)
       }
 
       if (Array.isArray(config.modifiedLines) && config.modifiedLines.length > 0) {
@@ -635,6 +729,10 @@ function reportTocFailure(res, kind, labels, showToast, setStatus) {
     message = labelOf(labels, 'tocErrorInTable')
   } else if (res?.reason === 'unsupported_place') {
     message = labelOf(labels, 'tocErrorUnsupportedPlace')
+  } else if (res?.reason === 'has_objects' || res?.reason === 'memo_removal_requires_approval') {
+    message = labelOf(labels, 'tocErrorHasObjects')
+  } else if (res?.reason === 'multi_section_range') {
+    message = labelOf(labels, 'tocErrorMultiSection')
   } else if (res?.reason === 'no_entries') {
     message = labelOf(labels, kind === 'body' ? 'tocErrorNoHeadings' : 'tocErrorNoCaptions')
   } else if (res?.reason === 'not_found') {
@@ -840,6 +938,7 @@ export function openCreateTocDialog(host, labels, options = {}) {
 
     onConfirm() {
       const place = resolveCaretPlace(host, options)
+      const made = resolveMadeContents(options)
       const insertOpts = {
         kind: state.kind,
         title: state.title.trim() ? state.title.trim() : null,
@@ -847,6 +946,7 @@ export function openCreateTocDialog(host, labels, options = {}) {
         layout: state.layout,
         links: state.links,
         ...(options.tocHelpers ? { helpers: options.tocHelpers } : {}),
+        ...(made ? { made } : {}),
         appStyleMap: resolveAppStyleMap(options),
       }
       const res = runDocumentEdit(host, options, 'toc-create', (doc) =>
@@ -914,8 +1014,10 @@ export function openCreateTocDialog(host, labels, options = {}) {
  */
 export function runRefreshTocDialog(host, labels, options = {}) {
   const { showToast } = resolveModalParts(options)
+  const made = resolveMadeContents(options)
   const sharedOpts = {
     ...(options.tocHelpers ? { helpers: options.tocHelpers } : {}),
+    ...(made ? { made } : {}),
     appStyleMap: resolveAppStyleMap(options),
   }
 
@@ -1256,37 +1358,103 @@ export function openMarkIndexDialog(host, labels, options = {}) {
       }
 
       if (state.markAll) {
-        const res = runDocumentEdit(host, options, 'index-mark', (doc) =>
-          addIndexMarksAll(doc, { term, subTerm }),
+        const preview = readFromHost(host, options, (doc) =>
+          previewIndexMarksAll(doc, { term, query: term, subTerm }),
         )
-        if (!res?.ok) {
+        if (!preview?.ok) {
           const msg =
-            res?.reason === 'invalid_term'
+            preview?.reason === 'invalid_term'
               ? labelOf(labels, 'indexMarkErrorEmpty')
               : fmt(labelOf(labels, 'indexErrorGeneric'), {
-                  error: res?.error ?? res?.reason ?? '',
+                  error: preview?.error ?? preview?.reason ?? '',
                 })
           this.setStatus(msg, 'error')
           notify(showToast, msg)
           return false
         }
-        if (res.added === 0 && res.skippedNonBody === 0) {
-          const msg = labelOf(labels, 'indexMarkAllNotFound')
+
+        const candidates = (preview.matches ?? []).filter((m) => !m.alreadyMarked)
+        if (candidates.length === 0) {
+          const baseMsg = labelOf(labels, 'indexMarkAllNotFound')
+          const msg =
+            preview.skippedNonBody > 0
+              ? `${baseMsg} (${fmt(labelOf(labels, 'indexMarkAllPreviewSkippedNote'), {
+                  count: preview.skippedNonBody,
+                })})`
+              : baseMsg
           this.setStatus(msg, 'error')
           notify(showToast, msg)
           return false
         }
-        const msg =
-          res.skippedNonBody > 0
-            ? fmt(labelOf(labels, 'indexMarkAllSkippedToast'), {
-                added: res.added,
-                skipped: res.skippedNonBody,
-              })
-            : fmt(labelOf(labels, 'indexMarkAllAddedToast'), { added: res.added })
-        this.setStatus(msg, 'info')
-        notify(showToast, msg)
-        this.renderMarksList()
-        options.onEdited?.('index-mark', res)
+
+        const hints = []
+        if (preview.includeParticles) {
+          hints.push(labelOf(labels, 'indexMarkAllPreviewParticlesNote'))
+        }
+        if (preview.skippedNonBody > 0) {
+          hints.push(
+            fmt(labelOf(labels, 'indexMarkAllPreviewSkippedNote'), {
+              count: preview.skippedNonBody,
+            }),
+          )
+        }
+        const previewItems = candidates.map((m) => ({
+          matchedText: m.matchedText,
+          context: m.context,
+          pageLabel: fmt(labelOf(labels, 'indexMarkPageBadge', '{page}'), {
+            page: m.pageLabel || m.page,
+          }),
+        }))
+        const extraCount = Math.max(0, candidates.length - MAX_MARK_ALL_PREVIEW_ITEMS)
+
+        openConfirmActionDialog(
+          {
+            title: labelOf(labels, 'indexMarkAllPreviewTitle', 'Confirm Mark All'),
+            message: fmt(labelOf(labels, 'indexMarkAllPreviewMessage'), {
+              count: candidates.length,
+            }),
+            hints,
+            previewItems,
+            moreItemsText:
+              extraCount > 0
+                ? fmt(labelOf(labels, 'indexMarkAllPreviewMore'), { count: extraCount })
+                : '',
+            confirmLabel: labelOf(labels, 'indexMarkAllPreviewConfirm'),
+            cancelLabel: labelOf(labels, 'tocDialogCancel'),
+            width: 460,
+            onConfirm: () => {
+              const res = runDocumentEdit(host, options, 'index-mark', (doc) =>
+                addIndexMarksAll(doc, { term, query: term, subTerm }),
+              )
+              if (!res?.ok) {
+                const msg =
+                  res?.reason === 'has_objects' || res?.reason === 'memo_removal_requires_approval'
+                    ? labelOf(labels, 'indexErrorHasObjects')
+                    : res?.reason === 'invalid_term'
+                      ? labelOf(labels, 'indexMarkErrorEmpty')
+                      : fmt(labelOf(labels, 'indexErrorGeneric'), {
+                          error: res?.error ?? res?.reason ?? '',
+                        })
+                notify(showToast, msg)
+                return
+              }
+              if (res.added === 0 && res.skippedNonBody === 0) {
+                notify(showToast, labelOf(labels, 'indexMarkAllNotFound'))
+                return
+              }
+              const msg =
+                res.skippedNonBody > 0
+                  ? fmt(labelOf(labels, 'indexMarkAllSkippedToast'), {
+                      added: res.added,
+                      skipped: res.skippedNonBody,
+                    })
+                  : fmt(labelOf(labels, 'indexMarkAllAddedToast'), { added: res.added })
+              notify(showToast, msg)
+              options.onEdited?.('index-mark', res)
+            },
+          },
+          options,
+        )
         return true
       }
 
@@ -1298,11 +1466,13 @@ export function openMarkIndexDialog(host, labels, options = {}) {
         const msg =
           res?.reason === 'unsupported_place' || res?.reason === 'in_table'
             ? labelOf(labels, 'indexMarkErrorUnsupportedPlace')
-            : res?.reason === 'invalid_term'
-              ? labelOf(labels, 'indexMarkErrorEmpty')
-              : fmt(labelOf(labels, 'indexErrorGeneric'), {
-                  error: res?.error ?? res?.reason ?? '',
-                })
+            : res?.reason === 'has_objects' || res?.reason === 'memo_removal_requires_approval'
+              ? labelOf(labels, 'indexErrorHasObjects')
+              : res?.reason === 'invalid_term'
+                ? labelOf(labels, 'indexMarkErrorEmpty')
+                : fmt(labelOf(labels, 'indexErrorGeneric'), {
+                    error: res?.error ?? res?.reason ?? '',
+                  })
         this.setStatus(msg, 'error')
         notify(showToast, msg)
         return false
@@ -1329,6 +1499,8 @@ function reportIndexFailure(res, labels, showToast, setStatus) {
     message = labelOf(labels, 'indexErrorInTable')
   } else if (res?.reason === 'unsupported_place') {
     message = labelOf(labels, 'indexErrorUnsupportedPlace')
+  } else if (res?.reason === 'has_objects' || res?.reason === 'memo_removal_requires_approval') {
+    message = labelOf(labels, 'indexErrorHasObjects')
   } else if (res?.reason === 'index_block_exists') {
     message = labelOf(labels, 'indexErrorAlreadyExists')
   } else if (res?.reason === 'not_found') {
@@ -1480,17 +1652,44 @@ export function openCreateIndexDialog(host, labels, options = {}) {
 
     onConfirm() {
       const place = resolveCaretPlace(host, options)
+      const buildOpts = {
+        title: state.title.trim() ? state.title.trim() : null,
+        columns: state.columns,
+        groupHeadings: state.groupHeadings,
+        layout: state.layout,
+      }
       const res = runDocumentEdit(host, options, 'index-create', (doc) =>
-        buildIndexBlock(doc, place, {
-          title: state.title.trim() ? state.title.trim() : null,
-          columns: state.columns,
-          groupHeadings: state.groupHeadings,
-          layout: state.layout,
-        }),
+        buildIndexBlock(doc, place, buildOpts),
       )
       if (res?.ok) {
         notify(showToast, fmt(labelOf(labels, 'indexCreatedToast'), { count: res.entryCount ?? 0 }))
         options.onEdited?.('index-create', res)
+        return true
+      }
+      if (res?.reason === 'page_split_confirm') {
+        openConfirmActionDialog(
+          {
+            title: labelOf(labels, 'indexPageSplitConfirmTitle', 'Confirm Page Break'),
+            message: labelOf(labels, 'indexPageSplitConfirmMessage'),
+            confirmLabel: labelOf(labels, 'indexPageSplitConfirmAction'),
+            cancelLabel: labelOf(labels, 'tocDialogCancel'),
+            onConfirm: () => {
+              const forced = runDocumentEdit(host, options, 'index-create', (doc) =>
+                buildIndexBlock(doc, place, { ...buildOpts, allowPageSplit: true }),
+              )
+              if (forced?.ok) {
+                notify(
+                  showToast,
+                  fmt(labelOf(labels, 'indexCreatedToast'), { count: forced.entryCount ?? 0 }),
+                )
+                options.onEdited?.('index-create', forced)
+              } else {
+                reportIndexFailure(forced, labels, showToast)
+              }
+            },
+          },
+          options,
+        )
         return true
       }
       reportIndexFailure(res, labels, showToast, (m, t) => this.setStatus(m, t))

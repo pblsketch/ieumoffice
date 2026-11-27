@@ -25,14 +25,21 @@ export const en = {
   staleManualSkip: 'Skip',
   staleRefreshDone: 'Updated {count} items.',
   staleRefreshFailed: 'Could not update some items: {error}',
+  staleRefreshBlockedObjects:
+    'Skipped refreshing because the TOC or index range contains user objects such as footnotes, pictures, or tables.',
   submissionMenuLabel: 'Save as Submission Copy…',
   submissionMenuDesc: 'Save a separate clean copy without index, citation, or setting marks.',
   submissionSaving: 'Creating submission copy…',
   submissionSaved: 'Saved submission copy: {name}',
+  submissionBackupKept: 'Kept a backup of the previous file: {name}',
   submissionSavedTailsLost:
     'Saved submission copy ({name}). Some master pages or memos could not be kept.',
   submissionFailedProtected: 'Password-protected documents cannot be saved as a submission copy.',
   submissionFailedTracked: 'Documents with tracked changes cannot be saved as a submission copy.',
+  submissionFailedSameAsOpen:
+    'Cannot overwrite an open document with a submission copy. Choose a different file name.',
+  submissionFailedStrip:
+    'Submission copy was not saved because some internal marks could not be removed: {marks}',
   submissionFailedVerify:
     'Submission copy verification failed ({before} → {after} pages). Try saving in HWPX format instead.',
   submissionFailedExport: 'Could not build submission copy: {error}',

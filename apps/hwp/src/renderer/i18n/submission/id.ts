@@ -25,17 +25,24 @@ export const id = {
   staleManualSkip: 'Lewati',
   staleRefreshDone: '{count} item diperbarui.',
   staleRefreshFailed: 'Sebagian item tidak dapat diperbarui: {error}',
+  staleRefreshBlockedObjects:
+    'Pembaruan dilewati karena rentang daftar isi atau indeks memuat objek pengguna seperti catatan kaki, gambar, atau tabel.',
   submissionMenuLabel: 'Simpan sebagai Salinan Penyerahan…',
   submissionMenuDesc:
     'Simpan salinan bersih terpisah tanpa penanda indeks, kutipan, atau pengaturan.',
   submissionSaving: 'Membuat salinan penyerahan…',
   submissionSaved: 'Salinan penyerahan disimpan: {name}',
+  submissionBackupKept: 'Cadangan berkas sebelumnya disimpan sebagai: {name}',
   submissionSavedTailsLost:
     'Salinan penyerahan disimpan ({name}). Beberapa halaman master atau komentar mungkin tidak tersimpan.',
   submissionFailedProtected:
     'Dokumen yang dilindungi kata sandi tidak dapat disimpan sebagai salinan penyerahan.',
   submissionFailedTracked:
     'Dokumen dengan pelacakan perubahan tidak dapat disimpan sebagai salinan penyerahan.',
+  submissionFailedSameAsOpen:
+    'Tidak dapat menimpa dokumen yang sedang terbuka dengan salinan penyerahan. Pilih nama berkas lain.',
+  submissionFailedStrip:
+    'Salinan penyerahan tidak disimpan karena sebagian penanda internal tidak dapat dihapus: {marks}',
   submissionFailedVerify:
     'Verifikasi salinan penyerahan gagal ({before} → {after} halaman). Coba simpan dalam format HWPX.',
   submissionFailedExport: 'Gagal membuat salinan penyerahan: {error}',

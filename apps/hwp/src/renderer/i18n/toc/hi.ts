@@ -48,6 +48,10 @@ export const hi = {
   tocRefreshNotFound: 'ताज़ा करने के लिए कोई विषय-सूची नहीं मिली।',
   tocErrorInTable: 'तालिका के भीतर विषय-सूची नहीं जोड़ी जा सकती। कर्सर को मुख्य अनुच्छेद में रखें।',
   tocErrorUnsupportedPlace: 'यहाँ विषय-सूची नहीं जोड़ी जा सकती। कर्सर को मुख्य अनुच्छेद में रखें।',
+  tocErrorHasObjects:
+    'विषय-सूची बदली नहीं गई क्योंकि इसके भीतर फ़ुटनोट, चित्र या तालिका जैसे उपयोगकर्ता ऑब्जेक्ट हैं।',
+  tocErrorMultiSection:
+    'विषय-सूची कई अनुभागों में फैली होने के कारण इसे स्वतः ताज़ा नहीं किया जा सकता।',
   tocErrorNoHeadings: 'कोई मेल खाने वाला शीर्षक नहीं मिला।',
   tocErrorNoCaptions: 'कोई मेल खाने वाला कैप्शन नहीं मिला।',
   tocErrorGeneric: 'विषय-सूची अद्यतन नहीं हो सकी: {error}',
@@ -58,6 +62,14 @@ export const hi = {
   indexMarkSubTermLabel: 'उप-प्रविष्टि (वैकल्पिक)',
   indexMarkSubTermPlaceholder: 'केवल मुख्य प्रविष्टि के लिए खाली छोड़ें',
   indexMarkAllLabel: 'सभी समान शब्दों को चिह्नित करें',
+  indexMarkAllPreviewTitle: 'सभी अनुक्रमणिका प्रविष्टियाँ चिह्नित करने की पुष्टि',
+  indexMarkAllPreviewMessage:
+    'क्या मुख्य पाठ में मिले {count} स्थानों पर अनुक्रमणिका चिह्न जोड़ें?',
+  indexMarkAllPreviewParticlesNote: 'व्याकरणिक निपात से जुड़े शब्द रूप भी शामिल हैं।',
+  indexMarkAllPreviewSkippedNote:
+    'तालिकाओं, पाठ बॉक्स या टिप्पणियों में {count} स्थान छोड़ दिए जाएँगे।',
+  indexMarkAllPreviewConfirm: 'सभी चिह्नित करें',
+  indexMarkAllPreviewMore: 'और {count} अन्य स्थान',
   indexMarksListTitle: 'मौजूदा अनुक्रमणिका चिह्न ({count})',
   indexMarksListEmpty: 'इस दस्तावेज़ में अभी कोई अनुक्रमणिका चिह्न नहीं है।',
   indexMarkPageBadge: 'पृष्ठ {page}',
@@ -79,6 +91,10 @@ export const hi = {
   indexColumnsLabel: 'स्तंभ',
   indexColumnsOption: '{count} स्तंभ',
   indexGroupHeadingsLabel: 'वर्णमाला समूह शीर्षक शामिल करें',
+  indexPageSplitConfirmTitle: 'बहु-स्तंभ अनुक्रमणिका के लिए पृष्ठ विराम पुष्टि',
+  indexPageSplitConfirmMessage:
+    'बहु-स्तंभ अनुक्रमणिका से पहले और बाद में नया पृष्ठ बनेगा। क्या जारी रखें?',
+  indexPageSplitConfirmAction: 'जारी रखें',
   indexCreatedToast: 'अनुक्रमणिका बनाई गई ({count} प्रविष्टियाँ)।',
   indexRefreshedToast: 'अनुक्रमणिका ताज़ा की गई ({count} प्रविष्टियाँ)।',
   indexRefreshNotFound: 'ताज़ा करने के लिए कोई अनुक्रमणिका नहीं मिली।',
@@ -88,6 +104,8 @@ export const hi = {
     'तालिका के भीतर अनुक्रमणिका नहीं जोड़ी जा सकती। कर्सर को मुख्य अनुच्छेद में रखें।',
   indexErrorUnsupportedPlace:
     'यहाँ अनुक्रमणिका नहीं जोड़ी जा सकती। कर्सर को मुख्य अनुच्छेद में रखें।',
+  indexErrorHasObjects:
+    'अनुक्रमणिका बदली नहीं गई क्योंकि इसके भीतर फ़ुटनोट, चित्र या तालिका जैसे उपयोगकर्ता ऑब्जेक्ट हैं।',
   indexErrorAlreadyExists:
     'इस दस्तावेज़ में अनुक्रमणिका पहले से मौजूद है। “अनुक्रमणिका ताज़ा करें” उपयोग करें।',
   indexErrorGeneric: 'अनुक्रमणिका अद्यतन नहीं हो सकी: {error}',

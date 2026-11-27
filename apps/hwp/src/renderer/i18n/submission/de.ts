@@ -26,16 +26,23 @@ export const de = {
   staleManualSkip: 'Überspringen',
   staleRefreshDone: '{count} Elemente aktualisiert.',
   staleRefreshFailed: 'Einige Elemente konnten nicht aktualisiert werden: {error}',
+  staleRefreshBlockedObjects:
+    'Aktualisierung übersprungen, da der Bereich des Inhaltsverzeichnisses oder Index Benutzerobjekte wie Fußnoten, Bilder oder Tabellen enthält.',
   submissionMenuLabel: 'Als Einreichungskopie speichern…',
   submissionMenuDesc: 'Speichert eine bereinigte Kopie ohne Index-, Zitat- und Einstellungsmarken.',
   submissionSaving: 'Einreichungskopie wird erstellt…',
   submissionSaved: 'Einreichungskopie gespeichert: {name}',
+  submissionBackupKept: 'Eine Sicherungskopie der vorherigen Datei wurde behalten: {name}',
   submissionSavedTailsLost:
     'Einreichungskopie gespeichert ({name}). Einige Musterseiten oder Kommentare konnten nicht übernommen werden.',
   submissionFailedProtected:
     'Kennwortgeschützte Dokumente können nicht als Einreichungskopie gespeichert werden.',
   submissionFailedTracked:
     'Dokumente mit Änderungsverfolgung können nicht als Einreichungskopie gespeichert werden.',
+  submissionFailedSameAsOpen:
+    'Ein geöffnetes Dokument kann nicht mit einer Einreichungskopie überschrieben werden. Bitte wählen Sie einen anderen Dateinamen.',
+  submissionFailedStrip:
+    'Die Einreichungskopie wurde nicht gespeichert, da einige interne Markierungen nicht entfernt werden konnten: {marks}',
   submissionFailedVerify:
     'Prüfung der Einreichungskopie fehlgeschlagen ({before} → {after} Seiten). Versuchen Sie es im HWPX-Format.',
   submissionFailedExport: 'Einreichungskopie konnte nicht erstellt werden: {error}',

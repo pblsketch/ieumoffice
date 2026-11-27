@@ -81,7 +81,6 @@ export const cs = {
   aiToolAnalyzePictureFail: 'Obrázek {picture} nelze zobrazit',
   aiToolFields: 'Pole formuláře zkontrolována · {count}',
   aiToolToc: 'Přidán obsah · nadpisů: {count}',
-  aiToolTocRefresh: 'Přepsána čísla stran obsahu · {count}',
   aiTocName: 'Obsah',
   aiTocPagesChanged: 'Aktualizováno čísel stran: {count}',
   aiToolNotes: 'Zkontrolovány poznámky · {count}',

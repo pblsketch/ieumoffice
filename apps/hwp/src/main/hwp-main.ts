@@ -230,6 +230,39 @@ const recoveryHost: HwpRecoveryHost = {
 /** Why a save stood down: the file moved on disk after this copy read or wrote it. */
 const EXTERNAL_MODIFIED = 'hwp: external-modified'
 
+/**
+ * Normalize a file path for open-tab comparison so relative segments, separator styles,
+ * and Windows letter casing resolve to the same canonical key.
+ */
+export function normalizeHwpComparePath(
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const resolved = resolve(targetPath)
+  return platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/**
+ * Whether `targetPath` refers to the same file as any entry in `openPaths`.
+ * Used to refuse overwriting any currently open HWP tab with a submission copy.
+ */
+export function matchesOpenHwpPath(
+  targetPath: string,
+  openPaths: Iterable<string>,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const needle = normalizeHwpComparePath(targetPath, platform)
+  for (const candidate of openPaths) {
+    if (!candidate) continue
+    if (normalizeHwpComparePath(candidate, platform) === needle) return true
+  }
+  return false
+}
+
+function isPathOpenInAnyHwpTab(targetPath: string): boolean {
+  return matchesOpenHwpPath(targetPath, [...savePathByWc.values(), ...openPathByWc.values()])
+}
+
 function recordedDiskState(wcId: number, path: string): SaveDiskState | undefined {
   return diskStatesByWc.get(wcId)?.get(path)
 }
@@ -1104,6 +1137,14 @@ function registerHwpIpc(): void {
         const answer = saveAsTarget(picked.filePath, fallback, false)
         const format = hwpFormatOfPath(answer.path)
         if (!format) throw new Error('hwp: no save format for this file name')
+        if (isPathOpenInAnyHwpTab(answer.path)) {
+          settleSubmission(wcId, false)
+          return {
+            ok: false,
+            reason: 'same_as_open',
+            error: 'hwp: submission target matches an open document',
+          }
+        }
         pendingSubmissionByWc.set(wcId, { path: answer.path, format })
         return { ok: true, path: answer.path, format }
       } catch (err) {
@@ -1139,6 +1180,14 @@ function registerHwpIpc(): void {
       if (!bytesMatchFormat(data, pending.format)) {
         return done({ ok: false, error: `hwp: exported bytes are not a ${pending.format} file` })
       }
+      // Defense-in-depth: another tab may have opened this path while the copy was exporting.
+      if (isPathOpenInAnyHwpTab(pending.path)) {
+        return done({
+          ok: false,
+          reason: 'same_as_open',
+          error: 'hwp: submission target matches an open document',
+        })
+      }
       try {
         const fixed = applySaveFixes(
           data,
@@ -1154,6 +1203,11 @@ function registerHwpIpc(): void {
             `hwp: master pages or memos were not put back on submission save (${fixed.tailsSkipped})`,
           )
         }
+        let backupPath: string | undefined
+        if (existsSync(pending.path)) {
+          backupPath = backupPathFor(pending.path)
+          await copyFileReplacing(pending.path, backupPath)
+        }
         await atomicWriteFile(
           pending.path,
           Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
@@ -1163,6 +1217,7 @@ function registerHwpIpc(): void {
         return done({
           ok: true,
           path: pending.path,
+          ...(backupPath ? { backupPath } : {}),
           ...(tailsLost ? { tailsLost: true as const } : {}),
         })
       } catch (err) {

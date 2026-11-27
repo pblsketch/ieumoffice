@@ -11,6 +11,8 @@ export interface StalenessItem {
   reason: string
   label?: string
   details?: unknown
+  hasManualEdits?: boolean
+  modifiedLines?: unknown[]
 }
 
 export interface StalenessCheckOptions extends CheckTocStalenessOptions {
@@ -22,9 +24,17 @@ export interface StalenessCheckError {
   error: string
 }
 
+export interface StalenessCheckerCheckResult {
+  stale: boolean
+  items: StalenessItem[]
+  manualEdits?: StalenessManualEdit[]
+  errors?: StalenessCheckError[]
+}
+
 export interface StalenessCheckResult {
   stale: boolean
   items: StalenessItem[]
+  manualEdits: StalenessManualEdit[]
   errors?: StalenessCheckError[]
 }
 
@@ -51,7 +61,7 @@ export interface StalenessCheckerRefreshResult {
 
 export interface StalenessChecker<TDoc = unknown> {
   id: string
-  check(doc: TDoc, options?: StalenessCheckOptions): StalenessCheckResult
+  check(doc: TDoc, options?: StalenessCheckOptions): StalenessCheckerCheckResult
   refresh(doc: TDoc, options?: StalenessRefreshOptions): StalenessCheckerRefreshResult
 }
 
@@ -63,7 +73,7 @@ export interface StalenessRefreshAllResult {
   ok: boolean
   refreshed: number
   manualEdits: StalenessManualEdit[]
-  reason?: 'manual_edits'
+  reason?: 'manual_edits' | 'refresh_failed'
   failed?: StalenessCheckError[]
   results: StalenessCheckerRunSummary[]
 }
@@ -97,14 +107,23 @@ export interface BuildSubmissionCopyOptions {
   verify?: boolean
 }
 
-export interface SubmissionCopyResult {
-  bytes: Uint8Array
-  format: 'hwp' | 'hwpx'
-  removed: number
-  names: string[]
-  failed?: FailedMarkRemoval[]
-  verify?: SubmissionCopyVerifyInfo
-}
+export type SubmissionCopyResult =
+  | {
+      ok: true
+      bytes: Uint8Array
+      format: 'hwp' | 'hwpx'
+      removed: number
+      names: string[]
+      verify?: SubmissionCopyVerifyInfo
+    }
+  | {
+      ok: false
+      reason: 'strip_failed'
+      failed: FailedMarkRemoval[]
+      format: 'hwp' | 'hwpx'
+      removed: number
+      names: string[]
+    }
 
 export declare const tocStalenessChecker: StalenessChecker<TocDoc>
 export declare const indexStalenessChecker: StalenessChecker<IndexDoc>

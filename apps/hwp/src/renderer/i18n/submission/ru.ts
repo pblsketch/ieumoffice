@@ -25,15 +25,22 @@ export const ru = {
   staleManualSkip: 'Пропустить',
   staleRefreshDone: 'Обновлено элементов: {count}.',
   staleRefreshFailed: 'Не удалось обновить некоторые элементы: {error}',
+  staleRefreshBlockedObjects:
+    'Обновление пропущено, так как в области оглавления или указателя есть пользовательские объекты: сноски, изображения или таблицы.',
   submissionMenuLabel: 'Сохранить копию для подачи…',
   submissionMenuDesc:
     'Сохраняет отдельную чистую копию без меток указателя, цитирования и настроек.',
   submissionSaving: 'Создание копии для подачи…',
   submissionSaved: 'Копия для подачи сохранена: {name}',
+  submissionBackupKept: 'Сохранена резервная копия прежнего файла: {name}',
   submissionSavedTailsLost:
     'Копия для подачи сохранена ({name}). Некоторые мастер-страницы или примечания могли не сохраниться.',
   submissionFailedProtected: 'Защищённые паролем документы нельзя сохранить как копию для подачи.',
   submissionFailedTracked: 'Документы с режимом исправлений нельзя сохранить как копию для подачи.',
+  submissionFailedSameAsOpen:
+    'Нельзя перезаписать открытый документ копией для подачи. Выберите другое имя файла.',
+  submissionFailedStrip:
+    'Копия для подачи не сохранена, так как не удалось удалить некоторые внутренние метки: {marks}',
   submissionFailedVerify:
     'Проверка копии для подачи не удалась ({before} → {after} стр.). Попробуйте формат HWPX.',
   submissionFailedExport: 'Не удалось создать копию для подачи: {error}',

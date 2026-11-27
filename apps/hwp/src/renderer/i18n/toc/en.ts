@@ -50,6 +50,10 @@ export const en = {
     'Cannot insert a table of contents inside a table. Place the cursor in a body paragraph.',
   tocErrorUnsupportedPlace:
     'Cannot insert a table of contents here. Place the cursor in a body paragraph.',
+  tocErrorHasObjects:
+    'Cannot replace the table of contents because it contains user objects such as footnotes, pictures, or tables.',
+  tocErrorMultiSection:
+    'Cannot refresh automatically because the table of contents spans multiple sections.',
   tocErrorNoHeadings: 'No matching headings found.',
   tocErrorNoCaptions: 'No matching captions found.',
   tocErrorGeneric: 'Could not update table of contents: {error}',
@@ -60,6 +64,15 @@ export const en = {
   indexMarkSubTermLabel: 'Subentry (optional)',
   indexMarkSubTermPlaceholder: 'Leave blank for main entry only',
   indexMarkAllLabel: 'Mark all matching occurrences',
+  indexMarkAllPreviewTitle: 'Confirm Mark All Index Entries',
+  indexMarkAllPreviewMessage:
+    'Add index marks at {count} matching location(s) in the document body?',
+  indexMarkAllPreviewParticlesNote:
+    'Occurrences followed by grammatical particles are also included.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} occurrence(s) inside tables, text boxes, or notes will be skipped.',
+  indexMarkAllPreviewConfirm: 'Mark all',
+  indexMarkAllPreviewMore: 'and {count} more location(s)',
   indexMarksListTitle: 'Existing index marks ({count})',
   indexMarksListEmpty: 'No index marks in this document yet.',
   indexMarkPageBadge: 'p. {page}',
@@ -80,12 +93,18 @@ export const en = {
   indexColumnsLabel: 'Columns',
   indexColumnsOption: '{count} column(s)',
   indexGroupHeadingsLabel: 'Include letter/consonant group headings',
+  indexPageSplitConfirmTitle: 'Confirm Page Break for Multi-Column Index',
+  indexPageSplitConfirmMessage:
+    'New page breaks will be inserted before and after the multi-column index. Continue?',
+  indexPageSplitConfirmAction: 'Continue',
   indexCreatedToast: 'Created index ({count} entries).',
   indexRefreshedToast: 'Refreshed index ({count} entries).',
   indexRefreshNotFound: 'No index found to refresh.',
   indexErrorNoMarks: 'No index marks found. Use "Mark Index Entry" first.',
   indexErrorInTable: 'Cannot insert an index inside a table. Place the cursor in a body paragraph.',
   indexErrorUnsupportedPlace: 'Cannot insert an index here. Place the cursor in a body paragraph.',
+  indexErrorHasObjects:
+    'Cannot replace the index because it contains user objects such as footnotes, pictures, or tables.',
   indexErrorAlreadyExists: 'An index already exists in this document. Use "Refresh Index" instead.',
   indexErrorGeneric: 'Could not update index: {error}',
 } satisfies Record<keyof typeof zh, string>

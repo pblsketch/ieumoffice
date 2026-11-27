@@ -47,6 +47,9 @@ export const ar = {
   tocRefreshNotFound: 'لم يتم العثور على جدول محتويات لتحديثه.',
   tocErrorInTable: 'لا يمكن إدراج جدول محتويات داخل جدول. ضع المؤشر في فقرة بالمتن.',
   tocErrorUnsupportedPlace: 'لا يمكن إدراج جدول محتويات هنا. ضع المؤشر في فقرة بالمتن.',
+  tocErrorHasObjects:
+    'لم يُستبدل جدول المحتويات لاحتوائه على كائنات مستخدم مثل الحواشي أو الصور أو الجداول.',
+  tocErrorMultiSection: 'يتعذر التحديث تلقائياً لأن جدول المحتويات يمتد عبر عدة أقسام.',
   tocErrorNoHeadings: 'لم يتم العثور على عناوين مطابقة.',
   tocErrorNoCaptions: 'لم يتم العثور على تسميات توضيحية مطابقة.',
   tocErrorGeneric: 'تعذر تحديث جدول المحتويات: {error}',
@@ -57,6 +60,13 @@ export const ar = {
   indexMarkSubTermLabel: 'مدخل فرعي (اختياري)',
   indexMarkSubTermPlaceholder: 'اتركه فارغاً للمدخل الرئيسي فقط',
   indexMarkAllLabel: 'تحديد جميع المواضع المطابقة',
+  indexMarkAllPreviewTitle: 'تأكيد تحديد جميع المواضع المطابقة',
+  indexMarkAllPreviewMessage: 'هل تريد إضافة علامات فهرس في {count} موضع(مواضع) مطابقة في المتن؟',
+  indexMarkAllPreviewParticlesNote: 'تشمل النتائج أيضاً الصيغ المتبوعة بأدوات نحوية.',
+  indexMarkAllPreviewSkippedNote:
+    'سيتم تخطي {count} موضع(مواضع) داخل الجداول أو مربعات النص أو الحواشي.',
+  indexMarkAllPreviewConfirm: 'تحديد الكل',
+  indexMarkAllPreviewMore: 'و {count} موضع(مواضع) أخرى',
   indexMarksListTitle: 'علامات الفهرس الحالية ({count})',
   indexMarksListEmpty: 'لا توجد علامات فهرس في هذا المستند بعد.',
   indexMarkPageBadge: 'ص {page}',
@@ -77,12 +87,18 @@ export const ar = {
   indexColumnsLabel: 'الأعمدة',
   indexColumnsOption: '{count} عمود/أعمدة',
   indexGroupHeadingsLabel: 'تضمين عناوين المجموعات الأبجدية',
+  indexPageSplitConfirmTitle: 'تأكيد فاصل الصفحات للفهرس متعدد الأعمدة',
+  indexPageSplitConfirmMessage:
+    'سيتم إدراج فواصل صفحات قبل الفهرس متعدد الأعمدة وبعده. هل تريد المتابعة؟',
+  indexPageSplitConfirmAction: 'متابعة',
   indexCreatedToast: 'تم إنشاء الفهرس ({count} عنصر).',
   indexRefreshedToast: 'تم تحديث الفهرس ({count} عنصر).',
   indexRefreshNotFound: 'لم يتم العثور على فهرس لتحديثه.',
   indexErrorNoMarks: 'لا توجد علامات فهرس. استخدم «تحديد مدخل فهرس» أولاً.',
   indexErrorInTable: 'لا يمكن إدراج فهرس داخل جدول. ضع المؤشر في فقرة بالمتن.',
   indexErrorUnsupportedPlace: 'لا يمكن إدراج فهرس هنا. ضع المؤشر في فقرة بالمتن.',
+  indexErrorHasObjects:
+    'لم يُستبدل الفهرس لاحتوائه على كائنات مستخدم مثل الحواشي أو الصور أو الجداول.',
   indexErrorAlreadyExists: 'يوجد فهرس بالفعل في هذا المستند. استخدم «تحديث الفهرس».',
   indexErrorGeneric: 'تعذر تحديث الفهرس: {error}',
 } satisfies Record<keyof typeof zh, string>

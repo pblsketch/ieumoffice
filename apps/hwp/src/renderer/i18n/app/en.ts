@@ -79,7 +79,6 @@ export const en = {
   aiToolAnalyzePictureFail: 'Could not look at picture {picture}',
   aiToolFields: 'Checked form fields · {count}',
   aiToolToc: 'Added a table of contents · {count} headings',
-  aiToolTocRefresh: 'Rewrote the contents page numbers · {count}',
   aiTocName: 'Table of contents',
   aiTocPagesChanged: '{count} page number(s) updated',
   aiToolNotes: 'Checked footnotes and endnotes · {count}',

@@ -26,16 +26,23 @@ export const es = {
   staleManualSkip: 'Omitir',
   staleRefreshDone: 'Se actualizaron {count} elementos.',
   staleRefreshFailed: 'No se pudieron actualizar algunos elementos: {error}',
+  staleRefreshBlockedObjects:
+    'Se omitió la actualización porque el rango del índice de contenido o alfabético contiene objetos del usuario como notas al pie, imágenes o tablas.',
   submissionMenuLabel: 'Guardar como copia de entrega…',
   submissionMenuDesc: 'Guarda una copia limpia aparte sin marcas de índice, citas ni ajustes.',
   submissionSaving: 'Creando copia de entrega…',
   submissionSaved: 'Copia de entrega guardada: {name}',
+  submissionBackupKept: 'Se conservó una copia de seguridad del archivo anterior: {name}',
   submissionSavedTailsLost:
     'Copia de entrega guardada ({name}). Es posible que no se hayan conservado algunas páginas maestras o comentarios.',
   submissionFailedProtected:
     'Los documentos protegidos con contraseña no se pueden guardar como copia de entrega.',
   submissionFailedTracked:
     'Los documentos con control de cambios no se pueden guardar como copia de entrega.',
+  submissionFailedSameAsOpen:
+    'No se puede sobrescribir un documento abierto con una copia de entrega. Elige otro nombre de archivo.',
+  submissionFailedStrip:
+    'No se guardó la copia de entrega porque no se pudieron eliminar algunas marcas internas: {marks}',
   submissionFailedVerify:
     'Error al verificar la copia de entrega ({before} → {after} páginas). Intenta guardarla en formato HWPX.',
   submissionFailedExport: 'No se pudo generar la copia de entrega: {error}',

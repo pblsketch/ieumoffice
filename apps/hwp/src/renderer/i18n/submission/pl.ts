@@ -25,16 +25,23 @@ export const pl = {
   staleManualSkip: 'Pomiń',
   staleRefreshDone: 'Zaktualizowano {count} elementów.',
   staleRefreshFailed: 'Nie udało się zaktualizować niektórych elementów: {error}',
+  staleRefreshBlockedObjects:
+    'Pominięto odświeżanie, ponieważ zakres spisu treści lub indeksu zawiera obiekty użytkownika, takie jak przypisy dolne, obrazy lub tabele.',
   submissionMenuLabel: 'Zapisz jako kopię do złożenia…',
   submissionMenuDesc: 'Zapisuje osobną czystą kopię bez znaczników indeksu, cytowań i ustawień.',
   submissionSaving: 'Tworzenie kopii do złożenia…',
   submissionSaved: 'Zapisano kopię do złożenia: {name}',
+  submissionBackupKept: 'Zachowano kopię zapasową poprzedniego pliku: {name}',
   submissionSavedTailsLost:
     'Zapisano kopię do złożenia ({name}). Niektóre strony wzorcowe lub komentarze mogły nie zostać zachowane.',
   submissionFailedProtected:
     'Dokumenty chronione hasłem nie mogą zostać zapisane jako kopia do złożenia.',
   submissionFailedTracked:
     'Dokumenty ze śledzeniem zmian nie mogą zostać zapisane jako kopia do złożenia.',
+  submissionFailedSameAsOpen:
+    'Nie można nadpisać otwartego dokumentu kopią do złożenia. Wybierz inną nazwę pliku.',
+  submissionFailedStrip:
+    'Nie zapisano kopii do złożenia, ponieważ nie udało się usunąć niektórych znaczników wewnętrznych: {marks}',
   submissionFailedVerify:
     'Weryfikacja kopii do złożenia nie powiodła się ({before} → {after} stron). Spróbuj zapisać w formacie HWPX.',
   submissionFailedExport: 'Nie udało się utworzyć kopii do złożenia: {error}',

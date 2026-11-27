@@ -50,6 +50,10 @@ export const it = {
     'Impossibile inserire un sommario in una tabella. Posiziona il cursore in un paragrafo del corpo.',
   tocErrorUnsupportedPlace:
     'Impossibile inserire un sommario qui. Posiziona il cursore in un paragrafo del corpo.',
+  tocErrorHasObjects:
+    'Il sommario non è stato sostituito perché contiene oggetti utente come note a piè di pagina, immagini o tabelle.',
+  tocErrorMultiSection:
+    'Impossibile aggiornare automaticamente perché il sommario si estende su più sezioni.',
   tocErrorNoHeadings: 'Nessun titolo corrispondente trovato.',
   tocErrorNoCaptions: 'Nessuna didascalia corrispondente trovata.',
   tocErrorGeneric: 'Impossibile aggiornare il sommario: {error}',
@@ -60,6 +64,15 @@ export const it = {
   indexMarkSubTermLabel: 'Sottovoce (facoltativa)',
   indexMarkSubTermPlaceholder: 'Lascia vuoto per la sola voce principale',
   indexMarkAllLabel: 'Contrassegna tutte le occorrenze uguali',
+  indexMarkAllPreviewTitle: 'Conferma marcatura di tutte le occorrenze',
+  indexMarkAllPreviewMessage:
+    'Aggiungere voci di indice in {count} occorrenze trovate nel corpo del documento?',
+  indexMarkAllPreviewParticlesNote:
+    'Sono incluse anche le occorrenze seguite da particelle grammaticali.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} occorrenze in tabelle, caselle di testo o note verranno ignorate.',
+  indexMarkAllPreviewConfirm: 'Contrassegna tutto',
+  indexMarkAllPreviewMore: 'e altre {count} occorrenze',
   indexMarksListTitle: 'Voci di indice esistenti ({count})',
   indexMarksListEmpty: 'Non ci sono ancora voci di indice in questo documento.',
   indexMarkPageBadge: 'pag. {page}',
@@ -81,6 +94,10 @@ export const it = {
   indexColumnsLabel: 'Colonne',
   indexColumnsOption: '{count} colonna/e',
   indexGroupHeadingsLabel: 'Includi intestazioni alfabetiche di gruppo',
+  indexPageSplitConfirmTitle: 'Conferma interruzione di pagina per indice a più colonne',
+  indexPageSplitConfirmMessage:
+    'Verranno inserite nuove interruzioni di pagina prima e dopo l’indice a più colonne. Continuare?',
+  indexPageSplitConfirmAction: 'Continua',
   indexCreatedToast: 'Indice analitico creato ({count} voci).',
   indexRefreshedToast: 'Indice analitico aggiornato ({count} voci).',
   indexRefreshNotFound: 'Nessun indice analitico trovato da aggiornare.',
@@ -89,6 +106,8 @@ export const it = {
     'Impossibile inserire un indice in una tabella. Posiziona il cursore in un paragrafo del corpo.',
   indexErrorUnsupportedPlace:
     'Impossibile inserire un indice qui. Posiziona il cursore in un paragrafo del corpo.',
+  indexErrorHasObjects:
+    'L’indice non è stato sostituito perché contiene oggetti utente come note a piè di pagina, immagini o tabelle.',
   indexErrorAlreadyExists:
     'Esiste già un indice in questo documento. Usa “Aggiorna indice analitico”.',
   indexErrorGeneric: 'Impossibile aggiornare l’indice: {error}',

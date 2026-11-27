@@ -250,14 +250,15 @@ export type CommitSaveResult =
 export type BeginSubmissionSaveResult =
   | { ok: true; path: string; format: HwpFormat }
   | { ok: true; canceled: true }
-  | { ok: false; error: string; reason?: 'tracked' | 'memo' }
+  | { ok: false; error: string; reason?: 'tracked' | 'memo' | 'same_as_open' }
 
 export interface CommitSubmissionSaveOptions {
   preview?: SavePreview | null
 }
 
 export type CommitSubmissionSaveResult =
-  { ok: true; path: string; tailsLost?: true } | { ok: false; error: string }
+  | { ok: true; path: string; backupPath?: string; tailsLost?: true }
+  | { ok: false; error: string; reason?: 'same_as_open' }
 
 /**
  * A tab the engine saved without a width, as the editor can find it again: the body

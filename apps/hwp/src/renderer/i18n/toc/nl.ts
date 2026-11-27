@@ -50,6 +50,10 @@ export const nl = {
     'Kan geen inhoudsopgave in een tabel invoegen. Plaats de cursor in een alinea in de hoofdtekst.',
   tocErrorUnsupportedPlace:
     'Kan hier geen inhoudsopgave invoegen. Plaats de cursor in een alinea in de hoofdtekst.',
+  tocErrorHasObjects:
+    'De inhoudsopgave is niet vervangen omdat deze gebruikersobjecten bevat (zoals voetnoten, afbeeldingen of tabellen).',
+  tocErrorMultiSection:
+    'Kan niet automatisch worden bijgewerkt omdat de inhoudsopgave meerdere secties beslaat.',
   tocErrorNoHeadings: 'Geen overeenkomende koppen gevonden.',
   tocErrorNoCaptions: 'Geen overeenkomende bijschriften gevonden.',
   tocErrorGeneric: 'Kon inhoudsopgave niet bijwerken: {error}',
@@ -60,6 +64,15 @@ export const nl = {
   indexMarkSubTermLabel: 'Subterm (optioneel)',
   indexMarkSubTermPlaceholder: 'Leeg laten voor alleen hoofdterm',
   indexMarkAllLabel: 'Alle gelijke voorkomens markeren',
+  indexMarkAllPreviewTitle: 'Alle indexmarkeringen bevestigen',
+  indexMarkAllPreviewMessage:
+    'Indexmarkeringen toevoegen op {count} gevonden plaatsen in de hoofdtekst?',
+  indexMarkAllPreviewParticlesNote:
+    'Voorkomens gevolgd door grammaticale partikels zijn ook inbegrepen.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} voorkomens in tabellen, tekstvakken of noten worden overgeslagen.',
+  indexMarkAllPreviewConfirm: 'Alles markeren',
+  indexMarkAllPreviewMore: 'en nog {count} plaats(en)',
   indexMarksListTitle: 'Bestaande indexmarkeringen ({count})',
   indexMarksListEmpty: 'Nog geen indexmarkeringen in dit document.',
   indexMarkPageBadge: 'p. {page}',
@@ -81,6 +94,10 @@ export const nl = {
   indexColumnsLabel: 'Kolommen',
   indexColumnsOption: '{count} kolom(men)',
   indexGroupHeadingsLabel: 'Alfabetische groepskoppen opnemen',
+  indexPageSplitConfirmTitle: 'Paginaeinde voor meerkoloms index bevestigen',
+  indexPageSplitConfirmMessage:
+    'Er worden pagina-einden vóór en na de meerkoloms index ingevoegd. Doorgaan?',
+  indexPageSplitConfirmAction: 'Doorgaan',
   indexCreatedToast: 'Index gemaakt ({count} items).',
   indexRefreshedToast: 'Index bijgewerkt ({count} items).',
   indexRefreshNotFound: 'Geen index gevonden om bij te werken.',
@@ -89,6 +106,8 @@ export const nl = {
     'Kan geen index in een tabel invoegen. Plaats de cursor in een alinea in de hoofdtekst.',
   indexErrorUnsupportedPlace:
     'Kan hier geen index invoegen. Plaats de cursor in een alinea in de hoofdtekst.',
+  indexErrorHasObjects:
+    'De index is niet vervangen omdat deze gebruikersobjecten bevat (zoals voetnoten, afbeeldingen of tabellen).',
   indexErrorAlreadyExists: 'Er bestaat al een index in dit document. Gebruik “Index bijwerken”.',
   indexErrorGeneric: 'Kon index niet bijwerken: {error}',
 } satisfies Record<keyof typeof zh, string>

@@ -49,6 +49,10 @@ export const pt = {
     'Não é possível inserir um sumário dentro de uma tabela. Posicione o cursor no corpo do texto.',
   tocErrorUnsupportedPlace:
     'Não é possível inserir um sumário aqui. Posicione o cursor no corpo do texto.',
+  tocErrorHasObjects:
+    'O sumário não foi substituído porque contém objetos do usuário, como notas de rodapé, imagens ou tabelas.',
+  tocErrorMultiSection:
+    'Não é possível atualizar automaticamente porque o sumário abrange várias seções.',
   tocErrorNoHeadings: 'Nenhum título correspondente encontrado.',
   tocErrorNoCaptions: 'Nenhuma legenda correspondente encontrada.',
   tocErrorGeneric: 'Não foi possível atualizar o sumário: {error}',
@@ -59,6 +63,15 @@ export const pt = {
   indexMarkSubTermLabel: 'Subentrada (opcional)',
   indexMarkSubTermPlaceholder: 'Deixe em branco apenas para a entrada principal',
   indexMarkAllLabel: 'Marcar todas as ocorrências iguais',
+  indexMarkAllPreviewTitle: 'Confirmar marcação de todas as ocorrências',
+  indexMarkAllPreviewMessage:
+    'Adicionar marcas de índice em {count} ocorrência(s) encontrada(s) no corpo do texto?',
+  indexMarkAllPreviewParticlesNote:
+    'Ocorrências seguidas de partículas gramaticais também estão incluídas.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} ocorrência(s) em tabelas, caixas de texto ou notas serão ignoradas.',
+  indexMarkAllPreviewConfirm: 'Marcar tudo',
+  indexMarkAllPreviewMore: 'e mais {count} ocorrência(s)',
   indexMarksListTitle: 'Marcas de índice existentes ({count})',
   indexMarksListEmpty: 'Ainda não há marcas de índice neste documento.',
   indexMarkPageBadge: 'p. {page}',
@@ -80,6 +93,10 @@ export const pt = {
   indexColumnsLabel: 'Colunas',
   indexColumnsOption: '{count} coluna(s)',
   indexGroupHeadingsLabel: 'Incluir cabeçalhos alfabéticos de grupo',
+  indexPageSplitConfirmTitle: 'Confirmar quebra de página do índice em colunas',
+  indexPageSplitConfirmMessage:
+    'Novas quebras de página serão inseridas antes e depois do índice em várias colunas. Continuar?',
+  indexPageSplitConfirmAction: 'Continuar',
   indexCreatedToast: 'Índice criado ({count} entradas).',
   indexRefreshedToast: 'Índice atualizado ({count} entradas).',
   indexRefreshNotFound: 'Nenhum índice encontrado para atualizar.',
@@ -88,6 +105,8 @@ export const pt = {
     'Não é possível inserir um índice dentro de uma tabela. Posicione o cursor no corpo do texto.',
   indexErrorUnsupportedPlace:
     'Não é possível inserir um índice aqui. Posicione o cursor no corpo do texto.',
+  indexErrorHasObjects:
+    'O índice não foi substituído porque contém objetos do usuário, como notas de rodapé, imagens ou tabelas.',
   indexErrorAlreadyExists: 'Já existe um índice neste documento. Use “Atualizar índice remissivo”.',
   indexErrorGeneric: 'Não foi possível atualizar o índice: {error}',
 } satisfies Record<keyof typeof zh, string>

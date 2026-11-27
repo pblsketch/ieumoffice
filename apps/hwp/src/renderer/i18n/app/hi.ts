@@ -80,7 +80,6 @@ export const hi = {
   aiToolAnalyzePictureFail: 'चित्र {picture} नहीं देखा जा सका',
   aiToolFields: 'फ़ॉर्म फ़ील्ड देखे गए · {count}',
   aiToolToc: 'विषय-सूची जोड़ी · {count} शीर्षक',
-  aiToolTocRefresh: 'विषय-सूची के पृष्ठ क्रमांक फिर से लिखे · {count}',
   aiTocName: 'विषय-सूची',
   aiTocPagesChanged: '{count} पृष्ठ क्रमांक अपडेट हुए',
   aiToolNotes: 'फ़ुटनोट और एंडनोट जाँचे · {count}',

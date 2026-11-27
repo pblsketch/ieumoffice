@@ -538,10 +538,16 @@ export default function App() {
       if (stalePromptActiveRef.current) return 'cancel'
       stalePromptActiveRef.current = true
       try {
-        const checkStale = () =>
-          agentBridge.checkStaleItems({
+        let latestManualEdits: Awaited<
+          ReturnType<typeof agentBridge.checkStaleItems>
+        >['manualEdits'] = []
+        const checkStale = async () => {
+          const report = await agentBridge.checkStaleItems({
             appStyleMap: outlineStyleMapRef.current ?? undefined,
           })
+          latestManualEdits = Array.isArray(report.manualEdits) ? report.manualEdits : []
+          return report
+        }
 
         const promptUser = (
           report: StaleCheckReport,
@@ -552,10 +558,13 @@ export default function App() {
               phase: 'stale',
               action: act,
               items: report.items,
+              initialManualEdits: latestManualEdits,
               busy: false,
               onChoice: (choice) => {
                 if (choice === 'refresh') {
-                  setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                  if (latestManualEdits.length === 0) {
+                    setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                  }
                 } else {
                   setStaleModal(null)
                 }
@@ -564,56 +573,88 @@ export default function App() {
             })
           })
 
+        const confirmManualOverwrite = (manualItems: typeof latestManualEdits): Promise<boolean> =>
+          new Promise<boolean>((resolve) => {
+            setStaleModal({
+              phase: 'manual',
+              action,
+              manualItems,
+              busy: false,
+              onDecide: (decision) => {
+                if (decision) {
+                  setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                } else {
+                  setStaleModal(null)
+                }
+                resolve(decision)
+              },
+            })
+          })
+
         const refreshAll = async (): Promise<'continue' | 'cancel'> => {
           const appStyleMap = outlineStyleMapRef.current ?? undefined
-          const res = await agentBridge.refreshAllStale({ appStyleMap })
-          let totalRefreshed = res.refreshed
-          let failedErrors = (res.failed ?? []).map((entry) => entry.error)
+          let allowOverwriteManual = false
 
-          if (res.reason === 'manual_edits' && res.manualEdits.length > 0) {
-            const overwrite = await new Promise<boolean>((resolve) => {
-              setStaleModal({
-                phase: 'manual',
-                action,
-                manualItems: res.manualEdits,
-                busy: false,
-                onDecide: (decision) => {
-                  if (decision) {
-                    setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
-                  } else {
-                    setStaleModal(null)
-                  }
-                  resolve(decision)
-                },
-              })
-            })
-            if (overwrite) {
-              const forced = await agentBridge.refreshAllStale({
-                allowOverwriteManual: true,
-                appStyleMap,
-              })
-              totalRefreshed += forced.refreshed
-              if (forced.failed?.length) {
-                failedErrors = [...failedErrors, ...forced.failed.map((entry) => entry.error)]
-              }
+          // When read-only check already detected manual edits, confirm before calling
+          // refreshAllStale so refreshing produces strictly one undo step (or zero on skip).
+          if (latestManualEdits.length > 0) {
+            const overwrite = await confirmManualOverwrite(latestManualEdits)
+            if (!overwrite) {
+              setStaleModal(null)
+              return 'continue'
             }
+            allowOverwriteManual = true
+          }
+
+          let res = await agentBridge.refreshAllStale({
+            appStyleMap,
+            allowOverwriteManual,
+          })
+
+          // Fallback if a manual edit occurred between checkStaleItems and the user's click:
+          // the first attempt rolled back atomically (0 undo steps), so a confirmed retry is still 1 step.
+          if (
+            !allowOverwriteManual &&
+            res.ok === false &&
+            res.reason === 'manual_edits' &&
+            res.manualEdits.length > 0
+          ) {
+            const overwrite = await confirmManualOverwrite(res.manualEdits)
+            if (!overwrite) {
+              setStaleModal(null)
+              return 'continue'
+            }
+            res = await agentBridge.refreshAllStale({
+              appStyleMap,
+              allowOverwriteManual: true,
+            })
           }
 
           setStaleModal(null)
-          if (totalRefreshed > 0) {
-            setDocTick((tick) => tick + 1)
+          if (res.ok === false) {
+            if (res.reason === 'has_objects' || res.reason === 'memo_removal_requires_approval') {
+              setNotice({
+                tone: 'error',
+                text: translateSubmission(lang, 'staleRefreshBlockedObjects'),
+              })
+            } else {
+              const errText =
+                (res.failed ?? []).map((entry) => entry.error).join('; ') || (res.reason ?? '')
+              setNotice({
+                tone: 'error',
+                text: translateSubmission(lang, 'staleRefreshFailed', {
+                  error: errText,
+                }),
+              })
+            }
+            return 'cancel'
           }
-          if (failedErrors.length > 0) {
-            setNotice({
-              tone: 'error',
-              text: translateSubmission(lang, 'staleRefreshFailed', {
-                error: failedErrors.join('; '),
-              }),
-            })
-          } else if (totalRefreshed > 0) {
+
+          if (res.refreshed > 0) {
+            setDocTick((tick) => tick + 1)
             setNotice({
               tone: 'info',
-              text: translateSubmission(lang, 'staleRefreshDone', { count: totalRefreshed }),
+              text: translateSubmission(lang, 'staleRefreshDone', { count: res.refreshed }),
             })
           }
           return 'continue'
@@ -771,15 +812,22 @@ export default function App() {
       })
       if (outcome.kind === 'saved') {
         const name = fileNameOf(outcome.path)
+        const backupDetail = outcome.backupPath
+          ? translateSubmission(lang, 'submissionBackupKept', {
+              name: fileNameOf(outcome.backupPath),
+            })
+          : undefined
         if (outcome.tailsLost) {
           setNotice({
             tone: 'error',
             text: translateSubmission(lang, 'submissionSavedTailsLost', { name }),
+            ...(backupDetail ? { detail: backupDetail } : {}),
           })
         } else {
           setNotice({
             tone: 'info',
             text: translateSubmission(lang, 'submissionSaved', { name }),
+            ...(backupDetail ? { detail: backupDetail } : {}),
           })
         }
         return true
@@ -790,18 +838,24 @@ export default function App() {
             ? translateSubmission(lang, 'submissionFailedProtected')
             : outcome.reason === 'tracked'
               ? translateSubmission(lang, 'submissionFailedTracked')
-              : outcome.reason === 'verify'
-                ? translateSubmission(lang, 'submissionFailedVerify', {
-                    before: outcome.verify?.pageCountBefore ?? 0,
-                    after: outcome.verify?.pageCountAfter ?? 0,
-                  })
-                : outcome.reason === 'export'
-                  ? translateSubmission(lang, 'submissionFailedExport', {
-                      error: outcome.detail ?? '',
+              : outcome.reason === 'same_as_open'
+                ? translateSubmission(lang, 'submissionFailedSameAsOpen')
+                : outcome.reason === 'strip_failed'
+                  ? translateSubmission(lang, 'submissionFailedStrip', {
+                      marks: (outcome.failedMarks ?? []).join(', '),
                     })
-                  : translateSubmission(lang, 'submissionFailedWrite', {
-                      error: outcome.detail ?? '',
-                    })
+                  : outcome.reason === 'verify'
+                    ? translateSubmission(lang, 'submissionFailedVerify', {
+                        before: outcome.verify?.pageCountBefore ?? 0,
+                        after: outcome.verify?.pageCountAfter ?? 0,
+                      })
+                    : outcome.reason === 'export'
+                      ? translateSubmission(lang, 'submissionFailedExport', {
+                          error: outcome.detail ?? '',
+                        })
+                      : translateSubmission(lang, 'submissionFailedWrite', {
+                          error: outcome.detail ?? '',
+                        })
         setNotice({ tone: 'error', text })
       }
       return false

@@ -80,7 +80,6 @@ export const ja = {
   aiToolAnalyzePictureFail: '画像 {picture} を確認できませんでした',
   aiToolFields: 'フォームフィールドを確認 · {count} 個',
   aiToolToc: '目次を追加 · 見出し {count}',
-  aiToolTocRefresh: '目次のページ番号を更新 · {count}',
   aiTocName: '目次',
   aiTocPagesChanged: 'ページ番号 {count} か所を更新',
   aiToolNotes: '脚注と文末脚注を確認 · {count}',

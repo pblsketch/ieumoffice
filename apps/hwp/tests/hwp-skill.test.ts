@@ -268,6 +268,8 @@ function setup(
     addIndexMarksAll: vi.fn(async () => ({
       ok: true as const,
       added: 2,
+      includeParticles: true,
+      particleMatches: 0,
       skippedNonBody: 0,
       skippedCounts: { tableCell: 0, textBox: 0, footnote: 0, endnote: 0 },
       marks: [],
@@ -2509,7 +2511,7 @@ describe('a table of contents', () => {
       section: 1,
       paragraph: 2,
       layout: 'dotted-tab',
-      maxLevel: 3,
+      max_level: 3,
       links: true,
       title: '차 례',
     })
@@ -2561,7 +2563,7 @@ describe('a table of contents', () => {
     }
   })
 
-  it('validates maxLevel, section, paragraph, and occurrence ranges in code with no schema min/max', async () => {
+  it('validates max_level, section, paragraph, and occurrence ranges (including 0 and int32+1) in code with no schema min/max', async () => {
     const { skill, bridge, call } = setup()
     for (const name of ['insert_toc', 'refresh_toc']) {
       const def = skill.tools.find((t) => t.name === name)!
@@ -2569,17 +2571,32 @@ describe('a table of contents', () => {
       expect(raw, name).not.toContain('"minimum"')
       expect(raw, name).not.toContain('"maximum"')
     }
-    expect((await call('insert_toc', { maxLevel: 0 })).isError).toBe(true)
-    expect((await call('insert_toc', { maxLevel: 11 })).isError).toBe(true)
+    const camelRejected = await call('insert_toc', { maxLevel: 2 })
+    expect(camelRejected.isError).toBe(true)
+    expect(camelRejected.output).toContain('max_level')
+    expect((await call('insert_toc', { max_level: 0 })).isError).toBe(true)
+    expect((await call('insert_toc', { max_level: 11 })).isError).toBe(true)
+    expect((await call('insert_toc', { max_level: 999 })).isError).toBe(true)
+    expect((await call('insert_toc', { max_level: 2147483648 })).isError).toBe(true)
     expect((await call('insert_toc', { section: 0, paragraph: 1 })).isError).toBe(true)
     expect((await call('insert_toc', { section: 1, paragraph: 0 })).isError).toBe(true)
-    expect((await call('refresh_toc', { maxLevel: 0 })).isError).toBe(true)
-    expect((await call('refresh_toc', { maxLevel: 11 })).isError).toBe(true)
+    expect((await call('insert_toc', { section: 2147483648, paragraph: 1 })).isError).toBe(true)
+    expect((await call('insert_toc', { section: 1, paragraph: 2147483648 })).isError).toBe(true)
+    expect((await call('insert_toc', { section: 1, paragraph: 1, occurrence: 0 })).isError).toBe(
+      true,
+    )
+    expect(
+      (await call('insert_toc', { section: 1, paragraph: 1, occurrence: 2147483648 })).isError,
+    ).toBe(true)
+    expect((await call('refresh_toc', { max_level: 0 })).isError).toBe(true)
+    expect((await call('refresh_toc', { max_level: 11 })).isError).toBe(true)
+    expect((await call('refresh_toc', { max_level: 999 })).isError).toBe(true)
+    expect((await call('refresh_toc', { max_level: 2147483648 })).isError).toBe(true)
     expect(bridge.insertToc).not.toHaveBeenCalled()
     expect(bridge.refreshToc).not.toHaveBeenCalled()
   })
 
-  it('reports legacy_toc_found with 1-based range and instructs overwriteLegacy only when confirmed', async () => {
+  it('reports legacy_toc_found with 1-based range and instructs overwrite_legacy only when confirmed', async () => {
     const { call } = setup({
       insertToc: async () => ({
         ok: false as const,
@@ -2597,10 +2614,10 @@ describe('a table of contents', () => {
     const result = await call('insert_toc', { section: 1, paragraph: 1 })
     expect(result.isError).toBe(true)
     expect(result.output).toContain('section 1, paragraphs 2–6')
-    expect(result.output).toContain('overwriteLegacy: true')
+    expect(result.output).toContain('overwrite_legacy: true')
   })
 
-  it('reports toc_exists with 1-based range and suggests refresh_toc or overwriteExisting', async () => {
+  it('reports toc_exists with 1-based range and suggests refresh_toc or overwrite_existing', async () => {
     const { call } = setup({
       insertToc: async () => ({
         ok: false as const,
@@ -2621,12 +2638,46 @@ describe('a table of contents', () => {
     expect(result.isError).toBe(true)
     expect(result.output).toContain('section 1, paragraphs 2–5')
     expect(result.output).toContain('refresh_toc')
-    expect(result.output).toContain('overwriteExisting: true')
+    expect(result.output).toContain('overwrite_existing: true')
   })
 
-  it('refreshes TOC in place and refuses manual_edits with modified line preview until overwriteManual', async () => {
+  it('refuses multi_section_range cleanly on insert_toc and refresh_toc', async () => {
+    const multiRange = {
+      kind: 'body' as const,
+      kindId: '본문' as const,
+      id: '본문',
+      key: '차례:본문',
+      start: { name: '차례:본문:시작', sec: 0, para: 1, offset: 0, ctrlIdx: 0 },
+      end: { name: '차례:본문:끝', sec: 1, para: 2, offset: 5, ctrlIdx: 1 },
+    }
+    const { call } = setup({
+      insertToc: async () => ({
+        ok: false as const,
+        reason: 'multi_section_range' as const,
+        kind: 'body' as const,
+        range: multiRange,
+      }),
+      refreshToc: async () => ({
+        ok: false as const,
+        reason: 'multi_section_range' as const,
+        kind: 'body' as const,
+        range: multiRange,
+      }),
+    })
+    const ins = await call('insert_toc', { section: 1, paragraph: 1, overwrite_existing: true })
+    expect(ins.isError).toBe(true)
+    expect(ins.output).toContain('multiple sections')
+    expect(ins.output).toContain('section 1, paragraph 2 to section 2, paragraph 3')
+
+    const ref = await call('refresh_toc', { kind: 'body' })
+    expect(ref.isError).toBe(true)
+    expect(ref.output).toContain('multiple sections')
+    expect(ref.output).toContain('section 1, paragraph 2 to section 2, paragraph 3')
+  })
+
+  it('refreshes TOC in place and refuses manual_edits with modified line preview until overwrite_manual', async () => {
     const { bridge, call, changes } = setup()
-    const ok = await call('refresh_toc', { kind: 'body', maxLevel: 2 })
+    const ok = await call('refresh_toc', { kind: 'body', max_level: 2 })
     expect(ok.isError).toBeFalsy()
     expect(ok.summary).toContain('aiToolTocEntriesRefresh')
     expect(bridge.refreshToc).toHaveBeenCalledWith(
@@ -2645,7 +2696,7 @@ describe('a table of contents', () => {
     const refused = await manualEnv.call('refresh_toc', { kind: 'body' })
     expect(refused.isError).toBe(true)
     expect(refused.output).toContain('manual edits')
-    expect(refused.output).toContain('overwriteManual: true')
+    expect(refused.output).toContain('overwrite_manual: true')
   })
 
   it('returns read_outline guidance on out-of-range section/paragraph not_found', async () => {
@@ -4334,7 +4385,7 @@ describe('the skill as the model sees it', () => {
     )
     expect(words.size).toBeGreaterThan(40)
     const loopTools = new Set(['use_skill'])
-    const answerKeys = new Set(['changes_within'])
+    const answerKeys = new Set(['changes_within', 'page_label'])
     expect(
       [...words].filter(
         (word) => !known.has(word) && !loopTools.has(word) && !answerKeys.has(word),
@@ -6473,18 +6524,33 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
 describe('index tools (T15)', () => {
   it('marks edits flag accurately and has no numeric min/max in index tool schemas', async () => {
     const { HWP_EDIT_TOOLS } = await import('../src/renderer/ai/hwp-skill')
+    const { skill } = setup()
     expect(HWP_EDIT_TOOLS.has('list_index_marks')).toBe(false)
     expect(HWP_EDIT_TOOLS.has('mark_index')).toBe(true)
     expect(HWP_EDIT_TOOLS.has('remove_index_mark')).toBe(true)
     expect(HWP_EDIT_TOOLS.has('insert_index')).toBe(true)
     expect(HWP_EDIT_TOOLS.has('refresh_index')).toBe(true)
+    for (const name of [
+      'mark_index',
+      'list_index_marks',
+      'remove_index_mark',
+      'insert_index',
+      'refresh_index',
+    ]) {
+      const def = skill.tools.find((t) => t.name === name)!
+      const raw = JSON.stringify(def.inputSchema)
+      expect(raw, name).not.toContain('"minimum"')
+      expect(raw, name).not.toContain('"maximum"')
+    }
   })
 
-  it('marks single occurrence by 1-based section/paragraph/offset and by find, and bulk markAll reporting skipped non-body', async () => {
+  it('marks single occurrence by 1-based section/paragraph/offset and bulk mark_all reporting particles and skipped non-body', async () => {
     const { bridge, call, changes } = setup({
-      addIndexMarksAll: vi.fn(async () => ({
+      addIndexMarksAll: vi.fn(async (params) => ({
         ok: true as const,
         added: 3,
+        includeParticles: params.includeParticles !== false,
+        particleMatches: params.includeParticles === false ? 0 : 2,
         skippedNonBody: 2,
         skippedCounts: { tableCell: 1, textBox: 0, footnote: 1, endnote: 0 },
         marks: [],
@@ -6497,7 +6563,7 @@ describe('index tools (T15)', () => {
       paragraph: 2,
       offset: 4,
       term: '알고리즘',
-      subTerm: '정렬',
+      sub_term: '정렬',
     })
     expect(single.isError).toBeUndefined()
     expect(single.mutated).toBe(true)
@@ -6508,17 +6574,34 @@ describe('index tools (T15)', () => {
     )
     expect(changes[0]).toMatchObject({ kind: 'index', from: 'aiIndexName', count: 1 })
 
-    const bulk = await call('mark_index', { term: '알고리즘', markAll: true })
+    const bulk = await call('mark_index', { term: '알고리즘', mark_all: true })
     expect(bulk.isError).toBeUndefined()
     expect(bulk.mutated).toBe(true)
+    expect(bridge.addIndexMarksAll).toHaveBeenCalledWith(
+      { term: '알고리즘', includeParticles: true },
+      { foreign: false },
+    )
     expect(bulk.output).toContain('Marked 3 body occurrence(s)')
+    expect(bulk.output).toContain('Korean particle-attached forms included (2 with particle)')
     expect(bulk.output).toContain('Skipped 2 non-body occurrence(s)')
     expect(bulk.output).toContain('table cells: 1')
     expect(bulk.output).toContain('footnotes: 1')
     expect(bulk.summary).toContain('aiToolIndexMark')
+
+    const exact = await call('mark_index', {
+      term: '알고리즘',
+      mark_all: true,
+      include_particles: false,
+    })
+    expect(exact.isError).toBeUndefined()
+    expect(bridge.addIndexMarksAll).toHaveBeenLastCalledWith(
+      { term: '알고리즘', includeParticles: false },
+      { foreign: false },
+    )
+    expect(exact.output).toContain('Exact whole-word match without Korean particles.')
   })
 
-  it('lists index marks with 1-based section/paragraph matching write tool names and removes by id or term', async () => {
+  it('lists index marks with 1-based section/paragraph and snake_case fields matching write tools and removes by id or term', async () => {
     const { bridge, call, changes } = setup({
       listIndexMarks: vi.fn(async () => [
         {
@@ -6544,12 +6627,12 @@ describe('index tools (T15)', () => {
       {
         id: '1',
         term: '알고리즘',
-        subTerm: '정렬',
+        sub_term: '정렬',
         section: 1,
         paragraph: 4,
         offset: 2,
         page: 2,
-        pageLabel: 'ii',
+        page_label: 'ii',
       },
     ])
 
@@ -6561,18 +6644,33 @@ describe('index tools (T15)', () => {
     expect(changes.at(-1)).toMatchObject({ kind: 'index', from: 'aiIndexName', count: 1 })
   })
 
-  it('inserts and refreshes index blocks, validates columns 1..3, and refuses manual edits unless overwriteManual', async () => {
+  it('inserts and refreshes index blocks, validates bounds, handles page_split_confirm, and refuses manual edits unless overwrite_manual', async () => {
     const { bridge, call, changes } = setup()
     expect((await call('insert_index', { columns: 0 })).isError).toBe(true)
     expect((await call('insert_index', { columns: 4 })).isError).toBe(true)
+    expect((await call('insert_index', { columns: 999 })).isError).toBe(true)
+    expect((await call('insert_index', { columns: 2147483648 })).isError).toBe(true)
+    expect((await call('insert_index', { section: 1, paragraph: 1, occurrence: 0 })).isError).toBe(
+      true,
+    )
+    expect((await call('insert_index', { section: 2147483648, paragraph: 1 })).isError).toBe(true)
     expect((await call('refresh_index', { columns: 0 })).isError).toBe(true)
     expect((await call('refresh_index', { columns: 4 })).isError).toBe(true)
+    expect((await call('refresh_index', { columns: 999 })).isError).toBe(true)
+    expect((await call('refresh_index', { columns: 2147483648 })).isError).toBe(true)
+    expect(
+      (await call('mark_index', { section: 1, paragraph: 1, occurrence: 0, term: '특송' })).isError,
+    ).toBe(true)
+    expect(
+      (await call('mark_index', { section: 1, paragraph: 1, offset: 2147483648, term: '특송' }))
+        .isError,
+    ).toBe(true)
 
     const inserted = await call('insert_index', {
       where: 'end',
       title: '찾아보기',
       columns: 2,
-      groupHeadings: true,
+      group_headings: true,
       layout: 'dotted-tab',
     })
     expect(inserted.isError).toBeUndefined()
@@ -6581,6 +6679,55 @@ describe('index tools (T15)', () => {
     expect(changes.at(-1)).toMatchObject({ kind: 'index', from: 'aiIndexName', count: 1 })
     expect(bridge.buildIndexBlock).toHaveBeenCalledWith(
       { where: 'end', title: '찾아보기', columns: 2, groupHeadings: true, layout: 'dotted-tab' },
+      { foreign: false },
+    )
+
+    const splitEnv = setup({
+      buildIndexBlock: vi.fn(async (params) => {
+        if (params?.allowPageSplit !== true) {
+          return { ok: false as const, reason: 'page_split_confirm' as const, splitsPages: true }
+        }
+        return {
+          ok: true as const,
+          sec: 1,
+          startPara: 0,
+          endPara: 3,
+          columns: 2 as const,
+          layout: 'dotted-tab' as const,
+          groupHeadings: true,
+          title: '찾아보기',
+          entryCount: 3,
+          groupCount: 2,
+          lines: ['찾아보기'],
+          range: {
+            startName: '색인블록:기본:시작',
+            endName: '색인블록:기본:끝',
+            start: { sec: 1, para: 0, offset: 0 },
+            end: { sec: 1, para: 3, offset: 0 },
+          },
+          place: PLACE,
+        }
+      }),
+    })
+    const splitRefused = await splitEnv.call('insert_index', {
+      section: 1,
+      paragraph: 2,
+      columns: 2,
+    })
+    expect(splitRefused.isError).toBe(true)
+    expect(splitRefused.output).toContain('allow_page_split: true')
+    expect(splitRefused.output).toContain('색인 앞뒤가 새 쪽으로 나뉩니다')
+
+    const splitAllowed = await splitEnv.call('insert_index', {
+      section: 1,
+      paragraph: 2,
+      columns: 2,
+      allow_page_split: true,
+    })
+    expect(splitAllowed.isError).toBeUndefined()
+    expect(splitAllowed.mutated).toBe(true)
+    expect(splitEnv.bridge.buildIndexBlock).toHaveBeenLastCalledWith(
+      { sec: 0, para: 1, columns: 2, allowPageSplit: true },
       { foreign: false },
     )
 
@@ -6594,9 +6741,9 @@ describe('index tools (T15)', () => {
     const refused = await manualEnv.call('refresh_index', {})
     expect(refused.isError).toBe(true)
     expect(refused.output).toContain('manual edits')
-    expect(refused.output).toContain('overwriteManual: true')
+    expect(refused.output).toContain('overwrite_manual: true')
 
-    const refreshed = await call('refresh_index', { columns: 3, overwriteManual: true })
+    const refreshed = await call('refresh_index', { columns: 3, overwrite_manual: true })
     expect(refreshed.isError).toBeUndefined()
     expect(refreshed.mutated).toBe(true)
     expect(refreshed.summary).toContain('aiToolIndexRefresh')

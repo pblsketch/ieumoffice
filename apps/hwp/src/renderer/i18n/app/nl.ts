@@ -80,7 +80,6 @@ export const nl = {
   aiToolAnalyzePictureFail: 'Afbeelding {picture} kon niet worden bekeken',
   aiToolFields: 'Formuliervelden gecontroleerd · {count}',
   aiToolToc: 'Inhoudsopgave toegevoegd · {count} kopjes',
-  aiToolTocRefresh: 'Paginanummers van de inhoudsopgave herschreven · {count}',
   aiTocName: 'Inhoudsopgave',
   aiTocPagesChanged: '{count} paginanummer(s) bijgewerkt',
   aiToolNotes: 'Voet- en eindnoten bekeken · {count}',

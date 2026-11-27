@@ -49,6 +49,9 @@ export const cs = {
     'Obsah nelze vložit dovnitř tabulky. Umístěte kurzor do odstavce hlavního textu.',
   tocErrorUnsupportedPlace:
     'Na toto místo nelze vložit obsah. Umístěte kurzor do odstavce hlavního textu.',
+  tocErrorHasObjects:
+    'Obsah nebyl nahrazen, protože obsahuje uživatelské objekty (poznámky pod čarou, obrázky nebo tabulky).',
+  tocErrorMultiSection: 'Obsah nelze automaticky aktualizovat, protože zasahuje do více oddílů.',
   tocErrorNoHeadings: 'Nebyly nalezeny žádné odpovídající nadpisy.',
   tocErrorNoCaptions: 'Nebyly nalezeny žádné odpovídající popisky.',
   tocErrorGeneric: 'Obsah se nepodařilo aktualizovat: {error}',
@@ -59,6 +62,13 @@ export const cs = {
   indexMarkSubTermLabel: 'Podheslo (volitelné)',
   indexMarkSubTermPlaceholder: 'Ponechte prázdné jen pro hlavní heslo',
   indexMarkAllLabel: 'Označit všechny shodné výskyty',
+  indexMarkAllPreviewTitle: 'Potvrdit označení všech výskytů',
+  indexMarkAllPreviewMessage: 'Přidat značky rejstříku na {count} nalezených míst v hlavním textu?',
+  indexMarkAllPreviewParticlesNote: 'Zahrnuty jsou i tvary s připojenými gramatickými částicemi.',
+  indexMarkAllPreviewSkippedNote:
+    'Přeskočeno bude {count} výskytů v tabulkách, textových polích nebo poznámkách.',
+  indexMarkAllPreviewConfirm: 'Označit vše',
+  indexMarkAllPreviewMore: 'a dalších {count} míst',
   indexMarksListTitle: 'Stávající značky rejstříku ({count})',
   indexMarksListEmpty: 'V tomto dokumentu zatím nejsou žádné značky rejstříku.',
   indexMarkPageBadge: 'str. {page}',
@@ -79,6 +89,10 @@ export const cs = {
   indexColumnsLabel: 'Sloupce',
   indexColumnsOption: '{count} sl.',
   indexGroupHeadingsLabel: 'Zahrnout abecední záhlaví skupin',
+  indexPageSplitConfirmTitle: 'Potvrdit zalomení stránky pro vícesloupcový rejstřík',
+  indexPageSplitConfirmMessage:
+    'Před a za vícesloupcový rejstřík budou vložena zalomení stránek. Pokračovat?',
+  indexPageSplitConfirmAction: 'Pokračovat',
   indexCreatedToast: 'Rejstřík byl vytvořen ({count} položek).',
   indexRefreshedToast: 'Rejstřík byl aktualizován ({count} položek).',
   indexRefreshNotFound: 'Nebyl nalezen žádný rejstřík k aktualizaci.',
@@ -88,6 +102,8 @@ export const cs = {
     'Rejstřík nelze vložit dovnitř tabulky. Umístěte kurzor do odstavce hlavního textu.',
   indexErrorUnsupportedPlace:
     'Na toto místo nelze vložit rejstřík. Umístěte kurzor do odstavce hlavního textu.',
+  indexErrorHasObjects:
+    'Rejstřík nebyl nahrazen, protože obsahuje uživatelské objekty (poznámky pod čarou, obrázky nebo tabulky).',
   indexErrorAlreadyExists:
     'Rejstřík v tomto dokumentu již existuje. Použijte „Aktualizovat rejstřík“.',
   indexErrorGeneric: 'Rejstřík se nepodařilo aktualizovat: {error}',

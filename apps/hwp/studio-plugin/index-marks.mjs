@@ -35,6 +35,49 @@ export const DEFAULT_INDEX_TITLE = '찾아보기'
 export const DEFAULT_INDEX_COLUMNS = 2
 export const DEFAULT_INDEX_LAYOUT = 'dotted-tab'
 
+// Common Korean postpositions sorted longest-first for particle-aware whole-word matching.
+export const KOREAN_PARTICLES = Object.freeze([
+  '에서는',
+  '에게는',
+  '으로는',
+  '까지는',
+  '부터는',
+  '이나마',
+  '에서',
+  '에게',
+  '으로',
+  '까지',
+  '부터',
+  '보다',
+  '처럼',
+  '라도',
+  '이나',
+  '마다',
+  '조차',
+  '마저',
+  '밖에',
+  '한테',
+  '께서',
+  '과는',
+  '와는',
+  '은',
+  '는',
+  '이',
+  '가',
+  '을',
+  '를',
+  '의',
+  '에',
+  '로',
+  '와',
+  '과',
+  '도',
+  '만',
+  '나',
+  '뿐',
+  '께',
+])
+
 const MIN_COLUMNS = 1
 const MAX_COLUMNS = 3
 const SUB_ENTRY_MARGIN_LEFT = 2400 // 12pt in doubled HWPUNIT
@@ -48,6 +91,7 @@ const TAB_ALIGN_RIGHT = 1
 const TAB_LEADER_DOTS = 3
 
 const WORD_CHAR_RE = /[\p{L}\p{N}]/u
+const HANGUL_SYLLABLE_END_RE = /[\uAC00-\uD7A3]$/
 // eslint-disable-next-line no-control-regex
 const DISALLOWED_TERM_CHARS_RE = /[\u0000-\u001f\u007f]/
 
@@ -732,12 +776,46 @@ function isParaInsideRanges(ranges, sec, para) {
   return false
 }
 
+function matchBoundaryWithParticle(match, queryEndsWithHangul, wholeWord, includeParticles) {
+  if (!wholeWord) {
+    return { matched: true, particle: null }
+  }
+  const beforeText = typeof match.beforeText === 'string' ? match.beforeText : ''
+  if (beforeText.length > 0) {
+    const beforeChars = Array.from(beforeText)
+    if (WORD_CHAR_RE.test(beforeChars[beforeChars.length - 1])) {
+      return { matched: false, particle: null }
+    }
+  }
+
+  const afterText = typeof match.afterText === 'string' ? match.afterText : ''
+  if (afterText.length === 0) {
+    return { matched: true, particle: null }
+  }
+  const afterChars = Array.from(afterText)
+  if (!WORD_CHAR_RE.test(afterChars[0])) {
+    return { matched: true, particle: null }
+  }
+
+  if (includeParticles && queryEndsWithHangul) {
+    for (const particle of KOREAN_PARTICLES) {
+      if (!afterText.startsWith(particle)) continue
+      const nextChar = afterChars[particle.length]
+      if (!nextChar || !WORD_CHAR_RE.test(nextChar)) {
+        return { matched: true, particle }
+      }
+    }
+  }
+
+  return { matched: false, particle: null }
+}
+
 /**
- * Mark all whole-word body occurrences of `query` (defaults to `term`) with `색인:` bookmarks.
- * Skips matches inside existing index blocks and duplicate `(term, subTerm)` marks at the same
- * offset. Counts matches inside table cells, text boxes, footnotes, and endnotes without marking them.
+ * Shared read-only scanner used by both `previewIndexMarksAll` and `addIndexMarksAll`
+ * so body matches, Korean particle recognition, duplicate detection, and non-body counts
+ * follow identical rules.
  */
-export function addIndexMarksAll(doc, termOrOptions) {
+function scanIndexMatches(doc, termOrOptions) {
   if (!doc || typeof doc.getSectionCount !== 'function') {
     return { ok: false, reason: 'unsupported_place' }
   }
@@ -759,31 +837,25 @@ export function addIndexMarksAll(doc, termOrOptions) {
   const subTerm = normalizeSubTermText(opts.subTerm)
   const caseSensitive = Boolean(opts.caseSensitive)
   const wholeWord = opts.wholeWord !== undefined ? Boolean(opts.wholeWord) : true
+  const includeParticles =
+    wholeWord && (opts.includeParticles !== undefined ? Boolean(opts.includeParticles) : true)
+  const queryEndsWithHangul = HANGUL_SYLLABLE_END_RE.test(searchQuery)
 
+  // Always search with wholeWord: false and enforce particle-aware boundaries uniformly
+  // across both body and non-body scopes.
   const found = findMatches(doc, {
     query: searchQuery,
     caseSensitive,
-    wholeWord,
+    wholeWord: false,
     regex: false,
   })
   if (!found.ok) return found
 
   const { ranges: indexBlockRanges } = findRangeMarks(doc, [MARK_PREFIXES.indexBlock])
   const existingEntries = readDecodedIndexEntries(doc)
-  const existingNames = readAllBookmarkNames(doc)
   const existingKeys = new Set(
     existingEntries.map((m) => `${m.sec}:${m.para}:${m.offset}\0${m.term}\0${m.subTerm}`),
   )
-
-  let nextNum = Number(nextIndexId(existingEntries))
-  const usedIds = new Set(existingEntries.map((m) => m.id))
-  const allocateId = () => {
-    while (usedIds.has(String(nextNum))) nextNum += 1
-    const id = String(nextNum)
-    usedIds.add(id)
-    nextNum += 1
-    return id
-  }
 
   const skippedCounts = {
     tableCell: 0,
@@ -792,36 +864,38 @@ export function addIndexMarksAll(doc, termOrOptions) {
     endnote: 0,
   }
   let skippedNonBody = 0
-  const addedMarks = []
+  const bodyMatches = []
 
   for (const match of found.matches) {
+    const boundary = matchBoundaryWithParticle(
+      match,
+      queryEndsWithHangul,
+      wholeWord,
+      includeParticles,
+    )
+    if (!boundary.matched) continue
+
     if (match.kind === 'body') {
       if (isInsideRanges(indexBlockRanges, match.sec, match.para, match.offset)) {
         continue
       }
       const dedupKey = `${match.sec}:${match.para}:${match.offset}\0${term}\0${subTerm}`
-      if (existingKeys.has(dedupKey)) {
-        continue
-      }
-      const id = allocateId()
-      const written = writeIndexBookmark(
-        doc,
-        { sec: match.sec, para: match.para, offset: match.offset },
-        term,
-        subTerm,
-        id,
-        existingNames,
-      )
-      if (!written.ok) return written
-      existingKeys.add(dedupKey)
-      addedMarks.push({
-        id,
-        term,
-        subTerm,
+      const matchedText = boundary.particle
+        ? `${match.matchText}${boundary.particle}`
+        : match.matchText
+      const length = match.length + (boundary.particle ? boundary.particle.length : 0)
+      const beforeText = typeof match.beforeText === 'string' ? match.beforeText : ''
+      const afterText = typeof match.afterText === 'string' ? match.afterText : ''
+      bodyMatches.push({
         sec: match.sec,
         para: match.para,
         offset: match.offset,
-        names: written.names,
+        length,
+        matchedText,
+        particle: boundary.particle,
+        context: `${beforeText}${match.matchText}${afterText}`,
+        alreadyMarked: existingKeys.has(dedupKey),
+        dedupKey,
       })
     } else if (isParaInsideRanges(indexBlockRanges, match.sec, match.para)) {
       continue
@@ -842,9 +916,119 @@ export function addIndexMarksAll(doc, termOrOptions) {
 
   return {
     ok: true,
-    added: addedMarks.length,
+    term,
+    subTerm,
+    query: searchQuery,
+    includeParticles,
+    existingEntries,
+    existingKeys,
+    bodyMatches,
     skippedNonBody,
     skippedCounts,
+  }
+}
+
+/**
+ * Read-only preview of all occurrences that `addIndexMarksAll` would consider,
+ * including particle matches, context snippets, printed page info, duplicate status,
+ * and non-body skip counts. Never mutates `doc`.
+ */
+export function previewIndexMarksAll(doc, termOrOptions) {
+  const scanned = scanIndexMatches(doc, termOrOptions)
+  if (!scanned.ok) return scanned
+
+  return withPortableMetrics(doc, () => {
+    const resolvePage = buildPageLookup(doc)
+    const matches = scanned.bodyMatches.map((m) => {
+      const pageInfo = resolvePage(m.sec, m.para)
+      return {
+        sec: m.sec,
+        para: m.para,
+        offset: m.offset,
+        length: m.length,
+        matchedText: m.matchedText,
+        particle: m.particle,
+        context: m.context,
+        page: pageInfo.page,
+        pageLabel: pageInfo.pageLabel,
+        alreadyMarked: m.alreadyMarked,
+      }
+    })
+    return {
+      ok: true,
+      term: scanned.term,
+      subTerm: scanned.subTerm,
+      query: scanned.query,
+      includeParticles: scanned.includeParticles,
+      matches,
+      skippedNonBody: scanned.skippedNonBody,
+      skippedCounts: scanned.skippedCounts,
+    }
+  })
+}
+
+/**
+ * Mark all whole-word body occurrences of `query` (defaults to `term`) with `색인:` bookmarks,
+ * including Hangul terms followed by a Korean particle when `includeParticles` is enabled (default).
+ * Skips matches inside existing index blocks and duplicate `(term, subTerm)` marks at the same
+ * offset. Counts matches inside table cells, text boxes, footnotes, and endnotes without marking them.
+ */
+export function addIndexMarksAll(doc, termOrOptions) {
+  const scanned = scanIndexMatches(doc, termOrOptions)
+  if (!scanned.ok) return scanned
+
+  const { term, subTerm, includeParticles, existingEntries, existingKeys, bodyMatches } = scanned
+  const existingNames = readAllBookmarkNames(doc)
+
+  let nextNum = Number(nextIndexId(existingEntries))
+  const usedIds = new Set(existingEntries.map((m) => m.id))
+  const allocateId = () => {
+    while (usedIds.has(String(nextNum))) nextNum += 1
+    const id = String(nextNum)
+    usedIds.add(id)
+    nextNum += 1
+    return id
+  }
+
+  const addedMarks = []
+  let particleMatches = 0
+
+  for (const match of bodyMatches) {
+    if (match.alreadyMarked || existingKeys.has(match.dedupKey)) {
+      continue
+    }
+    const id = allocateId()
+    const written = writeIndexBookmark(
+      doc,
+      { sec: match.sec, para: match.para, offset: match.offset },
+      term,
+      subTerm,
+      id,
+      existingNames,
+    )
+    if (!written.ok) return written
+    existingKeys.add(match.dedupKey)
+    if (match.particle !== null) {
+      particleMatches += 1
+    }
+    addedMarks.push({
+      id,
+      term,
+      subTerm,
+      sec: match.sec,
+      para: match.para,
+      offset: match.offset,
+      names: written.names,
+    })
+  }
+
+  return {
+    ok: true,
+    added: addedMarks.length,
+    includeParticles,
+    particleMatches,
+    skippedNonBody: scanned.skippedNonBody,
+    skippedCounts: scanned.skippedCounts,
     marks: addedMarks,
   }
 }
@@ -1343,6 +1527,275 @@ function restoreBookmarksOnPara(doc, sec, para, savedBookmarks) {
   }
 }
 
+const NON_CONTENT_CTRL_IDS = new Set(['secd', 'cold', 'bokm', 'head', 'foot', 'pgnp'])
+
+function buildBodyContentControlsSet(doc) {
+  const parasWithObjects = new Set()
+  if (typeof doc.getControls !== 'function') return parasWithObjects
+  const controls = tryOr(() => parseJson(doc.getControls(), []), [])
+  if (!Array.isArray(controls)) return parasWithObjects
+  for (const ctrl of controls) {
+    if (!ctrl || ctrl.list !== 0 || !Number.isInteger(ctrl.para)) continue
+    if (NON_CONTENT_CTRL_IDS.has(ctrl.ctrlId)) continue
+    parasWithObjects.add(ctrl.para)
+  }
+  return parasWithObjects
+}
+
+function paragraphHasContent(doc, sec, para, flatPara, parasWithObjects) {
+  if (parasWithObjects.has(flatPara)) return true
+  const len = tryOr(() => doc.getParagraphLength(sec, para), 0)
+  if (!Number.isInteger(len) || len <= 0) return false
+  const text = tryOr(() => doc.getTextRange(sec, para, 0, len), '')
+  return typeof text === 'string' && text.trim().length > 0
+}
+
+/**
+ * Determine whether building a multi-column index at `place` will split trailing body content
+ * onto a new section/page. Returns `false` for 1-column indexes, matching column counts,
+ * or end-of-document insertions with no trailing body content.
+ */
+export function willMultiColumnIndexSplitPages(
+  doc,
+  place,
+  columns = DEFAULT_INDEX_COLUMNS,
+  options = {},
+) {
+  if (!Number.isInteger(columns) || columns <= 1) return false
+  const target = validateBodyTarget(doc, place, {
+    allowInTableReason: true,
+    allowEndPara: true,
+    checkOffsetBounds: false,
+  })
+  if (!target.ok) return false
+
+  const origColDef = readColumnDefSafe(doc, target.sec)
+  if (columns === origColDef.columnCount) return false
+
+  const rawWhere = options?.where ?? place?.where
+  const where = rawWhere === 'after' ? 'after' : 'before'
+  const insertPara = where === 'after' ? target.para + 1 : target.para
+
+  const secCount = doc.getSectionCount()
+  const paraCount = doc.getParagraphCount(target.sec)
+  const parasWithObjects = buildBodyContentControlsSet(doc)
+
+  let flat = flatBodyParaIndex(doc, target.sec, insertPara)
+  for (let p = insertPara; p < paraCount; p++, flat++) {
+    if (paragraphHasContent(doc, target.sec, p, flat, parasWithObjects)) {
+      return true
+    }
+  }
+  for (let s = target.sec + 1; s < secCount; s++) {
+    const count = doc.getParagraphCount(s)
+    for (let p = 0; p < count; p++, flat++) {
+      if (paragraphHasContent(doc, s, p, flat, parasWithObjects)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+const HF_CHAR_PROP_KEYS = [
+  'fontFamily',
+  'fontSize',
+  'bold',
+  'italic',
+  'underline',
+  'underlineType',
+  'underlineColor',
+  'strikethrough',
+  'strikeColor',
+  'textColor',
+  'shadeColor',
+  'subscript',
+  'superscript',
+]
+
+const SECTION_DEF_INHERIT_KEYS = [
+  'hideHeader',
+  'hideFooter',
+  'hideMasterPage',
+  'hideBorder',
+  'hideFill',
+  'hideEmptyLine',
+  'outlineNumberingId',
+  'defaultTabSpacing',
+]
+
+function pickHeaderFooterCharProps(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const out = {}
+  let count = 0
+  for (const key of HF_CHAR_PROP_KEYS) {
+    if (raw[key] !== undefined && raw[key] !== null) {
+      out[key] = raw[key]
+      count += 1
+    }
+  }
+  return count > 0 ? out : null
+}
+
+/**
+ * Copy section-level attributes (`pageDef`, continuous `sectionDef`, `pageNumberPos`,
+ * and headers/footers across all `applyTo` scopes) from `sourceSec` onto a newly split
+ * `targetSec` so section splits for scoped multi-column indexes stay visually seamless.
+ */
+function inheritSectionAttributes(doc, sourceSec, targetSec) {
+  if (sourceSec === targetSec) return
+
+  // 1. Copy pageDef when different.
+  if (typeof doc.getPageDef === 'function' && typeof doc.setPageDef === 'function') {
+    const srcRaw = tryOr(() => doc.getPageDef(sourceSec), '')
+    const dstRaw = tryOr(() => doc.getPageDef(targetSec), '')
+    if (srcRaw && srcRaw !== dstRaw) {
+      const srcPd = parseJson(srcRaw, null)
+      if (srcPd && typeof srcPd === 'object') {
+        tryOr(() => doc.setPageDef(targetSec, JSON.stringify(srcPd)), null)
+      }
+    }
+  }
+
+  // 2. Copy sectionDef flags while keeping continuous page numbering (`pageNum: 0`).
+  if (typeof doc.getSectionDef === 'function' && typeof doc.setSectionDef === 'function') {
+    const srcSd = tryOr(() => parseJson(doc.getSectionDef(sourceSec), null), null)
+    if (srcSd && typeof srcSd === 'object') {
+      const patch = { pageNum: 0 }
+      for (const key of SECTION_DEF_INHERIT_KEYS) {
+        if (srcSd[key] !== undefined) patch[key] = srcSd[key]
+      }
+      tryOr(() => doc.setSectionDef(targetSec, JSON.stringify(patch)), null)
+    }
+  }
+
+  // 3. Copy page number position (`pgnp`).
+  if (typeof doc.getPageNumberPos === 'function' && typeof doc.setPageNumberPos === 'function') {
+    const srcPgnp = tryOr(() => parseJson(doc.getPageNumberPos(sourceSec), null), null)
+    const pn = srcPgnp?.pageNumber
+    if (pn && Number.isInteger(pn.format) && Number.isInteger(pn.position)) {
+      tryOr(() => doc.setPageNumberPos(targetSec, pn.format, pn.position, Boolean(pn.dash)), null)
+    }
+  }
+
+  // 4. Copy headers and footers for both/even/odd (`applyTo` 0, 1, 2).
+  if (
+    typeof doc.getHeaderFooter === 'function' &&
+    typeof doc.createHeaderFooter === 'function' &&
+    typeof doc.insertTextInHeaderFooter === 'function'
+  ) {
+    for (const isHeader of [true, false]) {
+      for (const applyTo of [0, 1, 2]) {
+        const srcHf = tryOr(
+          () => parseJson(doc.getHeaderFooter(sourceSec, isHeader, applyTo), null),
+          null,
+        )
+        if (!srcHf || srcHf.exists !== true) continue
+        const dstHf = tryOr(
+          () => parseJson(doc.getHeaderFooter(targetSec, isHeader, applyTo), null),
+          null,
+        )
+        if (dstHf && dstHf.exists === true) continue
+
+        const created = tryOr(
+          () => parseJson(doc.createHeaderFooter(targetSec, isHeader, applyTo), null),
+          null,
+        )
+        if (!created || created.ok === false) continue
+
+        const fallbackLines = typeof srcHf.text === 'string' ? srcHf.text.split('\n') : ['']
+        const paraCount =
+          Number.isInteger(srcHf.paraCount) && srcHf.paraCount > 0
+            ? srcHf.paraCount
+            : fallbackLines.length
+        let prevLen = 0
+
+        for (let p = 0; p < paraCount; p++) {
+          if (p > 0 && typeof doc.splitParagraphInHeaderFooter === 'function') {
+            tryOr(
+              () => doc.splitParagraphInHeaderFooter(targetSec, isHeader, applyTo, p - 1, prevLen),
+              null,
+            )
+          }
+          const paraInfo =
+            typeof doc.getHeaderFooterParaInfo === 'function'
+              ? tryOr(
+                  () =>
+                    parseJson(doc.getHeaderFooterParaInfo(sourceSec, isHeader, applyTo, p), null),
+                  null,
+                )
+              : null
+          const text = typeof paraInfo?.text === 'string' ? paraInfo.text : (fallbackLines[p] ?? '')
+          const charLen = Array.from(text).length
+          if (charLen > 0) {
+            tryOr(
+              () => doc.insertTextInHeaderFooter(targetSec, isHeader, applyTo, p, 0, text),
+              null,
+            )
+            if (
+              typeof doc.getCharPropertiesInHeaderFooter === 'function' &&
+              typeof doc.applyCharFormatInHeaderFooter === 'function'
+            ) {
+              const rawChar = tryOr(
+                () =>
+                  parseJson(
+                    doc.getCharPropertiesInHeaderFooter(sourceSec, isHeader, applyTo, p, 0),
+                    null,
+                  ),
+                null,
+              )
+              const charPatch = pickHeaderFooterCharProps(rawChar)
+              if (charPatch) {
+                tryOr(
+                  () =>
+                    doc.applyCharFormatInHeaderFooter(
+                      targetSec,
+                      isHeader,
+                      applyTo,
+                      p,
+                      0,
+                      p,
+                      charLen,
+                      JSON.stringify(charPatch),
+                    ),
+                  null,
+                )
+              }
+            }
+          }
+          if (
+            typeof doc.getParaPropertiesInHeaderFooter === 'function' &&
+            typeof doc.applyParaFormatInHeaderFooter === 'function'
+          ) {
+            const rawPara = tryOr(
+              () =>
+                parseJson(
+                  doc.getParaPropertiesInHeaderFooter(sourceSec, isHeader, applyTo, p),
+                  null,
+                ),
+              null,
+            )
+            if (rawPara && typeof rawPara === 'object') {
+              tryOr(
+                () =>
+                  doc.applyParaFormatInHeaderFooter(
+                    targetSec,
+                    isHeader,
+                    applyTo,
+                    p,
+                    JSON.stringify(rawPara),
+                  ),
+                null,
+              )
+            }
+          }
+          prevLen = charLen
+        }
+      }
+    }
+  }
+}
+
 /**
  * Prepare a clean empty anchor paragraph for inserting the index block, optionally
  * isolating it in its own section when `columns` differs from the host section's column count.
@@ -1381,10 +1834,11 @@ function prepareIndexSlot(doc, sec, para, columns, gapHu) {
   }
 
   // Scoped multi-column section: isolate the index block so preceding and trailing body
-  // paragraphs keep `origColDef` untouched, surviving HWP/HWPX roundtrip.
+  // paragraphs keep `origColDef` untouched and inherit section attributes across splits.
   if (para === 0) {
     const displaced = captureNonSettingBookmarksOnPara(doc, sec, 0)
     expectOk(doc.splitSection(sec, 0, 0), 'splitSection')
+    inheritSectionAttributes(doc, sec, sec + 1)
     restoreBookmarksOnPara(doc, sec + 1, 0, displaced)
     expectOk(doc.setColumnDef(sec, columns, 0, 1, gapHu), 'setColumnDef')
     return {
@@ -1404,6 +1858,7 @@ function prepareIndexSlot(doc, sec, para, columns, gapHu) {
     expectOk(doc.splitParagraph(sec, last, doc.getParagraphLength(sec, last)), 'splitParagraph')
     expectOk(doc.splitSection(sec, paraCount, 0), 'splitSection')
     const indexSec = sec + 1
+    inheritSectionAttributes(doc, sec, indexSec)
     expectOk(doc.setColumnDef(indexSec, columns, 0, 1, gapHu), 'setColumnDef')
     return {
       indexSec,
@@ -1422,6 +1877,8 @@ function prepareIndexSlot(doc, sec, para, columns, gapHu) {
   expectOk(doc.splitSection(sec, para, 0), 'splitSection')
   const indexSec = sec + 1
   expectOk(doc.splitSection(indexSec, 1, 0), 'splitSection')
+  inheritSectionAttributes(doc, sec, indexSec)
+  inheritSectionAttributes(doc, sec, indexSec + 1)
   expectOk(doc.setColumnDef(indexSec, columns, 0, 1, gapHu), 'setColumnDef')
   return {
     indexSec,
@@ -2023,6 +2480,14 @@ export function buildIndexBlock(doc, place, options = {}) {
       return { ok: false, reason: 'no_index_marks' }
     }
 
+    // Refuse multi-column mid-document splits unless caller explicitly confirms (`allowPageSplit: true`).
+    if (
+      options.allowPageSplit !== true &&
+      willMultiColumnIndexSplitPages(doc, target, opts.columns, { where: opts.where })
+    ) {
+      return { ok: false, reason: 'page_split_confirm', splitsPages: true }
+    }
+
     // Clear orphan `색인블록:` start/end marks before building so a broken range never locks out builds.
     let cleanedBroken = []
     if (brokenIndexBlocks.length > 0) {
@@ -2066,6 +2531,35 @@ function clearParagraphContent(doc, sec, para) {
   const len = doc.getParagraphLength(sec, para)
   if (len > 0) {
     expectOk(doc.deleteText(sec, para, 0, len), 'deleteText')
+  }
+}
+
+/**
+ * Read-only check reporting whether the existing `색인블록:` index block has manual edits
+ * compared against its saved snapshot lines in `설정:색인블록`.
+ */
+export function detectIndexManualEdits(doc) {
+  if (!doc || typeof doc.getSectionCount !== 'function') {
+    return { hasManualEdits: false, modifiedLines: [] }
+  }
+  const { ranges } = findRangeMarks(doc, [MARK_PREFIXES.indexBlock])
+  if (ranges.length === 0) {
+    return { hasManualEdits: false, modifiedLines: [] }
+  }
+  const range = ranges[0]
+  if (range.start.sec !== range.end.sec || range.start.para > range.end.para) {
+    return { hasManualEdits: false, modifiedLines: [], range }
+  }
+  const saved = readDocSetting(doc, INDEX_BLOCK_SETTING_KEY)
+  if (!saved || !Array.isArray(saved.lines)) {
+    return { hasManualEdits: false, modifiedLines: [], range }
+  }
+  const actualLines = readRangePlainLines(doc, range, saved.layout)
+  const modifiedLines = diffLines(saved.lines, actualLines)
+  return {
+    hasManualEdits: modifiedLines.length > 0,
+    modifiedLines,
+    range,
   }
 }
 
@@ -2207,6 +2701,7 @@ export function refreshIndexBlock(doc, options = {}) {
       const currentColDef = readColumnDefSafe(doc, indexSec)
       if (opts.columns !== currentColDef.columnCount) {
         // Isolate the anchor paragraph into its own scoped multi-column section.
+        const sourceSec = indexSec
         const paraCount = doc.getParagraphCount(indexSec)
         const splitBefore = startPara > 0
         const splitAfter = startPara + 1 < paraCount
@@ -2214,9 +2709,11 @@ export function refreshIndexBlock(doc, options = {}) {
           expectOk(doc.splitSection(indexSec, startPara, 0), 'splitSection')
           indexSec += 1
           startPara = 0
+          inheritSectionAttributes(doc, sourceSec, indexSec)
         }
         if (splitAfter) {
           expectOk(doc.splitSection(indexSec, 1, 0), 'splitSection')
+          inheritSectionAttributes(doc, sourceSec, indexSec + 1)
         }
         expectOk(doc.setColumnDef(indexSec, opts.columns, 0, 1, opts.gapHu), 'setColumnDef')
         nextScope = {

@@ -48,6 +48,9 @@ export const vi = {
   tocErrorInTable: 'Không thể chèn mục lục bên trong bảng. Hãy đặt con trỏ ở đoạn văn bản chính.',
   tocErrorUnsupportedPlace:
     'Không thể chèn mục lục tại vị trí này. Hãy đặt con trỏ ở đoạn văn bản chính.',
+  tocErrorHasObjects:
+    'Không thay thế mục lục vì phạm vi có chứa đối tượng người dùng như chú thích, hình ảnh hoặc bảng.',
+  tocErrorMultiSection: 'Không thể tự động cập nhật vì mục lục trải dài qua nhiều phần.',
   tocErrorNoHeadings: 'Không tìm thấy tiêu đề phù hợp.',
   tocErrorNoCaptions: 'Không tìm thấy chú thích phù hợp.',
   tocErrorGeneric: 'Không thể cập nhật mục lục: {error}',
@@ -58,6 +61,13 @@ export const vi = {
   indexMarkSubTermLabel: 'Mục phụ (tùy chọn)',
   indexMarkSubTermPlaceholder: 'Để trống nếu chỉ dùng mục chính',
   indexMarkAllLabel: 'Đánh dấu tất cả từ trùng khớp',
+  indexMarkAllPreviewTitle: 'Xác nhận đánh dấu tất cả vị trí',
+  indexMarkAllPreviewMessage: 'Đánh dấu chỉ mục tại {count} vị trí tìm thấy trong văn bản chính?',
+  indexMarkAllPreviewParticlesNote: 'Cũng bao gồm các dạng từ có tiểu từ ngữ pháp đi kèm.',
+  indexMarkAllPreviewSkippedNote:
+    'Sẽ bỏ qua {count} vị trí trong bảng, hộp văn bản hoặc chú thích.',
+  indexMarkAllPreviewConfirm: 'Đánh dấu tất cả',
+  indexMarkAllPreviewMore: 'và {count} vị trí khác',
   indexMarksListTitle: 'Các dấu chỉ mục hiện có ({count})',
   indexMarksListEmpty: 'Chưa có dấu chỉ mục nào trong tài liệu này.',
   indexMarkPageBadge: 'tr. {page}',
@@ -78,6 +88,10 @@ export const vi = {
   indexColumnsLabel: 'Số cột',
   indexColumnsOption: '{count} cột',
   indexGroupHeadingsLabel: 'Thêm tiêu đề nhóm theo chữ cái',
+  indexPageSplitConfirmTitle: 'Xác nhận ngắt trang cho chỉ mục nhiều cột',
+  indexPageSplitConfirmMessage:
+    'Sẽ chèn ngắt trang trước và sau chỉ mục nhiều cột. Bạn có muốn tiếp tục?',
+  indexPageSplitConfirmAction: 'Tiếp tục',
   indexCreatedToast: 'Đã tạo chỉ mục ({count} mục).',
   indexRefreshedToast: 'Đã cập nhật chỉ mục ({count} mục).',
   indexRefreshNotFound: 'Không tìm thấy chỉ mục để cập nhật.',
@@ -85,6 +99,8 @@ export const vi = {
   indexErrorInTable: 'Không thể chèn chỉ mục bên trong bảng. Hãy đặt con trỏ ở đoạn văn bản chính.',
   indexErrorUnsupportedPlace:
     'Không thể chèn chỉ mục tại vị trí này. Hãy đặt con trỏ ở đoạn văn bản chính.',
+  indexErrorHasObjects:
+    'Không thay thế chỉ mục vì phạm vi có chứa đối tượng người dùng như chú thích, hình ảnh hoặc bảng.',
   indexErrorAlreadyExists: 'Tài liệu đã có chỉ mục. Hãy dùng “Cập nhật chỉ mục”.',
   indexErrorGeneric: 'Không thể cập nhật chỉ mục: {error}',
 } satisfies Record<keyof typeof zh, string>

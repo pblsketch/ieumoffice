@@ -79,7 +79,6 @@ export const th = {
   aiToolAnalyzePictureFail: 'ไม่สามารถดูรูปภาพ {picture} ได้',
   aiToolFields: 'ตรวจฟิลด์แบบฟอร์มแล้ว · {count} ฟิลด์',
   aiToolToc: 'เพิ่มสารบัญ · หัวข้อ {count}',
-  aiToolTocRefresh: 'เขียนเลขหน้าของสารบัญใหม่ · {count}',
   aiTocName: 'สารบัญ',
   aiTocPagesChanged: 'อัปเดตเลขหน้า {count} แห่ง',
   aiToolNotes: 'ตรวจเชิงอรรถและอ้างอิงท้ายเรื่อง · {count}',

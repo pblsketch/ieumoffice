@@ -82,7 +82,6 @@ export const fr = {
   aiToolAnalyzePictureFail: "Impossible d'examiner l'image {picture}",
   aiToolFields: 'Champs de formulaire vérifiés · {count}',
   aiToolToc: 'Table des matières ajoutée · {count} titres',
-  aiToolTocRefresh: 'Numéros de page de la table réécrits · {count}',
   aiTocName: 'Table des matières',
   aiTocPagesChanged: '{count} numéro(s) de page mis à jour',
   aiToolNotes: 'Notes vérifiées · {count}',

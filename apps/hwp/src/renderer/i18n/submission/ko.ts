@@ -26,14 +26,20 @@ export const ko = {
   staleManualSkip: '건너뛰기',
   staleRefreshDone: '{count}개 항목을 새로 고쳤습니다.',
   staleRefreshFailed: '일부 항목을 새로 고치지 못했습니다: {error}',
+  staleRefreshBlockedObjects:
+    '차례·색인 범위 안에 각주·그림·표 등 사용자 개체가 있어 새로 고치지 않았습니다.',
   submissionMenuLabel: '제출본으로 저장…',
   submissionMenuDesc: '색인·인용·설정 표식을 뺀 깨끗한 복사본을 따로 저장합니다.',
   submissionSaving: '제출본을 만드는 중…',
   submissionSaved: '제출본을 저장했습니다: {name}',
+  submissionBackupKept: '기존 파일의 백업을 남겼습니다: {name}',
   submissionSavedTailsLost:
     '제출본을 저장했습니다({name}). 일부 바탕쪽이나 메모는 빠졌을 수 있습니다.',
   submissionFailedProtected: '암호가 걸린 문서는 제출본으로 저장할 수 없습니다.',
   submissionFailedTracked: '변경 내용 추적이 있는 문서는 제출본으로 저장할 수 없습니다.',
+  submissionFailedSameAsOpen:
+    '열려 있는 원본 파일에는 제출본을 덮어쓸 수 없습니다. 다른 파일 이름을 골라 주세요.',
+  submissionFailedStrip: '일부 내부 표시를 제거하지 못해 제출본을 저장하지 않았습니다: {marks}',
   submissionFailedVerify:
     '제출본 확인에 실패해 저장을 중단했습니다({before}쪽 → {after}쪽). HWPX 형식으로 다시 시도해 보세요.',
   submissionFailedExport: '제출본을 만들지 못했습니다: {error}',

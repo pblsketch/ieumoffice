@@ -80,7 +80,6 @@ export const ms = {
   aiToolAnalyzePictureFail: 'Gambar {picture} tidak dapat dilihat',
   aiToolFields: 'Medan borang disemak · {count}',
   aiToolToc: 'Menambah jadual kandungan · {count} tajuk',
-  aiToolTocRefresh: 'Menulis semula nombor halaman jadual kandungan · {count}',
   aiTocName: 'Jadual kandungan',
   aiTocPagesChanged: '{count} nombor halaman dikemas kini',
   aiToolNotes: 'Menyemak nota kaki dan nota akhir · {count}',

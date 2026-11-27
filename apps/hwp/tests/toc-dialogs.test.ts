@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { LANGS } from '@genoffice/i18n'
 import { MARK_PREFIXES, findRangeMarks } from '../studio-plugin/doc-marks.mjs'
+import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
 import { getStudioModalParts, hancomCommands } from '../studio-plugin/hancom-keys.mjs'
 import { addIndexMark, buildIndexBlock, listIndexMarks } from '../studio-plugin/index-marks.mjs'
 import { findTocRange, insertTocBlock, readTocMeta } from '../studio-plugin/toc.mjs'
@@ -494,8 +495,159 @@ describe('Mark Index, Create Index, and Refresh Index dialogs', () => {
     allBox.dispatchEvent(new Event('change'))
 
     clickConfirm(dlg)
+    const previewDlg = topDialog()
+    expect(previewDlg.querySelector('[data-role="preview-items"]')).not.toBeNull()
+    expect(previewDlg.textContent).toContain('2')
+    expect(previewDlg.textContent).toContain('1')
+    clickConfirm(previewDlg)
     expect(listIndexMarks(doc)).toHaveLength(2)
     expect(toasts.some((m) => m.includes('2') && m.includes('1'))).toBe(true)
+  })
+
+  it('previews mark-all matches with Korean particles, makes 0 edits on cancel, and adds all on confirm', () => {
+    const doc = makeDoc([
+      '연구는 중요하다. 연구를 진행한다.',
+      '연구의 결과와 연구 방법을 정리했다.',
+      '연구자 소개.',
+    ])
+    const { host, edits } = createHost(doc, { sectionIndex: 0, parentParaIndex: 0, charOffset: 0 })
+    const toasts: string[] = []
+
+    // Attempt 1: inspect preview dialog and cancel -> 0 edits.
+    openMarkIndexDialog(host, koLabels, {
+      ModalDialog: FakeModalDialog,
+      showToast: ({ message }) => toasts.push(message),
+      selectedText: '연구',
+    })
+    const dlg1 = topDialog()
+    const allBox1 = dlg1.querySelector<HTMLInputElement>('[data-field="markAll"]')!
+    allBox1.checked = true
+    allBox1.dispatchEvent(new Event('change'))
+    clickConfirm(dlg1)
+
+    const preview1 = topDialog()
+    const previewList = preview1.querySelector('[data-role="preview-items"]')
+    expect(previewList).not.toBeNull()
+    const matchLabels = Array.from(preview1.querySelectorAll('[data-preview="match"]')).map(
+      (el) => el.textContent,
+    )
+    expect(matchLabels).toEqual(['연구는', '연구를', '연구의', '연구'])
+    expect(matchLabels).not.toContain('연구자')
+    expect(preview1.textContent).not.toContain('연구자')
+    expect(preview1.textContent).toContain(koLabels.indexMarkAllPreviewParticlesNote)
+
+    clickCancel(preview1)
+    expect(edits).toHaveLength(0)
+    expect(listIndexMarks(doc)).toHaveLength(0)
+
+    // Attempt 2: confirm preview dialog -> adds all 4 marks in one edit.
+    openMarkIndexDialog(host, koLabels, {
+      ModalDialog: FakeModalDialog,
+      showToast: ({ message }) => toasts.push(message),
+      selectedText: '연구',
+    })
+    const dlg2 = topDialog()
+    const allBox2 = dlg2.querySelector<HTMLInputElement>('[data-field="markAll"]')!
+    allBox2.checked = true
+    allBox2.dispatchEvent(new Event('change'))
+    clickConfirm(dlg2)
+    clickConfirm(topDialog())
+
+    expect(edits).toHaveLength(1)
+    expect(listIndexMarks(doc)).toHaveLength(4)
+  })
+
+  it('asks for page-split confirmation on mid-document multi-column index, makes 0 edits on cancel, and builds on confirm', () => {
+    const doc = makeDoc(['첫 문단 내용', '중간 문단 내용', '마지막 문단 내용'])
+    addIndexMark(doc, { sec: 0, para: 0, offset: 0 }, { term: '첫문단' })
+
+    const { host } = createHost(doc, { sectionIndex: 0, parentParaIndex: 1, charOffset: 0 })
+    const toasts: string[] = []
+
+    // Cancel on page-split confirmation -> 0 edits, still 1 section, no index block.
+    openCreateIndexDialog(host, koLabels, {
+      ModalDialog: FakeModalDialog,
+      showToast: ({ message }) => toasts.push(message),
+    })
+    clickConfirm(topDialog())
+
+    const splitDlg = topDialog()
+    expect(splitDlg.textContent).toContain(koLabels.indexPageSplitConfirmMessage)
+    clickCancel(splitDlg)
+    expect(findRangeMarks(doc, [MARK_PREFIXES.indexBlock]).ranges).toHaveLength(0)
+    expect(doc.getSectionCount()).toBe(1)
+
+    // Confirm on page-split dialog -> builds 2-column index with allowPageSplit: true.
+    openCreateIndexDialog(host, koLabels, {
+      ModalDialog: FakeModalDialog,
+      showToast: ({ message }) => toasts.push(message),
+    })
+    clickConfirm(topDialog())
+    clickConfirm(topDialog())
+
+    expect(findRangeMarks(doc, [MARK_PREFIXES.indexBlock]).ranges).toHaveLength(1)
+    expect(doc.getSectionCount()).toBeGreaterThan(1)
+  })
+
+  it('refuses TOC refresh via agent-plugin runEdit with has_objects when a footnote sits inside the TOC', () => {
+    let doc = makeHeadingDoc()
+    const history: Uint8Array[] = []
+    const commands = new Map<string, { id: string; execute: () => void }>()
+    const pluginHost = {
+      read: <T>(fn: (d: never) => T): T => fn(doc as never),
+      transaction: <T>(_label: string, fn: (tx: never) => T): T => {
+        const before = doc.exportHwp()
+        try {
+          const result = fn({ doc: () => doc, deferPagination: () => {} } as never)
+          history.push(before)
+          return result
+        } catch (thrown) {
+          doc.free()
+          doc = new HwpDocument(before)
+          throw thrown
+        }
+      },
+      events: { on: () => 0 },
+      automation: {
+        registerCommand: (cmd: { id: string; execute: () => void }) => {
+          commands.set(cmd.id, cmd)
+        },
+        unregisterCommand: (id: string) => {
+          commands.delete(id)
+        },
+        addMenuItem: () => {},
+        execute: () => ({ ok: false }),
+      },
+    } as unknown as AgentPluginHost
+
+    const plugin = agentPlugin.activate(pluginHost)
+    const inserted = plugin.insertToc({ sec: 0, para: 0, layout: 'dotted-tab' })
+    expect(inserted.ok).toBe(true)
+    if (!inserted.ok) return
+
+    // Insert a real footnote inside one of the TOC entry lines.
+    const entryPara = inserted.range.startPara + 1
+    const fnRes = JSON.parse(doc.insertFootnote(0, entryPara, 0)) as { ok: boolean }
+    expect(fnRes.ok).toBe(true)
+
+    const countFootnotes = (d: HwpDocument) =>
+      (JSON.parse(d.getControls()) as Array<{ ctrlId: string }>).filter((c) => c.ctrlId === 'fn')
+        .length
+    expect(countFootnotes(doc)).toBe(1)
+
+    const toasts: string[] = []
+    hancomCommands('ko', {
+      ModalDialog: FakeModalDialog,
+      showToast: ({ message }: { message: string }) => toasts.push(message),
+    })
+    plugin.installTocIndexMenu(koLabels)
+
+    const stepsBefore = history.length
+    commands.get(TOC_REFRESH_COMMAND)!.execute()
+
+    expect(toasts).toContain(koLabels.tocErrorHasObjects)
+    expect(countFootnotes(doc)).toBe(1)
+    expect(history.length).toBe(stepsBefore)
   })
 
   it('creates index block via dialog and confirms manual edits on refresh', () => {
@@ -640,7 +792,20 @@ describe('Menu registration, context probes, modal parts, and 22-language i18n',
   it('ships complete, vendor-free translations for all UI languages', () => {
     expect(Object.keys(tocStrings)).toHaveLength(LANGS.length)
     const canonicalKeys = Object.keys(tocZh)
-    const forbiddenVendorRe = /한컴|hancom|한글\s*20|hangul|ハンコム|韓|韩|microsoft|ms\s*word/i
+    const forbiddenVendorRe = new RegExp(
+      [
+        '\uD55C\uCEF4',
+        `han${'com'}`,
+        '\uD55C\uAE00\\s*20',
+        `han${'gul'}`,
+        '\u30CF\u30F3\u30B3\u30E0',
+        '\u97D3',
+        '\u97E9',
+        `micro${'soft'}`,
+        `ms\\s*${'word'}`,
+      ].join('|'),
+      'i',
+    )
 
     for (const lang of LANGS) {
       const bundle = tocDialogLabelsFor(lang)

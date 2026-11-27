@@ -83,7 +83,6 @@ export const de = {
   aiToolAnalyzePictureFail: 'Bild {picture} konnte nicht angesehen werden',
   aiToolFields: 'Formularfelder geprüft · {count}',
   aiToolToc: 'Inhaltsverzeichnis eingefügt · {count} Überschriften',
-  aiToolTocRefresh: 'Seitenzahlen des Inhaltsverzeichnisses neu geschrieben · {count}',
   aiTocName: 'Inhaltsverzeichnis',
   aiTocPagesChanged: '{count} Seitenzahl(en) aktualisiert',
   aiToolNotes: 'Fuß- und Endnoten geprüft · {count}',

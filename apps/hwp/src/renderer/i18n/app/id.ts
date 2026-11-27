@@ -80,7 +80,6 @@ export const id = {
   aiToolAnalyzePictureFail: 'Gambar {picture} tidak dapat dilihat',
   aiToolFields: 'Bidang formulir diperiksa · {count}',
   aiToolToc: 'Menambahkan daftar isi · {count} judul',
-  aiToolTocRefresh: 'Menulis ulang nomor halaman daftar isi · {count}',
   aiTocName: 'Daftar isi',
   aiTocPagesChanged: '{count} nomor halaman diperbarui',
   aiToolNotes: 'Memeriksa catatan kaki dan catatan akhir · {count}',

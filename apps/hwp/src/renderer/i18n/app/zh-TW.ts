@@ -75,7 +75,6 @@ export const zhTW = {
   aiToolAnalyzePictureFail: '無法查看圖片 {picture}',
   aiToolFields: '已查看表單欄位 · {count} 個',
   aiToolToc: '新增了目錄 · {count} 個標題',
-  aiToolTocRefresh: '重新寫了目錄頁碼 · {count}',
   aiTocName: '目錄',
   aiTocPagesChanged: '{count} 處頁碼已更新',
   aiToolNotes: '檢查了註腳和章節附註 · {count}',

@@ -81,7 +81,6 @@ export const ru = {
   aiToolAnalyzePictureFail: 'Не удалось просмотреть изображение {picture}',
   aiToolFields: 'Поля формы проверены · {count}',
   aiToolToc: 'Добавлено оглавление · заголовков: {count}',
-  aiToolTocRefresh: 'Номера страниц оглавления обновлены · {count}',
   aiTocName: 'Оглавление',
   aiTocPagesChanged: 'Обновлено номеров страниц: {count}',
   aiToolNotes: 'Проверены сноски · {count}',

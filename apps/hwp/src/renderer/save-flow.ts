@@ -193,7 +193,10 @@ export interface RunSaveOptions {
 }
 
 export interface SubmissionCopyExport {
-  bytes: Uint8Array
+  ok?: boolean
+  reason?: 'strip_failed' | (string & {})
+  bytes?: Uint8Array
+  failed?: Array<{ name: string; error?: string }>
   verify?: SaveVerifyInfo
 }
 
@@ -212,13 +215,16 @@ export type SubmissionSaveOutcome =
   | {
       kind: 'saved'
       path: string
+      backupPath?: string
       tailsLost?: true
     }
   | { kind: 'canceled' }
   | {
       kind: 'failed'
-      reason: 'protected' | 'tracked' | 'verify' | 'export' | 'write'
+      reason:
+        'protected' | 'tracked' | 'same_as_open' | 'strip_failed' | 'verify' | 'export' | 'write'
       detail?: string
+      failedMarks?: string[]
       verify?: SaveVerifyInfo
     }
 
@@ -365,15 +371,29 @@ export async function runSubmissionSave(
   const begin = await api.beginSubmissionSave()
   if (!begin.ok) {
     if (begin.reason === 'memo') return { kind: 'canceled' }
-    return begin.reason === 'tracked'
-      ? { kind: 'failed', reason: 'tracked' }
-      : { kind: 'failed', reason: 'write', detail: begin.error }
+    if (begin.reason === 'tracked') return { kind: 'failed', reason: 'tracked' }
+    if (begin.reason === 'same_as_open') return { kind: 'failed', reason: 'same_as_open' }
+    return { kind: 'failed', reason: 'write', detail: begin.error }
   }
   if ('canceled' in begin) return { kind: 'canceled' }
 
   let bytes: Uint8Array
   try {
     const exported = await editor.exportSubmissionCopy(begin.format)
+    const failed = Array.isArray(exported.failed) ? exported.failed : []
+    if (
+      exported.ok === false ||
+      exported.reason === 'strip_failed' ||
+      failed.length > 0 ||
+      !exported.bytes
+    ) {
+      api.abortSubmissionSave()
+      return {
+        kind: 'failed',
+        reason: 'strip_failed',
+        failedMarks: failed.map((f) => f.name),
+      }
+    }
     if (begin.format === 'hwp') {
       const verify = exported.verify
       if (!verify || !verify.recovered || verify.pageCountBefore !== verify.pageCountAfter) {
@@ -402,12 +422,14 @@ export async function runSubmissionSave(
   )
   if (!commit.ok) {
     if (commit.error === EXTERNAL_MODIFIED) return { kind: 'canceled' }
+    if (commit.reason === 'same_as_open') return { kind: 'failed', reason: 'same_as_open' }
     return { kind: 'failed', reason: 'write', detail: commit.error }
   }
   // Never call editor.notifySaved: the original document's path and dirty state stay untouched.
   return {
     kind: 'saved',
     path: commit.path,
+    ...(commit.backupPath ? { backupPath: commit.backupPath } : {}),
     ...(commit.tailsLost ? { tailsLost: true as const } : {}),
   }
 }

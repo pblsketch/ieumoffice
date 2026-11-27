@@ -2076,6 +2076,108 @@ function objectsOf(doc, ignore = null) {
   }
 }
 
+/** Section-level layout controls added or removed when multi-column index sections split or merge. */
+const SECTION_LAYOUT_CONTROLS = new Set(['secd', 'cold', 'pgnp', 'head', 'foot'])
+
+/** Count section-level layout controls (`secd`, `cold`, `pgnp`, `head`, `foot`) in `doc`. */
+function sectionLayoutControlCount(doc) {
+  let count = 0
+  for (const control of parse(doc.getControls())) {
+    if (SECTION_LAYOUT_CONTROLS.has(control.ctrlId)) count += 1
+  }
+  return count
+}
+
+/** Count footnote (`fn`) and endnote (`en`) controls in `doc`. */
+function noteControlCount(doc) {
+  let count = 0
+  for (const control of parse(doc.getControls())) {
+    if (control.ctrlId === 'fn' || control.ctrlId === 'en') count += 1
+  }
+  return count
+}
+
+/**
+ * Count top-level tables owned by marked TOC ranges, a session-made legacy TOC table
+ * (matched strictly via `made`), and a marked table-layout index block.
+ * Each owned block contributes at most 1 table so any extra user table inside the range
+ * stays protected and triggers a rollback if deleted.
+ */
+function ownedTocIndexTableCount(doc, made) {
+  const { tables } = tablesOf(doc)
+  const topTables = tables.filter((t) => t.path.length === 1)
+  let owned = 0
+
+  for (const range of listTocRanges(doc)) {
+    if (range.start.sec !== range.end.sec) continue
+    const meta = readTocMeta(doc, range.kind)
+    const inRange = topTables.filter(
+      (t) => t.sec === range.start.sec && t.para >= range.start.para && t.para <= range.end.para,
+    )
+    const layoutIsTable =
+      meta?.layout === 'table' || (meta == null && inRange.some((t) => t.cols === 2))
+    if (layoutIsTable && inRange.length > 0) {
+      owned += 1
+    }
+  }
+
+  if (Array.isArray(made) && made.length > 0) {
+    const legacy = detectLegacyToc(doc, { made })
+    if (legacy && legacy.source === 'table') {
+      owned += 1
+    }
+  }
+
+  const indexRange = findRangeMarks(doc, [MARK_PREFIXES.indexBlock]).ranges[0]
+  if (indexRange && indexRange.start.sec === indexRange.end.sec) {
+    const saved = readDocSetting(doc, INDEX_BLOCK_SETTING_KEY)
+    if (saved?.layout === 'table') {
+      const hasTableInRange = topTables.some(
+        (t) =>
+          t.sec === indexRange.start.sec &&
+          t.para >= indexRange.start.para &&
+          t.para <= indexRange.end.para,
+      )
+      if (hasTableInRange) owned += 1
+    }
+  }
+
+  return owned
+}
+
+/**
+ * Snapshot all non-owned content objects, notes, and non-TOC fields in `doc` so TOC/index
+ * mutations never silently drop footnotes, endnotes, pictures, shapes, equations, user
+ * tables, or form/hyperlink fields.
+ */
+function tocIndexObjectsOf(doc, { allowSectionLayoutDelta = false, made = null } = {}) {
+  const base = objectsOf(doc)
+  const secDelta = allowSectionLayoutDelta ? sectionLayoutControlCount(doc) : 0
+  const ownedTables = ownedTocIndexTableCount(doc, made)
+  return {
+    controls: base.controls - secDelta - ownedTables,
+    fields: base.fields,
+    notes: noteControlCount(doc),
+  }
+}
+
+/** Read the squashed heading-column rows of a newly written table-layout TOC for `contentsMade`. */
+function madeRowsForTocResult(doc, res) {
+  if (!res?.ok || res.layout !== 'table' || !res.range) return null
+  const { tables } = tablesOf(doc)
+  const table = tables.find(
+    (t) =>
+      t.sec === res.range.sec &&
+      t.path.length === 1 &&
+      t.cols === 2 &&
+      t.para >= res.range.startPara &&
+      t.para <= res.range.endPara,
+  )
+  if (!table) return null
+  const rows = headingColumnOf(doc, table)
+  return rows && rows.length > 0 ? rows : null
+}
+
 /** Pictures among the drawn objects the engine names `gso`, as it names them. */
 const PICTURE_DESC = '그림'
 
@@ -7999,14 +8101,14 @@ export const agentPlugin = {
     let revision = 0
     // the contents insertToc made in this document: the heading rows each wrote, squashed.
     // The document keeps no mark of them, so another document opened here starts with none.
-    let contentsMade = []
+    const contentsMade = []
     // the head tables across the columns as the last change left them, by control, each with
     // the key of what they were drawn from (headTablesOf), and the revision they are of
     let headsKnown = new Map()
     let headsRevision = -1
     host.events.on('document-swapped', () => {
       revision += 1
-      contentsMade = []
+      contentsMade.length = 0
     })
     // the text is read for every request; it only changes when the document does
     let text = null
@@ -9294,7 +9396,13 @@ export const agentPlugin = {
      */
     const keepingObjects = (edit) => {
       const mustKeep = (before, after) => {
-        if (before.controls === after.controls && before.fields === after.fields) return
+        if (
+          before.controls === after.controls &&
+          before.fields === after.fields &&
+          (before.notes === undefined || before.notes === after.notes)
+        ) {
+          return
+        }
         throw fail('HAS_OBJECTS', 'the change would remove an object of the document')
       }
       try {
@@ -13047,21 +13155,22 @@ export const agentPlugin = {
 
         const isForeign = changeOptions?.foreign === true
         const txOptions = isForeign
-          ? {
-              ...changeOptions,
-              foreign: true,
-              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
-            }
+          ? { ...changeOptions, foreign: true }
           : { ...changeOptions, foreign: false }
         const abort = Symbol('abort')
         let refused = null
+        let pendingMadeRows = null
 
         try {
-          return keepingObjects((mustKeep) =>
+          const out = keepingObjects((mustKeep) =>
             change(
               'insert-toc',
               (doc) => {
-                const before = objectsOf(doc)
+                pendingMadeRows = null
+                const before = tocIndexObjectsOf(doc, {
+                  allowSectionLayoutDelta: false,
+                  made: contentsMade,
+                })
                 const kind = params.kind ?? 'body'
                 const existing = findTocRange(doc, kind)
                 let replacingRange = null
@@ -13081,15 +13190,6 @@ export const agentPlugin = {
                     }
                   }
                 }
-                const oldTocTables = replacingRange
-                  ? tablesOf(doc).tables.filter(
-                      (t) =>
-                        t.sec === replacingRange.sec &&
-                        t.path.length === 1 &&
-                        t.para >= replacingRange.startPara &&
-                        t.para <= replacingRange.endPara,
-                    ).length
-                  : 0
 
                 let place
                 let appendedTailSec = null
@@ -13161,12 +13261,15 @@ export const agentPlugin = {
                   }
                 }
 
-                const newTocTables = res.layout === 'table' ? 1 : 0
-                const after = objectsOf(doc)
                 mustKeep(
-                  { ...before, controls: before.controls - oldTocTables + newTocTables },
-                  after,
+                  before,
+                  tocIndexObjectsOf(doc, {
+                    allowSectionLayoutDelta: false,
+                    made: contentsMade,
+                  }),
                 )
+
+                pendingMadeRows = madeRowsForTocResult(doc, res)
 
                 if (res.layout === 'table') {
                   const { tables } = tablesOf(doc)
@@ -13187,6 +13290,10 @@ export const agentPlugin = {
               txOptions,
             ),
           )
+          if (out?.ok && pendingMadeRows) {
+            contentsMade.push(pendingMadeRows)
+          }
+          return out
         } catch (thrown) {
           if (thrown === abort) return refused
           throw thrown
@@ -13207,42 +13314,23 @@ export const agentPlugin = {
 
         const isForeign = changeOptions?.foreign === true
         const txOptions = isForeign
-          ? {
-              ...changeOptions,
-              foreign: true,
-              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
-            }
+          ? { ...changeOptions, foreign: true }
           : { ...changeOptions, foreign: false }
         const abort = Symbol('abort')
         let refused = null
+        let pendingMadeRows = null
 
         try {
-          return keepingObjects((mustKeep) =>
+          const out = keepingObjects((mustKeep) =>
             change(
               'refresh-toc',
               (doc) => {
-                const before = objectsOf(doc)
+                pendingMadeRows = null
+                const before = tocIndexObjectsOf(doc, {
+                  allowSectionLayoutDelta: false,
+                  made: contentsMade,
+                })
                 const kind = opts.kind ?? 'body'
-                const existing = findTocRange(doc, kind)
-                let oldTocTables = 0
-                if (existing) {
-                  const meta = readTocMeta(doc, kind)
-                  const inRange = tablesOf(doc).tables.filter(
-                    (t) =>
-                      t.sec === existing.start.sec &&
-                      t.path.length === 1 &&
-                      t.para >= existing.start.para &&
-                      t.para <= existing.end.para,
-                  )
-                  const ownedLayoutIsTable =
-                    meta?.layout === 'table' || (meta == null && inRange.some((t) => t.cols === 2))
-                  oldTocTables = ownedLayoutIsTable && inRange.length > 0 ? 1 : 0
-                } else if (kind === 'body' && opts.replaceLegacy === true) {
-                  const legacy = detectLegacyToc(doc, { made: contentsMade })
-                  if (legacy && legacy.source === 'table') {
-                    oldTocTables = 1
-                  }
-                }
 
                 const res = refreshTocBlock(doc, {
                   kind,
@@ -13264,11 +13352,15 @@ export const agentPlugin = {
                   throw abort
                 }
 
-                const newTocTables = res.layout === 'table' ? 1 : 0
                 mustKeep(
-                  { ...before, controls: before.controls - oldTocTables + newTocTables },
-                  objectsOf(doc),
+                  before,
+                  tocIndexObjectsOf(doc, {
+                    allowSectionLayoutDelta: false,
+                    made: contentsMade,
+                  }),
                 )
+
+                pendingMadeRows = madeRowsForTocResult(doc, res)
 
                 if (res.layout === 'table') {
                   const { tables } = tablesOf(doc)
@@ -13289,6 +13381,10 @@ export const agentPlugin = {
               txOptions,
             ),
           )
+          if (out?.ok && pendingMadeRows) {
+            contentsMade.push(pendingMadeRows)
+          }
+          return out
         } catch (thrown) {
           if (thrown === abort) return refused
           throw thrown
@@ -13517,11 +13613,7 @@ export const agentPlugin = {
 
         const isForeign = changeOptions?.foreign === true
         const txOptions = isForeign
-          ? {
-              ...changeOptions,
-              foreign: true,
-              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
-            }
+          ? { ...changeOptions, foreign: true }
           : { ...changeOptions, foreign: false }
         const abort = Symbol('abort')
         let refused = null
@@ -13531,16 +13623,10 @@ export const agentPlugin = {
             change(
               'insert-index',
               (doc) => {
-                // Scoped multi-column sections add section/column layout controls (`secd`/`cold`);
-                // exclude only those two while still guarding all content objects, tables, and fields.
-                const indexObjectsOf = (d) => {
-                  const obj = objectsOf(d)
-                  const secCtrls = parse(d.getControls()).filter(
-                    (c) => c.ctrlId === 'secd' || c.ctrlId === 'cold',
-                  ).length
-                  return { controls: obj.controls - secCtrls, fields: obj.fields }
-                }
-                const before = indexObjectsOf(doc)
+                const before = tocIndexObjectsOf(doc, {
+                  allowSectionLayoutDelta: true,
+                  made: contentsMade,
+                })
                 let place
                 let where
                 if (hasCoords) {
@@ -13580,16 +13666,21 @@ export const agentPlugin = {
                     ? { groupHeadings: opts.groupHeadings }
                     : {}),
                   ...(opts.layout !== undefined ? { layout: opts.layout } : {}),
+                  ...(opts.allowPageSplit !== undefined
+                    ? { allowPageSplit: opts.allowPageSplit }
+                    : {}),
                   where,
                 })
                 if (!res.ok) {
                   refused = res
                   throw abort
                 }
-                const newIndexTables = res.layout === 'table' ? 1 : 0
                 mustKeep(
-                  { ...before, controls: before.controls + newIndexTables },
-                  indexObjectsOf(doc),
+                  before,
+                  tocIndexObjectsOf(doc, {
+                    allowSectionLayoutDelta: true,
+                    made: contentsMade,
+                  }),
                 )
                 const placeOut = {
                   sec: res.sec,
@@ -13632,11 +13723,7 @@ export const agentPlugin = {
 
         const isForeign = changeOptions?.foreign === true
         const txOptions = isForeign
-          ? {
-              ...changeOptions,
-              foreign: true,
-              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
-            }
+          ? { ...changeOptions, foreign: true }
           : { ...changeOptions, foreign: false }
         const abort = Symbol('abort')
         let refused = null
@@ -13646,38 +13733,21 @@ export const agentPlugin = {
             change(
               'refresh-index',
               (doc) => {
-                // Scoped multi-column sections add/remove `secd`/`cold` controls; exclude only those
-                // while preserving every content object (pictures, shapes, notes, fields, non-index tables).
-                const indexObjectsOf = (d) => {
-                  const obj = objectsOf(d)
-                  const secCtrls = parse(d.getControls()).filter(
-                    (c) => c.ctrlId === 'secd' || c.ctrlId === 'cold',
-                  ).length
-                  return { controls: obj.controls - secCtrls, fields: obj.fields }
-                }
-                const before = indexObjectsOf(doc)
-                const existingRange = findRangeMarks(doc, [MARK_PREFIXES.indexBlock]).ranges[0]
-                const saved = readDocSetting(doc, INDEX_BLOCK_SETTING_KEY)
-                let oldIndexTables = 0
-                if (existingRange && saved?.layout === 'table') {
-                  const hasTableInRange = tablesOf(doc).tables.some(
-                    (t) =>
-                      t.sec === existingRange.start.sec &&
-                      t.path.length === 1 &&
-                      t.para >= existingRange.start.para &&
-                      t.para <= existingRange.end.para,
-                  )
-                  oldIndexTables = hasTableInRange ? 1 : 0
-                }
+                const before = tocIndexObjectsOf(doc, {
+                  allowSectionLayoutDelta: true,
+                  made: contentsMade,
+                })
                 const res = refreshIndexBlock(doc, opts)
                 if (!res.ok) {
                   refused = res
                   throw abort
                 }
-                const newIndexTables = res.layout === 'table' ? 1 : 0
                 mustKeep(
-                  { ...before, controls: before.controls - oldIndexTables + newIndexTables },
-                  indexObjectsOf(doc),
+                  before,
+                  tocIndexObjectsOf(doc, {
+                    allowSectionLayoutDelta: true,
+                    made: contentsMade,
+                  }),
                 )
                 const placeOut = {
                   sec: res.sec,
@@ -14341,7 +14411,39 @@ export const agentPlugin = {
           tocAppStyleMap = options.appStyleMap ?? undefined
         }
         return installTocIndexMenu(host, labels, {
-          runEdit: (action, fn) => change(action, fn, { foreign: true, allowMemoRemoval: true }),
+          runEdit: (action, fn) => {
+            const allowSectionLayoutDelta = action === 'index-create' || action === 'index-refresh'
+            let pendingMadeRows = null
+            const out = keepingObjects((mustKeep) =>
+              change(
+                action,
+                (doc) => {
+                  pendingMadeRows = null
+                  const before = tocIndexObjectsOf(doc, {
+                    allowSectionLayoutDelta,
+                    made: contentsMade,
+                  })
+                  const res = fn(doc)
+                  mustKeep(
+                    before,
+                    tocIndexObjectsOf(doc, {
+                      allowSectionLayoutDelta,
+                      made: contentsMade,
+                    }),
+                  )
+                  if (action === 'toc-create' || action === 'toc-refresh') {
+                    pendingMadeRows = madeRowsForTocResult(doc, res)
+                  }
+                  return res
+                },
+                { foreign: true },
+              ),
+            )
+            if (out?.ok && pendingMadeRows) {
+              contentsMade.push(pendingMadeRows)
+            }
+            return out
+          },
           readDoc: (fn) => host.read(fn),
           getCaret: () => {
             caretReadRan = false
@@ -14402,6 +14504,7 @@ export const agentPlugin = {
             }).ok
           },
           tocHelpers,
+          getMadeContents: () => contentsMade,
           appStyleMap: () => tocAppStyleMap,
         })
       }),
@@ -14419,34 +14522,63 @@ export const agentPlugin = {
 
       /**
        * Refresh all stale blocks (TOC, index, and registered extensions) in a single undo step.
-       * Rolls back cleanly without creating an empty undo entry when nothing was refreshed.
+       * Rolls back atomically without creating an undo entry when nothing was refreshed, when
+       * any checker fails or blocks on manual edits, or when any user object/memo would be lost.
        */
       refreshAllStale: guarded((options, changeOptions) => {
         const isForeign = changeOptions?.foreign !== false
+        const txOptions = isForeign
+          ? { ...changeOptions, foreign: true }
+          : { ...changeOptions, foreign: false }
         const abort = Symbol('abort')
-        let noChangeResult = null
+        let abortedResult = null
         try {
-          return change(
-            'refresh-all-stale',
-            (doc) => {
-              const result = defaultStalenessRegistry.refreshAll(doc, {
-                ...options,
-                helpers: options?.helpers ?? tocHelpers,
-                appStyleMap:
-                  options?.appStyleMap !== undefined ? options.appStyleMap : tocAppStyleMap,
-              })
-              if (result.refreshed === 0) {
-                noChangeResult = result
-                throw abort
-              }
-              return result
-            },
-            isForeign
-              ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
-              : { ...changeOptions, foreign: false, allowMemoRemoval: true },
+          const out = keepingObjects((mustKeep) =>
+            change(
+              'refresh-all-stale',
+              (doc) => {
+                const before = tocIndexObjectsOf(doc, {
+                  allowSectionLayoutDelta: true,
+                  made: contentsMade,
+                })
+                const result = defaultStalenessRegistry.refreshAll(doc, {
+                  ...options,
+                  helpers: options?.helpers ?? tocHelpers,
+                  appStyleMap:
+                    options?.appStyleMap !== undefined ? options.appStyleMap : tocAppStyleMap,
+                })
+                if (!result?.ok || result.refreshed === 0) {
+                  abortedResult = result
+                  throw abort
+                }
+                mustKeep(
+                  before,
+                  tocIndexObjectsOf(doc, {
+                    allowSectionLayoutDelta: true,
+                    made: contentsMade,
+                  }),
+                )
+                return result
+              },
+              txOptions,
+            ),
           )
+          if (
+            out &&
+            out.ok === false &&
+            (out.reason === 'has_objects' || out.reason === 'memo_removal_requires_approval')
+          ) {
+            return {
+              ...out,
+              ok: false,
+              refreshed: 0,
+              manualEdits: [],
+              results: [],
+            }
+          }
+          return out
         } catch (thrown) {
-          if (thrown === abort) return noChangeResult
+          if (thrown === abort) return abortedResult
           throw thrown
         }
       }),
