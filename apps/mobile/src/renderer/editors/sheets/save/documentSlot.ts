@@ -194,7 +194,10 @@ export async function pcSaveActions(): Promise<Pick<SheetsSaveModules, 'handleSa
   return loadOne(saveActionModules, 'save-actions.ts')
 }
 
-export type SheetsSaveActions = Pick<EditorDocument, 'save' | 'share' | 'writeRecovery'>
+export type SheetsSaveActions = Pick<
+  EditorDocument,
+  'save' | 'share' | 'writeRecovery' | 'exportPdf'
+>
 
 /** A `.csv` document (its every save asks CSV / Excel / cancel). */
 export function isCsvDocument(
@@ -675,6 +678,28 @@ export function createSheetsSaveActions(
         const grid = context.grid.grid
         if (!grid || currentDocument().unlocked) return
         await runPcSave(grid, 'recovery')
+      })
+    },
+
+    async exportPdf(doc) {
+      return exclusive('user', null, async () => {
+        const document = currentDocument()
+        if (document.unlocked) {
+          fail(t('homePrintProtected'))
+          return null
+        }
+        const grid = context.grid.grid
+        if (!grid) {
+          fail(t('homePdfExportFailed'))
+          return null
+        }
+        const result = await modules.activeSheetPdf(grid, document.name)
+        return {
+          kind: 'bytes' as const,
+          bytes: result.bytes,
+          fileName: doc.session.name,
+          ...(result.missingGlyphs > 0 ? { noticeKey: 'homePdfMissingGlyphs' as const } : {}),
+        }
       })
     },
   }

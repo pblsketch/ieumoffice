@@ -60,11 +60,30 @@ export interface EditorOpened {
   discard?(): void
 }
 
+/** PDF output produced by an editor for native printing or PDF sharing. */
+export type EditorPdfExportResult =
+  | {
+      readonly kind: 'bytes'
+      readonly bytes: Uint8Array
+      readonly fileName: string
+      /** Optional non-fatal notice shown after export (e.g. missing glyphs). */
+      readonly noticeKey?: MobileStringKey
+    }
+  | {
+      /** Unmodified PDF session: Rust copies and prints directly from the original URI. */
+      readonly kind: 'session-original'
+      readonly fileName: string
+    }
+
 /** One opened document. Lives in App for as long as the document is active,
  *  also while its Workspace is not mounted (e.g. on the settings screen). */
 export interface EditorDocument {
   save?(doc: ActiveDocState, forceSaveAs: boolean): Promise<boolean>
   share(doc: ActiveDocState): Promise<void>
+  /** Produces PDF bytes (or marks an unmodified PDF session) for printing or PDF sharing. */
+  exportPdf?(doc: ActiveDocState, target: 'print' | 'share'): Promise<EditorPdfExportResult | null>
+  /** Labels print/PDF actions for scoped editors (EPUB chapter, Sheets active sheet). Defaults to 'document'. */
+  readonly exportPdfScope?: 'document' | 'chapter' | 'sheet'
   writeRecovery?(doc: ActiveDocState): Promise<void>
   /** Throws when the tools cannot be prepared (shown as a connection error). */
   createAiRun?(ctx: EditorAiContext): Promise<EditorAiRun>

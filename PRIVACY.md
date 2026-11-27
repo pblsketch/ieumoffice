@@ -616,6 +616,7 @@ and no tracking, and sends nothing to IeumOffice or its maintainers.
 | While AI and optional **Image generation** (off by default) are on, the AI generates an image                                                               | The image prompt and any reference picture the AI passes                                                                                                                                                                                                                                                     | **Google** (Gemini) or **OpenAI**, using the key you saved for that provider                                                                                                                                                                                    |
 | You open an HTML document that references external web resources                                                                                            | Requests made by the HTML document's own markup when rendered in the system WebView                                                                                                                                                                                                                          | The servers referenced by that HTML file                                                                                                                                                                                                                        |
 | You tap **Send feedback** under **Settings → Help**                                                                                                         | Nothing is sent by the app itself. The dialog shows the app version, OS version, and UI language, copies that block if you choose, and opens the feedback form in your system browser                                                                                                                        | **Google** (the survey form), in your browser under your own browser session                                                                                                                                                                                    |
+| You tap **Print** or **Share as PDF** in any mobile editor                                                                                                  | A locally generated PDF copy of the document (current sheet for spreadsheets; current chapter for EPUB) handed to your device's operating system print service or share sheet. Password-protected and distribution documents are refused                                                                    | The printer, PDF save target, or app you choose in the Android or iOS system sheet                                                                                                                                                                              |
 
 Every network request goes directly from your device to the destination listed
 above, so that service sees your public IP address.
@@ -637,8 +638,15 @@ Nothing in this list is uploaded by the app.
   (`ai-results/`), and any API keys you entered (`secrets/`), encrypted with
   AES-256-GCM using a device master key stored in Android Keystore or iOS
   Keychain. API keys are never exposed to the WebView.
-- **Temporary working files** (`ieum-tmp/` in the app's cache directory),
-  cleared on launch or via **Settings → Storage**.
+- **Temporary working files, print staging, share copies, and thumbnail cache**
+  (`ieum-tmp/` and `shared/` in the app's cache directory): temporary print PDFs
+  (`ieum-tmp/print/`, removed when the print job finishes and on launch),
+  temporary PDF share copies (`shared/pdf-<id>/`, cleaned on error or via
+  **Settings → Storage**), and local document preview thumbnails
+  (`ieum-tmp/thumbs/`, capped in count and size, never written for
+  password-protected or distribution documents, and evicted when you remove a
+  file from recent or favorites or delete it). All temporary files can also be
+  cleared via **Settings → Storage**.
 
 You can delete recovery copies, temporary files, HWP backups, and saved AI
 results from **Settings**, or remove all app-private data by uninstalling the

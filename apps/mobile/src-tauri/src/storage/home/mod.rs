@@ -14,8 +14,8 @@ pub(crate) use stores::{FavoriteStore, FolderStore, StoredFolder};
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
 use crate::storage::recent::now_millis;
 use crate::storage::{
-    LocalSource, MobileDocFormat, MobileDocSession, MobileFileService, map_fs_error,
-    persistent_doc_key,
+    LocalSource, MobileDocFormat, MobileDocSession, MobileFileService, ThumbnailCache,
+    ThumbnailPayload, map_fs_error, persistent_doc_key, thumbnails::extract_thumbnail_from_bytes,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
@@ -397,6 +397,8 @@ struct EntryInfo {
     uri: String,
     name: String,
     is_dir: bool,
+    size_bytes: Option<u64>,
+    modified_at: Option<i64>,
 }
 
 /// One received file of a batch taken in this run.
@@ -416,6 +418,8 @@ enum Target {
         name: String,
         doc_key: String,
         folder_id: Option<String>,
+        size_bytes: Option<u64>,
+        modified_at: Option<i64>,
     },
     /// A received file's copy in the app cache.
     Received {
@@ -468,7 +472,15 @@ impl HomeService {
         guard.clone()
     }
 
-    fn remember(&self, folder_id: &str, uri: &str, name: &str, is_dir: bool) -> String {
+    fn remember(
+        &self,
+        folder_id: &str,
+        uri: &str,
+        name: &str,
+        is_dir: bool,
+        size_bytes: Option<u64>,
+        modified_at: Option<i64>,
+    ) -> String {
         let id = persistent_doc_key(&format!("{folder_id}\n{uri}"));
         self.entries.lock().unwrap().insert(
             id.clone(),
@@ -477,6 +489,8 @@ impl HomeService {
                 uri: uri.to_string(),
                 name: name.to_string(),
                 is_dir,
+                size_bytes,
+                modified_at,
             },
         );
         id
@@ -519,6 +533,8 @@ impl HomeService {
                     name: row.name,
                     doc_key: row.doc_key,
                     folder_id: row.folder_id,
+                    size_bytes: None,
+                    modified_at: None,
                 })
             }
             FileRef::Favorite { doc_key } => {
@@ -530,6 +546,8 @@ impl HomeService {
                     name: fav.name,
                     doc_key: fav.doc_key,
                     folder_id: fav.folder_id,
+                    size_bytes: None,
+                    modified_at: None,
                 })
             }
             FileRef::Folder {
@@ -549,6 +567,8 @@ impl HomeService {
                     uri: info.uri,
                     name: info.name,
                     folder_id: Some(info.folder_id),
+                    size_bytes: info.size_bytes,
+                    modified_at: info.modified_at,
                 })
             }
             FileRef::Incoming { batch_id, entry_id } => {
@@ -725,13 +745,21 @@ impl HomeService {
                     _ => continue,
                 }
             };
+            let size_bytes = if item.is_dir { None } else { item.size_bytes };
             out.push(FolderEntry {
-                id: self.remember(folder_id, &item.uri, &item.name, item.is_dir),
+                id: self.remember(
+                    folder_id,
+                    &item.uri,
+                    &item.name,
+                    item.is_dir,
+                    size_bytes,
+                    item.modified_ms,
+                ),
                 name: item.name,
                 is_dir: item.is_dir,
                 format,
                 is_picture: picture,
-                size_bytes: if item.is_dir { None } else { item.size_bytes },
+                size_bytes,
                 modified_at: item.modified_ms,
                 favorite: starred.is_some(),
                 group_id: starred.and_then(|f| f.group_id.clone()),
@@ -818,6 +846,7 @@ impl HomeService {
             self.files
                 .favorite_store()
                 .remove_where(|f| &f.doc_key == doc_key)?;
+            self.files.evict_thumbnail_cache(doc_key);
             return self.list_favorites();
         }
         let Target::Doc {
@@ -825,6 +854,7 @@ impl HomeService {
             name,
             doc_key,
             folder_id,
+            ..
         } = self.resolve(file_ref)?
         else {
             return Err(not_supported_here("received files cannot be starred"));
@@ -833,6 +863,7 @@ impl HomeService {
             self.files
                 .favorite_store()
                 .remove_where(|f| f.doc_key == doc_key)?;
+            self.files.evict_thumbnail_cache(&doc_key);
             return self.list_favorites();
         }
         let format = known_format(&name).ok_or_else(|| not_openable(&name))?;
@@ -960,6 +991,7 @@ impl HomeService {
             name,
             doc_key,
             folder_id,
+            ..
         } = self.resolve(file_ref)?
         else {
             return Err(not_supported_here("received files cannot be renamed"));
@@ -987,7 +1019,7 @@ impl HomeService {
         self.forget_uri(&uri);
         Ok(match file_ref {
             FileRef::Folder { folder_id, .. } => FileRef::Folder {
-                entry_id: self.remember(folder_id, &new_uri, &new_name, false),
+                entry_id: self.remember(folder_id, &new_uri, &new_name, false, None, None),
                 folder_id: folder_id.clone(),
             },
             FileRef::Favorite { .. } => FileRef::Favorite { doc_key: new_key },
@@ -1017,7 +1049,14 @@ impl HomeService {
                     match bridge.copy_document(&uri, &candidate) {
                         Ok(copy_uri) => {
                             return Ok(Some(FileRef::Folder {
-                                entry_id: self.remember(&folder_id, &copy_uri, &candidate, false),
+                                entry_id: self.remember(
+                                    &folder_id,
+                                    &copy_uri,
+                                    &candidate,
+                                    false,
+                                    None,
+                                    None,
+                                ),
                                 folder_id,
                             }));
                         }
@@ -1084,6 +1123,7 @@ impl HomeService {
                         self.files
                             .favorite_store()
                             .remove_where(|f| f.doc_key == doc_key || f.uri == uri)?;
+                        self.files.evict_thumbnail_cache(&doc_key);
                         self.forget_uri(&uri);
                         Ok(())
                     }),
@@ -1153,6 +1193,141 @@ impl HomeService {
             name,
             mime,
         })
+    }
+
+    // --- Document thumbnails ---
+
+    fn thumbnail_fingerprint(
+        &self,
+        file_ref: &FileRef,
+        doc_key: &str,
+        size_bytes: Option<u64>,
+        modified_at: Option<i64>,
+    ) -> String {
+        match file_ref {
+            FileRef::Recent { id } => self
+                .files
+                .recent_store()
+                .rows()
+                .ok()
+                .and_then(|rows| rows.into_iter().find(|r| r.id == *id))
+                .map(|r| format!("recent:{}", r.opened_at))
+                .unwrap_or_else(|| format!("recent:{doc_key}")),
+            FileRef::Favorite { .. } => self
+                .files
+                .recent_store()
+                .rows()
+                .ok()
+                .and_then(|rows| rows.into_iter().find(|r| r.doc_key == doc_key))
+                .map(|r| format!("recent:{}", r.opened_at))
+                .unwrap_or_else(|| {
+                    self.files
+                        .favorite_store()
+                        .load()
+                        .ok()
+                        .and_then(|f| f.favorites.into_iter().find(|x| x.doc_key == doc_key))
+                        .map(|x| format!("fav:{}", x.added_at))
+                        .unwrap_or_else(|| format!("fav:{doc_key}"))
+                }),
+            FileRef::Folder {
+                folder_id,
+                entry_id,
+            } => format!(
+                "folder:{folder_id}:{entry_id}:{}:{}",
+                size_bytes.unwrap_or(0),
+                modified_at.unwrap_or(0)
+            ),
+            FileRef::Incoming { batch_id, entry_id } => format!("incoming:{batch_id}:{entry_id}"),
+        }
+    }
+
+    /// Returns a cached or freshly extracted thumbnail for a home/folder/incoming file.
+    /// Never extracts or caches thumbnails for encrypted or distribution documents.
+    pub fn get_thumbnail(
+        &self,
+        file_ref: &FileRef,
+        max_px: Option<u32>,
+    ) -> MobileResult<ThumbnailPayload> {
+        const MAX_THUMB_SOURCE_BYTES: usize = 32 * 1024 * 1024;
+        let max_px = max_px.unwrap_or(320).clamp(64, 1024);
+        let target = match self.resolve(file_ref) {
+            Ok(t) => t,
+            Err(_) => return Ok(ThumbnailPayload::None),
+        };
+        let cache_dir = self.dirs().map(|d| d.cache_dir);
+
+        let (doc_key, name, mime_hint, bytes) = match target {
+            Target::Doc {
+                uri,
+                name,
+                doc_key,
+                size_bytes,
+                modified_at,
+                ..
+            } => {
+                let format = known_format(&name);
+                let picture = is_picture(&name, None);
+                if format.is_none() && !picture {
+                    return Ok(ThumbnailPayload::None);
+                }
+                if self.files.is_protected_doc_key(&doc_key) {
+                    return Ok(ThumbnailPayload::None);
+                }
+                if size_bytes.is_some_and(|s| s > MAX_THUMB_SOURCE_BYTES as u64) {
+                    return Ok(ThumbnailPayload::None);
+                }
+                let fp = self.thumbnail_fingerprint(file_ref, &doc_key, size_bytes, modified_at);
+                if let Some(dir) = &cache_dir
+                    && let Some(hit) = ThumbnailCache::get(dir, &doc_key, &fp)
+                {
+                    return Ok(hit);
+                }
+                let Ok(bytes) = self.files.bridge().read_uri_bytes(&uri) else {
+                    return Ok(ThumbnailPayload::None);
+                };
+                (Some((doc_key, fp)), name, None, bytes)
+            }
+            Target::Received { name, mime, path } => {
+                let format = known_format(&name);
+                let picture = is_picture(&name, Some(&mime));
+                if format.is_none() && !picture {
+                    return Ok(ThumbnailPayload::None);
+                }
+                let Ok(bytes) = LocalSource::CacheFile(path).read_bounded(MAX_THUMB_SOURCE_BYTES)
+                else {
+                    return Ok(ThumbnailPayload::None);
+                };
+                (None, name, Some(mime), bytes)
+            }
+        };
+
+        // Guard against huge files whose size was unavailable prior to reading.
+        if bytes.len() > MAX_THUMB_SOURCE_BYTES {
+            return Ok(ThumbnailPayload::None);
+        }
+
+        let format = known_format(&name);
+        let picture = is_picture(&name, mime_hint.as_deref());
+        let payload = if !picture && format == Some(MobileDocFormat::Pdf) {
+            match &cache_dir {
+                Some(dir) => ThumbnailCache::render_pdf_bytes(
+                    dir,
+                    &bytes,
+                    max_px,
+                    self.files.bridge().as_ref(),
+                ),
+                None => ThumbnailPayload::None,
+            }
+        } else {
+            extract_thumbnail_from_bytes(format, picture, &bytes)
+        };
+
+        if let (Some(dir), Some((doc_key, fp))) = (&cache_dir, doc_key)
+            && !matches!(payload, ThumbnailPayload::None)
+        {
+            ThumbnailCache::put(dir, &doc_key, &fp, &payload);
+        }
+        Ok(payload)
     }
 
     // --- Received files ---

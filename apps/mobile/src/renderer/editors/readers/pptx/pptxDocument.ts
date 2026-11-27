@@ -76,6 +76,17 @@ export interface PptxController {
   takeFailure(): boolean
   /** Writes a pending position now */
   flushPosition(): Promise<void>
+  /** Resolves once the deck has finished opening (ready or failed). */
+  waitReady(): Promise<PptxStatus>
+  /**
+   * Builds render data and decoded images for one slide at `widthPx`, passes it to `visitor`,
+   * and immediately releases the slide when not held by another view (keeps peak memory bounded).
+   */
+  withExportSlide<T>(
+    index: number,
+    widthPx: number,
+    visitor: (entry: PptxSlideEntry) => Promise<T>,
+  ): Promise<T>
   dispose(): void
 }
 
@@ -242,7 +253,7 @@ export function createPptxController(options: PptxControllerOptions): PptxContro
     notify()
   }
 
-  void open()
+  const openPromise = open()
 
   return {
     startedAt,
@@ -297,6 +308,55 @@ export function createPptxController(options: PptxControllerOptions): PptxContro
       return true
     },
     flushPosition: writePosition,
+    async waitReady() {
+      await openPromise
+      return status
+    },
+    async withExportSlide(index, widthPx, visitor) {
+      await openPromise
+      if (!deck || disposed) {
+        return visitor({ slide: null, failed: true, images: new Map() })
+      }
+      const alreadyHeld = [...holders.values()].some((list) => list.includes(index))
+      let slide: RenderSlide | null = null
+      let failed = false
+      let images = new Map<string, HTMLImageElement>()
+      let load: ImageLoad | null = null
+      try {
+        slide = deck.renderSlide(index, widthPx)
+        const urls = slideImageUrls(slide)
+        if (urls.length > 0) {
+          images = await new Promise<Map<string, HTMLImageElement>>((resolve) => {
+            let latest = new Map<string, HTMLImageElement>()
+            let settled = false
+            const finish = (finalMap?: Map<string, HTMLImageElement>) => {
+              if (settled) return
+              settled = true
+              clearTimeout(timer)
+              resolve(finalMap ?? latest)
+            }
+            const timer = setTimeout(() => finish(), 3000)
+            load = loadSlideImages(
+              urls,
+              (map) => {
+                latest = map
+              },
+              (finalMap) => finish(finalMap),
+            )
+          })
+        }
+      } catch {
+        failed = true
+      }
+      try {
+        return await visitor({ slide, failed, images })
+      } finally {
+        ;(load as ImageLoad | null)?.cancel()
+        if (!alreadyHeld && !disposed) {
+          deck?.releaseSlide(index)
+        }
+      }
+    },
     dispose() {
       if (disposed) return
       void writePosition()

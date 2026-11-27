@@ -1,0 +1,72 @@
+/* HWP page thumbnail navigation sheet (mirrors PPTX slide grid). */
+
+.hwp-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--m-space-3);
+  list-style: none;
+  margin: 0;
+  padding: var(--m-space-2) 0 var(--m-space-6);
+}
+
+:root[data-window='medium'] .hwp-thumb-grid,
+:root[data-window='expanded'] .hwp-thumb-grid,
+:root[data-window='large'] .hwp-thumb-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.hwp-thumb-item {
+  margin: 0;
+  padding: 0;
+}
+
+.hwp-thumb-cell {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--m-space-2);
+  padding: var(--m-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-card);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: var(--m-hit);
+}
+
+.hwp-thumb-cell:hover {
+  background: var(--bg-hover-subtle);
+}
+
+.hwp-thumb-paper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 210 / 297;
+  border-radius: var(--radius-8);
+  border: 1px solid var(--border-subtle);
+  background: var(--m-doc-paper);
+  color: var(--m-doc-ink-muted);
+  overflow: hidden;
+}
+
+.hwp-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.hwp-thumb-placeholder {
+  font-size: var(--m-text-title-m);
+  font-weight: 700;
+}
+
+.hwp-thumb-label {
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}

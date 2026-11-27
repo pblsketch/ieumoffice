@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import Tauri
 import UIKit
 import UniformTypeIdentifiers
@@ -49,6 +50,17 @@ struct KeepScreenOnArgs: Decodable {
 
 struct UrlArgs: Decodable {
     let url: String
+}
+
+struct PrintPathArgs: Decodable {
+    let path: String
+    let jobName: String
+}
+
+struct RenderPdfThumbArgs: Decodable {
+    let srcPath: String
+    let destPath: String
+    let maxPx: Int
 }
 
 /// A resolved document location plus the security scope held while using it. For documents
@@ -280,6 +292,118 @@ public final class IeumFilePlugin: Plugin {
             return
         }
         presentShareSheet(items: [file], invoke: invoke)
+    }
+
+    /// Restricts staged print paths to `<caches>/ieum-tmp/print/` so arbitrary cache files cannot be deleted.
+    private func appPrintFile(_ raw: String) -> URL? {
+        guard let candidate = appLocalFile(raw) else { return nil }
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let printRoot = caches
+            .appendingPathComponent("ieum-tmp", isDirectory: true)
+            .appendingPathComponent("print", isDirectory: true)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL
+        let prefix = printRoot.path.hasSuffix("/") ? printRoot.path : printRoot.path + "/"
+        return resolved.path.hasPrefix(prefix) ? resolved : nil
+    }
+
+    /// Opens the iOS print sheet for a staged PDF file and deletes the temp file when finished.
+    @objc public func printPdfFromPath(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(PrintPathArgs.self)
+        guard let file = appPrintFile(args.path), FileManager.default.fileExists(atPath: file.path) else {
+            invoke.reject("INVALID_ARGUMENT: nothing to print under the print cache folder")
+            return
+        }
+        guard UIPrintInteractionController.canPrint(file) else {
+            try? FileManager.default.removeItem(at: file)
+            invoke.reject("INTERNAL_ERROR: this PDF cannot be printed")
+            return
+        }
+        let jobName = args.jobName.trimmingCharacters(in: .whitespacesAndNewlines)
+        DispatchQueue.main.async {
+            let controller = UIPrintInteractionController.shared
+            let info = UIPrintInfo(dictionary: nil)
+            info.outputType = .general
+            info.jobName = jobName.isEmpty ? file.lastPathComponent : jobName
+            controller.printInfo = info
+            controller.printingItem = file
+            let handler: UIPrintInteractionController.CompletionHandler = { _, completed, error in
+                try? FileManager.default.removeItem(at: file)
+                if let error {
+                    invoke.reject("INTERNAL_ERROR: \(error.localizedDescription)")
+                } else if !completed {
+                    invoke.reject("USER_CANCELLED: user cancelled print")
+                } else {
+                    invoke.resolve(["ok": true])
+                }
+            }
+            let presented: Bool
+            if UIDevice.current.userInterfaceIdiom == .pad, let view = self.manager.viewController?.view {
+                let rect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+                presented = controller.present(from: rect, in: view, animated: true, completionHandler: handler)
+            } else {
+                presented = controller.present(animated: true, completionHandler: handler)
+            }
+            if !presented {
+                try? FileManager.default.removeItem(at: file)
+                invoke.reject("INTERNAL_ERROR: print dialog could not be presented")
+            }
+        }
+    }
+
+    /// Renders page 0 of a cached PDF into a white-backed PNG thumbnail via PDFKit.
+    @objc public func renderPdfThumbnail(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(RenderPdfThumbArgs.self)
+        guard let srcUrl = appLocalFile(args.srcPath),
+              FileManager.default.fileExists(atPath: srcUrl.path),
+              let destUrl = appLocalFile(args.destPath) else {
+            invoke.reject("INVALID_ARGUMENT: paths must stay inside app cache directories")
+            return
+        }
+        let maxPx = max(64, min(1024, args.maxPx))
+        DispatchQueue.global(qos: .utility).async {
+            guard let doc = PDFDocument(url: srcUrl),
+                  !doc.isLocked,
+                  doc.pageCount > 0,
+                  let page = doc.page(at: 0) else {
+                invoke.resolve(["rendered": false])
+                return
+            }
+            let bounds = page.bounds(for: .mediaBox)
+            let pw = max(bounds.width, 1)
+            let ph = max(bounds.height, 1)
+            let scale = CGFloat(maxPx) / max(pw, ph)
+            let outSize = CGSize(
+                width: max(1, min(1024, (pw * scale).rounded())),
+                height: max(1, min(1024, (ph * scale).rounded()))
+            )
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = true
+            let image = UIGraphicsImageRenderer(size: outSize, format: format).image { ctx in
+                UIColor.white.setFill()
+                ctx.fill(CGRect(origin: .zero, size: outSize))
+                let thumb = page.thumbnail(of: outSize, for: .mediaBox)
+                thumb.draw(in: CGRect(origin: .zero, size: outSize))
+            }
+            guard let png = image.pngData() else {
+                invoke.resolve(["rendered": false])
+                return
+            }
+            do {
+                try FileManager.default.createDirectory(
+                    at: destUrl.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try png.write(to: destUrl, options: .atomic)
+                invoke.resolve(["rendered": true])
+            } catch {
+                invoke.resolve(["rendered": false])
+            }
+        }
     }
 
     @objc public func pickOpenFile(_ invoke: Invoke) throws {

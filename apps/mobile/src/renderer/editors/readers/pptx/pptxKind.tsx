@@ -148,6 +148,13 @@ function startPptxDocument(
         console.warn('pptx share failed', err)
       }
     },
+    async exportPdf(doc) {
+      const ready = await controllerReady
+      if (!ready) return null
+      const { exportPptxToPdf } = await import('./pptxPdfExport')
+      const bytes = await exportPptxToPdf(ready, doc.session.name)
+      return { kind: 'bytes', bytes, fileName: doc.session.name }
+    },
     Workspace: PptxWorkspaceHost,
     dispose() {
       if (disposed) return

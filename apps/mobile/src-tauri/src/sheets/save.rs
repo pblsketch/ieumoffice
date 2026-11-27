@@ -265,7 +265,11 @@ pub fn copy_original_to_work_folder(
     } else {
         probe(&target_path)
     };
-    digests.record_mark(session_id, mark_for(ext, &head, probed));
+    let mark = mark_for(ext, &head, probed);
+    if mark.locked {
+        files.mark_session_encrypted(session_id);
+    }
+    digests.record_mark(session_id, mark);
     Ok(SheetsWorkingCopy {
         path: target,
         size,

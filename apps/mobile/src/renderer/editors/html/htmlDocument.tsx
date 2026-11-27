@@ -712,6 +712,19 @@ export function startHtmlDocument(
       await htmlApi.shareDocument(doc.session, readSource()).catch(() => {})
     },
 
+    async exportPdf(doc) {
+      const { renderHtmlToPdfBytes } = await import('../shared/pdfExport')
+      const { source, version } = kept.get()
+      const exportCopy = buildExportCopy(source, mapFor(source, version))
+      const result = await renderHtmlToPdfBytes(exportCopy, { title: doc.session.name })
+      return {
+        kind: 'bytes',
+        bytes: result.bytes,
+        fileName: doc.session.name,
+        ...(result.missingGlyphs > 0 ? { noticeKey: 'homePdfMissingGlyphs' as const } : {}),
+      }
+    },
+
     async writeRecovery(doc) {
       await htmlApi.writeRecovery(doc.session, readSource()).catch(() => {})
     },

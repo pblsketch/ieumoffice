@@ -30,6 +30,7 @@ export function startSheetsDocument(
   let disposed = false
   return {
     ...saveActions,
+    exportPdfScope: 'sheet',
     async writeRecovery(doc) {
       if (opened.unlocked) return
       await saveActions.writeRecovery?.(doc)

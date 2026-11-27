@@ -120,6 +120,12 @@ export interface HomeOkResult {
   readonly ok: boolean
 }
 
+/** Lightweight thumbnail returned for home/folder/incoming file rows. */
+export type ThumbnailPayload =
+  | { readonly kind: 'image'; readonly mime: string; readonly dataBase64: string }
+  | { readonly kind: 'text'; readonly title?: string; readonly snippet: string }
+  | { readonly kind: 'none' }
+
 /** Message keys the home commands reject with (`MobileCommandError.messageKey`). */
 export const HOME_ERROR_KEYS = {
   nameInvalid: 'mobile.home.nameInvalid',

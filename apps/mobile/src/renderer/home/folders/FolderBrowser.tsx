@@ -264,6 +264,7 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
             <HomeFileRow
               key={item.key}
               item={item}
+              client={client}
               selecting={selection.selecting}
               selected={selection.isSelected(item.key)}
               onOpen={() => onOpen(item)}

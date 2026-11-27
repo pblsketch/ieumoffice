@@ -31,6 +31,7 @@ import type {
   LinkedFolder,
   RecentMetaEntry,
   StorageUsage,
+  ThumbnailPayload,
   UnlinkFolderResult,
 } from './types'
 
@@ -298,4 +299,37 @@ export async function setKeepScreenOn(client: MobileClient, on: boolean): Promis
 /** Opens an https URL in the system browser; other schemes reject with `mobile.home.urlRefused`. */
 export function openExternalUrl(client: MobileClient, url: string): Promise<HomeOkResult> {
   return call(client, 'mobile_home_open_external_url', { url })
+}
+
+// Document thumbnails
+
+function isThumbnailPayload(value: unknown): value is ThumbnailPayload {
+  if (!value || typeof value !== 'object') return false
+  const kind = (value as { kind?: unknown }).kind
+  if (kind === 'none') return true
+  if (kind === 'image') {
+    const img = value as { mime?: unknown; dataBase64?: unknown }
+    return typeof img.mime === 'string' && typeof img.dataBase64 === 'string'
+  }
+  if (kind === 'text') {
+    const txt = value as { snippet?: unknown; title?: unknown }
+    return (
+      typeof txt.snippet === 'string' && (txt.title === undefined || typeof txt.title === 'string')
+    )
+  }
+  return false
+}
+
+/** Fetches a cached or extracted thumbnail; falls back to `{ kind: 'none' }` on stub bridges. */
+export async function getHomeThumbnail(
+  client: MobileClient,
+  fileRef: FileRef,
+  maxPx?: number,
+): Promise<ThumbnailPayload> {
+  const res = await call<unknown>(
+    client,
+    'mobile_home_get_thumbnail',
+    withoutUndefined({ fileRef, maxPx }),
+  )
+  return isThumbnailPayload(res) ? res : { kind: 'none' }
 }

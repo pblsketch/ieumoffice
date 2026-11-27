@@ -4,6 +4,7 @@ import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileDocFormat } from '@genoffice/mobile-bridge/transport'
 import { useMobileLocale } from '../i18n'
 import { Sheet } from '../components/Sheet'
+import { HomePrintIcon, HomeSharePdfIcon } from '../components/icons/home'
 import {
   DocTypeIcon,
   IconBack,
@@ -142,6 +143,12 @@ export interface EditorShellProps {
   /** Absent for read-only kinds without a save function: hides Save As in [⋯]. */
   readonly onSaveAs?: () => void
   readonly onShare: () => void
+  /** Absent for formats without PDF sharing (or PDF documents, where Share already sends PDF). */
+  readonly onSharePdf?: () => void
+  /** Absent when the editor does not expose PDF printing. */
+  readonly onPrint?: () => void
+  /** Scoped print/PDF labels (EPUB prints the current chapter; Sheets prints the active sheet). */
+  readonly printScope?: 'document' | 'chapter' | 'sheet'
   readonly onFitToWidth: () => void
   readonly onOpenBackups: () => void
   readonly children: ReactNode
@@ -211,6 +218,9 @@ export function EditorShell({
   onSave,
   onSaveAs,
   onShare,
+  onSharePdf,
+  onPrint,
+  printScope = 'document',
   onFitToWidth,
   onOpenBackups,
   children,
@@ -855,6 +865,50 @@ export function EditorShell({
               <IconShare size={19} />
               <span>{t('share')}</span>
             </button>
+            {onSharePdf && (
+              <button
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid="editor-share-pdf-btn"
+                onClick={() => {
+                  setMoreOpen(false)
+                  onSharePdf()
+                }}
+              >
+                <HomeSharePdfIcon size={19} />
+                <span>
+                  {t(
+                    printScope === 'chapter'
+                      ? 'homeShareChapterPdf'
+                      : printScope === 'sheet'
+                        ? 'homeShareSheetPdf'
+                        : 'homeShareAsPdf',
+                  )}
+                </span>
+              </button>
+            )}
+            {onPrint && (
+              <button
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid="editor-print-btn"
+                onClick={() => {
+                  setMoreOpen(false)
+                  onPrint()
+                }}
+              >
+                <HomePrintIcon size={19} />
+                <span>
+                  {t(
+                    printScope === 'chapter'
+                      ? 'homePrintChapter'
+                      : printScope === 'sheet'
+                        ? 'homePrintSheet'
+                        : 'homePrint',
+                  )}
+                </span>
+              </button>
+            )}
             {fileMorePairs.map(renderMorePair)}
             {fileMoreItems.map((item) => (
               <button

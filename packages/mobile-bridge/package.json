@@ -18,7 +18,8 @@
     "./pdf-tools": "./src/pdf-tools/index.ts",
     "./html": "./src/html/index.ts",
     "./readers": "./src/readers/index.ts",
-    "./home": "./src/home/index.ts"
+    "./home": "./src/home/index.ts",
+    "./print": "./src/print/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

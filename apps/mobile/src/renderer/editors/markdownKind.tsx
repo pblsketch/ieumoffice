@@ -509,6 +509,18 @@ function startMarkdownDocument(
       await markdownApi.shareDocument(doc.session, text).catch(() => {})
     },
 
+    async exportPdf(doc) {
+      const { markdownToPrintHtml, renderHtmlToPdfBytes } = await import('./shared/pdfExport')
+      const html = markdownToPrintHtml(readMarkdown(), doc.session.name)
+      const result = await renderHtmlToPdfBytes(html, { title: doc.session.name })
+      return {
+        kind: 'bytes',
+        bytes: result.bytes,
+        fileName: doc.session.name,
+        ...(result.missingGlyphs > 0 ? { noticeKey: 'homePdfMissingGlyphs' as const } : {}),
+      }
+    },
+
     async writeRecovery(doc) {
       const text = readMarkdown()
       await markdownApi.writeRecovery(doc.session, text).catch(() => {})

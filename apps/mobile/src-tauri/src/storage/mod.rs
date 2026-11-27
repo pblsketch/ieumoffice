@@ -1,15 +1,19 @@
 pub mod backup;
 pub mod home;
 pub mod prefs;
+pub mod print;
 pub mod recent;
 pub mod recovery;
 pub mod session;
+pub mod thumbnails;
 
 pub use backup::{HwpBackupEntry, HwpBackupStore, MAX_HWP_BACKUPS};
 pub use prefs::{MobileAppPrefs, MobileAppPrefsPatch, MobileHomePrefsPatch, PrefsStore};
+pub use print::{PdfStageTarget, PrintSessionContext, PrintStagingService};
 pub use recent::{RecentDocEntry, RecentStore};
 pub use recovery::{RecoveryEntry, RecoveryStore};
 pub use session::{MobileDocFormat, MobileDocSession, persistent_doc_key, untitled_doc_key};
+pub use thumbnails::{ThumbnailCache, ThumbnailPayload};
 
 use crate::commands::readers::store::ReaderStore;
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
@@ -92,6 +96,50 @@ impl LocalSource {
             }),
         }
     }
+
+    /// Reads the source only if its byte length is at most `max_bytes`, avoiding unbounded RAM spikes.
+    pub(crate) fn read_bounded(&self, max_bytes: usize) -> MobileResult<Vec<u8>> {
+        match self {
+            Self::Bundled(bytes) => {
+                if bytes.len() > max_bytes {
+                    return Err(MobileError::with_detail(
+                        MobileErrorCode::InvalidArgument,
+                        "mobile.print.tooLarge",
+                        format!("file exceeds the {max_bytes}-byte limit"),
+                    ));
+                }
+                Ok(bytes.to_vec())
+            }
+            Self::CacheFile(path) => {
+                let meta = std::fs::metadata(path).map_err(|e| {
+                    MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
+                })?;
+                if meta.len() > max_bytes as u64 {
+                    return Err(MobileError::with_detail(
+                        MobileErrorCode::InvalidArgument,
+                        "mobile.print.tooLarge",
+                        format!("file exceeds the {max_bytes}-byte limit"),
+                    ));
+                }
+                let mut file = std::fs::File::open(path).map_err(|e| {
+                    MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
+                })?;
+                let mut out = Vec::with_capacity((meta.len() as usize).min(max_bytes));
+                std::io::Read::read_to_end(&mut std::io::Read::take(&mut file, (max_bytes as u64).saturating_add(1)), &mut out)
+                    .map_err(|e| {
+                        MobileError::with_detail(MobileErrorCode::InternalError, "mobile.fs.ioError", e.to_string())
+                    })?;
+                if out.len() > max_bytes {
+                    return Err(MobileError::with_detail(
+                        MobileErrorCode::InvalidArgument,
+                        "mobile.print.tooLarge",
+                        format!("file exceeds the {max_bytes}-byte limit"),
+                    ));
+                }
+                Ok(out)
+            }
+        }
+    }
 }
 
 /// A single received document parked by `mobile_home_take_incoming` for the pending-open path.
@@ -108,6 +156,8 @@ struct ActiveSession {
     local: Option<LocalSource>,
     encrypted: bool,
     distribution: bool,
+    /// True for password-protected PDF/Excel/OOXML sessions that must not print, export PDF, or cache thumbnails.
+    content_protected: bool,
     hwp_baseline: Option<HwpBaseline>,
 }
 
@@ -219,6 +269,7 @@ pub struct MobileFileService {
     folders: home::FolderStore,
     favorites: home::FavoriteStore,
     deferred_docs: Mutex<VecDeque<DeferredDoc>>,
+    print_staging: PrintStagingService,
 }
 
 impl MobileFileService {
@@ -227,6 +278,11 @@ impl MobileFileService {
             MobileError::with_detail(MobileErrorCode::InternalError, "mobile.storage.initFailed", e.to_string())
         })?;
         let readers = Arc::new(ReaderStore::new(&app_data_dir));
+        let print_staging = PrintStagingService::new();
+        if let Ok(dirs) = bridge.native_dirs() {
+            print_staging.cleanup_stale_print_dir(&dirs.cache_dir);
+            ThumbnailCache::cleanup_stale_temp_files(&dirs.cache_dir);
+        }
         Ok(Self {
             bridge,
             recent: RecentStore::new(app_data_dir.clone()),
@@ -241,6 +297,7 @@ impl MobileFileService {
             fail_backup_for_test: AtomicBool::new(false),
             openable: Mutex::new(None),
             deferred_docs: Mutex::new(VecDeque::new()),
+            print_staging,
         })
     }
 
@@ -341,6 +398,7 @@ impl MobileFileService {
             local: None,
             encrypted: false,
             distribution: false,
+            content_protected: false,
             hwp_baseline: None,
         })
     }
@@ -401,6 +459,7 @@ impl MobileFileService {
             local: None,
             encrypted: false,
             distribution: false,
+            content_protected: false,
             hwp_baseline: None,
         });
         Ok(session)
@@ -469,6 +528,7 @@ impl MobileFileService {
             local: Some(source),
             encrypted: false,
             distribution: false,
+            content_protected: false,
             hwp_baseline: None,
         });
         Ok(session)
@@ -532,6 +592,18 @@ impl MobileFileService {
                 encrypted: Some(prepared.encrypted),
                 distribution: Some(prepared.distribution),
             });
+        }
+        let non_hwp_encrypted = match format {
+            MobileDocFormat::Pdf => print::pdf_bytes_have_encrypt_dict(&raw),
+            MobileDocFormat::Xlsx | MobileDocFormat::Pptx => {
+                thumbnails::is_ole2_encrypted_ooxml(&raw)
+            }
+            _ => false,
+        };
+        if non_hwp_encrypted
+            && let Some(active) = self.sessions.lock().unwrap().find_mut(session_id)
+        {
+            active.content_protected = true;
         }
         Ok(ReadFileBytesResult {
             bytes_base64: B64.encode(&raw),
@@ -954,7 +1026,93 @@ impl MobileFileService {
     }
 
     pub fn remove_recent_doc(&self, id: &str) -> MobileResult<()> {
+        if let Ok(rows) = self.recent.rows()
+            && let Some(row) = rows.into_iter().find(|r| r.id == id)
+        {
+            self.evict_thumbnail_cache(&row.doc_key);
+        }
         self.recent.remove(id)
+    }
+
+    /// Removes any cached thumbnail associated with `doc_key`.
+    pub(crate) fn evict_thumbnail_cache(&self, doc_key: &str) {
+        if let Ok(dirs) = self.bridge.native_dirs() {
+            ThumbnailCache::evict(&dirs.cache_dir, doc_key);
+        }
+    }
+
+    /// Marks an open session as password-protected for print/PDF export/thumbnail guards
+    /// without blocking format-specific re-encrypted saves (e.g. Sheets).
+    pub(crate) fn mark_session_encrypted(&self, session_id: &str) {
+        if let Some(active) = self.sessions.lock().unwrap().find_mut(session_id) {
+            active.content_protected = true;
+        }
+    }
+
+    /// True if an active or staged session for `doc_key` is marked encrypted, distribution, or password-protected.
+    pub(crate) fn is_protected_doc_key(&self, doc_key: &str) -> bool {
+        let guard = self.sessions.lock().unwrap();
+        [guard.active.as_ref(), guard.pending.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|s| {
+                s.session.doc_key == doc_key
+                    && (s.encrypted || s.distribution || s.content_protected)
+            })
+    }
+
+    fn print_context_for_session(&self, session_id: &str) -> MobileResult<PrintSessionContext> {
+        let active = self.active_session(session_id)?;
+        Ok(PrintSessionContext {
+            session_id: active.session.session_id,
+            format: active.session.format,
+            name: active.session.name,
+            uri: active.uri,
+            local: active.local,
+            encrypted: active.encrypted || active.content_protected,
+            distribution: active.distribution,
+        })
+    }
+
+    pub fn print_stage_begin(
+        &self,
+        session_id: &str,
+        suggested_name: &str,
+        target: PdfStageTarget,
+        expected_bytes: Option<usize>,
+    ) -> MobileResult<String> {
+        let ctx = self.print_context_for_session(session_id)?;
+        self.print_staging
+            .begin(&ctx, suggested_name, target, expected_bytes, self.bridge.as_ref())
+    }
+
+    pub fn print_stage_append(&self, stage_id: &str, chunk_base64: &str) -> MobileResult<usize> {
+        self.print_staging.append(stage_id, chunk_base64)
+    }
+
+    pub fn print_stage_finish(&self, stage_id: &str, session_id: &str) -> MobileResult<()> {
+        // Re-check session protection before handing off to OS print/share.
+        let ctx = self.print_context_for_session(session_id)?;
+        if ctx.encrypted || ctx.distribution {
+            self.print_staging.abort(stage_id);
+            return Err(MobileError::with_detail(
+                MobileErrorCode::PasswordProtected,
+                "mobile.print.protectedRefused",
+                "encrypted or distribution documents cannot be printed or exported as PDF",
+            ));
+        }
+        self.print_staging
+            .finish(stage_id, session_id, ctx.format, self.bridge.as_ref())
+    }
+
+    pub fn print_stage_abort(&self, stage_id: &str) {
+        self.print_staging.abort(stage_id);
+    }
+
+    pub fn print_session_pdf(&self, session_id: &str) -> MobileResult<()> {
+        let ctx = self.print_context_for_session(session_id)?;
+        self.print_staging
+            .print_unmodified_session_pdf(&ctx, self.bridge.as_ref())
     }
 
     pub fn recovery_write(

@@ -560,6 +560,82 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     await openedDocRef.current?.doc.share(doc)
   }, [])
 
+  const exportingPdfRef = useRef(false)
+  const runPdfAction = useCallback(
+    async (target: 'print' | 'share') => {
+      const doc = activeDocRef.current
+      const opened = openedDocRef.current
+      if (!doc || !opened?.doc.exportPdf || exportingPdfRef.current) return
+      if (doc.encrypted || doc.distribution) {
+        showToast({
+          message: translateMobile(langRef.current, 'homePrintProtected'),
+          tone: 'error',
+        })
+        return
+      }
+      exportingPdfRef.current = true
+      try {
+        showToast(translateMobile(langRef.current, 'homePdfExportWorking'))
+        const exported = await opened.doc.exportPdf(doc, target)
+        if (!exported) return
+        const printBridge = await import('@genoffice/mobile-bridge/print')
+        if (exported.kind === 'session-original') {
+          if (target === 'print') {
+            await printBridge.printSessionPdf(client, doc.session.sessionId)
+          } else {
+            await opened.doc.share(doc)
+          }
+        } else if (target === 'print') {
+          await printBridge.printPdfBytes(client, {
+            sessionId: doc.session.sessionId,
+            suggestedName: exported.fileName,
+            bytes: exported.bytes,
+          })
+          if (exported.noticeKey) {
+            showToast(translateMobile(langRef.current, exported.noticeKey))
+          }
+        } else {
+          await printBridge.sharePdfBytes(client, {
+            sessionId: doc.session.sessionId,
+            suggestedName: exported.fileName,
+            bytes: exported.bytes,
+          })
+          if (exported.noticeKey) {
+            showToast(translateMobile(langRef.current, exported.noticeKey))
+          }
+        }
+      } catch (err) {
+        if (isMobileCommandError(err)) {
+          if (err.code === 'USER_CANCELLED') return
+          if (err.code === 'PASSWORD_PROTECTED') {
+            showToast({
+              message: translateMobile(langRef.current, 'homePrintProtected'),
+              tone: 'error',
+            })
+            return
+          }
+          if (err.messageKey === 'mobile.print.tooLarge') {
+            showToast({
+              message: translateMobile(langRef.current, 'homePrintTooLarge'),
+              tone: 'error',
+            })
+            return
+          }
+        }
+        showToast({
+          message: translateMobile(
+            langRef.current,
+            target === 'print' ? 'homePrintFailed' : 'homePdfExportFailed',
+          ),
+          tone: 'error',
+        })
+      } finally {
+        exportingPdfRef.current = false
+      }
+    },
+    [client, showToast],
+  )
+
   const handleUpdatePrefs = useCallback(
     async (patch: MobileAppPrefsPatch) => {
       const updated = await client.setAppPrefs(patch)
@@ -641,6 +717,17 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
                 ? { onSaveAs: () => void runSave(activeDoc, true) }
                 : {}),
               onShare: () => void handleShare(),
+              ...(typeof openedDoc.doc.exportPdf === 'function'
+                ? {
+                    onPrint: () => void runPdfAction('print'),
+                    ...(activeDoc.session.format !== 'pdf'
+                      ? { onSharePdf: () => void runPdfAction('share') }
+                      : {}),
+                    ...(openedDoc.doc.exportPdfScope
+                      ? { printScope: openedDoc.doc.exportPdfScope }
+                      : {}),
+                  }
+                : {}),
               onOpenBackups: () => {
                 void refreshHomeData()
                 setScreen('settings')

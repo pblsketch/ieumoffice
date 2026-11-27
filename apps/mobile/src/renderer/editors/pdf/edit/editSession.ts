@@ -13,7 +13,7 @@ import { imageRectKey } from '../../../../../../pdf/src/renderer/ImageEditLayer'
 import type { EditSnapshot } from '../../../../../../pdf/src/renderer/edit-state'
 import type { OpContext } from '../../../../../../pdf/src/renderer/edit-ops'
 import type { MobileStringKey } from '../../../i18n/strings'
-import type { EditorHost } from '../../editorKind'
+import type { EditorHost, EditorPdfExportResult } from '../../editorKind'
 import { getPdfEngine, type PdfEngine, type PdfSaveResult } from '../engine'
 import type { PdfUnlockProbe } from '../openTypes'
 import type { PdfOpenedDocument } from '../view/model'
@@ -59,6 +59,7 @@ export interface PdfEditSession {
   setAnnotationPrompt(prompt: PdfAnnotationPrompt | null): void
   save(doc: ActiveDocState, forceSaveAs: boolean): Promise<boolean>
   share(doc: ActiveDocState): Promise<void>
+  exportPdf(doc: ActiveDocState, target: 'print' | 'share'): Promise<EditorPdfExportResult | null>
   writeRecovery(doc: ActiveDocState): Promise<void>
 }
 
@@ -411,6 +412,28 @@ export function createPdfEditSession(options: PdfEditSessionOptions): PdfEditSes
       } catch {
         toastError(t('pdfEditShareFailed'))
       }
+    },
+
+    async exportPdf(doc, target) {
+      if (drafts.size > 0) await flushDrafts()
+      docSession = doc.session
+      const current = model
+      // Encrypted PDFs never write decrypted plain copies to disk (spec 3.11).
+      if (current.encrypted) {
+        toastError(t('homePrintProtected'))
+        return null
+      }
+      if (!store.hasEdits()) {
+        if (target === 'print' && !doc.isUntitled) {
+          return { kind: 'session-original', fileName: doc.session.name }
+        }
+        return { kind: 'bytes', bytes: current.originalBytes, fileName: doc.session.name }
+      }
+      const bytes = await engine().applyEdits(
+        current.originalBytes,
+        buildSavePdfRequest(store.getSnapshot(), current, extras),
+      )
+      return { kind: 'bytes', bytes, fileName: doc.session.name }
     },
 
     async writeRecovery(doc) {

@@ -64,6 +64,10 @@
   --m-scrim: var(--color-bg-overlay);
   --m-surface-raised: var(--surface);
   --m-system-bar: var(--surface);
+  /* document paper preview (document content stays white paper in dark mode) */
+  --m-doc-paper: #ffffff;
+  --m-doc-ink: #1f2937;
+  --m-doc-ink-muted: #4b5563;
 
   /* safe area and keyboard (--m-kb is written by useViewportLayout) */
   --m-safe-top: env(safe-area-inset-top, 0px);

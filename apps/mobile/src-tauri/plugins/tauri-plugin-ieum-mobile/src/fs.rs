@@ -45,6 +45,12 @@ pub const INCOMING_RELATIVE_DIR: &str = "ieum-tmp/home/incoming";
 /// A copy of the original stays here only when a failed write could not be undone.
 pub const WRITE_WORK_RELATIVE_DIR: &str = "ieum-tmp/home/write";
 
+/// Where PDF print jobs are staged before being handed to the OS print spooler.
+pub const PRINT_WORK_RELATIVE_DIR: &str = "ieum-tmp/print";
+
+/// Where cached document thumbnails are stored, relative to the app cache directory.
+pub const THUMBS_RELATIVE_DIR: &str = "ieum-tmp/thumbs";
+
 /// A folder the user linked through the system folder picker. `uri` is the Android tree URI
 /// (with a persisted read/write grant) or the base64 iOS security-scoped bookmark.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,6 +295,39 @@ pub trait NativeFileBridge: Send + Sync {
     fn open_external_url(&self, url: &str) -> Result<(), NativeHomeError>;
     /// The app cache directory and the share-out temporary copy directory.
     fn native_dirs(&self) -> Result<NativeDirs, NativeHomeError>;
+
+    /// Opens the OS print sheet for a staged PDF file at `path`. Implementations delete `path`
+    /// once the OS print spooler finishes reading it.
+    fn print_pdf_from_path(&self, _path: &Path, _job_name: &str) -> Result<(), NativeFsError> {
+        Err(NativeFsError::new(
+            NativeFsErrorKind::IoError,
+            "printing is not supported on this platform",
+        ))
+    }
+
+    /// Shares a staged file directly from disk without reloading its bytes into Rust memory.
+    /// The default falls back to reading `path` and calling `share_file_bytes`.
+    fn share_file_from_path(
+        &self,
+        path: &Path,
+        suggested_name: &str,
+        mime: &str,
+    ) -> Result<(), NativeFsError> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        self.share_file_bytes(suggested_name, mime, &bytes)
+    }
+
+    /// Renders page 0 of a local PDF file at `src_path` to a PNG at `dest_png_path`, scaled so
+    /// the longer edge does not exceed `max_px`. Returns `Ok(false)` when unsupported or locked.
+    fn render_pdf_thumbnail(
+        &self,
+        _src_path: &Path,
+        _dest_png_path: &Path,
+        _max_px: u32,
+    ) -> Result<bool, NativeFsError> {
+        Ok(false)
+    }
 }
 
 /// Synthetic document entry for host tests and desktop development builds.
@@ -353,6 +392,9 @@ struct HostFsState {
     cache_dir: Option<PathBuf>,
     stream_plans: VecDeque<StreamPlan>,
     stream_count: usize,
+    printed_pdfs: Vec<(String, Vec<u8>)>,
+    pdf_thumb_stub: Option<Vec<u8>>,
+    pdf_thumb_calls: usize,
 }
 
 /// What the next `HostFileBridge::stream_file_to_uri` calls do (test hooks).
@@ -571,6 +613,24 @@ impl HostFileBridge {
     pub fn last_shared_bytes(&self) -> Option<Vec<u8>> {
         let guard = self.state.lock().unwrap();
         guard.last_shared.as_ref().map(|(_, _, b)| b.clone())
+    }
+
+    pub fn last_shared_meta(&self) -> Option<(String, String, Vec<u8>)> {
+        self.state.lock().unwrap().last_shared.clone()
+    }
+
+    /// Returns all `(job_name, pdf_bytes)` passed to `print_pdf_from_path`.
+    pub fn printed_pdfs(&self) -> Vec<(String, Vec<u8>)> {
+        self.state.lock().unwrap().printed_pdfs.clone()
+    }
+
+    /// Configures PNG bytes written by `render_pdf_thumbnail` in host tests.
+    pub fn set_pdf_thumbnail_stub(&self, png: Option<Vec<u8>>) {
+        self.state.lock().unwrap().pdf_thumb_stub = png;
+    }
+
+    pub fn pdf_thumbnail_calls(&self) -> usize {
+        self.state.lock().unwrap().pdf_thumb_calls
     }
 
     /// Adds a folder tree to the simulated device (not linked yet; `pick_folder` grants it).
@@ -1137,6 +1197,54 @@ impl NativeFileBridge for HostFileBridge {
             share_temp_dir: cache_dir.join("shared"),
             cache_dir,
         })
+    }
+
+    fn print_pdf_from_path(&self, path: &Path, job_name: &str) -> Result<(), NativeFsError> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        self.state
+            .lock()
+            .unwrap()
+            .printed_pdfs
+            .push((job_name.to_string(), bytes));
+        let _ = std::fs::remove_file(path);
+        Ok(())
+    }
+
+    fn share_file_from_path(
+        &self,
+        path: &Path,
+        suggested_name: &str,
+        mime: &str,
+    ) -> Result<(), NativeFsError> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        let mut guard = self.state.lock().unwrap();
+        guard.last_shared = Some((suggested_name.to_string(), mime.to_string(), bytes));
+        Ok(())
+    }
+
+    fn render_pdf_thumbnail(
+        &self,
+        _src_path: &Path,
+        dest_png_path: &Path,
+        _max_px: u32,
+    ) -> Result<bool, NativeFsError> {
+        let stub = {
+            let mut guard = self.state.lock().unwrap();
+            guard.pdf_thumb_calls += 1;
+            guard.pdf_thumb_stub.clone()
+        };
+        let Some(png) = stub else {
+            return Ok(false);
+        };
+        if let Some(parent) = dest_png_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        }
+        std::fs::write(dest_png_path, png)
+            .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))?;
+        Ok(true)
     }
 }
 

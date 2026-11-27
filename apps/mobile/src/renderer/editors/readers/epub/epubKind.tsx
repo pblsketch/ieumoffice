@@ -122,6 +122,38 @@ function startEpubDocument(
         })
         .catch(() => {})
     },
+    exportPdfScope: 'chapter',
+    async exportPdf(doc) {
+      const ready = await loaded
+      const activeReader = ready?.reader ?? reader
+      if (!activeReader) return null
+      await activeReader.ready
+      if (activeReader.getState().status !== 'ready') return null
+
+      let html = activeReader.shown?.view.html ?? null
+      let tempRelease: (() => void) | null = null
+      if (!html) {
+        const chapter = await activeReader.loadChapter(activeReader.place.spineIndex, () => '')
+        if (!chapter) return null
+        html = chapter.view.html
+        tempRelease = () => chapter.view.release()
+      }
+      try {
+        const { renderHtmlToPdfBytes } = await import('../../shared/pdfExport')
+        const chapterTitle = activeReader.chapterName(activeReader.place.spineIndex)
+        const result = await renderHtmlToPdfBytes(html, { title: chapterTitle })
+        const stem = doc.session.name.replace(/\.epub$/i, '')
+        const fileName = `${stem}-${chapterTitle}.pdf`
+        return {
+          kind: 'bytes',
+          bytes: result.bytes,
+          fileName,
+          ...(result.missingGlyphs > 0 ? { noticeKey: 'homePdfMissingGlyphs' as const } : {}),
+        }
+      } finally {
+        tempRelease?.()
+      }
+    },
     Workspace: EpubDocumentWorkspace,
     editable: false,
     aiAvailable: false,

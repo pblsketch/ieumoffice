@@ -354,6 +354,7 @@ export function HomeScreen({
                 <HomeFileRow
                   key={item.key}
                   item={item}
+                  client={client}
                   selecting={selection.selecting}
                   selected={selection.isSelected(item.key)}
                   onOpen={() => openItem(index)}

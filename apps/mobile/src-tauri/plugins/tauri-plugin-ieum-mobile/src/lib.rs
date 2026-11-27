@@ -59,6 +59,28 @@ mod mobile_bridge {
         mime: &'a str,
     }
 
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PrintPathArgs<'a> {
+        path: &'a str,
+        job_name: &'a str,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RenderPdfThumbArgs<'a> {
+        src_path: &'a str,
+        dest_path: &'a str,
+        max_px: u32,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RenderPdfThumbResp {
+        #[serde(default)]
+        rendered: bool,
+    }
+
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct SizeResp {
@@ -410,6 +432,58 @@ mod mobile_bridge {
             self.handle
                 .run_mobile_plugin("getNativeDirs", ())
                 .map_err(map_home_invoke_err)
+        }
+
+        fn print_pdf_from_path(&self, path: &Path, job_name: &str) -> Result<(), NativeFsError> {
+            let path = path_arg(path)?;
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("printPdfFromPath", PrintPathArgs { path, job_name })
+                .map_err(map_invoke_err)?;
+            Ok(())
+        }
+
+        fn share_file_from_path(
+            &self,
+            path: &Path,
+            suggested_name: &str,
+            mime: &str,
+        ) -> Result<(), NativeFsError> {
+            let path = path_arg(path)?;
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin(
+                    "shareFileFromPath",
+                    SharePathArgs {
+                        path,
+                        suggested_name,
+                        mime,
+                    },
+                )
+                .map_err(map_invoke_err)?;
+            Ok(())
+        }
+
+        fn render_pdf_thumbnail(
+            &self,
+            src_path: &Path,
+            dest_png_path: &Path,
+            max_px: u32,
+        ) -> Result<bool, NativeFsError> {
+            let src_path = path_arg(src_path)?;
+            let dest_path = path_arg(dest_png_path)?;
+            let resp: RenderPdfThumbResp = self
+                .handle
+                .run_mobile_plugin(
+                    "renderPdfThumbnail",
+                    RenderPdfThumbArgs {
+                        src_path,
+                        dest_path,
+                        max_px,
+                    },
+                )
+                .map_err(map_invoke_err)?;
+            Ok(resp.rendered)
         }
     }
 

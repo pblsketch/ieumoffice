@@ -481,6 +481,128 @@
   display: none;
 }
 
+/* ── Document thumbnail previews (list & card grid views) ── */
+
+.home-act-thumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mobile-doc-list:not([data-view='grid']) .home-act-thumb[data-thumb-kind='image'],
+.mobile-doc-list:not([data-view='grid']) .home-act-thumb[data-thumb-kind='text'] {
+  width: 34px;
+  height: 44px;
+  border-radius: var(--radius-6);
+  border: 1px solid var(--border);
+  background: var(--m-doc-paper);
+  overflow: hidden;
+}
+
+.mobile-doc-list:not([data-view='grid']) .home-act-thumb-badge {
+  display: none;
+}
+
+.mobile-doc-list[data-view='grid'] .home-act-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-8);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.mobile-doc-list[data-view='grid'] .home-act-thumb[data-thumb-kind='image'],
+.mobile-doc-list[data-view='grid'] .home-act-thumb[data-thumb-kind='text'] {
+  background: var(--m-doc-paper);
+}
+
+.home-act-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.home-act-thumb-paper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--m-space-half);
+  width: 100%;
+  height: 100%;
+  padding: var(--m-space-2);
+  background: var(--m-doc-paper);
+  color: var(--m-doc-ink);
+  text-align: left;
+  overflow: hidden;
+}
+
+.home-act-thumb-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--m-doc-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-act-thumb-snippet {
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: var(--m-doc-ink-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.home-act-thumb-list-fallback {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* In compact list rows, avoid illegible miniature text snippets: keep the crisp format icon instead. */
+.mobile-doc-list:not([data-view='grid'])
+  .home-act-thumb[data-thumb-kind='text']
+  .home-act-thumb-paper,
+.mobile-doc-list:not([data-view='grid'])
+  .home-act-thumb[data-thumb-kind='text']
+  .home-act-thumb-badge {
+  display: none;
+}
+
+.mobile-doc-list:not([data-view='grid'])
+  .home-act-thumb[data-thumb-kind='text']
+  .home-act-thumb-list-fallback {
+  display: inline-flex;
+}
+
+.home-act-thumb-badge {
+  position: absolute;
+  right: var(--m-space-1);
+  bottom: var(--m-space-1);
+  padding: 1px var(--m-space-1);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
 /* ── T3 tools screen above the home ── */
 
 .home-frame-flow {
