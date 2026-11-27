@@ -1804,6 +1804,646 @@ jobs:
             cat "$ART_DIR/logs/app-stderr.txt" || true
           } > "$ART_DIR/logs/console-errors.txt"
 
+      - name: Capture App Store screenshots (iPhone 6.9 & iPad 13, ko-KR & en-US)
+        id: store_shots
+        if: success()
+        env:
+          ART_DIR: ${{ steps.build_sim.outputs.art_dir }}
+          APP_PATH: ${{ steps.build_sim.outputs.app_path }}
+          BUNDLE_ID: ${{ steps.build_sim.outputs.bundle_id }}
+        run: |
+          set -euo pipefail
+          xcrun simctl shutdown all 2>/dev/null || true
+
+          python3 - <<'PY'
+          import json
+          import os
+          import plistlib
+          import socket
+          import struct
+          import subprocess
+          import sys
+          import time
+          import uuid
+          from pathlib import Path
+
+          art_dir = Path(os.environ["ART_DIR"])
+          app_path = os.environ["APP_PATH"]
+          bundle_id = os.environ.get("BUNDLE_ID", "com.ieumoffice.mobile")
+          shots_root = art_dir / "store-shots"
+          shots_root.mkdir(parents=True, exist_ok=True)
+          logs_dir = art_dir / "logs"
+
+          trace_lines = []
+          def trace(msg):
+              line = f"[{time.strftime('%H:%M:%S')}] {msg}"
+              trace_lines.append(line)
+              print(line, flush=True)
+
+          def run_cmd(cmd, timeout=45):
+              try:
+                  p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                  return p.returncode, p.stdout, p.stderr
+              except Exception as exc:
+                  return -1, "", str(exc)
+
+          def pick_sim_device(preferred_substrings):
+              rc, out, err = run_cmd(["xcrun", "simctl", "list", "devices", "available", "-j"], timeout=20)
+              if rc != 0:
+                  raise RuntimeError(f"simctl list failed: {err}")
+              data = json.loads(out)
+              for sub in preferred_substrings:
+                  matches = []
+                  for runtime, devices in data.get("devices", {}).items():
+                      if "iOS" not in runtime:
+                          continue
+                      for d in devices:
+                          if d.get("isAvailable") and sub.lower() in d.get("name", "").lower():
+                              matches.append((runtime, d["name"], d["udid"]))
+                  if matches:
+                      matches.sort(key=lambda item: (item[0], item[1]))
+                      return matches[-1]
+              raise RuntimeError(f"No available simulator matched {preferred_substrings}")
+
+          def find_webinspectord_socket(udid):
+              candidates = []
+              rc, out, _ = run_cmd(["xcrun", "simctl", "getenv", udid, "RWI_LISTEN_SOCKET"], timeout=10)
+              if rc == 0 and out.strip():
+                  candidates.append(out.strip())
+              rc2, out2, _ = run_cmd(["lsof", "-aUc", "launchd_sim"], timeout=10)
+              if rc2 == 0:
+                  for line in out2.splitlines():
+                      if "webinspectord_sim.socket" in line:
+                          parts = line.split()
+                          if parts and parts[-1].startswith("/") and parts[-1] not in candidates:
+                              candidates.append(parts[-1])
+              return candidates
+
+          class WebInspectorClient:
+              def __init__(self, sock_path):
+                  self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                  self.sock.settimeout(12.0)
+                  self.sock.connect(sock_path)
+                  self.conn_id = str(uuid.uuid4()).upper()
+                  self.sender_id = str(uuid.uuid4()).upper()
+                  self.app_id = None
+                  self.page_id = None
+                  self.target_id = None
+                  self.next_id = 1
+
+              def close(self):
+                  try:
+                      self.sock.close()
+                  except Exception:
+                      pass
+
+              def send_rpc(self, selector, argument):
+                  payload = plistlib.dumps({"__selector": selector, "__argument": argument}, fmt=plistlib.FMT_BINARY)
+                  self.sock.sendall(struct.pack("!I", len(payload)) + payload)
+
+              def recv_exact(self, n):
+                  buf = bytearray()
+                  while len(buf) < n:
+                      chunk = self.sock.recv(n - len(buf))
+                      if not chunk:
+                          raise EOFError("WebInspector socket closed")
+                      buf.extend(chunk)
+                  return bytes(buf)
+
+              def recv_rpc(self, timeout=10.0):
+                  self.sock.settimeout(timeout)
+                  hdr = self.recv_exact(4)
+                  (length,) = struct.unpack("!I", hdr)
+                  return plistlib.loads(self.recv_exact(length))
+
+              def connect(self, timeout_s=25.0):
+                  self.send_rpc("_rpc_reportIdentifier:", {"WIRConnectionIdentifierKey": self.conn_id})
+                  deadline = time.time() + timeout_s
+                  listing_requested = False
+                  socket_setup_sent = False
+                  while time.time() < deadline:
+                      try:
+                          msg = self.recv_rpc(timeout=max(0.5, deadline - time.time()))
+                      except socket.timeout:
+                          break
+                      sel = msg.get("__selector", "")
+                      arg = msg.get("__argument", {}) or {}
+                      if sel == "_rpc_reportConnectedApplicationList:":
+                          apps = arg.get("WIRApplicationDictionaryKey") or {}
+                          for aid, info in apps.items():
+                              b = str(info.get("WIRApplicationBundleIdentifierKey") or "")
+                              n = str(info.get("WIRApplicationNameKey") or "")
+                              if bundle_id in b or "IeumOffice" in b or "IeumOffice" in n:
+                                  self.app_id = aid
+                                  break
+                      elif sel in ("_rpc_applicationConnected:", "_rpc_applicationUpdated:"):
+                          aid = arg.get("WIRApplicationIdentifierKey")
+                          b = str(arg.get("WIRApplicationBundleIdentifierKey") or "")
+                          n = str(arg.get("WIRApplicationNameKey") or "")
+                          if aid and (bundle_id in b or "IeumOffice" in b or "IeumOffice" in n):
+                              self.app_id = aid
+                      if self.app_id and not listing_requested:
+                          self.send_rpc("_rpc_getConnectedApplications:", {"WIRConnectionIdentifierKey": self.conn_id})
+                          self.send_rpc("_rpc_forwardGetListing:", {
+                              "WIRConnectionIdentifierKey": self.conn_id,
+                              "WIRApplicationIdentifierKey": self.app_id,
+                          })
+                          listing_requested = True
+                      if sel == "_rpc_applicationSentListing:":
+                          listing = arg.get("WIRListingKey") or {}
+                          chosen = None
+                          for _, p in listing.items():
+                              url = str(p.get("WIRURLKey") or "")
+                              ptype = str(p.get("WIRTypeKey") or "")
+                              pid_val = p.get("WIRPageIdentifierKey")
+                              if pid_val is not None:
+                                  if url.startswith("tauri://"):
+                                      chosen = pid_val
+                                      break
+                                  if chosen is None and ("Web" in ptype or url):
+                                      chosen = pid_val
+                          if chosen is not None and not socket_setup_sent:
+                              self.page_id = chosen
+                              self.send_rpc("_rpc_forwardSocketSetup:", {
+                                  "WIRConnectionIdentifierKey": self.conn_id,
+                                  "WIRApplicationIdentifierKey": self.app_id,
+                                  "WIRPageIdentifierKey": self.page_id,
+                                  "WIRSenderKey": self.sender_id,
+                                  "WIRAutomaticallyPause": False,
+                              })
+                              socket_setup_sent = True
+                      if sel == "_rpc_applicationSentData:":
+                          raw = arg.get("WIRMessageDataKey")
+                          if isinstance(raw, (bytes, bytearray)):
+                              try:
+                                  data = json.loads(raw.decode("utf-8", errors="replace"))
+                                  if data.get("method") == "Target.targetCreated":
+                                      tinfo = (data.get("params") or {}).get("targetInfo") or {}
+                                      tid = tinfo.get("targetId")
+                                      ttype = tinfo.get("type")
+                                      if tid and (self.target_id is None or ttype == "page"):
+                                          self.target_id = tid
+                                          return True
+                              except Exception:
+                                  pass
+                  return socket_setup_sent
+
+              def eval_js(self, expression, timeout_s=15.0):
+                  cmd_id = self.next_id
+                  self.next_id += 1
+                  inner = {
+                      "id": cmd_id,
+                      "method": "Runtime.evaluate",
+                      "params": {
+                          "expression": expression,
+                          "returnByValue": True,
+                          "awaitPromise": False,
+                      },
+                  }
+                  if self.target_id:
+                      outer_id = self.next_id
+                      self.next_id += 1
+                      payload_obj = {
+                          "id": outer_id,
+                          "method": "Target.sendMessageToTarget",
+                          "params": {
+                              "targetId": self.target_id,
+                              "message": json.dumps(inner),
+                          },
+                      }
+                  else:
+                      payload_obj = inner
+                  self.send_rpc("_rpc_forwardSocketData:", {
+                      "WIRConnectionIdentifierKey": self.conn_id,
+                      "WIRApplicationIdentifierKey": self.app_id,
+                      "WIRPageIdentifierKey": self.page_id,
+                      "WIRSenderKey": self.sender_id,
+                      "WIRSocketDataKey": json.dumps(payload_obj).encode("utf-8"),
+                  })
+                  deadline = time.time() + timeout_s
+                  while time.time() < deadline:
+                      try:
+                          msg = self.recv_rpc(timeout=max(0.5, deadline - time.time()))
+                      except socket.timeout:
+                          break
+                      if msg.get("__selector") != "_rpc_applicationSentData:":
+                          continue
+                      raw = (msg.get("__argument") or {}).get("WIRMessageDataKey")
+                      if not isinstance(raw, (bytes, bytearray)):
+                          continue
+                      data = json.loads(raw.decode("utf-8", errors="replace"))
+                      if data.get("method") == "Target.targetCreated":
+                          tinfo = (data.get("params") or {}).get("targetInfo") or {}
+                          if tinfo.get("type") == "page" and tinfo.get("targetId"):
+                              self.target_id = tinfo["targetId"]
+                          continue
+                      if data.get("method") == "Target.dispatchMessageFromTarget":
+                          inner_str = (data.get("params") or {}).get("message", "")
+                          if not inner_str:
+                              continue
+                          inner_data = json.loads(inner_str)
+                          if inner_data.get("id") == cmd_id:
+                              return self._unwrap(inner_data)
+                      elif data.get("id") == cmd_id:
+                          return self._unwrap(data)
+                  raise TimeoutError(f"Runtime.evaluate timed out (cmd_id={cmd_id})")
+
+              def _unwrap(self, resp):
+                  if "error" in resp:
+                      raise RuntimeError(f"Inspector error: {resp['error']}")
+                  res = resp.get("result") or {}
+                  if res.get("wasThrown"):
+                      raise RuntimeError(f"JS exception: {res.get('result')}")
+                  return (res.get("result") or {}).get("value")
+
+          def connect_inspector(udid):
+              for attempt in range(1, 6):
+                  for sp in find_webinspectord_socket(udid):
+                      try:
+                          c = WebInspectorClient(sp)
+                          if c.connect(timeout_s=20.0):
+                              trace(f"  WebInspector connected (attempt {attempt}) app={c.app_id} page={c.page_id}")
+                              return c
+                          c.close()
+                      except Exception as exc:
+                          trace(f"  WebInspector attempt {attempt} failed: {exc}")
+                  time.sleep(3)
+              return None
+
+          def wait_visible(insp, selectors, labels=(), timeout_s=20.0, poll_s=0.6):
+              deadline = time.time() + timeout_s
+              while time.time() < deadline:
+                  try:
+                      found = insp.eval_js(f"""(() => {{
+                        const sels = {json.dumps(list(selectors))};
+                        const lbls = {json.dumps(list(labels), ensure_ascii=False)};
+                        const vis = (el) => {{
+                          const r = el.getBoundingClientRect();
+                          if (!r || r.width <= 0 || r.height <= 0) return false;
+                          const st = window.getComputedStyle(el);
+                          return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0';
+                        }};
+                        for (const s of sels) {{
+                          const el = document.querySelector(s);
+                          if (el && vis(el)) return 'sel:' + s;
+                        }}
+                        if (lbls.length) {{
+                          for (const el of document.querySelectorAll('button, [role="button"], a')) {{
+                            if (!vis(el)) continue;
+                            const al = (el.getAttribute('aria-label') || '').trim();
+                            const tx = (el.innerText || el.textContent || '').trim();
+                            if (lbls.some(l => al === l || tx === l)) return 'lbl:' + (al || tx);
+                          }}
+                        }}
+                        return null;
+                      }})()""")
+                      if found:
+                          return found
+                  except Exception:
+                      pass
+                  time.sleep(poll_s)
+              return None
+
+          def click_ui(insp, selectors, labels=()):
+              return insp.eval_js(f"""(() => {{
+                const sels = {json.dumps(list(selectors))};
+                const lbls = {json.dumps(list(labels), ensure_ascii=False)};
+                const vis = (el) => {{
+                  const r = el.getBoundingClientRect();
+                  if (!r || r.width <= 0 || r.height <= 0) return false;
+                  const st = window.getComputedStyle(el);
+                  return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0';
+                }};
+                for (const s of sels) {{
+                  const el = document.querySelector(s);
+                  if (el && vis(el)) {{ el.click(); return 'sel:' + s; }}
+                }}
+                for (const el of document.querySelectorAll('button, [role="button"], a')) {{
+                  if (!vis(el)) continue;
+                  const al = (el.getAttribute('aria-label') || '').trim();
+                  const tx = (el.innerText || el.textContent || '').trim();
+                  if (lbls.some(l => al === l || tx === l)) {{ el.click(); return 'lbl:' + (al || tx); }}
+                }}
+                return null;
+              }})()""")
+
+          def wait_hwp_flow(insp, timeout_s=30.0):
+              deadline = time.time() + timeout_s
+              while time.time() < deadline:
+                  try:
+                      ok = insp.eval_js("""(() => {
+                        const toggle = document.querySelector('[data-testid="view-tool-pageView"]')
+                          || Array.from(document.querySelectorAll('button')).find(b => ['쪽 화면', 'Page view'].includes((b.getAttribute('aria-label') || '').trim()));
+                        if (!toggle) return false;
+                        for (const f of document.querySelectorAll('iframe')) {
+                          try {
+                            const txt = (f.contentDocument?.body?.innerText || '').trim();
+                            if (txt.length > 20) return true;
+                          } catch {}
+                        }
+                        return false;
+                      })()""")
+                      if ok:
+                          return True
+                  except Exception:
+                      pass
+                  time.sleep(0.7)
+              return False
+
+          def wait_hwp_page(insp, timeout_s=30.0):
+              deadline = time.time() + timeout_s
+              while time.time() < deadline:
+                  try:
+                      ok = insp.eval_js("""(() => {
+                        const toggle = document.querySelector('[data-testid="view-tool-flowView"]')
+                          || Array.from(document.querySelectorAll('button')).find(b => ['읽기 화면', 'Reading view'].includes((b.getAttribute('aria-label') || '').trim()));
+                        if (!toggle) return false;
+                        for (const f of document.querySelectorAll('iframe')) {
+                          try {
+                            const c = f.contentDocument?.querySelector('canvas');
+                            if (c && c.width > 0 && c.height > 0) return true;
+                          } catch {}
+                        }
+                        return false;
+                      })()""")
+                      if ok:
+                          return True
+                  except Exception:
+                      pass
+                  time.sleep(0.7)
+              return False
+
+          def png_dims(path):
+              rc, out, _ = run_cmd(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)], timeout=10)
+              w = h = None
+              if rc == 0:
+                  for line in out.splitlines():
+                      if "pixelWidth:" in line:
+                          w = int(line.split(":")[1].strip())
+                      elif "pixelHeight:" in line:
+                          h = int(line.split(":")[1].strip())
+              return w, h
+
+          def take_shot(udid, out_path):
+              rc, _, err = run_cmd(["xcrun", "simctl", "io", udid, "screenshot", str(out_path)], timeout=20)
+              ok = rc == 0 and out_path.exists()
+              w, h = png_dims(out_path) if ok else (None, None)
+              return {"file": out_path.name, "ok": ok, "width": w, "height": h, "error": err.strip() if rc != 0 else ""}
+
+          MD_SAMPLE = {
+              "ko-KR": (
+                  "# 주간 프로젝트 메모\n\n"
+                  "## 이번 주 핵심 안건\n"
+                  "- 모바일 1판 iOS · Android 출시 최종 점검\n"
+                  "- 한글(HWP·HWPX) 읽기 화면 표 조판 개선\n"
+                  "- PDF 인쇄 및 문서 썸네일 미리보기 적용\n\n"
+                  "## 다음 일정\n"
+                  "1. 스토어 스크린샷 및 메타데이터 검수\n"
+                  "2. 내부 테스트 배포 및 피드백 반영\n"
+              ),
+              "en-US": (
+                  "# Weekly Project Notes\n\n"
+                  "## Key Highlights\n"
+                  "- Mobile v1 release readiness for iOS and Android\n"
+                  "- Improved reading view layout for Hangul documents\n"
+                  "- Unified PDF export, print, and document thumbnails\n\n"
+                  "## Next Steps\n"
+                  "1. Finalize App Store screenshots and metadata\n"
+                  "2. Roll out beta build and gather feedback\n"
+              ),
+          }
+
+          DEVICES = [
+              ("iphone-6.9", ["iPhone 17 Pro Max", "iPhone 16 Pro Max", "Pro Max"]),
+              ("ipad-13", ["iPad Pro 13-inch (M5)", "iPad Pro 13-inch", "13-inch"]),
+          ]
+          LOCALES = [
+              ("ko-KR", "ko_KR", ["ko-KR", "ko", "en"], "ko"),
+              ("en-US", "en_US", ["en-US", "en"], "en"),
+          ]
+
+          report = {"runs": []}
+
+          for dev_key, dev_prefs in DEVICES:
+              rt, dev_name, udid = pick_sim_device(dev_prefs)
+              trace(f"=== Store Shots Device: {dev_key} -> {dev_name} ({rt}) [{udid}] ===")
+              run_cmd(["xcrun", "simctl", "boot", udid], timeout=30)
+              run_cmd(["xcrun", "simctl", "bootstatus", udid, "-b"], timeout=120)
+
+              try:
+                  for loc_tag, apple_locale, apple_langs, short_lang in LOCALES:
+                      out_dir = shots_root / dev_key / loc_tag
+                      out_dir.mkdir(parents=True, exist_ok=True)
+                      run_info = {
+                          "device_key": dev_key,
+                          "device_name": dev_name,
+                          "runtime": rt,
+                          "udid": udid,
+                          "locale": loc_tag,
+                          "shots": [],
+                          "errors": [],
+                      }
+                      trace(f"--- Capturing {dev_key} / {loc_tag} ---")
+
+                      run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
+                      run_cmd(["xcrun", "simctl", "uninstall", udid, bundle_id], timeout=20)
+                      run_cmd(["xcrun", "simctl", "install", udid, app_path], timeout=45)
+
+                      run_cmd(["xcrun", "simctl", "spawn", udid, "defaults", "write", "-g", "AppleLanguages", "-array", *apple_langs], timeout=15)
+                      run_cmd(["xcrun", "simctl", "spawn", udid, "defaults", "write", "-g", "AppleLocale", "-string", apple_locale], timeout=15)
+                      run_cmd(["xcrun", "simctl", "ui", udid, "appearance", "light"], timeout=15)
+                      run_cmd([
+                          "xcrun", "simctl", "status_bar", udid, "override",
+                          "--time", "9:41",
+                          "--batteryState", "charged",
+                          "--batteryLevel", "100",
+                          "--wifiBars", "3",
+                          "--cellularBars", "4",
+                      ], timeout=15)
+
+                      rc_l, out_l, err_l = run_cmd([
+                          "xcrun", "simctl", "launch", udid, bundle_id,
+                          "-AppleLanguages", f"({loc_tag})",
+                          "-AppleLocale", apple_locale,
+                      ], timeout=30)
+                      if rc_l != 0:
+                          msg = f"launch failed: {err_l}"
+                          trace(f"  [ERROR] {msg}")
+                          run_info["errors"].append(msg)
+                          report["runs"].append(run_info)
+                          continue
+
+                      time.sleep(3.0)
+                      insp = connect_inspector(udid)
+                      if not insp:
+                          msg = "WebInspector failed to connect"
+                          trace(f"  [ERROR] {msg}")
+                          run_info["errors"].append(msg)
+                          report["runs"].append(run_info)
+                          continue
+
+                      try:
+                          # Dismiss first-run welcome screen -> Home
+                          if wait_visible(insp, ['[data-testid="home-run-first-start"]'], timeout_s=25.0):
+                              click_ui(insp, ['[data-testid="home-run-first-start"]'])
+                          if not wait_visible(insp, ['[data-testid="home-empty-sample"]'], timeout_s=20.0):
+                              run_info["errors"].append("home-empty-sample not visible after start")
+
+                          # Verify active UI language matches requested locale; switch via Settings if needed.
+                          doc_lang = str(insp.eval_js("document.documentElement.lang || ''") or "")
+                          trace(f"  Active document.documentElement.lang = {doc_lang!r} (want {short_lang!r})")
+                          if not doc_lang.lower().startswith(short_lang):
+                              trace(f"  Switching app language to {short_lang} via Settings...")
+                              click_ui(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'])
+                              if wait_visible(insp, ['[data-testid="settings-lang-select"]'], timeout_s=10.0):
+                                  insp.eval_js(f"""(() => {{
+                                    const sel = document.querySelector('[data-testid="settings-lang-select"]');
+                                    if (!sel) return false;
+                                    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+                                    setter.call(sel, {json.dumps(short_lang)});
+                                    sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                    return true;
+                                  }})()""")
+                                  time.sleep(1.0)
+                              click_ui(insp, ['[data-testid="settings-back-btn"]', 'header button'], ["뒤로", "Back"])
+                              wait_visible(insp, ['[data-testid="home-empty-sample"]'], timeout_s=12.0)
+
+                          # Scene 1: Home (showing sample document entry)
+                          time.sleep(1.5)
+                          s1 = take_shot(udid, out_dir / "01-home.png")
+                          run_info["shots"].append(s1)
+                          trace(f"  [SHOT] 01-home.png ok={s1['ok']} {s1['width']}x{s1['height']}")
+
+                          # Scene 2: Sample HWP Reading View (flow view)
+                          click_ui(insp, ['[data-testid="home-empty-sample"]'])
+                          flow_ok = wait_hwp_flow(insp, timeout_s=35.0)
+                          time.sleep(2.0)
+                          s2 = take_shot(udid, out_dir / "02-hwp-reading.png")
+                          s2["ready"] = flow_ok
+                          run_info["shots"].append(s2)
+                          trace(f"  [SHOT] 02-hwp-reading.png ok={s2['ok']} ready={flow_ok} {s2['width']}x{s2['height']}")
+
+                          # Scene 3: Sample HWP Page View
+                          click_ui(insp, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
+                          page_ok = wait_hwp_page(insp, timeout_s=35.0)
+                          time.sleep(2.5)
+                          s3 = take_shot(udid, out_dir / "03-hwp-page.png")
+                          s3["ready"] = page_ok
+                          run_info["shots"].append(s3)
+                          trace(f"  [SHOT] 03-hwp-page.png ok={s3['ok']} ready={page_ok} {s3['width']}x{s3['height']}")
+
+                          # Scene 5: [...] More sheet (sectioned Document + File actions with Print / Share as PDF)
+                          click_ui(insp, ['[data-testid="editor-more-btn"]'])
+                          more_ok = bool(wait_visible(insp, ['[data-testid="editor-more-sheet"]'], timeout_s=10.0))
+                          time.sleep(1.0)
+                          s5 = take_shot(udid, out_dir / "05-more-sheet.png")
+                          s5["ready"] = more_ok
+                          run_info["shots"].append(s5)
+                          trace(f"  [SHOT] 05-more-sheet.png ok={s5['ok']} ready={more_ok} {s5['width']}x{s5['height']}")
+
+                          # Close [...] sheet and return to Home
+                          click_ui(insp, ['[data-testid="editor-more-sheet"] header button'])
+                          time.sleep(0.6)
+                          click_ui(insp, ['[data-testid="editor-back-btn"]'])
+                          wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=15.0)
+                          time.sleep(1.0)
+
+                          # Scene 4: [+] Create sheet
+                          click_ui(insp, ['[data-testid="home-fab"]'])
+                          create_ok = bool(wait_visible(insp, ['[data-testid="home-create-sheet"]'], timeout_s=10.0))
+                          time.sleep(1.0)
+                          s4 = take_shot(udid, out_dir / "04-create-sheet.png")
+                          s4["ready"] = create_ok
+                          run_info["shots"].append(s4)
+                          trace(f"  [SHOT] 04-create-sheet.png ok={s4['ok']} ready={create_ok} {s4['width']}x{s4['height']}")
+
+                          # Scene 6: New Markdown Editing (with realistic localized sample text)
+                          click_ui(insp, ['[data-testid="home-create-md"]'])
+                          md_ok = bool(wait_visible(insp, ['[data-testid="markdown-editor-textarea"]'], timeout_s=15.0))
+                          if md_ok:
+                              sample_md = MD_SAMPLE[loc_tag]
+                              insp.eval_js(f"""(() => {{
+                                const ta = document.querySelector('[data-testid="markdown-editor-textarea"]');
+                                if (!ta) return false;
+                                const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                                setter.call(ta, {json.dumps(sample_md, ensure_ascii=False)});
+                                ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                ta.blur();
+                                return true;
+                              }})()""")
+                          time.sleep(1.2)
+                          s6 = take_shot(udid, out_dir / "06-markdown-edit.png")
+                          s6["ready"] = md_ok
+                          run_info["shots"].append(s6)
+                          trace(f"  [SHOT] 06-markdown-edit.png ok={s6['ok']} ready={md_ok} {s6['width']}x{s6['height']}")
+
+                          # Return to Home (discard unsaved sample markdown)
+                          click_ui(insp, ['[data-testid="editor-back-btn"]'])
+                          time.sleep(0.8)
+                          if wait_visible(insp, [], ["저장 안 함", "Discard"], timeout_s=3.0, poll_s=0.4):
+                              click_ui(insp, [], ["저장 안 함", "Discard"])
+                          wait_visible(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], timeout_s=12.0)
+
+                          # Scene 7: Settings in Dark Mode
+                          run_cmd(["xcrun", "simctl", "ui", udid, "appearance", "dark"], timeout=15)
+                          time.sleep(1.0)
+                          click_ui(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'])
+                          set_ok = bool(wait_visible(insp, ['[data-testid="mobile-settings-screen"]'], timeout_s=12.0))
+                          if set_ok:
+                              # Also ensure app theme selects dark if media query lagged.
+                              bg = str(insp.eval_js("window.getComputedStyle(document.body).backgroundColor || ''") or "")
+                              trace(f"  Settings dark body backgroundColor = {bg}")
+                              if "255, 255, 255" in bg or "248, 250, 252" in bg:
+                                  insp.eval_js("""(() => {
+                                    const sel = document.querySelector('[data-testid="settings-theme-select"]');
+                                    if (!sel) return false;
+                                    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+                                    setter.call(sel, 'dark');
+                                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                    return true;
+                                  })()""")
+                                  time.sleep(0.8)
+                          time.sleep(1.2)
+                          s7 = take_shot(udid, out_dir / "07-settings-dark.png")
+                          s7["ready"] = set_ok
+                          run_info["shots"].append(s7)
+                          trace(f"  [SHOT] 07-settings-dark.png ok={s7['ok']} ready={set_ok} {s7['width']}x{s7['height']}")
+                      except Exception as exc:
+                          trace(f"  [ERROR] Exception during capture: {exc}")
+                          run_info["errors"].append(str(exc))
+                      finally:
+                          insp.close()
+                          run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
+
+                      # Order shots 01..07 in summary
+                      run_info["shots"].sort(key=lambda x: x["file"])
+                      report["runs"].append(run_info)
+              finally:
+                  run_cmd(["xcrun", "simctl", "status_bar", udid, "clear"], timeout=15)
+                  run_cmd(["xcrun", "simctl", "shutdown", udid], timeout=30)
+
+          (shots_root / "summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          (logs_dir / "store-shots-trace.txt").write_text("\n".join(trace_lines) + "\n", encoding="utf-8")
+          summary_lines = []
+          for r in report["runs"]:
+              summary_lines.append(f"=== {r['device_key']} ({r['device_name']}, {r['runtime']}) / {r['locale']} ===")
+              for s in r["shots"]:
+                  summary_lines.append(f"  - {s['file']}: ok={s['ok']} ready={s.get('ready', True)} dims={s['width']}x{s['height']}")
+              if r["errors"]:
+                  summary_lines.append(f"  ERRORS: {r['errors']}")
+          (shots_root / "summary.txt").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+          print("\n".join(summary_lines), flush=True)
+          PY
+
+      - name: Upload iOS Store screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ieumoffice-mobile-ios-store-shots
+          path: ${{ runner.temp }}/ios-sim-artifacts/store-shots
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Upload iOS Simulator artifacts (screenshots, logs, .app zip)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
