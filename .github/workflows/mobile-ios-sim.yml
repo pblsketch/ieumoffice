@@ -1467,7 +1467,7 @@ jobs:
                               insp,
                               "08b-recent-reopen",
                               ['[data-testid="editor-mode-toggle"]'],
-                              ["편집", "Edit"],
+                              [],
                               timeout_s=12.0,
                           )
                           time.sleep(1.2)
@@ -1495,7 +1495,7 @@ jobs:
 
                           if reopen_ok and el_edit_btn:
                               # Switch to edit mode, append text, and verify in-place overwrite save.
-                              tap_element(insp, el_edit_btn, ['[data-testid="editor-mode-toggle"]'], ["편집", "Edit"])
+                              tap_element(insp, el_edit_btn, ['[data-testid="editor-mode-toggle"]'], [])
                               el_ta2 = wait_for_element(insp, "08c-find-ta", ['[data-testid="markdown-editor-textarea"]'], [], timeout_s=10.0)
                               if el_ta2:
                                   time.sleep(0.8)
