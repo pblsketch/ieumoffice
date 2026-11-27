@@ -36,17 +36,13 @@ test('markdown theme picker applies, persists and restarts', async () => {
     const page = await waitForPageWithUrl(app, '://markdown/')
     await awaitDocsEditor(page)
 
-    const themeButton = page.locator('.md-theme-wrap > .rb-btn').first()
-    // a narrow window folds the theme picker behind the ribbon's More button
-    const more = page.locator('.rb-more-wrap > .rb-btn')
-    if (!(await themeButton.isVisible()) && (await more.isVisible())) await more.click()
-    await themeButton.click()
-    const menu = page.locator('.md-theme-menu')
+    await page.getByRole('button', { name: 'View', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Document theme' }).click()
+    const menu = page.getByRole('menu', { name: 'Document theme' })
     await expect(menu).toBeVisible()
-    // every theme is listed
-    expect(await menu.locator('.md-theme-item').count()).toBe(7)
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(7)
 
-    await menu.locator('.md-theme-item', { hasText: 'Nord' }).click()
+    await menu.getByRole('menuitemradio', { name: 'Nord' }).click()
     await expect(menu).toBeHidden()
     await page.waitForTimeout(600)
 

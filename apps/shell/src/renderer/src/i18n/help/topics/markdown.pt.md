@@ -7,23 +7,23 @@ O editor Markdown abre .md / .markdown — e .txt / .json, direto na visão de c
 - **Pré-visualização**: em tempo real; os recursos relativos, como imagens, são resolvidos ao lado do documento.
 - **Salvar**: fiel byte a byte — o BOM, o CRLF e a presença de uma quebra de linha no fim do ficheiro são preservados; um salvamento sem alterações não reescreve o ficheiro.
 - **Pesquisar e substituir**: o ctrl+F pesquisa no código; Substituir grava o resultado de volta.
-- **IA**: botões prontos deixam o assistente reescrever, desenvolver ou traduzir o documento. Uma seleção pode ser ocultada da IA (veja o capítulo do painel de IA).
+- **IA**: No painel de IA, pode pedir ao assistente que trabalhe no documento. Uma seleção pode ser ocultada da IA (veja o capítulo do painel de IA).
 - **Abrir links**: ao editar, Ctrl+clique em um link (⌘ no Mac) o abre no navegador; um clique normal coloca o cursor no texto do link para editá-lo. Na apresentação (F5), um clique normal o abre.
 
 ## A barra de ferramentas
 
-Uma fila de botões por cima do editor (passe o cursor para ver as dicas):
+Os comandos de ficheiro e de edição ficam acima do documento. Passe o cursor sobre um botão para ver a respetiva descrição.
 
 - **Ficheiro e histórico**: Salvar, Salvar Como…, Desfazer, Refazer, Localizar; o interruptor de **Salvamento automático** à direita grava as alterações periodicamente no disco.
-- **Botão de IA**: abre o painel de IA; ao lado ficam as opções de reescrever / desenvolver / traduzir.
+- Clique em **Assistente de IA** para abrir o painel de IA. A seta ao lado abre o menu de ações.
 - **Estilo de parágrafo** (menu suspenso): alterna entre o texto do corpo e os vários níveis de título.
 - **Formatação na linha**: **negrito**, _itálico_, ~~tachado~~, `código embutido`, ligação.
-- **Listas**: lista com marcadores, lista numerada, lista de tarefas.
+- **Lista**: lista com marcadores, lista numerada, lista de tarefas.
 - **Inserir**: tabela, imagem, separador horizontal.
-- **Propriedades**: insere ou salta para o bloco YAML front matter no topo do ficheiro.
-- **Estrutura**: salta pela hierarquia de títulos.
-- **Ortografia**: liga ou desliga a verificação ortográfica deste documento.
-- **Configurações de hospedagem de imagens**: imagens coladas ou arrastadas vão primeiro para o seu próprio armazenamento — compatível com S3 (R2/OSS/COS/MinIO), SM.MS ou GitHub — com a cópia local em assets como reserva.
+- **Exibir › Propriedades**: insere ou salta para o bloco YAML front matter no topo do ficheiro.
+- **Exibir › Estrutura**: salta pela hierarquia de títulos.
+- **Exibir › Ortografia**: liga ou desliga a verificação ortográfica deste documento.
+- **Inserir › Configurações do servidor de imagens**: imagens coladas ou arrastadas vão primeiro para o seu próprio armazenamento — compatível com S3 (R2/OSS/COS/MinIO), SM.MS ou GitHub — com a cópia local em assets como reserva.
 
 Três exemplos rápidos:
 

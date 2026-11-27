@@ -7,23 +7,23 @@ Edytor Markdown otwiera .md / .markdown — oraz .txt / .json, od razu w widoku 
 - **Podgląd**: na żywo; zasoby względne, takie jak obrazy, rozwiązywane są obok dokumentu.
 - **Zapisywanie**: wierne bajt w bajt — znacznik BOM, znaki CRLF i obecność pustej linii na końcu są zachowywane; zapis bez zmian nie przepisuje pliku.
 - **Znajdź i zamień**: ctrl+F przeszukuje źródło; Zastąp wszystko zapisuje wynik.
-- **AI**: gotowe przyciski pozwalają asystentowi przepisać, rozbudować lub przetłumaczyć dokument. Zaznaczenie można ukryć przed AI (patrz rozdział o panelu AI).
+- **AI**: W panelu AI można poprosić asystenta o pracę nad dokumentem. Zaznaczenie można ukryć przed AI (patrz rozdział o panelu AI).
 - **Otwieranie linków**: podczas edycji Ctrl+kliknięcie linku (⌘ na Macu) otwiera go w przeglądarce; zwykłe kliknięcie ustawia kursor w tekście linku, aby można go było edytować. W trybie prezentacji (F5) link otwiera zwykłe kliknięcie.
 
 ## Pasek narzędzi
 
-Jeden rząd przycisków nad edytorem (najedź, aby zobaczyć opisy):
+Polecenia dotyczące plików i edycji znajdują się nad dokumentem. Najedź na przycisk, aby zobaczyć podpowiedź.
 
 - **Plik i historia**: Zapisz, Zapisz jako…, Cofnij, Ponów, Znajdź; przełącznik **Autozapisu** po prawej zapisuje zmiany na dysku w określonych odstępach czasu.
-- **Przycisk AI**: otwiera panel AI; obok są ustawienia wstępne przepisz / rozwiń / przetłumacz.
+- Kliknij **Asystent AI**, aby otworzyć panel AI. Strzałka obok otwiera menu działań.
 - **Styl akapitu** (lista rozwijana): przełączanie między tekstem głównym a poziomami nagłówków.
 - **Formatowanie w tekście**: **pogrubienie**, _pochylenie_, ~~przekreślenie~~, `kod w tekście`, odnośnik.
-- **Listy**: punktowana, numerowana, lista zadań.
+- **Lista**: punktowana, numerowana, lista zadań.
 - **Wstaw**: tabela, obraz, pozioma linia.
-- **Właściwości**: wstawia lub przechodzi do bloku YAML front matter na początku pliku.
-- **Konspekt**: przechodzenie według hierarchii nagłówków.
-- **Sprawdzanie pisowni**: włącza lub wyłącza sprawdzanie pisowni dla tego dokumentu.
-- **Ustawienia hostingu obrazów**: wklejone i przeciągnięte obrazy najpierw trafiają do własnej pamięci — zgodnej z S3 (R2/OSS/COS/MinIO), SM.MS lub GitHub — lokalna kopia w assets zostaje jako zapas.
+- **Widok › Właściwości**: wstawia lub przechodzi do bloku YAML front matter na początku pliku.
+- **Widok › Konspekt**: przechodzenie według hierarchii nagłówków.
+- **Widok › Pisownia**: włącza lub wyłącza sprawdzanie pisowni dla tego dokumentu.
+- **Wstaw › Ustawienia hosta obrazów**: wklejone i przeciągnięte obrazy najpierw trafiają do własnej pamięci — zgodnej z S3 (R2/OSS/COS/MinIO), SM.MS lub GitHub — lokalna kopia w assets zostaje jako zapas.
 
 Trzy szybkie przykłady:
 

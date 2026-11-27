@@ -7,23 +7,23 @@ Trình soạn Markdown mở .md / .markdown — và .txt / .json, thẳng vào c
 - **Xem trước**: theo thời gian thực; các tài nguyên tương đối như hình ảnh được phân giải cạnh tài liệu.
 - **Lưu**: trung thành từng byte — BOM, CRLF và việc có dấu xuống dòng ở cuối hay không đều được giữ; lưu mà không sửa gì sẽ không ghi lại tệp.
 - **Tìm và thay thế**: ctrl+F tìm trong mã nguồn; Thay thế tất cả ghi lại vào tệp.
-- **AI**: các nút mẫu cho phép trợ lý viết lại, mở rộng hoặc dịch tài liệu. Vùng chọn có thể ẩn khỏi AI (xem chương bảng AI).
+- **AI**: Bạn có thể nhờ trợ lý xử lý tài liệu trong bảng AI. Vùng chọn có thể ẩn khỏi AI (xem chương bảng AI).
 - **Mở liên kết**: khi chỉnh sửa, Ctrl+nhấp vào liên kết (⌘ trên Mac) sẽ mở liên kết trong trình duyệt; nhấp thường đặt con trỏ vào văn bản liên kết để chỉnh sửa. Ở chế độ trình chiếu (F5), nhấp thường sẽ mở liên kết.
 
 ## Thanh công cụ
 
-Một hàng nút phía trên trình soạn thảo ( rê chuột để xem chú thích):
+Các công cụ tệp và chỉnh sửa nằm phía trên tài liệu. Di chuột lên nút để xem chú thích.
 
 - **Tệp và lịch sử**: Lưu, Lưu dưới dạng, Hoàn tác, Làm lại, Tìm kiếm; công tắc **Tự động lưu** ở bên phải ghi thay đổi xuống đĩa theo định kỳ.
-- **Nút AI**: mở bảng AI; bên cạnh là các nút mẫu viết lại / mở rộng / dịch.
+- Nhấp vào **Trợ lý AI** để mở bảng AI. Mũi tên bên cạnh mở menu tác vụ.
 - **Kiểu đoạn văn** (thả xuống): chuyển giữa văn bản thường và các cấp tiêu đề.
 - **Định dạng trong dòng**: **In đậm**, _In nghiêng_, ~~Gạch ngang~~, `Mã nội dòng`, liên kết.
 - **Danh sách**: dấu đầu dòng, đánh số, danh sách công việc.
 - **Chèn**: bảng, hình ảnh, đường phân cách.
-- **Thuộc tính**: chèn hoặc nhảy tới khối YAML front matter ở đầu tệp.
-- **Mục lục**: nhảy theo thứ bậc tiêu đề.
-- **Chính tả**: bật/tắt kiểm tra chính tả cho tài liệu này.
-- **Cài đặt máy chủ ảnh**: ảnh dán và kéo thả đi trước vào kho của riêng bạn — tương thích S3 (R2/OSS/COS/MinIO), SM.MS hoặc GitHub — bản sao assets cục bộ giữ làm dự phòng.
+- **Xem › Thuộc tính**: chèn hoặc nhảy tới khối YAML front matter ở đầu tệp.
+- **Xem › Mục lục**: nhảy theo thứ bậc tiêu đề.
+- **Xem › Chính tả**: bật/tắt kiểm tra chính tả cho tài liệu này.
+- **Chèn › Cài đặt máy chủ ảnh**: ảnh dán và kéo thả đi trước vào kho của riêng bạn — tương thích S3 (R2/OSS/COS/MinIO), SM.MS hoặc GitHub — bản sao assets cục bộ giữ làm dự phòng.
 
 Ba ví dụ nhanh:
 

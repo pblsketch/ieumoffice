@@ -7,23 +7,23 @@ L'éditeur Markdown ouvre .md / .markdown — et .txt / .json, directement en vu
 - **Aperçu** : en direct ; les ressources relatives comme les images se résolvent à côté du document.
 - **Enregistrement** : fidèle octet pour octet — le BOM, les CRLF et la présence ou non d’un saut de ligne final sont préservés ; un enregistrement sans modification ne réécrit pas le fichier.
 - **Rechercher et remplacer** : ctrl+F cherche dans la source ; Remplacer tout réécrit.
-- **IA** : des boutons prédéfinis permettent à l’assistant de réécrire, de développer ou de traduire le document. Une sélection peut être masquée à l'IA (voir le chapitre du panneau IA).
+- **IA** : Vous pouvez demander à l’assistant de travailler sur le document depuis le panneau IA. Une sélection peut être masquée à l'IA (voir le chapitre du panneau IA).
 - **Ouvrir les liens** : en édition, Ctrl+clic sur un lien (⌘ sur Mac) l’ouvre dans le navigateur ; un simple clic place le curseur dans le texte du lien pour le modifier. En présentation (F5), un simple clic l’ouvre.
 
 ## La barre d’outils
 
-Une rangée de boutons au-dessus de l’éditeur (survolez pour les infobulles) :
+Les commandes de fichier et d’édition sont au-dessus du document. Survolez un bouton pour afficher son infobulle.
 
 - **Fichier et historique** : Enregistrer, Enregistrer sous, Annuler, Rétablir, Rechercher ; l’interrupteur **Enregistrement automatique** à droite écrit les modifications sur le disque à intervalles réguliers.
-- **Bouton IA** : ouvre le panneau IA ; à côté se trouvent les prédéfinis réécriture / développement / traduction.
+- Cliquez sur **Assistant IA** pour ouvrir le panneau IA. La flèche à côté ouvre le menu des actions.
 - **Style de paragraphe** (menu déroulant) : passer du corps de texte aux niveaux de titre.
 - **Mise en forme en ligne** : **Gras**, _Italique_, ~~Barré~~, `Code en ligne`, lien.
-- **Listes** : à puces, numérotée, liste de tâches.
-- **Insertion** : tableau, image, ligne de séparation.
-- **Propriétés** : insère le bloc YAML front matter en tête de fichier ou y saute.
-- **Plan** : navigation par hiérarchie de titres.
-- **Orthographe** : active ou désactive la vérification orthographique pour ce document.
-- **Réglages d'hébergeur d'images** : les images collées ou déposées partent d'abord vers votre propre stockage — compatible S3 (R2/OSS/COS/MinIO), SM.MS ou GitHub — la copie assets locale restant en repli.
+- **Liste** : à puces, numérotée, liste de tâches.
+- **Insérer** : tableau, image, ligne de séparation.
+- **Affichage › Propriétés** : insère le bloc YAML front matter en tête de fichier ou y saute.
+- **Affichage › Signets** : navigation par hiérarchie de titres.
+- **Affichage › Orthographe** : active ou désactive la vérification orthographique pour ce document.
+- **Insérer › Paramètres du serveur d'images** : les images collées ou déposées partent d'abord vers votre propre stockage — compatible S3 (R2/OSS/COS/MinIO), SM.MS ou GitHub — la copie assets locale restant en repli.
 
 Trois exemples rapides :
 
