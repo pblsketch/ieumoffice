@@ -83,4 +83,5 @@ export const id = {
   webExportSavedShapeLoss:
     'Disimpan sebagai {name}. Beberapa elemen visual tidak dapat dipindahkan.',
   webExportPictureMissing: '[Gambar tidak dapat dipindahkan]',
+  webMarkdownEditorLabel: 'Editor dokumen Markdown',
 } as const satisfies Record<keyof typeof zh, string>

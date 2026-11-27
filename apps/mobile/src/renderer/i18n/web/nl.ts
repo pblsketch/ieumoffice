@@ -85,4 +85,5 @@ export const nl = {
   webExportSavedShapeLoss:
     'Opgeslagen als {name}. Sommige visuele elementen konden niet worden overgenomen.',
   webExportPictureMissing: '[Afbeelding niet overgenomen]',
+  webMarkdownEditorLabel: 'Markdown-documenteditor',
 } as const satisfies Record<keyof typeof zh, string>

@@ -85,4 +85,5 @@ export const fr = {
   webExportSavedShapeLoss:
     'Enregistré sous {name}. Certains éléments visuels n’ont pas pu être repris.',
   webExportPictureMissing: '[Image non reprise]',
+  webMarkdownEditorLabel: 'Éditeur de documents Markdown',
 } as const satisfies Record<keyof typeof zh, string>

@@ -82,4 +82,5 @@ export const hi = {
   webHtmlDeleted: 'एलिमेंट हटा दिया गया। पूर्ववत करके उसे वापस ला सकते हैं।',
   webExportSavedShapeLoss: '{name} के रूप में सहेजा गया। कुछ दृश्य तत्व नहीं लाए जा सके।',
   webExportPictureMissing: '[चित्र नहीं लाया जा सका]',
+  webMarkdownEditorLabel: 'Markdown दस्तावेज़ संपादक',
 } as const satisfies Record<keyof typeof zh, string>

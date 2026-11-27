@@ -82,4 +82,5 @@ export const ru = {
   webExportSavedShapeLoss:
     'Сохранено как {name}. Некоторые графические элементы перенести не удалось.',
   webExportPictureMissing: '[Изображение не перенесено]',
+  webMarkdownEditorLabel: 'Редактор документов Markdown',
 } as const satisfies Record<keyof typeof zh, string>

@@ -78,4 +78,5 @@ export const zh = {
   webHtmlDeleted: '已删除元素。可用撤销恢复。',
   webExportSavedShapeLoss: '已保存为 {name}。部分图形和装饰未能保留。',
   webExportPictureMissing: '[未能保留的图形]',
+  webMarkdownEditorLabel: 'Markdown 文档编辑器',
 } as const

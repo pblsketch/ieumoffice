@@ -269,9 +269,13 @@ function startMarkdownDocument(
     // ---- hide from AI (spec 4.4): only while editing with the AI turned on ----
     const hideAvailable = frame.aiEnabled && mode === 'edit' && canEdit
     const [selection, setSelection] = useState({ start: 0, end: 0 })
-    const onSelectionChange = useCallback((start: number, end: number) => {
-      setSelection((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
-    }, [])
+    const onSelectionChange = useCallback(
+      (start: number, end: number) => {
+        if (!hideAvailable) return
+        setSelection((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
+      },
+      [hideAvailable],
+    )
     const caretInHidden = useMemo(
       () => hideAvailable && hiddenSpanAt(markdownText, selection.start, selection.end) !== null,
       [hideAvailable, markdownText, selection],
@@ -463,7 +467,8 @@ function startMarkdownDocument(
               textChanged()
             }}
             onErrorNotice={(key) => setNoticeBanner(tNow(key))}
-            onSelectionChange={onSelectionChange}
+            onSelectionChange={hideAvailable ? onSelectionChange : undefined}
+            editorLabel={tNow('webMarkdownEditorLabel')}
           />
         </EditorShell>
         <MarkdownFindSheet

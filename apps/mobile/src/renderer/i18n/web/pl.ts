@@ -83,4 +83,5 @@ export const pl = {
   webExportSavedShapeLoss:
     'Zapisano jako {name}. Nie udało się przenieść niektórych elementów graficznych.',
   webExportPictureMissing: '[Nie przeniesiono grafiki]',
+  webMarkdownEditorLabel: 'Edytor dokumentów Markdown',
 } as const satisfies Record<keyof typeof zh, string>

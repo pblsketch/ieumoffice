@@ -80,4 +80,5 @@ export const th = {
   webHtmlDeleted: 'ลบองค์ประกอบแล้ว เลิกทำเพื่อกู้คืนได้',
   webExportSavedShapeLoss: 'บันทึกเป็น {name} แล้ว องค์ประกอบภาพบางส่วนย้ายมาไม่ได้',
   webExportPictureMissing: '[ภาพที่ย้ายมาไม่ได้]',
+  webMarkdownEditorLabel: 'ตัวแก้ไขเอกสาร Markdown',
 } as const satisfies Record<keyof typeof zh, string>
