@@ -262,13 +262,26 @@ fn gnu_archive(member: &str, object: &[u8], symbols: &[&str]) -> Vec<u8> {
 /// every other symbol local in one object (what Xcode's "single-object
 /// prelink" does), and `libtool` wraps it. Needs Xcode, as any iOS build does.
 fn prelink_macho(staticlib: &Path, out_dir: &Path, archive: &Path, target: &str) {
-    let sdk = if target.ends_with("-ios-sim") || target.starts_with("x86_64-apple-ios") {
-        "iphonesimulator"
-    } else if target.contains("-apple-ios") {
-        "iphoneos"
-    } else {
-        "macosx"
-    };
+    let (sdk, platform, default_min, deploy_env) =
+        if target.ends_with("-ios-sim") || target.starts_with("x86_64-apple-ios") {
+            ("iphonesimulator", "ios-simulator", "15.0", "IPHONEOS_DEPLOYMENT_TARGET")
+        } else if target.contains("-apple-ios") {
+            ("iphoneos", "ios", "15.0", "IPHONEOS_DEPLOYMENT_TARGET")
+        } else {
+            ("macosx", "macos", "11.0", "MACOSX_DEPLOYMENT_TARGET")
+        };
+    let min_version = env::var(deploy_env)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| default_min.to_owned());
+    let sdk_version = Command::new("xcrun")
+        .args(["--sdk", sdk, "--show-sdk-version"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| min_version.clone());
     let arch = if target.starts_with("aarch64") {
         "arm64"
     } else {
@@ -289,6 +302,10 @@ fn prelink_macho(staticlib: &Path, out_dir: &Path, archive: &Path, target: &str)
         "-r",
         "-arch",
         arch,
+        "-platform_version",
+        platform,
+        &min_version,
+        &sdk_version,
         "-exported_symbols_list",
     ])
     .arg(&list)
