@@ -23,6 +23,13 @@ import {
   textboxEditHooks,
 } from '../scripts/rhwp-patches.mjs'
 import { AGENT_PLUGIN_ID, EASY_WORDS_COMMAND } from '../studio-plugin/agent-plugin.mjs'
+import {
+  INDEX_MARK_COMMAND,
+  INDEX_REFRESH_COMMAND,
+  INDEX_REFRESH_CONTEXT_COMMAND,
+  TOC_REFRESH_COMMAND,
+  TOC_REFRESH_CONTEXT_COMMAND,
+} from '../studio-plugin/toc-dialogs.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -450,6 +457,61 @@ describe('rhwp easy-words menu patch', () => {
         menus.replace('/** 특수 키 처리', '/** 키 처리'),
       ),
     ).toThrow(/rhwp patch/)
+  })
+})
+
+describe('rhwp TOC and Index context menu patch', () => {
+  const menus = [
+    '  private getTableContextMenuItems(): ContextMenuItem[] {',
+    '    return [',
+    "      { type: 'command', commandId: 'table:formula', label: '계산식(F)...' },",
+    "      { type: 'separator' },",
+    "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+    "      { type: 'command', commandId: 'table:delete' },",
+    '    ];',
+    '  }',
+    '',
+    '  /** 일반 컨텍스트 메뉴 항목 */',
+    '  private getDefaultContextMenuItems(): ContextMenuItem[] {',
+    '    return [',
+    "      { type: 'command', commandId: 'format:para-num-shape', label: '문단 번호 모양(N)...' },",
+    '    ];',
+    '  }',
+    '',
+    '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+    '  private onKeyDown(e: KeyboardEvent): void {',
+  ].join('\n')
+
+  it('adds conditional TOC/Index refresh and body Mark Index items cleanly', () => {
+    const patched = applyPatch('studio-toc-index-context-menu', menus)
+    const at = patched.indexOf('getDefaultContextMenuItems')
+    const table = patched.slice(0, at)
+    const body = patched.slice(at)
+    expect(body).toContain(`'${TOC_REFRESH_CONTEXT_COMMAND}'`)
+    expect(body).toContain(`commandId: '${TOC_REFRESH_COMMAND}'`)
+    expect(body).toContain(`{ type: 'command', commandId: '${INDEX_MARK_COMMAND}' }`)
+    expect(body).toContain(`'${INDEX_REFRESH_CONTEXT_COMMAND}'`)
+    expect(body).toContain(`commandId: '${INDEX_REFRESH_COMMAND}'`)
+    expect(table).toContain(`commandId: '${TOC_REFRESH_COMMAND}'`)
+    expect(table).toContain(`commandId: '${INDEX_REFRESH_COMMAND}'`)
+    expect(table).not.toContain(INDEX_MARK_COMMAND)
+  })
+
+  it('chains cleanly after memo and easy-words patches and preserves CRLF', () => {
+    expect(STUDIO_PATCHES.indexOf('studio-toc-index-context-menu')).toBe(
+      STUDIO_PATCHES.indexOf('studio-easy-words-context-menu') + 1,
+    )
+    const chained = applyPatch(
+      'studio-toc-index-context-menu',
+      applyPatch('studio-easy-words-context-menu', applyPatch('studio-memo-context-menu', menus)),
+    )
+    expect(chained).toContain(EASY_WORDS_COMMAND)
+    expect(chained).toContain(TOC_REFRESH_COMMAND)
+    expect(chained).toContain(INDEX_MARK_COMMAND)
+    expect(chained).toContain(INDEX_REFRESH_COMMAND)
+
+    const crlf = applyPatch('studio-toc-index-context-menu', menus.replaceAll('\n', '\r\n'))
+    expect(crlf).not.toMatch(/[^\r]\n/)
   })
 })
 
@@ -1594,6 +1656,79 @@ describe('rhwp hyperlink open patches', () => {
       /studio-hyperlink-preview/,
     )
     expect(STUDIO_PATCHES).toContain('studio-hyperlink-open')
+    expect(STUDIO_PATCHES).toContain('studio-hyperlink-bookmark')
     expect(STUDIO_PATCHES).toContain('studio-hyperlink-preview')
+  })
+})
+
+describe('rhwp hyperlink bookmark navigation patch', () => {
+  const snippet = [
+    '    for (const link of context.links as HyperlinkInfo[]) {',
+    '      if (!self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+    '    }',
+    '    const destination = self.wasm.classifyHyperlinkDestination(current.link.uri);',
+    '    if (!destination) return;',
+    '    const generation = self.wasm.documentGeneration;',
+  ].join('\n')
+
+  it('recognizes ?bookmark links, resolves exact raw names before decode fallback, scrolls caret, and skips visited purple color', () => {
+    const patched = applyPatch('studio-hyperlink-bookmark', snippet)
+    expect(patched).toContain(
+      "const isBookmarkLink = Boolean(link.bookmark) || link.uri.startsWith('?');",
+    )
+    expect(patched).toContain(
+      'if (!isBookmarkLink && !self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+    )
+    expect(patched).toContain("if (destination.kind === 'documentAnchor') {")
+    expect(patched).toContain('bookmarks.find((item: any) => item.name === rawName)')
+    expect(patched).toContain('bookmarks.find((item: any) => item.name === decodedName)')
+    expect(patched).toContain(
+      'self.moveCursorTo({ sectionIndex: bookmark.sec, paragraphIndex: bookmark.para, charOffset: bookmark.charPos })',
+    )
+    expect(patched).toContain('self.updateCaret?.();')
+    // Returns before navigateLink / visitHyperlink so internal bookmark links do not turn purple.
+    expect(patched.indexOf('return;\n    }')).toBeLessThan(
+      patched.indexOf('const generation = self.wasm.documentGeneration;'),
+    )
+  })
+
+  it('keeps CRLF sources working, fails when the text is gone, and composes cleanly on cached studio source', () => {
+    const crlf = applyPatch('studio-hyperlink-bookmark', snippet.replaceAll('\n', '\r\n'))
+    expect(crlf).toContain("if (destination.kind === 'documentAnchor') {\r\n")
+    expect(crlf).not.toMatch(/[^\r]\n/)
+    expect(() => applyPatch('studio-hyperlink-bookmark', 'if (!destination) return;')).toThrow(
+      /studio-hyperlink-bookmark/,
+    )
+
+    const core = JSON.parse(
+      readFileSync(
+        join(__dirname, '..', '..', '..', 'vendor', 'rhwp-core', 'package.json'),
+        'utf8',
+      ),
+    )
+    const hyperlinkFile = join(
+      __dirname,
+      '..',
+      'node_modules',
+      '.cache',
+      'rhwp-studio',
+      core.rhwp.tag,
+      'rhwp-studio',
+      'src',
+      'engine',
+      'input-handler-hyperlink.ts',
+    )
+    if (existsSync(hyperlinkFile)) {
+      const raw = readFileSync(hyperlinkFile, 'utf8')
+      const combined = applyPatch(
+        'studio-hyperlink-bookmark',
+        applyPatch('studio-hyperlink-open', raw),
+      )
+      const out = ts.transpileModule(combined, {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 },
+        reportDiagnostics: true,
+      })
+      expect(out.diagnostics ?? []).toEqual([])
+    }
   })
 })

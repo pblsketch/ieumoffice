@@ -308,6 +308,7 @@ const HWP_GROUPS: { name: string; summary: string; ops: string[] }[] = [
       'read_page_layout',
       'read_formatting',
       'list_paragraph_looks',
+      'list_index_marks',
     ],
   },
   {
@@ -372,6 +373,11 @@ const HWP_GROUPS: { name: string; summary: string; ops: string[] }[] = [
     name: 'outline',
     summary: 'headings by 1-based section and paragraph from read_outline',
     ops: ['change_outline_level', 'move_outline_section'],
+  },
+  {
+    name: 'index',
+    summary: 'index marks and index block by 1-based section and paragraph or find',
+    ops: ['mark_index', 'remove_index_mark', 'insert_index', 'refresh_index'],
   },
 ]
 

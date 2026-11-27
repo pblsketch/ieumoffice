@@ -20,3 +20,21 @@ O GenOffice abre e edita documentos Hangul `.hwp` e `.hwpx` em uma guia, com ata
 - Abra a coluna de notas pela barra superior ou em **Inserir > Nota** para ler, adicionar, editar e excluir notas em texto simples ao lado do documento.
 - Suporta atalhos de edição para documentos Hangul, marcadores de parágrafo na régua horizontal, Copiar formatação (**Alt+C**), conversão de Hanja (**F9** / tecla Hanja) e Informações do documento (**Ctrl+Q,I**).
 - O painel de IA opcional e os [comandos de terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) podem ler e editar texto, estilos, tabelas, equações, layout de página, estrutura e resultados de pesquisa; cada edição de IA equivale a uma única etapa de desfazer.
+
+## Sumário: criar e atualizar
+
+- Use **Ferramentas > Criar sumário** (ou **Ferramentas > Atualizar sumário**, ou clique com o botão direito dentro de um sumário) para inserir um **sumário** do documento a partir dos títulos da Estrutura de tópicos, além de **listas de tabelas**, **figuras** e **equações** obtidas das legendas de objetos e parágrafos de legenda.
+- Escolha o layout **Tabulação pontilhada** (padrão) ou **Tabela sem bordas** (2 colunas), defina a profundidade dos títulos (níveis 1–10, padrão 3), personalize o título e inclua opcionalmente links clicáveis (clique ou pressione **Ctrl+clique** em uma linha para ir direto ao título).
+- Os números de página refletem a numeração impressa, incluindo reinícios de numeração e formatos romanos ou personalizados.
+- A atualização renova itens e números de página no local, avisa antes de sobrescrever linhas editadas manualmente e detecta sumários existentes sem marcação criados em outro programa, pedindo confirmação antes de substituí-los.
+
+## Índice remissivo: marcar entradas e criar
+
+- Use **Ferramentas > Marcar entrada de índice** (ou clique com o botão direito no corpo do texto) para marcar a palavra selecionada ou sob o cursor, adicionar uma subentrada opcional ou marcar **todas as ocorrências** (apenas no corpo do texto; exibe a contagem de ocorrências ignoradas em tabelas, caixas de texto e notas). No mesmo diálogo é possível visualizar e excluir marcações existentes.
+- Use **Ferramentas > Criar índice remissivo** para inserir o índice na posição do cursor e **Ferramentas > Atualizar índice remissivo** para atualizá-lo após alterações. O título padrão (“Índice”) pode ser personalizado.
+- As entradas são ordenadas em coreano (가나다) → inglês (ABC) → outros, com cabeçalhos opcionais por consoante/letra, 1–3 colunas (padrão 2 colunas, aplicadas somente ao índice sem alterar as colunas do restante do documento) e layout **Tabulação pontilhada** ou **Tabela sem bordas**.
+
+## Aviso de itens desatualizados e cópia de entrega
+
+- Ao salvar manualmente, imprimir, exportar como PDF ou salvar como cópia de entrega, o editor verifica se os sumários ou o índice estão desatualizados e oferece atualizar tudo em uma única etapa de desfazer. Essa verificação nunca é executada durante o salvamento automático e nunca bloqueia o salvamento.
+- Use **Arquivo > Salvar como cópia de entrega** para salvar uma cópia limpa separada, sem marcas internas de edição (marcas de índice, marcas de bloco de índice e configurações salvas), mantendo intactos os sumários, âncoras de títulos e links. O arquivo de trabalho original permanece intocado para que você continue atualizando-o depois.

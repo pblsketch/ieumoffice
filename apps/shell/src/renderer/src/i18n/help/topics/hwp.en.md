@@ -20,3 +20,21 @@ GenOffice opens and edits `.hwp` and `.hwpx` Hangul documents in a tab, with key
 - Open the Memo column from the top bar or **Insert > Memo** to read, add, edit, and delete plain-text memos alongside the document.
 - Supports Hangul editing shortcuts, horizontal ruler paragraph markers, Format Copy (**Alt+C**), Hanja conversion (**F9** / Hanja key), and Document Info (**Ctrl+Q,I**).
 - The optional AI panel and [terminal commands](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) can read and edit text, styles, tables, equations, page layout, outlines, and search results; each AI edit is a single undo step.
+
+## Table of Contents: create and refresh
+
+- Use **Tools > Create Table of Contents** (or **Tools > Refresh Table of Contents**, or right-click inside a table of contents) to insert a document **Table of Contents** from headings shown in Outline, as well as **List of Tables**, **List of Figures**, and **List of Equations** from object captions and caption paragraphs.
+- Choose **Dotted tab leader** (default) or **Borderless table** (2-column) layout, set the heading depth (levels 1–10, default 3), customize the title, and optionally include clickable links (click or **Ctrl+click** a line to jump straight to that heading).
+- Page numbers match printed page numbering, including new-number starts and Roman or custom number formats.
+- Refreshing updates entries and page numbers in place, warns you before overwriting manually edited lines, and detects existing unmarked tables of contents created in another program so you can review and confirm before replacing them.
+
+## Index: mark entries and build
+
+- Use **Tools > Mark Index Entry** (or right-click in body text) to mark the selected word or the word at the cursor, add an optional subentry, or enable **Mark all matching occurrences** (body text only; reports how many matches inside tables, text boxes, and notes were skipped). You can also view and delete existing marks in the same dialog.
+- Use **Tools > Create Index** to insert an index at the cursor, and **Tools > Refresh Index** to update it after edits. The default title ("Index") can be customized.
+- Entries are sorted in Korean 가나다 → English ABC → Other order, with optional consonant/letter group headings, 1–3 columns (default 2 columns, scoped only to the index so the rest of the document's column layout stays unchanged), and **Dotted tab leader** or **Borderless table** layout.
+
+## Outdated notice and Save as Submission Copy
+
+- When you manually Save, Print, Export as PDF, or Save as Submission Copy, the editor checks whether any tables of contents or the index are out of date and offers to refresh all of them in a single undo step. This check never runs during AutoSave and never blocks saving.
+- Use **File > Save as Submission Copy** to save a separate clean copy stripped of internal editing marks (index marks, index block marks, and saved settings) while keeping tables of contents, heading anchors, and TOC links intact. Your original working file remains untouched so you can keep refreshing it later.

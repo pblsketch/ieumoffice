@@ -20,3 +20,21 @@ GenOffice otwiera i edytuje dokumenty Hangul `.hwp` oraz `.hwpx` na karcie, ofer
 - Otwórz kolumnę notatek z górnego paska lub przez **Wstaw > Notatka**, aby czytać, dodawać, edytować i usuwać notatki tekstowe obok dokumentu.
 - Obsługuje skróty klawiszowe edycji dokumentów Hangul, znaczniki akapitu na poziomej linijce, Kopiowanie formatu (**Alt+C**), konwersję Hanja (**F9** / klawisz Hanja) oraz Informacje o dokumencie (**Ctrl+Q,I**).
 - Opcjonalny panel AI i [polecenia terminala](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) mogą odczytywać i edytować tekst, style, tabele, równania, układ strony, konspekt oraz wyniki wyszukiwania; każda zmiana AI stanowi jeden krok cofania.
+
+## Spis treści: tworzenie i aktualizowanie
+
+- Użyj **Narzędzia > Utwórz spis treści** (lub **Narzędzia > Aktualizuj spis treści**, albo kliknij prawym przyciskiem wewnątrz spisu treści), aby wstawić **spis treści** na podstawie nagłówków z Konspektu oraz spisy **tabel**, **rysunków** i **równań** na podstawie podpisów obiektów i akapitów podpisów.
+- Wybierz układ **Tabulator z kropkami** (domyślny) lub **Tabela bez obramowania** (2 kolumny), ustaw głębokość nagłówków (poziomy 1–10, domyślnie 3), dostosuj tytuł i opcjonalnie dodaj klikalne łącza (kliknij lub użyj **Ctrl+kliknięcie** wiersza, aby przejść bezpośrednio do nagłówka).
+- Numery stron odpowiadają drukowanej numeracji stron, z uwzględnieniem ponownego rozpoczynania numeracji oraz formatów rzymskich i niestandardowych.
+- Aktualizacja odświeża wpisy i numery stron w miejscu, ostrzega przed nadpisaniem ręcznie edytowanych wierszy oraz wykrywa istniejące nieoznaczone spisy treści utworzone w innym programie, pytając o potwierdzenie przed ich zastąpieniem.
+
+## Indeks: oznaczanie haseł i tworzenie
+
+- Użyj **Narzędzia > Oznacz hasło indeksu** (lub kliknij prawym przyciskiem w tekście głównym), aby oznaczyć zaznaczone słowo lub słowo pod kursorem, dodać opcjonalne podhasło albo oznaczyć wszystkie pasujące wystąpienia (tylko w tekście głównym; z podaniem liczby wystąpień pominiętych w tabelach, polach tekstowych i przypisach). W tym samym oknie można przeglądać i usuwać istniejące znaczniki.
+- Użyj **Narzędzia > Utwórz indeks**, aby wstawić indeks w miejscu kursora, a następnie **Narzędzia > Aktualizuj indeks** po wprowadzeniu zmian. Domyślny tytuł („Indeks”) można zmienić.
+- Hasła są sortowane w kolejności koreańskiej (가나다) → angielskiej (ABC) → inne, z opcjonalnymi nagłówkami grup literowych, w 1–3 kolumnach (domyślnie 2 kolumny, wyłącznie dla sekcji indeksu bez zmiany kolumn w reszcie dokumentu) i w układzie **Tabulator z kropkami** lub **Tabela bez obramowania**.
+
+## Powiadomienie o nieaktualności i kopia do złożenia
+
+- Podczas ręcznego zapisywania, drukowania, eksportu do PDF lub zapisywania kopii do złożenia edytor sprawdza, czy spisy treści lub indeks nie są nieaktualne, i proponuje zaktualizowanie wszystkiego w jednym kroku cofania. Kontrola nigdy nie uruchamia się podczas autozapisu i nie blokuje zapisywania.
+- Użyj **Plik > Zapisz jako kopię do złożenia**, aby zapisać osobną, czystą kopię pozbawioną wewnętrznych znaczników edycji (znaczników indeksu, granic bloku indeksu i zapisanych ustawień) przy zachowaniu spisów treści, kotwic nagłówków i łączy. Oryginalny plik roboczy pozostaje nienaruszony, dzięki czemu możesz go dalej aktualizować.

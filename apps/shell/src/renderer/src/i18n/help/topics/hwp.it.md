@@ -20,3 +20,21 @@ GenOffice apre e modifica documenti Hangul `.hwp` e `.hwpx` in una scheda, con s
 - Apri la colonna Promemoria dalla barra superiore o da **Inserisci > Promemoria** per leggere, aggiungere, modificare ed eliminare promemoria in testo semplice accanto al documento.
 - Supporta le scorciatoie di modifica per documenti Hangul, i marcatori di paragrafo sul righello orizzontale, Copia formato (**Alt+C**), la conversione Hanja (**F9** / tasto Hanja) e le Informazioni documento (**Ctrl+Q,I**).
 - Il pannello IA facoltativo e i [comandi da terminale](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) possono leggere e modificare testo, stili, tabelle, equazioni, layout di pagina, struttura e risultati di ricerca; ogni modifica dell'IA costituisce un unico passaggio di annullamento.
+
+## Sommario: creazione e aggiornamento
+
+- Usa **Strumenti > Crea sommario** (oppure **Strumenti > Aggiorna sommario**, o fai clic destro dentro un sommario) per inserire un **sommario** basato sui titoli della Struttura, oltre agli elenchi di **tabelle**, **figure** ed **equazioni** raccolti dalle didascalie degli oggetti e dai paragrafi didascalia.
+- Scegli il layout **Tabulazione punteggiata** (predefinito) o **Tabella senza bordi** (a 2 colonne), imposta la profondità dei titoli (livelli 1–10, predefinito 3), personalizza il titolo e aggiungi se vuoi collegamenti cliccabili (fai clic o **Ctrl+clic** su una riga per saltare direttamente al titolo).
+- I numeri di pagina riflettono la numerazione stampata, inclusi i riavvii di numerazione e i formati romani o personalizzati.
+- L’aggiornamento rinnova voci e numeri di pagina sul posto, ti avvisa prima di sovrascrivere righe modificate a mano e rileva eventuali sommari privi di contrassegni creati con un altro programma, chiedendo conferma prima di sostituirli.
+
+## Indice analitico: contrassegno e creazione
+
+- Usa **Strumenti > Contrassegna voce di indice** (o fai clic destro nel corpo del testo) per contrassegnare la parola selezionata o al cursore, aggiungere una sottovoce facoltativa o contrassegnare tutte le occorrenze (solo nel corpo del testo; viene mostrato il conteggio delle occorrenze saltate in tabelle, caselle di testo e note). Nella stessa finestra puoi visualizzare ed eliminare i contrassegni esistenti.
+- Usa **Strumenti > Crea indice analitico** per inserire l’indice alla posizione del cursore e **Strumenti > Aggiorna indice analitico** per aggiornarlo dopo le modifiche. Il titolo predefinito («Indice analitico») è personalizzabile.
+- Le voci sono ordinate secondo l’ordine coreano (가나다) → inglese (ABC) → altro, con intestazioni di gruppo per consonante o lettera facoltative, da 1–3 colonne (predefinito 2 colonne, applicate solo all’indice senza modificare le colonne del resto del documento) e layout **Tabulazione punteggiata** o **Tabella senza bordi**.
+
+## Avviso di voci non aggiornate e copia di consegna
+
+- Al salvataggio manuale, alla stampa, all’esportazione in PDF o al salvataggio come copia di consegna, l’editor controlla se i sommari o l’indice analitico non sono aggiornati e propone di aggiornare tutto in un unico passaggio di annullamento. Il controllo non viene mai eseguito durante il salvataggio automatico e non blocca mai il salvataggio.
+- Usa **File > Salva come copia di consegna** per salvare una copia pulita separata priva di contrassegni interni di modifica (contrassegni di indice, blocchi di indice e impostazioni salvate), mantenendo intatti sommari, ancoraggi dei titoli e collegamenti. Il file di lavoro originale resta intatto così da poter continuare ad aggiornarlo in seguito.

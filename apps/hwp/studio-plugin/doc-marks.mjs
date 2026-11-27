@@ -1099,6 +1099,35 @@ export function addRangeMark(doc, prefix, id, startPlace, endPlace) {
     return endRes
   }
 
+  // On paragraphs where the engine inserts same-position bookmarks LIFO (e.g. a paragraph
+  // holding only a table control), `endName` lands at a lower `ctrlIdx` than `startName`.
+  // Detect and swap in place so `startName` strictly precedes `endName` in document order.
+  if (comparePlaces(start, end) === 0) {
+    const placed = readRawBookmarks(doc)
+    const sMark = placed.find((bm) => bm.name === startName)
+    const eMark = placed.find((bm) => bm.name === endName)
+    if (sMark && eMark && compareMarks(sMark, eMark) > 0) {
+      const tempName = uniqueMarkName(
+        new Set([...existingNames, startName, endName]),
+        `${prefix}tmp`,
+        MAX_MARK_NAME_LEN,
+      )
+      const r1 = renameBookmarkEntry(doc, eMark, tempName)
+      const r2 = r1.ok ? renameBookmarkEntry(doc, sMark, endName) : r1
+      const r3 = r2.ok ? renameBookmarkEntry(doc, { ...eMark, name: tempName }, startName) : r2
+      if (!r3.ok) {
+        deleteMarksSafely(doc, [sMark, eMark])
+        const reEnd = addMark(doc, end, endName)
+        if (!reEnd.ok) return reEnd
+        const reStart = addMark(doc, start, startName)
+        if (!reStart.ok) {
+          removeMark(doc, endName)
+          return reStart
+        }
+      }
+    }
+  }
+
   return {
     ok: true,
     prefix,

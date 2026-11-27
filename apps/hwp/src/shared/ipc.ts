@@ -22,6 +22,10 @@ export const HWP_CHANNELS = {
   trackingDropped: 'hwp:tracking-dropped',
   abortSave: 'hwp:abort-save',
   saveRequest: 'hwp:save-request',
+  beginSubmissionSave: 'hwp:begin-submission-save',
+  commitSubmissionSave: 'hwp:commit-submission-save',
+  abortSubmissionSave: 'hwp:abort-submission-save',
+  submissionSaveRequest: 'hwp:submission-save-request',
   printRequest: 'hwp:print-request',
   previewRequest: 'hwp:preview-request',
   fileCommand: 'hwp:file-command',
@@ -124,7 +128,7 @@ export type BeginSaveMode = SaveMode | 'saveAsHwpx'
  * the shell for a file and opens it in a tab of its own, as Ctrl+O does. `importPdf` asks
  * the shell for a PDF and opens it as a new Hangul document in a tab of its own.
  */
-export type FileCommand = SaveMode | PrintMode | 'preview' | 'importPdf' | 'open'
+export type FileCommand = SaveMode | 'saveSubmission' | PrintMode | 'preview' | 'importPdf' | 'open'
 
 /** Where the pages go: a PDF file, or the printer through the system print dialog. */
 export type PrintMode = 'pdf' | 'print'
@@ -242,6 +246,19 @@ export type CommitSaveResult =
    */
   | { ok: true; path: string; backupPath?: string; tailsLost?: true; memosLost?: number }
   | { ok: false; error: string }
+
+export type BeginSubmissionSaveResult =
+  | { ok: true; path: string; format: HwpFormat }
+  | { ok: true; canceled: true }
+  | { ok: false; error: string; reason?: 'tracked' | 'memo' | 'same_as_open' }
+
+export interface CommitSubmissionSaveOptions {
+  preview?: SavePreview | null
+}
+
+export type CommitSubmissionSaveResult =
+  | { ok: true; path: string; backupPath?: string; tailsLost?: true }
+  | { ok: false; error: string; reason?: 'same_as_open' }
 
 /**
  * A tab the engine saved without a width, as the editor can find it again: the body
@@ -433,8 +450,19 @@ export interface HwpApi {
   ): Promise<CommitSaveResult>
   /** the renderer could not produce bytes for a save it began */
   abortSave(): void
+  /** resolve a separate save path for a clean submission copy (never alters the active tab) */
+  beginSubmissionSave(): Promise<BeginSubmissionSaveResult>
+  /** write stripped submission copy bytes to the chosen submission target only */
+  commitSubmissionSave(
+    bytes: Uint8Array,
+    tabs?: MeasuredTab[],
+    options?: CommitSubmissionSaveOptions,
+  ): Promise<CommitSubmissionSaveResult>
+  /** cancel a pending submission copy save without modifying disk or tab state */
+  abortSubmissionSave(): void
   setDirty(dirty: boolean): void
   onSaveRequest(handler: (mode: SaveMode) => void): () => void
+  onSubmissionSaveRequest(handler: () => void): () => void
   /**
    * the editor's own File menu asks to save or print: the main process answers it the way
    * it answers Ctrl+S and Ctrl+P, with a save or print request back to this view

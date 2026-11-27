@@ -20,7 +20,25 @@ import type {
   ReadOutlineResult,
   WriteDocOutlineMapResult,
 } from './outline.mjs'
+import type { LegacyTocInfo, TocKind, TocLayout, TocRangeInfo, TocWriteResult } from './toc.mjs'
+import type {
+  AddIndexMarkResult,
+  AddIndexMarksAllOptions,
+  AddIndexMarksAllResult,
+  BuildIndexBlockOptions,
+  BuildIndexBlockResult,
+  IndexMarkItem,
+  RefreshIndexBlockOptions,
+} from './index-marks.mjs'
 import type { WorkpaneMenuLabels } from './workpane-menu.mjs'
+import type { TocIndexDialogLabels } from './toc-dialogs.mjs'
+import type {
+  StalenessCheckOptions,
+  StalenessCheckResult,
+  StalenessRefreshAllResult,
+  StalenessRefreshOptions,
+  SubmissionCopyResult,
+} from './staleness.mjs'
 
 /**
  * What the document is made of, for the format checks of `@genoffice/doc-rules`. The
@@ -1138,7 +1156,7 @@ export type AgentDeleteTableResult =
 
 /** What a File menu item of the editor asks the app to do. */
 export type AgentFileCommand =
-  'open' | 'save' | 'saveAs' | 'importPdf' | 'pdf' | 'preview' | 'print'
+  'open' | 'save' | 'saveAs' | 'saveSubmission' | 'importPdf' | 'pdf' | 'preview' | 'print'
 
 /** The event those items fire on the editor's window; `detail` is the AgentFileCommand. */
 export declare const FILE_COMMAND_EVENT: 'ieum:file-command'
@@ -1690,41 +1708,110 @@ export interface AgentTabMeasure {
   fill: number
 }
 
+export interface AgentInsertTocParams {
+  sec?: number
+  para?: number
+  anchor?: string
+  occurrence?: number | null
+  where?: AgentWhere
+  kind?: TocKind
+  layout?: TocLayout
+  maxLevel?: number
+  links?: boolean
+  title?: string | null
+  appStyleMap?: OutlineStyleMap | null
+  replaceLegacy?: boolean
+  replaceExisting?: boolean
+}
+
+export interface AgentRefreshTocParams {
+  kind?: TocKind
+  layout?: TocLayout
+  maxLevel?: number
+  links?: boolean
+  title?: string | null
+  appStyleMap?: OutlineStyleMap | null
+  allowOverwriteManual?: boolean
+  replaceLegacy?: boolean
+}
+
 export type AgentInsertTocResult =
-  /** `table`: the contents table's number, as listTables numbers tables, of `tables` */
-  | { ok: true; count: number; pages: number[]; table: number; tables: number; place: AgentPlace }
+  | (Extract<TocWriteResult, { ok: true }> & { table?: number; tables?: number })
+  | Extract<TocWriteResult, { ok: false }>
   | AgentPlaceRefusal
-  | { ok: false; reason: 'in_table'; count: number }
-  /** a heading could not be decided: `why` is not_found, ambiguous, no_such_occurrence or unsupported_place */
-  | {
-      ok: false
-      reason: 'no_heading'
-      heading: string
-      why: string
-      count: number
-      matches?: AgentMatch[]
-    }
-  /**
-   * contents insertToc made in this document are there: table `table`, `title` when the
-   * paragraph right above it is a line of text, `first` when it is the first paragraph of the document
-   */
-  | { ok: false; reason: 'toc_exists'; count: number; table: number; title?: string; first?: true }
-  /** a 차례 or 목차 line `title` has Hangul's contents of tab lines under it already */
-  | { ok: false; reason: 'toc_exists'; count: number; lines: true; title: string }
+  | AgentMemoRemovalRefusal
 
 export type AgentRefreshTocResult =
-  | {
-      ok: true
-      /** rows that hold a page number */
-      lines: number
-      changed: number
-      /** headings no longer found in the body */
-      missing?: string[]
-      place: AgentPlace
-    }
+  | (Extract<TocWriteResult, { ok: true }> & { table?: number; tables?: number })
+  | Extract<TocWriteResult, { ok: false }>
   | AgentPlaceRefusal
-  | { ok: false; reason: 'in_table'; count: number }
-  | { ok: false; reason: 'no_toc'; count: number }
+  | AgentMemoRemovalRefusal
+
+export interface AgentAddIndexMarkParams {
+  sec?: number
+  para?: number
+  offset?: number
+  find?: string
+  occurrence?: number | null
+  term?: string
+  subTerm?: string
+  selectedText?: string
+}
+
+export type AgentAddIndexMarkResult =
+  | (Extract<AddIndexMarkResult, { ok: true }> & { place: AgentPlace })
+  | Extract<AddIndexMarkResult, { ok: false }>
+  | AgentPlaceRefusal
+  | AgentMemoRemovalRefusal
+
+export type AgentAddIndexMarksAllResult =
+  | (Extract<AddIndexMarksAllResult, { ok: true }> & { place?: AgentPlace })
+  | Extract<AddIndexMarksAllResult, { ok: false }>
+  | AgentMemoRemovalRefusal
+
+export interface AgentRemoveIndexMarkParams {
+  id?: string
+  names?: readonly string[]
+  term?: string
+  subTerm?: string
+}
+
+export type AgentRemoveIndexMarkResult =
+  | { ok: true; removedMarks: number; removedBookmarks: number; names: string[] }
+  | { ok: false; reason: 'not_found' | 'invalid_term' | 'invalid_options' | 'has_objects' }
+  | AgentMemoRemovalRefusal
+
+export interface AgentBuildIndexBlockParams extends BuildIndexBlockOptions {
+  sec?: number
+  para?: number
+  anchor?: string
+  occurrence?: number | null
+  where?: AgentWhere
+}
+
+export type AgentBuildIndexBlockResult =
+  | (Extract<BuildIndexBlockResult, { ok: true }> & {
+      place: AgentPlace
+      table?: number
+      tables?: number
+    })
+  | Extract<BuildIndexBlockResult, { ok: false }>
+  | AgentPlaceRefusal
+  | AgentMemoRemovalRefusal
+
+export type AgentRefreshIndexBlockResult =
+  | (Extract<BuildIndexBlockResult, { ok: true }> & {
+      place: AgentPlace
+      table?: number
+      tables?: number
+    })
+  | Extract<BuildIndexBlockResult, { ok: false }>
+  | AgentPlaceRefusal
+  | AgentMemoRemovalRefusal
+
+export type AgentRefreshAllStaleResult = Omit<StalenessRefreshAllResult, 'reason'> & {
+  reason?: StalenessRefreshAllResult['reason'] | 'has_objects' | 'memo_removal_requires_approval'
+}
 
 export type AgentUndoResult =
   { ok: boolean; undone: number } | { ok: false; reason: 'changed'; undone: 0 }
@@ -1887,19 +1974,37 @@ export interface AgentPluginSurface {
   ): AgentFormatSelectionResult
   listFields(): AgentField[]
   fillField(field: number, value: string, options?: AgentChangeOptions): AgentFillResult
+  listTocRanges(): TocRangeInfo[]
+  detectLegacyToc(options?: { made?: string[][] }): LegacyTocInfo | null
   insertToc(
-    anchor: string,
-    occurrence: number | null,
-    where: AgentWhere,
-    title: string | null,
-    entries: AgentTocEntry[],
-    options?: AgentChangeOptions,
+    params: AgentInsertTocParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
   ): AgentInsertTocResult
   refreshToc(
-    title: string,
-    occurrence: number | null,
-    options?: AgentChangeOptions,
+    params?: AgentRefreshTocParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
   ): AgentRefreshTocResult
+  listIndexMarks(): IndexMarkItem[]
+  addIndexMark(
+    params: AgentAddIndexMarkParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): AgentAddIndexMarkResult
+  addIndexMarksAll(
+    params: AddIndexMarksAllOptions,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): AgentAddIndexMarksAllResult
+  removeIndexMark(
+    params: AgentRemoveIndexMarkParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): AgentRemoveIndexMarkResult
+  buildIndexBlock(
+    params?: AgentBuildIndexBlockParams,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): AgentBuildIndexBlockResult
+  refreshIndexBlock(
+    params?: RefreshIndexBlockOptions,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): AgentRefreshIndexBlockResult
   listNotes(): AgentNoteList
   /** the equations of the body text, numbered for editEquation */
   listEquations(): AgentEquationList
@@ -2051,6 +2156,20 @@ export interface AgentPluginSurface {
   setMemoLock(locked: boolean): { ok: true; locked: boolean }
   /** register View menu items for the left workpane (Outline / Find) */
   installWorkpaneMenu(labels: WorkpaneMenuLabels): { ok: boolean }
+  /** register Tool menu items and context-menu probes for TOC & Index */
+  installTocIndexMenu(
+    labels: TocIndexDialogLabels,
+    options?: { appStyleMap?: OutlineStyleMap | null },
+  ): { ok: boolean }
+  /** read-only staleness check across all registered checkers (TOC, index, and extensions) */
+  checkStaleItems(options?: StalenessCheckOptions): StalenessCheckResult
+  /** refresh all stale items in one undo step (rolls back atomically on failure, manual edits, or object loss) */
+  refreshAllStale(
+    options?: StalenessRefreshOptions,
+    changeOptions?: AgentChangeOptions & { foreign?: boolean },
+  ): AgentRefreshAllStaleResult
+  /** build a clean submission copy on an isolated clone without mutating the live document */
+  exportSubmissionCopy(format?: 'hwp' | 'hwpx'): SubmissionCopyResult
   /** search across body, tables (including nested), text boxes, and footnotes/endnotes */
   findMatches(options?: FindOptions): FindResult
   /** replace one, selected, or all matches in a single user undo step */

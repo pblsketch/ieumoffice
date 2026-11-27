@@ -4197,6 +4197,18 @@ function pageNumberDialog(ModalDialog, ko, start, onApply) {
 }
 
 /**
+ * Studio UI primitives captured when `hancomCommands` registers in `main.ts`,
+ * so plugin dialogs (such as TOC and Index dialogs) reuse the editor's native
+ * `ModalDialog` shell and `showToast` notifications without importing studio internals.
+ */
+export function getStudioModalParts() {
+  return {
+    ModalDialog: modalDialog,
+    showToast: toastSink,
+  }
+}
+
+/**
  * The commands behind the keys the studio has no command for. `locale` is the studio's, which
  * shows itself in Korean or English only; the labels show in its command palette. `studio` hands
  * over what of the studio a command builds on (the studio-hancom-commands patch passes it):

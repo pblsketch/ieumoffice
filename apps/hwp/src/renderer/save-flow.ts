@@ -80,7 +80,7 @@ const EXTERNAL_MODIFIED = 'hwp: external-modified'
  * be measured is written as the engine wrote it.
  */
 async function measuredTabs(
-  editor: SaveEditorPort,
+  editor: Pick<SaveEditorPort, 'measureTabs'>,
   api: Pick<HwpApi, 'newTabs'>,
   bytes: Uint8Array,
   format: HwpFormat,
@@ -125,6 +125,117 @@ async function exportHwpxWithMemos(editor: SaveEditorPort): Promise<{
   }
 }
 
+export type StalenessAction = 'save' | 'saveAs' | 'print' | 'pdf' | 'submission'
+export type StalenessPromptChoice = 'refresh' | 'continue' | 'cancel'
+
+export interface StaleCheckItem {
+  id: string
+  checkerId?: string
+  kind: string
+  reason: string
+  label?: string
+}
+
+export interface StaleCheckReport {
+  stale: boolean
+  items: StaleCheckItem[]
+}
+
+export interface StalenessGateOptions {
+  /** Refreshes all stale blocks (typically wrapped in one editor undo transaction). */
+  refreshAll?: () => Promise<unknown>
+}
+
+/**
+ * Shared pre-action staleness check for manual save, print, PDF export, and submission copy.
+ * Fail-open: if checking staleness throws or rejects, returns `'continue'` so saving or
+ * printing is never blocked by a diagnostic error.
+ */
+export async function checkStalenessBeforeAction(
+  action: StalenessAction,
+  checkStale: () => Promise<StaleCheckReport>,
+  promptUser: (report: StaleCheckReport, action: StalenessAction) => Promise<StalenessPromptChoice>,
+  options?: StalenessGateOptions,
+): Promise<'continue' | 'cancel'> {
+  let report: StaleCheckReport
+  try {
+    report = await checkStale()
+  } catch {
+    return 'continue'
+  }
+  if (!report || !report.stale || !Array.isArray(report.items) || report.items.length === 0) {
+    return 'continue'
+  }
+  let choice: StalenessPromptChoice
+  try {
+    choice = await promptUser(report, action)
+  } catch {
+    return 'continue'
+  }
+  if (choice === 'cancel') return 'cancel'
+  if (choice === 'refresh' && typeof options?.refreshAll === 'function') {
+    try {
+      const outcome = await options.refreshAll()
+      if (outcome === 'cancel' || outcome === false) return 'cancel'
+    } catch {
+      // fail-open: never block save or print if refresh itself fails
+    }
+  }
+  return 'continue'
+}
+
+export interface RunSaveOptions {
+  /**
+   * Optional pre-save staleness hook for manual saves.
+   * Never invoked when `automatic === true`. Fail-open if it throws.
+   */
+  onStaleCheck?: () => Promise<'continue' | 'cancel'>
+}
+
+export interface SubmissionCopyExport {
+  ok?: boolean
+  reason?: 'strip_failed' | (string & {})
+  bytes?: Uint8Array
+  failed?: Array<{ name: string; error?: string }>
+  verify?: SaveVerifyInfo
+}
+
+export interface SubmissionSaveEditorPort extends Pick<
+  SaveEditorPort,
+  'isPasswordProtected' | 'measureTabs' | 'savePreview'
+> {
+  /**
+   * Build stripped submission copy bytes on an isolated clone without touching the live document.
+   * For `'hwp'`, includes `verify` (self-read-back page count check on the stripped bytes).
+   */
+  exportSubmissionCopy(format: HwpFormat): Promise<SubmissionCopyExport>
+}
+
+export type SubmissionSaveOutcome =
+  | {
+      kind: 'saved'
+      path: string
+      backupPath?: string
+      tailsLost?: true
+    }
+  | { kind: 'canceled' }
+  | {
+      kind: 'failed'
+      reason:
+        'protected' | 'tracked' | 'same_as_open' | 'strip_failed' | 'verify' | 'export' | 'write'
+      detail?: string
+      failedMarks?: string[]
+      verify?: SaveVerifyInfo
+    }
+
+export interface RunSubmissionSaveOptions {
+  /**
+   * Pre-submission staleness check: runs before opening the submission save dialog.
+   * Fail-open if it throws.
+   */
+  onStaleCheck?: () => Promise<'continue' | 'cancel'>
+}
+
 /**
  * One save, start to finish: the main process decides where and in which
  * format, the editor exports, the main process writes. The file on disk is
@@ -137,6 +248,7 @@ export async function runSave(
   mode: BeginSaveMode,
   /** the app's own 30-second save: a copy-pair conflict stands down instead of asking */
   automatic = false,
+  options?: RunSaveOptions,
 ): Promise<SaveOutcome> {
   // before any dialog: a protected document is not saved under any name
   try {
@@ -147,6 +259,20 @@ export async function runSave(
   } catch (error) {
     api.abortSave()
     return { kind: 'failed', reason: 'export', detail: detailOf(error) }
+  }
+
+  // manual saves check staleness before saving; auto-save must never prompt or interrupt
+  if (!automatic && typeof options?.onStaleCheck === 'function') {
+    let verdict: 'continue' | 'cancel'
+    try {
+      verdict = await options.onStaleCheck()
+    } catch {
+      verdict = 'continue'
+    }
+    if (verdict === 'cancel') {
+      api.abortSave()
+      return { kind: 'canceled' }
+    }
   }
 
   const begin = await api.beginSave(mode)
@@ -202,5 +328,108 @@ export async function runSave(
     ...(commit.backupPath ? { backupPath: commit.backupPath } : {}),
     ...(commit.tailsLost ? { tailsLost: true as const } : {}),
     ...(commit.memosLost ? { memosLost: commit.memosLost } : {}),
+  }
+}
+
+/**
+ * Save a clean submission copy to a separate path without mutating the live document
+ * or changing the active tab's file path, dirty state, backup tracking, or recovery copy.
+ * Runs staleness check first before opening the save dialog, verifies HWP read-back
+ * parity, and writes nothing on any failure or cancellation.
+ */
+export async function runSubmissionSave(
+  editor: SubmissionSaveEditorPort,
+  api: Pick<
+    HwpApi,
+    'beginSubmissionSave' | 'newTabs' | 'commitSubmissionSave' | 'abortSubmissionSave'
+  >,
+  options?: RunSubmissionSaveOptions,
+): Promise<SubmissionSaveOutcome> {
+  try {
+    if (await editor.isPasswordProtected()) {
+      api.abortSubmissionSave()
+      return { kind: 'failed', reason: 'protected' }
+    }
+  } catch (error) {
+    api.abortSubmissionSave()
+    return { kind: 'failed', reason: 'export', detail: detailOf(error) }
+  }
+
+  if (typeof options?.onStaleCheck === 'function') {
+    let verdict: 'continue' | 'cancel'
+    try {
+      verdict = await options.onStaleCheck()
+    } catch {
+      verdict = 'continue'
+    }
+    if (verdict === 'cancel') {
+      api.abortSubmissionSave()
+      return { kind: 'canceled' }
+    }
+  }
+
+  const begin = await api.beginSubmissionSave()
+  if (!begin.ok) {
+    if (begin.reason === 'memo') return { kind: 'canceled' }
+    if (begin.reason === 'tracked') return { kind: 'failed', reason: 'tracked' }
+    if (begin.reason === 'same_as_open') return { kind: 'failed', reason: 'same_as_open' }
+    return { kind: 'failed', reason: 'write', detail: begin.error }
+  }
+  if ('canceled' in begin) return { kind: 'canceled' }
+
+  let bytes: Uint8Array
+  try {
+    const exported = await editor.exportSubmissionCopy(begin.format)
+    const failed = Array.isArray(exported.failed) ? exported.failed : []
+    if (
+      exported.ok === false ||
+      exported.reason === 'strip_failed' ||
+      failed.length > 0 ||
+      !exported.bytes
+    ) {
+      api.abortSubmissionSave()
+      return {
+        kind: 'failed',
+        reason: 'strip_failed',
+        failedMarks: failed.map((f) => f.name),
+      }
+    }
+    if (begin.format === 'hwp') {
+      const verify = exported.verify
+      if (!verify || !verify.recovered || verify.pageCountBefore !== verify.pageCountAfter) {
+        api.abortSubmissionSave()
+        return {
+          kind: 'failed',
+          reason: 'verify',
+          ...(verify ? { verify } : {}),
+        }
+      }
+    }
+    if (!(exported.bytes instanceof Uint8Array) || exported.bytes.length === 0) {
+      throw new Error('empty submission copy')
+    }
+    bytes = exported.bytes
+  } catch (error) {
+    api.abortSubmissionSave()
+    return { kind: 'failed', reason: 'export', detail: detailOf(error) }
+  }
+
+  const preview = await editor.savePreview().catch(() => null)
+  const commit = await api.commitSubmissionSave(
+    bytes,
+    await measuredTabs(editor, api, bytes, begin.format),
+    { preview },
+  )
+  if (!commit.ok) {
+    if (commit.error === EXTERNAL_MODIFIED) return { kind: 'canceled' }
+    if (commit.reason === 'same_as_open') return { kind: 'failed', reason: 'same_as_open' }
+    return { kind: 'failed', reason: 'write', detail: commit.error }
+  }
+  // Never call editor.notifySaved: the original document's path and dirty state stay untouched.
+  return {
+    kind: 'saved',
+    path: commit.path,
+    ...(commit.backupPath ? { backupPath: commit.backupPath } : {}),
+    ...(commit.tailsLost ? { tailsLost: true as const } : {}),
   }
 }

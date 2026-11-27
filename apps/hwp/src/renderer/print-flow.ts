@@ -1,5 +1,11 @@
 import type { AgentBridge } from './ai/agent-bridge'
 import type { PrintJob, PrintMode, PrintPage } from '../shared/ipc'
+import {
+  checkStalenessBeforeAction,
+  type StaleCheckReport,
+  type StalenessGateOptions,
+  type StalenessPromptChoice,
+} from './save-flow'
 
 /**
  * Gathering the pages for a PDF or a print: the plugin draws them a few at a time (each
@@ -180,4 +186,37 @@ export function createJobCache(
       kept = null
     },
   }
+}
+
+/**
+ * Run the shared staleness check before printing or exporting PDF.
+ * Fail-open: errors checking staleness never block printing or PDF export.
+ */
+export async function checkStalenessBeforePrint(
+  mode: PrintMode,
+  checkStale: () => Promise<StaleCheckReport>,
+  promptUser: (report: StaleCheckReport, action: PrintMode) => Promise<StalenessPromptChoice>,
+  options?: StalenessGateOptions,
+): Promise<'continue' | 'cancel'> {
+  return checkStalenessBeforeAction(mode, checkStale, (report) => promptUser(report, mode), options)
+}
+
+/**
+ * Guard a print or PDF action with an optional pre-action staleness check.
+ * Fail-open if `onStaleCheck` throws; returns `{ canceled: true }` if the user cancels.
+ */
+export async function runWithPrintStalenessCheck<T>(
+  onStaleCheck: (() => Promise<'continue' | 'cancel'>) | undefined,
+  run: () => Promise<T>,
+): Promise<{ canceled: true } | { canceled: false; value: T }> {
+  if (typeof onStaleCheck === 'function') {
+    let verdict: 'continue' | 'cancel'
+    try {
+      verdict = await onStaleCheck()
+    } catch {
+      verdict = 'continue'
+    }
+    if (verdict === 'cancel') return { canceled: true }
+  }
+  return { canceled: false, value: await run() }
 }

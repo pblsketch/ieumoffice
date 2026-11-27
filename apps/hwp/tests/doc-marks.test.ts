@@ -850,4 +850,45 @@ describe('robust deletion after hyperlinks, body-only filtering, and nested rang
     expect(ranges[1].start.offset).toBe(5)
     expect(ranges[1].end.offset).toBe(10)
   })
+
+  it('orders same-position range marks with start before end on both plain text and table-only paragraphs across HWP/HWPX roundtrip', () => {
+    const doc = makeDoc(['일반 문단', ''])
+    doc.pasteHtml(0, 1, 0, '<table><tr><td><p>표 셀</p></td></tr></table>')
+
+    expect(
+      addRangeMark(
+        doc,
+        MARK_PREFIXES.citation,
+        'zero',
+        { sec: 0, para: 0, offset: 0 },
+        { sec: 0, para: 0, offset: 0 },
+      ).ok,
+    ).toBe(true)
+
+    expect(
+      addRangeMark(
+        doc,
+        MARK_PREFIXES.toc,
+        '본문',
+        { sec: 0, para: 1, offset: 0 },
+        { sec: 0, para: 1, offset: 0 },
+      ).ok,
+    ).toBe(true)
+
+    for (const candidate of [
+      doc,
+      new HwpDocument(doc.exportHwp()),
+      new HwpDocument(doc.exportHwpx()),
+    ]) {
+      const { ranges, broken } = findRangeMarks(candidate)
+      expect(broken).toEqual([])
+      expect(ranges).toHaveLength(2)
+      expect(ranges.map((r) => [r.start.name, r.end.name])).toEqual([
+        ['인용:zero:시작', '인용:zero:끝'],
+        ['차례:본문:시작', '차례:본문:끝'],
+      ])
+      expect(ranges[0]!.start.ctrlIdx).toBeLessThan(ranges[0]!.end.ctrlIdx)
+      expect(ranges[1]!.start.ctrlIdx).toBeLessThan(ranges[1]!.end.ctrlIdx)
+    }
+  })
 })

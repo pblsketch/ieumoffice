@@ -1,0 +1,549 @@
+diff --git a/src/document_core/queries/caption_query.rs b/src/document_core/queries/caption_query.rs
+new file mode 100644
+index 000000000..ce7a78533
+--- /dev/null
++++ b/src/document_core/queries/caption_query.rs
+@@ -0,0 +1,511 @@
++//! Read-only object caption enumeration for tables, pictures, and shapes.
++
++use std::collections::HashMap;
++
++use serde::Serialize;
++
++use crate::document_core::helpers::get_textbox_at;
++use crate::document_core::DocumentCore;
++use crate::error::HwpError;
++use crate::model::control::{AutoNumber, AutoNumberType, Control};
++use crate::model::paragraph::Paragraph;
++use crate::model::shape::{Caption, CaptionDirection, ShapeObject};
++
++/// Guard against pathologically nested containers (matches search/table queries).
++const MAX_NEST_DEPTH: usize = 8;
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
++struct CellPathStep {
++    #[serde(rename = "controlIndex")]
++    control_index: usize,
++    #[serde(rename = "cellIndex")]
++    cell_index: usize,
++    #[serde(rename = "cellParaIndex")]
++    cell_para_index: usize,
++}
++
++#[derive(Debug, Clone, Serialize)]
++struct ObjectCaptionEntry {
++    kind: &'static str,
++    text: String,
++    paragraphs: Vec<String>,
++    sec: usize,
++    para: usize,
++    #[serde(rename = "controlIndex")]
++    control_index: usize,
++    #[serde(rename = "cellPath")]
++    cell_path: Vec<CellPathStep>,
++    direction: &'static str,
++    #[serde(rename = "hasCaption")]
++    has_caption: bool,
++}
++
++fn caption_direction_str(direction: CaptionDirection) -> &'static str {
++    match direction {
++        CaptionDirection::Left => "Left",
++        CaptionDirection::Right => "Right",
++        CaptionDirection::Top => "Top",
++        CaptionDirection::Bottom => "Bottom",
++    }
++}
++
++fn shape_caption(shape: &ShapeObject) -> Option<&Caption> {
++    match shape {
++        ShapeObject::Group(g) => g.caption.as_ref(),
++        ShapeObject::Picture(p) => p.caption.as_ref(),
++        ShapeObject::Chart(c) => c.caption.as_ref().or(c.drawing.caption.as_ref()),
++        ShapeObject::Ole(o) => o.caption.as_ref().or(o.drawing.caption.as_ref()),
++        _ => shape.drawing().and_then(|d| d.caption.as_ref()),
++    }
++}
++
++fn format_auto_number_label(number: &AutoNumber) -> String {
++    let mut text = String::new();
++    if number.prefix_char != '\0' {
++        text.push(number.prefix_char);
++    }
++    let value = if number.assigned_number > 0 {
++        number.assigned_number
++    } else if number.number > 0 {
++        number.number
++    } else {
++        1
++    };
++    text.push_str(&crate::renderer::format_number(
++        value,
++        crate::renderer::NumberFormat::from_hwp_format(number.format),
++    ));
++    if number.suffix_char != '\0' {
++        text.push(number.suffix_char);
++    }
++    text
++}
++
++fn clean_caption_char(ch: char) -> Option<char> {
++    match ch {
++        '\u{FFFC}' => None,
++        '\t' | '\n' | '\r' | '\u{000B}' => Some(' '),
++        c if c.is_control() => None,
++        c => Some(c),
++    }
++}
++
++fn extract_caption_paragraph_text(para: &Paragraph) -> String {
++    let chars: Vec<char> = para.text.chars().collect();
++    let has_auto_num = para.controls.iter().any(|ctrl| {
++        matches!(
++            ctrl,
++            Control::AutoNumber(an)
++                if !matches!(
++                    an.number_type,
++                    AutoNumberType::Footnote | AutoNumberType::Endnote
++                )
++        )
++    });
++
++    if !has_auto_num {
++        let cleaned: String = chars.into_iter().filter_map(clean_caption_char).collect();
++        return cleaned.trim().to_string();
++    }
++
++    let sources = para.control_source_positions();
++    let mut replacements: HashMap<usize, String> = HashMap::new();
++    let mut insertions: HashMap<usize, Vec<String>> = HashMap::new();
++
++    for (idx, ctrl) in para.controls.iter().enumerate() {
++        let Control::AutoNumber(an) = ctrl else {
++            continue;
++        };
++        if matches!(
++            an.number_type,
++            AutoNumberType::Footnote | AutoNumberType::Endnote
++        ) {
++            continue;
++        }
++        let Some(source) = sources.get(idx) else {
++            continue;
++        };
++        let label = format_auto_number_label(an);
++        let pos = source.char_index;
++        if source.owns_char
++            && matches!(chars.get(pos), Some(' ' | '\u{0012}' | '\u{FFFC}'))
++            && !replacements.contains_key(&pos)
++        {
++            replacements.insert(pos, label);
++        } else {
++            insertions
++                .entry(pos.min(chars.len()))
++                .or_default()
++                .push(label);
++        }
++    }
++
++    let mut out = String::new();
++    for (i, ch) in chars.iter().enumerate() {
++        if let Some(labels) = insertions.get(&i) {
++            for label in labels {
++                out.push_str(label);
++            }
++        }
++        if let Some(label) = replacements.get(&i) {
++            out.push_str(label);
++        } else if let Some(cleaned) = clean_caption_char(*ch) {
++            out.push(cleaned);
++        }
++    }
++    if let Some(labels) = insertions.get(&chars.len()) {
++        for label in labels {
++            out.push_str(label);
++        }
++    }
++    out.trim().to_string()
++}
++
++fn build_caption_entry(
++    kind: &'static str,
++    caption: &Caption,
++    sec: usize,
++    para: usize,
++    control_index: usize,
++    cell_path: &[CellPathStep],
++) -> ObjectCaptionEntry {
++    let paragraphs: Vec<String> = caption
++        .paragraphs
++        .iter()
++        .map(extract_caption_paragraph_text)
++        .collect();
++    let text = paragraphs
++        .iter()
++        .filter(|p| !p.is_empty())
++        .cloned()
++        .collect::<Vec<_>>()
++        .join("\n");
++    ObjectCaptionEntry {
++        kind,
++        text,
++        paragraphs,
++        sec,
++        para,
++        control_index,
++        cell_path: cell_path.to_vec(),
++        direction: caption_direction_str(caption.direction),
++        has_caption: true,
++    }
++}
++
++fn collect_shape_captions(
++    shape: &ShapeObject,
++    sec: usize,
++    root_para: usize,
++    control_index: usize,
++    cell_path: &[CellPathStep],
++    group_depth: usize,
++    out: &mut Vec<ObjectCaptionEntry>,
++) {
++    if let Some(caption) = shape_caption(shape) {
++        let kind = match shape {
++            ShapeObject::Picture(_) => "picture",
++            _ => "shape",
++        };
++        out.push(build_caption_entry(
++            kind,
++            caption,
++            sec,
++            root_para,
++            control_index,
++            cell_path,
++        ));
++    }
++    if let ShapeObject::Group(group) = shape {
++        if group_depth < MAX_NEST_DEPTH {
++            for child in &group.children {
++                collect_shape_captions(
++                    child,
++                    sec,
++                    root_para,
++                    control_index,
++                    cell_path,
++                    group_depth + 1,
++                    out,
++                );
++            }
++        }
++    }
++}
++
++fn collect_paragraph_captions(
++    para: &Paragraph,
++    sec: usize,
++    root_para: usize,
++    cell_path: &mut Vec<CellPathStep>,
++    out: &mut Vec<ObjectCaptionEntry>,
++) {
++    for (ctrl_idx, ctrl) in para.controls.iter().enumerate() {
++        match ctrl {
++            Control::Table(table) => {
++                if let Some(caption) = table.caption.as_ref() {
++                    out.push(build_caption_entry(
++                        "table", caption, sec, root_para, ctrl_idx, cell_path,
++                    ));
++                }
++                if cell_path.len() < MAX_NEST_DEPTH {
++                    for (cell_idx, cell) in table.cells.iter().enumerate() {
++                        for (cell_para_idx, cell_para) in cell.paragraphs.iter().enumerate() {
++                            cell_path.push(CellPathStep {
++                                control_index: ctrl_idx,
++                                cell_index: cell_idx,
++                                cell_para_index: cell_para_idx,
++                            });
++                            collect_paragraph_captions(cell_para, sec, root_para, cell_path, out);
++                            cell_path.pop();
++                        }
++                    }
++                }
++            }
++            Control::Picture(picture) => {
++                if let Some(caption) = picture.caption.as_ref() {
++                    out.push(build_caption_entry(
++                        "picture", caption, sec, root_para, ctrl_idx, cell_path,
++                    ));
++                }
++            }
++            Control::Shape(shape) => {
++                collect_shape_captions(shape, sec, root_para, ctrl_idx, cell_path, 0, out);
++                if cell_path.len() < MAX_NEST_DEPTH {
++                    let tb_count = shape.textbox_shape_count();
++                    for tb_idx in 0..tb_count {
++                        if let Some(tb) = get_textbox_at(shape, tb_idx) {
++                            for (tb_para_idx, tb_para) in tb.paragraphs.iter().enumerate() {
++                                cell_path.push(CellPathStep {
++                                    control_index: ctrl_idx,
++                                    cell_index: tb_idx,
++                                    cell_para_index: tb_para_idx,
++                                });
++                                collect_paragraph_captions(tb_para, sec, root_para, cell_path, out);
++                                cell_path.pop();
++                            }
++                        }
++                    }
++                }
++            }
++            // Control::Equation has no Caption field in this model.
++            _ => {}
++        }
++    }
++}
++
++impl DocumentCore {
++    /// Lists every captioned object in document reading order as a JSON array.
++    ///
++    /// Strictly read-only: traverses the in-memory document model without
++    /// modifying paragraphs, layout, or serialization state.
++    pub fn list_object_captions_native(&self) -> Result<String, HwpError> {
++        let mut entries = Vec::new();
++        let mut cell_path = Vec::new();
++        for (sec_idx, section) in self.document.sections.iter().enumerate() {
++            for (para_idx, para) in section.paragraphs.iter().enumerate() {
++                collect_paragraph_captions(para, sec_idx, para_idx, &mut cell_path, &mut entries);
++            }
++        }
++        serde_json::to_string(&entries)
++            .map_err(|e| HwpError::RenderError(format!("caption serialization failed: {e}")))
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::model::control::{AutoNumber, AutoNumberType};
++    use crate::model::document::{Document, Section};
++    use crate::model::image::Picture;
++    use crate::model::shape::{
++        ChartShape, DrawingObjAttr, GroupShape, OleShape, RectangleShape, TextBox,
++    };
++    use crate::model::table::{Cell, Table};
++
++    fn plain_caption(lines: &[&str], direction: CaptionDirection) -> Caption {
++        Caption {
++            direction,
++            paragraphs: lines
++                .iter()
++                .map(|line| Paragraph {
++                    text: (*line).to_string(),
++                    ..Default::default()
++                })
++                .collect(),
++            ..Default::default()
++        }
++    }
++
++    fn core_with_paragraphs(paragraphs: Vec<Paragraph>) -> DocumentCore {
++        let mut core = DocumentCore::new_empty();
++        core.document = Document {
++            sections: vec![Section {
++                paragraphs,
++                ..Default::default()
++            }],
++            ..Default::default()
++        };
++        core
++    }
++
++    #[test]
++    fn empty_document_returns_empty_array() {
++        let core = DocumentCore::new_empty();
++        let raw = core.list_object_captions_native().unwrap();
++        assert_eq!(raw, "[]");
++    }
++
++    #[test]
++    fn lists_table_picture_shape_and_nested_captions_in_reading_order() {
++        let nested_pic = Picture {
++            caption: Some(plain_caption(&["Nested picture"], CaptionDirection::Bottom)),
++            ..Default::default()
++        };
++        let outer_table = Table {
++            caption: Some(plain_caption(&["Table 1. Overview"], CaptionDirection::Top)),
++            cells: vec![Cell {
++                paragraphs: vec![Paragraph {
++                    controls: vec![Control::Picture(Box::new(nested_pic))],
++                    ..Default::default()
++                }],
++                ..Default::default()
++            }],
++            ..Default::default()
++        };
++        let auto_pic_para = Paragraph::new_auto_number_caption(
++            "Figure ",
++            AutoNumber {
++                number_type: AutoNumberType::Picture,
++                assigned_number: 2,
++                ..Default::default()
++            },
++        );
++        let top_pic = Picture {
++            caption: Some(Caption {
++                direction: CaptionDirection::Bottom,
++                paragraphs: vec![
++                    auto_pic_para,
++                    Paragraph {
++                        text: "Source:\tSurvey\u{FFFC}".to_string(),
++                        ..Default::default()
++                    },
++                ],
++                ..Default::default()
++            }),
++            ..Default::default()
++        };
++        let rect_in_tb = RectangleShape {
++            drawing: DrawingObjAttr {
++                caption: Some(plain_caption(&["Box caption"], CaptionDirection::Left)),
++                text_box: Some(TextBox {
++                    paragraphs: vec![Paragraph {
++                        controls: vec![Control::Table(Box::new(Table {
++                            caption: Some(plain_caption(
++                                &["Table inside box"],
++                                CaptionDirection::Right,
++                            )),
++                            ..Default::default()
++                        }))],
++                        ..Default::default()
++                    }],
++                    ..Default::default()
++                }),
++                ..Default::default()
++            },
++            ..Default::default()
++        };
++        let chart = ChartShape {
++            caption: Some(plain_caption(&["Chart 1"], CaptionDirection::Bottom)),
++            ..Default::default()
++        };
++        let ole = OleShape {
++            caption: Some(plain_caption(&["OLE 1"], CaptionDirection::Bottom)),
++            ..Default::default()
++        };
++        let group = GroupShape {
++            caption: Some(plain_caption(&["Group 1"], CaptionDirection::Top)),
++            children: vec![ShapeObject::Picture(Box::new(Picture {
++                caption: Some(plain_caption(&["Grouped pic"], CaptionDirection::Bottom)),
++                ..Default::default()
++            }))],
++            ..Default::default()
++        };
++
++        let core = core_with_paragraphs(vec![
++            Paragraph {
++                controls: vec![Control::Table(Box::new(outer_table))],
++                ..Default::default()
++            },
++            Paragraph {
++                controls: vec![Control::Picture(Box::new(top_pic))],
++                ..Default::default()
++            },
++            Paragraph {
++                controls: vec![
++                    Control::Shape(Box::new(ShapeObject::Rectangle(rect_in_tb))),
++                    Control::Shape(Box::new(ShapeObject::Chart(Box::new(chart)))),
++                    Control::Shape(Box::new(ShapeObject::Ole(Box::new(ole)))),
++                    Control::Shape(Box::new(ShapeObject::Group(group))),
++                ],
++                ..Default::default()
++            },
++        ]);
++
++        let raw = core.list_object_captions_native().unwrap();
++        let items: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap();
++        assert_eq!(items.len(), 9);
++
++        assert_eq!(items[0]["kind"], "table");
++        assert_eq!(items[0]["text"], "Table 1. Overview");
++        assert_eq!(items[0]["sec"], 0);
++        assert_eq!(items[0]["para"], 0);
++        assert_eq!(items[0]["controlIndex"], 0);
++        assert_eq!(items[0]["cellPath"], serde_json::json!([]));
++        assert_eq!(items[0]["direction"], "Top");
++        assert_eq!(items[0]["hasCaption"], true);
++
++        assert_eq!(items[1]["kind"], "picture");
++        assert_eq!(items[1]["text"], "Nested picture");
++        assert_eq!(items[1]["para"], 0);
++        assert_eq!(items[1]["controlIndex"], 0);
++        assert_eq!(
++            items[1]["cellPath"],
++            serde_json::json!([{ "controlIndex": 0, "cellIndex": 0, "cellParaIndex": 0 }])
++        );
++
++        assert_eq!(items[2]["kind"], "picture");
++        assert_eq!(items[2]["text"], "Figure 2\nSource: Survey");
++        assert_eq!(
++            items[2]["paragraphs"],
++            serde_json::json!(["Figure 2", "Source: Survey"])
++        );
++
++        assert_eq!(items[3]["kind"], "shape");
++        assert_eq!(items[3]["text"], "Box caption");
++        assert_eq!(items[3]["direction"], "Left");
++
++        assert_eq!(items[4]["kind"], "table");
++        assert_eq!(items[4]["text"], "Table inside box");
++        assert_eq!(
++            items[4]["cellPath"],
++            serde_json::json!([{ "controlIndex": 0, "cellIndex": 0, "cellParaIndex": 0 }])
++        );
++
++        assert_eq!(items[5]["kind"], "shape");
++        assert_eq!(items[5]["text"], "Chart 1");
++        assert_eq!(items[5]["controlIndex"], 1);
++
++        assert_eq!(items[6]["kind"], "shape");
++        assert_eq!(items[6]["text"], "OLE 1");
++        assert_eq!(items[6]["controlIndex"], 2);
++
++        assert_eq!(items[7]["kind"], "shape");
++        assert_eq!(items[7]["text"], "Group 1");
++        assert_eq!(items[7]["controlIndex"], 3);
++
++        assert_eq!(items[8]["kind"], "picture");
++        assert_eq!(items[8]["text"], "Grouped pic");
++        assert_eq!(items[8]["controlIndex"], 3);
++    }
++}
+diff --git a/src/document_core/queries/mod.rs b/src/document_core/queries/mod.rs
+index c7ad51a4d..6c885d032 100644
+--- a/src/document_core/queries/mod.rs
++++ b/src/document_core/queries/mod.rs
+@@ -1,5 +1,6 @@
+ mod body_page_fields;
+ mod bookmark_query;
++mod caption_query;
+ mod cursor_nav;
+ mod cursor_rect;
+ pub(crate) mod doc_tree_nav;
+diff --git a/src/wasm_api.rs b/src/wasm_api.rs
+index 81a7bde5a..a78c5e0bf 100644
+--- a/src/wasm_api.rs
++++ b/src/wasm_api.rs
+@@ -10722,6 +10722,16 @@ impl HwpDocument {
+         self.core.get_bookmarks_native().map_err(|e| e.into())
+     }
+ 
++    /// Lists all objects carrying a caption in document reading order.
++    ///
++    /// Read-only query: never mutates document content, layout, or serialization state.
++    #[wasm_bindgen(js_name = listObjectCaptions)]
++    pub fn list_object_captions(&self) -> Result<String, JsValue> {
++        self.core
++            .list_object_captions_native()
++            .map_err(|e| e.into())
++    }
++
+     /// 문서 구조(개요/조문) 트리를 JSON으로 반환 (사이드바 목차 네비게이션용)
+     ///
+     /// `mode`: `"auto"` | `"outline"` | `"clause"` (인식 불가 시 `auto`).

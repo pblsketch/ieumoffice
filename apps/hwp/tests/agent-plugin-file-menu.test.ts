@@ -13,6 +13,7 @@ const LABELS = {
   open: '열기…',
   save: '저장',
   saveAs: '다른 이름으로 저장…',
+  saveSubmission: '제출본으로 저장…',
   importPdf: 'PDF 가져오기…',
   pdf: 'PDF로 내보내기…',
   preview: '미리 보기…',
@@ -65,13 +66,14 @@ afterEach(() => {
 })
 
 describe('the File menu of the embedded editor', () => {
-  it('gets Open, Save, Save As, Import PDF, Export as PDF, Print Preview and Print on top, in that order', () => {
+  it('gets Open, Save, Save As, Save Submission Copy, Import PDF, Export as PDF, Print Preview and Print on top, in that order', () => {
     const { plugin, commands, menu } = editor()
     expect(plugin.installFileMenu(LABELS)).toEqual({ ok: true })
     expect(menu).toEqual([
       'ext:ieum-open',
       'ext:ieum-save',
       'ext:ieum-save-as',
+      'ext:ieum-save-submission',
       'ext:ieum-import-pdf',
       'ext:ieum-export-pdf',
       'ext:ieum-preview',
@@ -82,6 +84,8 @@ describe('the File menu of the embedded editor', () => {
     expect(commands.get('ext:ieum-open')).toMatchObject({ label: '열기…', shortcutLabel: 'Ctrl+O' })
     expect(commands.get('ext:ieum-save')).toMatchObject({ label: '저장', shortcutLabel: 'Ctrl+S' })
     expect(commands.get('ext:ieum-save-as')).toMatchObject({ shortcutLabel: 'Ctrl+Shift+S' })
+    expect(commands.get('ext:ieum-save-submission')).toMatchObject({ label: '제출본으로 저장…' })
+    expect(commands.get('ext:ieum-save-submission')?.shortcutLabel).toBeUndefined()
     expect(commands.get('ext:ieum-import-pdf')).toMatchObject({ label: 'PDF 가져오기…' })
     expect(commands.get('ext:ieum-export-pdf')?.shortcutLabel).toBeUndefined()
   })
@@ -93,6 +97,7 @@ describe('the File menu of the embedded editor', () => {
       'ext:ieum-open',
       'ext:ieum-save',
       'ext:ieum-save-as',
+      'ext:ieum-save-submission',
       'ext:ieum-import-pdf',
       'ext:ieum-export-pdf',
       'ext:ieum-preview',
@@ -100,19 +105,31 @@ describe('the File menu of the embedded editor', () => {
     ]) {
       commands.get(id)?.execute(undefined as never)
     }
-    expect(fired).toEqual(['open', 'save', 'saveAs', 'importPdf', 'pdf', 'preview', 'print'])
+    expect(fired).toEqual([
+      'open',
+      'save',
+      'saveAs',
+      'saveSubmission',
+      'importPdf',
+      'pdf',
+      'preview',
+      'print',
+    ])
   })
 
   it('puts the items back once when asked again, without registering twice', () => {
     const { plugin, menu } = editor()
     plugin.installFileMenu(LABELS)
     expect(plugin.installFileMenu(LABELS)).toEqual({ ok: true })
-    expect(menu.filter((id) => id.startsWith('ext:'))).toHaveLength(7)
+    expect(menu.filter((id) => id.startsWith('ext:'))).toHaveLength(8)
   })
 
   it('says so when the editor has no File menu, and refuses missing labels', () => {
     expect(editor(false).plugin.installFileMenu(LABELS)).toEqual({ ok: false })
     expect(() => editor().plugin.installFileMenu({ ...LABELS, print: '' })).toThrow(/print/)
+    expect(() => editor().plugin.installFileMenu({ ...LABELS, saveSubmission: '' })).toThrow(
+      /saveSubmission/,
+    )
   })
 })
 

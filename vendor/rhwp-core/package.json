@@ -1,6 +1,6 @@
 {
   "name": "@rhwp/core",
-  "version": "0.9.1-ieum.36",
+  "version": "0.9.1-ieum.37",
   "description": "rhwp v0.9.1 HWP/HWPX engine (WebAssembly) rebuilt with the patches in ./patches",
   "private": true,
   "type": "module",
@@ -57,9 +57,10 @@
       "0054-duplicate-floating-control.patch",
       "0055-nested-table-path-calls.patch",
       "0056-atomic-table-save-verify.patch",
-      "0057-textbox-hit-test-and-in-cell-edit.patch"
+      "0057-textbox-hit-test-and-in-cell-edit.patch",
+      "0059-list-object-captions.patch"
     ],
     "wasmPack": "0.15.0",
-    "wasmSha256": "a71267eb05c848d0beb51623b6b764d64750cd9f51f4d870b4bdf6d160953ac2"
+    "wasmSha256": "afecd6628d1b956a53fa5ff2f7412b042f9e72353a098d16d6f81d4cb4809595"
   }
 }

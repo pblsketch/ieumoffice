@@ -20,3 +20,21 @@ GenOffice, `.hwp` ve `.hwpx` Hangul belgelerini bir sekmede açar ve düzenler; 
 - Belgenin yanında düz metin notları okumak, eklemek, düzenlemek ve silmek için üst çubuktan veya **Ekle > Not** menüsünden Not sütununu açın.
 - Hangul belge düzenleme kısayollarını, yatay cetvel paragraf işaretlerini, Biçim Kopyala (**Alt+C**), Hanja dönüştürme (**F9** / Hanja tuşu) ve Belge Bilgisi (**Ctrl+Q,I**) özelliklerini destekler.
 - İsteğe bağlı AI paneli ve [terminal komutları](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) metin, stiller, tablolar, denklemler, sayfa düzeni, anahat ve arama sonuçlarını okuyup düzenleyebilir; her AI düzenlemesi tek bir geri alma adımıdır.
+
+## İçindekiler: oluşturma ve yenileme
+
+- Anahat görünümündeki başlıklardan bir **İçindekiler** tablosunun yanı sıra nesne açıklamaları ve açıklama paragraflarından **Tablo Listesi**, **Şekil Listesi** ve **Denklem Listesi** eklemek için **Araçlar > İçindekiler Oluştur** (veya **Araçlar > İçindekileri Yenile** ya da içindekiler içinde sağ tıklama) menüsünü kullanın.
+- **Noktalı sekme** (varsayılan) veya **Kenarlıksız tablo** (2 sütunlu) düzenini seçin, başlık derinliğini (düzey 1–10, varsayılan 3) ve başlığı ayarlayın, isterseniz tıklanabilir bağlantılar ekleyin (doğrudan ilgili başlığa atlamak için satıra tıklayın veya **Ctrl+tıklayın**).
+- Sayfa numaraları, yeni numaradan başlatma ve Romen ya da özel sayı biçimleri dahil olmak üzere yazdırılan sayfa numaralandırmasını yansıtır.
+- Yenileme, girdileri ve sayfa numaralarını yerinde günceller, elle düzenlediğiniz satırların üzerine yazmadan önce uyarır ve başka bir programla oluşturulmuş işaretsiz mevcut içindekiler tablolarını algılayarak değiştirmeden önce onayınızı ister.
+
+## Dizin: girdi işaretleme ve oluşturma
+
+- Seçili sözcüğü veya imleçteki sözcüğü işaretlemek, isteğe bağlı alt girdi eklemek ya da eşleşen tüm geçmeleri işaretlemek için **Araçlar > Dizin Girdisi İşaretle** (veya gövde metninde sağ tıklama) seçeneğini açın (yalnızca gövde metni; tablo, metin kutusu ve notlarda atlanan sayı bildirilir). Mevcut işaretleri aynı iletişim kutusunda görüntüleyip silebilirsiniz.
+- İmleç konumuna dizin eklemek için **Araçlar > Dizin Oluştur**, düzenlemelerden sonra güncellemek için **Araçlar > Dizini Yenile** kullanın. Varsayılan başlık ("Dizin") özelleştirilebilir.
+- Girdiler Korece (가나다) → İngilizce (ABC) → Diğer sırasıyla sıralanır; isteğe bağlı harf/ünsüz grup başlıkları, 1–3 sütun (varsayılan 2 sütun, yalnızca dizin bölümüne uygulanır ve belgenin geri kalanındaki sütunlar değişmez) ve **Noktalı sekme** ya da **Kenarlıksız tablo** düzeni seçilebilir.
+
+## Güncel olmayan öğe uyarısı ve teslim kopyası
+
+- Elle Kaydet, Yazdır, PDF Olarak Dışa Aktar veya Teslim kopyası olarak kaydet işlemlerinde düzenleyici, içindekiler tablolarının veya dizinin güncel olup olmadığını denetler ve tümünü tek bir geri alma adımında yenilemeyi önerir. Bu denetim Otomatik Kaydetme sırasında asla çalışmaz ve kaydetmeyi engellemez.
+- **Dosya > Teslim kopyası olarak kaydet** komutu, içindekiler tablolarını, başlık bağlantı noktalarını ve içindekiler bağlantılarını korurken dahili düzenleme işaretlerinden (dizin işaretleri, dizin bloğu işaretleri ve kayıtlı ayarlar) arındırılmış ayrı ve temiz bir kopya kaydeder. Özgün çalışma dosyanız bozulmadan kalır, böylece daha sonra yenilemeye devam edebilirsiniz.

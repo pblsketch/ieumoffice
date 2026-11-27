@@ -1123,3 +1123,212 @@ body {
 .workpane-rail-close {
   margin-top: auto;
 }
+
+/* ---- staleness prompt modal (StalenessModal.tsx): uses --ieum-dialog-* tokens ---- */
+
+.stale-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.stale-modal-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ieum-dialog-overlay);
+}
+
+.stale-modal {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100%);
+  max-height: min(560px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--ieum-dialog-radius);
+  background: var(--ieum-dialog-surface);
+  color: var(--ieum-dialog-ink);
+  box-shadow: var(--ieum-dialog-shadow);
+  font-family: var(--ieum-dialog-font);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stale-modal-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding-inline: 18px 10px;
+  background: var(--ieum-dialog-title-surface);
+  border-bottom: 1px solid var(--ieum-dialog-line);
+  color: var(--ieum-dialog-title-ink);
+}
+
+.stale-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stale-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.stale-modal-badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid var(--ieum-dialog-accent-line);
+  border-radius: 999px;
+  background: var(--ieum-dialog-accent-soft);
+  color: var(--ieum-dialog-accent);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.stale-modal-close {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ieum-dialog-radius-control);
+  background: transparent;
+  color: var(--ieum-dialog-ink-muted);
+  cursor: pointer;
+}
+
+.stale-modal-close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ieum-dialog-ink) 8%, transparent);
+  color: var(--ieum-dialog-ink);
+}
+
+.stale-modal-close:focus-visible {
+  outline: 2px solid var(--ieum-dialog-focus);
+  outline-offset: 2px;
+}
+
+.stale-modal-close:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.stale-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 16px 18px;
+}
+
+.stale-modal-message {
+  margin: 0;
+  color: var(--ieum-dialog-ink);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.stale-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--ieum-dialog-radius-control);
+  background: var(--ieum-dialog-surface-sunken);
+}
+
+.stale-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ieum-dialog-line-soft);
+}
+
+.stale-modal-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.stale-modal-item-name {
+  font-weight: 600;
+  color: var(--ieum-dialog-ink);
+}
+
+.stale-modal-item-reason {
+  color: var(--ieum-dialog-ink-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.stale-modal-foot {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--ieum-dialog-line-soft);
+  background: var(--ieum-dialog-surface-sunken);
+}
+
+.stale-modal-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--ieum-dialog-field-line);
+  border-radius: var(--ieum-dialog-radius-control);
+  background: var(--ieum-dialog-field-surface);
+  color: var(--ieum-dialog-ink);
+  box-shadow: var(--ieum-dialog-control-shadow);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.stale-modal-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ieum-dialog-ink) 6%, var(--ieum-dialog-field-surface));
+}
+
+.stale-modal-btn:focus-visible {
+  outline: 2px solid var(--ieum-dialog-focus);
+  outline-offset: 2px;
+}
+
+.stale-modal-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.stale-modal-btn-primary {
+  border-color: var(--ieum-dialog-accent);
+  background: var(--ieum-dialog-accent);
+  color: var(--ieum-dialog-accent-ink);
+  box-shadow: var(--ieum-dialog-primary-shadow);
+}
+
+.stale-modal-btn-primary:hover:not(:disabled) {
+  border-color: var(--ieum-dialog-accent-strong);
+  background: var(--ieum-dialog-accent-strong);
+}

@@ -73,7 +73,9 @@ import { HWP_CHANNELS, MAX_HWP_SAVE_BYTES, hwpFormatOfPath } from '../shared/ipc
 import type {
   AttachmentImportResult,
   BeginSaveResult,
+  BeginSubmissionSaveResult,
   CommitSaveResult,
+  CommitSubmissionSaveResult,
   HwpFormat,
   LoadGeneratedHwpxResult,
   MeasuredTab,
@@ -162,10 +164,14 @@ const hwpViews = new Set<number>()
 const closeSaveWaiters = new Map<number, (ok: boolean) => void>()
 /** Resolvers for menu- and shortcut-triggered saves, settled when the renderer's save ends */
 const saveWaiters = new Map<number, (ok: boolean) => void>()
+/** Resolvers for menu-triggered submission copy saves, completely independent of normal saves */
+const submissionWaiters = new Map<number, (ok: boolean) => void>()
 const readBytesWaiters = new Map<number, (result: unknown) => void>()
 const readTextInFlight = new Map<number, Promise<string>>()
 /** Target a view resolved with beginSave and has not committed yet */
 const pendingSaveByWc = new Map<number, { path: string; format: HwpFormat }>()
+/** Target a view resolved with beginSubmissionSave and has not committed yet */
+const pendingSubmissionByWc = new Map<number, { path: string; format: HwpFormat }>()
 /** The PDF path a view's Save As picked; its next PDF may write exactly that path, once */
 const pdfSaveAsByWc = new Map<number, string>()
 /**
@@ -223,6 +229,39 @@ const recoveryHost: HwpRecoveryHost = {
 
 /** Why a save stood down: the file moved on disk after this copy read or wrote it. */
 const EXTERNAL_MODIFIED = 'hwp: external-modified'
+
+/**
+ * Normalize a file path for open-tab comparison so relative segments, separator styles,
+ * and Windows letter casing resolve to the same canonical key.
+ */
+export function normalizeHwpComparePath(
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const resolved = resolve(targetPath)
+  return platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/**
+ * Whether `targetPath` refers to the same file as any entry in `openPaths`.
+ * Used to refuse overwriting any currently open HWP tab with a submission copy.
+ */
+export function matchesOpenHwpPath(
+  targetPath: string,
+  openPaths: Iterable<string>,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const needle = normalizeHwpComparePath(targetPath, platform)
+  for (const candidate of openPaths) {
+    if (!candidate) continue
+    if (normalizeHwpComparePath(candidate, platform) === needle) return true
+  }
+  return false
+}
+
+function isPathOpenInAnyHwpTab(targetPath: string): boolean {
+  return matchesOpenHwpPath(targetPath, [...savePathByWc.values(), ...openPathByWc.values()])
+}
 
 function recordedDiskState(wcId: number, path: string): SaveDiskState | undefined {
   return diskStatesByWc.get(wcId)?.get(path)
@@ -414,6 +453,30 @@ export function requestHwpSave(contents: WebContents, mode: SaveMode): Promise<b
   })
 }
 
+/**
+ * Menu "Save as Submission Copy": ask the renderer to build a stripped submission copy
+ * and write it to a separate path without altering the active tab's file or dirty state.
+ */
+export function requestHwpSubmissionSave(contents: WebContents): Promise<boolean> {
+  if (contents.isDestroyed()) return Promise.resolve(false)
+  if (memoModalByWc.has(contents.id)) {
+    contents.send(HWP_CHANNELS.memoBlocked)
+    return Promise.resolve(false)
+  }
+  if (submissionWaiters.has(contents.id)) return Promise.resolve(false)
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      submissionWaiters.delete(contents.id)
+      resolve(false)
+    }, 120_000)
+    submissionWaiters.set(contents.id, (ok) => {
+      clearTimeout(timer)
+      resolve(ok)
+    })
+    contents.send(HWP_CHANNELS.submissionSaveRequest)
+  })
+}
+
 /** How long a live read may take; a large document exports in well under this. */
 const READ_TEXT_TIMEOUT_MS = 30_000
 /** How often the request is sent again while the renderer has not answered. */
@@ -482,6 +545,12 @@ export function hwpReadText(contents: WebContents): Promise<string> {
 function settleSave(wcId: number, ok: boolean): void {
   const waiter = saveWaiters.get(wcId)
   saveWaiters.delete(wcId)
+  waiter?.(ok)
+}
+
+function settleSubmission(wcId: number, ok: boolean): void {
+  const waiter = submissionWaiters.get(wcId)
+  submissionWaiters.delete(wcId)
   waiter?.(ok)
 }
 
@@ -875,7 +944,7 @@ function registerHwpIpc(): void {
   })
 
   ipcMain.handle(HWP_CHANNELS.newTabs, (e, data: unknown, format: unknown): TabSpot[] => {
-    if (!pendingSaveByWc.has(e.sender.id)) return []
+    if (!pendingSaveByWc.has(e.sender.id) && !pendingSubmissionByWc.has(e.sender.id)) return []
     if (!(data instanceof Uint8Array) || data.length === 0 || data.length > MAX_HWP_SAVE_BYTES) {
       return []
     }
@@ -1002,6 +1071,8 @@ function registerHwpIpc(): void {
   // the editor's File menu: the same requests as Ctrl+S and Ctrl+P, so one path saves
   ipcMain.on(HWP_CHANNELS.fileCommand, (e, command: unknown) => {
     if (command === 'save' || command === 'saveAs') void requestHwpSave(e.sender, command)
+    else if (command === 'saveSubmission' && hwpViews.has(e.sender.id))
+      void requestHwpSubmissionSave(e.sender)
     else if (command === 'pdf') requestHwpPrint(e.sender, 'pdf')
     else if (command === 'preview') requestHwpPreview(e.sender, 'open')
     else if (command === 'print') requestHwpPreview(e.sender, 'print')
@@ -1012,6 +1083,153 @@ function registerHwpIpc(): void {
   ipcMain.on(HWP_CHANNELS.abortSave, (e) => {
     pendingSaveByWc.delete(e.sender.id)
     settleSave(e.sender.id, false)
+  })
+
+  ipcMain.handle(
+    HWP_CHANNELS.beginSubmissionSave,
+    async (e): Promise<BeginSubmissionSaveResult> => {
+      const wcId = e.sender.id
+      if (!hwpViews.has(wcId)) {
+        return { ok: false, error: 'hwp: unauthorized sender' }
+      }
+      pendingSubmissionByWc.delete(wcId)
+      if (memoModalByWc.has(wcId)) {
+        e.sender.send(HWP_CHANNELS.memoBlocked)
+        settleSubmission(wcId, false)
+        return { ok: false, error: 'hwp: a memo editor is open', reason: 'memo' }
+      }
+      if (trackedByWc.has(wcId)) {
+        settleSubmission(wcId, false)
+        return { ok: false, error: 'hwp: the document has tracked changes', reason: 'tracked' }
+      }
+      try {
+        const win =
+          BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+        const current = savePathByWc.get(wcId)
+        const currentFormat = current ? hwpFormatOfPath(current) : null
+        const copy = untitledCopyByWc.get(wcId)
+        const preferred = readHwpDefaultFormat(app)
+        const newDir = current ? null : await runtime.newDocumentDir?.(wcId)
+        const basePath = current
+          ? join(dirname(current), basename(current))
+          : (hwpRecoverySaveAsDefault(wcId) ??
+            join(
+              newDir ?? configuredDefaultSaveDir(app),
+              copy?.name ?? `${tm('untitledFile')}.${preferred}`,
+            ))
+        const fallback: HwpFormat =
+          currentFormat ?? copy?.format ?? hwpFormatOfPath(basePath) ?? preferred
+        const dir = dirname(basePath)
+        const rawBase = basename(basePath).replace(/\.hwpx?$/i, '') || tm('untitledFile')
+        const suffix = tm('submissionCopySuffix')
+        const suggestedBase = rawBase.endsWith(`_${suffix}`) ? rawBase : `${rawBase}_${suffix}`
+        const offered = join(dir, `${suggestedBase}.${fallback}`)
+
+        const picked = await showSaveDialogWithMemory(dialog, win, {
+          title: tm('saveSubmissionTitle'),
+          defaultPath: offered,
+          filters: saveAsFilters(fallback, false, tm),
+        })
+        if (picked.canceled || !picked.filePath) {
+          settleSubmission(wcId, false)
+          return { ok: true, canceled: true }
+        }
+        const answer = saveAsTarget(picked.filePath, fallback, false)
+        const format = hwpFormatOfPath(answer.path)
+        if (!format) throw new Error('hwp: no save format for this file name')
+        if (isPathOpenInAnyHwpTab(answer.path)) {
+          settleSubmission(wcId, false)
+          return {
+            ok: false,
+            reason: 'same_as_open',
+            error: 'hwp: submission target matches an open document',
+          }
+        }
+        pendingSubmissionByWc.set(wcId, { path: answer.path, format })
+        return { ok: true, path: answer.path, format }
+      } catch (err) {
+        settleSubmission(wcId, false)
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    HWP_CHANNELS.commitSubmissionSave,
+    async (
+      e,
+      data: unknown,
+      tabs: unknown,
+      options?: unknown,
+    ): Promise<CommitSubmissionSaveResult> => {
+      const wcId = e.sender.id
+      if (!hwpViews.has(wcId)) {
+        return { ok: false, error: 'hwp: unauthorized sender' }
+      }
+      const saveOptions = commitOptionsOf(options)
+      const pending = pendingSubmissionByWc.get(wcId)
+      pendingSubmissionByWc.delete(wcId)
+      const done = (result: CommitSubmissionSaveResult): CommitSubmissionSaveResult => {
+        settleSubmission(wcId, result.ok)
+        return result
+      }
+      if (!pending) return done({ ok: false, error: 'hwp: no submission save in progress' })
+      if (!(data instanceof Uint8Array) || data.length === 0 || data.length > MAX_HWP_SAVE_BYTES) {
+        return done({ ok: false, error: 'hwp: bad submission save request' })
+      }
+      if (!bytesMatchFormat(data, pending.format)) {
+        return done({ ok: false, error: `hwp: exported bytes are not a ${pending.format} file` })
+      }
+      // Defense-in-depth: another tab may have opened this path while the copy was exporting.
+      if (isPathOpenInAnyHwpTab(pending.path)) {
+        return done({
+          ok: false,
+          reason: 'same_as_open',
+          error: 'hwp: submission target matches an open document',
+        })
+      }
+      try {
+        const fixed = applySaveFixes(
+          data,
+          pending.format,
+          Array.isArray(tabs) ? (tabs as MeasuredTab[]) : undefined,
+          recoveryHost.saveBaseOf(wcId),
+          saveOptions.preview,
+        )
+        const bytes = fixed.bytes
+        const tailsLost = fixed.tailsSkipped !== undefined
+        if (tailsLost) {
+          console.warn(
+            `hwp: master pages or memos were not put back on submission save (${fixed.tailsSkipped})`,
+          )
+        }
+        let backupPath: string | undefined
+        if (existsSync(pending.path)) {
+          backupPath = backupPathFor(pending.path)
+          await copyFileReplacing(pending.path, backupPath)
+        }
+        await atomicWriteFile(
+          pending.path,
+          Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+        )
+        // Intentionally leave savePathByWc, openPathByWc, dirtyByWc, writtenByWc,
+        // recovery, and fileSavedHook completely untouched.
+        return done({
+          ok: true,
+          path: pending.path,
+          ...(backupPath ? { backupPath } : {}),
+          ...(tailsLost ? { tailsLost: true as const } : {}),
+        })
+      } catch (err) {
+        return done({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  )
+
+  ipcMain.on(HWP_CHANNELS.abortSubmissionSave, (e) => {
+    if (!hwpViews.has(e.sender.id)) return
+    pendingSubmissionByWc.delete(e.sender.id)
+    settleSubmission(e.sender.id, false)
   })
 
   ipcMain.on(HWP_CHANNELS.dirtyChanged, (e, dirty: unknown) => {
@@ -1257,6 +1475,7 @@ function grantAndTrack(
     memoModalByWc.delete(wcId)
     hwpViews.delete(wcId)
     pendingSaveByWc.delete(wcId)
+    pendingSubmissionByWc.delete(wcId)
     pdfSaveAsByWc.delete(wcId)
     headlessTargetByWc.delete(wcId)
     headlessPdfByWc.delete(wcId)
@@ -1269,6 +1488,7 @@ function grantAndTrack(
     closeSaveWaiters.get(wcId)?.(false)
     closeSaveWaiters.delete(wcId)
     settleSave(wcId, false)
+    settleSubmission(wcId, false)
   })
   // a dead renderer cannot close its memo editor; do not keep save, close and quit blocked
   wc.on('render-process-gone', () => memoModalByWc.delete(wcId))

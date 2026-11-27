@@ -33,7 +33,10 @@ import {
 import { WORKPANE_COMMAND_EVENT } from '../../studio-plugin/workpane-menu.mjs'
 import blankHwpUrl from './assets/blank.hwp?url'
 import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
+import { translateSubmission } from './i18n/submission'
+import { tocDialogLabelsFor } from './i18n/toc'
 import { translateWorkpane } from './i18n/workpane'
+import { StalenessModal, type StalenessModalState } from './StalenessModal'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
 import {
@@ -51,7 +54,7 @@ import {
 } from './workpane'
 import { openDocumentsDroppedOn } from './editor-drop'
 import { hwpPresentationKeyOf } from './presentation-keys'
-import { gatherPrintJob } from './print-flow'
+import { checkStalenessBeforePrint, gatherPrintJob, runWithPrintStalenessCheck } from './print-flow'
 import { PrintPreview } from './preview/PrintPreview'
 import {
   RECOVERY_TICK_MS,
@@ -59,7 +62,16 @@ import {
   withChangeNotes,
   type RecoveryCopier,
 } from './recovery-flow'
-import { runSave, type SaveEditorPort } from './save-flow'
+import {
+  checkStalenessBeforeAction,
+  runSave,
+  runSubmissionSave,
+  type SaveEditorPort,
+  type StaleCheckReport,
+  type StalenessAction,
+  type StalenessPromptChoice,
+  type SubmissionSaveEditorPort,
+} from './save-flow'
 import { AUTOSAVE_IDLE_MS, startAutosave } from './autosave-flow'
 import { PASSWORD_FLAG } from '../../scripts/rhwp-patches.mjs'
 import { STUDIO_SETTINGS_KEY, seededStudioSettings, studioUrl } from './studio-settings'
@@ -67,6 +79,7 @@ import { hwpFormatOfPath } from '../shared/ipc'
 import type {
   BeginSaveMode,
   HwpFormat,
+  OutlineStyleMap,
   PreviewAction,
   PrintJob,
   PrintMode,
@@ -157,6 +170,24 @@ function savePortOf(editor: RhwpEditor): SaveEditorPort {
       return { text: made.text, image: made.png === null ? null : bytesOfBase64(made.png) }
     },
     notifySaved: (fileName) => editor.notifySaved(fileName),
+  }
+}
+
+function submissionPortOf(editor: RhwpEditor): SubmissionSaveEditorPort {
+  const agent = createAgentBridge(() => editor)
+  return {
+    isPasswordProtected: async () => {
+      const flag = (await editor.commands.context())[PASSWORD_FLAG]
+      if (typeof flag !== 'boolean')
+        throw new Error('the editor did not report password protection')
+      return flag
+    },
+    exportSubmissionCopy: (format) => agent.exportSubmissionCopy(format),
+    measureTabs: async (spots) => (await agent.measureTabs(spots)).tabs,
+    savePreview: async () => {
+      const made = await agent.savePreview()
+      return { text: made.text, image: made.png === null ? null : bytesOfBase64(made.png) }
+    },
   }
 }
 
@@ -258,6 +289,15 @@ export default function App() {
   const copierRef = useRef<RecoveryCopier | null>(null)
   /** the editor holds a restored recovery copy that has not been saved since */
   const restoredRef = useRef(false)
+  /** true when this view runs as a hidden `--headless-export` window (never prompts) */
+  const headlessRef = useRef(false)
+  /** app-wide outline style-to-level mapping shared with TOC/Index dialogs and staleness checks */
+  const [outlineStyleMap, setOutlineStyleMap] = useState<OutlineStyleMap | null>(null)
+  const outlineStyleMapRef = useRef<OutlineStyleMap | null>(null)
+  outlineStyleMapRef.current = outlineStyleMap
+  /** modal state for pre-save / pre-print staleness confirmation */
+  const [staleModal, setStaleModal] = useState<StalenessModalState | null>(null)
+  const stalePromptActiveRef = useRef(false)
   /** the app's plugin inside the editor, for the calls that change no document */
   const pluginBridge = useMemo(() => createAgentBridge(() => editorRef.current), [])
   /** the AI panel's way into the document: the same plugin, telling of each possible change */
@@ -303,6 +343,7 @@ export default function App() {
           (window.hwpApi.fontFileReads?.() ?? Promise.resolve(null)).catch(() => null),
           (window.hwpApi.isHeadlessExport?.() ?? Promise.resolve(false)).catch(() => false),
         ])
+        headlessRef.current = headless === true
         // the studio reads its settings before first paint, so they are seeded before it exists
         localStorage.setItem(
           STUDIO_SETTINGS_KEY,
@@ -467,7 +508,169 @@ export default function App() {
   }, [])
 
   // Save As > PDF: the PDF export, set once it exists below (it is made after the save)
-  const pdfCopyRef = useRef<(path: string) => Promise<void>>(async () => {})
+  const pdfCopyRef = useRef<(path: string, skipStaleCheck?: boolean) => Promise<void>>(
+    async () => {},
+  )
+
+  // Keep the app-wide outline style map in sync for TOC dialogs and staleness checks.
+  useEffect(() => {
+    let active = true
+    void window.hwpApi
+      .getOutlineStyleMap?.()
+      .then((map) => {
+        if (active) setOutlineStyleMap(map)
+      })
+      .catch(() => {})
+    const off = window.hwpApi.onOutlineStyleMapChanged?.((map) => {
+      if (active) setOutlineStyleMap(map)
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [])
+
+  // Pre-action staleness check for manual save, print, PDF export, and submission copy.
+  // Skipped automatically in headless export mode and never called by auto-save.
+  const runStalePrompt = useCallback(
+    async (action: StalenessAction): Promise<'continue' | 'cancel'> => {
+      if (headlessRef.current || phase !== 'ready') return 'continue'
+      if (stalePromptActiveRef.current) return 'cancel'
+      stalePromptActiveRef.current = true
+      try {
+        let latestManualEdits: Awaited<
+          ReturnType<typeof agentBridge.checkStaleItems>
+        >['manualEdits'] = []
+        const checkStale = async () => {
+          const report = await agentBridge.checkStaleItems({
+            appStyleMap: outlineStyleMapRef.current ?? undefined,
+          })
+          latestManualEdits = Array.isArray(report.manualEdits) ? report.manualEdits : []
+          return report
+        }
+
+        const promptUser = (
+          report: StaleCheckReport,
+          act: StalenessAction,
+        ): Promise<StalenessPromptChoice> =>
+          new Promise((resolve) => {
+            setStaleModal({
+              phase: 'stale',
+              action: act,
+              items: report.items,
+              initialManualEdits: latestManualEdits,
+              busy: false,
+              onChoice: (choice) => {
+                if (choice === 'refresh') {
+                  if (latestManualEdits.length === 0) {
+                    setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                  }
+                } else {
+                  setStaleModal(null)
+                }
+                resolve(choice)
+              },
+            })
+          })
+
+        const confirmManualOverwrite = (manualItems: typeof latestManualEdits): Promise<boolean> =>
+          new Promise<boolean>((resolve) => {
+            setStaleModal({
+              phase: 'manual',
+              action,
+              manualItems,
+              busy: false,
+              onDecide: (decision) => {
+                if (decision) {
+                  setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                } else {
+                  setStaleModal(null)
+                }
+                resolve(decision)
+              },
+            })
+          })
+
+        const refreshAll = async (): Promise<'continue' | 'cancel'> => {
+          const appStyleMap = outlineStyleMapRef.current ?? undefined
+          let allowOverwriteManual = false
+
+          // When read-only check already detected manual edits, confirm before calling
+          // refreshAllStale so refreshing produces strictly one undo step (or zero on skip).
+          if (latestManualEdits.length > 0) {
+            const overwrite = await confirmManualOverwrite(latestManualEdits)
+            if (!overwrite) {
+              setStaleModal(null)
+              return 'continue'
+            }
+            allowOverwriteManual = true
+          }
+
+          let res = await agentBridge.refreshAllStale({
+            appStyleMap,
+            allowOverwriteManual,
+          })
+
+          // Fallback if a manual edit occurred between checkStaleItems and the user's click:
+          // the first attempt rolled back atomically (0 undo steps), so a confirmed retry is still 1 step.
+          if (
+            !allowOverwriteManual &&
+            res.ok === false &&
+            res.reason === 'manual_edits' &&
+            res.manualEdits.length > 0
+          ) {
+            const overwrite = await confirmManualOverwrite(res.manualEdits)
+            if (!overwrite) {
+              setStaleModal(null)
+              return 'continue'
+            }
+            res = await agentBridge.refreshAllStale({
+              appStyleMap,
+              allowOverwriteManual: true,
+            })
+          }
+
+          setStaleModal(null)
+          if (res.ok === false) {
+            if (res.reason === 'has_objects' || res.reason === 'memo_removal_requires_approval') {
+              setNotice({
+                tone: 'error',
+                text: translateSubmission(lang, 'staleRefreshBlockedObjects'),
+              })
+            } else {
+              const errText =
+                (res.failed ?? []).map((entry) => entry.error).join('; ') || (res.reason ?? '')
+              setNotice({
+                tone: 'error',
+                text: translateSubmission(lang, 'staleRefreshFailed', {
+                  error: errText,
+                }),
+              })
+            }
+            return 'cancel'
+          }
+
+          if (res.refreshed > 0) {
+            setDocTick((tick) => tick + 1)
+            setNotice({
+              tone: 'info',
+              text: translateSubmission(lang, 'staleRefreshDone', { count: res.refreshed }),
+            })
+          }
+          return 'continue'
+        }
+
+        if (action === 'print' || action === 'pdf') {
+          return await checkStalenessBeforePrint(action, checkStale, promptUser, { refreshAll })
+        }
+        return await checkStalenessBeforeAction(action, checkStale, promptUser, { refreshAll })
+      } finally {
+        setStaleModal(null)
+        stalePromptActiveRef.current = false
+      }
+    },
+    [phase, agentBridge, lang],
+  )
 
   const save = useCallback(
     async (mode: BeginSaveMode, automatic = false): Promise<boolean> => {
@@ -493,10 +696,18 @@ export default function App() {
       const done = new Promise<void>((resolve) => (release = resolve))
       savingDoneRef.current = done
       try {
-        const outcome = await runSave(savePortOf(editor), window.hwpApi, mode, automatic)
+        const outcome = await runSave(
+          savePortOf(editor),
+          window.hwpApi,
+          mode,
+          automatic,
+          automatic
+            ? undefined
+            : { onStaleCheck: () => runStalePrompt(mode === 'save' ? 'save' : 'saveAs') },
+        )
         if (outcome.kind === 'export') {
           // a copy, as File > Export as PDF writes it; nothing about the document changes
-          await pdfCopyRef.current(outcome.path)
+          await pdfCopyRef.current(outcome.path, true)
           return false
         }
         if (outcome.kind === 'saved') {
@@ -568,8 +779,92 @@ export default function App() {
         if (savingDoneRef.current === done) savingDoneRef.current = null
       }
     },
-    [t, showMemoBlocked],
+    [t, showMemoBlocked, runStalePrompt],
   )
+
+  const saveSubmission = useCallback(async (): Promise<boolean> => {
+    const editor = editorRef.current
+    if (!editor) {
+      window.hwpApi.abortSubmissionSave()
+      return false
+    }
+    if (memoBlockedRef.current) {
+      showMemoBlocked()
+      window.hwpApi.abortSubmissionSave()
+      return false
+    }
+    while (savingRef.current) {
+      const done = savingDoneRef.current
+      if (!done) break
+      await done
+    }
+    if (savingRef.current || editorRef.current !== editor) {
+      window.hwpApi.abortSubmissionSave()
+      return false
+    }
+    savingRef.current = true
+    let release!: () => void
+    const done = new Promise<void>((resolve) => (release = resolve))
+    savingDoneRef.current = done
+    try {
+      const outcome = await runSubmissionSave(submissionPortOf(editor), window.hwpApi, {
+        onStaleCheck: () => runStalePrompt('submission'),
+      })
+      if (outcome.kind === 'saved') {
+        const name = fileNameOf(outcome.path)
+        const backupDetail = outcome.backupPath
+          ? translateSubmission(lang, 'submissionBackupKept', {
+              name: fileNameOf(outcome.backupPath),
+            })
+          : undefined
+        if (outcome.tailsLost) {
+          setNotice({
+            tone: 'error',
+            text: translateSubmission(lang, 'submissionSavedTailsLost', { name }),
+            ...(backupDetail ? { detail: backupDetail } : {}),
+          })
+        } else {
+          setNotice({
+            tone: 'info',
+            text: translateSubmission(lang, 'submissionSaved', { name }),
+            ...(backupDetail ? { detail: backupDetail } : {}),
+          })
+        }
+        return true
+      }
+      if (outcome.kind === 'failed') {
+        const text =
+          outcome.reason === 'protected'
+            ? translateSubmission(lang, 'submissionFailedProtected')
+            : outcome.reason === 'tracked'
+              ? translateSubmission(lang, 'submissionFailedTracked')
+              : outcome.reason === 'same_as_open'
+                ? translateSubmission(lang, 'submissionFailedSameAsOpen')
+                : outcome.reason === 'strip_failed'
+                  ? translateSubmission(lang, 'submissionFailedStrip', {
+                      marks: (outcome.failedMarks ?? []).join(', '),
+                    })
+                  : outcome.reason === 'verify'
+                    ? translateSubmission(lang, 'submissionFailedVerify', {
+                        before: outcome.verify?.pageCountBefore ?? 0,
+                        after: outcome.verify?.pageCountAfter ?? 0,
+                      })
+                    : outcome.reason === 'export'
+                      ? translateSubmission(lang, 'submissionFailedExport', {
+                          error: outcome.detail ?? '',
+                        })
+                      : translateSubmission(lang, 'submissionFailedWrite', {
+                          error: outcome.detail ?? '',
+                        })
+        setNotice({ tone: 'error', text })
+      }
+      return false
+    } finally {
+      savingRef.current = false
+      release()
+      if (savingDoneRef.current === done) savingDoneRef.current = null
+    }
+  }, [lang, showMemoBlocked, runStalePrompt])
 
   // the embedded editor drops its own Save and Print, so its File menu gets the app's: they
   // go to the main process and come back as the requests Ctrl+S and Ctrl+P make
@@ -582,6 +877,7 @@ export default function App() {
         open: t('fileOpen'),
         save: t('fileSave'),
         saveAs: t('fileSaveAs'),
+        saveSubmission: translateSubmission(lang, 'submissionMenuLabel'),
         importPdf: t('fileImportPdf'),
         pdf: t('fileExportPdf'),
         preview: t('filePreview'),
@@ -594,6 +890,7 @@ export default function App() {
         command === 'open' ||
         command === 'save' ||
         command === 'saveAs' ||
+        command === 'saveSubmission' ||
         command === 'importPdf' ||
         command === 'pdf' ||
         command === 'preview' ||
@@ -613,7 +910,15 @@ export default function App() {
       frame.removeEventListener(FILE_COMMAND_EVENT, onCommand)
       frame.removeEventListener(MEMO_INSERT_EVENT, onMemoInsert)
     }
-  }, [phase, agentBridge, t])
+  }, [phase, agentBridge, t, lang])
+
+  // Tool menu > Table of Contents / Index entries and context-menu probes.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    void pluginBridge
+      .installTocIndexMenu(tocDialogLabelsFor(lang), { appStyleMap: outlineStyleMap })
+      .catch(() => {})
+  }, [phase, pluginBridge, lang, outlineStyleMap])
 
   // the editor's right-click 쉬운 말로 풀기 (studio-easy-words-context-menu): named in the app's
   // language, it hands the selected text over, and the AI panel explains it in plain words at
@@ -793,6 +1098,18 @@ export default function App() {
         else window.hwpApi.abortSave()
       })()
     })
+    const offSubmissionSave = window.hwpApi.onSubmissionSaveRequest(() => {
+      if (memoBlockedRef.current) {
+        showMemoBlocked()
+        window.hwpApi.abortSubmissionSave()
+        return
+      }
+      if (!ready()) {
+        window.hwpApi.abortSubmissionSave()
+        return
+      }
+      void saveSubmission()
+    })
     const offClose = window.hwpApi.onCloseSaveRequest(() => {
       if (memoBlockedRef.current) {
         showMemoBlocked()
@@ -816,9 +1133,10 @@ export default function App() {
     })
     return () => {
       offSave()
+      offSubmissionSave()
       offClose()
     }
-  }, [phase, save, showMemoBlocked])
+  }, [phase, save, saveSubmission, showMemoBlocked])
 
   // Print and PDF: the pages are gathered here, and the main process makes the PDF or
   // opens the print dialog. Print now goes through the preview, which calls runPrint.
@@ -863,6 +1181,11 @@ export default function App() {
   const openPreview = useCallback(
     async (initialDestination?: string): Promise<void> => {
       if (phase !== 'ready' || previewRef.current || printingRef.current) return
+      if (!headlessRef.current) {
+        const verdict = await runStalePrompt('print')
+        if (verdict === 'cancel') return
+        if (previewRef.current || printingRef.current) return
+      }
       let page = 1
       try {
         const context = await editorRef.current?.getSelectionContext()
@@ -873,12 +1196,17 @@ export default function App() {
       previewRef.current = true
       setPreview({ open: true, initialPage: page - 1, initialDestination })
     },
-    [phase],
+    [phase, runStalePrompt],
   )
 
   const runQuickPrintHwp = useCallback(
     async (printerLabel: string): Promise<void> => {
       if (phase !== 'ready' || printingRef.current) return
+      if (!headlessRef.current) {
+        const verdict = await runStalePrompt('print')
+        if (verdict === 'cancel') return
+        if (printingRef.current) return
+      }
       printingRef.current = true
       setNotice({
         tone: 'info',
@@ -908,7 +1236,7 @@ export default function App() {
         printingRef.current = false
       }
     },
-    [phase, lang, gatherLayoutJob],
+    [phase, lang, gatherLayoutJob, runStalePrompt],
   )
 
   const getHwpPageCount = useCallback(async (): Promise<number | null> => {
@@ -959,21 +1287,27 @@ export default function App() {
 
   /** File > Export as PDF, and Save As with PDF picked (`path`: no second dialog). */
   const exportPdf = useCallback(
-    async (path?: string): Promise<void> => {
-      const result = await runPrint(
-        'pdf',
-        (done, total) =>
-          setNotice({
-            tone: 'info',
-            key: 'printPreparing',
-            params: { done, total },
-            sticky: true,
-          }),
-        path,
+    async (path?: string, skipStaleCheck = false): Promise<void> => {
+      const outcome = await runWithPrintStalenessCheck(
+        !skipStaleCheck && !headlessRef.current ? () => runStalePrompt('pdf') : undefined,
+        () =>
+          runPrint(
+            'pdf',
+            (done, total) =>
+              setNotice({
+                tone: 'info',
+                key: 'printPreparing',
+                params: { done, total },
+                sticky: true,
+              }),
+            path,
+          ),
       )
+      if (outcome.canceled) return
+      const result = outcome.value
       setNotice(result.ok ? null : { tone: 'error', key: 'pdfFailed', detail: result.error })
     },
-    [runPrint],
+    [runPrint, runStalePrompt],
   )
 
   useEffect(() => {
@@ -1415,6 +1749,7 @@ export default function App() {
           gatherJob={gatherLayoutJob}
         />
       )}
+      {staleModal && <StalenessModal lang={lang} state={staleModal} dismissLabel={t('dismiss')} />}
     </div>
   )
 }

@@ -65,6 +65,7 @@ function hwpApiStub(): HwpApi {
   return {
     onLanguageChanged: () => () => undefined,
     onMemoBlocked: () => () => undefined,
+    onSubmissionSaveRequest: () => () => undefined,
     getAiSettings: async () => defaultAiSettings(),
     setAiSettings: async () => undefined,
     onAiSettingsChanged: () => () => undefined,
@@ -174,6 +175,7 @@ describe('the split pane role', () => {
         onMemoBlocked: () => () => undefined,
         onThemeChanged: () => () => undefined,
         onSaveRequest: () => () => undefined,
+        onSubmissionSaveRequest: () => () => undefined,
         onCloseSaveRequest: () => () => undefined,
         onPrintRequest: () => () => undefined,
         onPreviewRequest: () => () => undefined,
