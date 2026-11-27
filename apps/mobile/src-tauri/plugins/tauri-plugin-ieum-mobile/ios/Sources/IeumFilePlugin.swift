@@ -2,6 +2,7 @@ import Foundation
 import Tauri
 import UIKit
 import UniformTypeIdentifiers
+import WebKit
 
 struct PickOpenArgs: Decodable {
     let exts: [String]
@@ -101,6 +102,25 @@ public final class IeumFilePlugin: Plugin {
     private var pendingOpenUrls: [[String: Any]] = []
     private let lock = NSLock()
     private var activePickerDelegate: DocumentPickerDelegate?
+    private var scrollOffsetObservation: NSKeyValueObservation?
+
+    /// Pins the root WKWebView scroll view so iOS keyboard focus does not scroll the
+    /// fixed app header into the status bar or Dynamic Island; inner CSS containers scroll instead.
+    @objc public override func load(webview: WKWebView) {
+        super.load(webview: webview)
+        DispatchQueue.main.async { [weak self, weak webview] in
+            guard let self, let webview else { return }
+            let scrollView = webview.scrollView
+            scrollView.contentInsetAdjustmentBehavior = .never
+            scrollView.isScrollEnabled = false
+            scrollView.bounces = false
+            scrollView.setContentOffset(.zero, animated: false)
+            self.scrollOffsetObservation = scrollView.observe(\.contentOffset, options: [.new]) { view, _ in
+                guard view.zoomScale <= 1.01, view.contentOffset != .zero else { return }
+                view.setContentOffset(.zero, animated: false)
+            }
+        }
+    }
 
     public func enqueueIncomingUrl(_ url: URL, openInPlace: Bool) {
         let accessed = url.startAccessingSecurityScopedResource()
