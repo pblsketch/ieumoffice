@@ -49,6 +49,7 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           key: ios-sim
+          cache-on-failure: true
           workspaces: |
             apps/mobile/src-tauri
 
@@ -106,6 +107,7 @@ jobs:
             exit 1
           fi
 
+          APP_PATH="$(cd "$(dirname "$APP_PATH")" && pwd)/$(basename "$APP_PATH")"
           APP_NAME=$(basename "$APP_PATH")
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
           echo "Built .app: $APP_PATH (bundle id: $BUNDLE_ID)"
