@@ -140,14 +140,34 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   })
   const { refreshAiState, resetForDocument: resetAiForDocument, cancel: cancelAiRun } = ai
 
+  const [nativeSystemDark, setNativeSystemDark] = useState<boolean | undefined>(() => {
+    if (typeof window === 'undefined') return undefined
+    const initial = (window as { __ieumSystemDark?: unknown }).__ieumSystemDark
+    return typeof initial === 'boolean' ? initial : undefined
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onSystemDark = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail
+      if (typeof detail === 'boolean') setNativeSystemDark(detail)
+    }
+    window.addEventListener('ieum:system-dark', onSystemDark)
+    return () => window.removeEventListener('ieum:system-dark', onSystemDark)
+  }, [])
+
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (prefs.theme === 'system') {
-      document.documentElement.removeAttribute('data-theme')
+      if (typeof nativeSystemDark === 'boolean') {
+        document.documentElement.setAttribute('data-theme', nativeSystemDark ? 'dark' : 'light')
+      } else {
+        document.documentElement.removeAttribute('data-theme')
+      }
     } else {
       document.documentElement.setAttribute('data-theme', prefs.theme)
     }
-  }, [prefs.theme])
+  }, [prefs.theme, nativeSystemDark])
 
   const refreshHomeData = useCallback(async () => {
     const [recent, recovery, bk] = await Promise.all([

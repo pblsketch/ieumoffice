@@ -3,10 +3,12 @@ package com.ieumoffice.mobile.plugin
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ComponentCallbacks
 import android.content.Intent
 import android.content.UriPermission
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.view.View
@@ -115,6 +117,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     private val incomingBatches = ConcurrentLinkedQueue<JSObject>()
     private val batchCounter = AtomicLong(0)
     @Volatile private var activeWebView: WebView? = null
+    private var configCallbacks: ComponentCallbacks? = null
 
     // One worker for received files: copies run in arrival order, and a batch query queued
     // after them answers only once they are done.
@@ -132,8 +135,52 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
         webView.settings.setSupportZoom(false)
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
+        // Expose prefers-color-scheme: dark on API 33+ when Android night mode is active.
+        // Because the renderer declares color-scheme: light dark, WebView applies our dark CSS
+        // tokens directly without algorithmic inversion.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            webView.settings.isAlgorithmicDarkeningAllowed = true
+        }
         applySystemBarInsets()
+        installDarkModeObserver(webView)
         captureIncomingIntent(activity.intent, notifyWebView = false)
+    }
+
+    private fun isSystemNightMode(config: Configuration = activity.resources.configuration): Boolean =
+        (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+    /** Mirrors Android's live UI_MODE_NIGHT state into the WebView so system theme always matches. */
+    private fun pushSystemDarkMode(webView: WebView, isNight: Boolean) {
+        val flag = if (isNight) "true" else "false"
+        activity.runOnUiThread {
+            val window = activity.window
+            if (window != null) {
+                val insetsController = WindowInsetsControllerCompat(window, window.decorView)
+                insetsController.isAppearanceLightStatusBars = !isNight
+                insetsController.isAppearanceLightNavigationBars = !isNight
+            }
+            webView.evaluateJavascript(
+                "window.__ieumSystemDark=$flag;window.dispatchEvent(new CustomEvent('ieum:system-dark',{detail:$flag}));",
+                null
+            )
+        }
+    }
+
+    private fun installDarkModeObserver(webView: WebView) {
+        pushSystemDarkMode(webView, isSystemNightMode())
+        // Re-push once initial page load completes so listeners mounted after load() receive it.
+        webView.postDelayed({ pushSystemDarkMode(webView, isSystemNightMode()) }, 400)
+        webView.postDelayed({ pushSystemDarkMode(webView, isSystemNightMode()) }, 1500)
+        if (configCallbacks != null) return
+        val cb = object : ComponentCallbacks {
+            override fun onConfigurationChanged(newConfig: Configuration) {
+                val current = activeWebView ?: return
+                pushSystemDarkMode(current, isSystemNightMode(newConfig))
+            }
+            override fun onLowMemory() {}
+        }
+        configCallbacks = cb
+        activity.application?.registerComponentCallbacks(cb)
     }
 
     /** Notifies the foreground WebView when a new intent arrives without a visibility transition. */
