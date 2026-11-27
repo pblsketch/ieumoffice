@@ -1345,7 +1345,7 @@ jobs:
                       fail_step(insp, "07c-save-picker", "editor-mode-toggle ([완료]) not found")
                       return
                   ok, via = tap_element(insp, el_done, ['[data-testid="editor-mode-toggle"]'], ["완료", "Done"])
-                  time.sleep(3.5)
+                  time.sleep(5.0)
                   shot7c = screenshot("07c-save-picker.png")
                   tree_save = describe_native_ui("07c-save-picker")
                   nodes_save = flatten_ax_nodes(tree_save) if tree_save else []
@@ -1587,7 +1587,7 @@ jobs:
             grep "CONSOLE " "$LOG_STREAM" | head -n 400 || true
             echo ""
             echo "=== Filtered WebKit/app error lines from sim-log-stream.txt ==="
-            grep -v "found no value for key" "$LOG_STREAM" | grep -iE "error|exception|panic|uncaught|failed|rejected|crash" | head -n 300 || true
+            grep -v "found no value for key" "$LOG_STREAM" | grep -iE "IeumFilePlugin|error|exception|panic|uncaught|failed|rejected|crash" | head -n 300 || true
             echo ""
             echo "=== app-stderr.txt ==="
             cat "$ART_DIR/logs/app-stderr.txt" || true
