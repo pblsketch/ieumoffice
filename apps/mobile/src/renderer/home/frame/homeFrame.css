@@ -247,12 +247,19 @@
 
 /* ── Create sheet ── */
 
+/* Hug content on medium detent so all tiles and secondary actions sit above the bottom safe area,
+   and scroll inside .mobile-sheet-body when taller (e.g. 2.0x font scale or compact landscape). */
+.mobile-sheet-layer[data-testid='home-create-sheet'] .mobile-sheet-surface[data-detent='medium'] {
+  height: auto;
+  max-height: calc(100dvh - var(--m-safe-top) - var(--m-kb) - var(--m-space-6));
+}
+
 .home-frame-create-location {
   display: inline-flex;
   align-items: center;
   gap: var(--m-space-2);
   max-width: 100%;
-  margin-bottom: var(--m-space-3);
+  margin-bottom: var(--m-space-2);
   padding: var(--m-space-2) var(--m-space-3);
   border-radius: var(--radius-8);
   background: var(--surface-subtle);
@@ -273,7 +280,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--m-space-2);
-  margin-bottom: var(--m-space-3);
+  margin-bottom: var(--m-space-2);
 }
 
 :root[data-window='medium'] .home-frame-create-grid,
@@ -288,7 +295,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--m-space-1);
-  min-height: calc(var(--m-hit) * 1.55);
+  min-height: calc(var(--m-hit) * 1.4);
   padding: var(--m-space-2);
   border: 1px solid var(--border);
   border-radius: var(--m-radius-card);
@@ -307,30 +314,33 @@
 .home-frame-create-tile-title {
   line-height: var(--m-line-tight);
   word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .home-frame-create-secondary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));
   gap: var(--m-space-2);
   border-top: 1px solid var(--border-subtle);
-  padding-top: var(--m-space-3);
+  padding-top: var(--m-space-2);
 }
 
 .home-frame-create-action {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--m-space-2);
+  justify-content: center;
+  gap: var(--m-space-1);
   min-height: var(--m-hit);
   min-width: 0;
-  padding: var(--m-space-2) var(--m-space-3);
+  padding: var(--m-space-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--m-radius-control);
   background: var(--surface-subtle);
   color: var(--text-primary);
   font-size: var(--m-text-body-s);
   font-weight: 600;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
 }
 
@@ -344,24 +354,9 @@
 }
 
 .home-frame-create-action-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.home-frame-create-row-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.home-frame-create-row-sub {
-  font-size: var(--m-text-caption);
-  font-weight: 400;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--m-line-tight);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* ── List sort & view-mode toolbar ── */
