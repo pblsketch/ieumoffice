@@ -132,5 +132,9 @@ export const hi = {
   cmdInsertBookmark: 'बुकमार्क सम्मिलित करें',
   cmdLineBreak: 'पंक्ति विराम',
   cmdTab: 'टैब',
+  cmdDeleteObject: 'दस्तावेज़ ऑब्जेक्ट हटाएँ',
+  cmdOutsideBody: 'मुख्य पाठ अनुच्छेद के बाहर संपादन',
   cmdOtherAction: 'असमर्थित संपादक क्रिया ({id})',
+  noticeOutsideBodyIgnored:
+    'मुख्य पाठ के अनुच्छेदों के बाहर (तालिका, टेक्स्ट बॉक्स, टिप्पणियाँ, हेडर/फ़ुटर) की गई क्रियाएँ रिकॉर्ड नहीं होतीं।',
 } satisfies Record<keyof typeof zh, string>

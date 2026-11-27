@@ -424,7 +424,7 @@ export function sanitizeHostValue(value, limits) {
   return sanitizeHostValueInternal(value, resolvedLimits, 0, new Set(), false)
 }
 
-function wrapGlobalValue(value, limits, depth, seen) {
+function wrapGlobalValue(value, limits, depth, seen, tracking = null) {
   if (value === undefined || value === null) return value
   const t = typeof value
   if (t === 'boolean' || t === 'number') return value
@@ -453,6 +453,10 @@ function wrapGlobalValue(value, limits, depth, seen) {
   }
   if (SAFE_BAGS.has(value)) {
     // Preserve mutable safe bags by reference while validating their own entries.
+    if (tracking && !tracking.mutableBagSet.has(value)) {
+      tracking.mutableBagSet.add(value)
+      tracking.mutableHostBags.push(value)
+    }
     if (seen.has(value)) return value
     seen.add(value)
     try {
@@ -471,7 +475,7 @@ function wrapGlobalValue(value, limits, depth, seen) {
         if (typeof entry === 'function') {
           value[key] = createHostCallable(entry, entry.name || key, value)
         } else if (entry !== null && typeof entry === 'object' && !CALLABLES.has(entry)) {
-          value[key] = wrapGlobalValue(entry, limits, depth + 1, seen)
+          value[key] = wrapGlobalValue(entry, limits, depth + 1, seen, tracking)
         }
       }
       return value
@@ -495,9 +499,11 @@ function wrapGlobalValue(value, limits, depth, seen) {
       }
       const out = new Array(value.length)
       for (let i = 0; i < value.length; i++) {
-        out[i] = wrapGlobalValue(value[i], limits, depth + 1, seen)
+        out[i] = wrapGlobalValue(value[i], limits, depth + 1, seen, tracking)
       }
-      return Object.freeze(out)
+      const frozen = Object.freeze(out)
+      if (tracking) tracking.exemptObjects.add(frozen)
+      return frozen
     }
     const keys = Object.keys(value)
     if (keys.length > limits.maxCollectionSize) {
@@ -515,10 +521,12 @@ function wrapGlobalValue(value, limits, depth, seen) {
       if (typeof entry === 'function') {
         ns[key] = createHostCallable(entry, entry.name || key, value)
       } else {
-        ns[key] = wrapGlobalValue(entry, limits, depth + 1, seen)
+        ns[key] = wrapGlobalValue(entry, limits, depth + 1, seen, tracking)
       }
     }
-    return Object.freeze(ns)
+    const frozen = Object.freeze(ns)
+    if (tracking) tracking.exemptObjects.add(frozen)
+    return frozen
   } finally {
     seen.delete(value)
   }
@@ -2546,9 +2554,11 @@ function buildBuiltinGlobals() {
       )
     }
     try {
-      return sanitizeHostValueInternal(raw, ctx.limits, 0, new Set(), false, (bytes) =>
-        ctx.chargeBytes(bytes, node),
-      )
+      let pendingBytes = 0
+      return sanitizeHostValueInternal(raw, ctx.limits, 0, new Set(), false, (bytes) => {
+        pendingBytes += bytes
+        ctx.chargeBytes(bytes, node, undefined, pendingBytes)
+      })
     } catch (err) {
       if (err instanceof MacroRuntimeError) {
         throw new MacroRuntimeError(err.message, err.code, node.line, node.column)
@@ -2621,13 +2631,15 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     return out
   },
   toLowerCase: (recv, _args, ctx, node) => {
-    ctx.chargeBytes(recv.length * 2 + 16, node)
+    const est = recv.length * 2 + 16
+    ctx.chargeBytes(est, node, undefined, est)
     const out = recv.toLowerCase()
     checkStringLength(out.length, ctx, node)
     return out
   },
   toUpperCase: (recv, _args, ctx, node) => {
-    ctx.chargeBytes(recv.length * 2 + 16, node)
+    const est = recv.length * 2 + 16
+    ctx.chargeBytes(est, node, undefined, est)
     const out = recv.toUpperCase()
     checkStringLength(out.length, ctx, node)
     return out
@@ -2661,7 +2673,8 @@ const STRING_METHODS = Object.assign(Object.create(null), {
         node.column,
       )
     }
-    ctx.chargeBytes(recv.length * count * 2 + 16, node)
+    const est = recv.length * count * 2 + 16
+    ctx.chargeBytes(est, node, undefined, est)
     return recv.repeat(count)
   },
   replace: (recv, args, ctx, node) => {
@@ -2670,14 +2683,16 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     if (search.length === 0) {
       const targetLen = replacement.length + recv.length
       checkStringLength(targetLen, ctx, node)
-      ctx.chargeBytes(targetLen * 2 + 16, node)
+      const est = targetLen * 2 + 16
+      ctx.chargeBytes(est, node, undefined, est)
       return replacement + recv
     }
     const idx = recv.indexOf(search)
     if (idx === -1) return recv
     const targetLen = recv.length - search.length + replacement.length
     checkStringLength(targetLen, ctx, node)
-    ctx.chargeBytes(targetLen * 2 + 16, node)
+    const est = targetLen * 2 + 16
+    ctx.chargeBytes(est, node, undefined, est)
     return recv.slice(0, idx) + replacement + recv.slice(idx + search.length)
   },
   replaceAll: (recv, args, ctx, node) => {
@@ -2686,7 +2701,8 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     if (search.length === 0) {
       const targetLen = recv.length + (recv.length + 1) * replacement.length
       checkStringLength(targetLen, ctx, node)
-      ctx.chargeBytes(targetLen * 2 + 16, node)
+      const est = targetLen * 2 + 16
+      ctx.chargeBytes(est, node, undefined, est)
       let out = replacement
       for (let i = 0; i < recv.length; i++) {
         ctx.tick(node)
@@ -2732,30 +2748,46 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     }
     const sep = safeToString(args[0], ctx.limits, node)
     const result = []
-    ctx.chargeContainer(0, node)
-    if (sep.length === 0) {
-      if (limitArg === undefined && recv.length > ctx.limits.maxCollectionSize) {
-        throw new MacroRuntimeError(
-          `Array size limit (${ctx.limits.maxCollectionSize}) exceeded`,
-          'memory_limit',
-          node.line,
-          node.column,
-        )
+    ctx.activeTemps.push(result)
+    try {
+      ctx.chargeContainer(0, node)
+      if (sep.length === 0) {
+        if (limitArg === undefined && recv.length > ctx.limits.maxCollectionSize) {
+          throw new MacroRuntimeError(
+            `Array size limit (${ctx.limits.maxCollectionSize}) exceeded`,
+            'memory_limit',
+            node.line,
+            node.column,
+          )
+        }
+        const count = Math.min(recv.length, maxParts)
+        for (let i = 0; i < count; i++) {
+          ctx.tick(node)
+          const ch = recv[i]
+          result.push(ch)
+          ctx.chargeBytes(16 + ch.length * 2 + 16, node)
+        }
+        return result
       }
-      const count = Math.min(recv.length, maxParts)
-      for (let i = 0; i < count; i++) {
+      let cursor = 0
+      while (true) {
         ctx.tick(node)
-        const ch = recv[i]
-        ctx.chargeBytes(16 + ch.length * 2 + 16, node)
-        result.push(ch)
-      }
-      return result
-    }
-    let cursor = 0
-    while (true) {
-      ctx.tick(node)
-      const idx = recv.indexOf(sep, cursor)
-      if (idx === -1) {
+        const idx = recv.indexOf(sep, cursor)
+        if (idx === -1) {
+          if (result.length >= ctx.limits.maxCollectionSize) {
+            if (limitArg !== undefined && result.length >= maxParts) break
+            throw new MacroRuntimeError(
+              `Array size limit (${ctx.limits.maxCollectionSize}) exceeded`,
+              'memory_limit',
+              node.line,
+              node.column,
+            )
+          }
+          const piece = recv.slice(cursor)
+          result.push(piece)
+          ctx.chargeBytes(16 + piece.length * 2 + 16, node)
+          break
+        }
         if (result.length >= ctx.limits.maxCollectionSize) {
           if (limitArg !== undefined && result.length >= maxParts) break
           throw new MacroRuntimeError(
@@ -2765,27 +2797,16 @@ const STRING_METHODS = Object.assign(Object.create(null), {
             node.column,
           )
         }
-        const piece = recv.slice(cursor)
-        ctx.chargeBytes(16 + piece.length * 2 + 16, node)
+        const piece = recv.slice(cursor, idx)
         result.push(piece)
-        break
-      }
-      if (result.length >= ctx.limits.maxCollectionSize) {
+        ctx.chargeBytes(16 + piece.length * 2 + 16, node)
         if (limitArg !== undefined && result.length >= maxParts) break
-        throw new MacroRuntimeError(
-          `Array size limit (${ctx.limits.maxCollectionSize}) exceeded`,
-          'memory_limit',
-          node.line,
-          node.column,
-        )
+        cursor = idx + sep.length
       }
-      const piece = recv.slice(cursor, idx)
-      ctx.chargeBytes(16 + piece.length * 2 + 16, node)
-      result.push(piece)
-      if (limitArg !== undefined && result.length >= maxParts) break
-      cursor = idx + sep.length
+      return result
+    } finally {
+      ctx.activeTemps.pop()
     }
-    return result
   },
 })
 
@@ -2810,7 +2831,7 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
   push: (recv, args, ctx, node) => {
     assertMutableArray(recv, node)
     checkCollectionSize(recv.length + args.length, ctx, node, 'Array')
-    ctx.chargeBytes(args.length * 16, node)
+    ctx.chargeBytes(args.length * 16, node, args)
     for (let i = 0; i < args.length; i++) {
       recv.push(args[i])
     }
@@ -2827,14 +2848,14 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
   unshift: (recv, args, ctx, node) => {
     assertMutableArray(recv, node)
     checkCollectionSize(recv.length + args.length, ctx, node, 'Array')
-    ctx.chargeBytes(args.length * 16, node)
+    ctx.chargeBytes(args.length * 16, node, args)
     return recv.unshift(...args)
   },
   slice: (recv, args, ctx, node) => {
     const start = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
     const end = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
     const out = end === undefined ? recv.slice(start) : recv.slice(start, end)
-    ctx.chargeContainer(out.length, node)
+    ctx.chargeContainer(out.length, node, out)
     return out
   },
   concat: (recv, args, ctx, node) => {
@@ -2843,20 +2864,26 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
       total += Array.isArray(args[i]) ? args[i].length : 1
       checkCollectionSize(total, ctx, node, 'Array')
     }
-    ctx.chargeContainer(total, node)
     const out = recv.slice()
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i]
-      if (Array.isArray(arg)) {
-        for (let j = 0; j < arg.length; j++) {
-          ctx.tick(node)
-          out.push(arg[j])
+    ctx.activeTemps.push(out)
+    try {
+      ctx.chargeContainer(total, node)
+      for (let i = 0; i < args.length; i++) {
+        const arg = args[i]
+        if (Array.isArray(arg)) {
+          for (let j = 0; j < arg.length; j++) {
+            ctx.tick(node)
+            out.push(arg[j])
+          }
+        } else {
+          out.push(arg)
         }
-      } else {
-        out.push(arg)
       }
+      ctx.chargeBytes(64 + out.length * 16, node)
+      return out
+    } finally {
+      ctx.activeTemps.pop()
     }
-    return out
   },
   indexOf: (recv, args) => {
     const from = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : 0
@@ -2893,29 +2920,39 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
     assertCallback(cb, 'map', node)
     const len = recv.length
     checkCollectionSize(len, ctx, node, 'Array')
-    ctx.chargeContainer(len, node)
     const out = new Array(len)
-    for (let i = 0; i < len; i++) {
-      ctx.tick(node)
-      out[i] = ctx.invoke(cb, [recv[i], i, recv], node)
+    ctx.activeTemps.push(out)
+    try {
+      ctx.chargeContainer(len, node)
+      for (let i = 0; i < len; i++) {
+        ctx.tick(node)
+        out[i] = ctx.invoke(cb, [recv[i], i, recv], node)
+      }
+      return out
+    } finally {
+      ctx.activeTemps.pop()
     }
-    return out
   },
   filter: (recv, args, ctx, node) => {
     const cb = args[0]
     assertCallback(cb, 'filter', node)
     const len = recv.length
     const out = []
-    ctx.chargeContainer(0, node)
-    for (let i = 0; i < len; i++) {
-      ctx.tick(node)
-      if (ctx.invoke(cb, [recv[i], i, recv], node)) {
-        checkCollectionSize(out.length + 1, ctx, node, 'Array')
-        ctx.chargeBytes(16, node)
-        out.push(recv[i])
+    ctx.activeTemps.push(out)
+    try {
+      ctx.chargeContainer(0, node)
+      for (let i = 0; i < len; i++) {
+        ctx.tick(node)
+        if (ctx.invoke(cb, [recv[i], i, recv], node)) {
+          checkCollectionSize(out.length + 1, ctx, node, 'Array')
+          out.push(recv[i])
+          ctx.chargeBytes(16, node)
+        }
       }
+      return out
+    } finally {
+      ctx.activeTemps.pop()
     }
-    return out
   },
   forEach: (recv, args, ctx, node) => {
     const cb = args[0]
@@ -3180,7 +3217,19 @@ class Interpreter {
     this.startTime = nowFn()
     this.steps = 0
     this.callDepth = 0
-    this.allocatedBytes = 0
+    this.rootEnv = null
+    this.programEnv = null
+    this.activeEnvs = []
+    this.activeTemps = []
+    this.mutableHostBags = []
+    this.exemptObjects = new Set()
+    this.bytesSinceLiveCheck = 0
+    this.lastLiveBytes = 0
+    this.liveCheckThreshold = Math.min(
+      8 * 1024 * 1024,
+      Math.max(65_536, Math.floor(limits.maxMemoryBytes / 2)),
+    )
+    this.currentNode = null
   }
 
   elapsedMs() {
@@ -3205,38 +3254,149 @@ class Interpreter {
         node ? node.column : 1,
       )
     }
-    if (this.allocatedBytes > this.limits.maxMemoryBytes) {
-      throw new MacroRuntimeError(
-        `Memory limit (${this.limits.maxMemoryBytes} bytes) exceeded`,
-        'memory_limit',
-        node ? node.line : 1,
-        node ? node.column : 1,
-      )
-    }
   }
 
-  chargeBytes(bytes, node) {
+  addExternalSteps(count, node = this.currentNode) {
+    if (!Number.isFinite(count) || count <= 0) return
+    this.steps += Math.trunc(count)
+    this.checkLimits(node)
+  }
+
+  measureLiveBytes(extraValue = undefined, extraBytes = 0) {
+    const maxBytes = this.limits.maxMemoryBytes
+    let total = extraBytes > 0 ? extraBytes : 0
+    if (total > maxBytes) return total
+
+    const visited = new Set()
+    const worklist = []
+
+    if (this.programEnv) worklist.push(this.programEnv)
+    for (let i = 0; i < this.activeEnvs.length; i++) {
+      worklist.push(this.activeEnvs[i])
+    }
+    for (let i = 0; i < this.mutableHostBags.length; i++) {
+      worklist.push(this.mutableHostBags[i])
+    }
+    for (let i = 0; i < this.activeTemps.length; i++) {
+      worklist.push(this.activeTemps[i])
+    }
+    if (extraValue !== undefined) {
+      worklist.push(extraValue)
+    }
+
+    const exempt = this.exemptObjects
+    const rootEnv = this.rootEnv
+
+    while (worklist.length > 0) {
+      const item = worklist.pop()
+      if (item === null || item === undefined) continue
+      const t = typeof item
+      if (t === 'string') {
+        total += item.length * 2 + 16
+        if (total > maxBytes) return total
+        continue
+      }
+      if (t !== 'object') continue
+      if (visited.has(item)) continue
+      visited.add(item)
+
+      if (item instanceof Environment) {
+        if (item === rootEnv) continue
+        for (const key in item.bindings) {
+          const val = item.bindings[key].value
+          if (typeof val === 'string') {
+            total += val.length * 2 + 16
+            if (total > maxBytes) return total
+          } else if (val !== null && typeof val === 'object') {
+            worklist.push(val)
+          }
+        }
+        if (item.parent && item.parent !== rootEnv && !visited.has(item.parent)) {
+          worklist.push(item.parent)
+        }
+        continue
+      }
+
+      if (exempt.has(item)) continue
+
+      const callableMeta = CALLABLES.get(item)
+      if (callableMeta) {
+        if (callableMeta.kind === 'user') {
+          total += 64
+          if (total > maxBytes) return total
+          if (
+            callableMeta.closure &&
+            callableMeta.closure !== rootEnv &&
+            !visited.has(callableMeta.closure)
+          ) {
+            worklist.push(callableMeta.closure)
+          }
+        }
+        continue
+      }
+
+      if (Array.isArray(item)) {
+        total += 64 + item.length * 16
+        if (total > maxBytes) return total
+        for (let i = 0; i < item.length; i++) {
+          const el = item[i]
+          if (typeof el === 'string') {
+            total += el.length * 2 + 16
+            if (total > maxBytes) return total
+          } else if (el !== null && typeof el === 'object') {
+            worklist.push(el)
+          }
+        }
+        continue
+      }
+
+      const keys = Object.keys(item)
+      total += 64 + keys.length * 16
+      if (total > maxBytes) return total
+      for (let i = 0; i < keys.length; i++) {
+        const val = item[keys[i]]
+        if (typeof val === 'string') {
+          total += val.length * 2 + 16
+          if (total > maxBytes) return total
+        } else if (val !== null && typeof val === 'object') {
+          worklist.push(val)
+        }
+      }
+    }
+
+    return total
+  }
+
+  chargeBytes(bytes, node, extraValue = undefined, extraBytes = 0) {
     if (!Number.isFinite(bytes) || bytes <= 0) return
-    this.allocatedBytes += bytes
-    if (this.allocatedBytes > this.limits.maxMemoryBytes) {
-      throw new MacroRuntimeError(
-        `Memory limit (${this.limits.maxMemoryBytes} bytes) exceeded`,
-        'memory_limit',
-        node ? node.line : 1,
-        node ? node.column : 1,
-      )
+    this.bytesSinceLiveCheck += bytes
+    if (
+      this.lastLiveBytes + this.bytesSinceLiveCheck > this.limits.maxMemoryBytes ||
+      this.bytesSinceLiveCheck >= this.liveCheckThreshold
+    ) {
+      const live = this.measureLiveBytes(extraValue, extraBytes)
+      this.lastLiveBytes = live
+      this.bytesSinceLiveCheck = 0
+      if (live > this.limits.maxMemoryBytes) {
+        throw new MacroRuntimeError(
+          `Memory limit (${this.limits.maxMemoryBytes} bytes) exceeded`,
+          'memory_limit',
+          node ? node.line : 1,
+          node ? node.column : 1,
+        )
+      }
     }
   }
 
   chargeString(str, node) {
     if (typeof str === 'string') {
-      this.chargeBytes(str.length * 2 + 16, node)
+      this.chargeBytes(str.length * 2 + 16, node, str)
     }
     return str
   }
 
-  chargeContainer(slots, node) {
-    this.chargeBytes(64 + slots * 16, node)
+  chargeContainer(slots, node, extraValue = undefined) {
+    this.chargeBytes(64 + slots * 16, node, extraValue)
   }
 
   tick(node) {
@@ -3345,37 +3505,47 @@ class Interpreter {
   }
 
   evalProgram(program, env) {
-    this.hoistStatements(program.body, env, true)
-    let lastValue = undefined
-    for (const stmt of program.body) {
-      const res = this.evalStatement(stmt, env)
-      if (isSignal(res)) {
-        if (res.type === 'return') {
-          return res.value
+    this.activeEnvs.push(env)
+    try {
+      this.hoistStatements(program.body, env, true)
+      let lastValue = undefined
+      for (const stmt of program.body) {
+        const res = this.evalStatement(stmt, env)
+        if (isSignal(res)) {
+          if (res.type === 'return') {
+            return res.value
+          }
+          return lastValue
         }
-        return lastValue
+        if (res !== undefined || stmt.type === 'ExpressionStatement') {
+          lastValue = res
+        }
       }
-      if (res !== undefined || stmt.type === 'ExpressionStatement') {
-        lastValue = res
-      }
+      return lastValue
+    } finally {
+      this.activeEnvs.pop()
     }
-    return lastValue
   }
 
   evalBlock(block, parentEnv, isFunctionBody = false) {
     const blockEnv = isFunctionBody ? parentEnv : new Environment(parentEnv, false)
-    this.hoistStatements(block.body, blockEnv, isFunctionBody)
-    let lastValue = undefined
-    for (const stmt of block.body) {
-      const res = this.evalStatement(stmt, blockEnv)
-      if (isSignal(res)) {
-        return res
+    if (!isFunctionBody) this.activeEnvs.push(blockEnv)
+    try {
+      this.hoistStatements(block.body, blockEnv, isFunctionBody)
+      let lastValue = undefined
+      for (const stmt of block.body) {
+        const res = this.evalStatement(stmt, blockEnv)
+        if (isSignal(res)) {
+          return res
+        }
+        if (stmt.type === 'ExpressionStatement') {
+          lastValue = res
+        }
       }
-      if (stmt.type === 'ExpressionStatement') {
-        lastValue = res
-      }
+      return lastValue
+    } finally {
+      if (!isFunctionBody) this.activeEnvs.pop()
     }
-    return lastValue
   }
 
   evalStatement(stmt, env) {
@@ -3441,65 +3611,74 @@ class Interpreter {
       }
       case 'ForStatement': {
         const outerLoopEnv = new Environment(env, false)
-        const lexicalLoopVars = []
-        if (stmt.init) {
-          if (stmt.init.type === 'VariableDeclaration') {
-            if (stmt.init.kind === 'var') {
-              for (const decl of stmt.init.declarations) {
-                if (decl.init) {
-                  const val = this.evalExpression(decl.init, env)
-                  env.getFunctionScope().set(decl.id.name, val, decl.id)
+        const envSlot = this.activeEnvs.length
+        this.activeEnvs.push(outerLoopEnv)
+        try {
+          const lexicalLoopVars = []
+          if (stmt.init) {
+            if (stmt.init.type === 'VariableDeclaration') {
+              if (stmt.init.kind === 'var') {
+                for (const decl of stmt.init.declarations) {
+                  if (decl.init) {
+                    const val = this.evalExpression(decl.init, env)
+                    env.getFunctionScope().set(decl.id.name, val, decl.id)
+                  }
+                }
+              } else {
+                for (const decl of stmt.init.declarations) {
+                  outerLoopEnv.declare(decl.id.name, stmt.init.kind, undefined, false, decl.id)
+                  const val = decl.init ? this.evalExpression(decl.init, outerLoopEnv) : undefined
+                  outerLoopEnv.initialize(decl.id.name, val, decl.id)
+                  lexicalLoopVars.push({ name: decl.id.name, kind: stmt.init.kind, id: decl.id })
                 }
               }
             } else {
-              for (const decl of stmt.init.declarations) {
-                outerLoopEnv.declare(decl.id.name, stmt.init.kind, undefined, false, decl.id)
-                const val = decl.init ? this.evalExpression(decl.init, outerLoopEnv) : undefined
-                outerLoopEnv.initialize(decl.id.name, val, decl.id)
-                lexicalLoopVars.push({ name: decl.id.name, kind: stmt.init.kind, id: decl.id })
+              this.evalExpression(stmt.init, outerLoopEnv)
+            }
+          }
+
+          let iterEnv = outerLoopEnv
+          let lastVal = undefined
+          while (true) {
+            this.tick(stmt)
+            this.activeEnvs[envSlot] = iterEnv
+            if (stmt.test && !this.evalExpression(stmt.test, iterEnv)) break
+
+            // Create a fresh per-iteration lexical environment for closures in `for (let ...)`.
+            let bodyEnv = iterEnv
+            if (lexicalLoopVars.length > 0) {
+              bodyEnv = new Environment(env, false)
+              for (const v of lexicalLoopVars) {
+                bodyEnv.declare(v.name, v.kind, iterEnv.get(v.name, v.id), true, v.id)
               }
+              this.activeEnvs[envSlot] = bodyEnv
             }
-          } else {
-            this.evalExpression(stmt.init, outerLoopEnv)
+
+            const res = this.evalStatement(stmt.body, bodyEnv)
+            if (res === SIGNAL_BREAK) break
+            if (res !== SIGNAL_CONTINUE && isSignal(res)) return res
+            if (res !== SIGNAL_CONTINUE) lastVal = res
+
+            // Copy updated lexical values into a fresh environment before running
+            // `update` so closures captured inside the loop body keep their iteration value.
+            if (lexicalLoopVars.length > 0) {
+              const nextEnv = new Environment(env, false)
+              for (const v of lexicalLoopVars) {
+                nextEnv.declare(v.name, v.kind, bodyEnv.get(v.name, v.id), true, v.id)
+              }
+              iterEnv = nextEnv
+            } else {
+              iterEnv = bodyEnv
+            }
+            this.activeEnvs[envSlot] = iterEnv
+            if (stmt.update) {
+              this.evalExpression(stmt.update, iterEnv)
+            }
           }
+          return lastVal
+        } finally {
+          this.activeEnvs.length = envSlot
         }
-
-        let iterEnv = outerLoopEnv
-        let lastVal = undefined
-        while (true) {
-          this.tick(stmt)
-          if (stmt.test && !this.evalExpression(stmt.test, iterEnv)) break
-
-          // Create a fresh per-iteration lexical environment for closures in `for (let ...)`.
-          let bodyEnv = iterEnv
-          if (lexicalLoopVars.length > 0) {
-            bodyEnv = new Environment(env, false)
-            for (const v of lexicalLoopVars) {
-              bodyEnv.declare(v.name, v.kind, iterEnv.get(v.name, v.id), true, v.id)
-            }
-          }
-
-          const res = this.evalStatement(stmt.body, bodyEnv)
-          if (res === SIGNAL_BREAK) break
-          if (res !== SIGNAL_CONTINUE && isSignal(res)) return res
-          if (res !== SIGNAL_CONTINUE) lastVal = res
-
-          // Copy updated lexical values into a fresh environment before running
-          // `update` so closures captured inside the loop body keep their iteration value.
-          if (lexicalLoopVars.length > 0) {
-            const nextEnv = new Environment(env, false)
-            for (const v of lexicalLoopVars) {
-              nextEnv.declare(v.name, v.kind, bodyEnv.get(v.name, v.id), true, v.id)
-            }
-            iterEnv = nextEnv
-          } else {
-            iterEnv = bodyEnv
-          }
-          if (stmt.update) {
-            this.evalExpression(stmt.update, iterEnv)
-          }
-        }
-        return lastVal
       }
       case 'ForOfStatement': {
         const iterable = this.evalExpression(stmt.right, env)
@@ -3516,56 +3695,70 @@ class Interpreter {
             stmt.right.column,
           )
         }
-        let lastVal = undefined
-        for (let i = 0; i < items.length; i++) {
-          this.tick(stmt)
-          const item = items[i]
-          let iterEnv = env
-          if (stmt.kind === 'let' || stmt.kind === 'const') {
-            iterEnv = new Environment(env, false)
-            iterEnv.declare(stmt.id.name, stmt.kind, item, true, stmt.id)
-          } else if (stmt.kind === 'var') {
-            env.getFunctionScope().set(stmt.id.name, item, stmt.id)
-          } else {
-            env.set(stmt.id.name, item, stmt.id)
+        const envSlot = this.activeEnvs.length
+        this.activeEnvs.push(env)
+        this.activeTemps.push(items)
+        try {
+          let lastVal = undefined
+          for (let i = 0; i < items.length; i++) {
+            this.tick(stmt)
+            const item = items[i]
+            let iterEnv = env
+            if (stmt.kind === 'let' || stmt.kind === 'const') {
+              iterEnv = new Environment(env, false)
+              iterEnv.declare(stmt.id.name, stmt.kind, item, true, stmt.id)
+            } else if (stmt.kind === 'var') {
+              env.getFunctionScope().set(stmt.id.name, item, stmt.id)
+            } else {
+              env.set(stmt.id.name, item, stmt.id)
+            }
+            this.activeEnvs[envSlot] = iterEnv
+            const res = this.evalStatement(stmt.body, iterEnv)
+            if (res === SIGNAL_BREAK) break
+            if (res === SIGNAL_CONTINUE) continue
+            if (isSignal(res)) return res
+            lastVal = res
           }
-          const res = this.evalStatement(stmt.body, iterEnv)
-          if (res === SIGNAL_BREAK) break
-          if (res === SIGNAL_CONTINUE) continue
-          if (isSignal(res)) return res
-          lastVal = res
+          return lastVal
+        } finally {
+          this.activeTemps.pop()
+          this.activeEnvs.length = envSlot
         }
-        return lastVal
       }
       case 'SwitchStatement': {
         const disc = this.evalExpression(stmt.discriminant, env)
         const switchEnv = new Environment(env, false)
-        let matchedIndex = -1
-        let defaultIndex = -1
-        for (let i = 0; i < stmt.cases.length; i++) {
-          const c = stmt.cases[i]
-          if (c.test === null) {
-            defaultIndex = i
-          } else {
-            const testVal = this.evalExpression(c.test, switchEnv)
-            if (testVal === disc) {
-              matchedIndex = i
-              break
+        this.activeEnvs.push(switchEnv)
+        try {
+          let matchedIndex = -1
+          let defaultIndex = -1
+          for (let i = 0; i < stmt.cases.length; i++) {
+            const c = stmt.cases[i]
+            if (c.test === null) {
+              defaultIndex = i
+            } else {
+              const testVal = this.evalExpression(c.test, switchEnv)
+              if (testVal === disc) {
+                matchedIndex = i
+                break
+              }
             }
           }
-        }
-        const start = matchedIndex !== -1 ? matchedIndex : defaultIndex
-        if (start === -1) return undefined
-        let lastVal = undefined
-        for (let i = start; i < stmt.cases.length; i++) {
-          for (const s of stmt.cases[i].consequent) {
-            const res = this.evalStatement(s, switchEnv)
-            if (res === SIGNAL_BREAK) return lastVal
-            if (isSignal(res)) return res
-            lastVal = res
+          const start = matchedIndex !== -1 ? matchedIndex : defaultIndex
+          if (start === -1) return undefined
+          let lastVal = undefined
+          for (let i = start; i < stmt.cases.length; i++) {
+            for (const s of stmt.cases[i].consequent) {
+              const res = this.evalStatement(s, switchEnv)
+              if (res === SIGNAL_BREAK) return lastVal
+              if (isSignal(res)) return res
+              lastVal = res
+            }
           }
+          return lastVal
+        } finally {
+          this.activeEnvs.pop()
         }
-        return lastVal
       }
       case 'BreakStatement':
         return SIGNAL_BREAK
@@ -3718,7 +3911,8 @@ class Interpreter {
       const b = safeToString(right, this.limits, node)
       const totalLen = a.length + b.length
       checkStringLength(totalLen, this, node)
-      this.chargeBytes(totalLen * 2 + 16, node)
+      const est = totalLen * 2 + 16
+      this.chargeBytes(est, node, undefined, est)
       return a + b
     }
     return safeToNumber(left) + safeToNumber(right)
@@ -3765,6 +3959,8 @@ class Interpreter {
           callNode.column,
         )
       }
+      const prevNode = this.currentNode
+      this.currentNode = callNode
       try {
         let rawResult
         try {
@@ -3785,9 +3981,11 @@ class Interpreter {
           return rawResult
         }
         try {
-          return sanitizeHostValueInternal(rawResult, this.limits, 0, new Set(), false, (bytes) =>
-            this.chargeBytes(bytes, callNode),
-          )
+          let pendingBytes = 0
+          return sanitizeHostValueInternal(rawResult, this.limits, 0, new Set(), false, (bytes) => {
+            pendingBytes += bytes
+            this.chargeBytes(bytes, callNode, undefined, pendingBytes)
+          })
         } catch (err) {
           if (err instanceof MacroRuntimeError) {
             throw new MacroRuntimeError(err.message, err.code, callNode.line, callNode.column)
@@ -3795,6 +3993,7 @@ class Interpreter {
           throw err
         }
       } finally {
+        this.currentNode = prevNode
         this.callDepth -= 1
       }
     }
@@ -3810,8 +4009,9 @@ class Interpreter {
         callNode.column,
       )
     }
+    const fnEnv = new Environment(meta.closure, true)
+    this.activeEnvs.push(fnEnv)
     try {
-      const fnEnv = new Environment(meta.closure, true)
       for (let i = 0; i < meta.params.length; i++) {
         const p = meta.params[i]
         fnEnv.declare(p.name, 'var', i < args.length ? args[i] : undefined, true, p)
@@ -3825,6 +4025,7 @@ class Interpreter {
       }
       return undefined
     } finally {
+      this.activeEnvs.pop()
       this.callDepth -= 1
     }
   }
@@ -3840,29 +4041,39 @@ class Interpreter {
         return env.get(node.name, node)
       case 'ArrayExpression': {
         checkCollectionSize(node.elements.length, this, node, 'Array')
-        this.chargeContainer(node.elements.length, node)
         const arr = new Array(node.elements.length)
-        for (let i = 0; i < node.elements.length; i++) {
-          arr[i] = this.evalExpression(node.elements[i], env)
+        this.activeTemps.push(arr)
+        try {
+          this.chargeContainer(node.elements.length, node)
+          for (let i = 0; i < node.elements.length; i++) {
+            arr[i] = this.evalExpression(node.elements[i], env)
+          }
+          return arr
+        } finally {
+          this.activeTemps.pop()
         }
-        return arr
       }
       case 'ObjectExpression': {
-        this.chargeContainer(0, node)
         const obj = Object.create(null)
-        let propCount = 0
-        for (const prop of node.properties) {
-          const rawKey = prop.computed ? this.evalExpression(prop.key, env) : prop.key.value
-          const key = assertSafePropertyKey(rawKey, prop.line, prop.column)
-          const val = this.evalExpression(prop.value, env)
-          if (!Object.prototype.hasOwnProperty.call(obj, key)) {
-            propCount += 1
-            checkCollectionSize(propCount, this, prop, 'Object')
-            this.chargeBytes(16, prop)
+        this.activeTemps.push(obj)
+        try {
+          this.chargeContainer(0, node)
+          let propCount = 0
+          for (const prop of node.properties) {
+            const rawKey = prop.computed ? this.evalExpression(prop.key, env) : prop.key.value
+            const key = assertSafePropertyKey(rawKey, prop.line, prop.column)
+            const val = this.evalExpression(prop.value, env)
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) {
+              propCount += 1
+              checkCollectionSize(propCount, this, prop, 'Object')
+              this.chargeBytes(16, prop)
+            }
+            obj[key] = val
           }
-          obj[key] = val
+          return obj
+        } finally {
+          this.activeTemps.pop()
         }
-        return obj
       }
       case 'FunctionExpression': {
         const fnScope = node.id ? new Environment(env, false) : env
@@ -4089,11 +4300,22 @@ export function runMacroScript(source, globals = undefined, options = undefined)
   const interpreter = new Interpreter(limits, nowFn)
   interpreter.startTime = startTime
 
+  if (options && typeof options.onRegisterBudget === 'function') {
+    options.onRegisterBudget({
+      addSteps: (n) => interpreter.addExternalSteps(n),
+      checkLimits: () => interpreter.checkLimits(interpreter.currentNode),
+    })
+  }
+
   try {
     const rootEnv = new Environment(null, true)
+    interpreter.rootEnv = rootEnv
     const builtins = buildBuiltinGlobals()
     for (const [name, value] of Object.entries(builtins)) {
       rootEnv.bindings[name] = { kind: 'global', value, initialized: true }
+      if (value !== null && typeof value === 'object') {
+        interpreter.exemptObjects.add(value)
+      }
     }
 
     if (globals !== undefined && globals !== null) {
@@ -4101,6 +4323,11 @@ export function runMacroScript(source, globals = undefined, options = undefined)
         throw new MacroRuntimeError('Macro globals must be a plain object', 'type_error', 1, 1)
       }
       const seen = new Set()
+      const tracking = {
+        exemptObjects: interpreter.exemptObjects,
+        mutableHostBags: interpreter.mutableHostBags,
+        mutableBagSet: new Set(),
+      }
       for (const key of Object.keys(globals)) {
         if (FORBIDDEN_PROP_NAMES.has(key) || REJECTED_IDENTIFIERS.has(key)) {
           throw new MacroRuntimeError(
@@ -4110,7 +4337,7 @@ export function runMacroScript(source, globals = undefined, options = undefined)
             1,
           )
         }
-        const wrapped = wrapGlobalValue(globals[key], limits, 0, seen)
+        const wrapped = wrapGlobalValue(globals[key], limits, 0, seen, tracking)
         rootEnv.bindings[key] = { kind: 'global', value: wrapped, initialized: true }
       }
     }
@@ -4118,6 +4345,7 @@ export function runMacroScript(source, globals = undefined, options = undefined)
     // Program runs inside a child scope of rootEnv so user top-level declarations
     // never mutate root bindings while still resolving globals cleanly.
     const programEnv = new Environment(rootEnv, true)
+    interpreter.programEnv = programEnv
     const value = interpreter.evalProgram(parsed.ast, programEnv)
     return {
       ok: true,

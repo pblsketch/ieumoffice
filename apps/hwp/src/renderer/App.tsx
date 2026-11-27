@@ -734,12 +734,9 @@ export default function App() {
       if (result.ok && result.changed) {
         setDocTick((tick) => tick + 1)
       }
-      if (macroRecordingRef.current) {
-        setNotice({ tone: 'info', text: translateMacro(lang, 'noticeMacroRunNotRecorded') })
-      }
       return result
     },
-    [agentBridge, lang],
+    [agentBridge],
   )
 
   const stopRecordingAndOpenEditor = useCallback(async (): Promise<void> => {
@@ -1899,9 +1896,12 @@ export default function App() {
           })
           return
         }
+        const wasRecording = macroRecordingRef.current
         void runMacroInEditor(macro)
           .then((result) => {
-            const outcome = formatMacroRunOutcome(lang, macro.name, result)
+            const outcome = formatMacroRunOutcome(lang, macro.name, result, {
+              whileRecording: wasRecording || macroRecordingRef.current,
+            })
             setNotice({ tone: outcome.tone, text: outcome.text })
           })
           .catch((error) => {
@@ -1913,11 +1913,7 @@ export default function App() {
       }
     }
     const onMacroRecordingEvent = (event: Event): void => {
-      const detail = (
-        event as CustomEvent<
-          MacroRecordingEventDetail | { kind: 'slot_run_ignored'; slot?: number } | undefined
-        >
-      ).detail
+      const detail = (event as CustomEvent<MacroRecordingEventDetail | undefined>).detail
       if (!detail || typeof detail !== 'object') return
       if ('state' in detail) {
         if (detail.state === 'started') {
@@ -1938,6 +1934,11 @@ export default function App() {
         setNotice({
           tone: 'info',
           text: translateMacro(lang, 'noticeMouseIgnored'),
+        })
+      } else if (detail.kind === 'outside_body_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeOutsideBodyIgnored'),
         })
       } else if (detail.kind === 'slot_run_ignored') {
         setNotice({
@@ -2273,8 +2274,11 @@ export default function App() {
           disabled={macroStoreError !== null}
           onSave={saveMacroFromEditor}
           onRun={async (script, name) => {
+            const wasRecording = macroRecordingRef.current
             const result = await runMacroInEditor({ name, script })
-            const outcome = formatMacroRunOutcome(lang, name, result)
+            const outcome = formatMacroRunOutcome(lang, name, result, {
+              whileRecording: wasRecording || macroRecordingRef.current,
+            })
             setNotice({ tone: outcome.tone, text: outcome.text })
           }}
           onClose={() => setMacroEditor(null)}

@@ -135,5 +135,9 @@ export const nl = {
   cmdInsertBookmark: 'Bladwijzer invoegen',
   cmdLineBreak: 'Regeleinde',
   cmdTab: 'Tabulator',
+  cmdDeleteObject: 'Documentobject verwijderen',
+  cmdOutsideBody: 'Bewerking buiten hoofdtekstalinea',
   cmdOtherAction: 'Niet-ondersteunde bewerkingsactie ({id})',
+  noticeOutsideBodyIgnored:
+    'Acties buiten hoofdtekstalinea’s (tabellen, tekstvakken, noten, kop- en voetteksten) worden niet opgenomen.',
 } satisfies Record<keyof typeof zh, string>

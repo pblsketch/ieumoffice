@@ -79,6 +79,108 @@ const SILENTLY_IGNORED_COMMANDS = new Set([
 
 const VALID_ALIGNMENTS = new Set(['left', 'center', 'right', 'justify'])
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+const NON_PROTECTED_ADJACENT_CTRL_IDS = new Set([
+  '',
+  'bokm',
+  'bkmk',
+  'secd',
+  'cold',
+  'pgnp',
+  'head',
+  'foot',
+])
+
+/**
+ * Detect whether a protected document object sits immediately at the deletion
+ * boundary for a plain Backspace or Delete keystroke in a body paragraph.
+ */
+export function hasAdjacentProtectedObject(wasm, pos, key) {
+  if (!wasm || !pos || typeof pos !== 'object') return false
+  if (pos.parentParaIndex !== undefined || pos.isTextBox) return false
+  if (key !== 'Backspace' && key !== 'Delete') return false
+  const sec = pos.sectionIndex
+  const para = pos.paragraphIndex
+  const charOffset = pos.charOffset
+  if (!Number.isInteger(sec) || !Number.isInteger(para) || !Number.isInteger(charOffset)) {
+    return false
+  }
+  const direction = key === 'Backspace' ? 'backward' : 'forward'
+  const matchesBoundary = (ctrlPos) => {
+    if (!Number.isInteger(ctrlPos)) return false
+    if (direction === 'forward') {
+      return ctrlPos === charOffset
+    }
+    if (charOffset > 0) {
+      return ctrlPos === charOffset - 1 || ctrlPos === charOffset
+    }
+    return para > 0 && ctrlPos === 0
+  }
+
+  try {
+    if (typeof wasm.getFootnoteAtCursor === 'function') {
+      const fnHit = wasm.getFootnoteAtCursor(sec, para, charOffset, direction)
+      if (fnHit && fnHit.hit === true) return true
+    }
+
+    const rawPositions =
+      typeof wasm.getControlTextPositions === 'function'
+        ? wasm.getControlTextPositions(sec, para)
+        : null
+    const positions =
+      typeof rawPositions === 'string'
+        ? JSON.parse(rawPositions)
+        : Array.isArray(rawPositions)
+          ? rawPositions
+          : []
+    if (!Array.isArray(positions) || positions.length === 0) return false
+
+    // Support object-shaped entries `{ pos, ctrlId }` as well as numeric offset arrays.
+    if (positions.some((entry) => entry && typeof entry === 'object')) {
+      for (const entry of positions) {
+        if (!entry || typeof entry !== 'object') continue
+        const ctrlId = typeof entry.ctrlId === 'string' ? entry.ctrlId : ''
+        if (ctrlId && NON_PROTECTED_ADJACENT_CTRL_IDS.has(ctrlId)) continue
+        const ctrlPos = Number.isInteger(entry.pos) ? entry.pos : entry.textPos
+        if (matchesBoundary(ctrlPos)) return true
+      }
+      return false
+    }
+
+    if (typeof wasm.getControls === 'function') {
+      const rawControls = wasm.getControls()
+      const controls =
+        typeof rawControls === 'string'
+          ? JSON.parse(rawControls)
+          : Array.isArray(rawControls)
+            ? rawControls
+            : []
+      if (Array.isArray(controls)) {
+        let globalBase = 0
+        if (typeof wasm.getParagraphCount === 'function') {
+          for (let s = 0; s < sec; s++) {
+            globalBase += wasm.getParagraphCount(s)
+          }
+        }
+        const globalPara = globalBase + para
+        const paraControls = controls
+          .filter((ctrl) => ctrl && ctrl.list === 0 && ctrl.para === globalPara)
+          .sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
+        for (let i = 0; i < paraControls.length; i++) {
+          const ctrl = paraControls[i]
+          const ctrlId = typeof ctrl.ctrlId === 'string' ? ctrl.ctrlId : ''
+          if (NON_PROTECTED_ADJACENT_CTRL_IDS.has(ctrlId)) continue
+          const idx = Number.isInteger(ctrl.controlIndex) ? ctrl.controlIndex : i
+          if (matchesBoundary(positions[idx])) return true
+        }
+        return false
+      }
+    }
+
+    return positions.some((ctrlPos) => matchesBoundary(ctrlPos))
+  } catch {
+    return false
+  }
+}
 
 /**
  * Resolve a 1-based macro slot number (1..11) from a keyboard event when plain
@@ -346,7 +448,7 @@ function translateCommandToCode(commandId, args, formatState = undefined) {
 /**
  * Create a new macro recorder instance.
  *
- * @param {{ onNotice?: (notice: { kind: 'unsupported_command'; commandId: string; label: string } | { kind: 'mouse_ignored' }) => void }} [options]
+ * @param {{ onNotice?: (notice: { kind: 'unsupported_command'; commandId: string; label: string } | { kind: 'mouse_ignored' } | { kind: 'outside_body_ignored' } | { kind: 'slot_run_ignored'; slot: number }) => void }} [options]
  */
 export function createMacroRecorder(options = undefined) {
   const onNotice = typeof options?.onNotice === 'function' ? options.onNotice : null
@@ -361,6 +463,14 @@ export function createMacroRecorder(options = undefined) {
     } catch {
       // listener errors must not disrupt editor input
     }
+  }
+
+  const recordOutsideBody = () => {
+    if (!skipped.some((entry) => entry.commandId === 'macro:outside-body')) {
+      skipped.push({ commandId: 'macro:outside-body', label: 'outside-body' })
+    }
+    emitNotice({ kind: 'outside_body_ignored' })
+    return false
   }
 
   const pushStep = (kind, code, raw = undefined) => {
@@ -404,8 +514,9 @@ export function createMacroRecorder(options = undefined) {
 
     getScript,
 
-    recordText(text) {
+    recordText(text, context = undefined) {
       if (!recording || typeof text !== 'string' || text.length === 0) return false
+      if (context?.inBody === false) return recordOutsideBody()
       const parts = text.split(/\r?\n/)
       let added = false
       for (let i = 0; i < parts.length; i++) {
@@ -445,6 +556,10 @@ export function createMacroRecorder(options = undefined) {
         key === 'CapsLock'
       ) {
         return false
+      }
+
+      if (context?.inBody === false) {
+        return recordOutsideBody()
       }
 
       if (navAction) {
@@ -502,6 +617,10 @@ export function createMacroRecorder(options = undefined) {
           pushStep('edit', 'selectLineBegin(); deleteSelection();')
         } else if (ctrl) {
           pushStep('edit', 'selectWordLeft(); deleteSelection();')
+        } else if (context?.adjacentObject === true) {
+          skipped.push({ commandId: 'edit:delete-object', label: key })
+          emitNotice({ kind: 'unsupported_command', commandId: 'edit:delete-object', label: key })
+          return false
         } else {
           pushStep('edit', 'deleteBackward();')
         }
@@ -512,6 +631,10 @@ export function createMacroRecorder(options = undefined) {
           pushStep('edit', 'deleteSelection();')
         } else if (ctrl) {
           pushStep('edit', 'selectWordRight(); deleteSelection();')
+        } else if (context?.adjacentObject === true) {
+          skipped.push({ commandId: 'edit:delete-object', label: key })
+          emitNotice({ kind: 'unsupported_command', commandId: 'edit:delete-object', label: key })
+          return false
         } else {
           pushStep('edit', 'deleteForward();')
         }
@@ -610,9 +733,16 @@ export function createMacroRecorder(options = undefined) {
       return false
     },
 
-    recordCommand(commandId, args = undefined, label = undefined, formatState = undefined) {
+    recordCommand(
+      commandId,
+      args = undefined,
+      label = undefined,
+      formatState = undefined,
+      context = undefined,
+    ) {
       if (!recording || typeof commandId !== 'string' || commandId.length === 0) return false
       if (isSilentlyIgnoredCommand(commandId)) return false
+      if (context?.inBody === false) return recordOutsideBody()
       const code = translateCommandToCode(commandId, args, formatState)
       if (code !== null) {
         pushStep('command', code)
@@ -678,14 +808,15 @@ export function recordStudioCommand(
   args = undefined,
   label = undefined,
   formatState = undefined,
+  context = undefined,
 ) {
   if (!activeRecorder?.isRecording?.()) return false
-  return activeRecorder.recordCommand(commandId, args, label, formatState)
+  return activeRecorder.recordCommand(commandId, args, label, formatState, context)
 }
 
-export function recordStudioText(text) {
+export function recordStudioText(text, context = undefined) {
   if (!activeRecorder?.isRecording?.()) return false
-  return activeRecorder.recordText(text)
+  return activeRecorder.recordText(text, context)
 }
 
 export function recordStudioKey(keyEvent, context = undefined) {

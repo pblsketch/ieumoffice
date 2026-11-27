@@ -41,6 +41,7 @@ import {
 
 export { installHanjaKey } from './hanja.mjs'
 export {
+  hasAdjacentProtectedObject,
   hasAssignedMacroSlot,
   isMacroRecordingActive,
   recordStudioCommand,

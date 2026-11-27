@@ -156,86 +156,100 @@ export function formatMacroRunOutcome(
   lang: Lang,
   macroName: string,
   result: MacroRunResult,
+  options?: { whileRecording?: boolean },
 ): { tone: 'info' | 'error'; text: string } {
+  const withRecordingNote = (outcome: {
+    tone: 'info' | 'error'
+    text: string
+  }): { tone: 'info' | 'error'; text: string } => {
+    if (options?.whileRecording === true) {
+      return {
+        tone: outcome.tone,
+        text: `${outcome.text} · ${translateMacro(lang, 'noticeMacroRunNotRecorded')}`,
+      }
+    }
+    return outcome
+  }
+
   if (result.ok) {
     if (result.messages.length > 0) {
-      return {
+      return withRecordingNote({
         tone: 'info',
         text: translateMacro(lang, 'noticeMacroMessages', {
           name: macroName,
           messages: result.messages.join(' · '),
         }),
-      }
+      })
     }
-    return {
+    return withRecordingNote({
       tone: 'info',
       text: translateMacro(lang, 'noticeMacroRunSuccess', { name: macroName }),
-    }
+    })
   }
   const failure = result as MacroHostFailureView
   if (failure.code === 'unsupported_place') {
-    return {
+    return withRecordingNote({
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroOutsideBody'),
-    }
+    })
   }
   if (failure.code === 'object_loss' || failure.code === 'memo_loss') {
     if (failure.line == null || failure.phase === 'post_run') {
-      return {
+      return withRecordingNote({
         tone: 'error',
         text: translateMacro(lang, 'noticeMacroRollbackObjectLossPostRun'),
-      }
+      })
     }
     if (typeof failure.line === 'number' && failure.line > 0) {
-      return {
+      return withRecordingNote({
         tone: 'error',
         text: translateMacro(lang, 'noticeMacroRollbackObjectLossAt', {
           line: failure.line,
           column: failure.column ?? 1,
         }),
-      }
+      })
     }
-    return {
+    return withRecordingNote({
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRollbackObjectLoss'),
-    }
+    })
   }
   if (failure.code === 'unsupported_action' && failure.unsupportedAction) {
     if (typeof failure.line === 'number' && failure.line > 0) {
-      return {
+      return withRecordingNote({
         tone: 'error',
         text: translateMacro(lang, 'noticeMacroUnsupportedAction', {
           action: failure.unsupportedAction,
           line: failure.line,
           column: failure.column ?? 1,
         }),
-      }
+      })
     }
-    return {
+    return withRecordingNote({
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: failure.error }),
-    }
+    })
   }
   if (failure.line == null && failure.phase === 'post_run') {
-    return {
+    return withRecordingNote({
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRunErrorPostRun', { error: failure.error }),
-    }
+    })
   }
   if (typeof failure.line === 'number' && failure.line > 0) {
-    return {
+    return withRecordingNote({
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRunError', {
         line: failure.line,
         column: failure.column ?? 1,
         error: failure.error,
       }),
-    }
+    })
   }
-  return {
+  return withRecordingNote({
     tone: 'error',
     text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: failure.error }),
-  }
+  })
 }
 
 export function MacroManagerModal({
@@ -372,12 +386,10 @@ export function MacroManagerModal({
     setNotice(null)
     try {
       const result = await onRunMacro({ name: macro.name, script: macro.script })
-      const outcome = formatMacroRunOutcome(lang, macro.name, result)
-      setNotice(
-        recording && outcome.tone === 'info'
-          ? { tone: 'info', text: `${outcome.text} ${t('noticeMacroRunNotRecorded')}` }
-          : outcome,
-      )
+      const outcome = formatMacroRunOutcome(lang, macro.name, result, {
+        whileRecording: recording,
+      })
+      setNotice(outcome)
     } catch (error) {
       setNotice({
         tone: 'error',

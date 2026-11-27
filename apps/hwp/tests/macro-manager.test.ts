@@ -263,6 +263,12 @@ describe('macro-ai helpers', () => {
     expect(built.system).toContain('FindRegExp')
     expect(built.system).toContain('200 units/pt')
     expect(built.system).toContain('BGR')
+    expect(built.system).toContain('linear-time')
+    expect(built.system).toContain('backreferences')
+    expect(built.system).toContain('lookahead/lookbehind')
+    expect(built.system).toContain('1000')
+    expect(built.system).toContain('even URC integers')
+    expect(built.system).toContain('LineSpacingType')
   })
 
   it('every keyword, global, method, and API listed as allowed in the AI system prompt parses and executes in runMacroScript', () => {
@@ -866,6 +872,18 @@ describe('MacroManagerModal and MacroEditorModal', () => {
 
   it('localizes skipped command labels in MacroEditorModal so non-Korean UI never displays Korean studio labels', async () => {
     expect(localizeSkippedCommandLabel('en', 'edit:undo', '되돌리기')).toBe('Undo')
+    expect(localizeSkippedCommandLabel('en', 'edit:delete-object', 'Backspace')).toBe(
+      'Delete document object',
+    )
+    expect(localizeSkippedCommandLabel('en', 'macro:outside-body', 'outside-body')).toBe(
+      'Edit outside body paragraph',
+    )
+    expect(localizeSkippedCommandLabel('ko', 'edit:delete-object', 'Backspace')).toBe(
+      '문서 개체 지우기',
+    )
+    expect(localizeSkippedCommandLabel('ko', 'macro:outside-body', 'outside-body')).toBe(
+      '본문 밖 편집',
+    )
     expect(localizeSkippedCommandLabel('en', 'table:split', '표 나누기')).toBe(
       'Unsupported editor action (table:split)',
     )
@@ -949,5 +967,59 @@ describe('MacroManagerModal and MacroEditorModal', () => {
     expect(postRunGeneric.tone).toBe('error')
     expect(postRunGeneric.text).toContain('post-run check')
     expect(postRunGeneric.text).not.toMatch(/line 1/i)
+
+    // R4: whileRecording appends noticeMacroRunNotRecorded to both success and error outcomes
+    const recordedSuccess = formatMacroRunOutcome(
+      'en',
+      'Clean Spaces',
+      {
+        ok: true,
+        value: undefined,
+        messages: [],
+        caret: { sec: 0, para: 0, offset: 0 },
+        steps: 2,
+        elapsedMs: 1,
+        changed: true,
+      },
+      { whileRecording: true },
+    )
+    expect(recordedSuccess.tone).toBe('info')
+    expect(recordedSuccess.text).toContain('Clean Spaces')
+    expect(recordedSuccess.text).toContain(macroStrings.en.noticeMacroRunNotRecorded)
+
+    const recordedError = formatMacroRunOutcome(
+      'en',
+      'Broken',
+      {
+        ok: false,
+        code: 'runtime_error',
+        error: 'Boom',
+        line: 2,
+        column: 1,
+        messages: [],
+        steps: 1,
+        elapsedMs: 1,
+      } as unknown as MacroHostResult,
+      { whileRecording: true },
+    )
+    expect(recordedError.tone).toBe('error')
+    expect(recordedError.text).toContain('Boom')
+    expect(recordedError.text).toContain(macroStrings.en.noticeMacroRunNotRecorded)
+  })
+
+  it('renders BOTH macro run outcome and noticeMacroRunNotRecorded when running a macro while recording (R4)', async () => {
+    const macro = makeMacro({ id: 'm-rec', name: 'Clean Spaces', slot: 1 })
+    await renderManager({ macros: [macro], recording: true })
+
+    const row = document.querySelector('[data-testid="macro-row"]') as HTMLElement
+    const runBtn = row.querySelector('[data-testid="macro-run-btn"]') as HTMLButtonElement
+    await act(async () => {
+      runBtn.click()
+    })
+
+    const notice = document.querySelector('[data-testid="macro-notice"]')
+    expect(notice).not.toBeNull()
+    expect(notice?.textContent).toContain('Replaced 3 items')
+    expect(notice?.textContent).toContain(macroStrings.en.noticeMacroRunNotRecorded)
   })
 })

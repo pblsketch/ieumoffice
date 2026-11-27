@@ -748,9 +748,11 @@ describe('macro-interpreter: sandbox and forbidden access defenses', () => {
     const jsonAlloc = runMacroScript(
       `
       var raw = '["' + "z".repeat(40000) + '"]';
+      var parsed = [];
       for (var i = 0; i < 40; i++) {
-        JSON.parse(raw);
+        parsed.push(JSON.parse(raw));
       }
+      parsed.length;
     `,
       {},
       { maxMemoryBytes: 500_000 },
@@ -758,6 +760,91 @@ describe('macro-interpreter: sandbox and forbidden access defenses', () => {
     expect(jsonAlloc.ok).toBe(false)
     if (!jsonAlloc.ok) {
       expect(jsonAlloc.code).toBe('memory_limit')
+    }
+  })
+
+  it('uses live reachable memory accounting so temporary strings succeed while retained allocations still hit memory_limit', () => {
+    const concat10k = runMacroScript(
+      'var s = ""; for (var i = 0; i < 10000; i++) { s = s + "x"; } s.length;',
+    )
+    expect(concat10k.ok).toBe(true)
+    if (concat10k.ok) {
+      expect(concat10k.value).toBe(10_000)
+    }
+
+    const csv3k = runMacroScript(
+      'var s = ""; for (var i = 0; i < 3000; i++) { s += "row," + i + "\\n"; } s.length;',
+    )
+    expect(csv3k.ok).toBe(true)
+    if (csv3k.ok) {
+      expect(csv3k.value).toBeGreaterThan(20_000)
+    }
+
+    const discardedHost = runMacroScript(
+      'var c = 0; for (var i = 0; i < 40; i++) { c += makeBig().length; } c;',
+      { makeBig: () => 'a'.repeat(40_000) },
+      { maxMemoryBytes: 500_000 },
+    )
+    expect(discardedHost.ok).toBe(true)
+    if (discardedHost.ok) {
+      expect(discardedHost.value).toBe(1_600_000)
+    }
+
+    // Shared object references are not double-counted across multiple bindings.
+    const sharedObj = runMacroScript(
+      `
+      var big = { payload: "x".repeat(40000) };
+      var refs = [];
+      for (var i = 0; i < 100; i++) {
+        refs.push(big);
+      }
+      refs.length;
+    `,
+      {},
+      { maxMemoryBytes: 300_000 },
+    )
+    expect(sharedObj.ok).toBe(true)
+    if (sharedObj.ok) {
+      expect(sharedObj.value).toBe(100)
+    }
+
+    // Large retained distinct strings still trip memory_limit cleanly.
+    const p2Retain = runMacroScript(
+      `
+      var a = [];
+      var s = "x".repeat(999990);
+      for (var i = 0; i < 100; i++) {
+        a.push((s + i).toUpperCase());
+      }
+      a.length;
+    `,
+    )
+    expect(p2Retain.ok).toBe(false)
+    if (!p2Retain.ok) {
+      expect(p2Retain.code).toBe('memory_limit')
+    }
+
+    // External step budget hook charges steps directly against maxSteps.
+    let budgetHandle: { addSteps: (n: number) => void; checkLimits: () => void } | null = null
+    const extSteps = runMacroScript(
+      'doWork();',
+      {
+        doWork: () => {
+          budgetHandle?.addSteps(500)
+          return 'ok'
+        },
+      },
+      {
+        maxSteps: 100,
+        onRegisterBudget: (b) => {
+          budgetHandle = b
+        },
+      },
+    )
+    expect(extSteps.ok).toBe(false)
+    if (!extSteps.ok) {
+      expect(extSteps.code).toBe('step_limit')
+      expect(extSteps.line).toBe(1)
     }
   })
 

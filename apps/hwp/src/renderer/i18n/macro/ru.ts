@@ -133,5 +133,9 @@ export const ru = {
   cmdInsertBookmark: 'Вставить закладку',
   cmdLineBreak: 'Разрыв строки',
   cmdTab: 'Табуляция',
+  cmdDeleteObject: 'Удалить объект документа',
+  cmdOutsideBody: 'Правка вне основного текста',
   cmdOtherAction: 'Неподдерживаемое действие редактора ({id})',
+  noticeOutsideBodyIgnored:
+    'Действия вне абзацев основного текста (в таблицах, текстовых полях, сносках, колонтитулах) не записываются.',
 } satisfies Record<keyof typeof zh, string>

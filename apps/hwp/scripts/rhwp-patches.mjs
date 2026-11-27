@@ -2600,6 +2600,25 @@ const PATCHES = {
       },
       {
         find: [
+          '    const ctx = this.services.getContext();',
+          '    if (isBlockedInFormMode(commandId, ctx)) {',
+        ].join('\n'),
+        replace: [
+          '    const ctx = this.services.getContext();',
+          '    let macroInBody = true;',
+          '    try {',
+          '      const macroCur = (this.services.getInputHandler?.() as any)?.cursor;',
+          '      if (macroCur) {',
+          '        macroInBody = !macroCur.isInCell?.() && !macroCur.isInHeaderFooter?.() && !macroCur.isInFootnote?.() && !macroCur.isInTextBox?.();',
+          '      }',
+          '    } catch {',
+          '      // ignore read errors when document state is unavailable',
+          '    }',
+          '    if (isBlockedInFormMode(commandId, ctx)) {',
+        ].join('\n'),
+      },
+      {
+        find: [
           '      // 커맨드 실행 후 UI 상태 갱신 알림',
           "      this.eventBus.emit('command-state-changed');",
           '      return { ok: true };',
@@ -2624,7 +2643,7 @@ const PATCHES = {
           '          // ignore read errors when document state is unavailable',
           '        }',
           '      }',
-          '      recordStudioCommand(commandId, params, def.label, macroCharState);',
+          '      recordStudioCommand(commandId, params, def.label, macroCharState, { inBody: macroInBody });',
           '      // 커맨드 실행 후 UI 상태 갱신 알림',
           "      this.eventBus.emit('command-state-changed');",
           '      return { ok: true };',
@@ -2643,6 +2662,20 @@ const PATCHES = {
         ].join('\n'),
       },
       {
+        find: "        this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, this.cursor.hfParaIdx, anchor.charOffset, composed) });",
+        replace: [
+          "        this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, this.cursor.hfParaIdx, anchor.charOffset, composed) });",
+          '        recordStudioText(composed, { inBody: false });',
+        ].join('\n'),
+      },
+      {
+        find: "        this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, this.cursor.fnInnerParaIdx, anchor.charOffset, composed) });",
+        replace: [
+          "        this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, this.cursor.fnInnerParaIdx, anchor.charOffset, composed) });",
+          '        recordStudioText(composed, { inBody: false });',
+        ].join('\n'),
+      },
+      {
         find: [
           '        this.executeOperation({',
           "          kind: 'record',",
@@ -2660,7 +2693,21 @@ const PATCHES = {
           '            covered, fragmentId === null ? [] : [fragmentId], bodyLogical,',
           '          ),',
           '        });',
-          '        recordStudioText(insertedText);',
+          '        recordStudioText(insertedText, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+        ].join('\n'),
+      },
+      {
+        find: "      this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, paraIdx, charOffset, text) });",
+        replace: [
+          "      this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, paraIdx, charOffset, text) });",
+          '      recordStudioText(text, { inBody: false });',
+        ].join('\n'),
+      },
+      {
+        find: "      this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, innerParaIdx, charOffset, text) });",
+        replace: [
+          "      this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, innerParaIdx, charOffset, text) });",
+          '      recordStudioText(text, { inBody: false });',
         ].join('\n'),
       },
       {
@@ -2675,7 +2722,7 @@ const PATCHES = {
           "    kind: 'command',",
           '    command: new InsertTextCommand(insertPos, text, undefined, this.getPendingCharShape?.(), replaced),',
           '  });',
-          '  recordStudioText(text);',
+          '  recordStudioText(text, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
         ].join('\n'),
       },
     ],
@@ -2687,7 +2734,7 @@ const PATCHES = {
         find: "import { emitHeaderFooterModeChanged } from './header-footer-mode';",
         replace: [
           "import { emitHeaderFooterModeChanged } from './header-footer-mode';",
-          `import { macroShortcutKey, recordStudioKey } from '${HANCOM_KEYS_MODULE}';`,
+          `import { hasAdjacentProtectedObject, isMacroRecordingActive, macroShortcutKey, recordStudioKey } from '${HANCOM_KEYS_MODULE}';`,
         ].join('\n'),
       },
       {
@@ -2704,7 +2751,7 @@ const PATCHES = {
         ].join('\n'),
         replace: [
           '    executeNavigationAction.call(this, action, e.shiftKey);',
-          '    recordStudioKey(e, { navigationAction: action });',
+          '    recordStudioKey(e, { navigationAction: action, inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '    return true;',
         ].join('\n'),
       },
@@ -2717,7 +2764,7 @@ const PATCHES = {
         replace: [
           "  if (e.key === 'Escape') {",
           '    e.preventDefault();',
-          '    recordStudioKey(e);',
+          '    recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '    const inCell = this.cursor.isInCell();',
         ].join('\n'),
       },
@@ -2747,6 +2794,10 @@ const PATCHES = {
           '      e.preventDefault();',
           '      if (this.isFormMode?.() && e.altKey) return;',
           '      const macroHadSelection = this.cursor.hasSelection();',
+          '      const macroInBody = !inCell && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      const macroAdjacentObject = isMacroRecordingActive() && macroInBody && !macroHadSelection && !e.altKey',
+          '        ? hasAdjacentProtectedObject(this.wasm, pos, e.key)',
+          '        : false;',
           '      if (macroHadSelection) {',
           '        this.deleteSelection();',
           '      } else if (e.altKey) {',
@@ -2759,7 +2810,7 @@ const PATCHES = {
           '      } else {',
           '        this.handleDelete(pos, inCell);',
           '      }',
-          '      recordStudioKey(e, { hadSelection: macroHadSelection });',
+          '      recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody, adjacentObject: macroAdjacentObject });',
           '      break;',
         ].join('\n'),
       },
@@ -2772,7 +2823,7 @@ const PATCHES = {
         replace: [
           "        this.executeOperation({ kind: 'command', command: new SplitParagraphCommand(this.cursor.getPosition()) });",
           '      }',
-          '      recordStudioKey(e);',
+          '      recordStudioKey(e, { inBody: !inCell && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '      break;',
         ].join('\n'),
       },
@@ -2784,7 +2835,7 @@ const PATCHES = {
         replace: [
           '      if (moveH !== null) this.cursor.moveHorizontal(moveH);',
           '      if (moveV !== null) this.cursor.moveVertical(moveV);',
-          '      recordStudioKey(e);',
+          '      recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
         ].join('\n'),
       },
       {
@@ -2798,7 +2849,7 @@ const PATCHES = {
           '      this.markCurrentFieldStartOutside?.();',
           '      this.updateCaret();',
           '      if (e.shiftKey) this.updateSelection();',
-          '      recordStudioKey(e);',
+          '      recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '      break;',
         ].join('\n'),
       },
@@ -2813,7 +2864,7 @@ const PATCHES = {
           '      this.markCurrentFieldEndOutside?.();',
           '      this.updateCaret();',
           '      if (e.shiftKey) this.updateSelection();',
-          '      recordStudioKey(e);',
+          '      recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '      break;',
         ].join('\n'),
       },
@@ -2830,12 +2881,12 @@ const PATCHES = {
         replace: [
           '      if (e.shiftKey) {',
           '        this.applyHangingIndentAtCursor();',
-          '        recordStudioKey(e);',
+          '        recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '        break;',
           '      }',
           '      // 탭 문자 삽입 (본문·글상자 공통)',
           "      this.executeOperation({ kind: 'command', command: new InsertTabCommand(this.cursor.getPosition()) });",
-          '      recordStudioKey(e);',
+          '      recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
           '      break;',
         ].join('\n'),
       },
@@ -2864,6 +2915,7 @@ const PATCHES = {
           '      e.preventDefault();',
           '      if (this.isFormMode?.()) return;',
           '      const macroHadSelection = this.cursor.hasSelection();',
+          '      const macroInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
           '      if (macroHadSelection) {',
           '        this.deleteSelection();',
           '      } else if (e.metaKey && !e.ctrlKey) {',
@@ -2877,7 +2929,7 @@ const PATCHES = {
           '        this.cursor.moveToWordBoundary(-1);',
           '        if (this.cursor.hasSelection()) this.deleteSelection();',
           '      }',
-          '      recordStudioKey(e, { hadSelection: macroHadSelection });',
+          '      recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody });',
           '      break;',
         ].join('\n'),
       },
@@ -2903,6 +2955,7 @@ const PATCHES = {
           '      e.preventDefault();',
           '      if (this.isFormMode?.()) return;',
           '      const macroHadSelection = this.cursor.hasSelection();',
+          '      const macroInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
           '      if (macroHadSelection) {',
           '        this.deleteSelection();',
           '      } else {',
@@ -2911,21 +2964,23 @@ const PATCHES = {
           '        this.cursor.moveToWordBoundary(1);',
           '        if (this.cursor.hasSelection()) this.deleteSelection();',
           '      }',
-          '      recordStudioKey(e, { hadSelection: macroHadSelection });',
+          '      recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody });',
           '      break;',
         ].join('\n'),
       },
       {
         find: '      snapViewToDocumentEdge.call(this, -1);',
-        replace: ['      snapViewToDocumentEdge.call(this, -1);', '      recordStudioKey(e);'].join(
-          '\n',
-        ),
+        replace: [
+          '      snapViewToDocumentEdge.call(this, -1);',
+          '      recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+        ].join('\n'),
       },
       {
         find: '      snapViewToDocumentEdge.call(this, 1);',
-        replace: ['      snapViewToDocumentEdge.call(this, 1);', '      recordStudioKey(e);'].join(
-          '\n',
-        ),
+        replace: [
+          '      snapViewToDocumentEdge.call(this, 1);',
+          '      recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+        ].join('\n'),
       },
       {
         find: [
@@ -2953,7 +3008,7 @@ const PATCHES = {
           '      else this.cursor.clearSelection();',
           '      this.cursor.moveToLineStart();',
           '      this.updateCaret();',
-          "      recordStudioKey(e, { navigationAction: 'lineStart' });",
+          "      recordStudioKey(e, { navigationAction: 'lineStart', inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
           '      break;',
           '    }',
           "    case 'arrowright': {",
@@ -2962,7 +3017,7 @@ const PATCHES = {
           '      else this.cursor.clearSelection();',
           '      this.cursor.moveToLineEnd();',
           '      this.updateCaret();',
-          "      recordStudioKey(e, { navigationAction: 'lineEnd' });",
+          "      recordStudioKey(e, { navigationAction: 'lineEnd', inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
           '      break;',
           '    }',
         ].join('\n'),
@@ -2984,7 +3039,7 @@ const PATCHES = {
           '        this.cursor.moveToParagraphBoundary(-1);',
           '      }',
           '      this.updateCaret();',
-          "      recordStudioKey(e, { navigationAction: e.metaKey && !e.ctrlKey ? 'docStart' : 'paragraphBackward' });",
+          "      recordStudioKey(e, { navigationAction: e.metaKey && !e.ctrlKey ? 'docStart' : 'paragraphBackward', inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
           '      break;',
         ].join('\n'),
       },
@@ -3005,7 +3060,7 @@ const PATCHES = {
           '        this.cursor.moveToParagraphBoundary(1);',
           '      }',
           '      this.updateCaret();',
-          "      recordStudioKey(e, { navigationAction: e.metaKey && !e.ctrlKey ? 'docEnd' : 'paragraphForward' });",
+          "      recordStudioKey(e, { navigationAction: e.metaKey && !e.ctrlKey ? 'docEnd' : 'paragraphForward', inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
           '      break;',
         ].join('\n'),
       },

@@ -79,6 +79,8 @@ export type MacroRecordingEventDetail =
     }
   | { kind: 'unsupported_command'; commandId: string; label: string }
   | { kind: 'mouse_ignored' }
+  | { kind: 'outside_body_ignored' }
+  | { kind: 'slot_run_ignored'; slot?: number }
 
 export interface WorkpaneMenuHost {
   automation?: {

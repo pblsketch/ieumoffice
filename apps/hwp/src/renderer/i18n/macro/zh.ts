@@ -116,5 +116,9 @@ export const zh = {
   cmdInsertBookmark: '插入书签',
   cmdLineBreak: '换行',
   cmdTab: '制表符',
+  cmdDeleteObject: '删除文档对象',
+  cmdOutsideBody: '正文段落外编辑',
   cmdOtherAction: '不支持的编辑操作（{id}）',
+  noticeOutsideBodyIgnored:
+    '在表格单元格、文本框、脚注、页眉/页脚等正文段落之外执行的操作不会被录制。',
 }

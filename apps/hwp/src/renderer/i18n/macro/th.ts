@@ -128,5 +128,9 @@ export const th = {
   cmdInsertBookmark: 'แทรกบุ๊กมาร์ก',
   cmdLineBreak: 'ขึ้นบรรทัดใหม่',
   cmdTab: 'แท็บ',
+  cmdDeleteObject: 'ลบวัตถุในเอกสาร',
+  cmdOutsideBody: 'การแก้ไขนอกย่อหน้าเนื้อหาหลัก',
   cmdOtherAction: 'การทำงานของตัวแก้ไขที่ไม่รองรับ ({id})',
+  noticeOutsideBodyIgnored:
+    'การกระทำนอกย่อหน้าเนื้อหาหลัก (ตาราง กล่องข้อความ เชิงอรรถ หัวกระดาษ/ท้ายกระดาษ) จะไม่ถูกบันทึก',
 } satisfies Record<keyof typeof zh, string>

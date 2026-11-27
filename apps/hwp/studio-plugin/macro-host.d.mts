@@ -33,8 +33,6 @@ export declare const DEFAULT_MACRO_HOST_LIMITS: Readonly<{
   readonly maxRegexLength: number
 }>
 
-export declare function assertSafeMacroRegex(pattern: string, maxRegexLength?: number): void
-
 export interface MacroCaret {
   sec: number
   para: number

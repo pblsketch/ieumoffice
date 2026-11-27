@@ -134,5 +134,9 @@ export const tr = {
   cmdInsertBookmark: 'Yer imi ekle',
   cmdLineBreak: 'Satır sonu',
   cmdTab: 'Sekme',
+  cmdDeleteObject: 'Belge nesnesini sil',
+  cmdOutsideBody: 'Ana metin paragrafı dışında düzenleme',
   cmdOtherAction: 'Desteklenmeyen düzenleyici eylemi ({id})',
+  noticeOutsideBodyIgnored:
+    'Ana metin paragrafları dışındaki işlemler (tablolar, metin kutuları, notlar, üstbilgi/altbilgiler) kaydedilmez.',
 } satisfies Record<keyof typeof zh, string>

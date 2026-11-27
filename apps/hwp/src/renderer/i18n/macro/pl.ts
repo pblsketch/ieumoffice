@@ -133,5 +133,9 @@ export const pl = {
   cmdInsertBookmark: 'Wstaw zakładkę',
   cmdLineBreak: 'Podział wiersza',
   cmdTab: 'Tabulator',
+  cmdDeleteObject: 'Usuń obiekt dokumentu',
+  cmdOutsideBody: 'Edycja poza tekstem głównym',
   cmdOtherAction: 'Nieobsługiwana czynność edytora ({id})',
+  noticeOutsideBodyIgnored:
+    'Czynności wykonywane poza akapitami tekstu głównego (tabele, pola tekstowe, przypisy, nagłówki/stopki) nie są nagrywane.',
 } satisfies Record<keyof typeof zh, string>

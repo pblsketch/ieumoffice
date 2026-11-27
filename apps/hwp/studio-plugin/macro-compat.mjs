@@ -105,6 +105,7 @@ function defaultFieldsFor(actionName) {
       return {
         AlignType: undefined,
         LineSpacing: undefined,
+        LineSpacingType: undefined,
         LeftMargin: undefined,
         RightMargin: undefined,
         Indentation: undefined,
@@ -183,15 +184,22 @@ function parseCompatColor(value, fail) {
 }
 
 function parseCompatParaUnit(value, fieldName, minUnits, maxUnits, fail) {
-  if (
-    typeof value !== 'number' ||
-    !Number.isFinite(value) ||
-    value < minUnits ||
-    value > maxUnits
-  ) {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
     fail(
       'invalid_argument',
-      `Invalid ${fieldName}: expected a number between ${minUnits} and ${maxUnits} (200 units = 1 pt)`,
+      `Invalid ${fieldName}: expected an even integer between ${minUnits} and ${maxUnits} (200 units = 1 pt)`,
+    )
+  }
+  if ((value & 1) !== 0) {
+    fail(
+      'invalid_argument',
+      `Invalid ${fieldName}: odd URC values (relative character units) are not supported; pass an even HWPUNIT*2 integer (200 units = 1 pt)`,
+    )
+  }
+  if (value < minUnits || value > maxUnits) {
+    fail(
+      'invalid_argument',
+      `Invalid ${fieldName}: expected an even integer between ${minUnits} and ${maxUnits} (200 units = 1 pt)`,
     )
   }
   return value / PARA_UNITS_PER_PT
@@ -291,6 +299,15 @@ function mapParaShapeProps(pset, fail) {
   if (pset.AlignType !== undefined && pset.AlignType !== null) {
     props.align = parseCompatAlign(pset.AlignType, fail)
     count += 1
+  }
+  if (pset.LineSpacingType !== undefined && pset.LineSpacingType !== null) {
+    if (pset.LineSpacingType !== 0) {
+      fail(
+        'unsupported_action',
+        'HParaShape.LineSpacingType other than 0 (Percent) is not supported',
+        { unsupportedAction: 'LineSpacingType' },
+      )
+    }
   }
   if (pset.LineSpacing !== undefined && pset.LineSpacing !== null) {
     props.lineSpacing = pset.LineSpacing

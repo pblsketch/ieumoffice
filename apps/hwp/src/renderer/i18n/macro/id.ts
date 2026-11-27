@@ -133,5 +133,9 @@ export const id = {
   cmdInsertBookmark: 'Sisipkan marka buku',
   cmdLineBreak: 'Pindah baris',
   cmdTab: 'Tabulasi',
+  cmdDeleteObject: 'Hapus objek dokumen',
+  cmdOutsideBody: 'Pengeditan di luar paragraf isi',
   cmdOtherAction: 'Tindakan editor tidak didukung ({id})',
+  noticeOutsideBodyIgnored:
+    'Tindakan di luar paragraf isi (tabel, kotak teks, catatan, tajuk/catatan kaki halaman) tidak direkam.',
 } satisfies Record<keyof typeof zh, string>

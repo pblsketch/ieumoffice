@@ -28,8 +28,8 @@ import {
   validateMacroLimits,
 } from './macro-interpreter.mjs'
 import { createCompatGlobals } from './macro-compat.mjs'
+import { compileMacroRegex, expandMacroRegexReplacement } from './macro-regex.mjs'
 import { isAppMarkName, isAppTocHyperlinkField } from './doc-marks.mjs'
-import { findMatches, replaceFindMatches } from './find.mjs'
 import { changeOutlineLevel as changeOutlineLevelEngine } from './outline.mjs'
 import { listTocRanges, refreshTocBlock } from './toc.mjs'
 import { refreshIndexBlock } from './index-marks.mjs'
@@ -50,262 +50,21 @@ export const DEFAULT_MACRO_HOST_LIMITS = Object.freeze({
 
 const HOST_LIMIT_KEYS = Object.freeze(Object.keys(DEFAULT_MACRO_HOST_LIMITS))
 
-const QUANTIFIER_BRACE_RE = /^\{(\d+)(?:,(\d*))?\}/
+const MAX_TABLE_DEPTH = 4
+const NESTED_CONTROLS_TRIED = 4
+const MAX_NESTED_LOOKUPS = 100_000
+const MAX_CELL_REPLACE_CHARS = 8
+const NOTE_NUMBER_CHARS = 2
+const REGEX_VM_OPS_PER_STEP = 64
 
-function readRegexQuantifier(pattern, pos) {
-  if (pos >= pattern.length) return null
-  const c = pattern[pos]
-  if (c === '*' || c === '+' || c === '?') {
-    let endPos = pos + 1
-    if (endPos < pattern.length && pattern[endPos] === '?') endPos += 1
-    return { endPos, isRepeating: c !== '?', isUnbounded: c !== '?' }
-  }
-  if (c === '{') {
-    const m = QUANTIFIER_BRACE_RE.exec(pattern.slice(pos))
-    if (m) {
-      const min = Number(m[1])
-      const hasComma = m[0].includes(',')
-      const maxStr = m[2]
-      const isUnbounded = hasComma && maxStr === ''
-      const max = isUnbounded ? Number.POSITIVE_INFINITY : hasComma ? Number(maxStr) : min
-      let endPos = pos + m[0].length
-      if (endPos < pattern.length && pattern[endPos] === '?') endPos += 1
-      return { endPos, isRepeating: isUnbounded || max > 1, isUnbounded }
-    }
-  }
-  return null
-}
+const PICTURE_DESC = '그림'
+const CITATION_PREFIX = '인용:'
 
-function shorthandMatchesLiteral(shorthand, ch) {
-  switch (shorthand) {
-    case 'd':
-      return ch >= '0' && ch <= '9'
-    case 'D':
-      return !(ch >= '0' && ch <= '9')
-    case 's':
-      return /\s/.test(ch)
-    case 'S':
-      return !/\s/.test(ch)
-    case 'w':
-      return /[A-Za-z0-9_]/.test(ch)
-    case 'W':
-      return !/[A-Za-z0-9_]/.test(ch)
-    default:
-      return true
-  }
-}
-
-function atomsCanOverlap(a, b) {
-  if (!a || !b) return true
-  if (
-    a.kind === 'any' ||
-    b.kind === 'any' ||
-    a.kind === 'neg_class' ||
-    b.kind === 'neg_class' ||
-    a.kind === 'group' ||
-    b.kind === 'group'
-  ) {
-    return true
-  }
-  if (a.kind === 'literal' && b.kind === 'literal') {
-    return a.value.toLowerCase() === b.value.toLowerCase()
-  }
-  if (a.kind === 'shorthand' && b.kind === 'shorthand') {
-    const pair = `${a.value}${b.value}`
-    if (
-      pair === 'ds' ||
-      pair === 'sd' ||
-      pair === 'ws' ||
-      pair === 'sw' ||
-      pair === 'dD' ||
-      pair === 'Dd' ||
-      pair === 'wW' ||
-      pair === 'Ww' ||
-      pair === 'sS' ||
-      pair === 'Ss'
-    ) {
-      return false
-    }
-    return true
-  }
-  if (a.kind === 'shorthand' && b.kind === 'literal') {
-    return (
-      shorthandMatchesLiteral(a.value, b.value.toLowerCase()) ||
-      shorthandMatchesLiteral(a.value, b.value.toUpperCase())
-    )
-  }
-  if (b.kind === 'shorthand' && a.kind === 'literal') {
-    return (
-      shorthandMatchesLiteral(b.value, a.value.toLowerCase()) ||
-      shorthandMatchesLiteral(b.value, a.value.toUpperCase())
-    )
-  }
-  return true
-}
-
-/**
- * Static safety validator for macro regular expressions. Rejects oversized
- * patterns, backreferences, lookaround assertions, nested quantifiers,
- * quantified alternation groups, and adjacent overlapping unbounded quantifiers.
- */
-export function assertSafeMacroRegex(
-  pattern,
-  maxRegexLength = DEFAULT_MACRO_HOST_LIMITS.maxRegexLength,
-) {
-  if (typeof pattern !== 'string') {
-    throw new Error('Regular expression pattern must be a string')
-  }
-  if (pattern.length > maxRegexLength) {
-    throw new Error(
-      `Regular expression length (${pattern.length}) exceeds limit (${maxRegexLength})`,
-    )
-  }
-
-  const stack = [{ hasQuantifier: false, hasAlternation: false, prevUnboundedAtom: null }]
-  let i = 0
-  while (i < pattern.length) {
-    const ch = pattern[i]
-    let atom = null
-    let closedGroup = null
-
-    if (ch === '\\') {
-      if (i + 1 >= pattern.length) {
-        i += 1
-        continue
-      }
-      const next = pattern[i + 1]
-      if (next >= '1' && next <= '9') {
-        throw new Error('Backreferences are not allowed in macro regular expressions')
-      }
-      if (next === 'k' && pattern[i + 2] === '<') {
-        throw new Error('Named backreferences are not allowed in macro regular expressions')
-      }
-      if (next === 'x') {
-        i += 4
-        atom = { kind: 'literal', value: pattern.slice(i - 4, i) }
-      } else if (next === 'u') {
-        if (pattern[i + 2] === '{') {
-          const close = pattern.indexOf('}', i + 3)
-          i = close === -1 ? pattern.length : close + 1
-        } else {
-          i += 6
-        }
-        atom = { kind: 'literal', value: 'u' }
-      } else if (next === 'p' || next === 'P') {
-        const close = pattern.indexOf('}', i + 2)
-        i = close === -1 ? pattern.length : close + 1
-        atom = { kind: 'class', value: '\\p' }
-      } else {
-        i += 2
-        if (next === 'b' || next === 'B') {
-          continue
-        }
-        if ('dDsSwW'.includes(next)) {
-          atom = { kind: 'shorthand', value: next }
-        } else {
-          atom = { kind: 'literal', value: next }
-        }
-      }
-    } else if (ch === '[') {
-      const start = i
-      i += 1
-      const negated = i < pattern.length && pattern[i] === '^'
-      if (negated) i += 1
-      if (i < pattern.length && pattern[i] === ']') i += 1
-      while (i < pattern.length && pattern[i] !== ']') {
-        if (pattern[i] === '\\') {
-          i += 2
-        } else {
-          i += 1
-        }
-      }
-      if (i < pattern.length && pattern[i] === ']') i += 1
-      atom = { kind: negated ? 'neg_class' : 'class', value: pattern.slice(start, i) }
-    } else if (ch === '(') {
-      if (pattern[i + 1] === '?') {
-        if (
-          pattern.startsWith('(?=', i) ||
-          pattern.startsWith('(?!', i) ||
-          pattern.startsWith('(?<=', i) ||
-          pattern.startsWith('(?<!', i)
-        ) {
-          throw new Error('Lookaround assertions are not allowed in macro regular expressions')
-        }
-        if (pattern.startsWith('(?:', i)) {
-          i += 3
-        } else if (pattern.startsWith('(?<', i)) {
-          const close = pattern.indexOf('>', i + 3)
-          i = close === -1 ? pattern.length : close + 1
-        } else {
-          i += 2
-        }
-      } else {
-        i += 1
-      }
-      stack.push({ hasQuantifier: false, hasAlternation: false, prevUnboundedAtom: null })
-      continue
-    } else if (ch === ')') {
-      i += 1
-      if (stack.length > 1) {
-        closedGroup = stack.pop()
-        atom = { kind: 'group', value: '' }
-      }
-    } else if (ch === '|') {
-      i += 1
-      const top = stack[stack.length - 1]
-      top.hasAlternation = true
-      top.prevUnboundedAtom = null
-      continue
-    } else if (ch === '^' || ch === '$') {
-      i += 1
-      continue
-    } else if (ch === '.') {
-      i += 1
-      atom = { kind: 'any', value: '.' }
-    } else if (ch === '*' || ch === '+' || ch === '?') {
-      i += 1
-      continue
-    } else {
-      atom = { kind: 'literal', value: ch }
-      i += 1
-    }
-
-    const q = readRegexQuantifier(pattern, i)
-    const top = stack[stack.length - 1]
-
-    if (closedGroup) {
-      if (q) {
-        i = q.endPos
-        top.hasQuantifier = true
-        if (q.isRepeating && closedGroup.hasQuantifier) {
-          throw new Error('Nested quantifiers are not allowed in macro regular expressions')
-        }
-        if (q.isRepeating && closedGroup.hasAlternation) {
-          throw new Error(
-            'Quantified alternation groups are not allowed in macro regular expressions',
-          )
-        }
-      } else {
-        if (closedGroup.hasQuantifier) top.hasQuantifier = true
-        if (closedGroup.hasAlternation) top.hasAlternation = true
-      }
-    } else if (q) {
-      i = q.endPos
-      top.hasQuantifier = true
-    }
-
-    if (q && q.isUnbounded) {
-      if (top.prevUnboundedAtom && atomsCanOverlap(top.prevUnboundedAtom, atom)) {
-        throw new Error(
-          'Adjacent overlapping unbounded quantifiers are not allowed in macro regular expressions',
-        )
-      }
-      top.prevUnboundedAtom = atom
-    } else if (atom) {
-      top.prevUnboundedAtom = null
-    }
-  }
-}
+// eslint-disable-next-line no-control-regex
+const PARAGRAPH_CONTROL_CHARS = /[\u0000-\u0008\u000a-\u001f\u007f]/
+const FIND_WORD_CHAR_RE = /[\p{L}\p{N}]/u
+const CITATION_SUFFIX_RE = /^인용:(.+?)(?:[:_-])(start|end|시작|끝)$/i
+const CITATION_PREFIX_ROLE_RE = /^인용:(start|end|시작|끝)(?:[:_-])(.+)$/i
 
 function resolveHostLimits(rawLimits) {
   const base = validateMacroLimits(rawLimits)
@@ -375,6 +134,790 @@ function parseJson(raw, fallback = null) {
   } catch {
     return fallback
   }
+}
+
+function tryOr(fn, fallback) {
+  try {
+    return fn()
+  } catch {
+    return fallback
+  }
+}
+
+function parseNoteInfo(raw) {
+  if (typeof raw !== 'string') return raw
+  return JSON.parse(
+    // eslint-disable-next-line no-control-regex
+    raw.replace(/[\u0000-\u001f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`),
+  )
+}
+
+function buildCodePointMap(text) {
+  const chars = Array.from(text)
+  if (chars.length === text.length) {
+    return {
+      chars,
+      utf16ToCp: (index) => index,
+    }
+  }
+  const map = new Uint32Array(text.length + 1)
+  let u16 = 0
+  for (let cp = 0; cp < chars.length; cp++) {
+    const len = chars[cp].length
+    map[u16] = cp
+    if (len === 2) map[u16 + 1] = cp
+    u16 += len
+  }
+  map[text.length] = chars.length
+  return {
+    chars,
+    utf16ToCp: (index) => map[Math.min(Math.max(0, index), text.length)],
+  }
+}
+
+function isWholeWord(chars, startCp, endCp) {
+  if (startCp > 0 && FIND_WORD_CHAR_RE.test(chars[startCp - 1])) return false
+  if (endCp < chars.length && FIND_WORD_CHAR_RE.test(chars[endCp])) return false
+  return true
+}
+
+function resolveStyleFilter(doc, rawStyle) {
+  if (typeof rawStyle !== 'string' || rawStyle.trim() === '') return null
+  const name = rawStyle.trim()
+  const lower = name.toLowerCase()
+  const ids = new Set()
+  const list = tryOr(() => parseJson(doc.getStyleList(), []), [])
+  if (Array.isArray(list)) {
+    for (const style of list) {
+      if (!style || typeof style !== 'object') continue
+      const ko = typeof style.name === 'string' ? style.name.trim() : ''
+      const en = typeof style.englishName === 'string' ? style.englishName.trim().toLowerCase() : ''
+      if (ko === name || (en && en === lower)) {
+        if (Number.isInteger(style.id)) ids.add(style.id)
+      }
+    }
+  }
+  return { name, lower, ids }
+}
+
+function matchesStyleInfo(info, styleFilter) {
+  if (!info || typeof info !== 'object') return false
+  if (Number.isInteger(info.id) && styleFilter.ids.has(info.id)) return true
+  const ko = typeof info.name === 'string' ? info.name.trim() : ''
+  return ko === styleFilter.name || ko.toLowerCase() === styleFilter.lower
+}
+
+function citationRangesOf(doc) {
+  const rangesByPara = new Map()
+  if (typeof doc.getBookmarks !== 'function') return rangesByPara
+  const bookmarks = tryOr(() => parseJson(doc.getBookmarks(), []), [])
+  if (!Array.isArray(bookmarks) || bookmarks.length === 0) return rangesByPara
+
+  const groups = new Map()
+  for (const bm of bookmarks) {
+    if (!bm || typeof bm.name !== 'string' || !bm.name.startsWith(CITATION_PREFIX)) continue
+    const sec = Number.isInteger(bm.sec) ? bm.sec : bm.sectionIndex
+    const para = Number.isInteger(bm.para) ? bm.para : bm.paraIndex
+    const pos = Number.isInteger(bm.charPos) ? bm.charPos : bm.charOffset
+    if (!Number.isInteger(sec) || !Number.isInteger(para) || !Number.isInteger(pos)) continue
+
+    let key = bm.name
+    let role = 'pair'
+    const suffixMatch = bm.name.match(CITATION_SUFFIX_RE)
+    if (suffixMatch) {
+      key = `${CITATION_PREFIX}${suffixMatch[1]}`
+      const tag = suffixMatch[2].toLowerCase()
+      role = tag === 'start' || tag === '시작' ? 'start' : 'end'
+    } else {
+      const prefixMatch = bm.name.match(CITATION_PREFIX_ROLE_RE)
+      if (prefixMatch) {
+        key = `${CITATION_PREFIX}${prefixMatch[2]}`
+        const tag = prefixMatch[1].toLowerCase()
+        role = tag === 'start' || tag === '시작' ? 'start' : 'end'
+      }
+    }
+
+    const groupKey = `${sec}:${para}:${key}`
+    let group = groups.get(groupKey)
+    if (!group) {
+      group = { sec, para, starts: [], ends: [], pairs: [] }
+      groups.set(groupKey, group)
+    }
+    if (role === 'start') group.starts.push(pos)
+    else if (role === 'end') group.ends.push(pos)
+    else group.pairs.push(pos)
+  }
+
+  const addRange = (sec, para, a, b) => {
+    const start = Math.min(a, b)
+    const end = Math.max(a, b)
+    const paraKey = `${sec}:${para}`
+    let list = rangesByPara.get(paraKey)
+    if (!list) {
+      list = []
+      rangesByPara.set(paraKey, list)
+    }
+    list.push({ start, end })
+  }
+
+  for (const group of groups.values()) {
+    if (group.starts.length > 0 && group.ends.length > 0) {
+      group.starts.sort((a, b) => a - b)
+      group.ends.sort((a, b) => a - b)
+      const count = Math.min(group.starts.length, group.ends.length)
+      for (let i = 0; i < count; i++) {
+        addRange(group.sec, group.para, group.starts[i], group.ends[i])
+      }
+    }
+    if (group.pairs.length >= 2) {
+      group.pairs.sort((a, b) => a - b)
+      for (let i = 0; i + 1 < group.pairs.length; i += 2) {
+        addRange(group.sec, group.para, group.pairs[i], group.pairs[i + 1])
+      }
+    }
+  }
+
+  return rangesByPara
+}
+
+function overlapsCitation(ranges, start, end) {
+  if (!ranges || ranges.length === 0) return false
+  return ranges.some((range) => {
+    if (range.start < range.end) {
+      return start < range.end && range.start < end
+    }
+    return start < range.start && range.start < end
+  })
+}
+
+function spansInlineObject(doc, sec, para, offset, length) {
+  if (length < 2 || typeof doc.textToLogicalOffset !== 'function') return false
+  return tryOr(
+    () =>
+      doc.textToLogicalOffset(sec, para, offset + length) -
+        doc.textToLogicalOffset(sec, para, offset + 1) >
+      length - 1,
+    false,
+  )
+}
+
+function followsInlineObject(doc, sec, para, offset, length) {
+  if (length <= 0 || typeof doc.textToLogicalOffset !== 'function') return false
+  return tryOr(
+    () =>
+      doc.textToLogicalOffset(sec, para, offset + 1) - doc.textToLogicalOffset(sec, para, offset) >
+      1,
+    false,
+  )
+}
+
+function cellPathToListKey(sec, para, path) {
+  if (!Array.isArray(path) || path.length === 0) return ''
+  const parents = path
+    .slice(0, -1)
+    .map((s) => `${s.controlIndex}:${s.cellIndex}:${s.cellParaIndex ?? 0}`)
+    .join('/')
+  const last = path[path.length - 1]
+  return `${sec}:${para}:${parents}|${last.controlIndex}:${last.cellIndex}`
+}
+
+function indexCellListIds(doc) {
+  const byPath = new Map()
+  if (typeof doc.getCursorModel !== 'function') return byPath
+  const model = tryOr(() => parseJson(doc.getCursorModel(), null), null)
+  const lists = Array.isArray(model?.lists) ? model.lists : []
+  if (lists.length === 0) return byPath
+
+  const byId = new Map()
+  for (const entry of lists) {
+    if (entry && Number.isInteger(entry.listId)) byId.set(entry.listId, entry)
+  }
+
+  const resolveChain = (entry, seen = new Set()) => {
+    if (!entry || seen.has(entry.listId)) return null
+    seen.add(entry.listId)
+    if (entry.hostListId === 0) {
+      return {
+        sec: entry.sectionIndex ?? 0,
+        parentPara: entry.hostPara ?? 0,
+        steps: [{ controlIndex: entry.controlIndex ?? 0, cellIndex: entry.cellIndex ?? 0 }],
+      }
+    }
+    const parent = byId.get(entry.hostListId)
+    const resolvedParent = resolveChain(parent, seen)
+    if (!resolvedParent) return null
+    const parentSteps = resolvedParent.steps.map((s) => ({ ...s }))
+    parentSteps[parentSteps.length - 1].cellParaIndex = entry.hostPara ?? 0
+    parentSteps.push({
+      controlIndex: entry.controlIndex ?? 0,
+      cellIndex: entry.cellIndex ?? 0,
+    })
+    return {
+      sec: resolvedParent.sec,
+      parentPara: resolvedParent.parentPara,
+      steps: parentSteps,
+    }
+  }
+
+  for (const entry of lists) {
+    const chain = resolveChain(entry)
+    if (!chain) continue
+    byPath.set(cellPathToListKey(chain.sec, chain.parentPara, chain.steps), entry.listId)
+  }
+  return byPath
+}
+
+function indexBodyControls(doc) {
+  const byPara = new Map()
+  const nonBodyByListPara = new Map()
+  let nestedTablesTotal = 0
+  const all = tryOr(() => parseJson(doc.getControls(), []), [])
+  if (!Array.isArray(all) || all.length === 0) {
+    return { byPara, nonBodyByListPara, nestedTablesTotal }
+  }
+
+  const sections = doc.getSectionCount()
+  const sectionStarts = []
+  let run = 0
+  for (let sec = 0; sec < sections; sec++) {
+    const count = doc.getParagraphCount(sec)
+    sectionStarts.push({ sec, start: run, end: run + count })
+    run += count
+  }
+
+  for (const ctrl of all) {
+    if (!ctrl) continue
+    if (ctrl.list !== 0) {
+      if (ctrl.ctrlId === 'tbl') nestedTablesTotal += 1
+      if (Number.isInteger(ctrl.list) && Number.isInteger(ctrl.para)) {
+        const key = `${ctrl.list}:${ctrl.para}`
+        let list = nonBodyByListPara.get(key)
+        if (!list) {
+          list = []
+          nonBodyByListPara.set(key, list)
+        }
+        list.push(ctrl)
+      }
+      continue
+    }
+    if (!Number.isInteger(ctrl.para)) continue
+    let sec = -1
+    let localPara = -1
+    for (const range of sectionStarts) {
+      if (ctrl.para >= range.start && ctrl.para < range.end) {
+        sec = range.sec
+        localPara = ctrl.para - range.start
+        break
+      }
+    }
+    if (sec < 0) continue
+    const key = `${sec}:${localPara}`
+    let list = byPara.get(key)
+    if (!list) {
+      list = []
+      byPara.set(key, list)
+    }
+    list.push(ctrl)
+  }
+
+  for (const list of byPara.values()) {
+    list.sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
+  }
+  return { byPara, nonBodyByListPara, nestedTablesTotal }
+}
+
+function cellInlineObjectOffsets(doc, listId, cellPara, nonBodyByListPara) {
+  if (!Number.isInteger(listId) || listId <= 0) return []
+  const ctrls = nonBodyByListPara.get(`${listId}:${cellPara}`)
+  if (!ctrls || ctrls.length === 0) return []
+  const offsets = []
+  for (const ctrl of ctrls) {
+    if (!ctrl || ctrl.ctrlId === 'bokm') continue
+    if (!Number.isInteger(ctrl.pos)) continue
+    if (typeof doc.getCharIndexAtStreamPos === 'function') {
+      const at = tryOr(
+        () => parseJson(doc.getCharIndexAtStreamPos(listId, cellPara, ctrl.pos), null),
+        null,
+      )
+      if (at && Number.isInteger(at.charIndex)) {
+        offsets.push(at.charIndex)
+        continue
+      }
+    }
+    offsets.push(ctrl.pos)
+  }
+  return offsets
+}
+
+function footnoteHasInlineObject(doc, sec, para, noteControl, notePara) {
+  if (typeof doc.getComposeControlInFootnote !== 'function') return false
+  for (let ctrlIdx = 0; ctrlIdx < 8; ctrlIdx++) {
+    const info = tryOr(
+      () =>
+        parseJson(doc.getComposeControlInFootnote(sec, para, noteControl, notePara, ctrlIdx), null),
+      null,
+    )
+    if (info && typeof info === 'object' && typeof info.kind === 'string') return true
+  }
+  return false
+}
+
+function cellPathStep(path, cellIndex, cellParaIndex) {
+  return [...path.slice(0, -1), { ...path[path.length - 1], cellIndex, cellParaIndex }]
+}
+
+function cellReplaceHead(text) {
+  return Array.from(text.split('\t')[0]).slice(0, MAX_CELL_REPLACE_CHARS).join('')
+}
+
+function compileMacroQueryMatcher(query, caseSensitive, regex, maxRegexLength) {
+  if (!query) return { ok: true, mode: 'none' }
+  if (regex) {
+    try {
+      const compiled = compileMacroRegex(query, caseSensitive ? '' : 'i', {
+        maxLength: maxRegexLength,
+      })
+      return { ok: true, mode: 'regex', compiled }
+    } catch (err) {
+      return {
+        ok: false,
+        reason: 'invalid_regex',
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  }
+  return {
+    ok: true,
+    mode: 'literal',
+    query,
+    lowerQuery: query.toLowerCase(),
+    caseSensitive,
+  }
+}
+
+function matchMacroTextHits(text, cpMap, matcher, wholeWord, regexRunOpts, checkDeadline) {
+  const hits = []
+  if (matcher.mode === 'regex') {
+    const rawMatches = matcher.compiled.execAll(text, regexRunOpts)
+    for (let i = 0; i < rawMatches.length; i++) {
+      if ((i & 255) === 0) checkDeadline()
+      const m = rawMatches[i]
+      if (!m || m.length <= 0) continue
+      const start = cpMap.utf16ToCp(m.index)
+      const end = cpMap.utf16ToCp(m.index + m.length)
+      if (!wholeWord || isWholeWord(cpMap.chars, start, end)) {
+        hits.push({ start, end, matchText: m.matchText, regexMatch: m })
+      }
+    }
+    return hits
+  }
+
+  if (matcher.mode === 'literal') {
+    if (matcher.caseSensitive) {
+      const needle = matcher.query
+      let pos = 0
+      let iter = 0
+      while (pos <= text.length - needle.length) {
+        if ((iter++ & 255) === 0) checkDeadline()
+        const idx = text.indexOf(needle, pos)
+        if (idx === -1) break
+        const start = cpMap.utf16ToCp(idx)
+        const end = cpMap.utf16ToCp(idx + needle.length)
+        if (!wholeWord || isWholeWord(cpMap.chars, start, end)) {
+          hits.push({ start, end, matchText: text.slice(idx, idx + needle.length) })
+        }
+        pos = idx + Math.max(1, needle.length)
+      }
+      return hits
+    }
+
+    const lowerText = text.toLowerCase()
+    const needle = matcher.lowerQuery
+    if (lowerText.length === text.length) {
+      let pos = 0
+      let iter = 0
+      while (pos <= lowerText.length - needle.length) {
+        if ((iter++ & 255) === 0) checkDeadline()
+        const idx = lowerText.indexOf(needle, pos)
+        if (idx === -1) break
+        const start = cpMap.utf16ToCp(idx)
+        const end = cpMap.utf16ToCp(idx + needle.length)
+        if (!wholeWord || isWholeWord(cpMap.chars, start, end)) {
+          hits.push({ start, end, matchText: text.slice(idx, idx + needle.length) })
+        }
+        pos = idx + Math.max(1, needle.length)
+      }
+      return hits
+    }
+
+    const needleChars = Array.from(needle)
+    const lowerChars = cpMap.chars.map((c) => c.toLowerCase())
+    let pos = 0
+    let iter = 0
+    while (pos <= lowerChars.length - needleChars.length) {
+      if ((iter++ & 255) === 0) checkDeadline()
+      let ok = true
+      for (let j = 0; j < needleChars.length; j++) {
+        if (lowerChars[pos + j] !== needleChars[j]) {
+          ok = false
+          break
+        }
+      }
+      if (ok) {
+        const start = pos
+        const end = pos + needleChars.length
+        if (!wholeWord || isWholeWord(cpMap.chars, start, end)) {
+          hits.push({ start, end, matchText: cpMap.chars.slice(start, end).join('') })
+        }
+        pos = end
+      } else {
+        pos += 1
+      }
+    }
+    return hits
+  }
+
+  return hits
+}
+
+function runMacroFind(doc, options, hooks) {
+  const query = typeof options?.query === 'string' ? options.query : ''
+  const caseSensitive = Boolean(options?.caseSensitive)
+  const wholeWord = Boolean(options?.wholeWord)
+  const regex = Boolean(options?.regex)
+  const styleFilter = resolveStyleFilter(doc, options?.style)
+  const includePage = hooks.includePage !== false
+  const keepRegexMeta = hooks.keepRegexMeta === true
+  const collectBodyText = hooks.collectBodyText === true
+  const checkDeadline = hooks.checkDeadline
+  const regexRunOpts = hooks.regexRunOpts
+
+  if (!query && !styleFilter) {
+    return {
+      ok: true,
+      total: 0,
+      matches: [],
+      regexMeta: [],
+      bodyTextByPara: new Map(),
+      controlsByPara: new Map(),
+      citationRanges: new Map(),
+    }
+  }
+
+  const matcher = compileMacroQueryMatcher(query, caseSensitive, regex, hooks.maxRegexLength)
+  if (!matcher.ok) return matcher
+
+  const matches = []
+  const regexMeta = []
+  const pageCache = new Map()
+  const bodyTextByPara = new Map()
+  const citationRanges = citationRangesOf(doc)
+  const { byPara: controlsByPara, nonBodyByListPara, nestedTablesTotal } = indexBodyControls(doc)
+  const cellListIds = indexCellListIds(doc)
+  let nestedLookups = MAX_NESTED_LOOKUPS
+  let nestedTablesFound = 0
+
+  const pageOf = (sec, para) => {
+    if (!includePage) return 1
+    const key = `${sec}:${para}`
+    if (pageCache.has(key)) return pageCache.get(key)
+    const info = tryOr(() => parseJson(doc.getPageOfPosition(sec, para), null), null)
+    const page =
+      info && info.ok !== false && Number.isInteger(info.page) && info.page >= 0 ? info.page + 1 : 1
+    pageCache.set(key, page)
+    return page
+  }
+
+  const emitMatchesForText = ({
+    kind,
+    sec,
+    para,
+    path,
+    noteControl,
+    notePara,
+    offsetBias = 0,
+    text,
+  }) => {
+    if (!text) return
+    const cpMap = buildCodePointMap(text)
+    const cpLen = cpMap.chars.length
+    if (cpLen === 0) return
+
+    let hits = []
+    if (matcher.mode !== 'none') {
+      hits = matchMacroTextHits(text, cpMap, matcher, wholeWord, regexRunOpts, checkDeadline)
+    } else if (styleFilter) {
+      hits = [{ start: 0, end: cpLen, matchText: text }]
+    }
+    if (hits.length === 0) return
+
+    if (collectBodyText && kind === 'body') {
+      bodyTextByPara.set(`${sec}:${para}`, { text, chars: cpMap.chars })
+    }
+
+    const page = pageOf(sec, para)
+    const paraCitations = citationRanges.get(`${sec}:${para}`) ?? null
+    let cellObjOffsets = null
+    let fnHasObj = null
+
+    for (let i = 0; i < hits.length; i++) {
+      const hit = hits[i]
+      const length = hit.end - hit.start
+      if (length <= 0) continue
+      const offset = hit.start + offsetBias
+
+      const entry = {
+        index: matches.length,
+        kind,
+        sec,
+        para,
+        offset,
+        length,
+        matchText: hit.matchText,
+        page,
+      }
+
+      if (path) entry.path = path
+      if (kind === 'footnote' || kind === 'endnote') {
+        entry.noteControl = noteControl
+        entry.notePara = notePara
+      }
+      if (kind === 'body') {
+        if (spansInlineObject(doc, sec, para, offset, length)) {
+          entry.spansObject = true
+        }
+        if (overlapsCitation(paraCitations, offset, offset + length)) {
+          entry.inCitation = true
+        }
+      } else if (kind === 'table' || kind === 'textbox') {
+        if (length >= 2) {
+          if (cellObjOffsets === null) {
+            const listId = cellListIds.get(cellPathToListKey(sec, para, path))
+            const cellPara = path[path.length - 1]?.cellParaIndex ?? 0
+            cellObjOffsets = cellInlineObjectOffsets(doc, listId, cellPara, nonBodyByListPara)
+          }
+          if (cellObjOffsets.some((objAt) => offset < objAt && objAt < offset + length)) {
+            entry.spansObject = true
+          }
+        }
+        if (paraCitations && overlapsCitation(paraCitations, offset, offset + length)) {
+          const listId = cellListIds.get(cellPathToListKey(sec, para, path))
+          const cellPara = path[path.length - 1]?.cellParaIndex ?? 0
+          const cellCtrls = Number.isInteger(listId)
+            ? nonBodyByListPara.get(`${listId}:${cellPara}`)
+            : null
+          if (cellCtrls && cellCtrls.some((c) => c.ctrlId === 'bokm')) {
+            entry.inCitation = true
+          }
+        }
+      } else if (kind === 'footnote' || kind === 'endnote') {
+        if (length >= 2) {
+          if (fnHasObj === null) {
+            fnHasObj = footnoteHasInlineObject(doc, sec, para, noteControl, notePara)
+          }
+          if (fnHasObj) {
+            entry.spansObject = true
+          }
+        }
+      }
+
+      matches.push(entry)
+      if (keepRegexMeta) {
+        regexMeta.push(hit.regexMatch ? { regexMatch: hit.regexMatch, fullText: text } : null)
+      }
+    }
+  }
+
+  const searchCellParagraph = (kind, sec, para, cellPath) => {
+    checkDeadline()
+    if (styleFilter) {
+      if (cellPath.length !== 1) return
+      const step = cellPath[0]
+      const styleInfo = tryOr(
+        () =>
+          parseJson(
+            doc.getCellStyleAt(sec, para, step.controlIndex, step.cellIndex, step.cellParaIndex),
+            null,
+          ),
+        null,
+      )
+      if (!matchesStyleInfo(styleInfo, styleFilter)) return
+    }
+
+    const pathJson = JSON.stringify(cellPath)
+    const len = tryOr(() => doc.getCellParagraphLengthByPath(sec, para, pathJson), 0)
+    if (len <= 0) return
+    const text = tryOr(() => doc.getTextInCellByPath(sec, para, pathJson, 0, len), '')
+    emitMatchesForText({
+      kind,
+      sec,
+      para,
+      path: cellPath,
+      text,
+    })
+  }
+
+  const searchNestedTables = (sec, para, parentCellPath, depth) => {
+    if (
+      nestedTablesTotal === 0 ||
+      nestedTablesFound >= nestedTablesTotal ||
+      depth >= MAX_TABLE_DEPTH ||
+      nestedLookups <= 0
+    ) {
+      return
+    }
+    for (
+      let inner = 0;
+      inner < NESTED_CONTROLS_TRIED && nestedLookups > 0 && nestedTablesFound < nestedTablesTotal;
+      inner++
+    ) {
+      nestedLookups -= 1
+      const innerTablePath = [
+        ...parentCellPath,
+        { controlIndex: inner, cellIndex: 0, cellParaIndex: 0 },
+      ]
+      const dims = tryOr(
+        () =>
+          parseJson(doc.getTableDimensionsByPath(sec, para, JSON.stringify(innerTablePath)), null),
+        null,
+      )
+      if (dims && Number.isInteger(dims.cellCount) && dims.cellCount > 0) {
+        nestedTablesFound += 1
+        searchTable(sec, para, innerTablePath, dims, depth + 1)
+      }
+    }
+  }
+
+  const searchTable = (sec, para, tablePath, dims, depth) => {
+    for (let cell = 0; cell < dims.cellCount; cell++) {
+      checkDeadline()
+      const firstParaPath = cellPathStep(tablePath, cell, 0)
+      const paraCount = tryOr(
+        () => doc.getCellParagraphCountByPath(sec, para, JSON.stringify(firstParaPath)),
+        0,
+      )
+      for (let k = 0; k < paraCount; k++) {
+        const cellPath = cellPathStep(tablePath, cell, k)
+        searchCellParagraph('table', sec, para, cellPath)
+        searchNestedTables(sec, para, cellPath, depth)
+      }
+    }
+  }
+
+  const searchTextBox = (sec, para, controlIndex) => {
+    const basePath = [{ controlIndex, cellIndex: 0, cellParaIndex: 0 }]
+    const paraCount = tryOr(
+      () => doc.getCellParagraphCountByPath(sec, para, JSON.stringify(basePath)),
+      0,
+    )
+    if (paraCount <= 0) return
+    for (let k = 0; k < paraCount; k++) {
+      const tbPath = [{ controlIndex, cellIndex: 0, cellParaIndex: k }]
+      searchCellParagraph('textbox', sec, para, tbPath)
+      searchNestedTables(sec, para, tbPath, 1)
+    }
+  }
+
+  const searchNote = (sec, para, controlIndex, fallbackKind) => {
+    checkDeadline()
+    if (styleFilter) return
+    const info = tryOr(() => parseNoteInfo(doc.getFootnoteInfo(sec, para, controlIndex)), null)
+    if (!info || !info.ok) return
+
+    let kind = fallbackKind
+    let prefix = NOTE_NUMBER_CHARS
+    const edit = tryOr(() => parseJson(doc.getNoteEditInfo(sec, para, controlIndex), null), null)
+    if (edit && edit.ok !== false) {
+      if (edit.kind === 'endnote' || edit.kind === 'footnote') kind = edit.kind
+      if (Number.isInteger(edit.charOffset)) prefix = edit.charOffset
+    }
+    if (info.numberSlot === -1) prefix = 0
+
+    const texts = Array.isArray(info.texts) ? info.texts : []
+    for (let notePara = 0; notePara < texts.length; notePara++) {
+      const rawLine = String(texts[notePara] ?? '')
+      const rawChars = Array.from(rawLine)
+      const bias = notePara === 0 ? Math.min(prefix, rawChars.length) : 0
+      const searchable = bias > 0 ? rawChars.slice(bias).join('') : rawLine
+      emitMatchesForText({
+        kind,
+        sec,
+        para,
+        noteControl: controlIndex,
+        notePara,
+        offsetBias: bias,
+        text: searchable,
+      })
+    }
+  }
+
+  const sectionCount = doc.getSectionCount()
+  for (let sec = 0; sec < sectionCount; sec++) {
+    const paraCount = doc.getParagraphCount(sec)
+    for (let para = 0; para < paraCount; para++) {
+      checkDeadline()
+      const bodyStyleOk =
+        !styleFilter ||
+        matchesStyleInfo(
+          tryOr(() => parseJson(doc.getStyleAt(sec, para), null), null),
+          styleFilter,
+        )
+      if (bodyStyleOk) {
+        const len = tryOr(() => doc.getParagraphLength(sec, para), 0)
+        if (len > 0) {
+          const text = tryOr(() => doc.getTextRange(sec, para, 0, len), '')
+          emitMatchesForText({
+            kind: 'body',
+            sec,
+            para,
+            text,
+          })
+        }
+      }
+
+      const controls = controlsByPara.get(`${sec}:${para}`)
+      if (!controls || controls.length === 0) continue
+
+      for (const ctrl of controls) {
+        const controlIndex = ctrl.controlIndex
+        if (!Number.isInteger(controlIndex)) continue
+        if (ctrl.ctrlId === 'tbl') {
+          const tablePath = [{ controlIndex, cellIndex: 0, cellParaIndex: 0 }]
+          const dims = tryOr(
+            () =>
+              parseJson(doc.getTableDimensionsByPath(sec, para, JSON.stringify(tablePath)), null),
+            null,
+          )
+          if (dims && Number.isInteger(dims.cellCount) && dims.cellCount > 0) {
+            searchTable(sec, para, tablePath, dims, 1)
+          }
+        } else if (ctrl.ctrlId === 'gso' && ctrl.userDesc !== PICTURE_DESC) {
+          searchTextBox(sec, para, controlIndex)
+        } else if (ctrl.ctrlId === 'fn' || ctrl.ctrlId === 'en') {
+          const fallbackKind = ctrl.ctrlId === 'en' ? 'endnote' : 'footnote'
+          searchNote(sec, para, controlIndex, fallbackKind)
+        }
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    total: matches.length,
+    matches,
+    regexMeta,
+    bodyTextByPara,
+    controlsByPara,
+    citationRanges,
+  }
+}
+
+function macroContainerKeyOf(match) {
+  if (match.kind === 'body') return `body:${match.sec}:${match.para}`
+  if (match.kind === 'table' || match.kind === 'textbox') {
+    return `cell:${match.sec}:${match.para}:${JSON.stringify(match.path)}`
+  }
+  return `note:${match.sec}:${match.para}:${match.noteControl}:${match.notePara}`
 }
 
 function isPlainRecord(value) {
@@ -651,6 +1194,8 @@ function createInitialState(doc, options, limits, nowFn, startTime) {
     limits,
     now: clock,
     startTime: started,
+    budget: null,
+    regexOpRemainder: 0,
     baseline: captureProtectionSnapshot(doc),
     recordError(code, message, extra = undefined) {
       state.lastError = {
@@ -774,6 +1319,30 @@ export function createMacroApi(doc, state, options = undefined) {
     if (elapsed > limits.maxTimeMs) {
       failHost('time_limit', `Execution time limit (${limits.maxTimeMs}ms) exceeded`)
     }
+  }
+
+  const chargeRegexSteps = (ops) => {
+    if (!Number.isFinite(ops) || ops <= 0) return
+    execState.regexOpRemainder = (execState.regexOpRemainder || 0) + ops
+    if (execState.regexOpRemainder >= REGEX_VM_OPS_PER_STEP) {
+      const steps = Math.floor(execState.regexOpRemainder / REGEX_VM_OPS_PER_STEP)
+      execState.regexOpRemainder -= steps * REGEX_VM_OPS_PER_STEP
+      if (execState.budget && typeof execState.budget.addSteps === 'function') {
+        execState.budget.addSteps(steps)
+      }
+    }
+  }
+
+  const checkRegexLimit = () => {
+    checkDeadline()
+    if (execState.budget && typeof execState.budget.checkLimits === 'function') {
+      execState.budget.checkLimits()
+    }
+  }
+
+  const regexRunOpts = {
+    onStep: chargeRegexSteps,
+    checkLimit: checkRegexLimit,
   }
 
   const expectEngineOk = (raw, actionName) => {
@@ -1252,7 +1821,7 @@ export function createMacroApi(doc, state, options = undefined) {
     execState.atLineEnd = false
   }
 
-  const stepCaretVerticalCore = (direction, count) => {
+  const stepCaretVerticalCore = (direction, count, extendToEdge = false) => {
     const secCount = doc.getSectionCount()
     let { sec, para, offset } = clampPosition(
       doc,
@@ -1278,6 +1847,7 @@ export function createMacroApi(doc, state, options = undefined) {
       const desiredCol = Math.max(0, offset - lines[curLineIdx].charStart)
       let remaining = count
       let iter = 0
+      let hitEdge = false
       while (remaining > 0) {
         if ((iter++ & 63) === 0) checkDeadline()
         if (direction > 0) {
@@ -1293,6 +1863,7 @@ export function createMacroApi(doc, state, options = undefined) {
               sec += 1
               para = 0
             } else {
+              hitEdge = true
               break
             }
             remaining -= 1
@@ -1322,9 +1893,16 @@ export function createMacroApi(doc, state, options = undefined) {
             ]
             curLineIdx = lines.length - 1
           } else {
+            hitEdge = true
             break
           }
         }
+      }
+      if (hitEdge && extendToEdge) {
+        const edgeOffset = direction > 0 ? doc.getParagraphLength(sec, para) : 0
+        execState.caret = clampPosition(doc, sec, para, edgeOffset)
+        execState.atLineEnd = false
+        return
       }
       const targetLine = lines[curLineIdx]
       const isLastLine = curLineIdx === lines.length - 1
@@ -1339,6 +1917,7 @@ export function createMacroApi(doc, state, options = undefined) {
 
     let remaining = count
     let iter = 0
+    let hitEdge = false
     while (remaining > 0) {
       if ((iter++ & 255) === 0) checkDeadline()
       if (direction < 0) {
@@ -1348,6 +1927,7 @@ export function createMacroApi(doc, state, options = undefined) {
           sec -= 1
           para = doc.getParagraphCount(sec) - 1
         } else {
+          hitEdge = true
           break
         }
       } else {
@@ -1358,13 +1938,16 @@ export function createMacroApi(doc, state, options = undefined) {
           sec += 1
           para = 0
         } else {
+          hitEdge = true
           break
         }
       }
       remaining -= 1
     }
     const maxOffset = doc.getParagraphLength(sec, para)
-    execState.caret = { sec, para, offset: Math.min(offset, maxOffset) }
+    const finalOffset =
+      hitEdge && extendToEdge ? (direction > 0 ? maxOffset : 0) : Math.min(offset, maxOffset)
+    execState.caret = { sec, para, offset: finalOffset }
     execState.atLineEnd = false
   }
 
@@ -1450,6 +2033,15 @@ export function createMacroApi(doc, state, options = undefined) {
     execState.atLineEnd = false
   }
 
+  const assertNoAdjacentProtectedControl = (sec, para, startOffset, endOffset) => {
+    const objects = bodyProtectedControlPositions(doc, sec, para)
+    for (const obj of objects) {
+      if (obj.textPos >= startOffset && obj.textPos < endOffset) {
+        failHost('object_loss', `Cannot delete adjacent document object (${obj.ctrlId})`)
+      }
+    }
+  }
+
   const deleteBackwardInternal = (count) => {
     if (execState.selection) {
       return deleteSelectionInternal()
@@ -1469,6 +2061,7 @@ export function createMacroApi(doc, state, options = undefined) {
       if (caret.offset > 0) {
         const take = Math.min(remaining, caret.offset)
         const startOffset = caret.offset - take
+        assertNoAdjacentProtectedControl(caret.sec, caret.para, startOffset, caret.offset)
         assertSelectionHasNoProtectedContent({
           startSec: caret.sec,
           startPara: caret.para,
@@ -1533,6 +2126,7 @@ export function createMacroApi(doc, state, options = undefined) {
       const paraLen = doc.getParagraphLength(caret.sec, caret.para)
       if (caret.offset < paraLen) {
         const take = Math.min(remaining, paraLen - caret.offset)
+        assertNoAdjacentProtectedControl(caret.sec, caret.para, caret.offset, caret.offset + take)
         assertSelectionHasNoProtectedContent({
           startSec: caret.sec,
           startPara: caret.para,
@@ -1809,12 +2403,12 @@ export function createMacroApi(doc, state, options = undefined) {
 
     selectUp(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      extendSelectionWith(() => stepCaretVerticalCore(-1, n))
+      extendSelectionWith(() => stepCaretVerticalCore(-1, n, true))
     },
 
     selectDown(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      extendSelectionWith(() => stepCaretVerticalCore(1, n))
+      extendSelectionWith(() => stepCaretVerticalCore(1, n, true))
     },
 
     selectWordLeft(count = 1) {
@@ -2187,15 +2781,14 @@ export function createMacroApi(doc, state, options = undefined) {
         regex: Boolean(opts?.regex),
         style: typeof opts?.style === 'string' && opts.style.trim() ? opts.style.trim() : null,
       }
-      if (findOpts.regex) {
-        try {
-          assertSafeMacroRegex(query, limits.maxRegexLength)
-        } catch (err) {
-          failHost('invalid_argument', err instanceof Error ? err.message : String(err))
-        }
-      }
       execState.lastFind = { ...findOpts }
-      const result = findMatches(doc, findOpts)
+      const result = runMacroFind(doc, findOpts, {
+        checkDeadline,
+        regexRunOpts,
+        maxRegexLength: limits.maxRegexLength,
+        includePage: true,
+        keepRegexMeta: false,
+      })
       if (!result.ok) {
         failHost('invalid_argument', result.error || 'Invalid find query')
       }
@@ -2224,6 +2817,12 @@ export function createMacroApi(doc, state, options = undefined) {
       if (typeof replacement !== 'string') {
         failHost('invalid_argument', 'replaceAll requires a string replacement')
       }
+      if (PARAGRAPH_CONTROL_CHARS.test(replacement)) {
+        failHost(
+          'invalid_argument',
+          'Replacement text must be a string without line breaks or control characters.',
+        )
+      }
       if (opts !== undefined && opts !== null && !isPlainRecord(opts)) {
         failHost('invalid_argument', 'replaceAll options must be a plain object')
       }
@@ -2234,19 +2833,327 @@ export function createMacroApi(doc, state, options = undefined) {
         regex: Boolean(opts?.regex),
         style: typeof opts?.style === 'string' && opts.style.trim() ? opts.style.trim() : null,
       }
-      if (findOpts.regex) {
-        try {
-          assertSafeMacroRegex(query, limits.maxRegexLength)
-        } catch (err) {
-          failHost('invalid_argument', err instanceof Error ? err.message : String(err))
+      execState.lastFind = { ...findOpts, replacement }
+      const found = runMacroFind(doc, findOpts, {
+        checkDeadline,
+        regexRunOpts,
+        maxRegexLength: limits.maxRegexLength,
+        includePage: false,
+        keepRegexMeta: findOpts.regex,
+        collectBodyText: true,
+      })
+      if (!found.ok) {
+        failHost('invalid_argument', found.error || 'replaceAll failed')
+      }
+
+      let skippedObjects = 0
+      let skippedCitations = 0
+      const byContainer = new Map()
+      for (let idx = 0; idx < found.matches.length; idx++) {
+        if ((idx & 255) === 0) checkDeadline()
+        const match = found.matches[idx]
+        if (match.spansObject) {
+          skippedObjects += 1
+          continue
+        }
+        if (match.inCitation) {
+          skippedCitations += 1
+          continue
+        }
+        const meta = findOpts.regex ? found.regexMeta[idx] : null
+        const text = meta
+          ? expandMacroRegexReplacement(replacement, meta.regexMatch, meta.fullText)
+          : replacement
+        if (PARAGRAPH_CONTROL_CHARS.test(text)) {
+          failHost(
+            'invalid_argument',
+            'Expanded replacement contains disallowed control characters.',
+          )
+        }
+        const key = macroContainerKeyOf(match)
+        let bucket = byContainer.get(key)
+        if (!bucket) {
+          bucket = []
+          byContainer.set(key, bucket)
+        }
+        bucket.push({ match, text })
+      }
+
+      const memoRangesByPara = new Map()
+      if (byContainer.size > 0) {
+        const memos = memoEntriesOf(doc)
+        for (const memo of memos) {
+          if (memo?.place !== 'body') continue
+          if (!Number.isInteger(memo.sectionIndex) || !Number.isInteger(memo.paraIndex)) continue
+          const mStart = Number.isInteger(memo.startCharIdx) ? memo.startCharIdx : 0
+          const mEnd = Number.isInteger(memo.endCharIdx) ? memo.endCharIdx : mStart
+          const pKey = `${memo.sectionIndex}:${memo.paraIndex}`
+          let list = memoRangesByPara.get(pKey)
+          if (!list) {
+            list = []
+            memoRangesByPara.set(pKey, list)
+          }
+          list.push({ start: Math.min(mStart, mEnd), end: Math.max(mStart, mEnd) })
         }
       }
-      execState.lastFind = { ...findOpts, replacement }
-      const result = replaceFindMatches(doc, findOpts, replacement, 'all')
-      if (!result.ok) {
-        failHost('invalid_argument', result.error || 'replaceAll failed')
+
+      const replaceSingleBodyMatch = (match, text) => {
+        const { sec, para, offset, length } = match
+        if (text.length > 0 && followsInlineObject(doc, sec, para, offset, length)) {
+          expectEngineOk(doc.replaceText(sec, para, offset + 1, length - 1, text), 'replaceAll')
+          expectEngineOk(doc.deleteText(sec, para, offset, 1), 'replaceAll')
+          return
+        }
+        expectEngineOk(doc.replaceText(sec, para, offset, length, text), 'replaceAll')
       }
-      if (result.replaced > 0) {
+
+      const replaceSingleNonBodyMatch = (match, text) => {
+        const { kind, sec, para, offset, length } = match
+        if (kind === 'table' || kind === 'textbox') {
+          const path = match.path
+          const pathJson = JSON.stringify(path)
+          if (text.length === 0) {
+            expectEngineOk(
+              doc.deleteTextInCellByPath(sec, para, pathJson, offset, length),
+              'delete',
+            )
+            return
+          }
+          const last = path[path.length - 1]
+          const head = cellReplaceHead(text)
+          if (
+            kind === 'table' &&
+            path.length === 1 &&
+            typeof doc.replaceTextInCellDeferredPagination === 'function' &&
+            head !== ''
+          ) {
+            let removed = length
+            while (removed > MAX_CELL_REPLACE_CHARS) {
+              const start = removed - MAX_CELL_REPLACE_CHARS
+              expectEngineOk(
+                doc.replaceTextInCellDeferredPagination(
+                  sec,
+                  para,
+                  last.controlIndex,
+                  last.cellIndex,
+                  last.cellParaIndex,
+                  offset + start,
+                  MAX_CELL_REPLACE_CHARS,
+                  ' ',
+                ),
+                'replaceAll',
+              )
+              removed = start + 1
+            }
+            const headLength = Array.from(head).length
+            const totalLength = Array.from(text).length
+            expectEngineOk(
+              doc.replaceTextInCellDeferredPagination(
+                sec,
+                para,
+                last.controlIndex,
+                last.cellIndex,
+                last.cellParaIndex,
+                offset,
+                removed,
+                head,
+              ),
+              'replaceAll',
+            )
+            if (headLength < totalLength) {
+              expectEngineOk(
+                doc.insertTextInCellByPath(
+                  sec,
+                  para,
+                  pathJson,
+                  offset + headLength,
+                  text.slice(head.length),
+                ),
+                'insert',
+              )
+            }
+            return
+          }
+          expectEngineOk(doc.deleteTextInCellByPath(sec, para, pathJson, offset, length), 'delete')
+          expectEngineOk(doc.insertTextInCellByPath(sec, para, pathJson, offset, text), 'insert')
+          return
+        }
+
+        if (kind === 'footnote' || kind === 'endnote') {
+          const { noteControl, notePara } = match
+          if (length > 0) {
+            expectEngineOk(
+              doc.deleteTextInFootnote(sec, para, noteControl, notePara, offset, length),
+              'delete',
+            )
+          }
+          if (text.length > 0) {
+            expectEngineOk(
+              doc.insertTextInFootnote(sec, para, noteControl, notePara, offset, text),
+              'insert',
+            )
+          }
+        }
+      }
+
+      let replaced = 0
+      const hasBatch = typeof doc.beginBatch === 'function' && typeof doc.endBatch === 'function'
+      if (hasBatch && byContainer.size > 0) {
+        doc.beginBatch()
+      }
+      try {
+        for (const bucket of byContainer.values()) {
+          checkDeadline()
+          if (bucket.length === 0) continue
+          const firstKind = bucket[0].match.kind
+
+          if (firstKind === 'body') {
+            if (bucket.length === 1) {
+              replaceSingleBodyMatch(bucket[0].match, bucket[0].text)
+              replaced += 1
+              continue
+            }
+
+            bucket.sort((a, b) => a.match.offset - b.match.offset)
+            const { sec, para } = bucket[0].match
+            const pKey = `${sec}:${para}`
+            const paraInfo = found.bodyTextByPara.get(pKey)
+            const paraLen = paraInfo ? paraInfo.chars.length : doc.getParagraphLength(sec, para)
+            const charRuns =
+              typeof doc.getCharShapeRuns === 'function'
+                ? tryOr(() => parseJson(doc.getCharShapeRuns(sec, para, 0, paraLen), []), [])
+                : []
+            const hasMultipleRuns = Array.isArray(charRuns) && charRuns.length > 1
+            const paraMemos = memoRangesByPara.get(pKey) ?? null
+            const paraCitations = found.citationRanges.get(pKey) ?? null
+            const rawParaControls = found.controlsByPara.get(pKey) ?? null
+            let inlineCtrlPositions = null
+            if (rawParaControls && rawParaControls.length > 0) {
+              const nonLayout = rawParaControls.filter(
+                (c) => c && !SECTION_LAYOUT_CTRL_IDS.has(c.ctrlId),
+              )
+              if (nonLayout.length > 0) {
+                const posArr =
+                  typeof doc.getControlTextPositions === 'function'
+                    ? tryOr(() => parseJson(doc.getControlTextPositions(sec, para), []), [])
+                    : []
+                inlineCtrlPositions = []
+                for (const c of nonLayout) {
+                  const p =
+                    Array.isArray(posArr) && Number.isInteger(posArr[c.controlIndex])
+                      ? posArr[c.controlIndex]
+                      : 0
+                  inlineCtrlPositions.push(p)
+                }
+              }
+            }
+
+            const findRunContaining = (start, end) => {
+              if (!hasMultipleRuns) return true
+              for (let r = 0; r < charRuns.length; r++) {
+                const run = charRuns[r]
+                if (run.startOffset <= start && end <= run.endOffset) return true
+              }
+              return false
+            }
+
+            const spanClearOfBoundaries = (start, end) => {
+              if (inlineCtrlPositions !== null) {
+                for (let k = 0; k < inlineCtrlPositions.length; k++) {
+                  const p = inlineCtrlPositions[k]
+                  if (p >= start && p <= end) return false
+                }
+              }
+              if (paraMemos !== null) {
+                for (let k = 0; k < paraMemos.length; k++) {
+                  if (start <= paraMemos[k].end && paraMemos[k].start <= end) return false
+                }
+              }
+              if (paraCitations !== null) {
+                for (let k = 0; k < paraCitations.length; k++) {
+                  if (start <= paraCitations[k].end && paraCitations[k].start <= end) return false
+                }
+              }
+              return findRunContaining(start, end)
+            }
+
+            // Partition ascending matches into maximal coalescable contiguous spans.
+            const groups = []
+            for (let i = 0; i < bucket.length; i++) {
+              const item = bucket[i]
+              const prevGroup = groups.length > 0 ? groups[groups.length - 1] : null
+              const itemEnd = item.match.offset + item.match.length
+              const itemFollowsObj = followsInlineObject(
+                doc,
+                sec,
+                para,
+                item.match.offset,
+                item.match.length,
+              )
+              if (
+                prevGroup !== null &&
+                paraInfo &&
+                !itemFollowsObj &&
+                !prevGroup.followsObj &&
+                spanClearOfBoundaries(prevGroup.start, itemEnd)
+              ) {
+                prevGroup.items.push(item)
+                prevGroup.end = itemEnd
+              } else {
+                groups.push({
+                  start: item.match.offset,
+                  end: itemEnd,
+                  followsObj: itemFollowsObj,
+                  items: [item],
+                })
+              }
+            }
+
+            const isBmp = paraInfo && paraInfo.chars.length === paraInfo.text.length
+            for (let g = groups.length - 1; g >= 0; g--) {
+              if ((g & 15) === 0) checkDeadline()
+              const group = groups[g]
+              if (group.items.length === 1) {
+                replaceSingleBodyMatch(group.items[0].match, group.items[0].text)
+                replaced += 1
+              } else {
+                const spanStart = group.start
+                const spanLen = group.end - spanStart
+                let combined = ''
+                let cursor = spanStart
+                for (let i = 0; i < group.items.length; i++) {
+                  const it = group.items[i]
+                  if (it.match.offset > cursor) {
+                    combined += isBmp
+                      ? paraInfo.text.slice(cursor, it.match.offset)
+                      : paraInfo.chars.slice(cursor, it.match.offset).join('')
+                  }
+                  combined += it.text
+                  cursor = it.match.offset + it.match.length
+                }
+                expectEngineOk(
+                  doc.replaceText(sec, para, spanStart, spanLen, combined),
+                  'replaceAll',
+                )
+                replaced += group.items.length
+              }
+            }
+          } else {
+            bucket.sort((a, b) => b.match.offset - a.match.offset)
+            for (let i = 0; i < bucket.length; i++) {
+              if ((i & 15) === 0) checkDeadline()
+              replaceSingleNonBodyMatch(bucket[i].match, bucket[i].text)
+              replaced += 1
+            }
+          }
+        }
+      } finally {
+        if (hasBatch && byContainer.size > 0) {
+          doc.endBatch()
+        }
+      }
+
+      if (replaced > 0) {
         execState.mutated = true
       }
       execState.caret = clampPosition(
@@ -2261,9 +3168,9 @@ export function createMacroApi(doc, state, options = undefined) {
       checkObjectsPreserved()
       return sanitizeHostValue(
         {
-          replaced: result.replaced,
-          skippedObjects: result.skippedObjects,
-          skippedCitations: result.skippedCitations,
+          replaced,
+          skippedObjects,
+          skippedCitations,
         },
         limits,
       )
@@ -2276,6 +3183,12 @@ export function createMacroApi(doc, state, options = undefined) {
       if (typeof replacement !== 'string') {
         failHost('invalid_argument', 'replaceNext requires a string replacement')
       }
+      if (PARAGRAPH_CONTROL_CHARS.test(replacement)) {
+        failHost(
+          'invalid_argument',
+          'Replacement text must be a string without line breaks or control characters.',
+        )
+      }
       if (opts !== undefined && opts !== null && !isPlainRecord(opts)) {
         failHost('invalid_argument', 'replaceNext options must be a plain object')
       }
@@ -2286,15 +3199,14 @@ export function createMacroApi(doc, state, options = undefined) {
         regex: Boolean(opts?.regex),
         style: typeof opts?.style === 'string' && opts.style.trim() ? opts.style.trim() : null,
       }
-      if (findOpts.regex) {
-        try {
-          assertSafeMacroRegex(query, limits.maxRegexLength)
-        } catch (err) {
-          failHost('invalid_argument', err instanceof Error ? err.message : String(err))
-        }
-      }
       execState.lastFind = { ...findOpts, replacement }
-      const found = findMatches(doc, findOpts)
+      const found = runMacroFind(doc, findOpts, {
+        checkDeadline,
+        regexRunOpts,
+        maxRegexLength: limits.maxRegexLength,
+        includePage: false,
+        keepRegexMeta: findOpts.regex,
+      })
       if (!found.ok) {
         failHost('invalid_argument', found.error || 'Invalid find query')
       }
@@ -2306,50 +3218,129 @@ export function createMacroApi(doc, state, options = undefined) {
       )
       execState.caret = caret
 
-      const target = found.matches.find((m) => {
-        if (m.spansObject || m.inCitation) return false
-        if (m.sec !== caret.sec) return m.sec > caret.sec
-        if (m.para !== caret.para) return m.para > caret.para
-        if (m.kind === 'body') return m.offset >= caret.offset
-        return true
-      })
+      let targetIdx = -1
+      for (let i = 0; i < found.matches.length; i++) {
+        const m = found.matches[i]
+        if (m.spansObject || m.inCitation) continue
+        if (m.sec !== caret.sec) {
+          if (m.sec > caret.sec) {
+            targetIdx = i
+            break
+          }
+          continue
+        }
+        if (m.para !== caret.para) {
+          if (m.para > caret.para) {
+            targetIdx = i
+            break
+          }
+          continue
+        }
+        if (m.kind === 'body') {
+          if (m.offset >= caret.offset) {
+            targetIdx = i
+            break
+          }
+          continue
+        }
+        targetIdx = i
+        break
+      }
 
-      if (!target) {
+      if (targetIdx === -1) {
         return sanitizeHostValue({ replaced: 0, found: false }, limits)
       }
 
+      const target = found.matches[targetIdx]
+      const meta = findOpts.regex ? found.regexMeta[targetIdx] : null
+      const expanded = meta
+        ? expandMacroRegexReplacement(replacement, meta.regexMatch, meta.fullText)
+        : replacement
+      if (PARAGRAPH_CONTROL_CHARS.test(expanded)) {
+        failHost('invalid_argument', 'Expanded replacement contains disallowed control characters.')
+      }
+
       const beforeLen = target.kind === 'body' ? doc.getParagraphLength(target.sec, target.para) : 0
-      const rep = replaceFindMatches(doc, findOpts, replacement, {
-        targets: [
-          {
-            kind: target.kind,
-            sec: target.sec,
-            para: target.para,
-            offset: target.offset,
-            length: target.length,
-            matchText: target.matchText,
-            ...(target.path ? { path: target.path } : {}),
-            ...(target.noteControl !== undefined ? { noteControl: target.noteControl } : {}),
-            ...(target.notePara !== undefined ? { notePara: target.notePara } : {}),
-          },
-        ],
-      })
-      if (!rep.ok) {
-        failHost('invalid_argument', rep.error || 'replaceNext failed')
-      }
-      if (rep.replaced > 0) {
-        execState.mutated = true
-        if (target.kind === 'body') {
-          const afterLen = doc.getParagraphLength(target.sec, target.para)
-          const insertedLen = Math.max(0, target.length + (afterLen - beforeLen))
-          execState.caret = clampPosition(doc, target.sec, target.para, target.offset + insertedLen)
+      if (target.kind === 'body') {
+        if (
+          expanded.length > 0 &&
+          followsInlineObject(doc, target.sec, target.para, target.offset, target.length)
+        ) {
+          expectEngineOk(
+            doc.replaceText(
+              target.sec,
+              target.para,
+              target.offset + 1,
+              target.length - 1,
+              expanded,
+            ),
+            'replaceNext',
+          )
+          expectEngineOk(doc.deleteText(target.sec, target.para, target.offset, 1), 'replaceNext')
+        } else {
+          expectEngineOk(
+            doc.replaceText(target.sec, target.para, target.offset, target.length, expanded),
+            'replaceNext',
+          )
         }
-        execState.selection = null
-        checkObjectsPreserved()
+      } else if (target.kind === 'table' || target.kind === 'textbox') {
+        const pathJson = JSON.stringify(target.path)
+        expectEngineOk(
+          doc.deleteTextInCellByPath(
+            target.sec,
+            target.para,
+            pathJson,
+            target.offset,
+            target.length,
+          ),
+          'delete',
+        )
+        if (expanded.length > 0) {
+          expectEngineOk(
+            doc.insertTextInCellByPath(target.sec, target.para, pathJson, target.offset, expanded),
+            'insert',
+          )
+        }
+      } else if (target.kind === 'footnote' || target.kind === 'endnote') {
+        if (target.length > 0) {
+          expectEngineOk(
+            doc.deleteTextInFootnote(
+              target.sec,
+              target.para,
+              target.noteControl,
+              target.notePara,
+              target.offset,
+              target.length,
+            ),
+            'delete',
+          )
+        }
+        if (expanded.length > 0) {
+          expectEngineOk(
+            doc.insertTextInFootnote(
+              target.sec,
+              target.para,
+              target.noteControl,
+              target.notePara,
+              target.offset,
+              expanded,
+            ),
+            'insert',
+          )
+        }
       }
+
+      execState.mutated = true
+      if (target.kind === 'body') {
+        const afterLen = doc.getParagraphLength(target.sec, target.para)
+        const insertedLen = Math.max(0, target.length + (afterLen - beforeLen))
+        execState.caret = clampPosition(doc, target.sec, target.para, target.offset + insertedLen)
+      }
+      execState.selection = null
+      checkObjectsPreserved()
       return sanitizeHostValue(
         {
-          replaced: rep.replaced,
+          replaced: 1,
           found: true,
           sec: target.sec,
           para: target.para,
@@ -2644,6 +3635,9 @@ function executeMacroCore(doc, source, options, limits, nowFn, startTime) {
     limits,
     now: nowFn,
     startTime,
+    onRegisterBudget: (budget) => {
+      state.budget = budget
+    },
   })
 
   if (runResult.ok) {

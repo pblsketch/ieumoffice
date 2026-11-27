@@ -135,5 +135,9 @@ export const it = {
   cmdInsertBookmark: 'Inserisci segnalibro',
   cmdLineBreak: 'Interruzione di riga',
   cmdTab: 'Tabulazione',
+  cmdDeleteObject: 'Elimina oggetto del documento',
+  cmdOutsideBody: 'Modifica fuori dal paragrafo del corpo',
   cmdOtherAction: 'Azione di modifica non supportata ({id})',
+  noticeOutsideBodyIgnored:
+    'Le azioni eseguite fuori dai paragrafi del corpo (tabelle, caselle di testo, note, intestazioni/piè di pagina) non vengono registrate.',
 } satisfies Record<keyof typeof zh, string>

@@ -126,5 +126,9 @@ export const he = {
   cmdInsertBookmark: 'הוספת סימנייה',
   cmdLineBreak: 'מעבר שורה',
   cmdTab: 'טאב',
+  cmdDeleteObject: 'מחיקת אובייקט מסמך',
+  cmdOutsideBody: 'עריכה מחוץ לפסקת גוף המסמך',
   cmdOtherAction: 'פעולת עריכה לא נתמכת ({id})',
+  noticeOutsideBodyIgnored:
+    'פעולות מחוץ לפסקאות גוף המסמך (טבלאות, תיבות טקסט, הערות, כותרות עליונות/תחתונות) אינן מוקלטות.',
 } satisfies Record<keyof typeof zh, string>

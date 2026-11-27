@@ -83,6 +83,8 @@ const SKIPPED_COMMAND_LABEL_KEYS: Readonly<Record<string, MacroStringKey>> = {
   'insert:tab': 'cmdTab',
   'edit:tab': 'cmdTab',
   'key:tab': 'cmdTab',
+  'edit:delete-object': 'cmdDeleteObject',
+  'macro:outside-body': 'cmdOutsideBody',
 }
 
 const ASCII_PRINTABLE_RE = /^[\x20-\x7e]+$/

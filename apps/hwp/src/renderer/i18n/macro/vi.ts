@@ -130,5 +130,9 @@ export const vi = {
   cmdInsertBookmark: 'Chèn dấu trang',
   cmdLineBreak: 'Ngắt dòng',
   cmdTab: 'Ký tự Tab',
+  cmdDeleteObject: 'Xóa đối tượng tài liệu',
+  cmdOutsideBody: 'Chỉnh sửa ngoài đoạn văn bản chính',
   cmdOtherAction: 'Thao tác chỉnh sửa chưa được hỗ trợ ({id})',
+  noticeOutsideBodyIgnored:
+    'Các thao tác ngoài đoạn văn bản chính (bảng, hộp văn bản, chú thích, đầu trang/chân trang) sẽ không được ghi lại.',
 } satisfies Record<keyof typeof zh, string>

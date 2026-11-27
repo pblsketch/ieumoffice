@@ -130,5 +130,9 @@ export const ar = {
   cmdInsertBookmark: 'إدراج إشارة مرجعية',
   cmdLineBreak: 'فاصل سطر',
   cmdTab: 'علامة جدولة',
+  cmdDeleteObject: 'حذف كائن المستند',
+  cmdOutsideBody: 'تحرير خارج فقرة المتن',
   cmdOtherAction: 'إجراء تحرير غير مدعوم ({id})',
+  noticeOutsideBodyIgnored:
+    'لا تُسجَّل الإجراءات التي تتم خارج فقرات متن المستند (الجداول ومربعات النص والحواشي والرؤوس والتذييلات).',
 } satisfies Record<keyof typeof zh, string>

@@ -136,5 +136,9 @@ export const de = {
   cmdInsertBookmark: 'Lesezeichen einfügen',
   cmdLineBreak: 'Zeilenumbruch',
   cmdTab: 'Tabulator',
+  cmdDeleteObject: 'Dokumentobjekt löschen',
+  cmdOutsideBody: 'Bearbeitung außerhalb des Fließtexts',
   cmdOtherAction: 'Nicht unterstützte Bearbeitungsaktion ({id})',
+  noticeOutsideBodyIgnored:
+    'Aktionen außerhalb von Textabsätzen (Tabellen, Textfelder, Fuß-/Endnoten, Kopf-/Fußzeilen) werden nicht aufgezeichnet.',
 } satisfies Record<keyof typeof zh, string>

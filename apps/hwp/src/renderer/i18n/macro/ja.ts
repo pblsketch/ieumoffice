@@ -132,5 +132,9 @@ export const ja = {
   cmdInsertBookmark: 'ブックマークの挿入',
   cmdLineBreak: '改行',
   cmdTab: 'タブ',
+  cmdDeleteObject: '文書オブジェクトの削除',
+  cmdOutsideBody: '本文段落外の編集',
   cmdOtherAction: '未対応の編集操作（{id}）',
+  noticeOutsideBodyIgnored:
+    '表のセル・テキストボックス・脚注・ヘッダー／フッターなど本文段落の外で行った操作は記録されません。',
 } satisfies Record<keyof typeof zh, string>

@@ -769,8 +769,11 @@ setCharFormat({ bold: true });
 - **매크로 문서 API와 호환 객체 약속**:
   - 삭제·선택 확장 API: `deleteBackward(count?)`, `deleteForward(count?)`, `selectLeft(count?)`, `selectRight(count?)`, `selectUp(count?)`, `selectDown(count?)`, `selectWordLeft(count?)`, `selectWordRight(count?)`, `selectLineBegin()`, `selectLineEnd()`, `selectParaBegin()`, `selectParaEnd()`, `selectDocBegin()`, `selectDocEnd()`.
   - `setCharFormat`을 선택 영역 없이 부르면 바로 이어지는 `insertText`에 해당 글자 서식이 적용된다.
-  - `moveUp`/`moveDown`은 화면에 그려진 줄 기준의 가로 칸 위치를 맞춰 이동하며, 짝지을 위치를 찾지 못하면 대상 줄의 맨 앞으로 떨어진다.
-  - 호환 객체(`HParameterSet`): `HParaShape`의 여백·들여쓰기·문단 간격은 `200 units/pt` 기준이고, `HCharShape.TextColor`는 BGR 정수(`0x00BBGGRR`)와 `#RRGGBB` 문자열을 모두 받는다. `HFindReplace`의 정규식 검색은 `FindRegExp`를 쓰며, `UseWildCards`와 `RegExp`는 거절한다.
+  - `moveUp`/`moveDown`은 화면에 그려진 줄 기준의 가로 칸 위치를 맞춰 이동하며, 짝지을 위치를 찾지 못하면 대상 줄의 맨 앞으로 떨어진다. `selectUp`/`selectDown`은 문서 첫 줄이나 마지막 줄 경계에서 더 이상 위·아래 줄로 갈 수 없을 때도 각각 문서 처음과 문서 끝까지 선택을 확장한다.
+  - `deleteBackward`/`deleteForward`는 커서 바로 앞·뒤에 보호 개체(각주·미주·표·그림·도형·수식 등)가 닿아 있으면 개체를 지우지 않고 거절하며, 키 기록 중에도 개체에 닿은 `Backspace`/`Delete`는 삭제 호출을 기록하지 않고 건너뛴 동작으로 알린다.
+  - 키 매크로 기록 중 표 칸·글상자·각주·머리말·꼬리말 등 본문 문단 밖으로 커서가 옮겨간 상태에서 실행한 입력·키·명령은 스크립트에 넣지 않고 즉시 알림과 건너뛴 동작으로 남긴다.
+  - **선형 시간 정규식 엔진**: `find`/`replaceAll`/`replaceNext`의 `{ regex: true }`와 `HFindReplace.FindRegExp`는 역추적이 없는 선형 시간 엔진(Thompson NFA / Pike VM)으로 돌며 걸음·시간 상한을 공유한다. 문자, 문자 클래스(`[...]`), 단축 클래스(`\d`/`\w`/`\s` 등), `.`, 앵커(`^`/`$`/`\b`/`\B`), 선택(`|`), 묶음(`(...)`/`(?:...)`), 반복(`*`/`+`/`?`/`{n,m}`, 최대 1,000)을 지원하고, 역참조(`\1`, `\k<...>`)와 전방·후방 탐색(`(?=...)`, `(?!...)`, `(?<=...)`, `(?<!...)`)은 거절한다.
+  - **호환 객체(`HParameterSet`)**: `HParaShape`의 여백·들여쓰기·문단 간격은 ParameterSet Table `ParaShape` 및 HWP 5.0 표 43 기준(`HWPUNIT = 1/7200 in = 1/100 pt`, URC bit 0 = 0일 때 `2 × HWPUNIT = 200/pt`)의 짝수 URC 정수만 받으며, 홀수 URC 값과 `0`(백분율) 이외의 `LineSpacingType`은 거절한다. `HCharShape.TextColor`는 BGR 정수(`0x00BBGGRR`)와 `#RRGGBB` 문자열을 모두 받는다. `HFindReplace`의 정규식 검색은 `FindRegExp`를 쓰며, `UseWildCards`와 `RegExp`는 거절한다.
 
 ## 문서 호환
 

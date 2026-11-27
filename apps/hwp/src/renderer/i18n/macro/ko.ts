@@ -132,5 +132,8 @@ export const ko = {
   cmdInsertBookmark: '책갈피 넣기',
   cmdLineBreak: '줄 바꿈',
   cmdTab: '탭',
+  cmdDeleteObject: '문서 개체 지우기',
+  cmdOutsideBody: '본문 밖 편집',
   cmdOtherAction: '지원하지 않는 편집 동작({id})',
+  noticeOutsideBodyIgnored: '표 칸·글상자·각주·머리말 등 본문 밖에서 한 동작은 기록되지 않습니다.',
 } satisfies Record<keyof typeof zh, string>

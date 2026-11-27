@@ -133,5 +133,9 @@ export const pt = {
   cmdInsertBookmark: 'Inserir marcador',
   cmdLineBreak: 'Quebra de linha',
   cmdTab: 'Tabulação',
+  cmdDeleteObject: 'Excluir objeto do documento',
+  cmdOutsideBody: 'Edição fora do parágrafo do corpo',
   cmdOtherAction: 'Ação de edição não suportada ({id})',
+  noticeOutsideBodyIgnored:
+    'Ações fora dos parágrafos do corpo (tabelas, caixas de texto, notas, cabeçalhos/rodapés) não são gravadas.',
 } satisfies Record<keyof typeof zh, string>

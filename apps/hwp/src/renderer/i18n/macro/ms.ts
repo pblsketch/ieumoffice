@@ -133,5 +133,9 @@ export const ms = {
   cmdInsertBookmark: 'Sisip penanda buku',
   cmdLineBreak: 'Pemisah baris',
   cmdTab: 'Tabulasi',
+  cmdDeleteObject: 'Padam objek dokumen',
+  cmdOutsideBody: 'Suntingan di luar perenggan isi',
   cmdOtherAction: 'Tindakan penyunting tidak disokong ({id})',
+  noticeOutsideBodyIgnored:
+    'Tindakan di luar perenggan isi (jadual, kotak teks, nota, pengepala/pengaki) tidak dirakam.',
 } satisfies Record<keyof typeof zh, string>

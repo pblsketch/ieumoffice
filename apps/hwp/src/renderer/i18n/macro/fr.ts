@@ -135,5 +135,9 @@ export const fr = {
   cmdInsertBookmark: 'Insérer un signet',
   cmdLineBreak: 'Saut de ligne',
   cmdTab: 'Tabulation',
+  cmdDeleteObject: 'Supprimer l’objet du document',
+  cmdOutsideBody: 'Modification hors du corps',
   cmdOtherAction: 'Action d’édition non prise en charge ({id})',
+  noticeOutsideBodyIgnored:
+    'Les actions effectuées hors des paragraphes du corps (tableaux, zones de texte, notes, en-têtes/pieds de page) ne sont pas enregistrées.',
 } satisfies Record<keyof typeof zh, string>

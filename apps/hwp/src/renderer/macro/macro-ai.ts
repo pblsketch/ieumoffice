@@ -93,6 +93,7 @@ Output ONLY a single JavaScript macro script inside one \`\`\`js code block (no 
 - Do NOT call top-level parseInt, parseFloat, isNaN, or isFinite (use Number.parseInt, Number.parseFloat, Number.isFinite instead)
 - Do NOT call Array.prototype.sort or Number.prototype.toFixed (not in the method allowlist)
 - Do NOT use eval, Function, new, import, export, class, async, await, Promise, generators, regex literals (/.../)
+- Do NOT use regex backreferences (\\1, \\k<...>), lookahead/lookbehind ((?=...), (?!...), (?<=...), (?<!...)), or {n,m} repetition counts above 1000 in find/replace regex patterns
 - Do NOT access fetch, XMLHttpRequest, window, document, globalThis, process, require, setTimeout, setInterval
 - Do NOT access __proto__, constructor, or prototype
 - Do NOT call Undo or Redo (refused inside a macro; the entire macro runs in one atomic undo step)
@@ -122,6 +123,7 @@ Output ONLY a single JavaScript macro script inside one \`\`\`js code block (no 
   - find(query, { caseSensitive?, wholeWord?, regex?, style? }?) -> matches[]
   - replaceAll(query, replacement, { caseSensitive?, wholeWord?, regex?, style? }?) -> { replaced, skippedObjects, skippedCitations }
   - replaceNext(query, replacement, { caseSensitive?, wholeWord?, regex?, style? }?) -> { replaced, found }
+  - Macro regular expressions ({ regex: true } and HFindReplace.FindRegExp) run on a linear-time engine and do NOT support backreferences (\\1, \\k<...>) or lookahead/lookbehind ((?=...), (?!...), (?<=...), (?<!...)); {n,m} repetition counts must not exceed 1000
 - Tables, outline, refresh, and read helpers:
   - insertTable(rows, cols)
   - changeOutlineLevel(sec, para, delta, { singleOnly? }?) // delta is 1 or -1
@@ -134,8 +136,8 @@ Output ONLY a single JavaScript macro script inside one \`\`\`js code block (no 
 - HAction.GetDefault(actionName, pset), HAction.Execute(actionName, pset), HAction.Run(actionName)
 - HParameterSet: HInsertText, HCharShape, HParaShape, HStyle, HFindReplace, HTableCreation, HSelectionOpt
 - HCharShape.TextColor accepts a BGR integer (0x00BBGGRR) or '#RRGGBB' hex string; HCharShape.Height is in 100 units/pt
-- HParaShape margin/indent/spacing fields (LeftMargin, RightMargin, Indentation, PrevSpacing, NextSpacing) are in 200 units/pt
-- HFindReplace uses FindRegExp (boolean) for regex search (UseWildCards and RegExp are refused)
+- HParaShape margin/indent/spacing fields (LeftMargin, RightMargin, Indentation, PrevSpacing, NextSpacing) require even URC integers (200 units/pt, i.e. 200 units = 1 pt; odd values are refused), and LineSpacingType must be 0 (Percent) or omitted
+- HFindReplace uses FindRegExp (boolean) for linear-time regex search (no backreferences or lookarounds; {n,m} repetition counts must not exceed 1000; UseWildCards and RegExp are refused)
 - Supported action names: InsertText, BreakPara, BreakPage, CharShape, ParagraphShape, ParaShape, Style, MoveDocBegin, MoveDocEnd, MoveParaBegin, MoveParaEnd, MoveLineBegin, MoveLineEnd, MoveLeft, MoveRight, MoveUp, MoveDown, Select, SelectAll, Cancel, AllReplace, FindReplace, RepeatFind, TableCreate
 
 Prefer the concise direct API functions unless the user asks for the compatible macro script object form.`

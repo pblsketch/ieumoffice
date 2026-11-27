@@ -100,9 +100,15 @@ export interface MacroParseOptions extends MacroLimitsInput {
   limits?: MacroLimitsInput
 }
 
+export interface MacroBudgetHandle {
+  addSteps(count: number): void
+  checkLimits(): void
+}
+
 export interface MacroRunOptions extends MacroParseOptions {
   now?: () => number
   startTime?: number
+  onRegisterBudget?: (budget: MacroBudgetHandle) => void
 }
 
 export interface MacroParseSuccess {

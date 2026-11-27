@@ -131,5 +131,9 @@ export const en = {
   cmdInsertBookmark: 'Insert bookmark',
   cmdLineBreak: 'Line break',
   cmdTab: 'Tab',
+  cmdDeleteObject: 'Delete document object',
+  cmdOutsideBody: 'Edit outside body paragraph',
   cmdOtherAction: 'Unsupported editor action ({id})',
+  noticeOutsideBodyIgnored:
+    'Actions outside body paragraphs (tables, text boxes, notes, headers/footers) are not recorded.',
 } satisfies Record<keyof typeof zh, string>

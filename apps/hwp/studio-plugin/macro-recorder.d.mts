@@ -30,6 +30,7 @@ export interface MacroSkippedCommand {
 export type MacroRecorderNotice =
   | { kind: 'unsupported_command'; commandId: string; label: string }
   | { kind: 'mouse_ignored' }
+  | { kind: 'outside_body_ignored' }
   | { kind: 'slot_run_ignored'; slot: number }
 
 export interface MacroRecorderStopResult {
@@ -61,9 +62,14 @@ export interface MacroKeyInput {
   preventDefault?: () => void
 }
 
-export interface MacroKeyRecordContext {
+export interface MacroRecordContext {
+  inBody?: boolean
+}
+
+export interface MacroKeyRecordContext extends MacroRecordContext {
   hadSelection?: boolean
   navigationAction?: string
+  adjacentObject?: boolean
 }
 
 export interface MacroCharToggleState {
@@ -81,17 +87,24 @@ export interface MacroRecorder {
   getSkipped(): MacroSkippedCommand[]
   getSteps(): MacroRecordedStep[]
   getScript(): string
-  recordText(text: string): boolean
+  recordText(text: string, context?: MacroRecordContext): boolean
   recordKey(keyEvent: MacroKeyInput, context?: MacroKeyRecordContext): boolean
   recordCommand(
     commandId: string,
     args?: unknown,
     label?: string,
     formatState?: MacroCharToggleState,
+    context?: MacroRecordContext,
   ): boolean
   recordMouseMove(): boolean
   recordSlotRun(slot: number): boolean
 }
+
+export declare function hasAdjacentProtectedObject(
+  wasm: unknown,
+  pos: unknown,
+  key: string,
+): boolean
 
 export declare function slotFromAltKey(event: MacroKeyInput | null | undefined): number | null
 
@@ -114,9 +127,10 @@ export declare function recordStudioCommand(
   args?: unknown,
   label?: string,
   formatState?: MacroCharToggleState,
+  context?: MacroRecordContext,
 ): boolean
 
-export declare function recordStudioText(text: string): boolean
+export declare function recordStudioText(text: string, context?: MacroRecordContext): boolean
 
 export declare function recordStudioKey(
   keyEvent: MacroKeyInput,

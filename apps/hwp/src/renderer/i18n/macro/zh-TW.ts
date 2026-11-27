@@ -118,5 +118,9 @@ export const zhTW = {
   cmdInsertBookmark: '插入書籤',
   cmdLineBreak: '換行',
   cmdTab: '定位字元',
+  cmdDeleteObject: '刪除文件物件',
+  cmdOutsideBody: '本文段落外編輯',
   cmdOtherAction: '不支援的編輯動作（{id}）',
+  noticeOutsideBodyIgnored:
+    '在表格儲存格、文字方塊、註腳、頁首/頁尾等本文段落之外執行的動作不會被錄製。',
 } satisfies Record<keyof typeof zh, string>

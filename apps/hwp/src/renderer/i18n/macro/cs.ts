@@ -133,5 +133,9 @@ export const cs = {
   cmdInsertBookmark: 'Vložit záložku',
   cmdLineBreak: 'Zalomení řádku',
   cmdTab: 'Tabulátor',
+  cmdDeleteObject: 'Smazat objekt dokumentu',
+  cmdOutsideBody: 'Úprava mimo hlavní text',
   cmdOtherAction: 'Nepodporovaná akce editoru ({id})',
+  noticeOutsideBodyIgnored:
+    'Akce mimo odstavce hlavního textu (tabulky, textová pole, poznámky, záhlaví/zápatí) se nezaznamenávají.',
 } satisfies Record<keyof typeof zh, string>

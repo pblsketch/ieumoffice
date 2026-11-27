@@ -12,6 +12,7 @@ import {
   MACRO_SLOT_KEYS,
   createMacroRecorder,
   getActiveMacroRecorder,
+  hasAdjacentProtectedObject,
   hasAssignedMacroSlot,
   isMacroRecordingActive,
   quoteScriptString,
@@ -483,6 +484,119 @@ describe('command and keyboard recording with real-engine replay and single undo
     expect(stopped.stepCount).toBe(0)
     expect(stopped.skipped).toEqual([])
     expect(stopped.script).toBe('')
+  })
+
+  it('skips recording and emits outside_body_ignored when inBody is false (R9)', () => {
+    const notices: MacroRecorderNotice[] = []
+    const recorder = createMacroRecorder({ onNotice: (notice) => notices.push(notice) })
+    recorder.start()
+    setActiveMacroRecorder(recorder)
+
+    expect(recordStudioText('body ', { inBody: true })).toBe(true)
+    expect(recordStudioText('in cell', { inBody: false })).toBe(false)
+    expect(recordStudioKey({ key: 'Enter' }, { inBody: false })).toBe(false)
+    expect(recordStudioKey({ key: 'Shift' }, { inBody: false })).toBe(false)
+    expect(
+      recordStudioCommand('format:bold', undefined, 'Bold', { bold: true }, { inBody: false }),
+    ).toBe(false)
+    // Silently ignored commands remain silent even when outside body.
+    expect(
+      recordStudioCommand('ext:ieum-macro-manage', undefined, 'Manage', undefined, {
+        inBody: false,
+      }),
+    ).toBe(false)
+    expect(recordStudioText('ok', { inBody: true })).toBe(true)
+
+    const stopped = recorder.stop()
+    expect(stopped.script).toBe('insertText("body ok");')
+    expect(stopped.stepCount).toBe(1)
+    expect(stopped.skipped).toEqual([{ commandId: 'macro:outside-body', label: 'outside-body' }])
+    expect(notices).toEqual([
+      { kind: 'outside_body_ignored' },
+      { kind: 'outside_body_ignored' },
+      { kind: 'outside_body_ignored' },
+    ])
+  })
+
+  it('skips recording Backspace/Delete adjacent to protected objects and detects them on real HwpDocument (R8)', () => {
+    const notices: MacroRecorderNotice[] = []
+    const recorder = createMacroRecorder({ onNotice: (notice) => notices.push(notice) })
+    recorder.start()
+    expect(recorder.recordKey({ key: 'Backspace' }, { adjacentObject: true })).toBe(false)
+    expect(recorder.recordKey({ key: 'Delete' }, { adjacentObject: true })).toBe(false)
+    // With an active selection, deleteSelection() is still recorded.
+    expect(
+      recorder.recordKey({ key: 'Backspace' }, { hadSelection: true, adjacentObject: true }),
+    ).toBe(true)
+    const stopped = recorder.stop()
+
+    expect(stopped.script).toBe('deleteSelection();')
+    expect(stopped.skipped).toEqual([
+      { commandId: 'edit:delete-object', label: 'Backspace' },
+      { commandId: 'edit:delete-object', label: 'Delete' },
+    ])
+    expect(notices).toEqual([
+      { kind: 'unsupported_command', commandId: 'edit:delete-object', label: 'Backspace' },
+      { kind: 'unsupported_command', commandId: 'edit:delete-object', label: 'Delete' },
+    ])
+
+    // Real HwpDocument wrapped with WasmBridge-shaped helpers
+    const doc = makeDoc(['abcdef'])
+    const fnRes = JSON.parse(doc.insertFootnote(0, 0, 3)) as { ok: boolean }
+    expect(fnRes.ok).toBe(true)
+    const bridge = {
+      getControlTextPositions: (sec: number, para: number) =>
+        JSON.parse(doc.getControlTextPositions(sec, para)) as number[],
+      getControls: () => JSON.parse(doc.getControls()),
+      getParagraphCount: (sec: number) => doc.getParagraphCount(sec),
+    }
+
+    // Footnote at offset 3: Delete at 3 and Backspace at 3/4 detect adjacent object, offset 1 does not.
+    expect(
+      hasAdjacentProtectedObject(
+        bridge,
+        { sectionIndex: 0, paragraphIndex: 0, charOffset: 3 },
+        'Delete',
+      ),
+    ).toBe(true)
+    expect(
+      hasAdjacentProtectedObject(
+        bridge,
+        { sectionIndex: 0, paragraphIndex: 0, charOffset: 4 },
+        'Backspace',
+      ),
+    ).toBe(true)
+    expect(
+      hasAdjacentProtectedObject(
+        bridge,
+        { sectionIndex: 0, paragraphIndex: 0, charOffset: 1 },
+        'Delete',
+      ),
+    ).toBe(false)
+
+    // Bookmarks and section layout controls are NOT treated as protected objects.
+    const bookmarkBridge = {
+      getControlTextPositions: () => [
+        { pos: 2, ctrlId: 'bokm' },
+        { pos: 2, ctrlId: 'secd' },
+        { pos: 2, ctrlId: 'head' },
+        { pos: 2, ctrlId: 'foot' },
+      ],
+    }
+    expect(
+      hasAdjacentProtectedObject(
+        bookmarkBridge,
+        { sectionIndex: 0, paragraphIndex: 0, charOffset: 2 },
+        'Delete',
+      ),
+    ).toBe(false)
+    expect(
+      hasAdjacentProtectedObject(
+        bookmarkBridge,
+        { sectionIndex: 0, paragraphIndex: 0, charOffset: 3 },
+        'Backspace',
+      ),
+    ).toBe(false)
   })
 })
 
@@ -1124,12 +1238,14 @@ describe('studio macro recording patches', () => {
     {
       patch: 'studio-macro-record-command',
       rel: join('src', 'command', 'dispatcher.ts'),
-      expected: 'recordStudioCommand(commandId, params, def.label, macroCharState);',
+      expected:
+        'recordStudioCommand(commandId, params, def.label, macroCharState, { inBody: macroInBody });',
     },
     {
       patch: 'studio-macro-record-text',
       rel: join('src', 'engine', 'input-handler-text.ts'),
-      expected: 'recordStudioText(text);',
+      expected:
+        'recordStudioText(text, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
     },
     {
       patch: 'studio-macro-record-key',
@@ -1191,40 +1307,45 @@ describe('studio macro recording patches', () => {
           source = applyPatch(patchName, source)
         }
       }
-      // Backspace/Delete captures hadSelection before deleteSelection() and hooks all branches
+      // Backspace/Delete captures hadSelection, inBody, and adjacentObject before deleteSelection() and hooks all branches
       const bsIdx = source.indexOf("case 'Backspace':")
       const enterIdx = source.indexOf("case 'Enter':", bsIdx)
       const bsBlock = source.slice(bsIdx, enterIdx)
       expect(bsBlock).toContain('const macroHadSelection = this.cursor.hasSelection();')
+      expect(bsBlock).toContain('hasAdjacentProtectedObject(this.wasm, pos, e.key)')
       expect(bsBlock).toContain('this.handleBackspace(pos, inCell);')
       expect(bsBlock).toContain('this.handleDelete(pos, inCell);')
-      expect(bsBlock).toContain('recordStudioKey(e, { hadSelection: macroHadSelection });')
+      expect(bsBlock).toContain(
+        'recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody, adjacentObject: macroAdjacentObject });',
+      )
 
-      // Shift+Home/End & navigation shortcuts hook executeNavigationAction
-      expect(source).toContain('recordStudioKey(e, { navigationAction: action });')
+      // Shift+Home/End & navigation shortcuts hook executeNavigationAction with inBody
+      expect(source).toContain('recordStudioKey(e, { navigationAction: action, inBody:')
 
-      // Shift+Arrow hooks ArrowLeft/Right/Up/Down
+      // Shift+Arrow hooks ArrowLeft/Right/Up/Down with inBody
       const arrowIdx = source.indexOf("case 'ArrowLeft':")
       const homeIdx = source.indexOf("case 'Home':", arrowIdx)
       const arrowBlock = source.slice(arrowIdx, homeIdx)
-      expect(arrowBlock).toContain('recordStudioKey(e);')
+      expect(arrowBlock).toContain('recordStudioKey(e, { inBody:')
 
-      // Tab & Shift+Tab hook recordStudioKey
+      // Tab & Shift+Tab hook recordStudioKey with inBody
       const tabIdx = source.indexOf("case 'Tab':")
       const insertIdx = source.indexOf("case 'Insert':", tabIdx)
       const tabBlock = source.slice(tabIdx, insertIdx)
-      expect(tabBlock.match(/recordStudioKey\(e\);/g)?.length).toBeGreaterThanOrEqual(2)
+      expect(tabBlock.match(/recordStudioKey\(e, \{ inBody:/g)?.length).toBeGreaterThanOrEqual(2)
 
-      // handleCtrlKey hooks Ctrl+Backspace, Ctrl+Delete, and Ctrl+Arrows
+      // handleCtrlKey hooks Ctrl+Backspace, Ctrl+Delete, and Ctrl+Arrows with inBody
       const ctrlIdx = source.indexOf('export function handleCtrlKey')
       const ctrlBlock = source.slice(ctrlIdx)
       expect(ctrlBlock).toContain("case 'backspace':")
       expect(ctrlBlock).toContain("case 'delete':")
       expect(
-        ctrlBlock.match(/recordStudioKey\(e, \{ hadSelection: macroHadSelection \}\);/g)?.length,
+        ctrlBlock.match(
+          /recordStudioKey\(e, \{ hadSelection: macroHadSelection, inBody: macroInBody \}\);/g,
+        )?.length,
       ).toBe(2)
-      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineStart' });")
-      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineEnd' });")
+      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineStart', inBody:")
+      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineEnd', inBody:")
     },
   )
 })

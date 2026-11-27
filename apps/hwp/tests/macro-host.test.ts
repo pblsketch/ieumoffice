@@ -13,7 +13,6 @@ import { REFUSED_COMPAT_ACTIONS, SUPPORTED_COMPAT_ACTIONS } from '../studio-plug
 import {
   MAX_MACRO_MESSAGE_LENGTH,
   MAX_MACRO_TOTAL_MESSAGE_CHARS,
-  assertSafeMacroRegex,
   executeMacroTransaction,
   runMacroOnDocument,
   type MacroTransactionHost,
@@ -989,24 +988,62 @@ describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () =>
     expect(val.backToLine0).toEqual({ sec: 0, para: 0, offset: 0 })
   })
 
-  it('rejects unsafe ReDoS regex patterns while allowing safe patterns including [a+]+', () => {
-    expect(() => assertSafeMacroRegex('[a+]+')).not.toThrow()
-    expect(() => assertSafeMacroRegex('\\d{4}-\\d{2}-\\d{2}')).not.toThrow()
-    expect(() => assertSafeMacroRegex('\\w+\\s+\\w+')).not.toThrow()
-    expect(() => assertSafeMacroRegex('(foo|bar)')).not.toThrow()
+  it('executes ordinary and ReDoS regexes linearly via Thompson NFA, expands $1 captures, and refuses unsupported features', () => {
+    // Ordinary regexes including alternation under quantifier and nested optional patterns
+    const doc = makeDoc(['제 3 장  foo&nbsp; bar 2024-11 abc 12.5 Ab Cd x@y.com'])
+    for (const [pat, minHits] of [
+      ['(\\s|&nbsp;)+', 1],
+      ['(\\w+\\s?)+', 1],
+      ['(\\r?\\n)+', 0],
+      ['(\\d{4})-(\\d{2})', 1],
+      ['[가-힣]+', 1],
+      ['(제|第)\\s*\\d+\\s*(장|절)', 1],
+      ['[a+]+', 1],
+    ] as const) {
+      const r = runMacroOnDocument(doc, `find(${JSON.stringify(pat)}, { regex: true }).length;`)
+      expect(r.ok).toBe(true)
+      if (r.ok) {
+        expect(r.value as number).toBeGreaterThanOrEqual(minHits)
+      }
+    }
 
-    for (const bad of [
-      '(a+)+$',
-      '(a*)*',
-      '(a+)*',
-      '(a{1,5})+',
-      '([a-z]+)+',
-      '(a|a)+',
-      '(a|aa)+',
-      '(.|\\s)+',
-      '.*.*',
-      '.+.+',
-      'a+a+',
+    // $1/$2 capture expansion in replaceAll and replaceNext
+    const capDoc = makeDoc(['2024-11 and 2025-03'])
+    const capRes = runMacroOnDocument(
+      capDoc,
+      `
+      const first = replaceNext("(\\\\d{4})-(\\\\d{2})", "$2/$1", { regex: true });
+      const rest = replaceAll("(\\\\d{4})-(\\\\d{2})", "$2.$1", { regex: true });
+      ({ first, rest });
+    `,
+    )
+    expect(capRes.ok).toBe(true)
+    expect(bodyTexts(capDoc)).toEqual(['11/2024 and 03.2025'])
+
+    // ReDoS patterns complete linearly in <500ms on 3,000 chars
+    const longDoc = makeDoc(['a'.repeat(3000)])
+    const longBangDoc = makeDoc(['a'.repeat(3000) + '!'])
+    for (const [targetDoc, redosPat] of [
+      [longDoc, '\\w*-?\\w*-?\\w*!'],
+      [longDoc, '\\w*\\s?\\w*!'],
+      [longBangDoc, '(a+)+$'],
+    ] as const) {
+      const t0 = Date.now()
+      const r = runMacroOnDocument(
+        targetDoc,
+        `find(${JSON.stringify(redosPat)}, { regex: true }).length;`,
+        { limits: { maxTimeMs: 1000 } },
+      )
+      expect(Date.now() - t0).toBeLessThan(500)
+      expect(r.ok).toBe(true)
+      if (r.ok) {
+        expect(r.value).toBe(0)
+      }
+    }
+
+    // Backreferences, lookarounds, and oversized patterns are refused with invalid_argument
+    const checkDoc = makeDoc(['aaab'])
+    for (const unsupported of [
       '(a)\\1',
       '(?=a)a',
       '(?!a)a',
@@ -1014,19 +1051,189 @@ describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () =>
       '(?<!a)b',
       'a'.repeat(300),
     ]) {
-      expect(() => assertSafeMacroRegex(bad)).toThrow()
+      const r = runMacroOnDocument(
+        checkDoc,
+        `find(${JSON.stringify(unsupported)}, { regex: true });`,
+      )
+      expect(r.ok).toBe(false)
+      if (!r.ok) {
+        expect(r.code).toBe('invalid_argument')
+      }
+    }
+  })
+
+  it('batches 3,600 replaceAll edits fast, preserves mixed char formatting, and rolls back on timeout', () => {
+    const bulkDoc = makeDoc(Array.from({ length: 60 }, () => 'ab '.repeat(60)))
+    const t0 = Date.now()
+    const bulkRes = runMacroOnDocument(bulkDoc, 'replaceAll("ab", "abc").replaced;')
+    expect(Date.now() - t0).toBeLessThan(500)
+    expect(bulkRes.ok).toBe(true)
+    if (bulkRes.ok) {
+      expect(bulkRes.value).toBe(3600)
+    }
+    expect(bodyTexts(bulkDoc)[0]).toBe('abc '.repeat(60))
+
+    // Mixed char formatting within the same paragraph is preserved across batched replaceAll
+    const fmtDoc = makeDoc(['ab ab cd ab ab'])
+    fmtDoc.applyCharFormat(0, 0, 0, 5, JSON.stringify({ bold: true }))
+    fmtDoc.applyCharFormat(0, 0, 6, 14, JSON.stringify({ italic: true }))
+    const fmtRes = runMacroOnDocument(fmtDoc, 'replaceAll("ab", "XY").replaced;')
+    expect(fmtRes.ok).toBe(true)
+    if (fmtRes.ok) expect(fmtRes.value).toBe(4)
+    expect(bodyTexts(fmtDoc)).toEqual(['XY XY cd XY XY'])
+    expect(JSON.parse(fmtDoc.getCharPropertiesAt(0, 0, 0)).bold).toBe(true)
+    expect(JSON.parse(fmtDoc.getCharPropertiesAt(0, 0, 3)).bold).toBe(true)
+    expect(JSON.parse(fmtDoc.getCharPropertiesAt(0, 0, 9)).italic).toBe(true)
+    expect(JSON.parse(fmtDoc.getCharPropertiesAt(0, 0, 9)).bold).toBe(false)
+
+    // Tight timeout during replaceAll aborts cleanly with time_limit and byte-identical rollback
+    const timeoutDoc = makeDoc(Array.from({ length: 60 }, () => 'ab '.repeat(60)))
+    const beforeBytes = timeoutDoc.exportHwp()
+    let clock = 1000
+    const timeoutRes = runMacroOnDocument(timeoutDoc, 'replaceAll("ab", "abc");', {
+      limits: { maxTimeMs: 1 },
+      now: () => {
+        clock += 1
+        return clock
+      },
+    })
+    expect(timeoutRes.ok).toBe(false)
+    if (!timeoutRes.ok) {
+      expect(timeoutRes.code).toBe('time_limit')
+    }
+    expect(bytesEqual(timeoutDoc.exportHwp(), beforeBytes)).toBe(true)
+  })
+
+  it('enforces URC even integers and refuses odd URC values and non-Percent LineSpacingType on HParaShape', () => {
+    const doc = makeDoc(['Paragraph text'])
+    const okRes = runMacroOnDocument(
+      doc,
+      `
+      HAction.GetDefault("ParagraphShape", HParameterSet.HParaShape.HSet);
+      HParameterSet.HParaShape.LeftMargin = 10000; // 50 pt
+      HParameterSet.HParaShape.Indentation = -2000; // -10 pt
+      HParameterSet.HParaShape.PrevSpacing = 1200; // 6 pt
+      HParameterSet.HParaShape.NextSpacing = 1600; // 8 pt
+      HParameterSet.HParaShape.LineSpacingType = 0; // Percent
+      HParameterSet.HParaShape.LineSpacing = 160;
+      HAction.Execute("ParagraphShape", HParameterSet.HParaShape.HSet);
+    `,
+    )
+    expect(okRes.ok).toBe(true)
+
+    const beforeBytes = doc.exportHwp()
+    for (const [field, val] of [
+      ['LeftMargin', 2001],
+      ['RightMargin', 1],
+      ['Indentation', -1001],
+      ['PrevSpacing', 3],
+      ['NextSpacing', 99],
+    ] as const) {
+      const oddRes = runMacroOnDocument(
+        doc,
+        `
+        HAction.GetDefault("ParagraphShape", HParameterSet.HParaShape.HSet);
+        HParameterSet.HParaShape.${field} = ${val};
+        HAction.Execute("ParagraphShape", HParameterSet.HParaShape.HSet);
+      `,
+      )
+      expect(oddRes.ok).toBe(false)
+      if (!oddRes.ok) {
+        expect(oddRes.code).toBe('invalid_argument')
+        expect(oddRes.error).toContain(field)
+      }
+      expect(bytesEqual(doc.exportHwp(), beforeBytes)).toBe(true)
     }
 
-    const doc = makeDoc(['aaaaaaaaaaaaaaaaaaaaaaaa!'])
-    const t0 = Date.now()
-    const res = runMacroOnDocument(doc, `find('(a+)+$', { regex: true });`, {
-      limits: { maxTimeMs: 1000 },
-    })
-    expect(Date.now() - t0).toBeLessThan(500)
-    expect(res.ok).toBe(false)
-    if (!res.ok) {
-      expect(res.code).toBe('invalid_argument')
+    const fixedSpacingRes = runMacroOnDocument(
+      doc,
+      `
+      HAction.GetDefault("ParagraphShape", HParameterSet.HParaShape.HSet);
+      HParameterSet.HParaShape.LineSpacingType = 1;
+      HParameterSet.HParaShape.LineSpacing = 2000;
+      HAction.Execute("ParagraphShape", HParameterSet.HParaShape.HSet);
+    `,
+    )
+    expect(fixedSpacingRes.ok).toBe(false)
+    if (!fixedSpacingRes.ok) {
+      expect(fixedSpacingRes.code).toBe('unsupported_action')
+      expect(fixedSpacingRes.unsupportedAction).toBe('LineSpacingType')
     }
+    expect(bytesEqual(doc.exportHwp(), beforeBytes)).toBe(true)
+  })
+
+  it('extends selectDown to end on last line and selectUp to start on first line without changing moveDown/moveUp', () => {
+    const d1 = makeDoc(['abc'])
+    const r1 = runMacroOnDocument(d1, 'selectDown(); deleteSelection();')
+    expect(r1.ok).toBe(true)
+    expect(bodyTexts(d1)).toEqual([''])
+
+    const d2 = makeDoc(['abcdef'])
+    const r2 = runMacroOnDocument(d2, 'moveParaEnd(); selectUp(); getSelection().text;')
+    expect(r2.ok).toBe(true)
+    if (r2.ok) expect(r2.value).toBe('abcdef')
+
+    // Plain moveDown on last line and moveUp on first line do not jump to line edges.
+    const d3 = makeDoc(['abcdef'])
+    const r3 = runMacroOnDocument(
+      d3,
+      'moveRight(2); moveDown(); const c1 = getCaret().offset; moveUp(); const c2 = getCaret().offset; [c1, c2];',
+    )
+    expect(r3.ok).toBe(true)
+    if (r3.ok) expect(r3.value).toEqual([2, 2])
+  })
+
+  it('protects adjacent footnotes and tables on deleteForward and deleteBackward', () => {
+    // Footnote at offset 3 in "abcdef": DEL at 3 and BS at 4 must refuse object_loss; BS at 3 deletes 'c' safely.
+    const fnDelDoc = makeDoc(['first', 'abcdef'])
+    fnDelDoc.insertFootnote(0, 1, 3)
+    const fnDelBefore = fnDelDoc.exportHwp()
+    const fnDelRes = runMacroOnDocument(fnDelDoc, 'deleteForward();', {
+      caret: { sec: 0, para: 1, offset: 3 },
+    })
+    expect(fnDelRes.ok).toBe(false)
+    if (!fnDelRes.ok) expect(fnDelRes.code).toBe('object_loss')
+    expect(bytesEqual(fnDelDoc.exportHwp(), fnDelBefore)).toBe(true)
+
+    const fnBsDoc = makeDoc(['first', 'abcdef'])
+    fnBsDoc.insertFootnote(0, 1, 3)
+    const fnBsBefore = fnBsDoc.exportHwp()
+    const fnBsRes = runMacroOnDocument(fnBsDoc, 'deleteBackward();', {
+      caret: { sec: 0, para: 1, offset: 4 },
+    })
+    expect(fnBsRes.ok).toBe(false)
+    if (!fnBsRes.ok) expect(fnBsRes.code).toBe('object_loss')
+    expect(bytesEqual(fnBsDoc.exportHwp(), fnBsBefore)).toBe(true)
+
+    // Backspace at offset 3 deletes 'c' before the footnote while keeping the footnote intact.
+    const fnSafeDoc = makeDoc(['first', 'abcdef'])
+    fnSafeDoc.insertFootnote(0, 1, 3)
+    const fnSafeRes = runMacroOnDocument(fnSafeDoc, 'deleteBackward();', {
+      caret: { sec: 0, para: 1, offset: 3 },
+    })
+    expect(fnSafeRes.ok).toBe(true)
+    expect(bodyTexts(fnSafeDoc)).toEqual(['first', 'abdef'])
+    const safeCtrls = JSON.parse(fnSafeDoc.getControls()) as Array<{ ctrlId: string }>
+    expect(safeCtrls.filter((c) => c.ctrlId === 'fn')).toHaveLength(1)
+
+    // Table boundary protection on deleteForward before table and deleteBackward crossing table.
+    const tblDoc = makeDoc(['hello', 'after'])
+    runMacroOnDocument(tblDoc, 'moveParaEnd(); insertTable(2, 2);')
+    const tblBefore = tblDoc.exportHwp()
+    const delBeforeTbl = runMacroOnDocument(tblDoc, 'deleteForward(3);', {
+      caret: { sec: 0, para: 0, offset: 5 },
+    })
+    expect(delBeforeTbl.ok).toBe(false)
+    if (!delBeforeTbl.ok) expect(delBeforeTbl.code).toBe('object_loss')
+    expect(bytesEqual(tblDoc.exportHwp(), tblBefore)).toBe(true)
+
+    const lastPara = tblDoc.getParagraphCount(0) - 1
+    const bsAcrossTbl = runMacroOnDocument(tblDoc, 'deleteBackward(5);', {
+      caret: { sec: 0, para: lastPara, offset: 0 },
+    })
+    expect(bsAcrossTbl.ok).toBe(false)
+    if (!bsAcrossTbl.ok) expect(bsAcrossTbl.code).toBe('object_loss')
+    expect(bytesEqual(tblDoc.exportHwp(), tblBefore)).toBe(true)
   })
 
   it('enforces insertText per-call and cumulative limits and fast linear moveWordRight', () => {
