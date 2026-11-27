@@ -21,8 +21,12 @@ vi.mock('@rhwp/editor', () => ({
     const caret = doc.createElement('div')
     caret.className = 'caret'
     caret.style.display = 'block'
+    const canvas = doc.createElement('canvas')
+    canvas.width = 800
+    canvas.height = 1100
     doc.body.appendChild(textarea)
     doc.body.appendChild(caret)
+    doc.body.appendChild(canvas)
     studioMock.lastIframe = iframe
     studioMock.lastTextarea = textarea
     return {
@@ -219,8 +223,18 @@ describe('HwpMobileEditor view/read-only guard', () => {
     const exported = await port.exportHwpx()
     expect(exported).toEqual(new Uint8Array([1, 2, 3]))
 
-    // After unmount, export methods must reject asynchronously rather than throwing synchronously.
+    // After unmount, canvas backing stores are zeroed, iframe navigates to about:blank,
+    // and export methods reject asynchronously rather than throwing synchronously.
+    const iframe = studioMock.lastIframe!
+    const canvas = iframe.contentDocument!.querySelector('canvas') as HTMLCanvasElement
+    expect(canvas.width).toBe(800)
+    expect(canvas.height).toBe(1100)
+
     act(() => root.unmount())
+    expect(studioMock.destroyCalls).toBe(1)
+    expect(canvas.width).toBe(0)
+    expect(canvas.height).toBe(0)
+    expect(iframe.getAttribute('src')).toBe('about:blank')
     expect(() => {
       void port.exportHwpx().catch(() => {})
       void port.exportHwp().catch(() => {})

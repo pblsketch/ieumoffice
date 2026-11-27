@@ -183,6 +183,15 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     () => () => {
       pinchDisposeRef.current?.()
       pinchDisposeRef.current = null
+      const iframe = frameRef.current
+      if (iframe) {
+        try {
+          iframe.srcdoc = ''
+          iframe.src = 'about:blank'
+        } catch {
+          // Ignore detach errors during unmount.
+        }
+      }
     },
     [],
   )

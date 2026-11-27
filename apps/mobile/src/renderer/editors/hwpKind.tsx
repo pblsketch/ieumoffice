@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { PRODUCT_NAME } from '@genoffice/i18n'
-import { createMobileHwpApi, type MobileHwpApi } from '@genoffice/mobile-bridge/hwp'
+import {
+  createMobileHwpApi,
+  type MobileHwpApi,
+  type MobileHwpEditorPort,
+} from '@genoffice/mobile-bridge/hwp'
 import {
   isMobileCommandError,
   type MobileDocFormat,
@@ -31,7 +35,7 @@ import {
   type PageNumberSetting,
 } from './pageNumbers'
 import { pickImageFile, readPicture } from './pickPicture'
-import { openFlowDocument } from './rhwpEngine'
+import { openFlowDocument, releaseRhwpEngine } from './rhwpEngine'
 
 /** The engine calls a whole-document change uses. */
 type WholeDocument = PageNumberDocument & {
@@ -64,6 +68,8 @@ interface HwpKeptState {
   readonly flowBytes: Uint8Array | null
   // HWP reading layout: reflowed "flow" view or the page editor (design system 5.3).
   readonly hwpLayout: 'page' | 'flow'
+  // Mount rhwp-studio lazily so reading in flow view does not spin up a second 28 MB WASM engine.
+  readonly studioMounted: boolean
   readonly flowZoom: number
 }
 
@@ -148,17 +154,20 @@ function startHwpDocument(
     host.updateSession(meta)
   }
 
+  const initialLayout: 'page' | 'flow' =
+    rememberedLayout(window.localStorage, openedSession.docKey) ??
+    (host.windowClass() === 'compact' || host.windowClass() === 'medium' ? 'flow' : 'page')
+
   const kept = createKeptState<HwpKeptState>({
     hwpBytes: openedBytes,
     flowBytes: openedBytes,
     // The layout last chosen for this document; otherwise phones and small tablets
     // read in the flow view and larger windows keep the page.
-    hwpLayout:
-      rememberedLayout(window.localStorage, openedSession.docKey) ??
-      (host.windowClass() === 'compact' || host.windowClass() === 'medium' ? 'flow' : 'page'),
+    hwpLayout: initialLayout,
+    // Mount studio immediately for page view or blank untitled documents; defer in flow view.
+    studioMounted: initialLayout === 'page' || openedBytes.byteLength === 0,
     flowZoom: lastFlowZoom,
   })
-  const setFlowBytes = (flowBytes: Uint8Array | null) => kept.set({ flowBytes })
   const setHwpLayout = (hwpLayout: 'page' | 'flow') => kept.set({ hwpLayout })
   const setFlowZoom = (next: (zoom: number) => number) => {
     lastFlowZoom = next(kept.get().flowZoom)
@@ -168,6 +177,21 @@ function startHwpDocument(
   const hwpEditorRef: { current: HwpMobileEditorHandle | null } = { current: null }
   const flowRef: { current: HwpFlowViewHandle | null } = { current: null }
   const studioEditedRef = { current: false }
+  let studioReady = false
+  let studioWaiters: Array<{
+    resolve: (ed: HwpMobileEditorHandle) => void
+    reject: (err: Error) => void
+  }> = []
+  const resolveStudioWaiters = (ed: HwpMobileEditorHandle) => {
+    const list = studioWaiters
+    studioWaiters = []
+    for (const waiter of list) waiter.resolve(ed)
+  }
+  const rejectStudioWaiters = (err: Error) => {
+    const list = studioWaiters
+    studioWaiters = []
+    for (const waiter of list) waiter.reject(err)
+  }
   const hwpLayoutRef = {
     get current(): 'page' | 'flow' {
       return kept.get().hwpLayout
@@ -175,6 +199,65 @@ function startHwpDocument(
   }
   const suppressStudioDirtyRef = { current: false }
   const flowRefreshTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null }
+
+  /** Snapshots flow edits into kept bytes so later studio mounts or flow-only saves see them. */
+  const snapshotCurrentBytes = (format: 'hwp' | 'hwpx'): Uint8Array => {
+    const flow = flowRef.current
+    if (flow?.hasPendingEdits()) {
+      const exported = flow.takeBytes(format)
+      if (exported) {
+        kept.set({ hwpBytes: exported, flowBytes: exported })
+        return exported
+      }
+    }
+    return kept.get().hwpBytes ?? new Uint8Array()
+  }
+
+  /** Lightweight port backed by flow/kept bytes when rhwp-studio has not been mounted yet. */
+  const flowOnlyPort = (flags: {
+    readonly encrypted: boolean
+    readonly distribution: boolean
+  }): MobileHwpEditorPort => ({
+    async isPasswordProtected() {
+      return flags.encrypted || flags.distribution
+    },
+    async exportHwp() {
+      return snapshotCurrentBytes('hwp')
+    },
+    async exportHwpx() {
+      return snapshotCurrentBytes('hwpx')
+    },
+    async exportHwpVerify() {
+      throw new Error('HWP verification requires the page editor.')
+    },
+    async measureTabs() {
+      return []
+    },
+    async getPlainText() {
+      return ''
+    },
+    async replaceText() {
+      return false
+    },
+    async notifySaved() {},
+  })
+
+  /** Mounts rhwp-studio on demand (e.g. for .hwp verify save, DocCheck, or AI from flow view). */
+  const ensureStudioMounted = (): Promise<HwpMobileEditorHandle> => {
+    if (studioReady && hwpEditorRef.current) {
+      return Promise.resolve(hwpEditorRef.current)
+    }
+    const doc = activeDocRef.current
+    if (doc && flowRef.current?.hasPendingEdits()) {
+      snapshotCurrentBytes(doc.session.format === 'hwpx' ? 'hwpx' : 'hwp')
+    }
+    if (!kept.get().studioMounted) {
+      kept.set({ studioMounted: true })
+    }
+    return new Promise<HwpMobileEditorHandle>((resolve, reject) => {
+      studioWaiters.push({ resolve, reject })
+    })
+  }
 
   /** Hands edits made in the flow view to the page editor (the one save/share/AI read). */
   const flushFlowToStudio = async () => {
@@ -184,6 +267,7 @@ function startHwpDocument(
     if (!flow || !studio || !doc || !flow.hasPendingEdits()) return
     const bytes = flow.takeBytes(doc.session.format === 'hwpx' ? 'hwpx' : 'hwp')
     if (!bytes) return
+    kept.set({ hwpBytes: bytes, flowBytes: bytes })
     suppressStudioDirtyRef.current = true
     try {
       await studio.loadBytes(bytes)
@@ -203,19 +287,37 @@ function startHwpDocument(
     studioEditedRef.current = false
     try {
       const exportBytes = doc.session.format === 'hwpx' ? port.exportHwpx() : port.exportHwp()
-      void exportBytes.then(setFlowBytes).catch(() => {
-        // Keep the last flow; the page view still shows the edits.
-      })
+      void exportBytes
+        .then((bytes) => {
+          kept.set({ hwpBytes: bytes, flowBytes: bytes })
+        })
+        .catch(() => {
+          // Keep the last flow; the page view still shows the edits.
+        })
     } catch {
       // Keep the last flow when the studio is reloading or unmounted.
     }
   }
 
   const switchHwpLayout = async (next: 'page' | 'flow') => {
-    if (next === 'page') await flushFlowToStudio()
-    else if (studioEditedRef.current) refreshFlowFromStudio()
-    setHwpLayout(next)
     const doc = activeDocRef.current
+    if (next === 'page') {
+      if (studioReady && hwpEditorRef.current) {
+        await flushFlowToStudio()
+      } else if (doc && flowRef.current?.hasPendingEdits()) {
+        snapshotCurrentBytes(doc.session.format === 'hwpx' ? 'hwpx' : 'hwp')
+      }
+      kept.set({ hwpLayout: 'page', studioMounted: true })
+    } else {
+      if (studioEditedRef.current) {
+        refreshFlowFromStudio()
+        setHwpLayout('flow')
+      } else {
+        // Release the page studio iframe when returning to reading view with no studio edits.
+        studioReady = false
+        kept.set({ hwpLayout: 'flow', studioMounted: false })
+      }
+    }
     if (doc) rememberLayout(window.localStorage, doc.session.docKey, next)
   }
 
@@ -225,11 +327,22 @@ function startHwpDocument(
     forceSaveAs = false,
   ) => {
     const { session } = doc
-    const port = hwpEditorRef.current ? hwpPort : null
-    if (!port) return false
     const flags = { encrypted: doc.encrypted, distribution: doc.distribution }
     const targetFormat: 'hwp' | 'hwpx' =
       forceSaveAs && hwpVerifyFailed ? 'hwpx' : session.format === 'hwpx' ? 'hwpx' : 'hwp'
+    let port: MobileHwpEditorPort
+    if (studioReady && hwpEditorRef.current) {
+      port = hwpPort
+    } else if (targetFormat === 'hwpx') {
+      port = flowOnlyPort(flags)
+    } else {
+      try {
+        await ensureStudioMounted()
+      } catch {
+        return false
+      }
+      port = hwpPort
+    }
     const suggestedName =
       targetFormat === 'hwpx' && session.name.toLowerCase().endsWith('.hwp')
         ? `${session.name.slice(0, -4)}.hwpx`
@@ -284,21 +397,31 @@ function startHwpDocument(
     host.markDirty(true)
   }
 
+  const handleStudioReady = () => {
+    studioReady = true
+    if (hwpEditorRef.current) resolveStudioWaiters(hwpEditorRef.current)
+  }
+
   const handleHwpError = (msg: string) => {
+    rejectStudioWaiters(new Error(msg))
     setNoticeBanner(msg)
   }
 
   /**
-   * A change to the whole document (page setup and the like): the page editor's
-   * bytes, with flow edits handed over first, changed in an engine copy, then
-   * loaded back into the page editor and the flow view. Undo history restarts.
+   * A change to the whole document (page setup and the like): the current bytes,
+   * with flow edits handed over first, changed in an engine copy, then loaded back
+   * into the flow view (and page editor if mounted). Undo history restarts.
    */
   const changeWholeDocument = async (change: (doc: WholeDocument) => void) => {
     const active = activeDocRef.current
-    const studio = hwpEditorRef.current
-    if (!active || !studio) throw new Error('no HWP document is open')
+    if (!active) throw new Error('no HWP document is open')
     const hwpx = active.session.format === 'hwpx'
-    const bytes = hwpx ? await hwpPort.exportHwpx() : await hwpPort.exportHwp()
+    const studio = studioReady ? hwpEditorRef.current : null
+    const bytes = studio
+      ? hwpx
+        ? await hwpPort.exportHwpx()
+        : await hwpPort.exportHwp()
+      : snapshotCurrentBytes(hwpx ? 'hwpx' : 'hwp')
     const engine = (await openFlowDocument(bytes)) as unknown as WholeDocument
     let changed: Uint8Array
     try {
@@ -307,16 +430,15 @@ function startHwpDocument(
     } finally {
       engine.free()
     }
-    await studio.loadBytes(changed)
-    setFlowBytes(changed)
+    if (studio) await studio.loadBytes(changed)
+    kept.set({ hwpBytes: changed, flowBytes: changed })
     studioEditedRef.current = false
     host.markDirty(true)
   }
 
   /** What the document is made of, read by the page editor plugin after flow edits are handed over. */
   const readDocumentProfile = async (): Promise<DocumentProfile> => {
-    const studio = hwpEditorRef.current
-    if (!studio) throw new Error('the page editor is not ready')
+    const studio = await ensureStudioMounted()
     await flushFlowToStudio()
     return (await studio.callPlugin('documentProfile')) as DocumentProfile
   }
@@ -350,8 +472,7 @@ function startHwpDocument(
 
   /** The check's one fix: a Korean-word-processor-only font replaced everywhere. */
   const replaceCheckedFont = async (from: string, to: string) => {
-    const studio = hwpEditorRef.current
-    if (!studio) throw new Error('the page editor is not ready')
+    const studio = await ensureStudioMounted()
     await flushFlowToStudio()
     await studio.callPlugin('replaceFont', from, to)
     host.markDirty(true)
@@ -373,7 +494,7 @@ function startHwpDocument(
   }
 
   function HwpWorkspace({ frame, mode, canEdit, lang, theme }: EditorWorkspaceProps) {
-    const { hwpBytes, flowBytes, hwpLayout, flowZoom } = useSyncExternalStore(
+    const { hwpBytes, flowBytes, hwpLayout, studioMounted, flowZoom } = useSyncExternalStore(
       kept.subscribe,
       kept.get,
     )
@@ -382,6 +503,14 @@ function startHwpDocument(
       (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key),
       [lang],
     )
+
+    // After switching to page view and unmounting HwpFlowView, tear down the disposable
+    // flow WASM iframe so flow and page WASM instances do not occupy memory simultaneously.
+    useEffect(() => {
+      if (hwpLayout === 'page') {
+        releaseRhwpEngine()
+      }
+    }, [hwpLayout])
 
     const [memoOpen, setMemoOpen] = useState(false)
     const [memos, setMemos] = useState<readonly FlowMemo[]>([])
@@ -418,8 +547,13 @@ function startHwpDocument(
       const active = activeDocRef.current
       if (!active) return
       try {
+        const hwpx = active.session.format === 'hwpx'
         const bytes =
-          active.session.format === 'hwpx' ? await hwpPort.exportHwpx() : await hwpPort.exportHwp()
+          studioReady && hwpEditorRef.current
+            ? hwpx
+              ? await hwpPort.exportHwpx()
+              : await hwpPort.exportHwp()
+            : snapshotCurrentBytes(hwpx ? 'hwpx' : 'hwp')
         const engine = (await openFlowDocument(bytes)) as unknown as WholeDocument
         try {
           setPageNumberNow(readPageNumber(engine))
@@ -655,31 +789,34 @@ function startHwpDocument(
               }
               editable={mode === 'edit' && canEditActive}
               openDocument={openFlowDocument}
-              onUnavailable={() => setHwpLayout('page')}
+              onUnavailable={() => kept.set({ hwpLayout: 'page', studioMounted: true })}
               onEdit={handleFlowEdit}
               onEditRefused={() => showToast({ message: tNow('flowEditRefused'), tone: 'error' })}
             />
           )}
-          {/* The page editor stays mounted under the flow view: saving, sharing and
-              AI read the document through it. */}
-          <div
-            className="mobile-hwp-layer"
-            data-hidden={hwpLayout === 'flow' ? 'true' : undefined}
-            inert={hwpLayout === 'flow' || undefined}
-          >
-            <HwpMobileEditor
-              ref={hwpEditorRef}
-              fileName={frame.docTitle}
-              documentBytes={hwpBytes}
-              mode={mode}
-              canEdit={canEditActive}
-              hidden={hwpLayout === 'flow'}
-              lang={lang}
-              theme={theme}
-              onDirty={handleHwpDirty}
-              onError={handleHwpError}
-            />
-          </div>
+          {/* The page editor mounts on demand (page view, AI, DocCheck, or .hwp save) so reading
+              in flow view does not spin up a second 28 MB WASM instance. */}
+          {studioMounted && (
+            <div
+              className="mobile-hwp-layer"
+              data-hidden={hwpLayout === 'flow' ? 'true' : undefined}
+              inert={hwpLayout === 'flow' || undefined}
+            >
+              <HwpMobileEditor
+                ref={hwpEditorRef}
+                fileName={frame.docTitle}
+                documentBytes={hwpBytes}
+                mode={mode}
+                canEdit={canEditActive}
+                hidden={hwpLayout === 'flow'}
+                lang={lang}
+                theme={theme}
+                onDirty={handleHwpDirty}
+                onReady={handleStudioReady}
+                onError={handleHwpError}
+              />
+            </div>
+          )}
         </EditorShell>
         <MemoSheet
           open={memoOpen && hwpLayout === 'flow'}
@@ -715,13 +852,10 @@ function startHwpDocument(
     save: saveDocumentInternal,
 
     async share(doc) {
-      const port = hwpEditorRef.current ? hwpPort : null
-      if (!port) return
+      const flags = { encrypted: doc.encrypted, distribution: doc.distribution }
+      const port = studioReady && hwpEditorRef.current ? hwpPort : flowOnlyPort(flags)
       try {
-        await hwpApi.shareDocument(doc.session, port, {
-          encrypted: doc.encrypted,
-          distribution: doc.distribution,
-        })
+        await hwpApi.shareDocument(doc.session, port, flags)
       } catch (err) {
         if (isMobileCommandError(err) && err.code === 'PASSWORD_PROTECTED') {
           setNoticeBanner(tNow('hwpProtectedShareError'))
@@ -730,19 +864,15 @@ function startHwpDocument(
     },
 
     async writeRecovery(doc) {
-      const port = hwpEditorRef.current ? hwpPort : null
-      if (!port) return
-      await hwpApi
-        .writeRecovery(doc.session, port, {
-          encrypted: doc.encrypted,
-          distribution: doc.distribution,
-        })
-        .catch(() => {})
+      const flags = { encrypted: doc.encrypted, distribution: doc.distribution }
+      const port = studioReady && hwpEditorRef.current ? hwpPort : flowOnlyPort(flags)
+      await hwpApi.writeRecovery(doc.session, port, flags).catch(() => {})
     },
 
     async createAiRun(ctx) {
       // the PC editor's tools over the page editor's plugin (ai/hwpAgent.ts), after the
       // flow view's edits have been handed to the page editor
+      await ensureStudioMounted()
       await flushFlowToStudio()
       const { createMobileHwpAgent } = await import('../ai/hwpAgent')
       const agent = createMobileHwpAgent(
@@ -791,5 +921,18 @@ function startHwpDocument(
     },
 
     Workspace: HwpWorkspace,
+
+    dispose() {
+      if (flowRefreshTimerRef.current) {
+        clearTimeout(flowRefreshTimerRef.current)
+        flowRefreshTimerRef.current = null
+      }
+      rejectStudioWaiters(new Error('HWP document closed'))
+      studioReady = false
+      hwpEditorRef.current = null
+      flowRef.current = null
+      kept.set({ hwpBytes: null, flowBytes: null, studioMounted: false })
+      releaseRhwpEngine()
+    },
   }
 }
