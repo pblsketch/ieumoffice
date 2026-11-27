@@ -2,6 +2,7 @@ import { statSync } from 'node:fs'
 import { isAbsolute, posix, win32 } from 'node:path'
 import { canonicalPathKey, type FolderRefusalReason } from '@genoffice/project-store'
 import { agentProtectedPaths } from '../agent/agent-sessions'
+import { isWindowsReservedDeviceName } from '../rename-validation'
 
 /**
  * Path rules of the project guide. Every path the guide stores or compares is
@@ -37,13 +38,17 @@ export function comparablePath(path: string, platform: NodeJS.Platform): string 
  * One path segment as a person or the app could name it inside the folder: not
  * empty, `.` or `..`, no control characters or `:` (a drive or an NTFS stream),
  * and no trailing dot or space (Windows drops those, so such a name could stand
- * for another entry).
+ * for another entry). On Windows only, a reserved device name (`CON`, `CON.docx`,
+ * …) is rejected too — those names are ordinary files on macOS and Linux.
  */
-export function isPlainSegment(segment: string): boolean {
+export function isPlainSegment(segment: string, platform: NodeJS.Platform): boolean {
   if (segment === '' || segment === '.' || segment === '..') return false
   // eslint-disable-next-line no-control-regex -- control characters are the check
   if (/[\u0000-\u001f:]/.test(segment)) return false
-  return !segment.endsWith('.') && !segment.endsWith(' ')
+  if (segment.endsWith('.') || segment.endsWith(' ')) return false
+  // Same Windows device names rename-validation rejects (CON.docx is still CON).
+  if (platform === 'win32' && isWindowsReservedDeviceName(segment)) return false
+  return true
 }
 
 export function samePath(a: string, b: string, platform: NodeJS.Platform): boolean {
