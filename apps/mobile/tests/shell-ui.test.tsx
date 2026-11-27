@@ -10,7 +10,7 @@ import type {
 import { MobileLocaleProvider } from '../src/renderer/i18n'
 import { HomeScreen } from '../src/renderer/components/HomeScreen'
 import { EditorShell } from '../src/renderer/shell/EditorShell'
-import { windowClassForWidth } from '../src/renderer/shell/useViewportLayout'
+import { useViewportLayout, windowClassForWidth } from '../src/renderer/shell/useViewportLayout'
 import { SettingsScreen } from '../src/renderer/settings/SettingsScreen'
 
 const containers: HTMLElement[] = []
@@ -310,5 +310,57 @@ describe('HomeScreen permission-expired recent doc recovery UI', () => {
     )
 
     expect(el.querySelector('[data-testid="recent-expired-rec-1"]')).not.toBeNull()
+  })
+})
+
+describe('useViewportLayout root scroll reset', () => {
+  it('calls window.scrollTo(0, 0) when iOS visualViewport drifts off top on focus or scroll', () => {
+    const scrollToSpy = vi.fn()
+    const origScrollTo = window.scrollTo
+    const origVisualViewport = Object.getOwnPropertyDescriptor(window, 'visualViewport')
+    const listeners = new Map<string, Set<EventListener>>()
+    const fakeVv = {
+      height: 844,
+      width: 420,
+      offsetTop: 0,
+      offsetLeft: 0,
+      scale: 1,
+      addEventListener: (type: string, fn: EventListener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set())
+        listeners.get(type)!.add(fn)
+      },
+      removeEventListener: (type: string, fn: EventListener) => {
+        listeners.get(type)?.delete(fn)
+      },
+    }
+
+    function Probe() {
+      const layout = useViewportLayout()
+      return <div data-testid="vp-probe" data-kb={String(layout.keyboardInsetPx)} />
+    }
+
+    window.scrollTo = scrollToSpy
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: fakeVv,
+    })
+
+    try {
+      renderInDom(<Probe />)
+      expect(scrollToSpy).not.toHaveBeenCalled()
+
+      fakeVv.offsetTop = 47
+      act(() => {
+        for (const fn of listeners.get('scroll') ?? []) fn(new Event('scroll'))
+      })
+      expect(scrollToSpy).toHaveBeenCalledWith(0, 0)
+    } finally {
+      window.scrollTo = origScrollTo
+      if (origVisualViewport) {
+        Object.defineProperty(window, 'visualViewport', origVisualViewport)
+      } else {
+        delete (window as unknown as { visualViewport?: unknown }).visualViewport
+      }
+    }
   })
 })

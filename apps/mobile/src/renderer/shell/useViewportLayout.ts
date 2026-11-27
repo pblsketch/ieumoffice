@@ -53,25 +53,60 @@ function publishToRoot(state: ViewportLayoutState): void {
   root.style.setProperty('--m-kb', `${state.keyboardInsetPx}px`)
 }
 
+/**
+ * Keeps the root document pinned to (0, 0) so iOS WKWebView keyboard avoidance
+ * cannot scroll the top app bar into the status bar or Dynamic Island.
+ */
+function resetRootViewportScroll(): void {
+  if (typeof window === 'undefined') return
+  const vv = window.visualViewport
+  const drifted =
+    window.scrollY !== 0 ||
+    window.scrollX !== 0 ||
+    (vv !== null && vv !== undefined && (vv.offsetTop !== 0 || vv.offsetLeft !== 0))
+  if (drifted && typeof window.scrollTo === 'function') {
+    window.scrollTo(0, 0)
+  }
+}
+
 export function useViewportLayout(breakpointPx = MOBILE_TABLET_BREAKPOINT_PX): ViewportLayoutState {
   const [state, setState] = useState<ViewportLayoutState>(() => readViewportState(breakpointPx))
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    let rafId: number | null = null
     const update = () => {
+      resetRootViewportScroll()
       const next = readViewportState(breakpointPx)
       publishToRoot(next)
       setState(next)
     }
-    window.addEventListener('resize', update)
+    const scheduleUpdate = () => {
+      update()
+      if (typeof window.requestAnimationFrame === 'function') {
+        if (rafId !== null) window.cancelAnimationFrame(rafId)
+        rafId = window.requestAnimationFrame(() => {
+          rafId = null
+          update()
+        })
+      }
+    }
+    window.addEventListener('resize', scheduleUpdate)
+    window.addEventListener('scroll', update)
+    document.addEventListener('focusin', scheduleUpdate)
     const vv = window.visualViewport
-    vv?.addEventListener('resize', update)
-    vv?.addEventListener('scroll', update)
+    vv?.addEventListener('resize', scheduleUpdate)
+    vv?.addEventListener('scroll', scheduleUpdate)
     update()
     return () => {
-      window.removeEventListener('resize', update)
-      vv?.removeEventListener('resize', update)
-      vv?.removeEventListener('scroll', update)
+      if (rafId !== null && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId)
+      }
+      window.removeEventListener('resize', scheduleUpdate)
+      window.removeEventListener('scroll', update)
+      document.removeEventListener('focusin', scheduleUpdate)
+      vv?.removeEventListener('resize', scheduleUpdate)
+      vv?.removeEventListener('scroll', scheduleUpdate)
     }
   }, [breakpointPx])
 
