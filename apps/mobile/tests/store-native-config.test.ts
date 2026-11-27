@@ -86,4 +86,22 @@ describe('store readiness native config', () => {
       }
     })
   })
+
+  describe('unused v1 App Links and Associated Domains', () => {
+    it('omits associated-domains from iOS Entitlements.plist', () => {
+      const entitlements = readFileSync(join(NATIVE_CONFIG, 'ios', 'Entitlements.plist'), 'utf8')
+      expect(entitlements).not.toContain('com.apple.developer.associated-domains')
+      expect(entitlements).not.toContain('applinks:ieumoffice.com')
+    })
+
+    it('omits autoVerify HTTPS App Links from Android intent-filters-fragment.xml', () => {
+      const fragment = readFileSync(
+        join(NATIVE_CONFIG, 'android', 'intent-filters-fragment.xml'),
+        'utf8',
+      )
+      expect(fragment).not.toContain('android:autoVerify')
+      expect(fragment).not.toContain('ieumoffice.com')
+      expect(fragment).not.toContain('/mobile/auth/callback')
+    })
+  })
 })

@@ -188,7 +188,7 @@ describe('apply-native-config idempotency for Android and iOS', () => {
       const manifest = readFileSync(join(androidMain, 'AndroidManifest.xml'), 'utf8')
       expect(manifest.match(/IEUM_MOBILE_INTENT_FILTERS_START/g)?.length).toBe(1)
       expect(manifest).toContain('com.ieumoffice.mobile.fileprovider')
-      expect(manifest).toContain('ieumoffice.com')
+      expect(manifest).not.toContain('ieumoffice.com')
       expect(existsSync(join(androidMain, 'res', 'drawable', 'ic_launcher_background.xml'))).toBe(
         true,
       )
