@@ -121,6 +121,117 @@ const PDF_HEADER_WINDOW = 1024
 /** The stream an encrypted OOXML package lives in (OLE2 directory names are UTF-16LE). */
 const ENCRYPTED_PACKAGE_STREAM = Buffer.from('EncryptedPackage', 'utf16le')
 
+const META_TAG_RE = /<meta\b[^>]*>/gi
+const META_CHARSET_ATTR_RE = /\bcharset\s*=\s*["']?\s*([a-z0-9_:.+-]+)/i
+const META_HTTP_EQUIV_CONTENT_TYPE_RE = /\bhttp-equiv\s*=\s*["']?content-type["']?/i
+const META_CONTENT_CHARSET_RE = /\bcontent\s*=\s*["'][^"']*\bcharset\s*=\s*([a-z0-9_:.+-]+)/i
+
+/**
+ * The page's own declared charset: whichever `<meta charset>` or
+ * `<meta http-equiv="Content-Type" content="...charset=...">` comes first
+ * in document order, not whichever form it is. A single pass over the
+ * `<meta>` tags left to right, returning the first one that actually
+ * declares a charset either way, matches how a real HTML parser would see
+ * a page with both forms present.
+ */
+function markupCharset(bytes: Buffer): string | undefined {
+  // declarations are ASCII; any single-byte reading finds them in the first kilobytes
+  const head = bytes.subarray(0, 4096).toString('latin1')
+  for (const [tag] of head.matchAll(META_TAG_RE)) {
+    const direct = META_CHARSET_ATTR_RE.exec(tag)?.[1]
+    if (direct) return direct
+    if (META_HTTP_EQUIV_CONTENT_TYPE_RE.test(tag)) {
+      const viaContentType = META_CONTENT_CHARSET_RE.exec(tag)?.[1]
+      if (viaContentType) return viaContentType
+    }
+  }
+  return undefined
+}
+
+/**
+ * WHATWG Encoding spec labels declared equivalent to UTF-16LE/BE. A <meta
+ * charset> cannot genuinely declare UTF-16: if the file really were UTF-16,
+ * its BOM would already have been caught before this label is even
+ * consulted, since the HTML parser could not otherwise have found an
+ * ASCII-readable meta tag at all. The spec's own fix for this ("if encoding
+ * is UTF-16BE/LE, set encoding to UTF-8") is applied here by treating the
+ * label as absent rather than substituting it, so the fallback chain below
+ * still ends in windows-1252 instead of a lossy non-fatal UTF-8 decode.
+ */
+const UTF16_LABELS = new Set([
+  'csunicode',
+  'iso-10646-ucs-2',
+  'ucs-2',
+  'unicode',
+  'unicodefeff',
+  'utf-16',
+  'utf-16le',
+  'unicodefffe',
+  'utf-16be',
+])
+
+/**
+ * WHATWG Encoding spec labels that resolve to the "replacement" encoding,
+ * which only ever decodes to a single U+FFFD -- never a usable charset.
+ */
+const REPLACEMENT_LABELS = new Set([
+  'csiso2022kr',
+  'hz-gb-2312',
+  'iso-2022-cn',
+  'iso-2022-cn-ext',
+  'iso-2022-kr',
+  'replacement',
+])
+
+/**
+ * `x-user-defined` maps every byte 0x80-0xFF to a Private Use Area code
+ * point, which is only meaningful for bytes a browser already knows to
+ * have come from that scheme (legacy Mac/game-console text, never an HTML
+ * page). A page genuinely declaring it would be vanishingly rare, while a
+ * mislabeled single-byte legacy page (shift_jis-as-ascii junk, a stale CMS
+ * default) is common -- so this label is treated the same as the
+ * UTF-16/replacement ones above: as absent, falling through to
+ * windows-1252 instead of a PUA-garbled decode.
+ */
+const USER_DEFINED_LABELS = new Set(['x-user-defined'])
+
+/**
+ * HTML bytes as text: a byte order mark first (as for any text file, and
+ * see `UTF16_LABELS` above for why that makes a declared UTF-16 moot past
+ * this point). Then strict UTF-8, since the HTML editor itself always reads
+ * and writes UTF-8, so a page it saved decodes correctly even past a stale
+ * charset declaration left over from an import. Only once both fail does
+ * the page's own declared charset get a turn, and windows-1252 is the last
+ * resort, same as `decodeTextBytes`. null only for a BOM-declared UTF-32
+ * file (matching `decodeTextBytes`). Exported so `packages/cli`'s own HTML
+ * decoding can delegate here instead of keeping a second implementation;
+ * accepts `Uint8Array` too since that's what a CLI caller may hand in.
+ */
+export function decodeHtmlBytes(input: Buffer | Uint8Array): string | null {
+  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input)
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeTextBytes(bytes) // UTF-16LE/UTF-32LE BOM
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeTextBytes(bytes) // UTF-16BE/UTF-32BE BOM
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return decodeTextBytes(bytes) // UTF-8 BOM
+  try {
+    return FATAL_UTF8_DECODER.decode(bytes)
+  } catch {
+    const label = markupCharset(bytes)?.toLowerCase()
+    if (
+      label &&
+      !UTF16_LABELS.has(label) &&
+      !REPLACEMENT_LABELS.has(label) &&
+      !USER_DEFINED_LABELS.has(label)
+    ) {
+      try {
+        return new TextDecoder(label).decode(bytes)
+      } catch {
+        // unknown or unsupported label: fall through to the ordinary decoder
+      }
+    }
+    return decodeTextBytes(bytes)
+  }
+}
+
 function sniffBinary(bytes: Buffer): BinaryKind {
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return 'zip'
   if (bytes.subarray(0, PDF_HEADER_WINDOW).includes(Buffer.from('%PDF-'))) return 'pdf'
@@ -311,7 +422,9 @@ export async function parseFileToText(
           ? isUtf32BomDeclared(bytes)
             ? null
             : decodeCsvBuffer(bytes)
-          : decodeTextBytes(bytes)
+          : ext === 'html' || ext === 'htm'
+            ? decodeHtmlBytes(bytes)
+            : decodeTextBytes(bytes)
       if (text === null) {
         return {
           ok: false,

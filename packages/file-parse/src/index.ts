@@ -1,4 +1,5 @@
 export {
+  decodeHtmlBytes,
   parseFileToText,
   SIDECAR_EXTS,
   type ParsedFile,

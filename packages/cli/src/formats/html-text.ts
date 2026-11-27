@@ -1,13 +1,16 @@
-import { isUtf32Bom } from '../fs'
+import { decodeHtmlBytes as decodeHtmlBytesCore } from '@genoffice/file-parse'
 import { CliError, EXIT } from '../result'
 
 /**
- * An HTML file's bytes as text: a byte order mark first, then the charset the page declares in its
- * head (`<meta charset>` or the http-equiv form, as legacy Korean pages declare euc-kr), then UTF-8.
- * An unknown charset name reads as UTF-8; broken bytes become replacement characters.
+ * An HTML file's bytes as text. Delegates to `@genoffice/file-parse`'s
+ * `decodeHtmlBytes`, which `packages/file-parse` also uses for attachments,
+ * so the two packages decode a page's charset the same way instead of
+ * keeping separate implementations. That shared decoder returns `null`
+ * only for a BOM-declared UTF-32 file, which this CLI path rejects.
  */
 export function decodeHtmlBytes(bytes: Uint8Array): string {
-  if (isUtf32Bom(bytes)) {
+  const text = decodeHtmlBytesCore(bytes)
+  if (text === null) {
     throw new CliError(
       EXIT.usage,
       'Unsupported text encoding: BOM-declared UTF-32 cannot be decoded (UTF-8 and UTF-16 are supported)',
@@ -15,24 +18,5 @@ export function decodeHtmlBytes(bytes: Uint8Array): string {
       { reason: 'unsupported' },
     )
   }
-  const label = bomCharset(bytes) ?? metaCharset(bytes) ?? 'utf-8'
-  try {
-    return new TextDecoder(label.toLowerCase()).decode(bytes)
-  } catch {
-    return new TextDecoder('utf-8').decode(bytes)
-  }
-}
-
-function bomCharset(bytes: Uint8Array): string | undefined {
-  if (isUtf32Bom(bytes)) return undefined
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return 'utf-8'
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le'
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be'
-  return undefined
-}
-
-function metaCharset(bytes: Uint8Array): string | undefined {
-  // the declaration is ASCII; any single-byte reading finds it in the first kilobytes
-  const head = new TextDecoder('latin1').decode(bytes.subarray(0, 4096))
-  return /<meta[^>]*charset\s*=\s*["']?\s*([a-z0-9_:.-]+)/i.exec(head)?.[1]
+  return text
 }
