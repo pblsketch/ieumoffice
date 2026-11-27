@@ -802,7 +802,7 @@ input:focus-visible {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding-top: var(--m-readonly-strip-h, 0px);
+  padding-top: calc(var(--m-readonly-strip-h, 0px) + var(--m-tip-inset-top, 0px));
   display: flex;
   flex-direction: column;
   background: var(--surface);

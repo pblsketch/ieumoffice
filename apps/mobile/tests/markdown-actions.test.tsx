@@ -105,6 +105,7 @@ describe('markdown format actions', () => {
       )
     renderNow()
     const textarea = el.querySelector('textarea') as HTMLTextAreaElement
+    expect(textarea.getAttribute('data-testid')).toBe('markdown-editor-textarea')
     expect(textarea.getAttribute('aria-label')).toBe('마크다운 문서 편집기')
 
     // Simulate Android WebView / Gboard IME updating DOM value and firing selectionchange

@@ -1,9 +1,26 @@
 import react from '@vitejs/plugin-react'
-import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { rhwpPatches } from '../hwp/scripts/rhwp-patches.mjs'
 import { trackAlias, trackDefine, trackPlugins, trackWorkerPlugins } from './config/tracks'
+
+/**
+ * Minimal same-origin iframe entry for the HWP flow-view WASM engine so its
+ * linear memory can be reclaimed by navigating and removing the iframe on close.
+ */
+const FLOW_HOST_HTML = `<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+<script type="module">
+import init, { HwpDocument } from './rhwp.js';
+window.__ieumInitRhwp = async (wasmUrl) => {
+  await init({ module_or_path: wasmUrl });
+  return { HwpDocument, Uint8Array };
+};
+window.dispatchEvent(new Event('ieum-rhwp-host-ready'));
+</script>
+</body></html>
+`
 
 /**
  * Copies the prebuilt rhwp-studio bundle from apps/hwp/public/studio into
@@ -14,6 +31,16 @@ function copyHwpStudioPlugin(): Plugin {
   const studioDest = resolve(__dirname, 'dist/studio')
   return {
     name: 'copy-hwp-studio',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?')[0] === '/studio/flow-host.html') {
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.end(FLOW_HOST_HTML)
+          return
+        }
+        next()
+      })
+    },
     closeBundle() {
       if (!existsSync(studioSrc)) {
         throw new Error(
@@ -22,6 +49,7 @@ function copyHwpStudioPlugin(): Plugin {
       }
       mkdirSync(studioDest, { recursive: true })
       cpSync(studioSrc, studioDest, { recursive: true })
+      writeFileSync(resolve(studioDest, 'flow-host.html'), FLOW_HOST_HTML, 'utf8')
     },
   }
 }

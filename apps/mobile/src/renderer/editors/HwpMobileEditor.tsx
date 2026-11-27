@@ -1,4 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { createStudio, type RhwpEditor } from '@rhwp/editor'
 import type { Lang } from '@genoffice/i18n'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
@@ -183,6 +190,12 @@ function applyMobileStudioCanvasStyle(editor: RhwpEditor): void {
       #scroll-container {
         touch-action: pan-x pan-y;
       }
+      /* Hide rhwp-studio's text caret and IME composition caret in view and read-only modes. */
+      :root[data-ieum-readonly="true"] .caret,
+      :root[data-ieum-readonly="true"] .caret-composition {
+        display: none !important;
+        visibility: hidden !important;
+      }
       /* compact and medium window classes (< 840px, see useViewportLayout) */
       @media (max-width: 839px) {
         #ruler-corner,
@@ -252,6 +265,11 @@ function syncStudioEditLock(editor: RhwpEditor, interactive: boolean): void {
     const iframe = editor.element
     const doc = iframe?.contentDocument
     if (!doc) return
+    if (interactive) {
+      doc.documentElement.removeAttribute('data-ieum-readonly')
+    } else {
+      doc.documentElement.setAttribute('data-ieum-readonly', 'true')
+    }
     const fields = doc.querySelectorAll('textarea, input:not([type="range"]), [contenteditable]')
     for (const node of fields) {
       const tag = node.tagName
@@ -340,6 +358,31 @@ function attachStudioReadOnlyGuard(
     }
   } catch {
     return null
+  }
+}
+
+function releaseStudioFrame(editor: RhwpEditor | null): void {
+  const iframe = editor?.element
+  if (!iframe) return
+  try {
+    const doc = iframe.contentDocument
+    if (doc) {
+      // Shrink Canvas2D backing stores before detaching so GPU/bitmap memory frees immediately.
+      for (const canvas of doc.querySelectorAll('canvas')) {
+        canvas.width = 0
+        canvas.height = 0
+      }
+    }
+  } catch {
+    // Ignore cross-origin or already-detached frame access errors.
+  }
+  try {
+    // Navigating to about:blank forces WebKit/Blink to tear down the WASM realm on remove.
+    if (iframe.getAttribute('src') !== 'about:blank') {
+      iframe.src = 'about:blank'
+    }
+  } catch {
+    // Ignore navigation errors during rapid unmount.
   }
 }
 
@@ -493,13 +536,24 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
         disposePinch = null
         if (dirtyPoll) clearInterval(dirtyPoll)
         frameWindow?.removeEventListener(STUDIO_DIRTY_EVENT, onFrameDirty)
+        frameWindow = null
+        pluginLoadedRef.current = null
         const current = editorRef.current
         editorRef.current = null
         try {
+          releaseStudioFrame(current)
           current?.destroy()
         } catch {
           // Ignore teardown errors when switching documents quickly.
         }
+      }
+    }, [documentBytes, lang, theme])
+
+    // Run frame teardown in a layout cleanup so iframe.contentDocument is still attached
+    // when Canvas2D backing stores are shrunk and navigated to about:blank before React unmounts.
+    useLayoutEffect(() => {
+      return () => {
+        releaseStudioFrame(editorRef.current)
       }
     }, [documentBytes, lang, theme])
 

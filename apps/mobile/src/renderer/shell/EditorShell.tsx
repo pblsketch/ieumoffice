@@ -535,6 +535,7 @@ export function EditorShell({
             <button
               type="button"
               className="mobile-menu-row-btn"
+              data-testid="editor-save-as-btn"
               onClick={() => {
                 setMoreOpen(false)
                 onSaveAs()
@@ -547,6 +548,7 @@ export function EditorShell({
           <button
             type="button"
             className="mobile-menu-row-btn"
+            data-testid="editor-sheet-share-btn"
             onClick={() => {
               setMoreOpen(false)
               onShare()
@@ -574,6 +576,7 @@ export function EditorShell({
             <button
               type="button"
               className="mobile-menu-row-btn"
+              data-testid="editor-fit-width-btn"
               onClick={() => {
                 setMoreOpen(false)
                 onFitToWidth()
@@ -587,6 +590,7 @@ export function EditorShell({
             <button
               type="button"
               className="mobile-menu-row-btn"
+              data-testid="editor-backups-btn"
               onClick={() => {
                 setMoreOpen(false)
                 onOpenBackups()

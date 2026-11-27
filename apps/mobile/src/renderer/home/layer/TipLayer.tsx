@@ -18,6 +18,8 @@ import './layer.css'
 // Distance between the bubble and its element, and from the window edges (CSS pixels).
 const GAP = 8
 const EDGE = 16
+const TIP_TOP_INSET_VAR = '--m-tip-inset-top'
+const READONLY_STRIP_VAR = '--m-readonly-strip-h'
 
 interface Placement {
   readonly top: number
@@ -107,6 +109,43 @@ export function TipLayer({ active, mode, client }: TipLayerProps) {
         : nextPlacement,
     )
   }, [active, loaded, mode, pageViewLabel, prefs.tipsSeen, tick, current])
+
+  // Reserve space above the editor stage while a top-anchored tip is visible so it never covers
+  // the first line of an editor (e.g. a new Markdown document's first line).
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    const bubble = bubbleRef.current
+    if (!active || !current || !placement?.below || !bubble) {
+      root.style.removeProperty(TIP_TOP_INSET_VAR)
+      return
+    }
+    const sync = () => {
+      const stage = document.querySelector('.mobile-editor-stage')
+      if (!(stage instanceof HTMLElement)) {
+        root.style.removeProperty(TIP_TOP_INSET_VAR)
+        return
+      }
+      const bubbleRect = bubble.getBoundingClientRect()
+      if (bubbleRect.height <= 0) {
+        root.style.removeProperty(TIP_TOP_INSET_VAR)
+        return
+      }
+      const stageRect = stage.getBoundingClientRect()
+      const stripH = Number.parseFloat(root.style.getPropertyValue(READONLY_STRIP_VAR)) || 0
+      const contentTop = stageRect.top + stripH
+      const overlap = Math.ceil(bubbleRect.bottom + GAP - contentTop)
+      if (overlap > 0) root.style.setProperty(TIP_TOP_INSET_VAR, `${overlap}px`)
+      else root.style.removeProperty(TIP_TOP_INSET_VAR)
+    }
+    sync()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null
+    observer?.observe(bubble)
+    return () => {
+      observer?.disconnect()
+      root.style.removeProperty(TIP_TOP_INSET_VAR)
+    }
+  }, [active, current, placement])
 
   useEffect(() => {
     if (!current || typeof window === 'undefined') return
