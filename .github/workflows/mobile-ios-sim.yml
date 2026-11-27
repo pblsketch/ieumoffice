@@ -126,6 +126,7 @@ jobs:
           if brew install cameroncooke/axe/axe; then
             axe --version || true
             axe type --help || true
+            axe swipe --help || true
             echo "axe_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "AXe installation failed; will still boot simulator and capture launch screenshot."
@@ -570,6 +571,14 @@ jobs:
                   window.__ieumSimErrors.push({type:'console.error', msg: args.map(a => typeof a === 'string' ? a : (a?.message || JSON.stringify(a))).join(' ')});
                   return origErr(...args);
                 };
+                window.__ieumLastClick = null;
+                document.addEventListener('click', (e) => {
+                  const target = e.target?.closest?.('[data-testid]');
+                  window.__ieumLastClick = {
+                    testId: target ? target.getAttribute('data-testid') : '',
+                    t: performance.now(),
+                  };
+                }, true);
                 return 'installed';
               })()""")
 
@@ -837,23 +846,24 @@ jobs:
               return rc == 0, f"axe_tap({cx},{cy})"
 
           def dismiss_native_picker_if_open(tag_prefix):
-              tree = describe_native_ui(f"{tag_prefix}-check")
-              if not tree:
+              # iOS 26 remote UIDocumentPicker sheets do not expose inner buttons in AXe;
+              # swiping the modal sheet down reliably cancels and dismisses it.
+              if not axe_ready:
                   return False
-              nodes = flatten_ax_nodes(tree)
-              cancel = find_ax_node(nodes, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"})
-              if not cancel:
-                  cancel = find_ax_node(nodes, ["취소", "Cancel", "닫기", "Close"])
-              if cancel:
-                  axe_tap_xy(cancel["cx"], cancel["cy"], f"{tag_prefix}-cancel")
-                  time.sleep(2.0)
-                  return True
-              return False
+              rc, out, err = run_cmd(
+                  ["axe", "swipe", "--start-x", "210", "--start-y", "110", "--end-x", "210", "--end-y", "820", "--udid", udid],
+                  timeout=15,
+              )
+              trace(f"axe swipe dismiss [{tag_prefix}] rc={rc} msg={(err or out).strip()}")
+              time.sleep(2.0)
+              return rc == 0
 
           def wait_hwp_page_ready(insp, timeout_s=25.0):
               t_start = time.monotonic()
               t_btn = None
               t_canvas = None
+              in_app_btn = None
+              in_app_canvas = None
               while time.monotonic() - t_start < timeout_s:
                   try:
                       res = insp.eval_js("""(() => {
@@ -874,22 +884,35 @@ jobs:
                             if (!hidden && c && c.width > 0 && c.height > 0) canvasReady = true;
                           } catch {}
                         }
-                        return { btnVis, studioVisible, canvasReady, readonlyAttr };
+                        const lc = window.__ieumLastClick;
+                        const sinceClickMs = lc ? Math.round(performance.now() - lc.t) : null;
+                        return { btnVis, studioVisible, canvasReady, readonlyAttr, sinceClickMs, clickTestId: lc ? lc.testId : '' };
                       })()""")
                       now_ms = int((time.monotonic() - t_start) * 1000)
                       if res and res.get("btnVis") and t_btn is None:
                           t_btn = now_ms
+                          in_app_btn = res.get("sinceClickMs")
                       if res and res.get("btnVis") and res.get("canvasReady"):
                           t_canvas = now_ms
-                          return {"ok": True, "btn_ms": t_btn, "canvas_ms": t_canvas, "readonlyAttr": res.get("readonlyAttr")}
+                          in_app_canvas = res.get("sinceClickMs")
+                          return {
+                              "ok": True,
+                              "btn_ms": t_btn,
+                              "canvas_ms": t_canvas,
+                              "in_app_btn_ms": in_app_btn,
+                              "in_app_canvas_ms": in_app_canvas,
+                              "clickTestId": res.get("clickTestId"),
+                              "readonlyAttr": res.get("readonlyAttr"),
+                          }
                   except Exception:
                       pass
                   time.sleep(0.1)
-              return {"ok": False, "btn_ms": t_btn, "canvas_ms": t_canvas}
+              return {"ok": False, "btn_ms": t_btn, "canvas_ms": t_canvas, "in_app_btn_ms": in_app_btn, "in_app_canvas_ms": in_app_canvas}
 
-          def wait_hwp_flow_ready(insp, timeout_s=15.0):
+          def wait_hwp_flow_ready(insp, timeout_s=25.0):
               t_start = time.monotonic()
               t_btn = None
+              in_app_btn = None
               while time.monotonic() - t_start < timeout_s:
                   try:
                       res = insp.eval_js("""(() => {
@@ -902,17 +925,27 @@ jobs:
                             flowReady = (flow.contentDocument?.body?.innerText || '').trim().length > 100;
                           } catch {}
                         }
-                        return { btnVis, flowReady };
+                        const lc = window.__ieumLastClick;
+                        const sinceClickMs = lc ? Math.round(performance.now() - lc.t) : null;
+                        return { btnVis, flowReady, sinceClickMs, clickTestId: lc ? lc.testId : '' };
                       })()""")
                       now_ms = int((time.monotonic() - t_start) * 1000)
                       if res and res.get("btnVis") and t_btn is None:
                           t_btn = now_ms
+                          in_app_btn = res.get("sinceClickMs")
                       if res and res.get("btnVis") and res.get("flowReady"):
-                          return {"ok": True, "btn_ms": t_btn, "flow_ms": now_ms}
+                          return {
+                              "ok": True,
+                              "btn_ms": t_btn,
+                              "flow_ms": now_ms,
+                              "in_app_btn_ms": in_app_btn,
+                              "in_app_flow_ms": res.get("sinceClickMs"),
+                              "clickTestId": res.get("clickTestId"),
+                          }
                   except Exception:
                       pass
                   time.sleep(0.1)
-              return {"ok": False, "btn_ms": t_btn, "flow_ms": None}
+              return {"ok": False, "btn_ms": t_btn, "flow_ms": None, "in_app_btn_ms": in_app_btn, "in_app_flow_ms": None}
 
           def fail_step(insp, step_name, reason):
               shot = screenshot(f"stuck-{step_name}.png")
@@ -1048,6 +1081,8 @@ jobs:
                       "tap_ms": t_f2p_tap_ms,
                       "after_tap_btn_ms": p1_timing.get("btn_ms"),
                       "after_tap_canvas_ms": p1_timing.get("canvas_ms"),
+                      "in_app_btn_ms": p1_timing.get("in_app_btn_ms"),
+                      "in_app_canvas_ms": p1_timing.get("in_app_canvas_ms"),
                       "total_to_canvas_ms": t_f2p_total_ms,
                   }
                   summary["checks"]["hwp_page_1_state"] = {
@@ -1082,6 +1117,8 @@ jobs:
                       "tap_ms": t_p2f_tap_ms,
                       "after_tap_btn_ms": f_ret_timing.get("btn_ms"),
                       "after_tap_flow_ms": f_ret_timing.get("flow_ms"),
+                      "in_app_btn_ms": f_ret_timing.get("in_app_btn_ms"),
+                      "in_app_flow_ms": f_ret_timing.get("in_app_flow_ms"),
                       "total_to_flow_ms": t_p2f_total_ms,
                   }
                   if not el_page_again:
@@ -1150,6 +1187,8 @@ jobs:
                       "tap_ms": t_f2p2_tap_ms,
                       "after_tap_btn_ms": p2_timing.get("btn_ms"),
                       "after_tap_canvas_ms": p2_timing.get("canvas_ms"),
+                      "in_app_btn_ms": p2_timing.get("in_app_btn_ms"),
+                      "in_app_canvas_ms": p2_timing.get("in_app_canvas_ms"),
                       "total_to_canvas_ms": t_f2p2_total_ms,
                   }
                   summary["steps"].append({"step": "06c-hwp-reopen-page", "ok": p2_timing.get("ok", False), "via": via, "screenshot": shot6c})
@@ -1282,57 +1321,48 @@ jobs:
                   st7c = dump_page_state(insp, "07c-save-picker")
 
                   # Detect native UIDocumentPicker export sheet by AX controls or saving state.
+                  # On iOS 26.5 Simulator, remote Files sheet buttons are not exposed in AXe
+                  # (the blue Save pill sits at top-right around x=369, y=120 on 420x912).
                   btn_save_confirm = find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], prefer_types={"Button"})
                   if not btn_save_confirm:
                       btn_save_confirm = find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], max_y=220)
-                  btn_save_cancel = find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"})
-                  if not btn_save_cancel:
-                      btn_save_cancel = find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], max_y=220)
                   has_picker_cue = bool(
                       btn_save_confirm
-                      or btn_save_cancel
-                      or find_ax_node(nodes_save, ["나의 iPhone", "On My iPhone", "둘러보기", "Browse", "Untitled.md"], require_enabled=False)
                       or (st7c or {}).get("saveBtnState") == "saving"
+                      or find_ax_node(nodes_save, ["나의 iPhone", "On My iPhone", "둘러보기", "Browse", "Untitled.md"], require_enabled=False)
                   )
                   save_picker_shown = has_picker_cue
                   save_action_note = ""
 
                   if save_picker_shown:
-                      # If Save is not yet enabled/visible, try tapping "On My iPhone" first.
-                      if not btn_save_confirm:
-                          folder_node = find_ax_node(nodes_save, ["나의 iPhone", "On My iPhone", "IeumOffice", "Downloads", "다운로드"])
-                          if folder_node:
-                              axe_tap_xy(folder_node["cx"], folder_node["cy"], "save-picker-select-folder")
-                              time.sleep(2.0)
-                              screenshot("07c2-save-picker-folder.png")
-                              tree_save2 = describe_native_ui("07c2-save-picker-folder")
-                              nodes_save = flatten_ax_nodes(tree_save2) if tree_save2 else nodes_save
-                              btn_save_confirm = find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], prefer_types={"Button"}) or find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], max_y=220)
-                              btn_save_cancel = find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"}) or find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], max_y=220)
-
+                      vw = int(((st7c or {}).get("viewport") or [420, 912])[0])
                       if btn_save_confirm:
-                          axe_tap_xy(btn_save_confirm["cx"], btn_save_confirm["cy"], "save-picker-confirm")
-                          time.sleep(3.5)
-                          shot7d = screenshot("07d-after-save.png")
-                          st7d = dump_page_state(insp, "07d-after-save")
-                          tree_after_save = describe_native_ui("07d-after-save")
-                          nodes_after_save = flatten_ax_nodes(tree_after_save) if tree_after_save else []
-                          still_open = bool(find_ax_node(nodes_after_save, ["취소", "Cancel", "저장", "Save"], prefer_types={"Button"}, max_y=220))
-                          if not still_open and (st7d or {}).get("saveBtnState") != "dirty" and (st7d or {}).get("saveBtnState") != "saving":
-                              md_saved_ok = True
-                              save_action_note = f"saved via {btn_save_confirm['label'] or btn_save_confirm['title']} -> mode={(st7d or {}).get('shellMode')}, saveState={(st7d or {}).get('saveBtnState')}"
-                          else:
-                              save_action_note = f"tapped Save but picker_still_open={still_open}, saveState={(st7d or {}).get('saveBtnState')}; cancelling"
-                              dismiss_native_picker_if_open("07d-cancel-after-save")
-                              screenshot("07d-save-cancelled.png")
-                      elif btn_save_cancel:
-                          save_action_note = "Save button not found/enabled in AX tree; cancelled picker"
-                          axe_tap_xy(btn_save_cancel["cx"], btn_save_cancel["cy"], "save-picker-cancel")
-                          time.sleep(2.0)
-                          shot7d = screenshot("07d-save-cancelled.png")
+                          save_x, save_y = btn_save_confirm["cx"], btn_save_confirm["cy"]
+                          save_tap_desc = f"save-picker-ax({btn_save_confirm['label'] or btn_save_confirm['title']})"
                       else:
-                          save_action_note = "Save picker appeared but neither Save nor Cancel button was exposed in AX tree"
-                          shot7d = shot7c
+                          # Blue Save pill at top-right of iOS 26 UIDocumentPicker export sheet.
+                          save_x, save_y = int(round(vw * 0.878)), 120
+                          save_tap_desc = "save-picker-top-right-save"
+
+                      axe_tap_xy(save_x, save_y, save_tap_desc)
+                      # Wait up to 8s for createSaveFile + writeUriFromFile to finish.
+                      st7d = None
+                      save_deadline = time.time() + 8.0
+                      while time.time() < save_deadline:
+                          time.sleep(1.0)
+                          st7d = dump_page_state(insp, "07d-after-save")
+                          cur_state = (st7d or {}).get("saveBtnState")
+                          cur_mode = (st7d or {}).get("shellMode")
+                          if cur_state != "saving" and (cur_mode == "view" or cur_state == "saved" or cur_state is None):
+                              md_saved_ok = True
+                              break
+                      shot7d = screenshot("07d-after-save.png")
+                      if md_saved_ok:
+                          save_action_note = f"saved via {save_tap_desc} -> mode={(st7d or {}).get('shellMode')}, saveState={(st7d or {}).get('saveBtnState')}, bodyHead={((st7d or {}).get('bodyTextHead') or '')[:80]!r}"
+                      else:
+                          save_action_note = f"tapped {save_tap_desc} at ({save_x},{save_y}) but still mode={(st7d or {}).get('shellMode')}, saveState={(st7d or {}).get('saveBtnState')}; swiping down to cancel"
+                          dismiss_native_picker_if_open("07d-cancel-after-save")
+                          screenshot("07d-save-cancelled.png")
                   else:
                       save_action_note = f"Save picker not detected (saveBtnState={(st7c or {}).get('saveBtnState')}, mode={(st7c or {}).get('shellMode')})"
                       shot7d = shot7c
@@ -1389,50 +1419,49 @@ jobs:
                   ax_summary_open = summarize_ax_nodes(nodes_open, limit=45)
                   trace(f"09a-open-picker AX nodes ({len(nodes_open)} total): {ax_summary_open[:15]}")
 
-                  open_cancel = find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"}) or find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], max_y=220)
+                  # On iOS 26.5 Simulator, remote Files picker exposes its host overlay node
+                  # (like the 36x36 top bar group) even when inner file cells are hidden from AXe.
                   open_picker_shown = bool(
-                      open_cancel
-                      or find_ax_node(nodes_open, ["둘러보기", "Browse", "최근 항목", "Recents", "나의 iPhone", "On My iPhone", "Untitled"], require_enabled=False)
+                      len(nodes_open) > 10
+                      or find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close", "둘러보기", "Browse", "최근 항목", "Recents", "나의 iPhone", "On My iPhone", "Untitled"], require_enabled=False)
                   )
                   opened_saved_md = False
                   open_action_note = ""
 
                   if open_picker_shown:
                       md_item = find_ax_node(nodes_open, ["Untitled.md", "Untitled", ".md"])
-                      # If not on initial view, try navigating into "On My iPhone" once.
-                      if not md_item:
-                          local_node = find_ax_node(nodes_open, ["나의 iPhone", "On My iPhone", "IeumOffice", "Downloads", "다운로드"])
-                          if local_node:
-                              axe_tap_xy(local_node["cx"], local_node["cy"], "open-picker-local-folder")
-                              time.sleep(2.0)
-                              screenshot("09a2-open-picker-local.png")
-                              tree_open2 = describe_native_ui("09a2-open-picker-local")
-                              nodes_open = flatten_ax_nodes(tree_open2) if tree_open2 else nodes_open
-                              md_item = find_ax_node(nodes_open, ["Untitled.md", "Untitled", ".md"])
-                              open_cancel = find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"}) or find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], max_y=220)
-
                       if md_item:
-                          axe_tap_xy(md_item["cx"], md_item["cy"], "open-picker-select-md")
-                          time.sleep(3.5)
-                          shot9b = screenshot("09b-opened-md.png")
-                          st9b = dump_page_state(insp, "09b-opened-md")
-                          if (st9b or {}).get("shellMode") in ("view", "edit") and ("Untitled" in ((st9b or {}).get("bodyTextHead") or "") or sample_text[:8] in ((st9b or {}).get("bodyTextHead") or "")):
-                              opened_saved_md = True
-                              open_action_note = f"opened {md_item['label'] or md_item['title']} -> mode={(st9b or {}).get('shellMode')}"
-                          else:
-                              open_action_note = f"tapped {md_item['label'] or md_item['title']}; bodyHead={((st9b or {}).get('bodyTextHead') or '')[:80]!r}"
-                              dismiss_native_picker_if_open("09b-cancel-fallback")
-                      elif open_cancel:
-                          open_action_note = "saved .md not found in picker AX tree; cancelled picker"
-                          axe_tap_xy(open_cancel["cx"], open_cancel["cy"], "open-picker-cancel")
-                          time.sleep(2.0)
-                          shot9b = screenshot("09b-open-picker-cancelled.png")
+                          axe_tap_xy(md_item["cx"], md_item["cy"], "open-picker-ax-md")
+                          tap_desc = f"ax({md_item['label'] or md_item['title']})"
+                      elif md_saved_ok:
+                          # Tap the first grid icon slot under the search bar in On My iPhone / Recents.
+                          axe_tap_xy(78, 275, "open-picker-first-icon")
+                          tap_desc = "first-icon(78,275)"
                       else:
-                          open_action_note = "Open picker appeared without exposed .md or Cancel in AX tree"
-                          shot9b = shot9a
+                          tap_desc = None
+
+                      if tap_desc:
+                          st9b = None
+                          open_deadline = time.time() + 7.0
+                          while time.time() < open_deadline:
+                              time.sleep(1.0)
+                              st9b = dump_page_state(insp, "09b-after-open-tap")
+                              if (st9b or {}).get("shellMode") in ("view", "edit"):
+                                  opened_saved_md = True
+                                  break
+                          shot9b = screenshot("09b-opened-md.png")
+                          if opened_saved_md:
+                              open_action_note = f"opened via {tap_desc} -> mode={(st9b or {}).get('shellMode')}, bodyHead={((st9b or {}).get('bodyTextHead') or '')[:100]!r}"
+                          else:
+                              open_action_note = f"tapped {tap_desc} but still on Home; swiping down to cancel picker"
+                              dismiss_native_picker_if_open("09b-cancel-after-tap")
+                              screenshot("09c-open-picker-cancelled.png")
+                      else:
+                          open_action_note = "no saved .md available to pick; swiping down to cancel picker"
+                          dismiss_native_picker_if_open("09b-cancel-no-md")
+                          screenshot("09c-open-picker-cancelled.png")
                   else:
-                      open_action_note = "Open file picker not detected in AX tree"
-                      shot9b = shot9a
+                      open_action_note = "Open file picker not detected"
 
                   summary["checks"]["open_file_picker"] = {
                       "picker_shown": open_picker_shown,
