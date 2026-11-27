@@ -110,11 +110,14 @@ private final class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
  */
 public final class IeumFilePlugin: Plugin {
     private static let treePrefix = "ieum-tree:"
+    private static let maxLiveUrlCache = 32
 
     private var pendingOpenUrls: [[String: Any]] = []
     private let lock = NSLock()
     private var activePickerDelegate: DocumentPickerDelegate?
     private var scrollOffsetObservation: NSKeyValueObservation?
+    private var liveUrlsByToken: [String: URL] = [:]
+    private var liveUrlOrder: [String] = []
 
     /// Pins the root WKWebView scroll view so iOS keyboard focus does not scroll the
     /// fixed app header into the status bar or Dynamic Island; inner CSS containers scroll instead.
@@ -145,6 +148,9 @@ public final class IeumFilePlugin: Plugin {
             relativeTo: nil
         )
         let uriToken = bookmark?.base64EncodedString() ?? url.absoluteString
+        if bookmark != nil {
+            rememberLiveUrl(url, for: uriToken)
+        }
         let entry: [String: Any] = [
             "uri": uriToken,
             "name": url.lastPathComponent,
@@ -448,8 +454,12 @@ public final class IeumFilePlugin: Plugin {
                 )
                 let values = try? url.resourceValues(forKeys: [.isWritableKey])
                 let writable = (values?.isWritable ?? true) && bookmark != nil
+                let token = bookmark?.base64EncodedString() ?? url.absoluteString
+                if bookmark != nil {
+                    self?.rememberLiveUrl(url, for: token)
+                }
                 invoke.resolve([
-                    "uri": bookmark?.base64EncodedString() ?? url.absoluteString,
+                    "uri": token,
                     "name": url.lastPathComponent,
                     "writable": writable,
                     "ephemeral": bookmark == nil
@@ -502,8 +512,10 @@ public final class IeumFilePlugin: Plugin {
                         includingResourceValuesForKeys: nil,
                         relativeTo: nil
                     )
+                    let token = bookmark.base64EncodedString()
+                    self?.rememberLiveUrl(url, for: token)
                     invoke.resolve([
-                        "uri": bookmark.base64EncodedString(),
+                        "uri": token,
                         "name": url.lastPathComponent,
                         "writable": true,
                         "ephemeral": false
@@ -544,8 +556,10 @@ public final class IeumFilePlugin: Plugin {
                         includingResourceValuesForKeys: nil,
                         relativeTo: nil
                     )
+                    let token = bookmark.base64EncodedString()
+                    self?.rememberLiveUrl(url, for: token)
                     invoke.resolve([
-                        "uri": bookmark.base64EncodedString(),
+                        "uri": token,
                         "name": url.lastPathComponent
                     ])
                 } catch {
@@ -873,15 +887,54 @@ public final class IeumFilePlugin: Plugin {
         return treeToken(bookmark: location.treeBookmark ?? "", relativePath: parts.joined(separator: "/"))
     }
 
+    private func rememberLiveUrl(_ url: URL, for token: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        if liveUrlsByToken[token] == nil {
+            liveUrlOrder.append(token)
+            if liveUrlOrder.count > Self.maxLiveUrlCache {
+                let oldest = liveUrlOrder.removeFirst()
+                liveUrlsByToken.removeValue(forKey: oldest)
+            }
+        }
+        liveUrlsByToken[token] = url
+    }
+
+    private func cachedLiveUrl(for token: String) -> URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        return liveUrlsByToken[token]
+    }
+
+    /// Resolves a base64 security-scoped bookmark, falling back to the live picker URL when
+    /// iOS FileProvider has not finished indexing a freshly exported item yet.
     private func resolveBookmark(_ base64: String) -> URL? {
         guard let data = Data(base64Encoded: base64) else { return nil }
-        var stale = false
-        return try? URL(
-            resolvingBookmarkData: data,
-            options: [],
-            relativeTo: nil,
-            bookmarkDataIsStale: &stale
-        )
+        var lastError: NSError?
+        for attempt in 0..<3 {
+            var stale = false
+            do {
+                let url = try URL(
+                    resolvingBookmarkData: data,
+                    options: [],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &stale
+                )
+                return url
+            } catch {
+                lastError = error as NSError
+                if attempt == 0, let cached = cachedLiveUrl(for: base64) {
+                    return cached
+                }
+                if attempt < 2 {
+                    Thread.sleep(forTimeInterval: 0.15)
+                }
+            }
+        }
+        if let ns = lastError {
+            NSLog("[IeumFilePlugin] resolveBookmark failed domain=%@ code=%ld", ns.domain, ns.code)
+        }
+        return nil
     }
 
     /// Resolves a token and starts its security scope; callers must call `stop()`.
@@ -1009,18 +1062,10 @@ public final class IeumFilePlugin: Plugin {
     }
 
     private func resolveUrl(from token: String) -> URL? {
-        if let bookmarkData = Data(base64Encoded: token) {
-            var stale = false
-            if let url = try? URL(
-                resolvingBookmarkData: bookmarkData,
-                options: [],
-                relativeTo: nil,
-                bookmarkDataIsStale: &stale
-            ) {
-                return url
-            }
+        if let direct = URL(string: token), direct.isFileURL {
+            return direct
         }
-        return URL(string: token)
+        return resolveBookmark(token)
     }
 }
 
