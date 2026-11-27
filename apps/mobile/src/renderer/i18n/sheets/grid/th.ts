@@ -35,4 +35,6 @@ export const th = {
   sheetsSheetNameInvalid:
     'ชื่อแผ่นงานยาวได้ไม่เกิน 31 อักขระ ห้ามมี : \\ / ? * [ ] และห้ามขึ้นต้นหรือลงท้ายด้วยเครื่องหมายอะพอสทรอฟี',
   sheetsSheetNameTaken: 'มีแผ่นงานชื่อนี้อยู่แล้ว',
+  sheetsNameBox: 'กล่องชื่อ',
+  sheetsNameBoxDropdown: 'รายการกล่องชื่อ',
 } as const satisfies Record<keyof typeof zh, string>

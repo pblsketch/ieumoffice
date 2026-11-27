@@ -35,4 +35,6 @@ export const ms = {
   sheetsSheetNameInvalid:
     'Nama helaian boleh mempunyai sehingga 31 aksara, tidak boleh mengandungi : \\ / ? * [ ] dan tidak boleh bermula atau berakhir dengan tanda koma atas.',
   sheetsSheetNameTaken: 'Helaian dengan nama ini sudah wujud.',
+  sheetsNameBox: 'Kotak nama',
+  sheetsNameBoxDropdown: 'Senarai kotak nama',
 } as const satisfies Record<keyof typeof zh, string>

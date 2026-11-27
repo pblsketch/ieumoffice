@@ -35,4 +35,6 @@ export const ja = {
   sheetsSheetNameInvalid:
     'シート名は 31 文字以内で、: \\ / ? * [ ] は使えず、先頭と末尾にアポストロフィは使えません。',
   sheetsSheetNameTaken: '同じ名前のシートがすでにあります。',
+  sheetsNameBox: '名前ボックス',
+  sheetsNameBoxDropdown: '名前ボックス一覧',
 } as const satisfies Record<keyof typeof zh, string>

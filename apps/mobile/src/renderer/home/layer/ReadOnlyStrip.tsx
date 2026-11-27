@@ -1,12 +1,14 @@
 // The read-only notice over the editor (track T6, spec 3.9): what kind of document this is, and
 // [Edit a copy]. The editor screen is not ours, so the strip is fixed just below its header (and
 // below its own notice banner when that shows), re-measured as the page changes.
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { IconClose } from '../../components/MobileIcons'
 import { useMobileLocale } from '../../i18n'
 import type { SessionOrigin } from '../homeRuntime'
 import { useDomTick } from './useDomTick'
 import './layer.css'
+
+const STRIP_HEIGHT_VAR = '--m-readonly-strip-h'
 
 /** Bottom edge of the editor header and of its notice banner, or null without a header. */
 function measureTop(): number | null {
@@ -30,10 +32,34 @@ export function ReadOnlyStrip({ origin, busy, onEditCopy, onClose }: ReadOnlyStr
   const { t } = useMobileLocale()
   const tick = useDomTick(true)
   const [top, setTop] = useState<number | null>(null)
+  const stripRef = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
     setTop(measureTop())
   }, [tick])
+
+  // Reserve the strip's own height at the top of the editor stage so the first heading is never covered.
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    const el = stripRef.current
+    if (top === null || !el) {
+      root.style.removeProperty(STRIP_HEIGHT_VAR)
+      return
+    }
+    const sync = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height)
+      if (h > 0) root.style.setProperty(STRIP_HEIGHT_VAR, `${h}px`)
+      else root.style.removeProperty(STRIP_HEIGHT_VAR)
+    }
+    sync()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null
+    observer?.observe(el)
+    return () => {
+      observer?.disconnect()
+      root.style.removeProperty(STRIP_HEIGHT_VAR)
+    }
+  }, [top, origin])
 
   if (top === null) return null
   const label =
@@ -44,6 +70,7 @@ export function ReadOnlyStrip({ origin, busy, onEditCopy, onClose }: ReadOnlyStr
         : t('homeRunStripReadOnly')
   return (
     <div
+      ref={stripRef}
       className="home-run-strip"
       role="status"
       data-testid="home-run-readonly-strip"

@@ -35,4 +35,6 @@ export const nl = {
   sheetsSheetNameInvalid:
     'Een werkbladnaam heeft hoogstens 31 tekens, mag geen : \\ / ? * [ ] bevatten en mag niet met een apostrof beginnen of eindigen.',
   sheetsSheetNameTaken: 'Er bestaat al een werkblad met deze naam.',
+  sheetsNameBox: 'Naamvak',
+  sheetsNameBoxDropdown: 'Naamvaklijst',
 } as const satisfies Record<keyof typeof zh, string>

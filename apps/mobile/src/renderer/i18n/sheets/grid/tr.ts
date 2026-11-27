@@ -35,4 +35,6 @@ export const tr = {
   sheetsSheetNameInvalid:
     'Sayfa adı en fazla 31 karakter olabilir, : \\ / ? * [ ] içeremez ve kesme işaretiyle başlayıp bitemez.',
   sheetsSheetNameTaken: 'Bu adda bir sayfa zaten var.',
+  sheetsNameBox: 'Ad kutusu',
+  sheetsNameBoxDropdown: 'Ad kutusu listesi',
 } as const satisfies Record<keyof typeof zh, string>

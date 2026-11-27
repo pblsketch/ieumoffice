@@ -152,8 +152,8 @@
   align-items: center;
   gap: var(--m-space-1);
   flex-shrink: 0;
-  min-height: var(--m-control-s);
-  margin: var(--m-space-2) 0;
+  min-height: var(--m-hit);
+  margin: 0;
   padding: 0 var(--m-space-3);
   border: 1px solid var(--border);
   border-radius: var(--m-radius-full);

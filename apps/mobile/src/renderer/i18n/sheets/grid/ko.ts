@@ -35,4 +35,6 @@ export const ko = {
   sheetsSheetNameInvalid:
     '시트 이름은 31자 이하이고 : \\ / ? * [ ] 를 쓸 수 없으며, 작은따옴표로 시작하거나 끝날 수 없습니다.',
   sheetsSheetNameTaken: '같은 이름의 시트가 이미 있습니다.',
+  sheetsNameBox: '이름 상자',
+  sheetsNameBoxDropdown: '이름 상자 목록',
 } as const satisfies Record<keyof typeof zh, string>

@@ -479,4 +479,65 @@ describe('first-use tips', () => {
     root.appendChild(button)
     expect(tipAnchor('flowView', context, root)).toBe(button)
   })
+
+  it('places header-anchored tips below the tablet formatting toolbar', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true })
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true })
+    const { div } = await renderApp({
+      prefs: { tipsSeen: ['editButton'] },
+      pendingIntent: MD_DOC,
+    })
+    await click(q(div, 'editor-mode-toggle'))
+    const saveBtn = q(div, 'editor-save-btn')!
+    const toolbar = q(div, 'tablet-toolbar')!
+    expect(toolbar).not.toBeNull()
+    vi.spyOn(saveBtn, 'getBoundingClientRect').mockReturnValue({
+      top: 10,
+      bottom: 46,
+      left: 80,
+      right: 160,
+      width: 80,
+      height: 36,
+      x: 80,
+      y: 10,
+      toJSON: () => ({}),
+    })
+    vi.spyOn(toolbar, 'getBoundingClientRect').mockReturnValue({
+      top: 56,
+      bottom: 112,
+      left: 0,
+      right: 1024,
+      width: 1024,
+      height: 56,
+      x: 0,
+      y: 56,
+      toJSON: () => ({}),
+    })
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    await wait()
+    const tip = q(document.body, 'home-run-tip')!
+    expect(Number.parseFloat(tip.style.top)).toBeGreaterThanOrEqual(120)
+  })
+
+  it('reserves and clears --m-readonly-strip-h when ReadOnlyStrip mounts and closes', async () => {
+    const { div } = await renderApp({ pendingIntent: SHARED_DOC })
+    const strip = q(div, 'home-run-readonly-strip')!
+    expect(strip).not.toBeNull()
+    vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue({
+      top: 56,
+      bottom: 108,
+      left: 0,
+      right: 390,
+      width: 390,
+      height: 52,
+      x: 0,
+      y: 56,
+      toJSON: () => ({}),
+    })
+    // Trigger re-measurement via close/remount or resize observer; closing must clear the var.
+    await click(q(div, 'home-run-strip-close'))
+    expect(document.documentElement.style.getPropertyValue('--m-readonly-strip-h')).toBe('')
+  })
 })

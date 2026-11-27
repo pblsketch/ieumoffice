@@ -35,4 +35,6 @@ export const en = {
   sheetsSheetNameInvalid:
     'A sheet name can have up to 31 characters, cannot contain : \\ / ? * [ ], and cannot start or end with an apostrophe.',
   sheetsSheetNameTaken: 'A sheet with this name already exists.',
+  sheetsNameBox: 'Name box',
+  sheetsNameBoxDropdown: 'Name box list',
 } as const satisfies Record<keyof typeof zh, string>

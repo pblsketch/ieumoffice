@@ -35,7 +35,24 @@ function place(anchor: HTMLElement, bubble: HTMLElement | null): Placement {
   const center = rect.left + rect.width / 2
   const maxLeft = Math.max(EDGE, width - bubbleWidth - EDGE)
   const left = Math.min(Math.max(center - bubbleWidth / 2, EDGE), maxLeft)
-  return { top: below ? rect.bottom + GAP : rect.top - GAP, left, below }
+  let topBottom = rect.bottom
+  // Keep header-anchored tips below any tablet formatting toolbar or top notice strip.
+  if (below && typeof document !== 'undefined' && anchor.closest('[data-testid="editor-header"]')) {
+    for (const selector of [
+      '[data-testid="tablet-toolbar"]',
+      '[data-testid="editor-notice-banner"]',
+      '[data-testid="home-run-readonly-strip"]',
+    ]) {
+      const bar = document.querySelector(selector)
+      if (bar instanceof HTMLElement) {
+        const barRect = bar.getBoundingClientRect()
+        if (barRect.height > 0 && barRect.bottom > topBottom) {
+          topBottom = barRect.bottom
+        }
+      }
+    }
+  }
+  return { top: below ? topBottom + GAP : rect.top - GAP, left, below }
 }
 
 export interface TipLayerProps {

@@ -35,4 +35,6 @@ export const hi = {
   sheetsSheetNameInvalid:
     'शीट के नाम में अधिकतम 31 वर्ण हो सकते हैं, उसमें : \\ / ? * [ ] नहीं हो सकते, और वह एपॉस्ट्रॉफ़ी से शुरू या खत्म नहीं हो सकता।',
   sheetsSheetNameTaken: 'इस नाम की शीट पहले से है।',
+  sheetsNameBox: 'नाम बॉक्स',
+  sheetsNameBoxDropdown: 'नाम बॉक्स सूची',
 } as const satisfies Record<keyof typeof zh, string>

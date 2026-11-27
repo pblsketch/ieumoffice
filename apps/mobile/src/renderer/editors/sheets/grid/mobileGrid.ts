@@ -18,6 +18,36 @@ import { installGestureLayer } from './gestureLayer'
 import { installViewModeGuard } from './viewModeGuard'
 import { holdKeyboardDuringLoad, installKeyboardOnlyWhileEditing } from './keyboardHold'
 import type { HeaderAxis } from './headerMenu'
+import { translateMobile } from '../../../i18n'
+
+/**
+ * Adds localized accessible names to Univer's Name Box input and dropdown toggle
+ * (`[data-u-comp="defined-name"]`), which ship without aria-labels in Univer 0.25.1.
+ */
+function installNameBoxA11y(container: HTMLElement, lang: Lang): () => void {
+  const boxLabel = translateMobile(lang, 'sheetsNameBox')
+  const dropdownLabel = translateMobile(lang, 'sheetsNameBoxDropdown')
+  const apply = () => {
+    const definedName = container.querySelector('[data-u-comp="defined-name"]')
+    if (!definedName) return
+    const input = definedName.querySelector('input')
+    if (input && !input.getAttribute('aria-label')) {
+      input.setAttribute('aria-label', boxLabel)
+    }
+    const toggle = definedName.querySelector('a')
+    if (toggle) {
+      if (!toggle.getAttribute('role')) toggle.setAttribute('role', 'button')
+      if (!toggle.getAttribute('aria-label')) toggle.setAttribute('aria-label', dropdownLabel)
+      if (!toggle.getAttribute('title')) toggle.setAttribute('title', dropdownLabel)
+      if (!toggle.hasAttribute('tabindex')) toggle.setAttribute('tabindex', '0')
+    }
+  }
+  apply()
+  if (typeof MutationObserver === 'undefined') return () => {}
+  const observer = new MutationObserver(apply)
+  observer.observe(container, { childList: true, subtree: true })
+  return () => observer.disconnect()
+}
 
 export interface MobileGridOptions {
   readonly lang: Lang
@@ -75,6 +105,7 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
   // (loadWorkbookSkeleton disposes it when the file arrives).
   runtime.univerAPI.createWorkbook({})
   const formulaBar = installDesktopFormulaBar(runtime)
+  const disposeNameBoxA11y = installNameBoxA11y(element, options.lang)
   const lazyWorkbookRef: { current: LazyWorkbookState | null } = { current: null }
   const disposeCompat = installExcelCompat(runtime, lazyWorkbookRef)
   void applyUniverLocale(runtime, options.lang)
@@ -159,6 +190,7 @@ export function createMobileGrid(options: MobileGridOptions): MobileGrid {
       editEnded.dispose()
       disposePinch()
       disposeJournal()
+      disposeNameBoxA11y()
       formulaBar.dispose()
       disposeStreaming()
       disposeCompat()

@@ -35,4 +35,6 @@ export const it = {
   sheetsSheetNameInvalid:
     'Il nome di un foglio può avere al massimo 31 caratteri, non può contenere : \\ / ? * [ ] e non può iniziare o finire con un apostrofo.',
   sheetsSheetNameTaken: 'Esiste già un foglio con questo nome.',
+  sheetsNameBox: 'Casella nome',
+  sheetsNameBoxDropdown: 'Elenco casella nome',
 } as const satisfies Record<keyof typeof zh, string>

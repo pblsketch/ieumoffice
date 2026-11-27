@@ -34,4 +34,6 @@ export const zh = {
   sheetsSheetNameInvalid:
     '工作表名称最多 31 个字符，不能包含 : \\ / ? * [ ]，也不能以单引号开头或结尾。',
   sheetsSheetNameTaken: '已有同名的工作表。',
+  sheetsNameBox: '名称框',
+  sheetsNameBoxDropdown: '名称框列表',
 } as const

@@ -35,4 +35,6 @@ export const vi = {
   sheetsSheetNameInvalid:
     'Tên trang tính dài tối đa 31 ký tự, không được chứa : \\ / ? * [ ] và không được bắt đầu hoặc kết thúc bằng dấu nháy đơn.',
   sheetsSheetNameTaken: 'Đã có trang tính trùng tên.',
+  sheetsNameBox: 'Hộp tên',
+  sheetsNameBoxDropdown: 'Danh sách hộp tên',
 } as const satisfies Record<keyof typeof zh, string>
