@@ -33,6 +33,8 @@ import {
 } from '@genoffice/electron-utils/drop-open'
 import { AI_CHANNELS, HWP_CHANNELS } from '../shared/ipc'
 import type {
+  BibEntry,
+  BibKeyRenameInfo,
   HwpApi,
   OutlineStyleMap,
   PreviewAction,
@@ -287,6 +289,29 @@ const api: HwpApi = {
     const listener = (_e: Electron.IpcRendererEvent, map: OutlineStyleMap) => handler(map)
     ipcRenderer.on(HWP_CHANNELS.outlineStyleMapChanged, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.outlineStyleMapChanged, listener)
+  },
+  bibList: () => ipcRenderer.invoke(HWP_CHANNELS.bibList),
+  bibAdd: (input) => ipcRenderer.invoke(HWP_CHANNELS.bibAdd, input),
+  bibUpdate: (id, patch) => ipcRenderer.invoke(HWP_CHANNELS.bibUpdate, id, patch),
+  bibDelete: (id) => ipcRenderer.invoke(HWP_CHANNELS.bibDelete, id),
+  bibVerify: (id) => ipcRenderer.invoke(HWP_CHANNELS.bibVerify, id),
+  bibAddAiCandidates: (candidates) =>
+    ipcRenderer.invoke(HWP_CHANNELS.bibAddAiCandidates, candidates),
+  bibPickImportFile: () => ipcRenderer.invoke(HWP_CHANNELS.bibPickImportFile),
+  bibPreviewImport: (candidates) => ipcRenderer.invoke(HWP_CHANNELS.bibPreviewImport, candidates),
+  bibCommitImport: (entries, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.bibCommitImport, entries, options),
+  bibExportFile: (format, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.bibExportFile, format, options),
+  onBibChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, entries: BibEntry[]) => handler(entries)
+    ipcRenderer.on(HWP_CHANNELS.bibChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.bibChanged, listener)
+  },
+  onBibKeyRenamed: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, info: BibKeyRenameInfo) => handler(info)
+    ipcRenderer.on(HWP_CHANNELS.bibKeyRenamed, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.bibKeyRenamed, listener)
   },
   aiToolCapabilities: () => ipcRenderer.invoke(AI_CHANNELS.toolCapabilities),
   onAiStream: (handler) => {

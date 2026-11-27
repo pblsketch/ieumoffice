@@ -114,8 +114,8 @@ function makeRichDocument(): HwpDocument {
 }
 
 describe('staleness checker registry', () => {
-  it('pre-registers toc and index checkers and keeps check() strictly read-only', () => {
-    expect(defaultStalenessRegistry.listCheckers()).toEqual(['toc', 'index'])
+  it('pre-registers toc, index, and bibliography checkers and keeps check() strictly read-only', () => {
+    expect(defaultStalenessRegistry.listCheckers()).toEqual(['toc', 'index', 'bibliography'])
 
     const doc = makeRichDocument()
     try {

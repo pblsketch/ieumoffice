@@ -1,5 +1,12 @@
 export { WorkpaneSide, WorkpaneToggle } from './WorkpaneSide'
 export type { WorkpaneSideProps, WorkpaneSlotContext } from './WorkpaneSide'
+export { BibliographyTab, listEntryTags } from './BibliographyTab'
+export type {
+  BibliographyCommandRequest,
+  BibliographyLibraryApi,
+  BibliographyTabBridge,
+  BibliographyTabProps,
+} from './BibliographyTab'
 export {
   FindTab,
   FIND_FALLBACK_VIEWPORT_HEIGHT,

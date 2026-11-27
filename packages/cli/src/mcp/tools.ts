@@ -414,6 +414,7 @@ export const TOOLS: ToolSpec[] = [
         required: true,
       },
       'dry-run',
+      'bibliography',
       'best-effort',
       'stop-on-error',
       'out',
@@ -439,6 +440,7 @@ export const TOOLS: ToolSpec[] = [
         description: 'JSON array of ops in the hwp_apply shape, every entry with "op"',
         required: true,
       },
+      'bibliography',
       { key: 'out', description: 'output .hwp or .hwpx path (required)', required: true },
       'force',
     ],
@@ -894,7 +896,7 @@ export function stripVerbPrefix(description: string): string {
 export type ZodShape = Record<string, z.ZodTypeAny>
 
 /** Parameters that name a document on disk; a remote client passes URLs here instead. */
-export const PATH_KEYS = new Set(['file', 'from', 'outline'])
+export const PATH_KEYS = new Set(['file', 'from', 'outline', 'bibliography'])
 
 const REMOTE_PATH_NOTE = '; or an http(s) URL, such as the one POST /files returned for an upload'
 const REMOTE_OUT_NOTE = '; omit it and the file comes back in the result as a download URL'

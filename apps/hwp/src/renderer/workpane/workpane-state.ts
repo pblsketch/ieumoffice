@@ -7,8 +7,8 @@
  */
 import type { WorkpaneStringKey } from '../i18n/workpane'
 
-/** Built-in workpane tabs shipped in Wave 1; additional tabs (e.g. bibliography) extend WorkpaneTabId. */
-export type BuiltinWorkpaneTabId = 'outline' | 'find'
+/** Built-in workpane tabs shipped in the HWP left workpane. */
+export type BuiltinWorkpaneTabId = 'outline' | 'find' | 'bibliography'
 
 /** Extensible tab identifier so future bundles can register new tabs without changing the shell. */
 export type WorkpaneTabId = BuiltinWorkpaneTabId | (string & {})
@@ -22,10 +22,11 @@ export interface WorkpaneTabDef {
   readonly label?: string
 }
 
-/** Default tab registry in display order: [Outline | Find]. */
+/** Default tab registry in display order: [Outline | Find | References]. */
 export const DEFAULT_WORKPANE_TABS: readonly WorkpaneTabDef[] = Object.freeze([
   { id: 'outline', labelKey: 'workpaneTabOutline' },
   { id: 'find', labelKey: 'workpaneTabFind' },
+  { id: 'bibliography', labelKey: 'workpaneTabBibliography' },
 ])
 
 export const DEFAULT_WORKPANE_TAB: BuiltinWorkpaneTabId = 'outline'

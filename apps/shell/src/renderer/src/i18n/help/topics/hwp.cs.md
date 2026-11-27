@@ -8,9 +8,9 @@ GenOffice otevírá a upravuje dokumenty Hangul `.hwp` a `.hwpx` na kartě a pod
 - Ukládá zpět ve formátu otevřeného souboru (`.hwp` zůstává `.hwp`, `.hwpx` zůstává `.hwpx`), uchovává zálohu `.bak` před prvním přepsáním, ověřuje zpětné načtení HWP a udržuje automatické ukládání i kopie pro obnovení po pádu.
 - Tisk (Ctrl+P) podporuje živý náhled, export do PDF a možnosti vícestránkového rozvržení tisku.
 
-## Levý pracovní panel: Osnova a Najít
+## Levý pracovní panel: Osnova, Najít a Literatura
 
-- Otevřete levý pracovní panel tlačítkem v horní liště, přes **Zobrazit > Pracovní panel** (Osnova / Najít), nebo stiskněte **Ctrl+F** pro přímý přechod na kartu Najít. Klasické hledání (**Ctrl+Q,F**) i Najít a nahradit (**Ctrl+H**) zůstávají dostupné.
+- Otevřete levý pracovní panel tlačítkem v horní liště, přes **Zobrazit > Pracovní panel** (Osnova / Najít / Literatura), nebo stiskněte **Ctrl+F** pro přímý přechod na kartu Najít. Klasické hledání (**Ctrl+Q,F**) i Najít a nahradit (**Ctrl+H**) zůstávají dostupné.
 - **Karta Osnova**: zobrazuje nativní nadpisy osnovy Hangul i nadpisy namapované ze stylů (výchozí `제목 N` / `Heading N`, lze upravit pro dokument nebo celou aplikaci v panelu nastavení osnovy). Filtrujte podle úrovně (`1`, `2`, `3`, ... Vše), sbalujte větve, kliknutím přecházejte na místo, zvyšujte či snižujte úroveň nadpisů (ve výchozím stavu včetně podnadpisů, nebo podržte **Shift** pro jediný nadpis) a přetahováním nadpisů měňte pořadí celých sekcí v jediném kroku zpět.
 - **Karta Najít**: hledá v hlavním textu, tabulkách (včetně vnořených), textových polích, poznámkách pod čarou a vysvětlivkách (mimo záhlaví a zápatí) s filtry rozlišení velkých a malých písmen, celých slov, regulárních výrazů, stylu odstavce a formátování znaků. Kliknutím na výsledek na něj skočíte a vyberete jej, případně nahradíte jednu, vybrané nebo všechny shody v jediném kroku zpět (vložené objekty a značky citací se přeskočí a zobrazí se jejich počet).
 - Pracovní panel si pamatuje stav otevření, aktivní kartu a šířku, v úzkých oknech se sbalí do lišty ikon a v režimu prezentace či náhledu tisku se skryje. Všechny funkce pracovního panelu pracují bez AI.
@@ -38,3 +38,10 @@ GenOffice otevírá a upravuje dokumenty Hangul `.hwp` a `.hwpx` na kartě a pod
 
 - Při ručním uložení, tisku, exportu do PDF nebo uložení kopie k odevzdání editor zkontroluje, zda nejsou obsahy či rejstřík zastaralé, a nabídne hromadnou aktualizaci v jednom kroku zpět. Kontrola se nikdy nespouští při automatickém ukládání a nikdy neblokuje uložení.
 - Pomocí **Soubor > Uložit jako kopii k odevzdání** uložíte samostatnou čistou kopii bez interních editačních značek (značek rejstříku, značek bloku rejstříku a uložených nastavení), zatímco obsahy, kotvy nadpisů i odkazy v obsahu zůstanou zachovány. Původní pracovní soubor zůstane nedotčený, takže jej můžete dále aktualizovat.
+
+## Literatura a citace
+
+- Otevřete kartu **Literatura** v levém pracovním panelu (nebo **Nástroje > Literatura**) a spravujte jedinou lokální knihovnu pramenů na svém počítači s vyhledáváním, štítky, přidáváním/úpravami/mazáním, importem a exportem (`BibTeX`, `RIS`, `CSL JSON`) i načítáním řádků ze stávajícího seznamu literatury v dokumentu s potvrzením v náhledu.
+- Podporuje čtyři citační styly (**APA 7**, **Chicago**, **MLA 9** a **IEEE**; korejské prameny dodržují korejský akademický formát ve všech čtyřech stylech). Vkládejte citace v závorce, v textu nebo vícenásobné citace s čísly stránek a vytvářejte či obnovujte seznam literatury s předsazením; přepnutí stylu aktualizuje označené citace i seznam v jednom kroku zpět, přičemž ručně upravené citace zůstávají zachovány.
+- Vestavěná 6bodová kontrola (chybí v seznamu literatury, necitované položky, pořadí řazení, chybějící přípony a/b, ruční úpravy citací a neověřené položky) umožňuje kliknutím přejít přímo na nalezené místo a před ručním uložením, tiskem či exportem upozorní na zastaralý seznam literatury nebo číslování IEEE.
+- Volitelné vyhledávání pramenů pomocí AI (pokud jsou zapnuté internetové nástroje) vždy vkládá návrhy jako **Neověřeno** se zdrojovou adresou URL v poznámkách; nelze je citovat ani zahrnout do seznamu literatury, dokud je sami nezkontrolujete a neoznačíte jako **Ověřeno**.

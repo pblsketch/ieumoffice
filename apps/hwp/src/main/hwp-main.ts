@@ -30,6 +30,7 @@ import { getUiLang } from '@genoffice/i18n'
 import { registerHwpAttachmentIpc } from './attachments-ipc'
 import { registerHwpImageIpc } from './ai-image'
 import { atomicWriteFile, copyFileReplacing } from './atomic-write'
+import { registerHwpBibliographyIpc } from './bibliography-ipc'
 import { readHwpDefaultFormat } from './default-format'
 import {
   normalizeOutlineStyleMap,
@@ -651,6 +652,20 @@ function registerHwpIpc(): void {
   // the AI panel's pictures: search result or generated file → bytes for the plugin
   registerHwpImageIpc({
     filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) ?? null,
+  })
+  registerHwpBibliographyIpc({
+    app,
+    hasView: (wcId) => hwpViews.has(wcId),
+    getWindow: (sender) => BrowserWindow.fromWebContents(sender),
+    broadcast: (channel, payload) => {
+      if (typeof webContents?.fromId !== 'function') return
+      for (const id of hwpViews) {
+        const wc = webContents.fromId(id)
+        if (wc && !wc.isDestroyed()) {
+          wc.send(channel, payload)
+        }
+      }
+    },
   })
   installHwpRecovery(recoveryHost)
   registerHwpRecoveryIpc()

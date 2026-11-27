@@ -8,9 +8,12 @@ export const he = {
   workpaneResize: 'שנה את רוחב חלונית העבודה',
   workpaneTabOutline: 'מתאר',
   workpaneTabFind: 'חיפוש',
+  workpaneTabBibliography: 'ביבליוגרפיה',
   workpaneMenuOutline: 'חלונית עבודה › מתאר',
   workpaneMenuFind: 'חלונית עבודה › חיפוש',
+  workpaneMenuBibliography: 'חלונית עבודה › ביבליוגרפיה',
   workpaneOutlineEmpty: 'כותרות המסמך יופיעו כאן.',
   workpaneFindEmpty: 'חפש ודלג אל התאמות במסמך זה.',
+  workpaneBibliographyEmpty: 'נהל מקורות והוסף ציטוטים כאן.',
   workpaneRailHint: 'חלון צר; לחץ על סמל לשונית להצגה.',
 } satisfies Record<keyof typeof zh, string>

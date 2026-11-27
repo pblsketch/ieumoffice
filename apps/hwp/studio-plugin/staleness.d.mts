@@ -1,8 +1,9 @@
 import type { FailedMarkRemoval, MarkDoc, StripMarksResult } from './doc-marks.d.mts'
 import type { CheckTocStalenessOptions, TocDoc } from './toc.d.mts'
 import type { IndexDoc } from './index-marks.d.mts'
+import type { CheckBibliographyStalenessOptions, CitationDoc } from './citations.d.mts'
 
-export type StalenessDoc = TocDoc & IndexDoc
+export type StalenessDoc = TocDoc & IndexDoc & CitationDoc
 
 export interface StalenessItem {
   id: string
@@ -15,7 +16,8 @@ export interface StalenessItem {
   modifiedLines?: unknown[]
 }
 
-export interface StalenessCheckOptions extends CheckTocStalenessOptions {
+export interface StalenessCheckOptions
+  extends CheckTocStalenessOptions, CheckBibliographyStalenessOptions {
   ids?: readonly string[]
 }
 
@@ -127,6 +129,7 @@ export type SubmissionCopyResult =
 
 export declare const tocStalenessChecker: StalenessChecker<TocDoc>
 export declare const indexStalenessChecker: StalenessChecker<IndexDoc>
+export declare const bibliographyStalenessChecker: StalenessChecker<CitationDoc>
 export declare const defaultStalenessRegistry: StalenessRegistry
 
 export declare function createStalenessRegistry(): StalenessRegistry

@@ -8,9 +8,9 @@ GenOffice opens and edits `.hwp` and `.hwpx` Hangul documents in a tab, with key
 - Saves back in the opened file's format (`.hwp` stays `.hwp`, `.hwpx` stays `.hwpx`), keeps a `.bak` backup before the first overwrite, checks HWP read-back, and keeps AutoSave and crash-recovery copies.
 - Print (Ctrl+P) supports live preview, PDF export, and multi-page print layout options.
 
-## Left workpane: Outline and Find
+## Left workpane: Outline, Find and References
 
-- Open the left workpane from the top-bar button, **View > Workpane** (Outline / Find), or press **Ctrl+F** to jump straight to the Find tab. Traditional Find (**Ctrl+Q,F**) and Find & Replace (**Ctrl+H**) stay available.
+- Open the left workpane from the top-bar button, **View > Workpane** (Outline / Find / References), or press **Ctrl+F** to jump straight to the Find tab. Traditional Find (**Ctrl+Q,F**) and Find & Replace (**Ctrl+H**) stay available.
 - **Outline tab**: lists native Hangul outline headings and style-mapped headings (default `제목 N` / `Heading N`, customizable per document or app-wide in the Outline settings drawer). Filter by level (`1`, `2`, `3`, ... All), fold branches, click to jump, promote or demote headings (with subheadings by default, or hold **Shift** for a single heading), and drag headings to reorder whole sections in one undo step.
 - **Find tab**: searches across body text, tables (including nested tables), text boxes, footnotes, and endnotes (excluding headers and footers) with case sensitivity, whole word, regular expressions, paragraph style, and character formatting filters. Click a result to jump and select it, or replace one, selected, or all matches in a single undo step (skipping inline objects and citation marks with a count).
 - The workpane remembers its open state, active tab, and width, folds into an icon rail on narrow windows, and hides in presentation mode and print preview. All workpane features work without AI.
@@ -38,3 +38,10 @@ GenOffice opens and edits `.hwp` and `.hwpx` Hangul documents in a tab, with key
 
 - When you manually Save, Print, Export as PDF, or Save as Submission Copy, the editor checks whether any tables of contents or the index are out of date and offers to refresh all of them in a single undo step. This check never runs during AutoSave and never blocks saving.
 - Use **File > Save as Submission Copy** to save a separate clean copy stripped of internal editing marks (index marks, index block marks, and saved settings) while keeping tables of contents, heading anchors, and TOC links intact. Your original working file remains untouched so you can keep refreshing it later.
+
+## References and citations
+
+- Open the **References** tab in the left workpane (or **Tools > References**) to manage a single local reference library on your PC with search, tags, add/edit/delete, import and export (`BibTeX`, `RIS`, `CSL JSON`), and line-by-line import from an existing document reference list with a preview step before adding.
+- Supports four citation styles (**APA 7**, **Chicago**, **MLA 9**, and **IEEE**; Korean references follow Korean academic formatting across all four styles). Insert parenthetical, narrative, or multi-entry citations with page locators and build or refresh a hanging-indent bibliography; switching styles updates marked citations and the bibliography in a single undo step while keeping manually edited citations untouched.
+- Use the built-in 6-point audit tab (missing from bibliography, uncited entries, sort order, missing a/b suffixes, manual citation edits, and unverified items) to jump straight to each issue, alongside outdated bibliography and IEEE numbering notices before manual save, print, or export.
+- Optional AI reference search (when internet tools are enabled) always adds candidates as **Unverified** with the source URL stored in notes; unverified items cannot be cited or included in a bibliography until you review and mark them **Verified** yourself.

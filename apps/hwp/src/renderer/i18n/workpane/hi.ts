@@ -8,9 +8,12 @@ export const hi = {
   workpaneResize: 'कार्य फलक की चौड़ाई बदलें',
   workpaneTabOutline: 'रूपरेखा',
   workpaneTabFind: 'खोजें',
+  workpaneTabBibliography: 'संदर्भ सूची',
   workpaneMenuOutline: 'कार्य फलक › रूपरेखा',
   workpaneMenuFind: 'कार्य फलक › खोजें',
+  workpaneMenuBibliography: 'कार्य फलक › संदर्भ सूची',
   workpaneOutlineEmpty: 'दस्तावेज़ के शीर्षक यहाँ दिखाई देंगे।',
   workpaneFindEmpty: 'इस दस्तावेज़ में खोजें और परिणामों पर जाएँ।',
+  workpaneBibliographyEmpty: 'यहाँ संदर्भ प्रबंधित करें और उद्धरण जोड़ें।',
   workpaneRailHint: 'विंडो संकरी है; देखने के लिए टैब आइकन पर क्लिक करें।',
 } satisfies Record<keyof typeof zh, string>

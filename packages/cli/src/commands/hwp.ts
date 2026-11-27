@@ -16,7 +16,7 @@ export const hwpCommand: CommandDef = {
   summary:
     'Read or edit a Hangul (HWP / HWPX) document with the ops the in-app AI uses, without any app process (written back in its own format).',
   usage:
-    'hwp read <file.hwp|file.hwpx> [--offset n] [--full | --max-chars n] | hwp apply <file.hwp|file.hwpx> --ops <file|-> [--out path] [--force]',
+    'hwp read <file.hwp|file.hwpx> [--offset n] [--full | --max-chars n] | hwp apply <file.hwp|file.hwpx> --ops <file|-> [--bibliography path] [--out path] [--force]',
   options: [
     {
       name: 'offset',
@@ -41,6 +41,12 @@ export const hwpCommand: CommandDef = {
     {
       name: 'dry-run',
       description: 'apply: run the batch in memory and report each step without writing',
+    },
+    {
+      name: 'bibliography',
+      value: 'path',
+      description:
+        'apply: bibliography JSON file to use instead of the app library (hwp-bibliography.json)',
     },
     ...BATCH_OPTIONS,
     {
@@ -300,6 +306,13 @@ async function apply(
       reason: 'missing_argument',
     })
   }
+  const bibFlag = args.flags.bibliography
+  if (bibFlag === true) {
+    throw new CliError(EXIT.usage, 'missing --bibliography <path>', undefined, {
+      reason: 'missing_argument',
+    })
+  }
+  const bibliographyPath = typeof bibFlag === 'string' ? resolveInput(bibFlag, ctx) : undefined
   const ops = hwpOpsOf(args, ctx)
   const output = resolveOutput(out, ctx, {
     fallback: path,
@@ -309,7 +322,11 @@ async function apply(
   })
   const format = hwpOutputFormat(output)
   const { openHwpForEdit, closeHwpSession } = await import('../formats/hwp-edit')
-  const session = await openHwpForEdit(readInput(path), ctx.env)
+  const session = await openHwpForEdit(
+    readInput(path),
+    ctx.env,
+    bibliographyPath ? { bibliographyPath } : undefined,
+  )
   try {
     return await runHwpBatch(session, ops, args, { output, format, input: path })
   } finally {

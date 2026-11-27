@@ -488,6 +488,106 @@ function setup(
       removed: false,
     })),
     undo: vi.fn(async () => ({ ok: true, undone: 1 })),
+    auditCitations: vi.fn(async () => ({
+      ok: true as const,
+      style: 'apa' as const,
+      issues: [],
+      counts: {
+        missing_from_bibliography: 0,
+        uncited_in_bibliography: 0,
+        wrong_sort_order: 0,
+        missing_disambiguation: 0,
+        manual_citation_edit: 0,
+        unverified_citation: 0,
+      },
+    })),
+    insertCitation: vi.fn(async () => ({
+      ok: true as const,
+      marked: true as const,
+      placeKind: 'body' as const,
+      text: '(김철수, 2024)',
+      sec: 0,
+      para: 1,
+      startOffset: 5,
+      endOffset: 15,
+      offset: 5,
+      length: 10,
+      id: 'c1',
+      keys: ['Kim2024'],
+      place: PLACE,
+    })),
+    switchCitationStyle: vi.fn(async (newStyle: 'apa' | 'chicago' | 'mla' | 'ieee') => ({
+      ok: true as const,
+      style: newStyle,
+      updatedCitations: 2,
+      skippedManual: [],
+      missingKeys: [],
+      unverifiedKeys: [],
+      bibliographyRefreshed: true,
+      bibliographyResult: null,
+    })),
+    insertBibliographyBlock: vi.fn(async () => ({
+      ok: true as const,
+      count: 2,
+      style: 'apa' as const,
+      title: '참고문헌',
+      sec: 0,
+      startPara: 5,
+      endPara: 7,
+      keys: ['Kim2024', 'Lee2023'],
+      expectedLines: ['참고문헌', '김철수 (2024). 연구.', '이영희 (2023). 분석.'],
+      preservedMissingKeys: [],
+      range: {
+        startName: '참고문헌:시작',
+        endName: '참고문헌:끝',
+        start: { sec: 0, para: 5, offset: 0 },
+        end: { sec: 0, para: 7, offset: 12 },
+      },
+      place: PLACE,
+    })),
+    refreshBibliographyBlock: vi.fn(async () => ({
+      ok: true as const,
+      count: 2,
+      style: 'apa' as const,
+      title: '참고문헌',
+      sec: 0,
+      startPara: 5,
+      endPara: 7,
+      keys: ['Kim2024', 'Lee2023'],
+      expectedLines: ['참고문헌', '김철수 (2024). 연구.', '이영희 (2023). 분석.'],
+      preservedMissingKeys: [],
+      refreshed: true,
+      range: {
+        startName: '참고문헌:시작',
+        endName: '참고문헌:끝',
+        start: { sec: 0, para: 5, offset: 0 },
+        end: { sec: 0, para: 7, offset: 12 },
+      },
+      place: PLACE,
+    })),
+    detectBibliographyManualEdits: vi.fn(async () => ({
+      hasManualEdits: false,
+      modifiedLines: [],
+      range: null,
+    })),
+    findMatches: vi.fn(async () => ({
+      ok: true as const,
+      total: 1,
+      matches: [
+        {
+          index: 0,
+          kind: 'body' as const,
+          sec: 0,
+          para: 1,
+          offset: 0,
+          length: 5,
+          matchText: '본문입니다',
+          beforeText: '',
+          afterText: '',
+          page: 1,
+        },
+      ],
+    })),
     ...overrides,
   }
   const changes: HwpChange[] = []
@@ -4561,6 +4661,14 @@ describe('the skill as the model sees it', () => {
       'remove_index_mark',
       'insert_index',
       'refresh_index',
+      'list_references',
+      'audit_citations',
+      'insert_citation',
+      'switch_citation_style',
+      'insert_bibliography',
+      'refresh_bibliography',
+      'search_references',
+      'parse_reference_lines',
     ])
     expect((await call('delete_everything')).isError).toBe(true)
   })
@@ -6767,5 +6875,450 @@ describe('index tools (T15)', () => {
     const idxObj = await objEnv.call('refresh_index', {})
     expect(idxObj.isError).toBe(true)
     expect(idxObj.output).toContain('a table, a picture')
+  })
+})
+
+describe('citations and bibliography tools', () => {
+  const verifiedEntry = {
+    id: 'bib_Kim2024',
+    key: 'Kim2024',
+    oldKeys: [],
+    type: 'article' as const,
+    authors: [{ family: '김철수' }],
+    year: '2024',
+    title: '공공문서 표준화 연구',
+    containerTitle: '행정정보연구',
+    volume: '12',
+    issue: '2',
+    pages: '15-32',
+    doi: '10.1234/kim2024',
+    url: 'https://example.org/kim2024',
+    language: 'ko' as const,
+    tags: ['행정', '표준'],
+    memo: '',
+    verified: true,
+    source: 'manual' as const,
+  }
+  const unverifiedEntry = {
+    id: 'bib_Lee2025',
+    key: 'Lee2025',
+    oldKeys: [],
+    type: 'webpage' as const,
+    authors: [{ family: '이영희' }],
+    year: '2025',
+    title: '인공지능 문서 자동화 동향',
+    url: 'https://example.org/lee2025',
+    language: 'ko' as const,
+    tags: ['AI'],
+    memo: 'https://example.org/lee2025',
+    verified: false,
+    source: 'ai' as const,
+  }
+
+  function setupBib(
+    overrides: Partial<AgentBridge> = {},
+    depsOverrides: Partial<HwpSkillDeps> = {},
+  ) {
+    const base = setup(overrides)
+    const changes: HwpChange[] = []
+    const created = createHwpSkill({
+      bridge: base.bridge,
+      label: (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key),
+      onChange: (change) => changes.push(change),
+      confirmMemoRemoval: async () => false,
+      getBibEntries: () => [verifiedEntry, unverifiedEntry],
+      ...depsOverrides,
+    })
+    const call = (name: string, input: Record<string, unknown> = {}) =>
+      created.skill.executeTool({ id: '1', name, input } satisfies AgentToolCall)
+    return { bridge: base.bridge, skill: created.skill, changes, call }
+  }
+
+  it('lists references with filters and strict snake_case fields', async () => {
+    const { HWP_EDIT_TOOLS } = await import('../src/renderer/ai/hwp-skill')
+    expect(HWP_EDIT_TOOLS.has('list_references')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('audit_citations')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('search_references')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('parse_reference_lines')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('insert_citation')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('switch_citation_style')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('insert_bibliography')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('refresh_bibliography')).toBe(true)
+
+    const { call, skill } = setupBib()
+    for (const name of [
+      'list_references',
+      'audit_citations',
+      'insert_citation',
+      'switch_citation_style',
+      'insert_bibliography',
+      'refresh_bibliography',
+      'search_references',
+      'parse_reference_lines',
+    ]) {
+      const def = skill.tools.find((t) => t.name === name)
+      expect(def, name).toBeDefined()
+      const raw = JSON.stringify(def!.inputSchema)
+      expect(raw, name).not.toContain('"minimum"')
+      expect(raw, name).not.toContain('"maximum"')
+    }
+    const all = await call('list_references', {})
+    expect(all.isError).toBeUndefined()
+    expect(all.mutated).toBe(false)
+    expect(all.summary).toContain('aiToolBibList')
+    const parsedAll = JSON.parse(all.output)
+    expect(parsedAll.total_count).toBe(2)
+    expect(parsedAll.returned_count).toBe(2)
+    expect(parsedAll.references[0]).toMatchObject({
+      key: 'Kim2024',
+      container_title: '행정정보연구',
+      verified: true,
+    })
+    expect(parsedAll.references[0]).not.toHaveProperty('containerTitle')
+
+    const verifiedOnly = await call('list_references', { verified_only: true })
+    expect(JSON.parse(verifiedOnly.output).returned_count).toBe(1)
+
+    const byTag = await call('list_references', { tag: 'AI' })
+    expect(JSON.parse(byTag.output).references.map((r: { key: string }) => r.key)).toEqual([
+      'Lee2025',
+    ])
+
+    const byQuery = await call('list_references', { query: '표준화' })
+    expect(JSON.parse(byQuery.output).references.map((r: { key: string }) => r.key)).toEqual([
+      'Kim2024',
+    ])
+  })
+
+  it('audits citations and returns 1-based section/paragraph with snake_case keys', async () => {
+    const { call, bridge } = setupBib({
+      auditCitations: vi.fn(async () => ({
+        ok: true as const,
+        style: 'apa' as const,
+        issues: [
+          {
+            type: 'unverified_citation' as const,
+            kind: 'body' as const,
+            sec: 0,
+            para: 2,
+            offset: 4,
+            length: 12,
+            text: '(이영희, 2025)',
+            key: 'Lee2025',
+            inLibrary: true,
+            hasBibliography: false,
+          },
+        ],
+        counts: {
+          missing_from_bibliography: 0,
+          uncited_in_bibliography: 0,
+          wrong_sort_order: 0,
+          missing_disambiguation: 0,
+          manual_citation_edit: 0,
+          unverified_citation: 1,
+        },
+      })),
+    })
+
+    const res = await call('audit_citations', { citation_style: 'apa' })
+    expect(res.isError).toBeUndefined()
+    expect(res.mutated).toBe(false)
+    expect(res.summary).toContain('aiToolBibAudit')
+    expect(bridge.auditCitations).toHaveBeenCalledWith([verifiedEntry, unverifiedEntry], {
+      style: 'apa',
+    })
+    const body = JSON.parse(res.output)
+    expect(body.citation_style).toBe('apa')
+    expect(body.total_issues).toBe(1)
+    expect(body.issues[0]).toMatchObject({
+      type: 'unverified_citation',
+      place_kind: 'body',
+      section: 1,
+      paragraph: 3,
+      in_library: true,
+      has_bibliography: false,
+    })
+  })
+
+  it('inserts citations by coordinates or find and enforces strict bounds, snake_case, and unverified refusal', async () => {
+    const { call, bridge, changes } = setupBib()
+
+    // Coordinate placement
+    const ok = await call('insert_citation', {
+      key: 'Kim2024',
+      locator: '23',
+      mode: 'parenthetical',
+      section: 1,
+      paragraph: 2,
+      offset: 5,
+    })
+    expect(ok.isError).toBeUndefined()
+    expect(ok.mutated).toBe(true)
+    expect(ok.summary).toContain('aiToolCitationInsert')
+    expect(changes.at(-1)).toMatchObject({ kind: 'citation', from: 'aiCitationName', count: 1 })
+    expect(bridge.insertCitation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [{ key: 'Kim2024', locator: '23' }],
+        mode: 'parenthetical',
+        place: { sec: 0, para: 1, offset: 5 },
+        foreign: false,
+      }),
+    )
+
+    // Find placement
+    const byFind = await call('insert_citation', {
+      key: 'Kim2024',
+      find: '본문입니다',
+    })
+    expect(byFind.isError).toBeUndefined()
+    expect(byFind.mutated).toBe(true)
+    expect(bridge.insertCitation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        place: expect.objectContaining({ kind: 'body', sec: 0, para: 1, offset: 5 }),
+      }),
+    )
+
+    // Numeric bounds validation (including occurrence: 0 alongside section/paragraph!)
+    for (const badInput of [
+      { key: 'Kim2024', section: 0, paragraph: 1 },
+      { key: 'Kim2024', section: 1, paragraph: 0 },
+      { key: 'Kim2024', section: 1, paragraph: 1, offset: -1 },
+      { key: 'Kim2024', section: 2147483648, paragraph: 1 },
+      { key: 'Kim2024', section: 1, paragraph: 2, occurrence: 0 },
+      { key: 'Kim2024', section: 1, paragraph: 2, occurrence: 2147483648 },
+    ]) {
+      const r = await call('insert_citation', badInput)
+      expect(r.isError).toBe(true)
+    }
+
+    // Reject camelCase argument with snake_case suggestion
+    const camel = await call('insert_citation', {
+      key: 'Kim2024',
+      citationStyle: 'ieee',
+    })
+    expect(camel.isError).toBe(true)
+    expect(camel.output).toContain('citation_style')
+
+    // Refuses unverified entry cleanly
+    const unverifiedEnv = setupBib({
+      insertCitation: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'unverified_entry' as const,
+        unverifiedKeys: ['Lee2025'],
+      })),
+    })
+    const unv = await unverifiedEnv.call('insert_citation', { key: 'Lee2025' })
+    expect(unv.isError).toBe(true)
+    expect(unv.output).toContain('Lee2025')
+    expect(unv.output).toContain('Verify')
+
+    // Refuses out-of-range section/paragraph with re-read instruction
+    const oorEnv = setupBib({
+      insertCitation: vi.fn(async () => ({ ok: false as const, reason: 'not_found' as const })),
+    })
+    const oor = await oorEnv.call('insert_citation', {
+      key: 'Kim2024',
+      section: 99,
+      paragraph: 99,
+    })
+    expect(oor.isError).toBe(true)
+    expect(oor.output).toContain('read_document')
+  })
+
+  it('switches citation style and inserts/refreshes bibliography with refusal guards', async () => {
+    const { call, bridge, changes } = setupBib()
+
+    const switched = await call('switch_citation_style', {
+      citation_style: 'ieee',
+      refresh_bibliography: true,
+    })
+    expect(switched.isError).toBeUndefined()
+    expect(switched.mutated).toBe(true)
+    expect(switched.summary).toContain('aiToolCitationStyleSwitch')
+    expect(changes.at(-1)).toMatchObject({ kind: 'citation', from: 'aiCitationName' })
+    expect(switched.output).toContain('Switched citation style to IEEE (2 citation(s) updated).')
+    expect(switched.output).toContain('Bibliography refreshed.')
+
+    const inserted = await call('insert_bibliography', {
+      title: '참고문헌',
+      citation_style: 'apa',
+      section: 1,
+      paragraph: 5,
+    })
+    expect(inserted.isError).toBeUndefined()
+    expect(inserted.mutated).toBe(true)
+    expect(inserted.summary).toContain('aiToolBibInsert')
+    expect(changes.at(-1)).toMatchObject({ kind: 'bibliography', from: 'aiBibliographyName' })
+    expect(bridge.insertBibliographyBlock).toHaveBeenCalledWith(
+      [verifiedEntry, unverifiedEntry],
+      expect.objectContaining({ title: '참고문헌', style: 'apa', place: { sec: 0, para: 4 } }),
+    )
+
+    // Validates occurrence even when section/paragraph provided
+    const badOcc = await call('insert_bibliography', {
+      section: 1,
+      paragraph: 2,
+      occurrence: 0,
+    })
+    expect(badOcc.isError).toBe(true)
+
+    // Legacy bibliography refusal with range info
+    const legacyEnv = setupBib({
+      insertBibliographyBlock: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'legacy_bibliography_found' as const,
+        legacy: {
+          found: true as const,
+          headingPara: { sec: 0, para: 8, text: '참고문헌' },
+          range: { sec: 0, startPara: 8, endPara: 11 },
+          lines: [],
+        },
+      })),
+    })
+    const legacyRefused = await legacyEnv.call('insert_bibliography', {})
+    expect(legacyRefused.isError).toBe(true)
+    expect(legacyRefused.output).toContain('section 1, paragraphs 9–12')
+    expect(legacyRefused.output).toContain('overwrite_legacy: true')
+
+    // Manual edit refusal on refresh_bibliography
+    const manualEnv = setupBib({
+      refreshBibliographyBlock: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'manual_edits' as const,
+        modifiedLines: [
+          { index: 1, expected: '김철수 (2024).', actual: '김철수 (2024) 수정', sec: 0, para: 6 },
+        ],
+      })),
+    })
+    const manualRefused = await manualEnv.call('refresh_bibliography', {})
+    expect(manualRefused.isError).toBe(true)
+    expect(manualRefused.output).toContain('overwrite_manual: true')
+
+    const refreshed = await call('refresh_bibliography', { overwrite_manual: true })
+    expect(refreshed.isError).toBeUndefined()
+    expect(refreshed.mutated).toBe(true)
+    expect(refreshed.summary).toContain('aiToolBibRefresh')
+  })
+
+  it('gates search_references by internetToolsEnabled, stages unverified candidates with source URL, and never exposes verification', async () => {
+    const webSearch = vi.fn(async () => ({
+      results: [
+        {
+          title: 'Public Document Standards 2024',
+          url: 'https://example.org/papers/2024-standards',
+          snippet: 'Published in 2024 with DOI 10.1234/pds.2024.01.',
+        },
+      ],
+      method: 'test',
+    }))
+    const addAiBibCandidates = vi.fn(async (candidates) => ({
+      ok: true as const,
+      added: candidates.map((c, idx) => ({
+        id: `bib_ai_${idx}`,
+        key: `Public2024`,
+        oldKeys: [],
+        type: 'webpage' as const,
+        authors: [],
+        year: c.year ? String(c.year) : undefined,
+        title: c.title ?? '',
+        doi: c.doi,
+        url: c.url,
+        language: 'en' as const,
+        tags: [...(c.tags ?? [])],
+        memo: c.memo,
+        verified: false,
+        source: 'ai' as const,
+      })),
+      duplicates: [],
+      entries: [],
+    }))
+
+    // Blocked when internet tools are OFF
+    const offEnv = setupBib(
+      {},
+      {
+        internetToolsEnabled: () => false,
+        webSearch,
+        addAiBibCandidates,
+      },
+    )
+    const blocked = await offEnv.call('search_references', { query: 'document standards' })
+    expect(blocked.isError).toBe(true)
+    expect(blocked.output).toContain('internet tools')
+    expect(webSearch).not.toHaveBeenCalled()
+    expect(addAiBibCandidates).not.toHaveBeenCalled()
+
+    // Allowed when internet tools are ON
+    const onEnv = setupBib(
+      {},
+      {
+        internetToolsEnabled: () => true,
+        webSearch,
+        addAiBibCandidates,
+      },
+    )
+    const found = await onEnv.call('search_references', {
+      query: 'document standards',
+      max_results: 3,
+      tags: ['standards'],
+    })
+    expect(found.isError).toBeUndefined()
+    expect(found.mutated).toBe(false)
+    expect(found.summary).toContain('aiToolBibSearch')
+    expect(webSearch).toHaveBeenCalledWith('document standards', 3)
+    expect(addAiBibCandidates).toHaveBeenCalledWith([
+      expect.objectContaining({
+        title: 'Public Document Standards 2024',
+        year: '2024',
+        doi: '10.1234/pds.2024.01',
+        sourceUrl: 'https://example.org/papers/2024-standards',
+        verified: false,
+        source: 'ai',
+      }),
+    ])
+    const stagedCall = addAiBibCandidates.mock.calls[0]![0][0]!
+    expect(stagedCall.memo).toContain('https://example.org/papers/2024-standards')
+    const out = JSON.parse(found.output)
+    expect(out.added_count).toBe(1)
+    expect(out.verification_required).toBe(true)
+    expect(out.added[0].verified).toBe(false)
+    expect(out.added[0].source_url).toBe('https://example.org/papers/2024-standards')
+
+    // Invalid max_results bounds rejected
+    for (const badMax of [0, -1, 11, 2147483648]) {
+      const r = await onEnv.call('search_references', { query: 'test', max_results: badMax })
+      expect(r.isError).toBe(true)
+    }
+
+    // No tool exists in skill.tools that verifies references
+    const toolNames = onEnv.skill.tools.map((t) => t.name)
+    expect(toolNames.some((n) => /verify/i.test(n))).toBe(false)
+
+    // System prompt enforces anti-fabrication & no-AI-verification
+    expect(onEnv.skill.systemPrompt).toContain('NEVER fabricate')
+    expect(onEnv.skill.systemPrompt).toContain('NEVER mark a reference as verified')
+  })
+
+  it('previews parsed reference lines via parse_reference_lines without modifying the library', async () => {
+    const addAiBibCandidates = vi.fn()
+    const { call } = setupBib({}, { addAiBibCandidates })
+    const res = await call('parse_reference_lines', {
+      raw_lines: [
+        '김철수 (2024). 공공문서 표준화 연구. 행정정보연구, 12(2), 15-32.',
+        'unparseable line without year',
+      ],
+    })
+    expect(res.isError).toBeUndefined()
+    expect(res.mutated).toBe(false)
+    expect(res.summary).toContain('aiToolBibParseLines')
+    expect(addAiBibCandidates).not.toHaveBeenCalled()
+    const body = JSON.parse(res.output)
+    expect(body.preview_only).toBe(true)
+    expect(body.parsed_count).toBe(1)
+    expect(body.parsed[0].entry.verified).toBe(false)
+    expect(body.unparsed_count).toBe(1)
+
+    const emptyErr = await call('parse_reference_lines', { raw_lines: [] })
+    expect(emptyErr.isError).toBe(true)
   })
 })

@@ -8,9 +8,9 @@ GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` dalam tab, de
 - Menyimpan semula dalam format asal fail yang dibuka (`.hwp` kekal `.hwp`, `.hwpx` kekal `.hwpx`), menyimpan sandaran `.bak` sebelum tulis ganti pertama, menyemak bacaan semula HWP serta mengekalkan Simpan Auto dan salinan pemulihan ranap.
 - Cetak (Ctrl+P) menyokong pratonton langsung, eksport PDF dan pilihan susun atur cetakan berbilang halaman.
 
-## Anak tetingkap kerja kiri: Rangka dan Cari
+## Anak tetingkap kerja kiri: Rangka, Cari dan Rujukan
 
-- Buka anak tetingkap kerja kiri daripada butang bar atas, **Paparan > Anak tetingkap kerja** (Rangka / Cari), atau tekan **Ctrl+F** untuk terus ke tab Cari. Cari tradisional (**Ctrl+Q,F**) dan Cari & Ganti (**Ctrl+H**) kekal tersedia.
+- Buka anak tetingkap kerja kiri daripada butang bar atas, **Paparan > Anak tetingkap kerja** (Rangka / Cari / Rujukan), atau tekan **Ctrl+F** untuk terus ke tab Cari. Cari tradisional (**Ctrl+Q,F**) dan Cari & Ganti (**Ctrl+H**) kekal tersedia.
 - **Tab Rangka**: menyenaraikan tajuk rangka asli Hangul dan tajuk yang dipetakan mengikut gaya (lalai `제목 N` / `Heading N`, boleh disesuaikan bagi setiap dokumen atau seluruh aplikasi dalam laci tetapan Rangka). Tapis mengikut tahap (`1`, `2`, `3`, ... Semua), lipat cabang, klik untuk melompat, naikkan atau turunkan tahap tajuk (bersama subtajuk secara lalai, atau tahan **Shift** untuk satu tajuk sahaja), dan seret tajuk untuk menyusun semula keseluruhan bahagian dalam satu langkah buat asal.
 - **Tab Cari**: mencari di seluruh teks utama, jadual (termasuk jadual bersarang), kotak teks, nota kaki dan nota hujung (tidak termasuk pengepala dan pengaki) dengan penapis kepekaan huruf, perkataan penuh, ungkapan biasa, gaya perenggan dan pemformatan aksara. Klik hasil untuk melompat dan memilihnya, atau ganti satu, yang dipilih atau semua padanan dalam satu langkah buat asal (melangkau objek sebaris dan tanda petikan sambil menunjukkan bilangan).
 - Anak tetingkap kerja mengingati keadaan terbuka, tab aktif dan lebarnya, dilipat menjadi rel ikon pada tetingkap sempit, dan disembunyikan dalam mod persembahan serta pratonton cetakan. Semua ciri anak tetingkap kerja berfungsi tanpa AI.
@@ -38,3 +38,10 @@ GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` dalam tab, de
 
 - Apabila anda melakukan Simpan secara manual, Cetak, Eksport sebagai PDF, atau Simpan sebagai Salinan Serahan, editor menyemak sama ada jadual kandungan atau indeks sudah lapuk dan menawarkan untuk menyegarkan semuanya dalam satu langkah buat asal. Semakan ini tidak pernah dijalankan semasa Autosimpan dan tidak pernah menyekat penyimpanan.
 - Gunakan **Fail > Simpan sebagai Salinan Serahan** untuk menyimpan salinan bersih berasingan yang membuang tanda suntingan dalaman (tanda indeks, tanda blok indeks, dan tetapan tersimpan) sambil mengekalkan jadual kandungan, sauh tajuk, dan pautan jadual kandungan. Fail kerja asal anda kekal tidak disentuh supaya anda boleh terus menyegarkannya kemudian.
+
+## Rujukan dan petikan
+
+- Buka tab **Rujukan** pada anak tetingkap kerja kiri (atau **Alat > Rujukan**) untuk mengurus satu pustaka rujukan setempat pada PC anda dengan carian, tag, tambah/sunting/padam, import dan eksport (`BibTeX`, `RIS`, `CSL JSON`), serta mengimport baris daripada senarai rujukan sedia ada dalam dokumen dengan pratonton pengesahan.
+- Menyokong empat gaya petikan (**APA 7**, **Chicago**, **MLA 9** dan **IEEE**; rujukan bahasa Korea mengikuti format akademik Korea dalam keempat-empat gaya). Masukkan petikan berkurungan, naratif atau berbilang entri dengan penunjuk halaman dan jana atau segar semula bibliografi berinden gantung; penukaran gaya mengemas kini petikan bertanda dan bibliografi dalam satu langkah buat asal sambil mengekalkan petikan yang disunting secara manual.
+- Semakan terbina dalam 6 perkara (tiada dalam bibliografi, entri tidak dipetik, susunan isihan, akhiran a/b hilang, suntingan manual dan item belum disahkan) membolehkan anda melompat terus ke setiap isu, bersama peringatan bibliografi atau penomboran IEEE yang lapuk sebelum simpan manual, cetak atau eksport.
+- Carian rujukan AI pilihan (apabila alat internet dihidupkan) sentiasa menambah calon sebagai **Belum disahkan** dengan URL sumber disimpan dalam nota; item tersebut tidak boleh dipetik atau dimasukkan ke dalam bibliografi sehingga anda sendiri menyemak dan menandakannya **Disahkan**.

@@ -30,8 +30,25 @@ import type {
   IndexMarkItem,
   RefreshIndexBlockOptions,
 } from './index-marks.mjs'
-import type { WorkpaneMenuLabels } from './workpane-menu.mjs'
+import type { BibliographyMenuLabels, WorkpaneMenuLabels } from './workpane-menu.mjs'
 import type { TocIndexDialogLabels } from './toc-dialogs.mjs'
+import type { BibEntry, CitationStyle } from './citation-styles.mjs'
+import type {
+  AuditCitationsOptions,
+  AuditCitationsResult,
+  BibliographyManualEditsResult,
+  BibliographyOptions,
+  BibliographyWriteResult,
+  CitationMarkRecord,
+  DetectUnmarkedBibliographyResult,
+  InsertCitationOptions,
+  InsertCitationResult,
+  PatternCitationMatch,
+  RewriteCitationKeysResult,
+  SetCitationStyleResult,
+  SwitchCitationStyleOptions,
+  SwitchCitationStyleResult,
+} from './citations.mjs'
 import type {
   StalenessCheckOptions,
   StalenessCheckResult,
@@ -1813,6 +1830,51 @@ export type AgentRefreshAllStaleResult = Omit<StalenessRefreshAllResult, 'reason
   reason?: StalenessRefreshAllResult['reason'] | 'has_objects' | 'memo_removal_requires_approval'
 }
 
+export type AgentCitationChangeOptions = AgentChangeOptions & {
+  foreign?: boolean
+}
+
+export type AgentSetCitationStyleResult =
+  | SetCitationStyleResult
+  | { ok: false; reason: 'has_objects'; count: number }
+  | AgentMemoRemovalRefusal
+
+export type AgentInsertCitationOptions = InsertCitationOptions & AgentCitationChangeOptions
+
+export type AgentInsertCitationResult =
+  | (Extract<InsertCitationResult, { ok: true }> & { place?: AgentPlace })
+  | Extract<InsertCitationResult, { ok: false }>
+  | { ok: false; reason: 'has_objects'; count: number }
+  | AgentMemoRemovalRefusal
+
+export type AgentSwitchCitationStyleOptions = SwitchCitationStyleOptions &
+  AgentCitationChangeOptions
+
+export type AgentSwitchCitationStyleResult =
+  | SwitchCitationStyleResult
+  | Extract<BibliographyWriteResult, { ok: false }>
+  | { ok: false; reason: 'has_objects'; count: number }
+  | AgentMemoRemovalRefusal
+
+export type AgentBibliographyOptions = BibliographyOptions & AgentCitationChangeOptions
+
+export type AgentBibliographyWriteResult =
+  | (Extract<BibliographyWriteResult, { ok: true }> & { place: AgentPlace })
+  | Extract<BibliographyWriteResult, { ok: false }>
+  | { ok: false; reason: 'has_objects'; count: number }
+  | AgentMemoRemovalRefusal
+
+export type AgentRewriteCitationKeysResult =
+  | RewriteCitationKeysResult
+  | { ok: false; reason: 'has_objects'; count: number }
+  | AgentMemoRemovalRefusal
+
+export interface AgentHighlightRangeInput {
+  sec: number
+  startPara: number
+  endPara?: number
+}
+
 export type AgentUndoResult =
   { ok: boolean; undone: number } | { ok: false; reason: 'changed'; undone: 0 }
 
@@ -2154,14 +2216,16 @@ export interface AgentPluginSurface {
   selectMemo(id: number | null): { ok: true; id: number | null }
   /** take the editor's input away while the app's memo modal is open */
   setMemoLock(locked: boolean): { ok: true; locked: boolean }
-  /** register View menu items for the left workpane (Outline / Find) */
+  /** register View menu items for the left workpane (Outline / Find / optional Bibliography) */
   installWorkpaneMenu(labels: WorkpaneMenuLabels): { ok: boolean }
+  /** register Tool menu items for citation & bibliography commands */
+  installBibliographyMenu(labels: BibliographyMenuLabels): { ok: boolean }
   /** register Tool menu items and context-menu probes for TOC & Index */
   installTocIndexMenu(
     labels: TocIndexDialogLabels,
     options?: { appStyleMap?: OutlineStyleMap | null },
   ): { ok: boolean }
-  /** read-only staleness check across all registered checkers (TOC, index, and extensions) */
+  /** read-only staleness check across all registered checkers (TOC, index, bibliography, and extensions) */
   checkStaleItems(options?: StalenessCheckOptions): StalenessCheckResult
   /** refresh all stale items in one undo step (rolls back atomically on failure, manual edits, or object loss) */
   refreshAllStale(
@@ -2170,6 +2234,58 @@ export interface AgentPluginSurface {
   ): AgentRefreshAllStaleResult
   /** build a clean submission copy on an isolated clone without mutating the live document */
   exportSubmissionCopy(format?: 'hwp' | 'hwpx'): SubmissionCopyResult
+  /** read active document citation style (`apa` | `chicago` | `mla` | `ieee`) */
+  getCitationStyle(): { ok: true; style: CitationStyle }
+  /** set active document citation style in one undo step */
+  setCitationStyle(
+    style: CitationStyle,
+    options?: AgentCitationChangeOptions,
+  ): AgentSetCitationStyleResult
+  /** list all marked in-text citations in document order */
+  listCitationMarks(entries?: readonly BibEntry[] | null): {
+    ok: true
+    marks: CitationMarkRecord[]
+  }
+  /** find unmarked textual citations across body, tables, text boxes, and notes */
+  findPatternCitations(entries?: readonly BibEntry[] | null): {
+    ok: true
+    citations: PatternCitationMatch[]
+  }
+  /** insert a citation at `options.place` or the current editor caret in one undo step */
+  insertCitation(options: AgentInsertCitationOptions): AgentInsertCitationResult
+  /** switch citation style across marks, document setting, and bibliography in one undo step */
+  switchCitationStyle(
+    newStyle: CitationStyle,
+    entries: readonly BibEntry[],
+    options?: AgentSwitchCitationStyleOptions,
+  ): AgentSwitchCitationStyleResult
+  /** insert or replace a marked bibliography block in one undo step */
+  insertBibliographyBlock(
+    entries: readonly BibEntry[],
+    options?: AgentBibliographyOptions,
+  ): AgentBibliographyWriteResult
+  /** refresh an existing marked bibliography block in one undo step */
+  refreshBibliographyBlock(
+    entries: readonly BibEntry[],
+    options?: AgentBibliographyOptions,
+  ): AgentBibliographyWriteResult
+  /** detect an existing unmarked bibliography section read-only */
+  detectUnmarkedBibliography(): DetectUnmarkedBibliographyResult
+  /** detect manual edits inside a marked bibliography block read-only */
+  detectBibliographyManualEdits(): BibliographyManualEditsResult
+  /** select and scroll a paragraph range into view in the editor */
+  highlightBibliographyRange(range: AgentHighlightRangeInput): { ok: boolean }
+  /** rewrite renamed citation keys across marks and bibliography metadata in one undo step */
+  rewriteCitationKeys(
+    keyMap: Map<string, string> | Record<string, string>,
+    entries?: readonly BibEntry[] | null,
+    options?: AgentCitationChangeOptions,
+  ): AgentRewriteCitationKeysResult
+  /** run all six read-only citation and bibliography audit checks */
+  auditCitations(
+    entries?: readonly BibEntry[],
+    options?: AuditCitationsOptions,
+  ): AuditCitationsResult
   /** search across body, tables (including nested), text boxes, and footnotes/endnotes */
   findMatches(options?: FindOptions): FindResult
   /** replace one, selected, or all matches in a single user undo step */

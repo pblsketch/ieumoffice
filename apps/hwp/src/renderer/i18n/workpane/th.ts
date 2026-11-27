@@ -8,9 +8,12 @@ export const th = {
   workpaneResize: 'ปรับความกว้างบานหน้าต่างงาน',
   workpaneTabOutline: 'โครงร่าง',
   workpaneTabFind: 'ค้นหา',
+  workpaneTabBibliography: 'บรรณานุกรม',
   workpaneMenuOutline: 'บานหน้าต่างงาน › โครงร่าง',
   workpaneMenuFind: 'บานหน้าต่างงาน › ค้นหา',
+  workpaneMenuBibliography: 'บานหน้าต่างงาน › บรรณานุกรม',
   workpaneOutlineEmpty: 'หัวข้อของเอกสารจะแสดงที่นี่',
   workpaneFindEmpty: 'ค้นหาและข้ามไปยังตำแหน่งที่พบในเอกสารนี้',
+  workpaneBibliographyEmpty: 'จัดการรายการอ้างอิงและแทรกการอ้างอิงที่นี่',
   workpaneRailHint: 'หน้าต่างแคบ คลิกไอคอนแท็บเพื่อดูเนื้อหา',
 } satisfies Record<keyof typeof zh, string>

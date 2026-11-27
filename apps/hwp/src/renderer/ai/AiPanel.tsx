@@ -80,6 +80,7 @@ import {
   composeWithDrive,
   windowMcpState,
   windowMcpUsableServers,
+  windowOutboundBridge,
   toolStepLabel,
 } from '@genoffice/agent-core'
 import type {
@@ -910,6 +911,36 @@ export function AiPanel({
         return window.hwpApi.readAttachmentDocument(attachment.path)
       },
       getOutlineStyleMap: async () => (await window.hwpApi.getOutlineStyleMap?.()) ?? null,
+      getBibEntries: async () => {
+        const res = await window.hwpApi.bibList?.()
+        return res && res.ok ? res.entries : []
+      },
+      addAiBibCandidates: (candidates) =>
+        window.hwpApi.bibAddAiCandidates
+          ? window.hwpApi.bibAddAiCandidates(candidates)
+          : Promise.resolve({
+              ok: false as const,
+              reason: 'unauthorized' as const,
+              error: 'Bibliography library is not available here.',
+            }),
+      webSearch: (query, maxResults) => window.hwpApi.webSearch(query, maxResults),
+      internetToolsEnabled: async () => {
+        const outbound = windowOutboundBridge()
+        if (outbound) {
+          const enabled = await outbound.internetToolsEnabled().catch(() => false)
+          if (!enabled) return false
+        }
+        const messages = loopRef.current?.messages ?? []
+        const driveSeen = messages.some(
+          (m) =>
+            m.role === 'tool' &&
+            m.results.some(
+              (r) => !r.isError && (r.name === 'drive_read' || r.name === 'drive_search'),
+            ),
+        )
+        if (driveSeen) return false
+        return true
+      },
     })
 
   // The loop is built once; every mutable value goes through a ref getter
