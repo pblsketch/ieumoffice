@@ -201,7 +201,7 @@ function findXcodeprojPbxproj(iosRoot) {
  * file references, target group, and Resources build phase so archive builds
  * embed it at the root of the .app bundle.
  */
-function wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName) {
+function wireIosPrivacyManifestInPbxproj(iosRoot, targetDir, targetDirName) {
   const pbxPath = findXcodeprojPbxproj(iosRoot)
   if (!pbxPath) return { pbxprojPatched: false }
 
@@ -216,15 +216,22 @@ function wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName) {
     throw new Error(`Unexpected project.pbxproj layout at ${pbxPath}`)
   }
 
+  const relativePrivacyPath =
+    resolve(targetDir) === resolve(iosRoot)
+      ? 'PrivacyInfo.xcprivacy'
+      : `${targetDirName}/PrivacyInfo.xcprivacy`
+
   const buildFileEntry = `\t\t${PRIVACY_BUILD_FILE_ID} /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = ${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */; };`
-  const fileRefEntry = `\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };`
+  const fileRefEntry = `\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = "${relativePrivacyPath}"; sourceTree = SOURCE_ROOT; };`
 
   pbx = pbx.replace(buildFileMarker, `${buildFileMarker}\n${buildFileEntry}`)
   pbx = pbx.replace(fileRefMarker, `${fileRefMarker}\n${fileRefEntry}`)
 
-  // Add the file reference to the group matching the Info.plist folder (or containing Info.plist).
+  // Add the file reference to the single PBXGroup matching the Info.plist folder
+  // (bounded to one group block so an earlier root PBXGroup is not matched across blocks).
+  const escapedDir = targetDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const groupPattern = new RegExp(
-    `(isa = PBXGroup;[\\s\\S]*?children = \\()([\\s\\S]*?)(\\);[\\s\\S]*?path = "?${targetDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"?;)`,
+    `(isa = PBXGroup;[^}]*?children = \\()([^)]*)(\\);[^}]*?path = "?${escapedDir}"?;)`,
   )
   if (groupPattern.test(pbx)) {
     pbx = pbx.replace(
@@ -232,7 +239,7 @@ function wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName) {
       `$1\n\t\t\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */,$2$3`,
     )
   } else {
-    const fallbackGroup = /(isa = PBXGroup;[\s\S]*?children = \()([\s\S]*?Info\.plist[\s\S]*?)(\);)/
+    const fallbackGroup = /(isa = PBXGroup;[^}]*?children = \()([^)]*?Info\.plist[^)]*)(\);)/
     if (fallbackGroup.test(pbx)) {
       pbx = pbx.replace(
         fallbackGroup,
@@ -294,7 +301,7 @@ export function applyIosConfig(genRoot = GEN_DIR) {
   const privacyManifestOut = join(targetDir, 'PrivacyInfo.xcprivacy')
   copyFileSync(join(NATIVE_CONFIG, 'ios', 'PrivacyInfo.xcprivacy'), privacyManifestOut)
   const targetDirName = targetDir.split(/[\\/]/).pop() ?? ''
-  const { pbxprojPatched } = wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName)
+  const { pbxprojPatched } = wireIosPrivacyManifestInPbxproj(iosRoot, targetDir, targetDirName)
 
   // Replace Tauri's default AppIcon.appiconset with IeumOffice's opaque 1024x1024 RGB icon.
   const brandAppIconSrc = join(NATIVE_CONFIG, 'ios', 'AppIcon.appiconset')
