@@ -201,10 +201,14 @@ function startHwpDocument(
     const port = hwpEditorRef.current?.getSavePort()
     if (!doc || !port || (doc.session.format !== 'hwp' && doc.session.format !== 'hwpx')) return
     studioEditedRef.current = false
-    const exportBytes = doc.session.format === 'hwpx' ? port.exportHwpx() : port.exportHwp()
-    exportBytes.then(setFlowBytes).catch(() => {
-      // Keep the last flow; the page view still shows the edits.
-    })
+    try {
+      const exportBytes = doc.session.format === 'hwpx' ? port.exportHwpx() : port.exportHwp()
+      void exportBytes.then(setFlowBytes).catch(() => {
+        // Keep the last flow; the page view still shows the edits.
+      })
+    } catch {
+      // Keep the last flow when the studio is reloading or unmounted.
+    }
   }
 
   const switchHwpLayout = async (next: 'page' | 'flow') => {

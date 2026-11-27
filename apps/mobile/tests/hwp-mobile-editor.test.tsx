@@ -150,4 +150,69 @@ describe('HwpMobileEditor view/read-only guard', () => {
     iframe.contentWindow?.dispatchEvent(new CustomEvent('ieum:dirty', { detail: true }))
     expect(onDirty).toHaveBeenCalledTimes(1)
   })
+
+  it('does not recreate rhwp-studio when fileName changes after Save As and rejects export async if unmounted', async () => {
+    const onDirty = vi.fn()
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const root: Root = createRoot(el)
+    cleanups.push(() => {
+      act(() => root.unmount())
+      el.remove()
+    })
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04])
+    const ref = createRef<HwpMobileEditorHandle>()
+
+    act(() => {
+      root.render(
+        <HwpMobileEditor
+          ref={ref}
+          fileName="Untitled.hwpx"
+          documentBytes={bytes}
+          mode="edit"
+          canEdit
+          hidden={false}
+          lang="ko"
+          theme="light"
+          onDirty={onDirty}
+        />,
+      )
+    })
+    await flushMicrotasks()
+    expect(studioMock.createCalls).toBe(1)
+    expect(studioMock.destroyCalls).toBe(0)
+
+    // Save As renames the session and [Done] switches to view mode simultaneously.
+    act(() => {
+      root.render(
+        <HwpMobileEditor
+          ref={ref}
+          fileName="qa-lucia.hwpx"
+          documentBytes={bytes}
+          mode="view"
+          canEdit
+          hidden={false}
+          lang="ko"
+          theme="light"
+          onDirty={onDirty}
+        />,
+      )
+    })
+    await flushMicrotasks()
+
+    expect(studioMock.createCalls).toBe(1)
+    expect(studioMock.destroyCalls).toBe(0)
+    const port = ref.current!.getSavePort()
+    const exported = await port.exportHwpx()
+    expect(exported).toEqual(new Uint8Array([1, 2, 3]))
+
+    // After unmount, export methods must reject asynchronously rather than throwing synchronously.
+    act(() => root.unmount())
+    expect(() => {
+      void port.exportHwpx().catch(() => {})
+      void port.exportHwp().catch(() => {})
+      void port.exportHwpVerify().catch(() => {})
+    }).not.toThrow()
+    await expect(port.exportHwpx()).rejects.toThrow('HWP editor is not ready.')
+  })
 })

@@ -501,7 +501,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
           // Ignore teardown errors when switching documents quickly.
         }
       }
-    }, [documentBytes, fileName, lang, theme])
+    }, [documentBytes, lang, theme])
 
     // Refit page width when rotating between portrait and landscape.
     useEffect(() => {
@@ -529,9 +529,9 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
               const flag = ctx[PASSWORD_FLAG]
               return typeof flag === 'boolean' ? flag : true
             },
-            exportHwp: () => requireEditor().exportHwp(),
-            exportHwpx: () => requireEditor().exportHwpx(),
-            exportHwpVerify: () => requireEditor().exportHwpVerify(),
+            exportHwp: async () => requireEditor().exportHwp(),
+            exportHwpx: async () => requireEditor().exportHwpx(),
+            exportHwpVerify: async () => requireEditor().exportHwpVerify(),
             async measureTabs() {
               return []
             },
