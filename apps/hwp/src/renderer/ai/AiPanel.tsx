@@ -909,6 +909,7 @@ export function AiPanel({
         }
         return window.hwpApi.readAttachmentDocument(attachment.path)
       },
+      getOutlineStyleMap: async () => (await window.hwpApi.getOutlineStyleMap?.()) ?? null,
     })
 
   // The loop is built once; every mutable value goes through a ref getter

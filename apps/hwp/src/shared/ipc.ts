@@ -74,6 +74,12 @@ export const HWP_CHANNELS = {
   fetchImage: 'hwp:fetch-image',
   /** invoke({ mediaUrls, requirements }) �� MediaAnalysisResult: let the model look at a picture */
   analyzeMedia: 'hwp:analyze-media',
+  /** invoke -> OutlineStyleMap: app-wide style-to-outline-level mapping */
+  getOutlineStyleMap: 'hwp:get-outline-style-map',
+  /** invoke(map | null) -> OutlineStyleMap: save or reset the app-wide outline style mapping */
+  setOutlineStyleMap: 'hwp:set-outline-style-map',
+  /** main -> renderer (OutlineStyleMap): the app-wide outline style mapping changed */
+  outlineStyleMapChanged: 'hwp:outline-style-map-changed',
   // channels below are served once by the shell for every editor
   getLanguage: 'app:get-language',
   languageChanged: 'app:language-changed',
@@ -108,6 +114,7 @@ export const AI_CHANNELS = {
 } as const
 
 export type UiTheme = 'light' | 'dark' | 'system'
+export type OutlineStyleMap = Record<string, number>
 export type SaveMode = 'save' | 'saveAs'
 /** Save dialog modes: normal save, Save As, or Save As pre-targeted to HWPX (e.g. after HWP verify failure). */
 export type BeginSaveMode = SaveMode | 'saveAsHwpx'
@@ -556,6 +563,12 @@ export interface HwpApi {
   }>
   /** Download an image URL (or a generated-store file) in the main process */
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
+  /** Read the app-wide Hangul outline style-to-level mapping */
+  getOutlineStyleMap?(): Promise<OutlineStyleMap>
+  /** Save the app-wide Hangul outline style-to-level mapping, or pass null to reset defaults */
+  setOutlineStyleMap?(map: OutlineStyleMap | null): Promise<OutlineStyleMap>
+  /** Subscribe to app-wide Hangul outline style-to-level mapping changes across views */
+  onOutlineStyleMapChanged?(handler: (map: OutlineStyleMap) => void): () => void
   /** which search/media tools can run right now — gates generate_image */
   aiToolCapabilities(): Promise<AiToolCapabilities | null>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void

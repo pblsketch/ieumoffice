@@ -254,6 +254,9 @@ export const ar = {
   memoHwpxLost:
     'تعليقات لم تُنقل إلى ملف HWPX: {count}. احفظ بصيغة HWP أو تحقق من الملف في Hancom Hangul.',
   aiToolMemos: 'تم فحص التعليقات: {count}',
+  aiToolReadOutline: 'تم فحص المخطط التفصيلي · {count}',
+  aiToolChangeOutlineLevel: 'تم تغيير مستوى المخطط التفصيلي · {count}',
+  aiToolMoveOutlineSection: 'تم نقل قسم المخطط التفصيلي · {count} فقرة',
   aiMemoContext: 'التعليقات: {count}',
   aiMemoApprovalTitle: 'سيحذف هذا التعديل تعليقات: {count}. هل تريد المتابعة؟',
   aiMemoApprovalKeep: 'الإبقاء على التعليقات',

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
 import type { WebContents } from 'electron'
 import {
   configuredDefaultSaveDir,
@@ -31,6 +31,11 @@ import { registerHwpAttachmentIpc } from './attachments-ipc'
 import { registerHwpImageIpc } from './ai-image'
 import { atomicWriteFile, copyFileReplacing } from './atomic-write'
 import { readHwpDefaultFormat } from './default-format'
+import {
+  normalizeOutlineStyleMap,
+  readHwpOutlineStyleMap,
+  writeHwpOutlineStyleMap,
+} from './outline-settings'
 import { badJob, printJobToPdf, printJobToPrinter } from './print-document'
 import { registerHwpPrintLayout } from './print-layout'
 import { tm } from './dialog-strings'
@@ -1027,6 +1032,35 @@ function registerHwpIpc(): void {
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(HWP_CHANNELS.getLanguage)
   ipcMain.handle(HWP_CHANNELS.getLanguage, () => getUiLang())
+
+  ipcMain.handle(HWP_CHANNELS.getOutlineStyleMap, () => readHwpOutlineStyleMap(app))
+  ipcMain.handle(HWP_CHANNELS.setOutlineStyleMap, (e, rawMap: unknown) => {
+    if (!hwpViews.has(e.sender.id)) {
+      return readHwpOutlineStyleMap(app)
+    }
+    if (rawMap !== null && (typeof rawMap !== 'object' || Array.isArray(rawMap))) {
+      return readHwpOutlineStyleMap(app)
+    }
+    if (rawMap !== null) {
+      const rawObj = rawMap as Record<string, unknown>
+      const normalized = normalizeOutlineStyleMap(rawObj)
+      // Refuse non-empty inputs whose entries are all invalid rather than wiping the stored map.
+      if (Object.keys(rawObj).length > 0 && Object.keys(normalized).length === 0) {
+        return readHwpOutlineStyleMap(app)
+      }
+    }
+    const input = rawMap === null ? null : (rawMap as Record<string, number>)
+    const next = writeHwpOutlineStyleMap(app, input)
+    if (typeof webContents?.fromId === 'function') {
+      for (const id of hwpViews) {
+        const wc = webContents.fromId(id)
+        if (wc && !wc.isDestroyed()) {
+          wc.send(HWP_CHANNELS.outlineStyleMapChanged, next)
+        }
+      }
+    }
+    return next
+  })
 }
 
 /**

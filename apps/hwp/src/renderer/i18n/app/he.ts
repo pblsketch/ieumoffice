@@ -254,6 +254,9 @@ export const he = {
   memoHwpxLost:
     'הערות שלא הועברו לקובץ HWPX: {count}. שמרו כ-HWP או בדקו את הקובץ ב-Hancom Hangul.',
   aiToolMemos: 'נבדקו הערות: {count}',
+  aiToolReadOutline: 'המתאר נבדק · {count}',
+  aiToolChangeOutlineLevel: 'רמת המתאר שונתה · {count}',
+  aiToolMoveOutlineSection: 'מקטע המתאר הועבר · {count} פסקאות',
   aiMemoContext: 'הערות: {count}',
   aiMemoApprovalTitle: 'העריכה הזו תמחק הערות: {count}. להמשיך?',
   aiMemoApprovalKeep: 'להשאיר את ההערות',

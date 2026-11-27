@@ -843,3 +843,172 @@ describe('hwp apply in a folder that refuses chmod', () => {
     expect(readFileSync(`${path}.bak`).equals(Buffer.from(original))).toBe(true)
   })
 })
+
+describe('hwp outline and multi-scope find ops', () => {
+  function outlineDoc(): HwpDocument {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    const styles = JSON.parse(doc.getStyleList()) as Array<{ id: number; name: string }>
+    const idOf = (name: string) => styles.find((s) => s.name === name)?.id
+    const h1 = idOf('개요 1')!
+    const h2 = idOf('개요 2')!
+    const lines: Array<[string, number | undefined]> = [
+      ['문서 머리말 문단', undefined],
+      ['첫째 장', h1],
+      ['첫째 장 본문', undefined],
+      ['둘째 장', h1],
+      ['둘째 장 절', h2],
+      ['둘째 장 본문', undefined],
+    ]
+    lines.forEach(([line, styleId], idx) => {
+      if (idx > 0) doc.splitParagraph(0, idx - 1, doc.getParagraphLength(0, idx - 1))
+      doc.insertText(0, idx, 0, line)
+      doc.applyStyle(0, idx, styleId ?? 0)
+    })
+    return doc
+  }
+
+  it('lists outline and find_in_document ops in guide hwp and runs them end-to-end', async () => {
+    const guide = await run(['guide', 'hwp', '--json'])
+    expect(guide.code, guide.stdout).toBe(0)
+    const opNames = (guide.json().detail.ops as Array<{ op: string }>).map((e) => e.op)
+    expect(opNames).toContain('read_outline')
+    expect(opNames).toContain('change_outline_level')
+    expect(opNames).toContain('move_outline_section')
+    expect(opNames).toContain('find_in_document')
+
+    const dir = tempDir()
+    const path = write(dir, 'thesis.hwpx', outlineDoc().exportHwpx())
+    const out = join(dir, 'thesis-out.hwpx')
+    const res = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        { op: 'read_outline' },
+        { op: 'find_in_document', query: '본문' },
+        { op: 'change_outline_level', section: 1, paragraph: 4, direction: 'demote' },
+        {
+          op: 'move_outline_section',
+          section: 1,
+          paragraph: 4,
+          target_paragraph: 2,
+          position: 'before',
+        },
+        { op: 'read_outline' },
+      ]),
+      '--out',
+      out,
+      '--json',
+    ])
+    expect(res.code, res.stdout).toBe(0)
+    const results = res.json().detail.results as Array<{ op: string; output: string }>
+    expect(results[0]!.output).toContain('첫째 장')
+    expect(results[1]!.output).toContain('2 match(es)')
+    expect(results[2]!.output).toContain('Changed outline level of 2 heading(s)')
+    expect(results[3]!.output).toContain('Moved 3 paragraph(s)')
+    const afterHeadings = JSON.parse(results[4]!.output.split('\n')[1]!) as Array<{
+      title: string
+      level: number
+    }>
+    expect(afterHeadings.map((h) => [h.title, h.level])).toEqual([
+      ['둘째 장', 2],
+      ['둘째 장 절', 3],
+      ['첫째 장', 1],
+    ])
+  })
+
+  it('reads app-wide hwpOutlineStyleMap from app-settings.json in GENOFFICE_USER_DATA', async () => {
+    const dir = tempDir()
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    doc.insertText(0, 0, 0, '커스텀 장 제목')
+    const styleId = doc.createStyle(
+      JSON.stringify({ name: '논문장', englishName: 'ThesisChapter', type: 0, nextStyleId: 0 }),
+    )
+    doc.applyStyle(0, 0, styleId)
+    const path = write(dir, 'custom.hwpx', doc.exportHwpx())
+
+    writeFileSync(
+      join(dir, 'app-settings.json'),
+      JSON.stringify({ hwpOutlineStyleMap: { 논문장: 1 } }),
+      'utf8',
+    )
+    const r = await run(
+      ['hwp', 'apply', path, '--ops', ops(dir, [{ op: 'read_outline' }]), '--json'],
+      { env: { GENOFFICE_USER_DATA: dir } },
+    )
+    expect(r.code, r.stdout).toBe(0)
+    expect(r.json().detail.results[0].output).toContain('커스텀 장 제목')
+    expect(r.json().detail.results[0].output).toContain('"style":"논문장"')
+  })
+
+  it('forwards ctx.env to blankHwpForEdit so create --type hwpx respects hwpOutlineStyleMap', async () => {
+    const dir = tempDir()
+    const out = join(dir, 'created-outline.hwpx')
+    writeFileSync(
+      join(dir, 'app-settings.json'),
+      JSON.stringify({ hwpOutlineStyleMap: { 논문장: 1 } }),
+      'utf8',
+    )
+    const r = await run(
+      [
+        'create',
+        '--type',
+        'hwpx',
+        '--ops',
+        ops(dir, [
+          { op: 'insert_paragraphs', where: 'end', paragraphs: ['새 커스텀 장'] },
+          {
+            op: 'style_paragraphs',
+            styles: [{ name: '논문장', size: 16, bold: true }],
+            apply: [{ style: '논문장', find: '새 커스텀 장' }],
+          },
+          { op: 'read_outline' },
+        ]),
+        '--out',
+        out,
+        '--json',
+      ],
+      { env: { GENOFFICE_USER_DATA: dir } },
+    )
+    expect(r.code, r.stdout).toBe(0)
+    const results = r.json().detail.results as Array<{ op: string; output: string }>
+    const readRes = results.find((entry) => entry.op === 'read_outline')
+    expect(readRes?.output).toContain('새 커스텀 장')
+    expect(readRes?.output).toContain('"style":"논문장"')
+  })
+
+  it('rejects 0 and out-of-range numeric arguments on outline and find_in_document ops', async () => {
+    const dir = tempDir()
+    const path = write(dir, 'thesis.hwpx', outlineDoc().exportHwpx())
+    for (const badOp of [
+      { op: 'change_outline_level', section: 0, paragraph: 2, direction: 'demote' },
+      { op: 'change_outline_level', section: 1, paragraph: 0, direction: 'demote' },
+      { op: 'change_outline_level', section: 999, paragraph: 2, direction: 'demote' },
+      { op: 'change_outline_level', section: 1, paragraph: 999, direction: 'demote' },
+      {
+        op: 'move_outline_section',
+        section: 0,
+        paragraph: 2,
+        target_paragraph: 4,
+        position: 'after',
+      },
+      { op: 'move_outline_section', paragraph: 2, target_paragraph: 0, position: 'after' },
+      { op: 'move_outline_section', paragraph: 999, target_paragraph: 4, position: 'after' },
+      { op: 'move_outline_section', paragraph: 2, target_paragraph: 999, position: 'after' },
+      { op: 'find_in_document', size: 0 },
+      { op: 'find_in_document', size: -1 },
+    ]) {
+      const r = await run(['hwp', 'apply', path, '--ops', ops(dir, [badOp]), '--dry-run', '--json'])
+      expect(r.code, JSON.stringify(badOp)).not.toBe(0)
+      if (
+        (badOp.op === 'change_outline_level' || badOp.op === 'move_outline_section') &&
+        (badOp.section === 999 || badOp.paragraph === 999 || badOp.target_paragraph === 999)
+      ) {
+        expect(r.stdout).toContain('read_outline')
+      }
+    }
+  })
+})

@@ -21,6 +21,7 @@ import {
   countCollector,
 } from './char-count.mjs'
 import { documentStats, engineChars, engineLength, engineSlice } from './document-info.mjs'
+import { isAppMarkName, isAppTocHyperlinkField } from './doc-marks.mjs'
 import { installDialogTheme } from './dialog-theme.mjs'
 import {
   BORDER_LINES,
@@ -74,6 +75,14 @@ import {
   whenPcFontsSettled,
 } from './pc-fonts.mjs'
 import { printSvgForThisPc, screenFonts } from './print-fonts.mjs'
+import { findMatches, replaceFindMatches, revealFindMatch } from './find.mjs'
+import {
+  changeOutlineLevel,
+  moveOutlineSection,
+  readOutline,
+  writeDocOutlineMap,
+} from './outline.mjs'
+import { installWorkpaneMenu } from './workpane-menu.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
 
@@ -157,6 +166,12 @@ const MAX_BOX_CHOICE_CHARS = 40
 const FLOATING_KINDS = new Set(['image', 'picture', 'shape', 'group', 'ole', 'textbox'])
 /** The command this plugin registers with the editor to move its caret to a place. */
 const REVEAL_COMMAND = 'ext:ieum-reveal'
+/** The command this plugin registers to reveal and select a workpane Find match (including notes). */
+const REVEAL_FIND_COMMAND = 'ext:ieum-reveal-find'
+/** The command this plugin registers to read the current caret paragraph (sec, para). */
+const CARET_POSITION_COMMAND = 'ext:ieum-caret-position'
+/** Changes triggered from the user's workpane UI: recorded as foreign edits, not AI changes. */
+const WORKPANE_CHANGES = new Set(['workpane-replace', 'outline-style-map'])
 /**
  * The event the File menu items this plugin adds fire on the editor's window, with the
  * command as its detail: the app hears it and saves or prints the way Ctrl+S and Ctrl+P do.
@@ -1693,37 +1708,311 @@ function containerOf(doc, hit) {
 }
 
 /**
+ * The body-level app-owned bookmarks of `doc` (table-of-contents, index, citation, setting marks).
+ * These are document metadata rather than content objects, so edits that add, shift, or
+ * remove paragraphs carrying them are not blocked by the object guard.
+ *
+ * Bookmarks inside table cells or headers/footers are reported by `doc.getBookmarks()` with
+ * outer body coordinates and inner control indices; filtering against `doc.getControls()`
+ * (`list === 0 && ctrlId === 'bokm'`) prevents them from exempting unrelated outer body controls.
+ */
+function appMarkBookmarksOf(doc) {
+  if (typeof doc.getBookmarks !== 'function') return []
+  try {
+    const raw = parse(doc.getBookmarks())
+    if (!Array.isArray(raw)) return []
+    const appMarks = raw.filter((mark) => isAppMarkName(mark?.name))
+    if (appMarks.length === 0 || typeof doc.getControls !== 'function') return appMarks
+    const controls = parse(doc.getControls())
+    if (!Array.isArray(controls)) return appMarks
+    const bodyBokms = new Map()
+    for (const ctrl of controls) {
+      if (ctrl && ctrl.list === 0 && ctrl.ctrlId === 'bokm') {
+        if (Number.isInteger(ctrl.para) && Number.isInteger(ctrl.controlIndex)) {
+          bodyBokms.set(`${ctrl.para}:${ctrl.controlIndex}`, ctrl)
+        }
+      }
+    }
+    const secCount = typeof doc.getSectionCount === 'function' ? doc.getSectionCount() : 0
+    const bases = [0]
+    const bySlot = new Map()
+    for (const mark of appMarks) {
+      const sec = mark.sec ?? mark.sectionIndex ?? 0
+      const para = mark.para ?? mark.paraIndex ?? 0
+      const ctrlIdx = mark.ctrlIdx ?? mark.controlIndex
+      if (
+        !Number.isInteger(sec) ||
+        !Number.isInteger(para) ||
+        !Number.isInteger(ctrlIdx) ||
+        sec < 0 ||
+        sec >= secCount ||
+        para < 0 ||
+        para >= doc.getParagraphCount(sec)
+      ) {
+        continue
+      }
+      while (bases.length <= sec) {
+        bases.push(bases[bases.length - 1] + doc.getParagraphCount(bases.length - 1))
+      }
+      const flatPara = bases[sec] + para
+      const slotKey = `${flatPara}:${ctrlIdx}`
+      const ctrl = bodyBokms.get(slotKey)
+      if (!ctrl) continue
+      let bucket = bySlot.get(slotKey)
+      if (!bucket) {
+        bucket = { flatPara, ctrl, candidates: [] }
+        bySlot.set(slotKey, bucket)
+      }
+      bucket.candidates.push(mark)
+    }
+    const verified = []
+    for (const { flatPara, ctrl, candidates } of bySlot.values()) {
+      if (candidates.length === 1) {
+        verified.push(candidates[0])
+        continue
+      }
+      let exact = null
+      if (Number.isInteger(ctrl.pos) && typeof doc.getCharIndexAtStreamPos === 'function') {
+        try {
+          const at = parse(doc.getCharIndexAtStreamPos(0, flatPara, ctrl.pos))
+          if (at && Number.isInteger(at.charIndex)) {
+            exact = candidates.find((c) => (c.charPos ?? c.charOffset) === at.charIndex) ?? null
+          }
+        } catch {
+          // ignore stream-pos lookup failures
+        }
+      }
+      verified.push(exact ?? candidates[0])
+    }
+    return verified
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Control keys (`${globalPara}:${controlIndex}`) for app-owned bookmarks in `doc`,
+ * matching the flat paragraph numbering of `doc.getControls()` (`list === 0`).
+ */
+function appMarkControlKeys(doc) {
+  const marks = appMarkBookmarksOf(doc)
+  if (marks.length === 0) return new Set()
+  const bases = [0]
+  const keys = new Set()
+  for (const mark of marks) {
+    const sec = mark.sec ?? mark.sectionIndex ?? 0
+    const para = mark.para ?? mark.paraIndex ?? 0
+    const ctrlIdx = mark.ctrlIdx ?? mark.controlIndex
+    if (!Number.isInteger(sec) || !Number.isInteger(para) || !Number.isInteger(ctrlIdx)) continue
+    while (bases.length <= sec) {
+      bases.push(bases[bases.length - 1] + doc.getParagraphCount(bases.length - 1))
+    }
+    keys.add(`${bases[sec] + para}:${ctrlIdx}`)
+  }
+  return keys
+}
+
+/** Control indices of app-owned bookmarks inside body paragraph `(sec, para)`. */
+function appMarkIndicesIn(doc, sec, para) {
+  const indices = new Set()
+  for (const mark of appMarkBookmarksOf(doc)) {
+    const mSec = mark.sec ?? mark.sectionIndex ?? 0
+    const mPara = mark.para ?? mark.paraIndex ?? 0
+    const ctrlIdx = mark.ctrlIdx ?? mark.controlIndex
+    if (mSec === sec && mPara === para && Number.isInteger(ctrlIdx)) indices.add(ctrlIdx)
+  }
+  return indices
+}
+
+/** App-owned TOC hyperlink fields targeting a heading bookmark (`제목:...`). */
+function appTocHyperlinkFieldsOf(doc) {
+  if (typeof doc.getFieldList !== 'function') return []
+  try {
+    const all = parse(doc.getFieldList())
+    return Array.isArray(all) ? all.filter(isAppTocHyperlinkField) : []
+  } catch {
+    return []
+  }
+}
+
+/** Readable label for an app-owned TOC hyperlink field (e.g. `TOC link -> 제목:서론`). */
+function appTocHyperlinkLabelOf(field) {
+  const raw = typeof field?.command === 'string' ? field.command : ''
+  let target = ''
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]
+    if (ch === '\\' && i + 1 < raw.length) {
+      target += raw[i + 1]
+      i += 1
+      continue
+    }
+    if (ch === ';') break
+    target += ch
+  }
+  const clean = target.startsWith('?') || target.startsWith('#') ? target.slice(1) : target
+  return clean ? `TOC link -> ${clean}` : 'TOC link'
+}
+
+/** Snapshot of all app-owned mark labels (bookmarks + TOC links) in `doc`. */
+function appMarkLabelsOf(doc) {
+  const labels = []
+  for (const mark of appMarkBookmarksOf(doc)) {
+    if (typeof mark?.name === 'string' && mark.name.length > 0) labels.push(mark.name)
+  }
+  for (const field of appTocHyperlinkFieldsOf(doc)) {
+    labels.push(appTocHyperlinkLabelOf(field))
+  }
+  return labels
+}
+
+/** Multiset difference: labels present in `before` that are no longer present in `after`. */
+function diffRemovedLabels(before, after) {
+  if (before.length === 0) return []
+  const remaining = new Map()
+  for (const label of after) {
+    remaining.set(label, (remaining.get(label) ?? 0) + 1)
+  }
+  const removed = []
+  for (const label of before) {
+    const count = remaining.get(label) ?? 0
+    if (count > 0) {
+      remaining.set(label, count - 1)
+    } else {
+      removed.push(label)
+    }
+  }
+  return removed
+}
+
+/**
+ * Control keys (`${list}:${para}:${controlIndex}`) for unnamed controls belonging to
+ * app-owned TOC hyperlinks (`제목:...`), matched by raw stream position when available.
+ */
+function appTocHyperlinkControlKeys(doc, preloadedControls = null) {
+  const links = appTocHyperlinkFieldsOf(doc)
+  if (links.length === 0) return new Set()
+  const controls = preloadedControls ?? parse(doc.getControls())
+  const unnamed = controls.filter((control) => control.ctrlId === '' && control.ctrlCh === 0)
+  const used = new Set()
+  const keys = new Set()
+  for (const link of links) {
+    let index = -1
+    if (Number.isInteger(link.startPos)) {
+      index = unnamed.findIndex(
+        (control, at) =>
+          !used.has(at) &&
+          Number.isInteger(link.listId) &&
+          control.list === link.listId &&
+          control.para === link.paraInList &&
+          control.pos + 8 === link.startPos,
+      )
+    }
+    if (index < 0) {
+      index = unnamed.findIndex(
+        (control, at) =>
+          !used.has(at) &&
+          Number.isInteger(link.listId) &&
+          control.list === link.listId &&
+          control.para === link.paraInList,
+      )
+    }
+    if (index < 0) continue
+    used.add(index)
+    const matched = unnamed[index]
+    keys.add(`${matched.list}:${matched.para}:${matched.controlIndex}`)
+  }
+  return keys
+}
+
+/** Control indices of app-owned TOC hyperlinks inside body paragraph `(sec, para)`. */
+function appTocHyperlinkIndicesIn(doc, sec, para) {
+  const links = appTocHyperlinkFieldsOf(doc).filter(
+    (link) =>
+      link.listId === 0 && link.location?.sectionIndex === sec && link.location?.paraIndex === para,
+  )
+  if (links.length === 0) return new Set()
+  const unnamed = bodyControlsOf(doc, sec, para).filter(
+    (control) => control.ctrlId === '' && control.ctrlCh === 0,
+  )
+  const used = new Set()
+  const indices = new Set()
+  for (const link of links) {
+    let idx = -1
+    if (Number.isInteger(link.startPos)) {
+      idx = unnamed.findIndex((control, at) => !used.has(at) && control.pos + 8 === link.startPos)
+    }
+    if (idx < 0) {
+      idx = unnamed.findIndex((_, at) => !used.has(at))
+    }
+    if (idx < 0) continue
+    used.add(idx)
+    indices.add(unnamed[idx].controlIndex)
+  }
+  return indices
+}
+
+/**
  * What an edit must leave alone: the objects of the document and the field values. An edit
  * that fills cells names the fields it sets itself (`ignore`, by field id); the value of a
  * named cell is its text, so those are not watched then either.
  */
 function objectsOf(doc, ignore = null) {
   // memos are fields of their own but are watched by the memo guard: their text is the
-  // anchor text, which changes whenever that text is edited. The engine also lists each
-  // memo among the paragraph's controls, so those controls are left out of the count.
+  // anchor text, which changes whenever that text is edited. App-owned TOC hyperlinks
+  // targeting heading bookmarks are metadata links too. The engine lists each among the
+  // paragraph's controls, so those controls are left out of the count.
   const all = parse(doc.getFieldList())
-  const fields = all.filter((field) => field.fieldType !== 'memo')
+  const fields = all.filter((field) => field.fieldType !== 'memo' && !isAppTocHyperlinkField(field))
   const watched = ignore
     ? fields.filter((field) => field.cellField !== true && !ignore.has(field.fieldId))
     : fields
   const controls = parse(doc.getControls())
   const unnamed = controls.filter((control) => control.ctrlId === '' && control.ctrlCh === 0)
   const used = new Set()
-  let memoControls = 0
-  for (const memo of all.filter((field) => field.fieldType === 'memo')) {
-    const index = unnamed.findIndex(
-      (control, at) =>
-        !used.has(at) &&
-        Number.isInteger(memo.listId) &&
-        control.list === memo.listId &&
-        control.para === memo.paraInList,
-    )
+  let exemptUnnamedControls = 0
+  for (const field of all.filter(
+    (entry) => entry.fieldType === 'memo' || isAppTocHyperlinkField(entry),
+  )) {
+    let index = -1
+    if (Number.isInteger(field.startPos)) {
+      index = unnamed.findIndex(
+        (control, at) =>
+          !used.has(at) &&
+          Number.isInteger(field.listId) &&
+          control.list === field.listId &&
+          control.para === field.paraInList &&
+          control.pos + 8 === field.startPos,
+      )
+    }
+    if (index < 0) {
+      index = unnamed.findIndex(
+        (control, at) =>
+          !used.has(at) &&
+          Number.isInteger(field.listId) &&
+          control.list === field.listId &&
+          control.para === field.paraInList,
+      )
+    }
     if (index < 0) continue
     used.add(index)
-    memoControls += 1
+    exemptUnnamedControls += 1
+  }
+  // App-owned metadata bookmarks are not content objects and may come or go with edits.
+  const appMarks = appMarkControlKeys(doc)
+  let appMarkControls = 0
+  if (appMarks.size > 0) {
+    for (const control of controls) {
+      if (
+        control.ctrlId === 'bokm' &&
+        control.list === 0 &&
+        appMarks.has(`${control.para}:${control.controlIndex}`)
+      ) {
+        appMarkControls += 1
+      }
+    }
   }
   return {
-    controls: controls.length - memoControls,
+    controls: controls.length - exemptUnnamedControls - appMarkControls,
     fields: JSON.stringify(watched.map((field) => field.value ?? '')),
   }
 }
@@ -1744,7 +2033,7 @@ function bodyControlsOf(doc, sec, para) {
 /**
  * Whether body paragraph `para` of section `sec` holds an object drawn before character
  * `end`: a field (a click-here field shows its guide there), a table, a picture or any other
- * control but those that set up the page and the memos, which take no room in the line.
+ * control but those that set up the page, app marks, app TOC links, and memos, which take no room in the line.
  */
 function bodyObjectBefore(doc, sec, para, end) {
   const positions = parse(doc.getControlTextPositions(sec, para))
@@ -1753,10 +2042,14 @@ function bodyObjectBefore(doc, sec, para, end) {
     bodyControlsOf(doc, sec, para).map((control) => [control.controlIndex, control.ctrlId]),
   )
   const besideMemos = memoFreeObjectPositions(doc, sec, para)
+  const appMarks = appMarkIndicesIn(doc, sec, para)
+  const tocLinks = appTocHyperlinkIndicesIn(doc, sec, para)
   return positions.some(
     (at, index) =>
       at < end &&
       !PAGE_CONTROLS.has(kinds.get(index)) &&
+      !appMarks.has(index) &&
+      !tocLinks.has(index) &&
       (kinds.get(index) !== '' || besideMemos.includes(at)),
   )
 }
@@ -1772,8 +2065,9 @@ function holdsObjectOutOfLine(doc, sec, para) {
 }
 
 /**
- * The places of the controls of a body paragraph, without the memos: a memo is a field
- * that the memo guard watches, not an object that a paragraph edit must step around.
+ * The places of the controls of a body paragraph, without memos, app-owned bookmarks, or
+ * app-owned TOC hyperlinks: memos are watched by the memo guard and app marks/TOC links
+ * are metadata, not content objects.
  */
 function memoFreeObjectPositions(doc, sec, para) {
   const positions = parse(doc.getControlTextPositions(sec, para))
@@ -1783,7 +2077,11 @@ function memoFreeObjectPositions(doc, sec, para) {
     )
     .map((entry) => entry.startCharIdx)
     .filter((offset) => Number.isInteger(offset))
-  return positions.filter((position) => !starts.includes(position))
+  const appMarks = appMarkIndicesIn(doc, sec, para)
+  const tocLinks = appTocHyperlinkIndicesIn(doc, sec, para)
+  return positions.filter(
+    (position, index) => !starts.includes(position) && !appMarks.has(index) && !tocLinks.has(index),
+  )
 }
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
@@ -4334,9 +4632,16 @@ function holdsContentObject(doc, sec, para) {
   if (memoFreeObjectPositions(doc, sec, para).length === 0) return false
   if (sec !== 0) return true
   try {
-    return parse(doc.getControls()).some(
+    const controls = parse(doc.getControls())
+    const appMarks = appMarkControlKeys(doc)
+    const tocLinks = appTocHyperlinkControlKeys(doc, controls)
+    return controls.some(
       (control) =>
-        control.list === 0 && control.para === para && !PAGE_CONTROLS.has(control.ctrlId),
+        control.list === 0 &&
+        control.para === para &&
+        !PAGE_CONTROLS.has(control.ctrlId) &&
+        !(control.ctrlId === 'bokm' && appMarks.has(`${control.para}:${control.controlIndex}`)) &&
+        !tocLinks.has(`${control.list}:${control.para}:${control.controlIndex}`),
     )
   } catch {
     return true
@@ -8274,6 +8579,44 @@ export const agentPlugin = {
       // registered by an earlier activation of this plugin, or a host without commands
     }
 
+    let shownFind = { ok: false }
+    try {
+      host.automation.registerCommand({
+        id: REVEAL_FIND_COMMAND,
+        label: 'Show a find match',
+        execute: (services, match) => {
+          try {
+            shownFind = revealFindMatch(services, match)
+          } catch {
+            shownFind = { ok: false }
+          }
+        },
+      })
+    } catch {
+      // registered by an earlier activation of this plugin, or a host without commands
+    }
+
+    let caretNow = null
+    try {
+      host.automation.registerCommand({
+        id: CARET_POSITION_COMMAND,
+        label: 'Read the caret paragraph',
+        execute: (services) => {
+          try {
+            const input = services && services.getInputHandler ? services.getInputHandler() : null
+            const cursor = input ? input.cursor : null
+            const pos = cursor && cursor.getPosition ? cursor.getPosition() : null
+            const at = endOf(pos)
+            caretNow = at ? { sec: at.sec, para: at.para } : null
+          } catch {
+            caretNow = null
+          }
+        },
+      })
+    } catch {
+      // registered by an earlier activation of this plugin, or a host without commands
+    }
+
     // what the selection command saw, and the selection this plugin made itself by showing
     // a change: that one is not something the user picked
     let picked = null
@@ -8606,6 +8949,8 @@ export const agentPlugin = {
       const approvedMemos = Array.isArray(options?.approvedMemoIds)
         ? new Set(options.approvedMemoIds)
         : null
+      const isWorkpaneUserEdit = WORKPANE_CHANGES.has(label) || options?.foreign === true
+      const trackAppMarks = !isWorkpaneUserEdit && !MEMO_CHANGES.has(label)
       own = true
       // not left to the editor's event alone: a stale text would send the model after
       // words that are no longer there
@@ -8621,15 +8966,47 @@ export const agentPlugin = {
             const marked = marks
             const before = paragraphCounts(doc, marked)
             const watched = MEMO_CHANGES.has(label) || allowMemoRemoval ? null : memoEntriesOf(doc)
+            const appMarksBefore = trackAppMarks ? appMarkLabelsOf(doc) : null
             const known = headsBefore(doc)
             const changed = fn(doc)
             const { heads, taller } = settleHeads(doc, known)
             const result = options?.settled ? options.settled(changed, heads) : changed
             if (watched && watched.length > 0) {
-              const left = new Set(memoEntriesOf(doc).map((entry) => entry.id))
-              const gone = watched.filter(
+              const afterMemos = memoEntriesOf(doc)
+              const left = new Set(afterMemos.map((entry) => entry.id))
+              let gone = watched.filter(
                 (entry) => !left.has(entry.id) && !(approvedMemos && approvedMemos.has(entry.id)),
               )
+              if (gone.length > 0 && options?.matchMovedMemos === true) {
+                const watchedIds = new Set(watched.map((entry) => entry.id))
+                const memoKeyOf = (entry) =>
+                  JSON.stringify([
+                    entry.author ?? '',
+                    entry.text ?? '',
+                    entry.date ?? '',
+                    entry.place ?? '',
+                    entry.startCharIdx ?? -1,
+                    entry.endCharIdx ?? -1,
+                    entry.parentId != null,
+                  ])
+                const freshCounts = new Map()
+                for (const entry of afterMemos) {
+                  if (watchedIds.has(entry.id)) continue
+                  const key = memoKeyOf(entry)
+                  freshCounts.set(key, (freshCounts.get(key) ?? 0) + 1)
+                }
+                const trulyGone = []
+                for (const entry of gone) {
+                  const key = memoKeyOf(entry)
+                  const count = freshCounts.get(key) ?? 0
+                  if (count > 0) {
+                    freshCounts.set(key, count - 1)
+                  } else {
+                    trulyGone.push(entry)
+                  }
+                }
+                gone = trulyGone
+              }
               if (gone.length > 0) {
                 const failure = fail(
                   'MEMO_REMOVAL_REQUIRES_APPROVAL',
@@ -8639,11 +9016,20 @@ export const agentPlugin = {
                 throw failure
               }
             }
+            const removedAppMarks =
+              appMarksBefore && appMarksBefore.length > 0 && result?.ok === true
+                ? diffRemovedLabels(appMarksBefore, appMarkLabelsOf(doc))
+                : []
+            const finalResult =
+              result?.ok === true && (taller.length > 0 || removedAppMarks.length > 0)
+                ? {
+                    ...result,
+                    ...(taller.length > 0 ? { tallerRows: taller } : {}),
+                    ...(removedAppMarks.length > 0 ? { removedAppMarks } : {}),
+                  }
+                : result
             return {
-              result:
-                taller.length > 0 && result?.ok === true
-                  ? { ...result, tallerRows: taller }
-                  : result,
+              result: finalResult,
               before,
               after: paragraphCounts(doc, marked),
               heads,
@@ -8665,10 +9051,20 @@ export const agentPlugin = {
         }
         headsKnown = done.heads
         headsRevision = revision
-        noteChange(label, done.result, done.before, done.after)
-        // a memo the user added, changed or removed in the panel is the user's own edit: an
-        // AI run's undo must not take it back in place of the run's changes
-        if (MEMO_CHANGES.has(label)) foreign += 1
+        if (isWorkpaneUserEdit) {
+          if (marks.length > 0) {
+            setMarks([])
+            refreshMarks()
+          }
+          syncMemos({ notify: label === 'workpane-replace' })
+          refreshMemoAnchors()
+          foreign += 1
+        } else {
+          noteChange(label, done.result, done.before, done.after)
+          // a memo the user added, changed or removed in the panel is the user's own edit: an
+          // AI run's undo must not take it back in place of the run's changes
+          if (MEMO_CHANGES.has(label)) foreign += 1
+        }
         if (
           done.result &&
           typeof done.result === 'object' &&
@@ -8713,12 +9109,27 @@ export const agentPlugin = {
      * header set before any text). Text added at the end of such a document goes into that
      * paragraph, as typing would, instead of leaving it in front as an empty first line.
      */
-    const isEmptyDocument = (doc, box) =>
-      !box.inTable &&
-      doc.getSectionCount() === 1 &&
-      doc.getParagraphCount(0) === 1 &&
-      box.length(box.index) === 0 &&
-      parse(doc.getControls()).every((control) => PAGE_CONTROLS.has(control.ctrlId))
+    const isEmptyDocument = (doc, box) => {
+      if (
+        box.inTable ||
+        doc.getSectionCount() !== 1 ||
+        doc.getParagraphCount(0) !== 1 ||
+        box.length(box.index) !== 0
+      ) {
+        return false
+      }
+      const controls = parse(doc.getControls())
+      const appMarks = appMarkControlKeys(doc)
+      const tocLinks = appTocHyperlinkControlKeys(doc, controls)
+      return controls.every(
+        (control) =>
+          PAGE_CONTROLS.has(control.ctrlId) ||
+          (control.ctrlId === 'bokm' &&
+            control.list === 0 &&
+            appMarks.has(`${control.para}:${control.controlIndex}`)) ||
+          tocLinks.has(`${control.list}:${control.para}:${control.controlIndex}`),
+      )
+    }
 
     /** Make an empty paragraph after paragraph `k` of `box`; its index is k + 1. */
     const openAfter = (box, k, plain) => {
@@ -13377,6 +13788,153 @@ export const agentPlugin = {
 
       /** Take the editor's input away while the app's memo modal is open. */
       setMemoLock: guarded((locked) => setMemoLock(locked === true)),
+
+      /** Register the editor's View menu entries for the left workpane (Outline / Find). */
+      installWorkpaneMenu: guarded((labels) => installWorkpaneMenu(host, labels)),
+
+      /** Search across body, tables (including nested), text boxes, and footnotes/endnotes. */
+      findMatches: guarded((options) => host.read((doc) => findMatches(doc, options))),
+
+      /**
+       * Replace one, selected, or all matches from findMatches in a single undo step.
+       * Recorded as a user edit (foreign) so AI undo does not revert workpane replacements.
+       */
+      replaceFindMatches: guarded((options, replacement, selection, changeOptions) => {
+        const preview = host.read((doc) => findMatches(doc, options))
+        if (!preview.ok) return preview
+        if (preview.total === 0) {
+          return { ok: true, replaced: 0, skippedObjects: 0, skippedCitations: 0 }
+        }
+        const noop = Symbol('noop')
+        let noopResult = null
+        try {
+          return change(
+            'workpane-replace',
+            (doc) => {
+              const result = replaceFindMatches(doc, options, replacement, selection)
+              if (!result.ok || result.replaced === 0) {
+                noopResult = result
+                throw noop
+              }
+              return result
+            },
+            { ...changeOptions, foreign: true, allowMemoRemoval: true },
+          )
+        } catch (thrown) {
+          if (thrown === noop) return noopResult
+          throw thrown
+        }
+      }),
+
+      /** Move the caret to a workpane find match and select it (entering footnote edit when supported). */
+      revealFindMatch: guarded((match) => {
+        shownFind = { ok: false }
+        try {
+          host.automation.execute(REVEAL_FIND_COMMAND, match)
+        } catch {
+          return { ok: false }
+        }
+        return shownFind
+      }),
+
+      /** Read document headings (native outline paragraphs + mapped paragraph styles) in reading order. */
+      readOutline: guarded((options) => host.read((doc) => readOutline(doc, options))),
+
+      /** Write or clear the document-scoped outline style-to-level map (`설정:개요수준`) in one undo step. */
+      setDocOutlineMap: guarded((map, changeOptions) => {
+        const noop = Symbol('noop')
+        let failedResult = null
+        try {
+          return change(
+            'outline-style-map',
+            (doc) => {
+              const result = writeDocOutlineMap(doc, map)
+              if (!result.ok) {
+                failedResult = result
+                throw noop
+              }
+              return result
+            },
+            { ...changeOptions, foreign: true, allowMemoRemoval: true },
+          )
+        } catch (thrown) {
+          if (thrown === noop) return failedResult
+          throw thrown
+        }
+      }),
+
+      /** Read the current body paragraph `(sec, para)` containing the caret, or null if unavailable. */
+      caretPosition: guarded(() => {
+        caretNow = null
+        try {
+          host.automation.execute(CARET_POSITION_COMMAND)
+        } catch {
+          return null
+        }
+        return caretNow
+      }),
+
+      /**
+       * Promote or demote a heading (with its subtree by default, or singleOnly).
+       * Defaults to a user (foreign) workpane edit; AI callers pass `{ foreign: false }`.
+       */
+      changeOutlineLevel: guarded((params, changeOptions) => {
+        const isForeign = changeOptions?.foreign !== false
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return change(
+            'outline-level',
+            (doc) => {
+              const result = changeOutlineLevel(doc, params)
+              if (!result.ok) {
+                refused = result
+                throw abort
+              }
+              return result
+            },
+            isForeign
+              ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
+              : { ...changeOptions, foreign: false },
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /**
+       * Move a heading and its section (body + subheadings) before or after another heading
+       * in a single undo step, rolling back automatically on any post-check failure.
+       * Defaults to a user (foreign) workpane edit; AI callers pass `{ foreign: false }`.
+       */
+      moveOutlineSection: guarded((params, changeOptions) => {
+        const isForeign = changeOptions?.foreign !== false
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return change(
+            'outline-move',
+            (doc) => {
+              const result = moveOutlineSection(doc, params)
+              if (!result.ok) {
+                refused = result
+                throw abort
+              }
+              return result
+            },
+            isForeign
+              ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
+              : { ...changeOptions, foreign: false, matchMovedMemos: true },
+          )
+        } catch (thrown) {
+          if (thrown === abort) {
+            const { mutated: _mutated, ...clean } = refused
+            return clean
+          }
+          throw thrown
+        }
+      }),
 
       /** Take the marks of the changes made so far off the pages. */
       clearMarks: guarded(() => {

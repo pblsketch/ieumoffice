@@ -29,6 +29,7 @@ export function hwpChangeLine(item: HwpChange): AiChangeLine {
     case 'cells':
     case 'lines':
     case 'note':
+    case 'move':
       // named, not struck through: this stays, it is what the change was done to
       return { kind: 'named', from: item.from, to: item.to, count: item.count, showable }
     case 'replace':

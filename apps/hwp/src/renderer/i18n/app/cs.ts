@@ -260,6 +260,9 @@ export const cs = {
   memoHwpxLost:
     'Komentáře nepřevedené do souboru HWPX: {count}. Uložte jako HWP nebo soubor zkontrolujte v Hancom Hangul.',
   aiToolMemos: 'Zkontrolované komentáře: {count}',
+  aiToolReadOutline: 'Zkontrolována osnova · {count}',
+  aiToolChangeOutlineLevel: 'Změněna úroveň osnovy · {count}',
+  aiToolMoveOutlineSection: 'Přesunuta část osnovy · {count} odst.',
   aiMemoContext: 'Komentáře: {count}',
   aiMemoApprovalTitle: 'Tato úprava smaže komentáře: {count}. Pokračovat?',
   aiMemoApprovalKeep: 'Ponechat komentáře',

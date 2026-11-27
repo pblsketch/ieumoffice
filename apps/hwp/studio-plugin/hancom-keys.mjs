@@ -20,6 +20,7 @@ import { openDocumentInfo } from './document-info.mjs'
 import { convertToHanja } from './hanja.mjs'
 import { autoFillBlock } from './table-auto-fill.mjs'
 import { isTableCellPosition } from './textbox-edit.mjs'
+import { WORKPANE_COMMAND_EVENT } from './workpane-menu.mjs'
 import {
   HWPUNIT_PER_PX,
   cellExtents,
@@ -764,10 +765,13 @@ export const REMOVED_SHORTCUTS = [
   [{ key: 'ㅇ', alt: true, shift: true }, 'format:align-distribute'],
   // Hangul's Ctrl+0 is the tenth style; 100% stays on Ctrl+G,Q, as in Hangul
   [{ key: '0', ctrl: true }, 'view:zoom-100'],
+  // Ctrl+F opens the left workpane Find tab; the editor's own find dialog stays on Ctrl+Q,F
+  [{ key: 'f', ctrl: true }, 'edit:find'],
 ]
 
 /** Hangul's keys the studio lacks, ahead of its own so they win a tie. */
 export const ADDED_SHORTCUTS = [
+  [{ key: 'f', code: 'KeyF', ctrl: true }, 'ieum:workpane-find'],
   [{ key: 'y', code: 'KeyY', ctrl: true }, 'ieum:delete-line'],
   [{ key: 'c', code: 'KeyC', ctrl: true, shift: true }, 'format:align-center'],
   [{ key: 'r', code: 'KeyR', ctrl: true, shift: true }, 'format:align-right'],
@@ -815,6 +819,7 @@ export function adaptToHancom(shortcuts) {
 
 /** The menu labels that follow the keys; the studio shows these next to its menu items. */
 export const LABELS = {
+  'edit:find': 'Ctrl+Q,F',
   'format:align-center': 'Ctrl+Shift+C',
   'format:align-right': 'Ctrl+Shift+R',
   'format:align-distribute': 'Ctrl+Shift+T',
@@ -4259,6 +4264,19 @@ export function hancomCommands(locale, studio = {}) {
       canExecute: (ctx) => ctx.hasDocument && !ctx.isFormMode,
       execute(services) {
         void convertToHanja(services, { ...studio, locale })
+      },
+    },
+    {
+      id: 'ieum:workpane-find',
+      label: ko ? '찾기 작업창' : 'Find Pane',
+      shortcutLabel: 'Ctrl+F',
+      canExecute: (ctx) => ctx.hasDocument,
+      execute() {
+        globalThis.dispatchEvent?.(
+          new CustomEvent(WORKPANE_COMMAND_EVENT, {
+            detail: { action: 'open', tab: 'find', focus: true },
+          }),
+        )
       },
     },
     {

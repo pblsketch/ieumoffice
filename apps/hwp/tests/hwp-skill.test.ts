@@ -4405,6 +4405,10 @@ describe('the skill as the model sees it', () => {
       'read_formatting',
       'list_paragraph_looks',
       'format_look',
+      'read_outline',
+      'change_outline_level',
+      'move_outline_section',
+      'find_in_document',
     ])
     expect((await call('delete_everything')).isError).toBe(true)
   })
@@ -6121,5 +6125,234 @@ describe('a table inside a cell of another table', () => {
     expect((await look.call('format_cells', { table: 2, background: '#eeeeee' })).output).toContain(
       drawn,
     )
+  })
+})
+
+describe('outline and multi-scope find tools (workpane bundle)', () => {
+  it('marks read_outline and find_in_document as non-editing, and change_outline_level/move_outline_section as editing, with no numeric min/max in schemas', async () => {
+    const { HWP_EDIT_TOOLS } = await import('../src/renderer/ai/hwp-skill')
+    const { skill } = setup()
+    expect(HWP_EDIT_TOOLS.has('read_outline')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('find_in_document')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('change_outline_level')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('move_outline_section')).toBe(true)
+    for (const name of [
+      'read_outline',
+      'change_outline_level',
+      'move_outline_section',
+      'find_in_document',
+    ]) {
+      const def = skill.tools.find((t) => t.name === name)
+      expect(def, name).toBeDefined()
+      const schemaText = JSON.stringify(def!.inputSchema)
+      expect(schemaText, name).not.toContain('"minimum"')
+      expect(schemaText, name).not.toContain('"maximum"')
+    }
+  })
+
+  it('reads outline using app-wide style map and returns 1-based section/paragraph keys matching write tools', async () => {
+    const readOutline = vi.fn(async () => ({
+      items: [
+        {
+          level: 1,
+          number: '1.',
+          title: '서론',
+          page: 1,
+          physicalPage: 1,
+          sec: 0,
+          para: 0,
+          source: 'outline' as const,
+          styleName: '개요 1',
+        },
+        {
+          level: 2,
+          number: '1.1',
+          title: '배경',
+          page: 2,
+          pageLabel: 'ii',
+          physicalPage: 2,
+          sec: 0,
+          para: 3,
+          source: 'style' as const,
+          styleName: '제목 2',
+        },
+      ],
+      effectiveStyleMap: { '제목 2': 2 },
+      hasDocStyleMap: false,
+      docStyleMap: null,
+    }))
+    const env = createHwpSkill({
+      bridge: { ...setup().bridge, readOutline } as AgentBridge,
+      label: (key) => key,
+      onChange: () => {},
+      confirmMemoRemoval: async () => false,
+      getOutlineStyleMap: async () => ({ '제목 2': 2 }),
+    })
+    const res = await env.skill.executeTool({ id: '1', name: 'read_outline', input: {} })
+    expect(res.isError).toBeUndefined()
+    expect(readOutline).toHaveBeenCalledWith({ appStyleMap: { '제목 2': 2 } })
+    const parsed = JSON.parse(res.output.split('\n')[1]!) as Array<Record<string, unknown>>
+    expect(parsed).toEqual([
+      {
+        section: 1,
+        paragraph: 1,
+        level: 1,
+        number: '1.',
+        title: '서론',
+        page: 1,
+        source: 'outline',
+        style: '개요 1',
+      },
+      {
+        section: 1,
+        paragraph: 4,
+        level: 2,
+        number: '1.1',
+        title: '배경',
+        page: 2,
+        page_label: 'ii',
+        source: 'style',
+        style: '제목 2',
+      },
+    ])
+  })
+
+  it('promotes/demotes headings with foreign: false and rejects 0 or out-of-range section/paragraph', async () => {
+    const changeOutlineLevel = vi.fn(async () => ({
+      ok: true as const,
+      changed: [{ sec: 0, para: 1, fromLevel: 2, toLevel: 1, styleName: '개요 1' }],
+      place: PLACE,
+    }))
+    const env = setup({ changeOutlineLevel })
+    expect(
+      (await env.call('change_outline_level', { section: 0, paragraph: 2, direction: 'promote' }))
+        .isError,
+    ).toBe(true)
+    expect(
+      (await env.call('change_outline_level', { section: 1, paragraph: 0, direction: 'promote' }))
+        .isError,
+    ).toBe(true)
+    const ok = await env.call('change_outline_level', {
+      section: 1,
+      paragraph: 2,
+      direction: 'promote',
+      single_only: true,
+    })
+    expect(ok.isError).toBeUndefined()
+    expect(ok.mutated).toBe(true)
+    expect(changeOutlineLevel).toHaveBeenCalledWith(
+      { sec: 0, para: 1, delta: -1, singleOnly: true },
+      { foreign: false },
+    )
+    expect(env.changes).toHaveLength(1)
+  })
+
+  it('moves outline section with foreign: false and surfaces refusals clearly', async () => {
+    const moveOutlineSection = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true as const,
+        movedParagraphs: 3,
+        newStart: { sec: 0, para: 4 },
+        place: PLACE,
+      })
+      .mockResolvedValueOnce({ ok: false as const, reason: 'first_para_layout' })
+    const env = setup({ moveOutlineSection })
+    expect(
+      (
+        await env.call('move_outline_section', {
+          paragraph: 0,
+          target_paragraph: 3,
+          position: 'after',
+        })
+      ).isError,
+    ).toBe(true)
+    expect(
+      (
+        await env.call('move_outline_section', {
+          paragraph: 2,
+          target_paragraph: 0,
+          position: 'after',
+        })
+      ).isError,
+    ).toBe(true)
+    const ok = await env.call('move_outline_section', {
+      section: 1,
+      paragraph: 2,
+      target_paragraph: 5,
+      position: 'after',
+    })
+    expect(ok.isError).toBeUndefined()
+    expect(ok.mutated).toBe(true)
+    expect(ok.summary).toContain('aiToolMoveOutlineSection')
+    expect(env.changes.at(-1)?.kind).toBe('move')
+    expect(moveOutlineSection).toHaveBeenCalledWith(
+      { source: { sec: 0, para: 1 }, target: { sec: 0, para: 4 }, position: 'after' },
+      { foreign: false },
+    )
+    const refused = await env.call('move_outline_section', {
+      paragraph: 1,
+      target_paragraph: 5,
+      position: 'after',
+    })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('first paragraph')
+  })
+
+  it('runs multi-scope find_in_document with filters, notes unsupported scopes, and rejects non-positive size or empty filters', async () => {
+    const findMatches = vi.fn(async () => ({
+      ok: true as const,
+      total: 1,
+      matches: [
+        {
+          index: 0,
+          kind: 'footnote' as const,
+          sec: 0,
+          para: 2,
+          offset: 3,
+          length: 4,
+          matchText: '논문',
+          beforeText: '참고 ',
+          afterText: ' 인용',
+          page: 3,
+        },
+      ],
+      unsupportedScopes: ['nested_table' as const, 'footnote' as const],
+    }))
+    const env = setup({ findMatches })
+    expect((await env.call('find_in_document', {})).isError).toBe(true)
+    expect((await env.call('find_in_document', { size: 0 })).isError).toBe(true)
+    expect((await env.call('find_in_document', { size: -2 })).isError).toBe(true)
+    const ok = await env.call('find_in_document', {
+      query: '논문',
+      whole_word: true,
+      bold: true,
+      size: 11,
+    })
+    expect(ok.isError).toBeUndefined()
+    expect(findMatches).toHaveBeenCalledWith({
+      query: '논문',
+      wholeWord: true,
+      charFormat: { bold: true, size: 11 },
+    })
+    expect(ok.output).toContain('"kind":"footnote"')
+    expect(ok.output).toContain('"page":3')
+    expect(ok.output).toContain('nested tables')
+    expect(ok.output).toContain('footnotes')
+  })
+
+  it('names removed app marks in the AI tool output when an edit deletes them', async () => {
+    const deleteParagraph = vi.fn(async () => ({
+      ok: true as const,
+      text: '지울 문단',
+      emptied: false,
+      inTable: false,
+      removedAppMarks: ['색인:교육학:1', '인용:홍길동2020:1'],
+    }))
+    const env = setup({ deleteParagraph })
+    const res = await env.call('delete_paragraph', { find: '지울 문단' })
+    expect(res.isError).toBeUndefined()
+    expect(res.mutated).toBe(true)
+    expect(res.output).toContain('Removed app mark(s): 색인:교육학:1, 인용:홍길동2020:1.')
   })
 })

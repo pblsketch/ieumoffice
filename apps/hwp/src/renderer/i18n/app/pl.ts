@@ -261,6 +261,9 @@ export const pl = {
   memoHwpxLost:
     'Komentarze nieprzeniesione do pliku HWPX: {count}. Zapisz jako HWP lub sprawdź plik w Hancom Hangul.',
   aiToolMemos: 'Sprawdzono komentarze: {count}',
+  aiToolReadOutline: 'Sprawdzono konspekt · {count}',
+  aiToolChangeOutlineLevel: 'Zmieniono poziom konspektu · {count}',
+  aiToolMoveOutlineSection: 'Przeniesiono sekcję konspektu · {count} akapit(y)',
   aiMemoContext: 'Komentarze: {count}',
   aiMemoApprovalTitle: 'Ta zmiana usuwa komentarze: {count}. Kontynuować?',
   aiMemoApprovalKeep: 'Zachowaj komentarze',

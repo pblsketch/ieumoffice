@@ -257,6 +257,9 @@ export const ko = {
   memoHwpxLost:
     '메모 {count}개를 HWPX에 옮기지 못했습니다. HWP로 저장하거나 한컴 한글에서 확인하세요.',
   aiToolMemos: '메모 {count}개 확인',
+  aiToolReadOutline: '개요 확인 · {count}개',
+  aiToolChangeOutlineLevel: '개요 수준 변경 · {count}개',
+  aiToolMoveOutlineSection: '개요 단락 옮김 · {count}문단',
   aiMemoContext: '메모 {count}개',
   aiMemoApprovalTitle: '이 편집으로 메모 {count}개가 지워집니다. 계속할까요?',
   aiMemoApprovalKeep: '메모 유지',
