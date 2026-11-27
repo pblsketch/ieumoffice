@@ -1,6 +1,6 @@
 {
   "name": "@rhwp/core",
-  "version": "0.9.1-ieum.38",
+  "version": "0.9.1-ieum.39",
   "description": "rhwp v0.9.1 HWP/HWPX engine (WebAssembly) rebuilt with the patches in ./patches",
   "private": true,
   "type": "module",
@@ -59,9 +59,10 @@
       "0056-atomic-table-save-verify.patch",
       "0057-textbox-hit-test-and-in-cell-edit.patch",
       "0059-list-object-captions.patch",
-      "0060-body-wide-para-float-owner-column.patch"
+      "0060-body-wide-para-float-owner-column.patch",
+      "0061-cell-picture-square-relayout.patch"
     ],
     "wasmPack": "0.15.0",
-    "wasmSha256": "e175b52be3410b8d7e43cabbd6f64c956bd7b2fba7a40b60e1456424e5e7a82b"
+    "wasmSha256": "258a20e24bb432f45a289a9316f4a704491bce4093e32bc1410c6a472da22878"
   }
 }
