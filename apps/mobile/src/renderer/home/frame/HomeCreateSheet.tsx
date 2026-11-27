@@ -8,7 +8,7 @@ import { DocTypeIcon, IconFolderOpen } from '../../components/MobileIcons'
 import { Sheet } from '../../components/Sheet'
 import { useMobileLocale } from '../../i18n'
 import type { HomeCardItem } from '../../settings/sections/homeSettingsModel'
-import { homeCardTitle, openableExtensionsLine } from './HomeCards'
+import { homeCardTitle } from './HomeCards'
 import { cardFormat } from './frameModel'
 import './homeFrame.css'
 
@@ -119,10 +119,7 @@ export function HomeCreateSheet({
           }}
         >
           <IconFolderOpen size={20} />
-          <span className="home-frame-create-row-text">
-            <span className="home-frame-create-action-title">{t('openFile')}</span>
-            <span className="home-frame-create-row-sub">{openableExtensionsLine()}</span>
-          </span>
+          <span className="home-frame-create-action-title">{t('openFile')}</span>
         </button>
         {pdfToolsReady && (
           <button

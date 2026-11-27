@@ -43,6 +43,8 @@
   --m-icon-btn: 40px;
   --m-control-s: 32px;
   --m-panel-w: 360px;
+  /* reading measure on wide screens (DSN Q5: max 40rem, centered at >= 840px) */
+  --m-measure: 40rem;
 
   /* component sizes */
   --m-appbar-h: 56px;
@@ -1044,7 +1046,9 @@ input:focus-visible {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-top: var(--m-space-3);
+  padding-bottom: var(--m-space-2);
 }
 
 .mobile-modal-dialog {
@@ -1536,7 +1540,7 @@ input:focus-visible {
 }
 
 .mobile-markdown-preview {
-  max-width: 720px;
+  max-width: min(100%, calc(var(--m-measure) + 2 * var(--m-space-5)));
   width: 100%;
   margin: 0 auto;
   padding: var(--m-space-5) var(--m-space-5) calc(var(--m-fab-size) + var(--m-space-8));
@@ -1636,7 +1640,7 @@ input:focus-visible {
 .mobile-markdown-textarea {
   flex: 1;
   width: 100%;
-  max-width: 760px;
+  max-width: min(100%, calc(var(--m-measure) + 2 * var(--m-space-5)));
   margin: 0 auto;
   min-height: 100%;
   border: 0;

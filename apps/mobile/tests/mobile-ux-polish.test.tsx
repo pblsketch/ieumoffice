@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +11,8 @@ import type {
   RecentDocEntry,
 } from '@genoffice/mobile-bridge/transport'
 import { HomeScreen } from '../src/renderer/components/HomeScreen'
+import { buildFlowDocument, FLOW_FRAME_CSS } from '../src/renderer/editors/hwpFlow'
+import { DEFAULT_READER_SETTINGS, scrollCss } from '../src/renderer/editors/readers/epub/epubView'
 import {
   resetHomeFrameForTest,
   sortFavoriteEntries,
@@ -480,5 +484,56 @@ describe('22-language i18n completeness for new UX keys', () => {
         expect(value, `${lang}.${key}`).toBeTruthy()
       }
     }
+  })
+})
+
+describe('Store-prep layout fixes: create sheet height & tablet reading measure', () => {
+  it('lets the create sheet hug content up to safe viewport max-height with single-row responsive actions', () => {
+    const css = fs.readFileSync(
+      path.resolve(__dirname, '../src/renderer/home/frame/homeFrame.css'),
+      'utf8',
+    )
+    expect(css).toContain(
+      ".mobile-sheet-layer[data-testid='home-create-sheet'] .mobile-sheet-surface[data-detent='medium']",
+    )
+    expect(css).toContain('height: auto;')
+    expect(css).toContain(
+      'max-height: calc(100dvh - var(--m-safe-top) - var(--m-kb) - var(--m-space-6));',
+    )
+    expect(css).toContain(
+      'grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));',
+    )
+
+    const tokensCss = fs.readFileSync(
+      path.resolve(__dirname, '../src/renderer/styles/mobile-tokens.css'),
+      'utf8',
+    )
+    expect(tokensCss).toContain('--m-measure: 40rem;')
+    expect(tokensCss).toContain(
+      'max-width: min(100%, calc(var(--m-measure) + 2 * var(--m-space-5)));',
+    )
+  })
+
+  it('constrains HWP reading view and EPUB scroll reading measure to 40rem centered at >= 840px', () => {
+    expect(FLOW_FRAME_CSS).toContain('@media (min-width: 840px)')
+    expect(FLOW_FRAME_CSS).toContain('max-width: min(100%, calc(40rem / var(--flow-zoom, 1.2)));')
+    expect(FLOW_FRAME_CSS).toContain('margin-inline: auto;')
+    expect(buildFlowDocument('<p>본문</p>', 1.2, 'ko')).toContain('@media (min-width: 840px)')
+
+    const epubScroll = scrollCss(DEFAULT_READER_SETTINGS, 'light', {
+      paper: '#ffffff',
+      ink: '#1b1b1b',
+      nightPaper: '#1c1c1e',
+      nightInk: '#d9d7d2',
+      nightLink: '#8ab4f8',
+      sepiaPaper: '#f5ecd7',
+      sepiaInk: '#4a3b2a',
+      hitBg: '#ffe066',
+      hitInk: '#000000',
+      aiChangedBg: '#d0ebff',
+      aiChangedLine: '#1971c2',
+    })
+    expect(epubScroll).toContain('@media (min-width: 840px)')
+    expect(epubScroll).toContain('max-width: min(100%, 40rem); margin-inline: auto;')
   })
 })
