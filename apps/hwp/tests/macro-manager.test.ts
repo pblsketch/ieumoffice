@@ -27,7 +27,10 @@ import {
   type MacroManagerModalProps,
   type MacroStoreApi,
 } from '../src/renderer/macro'
-import { formatPreviewScriptWithVisibleControls } from '../src/renderer/macro/MacroManagerModal'
+import {
+  formatMacroRunException,
+  formatPreviewScriptWithVisibleControls,
+} from '../src/renderer/macro/MacroManagerModal'
 import type { HwpApi, MacroRecord } from '../src/shared/ipc'
 
 function makeMacro(overrides: Partial<MacroRecord> = {}): MacroRecord {
@@ -1020,6 +1023,134 @@ describe('MacroManagerModal and MacroEditorModal', () => {
     const notice = document.querySelector('[data-testid="macro-notice"]')
     expect(notice).not.toBeNull()
     expect(notice?.textContent).toContain('Replaced 3 items')
+    expect(notice?.textContent).toContain(macroStrings.en.noticeMacroRunNotRecorded)
+  })
+
+  it('formats regex time_limit/step_limit timeouts with and without line and whileRecording (T4)', () => {
+    const enWithLoc = formatMacroRunOutcome('en', 'RegexSearch', {
+      ok: false,
+      code: 'time_limit',
+      detail: 'regex',
+      error: 'Regex time limit exceeded',
+      line: 3,
+      column: 1,
+      messages: [],
+      steps: 100,
+      elapsedMs: 30001,
+    } as unknown as MacroHostResult)
+    expect(enWithLoc.tone).toBe('error')
+    expect(enWithLoc.text).toBe(
+      'Macro stopped and rolled back at line 3, col 1 because the regular expression took too long.',
+    )
+
+    const koWithLocRec = formatMacroRunOutcome(
+      'ko',
+      'RegexSearch',
+      {
+        ok: false,
+        code: 'time_limit',
+        detail: 'regex',
+        error: 'Regex time limit exceeded',
+        line: 3,
+        column: 1,
+        messages: [],
+        steps: 100,
+        elapsedMs: 30001,
+      } as unknown as MacroHostResult,
+      { whileRecording: true },
+    )
+    expect(koWithLocRec.tone).toBe('error')
+    expect(koWithLocRec.text).toBe(
+      `정규식 검색이 너무 오래 걸려 3행 1열에서 매크로를 멈추고 변경을 되돌렸습니다. · ${macroStrings.ko.noticeMacroRunNotRecorded}`,
+    )
+
+    const enWithLocRec = formatMacroRunOutcome(
+      'en',
+      'RegexSearch',
+      {
+        ok: false,
+        code: 'step_limit',
+        detail: 'regex',
+        error: 'Regex step limit exceeded',
+        line: 5,
+        column: 7,
+        messages: [],
+        steps: 100000,
+        elapsedMs: 50,
+      } as unknown as MacroHostResult,
+      { whileRecording: true },
+    )
+    expect(enWithLocRec.tone).toBe('error')
+    expect(enWithLocRec.text).toContain('line 5, col 7')
+    expect(enWithLocRec.text).toContain('regular expression took too long')
+    expect(enWithLocRec.text).toContain(macroStrings.en.noticeMacroRunNotRecorded)
+
+    const koNoLoc = formatMacroRunOutcome('ko', 'RegexSearch', {
+      ok: false,
+      code: 'time_limit',
+      detail: 'regex',
+      error: 'Regex time limit exceeded',
+      line: null,
+      column: null,
+      messages: [],
+      steps: 100,
+      elapsedMs: 30001,
+    } as unknown as MacroHostResult)
+    expect(koNoLoc.tone).toBe('error')
+    expect(koNoLoc.text).toBe(macroStrings.ko.noticeMacroRegexTimeout)
+
+    const enNoLoc = formatMacroRunOutcome('en', 'RegexSearch', {
+      ok: false,
+      code: 'time_limit',
+      detail: 'regex',
+      error: 'Regex time limit exceeded',
+      messages: [],
+      steps: 100,
+      elapsedMs: 30001,
+    } as unknown as MacroHostResult)
+    expect(enNoLoc.tone).toBe('error')
+    expect(enNoLoc.text).toBe(macroStrings.en.noticeMacroRegexTimeout)
+  })
+
+  it('formats macro run exceptions with noticeMacroRunNotRecorded only when whileRecording is true (T6)', () => {
+    const plain = formatMacroRunException('en', new Error('Bridge disconnected'), {
+      whileRecording: false,
+    })
+    expect(plain.tone).toBe('error')
+    expect(plain.text).toContain('Bridge disconnected')
+    expect(plain.text).not.toContain(macroStrings.en.noticeMacroRunNotRecorded)
+
+    const whileRec = formatMacroRunException('en', new Error('Bridge disconnected'), {
+      whileRecording: true,
+    })
+    expect(whileRec.tone).toBe('error')
+    expect(whileRec.text).toContain('Bridge disconnected')
+    expect(whileRec.text).toContain(macroStrings.en.noticeMacroRunNotRecorded)
+
+    const koWhileRec = formatMacroRunException('ko', 'IPC timeout', {
+      whileRecording: true,
+    })
+    expect(koWhileRec.tone).toBe('error')
+    expect(koWhileRec.text).toContain('IPC timeout')
+    expect(koWhileRec.text).toContain(macroStrings.ko.noticeMacroRunNotRecorded)
+  })
+
+  it('renders BOTH error message and noticeMacroRunNotRecorded when onRunMacro rejects while recording (T6)', async () => {
+    const macro = makeMacro({ id: 'm-rej', name: 'Crashing Macro', slot: 2 })
+    const onRunMacro = vi.fn(async () => {
+      throw new Error('Bridge rejected')
+    })
+    await renderManager({ macros: [macro], recording: true, onRunMacro })
+
+    const row = document.querySelector('[data-testid="macro-row"]') as HTMLElement
+    const runBtn = row.querySelector('[data-testid="macro-run-btn"]') as HTMLButtonElement
+    await act(async () => {
+      runBtn.click()
+    })
+
+    const notice = document.querySelector('[data-testid="macro-notice"]')
+    expect(notice).not.toBeNull()
+    expect(notice?.textContent).toContain('Bridge rejected')
     expect(notice?.textContent).toContain(macroStrings.en.noticeMacroRunNotRecorded)
   })
 })

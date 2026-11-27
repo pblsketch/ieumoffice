@@ -541,38 +541,146 @@ describe('command and keyboard recording with real-engine replay and single undo
     ])
 
     // Real HwpDocument wrapped with WasmBridge-shaped helpers
-    const doc = makeDoc(['abcdef'])
-    const fnRes = JSON.parse(doc.insertFootnote(0, 0, 3)) as { ok: boolean }
+    const doc = makeDoc(['first', 'abcdef'])
+    const fnRes = JSON.parse(doc.insertFootnote(0, 1, 3)) as { ok: boolean }
     expect(fnRes.ok).toBe(true)
-    const bridge = {
+    const makeBridge = (d: HwpDocument) => ({
+      getFootnoteAtCursor: (sec: number, para: number, offset: number, dir: string) =>
+        JSON.parse(d.getFootnoteAtCursor(sec, para, offset, dir)),
       getControlTextPositions: (sec: number, para: number) =>
-        JSON.parse(doc.getControlTextPositions(sec, para)) as number[],
-      getControls: () => JSON.parse(doc.getControls()),
-      getParagraphCount: (sec: number) => doc.getParagraphCount(sec),
-    }
+        JSON.parse(d.getControlTextPositions(sec, para)) as number[],
+      getControls: () => JSON.parse(d.getControls()),
+      getParagraphCount: (sec: number) => d.getParagraphCount(sec),
+      getParagraphLength: (sec: number, para: number) => d.getParagraphLength(sec, para),
+      getMemoAnchors: () => JSON.parse(d.getMemoList()),
+    })
+    const bridge = makeBridge(doc)
 
-    // Footnote at offset 3: Delete at 3 and Backspace at 3/4 detect adjacent object, offset 1 does not.
+    // 1) Footnote at offset 3 in "abcdef": caret at 3 + Backspace deletes 'c' safely (NOT blocked).
     expect(
       hasAdjacentProtectedObject(
         bridge,
-        { sectionIndex: 0, paragraphIndex: 0, charOffset: 3 },
-        'Delete',
-      ),
-    ).toBe(true)
-    expect(
-      hasAdjacentProtectedObject(
-        bridge,
-        { sectionIndex: 0, paragraphIndex: 0, charOffset: 4 },
+        { sectionIndex: 0, paragraphIndex: 1, charOffset: 3 },
         'Backspace',
       ),
-    ).toBe(true)
+    ).toBe(false)
+    {
+      const rec = createMacroRecorder()
+      rec.start()
+      const adj = hasAdjacentProtectedObject(
+        bridge,
+        { sectionIndex: 0, paragraphIndex: 1, charOffset: 3 },
+        'Backspace',
+      )
+      expect(rec.recordKey({ key: 'Backspace' }, { inBody: true, adjacentObject: adj })).toBe(true)
+      const { script } = rec.stop()
+      expect(script).toBe('deleteBackward();')
+
+      const replayDoc = makeDoc(['first', 'abcdef'])
+      replayDoc.insertFootnote(0, 1, 3)
+      const replayRes = runMacroOnDocument(replayDoc, script, {
+        caret: { sec: 0, para: 1, offset: 3 },
+      })
+      expect(replayRes.ok).toBe(true)
+      expect(bodyTexts(replayDoc)).toEqual(['first', 'abdef'])
+      const replayCtrls = JSON.parse(replayDoc.getControls()) as Array<{ ctrlId: string }>
+      expect(replayCtrls.filter((c) => c.ctrlId === 'fn')).toHaveLength(1)
+
+      // Matches direct engine deleteText(0, 1, 2, 1)
+      const directDoc = makeDoc(['first', 'abcdef'])
+      directDoc.insertFootnote(0, 1, 3)
+      directDoc.deleteText(0, 1, 2, 1)
+      expect(bodyTexts(replayDoc)).toEqual(bodyTexts(directDoc))
+    }
+
+    // 2) Footnote at offset 3: caret at 4 + Backspace and caret at 3 + Delete are refused by BOTH recorder and API.
+    for (const [offset, key, apiScript] of [
+      [4, 'Backspace', 'deleteBackward();'],
+      [3, 'Delete', 'deleteForward();'],
+    ] as const) {
+      expect(
+        hasAdjacentProtectedObject(
+          bridge,
+          { sectionIndex: 0, paragraphIndex: 1, charOffset: offset },
+          key,
+        ),
+      ).toBe(true)
+      const recNotices: MacroRecorderNotice[] = []
+      const rec = createMacroRecorder({ onNotice: (n) => recNotices.push(n) })
+      rec.start()
+      expect(rec.recordKey({ key }, { inBody: true, adjacentObject: true })).toBe(false)
+      expect(rec.stop().script).toBe('')
+      expect(recNotices).toEqual([
+        { kind: 'unsupported_command', commandId: 'edit:delete-object', label: key },
+      ])
+
+      const apiDoc = makeDoc(['first', 'abcdef'])
+      apiDoc.insertFootnote(0, 1, 3)
+      const before = apiDoc.exportHwp()
+      const apiRes = runMacroOnDocument(apiDoc, apiScript, {
+        caret: { sec: 0, para: 1, offset },
+      })
+      expect(apiRes.ok).toBe(false)
+      if (!apiRes.ok) expect(apiRes.code).toBe('object_loss')
+      expect(bytesEqual(apiDoc.exportHwp(), before)).toBe(true)
+    }
+
+    // Caret at offset 1 + Delete and offset 4 + Delete are NOT blocked.
     expect(
       hasAdjacentProtectedObject(
         bridge,
-        { sectionIndex: 0, paragraphIndex: 0, charOffset: 1 },
+        { sectionIndex: 0, paragraphIndex: 1, charOffset: 1 },
         'Delete',
       ),
     ).toBe(false)
+    expect(
+      hasAdjacentProtectedObject(
+        bridge,
+        { sectionIndex: 0, paragraphIndex: 1, charOffset: 4 },
+        'Delete',
+      ),
+    ).toBe(false)
+
+    // 3) Cross-paragraph table boundary: Delete at end of para before table, and Backspace at start of para after table.
+    const tblDoc = makeDoc(['before', 'after'])
+    expect(JSON.parse(tblDoc.createTable(0, 0, 6, 2, 2)).ok).toBe(true)
+    const tblCtrl = (
+      JSON.parse(tblDoc.getControls()) as Array<{ ctrlId: string; para: number }>
+    ).find((c) => c.ctrlId === 'tbl')
+    expect(tblCtrl).toBeDefined()
+    const tblPara = tblCtrl!.para
+    const tblBridge = makeBridge(tblDoc)
+    const beforeParaLen = tblDoc.getParagraphLength(0, tblPara - 1)
+    expect(beforeParaLen).toBe(6)
+
+    for (const [para, offset, key, apiScript] of [
+      [tblPara - 1, beforeParaLen, 'Delete', 'deleteForward();'],
+      [tblPara + 1, 0, 'Backspace', 'deleteBackward();'],
+    ] as const) {
+      expect(
+        hasAdjacentProtectedObject(
+          tblBridge,
+          { sectionIndex: 0, paragraphIndex: para, charOffset: offset },
+          key,
+        ),
+      ).toBe(true)
+      const recNotices: MacroRecorderNotice[] = []
+      const rec = createMacroRecorder({ onNotice: (n) => recNotices.push(n) })
+      rec.start()
+      expect(rec.recordKey({ key }, { inBody: true, adjacentObject: true })).toBe(false)
+      expect(rec.stop().script).toBe('')
+      expect(recNotices).toEqual([
+        { kind: 'unsupported_command', commandId: 'edit:delete-object', label: key },
+      ])
+
+      const beforeTblBytes = tblDoc.exportHwp()
+      const apiRes = runMacroOnDocument(tblDoc, apiScript, {
+        caret: { sec: 0, para, offset },
+      })
+      expect(apiRes.ok).toBe(false)
+      if (!apiRes.ok) expect(apiRes.code).toBe('object_loss')
+      expect(bytesEqual(tblDoc.exportHwp(), beforeTblBytes)).toBe(true)
+    }
 
     // Bookmarks and section layout controls are NOT treated as protected objects.
     const bookmarkBridge = {
@@ -1319,22 +1427,36 @@ describe('studio macro recording patches', () => {
         'recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody, adjacentObject: macroAdjacentObject });',
       )
 
-      // Shift+Home/End & navigation shortcuts hook executeNavigationAction with inBody
-      expect(source).toContain('recordStudioKey(e, { navigationAction: action, inBody:')
+      // Shift+Home/End & navigation shortcuts capture pre-move macroWasInBody and hook executeNavigationAction
+      expect(source).toContain(
+        'recordStudioKey(e, { navigationAction: action, inBody: macroWasInBody &&',
+      )
 
-      // Shift+Arrow hooks ArrowLeft/Right/Up/Down with inBody
+      // Shift+Arrow captures pre-move macroWasInBody and hooks ArrowLeft/Right/Up/Down
       const arrowIdx = source.indexOf("case 'ArrowLeft':")
       const homeIdx = source.indexOf("case 'Home':", arrowIdx)
       const arrowBlock = source.slice(arrowIdx, homeIdx)
-      expect(arrowBlock).toContain('recordStudioKey(e, { inBody:')
+      expect(arrowBlock).toContain('const macroWasInBody =')
+      expect(arrowBlock).toContain('recordStudioKey(e, { inBody: macroWasInBody &&')
 
-      // Tab & Shift+Tab hook recordStudioKey with inBody
-      const tabIdx = source.indexOf("case 'Tab':")
+      // Home/End capture pre-move macroWasInBody
+      const endIdx = source.indexOf("case 'End':", homeIdx)
+      const tabIdx = source.indexOf("case 'Tab':", endIdx)
+      expect(source.slice(homeIdx, endIdx)).toContain(
+        'recordStudioKey(e, { inBody: macroWasInBody &&',
+      )
+      expect(source.slice(endIdx, tabIdx)).toContain(
+        'recordStudioKey(e, { inBody: macroWasInBody &&',
+      )
+
+      // Tab & Shift+Tab capture pre-move macroWasInBody and hook recordStudioKey
       const insertIdx = source.indexOf("case 'Insert':", tabIdx)
       const tabBlock = source.slice(tabIdx, insertIdx)
-      expect(tabBlock.match(/recordStudioKey\(e, \{ inBody:/g)?.length).toBeGreaterThanOrEqual(2)
+      expect(
+        tabBlock.match(/recordStudioKey\(e, \{ inBody: macroWasInBody &&/g)?.length,
+      ).toBeGreaterThanOrEqual(2)
 
-      // handleCtrlKey hooks Ctrl+Backspace, Ctrl+Delete, and Ctrl+Arrows with inBody
+      // handleCtrlKey hooks Ctrl+Backspace, Ctrl+Delete, Ctrl+Home/End, and Ctrl+Arrows with pre-move macroWasInBody
       const ctrlIdx = source.indexOf('export function handleCtrlKey')
       const ctrlBlock = source.slice(ctrlIdx)
       expect(ctrlBlock).toContain("case 'backspace':")
@@ -1344,8 +1466,19 @@ describe('studio macro recording patches', () => {
           /recordStudioKey\(e, \{ hadSelection: macroHadSelection, inBody: macroInBody \}\);/g,
         )?.length,
       ).toBe(2)
-      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineStart', inBody:")
-      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineEnd', inBody:")
+      expect(ctrlBlock.match(/recordStudioKey\(e, \{ inBody: macroWasInBody &&/g)?.length).toBe(2)
+      expect(ctrlBlock).toContain(
+        "recordStudioKey(e, { navigationAction: 'lineStart', inBody: macroWasInBody &&",
+      )
+      expect(ctrlBlock).toContain(
+        "recordStudioKey(e, { navigationAction: 'lineEnd', inBody: macroWasInBody &&",
+      )
+      expect(ctrlBlock).toContain(
+        "navigationAction: e.metaKey && !e.ctrlKey ? 'docStart' : 'paragraphBackward', inBody: macroWasInBody &&",
+      )
+      expect(ctrlBlock).toContain(
+        "navigationAction: e.metaKey && !e.ctrlKey ? 'docEnd' : 'paragraphForward', inBody: macroWasInBody &&",
+      )
     },
   )
 })

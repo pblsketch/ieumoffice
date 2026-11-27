@@ -141,4 +141,8 @@ export const de = {
   cmdOtherAction: 'Nicht unterstützte Bearbeitungsaktion ({id})',
   noticeOutsideBodyIgnored:
     'Aktionen außerhalb von Textabsätzen (Tabellen, Textfelder, Fuß-/Endnoten, Kopf-/Fußzeilen) werden nicht aufgezeichnet.',
+  noticeMacroRegexTimeout:
+    'Makro wurde gestoppt und zurückgesetzt, da der reguläre Ausdruck zu lange gedauert hat.',
+  noticeMacroRegexTimeoutAt:
+    'Makro wurde in Zeile {line}, Spalte {column} gestoppt und zurückgesetzt, da der reguläre Ausdruck zu lange gedauert hat.',
 } satisfies Record<keyof typeof zh, string>

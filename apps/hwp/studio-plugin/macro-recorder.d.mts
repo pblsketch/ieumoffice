@@ -100,6 +100,35 @@ export interface MacroRecorder {
   recordSlotRun(slot: number): boolean
 }
 
+export declare const PROTECTED_CONTENT_CTRL_IDS: ReadonlySet<string>
+
+export interface ProtectedDeletionRange {
+  startSec: number
+  startPara: number
+  startOffset: number
+  endSec: number
+  endPara: number
+  endOffset: number
+}
+
+export interface ProtectedDeletionBlocker {
+  code: 'object_loss' | 'memo_loss'
+  message: string
+  ctrlId?: string
+}
+
+export declare function findProtectedDeletionBlocker(
+  docOrBridge: unknown,
+  range: ProtectedDeletionRange,
+): ProtectedDeletionBlocker | null
+
+export declare function findProtectedStepDeletionBlocker(
+  docOrBridge: unknown,
+  pos: unknown,
+  direction: 'backward' | 'forward',
+  count?: number,
+): ProtectedDeletionBlocker | null
+
 export declare function hasAdjacentProtectedObject(
   wasm: unknown,
   pos: unknown,

@@ -136,4 +136,8 @@ export const en = {
   cmdOtherAction: 'Unsupported editor action ({id})',
   noticeOutsideBodyIgnored:
     'Actions outside body paragraphs (tables, text boxes, notes, headers/footers) are not recorded.',
+  noticeMacroRegexTimeout:
+    'Macro stopped and rolled back because the regular expression took too long.',
+  noticeMacroRegexTimeoutAt:
+    'Macro stopped and rolled back at line {line}, col {column} because the regular expression took too long.',
 } satisfies Record<keyof typeof zh, string>

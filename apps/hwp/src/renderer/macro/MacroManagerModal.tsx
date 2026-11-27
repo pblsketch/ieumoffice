@@ -134,6 +134,7 @@ export type MacroRunResult =
   | {
       ok: false
       code: string
+      detail?: 'regex' | string
       error: string
       line?: number | null
       column?: number | null
@@ -146,9 +147,27 @@ export type MacroRunResult =
 
 type MacroHostFailureView = Extract<MacroRunResult, { ok: false }> & {
   code: string
+  detail?: 'regex' | string
   line?: number | null
   column?: number | null
   phase?: 'post_run' | string
+}
+
+/** Format a rejected macro execution exception into a localized error notice payload. */
+export function formatMacroRunException(
+  lang: Lang,
+  error: unknown,
+  options?: { whileRecording?: boolean },
+): { tone: 'error'; text: string } {
+  const message = error instanceof Error ? error.message : String(error)
+  const text = translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: message })
+  if (options?.whileRecording === true) {
+    return {
+      tone: 'error',
+      text: `${text} · ${translateMacro(lang, 'noticeMacroRunNotRecorded')}`,
+    }
+  }
+  return { tone: 'error', text }
 }
 
 /** Format a `MacroHostResult` (or plugin `unsupported_place` result) into a localized user-visible notice payload. */
@@ -228,6 +247,24 @@ export function formatMacroRunOutcome(
     return withRecordingNote({
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: failure.error }),
+    })
+  }
+  if (
+    (failure.code === 'time_limit' || failure.code === 'step_limit') &&
+    failure.detail === 'regex'
+  ) {
+    if (typeof failure.line === 'number' && failure.line > 0) {
+      return withRecordingNote({
+        tone: 'error',
+        text: translateMacro(lang, 'noticeMacroRegexTimeoutAt', {
+          line: failure.line,
+          column: failure.column ?? 1,
+        }),
+      })
+    }
+    return withRecordingNote({
+      tone: 'error',
+      text: translateMacro(lang, 'noticeMacroRegexTimeout'),
     })
   }
   if (failure.line == null && failure.phase === 'post_run') {
@@ -391,12 +428,7 @@ export function MacroManagerModal({
       })
       setNotice(outcome)
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: t('noticeMacroRunErrorNoLoc', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      })
+      setNotice(formatMacroRunException(lang, error, { whileRecording: recording }))
     } finally {
       setBusy(false)
     }

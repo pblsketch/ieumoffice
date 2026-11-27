@@ -55,9 +55,22 @@ const ALIGN_MAP = Object.freeze({
 const ALIGN_NAMES = Object.freeze(new Set(['left', 'center', 'right', 'justify']))
 
 const PARA_UNITS_PER_PT = 200
+const MIN_FONT_PT = 1
+const MAX_FONT_PT = 500
+const MIN_HEIGHT = MIN_FONT_PT * 100
+const MAX_HEIGHT = MAX_FONT_PT * 100
+const MAX_FONT_NAME = 64
+const MIN_LINE_SPACING = 50
+const MAX_LINE_SPACING = 500
+const MAX_TABLE_ROWS = 100
+const MAX_TABLE_COLS = 50
 
 const HEX_6_RE = /^#?([0-9a-fA-F]{6})$/
 const HEX_3_RE = /^#?([0-9a-fA-F]{3})$/
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_RE = /[\u0000-\u001f\u007f]/
+// eslint-disable-next-line no-control-regex
+const PARAGRAPH_CONTROL_CHARS = /[\u0000-\u0008\u000a-\u001f\u007f]/
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -257,25 +270,65 @@ function mapCharShapeProps(pset, fail) {
   }
   if (pset.Height !== undefined && pset.Height !== null) {
     const raw = pset.Height
-    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > MAX_INT32) {
-      fail('invalid_argument', `Invalid Height: expected a positive number up to ${MAX_INT32}`)
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < MIN_HEIGHT || raw > MAX_HEIGHT) {
+      fail(
+        'invalid_argument',
+        `Invalid Height: expected a number between ${MIN_HEIGHT} and ${MAX_HEIGHT} (100 units = 1 pt)`,
+      )
     }
     props.fontSize = raw / 100
     count += 1
   } else if (pset.FontSize !== undefined && pset.FontSize !== null) {
     const raw = pset.FontSize
-    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > MAX_INT32) {
-      fail('invalid_argument', `Invalid FontSize: expected a positive number up to ${MAX_INT32}`)
+    if (
+      typeof raw !== 'number' ||
+      !Number.isFinite(raw) ||
+      raw < MIN_FONT_PT ||
+      raw > MAX_FONT_PT
+    ) {
+      fail(
+        'invalid_argument',
+        `Invalid FontSize: expected a number between ${MIN_FONT_PT} and ${MAX_FONT_PT}`,
+      )
     }
     props.fontSize = raw
     count += 1
   }
-  const face =
-    typeof pset.FaceNameHangul === 'string' && pset.FaceNameHangul.trim() !== ''
-      ? pset.FaceNameHangul.trim()
-      : typeof pset.FaceNameLatin === 'string' && pset.FaceNameLatin.trim() !== ''
-        ? pset.FaceNameLatin.trim()
-        : null
+  const hasHangulFace = pset.FaceNameHangul !== undefined && pset.FaceNameHangul !== null
+  const hasLatinFace = pset.FaceNameLatin !== undefined && pset.FaceNameLatin !== null
+  const validateFaceName = (raw, fieldName, allowEmpty) => {
+    if (typeof raw !== 'string') {
+      fail(
+        'invalid_argument',
+        `Invalid ${fieldName}: expected a non-empty string up to ${MAX_FONT_NAME} characters`,
+      )
+    }
+    const trimmed = raw.trim()
+    if (
+      (!allowEmpty && trimmed.length === 0) ||
+      trimmed.length > MAX_FONT_NAME ||
+      CONTROL_CHARS_RE.test(raw)
+    ) {
+      fail(
+        'invalid_argument',
+        `Invalid ${fieldName}: expected a non-empty string up to ${MAX_FONT_NAME} characters`,
+      )
+    }
+    return trimmed
+  }
+  const latinNonEmpty =
+    hasLatinFace && typeof pset.FaceNameLatin === 'string' && pset.FaceNameLatin.trim().length > 0
+  const hangulNonEmpty =
+    hasHangulFace &&
+    typeof pset.FaceNameHangul === 'string' &&
+    pset.FaceNameHangul.trim().length > 0
+  const hangulFace = hasHangulFace
+    ? validateFaceName(pset.FaceNameHangul, 'FaceNameHangul', latinNonEmpty)
+    : ''
+  const latinFace = hasLatinFace
+    ? validateFaceName(pset.FaceNameLatin, 'FaceNameLatin', hangulNonEmpty)
+    : ''
+  const face = hangulFace || latinFace || null
   if (face !== null) {
     props.fontName = face
     count += 1
@@ -310,7 +363,19 @@ function mapParaShapeProps(pset, fail) {
     }
   }
   if (pset.LineSpacing !== undefined && pset.LineSpacing !== null) {
-    props.lineSpacing = pset.LineSpacing
+    const raw = pset.LineSpacing
+    if (
+      typeof raw !== 'number' ||
+      !Number.isFinite(raw) ||
+      raw < MIN_LINE_SPACING ||
+      raw > MAX_LINE_SPACING
+    ) {
+      fail(
+        'invalid_argument',
+        `Invalid LineSpacing: expected a number between ${MIN_LINE_SPACING} and ${MAX_LINE_SPACING}`,
+      )
+    }
+    props.lineSpacing = raw
     count += 1
   }
   if (pset.LeftMargin !== undefined && pset.LeftMargin !== null) {
@@ -339,12 +404,14 @@ function mapParaShapeProps(pset, fail) {
     props.spaceAfter = parseCompatParaUnit(pset.NextSpacing, 'NextSpacing', 0, 40000, fail)
     count += 1
   }
-  const rawPageBreak =
-    pset.PagebreakBefore !== undefined && pset.PagebreakBefore !== null
-      ? pset.PagebreakBefore
-      : pset.PageBreakBefore
+  const hasLowerPageBreak = pset.PagebreakBefore !== undefined && pset.PagebreakBefore !== null
+  const rawPageBreak = hasLowerPageBreak ? pset.PagebreakBefore : pset.PageBreakBefore
   if (rawPageBreak !== undefined && rawPageBreak !== null) {
-    props.pageBreakBefore = parseBoolToggle(rawPageBreak, 'PagebreakBefore', fail)
+    props.pageBreakBefore = parseBoolToggle(
+      rawPageBreak,
+      hasLowerPageBreak ? 'PagebreakBefore' : 'PageBreakBefore',
+      fail,
+    )
     count += 1
   }
   if (count === 0) {
@@ -369,11 +436,34 @@ function validateFindFlags(src, fail) {
   }
 }
 
-function extractFindOptions(pset, fallbackBag, fail) {
+function extractFindOptions(pset, fallbackBag, fail, requireNonEmptyQuery = true) {
   const src = isRecord(pset) ? pset : fallbackBag
   validateFindFlags(src, fail)
+  if (
+    src.FindString !== undefined &&
+    src.FindString !== null &&
+    typeof src.FindString !== 'string'
+  ) {
+    fail('invalid_argument', 'Invalid FindString: expected a string')
+  }
   const query = typeof src.FindString === 'string' ? src.FindString : ''
+  if (requireNonEmptyQuery && query.length === 0) {
+    fail('invalid_argument', 'Invalid FindString: expected a non-empty string')
+  }
+  if (
+    src.ReplaceString !== undefined &&
+    src.ReplaceString !== null &&
+    typeof src.ReplaceString !== 'string'
+  ) {
+    fail('invalid_argument', 'Invalid ReplaceString: expected a string')
+  }
   const replacement = typeof src.ReplaceString === 'string' ? src.ReplaceString : ''
+  if (PARAGRAPH_CONTROL_CHARS.test(replacement)) {
+    fail(
+      'invalid_argument',
+      'Invalid ReplaceString: must be a string without line breaks or control characters',
+    )
+  }
   const caseSensitive = Boolean(src.MatchCase)
   const wholeWord = Boolean(src.WholeWordOnly)
   const regex =
@@ -381,6 +471,15 @@ function extractFindOptions(pset, fallbackBag, fail) {
       ? parseBoolToggle(src.FindRegExp, 'FindRegExp', fail)
       : false
   return { query, replacement, opts: { caseSensitive, wholeWord, regex } }
+}
+
+function parseCompatCount(pset, fail) {
+  if (!isRecord(pset) || pset.Count === undefined) return undefined
+  const raw = pset.Count
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > MAX_INT32) {
+    fail('invalid_argument', `Invalid Count: expected an integer between 1 and ${MAX_INT32}`)
+  }
+  return raw
 }
 
 /**
@@ -462,6 +561,13 @@ export function createCompatGlobals(api, options = undefined) {
   const runRepeatFind = (pset) => {
     const src = isRecord(pset) ? pset : HFindReplace
     validateFindFlags(src, fail)
+    if (
+      src.FindString !== undefined &&
+      src.FindString !== null &&
+      typeof src.FindString !== 'string'
+    ) {
+      fail('invalid_argument', 'Invalid FindString: expected a string')
+    }
     const query =
       typeof src.FindString === 'string' && src.FindString.length > 0
         ? src.FindString
@@ -514,6 +620,14 @@ export function createCompatGlobals(api, options = undefined) {
       case 'InsertText': {
         selectAnchor = null
         const src = isRecord(pset) ? pset : HInsertText
+        if (
+          src.Text !== undefined &&
+          typeof src.Text !== 'string' &&
+          typeof src.Text !== 'number' &&
+          typeof src.Text !== 'boolean'
+        ) {
+          fail('invalid_argument', 'Invalid Text: expected a string, number, or boolean')
+        }
         api.insertText(src.Text !== undefined ? src.Text : '')
         return true
       }
@@ -540,10 +654,28 @@ export function createCompatGlobals(api, options = undefined) {
       }
       case 'Style': {
         const src = isRecord(pset) ? pset : HStyle
-        const target =
-          src.StyleName !== undefined && src.StyleName !== null ? src.StyleName : src.Style
-        if (target === undefined || target === null || target === '') {
+        const hasStyleName = src.StyleName !== undefined && src.StyleName !== null
+        const fieldName = hasStyleName ? 'StyleName' : 'Style'
+        const target = hasStyleName ? src.StyleName : src.Style
+        if (target === undefined || target === null) {
           fail('invalid_argument', 'Style action requires StyleName or Style')
+        }
+        if (typeof target === 'number') {
+          if (!Number.isInteger(target) || target < 0 || target > MAX_INT32) {
+            fail(
+              'invalid_argument',
+              `Invalid ${fieldName}: expected a non-negative integer style id or non-empty style name`,
+            )
+          }
+        } else if (typeof target === 'string') {
+          if (target.trim().length === 0) {
+            fail('invalid_argument', `Invalid ${fieldName}: expected a non-empty style name`)
+          }
+        } else {
+          fail(
+            'invalid_argument',
+            `Invalid ${fieldName}: expected a style name string or non-negative integer style id`,
+          )
         }
         api.applyStyle(target)
         return true
@@ -567,16 +699,16 @@ export function createCompatGlobals(api, options = undefined) {
         applyMoveWithAnchor(() => api.moveLineEnd())
         return true
       case 'MoveLeft':
-        applyMoveWithAnchor(() => api.moveLeft(isRecord(pset) ? pset.Count : undefined))
+        applyMoveWithAnchor(() => api.moveLeft(parseCompatCount(pset, fail)))
         return true
       case 'MoveRight':
-        applyMoveWithAnchor(() => api.moveRight(isRecord(pset) ? pset.Count : undefined))
+        applyMoveWithAnchor(() => api.moveRight(parseCompatCount(pset, fail)))
         return true
       case 'MoveUp':
-        applyMoveWithAnchor(() => api.moveUp(isRecord(pset) ? pset.Count : undefined))
+        applyMoveWithAnchor(() => api.moveUp(parseCompatCount(pset, fail)))
         return true
       case 'MoveDown':
-        applyMoveWithAnchor(() => api.moveDown(isRecord(pset) ? pset.Count : undefined))
+        applyMoveWithAnchor(() => api.moveDown(parseCompatCount(pset, fail)))
         return true
       case 'Select': {
         if (
@@ -630,6 +762,28 @@ export function createCompatGlobals(api, options = undefined) {
       case 'TableCreate': {
         selectAnchor = null
         const src = isRecord(pset) ? pset : HTableCreation
+        if (
+          typeof src.Rows !== 'number' ||
+          !Number.isInteger(src.Rows) ||
+          src.Rows < 1 ||
+          src.Rows > MAX_TABLE_ROWS
+        ) {
+          fail(
+            'invalid_argument',
+            `Invalid Rows: expected an integer between 1 and ${MAX_TABLE_ROWS}`,
+          )
+        }
+        if (
+          typeof src.Cols !== 'number' ||
+          !Number.isInteger(src.Cols) ||
+          src.Cols < 1 ||
+          src.Cols > MAX_TABLE_COLS
+        ) {
+          fail(
+            'invalid_argument',
+            `Invalid Cols: expected an integer between 1 and ${MAX_TABLE_COLS}`,
+          )
+        }
         return api.insertTable(src.Rows, src.Cols)
       }
       default:

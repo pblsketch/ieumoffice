@@ -152,15 +152,17 @@ export interface MacroExecutionState {
     code: MacroHostErrorCode
     message: string
     unsupportedAction?: string
+    detail?: 'regex'
   } | null
   lastFind: (MacroFindOptions & { query: string; replacement?: string }) | null
   limits: Readonly<MacroHostLimits>
   now?: () => number
   startTime?: number
+  inRegex?: boolean
   recordError(
     code: MacroHostErrorCode,
     message: string,
-    extra?: { unsupportedAction?: string },
+    extra?: { unsupportedAction?: string; detail?: 'regex' },
   ): void
 }
 
@@ -258,6 +260,7 @@ export interface MacroHostFailure {
   line: number | null
   column: number | null
   phase?: 'post_run'
+  detail?: 'regex'
   unsupportedAction?: string
   messages: string[]
   steps: number

@@ -133,4 +133,7 @@ export const th = {
   cmdOtherAction: 'การทำงานของตัวแก้ไขที่ไม่รองรับ ({id})',
   noticeOutsideBodyIgnored:
     'การกระทำนอกย่อหน้าเนื้อหาหลัก (ตาราง กล่องข้อความ เชิงอรรถ หัวกระดาษ/ท้ายกระดาษ) จะไม่ถูกบันทึก',
+  noticeMacroRegexTimeout: 'หยุดและย้อนกลับแมโครเนื่องจากนิพจน์ทั่วไปใช้เวลานานเกินไป',
+  noticeMacroRegexTimeoutAt:
+    'หยุดและย้อนกลับแมโครที่บรรทัด {line} คอลัมน์ {column} เนื่องจากนิพจน์ทั่วไปใช้เวลานานเกินไป',
 } satisfies Record<keyof typeof zh, string>

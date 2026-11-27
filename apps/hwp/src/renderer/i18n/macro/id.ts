@@ -138,4 +138,8 @@ export const id = {
   cmdOtherAction: 'Tindakan editor tidak didukung ({id})',
   noticeOutsideBodyIgnored:
     'Tindakan di luar paragraf isi (tabel, kotak teks, catatan, tajuk/catatan kaki halaman) tidak direkam.',
+  noticeMacroRegexTimeout:
+    'Makro dihentikan dan dibatalkan karena ekspresi reguler memakan waktu terlalu lama.',
+  noticeMacroRegexTimeoutAt:
+    'Makro dihentikan dan dibatalkan (baris {line}, kol. {column}) karena ekspresi reguler memakan waktu terlalu lama.',
 } satisfies Record<keyof typeof zh, string>

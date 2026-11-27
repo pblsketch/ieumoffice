@@ -138,4 +138,8 @@ export const pt = {
   cmdOtherAction: 'Ação de edição não suportada ({id})',
   noticeOutsideBodyIgnored:
     'Ações fora dos parágrafos do corpo (tabelas, caixas de texto, notas, cabeçalhos/rodapés) não são gravadas.',
+  noticeMacroRegexTimeout:
+    'A macro parou e desfez as alterações porque a expressão regular demorou demais.',
+  noticeMacroRegexTimeoutAt:
+    'A macro parou e desfez as alterações (linha {line}, col. {column}) porque a expressão regular demorou demais.',
 } satisfies Record<keyof typeof zh, string>

@@ -136,4 +136,7 @@ export const ko = {
   cmdOutsideBody: '본문 밖 편집',
   cmdOtherAction: '지원하지 않는 편집 동작({id})',
   noticeOutsideBodyIgnored: '표 칸·글상자·각주·머리말 등 본문 밖에서 한 동작은 기록되지 않습니다.',
+  noticeMacroRegexTimeout: '정규식 검색이 너무 오래 걸려 매크로를 멈추고 변경을 되돌렸습니다.',
+  noticeMacroRegexTimeoutAt:
+    '정규식 검색이 너무 오래 걸려 {line}행 {column}열에서 매크로를 멈추고 변경을 되돌렸습니다.',
 } satisfies Record<keyof typeof zh, string>

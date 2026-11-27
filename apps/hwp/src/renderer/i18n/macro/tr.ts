@@ -139,4 +139,8 @@ export const tr = {
   cmdOtherAction: 'Desteklenmeyen düzenleyici eylemi ({id})',
   noticeOutsideBodyIgnored:
     'Ana metin paragrafları dışındaki işlemler (tablolar, metin kutuları, notlar, üstbilgi/altbilgiler) kaydedilmez.',
+  noticeMacroRegexTimeout:
+    'Düzenli ifade araması çok uzun sürdüğü için makro durduruldu ve değişiklikler geri alındı.',
+  noticeMacroRegexTimeoutAt:
+    'Düzenli ifade araması çok uzun sürdüğü için makro {line}. satır {column}. sütunda durduruldu ve değişiklikler geri alındı.',
 } satisfies Record<keyof typeof zh, string>

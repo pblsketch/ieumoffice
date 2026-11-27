@@ -848,6 +848,312 @@ describe('macro-interpreter: sandbox and forbidden access defenses', () => {
     }
   })
 
+  it('tracks per-allocation identity for long strings so shared refs pass while distinct allocations trip memory_limit', () => {
+    // 70 objects referencing the same 500k string + >8 MiB temporary allocations.
+    const sharedRows = runMacroScript(`
+      var t = "x".repeat(500000);
+      var rows = [];
+      for (var i = 0; i < 70; i++) {
+        rows.push({ i: i, src: t });
+      }
+      var z;
+      for (var j = 0; j < 10; j++) {
+        z = "q".repeat(900000);
+      }
+      rows.length;
+    `)
+    expect(sharedRows.ok).toBe(true)
+    if (sharedRows.ok) {
+      expect(sharedRows.value).toBe(70)
+    }
+
+    // Recursion passing the same 600k string at depth 30 + >8 MiB temporary allocations.
+    const sharedRecursion = runMacroScript(`
+      var big = "x".repeat(600000);
+      function walk(t, i) {
+        if (i >= 30) {
+          var pad;
+          for (var j = 0; j < 10; j++) {
+            pad = "y".repeat(900000);
+          }
+          return pad.length;
+        }
+        return walk(t, i + 1);
+      }
+      walk(big, 0);
+    `)
+    expect(sharedRecursion.ok).toBe(true)
+    if (sharedRecursion.ok) {
+      expect(sharedRecursion.value).toBe(900_000)
+    }
+
+    // Shared host-returned 500k string referenced 70 times also keeps single identity.
+    const sharedHost = runMacroScript(
+      `
+      var t = getDocText();
+      var rows = [];
+      for (var i = 0; i < 70; i++) {
+        rows.push({ i: i, src: t });
+      }
+      var z;
+      for (var j = 0; j < 10; j++) {
+        z = "q".repeat(900000);
+      }
+      rows.length;
+    `,
+      { getDocText: () => 'h'.repeat(500_000) },
+    )
+    expect(sharedHost.ok).toBe(true)
+    if (sharedHost.ok) {
+      expect(sharedHost.value).toBe(70)
+    }
+
+    // 1,000 distinct identical-content allocations MUST NOT collapse and MUST trip memory_limit.
+    const distinctIdentical = runMacroScript(`
+      var a = [];
+      for (var i = 0; i < 1000; i++) {
+        a.push("x".repeat(999000));
+      }
+      a.length;
+    `)
+    expect(distinctIdentical.ok).toBe(false)
+    if (!distinctIdentical.ok) {
+      expect(distinctIdentical.code).toBe('memory_limit')
+    }
+  })
+
+  it('preserves full JavaScript string semantics on tracked long strings and never leaks boxes across host boundaries', () => {
+    const bag = createSafeBag({ text: '' })
+    const hostSeen: Array<{
+      directType: string
+      directLen: number
+      objType: string
+      arrType: string
+      bagType: string
+      bagLen: number
+    }> = []
+
+    const res = runMacroScript(
+      `
+      const a = "a".repeat(300);
+      const b = "a".repeat(300);
+      const c = "b".repeat(300);
+      const numStr = " ".repeat(300) + "42";
+      const padded = "  " + "x".repeat(300) + "  ";
+
+      // typeof, equality, relational, numeric coercion
+      const typeOfA = typeof a;
+      const eqStrict = [a === b, a !== b, a === c, a !== c];
+      const eqLoose = [a == b, a != c, numStr == 42, Number(numStr), +numStr, Number.parseInt(numStr, 10)];
+      const rel = [a < c, a <= b, c > a, c >= b, a < "b", "a" < a];
+      const truthy = [Boolean(a), !a, a ? 1 : 0, (a && 7), (a || 9) === b];
+
+      // indexing, length, concatenation, compound +=
+      let cat = a + "Z";
+      cat += "!";
+      const indexing = [a.length, a[0], a[299], a[300], cat.length, cat[300], cat[301]];
+
+      // for..of
+      let forOfCount = 0;
+      let firstCh = "";
+      for (const ch of a) {
+        if (forOfCount === 0) firstCh = ch;
+        forOfCount++;
+      }
+
+      // switch
+      let sw = "miss";
+      switch (b) {
+        case c: sw = "c"; break;
+        case a: sw = "a"; break;
+      }
+
+      // String methods
+      const methods = {
+        sliceLen: a.slice(10, 290).length,
+        subLen: a.substring(0, 270).length,
+        idx: cat.indexOf("Z"),
+        lastIdx: cat.lastIndexOf("a"),
+        inc: cat.includes(b),
+        starts: cat.startsWith(b),
+        ends: cat.endsWith("Z!"),
+        trimLen: padded.trim().length,
+        trimStartLen: padded.trimStart().length,
+        trimEndLen: padded.trimEnd().length,
+        upperEq: a.toUpperCase() === "A".repeat(300),
+        lowerEq: a.toUpperCase().toLowerCase() === a,
+        charAt0: a.charAt(0),
+        repEq: a.replace("a", "Q")[0] === "Q",
+        repNoMatchEq: a.replace("z", "Q") === a,
+        repAllEq: a.replaceAll("a", "k") === "k".repeat(300),
+        splitLens: (a + "," + c).split(",").map(p => p.length),
+      };
+
+      // Array methods (includes, indexOf, join)
+      const arr = [c, a];
+      const arrOps = {
+        includesMatch: arr.includes(b),
+        indexOfMatch: arr.indexOf(b),
+        indexOfMiss: arr.indexOf("z".repeat(300)),
+        joinedLen: [a, b].join("-").length,
+      };
+
+      // Object methods & computed keys
+      const obj = { [a]: "hit", shared: a };
+      const objOps = {
+        computedRead: obj[b],
+        keysOnStr: Object.keys(a),
+        valsOnStr: Object.values(a),
+        entsOnStr: Object.entries(a),
+        valsSharedEq: Object.values({ k: a })[0] === b,
+      };
+
+      // JSON.stringify / JSON.parse
+      const jsonStr = JSON.stringify({ x: a, y: a });
+      const parsed = JSON.parse(jsonStr);
+      const jsonOps = {
+        jsonLen: jsonStr.length,
+        roundTripEq: parsed.x === a && parsed.y === b,
+      };
+
+      // Host boundary: direct, object, array, and SafeBag writes
+      params.bag.text = a;
+      inspectHost(a, { nested: a }, [a], params.bag);
+
+      // Return both direct long strings and nested structures
+      ({
+        typeOfA,
+        eqStrict,
+        eqLoose,
+        rel,
+        truthy,
+        indexing,
+        forOfCount,
+        firstCh,
+        sw,
+        methods,
+        arrOps,
+        objOps,
+        jsonOps,
+        returnedStr: a,
+        returnedArr: [b],
+      });
+    `,
+      {
+        params: { bag },
+        inspectHost: (direct: unknown, objArg: any, arrArg: any, bagArg: any) => {
+          hostSeen.push({
+            directType: typeof direct,
+            directLen: typeof direct === 'string' ? direct.length : -1,
+            objType: typeof objArg?.nested,
+            arrType: typeof arrArg?.[0],
+            bagType: typeof bagArg?.text,
+            bagLen: typeof bagArg?.text === 'string' ? bagArg.text.length : -1,
+          })
+          return 'ok'
+        },
+      },
+    )
+
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    const val = res.value as any
+    expect(Object.getPrototypeOf(val)).toBe(null)
+    expect(val.typeOfA).toBe('string')
+    expect(val.eqStrict).toEqual([true, false, false, true])
+    expect(val.eqLoose).toEqual([true, true, true, 42, 42, 42])
+    expect(val.rel).toEqual([true, true, true, true, true, true])
+    expect(val.truthy).toEqual([true, false, 1, 7, true])
+    expect(val.indexing).toEqual([300, 'a', 'a', undefined, 302, 'Z', '!'])
+    expect(val.forOfCount).toBe(300)
+    expect(val.firstCh).toBe('a')
+    expect(val.sw).toBe('a')
+    expect(val.methods).toEqual({
+      sliceLen: 280,
+      subLen: 270,
+      idx: 300,
+      lastIdx: 299,
+      inc: true,
+      starts: true,
+      ends: true,
+      trimLen: 300,
+      trimStartLen: 302,
+      trimEndLen: 302,
+      upperEq: true,
+      lowerEq: true,
+      charAt0: 'a',
+      repEq: true,
+      repNoMatchEq: true,
+      repAllEq: true,
+      splitLens: [300, 300],
+    })
+    expect(val.arrOps).toEqual({
+      includesMatch: true,
+      indexOfMatch: 1,
+      indexOfMiss: -1,
+      joinedLen: 601,
+    })
+    expect(val.objOps).toEqual({
+      computedRead: 'hit',
+      keysOnStr: [],
+      valsOnStr: [],
+      entsOnStr: [],
+      valsSharedEq: true,
+    })
+    expect(val.jsonOps).toEqual({
+      jsonLen: JSON.stringify({ x: 'a'.repeat(300), y: 'a'.repeat(300) }).length,
+      roundTripEq: true,
+    })
+
+    // Verify no boxed string ever leaked to host functions, SafeBag, or runMacroScript return value.
+    expect(hostSeen).toEqual([
+      {
+        directType: 'string',
+        directLen: 300,
+        objType: 'string',
+        arrType: 'string',
+        bagType: 'string',
+        bagLen: 300,
+      },
+    ])
+    expect(typeof bag.text).toBe('string')
+    expect(bag.text).toBe('a'.repeat(300))
+    expect(typeof val.returnedStr).toBe('string')
+    expect(val.returnedStr).toBe('a'.repeat(300))
+    expect(typeof val.returnedArr[0]).toBe('string')
+    expect(val.returnedArr[0]).toBe('a'.repeat(300))
+
+    // Direct return of tracked string unwraps to plain string.
+    const directRet = runMacroScript('"m".repeat(400);')
+    expect(directRet.ok).toBe(true)
+    if (directRet.ok) {
+      expect(typeof directRet.value).toBe('string')
+      expect(directRet.value).toBe('m'.repeat(400))
+    }
+
+    // Setting property on tracked string fails with type_error (non-object).
+    const writeOnStr = runMacroScript('const s = "a".repeat(300); s.foo = 1;')
+    expect(writeOnStr.ok).toBe(false)
+    if (!writeOnStr.ok) {
+      expect(writeOnStr.code).toBe('type_error')
+    }
+
+    // Circular return value containing a tracked string unwraps without stack overflow.
+    const circRet = runMacroScript(`
+      const o = { text: "c".repeat(300) };
+      o.self = o;
+      o;
+    `)
+    expect(circRet.ok).toBe(true)
+    if (circRet.ok) {
+      const cObj = circRet.value as any
+      expect(Object.getPrototypeOf(cObj)).toBe(null)
+      expect(typeof cObj.text).toBe('string')
+      expect(cObj.text).toBe('c'.repeat(300))
+      expect(cObj.self).toBe(cObj)
+    }
+  })
+
   it('rejects raw invisible and bidirectional control characters while allowing ASCII escapes', () => {
     expect(BIDI_AND_INVISIBLE_RE.test('\u202e')).toBe(true)
     expect(BIDI_AND_INVISIBLE_RE.test('\u200b')).toBe(true)

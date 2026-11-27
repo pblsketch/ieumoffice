@@ -139,4 +139,8 @@ export const es = {
   cmdOtherAction: 'Acción de edición no compatible ({id})',
   noticeOutsideBodyIgnored:
     'Las acciones realizadas fuera de los párrafos del cuerpo (tablas, cuadros de texto, notas, encabezados/pies de página) no se graban.',
+  noticeMacroRegexTimeout:
+    'La macro se detuvo y revirtió los cambios porque la expresión regular tardó demasiado.',
+  noticeMacroRegexTimeoutAt:
+    'La macro se detuvo y revirtió los cambios (línea {line}, col. {column}) porque la expresión regular tardó demasiado.',
 } satisfies Record<keyof typeof zh, string>

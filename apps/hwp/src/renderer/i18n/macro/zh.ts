@@ -121,4 +121,7 @@ export const zh = {
   cmdOtherAction: '不支持的编辑操作（{id}）',
   noticeOutsideBodyIgnored:
     '在表格单元格、文本框、脚注、页眉/页脚等正文段落之外执行的操作不会被录制。',
+  noticeMacroRegexTimeout: '正则表达式搜索耗时过长，宏已停止并撤销全部更改。',
+  noticeMacroRegexTimeoutAt:
+    '正则表达式搜索耗时过长，宏已在第 {line} 行第 {column} 列停止并撤销全部更改。',
 }

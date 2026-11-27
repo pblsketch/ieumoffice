@@ -11,6 +11,7 @@ export const MAX_MACRO_REGEX_LENGTH = 256
 export const MAX_QUANTIFIER_BOUND = 1000
 
 const MAX_PROGRAM_OPS = 12_000
+const MAX_VISITED_SLOTS = 65_536
 const MAX_NESTING_DEPTH = 64
 const STEP_CHECK_INTERVAL = 64
 
@@ -431,7 +432,6 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
   let pos = 0
   let captureCount = 0
   let depth = 0
-  let detectedUnicodeProp = false
   const explicitUnicode = flagInfo.unicode
 
   function readPatternCode() {
@@ -502,7 +502,6 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
     }
     const prop = pattern.slice(start, pos)
     pos++ // consume '}'
-    detectedUnicodeProp = true
     const matcher = compileUnicodeProperty(prop, negate, flagInfo.ignoreCase)
     return { kind: 'prop', prop, negate, matcher }
   }
@@ -571,9 +570,15 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
       case 'S':
         return { kind: 'shorthand', shorthand: SHORTHAND_NOT_S }
       case 'p':
-        return parseUnicodePropertyEscape(false)
+        if (explicitUnicode) {
+          return parseUnicodePropertyEscape(false)
+        }
+        return { kind: 'char', code: 0x70 }
       case 'P':
-        return parseUnicodePropertyEscape(true)
+        if (explicitUnicode) {
+          return parseUnicodePropertyEscape(true)
+        }
+        return { kind: 'char', code: 0x50 }
       case 'c': {
         if (pos >= len || !isAsciiLetter(pattern.charCodeAt(pos))) {
           throw new SyntaxError('Invalid regular expression: invalid control escape "\\c"')
@@ -582,47 +587,62 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
         return { kind: 'char', code: ctrl }
       }
       case 'x': {
+        if (
+          !explicitUnicode &&
+          (pos + 2 > len ||
+            !isHexDigit(pattern.charCodeAt(pos)) ||
+            !isHexDigit(pattern.charCodeAt(pos + 1)))
+        ) {
+          return { kind: 'char', code: 0x78 }
+        }
         const val = parseHexDigits(2)
         return { kind: 'char', code: val }
       }
       case 'u': {
-        if (pos < len && pattern[pos] === '{') {
-          if (!explicitUnicode) {
-            throw new SyntaxError(
-              'Invalid regular expression: "\\u{...}" escape requires the "u" flag',
-            )
+        if (explicitUnicode) {
+          if (pos < len && pattern[pos] === '{') {
+            pos++ // consume '{'
+            const cp = parseUnicodeBraceEscape()
+            return { kind: 'char', code: cp }
           }
-          pos++ // consume '{'
-          const cp = parseUnicodeBraceEscape()
-          return { kind: 'char', code: cp }
-        }
-        const hi = parseHexDigits(4)
-        // Combine surrogate pair escapes \uD800..\uDBFF followed by \uDC00..\uDFFF in u mode
-        if (
-          explicitUnicode &&
-          hi >= 0xd800 &&
-          hi <= 0xdbff &&
-          pos + 6 <= len &&
-          pattern[pos] === '\\' &&
-          pattern[pos + 1] === 'u' &&
-          pattern[pos + 2] !== '{'
-        ) {
-          const savedPos = pos
-          pos += 2
-          let lo
-          try {
-            lo = parseHexDigits(4)
-          } catch {
+          const hi = parseHexDigits(4)
+          // Combine surrogate pair escapes \uD800..\uDBFF followed by \uDC00..\uDFFF in u mode
+          if (
+            hi >= 0xd800 &&
+            hi <= 0xdbff &&
+            pos + 6 <= len &&
+            pattern[pos] === '\\' &&
+            pattern[pos + 1] === 'u' &&
+            pattern[pos + 2] !== '{'
+          ) {
+            const savedPos = pos
+            pos += 2
+            let lo
+            try {
+              lo = parseHexDigits(4)
+            } catch {
+              pos = savedPos
+              lo = -1
+            }
+            if (lo >= 0xdc00 && lo <= 0xdfff) {
+              const combined = 0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00)
+              return { kind: 'char', code: combined }
+            }
             pos = savedPos
-            lo = -1
           }
-          if (lo >= 0xdc00 && lo <= 0xdfff) {
-            const combined = 0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00)
-            return { kind: 'char', code: combined }
-          }
-          pos = savedPos
+          return { kind: 'char', code: hi }
         }
-        return { kind: 'char', code: hi }
+        if (
+          pos + 4 <= len &&
+          isHexDigit(pattern.charCodeAt(pos)) &&
+          isHexDigit(pattern.charCodeAt(pos + 1)) &&
+          isHexDigit(pattern.charCodeAt(pos + 2)) &&
+          isHexDigit(pattern.charCodeAt(pos + 3))
+        ) {
+          const val = parseHexDigits(4)
+          return { kind: 'char', code: val }
+        }
+        return { kind: 'char', code: 0x75 }
       }
       default: {
         if (PUNCTUATION_IDENTITY_ESCAPES.has(ch)) {
@@ -746,44 +766,71 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
     const start = pos
     pos++ // consume '{'
     if (pos >= len || !isAsciiDigit(pattern.charCodeAt(pos))) {
+      if (!explicitUnicode) {
+        pos = start
+        return null
+      }
       throw new SyntaxError(
         `Invalid regular expression: malformed quantifier near "${pattern.slice(start, start + 8)}"`,
       )
     }
+
+    let scan = pos
+    while (scan < len && isAsciiDigit(pattern.charCodeAt(scan))) {
+      scan++
+    }
+    const minEnd = scan
+    let hasComma = false
+    let maxStart = -1
+    let maxEnd = -1
+    if (scan < len && pattern[scan] === ',') {
+      hasComma = true
+      scan++
+      maxStart = scan
+      while (scan < len && isAsciiDigit(pattern.charCodeAt(scan))) {
+        scan++
+      }
+      maxEnd = scan
+    }
+    if (scan >= len || pattern[scan] !== '}') {
+      if (!explicitUnicode) {
+        pos = start
+        return null
+      }
+      if (hasComma && maxStart === maxEnd && scan < len) {
+        throw new SyntaxError(
+          `Invalid regular expression: malformed quantifier near "${pattern.slice(start, scan + 1)}"`,
+        )
+      }
+      throw new SyntaxError('Invalid regular expression: unclosed quantifier "{"')
+    }
+
     let min = 0
-    while (pos < len && isAsciiDigit(pattern.charCodeAt(pos))) {
-      min = min * 10 + (pattern.charCodeAt(pos++) - 0x30)
+    for (let i = pos; i < minEnd; i++) {
+      min = min * 10 + (pattern.charCodeAt(i) - 0x30)
       if (min > maxQuantifier) {
         throw new RangeError(`Regex quantifier bound exceeds maximum allowed (${maxQuantifier})`)
       }
     }
 
     let max = min
-    if (pos < len && pattern[pos] === ',') {
-      pos++ // consume ','
-      if (pos < len && pattern[pos] === '}') {
+    if (hasComma) {
+      if (maxStart === maxEnd) {
         max = null // unbounded {n,}
-      } else if (pos < len && isAsciiDigit(pattern.charCodeAt(pos))) {
+      } else {
         max = 0
-        while (pos < len && isAsciiDigit(pattern.charCodeAt(pos))) {
-          max = max * 10 + (pattern.charCodeAt(pos++) - 0x30)
+        for (let i = maxStart; i < maxEnd; i++) {
+          max = max * 10 + (pattern.charCodeAt(i) - 0x30)
           if (max > maxQuantifier) {
             throw new RangeError(
               `Regex quantifier bound exceeds maximum allowed (${maxQuantifier})`,
             )
           }
         }
-      } else {
-        throw new SyntaxError(
-          `Invalid regular expression: malformed quantifier near "${pattern.slice(start, pos + 1)}"`,
-        )
       }
     }
 
-    if (pos >= len || pattern[pos] !== '}') {
-      throw new SyntaxError('Invalid regular expression: unclosed quantifier "{"')
-    }
-    pos++ // consume '}'
+    pos = scan + 1 // consume '}'
 
     if (max !== null && max < min) {
       throw new SyntaxError(`Invalid regular expression: quantifier out of order {${min},${max}}`)
@@ -829,10 +876,29 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
         return { type: 'Prop', matcher: esc.matcher }
       }
     }
-    if (ch === '*' || ch === '+' || ch === '?' || ch === '{') {
+    if (ch === '*' || ch === '+' || ch === '?') {
       throw new SyntaxError(`Invalid regular expression: nothing to repeat ("${ch}")`)
     }
-    if (ch === ')' || ch === ']' || ch === '}') {
+    if (ch === '{') {
+      if (explicitUnicode) {
+        throw new SyntaxError('Invalid regular expression: nothing to repeat ("{")')
+      }
+      const savedPos = pos
+      const maybeQuant = parseBraceQuantifier()
+      if (maybeQuant !== null) {
+        throw new SyntaxError('Invalid regular expression: nothing to repeat ("{")')
+      }
+      pos = savedPos + 1
+      return { type: 'Char', code: 0x7b }
+    }
+    if (ch === '}') {
+      if (explicitUnicode) {
+        throw new SyntaxError('Invalid regular expression: unexpected "}"')
+      }
+      pos++
+      return { type: 'Char', code: 0x7d }
+    }
+    if (ch === ')' || ch === ']') {
       throw new SyntaxError(`Invalid regular expression: unexpected "${ch}"`)
     }
     return { type: 'Char', code: readPatternCode() }
@@ -869,9 +935,11 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
       hasQuant = true
     } else if (ch === '{') {
       const q = parseBraceQuantifier()
-      min = q.min
-      max = q.max
-      hasQuant = true
+      if (q !== null) {
+        min = q.min
+        max = q.max
+        hasQuant = true
+      }
     }
 
     if (!hasQuant) {
@@ -888,11 +956,22 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
       pos++
     }
 
-    // Reject stacked quantifiers like a**, a+*, a{2}*, a??+
+    // Reject stacked quantifiers like a**, a+*, a{2}*, a??+, a{2}{3}
     if (pos < len) {
       const next = pattern[pos]
-      if (next === '*' || next === '+' || next === '?' || next === '{') {
+      if (next === '*' || next === '+' || next === '?') {
         throw new SyntaxError(`Invalid regular expression: nothing to repeat ("${next}")`)
+      }
+      if (next === '{') {
+        if (explicitUnicode) {
+          throw new SyntaxError('Invalid regular expression: nothing to repeat ("{")')
+        }
+        const savedPos = pos
+        const stacked = parseBraceQuantifier()
+        if (stacked !== null) {
+          throw new SyntaxError('Invalid regular expression: nothing to repeat ("{")')
+        }
+        pos = savedPos
       }
     }
 
@@ -945,7 +1024,7 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
   return {
     ast,
     captureCount,
-    unicodeMode: explicitUnicode || detectedUnicodeProp,
+    unicodeMode: explicitUnicode,
   }
 }
 
@@ -984,7 +1063,9 @@ function canMatchEmpty(node) {
  */
 function compileProgram(ast, flagInfo, unicodeMode) {
   const ops = []
+  const optNestDepth = []
   let optCounter = 0
+  let currentOptDepth = 0
   const ignoreCase = flagInfo.ignoreCase
 
   function emit(op, a = 0, b = 0, x = 0, y = 0, matcher = null) {
@@ -995,34 +1076,48 @@ function compileProgram(ast, flagInfo, unicodeMode) {
     }
     const idx = ops.length
     ops.push({ op, a, b, x, y, matcher })
+    optNestDepth.push(currentOptDepth)
     return idx
   }
 
-  function emitOptionalIteration(node, bodyNullable) {
-    const splitIdx = emit(OP_SPLIT, 0, 0, 0, 0)
-    const bodyStart = ops.length
+  function emitBoundedOptionalIterations(node, optionalCount, bodyNullable) {
+    const skipSplits = []
+    for (let i = 0; i < optionalCount; i++) {
+      const splitIdx = emit(OP_SPLIT, 0, 0, 0, 0)
+      skipSplits.push(splitIdx)
+      const bodyStart = ops.length
 
-    if (node.firstCapture > 0) {
-      emit(OP_CLEAR, node.firstCapture * 2, node.lastCapture * 2 + 1)
+      if (node.firstCapture > 0) {
+        emit(OP_CLEAR, node.firstCapture * 2, node.lastCapture * 2 + 1)
+      }
+
+      let optId = -1
+      if (bodyNullable) {
+        optId = optCounter++
+        emit(OP_OPT_ENTER, optId)
+        currentOptDepth++
+      }
+      compileNode(node.body)
+      if (bodyNullable) {
+        currentOptDepth--
+        emit(OP_OPT_EXIT, optId)
+      }
+
+      if (node.greedy) {
+        ops[splitIdx].x = bodyStart
+      } else {
+        ops[splitIdx].y = bodyStart
+      }
     }
 
-    let optId = -1
-    if (bodyNullable) {
-      optId = optCounter++
-      emit(OP_OPT_ENTER, optId)
-    }
-    compileNode(node.body)
-    if (bodyNullable) {
-      emit(OP_OPT_EXIT, optId)
-    }
-
-    const afterIdx = ops.length
-    if (node.greedy) {
-      ops[splitIdx].x = bodyStart
-      ops[splitIdx].y = afterIdx
-    } else {
-      ops[splitIdx].x = afterIdx
-      ops[splitIdx].y = bodyStart
+    const afterAll = ops.length
+    for (let i = 0; i < skipSplits.length; i++) {
+      const splitIdx = skipSplits[i]
+      if (node.greedy) {
+        ops[splitIdx].y = afterAll
+      } else {
+        ops[splitIdx].x = afterAll
+      }
     }
   }
 
@@ -1039,9 +1134,11 @@ function compileProgram(ast, flagInfo, unicodeMode) {
     if (bodyNullable) {
       optId = optCounter++
       emit(OP_OPT_ENTER, optId)
+      currentOptDepth++
     }
     compileNode(node.body)
     if (bodyNullable) {
+      currentOptDepth--
       emit(OP_OPT_EXIT, optId)
     }
 
@@ -1132,8 +1229,8 @@ function compileProgram(ast, flagInfo, unicodeMode) {
           emitUnboundedLoop(node, bodyNullable)
         } else {
           const optionalCount = node.max - node.min
-          for (let i = 0; i < optionalCount; i++) {
-            emitOptionalIteration(node, bodyNullable)
+          if (optionalCount > 0) {
+            emitBoundedOptionalIterations(node, optionalCount, bodyNullable)
           }
         }
         return
@@ -1146,7 +1243,23 @@ function compileProgram(ast, flagInfo, unicodeMode) {
   emit(OP_SAVE, 1)
   emit(OP_MATCH)
 
-  return { ops, optCount: optCounter }
+  const visitedOffset = new Int32Array(ops.length)
+  let totalVisitedSlots = 0
+  for (let i = 0; i < ops.length; i++) {
+    if (ops[i].op <= OP_PROP) {
+      visitedOffset[i] = -1
+    } else {
+      visitedOffset[i] = totalVisitedSlots
+      totalVisitedSlots += optNestDepth[i] + 1
+      if (totalVisitedSlots > MAX_VISITED_SLOTS) {
+        throw new RangeError(
+          `Compiled regex visited state table exceeds maximum allowed (${MAX_VISITED_SLOTS})`,
+        )
+      }
+    }
+  }
+
+  return { ops, optCount: optCounter, visitedOffset, totalVisitedSlots }
 }
 
 function stepCharWidth(text, pos, unicodeMode) {
@@ -1188,7 +1301,11 @@ export function compileMacroRegex(pattern, flags = '', options = undefined) {
 
   const flagInfo = parseFlags(flags)
   const { ast, captureCount, unicodeMode } = parsePattern(pattern, flagInfo, maxQuantifier)
-  const { ops, optCount } = compileProgram(ast, flagInfo, unicodeMode)
+  const { ops, optCount, visitedOffset, totalVisitedSlots } = compileProgram(
+    ast,
+    flagInfo,
+    unicodeMode,
+  )
 
   const ignoreCase = flagInfo.ignoreCase
   const multiline = flagInfo.multiline
@@ -1270,7 +1387,8 @@ export function compileMacroRegex(pattern, flags = '', options = undefined) {
     }
 
     // Per-execAll scratch state (keeps compiled regex stateless & re-entrant)
-    const visited = new Int32Array(progLen)
+    const visited = new Int32Array(totalVisitedSlots)
+    const visitedConsuming = new Int32Array(progLen)
     let stepGen = 0
     const activeOptCount = optCount > 0 ? new Uint16Array(optCount) : null
     const stackPc = []
@@ -1280,6 +1398,7 @@ export function compileMacroRegex(pattern, flags = '', options = undefined) {
       stepGen++
       if (stepGen >= 0x7ffffff0) {
         visited.fill(0)
+        visitedConsuming.fill(0)
         stepGen = 1
       }
       return stepGen
@@ -1291,6 +1410,7 @@ export function compileMacroRegex(pattern, flags = '', options = undefined) {
      */
     function addThread(listPc, listSlots, startPc, startSlots, pos, gen) {
       let sp = 0
+      let optDepth = 0
       stackPc[sp] = startPc
       stackSlots[sp] = startSlots
       sp++
@@ -1300,24 +1420,34 @@ export function compileMacroRegex(pattern, flags = '', options = undefined) {
         const pc = stackPc[sp]
         if (pc < 0) {
           activeOptCount[-1 - pc]--
+          optDepth--
           continue
         }
 
         const inst = ops[pc]
-        if (inst.op === OP_OPT_EXIT && activeOptCount !== null && activeOptCount[inst.a] > 0) {
+        const op = inst.op
+        if (op === OP_OPT_EXIT && activeOptCount !== null && activeOptCount[inst.a] > 0) {
           // Zero-length optional iteration: prune without marking visited
           continue
         }
 
-        if (visited[pc] === gen) {
-          continue
+        if (op <= OP_PROP) {
+          if (visitedConsuming[pc] === gen) {
+            continue
+          }
+          visitedConsuming[pc] = gen
+        } else {
+          const vIdx = visitedOffset[pc] + optDepth
+          if (visited[vIdx] === gen) {
+            continue
+          }
+          visited[vIdx] = gen
         }
-        visited[pc] = gen
 
         if (hasMeter) tickStep()
 
         const slots = stackSlots[sp]
-        switch (inst.op) {
+        switch (op) {
           case OP_JMP:
             stackPc[sp] = inst.x
             stackSlots[sp] = slots
@@ -1376,6 +1506,7 @@ export function compileMacroRegex(pattern, flags = '', options = undefined) {
             stackSlots[sp] = null
             sp++
             activeOptCount[inst.a]++
+            optDepth++
             stackPc[sp] = pc + 1
             stackSlots[sp] = slots
             sp++

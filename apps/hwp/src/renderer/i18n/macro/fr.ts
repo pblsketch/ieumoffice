@@ -140,4 +140,8 @@ export const fr = {
   cmdOtherAction: 'Action d’édition non prise en charge ({id})',
   noticeOutsideBodyIgnored:
     'Les actions effectuées hors des paragraphes du corps (tableaux, zones de texte, notes, en-têtes/pieds de page) ne sont pas enregistrées.',
+  noticeMacroRegexTimeout:
+    'La macro s’est arrêtée et a annulé les modifications, car l’expression régulière a pris trop de temps.',
+  noticeMacroRegexTimeoutAt:
+    'La macro s’est arrêtée et a annulé les modifications (ligne {line}, col. {column}), car l’expression régulière a pris trop de temps.',
 } satisfies Record<keyof typeof zh, string>

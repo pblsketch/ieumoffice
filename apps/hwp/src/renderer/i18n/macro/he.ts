@@ -131,4 +131,7 @@ export const he = {
   cmdOtherAction: 'פעולת עריכה לא נתמכת ({id})',
   noticeOutsideBodyIgnored:
     'פעולות מחוץ לפסקאות גוף המסמך (טבלאות, תיבות טקסט, הערות, כותרות עליונות/תחתונות) אינן מוקלטות.',
+  noticeMacroRegexTimeout: 'המאקרו נעצר וכל השינויים בוטלו משום שהביטוי הרגולרי נמשך זמן רב מדי.',
+  noticeMacroRegexTimeoutAt:
+    'המאקרו נעצר וכל השינויים בוטלו (שורה {line}, עמודה {column}) משום שהביטוי הרגולרי נמשך זמן רב מדי.',
 } satisfies Record<keyof typeof zh, string>

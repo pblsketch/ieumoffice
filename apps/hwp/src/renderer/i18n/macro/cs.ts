@@ -138,4 +138,8 @@ export const cs = {
   cmdOtherAction: 'Nepodporovaná akce editoru ({id})',
   noticeOutsideBodyIgnored:
     'Akce mimo odstavce hlavního textu (tabulky, textová pole, poznámky, záhlaví/zápatí) se nezaznamenávají.',
+  noticeMacroRegexTimeout:
+    'Makro bylo zastaveno a změny byly vráceny, protože regulární výraz trval příliš dlouho.',
+  noticeMacroRegexTimeoutAt:
+    'Makro bylo zastaveno a změny byly vráceny (řádek {line}, sl. {column}), protože regulární výraz trval příliš dlouho.',
 } satisfies Record<keyof typeof zh, string>

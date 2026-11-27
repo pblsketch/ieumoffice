@@ -1308,4 +1308,220 @@ describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () =>
       expect(res.phase).toBe('post_run')
     }
   })
+
+  it('tags regex time_limit and step_limit failures with detail: regex and rolls back atomically (T4)', () => {
+    const timeDoc = makeDoc(['a'.repeat(5000)])
+    const beforeTime = timeDoc.exportHwp()
+    let clock = 1000
+    const timeRes = runMacroOnDocument(
+      timeDoc,
+      'insertText("dirty ");\nfind(".*x|a", { regex: true });',
+      {
+        limits: { maxTimeMs: 20 },
+        now: () => {
+          clock += 1
+          return clock
+        },
+      },
+    )
+    expect(timeRes.ok).toBe(false)
+    if (!timeRes.ok) {
+      expect(timeRes.code).toBe('time_limit')
+      expect(timeRes.detail).toBe('regex')
+      expect(timeRes.line).toBe(2)
+      expect(timeRes.error).toContain('Regex')
+    }
+    expect(bytesEqual(timeDoc.exportHwp(), beforeTime)).toBe(true)
+
+    const stepDoc = makeDoc(['a'.repeat(5000)])
+    const beforeStep = stepDoc.exportHwp()
+    const stepRes = runMacroOnDocument(
+      stepDoc,
+      'insertText("dirty "); find(".*x|a", { regex: true });',
+      { limits: { maxSteps: 100 } },
+    )
+    expect(stepRes.ok).toBe(false)
+    if (!stepRes.ok) {
+      expect(stepRes.code).toBe('step_limit')
+      expect(stepRes.detail).toBe('regex')
+      expect(stepRes.error).toContain('Regex')
+    }
+    expect(bytesEqual(stepDoc.exportHwp(), beforeStep)).toBe(true)
+
+    // Non-regex step_limit must NOT carry detail: 'regex'.
+    const nonRegexDoc = makeDoc(['abc'])
+    const nonRegexRes = runMacroOnDocument(
+      nonRegexDoc,
+      'let n = 0; while (n < 500) { n = n + 1; }',
+      { limits: { maxSteps: 20 } },
+    )
+    expect(nonRegexRes.ok).toBe(false)
+    if (!nonRegexRes.ok) {
+      expect(nonRegexRes.code).toBe('step_limit')
+      expect(nonRegexRes.detail).toBeUndefined()
+    }
+  })
+
+  it('validates compat parameter sets using exact compat parameter names (T7)', () => {
+    const doc = makeDoc(['Sample text'])
+    const beforeBytes = doc.exportHwp()
+
+    const cases: Array<{
+      name: string
+      script: string
+      expectedField: string
+      forbiddenField?: string
+    }> = [
+      {
+        name: 'HCharShape.Height below 100',
+        script: `
+          HAction.GetDefault("CharShape", HParameterSet.HCharShape.HSet);
+          HParameterSet.HCharShape.Height = 1;
+          HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+        `,
+        expectedField: 'Height',
+        forbiddenField: 'fontSize',
+      },
+      {
+        name: 'HCharShape.Height above 50000',
+        script: `
+          HAction.GetDefault("CharShape", HParameterSet.HCharShape.HSet);
+          HParameterSet.HCharShape.Height = 50001;
+          HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+        `,
+        expectedField: 'Height',
+        forbiddenField: 'fontSize',
+      },
+      {
+        name: 'HCharShape.FontSize out of range',
+        script: `
+          HAction.GetDefault("CharShape", HParameterSet.HCharShape.HSet);
+          HParameterSet.HCharShape.FontSize = 501;
+          HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+        `,
+        expectedField: 'FontSize',
+        forbiddenField: 'fontSize',
+      },
+      {
+        name: 'HCharShape.FaceNameHangul empty',
+        script: `
+          HAction.GetDefault("CharShape", HParameterSet.HCharShape.HSet);
+          HParameterSet.HCharShape.FaceNameHangul = "";
+          HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+        `,
+        expectedField: 'FaceNameHangul',
+        forbiddenField: 'fontName',
+      },
+      {
+        name: 'HCharShape.FaceNameLatin with control char',
+        script: `
+          HAction.GetDefault("CharShape", HParameterSet.HCharShape.HSet);
+          HParameterSet.HCharShape.FaceNameLatin = "Bad\\nFont";
+          HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+        `,
+        expectedField: 'FaceNameLatin',
+        forbiddenField: 'fontName',
+      },
+      {
+        name: 'HParaShape.LineSpacing out of range',
+        script: `
+          HAction.GetDefault("ParagraphShape", HParameterSet.HParaShape.HSet);
+          HParameterSet.HParaShape.LineSpacing = 20;
+          HAction.Execute("ParagraphShape", HParameterSet.HParaShape.HSet);
+        `,
+        expectedField: 'LineSpacing',
+        forbiddenField: 'lineSpacing',
+      },
+      {
+        name: 'HTableCreation.Rows out of range',
+        script: `
+          HAction.GetDefault("TableCreate", HParameterSet.HTableCreation.HSet);
+          HParameterSet.HTableCreation.Rows = 101;
+          HParameterSet.HTableCreation.Cols = 2;
+          HAction.Execute("TableCreate", HParameterSet.HTableCreation.HSet);
+        `,
+        expectedField: 'Rows',
+        forbiddenField: 'rows',
+      },
+      {
+        name: 'HTableCreation.Cols out of range',
+        script: `
+          HAction.GetDefault("TableCreate", HParameterSet.HTableCreation.HSet);
+          HParameterSet.HTableCreation.Rows = 2;
+          HParameterSet.HTableCreation.Cols = 51;
+          HAction.Execute("TableCreate", HParameterSet.HTableCreation.HSet);
+        `,
+        expectedField: 'Cols',
+        forbiddenField: 'cols',
+      },
+      {
+        name: 'HInsertText.Text null',
+        script: `
+          HAction.GetDefault("InsertText", HParameterSet.HInsertText.HSet);
+          HParameterSet.HInsertText.Text = null;
+          HAction.Execute("InsertText", HParameterSet.HInsertText.HSet);
+        `,
+        expectedField: 'Text',
+      },
+      {
+        name: 'HStyle.StyleName blank',
+        script: `
+          HAction.GetDefault("Style", HParameterSet.HStyle.HSet);
+          HParameterSet.HStyle.StyleName = "   ";
+          HAction.Execute("Style", HParameterSet.HStyle.HSet);
+        `,
+        expectedField: 'StyleName',
+      },
+      {
+        name: 'HStyle.Style negative',
+        script: `
+          HAction.GetDefault("Style", HParameterSet.HStyle.HSet);
+          HParameterSet.HStyle.Style = -1;
+          HAction.Execute("Style", HParameterSet.HStyle.HSet);
+        `,
+        expectedField: 'Style',
+      },
+      {
+        name: 'HFindReplace.FindString empty',
+        script: `
+          HAction.GetDefault("AllReplace", HParameterSet.HFindReplace.HSet);
+          HParameterSet.HFindReplace.FindString = "";
+          HParameterSet.HFindReplace.ReplaceString = "X";
+          HAction.Execute("AllReplace", HParameterSet.HFindReplace.HSet);
+        `,
+        expectedField: 'FindString',
+      },
+      {
+        name: 'HFindReplace.ReplaceString with newline',
+        script: `
+          HAction.GetDefault("AllReplace", HParameterSet.HFindReplace.HSet);
+          HParameterSet.HFindReplace.FindString = "Sample";
+          HParameterSet.HFindReplace.ReplaceString = "A\\nB";
+          HAction.Execute("AllReplace", HParameterSet.HFindReplace.HSet);
+        `,
+        expectedField: 'ReplaceString',
+      },
+      {
+        name: 'MoveRight Count invalid',
+        script: `
+          HAction.Execute("MoveRight", { Count: 0 });
+        `,
+        expectedField: 'Count',
+        forbiddenField: 'count',
+      },
+    ]
+
+    for (const tc of cases) {
+      const res = runMacroOnDocument(doc, tc.script)
+      expect(res.ok, tc.name).toBe(false)
+      if (!res.ok) {
+        expect(res.code, tc.name).toBe('invalid_argument')
+        expect(res.error, tc.name).toContain(tc.expectedField)
+        if (tc.forbiddenField) {
+          expect(res.error, tc.name).not.toContain(tc.forbiddenField)
+        }
+      }
+      expect(bytesEqual(doc.exportHwp(), beforeBytes), tc.name).toBe(true)
+    }
+  })
 })

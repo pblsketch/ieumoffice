@@ -79,6 +79,11 @@ const SILENTLY_IGNORED_COMMANDS = new Set([
 
 const VALID_ALIGNMENTS = new Set(['left', 'center', 'right', 'justify'])
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+/** Controls representing user content objects that a macro or keystroke may not silently drop. */
+export const PROTECTED_CONTENT_CTRL_IDS = Object.freeze(
+  new Set(['fn', 'en', 'tbl', 'gso', 'pic', 'eqed', 'ole', 'container']),
+)
+
 const NON_PROTECTED_ADJACENT_CTRL_IDS = new Set([
   '',
   'bokm',
@@ -90,6 +95,377 @@ const NON_PROTECTED_ADJACENT_CTRL_IDS = new Set([
   'foot',
 ])
 
+function parseJsonSafe(raw, fallback = null) {
+  if (typeof raw !== 'string') return raw ?? fallback
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return fallback
+  }
+}
+
+function readParagraphCount(docOrBridge, sec) {
+  if (typeof docOrBridge?.getParagraphCount !== 'function') return null
+  try {
+    const count = docOrBridge.getParagraphCount(sec)
+    return Number.isInteger(count) && count >= 0 ? count : null
+  } catch {
+    return null
+  }
+}
+
+function readParagraphLength(docOrBridge, sec, para) {
+  if (typeof docOrBridge?.getParagraphLength !== 'function') return null
+  try {
+    const len = docOrBridge.getParagraphLength(sec, para)
+    return Number.isInteger(len) && len >= 0 ? len : null
+  } catch {
+    return null
+  }
+}
+
+function readMemoEntries(docOrBridge) {
+  try {
+    if (typeof docOrBridge?.getMemoList === 'function') {
+      const list = parseJsonSafe(docOrBridge.getMemoList(), [])
+      return Array.isArray(list) ? list : []
+    }
+    if (typeof docOrBridge?.getMemoAnchors === 'function') {
+      const list = parseJsonSafe(docOrBridge.getMemoAnchors(), [])
+      return Array.isArray(list) ? list : []
+    }
+  } catch {
+    return []
+  }
+  return []
+}
+
+function readAllControls(docOrBridge) {
+  if (typeof docOrBridge?.getControls !== 'function') return null
+  try {
+    const parsed = parseJsonSafe(docOrBridge.getControls(), null)
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function readBodyProtectedControls(docOrBridge, sec, para, cachedControls = undefined) {
+  let positions = []
+  if (typeof docOrBridge?.getControlTextPositions === 'function') {
+    try {
+      const parsed = parseJsonSafe(docOrBridge.getControlTextPositions(sec, para), [])
+      if (Array.isArray(parsed)) positions = parsed
+    } catch {
+      positions = []
+    }
+  }
+
+  // Support mock/bridge object-shaped entries `{ pos | textPos, ctrlId }`.
+  if (positions.some((entry) => entry && typeof entry === 'object')) {
+    const hits = []
+    for (const entry of positions) {
+      if (!entry || typeof entry !== 'object') continue
+      const ctrlId = typeof entry.ctrlId === 'string' ? entry.ctrlId : ''
+      if (ctrlId && NON_PROTECTED_ADJACENT_CTRL_IDS.has(ctrlId)) continue
+      const textPos = Number.isInteger(entry.pos)
+        ? entry.pos
+        : Number.isInteger(entry.textPos)
+          ? entry.textPos
+          : null
+      if (textPos !== null) {
+        hits.push({ ctrlId: ctrlId || 'object', textPos })
+      }
+    }
+    return hits
+  }
+
+  const controls = cachedControls !== undefined ? cachedControls : readAllControls(docOrBridge)
+  if (Array.isArray(controls)) {
+    let globalBase = 0
+    for (let s = 0; s < sec; s++) {
+      const count = readParagraphCount(docOrBridge, s)
+      if (count !== null) globalBase += count
+    }
+    const globalPara = globalBase + para
+    const paraControls = controls
+      .filter((ctrl) => ctrl && ctrl.list === 0 && ctrl.para === globalPara)
+      .sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
+    const hits = []
+    for (let i = 0; i < paraControls.length; i++) {
+      const ctrl = paraControls[i]
+      if (!PROTECTED_CONTENT_CTRL_IDS.has(ctrl.ctrlId)) continue
+      const idx = Number.isInteger(ctrl.controlIndex) ? ctrl.controlIndex : i
+      const textPos =
+        Array.isArray(positions) && Number.isInteger(positions[idx]) ? positions[idx] : 0
+      hits.push({ ctrlId: ctrl.ctrlId, textPos })
+    }
+    return hits
+  }
+
+  // Minimal bridge fallback when `getControls` is unavailable and `positions` is numeric.
+  const hits = []
+  for (const pos of positions) {
+    if (Number.isInteger(pos)) {
+      hits.push({ ctrlId: 'object', textPos: pos })
+    }
+  }
+  return hits
+}
+
+/**
+ * Shared protected-content deletion check for a body range `(startSec, startPara, startOffset)`
+ * through `(endSec, endPara, endOffset)`. Accepts either a raw `HwpDocument` or a `WasmBridge`.
+ * Returns a structured blocker `{ code, message, ctrlId? }` when deletion would drop a protected
+ * object or user memo, or `null` when safe.
+ */
+export function findProtectedDeletionBlocker(docOrBridge, range) {
+  if (!docOrBridge || !range || typeof range !== 'object') return null
+  const { startSec, startPara, startOffset, endSec, endPara, endOffset } = range
+  if (
+    !Number.isInteger(startSec) ||
+    !Number.isInteger(startPara) ||
+    !Number.isInteger(startOffset) ||
+    !Number.isInteger(endSec) ||
+    !Number.isInteger(endPara) ||
+    !Number.isInteger(endOffset)
+  ) {
+    return null
+  }
+  const multiPara = startSec !== endSec || startPara !== endPara
+
+  // Guard body user memos covered by the deleted span.
+  const memos = readMemoEntries(docOrBridge)
+  for (const memo of memos) {
+    if (memo?.place !== 'body') continue
+    const mSec = memo.sectionIndex
+    const mPara = memo.paraIndex
+    if (!Number.isInteger(mSec) || !Number.isInteger(mPara)) continue
+    if (mSec < startSec || mSec > endSec) continue
+    const mStart = Number.isInteger(memo.startCharIdx) ? memo.startCharIdx : 0
+    const mEnd = Number.isInteger(memo.endCharIdx) ? memo.endCharIdx : mStart
+
+    const pStart = mSec === startSec ? startPara : 0
+    const pEnd =
+      mSec === endSec ? endPara : Math.max(0, (readParagraphCount(docOrBridge, mSec) ?? 1) - 1)
+    if (mPara < pStart || mPara > pEnd) continue
+
+    const delStart = mSec === startSec && mPara === startPara ? startOffset : 0
+    const paraLen = readParagraphLength(docOrBridge, mSec, mPara)
+    const delEnd =
+      mSec === endSec && mPara === endPara ? endOffset : (paraLen ?? Number.MAX_SAFE_INTEGER)
+
+    const strictlyMiddlePara =
+      (mSec > startSec || mPara > startPara) && (mSec < endSec || mPara < endPara)
+    const wipesSpanMemo = mStart < mEnd && delStart <= mStart && mEnd <= delEnd
+    const wipesPointMemo = mStart === mEnd && delStart < mStart && mStart < delEnd
+    const wipesAnchorInFullPara =
+      multiPara && delStart <= mStart && mEnd <= delEnd && delEnd > delStart
+
+    if (strictlyMiddlePara || wipesSpanMemo || wipesPointMemo || wipesAnchorInFullPara) {
+      return {
+        code: 'memo_loss',
+        message: 'Cannot delete selection containing a user memo',
+      }
+    }
+  }
+
+  // Guard protected inline/block content objects (footnotes, endnotes, tables, pictures, shapes, equations).
+  const cachedControls = readAllControls(docOrBridge)
+  for (let sec = startSec; sec <= endSec; sec++) {
+    const paraCount = readParagraphCount(docOrBridge, sec)
+    const pStart = sec === startSec ? startPara : 0
+    const pEnd = sec === endSec ? endPara : Math.max(0, (paraCount ?? 1) - 1)
+    for (let para = pStart; para <= pEnd; para++) {
+      const objects = readBodyProtectedControls(docOrBridge, sec, para, cachedControls)
+      if (objects.length === 0) continue
+
+      const paraLen = readParagraphLength(docOrBridge, sec, para)
+      const delStart = sec === startSec && para === startPara ? startOffset : 0
+      const delEnd =
+        sec === endSec && para === endPara ? endOffset : (paraLen ?? Number.MAX_SAFE_INTEGER)
+      const isFirstPara = sec === startSec && para === startPara
+      const isLastPara = sec === endSec && para === endPara
+
+      for (const obj of objects) {
+        if (!multiPara) {
+          const strictlyInside = delStart < obj.textPos && obj.textPos < delEnd
+          const wholeParaCovered =
+            paraLen !== null &&
+            delStart === 0 &&
+            delEnd === paraLen &&
+            obj.textPos >= 0 &&
+            obj.textPos <= paraLen
+          if (strictlyInside || wholeParaCovered) {
+            return {
+              code: 'object_loss',
+              ctrlId: obj.ctrlId,
+              message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+            }
+          }
+        } else {
+          if (!isFirstPara && !isLastPara) {
+            return {
+              code: 'object_loss',
+              ctrlId: obj.ctrlId,
+              message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+            }
+          }
+          if (
+            isFirstPara &&
+            obj.textPos >= delStart &&
+            (paraLen === null || obj.textPos <= paraLen)
+          ) {
+            return {
+              code: 'object_loss',
+              ctrlId: obj.ctrlId,
+              message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+            }
+          }
+          if (isLastPara && obj.textPos >= 0 && obj.textPos <= delEnd) {
+            return {
+              code: 'object_loss',
+              ctrlId: obj.ctrlId,
+              message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Shared protected-content deletion check for a backward or forward deletion step from `pos`
+ * in a body paragraph (covering both intra-paragraph character deletion and cross-paragraph merges).
+ * Accepts either a raw `HwpDocument` or a `WasmBridge`, and either `{ sec, para, offset }` or
+ * `{ sectionIndex, paragraphIndex, charOffset }`.
+ */
+export function findProtectedStepDeletionBlocker(docOrBridge, pos, direction, count = 1) {
+  if (!docOrBridge || !pos || typeof pos !== 'object') return null
+  if (pos.parentParaIndex !== undefined || pos.isTextBox) return null
+  if (direction !== 'backward' && direction !== 'forward') return null
+
+  const sec = Number.isInteger(pos.sec) ? pos.sec : pos.sectionIndex
+  const para = Number.isInteger(pos.para) ? pos.para : pos.paragraphIndex
+  const offset = Number.isInteger(pos.offset) ? pos.offset : pos.charOffset
+  if (!Number.isInteger(sec) || !Number.isInteger(para) || !Number.isInteger(offset)) {
+    return null
+  }
+  const stepCount = Number.isInteger(count) && count >= 1 ? count : 1
+
+  if (typeof docOrBridge.getFootnoteAtCursor === 'function') {
+    try {
+      const fnHit = parseJsonSafe(
+        docOrBridge.getFootnoteAtCursor(sec, para, offset, direction),
+        null,
+      )
+      if (fnHit && fnHit.hit === true) {
+        return {
+          code: 'object_loss',
+          ctrlId: 'fn',
+          message: 'Cannot delete adjacent document object (fn)',
+        }
+      }
+    } catch {
+      // ignore probe errors and fall through to control-position checks
+    }
+  }
+
+  if (direction === 'backward') {
+    if (offset > 0) {
+      const take = Math.min(stepCount, offset)
+      const startOffset = offset - take
+      const endOffset = offset
+      const objects = readBodyProtectedControls(docOrBridge, sec, para)
+      for (const obj of objects) {
+        if (obj.textPos >= startOffset && obj.textPos < endOffset) {
+          return {
+            code: 'object_loss',
+            ctrlId: obj.ctrlId,
+            message: `Cannot delete adjacent document object (${obj.ctrlId})`,
+          }
+        }
+      }
+      return findProtectedDeletionBlocker(docOrBridge, {
+        startSec: sec,
+        startPara: para,
+        startOffset,
+        endSec: sec,
+        endPara: para,
+        endOffset,
+      })
+    }
+    if (para > 0) {
+      const prevPara = para - 1
+      const prevLen = readParagraphLength(docOrBridge, sec, prevPara)
+      if (prevLen === null) {
+        const objects = readBodyProtectedControls(docOrBridge, sec, para)
+        for (const obj of objects) {
+          if (obj.textPos === 0) {
+            return {
+              code: 'object_loss',
+              ctrlId: obj.ctrlId,
+              message: `Cannot delete adjacent document object (${obj.ctrlId})`,
+            }
+          }
+        }
+        return null
+      }
+      return findProtectedDeletionBlocker(docOrBridge, {
+        startSec: sec,
+        startPara: prevPara,
+        startOffset: prevLen,
+        endSec: sec,
+        endPara: para,
+        endOffset: 0,
+      })
+    }
+    return null
+  }
+
+  // direction === 'forward'
+  const paraLen = readParagraphLength(docOrBridge, sec, para)
+  if (paraLen === null || offset < paraLen) {
+    const take = paraLen === null ? stepCount : Math.min(stepCount, paraLen - offset)
+    const startOffset = offset
+    const endOffset = offset + take
+    const objects = readBodyProtectedControls(docOrBridge, sec, para)
+    for (const obj of objects) {
+      if (obj.textPos >= startOffset && obj.textPos < endOffset) {
+        return {
+          code: 'object_loss',
+          ctrlId: obj.ctrlId,
+          message: `Cannot delete adjacent document object (${obj.ctrlId})`,
+        }
+      }
+    }
+    return findProtectedDeletionBlocker(docOrBridge, {
+      startSec: sec,
+      startPara: para,
+      startOffset,
+      endSec: sec,
+      endPara: para,
+      endOffset,
+    })
+  }
+
+  const paraCount = readParagraphCount(docOrBridge, sec)
+  if (paraCount !== null && para + 1 < paraCount) {
+    return findProtectedDeletionBlocker(docOrBridge, {
+      startSec: sec,
+      startPara: para,
+      startOffset: paraLen,
+      endSec: sec,
+      endPara: para + 1,
+      endOffset: 0,
+    })
+  }
+  return null
+}
+
 /**
  * Detect whether a protected document object sits immediately at the deletion
  * boundary for a plain Backspace or Delete keystroke in a body paragraph.
@@ -98,85 +474,9 @@ export function hasAdjacentProtectedObject(wasm, pos, key) {
   if (!wasm || !pos || typeof pos !== 'object') return false
   if (pos.parentParaIndex !== undefined || pos.isTextBox) return false
   if (key !== 'Backspace' && key !== 'Delete') return false
-  const sec = pos.sectionIndex
-  const para = pos.paragraphIndex
-  const charOffset = pos.charOffset
-  if (!Number.isInteger(sec) || !Number.isInteger(para) || !Number.isInteger(charOffset)) {
-    return false
-  }
   const direction = key === 'Backspace' ? 'backward' : 'forward'
-  const matchesBoundary = (ctrlPos) => {
-    if (!Number.isInteger(ctrlPos)) return false
-    if (direction === 'forward') {
-      return ctrlPos === charOffset
-    }
-    if (charOffset > 0) {
-      return ctrlPos === charOffset - 1 || ctrlPos === charOffset
-    }
-    return para > 0 && ctrlPos === 0
-  }
-
   try {
-    if (typeof wasm.getFootnoteAtCursor === 'function') {
-      const fnHit = wasm.getFootnoteAtCursor(sec, para, charOffset, direction)
-      if (fnHit && fnHit.hit === true) return true
-    }
-
-    const rawPositions =
-      typeof wasm.getControlTextPositions === 'function'
-        ? wasm.getControlTextPositions(sec, para)
-        : null
-    const positions =
-      typeof rawPositions === 'string'
-        ? JSON.parse(rawPositions)
-        : Array.isArray(rawPositions)
-          ? rawPositions
-          : []
-    if (!Array.isArray(positions) || positions.length === 0) return false
-
-    // Support object-shaped entries `{ pos, ctrlId }` as well as numeric offset arrays.
-    if (positions.some((entry) => entry && typeof entry === 'object')) {
-      for (const entry of positions) {
-        if (!entry || typeof entry !== 'object') continue
-        const ctrlId = typeof entry.ctrlId === 'string' ? entry.ctrlId : ''
-        if (ctrlId && NON_PROTECTED_ADJACENT_CTRL_IDS.has(ctrlId)) continue
-        const ctrlPos = Number.isInteger(entry.pos) ? entry.pos : entry.textPos
-        if (matchesBoundary(ctrlPos)) return true
-      }
-      return false
-    }
-
-    if (typeof wasm.getControls === 'function') {
-      const rawControls = wasm.getControls()
-      const controls =
-        typeof rawControls === 'string'
-          ? JSON.parse(rawControls)
-          : Array.isArray(rawControls)
-            ? rawControls
-            : []
-      if (Array.isArray(controls)) {
-        let globalBase = 0
-        if (typeof wasm.getParagraphCount === 'function') {
-          for (let s = 0; s < sec; s++) {
-            globalBase += wasm.getParagraphCount(s)
-          }
-        }
-        const globalPara = globalBase + para
-        const paraControls = controls
-          .filter((ctrl) => ctrl && ctrl.list === 0 && ctrl.para === globalPara)
-          .sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
-        for (let i = 0; i < paraControls.length; i++) {
-          const ctrl = paraControls[i]
-          const ctrlId = typeof ctrl.ctrlId === 'string' ? ctrl.ctrlId : ''
-          if (NON_PROTECTED_ADJACENT_CTRL_IDS.has(ctrlId)) continue
-          const idx = Number.isInteger(ctrl.controlIndex) ? ctrl.controlIndex : i
-          if (matchesBoundary(positions[idx])) return true
-        }
-        return false
-      }
-    }
-
-    return positions.some((ctrlPos) => matchesBoundary(ctrlPos))
+    return findProtectedStepDeletionBlocker(wasm, pos, direction) !== null
   } catch {
     return false
   }

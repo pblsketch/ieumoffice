@@ -140,4 +140,8 @@ export const nl = {
   cmdOtherAction: 'Niet-ondersteunde bewerkingsactie ({id})',
   noticeOutsideBodyIgnored:
     'Acties buiten hoofdtekstalinea’s (tabellen, tekstvakken, noten, kop- en voetteksten) worden niet opgenomen.',
+  noticeMacroRegexTimeout:
+    'Macro is gestopt en teruggedraaid omdat de reguliere expressie te lang duurde.',
+  noticeMacroRegexTimeoutAt:
+    'Macro is gestopt en teruggedraaid (regel {line}, kol. {column}) omdat de reguliere expressie te lang duurde.',
 } satisfies Record<keyof typeof zh, string>

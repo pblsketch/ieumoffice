@@ -137,4 +137,8 @@ export const ja = {
   cmdOtherAction: '未対応の編集操作（{id}）',
   noticeOutsideBodyIgnored:
     '表のセル・テキストボックス・脚注・ヘッダー／フッターなど本文段落の外で行った操作は記録されません。',
+  noticeMacroRegexTimeout:
+    '正規表現の検索に時間がかかりすぎたため、マクロを停止し変更を元に戻しました。',
+  noticeMacroRegexTimeoutAt:
+    '正規表現の検索に時間がかかりすぎたため、{line}行目 {column}列目でマクロを停止し変更を元に戻しました。',
 } satisfies Record<keyof typeof zh, string>

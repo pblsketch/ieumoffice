@@ -135,4 +135,8 @@ export const ar = {
   cmdOtherAction: 'إجراء تحرير غير مدعوم ({id})',
   noticeOutsideBodyIgnored:
     'لا تُسجَّل الإجراءات التي تتم خارج فقرات متن المستند (الجداول ومربعات النص والحواشي والرؤوس والتذييلات).',
+  noticeMacroRegexTimeout:
+    'توقف الماكرو وتم التراجع عن التغييرات لأن التعبير النمطي استغرق وقتًا طويلاً.',
+  noticeMacroRegexTimeoutAt:
+    'توقف الماكرو وتم التراجع عن التغييرات (السطر {line}، العمود {column}) لأن التعبير النمطي استغرق وقتًا طويلاً.',
 } satisfies Record<keyof typeof zh, string>

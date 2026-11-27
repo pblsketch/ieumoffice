@@ -138,4 +138,8 @@ export const pl = {
   cmdOtherAction: 'Nieobsługiwana czynność edytora ({id})',
   noticeOutsideBodyIgnored:
     'Czynności wykonywane poza akapitami tekstu głównego (tabele, pola tekstowe, przypisy, nagłówki/stopki) nie są nagrywane.',
+  noticeMacroRegexTimeout:
+    'Makro zatrzymano i cofnięto zmiany, ponieważ wyrażenie regularne wykonywało się zbyt długo.',
+  noticeMacroRegexTimeoutAt:
+    'Makro zatrzymano i cofnięto zmiany (wiersz {line}, kol. {column}), ponieważ wyrażenie regularne wykonywało się zbyt długo.',
 } satisfies Record<keyof typeof zh, string>

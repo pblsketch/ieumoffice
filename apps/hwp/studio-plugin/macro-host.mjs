@@ -28,6 +28,10 @@ import {
   validateMacroLimits,
 } from './macro-interpreter.mjs'
 import { createCompatGlobals } from './macro-compat.mjs'
+import {
+  findProtectedDeletionBlocker,
+  findProtectedStepDeletionBlocker,
+} from './macro-recorder.mjs'
 import { compileMacroRegex, expandMacroRegexReplacement } from './macro-regex.mjs'
 import { isAppMarkName, isAppTocHyperlinkField } from './doc-marks.mjs'
 import { changeOutlineLevel as changeOutlineLevelEngine } from './outline.mjs'
@@ -100,18 +104,6 @@ const HEX_3_RE = /^#([0-9a-fA-F]{3})$/
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_RE = /[\u0000-\u001f\u007f]/
 const WORD_CHAR_RE = /[\p{L}\p{N}_]/u
-
-/** Controls representing user content objects that a macro may not silently drop. */
-const PROTECTED_CONTENT_CTRL_IDS = new Set([
-  'fn',
-  'en',
-  'tbl',
-  'gso',
-  'pic',
-  'eqed',
-  'ole',
-  'container',
-])
 
 /** Section-level layout controls that multi-column index refreshes may add or remove. */
 const SECTION_LAYOUT_CTRL_IDS = new Set(['secd', 'cold', 'pgnp', 'head', 'foot'])
@@ -498,18 +490,23 @@ function compileMacroQueryMatcher(query, caseSensitive, regex, maxRegexLength) {
 function matchMacroTextHits(text, cpMap, matcher, wholeWord, regexRunOpts, checkDeadline) {
   const hits = []
   if (matcher.mode === 'regex') {
-    const rawMatches = matcher.compiled.execAll(text, regexRunOpts)
-    for (let i = 0; i < rawMatches.length; i++) {
-      if ((i & 255) === 0) checkDeadline()
-      const m = rawMatches[i]
-      if (!m || m.length <= 0) continue
-      const start = cpMap.utf16ToCp(m.index)
-      const end = cpMap.utf16ToCp(m.index + m.length)
-      if (!wholeWord || isWholeWord(cpMap.chars, start, end)) {
-        hits.push({ start, end, matchText: m.matchText, regexMatch: m })
+    if (regexRunOpts && typeof regexRunOpts.onEnter === 'function') regexRunOpts.onEnter()
+    try {
+      const rawMatches = matcher.compiled.execAll(text, regexRunOpts)
+      for (let i = 0; i < rawMatches.length; i++) {
+        if ((i & 255) === 0) checkDeadline()
+        const m = rawMatches[i]
+        if (!m || m.length <= 0) continue
+        const start = cpMap.utf16ToCp(m.index)
+        const end = cpMap.utf16ToCp(m.index + m.length)
+        if (!wholeWord || isWholeWord(cpMap.chars, start, end)) {
+          hits.push({ start, end, matchText: m.matchText, regexMatch: m })
+        }
       }
+      return hits
+    } finally {
+      if (regexRunOpts && typeof regexRunOpts.onExit === 'function') regexRunOpts.onExit()
     }
-    return hits
   }
 
   if (matcher.mode === 'literal') {
@@ -954,14 +951,6 @@ function appMarkControlKeys(doc) {
   return keys
 }
 
-function globalParaBaseOf(doc, sec) {
-  let base = 0
-  for (let s = 0; s < sec; s++) {
-    base += doc.getParagraphCount(s)
-  }
-  return base
-}
-
 /**
  * Snapshot all protected user objects, notes, fields, and memos in `doc`,
  * excluding app-owned metadata bookmarks and app-owned TOC hyperlinks.
@@ -1135,33 +1124,6 @@ function normalizeColorHex(value) {
   return null
 }
 
-function bodyProtectedControlPositions(doc, sec, para) {
-  if (typeof doc.getControls !== 'function') return []
-  const controls = parseJson(doc.getControls(), [])
-  if (!Array.isArray(controls)) return []
-  const globalPara = globalParaBaseOf(doc, sec) + para
-  const paraControls = controls
-    .filter((c) => c && c.list === 0 && c.para === globalPara)
-    .sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
-
-  if (paraControls.length === 0) return []
-  const positions =
-    typeof doc.getControlTextPositions === 'function'
-      ? parseJson(doc.getControlTextPositions(sec, para), [])
-      : []
-
-  const hits = []
-  for (let i = 0; i < paraControls.length; i++) {
-    const ctrl = paraControls[i]
-    if (!PROTECTED_CONTENT_CTRL_IDS.has(ctrl.ctrlId)) continue
-    const idx = Number.isInteger(ctrl.controlIndex) ? ctrl.controlIndex : i
-    const textPos =
-      Array.isArray(positions) && Number.isInteger(positions[idx]) ? positions[idx] : 0
-    hits.push({ ctrlId: ctrl.ctrlId, textPos })
-  }
-  return hits
-}
-
 function createInitialState(doc, options, limits, nowFn, startTime) {
   const initialCaret = options?.caret
     ? clampPosition(doc, options.caret.sec, options.caret.para, options.caret.offset)
@@ -1196,6 +1158,7 @@ function createInitialState(doc, options, limits, nowFn, startTime) {
     startTime: started,
     budget: null,
     regexOpRemainder: 0,
+    inRegex: false,
     baseline: captureProtectionSnapshot(doc),
     recordError(code, message, extra = undefined) {
       state.lastError = {
@@ -1204,6 +1167,7 @@ function createInitialState(doc, options, limits, nowFn, startTime) {
         ...(extra && extra.unsupportedAction !== undefined
           ? { unsupportedAction: extra.unsupportedAction }
           : {}),
+        ...(extra && extra.detail !== undefined ? { detail: extra.detail } : {}),
       }
     },
   }
@@ -1288,6 +1252,7 @@ export function createMacroApi(doc, state, options = undefined) {
   if (execState.messageChars === undefined) execState.messageChars = 0
   if (execState.messagesTruncated === undefined) execState.messagesTruncated = false
   if (execState.totalInsertedChars === undefined) execState.totalInsertedChars = 0
+  if (execState.inRegex === undefined) execState.inRegex = false
   if (typeof execState.now !== 'function') execState.now = nowFn
   if (typeof execState.startTime !== 'number' || !Number.isFinite(execState.startTime)) {
     execState.startTime = startTime
@@ -1300,6 +1265,7 @@ export function createMacroApi(doc, state, options = undefined) {
         ...(extra && extra.unsupportedAction !== undefined
           ? { unsupportedAction: extra.unsupportedAction }
           : {}),
+        ...(extra && extra.detail !== undefined ? { detail: extra.detail } : {}),
       }
     }
   }
@@ -1311,13 +1277,31 @@ export function createMacroApi(doc, state, options = undefined) {
     if (extra && extra.unsupportedAction !== undefined) {
       err.unsupportedAction = extra.unsupportedAction
     }
+    if (extra && extra.detail !== undefined) {
+      err.detail = extra.detail
+    }
     throw err
   }
 
   const checkDeadline = () => {
     const elapsed = execState.now() - execState.startTime
     if (elapsed > limits.maxTimeMs) {
+      if (execState.inRegex) {
+        failHost('time_limit', `Regex execution time limit (${limits.maxTimeMs}ms) exceeded`, {
+          detail: 'regex',
+        })
+      }
       failHost('time_limit', `Execution time limit (${limits.maxTimeMs}ms) exceeded`)
+    }
+  }
+
+  const recordRegexLimitError = (err) => {
+    if (err && (err.code === 'time_limit' || err.code === 'step_limit')) {
+      const msg =
+        err.code === 'time_limit'
+          ? `Regex execution time limit (${limits.maxTimeMs}ms) exceeded`
+          : `Regex execution step limit (${limits.maxSteps}) exceeded`
+      execState.recordError(err.code, msg, { detail: 'regex' })
     }
   }
 
@@ -1328,19 +1312,40 @@ export function createMacroApi(doc, state, options = undefined) {
       const steps = Math.floor(execState.regexOpRemainder / REGEX_VM_OPS_PER_STEP)
       execState.regexOpRemainder -= steps * REGEX_VM_OPS_PER_STEP
       if (execState.budget && typeof execState.budget.addSteps === 'function') {
-        execState.budget.addSteps(steps)
+        try {
+          execState.budget.addSteps(steps)
+        } catch (err) {
+          recordRegexLimitError(err)
+          throw err
+        }
       }
     }
   }
 
   const checkRegexLimit = () => {
-    checkDeadline()
+    const elapsed = execState.now() - execState.startTime
+    if (elapsed > limits.maxTimeMs) {
+      failHost('time_limit', `Regex execution time limit (${limits.maxTimeMs}ms) exceeded`, {
+        detail: 'regex',
+      })
+    }
     if (execState.budget && typeof execState.budget.checkLimits === 'function') {
-      execState.budget.checkLimits()
+      try {
+        execState.budget.checkLimits()
+      } catch (err) {
+        recordRegexLimitError(err)
+        throw err
+      }
     }
   }
 
   const regexRunOpts = {
+    onEnter: () => {
+      execState.inRegex = true
+    },
+    onExit: () => {
+      execState.inRegex = false
+    },
     onStep: chargeRegexSteps,
     checkLimit: checkRegexLimit,
   }
@@ -1436,87 +1441,9 @@ export function createMacroApi(doc, state, options = undefined) {
   }
 
   const assertSelectionHasNoProtectedContent = (sel) => {
-    const multiPara = sel.startSec !== sel.endSec || sel.startPara !== sel.endPara
-
-    // Guard body user memos covered by the deleted span.
-    const memos = memoEntriesOf(doc)
-    for (const memo of memos) {
-      if (memo?.place !== 'body') continue
-      const mSec = memo.sectionIndex
-      const mPara = memo.paraIndex
-      if (!Number.isInteger(mSec) || !Number.isInteger(mPara)) continue
-      if (mSec < sel.startSec || mSec > sel.endSec) continue
-      const mStart = Number.isInteger(memo.startCharIdx) ? memo.startCharIdx : 0
-      const mEnd = Number.isInteger(memo.endCharIdx) ? memo.endCharIdx : mStart
-
-      const pStart = mSec === sel.startSec ? sel.startPara : 0
-      const pEnd = mSec === sel.endSec ? sel.endPara : doc.getParagraphCount(mSec) - 1
-      if (mPara < pStart || mPara > pEnd) continue
-
-      const delStart = mSec === sel.startSec && mPara === sel.startPara ? sel.startOffset : 0
-      const paraLen = doc.getParagraphLength(mSec, mPara)
-      const delEnd = mSec === sel.endSec && mPara === sel.endPara ? sel.endOffset : paraLen
-
-      const strictlyMiddlePara =
-        (mSec > sel.startSec || mPara > sel.startPara) && (mSec < sel.endSec || mPara < sel.endPara)
-      const wipesSpanMemo = mStart < mEnd && delStart <= mStart && mEnd <= delEnd
-      const wipesPointMemo = mStart === mEnd && delStart < mStart && mStart < delEnd
-      const wipesAnchorInFullPara =
-        multiPara && delStart <= mStart && mEnd <= delEnd && delEnd > delStart
-
-      if (strictlyMiddlePara || wipesSpanMemo || wipesPointMemo || wipesAnchorInFullPara) {
-        failHost('memo_loss', 'Cannot delete selection containing a user memo')
-      }
-    }
-
-    // Guard protected inline/block content objects (footnotes, endnotes, tables, pictures, shapes, equations).
-    for (let sec = sel.startSec; sec <= sel.endSec; sec++) {
-      const paraCount = doc.getParagraphCount(sec)
-      const pStart = sec === sel.startSec ? sel.startPara : 0
-      const pEnd = sec === sel.endSec ? sel.endPara : paraCount - 1
-      for (let para = pStart; para <= pEnd; para++) {
-        const objects = bodyProtectedControlPositions(doc, sec, para)
-        if (objects.length === 0) continue
-
-        const paraLen = doc.getParagraphLength(sec, para)
-        const delStart = sec === sel.startSec && para === sel.startPara ? sel.startOffset : 0
-        const delEnd = sec === sel.endSec && para === sel.endPara ? sel.endOffset : paraLen
-        const isFirstPara = sec === sel.startSec && para === sel.startPara
-        const isLastPara = sec === sel.endSec && para === sel.endPara
-
-        for (const obj of objects) {
-          if (!multiPara) {
-            const strictlyInside = delStart < obj.textPos && obj.textPos < delEnd
-            const wholeParaCovered =
-              delStart === 0 && delEnd === paraLen && obj.textPos >= 0 && obj.textPos <= paraLen
-            if (strictlyInside || wholeParaCovered) {
-              failHost(
-                'object_loss',
-                `Cannot delete selection containing a document object (${obj.ctrlId})`,
-              )
-            }
-          } else {
-            if (!isFirstPara && !isLastPara) {
-              failHost(
-                'object_loss',
-                `Cannot delete selection containing a document object (${obj.ctrlId})`,
-              )
-            }
-            if (isFirstPara && obj.textPos >= delStart && obj.textPos <= paraLen) {
-              failHost(
-                'object_loss',
-                `Cannot delete selection containing a document object (${obj.ctrlId})`,
-              )
-            }
-            if (isLastPara && obj.textPos >= 0 && obj.textPos <= delEnd) {
-              failHost(
-                'object_loss',
-                `Cannot delete selection containing a document object (${obj.ctrlId})`,
-              )
-            }
-          }
-        }
-      }
+    const blocker = findProtectedDeletionBlocker(doc, sel)
+    if (blocker) {
+      failHost(blocker.code, blocker.message)
     }
   }
 
@@ -2033,15 +1960,6 @@ export function createMacroApi(doc, state, options = undefined) {
     execState.atLineEnd = false
   }
 
-  const assertNoAdjacentProtectedControl = (sec, para, startOffset, endOffset) => {
-    const objects = bodyProtectedControlPositions(doc, sec, para)
-    for (const obj of objects) {
-      if (obj.textPos >= startOffset && obj.textPos < endOffset) {
-        failHost('object_loss', `Cannot delete adjacent document object (${obj.ctrlId})`)
-      }
-    }
-  }
-
   const deleteBackwardInternal = (count) => {
     if (execState.selection) {
       return deleteSelectionInternal()
@@ -2060,32 +1978,23 @@ export function createMacroApi(doc, state, options = undefined) {
       execState.caret = caret
       if (caret.offset > 0) {
         const take = Math.min(remaining, caret.offset)
+        const blocker = findProtectedStepDeletionBlocker(doc, caret, 'backward', take)
+        if (blocker) {
+          failHost(blocker.code, blocker.message)
+        }
         const startOffset = caret.offset - take
-        assertNoAdjacentProtectedControl(caret.sec, caret.para, startOffset, caret.offset)
-        assertSelectionHasNoProtectedContent({
-          startSec: caret.sec,
-          startPara: caret.para,
-          startOffset,
-          endSec: caret.sec,
-          endPara: caret.para,
-          endOffset: caret.offset,
-        })
         expectEngineOk(doc.deleteText(caret.sec, caret.para, startOffset, take), 'deleteBackward')
         execState.caret = clampPosition(doc, caret.sec, caret.para, startOffset)
         execState.mutated = true
         deletedAny = true
         remaining -= take
       } else if (caret.para > 0) {
+        const blocker = findProtectedStepDeletionBlocker(doc, caret, 'backward', 1)
+        if (blocker) {
+          failHost(blocker.code, blocker.message)
+        }
         const prevPara = caret.para - 1
         const prevLen = doc.getParagraphLength(caret.sec, prevPara)
-        assertSelectionHasNoProtectedContent({
-          startSec: caret.sec,
-          startPara: prevPara,
-          startOffset: prevLen,
-          endSec: caret.sec,
-          endPara: caret.para,
-          endOffset: 0,
-        })
         expectEngineOk(
           doc.deleteRange(caret.sec, prevPara, prevLen, caret.para, 0),
           'deleteBackward',
@@ -2126,30 +2035,21 @@ export function createMacroApi(doc, state, options = undefined) {
       const paraLen = doc.getParagraphLength(caret.sec, caret.para)
       if (caret.offset < paraLen) {
         const take = Math.min(remaining, paraLen - caret.offset)
-        assertNoAdjacentProtectedControl(caret.sec, caret.para, caret.offset, caret.offset + take)
-        assertSelectionHasNoProtectedContent({
-          startSec: caret.sec,
-          startPara: caret.para,
-          startOffset: caret.offset,
-          endSec: caret.sec,
-          endPara: caret.para,
-          endOffset: caret.offset + take,
-        })
+        const blocker = findProtectedStepDeletionBlocker(doc, caret, 'forward', take)
+        if (blocker) {
+          failHost(blocker.code, blocker.message)
+        }
         expectEngineOk(doc.deleteText(caret.sec, caret.para, caret.offset, take), 'deleteForward')
         execState.caret = clampPosition(doc, caret.sec, caret.para, caret.offset)
         execState.mutated = true
         deletedAny = true
         remaining -= take
       } else if (caret.para + 1 < doc.getParagraphCount(caret.sec)) {
+        const blocker = findProtectedStepDeletionBlocker(doc, caret, 'forward', 1)
+        if (blocker) {
+          failHost(blocker.code, blocker.message)
+        }
         const nextPara = caret.para + 1
-        assertSelectionHasNoProtectedContent({
-          startSec: caret.sec,
-          startPara: caret.para,
-          startOffset: paraLen,
-          endSec: caret.sec,
-          endPara: nextPara,
-          endOffset: 0,
-        })
         expectEngineOk(
           doc.deleteRange(caret.sec, caret.para, paraLen, nextPara, 0),
           'deleteForward',
@@ -3720,13 +3620,20 @@ function executeMacroCore(doc, source, options, limits, nowFn, startTime) {
   const code = hostErr && runResult.code === 'runtime_error' ? hostErr.code : runResult.code
   const unsupportedAction =
     hostErr && hostErr.unsupportedAction !== undefined ? hostErr.unsupportedAction : undefined
+  const detail =
+    (code === 'time_limit' || code === 'step_limit') &&
+    (hostErr?.detail === 'regex' || state.inRegex)
+      ? 'regex'
+      : undefined
+  const error = detail === 'regex' && hostErr?.message ? hostErr.message : runResult.error
 
   return {
     ok: false,
     code,
-    error: runResult.error,
+    error,
     line: runResult.line,
     column: runResult.column,
+    ...(detail !== undefined ? { detail } : {}),
     ...(unsupportedAction !== undefined ? { unsupportedAction } : {}),
     messages: [...state.messages],
     steps: runResult.steps,

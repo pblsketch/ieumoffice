@@ -123,4 +123,7 @@ export const zhTW = {
   cmdOtherAction: '不支援的編輯動作（{id}）',
   noticeOutsideBodyIgnored:
     '在表格儲存格、文字方塊、註腳、頁首/頁尾等本文段落之外執行的動作不會被錄製。',
+  noticeMacroRegexTimeout: '規則運算式搜尋耗時過長，巨集已停止並復原全部變更。',
+  noticeMacroRegexTimeoutAt:
+    '規則運算式搜尋耗時過長，巨集已於第 {line} 行第 {column} 欄停止並復原全部變更。',
 } satisfies Record<keyof typeof zh, string>

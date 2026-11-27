@@ -140,4 +140,8 @@ export const it = {
   cmdOtherAction: 'Azione di modifica non supportata ({id})',
   noticeOutsideBodyIgnored:
     'Le azioni eseguite fuori dai paragrafi del corpo (tabelle, caselle di testo, note, intestazioni/piè di pagina) non vengono registrate.',
+  noticeMacroRegexTimeout:
+    'La macro si è fermata e ha annullato le modifiche perché l’espressione regolare ha impiegato troppo tempo.',
+  noticeMacroRegexTimeoutAt:
+    'La macro si è fermata e ha annullato le modifiche (riga {line}, col. {column}) perché l’espressione regolare ha impiegato troppo tempo.',
 } satisfies Record<keyof typeof zh, string>

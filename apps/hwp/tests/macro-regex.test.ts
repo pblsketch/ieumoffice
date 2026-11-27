@@ -136,6 +136,56 @@ describe('macro-regex: JS RegExp parity suite', () => {
     ['unicode property with i \\p{Lu}+', '\\p{Lu}+', 'iu', 'AbCd123'],
     ['non-greedy {n,}?', 'a{2,}?', '', 'aaaaa'],
     ['exact {n}', '\\d{3}', '', '12 123 1234 123456'],
+    // T1: lazy quantifiers inside repeated groups & bounded optional iterations
+    ['lazy inside star (x*?)*', '(x*?)*', '', 'xxx'],
+    ['lazy inside plus end (.*?)+$', '(.*?)+$', '', 'abc'],
+    ['lazy inside plus (.*?)+', '(.*?)+', '', 'abc'],
+    ['lazy inside star (.*?)*', '(.*?)*', '', 'abc'],
+    ['non-capturing lazy inside star (?:.*?)*', '(?:.*?)*', '', 'abc'],
+    ['lazy ws inside star (\\s*?)*x', '(\\s*?)*x', '', '  x'],
+    ['lazy + optional inside star (a*?b?)*', '(a*?b?)*', '', 'aab'],
+    ['lazy inside bounded lazy (\\W+?){0,2}?x', '(\\W+?){0,2}?x', '', '  x'],
+    ['lazy inside bounded lazy 3 spaces (\\W+?){0,2}?x', '(\\W+?){0,2}?x', '', '   x'],
+    ['lazy inside bounded greedy (\\W+?){0,2}x', '(\\W+?){0,2}x', '', '  x'],
+    ['lazy inside bounded greedy 3 spaces (\\W+?){0,2}x', '(\\W+?){0,2}x', '', '   x'],
+    ['nested nullable lazy ((?:[^a][a-c]?|B)*?)*', '((?:[^a][a-c]?|B)*?)*', '', 'xbxBy'],
+    ['nested alt lazy ((k)*[^a]*?|z)+k+', '((k)*[^a]*?|z)+k+', '', '1 _k'],
+    ['nested group lazy ((?:x)*?)*', '((?:x)*?)*', '', 'xxx'],
+    ['nested group lazy with suffix ((?:x)*?)*y', '((?:x)*?)*y', '', 'xxxy'],
+    ['negated class lazy plus ([^a]*?)+k', '([^a]*?)+k', '', '1 _k'],
+    ['nested capture lazy plus ((k)*.*?)+k', '((k)*.*?)+k', '', '12k'],
+    ['greedy+lazy inside plus (k*.*?)+k', '(k*.*?)+k', '', '12k'],
+    ['lazy inside plus with suffix (.*?)+k', '(.*?)+k', '', '12k'],
+    ['non-capturing inner cap (?:(k)*.*?)+', '(?:(k)*.*?)+', '', '12'],
+    ['nullable bounded lazy (a*?){0,2}?b', '(a*?){0,2}?b', '', 'aaab'],
+    ['nullable bounded greedy (a*?){0,2}b', '(a*?){0,2}b', '', 'aaab'],
+    ['deeply nested lazy ((((a*?)*)*)*)*', '((((a*?)*)*)*)*', '', 'aaaa'],
+    // T5: \p, \P, \u{...}, \x, lone braces without and with u flag
+    ['non-u \\p{L} is literal p{L}', '\\p{L}', '', 'a p{L} b'],
+    ['u \\p{L} matches letters', '\\p{L}', 'u', 'a p{L} 한글 1'],
+    ['non-u \\P{L} is literal P{L}', '\\P{L}', '', '1 P{L} a'],
+    ['u \\P{L} matches non-letters', '\\P{L}', 'u', '1 P{L} 한글'],
+    ['non-u \\u{61} is u repeated 61 times', '\\u{61}', '', `a ${'u'.repeat(61)} b`],
+    ['non-u \\u{61}? is lazy u{61}', '\\u{61}?', '', `a ${'u'.repeat(61)} b`],
+    ['u \\u{61} matches a', '\\u{61}', 'u', `a ${'u'.repeat(61)} b`],
+    ['non-u \\u{1F600} is literal u{1F600}', '\\u{1F600}', '', '😀 u{1F600}'],
+    ['u \\u{1F600} matches emoji', '\\u{1F600}', 'u', '😀 u{1F600}'],
+    ['non-u [\\p{L}] is class of p,{,L,}', '[\\p{L}]', '', 'a p { L } 한글'],
+    ['u [\\p{L}] is Unicode letter class', '[\\p{L}]', 'u', 'a p { L } 한글'],
+    ['non-u [\\u{61}] is class of u,{,6,1,}', '[\\u{61}]', '', 'a u { 6 1 }'],
+    ['u [\\u{61}] matches a', '[\\u{61}]', 'u', 'a u { 6 1 }'],
+    [
+      'non-u malformed brace quantifiers fall back to literals',
+      'a{}|a{,3}|a{1,x}|a{2}{x}|{a}|}',
+      '',
+      'a{} a{,3} a{1,x} aa{x} {a} }',
+    ],
+    [
+      'non-u incomplete \\x and \\u are identity escapes',
+      '\\x1|\\u123|[\\x1\\u123]',
+      '',
+      'x1 u123 x u',
+    ],
   ]
 
   it.each(parityCases)('matches JS RegExp identically: %s', (_label, pattern, flags, text) => {
@@ -146,10 +196,140 @@ describe('macro-regex: JS RegExp parity suite', () => {
     expect(actual).toEqual(expected)
   })
 
-  it('auto-enables Unicode property escapes even when u flag is omitted', () => {
-    const compiled = compileMacroRegex('\\p{Script=Hangul}+')
-    const matches = compiled.execAll('abc 한글 123 테스트')
-    expect(matches.map((m) => m.matchText)).toEqual(['한글', '테스트'])
+  it('matches Unicode property escapes only with u flag and treats \\p as literal p without u', () => {
+    const withU = compileMacroRegex('\\p{Script=Hangul}+', 'u')
+    expect(withU.execAll('abc 한글 123 테스트').map((m) => m.matchText)).toEqual(['한글', '테스트'])
+    expect(withU.execAll('p{Script=Hangul}}} 한글')).toEqual(
+      nativeExecAll('\\p{Script=Hangul}+', 'u', 'p{Script=Hangul}}} 한글'),
+    )
+
+    const withoutU = compileMacroRegex('\\p{Script=Hangul}+')
+    const sample = 'abc 한글 p{Script=Hangul} p{Script=Hangul}}}'
+    expect(withoutU.execAll(sample)).toEqual(nativeExecAll('\\p{Script=Hangul}+', '', sample))
+    expect(withoutU.execAll(sample).map((m) => m.matchText)).toEqual([
+      'p{Script=Hangul}',
+      'p{Script=Hangul}}}',
+    ])
+  })
+
+  it('matches JS RegExp identically across a deterministic seeded differential fuzz suite', () => {
+    let seed = 0x517cc1b7 >>> 0
+    const rnd = () => {
+      seed = (seed + 0x6d2b79f5) >>> 0
+      let t = seed
+      t = Math.imul(t ^ (t >>> 15), t | 1)
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rnd() * arr.length)]
+
+    const atomsBase = [
+      'a',
+      'b',
+      'c',
+      'A',
+      '가',
+      ' ',
+      '.',
+      '\\d',
+      '\\w',
+      '\\W',
+      '\\s',
+      '[a-c]',
+      '[^a]',
+      '[가-힣]',
+      '\\u{61}',
+      '\\p{L}',
+      'k',
+    ] as const
+    const atomsU = ['\\u{1F600}', '\\p{L}', '\\P{L}', '[\\p{Script=Hangul}]'] as const
+    const asserts = ['^', '$', '\\b', '\\B'] as const
+    const quantifiers = ['*', '+', '?', '{2}', '{1,3}', '{0,2}', '{2,}', '{0,1}'] as const
+    const flagSets = ['', 'i', 'm', 's', 'im', 'u', 'iu', 'msu'] as const
+    const alphabet = [
+      'a',
+      'b',
+      'c',
+      ' ',
+      '\n',
+      '가',
+      '나',
+      'A',
+      'B',
+      '1',
+      '_',
+      'k',
+      'p',
+      'u',
+      '{',
+      '}',
+    ] as const
+
+    function genPattern(depth: number, u: boolean): string {
+      const n = 1 + Math.floor(rnd() * 3)
+      let out = ''
+      for (let i = 0; i < n; i++) {
+        const r = rnd()
+        let atom: string
+        if (depth < 2 && r < 0.3) {
+          atom = pick(['(', '(?:']) + genPattern(depth + 1, u) + ')'
+        } else if (r < 0.38) {
+          out += pick(asserts)
+          continue
+        } else {
+          atom = u && rnd() < 0.25 ? pick(atomsU) : pick(atomsBase)
+        }
+        if (rnd() < 0.55) {
+          let q: string = pick(quantifiers)
+          if (rnd() < 0.45) q += '?'
+          atom += q
+        }
+        out += atom
+      }
+      if (depth < 2 && rnd() < 0.3) {
+        out += '|' + genPattern(depth + 1, u)
+      }
+      return out
+    }
+
+    function genText(): string {
+      const n = Math.floor(rnd() * 14)
+      let s = ''
+      for (let i = 0; i < n; i++) s += pick(alphabet)
+      return s
+    }
+
+    let checked = 0
+    for (let i = 0; i < 600; i++) {
+      const flags = pick(flagSets)
+      const u = flags.includes('u')
+      const pat = genPattern(0, u)
+      let jsOk = true
+      let engOk = true
+      let compiled: ReturnType<typeof compileMacroRegex> | null = null
+      try {
+        new RegExp(pat, `${flags}g`)
+      } catch {
+        jsOk = false
+      }
+      try {
+        compiled = compileMacroRegex(pat, flags)
+      } catch {
+        engOk = false
+      }
+      expect(engOk, `accept/reject mismatch for /${pat}/${flags}`).toBe(jsOk)
+      if (!jsOk || !compiled) continue
+
+      for (let k = 0; k < 4; k++) {
+        const text = genText()
+        checked++
+        expect(
+          compiled.execAll(text),
+          `match mismatch for /${pat}/${flags} on ${JSON.stringify(text)}`,
+        ).toEqual(nativeExecAll(pat, flags, text))
+      }
+    }
+    expect(checked).toBeGreaterThan(1500)
   })
 
   it('matches JS whitespace \\s across all BMP code points', () => {
@@ -203,6 +383,7 @@ describe('macro-regex: adversarial ReDoS suite (linear-time guarantee)', () => {
     ['(a|aa)+$', `${'a'.repeat(2999)}!`],
     ['a*[^b]*a*!', 'a'.repeat(3000)],
     ['[a-z]+[a-z0-9]+!', 'a'.repeat(3000)],
+    ['((((((a*?)*)*)*)*)*)*!', 'a'.repeat(3000)],
   ]
 
   it.each(redosCases)(
@@ -320,28 +501,39 @@ describe('macro-regex: refused constructs and validation', () => {
       '*abc',
       '+abc',
       '?abc',
+      '{2}abc',
       'a|*b',
       'a**',
       'a+*',
       'a{2}+',
-      'a{,3}',
-      'a{}',
-      'a{1,x}',
+      'a{2}{3}',
+      '\\u{61}+',
+      '\\u{110000}',
       'abc\\',
       '^*',
       '$+',
       '\\b*',
       '[\\d-a]',
       '[a-\\d]',
+    ]
+    for (const bad of invalidPatterns) {
+      expect(() => compileMacroRegex(bad), `expected "${bad}" to throw`).toThrow()
+    }
+
+    const invalidUnicodePatterns = [
+      '{',
+      '}',
+      'a{,3}',
+      'a{}',
+      'a{1,x}',
       '\\x1',
       '\\u123',
       '\\u{110000}',
       '\\p{NotARealUnicodeProp}',
       '\\p{',
     ]
-    for (const bad of invalidPatterns) {
-      expect(() => compileMacroRegex(bad), `expected "${bad}" to throw`).toThrow()
+    for (const bad of invalidUnicodePatterns) {
+      expect(() => compileMacroRegex(bad, 'u'), `expected /${bad}/u to throw`).toThrow()
     }
-    expect(() => compileMacroRegex('\\u{110000}', 'u')).toThrow()
   })
 })

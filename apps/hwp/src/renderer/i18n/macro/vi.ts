@@ -135,4 +135,8 @@ export const vi = {
   cmdOtherAction: 'Thao tác chỉnh sửa chưa được hỗ trợ ({id})',
   noticeOutsideBodyIgnored:
     'Các thao tác ngoài đoạn văn bản chính (bảng, hộp văn bản, chú thích, đầu trang/chân trang) sẽ không được ghi lại.',
+  noticeMacroRegexTimeout:
+    'Macro đã dừng và hoàn tác vì biểu thức chính quy mất quá nhiều thời gian.',
+  noticeMacroRegexTimeoutAt:
+    'Macro đã dừng và hoàn tác (dòng {line}, cột {column}) vì biểu thức chính quy mất quá nhiều thời gian.',
 } satisfies Record<keyof typeof zh, string>

@@ -56,6 +56,7 @@ import {
   type MacroNearLimitInfo,
   type MacroStoreErrorInfo,
 } from './macro'
+import { formatMacroRunException } from './macro/MacroManagerModal'
 import { StalenessModal, type StalenessModalState } from './StalenessModal'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
@@ -1905,10 +1906,11 @@ export default function App() {
             setNotice({ tone: outcome.tone, text: outcome.text })
           })
           .catch((error) => {
-            setNotice({
-              tone: 'error',
-              text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: detailOf(error) }),
-            })
+            setNotice(
+              formatMacroRunException(lang, error, {
+                whileRecording: wasRecording || macroRecordingRef.current,
+              }),
+            )
           })
       }
     }
@@ -2275,11 +2277,19 @@ export default function App() {
           onSave={saveMacroFromEditor}
           onRun={async (script, name) => {
             const wasRecording = macroRecordingRef.current
-            const result = await runMacroInEditor({ name, script })
-            const outcome = formatMacroRunOutcome(lang, name, result, {
-              whileRecording: wasRecording || macroRecordingRef.current,
-            })
-            setNotice({ tone: outcome.tone, text: outcome.text })
+            try {
+              const result = await runMacroInEditor({ name, script })
+              const outcome = formatMacroRunOutcome(lang, name, result, {
+                whileRecording: wasRecording || macroRecordingRef.current,
+              })
+              setNotice({ tone: outcome.tone, text: outcome.text })
+            } catch (error) {
+              setNotice(
+                formatMacroRunException(lang, error, {
+                  whileRecording: wasRecording || macroRecordingRef.current,
+                }),
+              )
+            }
           }}
           onClose={() => setMacroEditor(null)}
         />

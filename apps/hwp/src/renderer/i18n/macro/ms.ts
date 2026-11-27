@@ -138,4 +138,8 @@ export const ms = {
   cmdOtherAction: 'Tindakan penyunting tidak disokong ({id})',
   noticeOutsideBodyIgnored:
     'Tindakan di luar perenggan isi (jadual, kotak teks, nota, pengepala/pengaki) tidak dirakam.',
+  noticeMacroRegexTimeout:
+    'Makro dihentikan dan dibatalkan kerana ungkapan biasa mengambil masa terlalu lama.',
+  noticeMacroRegexTimeoutAt:
+    'Makro dihentikan dan dibatalkan (baris {line}, lajur {column}) kerana ungkapan biasa mengambil masa terlalu lama.',
 } satisfies Record<keyof typeof zh, string>

@@ -152,6 +152,118 @@ const ID_CONT_RE = /^[\p{ID_Continue}$]$/u
 
 const SAFE_BAGS = new WeakSet()
 const CALLABLES = new WeakMap()
+const TRACKED_STRING_MIN_LENGTH = 256
+const TRACKED_STRINGS = new WeakMap()
+
+function boxString(str) {
+  if (typeof str === 'string' && str.length >= TRACKED_STRING_MIN_LENGTH) {
+    const box = Object.freeze(Object.create(null))
+    TRACKED_STRINGS.set(box, str)
+    return box
+  }
+  return str
+}
+
+function unboxString(value) {
+  if (typeof value === 'string') return value
+  if (value !== null && typeof value === 'object') {
+    const raw = TRACKED_STRINGS.get(value)
+    if (raw !== undefined) return raw
+  }
+  return null
+}
+
+function isScriptString(value) {
+  return (
+    typeof value === 'string' ||
+    (value !== null && typeof value === 'object' && TRACKED_STRINGS.has(value))
+  )
+}
+
+function unwrapString(value) {
+  if (value !== null && typeof value === 'object') {
+    const raw = TRACKED_STRINGS.get(value)
+    if (raw !== undefined) return raw
+  }
+  return value
+}
+
+function containsTrackedString(root) {
+  if (root === null || root === undefined || typeof root !== 'object') return false
+  if (TRACKED_STRINGS.has(root)) return true
+  if (CALLABLES.has(root) || SAFE_BAGS.has(root)) return false
+  const seen = new Set()
+  const stack = [root]
+  while (stack.length > 0) {
+    const cur = stack.pop()
+    if (cur === null || cur === undefined || typeof cur !== 'object') continue
+    if (TRACKED_STRINGS.has(cur)) return true
+    if (CALLABLES.has(cur) || SAFE_BAGS.has(cur)) continue
+    if (seen.has(cur)) continue
+    seen.add(cur)
+    if (Array.isArray(cur)) {
+      for (let i = 0; i < cur.length; i++) {
+        const el = cur[i]
+        if (el !== null && typeof el === 'object') stack.push(el)
+      }
+    } else {
+      const keys = Object.keys(cur)
+      for (let i = 0; i < keys.length; i++) {
+        const val = cur[keys[i]]
+        if (val !== null && typeof val === 'object') stack.push(val)
+      }
+    }
+  }
+  return false
+}
+
+function cloneUnwrapped(root) {
+  if (root === null || root === undefined || typeof root !== 'object') return root
+  const rawRoot = TRACKED_STRINGS.get(root)
+  if (rawRoot !== undefined) return rawRoot
+  if (CALLABLES.has(root) || SAFE_BAGS.has(root)) return root
+
+  const cloned = new Map()
+  const queue = []
+  const makeShell = (obj) => {
+    if (obj === null || obj === undefined || typeof obj !== 'object') return obj
+    const s = TRACKED_STRINGS.get(obj)
+    if (s !== undefined) return s
+    if (CALLABLES.has(obj) || SAFE_BAGS.has(obj)) return obj
+    const existing = cloned.get(obj)
+    if (existing !== undefined) return existing
+    const copy = Array.isArray(obj) ? new Array(obj.length) : Object.create(null)
+    cloned.set(obj, copy)
+    queue.push([obj, copy])
+    return copy
+  }
+
+  const outRoot = makeShell(root)
+  for (let q = 0; q < queue.length; q++) {
+    const [src, dst] = queue[q]
+    if (Array.isArray(src)) {
+      for (let i = 0; i < src.length; i++) {
+        dst[i] = makeShell(src[i])
+      }
+    } else {
+      const keys = Object.keys(src)
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]
+        dst[k] = makeShell(src[k])
+      }
+    }
+  }
+  return outRoot
+}
+
+function unwrapForHost(value, forceCloneObjects = false) {
+  if (value === null || value === undefined || typeof value !== 'object') return value
+  const raw = TRACKED_STRINGS.get(value)
+  if (raw !== undefined) return raw
+  if (CALLABLES.has(value) || SAFE_BAGS.has(value)) return value
+  if (!forceCloneObjects && !containsTrackedString(value)) return value
+  return cloneUnwrapped(value)
+}
 
 export class MacroSyntaxError extends Error {
   constructor(message, line = 1, column = 1, code = 'syntax_error') {
@@ -256,7 +368,8 @@ function utf8ByteLength(text) {
 }
 
 function assertSafePropertyKey(key, line = 1, column = 1) {
-  const prop = typeof key === 'string' ? key : safeToString(key)
+  const raw = unboxString(key)
+  const prop = raw !== null ? raw : safeToString(key)
   if (FORBIDDEN_PROP_NAMES.has(prop)) {
     throw new MacroRuntimeError(
       `Access to forbidden property "${prop}" is not allowed`,
@@ -340,7 +453,15 @@ function createBuiltinCallable(fn, name, staticProps) {
   return Object.freeze(handle)
 }
 
-function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects, charge = null) {
+function sanitizeHostValueInternal(
+  value,
+  limits,
+  depth,
+  seen,
+  freezeObjects,
+  charge = null,
+  boxStrings = false,
+) {
   if (value === undefined || value === null) return value
   const t = typeof value
   if (t === 'boolean' || t === 'number') return value
@@ -354,7 +475,7 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects, ch
       )
     }
     if (charge) charge(value.length * 2 + 16)
-    return value
+    return boxStrings ? boxString(value) : value
   }
   if (t === 'function') {
     return createHostCallable(value, value.name)
@@ -385,7 +506,15 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects, ch
       if (charge) charge(64 + value.length * 16)
       const out = new Array(value.length)
       for (let i = 0; i < value.length; i++) {
-        out[i] = sanitizeHostValueInternal(value[i], limits, depth + 1, seen, freezeObjects, charge)
+        out[i] = sanitizeHostValueInternal(
+          value[i],
+          limits,
+          depth + 1,
+          seen,
+          freezeObjects,
+          charge,
+          boxStrings,
+        )
       }
       return freezeObjects ? Object.freeze(out) : out
     }
@@ -406,7 +535,15 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects, ch
       if (typeof entry === 'function') {
         out[key] = createHostCallable(entry, entry.name || key, value)
       } else {
-        out[key] = sanitizeHostValueInternal(entry, limits, depth + 1, seen, freezeObjects, charge)
+        out[key] = sanitizeHostValueInternal(
+          entry,
+          limits,
+          depth + 1,
+          seen,
+          freezeObjects,
+          charge,
+          boxStrings,
+        )
       }
     }
     return freezeObjects ? Object.freeze(out) : out
@@ -424,7 +561,7 @@ export function sanitizeHostValue(value, limits) {
   return sanitizeHostValueInternal(value, resolvedLimits, 0, new Set(), false)
 }
 
-function wrapGlobalValue(value, limits, depth, seen, tracking = null) {
+function wrapGlobalValue(value, limits, depth, seen, tracking = null, inSafeBag = false) {
   if (value === undefined || value === null) return value
   const t = typeof value
   if (t === 'boolean' || t === 'number') return value
@@ -437,7 +574,7 @@ function wrapGlobalValue(value, limits, depth, seen, tracking = null) {
         1,
       )
     }
-    return value
+    return tracking && !inSafeBag ? boxString(value) : value
   }
   if (t === 'function') {
     return createHostCallable(value, value.name)
@@ -475,7 +612,7 @@ function wrapGlobalValue(value, limits, depth, seen, tracking = null) {
         if (typeof entry === 'function') {
           value[key] = createHostCallable(entry, entry.name || key, value)
         } else if (entry !== null && typeof entry === 'object' && !CALLABLES.has(entry)) {
-          value[key] = wrapGlobalValue(entry, limits, depth + 1, seen, tracking)
+          value[key] = wrapGlobalValue(entry, limits, depth + 1, seen, tracking, true)
         }
       }
       return value
@@ -499,7 +636,7 @@ function wrapGlobalValue(value, limits, depth, seen, tracking = null) {
       }
       const out = new Array(value.length)
       for (let i = 0; i < value.length; i++) {
-        out[i] = wrapGlobalValue(value[i], limits, depth + 1, seen, tracking)
+        out[i] = wrapGlobalValue(value[i], limits, depth + 1, seen, tracking, inSafeBag)
       }
       const frozen = Object.freeze(out)
       if (tracking) tracking.exemptObjects.add(frozen)
@@ -521,7 +658,7 @@ function wrapGlobalValue(value, limits, depth, seen, tracking = null) {
       if (typeof entry === 'function') {
         ns[key] = createHostCallable(entry, entry.name || key, value)
       } else {
-        ns[key] = wrapGlobalValue(entry, limits, depth + 1, seen, tracking)
+        ns[key] = wrapGlobalValue(entry, limits, depth + 1, seen, tracking, inSafeBag)
       }
     }
     const frozen = Object.freeze(ns)
@@ -2246,7 +2383,8 @@ export function validateMacroSyntax(source, options) {
 // ============================================================================
 
 function safeToString(value, limits, node, seen) {
-  if (typeof value === 'string') return value
+  const rawStr = unboxString(value)
+  if (rawStr !== null) return rawStr
   if (value === undefined) return 'undefined'
   if (value === null) return 'null'
   if (typeof value === 'boolean') return value ? 'true' : 'false'
@@ -2286,7 +2424,8 @@ function safeToNumber(value) {
   if (value === undefined) return Number.NaN
   if (value === null) return 0
   if (typeof value === 'boolean') return value ? 1 : 0
-  if (typeof value === 'string') return Number(value)
+  const rawStr = unboxString(value)
+  if (rawStr !== null) return Number(rawStr)
   if (Array.isArray(value)) {
     if (value.length === 0) return 0
     if (value.length === 1) return safeToNumber(value[0])
@@ -2297,17 +2436,43 @@ function safeToNumber(value) {
 
 function safeTypeof(value) {
   if (value === null) return 'object'
+  if (isScriptString(value)) return 'string'
   if (CALLABLES.has(value)) return 'function'
   return typeof value
 }
 
+function strictEquals(a, b) {
+  if (a === b) return true
+  const sa = unboxString(a)
+  if (sa !== null) {
+    const sb = unboxString(b)
+    return sb !== null && sa === sb
+  }
+  return false
+}
+
+function sameValueZero(a, b) {
+  if (a === b) return true
+  if (typeof a === 'number' && typeof b === 'number' && Number.isNaN(a) && Number.isNaN(b)) {
+    return true
+  }
+  const sa = unboxString(a)
+  if (sa !== null) {
+    const sb = unboxString(b)
+    return sb !== null && sa === sb
+  }
+  return false
+}
+
 function abstractEquals(a, b) {
-  if (typeof a === typeof b) return a === b
-  if ((a === null && b === undefined) || (a === undefined && b === null)) return true
-  if (typeof a === 'number' && typeof b === 'string') return a === safeToNumber(b)
-  if (typeof a === 'string' && typeof b === 'number') return safeToNumber(a) === b
-  if (typeof a === 'boolean') return abstractEquals(a ? 1 : 0, b)
-  if (typeof b === 'boolean') return abstractEquals(a, b ? 1 : 0)
+  const ua = unwrapString(a)
+  const ub = unwrapString(b)
+  if (typeof ua === typeof ub) return ua === ub
+  if ((ua === null && ub === undefined) || (ua === undefined && ub === null)) return true
+  if (typeof ua === 'number' && typeof ub === 'string') return ua === safeToNumber(ub)
+  if (typeof ua === 'string' && typeof ub === 'number') return safeToNumber(ua) === ub
+  if (typeof ua === 'boolean') return abstractEquals(ua ? 1 : 0, ub)
+  if (typeof ub === 'boolean') return abstractEquals(ua, ub ? 1 : 0)
   return false
 }
 
@@ -2343,14 +2508,15 @@ function safeJsonStringify(value, ctx, node, depth, seen) {
     )
   }
   if (value === null) return 'null'
-  const t = typeof value
-  if (t === 'boolean') return value ? 'true' : 'false'
-  if (t === 'number') return Number.isFinite(value) ? String(value) : 'null'
-  if (t === 'string') {
-    const encoded = JSON.stringify(value)
+  const rawStr = unboxString(value)
+  if (rawStr !== null) {
+    const encoded = JSON.stringify(rawStr)
     checkStringLength(encoded.length, ctx, node)
     return encoded
   }
+  const t = typeof value
+  if (t === 'boolean') return value ? 'true' : 'false'
+  if (t === 'number') return Number.isFinite(value) ? String(value) : 'null'
   if (t === 'undefined' || CALLABLES.has(value)) {
     return undefined
   }
@@ -2458,10 +2624,14 @@ function buildBuiltinGlobals() {
 
   builtins.String = createBuiltinCallable((args, ctx, node) => {
     if (args.length === 0) return ''
+    if (isScriptString(args[0])) {
+      return args[0]
+    }
     const out = safeToString(args[0], ctx.limits, node)
     checkStringLength(out.length, ctx, node)
-    ctx.chargeString(out, node)
-    return out
+    const boxed = boxString(out)
+    ctx.chargeString(boxed, node)
+    return boxed
   }, 'String')
 
   builtins.Boolean = createBuiltinCallable((args) => Boolean(args[0]), 'Boolean')
@@ -2481,14 +2651,14 @@ function buildBuiltinGlobals() {
         node.column,
       )
     }
-    if (typeof target !== 'object' || CALLABLES.has(target)) {
+    if (typeof target !== 'object' || CALLABLES.has(target) || TRACKED_STRINGS.has(target)) {
       ctx.chargeContainer(0, node)
       return []
     }
     const keys = Object.keys(target).filter((k) => !FORBIDDEN_PROP_NAMES.has(k))
     checkCollectionSize(keys.length, ctx, node, 'Array')
     ctx.chargeContainer(keys.length, node)
-    return keys
+    return keys.map(boxString)
   }, 'Object.keys')
   objectNs.values = createBuiltinCallable((args, ctx, node) => {
     const target = args[0]
@@ -2500,7 +2670,7 @@ function buildBuiltinGlobals() {
         node.column,
       )
     }
-    if (typeof target !== 'object' || CALLABLES.has(target)) {
+    if (typeof target !== 'object' || CALLABLES.has(target) || TRACKED_STRINGS.has(target)) {
       ctx.chargeContainer(0, node)
       return []
     }
@@ -2519,7 +2689,7 @@ function buildBuiltinGlobals() {
         node.column,
       )
     }
-    if (typeof target !== 'object' || CALLABLES.has(target)) {
+    if (typeof target !== 'object' || CALLABLES.has(target) || TRACKED_STRINGS.has(target)) {
       ctx.chargeContainer(0, node)
       return []
     }
@@ -2527,7 +2697,7 @@ function buildBuiltinGlobals() {
     checkCollectionSize(keys.length, ctx, node, 'Array')
     ctx.chargeContainer(keys.length, node)
     ctx.chargeBytes(keys.length * (64 + 32), node)
-    return keys.map((k) => [k, target[k]])
+    return keys.map((k) => [boxString(k), target[k]])
   }, 'Object.entries')
   builtins.Object = Object.freeze(objectNs)
 
@@ -2535,7 +2705,9 @@ function buildBuiltinGlobals() {
   jsonNs.stringify = createBuiltinCallable((args, ctx, node) => {
     const out = safeJsonStringify(args[0], ctx, node, 0, new Set())
     if (typeof out === 'string') {
-      ctx.chargeString(out, node)
+      const boxed = boxString(out)
+      ctx.chargeString(boxed, node)
+      return boxed
     }
     return out
   }, 'JSON.stringify')
@@ -2555,10 +2727,18 @@ function buildBuiltinGlobals() {
     }
     try {
       let pendingBytes = 0
-      return sanitizeHostValueInternal(raw, ctx.limits, 0, new Set(), false, (bytes) => {
-        pendingBytes += bytes
-        ctx.chargeBytes(bytes, node, undefined, pendingBytes)
-      })
+      return sanitizeHostValueInternal(
+        raw,
+        ctx.limits,
+        0,
+        new Set(),
+        false,
+        (bytes) => {
+          pendingBytes += bytes
+          ctx.chargeBytes(bytes, node, undefined, pendingBytes)
+        },
+        true,
+      )
     } catch (err) {
       if (err instanceof MacroRuntimeError) {
         throw new MacroRuntimeError(err.message, err.code, node.line, node.column)
@@ -2575,14 +2755,14 @@ const STRING_METHODS = Object.assign(Object.create(null), {
   slice: (recv, args, ctx, node) => {
     const start = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
     const end = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
-    const out = end === undefined ? recv.slice(start) : recv.slice(start, end)
+    const out = boxString(end === undefined ? recv.slice(start) : recv.slice(start, end))
     ctx.chargeString(out, node)
     return out
   },
   substring: (recv, args, ctx, node) => {
     const start = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
     const end = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
-    const out = end === undefined ? recv.substring(start) : recv.substring(start, end)
+    const out = boxString(end === undefined ? recv.substring(start) : recv.substring(start, end))
     ctx.chargeString(out, node)
     return out
   },
@@ -2616,17 +2796,17 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     return recv.endsWith(search)
   },
   trim: (recv, _args, ctx, node) => {
-    const out = recv.trim()
+    const out = boxString(recv.trim())
     ctx.chargeString(out, node)
     return out
   },
   trimStart: (recv, _args, ctx, node) => {
-    const out = recv.trimStart()
+    const out = boxString(recv.trimStart())
     ctx.chargeString(out, node)
     return out
   },
   trimEnd: (recv, _args, ctx, node) => {
-    const out = recv.trimEnd()
+    const out = boxString(recv.trimEnd())
     ctx.chargeString(out, node)
     return out
   },
@@ -2635,14 +2815,14 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     ctx.chargeBytes(est, node, undefined, est)
     const out = recv.toLowerCase()
     checkStringLength(out.length, ctx, node)
-    return out
+    return boxString(out)
   },
   toUpperCase: (recv, _args, ctx, node) => {
     const est = recv.length * 2 + 16
     ctx.chargeBytes(est, node, undefined, est)
     const out = recv.toUpperCase()
     checkStringLength(out.length, ctx, node)
-    return out
+    return boxString(out)
   },
   charAt: (recv, args, ctx, node) => {
     const idx = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
@@ -2675,9 +2855,9 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     }
     const est = recv.length * count * 2 + 16
     ctx.chargeBytes(est, node, undefined, est)
-    return recv.repeat(count)
+    return boxString(recv.repeat(count))
   },
-  replace: (recv, args, ctx, node) => {
+  replace: (recv, args, ctx, node, recvBox) => {
     const search = safeToString(args[0], ctx.limits, node)
     const replacement = safeToString(args[1], ctx.limits, node)
     if (search.length === 0) {
@@ -2685,15 +2865,15 @@ const STRING_METHODS = Object.assign(Object.create(null), {
       checkStringLength(targetLen, ctx, node)
       const est = targetLen * 2 + 16
       ctx.chargeBytes(est, node, undefined, est)
-      return replacement + recv
+      return boxString(replacement + recv)
     }
     const idx = recv.indexOf(search)
-    if (idx === -1) return recv
+    if (idx === -1) return recvBox
     const targetLen = recv.length - search.length + replacement.length
     checkStringLength(targetLen, ctx, node)
     const est = targetLen * 2 + 16
     ctx.chargeBytes(est, node, undefined, est)
-    return recv.slice(0, idx) + replacement + recv.slice(idx + search.length)
+    return boxString(recv.slice(0, idx) + replacement + recv.slice(idx + search.length))
   },
   replaceAll: (recv, args, ctx, node) => {
     const search = safeToString(args[0], ctx.limits, node)
@@ -2708,7 +2888,7 @@ const STRING_METHODS = Object.assign(Object.create(null), {
         ctx.tick(node)
         out += recv[i] + replacement
       }
-      return out
+      return boxString(out)
     }
     let out = ''
     let cursor = 0
@@ -2726,10 +2906,11 @@ const STRING_METHODS = Object.assign(Object.create(null), {
       out += chunk + replacement
       cursor = idx + search.length
     }
-    ctx.chargeString(out, node)
-    return out
+    const boxed = boxString(out)
+    ctx.chargeString(boxed, node)
+    return boxed
   },
-  split: (recv, args, ctx, node) => {
+  split: (recv, args, ctx, node, recvBox) => {
     const limitArg = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
     const maxParts =
       limitArg === undefined
@@ -2743,8 +2924,8 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     }
     if (args.length === 0 || args[0] === undefined) {
       ctx.chargeContainer(1, node)
-      ctx.chargeString(recv, node)
-      return [recv]
+      ctx.chargeString(recvBox, node)
+      return [recvBox]
     }
     const sep = safeToString(args[0], ctx.limits, node)
     const result = []
@@ -2783,9 +2964,9 @@ const STRING_METHODS = Object.assign(Object.create(null), {
               node.column,
             )
           }
-          const piece = recv.slice(cursor)
-          result.push(piece)
-          ctx.chargeBytes(16 + piece.length * 2 + 16, node)
+          const rawPiece = recv.slice(cursor)
+          result.push(boxString(rawPiece))
+          ctx.chargeBytes(16 + rawPiece.length * 2 + 16, node)
           break
         }
         if (result.length >= ctx.limits.maxCollectionSize) {
@@ -2797,9 +2978,9 @@ const STRING_METHODS = Object.assign(Object.create(null), {
             node.column,
           )
         }
-        const piece = recv.slice(cursor, idx)
-        result.push(piece)
-        ctx.chargeBytes(16 + piece.length * 2 + 16, node)
+        const rawPiece = recv.slice(cursor, idx)
+        result.push(boxString(rawPiece))
+        ctx.chargeBytes(16 + rawPiece.length * 2 + 16, node)
         if (limitArg !== undefined && result.length >= maxParts) break
         cursor = idx + sep.length
       }
@@ -2886,12 +3067,28 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
     }
   },
   indexOf: (recv, args) => {
-    const from = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : 0
-    return recv.indexOf(args[0], from)
+    const len = recv.length
+    if (len === 0) return -1
+    let from = args.length > 1 && args[1] !== undefined ? Math.trunc(safeToNumber(args[1])) : 0
+    if (Number.isNaN(from)) from = 0
+    if (from < 0) from = Math.max(0, len + from)
+    const target = args[0]
+    for (let i = from; i < len; i++) {
+      if (strictEquals(recv[i], target)) return i
+    }
+    return -1
   },
   includes: (recv, args) => {
-    const from = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : 0
-    return recv.includes(args[0], from)
+    const len = recv.length
+    if (len === 0) return false
+    let from = args.length > 1 && args[1] !== undefined ? Math.trunc(safeToNumber(args[1])) : 0
+    if (Number.isNaN(from)) from = 0
+    if (from < 0) from = Math.max(0, len + from)
+    const target = args[0]
+    for (let i = from; i < len; i++) {
+      if (sameValueZero(recv[i], target)) return true
+    }
+    return false
   },
   join: (recv, args, ctx, node) => {
     const sep =
@@ -2908,8 +3105,9 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
       checkStringLength(out.length + piece.length, ctx, node)
       out += piece
     }
-    ctx.chargeString(out, node)
-    return out
+    const boxed = boxString(out)
+    ctx.chargeString(boxed, node)
+    return boxed
   },
   reverse: (recv, _args, _ctx, node) => {
     assertMutableArray(recv, node)
@@ -3223,6 +3421,7 @@ class Interpreter {
     this.activeTemps = []
     this.mutableHostBags = []
     this.exemptObjects = new Set()
+    this.literalBoxes = new Map()
     this.bytesSinceLiveCheck = 0
     this.lastLiveBytes = 0
     this.liveCheckThreshold = Math.min(
@@ -3300,6 +3499,13 @@ class Interpreter {
       if (visited.has(item)) continue
       visited.add(item)
 
+      const tracked = TRACKED_STRINGS.get(item)
+      if (tracked !== undefined) {
+        total += tracked.length * 2 + 16
+        if (total > maxBytes) return total
+        continue
+      }
+
       if (item instanceof Environment) {
         if (item === rootEnv) continue
         for (const key in item.bindings) {
@@ -3307,7 +3513,7 @@ class Interpreter {
           if (typeof val === 'string') {
             total += val.length * 2 + 16
             if (total > maxBytes) return total
-          } else if (val !== null && typeof val === 'object') {
+          } else if (val !== null && typeof val === 'object' && !visited.has(val)) {
             worklist.push(val)
           }
         }
@@ -3343,7 +3549,7 @@ class Interpreter {
           if (typeof el === 'string') {
             total += el.length * 2 + 16
             if (total > maxBytes) return total
-          } else if (el !== null && typeof el === 'object') {
+          } else if (el !== null && typeof el === 'object' && !visited.has(el)) {
             worklist.push(el)
           }
         }
@@ -3358,7 +3564,7 @@ class Interpreter {
         if (typeof val === 'string') {
           total += val.length * 2 + 16
           if (total > maxBytes) return total
-        } else if (val !== null && typeof val === 'object') {
+        } else if (val !== null && typeof val === 'object' && !visited.has(val)) {
           worklist.push(val)
         }
       }
@@ -3389,8 +3595,9 @@ class Interpreter {
   }
 
   chargeString(str, node) {
-    if (typeof str === 'string') {
-      this.chargeBytes(str.length * 2 + 16, node, str)
+    const raw = unboxString(str)
+    if (raw !== null) {
+      this.chargeBytes(raw.length * 2 + 16, node, str)
     }
     return str
   }
@@ -3685,19 +3892,22 @@ class Interpreter {
         let items
         if (Array.isArray(iterable)) {
           items = iterable
-        } else if (typeof iterable === 'string') {
-          items = iterable
         } else {
-          throw new MacroRuntimeError(
-            'Right-hand side of for-of must be an array or string',
-            'type_error',
-            stmt.right.line,
-            stmt.right.column,
-          )
+          const rawStr = unboxString(iterable)
+          if (rawStr !== null) {
+            items = rawStr
+          } else {
+            throw new MacroRuntimeError(
+              'Right-hand side of for-of must be an array or string',
+              'type_error',
+              stmt.right.line,
+              stmt.right.column,
+            )
+          }
         }
         const envSlot = this.activeEnvs.length
         this.activeEnvs.push(env)
-        this.activeTemps.push(items)
+        this.activeTemps.push(iterable)
         try {
           let lastVal = undefined
           for (let i = 0; i < items.length; i++) {
@@ -3738,7 +3948,7 @@ class Interpreter {
               defaultIndex = i
             } else {
               const testVal = this.evalExpression(c.test, switchEnv)
-              if (testVal === disc) {
+              if (strictEquals(testVal, disc)) {
                 matchedIndex = i
                 break
               }
@@ -3788,16 +3998,17 @@ class Interpreter {
         node.column,
       )
     }
-    if (typeof receiver === 'string') {
-      if (prop === 'length') return receiver.length
+    const rawStr = unboxString(receiver)
+    if (rawStr !== null) {
+      if (prop === 'length') return rawStr.length
       if (isArrayIndexKey(prop)) {
         const idx = Number(prop)
-        return idx < receiver.length ? receiver[idx] : undefined
+        return idx < rawStr.length ? rawStr[idx] : undefined
       }
       const method = STRING_METHODS[prop]
       if (method) {
         return createBuiltinCallable(
-          (args, ctx, callNode) => method(receiver, args, ctx, callNode),
+          (args, ctx, callNode) => method(rawStr, args, ctx, callNode, receiver),
           `String.prototype.${prop}`,
         )
       }
@@ -3829,7 +4040,12 @@ class Interpreter {
 
   writeProperty(receiver, propKey, value, node) {
     const prop = assertSafePropertyKey(propKey, node.line, node.column)
-    if (receiver === null || receiver === undefined || typeof receiver !== 'object') {
+    if (
+      receiver === null ||
+      receiver === undefined ||
+      typeof receiver !== 'object' ||
+      TRACKED_STRINGS.has(receiver)
+    ) {
       throw new MacroRuntimeError(
         `Cannot set property "${prop}" on non-object value`,
         'type_error',
@@ -3878,7 +4094,7 @@ class Interpreter {
       checkCollectionSize(Object.keys(receiver).length + 1, this, node, 'Object')
       this.chargeBytes(16, node)
     }
-    receiver[prop] = value
+    receiver[prop] = SAFE_BAGS.has(receiver) ? unwrapForHost(value, true) : value
     return value
   }
 
@@ -3906,14 +4122,14 @@ class Interpreter {
   }
 
   evalAdd(left, right, node) {
-    if (typeof left === 'string' || typeof right === 'string') {
+    if (isScriptString(left) || isScriptString(right)) {
       const a = safeToString(left, this.limits, node)
       const b = safeToString(right, this.limits, node)
       const totalLen = a.length + b.length
       checkStringLength(totalLen, this, node)
       const est = totalLen * 2 + 16
       this.chargeBytes(est, node, undefined, est)
-      return a + b
+      return boxString(a + b)
     }
     return safeToNumber(left) + safeToNumber(right)
   }
@@ -3964,7 +4180,11 @@ class Interpreter {
       try {
         let rawResult
         try {
-          rawResult = meta.fn(...args)
+          const hostArgs = new Array(args.length)
+          for (let i = 0; i < args.length; i++) {
+            hostArgs[i] = unwrapForHost(args[i])
+          }
+          rawResult = meta.fn(...hostArgs)
         } catch (err) {
           if (err instanceof MacroRuntimeError) {
             throw err
@@ -3982,10 +4202,18 @@ class Interpreter {
         }
         try {
           let pendingBytes = 0
-          return sanitizeHostValueInternal(rawResult, this.limits, 0, new Set(), false, (bytes) => {
-            pendingBytes += bytes
-            this.chargeBytes(bytes, callNode, undefined, pendingBytes)
-          })
+          return sanitizeHostValueInternal(
+            rawResult,
+            this.limits,
+            0,
+            new Set(),
+            false,
+            (bytes) => {
+              pendingBytes += bytes
+              this.chargeBytes(bytes, callNode, undefined, pendingBytes)
+            },
+            true,
+          )
         } catch (err) {
           if (err instanceof MacroRuntimeError) {
             throw new MacroRuntimeError(err.message, err.code, callNode.line, callNode.column)
@@ -4034,6 +4262,15 @@ class Interpreter {
     switch (node.type) {
       case 'Literal':
         if (typeof node.value === 'string') {
+          if (node.value.length >= TRACKED_STRING_MIN_LENGTH) {
+            let boxed = this.literalBoxes.get(node)
+            if (boxed === undefined) {
+              boxed = boxString(node.value)
+              this.literalBoxes.set(node, boxed)
+            }
+            this.chargeString(boxed, node)
+            return boxed
+          }
           this.chargeString(node.value, node)
         }
         return node.value
@@ -4167,29 +4404,32 @@ class Interpreter {
           case '**':
             return Math.pow(safeToNumber(left), safeToNumber(right))
           case '===':
-            return left === right
+            return strictEquals(left, right)
           case '!==':
-            return left !== right
+            return !strictEquals(left, right)
           case '==':
             return abstractEquals(left, right)
           case '!=':
             return !abstractEquals(left, right)
           case '<':
-            return typeof left === 'string' && typeof right === 'string'
-              ? left < right
-              : safeToNumber(left) < safeToNumber(right)
           case '<=':
-            return typeof left === 'string' && typeof right === 'string'
-              ? left <= right
-              : safeToNumber(left) <= safeToNumber(right)
           case '>':
-            return typeof left === 'string' && typeof right === 'string'
-              ? left > right
-              : safeToNumber(left) > safeToNumber(right)
-          case '>=':
-            return typeof left === 'string' && typeof right === 'string'
-              ? left >= right
-              : safeToNumber(left) >= safeToNumber(right)
+          case '>=': {
+            const sl = unboxString(left)
+            const sr = unboxString(right)
+            if (sl !== null && sr !== null) {
+              if (node.operator === '<') return sl < sr
+              if (node.operator === '<=') return sl <= sr
+              if (node.operator === '>') return sl > sr
+              return sl >= sr
+            }
+            const nl = safeToNumber(left)
+            const nr = safeToNumber(right)
+            if (node.operator === '<') return nl < nr
+            if (node.operator === '<=') return nl <= nr
+            if (node.operator === '>') return nl > nr
+            return nl >= nr
+          }
           default:
             throw new MacroRuntimeError(
               `Unsupported binary operator "${node.operator}"`,
@@ -4346,7 +4586,7 @@ export function runMacroScript(source, globals = undefined, options = undefined)
     // never mutate root bindings while still resolving globals cleanly.
     const programEnv = new Environment(rootEnv, true)
     interpreter.programEnv = programEnv
-    const value = interpreter.evalProgram(parsed.ast, programEnv)
+    const value = unwrapForHost(interpreter.evalProgram(parsed.ast, programEnv))
     return {
       ok: true,
       value,
