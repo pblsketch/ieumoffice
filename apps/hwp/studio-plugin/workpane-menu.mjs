@@ -13,6 +13,12 @@ export const WORKPANE_COMMAND_EVENT = 'ieum:workpane-command'
 /** Event fired on the editor frame window when a Tool-menu bibliography item is clicked. */
 export const BIBLIOGRAPHY_COMMAND_EVENT = 'ieum:bib-command'
 
+/** Event fired on the editor frame window when a macro shortcut or Tool-menu item runs. */
+export const MACRO_COMMAND_EVENT = 'ieum:macro-command'
+
+/** Event fired on the editor frame window when macro recording state or notices change. */
+export const MACRO_RECORDING_EVENT = 'ieum:macro-recording-event'
+
 /** Core View-menu items installed for the workpane, in display order. */
 export const WORKPANE_MENU_ITEMS = Object.freeze([
   { tab: 'outline', id: 'ext:ieum-workpane-outline' },
@@ -31,6 +37,21 @@ export const BIBLIOGRAPHY_MENU_ITEMS = Object.freeze([
   { key: 'insertBibliography', id: 'ext:ieum-bib-insert-list', action: 'insert-bibliography' },
   { key: 'refreshBibliography', id: 'ext:ieum-bib-refresh-list', action: 'refresh-bibliography' },
   { key: 'openTab', id: 'ext:ieum-bib-open-tab', action: 'open-tab' },
+])
+
+/** Tool-menu items installed for macro recording and management, in display order. */
+export const MACRO_MENU_ITEMS = Object.freeze([
+  {
+    key: 'recordToggle',
+    id: 'ext:ieum-macro-record-toggle',
+    action: 'toggle-record',
+    shortcut: 'Alt+Shift+H',
+  },
+  {
+    key: 'manage',
+    id: 'ext:ieum-macro-manage',
+    action: 'open-manager',
+  },
 ])
 
 /**
@@ -130,6 +151,59 @@ export function installBibliographyMenu(host, labels) {
   }
   try {
     for (const item of BIBLIOGRAPHY_MENU_ITEMS) {
+      automation.addMenuItem({
+        menuId: 'tool',
+        commandId: item.id,
+        position: 'bottom',
+      })
+    }
+  } catch {
+    // an editor without a Tool menu
+    return { ok: false }
+  }
+  return { ok: true }
+}
+
+/**
+ * Register the macro recording toggle and manager commands in the editor's Tool menu (`menuId: 'tool'`).
+ * Repeated calls are idempotent and an editor without automation hooks returns `{ ok: false }`.
+ */
+export function installMacroMenu(host, labels) {
+  for (const item of MACRO_MENU_ITEMS) {
+    if (typeof labels?.[item.key] !== 'string' || !labels[item.key]) {
+      throw new Error(`labels.${item.key} must be a non-empty string`)
+    }
+  }
+  const automation = host?.automation
+  if (!automation?.registerCommand || !automation?.addMenuItem) {
+    return { ok: false }
+  }
+  for (const item of MACRO_MENU_ITEMS) {
+    try {
+      automation.unregisterCommand?.(item.id)
+    } catch {
+      // not previously registered
+    }
+    try {
+      automation.registerCommand({
+        id: item.id,
+        label: labels[item.key],
+        ...(item.shortcut ? { shortcutLabel: item.shortcut } : {}),
+        canExecute: (ctx) => ctx?.hasDocument !== false,
+        execute: () => {
+          globalThis.dispatchEvent?.(
+            new CustomEvent(MACRO_COMMAND_EVENT, {
+              detail: { action: item.action },
+            }),
+          )
+        },
+      })
+    } catch {
+      // registered by an earlier call
+    }
+  }
+  try {
+    for (const item of MACRO_MENU_ITEMS) {
       automation.addMenuItem({
         menuId: 'tool',
         commandId: item.id,

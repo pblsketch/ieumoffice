@@ -1,0 +1,147 @@
+import type { zh } from './zh'
+
+export const nl = {
+  menuRecordToggle: 'Macro › Opname starten/stoppen',
+  menuManage: 'Macro › Macro’s beheren…',
+  recordingBadge: 'Macro opnemen',
+  recordingStopBtn: 'Stoppen',
+  noticeRecordingStarted:
+    'Macro-opname gestart. Druk op Alt+Shift+H of klik op Stoppen als u klaar bent.',
+  noticeUnsupportedCommand: 'Deze actie kan niet in een macro worden opgenomen: {label}',
+  noticeMouseIgnored: 'Muisacties worden niet in een macro opgenomen.',
+  noticeSlotEmpty: 'Er is geen macro toegewezen aan {shortcut}.',
+  noticeMacroRunSuccess: 'Macro “{name}” uitgevoerd.',
+  noticeMacroMessages: '{name}: {messages}',
+  noticeMacroRunError: 'Macro mislukt (regel {line}, kol. {column}): {error}',
+  noticeMacroRunErrorNoLoc: 'Macro mislukt: {error}',
+  noticeMacroUnsupportedAction:
+    'Niet-ondersteunde macroactie “{action}” (regel {line}, kol. {column}). Alle wijzigingen zijn teruggedraaid.',
+  noticeMacroRollbackObjectLoss:
+    'De macro is gestopt en teruggedraaid om verlies van documentobjecten of notities te voorkomen.',
+  managerTitle: 'Macro’s beheren',
+  newMacroBtn: 'Nieuwe macro',
+  importBtn: 'Importeren (.ieummacro)',
+  recordStartBtn: 'Opname starten',
+  recordStopBtn: 'Opname stoppen',
+  emptyMacros:
+    'Nog geen macro’s opgeslagen. Maak een macro, neem acties op of importeer een .ieummacro-bestand.',
+  colName: 'Naam',
+  colOrigin: 'Bron',
+  colShortcut: 'Sneltoets',
+  colActions: 'Acties',
+  originRecorded: 'Opgenomen',
+  originManual: 'Handmatig',
+  originAi: 'AI-concept',
+  originImported: 'Geïmporteerd',
+  slotNone: 'Geen',
+  runBtn: 'Uitvoeren',
+  editBtn: 'Bewerken',
+  exportBtn: 'Exporteren',
+  deleteBtn: 'Verwijderen',
+  closeBtn: 'Sluiten',
+  cancelBtn: 'Annuleren',
+  saveBtn: 'Opslaan',
+  noticeMacroSaved: 'Macro “{name}” opgeslagen.',
+  noticeMacroDeleted: 'Macro “{name}” verwijderd.',
+  noticeMacroExported: 'Macro “{name}” geëxporteerd.',
+  noticeMacroImported: 'Macro “{name}” geïmporteerd.',
+  noticeSlotAssigned: '{shortcut} toegewezen aan “{name}”.',
+  noticeSlotCleared: 'Sneltoets voor “{name}” gewist.',
+  errorActionFailed: 'Actie mislukt: {error}',
+  storeErrorTitle: 'Kan macro-opslag niet lezen',
+  storeErrorCorruptBody:
+    'Het macro-opslagbestand is beschadigd. Bewerken is uitgeschakeld om uw bestaande macro’s te beschermen.',
+  storeErrorTooLargeBody:
+    'Het macro-opslagbestand overschrijdt de groottelimiet. Bewerken is uitgeschakeld om uw bestaande macro’s te beschermen.',
+  storeErrorReadBody:
+    'Het macro-opslagbestand kon niet worden gelezen. Bewerken is uitgeschakeld om uw bestaande macro’s te beschermen.',
+  storeErrorBackupNote: 'Uw oorspronkelijke bestand is bewaard op:',
+  storeErrorDisabledHint:
+    'Los het bestandsprobleem op en klik op Opnieuw proberen om macro’s weer te beheren.',
+  storeRetryBtn: 'Opnieuw proberen',
+  storeNearLimitTitle: 'Macro-opslag nadert groottelimiet',
+  storeNearLimitBody:
+    'De opslag gebruikt {size} van {max}. Overweeg ongebruikte macro’s te verwijderen of een back-up te exporteren.',
+  errorStoreWriteTooLarge:
+    'Door deze wijziging wordt de opslag {actual}, boven de limiet van {max}. Niets is overschreven.',
+  errorStoreWriteTooLargeGeneric:
+    'Deze wijziging overschrijdt de groottelimiet van de macro-opslag. Niets is overschreven.',
+  importPreviewTitle: 'Geïmporteerde macro bekijken',
+  importPreviewWarning:
+    'Controleer het volledige script hieronder voordat u opslaat. Geïmporteerde macro’s kunnen pas na het opslaan worden uitgevoerd.',
+  importPreviewFile: 'Bestand: {fileName}',
+  importPreviewName: 'Naam',
+  importPreviewDesc: 'Beschrijving',
+  importPreviewScript: 'Script (alleen-lezen)',
+  importPreviewSyntaxOk: 'Syntaxiscontrole geslaagd.',
+  importPreviewSyntaxError:
+    'Syntaxisfout op regel {line}, kolom {column}: {error} (u kunt nog steeds opslaan en in de editor corrigeren.)',
+  importConfirmBtn: 'Geïmporteerde macro opslaan',
+  importErrorInvalidFormat: 'Dit bestand is geen geldig .ieummacro-macrobestand.',
+  importErrorTooLarge:
+    'Het geselecteerde macrobestand overschrijdt de maximaal toegestane grootte.',
+  editorNewTitle: 'Nieuwe macro',
+  editorEditTitle: 'Macro bewerken',
+  editorRecordedTitle: 'Opgenomen macro opslaan',
+  fieldName: 'Naam',
+  fieldNamePlaceholder: 'Voer macronaam in…',
+  fieldDescription: 'Beschrijving',
+  fieldDescriptionPlaceholder: 'Optionele notitie over wat deze macro doet…',
+  fieldShortcut: 'Sneltoetspositie',
+  fieldScript: 'Macroscript',
+  fieldScriptPlaceholder: '// Schrijf een macroscript met insertText(), replaceAll(), enz.',
+  validationNameRequired: 'Voer een macronaam in.',
+  validationScriptRequired: 'Voer een macroscript in.',
+  syntaxOk: 'Syntaxis in orde',
+  syntaxError: 'Syntaxisfout (regel {line}, kol. {column}): {error}',
+  skippedActionsTitle: '{count} actie(s) konden niet worden opgenomen en zijn overgeslagen:',
+  editorRunBtn: 'Uitvoeren',
+  editorSaveBtn: 'Opslaan',
+  aiSectionTitle: 'Schrijven met AI',
+  aiPromptPlaceholder:
+    'Beschrijf wat de macro moet doen (bijv. dubbele spaties vervangen door één spatie)…',
+  aiWriteBtn: 'Schrijven met AI',
+  aiWritingBtn: 'Bezig…',
+  aiCancelBtn: 'Annuleren',
+  aiReviewHint:
+    'Alleen uw beschrijving wordt naar AI gestuurd (geen documentinhoud). Het gegenereerde script wordt ter controle in de editor geplaatst en wordt nooit automatisch opgeslagen of uitgevoerd.',
+  aiEmptyPrompt: 'Beschrijf eerst wat de macro moet doen.',
+  aiDraftReady: 'Conceptscript in de editor geplaatst. Controleer het voor opslaan of uitvoeren.',
+  aiDraftFailed: 'Kon geen macroscript genereren: {error}',
+  aiNoOutput: 'AI heeft geen macroscript teruggegeven.',
+  importPreviewSlotHint:
+    'Sneltoetsen worden niet automatisch geïmporteerd. Wijs na het opslaan zelf een sneltoets toe.',
+  importPreviewBidiWarning:
+    'Dit script bevat verborgen richtingstuur- of nulbreedtetekens (weergegeven als [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Macro’s kunnen alleen worden opgenomen of uitgevoerd wanneer de cursor in een hoofdtekstalinea staat.',
+  noticeMacroRunNotRecorded:
+    'Het uitvoeren van een andere macro wordt tijdens het opnemen niet vastgelegd.',
+  noticeMacroRollbackObjectLossAt:
+    'Macro is gestopt en teruggedraaid (regel {line}, kol. {column}) om verlies van objecten of opmerkingen te voorkomen.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Macro is bij de eindcontrole gestopt en teruggedraaid om verlies van objecten of opmerkingen te voorkomen.',
+  noticeMacroRunErrorPostRun: 'Macro mislukt tijdens de eindcontrole: {error}',
+  cmdUndo: 'Ongedaan maken',
+  cmdRedo: 'Opnieuw uitvoeren',
+  cmdCopy: 'Kopiëren',
+  cmdCut: 'Knippen',
+  cmdPaste: 'Plakken',
+  cmdFind: 'Zoeken',
+  cmdInsertImage: 'Afbeelding invoegen',
+  cmdInsertFootnote: 'Voetnoot invoegen',
+  cmdInsertEndnote: 'Eindnoot invoegen',
+  cmdInsertHyperlink: 'Hyperlink invoegen',
+  cmdInsertBookmark: 'Bladwijzer invoegen',
+  cmdLineBreak: 'Regeleinde',
+  cmdTab: 'Tabulator',
+  cmdDeleteObject: 'Documentobject verwijderen',
+  cmdOutsideBody: 'Bewerking buiten hoofdtekstalinea',
+  cmdOtherAction: 'Niet-ondersteunde bewerkingsactie ({id})',
+  noticeOutsideBodyIgnored:
+    'Acties buiten hoofdtekstalinea’s (tabellen, tekstvakken, noten, kop- en voetteksten) worden niet opgenomen.',
+  noticeMacroRegexTimeout:
+    'Macro is gestopt en teruggedraaid omdat de reguliere expressie te lang duurde.',
+  noticeMacroRegexTimeoutAt:
+    'Macro is gestopt en teruggedraaid (regel {line}, kol. {column}) omdat de reguliere expressie te lang duurde.',
+} satisfies Record<keyof typeof zh, string>

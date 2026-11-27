@@ -32,15 +32,31 @@ import {
 } from '../../studio-plugin/agent-plugin.mjs'
 import {
   BIBLIOGRAPHY_COMMAND_EVENT,
+  MACRO_COMMAND_EVENT,
+  MACRO_RECORDING_EVENT,
   WORKPANE_COMMAND_EVENT,
   type BibliographyCommandAction,
+  type MacroCommandDetail,
+  type MacroRecordingEventDetail,
 } from '../../studio-plugin/workpane-menu.mjs'
 import blankHwpUrl from './assets/blank.hwp?url'
 import { bibliographyMenuLabelsFor, translateBiblio } from './i18n/biblio'
 import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
+import { localizeSkippedCommandLabel, macroMenuLabelsFor, translateMacro } from './i18n/macro'
 import { translateSubmission } from './i18n/submission'
 import { tocDialogLabelsFor } from './i18n/toc'
 import { translateWorkpane } from './i18n/workpane'
+import {
+  MacroEditorModal,
+  MacroManagerModal,
+  formatMacroRunOutcome,
+  shortcutLabelForSlot,
+  type MacroEditorRequest,
+  type MacroEditorSavePayload,
+  type MacroNearLimitInfo,
+  type MacroStoreErrorInfo,
+} from './macro'
+import { formatMacroRunException } from './macro/MacroManagerModal'
 import { StalenessModal, type StalenessModalState } from './StalenessModal'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
@@ -89,6 +105,7 @@ import type {
   BibEntry,
   BibKeyRenameInfo,
   HwpFormat,
+  MacroRecord,
   OutlineStyleMap,
   PreviewAction,
   PrintJob,
@@ -321,6 +338,17 @@ export default function App() {
   /** modal state for pre-save / pre-print staleness confirmation */
   const [staleModal, setStaleModal] = useState<StalenessModalState | null>(null)
   const stalePromptActiveRef = useRef(false)
+  /** app-wide macros shared across Hangul tabs */
+  const [macros, setMacros] = useState<MacroRecord[]>([])
+  const macrosRef = useRef<MacroRecord[]>([])
+  macrosRef.current = macros
+  const [macroStoreError, setMacroStoreError] = useState<MacroStoreErrorInfo | null>(null)
+  const [macroNearLimit, setMacroNearLimit] = useState<MacroNearLimitInfo | null>(null)
+  const [macroRecording, setMacroRecording] = useState(false)
+  const macroRecordingRef = useRef(false)
+  macroRecordingRef.current = macroRecording
+  const [macroManagerOpen, setMacroManagerOpen] = useState(false)
+  const [macroEditor, setMacroEditor] = useState<MacroEditorRequest | null>(null)
   /** the app's plugin inside the editor, for the calls that change no document */
   const pluginBridge = useMemo(() => createAgentBridge(() => editorRef.current), [])
   /** the AI panel's way into the document: the same plugin, telling of each possible change */
@@ -636,6 +664,181 @@ export default function App() {
       off?.()
     }
   }, [refreshBibLibraryState])
+
+  const refreshMacroStoreState = useCallback(async () => {
+    try {
+      const res = await window.hwpApi.macrosReadState?.()
+      if (!bibMountedRef.current || !res) return
+      if (res.ok) {
+        setMacros(res.macros)
+        setMacroStoreError(null)
+        setMacroNearLimit(
+          res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+        )
+      } else if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setMacros([])
+        setMacroStoreError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setMacroNearLimit(null)
+      }
+    } catch {
+      // Ignore transient IPC read errors.
+    }
+  }, [])
+
+  // Keep the app-wide macro store in sync across Hangul tabs.
+  useEffect(() => {
+    let active = true
+    void refreshMacroStoreState()
+    const off = window.hwpApi.onMacrosChanged?.((nextMacros) => {
+      if (!active) return
+      setMacros(nextMacros)
+      setMacroStoreError(null)
+      if (window.hwpApi.macrosReadState) {
+        void refreshMacroStoreState()
+      }
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [refreshMacroStoreState])
+
+  // Sync assigned macro shortcut slots to the editor plugin so unassigned Alt+slots
+  // pass through undisturbed.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const sync = (pluginBridge as { syncMacroSlots?: (slots: number[]) => Promise<unknown> })
+      .syncMacroSlots
+    if (typeof sync !== 'function') return
+    const assignedSlots = macros
+      .map((item) => item.slot)
+      .filter((slot): slot is number => typeof slot === 'number')
+    void sync(assignedSlots).catch(() => {})
+  }, [phase, pluginBridge, macros])
+
+  const runMacroInEditor = useCallback(
+    async (macro: { name: string; script: string }) => {
+      const result = await agentBridge.runMacro(macro.script, {
+        appStyleMap: outlineStyleMapRef.current,
+        bibEntries: bibEntriesRef.current,
+      })
+      if (result.ok && result.changed) {
+        setDocTick((tick) => tick + 1)
+      }
+      return result
+    },
+    [agentBridge],
+  )
+
+  const stopRecordingAndOpenEditor = useCallback(async (): Promise<void> => {
+    try {
+      const stopped = await pluginBridge.stopMacroRecording()
+      setMacroRecording(false)
+      setMacroEditor({
+        mode: 'recorded',
+        draft: {
+          origin: 'recorded',
+          script: stopped.script,
+          skipped: stopped.skipped,
+        },
+      })
+    } catch (error) {
+      setMacroRecording(false)
+      setNotice({
+        tone: 'error',
+        text: translateMacro(lang, 'errorActionFailed', { error: detailOf(error) }),
+      })
+    }
+  }, [lang, pluginBridge])
+
+  const toggleMacroRecording = useCallback(async (): Promise<void> => {
+    if (macroRecordingRef.current) {
+      await stopRecordingAndOpenEditor()
+      return
+    }
+    try {
+      const res = (await pluginBridge.startMacroRecording()) as
+        { ok?: boolean; recording?: boolean; reason?: string; error?: string } | undefined
+      if (res && res.ok === false) {
+        setNotice({
+          tone: 'error',
+          text:
+            res.reason === 'unsupported_place'
+              ? translateMacro(lang, 'noticeMacroOutsideBody')
+              : translateMacro(lang, 'errorActionFailed', { error: res.error || 'start_failed' }),
+        })
+        return
+      }
+      setMacroRecording(true)
+      setNotice({ tone: 'info', text: translateMacro(lang, 'noticeRecordingStarted') })
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        text: translateMacro(lang, 'errorActionFailed', { error: detailOf(error) }),
+      })
+    }
+  }, [lang, pluginBridge, stopRecordingAndOpenEditor])
+
+  const saveMacroFromEditor = useCallback(
+    async (payload: MacroEditorSavePayload): Promise<{ ok: boolean; error?: string }> => {
+      const res = payload.id
+        ? await window.hwpApi.macrosUpdate?.(payload.id, {
+            name: payload.name,
+            description: payload.description || null,
+            script: payload.script,
+            slot: payload.slot,
+          })
+        : await window.hwpApi.macrosAdd?.({
+            name: payload.name,
+            ...(payload.description ? { description: payload.description } : {}),
+            script: payload.script,
+            slot: payload.slot,
+            origin: payload.origin,
+          })
+      if (!res) {
+        return { ok: false, error: 'Macro store API is not available.' }
+      }
+      if (res.ok) {
+        setMacros(res.macros)
+        setMacroStoreError(null)
+        setMacroNearLimit(
+          res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+        )
+        setMacroEditor(null)
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMacroSaved', { name: res.macro.name }),
+        })
+        return { ok: true }
+      }
+      if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setMacroStoreError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setMacroNearLimit(null)
+      }
+      return { ok: false, error: res.error }
+    },
+    [lang],
+  )
 
   // Offer to rewrite citation marks in the open document when a library citation key is renamed.
   useEffect(() => {
@@ -1629,6 +1832,7 @@ export default function App() {
         })
         .catch(() => {})
       void pluginBridge.installBibliographyMenu(bibliographyMenuLabelsFor(lang)).catch(() => {})
+      void pluginBridge.installMacroMenu(macroMenuLabelsFor(lang)).catch(() => {})
     }
     const onWorkpaneCommand = (event: Event): void => {
       if (presentingRef.current || previewRef.current) return
@@ -1663,6 +1867,88 @@ export default function App() {
         nonce: bibCommandNonceRef.current,
       })
     }
+    const onMacroCommand = (event: Event): void => {
+      if (presentingRef.current || previewRef.current) return
+      const detail = (event as CustomEvent<MacroCommandDetail | undefined>).detail
+      if (!detail || typeof detail.action !== 'string') return
+      if (detail.action === 'toggle-record') {
+        void toggleMacroRecording()
+        return
+      }
+      if (detail.action === 'stop-record') {
+        if (macroRecordingRef.current) {
+          void stopRecordingAndOpenEditor()
+        }
+        return
+      }
+      if (detail.action === 'open-manager') {
+        setMacroManagerOpen(true)
+        return
+      }
+      if (detail.action === 'run-slot' && typeof detail.slot === 'number') {
+        const slot = detail.slot
+        const macro = macrosRef.current.find((item) => item.slot === slot)
+        if (!macro) {
+          setNotice({
+            tone: 'info',
+            text: translateMacro(lang, 'noticeSlotEmpty', {
+              shortcut: shortcutLabelForSlot(slot),
+            }),
+          })
+          return
+        }
+        const wasRecording = macroRecordingRef.current
+        void runMacroInEditor(macro)
+          .then((result) => {
+            const outcome = formatMacroRunOutcome(lang, macro.name, result, {
+              whileRecording: wasRecording || macroRecordingRef.current,
+            })
+            setNotice({ tone: outcome.tone, text: outcome.text })
+          })
+          .catch((error) => {
+            setNotice(
+              formatMacroRunException(lang, error, {
+                whileRecording: wasRecording || macroRecordingRef.current,
+              }),
+            )
+          })
+      }
+    }
+    const onMacroRecordingEvent = (event: Event): void => {
+      const detail = (event as CustomEvent<MacroRecordingEventDetail | undefined>).detail
+      if (!detail || typeof detail !== 'object') return
+      if ('state' in detail) {
+        if (detail.state === 'started') {
+          setMacroRecording(true)
+        } else if (detail.state === 'stopped') {
+          setMacroRecording(false)
+        }
+        return
+      }
+      if (detail.kind === 'unsupported_command') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeUnsupportedCommand', {
+            label: localizeSkippedCommandLabel(lang, detail.commandId, detail.label),
+          }),
+        })
+      } else if (detail.kind === 'mouse_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMouseIgnored'),
+        })
+      } else if (detail.kind === 'outside_body_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeOutsideBodyIgnored'),
+        })
+      } else if (detail.kind === 'slot_run_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMacroRunNotRecorded'),
+        })
+      }
+    }
     const onWorkpaneKeyDown = (event: KeyboardEvent): void => {
       if (presentingRef.current || previewRef.current) return
       if (!isWorkpaneFindShortcut(event)) return
@@ -1672,13 +1958,25 @@ export default function App() {
     }
     frame?.addEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
     frame?.addEventListener(BIBLIOGRAPHY_COMMAND_EVENT, onBibliographyCommand)
+    frame?.addEventListener(MACRO_COMMAND_EVENT, onMacroCommand)
+    frame?.addEventListener(MACRO_RECORDING_EVENT, onMacroRecordingEvent)
     window.addEventListener('keydown', onWorkpaneKeyDown, true)
     return () => {
       frame?.removeEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
       frame?.removeEventListener(BIBLIOGRAPHY_COMMAND_EVENT, onBibliographyCommand)
+      frame?.removeEventListener(MACRO_COMMAND_EVENT, onMacroCommand)
+      frame?.removeEventListener(MACRO_RECORDING_EVENT, onMacroRecordingEvent)
       window.removeEventListener('keydown', onWorkpaneKeyDown, true)
     }
-  }, [phase, pluginBridge, lang, openWorkpane])
+  }, [
+    phase,
+    pluginBridge,
+    lang,
+    openWorkpane,
+    runMacroInEditor,
+    stopRecordingAndOpenEditor,
+    toggleMacroRecording,
+  ])
 
   useEffect(() => {
     if (notice?.tone !== 'info' || notice.sticky) return
@@ -1759,6 +2057,20 @@ export default function App() {
             {t('checkTitle')}
           </button>
           <MemoToggle open={memoOpen} onToggle={() => setMemoOpen((open) => !open)} />
+          {macroRecording && (
+            <div className="hwp-macro-recording-badge" data-testid="macro-recording-badge">
+              <span className="hwp-macro-recording-dot" aria-hidden="true" />
+              <span>{translateMacro(lang, 'recordingBadge')}</span>
+              <button
+                type="button"
+                className="hwp-macro-recording-stop"
+                data-testid="macro-recording-stop-btn"
+                onClick={() => void stopRecordingAndOpenEditor()}
+              >
+                {translateMacro(lang, 'recordingStopBtn')}
+              </button>
+            </div>
+          )}
           <QuickPrintButton
             lang={lang}
             align="right"
@@ -1940,6 +2252,48 @@ export default function App() {
         />
       )}
       {staleModal && <StalenessModal lang={lang} state={staleModal} dismissLabel={t('dismiss')} />}
+      {macroManagerOpen && (
+        <MacroManagerModal
+          macros={macros}
+          recording={macroRecording}
+          storeError={macroStoreError}
+          nearLimit={macroNearLimit}
+          onReloadStore={() => refreshMacroStoreState()}
+          onMacrosUpdated={setMacros}
+          onRunMacro={runMacroInEditor}
+          onToggleRecording={toggleMacroRecording}
+          onOpenEditor={(request) => setMacroEditor(request)}
+          onClose={() => setMacroManagerOpen(false)}
+        />
+      )}
+      {macroEditor && (
+        <MacroEditorModal
+          mode={macroEditor.mode}
+          initialMacro={macroEditor.macro}
+          initialDraft={macroEditor.draft}
+          existingMacros={macros}
+          aiEnabled={aiOn}
+          disabled={macroStoreError !== null}
+          onSave={saveMacroFromEditor}
+          onRun={async (script, name) => {
+            const wasRecording = macroRecordingRef.current
+            try {
+              const result = await runMacroInEditor({ name, script })
+              const outcome = formatMacroRunOutcome(lang, name, result, {
+                whileRecording: wasRecording || macroRecordingRef.current,
+              })
+              setNotice({ tone: outcome.tone, text: outcome.text })
+            } catch (error) {
+              setNotice(
+                formatMacroRunException(lang, error, {
+                  whileRecording: wasRecording || macroRecordingRef.current,
+                }),
+              )
+            }
+          }}
+          onClose={() => setMacroEditor(null)}
+        />
+      )}
     </div>
   )
 }

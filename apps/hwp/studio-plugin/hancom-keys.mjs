@@ -20,7 +20,13 @@ import { openDocumentInfo } from './document-info.mjs'
 import { convertToHanja } from './hanja.mjs'
 import { autoFillBlock } from './table-auto-fill.mjs'
 import { isTableCellPosition } from './textbox-edit.mjs'
-import { WORKPANE_COMMAND_EVENT } from './workpane-menu.mjs'
+import { WORKPANE_COMMAND_EVENT, MACRO_COMMAND_EVENT } from './workpane-menu.mjs'
+import {
+  hasAssignedMacroSlot,
+  isMacroRecordingActive,
+  recordStudioSlotRun,
+  slotFromAltKey,
+} from './macro-recorder.mjs'
 import {
   HWPUNIT_PER_PX,
   cellExtents,
@@ -35,6 +41,17 @@ import {
 
 export { installHanjaKey } from './hanja.mjs'
 export {
+  hasAdjacentProtectedObject,
+  hasAssignedMacroSlot,
+  isMacroRecordingActive,
+  recordStudioCommand,
+  recordStudioKey,
+  recordStudioMouseClick,
+  recordStudioSlotRun,
+  recordStudioText,
+  setAssignedMacroSlots,
+} from './macro-recorder.mjs'
+export {
   axisLockedPoint,
   cancelObjectDrag,
   copyObjectDrag,
@@ -45,6 +62,103 @@ export {
   dragKeepsRatio,
   ratioResizedBox,
 } from './object-drag.mjs'
+
+function isMacHostPlatform() {
+  if (typeof navigator !== 'undefined') {
+    const platform = navigator.userAgentData?.platform || navigator.platform || ''
+    const ua = navigator.userAgent || ''
+    if (/mac/i.test(platform) || /mac os x/i.test(ua)) return true
+  }
+  if (typeof globalThis.process === 'object' && globalThis.process?.platform === 'darwin') {
+    return true
+  }
+  return false
+}
+
+function isNonEditorInputTarget(target) {
+  if (!target || typeof target !== 'object') return false
+  if (
+    typeof target.closest === 'function' &&
+    target.closest('[role="dialog"], .macro-modal, .workpane-panel')
+  ) {
+    return true
+  }
+  const tag = typeof target.tagName === 'string' ? target.tagName.toUpperCase() : ''
+  if (tag === 'INPUT' || tag === 'SELECT') return true
+  if (target.isContentEditable === true) return true
+  if (
+    typeof target.getAttribute === 'function' &&
+    target.getAttribute('contenteditable') === 'true'
+  ) {
+    return true
+  }
+  if (tag === 'TEXTAREA') {
+    const isEditorHiddenTextarea =
+      target.style?.opacity === '0' || target.getAttribute?.('aria-label') === '문서 편집 입력'
+    if (!isEditorHiddenTextarea) return true
+  }
+  return false
+}
+
+/**
+ * Standard macro shortcuts wired ahead of the editor's default Alt handling:
+ * - Alt+Shift+H: toggle macro recording
+ * - Alt+Shift+X: stop macro recording (only while recording is active)
+ * - Alt+1..Alt+9, Alt+0, Alt+-: run assigned macro slots 1..11 (unassigned slots pass through)
+ *
+ * Disabled on macOS (Option key composes characters), during IME composition, and
+ * when focus is inside a dialog or non-editor input element.
+ */
+export function macroShortcutKey(e, options = undefined) {
+  if (!e?.altKey || e.ctrlKey || e.metaKey) return false
+  const isMac = options?.isMac !== undefined ? Boolean(options.isMac) : isMacHostPlatform()
+  if (isMac) return false
+  if (e.isComposing === true || e.keyCode === 229) return false
+  if (isNonEditorInputTarget(e.target)) return false
+
+  if (e.shiftKey) {
+    const code = typeof e.code === 'string' ? e.code : ''
+    const key = typeof e.key === 'string' ? e.key.toLowerCase() : ''
+    if (code === 'KeyH' || key === 'h' || e.key === 'ㅗ') {
+      e.preventDefault?.()
+      globalThis.dispatchEvent?.(
+        new CustomEvent(MACRO_COMMAND_EVENT, {
+          detail: { action: 'toggle-record' },
+        }),
+      )
+      return true
+    }
+    if ((code === 'KeyX' || key === 'x' || e.key === 'ㅌ') && isMacroRecordingActive()) {
+      e.preventDefault?.()
+      globalThis.dispatchEvent?.(
+        new CustomEvent(MACRO_COMMAND_EVENT, {
+          detail: { action: 'stop-record' },
+        }),
+      )
+      return true
+    }
+    return false
+  }
+  const slot = slotFromAltKey(e)
+  if (slot !== null) {
+    const isAssigned =
+      options?.assignedSlots && typeof options.assignedSlots.has === 'function'
+        ? options.assignedSlots.has(slot)
+        : hasAssignedMacroSlot(slot)
+    if (!isAssigned) return false
+    e.preventDefault?.()
+    if (isMacroRecordingActive()) {
+      recordStudioSlotRun(slot)
+    }
+    globalThis.dispatchEvent?.(
+      new CustomEvent(MACRO_COMMAND_EVENT, {
+        detail: { action: 'run-slot', slot },
+      }),
+    )
+    return true
+  }
+  return false
+}
 
 export const HANCOM_KEYS_MODULE = '@ieum/hancom-keys'
 

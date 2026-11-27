@@ -728,6 +728,53 @@ metadata:
 - `oldKeys`는 인용 키를 바꿀 때 이전 키를 남겨 기존 문서의 인용 표시와 연결을 유지한다.
 - 가져오기·내보내기 형식은 `BibTeX`(`.bib`), `RIS`(`.ris`), `CSL JSON`(`.json`) 셋이다. 모든 쓰기는 임시 파일(`wx`, `flush`) 뒤 원자적 이름 바꾸기를 따른다.
 
+## 한글 매크로 저장소와 파일 형식 (`hwp-macros.json`, `.ieummacro`, 결정 0176)
+
+데이터 폴더(`<userData>/hwp-macros.json`)에 앱 공용 한글 매크로 목록을 둔다. 한글 편집기 메인 프로세스만 읽고 쓰며, **터미널 명령어(`ieumoffice`)와 MCP에는 매크로 실행·관리 연산을 열지 않는다.**
+
+```json
+{
+  "version": 1,
+  "macros": [
+    {
+      "id": "macro_...",
+      "name": "제목 서식 적용",
+      "description": "선택 문단을 굵은 가운데 정렬로 바꿈",
+      "script": "setParaFormat({ align: \"center\" });\nsetCharFormat({ bold: true });",
+      "slot": 1,
+      "origin": "recorded",
+      "createdAt": "2026-11-27T09:00:00.000Z",
+      "updatedAt": "2026-11-27T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+- `version`은 `1`이다. 파일 크기 상한은 2 MiB이며, 개별 스크립트 상한은 256 KiB다.
+- `slot`은 `1`–`11`(각각 `Alt+1`–`Alt+9`, `Alt+0`, `Alt+-`) 또는 `null`이며, 슬롯 하나에는 매크로 하나만 연결된다.
+- `origin`은 `'recorded' | 'manual' | 'ai' | 'imported'` 넷 중 하나다. `createdAt`과 `updatedAt`은 ISO 8601 시각 문자열이다.
+- 모든 쓰기는 임시 파일(`wx`, `flush`) 뒤 원자적 이름 바꾸기를 따른다. 저장 파일이 손상되었거나(잘못된 JSON·스키마 불일치) 2 MiB 상한을 넘거나 읽을 수 없으면 원본을 덮어쓰지 않고 같은 폴더에 `hwp-macros.json.corrupt-<시각>` 백업을 남긴 뒤 모든 쓰기를 거절한다.
+- **평문 `.ieummacro` 내보내기·가져오기 형식**: UTF-8 평문 텍스트(최대 256 KiB, NUL 바이트 금지)로, 머리말 뒤에 스크립트 본문을 JSON 이스케이프 없이 그대로 적는다. 가져오기 시 스크립트 전문과 구문 검사 결과를 보여 주고 사람이 확인한 뒤에만 저장한다.
+
+```text
+// @ieum-macro: 1
+// @name: 제목 서식 적용
+// @description: 선택 문단을 굵은 가운데 정렬로 바꿈
+// ---
+setParaFormat({ align: "center" });
+setCharFormat({ bold: true });
+```
+
+- `// @ieum-macro: 1`, `// @name: ...`, 구분선 `// ---`는 필수이고, `// @description: ...`은 선택이다. 머리말 값은 제어 문자와 줄바꿈을 제거해 위조를 막는다. 파일에 `// @slot: ...`이 들어 있어도 가져오기에서 무시하며, 가져온 매크로는 항상 `slot: null`로 저장되어 기존 단축키 슬롯을 빼앗지 않는다.
+- **매크로 문서 API와 호환 객체 약속**:
+  - 삭제·선택 확장 API: `deleteBackward(count?)`, `deleteForward(count?)`, `selectLeft(count?)`, `selectRight(count?)`, `selectUp(count?)`, `selectDown(count?)`, `selectWordLeft(count?)`, `selectWordRight(count?)`, `selectLineBegin()`, `selectLineEnd()`, `selectParaBegin()`, `selectParaEnd()`, `selectDocBegin()`, `selectDocEnd()`.
+  - `setCharFormat`을 선택 영역 없이 부르면 바로 이어지는 `insertText`에 해당 글자 서식이 적용된다.
+  - `moveUp`/`moveDown`은 화면에 그려진 줄 기준의 가로 칸 위치를 맞춰 이동하며, 짝지을 위치를 찾지 못하면 대상 줄의 맨 앞으로 떨어진다. `selectUp`/`selectDown`은 문서 첫 줄이나 마지막 줄 경계에서 더 이상 위·아래 줄로 갈 수 없을 때도 각각 문서 처음과 문서 끝까지 선택을 확장한다.
+  - `deleteBackward`/`deleteForward`는 커서 바로 앞·뒤에 보호 개체(각주·미주·표·그림·도형·수식 등)가 닿아 있으면 개체를 지우지 않고 거절하며, 키 기록 중에도 개체에 닿은 `Backspace`/`Delete`는 삭제 호출을 기록하지 않고 건너뛴 동작으로 알린다.
+  - 키 매크로 기록 중 표 칸·글상자·각주·머리말·꼬리말 등 본문 문단 밖으로 커서가 옮겨간 상태에서 실행한 입력·키·명령은 스크립트에 넣지 않고 즉시 알림과 건너뛴 동작으로 남긴다.
+  - **선형 시간 정규식 엔진**: `find`/`replaceAll`/`replaceNext`의 `{ regex: true }`와 `HFindReplace.FindRegExp`는 역추적이 없는 선형 시간 엔진(Thompson NFA / Pike VM)으로 돌며 걸음·시간 상한을 공유한다. 문자, 문자 클래스(`[...]`), 단축 클래스(`\d`/`\w`/`\s` 등), `.`, 앵커(`^`/`$`/`\b`/`\B`), 선택(`|`), 묶음(`(...)`/`(?:...)`), 반복(`*`/`+`/`?`/`{n,m}`, 최대 1,000)을 지원하고, 역참조(`\1`, `\k<...>`)와 전방·후방 탐색(`(?=...)`, `(?!...)`, `(?<=...)`, `(?<!...)`)은 거절한다.
+  - **호환 객체(`HParameterSet`)**: `HParaShape`의 여백·들여쓰기·문단 간격은 ParameterSet Table `ParaShape` 및 HWP 5.0 표 43 기준(`HWPUNIT = 1/7200 in = 1/100 pt`, URC bit 0 = 0일 때 `2 × HWPUNIT = 200/pt`)의 짝수 URC 정수만 받으며, 홀수 URC 값과 `0`(백분율) 이외의 `LineSpacingType`은 거절한다. `HCharShape.TextColor`는 BGR 정수(`0x00BBGGRR`)와 `#RRGGBB` 문자열을 모두 받는다. `HFindReplace`의 정규식 검색은 `FindRegExp`를 쓰며, `UseWildCards`와 `RegExp`는 거절한다.
+
 ## 문서 호환
 
 - `.docx`·`.xlsx`·`.pptx`·PDF·마크다운·HTML 파일은 원본 프로그램과 같은 방식으로 읽고 쓴다. 한쪽에서 만든 문서를 다른 쪽에서 열 수 있다.

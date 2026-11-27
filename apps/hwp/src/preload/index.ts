@@ -36,6 +36,7 @@ import type {
   BibEntry,
   BibKeyRenameInfo,
   HwpApi,
+  MacroRecord,
   OutlineStyleMap,
   PreviewAction,
   PrintJob,
@@ -313,6 +314,19 @@ const api: HwpApi = {
     const listener = (_e: Electron.IpcRendererEvent, info: BibKeyRenameInfo) => handler(info)
     ipcRenderer.on(HWP_CHANNELS.bibKeyRenamed, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.bibKeyRenamed, listener)
+  },
+  macrosReadState: () => ipcRenderer.invoke(HWP_CHANNELS.macrosReadState),
+  macrosAdd: (input) => ipcRenderer.invoke(HWP_CHANNELS.macrosAdd, input),
+  macrosUpdate: (id, patch) => ipcRenderer.invoke(HWP_CHANNELS.macrosUpdate, id, patch),
+  macrosDelete: (id) => ipcRenderer.invoke(HWP_CHANNELS.macrosDelete, id),
+  macrosAssignSlot: (id, slot) => ipcRenderer.invoke(HWP_CHANNELS.macrosAssignSlot, id, slot),
+  macrosPickImportFile: () => ipcRenderer.invoke(HWP_CHANNELS.macrosPickImportFile),
+  macrosCommitImport: (input) => ipcRenderer.invoke(HWP_CHANNELS.macrosCommitImport, input),
+  macrosExportFile: (id) => ipcRenderer.invoke(HWP_CHANNELS.macrosExportFile, id),
+  onMacrosChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, macros: MacroRecord[]) => handler(macros)
+    ipcRenderer.on(HWP_CHANNELS.macrosChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.macrosChanged, listener)
   },
   aiToolCapabilities: () => ipcRenderer.invoke(AI_CHANNELS.toolCapabilities),
   onAiStream: (handler) => {

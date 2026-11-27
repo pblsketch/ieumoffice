@@ -891,6 +891,7 @@ describe('the studio source the build fetched', () => {
     'src/view/viewport-manager.ts',
     'src/view/ruler.ts',
     'src/view/ruler-pin-geometry.ts',
+    'src/plugin/host.ts',
   ].map((file) => join(studio, file))
 
   // only where a build has fetched it; a fresh checkout has nothing to look at
@@ -1730,5 +1731,70 @@ describe('rhwp hyperlink bookmark navigation patch', () => {
       })
       expect(out.diagnostics ?? []).toEqual([])
     }
+  })
+})
+
+describe('rhwp macro error toast and plugin tx no-op patches', () => {
+  const mainSnippet = [
+    '      publish: (payload: CommandErrorV1) => {',
+    "        window.dispatchEvent(new CustomEvent('rhwp-command-error', { detail: payload }));",
+    '        if (payload.documentSessionId !== inputHandler?.getCommandErrorState()?.documentSessionId) return;',
+    "        showToast({ message: payload.recovery === 'succeeded'",
+    "          ? '명령을 완료하지 못했습니다. 편집 상태를 복구했습니다.'",
+    "          : '편집 상태를 확인할 수 없습니다. 문서를 다시 열어 주세요.' });",
+    '      },',
+  ].join('\n')
+
+  const hostSnippet = [
+    '    let deferred = false;',
+    '    let ran = false;',
+    '    let result!: T;',
+    '',
+    '    const tx: Tx = {',
+    '      doc: () => this.requireDocument(),',
+    '      deferPagination: () => {',
+    '        if (deferred) return;',
+    '        deferred = true;',
+    '        this.deps.wasm.beginDeferredPagination();',
+    '      },',
+    '    };',
+    '',
+    '    this.ledger.activeTx += 1;',
+    '    try {',
+    '      ih.executeOperation({',
+    "        kind: 'snapshot',",
+    '        operationType: `plugin:${this.pluginId}:${label}`,',
+    '        operation: () => {',
+    '          result = fn(tx);',
+    '          ran = true;',
+    '          // 조판은 커밋 직전에 한 번만 turn — 호출당 재조판을 없애는 자리다.',
+    '          if (deferred) this.deps.wasm.flushDeferredPagination();',
+    '          return ih.getCursorPosition();',
+    '        },',
+    '      });',
+  ].join('\n')
+
+  it('suppresses duplicate studio Korean toast only when macro recovery succeeded', () => {
+    const patched = applyPatch('studio-macro-error-toast', mainSnippet)
+    expect(patched).toContain(`payload.operation === 'plugin:${AGENT_PLUGIN_ID}:macro'`)
+    expect(patched).toContain("payload.recovery === 'succeeded') return;")
+    // Non-succeeded recovery still falls through to showToast.
+    expect(patched).toContain("showToast({ message: payload.recovery === 'succeeded'")
+    expect(STUDIO_PATCHES).toContain('studio-macro-error-toast')
+
+    const crlf = applyPatch('studio-macro-error-toast', mainSnippet.replaceAll('\n', '\r\n'))
+    expect(crlf).not.toMatch(/[^\r]\n/)
+  })
+
+  it('adds markNoOp to PluginHostFacade.transaction and returns null for no-op snapshots', () => {
+    const patched = applyPatch('studio-plugin-tx-noop', hostSnippet)
+    expect(patched).toContain('let noOp = false;')
+    expect(patched).toContain('markNoOp: () => {')
+    expect(patched).toContain('if (noOp) this.deps.wasm.cancelDeferredPagination();')
+    expect(patched).toContain('return noOp ? null : ih.getCursorPosition();')
+    expect(STUDIO_PATCHES).toContain('studio-plugin-tx-noop')
+
+    const crlf = applyPatch('studio-plugin-tx-noop', hostSnippet.replaceAll('\n', '\r\n'))
+    expect(crlf).not.toMatch(/[^\r]\n/)
   })
 })

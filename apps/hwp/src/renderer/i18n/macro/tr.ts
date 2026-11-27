@@ -1,0 +1,146 @@
+import type { zh } from './zh'
+
+export const tr = {
+  menuRecordToggle: 'Makro › Kaydı Başlat/Durdur',
+  menuManage: 'Makro › Makroları Yönet…',
+  recordingBadge: 'Makro kaydediliyor',
+  recordingStopBtn: 'Durdur',
+  noticeRecordingStarted:
+    'Makro kaydı başladı. Bitirdiğinizde Alt+Shift+H tuşlarına basın veya Durdur düğmesine tıklayın.',
+  noticeUnsupportedCommand: 'Bu işlem makroya kaydedilemez: {label}',
+  noticeMouseIgnored: 'Fare işlemleri makroya kaydedilmez.',
+  noticeSlotEmpty: '{shortcut} kısayoluna atanmış makro yok.',
+  noticeMacroRunSuccess: '“{name}” makrosu çalıştırıldı.',
+  noticeMacroMessages: '{name}: {messages}',
+  noticeMacroRunError: 'Makro başarısız oldu (satır {line}, sütun {column}): {error}',
+  noticeMacroRunErrorNoLoc: 'Makro başarısız oldu: {error}',
+  noticeMacroUnsupportedAction:
+    'Desteklenmeyen makro eylemi “{action}” (satır {line}, sütun {column}). Tüm değişiklikler geri alındı.',
+  noticeMacroRollbackObjectLoss:
+    'Belgedeki nesnelerin veya notların kaybolmasını önlemek için makro durduruldu ve değişiklikler geri alındı.',
+  managerTitle: 'Makroları Yönet',
+  newMacroBtn: 'Yeni makro',
+  importBtn: 'İçe aktar (.ieummacro)',
+  recordStartBtn: 'Kaydı başlat',
+  recordStopBtn: 'Kaydı durdur',
+  emptyMacros:
+    'Henüz kayıtlı makro yok. Yeni bir makro oluşturun, işlem kaydedin veya bir .ieummacro dosyası içe aktarın.',
+  colName: 'Ad',
+  colOrigin: 'Kaynak',
+  colShortcut: 'Kısayol',
+  colActions: 'İşlemler',
+  originRecorded: 'Kaydedildi',
+  originManual: 'Elle',
+  originAi: 'Yapay zekâ taslağı',
+  originImported: 'İçe aktarıldı',
+  slotNone: 'Yok',
+  runBtn: 'Çalıştır',
+  editBtn: 'Düzenle',
+  exportBtn: 'Dışa aktar',
+  deleteBtn: 'Sil',
+  closeBtn: 'Kapat',
+  cancelBtn: 'İptal',
+  saveBtn: 'Kaydet',
+  noticeMacroSaved: '“{name}” makrosu kaydedildi.',
+  noticeMacroDeleted: '“{name}” makrosu silindi.',
+  noticeMacroExported: '“{name}” makrosu dışa aktarıldı.',
+  noticeMacroImported: '“{name}” makrosu içe aktarıldı.',
+  noticeSlotAssigned: '{shortcut} kısayolu “{name}” makrosuna atandı.',
+  noticeSlotCleared: '“{name}” makrosunun kısayolu temizlendi.',
+  errorActionFailed: 'İşlem başarısız oldu: {error}',
+  storeErrorTitle: 'Makro deposu okunamadı',
+  storeErrorCorruptBody:
+    'Makro deposu dosyası bozuk. Mevcut makrolarınızı korumak için düzenleme devre dışı bırakıldı.',
+  storeErrorTooLargeBody:
+    'Makro deposu dosyası boyut sınırını aşıyor. Mevcut makrolarınızı korumak için düzenleme devre dışı bırakıldı.',
+  storeErrorReadBody:
+    'Makro deposu dosyası okunamadı. Mevcut makrolarınızı korumak için düzenleme devre dışı bırakıldı.',
+  storeErrorBackupNote: 'Orijinal dosyanız şu konumda korundu:',
+  storeErrorDisabledHint:
+    'Dosya sorununu giderdikten sonra makroları yönetmeye devam etmek için Yeniden dene düğmesine tıklayın.',
+  storeRetryBtn: 'Yeniden dene',
+  storeNearLimitTitle: 'Makro deposu boyut sınırına yaklaşıyor',
+  storeNearLimitBody:
+    'Makro deposu {max} sınırının {size} kadarını kullanıyor. Kullanılmayan makroları silmeyi veya yedek dışa aktarmayı düşünün.',
+  errorStoreWriteTooLarge:
+    'Bu değişiklik depoyu {actual} boyutuna çıkararak {max} sınırını aşar. Hiçbir veri üzerine yazılmadı.',
+  errorStoreWriteTooLargeGeneric:
+    'Bu değişiklik makro deposu boyut sınırını aşıyor. Hiçbir veri üzerine yazılmadı.',
+  importPreviewTitle: 'İçe aktarılan makroyu incele',
+  importPreviewWarning:
+    'Kaydetmeden önce aşağıdaki betiğin tamamını inceleyin. İçe aktarılan makrolar kaydedilmeden çalıştırılamaz.',
+  importPreviewFile: 'Dosya: {fileName}',
+  importPreviewName: 'Ad',
+  importPreviewDesc: 'Açıklama',
+  importPreviewScript: 'Betik (salt okunur)',
+  importPreviewSyntaxOk: 'Sözdizimi denetimi başarılı.',
+  importPreviewSyntaxError:
+    'Satır {line}, sütun {column} konumunda sözdizimi hatası: {error} (Yine de kaydedip düzenleyicide düzeltebilirsiniz.)',
+  importConfirmBtn: 'İçe aktarılan makroyu kaydet',
+  importErrorInvalidFormat: 'Bu dosya geçerli bir .ieummacro makro dosyası değil.',
+  importErrorTooLarge: 'Seçilen makro dosyası izin verilen en büyük boyutu aşıyor.',
+  editorNewTitle: 'Yeni makro',
+  editorEditTitle: 'Makroyu düzenle',
+  editorRecordedTitle: 'Kaydedilen makroyu kaydet',
+  fieldName: 'Ad',
+  fieldNamePlaceholder: 'Makro adını girin…',
+  fieldDescription: 'Açıklama',
+  fieldDescriptionPlaceholder: 'Bu makronun ne yaptığına dair isteğe bağlı not…',
+  fieldShortcut: 'Kısayol yuvası',
+  fieldScript: 'Makro betiği',
+  fieldScriptPlaceholder: '// insertText(), replaceAll() vb. ile makro betiği yazın',
+  validationNameRequired: 'Lütfen bir makro adı girin.',
+  validationScriptRequired: 'Lütfen bir makro betiği girin.',
+  syntaxOk: 'Sözdizimi geçerli',
+  syntaxError: 'Sözdizimi hatası (satır {line}, sütun {column}): {error}',
+  skippedActionsTitle: 'Kaydedilemediği için atlanan {count} işlem:',
+  editorRunBtn: 'Çalıştır',
+  editorSaveBtn: 'Kaydet',
+  aiSectionTitle: 'Yapay zekâ ile yaz',
+  aiPromptPlaceholder:
+    'Makronun ne yapması gerektiğini açıklayın (ör. çift boşlukları tek boşlukla değiştir ve başlık ekle)…',
+  aiWriteBtn: 'Yapay zekâ ile yaz',
+  aiWritingBtn: 'Yazılıyor…',
+  aiCancelBtn: 'İptal',
+  aiReviewHint:
+    'Yapay zekâya yalnızca açıklamanız gönderilir (belge içeriği gönderilmez). Oluşturulan betik yalnızca incelemeniz için düzenleyiciye yerleştirilir; asla otomatik olarak kaydedilmez veya çalıştırılmaz.',
+  aiEmptyPrompt: 'Önce makronun ne yapmasını istediğinizi açıklayın.',
+  aiDraftReady:
+    'Taslak betik düzenleyiciye eklendi. Kaydetmeden veya çalıştırmadan önce inceleyin.',
+  aiDraftFailed: 'Makro betiği oluşturulamadı: {error}',
+  aiNoOutput: 'Yapay zekâ bir makro betiği döndürmedi.',
+  importPreviewSlotHint:
+    'Kısayollar otomatik olarak içe aktarılmaz. Kaydettikten sonra kendiniz kısayol atayın.',
+  importPreviewBidiWarning:
+    'Bu betik gizli yön denetim veya sıfır genişlikli karakterler içeriyor ([U+XXXX] olarak gösterilir).',
+  noticeMacroOutsideBody:
+    'Makrolar yalnızca imleç ana metin paragrafındayken kaydedilebilir veya çalıştırılabilir.',
+  noticeMacroRunNotRecorded: 'Kayıt sırasında başka bir makro çalıştırmak kaydedilmez.',
+  noticeMacroRollbackObjectLossAt:
+    'Belge nesnelerinin veya notların kaybolmasını önlemek için makro {line}. satır {column}. sütunda durduruldu ve değişiklikler geri alındı.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Çalıştırma sonrası kontrolde belge nesnesi veya not kaybı algılandı; makro durduruldu ve değişiklikler geri alındı.',
+  noticeMacroRunErrorPostRun: 'Çalıştırma sonrası kontrolde makro başarısız oldu: {error}',
+  cmdUndo: 'Geri al',
+  cmdRedo: 'Yinele',
+  cmdCopy: 'Kopyala',
+  cmdCut: 'Kes',
+  cmdPaste: 'Yapıştır',
+  cmdFind: 'Bul',
+  cmdInsertImage: 'Görsel ekle',
+  cmdInsertFootnote: 'Dipnot ekle',
+  cmdInsertEndnote: 'Sonnot ekle',
+  cmdInsertHyperlink: 'Köprü ekle',
+  cmdInsertBookmark: 'Yer imi ekle',
+  cmdLineBreak: 'Satır sonu',
+  cmdTab: 'Sekme',
+  cmdDeleteObject: 'Belge nesnesini sil',
+  cmdOutsideBody: 'Ana metin paragrafı dışında düzenleme',
+  cmdOtherAction: 'Desteklenmeyen düzenleyici eylemi ({id})',
+  noticeOutsideBodyIgnored:
+    'Ana metin paragrafları dışındaki işlemler (tablolar, metin kutuları, notlar, üstbilgi/altbilgiler) kaydedilmez.',
+  noticeMacroRegexTimeout:
+    'Düzenli ifade araması çok uzun sürdüğü için makro durduruldu ve değişiklikler geri alındı.',
+  noticeMacroRegexTimeoutAt:
+    'Düzenli ifade araması çok uzun sürdüğü için makro {line}. satır {column}. sütunda durduruldu ve değişiklikler geri alındı.',
+} satisfies Record<keyof typeof zh, string>

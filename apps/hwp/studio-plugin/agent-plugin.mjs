@@ -107,7 +107,20 @@ import {
   removeIndexMark,
   removeIndexMarksByTerm,
 } from './index-marks.mjs'
-import { installBibliographyMenu, installWorkpaneMenu } from './workpane-menu.mjs'
+import {
+  MACRO_RECORDING_EVENT,
+  installBibliographyMenu,
+  installMacroMenu,
+  installWorkpaneMenu,
+} from './workpane-menu.mjs'
+import { validateMacroSyntax } from './macro-interpreter.mjs'
+import { executeMacroTransaction } from './macro-host.mjs'
+import {
+  createMacroRecorder,
+  getActiveMacroRecorder,
+  setActiveMacroRecorder,
+  setAssignedMacroSlots,
+} from './macro-recorder.mjs'
 import { installTocIndexMenu } from './toc-dialogs.mjs'
 import { buildSubmissionCopy, defaultStalenessRegistry } from './staleness.mjs'
 import {
@@ -9505,6 +9518,22 @@ export const agentPlugin = {
       return caretReadRan ? caretDetailNow : undefined
     }
 
+    /** Whether a caret detail snapshot points directly to a body paragraph (not table, text box, header/footer, or note). */
+    const isBodyCaretDetail = (detail) =>
+      Boolean(
+        detail &&
+        typeof detail === 'object' &&
+        !detail.inHeaderFooter &&
+        !detail.inNote &&
+        !detail.inTable &&
+        !detail.inTextBox &&
+        !(Array.isArray(detail.cellPath) && detail.cellPath.length > 0) &&
+        !detail.path &&
+        Number.isInteger(detail.sec) &&
+        Number.isInteger(detail.para) &&
+        Number.isInteger(detail.offset),
+      )
+
     /** Select and scroll a body paragraph span `(sec, startPara..endPara)` in the editor. */
     const highlightParagraphRange = (range) => {
       if (!range || !Number.isInteger(range.sec) || !Number.isInteger(range.startPara)) {
@@ -14532,6 +14561,217 @@ export const agentPlugin = {
 
       /** Register the editor's Tool menu entries for citation & bibliography commands. */
       installBibliographyMenu: guarded((labels) => installBibliographyMenu(host, labels)),
+
+      /** Register the editor's Tool menu entries for macro recording and management. */
+      installMacroMenu: guarded((labels) => installMacroMenu(host, labels)),
+
+      /** Validate macro script syntax without opening a transaction or mutating the document. */
+      validateMacro: guarded((source) => {
+        if (typeof source !== 'string') {
+          throw fail('BAD_ARGUMENT', 'source must be a string')
+        }
+        return validateMacroSyntax(source)
+      }),
+
+      /**
+       * Execute a macro script inside one atomic user transaction (`foreign: true`).
+       * Syncs the final caret back to the editor after the transaction commits and
+       * awaits any command-error recovery report before resolving.
+       */
+      runMacro: guarded(async (source, options) => {
+        if (typeof source !== 'string') {
+          throw fail('BAD_ARGUMENT', 'source must be a string')
+        }
+        if (
+          options !== undefined &&
+          options !== null &&
+          (typeof options !== 'object' || Array.isArray(options))
+        ) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        const opts = options ?? {}
+        let resolvedCaret = opts.caret
+        if (resolvedCaret === undefined) {
+          const detail = readCurrentCaretDetail()
+          if (detail) {
+            if (!isBodyCaretDetail(detail)) {
+              return {
+                ok: false,
+                code: 'unsupported_place',
+                error: 'Macros can only run when the caret is in a body paragraph.',
+                messages: [],
+                steps: 0,
+                elapsedMs: 0,
+              }
+            }
+            resolvedCaret = {
+              sec: detail.sec,
+              para: detail.para,
+              offset: detail.offset,
+            }
+          }
+        }
+        let resolvedSelection = opts.selection
+        if (resolvedSelection === undefined) {
+          let sel
+          try {
+            sel = api.selection()
+          } catch {
+            sel = null
+          }
+          if (sel?.ok && sel.inTable) {
+            return {
+              ok: false,
+              code: 'unsupported_place',
+              error: 'Macros can only run when the caret is in a body paragraph.',
+              messages: [],
+              steps: 0,
+              elapsedMs: 0,
+            }
+          }
+          if (
+            sel?.ok &&
+            !sel.inTable &&
+            Array.isArray(sel.segments) &&
+            sel.segments.length > 0 &&
+            !sel.segments[0].path
+          ) {
+            const first = sel.segments[0]
+            const last = sel.segments[sel.segments.length - 1]
+            if (
+              Number.isInteger(first.sec) &&
+              Number.isInteger(first.para) &&
+              Number.isInteger(first.offset) &&
+              Number.isInteger(last.sec) &&
+              Number.isInteger(last.para) &&
+              Number.isInteger(last.offset) &&
+              Number.isInteger(last.length)
+            ) {
+              resolvedSelection = {
+                startSec: first.sec,
+                startPara: first.para,
+                startOffset: first.offset,
+                endSec: last.sec,
+                endPara: last.para,
+                endOffset: last.offset + last.length,
+              }
+            }
+          }
+        }
+        const resolvedAppStyleMap =
+          opts.appStyleMap !== undefined ? opts.appStyleMap : tocAppStyleMap
+        let pendingReport = null
+        let result
+        own = true
+        try {
+          result = executeMacroTransaction(host, source, {
+            ...opts,
+            ...(resolvedCaret !== undefined ? { caret: resolvedCaret } : {}),
+            ...(resolvedSelection !== undefined ? { selection: resolvedSelection } : {}),
+            ...(resolvedAppStyleMap !== undefined ? { appStyleMap: resolvedAppStyleMap } : {}),
+            onRecoveryReport: (report) => {
+              pendingReport = report
+            },
+          })
+        } finally {
+          own = false
+        }
+        if (pendingReport && typeof pendingReport.then === 'function') {
+          await pendingReport.catch(() => undefined)
+        }
+        if (result.ok && result.changed) {
+          text = null
+          pictures = null
+          if (marks.length > 0) {
+            setMarks([])
+            refreshMarks()
+          }
+          syncMemos({ notify: false })
+          refreshMemoAnchors()
+          foreign += 1
+        }
+        if (result.ok && result.caret) {
+          try {
+            host.automation?.execute?.(REVEAL_COMMAND, {
+              sec: result.caret.sec,
+              para: result.caret.para,
+              offset: result.caret.offset,
+              length: 0,
+            })
+          } catch {
+            // editor without reveal command leaves caret synced by its own transaction update
+          }
+        }
+        return result
+      }),
+
+      /** Start keystroke and editor command macro recording. */
+      startMacroRecording: guarded(() => {
+        const detail = readCurrentCaretDetail()
+        if (detail && !isBodyCaretDetail(detail)) {
+          return {
+            ok: false,
+            recording: false,
+            reason: 'unsupported_place',
+            error: 'Macro recording is only available when the caret is in a body paragraph.',
+          }
+        }
+        const recorder = createMacroRecorder({
+          onNotice: (notice) => {
+            globalThis.dispatchEvent?.(
+              new CustomEvent(MACRO_RECORDING_EVENT, {
+                detail: notice,
+              }),
+            )
+          },
+        })
+        setActiveMacroRecorder(recorder)
+        recorder.start()
+        globalThis.dispatchEvent?.(
+          new CustomEvent(MACRO_RECORDING_EVENT, {
+            detail: { state: 'started' },
+          }),
+        )
+        return { ok: true, recording: true }
+      }),
+
+      /** Sync occupied macro slot numbers (1..11) so unassigned Alt shortcuts pass through. */
+      syncMacroSlots: guarded((slots) => ({
+        ok: true,
+        slots: setAssignedMacroSlots(slots),
+      })),
+
+      /** Stop active macro recording and return the generated script and skipped commands. */
+      stopMacroRecording: guarded(() => {
+        const recorder = getActiveMacroRecorder()
+        const stopped = recorder?.isRecording?.()
+          ? recorder.stop()
+          : { script: '', stepCount: 0, skipped: [] }
+        setActiveMacroRecorder(null)
+        globalThis.dispatchEvent?.(
+          new CustomEvent(MACRO_RECORDING_EVENT, {
+            detail: { state: 'stopped', ...stopped },
+          }),
+        )
+        return { ok: true, recording: false, ...stopped }
+      }),
+
+      /** Read current macro recording status, step count, and skipped commands. */
+      getMacroRecordingState: guarded(() => {
+        const recorder = getActiveMacroRecorder()
+        if (recorder?.isRecording?.()) {
+          return {
+            recording: true,
+            stepCount: recorder.getStepCount(),
+            skipped: recorder.getSkipped(),
+          }
+        }
+        return {
+          recording: false,
+          stepCount: 0,
+          skipped: [],
+        }
+      }),
 
       /** Register the editor's Tool menu entries and context-menu probes for TOC & Index. */
       installTocIndexMenu: guarded((labels, options) => {
