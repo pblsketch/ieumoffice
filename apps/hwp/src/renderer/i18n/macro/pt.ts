@@ -108,4 +108,30 @@ export const pt = {
   aiDraftReady: 'Rascunho inserido no editor. Revise-o antes de salvar ou executar.',
   aiDraftFailed: 'Não foi possível gerar o script da macro: {error}',
   aiNoOutput: 'A IA não retornou um script de macro.',
+  importPreviewSlotHint:
+    'Atalhos não são importados automaticamente. Atribua um atalho depois de salvar.',
+  importPreviewBidiWarning:
+    'Este script contém caracteres ocultos de controle direcional ou largura zero (exibidos como [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Macros só podem ser gravadas ou executadas quando o cursor está em um parágrafo do corpo.',
+  noticeMacroRunNotRecorded: 'A execução de outra macro não é registrada durante a gravação.',
+  noticeMacroRollbackObjectLossAt:
+    'A macro parou e desfez as alterações (linha {line}, col. {column}) para evitar perda de objetos ou comentários.',
+  noticeMacroRollbackObjectLossPostRun:
+    'A macro parou e desfez as alterações na verificação final para evitar perda de objetos ou comentários.',
+  noticeMacroRunErrorPostRun: 'A macro falhou na verificação final: {error}',
+  cmdUndo: 'Desfazer',
+  cmdRedo: 'Refazer',
+  cmdCopy: 'Copiar',
+  cmdCut: 'Recortar',
+  cmdPaste: 'Colar',
+  cmdFind: 'Localizar',
+  cmdInsertImage: 'Inserir imagem',
+  cmdInsertFootnote: 'Inserir nota de rodapé',
+  cmdInsertEndnote: 'Inserir nota de fim',
+  cmdInsertHyperlink: 'Inserir hiperlink',
+  cmdInsertBookmark: 'Inserir marcador',
+  cmdLineBreak: 'Quebra de linha',
+  cmdTab: 'Tabulação',
+  cmdOtherAction: 'Ação de edição não suportada ({id})',
 } satisfies Record<keyof typeof zh, string>

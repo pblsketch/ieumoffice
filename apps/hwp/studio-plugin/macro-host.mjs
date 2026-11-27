@@ -37,8 +37,294 @@ import { refreshBibliographyBlock } from './citations.mjs'
 import { defaultStalenessRegistry } from './staleness.mjs'
 
 export const MAX_MACRO_MESSAGES = 200
+export const MAX_MACRO_MESSAGE_LENGTH = 500
+export const MAX_MACRO_TOTAL_MESSAGE_CHARS = 4000
 export const MAX_TABLE_ROWS = 100
 export const MAX_TABLE_COLS = 50
+
+export const DEFAULT_MACRO_HOST_LIMITS = Object.freeze({
+  maxInsertCharsPerCall: 50_000,
+  maxTotalInsertChars: 200_000,
+  maxRegexLength: 256,
+})
+
+const HOST_LIMIT_KEYS = Object.freeze(Object.keys(DEFAULT_MACRO_HOST_LIMITS))
+
+const QUANTIFIER_BRACE_RE = /^\{(\d+)(?:,(\d*))?\}/
+
+function readRegexQuantifier(pattern, pos) {
+  if (pos >= pattern.length) return null
+  const c = pattern[pos]
+  if (c === '*' || c === '+' || c === '?') {
+    let endPos = pos + 1
+    if (endPos < pattern.length && pattern[endPos] === '?') endPos += 1
+    return { endPos, isRepeating: c !== '?', isUnbounded: c !== '?' }
+  }
+  if (c === '{') {
+    const m = QUANTIFIER_BRACE_RE.exec(pattern.slice(pos))
+    if (m) {
+      const min = Number(m[1])
+      const hasComma = m[0].includes(',')
+      const maxStr = m[2]
+      const isUnbounded = hasComma && maxStr === ''
+      const max = isUnbounded ? Number.POSITIVE_INFINITY : hasComma ? Number(maxStr) : min
+      let endPos = pos + m[0].length
+      if (endPos < pattern.length && pattern[endPos] === '?') endPos += 1
+      return { endPos, isRepeating: isUnbounded || max > 1, isUnbounded }
+    }
+  }
+  return null
+}
+
+function shorthandMatchesLiteral(shorthand, ch) {
+  switch (shorthand) {
+    case 'd':
+      return ch >= '0' && ch <= '9'
+    case 'D':
+      return !(ch >= '0' && ch <= '9')
+    case 's':
+      return /\s/.test(ch)
+    case 'S':
+      return !/\s/.test(ch)
+    case 'w':
+      return /[A-Za-z0-9_]/.test(ch)
+    case 'W':
+      return !/[A-Za-z0-9_]/.test(ch)
+    default:
+      return true
+  }
+}
+
+function atomsCanOverlap(a, b) {
+  if (!a || !b) return true
+  if (
+    a.kind === 'any' ||
+    b.kind === 'any' ||
+    a.kind === 'neg_class' ||
+    b.kind === 'neg_class' ||
+    a.kind === 'group' ||
+    b.kind === 'group'
+  ) {
+    return true
+  }
+  if (a.kind === 'literal' && b.kind === 'literal') {
+    return a.value.toLowerCase() === b.value.toLowerCase()
+  }
+  if (a.kind === 'shorthand' && b.kind === 'shorthand') {
+    const pair = `${a.value}${b.value}`
+    if (
+      pair === 'ds' ||
+      pair === 'sd' ||
+      pair === 'ws' ||
+      pair === 'sw' ||
+      pair === 'dD' ||
+      pair === 'Dd' ||
+      pair === 'wW' ||
+      pair === 'Ww' ||
+      pair === 'sS' ||
+      pair === 'Ss'
+    ) {
+      return false
+    }
+    return true
+  }
+  if (a.kind === 'shorthand' && b.kind === 'literal') {
+    return (
+      shorthandMatchesLiteral(a.value, b.value.toLowerCase()) ||
+      shorthandMatchesLiteral(a.value, b.value.toUpperCase())
+    )
+  }
+  if (b.kind === 'shorthand' && a.kind === 'literal') {
+    return (
+      shorthandMatchesLiteral(b.value, a.value.toLowerCase()) ||
+      shorthandMatchesLiteral(b.value, a.value.toUpperCase())
+    )
+  }
+  return true
+}
+
+/**
+ * Static safety validator for macro regular expressions. Rejects oversized
+ * patterns, backreferences, lookaround assertions, nested quantifiers,
+ * quantified alternation groups, and adjacent overlapping unbounded quantifiers.
+ */
+export function assertSafeMacroRegex(
+  pattern,
+  maxRegexLength = DEFAULT_MACRO_HOST_LIMITS.maxRegexLength,
+) {
+  if (typeof pattern !== 'string') {
+    throw new Error('Regular expression pattern must be a string')
+  }
+  if (pattern.length > maxRegexLength) {
+    throw new Error(
+      `Regular expression length (${pattern.length}) exceeds limit (${maxRegexLength})`,
+    )
+  }
+
+  const stack = [{ hasQuantifier: false, hasAlternation: false, prevUnboundedAtom: null }]
+  let i = 0
+  while (i < pattern.length) {
+    const ch = pattern[i]
+    let atom = null
+    let closedGroup = null
+
+    if (ch === '\\') {
+      if (i + 1 >= pattern.length) {
+        i += 1
+        continue
+      }
+      const next = pattern[i + 1]
+      if (next >= '1' && next <= '9') {
+        throw new Error('Backreferences are not allowed in macro regular expressions')
+      }
+      if (next === 'k' && pattern[i + 2] === '<') {
+        throw new Error('Named backreferences are not allowed in macro regular expressions')
+      }
+      if (next === 'x') {
+        i += 4
+        atom = { kind: 'literal', value: pattern.slice(i - 4, i) }
+      } else if (next === 'u') {
+        if (pattern[i + 2] === '{') {
+          const close = pattern.indexOf('}', i + 3)
+          i = close === -1 ? pattern.length : close + 1
+        } else {
+          i += 6
+        }
+        atom = { kind: 'literal', value: 'u' }
+      } else if (next === 'p' || next === 'P') {
+        const close = pattern.indexOf('}', i + 2)
+        i = close === -1 ? pattern.length : close + 1
+        atom = { kind: 'class', value: '\\p' }
+      } else {
+        i += 2
+        if (next === 'b' || next === 'B') {
+          continue
+        }
+        if ('dDsSwW'.includes(next)) {
+          atom = { kind: 'shorthand', value: next }
+        } else {
+          atom = { kind: 'literal', value: next }
+        }
+      }
+    } else if (ch === '[') {
+      const start = i
+      i += 1
+      const negated = i < pattern.length && pattern[i] === '^'
+      if (negated) i += 1
+      if (i < pattern.length && pattern[i] === ']') i += 1
+      while (i < pattern.length && pattern[i] !== ']') {
+        if (pattern[i] === '\\') {
+          i += 2
+        } else {
+          i += 1
+        }
+      }
+      if (i < pattern.length && pattern[i] === ']') i += 1
+      atom = { kind: negated ? 'neg_class' : 'class', value: pattern.slice(start, i) }
+    } else if (ch === '(') {
+      if (pattern[i + 1] === '?') {
+        if (
+          pattern.startsWith('(?=', i) ||
+          pattern.startsWith('(?!', i) ||
+          pattern.startsWith('(?<=', i) ||
+          pattern.startsWith('(?<!', i)
+        ) {
+          throw new Error('Lookaround assertions are not allowed in macro regular expressions')
+        }
+        if (pattern.startsWith('(?:', i)) {
+          i += 3
+        } else if (pattern.startsWith('(?<', i)) {
+          const close = pattern.indexOf('>', i + 3)
+          i = close === -1 ? pattern.length : close + 1
+        } else {
+          i += 2
+        }
+      } else {
+        i += 1
+      }
+      stack.push({ hasQuantifier: false, hasAlternation: false, prevUnboundedAtom: null })
+      continue
+    } else if (ch === ')') {
+      i += 1
+      if (stack.length > 1) {
+        closedGroup = stack.pop()
+        atom = { kind: 'group', value: '' }
+      }
+    } else if (ch === '|') {
+      i += 1
+      const top = stack[stack.length - 1]
+      top.hasAlternation = true
+      top.prevUnboundedAtom = null
+      continue
+    } else if (ch === '^' || ch === '$') {
+      i += 1
+      continue
+    } else if (ch === '.') {
+      i += 1
+      atom = { kind: 'any', value: '.' }
+    } else if (ch === '*' || ch === '+' || ch === '?') {
+      i += 1
+      continue
+    } else {
+      atom = { kind: 'literal', value: ch }
+      i += 1
+    }
+
+    const q = readRegexQuantifier(pattern, i)
+    const top = stack[stack.length - 1]
+
+    if (closedGroup) {
+      if (q) {
+        i = q.endPos
+        top.hasQuantifier = true
+        if (q.isRepeating && closedGroup.hasQuantifier) {
+          throw new Error('Nested quantifiers are not allowed in macro regular expressions')
+        }
+        if (q.isRepeating && closedGroup.hasAlternation) {
+          throw new Error(
+            'Quantified alternation groups are not allowed in macro regular expressions',
+          )
+        }
+      } else {
+        if (closedGroup.hasQuantifier) top.hasQuantifier = true
+        if (closedGroup.hasAlternation) top.hasAlternation = true
+      }
+    } else if (q) {
+      i = q.endPos
+      top.hasQuantifier = true
+    }
+
+    if (q && q.isUnbounded) {
+      if (top.prevUnboundedAtom && atomsCanOverlap(top.prevUnboundedAtom, atom)) {
+        throw new Error(
+          'Adjacent overlapping unbounded quantifiers are not allowed in macro regular expressions',
+        )
+      }
+      top.prevUnboundedAtom = atom
+    } else if (atom) {
+      top.prevUnboundedAtom = null
+    }
+  }
+}
+
+function resolveHostLimits(rawLimits) {
+  const base = validateMacroLimits(rawLimits)
+  const resolved = Object.assign(Object.create(null), base)
+  for (const key of HOST_LIMIT_KEYS) {
+    const raw = rawLimits && typeof rawLimits === 'object' ? rawLimits[key] : undefined
+    if (raw === undefined) {
+      resolved[key] = DEFAULT_MACRO_HOST_LIMITS[key]
+      continue
+    }
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > MAX_INT32) {
+      throw new RangeError(
+        `Invalid macro limit "${key}": expected an integer between 1 and ${MAX_INT32}`,
+      )
+    }
+    resolved[key] = raw
+  }
+  return Object.freeze(resolved)
+}
 
 const FONT_LANGUAGES = 7
 const MAX_FONT_NAME = 64
@@ -333,22 +619,38 @@ function bodyProtectedControlPositions(doc, sec, para) {
   return hits
 }
 
-function createInitialState(doc, options, limits) {
+function createInitialState(doc, options, limits, nowFn, startTime) {
   const initialCaret = options?.caret
     ? clampPosition(doc, options.caret.sec, options.caret.para, options.caret.offset)
     : clampPosition(doc, 0, 0, 0)
   const initialSelection = options?.selection
     ? normalizeSelectionRange(doc, options.selection)
     : null
+  const clock = typeof nowFn === 'function' ? nowFn : (options?.now ?? (() => Date.now()))
+  const started = typeof startTime === 'number' && Number.isFinite(startTime) ? startTime : clock()
   const state = {
     caret: initialCaret,
     selection: initialSelection,
+    selectionAnchor: initialSelection
+      ? {
+          sec: initialSelection.startSec,
+          para: initialSelection.startPara,
+          offset: initialSelection.startOffset,
+        }
+      : null,
+    pendingCharFormat: null,
+    atLineEnd: false,
     messages: [],
+    messageChars: 0,
+    messagesTruncated: false,
+    totalInsertedChars: 0,
     allowedTableDelta: 0,
     mutated: false,
     lastError: null,
     lastFind: null,
     limits,
+    now: clock,
+    startTime: started,
     baseline: captureProtectionSnapshot(doc),
     recordError(code, message, extra = undefined) {
       state.lastError = {
@@ -363,6 +665,54 @@ function createInitialState(doc, options, limits) {
   return state
 }
 
+function getLineInfoSafe(doc, sec, para, offset) {
+  if (typeof doc.getLineInfo !== 'function') return null
+  try {
+    const parsed = parseJson(doc.getLineInfo(sec, para, offset), null)
+    if (
+      parsed &&
+      Number.isInteger(parsed.lineIndex) &&
+      Number.isInteger(parsed.lineCount) &&
+      Number.isInteger(parsed.charStart) &&
+      Number.isInteger(parsed.charEnd) &&
+      parsed.lineCount >= 1
+    ) {
+      return parsed
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function collectVisualLines(doc, sec, para) {
+  const first = getLineInfoSafe(doc, sec, para, 0)
+  if (!first) return null
+  if (first.lineCount <= 1) {
+    return [{ lineIndex: 0, charStart: first.charStart, charEnd: first.charEnd }]
+  }
+  const paraLen = doc.getParagraphLength(sec, para)
+  const lines = [{ lineIndex: first.lineIndex, charStart: first.charStart, charEnd: first.charEnd }]
+  let cursor = first.charEnd
+  const maxIter = Math.max(first.lineCount + 4, 16)
+  for (
+    let guard = 0;
+    lines.length < first.lineCount && cursor <= paraLen && guard < maxIter;
+    guard++
+  ) {
+    const info = getLineInfoSafe(doc, sec, para, cursor)
+    if (!info) break
+    if (info.lineIndex <= lines[lines.length - 1].lineIndex) {
+      cursor += 1
+      continue
+    }
+    lines.push({ lineIndex: info.lineIndex, charStart: info.charStart, charEnd: info.charEnd })
+    if (info.charEnd <= cursor) break
+    cursor = info.charEnd
+  }
+  return lines
+}
+
 /**
  * Create the synchronous application document API bound to `doc` and `state`.
  */
@@ -370,10 +720,32 @@ export function createMacroApi(doc, state, options = undefined) {
   if (!doc || typeof doc.getSectionCount !== 'function') {
     throw new TypeError('createMacroApi requires a valid HwpDocument instance')
   }
-  const limits = state?.limits ?? validateMacroLimits(options?.limits)
-  const execState = state ?? createInitialState(doc, options, limits)
+  const limits = state?.limits
+    ? resolveHostLimits(state.limits)
+    : resolveHostLimits(options?.limits)
+  const nowFn =
+    typeof state?.now === 'function'
+      ? state.now
+      : typeof options?.now === 'function'
+        ? options.now
+        : () => Date.now()
+  const startTime =
+    typeof state?.startTime === 'number' && Number.isFinite(state.startTime)
+      ? state.startTime
+      : nowFn()
+  const execState = state ?? createInitialState(doc, options, limits, nowFn, startTime)
   if (!execState.baseline) {
     execState.baseline = captureProtectionSnapshot(doc)
+  }
+  if (execState.selectionAnchor === undefined) execState.selectionAnchor = null
+  if (execState.pendingCharFormat === undefined) execState.pendingCharFormat = null
+  if (execState.atLineEnd === undefined) execState.atLineEnd = false
+  if (execState.messageChars === undefined) execState.messageChars = 0
+  if (execState.messagesTruncated === undefined) execState.messagesTruncated = false
+  if (execState.totalInsertedChars === undefined) execState.totalInsertedChars = 0
+  if (typeof execState.now !== 'function') execState.now = nowFn
+  if (typeof execState.startTime !== 'number' || !Number.isFinite(execState.startTime)) {
+    execState.startTime = startTime
   }
   if (typeof execState.recordError !== 'function') {
     execState.recordError = (code, message, extra = undefined) => {
@@ -395,6 +767,13 @@ export function createMacroApi(doc, state, options = undefined) {
       err.unsupportedAction = extra.unsupportedAction
     }
     throw err
+  }
+
+  const checkDeadline = () => {
+    const elapsed = execState.now() - execState.startTime
+    if (elapsed > limits.maxTimeMs) {
+      failHost('time_limit', `Execution time limit (${limits.maxTimeMs}ms) exceeded`)
+    }
   }
 
   const expectEngineOk = (raw, actionName) => {
@@ -633,6 +1012,8 @@ export function createMacroApi(doc, state, options = undefined) {
 
     execState.caret = clampPosition(doc, sel.startSec, sel.startPara, sel.startOffset)
     execState.selection = null
+    execState.selectionAnchor = null
+    execState.atLineEnd = false
     checkObjectsPreserved()
     return !isEmpty
   }
@@ -669,8 +1050,137 @@ export function createMacroApi(doc, state, options = undefined) {
     return list
   }
 
-  const stepCaretLeft = (count) => {
+  const finishPlainMove = (keepLineEnd = false) => {
+    execState.selection = null
+    execState.selectionAnchor = null
+    execState.pendingCharFormat = null
+    if (!keepLineEnd) {
+      execState.atLineEnd = false
+    }
+  }
+
+  const extendSelectionWith = (moveCoreFn) => {
+    if (execState.selectionAnchor === null) {
+      if (execState.selection) {
+        const sel = normalizeSelectionRange(doc, execState.selection)
+        execState.selectionAnchor = sel
+          ? { sec: sel.startSec, para: sel.startPara, offset: sel.startOffset }
+          : clampPosition(doc, execState.caret.sec, execState.caret.para, execState.caret.offset)
+      } else {
+        execState.selectionAnchor = clampPosition(
+          doc,
+          execState.caret.sec,
+          execState.caret.para,
+          execState.caret.offset,
+        )
+      }
+    }
+    moveCoreFn()
+    const anchor = clampPosition(
+      doc,
+      execState.selectionAnchor.sec,
+      execState.selectionAnchor.para,
+      execState.selectionAnchor.offset,
+    )
+    const focus = clampPosition(
+      doc,
+      execState.caret.sec,
+      execState.caret.para,
+      execState.caret.offset,
+    )
+    execState.caret = focus
+    execState.pendingCharFormat = null
+    const cmp = comparePos(anchor, focus)
+    if (cmp === 0) {
+      execState.selection = null
+    } else {
+      const [start, end] = cmp < 0 ? [anchor, focus] : [focus, anchor]
+      execState.selection = {
+        startSec: start.sec,
+        startPara: start.para,
+        startOffset: start.offset,
+        endSec: end.sec,
+        endPara: end.para,
+        endOffset: end.offset,
+      }
+    }
+  }
+
+  const moveDocBeginCore = () => {
+    execState.caret = clampPosition(doc, 0, 0, 0)
+    execState.atLineEnd = false
+  }
+
+  const moveDocEndCore = () => {
+    const lastSec = Math.max(0, doc.getSectionCount() - 1)
+    const lastPara = Math.max(0, doc.getParagraphCount(lastSec) - 1)
+    const lastLen = Math.max(0, doc.getParagraphLength(lastSec, lastPara))
+    execState.caret = { sec: lastSec, para: lastPara, offset: lastLen }
+    execState.atLineEnd = false
+  }
+
+  const moveParaBeginCore = () => {
+    execState.caret = clampPosition(doc, execState.caret.sec, execState.caret.para, 0)
+    execState.atLineEnd = false
+  }
+
+  const moveParaEndCore = () => {
+    const caret = clampPosition(doc, execState.caret.sec, execState.caret.para, 0)
+    const len = doc.getParagraphLength(caret.sec, caret.para)
+    execState.caret = { sec: caret.sec, para: caret.para, offset: len }
+    execState.atLineEnd = false
+  }
+
+  const moveLineBeginCore = () => {
+    const caret = clampPosition(
+      doc,
+      execState.caret.sec,
+      execState.caret.para,
+      execState.caret.offset,
+    )
+    let lineInfo = getLineInfoSafe(doc, caret.sec, caret.para, caret.offset)
+    if (!lineInfo) {
+      execState.caret = { sec: caret.sec, para: caret.para, offset: 0 }
+      execState.atLineEnd = false
+      return
+    }
+    if (execState.atLineEnd && caret.offset === lineInfo.charStart && caret.offset > 0) {
+      const prev = getLineInfoSafe(doc, caret.sec, caret.para, caret.offset - 1)
+      if (prev && prev.charEnd === caret.offset) {
+        lineInfo = prev
+      }
+    }
+    execState.caret = { sec: caret.sec, para: caret.para, offset: lineInfo.charStart }
+    execState.atLineEnd = false
+  }
+
+  const moveLineEndCore = () => {
+    const caret = clampPosition(
+      doc,
+      execState.caret.sec,
+      execState.caret.para,
+      execState.caret.offset,
+    )
+    let lineInfo = getLineInfoSafe(doc, caret.sec, caret.para, caret.offset)
+    if (!lineInfo) {
+      const len = doc.getParagraphLength(caret.sec, caret.para)
+      execState.caret = { sec: caret.sec, para: caret.para, offset: len }
+      execState.atLineEnd = false
+      return
+    }
+    if (execState.atLineEnd && caret.offset === lineInfo.charStart && caret.offset > 0) {
+      const prev = getLineInfoSafe(doc, caret.sec, caret.para, caret.offset - 1)
+      if (prev && prev.charEnd === caret.offset) {
+        lineInfo = prev
+      }
+    }
+    execState.caret = { sec: caret.sec, para: caret.para, offset: lineInfo.charEnd }
+    execState.atLineEnd = true
+  }
+
+  const stepCaretLeftCore = (count) => {
     let remaining = count
+    let iter = 0
     let { sec, para, offset } = clampPosition(
       doc,
       execState.caret.sec,
@@ -678,6 +1188,7 @@ export function createMacroApi(doc, state, options = undefined) {
       execState.caret.offset,
     )
     while (remaining > 0) {
+      if ((iter++ & 255) === 0) checkDeadline()
       if (offset >= remaining) {
         offset -= remaining
         remaining = 0
@@ -699,11 +1210,12 @@ export function createMacroApi(doc, state, options = undefined) {
       }
     }
     execState.caret = { sec, para, offset }
-    execState.selection = null
+    execState.atLineEnd = false
   }
 
-  const stepCaretRight = (count) => {
+  const stepCaretRightCore = (count) => {
     let remaining = count
+    let iter = 0
     const secCount = doc.getSectionCount()
     let { sec, para, offset } = clampPosition(
       doc,
@@ -712,6 +1224,7 @@ export function createMacroApi(doc, state, options = undefined) {
       execState.caret.offset,
     )
     while (remaining > 0) {
+      if ((iter++ & 255) === 0) checkDeadline()
       const paraLen = doc.getParagraphLength(sec, para)
       const avail = paraLen - offset
       if (avail >= remaining) {
@@ -736,10 +1249,10 @@ export function createMacroApi(doc, state, options = undefined) {
       }
     }
     execState.caret = { sec, para, offset }
-    execState.selection = null
+    execState.atLineEnd = false
   }
 
-  const stepCaretVertical = (direction, count) => {
+  const stepCaretVerticalCore = (direction, count) => {
     const secCount = doc.getSectionCount()
     let { sec, para, offset } = clampPosition(
       doc,
@@ -747,8 +1260,87 @@ export function createMacroApi(doc, state, options = undefined) {
       execState.caret.para,
       execState.caret.offset,
     )
+    let lines = collectVisualLines(doc, sec, para)
+    if (lines && lines.length > 0) {
+      let curLineIdx = lines.length - 1
+      if (execState.atLineEnd && offset > 0) {
+        const endMatch = lines.findIndex((l) => l.charEnd === offset)
+        if (endMatch >= 0) {
+          curLineIdx = endMatch
+        } else {
+          const hit = lines.findIndex((l) => offset >= l.charStart && offset < l.charEnd)
+          if (hit >= 0) curLineIdx = hit
+        }
+      } else {
+        const hit = lines.findIndex((l) => offset >= l.charStart && offset < l.charEnd)
+        if (hit >= 0) curLineIdx = hit
+      }
+      const desiredCol = Math.max(0, offset - lines[curLineIdx].charStart)
+      let remaining = count
+      let iter = 0
+      while (remaining > 0) {
+        if ((iter++ & 63) === 0) checkDeadline()
+        if (direction > 0) {
+          if (curLineIdx + 1 < lines.length) {
+            const step = Math.min(remaining, lines.length - 1 - curLineIdx)
+            curLineIdx += step
+            remaining -= step
+          } else {
+            const paraCount = doc.getParagraphCount(sec)
+            if (para + 1 < paraCount) {
+              para += 1
+            } else if (sec + 1 < secCount) {
+              sec += 1
+              para = 0
+            } else {
+              break
+            }
+            remaining -= 1
+            lines = collectVisualLines(doc, sec, para) ?? [
+              { lineIndex: 0, charStart: 0, charEnd: doc.getParagraphLength(sec, para) },
+            ]
+            curLineIdx = 0
+          }
+        } else {
+          if (curLineIdx > 0) {
+            const step = Math.min(remaining, curLineIdx)
+            curLineIdx -= step
+            remaining -= step
+          } else if (para > 0) {
+            para -= 1
+            remaining -= 1
+            lines = collectVisualLines(doc, sec, para) ?? [
+              { lineIndex: 0, charStart: 0, charEnd: doc.getParagraphLength(sec, para) },
+            ]
+            curLineIdx = lines.length - 1
+          } else if (sec > 0) {
+            sec -= 1
+            para = doc.getParagraphCount(sec) - 1
+            remaining -= 1
+            lines = collectVisualLines(doc, sec, para) ?? [
+              { lineIndex: 0, charStart: 0, charEnd: doc.getParagraphLength(sec, para) },
+            ]
+            curLineIdx = lines.length - 1
+          } else {
+            break
+          }
+        }
+      }
+      const targetLine = lines[curLineIdx]
+      const isLastLine = curLineIdx === lines.length - 1
+      const maxLineOffset = isLastLine
+        ? targetLine.charEnd
+        : Math.max(targetLine.charStart, targetLine.charEnd - 1)
+      const targetOffset = Math.min(targetLine.charStart + desiredCol, maxLineOffset)
+      execState.caret = clampPosition(doc, sec, para, targetOffset)
+      execState.atLineEnd = false
+      return
+    }
+
     let remaining = count
+    let iter = 0
     while (remaining > 0) {
+      if ((iter++ & 255) === 0) checkDeadline()
       if (direction < 0) {
         if (para > 0) {
           para -= 1
@@ -773,17 +1365,21 @@ export function createMacroApi(doc, state, options = undefined) {
     }
     const maxOffset = doc.getParagraphLength(sec, para)
     execState.caret = { sec, para, offset: Math.min(offset, maxOffset) }
-    execState.selection = null
+    execState.atLineEnd = false
   }
 
-  const stepWordLeft = (count) => {
+  const stepWordLeftCore = (count) => {
     let { sec, para, offset } = clampPosition(
       doc,
       execState.caret.sec,
       execState.caret.para,
       execState.caret.offset,
     )
+    let cachedSec = -1
+    let cachedPara = -1
+    let cachedText = ''
     for (let step = 0; step < count; step++) {
+      if ((step & 255) === 0) checkDeadline()
       if (offset === 0) {
         if (para > 0) {
           para -= 1
@@ -798,17 +1394,21 @@ export function createMacroApi(doc, state, options = undefined) {
         }
         break
       }
-      const text = readParagraphText(doc, sec, para)
+      if (sec !== cachedSec || para !== cachedPara) {
+        cachedSec = sec
+        cachedPara = para
+        cachedText = readParagraphText(doc, sec, para)
+      }
       let i = offset
-      while (i > 0 && !WORD_CHAR_RE.test(text[i - 1])) i -= 1
-      while (i > 0 && WORD_CHAR_RE.test(text[i - 1])) i -= 1
+      while (i > 0 && !WORD_CHAR_RE.test(cachedText[i - 1])) i -= 1
+      while (i > 0 && WORD_CHAR_RE.test(cachedText[i - 1])) i -= 1
       offset = i
     }
     execState.caret = { sec, para, offset }
-    execState.selection = null
+    execState.atLineEnd = false
   }
 
-  const stepWordRight = (count) => {
+  const stepWordRightCore = (count) => {
     const secCount = doc.getSectionCount()
     let { sec, para, offset } = clampPosition(
       doc,
@@ -816,9 +1416,17 @@ export function createMacroApi(doc, state, options = undefined) {
       execState.caret.para,
       execState.caret.offset,
     )
+    let cachedSec = -1
+    let cachedPara = -1
+    let cachedText = ''
     for (let step = 0; step < count; step++) {
-      const text = readParagraphText(doc, sec, para)
-      if (offset >= text.length) {
+      if ((step & 255) === 0) checkDeadline()
+      if (sec !== cachedSec || para !== cachedPara) {
+        cachedSec = sec
+        cachedPara = para
+        cachedText = readParagraphText(doc, sec, para)
+      }
+      if (offset >= cachedText.length) {
         const paraCount = doc.getParagraphCount(sec)
         if (para + 1 < paraCount) {
           para += 1
@@ -834,12 +1442,139 @@ export function createMacroApi(doc, state, options = undefined) {
         break
       }
       let i = offset
-      while (i < text.length && WORD_CHAR_RE.test(text[i])) i += 1
-      while (i < text.length && !WORD_CHAR_RE.test(text[i])) i += 1
+      while (i < cachedText.length && WORD_CHAR_RE.test(cachedText[i])) i += 1
+      while (i < cachedText.length && !WORD_CHAR_RE.test(cachedText[i])) i += 1
       offset = i
     }
     execState.caret = { sec, para, offset }
+    execState.atLineEnd = false
+  }
+
+  const deleteBackwardInternal = (count) => {
+    if (execState.selection) {
+      return deleteSelectionInternal()
+    }
+    let remaining = count
+    let deletedAny = false
+    let iter = 0
+    while (remaining > 0) {
+      if ((iter++ & 63) === 0) checkDeadline()
+      const caret = clampPosition(
+        doc,
+        execState.caret.sec,
+        execState.caret.para,
+        execState.caret.offset,
+      )
+      execState.caret = caret
+      if (caret.offset > 0) {
+        const take = Math.min(remaining, caret.offset)
+        const startOffset = caret.offset - take
+        assertSelectionHasNoProtectedContent({
+          startSec: caret.sec,
+          startPara: caret.para,
+          startOffset,
+          endSec: caret.sec,
+          endPara: caret.para,
+          endOffset: caret.offset,
+        })
+        expectEngineOk(doc.deleteText(caret.sec, caret.para, startOffset, take), 'deleteBackward')
+        execState.caret = clampPosition(doc, caret.sec, caret.para, startOffset)
+        execState.mutated = true
+        deletedAny = true
+        remaining -= take
+      } else if (caret.para > 0) {
+        const prevPara = caret.para - 1
+        const prevLen = doc.getParagraphLength(caret.sec, prevPara)
+        assertSelectionHasNoProtectedContent({
+          startSec: caret.sec,
+          startPara: prevPara,
+          startOffset: prevLen,
+          endSec: caret.sec,
+          endPara: caret.para,
+          endOffset: 0,
+        })
+        expectEngineOk(
+          doc.deleteRange(caret.sec, prevPara, prevLen, caret.para, 0),
+          'deleteBackward',
+        )
+        execState.caret = clampPosition(doc, caret.sec, prevPara, prevLen)
+        execState.mutated = true
+        deletedAny = true
+        remaining -= 1
+      } else {
+        break
+      }
+    }
     execState.selection = null
+    execState.selectionAnchor = null
+    execState.atLineEnd = false
+    if (deletedAny) {
+      checkObjectsPreserved()
+    }
+    return deletedAny
+  }
+
+  const deleteForwardInternal = (count) => {
+    if (execState.selection) {
+      return deleteSelectionInternal()
+    }
+    let remaining = count
+    let deletedAny = false
+    let iter = 0
+    while (remaining > 0) {
+      if ((iter++ & 63) === 0) checkDeadline()
+      const caret = clampPosition(
+        doc,
+        execState.caret.sec,
+        execState.caret.para,
+        execState.caret.offset,
+      )
+      execState.caret = caret
+      const paraLen = doc.getParagraphLength(caret.sec, caret.para)
+      if (caret.offset < paraLen) {
+        const take = Math.min(remaining, paraLen - caret.offset)
+        assertSelectionHasNoProtectedContent({
+          startSec: caret.sec,
+          startPara: caret.para,
+          startOffset: caret.offset,
+          endSec: caret.sec,
+          endPara: caret.para,
+          endOffset: caret.offset + take,
+        })
+        expectEngineOk(doc.deleteText(caret.sec, caret.para, caret.offset, take), 'deleteForward')
+        execState.caret = clampPosition(doc, caret.sec, caret.para, caret.offset)
+        execState.mutated = true
+        deletedAny = true
+        remaining -= take
+      } else if (caret.para + 1 < doc.getParagraphCount(caret.sec)) {
+        const nextPara = caret.para + 1
+        assertSelectionHasNoProtectedContent({
+          startSec: caret.sec,
+          startPara: caret.para,
+          startOffset: paraLen,
+          endSec: caret.sec,
+          endPara: nextPara,
+          endOffset: 0,
+        })
+        expectEngineOk(
+          doc.deleteRange(caret.sec, caret.para, paraLen, nextPara, 0),
+          'deleteForward',
+        )
+        execState.caret = clampPosition(doc, caret.sec, caret.para, paraLen)
+        execState.mutated = true
+        deletedAny = true
+        remaining -= 1
+      } else {
+        break
+      }
+    }
+    execState.selection = null
+    execState.selectionAnchor = null
+    execState.atLineEnd = false
+    if (deletedAny) {
+      checkObjectsPreserved()
+    }
+    return deletedAny
   }
 
   const api = {
@@ -854,6 +1589,18 @@ export function createMacroApi(doc, state, options = undefined) {
       if (normalized.length > limits.maxStringLength) {
         failHost('memory_limit', `String length limit (${limits.maxStringLength}) exceeded`)
       }
+      if (normalized.length > limits.maxInsertCharsPerCall) {
+        failHost(
+          'memory_limit',
+          `insertText length (${normalized.length}) exceeds per-call limit (${limits.maxInsertCharsPerCall})`,
+        )
+      }
+      if (execState.totalInsertedChars + normalized.length > limits.maxTotalInsertChars) {
+        failHost(
+          'memory_limit',
+          `Cumulative inserted text exceeds limit (${limits.maxTotalInsertChars} characters)`,
+        )
+      }
       if (execState.selection) {
         deleteSelectionInternal()
       }
@@ -863,8 +1610,12 @@ export function createMacroApi(doc, state, options = undefined) {
         execState.caret.para,
         execState.caret.offset,
       )
+      const pendingJson = execState.pendingCharFormat
+        ? JSON.stringify(execState.pendingCharFormat)
+        : null
       const lines = normalized.split('\n')
       for (let i = 0; i < lines.length; i++) {
+        if ((i & 63) === 0) checkDeadline()
         if (i > 0) {
           splitParagraphAt(execState.caret.sec, execState.caret.para, execState.caret.offset)
           execState.caret = {
@@ -876,24 +1627,35 @@ export function createMacroApi(doc, state, options = undefined) {
         }
         const segment = lines[i]
         if (segment.length > 0) {
+          const insertStart = execState.caret.offset
           expectEngineOk(
-            doc.insertText(
-              execState.caret.sec,
-              execState.caret.para,
-              execState.caret.offset,
-              segment,
-            ),
+            doc.insertText(execState.caret.sec, execState.caret.para, insertStart, segment),
             'insertText',
           )
+          if (pendingJson !== null) {
+            expectEngineOk(
+              doc.applyCharFormat(
+                execState.caret.sec,
+                execState.caret.para,
+                insertStart,
+                insertStart + segment.length,
+                pendingJson,
+              ),
+              'insertText',
+            )
+          }
           execState.caret = {
             sec: execState.caret.sec,
             para: execState.caret.para,
-            offset: execState.caret.offset + segment.length,
+            offset: insertStart + segment.length,
           }
           execState.mutated = true
         }
       }
+      execState.totalInsertedChars += normalized.length
       execState.selection = null
+      execState.selectionAnchor = null
+      execState.atLineEnd = false
       checkObjectsPreserved()
     },
 
@@ -914,6 +1676,8 @@ export function createMacroApi(doc, state, options = undefined) {
         offset: 0,
       }
       execState.selection = null
+      execState.selectionAnchor = null
+      execState.atLineEnd = false
       execState.mutated = true
       checkObjectsPreserved()
     },
@@ -944,6 +1708,8 @@ export function createMacroApi(doc, state, options = undefined) {
         offset: 0,
       }
       execState.selection = null
+      execState.selectionAnchor = null
+      execState.atLineEnd = false
       execState.mutated = true
       checkObjectsPreserved()
     },
@@ -952,70 +1718,137 @@ export function createMacroApi(doc, state, options = undefined) {
       return deleteSelectionInternal()
     },
 
+    deleteBackward(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      return deleteBackwardInternal(n)
+    },
+
+    deleteForward(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      return deleteForwardInternal(n)
+    },
+
     // -----------------------------------------------------------------------
     // Caret & Selection Movement
     // -----------------------------------------------------------------------
     moveDocBegin() {
-      execState.caret = clampPosition(doc, 0, 0, 0)
-      execState.selection = null
+      moveDocBeginCore()
+      finishPlainMove()
     },
 
     moveDocEnd() {
-      const lastSec = Math.max(0, doc.getSectionCount() - 1)
-      const lastPara = Math.max(0, doc.getParagraphCount(lastSec) - 1)
-      const lastLen = Math.max(0, doc.getParagraphLength(lastSec, lastPara))
-      execState.caret = { sec: lastSec, para: lastPara, offset: lastLen }
-      execState.selection = null
+      moveDocEndCore()
+      finishPlainMove()
     },
 
     moveParaBegin() {
-      execState.caret = clampPosition(doc, execState.caret.sec, execState.caret.para, 0)
-      execState.selection = null
+      moveParaBeginCore()
+      finishPlainMove()
     },
 
     moveParaEnd() {
-      const caret = clampPosition(doc, execState.caret.sec, execState.caret.para, 0)
-      const len = doc.getParagraphLength(caret.sec, caret.para)
-      execState.caret = { sec: caret.sec, para: caret.para, offset: len }
-      execState.selection = null
+      moveParaEndCore()
+      finishPlainMove()
     },
 
     moveLineBegin() {
-      api.moveParaBegin()
+      moveLineBeginCore()
+      finishPlainMove()
     },
 
     moveLineEnd() {
-      api.moveParaEnd()
+      moveLineEndCore()
+      finishPlainMove(true)
     },
 
     moveLeft(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      stepCaretLeft(n)
+      stepCaretLeftCore(n)
+      finishPlainMove()
     },
 
     moveRight(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      stepCaretRight(n)
+      stepCaretRightCore(n)
+      finishPlainMove()
     },
 
     moveUp(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      stepCaretVertical(-1, n)
+      stepCaretVerticalCore(-1, n)
+      finishPlainMove()
     },
 
     moveDown(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      stepCaretVertical(1, n)
+      stepCaretVerticalCore(1, n)
+      finishPlainMove()
     },
 
     moveWordLeft(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      stepWordLeft(n)
+      stepWordLeftCore(n)
+      finishPlainMove()
     },
 
     moveWordRight(count = 1) {
       const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
-      stepWordRight(n)
+      stepWordRightCore(n)
+      finishPlainMove()
+    },
+
+    selectLeft(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      extendSelectionWith(() => stepCaretLeftCore(n))
+    },
+
+    selectRight(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      extendSelectionWith(() => stepCaretRightCore(n))
+    },
+
+    selectUp(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      extendSelectionWith(() => stepCaretVerticalCore(-1, n))
+    },
+
+    selectDown(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      extendSelectionWith(() => stepCaretVerticalCore(1, n))
+    },
+
+    selectWordLeft(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      extendSelectionWith(() => stepWordLeftCore(n))
+    },
+
+    selectWordRight(count = 1) {
+      const n = count === undefined ? 1 : assertPositiveInt(count, 'count')
+      extendSelectionWith(() => stepWordRightCore(n))
+    },
+
+    selectLineBegin() {
+      extendSelectionWith(() => moveLineBeginCore())
+    },
+
+    selectLineEnd() {
+      extendSelectionWith(() => moveLineEndCore())
+    },
+
+    selectParaBegin() {
+      extendSelectionWith(() => moveParaBeginCore())
+    },
+
+    selectParaEnd() {
+      extendSelectionWith(() => moveParaEndCore())
+    },
+
+    selectDocBegin() {
+      extendSelectionWith(() => moveDocBeginCore())
+    },
+
+    selectDocEnd() {
+      extendSelectionWith(() => moveDocEndCore())
     },
 
     select(fromSec, fromPara, fromOffset, toSec, toPara, toOffset) {
@@ -1037,7 +1870,10 @@ export function createMacroApi(doc, state, options = undefined) {
         endPara: end.para,
         endOffset: end.offset,
       }
+      execState.selectionAnchor = { sec: a.sec, para: a.para, offset: a.offset }
       execState.caret = { sec: b.sec, para: b.para, offset: b.offset }
+      execState.pendingCharFormat = null
+      execState.atLineEnd = false
     },
 
     selectAll() {
@@ -1052,11 +1888,16 @@ export function createMacroApi(doc, state, options = undefined) {
         endPara: lastPara,
         endOffset: lastLen,
       }
+      execState.selectionAnchor = { sec: 0, para: 0, offset: 0 }
       execState.caret = { sec: lastSec, para: lastPara, offset: lastLen }
+      execState.pendingCharFormat = null
+      execState.atLineEnd = false
     },
 
     cancelSelection() {
       execState.selection = null
+      execState.selectionAnchor = null
+      execState.pendingCharFormat = null
     },
 
     getCaret() {
@@ -1164,9 +2005,16 @@ export function createMacroApi(doc, state, options = undefined) {
         failHost('invalid_argument', 'setCharFormat specifies no character properties')
       }
 
-      const json = JSON.stringify(engineProps)
       const sel = execState.selection ? normalizeSelectionRange(doc, execState.selection) : null
-      if (sel) {
+      const hasNonEmptySelection =
+        sel !== null &&
+        !(
+          sel.startSec === sel.endSec &&
+          sel.startPara === sel.endPara &&
+          sel.startOffset === sel.endOffset
+        )
+      if (hasNonEmptySelection) {
+        const json = JSON.stringify(engineProps)
         for (let sec = sel.startSec; sec <= sel.endSec; sec++) {
           const paraCount = doc.getParagraphCount(sec)
           const pStart = sec === sel.startSec ? sel.startPara : 0
@@ -1184,21 +2032,13 @@ export function createMacroApi(doc, state, options = undefined) {
             }
           }
         }
+        execState.pendingCharFormat = null
+        checkObjectsPreserved()
       } else {
-        const caret = clampPosition(
-          doc,
-          execState.caret.sec,
-          execState.caret.para,
-          execState.caret.offset,
-        )
-        execState.caret = caret
-        const len = doc.getParagraphLength(caret.sec, caret.para)
-        if (len > 0) {
-          expectEngineOk(doc.applyCharFormat(caret.sec, caret.para, 0, len, json), 'setCharFormat')
-          execState.mutated = true
-        }
+        execState.pendingCharFormat = execState.pendingCharFormat
+          ? { ...execState.pendingCharFormat, ...engineProps }
+          : { ...engineProps }
       }
-      checkObjectsPreserved()
     },
 
     setParaFormat(props) {
@@ -1347,6 +2187,13 @@ export function createMacroApi(doc, state, options = undefined) {
         regex: Boolean(opts?.regex),
         style: typeof opts?.style === 'string' && opts.style.trim() ? opts.style.trim() : null,
       }
+      if (findOpts.regex) {
+        try {
+          assertSafeMacroRegex(query, limits.maxRegexLength)
+        } catch (err) {
+          failHost('invalid_argument', err instanceof Error ? err.message : String(err))
+        }
+      }
       execState.lastFind = { ...findOpts }
       const result = findMatches(doc, findOpts)
       if (!result.ok) {
@@ -1387,6 +2234,13 @@ export function createMacroApi(doc, state, options = undefined) {
         regex: Boolean(opts?.regex),
         style: typeof opts?.style === 'string' && opts.style.trim() ? opts.style.trim() : null,
       }
+      if (findOpts.regex) {
+        try {
+          assertSafeMacroRegex(query, limits.maxRegexLength)
+        } catch (err) {
+          failHost('invalid_argument', err instanceof Error ? err.message : String(err))
+        }
+      }
       execState.lastFind = { ...findOpts, replacement }
       const result = replaceFindMatches(doc, findOpts, replacement, 'all')
       if (!result.ok) {
@@ -1402,6 +2256,8 @@ export function createMacroApi(doc, state, options = undefined) {
         execState.caret.offset,
       )
       execState.selection = null
+      execState.selectionAnchor = null
+      execState.atLineEnd = false
       checkObjectsPreserved()
       return sanitizeHostValue(
         {
@@ -1429,6 +2285,13 @@ export function createMacroApi(doc, state, options = undefined) {
         wholeWord: Boolean(opts?.wholeWord),
         regex: Boolean(opts?.regex),
         style: typeof opts?.style === 'string' && opts.style.trim() ? opts.style.trim() : null,
+      }
+      if (findOpts.regex) {
+        try {
+          assertSafeMacroRegex(query, limits.maxRegexLength)
+        } catch (err) {
+          failHost('invalid_argument', err instanceof Error ? err.message : String(err))
+        }
       }
       execState.lastFind = { ...findOpts, replacement }
       const found = findMatches(doc, findOpts)
@@ -1724,19 +2587,42 @@ export function createMacroApi(doc, state, options = undefined) {
     // Message
     // -----------------------------------------------------------------------
     message(text) {
-      if (execState.messages.length >= MAX_MACRO_MESSAGES) return
-      const msg = String(text ?? '')
-      execState.messages.push(
-        msg.length > limits.maxStringLength ? msg.slice(0, limits.maxStringLength) : msg,
-      )
+      if (execState.messages.length >= MAX_MACRO_MESSAGES || execState.messagesTruncated) return
+      let msg = String(text ?? '')
+      if (msg.length > MAX_MACRO_MESSAGE_LENGTH) {
+        msg = `${msg.slice(0, MAX_MACRO_MESSAGE_LENGTH - 1)}…`
+      }
+      const remaining = MAX_MACRO_TOTAL_MESSAGE_CHARS - execState.messageChars
+      if (msg.length > remaining) {
+        if (remaining > 1) {
+          execState.messages.push(`${msg.slice(0, remaining - 1)}…`)
+          execState.messageChars += remaining
+        } else if (remaining === 1) {
+          execState.messages.push('…')
+          execState.messageChars += 1
+        }
+        execState.messagesTruncated = true
+        return
+      }
+      execState.messages.push(msg)
+      execState.messageChars += msg.length
     },
   }
 
-  return Object.assign(Object.create(null), api)
+  const wrappedApi = Object.create(null)
+  for (const [key, fn] of Object.entries(api)) {
+    wrappedApi[key] = (...args) => {
+      checkDeadline()
+      const out = fn(...args)
+      checkDeadline()
+      return out
+    }
+  }
+  return wrappedApi
 }
 
-function executeMacroCore(doc, source, options, limits) {
-  const state = createInitialState(doc, options, limits)
+function executeMacroCore(doc, source, options, limits, nowFn, startTime) {
+  const state = createInitialState(doc, options, limits, nowFn, startTime)
   const api = createMacroApi(doc, state, { ...options, limits })
   const compat = createCompatGlobals(api, { limits, state })
 
@@ -1756,10 +2642,26 @@ function executeMacroCore(doc, source, options, limits) {
 
   const runResult = runMacroScript(source, globals, {
     limits,
-    ...(options?.now !== undefined ? { now: options.now } : {}),
+    now: nowFn,
+    startTime,
   })
 
   if (runResult.ok) {
+    const postRunElapsed = Math.max(runResult.elapsedMs, nowFn() - startTime)
+    if (postRunElapsed > limits.maxTimeMs) {
+      return {
+        ok: false,
+        code: 'time_limit',
+        error: `Execution time limit (${limits.maxTimeMs}ms) exceeded`,
+        line: null,
+        column: null,
+        phase: 'post_run',
+        messages: [...state.messages],
+        steps: runResult.steps,
+        elapsedMs: postRunElapsed,
+      }
+    }
+
     // Final post-run protection verification across the entire macro run.
     try {
       const after = captureProtectionSnapshot(doc)
@@ -1800,11 +2702,12 @@ function executeMacroCore(doc, source, options, limits) {
         ok: false,
         code: state.lastError?.code ?? 'object_loss',
         error: err instanceof Error ? err.message : String(err),
-        line: 1,
-        column: 1,
+        line: null,
+        column: null,
+        phase: 'post_run',
         messages: [...state.messages],
         steps: runResult.steps,
-        elapsedMs: runResult.elapsedMs,
+        elapsedMs: Math.max(runResult.elapsedMs, nowFn() - startTime),
       }
     }
 
@@ -1814,7 +2717,7 @@ function executeMacroCore(doc, source, options, limits) {
       messages: [...state.messages],
       caret: { ...state.caret },
       steps: runResult.steps,
-      elapsedMs: runResult.elapsedMs,
+      elapsedMs: Math.max(runResult.elapsedMs, nowFn() - startTime),
       changed: state.mutated,
     }
   }
@@ -1833,7 +2736,7 @@ function executeMacroCore(doc, source, options, limits) {
     ...(unsupportedAction !== undefined ? { unsupportedAction } : {}),
     messages: [...state.messages],
     steps: runResult.steps,
-    elapsedMs: runResult.elapsedMs,
+    elapsedMs: Math.max(runResult.elapsedMs, nowFn() - startTime),
   }
 }
 
@@ -1841,7 +2744,7 @@ function validateHostOptions(options) {
   if (options !== undefined && options !== null && !isPlainRecord(options)) {
     throw new RangeError('Macro host options must be a plain object')
   }
-  const limits = validateMacroLimits(options?.limits)
+  const limits = resolveHostLimits(options?.limits)
   if (options?.now !== undefined && typeof options.now !== 'function') {
     throw new TypeError('Macro option "now" must be a function')
   }
@@ -1849,9 +2752,9 @@ function validateHostOptions(options) {
 }
 
 /**
- * Execute a macro script against a plugin host (single `host.transaction` with
- * `foreign: true`) or directly against an `HwpDocument` (engine snapshot
- * save/restore). Any failure rolls back atomically with zero undo steps.
+ * Execute a macro script against a plugin host (single `host.transaction`) or
+ * directly against an `HwpDocument` (engine snapshot save/restore). Any failure
+ * rolls back atomically with zero undo steps.
  */
 export function executeMacroTransaction(hostOrDoc, source, options = undefined) {
   if (!hostOrDoc || typeof hostOrDoc !== 'object') {
@@ -1879,27 +2782,43 @@ export function executeMacroTransaction(hostOrDoc, source, options = undefined) 
     }
   }
 
-  // Plugin host path: one atomic transaction with `foreign: true`.
+  // Plugin host path: one atomic transaction.
   if (typeof hostOrDoc.transaction === 'function') {
+    let failedResult = null
     try {
-      return hostOrDoc.transaction(
-        'macro',
-        (tx) => {
-          if (tx && typeof tx.deferPagination === 'function') {
-            tx.deferPagination()
-          }
-          const doc = tx.doc()
-          const result = executeMacroCore(doc, source, options, limits)
-          if (!result.ok) {
-            throw new MacroRollbackError(result)
-          }
-          return result
-        },
-        { foreign: true },
-      )
+      return hostOrDoc.transaction('macro', (tx) => {
+        if (tx && typeof tx.deferPagination === 'function') {
+          tx.deferPagination()
+        }
+        const doc = tx.doc()
+        const result = executeMacroCore(doc, source, options, limits, nowFn, startTime)
+        if (!result.ok) {
+          failedResult = result
+          throw new MacroRollbackError(result)
+        }
+        if (!result.changed && tx && typeof tx.markNoOp === 'function') {
+          tx.markNoOp()
+        }
+        return result
+      })
     } catch (err) {
+      if (
+        err &&
+        typeof err === 'object' &&
+        err.report &&
+        typeof err.report.then === 'function' &&
+        typeof options?.onRecoveryReport === 'function'
+      ) {
+        options.onRecoveryReport(err.report)
+      }
+      if (failedResult !== null) {
+        return failedResult
+      }
       if (err instanceof MacroRollbackError) {
         return err.result
+      }
+      if (err && typeof err === 'object' && err.cause instanceof MacroRollbackError) {
+        return err.cause.result
       }
       return {
         ok: false,
@@ -1920,7 +2839,7 @@ export function executeMacroTransaction(hostOrDoc, source, options = undefined) 
     typeof doc.saveSnapshot === 'function' && typeof doc.restoreSnapshot === 'function'
   const snapshotId = hasSnapshot ? doc.saveSnapshot() : null
 
-  const result = executeMacroCore(doc, source, options, limits)
+  const result = executeMacroCore(doc, source, options, limits, nowFn, startTime)
   if (result.ok) {
     if (snapshotId !== null && typeof doc.discardSnapshot === 'function') {
       doc.discardSnapshot(snapshotId)

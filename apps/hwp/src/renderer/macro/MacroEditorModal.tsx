@@ -30,7 +30,7 @@ import {
 } from '../../../studio-plugin/macro-recorder.mjs'
 import type { MacroOrigin, MacroRecord } from '../../shared/ipc'
 import { useSubscriptionConnection } from '../ai/subscription-client'
-import { useMacroI18n } from '../i18n/macro'
+import { localizeSkippedCommandLabel, useMacroI18n } from '../i18n/macro'
 import { requestAiMacroDraft, type MacroAiBlockedInfo, type MacroAiStreamClient } from './macro-ai'
 import './macro-modal.css'
 
@@ -515,7 +515,9 @@ export function MacroEditorModal({
               </div>
               <ul className="macro-skipped-list">
                 {skippedActions.map((item, index) => (
-                  <li key={`${item.commandId}-${index}`}>{item.label || item.commandId}</li>
+                  <li key={`${item.commandId}-${index}`}>
+                    {localizeSkippedCommandLabel(lang, item.commandId, item.label)}
+                  </li>
                 ))}
               </ul>
             </div>

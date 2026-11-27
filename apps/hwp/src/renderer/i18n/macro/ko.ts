@@ -108,4 +108,29 @@ export const ko = {
   aiDraftReady: '스크립트 초안을 편집 칸에 넣었습니다. 저장하거나 실행하기 전에 확인하세요.',
   aiDraftFailed: '매크로 스크립트를 만들지 못했습니다: {error}',
   aiNoOutput: 'AI가 매크로 스크립트를 돌려주지 않았습니다.',
+  importPreviewSlotHint:
+    '단축키는 자동으로 지정되지 않습니다. 저장한 뒤 매크로 관리에서 직접 고르세요.',
+  importPreviewBidiWarning:
+    '이 스크립트에 보이지 않는 방향 제어·폭 없는 문자가 포함되어 있습니다([U+XXXX]로 표시됨).',
+  noticeMacroOutsideBody: '본문 문단에 커서가 있을 때만 매크로를 기록하거나 실행할 수 있습니다.',
+  noticeMacroRunNotRecorded: '기록 중에 다른 매크로를 실행한 동작은 기록되지 않습니다.',
+  noticeMacroRollbackObjectLossAt:
+    '문서의 개체나 메모 손실을 막기 위해 {line}행 {column}열에서 매크로를 멈추고 변경을 되돌렸습니다.',
+  noticeMacroRollbackObjectLossPostRun:
+    '실행 끝 검사에서 문서 개체나 메모 손실이 감지되어 매크로를 멈추고 변경을 되돌렸습니다.',
+  noticeMacroRunErrorPostRun: '실행 끝 검사에서 매크로가 실패했습니다: {error}',
+  cmdUndo: '되돌리기',
+  cmdRedo: '다시 실행',
+  cmdCopy: '복사',
+  cmdCut: '오려두기',
+  cmdPaste: '붙여넣기',
+  cmdFind: '찾기',
+  cmdInsertImage: '그림 넣기',
+  cmdInsertFootnote: '각주 넣기',
+  cmdInsertEndnote: '미주 넣기',
+  cmdInsertHyperlink: '하이퍼링크 넣기',
+  cmdInsertBookmark: '책갈피 넣기',
+  cmdLineBreak: '줄 바꿈',
+  cmdTab: '탭',
+  cmdOtherAction: '지원하지 않는 편집 동작({id})',
 } satisfies Record<keyof typeof zh, string>

@@ -20,6 +20,7 @@ import {
 } from '@genoffice/ai-provider/browser'
 import type { Lang } from '@genoffice/i18n'
 import { aiRunErrorText, isAiBlockedRunKind, type AiBlockedRunKind } from '@genoffice/ui'
+import { INTERPRETER_CAPABILITIES } from '../../../studio-plugin/macro-interpreter.mjs'
 
 /** Stream transport subset needed for single-turn AI macro drafting (injectable in tests). */
 export interface MacroAiStreamClient {
@@ -58,19 +59,40 @@ export type RequestAiMacroDraftResult =
       notConnected?: Extract<AiProviderChoice, { connected: false }>
     }
 
-const MACRO_AI_SYSTEM_BASE = `You write synchronous document macro scripts for a Hangul (.hwp / .hwpx) word processor.
+function buildMacroAiSystemBase(): string {
+  const caps = INTERPRETER_CAPABILITIES
+  const keywordsList = caps.keywords.join(', ')
+  const globalsList = caps.globals.join(', ')
+  const mathList = [...caps.mathConstants, ...caps.mathMethods].map((m) => `Math.${m}`).join(', ')
+  const numberList = caps.numberMethods.map((m) => `Number.${m}`).join(', ')
+  const objectList = caps.objectMethods.map((m) => `Object.${m}`).join(', ')
+  const jsonList = caps.jsonMethods.map((m) => `JSON.${m}`).join(', ')
+  const stringList = caps.stringMethods.join(', ')
+  const arrayList = caps.arrayMethods.join(', ')
+
+  return `You write synchronous document macro scripts for a Hangul (.hwp / .hwpx) word processor.
 Output ONLY a single JavaScript macro script inside one \`\`\`js code block (no explanation before or after).
 
 ## Allowed JavaScript Subset (Restricted Synchronous Interpreter)
-- Variables: var, let, const
+- Supported keywords: ${keywordsList}
+- Expressions & operators: ternary (? :), arithmetic (+, -, *, /, %, **), comparisons (===, !==, ==, !=, <, <=, >, >=), logical (&&, ||, ??), unary (!, -, +, typeof), update (++, --), compound assignment (+=, -=, *=, /=, %=), arrow functions ((x) => ...)
 - Literals and collections: numbers, strings, booleans, null, undefined, plain objects, arrays
-- Control flow: if / else, switch / case / default, for, while, do-while, break, continue, ternary (? :)
-- Functions: function declarations and function expressions, return
-- Errors: try / catch / finally, throw
-- Safe built-ins: Math, String methods, Array methods, Object.keys/values/entries, JSON.parse/stringify, parseInt, parseFloat, isNaN, isFinite
+- Loops: for, for...of (arrays and strings), while, do...while, switch/case/default, break, continue
+- Functions: function declarations, function expressions, arrow functions, return
+- Built-in globals (${globalsList}):
+  - Math: ${mathList}
+  - Number: Number(x), ${numberList}
+  - String(x), Boolean(x), Array.isArray(x)
+  - Object: ${objectList}
+  - JSON: ${jsonList}
+- String methods: ${stringList}
+- Array methods: ${arrayList}
 
 ## Strictly Forbidden (Will Fail Syntax or Runtime Checks)
-- Do NOT use eval, Function, new, import, export, class, async, await, Promise, generators
+- Do NOT use try, catch, finally, or throw (not supported by the restricted interpreter)
+- Do NOT call top-level parseInt, parseFloat, isNaN, or isFinite (use Number.parseInt, Number.parseFloat, Number.isFinite instead)
+- Do NOT call Array.prototype.sort or Number.prototype.toFixed (not in the method allowlist)
+- Do NOT use eval, Function, new, import, export, class, async, await, Promise, generators, regex literals (/.../)
 - Do NOT access fetch, XMLHttpRequest, window, document, globalThis, process, require, setTimeout, setInterval
 - Do NOT access __proto__, constructor, or prototype
 - Do NOT call Undo or Redo (refused inside a macro; the entire macro runs in one atomic undo step)
@@ -81,15 +103,19 @@ Output ONLY a single JavaScript macro script inside one \`\`\`js code block (no 
   - breakPara()
   - breakPage()
   - deleteSelection()
+  - deleteBackward(count?)
+  - deleteForward(count?)
 - Navigation & selection:
   - moveDocBegin(), moveDocEnd(), moveParaBegin(), moveParaEnd(), moveLineBegin(), moveLineEnd()
   - moveLeft(count?), moveRight(count?), moveUp(count?), moveDown(count?), moveWordLeft(count?), moveWordRight(count?)
+  - selectLeft(count?), selectRight(count?), selectUp(count?), selectDown(count?), selectWordLeft(count?), selectWordRight(count?)
+  - selectLineBegin(), selectLineEnd(), selectParaBegin(), selectParaEnd(), selectDocBegin(), selectDocEnd()
   - select(fromSec, fromPara, fromOffset, toSec, toPara, toOffset)
   - selectAll(), cancelSelection()
   - getCaret() -> { sec, para, offset }
   - getSelection() -> { startSec, startPara, startOffset, endSec, endPara, endOffset, text } | null
 - Formatting & styles:
-  - setCharFormat({ bold?, italic?, underline?, strikethrough?, fontSize?, fontName?, textColor? })
+  - setCharFormat({ bold?, italic?, underline?, strikethrough?, fontSize?, fontName?, textColor? }) // when there is no selection, applies to the next insertText()
   - setParaFormat({ align?: 'left'|'center'|'right'|'justify', lineSpacing?, leftMargin?, rightMargin?, firstLineIndent?, spaceBefore?, spaceAfter?, pageBreakBefore? })
   - applyStyle(nameOrId), listStyles() -> [{ id, name }]
 - Search & replace:
@@ -107,9 +133,13 @@ Output ONLY a single JavaScript macro script inside one \`\`\`js code block (no 
 ## Compatible Macro Script Object (Optional Alternative)
 - HAction.GetDefault(actionName, pset), HAction.Execute(actionName, pset), HAction.Run(actionName)
 - HParameterSet: HInsertText, HCharShape, HParaShape, HStyle, HFindReplace, HTableCreation, HSelectionOpt
+- HCharShape.TextColor accepts a BGR integer (0x00BBGGRR) or '#RRGGBB' hex string; HCharShape.Height is in 100 units/pt
+- HParaShape margin/indent/spacing fields (LeftMargin, RightMargin, Indentation, PrevSpacing, NextSpacing) are in 200 units/pt
+- HFindReplace uses FindRegExp (boolean) for regex search (UseWildCards and RegExp are refused)
 - Supported action names: InsertText, BreakPara, BreakPage, CharShape, ParagraphShape, ParaShape, Style, MoveDocBegin, MoveDocEnd, MoveParaBegin, MoveParaEnd, MoveLineBegin, MoveLineEnd, MoveLeft, MoveRight, MoveUp, MoveDown, Select, SelectAll, Cancel, AllReplace, FindReplace, RepeatFind, TableCreate
 
 Prefer the concise direct API functions unless the user asks for the compatible macro script object form.`
+}
 
 /**
  * Build the system + user message payload for AI macro script drafting.
@@ -118,7 +148,7 @@ Prefer the concise direct API functions unless the user asks for the compatible 
  */
 export function buildMacroAiMessages(userPrompt: string, lang: Lang): MacroAiBuiltPrompt {
   const trimmed = userPrompt.trim()
-  const system = `${MACRO_AI_SYSTEM_BASE}\n\nFor any user-facing message() text or brief inline comments, match the user's language (fallback locale: ${lang}).`
+  const system = `${buildMacroAiSystemBase()}\n\nFor any user-facing message() text or brief inline comments, match the user's language (fallback locale: ${lang}).`
   return {
     system,
     messages: [{ role: 'user', text: trimmed }],

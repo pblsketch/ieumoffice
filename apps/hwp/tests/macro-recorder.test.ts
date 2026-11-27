@@ -12,13 +12,16 @@ import {
   MACRO_SLOT_KEYS,
   createMacroRecorder,
   getActiveMacroRecorder,
+  hasAssignedMacroSlot,
   isMacroRecordingActive,
   quoteScriptString,
   recordStudioCommand,
   recordStudioKey,
   recordStudioMouseClick,
+  recordStudioSlotRun,
   recordStudioText,
   setActiveMacroRecorder,
+  setAssignedMacroSlots,
   slotFromAltKey,
   type MacroRecorderNotice,
 } from '../studio-plugin/macro-recorder.mjs'
@@ -47,6 +50,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   setActiveMacroRecorder(null)
+  setAssignedMacroSlots([])
 })
 
 function makeDoc(paragraphs: string[] = ['']): HwpDocument {
@@ -112,17 +116,21 @@ function createMockTransactionHost(initial: HwpDocument) {
     },
     transaction<T>(
       label: string,
-      fn: (tx: { doc(): HwpDocument; deferPagination(): void }) => T,
+      fn: (tx: { doc(): HwpDocument; deferPagination(): void; markNoOp(): void }) => T,
       options?: { foreign?: boolean },
     ): T {
       const before = current.exportHwp()
+      let noOp = false
       try {
         const result = fn({
           doc: () => current,
           deferPagination: () => {},
+          markNoOp: () => {
+            noOp = true
+          },
         })
         txRecords.push({ label, options })
-        undoStack.push(before)
+        if (!noOp) undoStack.push(before)
         return result
       } catch (err) {
         current = new HwpDocument(before)
@@ -170,10 +178,16 @@ function createMockTransactionHost(initial: HwpDocument) {
 }
 
 describe('quoteScriptString and text recording round-trip', () => {
-  it('safely quotes special characters, escapes, and Unicode separators', () => {
-    const tricky = 'He said "hi" and \'ok\' \\ path\tend\0\u2028\u2029\x07'
+  it('safely quotes special characters, escapes, Unicode separators, and bidi/zero-width chars', () => {
+    const tricky =
+      'He said "hi" and \'ok\' \\ path\tend\0\u2028\u2029\x07\u200b\u200f\u202e\u2066\u2069'
     const literal = quoteScriptString(tricky)
     expect(literal.startsWith('"') && literal.endsWith('"')).toBe(true)
+    expect(literal).toContain('\\u200b')
+    expect(literal).toContain('\\u200f')
+    expect(literal).toContain('\\u202e')
+    expect(literal).toContain('\\u2066')
+    expect(literal).toContain('\\u2069')
     expect(validateMacroSyntax(`const s = ${literal};`)).toEqual({ ok: true })
 
     const parsed = JSON.parse(literal)
@@ -230,7 +244,7 @@ describe('command and keyboard recording with real-engine replay and single undo
     expect(stopped.script).toContain('setCharFormat({ bold: true });')
     expect(stopped.script).toContain('setParaFormat({ align: "center" });')
     expect(stopped.script).toContain('cancelSelection();')
-    expect(stopped.script).toContain('moveParaEnd();')
+    expect(stopped.script).toContain('moveLineEnd();')
     expect(stopped.script).toContain('breakPara();')
     expect(stopped.script).toContain('applyStyle(0);')
     expect(stopped.script).toContain('insertTable(2, 3);')
@@ -243,7 +257,7 @@ describe('command and keyboard recording with real-engine replay and single undo
     const result = executeMacroTransaction(mock.host, stopped.script)
     expect(result.ok).toBe(true)
     expect(mock.undoCount()).toBe(1)
-    expect(mock.txRecords()[0]).toEqual({ label: 'macro', options: { foreign: true } })
+    expect(mock.txRecords()[0]).toEqual({ label: 'macro', options: undefined })
 
     const texts = bodyTexts(mock.doc())
     expect(texts[0]).toBe('제목 문단')
@@ -255,8 +269,9 @@ describe('command and keyboard recording with real-engine replay and single undo
     expect(bytesEqual(mock.doc().exportHwp(), beforeBytes)).toBe(true)
   })
 
-  it('translates navigation, word movement, document edges, char/para props, replace-all, and refresh commands', () => {
-    const recorder = createMacroRecorder()
+  it('translates navigation, selection, backspace/delete, toggle state, char/para props, replace-all, and refresh commands', () => {
+    const notices: MacroRecorderNotice[] = []
+    const recorder = createMacroRecorder({ onNotice: (notice) => notices.push(notice) })
     recorder.start()
     recorder.recordKey({ key: 'ArrowLeft' })
     recorder.recordKey({ key: 'ArrowRight' })
@@ -264,10 +279,31 @@ describe('command and keyboard recording with real-engine replay and single undo
     recorder.recordKey({ key: 'ArrowDown' })
     recorder.recordKey({ key: 'ArrowLeft', ctrlKey: true })
     recorder.recordKey({ key: 'ArrowRight', ctrlKey: true })
+    recorder.recordKey({ key: 'ArrowLeft', shiftKey: true })
+    recorder.recordKey({ key: 'ArrowRight', shiftKey: true })
+    recorder.recordKey({ key: 'ArrowUp', shiftKey: true })
+    recorder.recordKey({ key: 'ArrowDown', shiftKey: true })
+    recorder.recordKey({ key: 'ArrowLeft', ctrlKey: true, shiftKey: true })
+    recorder.recordKey({ key: 'ArrowRight', ctrlKey: true, shiftKey: true })
     recorder.recordKey({ key: 'Home' })
+    recorder.recordKey({ key: 'End' })
+    recorder.recordKey({ key: 'Home', shiftKey: true })
+    recorder.recordKey({ key: 'End', shiftKey: true })
     recorder.recordKey({ key: 'Home', ctrlKey: true })
     recorder.recordKey({ key: 'End', ctrlKey: true })
+    recorder.recordKey({ key: 'Home', ctrlKey: true, shiftKey: true })
+    recorder.recordKey({ key: 'End', ctrlKey: true, shiftKey: true })
     recorder.recordKey({ key: 'Backspace' })
+    recorder.recordKey({ key: 'Backspace' }, { hadSelection: true })
+    recorder.recordKey({ key: 'Delete' })
+    recorder.recordKey({ key: 'Delete' }, { hadSelection: true })
+    recorder.recordKey({ key: 'Backspace', ctrlKey: true })
+    recorder.recordKey({ key: 'Delete', ctrlKey: true })
+    recorder.recordKey({ key: 'Enter', shiftKey: true })
+    recorder.recordKey({ key: 'Tab' })
+    recorder.recordCommand('format:bold', undefined, 'Bold', { bold: true })
+    recorder.recordCommand('format:bold', undefined, 'Bold', { bold: false })
+    recorder.recordCommand('format:italic', undefined, 'Italic', { italic: false })
     recorder.recordCommand('format:char-props', { bold: true, fontSize: 1200, color: '#112233' })
     recorder.recordCommand('format:para-props', { align: 'justify', lineSpacing: 160 })
     recorder.recordCommand('edit:replace-all', {
@@ -280,7 +316,14 @@ describe('command and keyboard recording with real-engine replay and single undo
     recorder.recordCommand('ext:ieum-bib-refresh-list')
     const stopped = recorder.stop()
 
-    expect(stopped.skipped).toEqual([])
+    expect(stopped.skipped).toEqual([
+      { commandId: 'edit:line-break', label: 'Shift+Enter' },
+      { commandId: 'edit:tab', label: 'Tab' },
+    ])
+    expect(notices).toEqual([
+      { kind: 'unsupported_command', commandId: 'edit:line-break', label: 'Shift+Enter' },
+      { kind: 'unsupported_command', commandId: 'edit:tab', label: 'Tab' },
+    ])
     expect(validateMacroSyntax(stopped.script)).toEqual({ ok: true })
     expect(stopped.script.split('\n')).toEqual([
       'moveLeft();',
@@ -289,10 +332,29 @@ describe('command and keyboard recording with real-engine replay and single undo
       'moveDown();',
       'moveWordLeft();',
       'moveWordRight();',
-      'moveParaBegin();',
+      'selectLeft();',
+      'selectRight();',
+      'selectUp();',
+      'selectDown();',
+      'selectWordLeft();',
+      'selectWordRight();',
+      'moveLineBegin();',
+      'moveLineEnd();',
+      'selectLineBegin();',
+      'selectLineEnd();',
       'moveDocBegin();',
       'moveDocEnd();',
+      'selectDocBegin();',
+      'selectDocEnd();',
+      'deleteBackward();',
       'deleteSelection();',
+      'deleteForward();',
+      'deleteSelection();',
+      'selectWordLeft(); deleteSelection();',
+      'selectWordRight(); deleteSelection();',
+      'setCharFormat({ bold: true });',
+      'setCharFormat({ bold: false });',
+      'setCharFormat({ italic: false });',
       'setCharFormat({ bold: true, fontSize: 12, color: "#112233" });',
       'setParaFormat({ align: "justify", lineSpacing: 160 });',
       'replaceAll("foo", "bar", { caseSensitive: true });',
@@ -300,6 +362,74 @@ describe('command and keyboard recording with real-engine replay and single undo
       'refreshIndex();',
       'refreshBibliography();',
     ])
+  })
+
+  it('replays recorded Backspace, Delete, Shift+End+Bold, and toggle-off Bold against real HwpDocument', () => {
+    // 1) "abcd", Backspace, "e" -> "abce"
+    {
+      const rec = createMacroRecorder()
+      rec.start()
+      rec.recordText('abcd')
+      rec.recordKey({ key: 'Backspace' })
+      rec.recordText('e')
+      const { script } = rec.stop()
+      const doc = makeDoc([''])
+      const res = runMacroOnDocument(doc, script)
+      expect(res.ok).toBe(true)
+      expect(bodyTexts(doc)).toEqual(['abce'])
+    }
+
+    // 2) "abc", moveLeft, Delete -> "ab"
+    {
+      const rec = createMacroRecorder()
+      rec.start()
+      rec.recordText('abc')
+      rec.recordKey({ key: 'ArrowLeft' })
+      rec.recordKey({ key: 'Delete' })
+      const { script } = rec.stop()
+      const doc = makeDoc([''])
+      const res = runMacroOnDocument(doc, script)
+      expect(res.ok).toBe(true)
+      expect(bodyTexts(doc)).toEqual(['ab'])
+    }
+
+    // 3) "hello world", Shift+End (from offset 6), Ctrl+B -> bolds ONLY "world"
+    {
+      const rec = createMacroRecorder()
+      rec.start()
+      rec.recordKey({ key: 'End', shiftKey: true })
+      rec.recordCommand('format:bold', undefined, 'Bold', { bold: true })
+      const { script } = rec.stop()
+      const doc = makeDoc(['hello world'])
+      const res = runMacroOnDocument(doc, script, { caret: { sec: 0, para: 0, offset: 6 } })
+      expect(res.ok).toBe(true)
+      const hProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 0)) as { bold?: boolean }
+      const wProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 6)) as { bold?: boolean }
+      expect(Boolean(hProps.bold)).toBe(false)
+      expect(Boolean(wProps.bold)).toBe(true)
+    }
+
+    // 4) "plain ", Ctrl+B (on), "bold", Ctrl+B (off), " end" -> bolds ONLY "bold"
+    {
+      const rec = createMacroRecorder()
+      rec.start()
+      rec.recordText('plain ')
+      rec.recordCommand('format:bold', undefined, 'Bold', { bold: true })
+      rec.recordText('bold')
+      rec.recordCommand('format:bold', undefined, 'Bold', { bold: false })
+      rec.recordText(' end')
+      const { script } = rec.stop()
+      const doc = makeDoc([''])
+      const res = runMacroOnDocument(doc, script)
+      expect(res.ok).toBe(true)
+      expect(bodyTexts(doc)).toEqual(['plain bold end'])
+      const pProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 0)) as { bold?: boolean }
+      const bProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 6)) as { bold?: boolean }
+      const eProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 11)) as { bold?: boolean }
+      expect(Boolean(pProps.bold)).toBe(false)
+      expect(Boolean(bProps.bold)).toBe(true)
+      expect(Boolean(eProps.bold)).toBe(false)
+    }
   })
 
   it('notifies immediately on unsupported commands and accumulates skipped entries without corrupting script', () => {
@@ -442,28 +572,53 @@ describe('macro slot shortcuts and keyboard dispatcher', () => {
         }),
       ).toBe(true)
 
-      // Alt+0 runs slot 10 and Alt+- runs slot 11.
+      // Alt+0 runs slot 10 and Alt+- runs slot 11 ONLY when assigned.
       expect(
-        macroShortcutKey({
-          altKey: true,
-          shiftKey: false,
-          ctrlKey: false,
-          metaKey: false,
-          code: 'Digit0',
-          key: '0',
-          preventDefault: prevent,
-        }),
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit0',
+            key: '0',
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(prevent).toHaveBeenCalledTimes(2)
+
+      setAssignedMacroSlots([10, 11])
+      expect(hasAssignedMacroSlot(10)).toBe(true)
+      expect(hasAssignedMacroSlot(3)).toBe(false)
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit0',
+            key: '0',
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
       ).toBe(true)
       expect(
-        macroShortcutKey({
-          altKey: true,
-          shiftKey: false,
-          ctrlKey: false,
-          metaKey: false,
-          code: 'Minus',
-          key: '-',
-          preventDefault: prevent,
-        }),
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Minus',
+            key: '-',
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
       ).toBe(true)
 
       expect(captured.details).toEqual([
@@ -471,6 +626,166 @@ describe('macro slot shortcuts and keyboard dispatcher', () => {
         { action: 'stop-record' },
         { action: 'run-slot', slot: 10 },
         { action: 'run-slot', slot: 11 },
+      ])
+    } finally {
+      captured.restore()
+    }
+  })
+
+  it('guards Mac Option key, IME composing, dialog/input targets, unassigned slots, and emits slot_run_ignored during recording', () => {
+    const captured = captureDispatchedEvents(MACRO_COMMAND_EVENT)
+    try {
+      setAssignedMacroSlots([1, 2])
+      const prevent = vi.fn()
+
+      // Mac Option key passes through without preventDefault.
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit1',
+            key: '1',
+            preventDefault: prevent,
+          },
+          { isMac: true },
+        ),
+      ).toBe(false)
+      expect(prevent).not.toHaveBeenCalled()
+
+      // IME composing passes through without preventDefault.
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit1',
+            key: 'Process',
+            isComposing: true,
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit1',
+            key: 'Process',
+            keyCode: 229,
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(prevent).not.toHaveBeenCalled()
+
+      // Non-editor input and dialog targets pass through.
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit1',
+            key: '1',
+            target: { tagName: 'INPUT' },
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit1',
+            key: '1',
+            target: {
+              tagName: 'DIV',
+              closest: (sel: string) => (sel.includes('[role="dialog"]') ? {} : null),
+            },
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit1',
+            key: '1',
+            target: { tagName: 'TEXTAREA', style: { opacity: '1' } },
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(prevent).not.toHaveBeenCalled()
+
+      // Unassigned slot passes through without preventDefault.
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit5',
+            key: '5',
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(false)
+      expect(prevent).not.toHaveBeenCalled()
+
+      // Editor hidden textarea + assigned slot works and emits slot_run_ignored while recording.
+      const notices: MacroRecorderNotice[] = []
+      const rec = createMacroRecorder({ onNotice: (notice) => notices.push(notice) })
+      rec.start()
+      setActiveMacroRecorder(rec)
+      expect(
+        macroShortcutKey(
+          {
+            altKey: true,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            code: 'Digit2',
+            key: '2',
+            target: { tagName: 'TEXTAREA', style: { opacity: '0' } },
+            preventDefault: prevent,
+          },
+          { isMac: false },
+        ),
+      ).toBe(true)
+      expect(prevent).toHaveBeenCalledTimes(1)
+      expect(notices).toEqual([{ kind: 'slot_run_ignored', slot: 2 }])
+      expect(rec.getScript()).toBe('')
+      expect(captured.details).toEqual([{ action: 'run-slot', slot: 2 }])
+
+      // Direct recordStudioSlotRun helper also emits notice when recording.
+      expect(recordStudioSlotRun(4)).toBe(true)
+      expect(notices).toEqual([
+        { kind: 'slot_run_ignored', slot: 2 },
+        { kind: 'slot_run_ignored', slot: 4 },
       ])
     } finally {
       captured.restore()
@@ -502,7 +817,7 @@ describe('Tool-menu wiring, agentPlugin macro surface, and AgentBridge', () => {
     }
   })
 
-  it('exposes all 6 macro methods on agentPlugin.activate(host) and replays recorded scripts in 1 undo step', () => {
+  it('exposes all macro methods on agentPlugin.activate(host) and replays recorded scripts in 1 undo step', async () => {
     const doc = makeDoc(['원본'])
     const beforeBytes = doc.exportHwp()
     const mock = createMockTransactionHost(doc)
@@ -518,6 +833,10 @@ describe('Tool-menu wiring, agentPlugin macro surface, and AgentBridge', () => {
     expect(
       surface.installMacroMenu({ recordToggle: '매크로 기록', manage: '매크로 관리' }),
     ).toEqual({ ok: true })
+    expect(surface.syncMacroSlots([1, 5, 99, -1])).toEqual({ ok: true, slots: [1, 5] })
+    expect(hasAssignedMacroSlot(1)).toBe(true)
+    expect(hasAssignedMacroSlot(5)).toBe(true)
+    expect(hasAssignedMacroSlot(2)).toBe(false)
 
     const captured = captureDispatchedEvents(MACRO_RECORDING_EVENT)
     try {
@@ -543,7 +862,7 @@ describe('Tool-menu wiring, agentPlugin macro surface, and AgentBridge', () => {
       expect(stopped.stepCount).toBe(3)
       expect(stopped.skipped).toEqual([{ commandId: 'insert:image', label: 'Image' }])
       expect(stopped.script).toBe(
-        ['moveParaEnd();', 'insertText(" 추가");', 'setCharFormat({ bold: true });'].join('\n'),
+        ['moveLineEnd();', 'insertText(" 추가");', 'setCharFormat({ bold: true });'].join('\n'),
       )
       expect(getActiveMacroRecorder()).toBeNull()
 
@@ -560,20 +879,201 @@ describe('Tool-menu wiring, agentPlugin macro surface, and AgentBridge', () => {
       ])
 
       // Replay the recorded script through surface.runMacro in 1 atomic undo step.
-      const runRes = surface.runMacro(stopped.script)
+      const foreignBefore = surface.foreignChanges()
+      const runRes = await surface.runMacro(stopped.script)
       expect(runRes.ok).toBe(true)
+      expect(surface.foreignChanges()).toBe(foreignBefore + 1)
       expect(bodyTexts(mock.doc())).toEqual(['원본 추가'])
       expect(mock.undoCount()).toBe(1)
       expect(mock.executedCommands.some((entry) => entry.id === 'ext:ieum-reveal')).toBe(true)
 
       expect(mock.undoOnce()).toBe(true)
       expect(bytesEqual(mock.doc().exportHwp(), beforeBytes)).toBe(true)
+
+      // No-op macro does NOT increment foreignChanges.
+      const noopRes = await surface.runMacro('const n = getParagraphCount(); message(n);')
+      expect(noopRes.ok).toBe(true)
+      expect(surface.foreignChanges()).toBe(foreignBefore + 1)
+
+      // Failed / rolled-back macro does NOT increment foreignChanges.
+      const failRes = await surface.runMacro('insertText("temp"); applyStyle("__missing_style__");')
+      expect(failRes.ok).toBe(false)
+      expect(surface.foreignChanges()).toBe(foreignBefore + 1)
     } finally {
       captured.restore()
     }
   })
 
-  it('forwards all 6 macro methods through createAgentBridge', async () => {
+  it('tracks foreignChanges explicitly on mutating macros only (even when host emits document-changed)', async () => {
+    const doc = makeDoc(['초기'])
+    const listeners: Array<() => void> = []
+    const mock = createMockTransactionHost(doc)
+    mock.host.events = {
+      on(name: string, handler: () => void) {
+        if (name === 'document-changed') listeners.push(handler)
+      },
+    }
+    const origTx = mock.host.transaction.bind(mock.host)
+    mock.host.transaction = ((label: string, fn: never, options?: { foreign?: boolean }) => {
+      const res = origTx(label, fn, options)
+      for (const listener of listeners) listener()
+      return res
+    }) as typeof mock.host.transaction
+
+    const surface = agentPlugin.activate(mock.host as never)
+    expect(surface.foreignChanges()).toBe(0)
+
+    // Mutating macro increments foreign by exactly 1 (not 2!).
+    const r1 = await surface.runMacro('insertText("A");')
+    expect(r1.ok).toBe(true)
+    expect(surface.foreignChanges()).toBe(1)
+
+    // No-op macro leaves foreign unchanged AND records 0 undo steps (via tx.markNoOp).
+    const undoBeforeNoop = mock.undoCount()
+    const r2 = await surface.runMacro('const c = getParagraphCount(); message(c);')
+    expect(r2.ok).toBe(true)
+    expect(surface.foreignChanges()).toBe(1)
+    expect(mock.undoCount()).toBe(undoBeforeNoop)
+
+    // Failed/rolled-back macro leaves foreign unchanged.
+    const r3 = await surface.runMacro('insertText("X"); applyStyle("__missing_style__");')
+    expect(r3.ok).toBe(false)
+    expect(surface.foreignChanges()).toBe(1)
+  })
+
+  it('awaits StudioCommandError recovery report before runMacro resolves', async () => {
+    const doc = makeDoc(['초기'])
+    const mock = createMockTransactionHost(doc)
+    let reportSettled = false
+    let resolveReport!: (value: { recovery: string }) => void
+    const reportPromise = new Promise<{ recovery: string }>((resolve) => {
+      resolveReport = resolve
+    }).then((payload) => {
+      reportSettled = true
+      return payload
+    })
+
+    const origTx = mock.host.transaction.bind(mock.host)
+    mock.host.transaction = ((label: string, fn: never, options?: { foreign?: boolean }) => {
+      try {
+        return origTx(label, fn, options)
+      } catch (cause) {
+        const wrapped = Object.assign(new Error('Studio command failed'), {
+          cause,
+          report: reportPromise,
+        })
+        throw wrapped
+      }
+    }) as typeof mock.host.transaction
+
+    const surface = agentPlugin.activate(mock.host as never)
+    let finished = false
+    const pending = surface
+      .runMacro('insertText("temp"); applyStyle("__missing_style__");')
+      .then((res) => {
+        finished = true
+        return res
+      })
+
+    // Microtasks flush, but runMacro must stay pending until reportPromise resolves.
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(finished).toBe(false)
+    expect(reportSettled).toBe(false)
+
+    resolveReport({ recovery: 'succeeded' })
+    const res = await pending
+    expect(reportSettled).toBe(true)
+    expect(res.ok).toBe(false)
+    expect(bodyTexts(mock.doc())).toEqual(['초기'])
+  })
+
+  it('rejects runMacro and startMacroRecording when caret is outside body paragraphs (table, textbox, header/footer, note)', async () => {
+    const doc = makeDoc(['본문'])
+    const mock = createMockTransactionHost(doc)
+
+    // Override automation.execute to inject a fake InputHandler cursor for CARET_POSITION_COMMAND
+    let fakeCursor: Record<string, unknown> = {}
+    const origExecute = mock.host.automation.execute
+    mock.host.automation.execute = (command: string, params?: unknown) => {
+      if (command === 'ext:ieum-caret-position') {
+        const def = mock.commands.get(command)
+        if (def) {
+          def.execute({ getInputHandler: () => ({ cursor: fakeCursor }) }, params)
+          return { ok: true }
+        }
+      }
+      return origExecute(command, params)
+    }
+
+    const surface = agentPlugin.activate(mock.host as never)
+
+    const nonBodyCursors: Array<{ name: string; cursor: Record<string, unknown> }> = [
+      { name: 'header/footer', cursor: { isInHeaderFooter: () => true } },
+      { name: 'footnote', cursor: { isInFootnote: () => true, fnSectionIdx: 0, fnParaIdx: 0 } },
+      {
+        name: 'table cell',
+        cursor: {
+          getPosition: () => ({
+            sectionIndex: 0,
+            paragraphIndex: 0,
+            charOffset: 0,
+            parentParaIndex: 0,
+            controlIndex: 0,
+            cellIndex: 0,
+            cellParaIndex: 0,
+            cellPath: [{ controlIndex: 0, cellIndex: 0, cellParaIndex: 0 }],
+          }),
+        },
+      },
+      {
+        name: 'text box',
+        cursor: {
+          getPosition: () => ({
+            sectionIndex: 0,
+            paragraphIndex: 0,
+            charOffset: 0,
+            parentParaIndex: 0,
+            controlIndex: 0,
+            cellIndex: 0,
+            cellParaIndex: 0,
+            isTextBox: true,
+            cellPath: [{ controlIndex: 0, cellIndex: 0, cellParaIndex: 0 }],
+          }),
+        },
+      },
+    ]
+
+    for (const item of nonBodyCursors) {
+      fakeCursor = item.cursor
+      const recRes = surface.startMacroRecording()
+      expect(recRes, item.name).toMatchObject({
+        ok: false,
+        recording: false,
+        reason: 'unsupported_place',
+      })
+      expect(isMacroRecordingActive()).toBe(false)
+
+      const runRes = await surface.runMacro('insertText("x");')
+      expect(runRes, item.name).toMatchObject({
+        ok: false,
+        code: 'unsupported_place',
+      })
+      expect(mock.undoCount()).toBe(0)
+    }
+
+    // Body caret is accepted.
+    fakeCursor = {
+      getPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 2 }),
+    }
+    expect(surface.startMacroRecording()).toEqual({ ok: true, recording: true })
+    surface.stopMacroRecording()
+    const okRun = await surface.runMacro('insertText("!");')
+    expect(okRun.ok).toBe(true)
+    expect(bodyTexts(mock.doc())).toEqual(['본문!'])
+  })
+
+  it('forwards all 7 macro methods through createAgentBridge', async () => {
     const plugins = {
       load: vi.fn(async () => ({})),
       invoke: vi.fn(async (_id: string, method: string, args: unknown[]) => ({ method, args })),
@@ -587,6 +1087,7 @@ describe('Tool-menu wiring, agentPlugin macro surface, and AgentBridge', () => {
     await bridge.getMacroRecordingState()
     await bridge.stopMacroRecording()
     await bridge.installMacroMenu({ recordToggle: 'Record', manage: 'Manage' })
+    await bridge.syncMacroSlots([1, 2])
 
     expect(plugins.load).toHaveBeenCalledTimes(1)
     expect(plugins.invoke.mock.calls).toEqual([
@@ -600,6 +1101,7 @@ describe('Tool-menu wiring, agentPlugin macro surface, and AgentBridge', () => {
       [AGENT_PLUGIN_ID, 'getMacroRecordingState', []],
       [AGENT_PLUGIN_ID, 'stopMacroRecording', []],
       [AGENT_PLUGIN_ID, 'installMacroMenu', [{ recordToggle: 'Record', manage: 'Manage' }]],
+      [AGENT_PLUGIN_ID, 'syncMacroSlots', [[1, 2]]],
     ])
   })
 })
@@ -622,7 +1124,7 @@ describe('studio macro recording patches', () => {
     {
       patch: 'studio-macro-record-command',
       rel: join('src', 'command', 'dispatcher.ts'),
-      expected: 'recordStudioCommand(commandId, params, def.label);',
+      expected: 'recordStudioCommand(commandId, params, def.label, macroCharState);',
     },
     {
       patch: 'studio-macro-record-text',
@@ -639,9 +1141,19 @@ describe('studio macro recording patches', () => {
       rel: join('src', 'engine', 'input-handler-mouse.ts'),
       expected: 'if (e.button === 0) recordStudioMouseClick();',
     },
+    {
+      patch: 'studio-macro-error-toast',
+      rel: join('src', 'main.ts'),
+      expected: "payload.recovery === 'succeeded') return;",
+    },
+    {
+      patch: 'studio-plugin-tx-noop',
+      rel: join('src', 'plugin', 'host.ts'),
+      expected: 'return noOp ? null : ih.getCursorPosition();',
+    },
   ] as const
 
-  it('registers all 4 macro recording patches in STUDIO_PATCHES', () => {
+  it('registers all 6 macro studio patches in STUDIO_PATCHES', () => {
     for (const item of targetFiles) {
       expect(STUDIO_PATCHES).toContain(item.patch)
     }
@@ -666,6 +1178,53 @@ describe('studio macro recording patches', () => {
         })
         expect(out.diagnostics ?? []).toEqual([])
       }
+    },
+  )
+
+  it.skipIf(!existsSync(studioRoot))(
+    'hooks Backspace, Delete (with & without selection), Shift+Arrow, Shift+Home/End, Ctrl+Backspace, and Tab in patched input-handler-keyboard.ts',
+    () => {
+      const kbPath = join(studioRoot, 'src', 'engine', 'input-handler-keyboard.ts')
+      let source = readFileSync(kbPath, 'utf8')
+      for (const patchName of STUDIO_PATCHES) {
+        if (patchTargets(patchName, kbPath)) {
+          source = applyPatch(patchName, source)
+        }
+      }
+      // Backspace/Delete captures hadSelection before deleteSelection() and hooks all branches
+      const bsIdx = source.indexOf("case 'Backspace':")
+      const enterIdx = source.indexOf("case 'Enter':", bsIdx)
+      const bsBlock = source.slice(bsIdx, enterIdx)
+      expect(bsBlock).toContain('const macroHadSelection = this.cursor.hasSelection();')
+      expect(bsBlock).toContain('this.handleBackspace(pos, inCell);')
+      expect(bsBlock).toContain('this.handleDelete(pos, inCell);')
+      expect(bsBlock).toContain('recordStudioKey(e, { hadSelection: macroHadSelection });')
+
+      // Shift+Home/End & navigation shortcuts hook executeNavigationAction
+      expect(source).toContain('recordStudioKey(e, { navigationAction: action });')
+
+      // Shift+Arrow hooks ArrowLeft/Right/Up/Down
+      const arrowIdx = source.indexOf("case 'ArrowLeft':")
+      const homeIdx = source.indexOf("case 'Home':", arrowIdx)
+      const arrowBlock = source.slice(arrowIdx, homeIdx)
+      expect(arrowBlock).toContain('recordStudioKey(e);')
+
+      // Tab & Shift+Tab hook recordStudioKey
+      const tabIdx = source.indexOf("case 'Tab':")
+      const insertIdx = source.indexOf("case 'Insert':", tabIdx)
+      const tabBlock = source.slice(tabIdx, insertIdx)
+      expect(tabBlock.match(/recordStudioKey\(e\);/g)?.length).toBeGreaterThanOrEqual(2)
+
+      // handleCtrlKey hooks Ctrl+Backspace, Ctrl+Delete, and Ctrl+Arrows
+      const ctrlIdx = source.indexOf('export function handleCtrlKey')
+      const ctrlBlock = source.slice(ctrlIdx)
+      expect(ctrlBlock).toContain("case 'backspace':")
+      expect(ctrlBlock).toContain("case 'delete':")
+      expect(
+        ctrlBlock.match(/recordStudioKey\(e, \{ hadSelection: macroHadSelection \}\);/g)?.length,
+      ).toBe(2)
+      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineStart' });")
+      expect(ctrlBlock).toContain("recordStudioKey(e, { navigationAction: 'lineEnd' });")
     },
   )
 })

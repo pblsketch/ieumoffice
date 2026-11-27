@@ -39,6 +39,7 @@ interface StudioProbeServices {
     getParagraphCount(sec: number): number
     getParagraphLength(sec: number, para: number): number
     getTextRange(sec: number, para: number, offset: number, count: number): string
+    getCharPropertiesAt?(sec: number, para: number, offset: number): string
   }
   getInputHandler(): {
     cursor: {
@@ -272,6 +273,121 @@ test('records a key macro, replays it, creates and runs a compatible script macr
     await expect
       .poll(async () => (await readBodyParagraphs(frame)).join('\n'), { timeout: 15_000 })
       .not.toContain('[매크로적용]')
+
+    // Flow 3 (B2): Record Backspace + Shift-selection + Ctrl+B, replay, verify exact text and bold range.
+    const manager = page.locator('[data-testid="macro-manager-modal"]')
+    if (await manager.isVisible()) {
+      await manager.locator('.macro-modal-close').click()
+      await expect(manager).toBeHidden({ timeout: 10_000 })
+    }
+    await page.mouse.click(box.x + box.width / 3, box.y + 80)
+    const parasBeforeB2 = await readBodyParagraphs(frame)
+    await moveCaret(frame, parasBeforeB2.length - 1, true)
+    await page.keyboard.press('Enter')
+
+    await executeStudioCommand(frame, 'ext:ieum-macro-record-toggle')
+    await expect(badge).toBeVisible({ timeout: 15_000 })
+
+    await page.keyboard.type('abcd')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.type('e')
+    await page.keyboard.press('Shift+ArrowLeft')
+    await page.keyboard.press('Shift+ArrowLeft')
+    await page.keyboard.press('Control+b')
+
+    await expect
+      .poll(async () => (await readBodyParagraphs(frame)).at(-1) ?? '', { timeout: 10_000 })
+      .toBe('abce')
+
+    await page.locator('[data-testid="macro-recording-stop-btn"]').click()
+    await expect(badge).toBeHidden({ timeout: 10_000 })
+    await expect(editorModal).toBeVisible({ timeout: 15_000 })
+
+    const b2Script = await scriptInput.inputValue()
+    expect(b2Script).toContain('deleteBackward();')
+    expect(b2Script).toContain('selectLeft();')
+    expect(b2Script).toContain('setCharFormat({ bold: true });')
+
+    await editorModal.locator('[data-testid="macro-name-input"]').fill('편집 기록 매크로')
+    await editorModal.locator('[data-testid="macro-save-btn"]').click()
+    await expect(editorModal).toBeHidden({ timeout: 10_000 })
+
+    // Move to a fresh unbolded paragraph (split from paragraph 0, which has plain text) and replay.
+    await page.mouse.click(box.x + box.width / 3, box.y + 80)
+    await moveCaret(frame, 0, true)
+    await page.keyboard.press('Enter')
+    const replayParaIdx = 1
+
+    await ensureMacroManagerOpen(page, frame)
+    const b2Row = page.locator('[data-testid="macro-row"][data-macro-name="편집 기록 매크로"]')
+    await expect(b2Row).toBeVisible({ timeout: 10_000 })
+    await b2Row.locator('[data-testid="macro-run-btn"]').click()
+
+    await expect
+      .poll(async () => (await readBodyParagraphs(frame))[replayParaIdx] ?? '', {
+        timeout: 15_000,
+      })
+      .toBe('abce')
+
+    const boldCheck = await frame.evaluate((paraIndex) => {
+      const scope = window as unknown as {
+        rhwpStudio: StudioLike
+        __e2eBoldCheck?: { at0: boolean; at2: boolean }
+      }
+      try {
+        scope.rhwpStudio.automation.unregisterCommand?.('ext:e2e-macro-bold-check')
+      } catch {
+        // Command not yet registered.
+      }
+      scope.rhwpStudio.automation.registerCommand({
+        id: 'ext:e2e-macro-bold-check',
+        label: 'E2E macro bold check',
+        execute(services) {
+          const readBold = (off: number): boolean => {
+            const raw = services.wasm.getCharPropertiesAt?.(0, paraIndex, off)
+            if (!raw) return false
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+            return Boolean(parsed?.bold)
+          }
+          scope.__e2eBoldCheck = { at0: readBold(0), at2: readBold(2) }
+        },
+      })
+      scope.rhwpStudio.automation.execute('ext:e2e-macro-bold-check')
+      return scope.__e2eBoldCheck!
+    }, replayParaIdx)
+    expect(boldCheck).toEqual({ at0: false, at2: true })
+
+    // Flow 4 (B1): Failing macro preserves action name and line 2, rolls back, and leaves editor ready.
+    await ensureMacroManagerOpen(page, frame)
+    await page.locator('[data-testid="macro-new-btn"]').click()
+    await expect(editorModal).toBeVisible({ timeout: 10_000 })
+
+    const failingScript = ['insertText("SHOULD_ROLLBACK");', 'HAction.Run("Undo");'].join('\n')
+    await editorModal.locator('[data-testid="macro-name-input"]').fill('실패 매크로')
+    await editorModal.locator('[data-testid="macro-script-input"]').fill(failingScript)
+    await editorModal.locator('[data-testid="macro-save-btn"]').click()
+    await expect(editorModal).toBeHidden({ timeout: 10_000 })
+
+    await ensureMacroManagerOpen(page, frame)
+    const failRow = page.locator('[data-testid="macro-row"][data-macro-name="실패 매크로"]')
+    await expect(failRow).toBeVisible({ timeout: 10_000 })
+    await failRow.locator('[data-testid="macro-run-btn"]').click()
+
+    const managerNotice = page.locator('[data-testid="macro-notice"]')
+    await expect(managerNotice).toBeVisible({ timeout: 15_000 })
+    const noticeText = (await managerNotice.textContent()) ?? ''
+    expect(noticeText).toContain('Undo')
+    expect(noticeText).toContain('2행')
+    expect(noticeText).not.toContain('Studio 편집 명령을 완료하지 못했습니다')
+
+    // Confirm atomic rollback: text inserted before line 2 is not present.
+    expect((await readBodyParagraphs(frame)).join('\n')).not.toContain('SHOULD_ROLLBACK')
+
+    // Confirm editor is immediately ready after rollback recovery (run another valid macro right away).
+    await scriptRow.locator('[data-testid="macro-run-btn"]').click()
+    await expect
+      .poll(async () => (await readBodyParagraphs(frame)).join('\n'), { timeout: 15_000 })
+      .toContain('[매크로적용]')
   } finally {
     await closeAndSaveVideo(launched, 'hwp-macros')
   }

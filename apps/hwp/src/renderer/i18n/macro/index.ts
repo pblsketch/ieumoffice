@@ -60,6 +60,53 @@ export function translateMacro(lang: Lang, key: MacroStringKey, params?: Params)
   return translate(lang, key, params)
 }
 
+const SKIPPED_COMMAND_LABEL_KEYS: Readonly<Record<string, MacroStringKey>> = {
+  'edit:undo': 'cmdUndo',
+  'edit:redo': 'cmdRedo',
+  'edit:copy': 'cmdCopy',
+  'edit:cut': 'cmdCut',
+  'edit:paste': 'cmdPaste',
+  'edit:paste-plain': 'cmdPaste',
+  'edit:paste-special': 'cmdPaste',
+  'edit:find': 'cmdFind',
+  'edit:find-replace': 'cmdFind',
+  'ieum:find-backward': 'cmdFind',
+  'insert:image': 'cmdInsertImage',
+  'insert:picture': 'cmdInsertImage',
+  'insert:footnote': 'cmdInsertFootnote',
+  'insert:endnote': 'cmdInsertEndnote',
+  'insert:hyperlink': 'cmdInsertHyperlink',
+  'insert:bookmark': 'cmdInsertBookmark',
+  'insert:line-break': 'cmdLineBreak',
+  'edit:line-break': 'cmdLineBreak',
+  'key:line-break': 'cmdLineBreak',
+  'insert:tab': 'cmdTab',
+  'edit:tab': 'cmdTab',
+  'key:tab': 'cmdTab',
+}
+
+const ASCII_PRINTABLE_RE = /^[\x20-\x7e]+$/
+
+/**
+ * Resolve a localized label for a skipped editor command during macro recording
+ * so non-Korean UI locales never display hardcoded Korean studio labels.
+ */
+export function localizeSkippedCommandLabel(
+  lang: Lang,
+  commandId: string,
+  rawLabel?: string,
+): string {
+  const key = SKIPPED_COMMAND_LABEL_KEYS[commandId]
+  if (key) {
+    return translate(lang, key)
+  }
+  const trimmed = typeof rawLabel === 'string' ? rawLabel.trim() : ''
+  if (trimmed && (lang === 'ko' || ASCII_PRINTABLE_RE.test(trimmed))) {
+    return trimmed
+  }
+  return translate(lang, 'cmdOtherAction', { id: commandId || trimmed || '?' })
+}
+
 /** Build the localized Tool-menu label bundle for `installMacroMenu`. */
 export function macroMenuLabelsFor(lang: Lang): MacroMenuLabels {
   return {

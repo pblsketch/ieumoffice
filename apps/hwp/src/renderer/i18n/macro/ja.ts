@@ -108,4 +108,29 @@ export const ja = {
   aiDraftReady: 'スクリプト下書きを編集欄に入力しました。保存・実行前に内容を確認してください。',
   aiDraftFailed: 'マクロスクリプトを生成できませんでした：{error}',
   aiNoOutput: 'AI からマクロスクリプトが返されませんでした。',
+  importPreviewSlotHint:
+    'ショートカットは自動では引き継がれません。保存後にマクロ管理から割り当ててください。',
+  importPreviewBidiWarning:
+    'このスクリプトには非表示の方向制御文字やゼロ幅文字が含まれています（[U+XXXX] で表示）。',
+  noticeMacroOutsideBody: 'カーソルが本文の段落にあるときだけマクロの記録や実行ができます。',
+  noticeMacroRunNotRecorded: '記録中に別のマクロを実行しても、その操作は記録されません。',
+  noticeMacroRollbackObjectLossAt:
+    '文書のオブジェクトやコメントの消失を防ぐため、{line}行目 {column}列目でマクロを停止し変更を元に戻しました。',
+  noticeMacroRollbackObjectLossPostRun:
+    '実行後チェックで文書のオブジェクトやコメントの消失が検出されたため、マクロを停止し変更を元に戻しました。',
+  noticeMacroRunErrorPostRun: '実行後チェックでマクロが失敗しました：{error}',
+  cmdUndo: '元に戻す',
+  cmdRedo: 'やり直す',
+  cmdCopy: 'コピー',
+  cmdCut: '切り取り',
+  cmdPaste: '貼り付け',
+  cmdFind: '検索',
+  cmdInsertImage: '画像の挿入',
+  cmdInsertFootnote: '脚注の挿入',
+  cmdInsertEndnote: '文末脚注の挿入',
+  cmdInsertHyperlink: 'ハイパーリンクの挿入',
+  cmdInsertBookmark: 'ブックマークの挿入',
+  cmdLineBreak: '改行',
+  cmdTab: 'タブ',
+  cmdOtherAction: '未対応の編集操作（{id}）',
 } satisfies Record<keyof typeof zh, string>

@@ -108,4 +108,30 @@ export const ms = {
   aiDraftReady: 'Draf skrip diletakkan dalam editor. Semak sebelum menyimpan atau menjalankan.',
   aiDraftFailed: 'Tidak dapat menjana skrip makro: {error}',
   aiNoOutput: 'AI tidak mengembalikan skrip makro.',
+  importPreviewSlotHint:
+    'Pintasan tidak diimport secara automatik. Tetapkan pintasan sendiri selepas menyimpan.',
+  importPreviewBidiWarning:
+    'Skrip ini mengandungi aksara kawalan arah tersembunyi atau lebar sifar (dipaparkan sebagai [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Makro hanya boleh dirakam atau dijalankan apabila kursor berada dalam perenggan isi.',
+  noticeMacroRunNotRecorded: 'Menjalankan makro lain tidak dirakam semasa rakaman aktif.',
+  noticeMacroRollbackObjectLossAt:
+    'Makro dihentikan dan dibatalkan (baris {line}, lajur {column}) untuk mengelakkan kehilangan objek atau komen dokumen.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Makro dihentikan dan dibatalkan semasa semakan akhir untuk mengelakkan kehilangan objek atau komen dokumen.',
+  noticeMacroRunErrorPostRun: 'Makro gagal semasa semakan akhir: {error}',
+  cmdUndo: 'Buat asal',
+  cmdRedo: 'Buat semula',
+  cmdCopy: 'Salin',
+  cmdCut: 'Potong',
+  cmdPaste: 'Tampal',
+  cmdFind: 'Cari',
+  cmdInsertImage: 'Sisip imej',
+  cmdInsertFootnote: 'Sisip nota kaki',
+  cmdInsertEndnote: 'Sisip nota hujung',
+  cmdInsertHyperlink: 'Sisip hiperpautan',
+  cmdInsertBookmark: 'Sisip penanda buku',
+  cmdLineBreak: 'Pemisah baris',
+  cmdTab: 'Tabulasi',
+  cmdOtherAction: 'Tindakan penyunting tidak disokong ({id})',
 } satisfies Record<keyof typeof zh, string>

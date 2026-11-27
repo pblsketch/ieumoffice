@@ -108,4 +108,29 @@ export const hi = {
   aiDraftReady: 'ड्राफ़्ट स्क्रिप्ट संपादक में रख दी गई है। सहेजने या चलाने से पहले जाँच लें।',
   aiDraftFailed: 'मैक्रो स्क्रिप्ट नहीं बनाई जा सकी: {error}',
   aiNoOutput: 'AI ने कोई मैक्रो स्क्रिप्ट नहीं लौटाई।',
+  importPreviewSlotHint: 'शॉर्टकट अपने आप आयात नहीं होते। सहेजने के बाद स्वयं शॉर्टकट चुनें।',
+  importPreviewBidiWarning:
+    'इस स्क्रिप्ट में छिपे हुए दिशा-नियंत्रण या शून्य-चौड़ाई वाले वर्ण हैं ([U+XXXX] के रूप में दिखाए गए हैं)।',
+  noticeMacroOutsideBody:
+    'मैक्रो केवल तब रिकॉर्ड या चलाए जा सकते हैं जब कर्सर मुख्य पाठ के अनुच्छेद में हो।',
+  noticeMacroRunNotRecorded: 'रिकॉर्डिंग के दौरान किसी अन्य मैक्रो को चलाना रिकॉर्ड नहीं होता।',
+  noticeMacroRollbackObjectLossAt:
+    'दस्तावेज़ के ऑब्जेक्ट या टिप्पणियों के नुकसान को रोकने के लिए मैक्रो पंक्ति {line}, स्तंभ {column} पर रुक गया और सभी बदलाव वापस ले लिए गए।',
+  noticeMacroRollbackObjectLossPostRun:
+    'चलाने के बाद की जांच में दस्तावेज़ के ऑब्जेक्ट या टिप्पणियों के नुकसान का पता चला; मैक्रो रुक गया और सभी बदलाव वापस ले लिए गए।',
+  noticeMacroRunErrorPostRun: 'चलाने के बाद की जांच में मैक्रो विफल रहा: {error}',
+  cmdUndo: 'पूर्ववत करें',
+  cmdRedo: 'फिर से करें',
+  cmdCopy: 'कॉपी करें',
+  cmdCut: 'कट करें',
+  cmdPaste: 'पेस्ट करें',
+  cmdFind: 'खोजें',
+  cmdInsertImage: 'चित्र सम्मिलित करें',
+  cmdInsertFootnote: 'पादलेख सम्मिलित करें',
+  cmdInsertEndnote: 'अंतलेख सम्मिलित करें',
+  cmdInsertHyperlink: 'हाइपरलिंक सम्मिलित करें',
+  cmdInsertBookmark: 'बुकमार्क सम्मिलित करें',
+  cmdLineBreak: 'पंक्ति विराम',
+  cmdTab: 'टैब',
+  cmdOtherAction: 'असमर्थित संपादक क्रिया ({id})',
 } satisfies Record<keyof typeof zh, string>

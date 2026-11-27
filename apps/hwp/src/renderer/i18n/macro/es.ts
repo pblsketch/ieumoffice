@@ -108,4 +108,31 @@ export const es = {
   aiDraftReady: 'Borrador colocado en el editor. Revíselo antes de guardar o ejecutar.',
   aiDraftFailed: 'No se pudo generar el script de la macro: {error}',
   aiNoOutput: 'La IA no devolvió ningún script de macro.',
+  importPreviewSlotHint:
+    'Los atajos no se importan automáticamente. Asigna un atajo después de guardar.',
+  importPreviewBidiWarning:
+    'Este script contiene caracteres de control direccionales o de ancho cero ocultos (mostrados como [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Las macros solo se pueden grabar o ejecutar cuando el cursor está en un párrafo del cuerpo.',
+  noticeMacroRunNotRecorded:
+    'Ejecutar otra macro no se registra mientras la grabación está activa.',
+  noticeMacroRollbackObjectLossAt:
+    'La macro se detuvo y revirtió los cambios (línea {line}, col. {column}) para evitar perder objetos o comentarios del documento.',
+  noticeMacroRollbackObjectLossPostRun:
+    'La macro se detuvo y revirtió los cambios en la comprobación final para evitar perder objetos o comentarios del documento.',
+  noticeMacroRunErrorPostRun: 'La macro falló durante la comprobación final: {error}',
+  cmdUndo: 'Deshacer',
+  cmdRedo: 'Rehacer',
+  cmdCopy: 'Copiar',
+  cmdCut: 'Cortar',
+  cmdPaste: 'Pegar',
+  cmdFind: 'Buscar',
+  cmdInsertImage: 'Insertar imagen',
+  cmdInsertFootnote: 'Insertar nota al pie',
+  cmdInsertEndnote: 'Insertar nota al final',
+  cmdInsertHyperlink: 'Insertar hipervínculo',
+  cmdInsertBookmark: 'Insertar marcador',
+  cmdLineBreak: 'Salto de línea',
+  cmdTab: 'Tabulación',
+  cmdOtherAction: 'Acción de edición no compatible ({id})',
 } satisfies Record<keyof typeof zh, string>

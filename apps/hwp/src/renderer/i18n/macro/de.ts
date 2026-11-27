@@ -110,4 +110,31 @@ export const de = {
     'Skriptentwurf in den Editor eingefügt. Prüfen Sie ihn vor dem Speichern oder Ausführen.',
   aiDraftFailed: 'Makroskript konnte nicht erzeugt werden: {error}',
   aiNoOutput: 'Die KI hat kein Makroskript zurückgegeben.',
+  importPreviewSlotHint:
+    'Tastenkombinationen werden nicht automatisch importiert. Weisen Sie nach dem Speichern selbst eine zu.',
+  importPreviewBidiWarning:
+    'Dieses Skript enthält unsichtbare Richtungssteuer- oder Nullbreitenzeichen (als [U+XXXX] angezeigt).',
+  noticeMacroOutsideBody:
+    'Makros können nur aufgezeichnet oder ausgeführt werden, wenn der Cursor in einem Textabsatz steht.',
+  noticeMacroRunNotRecorded:
+    'Das Ausführen eines anderen Makros wird während der Aufzeichnung nicht aufgezeichnet.',
+  noticeMacroRollbackObjectLossAt:
+    'Makro wurde in Zeile {line}, Spalte {column} gestoppt und zurückgesetzt, um den Verlust von Objekten oder Kommentaren zu verhindern.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Makro wurde bei der Abschlussprüfung gestoppt und zurückgesetzt, um den Verlust von Objekten oder Kommentaren zu verhindern.',
+  noticeMacroRunErrorPostRun: 'Makro bei der Abschlussprüfung fehlgeschlagen: {error}',
+  cmdUndo: 'Rückgängig',
+  cmdRedo: 'Wiederholen',
+  cmdCopy: 'Kopieren',
+  cmdCut: 'Ausschneiden',
+  cmdPaste: 'Einfügen',
+  cmdFind: 'Suchen',
+  cmdInsertImage: 'Bild einfügen',
+  cmdInsertFootnote: 'Fußnote einfügen',
+  cmdInsertEndnote: 'Endnote einfügen',
+  cmdInsertHyperlink: 'Hyperlink einfügen',
+  cmdInsertBookmark: 'Lesezeichen einfügen',
+  cmdLineBreak: 'Zeilenumbruch',
+  cmdTab: 'Tabulator',
+  cmdOtherAction: 'Nicht unterstützte Bearbeitungsaktion ({id})',
 } satisfies Record<keyof typeof zh, string>

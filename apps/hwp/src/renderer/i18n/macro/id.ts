@@ -108,4 +108,30 @@ export const id = {
   aiDraftReady: 'Draf skrip dimasukkan ke editor. Tinjau sebelum menyimpan atau menjalankan.',
   aiDraftFailed: 'Tidak dapat membuat skrip makro: {error}',
   aiNoOutput: 'AI tidak mengembalikan skrip makro.',
+  importPreviewSlotHint:
+    'Pintasan tidak diimpor secara otomatis. Tetapkan pintasan sendiri setelah menyimpan.',
+  importPreviewBidiWarning:
+    'Skrip ini berisi karakter kontrol arah tersembunyi atau karakter lebar-nol (ditampilkan sebagai [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Makro hanya dapat direkam atau dijalankan saat kursor berada di paragraf isi.',
+  noticeMacroRunNotRecorded: 'Menjalankan makro lain tidak direkam saat perekaman berlangsung.',
+  noticeMacroRollbackObjectLossAt:
+    'Makro dihentikan dan dibatalkan (baris {line}, kol. {column}) agar objek atau komentar dokumen tidak hilang.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Makro dihentikan dan dibatalkan pada pemeriksaan akhir agar objek atau komentar dokumen tidak hilang.',
+  noticeMacroRunErrorPostRun: 'Makro gagal pada pemeriksaan akhir: {error}',
+  cmdUndo: 'Urungkan',
+  cmdRedo: 'Ulangi',
+  cmdCopy: 'Salin',
+  cmdCut: 'Potong',
+  cmdPaste: 'Tempel',
+  cmdFind: 'Cari',
+  cmdInsertImage: 'Sisipkan gambar',
+  cmdInsertFootnote: 'Sisipkan catatan kaki',
+  cmdInsertEndnote: 'Sisipkan catatan akhir',
+  cmdInsertHyperlink: 'Sisipkan tautan',
+  cmdInsertBookmark: 'Sisipkan marka buku',
+  cmdLineBreak: 'Pindah baris',
+  cmdTab: 'Tabulasi',
+  cmdOtherAction: 'Tindakan editor tidak didukung ({id})',
 } satisfies Record<keyof typeof zh, string>

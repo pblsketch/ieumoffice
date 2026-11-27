@@ -108,4 +108,32 @@ export const it = {
   aiDraftReady: 'Bozza inserita nell’editor. Controllala prima di salvare o eseguire.',
   aiDraftFailed: 'Impossibile generare lo script macro: {error}',
   aiNoOutput: 'L’IA non ha restituito alcuno script macro.',
+  importPreviewSlotHint:
+    'Le scorciatoie non vengono importate automaticamente. Assegna una scorciatoia dopo il salvataggio.',
+  importPreviewBidiWarning:
+    'Questo script contiene caratteri nascosti di controllo direzionale o a larghezza zero (mostrati come [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Le macro possono essere registrate o eseguite solo quando il cursore è in un paragrafo del corpo.',
+  noticeMacroRunNotRecorded:
+    'L’esecuzione di un’altra macro non viene registrata durante la registrazione.',
+  noticeMacroRollbackObjectLossAt:
+    'La macro si è fermata e ha annullato le modifiche (riga {line}, col. {column}) per evitare di perdere oggetti o note.',
+  noticeMacroRollbackObjectLossPostRun:
+    'La macro si è fermata e ha annullato le modifiche nel controllo finale per evitare di perdere oggetti o note.',
+  noticeMacroRunErrorPostRun:
+    'La macro ha avuto esito negativo durante il controllo finale: {error}',
+  cmdUndo: 'Annulla',
+  cmdRedo: 'Ripeti',
+  cmdCopy: 'Copia',
+  cmdCut: 'Taglia',
+  cmdPaste: 'Incolla',
+  cmdFind: 'Trova',
+  cmdInsertImage: 'Inserisci immagine',
+  cmdInsertFootnote: 'Inserisci nota a piè di pagina',
+  cmdInsertEndnote: 'Inserisci nota di chiusura',
+  cmdInsertHyperlink: 'Inserisci collegamento ipertestuale',
+  cmdInsertBookmark: 'Inserisci segnalibro',
+  cmdLineBreak: 'Interruzione di riga',
+  cmdTab: 'Tabulazione',
+  cmdOtherAction: 'Azione di modifica non supportata ({id})',
 } satisfies Record<keyof typeof zh, string>

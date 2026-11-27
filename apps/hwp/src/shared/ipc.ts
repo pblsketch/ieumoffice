@@ -457,7 +457,8 @@ export interface MacroImportCommitInput {
   name: string
   description?: string
   script: string
-  slot?: number | null
+  /** Ignored during import: imported macros are always saved with `slot: null`. */
+  slot?: null
 }
 
 export type MacroSyntaxCheckResult =
@@ -469,7 +470,8 @@ export interface MacroImportPreview {
   name: string
   description?: string
   script: string
-  slot?: number | null
+  /** Shortcut slots are never imported from `.ieummacro` files. */
+  slot?: null
   syntax?: MacroSyntaxCheckResult
 }
 

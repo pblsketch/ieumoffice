@@ -104,4 +104,29 @@ export const th = {
   aiDraftReady: 'วางสคริปต์ร่างในช่องแก้ไขแล้ว โปรดตรวจสอบก่อนบันทึกหรือเรียกใช้',
   aiDraftFailed: 'ไม่สามารถสร้างสคริปต์มาโครได้: {error}',
   aiNoOutput: 'AI ไม่ได้ส่งคืนสคริปต์มาโคร',
+  importPreviewSlotHint: 'ปุ่มลัดจะไม่ถูกนำเข้าโดยอัตโนมัติ โปรดกำหนดปุ่มลัดเองหลังจากบันทึกแล้ว',
+  importPreviewBidiWarning:
+    'สคริปต์นี้มีอักขระควบคุมทิศทางหรืออักขระความกว้างศูนย์ที่ซ่อนอยู่ (แสดงเป็น [U+XXXX])',
+  noticeMacroOutsideBody:
+    'สามารถบันทึกหรือเรียกใช้แมโครได้เมื่อเคอร์เซอร์อยู่ในย่อหน้าเนื้อหาหลักเท่านั้น',
+  noticeMacroRunNotRecorded: 'การเรียกใช้แมโครอื่นระหว่างบันทึกจะไม่ถูกบันทึกลงในแมโคร',
+  noticeMacroRollbackObjectLossAt:
+    'หยุดและย้อนกลับแมโครที่บรรทัด {line} คอลัมน์ {column} เพื่อป้องกันไม่ให้วัตถุหรือความคิดเห็นในเอกสารสูญหาย',
+  noticeMacroRollbackObjectLossPostRun:
+    'หยุดและย้อนกลับแมโครระหว่างการตรวจสอบหลังทำงาน เพื่อป้องกันไม่ให้วัตถุหรือความคิดเห็นในเอกสารสูญหาย',
+  noticeMacroRunErrorPostRun: 'แมโครล้มเหลวระหว่างการตรวจสอบหลังทำงาน: {error}',
+  cmdUndo: 'เลิกทำ',
+  cmdRedo: 'ทำซ้ำ',
+  cmdCopy: 'คัดลอก',
+  cmdCut: 'ตัด',
+  cmdPaste: 'วาง',
+  cmdFind: 'ค้นหา',
+  cmdInsertImage: 'แทรกรูปภาพ',
+  cmdInsertFootnote: 'แทรกเชิงอรรถ',
+  cmdInsertEndnote: 'แทรกอ้างอิงท้ายเรื่อง',
+  cmdInsertHyperlink: 'แทรกไฮเปอร์ลิงก์',
+  cmdInsertBookmark: 'แทรกบุ๊กมาร์ก',
+  cmdLineBreak: 'ขึ้นบรรทัดใหม่',
+  cmdTab: 'แท็บ',
+  cmdOtherAction: 'การทำงานของตัวแก้ไขที่ไม่รองรับ ({id})',
 } satisfies Record<keyof typeof zh, string>

@@ -106,4 +106,29 @@ export const vi = {
     'Đã điền bản nháp kịch bản vào trình chỉnh sửa. Hãy kiểm tra trước khi lưu hoặc chạy.',
   aiDraftFailed: 'Không thể tạo kịch bản macro: {error}',
   aiNoOutput: 'AI không trả về kịch bản macro nào.',
+  importPreviewSlotHint: 'Phím tắt không được nhập tự động. Hãy gán phím tắt sau khi lưu.',
+  importPreviewBidiWarning:
+    'Kịch bản này chứa ký tự điều khiển hướng ẩn hoặc ký tự có độ rộng bằng không (hiển thị dạng [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Chỉ có thể ghi hoặc chạy macro khi con trỏ đang ở trong đoạn văn bản chính.',
+  noticeMacroRunNotRecorded: 'Việc chạy một macro khác sẽ không được ghi lại trong khi đang ghi.',
+  noticeMacroRollbackObjectLossAt:
+    'Macro đã dừng và hoàn tác (dòng {line}, cột {column}) để tránh làm mất đối tượng hoặc ghi chú trong tài liệu.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Macro đã dừng và hoàn tác trong bước kiểm tra sau khi chạy để tránh làm mất đối tượng hoặc ghi chú.',
+  noticeMacroRunErrorPostRun: 'Macro thất bại trong bước kiểm tra sau khi chạy: {error}',
+  cmdUndo: 'Hoàn tác',
+  cmdRedo: 'Làm lại',
+  cmdCopy: 'Sao chép',
+  cmdCut: 'Cắt',
+  cmdPaste: 'Dán',
+  cmdFind: 'Tìm kiếm',
+  cmdInsertImage: 'Chèn hình ảnh',
+  cmdInsertFootnote: 'Chèn chú thích cuối trang',
+  cmdInsertEndnote: 'Chèn chú thích cuối tài liệu',
+  cmdInsertHyperlink: 'Chèn siêu liên kết',
+  cmdInsertBookmark: 'Chèn dấu trang',
+  cmdLineBreak: 'Ngắt dòng',
+  cmdTab: 'Ký tự Tab',
+  cmdOtherAction: 'Thao tác chỉnh sửa chưa được hỗ trợ ({id})',
 } satisfies Record<keyof typeof zh, string>

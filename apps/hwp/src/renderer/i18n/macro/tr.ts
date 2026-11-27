@@ -109,4 +109,30 @@ export const tr = {
     'Taslak betik düzenleyiciye eklendi. Kaydetmeden veya çalıştırmadan önce inceleyin.',
   aiDraftFailed: 'Makro betiği oluşturulamadı: {error}',
   aiNoOutput: 'Yapay zekâ bir makro betiği döndürmedi.',
+  importPreviewSlotHint:
+    'Kısayollar otomatik olarak içe aktarılmaz. Kaydettikten sonra kendiniz kısayol atayın.',
+  importPreviewBidiWarning:
+    'Bu betik gizli yön denetim veya sıfır genişlikli karakterler içeriyor ([U+XXXX] olarak gösterilir).',
+  noticeMacroOutsideBody:
+    'Makrolar yalnızca imleç ana metin paragrafındayken kaydedilebilir veya çalıştırılabilir.',
+  noticeMacroRunNotRecorded: 'Kayıt sırasında başka bir makro çalıştırmak kaydedilmez.',
+  noticeMacroRollbackObjectLossAt:
+    'Belge nesnelerinin veya notların kaybolmasını önlemek için makro {line}. satır {column}. sütunda durduruldu ve değişiklikler geri alındı.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Çalıştırma sonrası kontrolde belge nesnesi veya not kaybı algılandı; makro durduruldu ve değişiklikler geri alındı.',
+  noticeMacroRunErrorPostRun: 'Çalıştırma sonrası kontrolde makro başarısız oldu: {error}',
+  cmdUndo: 'Geri al',
+  cmdRedo: 'Yinele',
+  cmdCopy: 'Kopyala',
+  cmdCut: 'Kes',
+  cmdPaste: 'Yapıştır',
+  cmdFind: 'Bul',
+  cmdInsertImage: 'Görsel ekle',
+  cmdInsertFootnote: 'Dipnot ekle',
+  cmdInsertEndnote: 'Sonnot ekle',
+  cmdInsertHyperlink: 'Köprü ekle',
+  cmdInsertBookmark: 'Yer imi ekle',
+  cmdLineBreak: 'Satır sonu',
+  cmdTab: 'Sekme',
+  cmdOtherAction: 'Desteklenmeyen düzenleyici eylemi ({id})',
 } satisfies Record<keyof typeof zh, string>

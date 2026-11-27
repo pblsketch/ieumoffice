@@ -11,6 +11,9 @@ import init, { HwpDocument } from '@rhwp/core'
 import { MAX_INT32 } from '../studio-plugin/macro-interpreter.mjs'
 import { REFUSED_COMPAT_ACTIONS, SUPPORTED_COMPAT_ACTIONS } from '../studio-plugin/macro-compat.mjs'
 import {
+  MAX_MACRO_MESSAGE_LENGTH,
+  MAX_MACRO_TOTAL_MESSAGE_CHARS,
+  assertSafeMacroRegex,
   executeMacroTransaction,
   runMacroOnDocument,
   type MacroTransactionHost,
@@ -58,23 +61,30 @@ function createMockHost(initial: HwpDocument) {
   let current = initial
   const undoStack: Uint8Array[] = []
   const labels: string[] = []
-  const txOptions: Array<{ foreign?: boolean } | undefined> = []
+  const argCounts: number[] = []
+  let noOpCalls = 0
 
   const host: MacroTransactionHost = {
     transaction<T>(
       label: string,
-      fn: (tx: { doc(): HwpDocument; deferPagination(): void }) => T,
-      options?: { foreign?: boolean },
+      fn: (tx: { doc(): HwpDocument; deferPagination(): void; markNoOp(): void }) => T,
     ): T {
+      argCounts.push(arguments.length)
       const before = current.exportHwp()
+      let isNoOp = false
       try {
         const result = fn({
           doc: () => current,
           deferPagination: () => {},
+          markNoOp: () => {
+            isNoOp = true
+            noOpCalls += 1
+          },
         })
         labels.push(label)
-        txOptions.push(options)
-        undoStack.push(before)
+        if (!isNoOp) {
+          undoStack.push(before)
+        }
         return result
       } catch (err) {
         current = new HwpDocument(before)
@@ -88,7 +98,8 @@ function createMockHost(initial: HwpDocument) {
     doc: () => current,
     undoCount: () => undoStack.length,
     labels: () => [...labels],
-    txOptions: () => [...txOptions],
+    argCounts: () => [...argCounts],
+    noOpCalls: () => noOpCalls,
     undo(): boolean {
       const prev = undoStack.pop()
       if (!prev) return false
@@ -458,27 +469,96 @@ describe('macro-host: compatibility object (HAction & HParameterSet)', () => {
     expect(controls.filter((c) => c.ctrlId === 'tbl').length).toBe(1)
   })
 
-  it('supports numeric RGB TextColor on CharShape', () => {
-    const doc = makeDoc(['Color test'])
-    const res = runMacroOnDocument(
+  it('supports numeric BGR TextColor, ParameterSet para units, StrikeOutType, FindRegExp, and refuses UseWildCards/RegExp', () => {
+    const doc = makeDoc(['Red Blue 1234'])
+    const resRed = runMacroOnDocument(
       doc,
       `
-      HAction.Run("SelectAll");
-      HParameterSet.HCharShape.TextColor = 0x336699;
+      select(0, 0, 0, 0, 0, 3);
+      HParameterSet.HCharShape.TextColor = 255; // BGR -> #ff0000
+      HParameterSet.HCharShape.StrikeOutType = 1;
       HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+
+      select(0, 0, 4, 0, 0, 8);
+      HAction.GetDefault("CharShape", HParameterSet.HCharShape.HSet);
+      HParameterSet.HCharShape.TextColor = 0xff0000; // BGR -> #0000ff
+      HAction.Execute("CharShape", HParameterSet.HCharShape.HSet);
+
+      HAction.GetDefault("ParagraphShape", HParameterSet.HParaShape.HSet);
+      HParameterSet.HParaShape.LeftMargin = 2000; // 10 pt
+      HParameterSet.HParaShape.PagebreakBefore = 1;
+      HAction.Execute("ParagraphShape", HParameterSet.HParaShape.HSet);
+
+      HAction.GetDefault("AllReplace", HParameterSet.HFindReplace.HSet);
+      HParameterSet.HFindReplace.FindString = "\\\\d+";
+      HParameterSet.HFindReplace.ReplaceString = "NUM";
+      HParameterSet.HFindReplace.FindRegExp = true;
+      HAction.Execute("AllReplace", HParameterSet.HFindReplace.HSet);
     `,
     )
-    expect(res.ok).toBe(true)
-    const charProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 0))
-    expect(String(charProps.textColor).toLowerCase()).toBe('#336699')
+    expect(resRed.ok).toBe(true)
+    const redProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 0))
+    expect(String(redProps.textColor).toLowerCase()).toBe('#ff0000')
+    expect(redProps.strikethrough).toBe(true)
+    const blueProps = JSON.parse(doc.getCharPropertiesAt(0, 0, 5))
+    expect(String(blueProps.textColor).toLowerCase()).toBe('#0000ff')
+
+    const paraProps = JSON.parse(doc.getParaPropertiesAt(0, 0))
+    // 2000 HWPUNITs = 10 pt = 13.3 px (at 96/72 dpi)
+    expect(paraProps.marginLeft).toBeCloseTo(13.3, 1)
+    expect(paraProps.pageBreakBefore).toBe(true)
+    expect(bodyTexts(doc)[0]).toBe('Red Blue NUM')
+
+    // Refuse UseWildCards when truthy
+    const wildRes = runMacroOnDocument(
+      doc,
+      `
+      HAction.GetDefault("AllReplace", HParameterSet.HFindReplace.HSet);
+      HParameterSet.HFindReplace.FindString = "Red*";
+      HParameterSet.HFindReplace.ReplaceString = "X";
+      HParameterSet.HFindReplace.UseWildCards = true;
+      HAction.Execute("AllReplace", HParameterSet.HFindReplace.HSet);
+    `,
+    )
+    expect(wildRes.ok).toBe(false)
+    if (!wildRes.ok) {
+      expect(wildRes.code).toBe('unsupported_action')
+      expect(wildRes.error).toContain('UseWildCards')
+    }
+
+    // Refuse legacy RegExp key when truthy and guide caller to FindRegExp
+    const regExpRes = runMacroOnDocument(
+      doc,
+      `
+      HAction.GetDefault("AllReplace", HParameterSet.HFindReplace.HSet);
+      HParameterSet.HFindReplace.FindString = "NUM";
+      HParameterSet.HFindReplace.ReplaceString = "Y";
+      HParameterSet.HFindReplace.RegExp = true;
+      HAction.Execute("AllReplace", HParameterSet.HFindReplace.HSet);
+    `,
+    )
+    expect(regExpRes.ok).toBe(false)
+    if (!regExpRes.ok) {
+      expect(regExpRes.code).toBe('invalid_argument')
+      expect(regExpRes.error).toContain('RegExp')
+      expect(regExpRes.error).toContain('FindRegExp')
+    }
   })
 })
 
 describe('macro-host: single undo step and atomic rollback', () => {
-  it('commits a multi-step macro as exactly 1 undo step with foreign: true and undoes cleanly', () => {
+  it('commits a multi-step macro as exactly 1 undo step with 2-arg transaction, marks no-ops, and undoes cleanly', () => {
     const doc = makeDoc(['Original paragraph'])
     const beforeBytes = doc.exportHwp()
     const mock = createMockHost(doc)
+
+    // Read-only macro marks no-op and records 0 undo steps.
+    const readOnly = executeMacroTransaction(mock.host, 'const t = getText(); t.length;')
+    expect(readOnly.ok).toBe(true)
+    if (readOnly.ok) expect(readOnly.changed).toBe(false)
+    expect(mock.argCounts()).toEqual([2])
+    expect(mock.noOpCalls()).toBe(1)
+    expect(mock.undoCount()).toBe(0)
 
     const res = executeMacroTransaction(
       mock.host,
@@ -493,13 +573,64 @@ describe('macro-host: single undo step and atomic rollback', () => {
 
     expect(res.ok).toBe(true)
     expect(mock.undoCount()).toBe(1)
-    expect(mock.labels()).toEqual(['macro'])
-    expect(mock.txOptions()).toEqual([{ foreign: true }])
+    expect(mock.labels()).toEqual(['macro', 'macro'])
+    expect(mock.argCounts()).toEqual([2, 2])
+    expect(mock.noOpCalls()).toBe(1)
     expect(bodyTexts(mock.doc())).toEqual(['Updated paragraph — step 1', 'step 2'])
 
     expect(mock.undo()).toBe(true)
     expect(mock.undoCount()).toBe(0)
     expect(bytesEqual(mock.doc().exportHwp(), beforeBytes)).toBe(true)
+  })
+
+  it('preserves exact failure fields across StudioCommandError-shaped wrapping and invokes onRecoveryReport', async () => {
+    const doc = makeDoc(['Immutable baseline'])
+    const beforeBytes = doc.exportHwp()
+    let current = doc
+    const recoveryPayload = { recovered: true, reason: 'rollback_ok' }
+    const reportPromise = Promise.resolve(recoveryPayload)
+    const receivedReports: Array<Promise<unknown>> = []
+
+    const wrappingHost: MacroTransactionHost = {
+      transaction<T>(_label: string, fn: (tx: { doc(): HwpDocument }) => T): T {
+        const before = current.exportHwp()
+        try {
+          return fn({ doc: () => current })
+        } catch (err) {
+          current = new HwpDocument(before)
+          const wrapped = new Error('Studio 편집 명령을 완료하지 못했습니다.') as Error & {
+            cause?: unknown
+            report?: Promise<unknown>
+          }
+          wrapped.cause = err
+          wrapped.report = reportPromise
+          throw wrapped
+        }
+      },
+    }
+
+    const res = executeMacroTransaction(
+      wrappingHost,
+      'message("before fail");\ninsertText("temp ");\nHAction.Run("FileSave");',
+      {
+        onRecoveryReport: (report) => {
+          receivedReports.push(report)
+        },
+      },
+    )
+
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.code).toBe('unsupported_action')
+      expect(res.unsupportedAction).toBe('FileSave')
+      expect(res.error).toContain('FileSave')
+      expect(res.line).toBe(3)
+      expect(res.column).toBe(12)
+      expect(res.messages).toEqual(['before fail'])
+    }
+    expect(receivedReports).toHaveLength(1)
+    expect(await receivedReports[0]).toEqual(recoveryPayload)
+    expect(bytesEqual(current.exportHwp(), beforeBytes)).toBe(true)
   })
 
   it.each(['Undo', 'Redo', 'NonExistentAction'])(
@@ -733,6 +864,241 @@ describe('macro-host: numeric validation and sandbox isolation', () => {
         expect(res.code).toBe('forbidden_property')
         expect(res.line).toBe(1)
       }
+    }
+  })
+})
+
+describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () => {
+  it('pending setCharFormat without selection styles only newly inserted text', () => {
+    const doc = makeDoc([''])
+    const res = runMacroOnDocument(
+      doc,
+      `
+      insertText("plain ");
+      setCharFormat({ bold: true });
+      insertText("bold");
+      setCharFormat({ bold: false });
+      insertText(" normal");
+    `,
+    )
+    expect(res.ok).toBe(true)
+    expect(bodyTexts(doc)).toEqual(['plain bold normal'])
+    expect(JSON.parse(doc.getCharPropertiesAt(0, 0, 0)).bold).toBe(false)
+    expect(JSON.parse(doc.getCharPropertiesAt(0, 0, 7)).bold).toBe(true)
+    expect(JSON.parse(doc.getCharPropertiesAt(0, 0, 12)).bold).toBe(false)
+
+    // setCharFormat alone without selection is a no-op (changed === false) and clears on caret move.
+    const doc2 = makeDoc(['abc'])
+    const noOp = runMacroOnDocument(doc2, 'setCharFormat({ bold: true });')
+    expect(noOp.ok).toBe(true)
+    if (noOp.ok) expect(noOp.changed).toBe(false)
+    expect(JSON.parse(doc2.getCharPropertiesAt(0, 0, 0)).bold).toBe(false)
+
+    const moveClear = runMacroOnDocument(
+      doc2,
+      'setCharFormat({ bold: true }); moveRight(1); insertText("Z");',
+    )
+    expect(moveClear.ok).toBe(true)
+    expect(bodyTexts(doc2)).toEqual(['aZbc'])
+    expect(JSON.parse(doc2.getCharPropertiesAt(0, 0, 1)).bold).toBe(false)
+  })
+
+  it('supports deleteBackward, deleteForward, and select* movement extensions with protection', () => {
+    const doc = makeDoc(['Hello', 'World'])
+    const res = runMacroOnDocument(
+      doc,
+      `
+      moveParaEnd();
+      deleteBackward(2); // "Hel"
+      deleteForward(1);  // merges "World" -> "HelWorld"
+      selectRight(5);    // selects "World"
+      const sel1 = getSelection();
+      deleteForward(1);  // deletes selection -> "Hel"
+      selectParaBegin();
+      const sel2 = getSelection();
+      cancelSelection();
+      moveDocBegin();
+      selectWordRight(1);
+      const sel3 = getSelection();
+      ({ sel1, sel2, sel3 });
+    `,
+    )
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    const val = res.value as {
+      sel1: { text: string }
+      sel2: { text: string }
+      sel3: { text: string }
+    }
+    expect(val.sel1.text).toBe('World')
+    expect(val.sel2.text).toBe('Hel')
+    expect(val.sel3.text).toBe('Hel')
+    expect(bodyTexts(doc)).toEqual(['Hel'])
+
+    // deleteBackward must refuse removing a footnote and roll back byte-identically.
+    const fnDoc = makeDoc(['ab'])
+    fnDoc.insertFootnote(0, 0, 1)
+    const beforeBytes = fnDoc.exportHwp()
+    const delFn = runMacroOnDocument(fnDoc, 'selectAll(); deleteBackward();')
+    expect(delFn.ok).toBe(false)
+    if (!delFn.ok) expect(delFn.code).toBe('object_loss')
+    expect(bytesEqual(fnDoc.exportHwp(), beforeBytes)).toBe(true)
+  })
+
+  it('moves by real visual lines in wrapped paragraphs for moveLineEnd, moveLineBegin, moveDown, and moveUp', () => {
+    const longPara = 'word '.repeat(80)
+    const doc = makeDoc([longPara, 'next'])
+    const line0 = JSON.parse(doc.getLineInfo(0, 0, 0)) as {
+      lineIndex: number
+      lineCount: number
+      charStart: number
+      charEnd: number
+    }
+    expect(line0.lineCount).toBeGreaterThan(1)
+
+    const res = runMacroOnDocument(
+      doc,
+      `
+      moveLineEnd();
+      const endPos = getCaret();
+      moveLineEnd(); // repeating stays on line 0 end
+      const endPos2 = getCaret();
+      moveLineBegin(); // returns to line 0 start
+      const startPos = getCaret();
+      moveDown(1); // moves to visual line 1 inside paragraph 0, NOT paragraph 1
+      const line1Pos = getCaret();
+      moveUp(1);
+      const backToLine0 = getCaret();
+      ({ endPos, endPos2, startPos, line1Pos, backToLine0 });
+    `,
+    )
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    const val = res.value as {
+      endPos: { para: number; offset: number }
+      endPos2: { para: number; offset: number }
+      startPos: { para: number; offset: number }
+      line1Pos: { para: number; offset: number }
+      backToLine0: { para: number; offset: number }
+    }
+    expect(val.endPos).toEqual({ sec: 0, para: 0, offset: line0.charEnd })
+    expect(val.endPos2).toEqual({ sec: 0, para: 0, offset: line0.charEnd })
+    expect(val.startPos).toEqual({ sec: 0, para: 0, offset: 0 })
+    expect(val.line1Pos.para).toBe(0)
+    expect(val.line1Pos.offset).toBe(line0.charEnd)
+    expect(val.backToLine0).toEqual({ sec: 0, para: 0, offset: 0 })
+  })
+
+  it('rejects unsafe ReDoS regex patterns while allowing safe patterns including [a+]+', () => {
+    expect(() => assertSafeMacroRegex('[a+]+')).not.toThrow()
+    expect(() => assertSafeMacroRegex('\\d{4}-\\d{2}-\\d{2}')).not.toThrow()
+    expect(() => assertSafeMacroRegex('\\w+\\s+\\w+')).not.toThrow()
+    expect(() => assertSafeMacroRegex('(foo|bar)')).not.toThrow()
+
+    for (const bad of [
+      '(a+)+$',
+      '(a*)*',
+      '(a+)*',
+      '(a{1,5})+',
+      '([a-z]+)+',
+      '(a|a)+',
+      '(a|aa)+',
+      '(.|\\s)+',
+      '.*.*',
+      '.+.+',
+      'a+a+',
+      '(a)\\1',
+      '(?=a)a',
+      '(?!a)a',
+      '(?<=a)b',
+      '(?<!a)b',
+      'a'.repeat(300),
+    ]) {
+      expect(() => assertSafeMacroRegex(bad)).toThrow()
+    }
+
+    const doc = makeDoc(['aaaaaaaaaaaaaaaaaaaaaaaa!'])
+    const t0 = Date.now()
+    const res = runMacroOnDocument(doc, `find('(a+)+$', { regex: true });`, {
+      limits: { maxTimeMs: 1000 },
+    })
+    expect(Date.now() - t0).toBeLessThan(500)
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.code).toBe('invalid_argument')
+    }
+  })
+
+  it('enforces insertText per-call and cumulative limits and fast linear moveWordRight', () => {
+    const doc = makeDoc(['start'])
+    const before = doc.exportHwp()
+
+    const perCall = runMacroOnDocument(doc, `insertText("x".repeat(60000));`)
+    expect(perCall.ok).toBe(false)
+    if (!perCall.ok) expect(perCall.code).toBe('memory_limit')
+    expect(bytesEqual(doc.exportHwp(), before)).toBe(true)
+
+    const cumulative = runMacroOnDocument(
+      doc,
+      `var chunk = "x".repeat(400); for (var i = 0; i < 6; i++) { insertText(chunk); }`,
+      { limits: { maxTotalInsertChars: 1500 } },
+    )
+    expect(cumulative.ok).toBe(false)
+    if (!cumulative.ok) expect(cumulative.code).toBe('memory_limit')
+    expect(bytesEqual(doc.exportHwp(), before)).toBe(true)
+
+    const wordDoc = makeDoc(['a '.repeat(2000)])
+    const t0 = Date.now()
+    const wordRes = runMacroOnDocument(
+      wordDoc,
+      'moveDocBegin(); moveWordRight(2147483647); getCaret().offset;',
+    )
+    expect(Date.now() - t0).toBeLessThan(200)
+    expect(wordRes.ok).toBe(true)
+    if (wordRes.ok) expect(wordRes.value).toBe(4000)
+  })
+
+  it('truncates per-message length to 500 chars and caps cumulative message text to 4000 chars', () => {
+    const doc = makeDoc(['x'])
+    const res = runMacroOnDocument(
+      doc,
+      `
+      var s = "a".repeat(2000);
+      for (var i = 0; i < 50; i++) {
+        message(s);
+      }
+      1;
+    `,
+    )
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.messages.length).toBeGreaterThan(0)
+    let total = 0
+    for (const m of res.messages) {
+      expect(m.length).toBeLessThanOrEqual(MAX_MACRO_MESSAGE_LENGTH)
+      expect(m.endsWith('…')).toBe(true)
+      total += m.length
+    }
+    expect(total).toBeLessThanOrEqual(MAX_MACRO_TOTAL_MESSAGE_CHARS)
+  })
+
+  it('reports line: null, column: null, phase: post_run when post-run deadline check fails', () => {
+    const doc = makeDoc(['x'])
+    let calls = 0
+    const res = runMacroOnDocument(doc, '1;', {
+      limits: { maxTimeMs: 10 },
+      now: () => {
+        calls += 1
+        // Stay within budget during parse/eval (calls 1..3), jump past deadline on post-run check (call 4).
+        return calls <= 3 ? 1000 : 2000
+      },
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.code).toBe('time_limit')
+      expect(res.line).toBeNull()
+      expect(res.column).toBeNull()
+      expect(res.phase).toBe('post_run')
     }
   })
 })

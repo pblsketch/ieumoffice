@@ -54,6 +54,8 @@ const ALIGN_MAP = Object.freeze({
 
 const ALIGN_NAMES = Object.freeze(new Set(['left', 'center', 'right', 'justify']))
 
+const PARA_UNITS_PER_PT = 200
+
 const HEX_6_RE = /^#?([0-9a-fA-F]{6})$/
 const HEX_3_RE = /^#?([0-9a-fA-F]{3})$/
 
@@ -90,6 +92,7 @@ function defaultFieldsFor(actionName) {
         Bold: undefined,
         Italic: undefined,
         UnderlineType: undefined,
+        StrikeOutType: undefined,
         StrikeoutType: undefined,
         Height: undefined,
         FontSize: undefined,
@@ -107,6 +110,7 @@ function defaultFieldsFor(actionName) {
         Indentation: undefined,
         PrevSpacing: undefined,
         NextSpacing: undefined,
+        PagebreakBefore: undefined,
       }
     case 'Style':
       return {
@@ -121,7 +125,7 @@ function defaultFieldsFor(actionName) {
         ReplaceString: '',
         MatchCase: false,
         WholeWordOnly: false,
-        RegExp: false,
+        FindRegExp: false,
         UseWildCards: false,
       }
     case 'TableCreate':
@@ -169,9 +173,32 @@ function parseCompatColor(value, fail) {
     if (!Number.isInteger(value) || value < 0 || value > 0xffffff) {
       fail('invalid_argument', 'Invalid TextColor: numeric color must be an integer 0..0xffffff')
     }
-    return `#${value.toString(16).padStart(6, '0')}`
+    // ParameterSet numeric TextColor is packed in BGR (0xBBGGRR) order.
+    const r = value & 0xff
+    const g = (value >> 8) & 0xff
+    const b = (value >> 16) & 0xff
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
   }
   fail('invalid_argument', 'Invalid TextColor: expected #RRGGBB hex string or integer 0..0xffffff')
+}
+
+function parseCompatParaUnit(value, fieldName, minUnits, maxUnits, fail) {
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value < minUnits ||
+    value > maxUnits
+  ) {
+    fail(
+      'invalid_argument',
+      `Invalid ${fieldName}: expected a number between ${minUnits} and ${maxUnits} (200 units = 1 pt)`,
+    )
+  }
+  return value / PARA_UNITS_PER_PT
+}
+
+function isTruthyCompatFlag(value) {
+  return value !== undefined && value !== null && value !== false && value !== 0
 }
 
 function parseCompatAlign(value, fail) {
@@ -206,8 +233,18 @@ function mapCharShapeProps(pset, fail) {
     props.underline = parseTypeToggle(pset.UnderlineType, 'UnderlineType', fail)
     count += 1
   }
-  if (pset.StrikeoutType !== undefined && pset.StrikeoutType !== null) {
-    props.strikethrough = parseTypeToggle(pset.StrikeoutType, 'StrikeoutType', fail)
+  const rawStrike =
+    pset.StrikeOutType !== undefined && pset.StrikeOutType !== null
+      ? pset.StrikeOutType
+      : pset.StrikeoutType
+  if (rawStrike !== undefined && rawStrike !== null) {
+    props.strikethrough = parseTypeToggle(
+      rawStrike,
+      pset.StrikeOutType !== undefined && pset.StrikeOutType !== null
+        ? 'StrikeOutType'
+        : 'StrikeoutType',
+      fail,
+    )
     count += 1
   }
   if (pset.Height !== undefined && pset.Height !== null) {
@@ -260,23 +297,37 @@ function mapParaShapeProps(pset, fail) {
     count += 1
   }
   if (pset.LeftMargin !== undefined && pset.LeftMargin !== null) {
-    props.leftMargin = pset.LeftMargin
+    props.leftMargin = parseCompatParaUnit(pset.LeftMargin, 'LeftMargin', 0, 60000, fail)
     count += 1
   }
   if (pset.RightMargin !== undefined && pset.RightMargin !== null) {
-    props.rightMargin = pset.RightMargin
+    props.rightMargin = parseCompatParaUnit(pset.RightMargin, 'RightMargin', 0, 60000, fail)
     count += 1
   }
   if (pset.Indentation !== undefined && pset.Indentation !== null) {
-    props.firstLineIndent = pset.Indentation
+    props.firstLineIndent = parseCompatParaUnit(
+      pset.Indentation,
+      'Indentation',
+      -20000,
+      20000,
+      fail,
+    )
     count += 1
   }
   if (pset.PrevSpacing !== undefined && pset.PrevSpacing !== null) {
-    props.spaceBefore = pset.PrevSpacing
+    props.spaceBefore = parseCompatParaUnit(pset.PrevSpacing, 'PrevSpacing', 0, 40000, fail)
     count += 1
   }
   if (pset.NextSpacing !== undefined && pset.NextSpacing !== null) {
-    props.spaceAfter = pset.NextSpacing
+    props.spaceAfter = parseCompatParaUnit(pset.NextSpacing, 'NextSpacing', 0, 40000, fail)
+    count += 1
+  }
+  const rawPageBreak =
+    pset.PagebreakBefore !== undefined && pset.PagebreakBefore !== null
+      ? pset.PagebreakBefore
+      : pset.PageBreakBefore
+  if (rawPageBreak !== undefined && rawPageBreak !== null) {
+    props.pageBreakBefore = parseBoolToggle(rawPageBreak, 'PagebreakBefore', fail)
     count += 1
   }
   if (count === 0) {
@@ -285,13 +336,33 @@ function mapParaShapeProps(pset, fail) {
   return props
 }
 
-function extractFindOptions(pset, fallbackBag) {
+function validateFindFlags(src, fail) {
+  if (isTruthyCompatFlag(src.UseWildCards)) {
+    fail(
+      'unsupported_action',
+      'HFindReplace.UseWildCards is not supported; wildcard syntax differs from regular expressions (use FindRegExp instead)',
+      { unsupportedAction: 'UseWildCards' },
+    )
+  }
+  if (isTruthyCompatFlag(src.RegExp)) {
+    fail(
+      'invalid_argument',
+      'HFindReplace.RegExp is not a valid parameter name; use HFindReplace.FindRegExp instead',
+    )
+  }
+}
+
+function extractFindOptions(pset, fallbackBag, fail) {
   const src = isRecord(pset) ? pset : fallbackBag
+  validateFindFlags(src, fail)
   const query = typeof src.FindString === 'string' ? src.FindString : ''
   const replacement = typeof src.ReplaceString === 'string' ? src.ReplaceString : ''
   const caseSensitive = Boolean(src.MatchCase)
   const wholeWord = Boolean(src.WholeWordOnly)
-  const regex = Boolean(src.RegExp || src.UseWildCards)
+  const regex =
+    src.FindRegExp !== undefined && src.FindRegExp !== null
+      ? parseBoolToggle(src.FindRegExp, 'FindRegExp', fail)
+      : false
   return { query, replacement, opts: { caseSensitive, wholeWord, regex } }
 }
 
@@ -373,6 +444,7 @@ export function createCompatGlobals(api, options = undefined) {
 
   const runRepeatFind = (pset) => {
     const src = isRecord(pset) ? pset : HFindReplace
+    validateFindFlags(src, fail)
     const query =
       typeof src.FindString === 'string' && src.FindString.length > 0
         ? src.FindString
@@ -392,8 +464,8 @@ export function createCompatGlobals(api, options = undefined) {
           ? Boolean(src.WholeWordOnly)
           : Boolean(state?.lastFind?.wholeWord),
       regex:
-        src.RegExp !== undefined || src.UseWildCards !== undefined
-          ? Boolean(src.RegExp || src.UseWildCards)
+        src.FindRegExp !== undefined && src.FindRegExp !== null
+          ? parseBoolToggle(src.FindRegExp, 'FindRegExp', fail)
           : Boolean(state?.lastFind?.regex),
     }
     const matches = api.find(query, opts)
@@ -527,12 +599,12 @@ export function createCompatGlobals(api, options = undefined) {
       }
       case 'AllReplace': {
         selectAnchor = null
-        const { query, replacement, opts } = extractFindOptions(pset, HFindReplace)
+        const { query, replacement, opts } = extractFindOptions(pset, HFindReplace, fail)
         return api.replaceAll(query, replacement, opts)
       }
       case 'FindReplace': {
         selectAnchor = null
-        const { query, replacement, opts } = extractFindOptions(pset, HFindReplace)
+        const { query, replacement, opts } = extractFindOptions(pset, HFindReplace, fail)
         return api.replaceNext(query, replacement, opts)
       }
       case 'RepeatFind': {

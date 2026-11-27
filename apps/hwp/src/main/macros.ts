@@ -79,7 +79,8 @@ export interface MacroImportCommitInput {
   name: string
   description?: string
   script: string
-  slot?: number | null
+  /** Ignored during import: imported macros always start with `slot: null`. */
+  slot?: null
 }
 
 export type MacroSyntaxCheckResult =
@@ -91,7 +92,8 @@ export interface MacroImportPreview {
   name: string
   description?: string
   script: string
-  slot?: number | null
+  /** Shortcut slots are never imported from `.ieummacro` files. */
+  slot?: null
   syntax?: MacroSyntaxCheckResult
 }
 
@@ -1173,7 +1175,6 @@ export function parseMacroFile(
 
   let rawName: string | undefined
   let rawDescription: string | undefined
-  let parsedSlot: number | null | undefined
   let separatorIndex = -1
 
   for (let i = 1; i < lines.length; i++) {
@@ -1200,22 +1201,9 @@ export function parseMacroFile(
     } else if (key === 'description') {
       rawDescription = value
     } else if (key === 'slot') {
-      const trimmedSlot = value.trim().toLowerCase()
-      if (!trimmedSlot || trimmedSlot === 'null' || trimmedSlot === 'none') {
-        parsedSlot = null
-      } else if (/^\d+$/.test(trimmedSlot)) {
-        const slotCheck = validateMacroSlot(Number(trimmedSlot))
-        if (!slotCheck.ok) {
-          return { ok: false, reason: 'invalid_format', error: slotCheck.error }
-        }
-        parsedSlot = slotCheck.slot
-      } else {
-        return {
-          ok: false,
-          reason: 'invalid_format',
-          error: `Invalid @slot header value: ${value.trim()}`,
-        }
-      }
+      // Shortcut slots are never imported from untrusted `.ieummacro` files
+      // so an imported macro can never steal an existing user shortcut.
+      continue
     } else {
       return {
         ok: false,
@@ -1259,7 +1247,6 @@ export function parseMacroFile(
       name: nameRes.value,
       ...(descRes.value !== undefined ? { description: descRes.value } : {}),
       script: scriptRes.value,
-      ...(parsedSlot !== undefined ? { slot: parsedSlot } : {}),
       ...(syntax !== undefined ? { syntax } : {}),
     },
   }
@@ -1323,7 +1310,8 @@ export function previewMacroFileImport(
 
 /**
  * Commit a user-confirmed imported macro synchronously into `hwp-macros.json`.
- * Always records `origin: 'imported'` regardless of caller-supplied fields.
+ * Always records `origin: 'imported'` and `slot: null` regardless of
+ * caller-supplied fields so an import can never steal an existing shortcut slot.
  */
 export function commitMacroImport(
   appOrDir: SettingsPathProvider | string,
@@ -1340,7 +1328,7 @@ export function commitMacroImport(
       name: rawInput.name,
       description: rawInput.description,
       script: rawInput.script,
-      slot: rawInput.slot ?? null,
+      slot: null,
       origin: 'imported',
     },
     options,

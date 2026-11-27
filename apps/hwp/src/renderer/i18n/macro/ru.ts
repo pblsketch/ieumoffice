@@ -108,4 +108,30 @@ export const ru = {
   aiDraftReady: 'Черновик вставлен в редактор. Проверьте его перед сохранением или запуском.',
   aiDraftFailed: 'Не удалось создать сценарий макроса: {error}',
   aiNoOutput: 'ИИ не вернул сценарий макроса.',
+  importPreviewSlotHint:
+    'Горячие клавиши не импортируются автоматически. Назначьте сочетание после сохранения.',
+  importPreviewBidiWarning:
+    'Скрипт содержит скрытые управляющие символы направления текста или нулевой ширины (показаны как [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Записывать и запускать макросы можно только тогда, когда курсор находится в абзаце основного текста.',
+  noticeMacroRunNotRecorded: 'Запуск другого макроса во время записи не записывается.',
+  noticeMacroRollbackObjectLossAt:
+    'Макрос остановлен и изменения отменены (строка {line}, стлб. {column}), чтобы предотвратить потерю объектов или примечаний.',
+  noticeMacroRollbackObjectLossPostRun:
+    'При итоговой проверке обнаружена потеря объектов или примечаний; макрос остановлен и изменения отменены.',
+  noticeMacroRunErrorPostRun: 'Сбой макроса при итоговой проверке: {error}',
+  cmdUndo: 'Отменить',
+  cmdRedo: 'Повторить',
+  cmdCopy: 'Копировать',
+  cmdCut: 'Вырезать',
+  cmdPaste: 'Вставить',
+  cmdFind: 'Найти',
+  cmdInsertImage: 'Вставить изображение',
+  cmdInsertFootnote: 'Вставить сноску',
+  cmdInsertEndnote: 'Вставить концевую сноску',
+  cmdInsertHyperlink: 'Вставить гиперссылку',
+  cmdInsertBookmark: 'Вставить закладку',
+  cmdLineBreak: 'Разрыв строки',
+  cmdTab: 'Табуляция',
+  cmdOtherAction: 'Неподдерживаемое действие редактора ({id})',
 } satisfies Record<keyof typeof zh, string>

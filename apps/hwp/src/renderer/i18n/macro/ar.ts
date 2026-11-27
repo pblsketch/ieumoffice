@@ -106,4 +106,29 @@ export const ar = {
   aiDraftReady: 'تم وضع المسودة في المحرر. راجعها قبل الحفظ أو التشغيل.',
   aiDraftFailed: 'تعذّر إنشاء نص الماكرو البرمجي: {error}',
   aiNoOutput: 'لم يُرجع الذكاء الاصطناعي نص ماكرو برمجياً.',
+  importPreviewSlotHint: 'لا تُستورد الاختصارات تلقائيًا. عيّن اختصارًا بنفسك بعد الحفظ.',
+  importPreviewBidiWarning:
+    'يحتوي هذا النص البرمجي على أحرف تحكم اتجاهية مخفية أو أحرف عديمة العرض (تُعرض بصيغة [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'لا يمكن تسجيل الماكرو أو تشغيله إلا عندما يكون المؤشر داخل فقرة في متن المستند.',
+  noticeMacroRunNotRecorded: 'لا يُسجَّل تشغيل ماكرو آخر أثناء التسجيل.',
+  noticeMacroRollbackObjectLossAt:
+    'توقف الماكرو وتم التراجع عن التغييرات (السطر {line}، العمود {column}) لمنع فقدان كائنات المستند أو الملاحظات.',
+  noticeMacroRollbackObjectLossPostRun:
+    'توقف الماكرو وتم التراجع عن التغييرات أثناء الفحص النهائي لمنع فقدان كائنات المستند أو الملاحظات.',
+  noticeMacroRunErrorPostRun: 'فشل الماكرو أثناء الفحص النهائي: {error}',
+  cmdUndo: 'تراجع',
+  cmdRedo: 'إعادة',
+  cmdCopy: 'نسخ',
+  cmdCut: 'قص',
+  cmdPaste: 'لصق',
+  cmdFind: 'بحث',
+  cmdInsertImage: 'إدراج صورة',
+  cmdInsertFootnote: 'إدراج حاشية سفلية',
+  cmdInsertEndnote: 'إدراج تعليق ختامي',
+  cmdInsertHyperlink: 'إدراج ارتباط تشعبي',
+  cmdInsertBookmark: 'إدراج إشارة مرجعية',
+  cmdLineBreak: 'فاصل سطر',
+  cmdTab: 'علامة جدولة',
+  cmdOtherAction: 'إجراء تحرير غير مدعوم ({id})',
 } satisfies Record<keyof typeof zh, string>

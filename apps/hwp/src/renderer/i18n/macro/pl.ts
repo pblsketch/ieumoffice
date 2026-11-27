@@ -108,4 +108,30 @@ export const pl = {
     'Szkic skryptu umieszczono w edytorze. Sprawdź go przed zapisaniem lub uruchomieniem.',
   aiDraftFailed: 'Nie udało się wygenerować skryptu makra: {error}',
   aiNoOutput: 'AI nie zwróciło skryptu makra.',
+  importPreviewSlotHint:
+    'Skróty klawiszowe nie są importowane automatycznie. Przypisz skrót po zapisaniu.',
+  importPreviewBidiWarning:
+    'Ten skrypt zawiera ukryte znaki sterujące kierunkiem tekstu lub o zerowej szerokości (oznaczone jako [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Makra można nagrywać i uruchamiać tylko wtedy, gdy kursor znajduje się w akapicie tekstu głównego.',
+  noticeMacroRunNotRecorded: 'Uruchomienie innego makra nie jest rejestrowane podczas nagrywania.',
+  noticeMacroRollbackObjectLossAt:
+    'Makro zatrzymano i cofnięto zmiany (wiersz {line}, kol. {column}), aby zapobiec utracie obiektów lub komentarzy.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Makro zatrzymano i cofnięto zmiany podczas sprawdzenia końcowego, aby zapobiec utracie obiektów lub komentarzy.',
+  noticeMacroRunErrorPostRun: 'Błąd makra podczas sprawdzenia końcowego: {error}',
+  cmdUndo: 'Cofnij',
+  cmdRedo: 'Ponów',
+  cmdCopy: 'Kopiuj',
+  cmdCut: 'Wytnij',
+  cmdPaste: 'Wklej',
+  cmdFind: 'Znajdź',
+  cmdInsertImage: 'Wstaw obraz',
+  cmdInsertFootnote: 'Wstaw przypis dolny',
+  cmdInsertEndnote: 'Wstaw przypis końcowy',
+  cmdInsertHyperlink: 'Wstaw hiperłącze',
+  cmdInsertBookmark: 'Wstaw zakładkę',
+  cmdLineBreak: 'Podział wiersza',
+  cmdTab: 'Tabulator',
+  cmdOtherAction: 'Nieobsługiwana czynność edytora ({id})',
 } satisfies Record<keyof typeof zh, string>

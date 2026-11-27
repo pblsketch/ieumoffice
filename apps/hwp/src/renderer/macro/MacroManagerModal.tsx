@@ -71,7 +71,7 @@ export interface MacroManagerModalProps {
   nearLimit?: MacroNearLimitInfo | null
   onReloadStore?: () => void | Promise<void>
   onMacrosUpdated?: (macros: MacroRecord[]) => void
-  onRunMacro: (macro: { name: string; script: string }) => Promise<MacroHostResult>
+  onRunMacro: (macro: { name: string; script: string }) => Promise<MacroRunResult>
   onToggleRecording: () => void | Promise<void>
   onOpenEditor: (request: MacroEditorRequest) => void
   onClose: () => void
@@ -109,11 +109,53 @@ function formatByteSize(bytes: number): string {
   return `${(kb / 1024).toFixed(2)} MB`
 }
 
-/** Format a `MacroHostResult` into a localized user-visible notice payload. */
+const PREVIEW_HIDDEN_CONTROLS_RE = /[\u202A-\u202E\u2066-\u2069\u200B-\u200F]/g
+
+/**
+ * Replace hidden directional or zero-width control characters in an import
+ * preview script with visible `[U+XXXX]` markers so spoofing characters cannot
+ * hide in the read-only preview.
+ */
+export function formatPreviewScriptWithVisibleControls(script: string): {
+  text: string
+  hasHiddenControls: boolean
+} {
+  let hasHiddenControls = false
+  const text = script.replace(PREVIEW_HIDDEN_CONTROLS_RE, (ch) => {
+    hasHiddenControls = true
+    const hex = ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')
+    return `[U+${hex}]`
+  })
+  return { text, hasHiddenControls }
+}
+
+export type MacroRunResult =
+  | MacroHostResult
+  | {
+      ok: false
+      code: string
+      error: string
+      line?: number | null
+      column?: number | null
+      phase?: 'post_run'
+      unsupportedAction?: string
+      messages: string[]
+      steps: number
+      elapsedMs: number
+    }
+
+type MacroHostFailureView = Extract<MacroRunResult, { ok: false }> & {
+  code: string
+  line?: number | null
+  column?: number | null
+  phase?: 'post_run' | string
+}
+
+/** Format a `MacroHostResult` (or plugin `unsupported_place` result) into a localized user-visible notice payload. */
 export function formatMacroRunOutcome(
   lang: Lang,
   macroName: string,
-  result: MacroHostResult,
+  result: MacroRunResult,
 ): { tone: 'info' | 'error'; text: string } {
   if (result.ok) {
     if (result.messages.length > 0) {
@@ -130,35 +172,69 @@ export function formatMacroRunOutcome(
       text: translateMacro(lang, 'noticeMacroRunSuccess', { name: macroName }),
     }
   }
-  if (result.code === 'object_loss' || result.code === 'memo_loss') {
+  const failure = result as MacroHostFailureView
+  if (failure.code === 'unsupported_place') {
+    return {
+      tone: 'error',
+      text: translateMacro(lang, 'noticeMacroOutsideBody'),
+    }
+  }
+  if (failure.code === 'object_loss' || failure.code === 'memo_loss') {
+    if (failure.line == null || failure.phase === 'post_run') {
+      return {
+        tone: 'error',
+        text: translateMacro(lang, 'noticeMacroRollbackObjectLossPostRun'),
+      }
+    }
+    if (typeof failure.line === 'number' && failure.line > 0) {
+      return {
+        tone: 'error',
+        text: translateMacro(lang, 'noticeMacroRollbackObjectLossAt', {
+          line: failure.line,
+          column: failure.column ?? 1,
+        }),
+      }
+    }
     return {
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRollbackObjectLoss'),
     }
   }
-  if (result.code === 'unsupported_action' && result.unsupportedAction) {
+  if (failure.code === 'unsupported_action' && failure.unsupportedAction) {
+    if (typeof failure.line === 'number' && failure.line > 0) {
+      return {
+        tone: 'error',
+        text: translateMacro(lang, 'noticeMacroUnsupportedAction', {
+          action: failure.unsupportedAction,
+          line: failure.line,
+          column: failure.column ?? 1,
+        }),
+      }
+    }
     return {
       tone: 'error',
-      text: translateMacro(lang, 'noticeMacroUnsupportedAction', {
-        action: result.unsupportedAction,
-        line: result.line,
-        column: result.column,
-      }),
+      text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: failure.error }),
     }
   }
-  if (result.line > 0) {
+  if (failure.line == null && failure.phase === 'post_run') {
+    return {
+      tone: 'error',
+      text: translateMacro(lang, 'noticeMacroRunErrorPostRun', { error: failure.error }),
+    }
+  }
+  if (typeof failure.line === 'number' && failure.line > 0) {
     return {
       tone: 'error',
       text: translateMacro(lang, 'noticeMacroRunError', {
-        line: result.line,
-        column: result.column,
-        error: result.error,
+        line: failure.line,
+        column: failure.column ?? 1,
+        error: failure.error,
       }),
     }
   }
   return {
     tone: 'error',
-    text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: result.error }),
+    text: translateMacro(lang, 'noticeMacroRunErrorNoLoc', { error: failure.error }),
   }
 }
 
@@ -296,7 +372,12 @@ export function MacroManagerModal({
     setNotice(null)
     try {
       const result = await onRunMacro({ name: macro.name, script: macro.script })
-      setNotice(formatMacroRunOutcome(lang, macro.name, result))
+      const outcome = formatMacroRunOutcome(lang, macro.name, result)
+      setNotice(
+        recording && outcome.tone === 'info'
+          ? { tone: 'info', text: `${outcome.text} ${t('noticeMacroRunNotRecorded')}` }
+          : outcome,
+      )
     } catch (error) {
       setNotice({
         tone: 'error',
@@ -435,7 +516,7 @@ export function MacroManagerModal({
         name: preview.name,
         ...(preview.description ? { description: preview.description } : {}),
         script: preview.script,
-        slot: preview.slot ?? null,
+        slot: null,
       })
       if (res.ok) {
         onMacrosUpdated?.(res.macros)
@@ -461,6 +542,11 @@ export function MacroManagerModal({
     if (!pendingImport) return null
     if (pendingImport.preview.syntax) return pendingImport.preview.syntax
     return validateMacroSyntax(pendingImport.preview.script)
+  }, [pendingImport])
+
+  const previewScriptView = useMemo(() => {
+    if (!pendingImport) return null
+    return formatPreviewScriptWithVisibleControls(pendingImport.preview.script)
   }, [pendingImport])
 
   const storeErrorBody = activeStoreError
@@ -595,6 +681,18 @@ export function MacroManagerModal({
             <section className="macro-import-preview" data-testid="macro-import-preview">
               <div className="macro-banner-title">{t('importPreviewTitle')}</div>
               <p className="macro-banner-hint">{t('importPreviewWarning')}</p>
+              <p className="macro-banner-hint" data-testid="macro-import-slot-hint">
+                {t('importPreviewSlotHint')}
+              </p>
+              {previewScriptView?.hasHiddenControls && (
+                <div
+                  className="macro-banner macro-banner-warn"
+                  role="alert"
+                  data-testid="macro-import-bidi-warning"
+                >
+                  {t('importPreviewBidiWarning')}
+                </div>
+              )}
               <div className="macro-import-meta">
                 <span className="macro-import-meta-label">{t('importPreviewName')}</span>
                 <span>{pendingImport.preview.name}</span>
@@ -611,7 +709,7 @@ export function MacroManagerModal({
               <div className="macro-field">
                 <span className="macro-field-label">{t('importPreviewScript')}</span>
                 <pre className="macro-import-script" data-testid="macro-import-script">
-                  {pendingImport.preview.script}
+                  {previewScriptView?.text ?? pendingImport.preview.script}
                 </pre>
               </div>
               {importSyntax && !importSyntax.ok && (

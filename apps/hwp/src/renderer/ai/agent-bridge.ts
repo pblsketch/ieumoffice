@@ -9,7 +9,7 @@ import type { AgentPluginSurface } from '../../../studio-plugin/agent-plugin.mjs
 export type AgentBridge = {
   [K in keyof AgentPluginSurface]: (
     ...args: Parameters<AgentPluginSurface[K]>
-  ) => Promise<ReturnType<AgentPluginSurface[K]>>
+  ) => Promise<Awaited<ReturnType<AgentPluginSurface[K]>>>
 }
 
 /** The part of the editor the bridge needs. */
@@ -145,6 +145,7 @@ const METHODS = [
   'stopMacroRecording',
   'getMacroRecordingState',
   'installMacroMenu',
+  'syncMacroSlots',
 ] as const satisfies readonly (keyof AgentPluginSurface)[]
 
 export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): AgentBridge {

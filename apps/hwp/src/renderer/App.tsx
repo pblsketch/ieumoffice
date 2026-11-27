@@ -39,11 +39,10 @@ import {
   type MacroCommandDetail,
   type MacroRecordingEventDetail,
 } from '../../studio-plugin/workpane-menu.mjs'
-import type { MacroHostResult } from '../../studio-plugin/macro-host.mjs'
 import blankHwpUrl from './assets/blank.hwp?url'
 import { bibliographyMenuLabelsFor, translateBiblio } from './i18n/biblio'
 import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
-import { macroMenuLabelsFor, translateMacro } from './i18n/macro'
+import { localizeSkippedCommandLabel, macroMenuLabelsFor, translateMacro } from './i18n/macro'
 import { translateSubmission } from './i18n/submission'
 import { tocDialogLabelsFor } from './i18n/toc'
 import { translateWorkpane } from './i18n/workpane'
@@ -713,8 +712,21 @@ export default function App() {
     }
   }, [refreshMacroStoreState])
 
+  // Sync assigned macro shortcut slots to the editor plugin so unassigned Alt+slots
+  // pass through undisturbed.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const sync = (pluginBridge as { syncMacroSlots?: (slots: number[]) => Promise<unknown> })
+      .syncMacroSlots
+    if (typeof sync !== 'function') return
+    const assignedSlots = macros
+      .map((item) => item.slot)
+      .filter((slot): slot is number => typeof slot === 'number')
+    void sync(assignedSlots).catch(() => {})
+  }, [phase, pluginBridge, macros])
+
   const runMacroInEditor = useCallback(
-    async (macro: { name: string; script: string }): Promise<MacroHostResult> => {
+    async (macro: { name: string; script: string }) => {
       const result = await agentBridge.runMacro(macro.script, {
         appStyleMap: outlineStyleMapRef.current,
         bibEntries: bibEntriesRef.current,
@@ -722,9 +734,12 @@ export default function App() {
       if (result.ok && result.changed) {
         setDocTick((tick) => tick + 1)
       }
+      if (macroRecordingRef.current) {
+        setNotice({ tone: 'info', text: translateMacro(lang, 'noticeMacroRunNotRecorded') })
+      }
       return result
     },
-    [agentBridge],
+    [agentBridge, lang],
   )
 
   const stopRecordingAndOpenEditor = useCallback(async (): Promise<void> => {
@@ -754,7 +769,18 @@ export default function App() {
       return
     }
     try {
-      await pluginBridge.startMacroRecording()
+      const res = (await pluginBridge.startMacroRecording()) as
+        { ok?: boolean; recording?: boolean; reason?: string; error?: string } | undefined
+      if (res && res.ok === false) {
+        setNotice({
+          tone: 'error',
+          text:
+            res.reason === 'unsupported_place'
+              ? translateMacro(lang, 'noticeMacroOutsideBody')
+              : translateMacro(lang, 'errorActionFailed', { error: res.error || 'start_failed' }),
+        })
+        return
+      }
       setMacroRecording(true)
       setNotice({ tone: 'info', text: translateMacro(lang, 'noticeRecordingStarted') })
     } catch (error) {
@@ -1887,7 +1913,11 @@ export default function App() {
       }
     }
     const onMacroRecordingEvent = (event: Event): void => {
-      const detail = (event as CustomEvent<MacroRecordingEventDetail | undefined>).detail
+      const detail = (
+        event as CustomEvent<
+          MacroRecordingEventDetail | { kind: 'slot_run_ignored'; slot?: number } | undefined
+        >
+      ).detail
       if (!detail || typeof detail !== 'object') return
       if ('state' in detail) {
         if (detail.state === 'started') {
@@ -1901,13 +1931,18 @@ export default function App() {
         setNotice({
           tone: 'info',
           text: translateMacro(lang, 'noticeUnsupportedCommand', {
-            label: detail.label || detail.commandId,
+            label: localizeSkippedCommandLabel(lang, detail.commandId, detail.label),
           }),
         })
       } else if (detail.kind === 'mouse_ignored') {
         setNotice({
           tone: 'info',
           text: translateMacro(lang, 'noticeMouseIgnored'),
+        })
+      } else if (detail.kind === 'slot_run_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMacroRunNotRecorded'),
         })
       }
     }

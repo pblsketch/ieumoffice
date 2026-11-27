@@ -11,6 +11,7 @@ export interface MacroLimits {
   readonly maxStringLength: number
   readonly maxCollectionSize: number
   readonly maxScriptBytes: number
+  readonly maxMemoryBytes: number
 }
 
 export type MacroLimitsInput = Partial<{
@@ -20,11 +21,40 @@ export type MacroLimitsInput = Partial<{
   maxStringLength: number
   maxCollectionSize: number
   maxScriptBytes: number
+  maxMemoryBytes: number
 }>
 
 export declare const DEFAULT_MACRO_LIMITS: Readonly<MacroLimits>
 
 export declare const FORBIDDEN_PROP_NAMES: ReadonlySet<string>
+
+export declare const BIDI_AND_INVISIBLE_RE: RegExp
+
+export interface DisallowedInvisibleCharMatch {
+  line: number
+  column: number
+  codePoint: number
+  hex: string
+}
+
+export declare function findDisallowedInvisibleChar(
+  source: string,
+): DisallowedInvisibleCharMatch | null
+
+export interface InterpreterCapabilities {
+  readonly keywords: readonly string[]
+  readonly globals: readonly string[]
+  readonly stringMethods: readonly string[]
+  readonly arrayMethods: readonly string[]
+  readonly objectMethods: readonly string[]
+  readonly mathMethods: readonly string[]
+  readonly mathConstants: readonly string[]
+  readonly jsonMethods: readonly string[]
+  readonly numberMethods: readonly string[]
+  readonly arrayStaticMethods: readonly string[]
+}
+
+export declare const INTERPRETER_CAPABILITIES: Readonly<InterpreterCapabilities>
 
 export type MacroSyntaxErrorCode = 'syntax_error' | 'script_too_large'
 
@@ -72,6 +102,7 @@ export interface MacroParseOptions extends MacroLimitsInput {
 
 export interface MacroRunOptions extends MacroParseOptions {
   now?: () => number
+  startTime?: number
 }
 
 export interface MacroParseSuccess {

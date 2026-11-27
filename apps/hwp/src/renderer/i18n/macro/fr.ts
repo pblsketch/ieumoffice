@@ -109,4 +109,31 @@ export const fr = {
     'Brouillon inséré dans l’éditeur. Vérifiez-le avant de l’enregistrer ou de l’exécuter.',
   aiDraftFailed: 'Impossible de générer le script de macro : {error}',
   aiNoOutput: 'L’IA n’a renvoyé aucun script de macro.',
+  importPreviewSlotHint:
+    'Les raccourcis ne sont pas importés automatiquement. Attribuez un raccourci après l’enregistrement.',
+  importPreviewBidiWarning:
+    'Ce script contient des caractères de contrôle directionnels ou de largeur nulle masqués (affichés sous forme [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Les macros ne peuvent être enregistrées ou exécutées que lorsque le curseur se trouve dans un paragraphe du corps.',
+  noticeMacroRunNotRecorded:
+    'L’exécution d’une autre macro n’est pas enregistrée pendant l’enregistrement.',
+  noticeMacroRollbackObjectLossAt:
+    'La macro s’est arrêtée et a annulé les modifications (ligne {line}, col. {column}) pour éviter de perdre des objets ou des commentaires.',
+  noticeMacroRollbackObjectLossPostRun:
+    'La macro s’est arrêtée et a annulé les modifications lors du contrôle final pour éviter de perdre des objets ou des commentaires.',
+  noticeMacroRunErrorPostRun: 'Échec de la macro lors du contrôle final : {error}',
+  cmdUndo: 'Annuler',
+  cmdRedo: 'Rétablir',
+  cmdCopy: 'Copier',
+  cmdCut: 'Couper',
+  cmdPaste: 'Coller',
+  cmdFind: 'Rechercher',
+  cmdInsertImage: 'Insérer une image',
+  cmdInsertFootnote: 'Insérer une note de bas de page',
+  cmdInsertEndnote: 'Insérer une note de fin',
+  cmdInsertHyperlink: 'Insérer un lien hypertexte',
+  cmdInsertBookmark: 'Insérer un signet',
+  cmdLineBreak: 'Saut de ligne',
+  cmdTab: 'Tabulation',
+  cmdOtherAction: 'Action d’édition non prise en charge ({id})',
 } satisfies Record<keyof typeof zh, string>

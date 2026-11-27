@@ -9,8 +9,31 @@ import type { OutlineStyleMap } from './outline.d.mts'
 import type { TocKind } from './toc.d.mts'
 
 export declare const MAX_MACRO_MESSAGES: number
+export declare const MAX_MACRO_MESSAGE_LENGTH: number
+export declare const MAX_MACRO_TOTAL_MESSAGE_CHARS: number
 export declare const MAX_TABLE_ROWS: number
 export declare const MAX_TABLE_COLS: number
+
+export interface MacroHostLimits extends MacroLimits {
+  readonly maxInsertCharsPerCall: number
+  readonly maxTotalInsertChars: number
+  readonly maxRegexLength: number
+}
+
+export type MacroHostLimitsInput = MacroLimitsInput &
+  Partial<{
+    maxInsertCharsPerCall: number
+    maxTotalInsertChars: number
+    maxRegexLength: number
+  }>
+
+export declare const DEFAULT_MACRO_HOST_LIMITS: Readonly<{
+  readonly maxInsertCharsPerCall: number
+  readonly maxTotalInsertChars: number
+  readonly maxRegexLength: number
+}>
+
+export declare function assertSafeMacroRegex(pattern: string, maxRegexLength?: number): void
 
 export interface MacroCaret {
   sec: number
@@ -108,16 +131,23 @@ export interface MacroStyleInfo {
 export interface MacroHostOptions {
   caret?: MacroCaret
   selection?: MacroSelectionRange | null
-  limits?: MacroLimitsInput
+  limits?: MacroHostLimitsInput
   now?: () => number
   appStyleMap?: OutlineStyleMap | null
   bibEntries?: readonly BibEntry[]
+  onRecoveryReport?: (report: Promise<unknown>) => void
 }
 
 export interface MacroExecutionState {
   caret: MacroCaret
   selection: MacroSelectionRange | null
+  selectionAnchor?: MacroCaret | null
+  pendingCharFormat?: Record<string, unknown> | null
+  atLineEnd?: boolean
   messages: string[]
+  messageChars?: number
+  messagesTruncated?: boolean
+  totalInsertedChars?: number
   allowedTableDelta: number
   mutated: boolean
   lastError: {
@@ -126,7 +156,9 @@ export interface MacroExecutionState {
     unsupportedAction?: string
   } | null
   lastFind: (MacroFindOptions & { query: string; replacement?: string }) | null
-  limits: Readonly<MacroLimits>
+  limits: Readonly<MacroHostLimits>
+  now?: () => number
+  startTime?: number
   recordError(
     code: MacroHostErrorCode,
     message: string,
@@ -139,6 +171,8 @@ export interface MacroDocumentApi {
   breakPara(): void
   breakPage(): void
   deleteSelection(): boolean
+  deleteBackward(count?: number): boolean
+  deleteForward(count?: number): boolean
   moveDocBegin(): void
   moveDocEnd(): void
   moveParaBegin(): void
@@ -151,6 +185,18 @@ export interface MacroDocumentApi {
   moveDown(count?: number): void
   moveWordLeft(count?: number): void
   moveWordRight(count?: number): void
+  selectLeft(count?: number): void
+  selectRight(count?: number): void
+  selectUp(count?: number): void
+  selectDown(count?: number): void
+  selectWordLeft(count?: number): void
+  selectWordRight(count?: number): void
+  selectLineBegin(): void
+  selectLineEnd(): void
+  selectParaBegin(): void
+  selectParaEnd(): void
+  selectDocBegin(): void
+  selectDocEnd(): void
   select(
     fromSec: number,
     fromPara: number,
@@ -191,6 +237,7 @@ export interface MacroDocumentApi {
 export type MacroHostErrorCode =
   | MacroErrorCode
   | 'unsupported_action'
+  | 'unsupported_place'
   | 'object_loss'
   | 'memo_loss'
   | 'invalid_argument'
@@ -210,8 +257,9 @@ export interface MacroHostFailure {
   ok: false
   code: MacroHostErrorCode
   error: string
-  line: number
-  column: number
+  line: number | null
+  column: number | null
+  phase?: 'post_run'
   unsupportedAction?: string
   messages: string[]
   steps: number
@@ -223,14 +271,11 @@ export type MacroHostResult = MacroHostSuccess | MacroHostFailure
 export interface MacroTransactionContext {
   doc(): HwpDocument
   deferPagination?(): void
+  markNoOp?(): void
 }
 
 export interface MacroTransactionHost {
-  transaction<T>(
-    label: string,
-    fn: (tx: MacroTransactionContext) => T,
-    options?: { foreign?: boolean },
-  ): T
+  transaction<T>(label: string, fn: (tx: MacroTransactionContext) => T): T
 }
 
 export declare function createMacroApi(

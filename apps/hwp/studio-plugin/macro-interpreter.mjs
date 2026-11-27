@@ -27,9 +27,50 @@ export const DEFAULT_MACRO_LIMITS = Object.freeze({
   maxStringLength: 1_000_000,
   maxCollectionSize: 50_000,
   maxScriptBytes: 256 * 1024,
+  maxMemoryBytes: 64 * 1024 * 1024,
 })
 
 const LIMIT_KEYS = Object.freeze(Object.keys(DEFAULT_MACRO_LIMITS))
+
+export const BIDI_AND_INVISIBLE_RE = /[\u202A-\u202E\u2066-\u2069\u200B-\u200F]/
+
+/**
+ * Scan raw macro source text for disallowed invisible or bidirectional control
+ * characters (Trojan Source / hidden character defense). ASCII escape sequences
+ * such as `\u202e` inside string literals are unaffected.
+ */
+export function findDisallowedInvisibleChar(source) {
+  if (typeof source !== 'string' || !BIDI_AND_INVISIBLE_RE.test(source)) {
+    return null
+  }
+  let line = 1
+  let column = 1
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]
+    if (BIDI_AND_INVISIBLE_RE.test(ch)) {
+      const codePoint = ch.charCodeAt(0)
+      return {
+        line,
+        column,
+        codePoint,
+        hex: codePoint.toString(16).toUpperCase().padStart(4, '0'),
+      }
+    }
+    if (ch === '\r') {
+      if (i + 1 < source.length && source[i + 1] === '\n') {
+        i += 1
+      }
+      line += 1
+      column = 1
+    } else if (ch === '\n') {
+      line += 1
+      column = 1
+    } else {
+      column += 1
+    }
+  }
+  return null
+}
 
 export const FORBIDDEN_PROP_NAMES = Object.freeze(
   new Set([
@@ -299,7 +340,7 @@ function createBuiltinCallable(fn, name, staticProps) {
   return Object.freeze(handle)
 }
 
-function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects) {
+function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects, charge = null) {
   if (value === undefined || value === null) return value
   const t = typeof value
   if (t === 'boolean' || t === 'number') return value
@@ -312,6 +353,7 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects) {
         1,
       )
     }
+    if (charge) charge(value.length * 2 + 16)
     return value
   }
   if (t === 'function') {
@@ -340,9 +382,10 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects) {
           1,
         )
       }
+      if (charge) charge(64 + value.length * 16)
       const out = new Array(value.length)
       for (let i = 0; i < value.length; i++) {
-        out[i] = sanitizeHostValueInternal(value[i], limits, depth + 1, seen, freezeObjects)
+        out[i] = sanitizeHostValueInternal(value[i], limits, depth + 1, seen, freezeObjects, charge)
       }
       return freezeObjects ? Object.freeze(out) : out
     }
@@ -355,6 +398,7 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects) {
         1,
       )
     }
+    if (charge) charge(64 + keys.length * 16)
     const out = Object.create(null)
     for (const key of keys) {
       assertSafePropertyKey(key, 1, 1)
@@ -362,7 +406,7 @@ function sanitizeHostValueInternal(value, limits, depth, seen, freezeObjects) {
       if (typeof entry === 'function') {
         out[key] = createHostCallable(entry, entry.name || key, value)
       } else {
-        out[key] = sanitizeHostValueInternal(entry, limits, depth + 1, seen, freezeObjects)
+        out[key] = sanitizeHostValueInternal(entry, limits, depth + 1, seen, freezeObjects, charge)
       }
     }
     return freezeObjects ? Object.freeze(out) : out
@@ -1610,121 +1654,170 @@ class Parser {
 
   parseNullishExpression() {
     let left = this.parseLogicalOrExpression()
-    while (this.check('??')) {
-      const op = this.next()
-      const right = this.parseLogicalOrExpression()
-      left = {
-        type: 'LogicalExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('??')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseLogicalOrExpression()
+        left = {
+          type: 'LogicalExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseLogicalOrExpression() {
     let left = this.parseLogicalAndExpression()
-    while (this.check('||')) {
-      const op = this.next()
-      const right = this.parseLogicalAndExpression()
-      left = {
-        type: 'LogicalExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('||')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseLogicalAndExpression()
+        left = {
+          type: 'LogicalExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseLogicalAndExpression() {
     let left = this.parseEqualityExpression()
-    while (this.check('&&')) {
-      const op = this.next()
-      const right = this.parseEqualityExpression()
-      left = {
-        type: 'LogicalExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('&&')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseEqualityExpression()
+        left = {
+          type: 'LogicalExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseEqualityExpression() {
     let left = this.parseRelationalExpression()
-    while (this.check('==') || this.check('!=') || this.check('===') || this.check('!==')) {
-      const op = this.next()
-      const right = this.parseRelationalExpression()
-      left = {
-        type: 'BinaryExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('==') || this.check('!=') || this.check('===') || this.check('!==')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseRelationalExpression()
+        left = {
+          type: 'BinaryExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseRelationalExpression() {
     let left = this.parseAdditiveExpression()
-    while (this.check('<') || this.check('<=') || this.check('>') || this.check('>=')) {
-      const op = this.next()
-      const right = this.parseAdditiveExpression()
-      left = {
-        type: 'BinaryExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('<') || this.check('<=') || this.check('>') || this.check('>=')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseAdditiveExpression()
+        left = {
+          type: 'BinaryExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseAdditiveExpression() {
     let left = this.parseMultiplicativeExpression()
-    while (this.check('+') || this.check('-')) {
-      const op = this.next()
-      const right = this.parseMultiplicativeExpression()
-      left = {
-        type: 'BinaryExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('+') || this.check('-')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseMultiplicativeExpression()
+        left = {
+          type: 'BinaryExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseMultiplicativeExpression() {
     let left = this.parseExponentiationExpression()
-    while (this.check('*') || this.check('/') || this.check('%')) {
-      const op = this.next()
-      const right = this.parseExponentiationExpression()
-      left = {
-        type: 'BinaryExpression',
-        operator: op.type,
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+    let chainCount = 0
+    try {
+      while (this.check('*') || this.check('/') || this.check('%')) {
+        const op = this.next()
+        this.enterDepth(op)
+        chainCount += 1
+        const right = this.parseExponentiationExpression()
+        left = {
+          type: 'BinaryExpression',
+          operator: op.type,
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
       }
+      return left
+    } finally {
+      this.depth -= chainCount
     }
-    return left
   }
 
   parseExponentiationExpression() {
@@ -1738,14 +1831,19 @@ class Parser {
         )
       }
       const op = this.next()
-      const right = this.parseExponentiationExpression()
-      return {
-        type: 'BinaryExpression',
-        operator: '**',
-        left,
-        right,
-        line: op.line,
-        column: op.column,
+      this.enterDepth(op)
+      try {
+        const right = this.parseExponentiationExpression()
+        return {
+          type: 'BinaryExpression',
+          operator: '**',
+          left,
+          right,
+          line: op.line,
+          column: op.column,
+        }
+      } finally {
+        this.exitDepth()
       }
     }
     return left
@@ -1755,32 +1853,42 @@ class Parser {
     const tok = this.peek()
     if (tok.type === '!' || tok.type === '-' || tok.type === '+' || tok.type === 'typeof') {
       this.next()
-      const argument = this.parseUnaryExpression()
-      return {
-        type: 'UnaryExpression',
-        operator: tok.type,
-        argument,
-        line: tok.line,
-        column: tok.column,
+      this.enterDepth(tok)
+      try {
+        const argument = this.parseUnaryExpression()
+        return {
+          type: 'UnaryExpression',
+          operator: tok.type,
+          argument,
+          line: tok.line,
+          column: tok.column,
+        }
+      } finally {
+        this.exitDepth()
       }
     }
     if (tok.type === '++' || tok.type === '--') {
       this.next()
-      const argument = this.parseUnaryExpression()
-      if (argument.type !== 'Identifier' && argument.type !== 'MemberExpression') {
-        throw new MacroSyntaxError(
-          'Invalid left-hand side expression in prefix operation',
-          argument.line,
-          argument.column,
-        )
-      }
-      return {
-        type: 'UpdateExpression',
-        operator: tok.type,
-        prefix: true,
-        argument,
-        line: tok.line,
-        column: tok.column,
+      this.enterDepth(tok)
+      try {
+        const argument = this.parseUnaryExpression()
+        if (argument.type !== 'Identifier' && argument.type !== 'MemberExpression') {
+          throw new MacroSyntaxError(
+            'Invalid left-hand side expression in prefix operation',
+            argument.line,
+            argument.column,
+          )
+        }
+        return {
+          type: 'UpdateExpression',
+          operator: tok.type,
+          prefix: true,
+          argument,
+          line: tok.line,
+          column: tok.column,
+        }
+      } finally {
+        this.exitDepth()
       }
     }
     return this.parsePostfixExpression()
@@ -1816,71 +1924,80 @@ class Parser {
 
   parseCallAndMemberExpression() {
     let expr = this.parsePrimaryExpression()
-    while (true) {
-      if (this.match('.')) {
-        const propTok = this.peek()
-        if (
-          propTok.type !== 'IDENT' &&
-          !SUPPORTED_KEYWORDS.has(propTok.type) &&
-          propTok.type !== 'REJECTED_KW'
-        ) {
-          throw new MacroSyntaxError(
-            `Expected property name after ".", got "${propTok.value || propTok.type}"`,
-            propTok.line,
-            propTok.column,
-          )
-        }
-        this.next()
-        expr = {
-          type: 'MemberExpression',
-          object: expr,
-          property: {
-            type: 'Identifier',
-            name: propTok.value,
+    let chainCount = 0
+    try {
+      while (true) {
+        if (this.match('.')) {
+          const propTok = this.peek()
+          this.enterDepth(propTok)
+          chainCount += 1
+          if (
+            propTok.type !== 'IDENT' &&
+            !SUPPORTED_KEYWORDS.has(propTok.type) &&
+            propTok.type !== 'REJECTED_KW'
+          ) {
+            throw new MacroSyntaxError(
+              `Expected property name after ".", got "${propTok.value || propTok.type}"`,
+              propTok.line,
+              propTok.column,
+            )
+          }
+          this.next()
+          expr = {
+            type: 'MemberExpression',
+            object: expr,
+            property: {
+              type: 'Identifier',
+              name: propTok.value,
+              line: propTok.line,
+              column: propTok.column,
+            },
+            computed: false,
             line: propTok.line,
             column: propTok.column,
-          },
-          computed: false,
-          line: propTok.line,
-          column: propTok.column,
-        }
-      } else if (this.match('[')) {
-        const openLine = this.prev.line
-        const openCol = this.prev.column
-        const propExpr = this.parseExpression()
-        this.expect(']', 'Expected "]" after computed property')
-        expr = {
-          type: 'MemberExpression',
-          object: expr,
-          property: propExpr,
-          computed: true,
-          line: openLine,
-          column: openCol,
-        }
-      } else if (this.match('(')) {
-        const openLine = this.prev.line
-        const openCol = this.prev.column
-        const args = []
-        if (!this.check(')')) {
-          while (true) {
-            args.push(this.parseAssignmentExpression())
-            if (!this.match(',')) break
-            if (this.check(')')) break
           }
+        } else if (this.match('[')) {
+          const openTok = this.prev
+          this.enterDepth(openTok)
+          chainCount += 1
+          const propExpr = this.parseExpression()
+          this.expect(']', 'Expected "]" after computed property')
+          expr = {
+            type: 'MemberExpression',
+            object: expr,
+            property: propExpr,
+            computed: true,
+            line: openTok.line,
+            column: openTok.column,
+          }
+        } else if (this.match('(')) {
+          const openTok = this.prev
+          this.enterDepth(openTok)
+          chainCount += 1
+          const args = []
+          if (!this.check(')')) {
+            while (true) {
+              args.push(this.parseAssignmentExpression())
+              if (!this.match(',')) break
+              if (this.check(')')) break
+            }
+          }
+          this.expect(')', 'Expected ")" after argument list')
+          expr = {
+            type: 'CallExpression',
+            callee: expr,
+            arguments: args,
+            line: openTok.line,
+            column: openTok.column,
+          }
+        } else {
+          break
         }
-        this.expect(')', 'Expected ")" after argument list')
-        expr = {
-          type: 'CallExpression',
-          callee: expr,
-          arguments: args,
-          line: openLine,
-          column: openCol,
-        }
-      } else {
-        break
       }
+      return expr
+    } finally {
+      this.depth -= chainCount
     }
-    return expr
   }
 
   parsePrimaryExpression() {
@@ -2062,6 +2179,16 @@ export function parseMacroScript(source, options) {
       error: `Script size (${byteLength} bytes) exceeds limit (${limits.maxScriptBytes} bytes)`,
       line: 1,
       column: 1,
+    }
+  }
+  const badInvisible = findDisallowedInvisibleChar(source)
+  if (badInvisible) {
+    return {
+      ok: false,
+      code: 'syntax_error',
+      error: `Disallowed invisible or bidirectional control character (U+${badInvisible.hex}) in macro script`,
+      line: badInvisible.line,
+      column: badInvisible.column,
     }
   }
   try {
@@ -2325,6 +2452,7 @@ function buildBuiltinGlobals() {
     if (args.length === 0) return ''
     const out = safeToString(args[0], ctx.limits, node)
     checkStringLength(out.length, ctx, node)
+    ctx.chargeString(out, node)
     return out
   }, 'String')
 
@@ -2345,9 +2473,13 @@ function buildBuiltinGlobals() {
         node.column,
       )
     }
-    if (typeof target !== 'object' || CALLABLES.has(target)) return []
+    if (typeof target !== 'object' || CALLABLES.has(target)) {
+      ctx.chargeContainer(0, node)
+      return []
+    }
     const keys = Object.keys(target).filter((k) => !FORBIDDEN_PROP_NAMES.has(k))
     checkCollectionSize(keys.length, ctx, node, 'Array')
+    ctx.chargeContainer(keys.length, node)
     return keys
   }, 'Object.keys')
   objectNs.values = createBuiltinCallable((args, ctx, node) => {
@@ -2360,9 +2492,13 @@ function buildBuiltinGlobals() {
         node.column,
       )
     }
-    if (typeof target !== 'object' || CALLABLES.has(target)) return []
+    if (typeof target !== 'object' || CALLABLES.has(target)) {
+      ctx.chargeContainer(0, node)
+      return []
+    }
     const keys = Object.keys(target).filter((k) => !FORBIDDEN_PROP_NAMES.has(k))
     checkCollectionSize(keys.length, ctx, node, 'Array')
+    ctx.chargeContainer(keys.length, node)
     return keys.map((k) => target[k])
   }, 'Object.values')
   objectNs.entries = createBuiltinCallable((args, ctx, node) => {
@@ -2375,16 +2511,25 @@ function buildBuiltinGlobals() {
         node.column,
       )
     }
-    if (typeof target !== 'object' || CALLABLES.has(target)) return []
+    if (typeof target !== 'object' || CALLABLES.has(target)) {
+      ctx.chargeContainer(0, node)
+      return []
+    }
     const keys = Object.keys(target).filter((k) => !FORBIDDEN_PROP_NAMES.has(k))
     checkCollectionSize(keys.length, ctx, node, 'Array')
+    ctx.chargeContainer(keys.length, node)
+    ctx.chargeBytes(keys.length * (64 + 32), node)
     return keys.map((k) => [k, target[k]])
   }, 'Object.entries')
   builtins.Object = Object.freeze(objectNs)
 
   const jsonNs = Object.create(null)
   jsonNs.stringify = createBuiltinCallable((args, ctx, node) => {
-    return safeJsonStringify(args[0], ctx, node, 0, new Set())
+    const out = safeJsonStringify(args[0], ctx, node, 0, new Set())
+    if (typeof out === 'string') {
+      ctx.chargeString(out, node)
+    }
+    return out
   }, 'JSON.stringify')
   jsonNs.parse = createBuiltinCallable((args, ctx, node) => {
     const text = safeToString(args[0], ctx.limits, node)
@@ -2401,7 +2546,9 @@ function buildBuiltinGlobals() {
       )
     }
     try {
-      return sanitizeHostValueInternal(raw, ctx.limits, 0, new Set(), false)
+      return sanitizeHostValueInternal(raw, ctx.limits, 0, new Set(), false, (bytes) =>
+        ctx.chargeBytes(bytes, node),
+      )
     } catch (err) {
       if (err instanceof MacroRuntimeError) {
         throw new MacroRuntimeError(err.message, err.code, node.line, node.column)
@@ -2415,15 +2562,19 @@ function buildBuiltinGlobals() {
 }
 
 const STRING_METHODS = Object.assign(Object.create(null), {
-  slice: (recv, args) => {
+  slice: (recv, args, ctx, node) => {
     const start = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
     const end = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
-    return end === undefined ? recv.slice(start) : recv.slice(start, end)
+    const out = end === undefined ? recv.slice(start) : recv.slice(start, end)
+    ctx.chargeString(out, node)
+    return out
   },
-  substring: (recv, args) => {
+  substring: (recv, args, ctx, node) => {
     const start = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
     const end = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
-    return end === undefined ? recv.substring(start) : recv.substring(start, end)
+    const out = end === undefined ? recv.substring(start) : recv.substring(start, end)
+    ctx.chargeString(out, node)
+    return out
   },
   indexOf: (recv, args, ctx, node) => {
     const search = safeToString(args[0], ctx.limits, node)
@@ -2454,22 +2605,38 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     }
     return recv.endsWith(search)
   },
-  trim: (recv) => recv.trim(),
-  trimStart: (recv) => recv.trimStart(),
-  trimEnd: (recv) => recv.trimEnd(),
+  trim: (recv, _args, ctx, node) => {
+    const out = recv.trim()
+    ctx.chargeString(out, node)
+    return out
+  },
+  trimStart: (recv, _args, ctx, node) => {
+    const out = recv.trimStart()
+    ctx.chargeString(out, node)
+    return out
+  },
+  trimEnd: (recv, _args, ctx, node) => {
+    const out = recv.trimEnd()
+    ctx.chargeString(out, node)
+    return out
+  },
   toLowerCase: (recv, _args, ctx, node) => {
+    ctx.chargeBytes(recv.length * 2 + 16, node)
     const out = recv.toLowerCase()
     checkStringLength(out.length, ctx, node)
     return out
   },
   toUpperCase: (recv, _args, ctx, node) => {
+    ctx.chargeBytes(recv.length * 2 + 16, node)
     const out = recv.toUpperCase()
     checkStringLength(out.length, ctx, node)
     return out
   },
-  charAt: (recv, args) => {
+  charAt: (recv, args, ctx, node) => {
     const idx = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
-    return recv.charAt(idx)
+    const out = recv.charAt(idx)
+    ctx.chargeString(out, node)
+    return out
   },
   repeat: (recv, args, ctx, node) => {
     const rawCount = args.length > 0 ? safeToNumber(args[0]) : 0
@@ -2482,7 +2649,10 @@ const STRING_METHODS = Object.assign(Object.create(null), {
       )
     }
     const count = Math.trunc(rawCount)
-    if (recv.length === 0 || count === 0) return ''
+    if (recv.length === 0 || count === 0) {
+      ctx.chargeBytes(16, node)
+      return ''
+    }
     if (count > ctx.limits.maxStringLength || recv.length * count > ctx.limits.maxStringLength) {
       throw new MacroRuntimeError(
         `String length limit (${ctx.limits.maxStringLength}) exceeded`,
@@ -2491,18 +2661,23 @@ const STRING_METHODS = Object.assign(Object.create(null), {
         node.column,
       )
     }
+    ctx.chargeBytes(recv.length * count * 2 + 16, node)
     return recv.repeat(count)
   },
   replace: (recv, args, ctx, node) => {
     const search = safeToString(args[0], ctx.limits, node)
     const replacement = safeToString(args[1], ctx.limits, node)
     if (search.length === 0) {
-      checkStringLength(replacement.length + recv.length, ctx, node)
+      const targetLen = replacement.length + recv.length
+      checkStringLength(targetLen, ctx, node)
+      ctx.chargeBytes(targetLen * 2 + 16, node)
       return replacement + recv
     }
     const idx = recv.indexOf(search)
     if (idx === -1) return recv
-    checkStringLength(recv.length - search.length + replacement.length, ctx, node)
+    const targetLen = recv.length - search.length + replacement.length
+    checkStringLength(targetLen, ctx, node)
+    ctx.chargeBytes(targetLen * 2 + 16, node)
     return recv.slice(0, idx) + replacement + recv.slice(idx + search.length)
   },
   replaceAll: (recv, args, ctx, node) => {
@@ -2511,6 +2686,7 @@ const STRING_METHODS = Object.assign(Object.create(null), {
     if (search.length === 0) {
       const targetLen = recv.length + (recv.length + 1) * replacement.length
       checkStringLength(targetLen, ctx, node)
+      ctx.chargeBytes(targetLen * 2 + 16, node)
       let out = replacement
       for (let i = 0; i < recv.length; i++) {
         ctx.tick(node)
@@ -2534,6 +2710,7 @@ const STRING_METHODS = Object.assign(Object.create(null), {
       out += chunk + replacement
       cursor = idx + search.length
     }
+    ctx.chargeString(out, node)
     return out
   },
   split: (recv, args, ctx, node) => {
@@ -2544,12 +2721,18 @@ const STRING_METHODS = Object.assign(Object.create(null), {
         : Number.isNaN(limitArg) || limitArg <= 0
           ? 0
           : Math.min(Math.trunc(limitArg), ctx.limits.maxCollectionSize)
-    if (maxParts === 0) return []
+    if (maxParts === 0) {
+      ctx.chargeContainer(0, node)
+      return []
+    }
     if (args.length === 0 || args[0] === undefined) {
+      ctx.chargeContainer(1, node)
+      ctx.chargeString(recv, node)
       return [recv]
     }
     const sep = safeToString(args[0], ctx.limits, node)
     const result = []
+    ctx.chargeContainer(0, node)
     if (sep.length === 0) {
       if (limitArg === undefined && recv.length > ctx.limits.maxCollectionSize) {
         throw new MacroRuntimeError(
@@ -2562,7 +2745,9 @@ const STRING_METHODS = Object.assign(Object.create(null), {
       const count = Math.min(recv.length, maxParts)
       for (let i = 0; i < count; i++) {
         ctx.tick(node)
-        result.push(recv[i])
+        const ch = recv[i]
+        ctx.chargeBytes(16 + ch.length * 2 + 16, node)
+        result.push(ch)
       }
       return result
     }
@@ -2580,7 +2765,9 @@ const STRING_METHODS = Object.assign(Object.create(null), {
             node.column,
           )
         }
-        result.push(recv.slice(cursor))
+        const piece = recv.slice(cursor)
+        ctx.chargeBytes(16 + piece.length * 2 + 16, node)
+        result.push(piece)
         break
       }
       if (result.length >= ctx.limits.maxCollectionSize) {
@@ -2592,7 +2779,9 @@ const STRING_METHODS = Object.assign(Object.create(null), {
           node.column,
         )
       }
-      result.push(recv.slice(cursor, idx))
+      const piece = recv.slice(cursor, idx)
+      ctx.chargeBytes(16 + piece.length * 2 + 16, node)
+      result.push(piece)
       if (limitArg !== undefined && result.length >= maxParts) break
       cursor = idx + sep.length
     }
@@ -2621,6 +2810,7 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
   push: (recv, args, ctx, node) => {
     assertMutableArray(recv, node)
     checkCollectionSize(recv.length + args.length, ctx, node, 'Array')
+    ctx.chargeBytes(args.length * 16, node)
     for (let i = 0; i < args.length; i++) {
       recv.push(args[i])
     }
@@ -2637,12 +2827,15 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
   unshift: (recv, args, ctx, node) => {
     assertMutableArray(recv, node)
     checkCollectionSize(recv.length + args.length, ctx, node, 'Array')
+    ctx.chargeBytes(args.length * 16, node)
     return recv.unshift(...args)
   },
-  slice: (recv, args) => {
+  slice: (recv, args, ctx, node) => {
     const start = args.length > 0 && args[0] !== undefined ? safeToNumber(args[0]) : 0
     const end = args.length > 1 && args[1] !== undefined ? safeToNumber(args[1]) : undefined
-    return end === undefined ? recv.slice(start) : recv.slice(start, end)
+    const out = end === undefined ? recv.slice(start) : recv.slice(start, end)
+    ctx.chargeContainer(out.length, node)
+    return out
   },
   concat: (recv, args, ctx, node) => {
     let total = recv.length
@@ -2650,6 +2843,7 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
       total += Array.isArray(args[i]) ? args[i].length : 1
       checkCollectionSize(total, ctx, node, 'Array')
     }
+    ctx.chargeContainer(total, node)
     const out = recv.slice()
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -2687,6 +2881,7 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
       checkStringLength(out.length + piece.length, ctx, node)
       out += piece
     }
+    ctx.chargeString(out, node)
     return out
   },
   reverse: (recv, _args, _ctx, node) => {
@@ -2698,6 +2893,7 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
     assertCallback(cb, 'map', node)
     const len = recv.length
     checkCollectionSize(len, ctx, node, 'Array')
+    ctx.chargeContainer(len, node)
     const out = new Array(len)
     for (let i = 0; i < len; i++) {
       ctx.tick(node)
@@ -2710,10 +2906,12 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
     assertCallback(cb, 'filter', node)
     const len = recv.length
     const out = []
+    ctx.chargeContainer(0, node)
     for (let i = 0; i < len; i++) {
       ctx.tick(node)
       if (ctx.invoke(cb, [recv[i], i, recv], node)) {
         checkCollectionSize(out.length + 1, ctx, node, 'Array')
+        ctx.chargeBytes(16, node)
         out.push(recv[i])
       }
     }
@@ -2803,6 +3001,30 @@ const ARRAY_METHODS = Object.assign(Object.create(null), {
     }
     return acc
   },
+})
+
+const SAMPLE_BUILTINS = buildBuiltinGlobals()
+
+/**
+ * Frozen summary of the interpreter's exact supported keywords, built-in
+ * globals, and method allowlists, derived directly from the runtime dispatch
+ * tables so prompt builders and tooling cannot drift out of sync.
+ */
+export const INTERPRETER_CAPABILITIES = Object.freeze({
+  keywords: Object.freeze(Array.from(SUPPORTED_KEYWORDS)),
+  globals: Object.freeze(Object.keys(SAMPLE_BUILTINS)),
+  stringMethods: Object.freeze(Object.keys(STRING_METHODS)),
+  arrayMethods: Object.freeze(Object.keys(ARRAY_METHODS)),
+  objectMethods: Object.freeze(Object.keys(SAMPLE_BUILTINS.Object)),
+  mathMethods: Object.freeze(
+    Object.keys(SAMPLE_BUILTINS.Math).filter((k) => CALLABLES.has(SAMPLE_BUILTINS.Math[k])),
+  ),
+  mathConstants: Object.freeze(
+    Object.keys(SAMPLE_BUILTINS.Math).filter((k) => !CALLABLES.has(SAMPLE_BUILTINS.Math[k])),
+  ),
+  jsonMethods: Object.freeze(Object.keys(SAMPLE_BUILTINS.JSON)),
+  numberMethods: Object.freeze(Object.keys(SAMPLE_BUILTINS.Number)),
+  arrayStaticMethods: Object.freeze(Object.keys(SAMPLE_BUILTINS.Array)),
 })
 
 // ============================================================================
@@ -2958,20 +3180,20 @@ class Interpreter {
     this.startTime = nowFn()
     this.steps = 0
     this.callDepth = 0
+    this.allocatedBytes = 0
   }
 
   elapsedMs() {
     return Math.max(0, this.now() - this.startTime)
   }
 
-  tick(node) {
-    this.steps += 1
+  checkLimits(node) {
     if (this.steps > this.limits.maxSteps) {
       throw new MacroRuntimeError(
         `Execution step limit (${this.limits.maxSteps}) exceeded`,
         'step_limit',
-        node.line,
-        node.column,
+        node ? node.line : 1,
+        node ? node.column : 1,
       )
     }
     const elapsed = this.now() - this.startTime
@@ -2979,10 +3201,47 @@ class Interpreter {
       throw new MacroRuntimeError(
         `Execution time limit (${this.limits.maxTimeMs}ms) exceeded`,
         'time_limit',
-        node.line,
-        node.column,
+        node ? node.line : 1,
+        node ? node.column : 1,
       )
     }
+    if (this.allocatedBytes > this.limits.maxMemoryBytes) {
+      throw new MacroRuntimeError(
+        `Memory limit (${this.limits.maxMemoryBytes} bytes) exceeded`,
+        'memory_limit',
+        node ? node.line : 1,
+        node ? node.column : 1,
+      )
+    }
+  }
+
+  chargeBytes(bytes, node) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return
+    this.allocatedBytes += bytes
+    if (this.allocatedBytes > this.limits.maxMemoryBytes) {
+      throw new MacroRuntimeError(
+        `Memory limit (${this.limits.maxMemoryBytes} bytes) exceeded`,
+        'memory_limit',
+        node ? node.line : 1,
+        node ? node.column : 1,
+      )
+    }
+  }
+
+  chargeString(str, node) {
+    if (typeof str === 'string') {
+      this.chargeBytes(str.length * 2 + 16, node)
+    }
+    return str
+  }
+
+  chargeContainer(slots, node) {
+    this.chargeBytes(64 + slots * 16, node)
+  }
+
+  tick(node) {
+    this.steps += 1
+    this.checkLimits(node)
   }
 
   createUserCallable(name, params, body, closure, isArrow, expressionBody, node) {
@@ -3400,6 +3659,9 @@ class Interpreter {
           throw new MacroRuntimeError('Invalid array length', 'type_error', node.line, node.column)
         }
         checkCollectionSize(nextLen, this, node, 'Array')
+        if (nextLen > receiver.length) {
+          this.chargeBytes((nextLen - receiver.length) * 16, node)
+        }
         receiver.length = nextLen
         return value
       }
@@ -3413,11 +3675,15 @@ class Interpreter {
       }
       const idx = Number(prop)
       checkCollectionSize(idx + 1, this, node, 'Array')
+      if (idx >= receiver.length) {
+        this.chargeBytes((idx + 1 - receiver.length) * 16, node)
+      }
       receiver[idx] = value
       return value
     }
     if (!Object.prototype.hasOwnProperty.call(receiver, prop)) {
       checkCollectionSize(Object.keys(receiver).length + 1, this, node, 'Object')
+      this.chargeBytes(16, node)
     }
     receiver[prop] = value
     return value
@@ -3450,7 +3716,9 @@ class Interpreter {
     if (typeof left === 'string' || typeof right === 'string') {
       const a = safeToString(left, this.limits, node)
       const b = safeToString(right, this.limits, node)
-      checkStringLength(a.length + b.length, this, node)
+      const totalLen = a.length + b.length
+      checkStringLength(totalLen, this, node)
+      this.chargeBytes(totalLen * 2 + 16, node)
       return a + b
     }
     return safeToNumber(left) + safeToNumber(right)
@@ -3512,11 +3780,14 @@ class Interpreter {
             callNode.column,
           )
         }
+        this.checkLimits(callNode)
         if (SAFE_BAGS.has(rawResult) || CALLABLES.has(rawResult)) {
           return rawResult
         }
         try {
-          return sanitizeHostValueInternal(rawResult, this.limits, 0, new Set(), false)
+          return sanitizeHostValueInternal(rawResult, this.limits, 0, new Set(), false, (bytes) =>
+            this.chargeBytes(bytes, callNode),
+          )
         } catch (err) {
           if (err instanceof MacroRuntimeError) {
             throw new MacroRuntimeError(err.message, err.code, callNode.line, callNode.column)
@@ -3561,11 +3832,15 @@ class Interpreter {
   evalExpression(node, env) {
     switch (node.type) {
       case 'Literal':
+        if (typeof node.value === 'string') {
+          this.chargeString(node.value, node)
+        }
         return node.value
       case 'Identifier':
         return env.get(node.name, node)
       case 'ArrayExpression': {
         checkCollectionSize(node.elements.length, this, node, 'Array')
+        this.chargeContainer(node.elements.length, node)
         const arr = new Array(node.elements.length)
         for (let i = 0; i < node.elements.length; i++) {
           arr[i] = this.evalExpression(node.elements[i], env)
@@ -3573,6 +3848,7 @@ class Interpreter {
         return arr
       }
       case 'ObjectExpression': {
+        this.chargeContainer(0, node)
         const obj = Object.create(null)
         let propCount = 0
         for (const prop of node.properties) {
@@ -3582,6 +3858,7 @@ class Interpreter {
           if (!Object.prototype.hasOwnProperty.call(obj, key)) {
             propCount += 1
             checkCollectionSize(propCount, this, prop, 'Object')
+            this.chargeBytes(16, prop)
           }
           obj[key] = val
         }
@@ -3792,7 +4069,10 @@ export function runMacroScript(source, globals = undefined, options = undefined)
     throw new TypeError('Macro option "now" must be a function')
   }
 
-  const startTime = nowFn()
+  const startTime =
+    options && typeof options.startTime === 'number' && Number.isFinite(options.startTime)
+      ? options.startTime
+      : nowFn()
   const parsed = parseMacroScript(source, limits)
   if (!parsed.ok) {
     return {

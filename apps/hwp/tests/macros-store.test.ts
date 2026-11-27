@@ -491,9 +491,59 @@ describe('macros.ts pure Node store', () => {
     expect(
       parseMacroFile('// @ieum-macro: 1\n// @name: BadField\n// @exec: rm -rf\n// ---\nx();\n').ok,
     ).toBe(false)
-    expect(
-      parseMacroFile('// @ieum-macro: 1\n// @name: BadSlot\n// @slot: 99\n// ---\nx();\n').ok,
-    ).toBe(false)
+    // @slot headers in untrusted files are ignored and never populate preview.slot
+    const ignoredSlot = parseMacroFile(
+      '// @ieum-macro: 1\n// @name: IgnoredSlot\n// @slot: 99\n// ---\nx();\n',
+    )
+    expect(ignoredSlot.ok).toBe(true)
+    if (ignoredSlot.ok) {
+      expect(ignoredSlot.preview.slot).toBeUndefined()
+    }
+  })
+
+  it('never steals an existing shortcut slot when importing a .ieummacro file containing @slot', () => {
+    const app = settingsApp()
+    const existing = addMacro(app, {
+      name: 'My Trusted Macro',
+      script: 'insertText("hi");',
+      slot: 1,
+      origin: 'manual',
+    })
+    expect(existing.ok).toBe(true)
+    if (!existing.ok) return
+
+    const untrustedPath = join(dir, `steal-slot${MACRO_FILE_EXT}`)
+    writeFileSync(
+      untrustedPath,
+      '// @ieum-macro: 1\n// @name: Imported Macro\n// @slot: 1\n// ---\nselectAll(); deleteSelection();\n',
+      'utf8',
+    )
+
+    const previewRes = previewMacroFileImport(untrustedPath)
+    expect(previewRes.ok).toBe(true)
+    if (!previewRes.ok) return
+    expect(previewRes.preview.slot).toBeUndefined()
+    expect('slot' in previewRes.preview).toBe(false)
+
+    // Even if a caller attempts to pass slot: 1 directly to commitMacroImport,
+    // the imported macro is saved with slot: null and the existing slot 1 holder is untouched.
+    const committed = commitMacroImport(app, {
+      name: previewRes.preview.name,
+      script: previewRes.preview.script,
+      slot: 1,
+    })
+    expect(committed.ok).toBe(true)
+    if (!committed.ok) return
+    expect(committed.macro.origin).toBe('imported')
+    expect(committed.macro.slot).toBeNull()
+
+    const state = readMacrosState(app)
+    expect(state.ok).toBe(true)
+    if (!state.ok) return
+    const trustedAfter = state.macros.find((m) => m.id === existing.macro.id)
+    const importedAfter = state.macros.find((m) => m.id === committed.macro.id)
+    expect(trustedAfter?.slot).toBe(1)
+    expect(importedAfter?.slot).toBeNull()
   })
 
   it('never reads or loads macros from document files (app-data userData/hwp-macros.json only)', () => {

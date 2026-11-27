@@ -92,9 +92,9 @@ async function defaultConfirmOverwrite(
 ): Promise<boolean> {
   const options = {
     type: 'warning' as const,
-    title: tm('dlgBibOverwriteTitle'),
-    message: tm('dlgBibOverwriteMsg', { name: basename(targetPath) }),
-    detail: tm('dlgBibOverwriteDetail'),
+    title: tm('dlgMacroOverwriteTitle'),
+    message: tm('dlgMacroOverwriteMsg', { name: basename(targetPath) }),
+    detail: tm('dlgMacroOverwriteDetail'),
     buttons: [tm('btnOverwrite'), tm('btnCancel')],
     defaultId: 1,
     cancelId: 1,

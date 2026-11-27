@@ -8,19 +8,26 @@ import { LANGS } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiSubscriptionStatuses } from '@genoffice/ai-provider/browser'
 import type { MacroHostResult } from '../studio-plugin/macro-host.mjs'
-import { macroMenuLabelsFor, macroStrings } from '../src/renderer/i18n/macro'
+import { runMacroScript, validateMacroSyntax } from '../studio-plugin/macro-interpreter.mjs'
+import {
+  localizeSkippedCommandLabel,
+  macroMenuLabelsFor,
+  macroStrings,
+} from '../src/renderer/i18n/macro'
 import { LocaleProvider } from '../src/renderer/i18n/locale'
 import {
   MacroEditorModal,
   MacroManagerModal,
   buildMacroAiMessages,
   extractMacroScriptFromAiReply,
+  formatMacroRunOutcome,
   requestAiMacroDraft,
   type MacroAiStreamClient,
   type MacroEditorModalProps,
   type MacroManagerModalProps,
   type MacroStoreApi,
 } from '../src/renderer/macro'
+import { formatPreviewScriptWithVisibleControls } from '../src/renderer/macro/MacroManagerModal'
 import type { HwpApi, MacroRecord } from '../src/shared/ipc'
 
 function makeMacro(overrides: Partial<MacroRecord> = {}): MacroRecord {
@@ -251,6 +258,201 @@ describe('macro-ai helpers', () => {
     expect(built.system).toContain('HAction')
     expect(built.system).toContain('eval')
     expect(built.system).toContain('Undo')
+    expect(built.system).toContain('deleteBackward')
+    expect(built.system).toContain('selectLeft')
+    expect(built.system).toContain('FindRegExp')
+    expect(built.system).toContain('200 units/pt')
+    expect(built.system).toContain('BGR')
+  })
+
+  it('every keyword, global, method, and API listed as allowed in the AI system prompt parses and executes in runMacroScript', () => {
+    const built = buildMacroAiMessages('Test capabilities', 'en')
+    const allowedSection = built.system.split('## Strictly Forbidden')[0]
+
+    // Must not advertise unsupported features in the Allowed section
+    expect(allowedSection).not.toMatch(/\btry\b/)
+    expect(allowedSection).not.toMatch(/\bcatch\b/)
+    expect(allowedSection).not.toMatch(/\bfinally\b/)
+    expect(allowedSection).not.toMatch(/\bthrow\b/)
+    expect(allowedSection).not.toMatch(/\bsort\b/)
+    expect(allowedSection).not.toMatch(/\btoFixed\b/)
+
+    // Extract every listed String / Array / Math / Number / Object / JSON method from the Allowed section
+    const extractCsvLine = (prefix: string): string[] => {
+      const line = allowedSection.split('\n').find((entry) => entry.trim().startsWith(prefix))
+      expect(line, `expected line starting with "${prefix}"`).toBeDefined()
+      return line!
+        .slice(line!.indexOf(':') + 1)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    }
+
+    const stringMethods = extractCsvLine('- String methods:')
+    const arrayMethods = extractCsvLine('- Array methods:')
+    const mathItems = extractCsvLine('- Math:').map((s) => s.replace(/^Math\./, ''))
+    const numberItems = extractCsvLine('- Number:')
+      .filter((s) => s.startsWith('Number.'))
+      .map((s) => s.replace(/^Number\./, ''))
+    const objectItems = extractCsvLine('- Object:').map((s) => s.replace(/^Object\./, ''))
+    const jsonItems = extractCsvLine('- JSON:').map((s) => s.replace(/^JSON\./, ''))
+
+    expect(stringMethods.length).toBeGreaterThan(10)
+    expect(arrayMethods.length).toBeGreaterThan(10)
+
+    const snippets: string[] = [
+      // Keywords & control flow
+      'var a = 1; let b = 2; const c = true ? a + b : 0;',
+      'let b = 0; const c = 1; if (c > 0) { b = b + 1; } else { b = 0; }',
+      'const a = 1; let b = 0; switch (a) { case 1: b = 10; break; default: b = 20; }',
+      'for (let i = 0; i < 3; i++) { if (i === 1) continue; }',
+      'let w = 0; while (w < 2) { w++; break; }',
+      'let d = 0; do { d++; } while (d < 1);',
+      'function add(x, y) { return x + y; } const fn = (x) => x * 2; typeof add(1, fn(2));',
+      'const undef = undefined; const nul = null; const fls = false;',
+      'const sVal = String(123); const bVal = Boolean(1); const nVal = Number("42"); Array.isArray([]);',
+    ]
+
+    for (const m of mathItems) {
+      snippets.push(m === 'PI' || m === 'E' ? `const _m = Math.${m};` : `Math.${m}(1, 2);`)
+    }
+    for (const m of numberItems) {
+      snippets.push(
+        m === 'parseInt' || m === 'parseFloat' ? `Number.${m}("12");` : `Number.${m}(12);`,
+      )
+    }
+    for (const m of objectItems) {
+      snippets.push(`Object.${m}({ a: 1 });`)
+    }
+    for (const m of jsonItems) {
+      snippets.push(m === 'parse' ? 'JSON.parse("{\\"a\\":1}");' : 'JSON.stringify({ a: 1 });')
+    }
+    for (const m of stringMethods) {
+      if (m === 'replace' || m === 'replaceAll') {
+        snippets.push(`"ab ab".${m}("a", "x");`)
+      } else if (m === 'repeat') {
+        snippets.push(`"a".${m}(2);`)
+      } else if (m === 'padStart' || m === 'padEnd') {
+        snippets.push(`"a".${m}(3, "0");`)
+      } else if (m === 'slice' || m === 'substring' || m === 'substr') {
+        snippets.push(`"abcd".${m}(0, 2);`)
+      } else if (m === 'charAt' || m === 'charCodeAt') {
+        snippets.push(`"abcd".${m}(0);`)
+      } else if (m === 'split') {
+        snippets.push(`"a,b".${m}(",");`)
+      } else if (
+        m === 'indexOf' ||
+        m === 'lastIndexOf' ||
+        m === 'includes' ||
+        m === 'startsWith' ||
+        m === 'endsWith' ||
+        m === 'concat'
+      ) {
+        snippets.push(`"abcd".${m}("b");`)
+      } else {
+        snippets.push(`" ab ".${m}();`)
+      }
+    }
+    for (const m of arrayMethods) {
+      if (
+        m === 'map' ||
+        m === 'filter' ||
+        m === 'forEach' ||
+        m === 'find' ||
+        m === 'findIndex' ||
+        m === 'some' ||
+        m === 'every'
+      ) {
+        snippets.push(`[1, 2].${m}((x) => x > 0);`)
+      } else if (m === 'reduce') {
+        snippets.push(`[1, 2].${m}((acc, x) => acc + x, 0);`)
+      } else if (m === 'splice') {
+        snippets.push(`const _arr = [1, 2, 3]; _arr.${m}(1, 1);`)
+      } else if (
+        m === 'push' ||
+        m === 'unshift' ||
+        m === 'concat' ||
+        m === 'indexOf' ||
+        m === 'lastIndexOf' ||
+        m === 'includes'
+      ) {
+        snippets.push(`const _arr = [1, 2]; _arr.${m}(1);`)
+      } else if (m === 'join') {
+        snippets.push(`[1, 2].${m}(",");`)
+      } else {
+        snippets.push(`const _arr = [1, 2]; _arr.${m}();`)
+      }
+    }
+
+    // Verify all Direct Document API globals referenced in the prompt compile and execute cleanly
+    const directApis = [
+      'insertText',
+      'breakPara',
+      'breakPage',
+      'deleteSelection',
+      'deleteBackward',
+      'deleteForward',
+      'moveDocBegin',
+      'moveDocEnd',
+      'moveParaBegin',
+      'moveParaEnd',
+      'moveLineBegin',
+      'moveLineEnd',
+      'moveLeft',
+      'moveRight',
+      'moveUp',
+      'moveDown',
+      'moveWordLeft',
+      'moveWordRight',
+      'selectLeft',
+      'selectRight',
+      'selectUp',
+      'selectDown',
+      'selectWordLeft',
+      'selectWordRight',
+      'selectLineBegin',
+      'selectLineEnd',
+      'selectParaBegin',
+      'selectParaEnd',
+      'selectDocBegin',
+      'selectDocEnd',
+      'select',
+      'selectAll',
+      'cancelSelection',
+      'getCaret',
+      'getSelection',
+      'setCharFormat',
+      'setParaFormat',
+      'applyStyle',
+      'listStyles',
+      'find',
+      'replaceAll',
+      'replaceNext',
+      'insertTable',
+      'changeOutlineLevel',
+      'refreshToc',
+      'refreshIndex',
+      'refreshBibliography',
+      'refreshAll',
+      'getText',
+      'getSectionCount',
+      'getParagraphCount',
+      'getParagraphText',
+      'message',
+    ]
+    const stubGlobals: Record<string, (...args: unknown[]) => unknown> = {}
+    for (const apiName of directApis) {
+      expect(built.system, `system prompt mentions ${apiName}`).toContain(apiName)
+      stubGlobals[apiName] = () => null
+      snippets.push(`${apiName}();`)
+    }
+
+    for (const code of snippets) {
+      const syntax = validateMacroSyntax(code)
+      expect(syntax, `syntax check failed for: ${code}`).toEqual({ ok: true })
+      const run = runMacroScript(code, stubGlobals)
+      expect(run.ok, `runtime failed for: ${code} -> ${!run.ok ? run.error : ''}`).toBe(true)
+    }
   })
 
   it('extractMacroScriptFromAiReply unwraps fenced code blocks and trims plain text', () => {
@@ -604,5 +806,148 @@ describe('MacroManagerModal and MacroEditorModal', () => {
     // Security invariant: NEVER auto-saves and NEVER auto-runs!
     expect(onSave).toHaveBeenCalledTimes(0)
     expect(onRun).toHaveBeenCalledTimes(0)
+  })
+
+  it('import preview shows slot hint, forces slot: null even if preview has slot, and reveals hidden bidi/zero-width chars as [U+XXXX]', async () => {
+    const spoofedScript = 'insertText("safe"); // \u202Ereverse\u200Bhidden'
+    const formatted = formatPreviewScriptWithVisibleControls(spoofedScript)
+    expect(formatted.hasHiddenControls).toBe(true)
+    expect(formatted.text).toBe('insertText("safe"); // [U+202E]reverse[U+200B]hidden')
+
+    const api = makeMockStoreApi({
+      macrosPickImportFile: vi.fn(async () => ({
+        ok: true as const,
+        canceled: false as const,
+        fileName: 'bidi-slot.ieummacro',
+        preview: {
+          name: 'Spoofed Macro',
+          script: spoofedScript,
+          // Even if an untrusted payload somehow carried a slot, UI must pass slot: null
+          slot: 1 as unknown as null,
+          syntax: { ok: false as const, error: 'Hidden control char', line: 1, column: 24 },
+        },
+      })),
+    })
+
+    await renderManager({
+      macros: [makeMacro({ id: 'existing-1', name: 'Trusted Slot 1', slot: 1 })],
+      api,
+    })
+
+    const importBtn = document.querySelector(
+      '[data-testid="macro-import-btn"]',
+    ) as HTMLButtonElement
+    await act(async () => {
+      importBtn.click()
+    })
+
+    const preview = document.querySelector('[data-testid="macro-import-preview"]') as HTMLElement
+    expect(preview).not.toBeNull()
+    expect(preview.querySelector('[data-testid="macro-import-slot-hint"]')?.textContent).toContain(
+      'Shortcuts are not imported automatically',
+    )
+    expect(preview.querySelector('[data-testid="macro-import-bidi-warning"]')).not.toBeNull()
+    expect(preview.querySelector('[data-testid="macro-import-script"]')?.textContent).toBe(
+      'insertText("safe"); // [U+202E]reverse[U+200B]hidden',
+    )
+
+    const confirmBtn = preview.querySelector(
+      '[data-testid="macro-import-confirm-btn"]',
+    ) as HTMLButtonElement
+    await act(async () => {
+      confirmBtn.click()
+    })
+    expect(api.macrosCommitImport).toHaveBeenCalledWith({
+      name: 'Spoofed Macro',
+      script: spoofedScript,
+      slot: null,
+    })
+  })
+
+  it('localizes skipped command labels in MacroEditorModal so non-Korean UI never displays Korean studio labels', async () => {
+    expect(localizeSkippedCommandLabel('en', 'edit:undo', '되돌리기')).toBe('Undo')
+    expect(localizeSkippedCommandLabel('en', 'table:split', '표 나누기')).toBe(
+      'Unsupported editor action (table:split)',
+    )
+    expect(localizeSkippedCommandLabel('ko', 'edit:undo', '되돌리기')).toBe('되돌리기')
+    expect(localizeSkippedCommandLabel('ko', 'table:split', '표 나누기')).toBe('표 나누기')
+
+    await renderEditor({
+      mode: 'recorded',
+      aiEnabled: false,
+      initialDraft: {
+        origin: 'recorded',
+        script: 'insertText("ok");',
+        skipped: [
+          { commandId: 'edit:undo', label: '되돌리기' },
+          { commandId: 'table:split', label: '표 나누기' },
+        ],
+      },
+    })
+
+    const banner = document.querySelector('[data-testid="macro-skipped-banner"]')
+    expect(banner).not.toBeNull()
+    expect(banner?.textContent).toContain('Undo')
+    expect(banner?.textContent).toContain('Unsupported editor action (table:split)')
+    expect(banner?.textContent).not.toContain('되돌리기')
+    expect(banner?.textContent).not.toContain('표 나누기')
+  })
+
+  it('formats macro run outcomes for unsupported_place and post_run failures without fake line 1', () => {
+    const outside = formatMacroRunOutcome('en', 'M', {
+      ok: false,
+      code: 'unsupported_place',
+      error: 'Caret is not in body',
+      line: null,
+      column: null,
+      messages: [],
+      steps: 0,
+      elapsedMs: 0,
+    } as unknown as MacroHostResult)
+    expect(outside.tone).toBe('error')
+    expect(outside.text).toContain('body paragraph')
+
+    const postRunLoss = formatMacroRunOutcome('en', 'M', {
+      ok: false,
+      code: 'object_loss',
+      phase: 'post_run',
+      error: 'Lost table',
+      line: null,
+      column: null,
+      messages: [],
+      steps: 5,
+      elapsedMs: 1,
+    } as unknown as MacroHostResult)
+    expect(postRunLoss.tone).toBe('error')
+    expect(postRunLoss.text).toContain('post-run check')
+    expect(postRunLoss.text).not.toMatch(/line 1/i)
+
+    const inlineLoss = formatMacroRunOutcome('en', 'M', {
+      ok: false,
+      code: 'memo_loss',
+      error: 'Lost memo',
+      line: 4,
+      column: 3,
+      messages: [],
+      steps: 5,
+      elapsedMs: 1,
+    } as unknown as MacroHostResult)
+    expect(inlineLoss.tone).toBe('error')
+    expect(inlineLoss.text).toContain('line 4, col 3')
+
+    const postRunGeneric = formatMacroRunOutcome('en', 'M', {
+      ok: false,
+      code: 'runtime_error',
+      phase: 'post_run',
+      error: 'Unexpected state',
+      line: null,
+      column: null,
+      messages: [],
+      steps: 5,
+      elapsedMs: 1,
+    } as unknown as MacroHostResult)
+    expect(postRunGeneric.tone).toBe('error')
+    expect(postRunGeneric.text).toContain('post-run check')
+    expect(postRunGeneric.text).not.toMatch(/line 1/i)
   })
 })

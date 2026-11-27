@@ -100,10 +100,19 @@ export function slotFromAltKey(event) {
   return null
 }
 
+function isInvisibleBidiOrZeroWidth(code) {
+  return (
+    (code >= 0x200b && code <= 0x200f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  )
+}
+
 /**
  * Safely serialize any string into a valid double-quoted JavaScript string literal,
  * escaping backslashes, double quotes, line breaks, tabs, NUL, control characters,
- * and Unicode line/paragraph separators (`\u2028`, `\u2029`).
+ * Unicode line/paragraph separators (`\u2028`, `\u2029`), and invisible bidi/zero-width
+ * characters (`\u200B-\u200F`, `\u202A-\u202E`, `\u2066-\u2069`).
  */
 export function quoteScriptString(text) {
   const value = String(text)
@@ -125,7 +134,7 @@ export function quoteScriptString(text) {
       out += '\\u2028'
     } else if (code === 0x2029) {
       out += '\\u2029'
-    } else if (code < 0x20) {
+    } else if (code < 0x20 || isInvisibleBidiOrZeroWidth(code)) {
       out += `\\u${code.toString(16).padStart(4, '0')}`
     } else {
       out += ch
@@ -235,21 +244,30 @@ function isSilentlyIgnoredCommand(commandId) {
   )
 }
 
-function translateCommandToCode(commandId, args) {
+function translateCommandToCode(commandId, args, formatState = undefined) {
   switch (commandId) {
     case 'edit:select-all':
       return 'selectAll();'
     case 'insert:page-break':
     case 'page:break':
       return 'breakPage();'
-    case 'format:bold':
-      return 'setCharFormat({ bold: true });'
-    case 'format:italic':
-      return 'setCharFormat({ italic: true });'
-    case 'format:underline':
-      return 'setCharFormat({ underline: true });'
-    case 'format:strikethrough':
-      return 'setCharFormat({ strikethrough: true });'
+    case 'format:bold': {
+      const value = typeof formatState?.bold === 'boolean' ? formatState.bold : true
+      return `setCharFormat({ bold: ${value ? 'true' : 'false'} });`
+    }
+    case 'format:italic': {
+      const value = typeof formatState?.italic === 'boolean' ? formatState.italic : true
+      return `setCharFormat({ italic: ${value ? 'true' : 'false'} });`
+    }
+    case 'format:underline': {
+      const value = typeof formatState?.underline === 'boolean' ? formatState.underline : true
+      return `setCharFormat({ underline: ${value ? 'true' : 'false'} });`
+    }
+    case 'format:strikethrough': {
+      const value =
+        typeof formatState?.strikethrough === 'boolean' ? formatState.strikethrough : true
+      return `setCharFormat({ strikethrough: ${value ? 'true' : 'false'} });`
+    }
     case 'format:align-left':
       return 'setParaFormat({ align: "left" });'
     case 'format:align-center':
@@ -409,57 +427,193 @@ export function createMacroRecorder(options = undefined) {
       return added
     },
 
-    recordKey(keyEvent) {
+    recordKey(keyEvent, context = undefined) {
       if (!recording || !keyEvent) return false
-      if (keyEvent.altKey) return false
       const key = typeof keyEvent.key === 'string' ? keyEvent.key : ''
       const ctrl = Boolean(keyEvent.ctrlKey || keyEvent.metaKey)
       const shift = Boolean(keyEvent.shiftKey)
-      if (shift) return false
+      const alt = Boolean(keyEvent.altKey)
+      const hadSelection = Boolean(context?.hadSelection)
+      const navAction =
+        typeof context?.navigationAction === 'string' ? context.navigationAction : null
 
-      if (key === 'Enter' && !ctrl) {
-        pushStep('break', 'breakPara();')
+      if (
+        key === 'Shift' ||
+        key === 'Control' ||
+        key === 'Alt' ||
+        key === 'Meta' ||
+        key === 'CapsLock'
+      ) {
+        return false
+      }
+
+      if (navAction) {
+        if (navAction === 'wordBackward') {
+          pushStep('nav', shift ? 'selectWordLeft();' : 'moveWordLeft();')
+          return true
+        }
+        if (navAction === 'wordForward') {
+          pushStep('nav', shift ? 'selectWordRight();' : 'moveWordRight();')
+          return true
+        }
+        if (navAction === 'lineStart') {
+          pushStep('nav', shift ? 'selectLineBegin();' : 'moveLineBegin();')
+          return true
+        }
+        if (navAction === 'lineEnd') {
+          pushStep('nav', shift ? 'selectLineEnd();' : 'moveLineEnd();')
+          return true
+        }
+        if (navAction === 'docStart') {
+          pushStep('nav', shift ? 'selectDocBegin();' : 'moveDocBegin();')
+          return true
+        }
+        if (navAction === 'docEnd') {
+          pushStep('nav', shift ? 'selectDocEnd();' : 'moveDocEnd();')
+          return true
+        }
+        const label = key || navAction
+        skipped.push({ commandId: `key:${navAction}`, label })
+        emitNotice({ kind: 'unsupported_command', commandId: `key:${navAction}`, label })
+        return false
+      }
+
+      if (alt) {
+        if (!ctrl && (key === 'Backspace' || key === 'Delete')) {
+          if (hadSelection) {
+            pushStep('edit', 'deleteSelection();')
+          } else {
+            pushStep(
+              'edit',
+              key === 'Backspace'
+                ? 'selectWordLeft(); deleteSelection();'
+                : 'selectWordRight(); deleteSelection();',
+            )
+          }
+          return true
+        }
+        return false
+      }
+
+      if (key === 'Backspace') {
+        if (hadSelection) {
+          pushStep('edit', 'deleteSelection();')
+        } else if (keyEvent.metaKey && !keyEvent.ctrlKey) {
+          pushStep('edit', 'selectLineBegin(); deleteSelection();')
+        } else if (ctrl) {
+          pushStep('edit', 'selectWordLeft(); deleteSelection();')
+        } else {
+          pushStep('edit', 'deleteBackward();')
+        }
         return true
       }
+      if (key === 'Delete') {
+        if (hadSelection) {
+          pushStep('edit', 'deleteSelection();')
+        } else if (ctrl) {
+          pushStep('edit', 'selectWordRight(); deleteSelection();')
+        } else {
+          pushStep('edit', 'deleteForward();')
+        }
+        return true
+      }
+      if (key === 'Enter') {
+        if (!ctrl && !shift) {
+          pushStep('break', 'breakPara();')
+          return true
+        }
+        if (shift && !ctrl) {
+          skipped.push({ commandId: 'edit:line-break', label: 'Shift+Enter' })
+          emitNotice({
+            kind: 'unsupported_command',
+            commandId: 'edit:line-break',
+            label: 'Shift+Enter',
+          })
+          return false
+        }
+      }
+      if (key === 'Tab' && !ctrl) {
+        const label = shift ? 'Shift+Tab' : 'Tab'
+        skipped.push({ commandId: 'edit:tab', label })
+        emitNotice({ kind: 'unsupported_command', commandId: 'edit:tab', label })
+        return false
+      }
       if (key === 'ArrowLeft') {
-        pushStep('nav', ctrl ? 'moveWordLeft();' : 'moveLeft();')
+        pushStep(
+          'nav',
+          shift
+            ? ctrl
+              ? 'selectWordLeft();'
+              : 'selectLeft();'
+            : ctrl
+              ? 'moveWordLeft();'
+              : 'moveLeft();',
+        )
         return true
       }
       if (key === 'ArrowRight') {
-        pushStep('nav', ctrl ? 'moveWordRight();' : 'moveRight();')
+        pushStep(
+          'nav',
+          shift
+            ? ctrl
+              ? 'selectWordRight();'
+              : 'selectRight();'
+            : ctrl
+              ? 'moveWordRight();'
+              : 'moveRight();',
+        )
         return true
       }
       if (key === 'ArrowUp' && !ctrl) {
-        pushStep('nav', 'moveUp();')
+        pushStep('nav', shift ? 'selectUp();' : 'moveUp();')
         return true
       }
       if (key === 'ArrowDown' && !ctrl) {
-        pushStep('nav', 'moveDown();')
+        pushStep('nav', shift ? 'selectDown();' : 'moveDown();')
         return true
       }
       if (key === 'Home') {
-        pushStep('nav', ctrl ? 'moveDocBegin();' : 'moveParaBegin();')
+        pushStep(
+          'nav',
+          ctrl
+            ? shift
+              ? 'selectDocBegin();'
+              : 'moveDocBegin();'
+            : shift
+              ? 'selectLineBegin();'
+              : 'moveLineBegin();',
+        )
         return true
       }
       if (key === 'End') {
-        pushStep('nav', ctrl ? 'moveDocEnd();' : 'moveParaEnd();')
+        pushStep(
+          'nav',
+          ctrl
+            ? shift
+              ? 'selectDocEnd();'
+              : 'moveDocEnd();'
+            : shift
+              ? 'selectLineEnd();'
+              : 'moveLineEnd();',
+        )
         return true
       }
-      if ((key === 'Backspace' || key === 'Delete') && !ctrl) {
-        pushStep('edit', 'deleteSelection();')
-        return true
-      }
-      if (key === 'Escape' && !ctrl) {
+      if (key === 'Escape' && !ctrl && !shift) {
         pushStep('nav', 'cancelSelection();')
         return true
+      }
+      if (key) {
+        const label = [ctrl ? 'Ctrl' : '', shift ? 'Shift' : '', key].filter(Boolean).join('+')
+        skipped.push({ commandId: `key:${key}`, label })
+        emitNotice({ kind: 'unsupported_command', commandId: `key:${key}`, label })
       }
       return false
     },
 
-    recordCommand(commandId, args = undefined, label = undefined) {
+    recordCommand(commandId, args = undefined, label = undefined, formatState = undefined) {
       if (!recording || typeof commandId !== 'string' || commandId.length === 0) return false
       if (isSilentlyIgnoredCommand(commandId)) return false
-      const code = translateCommandToCode(commandId, args)
+      const code = translateCommandToCode(commandId, args, formatState)
       if (code !== null) {
         pushStep('command', code)
         return true
@@ -475,11 +629,36 @@ export function createMacroRecorder(options = undefined) {
       emitNotice({ kind: 'mouse_ignored' })
       return true
     },
+
+    recordSlotRun(slot) {
+      if (!recording) return false
+      emitNotice({ kind: 'slot_run_ignored', slot })
+      return true
+    },
   }
 }
 
 /** Singleton recorder reference shared by studio recording hooks when recording is active. */
 let activeRecorder = null
+
+/** Slots (1..11) that currently have an assigned macro script in the host app. */
+const assignedSlots = new Set()
+
+export function setAssignedMacroSlots(slots) {
+  assignedSlots.clear()
+  if (slots && typeof slots[Symbol.iterator] === 'function') {
+    for (const slot of slots) {
+      if (Number.isInteger(slot) && slot >= 1 && slot <= MACRO_SLOT_KEYS.length) {
+        assignedSlots.add(slot)
+      }
+    }
+  }
+  return Array.from(assignedSlots).sort((a, b) => a - b)
+}
+
+export function hasAssignedMacroSlot(slot) {
+  return Number.isInteger(slot) && assignedSlots.has(slot)
+}
 
 export function getActiveMacroRecorder() {
   return activeRecorder
@@ -494,9 +673,14 @@ export function isMacroRecordingActive() {
   return Boolean(activeRecorder?.isRecording?.())
 }
 
-export function recordStudioCommand(commandId, args = undefined, label = undefined) {
+export function recordStudioCommand(
+  commandId,
+  args = undefined,
+  label = undefined,
+  formatState = undefined,
+) {
   if (!activeRecorder?.isRecording?.()) return false
-  return activeRecorder.recordCommand(commandId, args, label)
+  return activeRecorder.recordCommand(commandId, args, label, formatState)
 }
 
 export function recordStudioText(text) {
@@ -504,12 +688,17 @@ export function recordStudioText(text) {
   return activeRecorder.recordText(text)
 }
 
-export function recordStudioKey(keyEvent) {
+export function recordStudioKey(keyEvent, context = undefined) {
   if (!activeRecorder?.isRecording?.()) return false
-  return activeRecorder.recordKey(keyEvent)
+  return activeRecorder.recordKey(keyEvent, context)
 }
 
 export function recordStudioMouseClick() {
   if (!activeRecorder?.isRecording?.()) return false
   return activeRecorder.recordMouseMove()
+}
+
+export function recordStudioSlotRun(slot) {
+  if (!activeRecorder?.isRecording?.()) return false
+  return activeRecorder.recordSlotRun(slot)
 }

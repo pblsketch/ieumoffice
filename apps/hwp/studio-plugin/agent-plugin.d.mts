@@ -2324,17 +2324,34 @@ export interface AgentPluginSurface {
     changeOptions?: AgentChangeOptions & { foreign?: boolean },
   ): MoveOutlineSectionResult | AgentMemoRemovalRefusal
   /** execute a macro script inside one atomic user transaction and sync the caret */
-  runMacro(source: string, options?: MacroHostOptions): MacroHostResult
+  runMacro(
+    source: string,
+    options?: MacroHostOptions,
+  ): Promise<
+    | MacroHostResult
+    | {
+        ok: false
+        code: 'unsupported_place'
+        error: string
+        messages: string[]
+        steps: number
+        elapsedMs: number
+      }
+  >
   /** validate macro script syntax without modifying the document */
   validateMacro(source: string): MacroValidateSyntaxResult
   /** start keystroke and editor command macro recording */
-  startMacroRecording(): { ok: true; recording: true }
+  startMacroRecording():
+    | { ok: true; recording: true }
+    | { ok: false; recording: false; reason: 'unsupported_place'; error: string }
   /** stop macro recording and return the generated script and skipped commands */
   stopMacroRecording(): { ok: true; recording: false } & MacroRecorderStopResult
   /** read current macro recording state, recorded step count, and skipped commands */
   getMacroRecordingState(): MacroRecorderStateSnapshot
   /** register Tool menu items for macro recording and management */
   installMacroMenu(labels: MacroMenuLabels): { ok: boolean }
+  /** sync occupied macro slots (1..11) so unassigned Alt shortcuts pass through */
+  syncMacroSlots(slots: readonly number[]): { ok: true; slots: number[] }
 }
 
 /** Pages drawn for printing: SVG, and each page's size in CSS pixels. */

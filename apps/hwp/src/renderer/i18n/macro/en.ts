@@ -106,4 +106,30 @@ export const en = {
   aiDraftReady: 'Draft script placed in editor. Review it before saving or running.',
   aiDraftFailed: 'Could not generate macro script: {error}',
   aiNoOutput: 'AI did not return a macro script.',
+  importPreviewSlotHint:
+    'Shortcuts are not imported automatically. Assign a shortcut after saving.',
+  importPreviewBidiWarning:
+    'This script contains hidden directional or zero-width control characters (shown as [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Macros can only be recorded or run when the caret is in a body paragraph.',
+  noticeMacroRunNotRecorded: 'Running another macro is not recorded while recording.',
+  noticeMacroRollbackObjectLossAt:
+    'Macro stopped and rolled back (line {line}, col {column}) to prevent losing document objects or memos.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Macro stopped and rolled back during the post-run check to prevent losing document objects or memos.',
+  noticeMacroRunErrorPostRun: 'Macro failed during the post-run check: {error}',
+  cmdUndo: 'Undo',
+  cmdRedo: 'Redo',
+  cmdCopy: 'Copy',
+  cmdCut: 'Cut',
+  cmdPaste: 'Paste',
+  cmdFind: 'Find',
+  cmdInsertImage: 'Insert image',
+  cmdInsertFootnote: 'Insert footnote',
+  cmdInsertEndnote: 'Insert endnote',
+  cmdInsertHyperlink: 'Insert hyperlink',
+  cmdInsertBookmark: 'Insert bookmark',
+  cmdLineBreak: 'Line break',
+  cmdTab: 'Tab',
+  cmdOtherAction: 'Unsupported editor action ({id})',
 } satisfies Record<keyof typeof zh, string>

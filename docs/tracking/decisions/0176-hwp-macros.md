@@ -12,16 +12,17 @@
    - `eval`, `Function`, 동적 `import`, `with`, `vm` 모듈, 숨은 창 JavaScript 실행을 일절 쓰지 않고, 부분 JavaScript 문법을 직접 어휘·구문 분석하고 평가하는 동기 해석기를 둔다.
    - 스크립트는 앱이 명시적으로 넘긴 얼린 문서 API(`studio-plugin/macro-host.mjs`)와 기존 매크로 스크립트 꼴 호환 객체(`studio-plugin/macro-compat.mjs`, `HAction`·`HParameterSet`) 및 소수의 얼린 내장 보조 함수만 접근할 수 있다. 호스트 전역(`window`, `globalThis`, `document`)과 파일·네트워크·클립보드·타이머·IPC는 노출하지 않는다.
    - 스크립트 안에서 만든 객체와 전달 레코드는 모두 프로토타입 없는 빈 객체(`Object.create(null)`)로 만들고, 금지 속성(`constructor`, `__proto__`, `prototype`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__`, `caller`, `callee`, `arguments`)은 점 접근과 계산 속성 접근(`obj[key]`) 모두에서 차단한다.
-   - 실행 시간(기본 30초), 걸음 수(기본 100,000걸음), 함수 호출 깊이(64), 문자열 길이(1,000,000자), 배열·객체 크기(50,000항목), 스크립트 크기(256 KiB) 상한을 강제한다.
+   - 실행 시간(기본 30초), 걸음 수(기본 100,000걸음), 함수 호출 깊이(64), 문자열 길이(1,000,000자), 배열·객체 크기(50,000항목), 누적 메모리(`maxMemoryBytes`), 스크립트 크기(256 KiB) 상한을 강제하고, 방향 제어·폭 없는 문자를 구문 검사에서 차단한다.
 2. **단일 실행 취소와 개체·메모 보호(`studio-plugin/macro-host.mjs`, `macro-compat.mjs`)**:
-   - 매크로 실행 한 번은 `host.transaction`(`foreign: true`) 하나로 감싸 실행 취소 한 단계가 되며, 실행 전후의 개체·메모 수와 식별자를 비교하는 `keepingObjects` 보호를 거친다.
-   - 문법·실행 오류, 미지원 동작(`Undo`·`Redo` 포함), 한도 초과, 개체·메모 손실이 발생하면 트랜잭션을 통째로 되돌리고 오류 줄·칸 또는 미지원 동작 이름을 알린다. 매크로 실행 중 편집기 명령(`automation.execute`)을 호출하지 않고 엔진 호출만 사용한다.
+   - 매크로 실행 한 번은 `host.transaction`(`foreign: true`) 하나로 감싸 실행 취소 한 단계가 되며, `agent-plugin.mjs`의 `keepingObjects` 래퍼 대신 매크로 호스트 자체의 실행 전·후 개체·메모 스냅샷 비교 검사(`captureProtectionSnapshot`)를 같은 트랜잭션 안에서 수행한다.
+   - 문법·실행 오류, 미지원 동작(`Undo`·`Redo` 포함), 한도 초과, 개체·메모 손실이 발생하면 트랜잭션을 통째로 되돌리고 오류 줄·칸(실행 끝 검사 실패는 별도 안내) 또는 미지원 동작 이름을 알린다. 매크로 실행 중 편집기 명령(`automation.execute`)을 호출하지 않고 엔진 호출만 사용한다.
+   - `setCharFormat`을 선택 없이 부르면 다음 `insertText`에 대기 서식으로 적용된다. 호환 객체에서 `HParaShape` 수치는 `200 units/pt`, `HCharShape.TextColor`는 BGR 정수 또는 `#RRGGBB` 문자열을 받으며, `HFindReplace`는 `FindRegExp`를 쓰고 `UseWildCards`·`RegExp`는 거절한다.
 3. **로컬 매크로 저장소와 평문 `.ieummacro` 주고받기(`src/main/macros.ts`, `src/main/macros-ipc.ts`)**:
    - 매크로는 앱 데이터 폴더의 `<userData>/hwp-macros.json`(최대 2 MiB)에만 저장하고, 동기 임시 파일(`wx`, `flush`) 교체로 원자적으로 쓴다. 저장 파일이 손상되었거나 용량 상한을 넘으면 원본을 건드리지 않고 `.corrupt-<시각>` 백업을 남긴 뒤 모든 쓰기를 거절한다.
-   - 모든 `hwp:macros-*` IPC 창구는 `hwpViews.has(e.sender.id)`를 확인한다. 평문 텍스트 파일(`.ieummacro`, 최대 256 KiB) 내보내기·가져오기 경로는 메인 프로세스의 파일 대화상자에서만 정하고 렌더러는 경로를 넘기지 못한다. 가져오기 시 스크립트 전문과 구문 검사 결과를 먼저 보여 주고 사람이 확인한 뒤에만 저장하며, 저장 전에는 실행할 수 없다.
+   - 모든 `hwp:macros-*` IPC 창구는 `hwpViews.has(e.sender.id)`를 확인한다. 평문 텍스트 파일(`.ieummacro`, 최대 256 KiB) 내보내기·가져오기 경로는 메인 프로세스의 파일 대화상자에서만 정하고 렌더러는 경로를 넘기지 못한다. 가져오기 시 스크립트 전문(숨은 제어 문자는 `[U+XXXX]`로 표시)과 구문 검사 결과를 먼저 보여 주고 사람이 확인한 뒤에만 저장하며, 저장 전에는 실행할 수 없고 `@slot` 헤더는 무시해 항상 `slot: null`로 저장한다.
    - 문서 파일(`.hwp`, `.hwpx`) 안에 들어 있는 매크로는 읽지도 실행하지도 않는다.
 4. **키 매크로 기록과 11개 단축키 슬롯(`studio-plugin/macro-recorder.mjs`, `workpane-menu.mjs`, `src/renderer/macro/`)**:
-   - 도구 메뉴 항목과 기존 단축키(`Alt+Shift+H` 기록 시작/끝, `Alt+Shift+X` 기록 끝, `Alt+1`–`Alt+9`·`Alt+0`·`Alt+-` 11개 실행 슬롯)를 제공한다.
+   - 도구 메뉴 항목과 단축키(`Alt+Shift+H` 기록 시작/끝, `Alt+Shift+X` 기록 끝, `Alt+1`–`Alt+9`·`Alt+0`·`Alt+-` 11개 실행 슬롯)를 제공한다. macOS에서는 Option 조합 키가 문자 입력에 쓰이므로 Option 단축키를 가로채지 않고 **도구 > 매크로** 메뉴로만 접근한다.
    - 기록하는 동안 편집기 상단에 기록 중 표시와 중지 단추를 띄운다. 글자 입력, 커서 이동, 서식·스타일·표 삽입 등 지원하는 편집 동작을 사람이 읽고 고칠 수 있는 스크립트 줄로 누적하며, 미지원 명령이나 마우스 클릭이 들어오면 즉시 알리고 기록을 마친 뒤 건너뛴 항목 목록을 보여 준다.
 5. **선택 기능 "AI에게 쓰게 하기"(`src/renderer/macro/`)**:
    - AI가 켜져 있을 때만 매크로 편집 창에 표시되며, 공용 AI 창구·제공자 선택 규칙·보내기 문지기를 그대로 따른다(요금이 나가는 경로로 스스로 바뀌지 않는다).

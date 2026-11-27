@@ -28,7 +28,9 @@ export interface MacroSkippedCommand {
 }
 
 export type MacroRecorderNotice =
-  { kind: 'unsupported_command'; commandId: string; label: string } | { kind: 'mouse_ignored' }
+  | { kind: 'unsupported_command'; commandId: string; label: string }
+  | { kind: 'mouse_ignored' }
+  | { kind: 'slot_run_ignored'; slot: number }
 
 export interface MacroRecorderStopResult {
   script: string
@@ -53,6 +55,22 @@ export interface MacroKeyInput {
   ctrlKey?: boolean
   metaKey?: boolean
   shiftKey?: boolean
+  isComposing?: boolean
+  keyCode?: number
+  target?: unknown
+  preventDefault?: () => void
+}
+
+export interface MacroKeyRecordContext {
+  hadSelection?: boolean
+  navigationAction?: string
+}
+
+export interface MacroCharToggleState {
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  strikethrough?: boolean
 }
 
 export interface MacroRecorder {
@@ -64,9 +82,15 @@ export interface MacroRecorder {
   getSteps(): MacroRecordedStep[]
   getScript(): string
   recordText(text: string): boolean
-  recordKey(keyEvent: MacroKeyInput): boolean
-  recordCommand(commandId: string, args?: unknown, label?: string): boolean
+  recordKey(keyEvent: MacroKeyInput, context?: MacroKeyRecordContext): boolean
+  recordCommand(
+    commandId: string,
+    args?: unknown,
+    label?: string,
+    formatState?: MacroCharToggleState,
+  ): boolean
   recordMouseMove(): boolean
+  recordSlotRun(slot: number): boolean
 }
 
 export declare function slotFromAltKey(event: MacroKeyInput | null | undefined): number | null
@@ -74,6 +98,10 @@ export declare function slotFromAltKey(event: MacroKeyInput | null | undefined):
 export declare function quoteScriptString(text: string): string
 
 export declare function createMacroRecorder(options?: MacroRecorderOptions): MacroRecorder
+
+export declare function setAssignedMacroSlots(slots: Iterable<number> | null | undefined): number[]
+
+export declare function hasAssignedMacroSlot(slot: number): boolean
 
 export declare function getActiveMacroRecorder(): MacroRecorder | null
 
@@ -85,10 +113,16 @@ export declare function recordStudioCommand(
   commandId: string,
   args?: unknown,
   label?: string,
+  formatState?: MacroCharToggleState,
 ): boolean
 
 export declare function recordStudioText(text: string): boolean
 
-export declare function recordStudioKey(keyEvent: MacroKeyInput): boolean
+export declare function recordStudioKey(
+  keyEvent: MacroKeyInput,
+  context?: MacroKeyRecordContext,
+): boolean
 
 export declare function recordStudioMouseClick(): boolean
+
+export declare function recordStudioSlotRun(slot: number): boolean

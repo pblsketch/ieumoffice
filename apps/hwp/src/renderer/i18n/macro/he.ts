@@ -103,4 +103,28 @@ export const he = {
   aiDraftReady: 'טיוטת הסקריפט הוכנסה לעורך. בדוק אותה לפני שמירה או הפעלה.',
   aiDraftFailed: 'לא ניתן ליצור סקריפט מאקרו: {error}',
   aiNoOutput: 'ה-AI לא החזיר סקריפט מאקרו.',
+  importPreviewSlotHint: 'קיצורי מקשים אינם מיובאים אוטומטית. הקצו קיצור דרך לאחר השמירה.',
+  importPreviewBidiWarning:
+    'סקריפט זה מכיל תווי בקרת כיווניות נסתרים או תווים ברוחב אפס (מוצגים כ-[U+XXXX]).',
+  noticeMacroOutsideBody: 'ניתן להקליט או להריץ מאקרו רק כאשר הסמן נמצא בפסקת גוף המסמך.',
+  noticeMacroRunNotRecorded: 'הרצת מאקרו אחר אינה מוקלטת בזמן ההקלטה.',
+  noticeMacroRollbackObjectLossAt:
+    'המאקרו נעצר וכל השינויים בוטלו (שורה {line}, עמודה {column}) כדי למנוע אובדן אובייקטים או הערות.',
+  noticeMacroRollbackObjectLossPostRun:
+    'המאקרו נעצר וכל השינויים בוטלו בבדיקה שלאחר ההרצה כדי למנוע אובדן אובייקטים או הערות.',
+  noticeMacroRunErrorPostRun: 'המאקרו נכשל בבדיקה שלאחר ההרצה: {error}',
+  cmdUndo: 'בטל',
+  cmdRedo: 'בצע שוב',
+  cmdCopy: 'העתק',
+  cmdCut: 'גזור',
+  cmdPaste: 'הדבק',
+  cmdFind: 'חיפוש',
+  cmdInsertImage: 'הוספת תמונה',
+  cmdInsertFootnote: 'הוספת הערת שוליים',
+  cmdInsertEndnote: 'הוספת הערת סיום',
+  cmdInsertHyperlink: 'הוספת היפר-קישור',
+  cmdInsertBookmark: 'הוספת סימנייה',
+  cmdLineBreak: 'מעבר שורה',
+  cmdTab: 'טאב',
+  cmdOtherAction: 'פעולת עריכה לא נתמכת ({id})',
 } satisfies Record<keyof typeof zh, string>

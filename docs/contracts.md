@@ -765,7 +765,12 @@ setParaFormat({ align: "center" });
 setCharFormat({ bold: true });
 ```
 
-- `// @ieum-macro: 1`, `// @name: ...`, 구분선 `// ---`는 필수이고, `// @description: ...`은 선택이다. 머리말 값은 제어 문자와 줄바꿈을 제거해 위조를 막는다.
+- `// @ieum-macro: 1`, `// @name: ...`, 구분선 `// ---`는 필수이고, `// @description: ...`은 선택이다. 머리말 값은 제어 문자와 줄바꿈을 제거해 위조를 막는다. 파일에 `// @slot: ...`이 들어 있어도 가져오기에서 무시하며, 가져온 매크로는 항상 `slot: null`로 저장되어 기존 단축키 슬롯을 빼앗지 않는다.
+- **매크로 문서 API와 호환 객체 약속**:
+  - 삭제·선택 확장 API: `deleteBackward(count?)`, `deleteForward(count?)`, `selectLeft(count?)`, `selectRight(count?)`, `selectUp(count?)`, `selectDown(count?)`, `selectWordLeft(count?)`, `selectWordRight(count?)`, `selectLineBegin()`, `selectLineEnd()`, `selectParaBegin()`, `selectParaEnd()`, `selectDocBegin()`, `selectDocEnd()`.
+  - `setCharFormat`을 선택 영역 없이 부르면 바로 이어지는 `insertText`에 해당 글자 서식이 적용된다.
+  - `moveUp`/`moveDown`은 화면에 그려진 줄 기준의 가로 칸 위치를 맞춰 이동하며, 짝지을 위치를 찾지 못하면 대상 줄의 맨 앞으로 떨어진다.
+  - 호환 객체(`HParameterSet`): `HParaShape`의 여백·들여쓰기·문단 간격은 `200 units/pt` 기준이고, `HCharShape.TextColor`는 BGR 정수(`0x00BBGGRR`)와 `#RRGGBB` 문자열을 모두 받는다. `HFindReplace`의 정규식 검색은 `FindRegExp`를 쓰며, `UseWildCards`와 `RegExp`는 거절한다.
 
 ## 문서 호환
 

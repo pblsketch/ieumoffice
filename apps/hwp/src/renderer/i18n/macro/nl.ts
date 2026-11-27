@@ -109,4 +109,31 @@ export const nl = {
   aiDraftReady: 'Conceptscript in de editor geplaatst. Controleer het voor opslaan of uitvoeren.',
   aiDraftFailed: 'Kon geen macroscript genereren: {error}',
   aiNoOutput: 'AI heeft geen macroscript teruggegeven.',
+  importPreviewSlotHint:
+    'Sneltoetsen worden niet automatisch geïmporteerd. Wijs na het opslaan zelf een sneltoets toe.',
+  importPreviewBidiWarning:
+    'Dit script bevat verborgen richtingstuur- of nulbreedtetekens (weergegeven als [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Macro’s kunnen alleen worden opgenomen of uitgevoerd wanneer de cursor in een hoofdtekstalinea staat.',
+  noticeMacroRunNotRecorded:
+    'Het uitvoeren van een andere macro wordt tijdens het opnemen niet vastgelegd.',
+  noticeMacroRollbackObjectLossAt:
+    'Macro is gestopt en teruggedraaid (regel {line}, kol. {column}) om verlies van objecten of opmerkingen te voorkomen.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Macro is bij de eindcontrole gestopt en teruggedraaid om verlies van objecten of opmerkingen te voorkomen.',
+  noticeMacroRunErrorPostRun: 'Macro mislukt tijdens de eindcontrole: {error}',
+  cmdUndo: 'Ongedaan maken',
+  cmdRedo: 'Opnieuw uitvoeren',
+  cmdCopy: 'Kopiëren',
+  cmdCut: 'Knippen',
+  cmdPaste: 'Plakken',
+  cmdFind: 'Zoeken',
+  cmdInsertImage: 'Afbeelding invoegen',
+  cmdInsertFootnote: 'Voetnoot invoegen',
+  cmdInsertEndnote: 'Eindnoot invoegen',
+  cmdInsertHyperlink: 'Hyperlink invoegen',
+  cmdInsertBookmark: 'Bladwijzer invoegen',
+  cmdLineBreak: 'Regeleinde',
+  cmdTab: 'Tabulator',
+  cmdOtherAction: 'Niet-ondersteunde bewerkingsactie ({id})',
 } satisfies Record<keyof typeof zh, string>

@@ -108,4 +108,30 @@ export const cs = {
     'Návrh skriptu byl vložen do editoru. Před uložením nebo spuštěním jej zkontrolujte.',
   aiDraftFailed: 'Nepodařilo se vygenerovat skript makra: {error}',
   aiNoOutput: 'AI nevrátila žádný skript makra.',
+  importPreviewSlotHint:
+    'Klávesové zkratky se neimportují automaticky. Přiřaďte zkratku až po uložení.',
+  importPreviewBidiWarning:
+    'Tento skript obsahuje skryté znaky pro směr textu nebo znaky s nulovou šířkou (zobrazené jako [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Makra lze zaznamenávat nebo spouštět jen tehdy, když je kurzor v odstavci hlavního textu.',
+  noticeMacroRunNotRecorded: 'Spuštění jiného makra se během záznamu nezaznamenává.',
+  noticeMacroRollbackObjectLossAt:
+    'Makro bylo zastaveno a změny byly vráceny (řádek {line}, sl. {column}), aby nedošlo ke ztrátě objektů nebo poznámek.',
+  noticeMacroRollbackObjectLossPostRun:
+    'Makro bylo při závěrečné kontrole zastaveno a změny byly vráceny, aby nedošlo ke ztrátě objektů nebo poznámek.',
+  noticeMacroRunErrorPostRun: 'Makro selhalo při závěrečné kontrole: {error}',
+  cmdUndo: 'Zpět',
+  cmdRedo: 'Znovu',
+  cmdCopy: 'Kopírovat',
+  cmdCut: 'Vyjmout',
+  cmdPaste: 'Vložit',
+  cmdFind: 'Najít',
+  cmdInsertImage: 'Vložit obrázek',
+  cmdInsertFootnote: 'Vložit poznámku pod čarou',
+  cmdInsertEndnote: 'Vložit vysvětlivku',
+  cmdInsertHyperlink: 'Vložit hypertextový odkaz',
+  cmdInsertBookmark: 'Vložit záložku',
+  cmdLineBreak: 'Zalomení řádku',
+  cmdTab: 'Tabulátor',
+  cmdOtherAction: 'Nepodporovaná akce editoru ({id})',
 } satisfies Record<keyof typeof zh, string>

@@ -3,12 +3,15 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  BIDI_AND_INVISIBLE_RE,
   DEFAULT_MACRO_LIMITS,
   FORBIDDEN_PROP_NAMES,
+  INTERPRETER_CAPABILITIES,
   MAX_INT32,
   MacroRuntimeError,
   MacroSyntaxError,
   createSafeBag,
+  findDisallowedInvisibleChar,
   parseMacroScript,
   runMacroScript,
   sanitizeHostValue,
@@ -26,6 +29,7 @@ describe('macro-interpreter: limits validation', () => {
     expect(DEFAULT_MACRO_LIMITS.maxStringLength).toBe(1_000_000)
     expect(DEFAULT_MACRO_LIMITS.maxCollectionSize).toBe(50_000)
     expect(DEFAULT_MACRO_LIMITS.maxScriptBytes).toBe(256 * 1024)
+    expect(DEFAULT_MACRO_LIMITS.maxMemoryBytes).toBe(64 * 1024 * 1024)
   })
 
   it('accepts valid integer overrides up to MAX_INT32', () => {
@@ -55,6 +59,7 @@ describe('macro-interpreter: limits validation', () => {
     expect(() => validateMacroLimits({ maxStringLength: badValue })).toThrow(RangeError)
     expect(() => validateMacroLimits({ maxCollectionSize: badValue })).toThrow(RangeError)
     expect(() => validateMacroLimits({ maxScriptBytes: badValue })).toThrow(RangeError)
+    expect(() => validateMacroLimits({ maxMemoryBytes: badValue })).toThrow(RangeError)
     expect(() => runMacroScript('1 + 1', {}, { maxSteps: badValue })).toThrow(RangeError)
   })
 })
@@ -703,5 +708,233 @@ describe('macro-interpreter: sandbox and forbidden access defenses', () => {
     const dirty = JSON.parse('{"__proto__": {"x": 1}}')
     expect(() => sanitizeHostValue(dirty)).toThrow(MacroRuntimeError)
     expect(() => createSafeBag(dirty)).toThrow(MacroRuntimeError)
+  })
+
+  it('enforces cumulative maxMemoryBytes across repeated string and collection allocations', () => {
+    const res = runMacroScript(
+      `
+      var a = [];
+      var s = "x".repeat(50000);
+      for (var i = 0; i < 100; i++) {
+        a.push((s + i).toUpperCase());
+      }
+      a.length;
+    `,
+      {},
+      { maxMemoryBytes: 1_000_000 },
+    )
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.code).toBe('memory_limit')
+    }
+
+    // Host return values and JSON.parse are also charged against maxMemoryBytes.
+    const hostAlloc = runMacroScript(
+      `
+      var out = [];
+      for (var i = 0; i < 40; i++) {
+        out.push(makeBig());
+      }
+      out.length;
+    `,
+      { makeBig: () => 'a'.repeat(40_000) },
+      { maxMemoryBytes: 500_000 },
+    )
+    expect(hostAlloc.ok).toBe(false)
+    if (!hostAlloc.ok) {
+      expect(hostAlloc.code).toBe('memory_limit')
+    }
+
+    const jsonAlloc = runMacroScript(
+      `
+      var raw = '["' + "z".repeat(40000) + '"]';
+      for (var i = 0; i < 40; i++) {
+        JSON.parse(raw);
+      }
+    `,
+      {},
+      { maxMemoryBytes: 500_000 },
+    )
+    expect(jsonAlloc.ok).toBe(false)
+    if (!jsonAlloc.ok) {
+      expect(jsonAlloc.code).toBe('memory_limit')
+    }
+  })
+
+  it('rejects raw invisible and bidirectional control characters while allowing ASCII escapes', () => {
+    expect(BIDI_AND_INVISIBLE_RE.test('\u202e')).toBe(true)
+    expect(BIDI_AND_INVISIBLE_RE.test('\u200b')).toBe(true)
+    expect(findDisallowedInvisibleChar('var x = 1;')).toBeNull()
+
+    const bidiInComment = 'var a = 1;\n/* \u202e } */ a;'
+    const found = findDisallowedInvisibleChar(bidiInComment)
+    expect(found).toEqual({ line: 2, column: 4, codePoint: 0x202e, hex: '202E' })
+
+    for (const src of [
+      bidiInComment,
+      '"\u202e"',
+      'var o = {}; o["con\u200bstructor"]',
+      'var x = 1; \u2066',
+      'var x = 1; \u200f',
+    ]) {
+      const parsed = parseMacroScript(src)
+      expect(parsed.ok).toBe(false)
+      if (!parsed.ok) {
+        expect(parsed.code).toBe('syntax_error')
+        expect(parsed.error).toContain('U+')
+      }
+      const validated = validateMacroSyntax(src)
+      expect(validated.ok).toBe(false)
+    }
+
+    // ASCII unicode escape sequence in string literal remains allowed and decodes normally.
+    const asciiEscape = runMacroScript('"\\u202e"')
+    expect(asciiEscape.ok).toBe(true)
+    if (asciiEscape.ok) {
+      expect(asciiEscape.value).toBe('\u202e')
+    }
+  })
+
+  it('bounds expression and statement chain depth in MAX_PARSE_DEPTH without JS stack overflow', () => {
+    const deepCases = [
+      'var x = ' + Array(50_000).fill('1').join('+') + '; x',
+      'var o = {}; o.a = o; var y = o' + '.a'.repeat(60_000) + '; 1',
+      'function f(){ return f } f' + '()'.repeat(60_000) + '; 1',
+      '!'.repeat(60_000) + 'true',
+      '('.repeat(200) + '1' + ')'.repeat(200),
+      '['.repeat(200) + ']'.repeat(200),
+      'var x = ' + 'true ? 1 : '.repeat(20_000) + '0; x',
+      'var a; a = ' + 'a = '.repeat(20_000) + '1; a',
+      'var x = 0; ' + 'if (x) {} else '.repeat(500) + '{ x = 1 } x',
+      'var x = ' + Array(300).fill('1').join(' && ') + '; x',
+      'var x = ' + Array(300).fill('2').join(' ** ') + '; x',
+    ]
+    for (const src of deepCases) {
+      const res = runMacroScript(src)
+      expect(res.ok).toBe(false)
+      if (!res.ok) {
+        expect(res.code).toBe('syntax_error')
+      }
+    }
+    // Oversized 20k else-if chain fails cleanly with script_too_large (zero stack overflow).
+    const hugeElseIf = runMacroScript(
+      'var x = 0; ' + 'if (x) {} else '.repeat(20_000) + '{ x = 1 } x',
+    )
+    expect(hugeElseIf.ok).toBe(false)
+    if (!hugeElseIf.ok) {
+      expect(['syntax_error', 'script_too_large']).toContain(hugeElseIf.code)
+    }
+  })
+
+  it('re-checks time limit immediately after host calls return', () => {
+    let clock = 1000
+    const res = runMacroScript(
+      'slowHost(); 1;',
+      {
+        slowHost: () => {
+          clock += 500
+          return 'done'
+        },
+      },
+      { maxTimeMs: 100, now: () => clock },
+    )
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.code).toBe('time_limit')
+      expect(res.line).toBe(1)
+    }
+  })
+
+  it('blocks security bypass regressions (computed/escaped keys, coercion hooks, callable methods, frozen host writes)', () => {
+    const globals = {
+      getObj: () => ({ a: 1, f: () => 2 }),
+      o: Object.freeze(Object.assign(Object.create(null), { a: 1 })),
+      arr: [1, 2, 3],
+      hostFn: (x: unknown) => typeof x,
+    }
+
+    const forbiddenCases = [
+      '""["const"+"ructor"]',
+      'var o = {}; o[["constructor"]]',
+      'var o = {}; o["\\x63onstructor"]',
+      '""["\\u0063onstructor"]',
+      'getObj()["constructor"]',
+      'getObj().constructor',
+      'JSON.parse(\'{"__proto__":{"p":1}}\')',
+    ]
+    for (const src of forbiddenCases) {
+      const res = runMacroScript(src, globals)
+      expect(res.ok).toBe(false)
+      if (!res.ok) {
+        expect(res.code).toBe('forbidden_property')
+      }
+    }
+    expect(({} as Record<string, unknown>).p).toBeUndefined()
+
+    // Escaped identifier property access must fail at parse time.
+    const escapedIdent = runMacroScript('var o = {}; o.\\u0063onstructor', globals)
+    expect(escapedIdent.ok).toBe(false)
+    if (!escapedIdent.ok) {
+      expect(escapedIdent.code).toBe('syntax_error')
+    }
+
+    // .call / .apply / .bind are not exposed on host, script, or builtin callables.
+    const callableMeta = runMacroScript(
+      `
+      function localFn() { return 1; }
+      [
+        hostFn.call, hostFn.apply, hostFn.bind,
+        localFn.call, localFn.apply, localFn.bind,
+        Math.abs.call, Math.abs.apply, Math.abs.bind,
+      ];
+    `,
+      globals,
+    )
+    expect(callableMeta.ok).toBe(true)
+    if (callableMeta.ok) {
+      expect(callableMeta.value).toEqual(Array(9).fill(undefined))
+    }
+
+    // Script valueOf / toString hooks are never invoked during coercion.
+    const coercion = runMacroScript(`
+      var called = 0;
+      var obj = {
+        valueOf: function () { called++; return 1; },
+        toString: function () { called++; return "x"; },
+      };
+      var sum = obj + 1;
+      var str = "" + obj;
+      ({ called, isNaNSum: !Number.isFinite(sum), str });
+    `)
+    expect(coercion.ok).toBe(true)
+    if (coercion.ok) {
+      expect(coercion.value).toEqual({ called: 0, isNaNSum: true, str: '[object Object]' })
+    }
+
+    // Writes to frozen host objects, built-in namespaces, and host arrays fail cleanly.
+    for (const src of ['o.a = 2;', 'Math.max = 1;', 'arr[0] = 5;']) {
+      const res = runMacroScript(src, globals)
+      expect(res.ok).toBe(false)
+      if (!res.ok) {
+        expect(res.code).toBe('type_error')
+      }
+    }
+  })
+
+  it('exports frozen INTERPRETER_CAPABILITIES matching actual dispatch tables', () => {
+    expect(Object.isFrozen(INTERPRETER_CAPABILITIES)).toBe(true)
+    expect(INTERPRETER_CAPABILITIES.globals).toEqual(
+      expect.arrayContaining(['Math', 'Object', 'JSON', 'Number', 'String', 'Array', 'Boolean']),
+    )
+    expect(INTERPRETER_CAPABILITIES.keywords).toContain('switch')
+    expect(INTERPRETER_CAPABILITIES.keywords).not.toContain('try')
+    expect(INTERPRETER_CAPABILITIES.stringMethods).toContain('replaceAll')
+    expect(INTERPRETER_CAPABILITIES.arrayMethods).toContain('reduce')
+    expect(INTERPRETER_CAPABILITIES.objectMethods).toEqual(['keys', 'values', 'entries'])
+    expect(INTERPRETER_CAPABILITIES.mathMethods).toContain('max')
+    expect(INTERPRETER_CAPABILITIES.jsonMethods).toEqual(['stringify', 'parse'])
+    expect(INTERPRETER_CAPABILITIES.numberMethods).toEqual(
+      expect.arrayContaining(['isFinite', 'isInteger', 'parseInt', 'parseFloat']),
+    )
   })
 })
