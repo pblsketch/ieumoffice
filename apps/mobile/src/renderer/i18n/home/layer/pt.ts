@@ -17,22 +17,13 @@ export const pt = {
   homeRunReceivePdfOff: 'As ferramentas de PDF estão desativadas',
   homeRunReceivePdfOn: 'Ativar e continuar',
   homeRunGuideLabel: 'Guia de boas-vindas',
-  homeRunStep: 'Etapa {current} de {total}',
   homeRunWelcomeTitle: 'Boas-vindas',
   homeRunWelcomeBody:
     'Abra e edite documentos HWP, PDF, Markdown e outros com o GenOffice. Sem conta, sem anúncios, e seus documentos ficam neste aparelho.',
-  homeRunNext: 'Próximo',
-  homeRunSkip: 'Pular',
-  homeRunFolderTitle: 'Vincular uma pasta de documentos (opcional)',
-  homeRunFolderBody:
-    'Vincule uma pasta que você usa sempre e os arquivos dela aparecem direto na aba [Pastas].',
-  homeRunFolderPick: 'Escolher pasta',
-  homeRunLater: 'Depois',
-  homeRunFolderLinked: '✓ Pasta de documentos vinculada · Altere nas Configurações',
   homeRunStart: 'Começar',
   homeRunTipEditButton: 'Para alterar, toque em [Editar]',
   homeRunTipFlowView:
-    'Mudamos para a visualização contínua para facilitar a leitura · A visualização de página fica aqui',
+    'Mudamos para o modo de leitura para facilitar a leitura · A visualização de página fica aqui',
   homeRunTipFirstEdit:
     'Uma cópia de recuperação é criada automaticamente. O original é salvo quando você toca em [Concluir]',
   homeRunTipFirstKeyboard: 'Mude o formato do texto com [Aa]',

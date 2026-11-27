@@ -17,22 +17,13 @@ export const nl = {
   homeRunReceivePdfOff: 'De pdf-tools staan uit',
   homeRunReceivePdfOn: 'Aanzetten en doorgaan',
   homeRunGuideLabel: 'Welkomstgids',
-  homeRunStep: 'Stap {current} van {total}',
   homeRunWelcomeTitle: 'Welkom',
   homeRunWelcomeBody:
     'Open en bewerk HWP, PDF, Markdown en meer met GenOffice. Geen account, geen advertenties, en je documenten blijven op dit apparaat.',
-  homeRunNext: 'Volgende',
-  homeRunSkip: 'Overslaan',
-  homeRunFolderTitle: 'Documentmap koppelen (optioneel)',
-  homeRunFolderBody:
-    'Koppel een map die je vaak gebruikt, dan zie je de bestanden meteen op het tabblad [Mappen].',
-  homeRunFolderPick: 'Map kiezen',
-  homeRunLater: 'Later',
-  homeRunFolderLinked: '✓ Documentmap gekoppeld · Wijzigen kan in Instellingen',
   homeRunStart: 'Aan de slag',
   homeRunTipEditButton: 'Tik op [Bewerken] om iets te veranderen',
   homeRunTipFlowView:
-    'Overgeschakeld naar doorlopende weergave om makkelijker te lezen · Paginaweergave vind je hier',
+    'Overgeschakeld naar de leesweergave om makkelijker te lezen · Paginaweergave vind je hier',
   homeRunTipFirstEdit:
     'Er wordt automatisch een herstelkopie gemaakt. Het origineel wordt opgeslagen als je op [Gereed] tikt',
   homeRunTipFirstKeyboard: 'Wijzig de tekstopmaak met [Aa]',

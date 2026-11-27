@@ -5,7 +5,7 @@ export const th = {
   homeFolderEmptyTitle: 'ยังไม่ได้เชื่อมโฟลเดอร์',
   homeFolderEmptyBody:
     'เชื่อมโฟลเดอร์ที่ใช้บ่อย แล้วเอกสารและรูปภาพในโฟลเดอร์นั้นจะแสดงที่นี่ทันที',
-  homeFolderLink: 'เชื่อมโฟลเดอร์',
+  homeFolderLink: 'เพิ่มโฟลเดอร์',
   homeFolderRelink: 'เชื่อมอีกครั้ง',
   homeFolderRelinkNamed: 'เชื่อม {name} อีกครั้ง',
   homeFolderOk: 'เชื่อมแล้ว',

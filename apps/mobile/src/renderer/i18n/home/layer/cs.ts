@@ -17,22 +17,12 @@ export const cs = {
   homeRunReceivePdfOff: 'Nástroje PDF jsou vypnuté',
   homeRunReceivePdfOn: 'Zapnout a pokračovat',
   homeRunGuideLabel: 'Úvodní průvodce',
-  homeRunStep: 'Krok {current} z {total}',
   homeRunWelcomeTitle: 'Vítejte',
   homeRunWelcomeBody:
     'V GenOffice otevřete a upravíte dokumenty HWP, PDF, Markdown a další. Bez účtu, bez reklam a dokumenty zůstávají v tomto zařízení.',
-  homeRunNext: 'Další',
-  homeRunSkip: 'Přeskočit',
-  homeRunFolderTitle: 'Propojit složku s dokumenty (volitelné)',
-  homeRunFolderBody:
-    'Propojte složku, kterou často používáte, a její soubory se hned zobrazí na kartě [Složky].',
-  homeRunFolderPick: 'Vybrat složku',
-  homeRunLater: 'Později',
-  homeRunFolderLinked: '✓ Složka s dokumenty propojena · Změníte ji v nastavení',
   homeRunStart: 'Začít',
   homeRunTipEditButton: 'Chcete-li provést změny, klepněte na [Upravit]',
-  homeRunTipFlowView:
-    'Přepnuto na plynulé zobrazení pro snazší čtení · Zobrazení stránky najdete tady',
+  homeRunTipFlowView: 'Přepnuto na zobrazení pro čtení · Zobrazení stránky najdete tady',
   homeRunTipFirstEdit:
     'Kopie pro obnovení se vytváří automaticky. Originál se uloží, když klepnete na [Hotovo]',
   homeRunTipFirstKeyboard: 'Formát textu změníte tlačítkem [Aa]',

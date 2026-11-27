@@ -5,7 +5,7 @@ export const nl = {
   homeFolderEmptyTitle: 'Nog geen mappen gekoppeld',
   homeFolderEmptyBody:
     'Koppel een map die je vaak gebruikt, dan staan de documenten en afbeeldingen daaruit meteen hier.',
-  homeFolderLink: 'Map koppelen',
+  homeFolderLink: 'Map toevoegen',
   homeFolderRelink: 'Opnieuw koppelen',
   homeFolderRelinkNamed: '{name} opnieuw koppelen',
   homeFolderOk: 'Gekoppeld',

@@ -5,7 +5,7 @@ export const de = {
   homeFolderEmptyTitle: 'Noch keine Ordner verknüpft',
   homeFolderEmptyBody:
     'Verknüpfen Sie einen häufig genutzten Ordner, dann erscheinen seine Dokumente und Bilder direkt hier.',
-  homeFolderLink: 'Ordner verknüpfen',
+  homeFolderLink: 'Ordner hinzufügen',
   homeFolderRelink: 'Neu verknüpfen',
   homeFolderRelinkNamed: '{name} neu verknüpfen',
   homeFolderOk: 'Verknüpft',

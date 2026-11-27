@@ -5,7 +5,7 @@ export const cs = {
   homeFolderEmptyTitle: 'Zatím nejsou připojené žádné složky',
   homeFolderEmptyBody:
     'Připojte složku, kterou často používáte, a její dokumenty a obrázky se zobrazí přímo tady.',
-  homeFolderLink: 'Připojit složku',
+  homeFolderLink: 'Přidat složku',
   homeFolderRelink: 'Připojit znovu',
   homeFolderRelinkNamed: 'Znovu připojit {name}',
   homeFolderOk: 'Připojeno',

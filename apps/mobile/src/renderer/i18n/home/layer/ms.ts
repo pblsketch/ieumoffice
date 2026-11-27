@@ -17,22 +17,13 @@ export const ms = {
   homeRunReceivePdfOff: 'Alat PDF dimatikan',
   homeRunReceivePdfOn: 'Hidupkan dan teruskan',
   homeRunGuideLabel: 'Panduan permulaan',
-  homeRunStep: 'Langkah {current} daripada {total}',
   homeRunWelcomeTitle: 'Selamat datang',
   homeRunWelcomeBody:
     'Buka dan sunting dokumen HWP, PDF, Markdown dan banyak lagi dengan GenOffice. Tiada akaun, tiada iklan dan dokumen anda kekal pada peranti ini.',
-  homeRunNext: 'Seterusnya',
-  homeRunSkip: 'Langkau',
-  homeRunFolderTitle: 'Pautkan folder dokumen (pilihan)',
-  homeRunFolderBody:
-    'Pautkan folder yang kerap anda guna dan failnya terus muncul dalam tab [Folder].',
-  homeRunFolderPick: 'Pilih folder',
-  homeRunLater: 'Kemudian',
-  homeRunFolderLinked: '✓ Folder dokumen dipautkan · Tukar dalam Tetapan',
   homeRunStart: 'Mula',
   homeRunTipEditButton: 'Untuk membuat perubahan, ketik [Sunting]',
   homeRunTipFlowView:
-    'Ditukar ke paparan aliran supaya lebih mudah dibaca · Paparan halaman ada di sini',
+    'Ditukar ke paparan bacaan supaya lebih mudah dibaca · Paparan halaman ada di sini',
   homeRunTipFirstEdit:
     'Salinan pemulihan dibuat secara automatik. Fail asal disimpan apabila anda mengetik [Selesai]',
   homeRunTipFirstKeyboard: 'Tukar format teks dengan [Aa]',

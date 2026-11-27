@@ -5,7 +5,7 @@ export const en = {
   homeFolderEmptyTitle: 'No folders linked yet',
   homeFolderEmptyBody:
     'Link a folder you use often and its documents and pictures show up right here.',
-  homeFolderLink: 'Link folder',
+  homeFolderLink: 'Add folder',
   homeFolderRelink: 'Link again',
   homeFolderRelinkNamed: 'Link {name} again',
   homeFolderOk: 'Linked',

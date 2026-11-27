@@ -5,7 +5,7 @@ export const it = {
   homeFolderEmptyTitle: 'Nessuna cartella collegata',
   homeFolderEmptyBody:
     'Collega una cartella che usi spesso: i suoi documenti e le sue immagini appariranno qui.',
-  homeFolderLink: 'Collega cartella',
+  homeFolderLink: 'Aggiungi cartella',
   homeFolderRelink: 'Ricollega',
   homeFolderRelinkNamed: 'Ricollega {name}',
   homeFolderOk: 'Collegata',

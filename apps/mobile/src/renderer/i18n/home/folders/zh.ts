@@ -3,7 +3,7 @@ export const zh = {
   homeFolderListLabel: '已关联的文件夹',
   homeFolderEmptyTitle: '还没有关联文件夹',
   homeFolderEmptyBody: '关联常用的文件夹后，其中的文档和图片会直接显示在这里。',
-  homeFolderLink: '关联文件夹',
+  homeFolderLink: '添加文件夹',
   homeFolderRelink: '重新关联',
   homeFolderRelinkNamed: '重新关联{name}',
   homeFolderOk: '已关联',

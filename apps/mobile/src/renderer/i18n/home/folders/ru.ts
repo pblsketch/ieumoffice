@@ -5,7 +5,7 @@ export const ru = {
   homeFolderEmptyTitle: 'Папки пока не подключены',
   homeFolderEmptyBody:
     'Подключите папку, которой часто пользуетесь, и её документы и изображения появятся здесь.',
-  homeFolderLink: 'Подключить папку',
+  homeFolderLink: 'Добавить папку',
   homeFolderRelink: 'Подключить снова',
   homeFolderRelinkNamed: 'Подключить {name} снова',
   homeFolderOk: 'Подключена',

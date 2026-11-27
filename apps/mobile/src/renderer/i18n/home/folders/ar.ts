@@ -4,7 +4,7 @@ export const ar = {
   homeFolderListLabel: 'المجلدات المرتبطة',
   homeFolderEmptyTitle: 'لا توجد مجلدات مرتبطة بعد',
   homeFolderEmptyBody: 'اربط مجلدًا تستخدمه كثيرًا لتظهر مستنداته وصوره هنا مباشرة.',
-  homeFolderLink: 'ربط مجلد',
+  homeFolderLink: 'إضافة مجلد',
   homeFolderRelink: 'إعادة الربط',
   homeFolderRelinkNamed: 'إعادة ربط {name}',
   homeFolderOk: 'مرتبط',

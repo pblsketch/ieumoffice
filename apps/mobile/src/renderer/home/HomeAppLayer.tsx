@@ -288,13 +288,7 @@ export function HomeAppLayer({ host, screen, activeDoc, mode }: HomeAppLayerProp
       )}
       <TipLayer active={tipsActive} mode={mode} client={client} />
       {batch && <ReceiveScreen key={batch.id} batch={batch} host={host} onClose={closeBatch} />}
-      {showFirstRun && (
-        <FirstRunOverlay
-          client={client}
-          onFinish={finishFirstRun}
-          showToast={(input) => hostRef.current.showToast(input)}
-        />
-      )}
+      {showFirstRun && <FirstRunOverlay onFinish={finishFirstRun} />}
       <WhatsNewSheet
         open={whatsNew !== null && screen === 'home'}
         entries={whatsNew ?? []}

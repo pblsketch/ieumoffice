@@ -145,12 +145,6 @@
   gap: var(--m-space-4);
 }
 
-.home-run-first-step {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--m-text-caption);
-}
-
 .home-run-first-title {
   margin: 0;
   font-size: var(--m-text-title-l);

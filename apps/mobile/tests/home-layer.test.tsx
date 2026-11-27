@@ -383,36 +383,23 @@ describe('the first-run guide', () => {
     expect(q(div, 'home-run-first')).toBeNull()
   })
 
-  it('shows over the home when not done, and [Skip] records it', async () => {
+  it('shows a single welcome screen over the home with no folder-picker step, and [Get started] records it', async () => {
     const { div, calls } = await renderApp({ prefs: { firstRunDone: false } })
-    expect(q(div, 'home-run-first')).not.toBeNull()
+    const overlay = q(div, 'home-run-first')
+    expect(overlay).not.toBeNull()
+    expect(overlay?.getAttribute('data-step')).toBe('welcome')
     expect(q(div, 'mobile-home-screen')).not.toBeNull()
-    expect(q(div, 'home-run-first')?.textContent).toContain('반가워요')
-    await click(q(div, 'home-run-first-skip'))
+    expect(overlay?.textContent).toContain('반가워요')
+    // Folder linking moved to the home [Folders] tab: no step 2 or folder picker in first run.
+    expect(q(div, 'home-run-first-next')).toBeNull()
+    expect(q(div, 'home-run-first-pick')).toBeNull()
+    expect(q(div, 'home-run-first-later')).toBeNull()
+    expect(q(div, 'home-run-first-skip')).toBeNull()
+
+    await click(q(div, 'home-run-first-start'))
     expect(prefWrites(calls, 'firstRunDone')).toEqual([true])
+    expect(calls.some((c) => c.command === 'mobile_home_link_folder')).toBe(false)
     expect(q(div, 'home-run-first')).toBeNull()
-  })
-
-  it('links a folder on the second step, stays there when the picker is cancelled', async () => {
-    const cancelled = await renderApp({ prefs: { firstRunDone: false } })
-    await click(q(cancelled.div, 'home-run-first-next'))
-    expect(q(cancelled.div, 'home-run-first')?.getAttribute('data-step')).toBe('folder')
-    await click(q(cancelled.div, 'home-run-first-pick'))
-    expect(cancelled.calls.some((c) => c.command === 'mobile_home_link_folder')).toBe(true)
-    expect(q(cancelled.div, 'home-run-first')?.getAttribute('data-step')).toBe('folder')
-    expect(prefWrites(cancelled.calls, 'firstRunDone')).toEqual([])
-    act(() => roots.shift()?.unmount())
-
-    const linked = await renderApp({
-      prefs: { firstRunDone: false },
-      linkFolder: () => ({ id: 'f1', name: 'Docs', status: 'ok', addedAt: 1 }),
-    })
-    await click(q(linked.div, 'home-run-first-next'))
-    await click(q(linked.div, 'home-run-first-pick'))
-    expect(q(linked.div, 'home-run-first-linked')?.textContent).toContain('문서 폴더 연결됨')
-    await click(q(linked.div, 'home-run-first-start'))
-    expect(prefWrites(linked.calls, 'firstRunDone')).toEqual([true])
-    expect(q(linked.div, 'home-run-first')).toBeNull()
   })
 })
 

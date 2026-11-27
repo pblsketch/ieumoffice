@@ -4,7 +4,7 @@ export const he = {
   homeFolderListLabel: 'תיקיות מקושרות',
   homeFolderEmptyTitle: 'עדיין לא קושרו תיקיות',
   homeFolderEmptyBody: 'קשרו תיקייה שאתם משתמשים בה הרבה, והמסמכים והתמונות שבה יופיעו כאן מיד.',
-  homeFolderLink: 'קישור תיקייה',
+  homeFolderLink: 'הוספת תיקייה',
   homeFolderRelink: 'קישור מחדש',
   homeFolderRelinkNamed: 'קישור מחדש של {name}',
   homeFolderOk: 'מקושרת',

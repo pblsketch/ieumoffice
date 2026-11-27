@@ -4,7 +4,7 @@ export const pl = {
   homeFolderListLabel: 'Połączone foldery',
   homeFolderEmptyTitle: 'Brak połączonych folderów',
   homeFolderEmptyBody: 'Połącz często używany folder, a jego dokumenty i obrazy pojawią się tutaj.',
-  homeFolderLink: 'Połącz folder',
+  homeFolderLink: 'Dodaj folder',
   homeFolderRelink: 'Połącz ponownie',
   homeFolderRelinkNamed: 'Połącz ponownie {name}',
   homeFolderOk: 'Połączony',

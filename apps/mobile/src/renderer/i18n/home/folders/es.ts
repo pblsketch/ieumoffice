@@ -5,7 +5,7 @@ export const es = {
   homeFolderEmptyTitle: 'Aún no hay carpetas vinculadas',
   homeFolderEmptyBody:
     'Vincula una carpeta que uses a menudo y sus documentos e imágenes aparecerán aquí.',
-  homeFolderLink: 'Vincular carpeta',
+  homeFolderLink: 'Añadir carpeta',
   homeFolderRelink: 'Volver a vincular',
   homeFolderRelinkNamed: 'Volver a vincular {name}',
   homeFolderOk: 'Vinculada',

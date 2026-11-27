@@ -17,21 +17,12 @@ export const ru = {
   homeRunReceivePdfOff: 'Инструменты PDF выключены',
   homeRunReceivePdfOn: 'Включить и продолжить',
   homeRunGuideLabel: 'Знакомство с приложением',
-  homeRunStep: 'Шаг {current} из {total}',
   homeRunWelcomeTitle: 'Добро пожаловать',
   homeRunWelcomeBody:
     'Открывайте и редактируйте HWP, PDF, Markdown и другие документы в GenOffice. Без учётной записи и рекламы, а документы остаются на этом устройстве.',
-  homeRunNext: 'Далее',
-  homeRunSkip: 'Пропустить',
-  homeRunFolderTitle: 'Подключить папку с документами (необязательно)',
-  homeRunFolderBody:
-    'Подключите папку, которой часто пользуетесь, и её файлы сразу появятся на вкладке [Папки].',
-  homeRunFolderPick: 'Выбрать папку',
-  homeRunLater: 'Позже',
-  homeRunFolderLinked: '✓ Папка с документами подключена · Изменить можно в настройках',
   homeRunStart: 'Начать',
   homeRunTipEditButton: 'Чтобы внести изменения, нажмите [Изменить]',
-  homeRunTipFlowView: 'Включён поточный вид для удобного чтения · Постраничный вид здесь',
+  homeRunTipFlowView: 'Включён режим чтения · Постраничный вид здесь',
   homeRunTipFirstEdit:
     'Копия для восстановления создаётся автоматически. Оригинал сохраняется, когда вы нажимаете [Готово]',
   homeRunTipFirstKeyboard: 'Меняйте оформление текста кнопкой [Aa]',

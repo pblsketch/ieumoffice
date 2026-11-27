@@ -4,7 +4,7 @@ export const ko = {
   homeFolderListLabel: '연결한 폴더',
   homeFolderEmptyTitle: '연결한 폴더가 없습니다',
   homeFolderEmptyBody: '자주 쓰는 폴더를 연결하면 그 안의 문서와 사진이 여기에 바로 보여요.',
-  homeFolderLink: '폴더 연결',
+  homeFolderLink: '폴더 추가',
   homeFolderRelink: '다시 연결',
   homeFolderRelinkNamed: '{name} 다시 연결',
   homeFolderOk: '연결됨',

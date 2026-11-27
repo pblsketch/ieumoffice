@@ -5,7 +5,7 @@ export const id = {
   homeFolderEmptyTitle: 'Belum ada folder yang ditautkan',
   homeFolderEmptyBody:
     'Tautkan folder yang sering dipakai, lalu dokumen dan gambarnya langsung muncul di sini.',
-  homeFolderLink: 'Tautkan folder',
+  homeFolderLink: 'Tambah folder',
   homeFolderRelink: 'Tautkan lagi',
   homeFolderRelinkNamed: 'Tautkan {name} lagi',
   homeFolderOk: 'Tertaut',

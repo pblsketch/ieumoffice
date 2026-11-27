@@ -16,21 +16,12 @@ export const en = {
   homeRunReceivePdfOff: 'PDF tools are turned off',
   homeRunReceivePdfOn: 'Turn on and continue',
   homeRunGuideLabel: 'Welcome guide',
-  homeRunStep: 'Step {current} of {total}',
   homeRunWelcomeTitle: 'Welcome',
   homeRunWelcomeBody:
     'Open and edit HWP, PDF, Markdown and more with GenOffice. No account, no ads, and your documents stay on this device.',
-  homeRunNext: 'Next',
-  homeRunSkip: 'Skip',
-  homeRunFolderTitle: 'Link a document folder (optional)',
-  homeRunFolderBody:
-    'Link a folder you use often and its files show up right in the [Folders] tab.',
-  homeRunFolderPick: 'Choose a folder',
-  homeRunLater: 'Later',
-  homeRunFolderLinked: '✓ Document folder linked · Change it in Settings',
   homeRunStart: 'Get started',
   homeRunTipEditButton: 'To make changes, tap [Edit]',
-  homeRunTipFlowView: 'Switched to flow view for easier reading · Page view is here',
+  homeRunTipFlowView: 'Opened in reading view for easier reading · Page view is here',
   homeRunTipFirstEdit:
     'A recovery copy is made automatically. The original is saved when you tap [Done]',
   homeRunTipFirstKeyboard: 'Change the text style with [Aa]',

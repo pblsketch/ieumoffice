@@ -38,12 +38,12 @@ export const ko = {
   homeHelpShareBody3:
     '다른 앱에서 보낸 파일은 읽기 전용으로 열려요. 고치려면 [사본으로 편집]을 누르세요. 원본은 그대로 남아요.',
 
-  homeHelpFlowTitle: '한글 흐름 보기',
+  homeHelpFlowTitle: '한글 읽기 화면',
   homeHelpFlowBody1:
-    '휴대폰에서 한글 문서를 열면 흐름 보기로 보여 줘요. 글이 화면 폭에 맞춰 흘러서 확대하지 않고도 읽을 수 있어요.',
-  homeHelpFlowBody2: '종이에 찍히는 쪽 모양 그대로 보고 싶으면 보기 도구에서 [쪽 보기]를 누르세요.',
+    '휴대폰에서 한글 문서를 열면 읽기 화면으로 보여 줘요. 글이 화면 너비에 맞춰 다시 배치돼서 확대하지 않고도 읽을 수 있어요.',
+  homeHelpFlowBody2: '종이에 찍히는 쪽 모양 그대로 보고 싶으면 보기 도구에서 [쪽 화면]을 누르세요.',
   homeHelpFlowBody3:
-    '흐름 보기는 보여 주는 방식만 바꿔요. 문서의 쪽 모양과 저장되는 파일은 그대로예요.',
+    '읽기 화면은 보여 주는 방식만 바꿔요. 문서의 쪽 모양과 저장되는 파일은 그대로예요.',
 
   homeHelpAiTitle: 'AI 켜고 끄기',
   homeHelpAiBody1: 'AI는 처음에 꺼져 있어요. 꺼져 있는 동안에는 AI 단추가 보이지 않아요.',
@@ -70,5 +70,5 @@ export const ko = {
   homeHelpNew010PdfTools: 'PDF 도구: 페이지 정리, 변환, 용량 줄이기와 보안, 주석 지우기',
   homeHelpNew010Ai: 'AI 도우미(처음에는 꺼짐): API 키나 무료 연결로 써요.',
   homeHelpNew010Mobile:
-    '공유와 받기, 한글 흐름 보기, 처음 안내, 저장 공간 관리, 읽는 동안 화면 꺼짐 막기',
+    '공유와 받기, 한글 읽기 화면, 처음 안내, 저장 공간 관리, 읽는 동안 화면 꺼짐 막기',
 } as const satisfies Record<keyof typeof zh, string>

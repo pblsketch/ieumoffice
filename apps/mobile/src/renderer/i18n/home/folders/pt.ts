@@ -5,7 +5,7 @@ export const pt = {
   homeFolderEmptyTitle: 'Nenhuma pasta vinculada ainda',
   homeFolderEmptyBody:
     'Vincule uma pasta que você usa com frequência e os documentos e imagens dela aparecem aqui.',
-  homeFolderLink: 'Vincular pasta',
+  homeFolderLink: 'Adicionar pasta',
   homeFolderRelink: 'Vincular de novo',
   homeFolderRelinkNamed: 'Vincular {name} de novo',
   homeFolderOk: 'Vinculada',

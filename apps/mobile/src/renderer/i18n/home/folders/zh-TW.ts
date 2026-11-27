@@ -4,7 +4,7 @@ export const zhTW = {
   homeFolderListLabel: '已連結的資料夾',
   homeFolderEmptyTitle: '尚未連結資料夾',
   homeFolderEmptyBody: '連結常用的資料夾後，其中的文件和圖片會直接顯示在這裡。',
-  homeFolderLink: '連結資料夾',
+  homeFolderLink: '新增資料夾',
   homeFolderRelink: '重新連結',
   homeFolderRelinkNamed: '重新連結{name}',
   homeFolderOk: '已連結',

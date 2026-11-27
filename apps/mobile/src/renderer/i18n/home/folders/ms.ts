@@ -5,7 +5,7 @@ export const ms = {
   homeFolderEmptyTitle: 'Belum ada folder dipautkan',
   homeFolderEmptyBody:
     'Pautkan folder yang kerap digunakan, dan dokumen serta gambarnya terus muncul di sini.',
-  homeFolderLink: 'Pautkan folder',
+  homeFolderLink: 'Tambah folder',
   homeFolderRelink: 'Pautkan semula',
   homeFolderRelinkNamed: 'Pautkan semula {name}',
   homeFolderOk: 'Dipautkan',

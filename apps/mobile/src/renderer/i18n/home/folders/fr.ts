@@ -5,7 +5,7 @@ export const fr = {
   homeFolderEmptyTitle: 'Aucun dossier lié pour l’instant',
   homeFolderEmptyBody:
     'Liez un dossier que vous utilisez souvent : ses documents et ses images s’afficheront ici.',
-  homeFolderLink: 'Lier un dossier',
+  homeFolderLink: 'Ajouter un dossier',
   homeFolderRelink: 'Lier à nouveau',
   homeFolderRelinkNamed: 'Lier {name} à nouveau',
   homeFolderOk: 'Lié',

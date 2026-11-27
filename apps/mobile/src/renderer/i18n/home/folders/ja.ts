@@ -5,7 +5,7 @@ export const ja = {
   homeFolderEmptyTitle: 'まだフォルダーをリンクしていません',
   homeFolderEmptyBody:
     'よく使うフォルダーをリンクすると、その中の文書や写真がここにすぐ表示されます。',
-  homeFolderLink: 'フォルダーをリンク',
+  homeFolderLink: 'フォルダーを追加',
   homeFolderRelink: 'もう一度リンク',
   homeFolderRelinkNamed: '{name}をもう一度リンク',
   homeFolderOk: 'リンク済み',

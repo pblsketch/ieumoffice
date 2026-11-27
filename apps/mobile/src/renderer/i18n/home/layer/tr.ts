@@ -17,21 +17,12 @@ export const tr = {
   homeRunReceivePdfOff: 'PDF araçları devre dışı',
   homeRunReceivePdfOn: 'Etkinleştir ve devam et',
   homeRunGuideLabel: 'Hoş geldiniz rehberi',
-  homeRunStep: 'Adım {current}/{total}',
   homeRunWelcomeTitle: 'Hoş geldiniz',
   homeRunWelcomeBody:
     'GenOffice ile HWP, PDF, Markdown ve daha fazla belgeyi açıp düzenleyin. Hesap yok, reklam yok; belgeleriniz bu cihazda kalır.',
-  homeRunNext: 'İleri',
-  homeRunSkip: 'Atla',
-  homeRunFolderTitle: 'Belge klasörü bağla (isteğe bağlı)',
-  homeRunFolderBody:
-    'Sık kullandığınız bir klasörü bağlarsanız dosyaları doğrudan [Klasörler] sekmesinde görünür.',
-  homeRunFolderPick: 'Klasör seç',
-  homeRunLater: 'Daha sonra',
-  homeRunFolderLinked: '✓ Belge klasörü bağlandı · Ayarlar’dan değiştirebilirsiniz',
   homeRunStart: 'Başlayın',
   homeRunTipEditButton: 'Değişiklik yapmak için [Düzenle] düğmesine dokunun',
-  homeRunTipFlowView: 'Kolay okuma için akış görünümüne geçildi · Sayfa görünümü burada',
+  homeRunTipFlowView: 'Kolay okuma için okuma görünümüne geçildi · Sayfa görünümü burada',
   homeRunTipFirstEdit:
     'Kurtarma kopyası otomatik olarak oluşturulur. Asıl dosya [Bitti] düğmesine dokunduğunuzda kaydedilir',
   homeRunTipFirstKeyboard: 'Metin biçimini [Aa] ile değiştirin',

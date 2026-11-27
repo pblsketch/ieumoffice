@@ -56,7 +56,7 @@ export const ja = {
   pageNumberTopRight: '上右',
   pageNumberDash: 'ダッシュを付ける (- 1 -)',
   pageNumberApply: '適用',
-  pageNumberDone: 'ページ番号を変更しました。ページ表示で確認できます。',
+  pageNumberDone: 'ページ番号を変更しました。ページビューで確認できます。',
   pageNumberFailed: 'ページ番号を変更できませんでした。',
   markdownToHwp: 'HWP 文書として保存',
   markdownToHwpWorking: 'HWP 文書に変換しています…',

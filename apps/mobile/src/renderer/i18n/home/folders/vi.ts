@@ -5,7 +5,7 @@ export const vi = {
   homeFolderEmptyTitle: 'Chưa liên kết thư mục nào',
   homeFolderEmptyBody:
     'Liên kết thư mục bạn hay dùng, tài liệu và hình ảnh trong đó sẽ hiện ngay tại đây.',
-  homeFolderLink: 'Liên kết thư mục',
+  homeFolderLink: 'Thêm thư mục',
   homeFolderRelink: 'Liên kết lại',
   homeFolderRelinkNamed: 'Liên kết lại {name}',
   homeFolderOk: 'Đã liên kết',

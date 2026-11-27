@@ -5,7 +5,7 @@ export const tr = {
   homeFolderEmptyTitle: 'Henüz bağlı klasör yok',
   homeFolderEmptyBody:
     'Sık kullandığınız bir klasörü bağlayın; içindeki belgeler ve resimler hemen burada görünür.',
-  homeFolderLink: 'Klasör bağla',
+  homeFolderLink: 'Klasör ekle',
   homeFolderRelink: 'Yeniden bağla',
   homeFolderRelinkNamed: '{name} klasörünü yeniden bağla',
   homeFolderOk: 'Bağlı',
