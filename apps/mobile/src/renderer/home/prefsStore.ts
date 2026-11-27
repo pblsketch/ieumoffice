@@ -9,7 +9,7 @@ import type {
   MobileTheme,
 } from '@genoffice/mobile-bridge/transport'
 import { EDITOR_KINDS } from '../editors/registry'
-import { DEFAULT_PREFS } from '../settings/defaultPrefs'
+import { DEFAULT_PREFS, detectSystemLang } from '../settings/defaultPrefs'
 import { getHomeRuntime } from './homeRuntime'
 
 /** The editors-off id of the PDF tools (not an editor kind, so the all-off rule leaves it alone). */
@@ -68,7 +68,10 @@ export function normalizeHomePrefs(raw: unknown): HomePrefs {
   const theme = record.theme
   const hwpDefaultFormat = record.hwpDefaultFormat
   return {
-    lang: typeof record.lang === 'string' ? record.lang : DEFAULT_PREFS.lang,
+    lang:
+      typeof record.lang === 'string' && record.lang.trim().length > 0
+        ? record.lang
+        : detectSystemLang(),
     theme:
       theme === 'light' || theme === 'dark' || theme === 'system' ? theme : DEFAULT_PREFS.theme,
     hwpDefaultFormat:

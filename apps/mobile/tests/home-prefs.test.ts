@@ -32,7 +32,11 @@ import {
   updateHomePrefs,
   useHomePrefs,
 } from '../src/renderer/home/prefsStore'
-import { DEFAULT_PREFS } from '../src/renderer/settings/defaultPrefs'
+import {
+  DEFAULT_PREFS,
+  detectSystemLang,
+  resolveInitialLang,
+} from '../src/renderer/settings/defaultPrefs'
 
 // Pin the editor registry to the base kinds (HWP, Markdown) like tests/open-gate.test.tsx, so kinds
 // other tracks register do not change the card rows and the "all editors off" rule tested here.
@@ -152,6 +156,23 @@ describe('first values of the app settings', () => {
       tipsSeen: [],
       lastSeenVersion: '',
     })
+  })
+
+  it('detects the first supported system language and falls back to English', () => {
+    expect(detectSystemLang(['en-US'])).toBe('en')
+    expect(detectSystemLang(['ko-KR'])).toBe('ko')
+    expect(detectSystemLang(['ja-JP'])).toBe('ja')
+    expect(detectSystemLang(['zh-Hant-TW'])).toBe('zh-TW')
+    expect(detectSystemLang(['zh-HK'])).toBe('zh-TW')
+    expect(detectSystemLang(['zh-CN'])).toBe('zh')
+    expect(detectSystemLang(['tr-TR'])).toBe('tr')
+    expect(detectSystemLang(['in-ID'])).toBe('id')
+    expect(detectSystemLang(['iw-IL'])).toBe('he')
+    expect(detectSystemLang(['sv-SE'])).toBe('en')
+    expect(detectSystemLang(['sv-SE', 'ko-KR'])).toBe('ko')
+    expect(detectSystemLang([])).toBe('en')
+    expect(resolveInitialLang('ja')).toBe('ja')
+    expect(resolveInitialLang('')).toBe(detectSystemLang())
   })
 })
 

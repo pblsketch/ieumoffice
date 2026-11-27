@@ -37,7 +37,7 @@ import { HomeAppLayer } from './home/HomeAppLayer'
 import type { HomeHost } from './home/homeHost'
 import { takeIncomingDocument } from './home/incoming'
 import { MobileLocaleProvider, translateMobile } from './i18n'
-import { DEFAULT_PREFS } from './settings/defaultPrefs'
+import { DEFAULT_PREFS, detectSystemLang, resolveInitialLang } from './settings/defaultPrefs'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
 import type { EditorSaveState } from './shell/EditorShell'
@@ -80,7 +80,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   windowClassRef.current = viewport.windowClass
 
   const [screen, setScreen] = useState<ScreenView>('home')
-  const [prefs, setPrefs] = useState<MobileAppPrefs>(DEFAULT_PREFS)
+  const [prefs, setPrefs] = useState<MobileAppPrefs>(() => ({
+    ...DEFAULT_PREFS,
+    lang: detectSystemLang(),
+  }))
   const [recentDocs, setRecentDocs] = useState<RecentDocEntry[]>([])
   const [recoveryEntries, setRecoveryEntries] = useState<RecoveryEntry[]>([])
   const [backups, setBackups] = useState<HwpBackupEntry[]>([])
@@ -341,7 +344,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         client.setOpenableExtensions(openableExtensions()).catch(() => {}),
       ])
       if (!mounted) return
-      setPrefs(loadedPrefs)
+      setPrefs({ ...loadedPrefs, lang: resolveInitialLang(loadedPrefs.lang) })
 
       const pending = await takeIncomingDocument(client).catch((err) => {
         if (isFormatNotOpenable(err)) notifyNotOpenable()
@@ -542,7 +545,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const handleUpdatePrefs = useCallback(
     async (patch: MobileAppPrefsPatch) => {
       const updated = await client.setAppPrefs(patch)
-      setPrefs(updated)
+      setPrefs({ ...updated, lang: resolveInitialLang(updated.lang) })
     },
     [client],
   )
