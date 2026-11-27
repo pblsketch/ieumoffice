@@ -30,8 +30,13 @@ import {
   MEMO_REMOVED_EVENT,
   MISSING_FONTS_EVENT,
 } from '../../studio-plugin/agent-plugin.mjs'
-import { WORKPANE_COMMAND_EVENT } from '../../studio-plugin/workpane-menu.mjs'
+import {
+  BIBLIOGRAPHY_COMMAND_EVENT,
+  WORKPANE_COMMAND_EVENT,
+  type BibliographyCommandAction,
+} from '../../studio-plugin/workpane-menu.mjs'
 import blankHwpUrl from './assets/blank.hwp?url'
+import { bibliographyMenuLabelsFor, translateBiblio } from './i18n/biblio'
 import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
 import { translateSubmission } from './i18n/submission'
 import { tocDialogLabelsFor } from './i18n/toc'
@@ -40,6 +45,7 @@ import { StalenessModal, type StalenessModalState } from './StalenessModal'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
 import {
+  BibliographyTab,
   FindTab,
   OutlineTab,
   WorkpaneSide,
@@ -50,8 +56,10 @@ import {
   parseWorkpaneCommand,
   saveWorkpaneOpen,
   saveWorkpaneTab,
+  type BibliographyCommandRequest,
   type WorkpaneTabId,
 } from './workpane'
+import type { BibLibraryErrorInfo, BibNearLimitInfo } from './workpane/BibliographyTab'
 import { openDocumentsDroppedOn } from './editor-drop'
 import { hwpPresentationKeyOf } from './presentation-keys'
 import { checkStalenessBeforePrint, gatherPrintJob, runWithPrintStalenessCheck } from './print-flow'
@@ -78,6 +86,8 @@ import { STUDIO_SETTINGS_KEY, seededStudioSettings, studioUrl } from './studio-s
 import { hwpFormatOfPath } from '../shared/ipc'
 import type {
   BeginSaveMode,
+  BibEntry,
+  BibKeyRenameInfo,
   HwpFormat,
   OutlineStyleMap,
   PreviewAction,
@@ -295,6 +305,19 @@ export default function App() {
   const [outlineStyleMap, setOutlineStyleMap] = useState<OutlineStyleMap | null>(null)
   const outlineStyleMapRef = useRef<OutlineStyleMap | null>(null)
   outlineStyleMapRef.current = outlineStyleMap
+  /** app-wide bibliography library shared with the Bibliography tab and staleness checks */
+  const [bibEntries, setBibEntries] = useState<BibEntry[]>([])
+  const bibEntriesRef = useRef<BibEntry[]>([])
+  bibEntriesRef.current = bibEntries
+  /** non-null when the bibliography library file is corrupt, oversized, or unreadable */
+  const [bibLibraryError, setBibLibraryError] = useState<BibLibraryErrorInfo | null>(null)
+  /** non-null when the bibliography library file size is nearing its limit */
+  const [bibNearLimit, setBibNearLimit] = useState<BibNearLimitInfo | null>(null)
+  /** external command from Tool > References menu forwarded to the Bibliography tab */
+  const [bibCommand, setBibCommand] = useState<BibliographyCommandRequest | null>(null)
+  const bibCommandNonceRef = useRef(0)
+  /** pending citation-key rename banner when the open document cites `oldKey` */
+  const [pendingKeyRename, setPendingKeyRename] = useState<BibKeyRenameInfo | null>(null)
   /** modal state for pre-save / pre-print staleness confirmation */
   const [staleModal, setStaleModal] = useState<StalenessModalState | null>(null)
   const stalePromptActiveRef = useRef(false)
@@ -530,6 +553,110 @@ export default function App() {
     }
   }, [])
 
+  const bibMountedRef = useRef(true)
+  useEffect(() => {
+    bibMountedRef.current = true
+    return () => {
+      bibMountedRef.current = false
+    }
+  }, [])
+
+  const refreshBibLibraryState = useCallback(async () => {
+    try {
+      if (window.hwpApi.bibReadState) {
+        const res = await window.hwpApi.bibReadState()
+        if (!bibMountedRef.current) return
+        if (res.ok) {
+          setBibEntries(res.entries)
+          setBibLibraryError(null)
+          setBibNearLimit(
+            res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+          )
+        } else if (
+          res.reason === 'library_corrupt' ||
+          res.reason === 'library_too_large' ||
+          res.reason === 'library_read_error'
+        ) {
+          setBibEntries([])
+          setBibLibraryError({
+            reason: res.reason,
+            error: res.error,
+            corruptBackupPath: res.corruptBackupPath,
+            sizeBytes: res.sizeBytes,
+            maxBytes: res.maxBytes,
+          })
+          setBibNearLimit(null)
+        }
+        return
+      }
+      const res = await window.hwpApi.bibList?.()
+      if (!bibMountedRef.current || !res) return
+      if (res.ok) {
+        setBibEntries(res.entries)
+        setBibLibraryError(null)
+        setBibNearLimit(
+          res.nearLimit && res.sizeBytes !== undefined && res.maxBytes !== undefined
+            ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes }
+            : null,
+        )
+      } else if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setBibEntries([])
+        setBibLibraryError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setBibNearLimit(null)
+      }
+    } catch {
+      // Ignore transient IPC read errors.
+    }
+  }, [])
+
+  // Keep the app-wide bibliography library in sync across Hangul tabs.
+  useEffect(() => {
+    let active = true
+    void refreshBibLibraryState()
+    const off = window.hwpApi.onBibChanged?.((entries) => {
+      if (!active) return
+      setBibEntries(entries)
+      setBibLibraryError(null)
+      if (window.hwpApi.bibReadState) {
+        void refreshBibLibraryState()
+      }
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [refreshBibLibraryState])
+
+  // Offer to rewrite citation marks in the open document when a library citation key is renamed.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    let active = true
+    const off = window.hwpApi.onBibKeyRenamed?.((info) => {
+      void pluginBridge
+        .listCitationMarks(bibEntriesRef.current)
+        .then((res) => {
+          if (!active || !res?.ok) return
+          const cited = res.marks.some((mark) => mark.keys.includes(info.oldKey))
+          if (cited) setPendingKeyRename(info)
+        })
+        .catch(() => {})
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [phase, pluginBridge])
+
   // Pre-action staleness check for manual save, print, PDF export, and submission copy.
   // Skipped automatically in headless export mode and never called by auto-save.
   const runStalePrompt = useCallback(
@@ -544,6 +671,7 @@ export default function App() {
         const checkStale = async () => {
           const report = await agentBridge.checkStaleItems({
             appStyleMap: outlineStyleMapRef.current ?? undefined,
+            bibEntries: bibEntriesRef.current,
           })
           latestManualEdits = Array.isArray(report.manualEdits) ? report.manualEdits : []
           return report
@@ -608,6 +736,7 @@ export default function App() {
 
           let res = await agentBridge.refreshAllStale({
             appStyleMap,
+            bibEntries: bibEntriesRef.current,
             allowOverwriteManual,
           })
 
@@ -626,6 +755,7 @@ export default function App() {
             }
             res = await agentBridge.refreshAllStale({
               appStyleMap,
+              bibEntries: bibEntriesRef.current,
               allowOverwriteManual: true,
             })
           }
@@ -1483,9 +1613,10 @@ export default function App() {
     return () => document.removeEventListener('fullscreenchange', onFullScreenChange)
   }, [presenting])
 
-  // Left workpane: register View-menu entries when the bridge supports it, listen for
-  // editor-frame commands (View > Workpane > Outline/Find and Ctrl+F inside the iframe),
-  // and handle Ctrl+F / Cmd+F when focus is outside the editor iframe.
+  // Left workpane: register View-menu and Tool-menu bibliography entries when supported,
+  // listen for editor-frame commands (View > Workpane > Outline/Find/References, Tool >
+  // References actions, and Ctrl+F inside the iframe), and handle Ctrl+F / Cmd+F when
+  // focus is outside the editor iframe.
   useEffect(() => {
     if (phase !== 'ready') return
     const frame = editorRef.current?.element.contentWindow
@@ -1494,8 +1625,10 @@ export default function App() {
         .installWorkpaneMenu({
           outline: translateWorkpane(lang, 'workpaneMenuOutline'),
           find: translateWorkpane(lang, 'workpaneMenuFind'),
+          bibliography: translateWorkpane(lang, 'workpaneMenuBibliography'),
         })
         .catch(() => {})
+      void pluginBridge.installBibliographyMenu(bibliographyMenuLabelsFor(lang)).catch(() => {})
     }
     const onWorkpaneCommand = (event: Event): void => {
       if (presentingRef.current || previewRef.current) return
@@ -1512,6 +1645,24 @@ export default function App() {
       }
       openWorkpane(command.tab, command.focus === true)
     }
+    const onBibliographyCommand = (event: Event): void => {
+      if (presentingRef.current || previewRef.current) return
+      const action = (event as CustomEvent<{ action?: unknown }>).detail?.action
+      if (
+        action !== 'insert-citation' &&
+        action !== 'insert-bibliography' &&
+        action !== 'refresh-bibliography' &&
+        action !== 'open-tab'
+      ) {
+        return
+      }
+      openWorkpane('bibliography', true)
+      bibCommandNonceRef.current += 1
+      setBibCommand({
+        action: action as BibliographyCommandAction,
+        nonce: bibCommandNonceRef.current,
+      })
+    }
     const onWorkpaneKeyDown = (event: KeyboardEvent): void => {
       if (presentingRef.current || previewRef.current) return
       if (!isWorkpaneFindShortcut(event)) return
@@ -1520,9 +1671,11 @@ export default function App() {
       openWorkpane('find', true)
     }
     frame?.addEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
+    frame?.addEventListener(BIBLIOGRAPHY_COMMAND_EVENT, onBibliographyCommand)
     window.addEventListener('keydown', onWorkpaneKeyDown, true)
     return () => {
       frame?.removeEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
+      frame?.removeEventListener(BIBLIOGRAPHY_COMMAND_EVENT, onBibliographyCommand)
       window.removeEventListener('keydown', onWorkpaneKeyDown, true)
     }
   }, [phase, pluginBridge, lang, openWorkpane])
@@ -1680,6 +1833,43 @@ export default function App() {
                     changeTick={docTick}
                     focusTick={ctx.focusFindTick}
                     visible={ctx.visible && ctx.activeTab === 'find'}
+                  />
+                )
+              }
+              if (tab === 'bibliography') {
+                return (
+                  <BibliographyTab
+                    bridge={agentBridge}
+                    entries={bibEntries}
+                    changeTick={docTick}
+                    visible={ctx.visible && ctx.activeTab === 'bibliography'}
+                    aiEnabled={aiOn}
+                    onRequestAiParseLines={
+                      aiOn
+                        ? (lines) => {
+                            if (lines.length === 0) return
+                            const safeLines = lines
+                              .map(
+                                (line, index) => `${index + 1}. ${line.replace(/```/g, '` ` `')}`,
+                              )
+                              .join('\n')
+                            const prompt =
+                              `${translateBiblio(lang, 'importAiPromptPrefix')}\n\n` +
+                              '```text\n' +
+                              `${safeLines}\n` +
+                              '```'
+                            setAiPrefill({ text: prompt, nonce: Date.now() })
+                            setAiOpen(true)
+                          }
+                        : undefined
+                    }
+                    command={bibCommand}
+                    pendingKeyRename={pendingKeyRename}
+                    onDismissKeyRename={() => setPendingKeyRename(null)}
+                    libraryError={bibLibraryError}
+                    nearLimit={bibNearLimit}
+                    onReloadLibrary={() => void refreshBibLibraryState()}
+                    onDocumentChanged={() => setDocTick((tick) => tick + 1)}
                   />
                 )
               }

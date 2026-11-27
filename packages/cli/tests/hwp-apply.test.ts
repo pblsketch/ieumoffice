@@ -1276,4 +1276,243 @@ describe('hwp migrated TOC and index ops (T15)', () => {
     expect(r.json().detail.results[0].output).toContain('with 1 item(s)')
     expect(r.json().detail.results[1].output).toContain('Refreshed body table of contents')
   })
+
+  it('supports --bibliography, citation/bibliography ops, unsupported interactive ops, and strict numeric bounds', async () => {
+    const dir = tempDir()
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    doc.insertText(0, 0, 0, '선행 연구에 따르면 문서 표준화가 중요하다.')
+    const path = write(dir, 'thesis.hwpx', doc.exportHwpx())
+
+    const bibPath = join(dir, 'refs.json')
+    writeFileSync(
+      bibPath,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            id: 'bib_Kim2024',
+            key: 'Kim2024',
+            oldKeys: [],
+            type: 'article',
+            authors: [{ family: '김철수' }],
+            year: '2024',
+            title: '공공문서 표준화 연구',
+            containerTitle: '행정정보연구',
+            volume: '12',
+            issue: '2',
+            pages: '15-32',
+            language: 'ko',
+            tags: ['행정'],
+            verified: true,
+            source: 'manual',
+          },
+          {
+            id: 'bib_Unverified2025',
+            key: 'Unverified2025',
+            oldKeys: [],
+            type: 'webpage',
+            authors: [{ family: '박영수' }],
+            year: '2025',
+            title: '미확인 웹 자료',
+            url: 'https://example.org/unverified',
+            language: 'ko',
+            tags: [],
+            memo: 'https://example.org/unverified',
+            verified: false,
+            source: 'ai',
+          },
+          {
+            id: 'bib_Lee2023',
+            key: 'Lee2023',
+            oldKeys: [],
+            type: 'book',
+            authors: [{ family: '이민호' }],
+            year: '2023',
+            title: '전자문서 체계론',
+            publisher: '한국출판사',
+            language: 'ko',
+            tags: ['문서'],
+            verified: true,
+            source: 'manual',
+          },
+        ],
+      }),
+      'utf8',
+    )
+
+    // guide hwp lists the bibliography group and excludes interactive-only ops
+    const guide = await run(['guide', 'hwp', '--json'])
+    expect(guide.code, guide.stdout).toBe(0)
+    const groups = guide.json().detail.groups as Array<{ name: string; ops: string[] }>
+    const bibGroup = groups.find((g) => g.name === 'bibliography')
+    expect(bibGroup?.ops).toEqual([
+      'list_references',
+      'audit_citations',
+      'insert_citation',
+      'switch_citation_style',
+      'insert_bibliography',
+      'refresh_bibliography',
+    ])
+    const allOps = (guide.json().detail.ops as Array<{ op: string }>).map((o) => o.op)
+    expect(allOps).not.toContain('search_references')
+    expect(allOps).not.toContain('parse_reference_lines')
+
+    // End-to-end citation + bibliography + style switch + audit
+    const applied = await run([
+      'hwp',
+      'apply',
+      path,
+      '--bibliography',
+      bibPath,
+      '--ops',
+      ops(dir, [
+        { op: 'list_references', verified_only: true },
+        { op: 'insert_citation', key: 'Kim2024', find: '중요하다' },
+        { op: 'insert_bibliography', title: '참고문헌' },
+        { op: 'switch_citation_style', citation_style: 'ieee' },
+        { op: 'refresh_bibliography' },
+        { op: 'audit_citations' },
+      ]),
+      '--json',
+    ])
+    expect(applied.code, applied.stdout).toBe(0)
+    const results = applied.json().detail.results as Array<{ op: string; output: string }>
+    expect(JSON.parse(results[0]!.output)).toMatchObject({
+      total: 2,
+      offset: 0,
+      limit: 50,
+      returned: 2,
+      has_more: false,
+      next_offset: null,
+    })
+    expect(results[1]!.output).toContain('(김철수, 2024)')
+    expect(results[2]!.output).toContain('Inserted bibliography (APA)')
+    expect(results[3]!.output).toContain('Switched citation style to IEEE (1 citation(s) updated).')
+    expect(results[3]!.output).toContain('Bibliography refreshed.')
+    expect(results[4]!.output).toContain('Refreshed bibliography (IEEE)')
+    expect(JSON.parse(results[5]!.output).total_issues).toBe(0)
+    const finalText = textOf(path).join('\n')
+    expect(finalText).toContain('[1]')
+    expect(finalText).toContain('참고문헌')
+    expect(finalText).toContain('공공문서 표준화 연구')
+
+    // Paginated list_references across multiple pages
+    const paged = await run([
+      'hwp',
+      'apply',
+      path,
+      '--bibliography',
+      bibPath,
+      '--ops',
+      ops(dir, [
+        { op: 'list_references', offset: 0, limit: 2 },
+        { op: 'list_references', offset: 2, limit: 2 },
+      ]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(paged.code, paged.stdout).toBe(0)
+    const pagedResults = paged.json().detail.results as Array<{ op: string; output: string }>
+    const firstPage = JSON.parse(pagedResults[0]!.output)
+    expect(firstPage).toMatchObject({
+      total: 3,
+      offset: 0,
+      limit: 2,
+      returned: 2,
+      has_more: true,
+      next_offset: 2,
+    })
+    const secondPage = JSON.parse(pagedResults[1]!.output)
+    expect(secondPage).toMatchObject({
+      total: 3,
+      offset: 2,
+      limit: 2,
+      returned: 1,
+      has_more: false,
+      next_offset: null,
+    })
+
+    // Refuses unverified entry
+    const unv = await run([
+      'hwp',
+      'apply',
+      path,
+      '--bibliography',
+      bibPath,
+      '--ops',
+      ops(dir, [{ op: 'insert_citation', key: 'Unverified2025', section: 1, paragraph: 1 }]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(unv.code).toBe(1)
+    expect(unv.json().detail.failures[0].error).toContain('Unverified2025')
+
+    // Interactive-only tools return unsupported in CLI
+    for (const opName of ['search_references', 'parse_reference_lines']) {
+      const unsup = await run([
+        'hwp',
+        'apply',
+        path,
+        '--ops',
+        ops(dir, [{ op: opName, query: 'x', raw_lines: ['x'] }]),
+        '--dry-run',
+        '--json',
+      ])
+      expect(unsup.code).toBe(1)
+      expect(unsup.json().detail.failures[0]).toMatchObject({ op: opName, reason: 'unsupported' })
+    }
+
+    // Strict numeric bounds rejections (0, 999, 2147483648, occurrence: 0 with coords)
+    for (const badOp of [
+      { op: 'insert_citation', key: 'Kim2024', section: 0, paragraph: 1 },
+      { op: 'insert_citation', key: 'Kim2024', section: 999, paragraph: 999 },
+      { op: 'insert_citation', key: 'Kim2024', section: 2147483648, paragraph: 1 },
+      { op: 'insert_citation', key: 'Kim2024', section: 1, paragraph: 1, occurrence: 0 },
+      { op: 'insert_bibliography', section: 0, paragraph: 1 },
+      { op: 'insert_bibliography', section: 999, paragraph: 999 },
+      { op: 'insert_bibliography', section: 2147483648, paragraph: 1 },
+      { op: 'insert_bibliography', section: 1, paragraph: 1, occurrence: 0 },
+      { op: 'list_references', offset: -1 },
+      { op: 'list_references', offset: 2147483648 },
+      { op: 'list_references', limit: 0 },
+      { op: 'list_references', limit: -1 },
+      { op: 'list_references', limit: 2147483648 },
+    ]) {
+      const rejected = await run([
+        'hwp',
+        'apply',
+        path,
+        '--bibliography',
+        bibPath,
+        '--ops',
+        ops(dir, [badOp]),
+        '--dry-run',
+        '--json',
+      ])
+      expect(rejected.code, JSON.stringify(badOp)).toBe(1)
+    }
+
+    // create --type hwpx --bibliography works end-to-end
+    const createdPath = join(dir, 'created-bib.hwpx')
+    const created = await run([
+      'create',
+      '--type',
+      'hwpx',
+      '--bibliography',
+      bibPath,
+      '--ops',
+      ops(dir, [
+        { op: 'insert_paragraphs', where: 'end', paragraphs: ['서론 본문'] },
+        { op: 'insert_citation', key: 'Kim2024', find: '서론 본문' },
+        { op: 'insert_bibliography', title: '참고문헌' },
+      ]),
+      '--out',
+      createdPath,
+      '--json',
+    ])
+    expect(created.code, created.stdout).toBe(0)
+    expect(textOf(createdPath).join('\n')).toContain('(김철수, 2024)')
+    expect(textOf(createdPath).join('\n')).toContain('공공문서 표준화 연구')
+  })
 })

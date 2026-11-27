@@ -106,7 +106,26 @@ function WorkpaneTabIcon({ id }: { id: WorkpaneTabId }): ReactElement {
       </svg>
     )
   }
-  // Generic panel-tab fallback icon for future registered tabs (e.g. bibliography)
+  if (id === 'bibliography') {
+    return (
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3.25 2.75h8.25a1.25 1.25 0 0 1 1.25 1.25v9.25H4.5a1.25 1.25 0 0 1-1.25-1.25V2.75Z" />
+        <path d="M5.75 2.75v10.5" />
+        <path d="M7.75 6h3M7.75 8.5h2.5" />
+      </svg>
+    )
+  }
+  // Generic panel-tab fallback icon for future registered tabs
   return (
     <svg
       width="14"
@@ -348,7 +367,9 @@ export function WorkpaneSide({
         ? 'workpaneOutlineEmpty'
         : tabId === 'find'
           ? 'workpaneFindEmpty'
-          : 'workpaneOutlineEmpty'
+          : tabId === 'bibliography'
+            ? 'workpaneBibliographyEmpty'
+            : 'workpaneOutlineEmpty'
     return <p className="workpane-placeholder">{t(emptyKey)}</p>
   }
 

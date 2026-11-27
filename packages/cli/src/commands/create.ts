@@ -98,6 +98,12 @@ export const createCommand: CommandDef = {
       description:
         'whiteboard: declarative layout JSON (TemplateDocument v1) applied before any --ops; "-" reads stdin',
     },
+    {
+      name: 'bibliography',
+      value: 'path',
+      description:
+        'hwp / hwpx: bibliography JSON file to use instead of the app library (hwp-bibliography.json)',
+    },
     { name: 'out', value: 'path', description: 'output file (required)' },
     { name: 'force', description: 'overwrite an existing output file' },
     {
@@ -141,6 +147,11 @@ export const createCommand: CommandDef = {
     }
     if (type !== 'whiteboard' && args.flags['template'] !== undefined) {
       throw new CliError(EXIT.usage, '--template goes with --type whiteboard', undefined, {
+        reason: 'invalid_argument',
+      })
+    }
+    if (type !== 'hwp' && type !== 'hwpx' && args.flags['bibliography'] !== undefined) {
+      throw new CliError(EXIT.usage, '--bibliography goes with --type hwp or hwpx', undefined, {
         reason: 'invalid_argument',
       })
     }
@@ -254,9 +265,19 @@ async function createHwp(
       },
     )
   }
+  const bibFlag = args.flags.bibliography
+  if (bibFlag === true) {
+    throw new CliError(EXIT.usage, 'missing --bibliography <path>', undefined, {
+      reason: 'missing_argument',
+    })
+  }
+  const bibliographyPath = typeof bibFlag === 'string' ? resolveInput(bibFlag, ctx) : undefined
   const ops = hwpOpsOf(args, ctx)
   const { blankHwpForEdit, closeHwpSession } = await import('../formats/hwp-edit')
-  const session = await blankHwpForEdit(ctx.env)
+  const session = await blankHwpForEdit(
+    ctx.env,
+    bibliographyPath ? { bibliographyPath } : undefined,
+  )
   try {
     const result = await runHwpBatch(session, ops, args, { output, format: type })
     return { ...result, summary: `created ${basename(output)}` }

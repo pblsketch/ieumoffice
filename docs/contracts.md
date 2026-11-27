@@ -690,6 +690,44 @@ metadata:
 
 데이터 폴더에 있다. 인쇄 창의 쪽 배치에서 라벨 규격을 "직접 입력"으로 적으면 앱 전체에 하나(마지막에 쓴 값)를 기억한다. 앱만 읽고 쓰고, 터미널 명령어와 MCP는 읽지 않는다. 모양은 `{ "version": 1, "spec": { "paper": "A4" | "Letter", "cols", "rows", "cellWidthMm", "cellHeightMm", "topMarginMm", "leftMarginMm", "hPitchMm", "vPitchMm" } }`이고, 쓸 때마다 간격이 칸보다 작지 않은지와 종이 안에 드는지를 검사한다. 읽을 수 없거나 검사를 통과하지 못하는 파일은 없는 것으로 본다.
 
+## 한글 참고문헌 서재 (`hwp-bibliography.json`)
+
+데이터 폴더(`<userData>/hwp-bibliography.json`)에 앱 공용 참고문헌 서재를 둔다. 한글 편집기 메인 프로세스와 터미널 명령어(`ieumoffice hwp apply`, `ieumoffice create --type hwp|hwpx`)가 같은 파일을 읽는다. 터미널 명령어와 MCP는 `--bibliography <경로>`(`bibliography`) 옵션으로 별도 참고문헌 JSON 파일을 지정할 수 있다.
+
+```json
+{
+  "version": 1,
+  "updatedAt": "2026-11-27T08:00:00.000Z",
+  "entries": [
+    {
+      "id": "bib_Kim2024",
+      "key": "Kim2024",
+      "oldKeys": [],
+      "type": "article",
+      "authors": [{ "family": "김철수" }],
+      "year": "2024",
+      "title": "공공문서 표준화 연구",
+      "containerTitle": "행정정보연구",
+      "volume": "12",
+      "issue": "2",
+      "pages": "15-32",
+      "doi": "10.1234/example",
+      "url": "https://example.org/paper",
+      "language": "ko",
+      "tags": ["행정"],
+      "memo": "",
+      "verified": true,
+      "source": "manual"
+    }
+  ]
+}
+```
+
+- `version`은 `1`이다. `--bibliography` 파일은 위 감싼 객체(`{ version, entries }`)와 항목 배열 둘 다 받는다(최대 20 MiB).
+- `verified`는 사람이 확인한 항목인지(`true` / `false`)다. AI가 웹 검색으로 추가한 후보(`source: "ai"`)는 항상 `verified: false`로 저장되고 출처 주소가 `memo`에 남는다. `verified: false`인 항목은 본문 인용 넣기와 참고문헌 목록 생성에서 거절된다.
+- `oldKeys`는 인용 키를 바꿀 때 이전 키를 남겨 기존 문서의 인용 표시와 연결을 유지한다.
+- 가져오기·내보내기 형식은 `BibTeX`(`.bib`), `RIS`(`.ris`), `CSL JSON`(`.json`) 셋이다. 모든 쓰기는 임시 파일(`wx`, `flush`) 뒤 원자적 이름 바꾸기를 따른다.
+
 ## 문서 호환
 
 - `.docx`·`.xlsx`·`.pptx`·PDF·마크다운·HTML 파일은 원본 프로그램과 같은 방식으로 읽고 쓴다. 한쪽에서 만든 문서를 다른 쪽에서 열 수 있다.
@@ -725,6 +763,12 @@ metadata:
     - `refresh_toc`는 표시된 차례(`kind` 기본 `body`)를 저장된 옵션(`layout`, `max_level`, `links`, `title`) 그대로 또는 덮어쓴 옵션으로 제자리에서 다시 만든다. 차례 안에 사람이 손으로 고친 줄이 감지되면 `overwrite_manual: true` 없이는 바뀐 줄을 알리며 거절한다. 표시 없는 기존 차례만 있을 때는 `overwrite_legacy: true`를 넘길 때만 교체한다. 기존 차례가 여러 구역에 걸쳐 있으면 자동으로 갱신하지 않고 거절한다.
     - `mark_index`는 본문 한 자리(1부터 세는 `section`·`paragraph` + 0부터 세는 `offset`, 또는 `find`·`occurrence`)나 본문 전체 일치(`mark_all: true`, 선택 `query`·`case_sensitive`·`whole_word`·`include_particles`, 기본으로 한국어 조사 결합형 포함·합성어 제외, 표 칸·글상자·각주·미주 건너뛴 수 보고)에 `색인:` 표시(`term`, 선택 `sub_term`)를 단다. `list_index_marks`는 모든 `색인:` 표시를 쓰기 연산이 받는 같은 이름(`id`, `term`, `sub_term`, 1부터 세는 `section`·`paragraph`, 0부터 세는 `offset`, 찍히는 `page`, 필요 시 `page_label`)으로 돌려준다. `remove_index_mark`는 `id` 또는 `term`(선택 `sub_term`)으로 표시를 지운다.
     - `insert_index`는 `색인:` 표시를 가나다·알파벳 순으로 묶어 `section`·`paragraph` 또는 `anchor`·`where`(기본 문서 끝)에 `색인블록:`을 만든다(`title` 기본 `찾아보기`, `columns` 1–3, `group_headings` 기본 `true`, `layout` `dotted-tab` 기본 또는 `table`, `allow_page_split` 기본 `false`). 다단 색인(`columns >= 2`)을 본문 중간(뒤에 본문이 남는 자리)에 넣으면 색인 앞뒤가 새 쪽으로 나뉘므로 `allow_page_split: true` 없이는 거절한다. `refresh_index`는 기존 `색인블록:`을 제자리에서 다시 만들며, 수동 편집이 감지되면 `overwrite_manual: true` 없이는 거절한다. 0이나 32비트 정수 상한(`2147483647`) 초과·범위 밖 숫자(`max_level`, `columns`, `section`, `paragraph`, `offset`, `occurrence`)는 모두 거절한다.
+  - **인용과 참고문헌(`list_references`, `audit_citations`, `insert_citation`, `switch_citation_style`, `insert_bibliography`, `refresh_bibliography`).**
+    - `list_references`는 서재 항목을 `query`·`tag`·`verified_only`로 걸러 `offset`(0부터 세는 시작 위치, 기본 `0`, `0..2147483647`)·`limit`(쪽당 최대 항목 수, 기본 `50`, `1..2147483647`)으로 나눠 읽고 `snake_case` 필드(`total`, `offset`, `limit`, `returned`, `has_more`, `next_offset`, `references`)로 돌려준다. 범위를 벗어난 `offset`·`limit`는 거절한다. `audit_citations`는 문서의 본문 인용과 참고문헌 블록을 6가지 항목(`missing_from_bibliography`, `uncited_in_bibliography`, `wrong_sort_order`, `missing_disambiguation`, `manual_citation_edit`, `unverified_citation`)으로 점검한다.
+    - `insert_citation`은 `key`(선택 `locator`·`prefix`·`suffix`) 또는 `items`와 `mode`(`parenthetical` 기본 또는 `narrative`), `citation_style`(`apa`·`chicago`·`mla`·`ieee`), 위치(1부터 세는 `section`·`paragraph` + 0부터 세는 `offset`, 또는 `find`·`occurrence`)로 서식 있는 인용을 넣는다. `citation_style`을 넘겼는데 문서의 현재 활성 인용 꼴과 다르면 문서를 바꾸지 않고 거절하며(`citation_style`을 생략하거나 `switch_citation_style`을 먼저 부르라고 안내한다). `verified: false`인 미확인 항목이나 서재에 없는 키, 범위 밖 좌표, 0·음수·`2147483647` 초과 숫자는 아무것도 바꾸지 않고 거절한다.
+    - `switch_citation_style`은 문서의 인용 꼴(`apa`·`chicago`·`mla`·`ieee`)을 모든 표시된 인용과 참고문헌 블록에 한 번에 적용한다(`refresh_bibliography` 기본 `true`). 참고문헌 블록에 수동 편집이 있으면 `overwrite_manual: true` 없이는 거절한다.
+    - `insert_bibliography`는 인용된 확인 완료 문헌(또는 `include_all_library: true`일 때 서재 전체 확인 완료 문헌)으로 표시된 참고문헌 블록을 만든다(`title`, `citation_style`, `section`·`paragraph` 또는 `find`·`occurrence`, `replace_existing`, `overwrite_legacy`, `overwrite_manual`). 표시 없는 기존 참고문헌 구역이 감지되면 `overwrite_legacy: true` 없이는 범위와 함께 거절한다. `refresh_bibliography`는 기존 표시된 참고문헌 블록을 제자리에서 다시 만들며, 수동 편집·개체 포함·여러 구역 걸침·미확인 문헌은 거절한다.
+    - 터미널 명령어(`ieumoffice hwp apply`, `ieumoffice create --type hwp|hwpx`)와 MCP(`hwp_apply`, `create_hwp`)는 기본으로 `<userData>/hwp-bibliography.json`을 읽고, `--bibliography <경로>`(`bibliography`)를 주면 그 파일을 대신 읽는다. 앱 안에서만 쓰는 웹 문헌 찾기(`search_references`)와 참고문헌 줄 미리보기 분석(`parse_reference_lines`)은 명령어에서 `unsupported`로 거절된다.
   - 이미 쓴 문서를 고치는 길. 이 도구가 만든 표를 기록해 두는 것이 없어서(엔진이 표마다 고유 번호를 갖고 있지만 표의 번호를 돌려주는 호출이 없다, `docs/tracking/findings.md`) 표를 제자리에서 다시 그리지 않는다. `insert_title_box`는 표 안 글이면 이 도구가 만든 제목 상자라도 `in_table`로 거절하고, 그 표의 번호와 함께 `format_cells`(선·채움)와 `delete_table` 뒤 제목을 상자가 있던 자리에 새 문단으로 다시 넣어 `insert_title_box`를 부르는 길을 알린다. 이 길은 AI가 이 대화에서 만든 상자의 꼴을 사용자가 바꾸라 했을 때만 쓴다. 새 문단은 상자 위 줄 다음에(상자가 문서의 첫 문단이었으면 아래 줄 앞에) 넣고, 그쪽 줄이 표면 그 칸에 들어가므로 사용자에게 알린다. 상자가 첫 문단이었으면 빈 첫 줄이 남고 이를 지울 도구는 없다. 그 밖의 자리에는 빈 줄이 남지 않는다. `replace_text`·`replace_all`의 새 글에는 탭을 쓸 수 있다. `format_cells`의 `column_widths`는 표 전체의 열 너비 비율이고(표 너비는 그대로), 답에 열 너비(mm)를 적는다. `list_equations`는 본문 수식을 번호·앞뒤 낱말·스크립트로 보여 주고(`1. (in "넓이는 … 이다.") x^2`), 앞뒤 낱말이 동그라미 번호나 열 글자 미만뿐이면 같은 구역에서 위로 가장 가까운 문제 줄의 첫머리를 붙인다(`3. (in "① …", under "1. 다음 중 …") x=1`). 문제 줄은 문제 번호(`1.`, `1)`, `(1)`, `가.`, `(가)`, `문 1`)로 시작하는 줄이고, 뒤에 동그라미 번호가 있어도 된다. 위의 문제와 같은 꼴로 번호를 단 줄(`1)` 다음 `2)`, `(1)` 다음 `(2)`, `1.` 다음 `2.`)은 다음 문제다. 동그라미 번호로 시작하는 줄과, 다른 꼴의 문제 줄이나 그런 보기 바로 다음에 `1)`·`(1)`로 시작하는 줄은 보기다. `Ⅰ.`·`Ⅱ.`로 시작하는 줄은 문제가 아니라 부분의 시작이고, 그 위의 문제 줄은 붙이지 않는다. 수식이 든 문단이 문제 줄이거나 위에 문제 줄이 없으면 붙이지 않는다. `edit_equation`은 그 번호로 스크립트를 바꾸거나 수식을 지운다. 표 칸·각주·글상자 안의 수식은 수만 센다.
   - 새 표는 붙인 문단이 평범한 본문(개요 수준·제목 스타일이 아니고, 굵지 않다)이고 크기가 본문이 가장 많이 쓴 크기(평범한 본문 문단의 수로 세고, 같으면 작은 쪽, 그래서 "(단위: 명)" 같은 8pt 줄이 10pt 본문 줄만큼 있으면 8pt다)와 같으면 그 문단의 글꼴·크기로, 아니면 본문 글자가 가장 많이 쓴 글꼴·크기(제목 문단과 굵은 문단은 빼고 센다, 그래서 짧은 문서에서 굵지 않은 큰 제목 바로 뒤의 표는 제목 글자가 많으면 제목의 꼴이다)로, 그런 본문이 없으면 굵지 않은 글자가 가장 많이 쓴 것으로, 그것도 없으면 붙인 문단의 꼴로 쓰고, `align`이 없으면 본문 칸을 왼쪽에 맞추며, 빈 칸에도 표의 글꼴·크기·정렬을 둔다. 차례는 쓰는 수준마다 `차례 1`~`차례 3` 스타일이 있으면 그 스타일로(제목은 `차례 제목`의 글자 모양, 가운데), 없으면 본문 꼴에 수준마다 들여쓰기를 더해 쓴다. `add_to_table`로 줄을 더하면 표의 가로선을 다시 써서 맨 위·맨 아래 선은 표 끝에, 머리 줄(머리줄 표시가 있거나 아래 선이 그 아래 줄의 선과 다른 첫 줄들, 두 줄짜리 표에서는 아래 선이 표 맨 위 선과 다른 첫 줄) 아래 선은 그 밑에 두고, 새 경계에는 본문 두 줄 사이의 선을 쓴다. 그런 경계가 없으면 표의 테두리는 쓰지 않고 가장 가는 세로 안쪽 선, 없으면 테두리가 아닌 가장 가는 가로선, 없으면 표가 쓰는 가장 가는 굵기의 실선을 쓴다. 합친 칸이 가로지르는 열은 같은 경계에서 가장 가까운 열의 선을 쓴다. 한 줄짜리 표는 엔진이 베낀 선 그대로다.
   - 성공한 답도 하지 않은 것을 적는다. 머리줄이 없는 표의 `header_color`·`repeat_header`, 첫 문단 앞이 아닌 자리의 1단 문서 `across_columns`, 단에 걸친 표의 `width_percent`·`place`가 그렇다. 글자색을 주지 않은 표 머리줄과 채운 제목 상자는 채움색 위에서 검은 글자가 잘 보이지 않으면 흰 글자로 쓰고 답에 적는다. 제목 상자에 준 글자색이 채움색 위에서 보이지 않아 버려졌을 때도 같다.

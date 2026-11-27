@@ -42,6 +42,9 @@ const NOT_HEADLESS: Record<string, string> = {
   read_selection: 'there is no selection without the editor',
   replace_selection: 'there is no selection without the editor',
   format_selection: 'there is no selection without the editor',
+  search_references:
+    'searches the web and stages unverified entries into the in-app bibliography library',
+  parse_reference_lines: 'interactive preview helper for the in-app Bibliography tab',
 }
 
 let engine: Promise<Engine> | null = null
@@ -76,6 +79,7 @@ async function appModules() {
     memos,
     hwp5File,
     outlineSettings,
+    bibliography,
   ] = await Promise.all([
     import('../../../../apps/hwp/studio-plugin/agent-plugin.mjs'),
     import('../../../../apps/hwp/src/renderer/ai/hwp-skill'),
@@ -88,6 +92,7 @@ async function appModules() {
     import('../../../../apps/hwp/src/main/memos'),
     import('../../../../apps/hwp/src/main/hwp5-file'),
     import('../../../../apps/hwp/src/main/outline-settings'),
+    import('../../../../apps/hwp/src/main/bibliography'),
   ])
   hwp5File.setHwp5WasmPathResolver(() => hwp5WasmPath())
   return {
@@ -101,6 +106,7 @@ async function appModules() {
     tracked,
     memos,
     outlineSettings,
+    bibliography,
   }
 }
 
@@ -184,16 +190,40 @@ function bridgeOf(surface: AgentPluginSurface): AgentBridge {
   return bridge as unknown as AgentBridge
 }
 
+export interface HwpSessionOptions {
+  /** Explicit bibliography JSON file path (overrides the app's hwp-bibliography.json). */
+  bibliographyPath?: string
+}
+
 async function sessionOf(
   doc: HwpDocument,
   mods: AppModules,
   extra: Pick<HwpEditSession, 'base' | 'originalHwpx' | 'trackingDropped'>,
   env: NodeJS.ProcessEnv = process.env,
+  options?: HwpSessionOptions,
 ): Promise<HwpEditSession> {
   const surface = mods.plugin.agentPlugin.activate(headlessHost(doc)) as AgentPluginSurface
   const appOutlineStyleMap = mods.outlineSettings.readHwpOutlineStyleMap({
     getPath: () => genofficeUserDataDir(env),
   })
+  let bibEntries
+  if (options?.bibliographyPath) {
+    const loaded = mods.bibliography.loadBibliographyFile(options.bibliographyPath)
+    if (!loaded.ok) {
+      const reason =
+        loaded.reason === 'not_found'
+          ? 'file_not_found'
+          : loaded.reason === 'too_large'
+            ? 'resource_limit'
+            : 'invalid_argument'
+      throw new CliError(EXIT.file, loaded.error, undefined, { reason })
+    }
+    bibEntries = loaded.entries
+  } else {
+    bibEntries = mods.bibliography.readBibliography({
+      getPath: () => genofficeUserDataDir(env),
+    })
+  }
   const { skill } = mods.skill.createHwpSkill({
     bridge: bridgeOf(surface),
     // activity labels are for the app's panel; the op results carry the model-facing text
@@ -203,6 +233,7 @@ async function sessionOf(
     confirmMemoRemoval: async () => false,
     imageGenAvailable: () => false,
     getOutlineStyleMap: () => appOutlineStyleMap,
+    getBibEntries: () => bibEntries,
   })
   return { doc, surface, skill, mods, ...extra }
 }
@@ -211,6 +242,7 @@ async function sessionOf(
 export async function openHwpForEdit(
   bytes: Uint8Array,
   env: NodeJS.ProcessEnv = process.env,
+  options?: HwpSessionOptions,
 ): Promise<HwpEditSession> {
   const [{ HwpDocument }, mods] = await Promise.all([loadEngine(), appModules()])
   let data = bytes
@@ -246,17 +278,24 @@ export async function openHwpForEdit(
     throw openFailure(thrown)
   }
   const originalHwpx = mods.savePlan.bytesMatchFormat(data, 'hwpx') ? data : null
-  return sessionOf(doc, mods, { base, originalHwpx, trackingDropped }, env)
+  return sessionOf(doc, mods, { base, originalHwpx, trackingDropped }, env, options)
 }
 
 /** A new document: the engine's blank one (one empty paragraph on an A4 page), as a new HWP tab starts. */
 export async function blankHwpForEdit(
   env: NodeJS.ProcessEnv = process.env,
+  options?: HwpSessionOptions,
 ): Promise<HwpEditSession> {
   const [{ HwpDocument }, mods] = await Promise.all([loadEngine(), appModules()])
   const doc = HwpDocument.createEmpty()
   doc.createBlankDocument()
-  return sessionOf(doc, mods, { base: {}, originalHwpx: null, trackingDropped: false }, env)
+  return sessionOf(
+    doc,
+    mods,
+    { base: {}, originalHwpx: null, trackingDropped: false },
+    env,
+    options,
+  )
 }
 
 export function closeHwpSession(session: HwpEditSession): void {
@@ -378,6 +417,18 @@ const HWP_GROUPS: { name: string; summary: string; ops: string[] }[] = [
     name: 'index',
     summary: 'index marks and index block by 1-based section and paragraph or find',
     ops: ['mark_index', 'remove_index_mark', 'insert_index', 'refresh_index'],
+  },
+  {
+    name: 'bibliography',
+    summary: 'citations and bibliography from the app library or --bibliography file',
+    ops: [
+      'list_references',
+      'audit_citations',
+      'insert_citation',
+      'switch_citation_style',
+      'insert_bibliography',
+      'refresh_bibliography',
+    ],
   },
 ]
 

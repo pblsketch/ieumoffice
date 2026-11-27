@@ -107,9 +107,24 @@ import {
   removeIndexMark,
   removeIndexMarksByTerm,
 } from './index-marks.mjs'
-import { installWorkpaneMenu } from './workpane-menu.mjs'
+import { installBibliographyMenu, installWorkpaneMenu } from './workpane-menu.mjs'
 import { installTocIndexMenu } from './toc-dialogs.mjs'
 import { buildSubmissionCopy, defaultStalenessRegistry } from './staleness.mjs'
+import {
+  BIB_SETTING_KEY,
+  auditCitations,
+  detectBibliographyManualEdits,
+  detectUnmarkedBibliography,
+  findPatternCitations,
+  getDocumentCitationStyle,
+  insertBibliographyBlock,
+  insertCitation,
+  listCitationMarks,
+  refreshBibliographyBlock,
+  rewriteCitationKeys,
+  setDocumentCitationStyle,
+  switchCitationStyle,
+} from './citations.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
 
@@ -2156,6 +2171,20 @@ function tocIndexObjectsOf(doc, { allowSectionLayoutDelta = false, made = null }
   const ownedTables = ownedTocIndexTableCount(doc, made)
   return {
     controls: base.controls - secDelta - ownedTables,
+    fields: base.fields,
+    notes: noteControlCount(doc),
+  }
+}
+
+/**
+ * Snapshot all non-app-mark content objects, notes, and non-TOC fields in `doc` so
+ * citation and bibliography mutations never silently drop footnotes, endnotes, pictures,
+ * shapes, equations, tables, user bookmarks, or form/hyperlink fields.
+ */
+function citationObjectsOf(doc) {
+  const base = objectsOf(doc)
+  return {
+    controls: base.controls,
     fields: base.fields,
     notes: noteControlCount(doc),
   }
@@ -8744,6 +8773,31 @@ export const agentPlugin = {
           try {
             const input = services && services.getInputHandler ? services.getInputHandler() : null
             const cursor = input ? input.cursor : null
+            if (
+              cursor &&
+              typeof cursor.isInHeaderFooter === 'function' &&
+              cursor.isInHeaderFooter()
+            ) {
+              caretNow = null
+              caretDetailNow = { inHeaderFooter: true }
+              return
+            }
+            if (cursor && typeof cursor.isInFootnote === 'function' && cursor.isInFootnote()) {
+              caretNow = null
+              caretDetailNow = {
+                inNote: true,
+                ...(Number.isInteger(cursor.fnSectionIdx) ? { sec: cursor.fnSectionIdx } : {}),
+                ...(Number.isInteger(cursor.fnParaIdx) ? { para: cursor.fnParaIdx } : {}),
+                ...(Number.isInteger(cursor.fnControlIdx)
+                  ? { noteControl: cursor.fnControlIdx }
+                  : {}),
+                ...(Number.isInteger(cursor.fnInnerParaIdx)
+                  ? { notePara: cursor.fnInnerParaIdx }
+                  : {}),
+                ...(Number.isInteger(cursor.fnCharOffset) ? { offset: cursor.fnCharOffset } : {}),
+              }
+              return
+            }
             const pos = cursor && cursor.getPosition ? cursor.getPosition() : null
             const at = endOf(pos)
             caretNow = at ? { sec: at.sec, para: at.para } : null
@@ -8758,6 +8812,11 @@ export const agentPlugin = {
               pos.inFootnote === true ||
               pos.inEndnote === true
             ) {
+              const noteSec = pos.sec ?? pos.sectionIndex
+              const noteParaHost = pos.para ?? pos.paraIndex
+              const noteCtrl = pos.noteControl ?? pos.controlIndex
+              const noteInner = pos.notePara ?? pos.noteParaIndex
+              const noteOff = pos.offset ?? pos.charOffset
               caretDetailNow = {
                 inHeaderFooter:
                   pos.inHeaderFooter === true ||
@@ -8765,6 +8824,12 @@ export const agentPlugin = {
                   pos.isFooter === true ||
                   pos.isHeaderFooter === true,
                 inNote: pos.inNote === true || pos.inFootnote === true || pos.inEndnote === true,
+                ...(pos.inEndnote === true ? { inEndnote: true } : {}),
+                ...(Number.isInteger(noteSec) ? { sec: noteSec } : {}),
+                ...(Number.isInteger(noteParaHost) ? { para: noteParaHost } : {}),
+                ...(Number.isInteger(noteCtrl) ? { noteControl: noteCtrl } : {}),
+                ...(Number.isInteger(noteInner) ? { notePara: noteInner } : {}),
+                ...(Number.isInteger(noteOff) ? { offset: noteOff } : {}),
               }
             } else if (at) {
               caretDetailNow = {
@@ -9427,6 +9492,66 @@ export const agentPlugin = {
         pictures ??= picturesOf(doc)
         return pictures
       })
+
+    /** Read detailed caret placement from the live editor, or undefined if the editor has no command handler. */
+    const readCurrentCaretDetail = () => {
+      caretReadRan = false
+      caretDetailNow = null
+      try {
+        host.automation.execute(CARET_POSITION_COMMAND)
+      } catch {
+        return undefined
+      }
+      return caretReadRan ? caretDetailNow : undefined
+    }
+
+    /** Select and scroll a body paragraph span `(sec, startPara..endPara)` in the editor. */
+    const highlightParagraphRange = (range) => {
+      if (!range || !Number.isInteger(range.sec) || !Number.isInteger(range.startPara)) {
+        return false
+      }
+      const endPara = Number.isInteger(range.endPara) ? range.endPara : range.startPara
+      let endOffset = 0
+      let startOffset = 0
+      try {
+        host.read((doc) => {
+          if (typeof doc.getParagraphLength === 'function') {
+            startOffset = doc.getParagraphLength(range.sec, range.startPara)
+            endOffset = doc.getParagraphLength(range.sec, endPara)
+          }
+        })
+      } catch {
+        endOffset = 0
+        startOffset = 0
+      }
+      rangeHighlighted = false
+      try {
+        host.automation.execute(HIGHLIGHT_RANGE_COMMAND, {
+          sec: range.sec,
+          startPara: range.startPara,
+          endPara,
+          endOffset,
+        })
+      } catch {
+        rangeHighlighted = false
+      }
+      if (rangeHighlighted) return true
+      return api.reveal({
+        sec: range.sec,
+        para: range.startPara,
+        offset: 0,
+        length: Math.max(0, startOffset),
+      }).ok
+    }
+
+    /** Build transaction options for citation & bibliography edits without bypassing memo protection by default. */
+    const citationTxOptions = (options) => {
+      const tx = { foreign: options?.foreign === true }
+      if (options?.allowMemoRemoval !== undefined) tx.allowMemoRemoval = options.allowMemoRemoval
+      if (options?.memoPolicy !== undefined) tx.memoPolicy = options.memoPolicy
+      if (options?.approvedMemoIds !== undefined) tx.approvedMemoIds = options.approvedMemoIds
+      return tx
+    }
 
     const api = {
       foreignChanges: () => foreign,
@@ -14402,8 +14527,11 @@ export const agentPlugin = {
       /** Take the editor's input away while the app's memo modal is open. */
       setMemoLock: guarded((locked) => setMemoLock(locked === true)),
 
-      /** Register the editor's View menu entries for the left workpane (Outline / Find). */
+      /** Register the editor's View menu entries for the left workpane (Outline / Find / optional Bibliography). */
       installWorkpaneMenu: guarded((labels) => installWorkpaneMenu(host, labels)),
+
+      /** Register the editor's Tool menu entries for citation & bibliography commands. */
+      installBibliographyMenu: guarded((labels) => installBibliographyMenu(host, labels)),
 
       /** Register the editor's Tool menu entries and context-menu probes for TOC & Index. */
       installTocIndexMenu: guarded((labels, options) => {
@@ -14445,16 +14573,7 @@ export const agentPlugin = {
             return out
           },
           readDoc: (fn) => host.read(fn),
-          getCaret: () => {
-            caretReadRan = false
-            caretDetailNow = null
-            try {
-              host.automation.execute(CARET_POSITION_COMMAND)
-            } catch {
-              return undefined
-            }
-            return caretReadRan ? caretDetailNow : undefined
-          },
+          getCaret: readCurrentCaretDetail,
           getSelectionText: () => {
             try {
               const sel = api.selection()
@@ -14466,54 +14585,19 @@ export const agentPlugin = {
               return null
             }
           },
-          highlightRange: (range) => {
-            if (!range || !Number.isInteger(range.sec) || !Number.isInteger(range.startPara)) {
-              return false
-            }
-            const endPara = Number.isInteger(range.endPara) ? range.endPara : range.startPara
-            let endOffset = 0
-            let startOffset = 0
-            try {
-              host.read((doc) => {
-                if (typeof doc.getParagraphLength === 'function') {
-                  startOffset = doc.getParagraphLength(range.sec, range.startPara)
-                  endOffset = doc.getParagraphLength(range.sec, endPara)
-                }
-              })
-            } catch {
-              endOffset = 0
-              startOffset = 0
-            }
-            rangeHighlighted = false
-            try {
-              host.automation.execute(HIGHLIGHT_RANGE_COMMAND, {
-                sec: range.sec,
-                startPara: range.startPara,
-                endPara,
-                endOffset,
-              })
-            } catch {
-              rangeHighlighted = false
-            }
-            if (rangeHighlighted) return true
-            return api.reveal({
-              sec: range.sec,
-              para: range.startPara,
-              offset: 0,
-              length: Math.max(0, startOffset),
-            }).ok
-          },
+          highlightRange: highlightParagraphRange,
           tocHelpers,
           getMadeContents: () => contentsMade,
           appStyleMap: () => tocAppStyleMap,
         })
       }),
 
-      /** Read-only check across all registered staleness checkers (TOC, index, and extensions). */
+      /** Read-only check across all registered staleness checkers (TOC, index, bibliography, and extensions). */
       checkStaleItems: guarded((options) =>
         host.read((doc) =>
           defaultStalenessRegistry.check(doc, {
             ...options,
+            ...(options?.bibEntries !== undefined ? { bibEntries: options.bibEntries } : {}),
             helpers: options?.helpers ?? tocHelpers,
             appStyleMap: options?.appStyleMap !== undefined ? options.appStyleMap : tocAppStyleMap,
           }),
@@ -14521,7 +14605,7 @@ export const agentPlugin = {
       ),
 
       /**
-       * Refresh all stale blocks (TOC, index, and registered extensions) in a single undo step.
+       * Refresh all stale blocks (TOC, index, bibliography, and registered extensions) in a single undo step.
        * Rolls back atomically without creating an undo entry when nothing was refreshed, when
        * any checker fails or blocks on manual edits, or when any user object/memo would be lost.
        */
@@ -14543,12 +14627,23 @@ export const agentPlugin = {
                 })
                 const result = defaultStalenessRegistry.refreshAll(doc, {
                   ...options,
+                  ...(options?.bibEntries !== undefined ? { bibEntries: options.bibEntries } : {}),
                   helpers: options?.helpers ?? tocHelpers,
                   appStyleMap:
                     options?.appStyleMap !== undefined ? options.appStyleMap : tocAppStyleMap,
                 })
                 if (!result?.ok || result.refreshed === 0) {
-                  abortedResult = result
+                  const hasObjectsFailure =
+                    result &&
+                    result.ok === false &&
+                    result.reason === 'refresh_failed' &&
+                    Array.isArray(result.failed) &&
+                    result.failed.some(
+                      (entry) =>
+                        entry?.error === 'has_objects' ||
+                        String(entry?.error ?? '').endsWith(':has_objects'),
+                    )
+                  abortedResult = hasObjectsFailure ? { ...result, reason: 'has_objects' } : result
                   throw abort
                 }
                 mustKeep(
@@ -14593,6 +14688,373 @@ export const agentPlugin = {
         }
         return host.read((doc) => buildSubmissionCopy(doc, format, doc.constructor))
       }),
+
+      /** Read the active document citation style (`apa` | `chicago` | `mla` | `ieee`). */
+      getCitationStyle: guarded(() =>
+        host.read((doc) => ({ ok: true, style: getDocumentCitationStyle(doc) })),
+      ),
+
+      /** Persist the active document citation style in a single guarded transaction. */
+      setCitationStyle: guarded((style, options) => {
+        if (options !== undefined && (typeof options !== 'object' || Array.isArray(options))) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        const txOptions = citationTxOptions(options)
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'citation-style',
+              (doc) => {
+                const before = citationObjectsOf(doc)
+                const res = setDocumentCitationStyle(doc, style)
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                mustKeep(before, citationObjectsOf(doc))
+                return res
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /** List all marked in-text citations in document reading order. */
+      listCitationMarks: guarded((entries) =>
+        host.read((doc) => ({
+          ok: true,
+          marks: listCitationMarks(doc, entries ?? null),
+        })),
+      ),
+
+      /** Find unmarked textual citations across body, tables, text boxes, and notes. */
+      findPatternCitations: guarded((entries) =>
+        host.read((doc) => ({
+          ok: true,
+          citations: findPatternCitations(doc, entries ?? null),
+        })),
+      ),
+
+      /**
+       * Insert a formatted in-text citation at `options.place` or the current editor caret.
+       * Runs in a single guarded transaction protecting all user objects and memos.
+       */
+      insertCitation: guarded((options) => {
+        if (!options || typeof options !== 'object' || Array.isArray(options)) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        const txOptions = citationTxOptions(options)
+        let resolvedPlace = options.place
+        if (resolvedPlace === undefined) {
+          const caret = readCurrentCaretDetail()
+          if (caret && typeof caret === 'object') {
+            resolvedPlace = caret
+          }
+        }
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'insert-citation',
+              (doc) => {
+                const before = citationObjectsOf(doc)
+                const res = insertCitation(doc, {
+                  entries: options.entries,
+                  ...(options.items !== undefined ? { items: options.items } : {}),
+                  ...(options.key !== undefined ? { key: options.key } : {}),
+                  ...(options.mode !== undefined ? { mode: options.mode } : {}),
+                  ...(options.style !== undefined ? { style: options.style } : {}),
+                  ...(resolvedPlace !== undefined ? { place: resolvedPlace } : {}),
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                mustKeep(before, citationObjectsOf(doc))
+                if (res.placeKind === 'body') {
+                  return {
+                    ...res,
+                    place: {
+                      sec: res.sec,
+                      para: res.para,
+                      offset: res.offset,
+                      length: res.length,
+                    },
+                  }
+                }
+                if (res.placeKind === 'table' || res.placeKind === 'textbox') {
+                  return {
+                    ...res,
+                    place: {
+                      sec: res.sec,
+                      para: res.para,
+                      ...(res.path ? { path: res.path } : {}),
+                      offset: res.offset,
+                      length: res.length,
+                    },
+                  }
+                }
+                return res
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /**
+       * Switch citation style across marked in-text citations, document style setting, and
+       * any marked bibliography block atomically in one undo step. Rolls back completely if
+       * bibliography refresh fails (manual edits, embedded objects, or memo removal).
+       */
+      switchCitationStyle: guarded((newStyle, entries, options) => {
+        if (options !== undefined && (typeof options !== 'object' || Array.isArray(options))) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        const txOptions = citationTxOptions(options)
+        const entryList = Array.isArray(entries) ? entries : []
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'switch-citation-style',
+              (doc) => {
+                const before = citationObjectsOf(doc)
+                const res = switchCitationStyle(doc, newStyle, entryList, {
+                  ...(options?.refreshBibliography !== undefined
+                    ? { refreshBibliography: options.refreshBibliography }
+                    : {}),
+                  ...(options?.allowOverwriteManual !== undefined
+                    ? { allowOverwriteManual: options.allowOverwriteManual }
+                    : {}),
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                if (
+                  res.bibliographyResult &&
+                  res.bibliographyResult.ok === false &&
+                  res.bibliographyResult.reason !== 'not_found'
+                ) {
+                  refused = res.bibliographyResult
+                  throw abort
+                }
+                mustKeep(before, citationObjectsOf(doc))
+                return res
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /**
+       * Insert or replace a marked bibliography block at `options.place` or the current body
+       * caret position in a single guarded transaction protecting all user objects and memos.
+       */
+      insertBibliographyBlock: guarded((entries, options) => {
+        const opts = options ?? {}
+        if (typeof opts !== 'object' || Array.isArray(opts)) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        if (opts.title !== undefined && opts.title !== null) checkReplacement(opts.title)
+        const txOptions = citationTxOptions(opts)
+        let resolvedPlace = opts.place
+        if (resolvedPlace === undefined) {
+          const caret = readCurrentCaretDetail()
+          if (caret && typeof caret === 'object') {
+            resolvedPlace = caret
+          }
+        }
+        const entryList = Array.isArray(entries) ? entries : []
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'insert-bibliography',
+              (doc) => {
+                const before = citationObjectsOf(doc)
+                const res = insertBibliographyBlock(doc, entryList, {
+                  ...(opts.title !== undefined ? { title: opts.title } : {}),
+                  ...(opts.style !== undefined ? { style: opts.style } : {}),
+                  ...(resolvedPlace !== undefined ? { place: resolvedPlace } : {}),
+                  ...(opts.replaceExisting !== undefined
+                    ? { replaceExisting: opts.replaceExisting }
+                    : {}),
+                  ...(opts.replaceLegacy !== undefined
+                    ? { replaceLegacy: opts.replaceLegacy }
+                    : {}),
+                  ...(opts.skipLegacyCheck !== undefined
+                    ? { skipLegacyCheck: opts.skipLegacyCheck }
+                    : {}),
+                  ...(opts.allowOverwriteManual !== undefined
+                    ? { allowOverwriteManual: opts.allowOverwriteManual }
+                    : {}),
+                  ...(opts.includeAllLibrary !== undefined
+                    ? { includeAllLibrary: opts.includeAllLibrary }
+                    : {}),
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                mustKeep(before, citationObjectsOf(doc))
+                return {
+                  ...res,
+                  place: {
+                    sec: res.sec,
+                    para: res.startPara,
+                    offset: 0,
+                    length: res.title ? res.title.length : 0,
+                  },
+                }
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /**
+       * Refresh an existing marked bibliography block in place in a single guarded transaction
+       * protecting all user objects and memos.
+       */
+      refreshBibliographyBlock: guarded((entries, options) => {
+        const opts = options ?? {}
+        if (typeof opts !== 'object' || Array.isArray(opts)) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        if (opts.title !== undefined && opts.title !== null) checkReplacement(opts.title)
+        const txOptions = citationTxOptions(opts)
+        const entryList = Array.isArray(entries) ? entries : []
+        const abort = Symbol('abort')
+        let refused = null
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'refresh-bibliography',
+              (doc) => {
+                const before = citationObjectsOf(doc)
+                const res = refreshBibliographyBlock(doc, entryList, {
+                  ...(opts.title !== undefined ? { title: opts.title } : {}),
+                  ...(opts.style !== undefined ? { style: opts.style } : {}),
+                  ...(opts.allowOverwriteManual !== undefined
+                    ? { allowOverwriteManual: opts.allowOverwriteManual }
+                    : {}),
+                  ...(opts.includeAllLibrary !== undefined
+                    ? { includeAllLibrary: opts.includeAllLibrary }
+                    : {}),
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                mustKeep(before, citationObjectsOf(doc))
+                return {
+                  ...res,
+                  place: {
+                    sec: res.sec,
+                    para: res.startPara,
+                    offset: 0,
+                    length: res.title ? res.title.length : 0,
+                  },
+                }
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /** Detect an existing unmarked bibliography section read-only. */
+      detectUnmarkedBibliography: guarded(() =>
+        host.read((doc) => detectUnmarkedBibliography(doc)),
+      ),
+
+      /** Detect manual edits inside a marked bibliography block read-only. */
+      detectBibliographyManualEdits: guarded(() =>
+        host.read((doc) => detectBibliographyManualEdits(doc)),
+      ),
+
+      /** Select and scroll a paragraph range `{ sec, startPara, endPara }` into view. */
+      highlightBibliographyRange: guarded((range) => ({
+        ok: highlightParagraphRange(range),
+      })),
+
+      /** Rewrite renamed citation keys across marks and bibliography metadata in one undo step. */
+      rewriteCitationKeys: guarded((keyMap, entries, options) => {
+        if (options !== undefined && (typeof options !== 'object' || Array.isArray(options))) {
+          throw fail('BAD_ARGUMENT', 'options must be an object')
+        }
+        const entryCount =
+          keyMap instanceof Map
+            ? keyMap.size
+            : keyMap && typeof keyMap === 'object'
+              ? Object.keys(keyMap).length
+              : 0
+        if (entryCount === 0) {
+          return { ok: true, updated: 0 }
+        }
+        const txOptions = citationTxOptions(options)
+        const noop = Symbol('noop')
+        let noopResult = null
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'rewrite-citation-keys',
+              (doc) => {
+                const before = citationObjectsOf(doc)
+                const bibBefore = JSON.stringify(readDocSetting(doc, BIB_SETTING_KEY, null))
+                const res = rewriteCitationKeys(doc, keyMap, entries ?? null)
+                if (!res.ok) {
+                  noopResult = res
+                  throw noop
+                }
+                const bibAfter = JSON.stringify(readDocSetting(doc, BIB_SETTING_KEY, null))
+                if (res.updated === 0 && bibBefore === bibAfter) {
+                  noopResult = res
+                  throw noop
+                }
+                mustKeep(before, citationObjectsOf(doc))
+                return res
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === noop) return noopResult
+          throw thrown
+        }
+      }),
+
+      /** Run all six read-only citation and bibliography audit checks. */
+      auditCitations: guarded((entries, options) =>
+        host.read((doc) =>
+          auditCitations(doc, Array.isArray(entries) ? entries : [], options ?? {}),
+        ),
+      ),
 
       /** Search across body, tables (including nested), text boxes, and footnotes/endnotes. */
       findMatches: guarded((options) => host.read((doc) => findMatches(doc, options))),

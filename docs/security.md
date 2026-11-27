@@ -507,6 +507,17 @@
 - **편집기의 "다른 문서로 만들기" 브리지.** 홈 전용 `generate:open-with-paths`의 `fromHome` 검사를 그대로 유지한다. 편집기 다음 단계 칩이 부르는 전용 채널(`generate-editor:open-for-current-tab`)은 렌더러에서 경로를 받지 않고, 껍데기 뒷단이 `event.sender`의 실제 열린 탭(또는 떼어 낸 창) 경로를 직접 조회해 만들기 창을 연다.
 - **코딩 에이전트 안내문과 진단 파일(`.zip`).** 설정 → 연동의 안내문 복사와 설정 → 정보의 진단 `.zip` 내보내기는 화이트리스트 직렬화로 제품 버전·OS·아키텍처·화면 언어·구독 상태 코드/버전·허용 필드만 거른 최근 크래시 요약만 담는다. 문서 본문, 파일 경로·이름, 열린 탭, 계정 이메일, API 키·OAuth 토큰, 원문 오류 메시지는 넣지 않으며, 진단 `.zip`은 반드시 미리보기 창에서 포함 항목을 확인한 뒤에만 저장한다.
 
+## AI 문헌 찾기와 참고문헌 확인 상태 규칙
+
+한글 편집기의 참고문헌 서재(`<userData>/hwp-bibliography.json`)와 AI 문헌 찾기 도구(`search_references`, `parse_reference_lines`)는 AI가 없는 문헌을 지어내거나 검증 없이 본문에 인용하는 위험을 막기 위해 다음 규칙을 지킨다.
+
+- **AI가 찾은 문헌은 항상 미확인("확인 필요")으로만 들어간다.** `search_references`는 앱의 기존 웹 검색 경로(`webSearch`)를 거쳐 실제로 돌아온 결과만 후보로 넘긴다. 메인 프로세스의 `addAiBibliographyCandidates`는 호출자가 어떤 값을 넘기든 무조건 `verified: false`, `source: "ai"`로 고정하고, 유효한 `http(s)` 출처 주소가 없는 후보는 거절하며, 출처 주소를 `memo`에 반드시 기록한다.
+- **AI는 문헌을 확인 완료로 바꿀 수 없다.** AI 도구 목록에는 `bibVerify`를 부르거나 `verified: true`로 바꾸는 도구가 없으며, 메인 프로세스 저장소도 `actor: "ai"`의 확인 상태 승격을 코드 수준에서 거부한다(`ai_cannot_verify`). 사람이 참고문헌 탭에서 출처 링크와 서지 정보를 검토하고 직접 확인 버튼을 누른 항목만 `verified: true`가 된다.
+- **미확인 문헌은 인용하거나 참고문헌 목록에 넣지 않는다.** `insert_citation`, `insert_bibliography`, `refresh_bibliography`는 `verified: false` 항목을 만나면 문서를 바꾸지 않고 거절한다(`unverified_entry`).
+- **AI 참고문헌 도구는 해당 차례에 서재 메타데이터를 활성 AI 제공자로 넘긴다.** `list_references`, `audit_citations`, `insert_citation`, `insert_bibliography`, `refresh_bibliography`, `switch_citation_style` 같은 AI 참고문헌 도구를 쓰면, 로컬 서재(`hwp-bibliography.json`) 항목의 제목·저자·연도·출판처·메모·꼬리표·DOI·URL 등 서지 메타데이터가 그 대화 차례의 일부로 활성 AI 제공자에게 전달된다. AI 없이 편집할 때는 서재가 PC 밖으로 나가지 않는다.
+- **`OUTBOUND_TOOLS`에 포함되고 설정 상태를 못 읽으면 닫힌 쪽으로 거절한다.** `search_references`는 `packages/agent-core/src/outbound.ts`의 `OUTBOUND_TOOLS`에 들어 있어, 설정의 "AI가 인터넷 도구 쓰기"가 꺼져 있으면 도구 목록에서 빠지고, 대화에 드라이브 읽기 내용이나 `keepResultsInside`가 켜진 사용자 MCP 결과가 들어오면 웹 검색을 호출하지 않고 거절된다. 설정 상태 브리지가 없거나 조회가 실패하면(예외 또는 `true`가 아닌 값) 허용하지 않고 닫힌 쪽(fail-closed)으로 거절한다. 터미널 명령어(`ieumoffice`)에서는 `search_references`와 `parse_reference_lines`를 열지 않는다(`unsupported`).
+- **가져온 파일과 문서 참고문헌 줄은 신뢰할 수 없는 자료로 다룬다.** `BibTeX`·`RIS`·`CSL JSON` 파일 가져오기 경로는 메인 프로세스 파일 선택 창으로만 받고 크기·항목 상한과 제어 문자 정제를 거친다. `parse_reference_lines`는 사용자가 명시적으로 고른 줄만 받아 구조화 미리보기만 돌려주며, 서재에 직접 쓰지 않는다.
+
 ## 설치 파일
 
 - Windows 설치 파일에는 코드 서명이 없다. 자동 업데이트는 서명 없이 동작해야 한다.

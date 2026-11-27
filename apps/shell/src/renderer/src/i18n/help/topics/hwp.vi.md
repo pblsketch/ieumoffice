@@ -8,9 +8,9 @@ GenOffice mở và chỉnh sửa tài liệu Hangul `.hwp` và `.hwpx` trong m�
 - Lưu lại đúng định dạng của tệp đã mở (`.hwp` vẫn là `.hwp`, `.hwpx` vẫn là `.hwpx`), giữ bản sao lưu `.bak` trước lần ghi đè đầu tiên, kiểm tra đọc lại HWP và duy trì các bản Tự động lưu cùng khôi phục sau sự cố.
 - In (Ctrl+P) hỗ trợ xem trước trực tiếp, xuất PDF và các tùy chọn bố cục in nhiều trang.
 
-## Ngăn làm việc bên trái: Đề cương và Tìm kiếm
+## Ngăn làm việc bên trái: Đề cương, Tìm kiếm và Tài liệu tham khảo
 
-- Mở ngăn làm việc bên trái từ nút trên thanh trên cùng, **Xem > Ngăn làm việc** (Đề cương / Tìm kiếm), hoặc nhấn **Ctrl+F** để chuyển thẳng sang thẻ Tìm kiếm. Tìm kiếm truyền thống (**Ctrl+Q,F**) và Tìm & Thay thế (**Ctrl+H**) vẫn khả dụng.
+- Mở ngăn làm việc bên trái từ nút trên thanh trên cùng, **Xem > Ngăn làm việc** (Đề cương / Tìm kiếm / Tài liệu tham khảo), hoặc nhấn **Ctrl+F** để chuyển thẳng sang thẻ Tìm kiếm. Tìm kiếm truyền thống (**Ctrl+Q,F**) và Tìm & Thay thế (**Ctrl+H**) vẫn khả dụng.
 - **Thẻ Đề cương**: liệt kê các tiêu đề đề cương gốc của Hangul và tiêu đề ánh xạ theo kiểu (mặc định `제목 N` / `Heading N`, có thể tùy chỉnh theo từng tài liệu hoặc toàn ứng dụng trong ngăn cài đặt Đề cương). Lọc theo cấp (`1`, `2`, `3`, ... Tất cả), thu gọn nhánh, nhấp để nhảy tới, tăng hoặc giảm cấp tiêu đề (mặc định kèm tiêu đề con, hoặc giữ **Shift** cho một tiêu đề duy nhất) và kéo tiêu đề để sắp xếp lại toàn bộ mục trong một bước hoàn tác.
 - **Thẻ Tìm kiếm**: tìm trong văn bản chính, bảng (kể cả bảng lồng nhau), hộp văn bản, chú thích chân trang và chú thích cuối tài liệu (trừ đầu trang và chân trang) với bộ lọc phân biệt hoa thường, khớp toàn từ, biểu thức chính quy, kiểu đoạn và định dạng ký tự. Nhấp vào kết quả để nhảy tới và chọn, hoặc thay thế một, các mục đã chọn hay tất cả kết quả khớp trong một bước hoàn tác (bỏ qua đối tượng nội tuyến và dấu trích dẫn kèm số lượng).
 - Ngăn làm việc ghi nhớ trạng thái mở, thẻ đang dùng và chiều rộng, tự thu gọn thành thanh biểu tượng trên cửa sổ hẹp và ẩn đi trong chế độ trình chiếu cũng như xem trước khi in. Mọi tính năng của ngăn làm việc đều hoạt động không cần AI.
@@ -38,3 +38,10 @@ GenOffice mở và chỉnh sửa tài liệu Hangul `.hwp` và `.hwpx` trong m�
 
 - Khi bạn Lưu thủ công, In, Xuất PDF hoặc Lưu bản nộp, trình soạn thảo sẽ kiểm tra xem mục lục hay chỉ mục có bị lỗi thời không và đề nghị cập nhật tất cả trong một bước hoàn tác duy nhất. Quá trình kiểm tra này không bao giờ chạy khi Tự động lưu và không bao giờ chặn việc lưu.
 - Dùng **Tệp > Lưu bản nộp** để lưu một bản sao sạch riêng biệt đã loại bỏ các dấu chỉnh sửa nội bộ (dấu chỉ mục, dấu khối chỉ mục và thiết lập đã lưu), trong khi vẫn giữ nguyên mục lục, neo tiêu đề và liên kết mục lục. Tệp làm việc gốc được giữ nguyên vẹn để bạn có thể tiếp tục cập nhật về sau.
+
+## Tài liệu tham khảo và trích dẫn
+
+- Mở thẻ **Tài liệu tham khảo** trong ngăn làm việc bên trái (hoặc **Công cụ > Tài liệu tham khảo**) để quản lý một thư viện cục bộ duy nhất trên máy tính của bạn với tìm kiếm, thẻ gắn nhãn, thêm/sửa/xóa, nhập và xuất (`BibTeX`, `RIS`, `CSL JSON`), cùng tính năng nhập từng dòng từ danh mục tài liệu tham khảo sẵn có trong tài liệu kèm xem trước xác nhận.
+- Hỗ trợ bốn kiểu trích dẫn (**APA 7**, **Chicago**, **MLA 9** và **IEEE**; tài liệu tiếng Hàn theo chuẩn học thuật Hàn Quốc ở cả bốn kiểu). Chèn trích dẫn trong ngoặc, trích dẫn tường thuật hoặc nhiều mục kèm số trang và tạo hay làm mới danh mục tài liệu tham khảo thụt lề treo; đổi kiểu sẽ cập nhật các trích dẫn được đánh dấu cùng danh mục trong một bước hoàn tác duy nhất mà vẫn giữ nguyên các trích dẫn bạn đã sửa thủ công.
+- Trình kiểm tra 6 tiêu chí tích hợp (thiếu trong danh mục, mục chưa trích dẫn, thứ tự sắp xếp, thiếu hậu tố a/b, trích dẫn sửa thủ công và mục chưa xác minh) cho phép nhấp để nhảy ngay tới vị trí lỗi, kèm nhắc nhở khi danh mục hoặc số thứ tự IEEE bị lỗi thời trước khi lưu thủ công, in hoặc xuất tệp.
+- Tính năng tìm kiếm tài liệu tham khảo bằng AI tùy chọn (khi bật công cụ Internet) luôn đưa các đề xuất vào ở trạng thái **Chưa xác minh** kèm URL nguồn trong ghi chú; bạn không thể trích dẫn hay đưa chúng vào danh mục cho đến khi tự kiểm tra và đánh dấu **Đã xác minh**.

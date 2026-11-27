@@ -8,9 +8,9 @@ GenOffice, `.hwp` ve `.hwpx` Hangul belgelerini bir sekmede açar ve düzenler; 
 - Açılan dosyanın kendi biçiminde kaydeder (`.hwp` yine `.hwp`, `.hwpx` yine `.hwpx` kalır), ilk üzerine yazmadan önce `.bak` yedeği saklar, HWP geri okuma kontrolü yapar ve Otomatik Kaydetme ile çökme kurtarma kopyalarını korur.
 - Yazdır (Ctrl+P) canlı önizleme, PDF dışa aktarma ve çok sayfalı yazdırma düzeni seçeneklerini destekler.
 
-## Sol çalışma bölmesi: Anahat ve Bul
+## Sol çalışma bölmesi: Anahat, Bul ve Kaynakça
 
-- Sol çalışma bölmesini üst çubuktaki düğmeden, **Görünüm > Çalışma bölmesi** (Anahat / Bul) menüsünden açın veya doğrudan Bul sekmesine geçmek için **Ctrl+F** tuşlarına basın. Geleneksel Bul (**Ctrl+Q,F**) ve Bul ve Değiştir (**Ctrl+H**) kullanılmaya devam eder.
+- Sol çalışma bölmesini üst çubuktaki düğmeden, **Görünüm > Çalışma bölmesi** (Anahat / Bul / Kaynakça) menüsünden açın veya doğrudan Bul sekmesine geçmek için **Ctrl+F** tuşlarına basın. Geleneksel Bul (**Ctrl+Q,F**) ve Bul ve Değiştir (**Ctrl+H**) kullanılmaya devam eder.
 - **Anahat sekmesi**: yerel Hangul anahat başlıklarını ve stille eşlenen başlıkları listeler (varsayılan `제목 N` / `Heading N`, Anahat ayarları çekmecesinden belge bazında veya uygulama genelinde özelleştirilebilir). Düzeye göre filtreleyin (`1`, `2`, `3`, ... Tümü), dalları daraltın, atlamak için tıklayın, başlık düzeyini yükseltin veya düşürün (varsayılan olarak alt başlıklarla birlikte ya da tek başlık için **Shift** tuşunu basılı tutarak) ve tüm bölümleri tek bir geri alma adımında yeniden sıralamak için başlıkları sürükleyin.
 - **Bul sekmesi**: gövde metni, tablolar (iç içe tablolar dahil), metin kutuları, dipnotlar ve sonnotlar genelinde (üstbilgi ve altbilgiler hariç) büyük/küçük harf duyarlılığı, tam sözcük, düzenli ifadeler, paragraf stili ve karakter biçimlendirme filtreleriyle arama yapar. Bir sonuca tıklayarak atlayıp seçin ya da tek bir, seçili veya tüm eşleşmeleri tek bir geri alma adımında değiştirin (satır içi nesneler ve alıntı işaretleri sayısı gösterilerek atlanır).
 - Çalışma bölmesi açık kalma durumunu, etkin sekmesini ve genişliğini hatırlar, dar pencerelerde simge şeridine katlanır ve sunum modu ile yazdırma önizlemesinde gizlenir. Tüm çalışma bölmesi özellikleri AI olmadan çalışır.
@@ -38,3 +38,10 @@ GenOffice, `.hwp` ve `.hwpx` Hangul belgelerini bir sekmede açar ve düzenler; 
 
 - Elle Kaydet, Yazdır, PDF Olarak Dışa Aktar veya Teslim kopyası olarak kaydet işlemlerinde düzenleyici, içindekiler tablolarının veya dizinin güncel olup olmadığını denetler ve tümünü tek bir geri alma adımında yenilemeyi önerir. Bu denetim Otomatik Kaydetme sırasında asla çalışmaz ve kaydetmeyi engellemez.
 - **Dosya > Teslim kopyası olarak kaydet** komutu, içindekiler tablolarını, başlık bağlantı noktalarını ve içindekiler bağlantılarını korurken dahili düzenleme işaretlerinden (dizin işaretleri, dizin bloğu işaretleri ve kayıtlı ayarlar) arındırılmış ayrı ve temiz bir kopya kaydeder. Özgün çalışma dosyanız bozulmadan kalır, böylece daha sonra yenilemeye devam edebilirsiniz.
+
+## Kaynakça ve alıntılar
+
+- Bilgisayarınızda yerel olarak saklanan tek bir kaynak kitaplığını yönetmek için sol çalışma bölmesindeki **Kaynakça** sekmesini (veya **Araçlar > Kaynakça**) açın; arama, etiketler, ekleme/düzenleme/silme, içe ve dışa aktarma (`BibTeX`, `RIS`, `CSL JSON`) ile belgedeki mevcut bir kaynak listesinin satırlarını önizleme onayından geçirerek içe aktarma özelliklerini kullanın.
+- Dört alıntı stilini (**APA 7**, **Chicago**, **MLA 9** ve **IEEE**; Korece kaynaklar dört stilde de Kore akademik biçimini izler) destekler. Sayfa konumuyla birlikte parantez içi, anlatısal veya çoklu alıntılar ekleyin ve asılı girintili kaynakça oluşturup yenileyin; stil değiştirildiğinde işaretli alıntılar ve kaynakça tek bir geri alma adımında güncellenir, elle düzenlenmiş alıntılar korunur.
+- Yerleşik 6 noktalı denetim (kaynakçada eksik, alıntılanmamış girdiler, sıralama düzeni, eksik a/b ekleri, elle düzenlenen alıntılar ve doğrulanmamış öğeler) her soruna tıklayarak atlamanızı sağlar; ayrıca elle kaydetme, yazdırma veya dışa aktarma öncesinde güncel olmayan kaynakça ve IEEE numaralandırması için uyarı verir.
+- İsteğe bağlı AI kaynak araması (internet araçları açıkken) adayları her zaman kaynak URL’si notlara kaydedilmiş **Doğrulanmamış** durumunda ekler; bu kayıtları kendiniz inceleyip **Doğrulandı** olarak işaretlemeden alıntılayamaz veya kaynakçaya ekleyemezsiniz.

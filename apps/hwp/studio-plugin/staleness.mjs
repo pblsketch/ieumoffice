@@ -10,6 +10,13 @@
 import { SUBMISSION_STRIP_PREFIXES, stripMarks } from './doc-marks.mjs'
 import { checkTocStaleness, detectTocManualEdits, listTocRanges, refreshTocBlock } from './toc.mjs'
 import { checkIndexStaleness, detectIndexManualEdits, refreshIndexBlock } from './index-marks.mjs'
+import {
+  checkBibliographyStaleness,
+  detectBibliographyManualEdits,
+  getDocumentCitationStyle,
+  refreshBibliographyBlock,
+  renumberIeeeCitations,
+} from './citations.mjs'
 
 const MAX_CONVERGENCE_PASSES = 3
 
@@ -258,6 +265,126 @@ export const indexStalenessChecker = Object.freeze({
   },
 })
 
+/** Built-in staleness checker for document citations (IEEE numbering) and bibliography block. */
+export const bibliographyStalenessChecker = Object.freeze({
+  id: 'bibliography',
+  check(doc, options = {}) {
+    const res = checkBibliographyStaleness(doc, options)
+    if (!res.stale) {
+      return { stale: false, items: [], manualEdits: [] }
+    }
+    const manual = detectBibliographyManualEdits(doc)
+    const manualEdits = manual.hasManualEdits
+      ? [
+          {
+            checkerId: 'bibliography',
+            id: 'bibliography',
+            kind: 'bibliography',
+            label: '참고문헌',
+            modifiedLines: manual.modifiedLines,
+            range: manual.range,
+          },
+        ]
+      : []
+    return {
+      stale: true,
+      items: [
+        {
+          id: 'bibliography',
+          kind: 'bibliography',
+          reason: res.reason ?? 'entries_changed',
+          label: '참고문헌',
+          hasManualEdits: manual.hasManualEdits,
+          ...(manual.hasManualEdits ? { modifiedLines: manual.modifiedLines } : {}),
+        },
+      ],
+      manualEdits,
+    }
+  },
+  refresh(doc, options = {}) {
+    const status = checkBibliographyStaleness(doc, options)
+    if (options?.force !== true && !status.stale) {
+      return { ok: true, refreshed: 0 }
+    }
+
+    const entries = Array.isArray(options?.bibEntries)
+      ? options.bibEntries
+      : Array.isArray(options?.entries)
+        ? options.entries
+        : []
+
+    // Check manual edits BEFORE renumbering IEEE citations so atomic rollback stays clean.
+    if (status.hasBibliography && options?.allowOverwriteManual !== true) {
+      const manual = detectBibliographyManualEdits(doc)
+      if (manual.hasManualEdits) {
+        return {
+          ok: false,
+          refreshed: 0,
+          skippedManual: [
+            {
+              checkerId: 'bibliography',
+              id: 'bibliography',
+              kind: 'bibliography',
+              label: '참고문헌',
+              modifiedLines: manual.modifiedLines,
+              range: manual.range,
+            },
+          ],
+        }
+      }
+    }
+
+    let refreshed = 0
+    if (getDocumentCitationStyle(doc) === 'ieee') {
+      const renum = renumberIeeeCitations(doc, entries.length > 0 ? entries : null)
+      if (!renum.ok) {
+        return {
+          ok: false,
+          refreshed: 0,
+          failed: renum.error ?? renum.reason ?? 'renumber_failed',
+        }
+      }
+      if (renum.updated > 0) refreshed += 1
+    }
+
+    if (status.hasBibliography) {
+      const res = refreshBibliographyBlock(doc, entries, {
+        allowOverwriteManual: options?.allowOverwriteManual === true,
+      })
+      if (res.ok) {
+        refreshed += 1
+        return { ok: true, refreshed }
+      }
+      if (res.reason === 'manual_edits') {
+        return {
+          ok: false,
+          refreshed: 0,
+          skippedManual: [
+            {
+              checkerId: 'bibliography',
+              id: 'bibliography',
+              kind: 'bibliography',
+              label: '참고문헌',
+              modifiedLines: res.modifiedLines ?? [],
+              range: res.range,
+            },
+          ],
+        }
+      }
+      if (res.reason === 'not_found') {
+        return { ok: true, refreshed }
+      }
+      return {
+        ok: false,
+        refreshed: 0,
+        failed: res.error ?? res.reason ?? 'refresh_failed',
+      }
+    }
+
+    return { ok: true, refreshed }
+  },
+})
+
 /**
  * Create an extensible staleness checker registry.
  * Checkers run in registration order. `check()` is strictly read-only;
@@ -442,15 +569,16 @@ export function createStalenessRegistry() {
   }
 }
 
-/** Create a new staleness registry pre-populated with the built-in TOC and index checkers. */
+/** Create a new staleness registry pre-populated with the built-in TOC, index, and bibliography checkers. */
 export function createDefaultStalenessRegistry() {
   const registry = createStalenessRegistry()
   registry.register(tocStalenessChecker)
   registry.register(indexStalenessChecker)
+  registry.register(bibliographyStalenessChecker)
   return registry
 }
 
-/** Shared default staleness registry pre-registered with `toc` and `index`. */
+/** Shared default staleness registry pre-registered with `toc`, `index`, and `bibliography`. */
 export const defaultStalenessRegistry = createDefaultStalenessRegistry()
 
 /**

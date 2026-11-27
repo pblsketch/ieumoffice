@@ -30,6 +30,8 @@ describe("a run's changes on the shared card", () => {
       { kind: 'move', from: 'section 1, paragraph 2', to: 'after paragraph 4', count: 3, place },
       { kind: 'toc', from: '차례', to: '차례 (4)', count: 1, place },
       { kind: 'index', from: '찾아보기', to: '알고리즘', count: 2, place },
+      { kind: 'citation', from: '인용', to: '(김철수, 2024)', count: 1, place },
+      { kind: 'bibliography', from: '참고문헌', to: '참고문헌 (3)', count: 1, place },
     ]
     expect(items.map(hwpChangeLine)).toEqual([
       { kind: 'insert', to: '새 문단', showable: true },
@@ -52,8 +54,10 @@ describe("a run's changes on the shared card", () => {
       },
       { kind: 'named', from: '차례', to: '차례 (4)', count: 1, showable: true },
       { kind: 'named', from: '찾아보기', to: '알고리즘', count: 2, showable: true },
+      { kind: 'named', from: '인용', to: '(김철수, 2024)', count: 1, showable: true },
+      { kind: 'named', from: '참고문헌', to: '참고문헌 (3)', count: 1, showable: true },
     ])
-    expect(hwpChangeCount(items)).toBe(21)
+    expect(hwpChangeCount(items)).toBe(23)
   })
 
   it('names what an undo left: all taken back, part of it, or nothing', () => {

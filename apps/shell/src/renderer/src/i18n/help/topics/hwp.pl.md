@@ -8,9 +8,9 @@ GenOffice otwiera i edytuje dokumenty Hangul `.hwp` oraz `.hwpx` na karcie, ofer
 - Zapisuje z powrotem w formacie otwartego pliku (`.hwp` pozostaje `.hwp`, `.hwpx` pozostaje `.hwpx`), tworzy kopię zapasową `.bak` przed pierwszym nadpisaniem, sprawdza ponowny odczyt HWP oraz utrzymuje autozapis i kopie odzyskiwania po awarii.
 - Drukowanie (Ctrl+P) obsługuje podgląd na żywo, eksport do PDF oraz wielostronicowe opcje układu wydruku.
 
-## Lewy panel roboczy: Konspekt i Znajdź
+## Lewy panel roboczy: Konspekt, Znajdź i Bibliografia
 
-- Otwórz lewy panel roboczy przyciskiem na górnym pasku, przez **Widok > Panel roboczy** (Konspekt / Znajdź) lub naciśnij **Ctrl+F**, aby przejść od razu do karty Znajdź. Tradycyjne wyszukiwanie (**Ctrl+Q,F**) oraz Znajdź i zamień (**Ctrl+H**) pozostają dostępne.
+- Otwórz lewy panel roboczy przyciskiem na górnym pasku, przez **Widok > Panel roboczy** (Konspekt / Znajdź / Bibliografia) lub naciśnij **Ctrl+F**, aby przejść od razu do karty Znajdź. Tradycyjne wyszukiwanie (**Ctrl+Q,F**) oraz Znajdź i zamień (**Ctrl+H**) pozostają dostępne.
 - **Karta Konspekt**: wyświetla natywne nagłówki konspektu Hangul oraz nagłówki mapowane według stylów (domyślnie `제목 N` / `Heading N`, z możliwością dostosowania dla dokumentu lub całej aplikacji w panelu ustawień konspektu). Filtruj według poziomu (`1`, `2`, `3`, ... Wszystkie), zwijaj gałęzie, klikaj, aby przeskoczyć, podnoś lub obniżaj poziom nagłówków (domyślnie wraz z podnagłówkami lub z przytrzymanym **Shift** dla pojedynczego nagłówka) oraz przeciągaj nagłówki, aby zmienić kolejność całych sekcji w jednym kroku cofania.
 - **Karta Znajdź**: przeszukuje treść główną, tabele (w tym zagnieżdżone), pola tekstowe, przypisy dolne i końcowe (z wyłączeniem nagłówków i stopek) z filtrami wielkości liter, całych słów, wyrażeń regularnych, stylu akapitu i formatowania znaków. Kliknij wynik, aby przejść do niego i zaznaczyć, albo zamień jedno, zaznaczone lub wszystkie wystąpienia w jednym kroku cofania (z pominięciem obiektów w tekście i znaczników cytowań oraz podaniem ich liczby).
 - Panel roboczy zapamiętuje stan otwarcia, aktywną kartę i szerokość, zwija się do paska ikon w wąskich oknach i ukrywa się w trybie prezentacji oraz podglądzie wydruku. Wszystkie funkcje panelu działają bez AI.
@@ -38,3 +38,10 @@ GenOffice otwiera i edytuje dokumenty Hangul `.hwp` oraz `.hwpx` na karcie, ofer
 
 - Podczas ręcznego zapisywania, drukowania, eksportu do PDF lub zapisywania kopii do złożenia edytor sprawdza, czy spisy treści lub indeks nie są nieaktualne, i proponuje zaktualizowanie wszystkiego w jednym kroku cofania. Kontrola nigdy nie uruchamia się podczas autozapisu i nie blokuje zapisywania.
 - Użyj **Plik > Zapisz jako kopię do złożenia**, aby zapisać osobną, czystą kopię pozbawioną wewnętrznych znaczników edycji (znaczników indeksu, granic bloku indeksu i zapisanych ustawień) przy zachowaniu spisów treści, kotwic nagłówków i łączy. Oryginalny plik roboczy pozostaje nienaruszony, dzięki czemu możesz go dalej aktualizować.
+
+## Bibliografia i cytowania
+
+- Otwórz kartę **Bibliografia** w lewym panelu roboczym (lub **Narzędzia > Bibliografia**), aby zarządzać jedną lokalną biblioteką źródeł na komputerze z wyszukiwaniem, tagami, dodawaniem/edycją/usuwaniem, importem i eksportem (`BibTeX`, `RIS`, `CSL JSON`) oraz wczytywaniem wierszy z istniejącej listy bibliografii w dokumencie po podglądzie i potwierdzeniu.
+- Obsługuje cztery style cytowania (**APA 7**, **Chicago**, **MLA 9** i **IEEE**; publikacje koreańskie stosują koreański format akademicki we wszystkich czterech stylach). Wstawiaj cytowania w nawiasach, narracyjne lub wielokrotne z numerami stron oraz twórz i odświeżaj bibliografię z wysunięciem; zmiana stylu aktualizuje oznaczone cytowania i bibliografię w jednym kroku cofania, pomijając cytowania zmodyfikowane ręcznie.
+- Wbudowana 6-punktowa kontrola (brak w bibliografii, niecytowane pozycje, kolejność sortowania, brakujące przyrostki a/b, ręczne poprawki cytowań oraz pozycje niezweryfikowane) pozwala kliknięciem przejść wprost do każdego miejsca, a przed ręcznym zapisem, drukiem lub eksportem wyświetla przypomnienie o nieaktualnej bibliografii lub numeracji IEEE.
+- Opcjonalne wyszukiwanie źródeł przez AI (przy włączonych narzędziach internetowych) zawsze dodaje propozycje jako **Niezweryfikowane** z adresem URL źródła w notatkach; nie można ich cytować ani umieszczać w bibliografii, dopóki sam ich nie sprawdzisz i nie oznaczysz jako **Zweryfikowane**.

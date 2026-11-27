@@ -101,8 +101,8 @@ function memoryStorage(seed: Record<string, string> = {}) {
 }
 
 describe('workpane state, tab registry, persistence, and auto-collapse', () => {
-  it('registers Outline and Find tabs by default', () => {
-    expect(DEFAULT_WORKPANE_TABS.map((tab) => tab.id)).toEqual(['outline', 'find'])
+  it('registers Outline, Find, and Bibliography tabs by default', () => {
+    expect(DEFAULT_WORKPANE_TABS.map((tab) => tab.id)).toEqual(['outline', 'find', 'bibliography'])
     expect(DEFAULT_WORKPANE_TAB).toBe('outline')
   })
 
@@ -498,6 +498,9 @@ describe('workpane i18n shard (22 languages)', () => {
       expect(workpaneStrings[lang].workpaneTabFind, lang).not.toBe(
         workpaneStrings.en.workpaneTabFind,
       )
+      expect(workpaneStrings[lang].workpaneTabBibliography, lang).not.toBe(
+        workpaneStrings.en.workpaneTabBibliography,
+      )
       expect(workpaneStrings[lang].workpaneOutlineEmpty, lang).not.toBe(
         workpaneStrings.en.workpaneOutlineEmpty,
       )
@@ -553,7 +556,7 @@ describe('WorkpaneSide and WorkpaneToggle components', () => {
     const onClose = vi.fn()
     const customTabs: readonly WorkpaneTabDef[] = [
       ...DEFAULT_WORKPANE_TABS,
-      { id: 'bibliography', label: 'Bibliography' },
+      { id: 'bookmarks', label: 'Bookmarks' },
     ]
     const seenContexts: WorkpaneSlotContext[] = []
     root = createRoot(container)
@@ -603,7 +606,7 @@ describe('WorkpaneSide and WorkpaneToggle components', () => {
     expect(side.dataset.mode).toBe('expanded')
     expect(side.style.width).toBe(`${WORKPANE_WIDTH_DEFAULT}px`)
     expect(side.querySelector('.workpane-side-resizer')).not.toBeNull()
-    expect(side.querySelectorAll('[role="tab"]')).toHaveLength(3)
+    expect(side.querySelectorAll('[role="tab"]')).toHaveLength(4)
     expect(side.querySelector('[data-workpane-tab="find"]')?.getAttribute('aria-selected')).toBe(
       'true',
     )
@@ -611,9 +614,9 @@ describe('WorkpaneSide and WorkpaneToggle components', () => {
     expect(seenContexts[0]?.visible).toBe(true)
 
     await act(async () => {
-      side.querySelector<HTMLButtonElement>('[data-workpane-tab="bibliography"]')?.click()
+      side.querySelector<HTMLButtonElement>('[data-workpane-tab="bookmarks"]')?.click()
     })
-    expect(onSelectTab).toHaveBeenCalledWith('bibliography')
+    expect(onSelectTab).toHaveBeenCalledWith('bookmarks')
 
     await act(async () => {
       side.querySelector<HTMLButtonElement>('.workpane-close-btn')?.click()

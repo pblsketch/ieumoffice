@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { isOutboundCall, isOutboundToolName } from '../src/outbound'
 import {
   ADDRESS_DECLINED,
   INTERNET_TOOLS_OFF,
@@ -225,5 +226,37 @@ describe('guardOutbound', () => {
     expect(cached.isError).toBeFalsy()
     expect(remote).toMatchObject({ isError: true, output: INTERNET_TOOLS_OFF })
     expect(executed).toEqual(['attachment://logo.png', 'file:///tmp/genoffice-ai-images/a.png'])
+  })
+
+  it('treats search_references as an outbound tool and drops/blocks it when internet tools are off', async () => {
+    expect(isOutboundToolName('search_references')).toBe(true)
+    expect(isOutboundCall({ id: '1', name: 'search_references', input: { query: 'test' } })).toBe(
+      true,
+    )
+
+    const bridge: OutboundBridgeLike = {
+      internetToolsEnabled: vi.fn(async () => false),
+      confirmAddresses: vi.fn(async () => false),
+    }
+    const executed: string[] = []
+    const editor: AgentSkill = {
+      id: 'hwp',
+      systemPrompt: '',
+      tools: ['search_references', 'list_references'].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: 'object' },
+      })),
+      executeTool: (c) => {
+        executed.push(c.name)
+        return { output: 'ok', summary: c.name }
+      },
+    }
+    const skill = guardOutbound(editor, bridge, () => [{ role: 'user', text: 'hi' }])
+    await flush()
+    expect(skill.tools.map((t) => t.name)).toEqual(['list_references'])
+    const blocked = await skill.executeTool(call('search_references', { query: 'test' }))
+    expect(blocked).toMatchObject({ isError: true, output: INTERNET_TOOLS_OFF })
+    expect(executed).toEqual([])
   })
 })
