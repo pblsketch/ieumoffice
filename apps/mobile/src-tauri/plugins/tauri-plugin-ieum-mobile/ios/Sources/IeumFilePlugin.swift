@@ -3,6 +3,15 @@ import Tauri
 import UIKit
 import UniformTypeIdentifiers
 
+struct PickOpenArgs: Decodable {
+    let exts: [String]
+}
+
+struct CreateSaveArgs: Decodable {
+    let suggestedName: String
+    let mime: String
+}
+
 struct ReadUriArgs: Decodable {
     let uri: String
 }
@@ -63,8 +72,8 @@ private final class ScopedLocation {
     }
 }
 
-/// Retains the folder picker's delegate until the user picks or cancels.
-private final class FolderPickerDelegate: NSObject, UIDocumentPickerDelegate {
+/// Retains a document or folder picker's delegate until the user picks or cancels.
+private final class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
     private let done: (URL?) -> Void
 
     init(done: @escaping (URL?) -> Void) {
@@ -91,7 +100,7 @@ public final class IeumFilePlugin: Plugin {
 
     private var pendingOpenUrls: [[String: Any]] = []
     private let lock = NSLock()
-    private var folderPickerDelegate: FolderPickerDelegate?
+    private var activePickerDelegate: DocumentPickerDelegate?
 
     public func enqueueIncomingUrl(_ url: URL, openInPlace: Bool) {
         let accessed = url.startAccessingSecurityScopedResource()
@@ -247,6 +256,116 @@ public final class IeumFilePlugin: Plugin {
         presentShareSheet(items: [file], invoke: invoke)
     }
 
+    @objc public func pickOpenFile(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(PickOpenArgs.self)
+        var types: [UTType] = []
+        var fallbackAll = false
+        for raw in args.exts {
+            let ext = raw.trimmingCharacters(in: CharacterSet(charactersIn: ". \t")).lowercased()
+            if ext.isEmpty { continue }
+            if let ut = UTType(filenameExtension: ext) {
+                if !types.contains(ut) { types.append(ut) }
+            } else {
+                fallbackAll = true
+            }
+        }
+        let contentTypes: [UTType] = (types.isEmpty || fallbackAll) ? [.item] : types
+
+        DispatchQueue.main.async {
+            guard let presenter = self.manager.viewController else {
+                invoke.reject("INTERNAL_ERROR: missing presenter")
+                return
+            }
+            let picker = UIDocumentPickerViewController(
+                forOpeningContentTypes: contentTypes,
+                asCopy: false
+            )
+            picker.allowsMultipleSelection = false
+            let delegate = DocumentPickerDelegate { [weak self] url in
+                self?.activePickerDelegate = nil
+                guard let url else {
+                    invoke.reject("USER_CANCELLED: user cancelled document picker")
+                    return
+                }
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer {
+                    if accessed { url.stopAccessingSecurityScopedResource() }
+                }
+                let bookmark = try? url.bookmarkData(
+                    options: [],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+                let values = try? url.resourceValues(forKeys: [.isWritableKey])
+                let writable = (values?.isWritable ?? true) && bookmark != nil
+                invoke.resolve([
+                    "uri": bookmark?.base64EncodedString() ?? url.absoluteString,
+                    "name": url.lastPathComponent,
+                    "writable": writable,
+                    "ephemeral": bookmark == nil
+                ])
+            }
+            self.activePickerDelegate = delegate
+            picker.delegate = delegate
+            presenter.present(picker, animated: true)
+        }
+    }
+
+    @objc public func createSaveFile(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(CreateSaveArgs.self)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ieum-save-export", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let placeholder = tempDir.appendingPathComponent(safeFileName(args.suggestedName))
+        do {
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            try Data().write(to: placeholder, options: .atomic)
+        } catch {
+            try? FileManager.default.removeItem(at: tempDir)
+            invoke.reject("IO_ERROR: \(error.localizedDescription)")
+            return
+        }
+
+        DispatchQueue.main.async {
+            guard let presenter = self.manager.viewController else {
+                try? FileManager.default.removeItem(at: tempDir)
+                invoke.reject("INTERNAL_ERROR: missing presenter")
+                return
+            }
+            let picker = UIDocumentPickerViewController(forExporting: [placeholder], asCopy: true)
+            let delegate = DocumentPickerDelegate { [weak self] url in
+                self?.activePickerDelegate = nil
+                try? FileManager.default.removeItem(at: tempDir)
+                guard let url else {
+                    invoke.reject("USER_CANCELLED: user cancelled save picker")
+                    return
+                }
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer {
+                    if accessed { url.stopAccessingSecurityScopedResource() }
+                }
+                do {
+                    let bookmark = try url.bookmarkData(
+                        options: [],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                    invoke.resolve([
+                        "uri": bookmark.base64EncodedString(),
+                        "name": url.lastPathComponent,
+                        "writable": true,
+                        "ephemeral": false
+                    ])
+                } catch {
+                    invoke.reject("PERMISSION_DENIED: \(error.localizedDescription)")
+                }
+            }
+            self.activePickerDelegate = delegate
+            picker.delegate = delegate
+            presenter.present(picker, animated: true)
+        }
+    }
+
     @objc public func pickFolder(_ invoke: Invoke) {
         DispatchQueue.main.async {
             guard let presenter = self.manager.viewController else {
@@ -255,8 +374,8 @@ public final class IeumFilePlugin: Plugin {
             }
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
             picker.allowsMultipleSelection = false
-            let delegate = FolderPickerDelegate { [weak self] url in
-                self?.folderPickerDelegate = nil
+            let delegate = DocumentPickerDelegate { [weak self] url in
+                self?.activePickerDelegate = nil
                 guard let url else {
                     invoke.reject("USER_CANCELLED: user cancelled folder picker")
                     return
@@ -279,7 +398,7 @@ public final class IeumFilePlugin: Plugin {
                     invoke.reject("PERMISSION_DENIED: \(error.localizedDescription)")
                 }
             }
-            self.folderPickerDelegate = delegate
+            self.activePickerDelegate = delegate
             picker.delegate = delegate
             presenter.present(picker, animated: true)
         }
