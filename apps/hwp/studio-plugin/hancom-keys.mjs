@@ -20,7 +20,8 @@ import { openDocumentInfo } from './document-info.mjs'
 import { convertToHanja } from './hanja.mjs'
 import { autoFillBlock } from './table-auto-fill.mjs'
 import { isTableCellPosition } from './textbox-edit.mjs'
-import { WORKPANE_COMMAND_EVENT } from './workpane-menu.mjs'
+import { WORKPANE_COMMAND_EVENT, MACRO_COMMAND_EVENT } from './workpane-menu.mjs'
+import { isMacroRecordingActive, slotFromAltKey } from './macro-recorder.mjs'
 import {
   HWPUNIT_PER_PX,
   cellExtents,
@@ -35,6 +36,13 @@ import {
 
 export { installHanjaKey } from './hanja.mjs'
 export {
+  isMacroRecordingActive,
+  recordStudioCommand,
+  recordStudioKey,
+  recordStudioMouseClick,
+  recordStudioText,
+} from './macro-recorder.mjs'
+export {
   axisLockedPoint,
   cancelObjectDrag,
   copyObjectDrag,
@@ -45,6 +53,50 @@ export {
   dragKeepsRatio,
   ratioResizedBox,
 } from './object-drag.mjs'
+
+/**
+ * Standard macro shortcuts wired ahead of the editor's default Alt handling:
+ * - Alt+Shift+H: toggle macro recording
+ * - Alt+Shift+X: stop macro recording (only while recording is active)
+ * - Alt+1..Alt+9, Alt+0, Alt+-: run macro slots 1..11
+ */
+export function macroShortcutKey(e) {
+  if (!e?.altKey || e.ctrlKey || e.metaKey) return false
+  if (e.shiftKey) {
+    const code = typeof e.code === 'string' ? e.code : ''
+    const key = typeof e.key === 'string' ? e.key.toLowerCase() : ''
+    if (code === 'KeyH' || key === 'h' || e.key === 'ㅗ') {
+      e.preventDefault?.()
+      globalThis.dispatchEvent?.(
+        new CustomEvent(MACRO_COMMAND_EVENT, {
+          detail: { action: 'toggle-record' },
+        }),
+      )
+      return true
+    }
+    if ((code === 'KeyX' || key === 'x' || e.key === 'ㅌ') && isMacroRecordingActive()) {
+      e.preventDefault?.()
+      globalThis.dispatchEvent?.(
+        new CustomEvent(MACRO_COMMAND_EVENT, {
+          detail: { action: 'stop-record' },
+        }),
+      )
+      return true
+    }
+    return false
+  }
+  const slot = slotFromAltKey(e)
+  if (slot !== null) {
+    e.preventDefault?.()
+    globalThis.dispatchEvent?.(
+      new CustomEvent(MACRO_COMMAND_EVENT, {
+        detail: { action: 'run-slot', slot },
+      }),
+    )
+    return true
+  }
+  return false
+}
 
 export const HANCOM_KEYS_MODULE = '@ieum/hancom-keys'
 

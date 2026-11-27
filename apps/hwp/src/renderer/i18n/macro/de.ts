@@ -1,0 +1,113 @@
+import type { zh } from './zh'
+
+export const de = {
+  menuRecordToggle: 'Makro › Aufzeichnung starten/stoppen',
+  menuManage: 'Makro › Makros verwalten…',
+  recordingBadge: 'Makro wird aufgezeichnet',
+  recordingStopBtn: 'Stoppen',
+  noticeRecordingStarted:
+    'Makroaufzeichnung gestartet. Drücken Sie Alt+Umschalt+H oder klicken Sie auf Stoppen, wenn Sie fertig sind.',
+  noticeUnsupportedCommand: 'Diese Aktion kann nicht in einem Makro aufgezeichnet werden: {label}',
+  noticeMouseIgnored: 'Mausaktionen werden nicht in einem Makro aufgezeichnet.',
+  noticeSlotEmpty: '{shortcut} ist kein Makro zugewiesen.',
+  noticeMacroRunSuccess: 'Makro „{name}“ ausgeführt.',
+  noticeMacroMessages: '{name}: {messages}',
+  noticeMacroRunError: 'Makrofehler (Zeile {line}, Spalte {column}): {error}',
+  noticeMacroRunErrorNoLoc: 'Makrofehler: {error}',
+  noticeMacroUnsupportedAction:
+    'Nicht unterstützte Makroaktion „{action}“ (Zeile {line}, Spalte {column}). Alle Änderungen wurden rückgängig gemacht.',
+  noticeMacroRollbackObjectLoss:
+    'Das Makro wurde gestoppt und zurückgesetzt, um den Verlust von Dokumentobjekten oder Notizen zu verhindern.',
+  managerTitle: 'Makros verwalten',
+  newMacroBtn: 'Neues Makro',
+  importBtn: 'Importieren (.ieummacro)',
+  recordStartBtn: 'Aufzeichnung starten',
+  recordStopBtn: 'Aufzeichnung stoppen',
+  emptyMacros:
+    'Noch keine Makros gespeichert. Erstellen Sie ein Makro, zeichnen Sie Aktionen auf oder importieren Sie eine .ieummacro-Datei.',
+  colName: 'Name',
+  colOrigin: 'Herkunft',
+  colShortcut: 'Tastenkürzel',
+  colActions: 'Aktionen',
+  originRecorded: 'Aufgezeichnet',
+  originManual: 'Manuell',
+  originAi: 'KI-Entwurf',
+  originImported: 'Importiert',
+  slotNone: 'Keines',
+  runBtn: 'Ausführen',
+  editBtn: 'Bearbeiten',
+  exportBtn: 'Exportieren',
+  deleteBtn: 'Löschen',
+  closeBtn: 'Schließen',
+  cancelBtn: 'Abbrechen',
+  saveBtn: 'Speichern',
+  noticeMacroSaved: 'Makro „{name}“ gespeichert.',
+  noticeMacroDeleted: 'Makro „{name}“ gelöscht.',
+  noticeMacroExported: 'Makro „{name}“ exportiert.',
+  noticeMacroImported: 'Makro „{name}“ importiert.',
+  noticeSlotAssigned: '{shortcut} wurde „{name}“ zugewiesen.',
+  noticeSlotCleared: 'Tastenkürzel für „{name}“ entfernt.',
+  errorActionFailed: 'Aktion fehlgeschlagen: {error}',
+  storeErrorTitle: 'Makrospeicher konnte nicht gelesen werden',
+  storeErrorCorruptBody:
+    'Die Makrospeicherdatei ist beschädigt. Die Bearbeitung wurde deaktiviert, um vorhandene Makros zu schützen.',
+  storeErrorTooLargeBody:
+    'Die Makrospeicherdatei überschreitet das Größenlimit. Die Bearbeitung wurde deaktiviert, um vorhandene Makros zu schützen.',
+  storeErrorReadBody:
+    'Die Makrospeicherdatei konnte nicht gelesen werden. Die Bearbeitung wurde deaktiviert, um vorhandene Makros zu schützen.',
+  storeErrorBackupNote: 'Die Originaldatei wurde gesichert unter:',
+  storeErrorDisabledHint:
+    'Beheben Sie das Dateiproblem und klicken Sie auf Erneut versuchen, um Makros weiter zu verwalten.',
+  storeRetryBtn: 'Erneut versuchen',
+  storeNearLimitTitle: 'Makrospeicher nähert sich dem Limit',
+  storeNearLimitBody:
+    'Der Makrospeicher nutzt {size} von {max}. Entfernen Sie ungenutzte Makros oder exportieren Sie eine Sicherung.',
+  errorStoreWriteTooLarge:
+    'Diese Änderung würde den Makrospeicher auf {actual} vergrößern (Limit: {max}). Nichts wurde überschrieben.',
+  errorStoreWriteTooLargeGeneric:
+    'Diese Änderung überschreitet das Größenlimit des Makrospeichers. Nichts wurde überschrieben.',
+  importPreviewTitle: 'Importiertes Makro prüfen',
+  importPreviewWarning:
+    'Prüfen Sie das gesamte Skript vor dem Speichern. Importierte Makros können erst nach dem Speichern ausgeführt werden.',
+  importPreviewFile: 'Datei: {fileName}',
+  importPreviewName: 'Name',
+  importPreviewDesc: 'Beschreibung',
+  importPreviewScript: 'Skript (schreibgeschützt)',
+  importPreviewSyntaxOk: 'Syntaxprüfung bestanden.',
+  importPreviewSyntaxError:
+    'Syntaxfehler in Zeile {line}, Spalte {column}: {error} (Sie können trotzdem speichern und im Editor korrigieren.)',
+  importConfirmBtn: 'Importiertes Makro speichern',
+  importErrorInvalidFormat: 'Diese Datei ist keine gültige .ieummacro-Makrodatei.',
+  importErrorTooLarge: 'Die ausgewählte Makrodatei überschreitet die zulässige Maximalgröße.',
+  editorNewTitle: 'Neues Makro',
+  editorEditTitle: 'Makro bearbeiten',
+  editorRecordedTitle: 'Aufgezeichnetes Makro speichern',
+  fieldName: 'Name',
+  fieldNamePlaceholder: 'Makronamen eingeben…',
+  fieldDescription: 'Beschreibung',
+  fieldDescriptionPlaceholder: 'Optionale Notiz zur Funktion dieses Makros…',
+  fieldShortcut: 'Tastenkürzel-Platz',
+  fieldScript: 'Makroskript',
+  fieldScriptPlaceholder: '// Makroskript mit insertText(), replaceAll() usw. schreiben',
+  validationNameRequired: 'Bitte geben Sie einen Makronamen ein.',
+  validationScriptRequired: 'Bitte geben Sie ein Makroskript ein.',
+  syntaxOk: 'Syntax OK',
+  syntaxError: 'Syntaxfehler (Zeile {line}, Spalte {column}): {error}',
+  skippedActionsTitle:
+    '{count} Aktion(en) konnten nicht aufgezeichnet werden und wurden übersprungen:',
+  editorRunBtn: 'Ausführen',
+  editorSaveBtn: 'Speichern',
+  aiSectionTitle: 'Mit KI schreiben',
+  aiPromptPlaceholder:
+    'Beschreiben Sie, was das Makro tun soll (z. B. doppelte Leerzeichen durch ein einzelnes ersetzen)…',
+  aiWriteBtn: 'Mit KI erstellen',
+  aiWritingBtn: 'Wird erstellt…',
+  aiCancelBtn: 'Abbrechen',
+  aiReviewHint:
+    'Nur Ihre Beschreibung wird an die KI gesendet (kein Dokumentinhalt). Das erzeugte Skript wird zur Prüfung in den Editor eingefügt und nie automatisch gespeichert oder ausgeführt.',
+  aiEmptyPrompt: 'Beschreiben Sie zuerst, was das Makro tun soll.',
+  aiDraftReady:
+    'Skriptentwurf in den Editor eingefügt. Prüfen Sie ihn vor dem Speichern oder Ausführen.',
+  aiDraftFailed: 'Makroskript konnte nicht erzeugt werden: {error}',
+  aiNoOutput: 'Die KI hat kein Makroskript zurückgegeben.',
+} satisfies Record<keyof typeof zh, string>

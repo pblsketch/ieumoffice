@@ -2,6 +2,8 @@
 
 export declare const WORKPANE_COMMAND_EVENT: 'ieum:workpane-command'
 export declare const BIBLIOGRAPHY_COMMAND_EVENT: 'ieum:bib-command'
+export declare const MACRO_COMMAND_EVENT: 'ieum:macro-command'
+export declare const MACRO_RECORDING_EVENT: 'ieum:macro-recording-event'
 
 export interface WorkpaneMenuItem {
   readonly tab: 'outline' | 'find' | 'bibliography'
@@ -46,6 +48,38 @@ export interface BibliographyCommandDetail {
   action: BibliographyCommandAction
 }
 
+export type MacroCommandAction = 'toggle-record' | 'stop-record' | 'open-manager' | 'run-slot'
+
+export interface MacroMenuItem {
+  readonly key: keyof MacroMenuLabels
+  readonly id: string
+  readonly action: 'toggle-record' | 'open-manager'
+  readonly shortcut?: string
+}
+
+export declare const MACRO_MENU_ITEMS: readonly MacroMenuItem[]
+
+export interface MacroMenuLabels {
+  recordToggle: string
+  manage: string
+}
+
+export interface MacroCommandDetail {
+  action: MacroCommandAction
+  slot?: number
+}
+
+export type MacroRecordingEventDetail =
+  | { state: 'started' }
+  | {
+      state: 'stopped'
+      script: string
+      stepCount: number
+      skipped: Array<{ commandId: string; label: string }>
+    }
+  | { kind: 'unsupported_command'; commandId: string; label: string }
+  | { kind: 'mouse_ignored' }
+
 export interface WorkpaneMenuHost {
   automation?: {
     registerCommand?: (def: {
@@ -68,4 +102,9 @@ export declare function installWorkpaneMenu(
 export declare function installBibliographyMenu(
   host: WorkpaneMenuHost,
   labels: BibliographyMenuLabels,
+): { ok: boolean }
+
+export declare function installMacroMenu(
+  host: WorkpaneMenuHost,
+  labels: MacroMenuLabels,
 ): { ok: boolean }

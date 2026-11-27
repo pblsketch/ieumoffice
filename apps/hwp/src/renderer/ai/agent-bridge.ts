@@ -139,6 +139,12 @@ const METHODS = [
   'caretPosition',
   'changeOutlineLevel',
   'moveOutlineSection',
+  'runMacro',
+  'validateMacro',
+  'startMacroRecording',
+  'stopMacroRecording',
+  'getMacroRecordingState',
+  'installMacroMenu',
 ] as const satisfies readonly (keyof AgentPluginSurface)[]
 
 export function createAgentBridge(getEditor: () => AgentBridgeEditor | null): AgentBridge {

@@ -728,6 +728,45 @@ metadata:
 - `oldKeys`는 인용 키를 바꿀 때 이전 키를 남겨 기존 문서의 인용 표시와 연결을 유지한다.
 - 가져오기·내보내기 형식은 `BibTeX`(`.bib`), `RIS`(`.ris`), `CSL JSON`(`.json`) 셋이다. 모든 쓰기는 임시 파일(`wx`, `flush`) 뒤 원자적 이름 바꾸기를 따른다.
 
+## 한글 매크로 저장소와 파일 형식 (`hwp-macros.json`, `.ieummacro`, 결정 0176)
+
+데이터 폴더(`<userData>/hwp-macros.json`)에 앱 공용 한글 매크로 목록을 둔다. 한글 편집기 메인 프로세스만 읽고 쓰며, **터미널 명령어(`ieumoffice`)와 MCP에는 매크로 실행·관리 연산을 열지 않는다.**
+
+```json
+{
+  "version": 1,
+  "macros": [
+    {
+      "id": "macro_...",
+      "name": "제목 서식 적용",
+      "description": "선택 문단을 굵은 가운데 정렬로 바꿈",
+      "script": "setParaFormat({ align: \"center\" });\nsetCharFormat({ bold: true });",
+      "slot": 1,
+      "origin": "recorded",
+      "createdAt": "2026-11-27T09:00:00.000Z",
+      "updatedAt": "2026-11-27T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+- `version`은 `1`이다. 파일 크기 상한은 2 MiB이며, 개별 스크립트 상한은 256 KiB다.
+- `slot`은 `1`–`11`(각각 `Alt+1`–`Alt+9`, `Alt+0`, `Alt+-`) 또는 `null`이며, 슬롯 하나에는 매크로 하나만 연결된다.
+- `origin`은 `'recorded' | 'manual' | 'ai' | 'imported'` 넷 중 하나다. `createdAt`과 `updatedAt`은 ISO 8601 시각 문자열이다.
+- 모든 쓰기는 임시 파일(`wx`, `flush`) 뒤 원자적 이름 바꾸기를 따른다. 저장 파일이 손상되었거나(잘못된 JSON·스키마 불일치) 2 MiB 상한을 넘거나 읽을 수 없으면 원본을 덮어쓰지 않고 같은 폴더에 `hwp-macros.json.corrupt-<시각>` 백업을 남긴 뒤 모든 쓰기를 거절한다.
+- **평문 `.ieummacro` 내보내기·가져오기 형식**: UTF-8 평문 텍스트(최대 256 KiB, NUL 바이트 금지)로, 머리말 뒤에 스크립트 본문을 JSON 이스케이프 없이 그대로 적는다. 가져오기 시 스크립트 전문과 구문 검사 결과를 보여 주고 사람이 확인한 뒤에만 저장한다.
+
+```text
+// @ieum-macro: 1
+// @name: 제목 서식 적용
+// @description: 선택 문단을 굵은 가운데 정렬로 바꿈
+// ---
+setParaFormat({ align: "center" });
+setCharFormat({ bold: true });
+```
+
+- `// @ieum-macro: 1`, `// @name: ...`, 구분선 `// ---`는 필수이고, `// @description: ...`은 선택이다. 머리말 값은 제어 문자와 줄바꿈을 제거해 위조를 막는다.
+
 ## 문서 호환
 
 - `.docx`·`.xlsx`·`.pptx`·PDF·마크다운·HTML 파일은 원본 프로그램과 같은 방식으로 읽고 쓴다. 한쪽에서 만든 문서를 다른 쪽에서 열 수 있다.

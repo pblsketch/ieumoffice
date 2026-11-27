@@ -30,7 +30,14 @@ import type {
   IndexMarkItem,
   RefreshIndexBlockOptions,
 } from './index-marks.mjs'
-import type { BibliographyMenuLabels, WorkpaneMenuLabels } from './workpane-menu.mjs'
+import type {
+  BibliographyMenuLabels,
+  MacroMenuLabels,
+  WorkpaneMenuLabels,
+} from './workpane-menu.mjs'
+import type { MacroValidateSyntaxResult } from './macro-interpreter.mjs'
+import type { MacroHostOptions, MacroHostResult } from './macro-host.mjs'
+import type { MacroRecorderStateSnapshot, MacroRecorderStopResult } from './macro-recorder.mjs'
 import type { TocIndexDialogLabels } from './toc-dialogs.mjs'
 import type { BibEntry, CitationStyle } from './citation-styles.mjs'
 import type {
@@ -2316,6 +2323,18 @@ export interface AgentPluginSurface {
     params: MoveOutlineSectionParams,
     changeOptions?: AgentChangeOptions & { foreign?: boolean },
   ): MoveOutlineSectionResult | AgentMemoRemovalRefusal
+  /** execute a macro script inside one atomic user transaction and sync the caret */
+  runMacro(source: string, options?: MacroHostOptions): MacroHostResult
+  /** validate macro script syntax without modifying the document */
+  validateMacro(source: string): MacroValidateSyntaxResult
+  /** start keystroke and editor command macro recording */
+  startMacroRecording(): { ok: true; recording: true }
+  /** stop macro recording and return the generated script and skipped commands */
+  stopMacroRecording(): { ok: true; recording: false } & MacroRecorderStopResult
+  /** read current macro recording state, recorded step count, and skipped commands */
+  getMacroRecordingState(): MacroRecorderStateSnapshot
+  /** register Tool menu items for macro recording and management */
+  installMacroMenu(labels: MacroMenuLabels): { ok: boolean }
 }
 
 /** Pages drawn for printing: SVG, and each page's size in CSS pixels. */

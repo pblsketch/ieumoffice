@@ -2586,6 +2586,230 @@ const PATCHES = {
       },
     ],
   },
+  // Macro recorder hooks: active only while a macro recording session is running;
+  // idle calls return immediately with zero document or UI side effects.
+  'studio-macro-record-command': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]dispatcher\.ts$/,
+    edits: [
+      {
+        find: "import type { EventBus } from '@/core/event-bus';",
+        replace: [
+          "import type { EventBus } from '@/core/event-bus';",
+          `import { recordStudioCommand } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      // 커맨드 실행 후 UI 상태 갱신 알림',
+          "      this.eventBus.emit('command-state-changed');",
+          '      return { ok: true };',
+        ].join('\n'),
+        replace: [
+          '      recordStudioCommand(commandId, params, def.label);',
+          '      // 커맨드 실행 후 UI 상태 갱신 알림',
+          "      this.eventBus.emit('command-state-changed');",
+          '      return { ok: true };',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-macro-record-text': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-text\.ts$/,
+    edits: [
+      {
+        find: "import type { NavigationKeyInput } from './navigation-keymap';",
+        replace: [
+          "import type { NavigationKeyInput } from './navigation-keymap';",
+          `import { recordStudioText } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '        this.executeOperation({',
+          "          kind: 'record',",
+          '          command: new InsertTextCommand(',
+          '            anchor, insertedText, undefined, bodyLogical ? this.getPendingCharShape?.() : undefined,',
+          '            covered, fragmentId === null ? [] : [fragmentId], bodyLogical,',
+          '          ),',
+          '        });',
+        ].join('\n'),
+        replace: [
+          '        this.executeOperation({',
+          "          kind: 'record',",
+          '          command: new InsertTextCommand(',
+          '            anchor, insertedText, undefined, bodyLogical ? this.getPendingCharShape?.() : undefined,',
+          '            covered, fragmentId === null ? [] : [fragmentId], bodyLogical,',
+          '          ),',
+          '        });',
+          '        recordStudioText(insertedText);',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  this.executeOperation({',
+          "    kind: 'command',",
+          '    command: new InsertTextCommand(insertPos, text, undefined, this.getPendingCharShape?.(), replaced),',
+          '  });',
+        ].join('\n'),
+        replace: [
+          '  this.executeOperation({',
+          "    kind: 'command',",
+          '    command: new InsertTextCommand(insertPos, text, undefined, this.getPendingCharShape?.(), replaced),',
+          '  });',
+          '  recordStudioText(text);',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-macro-record-key': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import { emitHeaderFooterModeChanged } from './header-footer-mode';",
+        replace: [
+          "import { emitHeaderFooterModeChanged } from './header-footer-mode';",
+          `import { macroShortcutKey, recordStudioKey } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: '  // ─── 1. 코드 단축키 2번째 키 처리 (Ctrl+K → ? / Ctrl+M → ?) ───',
+        replace: [
+          '  if (macroShortcutKey(e)) return;',
+          '  // ─── 1. 코드 단축키 2번째 키 처리 (Ctrl+K → ? / Ctrl+M → ?) ───',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    executeNavigationAction.call(this, action, e.shiftKey);',
+          '    return true;',
+        ].join('\n'),
+        replace: [
+          '    executeNavigationAction.call(this, action, e.shiftKey);',
+          '    recordStudioKey(e);',
+          '    return true;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "  if (e.key === 'Escape') {",
+          '    e.preventDefault();',
+          '    const inCell = this.cursor.isInCell();',
+        ].join('\n'),
+        replace: [
+          "  if (e.key === 'Escape') {",
+          '    e.preventDefault();',
+          '    recordStudioKey(e);',
+          '    const inCell = this.cursor.isInCell();',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      } else {',
+          '        this.handleDelete(pos, inCell);',
+          '      }',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          '      } else {',
+          '        this.handleDelete(pos, inCell);',
+          '      }',
+          '      recordStudioKey(e);',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "        this.executeOperation({ kind: 'command', command: new SplitParagraphCommand(this.cursor.getPosition()) });",
+          '      }',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          "        this.executeOperation({ kind: 'command', command: new SplitParagraphCommand(this.cursor.getPosition()) });",
+          '      }',
+          '      recordStudioKey(e);',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      if (moveH !== null) this.cursor.moveHorizontal(moveH);',
+          '      if (moveV !== null) this.cursor.moveVertical(moveV);',
+        ].join('\n'),
+        replace: [
+          '      if (moveH !== null) this.cursor.moveHorizontal(moveH);',
+          '      if (moveV !== null) this.cursor.moveVertical(moveV);',
+          '      recordStudioKey(e);',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      this.markCurrentFieldStartOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          '      this.markCurrentFieldStartOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      recordStudioKey(e);',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      this.markCurrentFieldEndOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          '      this.markCurrentFieldEndOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      recordStudioKey(e);',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: '      snapViewToDocumentEdge.call(this, -1);',
+        replace: ['      snapViewToDocumentEdge.call(this, -1);', '      recordStudioKey(e);'].join(
+          '\n',
+        ),
+      },
+      {
+        find: '      snapViewToDocumentEdge.call(this, 1);',
+        replace: ['      snapViewToDocumentEdge.call(this, 1);', '      recordStudioKey(e);'].join(
+          '\n',
+        ),
+      },
+    ],
+  },
+  'studio-macro-record-mouse': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-mouse\.ts$/,
+    edits: [
+      {
+        find: "import { hyperlinkAtPointer, hoverHyperlink, rememberHyperlinkClick, followHyperlinkClick } from './input-handler-hyperlink';",
+        replace: [
+          "import { hyperlinkAtPointer, hoverHyperlink, rememberHyperlinkClick, followHyperlinkClick } from './input-handler-hyperlink';",
+          `import { recordStudioMouseClick } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  if (localX >= this.container.clientWidth || localY >= this.container.clientHeight) {',
+          '    return;',
+          '  }',
+        ].join('\n'),
+        replace: [
+          '  if (localX >= this.container.clientWidth || localY >= this.container.clientHeight) {',
+          '    return;',
+          '  }',
+          '  if (e.button === 0) recordStudioMouseClick();',
+        ].join('\n'),
+      },
+    ],
+  },
 }
 
 /** The patches the studio build applies, in order; the SDK's own is applied by the renderer builds. */
@@ -2652,6 +2876,10 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-textbox-edit-cursor',
   'studio-ruler-para-kinds',
   'studio-ruler-para-marks',
+  'studio-macro-record-command',
+  'studio-macro-record-text',
+  'studio-macro-record-key',
+  'studio-macro-record-mouse',
 ])
 
 /** Whether a patch is written against this file. */

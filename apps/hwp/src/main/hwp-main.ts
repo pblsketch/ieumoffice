@@ -32,6 +32,8 @@ import { registerHwpImageIpc } from './ai-image'
 import { atomicWriteFile, copyFileReplacing } from './atomic-write'
 import { registerHwpBibliographyIpc } from './bibliography-ipc'
 import { readHwpDefaultFormat } from './default-format'
+import { registerHwpMacrosIpc } from './macros-ipc'
+import { validateMacroSyntax } from '../../studio-plugin/macro-interpreter.mjs'
 import {
   normalizeOutlineStyleMap,
   readHwpOutlineStyleMap,
@@ -653,19 +655,27 @@ function registerHwpIpc(): void {
   registerHwpImageIpc({
     filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) ?? null,
   })
+  const broadcastToHwpViews = (channel: string, payload: unknown): void => {
+    if (typeof webContents?.fromId !== 'function') return
+    for (const id of hwpViews) {
+      const wc = webContents.fromId(id)
+      if (wc && !wc.isDestroyed()) {
+        wc.send(channel, payload)
+      }
+    }
+  }
   registerHwpBibliographyIpc({
     app,
     hasView: (wcId) => hwpViews.has(wcId),
     getWindow: (sender) => BrowserWindow.fromWebContents(sender),
-    broadcast: (channel, payload) => {
-      if (typeof webContents?.fromId !== 'function') return
-      for (const id of hwpViews) {
-        const wc = webContents.fromId(id)
-        if (wc && !wc.isDestroyed()) {
-          wc.send(channel, payload)
-        }
-      }
-    },
+    broadcast: broadcastToHwpViews,
+  })
+  registerHwpMacrosIpc({
+    app,
+    hasView: (wcId) => hwpViews.has(wcId),
+    getWindow: (sender) => BrowserWindow.fromWebContents(sender),
+    broadcast: broadcastToHwpViews,
+    syntaxChecker: (script) => validateMacroSyntax(script),
   })
   installHwpRecovery(recoveryHost)
   registerHwpRecoveryIpc()

@@ -126,6 +126,24 @@ export const HWP_CHANNELS = {
   bibChanged: 'hwp:bib-changed',
   /** main -> renderer (BibKeyRenameInfo): a reference citation key was renamed */
   bibKeyRenamed: 'hwp:bib-key-renamed',
+  /** invoke -> MacrosReadStateResult: inspect the app-wide macro store state, including corruption/size status */
+  macrosReadState: 'hwp:macros-read-state',
+  /** invoke(input) -> MacroAddResult: add a macro to the app-wide macro store */
+  macrosAdd: 'hwp:macros-add',
+  /** invoke(id, patch) -> MacroUpdateResult: update an existing macro in the app-wide macro store */
+  macrosUpdate: 'hwp:macros-update',
+  /** invoke(id) -> MacroDeleteResult: delete a macro from the app-wide macro store */
+  macrosDelete: 'hwp:macros-delete',
+  /** invoke(id, slot) -> MacroAssignSlotResult: assign or clear shortcut slot 1..11 for a macro */
+  macrosAssignSlot: 'hwp:macros-assign-slot',
+  /** invoke -> MacroPickImportFileResult: pick and preview a plain-text .ieummacro file without saving */
+  macrosPickImportFile: 'hwp:macros-pick-import-file',
+  /** invoke(input) -> MacroCommitImportResult: commit a user-confirmed imported macro with origin 'imported' */
+  macrosCommitImport: 'hwp:macros-commit-import',
+  /** invoke(id) -> MacroExportFileResult: export a macro to a plain-text .ieummacro file via native save dialog */
+  macrosExportFile: 'hwp:macros-export-file',
+  /** main -> renderer (MacroRecord[]): the app-wide macro store changed */
+  macrosChanged: 'hwp:macros-changed',
   // channels below are served once by the shell for every editor
   getLanguage: 'app:get-language',
   languageChanged: 'app:language-changed',
@@ -400,6 +418,180 @@ export type BibExportFileResult =
         | 'write_failed'
         | 'file_exists'
         | BibLibraryFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
+
+export type MacroOrigin = 'recorded' | 'manual' | 'ai' | 'imported'
+
+export interface MacroRecord {
+  id: string
+  name: string
+  description?: string
+  script: string
+  slot: number | null
+  origin: MacroOrigin
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MacroCreateInput {
+  name: string
+  description?: string
+  script: string
+  slot?: number | null
+  origin?: MacroOrigin
+}
+
+export interface MacroUpdatePatch {
+  name?: string
+  description?: string | null
+  script?: string
+  slot?: number | null
+}
+
+export interface MacroImportCommitInput {
+  name: string
+  description?: string
+  script: string
+  slot?: number | null
+}
+
+export type MacroSyntaxCheckResult =
+  { ok: true } | { ok: false; error: string; line: number; column: number }
+
+export type MacroSyntaxChecker = (script: string) => MacroSyntaxCheckResult
+
+export interface MacroImportPreview {
+  name: string
+  description?: string
+  script: string
+  slot?: number | null
+  syntax?: MacroSyntaxCheckResult
+}
+
+export type MacroStoreFailureReason = 'library_corrupt' | 'library_too_large' | 'library_read_error'
+
+export type MacrosState =
+  | {
+      ok: true
+      exists: boolean
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: MacroStoreFailureReason
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes: number
+    }
+
+export type MacrosReadStateResult =
+  MacrosState | { ok: false; reason: 'unauthorized'; error: string }
+
+export type MacroAddResult =
+  | {
+      ok: true
+      macro: MacroRecord
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'too_large' | MacroStoreFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroUpdateResult =
+  | {
+      ok: true
+      macro: MacroRecord
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | MacroStoreFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroDeleteResult =
+  | {
+      ok: true
+      deletedId: string
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | MacroStoreFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroAssignSlotResult = MacroUpdateResult
+
+export type MacroPickImportFileResult =
+  | { ok: true; canceled: true }
+  | {
+      ok: true
+      canceled?: false
+      fileName: string
+      preview: MacroImportPreview
+    }
+  | {
+      ok: false
+      reason:
+        | 'not_found'
+        | 'unreadable'
+        | 'too_large'
+        | 'invalid_format'
+        | MacroStoreFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroCommitImportResult = MacroAddResult
+
+export type MacroExportFileResult =
+  | { ok: true; canceled: true }
+  | { ok: true; canceled?: false; path: string; macroId: string; name: string }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'not_found'
+        | 'write_failed'
+        | 'file_exists'
+        | MacroStoreFailureReason
         | 'unauthorized'
       error: string
       corruptBackupPath?: string
@@ -916,6 +1108,24 @@ export interface HwpApi {
   onBibChanged?(handler: (entries: BibEntry[]) => void): () => void
   /** Subscribe to citation key rename events across Hangul views */
   onBibKeyRenamed?(handler: (info: BibKeyRenameInfo) => void): () => void
+  /** Inspect the app-wide macro store state, including corruption and size status */
+  macrosReadState?(): Promise<MacrosReadStateResult>
+  /** Add a macro to the app-wide macro store */
+  macrosAdd?(input: MacroCreateInput): Promise<MacroAddResult>
+  /** Update an existing macro in the app-wide macro store */
+  macrosUpdate?(id: string, patch: MacroUpdatePatch): Promise<MacroUpdateResult>
+  /** Delete a macro from the app-wide macro store */
+  macrosDelete?(id: string): Promise<MacroDeleteResult>
+  /** Assign or clear shortcut slot 1..11 for a macro */
+  macrosAssignSlot?(id: string, slot: number | null): Promise<MacroAssignSlotResult>
+  /** Open a native file picker and preview a plain-text .ieummacro file without saving */
+  macrosPickImportFile?(): Promise<MacroPickImportFileResult>
+  /** Commit a user-confirmed imported macro into the app-wide macro store */
+  macrosCommitImport?(input: MacroImportCommitInput): Promise<MacroCommitImportResult>
+  /** Open a native save dialog and export a macro to a plain-text .ieummacro file */
+  macrosExportFile?(id: string): Promise<MacroExportFileResult>
+  /** Subscribe to app-wide macro store updates across Hangul views */
+  onMacrosChanged?(handler: (macros: MacroRecord[]) => void): () => void
   /** which search/media tools can run right now — gates generate_image */
   aiToolCapabilities(): Promise<AiToolCapabilities | null>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void
