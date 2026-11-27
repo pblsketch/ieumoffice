@@ -593,7 +593,9 @@ describe('command and keyboard recording with real-engine replay and single undo
       expect(bodyTexts(replayDoc)).toEqual(bodyTexts(directDoc))
     }
 
-    // 2) Footnote at offset 3: caret at 4 + Backspace and caret at 3 + Delete are refused by BOTH recorder and API.
+    // 2) Footnote at offset 3: single-char Delete at 3 and Backspace at 4 delete 'd' while the
+    // engine preserves the footnote at offset 3 (matching deleteText(0, 1, 3, 1)), whereas a span
+    // strictly crossing the footnote (e.g., deleteForward(2) from 2) is refused with object_loss.
     for (const [offset, key, apiScript] of [
       [4, 'Backspace', 'deleteBackward();'],
       [3, 'Delete', 'deleteForward();'],
@@ -604,25 +606,79 @@ describe('command and keyboard recording with real-engine replay and single undo
           { sectionIndex: 0, paragraphIndex: 1, charOffset: offset },
           key,
         ),
-      ).toBe(true)
-      const recNotices: MacroRecorderNotice[] = []
-      const rec = createMacroRecorder({ onNotice: (n) => recNotices.push(n) })
+      ).toBe(false)
+      const rec = createMacroRecorder({})
       rec.start()
-      expect(rec.recordKey({ key }, { inBody: true, adjacentObject: true })).toBe(false)
-      expect(rec.stop().script).toBe('')
-      expect(recNotices).toEqual([
-        { kind: 'unsupported_command', commandId: 'edit:delete-object', label: key },
-      ])
+      expect(rec.recordKey({ key }, { inBody: true, adjacentObject: false })).toBe(true)
+      const { script, skipped } = rec.stop()
+      expect(script).toBe(apiScript)
+      expect(skipped).toEqual([])
 
       const apiDoc = makeDoc(['first', 'abcdef'])
       apiDoc.insertFootnote(0, 1, 3)
-      const before = apiDoc.exportHwp()
-      const apiRes = runMacroOnDocument(apiDoc, apiScript, {
+      const apiRes = runMacroOnDocument(apiDoc, script, {
         caret: { sec: 0, para: 1, offset },
       })
-      expect(apiRes.ok).toBe(false)
-      if (!apiRes.ok) expect(apiRes.code).toBe('object_loss')
-      expect(bytesEqual(apiDoc.exportHwp(), before)).toBe(true)
+      expect(apiRes.ok).toBe(true)
+      expect(bodyTexts(apiDoc)).toEqual(['first', 'abcef'])
+      const apiCtrls = JSON.parse(apiDoc.getControls()) as Array<{ ctrlId: string }>
+      expect(apiCtrls.filter((c) => c.ctrlId === 'fn')).toHaveLength(1)
+
+      const directDoc = makeDoc(['first', 'abcdef'])
+      directDoc.insertFootnote(0, 1, 3)
+      directDoc.deleteText(0, 1, 3, 1)
+      expect(bodyTexts(apiDoc)).toEqual(bodyTexts(directDoc))
+      expect(JSON.parse(apiDoc.getControlTextPositions(0, 1))).toEqual(
+        JSON.parse(directDoc.getControlTextPositions(0, 1)),
+      )
+    }
+
+    // 2b) Pure paragraph-boundary merge with a footnote at end of para 0 or start of para 1:
+    // the engine's deleteRange preserves the footnote, so BOTH recorder and API allow it and
+    // replay matches the engine merge result identically.
+    for (const [fnPara, fnOffset] of [
+      [0, 5],
+      [1, 0],
+    ] as const) {
+      for (const [para, offset, key, apiScript] of [
+        [1, 0, 'Backspace', 'deleteBackward();'],
+        [0, 5, 'Delete', 'deleteForward();'],
+      ] as const) {
+        const mergeDoc = makeDoc(['first', 'second'])
+        mergeDoc.insertFootnote(0, fnPara, fnOffset)
+        const mergeBridge = makeBridge(mergeDoc)
+        const blocked = hasAdjacentProtectedObject(
+          mergeBridge,
+          { sectionIndex: 0, paragraphIndex: para, charOffset: offset },
+          key,
+        )
+        expect(blocked).toBe(false)
+
+        const rec = createMacroRecorder({})
+        rec.start()
+        expect(rec.recordKey({ key }, { inBody: true, adjacentObject: blocked })).toBe(true)
+        const { script, skipped } = rec.stop()
+        expect(script).toBe(apiScript)
+        expect(skipped).toEqual([])
+
+        const apiRes = runMacroOnDocument(mergeDoc, script, {
+          caret: { sec: 0, para, offset },
+        })
+        expect(apiRes.ok).toBe(true)
+        expect(bodyTexts(mergeDoc)).toEqual(['firstsecond'])
+        const fnAfter = (JSON.parse(mergeDoc.getControls()) as Array<{ ctrlId: string }>).filter(
+          (c) => c.ctrlId === 'fn',
+        )
+        expect(fnAfter).toHaveLength(1)
+
+        const directMerge = makeDoc(['first', 'second'])
+        directMerge.insertFootnote(0, fnPara, fnOffset)
+        directMerge.deleteRange(0, 0, 5, 1, 0)
+        expect(bodyTexts(mergeDoc)).toEqual(bodyTexts(directMerge))
+        expect(JSON.parse(mergeDoc.getControlTextPositions(0, 0))).toEqual(
+          JSON.parse(directMerge.getControlTextPositions(0, 0)),
+        )
+      }
     }
 
     // Caret at offset 1 + Delete and offset 4 + Delete are NOT blocked.

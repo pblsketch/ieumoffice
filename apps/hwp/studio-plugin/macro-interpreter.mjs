@@ -256,6 +256,16 @@ function cloneUnwrapped(root) {
   return outRoot
 }
 
+/**
+ * Unwrap tracked strings before handing a value across the host boundary.
+ *
+ * Invariant: host API functions (outside mutable `SAFE_BAGS` parameter containers
+ * such as `HParameterSet.*`) must never mutate caller-supplied objects or arrays.
+ * Passing `forceCloneObjects = true` clones every non-`SafeBag` script object/array
+ * regardless of whether it contains short or tracked long strings, guaranteeing
+ * identical semantics for all string lengths and isolating script state from host
+ * mutation.
+ */
 function unwrapForHost(value, forceCloneObjects = false) {
   if (value === null || value === undefined || typeof value !== 'object') return value
   const raw = TRACKED_STRINGS.get(value)
@@ -3560,7 +3570,10 @@ class Interpreter {
       total += 64 + keys.length * 16
       if (total > maxBytes) return total
       for (let i = 0; i < keys.length; i++) {
-        const val = item[keys[i]]
+        const k = keys[i]
+        total += k.length * 2 + 16
+        if (total > maxBytes) return total
+        const val = item[k]
         if (typeof val === 'string') {
           total += val.length * 2 + 16
           if (total > maxBytes) return total
@@ -4092,7 +4105,8 @@ class Interpreter {
     }
     if (!Object.prototype.hasOwnProperty.call(receiver, prop)) {
       checkCollectionSize(Object.keys(receiver).length + 1, this, node, 'Object')
-      this.chargeBytes(16, node)
+      const keyBytes = 16 + prop.length * 2 + 16
+      this.chargeBytes(keyBytes, node, receiver, keyBytes)
     }
     receiver[prop] = SAFE_BAGS.has(receiver) ? unwrapForHost(value, true) : value
     return value
@@ -4182,7 +4196,7 @@ class Interpreter {
         try {
           const hostArgs = new Array(args.length)
           for (let i = 0; i < args.length; i++) {
-            hostArgs[i] = unwrapForHost(args[i])
+            hostArgs[i] = unwrapForHost(args[i], true)
           }
           rawResult = meta.fn(...hostArgs)
         } catch (err) {
@@ -4303,7 +4317,8 @@ class Interpreter {
             if (!Object.prototype.hasOwnProperty.call(obj, key)) {
               propCount += 1
               checkCollectionSize(propCount, this, prop, 'Object')
-              this.chargeBytes(16, prop)
+              const keyBytes = 16 + key.length * 2 + 16
+              this.chargeBytes(keyBytes, prop, obj, keyBytes)
             }
             obj[key] = val
           }

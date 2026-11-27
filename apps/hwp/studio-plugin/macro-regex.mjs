@@ -580,11 +580,23 @@ function parsePattern(pattern, flagInfo, maxQuantifier) {
         }
         return { kind: 'char', code: 0x50 }
       case 'c': {
-        if (pos >= len || !isAsciiLetter(pattern.charCodeAt(pos))) {
-          throw new SyntaxError('Invalid regular expression: invalid control escape "\\c"')
+        if (pos < len) {
+          const nextCode = pattern.charCodeAt(pos)
+          if (
+            isAsciiLetter(nextCode) ||
+            (!explicitUnicode && inClass && (isAsciiDigit(nextCode) || nextCode === 0x5f))
+          ) {
+            pos++
+            return { kind: 'char', code: nextCode & 31 }
+          }
         }
-        const ctrl = pattern.charCodeAt(pos++) & 31
-        return { kind: 'char', code: ctrl }
+        if (!explicitUnicode) {
+          // Annex B: outside `u` mode, `\c` without a valid control letter parses as
+          // literal `\` followed by unconsumed `c` (so quantifiers and class ranges work).
+          pos--
+          return { kind: 'char', code: 0x5c }
+        }
+        throw new SyntaxError('Invalid regular expression: invalid control escape "\\c"')
       }
       case 'x': {
         if (

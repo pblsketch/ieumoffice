@@ -186,6 +186,16 @@ describe('macro-regex: JS RegExp parity suite', () => {
       '',
       'x1 u123 x u',
     ],
+    // U5: Annex B non-u \c escapes outside and inside character classes
+    ['non-u lone \\c is literal \\c', '\\c', '', '\\c c'],
+    ['non-u \\c1 is literal \\c1', '\\c1', '', '\\c1 c1 \x11'],
+    ['non-u \\c_ is literal \\c_', '\\c_', '', '\\c_ \x1f'],
+    ['non-u \\c* is literal \\ then c*', '\\c*', '', '\\\\c c \\cc'],
+    ['non-u [\\c] matches \\ or c', '[\\c]', '', '\\c a'],
+    ['non-u [\\c1] matches \\x11 control char', '[\\c1]', '', '\x11 \\ c 1'],
+    ['non-u [\\c_] matches \\x1f control char', '[\\c_]', '', '\x1f \\ c _'],
+    ['non-u [\\c-z] matches \\ or c..z', '[\\c-z]', '', '\\ a b c d z'],
+    ['non-u [A-\\c] matches A..\\ or c', '[A-\\c]', '', 'A [ \\ a c'],
   ]
 
   it.each(parityCases)('matches JS RegExp identically: %s', (_label, pattern, flags, text) => {
@@ -515,6 +525,7 @@ describe('macro-regex: refused constructs and validation', () => {
       '\\b*',
       '[\\d-a]',
       '[a-\\d]',
+      '[a-\\c]',
     ]
     for (const bad of invalidPatterns) {
       expect(() => compileMacroRegex(bad), `expected "${bad}" to throw`).toThrow()
@@ -526,6 +537,10 @@ describe('macro-regex: refused constructs and validation', () => {
       'a{,3}',
       'a{}',
       'a{1,x}',
+      '\\c',
+      '\\c1',
+      '[\\c]',
+      '[\\c1]',
       '\\x1',
       '\\u123',
       '\\u{110000}',

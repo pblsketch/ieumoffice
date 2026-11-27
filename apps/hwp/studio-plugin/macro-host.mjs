@@ -1224,6 +1224,10 @@ function collectVisualLines(doc, sec, para) {
 
 /**
  * Create the synchronous application document API bound to `doc` and `state`.
+ *
+ * Host API invariant: every method in this API treats caller-supplied objects
+ * and arrays as read-only and must never mutate them (enforced both by
+ * read-only implementation and by the interpreter's host-argument isolation).
  */
 export function createMacroApi(doc, state, options = undefined) {
   if (!doc || typeof doc.getSectionCount !== 'function') {

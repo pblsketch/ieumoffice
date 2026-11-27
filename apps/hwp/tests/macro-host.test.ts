@@ -13,6 +13,7 @@ import { REFUSED_COMPAT_ACTIONS, SUPPORTED_COMPAT_ACTIONS } from '../studio-plug
 import {
   MAX_MACRO_MESSAGE_LENGTH,
   MAX_MACRO_TOTAL_MESSAGE_CHARS,
+  createMacroApi,
   executeMacroTransaction,
   runMacroOnDocument,
   type MacroTransactionHost,
@@ -1183,27 +1184,25 @@ describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () =>
     if (r3.ok) expect(r3.value).toEqual([2, 2])
   })
 
-  it('protects adjacent footnotes and tables on deleteForward and deleteBackward', () => {
-    // Footnote at offset 3 in "abcdef": DEL at 3 and BS at 4 must refuse object_loss; BS at 3 deletes 'c' safely.
-    const fnDelDoc = makeDoc(['first', 'abcdef'])
-    fnDelDoc.insertFootnote(0, 1, 3)
-    const fnDelBefore = fnDelDoc.exportHwp()
-    const fnDelRes = runMacroOnDocument(fnDelDoc, 'deleteForward();', {
-      caret: { sec: 0, para: 1, offset: 3 },
-    })
-    expect(fnDelRes.ok).toBe(false)
-    if (!fnDelRes.ok) expect(fnDelRes.code).toBe('object_loss')
-    expect(bytesEqual(fnDelDoc.exportHwp(), fnDelBefore)).toBe(true)
-
-    const fnBsDoc = makeDoc(['first', 'abcdef'])
-    fnBsDoc.insertFootnote(0, 1, 3)
-    const fnBsBefore = fnBsDoc.exportHwp()
-    const fnBsRes = runMacroOnDocument(fnBsDoc, 'deleteBackward();', {
-      caret: { sec: 0, para: 1, offset: 4 },
-    })
-    expect(fnBsRes.ok).toBe(false)
-    if (!fnBsRes.ok) expect(fnBsRes.code).toBe('object_loss')
-    expect(bytesEqual(fnBsDoc.exportHwp(), fnBsBefore)).toBe(true)
+  it('matches engine deletion semantics for footnotes and protects tables on deleteForward and deleteBackward', () => {
+    // Footnote at offset 3 in "abcdef": single-char DEL at 3 and BS at 4 delete 'd' while
+    // keeping the footnote at offset 3 (matching engine deleteText(0, 1, 3, 1)); BS at 3
+    // deletes 'c'; multi-char deletion crossing offset 3 refuses object_loss and rolls back.
+    for (const [offset, script] of [
+      [3, 'deleteForward();'],
+      [4, 'deleteBackward();'],
+    ] as const) {
+      const fnDoc = makeDoc(['first', 'abcdef'])
+      fnDoc.insertFootnote(0, 1, 3)
+      const fnRes = runMacroOnDocument(fnDoc, script, {
+        caret: { sec: 0, para: 1, offset },
+      })
+      expect(fnRes.ok).toBe(true)
+      expect(bodyTexts(fnDoc)).toEqual(['first', 'abcef'])
+      const ctrls = JSON.parse(fnDoc.getControls()) as Array<{ ctrlId: string }>
+      expect(ctrls.filter((c) => c.ctrlId === 'fn')).toHaveLength(1)
+      expect(JSON.parse(fnDoc.getControlTextPositions(0, 1))).toEqual([3])
+    }
 
     // Backspace at offset 3 deletes 'c' before the footnote while keeping the footnote intact.
     const fnSafeDoc = makeDoc(['first', 'abcdef'])
@@ -1215,6 +1214,33 @@ describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () =>
     expect(bodyTexts(fnSafeDoc)).toEqual(['first', 'abdef'])
     const safeCtrls = JSON.parse(fnSafeDoc.getControls()) as Array<{ ctrlId: string }>
     expect(safeCtrls.filter((c) => c.ctrlId === 'fn')).toHaveLength(1)
+
+    // Multi-char deletion strictly crossing a footnote refuses with object_loss and rolls back.
+    const fnSpanDoc = makeDoc(['first', 'abcdef'])
+    fnSpanDoc.insertFootnote(0, 1, 3)
+    const fnSpanBefore = fnSpanDoc.exportHwp()
+    const fnSpanRes = runMacroOnDocument(fnSpanDoc, 'deleteForward(2);', {
+      caret: { sec: 0, para: 1, offset: 2 },
+    })
+    expect(fnSpanRes.ok).toBe(false)
+    if (!fnSpanRes.ok) expect(fnSpanRes.code).toBe('object_loss')
+    expect(bytesEqual(fnSpanDoc.exportHwp(), fnSpanBefore)).toBe(true)
+
+    // Pure paragraph-boundary merge with a footnote at end of para 0 or start of para 1 keeps the footnote.
+    for (const [fnPara, fnOffset, caret, script] of [
+      [0, 5, { sec: 0, para: 1, offset: 0 }, 'deleteBackward();'],
+      [0, 5, { sec: 0, para: 0, offset: 5 }, 'deleteForward();'],
+      [1, 0, { sec: 0, para: 1, offset: 0 }, 'deleteBackward();'],
+      [1, 0, { sec: 0, para: 0, offset: 5 }, 'deleteForward();'],
+    ] as const) {
+      const mergeDoc = makeDoc(['first', 'second'])
+      mergeDoc.insertFootnote(0, fnPara, fnOffset)
+      const mergeRes = runMacroOnDocument(mergeDoc, script, { caret })
+      expect(mergeRes.ok).toBe(true)
+      expect(bodyTexts(mergeDoc)).toEqual(['firstsecond'])
+      const mergeCtrls = JSON.parse(mergeDoc.getControls()) as Array<{ ctrlId: string }>
+      expect(mergeCtrls.filter((c) => c.ctrlId === 'fn')).toHaveLength(1)
+    }
 
     // Table boundary protection on deleteForward before table and deleteBackward crossing table.
     const tblDoc = makeDoc(['hello', 'after'])
@@ -1522,6 +1548,48 @@ describe('macro-host: S1/S5/S6/B2/N1/N9 behavioral and safety guarantees', () =>
         }
       }
       expect(bytesEqual(doc.exportHwp(), beforeBytes), tc.name).toBe(true)
+    }
+  })
+
+  it('never mutates caller-supplied object arguments across all object-accepting APIs', () => {
+    const doc = makeDoc(['Hello world'])
+    const api = createMacroApi(doc)
+
+    const charProps = Object.freeze({
+      bold: true,
+      italic: false,
+      fontSize: 12,
+      textColor: '#112233',
+    })
+    expect(() => api.setCharFormat(charProps)).not.toThrow()
+
+    const paraProps = Object.freeze({
+      align: 'center',
+      lineSpacing: 160,
+      leftMargin: 10,
+      rightMargin: 10,
+      firstLineIndent: 5,
+      spaceBefore: 4,
+      spaceAfter: 6,
+      pageBreakBefore: false,
+    })
+    expect(() => api.setParaFormat(paraProps)).not.toThrow()
+
+    const findOpts = Object.freeze({ caseSensitive: false, wholeWord: false, regex: true })
+    expect(api.find('Hello', findOpts)).toHaveLength(1)
+    expect(api.replaceAll('Hello', 'Hi', findOpts).replaced).toBe(1)
+    expect(api.replaceNext('world', 'earth', findOpts).replaced).toBe(1)
+
+    const styles = JSON.parse(doc.getStyleList()) as Array<{ id: number; name: string }>
+    const h1 = styles.find((s) => s.name === '개요 1' || s.name === '제목 1')
+    const h2 = styles.find((s) => s.name === '개요 2' || s.name === '제목 2')
+    if (h1 && h2) {
+      doc.applyStyle(0, 0, h1.id)
+      const outlineOpts = Object.freeze({
+        singleOnly: true,
+        appStyleMap: Object.freeze({ [h1.name]: 1, [h2.name]: 2 }),
+      })
+      expect(() => api.changeOutlineLevel(0, 0, 1, outlineOpts)).not.toThrow()
     }
   })
 })

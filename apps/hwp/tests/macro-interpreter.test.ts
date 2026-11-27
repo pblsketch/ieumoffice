@@ -1330,4 +1330,93 @@ describe('macro-interpreter: sandbox and forbidden access defenses', () => {
       expect.arrayContaining(['isFinite', 'isInteger', 'parseInt', 'parseFloat']),
     )
   })
+
+  it('charges and measures object property key lengths against maxMemoryBytes (U2)', () => {
+    // 400 distinct 999k-char keys (~800 MB) must stop quickly with memory_limit.
+    const attack = runMacroScript(`
+      var o = {};
+      var big = "x".repeat(999000);
+      for (var i = 0; i < 400; i++) {
+        o[big + i] = 1;
+      }
+      Object.keys(o).length;
+    `)
+    expect(attack.ok).toBe(false)
+    if (!attack.ok) {
+      expect(attack.code).toBe('memory_limit')
+    }
+
+    // Computed keys inside an object literal are also accounted for.
+    const litAttack = runMacroScript(
+      `
+      var big = "k".repeat(20000);
+      var arr = [];
+      for (var i = 0; i < 200; i++) {
+        arr.push({ [big + i]: i });
+      }
+      arr.length;
+    `,
+      {},
+      { limits: { maxMemoryBytes: 1_000_000 } },
+    )
+    expect(litAttack.ok).toBe(false)
+    if (!litAttack.ok) {
+      expect(litAttack.code).toBe('memory_limit')
+    }
+
+    // Normal objects (including paragraph-length dedup keys well under maxMemoryBytes) pass cleanly.
+    const normal = runMacroScript(`
+      var seen = {};
+      for (var i = 0; i < 200; i++) {
+        seen["paragraph_" + i + "_" + "가".repeat(300)] = i;
+      }
+      Object.keys(seen).length;
+    `)
+    expect(normal.ok).toBe(true)
+    if (normal.ok) {
+      expect(normal.value).toBe(200)
+    }
+  })
+
+  it('isolates script arrays/objects passed to host functions identically for short and long strings (U3)', () => {
+    const mutatingHost = (arg: unknown) => {
+      if (Array.isArray(arg)) {
+        arg.push('mutated')
+        arg[0] = 'overwritten'
+      } else if (arg && typeof arg === 'object') {
+        ;(arg as Record<string, unknown>).injected = true
+      }
+      return Array.isArray(arg) ? arg.length : 1
+    }
+
+    // Identical isolation whether the passed array/object holds short (<256) or long (>=256) strings.
+    const shortRes = runMacroScript(
+      `
+      var a = ["short"];
+      var o = { text: "short" };
+      mutatingHost(a);
+      mutatingHost(o);
+      ({ arrLen: a.length, first: a[0], injected: o.injected === true });
+    `,
+      { mutatingHost },
+    )
+    const longRes = runMacroScript(
+      `
+      var big = "x".repeat(300);
+      var a = [big];
+      var o = { text: big };
+      mutatingHost(a);
+      mutatingHost(o);
+      ({ arrLen: a.length, firstLen: a[0].length, injected: o.injected === true });
+    `,
+      { mutatingHost },
+    )
+
+    expect(shortRes.ok).toBe(true)
+    expect(longRes.ok).toBe(true)
+    if (shortRes.ok && longRes.ok) {
+      expect(shortRes.value).toEqual({ arrLen: 1, first: 'short', injected: false })
+      expect(longRes.value).toEqual({ arrLen: 1, firstLen: 300, injected: false })
+    }
+  })
 })

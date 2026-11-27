@@ -84,6 +84,14 @@ export const PROTECTED_CONTENT_CTRL_IDS = Object.freeze(
   new Set(['fn', 'en', 'tbl', 'gso', 'pic', 'eqed', 'ole', 'container']),
 )
 
+/**
+ * Paragraph-owned block objects (tables, pictures, drawing objects, OLE/containers)
+ * that are lost when an empty paragraph holding the object is merged across a
+ * paragraph boundary by `deleteRange`. Inline notes (`fn`, `en`) and equations
+ * anchored at a pure boundary survive paragraph merges in the engine.
+ */
+const BLOCK_PARA_CTRL_IDS = new Set(['tbl', 'gso', 'pic', 'ole', 'container'])
+
 const NON_PROTECTED_ADJACENT_CTRL_IDS = new Set([
   '',
   'bokm',
@@ -311,22 +319,35 @@ export function findProtectedDeletionBlocker(docOrBridge, range) {
               message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
             }
           }
-          if (
-            isFirstPara &&
-            obj.textPos >= delStart &&
-            (paraLen === null || obj.textPos <= paraLen)
-          ) {
-            return {
-              code: 'object_loss',
-              ctrlId: obj.ctrlId,
-              message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+          const isBlockObjPara = paraLen === 0 && BLOCK_PARA_CTRL_IDS.has(obj.ctrlId)
+          if (isFirstPara) {
+            const hitsTableAtTail = obj.ctrlId === 'tbl' && obj.textPos >= delStart
+            const deletesCharsInFirstPara = paraLen === null || delStart < paraLen
+            const hitsDeletedTail =
+              deletesCharsInFirstPara &&
+              ((delStart < obj.textPos && (paraLen === null || obj.textPos <= paraLen)) ||
+                (delStart === 0 && obj.textPos === 0))
+            if (isBlockObjPara || hitsTableAtTail || hitsDeletedTail) {
+              return {
+                code: 'object_loss',
+                ctrlId: obj.ctrlId,
+                message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+              }
             }
           }
-          if (isLastPara && obj.textPos >= 0 && obj.textPos <= delEnd) {
-            return {
-              code: 'object_loss',
-              ctrlId: obj.ctrlId,
-              message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+          if (isLastPara) {
+            const hitsTableAtHead = obj.ctrlId === 'tbl' && obj.textPos <= delEnd
+            const deletesCharsInLastPara = delEnd > 0
+            const hitsDeletedHead =
+              deletesCharsInLastPara &&
+              ((obj.textPos >= 0 && obj.textPos < delEnd) ||
+                (paraLen !== null && delEnd === paraLen && obj.textPos === paraLen))
+            if (isBlockObjPara || hitsTableAtHead || hitsDeletedHead) {
+              return {
+                code: 'object_loss',
+                ctrlId: obj.ctrlId,
+                message: `Cannot delete selection containing a document object (${obj.ctrlId})`,
+              }
             }
           }
         }
@@ -340,6 +361,10 @@ export function findProtectedDeletionBlocker(docOrBridge, range) {
 /**
  * Shared protected-content deletion check for a backward or forward deletion step from `pos`
  * in a body paragraph (covering both intra-paragraph character deletion and cross-paragraph merges).
+ * Matches the exact range deleted by the engine (`deleteText` / `deleteRange`) via
+ * `findProtectedDeletionBlocker`, so footnotes/notes preserved by a boundary merge or
+ * single-character text delete are allowed while table-paragraph merges and spans crossing
+ * protected objects are blocked consistently by both the recorder and macro API.
  * Accepts either a raw `HwpDocument` or a `WasmBridge`, and either `{ sec, para, offset }` or
  * `{ sectionIndex, paragraphIndex, charOffset }`.
  */
@@ -356,39 +381,11 @@ export function findProtectedStepDeletionBlocker(docOrBridge, pos, direction, co
   }
   const stepCount = Number.isInteger(count) && count >= 1 ? count : 1
 
-  if (typeof docOrBridge.getFootnoteAtCursor === 'function') {
-    try {
-      const fnHit = parseJsonSafe(
-        docOrBridge.getFootnoteAtCursor(sec, para, offset, direction),
-        null,
-      )
-      if (fnHit && fnHit.hit === true) {
-        return {
-          code: 'object_loss',
-          ctrlId: 'fn',
-          message: 'Cannot delete adjacent document object (fn)',
-        }
-      }
-    } catch {
-      // ignore probe errors and fall through to control-position checks
-    }
-  }
-
   if (direction === 'backward') {
     if (offset > 0) {
       const take = Math.min(stepCount, offset)
       const startOffset = offset - take
       const endOffset = offset
-      const objects = readBodyProtectedControls(docOrBridge, sec, para)
-      for (const obj of objects) {
-        if (obj.textPos >= startOffset && obj.textPos < endOffset) {
-          return {
-            code: 'object_loss',
-            ctrlId: obj.ctrlId,
-            message: `Cannot delete adjacent document object (${obj.ctrlId})`,
-          }
-        }
-      }
       return findProtectedDeletionBlocker(docOrBridge, {
         startSec: sec,
         startPara: para,
@@ -404,7 +401,7 @@ export function findProtectedStepDeletionBlocker(docOrBridge, pos, direction, co
       if (prevLen === null) {
         const objects = readBodyProtectedControls(docOrBridge, sec, para)
         for (const obj of objects) {
-          if (obj.textPos === 0) {
+          if (obj.textPos === 0 && BLOCK_PARA_CTRL_IDS.has(obj.ctrlId)) {
             return {
               code: 'object_loss',
               ctrlId: obj.ctrlId,
@@ -432,16 +429,6 @@ export function findProtectedStepDeletionBlocker(docOrBridge, pos, direction, co
     const take = paraLen === null ? stepCount : Math.min(stepCount, paraLen - offset)
     const startOffset = offset
     const endOffset = offset + take
-    const objects = readBodyProtectedControls(docOrBridge, sec, para)
-    for (const obj of objects) {
-      if (obj.textPos >= startOffset && obj.textPos < endOffset) {
-        return {
-          code: 'object_loss',
-          ctrlId: obj.ctrlId,
-          message: `Cannot delete adjacent document object (${obj.ctrlId})`,
-        }
-      }
-    }
     return findProtectedDeletionBlocker(docOrBridge, {
       startSec: sec,
       startPara: para,
