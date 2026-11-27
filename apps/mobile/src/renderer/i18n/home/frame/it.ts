@@ -24,4 +24,13 @@ export const it = {
   homeCreateTitle: 'Crea nuovo',
   homeCreateClose: 'Chiudi',
   homeCreatePdfTools: 'Strumenti PDF',
+  homeCreateLocation: 'Crea in: {name}',
+  homeCreateAddFolder: 'Aggiungi cartella',
+  homeListSortLabel: 'Ordina',
+  homeListSortDate: 'Modificato',
+  homeListSortName: 'Nome',
+  homeListSortDesc: 'Decrescente',
+  homeListSortAsc: 'Crescente',
+  homeListViewList: 'Vista elenco',
+  homeListViewGrid: 'Vista schede',
 } as const satisfies Record<keyof typeof zh, string>

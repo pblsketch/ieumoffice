@@ -21,4 +21,13 @@ export const vi = {
   homeCreateTitle: 'Tạo mới',
   homeCreateClose: 'Đóng',
   homeCreatePdfTools: 'Công cụ PDF',
+  homeCreateLocation: 'Tạo tại: {name}',
+  homeCreateAddFolder: 'Thêm thư mục',
+  homeListSortLabel: 'Sắp xếp',
+  homeListSortDate: 'Ngày sửa đổi',
+  homeListSortName: 'Tên',
+  homeListSortDesc: 'Giảm dần',
+  homeListSortAsc: 'Tăng dần',
+  homeListViewList: 'Chế độ danh sách',
+  homeListViewGrid: 'Chế độ thẻ',
 } as const satisfies Record<keyof typeof zh, string>

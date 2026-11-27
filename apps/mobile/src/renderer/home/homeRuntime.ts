@@ -70,9 +70,60 @@ export function useActiveDocKey(): string | null {
   return useSyncExternalStore(subscribeDocKey, getActiveDocKey, getActiveDocKey)
 }
 
+let activeFolderPath: string | null = null
+const folderPathListeners = new Set<() => void>()
+
+function subscribeFolderPath(listener: () => void): () => void {
+  folderPathListeners.add(listener)
+  return () => {
+    folderPathListeners.delete(listener)
+  }
+}
+
+/** Publishes the current folder browser path so the [+] sheet can show where a new file fits. */
+export function setActiveFolderPath(path: string | null): void {
+  if (activeFolderPath === path) return
+  activeFolderPath = path
+  for (const listener of [...folderPathListeners]) listener()
+}
+
+export function getActiveFolderPath(): string | null {
+  return activeFolderPath
+}
+
+export function useActiveFolderPath(): string | null {
+  return useSyncExternalStore(subscribeFolderPath, getActiveFolderPath, getActiveFolderPath)
+}
+
+let foldersRevision = 0
+const foldersRevListeners = new Set<() => void>()
+
+function subscribeFoldersRev(listener: () => void): () => void {
+  foldersRevListeners.add(listener)
+  return () => {
+    foldersRevListeners.delete(listener)
+  }
+}
+
+/** Bumps when a folder is linked outside FoldersView (e.g. from the [+] create sheet). */
+export function bumpFoldersRevision(): void {
+  foldersRevision += 1
+  for (const listener of [...foldersRevListeners]) listener()
+}
+
+export function getFoldersRevision(): number {
+  return foldersRevision
+}
+
+export function useFoldersRevision(): number {
+  return useSyncExternalStore(subscribeFoldersRev, getFoldersRevision, getFoldersRevision)
+}
+
 /** Tests only: forgets the host, the origins and the open document's key. */
 export function resetHomeRuntimeForTest(): void {
   origins.clear()
   setActiveDocKey(null)
+  setActiveFolderPath(null)
+  foldersRevision = 0
   setHomeRuntime(null)
 }

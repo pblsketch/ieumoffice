@@ -23,4 +23,13 @@ export const cs = {
   homeCreateTitle: 'Vytvořit nový',
   homeCreateClose: 'Zavřít',
   homeCreatePdfTools: 'Nástroje PDF',
+  homeCreateLocation: 'Vytvořit v: {name}',
+  homeCreateAddFolder: 'Přidat složku',
+  homeListSortLabel: 'Seřadit',
+  homeListSortDate: 'Upraveno',
+  homeListSortName: 'Název',
+  homeListSortDesc: 'Sestupně',
+  homeListSortAsc: 'Vzestupně',
+  homeListViewList: 'Seznam',
+  homeListViewGrid: 'Karty',
 } as const satisfies Record<keyof typeof zh, string>

@@ -22,4 +22,13 @@ export const ko = {
   homeCreateTitle: '새로 만들기',
   homeCreateClose: '닫기',
   homeCreatePdfTools: 'PDF 도구',
+  homeCreateLocation: '만들 위치: {name}',
+  homeCreateAddFolder: '폴더 추가',
+  homeListSortLabel: '정렬',
+  homeListSortDate: '최근 수정순',
+  homeListSortName: '이름순',
+  homeListSortDesc: '내림차순',
+  homeListSortAsc: '오름차순',
+  homeListViewList: '목록 보기',
+  homeListViewGrid: '카드 보기',
 } as const satisfies Record<keyof typeof zh, string>

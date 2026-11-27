@@ -14,6 +14,7 @@ import { IconChevronRight, IconFolderOpen, IconMore } from '../../components/Mob
 import { useMobileLocale } from '../../i18n'
 import { HomeConfirmDialog } from '../actions'
 import type { HomeHost } from '../homeHost'
+import { useFoldersRevision } from '../homeRuntime'
 import { FolderBrowser } from './FolderBrowser'
 import {
   countOf,
@@ -52,6 +53,7 @@ export function FoldersView({ host }: { readonly host: HomeHost }) {
   const [place, setPlace] = useState<Place | null>(null)
   const [menuFolder, setMenuFolder] = useState<LinkedFolder | null>(null)
   const [pending, setPending] = useState<PendingRemoval | null>(null)
+  const foldersRevision = useFoldersRevision()
   const busy = useRef(false)
 
   const toast = useCallback(
@@ -78,7 +80,7 @@ export function FoldersView({ host }: { readonly host: HomeHost }) {
 
   useEffect(() => {
     void reload()
-  }, [reload])
+  }, [reload, foldersRevision])
 
   /** Runs one bridge step at a time; a second tap while one runs is ignored. */
   const guarded = async (step: () => Promise<void>) => {

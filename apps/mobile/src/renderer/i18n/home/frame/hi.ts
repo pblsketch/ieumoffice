@@ -23,4 +23,13 @@ export const hi = {
   homeCreateTitle: 'नया बनाएँ',
   homeCreateClose: 'बंद करें',
   homeCreatePdfTools: 'PDF टूल',
+  homeCreateLocation: 'यहाँ बनाएँ: {name}',
+  homeCreateAddFolder: 'फ़ोल्डर जोड़ें',
+  homeListSortLabel: 'क्रमबद्ध करें',
+  homeListSortDate: 'संशोधित समय',
+  homeListSortName: 'नाम',
+  homeListSortDesc: 'अवरोही',
+  homeListSortAsc: 'आरोही',
+  homeListViewList: 'सूची दृश्य',
+  homeListViewGrid: 'कार्ड दृश्य',
 } as const satisfies Record<keyof typeof zh, string>

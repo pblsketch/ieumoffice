@@ -22,4 +22,13 @@ export const id = {
   homeCreateTitle: 'Buat baru',
   homeCreateClose: 'Tutup',
   homeCreatePdfTools: 'Alat PDF',
+  homeCreateLocation: 'Buat di: {name}',
+  homeCreateAddFolder: 'Tambah folder',
+  homeListSortLabel: 'Urutkan',
+  homeListSortDate: 'Diubah',
+  homeListSortName: 'Nama',
+  homeListSortDesc: 'Menurun',
+  homeListSortAsc: 'Menaik',
+  homeListViewList: 'Tampilan daftar',
+  homeListViewGrid: 'Tampilan kartu',
 } as const satisfies Record<keyof typeof zh, string>

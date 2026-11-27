@@ -144,3 +144,60 @@ export function HomeFrameSampleIcon(props: IconProps) {
     </SvgIcon>
   )
 }
+
+/** Add folder action in the [+] create sheet. */
+export function HomeFrameFolderPlusIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </SvgIcon>
+  )
+}
+
+/** Descending sort direction arrow. */
+export function HomeFrameSortDescIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <polyline points="7 14 12 19 17 14" />
+    </SvgIcon>
+  )
+}
+
+/** Ascending sort direction arrow. */
+export function HomeFrameSortAscIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="7 10 12 5 17 10" />
+    </SvgIcon>
+  )
+}
+
+/** List view mode icon. */
+export function HomeFrameListViewIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="8" y1="6" x2="20" y2="6" />
+      <line x1="8" y1="12" x2="20" y2="12" />
+      <line x1="8" y1="18" x2="20" y2="18" />
+      <circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    </SvgIcon>
+  )
+}
+
+/** Card grid view mode icon. */
+export function HomeFrameGridViewIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    </SvgIcon>
+  )
+}

@@ -1,6 +1,7 @@
 // Pure rules of the home frame (HOME-T6, spec 3.1-3.3): which tab to show, which new-document
 // cards to draw, and the filter chips of the recent tab.
-import type { FavoriteEntry, FavoriteGroup } from '@genoffice/mobile-bridge/home'
+import { useSyncExternalStore } from 'react'
+import type { FavoriteEntry, FavoriteGroup, FolderEntry } from '@genoffice/mobile-bridge/home'
 import type { MobileDocFormat, RecentDocEntry } from '@genoffice/mobile-bridge/transport'
 import type { EditorKind } from '../../editors/editorKind'
 import {
@@ -26,9 +27,106 @@ export function rememberHomeTab(tab: HomeContentTabId): void {
   lastTab = tab
 }
 
-/** Tests only: back to the tab the app starts with. */
+// ── List sort & view mode ───────────────────────────────────────────────────
+
+export type HomeSortField = 'date' | 'name'
+export type HomeSortDir = 'desc' | 'asc'
+export type HomeViewMode = 'list' | 'grid'
+
+export interface HomeListPrefs {
+  readonly sortField: HomeSortField
+  readonly sortDir: HomeSortDir
+  readonly viewMode: HomeViewMode
+}
+
+const DEFAULT_LIST_PREFS: HomeListPrefs = {
+  sortField: 'date',
+  sortDir: 'desc',
+  viewMode: 'list',
+}
+
+let listPrefs: HomeListPrefs = DEFAULT_LIST_PREFS
+const listPrefListeners = new Set<() => void>()
+
+function subscribeListPrefs(listener: () => void): () => void {
+  listPrefListeners.add(listener)
+  return () => {
+    listPrefListeners.delete(listener)
+  }
+}
+
+export function getHomeListPrefs(): HomeListPrefs {
+  return listPrefs
+}
+
+export function updateHomeListPrefs(patch: Partial<HomeListPrefs>): void {
+  listPrefs = { ...listPrefs, ...patch }
+  for (const listener of [...listPrefListeners]) listener()
+}
+
+export function useHomeListPrefs(): HomeListPrefs {
+  return useSyncExternalStore(subscribeListPrefs, getHomeListPrefs, getHomeListPrefs)
+}
+
+function compareByName(a: string, b: string, dir: HomeSortDir): number {
+  const cmp = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  return dir === 'asc' ? cmp : -cmp
+}
+
+function compareByTime(a: number | undefined, b: number | undefined, dir: HomeSortDir): number {
+  const ta = typeof a === 'number' && Number.isFinite(a) ? a : 0
+  const tb = typeof b === 'number' && Number.isFinite(b) ? b : 0
+  const cmp = ta - tb
+  return dir === 'asc' ? cmp : -cmp
+}
+
+export function sortRecentEntries(
+  entries: readonly RecentDocEntry[],
+  field: HomeSortField,
+  dir: HomeSortDir,
+): RecentDocEntry[] {
+  return [...entries].sort((a, b) => {
+    const primary =
+      field === 'name'
+        ? compareByName(a.name, b.name, dir)
+        : compareByTime(a.openedAt, b.openedAt, dir)
+    return primary !== 0 ? primary : compareByName(a.name, b.name, 'asc')
+  })
+}
+
+export function sortFavoriteEntries(
+  entries: readonly FavoriteEntry[],
+  field: HomeSortField,
+  dir: HomeSortDir,
+): FavoriteEntry[] {
+  return [...entries].sort((a, b) => {
+    const primary =
+      field === 'name'
+        ? compareByName(a.name, b.name, dir)
+        : compareByTime(a.addedAt, b.addedAt, dir)
+    return primary !== 0 ? primary : compareByName(a.name, b.name, 'asc')
+  })
+}
+
+export function sortFolderEntries(
+  entries: readonly FolderEntry[],
+  field: HomeSortField,
+  dir: HomeSortDir,
+): FolderEntry[] {
+  return [...entries].sort((a, b) => {
+    const primary =
+      field === 'name'
+        ? compareByName(a.name, b.name, dir)
+        : compareByTime(a.modifiedAt, b.modifiedAt, dir)
+    return primary !== 0 ? primary : compareByName(a.name, b.name, 'asc')
+  })
+}
+
+/** Tests only: back to the tab and list preferences the app starts with. */
 export function resetHomeFrameForTest(): void {
   lastTab = 'recent'
+  listPrefs = DEFAULT_LIST_PREFS
+  for (const listener of [...listPrefListeners]) listener()
 }
 
 // ── New-document cards ──────────────────────────────────────────────────────

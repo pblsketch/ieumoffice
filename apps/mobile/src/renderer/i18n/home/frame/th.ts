@@ -21,4 +21,13 @@ export const th = {
   homeCreateTitle: 'สร้างใหม่',
   homeCreateClose: 'ปิด',
   homeCreatePdfTools: 'เครื่องมือ PDF',
+  homeCreateLocation: 'สร้างใน: {name}',
+  homeCreateAddFolder: 'เพิ่มโฟลเดอร์',
+  homeListSortLabel: 'เรียงลำดับ',
+  homeListSortDate: 'แก้ไขล่าสุด',
+  homeListSortName: 'ชื่อ',
+  homeListSortDesc: 'มากไปน้อย',
+  homeListSortAsc: 'น้อยไปมาก',
+  homeListViewList: 'มุมมองรายการ',
+  homeListViewGrid: 'มุมมองการ์ด',
 } as const satisfies Record<keyof typeof zh, string>

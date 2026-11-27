@@ -22,4 +22,13 @@ export const ar = {
   homeCreateTitle: 'إنشاء جديد',
   homeCreateClose: 'إغلاق',
   homeCreatePdfTools: 'أدوات PDF',
+  homeCreateLocation: 'الإنشاء في: {name}',
+  homeCreateAddFolder: 'إضافة مجلد',
+  homeListSortLabel: 'الترتيب',
+  homeListSortDate: 'تاريخ التعديل',
+  homeListSortName: 'الاسم',
+  homeListSortDesc: 'تنازلي',
+  homeListSortAsc: 'تصاعدي',
+  homeListViewList: 'عرض القائمة',
+  homeListViewGrid: 'عرض البطاقات',
 } as const satisfies Record<keyof typeof zh, string>

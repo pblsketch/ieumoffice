@@ -21,4 +21,13 @@ export const en = {
   homeCreateTitle: 'Create new',
   homeCreateClose: 'Close',
   homeCreatePdfTools: 'PDF tools',
+  homeCreateLocation: 'Create in: {name}',
+  homeCreateAddFolder: 'Add folder',
+  homeListSortLabel: 'Sort',
+  homeListSortDate: 'Modified',
+  homeListSortName: 'Name',
+  homeListSortDesc: 'Descending',
+  homeListSortAsc: 'Ascending',
+  homeListViewList: 'List view',
+  homeListViewGrid: 'Card view',
 } as const satisfies Record<keyof typeof zh, string>

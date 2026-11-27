@@ -21,6 +21,9 @@ import {
   type HomeFileItem,
 } from '../actions'
 import type { HomeHost } from '../homeHost'
+import { setActiveFolderPath } from '../homeRuntime'
+import { sortFolderEntries, useHomeListPrefs } from '../frame/frameModel'
+import { HomeListToolbar } from '../frame/HomeListToolbar'
 import { usePdfToolsLink, type PdfToolStart } from '../pdfToolsLink'
 import {
   drawable,
@@ -105,7 +108,14 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, folder.id, pathKey, reloadSeq])
 
-  const { dirs, files } = useMemo(() => splitEntries(entries), [entries])
+  const listPrefs = useHomeListPrefs()
+  const { dirs, files } = useMemo(() => {
+    const split = splitEntries(entries)
+    return {
+      dirs: sortFolderEntries(split.dirs, listPrefs.sortField, listPrefs.sortDir),
+      files: sortFolderEntries(split.files, listPrefs.sortField, listPrefs.sortDir),
+    }
+  }, [entries, listPrefs.sortField, listPrefs.sortDir])
   const items = useMemo(
     () => files.map((entry) => folderFileItem(folder.id, entry)),
     [files, folder.id],
@@ -175,6 +185,11 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
   const pathText = [folder.name, ...path].join(' › ')
   const empty = loaded && dirs.length === 0 && files.length === 0
 
+  useEffect(() => {
+    setActiveFolderPath(pathText)
+    return () => setActiveFolderPath(null)
+  }, [pathText])
+
   return (
     <section className="home-folders-browse" data-testid="home-folders-browse">
       {Array.from({ length: path.length + 1 }, (_, depth) => (
@@ -206,6 +221,10 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
         </div>
       )}
 
+      {!empty && !selection.selecting && (dirs.length > 0 || files.length > 0) && (
+        <HomeListToolbar />
+      )}
+
       {empty ? (
         <div className="mobile-empty-state" data-testid="home-folders-inside-empty">
           <span className="mobile-empty-icon" aria-hidden="true">
@@ -214,7 +233,11 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
           <p className="mobile-muted">{t('homeFolderInsideEmpty')}</p>
         </div>
       ) : (
-        <ul className="mobile-doc-list home-folders-entries" aria-label={pathText}>
+        <ul
+          className="mobile-doc-list home-folders-entries"
+          data-view={listPrefs.viewMode}
+          aria-label={pathText}
+        >
           {dirs.map((entry) => (
             <li key={`dir:${entry.id}`} className="mobile-doc-list-item">
               <button

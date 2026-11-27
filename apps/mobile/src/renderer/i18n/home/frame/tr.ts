@@ -22,4 +22,13 @@ export const tr = {
   homeCreateTitle: 'Yeni oluştur',
   homeCreateClose: 'Kapat',
   homeCreatePdfTools: 'PDF araçları',
+  homeCreateLocation: 'Oluşturma konumu: {name}',
+  homeCreateAddFolder: 'Klasör ekle',
+  homeListSortLabel: 'Sırala',
+  homeListSortDate: 'Değiştirilme',
+  homeListSortName: 'Ad',
+  homeListSortDesc: 'Azalan',
+  homeListSortAsc: 'Artan',
+  homeListViewList: 'Liste görünümü',
+  homeListViewGrid: 'Kart görünümü',
 } as const satisfies Record<keyof typeof zh, string>

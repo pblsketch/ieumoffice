@@ -22,4 +22,13 @@ export const ja = {
   homeCreateTitle: '新規作成',
   homeCreateClose: '閉じる',
   homeCreatePdfTools: 'PDF ツール',
+  homeCreateLocation: '作成先: {name}',
+  homeCreateAddFolder: 'フォルダーを追加',
+  homeListSortLabel: '並び替え',
+  homeListSortDate: '更新日順',
+  homeListSortName: '名前順',
+  homeListSortDesc: '降順',
+  homeListSortAsc: '昇順',
+  homeListViewList: 'リスト表示',
+  homeListViewGrid: 'カード表示',
 } as const satisfies Record<keyof typeof zh, string>

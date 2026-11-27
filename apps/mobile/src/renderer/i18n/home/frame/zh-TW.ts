@@ -21,4 +21,13 @@ export const zhTW = {
   homeCreateTitle: '新增',
   homeCreateClose: '關閉',
   homeCreatePdfTools: 'PDF 工具',
+  homeCreateLocation: '建立位置：{name}',
+  homeCreateAddFolder: '新增資料夾',
+  homeListSortLabel: '排序',
+  homeListSortDate: '依修改時間',
+  homeListSortName: '依名稱',
+  homeListSortDesc: '遞減',
+  homeListSortAsc: '遞增',
+  homeListViewList: '清單檢視',
+  homeListViewGrid: '卡片檢視',
 } as const satisfies Record<keyof typeof zh, string>

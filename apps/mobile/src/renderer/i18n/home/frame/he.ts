@@ -21,4 +21,13 @@ export const he = {
   homeCreateTitle: 'יצירת חדש',
   homeCreateClose: 'סגירה',
   homeCreatePdfTools: 'כלי PDF',
+  homeCreateLocation: 'יצירה בתוך: {name}',
+  homeCreateAddFolder: 'הוספת תיקייה',
+  homeListSortLabel: 'מיון',
+  homeListSortDate: 'תאריך שינוי',
+  homeListSortName: 'שם',
+  homeListSortDesc: 'סדר יורד',
+  homeListSortAsc: 'סדר עולה',
+  homeListViewList: 'תצוגת רשימה',
+  homeListViewGrid: 'תצוגת כרטיסים',
 } as const satisfies Record<keyof typeof zh, string>

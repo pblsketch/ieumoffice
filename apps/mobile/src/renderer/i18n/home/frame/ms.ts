@@ -22,4 +22,13 @@ export const ms = {
   homeCreateTitle: 'Cipta baharu',
   homeCreateClose: 'Tutup',
   homeCreatePdfTools: 'Alat PDF',
+  homeCreateLocation: 'Cipta di: {name}',
+  homeCreateAddFolder: 'Tambah folder',
+  homeListSortLabel: 'Susun',
+  homeListSortDate: 'Diubah suai',
+  homeListSortName: 'Nama',
+  homeListSortDesc: 'Menurun',
+  homeListSortAsc: 'Menaik',
+  homeListViewList: 'Paparan senarai',
+  homeListViewGrid: 'Paparan kad',
 } as const satisfies Record<keyof typeof zh, string>

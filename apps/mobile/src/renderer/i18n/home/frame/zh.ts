@@ -20,4 +20,13 @@ export const zh = {
   homeCreateTitle: '新建',
   homeCreateClose: '关闭',
   homeCreatePdfTools: 'PDF 工具',
+  homeCreateLocation: '创建位置：{name}',
+  homeCreateAddFolder: '添加文件夹',
+  homeListSortLabel: '排序',
+  homeListSortDate: '按修改时间',
+  homeListSortName: '按名称',
+  homeListSortDesc: '降序',
+  homeListSortAsc: '升序',
+  homeListViewList: '列表视图',
+  homeListViewGrid: '卡片视图',
 } as const

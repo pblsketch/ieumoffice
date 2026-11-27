@@ -23,4 +23,13 @@ export const nl = {
   homeCreateTitle: 'Nieuw maken',
   homeCreateClose: 'Sluiten',
   homeCreatePdfTools: 'PDF-hulpmiddelen',
+  homeCreateLocation: 'Maken in: {name}',
+  homeCreateAddFolder: 'Map toevoegen',
+  homeListSortLabel: 'Sorteren',
+  homeListSortDate: 'Gewijzigd',
+  homeListSortName: 'Naam',
+  homeListSortDesc: 'Aflopend',
+  homeListSortAsc: 'Oplopend',
+  homeListViewList: 'Lijstweergave',
+  homeListViewGrid: 'Kaartweergave',
 } as const satisfies Record<keyof typeof zh, string>

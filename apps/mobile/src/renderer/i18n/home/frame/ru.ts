@@ -21,4 +21,13 @@ export const ru = {
   homeCreateTitle: 'Создать',
   homeCreateClose: 'Закрыть',
   homeCreatePdfTools: 'Инструменты PDF',
+  homeCreateLocation: 'Создать в: {name}',
+  homeCreateAddFolder: 'Добавить папку',
+  homeListSortLabel: 'Сортировка',
+  homeListSortDate: 'По изменению',
+  homeListSortName: 'По имени',
+  homeListSortDesc: 'По убыванию',
+  homeListSortAsc: 'По возрастанию',
+  homeListViewList: 'Список',
+  homeListViewGrid: 'Карточки',
 } as const satisfies Record<keyof typeof zh, string>
