@@ -1,15 +1,16 @@
 /**
  * App-wide Hangul outline style-to-level mapping persisted in `userData/app-settings.json`.
  *
- * Preserves all unrelated settings keys on write and writes atomically via `atomicWriteFile`.
- * Explicit empty maps (`{}`) are stored verbatim so removed defaults stay removed; passing
- * `null` removes the key to restore `DEFAULT_OUTLINE_STYLE_MAP`.
+ * Performs the read-modify-write synchronously (matching the shell's `writeAppSettings`)
+ * via a temporary file and atomic rename so concurrent main-process writes to unrelated
+ * settings keys (such as window bounds) can never interleave and be lost. Explicit empty
+ * maps (`{}`) are stored verbatim so removed defaults stay removed; passing `null` removes
+ * the key to restore `DEFAULT_OUTLINE_STYLE_MAP`.
  */
-import { readFileSync } from 'node:fs'
-import { mkdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SettingsPathProvider } from '@genoffice/electron-utils'
-import { atomicWriteFile } from './atomic-write'
 import {
   DEFAULT_OUTLINE_STYLE_MAP,
   normalizeOutlineStyleMap,
@@ -37,6 +38,26 @@ function readSettingsObject(path: string): Record<string, unknown> {
   }
 }
 
+function writeSettingsObjectSync(path: string, settings: Record<string, unknown>): void {
+  mkdirSync(dirname(path), { recursive: true })
+  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(tempPath, JSON.stringify(settings, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+      flush: true,
+    })
+    renameSync(tempPath, path)
+  } catch (error) {
+    try {
+      unlinkSync(tempPath)
+    } catch {
+      // The write may have failed before the temporary file was created.
+    }
+    throw error
+  }
+}
+
 /**
  * Read the app-wide outline style mapping from `userData/app-settings.json`.
  * Falls back to a fresh copy of `DEFAULT_OUTLINE_STYLE_MAP` when missing or invalid.
@@ -52,22 +73,22 @@ export function readHwpOutlineStyleMap(app: SettingsPathProvider): OutlineStyleM
 
 /**
  * Persist a normalized app-wide outline style mapping in `userData/app-settings.json`,
- * or reset to defaults when `map` is `null`. Always preserves unrelated settings keys.
+ * or reset to defaults when `map` is `null`. Always preserves unrelated settings keys
+ * and completes synchronously without awaiting between read and write.
  */
-export async function writeHwpOutlineStyleMap(
+export function writeHwpOutlineStyleMap(
   app: SettingsPathProvider,
   map: OutlineStyleMap | null,
-): Promise<OutlineStyleMap> {
+): OutlineStyleMap {
   const path = settingsPathOf(app)
   const settings = readSettingsObject(path)
-  await mkdir(dirname(path), { recursive: true })
   if (map === null) {
     delete settings[HWP_OUTLINE_STYLE_MAP_KEY]
-    await atomicWriteFile(path, Buffer.from(JSON.stringify(settings, null, 2), 'utf8'))
+    writeSettingsObjectSync(path, settings)
     return { ...DEFAULT_OUTLINE_STYLE_MAP }
   }
   const normalized = normalizeOutlineStyleMap(map)
   settings[HWP_OUTLINE_STYLE_MAP_KEY] = normalized
-  await atomicWriteFile(path, Buffer.from(JSON.stringify(settings, null, 2), 'utf8'))
+  writeSettingsObjectSync(path, settings)
   return normalized
 }

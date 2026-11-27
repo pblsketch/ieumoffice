@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX) : édition, volet de travail et impression
 
-GenOffice ouvre et modifie les documents Hangul `.hwp` et `.hwpx` dans un onglet, en conservant les raccourcis Hancom Hangul 2024, les styles, les tableaux, les mémos, l’impression et un panneau IA. Tout s’exécute localement sur votre PC.
+GenOffice ouvre et modifie les documents Hangul `.hwp` et `.hwpx` dans un onglet, avec raccourcis clavier, styles, tableaux, mémos, impression et panneau IA. Tout s’exécute localement sur votre PC.
 
 ## Ouverture, enregistrement et impression
 
@@ -18,5 +18,5 @@ GenOffice ouvre et modifie les documents Hangul `.hwp` et `.hwpx` dans un onglet
 ## Mémos, raccourcis et panneau IA
 
 - Ouvrez la colonne Mémo depuis la barre supérieure ou **Insertion > Mémo** pour lire, ajouter, modifier et supprimer des mémos en texte brut à côté du document.
-- Prend en charge les raccourcis clavier Hancom Hangul 2024, les repères de paragraphe de la règle horizontale, la copie de mise en forme (**Alt+C**), la conversion Hanja (**F9** / touche Hanja) et les informations du document (**Ctrl+Q,I**).
+- Prend en charge les raccourcis d’édition Hangul, les repères de paragraphe de la règle horizontale, la copie de mise en forme (**Alt+C**), la conversion Hanja (**F9** / touche Hanja) et les informations du document (**Ctrl+Q,I**).
 - Le panneau IA facultatif et les [commandes du terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) peuvent lire et modifier le texte, les styles, les tableaux, les équations, la mise en page, le plan et les résultats de recherche ; chaque modification IA correspond à une seule étape d’annulation.

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 // Left workpane shell (WorkpaneSide.tsx, workpane-state.ts, workpane-menu.mjs,
-// hancom-keys Ctrl+F binding, App integration, and 22-language workpane i18n shard).
+// Ctrl+F workpane key binding, App integration, and 22-language workpane i18n shard).
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -184,7 +184,7 @@ describe('workpane state, tab registry, persistence, and auto-collapse', () => {
     })
   })
 
-  it('parses workpane command payloads and matches Ctrl+F / Cmd+F', () => {
+  it('parses workpane command payloads and matches platform-specific find shortcuts outside text inputs', () => {
     expect(parseWorkpaneCommand({ action: 'open', tab: 'find', focus: true })).toEqual({
       action: 'open',
       tab: 'find',
@@ -194,50 +194,163 @@ describe('workpane state, tab registry, persistence, and auto-collapse', () => {
     expect(parseWorkpaneCommand({ action: 'bogus' })).toBeNull()
     expect(parseWorkpaneCommand(null)).toBeNull()
 
+    // Windows / Linux: Ctrl+F matches, Meta+F does not.
     expect(
-      isWorkpaneFindShortcut({
-        key: 'f',
-        code: 'KeyF',
-        ctrlKey: true,
-        metaKey: false,
-        altKey: false,
-        shiftKey: false,
-        repeat: false,
-      }),
+      isWorkpaneFindShortcut(
+        {
+          key: 'f',
+          code: 'KeyF',
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+        'Win32',
+      ),
     ).toBe(true)
     expect(
-      isWorkpaneFindShortcut({
-        key: 'Process',
-        code: 'KeyF',
-        ctrlKey: false,
-        metaKey: true,
-        altKey: false,
-        shiftKey: false,
-        repeat: false,
-      }),
+      isWorkpaneFindShortcut(
+        {
+          key: 'f',
+          code: 'KeyF',
+          ctrlKey: false,
+          metaKey: true,
+          altKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+        'Win32',
+      ),
+    ).toBe(false)
+
+    // macOS: Cmd+F matches (even under IME key='Process'), Ctrl+F must NOT be intercepted.
+    expect(
+      isWorkpaneFindShortcut(
+        {
+          key: 'Process',
+          code: 'KeyF',
+          ctrlKey: false,
+          metaKey: true,
+          altKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+        'MacIntel',
+      ),
     ).toBe(true)
     expect(
-      isWorkpaneFindShortcut({
-        key: 'f',
-        code: 'KeyF',
-        ctrlKey: true,
-        metaKey: false,
-        altKey: false,
-        shiftKey: true,
-        repeat: false,
-      }),
+      isWorkpaneFindShortcut(
+        {
+          key: 'f',
+          code: 'KeyF',
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+        'MacIntel',
+      ),
+    ).toBe(false)
+
+    // Shift/other keys do not match.
+    expect(
+      isWorkpaneFindShortcut(
+        {
+          key: 'f',
+          code: 'KeyF',
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: true,
+          repeat: false,
+        },
+        'Win32',
+      ),
     ).toBe(false)
     expect(
-      isWorkpaneFindShortcut({
-        key: 'h',
-        code: 'KeyH',
-        ctrlKey: true,
-        metaKey: false,
-        altKey: false,
-        shiftKey: false,
-        repeat: false,
-      }),
+      isWorkpaneFindShortcut(
+        {
+          key: 'h',
+          code: 'KeyH',
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+        'Win32',
+      ),
     ).toBe(false)
+
+    // Never intercept when focus or target is inside an editable text control (AI prompt, memo editor, etc.).
+    const textarea = document.createElement('textarea')
+    const textInput = document.createElement('input')
+    textInput.type = 'text'
+    const editableDiv = document.createElement('div')
+    editableDiv.setAttribute('contenteditable', 'true')
+    const editableChild = document.createElement('span')
+    editableDiv.appendChild(editableChild)
+    const plainButton = document.createElement('button')
+    document.body.append(textarea, textInput, editableDiv, plainButton)
+    try {
+      for (const target of [textarea, textInput, editableDiv, editableChild]) {
+        expect(
+          isWorkpaneFindShortcut(
+            {
+              key: 'f',
+              code: 'KeyF',
+              ctrlKey: true,
+              metaKey: false,
+              altKey: false,
+              shiftKey: false,
+              repeat: false,
+              target,
+            },
+            'Win32',
+          ),
+        ).toBe(false)
+      }
+      // Also guard via document.activeElement even if event.target is a wrapper.
+      textarea.focus()
+      expect(
+        isWorkpaneFindShortcut(
+          {
+            key: 'f',
+            code: 'KeyF',
+            ctrlKey: true,
+            metaKey: false,
+            altKey: false,
+            shiftKey: false,
+            repeat: false,
+            target: plainButton,
+          },
+          'Win32',
+        ),
+      ).toBe(false)
+      plainButton.focus()
+      expect(
+        isWorkpaneFindShortcut(
+          {
+            key: 'f',
+            code: 'KeyF',
+            ctrlKey: true,
+            metaKey: false,
+            altKey: false,
+            shiftKey: false,
+            repeat: false,
+            target: plainButton,
+          },
+          'Win32',
+        ),
+      ).toBe(true)
+    } finally {
+      textarea.remove()
+      textInput.remove()
+      editableDiv.remove()
+      plainButton.remove()
+    }
   })
 })
 
@@ -316,7 +429,7 @@ describe('workpane-menu.mjs View menu registration', () => {
   })
 })
 
-describe('hancom-keys.mjs Ctrl+F workpane binding', () => {
+describe('Ctrl+F workpane key binding', () => {
   it('binds Ctrl+F to ieum:workpane-find while keeping Ctrl+Q,F for edit:find and Ctrl+H for edit:find-replace', () => {
     expect(REMOVED_SHORTCUTS).toContainEqual([{ key: 'f', ctrl: true }, 'edit:find'])
     expect(ADDED_SHORTCUTS).toContainEqual([

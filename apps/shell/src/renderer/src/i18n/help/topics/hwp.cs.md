@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): úpravy, pracovní panel a tisk
 
-GenOffice otevírá a upravuje dokumenty Hangul `.hwp` a `.hwpx` na kartě a zachovává klávesové zkratky Hancom Hangul 2024, styly, tabulky, poznámky, tisk i panel AI. Vše běží lokálně na vašem počítači.
+GenOffice otevírá a upravuje dokumenty Hangul `.hwp` a `.hwpx` na kartě a podporuje klávesové zkratky, styly, tabulky, poznámky, tisk i panel AI. Vše běží lokálně na vašem počítači.
 
 ## Otevírání, ukládání a tisk
 
@@ -18,5 +18,5 @@ GenOffice otevírá a upravuje dokumenty Hangul `.hwp` a `.hwpx` na kartě a zac
 ## Poznámky, zkratky a panel AI
 
 - Otevřete sloupec poznámek z horní lišty nebo přes **Vložit > Poznámka** a čtěte, přidávejte, upravujte či mažte prosté textové poznámky vedle dokumentu.
-- Používá klávesové zkratky Hancom Hangul 2024, značky odstavců na vodorovném pravítku, Kopírování formátu (**Alt+C**), převod Hanja (**F9** / klávesa Hanja) a Informace o dokumentu (**Ctrl+Q,I**).
+- Podporuje klávesové zkratky pro úpravy dokumentů Hangul, značky odstavců na vodorovném pravítku, Kopírování formátu (**Alt+C**), převod Hanja (**F9** / klávesa Hanja) a Informace o dokumentu (**Ctrl+Q,I**).
 - Volitelný panel AI a [příkazy terminálu](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) dokážou číst a upravovat text, styly, tabulky, rovnice, rozvržení stránky, osnovu i výsledky hledání; každá úprava AI představuje jediný krok zpět.

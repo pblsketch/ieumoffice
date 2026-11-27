@@ -986,6 +986,8 @@ describe('hwp outline and multi-scope find ops', () => {
     for (const badOp of [
       { op: 'change_outline_level', section: 0, paragraph: 2, direction: 'demote' },
       { op: 'change_outline_level', section: 1, paragraph: 0, direction: 'demote' },
+      { op: 'change_outline_level', section: 999, paragraph: 2, direction: 'demote' },
+      { op: 'change_outline_level', section: 1, paragraph: 999, direction: 'demote' },
       {
         op: 'move_outline_section',
         section: 0,
@@ -994,11 +996,19 @@ describe('hwp outline and multi-scope find ops', () => {
         position: 'after',
       },
       { op: 'move_outline_section', paragraph: 2, target_paragraph: 0, position: 'after' },
+      { op: 'move_outline_section', paragraph: 999, target_paragraph: 4, position: 'after' },
+      { op: 'move_outline_section', paragraph: 2, target_paragraph: 999, position: 'after' },
       { op: 'find_in_document', size: 0 },
       { op: 'find_in_document', size: -1 },
     ]) {
       const r = await run(['hwp', 'apply', path, '--ops', ops(dir, [badOp]), '--dry-run', '--json'])
       expect(r.code, JSON.stringify(badOp)).not.toBe(0)
+      if (
+        (badOp.op === 'change_outline_level' || badOp.op === 'move_outline_section') &&
+        (badOp.section === 999 || badOp.paragraph === 999 || badOp.target_paragraph === 999)
+      ) {
+        expect(r.stdout).toContain('read_outline')
+      }
     }
   })
 })

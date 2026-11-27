@@ -261,6 +261,9 @@ export const ms = {
   memoHwpxLost:
     'Komen tidak dipindahkan ke fail HWPX: {count}. Simpan sebagai HWP atau semak fail dalam Hancom Hangul.',
   aiToolMemos: 'Komen diperiksa: {count}',
+  aiToolReadOutline: 'Rangka disemak · {count}',
+  aiToolChangeOutlineLevel: 'Aras rangka ditukar · {count}',
+  aiToolMoveOutlineSection: 'Bahagian rangka dialihkan · {count} perenggan',
   aiMemoContext: 'Komen: {count}',
   aiMemoApprovalTitle: 'Edit ini memadam komen: {count}. Teruskan?',
   aiMemoApprovalKeep: 'Kekalkan komen',

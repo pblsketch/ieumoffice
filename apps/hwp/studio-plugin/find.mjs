@@ -476,15 +476,79 @@ function followsInlineObject(doc, sec, para, offset, length) {
 }
 
 /**
- * Group body controls (`list === 0`) by `${sec}:${para}`, sorted by `controlIndex`,
- * and count non-body table controls (`ctrlId === 'tbl' && list !== 0`) so nested
- * table probing can be skipped or stopped as soon as all nested tables are found.
+ * Build a map from `${sec}:${parentPara}:${cellPathCoordsKey}` to rhwp `listId`
+ * using `doc.getCursorModel().lists`, covering depth-1 tables, nested tables,
+ * and text boxes.
+ */
+function indexCellListIds(doc) {
+  const byPath = new Map()
+  if (typeof doc.getCursorModel !== 'function') return byPath
+  const model = tryOr(() => parse(doc.getCursorModel()), null)
+  const lists = Array.isArray(model?.lists) ? model.lists : []
+  if (lists.length === 0) return byPath
+
+  const byId = new Map()
+  for (const entry of lists) {
+    if (entry && Number.isInteger(entry.listId)) byId.set(entry.listId, entry)
+  }
+
+  const resolveChain = (entry, seen = new Set()) => {
+    if (!entry || seen.has(entry.listId)) return null
+    seen.add(entry.listId)
+    if (entry.hostListId === 0) {
+      return {
+        sec: entry.sectionIndex ?? 0,
+        parentPara: entry.hostPara ?? 0,
+        steps: [{ controlIndex: entry.controlIndex ?? 0, cellIndex: entry.cellIndex ?? 0 }],
+      }
+    }
+    const parent = byId.get(entry.hostListId)
+    const resolvedParent = resolveChain(parent, seen)
+    if (!resolvedParent) return null
+    const parentSteps = resolvedParent.steps.map((s) => ({ ...s }))
+    parentSteps[parentSteps.length - 1].cellParaIndex = entry.hostPara ?? 0
+    parentSteps.push({
+      controlIndex: entry.controlIndex ?? 0,
+      cellIndex: entry.cellIndex ?? 0,
+    })
+    return {
+      sec: resolvedParent.sec,
+      parentPara: resolvedParent.parentPara,
+      steps: parentSteps,
+    }
+  }
+
+  for (const entry of lists) {
+    const chain = resolveChain(entry)
+    if (!chain) continue
+    const key = cellPathToListKey(chain.sec, chain.parentPara, chain.steps)
+    byPath.set(key, entry.listId)
+  }
+  return byPath
+}
+
+function cellPathToListKey(sec, para, path) {
+  if (!Array.isArray(path) || path.length === 0) return ''
+  const parents = path
+    .slice(0, -1)
+    .map((s) => `${s.controlIndex}:${s.cellIndex}:${s.cellParaIndex ?? 0}`)
+    .join('/')
+  const last = path[path.length - 1]
+  return `${sec}:${para}:${parents}|${last.controlIndex}:${last.cellIndex}`
+}
+
+/**
+ * Group body controls (`list === 0`) by `${sec}:${para}` (sorted by `controlIndex`),
+ * index non-body controls (`list !== 0`) by `${list}:${para}`, and count nested tables.
  */
 function indexBodyControls(doc) {
   const byPara = new Map()
+  const nonBodyByListPara = new Map()
   let nestedTablesTotal = 0
   const all = tryOr(() => parse(doc.getControls()), [])
-  if (!Array.isArray(all) || all.length === 0) return { byPara, nestedTablesTotal }
+  if (!Array.isArray(all) || all.length === 0) {
+    return { byPara, nonBodyByListPara, nestedTablesTotal }
+  }
 
   const sections = doc.getSectionCount()
   const sectionStarts = []
@@ -499,6 +563,15 @@ function indexBodyControls(doc) {
     if (!ctrl) continue
     if (ctrl.list !== 0) {
       if (ctrl.ctrlId === 'tbl') nestedTablesTotal += 1
+      if (Number.isInteger(ctrl.list) && Number.isInteger(ctrl.para)) {
+        const key = `${ctrl.list}:${ctrl.para}`
+        let list = nonBodyByListPara.get(key)
+        if (!list) {
+          list = []
+          nonBodyByListPara.set(key, list)
+        }
+        list.push(ctrl)
+      }
       continue
     }
     if (!Number.isInteger(ctrl.para)) continue
@@ -524,7 +597,45 @@ function indexBodyControls(doc) {
   for (const list of byPara.values()) {
     list.sort((a, b) => (a.controlIndex ?? 0) - (b.controlIndex ?? 0))
   }
-  return { byPara, nestedTablesTotal }
+  return { byPara, nonBodyByListPara, nestedTablesTotal }
+}
+
+/**
+ * Character offsets of inline content objects inside a table cell or text box paragraph.
+ * Uses `doc.getControls()` (`list === listId && para === cellPara`) and
+ * `doc.getCharIndexAtStreamPos(listId, cellPara, ctrl.pos)`.
+ */
+function cellInlineObjectOffsets(doc, listId, cellPara, nonBodyByListPara) {
+  if (!Number.isInteger(listId) || listId <= 0) return []
+  const ctrls = nonBodyByListPara.get(`${listId}:${cellPara}`)
+  if (!ctrls || ctrls.length === 0) return []
+  const offsets = []
+  for (const ctrl of ctrls) {
+    if (!ctrl || ctrl.ctrlId === 'bokm') continue
+    if (!Number.isInteger(ctrl.pos)) continue
+    if (typeof doc.getCharIndexAtStreamPos === 'function') {
+      const at = tryOr(() => parse(doc.getCharIndexAtStreamPos(listId, cellPara, ctrl.pos)), null)
+      if (at && Number.isInteger(at.charIndex)) {
+        offsets.push(at.charIndex)
+        continue
+      }
+    }
+    offsets.push(ctrl.pos)
+  }
+  return offsets
+}
+
+/** Whether a footnote/endnote paragraph contains an inline compose/overlap/ruby control. */
+function footnoteHasInlineObject(doc, sec, para, noteControl, notePara) {
+  if (typeof doc.getComposeControlInFootnote !== 'function') return false
+  for (let ctrlIdx = 0; ctrlIdx < 8; ctrlIdx++) {
+    const info = tryOr(
+      () => parse(doc.getComposeControlInFootnote(sec, para, noteControl, notePara, ctrlIdx)),
+      null,
+    )
+    if (info && typeof info === 'object' && typeof info.kind === 'string') return true
+  }
+  return false
 }
 
 function cellPathStep(path, cellIndex, cellParaIndex) {
@@ -578,7 +689,7 @@ function runFind(doc, options = {}, keepExecMeta = false) {
   const charFilter = normalizeCharFormat(options?.charFormat)
 
   if (!query && !styleFilter && !charFilter) {
-    return { ok: true, total: 0, matches: [], execMeta: [] }
+    return { ok: true, total: 0, matches: [], execMeta: [], unsupportedScopes: [] }
   }
 
   const matcher = compileQueryMatcher(query, caseSensitive, regex)
@@ -589,7 +700,9 @@ function runFind(doc, options = {}, keepExecMeta = false) {
   const pageCache = new Map()
   const charShapeCache = new Map()
   const citationRanges = citationRangesOf(doc)
-  const { byPara: controlsByPara, nestedTablesTotal } = indexBodyControls(doc)
+  const { byPara: controlsByPara, nonBodyByListPara, nestedTablesTotal } = indexBodyControls(doc)
+  const cellListIds = indexCellListIds(doc)
+  const unsupportedScopeSet = new Set()
   let nestedLookups = MAX_NESTED_LOOKUPS
   let nestedTablesFound = 0
 
@@ -649,7 +762,9 @@ function runFind(doc, options = {}, keepExecMeta = false) {
     if (hits.length === 0) return
 
     const page = pageOf(sec, para)
-    const paraCitations = kind === 'body' ? citationRanges.get(`${sec}:${para}`) : null
+    const paraCitations = citationRanges.get(`${sec}:${para}`) ?? null
+    let cellObjOffsets = null
+    let fnHasObj = null
 
     for (const hit of hits) {
       const length = hit.end - hit.start
@@ -689,6 +804,39 @@ function runFind(doc, options = {}, keepExecMeta = false) {
         if (overlapsCitation(paraCitations, offset, offset + length)) {
           entry.inCitation = true
         }
+      } else if (kind === 'table' || kind === 'textbox') {
+        if (length >= 2) {
+          if (cellObjOffsets === null) {
+            const listId = cellListIds.get(cellPathToListKey(sec, para, path))
+            const cellPara = path[path.length - 1]?.cellParaIndex ?? 0
+            cellObjOffsets = cellInlineObjectOffsets(doc, listId, cellPara, nonBodyByListPara)
+          }
+          if (cellObjOffsets.some((objAt) => offset < objAt && objAt < offset + length)) {
+            entry.spansObject = true
+          }
+        }
+        if (paraCitations && overlapsCitation(paraCitations, offset, offset + length)) {
+          // Only mark cell/textbox matches as in-citation when this cell actually carries
+          // a `bokm` control in its own list (avoiding false positives from body bookmarks
+          // in the same outer paragraph).
+          const listId = cellListIds.get(cellPathToListKey(sec, para, path))
+          const cellPara = path[path.length - 1]?.cellParaIndex ?? 0
+          const cellCtrls = Number.isInteger(listId)
+            ? nonBodyByListPara.get(`${listId}:${cellPara}`)
+            : null
+          if (cellCtrls && cellCtrls.some((c) => c.ctrlId === 'bokm')) {
+            entry.inCitation = true
+          }
+        }
+      } else if (kind === 'footnote' || kind === 'endnote') {
+        if (length >= 2) {
+          if (fnHasObj === null) {
+            fnHasObj = footnoteHasInlineObject(doc, sec, para, noteControl, notePara)
+          }
+          if (fnHasObj) {
+            entry.spansObject = true
+          }
+        }
       }
 
       matches.push(entry)
@@ -700,7 +848,11 @@ function runFind(doc, options = {}, keepExecMeta = false) {
 
   const searchCellParagraph = (kind, sec, para, cellPath) => {
     if (styleFilter) {
-      if (cellPath.length !== 1) return
+      if (cellPath.length !== 1) {
+        // @rhwp/core has no paragraph-style query API for nested table cells (depth > 1).
+        unsupportedScopeSet.add('nested_table')
+        return
+      }
       const step = cellPath[0]
       const styleInfo = tryOr(
         () =>
@@ -788,7 +940,13 @@ function runFind(doc, options = {}, keepExecMeta = false) {
 
   const searchNote = (sec, para, controlIndex, fallbackKind, anchorOffset) => {
     // Footnotes/endnotes have no style or charFormat query API in @rhwp/core.
-    if (styleFilter || charFilter) return
+    if (styleFilter || charFilter) {
+      const edit = tryOr(() => parse(doc.getNoteEditInfo(sec, para, controlIndex)), null)
+      const noteKind =
+        edit && (edit.kind === 'endnote' || edit.kind === 'footnote') ? edit.kind : fallbackKind
+      unsupportedScopeSet.add(noteKind)
+      return
+    }
     const info = tryOr(() => parseNoteInfo(doc.getFootnoteInfo(sec, para, controlIndex)), null)
     if (!info || !info.ok) return
 
@@ -884,7 +1042,10 @@ function runFind(doc, options = {}, keepExecMeta = false) {
     }
   }
 
-  return { ok: true, total: matches.length, matches, execMeta }
+  const unsupportedScopes = ['nested_table', 'footnote', 'endnote'].filter((scope) =>
+    unsupportedScopeSet.has(scope),
+  )
+  return { ok: true, total: matches.length, matches, execMeta, unsupportedScopes }
 }
 
 /**
@@ -894,7 +1055,12 @@ function runFind(doc, options = {}, keepExecMeta = false) {
 export function findMatches(doc, options = {}) {
   const result = runFind(doc, options, false)
   if (!result.ok) return result
-  return { ok: true, total: result.total, matches: result.matches }
+  return {
+    ok: true,
+    total: result.total,
+    matches: result.matches,
+    ...(result.unsupportedScopes.length > 0 ? { unsupportedScopes: result.unsupportedScopes } : {}),
+  }
 }
 
 function cellReplaceHead(text) {
@@ -1000,6 +1166,15 @@ function containerKeyOf(match) {
   return `note:${match.sec}:${match.para}:${match.noteControl}:${match.notePara}`
 }
 
+function matchTargetKey(m) {
+  const pathKey = Array.isArray(m.path) ? JSON.stringify(m.path) : ''
+  const noteKey =
+    m.kind === 'footnote' || m.kind === 'endnote'
+      ? `${m.noteControl ?? ''}:${m.notePara ?? ''}`
+      : ''
+  return `${m.kind}|${m.sec}|${m.para}|${pathKey}|${noteKey}|${m.offset}|${m.length}|${m.matchText}`
+}
+
 /**
  * Replace selected or all matches directly on `doc` in reverse offset order per container.
  * Callers should wrap this in a single editor transaction for single-step undo.
@@ -1018,8 +1193,31 @@ export function replaceFindMatches(doc, options, replacement, selection = 'all')
   if (!found.ok) return found
 
   let selectedIndices
+  let skippedStale = 0
   if (selection === 'all') {
     selectedIndices = found.matches.map((_, idx) => idx)
+  } else if (selection && Array.isArray(selection.targets)) {
+    // Re-match each requested target by exact scope, location, and matched text
+    // so stale result indices never replace an unintended occurrence.
+    const indexByKey = new Map()
+    for (let idx = 0; idx < found.matches.length; idx++) {
+      const key = matchTargetKey(found.matches[idx])
+      if (!indexByKey.has(key)) indexByKey.set(key, idx)
+    }
+    const valid = new Set()
+    for (const target of selection.targets) {
+      if (!target || typeof target !== 'object') {
+        skippedStale += 1
+        continue
+      }
+      const matchedIdx = indexByKey.get(matchTargetKey(target))
+      if (matchedIdx === undefined) {
+        skippedStale += 1
+        continue
+      }
+      valid.add(matchedIdx)
+    }
+    selectedIndices = [...valid].sort((a, b) => a - b)
   } else if (selection && Array.isArray(selection.indices)) {
     const valid = new Set()
     for (const idx of selection.indices) {
@@ -1039,11 +1237,11 @@ export function replaceFindMatches(doc, options, replacement, selection = 'all')
 
   for (const idx of selectedIndices) {
     const match = found.matches[idx]
-    if (match.kind === 'body' && match.spansObject) {
+    if (match.spansObject) {
       skippedObjects += 1
       continue
     }
-    if (match.kind === 'body' && match.inCitation) {
+    if (match.inCitation) {
       skippedCitations += 1
       continue
     }
@@ -1080,7 +1278,13 @@ export function replaceFindMatches(doc, options, replacement, selection = 'all')
     }
   }
 
-  const out = { ok: true, replaced, skippedObjects, skippedCitations }
+  const out = {
+    ok: true,
+    replaced,
+    skippedObjects,
+    skippedCitations,
+    ...(skippedStale > 0 ? { skippedStale } : {}),
+  }
   if (firstReplaced) {
     const m = firstReplaced.match
     out.firstPlace = {

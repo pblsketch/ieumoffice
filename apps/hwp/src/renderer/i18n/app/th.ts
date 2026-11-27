@@ -256,6 +256,9 @@ export const th = {
   memoHwpxLost:
     'ความคิดเห็นที่ไม่ได้ถ่ายโอนไปยังไฟล์ HWPX: {count} บันทึกเป็น HWP หรือตรวจสอบไฟล์ใน Hancom Hangul',
   aiToolMemos: 'ตรวจสอบความคิดเห็นแล้ว: {count}',
+  aiToolReadOutline: 'ตรวจสอบโครงร่างแล้ว · {count}',
+  aiToolChangeOutlineLevel: 'เปลี่ยนระดับโครงร่างแล้ว · {count}',
+  aiToolMoveOutlineSection: 'ย้ายส่วนโครงร่างแล้ว · {count} ย่อหน้า',
   aiMemoContext: 'ความคิดเห็น: {count}',
   aiMemoApprovalTitle: 'การแก้ไขนี้จะลบความคิดเห็น: {count} ดำเนินการต่อหรือไม่',
   aiMemoApprovalKeep: 'เก็บความคิดเห็นไว้',

@@ -815,3 +815,121 @@ describe('revealFindMatch — studio cursor navigation', () => {
     ])
   })
 })
+
+describe('findMatches & replaceFindMatches — target verification, non-body object skipping, and scope notices', () => {
+  it('matches replacement targets by location and text instead of raw index, skipping stale targets', () => {
+    const doc = makeDoc(['가나다 연구 가나다', '둘째 연구 문장'])
+    const found = findMatches(doc, { query: '연구' })
+    expect(found.ok).toBe(true)
+    if (!found.ok) return
+    expect(found.matches).toHaveLength(2)
+
+    // Edit paragraph 0 before replacing, invalidating target 0 while target 1 remains valid.
+    doc.replaceText(0, 0, 4, 2, '바뀜')
+
+    const res = replaceFindMatches(doc, { query: '연구' }, '수정', {
+      targets: [found.matches[0], found.matches[1]],
+    })
+    expect(res).toMatchObject({
+      ok: true,
+      replaced: 1,
+      skippedObjects: 0,
+      skippedCitations: 0,
+      skippedStale: 1,
+    })
+    expect(bodyTexts(doc)).toEqual(['가나다 바뀜 가나다', '둘째 수정 문장'])
+  })
+
+  it('skips matches spanning inline char-overlap objects inside table cells', () => {
+    const doc = makeDoc(['머리', ''])
+    doc.pasteHtml(0, 1, 0, '<table><tr><td>가나다라마</td><td>가나다라마</td></tr></table>')
+    const cell0 = JSON.stringify([{ controlIndex: 0, cellIndex: 0, cellParaIndex: 0 }])
+    const cell1 = JSON.stringify([{ controlIndex: 0, cellIndex: 1, cellParaIndex: 0 }])
+    // Insert a real inline char-overlap control inside cell 0 between '나'(1) and '다'(2)
+    doc.insertCharOverlapByPath(
+      0,
+      1,
+      cell0,
+      2,
+      JSON.stringify({ text: '1', shape: 1, innerSize: 0, overlap: true }),
+    )
+
+    const found = findMatches(doc, { query: '나다라' })
+    expect(found.ok).toBe(true)
+    if (!found.ok) return
+    expect(found.matches).toHaveLength(2)
+    expect(found.matches[0].kind).toBe('table')
+    expect(found.matches[0].spansObject).toBe(true)
+    expect(found.matches[1].kind).toBe('table')
+    expect(found.matches[1].spansObject).toBeUndefined()
+
+    const rep = replaceFindMatches(doc, { query: '나다라' }, '변경', 'all')
+    expect(rep).toMatchObject({ ok: true, replaced: 1, skippedObjects: 1, skippedCitations: 0 })
+    // Cell 0 (spanning overlap) stays untouched; cell 1 is replaced
+    expect(
+      doc.getTextInCellByPath(0, 1, cell0, 0, doc.getCellParagraphLengthByPath(0, 1, cell0)),
+    ).toBe('가나다라마')
+    expect(
+      doc.getTextInCellByPath(0, 1, cell1, 0, doc.getCellParagraphLengthByPath(0, 1, cell1)),
+    ).toBe('가변경마')
+  })
+
+  it('filters text boxes by paragraph style and reports unsupported scopes for nested tables and notes', () => {
+    const doc = makeDoc(['본문 연구', ''])
+    const styles = JSON.parse(doc.getStyleList()) as Array<{ id: number; name: string }>
+    const g1 = styles.find((s) => s.name === '개요 1')!.id
+    doc.applyStyle(0, 0, g1)
+
+    // Text box styled with 개요 1
+    const shape = JSON.parse(
+      doc.createShapeControl(
+        JSON.stringify({
+          sectionIdx: 0,
+          paraIdx: 0,
+          charOffset: 0,
+          width: 12000,
+          height: 5000,
+          horzOffset: 0,
+          vertOffset: 0,
+          treatAsChar: false,
+          textWrap: 'Square',
+          shapeType: 'textbox',
+        }),
+      ),
+    ) as { ok: boolean; paraIdx: number; controlIdx: number }
+    expect(shape.ok).toBe(true)
+    const tbPath = JSON.stringify([
+      { controlIndex: shape.controlIdx, cellIndex: 0, cellParaIndex: 0 },
+    ])
+    doc.insertTextInCellByPath(0, shape.paraIdx, tbPath, 0, '글상자 연구')
+    doc.applyCellStyle(0, shape.paraIdx, shape.controlIdx, 0, 0, g1)
+
+    // Nested table + footnote
+    doc.pasteHtml(0, 1, 0, '<table><tr><td>외부</td></tr></table>')
+    const outerCell = JSON.stringify([{ controlIndex: 0, cellIndex: 0, cellParaIndex: 0 }])
+    const nested = JSON.parse(
+      doc.createTableInCellByPath(
+        0,
+        1,
+        outerCell,
+        doc.getCellParagraphLengthByPath(0, 1, outerCell),
+        JSON.stringify({ rowCount: 1, colCount: 1 }),
+      ),
+    ) as { ok: boolean; cellPath: unknown[] }
+    expect(nested.ok).toBe(true)
+    doc.insertTextInCellByPath(0, 1, JSON.stringify(nested.cellPath), 0, '중첩 연구')
+
+    const fn = JSON.parse(doc.insertFootnote(0, 0, 2)) as { ok: boolean; controlIdx: number }
+    expect(fn.ok).toBe(true)
+    doc.insertTextInFootnote(0, 0, fn.controlIdx, 0, 2, '각주 연구')
+
+    const res = findMatches(doc, { query: '연구', style: '개요 1' })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.matches.map((m) => [m.kind, m.matchText])).toEqual([
+      ['body', '연구'],
+      ['textbox', '연구'],
+    ])
+    expect(res.unsupportedScopes).toEqual(['nested_table', 'footnote'])
+  })
+})

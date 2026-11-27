@@ -259,6 +259,9 @@ export const ja = {
   memoHwpxLost:
     'コメント {count} 件を HWPX ファイルに書き込めませんでした。HWP で保存するか、Hancom Hangul で確認してください。',
   aiToolMemos: 'コメント {count} 件を確認',
+  aiToolReadOutline: 'アウトラインを確認 · {count}件',
+  aiToolChangeOutlineLevel: 'アウトラインのレベルを変更 · {count}件',
+  aiToolMoveOutlineSection: 'アウトラインの段落を移動 · {count}段落',
   aiMemoContext: 'コメント {count} 件',
   aiMemoApprovalTitle: 'この編集でコメント {count} 件が削除されます。続けますか？',
   aiMemoApprovalKeep: 'コメントを残す',

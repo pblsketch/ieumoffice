@@ -304,7 +304,6 @@ export const HELP_TOPICS: HelpTopicMeta[] = [
       'hwpx',
       'hangul',
       '한글',
-      '한컴',
       'workpane',
       '작업창',
       'outline',

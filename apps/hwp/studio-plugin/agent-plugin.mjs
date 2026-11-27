@@ -1708,15 +1708,83 @@ function containerOf(doc, hit) {
 }
 
 /**
- * The app-owned bookmarks of `doc` (table-of-contents, index, citation, setting marks).
+ * The body-level app-owned bookmarks of `doc` (table-of-contents, index, citation, setting marks).
  * These are document metadata rather than content objects, so edits that add, shift, or
  * remove paragraphs carrying them are not blocked by the object guard.
+ *
+ * Bookmarks inside table cells or headers/footers are reported by `doc.getBookmarks()` with
+ * outer body coordinates and inner control indices; filtering against `doc.getControls()`
+ * (`list === 0 && ctrlId === 'bokm'`) prevents them from exempting unrelated outer body controls.
  */
 function appMarkBookmarksOf(doc) {
   if (typeof doc.getBookmarks !== 'function') return []
   try {
-    const marks = parse(doc.getBookmarks())
-    return Array.isArray(marks) ? marks.filter((mark) => isAppMarkName(mark?.name)) : []
+    const raw = parse(doc.getBookmarks())
+    if (!Array.isArray(raw)) return []
+    const appMarks = raw.filter((mark) => isAppMarkName(mark?.name))
+    if (appMarks.length === 0 || typeof doc.getControls !== 'function') return appMarks
+    const controls = parse(doc.getControls())
+    if (!Array.isArray(controls)) return appMarks
+    const bodyBokms = new Map()
+    for (const ctrl of controls) {
+      if (ctrl && ctrl.list === 0 && ctrl.ctrlId === 'bokm') {
+        if (Number.isInteger(ctrl.para) && Number.isInteger(ctrl.controlIndex)) {
+          bodyBokms.set(`${ctrl.para}:${ctrl.controlIndex}`, ctrl)
+        }
+      }
+    }
+    const secCount = typeof doc.getSectionCount === 'function' ? doc.getSectionCount() : 0
+    const bases = [0]
+    const bySlot = new Map()
+    for (const mark of appMarks) {
+      const sec = mark.sec ?? mark.sectionIndex ?? 0
+      const para = mark.para ?? mark.paraIndex ?? 0
+      const ctrlIdx = mark.ctrlIdx ?? mark.controlIndex
+      if (
+        !Number.isInteger(sec) ||
+        !Number.isInteger(para) ||
+        !Number.isInteger(ctrlIdx) ||
+        sec < 0 ||
+        sec >= secCount ||
+        para < 0 ||
+        para >= doc.getParagraphCount(sec)
+      ) {
+        continue
+      }
+      while (bases.length <= sec) {
+        bases.push(bases[bases.length - 1] + doc.getParagraphCount(bases.length - 1))
+      }
+      const flatPara = bases[sec] + para
+      const slotKey = `${flatPara}:${ctrlIdx}`
+      const ctrl = bodyBokms.get(slotKey)
+      if (!ctrl) continue
+      let bucket = bySlot.get(slotKey)
+      if (!bucket) {
+        bucket = { flatPara, ctrl, candidates: [] }
+        bySlot.set(slotKey, bucket)
+      }
+      bucket.candidates.push(mark)
+    }
+    const verified = []
+    for (const { flatPara, ctrl, candidates } of bySlot.values()) {
+      if (candidates.length === 1) {
+        verified.push(candidates[0])
+        continue
+      }
+      let exact = null
+      if (Number.isInteger(ctrl.pos) && typeof doc.getCharIndexAtStreamPos === 'function') {
+        try {
+          const at = parse(doc.getCharIndexAtStreamPos(0, flatPara, ctrl.pos))
+          if (at && Number.isInteger(at.charIndex)) {
+            exact = candidates.find((c) => (c.charPos ?? c.charOffset) === at.charIndex) ?? null
+          }
+        } catch {
+          // ignore stream-pos lookup failures
+        }
+      }
+      verified.push(exact ?? candidates[0])
+    }
+    return verified
   } catch {
     return []
   }
@@ -8904,10 +8972,41 @@ export const agentPlugin = {
             const { heads, taller } = settleHeads(doc, known)
             const result = options?.settled ? options.settled(changed, heads) : changed
             if (watched && watched.length > 0) {
-              const left = new Set(memoEntriesOf(doc).map((entry) => entry.id))
-              const gone = watched.filter(
+              const afterMemos = memoEntriesOf(doc)
+              const left = new Set(afterMemos.map((entry) => entry.id))
+              let gone = watched.filter(
                 (entry) => !left.has(entry.id) && !(approvedMemos && approvedMemos.has(entry.id)),
               )
+              if (gone.length > 0 && options?.matchMovedMemos === true) {
+                const watchedIds = new Set(watched.map((entry) => entry.id))
+                const memoKeyOf = (entry) =>
+                  JSON.stringify([
+                    entry.author ?? '',
+                    entry.text ?? '',
+                    entry.date ?? '',
+                    entry.place ?? '',
+                    entry.startCharIdx ?? -1,
+                    entry.endCharIdx ?? -1,
+                    entry.parentId != null,
+                  ])
+                const freshCounts = new Map()
+                for (const entry of afterMemos) {
+                  if (watchedIds.has(entry.id)) continue
+                  const key = memoKeyOf(entry)
+                  freshCounts.set(key, (freshCounts.get(key) ?? 0) + 1)
+                }
+                const trulyGone = []
+                for (const entry of gone) {
+                  const key = memoKeyOf(entry)
+                  const count = freshCounts.get(key) ?? 0
+                  if (count > 0) {
+                    freshCounts.set(key, count - 1)
+                  } else {
+                    trulyGone.push(entry)
+                  }
+                }
+                gone = trulyGone
+              }
               if (gone.length > 0) {
                 const failure = fail(
                   'MEMO_REMOVAL_REQUIRES_APPROVAL',
@@ -13826,7 +13925,7 @@ export const agentPlugin = {
             },
             isForeign
               ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
-              : { ...changeOptions, foreign: false },
+              : { ...changeOptions, foreign: false, matchMovedMemos: true },
           )
         } catch (thrown) {
           if (thrown === abort) {

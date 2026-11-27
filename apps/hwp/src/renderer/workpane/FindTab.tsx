@@ -16,7 +16,9 @@ import type {
   FindMatch,
   FindOptions,
   FindReplaceSelection,
+  FindReplaceTarget,
   FindScopeKind,
+  FindUnsupportedScope,
 } from '../../../studio-plugin/find.mjs'
 import type { AgentBridge } from '../ai/agent-bridge'
 import { useFindI18n, type FindStringKey } from '../i18n/find'
@@ -51,6 +53,7 @@ interface ReplaceNotice {
   replaced: number
   skippedObjects: number
   skippedCitations: number
+  skippedStale: number
 }
 
 interface ErrorNotice {
@@ -82,6 +85,31 @@ function scopeLabelKey(kind: FindScopeKind): FindStringKey {
       return 'findScopeFootnote'
     case 'endnote':
       return 'findScopeEndnote'
+  }
+}
+
+function unsupportedScopeLabelKey(scope: FindUnsupportedScope): FindStringKey {
+  switch (scope) {
+    case 'nested_table':
+      return 'findScopeNestedTable'
+    case 'footnote':
+      return 'findScopeFootnote'
+    case 'endnote':
+      return 'findScopeEndnote'
+  }
+}
+
+function toReplaceTarget(match: FindMatch): FindReplaceTarget {
+  return {
+    kind: match.kind,
+    sec: match.sec,
+    para: match.para,
+    offset: match.offset,
+    length: match.length,
+    matchText: match.matchText,
+    ...(match.path ? { path: match.path } : {}),
+    ...(match.noteControl !== undefined ? { noteControl: match.noteControl } : {}),
+    ...(match.notePara !== undefined ? { notePara: match.notePara } : {}),
   }
 }
 
@@ -129,6 +157,7 @@ export function FindTab({
   const [replacing, setReplacing] = useState(false)
   const [matches, setMatches] = useState<FindMatch[]>([])
   const [total, setTotal] = useState(0)
+  const [unsupportedScopes, setUnsupportedScopes] = useState<FindUnsupportedScope[]>([])
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [checkedIndices, setCheckedIndices] = useState<Set<number>>(() => new Set())
   const [lastExecutedOptions, setLastExecutedOptions] = useState<FindOptions | null>(null)
@@ -337,6 +366,7 @@ export function FindTab({
           setRegexError(result.error)
           setMatches([])
           setTotal(0)
+          setUnsupportedScopes([])
           setActiveIndex(null)
           setCheckedIndices(new Set())
           setHasSearched(true)
@@ -346,6 +376,7 @@ export function FindTab({
         }
         setMatches(result.matches)
         setTotal(result.total)
+        setUnsupportedScopes(result.unsupportedScopes ?? [])
         setActiveIndex(result.matches.length > 0 ? result.matches[0].index : null)
         setCheckedIndices(new Set())
         setHasSearched(true)
@@ -451,6 +482,7 @@ export function FindTab({
           replaced: result.replaced,
           skippedObjects: result.skippedObjects,
           skippedCitations: result.skippedCitations,
+          skippedStale: result.skippedStale ?? 0,
         })
         await executeSearch(options, { keepNotice: true })
       } catch (err) {
@@ -467,14 +499,15 @@ export function FindTab({
   )
 
   const handleReplaceThis = (): void => {
-    if (!activeMatch) return
-    void runReplace({ indices: [activeMatch.index] })
+    if (!activeMatch || stale) return
+    void runReplace({ targets: [toReplaceTarget(activeMatch)] })
   }
 
   const handleReplaceSelected = (): void => {
-    if (checkedIndices.size === 0) return
-    const indices = Array.from(checkedIndices).sort((a, b) => a - b)
-    void runReplace({ indices })
+    if (checkedIndices.size === 0 || stale) return
+    const targets = matches.filter((m) => checkedIndices.has(m.index)).map(toReplaceTarget)
+    if (targets.length === 0) return
+    void runReplace({ targets })
   }
 
   const handleReplaceAll = (): void => {
@@ -762,7 +795,7 @@ export function FindTab({
           <button
             type="button"
             className="find-action-btn"
-            disabled={!activeMatch || !lastExecutedOptions || busy}
+            disabled={!activeMatch || !lastExecutedOptions || busy || stale}
             data-find-action="replace-this"
             onClick={handleReplaceThis}
           >
@@ -771,7 +804,7 @@ export function FindTab({
           <button
             type="button"
             className="find-action-btn"
-            disabled={checkedCount === 0 || !lastExecutedOptions || busy}
+            disabled={checkedCount === 0 || !lastExecutedOptions || busy || stale}
             data-find-action="replace-selected"
             onClick={handleReplaceSelected}
           >
@@ -829,6 +862,19 @@ export function FindTab({
               {t('findReplaceSkippedCitations', { count: replaceNotice.skippedCitations })}
             </span>
           )}
+          {replaceNotice.skippedStale > 0 && (
+            <span className="find-notice-detail" data-find-skipped="stale">
+              {t('findReplaceSkippedStale', { count: replaceNotice.skippedStale })}
+            </span>
+          )}
+        </div>
+      )}
+
+      {hasSearched && regexError === null && unsupportedScopes.length > 0 && (
+        <div className="find-replace-notice" role="status" data-find-notice="unsupported-scopes">
+          {t('findUnsupportedFilterScopes', {
+            scopes: unsupportedScopes.map((scope) => t(unsupportedScopeLabelKey(scope))).join(', '),
+          })}
         </div>
       )}
 

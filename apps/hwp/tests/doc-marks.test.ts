@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import JSZip from 'jszip'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
 import {
@@ -706,5 +706,148 @@ describe('agent-plugin object-guard exemption for app marks', () => {
       ok: false,
       reason: 'has_objects',
     })
+  })
+})
+
+describe('robust deletion after hyperlinks, body-only filtering, and nested range deduplication', () => {
+  it('deletes bookmarks after hyperlinks and TOC links via deleteControlAt fallback without throwing', () => {
+    const doc = makeDoc(['링크텍스트 본문', '제1장 서론', '차례 링크 끝표시'])
+    // Hyperlink starting at paragraph 0 offset 0 before a setting bookmark
+    doc.insertHyperlinkEx(
+      JSON.stringify({
+        target: { section: 0, para: 0, cellPath: [] },
+        start: 0,
+        end: 5,
+        uri: 'https://example.com',
+      }),
+    )
+    expect(addMark(doc, { sec: 0, para: 0, offset: 6 }, '설정:mode="v1"').ok).toBe(true)
+    expect(readDocSetting(doc, 'mode')).toBe('v1')
+
+    // Second writeDocSetting must cleanly delete the old setting bookmark after the hyperlink
+    const secondWrite = writeDocSetting(doc, 'mode', 'v2')
+    expect(secondWrite).toMatchObject({ ok: true })
+    expect(readDocSetting(doc, 'mode')).toBe('v2')
+
+    // TOC hyperlink followed by an unpaired 차례:끝 range mark in paragraph 2
+    expect(addMark(doc, { sec: 0, para: 1, offset: 0 }, '제목:서론').ok).toBe(true)
+    doc.insertHyperlinkEx(
+      JSON.stringify({
+        target: { section: 0, para: 2, cellPath: [] },
+        start: 0,
+        end: 5,
+        bookmark: '제목:서론',
+      }),
+    )
+    expect(addMark(doc, { sec: 0, para: 2, offset: 6 }, '차례:끝').ok).toBe(true)
+
+    const cleaned = cleanupBrokenMarks(doc)
+    expect(cleaned.removed.map((m) => m.name)).toContain('차례:끝')
+    expect(cleaned.failed).toBeUndefined()
+
+    // Re-add 차례:끝 after the TOC link and verify stripMarks deletes it cleanly while keeping the link
+    expect(addMark(doc, { sec: 0, para: 2, offset: 6 }, '차례:끝').ok).toBe(true)
+    const stripped = stripMarks(doc)
+    expect(stripped.names).toContain('차례:끝')
+    expect(stripped.failed).toBeUndefined()
+    expect(listMarks(doc)).toEqual([])
+    const fields = JSON.parse(doc.getFieldList()) as Array<{ fieldType?: string }>
+    expect(fields.filter((f) => f.fieldType === 'hyperlink')).toHaveLength(2)
+  })
+
+  it('reports failed mark deletions gracefully without crashing when the engine refuses both delete paths', () => {
+    const fakeDoc = {
+      getSectionCount: () => 1,
+      getParagraphCount: () => 1,
+      getParagraphLength: () => 10,
+      getBookmarks: () =>
+        JSON.stringify([{ name: '차례:끝', sec: 0, para: 0, ctrlIdx: 2, charPos: 4 }]),
+      getControls: () =>
+        JSON.stringify([{ ctrlId: 'bokm', list: 0, para: 0, pos: 16, controlIndex: 2 }]),
+      addBookmark: () => JSON.stringify({ ok: true }),
+      deleteBookmark: () => {
+        throw new Error('deleteBookmark unsupported')
+      },
+      deleteControlAt: () => {
+        throw new Error('deleteControlAt unsupported')
+      },
+      renameBookmark: () => JSON.stringify({ ok: true }),
+    }
+    const stripped = stripMarks(fakeDoc)
+    expect(stripped.removed).toBe(0)
+    expect(stripped.failed).toHaveLength(1)
+    expect(stripped.failed?.[0]?.name).toBe('차례:끝')
+
+    const cleaned = cleanupBrokenMarks(fakeDoc)
+    expect(cleaned.removed).toEqual([])
+    expect(cleaned.failed).toHaveLength(1)
+  })
+
+  it('ignores non-body bookmarks whose ctrlIdx points to a non-bookmark outer control', () => {
+    // Simulate bookmark_query returning a table-cell bookmark with outer (sec=0, para=1) + inner ctrlIdx=0,
+    // while body paragraph 1 control 0 is actually the outer table ('tbl').
+    const fakeDoc = {
+      getSectionCount: () => 1,
+      getParagraphCount: () => 2,
+      getParagraphLength: () => 10,
+      getBookmarks: () =>
+        JSON.stringify([
+          { name: '색인:본문:1', sec: 0, para: 0, ctrlIdx: 2, charPos: 0 },
+          { name: '색인:표안:1', sec: 0, para: 1, ctrlIdx: 0, charPos: 0 },
+        ]),
+      getControls: () =>
+        JSON.stringify([
+          { ctrlId: 'bokm', list: 0, para: 0, pos: 0, controlIndex: 2 },
+          { ctrlId: 'tbl', list: 0, para: 1, pos: 0, controlIndex: 0 },
+          { ctrlId: 'bokm', list: 2, para: 0, pos: 0, controlIndex: 0 },
+        ]),
+      addBookmark: () => JSON.stringify({ ok: true }),
+      deleteBookmark: vi.fn(() => JSON.stringify({ ok: true })),
+      renameBookmark: vi.fn(() => JSON.stringify({ ok: true })),
+    }
+
+    const listed = listMarks(fakeDoc)
+    expect(listed.map((m) => m.name)).toEqual(['색인:본문:1'])
+
+    const stripped = stripMarks(fakeDoc)
+    expect(stripped.names).toEqual(['색인:본문:1'])
+    expect(fakeDoc.deleteBookmark).toHaveBeenCalledTimes(1)
+    expect(fakeDoc.deleteBookmark).toHaveBeenCalledWith(0, 0, 2)
+  })
+
+  it('pairs nested pasted range marks in document order without crossing start and end', async () => {
+    const doc = makeDoc(['바깥시작 안쪽시작 안쪽끝 바깥끝'])
+    expect(addMark(doc, { sec: 0, para: 0, offset: 0 }, '인용:kim2024:시작').ok).toBe(true)
+    expect(addMark(doc, { sec: 0, para: 0, offset: 5 }, '인용:tmp:시작').ok).toBe(true)
+    expect(addMark(doc, { sec: 0, para: 0, offset: 10 }, '인용:tmp:끝').ok).toBe(true)
+    expect(addMark(doc, { sec: 0, para: 0, offset: 14 }, '인용:kim2024:끝').ok).toBe(true)
+
+    // Simulate pasting the same citation range inside the original range in HWPX
+    const zip = await JSZip.loadAsync(doc.exportHwpx())
+    const sec0 = (await zip.file('Contents/section0.xml')!.async('string'))
+      .replace('인용:tmp:시작', '인용:kim2024:시작')
+      .replace('인용:tmp:끝', '인용:kim2024:끝')
+    zip.file('Contents/section0.xml', sec0)
+    const nestedDoc = new HwpDocument(await zip.generateAsync({ type: 'uint8array' }))
+
+    const res = deduplicateMarks(nestedDoc)
+    expect(res.renamed).toHaveLength(2)
+
+    const marks = listMarks(nestedDoc)
+    expect(marks.map((m) => m.name)).toEqual([
+      '인용:kim2024:시작',
+      '인용:kim2024:2:시작',
+      '인용:kim2024:2:끝',
+      '인용:kim2024:끝',
+    ])
+
+    const { ranges, broken } = findRangeMarks(nestedDoc)
+    expect(broken).toEqual([])
+    expect(ranges).toHaveLength(2)
+    // Outer range spans offset 0..14; inner range spans offset 5..10 (no crossing)
+    expect(ranges[0].start.offset).toBe(0)
+    expect(ranges[0].end.offset).toBe(14)
+    expect(ranges[1].start.offset).toBe(5)
+    expect(ranges[1].end.offset).toBe(10)
   })
 })

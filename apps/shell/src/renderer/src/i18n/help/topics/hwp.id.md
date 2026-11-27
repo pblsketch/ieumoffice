@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): penyuntingan, panel kerja, dan pencetakan
 
-GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` di dalam tab, dengan tetap mempertahankan pintasan Hancom Hangul 2024, gaya, tabel, memo, pencetakan, dan panel AI. Semuanya berjalan secara lokal di PC Anda.
+GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` di dalam tab, dengan dukungan pintasan papan ketik, gaya, tabel, memo, pencetakan, dan panel AI. Semuanya berjalan secara lokal di PC Anda.
 
 ## Membuka, menyimpan, dan mencetak
 
@@ -18,5 +18,5 @@ GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` di dalam tab,
 ## Memo, pintasan, dan panel AI
 
 - Buka kolom Memo dari bilah atas atau **Sisipkan > Memo** untuk membaca, menambah, menyunting, dan menghapus memo teks biasa di samping dokumen.
-- Menggunakan pintasan papan ketik Hancom Hangul 2024, penanda paragraf penggaris horizontal, Salin Format (**Alt+C**), konversi Hanja (**F9** / tombol Hanja), dan Info Dokumen (**Ctrl+Q,I**).
+- Mendukung pintasan penyuntingan dokumen Hangul, penanda paragraf penggaris horizontal, Salin Format (**Alt+C**), konversi Hanja (**F9** / tombol Hanja), dan Info Dokumen (**Ctrl+Q,I**).
 - Panel AI opsional dan [perintah terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) dapat membaca dan menyunting teks, gaya, tabel, persamaan, tata letak halaman, kerangka, dan hasil pencarian; setiap suntingan AI menjadi satu langkah urungkan.

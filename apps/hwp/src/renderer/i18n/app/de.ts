@@ -268,6 +268,9 @@ export const de = {
   memoHwpxLost:
     'Nicht in die HWPX-Datei übernommene Kommentare: {count}. Speichern Sie als HWP oder prüfen Sie die Datei in Hancom Hangul.',
   aiToolMemos: 'Kommentare geprüft: {count}',
+  aiToolReadOutline: 'Gliederung geprüft · {count}',
+  aiToolChangeOutlineLevel: 'Gliederungsebene geändert · {count}',
+  aiToolMoveOutlineSection: 'Gliederungsabschnitt verschoben · {count} Absätze',
   aiMemoContext: 'Kommentare: {count}',
   aiMemoApprovalTitle: 'Diese Änderung löscht {count} Kommentar(e). Fortfahren?',
   aiMemoApprovalKeep: 'Kommentare behalten',

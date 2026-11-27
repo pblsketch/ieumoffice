@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): editing, workpane and printing
 
-GenOffice opens and edits `.hwp` and `.hwpx` Hangul documents in a tab, keeping Hancom Hangul 2024 shortcuts, styles, tables, memos, printing, and an AI panel. Everything runs locally on your PC.
+GenOffice opens and edits `.hwp` and `.hwpx` Hangul documents in a tab, with keyboard shortcuts, styles, tables, memos, printing, and an AI panel. Everything runs locally on your PC.
 
 ## Opening, saving and printing
 
@@ -18,5 +18,5 @@ GenOffice opens and edits `.hwp` and `.hwpx` Hangul documents in a tab, keeping 
 ## Memos, shortcuts and AI panel
 
 - Open the Memo column from the top bar or **Insert > Memo** to read, add, edit, and delete plain-text memos alongside the document.
-- Uses Hancom Hangul 2024 keyboard shortcuts, horizontal ruler paragraph markers, Format Copy (**Alt+C**), Hanja conversion (**F9** / Hanja key), and Document Info (**Ctrl+Q,I**).
+- Supports Hangul editing shortcuts, horizontal ruler paragraph markers, Format Copy (**Alt+C**), Hanja conversion (**F9** / Hanja key), and Document Info (**Ctrl+Q,I**).
 - The optional AI panel and [terminal commands](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) can read and edit text, styles, tables, equations, page layout, outlines, and search results; each AI edit is a single undo step.

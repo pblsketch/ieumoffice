@@ -196,15 +196,79 @@ export function parseWorkpaneCommand(
   }
 }
 
-/** Match Ctrl+F (Windows/Linux) or Cmd+F (macOS), independent of IME layout via `code`. */
+const NON_TEXT_INPUT_TYPES = new Set([
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'hidden',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+])
+
+/** Whether `target` is inside a text-entry control (AI prompt, memo editor, input, contenteditable). */
+export function isEditableTextTarget(target: EventTarget | null | undefined): boolean {
+  if (!target || typeof target !== 'object') return false
+  const el = target as {
+    tagName?: unknown
+    type?: unknown
+    isContentEditable?: unknown
+    getAttribute?: (name: string) => string | null
+    closest?: (selector: string) => unknown
+  }
+  const tag = typeof el.tagName === 'string' ? el.tagName.toUpperCase() : ''
+  if (tag === 'TEXTAREA') return true
+  if (tag === 'INPUT') {
+    const type = typeof el.type === 'string' ? el.type.toLowerCase() : 'text'
+    return !NON_TEXT_INPUT_TYPES.has(type)
+  }
+  if (el.isContentEditable === true) return true
+  const editableAttr =
+    typeof el.getAttribute === 'function' ? el.getAttribute('contenteditable') : null
+  if (editableAttr === '' || editableAttr === 'true' || editableAttr === 'plaintext-only') {
+    return true
+  }
+  if (typeof el.closest === 'function') {
+    const ancestor = el.closest(
+      'textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]',
+    )
+    if (ancestor) return true
+  }
+  return false
+}
+
+function isMacPlatform(platform?: string): boolean {
+  if (typeof platform === 'string') return /mac|darwin/i.test(platform)
+  if (typeof navigator !== 'undefined') {
+    return /mac/i.test(navigator.platform || navigator.userAgent || '')
+  }
+  return false
+}
+
+/**
+ * Match Ctrl+F (Windows/Linux) or Cmd+F (macOS), independent of IME layout via `code`.
+ * On macOS, Ctrl+F is left untouched (standard forward-char cursor movement in text inputs).
+ * Never intercepts when focus is inside a text-entry control in the outer window.
+ */
 export function isWorkpaneFindShortcut(
   event: Pick<
     KeyboardEvent,
     'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat'
-  >,
+  > & { target?: EventTarget | null },
+  platform?: string,
 ): boolean {
   if (event.repeat || event.altKey || event.shiftKey) return false
-  if (!(event.ctrlKey || event.metaKey)) return false
+  if (isEditableTextTarget(event.target)) return false
+  if (typeof document !== 'undefined' && isEditableTextTarget(document.activeElement)) return false
+  const mac = isMacPlatform(platform)
+  if (mac) {
+    if (!event.metaKey || event.ctrlKey) return false
+  } else {
+    if (!event.ctrlKey || event.metaKey) return false
+  }
   if (event.code === 'KeyF') return true
   return event.key.toLowerCase() === 'f'
 }

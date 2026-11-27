@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): Bearbeiten, Arbeitsbereich und Drucken
 
-GenOffice öffnet und bearbeitet `.hwp`- und `.hwpx`-Hangul-Dokumente in einem Tab – mit Hancom-Hangul-2024-Tastenkürzeln, Formatvorlagen, Tabellen, Memos, Druckfunktionen und einem KI-Bereich. Alles läuft lokal auf Ihrem PC.
+GenOffice öffnet und bearbeitet `.hwp`- und `.hwpx`-Hangul-Dokumente in einem Tab – mit Tastenkürzeln, Formatvorlagen, Tabellen, Memos, Druckfunktionen und einem KI-Bereich. Alles läuft lokal auf Ihrem PC.
 
 ## Öffnen, Speichern und Drucken
 
@@ -18,5 +18,5 @@ GenOffice öffnet und bearbeitet `.hwp`- und `.hwpx`-Hangul-Dokumente in einem T
 ## Memos, Tastenkürzel und KI-Bereich
 
 - Öffnen Sie die Memo-Spalte über die obere Leiste oder **Einfügen > Memo**, um reine Textmemos neben dem Dokument zu lesen, hinzuzufügen, zu bearbeiten und zu löschen.
-- Unterstützt Hancom-Hangul-2024-Tastenkürzel, Absatzmarkierungen am horizontalen Lineal, Format übertragen (**Alt+C**), Hanja-Umwandlung (**F9** / Hanja-Taste) und Dokumentinformationen (**Strg+Q,I**).
+- Unterstützt Tastenkürzel für Hangul-Dokumente, Absatzmarkierungen am horizontalen Lineal, Format übertragen (**Alt+C**), Hanja-Umwandlung (**F9** / Hanja-Taste) und Dokumentinformationen (**Strg+Q,I**).
 - Der optionale KI-Bereich und die [Befehlszeilen-Werkzeuge](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) können Text, Formatvorlagen, Tabellen, Gleichungen, Seitenlayout, Gliederung und Suchergebnisse lesen und bearbeiten; jede KI-Bearbeitung bildet einen einzigen Rückgängig-Schritt.

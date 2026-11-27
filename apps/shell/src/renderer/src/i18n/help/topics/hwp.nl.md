@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): bewerken, werkvenster en afdrukken
 
-GenOffice opent en bewerkt `.hwp`- en `.hwpx`-Hangul-documenten in een tabblad, met behoud van Hancom Hangul 2024-sneltoetsen, stijlen, tabellen, memo's, afdrukken en een AI-paneel. Alles draait lokaal op uw pc.
+GenOffice opent en bewerkt `.hwp`- en `.hwpx`-Hangul-documenten in een tabblad, met sneltoetsen, stijlen, tabellen, memo’s, afdrukken en een AI-paneel. Alles draait lokaal op uw pc.
 
 ## Openen, opslaan en afdrukken
 
@@ -18,5 +18,5 @@ GenOffice opent en bewerkt `.hwp`- en `.hwpx`-Hangul-documenten in een tabblad, 
 ## Memo's, sneltoetsen en AI-paneel
 
 - Open de memokolom via de bovenste balk of **Invoegen > Memo** om platte-tekstmemo's naast het document te lezen, toe te voegen, te bewerken en te verwijderen.
-- Gebruikt Hancom Hangul 2024-sneltoetsen, alineamarkeringen op de horizontale liniaal, Opmaak kopiëren (**Alt+C**), Hanja-conversie (**F9** / Hanja-toets) en Documentinfo (**Ctrl+Q,I**).
+- Ondersteunt sneltoetsen voor Hangul-documenten, alineamarkeringen op de horizontale liniaal, Opmaak kopiëren (**Alt+C**), Hanja-conversie (**F9** / Hanja-toets) en Documentinfo (**Ctrl+Q,I**).
 - Het optionele AI-paneel en [terminalopdrachten](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) kunnen tekst, stijlen, tabellen, vergelijkingen, pagina-indeling, overzichten en zoekresultaten lezen en bewerken; elke AI-bewerking is één stap om ongedaan te maken.

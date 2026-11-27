@@ -88,6 +88,7 @@ export interface HwpChange {
     | 'cells'
     | 'lines'
     | 'note'
+    | 'move'
   /** the replaced, removed or formatted text, the field name, or the table whose cells were filled; empty for something added */
   from: string
   /** the new text (for a table its first row, for a format what was set, for cells what went into them); empty for something removed */
@@ -6389,7 +6390,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             headings.length === 0
               ? 'This document has no outline headings.'
               : `${headings.length} heading(s) (section and paragraph are 1-based for change_outline_level and move_outline_section):\n${JSON.stringify(headings)}`,
-          summary: label('aiToolParagraphLooks', { count: headings.length }),
+          summary: label('aiToolReadOutline', { count: headings.length }),
         }
       }
       case 'change_outline_level': {
@@ -6467,7 +6468,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         return {
           output: `Changed outline level of ${result.changed.length} heading(s): ${result.changed.map((c) => `p.${c.para + 1} (${c.fromLevel}->${c.toLevel}, ${c.styleName})`).join(', ')}.`,
           mutated: true,
-          summary: label('aiToolStyleParagraphs', { count: result.changed.length }),
+          summary: label('aiToolChangeOutlineLevel', { count: result.changed.length }),
         }
       }
       case 'move_outline_section': {
@@ -6541,7 +6542,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           return bad(call, messages[result.reason] ?? 'Nothing was changed.')
         }
         deps.onChange({
-          kind: 'insert',
+          kind: 'move',
           from: `section ${section}, paragraph ${paragraph}`,
           to: `${position} paragraph ${targetParagraph}`,
           count: result.movedParagraphs,
@@ -6550,7 +6551,7 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         return {
           output: `Moved ${result.movedParagraphs} paragraph(s) to section ${result.newStart.sec + 1}, paragraph ${result.newStart.para + 1}.`,
           mutated: true,
-          summary: label('aiToolInsert', { count: result.movedParagraphs }),
+          summary: label('aiToolMoveOutlineSection', { count: result.movedParagraphs }),
         }
       }
       case 'find_in_document': {
@@ -6611,11 +6612,23 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         }))
         const tail =
           found.total > shown.length ? `\n(showing first ${shown.length} of ${found.total})` : ''
+        const unsupportedNote =
+          found.unsupportedScopes && found.unsupportedScopes.length > 0
+            ? `\nNote: style/character format filters do not support ${found.unsupportedScopes
+                .map((scope) =>
+                  scope === 'nested_table'
+                    ? 'nested tables'
+                    : scope === 'footnote'
+                      ? 'footnotes'
+                      : 'endnotes',
+                )
+                .join(', ')}, so those scopes were not searched.`
+            : ''
         return {
           output:
-            found.total === 0
+            (found.total === 0
               ? 'No matches found.'
-              : `${found.total} match(es).\n${JSON.stringify(shown)}${tail}`,
+              : `${found.total} match(es).\n${JSON.stringify(shown)}${tail}`) + unsupportedNote,
           summary: label('aiToolFind', {
             text: quote(query || style || font || 'format'),
             count: found.total,

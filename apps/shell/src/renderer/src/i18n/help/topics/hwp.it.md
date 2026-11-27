@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): modifica, riquadro di lavoro e stampa
 
-GenOffice apre e modifica documenti Hangul `.hwp` e `.hwpx` in una scheda, mantenendo le scorciatoie di Hancom Hangul 2024, gli stili, le tabelle, i promemoria, la stampa e un pannello IA. Tutto viene eseguito localmente sul tuo PC.
+GenOffice apre e modifica documenti Hangul `.hwp` e `.hwpx` in una scheda, con scorciatoie da tastiera, stili, tabelle, promemoria, stampa e un pannello IA. Tutto viene eseguito localmente sul tuo PC.
 
 ## Apertura, salvataggio e stampa
 
@@ -18,5 +18,5 @@ GenOffice apre e modifica documenti Hangul `.hwp` e `.hwpx` in una scheda, mante
 ## Promemoria, scorciatoie e pannello IA
 
 - Apri la colonna Promemoria dalla barra superiore o da **Inserisci > Promemoria** per leggere, aggiungere, modificare ed eliminare promemoria in testo semplice accanto al documento.
-- Supporta le scorciatoie da tastiera di Hancom Hangul 2024, i marcatori di paragrafo sul righello orizzontale, Copia formato (**Alt+C**), la conversione Hanja (**F9** / tasto Hanja) e le Informazioni documento (**Ctrl+Q,I**).
+- Supporta le scorciatoie di modifica per documenti Hangul, i marcatori di paragrafo sul righello orizzontale, Copia formato (**Alt+C**), la conversione Hanja (**F9** / tasto Hanja) e le Informazioni documento (**Ctrl+Q,I**).
 - Il pannello IA facoltativo e i [comandi da terminale](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) possono leggere e modificare testo, stili, tabelle, equazioni, layout di pagina, struttura e risultati di ricerca; ogni modifica dell'IA costituisce un unico passaggio di annullamento.

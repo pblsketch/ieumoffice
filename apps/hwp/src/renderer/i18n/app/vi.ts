@@ -258,6 +258,9 @@ export const vi = {
   memoHwpxLost:
     'Ghi chú không được chuyển vào tệp HWPX: {count}. Hãy lưu dưới dạng HWP hoặc kiểm tra tệp trong Hancom Hangul.',
   aiToolMemos: 'Đã kiểm tra ghi chú: {count}',
+  aiToolReadOutline: 'Đã kiểm tra dàn ý · {count}',
+  aiToolChangeOutlineLevel: 'Đã đổi cấp dàn ý · {count}',
+  aiToolMoveOutlineSection: 'Đã di chuyển mục dàn ý · {count} đoạn',
   aiMemoContext: 'Ghi chú: {count}',
   aiMemoApprovalTitle: 'Chỉnh sửa này sẽ xóa ghi chú: {count}. Tiếp tục?',
   aiMemoApprovalKeep: 'Giữ ghi chú',

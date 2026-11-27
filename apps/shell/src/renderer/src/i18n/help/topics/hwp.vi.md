@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): chỉnh sửa, ngăn làm việc và in ấn
 
-GenOffice mở và chỉnh sửa tài liệu Hangul `.hwp` và `.hwpx` trong một thẻ, giữ nguyên các phím tắt Hancom Hangul 2024, kiểu, bảng, ghi chú, in ấn và bảng điều khiển AI. Mọi thao tác đều chạy cục bộ trên máy tính của bạn.
+GenOffice mở và chỉnh sửa tài liệu Hangul `.hwp` và `.hwpx` trong một thẻ, với các phím tắt, kiểu, bảng, ghi chú, in ấn và bảng điều khiển AI. Mọi thao tác đều chạy cục bộ trên máy tính của bạn.
 
 ## Mở, lưu và in
 
@@ -18,5 +18,5 @@ GenOffice mở và chỉnh sửa tài liệu Hangul `.hwp` và `.hwpx` trong m�
 ## Ghi chú, phím tắt và bảng điều khiển AI
 
 - Mở cột Ghi chú từ thanh trên cùng hoặc **Chèn > Ghi chú** để đọc, thêm, sửa và xóa ghi chú văn bản thuần cạnh tài liệu.
-- Hỗ trợ phím tắt Hancom Hangul 2024, dấu đoạn trên thước ngang, Sao chép định dạng (**Alt+C**), chuyển đổi Hanja (**F9** / phím Hanja) và Thông tin tài liệu (**Ctrl+Q,I**).
+- Hỗ trợ phím tắt chỉnh sửa tài liệu Hangul, dấu đoạn trên thước ngang, Sao chép định dạng (**Alt+C**), chuyển đổi Hanja (**F9** / phím Hanja) và Thông tin tài liệu (**Ctrl+Q,I**).
 - Bảng điều khiển AI tùy chọn và [lệnh dòng lệnh](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) có thể đọc và chỉnh sửa văn bản, kiểu, bảng, phương trình, bố cục trang, đề cương và kết quả tìm kiếm; mỗi lần chỉnh sửa của AI là một bước hoàn tác duy nhất.

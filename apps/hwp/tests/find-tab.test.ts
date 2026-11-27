@@ -468,19 +468,28 @@ describe('FindTab component', () => {
     })
     expect(findMatches).toHaveBeenCalledTimes(1)
 
-    // 1) Replace this (default active match is index 0).
+    // 1) Replace this (default active match is index 0 — sent as explicit target descriptor).
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[data-find-action="replace-this"]')!.click()
     })
     expect(replaceFindMatches).toHaveBeenNthCalledWith(1, { query: 'Alpha' }, 'Beta', {
-      indices: [0],
+      targets: [
+        {
+          kind: 'body',
+          sec: 0,
+          para: 0,
+          offset: 4,
+          length: 5,
+          matchText: 'Alpha',
+        },
+      ],
     })
     expect(findMatches).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[data-find-notice="replace"]')?.textContent).toContain(
       '1개 바꿨습니다.',
     )
 
-    // 2) Replace selected (check row 1).
+    // 2) Replace selected (check row 1 — sent as explicit target descriptor).
     await act(async () => {
       container.querySelector<HTMLInputElement>('[data-find-row-check="1"]')!.click()
     })
@@ -488,7 +497,16 @@ describe('FindTab component', () => {
       container.querySelector<HTMLButtonElement>('[data-find-action="replace-selected"]')!.click()
     })
     expect(replaceFindMatches).toHaveBeenNthCalledWith(2, { query: 'Alpha' }, 'Beta', {
-      indices: [1],
+      targets: [
+        {
+          kind: 'body',
+          sec: 0,
+          para: 1,
+          offset: 4,
+          length: 5,
+          matchText: 'Alpha',
+        },
+      ],
     })
     expect(findMatches).toHaveBeenCalledTimes(3)
     expect(container.querySelector('[data-find-skipped="objects"]')?.textContent).toContain('1개')
@@ -621,5 +639,56 @@ describe('FindTab component', () => {
       await Promise.resolve()
     })
     expect(container.querySelector('[data-find-stale="true"]')).not.toBeNull()
+  })
+
+  it('disables replace-this and replace-selected while stale banner is shown, and shows unsupported filter scope notice', async () => {
+    const { bridge, findMatches, replaceFindMatches } = createFakeBridge()
+    findMatches.mockResolvedValueOnce({
+      ok: true,
+      total: 2,
+      matches: [makeMatch(0), makeMatch(1)],
+      unsupportedScopes: ['nested_table', 'footnote'],
+    })
+
+    await renderFindTab({ bridge, visible: true, changeTick: 1 })
+    await act(async () => {
+      setInputValue(
+        container.querySelector<HTMLInputElement>('[data-find-input="query"]')!,
+        'Alpha',
+      )
+    })
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-find-action="search"]')!.click()
+    })
+
+    // Unsupported filter scopes notice is shown clearly in the UI.
+    const scopeNotice = container.querySelector('[data-find-notice="unsupported-scopes"]')
+    expect(scopeNotice).not.toBeNull()
+    expect(scopeNotice?.textContent).toContain('표 안의 표')
+    expect(scopeNotice?.textContent).toContain('각주')
+
+    // Select row 1 while fresh -> both replace-this and replace-selected are enabled.
+    await act(async () => {
+      container.querySelector<HTMLInputElement>('[data-find-row-check="1"]')!.click()
+    })
+    const replaceThis = container.querySelector<HTMLButtonElement>(
+      '[data-find-action="replace-this"]',
+    )!
+    const replaceSelected = container.querySelector<HTMLButtonElement>(
+      '[data-find-action="replace-selected"]',
+    )!
+    expect(replaceThis.disabled).toBe(false)
+    expect(replaceSelected.disabled).toBe(false)
+
+    // External edit marks results stale -> replace-this and replace-selected are disabled until refreshed.
+    await renderFindTab({ bridge, visible: true, changeTick: 2 })
+    expect(container.querySelector('[data-find-stale="true"]')).not.toBeNull()
+    expect(replaceThis.disabled).toBe(true)
+    expect(replaceSelected.disabled).toBe(true)
+    await act(async () => {
+      replaceThis.click()
+      replaceSelected.click()
+    })
+    expect(replaceFindMatches).not.toHaveBeenCalled()
   })
 })

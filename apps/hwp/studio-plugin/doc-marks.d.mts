@@ -143,9 +143,20 @@ export interface RenamedMark {
   ctrlIdx: number
 }
 
+export interface FailedMarkDelete {
+  name: string
+  prefix: MarkPrefix | null
+  sec: number
+  para: number
+  offset: number
+  ctrlIdx: number
+  error: string
+}
+
 export interface DeduplicateMarksResult {
   renamed: RenamedMark[]
   removed: MarkEntry[]
+  failed?: FailedMarkDelete[]
 }
 
 export type AddRangeMarkResult =
@@ -196,10 +207,11 @@ export interface RemovedBrokenMark extends MarkEntry {
 
 export interface CleanupBrokenMarksResult {
   removed: RemovedBrokenMark[]
+  failed?: FailedMarkDelete[]
 }
 
 export type WriteDocSettingResult =
-  | { ok: true; key: string; names: string[] }
+  | { ok: true; key: string; names: string[]; failed?: FailedMarkDelete[] }
   | {
       ok: false
       reason:
@@ -216,12 +228,14 @@ export type WriteDocSettingResult =
 export interface DeleteDocSettingResult {
   ok: boolean
   removed?: number
+  failed?: FailedMarkDelete[]
   reason?: 'invalid_key'
 }
 
 export interface StripMarksResult {
   removed: number
   names: string[]
+  failed?: FailedMarkDelete[]
 }
 
 export declare function markPrefixOf(name: unknown): MarkPrefix | null

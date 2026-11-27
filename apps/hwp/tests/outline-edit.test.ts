@@ -18,6 +18,7 @@ import {
   writeDocOutlineMap,
   type OutlineDoc,
 } from '../studio-plugin/outline.mjs'
+import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -764,5 +765,144 @@ describe('moveOutlineSection against real @rhwp/core documents', () => {
     doc.restoreSnapshot(snapMove)
     doc.discardSnapshot(snapMove)
     expect(snapshotParagraphsAndOutline(doc)).toEqual(beforeMove)
+  })
+
+  it('returns not_found for out-of-range section or paragraph numbers', () => {
+    const doc = makeBlankDoc(['표지'])
+    const s1 = styleIdByName(doc, '개요 1')
+    appendPara(doc, 0, '제1장', s1)
+
+    expect(changeOutlineLevel(doc, { sec: 5, para: 0, delta: 1 })).toMatchObject({
+      ok: false,
+      reason: 'not_found',
+    })
+    expect(changeOutlineLevel(doc, { sec: 0, para: 99, delta: 1 })).toMatchObject({
+      ok: false,
+      reason: 'not_found',
+    })
+    expect(
+      moveOutlineSection(doc, {
+        source: { sec: 0, para: 99 },
+        target: { sec: 0, para: 1 },
+        position: 'after',
+      }),
+    ).toMatchObject({ ok: false, reason: 'not_found' })
+    expect(
+      moveOutlineSection(doc, {
+        source: { sec: 0, para: 1 },
+        target: { sec: 3, para: 0 },
+        position: 'after',
+      }),
+    ).toMatchObject({ ok: false, reason: 'not_found' })
+  })
+
+  it('refuses section-spanning heading ranges when the next section starts with body text, but allows a heading ending right before a new chapter at section 1 para 0', () => {
+    // 1. Heading range spills into section 1 (body paragraph before next level-1 heading in section 1)
+    const spillDoc = makeBlankDoc(['표지'])
+    const sBody = styleIdByName(spillDoc, '바탕글')
+    const s1 = styleIdByName(spillDoc, '개요 1')
+    const p1 = appendPara(spillDoc, 0, '제1장', s1)
+    appendPara(spillDoc, 0, '제1장 본문', sBody)
+    const p2 = appendPara(spillDoc, 0, '제2장', s1)
+    appendPara(spillDoc, 0, '제2장 앞 본문', sBody)
+    // Add section 1 starting with body text (continuing 제2장 across the section boundary)
+    // followed later by 제3장 at para 1.
+    const lastSpillPara = spillDoc.getParagraphCount(0) - 1
+    spillDoc.splitSection(0, lastSpillPara, spillDoc.getParagraphLength(0, lastSpillPara))
+    expect(spillDoc.getSectionCount()).toBe(2)
+    spillDoc.applyStyle(1, 0, sBody)
+    spillDoc.insertText(1, 0, 0, '구역 넘어 이어지는 제2장 본문')
+    appendPara(spillDoc, 1, '제3장', s1)
+
+    // Moving 제2장 (whose range spills across the section boundary into section 1 para 0) must be refused!
+    expect(
+      moveOutlineSection(spillDoc, {
+        source: { sec: 0, para: p2 },
+        target: { sec: 0, para: p1 },
+        position: 'before',
+      }),
+    ).toMatchObject({ ok: false, reason: 'cross_section' })
+
+    // 2. When section 1 para 0 immediately begins a new level-1 chapter, 제2장 ends cleanly at
+    //    the end of section 0 without crossing the section boundary, so moving it within section 0 succeeds.
+    const cleanDoc = makeBlankDoc(['표지'])
+    const cBody = styleIdByName(cleanDoc, '바탕글')
+    const c1 = styleIdByName(cleanDoc, '개요 1')
+    const cp1 = appendPara(cleanDoc, 0, '제1장', c1)
+    appendPara(cleanDoc, 0, '제1장 본문', cBody)
+    const cp2 = appendPara(cleanDoc, 0, '제2장', c1)
+    appendPara(cleanDoc, 0, '제2장 끝 본문', cBody)
+    const lastCleanPara = cleanDoc.getParagraphCount(0) - 1
+    cleanDoc.splitSection(0, lastCleanPara, cleanDoc.getParagraphLength(0, lastCleanPara))
+    expect(cleanDoc.getSectionCount()).toBe(2)
+    cleanDoc.applyStyle(1, 0, c1)
+    cleanDoc.insertText(1, 0, 0, '제3장 새 구역 시작')
+
+    const cleanMove = moveOutlineSection(cleanDoc, {
+      source: { sec: 0, para: cp2 },
+      target: { sec: 0, para: cp1 },
+      position: 'before',
+    })
+    expect(cleanMove.ok).toBe(true)
+    expect(readOutline(cleanDoc).items.map((i) => i.title)).toEqual([
+      '제2장',
+      '제1장',
+      '제3장 새 구역 시작',
+    ])
+  })
+
+  it('preserves memos without false memo_removal_requires_approval when AI moves an outline section (foreign: false)', () => {
+    const doc = makeBlankDoc(['표지'])
+    const sBody = styleIdByName(doc, '바탕글')
+    const s1 = styleIdByName(doc, '개요 1')
+    const p1 = appendPara(doc, 0, '제1장', s1)
+    const pMemo = appendPara(doc, 0, '메모가 붙은 본문 문장입니다.', sBody)
+    const p2 = appendPara(doc, 0, '제2장', s1)
+    appendPara(doc, 0, '제2장 본문', sBody)
+
+    const memoIns = JSON.parse(
+      doc.insertMemo(0, pMemo, 0, 5, JSON.stringify({ author: '검토자', text: '참고 문헌 확인' })),
+    ) as { ok: boolean }
+    expect(memoIns.ok).toBe(true)
+
+    const host = {
+      read: <T>(fn: (d: HwpDocument) => T): T => fn(doc),
+      transaction: <T>(
+        _label: string,
+        fn: (tx: { doc: () => HwpDocument; deferPagination: () => void }) => T,
+      ): T => {
+        const snap = doc.saveSnapshot()
+        try {
+          const out = fn({ doc: () => doc, deferPagination: () => {} })
+          doc.discardSnapshot(snap)
+          return out
+        } catch (err) {
+          doc.restoreSnapshot(snap)
+          doc.discardSnapshot(snap)
+          throw err
+        }
+      },
+      events: { on: () => 0 },
+    } as unknown as AgentPluginHost
+    const api = agentPlugin.activate(host)
+
+    const res = api.moveOutlineSection(
+      {
+        source: { sec: 0, para: p1 },
+        target: { sec: 0, para: p2 },
+        position: 'after',
+      },
+      { foreign: false },
+    ) as { ok: boolean; reason?: string; movedParagraphs?: number }
+    expect(res.ok, JSON.stringify(res)).toBe(true)
+    expect(res.movedParagraphs).toBe(2)
+
+    const memosAfter = JSON.parse(doc.getMemoList()) as Array<{
+      author: string
+      text: string
+      paraIndex: number
+    }>
+    expect(memosAfter).toHaveLength(1)
+    expect(memosAfter[0]).toMatchObject({ author: '검토자', text: '참고 문헌 확인', paraIndex: 4 })
   })
 })

@@ -192,12 +192,34 @@ describe('outline-settings persistence in userData/app-settings.json', () => {
     expect(readHwpOutlineStyleMap(settingsApp())).toEqual({ 장제목: 1, maxLevel: 10 })
   })
 
-  it('creates missing userData directories before writing app-settings.json', async () => {
+  it('creates missing userData directories before writing app-settings.json', () => {
     const missingUserData = join(dir, 'nested', 'not-created-yet')
     const missingApp = { getPath: (): string => missingUserData }
-    const saved = await writeHwpOutlineStyleMap(missingApp, { 장제목: 1 })
+    const saved = writeHwpOutlineStyleMap(missingApp, { 장제목: 1 })
     expect(saved).toEqual({ 장제목: 1 })
     expect(readHwpOutlineStyleMap(missingApp)).toEqual({ 장제목: 1 })
+  })
+
+  it('completes read-modify-write synchronously so concurrent shell writes cannot be overwritten', async () => {
+    const settingsPath = join(userData.dir, 'app-settings.json')
+    writeFileSync(settingsPath, JSON.stringify({ windowBounds: { width: 1000, height: 700 } }))
+
+    // Simulate the shell's synchronous writeAppSettings running in the same tick right after
+    // writeHwpOutlineStyleMap is invoked: because writeHwpOutlineStyleMap has no await between
+    // reading and renaming, neither writer clobbers the other's key.
+    const saved = writeHwpOutlineStyleMap(settingsApp(), { 논문장: 1 })
+    expect(saved).toEqual({ 논문장: 1 })
+
+    const current = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>
+    current.windowBounds = { width: 1440, height: 900 }
+    writeFileSync(settingsPath, JSON.stringify(current, null, 2))
+
+    // Wait a microtask/macrotask tick to confirm no delayed async write reverts windowBounds.
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const finalSettings = readRawSettings()
+    expect(finalSettings.windowBounds).toEqual({ width: 1440, height: 900 })
+    expect(finalSettings[HWP_OUTLINE_STYLE_MAP_KEY]).toEqual({ 논문장: 1 })
   })
 })
 
@@ -244,9 +266,10 @@ describe('outline style map IPC handlers and view broadcasts', () => {
     )
   })
 
-  it('ignores malformed setOutlineStyleMap IPC payloads without wiping settings or broadcasting', async () => {
+  it('ignores malformed, non-HWP sender, or all-invalid non-empty setOutlineStyleMap IPC payloads', async () => {
     const v1 = createHwpView().webContents as unknown as FakeContents
     const v2 = createHwpView().webContents as unknown as FakeContents
+    const foreignSender = fakeContents()
     const getHandler = handlers.get(HWP_CHANNELS.getOutlineStyleMap)!
     const setHandler = handlers.get(HWP_CHANNELS.setOutlineStyleMap)!
 
@@ -254,14 +277,31 @@ describe('outline style map IPC handlers and view broadcasts', () => {
     v1.send.mockClear()
     v2.send.mockClear()
 
+    // Non-HWP sender must be refused without mutating disk or broadcasting.
+    expect(await setHandler({ sender: foreignSender }, { 다른장: 1 })).toEqual({
+      장제목: 1,
+      절제목: 2,
+    })
+
+    // Non-object / array payloads must be refused.
     for (const badPayload of [undefined, 'bad', 42, true, ['제목 1']]) {
       const result = await setHandler({ sender: v1 }, badPayload)
       expect(result).toEqual({ 장제목: 1, 절제목: 2 })
     }
 
+    // Non-empty object whose entries all fail validation must be refused (do not wipe to {}).
+    expect(
+      await setHandler({ sender: v1 }, { '': 1, badLevel: 99, wrongType: 'two', zero: 0 }),
+    ).toEqual({ 장제목: 1, 절제목: 2 })
+
     expect(await getHandler({ sender: v2 })).toEqual({ 장제목: 1, 절제목: 2 })
     expect(readRawSettings()[HWP_OUTLINE_STYLE_MAP_KEY]).toEqual({ 장제목: 1, 절제목: 2 })
     expect(v1.send).not.toHaveBeenCalled()
     expect(v2.send).not.toHaveBeenCalled()
+
+    // Explicit empty object {} from a valid HWP view still persists so defaults stay cleared.
+    expect(await setHandler({ sender: v1 }, {})).toEqual({})
+    expect(readRawSettings()[HWP_OUTLINE_STYLE_MAP_KEY]).toEqual({})
+    expect(v1.send).toHaveBeenCalledWith(HWP_CHANNELS.outlineStyleMapChanged, {})
   })
 })

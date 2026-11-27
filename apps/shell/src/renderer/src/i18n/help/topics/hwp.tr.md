@@ -1,6 +1,6 @@
 # Hangul (HWP / HWPX): düzenleme, çalışma bölmesi ve yazdırma
 
-GenOffice, `.hwp` ve `.hwpx` Hangul belgelerini bir sekmede açar ve düzenler; Hancom Hangul 2024 kısayollarını, stilleri, tabloları, notları, yazdırmayı ve bir AI panelini bir arada sunar. Her şey bilgisayarınızda yerel olarak çalışır.
+GenOffice, `.hwp` ve `.hwpx` Hangul belgelerini bir sekmede açar ve düzenler; klavye kısayollarını, stilleri, tabloları, notları, yazdırmayı ve bir AI panelini bir arada sunar. Her şey bilgisayarınızda yerel olarak çalışır.
 
 ## Açma, kaydetme ve yazdırma
 
@@ -18,5 +18,5 @@ GenOffice, `.hwp` ve `.hwpx` Hangul belgelerini bir sekmede açar ve düzenler; 
 ## Notlar, kısayollar ve AI paneli
 
 - Belgenin yanında düz metin notları okumak, eklemek, düzenlemek ve silmek için üst çubuktan veya **Ekle > Not** menüsünden Not sütununu açın.
-- Hancom Hangul 2024 klavye kısayollarını, yatay cetvel paragraf işaretlerini, Biçim Kopyala (**Alt+C**), Hanja dönüştürme (**F9** / Hanja tuşu) ve Belge Bilgisi (**Ctrl+Q,I**) özelliklerini destekler.
+- Hangul belge düzenleme kısayollarını, yatay cetvel paragraf işaretlerini, Biçim Kopyala (**Alt+C**), Hanja dönüştürme (**F9** / Hanja tuşu) ve Belge Bilgisi (**Ctrl+Q,I**) özelliklerini destekler.
 - İsteğe bağlı AI paneli ve [terminal komutları](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) metin, stiller, tablolar, denklemler, sayfa düzeni, anahat ve arama sonuçlarını okuyup düzenleyebilir; her AI düzenlemesi tek bir geri alma adımıdır.

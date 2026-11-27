@@ -2,6 +2,8 @@ import type { HwpDocument } from '@rhwp/core'
 
 export type FindScopeKind = 'body' | 'table' | 'textbox' | 'footnote' | 'endnote'
 
+export type FindUnsupportedScope = 'nested_table' | 'footnote' | 'endnote'
+
 export interface FindCellStep {
   controlIndex: number
   cellIndex: number
@@ -47,10 +49,27 @@ export interface FindMatch {
 }
 
 export type FindResult =
-  | { ok: true; total: number; matches: FindMatch[] }
+  | {
+      ok: true
+      total: number
+      matches: FindMatch[]
+      unsupportedScopes?: FindUnsupportedScope[]
+    }
   | { ok: false; reason: 'invalid_regex'; error: string }
 
-export type FindReplaceSelection = 'all' | { indices: number[] }
+export interface FindReplaceTarget {
+  kind: FindScopeKind
+  sec: number
+  para: number
+  offset: number
+  length: number
+  matchText: string
+  path?: FindCellStep[]
+  noteControl?: number
+  notePara?: number
+}
+
+export type FindReplaceSelection = 'all' | { indices: number[] } | { targets: FindReplaceTarget[] }
 
 export interface FindPlace {
   sec: number
@@ -69,6 +88,7 @@ export type FindReplaceResult =
       replaced: number
       skippedObjects: number
       skippedCitations: number
+      skippedStale?: number
       firstPlace?: FindPlace
     }
   | { ok: false; reason: 'invalid_regex' | 'bad_replacement'; error: string }

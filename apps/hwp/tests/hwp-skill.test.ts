@@ -6284,6 +6284,8 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
     })
     expect(ok.isError).toBeUndefined()
     expect(ok.mutated).toBe(true)
+    expect(ok.summary).toContain('aiToolMoveOutlineSection')
+    expect(env.changes.at(-1)?.kind).toBe('move')
     expect(moveOutlineSection).toHaveBeenCalledWith(
       { source: { sec: 0, para: 1 }, target: { sec: 0, para: 4 }, position: 'after' },
       { foreign: false },
@@ -6297,7 +6299,7 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
     expect(refused.output).toContain('first paragraph')
   })
 
-  it('runs multi-scope find_in_document with filters and rejects non-positive size or empty filters', async () => {
+  it('runs multi-scope find_in_document with filters, notes unsupported scopes, and rejects non-positive size or empty filters', async () => {
     const findMatches = vi.fn(async () => ({
       ok: true as const,
       total: 1,
@@ -6315,6 +6317,7 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
           page: 3,
         },
       ],
+      unsupportedScopes: ['nested_table' as const, 'footnote' as const],
     }))
     const env = setup({ findMatches })
     expect((await env.call('find_in_document', {})).isError).toBe(true)
@@ -6334,6 +6337,8 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
     })
     expect(ok.output).toContain('"kind":"footnote"')
     expect(ok.output).toContain('"page":3')
+    expect(ok.output).toContain('nested tables')
+    expect(ok.output).toContain('footnotes')
   })
 
   it('names removed app marks in the AI tool output when an edit deletes them', async () => {

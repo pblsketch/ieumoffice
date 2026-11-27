@@ -439,11 +439,136 @@ function compareReverseControlOrder(a, b) {
   return b.ctrlIdx - a.ctrlIdx
 }
 
+function flatBodyParaIndex(doc, sec, para) {
+  let flat = para
+  for (let s = 0; s < sec; s++) {
+    flat += doc.getParagraphCount(s)
+  }
+  return flat
+}
+
+/**
+ * Index body-level bookmark controls (`list === 0 && ctrlId === 'bokm'`) by `${flatPara}:${ctrlIdx}`.
+ * Returns `null` when the engine/mock does not expose `getControls()`.
+ */
+function bodyBookmarkControlMap(doc) {
+  if (!doc || typeof doc.getControls !== 'function') return null
+  let raw
+  try {
+    raw = parseJson(doc.getControls(), null)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  const map = new Map()
+  for (const ctrl of raw) {
+    if (!ctrl || ctrl.list !== 0 || ctrl.ctrlId !== 'bokm') continue
+    if (!Number.isInteger(ctrl.para) || !Number.isInteger(ctrl.controlIndex)) continue
+    map.set(`${ctrl.para}:${ctrl.controlIndex}`, ctrl)
+  }
+  return map
+}
+
+function charIndexOfBodyControl(doc, flatPara, pos) {
+  if (!Number.isInteger(pos) || typeof doc.getCharIndexAtStreamPos !== 'function') return null
+  try {
+    const parsed = parseJson(doc.getCharIndexAtStreamPos(0, flatPara, pos), null)
+    return parsed && Number.isInteger(parsed.charIndex) ? parsed.charIndex : null
+  } catch {
+    return null
+  }
+}
+
+function isVerifiedBodyBookmark(doc, flatPara, ctrlIdx) {
+  const map = bodyBookmarkControlMap(doc)
+  if (!map) return true
+  return map.has(`${flatPara}:${ctrlIdx}`)
+}
+
+/**
+ * Delete a single body bookmark safely: tries `doc.deleteBookmark`, and if the engine
+ * rejects it (e.g. when a hyperlink, click-here field, auto-number, or TOC link precedes
+ * the bookmark in the same paragraph), falls back to `doc.deleteControlAt(0, flatPara, ctrlIdx)`
+ * after verifying the target slot is indeed a body `bokm` control. Never throws.
+ */
+function deleteBookmarkEntry(doc, bm) {
+  const secCount = typeof doc.getSectionCount === 'function' ? doc.getSectionCount() : 0
+  if (
+    !Number.isInteger(bm.sec) ||
+    !Number.isInteger(bm.para) ||
+    !Number.isInteger(bm.ctrlIdx) ||
+    bm.sec < 0 ||
+    bm.sec >= secCount ||
+    bm.para < 0 ||
+    bm.para >= doc.getParagraphCount(bm.sec)
+  ) {
+    return { ok: false, error: 'bookmark coordinates out of range' }
+  }
+
+  const flatPara = flatBodyParaIndex(doc, bm.sec, bm.para)
+  if (!isVerifiedBodyBookmark(doc, flatPara, bm.ctrlIdx)) {
+    return { ok: false, error: 'not a body bookmark control' }
+  }
+
+  let primaryError = 'deleteBookmark failed'
+  if (typeof doc.deleteBookmark === 'function') {
+    try {
+      const res = parseJson(doc.deleteBookmark(bm.sec, bm.para, bm.ctrlIdx), null)
+      if (res && res.ok === true) return { ok: true }
+      if (res && typeof res.error === 'string' && res.error) primaryError = res.error
+    } catch (err) {
+      primaryError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  if (typeof doc.deleteControlAt === 'function') {
+    try {
+      const res = parseJson(doc.deleteControlAt(0, flatPara, bm.ctrlIdx), null)
+      if (res && res.ok === true) return { ok: true }
+      return { ok: false, error: res?.error ?? primaryError }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  return { ok: false, error: primaryError }
+}
+
+function renameBookmarkEntry(doc, bm, newName) {
+  if (typeof doc.renameBookmark !== 'function') {
+    return { ok: false, error: 'renameBookmark unavailable' }
+  }
+  const flatPara = flatBodyParaIndex(doc, bm.sec, bm.para)
+  if (!isVerifiedBodyBookmark(doc, flatPara, bm.ctrlIdx)) {
+    return { ok: false, error: 'not a body bookmark control' }
+  }
+  try {
+    const res = parseJson(doc.renameBookmark(bm.sec, bm.para, bm.ctrlIdx, newName), null)
+    if (res && res.ok === true) return { ok: true }
+    return { ok: false, error: res?.error ?? 'renameBookmark failed' }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Read bookmarks belonging strictly to body paragraphs (`list === 0`).
+ * Bookmarks inside table cells or headers/footers are reported by `doc.getBookmarks()`
+ * with outer paragraph coordinates and inner control indices; filtering against
+ * `doc.getControls()` (`list === 0 && ctrlId === 'bokm'`) ensures they are never
+ * mistaken for outer body controls.
+ */
 function readRawBookmarks(doc) {
   if (!doc || typeof doc.getBookmarks !== 'function') return []
-  const raw = parseJson(doc.getBookmarks(), [])
+  let raw
+  try {
+    raw = parseJson(doc.getBookmarks(), [])
+  } catch {
+    return []
+  }
   if (!Array.isArray(raw)) return []
-  return raw
+
+  const parsed = raw
     .filter((bm) => bm && typeof bm.name === 'string')
     .map((bm) => ({
       name: bm.name,
@@ -453,7 +578,53 @@ function readRawBookmarks(doc) {
       offset: bm.charPos ?? bm.charOffset ?? bm.offset ?? 0,
       ctrlIdx: bm.ctrlIdx ?? bm.controlIndex ?? 0,
     }))
-    .sort(compareMarks)
+
+  const bodyControls = bodyBookmarkControlMap(doc)
+  if (!bodyControls) {
+    return parsed.sort(compareMarks)
+  }
+
+  const secCount = typeof doc.getSectionCount === 'function' ? doc.getSectionCount() : 0
+  const bySlot = new Map()
+  for (const bm of parsed) {
+    if (
+      !Number.isInteger(bm.sec) ||
+      !Number.isInteger(bm.para) ||
+      !Number.isInteger(bm.ctrlIdx) ||
+      bm.sec < 0 ||
+      bm.sec >= secCount ||
+      bm.para < 0 ||
+      bm.para >= doc.getParagraphCount(bm.sec)
+    ) {
+      continue
+    }
+    const flatPara = flatBodyParaIndex(doc, bm.sec, bm.para)
+    const slotKey = `${flatPara}:${bm.ctrlIdx}`
+    const ctrl = bodyControls.get(slotKey)
+    if (!ctrl) continue
+    let bucket = bySlot.get(slotKey)
+    if (!bucket) {
+      bucket = { flatPara, ctrl, candidates: [] }
+      bySlot.set(slotKey, bucket)
+    }
+    bucket.candidates.push(bm)
+  }
+
+  const verified = []
+  for (const { flatPara, ctrl, candidates } of bySlot.values()) {
+    if (candidates.length === 1) {
+      verified.push(candidates[0])
+      continue
+    }
+    // Multiple bookmarks reported at the same (sec, para, ctrlIdx) means a body bookmark
+    // and an inner cell/header bookmark collided on ctrlIdx: keep the body bookmark.
+    const expectedOffset = charIndexOfBodyControl(doc, flatPara, ctrl.pos)
+    const exact =
+      expectedOffset !== null ? candidates.find((c) => c.offset === expectedOffset) : null
+    verified.push(exact ?? candidates[0])
+  }
+
+  return verified.sort(compareMarks)
 }
 
 /** Return all app marks in `doc` matching `prefixes` (defaults to all 7 app prefixes) in document order. */
@@ -557,9 +728,9 @@ export function removeMark(doc, mark) {
   }
   if (!target) return { ok: false, reason: 'invalid_mark' }
 
-  const res = parseJson(doc.deleteBookmark(target.sec, target.para, target.ctrlIdx), null)
-  if (!res || res.ok !== true) {
-    return { ok: false, reason: 'engine_error', error: res?.error ?? 'deleteBookmark failed' }
+  const res = deleteBookmarkEntry(doc, target)
+  if (!res.ok) {
+    return { ok: false, reason: 'engine_error', error: res.error ?? 'deleteBookmark failed' }
   }
   return {
     ok: true,
@@ -726,8 +897,8 @@ export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
     for (let i = 0; i < group.items.length; i++) {
       const { bm } = group.items[i]
       const newName = allocated.names[i]
-      const res = parseJson(doc.renameBookmark(bm.sec, bm.para, bm.ctrlIdx, newName), null)
-      if (res && res.ok === true) {
+      const res = renameBookmarkEntry(doc, bm, newName)
+      if (res.ok) {
         usedNames.add(newName)
         renamed.push({
           from: bm.name,
@@ -742,17 +913,15 @@ export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
   }
 
   // 3. Handle remaining non-setting, non-chunked marks (range marks and regular point marks).
+  //    Range marks use a per-key LIFO stack so a duplicated range pasted *inside* the
+  //    original range pairs inner-with-inner and outer-with-outer without crossing.
   const seen = new Set()
-  const pendingDupEnds = new Map()
+  const usedRangeKeys = new Set()
+  const openRangeStacks = new Map()
   for (const bm of allowedMarks) {
     if (bm.prefix === MARK_PREFIXES.setting) continue
     const loc = `${bm.sec}:${bm.para}:${bm.ctrlIdx}`
     if (chunkLocs.has(loc)) continue
-
-    if (!seen.has(bm.name)) {
-      seen.add(bm.name)
-      continue
-    }
 
     const decoded = decodeMarkName(bm.name)
     const lastPart =
@@ -760,38 +929,94 @@ export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
         ? decoded.parts[decoded.parts.length - 1]
         : null
 
-    let newName
     if (lastPart === RANGE_START || lastPart === RANGE_END) {
       const idParts = decoded.parts.slice(0, -1)
       const rangeKey = `${bm.prefix}${idParts.map(encodeMarkField).join(':')}`
       if (lastPart === RANGE_START) {
+        let stack = openRangeStacks.get(rangeKey)
+        if (!stack) {
+          stack = []
+          openRangeStacks.set(rangeKey, stack)
+        }
+        if (!usedRangeKeys.has(rangeKey)) {
+          usedRangeKeys.add(rangeKey)
+          seen.add(bm.name)
+          stack.push({ renameTo: null })
+          continue
+        }
         const pair = uniqueRangePairNames(usedNames, bm.prefix, idParts, MAX_MARK_NAME_LEN)
-        newName = pair.startName
         usedNames.add(pair.startName)
         usedNames.add(pair.endName)
-        let queue = pendingDupEnds.get(rangeKey)
-        if (!queue) {
-          queue = []
-          pendingDupEnds.set(rangeKey, queue)
+        const res = renameBookmarkEntry(doc, bm, pair.startName)
+        if (res.ok) {
+          seen.add(pair.startName)
+          renamed.push({
+            from: bm.name,
+            to: pair.startName,
+            sec: bm.sec,
+            para: bm.para,
+            offset: bm.offset,
+            ctrlIdx: bm.ctrlIdx,
+          })
         }
-        queue.push(pair.endName)
-      } else {
-        const queue = pendingDupEnds.get(rangeKey)
-        if (queue && queue.length > 0) {
-          newName = queue.shift()
-        } else {
-          const pair = uniqueRangePairNames(usedNames, bm.prefix, idParts, MAX_MARK_NAME_LEN)
-          newName = pair.endName
-          usedNames.add(pair.endName)
-        }
+        stack.push({ renameTo: pair.endName })
+        continue
       }
-    } else {
-      newName = uniqueMarkName(usedNames, bm.name, MAX_MARK_NAME_LEN)
-      usedNames.add(newName)
+
+      // RANGE_END: pop the most recently opened matching range start.
+      const stack = openRangeStacks.get(rangeKey)
+      if (stack && stack.length > 0) {
+        const frame = stack.pop()
+        if (frame.renameTo === null) {
+          seen.add(bm.name)
+          continue
+        }
+        const res = renameBookmarkEntry(doc, bm, frame.renameTo)
+        if (res.ok) {
+          seen.add(frame.renameTo)
+          renamed.push({
+            from: bm.name,
+            to: frame.renameTo,
+            sec: bm.sec,
+            para: bm.para,
+            offset: bm.offset,
+            ctrlIdx: bm.ctrlIdx,
+          })
+        }
+        continue
+      }
+
+      // Orphan end mark without an open start.
+      if (!seen.has(bm.name)) {
+        seen.add(bm.name)
+        continue
+      }
+      const pair = uniqueRangePairNames(usedNames, bm.prefix, idParts, MAX_MARK_NAME_LEN)
+      usedNames.add(pair.endName)
+      const res = renameBookmarkEntry(doc, bm, pair.endName)
+      if (res.ok) {
+        seen.add(pair.endName)
+        renamed.push({
+          from: bm.name,
+          to: pair.endName,
+          sec: bm.sec,
+          para: bm.para,
+          offset: bm.offset,
+          ctrlIdx: bm.ctrlIdx,
+        })
+      }
+      continue
     }
 
-    const res = parseJson(doc.renameBookmark(bm.sec, bm.para, bm.ctrlIdx, newName), null)
-    if (res && res.ok === true) {
+    if (!seen.has(bm.name)) {
+      seen.add(bm.name)
+      continue
+    }
+
+    const newName = uniqueMarkName(usedNames, bm.name, MAX_MARK_NAME_LEN)
+    usedNames.add(newName)
+    const res = renameBookmarkEntry(doc, bm, newName)
+    if (res.ok) {
       seen.add(newName)
       renamed.push({
         from: bm.name,
@@ -806,15 +1031,9 @@ export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
 
   // 4. Delete earlier duplicate setting marks LAST in reverse control order so no ctrlIdx shifts earlier renames.
   const removed = []
+  const failed = []
   if (toDelete.length > 0) {
-    const deleteOrder = [...toDelete].sort(compareReverseControlOrder)
-    const deletedLocs = new Set()
-    for (const bm of deleteOrder) {
-      const res = parseJson(doc.deleteBookmark(bm.sec, bm.para, bm.ctrlIdx), null)
-      if (res && res.ok === true) {
-        deletedLocs.add(`${bm.sec}:${bm.para}:${bm.ctrlIdx}`)
-      }
-    }
+    const { deletedLocs, failed: deleteFailures } = deleteMarksSafely(doc, toDelete)
     for (const bm of toDelete) {
       if (deletedLocs.has(`${bm.sec}:${bm.para}:${bm.ctrlIdx}`)) {
         removed.push({
@@ -827,11 +1046,13 @@ export function deduplicateMarks(doc, prefixes = APP_MARK_PREFIXES) {
         })
       }
     }
+    failed.push(...deleteFailures)
   }
 
   renamed.sort(compareMarks)
   removed.sort(compareMarks)
-  return { renamed, removed }
+  failed.sort(compareMarks)
+  return failed.length > 0 ? { renamed, removed, failed } : { renamed, removed }
 }
 
 function comparePlaces(a, b) {
@@ -985,19 +1206,13 @@ export function cleanupBrokenMarks(doc, prefixes = APP_MARK_PREFIXES) {
   }
 
   const targets = [...byLoc.values()]
-  const deleteOrder = [...targets].sort(compareReverseControlOrder)
-  const deletedLocs = new Set()
-  for (const target of deleteOrder) {
-    const res = parseJson(doc.deleteBookmark(target.sec, target.para, target.ctrlIdx), null)
-    if (res && res.ok === true) {
-      deletedLocs.add(`${target.sec}:${target.para}:${target.ctrlIdx}`)
-    }
-  }
+  const { deletedLocs, failed } = deleteMarksSafely(doc, targets)
 
   const removed = targets
     .filter((t) => deletedLocs.has(`${t.sec}:${t.para}:${t.ctrlIdx}`))
     .sort(compareMarks)
-  return { removed }
+  failed.sort(compareMarks)
+  return failed.length > 0 ? { removed, failed } : { removed }
 }
 
 function parseSettingEntry(entry) {
@@ -1022,12 +1237,25 @@ function deleteMarksSafely(doc, marks) {
     unique.set(`${m.sec}:${m.para}:${m.ctrlIdx}`, m)
   }
   const ordered = [...unique.values()].sort(compareReverseControlOrder)
-  let removed = 0
+  const deletedLocs = new Set()
+  const failed = []
   for (const m of ordered) {
-    const res = parseJson(doc.deleteBookmark(m.sec, m.para, m.ctrlIdx), null)
-    if (res && res.ok === true) removed += 1
+    const res = deleteBookmarkEntry(doc, m)
+    if (res.ok) {
+      deletedLocs.add(`${m.sec}:${m.para}:${m.ctrlIdx}`)
+    } else {
+      failed.push({
+        name: m.name,
+        prefix: m.prefix ?? markPrefixOf(m.name),
+        sec: m.sec,
+        para: m.para,
+        offset: m.offset ?? 0,
+        ctrlIdx: m.ctrlIdx,
+        error: res.error,
+      })
+    }
   }
-  return removed
+  return { removed: deletedLocs.size, deletedLocs, failed }
 }
 
 /**
@@ -1054,9 +1282,7 @@ export function writeDocSetting(doc, key, value) {
       toDelete.push(...entry.marks)
     }
   }
-  if (toDelete.length > 0) {
-    deleteMarksSafely(doc, toDelete)
-  }
+  const failedDeletes = toDelete.length > 0 ? deleteMarksSafely(doc, toDelete).failed : []
 
   const remainingNames = new Set(readRawBookmarks(doc).map((bm) => bm.name))
   const payload = `${encodeSettingKey(key)}=${JSON.stringify(value)}`
@@ -1078,7 +1304,9 @@ export function writeDocSetting(doc, key, value) {
     written.push(name)
   }
 
-  return { ok: true, key, names: written }
+  return failedDeletes.length > 0
+    ? { ok: true, key, names: written, failed: failedDeletes }
+    : { ok: true, key, names: written }
 }
 
 /**
@@ -1115,8 +1343,8 @@ export function deleteDocSetting(doc, key) {
       toDelete.push(...entry.marks)
     }
   }
-  const removed = deleteMarksSafely(doc, toDelete)
-  return { ok: true, removed }
+  const { removed, failed } = deleteMarksSafely(doc, toDelete)
+  return failed.length > 0 ? { ok: true, removed, failed } : { ok: true, removed }
 }
 
 /**
@@ -1127,17 +1355,12 @@ export function stripMarks(doc, prefixes = APP_MARK_PREFIXES) {
   const marks = listMarks(doc, prefixes)
   if (marks.length === 0) return { removed: 0, names: [] }
 
-  const deleteOrder = [...marks].sort(compareReverseControlOrder)
-  const deletedLocs = new Set()
-  for (const m of deleteOrder) {
-    const res = parseJson(doc.deleteBookmark(m.sec, m.para, m.ctrlIdx), null)
-    if (res && res.ok === true) {
-      deletedLocs.add(`${m.sec}:${m.para}:${m.ctrlIdx}`)
-    }
-  }
+  const { deletedLocs, failed } = deleteMarksSafely(doc, marks)
   const removedMarks = marks.filter((m) => deletedLocs.has(`${m.sec}:${m.para}:${m.ctrlIdx}`))
+  failed.sort(compareMarks)
   return {
     removed: removedMarks.length,
     names: removedMarks.map((m) => m.name),
+    ...(failed.length > 0 ? { failed } : {}),
   }
 }

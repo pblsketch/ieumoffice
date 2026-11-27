@@ -599,11 +599,11 @@ export function changeOutlineLevel(doc, params) {
   }
   const secCount = doc.getSectionCount()
   if (sec < 0 || sec >= secCount) {
-    return { ok: false, reason: 'unsupported_place', sec, para }
+    return { ok: false, reason: 'not_found', sec, para }
   }
   const paraCount = doc.getParagraphCount(sec)
   if (para < 0 || para >= paraCount) {
-    return { ok: false, reason: 'unsupported_place', sec, para }
+    return { ok: false, reason: 'not_found', sec, para }
   }
 
   const outline = readOutline(doc, { appStyleMap })
@@ -694,22 +694,36 @@ export function changeOutlineLevel(doc, params) {
   }
 }
 
-function resolveHeadingRange(items, idx, paraCount) {
+function resolveHeadingRange(items, idx, paraCount, secCount = 1) {
   const head = items[idx]
   let crossesSection = false
   let endPara = paraCount - 1
+  let closed = false
   for (let j = idx + 1; j < items.length; j++) {
     const next = items[j]
-    if (next.level <= head.level) {
-      if (next.sec === head.sec) {
+    if (next.sec === head.sec) {
+      if (next.level <= head.level) {
         endPara = next.para - 1
+        closed = true
+        break
       }
+      continue
+    }
+    // Heading range reaches a subsequent section. Only when the very first paragraph
+    // of the immediately following section begins a new heading of equal or higher level
+    // does the range end cleanly at the section boundary without crossing it.
+    if (next.level <= head.level && next.sec === head.sec + 1 && next.para === 0) {
+      closed = true
       break
     }
-    if (next.sec !== head.sec) {
-      crossesSection = true
-      break
-    }
+    crossesSection = true
+    closed = true
+    break
+  }
+  // If no equal/higher heading closed the range and another section follows, the range
+  // spills across the section boundary into the trailing section's body paragraphs.
+  if (!closed && head.sec + 1 < secCount) {
+    crossesSection = true
   }
   return { start: head.para, end: Math.max(head.para, endPara), crossesSection }
 }
@@ -890,7 +904,7 @@ export function moveOutlineSection(doc, params) {
 
   const secCount = doc.getSectionCount()
   if (source.sec < 0 || source.sec >= secCount || target.sec < 0 || target.sec >= secCount) {
-    return { ok: false, reason: 'unsupported_place' }
+    return { ok: false, reason: 'not_found' }
   }
   if (
     source.para < 0 ||
@@ -898,7 +912,7 @@ export function moveOutlineSection(doc, params) {
     target.para < 0 ||
     target.para >= doc.getParagraphCount(target.sec)
   ) {
-    return { ok: false, reason: 'unsupported_place' }
+    return { ok: false, reason: 'not_found' }
   }
 
   const outline = readOutline(doc, { appStyleMap })
@@ -920,8 +934,8 @@ export function moveOutlineSection(doc, params) {
 
   const sec = sourceItem.sec
   const beforeParaCount = doc.getParagraphCount(sec)
-  const sourceRange = resolveHeadingRange(outline.items, sourceIdx, beforeParaCount)
-  const targetRange = resolveHeadingRange(outline.items, targetIdx, beforeParaCount)
+  const sourceRange = resolveHeadingRange(outline.items, sourceIdx, beforeParaCount, secCount)
+  const targetRange = resolveHeadingRange(outline.items, targetIdx, beforeParaCount, secCount)
   if (sourceRange.crossesSection || (position === 'after' && targetRange.crossesSection)) {
     return { ok: false, reason: 'cross_section' }
   }
