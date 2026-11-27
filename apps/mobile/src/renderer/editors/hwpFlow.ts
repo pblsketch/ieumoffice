@@ -278,11 +278,123 @@ function markerFontVars(html: string): string {
   return `${family ? `--marker-font:${family};` : ''}${size ? `--marker-size:${size};` : ''}`
 }
 
+const MAX_BODY_MARGIN_LEFT_PX = 48
+const MAX_BODY_MARGIN_RIGHT_PX = 32
+const MAX_BODY_INDENT_PX = 36
+const MAX_CELL_MARGIN_LEFT_PX = 20
+const MAX_CELL_MARGIN_RIGHT_PX = 12
+const MAX_CELL_INDENT_PX = 16
+
+function parseCssLengthPx(raw: string): number | null {
+  const m = /^\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(px|pt|em|rem|mm|cm|in)?\s*$/i.exec(raw)
+  if (!m) return null
+  const value = Number(m[1])
+  if (!Number.isFinite(value)) return null
+  const unit = (m[2] ?? '').toLowerCase()
+  if (unit === '' && value === 0) return 0
+  if (unit === 'px') return value
+  if (unit === 'pt') return value * (96 / 72)
+  if (unit === 'em' || unit === 'rem') return value * 16
+  if (unit === 'mm') return value * (96 / 25.4)
+  if (unit === 'cm') return value * (96 / 2.54)
+  if (unit === 'in') return value * 96
+  return null
+}
+
+function formatPx(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  return `${rounded}px`
+}
+
+/**
+ * Keeps HWP paragraph indents and side margins inside the phone flow viewport.
+ *
+ * rhwp's HTML export emits HWP hanging indent (negative `text-indent`) without
+ * adding the matching `margin-left`, which pushes the first line off the left
+ * edge in CSS. Negative or desktop-wide side margins also clip or crush lines
+ * on narrow screens. This guarantees `margin-left + text-indent >= 0` and
+ * non-negative, mobile-bounded left/right margins.
+ */
+export function normalizeFlowParagraphStyle(html: string, inCell = false): string {
+  if (!html || !/<p\b/i.test(html)) return html
+  const maxLeft = inCell ? MAX_CELL_MARGIN_LEFT_PX : MAX_BODY_MARGIN_LEFT_PX
+  const maxRight = inCell ? MAX_CELL_MARGIN_RIGHT_PX : MAX_BODY_MARGIN_RIGHT_PX
+  const maxIndent = inCell ? MAX_CELL_INDENT_PX : MAX_BODY_INDENT_PX
+
+  return html.replace(/<p\b([^>]*)\bstyle="([^"]*)"([^>]*)>/gi, (full, before, style, after) => {
+    let rawLeft = 0
+    let rawRight = 0
+    let rawIndent = 0
+    let touched = false
+    const kept: string[] = []
+
+    for (const part of String(style).split(';')) {
+      const trimmed = part.trim()
+      if (!trimmed) continue
+      const colon = trimmed.indexOf(':')
+      if (colon < 0) {
+        kept.push(trimmed)
+        continue
+      }
+      const prop = trimmed.slice(0, colon).trim().toLowerCase()
+      const val = trimmed.slice(colon + 1).trim()
+      if (prop === 'margin-left') {
+        const px = parseCssLengthPx(val)
+        if (px !== null) {
+          rawLeft = px
+          touched = true
+          continue
+        }
+      } else if (prop === 'margin-right') {
+        const px = parseCssLengthPx(val)
+        if (px !== null) {
+          rawRight = px
+          touched = true
+          continue
+        }
+      } else if (prop === 'text-indent') {
+        const px = parseCssLengthPx(val)
+        if (px !== null) {
+          rawIndent = px
+          touched = true
+          continue
+        }
+      }
+      kept.push(trimmed)
+    }
+
+    if (!touched) return full
+
+    const baseLeft = Math.min(Math.max(0, rawLeft), maxLeft)
+    const effectiveRight = Math.min(Math.max(0, rawRight), maxRight)
+    let effectiveLeft = baseLeft
+    let effectiveIndent = 0
+    if (rawIndent < 0) {
+      const hang = Math.min(-rawIndent, maxIndent)
+      effectiveLeft = Math.max(baseLeft, hang)
+      effectiveIndent = -hang
+    } else if (rawIndent > 0) {
+      effectiveIndent = Math.min(rawIndent, maxIndent)
+    }
+
+    if (effectiveLeft > 0) kept.push(`margin-left:${formatPx(effectiveLeft)}`)
+    if (effectiveRight > 0) kept.push(`margin-right:${formatPx(effectiveRight)}`)
+    if (effectiveIndent !== 0) kept.push(`text-indent:${formatPx(effectiveIndent)}`)
+
+    return `<p${before}style="${kept.join(';')};"${after}>`
+  })
+}
+
 /** HTML of one body paragraph's text. */
 export function bodyParagraphHtml(doc: FlowSourceDocument, sec: number, para: number): string {
   const length = doc.getParagraphLength(sec, para)
   const html =
-    length > 0 ? stripClipboardFragment(doc.exportSelectionHtml(sec, para, 0, para, length)) : ''
+    length > 0
+      ? normalizeFlowParagraphStyle(
+          stripClipboardFragment(doc.exportSelectionHtml(sec, para, 0, para, length)),
+          false,
+        )
+      : ''
   return withMarker(
     html,
     paragraphMarker(doc, () => doc.getParaPropertiesAt(sec, para), sec, para, null),
@@ -309,8 +421,9 @@ export function cellParagraphHtml(
     // the engine cannot export a table caption as HTML: show its text with its alignment
     html = captionTextHtml(doc, sec, para, flat, length, props)
   } else if (length > 0) {
-    html = stripClipboardFragment(
-      doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length),
+    html = normalizeFlowParagraphStyle(
+      stripClipboardFragment(doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length)),
+      true,
     )
   }
   return withMarker(html, paragraphMarker(doc, props, sec, para, path))
@@ -714,10 +827,13 @@ export function buildFlowHtml(doc: FlowSourceDocument): string {
 
 /** Reading styles inside the sandboxed flow frame. Document colors stay as the document set them. */
 export const FLOW_FRAME_CSS = `
-html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; }
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; max-width: 100%; overflow-x: clip; }
 body {
   margin: 0;
   padding: 16px 16px 96px;
+  max-width: 100%;
+  overflow-x: clip;
   background: #ffffff;
   color: #000000;
   word-break: keep-all;
@@ -726,7 +842,7 @@ body {
 }
 body[contenteditable='true'] { outline: none; caret-color: #1a73e8; }
 .flow-p p { margin: 0; }
-.flow-p, .flow-obj { margin: 0 0 4px; }
+.flow-p, .flow-obj { margin: 0 0 4px; max-width: 100%; }
 td .flow-p, td .flow-obj { margin: 0; }
 .flow-obj { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 td .flow-obj { overflow-x: visible; }

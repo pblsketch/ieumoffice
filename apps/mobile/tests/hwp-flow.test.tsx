@@ -8,6 +8,7 @@ import { HwpDocument, initSync } from '@rhwp/core'
 import {
   buildFlowDocument,
   buildFlowHtml,
+  normalizeFlowParagraphStyle,
   stripClipboardFragment,
 } from '../src/renderer/editors/hwpFlow'
 import { HwpFlowView } from '../src/renderer/editors/HwpFlowView'
@@ -134,6 +135,58 @@ describe('HWP flow builder (real rhwp engine)', () => {
     const page = buildFlowDocument('<div class="flow-p">x</div>', 1.3, 'ko')
     expect(page).toContain('--flow-zoom:1.3')
     expect(page).not.toContain('<script')
+  })
+
+  it('prevents negative hanging indents and side margins from clipping off the viewport', () => {
+    // HWP hanging indent with no left margin: margin-left must compensate so line 1 starts >= 0
+    expect(
+      normalizeFlowParagraphStyle(
+        '<p style="margin:0;text-align:justify;text-indent:-51.0px;line-height:160%;"><span>김인호 본문</span></p>',
+      ),
+    ).toBe(
+      '<p style="margin:0;text-align:justify;line-height:160%;margin-left:36px;text-indent:-36px;"><span>김인호 본문</span></p>',
+    )
+
+    // Small hanging indent already compensated by left margin stays non-negative
+    expect(
+      normalizeFlowParagraphStyle(
+        '<p style="margin:0;margin-left:20.0px;margin-right:20.0px;text-indent:-17.9px;"><span>항목</span></p>',
+      ),
+    ).toBe(
+      '<p style="margin:0;margin-left:20px;margin-right:20px;text-indent:-17.9px;"><span>항목</span></p>',
+    )
+
+    // Negative side margins and desktop-wide indents are clamped to readable mobile bounds
+    expect(
+      normalizeFlowParagraphStyle(
+        '<p style="margin:0;margin-left:-24px;margin-right:-18px;text-indent:-90px;"><span>긴 내어쓰기</span></p>',
+      ),
+    ).toBe('<p style="margin:0;margin-left:36px;text-indent:-36px;"><span>긴 내어쓰기</span></p>')
+
+    // Cell paragraphs use tighter caps so multi-column tables stay readable
+    expect(
+      normalizeFlowParagraphStyle(
+        '<p style="margin:0;margin-left:40px;margin-right:30px;text-indent:-28px;"><span>칸</span></p>',
+        true,
+      ),
+    ).toBe(
+      '<p style="margin:0;margin-left:20px;margin-right:12px;text-indent:-16px;"><span>칸</span></p>',
+    )
+
+    // Real rhwp fixture with negative hanging indents never places line 1 left of 0
+    const body = flowOf('stale-table-width-pushed-boundary.hwpx')
+    let hangingCount = 0
+    for (const p of body.querySelectorAll('.flow-p p')) {
+      const style = p.getAttribute('style') ?? ''
+      const left = Number(/margin-left:([+-]?[\d.]+)px/.exec(style)?.[1] ?? 0)
+      const right = Number(/margin-right:([+-]?[\d.]+)px/.exec(style)?.[1] ?? 0)
+      const indent = Number(/text-indent:([+-]?[\d.]+)px/.exec(style)?.[1] ?? 0)
+      if (indent < 0) hangingCount += 1
+      expect(left).toBeGreaterThanOrEqual(0)
+      expect(right).toBeGreaterThanOrEqual(0)
+      expect(left + indent).toBeGreaterThanOrEqual(0)
+    }
+    expect(hangingCount).toBeGreaterThan(0)
   })
 })
 
