@@ -88,9 +88,32 @@ export function useAiInlineQuestions(): AiInlineQuestions {
     resolve?.(answer)
   }, [])
 
+  const closeOpenCards = useCallback(() => {
+    settle(SKIP)
+    setActiveToolCard((prev) =>
+      prev && prev.status === 'open' ? { ...prev, status: 'superseded' } : prev,
+    )
+    setTextCardStates((prev) => {
+      let changed = false
+      const next: typeof prev = {}
+      for (const [k, v] of Object.entries(prev)) {
+        if (v.status === 'open') {
+          next[k] = { ...v, status: 'superseded' }
+          changed = true
+        } else {
+          next[k] = v
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [settle])
+  const closeOpenCardsRef = useRef(closeOpenCards)
+  closeOpenCardsRef.current = closeOpenCards
+
   const askQuestionsSkill: AskQuestionsSkill = useMemo(
     () =>
       createAskQuestionsSkill({
+        onTurnStart: () => closeOpenCardsRef.current(),
         ask: (view, signal) =>
           new Promise<QuestionCardAnswer>((resolve) => {
             // a card still waiting from an earlier call gives way to this one
@@ -136,24 +159,8 @@ export function useAiInlineQuestions(): AiInlineQuestions {
 
   const supersedeOpen = useCallback(() => {
     askQuestionsSkill.resetTurn()
-    settle(SKIP)
-    setActiveToolCard((prev) =>
-      prev && prev.status === 'open' ? { ...prev, status: 'superseded' } : prev,
-    )
-    setTextCardStates((prev) => {
-      let changed = false
-      const next: typeof prev = {}
-      for (const [k, v] of Object.entries(prev)) {
-        if (v.status === 'open') {
-          next[k] = { ...v, status: 'superseded' }
-          changed = true
-        } else {
-          next[k] = v
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [askQuestionsSkill, settle])
+    closeOpenCards()
+  }, [askQuestionsSkill, closeOpenCards])
 
   const closeOpenCard = useCallback(() => {
     settle(SKIP)

@@ -397,7 +397,8 @@ export function useSkillPickerInput({
   const standaloneOpen = manualOpen && !!skills && !typedOpen
   const matches = typedOpen ? typedMatches : standaloneOpen && skills ? [...skills.items] : []
   const open = typedOpen || standaloneOpen
-  const key = typedOpen && trigger ? `${trigger.start}:${trigger.query}` : standaloneOpen ? 'manual' : ''
+  const key =
+    typedOpen && trigger ? `${trigger.start}:${trigger.query}` : standaloneOpen ? 'manual' : ''
   const active = selection.key === key ? Math.min(selection.index, matches.length) : 0
 
   // a closed trigger forgets that Esc dismissed it
@@ -469,6 +470,24 @@ export function useSkillPickerInput({
     skills.onPick(item)
   }
 
+  const applyExample = (item: SkillPickerItem) => {
+    if (!skills || !item.example) return
+    if (typedOpen && trigger) setDismissed(trigger.start)
+    const end = item.example.length
+    if (value === item.example) {
+      pendingCaretRef.current = null
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(end, end)
+      setCaret(end)
+    } else {
+      pendingCaretRef.current = end
+      onChange(item.example)
+      textareaRef.current?.focus()
+    }
+    setManualOpen(false)
+    skills.onPick(item)
+  }
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     const action = skillPickerKeyAction({
       key: e.key,
@@ -523,6 +542,7 @@ export function useSkillPickerInput({
           active={active}
           onPick={pick}
           onHover={(index) => setSelection({ key, index })}
+          onUseExample={(item) => applyExample(item)}
         />
       </div>
     ) : null

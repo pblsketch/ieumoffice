@@ -258,4 +258,60 @@ describe('useAiInlineQuestions', () => {
     ).toBe('[방향]\n- 누가 듣나요?: 알아서 정해 줘\n- 메모: 짧게')
     expect(hook.formatFollowUp('ko', view, { kind: 'skip' })).toMatch(/^\[방향\] /)
   })
+
+  it('resets the per-run limit and supersedes open cards automatically on buildContext (retry/preset/direct run)', async () => {
+    mount()
+    const first = ask()
+    await flush()
+    expect(hook.activeToolCard?.status).toBe('open')
+
+    act(() =>
+      hook.submitToolCard({
+        kind: 'submit',
+        answers: { audience: ['parents'], notes: '' },
+        decideForMe: [],
+      }),
+    )
+    const firstOut = await first
+    expect(firstOut.isError).toBe(false)
+    expect(JSON.parse(firstOut.output).action.name).toBe('submit')
+
+    // Second ask in the same run is rejected
+    const second = await ask()
+    expect(second.isError).toBe(true)
+
+    // Starting a new AgentLoop run calls buildContext(), which resets the limit
+    // without touching already-submitted cards
+    act(() => hook.markTextCard('m-open', 'open'))
+    act(() =>
+      hook.markTextCard('m-done', 'submitted', {
+        kind: 'submit',
+        answers: { notes: 'ok' },
+        decideForMe: [],
+      }),
+    )
+    let ctx = ''
+    act(() => {
+      ctx = hook.askQuestionsSkill.buildContext?.() ?? ''
+    })
+    expect(ctx).toBe('')
+    expect(hook.activeToolCard?.status).toBe('submitted')
+    expect(hook.textCardStates['m-open']?.status).toBe('superseded')
+    expect(hook.textCardStates['m-done']?.status).toBe('submitted')
+
+    // Run 2 can ask again; if left open when run 3 begins, buildContext supersedes it with skip
+    const pendingRun2 = ask()
+    await flush()
+    expect(hook.activeToolCard?.status).toBe('open')
+    expect(hook.waitingForPerson).toBe(true)
+
+    act(() => {
+      hook.askQuestionsSkill.buildContext?.()
+    })
+    const superseded = await pendingRun2
+    expect(superseded.isError).toBe(false)
+    expect(JSON.parse(superseded.output).action.name).toBe('skip')
+    expect(hook.activeToolCard?.status).toBe('superseded')
+    expect(hook.waitingForPerson).toBe(false)
+  })
 })

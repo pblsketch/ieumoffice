@@ -9347,3 +9347,79 @@ body.show-curtain::after {
   background: var(--hover);
   color: var(--text-primary);
 }
+
+/* Slides AI deck structure chips & speaker-notes separation toggle */
+.ai-deck-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+
+.ai-deck-struct-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ai-deck-struct-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.ai-deck-struct-locked {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.ai-deck-struct-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-deck-struct-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  background: var(--color-bg-page);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ai-deck-struct-chip:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+}
+
+.ai-deck-struct-chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.ai-deck-notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-deck-notes-toggle input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}

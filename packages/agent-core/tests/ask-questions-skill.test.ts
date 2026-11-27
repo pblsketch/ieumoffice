@@ -3,6 +3,8 @@
  * tool definition, the card round trip and the tools-off question block guide.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { AgentLoop } from '../src/loop'
+import type { AgentTransport } from '../src/types'
 import {
   ASK_QUESTIONS_TOOL,
   ASK_QUESTIONS_TOOLS_OFF_PROMPT,
@@ -268,6 +270,81 @@ describe('ask_questions execution', () => {
     const skill = createAskQuestionsSkill({ ask: vi.fn() })
     const result = await skill.executeTool({ id: 'x', name: 'other', input: {} })
     expect(result.isError).toBe(true)
+  })
+
+  it('resets once per AgentLoop.run() via buildContext without resetting between tool-call steps', async () => {
+    const onTurnStart = vi.fn()
+    const ask = vi.fn(async (): Promise<QuestionCardAnswer> => ({ kind: 'skip' }))
+    const skill = createAskQuestionsSkill({ ask, onTurnStart })
+
+    let step = 0
+    const toolResults: Array<{ id: string; isError?: boolean | undefined }> = []
+    const transport: AgentTransport = {
+      stream(_request, callbacks) {
+        step++
+        queueMicrotask(() => {
+          if (step === 1) {
+            // Run 1, step 1: ask once (allowed)
+            callbacks.onToolCall({ id: 'r1-1', name: ASK_QUESTIONS_TOOL, input: specExample() })
+            callbacks.onDone()
+          } else if (step === 2) {
+            // Run 1, step 2: try to ask a second time in the SAME run (must be rejected)
+            callbacks.onToolCall({ id: 'r1-2', name: ASK_QUESTIONS_TOOL, input: specExample() })
+            callbacks.onDone()
+          } else if (step === 3) {
+            // Run 1 finishes
+            callbacks.onDelta('Done run 1')
+            callbacks.onDone()
+          } else if (step === 4) {
+            // Run 2, step 1: ask once in a new run without manual resetTurn() (must succeed)
+            callbacks.onToolCall({ id: 'r2-1', name: ASK_QUESTIONS_TOOL, input: specExample() })
+            callbacks.onDone()
+          } else {
+            callbacks.onDelta('Done run 2')
+            callbacks.onDone()
+          }
+        })
+        return { cancel: () => undefined }
+      },
+    }
+
+    const runOnce = (loop: AgentLoop, prompt: string) =>
+      new Promise<void>((resolve, reject) => {
+        doneResolve = resolve
+        doneReject = reject
+        loop.run(prompt)
+      })
+
+    let doneResolve: (() => void) | undefined
+    let doneReject: ((err: Error) => void) | undefined
+    const loop = new AgentLoop({
+      transport,
+      skill,
+      events: {
+        onToolExecuted: ({ call, execution }) => {
+          toolResults.push({ id: call.id, isError: execution.isError })
+        },
+        onDone: () => doneResolve?.(),
+        onError: (msg) => doneReject?.(new Error(msg)),
+      },
+    })
+
+    await runOnce(loop, 'First request')
+    expect(onTurnStart).toHaveBeenCalledTimes(1)
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(toolResults).toEqual([
+      { id: 'r1-1', isError: false },
+      { id: 'r1-2', isError: true },
+    ])
+
+    await runOnce(loop, 'Second request (retry/preset/direct)')
+    expect(onTurnStart).toHaveBeenCalledTimes(2)
+    expect(ask).toHaveBeenCalledTimes(2)
+    expect(toolResults).toEqual([
+      { id: 'r1-1', isError: false },
+      { id: 'r1-2', isError: true },
+      { id: 'r2-1', isError: false },
+    ])
   })
 })
 

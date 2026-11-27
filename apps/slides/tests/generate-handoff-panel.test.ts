@@ -117,7 +117,12 @@ const PLAN: AttachmentMeta = {
   sizeBytes: 4096,
 }
 const REQUEST = 'Make a kickoff deck from these'
-const HANDOFF = {
+const HANDOFF: {
+  id: string
+  text: string
+  materials: Array<{ path: string; name: string }>
+  speakerNotesSeparate?: boolean
+} = {
   id: 'h-1',
   text: REQUEST,
   materials: [
@@ -456,6 +461,18 @@ describe('generate hand-off in the PPT editor', () => {
     expect(agentHarness.run).not.toHaveBeenCalled()
     expect(container.querySelector('.ai-sub-prompt')).not.toBeNull()
     expect(composer(container).value).toBe('')
+  })
+
+  it('syncs speakerNotesSeparate from the hand-off into the panel toggle before sending', async () => {
+    installBridge(statusMap('ready', 'signed-out'), { ...HANDOFF, speakerNotesSeparate: true })
+    const { container } = mount()
+    await flush()
+    const toggle = container.querySelector<HTMLInputElement>(
+      '[data-testid="slides-deck-options"] input[type="checkbox"]',
+    )!
+    expect(toggle).not.toBeNull()
+    expect(toggle.checked).toBe(true)
+    expect(agentHarness.run).toHaveBeenCalledTimes(1)
   })
 })
 

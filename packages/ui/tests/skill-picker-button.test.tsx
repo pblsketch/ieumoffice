@@ -48,12 +48,14 @@ function ComposerHarness({
   footerEnd,
   footerBelowEnd,
   initialValue = '기존 문장',
+  onSend = vi.fn(),
 }: {
   skills: AiComposerSkills
   showSkillButton?: boolean
   footerEnd?: React.ReactNode
   footerBelowEnd?: React.ReactNode
   initialValue?: string
+  onSend?: () => void
 }) {
   const [value, setValue] = useState(initialValue)
   return (
@@ -71,7 +73,7 @@ function ComposerHarness({
       footerBelowEnd={footerBelowEnd}
       skills={skills}
       onChange={setValue}
-      onSend={vi.fn()}
+      onSend={onSend}
       onStop={vi.fn()}
     />
   )
@@ -193,5 +195,101 @@ describe('AiComposer skill button & two-zone footer', () => {
     expect(stopBtn.getAttribute('data-tip')).toBe('Stop')
     expect(stopBtn.getAttribute('aria-label')).toBe('Stop')
     expect(stopBtn.getAttribute('title')).toBeNull()
+  })
+
+  it('fills composer with skill example and attaches chip without auto-sending when Start with example is clicked', () => {
+    const onSend = vi.fn()
+    const itemWithExample = {
+      id: 'builtin:presentation-deck',
+      name: 'presentation-deck',
+      title: '발표 덱 구성',
+      description: '목적별 발표 슬라이드를 설계합니다',
+      source: 'builtin',
+      sourceLabel: '기본 제공',
+      plugin: undefined,
+      hasScripts: false,
+      template: undefined,
+      example: '2분기 신제품 출시 전략을 임원진 대상으로 8장 분량 제안서 덱으로 구성해 주세요.',
+    }
+    const skills = makeSkills({ items: [itemWithExample] })
+    act(() => {
+      root.render(
+        <ComposerHarness skills={skills} showSkillButton initialValue="" onSend={onSend} />,
+      )
+    })
+
+    const trigger = container.querySelector<HTMLButtonElement>('.ai-skill-trigger-btn')!
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea')!
+    act(() => {
+      trigger.click()
+    })
+
+    const exampleBtn = container.querySelector<HTMLButtonElement>('.ai-skill-picker-example-btn')!
+    expect(exampleBtn).not.toBeNull()
+    expect(exampleBtn.textContent).toBe('예시로 시작')
+
+    act(() => {
+      exampleBtn.click()
+    })
+
+    expect(skills.onPick).toHaveBeenCalledWith(itemWithExample)
+    expect(textarea.value).toBe(itemWithExample.example)
+    expect(container.querySelector('.ai-skill-picker')).toBeNull()
+    expect(onSend).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(textarea)
+  })
+
+  it('replaces a typed / trigger when Start with example is clicked and keeps caret stable on repeat', () => {
+    const onSend = vi.fn()
+    const itemWithExample = {
+      id: 'builtin:presentation-deck',
+      name: 'presentation-deck',
+      title: '발표 덱 구성',
+      description: '목적별 발표 슬라이드를 설계합니다',
+      source: 'builtin' as const,
+      sourceLabel: '기본 제공',
+      plugin: undefined,
+      hasScripts: false,
+      template: undefined,
+      example: '2분기 신제품 출시 전략을 임원진 대상으로 8장 분량 제안서 덱으로 구성해 주세요.',
+    }
+    const skills = makeSkills({ items: [itemWithExample] })
+    act(() => {
+      root.render(
+        <ComposerHarness skills={skills} showSkillButton initialValue="" onSend={onSend} />,
+      )
+    })
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea')!
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
+    act(() => {
+      textarea.focus()
+      setter.call(textarea, '/pres')
+      textarea.setSelectionRange(5, 5)
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    const exampleBtn = container.querySelector<HTMLButtonElement>('.ai-skill-picker-example-btn')!
+    expect(exampleBtn).not.toBeNull()
+
+    act(() => {
+      exampleBtn.click()
+    })
+    expect(skills.onPick).toHaveBeenCalledWith(itemWithExample)
+    expect(textarea.value).toBe(itemWithExample.example)
+    expect(container.querySelector('.ai-skill-picker')).toBeNull()
+    expect(onSend).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(textarea)
+
+    // Clicking Start with example again when value already matches must not leave a stale pending caret
+    const trigger = container.querySelector<HTMLButtonElement>('.ai-skill-trigger-btn')!
+    act(() => {
+      trigger.click()
+    })
+    const exampleBtn2 = container.querySelector<HTMLButtonElement>('.ai-skill-picker-example-btn')!
+    act(() => {
+      exampleBtn2.click()
+    })
+    expect(textarea.selectionStart).toBe(itemWithExample.example.length)
   })
 })

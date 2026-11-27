@@ -225,3 +225,13 @@ export function IconSummarize({ size = 24 }: IconProps) {
     </svg>
   )
 }
+
+/** ribbon: offline page template gallery (a document sheet with header and structured sections) */
+export function IconTemplate(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="2" width="11" height="12" rx="1.2" />
+      <path d="M4.8 5.2h6.4M4.8 8h3M4.8 10.6h6.4M9.5 8h1.7" />
+    </Svg>
+  )
+}

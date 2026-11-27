@@ -100,6 +100,12 @@ import { slidesAiFontRoles } from '@genoffice/ui/slides-ai-fonts'
 import { templateSelectionState } from './template-selection-state'
 import { TemplateStartGallery } from './TemplateGallery'
 import { TemplatePicker } from './TemplatePicker'
+import { DeckOptionsBar } from './DeckOptionsBar'
+import { SPEAKER_NOTES_SEPARATE_DEFAULT } from './speaker-notes-option'
+import {
+  findSlideDeckStructure,
+  type SlideDeckStructureId,
+} from '@genoffice/pipelines/slides/templates'
 import { EditQueueCard } from './EditQueueCard'
 import { deriveDeckProgressView, type DeckProgressSnapshot } from './deck-progress-view'
 import {
@@ -583,6 +589,14 @@ export function AiPanel({
   const inlineQuestions = useAiInlineQuestions()
   const [attachedMemos, setAttachedMemos] = useState<ReviewMemoItem[]>([])
   const [qualityFindings, setQualityFindings] = useState<QualityFinding[]>([])
+  const [deckStructureId, setDeckStructureId] = useState<SlideDeckStructureId | null>(null)
+  const deckStructureIdRef = useRef<SlideDeckStructureId | null>(null)
+  deckStructureIdRef.current = deckStructureId
+  const [speakerNotesSeparate, setSpeakerNotesSeparate] = useState<boolean>(
+    SPEAKER_NOTES_SEPARATE_DEFAULT,
+  )
+  const speakerNotesSeparateRef = useRef<boolean>(SPEAKER_NOTES_SEPARATE_DEFAULT)
+  speakerNotesSeparateRef.current = speakerNotesSeparate
   // Shared AI panel pref (Settings → General): the bespoke slides composer
   // must honor it like the shared AiComposer does.
   const { spellcheck } = useAiPanelPrefs()
@@ -1783,6 +1797,12 @@ export function AiPanel({
       },
       // The document's chosen design template and the requests added to it
       templateSelection: templateSelectionState,
+      speakerNotesSeparate: () => speakerNotesSeparateRef.current,
+      deckStructure: () => {
+        if (skillsRef.current.chips.some((c) => c.template || c.templateMissing)) return undefined
+        const id = deckStructureIdRef.current
+        return id ? findSlideDeckStructure(id) : undefined
+      },
       imageGenAvailable: () => toolGatesOf(toolCapabilitiesRef.current).imageGeneration,
       mediaAnalysisAvailable: () => toolGatesOf(toolCapabilitiesRef.current).mediaAnalysis,
       unreadTextAttachments: () =>
@@ -2052,6 +2072,10 @@ export function AiPanel({
       }
     },
     fill: (text) => setInput(text),
+    onSpeakerNotesSeparate: (enabled) => {
+      speakerNotesSeparateRef.current = enabled
+      setSpeakerNotesSeparate(enabled)
+    },
     send: (text) => {
       // the create window's request: the deck goes into the project once it ends well
       handedRunRef.current.arm()
@@ -3087,6 +3111,14 @@ export function AiPanel({
         <TemplatePicker
           deckEmpty={deckEmpty ?? false}
           galleryShown={!!deckEmpty && chat.length === 0 && historicChat.length === 0}
+        />
+        <DeckOptionsBar
+          lang={lang}
+          structureId={deckStructureId}
+          onSelectStructure={setDeckStructureId}
+          lockedBySkillTemplate={skills.chips.some((c) => Boolean(c.template || c.templateMissing))}
+          speakerNotesSeparate={speakerNotesSeparate}
+          onToggleSpeakerNotes={setSpeakerNotesSeparate}
         />
         {projectPanel.hint}
         <div className="ai-input-box">

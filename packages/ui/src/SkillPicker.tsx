@@ -114,7 +114,7 @@ export function SkillPicker({
             )}
             {item.example && (
               <div className="ai-skill-picker-example" dir="auto">
-                <span>
+                <span className="ai-skill-picker-example-text">
                   {skillExampleText(lang, 'exampleLabel')}: {preview(item.example)}
                 </span>
                 {onUseExample && (
