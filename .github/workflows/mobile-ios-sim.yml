@@ -213,14 +213,20 @@ jobs:
           echo "Launch output: $LAUNCH_OUT" | tee "$ART_DIR/logs/launch.txt"
           APP_PID=$(echo "$LAUNCH_OUT" | awk '{print $NF}')
 
-          # Run deterministic UI walk-through using AXe and simctl screenshots.
-          UDID="$UDID" APP_PID="$APP_PID" python3 - <<'PY'
+          # Run deterministic UI walk-through using iOS Simulator Web Inspector
+          # (com.apple.webinspectord_sim.socket) for DOM inspection + element coordinates
+          # and AXe (`axe tap`) for real simulator touch input, plus simctl screenshots.
+          UDID="$UDID" APP_PID="$APP_PID" BUNDLE_ID="$BUNDLE_ID" python3 - <<'PY'
+          import glob
           import json
           import os
-          import re
+          import plistlib
+          import socket
+          import struct
           import subprocess
           import sys
           import time
+          import uuid
           from pathlib import Path
 
           udid = os.environ["UDID"]
@@ -229,15 +235,24 @@ jobs:
           logs_dir = art_dir / "logs"
           axe_ready = os.environ.get("AXE_READY") == "true"
           app_pid = os.environ.get("APP_PID", "")
+          bundle_id = os.environ.get("BUNDLE_ID", "com.ieumoffice.mobile")
+
+          trace_lines = []
+          def trace(msg):
+              line = f"[{time.strftime('%H:%M:%S')}] {msg}"
+              trace_lines.append(line)
+              print(line, flush=True)
 
           summary = {
               "udid": udid,
               "app_pid": app_pid,
               "axe_ready": axe_ready,
+              "inspector_connected": False,
               "steps": [],
               "stuck_at": None,
               "stuck_reason": None,
               "memory_samples": [],
+              "webview_console_errors": [],
           }
 
           def run_cmd(cmd, timeout=30):
@@ -277,292 +292,691 @@ jobs:
                       sample["webcontent_footprint_head"] = "\n".join(out_wfp.splitlines()[:20])
               summary["memory_samples"].append(sample)
 
-          def describe_ui(tag):
-              if not axe_ready:
-                  return None, "AXe is not installed"
-              rc, out, err = run_cmd(["axe", "describe-ui", "--udid", udid], timeout=45)
-              (logs_dir / f"ui-{tag}.json").write_text(out if out else err, encoding="utf-8")
-              if rc != 0 or not out.strip():
-                  return None, f"axe describe-ui failed (rc={rc}): {err.strip()}"
-              try:
-                  return json.loads(out), ""
-              except json.JSONDecodeError as exc:
-                  return None, f"axe describe-ui invalid JSON: {exc}"
+          def find_webinspectord_socket():
+              candidates = []
+              rc, out, _ = run_cmd(["xcrun", "simctl", "getenv", udid, "RWI_LISTEN_SOCKET"], timeout=10)
+              if rc == 0 and out.strip():
+                  candidates.append(out.strip())
+              rc2, out2, _ = run_cmd(["lsof", "-aUc", "launchd_sim"], timeout=10)
+              if rc2 == 0:
+                  for line in out2.splitlines():
+                      if "webinspectord_sim.socket" in line:
+                          parts = line.split()
+                          if parts:
+                              candidates.append(parts[-1])
+              for pat in (
+                  "/private/tmp/com.apple.launchd.*/com.apple.webinspectord_sim.socket",
+                  "/private/var/tmp/com.apple.launchd.*/com.apple.webinspectord_sim.socket",
+              ):
+                  candidates.extend(glob.glob(pat))
+              seen = []
+              for c in candidates:
+                  if c and os.path.exists(c) and c not in seen:
+                      seen.append(c)
+              trace(f"WebInspector socket candidates: {seen}")
+              return seen
 
-          def iter_nodes(node):
-              if isinstance(node, list):
-                  for item in node:
-                      yield from iter_nodes(item)
-              elif isinstance(node, dict):
-                  yield node
-                  for key in ("children", "subelements", "elements"):
-                      child = node.get(key)
-                      if child:
-                          yield from iter_nodes(child)
+          class WebInspectorClient:
+              def __init__(self, sock_path):
+                  self.sock_path = sock_path
+                  self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                  self.sock.settimeout(5.0)
+                  self.sock.connect(sock_path)
+                  self.conn_id = str(uuid.uuid4()).upper()
+                  self.sender_id = str(uuid.uuid4()).upper()
+                  self.app_id = None
+                  self.page_id = None
+                  self.target_id = None
+                  self.next_id = 1
+                  self.console_events = []
 
-          def node_texts(node):
-              vals = []
-              for k in ("AXLabel", "label", "AXTitle", "title", "AXValue", "value", "description", "AXUniqueId"):
-                  v = node.get(k)
-                  if isinstance(v, str) and v.strip():
-                      vals.append(v.strip())
-              return vals
-
-          def node_frame(node):
-              f = node.get("frame")
-              if isinstance(f, dict):
+              def close(self):
                   try:
-                      x = float(f.get("x", 0))
-                      y = float(f.get("y", 0))
-                      w = float(f.get("width", 0))
-                      h = float(f.get("height", 0))
-                      if w > 0 and h > 0:
-                          return (x, y, w, h)
+                      self.sock.close()
                   except Exception:
                       pass
-              return None
 
-          def find_node(tree, candidates):
-              # Pass 1: exact match on any text field with valid frame.
-              for exact in (True, False):
-                  matches = []
-                  for node in iter_nodes(tree):
-                      frame = node_frame(node)
-                      if not frame:
+              def _recv_exact(self, n):
+                  buf = bytearray()
+                  while len(buf) < n:
+                      chunk = self.sock.recv(n - len(buf))
+                      if not chunk:
+                          raise EOFError("WebInspector socket closed")
+                      buf.extend(chunk)
+                  return bytes(buf)
+
+              def send_rpc(self, selector, argument):
+                  payload = plistlib.dumps(
+                      {"__selector": selector, "__argument": argument},
+                      fmt=plistlib.FMT_BINARY,
+                  )
+                  self.sock.sendall(struct.pack(">I", len(payload)) + payload)
+
+              def recv_rpc(self, timeout=5.0):
+                  self.sock.settimeout(timeout)
+                  hdr = self._recv_exact(4)
+                  (length,) = struct.unpack(">I", hdr)
+                  body = self._recv_exact(length)
+                  return plistlib.loads(body)
+
+              def _match_app(self, app_dict):
+                  if not isinstance(app_dict, dict):
+                      return None
+                  bid = str(app_dict.get("WIRApplicationBundleIdentifierKey") or "")
+                  name = str(app_dict.get("WIRApplicationNameKey") or "")
+                  aid = str(app_dict.get("WIRApplicationIdentifierKey") or "")
+                  if bid == bundle_id or (app_pid and aid == f"PID:{app_pid}") or name == "IeumOffice":
+                      return aid
+                  return None
+
+              def connect(self, timeout_s=35.0):
+                  self.send_rpc("_rpc_reportIdentifier:", {"WIRConnectionIdentifierKey": self.conn_id})
+                  deadline = time.time() + timeout_s
+                  listing_requested = False
+                  socket_setup_sent = False
+
+                  while time.time() < deadline:
+                      try:
+                          msg = self.recv_rpc(timeout=2.0)
+                      except socket.timeout:
+                          if self.app_id and not listing_requested:
+                              self.send_rpc("_rpc_forwardGetListing:", {
+                                  "WIRConnectionIdentifierKey": self.conn_id,
+                                  "WIRApplicationIdentifierKey": self.app_id,
+                              })
+                              listing_requested = True
+                          elif socket_setup_sent:
+                              # Ready even if Target.targetCreated was not emitted (direct mode).
+                              return True
                           continue
-                      texts = node_texts(node)
-                      role = str(node.get("type") or node.get("role") or node.get("AXRole") or "")
-                      for cand in candidates:
-                          for txt in texts:
-                              hit = (txt == cand) if exact else (cand in txt)
+                      sel = msg.get("__selector", "")
+                      arg = msg.get("__argument", {}) or {}
+                      trace(f"RPC <- {sel} keys={list(arg.keys())}")
+
+                      if sel == "_rpc_reportConnectedApplicationList:":
+                          apps = arg.get("WIRApplicationDictionaryKey") or {}
+                          for k, v in apps.items():
+                              trace(f"  app[{k}]: id={v.get('WIRApplicationIdentifierKey')} bundle={v.get('WIRApplicationBundleIdentifierKey')} name={v.get('WIRApplicationNameKey')} proxy={v.get('WIRIsApplicationProxyKey')}")
+                              hit = self._match_app(v)
                               if hit:
-                                  # Prefer Button/Link/Cell over static text or container when multiple match.
-                                  prio = 0
-                                  if any(r in role for r in ("Button", "Link", "Tab")):
-                                      prio = 2
-                                  elif frame[2] < 380 and frame[3] < 200:
-                                      prio = 1
-                                  matches.append((prio, -frame[2] * frame[3], node, frame, txt, role))
-                                  break
-                  if matches:
-                      matches.sort(key=lambda m: (m[0], m[1]), reverse=True)
-                      _, _, node, frame, txt, role = matches[0]
-                      return node, frame, txt, role
+                                  self.app_id = hit
+                      elif sel in ("_rpc_applicationConnected:", "_rpc_applicationUpdated:"):
+                          hit = self._match_app(arg)
+                          if hit:
+                              self.app_id = hit
+
+                      if self.app_id and not listing_requested:
+                          trace(f"Requesting listing for app_id={self.app_id}")
+                          self.send_rpc("_rpc_forwardGetListing:", {
+                              "WIRConnectionIdentifierKey": self.conn_id,
+                              "WIRApplicationIdentifierKey": self.app_id,
+                          })
+                          listing_requested = True
+
+                      if sel == "_rpc_applicationSentListing:":
+                          listing = arg.get("WIRListingKey") or {}
+                          chosen = None
+                          for k, p in listing.items():
+                              url = str(p.get("WIRURLKey") or "")
+                              ptype = str(p.get("WIRTypeKey") or "")
+                              pid_val = p.get("WIRPageIdentifierKey")
+                              trace(f"  page[{k}]: id={pid_val} type={ptype} url={url}")
+                              if pid_val is not None:
+                                  if url.startswith("tauri://"):
+                                      chosen = pid_val
+                                      break
+                                  if chosen is None and ("Web" in ptype or url):
+                                      chosen = pid_val
+                          if chosen is not None and not socket_setup_sent:
+                              self.page_id = chosen
+                              trace(f"Sending _rpc_forwardSocketSetup for app={self.app_id} page={self.page_id}")
+                              self.send_rpc("_rpc_forwardSocketSetup:", {
+                                  "WIRConnectionIdentifierKey": self.conn_id,
+                                  "WIRApplicationIdentifierKey": self.app_id,
+                                  "WIRPageIdentifierKey": self.page_id,
+                                  "WIRSenderKey": self.sender_id,
+                                  "WIRAutomaticallyPause": False,
+                              })
+                              socket_setup_sent = True
+
+                      if sel == "_rpc_applicationSentData:":
+                          raw = arg.get("WIRMessageDataKey")
+                          if isinstance(raw, (bytes, bytearray)):
+                              try:
+                                  data = json.loads(raw.decode("utf-8", errors="replace"))
+                                  trace(f"  data <- method={data.get('method')} id={data.get('id')}")
+                                  if data.get("method") == "Target.targetCreated":
+                                      tinfo = (data.get("params") or {}).get("targetInfo") or {}
+                                      tid = tinfo.get("targetId")
+                                      ttype = tinfo.get("type")
+                                      trace(f"  targetCreated: id={tid} type={ttype}")
+                                      if tid and (self.target_id is None or ttype == "page"):
+                                          self.target_id = tid
+                                          return True
+                              except Exception as exc:
+                                  trace(f"  data parse error: {exc}")
+
+                  return socket_setup_sent
+
+              def eval_js(self, expression, timeout_s=15.0):
+                  cmd_id = self.next_id
+                  self.next_id += 1
+                  inner = {
+                      "id": cmd_id,
+                      "method": "Runtime.evaluate",
+                      "params": {
+                          "expression": expression,
+                          "returnByValue": True,
+                          "awaitPromise": False,
+                      },
+                  }
+                  if self.target_id:
+                      outer_id = self.next_id
+                      self.next_id += 1
+                      payload_obj = {
+                          "id": outer_id,
+                          "method": "Target.sendMessageToTarget",
+                          "params": {
+                              "targetId": self.target_id,
+                              "message": json.dumps(inner),
+                          },
+                      }
+                  else:
+                      payload_obj = inner
+
+                  self.send_rpc("_rpc_forwardSocketData:", {
+                      "WIRConnectionIdentifierKey": self.conn_id,
+                      "WIRApplicationIdentifierKey": self.app_id,
+                      "WIRPageIdentifierKey": self.page_id,
+                      "WIRSenderKey": self.sender_id,
+                      "WIRSocketDataKey": json.dumps(payload_obj).encode("utf-8"),
+                  })
+
+                  deadline = time.time() + timeout_s
+                  while time.time() < deadline:
+                      try:
+                          msg = self.recv_rpc(timeout=max(0.5, deadline - time.time()))
+                      except socket.timeout:
+                          break
+                      sel = msg.get("__selector", "")
+                      arg = msg.get("__argument", {}) or {}
+                      if sel != "_rpc_applicationSentData:":
+                          continue
+                      raw = arg.get("WIRMessageDataKey")
+                      if not isinstance(raw, (bytes, bytearray)):
+                          continue
+                      data = json.loads(raw.decode("utf-8", errors="replace"))
+                      if data.get("method") == "Target.targetCreated":
+                          tinfo = (data.get("params") or {}).get("targetInfo") or {}
+                          if tinfo.get("type") == "page" and tinfo.get("targetId"):
+                              self.target_id = tinfo["targetId"]
+                          continue
+                      if data.get("method") == "Target.dispatchMessageFromTarget":
+                          inner_str = (data.get("params") or {}).get("message", "")
+                          if not inner_str:
+                              continue
+                          inner_data = json.loads(inner_str)
+                          if inner_data.get("id") == cmd_id:
+                              return self._unwrap_eval(inner_data)
+                          if inner_data.get("method") in ("Console.messageAdded", "Log.entryAdded"):
+                              self.console_events.append(inner_data)
+                      elif data.get("id") == cmd_id:
+                          return self._unwrap_eval(data)
+                  raise TimeoutError(f"Runtime.evaluate timed out (cmd_id={cmd_id})")
+
+              def _unwrap_eval(self, resp):
+                  if "error" in resp:
+                      raise RuntimeError(f"Inspector error: {resp['error']}")
+                  res = resp.get("result") or {}
+                  if res.get("wasThrown"):
+                      raise RuntimeError(f"JS exception: {res.get('result')}")
+                  obj = res.get("result") or {}
+                  if "value" in obj:
+                      return obj["value"]
+                  return None
+
+          def connect_inspector():
+              for attempt in range(1, 5):
+                  socks = find_webinspectord_socket()
+                  for sp in socks:
+                      try:
+                          client = WebInspectorClient(sp)
+                          if client.connect(timeout_s=20.0):
+                              trace(f"Connected WebInspector: sock={sp} app={client.app_id} page={client.page_id} target={client.target_id}")
+                              return client
+                          client.close()
+                      except Exception as exc:
+                          trace(f"WebInspector attempt {attempt} on {sp} failed: {exc}")
+                  time.sleep(3)
               return None
 
-          def wait_for_any(tag, candidates, timeout_s=25, poll_s=1.5):
+          def install_error_hook(insp):
+              insp.eval_js("""(() => {
+                if (window.__ieumSimErrHooked) return 'already';
+                window.__ieumSimErrHooked = true;
+                window.__ieumSimErrors = [];
+                window.addEventListener('error', (e) => {
+                  window.__ieumSimErrors.push({type:'error', msg: String(e.message || e.error || e), src: String(e.filename || ''), line: e.lineno || 0});
+                });
+                window.addEventListener('unhandledrejection', (e) => {
+                  window.__ieumSimErrors.push({type:'rejection', msg: String(e.reason?.stack || e.reason || e)});
+                });
+                const origErr = console.error.bind(console);
+                console.error = (...args) => {
+                  window.__ieumSimErrors.push({type:'console.error', msg: args.map(a => typeof a === 'string' ? a : (a?.message || JSON.stringify(a))).join(' ')});
+                  return origErr(...args);
+                };
+                return 'installed';
+              })()""")
+
+          def query_element(insp, selectors, labels):
+              expr = f"""(() => {{
+                const selectors = {json.dumps(selectors)};
+                const labels = {json.dumps(labels, ensure_ascii=False)};
+                const describe = (el, how) => {{
+                  const r = el.getBoundingClientRect();
+                  if (!r || r.width <= 0 || r.height <= 0) return null;
+                  const style = window.getComputedStyle(el);
+                  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return null;
+                  return {{
+                    found: true,
+                    how,
+                    tag: el.tagName,
+                    testId: el.getAttribute('data-testid') || '',
+                    ariaLabel: el.getAttribute('aria-label') || '',
+                    text: (el.innerText || el.textContent || '').trim().slice(0, 80),
+                    x: r.left, y: r.top, width: r.width, height: r.height,
+                    cx: Math.round(r.left + r.width / 2),
+                    cy: Math.round(r.top + r.height / 2),
+                  }};
+                }};
+                for (const sel of selectors) {{
+                  const el = document.querySelector(sel);
+                  if (el) {{
+                    const info = describe(el, 'selector:' + sel);
+                    if (info) return info;
+                  }}
+                }}
+                const clickables = Array.from(document.querySelectorAll('button, [role="button"], a'));
+                for (const lbl of labels) {{
+                  for (const el of clickables) {{
+                    const al = (el.getAttribute('aria-label') || '').trim();
+                    const tx = (el.innerText || el.textContent || '').trim();
+                    if (al === lbl || tx === lbl || tx.includes(lbl) || al.includes(lbl)) {{
+                      const info = describe(el, 'label:' + lbl);
+                      if (info) return info;
+                    }}
+                  }}
+                }}
+                return {{
+                  found: false,
+                  lang: document.documentElement.lang || navigator.language,
+                  vw: window.innerWidth, vh: window.innerHeight,
+                  buttons: clickables.slice(0, 25).map(el => ({{
+                    testId: el.getAttribute('data-testid') || '',
+                    aria: el.getAttribute('aria-label') || '',
+                    text: (el.innerText || el.textContent || '').trim().slice(0, 40),
+                  }})),
+                }};
+              }})()"""
+              return insp.eval_js(expr)
+
+          def click_element_js(insp, selectors, labels):
+              expr = f"""(() => {{
+                const selectors = {json.dumps(selectors)};
+                const labels = {json.dumps(labels, ensure_ascii=False)};
+                for (const sel of selectors) {{
+                  const el = document.querySelector(sel);
+                  if (el) {{ el.click(); return 'clicked:' + sel; }}
+                }}
+                const clickables = Array.from(document.querySelectorAll('button, [role="button"], a'));
+                for (const lbl of labels) {{
+                  for (const el of clickables) {{
+                    const al = (el.getAttribute('aria-label') || '').trim();
+                    const tx = (el.innerText || el.textContent || '').trim();
+                    if (al === lbl || tx === lbl || tx.includes(lbl) || al.includes(lbl)) {{
+                      el.click();
+                      return 'clicked:' + lbl;
+                    }}
+                  }}
+                }}
+                return 'not-found';
+              }})()"""
+              return insp.eval_js(expr)
+
+          def wait_for_element(insp, tag, selectors, labels, timeout_s=25.0, poll_s=1.0):
               deadline = time.time() + timeout_s
-              last_err = ""
+              last = None
               while time.time() < deadline:
-                  tree, err = describe_ui(tag)
-                  if tree is not None:
-                      found = find_node(tree, candidates)
-                      if found is not None:
-                          return found, tree, ""
-                      last_err = f"None of {candidates} found in UI tree"
-                  else:
-                      last_err = err
+                  try:
+                      info = query_element(insp, selectors, labels)
+                      last = info
+                      if isinstance(info, dict) and info.get("found"):
+                          return info
+                  except Exception as exc:
+                      last = {"error": str(exc)}
                   time.sleep(poll_s)
-              return None, None, last_err
+              (logs_dir / f"dom-{tag}.json").write_text(json.dumps(last, ensure_ascii=False, indent=2), encoding="utf-8")
+              return None
 
-          def tap_frame(frame):
-              x, y, w, h = frame
-              cx = int(round(x + w / 2.0))
-              cy = int(round(y + h / 2.0))
-              rc, out, err = run_cmd(["axe", "tap", "-x", str(cx), "-y", str(cy), "--udid", udid], timeout=15)
-              return rc == 0, cx, cy, (err or out).strip()
+          def tap_element(insp, info, selectors, labels):
+              cx, cy = int(info["cx"]), int(info["cy"])
+              if axe_ready:
+                  rc, out, err = run_cmd(["axe", "tap", "-x", str(cx), "-y", str(cy), "--udid", udid], timeout=15)
+                  trace(f"axe tap ({cx},{cy}) rc={rc} msg={(err or out).strip()}")
+                  if rc == 0:
+                      return True, f"axe_tap({cx},{cy})"
+              res = click_element_js(insp, selectors, labels)
+              trace(f"js click fallback -> {res}")
+              return res != "not-found", f"js_click({res})"
 
-          def fail_step(step_name, reason):
+          def dump_page_state(insp, tag):
+              try:
+                  state = insp.eval_js("""(() => {
+                    const iframes = Array.from(document.querySelectorAll('iframe')).map(f => {
+                      let innerLen = -1;
+                      let hasCanvas = false;
+                      try {
+                        innerLen = (f.contentDocument?.body?.innerText || '').trim().length;
+                        hasCanvas = !!f.contentDocument?.querySelector('canvas');
+                      } catch {}
+                      return { src: f.getAttribute('src') || '', cls: f.className, hidden: f.closest('[data-hidden="true"]') !== null, innerLen, hasCanvas };
+                    });
+                    return {
+                      lang: document.documentElement.lang,
+                      navLang: navigator.language,
+                      viewport: [window.innerWidth, window.innerHeight],
+                      title: document.title,
+                      bodyTextHead: (document.body?.innerText || '').trim().slice(0, 300),
+                      iframes,
+                      errors: window.__ieumSimErrors || [],
+                    };
+                  })()""")
+                  (logs_dir / f"state-{tag}.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+                  return state
+              except Exception as exc:
+                  trace(f"dump_page_state({tag}) error: {exc}")
+                  return None
+
+          def fail_step(insp, step_name, reason):
               shot = screenshot(f"stuck-{step_name}.png")
-              describe_ui(f"stuck-{step_name}")
+              if insp:
+                  dump_page_state(insp, f"stuck-{step_name}")
               record_memory(f"stuck-{step_name}")
               summary["stuck_at"] = step_name
               summary["stuck_reason"] = reason
               summary["steps"].append({"step": step_name, "ok": False, "reason": reason, "screenshot": shot})
-              print(f"[STUCK] {step_name}: {reason}", flush=True)
+              trace(f"[STUCK] {step_name}: {reason}")
 
           def run_flow():
-              # Step 1: Wait for initial screen (welcome overlay or home) and screenshot.
-              time.sleep(8)
-              found, _, err = wait_for_any(
-                  "01-first-screen",
-                  ["시작하기", "Get started", "예시 문서 열어 보기", "Open the sample document"],
-                  timeout_s=75,
-                  poll_s=2.0,
-              )
-              shot1 = screenshot("01-first-screen.png")
-              record_memory("01-first-screen")
-              if not found:
-                  # One gentle wake-up tap in empty top area in case WKWebView lazily attaches AX tree.
-                  run_cmd(["axe", "tap", "-x", "30", "-y", "130", "--udid", udid], timeout=15)
-                  time.sleep(3)
-                  found, _, err = wait_for_any(
-                      "01-first-screen-retry",
+              time.sleep(6)
+              insp = connect_inspector()
+              if not insp:
+                  shot1 = screenshot("01-first-screen.png")
+                  record_memory("01-first-screen")
+                  fail_step(None, "01-connect-inspector", "Could not connect to iOS Simulator com.apple.webinspectord socket")
+                  return
+              summary["inspector_connected"] = True
+              try:
+                  install_error_hook(insp)
+
+                  # Step 1: First screen (welcome overlay)
+                  el_start = wait_for_element(
+                      insp,
+                      "01-first-screen",
+                      ['[data-testid="home-run-first-start"]', '[data-testid="home-empty-sample"]'],
                       ["시작하기", "Get started", "예시 문서 열어 보기", "Open the sample document"],
-                      timeout_s=30,
-                      poll_s=2.0,
+                      timeout_s=25.0,
                   )
-              if not found:
-                  fail_step("01-first-screen", f"Initial screen controls not found: {err}")
-                  return
-              summary["steps"].append({"step": "01-first-screen", "ok": True, "matched": found[2], "screenshot": shot1})
-              print(f"[OK] 01-first-screen (found: {found[2]})", flush=True)
-
-              # Step 2: Tap [Start / 시작하기] if welcome screen is showing -> Home.
-              if found[2] in ("시작하기", "Get started"):
-                  ok, cx, cy, msg = tap_frame(found[1])
-                  if not ok:
-                      fail_step("02-tap-start", f"axe tap failed at ({cx},{cy}): {msg}")
+                  shot1 = screenshot("01-first-screen.png")
+                  dump_page_state(insp, "01-first-screen")
+                  record_memory("01-first-screen")
+                  if not el_start:
+                      fail_step(insp, "01-first-screen", "Initial welcome or home control not found in DOM")
                       return
+                  summary["steps"].append({"step": "01-first-screen", "ok": True, "matched": el_start, "screenshot": shot1})
+                  trace(f"[OK] 01-first-screen ({el_start['how']})")
+
+                  # Step 2: Tap [Start / 시작하기] -> Home
+                  if el_start.get("testId") == "home-run-first-start" or el_start.get("text") in ("시작하기", "Get started"):
+                      ok, via = tap_element(insp, el_start, ['[data-testid="home-run-first-start"]'], ["시작하기", "Get started"])
+                      time.sleep(2.0)
+                      el_home = wait_for_element(
+                          insp,
+                          "02-home",
+                          ['[data-testid="home-empty-sample"]', '[data-testid="home-new-md-btn"]'],
+                          ["예시 문서 열어 보기", "Open the sample document", "새 마크다운", "New Markdown"],
+                          timeout_s=8.0,
+                      )
+                      if not el_home:
+                          # Fallback click via JS in case HID tap missed safe-area offset
+                          click_element_js(insp, ['[data-testid="home-run-first-start"]'], ["시작하기", "Get started"])
+                          time.sleep(2.0)
+                          el_home = wait_for_element(
+                              insp,
+                              "02-home-js",
+                              ['[data-testid="home-empty-sample"]', '[data-testid="home-new-md-btn"]'],
+                              ["예시 문서 열어 보기", "Open the sample document", "새 마크다운", "New Markdown"],
+                              timeout_s=10.0,
+                          )
+                  else:
+                      via = "already-home"
+                      el_home = el_start
+
+                  shot2 = screenshot("02-home.png")
+                  dump_page_state(insp, "02-home")
+                  record_memory("02-home")
+                  if not el_home:
+                      fail_step(insp, "02-home", "Home screen did not appear after tapping Start")
+                      return
+                  summary["steps"].append({"step": "02-home", "ok": True, "via": via, "matched": el_home, "screenshot": shot2})
+                  trace(f"[OK] 02-home ({el_home['how']})")
+
+                  # Step 3: Tap [Open sample HWP / 예시 문서 열어 보기] -> HWP Reading (Flow) view
+                  el_sample = wait_for_element(
+                      insp,
+                      "03-find-sample",
+                      ['[data-testid="home-empty-sample"]'],
+                      ["예시 문서 열어 보기", "Open the sample document"],
+                      timeout_s=10.0,
+                  )
+                  if not el_sample:
+                      fail_step(insp, "03-open-sample-hwp", "Sample document button not found on Home")
+                      return
+                  ok, via = tap_element(insp, el_sample, ['[data-testid="home-empty-sample"]'], ["예시 문서 열어 보기", "Open the sample document"])
+                  time.sleep(4.0)
+                  el_page_btn = wait_for_element(
+                      insp,
+                      "03-hwp-flow",
+                      ['[data-testid="view-tool-pageView"]'],
+                      ["쪽 화면", "Page view"],
+                      timeout_s=30.0,
+                  )
+                  if not el_page_btn:
+                      click_element_js(insp, ['[data-testid="home-empty-sample"]'], ["예시 문서 열어 보기", "Open the sample document"])
+                      time.sleep(4.0)
+                      el_page_btn = wait_for_element(
+                          insp,
+                          "03-hwp-flow-js",
+                          ['[data-testid="view-tool-pageView"]'],
+                          ["쪽 화면", "Page view"],
+                          timeout_s=25.0,
+                      )
+                  time.sleep(3.0)
+                  shot3 = screenshot("03-hwp-flow.png")
+                  dump_page_state(insp, "03-hwp-flow")
+                  record_memory("03-hwp-flow")
+                  if not el_page_btn:
+                      fail_step(insp, "03-hwp-flow", "HWP reading view / Page view toggle did not appear")
+                      return
+                  summary["steps"].append({"step": "03-hwp-flow", "ok": True, "via": via, "matched": el_page_btn, "screenshot": shot3})
+                  trace(f"[OK] 03-hwp-flow ({el_page_btn['how']})")
+
+                  # Step 4: Switch Reading view -> Page view
+                  ok, via = tap_element(insp, el_page_btn, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
+                  time.sleep(4.0)
+                  el_flow_btn = wait_for_element(
+                      insp,
+                      "04-hwp-page",
+                      ['[data-testid="view-tool-flowView"]'],
+                      ["읽기 화면", "Reading view"],
+                      timeout_s=20.0,
+                  )
+                  if not el_flow_btn:
+                      click_element_js(insp, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
+                      time.sleep(4.0)
+                      el_flow_btn = wait_for_element(
+                          insp,
+                          "04-hwp-page-js",
+                          ['[data-testid="view-tool-flowView"]'],
+                          ["읽기 화면", "Reading view"],
+                          timeout_s=20.0,
+                      )
+                  time.sleep(3.0)
+                  shot4 = screenshot("04-hwp-page.png")
+                  dump_page_state(insp, "04-hwp-page")
+                  record_memory("04-hwp-page")
+                  if not el_flow_btn:
+                      fail_step(insp, "04-hwp-page", "HWP page view / Reading view toggle did not appear")
+                      return
+                  summary["steps"].append({"step": "04-hwp-page", "ok": True, "via": via, "matched": el_flow_btn, "screenshot": shot4})
+                  trace(f"[OK] 04-hwp-page ({el_flow_btn['how']})")
+
+                  # Step 5: Switch Page view -> Reading view
+                  ok, via = tap_element(insp, el_flow_btn, ['[data-testid="view-tool-flowView"]'], ["읽기 화면", "Reading view"])
                   time.sleep(2.5)
-              found_home, _, err = wait_for_any(
-                  "02-home",
-                  ["예시 문서 열어 보기", "Open the sample document", "새 마크다운", "New Markdown"],
-                  timeout_s=15,
-              )
-              shot2 = screenshot("02-home.png")
-              record_memory("02-home")
-              if not found_home:
-                  fail_step("02-home", f"Home screen controls not found after tapping Start: {err}")
-                  return
-              summary["steps"].append({"step": "02-home", "ok": True, "matched": found_home[2], "screenshot": shot2})
-              print(f"[OK] 02-home (found: {found_home[2]})", flush=True)
-
-              # Step 3: Tap [Open sample document / 예시 문서 열어 보기] -> HWP Reading (Flow) view.
-              found_sample, _, err = wait_for_any(
-                  "03-find-sample",
-                  ["예시 문서 열어 보기", "Open the sample document"],
-                  timeout_s=10,
-              )
-              if not found_sample:
-                  fail_step("03-open-sample-hwp", f"Sample document button not found: {err}")
-                  return
-              ok, cx, cy, msg = tap_frame(found_sample[1])
-              if not ok:
-                  fail_step("03-open-sample-hwp", f"axe tap sample failed at ({cx},{cy}): {msg}")
-                  return
-              # Give rhwp WASM + studio iframe + flow renderer time to settle.
-              time.sleep(5)
-              found_page_btn, _, err = wait_for_any(
-                  "03-hwp-flow",
-                  ["쪽 화면", "Page view"],
-                  timeout_s=30,
-              )
-              time.sleep(2)
-              shot3 = screenshot("03-hwp-flow.png")
-              record_memory("03-hwp-flow")
-              if not found_page_btn:
-                  fail_step("03-hwp-flow", f"HWP reading view loaded without Page view button: {err}")
-                  return
-              summary["steps"].append({"step": "03-hwp-flow", "ok": True, "matched": found_page_btn[2], "screenshot": shot3})
-              print(f"[OK] 03-hwp-flow (found: {found_page_btn[2]})", flush=True)
-
-              # Step 4: Switch Reading view -> Page view.
-              ok, cx, cy, msg = tap_frame(found_page_btn[1])
-              if not ok:
-                  fail_step("04-hwp-page", f"axe tap Page view failed at ({cx},{cy}): {msg}")
-                  return
-              time.sleep(4)
-              found_flow_btn, _, err = wait_for_any(
-                  "04-hwp-page",
-                  ["읽기 화면", "Reading view"],
-                  timeout_s=20,
-              )
-              time.sleep(2)
-              shot4 = screenshot("04-hwp-page.png")
-              record_memory("04-hwp-page")
-              if not found_flow_btn:
-                  fail_step("04-hwp-page", f"Page view did not expose Reading view toggle: {err}")
-                  return
-              summary["steps"].append({"step": "04-hwp-page", "ok": True, "matched": found_flow_btn[2], "screenshot": shot4})
-              print(f"[OK] 04-hwp-page (found: {found_flow_btn[2]})", flush=True)
-
-              # Step 5: Switch Page view -> Reading view.
-              ok, cx, cy, msg = tap_frame(found_flow_btn[1])
-              if not ok:
-                  fail_step("05-hwp-flow-return", f"axe tap Reading view failed at ({cx},{cy}): {msg}")
-                  return
-              time.sleep(3)
-              found_back, _, err = wait_for_any(
-                  "05-hwp-flow-return",
-                  ["뒤로", "Back"],
-                  timeout_s=15,
-              )
-              shot5 = screenshot("05-hwp-flow-return.png")
-              record_memory("05-hwp-flow-return")
-              if not found_back:
-                  fail_step("05-hwp-flow-return", f"Back button not found after returning to reading view: {err}")
-                  return
-              summary["steps"].append({"step": "05-hwp-flow-return", "ok": True, "matched": found_back[2], "screenshot": shot5})
-              print(f"[OK] 05-hwp-flow-return", flush=True)
-
-              # Step 6: Tap [Back / 뒤로] -> Home.
-              ok, cx, cy, msg = tap_frame(found_back[1])
-              if not ok:
-                  fail_step("06-back-to-home", f"axe tap Back failed at ({cx},{cy}): {msg}")
-                  return
-              time.sleep(2.5)
-              found_md, _, err = wait_for_any(
-                  "06-home-after-hwp",
-                  ["새 마크다운", "New Markdown", "새로 만들기", "Create new"],
-                  timeout_s=15,
-              )
-              shot6 = screenshot("06-home-after-hwp.png")
-              record_memory("06-home-after-hwp")
-              if not found_md:
-                  fail_step("06-back-to-home", f"Did not return to Home with New Markdown control: {err}")
-                  return
-              summary["steps"].append({"step": "06-back-to-home", "ok": True, "matched": found_md[2], "screenshot": shot6})
-              print(f"[OK] 06-back-to-home (found: {found_md[2]})", flush=True)
-
-              # Step 7: Tap [New Markdown / 새 마크다운] (open create sheet first if card is not directly shown).
-              if found_md[2] in ("새로 만들기", "Create new"):
-                  ok, cx, cy, msg = tap_frame(found_md[1])
-                  if not ok:
-                      fail_step("07-new-markdown", f"axe tap Create new failed at ({cx},{cy}): {msg}")
+                  el_page_again = wait_for_element(
+                      insp,
+                      "05-hwp-flow-return",
+                      ['[data-testid="view-tool-pageView"]'],
+                      ["쪽 화면", "Page view"],
+                      timeout_s=15.0,
+                  )
+                  if not el_page_again:
+                      click_element_js(insp, ['[data-testid="view-tool-flowView"]'], ["읽기 화면", "Reading view"])
+                      time.sleep(2.5)
+                      el_page_again = wait_for_element(
+                          insp,
+                          "05-hwp-flow-return-js",
+                          ['[data-testid="view-tool-pageView"]'],
+                          ["쪽 화면", "Page view"],
+                          timeout_s=15.0,
+                      )
+                  shot5 = screenshot("05-hwp-flow-return.png")
+                  dump_page_state(insp, "05-hwp-flow-return")
+                  record_memory("05-hwp-flow-return")
+                  if not el_page_again:
+                      fail_step(insp, "05-hwp-flow-return", "Could not return to HWP reading view")
                       return
-                  time.sleep(1.5)
-                  found_md, _, err = wait_for_any("07-create-sheet", ["새 마크다운", "New Markdown"], timeout_s=10)
-                  if not found_md:
-                      fail_step("07-new-markdown", f"New Markdown not found in Create sheet: {err}")
-                      return
-              ok, cx, cy, msg = tap_frame(found_md[1])
-              if not ok:
-                  fail_step("07-new-markdown", f"axe tap New Markdown failed at ({cx},{cy}): {msg}")
-                  return
-              time.sleep(3.5)
-              found_md_back, _, err = wait_for_any("07-new-markdown", ["뒤로", "Back"], timeout_s=15)
-              shot7 = screenshot("07-new-markdown.png")
-              record_memory("07-new-markdown")
-              if not found_md_back:
-                  fail_step("07-new-markdown", f"Markdown editor did not open cleanly: {err}")
-                  return
-              summary["steps"].append({"step": "07-new-markdown", "ok": True, "matched": found_md_back[2], "screenshot": shot7})
-              print(f"[OK] 07-new-markdown", flush=True)
+                  summary["steps"].append({"step": "05-hwp-flow-return", "ok": True, "via": via, "matched": el_page_again, "screenshot": shot5})
+                  trace("[OK] 05-hwp-flow-return")
 
-              # Step 8: Tap [Back / 뒤로] from Markdown -> Home -> Tap [Settings / 설정].
-              ok, cx, cy, msg = tap_frame(found_md_back[1])
-              if not ok:
-                  fail_step("08-settings", f"axe tap Back from Markdown failed at ({cx},{cy}): {msg}")
-                  return
-              time.sleep(2.5)
-              found_settings, _, err = wait_for_any("08-find-settings", ["설정", "Settings"], timeout_s=15)
-              if not found_settings:
-                  fail_step("08-settings", f"Settings tab/button not found on Home: {err}")
-                  return
-              ok, cx, cy, msg = tap_frame(found_settings[1])
-              if not ok:
-                  fail_step("08-settings", f"axe tap Settings failed at ({cx},{cy}): {msg}")
-                  return
-              time.sleep(2.5)
-              describe_ui("08-settings")
-              shot8 = screenshot("08-settings.png")
-              record_memory("08-settings")
-              summary["steps"].append({"step": "08-settings", "ok": True, "matched": found_settings[2], "screenshot": shot8})
-              print(f"[OK] 08-settings", flush=True)
+                  # Step 6: Tap [Back / 뒤로] -> Home
+                  el_back = wait_for_element(insp, "06-find-back", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=10.0)
+                  if not el_back:
+                      fail_step(insp, "06-back-to-home", "Editor Back button not found")
+                      return
+                  ok, via = tap_element(insp, el_back, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                  time.sleep(2.0)
+                  el_md = wait_for_element(
+                      insp,
+                      "06-home-after-hwp",
+                      ['[data-testid="home-new-md-btn"]', '[data-testid="home-fab"]'],
+                      ["새 마크다운", "New Markdown", "새로 만들기", "Create new"],
+                      timeout_s=12.0,
+                  )
+                  if not el_md:
+                      click_element_js(insp, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                      time.sleep(2.0)
+                      el_md = wait_for_element(
+                          insp,
+                          "06-home-after-hwp-js",
+                          ['[data-testid="home-new-md-btn"]', '[data-testid="home-fab"]'],
+                          ["새 마크다운", "New Markdown", "새로 만들기", "Create new"],
+                          timeout_s=12.0,
+                      )
+                  shot6 = screenshot("06-home-after-hwp.png")
+                  dump_page_state(insp, "06-home-after-hwp")
+                  record_memory("06-home-after-hwp")
+                  if not el_md:
+                      fail_step(insp, "06-back-to-home", "Did not return to Home after tapping Back")
+                      return
+                  summary["steps"].append({"step": "06-back-to-home", "ok": True, "via": via, "matched": el_md, "screenshot": shot6})
+                  trace(f"[OK] 06-back-to-home ({el_md['how']})")
+
+                  # Step 7: Tap [New Markdown / 새 마크다운]
+                  if el_md.get("testId") == "home-fab":
+                      tap_element(insp, el_md, ['[data-testid="home-fab"]'], ["새로 만들기", "Create new"])
+                      time.sleep(1.5)
+                      el_md = wait_for_element(insp, "07-create-sheet", ['[data-testid="home-create-md"]'], ["새 마크다운", "New Markdown"], timeout_s=10.0)
+                      if not el_md:
+                          fail_step(insp, "07-new-markdown", "New Markdown option not found in Create sheet")
+                          return
+                  ok, via = tap_element(insp, el_md, ['[data-testid="home-new-md-btn"]', '[data-testid="home-create-md"]'], ["새 마크다운", "New Markdown"])
+                  time.sleep(3.0)
+                  el_md_back = wait_for_element(insp, "07-new-markdown", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=15.0)
+                  if not el_md_back:
+                      click_element_js(insp, ['[data-testid="home-new-md-btn"]', '[data-testid="home-create-md"]'], ["새 마크다운", "New Markdown"])
+                      time.sleep(3.0)
+                      el_md_back = wait_for_element(insp, "07-new-markdown-js", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=15.0)
+                  shot7 = screenshot("07-new-markdown.png")
+                  dump_page_state(insp, "07-new-markdown")
+                  record_memory("07-new-markdown")
+                  if not el_md_back:
+                      fail_step(insp, "07-new-markdown", "New Markdown editor did not open")
+                      return
+                  summary["steps"].append({"step": "07-new-markdown", "ok": True, "via": via, "matched": el_md_back, "screenshot": shot7})
+                  trace("[OK] 07-new-markdown")
+
+                  # Step 8: Tap [Back / 뒤로] -> Home -> Tap [Settings / 설정]
+                  tap_element(insp, el_md_back, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                  time.sleep(2.0)
+                  el_settings = wait_for_element(
+                      insp,
+                      "08-find-settings",
+                      ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'],
+                      ["설정", "Settings"],
+                      timeout_s=12.0,
+                  )
+                  if not el_settings:
+                      click_element_js(insp, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                      time.sleep(2.0)
+                      el_settings = wait_for_element(
+                          insp,
+                          "08-find-settings-js",
+                          ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'],
+                          ["설정", "Settings"],
+                          timeout_s=12.0,
+                      )
+                  if not el_settings:
+                      fail_step(insp, "08-settings", "Settings button/tab not found after returning from Markdown")
+                      return
+                  ok, via = tap_element(insp, el_settings, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], ["설정", "Settings"])
+                  time.sleep(2.5)
+                  # Verify Settings heading/screen appeared; fallback to JS click if needed.
+                  st = dump_page_state(insp, "08-settings")
+                  if st and "설정" not in (st.get("bodyTextHead") or "") and "Settings" not in (st.get("bodyTextHead") or ""):
+                      click_element_js(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], ["설정", "Settings"])
+                      time.sleep(2.0)
+                      st = dump_page_state(insp, "08-settings-js")
+                  shot8 = screenshot("08-settings.png")
+                  record_memory("08-settings")
+                  summary["steps"].append({"step": "08-settings", "ok": True, "via": via, "matched": el_settings, "screenshot": shot8})
+                  trace("[OK] 08-settings")
+
+                  # Collect all JS errors accumulated during the walk-through.
+                  errs = insp.eval_js("window.__ieumSimErrors || []")
+                  summary["webview_console_errors"] = errs or []
+              finally:
+                  insp.close()
 
           run_flow()
 
+          (logs_dir / "webinspector-trace.txt").write_text("\n".join(trace_lines) + "\n", encoding="utf-8")
+          (logs_dir / "webview-console-errors.json").write_text(
+              json.dumps(summary["webview_console_errors"], ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
           (logs_dir / "smoke-summary.json").write_text(
               json.dumps(summary, ensure_ascii=False, indent=2),
               encoding="utf-8",
@@ -571,12 +985,14 @@ jobs:
               f"UDID: {summary['udid']}",
               f"App PID: {summary['app_pid']}",
               f"AXe ready: {summary['axe_ready']}",
+              f"WebInspector connected: {summary['inspector_connected']}",
+              f"WebView JS errors: {len(summary['webview_console_errors'])}",
               f"Stuck at: {summary['stuck_at']} ({summary['stuck_reason']})",
               "",
               "Steps:",
           ]
           for s in summary["steps"]:
-              lines.append(f"  - {s['step']}: ok={s['ok']} shot={s.get('screenshot', {}).get('file')} info={s.get('matched') or s.get('reason')}")
+              lines.append(f"  - {s['step']}: ok={s['ok']} via={s.get('via', '')} shot={s.get('screenshot', {}).get('file')} info={s.get('reason') or (s.get('matched') or {}).get('how', '')}")
           (logs_dir / "smoke-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
           mem_lines = []
