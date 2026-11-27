@@ -22,6 +22,10 @@ jobs:
   ios-sim-smoke:
     runs-on: macos-latest
     timeout-minutes: 90
+    env:
+      # Mobile v1 Vite bundle (Univer, PDF.js, Tiptap, Mermaid, Konva) exceeds
+      # Node's default 2 GB heap cap on macos-latest arm64 runners.
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
