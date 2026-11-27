@@ -125,6 +125,7 @@ jobs:
           set -euo pipefail
           if brew install cameroncooke/axe/axe; then
             axe --version || true
+            axe type --help || true
             echo "axe_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "AXe installation failed; will still boot simulator and capture launch screenshot."
@@ -250,6 +251,8 @@ jobs:
               "inspector_connected": False,
               "steps": [],
               "findings": [],
+              "timings": {},
+              "checks": {},
               "stuck_at": None,
               "stuck_reason": None,
               "memory_samples": [],
@@ -689,20 +692,39 @@ jobs:
                     const iframes = Array.from(document.querySelectorAll('iframe')).map(f => {
                       let innerLen = -1;
                       let hasCanvas = false;
+                      let canvasDims = [];
                       let innerActive = '';
+                      let readonlyAttr = null;
+                      let caretStyles = [];
                       try {
-                        innerLen = (f.contentDocument?.body?.innerText || '').trim().length;
-                        hasCanvas = !!f.contentDocument?.querySelector('canvas');
-                        innerActive = f.contentDocument?.activeElement?.tagName || '';
+                        const doc = f.contentDocument;
+                        innerLen = (doc?.body?.innerText || '').trim().length;
+                        const canvases = Array.from(doc?.querySelectorAll('canvas') || []);
+                        hasCanvas = canvases.length > 0;
+                        canvasDims = canvases.slice(0, 4).map(c => [c.width, c.height]);
+                        innerActive = doc?.activeElement?.tagName || '';
+                        readonlyAttr = doc?.documentElement?.getAttribute('data-ieum-readonly');
+                        caretStyles = Array.from(doc?.querySelectorAll('.caret, .caret-composition') || []).map(el => {
+                          const cs = doc.defaultView?.getComputedStyle(el);
+                          return { cls: el.className, display: cs?.display || '', visibility: cs?.visibility || '' };
+                        });
                       } catch {}
-                      return { src: f.getAttribute('src') || '', cls: f.className, hidden: f.closest('[data-hidden="true"]') !== null, innerLen, hasCanvas, innerActive };
+                      return { src: f.getAttribute('src') || '', cls: f.className, hidden: f.closest('[data-hidden="true"]') !== null, innerLen, hasCanvas, canvasDims, innerActive, readonlyAttr, caretStyles };
                     });
+                    const saveBtn = document.querySelector('[data-testid="editor-save-btn"]');
+                    const shell = document.querySelector('[data-mode]');
+                    const mdTa = document.querySelector('[data-testid="markdown-editor-textarea"]');
                     return {
                       lang: document.documentElement.lang,
                       navLang: navigator.language,
                       viewport: [window.innerWidth, window.innerHeight],
                       visualViewport: window.visualViewport ? [Math.round(window.visualViewport.width), Math.round(window.visualViewport.height)] : null,
                       activeTag: document.activeElement?.tagName || '',
+                      activeTestId: document.activeElement?.getAttribute?.('data-testid') || '',
+                      shellMode: shell?.getAttribute('data-mode') || '',
+                      saveBtnState: saveBtn?.getAttribute('data-state') || null,
+                      saveBtnText: (saveBtn?.innerText || '').trim(),
+                      mdValue: mdTa ? mdTa.value : null,
                       title: document.title,
                       bodyTextHead: (document.body?.innerText || '').trim().slice(0, 300),
                       iframes,
@@ -714,6 +736,183 @@ jobs:
               except Exception as exc:
                   trace(f"dump_page_state({tag}) error: {exc}")
                   return None
+
+          def describe_native_ui(tag):
+              if not axe_ready:
+                  return None
+              rc, out, err = run_cmd(["axe", "describe-ui", "--udid", udid], timeout=15)
+              if rc != 0 or not out.strip():
+                  trace(f"axe describe-ui ({tag}) failed rc={rc} err={err.strip()[:200]}")
+                  return None
+              try:
+                  tree = json.loads(out)
+              except Exception as exc:
+                  (logs_dir / f"ui-{tag}.txt").write_text(out[:20000], encoding="utf-8")
+                  trace(f"axe describe-ui ({tag}) json parse error: {exc}")
+                  return None
+              (logs_dir / f"ui-{tag}.json").write_text(json.dumps(tree, ensure_ascii=False, indent=2), encoding="utf-8")
+              return tree
+
+          def flatten_ax_nodes(tree):
+              nodes = []
+              def walk(node):
+                  if isinstance(node, list):
+                      for item in node:
+                          walk(item)
+                  elif isinstance(node, dict):
+                      frame = node.get("frame") or {}
+                      w = float(frame.get("width") or 0)
+                      h = float(frame.get("height") or 0)
+                      x = float(frame.get("x") or 0)
+                      y = float(frame.get("y") or 0)
+                      label = str(node.get("AXLabel") or "")
+                      title = str(node.get("AXTitle") or "")
+                      uid = str(node.get("AXUniqueId") or "")
+                      val = str(node.get("AXValue") or "")
+                      ntype = str(node.get("type") or node.get("role") or "")
+                      enabled = node.get("enabled", node.get("AXEnabled", True))
+                      nodes.append({
+                          "label": label,
+                          "title": title,
+                          "uid": uid,
+                          "value": val,
+                          "type": ntype,
+                          "enabled": enabled is not False,
+                          "x": x, "y": y, "w": w, "h": h,
+                          "cx": int(round(x + w / 2.0)),
+                          "cy": int(round(y + h / 2.0)),
+                      })
+                      for ch in (node.get("children") or []):
+                          walk(ch)
+              walk(tree)
+              return nodes
+
+          def summarize_ax_nodes(nodes, limit=40):
+              out = []
+              for n in nodes:
+                  txt = n["label"] or n["title"] or n["uid"]
+                  if txt and n["w"] > 0 and n["h"] > 0:
+                      out.append(f"{n['type']}[{txt!r} en={n['enabled']} @({n['cx']},{n['cy']}) {int(n['w'])}x{int(n['h'])}]")
+                  if len(out) >= limit:
+                      break
+              return out
+
+          def find_ax_node(nodes, keywords, exact_first=True, require_enabled=True, max_y=None, prefer_types=None):
+              def valid(n):
+                  if n["w"] <= 0 or n["h"] <= 0:
+                      return False
+                  if require_enabled and not n["enabled"]:
+                      return False
+                  if max_y is not None and n["cy"] > max_y:
+                      return False
+                  if prefer_types and n["type"] not in prefer_types:
+                      return False
+                  return True
+
+              if exact_first:
+                  for kw in keywords:
+                      kw_l = kw.lower()
+                      for n in nodes:
+                          if not valid(n):
+                              continue
+                          texts = [n["label"].strip().lower(), n["title"].strip().lower(), n["uid"].strip().lower()]
+                          if kw_l in texts:
+                              return n
+              for kw in keywords:
+                  kw_l = kw.lower()
+                  for n in nodes:
+                      if not valid(n):
+                          continue
+                      hay = f"{n['label']} {n['title']} {n['uid']} {n['value']}".lower()
+                      if kw_l in hay:
+                          return n
+              return None
+
+          def axe_tap_xy(cx, cy, desc=""):
+              if not axe_ready:
+                  return False, "axe_unavailable"
+              rc, out, err = run_cmd(["axe", "tap", "-x", str(int(cx)), "-y", str(int(cy)), "--udid", udid], timeout=15)
+              msg = (err or out).strip()
+              trace(f"axe tap ({cx},{cy}) [{desc}] rc={rc} msg={msg}")
+              return rc == 0, f"axe_tap({cx},{cy})"
+
+          def dismiss_native_picker_if_open(tag_prefix):
+              tree = describe_native_ui(f"{tag_prefix}-check")
+              if not tree:
+                  return False
+              nodes = flatten_ax_nodes(tree)
+              cancel = find_ax_node(nodes, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"})
+              if not cancel:
+                  cancel = find_ax_node(nodes, ["취소", "Cancel", "닫기", "Close"])
+              if cancel:
+                  axe_tap_xy(cancel["cx"], cancel["cy"], f"{tag_prefix}-cancel")
+                  time.sleep(2.0)
+                  return True
+              return False
+
+          def wait_hwp_page_ready(insp, timeout_s=25.0):
+              t_start = time.monotonic()
+              t_btn = None
+              t_canvas = None
+              while time.monotonic() - t_start < timeout_s:
+                  try:
+                      res = insp.eval_js("""(() => {
+                        const btn = document.querySelector('[data-testid="view-tool-flowView"]');
+                        const btnVis = !!(btn && btn.getBoundingClientRect().width > 0);
+                        let studioVisible = false;
+                        let canvasReady = false;
+                        let readonlyAttr = null;
+                        for (const f of document.querySelectorAll('iframe')) {
+                          const src = f.getAttribute('src') || '';
+                          if (!src.includes('/studio/')) continue;
+                          const hidden = f.closest('[data-hidden="true"]') !== null;
+                          if (!hidden) studioVisible = true;
+                          try {
+                            const doc = f.contentDocument;
+                            readonlyAttr = doc?.documentElement?.getAttribute('data-ieum-readonly');
+                            const c = doc?.querySelector('canvas');
+                            if (!hidden && c && c.width > 0 && c.height > 0) canvasReady = true;
+                          } catch {}
+                        }
+                        return { btnVis, studioVisible, canvasReady, readonlyAttr };
+                      })()""")
+                      now_ms = int((time.monotonic() - t_start) * 1000)
+                      if res and res.get("btnVis") and t_btn is None:
+                          t_btn = now_ms
+                      if res and res.get("btnVis") and res.get("canvasReady"):
+                          t_canvas = now_ms
+                          return {"ok": True, "btn_ms": t_btn, "canvas_ms": t_canvas, "readonlyAttr": res.get("readonlyAttr")}
+                  except Exception:
+                      pass
+                  time.sleep(0.1)
+              return {"ok": False, "btn_ms": t_btn, "canvas_ms": t_canvas}
+
+          def wait_hwp_flow_ready(insp, timeout_s=15.0):
+              t_start = time.monotonic()
+              t_btn = None
+              while time.monotonic() - t_start < timeout_s:
+                  try:
+                      res = insp.eval_js("""(() => {
+                        const btn = document.querySelector('[data-testid="view-tool-pageView"]');
+                        const btnVis = !!(btn && btn.getBoundingClientRect().width > 0);
+                        const flow = document.querySelector('iframe.mobile-hwp-flow-frame');
+                        let flowReady = false;
+                        if (flow && flow.closest('[data-hidden="true"]') === null) {
+                          try {
+                            flowReady = (flow.contentDocument?.body?.innerText || '').trim().length > 100;
+                          } catch {}
+                        }
+                        return { btnVis, flowReady };
+                      })()""")
+                      now_ms = int((time.monotonic() - t_start) * 1000)
+                      if res and res.get("btnVis") and t_btn is None:
+                          t_btn = now_ms
+                      if res and res.get("btnVis") and res.get("flowReady"):
+                          return {"ok": True, "btn_ms": t_btn, "flow_ms": now_ms}
+                  except Exception:
+                      pass
+                  time.sleep(0.1)
+              return {"ok": False, "btn_ms": t_btn, "flow_ms": None}
 
           def fail_step(insp, step_name, reason):
               shot = screenshot(f"stuck-{step_name}.png")
@@ -754,7 +953,7 @@ jobs:
                   summary["steps"].append({"step": "01-first-screen", "ok": True, "matched": el_start, "screenshot": shot1})
                   trace(f"[OK] 01-first-screen ({el_start['how']})")
 
-                  # Step 2: Tap [Start / 시작하기] -> Home
+                  # Step 2: Tap [Start / 시작하기] -> Home (baseline memory)
                   if el_start.get("testId") == "home-run-first-start" or el_start.get("text") in ("시작하기", "Get started"):
                       ok, via = tap_element(insp, el_start, ['[data-testid="home-run-first-start"]'], ["시작하기", "Get started"])
                       time.sleep(2.0)
@@ -766,7 +965,6 @@ jobs:
                           timeout_s=8.0,
                       )
                       if not el_home:
-                          # Fallback click via JS in case HID tap missed safe-area offset
                           click_element_js(insp, ['[data-testid="home-run-first-start"]'], ["시작하기", "Get started"])
                           time.sleep(2.0)
                           el_home = wait_for_element(
@@ -789,7 +987,13 @@ jobs:
                   summary["steps"].append({"step": "02-home", "ok": True, "via": via, "matched": el_home, "screenshot": shot2})
                   trace(f"[OK] 02-home ({el_home['how']})")
 
-                  # Step 3: Tap [Open sample HWP / 예시 문서 열어 보기] -> HWP Reading (Flow) view
+                  # ============================================================
+                  # Scenario (3): Sample HWP caret, flow<->page timing, & memory
+                  # Sequence: Home -> Sample HWP (flow) -> Page view -> Flow return
+                  #           -> Close to Home (wait 5s) -> Reopen (flow -> page) -> Close to Home (wait 5s)
+                  # ============================================================
+
+                  # Step 3: Open sample HWP (1st time, lazy studio in flow view)
                   el_sample = wait_for_element(
                       insp,
                       "03-find-sample",
@@ -800,196 +1004,472 @@ jobs:
                   if not el_sample:
                       fail_step(insp, "03-open-sample-hwp", "Sample document button not found on Home")
                       return
+                  t_open1 = time.monotonic()
                   ok, via = tap_element(insp, el_sample, ['[data-testid="home-empty-sample"]'], ["예시 문서 열어 보기", "Open the sample document"])
-                  time.sleep(4.0)
+                  flow1_timing = wait_hwp_flow_ready(insp, timeout_s=30.0)
+                  flow1_total_ms = int((time.monotonic() - t_open1) * 1000)
                   el_page_btn = wait_for_element(
                       insp,
                       "03-hwp-flow",
                       ['[data-testid="view-tool-pageView"]'],
                       ["쪽 화면", "Page view"],
-                      timeout_s=30.0,
+                      timeout_s=10.0,
                   )
-                  if not el_page_btn:
-                      click_element_js(insp, ['[data-testid="home-empty-sample"]'], ["예시 문서 열어 보기", "Open the sample document"])
-                      time.sleep(4.0)
-                      el_page_btn = wait_for_element(
-                          insp,
-                          "03-hwp-flow-js",
-                          ['[data-testid="view-tool-pageView"]'],
-                          ["쪽 화면", "Page view"],
-                          timeout_s=25.0,
-                      )
-                  time.sleep(3.0)
+                  time.sleep(1.5)
                   shot3 = screenshot("03-hwp-flow.png")
-                  dump_page_state(insp, "03-hwp-flow")
-                  record_memory("03-hwp-flow")
+                  st3 = dump_page_state(insp, "03-hwp-flow")
+                  record_memory("03-hwp-flow-1")
+                  summary["timings"]["hwp_open_1_flow_ms"] = flow1_total_ms
+                  summary["timings"]["hwp_open_1_flow_after_tap"] = flow1_timing
                   if not el_page_btn:
                       fail_step(insp, "03-hwp-flow", "HWP reading view / Page view toggle did not appear")
                       return
                   summary["steps"].append({"step": "03-hwp-flow", "ok": True, "via": via, "matched": el_page_btn, "screenshot": shot3})
-                  trace(f"[OK] 03-hwp-flow ({el_page_btn['how']})")
+                  trace(f"[OK] 03-hwp-flow total={flow1_total_ms}ms iframes={len((st3 or {}).get('iframes') or [])}")
 
-                  # Step 4: Switch Reading view -> Page view
+                  # Step 4: Switch Reading view -> Page view (measure lazy studio mount + verify caret hidden)
+                  t_f2p_start = time.monotonic()
                   ok, via = tap_element(insp, el_page_btn, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
-                  time.sleep(4.0)
+                  t_f2p_tap_ms = int((time.monotonic() - t_f2p_start) * 1000)
+                  p1_timing = wait_hwp_page_ready(insp, timeout_s=30.0)
+                  t_f2p_total_ms = int((time.monotonic() - t_f2p_start) * 1000)
+                  time.sleep(1.5)
                   el_flow_btn = wait_for_element(
                       insp,
                       "04-hwp-page",
                       ['[data-testid="view-tool-flowView"]'],
                       ["읽기 화면", "Reading view"],
-                      timeout_s=20.0,
+                      timeout_s=10.0,
                   )
-                  if not el_flow_btn:
-                      click_element_js(insp, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
-                      time.sleep(4.0)
-                      el_flow_btn = wait_for_element(
-                          insp,
-                          "04-hwp-page-js",
-                          ['[data-testid="view-tool-flowView"]'],
-                          ["읽기 화면", "Reading view"],
-                          timeout_s=20.0,
-                      )
-                  time.sleep(3.0)
                   shot4 = screenshot("04-hwp-page.png")
-                  dump_page_state(insp, "04-hwp-page")
-                  record_memory("04-hwp-page")
+                  st4 = dump_page_state(insp, "04-hwp-page")
+                  record_memory("04-hwp-page-1")
+                  summary["timings"]["flow_to_page_1"] = {
+                      "tap_ms": t_f2p_tap_ms,
+                      "after_tap_btn_ms": p1_timing.get("btn_ms"),
+                      "after_tap_canvas_ms": p1_timing.get("canvas_ms"),
+                      "total_to_canvas_ms": t_f2p_total_ms,
+                  }
+                  summary["checks"]["hwp_page_1_state"] = {
+                      "visualViewport": (st4 or {}).get("visualViewport"),
+                      "saveBtnState": (st4 or {}).get("saveBtnState"),
+                      "iframes": (st4 or {}).get("iframes"),
+                  }
                   if not el_flow_btn:
                       fail_step(insp, "04-hwp-page", "HWP page view / Reading view toggle did not appear")
                       return
                   summary["steps"].append({"step": "04-hwp-page", "ok": True, "via": via, "matched": el_flow_btn, "screenshot": shot4})
-                  trace(f"[OK] 04-hwp-page ({el_flow_btn['how']})")
+                  trace(f"[OK] 04-hwp-page flow->page total={t_f2p_total_ms}ms (tap={t_f2p_tap_ms}ms, btn={p1_timing.get('btn_ms')}ms, canvas={p1_timing.get('canvas_ms')}ms)")
 
-                  # Step 5: Switch Page view -> Reading view
+                  # Step 5: Switch Page view -> Reading view (measure page->flow transition)
+                  t_p2f_start = time.monotonic()
                   ok, via = tap_element(insp, el_flow_btn, ['[data-testid="view-tool-flowView"]'], ["읽기 화면", "Reading view"])
-                  time.sleep(2.5)
+                  t_p2f_tap_ms = int((time.monotonic() - t_p2f_start) * 1000)
+                  f_ret_timing = wait_hwp_flow_ready(insp, timeout_s=15.0)
+                  t_p2f_total_ms = int((time.monotonic() - t_p2f_start) * 1000)
+                  time.sleep(1.0)
                   el_page_again = wait_for_element(
                       insp,
                       "05-hwp-flow-return",
                       ['[data-testid="view-tool-pageView"]'],
                       ["쪽 화면", "Page view"],
-                      timeout_s=15.0,
+                      timeout_s=10.0,
                   )
-                  if not el_page_again:
-                      click_element_js(insp, ['[data-testid="view-tool-flowView"]'], ["읽기 화면", "Reading view"])
-                      time.sleep(2.5)
-                      el_page_again = wait_for_element(
-                          insp,
-                          "05-hwp-flow-return-js",
-                          ['[data-testid="view-tool-pageView"]'],
-                          ["쪽 화면", "Page view"],
-                          timeout_s=15.0,
-                      )
                   shot5 = screenshot("05-hwp-flow-return.png")
                   dump_page_state(insp, "05-hwp-flow-return")
                   record_memory("05-hwp-flow-return")
+                  summary["timings"]["page_to_flow_1"] = {
+                      "tap_ms": t_p2f_tap_ms,
+                      "after_tap_btn_ms": f_ret_timing.get("btn_ms"),
+                      "after_tap_flow_ms": f_ret_timing.get("flow_ms"),
+                      "total_to_flow_ms": t_p2f_total_ms,
+                  }
                   if not el_page_again:
                       fail_step(insp, "05-hwp-flow-return", "Could not return to HWP reading view")
                       return
                   summary["steps"].append({"step": "05-hwp-flow-return", "ok": True, "via": via, "matched": el_page_again, "screenshot": shot5})
-                  trace("[OK] 05-hwp-flow-return")
+                  trace(f"[OK] 05-hwp-flow-return page->flow total={t_p2f_total_ms}ms (tap={t_p2f_tap_ms}ms, flow={f_ret_timing.get('flow_ms')}ms)")
 
-                  # Step 6: Tap [Back / 뒤로] -> Home
+                  # Step 6: Close HWP -> Home (wait 5s for WASM teardown / GC)
                   el_back = wait_for_element(insp, "06-find-back", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=10.0)
                   if not el_back:
-                      fail_step(insp, "06-back-to-home", "Editor Back button not found")
+                      fail_step(insp, "06-home-after-hwp-1", "Editor Back button not found")
                       return
                   ok, via = tap_element(insp, el_back, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
-                  time.sleep(2.0)
-                  # If an unexpected Unsaved Changes modal appeared on the read-only sample doc,
-                  # record it and tap Discard so the walk-through can still verify Markdown & Settings.
-                  el_discard = wait_for_element(insp, "06-check-unsaved", [], ["저장 안 함", "Discard"], timeout_s=2.0, poll_s=0.5)
+                  time.sleep(1.5)
+                  el_discard = wait_for_element(insp, "06-check-unsaved", [], ["저장 안 함", "Discard"], timeout_s=1.5, poll_s=0.5)
                   if el_discard:
                       note = "Unexpected Unsaved Changes modal appeared when leaving read-only sample HWP"
                       trace(f"[FINDING] {note}")
                       summary["findings"].append(note)
                       screenshot("06a-unsaved-modal.png")
                       tap_element(insp, el_discard, [], ["저장 안 함", "Discard"])
-                      time.sleep(2.0)
+                      time.sleep(1.5)
+                  el_sample2 = wait_for_element(
+                      insp,
+                      "06-home-after-hwp-1",
+                      ['[data-testid="home-empty-sample"]'],
+                      ["예시 문서 열어 보기", "Open the sample document"],
+                      timeout_s=12.0,
+                  )
+                  record_memory("06-home-after-hwp-1-immediate")
+                  time.sleep(5.0)
+                  shot6 = screenshot("06-home-after-hwp-1.png")
+                  dump_page_state(insp, "06-home-after-hwp-1")
+                  record_memory("06-home-after-hwp-1-after-5s")
+                  if not el_sample2:
+                      fail_step(insp, "06-home-after-hwp-1", "Did not return to Home after closing HWP (1st)")
+                      return
+                  summary["steps"].append({"step": "06-home-after-hwp-1", "ok": True, "via": via, "matched": el_sample2, "screenshot": shot6})
+                  trace("[OK] 06-home-after-hwp-1 (waited 5s)")
+
+                  # Step 6b: Reopen sample HWP (flow -> page) -> Close to Home (wait 5s)
+                  ok, via = tap_element(insp, el_sample2, ['[data-testid="home-empty-sample"]'], ["예시 문서 열어 보기", "Open the sample document"])
+                  wait_hwp_flow_ready(insp, timeout_s=25.0)
+                  el_page_btn2 = wait_for_element(insp, "06b-hwp-reopen-flow", ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"], timeout_s=10.0)
+                  time.sleep(1.5)
+                  shot6b = screenshot("06b-hwp-reopen-flow.png")
+                  dump_page_state(insp, "06b-hwp-reopen-flow")
+                  record_memory("06b-hwp-reopen-flow")
+                  if not el_page_btn2:
+                      fail_step(insp, "06b-hwp-reopen-flow", "Sample HWP did not reopen in reading view")
+                      return
+                  summary["steps"].append({"step": "06b-hwp-reopen-flow", "ok": True, "via": via, "matched": el_page_btn2, "screenshot": shot6b})
+                  trace("[OK] 06b-hwp-reopen-flow")
+
+                  t_f2p2_start = time.monotonic()
+                  ok, via = tap_element(insp, el_page_btn2, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
+                  t_f2p2_tap_ms = int((time.monotonic() - t_f2p2_start) * 1000)
+                  p2_timing = wait_hwp_page_ready(insp, timeout_s=25.0)
+                  t_f2p2_total_ms = int((time.monotonic() - t_f2p2_start) * 1000)
+                  time.sleep(1.5)
+                  shot6c = screenshot("06c-hwp-reopen-page.png")
+                  dump_page_state(insp, "06c-hwp-reopen-page")
+                  record_memory("06c-hwp-reopen-page")
+                  summary["timings"]["flow_to_page_2"] = {
+                      "tap_ms": t_f2p2_tap_ms,
+                      "after_tap_btn_ms": p2_timing.get("btn_ms"),
+                      "after_tap_canvas_ms": p2_timing.get("canvas_ms"),
+                      "total_to_canvas_ms": t_f2p2_total_ms,
+                  }
+                  summary["steps"].append({"step": "06c-hwp-reopen-page", "ok": p2_timing.get("ok", False), "via": via, "screenshot": shot6c})
+                  trace(f"[OK] 06c-hwp-reopen-page flow->page(2nd) total={t_f2p2_total_ms}ms")
+
+                  el_back2 = wait_for_element(insp, "06d-find-back", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=10.0)
+                  if not el_back2:
+                      fail_step(insp, "06d-home-after-hwp-2", "Editor Back button not found on 2nd HWP close")
+                      return
+                  ok, via = tap_element(insp, el_back2, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
                   el_md = wait_for_element(
                       insp,
-                      "06-home-after-hwp",
+                      "06d-home-after-hwp-2",
                       ['[data-testid="home-new-md-btn"]', '[data-testid="home-fab"]'],
                       ["새 마크다운", "New Markdown", "새로 만들기", "Create new"],
                       timeout_s=12.0,
                   )
+                  record_memory("06d-home-after-hwp-2-immediate")
+                  time.sleep(5.0)
+                  shot6d = screenshot("06d-home-after-hwp-2.png")
+                  dump_page_state(insp, "06d-home-after-hwp-2")
+                  record_memory("06d-home-after-hwp-2-after-5s")
                   if not el_md:
-                      click_element_js(insp, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
-                      time.sleep(2.0)
-                      el_md = wait_for_element(
-                          insp,
-                          "06-home-after-hwp-js",
-                          ['[data-testid="home-new-md-btn"]', '[data-testid="home-fab"]'],
-                          ["새 마크다운", "New Markdown", "새로 만들기", "Create new"],
-                          timeout_s=12.0,
-                      )
-                  shot6 = screenshot("06-home-after-hwp.png")
-                  dump_page_state(insp, "06-home-after-hwp")
-                  record_memory("06-home-after-hwp")
-                  if not el_md:
-                      fail_step(insp, "06-back-to-home", "Did not return to Home after tapping Back")
+                      fail_step(insp, "06d-home-after-hwp-2", "Did not return to Home after 2nd HWP close")
                       return
-                  summary["steps"].append({"step": "06-back-to-home", "ok": True, "via": via, "matched": el_md, "screenshot": shot6})
-                  trace(f"[OK] 06-back-to-home ({el_md['how']})")
+                  summary["steps"].append({"step": "06d-home-after-hwp-2", "ok": True, "via": via, "matched": el_md, "screenshot": shot6d})
+                  trace("[OK] 06d-home-after-hwp-2 (waited 5s)")
 
-                  # Step 7: Tap [New Markdown / 새 마크다운]
+                  # ============================================================
+                  # Scenario (1): New Markdown -> type text -> dirty -> [Done]
+                  #               -> iOS system Save picker (createSaveFile)
+                  # ============================================================
+
+                  # Step 7a: Open New Markdown
                   if el_md.get("testId") == "home-fab":
                       tap_element(insp, el_md, ['[data-testid="home-fab"]'], ["새로 만들기", "Create new"])
                       time.sleep(1.5)
                       el_md = wait_for_element(insp, "07-create-sheet", ['[data-testid="home-create-md"]'], ["새 마크다운", "New Markdown"], timeout_s=10.0)
                       if not el_md:
-                          fail_step(insp, "07-new-markdown", "New Markdown option not found in Create sheet")
+                          fail_step(insp, "07a-new-markdown", "New Markdown option not found in Create sheet")
                           return
                   ok, via = tap_element(insp, el_md, ['[data-testid="home-new-md-btn"]', '[data-testid="home-create-md"]'], ["새 마크다운", "New Markdown"])
-                  time.sleep(3.0)
-                  el_md_back = wait_for_element(insp, "07-new-markdown", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=15.0)
-                  if not el_md_back:
-                      click_element_js(insp, ['[data-testid="home-new-md-btn"]', '[data-testid="home-create-md"]'], ["새 마크다운", "New Markdown"])
-                      time.sleep(3.0)
-                      el_md_back = wait_for_element(insp, "07-new-markdown-js", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=15.0)
-                  shot7 = screenshot("07-new-markdown.png")
-                  dump_page_state(insp, "07-new-markdown")
-                  record_memory("07-new-markdown")
-                  if not el_md_back:
-                      fail_step(insp, "07-new-markdown", "New Markdown editor did not open")
+                  el_md_ta = wait_for_element(insp, "07a-new-markdown", ['[data-testid="markdown-editor-textarea"]'], [], timeout_s=15.0)
+                  time.sleep(1.0)
+                  shot7a = screenshot("07a-new-markdown.png")
+                  st7a = dump_page_state(insp, "07a-new-markdown")
+                  record_memory("07a-new-markdown")
+                  if not el_md_ta:
+                      fail_step(insp, "07a-new-markdown", "markdown-editor-textarea did not appear")
                       return
-                  summary["steps"].append({"step": "07-new-markdown", "ok": True, "via": via, "matched": el_md_back, "screenshot": shot7})
-                  trace("[OK] 07-new-markdown")
+                  summary["steps"].append({"step": "07a-new-markdown", "ok": True, "via": via, "matched": el_md_ta, "screenshot": shot7a})
+                  trace(f"[OK] 07a-new-markdown saveState={(st7a or {}).get('saveBtnState')} active={(st7a or {}).get('activeTestId')}")
 
-                  # Step 8: Tap [Back / 뒤로] -> Home -> Tap [Settings / 설정]
-                  tap_element(insp, el_md_back, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
-                  time.sleep(2.0)
-                  el_settings = wait_for_element(
+                  # Step 7b: Type text into markdown-editor-textarea via axe type -> check dirty state
+                  sample_text = "Ieum iOS test 123"
+                  typed_via = None
+                  if (st7a or {}).get("activeTestId") != "markdown-editor-textarea":
+                      axe_tap_xy(el_md_ta["cx"], min(el_md_ta["cy"], 320), "focus-md-textarea")
+                      time.sleep(0.8)
+                  if axe_ready:
+                      rc_t, out_t, err_t = run_cmd(["axe", "type", sample_text, "--udid", udid], timeout=20)
+                      trace(f"axe type rc={rc_t} out={out_t.strip()[:120]} err={err_t.strip()[:120]}")
+                      time.sleep(1.2)
+                      st7b = dump_page_state(insp, "07b-markdown-after-type")
+                      if (st7b or {}).get("mdValue"):
+                          typed_via = "axe_type"
+                      else:
+                          # Tap upper part of textarea and retry axe type once.
+                          axe_tap_xy(el_md_ta["cx"], int(el_md_ta["y"] + 40), "refocus-md-textarea")
+                          time.sleep(0.8)
+                          rc_t2, out_t2, err_t2 = run_cmd(["axe", "type", sample_text, "--udid", udid], timeout=20)
+                          trace(f"axe type retry rc={rc_t2} out={out_t2.strip()[:120]} err={err_t2.strip()[:120]}")
+                          time.sleep(1.2)
+                          st7b = dump_page_state(insp, "07b-markdown-after-type-retry")
+                          if (st7b or {}).get("mdValue"):
+                              typed_via = "axe_type_retry"
+                  else:
+                      st7b = st7a
+
+                  if not typed_via:
+                      note = "axe type did not enter text into markdown-editor-textarea; fell back to JS input event"
+                      trace(f"[FINDING] {note}")
+                      summary["findings"].append(note)
+                      insp.eval_js(f"""(() => {{
+                        const ta = document.querySelector('[data-testid="markdown-editor-textarea"]');
+                        if (!ta) return false;
+                        ta.focus();
+                        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                        setter.call(ta, {json.dumps(sample_text)});
+                        ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        return true;
+                      }})()""")
+                      time.sleep(1.0)
+                      st7b = dump_page_state(insp, "07b-markdown-js-fallback")
+                      typed_via = "js_input_fallback"
+
+                  shot7b = screenshot("07b-markdown-dirty.png")
+                  md_val = (st7b or {}).get("mdValue") or ""
+                  save_state_after_type = (st7b or {}).get("saveBtnState")
+                  summary["checks"]["markdown_typing"] = {
+                      "via": typed_via,
+                      "mdValue": md_val,
+                      "saveBtnState": save_state_after_type,
+                      "saveBtnText": (st7b or {}).get("saveBtnText"),
+                      "dirty_ok": save_state_after_type == "dirty",
+                  }
+                  summary["steps"].append({
+                      "step": "07b-markdown-dirty",
+                      "ok": bool(md_val) and save_state_after_type == "dirty",
+                      "via": typed_via,
+                      "reason": f"mdValue={md_val!r}, saveBtnState={save_state_after_type!r}",
+                      "screenshot": shot7b,
+                  })
+                  trace(f"[OK] 07b-markdown-dirty via={typed_via} val={md_val!r} saveBtnState={save_state_after_type}")
+
+                  # Step 7c: Tap [Done / 완료] (editor-mode-toggle) -> iOS Save picker (createSaveFile)
+                  el_done = wait_for_element(insp, "07c-find-done", ['[data-testid="editor-mode-toggle"]'], ["완료", "Done"], timeout_s=10.0)
+                  md_saved_ok = False
+                  save_picker_shown = False
+                  if not el_done:
+                      fail_step(insp, "07c-save-picker", "editor-mode-toggle ([완료]) not found")
+                      return
+                  ok, via = tap_element(insp, el_done, ['[data-testid="editor-mode-toggle"]'], ["완료", "Done"])
+                  time.sleep(3.5)
+                  shot7c = screenshot("07c-save-picker.png")
+                  tree_save = describe_native_ui("07c-save-picker")
+                  nodes_save = flatten_ax_nodes(tree_save) if tree_save else []
+                  ax_summary_save = summarize_ax_nodes(nodes_save, limit=45)
+                  trace(f"07c-save-picker AX nodes ({len(nodes_save)} total): {ax_summary_save[:15]}")
+                  st7c = dump_page_state(insp, "07c-save-picker")
+
+                  # Detect native UIDocumentPicker export sheet by AX controls or saving state.
+                  btn_save_confirm = find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], prefer_types={"Button"})
+                  if not btn_save_confirm:
+                      btn_save_confirm = find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], max_y=220)
+                  btn_save_cancel = find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"})
+                  if not btn_save_cancel:
+                      btn_save_cancel = find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], max_y=220)
+                  has_picker_cue = bool(
+                      btn_save_confirm
+                      or btn_save_cancel
+                      or find_ax_node(nodes_save, ["나의 iPhone", "On My iPhone", "둘러보기", "Browse", "Untitled.md"], require_enabled=False)
+                      or (st7c or {}).get("saveBtnState") == "saving"
+                  )
+                  save_picker_shown = has_picker_cue
+                  save_action_note = ""
+
+                  if save_picker_shown:
+                      # If Save is not yet enabled/visible, try tapping "On My iPhone" first.
+                      if not btn_save_confirm:
+                          folder_node = find_ax_node(nodes_save, ["나의 iPhone", "On My iPhone", "IeumOffice", "Downloads", "다운로드"])
+                          if folder_node:
+                              axe_tap_xy(folder_node["cx"], folder_node["cy"], "save-picker-select-folder")
+                              time.sleep(2.0)
+                              screenshot("07c2-save-picker-folder.png")
+                              tree_save2 = describe_native_ui("07c2-save-picker-folder")
+                              nodes_save = flatten_ax_nodes(tree_save2) if tree_save2 else nodes_save
+                              btn_save_confirm = find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], prefer_types={"Button"}) or find_ax_node(nodes_save, ["저장", "Save", "이동", "Move"], max_y=220)
+                              btn_save_cancel = find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"}) or find_ax_node(nodes_save, ["취소", "Cancel", "닫기", "Close"], max_y=220)
+
+                      if btn_save_confirm:
+                          axe_tap_xy(btn_save_confirm["cx"], btn_save_confirm["cy"], "save-picker-confirm")
+                          time.sleep(3.5)
+                          shot7d = screenshot("07d-after-save.png")
+                          st7d = dump_page_state(insp, "07d-after-save")
+                          tree_after_save = describe_native_ui("07d-after-save")
+                          nodes_after_save = flatten_ax_nodes(tree_after_save) if tree_after_save else []
+                          still_open = bool(find_ax_node(nodes_after_save, ["취소", "Cancel", "저장", "Save"], prefer_types={"Button"}, max_y=220))
+                          if not still_open and (st7d or {}).get("saveBtnState") != "dirty" and (st7d or {}).get("saveBtnState") != "saving":
+                              md_saved_ok = True
+                              save_action_note = f"saved via {btn_save_confirm['label'] or btn_save_confirm['title']} -> mode={(st7d or {}).get('shellMode')}, saveState={(st7d or {}).get('saveBtnState')}"
+                          else:
+                              save_action_note = f"tapped Save but picker_still_open={still_open}, saveState={(st7d or {}).get('saveBtnState')}; cancelling"
+                              dismiss_native_picker_if_open("07d-cancel-after-save")
+                              screenshot("07d-save-cancelled.png")
+                      elif btn_save_cancel:
+                          save_action_note = "Save button not found/enabled in AX tree; cancelled picker"
+                          axe_tap_xy(btn_save_cancel["cx"], btn_save_cancel["cy"], "save-picker-cancel")
+                          time.sleep(2.0)
+                          shot7d = screenshot("07d-save-cancelled.png")
+                      else:
+                          save_action_note = "Save picker appeared but neither Save nor Cancel button was exposed in AX tree"
+                          shot7d = shot7c
+                  else:
+                      save_action_note = f"Save picker not detected (saveBtnState={(st7c or {}).get('saveBtnState')}, mode={(st7c or {}).get('shellMode')})"
+                      shot7d = shot7c
+
+                  summary["checks"]["markdown_save_picker"] = {
+                      "picker_shown": save_picker_shown,
+                      "saved_ok": md_saved_ok,
+                      "note": save_action_note,
+                      "ax_nodes_sample": ax_summary_save[:25],
+                  }
+                  summary["steps"].append({
+                      "step": "07c-save-picker",
+                      "ok": save_picker_shown,
+                      "via": via,
+                      "reason": save_action_note,
+                      "screenshot": shot7c,
+                  })
+                  trace(f"[STEP] 07c-save-picker shown={save_picker_shown} saved_ok={md_saved_ok} note={save_action_note}")
+
+                  # Return from Markdown editor to Home
+                  el_md_back = wait_for_element(insp, "08-find-md-back", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=8.0)
+                  if el_md_back:
+                      tap_element(insp, el_md_back, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                      time.sleep(1.5)
+                      el_disc_md = wait_for_element(insp, "08-check-md-unsaved", [], ["저장 안 함", "Discard"], timeout_s=2.0, poll_s=0.5)
+                      if el_disc_md:
+                          tap_element(insp, el_disc_md, [], ["저장 안 함", "Discard"])
+                          time.sleep(1.5)
+
+                  el_open_btn = wait_for_element(
                       insp,
-                      "08-find-settings",
-                      ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'],
-                      ["설정", "Settings"],
+                      "08-home-before-open",
+                      ['[data-testid="home-open-file-btn"]', '[data-testid="home-empty-open"]'],
+                      ["파일 열기", "Open file"],
                       timeout_s=12.0,
                   )
-                  if not el_settings:
-                      click_element_js(insp, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
-                      time.sleep(2.0)
-                      el_settings = wait_for_element(
-                          insp,
-                          "08-find-settings-js",
-                          ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'],
-                          ["설정", "Settings"],
-                          timeout_s=12.0,
-                      )
-                  if not el_settings:
-                      fail_step(insp, "08-settings", "Settings button/tab not found after returning from Markdown")
+                  shot8 = screenshot("08-home-before-open.png")
+                  dump_page_state(insp, "08-home-before-open")
+                  if not el_open_btn:
+                      fail_step(insp, "08-home-before-open", "Did not return to Home before File Open test")
                       return
-                  ok, via = tap_element(insp, el_settings, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], ["설정", "Settings"])
-                  time.sleep(2.5)
-                  # Verify Settings heading/screen appeared; fallback to JS click if needed.
-                  st = dump_page_state(insp, "08-settings")
-                  if st and "설정" not in (st.get("bodyTextHead") or "") and "Settings" not in (st.get("bodyTextHead") or ""):
-                      click_element_js(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], ["설정", "Settings"])
+                  summary["steps"].append({"step": "08-home-before-open", "ok": True, "matched": el_open_btn, "screenshot": shot8})
+                  trace(f"[OK] 08-home-before-open ({el_open_btn['how']})")
+
+                  # ============================================================
+                  # Scenario (2): Home [Open file] -> iOS File picker (pickOpenFile)
+                  #               -> open saved .md if visible, else cancel
+                  # ============================================================
+                  ok, via = tap_element(insp, el_open_btn, ['[data-testid="home-open-file-btn"]', '[data-testid="home-empty-open"]'], ["파일 열기", "Open file"])
+                  time.sleep(3.5)
+                  shot9a = screenshot("09a-open-picker.png")
+                  tree_open = describe_native_ui("09a-open-picker")
+                  nodes_open = flatten_ax_nodes(tree_open) if tree_open else []
+                  ax_summary_open = summarize_ax_nodes(nodes_open, limit=45)
+                  trace(f"09a-open-picker AX nodes ({len(nodes_open)} total): {ax_summary_open[:15]}")
+
+                  open_cancel = find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"}) or find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], max_y=220)
+                  open_picker_shown = bool(
+                      open_cancel
+                      or find_ax_node(nodes_open, ["둘러보기", "Browse", "최근 항목", "Recents", "나의 iPhone", "On My iPhone", "Untitled"], require_enabled=False)
+                  )
+                  opened_saved_md = False
+                  open_action_note = ""
+
+                  if open_picker_shown:
+                      md_item = find_ax_node(nodes_open, ["Untitled.md", "Untitled", ".md"])
+                      # If not on initial view, try navigating into "On My iPhone" once.
+                      if not md_item:
+                          local_node = find_ax_node(nodes_open, ["나의 iPhone", "On My iPhone", "IeumOffice", "Downloads", "다운로드"])
+                          if local_node:
+                              axe_tap_xy(local_node["cx"], local_node["cy"], "open-picker-local-folder")
+                              time.sleep(2.0)
+                              screenshot("09a2-open-picker-local.png")
+                              tree_open2 = describe_native_ui("09a2-open-picker-local")
+                              nodes_open = flatten_ax_nodes(tree_open2) if tree_open2 else nodes_open
+                              md_item = find_ax_node(nodes_open, ["Untitled.md", "Untitled", ".md"])
+                              open_cancel = find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], prefer_types={"Button"}) or find_ax_node(nodes_open, ["취소", "Cancel", "닫기", "Close"], max_y=220)
+
+                      if md_item:
+                          axe_tap_xy(md_item["cx"], md_item["cy"], "open-picker-select-md")
+                          time.sleep(3.5)
+                          shot9b = screenshot("09b-opened-md.png")
+                          st9b = dump_page_state(insp, "09b-opened-md")
+                          if (st9b or {}).get("shellMode") in ("view", "edit") and ("Untitled" in ((st9b or {}).get("bodyTextHead") or "") or sample_text[:8] in ((st9b or {}).get("bodyTextHead") or "")):
+                              opened_saved_md = True
+                              open_action_note = f"opened {md_item['label'] or md_item['title']} -> mode={(st9b or {}).get('shellMode')}"
+                          else:
+                              open_action_note = f"tapped {md_item['label'] or md_item['title']}; bodyHead={((st9b or {}).get('bodyTextHead') or '')[:80]!r}"
+                              dismiss_native_picker_if_open("09b-cancel-fallback")
+                      elif open_cancel:
+                          open_action_note = "saved .md not found in picker AX tree; cancelled picker"
+                          axe_tap_xy(open_cancel["cx"], open_cancel["cy"], "open-picker-cancel")
+                          time.sleep(2.0)
+                          shot9b = screenshot("09b-open-picker-cancelled.png")
+                      else:
+                          open_action_note = "Open picker appeared without exposed .md or Cancel in AX tree"
+                          shot9b = shot9a
+                  else:
+                      open_action_note = "Open file picker not detected in AX tree"
+                      shot9b = shot9a
+
+                  summary["checks"]["open_file_picker"] = {
+                      "picker_shown": open_picker_shown,
+                      "opened_saved_md": opened_saved_md,
+                      "note": open_action_note,
+                      "ax_nodes_sample": ax_summary_open[:25],
+                  }
+                  summary["steps"].append({
+                      "step": "09-open-file-picker",
+                      "ok": open_picker_shown,
+                      "via": via,
+                      "reason": open_action_note,
+                      "screenshot": shot9a,
+                  })
+                  trace(f"[STEP] 09-open-file-picker shown={open_picker_shown} opened_saved_md={opened_saved_md} note={open_action_note}")
+
+                  # Final sanity check: return to Home (if in opened md) and open Settings
+                  if opened_saved_md:
+                      el_b = wait_for_element(insp, "10-find-back", ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"], timeout_s=5.0)
+                      if el_b:
+                          tap_element(insp, el_b, ['[data-testid="editor-back-btn"]'], ["뒤로", "Back"])
+                          time.sleep(1.5)
+                  el_settings = wait_for_element(
+                      insp,
+                      "10-find-settings",
+                      ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'],
+                      ["설정", "Settings"],
+                      timeout_s=8.0,
+                  )
+                  if el_settings:
+                      ok, via = tap_element(insp, el_settings, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], ["설정", "Settings"])
                       time.sleep(2.0)
-                      st = dump_page_state(insp, "08-settings-js")
-                  shot8 = screenshot("08-settings.png")
-                  record_memory("08-settings")
-                  summary["steps"].append({"step": "08-settings", "ok": True, "via": via, "matched": el_settings, "screenshot": shot8})
-                  trace("[OK] 08-settings")
+                      dump_page_state(insp, "10-settings")
+                      shot10 = screenshot("10-settings.png")
+                      record_memory("10-settings")
+                      summary["steps"].append({"step": "10-settings", "ok": True, "via": via, "matched": el_settings, "screenshot": shot10})
+                      trace("[OK] 10-settings")
 
                   # Collect all JS errors accumulated during the walk-through.
                   errs = insp.eval_js("window.__ieumSimErrors || []")
