@@ -658,12 +658,18 @@ function startHwpDocument(
           )}
           {/* The page editor stays mounted under the flow view: saving, sharing and
               AI read the document through it. */}
-          <div className="mobile-hwp-layer" data-hidden={hwpLayout === 'flow' ? 'true' : undefined}>
+          <div
+            className="mobile-hwp-layer"
+            data-hidden={hwpLayout === 'flow' ? 'true' : undefined}
+            inert={hwpLayout === 'flow' || undefined}
+          >
             <HwpMobileEditor
               ref={hwpEditorRef}
               fileName={frame.docTitle}
               documentBytes={hwpBytes}
               mode={mode}
+              canEdit={canEditActive}
+              hidden={hwpLayout === 'flow'}
               lang={lang}
               theme={theme}
               onDirty={handleHwpDirty}
