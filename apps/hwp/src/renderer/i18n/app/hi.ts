@@ -261,6 +261,9 @@ export const hi = {
   memoHwpxLost:
     'HWPX फ़ाइल में न ली जा सकीं टिप्पणियाँ: {count}। HWP के रूप में सहेजें या फ़ाइल को Hancom Hangul में जाँचें।',
   aiToolMemos: 'टिप्पणियाँ जाँचीं: {count}',
+  aiToolReadOutline: 'रूपरेखा जाँची गई · {count}',
+  aiToolChangeOutlineLevel: 'रूपरेखा स्तर बदला गया · {count}',
+  aiToolMoveOutlineSection: 'रूपरेखा अनुभाग ले जाया गया · {count} अनुच्छेद',
   aiMemoContext: 'टिप्पणियाँ: {count}',
   aiMemoApprovalTitle: 'यह संपादन टिप्पणियाँ हटा देगा: {count}। जारी रखें?',
   aiMemoApprovalKeep: 'टिप्पणियाँ रखें',

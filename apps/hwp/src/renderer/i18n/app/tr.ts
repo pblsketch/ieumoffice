@@ -259,6 +259,9 @@ export const tr = {
   memoHwpxLost:
     'HWPX dosyasına aktarılamayan notlar: {count}. HWP olarak kaydedin veya dosyayı Hancom Hangul içinde kontrol edin.',
   aiToolMemos: 'Notlar denetlendi: {count}',
+  aiToolReadOutline: 'Anahat denetlendi · {count}',
+  aiToolChangeOutlineLevel: 'Anahat düzeyi değiştirildi · {count}',
+  aiToolMoveOutlineSection: 'Anahat bölümü taşındı · {count} paragraf',
   aiMemoContext: 'Notlar: {count}',
   aiMemoApprovalTitle: 'Bu düzenleme notları siliyor: {count}. Devam edilsin mi?',
   aiMemoApprovalKeep: 'Notları koru',

@@ -27,6 +27,7 @@ describe("a run's changes on the shared card", () => {
       { kind: 'cells', from: '표 1', to: '1, 2', count: 2, place },
       { kind: 'lines', from: '표 1', to: '행 2개 추가', count: 2, place },
       { kind: 'note', from: '각주 1', to: '출처', count: 1, place },
+      { kind: 'move', from: 'section 1, paragraph 2', to: 'after paragraph 4', count: 3, place },
     ]
     expect(items.map(hwpChangeLine)).toEqual([
       { kind: 'insert', to: '새 문단', showable: true },
@@ -40,8 +41,15 @@ describe("a run's changes on the shared card", () => {
       { kind: 'named', from: '표 1', to: '1, 2', count: 2, showable: true },
       { kind: 'named', from: '표 1', to: '행 2개 추가', count: 2, showable: true },
       { kind: 'named', from: '각주 1', to: '출처', count: 1, showable: true },
+      {
+        kind: 'named',
+        from: 'section 1, paragraph 2',
+        to: 'after paragraph 4',
+        count: 3,
+        showable: true,
+      },
     ])
-    expect(hwpChangeCount(items)).toBe(15)
+    expect(hwpChangeCount(items)).toBe(18)
   })
 
   it('names what an undo left: all taken back, part of it, or nothing', () => {

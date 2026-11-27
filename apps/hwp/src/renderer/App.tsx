@@ -30,10 +30,25 @@ import {
   MEMO_REMOVED_EVENT,
   MISSING_FONTS_EVENT,
 } from '../../studio-plugin/agent-plugin.mjs'
+import { WORKPANE_COMMAND_EVENT } from '../../studio-plugin/workpane-menu.mjs'
 import blankHwpUrl from './assets/blank.hwp?url'
 import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
+import { translateWorkpane } from './i18n/workpane'
 import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
 import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
+import {
+  FindTab,
+  OutlineTab,
+  WorkpaneSide,
+  WorkpaneToggle,
+  isWorkpaneFindShortcut,
+  loadWorkpaneOpen,
+  loadWorkpaneTab,
+  parseWorkpaneCommand,
+  saveWorkpaneOpen,
+  saveWorkpaneTab,
+  type WorkpaneTabId,
+} from './workpane'
 import { openDocumentsDroppedOn } from './editor-drop'
 import { hwpPresentationKeyOf } from './presentation-keys'
 import { gatherPrintJob } from './print-flow'
@@ -208,6 +223,20 @@ export default function App() {
   const [docRevision, setDocRevision] = useState(0)
   /** the memo column beside the document: out or not, independent of the AI dock */
   const [memoOpen, setMemoOpen] = useState(memoPanelInitiallyOpen)
+  /** the left workpane (Outline / Find) beside the document: independent of AI and Memo */
+  const [workpaneOpen, setWorkpaneOpen] = useState(loadWorkpaneOpen)
+  const [workpaneTab, setWorkpaneTab] = useState<WorkpaneTabId>(() => loadWorkpaneTab())
+  const workpaneTabRef = useRef<WorkpaneTabId>(workpaneTab)
+  workpaneTabRef.current = workpaneTab
+  /** bumped when Ctrl+F or View > Workpane > Find asks the Find tab to focus its input */
+  const [focusFindTick, setFocusFindTick] = useState(0)
+  const openWorkpane = useCallback((tab?: WorkpaneTabId, focus = false) => {
+    if (tab) setWorkpaneTab(tab)
+    setWorkpaneOpen(true)
+    if (focus && (tab === 'find' || (!tab && workpaneTabRef.current === 'find'))) {
+      setFocusFindTick((tick) => tick + 1)
+    }
+  }, [])
   /** a memo editor is open here or in another tab: save, close and quit must wait */
   const [memoBlocked, setMemoBlocked] = useState(false)
   const memoBlockedRef = useRef(false)
@@ -251,6 +280,14 @@ export default function App() {
   useEffect(() => {
     rememberMemoPanelOpen(memoOpen)
   }, [memoOpen])
+
+  useEffect(() => {
+    saveWorkpaneOpen(workpaneOpen)
+  }, [workpaneOpen])
+
+  useEffect(() => {
+    saveWorkpaneTab(workpaneTab)
+  }, [workpaneTab])
 
   // boot the editor once and load the file queued for this view
   useEffect(() => {
@@ -1112,6 +1149,50 @@ export default function App() {
     return () => document.removeEventListener('fullscreenchange', onFullScreenChange)
   }, [presenting])
 
+  // Left workpane: register View-menu entries when the bridge supports it, listen for
+  // editor-frame commands (View > Workpane > Outline/Find and Ctrl+F inside the iframe),
+  // and handle Ctrl+F / Cmd+F when focus is outside the editor iframe.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const frame = editorRef.current?.element.contentWindow
+    if (frame) {
+      void pluginBridge
+        .installWorkpaneMenu({
+          outline: translateWorkpane(lang, 'workpaneMenuOutline'),
+          find: translateWorkpane(lang, 'workpaneMenuFind'),
+        })
+        .catch(() => {})
+    }
+    const onWorkpaneCommand = (event: Event): void => {
+      if (presentingRef.current || previewRef.current) return
+      const command = parseWorkpaneCommand((event as CustomEvent<unknown>).detail)
+      if (!command) return
+      if (command.action === 'close') {
+        setWorkpaneOpen(false)
+        return
+      }
+      if (command.action === 'toggle') {
+        if (command.tab) setWorkpaneTab(command.tab)
+        setWorkpaneOpen((open) => !open)
+        return
+      }
+      openWorkpane(command.tab, command.focus === true)
+    }
+    const onWorkpaneKeyDown = (event: KeyboardEvent): void => {
+      if (presentingRef.current || previewRef.current) return
+      if (!isWorkpaneFindShortcut(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      openWorkpane('find', true)
+    }
+    frame?.addEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
+    window.addEventListener('keydown', onWorkpaneKeyDown, true)
+    return () => {
+      frame?.removeEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
+      window.removeEventListener('keydown', onWorkpaneKeyDown, true)
+    }
+  }, [phase, pluginBridge, lang, openWorkpane])
+
   useEffect(() => {
     if (notice?.tone !== 'info' || notice.sticky) return
     const timer = setTimeout(() => setNotice(null), INFO_NOTICE_MS)
@@ -1181,6 +1262,7 @@ export default function App() {
     <div className={`hwp-app${presenting ? ' hwp-presenting' : ''}`} data-phase={phase}>
       {phase === 'ready' && (
         <div className="hwp-topbar">
+          <WorkpaneToggle open={workpaneOpen} onToggle={() => setWorkpaneOpen((open) => !open)} />
           <button
             type="button"
             className="hwp-topbar-button"
@@ -1237,6 +1319,38 @@ export default function App() {
             onCollapse={() => setMemoOpen(false)}
             onModalOpenChange={setMemoBlocked}
             onNotice={showMemoNotice}
+          />
+        )}
+        {phase === 'ready' && !preview.open && (
+          <WorkpaneSide
+            open={workpaneOpen}
+            activeTab={workpaneTab}
+            onSelectTab={setWorkpaneTab}
+            onClose={() => setWorkpaneOpen(false)}
+            focusFindTick={focusFindTick}
+            layoutHint={`${aiOn ? (aiOpen ? 'a1' : 'a0') : 'ax'}-${memoOpen ? 'm1' : 'm0'}`}
+            renderTab={(tab, ctx) => {
+              if (tab === 'outline') {
+                return (
+                  <OutlineTab
+                    bridge={agentBridge}
+                    changeTick={docTick}
+                    visible={ctx.visible && ctx.activeTab === 'outline'}
+                  />
+                )
+              }
+              if (tab === 'find') {
+                return (
+                  <FindTab
+                    bridge={agentBridge}
+                    changeTick={docTick}
+                    focusTick={ctx.focusFindTick}
+                    visible={ctx.visible && ctx.activeTab === 'find'}
+                  />
+                )
+              }
+              return undefined
+            }}
           />
         )}
         <div className="hwp-stage">

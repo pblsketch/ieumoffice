@@ -32,7 +32,15 @@ import {
   installDropOpenBridge,
 } from '@genoffice/electron-utils/drop-open'
 import { AI_CHANNELS, HWP_CHANNELS } from '../shared/ipc'
-import type { HwpApi, PreviewAction, PrintJob, PrintMode, SaveMode, UiTheme } from '../shared/ipc'
+import type {
+  HwpApi,
+  OutlineStyleMap,
+  PreviewAction,
+  PrintJob,
+  PrintMode,
+  SaveMode,
+  UiTheme,
+} from '../shared/ipc'
 import type { SubscriptionApi } from '../shared/subscription-api'
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
@@ -264,6 +272,13 @@ const api: HwpApi = {
     ipcRenderer.invoke(AI_CHANNELS.imageSearch, query, maxResults),
   generateImage: (op) => ipcRenderer.invoke(HWP_CHANNELS.aiGenerateImage, op),
   fetchImage: (url) => ipcRenderer.invoke(HWP_CHANNELS.fetchImage, url),
+  getOutlineStyleMap: () => ipcRenderer.invoke(HWP_CHANNELS.getOutlineStyleMap),
+  setOutlineStyleMap: (map) => ipcRenderer.invoke(HWP_CHANNELS.setOutlineStyleMap, map),
+  onOutlineStyleMapChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, map: OutlineStyleMap) => handler(map)
+    ipcRenderer.on(HWP_CHANNELS.outlineStyleMapChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.outlineStyleMapChanged, listener)
+  },
   aiToolCapabilities: () => ipcRenderer.invoke(AI_CHANNELS.toolCapabilities),
   onAiStream: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, chunk: AiStreamChunk) => handler(chunk)

@@ -261,6 +261,9 @@ export const ru = {
   memoHwpxLost:
     'Примечания не перенесены в файл HWPX: {count}. Сохраните как HWP или проверьте файл в Hancom Hangul.',
   aiToolMemos: 'Проверено примечаний: {count}',
+  aiToolReadOutline: 'Структура проверена · {count}',
+  aiToolChangeOutlineLevel: 'Уровень структуры изменён · {count}',
+  aiToolMoveOutlineSection: 'Раздел структуры перемещён · {count} абз.',
   aiMemoContext: 'Примечания: {count}',
   aiMemoApprovalTitle: 'Это изменение удалит примечания: {count}. Продолжить?',
   aiMemoApprovalKeep: 'Оставить примечания',

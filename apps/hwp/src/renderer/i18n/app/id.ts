@@ -261,6 +261,9 @@ export const id = {
   memoHwpxLost:
     'Komentar tidak terbawa ke berkas HWPX: {count}. Simpan sebagai HWP atau periksa berkas di Hancom Hangul.',
   aiToolMemos: 'Komentar diperiksa: {count}',
+  aiToolReadOutline: 'Kerangka diperiksa · {count}',
+  aiToolChangeOutlineLevel: 'Tingkat kerangka diubah · {count}',
+  aiToolMoveOutlineSection: 'Bagian kerangka dipindahkan · {count} paragraf',
   aiMemoContext: 'Komentar: {count}',
   aiMemoApprovalTitle: 'Edit ini menghapus komentar: {count}. Lanjutkan?',
   aiMemoApprovalKeep: 'Pertahankan komentar',

@@ -266,6 +266,9 @@ export const nl = {
   memoHwpxLost:
     'Niet naar het HWPX-bestand overgebrachte opmerkingen: {count}. Sla op als HWP of controleer het bestand in Hancom Hangul.',
   aiToolMemos: 'Opmerkingen gecontroleerd: {count}',
+  aiToolReadOutline: 'Overzicht gecontroleerd · {count}',
+  aiToolChangeOutlineLevel: 'Overzichtsniveau gewijzigd · {count}',
+  aiToolMoveOutlineSection: 'Overzichtssectie verplaatst · {count} alinea(’s)',
   aiMemoContext: 'Opmerkingen: {count}',
   aiMemoApprovalTitle: 'Deze bewerking verwijdert {count} opmerking(en). Doorgaan?',
   aiMemoApprovalKeep: 'Opmerkingen behouden',

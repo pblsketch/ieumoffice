@@ -267,6 +267,9 @@ export const fr = {
   memoHwpxLost:
     'Commentaires non transférés dans le fichier HWPX : {count}. Enregistrez au format HWP ou vérifiez le fichier dans Hancom Hangul.',
   aiToolMemos: 'Commentaires vérifiés : {count}',
+  aiToolReadOutline: 'Plan vérifié · {count}',
+  aiToolChangeOutlineLevel: 'Niveau du plan modifié · {count}',
+  aiToolMoveOutlineSection: 'Section du plan déplacée · {count} paragraphe(s)',
   aiMemoContext: 'Commentaires : {count}',
   aiMemoApprovalTitle: 'Cette modification supprime {count} commentaire(s). Continuer ?',
   aiMemoApprovalKeep: 'Conserver les commentaires',

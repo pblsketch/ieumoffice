@@ -258,6 +258,9 @@ export const en = {
   memoHwpxLost:
     'Memos not carried into the HWPX file: {count}. Save as HWP or check the file in Hancom Hangul.',
   aiToolMemos: 'Checked memos: {count}',
+  aiToolReadOutline: 'Checked outline · {count}',
+  aiToolChangeOutlineLevel: 'Changed outline level · {count}',
+  aiToolMoveOutlineSection: 'Moved outline section · {count} paragraph(s)',
   aiMemoContext: 'Memos: {count}',
   aiMemoApprovalTitle: 'This edit deletes memos: {count}. Continue?',
   aiMemoApprovalKeep: 'Keep the memos',

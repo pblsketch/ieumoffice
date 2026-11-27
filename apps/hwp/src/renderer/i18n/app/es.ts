@@ -266,6 +266,9 @@ export const es = {
   memoHwpxLost:
     'Comentarios no transferidos al archivo HWPX: {count}. Guarda como HWP o comprueba el archivo en Hancom Hangul.',
   aiToolMemos: 'Comentarios revisados: {count}',
+  aiToolReadOutline: 'Esquema revisado · {count}',
+  aiToolChangeOutlineLevel: 'Nivel de esquema cambiado · {count}',
+  aiToolMoveOutlineSection: 'Sección de esquema movida · {count} párrafo(s)',
   aiMemoContext: 'Comentarios: {count}',
   aiMemoApprovalTitle: 'Esta edición elimina {count} comentario(s). ¿Continuar?',
   aiMemoApprovalKeep: 'Mantener los comentarios',
