@@ -61,7 +61,7 @@ jobs:
           npm run studio -w @genoffice/hwp
           npm run build -w @genoffice/mobile
           npm run typecheck -w @genoffice/mobile
-          npx --prefix apps/mobile vitest run tests/shell-ui.test.tsx
+          npx --prefix apps/mobile vitest run tests/shell-ui.test.tsx tests/store-native-config.test.ts tests/print-pdf-export.test.tsx
           test -f apps/mobile/dist/studio/index.html
 
       - name: Initialize iOS project and inject native config
@@ -116,6 +116,70 @@ jobs:
           echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
           echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
           echo "bundle_id=$BUNDLE_ID" >> "$GITHUB_OUTPUT"
+
+          # Store & bundle audit: verify AppIcon (1024x1024 opaque IeumOffice icon),
+          # PrivacyInfo.xcprivacy bundling, Info.plist permissions, and entitlements.
+          AUDIT="$ART_DIR/logs/bundle-audit.txt"
+          mkdir -p "$ART_DIR/logs/bundle-icons"
+          {
+            echo "=== .app top-level contents ==="
+            ls -la "$APP_PATH"
+            echo ""
+            echo "=== PrivacyInfo.xcprivacy inside .app ==="
+            if [ -f "$APP_PATH/PrivacyInfo.xcprivacy" ]; then
+              echo "STATUS: PRESENT ($APP_PATH/PrivacyInfo.xcprivacy)"
+              cat "$APP_PATH/PrivacyInfo.xcprivacy"
+            else
+              echo "STATUS: MISSING inside .app"
+              find "$APP_PATH" -name "*Privacy*" -maxdepth 4 || true
+              echo "--- project.pbxproj PrivacyInfo references ---"
+              grep -n -C 3 "PrivacyInfo" src-tauri/gen/apple/*.xcodeproj/project.pbxproj || true
+            fi
+            echo ""
+            echo "=== Info.plist full dump ==="
+            plutil -p "$APP_PATH/Info.plist"
+            echo ""
+            echo "=== Info.plist sensitive permission / associated-domains scan ==="
+            plutil -p "$APP_PATH/Info.plist" | grep -iE "associated-domains|UsageDescription|LocalNetwork|Camera|Microphone|Location|PhotoLibrary|Contacts|Calendar|Bluetooth|Tracking|CFBundleIcon" || true
+            echo ""
+            echo "=== Entitlements (generated plist & codesign) ==="
+            find src-tauri/gen/apple -name "*.entitlements" -exec head -n 60 {} + 2>/dev/null || true
+            codesign -d --entitlements :- "$APP_PATH" 2>&1 || true
+            echo ""
+            echo "=== AppIcon source vs generated Xcode catalog ==="
+            shasum -a 256 native-config/ios/AppIcon.appiconset/AppIcon-1024.png || true
+            find src-tauri/gen/apple -path "*AppIcon.appiconset*" -type f -exec ls -la {} + -exec shasum -a 256 {} + 2>/dev/null || true
+            sips -g pixelWidth -g pixelHeight -g hasAlpha -g space native-config/ios/AppIcon.appiconset/AppIcon-1024.png || true
+            echo ""
+            echo "=== Compiled Assets.car AppIcon entries ==="
+            if [ -f "$APP_PATH/Assets.car" ]; then
+              xcrun assetutil --info "$APP_PATH/Assets.car" | python3 -c "
+          import json, sys
+          items = json.load(sys.stdin)
+          icons = [x for x in items if isinstance(x, dict) and ('AppIcon' in str(x.get('Name','')) or x.get('AssetType') == 'Icon Image')]
+          print(f'Total Assets.car entries: {len(items)}, AppIcon entries: {len(icons)}')
+          for ic in icons[:30]:
+              print({k: ic.get(k) for k in ('Name','RenditionName','Idiom','PixelWidth','PixelHeight','Scale','BitsPerComponent','Encoding') if k in ic})
+          " || true
+            else
+              echo "Assets.car NOT found in .app"
+            fi
+            echo ""
+            echo "=== Loose icon PNGs inside .app ==="
+            find "$APP_PATH" -maxdepth 2 -name "*Icon*.png" -exec ls -la {} + 2>/dev/null || true
+          } > "$AUDIT" 2>&1
+          find "$APP_PATH" -maxdepth 2 -name "*Icon*.png" -exec cp {} "$ART_DIR/logs/bundle-icons/" \; 2>/dev/null || true
+          find src-tauri/gen/apple -path "*AppIcon.appiconset*" -name "*.png" -exec cp {} "$ART_DIR/logs/bundle-icons/" \; 2>/dev/null || true
+          cat "$AUDIT"
+
+          # Dump available simulator devices & devicetypes for store screenshot planning.
+          {
+            echo "=== Available Simulator Devices ==="
+            xcrun simctl list devices available
+            echo ""
+            echo "=== Simulator Device Types (iPhone / iPad) ==="
+            xcrun simctl list devicetypes | grep -E "iPhone|iPad" || true
+          } > "$ART_DIR/logs/sim-devices.txt" 2>&1
 
           # Package the .app as a zip artifact (preserving symlinks and bundle structure).
           (cd "$(dirname "$APP_PATH")" && zip -ry "$ART_DIR/IeumOffice-ios-sim.app.zip" "$APP_NAME" > /dev/null)
@@ -184,8 +248,10 @@ jobs:
           xcrun simctl spawn "$UDID" defaults write com.ieumoffice.mobile WebKit2LogsPageMessagesToSystemConsoleEnabled -bool true || true
           xcrun simctl ui "$UDID" appearance light || true
 
-          # Install the built .app.
+          # Install the built .app and capture SpringBoard screenshot to visually verify the app icon.
           xcrun simctl install "$UDID" "$APP_PATH"
+          sleep 3
+          xcrun simctl io "$UDID" screenshot "$ART_DIR/screenshots/00-springboard-icon.png" || true
 
           # Start unified simulator log stream in the background.
           LOG_STREAM="$ART_DIR/logs/sim-log-stream.txt"
