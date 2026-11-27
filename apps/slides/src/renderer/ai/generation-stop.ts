@@ -4,9 +4,11 @@
  * The same rule as the PDF document jobs' `JOB_STOP_KINDS`
  * (packages/pdf-structure/src/jobs/errors.ts): the connection cannot go on
  * (signed out, limit used up, program gone, tools unsafe, metered login not
- * accepted) or nothing a retry can change (out of credit). `free-limit` is the
- * free connection's exhausted daily allowance — also a today-only limit, not a
- * transient failure.
+ * accepted) or nothing a retry can change (out of credit, a prompt the person
+ * declined at the model's context limit, an editor they turned off). The job
+ * engine keeps that list current; `generation-stop.test.ts` fails when the two
+ * drift apart. `free-limit` is the free connection's exhausted daily
+ * allowance — also a today-only limit, not a transient failure.
  *
  * A rate limit used to let `generate_deck` keep sending its remaining pages and
  * its retry round, spending the user's quota on requests that could only fail.
@@ -23,6 +25,7 @@ export const GENERATION_STOP_KINDS: readonly string[] = [
   'credits',
   'headless-limit',
   'free-limit',
+  'context-limit',
   'off-in-app',
 ]
 
