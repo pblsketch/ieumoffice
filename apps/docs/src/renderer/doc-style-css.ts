@@ -557,7 +557,7 @@ export function docStyleCss(parsed: ParsedDocFull): string {
       const blankSrc = metrics ? blankFontFaceSrc() : null
       if (metrics && blankSrc) {
         gridStrut = true
-        eaStrut = !!aliasFace || standIn
+        eaStrut = typedGrid || !!aliasFace || standIn
         rules.push(
           `@font-face { font-family:'GenOffice Grid Strut'; src:${blankSrc}; ` +
             `ascent-override:${metrics.ascentPct}%; descent-override:${metrics.descentPct}%; ` +
@@ -1149,9 +1149,14 @@ export function docStyleCss(parsed: ParsedDocFull): string {
   }
   if (gridStrut) {
     // after every [data-style] family rule so the strut face wins the cascade;
-    // the tail keeps each context's own inherited chain rendering the glyphs
+    // the tail keeps each context's own inherited chain rendering the glyphs.
+    // CJK-stretch spans (.doc-east-asian-font) also lead with the strut face so
+    // Chromium does not union an offset span box against the strut past the
+    // line-height (!important beats inline chains).
+    const strutSel = eaStrut ? '.doc-grid-strut,.doc-ea-strut' : '.doc-grid-strut'
     rules.push(
-      `.doc-page :is(${eaStrut ? '.doc-grid-strut,.doc-ea-strut' : '.doc-grid-strut'}) { font-family:'GenOffice Grid Strut',var(--doc-grid-strut-tail,serif) }`,
+      `.doc-page :is(${strutSel}) { font-family:'GenOffice Grid Strut',var(--doc-grid-strut-tail,serif) !important }`,
+      `.doc-page :is(${strutSel}) .doc-east-asian-font { font-family:'GenOffice Grid Strut',var(--doc-east-asian-font,var(--doc-grid-strut-tail,serif)) !important }`,
     )
   }
   if (darkRules.length > 0) rules.push(`@media screen {\n${darkRules.join('\n')}\n}`)

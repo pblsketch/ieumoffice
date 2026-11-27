@@ -54,7 +54,7 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
 }))
 vi.mock('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url', () => ({ default: 'worker.js' }))
 
-const { loadFile, save } = await import('../src/renderer/file-actions')
+const { exportPdf, loadFile, save } = await import('../src/renderer/file-actions')
 type Ctx = Parameters<typeof loadFile>[0]
 
 const label = (key: string) => `<${key}>`
@@ -307,9 +307,19 @@ describe('Save As into another format', () => {
     installDesktop()
     pick = null
     pdfPages = 1
+    // exportPdf always prints through the mounted pagination preview (.pv-page)
+    const preview = document.createElement('div')
+    preview.className = 'pagination-preview'
+    const page = document.createElement('div')
+    page.className = 'pv-page'
+    page.style.width = '794px'
+    page.style.height = '1123px'
+    preview.appendChild(page)
+    document.body.appendChild(preview)
   })
   afterEach(() => {
     while (editors.length) editors.pop()!.destroy()
+    document.body.innerHTML = ''
     vi.restoreAllMocks()
   })
 
@@ -342,6 +352,29 @@ describe('Save As into another format', () => {
     expect(desktop.exportPdf).toHaveBeenCalledTimes(1)
     expect(desktop.exportPdf.mock.calls[0][3]).toBe('/out/report.pdf')
     expectUntouched(ctx)
+  })
+
+  it('exportPdf defers to the pagination preview even for headerless single-paper documents', async () => {
+    document.body.innerHTML = ''
+    const ctx = await openEdited()
+    const setShowPagePreview = vi.fn()
+    const bumpPendingExportTick = vi.fn()
+    ;(ctx as unknown as Record<string, unknown>).setShowPagePreview = setShowPagePreview
+    ;(ctx as unknown as Record<string, unknown>).bumpPendingExportTick = bumpPendingExportTick
+    const exportPromise = exportPdf(ctx, '/out/nofooter.pdf')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(desktop.exportPdf).not.toHaveBeenCalled()
+    expect(setShowPagePreview).toHaveBeenCalledWith(true)
+    expect(bumpPendingExportTick).toHaveBeenCalledTimes(1)
+    const pending = ctx.pendingMixedExportRef.current
+    expect(pending).not.toBe(false)
+    if (pending) {
+      expect(pending.outPath).toBe('/out/nofooter.pdf')
+      expect(pending.closePreview).toBe(true)
+      pending.resolve(true)
+    }
+    expect(await exportPromise).toBe(true)
   })
 
   it('HTML and Markdown picks go to their exports with the picked path', async () => {
