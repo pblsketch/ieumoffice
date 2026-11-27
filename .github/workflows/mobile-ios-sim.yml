@@ -60,6 +60,8 @@ jobs:
         run: |
           npm run studio -w @genoffice/hwp
           npm run build -w @genoffice/mobile
+          npm run typecheck -w @genoffice/mobile
+          npx --prefix apps/mobile vitest run tests/shell-ui.test.tsx
           test -f apps/mobile/dist/studio/index.html
 
       - name: Initialize iOS project and inject native config
@@ -723,11 +725,20 @@ jobs:
                     const saveBtn = document.querySelector('[data-testid="editor-save-btn"]');
                     const shell = document.querySelector('[data-mode]');
                     const mdTa = document.querySelector('[data-testid="markdown-editor-textarea"]');
+                    const header = document.querySelector('[data-testid="editor-header"]');
+                    const modeBtn = document.querySelector('[data-testid="editor-mode-toggle"]');
+                    const hRect = header ? header.getBoundingClientRect() : null;
+                    const mRect = modeBtn ? modeBtn.getBoundingClientRect() : null;
                     return {
                       lang: document.documentElement.lang,
                       navLang: navigator.language,
                       viewport: [window.innerWidth, window.innerHeight],
                       visualViewport: window.visualViewport ? [Math.round(window.visualViewport.width), Math.round(window.visualViewport.height)] : null,
+                      scrollY: Math.round(window.scrollY),
+                      vvOffsetTop: window.visualViewport ? Math.round(window.visualViewport.offsetTop) : 0,
+                      headerTop: hRect ? Math.round(hRect.top) : null,
+                      headerBottom: hRect ? Math.round(hRect.bottom) : null,
+                      modeBtnCy: mRect ? Math.round(mRect.top + mRect.height / 2) : null,
                       activeTag: document.activeElement?.tagName || '',
                       activeTestId: document.activeElement?.getAttribute?.('data-testid') || '',
                       shellMode: shell?.getAttribute('data-mode') || '',
@@ -1285,24 +1296,46 @@ jobs:
                       st7b = dump_page_state(insp, "07b-markdown-js-fallback")
                       typed_via = "js_input_fallback"
 
+                  # Explicitly tap the textarea after typing to reproduce the iOS WKWebView
+                  # keyboard-bar scroll trigger and verify the header does not shift into the status bar.
+                  if axe_ready:
+                      axe_tap_xy(el_md_ta["cx"], int(el_md_ta["y"] + 40), "verify-tap-md-textarea-no-header-shift")
+                      time.sleep(1.0)
+                      st7b = dump_page_state(insp, "07b-markdown-after-retap")
+
                   shot7b = screenshot("07b-markdown-dirty.png")
                   md_val = (st7b or {}).get("mdValue") or ""
                   save_state_after_type = (st7b or {}).get("saveBtnState")
+                  mode_btn_cy = (st7b or {}).get("modeBtnCy")
+                  header_ok = (
+                      (st7b or {}).get("scrollY", 0) == 0
+                      and (st7b or {}).get("vvOffsetTop", 0) == 0
+                      and (mode_btn_cy is None or mode_btn_cy >= 75)
+                  )
                   summary["checks"]["markdown_typing"] = {
                       "via": typed_via,
                       "mdValue": md_val,
                       "saveBtnState": save_state_after_type,
                       "saveBtnText": (st7b or {}).get("saveBtnText"),
                       "dirty_ok": save_state_after_type == "dirty",
+                      "scrollY": (st7b or {}).get("scrollY"),
+                      "vvOffsetTop": (st7b or {}).get("vvOffsetTop"),
+                      "headerTop": (st7b or {}).get("headerTop"),
+                      "modeBtnCy": mode_btn_cy,
+                      "header_pinned_ok": header_ok,
                   }
+                  if not header_ok:
+                      note = f"Header shifted on textarea tap: scrollY={(st7b or {}).get('scrollY')}, vvOffsetTop={(st7b or {}).get('vvOffsetTop')}, modeBtnCy={mode_btn_cy}"
+                      trace(f"[FINDING] {note}")
+                      summary["findings"].append(note)
                   summary["steps"].append({
                       "step": "07b-markdown-dirty",
-                      "ok": bool(md_val) and save_state_after_type == "dirty",
+                      "ok": bool(md_val) and save_state_after_type == "dirty" and header_ok,
                       "via": typed_via,
-                      "reason": f"mdValue={md_val!r}, saveBtnState={save_state_after_type!r}",
+                      "reason": f"mdValue={md_val!r}, saveBtnState={save_state_after_type!r}, modeBtnCy={mode_btn_cy}, scrollY={(st7b or {}).get('scrollY')}",
                       "screenshot": shot7b,
                   })
-                  trace(f"[OK] 07b-markdown-dirty via={typed_via} val={md_val!r} saveBtnState={save_state_after_type}")
+                  trace(f"[OK] 07b-markdown-dirty via={typed_via} val={md_val!r} saveBtnState={save_state_after_type} modeBtnCy={mode_btn_cy} scrollY={(st7b or {}).get('scrollY')} vvOff={(st7b or {}).get('vvOffsetTop')}")
 
                   # Step 7c: Tap [Done / 완료] (editor-mode-toggle) -> iOS Save picker (createSaveFile)
                   el_done = wait_for_element(insp, "07c-find-done", ['[data-testid="editor-mode-toggle"]'], ["완료", "Done"], timeout_s=10.0)
