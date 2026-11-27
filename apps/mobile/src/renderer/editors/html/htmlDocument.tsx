@@ -590,11 +590,13 @@ export function startHtmlDocument(
         {
           id: 'webExportDocx',
           label: t('webExportDocx'),
+          section: 'file',
           onPress: () => void exportHtml('docx'),
         },
         {
           id: 'webExportOdt',
           label: t('webExportOdt'),
+          section: 'file',
           onPress: () => void exportHtml('odt'),
         },
       ]

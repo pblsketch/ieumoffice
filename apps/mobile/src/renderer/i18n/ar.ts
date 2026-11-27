@@ -170,4 +170,10 @@ export const ar = {
   backupRestoreSaveAs: 'حفظ كنسخة',
   backupDelete: 'حذف',
   formatNotOpenable: 'لا يمكن فتح هذا النوع من الملفات.',
+  insertPanel: 'إدراج',
+  keyboardLock: 'قفل لوحة المفاتيح',
+  keyboardUnlock: 'إلغاء قفل لوحة المفاتيح',
+  moreSectionDocument: 'أدوات المستند',
+  moreSectionFile: 'الملف',
+  viewModeLabel: 'العرض',
 } as const satisfies Record<keyof typeof zh, string>

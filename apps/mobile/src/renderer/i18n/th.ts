@@ -171,4 +171,10 @@ export const th = {
   backupRestoreSaveAs: 'บันทึกเป็นสำเนา',
   backupDelete: 'ลบ',
   formatNotOpenable: 'ไม่สามารถเปิดไฟล์ประเภทนี้ได้',
+  insertPanel: 'แทรก',
+  keyboardLock: 'ล็อกแป้นพิมพ์',
+  keyboardUnlock: 'ปลดล็อกแป้นพิมพ์',
+  moreSectionDocument: 'เครื่องมือเอกสาร',
+  moreSectionFile: 'ไฟล์',
+  viewModeLabel: 'มุมมอง',
 } as const satisfies Record<keyof typeof zh, string>

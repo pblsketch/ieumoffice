@@ -172,4 +172,10 @@ export const id = {
   backupRestoreSaveAs: 'Simpan sebagai salinan',
   backupDelete: 'Hapus',
   formatNotOpenable: 'Jenis file ini tidak dapat dibuka.',
+  insertPanel: 'Sisipkan',
+  keyboardLock: 'Kunci papan ketik',
+  keyboardUnlock: 'Buka kunci papan ketik',
+  moreSectionDocument: 'Alat dokumen',
+  moreSectionFile: 'Berkas',
+  viewModeLabel: 'Tampilan',
 } as const satisfies Record<keyof typeof zh, string>

@@ -363,3 +363,30 @@ export function IconTextBigger(props: IconProps) {
     </SvgIcon>
   )
 }
+
+export function IconPlus(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </SvgIcon>
+  )
+}
+
+export function IconLock(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </SvgIcon>
+  )
+}
+
+export function IconUnlock(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 7.4-2" />
+    </SvgIcon>
+  )
+}

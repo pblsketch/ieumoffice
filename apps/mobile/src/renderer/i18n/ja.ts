@@ -172,4 +172,10 @@ export const ja = {
   backupRestoreSaveAs: 'コピーとして保存',
   backupDelete: '削除',
   formatNotOpenable: 'このファイル形式は開けません。',
+  insertPanel: '挿入',
+  keyboardLock: 'キーボードをロック',
+  keyboardUnlock: 'キーボードのロックを解除',
+  moreSectionDocument: '文書ツール',
+  moreSectionFile: 'ファイル',
+  viewModeLabel: '表示',
 } as const satisfies Record<keyof typeof zh, string>

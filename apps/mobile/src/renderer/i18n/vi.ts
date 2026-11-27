@@ -171,4 +171,10 @@ export const vi = {
   backupRestoreSaveAs: 'Lưu thành bản sao',
   backupDelete: 'Xóa',
   formatNotOpenable: 'Không thể mở loại tệp này.',
+  insertPanel: 'Chèn',
+  keyboardLock: 'Khóa bàn phím',
+  keyboardUnlock: 'Mở khóa bàn phím',
+  moreSectionDocument: 'Công cụ tài liệu',
+  moreSectionFile: 'Tệp',
+  viewModeLabel: 'Chế độ xem',
 } as const satisfies Record<keyof typeof zh, string>

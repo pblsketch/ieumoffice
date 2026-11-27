@@ -435,16 +435,19 @@ function startMarkdownDocument(
                   {
                     id: 'markdownToHwp',
                     label: tNow('markdownToHwp'),
+                    section: 'file' as const,
                     onPress: () => void exportMarkdown('hwpx'),
                   },
                   {
                     id: 'webExportDocx',
                     label: tNow('webExportDocx'),
+                    section: 'file' as const,
                     onPress: () => void exportMarkdown('docx'),
                   },
                   {
                     id: 'webExportOdt',
                     label: tNow('webExportOdt'),
+                    section: 'file' as const,
                     onPress: () => void exportMarkdown('odt'),
                   },
                 ]

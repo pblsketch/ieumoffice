@@ -14,6 +14,7 @@ import { wrapSkillWithViewEditGate } from '@genoffice/mobile-bridge/view-edit-ga
 import type { DocumentProfile, Place } from '@genoffice/doc-rules'
 import { DocCheckSheet } from '../components/DocCheckSheet'
 import { MemoSheet } from '../components/MemoSheet'
+import { IconFlowView, IconPageView } from '../components/MobileIcons'
 import { PageNumberSheet } from '../components/PageNumberSheet'
 import { translateMobile } from '../i18n'
 import type { MobileStringKey } from '../i18n/strings'
@@ -768,6 +769,29 @@ function startHwpDocument(
               id: 'docCheck',
               label: tNow('checkTitle'),
               onPress: () => setDocCheckOpen(true),
+            },
+          ]}
+          morePairs={[
+            {
+              id: 'hwpView',
+              label: tNow('viewModeLabel'),
+              section: 'document',
+              actions: [
+                {
+                  id: 'flowView',
+                  label: tNow('flowView'),
+                  active: hwpLayout === 'flow',
+                  icon: <IconFlowView size={16} />,
+                  onPress: () => void switchHwpLayout('flow'),
+                },
+                {
+                  id: 'pageView',
+                  label: tNow('pageView'),
+                  active: hwpLayout === 'page',
+                  icon: <IconPageView size={16} />,
+                  onPress: () => void switchHwpLayout('page'),
+                },
+              ],
             },
           ]}
           viewTools={viewTools}

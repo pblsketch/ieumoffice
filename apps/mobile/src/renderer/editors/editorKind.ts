@@ -89,7 +89,14 @@ export interface EditorWorkspaceProps {
 /** The EditorShell props App owns. */
 export type EditorFrameProps = Omit<
   EditorShellProps,
-  'quickActions' | 'formatGroups' | 'moreItems' | 'viewTools' | 'onFitToWidth' | 'children'
+  | 'quickActions'
+  | 'formatGroups'
+  | 'insertItems'
+  | 'moreItems'
+  | 'morePairs'
+  | 'viewTools'
+  | 'onFitToWidth'
+  | 'children'
 >
 
 /** What App lends an opened document. */
