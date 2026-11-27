@@ -4,6 +4,8 @@ import { createI18n, getUiLang } from '@genoffice/i18n'
 const tDlg = createI18n({
   zh: {
     dlgSaveTitle: '保存 HWP 文档',
+    saveSubmissionTitle: '另存为提交版',
+    submissionCopySuffix: '提交版',
     untitledFile: '未命名文档',
     dlgExportPdfTitle: '导出为 PDF',
     filterHwp: 'HWP 文档 (HWP)',
@@ -32,6 +34,8 @@ const tDlg = createI18n({
   },
   en: {
     dlgSaveTitle: 'Save HWP Document',
+    saveSubmissionTitle: 'Save as Submission Copy',
+    submissionCopySuffix: 'submission',
     untitledFile: 'Untitled',
     dlgExportPdfTitle: 'Export as PDF',
     filterHwp: 'HWP Documents (HWP)',
@@ -61,6 +65,8 @@ const tDlg = createI18n({
   },
   vi: {
     dlgSaveTitle: 'Lưu tài liệu HWP',
+    saveSubmissionTitle: 'Lưu bản nộp',
+    submissionCopySuffix: 'ban-nop',
     untitledFile: 'Không có tiêu đề',
     dlgExportPdfTitle: 'Xuất dưới dạng PDF',
     filterHwp: 'Tài liệu HWP (HWP)',
@@ -91,6 +97,8 @@ const tDlg = createI18n({
   },
   tr: {
     dlgSaveTitle: 'HWP Belgesini Kaydet',
+    saveSubmissionTitle: 'Teslim Kopyası Olarak Kaydet',
+    submissionCopySuffix: 'teslim',
     untitledFile: 'Adsız',
     dlgExportPdfTitle: 'PDF Olarak Dışa Aktar',
     filterHwp: 'HWP Belgeleri (HWP)',
@@ -121,6 +129,8 @@ const tDlg = createI18n({
   },
   ja: {
     dlgSaveTitle: 'HWP ドキュメントを保存',
+    saveSubmissionTitle: '提出用コピーとして保存',
+    submissionCopySuffix: '提出用',
     untitledFile: '無題',
     dlgExportPdfTitle: 'PDF として書き出す',
     filterHwp: 'HWP ドキュメント (HWP)',
@@ -151,6 +161,8 @@ const tDlg = createI18n({
   },
   ko: {
     dlgSaveTitle: '한글 문서 저장',
+    saveSubmissionTitle: '제출본으로 저장',
+    submissionCopySuffix: '제출본',
     untitledFile: '제목 없음',
     dlgExportPdfTitle: 'PDF로 내보내기',
     filterHwp: '한글 문서 (HWP)',
@@ -181,6 +193,8 @@ const tDlg = createI18n({
   },
   fr: {
     dlgSaveTitle: 'Enregistrer le document HWP',
+    saveSubmissionTitle: 'Enregistrer comme copie de soumission',
+    submissionCopySuffix: 'soumission',
     untitledFile: 'Sans titre',
     dlgExportPdfTitle: 'Exporter en PDF',
     filterHwp: 'Documents HWP (HWP)',
@@ -211,6 +225,8 @@ const tDlg = createI18n({
   },
   de: {
     dlgSaveTitle: 'HWP-Dokument speichern',
+    saveSubmissionTitle: 'Als Einreichungskopie speichern',
+    submissionCopySuffix: 'einreichung',
     untitledFile: 'Unbenannt',
     dlgExportPdfTitle: 'Als PDF exportieren',
     filterHwp: 'HWP-Dokumente (HWP)',
@@ -241,6 +257,8 @@ const tDlg = createI18n({
   },
   es: {
     dlgSaveTitle: 'Guardar documento HWP',
+    saveSubmissionTitle: 'Guardar como copia de entrega',
+    submissionCopySuffix: 'entrega',
     untitledFile: 'Sin título',
     dlgExportPdfTitle: 'Exportar como PDF',
     filterHwp: 'Documentos HWP (HWP)',
@@ -271,6 +289,8 @@ const tDlg = createI18n({
   },
   th: {
     dlgSaveTitle: 'บันทึกเอกสาร HWP',
+    saveSubmissionTitle: 'บันทึกเป็นสำเนาสำหรับส่ง',
+    submissionCopySuffix: 'ฉบับส่ง',
     untitledFile: 'ไม่มีชื่อ',
     dlgExportPdfTitle: 'ส่งออกเป็น PDF',
     filterHwp: 'เอกสาร HWP (HWP)',
@@ -301,6 +321,8 @@ const tDlg = createI18n({
   },
   id: {
     dlgSaveTitle: 'Simpan dokumen HWP',
+    saveSubmissionTitle: 'Simpan sebagai Salinan Penyerahan',
+    submissionCopySuffix: 'penyerahan',
     untitledFile: 'Tanpa judul',
     dlgExportPdfTitle: 'Ekspor sebagai PDF',
     filterHwp: 'Dokumen HWP (HWP)',
@@ -331,6 +353,8 @@ const tDlg = createI18n({
   },
   ru: {
     dlgSaveTitle: 'Сохранить документ HWP',
+    saveSubmissionTitle: 'Сохранить копию для подачи',
+    submissionCopySuffix: 'копия',
     untitledFile: 'Без названия',
     dlgExportPdfTitle: 'Экспорт в PDF',
     filterHwp: 'Документы HWP (HWP)',
@@ -361,6 +385,8 @@ const tDlg = createI18n({
   },
   ar: {
     dlgSaveTitle: 'حفظ مستند HWP',
+    saveSubmissionTitle: 'حفظ كنسخة للتقديم',
+    submissionCopySuffix: 'للتقديم',
     untitledFile: 'بدون عنوان',
     dlgExportPdfTitle: 'تصدير بتنسيق PDF',
     filterHwp: 'مستندات HWP (HWP)',
@@ -391,6 +417,8 @@ const tDlg = createI18n({
   },
   pt: {
     dlgSaveTitle: 'Salvar documento HWP',
+    saveSubmissionTitle: 'Salvar como cópia de entrega',
+    submissionCopySuffix: 'entrega',
     untitledFile: 'Sem título',
     dlgExportPdfTitle: 'Exportar como PDF',
     filterHwp: 'Documentos HWP (HWP)',
@@ -421,6 +449,8 @@ const tDlg = createI18n({
   },
   it: {
     dlgSaveTitle: 'Salva documento HWP',
+    saveSubmissionTitle: 'Salva come copia di consegna',
+    submissionCopySuffix: 'consegna',
     untitledFile: 'Senza titolo',
     dlgExportPdfTitle: 'Esporta come PDF',
     filterHwp: 'Documenti HWP (HWP)',
@@ -451,6 +481,8 @@ const tDlg = createI18n({
   },
   pl: {
     dlgSaveTitle: 'Zapisz dokument HWP',
+    saveSubmissionTitle: 'Zapisz jako kopię do złożenia',
+    submissionCopySuffix: 'kopia',
     untitledFile: 'Bez tytułu',
     dlgExportPdfTitle: 'Eksportuj jako PDF',
     filterHwp: 'Dokumenty HWP (HWP)',
@@ -481,6 +513,8 @@ const tDlg = createI18n({
   },
   cs: {
     dlgSaveTitle: 'Uložit dokument HWP',
+    saveSubmissionTitle: 'Uložit jako kopii k odevzdání',
+    submissionCopySuffix: 'odevzdani',
     untitledFile: 'Bez názvu',
     dlgExportPdfTitle: 'Exportovat jako PDF',
     filterHwp: 'Dokumenty HWP (HWP)',
@@ -511,6 +545,8 @@ const tDlg = createI18n({
   },
   nl: {
     dlgSaveTitle: 'HWP-document opslaan',
+    saveSubmissionTitle: 'Opslaan als inleverkopie',
+    submissionCopySuffix: 'inlevering',
     untitledFile: 'Naamloos',
     dlgExportPdfTitle: 'Exporteren als PDF',
     filterHwp: 'HWP-documenten (HWP)',
@@ -541,6 +577,8 @@ const tDlg = createI18n({
   },
   ms: {
     dlgSaveTitle: 'Simpan dokumen HWP',
+    saveSubmissionTitle: 'Simpan sebagai Salinan Serahan',
+    submissionCopySuffix: 'serahan',
     untitledFile: 'Tanpa tajuk',
     dlgExportPdfTitle: 'Eksport sebagai PDF',
     filterHwp: 'Dokumen HWP (HWP)',
@@ -571,6 +609,8 @@ const tDlg = createI18n({
   },
   he: {
     dlgSaveTitle: 'שמירת מסמך HWP',
+    saveSubmissionTitle: 'שמירה כעותק להגשה',
+    submissionCopySuffix: 'הגשה',
     untitledFile: 'ללא שם',
     dlgExportPdfTitle: 'ייצוא כ-PDF',
     filterHwp: 'מסמכי HWP (HWP)',
@@ -600,6 +640,8 @@ const tDlg = createI18n({
   },
   hi: {
     dlgSaveTitle: 'HWP दस्तावेज़ सहेजें',
+    saveSubmissionTitle: 'जमा करने की प्रति के रूप में सहेजें',
+    submissionCopySuffix: 'प्रति',
     untitledFile: 'शीर्षकहीन',
     dlgExportPdfTitle: 'PDF के रूप में निर्यात करें',
     filterHwp: 'HWP दस्तावेज़ (HWP)',
@@ -630,6 +672,8 @@ const tDlg = createI18n({
   },
   'zh-TW': {
     dlgSaveTitle: '儲存 HWP 文件',
+    saveSubmissionTitle: '另存為提交版',
+    submissionCopySuffix: '提交版',
     untitledFile: '未命名文件',
     dlgExportPdfTitle: '匯出為 PDF',
     filterHwp: 'HWP 文件 (HWP)',
@@ -660,6 +704,8 @@ const tDlg = createI18n({
 
 export type DlgKey =
   | 'dlgSaveTitle'
+  | 'saveSubmissionTitle'
+  | 'submissionCopySuffix'
   | 'untitledFile'
   | 'dlgExportPdfTitle'
   | 'filterHwp'

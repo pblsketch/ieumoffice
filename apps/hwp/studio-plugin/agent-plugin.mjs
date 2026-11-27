@@ -21,7 +21,13 @@ import {
   countCollector,
 } from './char-count.mjs'
 import { documentStats, engineChars, engineLength, engineSlice } from './document-info.mjs'
-import { isAppMarkName, isAppTocHyperlinkField } from './doc-marks.mjs'
+import {
+  MARK_PREFIXES,
+  findRangeMarks,
+  isAppMarkName,
+  isAppTocHyperlinkField,
+  readDocSetting,
+} from './doc-marks.mjs'
 import { installDialogTheme } from './dialog-theme.mjs'
 import {
   BORDER_LINES,
@@ -82,7 +88,28 @@ import {
   readOutline,
   writeDocOutlineMap,
 } from './outline.mjs'
+import {
+  detectLegacyToc,
+  findTocRange,
+  insertTocBlock,
+  listTocRanges,
+  readTocMeta,
+  refreshTocBlock,
+  registerTocHelpers,
+} from './toc.mjs'
+import {
+  INDEX_BLOCK_SETTING_KEY,
+  addIndexMark,
+  addIndexMarksAll,
+  buildIndexBlock,
+  listIndexMarks,
+  refreshIndexBlock,
+  removeIndexMark,
+  removeIndexMarksByTerm,
+} from './index-marks.mjs'
 import { installWorkpaneMenu } from './workpane-menu.mjs'
+import { installTocIndexMenu } from './toc-dialogs.mjs'
+import { buildSubmissionCopy, defaultStalenessRegistry } from './staleness.mjs'
 
 export const AGENT_PLUGIN_ID = 'ieum-agent'
 
@@ -170,6 +197,8 @@ const REVEAL_COMMAND = 'ext:ieum-reveal'
 const REVEAL_FIND_COMMAND = 'ext:ieum-reveal-find'
 /** The command this plugin registers to read the current caret paragraph (sec, para). */
 const CARET_POSITION_COMMAND = 'ext:ieum-caret-position'
+/** The command this plugin registers to select a multi-paragraph range (e.g. detected legacy TOC). */
+const HIGHLIGHT_RANGE_COMMAND = 'ext:ieum-highlight-range'
 /** Changes triggered from the user's workpane UI: recorded as foreign edits, not AI changes. */
 const WORKPANE_CHANGES = new Set(['workpane-replace', 'outline-style-map'])
 /**
@@ -187,6 +216,7 @@ const FILE_MENU = [
   { command: 'open', id: 'ext:ieum-open', shortcut: 'Ctrl+O' },
   { command: 'save', id: 'ext:ieum-save', shortcut: 'Ctrl+S' },
   { command: 'saveAs', id: 'ext:ieum-save-as', shortcut: 'Ctrl+Shift+S' },
+  { command: 'saveSubmission', id: 'ext:ieum-save-submission' },
   { command: 'importPdf', id: 'ext:ieum-import-pdf' },
   { command: 'pdf', id: 'ext:ieum-export-pdf' },
   { command: 'preview', id: 'ext:ieum-preview' },
@@ -747,6 +777,35 @@ function showPlace(services, place) {
   if (Number.isInteger(place.length) && place.length > 0) {
     cursor.setAnchor()
     cursor.moveTo({ ...start, charOffset: offset + place.length })
+  }
+  if (input.updateCaret) input.updateCaret()
+  return true
+}
+
+/**
+ * Select a body paragraph span from `(sec, startPara, 0)` through `(sec, endPara, endOffset)`
+ * so the user sees a multi-paragraph block (such as a detected legacy TOC) highlighted on page.
+ */
+function showParaRange(services, range) {
+  const input = services && services.getInputHandler ? services.getInputHandler() : null
+  const cursor = input ? input.cursor : null
+  if (
+    !cursor ||
+    !range ||
+    !Number.isInteger(range.sec) ||
+    !Number.isInteger(range.startPara) ||
+    !Number.isInteger(range.endPara)
+  ) {
+    return false
+  }
+  const endOffset = Number.isInteger(range.endOffset) && range.endOffset >= 0 ? range.endOffset : 0
+  const startPos = { sectionIndex: range.sec, paragraphIndex: range.startPara, charOffset: 0 }
+  const endPos = { sectionIndex: range.sec, paragraphIndex: range.endPara, charOffset: endOffset }
+  cursor.clearSelection()
+  cursor.moveTo(startPos)
+  if (range.endPara > range.startPara || endOffset > 0) {
+    cursor.setAnchor()
+    cursor.moveTo(endPos)
   }
   if (input.updateCaret) input.updateCaret()
   return true
@@ -6875,11 +6934,6 @@ function writeNote(doc, at, prefix, lines) {
 
 const noteSummary = (note) => ({ kind: note.kind, number: note.number })
 
-/** Most entries one table of contents takes. */
-const MAX_TOC_ENTRIES = 100
-const MAX_TOC_LEVEL = 3
-/** Longest heading a table of contents shows. */
-const MAX_TOC_TEXT = 120
 /** How far a heading is indented, per level below the first. */
 const TOC_INDENT_PT = 14
 /** Width of the page-number column; the heading column takes the rest of the text width. */
@@ -6888,23 +6942,11 @@ const TOC_PAGE_COLUMN_PT = 45
 const TOC_CELL_STYLE = 'border:none;padding:1.41pt 5.1pt'
 /** Room a heading cell keeps free: its margins, and a little for a font wider than guessed. */
 const TOC_CELL_SLACK_PT = 24
-/** How much of a heading is looked up when the page numbers are written again. */
-const TOC_KEY_CHARS = 40
-const PAGE_NUMBER = /^\s*(\d+)\s*$/
 
 /** The text of a body paragraph. */
 const bodyText = (doc, sec, k) => {
   const length = doc.getParagraphLength(sec, k)
   return length > 0 ? doc.getTextRange(sec, k, 0, length) : ''
-}
-
-/** The page number a reader sees for a body paragraph (the section may number its pages its own way). */
-function pageNumberOf(doc, sec, para) {
-  const at = parse(doc.getPageOfPosition(sec, para))
-  if (!at.ok || !Number.isInteger(at.page))
-    throw fail('ENGINE', 'could not find the page of a heading')
-  const info = parse(doc.getPageInfo(at.page))
-  return Number.isInteger(info.pageNumber) ? info.pageNumber : at.page + 1
 }
 
 /** The width of the text of a section's page, in points. */
@@ -7367,20 +7409,6 @@ function overflowingRowsOf(measured, cells) {
   return [...rows].sort((a, b) => a - b)
 }
 
-function checkTocEntries(entries) {
-  if (!Array.isArray(entries) || entries.length === 0 || entries.length > MAX_TOC_ENTRIES) {
-    throw fail('BAD_ARGUMENT', `entries must list 1 to ${MAX_TOC_ENTRIES} headings`)
-  }
-  for (const entry of entries) {
-    if (!entry || typeof entry.find !== 'string' || entry.find.length === 0) {
-      throw fail('BAD_ARGUMENT', 'each entry needs the text of its heading')
-    }
-    if (!Number.isInteger(entry.level) || entry.level < 1 || entry.level > MAX_TOC_LEVEL) {
-      throw fail('BAD_ARGUMENT', `each entry needs a level from 1 to ${MAX_TOC_LEVEL}`)
-    }
-  }
-}
-
 /**
  * A table of contents as a table the engine pastes: a row per heading, the heading in the
  * first column (indented by level), its page number right-aligned in the second. No lines:
@@ -7552,14 +7580,6 @@ export function oneLine(text, look, widthPt) {
 
 /** The cell at a row and column of a table (zero-based), as gridOf lists it. */
 const cellOf = (grid, row, col) => grid.find((cell) => cell.row === row && cell.col === col)
-
-/** Replace the text of the first paragraph of a cell. */
-function setCellText(doc, table, cell, value) {
-  const box = cellBox(doc, table, cell)
-  const length = box.length(0)
-  if (length > 0) box.deleteText(0, length)
-  box.insert(0, value)
-}
 
 // ---- tab widths ----
 
@@ -7948,6 +7968,20 @@ export const agentPlugin = {
     // when the plugin comes up, not when the AI panel opens: a settings dialog
     // can be opened on a document the panel never touched.
     installDialogTheme()
+
+    // Wire shared TOC layout/formatting helpers without creating an ESM import cycle.
+    const tocHelpers = {
+      contentsOf,
+      tocLookOf,
+      tocHtml,
+      withPortableWidths,
+      textWidthPt,
+      columnWidthUnits,
+      oneLine,
+      tablesOf,
+    }
+    registerTocHelpers(tocHelpers)
+    let tocAppStyleMap = undefined
 
     // the unsaved state as the editor sets it, in the same task as the edit: the app's close
     // prompt reads its copy of this, and a key typed just before closing must be in it
@@ -8597,19 +8631,72 @@ export const agentPlugin = {
     }
 
     let caretNow = null
+    let caretDetailNow = null
+    let caretReadRan = false
     try {
       host.automation.registerCommand({
         id: CARET_POSITION_COMMAND,
         label: 'Read the caret paragraph',
         execute: (services) => {
+          caretReadRan = true
           try {
             const input = services && services.getInputHandler ? services.getInputHandler() : null
             const cursor = input ? input.cursor : null
             const pos = cursor && cursor.getPosition ? cursor.getPosition() : null
             const at = endOf(pos)
             caretNow = at ? { sec: at.sec, para: at.para } : null
+            if (!pos) {
+              caretDetailNow = null
+            } else if (
+              pos.inHeaderFooter === true ||
+              pos.isHeader === true ||
+              pos.isFooter === true ||
+              pos.isHeaderFooter === true ||
+              pos.inNote === true ||
+              pos.inFootnote === true ||
+              pos.inEndnote === true
+            ) {
+              caretDetailNow = {
+                inHeaderFooter:
+                  pos.inHeaderFooter === true ||
+                  pos.isHeader === true ||
+                  pos.isFooter === true ||
+                  pos.isHeaderFooter === true,
+                inNote: pos.inNote === true || pos.inFootnote === true || pos.inEndnote === true,
+              }
+            } else if (at) {
+              caretDetailNow = {
+                sec: at.sec,
+                para: at.para,
+                offset: at.offset,
+                ...(at.textBox ? { inTextBox: true } : {}),
+                ...(Array.isArray(at.path) && at.path.length > 0
+                  ? { inTable: !at.textBox, cellPath: at.path }
+                  : {}),
+              }
+            } else {
+              caretDetailNow = { inHeaderFooter: true }
+            }
           } catch {
             caretNow = null
+            caretDetailNow = null
+          }
+        },
+      })
+    } catch {
+      // registered by an earlier activation of this plugin, or a host without commands
+    }
+
+    let rangeHighlighted = false
+    try {
+      host.automation.registerCommand({
+        id: HIGHLIGHT_RANGE_COMMAND,
+        label: 'Highlight a paragraph range',
+        execute: (services, range) => {
+          try {
+            rangeHighlighted = showParaRange(services, range)
+          } catch {
+            rangeHighlighted = false
           }
         },
       })
@@ -12927,244 +13014,700 @@ export const agentPlugin = {
         )
       }),
 
+      /** List all paired `차례:` TOC range marks in the document. */
+      listTocRanges: guarded(() => host.read((doc) => listTocRanges(doc))),
+
+      /** Detect an unmarked legacy or externally created table of contents. */
+      detectLegacyToc: guarded((options) =>
+        host.read((doc) => detectLegacyToc(doc, { ...options, made: contentsMade })),
+      ),
+
       /**
-       * Add a table of contents next to the paragraph `anchor` occurs in (or at the end): a
-       * title line when `title` is given, then a table with a row per heading and its page
-       * number. A heading is named by text it contains (`find`, with `occurrence` when
-       * that text occurs more than once) and shown as its whole paragraph; headings are body
-       * paragraphs. The page numbers are those with the table of contents in place.
+       * Insert a marked table of contents (`body`, `table`, `figure`, or `equation`)
+       * in `'dotted-tab'` or `'table'` layout, placed by 0-based `(sec, para)` or by
+       * `(anchor, occurrence, where)`. Defaults to an AI-undoable edit (`foreign: false`);
+       * UI dialogs pass `{ foreign: true, allowMemoRemoval: true }`.
        */
-      insertToc: guarded((anchor, occurrence, where, title, entries, options) => {
-        checkWhere(where)
-        checkTocEntries(entries)
-        if (title !== null && title !== undefined) checkReplacement(title)
-        const titled = typeof title === 'string' && title.trim() !== ''
-        const headingsOf = (doc) =>
-          entries.map((entry) => {
-            const hits = searchAll(doc, entry.find)
-            const picked = pickHit(hits, entry.occurrence ?? null)
-            const reason = !picked.hit
-              ? picked.reason
-              : !isReplaceable(picked.hit) || cellPathOf(picked.hit)
-                ? 'unsupported_place'
-                : null
-            const hit = reason ? null : picked.hit
-            const text = hit ? bodyText(doc, hit.sec, hit.para) : ''
-            return { entry, hits, hit, text, reason }
-          })
-        const refusal = host.read((doc) => {
-          const located = locate(doc, anchor, occurrence, where)
-          if (located.refusal) return located.refusal
-          if (located.box.inTable) return { ok: false, reason: 'in_table', count: 1 }
-          const there = contentsOf(doc, contentsMade)
-          if (there) return { ok: false, reason: 'toc_exists', count: 1, ...there }
-          const missing = headingsOf(doc).find((heading) => heading.reason)
-          if (!missing) return null
+      insertToc: guarded((params, changeOptions) => {
+        if (!params || typeof params !== 'object' || Array.isArray(params)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
+        }
+        if (params.title !== undefined && params.title !== null) checkReplacement(params.title)
+        if (params.where !== undefined && params.where !== null) checkWhere(params.where)
+
+        const hasCoords = params.sec !== undefined || params.para !== undefined
+        const hasAnchor = params.anchor !== undefined || params.where !== undefined
+        if (hasCoords && hasAnchor) {
           return {
             ok: false,
-            reason: 'no_heading',
-            heading: missing.entry.find,
-            why: missing.reason,
-            count: missing.hits.length,
-            ...(missing.reason === 'ambiguous' ? { matches: listMatches(doc, missing.hits) } : {}),
+            reason: 'invalid_options',
+            error: 'Specify either (sec, para) or (anchor, where), not both',
           }
-        })
-        if (refusal) return refusal
-        let written = null
-        const result = keepingObjects((mustKeep) =>
-          change(
-            'insert-toc',
-            (doc) => {
-              const { box, plain } = locate(doc, anchor, occurrence, where)
-              if (!box || box.inTable) throw fail('CHANGED', 'the document changed mid-call')
-              const before = objectsOf(doc)
-              const { sec } = box.place(box.index, 0)
-              const headings = headingsOf(doc)
-              if (headings.some((heading) => !heading.hit)) {
-                throw fail('CHANGED', 'the document changed mid-call')
-              }
-              const look = tocLookOf(doc, entries)
-              const width = textWidthPt(doc, sec)
-              const rows = headings.map(({ entry, text }) => {
-                const level = look.levels.get(entry.level)
-                return {
-                  text: oneLine(clip(text.replace(/\s+/g, ' ').trim(), MAX_TOC_TEXT), level, width),
-                  look: level,
-                  page: 0,
-                }
-              })
-              let first = box.index
-              if (where === 'before') box.splitStart(first)
-              else {
-                openAfter(box, first, plain)
-                first += 1
-              }
-              let holder = first
-              if (titled) {
-                const text = title.trim()
-                box.insert(first, text)
-                // the title is split off the anchor, often a heading: it takes its own look
-                box.applyStyle(first, look.title.style)
-                const { font, bold, color } = look.title
-                const { chars } = resolveFormat(
-                  doc,
-                  formatOf(
-                    {
-                      ...(font.family ? { font: font.family } : {}),
-                      size: font.points,
-                      bold,
-                      ...(HEX_COLOR.test(color ?? '') ? { color } : {}),
-                    },
-                    false,
-                  ),
-                )
-                box.formatChars(first, 0, box.length(first), chars)
-                openAfter(box, first, false)
-                holder = first + 1
-              }
-              box.applyStyle(holder, styleIdOf(doc, BODY_STYLE) ?? 0)
-              box.pasteHtml(holder, tocHtml(rows, width))
-              const { tables } = tablesOf(doc)
-              const number =
-                tables.findIndex(
-                  (candidate) =>
-                    candidate.sec === sec &&
-                    candidate.para === holder &&
-                    candidate.path.length === 1,
-                ) + 1
-              const table = tables[number - 1]
-              if (!table) throw fail('ENGINE', 'the table of contents could not be made')
-              // the pages as they are now: every paragraph from the first new one moved down
-              const added = holder - first + 1
-              const grid = gridOf(doc, table)
-              const control = table.path[0].controlIndex
-              const pages = headings.map(({ entry, hit }, index) => {
-                const para = hit.sec === sec && hit.para >= first ? hit.para + added : hit.para
-                const page = pageNumberOf(doc, hit.sec, para)
-                const cell = cellOf(grid, index, 1)
-                if (!cell) throw fail('ENGINE', 'the table of contents came out in another shape')
-                setCellText(doc, table, cell.cell, String(page))
-                const { style } = look.levels.get(entry.level)
-                if (style !== null) {
-                  for (const col of [0, 1]) {
-                    expectOk(
-                      doc.applyCellStyle(
-                        sec,
-                        holder,
-                        control,
-                        cellOf(grid, index, col).cell,
-                        0,
-                        style,
-                      ),
-                      'style the table of contents',
-                    )
+        }
+
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'insert-toc',
+              (doc) => {
+                const before = objectsOf(doc)
+                const kind = params.kind ?? 'body'
+                const existing = findTocRange(doc, kind)
+                let replacingRange = null
+                if (existing && params.replaceExisting === true) {
+                  replacingRange = {
+                    sec: existing.start.sec,
+                    startPara: existing.start.para,
+                    endPara: existing.end.para,
+                  }
+                } else if (!existing && kind === 'body' && params.replaceLegacy === true) {
+                  const legacy = detectLegacyToc(doc, { made: contentsMade })
+                  if (legacy) {
+                    replacingRange = {
+                      sec: legacy.sec,
+                      startPara: legacy.startPara,
+                      endPara: legacy.endPara,
+                    }
                   }
                 }
-                return page
-              })
-              if (titled) {
-                expectOk(
-                  doc.applyParaFormat(sec, first, JSON.stringify({ alignment: 'center' })),
-                  'center the title',
+                const oldTocTables = replacingRange
+                  ? tablesOf(doc).tables.filter(
+                      (t) =>
+                        t.sec === replacingRange.sec &&
+                        t.path.length === 1 &&
+                        t.para >= replacingRange.startPara &&
+                        t.para <= replacingRange.endPara,
+                    ).length
+                  : 0
+
+                let place
+                let appendedTailSec = null
+                if (hasCoords) {
+                  place = { sec: params.sec ?? 0, para: params.para ?? 0 }
+                } else if (hasAnchor) {
+                  const where = params.where ?? (params.anchor !== undefined ? 'after' : 'end')
+                  const located = locate(doc, params.anchor, params.occurrence ?? null, where)
+                  if (located.refusal) {
+                    refused = located.refusal
+                    throw abort
+                  }
+                  if (located.box.inTable) {
+                    refused = { ok: false, reason: 'in_table', count: 1 }
+                    throw abort
+                  }
+                  const sec = located.box.place(located.box.index, 0).sec
+                  const paraCount = doc.getParagraphCount(sec)
+                  if (where === 'before') {
+                    place = { sec, para: located.box.index }
+                  } else {
+                    const afterPara = where === 'end' ? paraCount : located.box.index + 1
+                    if (afterPara < paraCount) {
+                      place = { sec, para: afterPara }
+                    } else if (replacingRange) {
+                      place = { sec, para: paraCount - 1 }
+                    } else {
+                      const lastPara = paraCount - 1
+                      expectOk(
+                        doc.splitParagraph(sec, lastPara, doc.getParagraphLength(sec, lastPara)),
+                        'append paragraph for table of contents',
+                      )
+                      doc.applyStyle(sec, lastPara + 1, styleIdOf(doc, BODY_STYLE) ?? 0)
+                      place = { sec, para: lastPara + 1 }
+                      appendedTailSec = sec
+                    }
+                  }
+                } else {
+                  place = { sec: 0, para: 0 }
+                }
+
+                const res = insertTocBlock(doc, place, {
+                  kind,
+                  ...(params.layout !== undefined ? { layout: params.layout } : {}),
+                  ...(params.maxLevel !== undefined ? { maxLevel: params.maxLevel } : {}),
+                  ...(params.links !== undefined ? { links: params.links } : {}),
+                  ...(params.title !== undefined ? { title: params.title } : {}),
+                  ...(params.appStyleMap !== undefined ? { appStyleMap: params.appStyleMap } : {}),
+                  ...(params.replaceLegacy !== undefined
+                    ? { replaceLegacy: params.replaceLegacy }
+                    : {}),
+                  ...(params.replaceExisting !== undefined
+                    ? { replaceExisting: params.replaceExisting }
+                    : {}),
+                  made: contentsMade,
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+
+                if (appendedTailSec !== null) {
+                  const tailPara = doc.getParagraphCount(appendedTailSec) - 1
+                  if (
+                    tailPara > res.range.endPara &&
+                    doc.getParagraphLength(appendedTailSec, tailPara) === 0
+                  ) {
+                    doc.deleteParagraph(appendedTailSec, tailPara)
+                  }
+                }
+
+                const newTocTables = res.layout === 'table' ? 1 : 0
+                const after = objectsOf(doc)
+                mustKeep(
+                  { ...before, controls: before.controls - oldTocTables + newTocTables },
+                  after,
                 )
-              }
-              const after = objectsOf(doc)
-              // the table is an object of its own; nothing that was there may be gone
-              mustKeep(before, { ...after, controls: Math.min(after.controls, before.controls) })
-              written = rows.map((row) => squash(row.text))
-              return {
-                ok: true,
-                count: entries.length,
-                pages,
-                table: number,
-                tables: tables.length,
-                place: { sec, para: first, offset: 0, length: titled ? title.trim().length : 0 },
-              }
-            },
-            options,
-          ),
-        )
-        if (result.ok && written) contentsMade.push(written)
-        return result
+
+                if (res.layout === 'table') {
+                  const { tables } = tablesOf(doc)
+                  const tableNum =
+                    tables.findIndex(
+                      (t) =>
+                        t.sec === res.range.sec &&
+                        t.path.length === 1 &&
+                        t.para >= res.range.startPara &&
+                        t.para <= res.range.endPara,
+                    ) + 1
+                  if (tableNum > 0) {
+                    return { ...res, table: tableNum, tables: tables.length }
+                  }
+                }
+                return res
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
       }),
 
       /**
-       * Write the page numbers of a table of contents again: the two-column table in the
-       * paragraph after the one `title` occurs in. Each row's heading is looked up by its
-       * text in the body; a row whose heading is gone, or whose second cell is not a page
-       * number, is left alone.
+       * Refresh an existing marked table of contents in place (or replace a detected legacy
+       * TOC when `replaceLegacy: true`). Refuses without mutating when manual edits are
+       * detected unless `allowOverwriteManual: true`.
        */
-      refreshToc: guarded((title, occurrence, options) => {
-        const find = (doc) => {
-          const located = locate(doc, title, occurrence, 'after')
-          if (located.refusal) return { refusal: located.refusal }
-          if (located.box.inTable) return { refusal: { ok: false, reason: 'in_table', count: 1 } }
-          const { sec } = located.box.place(located.box.index, 0)
-          const table = tablesOf(doc).tables.find(
-            (candidate) =>
-              candidate.sec === sec &&
-              candidate.para === located.box.index + 1 &&
-              candidate.path.length === 1 &&
-              candidate.cols === 2,
-          )
-          return table ? { table } : { refusal: { ok: false, reason: 'no_toc', count: 0 } }
+      refreshToc: guarded((params, changeOptions) => {
+        const opts = params ?? {}
+        if (typeof opts !== 'object' || Array.isArray(opts)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
         }
-        const refusal = host.read((doc) => find(doc).refusal ?? null)
-        if (refusal) return refusal
-        return keepingObjects((mustKeep) =>
-          change(
-            'refresh-toc',
-            (doc) => {
-              const { table } = find(doc)
-              if (!table) throw fail('CHANGED', 'the document changed mid-call')
-              const before = objectsOf(doc)
-              const grid = gridOf(doc, table)
-              let rows = 0
-              let changed = 0
-              const missing = []
-              for (let row = 0; row < table.rows; row++) {
-                const headingCell = cellOf(grid, row, 0)
-                const pageCell = cellOf(grid, row, 1)
-                if (!headingCell || !pageCell) continue
-                const shown = PAGE_NUMBER.exec(
-                  paragraphsOf(cellBox(doc, table, pageCell.cell)).join(''),
-                )
-                if (!shown) continue
-                rows += 1
-                const heading = paragraphsOf(cellBox(doc, table, headingCell.cell))
-                  .join(' ')
-                  .trim()
-                // looked up by the start of its text (a long one was cut short in the table); a
-                // body paragraph that starts with it is preferred to a mention elsewhere
-                const key = heading.replace(/…$/, '').slice(0, TOC_KEY_CHARS)
-                const body = key
-                  ? searchAll(doc, key).filter((hit) => !cellPathOf(hit) && isReplaceable(hit))
-                  : []
-                const hit =
-                  body.find((candidate) =>
-                    bodyText(doc, candidate.sec, candidate.para).trim().startsWith(key),
-                  ) ?? body[0]
-                if (!hit) {
-                  missing.push(heading)
-                  continue
+        if (opts.title !== undefined && opts.title !== null) checkReplacement(opts.title)
+
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'refresh-toc',
+              (doc) => {
+                const before = objectsOf(doc)
+                const kind = opts.kind ?? 'body'
+                const existing = findTocRange(doc, kind)
+                let oldTocTables = 0
+                if (existing) {
+                  const meta = readTocMeta(doc, kind)
+                  const inRange = tablesOf(doc).tables.filter(
+                    (t) =>
+                      t.sec === existing.start.sec &&
+                      t.path.length === 1 &&
+                      t.para >= existing.start.para &&
+                      t.para <= existing.end.para,
+                  )
+                  const ownedLayoutIsTable =
+                    meta?.layout === 'table' || (meta == null && inRange.some((t) => t.cols === 2))
+                  oldTocTables = ownedLayoutIsTable && inRange.length > 0 ? 1 : 0
+                } else if (kind === 'body' && opts.replaceLegacy === true) {
+                  const legacy = detectLegacyToc(doc, { made: contentsMade })
+                  if (legacy && legacy.source === 'table') {
+                    oldTocTables = 1
+                  }
                 }
-                const page = pageNumberOf(doc, hit.sec, hit.para)
-                if (page === Number(shown[1])) continue
-                setCellText(doc, table, pageCell.cell, String(page))
-                changed += 1
-              }
-              mustKeep(before, objectsOf(doc))
-              return {
-                ok: true,
-                lines: rows,
-                changed,
-                ...(missing.length > 0 ? { missing } : {}),
-                place: { sec: table.sec, para: table.para, offset: 0, length: 0 },
-              }
-            },
-            options,
-          ),
-        )
+
+                const res = refreshTocBlock(doc, {
+                  kind,
+                  ...(opts.layout !== undefined ? { layout: opts.layout } : {}),
+                  ...(opts.maxLevel !== undefined ? { maxLevel: opts.maxLevel } : {}),
+                  ...(opts.links !== undefined ? { links: opts.links } : {}),
+                  ...(opts.title !== undefined ? { title: opts.title } : {}),
+                  ...(opts.appStyleMap !== undefined ? { appStyleMap: opts.appStyleMap } : {}),
+                  ...(opts.allowOverwriteManual !== undefined
+                    ? { allowOverwriteManual: opts.allowOverwriteManual }
+                    : {}),
+                  ...(opts.replaceLegacy !== undefined
+                    ? { replaceLegacy: opts.replaceLegacy }
+                    : {}),
+                  made: contentsMade,
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+
+                const newTocTables = res.layout === 'table' ? 1 : 0
+                mustKeep(
+                  { ...before, controls: before.controls - oldTocTables + newTocTables },
+                  objectsOf(doc),
+                )
+
+                if (res.layout === 'table') {
+                  const { tables } = tablesOf(doc)
+                  const tableNum =
+                    tables.findIndex(
+                      (t) =>
+                        t.sec === res.range.sec &&
+                        t.path.length === 1 &&
+                        t.para >= res.range.startPara &&
+                        t.para <= res.range.endPara,
+                    ) + 1
+                  if (tableNum > 0) {
+                    return { ...res, table: tableNum, tables: tables.length }
+                  }
+                }
+                return res
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /** List all `색인:` index marks in document order with printed page numbers. */
+      listIndexMarks: guarded(() => host.read((doc) => listIndexMarks(doc))),
+
+      /**
+       * Add a single `색인:` index mark at a 0-based body position `{ sec, para, offset }`
+       * or at a body occurrence found by `{ find, occurrence? }`.
+       */
+      addIndexMark: guarded((params, changeOptions) => {
+        if (!params || typeof params !== 'object' || Array.isArray(params)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
+        }
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'index-mark',
+              (doc) => {
+                const before = objectsOf(doc)
+                let place
+                let termOpt = params.term
+                if (params.find !== undefined) {
+                  const hits = searchAll(doc, params.find)
+                  const picked = pickHit(hits, params.occurrence ?? null)
+                  if (!picked.hit) {
+                    refused = {
+                      ok: false,
+                      reason: picked.reason,
+                      count: hits.length,
+                      ...(picked.reason === 'ambiguous' ? { matches: listMatches(doc, hits) } : {}),
+                    }
+                    throw abort
+                  }
+                  if (!isReplaceable(picked.hit) || cellPathOf(picked.hit)) {
+                    refused = { ok: false, reason: 'unsupported_place', count: hits.length }
+                    throw abort
+                  }
+                  place = {
+                    sec: picked.hit.sec,
+                    para: picked.hit.para,
+                    offset: picked.hit.charOffset ?? 0,
+                  }
+                  if (termOpt === undefined) termOpt = params.find
+                } else {
+                  place = {
+                    sec: params.sec,
+                    para: params.para,
+                    offset: params.offset ?? 0,
+                  }
+                }
+                const res = addIndexMark(doc, place, {
+                  ...(termOpt !== undefined ? { term: termOpt } : {}),
+                  ...(params.subTerm !== undefined ? { subTerm: params.subTerm } : {}),
+                  ...(params.selectedText !== undefined
+                    ? { selectedText: params.selectedText }
+                    : {}),
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                mustKeep(before, objectsOf(doc))
+                return {
+                  ...res,
+                  place: { sec: res.sec, para: res.para, offset: res.offset, length: 0 },
+                }
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /** Mark all whole-word body occurrences of `query` (or `term`) with `색인:` bookmarks. */
+      addIndexMarksAll: guarded((params, changeOptions) => {
+        if (!params || typeof params !== 'object' || Array.isArray(params)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
+        }
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'index-mark',
+              (doc) => {
+                const before = objectsOf(doc)
+                const res = addIndexMarksAll(doc, params)
+                if (!res.ok || res.added === 0) {
+                  refused = res
+                  throw abort
+                }
+                mustKeep(before, objectsOf(doc))
+                const first = res.marks[0]
+                return {
+                  ...res,
+                  ...(first
+                    ? {
+                        place: {
+                          sec: first.sec,
+                          para: first.para,
+                          offset: first.offset,
+                          length: 0,
+                        },
+                      }
+                    : {}),
+                }
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /** Remove index mark(s) by `{ id }`, `{ names }`, or `{ term, subTerm? }`. */
+      removeIndexMark: guarded((params, changeOptions) => {
+        if (!params || typeof params !== 'object' || Array.isArray(params)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
+        }
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'index-remove',
+              (doc) => {
+                const before = objectsOf(doc)
+                if (params.id !== undefined || params.names !== undefined) {
+                  const res = removeIndexMark(doc, { id: params.id, names: params.names })
+                  if (!res.ok) {
+                    refused = res
+                    throw abort
+                  }
+                  mustKeep(before, objectsOf(doc))
+                  return {
+                    ok: true,
+                    removedMarks: 1,
+                    removedBookmarks: res.removed,
+                    names: res.names,
+                  }
+                }
+                if (params.term !== undefined) {
+                  const res = removeIndexMarksByTerm(doc, params.term, params.subTerm)
+                  if (!res.ok) {
+                    refused = res
+                    throw abort
+                  }
+                  if (res.removedMarks === 0) {
+                    refused = { ok: false, reason: 'not_found' }
+                    throw abort
+                  }
+                  mustKeep(before, objectsOf(doc))
+                  return res
+                }
+                refused = { ok: false, reason: 'invalid_options' }
+                throw abort
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /**
+       * Build and insert a `색인블록:` index block placed by 0-based `(sec, para)` or
+       * `(anchor, occurrence, where)` (defaults to the end of the document).
+       */
+      buildIndexBlock: guarded((params, changeOptions) => {
+        const opts = params ?? {}
+        if (typeof opts !== 'object' || Array.isArray(opts)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
+        }
+        if (opts.title !== undefined && opts.title !== null) checkReplacement(opts.title)
+        if (opts.where !== undefined && opts.where !== null) checkWhere(opts.where)
+
+        const hasCoords = opts.sec !== undefined || opts.para !== undefined
+        const hasAnchor = opts.anchor !== undefined || opts.where !== undefined
+        if (hasCoords && hasAnchor) {
+          return {
+            ok: false,
+            reason: 'invalid_options',
+            error: 'Specify either (sec, para) or (anchor, where), not both',
+          }
+        }
+
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'insert-index',
+              (doc) => {
+                // Scoped multi-column sections add section/column layout controls (`secd`/`cold`);
+                // exclude only those two while still guarding all content objects, tables, and fields.
+                const indexObjectsOf = (d) => {
+                  const obj = objectsOf(d)
+                  const secCtrls = parse(d.getControls()).filter(
+                    (c) => c.ctrlId === 'secd' || c.ctrlId === 'cold',
+                  ).length
+                  return { controls: obj.controls - secCtrls, fields: obj.fields }
+                }
+                const before = indexObjectsOf(doc)
+                let place
+                let where
+                if (hasCoords) {
+                  place = { sec: opts.sec ?? 0, para: opts.para ?? 0 }
+                  where = opts.where === 'after' ? 'after' : 'before'
+                } else if (hasAnchor) {
+                  const w = opts.where ?? (opts.anchor !== undefined ? 'after' : 'end')
+                  if (w === 'end') {
+                    const lastSec = doc.getSectionCount() - 1
+                    place = { sec: lastSec, para: doc.getParagraphCount(lastSec) }
+                    where = 'before'
+                  } else {
+                    const located = locate(doc, opts.anchor, opts.occurrence ?? null, w)
+                    if (located.refusal) {
+                      refused = located.refusal
+                      throw abort
+                    }
+                    if (located.box.inTable) {
+                      refused = { ok: false, reason: 'in_table', count: 1 }
+                      throw abort
+                    }
+                    const sec = located.box.place(located.box.index, 0).sec
+                    place = { sec, para: located.box.index }
+                    where = w
+                  }
+                } else {
+                  const lastSec = doc.getSectionCount() - 1
+                  place = { sec: lastSec, para: doc.getParagraphCount(lastSec) }
+                  where = 'before'
+                }
+
+                const res = buildIndexBlock(doc, place, {
+                  ...(opts.title !== undefined ? { title: opts.title } : {}),
+                  ...(opts.columns !== undefined ? { columns: opts.columns } : {}),
+                  ...(opts.columnGapMm !== undefined ? { columnGapMm: opts.columnGapMm } : {}),
+                  ...(opts.groupHeadings !== undefined
+                    ? { groupHeadings: opts.groupHeadings }
+                    : {}),
+                  ...(opts.layout !== undefined ? { layout: opts.layout } : {}),
+                  where,
+                })
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                const newIndexTables = res.layout === 'table' ? 1 : 0
+                mustKeep(
+                  { ...before, controls: before.controls + newIndexTables },
+                  indexObjectsOf(doc),
+                )
+                const placeOut = {
+                  sec: res.sec,
+                  para: res.startPara,
+                  offset: 0,
+                  length: res.title ? res.title.length : 0,
+                }
+                if (res.layout === 'table') {
+                  const { tables } = tablesOf(doc)
+                  const tableNum =
+                    tables.findIndex(
+                      (t) =>
+                        t.sec === res.sec &&
+                        t.path.length === 1 &&
+                        t.para >= res.startPara &&
+                        t.para <= res.endPara,
+                    ) + 1
+                  if (tableNum > 0) {
+                    return { ...res, place: placeOut, table: tableNum, tables: tables.length }
+                  }
+                }
+                return { ...res, place: placeOut }
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
+      }),
+
+      /** Refresh an existing `색인블록:` index block in place. */
+      refreshIndexBlock: guarded((params, changeOptions) => {
+        const opts = params ?? {}
+        if (typeof opts !== 'object' || Array.isArray(opts)) {
+          throw fail('BAD_ARGUMENT', 'params must be an object')
+        }
+        if (opts.title !== undefined && opts.title !== null) checkReplacement(opts.title)
+
+        const isForeign = changeOptions?.foreign === true
+        const txOptions = isForeign
+          ? {
+              ...changeOptions,
+              foreign: true,
+              allowMemoRemoval: changeOptions?.allowMemoRemoval ?? true,
+            }
+          : { ...changeOptions, foreign: false }
+        const abort = Symbol('abort')
+        let refused = null
+
+        try {
+          return keepingObjects((mustKeep) =>
+            change(
+              'refresh-index',
+              (doc) => {
+                // Scoped multi-column sections add/remove `secd`/`cold` controls; exclude only those
+                // while preserving every content object (pictures, shapes, notes, fields, non-index tables).
+                const indexObjectsOf = (d) => {
+                  const obj = objectsOf(d)
+                  const secCtrls = parse(d.getControls()).filter(
+                    (c) => c.ctrlId === 'secd' || c.ctrlId === 'cold',
+                  ).length
+                  return { controls: obj.controls - secCtrls, fields: obj.fields }
+                }
+                const before = indexObjectsOf(doc)
+                const existingRange = findRangeMarks(doc, [MARK_PREFIXES.indexBlock]).ranges[0]
+                const saved = readDocSetting(doc, INDEX_BLOCK_SETTING_KEY)
+                let oldIndexTables = 0
+                if (existingRange && saved?.layout === 'table') {
+                  const hasTableInRange = tablesOf(doc).tables.some(
+                    (t) =>
+                      t.sec === existingRange.start.sec &&
+                      t.path.length === 1 &&
+                      t.para >= existingRange.start.para &&
+                      t.para <= existingRange.end.para,
+                  )
+                  oldIndexTables = hasTableInRange ? 1 : 0
+                }
+                const res = refreshIndexBlock(doc, opts)
+                if (!res.ok) {
+                  refused = res
+                  throw abort
+                }
+                const newIndexTables = res.layout === 'table' ? 1 : 0
+                mustKeep(
+                  { ...before, controls: before.controls - oldIndexTables + newIndexTables },
+                  indexObjectsOf(doc),
+                )
+                const placeOut = {
+                  sec: res.sec,
+                  para: res.startPara,
+                  offset: 0,
+                  length: res.title ? res.title.length : 0,
+                }
+                if (res.layout === 'table') {
+                  const { tables } = tablesOf(doc)
+                  const tableNum =
+                    tables.findIndex(
+                      (t) =>
+                        t.sec === res.sec &&
+                        t.path.length === 1 &&
+                        t.para >= res.startPara &&
+                        t.para <= res.endPara,
+                    ) + 1
+                  if (tableNum > 0) {
+                    return { ...res, place: placeOut, table: tableNum, tables: tables.length }
+                  }
+                }
+                return { ...res, place: placeOut }
+              },
+              txOptions,
+            ),
+          )
+        } catch (thrown) {
+          if (thrown === abort) return refused
+          throw thrown
+        }
       }),
 
       /**
@@ -13791,6 +14334,133 @@ export const agentPlugin = {
 
       /** Register the editor's View menu entries for the left workpane (Outline / Find). */
       installWorkpaneMenu: guarded((labels) => installWorkpaneMenu(host, labels)),
+
+      /** Register the editor's Tool menu entries and context-menu probes for TOC & Index. */
+      installTocIndexMenu: guarded((labels, options) => {
+        if (options && 'appStyleMap' in options) {
+          tocAppStyleMap = options.appStyleMap ?? undefined
+        }
+        return installTocIndexMenu(host, labels, {
+          runEdit: (action, fn) => change(action, fn, { foreign: true, allowMemoRemoval: true }),
+          readDoc: (fn) => host.read(fn),
+          getCaret: () => {
+            caretReadRan = false
+            caretDetailNow = null
+            try {
+              host.automation.execute(CARET_POSITION_COMMAND)
+            } catch {
+              return undefined
+            }
+            return caretReadRan ? caretDetailNow : undefined
+          },
+          getSelectionText: () => {
+            try {
+              const sel = api.selection()
+              if (!sel?.ok || !Array.isArray(sel.segments) || sel.segments.length === 0) {
+                return null
+              }
+              return { text: sel.segments.map((segment) => segment.text).join('\n') }
+            } catch {
+              return null
+            }
+          },
+          highlightRange: (range) => {
+            if (!range || !Number.isInteger(range.sec) || !Number.isInteger(range.startPara)) {
+              return false
+            }
+            const endPara = Number.isInteger(range.endPara) ? range.endPara : range.startPara
+            let endOffset = 0
+            let startOffset = 0
+            try {
+              host.read((doc) => {
+                if (typeof doc.getParagraphLength === 'function') {
+                  startOffset = doc.getParagraphLength(range.sec, range.startPara)
+                  endOffset = doc.getParagraphLength(range.sec, endPara)
+                }
+              })
+            } catch {
+              endOffset = 0
+              startOffset = 0
+            }
+            rangeHighlighted = false
+            try {
+              host.automation.execute(HIGHLIGHT_RANGE_COMMAND, {
+                sec: range.sec,
+                startPara: range.startPara,
+                endPara,
+                endOffset,
+              })
+            } catch {
+              rangeHighlighted = false
+            }
+            if (rangeHighlighted) return true
+            return api.reveal({
+              sec: range.sec,
+              para: range.startPara,
+              offset: 0,
+              length: Math.max(0, startOffset),
+            }).ok
+          },
+          tocHelpers,
+          appStyleMap: () => tocAppStyleMap,
+        })
+      }),
+
+      /** Read-only check across all registered staleness checkers (TOC, index, and extensions). */
+      checkStaleItems: guarded((options) =>
+        host.read((doc) =>
+          defaultStalenessRegistry.check(doc, {
+            ...options,
+            helpers: options?.helpers ?? tocHelpers,
+            appStyleMap: options?.appStyleMap !== undefined ? options.appStyleMap : tocAppStyleMap,
+          }),
+        ),
+      ),
+
+      /**
+       * Refresh all stale blocks (TOC, index, and registered extensions) in a single undo step.
+       * Rolls back cleanly without creating an empty undo entry when nothing was refreshed.
+       */
+      refreshAllStale: guarded((options, changeOptions) => {
+        const isForeign = changeOptions?.foreign !== false
+        const abort = Symbol('abort')
+        let noChangeResult = null
+        try {
+          return change(
+            'refresh-all-stale',
+            (doc) => {
+              const result = defaultStalenessRegistry.refreshAll(doc, {
+                ...options,
+                helpers: options?.helpers ?? tocHelpers,
+                appStyleMap:
+                  options?.appStyleMap !== undefined ? options.appStyleMap : tocAppStyleMap,
+              })
+              if (result.refreshed === 0) {
+                noChangeResult = result
+                throw abort
+              }
+              return result
+            },
+            isForeign
+              ? { ...changeOptions, foreign: true, allowMemoRemoval: true }
+              : { ...changeOptions, foreign: false, allowMemoRemoval: true },
+          )
+        } catch (thrown) {
+          if (thrown === abort) return noChangeResult
+          throw thrown
+        }
+      }),
+
+      /**
+       * Build a clean submission copy in `format` (`'hwp'` or `'hwpx'`) on an isolated clone
+       * without touching the live document or its dirty state.
+       */
+      exportSubmissionCopy: guarded((format = 'hwpx') => {
+        if (format !== 'hwp' && format !== 'hwpx') {
+          throw fail('BAD_ARGUMENT', 'format must be "hwp" or "hwpx"')
+        }
+        return host.read((doc) => buildSubmissionCopy(doc, format, doc.constructor))
+      }),
 
       /** Search across body, tables (including nested), text boxes, and footnotes/endnotes. */
       findMatches: guarded((options) => host.read((doc) => findMatches(doc, options))),

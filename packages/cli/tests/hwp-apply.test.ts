@@ -451,21 +451,31 @@ describe('a number that counts from 1, and a number with a range', () => {
       /occurrence must be/,
     ],
     [{ op: 'insert_break', find: '시행', occurrence: 0, kind: 'page' }, /occurrence must be/],
-    [
-      {
-        op: 'insert_toc',
-        where: 'after',
-        anchor: '시행',
-        occurrence: 0,
-        entries: [{ find: '끝.', level: 1 }],
-      },
-      /occurrence must be/,
-    ],
-    [
-      { op: 'insert_toc', where: 'end', entries: [{ find: '시행', occurrence: 0, level: 1 }] },
-      /occurrence must be/,
-    ],
-    [{ op: 'refresh_toc', title: '시행', occurrence: 0 }, /occurrence must be/],
+    [{ op: 'insert_toc', where: 'after', anchor: '시행', occurrence: 0 }, /occurrence must be/],
+    [{ op: 'insert_toc', maxLevel: 0 }, /maxLevel must be/],
+    [{ op: 'insert_toc', maxLevel: 11 }, /maxLevel must be/],
+    [{ op: 'insert_toc', section: 0, paragraph: 1 }, /section must be/],
+    [{ op: 'insert_toc', section: 1, paragraph: 0 }, /paragraph must be/],
+    [{ op: 'insert_toc', section: 999, paragraph: 1 }, /out of range/],
+    [{ op: 'insert_toc', section: 1, paragraph: 999 }, /out of range/],
+    [{ op: 'refresh_toc', maxLevel: 0 }, /maxLevel must be/],
+    [{ op: 'refresh_toc', maxLevel: 11 }, /maxLevel must be/],
+    [{ op: 'mark_index', section: 0, paragraph: 1, term: '특송' }, /section must be/],
+    [{ op: 'mark_index', section: 1, paragraph: 0, term: '특송' }, /paragraph must be/],
+    [{ op: 'mark_index', section: 1, paragraph: 1, offset: -1, term: '특송' }, /offset must be/],
+    [{ op: 'mark_index', find: '시행', occurrence: 0, term: '시행' }, /occurrence must be/],
+    [{ op: 'mark_index', section: 999, paragraph: 1, term: '특송' }, /out of range/],
+    [{ op: 'mark_index', section: 1, paragraph: 999, term: '특송' }, /out of range/],
+    [{ op: 'mark_index', section: 1, paragraph: 1, offset: 999, term: '특송' }, /out of range/],
+    [{ op: 'insert_index', columns: 0 }, /columns must be/],
+    [{ op: 'insert_index', columns: 4 }, /columns must be/],
+    [{ op: 'insert_index', section: 0, paragraph: 1 }, /section must be/],
+    [{ op: 'insert_index', section: 1, paragraph: 0 }, /paragraph must be/],
+    [{ op: 'insert_index', section: 999, paragraph: 1 }, /out of range/],
+    [{ op: 'insert_index', section: 1, paragraph: 999 }, /out of range/],
+    [{ op: 'insert_index', where: 'after', anchor: '시행', occurrence: 0 }, /occurrence must be/],
+    [{ op: 'refresh_index', columns: 0 }, /columns must be/],
+    [{ op: 'refresh_index', columns: 4 }, /columns must be/],
     [
       { op: 'insert_equations', equations: [{ find: '시행', occurrence: 0, script: 'x' }] },
       /occurrence must be/,
@@ -1010,5 +1020,143 @@ describe('hwp outline and multi-scope find ops', () => {
         expect(r.stdout).toContain('read_outline')
       }
     }
+  })
+})
+
+describe('hwp migrated TOC and index ops (T15)', () => {
+  function thesisDoc(): HwpDocument {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    const styles = JSON.parse(doc.getStyleList()) as Array<{ id: number; name: string }>
+    const idOf = (name: string) => styles.find((s) => s.name === name)?.id
+    const h1 = idOf('개요 1')!
+    const h2 = idOf('개요 2')!
+    const lines: Array<[string, number | undefined]> = [
+      ['학위 논문 제목', undefined],
+      ['서론', h1],
+      ['연구 배경과 알고리즘 개념을 설명합니다.', undefined],
+      ['세부 목표', h2],
+      ['<표 1> 실험 데이터 요약', undefined],
+      ['결론', h1],
+      ['알고리즘 성능 평가 결과를 정리합니다.', undefined],
+    ]
+    lines.forEach(([line, styleId], idx) => {
+      if (idx > 0) doc.splitParagraph(0, idx - 1, doc.getParagraphLength(0, idx - 1))
+      doc.insertText(0, idx, 0, line)
+      doc.applyStyle(0, idx, styleId ?? 0)
+    })
+    return doc
+  }
+
+  it('exposes TOC and all 5 index ops in guide hwp and runs them end-to-end on a real document', async () => {
+    const guide = await run(['guide', 'hwp', '--json'])
+    expect(guide.code, guide.stdout).toBe(0)
+    const opNames = (guide.json().detail.ops as Array<{ op: string }>).map((e) => e.op)
+    for (const expected of [
+      'insert_toc',
+      'refresh_toc',
+      'mark_index',
+      'list_index_marks',
+      'remove_index_mark',
+      'insert_index',
+      'refresh_index',
+    ]) {
+      expect(opNames, expected).toContain(expected)
+    }
+
+    const dir = tempDir()
+    const path = write(dir, 'thesis.hwpx', thesisDoc().exportHwpx())
+    const out = join(dir, 'thesis-done.hwpx')
+    const res = await run([
+      'hwp',
+      'apply',
+      path,
+      '--ops',
+      ops(dir, [
+        {
+          op: 'insert_toc',
+          section: 1,
+          paragraph: 2,
+          kind: 'body',
+          layout: 'dotted-tab',
+          maxLevel: 2,
+          links: true,
+          title: '차례',
+        },
+        {
+          op: 'insert_toc',
+          anchor: '학위 논문 제목',
+          where: 'after',
+          kind: 'table',
+          title: '표 차례',
+        },
+        { op: 'refresh_toc', kind: 'body' },
+        { op: 'mark_index', term: '알고리즘', markAll: true },
+        { op: 'mark_index', find: '연구 배경', term: '배경', subTerm: '개요' },
+        { op: 'list_index_marks' },
+        { op: 'remove_index_mark', term: '배경' },
+        { op: 'insert_index', where: 'end', title: '찾아보기', columns: 2, layout: 'dotted-tab' },
+        { op: 'refresh_index', columns: 1, layout: 'table' },
+      ]),
+      '--out',
+      out,
+      '--json',
+    ])
+    expect(res.code, res.stdout).toBe(0)
+    const results = res.json().detail.results as Array<{ op: string; output: string }>
+    expect(results[0]!.output).toContain(
+      'Inserted body table of contents (dotted-tab) with 3 item(s)',
+    )
+    expect(results[1]!.output).toContain('Inserted table table of contents')
+    expect(results[2]!.output).toContain('Refreshed body table of contents')
+    expect(results[3]!.output).toContain('Marked 2 body occurrence(s) for "알고리즘"')
+    expect(results[5]!.output).toContain('3 index mark(s)')
+    expect(results[6]!.output).toContain('Removed 1 index mark(s)')
+    expect(results[7]!.output).toContain('Inserted index (dotted-tab, 2 column(s))')
+    expect(results[8]!.output).toContain('Refreshed index (table, 1 column(s))')
+
+    const text = textOf(out).join('\n')
+    expect(text).toContain('차례')
+    expect(text).toContain('표 차례')
+    expect(text).toContain('찾아보기')
+    expect(text).toContain('알고리즘')
+  })
+
+  it('passes app-wide hwpOutlineStyleMap from app-settings.json to insert_toc and refresh_toc in CLI', async () => {
+    const dir = tempDir()
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    doc.insertText(0, 0, 0, '커스텀 표지')
+    doc.splitParagraph(0, 0, doc.getParagraphLength(0, 0))
+    doc.insertText(0, 1, 0, '커스텀 1장')
+    const styleId = doc.createStyle(
+      JSON.stringify({ name: '논문장', englishName: 'ThesisChapter', type: 0, nextStyleId: 0 }),
+    )
+    doc.applyStyle(0, 1, styleId)
+    const path = write(dir, 'custom-toc.hwpx', doc.exportHwpx())
+
+    writeFileSync(
+      join(dir, 'app-settings.json'),
+      JSON.stringify({ hwpOutlineStyleMap: { 논문장: 1 } }),
+      'utf8',
+    )
+    const r = await run(
+      [
+        'hwp',
+        'apply',
+        path,
+        '--ops',
+        ops(dir, [
+          { op: 'insert_toc', section: 1, paragraph: 2, kind: 'body', maxLevel: 1 },
+          { op: 'refresh_toc', kind: 'body' },
+        ]),
+        '--dry-run',
+        '--json',
+      ],
+      { env: { GENOFFICE_USER_DATA: dir } },
+    )
+    expect(r.code, r.stdout).toBe(0)
+    expect(r.json().detail.results[0].output).toContain('with 1 item(s)')
+    expect(r.json().detail.results[1].output).toContain('Refreshed body table of contents')
   })
 })

@@ -142,6 +142,14 @@
  *   so its name is the label the app gives it, and it is off while nothing is selected.
  *   Before the plugin registers it the menus leave it out.
  *
+ * studio-toc-index-context-menu
+ *   Adds context-menu entries for TOC Refresh (`ext:ieum-toc-refresh`), Mark Index Entry
+ *   (`ext:ieum-index-mark`), and Index Refresh (`ext:ieum-index-refresh`). The two refresh
+ *   entries appear only when the caret sits inside a marked TOC or Index range (checked via
+ *   the plugin's context probes), in both body and table-cell menus (for table-layout TOC/Index),
+ *   while Mark Index Entry is available on body text. Before the plugin registers them,
+ *   the menus leave all three out.
+ *
  * studio-pc-fonts
  *   The studio lists the PC's fonts only after the 찾기 button of its options dialog,
  *   so its font lists held the base fonts and the document's own until then. At start-up
@@ -250,6 +258,13 @@ import { NOTE_TEXT_MODULE } from '../studio-plugin/note-text.mjs'
 import { PC_FONTS_MODULE } from '../studio-plugin/pc-fonts.mjs'
 import { RULER_MARKS_MODULE } from '../studio-plugin/ruler-marks.mjs'
 import { TEXTBOX_EDIT_MODULE } from '../studio-plugin/textbox-edit.mjs'
+import {
+  INDEX_MARK_COMMAND,
+  INDEX_REFRESH_COMMAND,
+  INDEX_REFRESH_CONTEXT_COMMAND,
+  TOC_REFRESH_COMMAND,
+  TOC_REFRESH_CONTEXT_COMMAND,
+} from '../studio-plugin/toc-dialogs.mjs'
 
 /** Must equal RENDERER_SCHEME in packages/electron-utils/src/renderer-scheme.ts. */
 export const APP_SCHEME = 'genoffice-app'
@@ -1217,6 +1232,42 @@ const PATCHES = {
         ].join('\n'),
         replace: [
           `      { type: 'command', commandId: '${EASY_WORDS_COMMAND}' },`,
+          "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-toc-index-context-menu': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      // body right-click menu: conditional TOC/Index refresh when caret is inside their range, plus Mark Index Entry
+      {
+        find: [
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+        replace: [
+          `      ...(this.dispatcher?.isEnabled('${TOC_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${TOC_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          `      { type: 'command', commandId: '${INDEX_MARK_COMMAND}' },`,
+          `      ...(this.dispatcher?.isEnabled('${INDEX_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${INDEX_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+      },
+      // table cell right-click menu: conditional TOC/Index refresh for table-layout TOC/Index blocks
+      {
+        find: [
+          "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+        replace: [
+          `      ...(this.dispatcher?.isEnabled('${TOC_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${TOC_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          `      ...(this.dispatcher?.isEnabled('${INDEX_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${INDEX_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
           "      { type: 'separator' },",
           "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
         ].join('\n'),
@@ -2573,6 +2624,7 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-memo-command',
   'studio-memo-context-menu',
   'studio-easy-words-context-menu',
+  'studio-toc-index-context-menu',
   'studio-memo-label-ko',
   'studio-memo-label-en',
   'studio-cell-block-paste',

@@ -20,3 +20,21 @@ GenOffice ouvre et modifie les documents Hangul `.hwp` et `.hwpx` dans un onglet
 - Ouvrez la colonne Mémo depuis la barre supérieure ou **Insertion > Mémo** pour lire, ajouter, modifier et supprimer des mémos en texte brut à côté du document.
 - Prend en charge les raccourcis d’édition Hangul, les repères de paragraphe de la règle horizontale, la copie de mise en forme (**Alt+C**), la conversion Hanja (**F9** / touche Hanja) et les informations du document (**Ctrl+Q,I**).
 - Le panneau IA facultatif et les [commandes du terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) peuvent lire et modifier le texte, les styles, les tableaux, les équations, la mise en page, le plan et les résultats de recherche ; chaque modification IA correspond à une seule étape d’annulation.
+
+## Table des matières : créer et mettre à jour
+
+- Utilisez **Outils > Créer une table des matières** (ou **Outils > Mettre à jour la table des matières**, ou un clic droit dans une table des matières) pour insérer une **table des matières** à partir des titres du Plan, ainsi que des **listes des tableaux**, **des figures** et **des équations** issues des légendes d’objets et des paragraphes de légende.
+- Choisissez la mise en page **Points de suite** (par défaut) ou **Tableau sans bordure** (2 colonnes), réglez la profondeur des titres (niveaux 1–10, 3 par défaut), personnalisez le titre et ajoutez éventuellement des liens cliquables (cliquez ou faites **Ctrl+clic** sur une ligne pour accéder directement au titre).
+- Les numéros de page reflètent la numérotation imprimée, y compris les redémarrages de numérotation et les formats romains ou personnalisés.
+- La mise à jour actualise les entrées et les numéros de page sur place, vous avertit avant d’écraser des lignes modifiées manuellement et détecte les tables des matières non balisées créées par un autre programme afin de demander votre confirmation avant de les remplacer.
+
+## Index : marquer des entrées et générer l’index
+
+- Utilisez **Outils > Marquer une entrée d’index** (ou un clic droit dans le corps du texte) pour marquer le mot sélectionné ou situé sous le curseur, ajouter une sous-entrée facultative ou cocher **Marquer toutes les occurrences correspondantes** (corps du texte uniquement ; le nombre d’occurrences ignorées dans les tableaux, zones de texte et notes est indiqué). La même boîte de dialogue permet de consulter et de supprimer les marques existantes.
+- Utilisez **Outils > Créer un index** pour insérer l’index à la position du curseur, puis **Outils > Mettre à jour l’index** après vos modifications. Le titre par défaut (« Index ») est personnalisable.
+- Les entrées sont triées selon l’ordre coréen (가나다) → anglais (ABC) → autres, avec en-têtes de groupe par consonne ou lettre en option, 1–3 colonnes (2 par défaut, limitées à l’index afin de préserver les colonnes du reste du document) et mise en page **Points de suite** ou **Tableau sans bordure**.
+
+## Alerte de mise à jour et copie de soumission
+
+- Lors d’un enregistrement manuel, d’une impression, d’un export PDF ou d’un enregistrement en copie de soumission, l’éditeur vérifie si les tables des matières ou l’index ne sont plus à jour et propose de tout actualiser en une seule étape d’annulation. Cette vérification ne s’exécute jamais pendant l’enregistrement automatique et ne bloque jamais la sauvegarde.
+- Utilisez **Fichier > Enregistrer comme copie de soumission** pour enregistrer une copie distincte et propre, débarrassée des marques internes d’édition (marques d’index, bornes de bloc d’index et paramètres enregistrés), tout en conservant les tables des matières, les ancres de titres et les liens. Votre fichier de travail d’origine reste intact pour pouvoir continuer à le mettre à jour par la suite.

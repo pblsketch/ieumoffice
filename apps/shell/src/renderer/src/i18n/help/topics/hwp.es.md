@@ -20,3 +20,21 @@ GenOffice abre y edita documentos Hangul `.hwp` y `.hwpx` en una pestaña, con a
 - Abra la columna de notas desde la barra superior o **Insertar > Nota** para leer, añadir, editar y eliminar notas de texto sin formato junto al documento.
 - Admite atajos de edición de documentos Hangul, marcadores de párrafo en la regla horizontal, Copiar formato (**Alt+C**), conversión de Hanja (**F9** / tecla Hanja) e Información del documento (**Ctrl+Q,I**).
 - El panel de IA opcional y los [comandos de terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) pueden leer y editar texto, estilos, tablas, ecuaciones, diseño de página, esquemas y resultados de búsqueda; cada edición de IA es un solo paso de deshacer.
+
+## Tabla de contenido: crear y actualizar
+
+- Usa **Herramientas > Crear tabla de contenido** (o **Herramientas > Actualizar tabla de contenido**, o haz clic derecho dentro de una tabla de contenido) para insertar una **tabla de contenido** a partir de los títulos del Esquema, además de **listas de tablas**, **figuras** y **ecuaciones** tomadas de los títulos de objetos y párrafos de leyenda.
+- Elige el diseño **Tabulación con puntos** (predeterminado) o **Tabla sin bordes** (de 2 columnas), define la profundidad de títulos (niveles 1–10, predeterminado 3), personaliza el título y decide si incluir enlaces clicables (haz clic o **Ctrl+clic** en una línea para saltar al título).
+- Los números de página reflejan la numeración impresa del documento, incluidos los reinicios de numeración y los formatos romanos o personalizados.
+- Al actualizar se renuevan las entradas y los números de página en su lugar, se muestra un aviso antes de sobrescribir líneas editadas a mano y se detectan tablas de contenido existentes sin marcar creadas en otro programa para pedir confirmación antes de sustituirlas.
+
+## Índice: marcar entradas y crear
+
+- Usa **Herramientas > Marcar entrada de índice** (o clic derecho en el texto principal) para marcar la palabra seleccionada o la situada bajo el cursor, añadir una subentrada opcional o activar **Marcar todas las coincidencias** (solo en el cuerpo del texto; informa cuántas apariciones en tablas, cuadros de texto y notas se omitieron). En el mismo cuadro de diálogo puedes ver y eliminar las marcas existentes.
+- Usa **Herramientas > Crear índice** para insertar el índice en la posición del cursor y **Herramientas > Actualizar índice** para ponerlo al día después de editar. El título predeterminado («Índice») puede personalizarse.
+- Las entradas se ordenan en orden coreano (가나다) → inglés (ABC) → otros, con encabezados de grupo por consonante o letra opcionales, de 1–3 columnas (2 por defecto, aplicadas solo al índice sin alterar las columnas del resto del documento) y diseño de **Tabulación con puntos** o **Tabla sin bordes**.
+
+## Aviso de desactualización y copia de entrega
+
+- Al guardar manualmente, imprimir, exportar a PDF o guardar como copia de entrega, el editor comprueba si alguna tabla de contenido o el índice están desactualizados y ofrece actualizar todo en un solo paso de deshacer. Esta comprobación nunca se ejecuta durante el guardado automático ni bloquea el guardado.
+- Usa **Archivo > Guardar como copia de entrega** para guardar una copia limpia aparte sin marcas internas de edición (marcas de índice, marcas de bloque de índice y ajustes guardados), manteniendo intactas las tablas de contenido, los anclajes de títulos y los enlaces. El archivo de trabajo original permanece intacto para que puedas seguir actualizándolo más adelante.

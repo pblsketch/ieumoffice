@@ -20,3 +20,21 @@ GenOffice opent en bewerkt `.hwp`- en `.hwpx`-Hangul-documenten in een tabblad, 
 - Open de memokolom via de bovenste balk of **Invoegen > Memo** om platte-tekstmemo's naast het document te lezen, toe te voegen, te bewerken en te verwijderen.
 - Ondersteunt sneltoetsen voor Hangul-documenten, alineamarkeringen op de horizontale liniaal, Opmaak kopiëren (**Alt+C**), Hanja-conversie (**F9** / Hanja-toets) en Documentinfo (**Ctrl+Q,I**).
 - Het optionele AI-paneel en [terminalopdrachten](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) kunnen tekst, stijlen, tabellen, vergelijkingen, pagina-indeling, overzichten en zoekresultaten lezen en bewerken; elke AI-bewerking is één stap om ongedaan te maken.
+
+## Inhoudsopgave: maken en bijwerken
+
+- Gebruik **Extra > Inhoudsopgave maken** (of **Extra > Inhoudsopgave bijwerken**, of klik met de rechtermuisknop in een inhoudsopgave) om een **inhoudsopgave** op basis van koppen uit het Overzicht in te voegen, plus een **lijst van tabellen**, **figuren** en **vergelijkingen** uit objectbijschriften en bijschriftalinea's.
+- Kies de indeling **Gestippelde tab** (standaard) of **Randloze tabel** (2 kolommen), stel de kopdiepte in (niveaus 1–10, standaard 3), pas de titel aan en voeg optioneel klikbare koppelingen toe (klik of **Ctrl+klik** op een regel om direct naar die kop te springen).
+- Paginanummers volgen de afgedrukte paginanummering, inclusief nieuwe nummerstarts en Romeinse of aangepaste nummernotaties.
+- Bijwerken vernieuwt items en paginanummers ter plaatse, waarschuwt voordat handmatig bewerkte regels worden overschreven en herkent bestaande ongemarkeerde inhoudsopgaven uit een ander programma zodat u kunt bevestigen voordat deze worden vervangen.
+
+## Index: gegevens markeren en maken
+
+- Gebruik **Extra > Indexgegeven markeren** (of klik met de rechtermuisknop in de hoofdtekst) om het geselecteerde woord of het woord bij de cursor te markeren, een optioneel subgegeven toe te voegen of alle overeenkomende voorkomens te markeren (alleen in de hoofdtekst; overgeslagen treffers in tabellen, tekstvakken en noten worden geteld). In hetzelfde dialoogvenster kunt u bestaande markeringen bekijken en verwijderen.
+- Gebruik **Extra > Index maken** om op de cursorpositie een index in te voegen en **Extra > Index bijwerken** om deze na bewerkingen bij te werken. De standaardtitel ("Index") kan worden aangepast.
+- Gegevens worden gesorteerd in de volgorde Koreaans (가나다) → Engels (ABC) → Overig, met optionele groepskoppen per medeklinker of letter, 1–3 kolommen (standaard 2 kolommen, alleen voor de index zodat de kolommen van de rest van het document ongewijzigd blijven) en de indeling **Gestippelde tab** of **Randloze tabel**.
+
+## Melding bij verouderde lijsten en inleverkopie
+
+- Bij handmatig opslaan, afdrukken, exporteren als PDF of opslaan als inleverkopie controleert de editor of inhoudsopgaven of de index verouderd zijn en biedt aan om alles in één stap voor ongedaan maken bij te werken. Deze controle draait nooit tijdens automatisch opslaan en blokkeert het opslaan nooit.
+- Gebruik **Bestand > Opslaan als inleverkopie** om een afzonderlijke schone kopie op te slaan zonder interne bewerkingsmarkeringen (indexmarkeringen, indexblokmarkeringen en opgeslagen instellingen), terwijl inhoudsopgaven, kopankers en koppelingen intact blijven. Uw oorspronkelijke werkbestand blijft ongewijzigd zodat u het later kunt blijven bijwerken.

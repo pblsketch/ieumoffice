@@ -20,3 +20,21 @@ GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` di dalam tab,
 - Buka kolom Memo dari bilah atas atau **Sisipkan > Memo** untuk membaca, menambah, menyunting, dan menghapus memo teks biasa di samping dokumen.
 - Mendukung pintasan penyuntingan dokumen Hangul, penanda paragraf penggaris horizontal, Salin Format (**Alt+C**), konversi Hanja (**F9** / tombol Hanja), dan Info Dokumen (**Ctrl+Q,I**).
 - Panel AI opsional dan [perintah terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) dapat membaca dan menyunting teks, gaya, tabel, persamaan, tata letak halaman, kerangka, dan hasil pencarian; setiap suntingan AI menjadi satu langkah urungkan.
+
+## Daftar Isi: membuat dan memperbarui
+
+- Gunakan **Alat > Buat Daftar Isi** (atau **Alat > Perbarui Daftar Isi**, atau klik kanan di dalam daftar isi) untuk menyisipkan **Daftar Isi** dari judul di Kerangka, serta **Daftar Tabel**, **Daftar Gambar**, dan **Daftar Persamaan** dari keterangan objek dan paragraf keterangan.
+- Pilih tata letak **Tab bertitik** (bawaan) atau **Tabel tanpa batas** (2 kolom), atur kedalaman judul (tingkat 1–10, bawaan 3), sesuaikan judulnya, dan aktifkan tautan yang dapat diklik jika diinginkan (klik atau **Ctrl+klik** baris daftar isi untuk langsung melompat ke judul terkait).
+- Nomor halaman mengikuti penomoran halaman cetak, termasuk mulai nomor baru serta format angka Romawi atau kustom.
+- Pembaruan menyegarkan entri dan nomor halaman di tempat, memberi peringatan sebelum menimpa baris yang diedit secara manual, serta mendeteksi daftar isi tanpa penanda yang dibuat oleh program lain dan meminta konfirmasi sebelum menggantinya.
+
+## Indeks: menandai entri dan membuat indeks
+
+- Gunakan **Alat > Tandai Entri Indeks** (atau klik kanan di teks isi) untuk menandai kata yang dipilih atau kata di posisi kursor, menambahkan sub-entri opsional, atau menandai semua kemunculan yang cocok (hanya teks isi; jumlah kemunculan yang dilewati di dalam tabel, kotak teks, dan catatan akan dilaporkan). Anda juga dapat melihat dan menghapus tanda yang ada di dialog yang sama.
+- Gunakan **Alat > Buat Indeks** untuk menyisipkan indeks di posisi kursor, lalu **Alat > Perbarui Indeks** setelah melakukan pengeditan. Judul bawaan ("Indeks") dapat diubah.
+- Entri diurutkan berdasarkan urutan Korea (가나다) → Inggris (ABC) → Lainnya, dengan judul kelompok huruf/konsonan opsional, 1–3 kolom (bawaan 2 kolom, hanya berlaku pada area indeks sehingga kolom dokumen lainnya tetap sama), serta tata letak **Tab bertitik** atau **Tabel tanpa batas**.
+
+## Peringatan pembaruan dan Salinan Penyerahan
+
+- Saat Anda melakukan Simpan manual, Cetak, Ekspor sebagai PDF, atau Simpan sebagai Salinan Penyerahan, editor memeriksa apakah daftar isi atau indeks sudah usang dan menawarkan untuk memperbarui semuanya dalam satu langkah urung (undo). Pemeriksaan ini tidak pernah berjalan saat Simpan Otomatis dan tidak pernah memblokir penyimpanan.
+- Gunakan **File > Simpan sebagai Salinan Penyerahan** untuk menyimpan salinan bersih terpisah tanpa tanda penyuntingan internal (tanda indeks, tanda blok indeks, dan pengaturan tersimpan), sementara daftar isi, jangkar judul, dan tautan daftar isi tetap utuh. File kerja asli Anda tetap tidak berubah sehingga Anda masih dapat memperbaruinya nanti.

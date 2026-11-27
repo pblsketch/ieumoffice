@@ -127,12 +127,21 @@ const api: HwpApi = {
   commitSave: (bytes, tabs, options) =>
     ipcRenderer.invoke(HWP_CHANNELS.commitSave, bytes, tabs, options),
   abortSave: () => ipcRenderer.send(HWP_CHANNELS.abortSave),
+  beginSubmissionSave: () => ipcRenderer.invoke(HWP_CHANNELS.beginSubmissionSave),
+  commitSubmissionSave: (bytes, tabs, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.commitSubmissionSave, bytes, tabs, options),
+  abortSubmissionSave: () => ipcRenderer.send(HWP_CHANNELS.abortSubmissionSave),
   requestFileCommand: (command) => ipcRenderer.send(HWP_CHANNELS.fileCommand, command),
   setDirty: (dirty) => ipcRenderer.send(HWP_CHANNELS.dirtyChanged, dirty),
   onSaveRequest: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, mode: SaveMode) => handler(mode)
     ipcRenderer.on(HWP_CHANNELS.saveRequest, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.saveRequest, listener)
+  },
+  onSubmissionSaveRequest: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(HWP_CHANNELS.submissionSaveRequest, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.submissionSaveRequest, listener)
   },
   onPrintRequest: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, mode: PrintMode) => handler(mode)

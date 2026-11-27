@@ -225,16 +225,99 @@ function setup(
     formatSelection: vi.fn(async () => ({ ok: true as const, count: 2, place: PLACE })),
     listFields: vi.fn(async () => []),
     fillField: vi.fn(async () => ({ ok: true as const, name: '성명' })),
+    listTocRanges: vi.fn(async () => []),
+    detectLegacyToc: vi.fn(async () => null),
     insertToc: vi.fn(async () => ({
       ok: true as const,
+      kind: 'body' as const,
+      kindId: '본문' as const,
+      layout: 'dotted-tab' as const,
       count: 2,
       pages: [1, 3],
+      pageLabels: ['1', '3'],
+      entries: [],
+      range: { sec: 0, startPara: 1, endPara: 3 },
+      linksApplied: true,
       place: PLACE,
     })),
     refreshToc: vi.fn(async () => ({
       ok: true as const,
-      lines: 2,
-      changed: 1,
+      kind: 'body' as const,
+      kindId: '본문' as const,
+      layout: 'dotted-tab' as const,
+      count: 2,
+      pages: [1, 4],
+      pageLabels: ['1', '4'],
+      entries: [],
+      range: { sec: 0, startPara: 1, endPara: 3 },
+      linksApplied: true,
+      place: PLACE,
+    })),
+    listIndexMarks: vi.fn(async () => []),
+    addIndexMark: vi.fn(async () => ({
+      ok: true as const,
+      id: '1',
+      term: '알고리즘',
+      subTerm: '',
+      sec: 0,
+      para: 1,
+      offset: 0,
+      names: ['색인:알고리즘::1'],
+      place: PLACE,
+    })),
+    addIndexMarksAll: vi.fn(async () => ({
+      ok: true as const,
+      added: 2,
+      skippedNonBody: 0,
+      skippedCounts: { tableCell: 0, textBox: 0, footnote: 0, endnote: 0 },
+      marks: [],
+      place: PLACE,
+    })),
+    removeIndexMark: vi.fn(async () => ({
+      ok: true as const,
+      removedMarks: 1,
+      removedBookmarks: 1,
+      names: ['색인:알고리즘::1'],
+    })),
+    buildIndexBlock: vi.fn(async () => ({
+      ok: true as const,
+      sec: 0,
+      startPara: 5,
+      endPara: 8,
+      columns: 2 as const,
+      layout: 'dotted-tab' as const,
+      groupHeadings: true,
+      title: '찾아보기',
+      entryCount: 3,
+      groupCount: 2,
+      lines: ['찾아보기'],
+      range: {
+        startName: '색인블록:기본:시작',
+        endName: '색인블록:기본:끝',
+        start: { sec: 0, para: 5, offset: 0 },
+        end: { sec: 0, para: 8, offset: 0 },
+      },
+      place: PLACE,
+    })),
+    refreshIndexBlock: vi.fn(async () => ({
+      ok: true as const,
+      refreshed: true,
+      sec: 0,
+      startPara: 5,
+      endPara: 8,
+      columns: 2 as const,
+      layout: 'dotted-tab' as const,
+      groupHeadings: true,
+      title: '찾아보기',
+      entryCount: 3,
+      groupCount: 2,
+      lines: ['찾아보기'],
+      range: {
+        startName: '색인블록:기본:시작',
+        endName: '색인블록:기본:끝',
+        start: { sec: 0, para: 5, offset: 0 },
+        end: { sec: 0, para: 8, offset: 0 },
+      },
       place: PLACE,
     })),
     listNotes: vi.fn(async () => ({ count: 0, elsewhere: 0, notes: [] })),
@@ -2420,145 +2503,158 @@ describe('form fields', () => {
 })
 
 describe('a table of contents', () => {
-  it('passes the headings and their levels, and lists the contents as one change', async () => {
+  it('inserts body TOC with 1-based section/paragraph converted to 0-based and records HwpChange kind toc', async () => {
     const { bridge, call, changes } = setup()
     const result = await call('insert_toc', {
-      anchor: '보고서',
-      where: 'after',
+      section: 1,
+      paragraph: 2,
+      layout: 'dotted-tab',
+      maxLevel: 3,
+      links: true,
       title: '차 례',
-      entries: [
-        { find: 'Ⅰ. 추진 배경', level: 1 },
-        { find: '1. 현황', level: 2, occurrence: 2 },
-      ],
     })
     expect(result.isError).toBeFalsy()
     expect(result.output).toContain('on pages 1, 3')
-    expect(bridge.insertToc).toHaveBeenCalledWith('보고서', null, 'after', '차 례', [
-      { find: 'Ⅰ. 추진 배경', level: 1 },
-      { find: '1. 현황', level: 2, occurrence: 2 },
-    ])
-    expect(changes).toEqual([{ kind: 'table', from: '', to: '차 례 (2)', count: 1, place: PLACE }])
-  })
-
-  it('says which heading could not be used, and why', async () => {
-    const { call } = setup({
-      insertToc: async () => ({
-        ok: false as const,
-        reason: 'no_heading' as const,
-        heading: '현황',
-        why: 'ambiguous',
-        count: 2,
-        matches: [],
-      }),
-    })
-    const result = await call('insert_toc', { where: 'end', entries: [{ find: '현황', level: 1 }] })
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain('the heading "현황"')
-    expect(result.output).toContain('occurs 2 times')
-  })
-
-  it('refuses entries without levels', async () => {
-    const { bridge, call } = setup()
-    const result = await call('insert_toc', { where: 'end', entries: [{ find: '제목' }] })
-    expect(result.isError).toBe(true)
-    expect(bridge.insertToc).not.toHaveBeenCalled()
-  })
-
-  it('writes the page numbers again and lists the rows that changed', async () => {
-    const { bridge, call, changes } = setup()
-    const result = await call('refresh_toc', { title: '차 례' })
-    expect(bridge.refreshToc).toHaveBeenCalledWith('차 례', null)
-    expect(result.output).toBe('1 of 2 page number(s) changed.')
-    expect(changes[0]).toMatchObject({ kind: 'cells', from: '차 례', count: 1 })
-  })
-
-  it('takes no entries for refresh_toc: it writes page numbers only', () => {
-    const { skill } = setup()
-    const tool = skill.tools.find((offered) => offered.name === 'refresh_toc')
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(['title', 'occurrence'])
-    expect(tool?.description).toContain('delete_table the table and call insert_toc again')
-  })
-
-  it('refuses a second table of contents and says how to make it anew', async () => {
-    const { call } = setup({
-      insertToc: async () => ({
-        ok: false as const,
-        reason: 'toc_exists' as const,
-        count: 1,
-        table: 1,
+    expect(result.summary).toContain('aiToolToc')
+    expect(bridge.insertToc).toHaveBeenCalledWith(
+      {
+        kind: 'body',
+        layout: 'dotted-tab',
+        maxLevel: 3,
+        links: true,
         title: '차 례',
-      }),
-    })
-    const result = await call('insert_toc', { where: 'end', entries: [{ find: '현황', level: 1 }] })
-    expect(result.isError).toBe(true)
-    expect(result.output).toBe(
-      'Nothing was changed: the document has a table of contents already (table 1, under the line "차 례"), made by insert_toc. refresh_toc with that line writes its page numbers again. For headings added, renamed or removed, and only when the user wants that: delete_table 1, then call insert_toc with anchor "차 례", where after and no title, so that the line stays above it.',
+        sec: 0,
+        para: 1,
+      },
+      { foreign: false },
     )
+    expect(changes).toEqual([
+      { kind: 'toc', from: 'aiTocName', to: '차 례 (2)', count: 1, place: PLACE },
+    ])
   })
 
-  it('refuses a second table of contents at the start of the document', async () => {
+  it('inserts caption TOCs with dedicated activity labels', async () => {
+    for (const [kind, summaryKey, nameKey] of [
+      ['table', 'aiToolTocTable', 'aiTocTableName'],
+      ['figure', 'aiToolTocFigure', 'aiTocFigureName'],
+      ['equation', 'aiToolTocEquation', 'aiTocEquationName'],
+    ] as const) {
+      const { call, changes } = setup({
+        insertToc: vi.fn(async () => ({
+          ok: true as const,
+          kind,
+          kindId: kind === 'table' ? '표' : kind === 'figure' ? '그림' : '수식',
+          layout: 'dotted-tab' as const,
+          count: 4,
+          pages: [1, 2, 3, 4],
+          pageLabels: ['1', '2', '3', '4'],
+          entries: [],
+          range: { sec: 0, startPara: 0, endPara: 4 },
+          linksApplied: true,
+          place: PLACE,
+        })),
+      })
+      const result = await call('insert_toc', { kind, anchor: '제목', where: 'after' })
+      expect(result.isError).toBeFalsy()
+      expect(result.summary).toContain(summaryKey)
+      expect(changes[0]).toMatchObject({ kind: 'toc', from: nameKey })
+    }
+  })
+
+  it('validates maxLevel, section, paragraph, and occurrence ranges in code with no schema min/max', async () => {
+    const { skill, bridge, call } = setup()
+    for (const name of ['insert_toc', 'refresh_toc']) {
+      const def = skill.tools.find((t) => t.name === name)!
+      const raw = JSON.stringify(def.inputSchema)
+      expect(raw, name).not.toContain('"minimum"')
+      expect(raw, name).not.toContain('"maximum"')
+    }
+    expect((await call('insert_toc', { maxLevel: 0 })).isError).toBe(true)
+    expect((await call('insert_toc', { maxLevel: 11 })).isError).toBe(true)
+    expect((await call('insert_toc', { section: 0, paragraph: 1 })).isError).toBe(true)
+    expect((await call('insert_toc', { section: 1, paragraph: 0 })).isError).toBe(true)
+    expect((await call('refresh_toc', { maxLevel: 0 })).isError).toBe(true)
+    expect((await call('refresh_toc', { maxLevel: 11 })).isError).toBe(true)
+    expect(bridge.insertToc).not.toHaveBeenCalled()
+    expect(bridge.refreshToc).not.toHaveBeenCalled()
+  })
+
+  it('reports legacy_toc_found with 1-based range and instructs overwriteLegacy only when confirmed', async () => {
+    const { call } = setup({
+      insertToc: async () => ({
+        ok: false as const,
+        reason: 'legacy_toc_found' as const,
+        legacy: {
+          found: true as const,
+          source: 'lines' as const,
+          sec: 0,
+          startPara: 1,
+          endPara: 5,
+          title: '차 례',
+        },
+      }),
+    })
+    const result = await call('insert_toc', { section: 1, paragraph: 1 })
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('section 1, paragraphs 2–6')
+    expect(result.output).toContain('overwriteLegacy: true')
+  })
+
+  it('reports toc_exists with 1-based range and suggests refresh_toc or overwriteExisting', async () => {
     const { call } = setup({
       insertToc: async () => ({
         ok: false as const,
         reason: 'toc_exists' as const,
-        count: 1,
-        table: 1,
+        kind: 'body' as const,
+        kindId: '본문' as const,
+        range: {
+          kind: 'body' as const,
+          kindId: '본문' as const,
+          id: '본문',
+          key: '차례:본문',
+          start: { name: '차례:본문:시작', sec: 0, para: 1, offset: 0, ctrlIdx: 0 },
+          end: { name: '차례:본문:끝', sec: 0, para: 4, offset: 5, ctrlIdx: 1 },
+        },
       }),
     })
-    const result = await call('insert_toc', { where: 'end', entries: [{ find: '현황', level: 1 }] })
-    expect(result.output).toBe(
-      'Nothing was changed: the document has a table of contents already (table 1), made by insert_toc. For headings added, renamed or removed, and only when the user wants that: delete_table 1, then call insert_toc again where it was.',
-    )
-  })
-
-  it('says that an empty first line stays when the contents are made anew at the start', async () => {
-    const { call } = setup({
-      insertToc: async () => ({
-        ok: false as const,
-        reason: 'toc_exists' as const,
-        count: 1,
-        table: 1,
-        first: true,
-      }),
-    })
-    const result = await call('insert_toc', { where: 'end', entries: [{ find: '현황', level: 1 }] })
-    expect(result.output).toBe(
-      'Nothing was changed: the document has a table of contents already (table 1), made by insert_toc. For headings added, renamed or removed, and only when the user wants that: delete_table 1, then call insert_toc again where it was. Table 1 is the first paragraph of the document: delete_table leaves an empty first line, which stays above the new contents. No tool here removes it (delete_paragraph needs text to find), so tell the user, who can delete it in the editor.',
-    )
-  })
-
-  it('says that contents made before the document was opened are not known', () => {
-    const { skill } = setup()
-    const tool = skill.tools.find((offered) => offered.name === 'insert_toc')
-    expect(tool?.description).toContain(
-      'Contents made before the document was last opened are not known',
-    )
-  })
-
-  it('refuses contents next to the lines of contents Hangul made', async () => {
-    const { call } = setup({
-      insertToc: async () => ({
-        ok: false as const,
-        reason: 'toc_exists' as const,
-        count: 1,
-        lines: true as const,
-        title: '목 차',
-      }),
-    })
-    const result = await call('insert_toc', { where: 'end', entries: [{ find: '현황', level: 1 }] })
+    const result = await call('insert_toc', { section: 1, paragraph: 1 })
     expect(result.isError).toBe(true)
-    expect(result.output).toBe(
-      'Nothing was changed: the document has contents already, made in Hangul as lines ending in a tab and a page number, under the line "목 차". They cannot be written again here; tell the user, who updates them in Hangul.',
-    )
+    expect(result.output).toContain('section 1, paragraphs 2–5')
+    expect(result.output).toContain('refresh_toc')
+    expect(result.output).toContain('overwriteExisting: true')
   })
 
-  it('says when no table of contents follows the line', async () => {
-    const { call } = setup({
-      refreshToc: async () => ({ ok: false as const, reason: 'no_toc' as const, count: 0 }),
+  it('refreshes TOC in place and refuses manual_edits with modified line preview until overwriteManual', async () => {
+    const { bridge, call, changes } = setup()
+    const ok = await call('refresh_toc', { kind: 'body', maxLevel: 2 })
+    expect(ok.isError).toBeFalsy()
+    expect(ok.summary).toContain('aiToolTocEntriesRefresh')
+    expect(bridge.refreshToc).toHaveBeenCalledWith(
+      { kind: 'body', maxLevel: 2 },
+      { foreign: false },
+    )
+    expect(changes[0]).toMatchObject({ kind: 'toc', from: 'aiTocName', count: 1 })
+
+    const manualEnv = setup({
+      refreshToc: async () => ({
+        ok: false as const,
+        reason: 'manual_edits' as const,
+        modifiedLines: [{ index: 1, expected: '서론\t1', actual: '수정됨\t1' }],
+      }),
     })
-    const result = await call('refresh_toc', { title: '차 례' })
+    const refused = await manualEnv.call('refresh_toc', { kind: 'body' })
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('manual edits')
+    expect(refused.output).toContain('overwriteManual: true')
+  })
+
+  it('returns read_outline guidance on out-of-range section/paragraph not_found', async () => {
+    const { call } = setup({
+      insertToc: async () => ({ ok: false as const, reason: 'not_found' as const }),
+    })
+    const result = await call('insert_toc', { section: 1, paragraph: 999 })
     expect(result.isError).toBe(true)
-    expect(result.output).toContain('no table of contents follows')
+    expect(result.output).toContain('read_outline')
   })
 })
 
@@ -4409,6 +4505,11 @@ describe('the skill as the model sees it', () => {
       'change_outline_level',
       'move_outline_section',
       'find_in_document',
+      'mark_index',
+      'list_index_marks',
+      'remove_index_mark',
+      'insert_index',
+      'refresh_index',
     ])
     expect((await call('delete_everything')).isError).toBe(true)
   })
@@ -5668,7 +5769,7 @@ describe('a number that counts from 1 or has a range', () => {
     expect(checked).toBeGreaterThan(60)
   })
 
-  it('declares a range only where the loop does not reach: the level of a contents entry', () => {
+  it('declares no numeric minimum or maximum in any tool schema', () => {
     const ranged = new Set<string>()
     const walk = (schema: unknown, name: string) => {
       if (typeof schema !== 'object' || schema === null) return
@@ -5680,7 +5781,7 @@ describe('a number that counts from 1 or has a range', () => {
       walk(items, name)
     }
     for (const tool of setup().skill.tools) walk(tool.inputSchema, tool.name)
-    expect([...ranged].sort()).toEqual(['level'])
+    expect([...ranged].sort()).toEqual([])
   })
 
   it('is refused by the selection tools when it is not a whole number from 1', async () => {
@@ -5864,8 +5965,15 @@ describe('what an edit did to the pages and tables, in its answer', () => {
     const { call, bridge } = setup({
       insertToc: vi.fn(async () => ({
         ok: true as const,
+        kind: 'body' as const,
+        kindId: '본문' as const,
+        layout: 'table' as const,
         count: 2,
         pages: [1, 3],
+        pageLabels: ['1', '3'],
+        entries: [],
+        range: { sec: 0, startPara: 0, endPara: 1 },
+        linksApplied: false,
         place: PLACE,
         table: 1,
         tables: 2,
@@ -5874,8 +5982,8 @@ describe('what an edit did to the pages and tables, in its answer', () => {
     const toc = await call('insert_toc', {
       anchor: '□ 추진 배경',
       where: 'before',
+      layout: 'table',
       title: '차 례',
-      entries: [{ find: '□ 추진 배경', level: 1 }],
     })
     expect(toc.output).toMatch(/ It is table 1; tables after it are numbered one higher\.$/)
     expect(bridge.checkLayout).not.toHaveBeenCalled()
@@ -6141,6 +6249,11 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
       'change_outline_level',
       'move_outline_section',
       'find_in_document',
+      'mark_index',
+      'list_index_marks',
+      'remove_index_mark',
+      'insert_index',
+      'refresh_index',
     ]) {
       const def = skill.tools.find((t) => t.name === name)
       expect(def, name).toBeDefined()
@@ -6354,5 +6467,158 @@ describe('outline and multi-scope find tools (workpane bundle)', () => {
     expect(res.isError).toBeUndefined()
     expect(res.mutated).toBe(true)
     expect(res.output).toContain('Removed app mark(s): 색인:교육학:1, 인용:홍길동2020:1.')
+  })
+})
+
+describe('index tools (T15)', () => {
+  it('marks edits flag accurately and has no numeric min/max in index tool schemas', async () => {
+    const { HWP_EDIT_TOOLS } = await import('../src/renderer/ai/hwp-skill')
+    expect(HWP_EDIT_TOOLS.has('list_index_marks')).toBe(false)
+    expect(HWP_EDIT_TOOLS.has('mark_index')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('remove_index_mark')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('insert_index')).toBe(true)
+    expect(HWP_EDIT_TOOLS.has('refresh_index')).toBe(true)
+  })
+
+  it('marks single occurrence by 1-based section/paragraph/offset and by find, and bulk markAll reporting skipped non-body', async () => {
+    const { bridge, call, changes } = setup({
+      addIndexMarksAll: vi.fn(async () => ({
+        ok: true as const,
+        added: 3,
+        skippedNonBody: 2,
+        skippedCounts: { tableCell: 1, textBox: 0, footnote: 1, endnote: 0 },
+        marks: [],
+        place: PLACE,
+      })),
+    })
+
+    const single = await call('mark_index', {
+      section: 1,
+      paragraph: 2,
+      offset: 4,
+      term: '알고리즘',
+      subTerm: '정렬',
+    })
+    expect(single.isError).toBeUndefined()
+    expect(single.mutated).toBe(true)
+    expect(single.summary).toContain('aiToolIndexMark')
+    expect(bridge.addIndexMark).toHaveBeenCalledWith(
+      { sec: 0, para: 1, offset: 4, term: '알고리즘', subTerm: '정렬' },
+      { foreign: false },
+    )
+    expect(changes[0]).toMatchObject({ kind: 'index', from: 'aiIndexName', count: 1 })
+
+    const bulk = await call('mark_index', { term: '알고리즘', markAll: true })
+    expect(bulk.isError).toBeUndefined()
+    expect(bulk.mutated).toBe(true)
+    expect(bulk.output).toContain('Marked 3 body occurrence(s)')
+    expect(bulk.output).toContain('Skipped 2 non-body occurrence(s)')
+    expect(bulk.output).toContain('table cells: 1')
+    expect(bulk.output).toContain('footnotes: 1')
+    expect(bulk.summary).toContain('aiToolIndexMark')
+  })
+
+  it('lists index marks with 1-based section/paragraph matching write tool names and removes by id or term', async () => {
+    const { bridge, call, changes } = setup({
+      listIndexMarks: vi.fn(async () => [
+        {
+          id: '1',
+          term: '알고리즘',
+          subTerm: '정렬',
+          sec: 0,
+          para: 3,
+          offset: 2,
+          page: 2,
+          pageLabel: 'ii',
+          physicalPage: 2,
+          numberingRun: 0,
+          names: ['색인:알고리즘:정렬:1'],
+        },
+      ]),
+    })
+    const listed = await call('list_index_marks', {})
+    expect(listed.isError).toBeUndefined()
+    expect(listed.summary).toContain('aiToolIndexList')
+    const parsed = JSON.parse(listed.output.split('\n')[1]!) as Array<Record<string, unknown>>
+    expect(parsed).toEqual([
+      {
+        id: '1',
+        term: '알고리즘',
+        subTerm: '정렬',
+        section: 1,
+        paragraph: 4,
+        offset: 2,
+        page: 2,
+        pageLabel: 'ii',
+      },
+    ])
+
+    const removed = await call('remove_index_mark', { id: '1' })
+    expect(removed.isError).toBeUndefined()
+    expect(removed.mutated).toBe(true)
+    expect(removed.summary).toContain('aiToolIndexRemove')
+    expect(bridge.removeIndexMark).toHaveBeenCalledWith({ id: '1' }, { foreign: false })
+    expect(changes.at(-1)).toMatchObject({ kind: 'index', from: 'aiIndexName', count: 1 })
+  })
+
+  it('inserts and refreshes index blocks, validates columns 1..3, and refuses manual edits unless overwriteManual', async () => {
+    const { bridge, call, changes } = setup()
+    expect((await call('insert_index', { columns: 0 })).isError).toBe(true)
+    expect((await call('insert_index', { columns: 4 })).isError).toBe(true)
+    expect((await call('refresh_index', { columns: 0 })).isError).toBe(true)
+    expect((await call('refresh_index', { columns: 4 })).isError).toBe(true)
+
+    const inserted = await call('insert_index', {
+      where: 'end',
+      title: '찾아보기',
+      columns: 2,
+      groupHeadings: true,
+      layout: 'dotted-tab',
+    })
+    expect(inserted.isError).toBeUndefined()
+    expect(inserted.mutated).toBe(true)
+    expect(inserted.summary).toContain('aiToolIndexInsert')
+    expect(changes.at(-1)).toMatchObject({ kind: 'index', from: 'aiIndexName', count: 1 })
+    expect(bridge.buildIndexBlock).toHaveBeenCalledWith(
+      { where: 'end', title: '찾아보기', columns: 2, groupHeadings: true, layout: 'dotted-tab' },
+      { foreign: false },
+    )
+
+    const manualEnv = setup({
+      refreshIndexBlock: async () => ({
+        ok: false as const,
+        reason: 'manual_edits' as const,
+        modifiedLines: [{ lineIndex: 0, expected: '찾아보기', actual: '수동수정' }],
+      }),
+    })
+    const refused = await manualEnv.call('refresh_index', {})
+    expect(refused.isError).toBe(true)
+    expect(refused.output).toContain('manual edits')
+    expect(refused.output).toContain('overwriteManual: true')
+
+    const refreshed = await call('refresh_index', { columns: 3, overwriteManual: true })
+    expect(refreshed.isError).toBeUndefined()
+    expect(refreshed.mutated).toBe(true)
+    expect(refreshed.summary).toContain('aiToolIndexRefresh')
+    expect(bridge.refreshIndexBlock).toHaveBeenCalledWith(
+      { columns: 3, allowOverwriteManual: true },
+      { foreign: false },
+    )
+
+    // has_objects surfaced via placeRefusal on refresh_toc and refresh_index
+    const objEnv = setup({
+      refreshToc: async () => ({ ok: false as const, reason: 'has_objects' as const, count: 1 }),
+      refreshIndexBlock: async () => ({
+        ok: false as const,
+        reason: 'has_objects' as const,
+        count: 1,
+      }),
+    })
+    const tocObj = await objEnv.call('refresh_toc', { kind: 'body' })
+    expect(tocObj.isError).toBe(true)
+    expect(tocObj.output).toContain('a table, a picture')
+    const idxObj = await objEnv.call('refresh_index', {})
+    expect(idxObj.isError).toBe(true)
+    expect(idxObj.output).toContain('a table, a picture')
   })
 })

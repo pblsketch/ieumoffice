@@ -50,11 +50,22 @@ import type {
   AgentTableLook,
   AgentTableSummary,
   AgentTitleBox,
-  AgentTocEntry,
   AgentWhere,
 } from '../../../studio-plugin/agent-plugin.mjs'
 import type { AgentBridge } from './agent-bridge'
 import type { OutlineStyleMap } from '../../../studio-plugin/outline.mjs'
+import type {
+  LegacyTocInfo,
+  TocKind,
+  TocLayout,
+  TocModifiedLine,
+  TocRangeInfo,
+} from '../../../studio-plugin/toc.mjs'
+import type {
+  IndexColumnCount,
+  IndexLayout,
+  ModifiedIndexLine,
+} from '../../../studio-plugin/index-marks.mjs'
 import { appendHwpMemoReply } from './memo-attach'
 import type { StringKey } from '../i18n/locale'
 
@@ -89,6 +100,8 @@ export interface HwpChange {
     | 'lines'
     | 'note'
     | 'move'
+    | 'toc'
+    | 'index'
   /** the replaced, removed or formatted text, the field name, or the table whose cells were filled; empty for something added */
   from: string
   /** the new text (for a table its first row, for a format what was set, for cells what went into them); empty for something removed */
@@ -242,7 +255,8 @@ const SYSTEM_PROMPT = [
   '- Work with the styles of the document: see what one looks like (read_style), add a paragraph or character style (create_style), and change a style: its name, the style that follows it and its look (edit_style).',
   '- Merge table cells into one (merge_cells; their text goes into it, one cell after another) or split a cell into several, or a merged cell back (split_cell). Read the table first: rows and columns count as read_table shows them.',
   '- Fill the form fields of the document (list_fields, fill_field). In Hangul these are called 누름틀. A field is picked by its number in list_fields, because several fields often share one name.',
-  '- Make a table of contents (차례, 목차) from the headings you pick, with their page numbers, and write its page numbers again after the document changed (insert_toc, refresh_toc).',
+  '- Make and refresh tables of contents (차례, 표 차례, 그림 차례, 수식 차례) automatically from document outline headings or captions, with printed page numbers and optional bookmark links (insert_toc, refresh_toc).',
+  '- Mark index terms (찾아보기), inspect or remove index marks, and generate or refresh a multi-column index block (mark_index, list_index_marks, remove_index_mark, insert_index, refresh_index).',
   '- Read and reorganize the document outline (read_outline, change_outline_level, move_outline_section), and search across body, tables, text boxes, footnotes and endnotes with regex, style or character format filters (find_in_document).',
   '- Add footnotes and endnotes (각주, 미주) with their mark right after a piece of body text (insert_note), list the notes with their text (list_notes), and rewrite or remove one (edit_note, delete_note). The text of the document does not show the notes; list_notes does.',
   '- Change the settings of all footnotes or endnotes (각주·미주 모양): number format such as 1) or ①, the characters around the number, superscript, start number, numbering, placement and separator line (read_note_settings, set_note_settings).',
@@ -281,11 +295,10 @@ const SYSTEM_PROMPT = [
   '- Remove rows or columns only when the user asks for it: what is in them goes too.',
   '- Remove a whole table only when the user asks for it, for example the tables of a form that offers several to choose from. Text between the tables, such as an "or" line, is a paragraph of its own: remove it with delete_paragraph.',
   '',
-  '## Table of contents',
-  '- Make one only when the user asks. Pick the headings from the text: the lines that open the parts of the document, in order (for example Ⅰ./1./가. or □ at the start, or short title lines). Level 1 for the top parts, 2 and 3 for the parts inside them; leave out body lines.',
-  '- Name each heading by text it contains, as short as is unambiguous (pass occurrence when it occurs more than once). The table shows the whole heading line and finds its page itself: never type page numbers.',
-  '- Put it where the user says; otherwise after the title or cover of the document. Give it the title the user uses, or 차 례 for a Korean document.',
-  '- After changes that move text between pages, or when the user asks, call refresh_toc with the title of the table of contents. It writes page numbers only. When the user wants headings added, renamed or removed in it: delete_table that table, then insert_toc after its title line with no title.',
+  '## Table of contents and index',
+  '- Make a table of contents (insert_toc) only when the user asks. Body TOC (kind "body", default) collects outline headings and mapped heading styles up to maxLevel (1–10, default 3); caption TOCs (kind "table", "figure", "equation") collect object and caption-paragraph entries automatically with printed page numbers. Default layout is dotted-tab with internal bookmark links (layout "table" uses a borderless two-column table). Place it by 1-based section/paragraph or anchor/where.',
+  '- Call refresh_toc to rebuild a marked TOC in place when headings, captions, or page numbers change. If insert_toc or refresh_toc reports an existing unmarked legacy TOC, do not pass overwriteLegacy unless the user wants to replace it. If refresh_toc reports manual edits inside the TOC, do not pass overwriteManual unless the user confirms overwriting them.',
+  '- For a document index (찾아보기), mark body terms with mark_index (single position via 1-based section/paragraph + offset or find, or markAll: true for all whole-word body occurrences), inspect marks with list_index_marks, remove marks with remove_index_mark, generate the index block with insert_index (columns 1–3, groupHeadings, dotted-tab or table), and update it in place with refresh_index (pass overwriteManual only when the user confirms overwriting manual edits).',
   '',
   '## Footnotes and endnotes',
   '- A footnote explains or gives the source of the words it follows and shows at the foot of the page; an endnote does the same at the end of the document. Use the kind the user asks for; when they do not say, use a footnote, and use endnotes where the document already has them.',
@@ -538,19 +551,6 @@ const STYLE_LOOK_SCHEMA = (() => {
 
 /** Cells one read_table answer holds at most (the editor's own limit), as the model is told. */
 const READ_TABLE_HINT = 600
-
-const TOC_ENTRY_SCHEMA = {
-  type: 'object',
-  properties: {
-    find: { type: 'string', description: 'text of the heading, enough to tell it apart' },
-    occurrence: {
-      type: 'integer',
-      description: 'which occurrence of find, when it occurs more than once',
-    },
-    level: { type: 'integer', minimum: 1, maximum: 3 },
-  },
-  required: ['find', 'level'],
-}
 
 const NOTE_TEXT_SCHEMA = {
   type: 'string',
@@ -1493,31 +1493,103 @@ const TOOLS: HwpToolDef[] = [
     name: 'insert_toc',
     edits: true,
     description:
-      'Add a table of contents: an optional title line, then a row per heading with its page number, next to the paragraph anchor occurs in (where after or before), or at the end of the document. Refused when the document has contents already: a table insert_toc made since the document was opened whose heading column is as it wrote it, or lines Hangul made under a 차례 or 목차 line, each ending in a tab and a page number. Contents made before the document was last opened are not known: read the document before you add contents to it.',
+      'Insert a marked table of contents (body outline headings, or table/figure/equation captions) with printed page numbers and optional bookmark links. Place by 1-based section/paragraph or by anchor/where (default start of document). Refuses if a TOC of the same kind or an unmarked legacy TOC exists unless overwriteExisting/overwriteLegacy is true.',
     inputSchema: {
       type: 'object',
       properties: {
-        anchor: { type: 'string', description: 'text of the paragraph it goes next to' },
-        occurrence: { type: 'integer' },
-        where: { type: 'string', enum: ['after', 'before', 'end'] },
-        title: { type: 'string', description: 'the title line, for example 차 례; empty for none' },
-        entries: { type: 'array', items: TOC_ENTRY_SCHEMA, minItems: 1, maxItems: 100 },
+        kind: {
+          type: 'string',
+          enum: ['body', 'table', 'figure', 'equation'],
+          description: 'TOC kind (default "body")',
+        },
+        layout: {
+          type: 'string',
+          enum: ['dotted-tab', 'table'],
+          description: 'layout style (default "dotted-tab")',
+        },
+        maxLevel: {
+          type: 'integer',
+          description: 'maximum heading level 1–10 for body TOC (default 3)',
+        },
+        links: {
+          type: 'boolean',
+          description: 'attach internal bookmark hyperlinks (default true)',
+        },
+        title: {
+          type: 'string',
+          description: 'title line above TOC ("" for none; omit for default title)',
+        },
+        section: {
+          type: 'integer',
+          description: '1-based section number to insert before',
+        },
+        paragraph: {
+          type: 'integer',
+          description: '1-based paragraph number to insert before',
+        },
+        anchor: {
+          type: 'string',
+          description: 'text of the paragraph to place next to (with where)',
+        },
+        occurrence: {
+          type: 'integer',
+          description: 'which occurrence of anchor (1-based)',
+        },
+        where: {
+          type: 'string',
+          enum: ['after', 'before', 'end'],
+          description: 'placement relative to anchor, or "end"',
+        },
+        overwriteLegacy: {
+          type: 'boolean',
+          description: 'replace a detected unmarked legacy TOC (only when confirmed)',
+        },
+        overwriteExisting: {
+          type: 'boolean',
+          description: 'replace an existing marked TOC of the same kind (only when confirmed)',
+        },
       },
-      required: ['where', 'entries'],
     },
   },
   {
     name: 'refresh_toc',
     edits: true,
     description:
-      'Write the page numbers of a table of contents again, after the document changed. Pass the text of the line right above it, its title line when it has one: the two-column table right after that line is written, each row whose heading is found in the body. It writes page numbers only: for headings added, renamed or removed, delete_table the table and call insert_toc again.',
+      'Rebuild an existing marked table of contents in place with fresh entries and printed page numbers, keeping saved options unless overridden. Refuses if manual edits are detected unless overwriteManual is true, or if only an unmarked legacy TOC exists unless overwriteLegacy is true.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'the title line of the table of contents' },
-        occurrence: { type: 'integer' },
+        kind: {
+          type: 'string',
+          enum: ['body', 'table', 'figure', 'equation'],
+          description: 'TOC kind to refresh (default "body")',
+        },
+        layout: {
+          type: 'string',
+          enum: ['dotted-tab', 'table'],
+          description: 'optional layout override',
+        },
+        maxLevel: {
+          type: 'integer',
+          description: 'optional maximum heading level 1–10 override',
+        },
+        links: {
+          type: 'boolean',
+          description: 'optional bookmark links override',
+        },
+        title: {
+          type: 'string',
+          description: 'optional title override ("" removes title)',
+        },
+        overwriteManual: {
+          type: 'boolean',
+          description: 'overwrite manual edits inside the TOC (only when confirmed)',
+        },
+        overwriteLegacy: {
+          type: 'boolean',
+          description: 'replace a detected unmarked legacy TOC (only when confirmed)',
+        },
       },
-      required: ['title'],
     },
   },
   {
@@ -1997,6 +2069,115 @@ const TOOLS: HwpToolDef[] = [
         font: { type: 'string', description: 'font family filter' },
         size: { type: 'number', description: 'font size filter in points' },
         color: { type: 'string', description: 'text color filter (#RRGGBB)' },
+      },
+    },
+  },
+  {
+    name: 'mark_index',
+    edits: true,
+    description:
+      'Add body index mark(s) for a term (and optional subTerm): either at a single position (1-based section/paragraph + 0-based offset, or find/occurrence) or across all whole-word body occurrences with markAll: true (reporting skipped non-body matches).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        term: { type: 'string', description: 'primary index term' },
+        subTerm: { type: 'string', description: 'optional sub-entry under term' },
+        section: { type: 'integer', description: '1-based section number for single mark' },
+        paragraph: { type: 'integer', description: '1-based paragraph number for single mark' },
+        offset: { type: 'integer', description: '0-based character offset (default 0)' },
+        find: { type: 'string', description: 'body text to mark instead of section/paragraph' },
+        occurrence: { type: 'integer', description: 'which occurrence of find (1-based)' },
+        markAll: {
+          type: 'boolean',
+          description: 'mark every whole-word body occurrence (skips tables, text boxes, notes)',
+        },
+        query: {
+          type: 'string',
+          description: 'search text for markAll when different from term',
+        },
+        caseSensitive: { type: 'boolean', description: 'case-sensitive match for markAll' },
+        wholeWord: {
+          type: 'boolean',
+          description: 'whole-word match for markAll (default true)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_index_marks',
+    edits: false,
+    description:
+      'List all index marks in document order with id, term, subTerm, 1-based section and paragraph, 0-based offset, and printed page.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'remove_index_mark',
+    edits: true,
+    description:
+      'Remove index mark(s) by id from list_index_marks, or remove all marks matching term (and optional subTerm).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'mark id from list_index_marks' },
+        term: { type: 'string', description: 'primary term to remove (when id omitted)' },
+        subTerm: { type: 'string', description: 'optional sub-term filter when removing by term' },
+      },
+    },
+  },
+  {
+    name: 'insert_index',
+    edits: true,
+    description:
+      'Generate and insert an index block from all index marks, placed by 1-based section/paragraph or anchor/where (default end of document). Supports 1–3 columns, group headings, and dotted-tab or table layout.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section: { type: 'integer', description: '1-based section number to insert before' },
+        paragraph: { type: 'integer', description: '1-based paragraph number to insert before' },
+        anchor: { type: 'string', description: 'text of the paragraph to place next to' },
+        occurrence: { type: 'integer', description: 'which occurrence of anchor (1-based)' },
+        where: {
+          type: 'string',
+          enum: ['after', 'before', 'end'],
+          description: 'placement relative to anchor, or "end" (default)',
+        },
+        title: {
+          type: 'string',
+          description: 'title line above index ("" for none; default 찾아보기)',
+        },
+        columns: { type: 'integer', description: 'column count 1–3 (default 2)' },
+        groupHeadings: {
+          type: 'boolean',
+          description: 'show consonant/alphabet group headings (default true)',
+        },
+        layout: {
+          type: 'string',
+          enum: ['dotted-tab', 'table'],
+          description: 'layout style (default "dotted-tab")',
+        },
+      },
+    },
+  },
+  {
+    name: 'refresh_index',
+    edits: true,
+    description:
+      'Rebuild the existing index block in place from current index marks and printed pages. Refuses if manual edits are detected unless overwriteManual is true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'optional title override ("" removes title)' },
+        columns: { type: 'integer', description: 'optional column count 1–3 override' },
+        groupHeadings: { type: 'boolean', description: 'optional group headings override' },
+        layout: {
+          type: 'string',
+          enum: ['dotted-tab', 'table'],
+          description: 'optional layout override',
+        },
+        overwriteManual: {
+          type: 'boolean',
+          description: 'overwrite manual edits inside the index (only when confirmed)',
+        },
       },
     },
   },
@@ -2842,7 +3023,14 @@ function withDoubledEscapesUndone(call: AgentToolCall): AgentToolCall {
       fix('value')
       break
     case 'insert_toc':
+    case 'refresh_toc':
+    case 'insert_index':
+    case 'refresh_index':
       fix('title')
+      break
+    case 'mark_index':
+      fix('term')
+      fix('subTerm')
       break
     default:
       return call
@@ -3096,21 +3284,64 @@ function matchLines(matches: AgentMatch[], count: number): string {
   return lines.join('\n')
 }
 
-/** The refusal of a second table of contents, as the model reads it. */
-function tocExistsRefusal(
-  result: { table: number; title?: string; first?: true } | { lines: true; title: string },
-): string {
-  if ('lines' in result) {
-    return `Nothing was changed: the document has contents already, made in Hangul as lines ending in a tab and a page number, under the line "${result.title}". They cannot be written again here; tell the user, who updates them in Hangul.`
+function tocKindLabel(kind: TocKind, label: (key: StringKey, params?: Params) => string): string {
+  switch (kind) {
+    case 'table':
+      return label('aiTocTableName')
+    case 'figure':
+      return label('aiTocFigureName')
+    case 'equation':
+      return label('aiTocEquationName')
+    default:
+      return label('aiTocName')
   }
-  const { table, title, first } = result
-  if (!title) {
-    const start = first
-      ? ` Table ${table} is the first paragraph of the document: delete_table leaves an empty first line, which stays above the new contents. No tool here removes it (delete_paragraph needs text to find), so tell the user, who can delete it in the editor.`
-      : ''
-    return `Nothing was changed: the document has a table of contents already (table ${table}), made by insert_toc. For headings added, renamed or removed, and only when the user wants that: delete_table ${table}, then call insert_toc again where it was.${start}`
+}
+
+function tocInsertSummaryKey(kind: TocKind): StringKey {
+  switch (kind) {
+    case 'table':
+      return 'aiToolTocTable'
+    case 'figure':
+      return 'aiToolTocFigure'
+    case 'equation':
+      return 'aiToolTocEquation'
+    default:
+      return 'aiToolToc'
   }
-  return `Nothing was changed: the document has a table of contents already (table ${table}, under the line "${title}"), made by insert_toc. refresh_toc with that line writes its page numbers again. For headings added, renamed or removed, and only when the user wants that: delete_table ${table}, then call insert_toc with anchor "${title}", where after and no title, so that the line stays above it.`
+}
+
+function tocExistsRefusal(kind: TocKind, range?: TocRangeInfo): string {
+  const where = range
+    ? ` (section ${range.start.sec + 1}, paragraphs ${range.start.para + 1}–${range.end.para + 1})`
+    : ''
+  return `Nothing was changed: a ${kind} table of contents already exists${where}. Call refresh_toc to update it in place, or pass overwriteExisting: true only if the user wants to replace it.`
+}
+
+function legacyTocRefusal(legacy: LegacyTocInfo): string {
+  const where = `section ${legacy.sec + 1}, paragraphs ${legacy.startPara + 1}–${legacy.endPara + 1}`
+  const titlePart = legacy.title ? `, title "${legacy.title}"` : ''
+  return `Nothing was changed: an unmarked legacy table of contents was detected (${where}, source: ${legacy.source}${titlePart}). Pass overwriteLegacy: true only if the user wants to replace it.`
+}
+
+function manualTocEditsRefusal(lines: readonly TocModifiedLine[]): string {
+  const preview = lines
+    .slice(0, 5)
+    .map((m) => `line ${m.index + 1}: expected "${quote(m.expected)}", found "${quote(m.actual)}"`)
+    .join('; ')
+  const more = lines.length > 5 ? ` (+${lines.length - 5} more)` : ''
+  return `Nothing was changed: manual edits were detected inside the table of contents (${preview}${more}). Pass overwriteManual: true only after the user confirms overwriting them.`
+}
+
+function manualIndexEditsRefusal(lines: readonly ModifiedIndexLine[]): string {
+  const preview = lines
+    .slice(0, 5)
+    .map(
+      (m) =>
+        `line ${m.lineIndex + 1}: expected "${quote(m.expected ?? '')}", found "${quote(m.actual ?? '')}"`,
+    )
+    .join('; ')
+  const more = lines.length > 5 ? ` (+${lines.length - 5} more)` : ''
+  return `Nothing was changed: manual edits were detected inside the index (${preview}${more}). Pass overwriteManual: true only after the user confirms overwriting them.`
 }
 
 /** Why rows or columns were not added or removed, as the model reads it. */
@@ -5343,120 +5574,312 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         }
       }
       case 'insert_toc': {
-        const place = placeArgs(call)
-        const entries = call.input.entries
-        const title = textArg(call, 'title')
-        if (!place) return bad(call, WHERE_HELP)
-        if (
-          !Array.isArray(entries) ||
-          entries.length === 0 ||
-          !entries.every(
-            (entry) =>
-              entry !== null &&
-              typeof entry === 'object' &&
-              typeof (entry as { find?: unknown }).find === 'string' &&
-              typeof (entry as { level?: unknown }).level === 'number',
-          )
-        ) {
-          return bad(call, 'entries must be a list of { find, level } for the headings')
+        const rawKind = call.input.kind
+        const kind: TocKind =
+          rawKind === undefined || rawKind === null ? 'body' : (rawKind as TocKind)
+        if (kind !== 'body' && kind !== 'table' && kind !== 'figure' && kind !== 'equation') {
+          return bad(call, 'kind must be one of body, table, figure, equation')
         }
-        if (title !== null && hasLineBreak(title)) return bad(call, ONE_LINE_HELP)
-        const list = entries as AgentTocEntry[]
-        if (list.some((entry) => hasLineBreak(entry.find))) return bad(call, ONE_LINE_HELP)
-        const tocEntries = list.map((entry) => ({
-          find: entry.find,
-          level: entry.level,
-          ...(typeof entry.occurrence === 'number' ? { occurrence: entry.occurrence } : {}),
-        }))
+        const rawLayout = call.input.layout
+        const layout: TocLayout | undefined =
+          rawLayout === undefined || rawLayout === null ? undefined : (rawLayout as TocLayout)
+        if (layout !== undefined && layout !== 'dotted-tab' && layout !== 'table') {
+          return bad(call, 'layout must be "dotted-tab" or "table"')
+        }
+        const rawMaxLevel = call.input.maxLevel
+        let maxLevel: number | undefined
+        if (rawMaxLevel !== undefined && rawMaxLevel !== null) {
+          if (
+            typeof rawMaxLevel !== 'number' ||
+            !Number.isInteger(rawMaxLevel) ||
+            rawMaxLevel < 1 ||
+            rawMaxLevel > 10
+          ) {
+            return bad(call, 'maxLevel must be a whole number from 1 to 10')
+          }
+          maxLevel = rawMaxLevel
+        }
+        const rawTitle = call.input.title
+        let title: string | null | undefined
+        if (rawTitle === null) {
+          title = null
+        } else if (typeof rawTitle === 'string') {
+          if (hasLineBreak(rawTitle)) return bad(call, ONE_LINE_HELP)
+          title = rawTitle.trim() === '' ? null : rawTitle
+        }
+
+        const hasSection = call.input.section !== undefined && call.input.section !== null
+        const hasParagraph = call.input.paragraph !== undefined && call.input.paragraph !== null
+        const hasCoords = hasSection || hasParagraph
+        const rawAnchor = textArg(call, 'anchor')
+        const rawWhere = call.input.where
+        const hasAnchor = rawAnchor !== null || (rawWhere !== undefined && rawWhere !== null)
+
+        if (hasCoords && hasAnchor) {
+          return bad(
+            call,
+            'Specify either section/paragraph or anchor/where for placement, not both.',
+          )
+        }
+
+        let sec: number | undefined
+        let para: number | undefined
+        let anchor: string | undefined
+        let occurrence: number | null | undefined
+        let where: AgentWhere | undefined
+
+        if (hasCoords) {
+          const sectionNum = hasSection ? call.input.section : 1
+          const paraNum = hasParagraph ? call.input.paragraph : 1
+          if (typeof sectionNum !== 'number' || !Number.isInteger(sectionNum) || sectionNum < 1) {
+            return bad(call, 'section must be a whole number from 1')
+          }
+          if (typeof paraNum !== 'number' || !Number.isInteger(paraNum) || paraNum < 1) {
+            return bad(call, 'paragraph must be a whole number from 1')
+          }
+          sec = sectionNum - 1
+          para = paraNum - 1
+        } else if (hasAnchor) {
+          if (rawWhere !== undefined && rawWhere !== null) {
+            if (rawWhere !== 'after' && rawWhere !== 'before' && rawWhere !== 'end') {
+              return bad(call, WHERE_HELP)
+            }
+            where = rawWhere
+          } else {
+            where = 'after'
+          }
+          if (where !== 'end') {
+            if (!rawAnchor) return bad(call, WHERE_HELP)
+            if (hasLineBreak(rawAnchor)) return bad(call, ONE_LINE_FIND_HELP('anchor'))
+            anchor = rawAnchor
+          }
+          if (call.input.occurrence !== undefined && call.input.occurrence !== null) {
+            if (
+              typeof call.input.occurrence !== 'number' ||
+              !Number.isInteger(call.input.occurrence) ||
+              call.input.occurrence < 1
+            ) {
+              return bad(call, 'occurrence must be a whole number from 1')
+            }
+            occurrence = call.input.occurrence
+          }
+        } else if (call.input.occurrence !== undefined && call.input.occurrence !== null) {
+          if (
+            typeof call.input.occurrence !== 'number' ||
+            !Number.isInteger(call.input.occurrence) ||
+            call.input.occurrence < 1
+          ) {
+            return bad(call, 'occurrence must be a whole number from 1')
+          }
+        }
+
+        const appStyleMap = await Promise.resolve(deps.getOutlineStyleMap?.()).catch(() => null)
+        const params = {
+          kind,
+          ...(layout !== undefined ? { layout } : {}),
+          ...(maxLevel !== undefined ? { maxLevel } : {}),
+          ...(typeof call.input.links === 'boolean' ? { links: call.input.links } : {}),
+          ...(title !== undefined ? { title } : {}),
+          ...(sec !== undefined ? { sec, para } : {}),
+          ...(where !== undefined ? { where } : {}),
+          ...(anchor !== undefined ? { anchor } : {}),
+          ...(occurrence !== undefined ? { occurrence } : {}),
+          ...(appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : {}),
+          ...(call.input.overwriteLegacy === true ? { replaceLegacy: true } : {}),
+          ...(call.input.overwriteExisting === true ? { replaceExisting: true } : {}),
+        }
+
         const outcome = await changeWithMemoApproval(
-          () => bridge.insertToc(place.anchor, place.occurrence, place.where, title, tocEntries),
-          (options) =>
-            bridge.insertToc(
-              place.anchor,
-              place.occurrence,
-              place.where,
-              title,
-              tocEntries,
-              options,
-            ),
+          () => bridge.insertToc(params, { foreign: false }),
+          (options) => bridge.insertToc(params, { ...options, foreign: false }),
         )
-        if (outcome.kind !== 'done')
+        if (outcome.kind !== 'done') {
           return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
         const result = outcome.result
         if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
           if (result.reason === 'in_table') return bad(call, IN_TABLE_HELP)
-          if (result.reason === 'toc_exists') return bad(call, tocExistsRefusal(result))
-          if (result.reason === 'no_heading') {
-            const why =
-              result.why === 'ambiguous'
-                ? `it occurs ${result.count} times; pass occurrence for that entry.\n${matchLines(result.matches ?? [], result.count)}`
-                : result.why === 'unsupported_place'
-                  ? 'it is inside a table cell or an equation, which is not a heading of the body.'
-                  : result.why === 'no_such_occurrence'
-                    ? `occurrence must be between 1 and ${result.count}.`
-                    : 'it is not in the document. Copy the heading text exactly from what you read.'
+          if (result.reason === 'toc_exists') {
+            return bad(call, tocExistsRefusal(result.kind ?? kind, result.range))
+          }
+          if (result.reason === 'legacy_toc_found' && result.legacy) {
+            return bad(call, legacyTocRefusal(result.legacy))
+          }
+          if (result.reason === 'no_entries') {
+            const warn = result.warning ? ` ${result.warning}` : ''
             return bad(
               call,
-              `Nothing was changed: the heading "${result.heading}" could not be used: ${why}`,
+              kind === 'body'
+                ? `Nothing was changed: no outline headings were found for the table of contents. Call read_outline or apply heading styles first.${warn}`
+                : `Nothing was changed: no ${kind} captions were found in this document.${warn}`,
             )
           }
-          return bad(call, placeRefusal(result))
+          if (result.reason === 'not_found' && hasCoords) {
+            return bad(
+              call,
+              'Nothing was changed: section or paragraph is out of range. Call read_outline or read_document first.',
+            )
+          }
+          if (
+            result.reason === 'ambiguous' ||
+            result.reason === 'no_such_occurrence' ||
+            result.reason === 'has_objects' ||
+            result.reason === 'not_found' ||
+            result.reason === 'unsupported_place'
+          ) {
+            if ('count' in result) return bad(call, placeRefusal(result))
+            return bad(
+              call,
+              result.reason === 'not_found'
+                ? 'Nothing was changed: target position was not found. Call read_outline or read_document first.'
+                : 'Nothing was changed: a table of contents can only be placed in the body text.',
+            )
+          }
+          return bad(
+            call,
+            `Nothing was changed: ${'error' in result && result.error ? result.error : result.reason}.`,
+          )
         }
-        const name = title?.trim() || label('aiTocName')
+
+        const kindText = tocKindLabel(result.kind, label)
+        const displayName = (typeof title === 'string' && title.trim()) || kindText
         deps.onChange({
-          kind: 'table',
-          from: '',
-          to: changeText(`${name} (${result.count})`),
+          kind: 'toc',
+          from: kindText,
+          to: changeText(`${displayName} (${result.count})`),
           count: 1,
           place: result.place,
         })
+        const pageDisplay =
+          result.pageLabels && result.pageLabels.length > 0
+            ? result.pageLabels.join(', ')
+            : result.pages.join(', ')
+        const linkNote = result.linksUnsupportedInTable
+          ? ' Internal links are not supported in table layout cells.'
+          : result.linksApplied
+            ? ' Internal heading links attached.'
+            : ''
+        const warnNote = result.warning ? ` Note: ${result.warning}` : ''
         return {
-          output: `Added a table of contents of ${result.count} heading(s), on pages ${result.pages.join(', ')}.${OCCURRENCE_SHIFT_NOTE}${tableNumberNote(result)}`,
+          output: `Inserted ${result.kind} table of contents (${result.layout}) with ${result.count} item(s) on pages ${pageDisplay}.${linkNote}${warnNote}${OCCURRENCE_SHIFT_NOTE}${tableNumberNote(result)}`,
           mutated: true,
-          summary: label('aiToolToc', { count: result.count }),
+          summary: label(tocInsertSummaryKey(result.kind), { count: result.count }),
         }
       }
       case 'refresh_toc': {
-        const title = textArg(call, 'title')
-        if (!title)
-          return bad(call, 'title must be the text of the title line of the table of contents')
-        if (hasLineBreak(title)) return bad(call, ONE_LINE_HELP)
-        const occurrence = call.input.occurrence
-        const occurrenceNumber = typeof occurrence === 'number' ? occurrence : null
+        const rawKind = call.input.kind
+        const kind: TocKind =
+          rawKind === undefined || rawKind === null ? 'body' : (rawKind as TocKind)
+        if (kind !== 'body' && kind !== 'table' && kind !== 'figure' && kind !== 'equation') {
+          return bad(call, 'kind must be one of body, table, figure, equation')
+        }
+        const rawLayout = call.input.layout
+        const layout: TocLayout | undefined =
+          rawLayout === undefined || rawLayout === null ? undefined : (rawLayout as TocLayout)
+        if (layout !== undefined && layout !== 'dotted-tab' && layout !== 'table') {
+          return bad(call, 'layout must be "dotted-tab" or "table"')
+        }
+        const rawMaxLevel = call.input.maxLevel
+        let maxLevel: number | undefined
+        if (rawMaxLevel !== undefined && rawMaxLevel !== null) {
+          if (
+            typeof rawMaxLevel !== 'number' ||
+            !Number.isInteger(rawMaxLevel) ||
+            rawMaxLevel < 1 ||
+            rawMaxLevel > 10
+          ) {
+            return bad(call, 'maxLevel must be a whole number from 1 to 10')
+          }
+          maxLevel = rawMaxLevel
+        }
+        const rawTitle = call.input.title
+        let title: string | null | undefined
+        if (rawTitle === null) {
+          title = null
+        } else if (typeof rawTitle === 'string') {
+          if (hasLineBreak(rawTitle)) return bad(call, ONE_LINE_HELP)
+          title = rawTitle.trim() === '' ? null : rawTitle
+        }
+
+        const appStyleMap = await Promise.resolve(deps.getOutlineStyleMap?.()).catch(() => null)
+        const params = {
+          kind,
+          ...(layout !== undefined ? { layout } : {}),
+          ...(maxLevel !== undefined ? { maxLevel } : {}),
+          ...(typeof call.input.links === 'boolean' ? { links: call.input.links } : {}),
+          ...(title !== undefined ? { title } : {}),
+          ...(appStyleMap !== undefined && appStyleMap !== null ? { appStyleMap } : {}),
+          ...(call.input.overwriteManual === true ? { allowOverwriteManual: true } : {}),
+          ...(call.input.overwriteLegacy === true ? { replaceLegacy: true } : {}),
+        }
+
         const outcome = await changeWithMemoApproval(
-          () => bridge.refreshToc(title, occurrenceNumber),
-          (options) => bridge.refreshToc(title, occurrenceNumber, options),
+          () => bridge.refreshToc(params, { foreign: false }),
+          (options) => bridge.refreshToc(params, { ...options, foreign: false }),
         )
-        if (outcome.kind !== 'done')
+        if (outcome.kind !== 'done') {
           return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
         const result = outcome.result
         if (!result.ok) {
-          if (result.reason === 'no_toc') {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          if (result.reason === 'not_found') {
             return bad(
               call,
-              'Nothing was changed: no table of contents follows that line. Pass the title line of a table of contents made with insert_toc.',
+              `Nothing was changed: no marked ${kind} table of contents was found. Call insert_toc to create one.`,
             )
           }
-          if (result.reason === 'in_table') return bad(call, IN_TABLE_HELP)
-          return bad(call, placeRefusal(result))
+          if (result.reason === 'legacy_toc_found' && result.legacy) {
+            return bad(call, legacyTocRefusal(result.legacy))
+          }
+          if (result.reason === 'manual_edits') {
+            return bad(call, manualTocEditsRefusal(result.modifiedLines ?? []))
+          }
+          if (result.reason === 'no_entries') {
+            const warn = result.warning ? ` ${result.warning}` : ''
+            return bad(
+              call,
+              kind === 'body'
+                ? `Nothing was changed: no outline headings were found for the table of contents.${warn}`
+                : `Nothing was changed: no ${kind} captions were found in this document.${warn}`,
+            )
+          }
+          if (result.reason === 'has_objects') {
+            return bad(call, placeRefusal(result))
+          }
+          return bad(
+            call,
+            `Nothing was changed: ${'error' in result && result.error ? result.error : result.reason}.`,
+          )
         }
-        if (result.changed > 0) {
-          deps.onChange({
-            kind: 'cells',
-            from: title,
-            to: label('aiTocPagesChanged', { count: result.changed }),
-            count: result.changed,
-            place: result.place,
-          })
-        }
-        const missing =
-          result.missing && result.missing.length > 0
-            ? ` These headings are no longer in the document, so their rows were left alone: ${result.missing.join(' / ')}.`
+
+        const kindText = tocKindLabel(result.kind, label)
+        deps.onChange({
+          kind: 'toc',
+          from: kindText,
+          to: changeText(`${kindText} (${result.count})`),
+          count: 1,
+          place: result.place,
+        })
+        const pageDisplay =
+          result.pageLabels && result.pageLabels.length > 0
+            ? result.pageLabels.join(', ')
+            : result.pages.join(', ')
+        const linkNote = result.linksUnsupportedInTable
+          ? ' Internal links are not supported in table layout cells.'
+          : result.linksApplied
+            ? ' Internal heading links attached.'
             : ''
+        const warnNote = result.warning ? ` Note: ${result.warning}` : ''
         return {
-          output: `${result.changed} of ${result.lines} page number(s) changed.${missing}`,
-          mutated: result.changed > 0,
-          summary: label('aiToolTocRefresh', { count: result.changed }),
+          output: `Refreshed ${result.kind} table of contents (${result.layout}) with ${result.count} item(s) on pages ${pageDisplay}.${linkNote}${warnNote}${tableNumberNote(result)}`,
+          mutated: true,
+          summary: label('aiToolTocEntriesRefresh', { count: result.count }),
         }
       }
       case 'list_equations': {
@@ -6633,6 +7056,531 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
             text: quote(query || style || font || 'format'),
             count: found.total,
           }),
+        }
+      }
+      case 'mark_index': {
+        const term = textArg(call, 'term')?.trim() ?? ''
+        const rawSubTerm = textArg(call, 'subTerm')
+        const subTerm = rawSubTerm !== null ? rawSubTerm.trim() : undefined
+        if (term && hasLineBreak(term)) return bad(call, ONE_LINE_HELP)
+        if (subTerm !== undefined && hasLineBreak(subTerm)) return bad(call, ONE_LINE_HELP)
+        const markAll = call.input.markAll === true
+
+        if (markAll) {
+          const query = textArg(call, 'query')?.trim() || undefined
+          if (query && hasLineBreak(query)) return bad(call, ONE_LINE_FIND_HELP('query'))
+          if (!term && !query) {
+            return bad(call, 'term (or query) is required when markAll is true')
+          }
+          if (
+            isGiven(call.input.section) ||
+            isGiven(call.input.paragraph) ||
+            isGiven(call.input.offset) ||
+            isGiven(call.input.find) ||
+            isGiven(call.input.occurrence)
+          ) {
+            return bad(
+              call,
+              'Do not pass section, paragraph, offset, find, or occurrence when markAll is true.',
+            )
+          }
+          const params = {
+            ...(term ? { term } : {}),
+            ...(query ? { query } : {}),
+            ...(subTerm !== undefined ? { subTerm } : {}),
+            ...(typeof call.input.caseSensitive === 'boolean'
+              ? { caseSensitive: call.input.caseSensitive }
+              : {}),
+            ...(typeof call.input.wholeWord === 'boolean'
+              ? { wholeWord: call.input.wholeWord }
+              : {}),
+          }
+          const outcome = await changeWithMemoApproval(
+            () => bridge.addIndexMarksAll(params, { foreign: false }),
+            (options) => bridge.addIndexMarksAll(params, { ...options, foreign: false }),
+          )
+          if (outcome.kind !== 'done') {
+            return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+          }
+          const result = outcome.result
+          if (!result.ok) {
+            if (result.reason === 'memo_removal_requires_approval') {
+              return bad(call, 'Nothing was changed.')
+            }
+            return bad(
+              call,
+              `Nothing was changed: ${'error' in result && result.error ? result.error : result.reason}.`,
+            )
+          }
+          const skipped = result.skippedNonBody
+          const sc = result.skippedCounts
+          const skipNote =
+            skipped > 0
+              ? ` Skipped ${skipped} non-body occurrence(s) (table cells: ${sc.tableCell}, text boxes: ${sc.textBox}, footnotes: ${sc.footnote}, endnotes: ${sc.endnote}).`
+              : ''
+          const displayTerm = term || query || ''
+          if (result.added > 0) {
+            deps.onChange({
+              kind: 'index',
+              from: label('aiIndexName'),
+              to: changeText(subTerm ? `${displayTerm} / ${subTerm}` : displayTerm),
+              count: result.added,
+              ...(result.place ? { place: result.place } : {}),
+            })
+          }
+          return {
+            output:
+              result.added === 0
+                ? `Added 0 index marks for "${displayTerm}" (no unmarked body occurrences found).${skipNote}`
+                : `Marked ${result.added} body occurrence(s) for "${displayTerm}"${subTerm ? ` (${subTerm})` : ''}.${skipNote}`,
+            mutated: result.added > 0,
+            summary: label('aiToolIndexMark', { term: quote(displayTerm), count: result.added }),
+          }
+        }
+
+        // Single mark mode: either (section, paragraph, offset?) or (find, occurrence?)
+        const hasSection = isGiven(call.input.section)
+        const hasParagraph = isGiven(call.input.paragraph)
+        const hasOffset = isGiven(call.input.offset)
+        const hasCoords = hasSection || hasParagraph || hasOffset
+        const find = textArg(call, 'find')
+
+        if (hasCoords && find !== null) {
+          return bad(call, 'Specify either section/paragraph or find, not both.')
+        }
+        if (!hasCoords && find === null) {
+          return bad(call, 'Specify markAll: true, find, or 1-based section and paragraph.')
+        }
+
+        let params: {
+          sec?: number
+          para?: number
+          offset?: number
+          find?: string
+          occurrence?: number | null
+          term?: string
+          subTerm?: string
+        }
+
+        if (hasCoords) {
+          const sectionNum = hasSection ? call.input.section : 1
+          const paraNum = hasParagraph ? call.input.paragraph : 1
+          const offsetNum = hasOffset ? call.input.offset : 0
+          if (typeof sectionNum !== 'number' || !Number.isInteger(sectionNum) || sectionNum < 1) {
+            return bad(call, 'section must be a whole number from 1')
+          }
+          if (typeof paraNum !== 'number' || !Number.isInteger(paraNum) || paraNum < 1) {
+            return bad(call, 'paragraph must be a whole number from 1')
+          }
+          if (typeof offsetNum !== 'number' || !Number.isInteger(offsetNum) || offsetNum < 0) {
+            return bad(call, 'offset must be a whole number from 0')
+          }
+          params = {
+            sec: sectionNum - 1,
+            para: paraNum - 1,
+            offset: offsetNum,
+            ...(term ? { term } : {}),
+            ...(subTerm !== undefined ? { subTerm } : {}),
+          }
+        } else {
+          if (!find) return bad(call, 'find must be non-empty body text')
+          if (hasLineBreak(find)) return bad(call, ONE_LINE_FIND_HELP('find'))
+          let occurrence: number | null = null
+          if (isGiven(call.input.occurrence)) {
+            if (
+              typeof call.input.occurrence !== 'number' ||
+              !Number.isInteger(call.input.occurrence) ||
+              call.input.occurrence < 1
+            ) {
+              return bad(call, 'occurrence must be a whole number from 1')
+            }
+            occurrence = call.input.occurrence
+          }
+          params = {
+            find,
+            occurrence,
+            ...(term ? { term } : {}),
+            ...(subTerm !== undefined ? { subTerm } : {}),
+          }
+        }
+
+        const outcome = await changeWithMemoApproval(
+          () => bridge.addIndexMark(params, { foreign: false }),
+          (options) => bridge.addIndexMark(params, { ...options, foreign: false }),
+        )
+        if (outcome.kind !== 'done') {
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          if (result.reason === 'invalid_term') {
+            return bad(call, 'Nothing was changed: provide a valid non-empty term.')
+          }
+          if (result.reason === 'not_found' && hasCoords) {
+            return bad(
+              call,
+              'Nothing was changed: section, paragraph, or offset is out of range. Call read_outline or read_document first.',
+            )
+          }
+          if (
+            result.reason === 'ambiguous' ||
+            result.reason === 'no_such_occurrence' ||
+            result.reason === 'has_objects' ||
+            result.reason === 'not_found' ||
+            result.reason === 'unsupported_place'
+          ) {
+            if ('count' in result) return bad(call, placeRefusal(result))
+            return bad(
+              call,
+              result.reason === 'not_found'
+                ? 'Nothing was changed: position was not found. Call read_outline or read_document first.'
+                : 'Nothing was changed: index marks can only be placed in body paragraphs (not table cells, text boxes, or notes).',
+            )
+          }
+          return bad(
+            call,
+            `Nothing was changed: ${'error' in result && result.error ? result.error : result.reason}.`,
+          )
+        }
+
+        deps.onChange({
+          kind: 'index',
+          from: label('aiIndexName'),
+          to: changeText(result.subTerm ? `${result.term} / ${result.subTerm}` : result.term),
+          count: 1,
+          place: result.place,
+        })
+        return {
+          output: `Added index mark #${result.id} for "${result.term}"${result.subTerm ? ` (${result.subTerm})` : ''} at section ${result.sec + 1}, paragraph ${result.para + 1}, offset ${result.offset}.`,
+          mutated: true,
+          summary: label('aiToolIndexMark', { term: quote(result.term), count: 1 }),
+        }
+      }
+      case 'list_index_marks': {
+        const marks = await bridge.listIndexMarks()
+        const listed = marks.map((m) => ({
+          id: m.id,
+          term: m.term,
+          subTerm: m.subTerm,
+          section: m.sec + 1,
+          paragraph: m.para + 1,
+          offset: m.offset,
+          page: m.page,
+          ...(m.pageLabel && m.pageLabel !== String(m.page) ? { pageLabel: m.pageLabel } : {}),
+        }))
+        return {
+          output:
+            listed.length === 0
+              ? 'This document has no index marks.'
+              : `${listed.length} index mark(s) (section and paragraph are 1-based for mark_index; id and term are for remove_index_mark):\n${JSON.stringify(listed)}`,
+          summary: label('aiToolIndexList', { count: listed.length }),
+        }
+      }
+      case 'remove_index_mark': {
+        const id = textArg(call, 'id')?.trim() || undefined
+        const term = textArg(call, 'term')?.trim() || undefined
+        const rawSubTerm = textArg(call, 'subTerm')
+        const subTerm = rawSubTerm !== null ? rawSubTerm.trim() : undefined
+        if (!id && !term) {
+          return bad(call, 'Provide id (from list_index_marks) or term to remove.')
+        }
+        if (id && term) {
+          return bad(call, 'Specify either id or term, not both.')
+        }
+        const params = id ? { id } : { term: term!, ...(subTerm !== undefined ? { subTerm } : {}) }
+        const outcome = await changeWithMemoApproval(
+          () => bridge.removeIndexMark(params, { foreign: false }),
+          (options) => bridge.removeIndexMark(params, { ...options, foreign: false }),
+        )
+        if (outcome.kind !== 'done') {
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          if (result.reason === 'not_found') {
+            return bad(
+              call,
+              'Nothing was changed: no matching index mark was found. Call list_index_marks first.',
+            )
+          }
+          return bad(call, `Nothing was changed: ${result.reason}.`)
+        }
+        const removedDesc = id ? `#${id}` : subTerm ? `${term} / ${subTerm}` : (term ?? '')
+        deps.onChange({
+          kind: 'index',
+          from: label('aiIndexName'),
+          to: changeText(removedDesc),
+          count: result.removedMarks,
+        })
+        return {
+          output: `Removed ${result.removedMarks} index mark(s) (${removedDesc}).`,
+          mutated: true,
+          summary: label('aiToolIndexRemove', { count: result.removedMarks }),
+        }
+      }
+      case 'insert_index': {
+        const rawColumns = call.input.columns
+        let columns: IndexColumnCount | undefined
+        if (rawColumns !== undefined && rawColumns !== null) {
+          if (
+            typeof rawColumns !== 'number' ||
+            !Number.isInteger(rawColumns) ||
+            rawColumns < 1 ||
+            rawColumns > 3
+          ) {
+            return bad(call, 'columns must be a whole number from 1 to 3')
+          }
+          columns = rawColumns as IndexColumnCount
+        }
+        const rawLayout = call.input.layout
+        const layout: IndexLayout | undefined =
+          rawLayout === undefined || rawLayout === null ? undefined : (rawLayout as IndexLayout)
+        if (layout !== undefined && layout !== 'dotted-tab' && layout !== 'table') {
+          return bad(call, 'layout must be "dotted-tab" or "table"')
+        }
+        const rawTitle = call.input.title
+        let title: string | null | undefined
+        if (rawTitle === null) {
+          title = null
+        } else if (typeof rawTitle === 'string') {
+          if (hasLineBreak(rawTitle)) return bad(call, ONE_LINE_HELP)
+          title = rawTitle.trim() === '' ? null : rawTitle
+        }
+
+        const hasSection = isGiven(call.input.section)
+        const hasParagraph = isGiven(call.input.paragraph)
+        const hasCoords = hasSection || hasParagraph
+        const rawAnchor = textArg(call, 'anchor')
+        const rawWhere = call.input.where
+        const hasAnchor = rawAnchor !== null || isGiven(rawWhere)
+
+        if (hasCoords && hasAnchor) {
+          return bad(
+            call,
+            'Specify either section/paragraph or anchor/where for placement, not both.',
+          )
+        }
+
+        let sec: number | undefined
+        let para: number | undefined
+        let anchor: string | undefined
+        let occurrence: number | null | undefined
+        let where: AgentWhere | undefined
+
+        if (hasCoords) {
+          const sectionNum = hasSection ? call.input.section : 1
+          const paraNum = hasParagraph ? call.input.paragraph : 1
+          if (typeof sectionNum !== 'number' || !Number.isInteger(sectionNum) || sectionNum < 1) {
+            return bad(call, 'section must be a whole number from 1')
+          }
+          if (typeof paraNum !== 'number' || !Number.isInteger(paraNum) || paraNum < 1) {
+            return bad(call, 'paragraph must be a whole number from 1')
+          }
+          sec = sectionNum - 1
+          para = paraNum - 1
+        } else if (hasAnchor) {
+          if (isGiven(rawWhere)) {
+            if (rawWhere !== 'after' && rawWhere !== 'before' && rawWhere !== 'end') {
+              return bad(call, WHERE_HELP)
+            }
+            where = rawWhere
+          } else {
+            where = 'after'
+          }
+          if (where !== 'end') {
+            if (!rawAnchor) return bad(call, WHERE_HELP)
+            if (hasLineBreak(rawAnchor)) return bad(call, ONE_LINE_FIND_HELP('anchor'))
+            anchor = rawAnchor
+          }
+          if (isGiven(call.input.occurrence)) {
+            if (
+              typeof call.input.occurrence !== 'number' ||
+              !Number.isInteger(call.input.occurrence) ||
+              call.input.occurrence < 1
+            ) {
+              return bad(call, 'occurrence must be a whole number from 1')
+            }
+            occurrence = call.input.occurrence
+          }
+        } else if (isGiven(call.input.occurrence)) {
+          if (
+            typeof call.input.occurrence !== 'number' ||
+            !Number.isInteger(call.input.occurrence) ||
+            call.input.occurrence < 1
+          ) {
+            return bad(call, 'occurrence must be a whole number from 1')
+          }
+        }
+
+        const params = {
+          ...(sec !== undefined ? { sec, para } : {}),
+          ...(where !== undefined ? { where } : {}),
+          ...(anchor !== undefined ? { anchor } : {}),
+          ...(occurrence !== undefined ? { occurrence } : {}),
+          ...(title !== undefined ? { title } : {}),
+          ...(columns !== undefined ? { columns } : {}),
+          ...(typeof call.input.groupHeadings === 'boolean'
+            ? { groupHeadings: call.input.groupHeadings }
+            : {}),
+          ...(layout !== undefined ? { layout } : {}),
+        }
+
+        const outcome = await changeWithMemoApproval(
+          () => bridge.buildIndexBlock(params, { foreign: false }),
+          (options) => bridge.buildIndexBlock(params, { ...options, foreign: false }),
+        )
+        if (outcome.kind !== 'done') {
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          if (result.reason === 'in_table') return bad(call, IN_TABLE_HELP)
+          if (result.reason === 'no_index_marks') {
+            return bad(
+              call,
+              'Nothing was changed: there are no index marks in this document. Call mark_index first.',
+            )
+          }
+          if (result.reason === 'index_block_exists') {
+            return bad(
+              call,
+              'Nothing was changed: an index block already exists in this document. Call refresh_index to update it in place.',
+            )
+          }
+          if (result.reason === 'not_found' && hasCoords) {
+            return bad(
+              call,
+              'Nothing was changed: section or paragraph is out of range. Call read_outline or read_document first.',
+            )
+          }
+          if (
+            result.reason === 'ambiguous' ||
+            result.reason === 'no_such_occurrence' ||
+            result.reason === 'has_objects' ||
+            result.reason === 'not_found' ||
+            result.reason === 'unsupported_place'
+          ) {
+            if ('count' in result) return bad(call, placeRefusal(result))
+            return bad(
+              call,
+              result.reason === 'not_found'
+                ? 'Nothing was changed: target position was not found. Call read_outline or read_document first.'
+                : 'Nothing was changed: an index can only be placed in the body text.',
+            )
+          }
+          return bad(
+            call,
+            `Nothing was changed: ${'error' in result && result.error ? result.error : result.reason}.`,
+          )
+        }
+
+        const idxTitle = result.title || label('aiIndexName')
+        deps.onChange({
+          kind: 'index',
+          from: label('aiIndexName'),
+          to: changeText(`${idxTitle} (${result.entryCount})`),
+          count: 1,
+          place: result.place,
+        })
+        return {
+          output: `Inserted index (${result.layout}, ${result.columns} column(s)) with ${result.entryCount} entry(s) in ${result.groupCount} group(s) at section ${result.sec + 1}, paragraphs ${result.startPara + 1}–${result.endPara + 1}.${OCCURRENCE_SHIFT_NOTE}${tableNumberNote(result)}`,
+          mutated: true,
+          summary: label('aiToolIndexInsert', { count: result.entryCount }),
+        }
+      }
+      case 'refresh_index': {
+        const rawColumns = call.input.columns
+        let columns: IndexColumnCount | undefined
+        if (rawColumns !== undefined && rawColumns !== null) {
+          if (
+            typeof rawColumns !== 'number' ||
+            !Number.isInteger(rawColumns) ||
+            rawColumns < 1 ||
+            rawColumns > 3
+          ) {
+            return bad(call, 'columns must be a whole number from 1 to 3')
+          }
+          columns = rawColumns as IndexColumnCount
+        }
+        const rawLayout = call.input.layout
+        const layout: IndexLayout | undefined =
+          rawLayout === undefined || rawLayout === null ? undefined : (rawLayout as IndexLayout)
+        if (layout !== undefined && layout !== 'dotted-tab' && layout !== 'table') {
+          return bad(call, 'layout must be "dotted-tab" or "table"')
+        }
+        const rawTitle = call.input.title
+        let title: string | null | undefined
+        if (rawTitle === null) {
+          title = null
+        } else if (typeof rawTitle === 'string') {
+          if (hasLineBreak(rawTitle)) return bad(call, ONE_LINE_HELP)
+          title = rawTitle.trim() === '' ? null : rawTitle
+        }
+
+        const params = {
+          ...(title !== undefined ? { title } : {}),
+          ...(columns !== undefined ? { columns } : {}),
+          ...(typeof call.input.groupHeadings === 'boolean'
+            ? { groupHeadings: call.input.groupHeadings }
+            : {}),
+          ...(layout !== undefined ? { layout } : {}),
+          ...(call.input.overwriteManual === true ? { allowOverwriteManual: true } : {}),
+        }
+
+        const outcome = await changeWithMemoApproval(
+          () => bridge.refreshIndexBlock(params, { foreign: false }),
+          (options) => bridge.refreshIndexBlock(params, { ...options, foreign: false }),
+        )
+        if (outcome.kind !== 'done') {
+          return bad(call, memoRemovalDeclined(outcome.refusal, outcome.kind))
+        }
+        const result = outcome.result
+        if (!result.ok) {
+          if (result.reason === 'memo_removal_requires_approval') {
+            return bad(call, 'Nothing was changed.')
+          }
+          if (result.reason === 'not_found') {
+            return bad(
+              call,
+              'Nothing was changed: no index block was found in this document. Call insert_index first.',
+            )
+          }
+          if (result.reason === 'manual_edits') {
+            return bad(call, manualIndexEditsRefusal(result.modifiedLines ?? []))
+          }
+          if (result.reason === 'no_index_marks') {
+            return bad(call, 'Nothing was changed: there are no index marks left in this document.')
+          }
+          if (result.reason === 'has_objects') {
+            return bad(call, placeRefusal(result))
+          }
+          return bad(
+            call,
+            `Nothing was changed: ${'error' in result && result.error ? result.error : result.reason}.`,
+          )
+        }
+
+        const idxTitle = result.title || label('aiIndexName')
+        deps.onChange({
+          kind: 'index',
+          from: label('aiIndexName'),
+          to: changeText(`${idxTitle} (${result.entryCount})`),
+          count: 1,
+          place: result.place,
+        })
+        return {
+          output: `Refreshed index (${result.layout}, ${result.columns} column(s)) with ${result.entryCount} entry(s) in ${result.groupCount} group(s).${tableNumberNote(result)}`,
+          mutated: true,
+          summary: label('aiToolIndexRefresh', { count: result.entryCount }),
         }
       }
       default:

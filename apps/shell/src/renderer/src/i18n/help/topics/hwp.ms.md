@@ -20,3 +20,21 @@ GenOffice membuka dan menyunting dokumen Hangul `.hwp` dan `.hwpx` dalam tab, de
 - Buka lajur Memo daripada bar atas atau **Sisip > Memo** untuk membaca, menambah, menyunting dan memadam memo teks biasa di sebelah dokumen.
 - Menyokong pintasan penyuntingan dokumen Hangul, penanda perenggan pembaris mendatar, Salin Format (**Alt+C**), penukaran Hanja (**F9** / kekunci Hanja) dan Maklumat Dokumen (**Ctrl+Q,I**).
 - Panel AI pilihan dan [arahan terminal](help://cli) (`ieumoffice hwp read`, `ieumoffice hwp apply`) boleh membaca dan menyunting teks, gaya, jadual, persamaan, susun atur halaman, rangka dan hasil carian; setiap suntingan AI ialah satu langkah buat asal.
+
+## Jadual Kandungan: cipta dan segar semula
+
+- Gunakan **Alat > Cipta Jadual Kandungan** (atau **Alat > Segar Semula Jadual Kandungan**, atau klik kanan di dalam jadual kandungan) untuk memasukkan **Jadual Kandungan** daripada tajuk dalam Rangka, serta **Senarai Jadual**, **Senarai Rajah**, dan **Senarai Persamaan** daripada kapsyen objek dan perenggan kapsyen.
+- Pilih susun atur **Tab bertitik** (lalai) atau **Jadual tanpa sempadan** (2 lajur), tetapkan kedalaman tajuk (tahap 1–10, lalai 3), ubah suai tajuknya, dan sertakan pautan boleh klik secara pilihan (klik atau **Ctrl+klik** pada baris untuk melompat terus ke tajuk tersebut).
+- Nombor halaman mencerminkan penomboran halaman cetakan, termasuk permulaan nombor baharu serta format angka Roman atau tersuai.
+- Penyegaran semula mengemas kini entri dan nombor halaman di tempatnya, memberi amaran sebelum menulis ganti baris yang disunting secara manual, serta mengesan jadual kandungan sedia ada tanpa tanda yang dicipta oleh program lain dan meminta pengesahan sebelum menggantikannya.
+
+## Indeks: tanda entri dan bina indeks
+
+- Gunakan **Alat > Tanda Entri Indeks** (atau klik kanan pada teks isi) untuk menanda perkataan yang dipilih atau pada kursor, menambah subentri pilihan, atau menanda semua kemunculan yang sepadan (teks isi sahaja; bilangan kemunculan yang dilangkau dalam jadual, kotak teks, dan nota akan dilaporkan). Anda juga boleh melihat dan memadam tanda sedia ada dalam dialog yang sama.
+- Gunakan **Alat > Cipta Indeks** untuk memasukkan indeks di kedudukan kursor, dan **Alat > Segar Semula Indeks** untuk mengemas kininya selepas suntingan. Tajuk lalai ("Indeks") boleh disesuaikan.
+- Entri diisih mengikut turutan Korea (가나다) → Inggeris (ABC) → Lain-lain, dengan tajuk kumpulan konsonan/huruf pilihan, 1–3 lajur (lalai 2 lajur, dihadkan kepada kawasan indeks sahaja supaya susunan lajur dokumen lain kekal sama), dan susun atur **Tab bertitik** atau **Jadual tanpa sempadan**.
+
+## Pemberitahuan lapuk dan Salinan Serahan
+
+- Apabila anda melakukan Simpan secara manual, Cetak, Eksport sebagai PDF, atau Simpan sebagai Salinan Serahan, editor menyemak sama ada jadual kandungan atau indeks sudah lapuk dan menawarkan untuk menyegarkan semuanya dalam satu langkah buat asal. Semakan ini tidak pernah dijalankan semasa Autosimpan dan tidak pernah menyekat penyimpanan.
+- Gunakan **Fail > Simpan sebagai Salinan Serahan** untuk menyimpan salinan bersih berasingan yang membuang tanda suntingan dalaman (tanda indeks, tanda blok indeks, dan tetapan tersimpan) sambil mengekalkan jadual kandungan, sauh tajuk, dan pautan jadual kandungan. Fail kerja asal anda kekal tidak disentuh supaya anda boleh terus menyegarkannya kemudian.

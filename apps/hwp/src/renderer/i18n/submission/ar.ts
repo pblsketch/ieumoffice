@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const ar = {
+  staleDialogTitle: 'توجد عناصر تحتاج إلى تحديث',
+  staleDialogBody:
+    'قد تكون العناصر التالية غير محدّثة بعد التعديلات الأخيرة. هل تريد تحديثها قبل المتابعة؟',
+  staleActionSave: 'حفظ',
+  staleActionPrint: 'طباعة',
+  staleActionPdf: 'تصدير PDF',
+  staleActionSubmission: 'حفظ نسخة للتقديم',
+  staleBtnRefreshAll: 'تحديث الكل',
+  staleBtnContinue: 'المتابعة على أي حال',
+  staleBtnCancel: 'إلغاء',
+  staleReasonPagesChanged: 'تغيّرت أرقام الصفحات',
+  staleReasonEntriesChanged: 'تغيّرت الإدخالات',
+  staleKindTocBody: 'جدول المحتويات',
+  staleKindTocTable: 'قائمة الجداول',
+  staleKindTocFigure: 'قائمة الأشكال',
+  staleKindTocEquation: 'قائمة المعادلات',
+  staleKindIndex: 'الفهرس',
+  staleKindBibliography: 'قائمة المراجع',
+  staleManualConfirmTitle: 'تم اكتشاف تعديلات يدوية',
+  staleManualConfirmBody:
+    'تم العثور على تعديلات يدوية في: {items}. هل تريد استبدالها والتحديث؟',
+  staleManualOverwrite: 'استبدال وتحديث',
+  staleManualSkip: 'تخطّي',
+  staleRefreshDone: 'تم تحديث {count} عنصر.',
+  staleRefreshFailed: 'تعذّر تحديث بعض العناصر: {error}',
+  submissionMenuLabel: 'حفظ كنسخة للتقديم…',
+  submissionMenuDesc:
+    'يحفظ نسخة نظيفة منفصلة بدون علامات الفهرس أو الاقتباس أو الإعدادات.',
+  submissionSaving: 'جارٍ إنشاء نسخة التقديم…',
+  submissionSaved: 'تم حفظ نسخة التقديم: {name}',
+  submissionSavedTailsLost:
+    'تم حفظ نسخة التقديم ({name}). قد لا تكون بعض الصفحات الرئيسية أو التعليقات قد حُفظت.',
+  submissionFailedProtected: 'لا يمكن حفظ المستندات المحمية بكلمة مرور كنسخة للتقديم.',
+  submissionFailedTracked: 'لا يمكن حفظ المستندات التي تحتوي على تتبّع التغييرات كنسخة للتقديم.',
+  submissionFailedVerify:
+    'فشل التحقق من نسخة التقديم ({before} → {after} صفحة). جرّب الحفظ بتنسيق HWPX.',
+  submissionFailedExport: 'تعذّر إنشاء نسخة التقديم: {error}',
+  submissionFailedWrite: 'تعذّر حفظ نسخة التقديم: {error}',
+} satisfies Record<keyof typeof zh, string>
