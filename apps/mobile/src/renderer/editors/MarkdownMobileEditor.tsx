@@ -454,6 +454,7 @@ export const MarkdownMobileEditor = forwardRef<
         <textarea
           ref={textareaRef}
           className="mobile-markdown-textarea"
+          data-testid="markdown-editor-textarea"
           style={contentStyle}
           value={value}
           onChange={(e) => commitValue(e.target.value)}

@@ -163,6 +163,56 @@ describe('responsive mobile shell layout (<840px phone layout vs >=840px tablet 
     expect(el.querySelector('[data-testid="phone-quick-toolbar"]')).toBeNull()
     expect(el.querySelector('[data-testid="tablet-ai-toggle"]')).not.toBeNull()
   })
+
+  it('exposes stable data-testid hooks on the More sheet actions including Save As', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+    const onSaveAs = vi.fn()
+    const onShare = vi.fn()
+    const onFitToWidth = vi.fn()
+    const onOpenBackups = vi.fn()
+    const el = renderInDom(
+      <EditorShell
+        docTitle="report.hwp"
+        docFormat="hwp"
+        saveState="saved"
+        mode="view"
+        canEdit={true}
+        aiEnabled={false}
+        quickActions={[]}
+        aiPanelContent={null}
+        onBack={() => {}}
+        onEnterEdit={() => {}}
+        onDone={() => {}}
+        onExitEdit={() => {}}
+        onSave={() => {}}
+        onSaveAs={onSaveAs}
+        onShare={onShare}
+        onFitToWidth={onFitToWidth}
+        onOpenBackups={onOpenBackups}
+      >
+        <div>HWP body</div>
+      </EditorShell>,
+    )
+
+    const moreBtn = el.querySelector<HTMLButtonElement>('[data-testid="editor-more-btn"]')
+    expect(moreBtn).not.toBeNull()
+    act(() => {
+      moreBtn!.click()
+    })
+
+    const saveAsBtn = document.querySelector<HTMLButtonElement>(
+      '[data-testid="editor-save-as-btn"]',
+    )
+    expect(saveAsBtn).not.toBeNull()
+    expect(document.querySelector('[data-testid="editor-sheet-share-btn"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="editor-fit-width-btn"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="editor-backups-btn"]')).not.toBeNull()
+
+    act(() => {
+      saveAsBtn!.click()
+    })
+    expect(onSaveAs).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('SettingsScreen ChatGPT visibility gate, usage link, and HWP backup actions', () => {
