@@ -1,0 +1,600 @@
+name: Mobile iOS Simulator
+
+# Phase 1 iOS Simulator verification on GitHub-hosted macOS (Apple Silicon, no AI):
+# builds an unsigned Debug .app for iphonesimulator (arm64, inspectable WebView),
+# boots a ko-KR iPhone Simulator, runs a deterministic AXe UI walk-through, and
+# uploads screenshots, logs, memory snapshots, and the zipped .app artifact.
+
+on:
+  push:
+    branches:
+      - 'ci/mobile-ios-sim'
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-ios-sim-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ios-sim-smoke:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Rust (iOS Simulator arm64)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch, 2026-07
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios-sim,aarch64-apple-ios
+
+      - name: Cache cargo (iOS Simulator)
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: ios-sim
+          workspaces: |
+            apps/mobile/src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build rhwp studio and mobile web bundle
+        run: |
+          npm run studio -w @genoffice/hwp
+          npm run build -w @genoffice/mobile
+          test -f apps/mobile/dist/studio/index.html
+
+      - name: Initialize iOS project and inject native config
+        working-directory: apps/mobile
+        run: |
+          npx --yes @tauri-apps/cli@2 ios init --ci
+          node scripts/apply-native-config.mjs ios
+          ls -la src-tauri/gen/apple
+
+      - name: Build unsigned Debug iOS Simulator .app
+        id: build_sim
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          ART_DIR="$RUNNER_TEMP/ios-sim-artifacts"
+          mkdir -p "$ART_DIR/screenshots" "$ART_DIR/logs"
+          echo "art_dir=$ART_DIR" >> "$GITHUB_OUTPUT"
+
+          echo "=== Environment info ===" | tee "$ART_DIR/logs/build-env.txt"
+          xcodebuild -version | tee -a "$ART_DIR/logs/build-env.txt"
+          rustc --version | tee -a "$ART_DIR/logs/build-env.txt"
+          node --version | tee -a "$ART_DIR/logs/build-env.txt"
+          npx --yes @tauri-apps/cli@2 ios build --help | tee -a "$ART_DIR/logs/build-env.txt" || true
+
+          PROJ=$(find src-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+          if [ -z "$PROJ" ]; then
+            echo "No .xcodeproj found under src-tauri/gen/apple" >&2
+            exit 1
+          fi
+          echo "Using Xcode project: $PROJ"
+
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          schemes = data.get('project', {}).get('schemes', [])
+          if not schemes:
+              sys.exit(1)
+          print(next((s for s in schemes if 'iOS' in s or 'ios' in s), schemes[0]))
+          ")
+          echo "Using scheme: $SCHEME"
+
+          DERIVED_DATA="$RUNNER_TEMP/ios-sim-derived"
+          rm -rf "$DERIVED_DATA"
+
+          # Build Debug for iphonesimulator arm64 without code signing (no Apple account/secrets).
+          # Debug configuration enables debug_assertions so Tauri/WRY sets WKWebView.isInspectable = true.
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            -derivedDataPath "$DERIVED_DATA" \
+            ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build 2>&1 | tee "$ART_DIR/logs/xcodebuild.log"
+
+          APP_PATH=$(find "$DERIVED_DATA/Build/Products/Debug-iphonesimulator" -maxdepth 2 -name "*.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Built .app not found under $DERIVED_DATA/Build/Products/Debug-iphonesimulator" >&2
+            find "$DERIVED_DATA/Build/Products" -maxdepth 3 || true
+            exit 1
+          fi
+
+          APP_NAME=$(basename "$APP_PATH")
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
+          echo "Built .app: $APP_PATH (bundle id: $BUNDLE_ID)"
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "bundle_id=$BUNDLE_ID" >> "$GITHUB_OUTPUT"
+
+          # Package the .app as a zip artifact (preserving symlinks and bundle structure).
+          (cd "$(dirname "$APP_PATH")" && zip -ry "$ART_DIR/IeumOffice-ios-sim.app.zip" "$APP_NAME" > /dev/null)
+          ls -lh "$ART_DIR/IeumOffice-ios-sim.app.zip"
+
+      - name: Install AXe CLI for simulator accessibility automation
+        id: install_axe
+        run: |
+          set -euo pipefail
+          if brew install cameroncooke/axe/axe; then
+            axe --version || true
+            echo "axe_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "AXe installation failed; will still boot simulator and capture launch screenshot."
+            echo "axe_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Boot iPhone Simulator (ko-KR) and run deterministic UI walk-through
+        id: sim_smoke
+        env:
+          ART_DIR: ${{ steps.build_sim.outputs.art_dir }}
+          APP_PATH: ${{ steps.build_sim.outputs.app_path }}
+          BUNDLE_ID: ${{ steps.build_sim.outputs.bundle_id }}
+          AXE_READY: ${{ steps.install_axe.outputs.axe_ready }}
+        run: |
+          set -euo pipefail
+
+          # Pick the newest available iPhone simulator on this runner.
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          candidates = []
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in devices:
+                  if d.get('isAvailable') and 'iPhone' in d.get('name', ''):
+                      candidates.append((runtime, d['name'], d['udid']))
+          if not candidates:
+              sys.exit(1)
+          # Prefer latest runtime and standard iPhone models (16/15/etc., avoid SE if larger exists).
+          def score(item):
+              rt, name, _ = item
+              non_se = 0 if 'SE' in name else 1
+              non_mini = 0 if 'mini' in name else 1
+              return (rt, non_se, non_mini, name)
+          candidates.sort(key=score)
+          chosen = candidates[-1]
+          print(f'Selected simulator: {chosen[1]} ({chosen[0]}) -> {chosen[2]}', file=sys.stderr)
+          print(chosen[2])
+          ")
+
+          echo "Booting simulator $UDID..."
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+
+          # Set Korean locale before launching the app.
+          xcrun simctl spawn "$UDID" defaults write -g AppleLanguages -array "ko-KR" "ko" "en" || true
+          xcrun simctl spawn "$UDID" defaults write -g AppleLocale -string "ko_KR" || true
+          xcrun simctl ui "$UDID" appearance light || true
+
+          # Install the built .app.
+          xcrun simctl install "$UDID" "$APP_PATH"
+
+          # Start unified simulator log stream in the background.
+          LOG_STREAM="$ART_DIR/logs/sim-log-stream.txt"
+          xcrun simctl spawn "$UDID" log stream --style compact --level debug \
+            --predicate 'processImagePath CONTAINS "IeumOffice" OR process CONTAINS "WebContent" OR subsystem BEGINSWITH "com.ieumoffice" OR subsystem == "com.apple.WebKit"' \
+            > "$LOG_STREAM" 2>&1 &
+          LOG_PID=$!
+
+          cleanup_sim() {
+            kill "$LOG_PID" 2>/dev/null || true
+            xcrun simctl spawn "$UDID" log show --last 10m --style compact \
+              --predicate 'processImagePath CONTAINS "IeumOffice" OR process CONTAINS "WebContent" OR subsystem BEGINSWITH "com.ieumoffice"' \
+              > "$ART_DIR/logs/sim-log-show.txt" 2>&1 || true
+            # Collect crash reports if any were generated during the run.
+            if [ -d "$HOME/Library/Logs/DiagnosticReports" ]; then
+              find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 2 \( -name "*IeumOffice*" -o -name "*WebContent*" \) \
+                -exec cp {} "$ART_DIR/logs/" \; 2>/dev/null || true
+            fi
+            xcrun simctl shutdown "$UDID" 2>/dev/null || true
+          }
+          trap cleanup_sim EXIT
+
+          # Launch the app with Korean locale arguments and capture stdout/stderr.
+          LAUNCH_OUT=$(xcrun simctl launch \
+            --stdout="$ART_DIR/logs/app-stdout.txt" \
+            --stderr="$ART_DIR/logs/app-stderr.txt" \
+            "$UDID" "$BUNDLE_ID" \
+            -AppleLanguages "(ko-KR)" -AppleLocale "ko_KR")
+          echo "Launch output: $LAUNCH_OUT" | tee "$ART_DIR/logs/launch.txt"
+          APP_PID=$(echo "$LAUNCH_OUT" | awk '{print $NF}')
+
+          # Run deterministic UI walk-through using AXe and simctl screenshots.
+          UDID="$UDID" APP_PID="$APP_PID" python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import time
+          from pathlib import Path
+
+          udid = os.environ["UDID"]
+          art_dir = Path(os.environ["ART_DIR"])
+          shots_dir = art_dir / "screenshots"
+          logs_dir = art_dir / "logs"
+          axe_ready = os.environ.get("AXE_READY") == "true"
+          app_pid = os.environ.get("APP_PID", "")
+
+          summary = {
+              "udid": udid,
+              "app_pid": app_pid,
+              "axe_ready": axe_ready,
+              "steps": [],
+              "stuck_at": None,
+              "stuck_reason": None,
+              "memory_samples": [],
+          }
+
+          def run_cmd(cmd, timeout=30):
+              try:
+                  p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                  return p.returncode, p.stdout, p.stderr
+              except Exception as exc:
+                  return -1, "", str(exc)
+
+          def screenshot(name):
+              out = shots_dir / name
+              rc, _, err = run_cmd(["xcrun", "simctl", "io", udid, "screenshot", str(out)])
+              return {"file": name, "ok": rc == 0 and out.exists(), "error": err.strip() if rc != 0 else ""}
+
+          def record_memory(label):
+              rc, out, _ = run_cmd(["ps", "-axo", "pid,ppid,rss,vsz,comm"])
+              rows = []
+              if rc == 0:
+                  for line in out.splitlines():
+                      if any(k in line for k in ("IeumOffice", "WebContent", "Networking", "GPU")):
+                          if "grep" not in line:
+                              rows.append(line.strip())
+              sample = {"label": label, "time": time.strftime("%H:%M:%S"), "ps": rows}
+              if app_pid.isdigit():
+                  rc_fp, out_fp, _ = run_cmd(["footprint", "-p", app_pid], timeout=15)
+                  if rc_fp == 0:
+                      sample["footprint_head"] = "\n".join(out_fp.splitlines()[:25])
+              summary["memory_samples"].append(sample)
+
+          def describe_ui(tag):
+              if not axe_ready:
+                  return None, "AXe is not installed"
+              rc, out, err = run_cmd(["axe", "describe-ui", "--udid", udid], timeout=20)
+              (logs_dir / f"ui-{tag}.json").write_text(out if out else err, encoding="utf-8")
+              if rc != 0 or not out.strip():
+                  return None, f"axe describe-ui failed (rc={rc}): {err.strip()}"
+              try:
+                  return json.loads(out), ""
+              except json.JSONDecodeError as exc:
+                  return None, f"axe describe-ui invalid JSON: {exc}"
+
+          def iter_nodes(node):
+              if isinstance(node, list):
+                  for item in node:
+                      yield from iter_nodes(item)
+              elif isinstance(node, dict):
+                  yield node
+                  for key in ("children", "subelements", "elements"):
+                      child = node.get(key)
+                      if child:
+                          yield from iter_nodes(child)
+
+          def node_texts(node):
+              vals = []
+              for k in ("AXLabel", "label", "AXTitle", "title", "AXValue", "value", "description", "AXUniqueId"):
+                  v = node.get(k)
+                  if isinstance(v, str) and v.strip():
+                      vals.append(v.strip())
+              return vals
+
+          def node_frame(node):
+              f = node.get("frame")
+              if isinstance(f, dict):
+                  try:
+                      x = float(f.get("x", 0))
+                      y = float(f.get("y", 0))
+                      w = float(f.get("width", 0))
+                      h = float(f.get("height", 0))
+                      if w > 0 and h > 0:
+                          return (x, y, w, h)
+                  except Exception:
+                      pass
+              return None
+
+          def find_node(tree, candidates):
+              # Pass 1: exact match on any text field with valid frame.
+              for exact in (True, False):
+                  matches = []
+                  for node in iter_nodes(tree):
+                      frame = node_frame(node)
+                      if not frame:
+                          continue
+                      texts = node_texts(node)
+                      role = str(node.get("type") or node.get("role") or node.get("AXRole") or "")
+                      for cand in candidates:
+                          for txt in texts:
+                              hit = (txt == cand) if exact else (cand in txt)
+                              if hit:
+                                  # Prefer Button/Link/Cell over static text or container when multiple match.
+                                  prio = 0
+                                  if any(r in role for r in ("Button", "Link", "Tab")):
+                                      prio = 2
+                                  elif frame[2] < 380 and frame[3] < 200:
+                                      prio = 1
+                                  matches.append((prio, -frame[2] * frame[3], node, frame, txt, role))
+                                  break
+                  if matches:
+                      matches.sort(key=lambda m: (m[0], m[1]), reverse=True)
+                      _, _, node, frame, txt, role = matches[0]
+                      return node, frame, txt, role
+              return None
+
+          def wait_for_any(tag, candidates, timeout_s=25, poll_s=1.5):
+              deadline = time.time() + timeout_s
+              last_err = ""
+              while time.time() < deadline:
+                  tree, err = describe_ui(tag)
+                  if tree is not None:
+                      found = find_node(tree, candidates)
+                      if found is not None:
+                          return found, tree, ""
+                      last_err = f"None of {candidates} found in UI tree"
+                  else:
+                      last_err = err
+                  time.sleep(poll_s)
+              return None, None, last_err
+
+          def tap_frame(frame):
+              x, y, w, h = frame
+              cx = int(round(x + w / 2.0))
+              cy = int(round(y + h / 2.0))
+              rc, out, err = run_cmd(["axe", "tap", "-x", str(cx), "-y", str(cy), "--udid", udid], timeout=15)
+              return rc == 0, cx, cy, (err or out).strip()
+
+          def fail_step(step_name, reason):
+              shot = screenshot(f"stuck-{step_name}.png")
+              describe_ui(f"stuck-{step_name}")
+              record_memory(f"stuck-{step_name}")
+              summary["stuck_at"] = step_name
+              summary["stuck_reason"] = reason
+              summary["steps"].append({"step": step_name, "ok": False, "reason": reason, "screenshot": shot})
+              print(f"[STUCK] {step_name}: {reason}", flush=True)
+
+          def run_flow():
+              # Step 1: Wait for initial screen (welcome overlay or home) and screenshot.
+              time.sleep(5)
+              found, _, err = wait_for_any(
+                  "01-first-screen",
+                  ["시작하기", "Get started", "예시 문서 열어 보기", "Open the sample document"],
+                  timeout_s=30,
+              )
+              shot1 = screenshot("01-first-screen.png")
+              record_memory("01-first-screen")
+              if not found:
+                  fail_step("01-first-screen", f"Initial screen controls not found: {err}")
+                  return
+              summary["steps"].append({"step": "01-first-screen", "ok": True, "matched": found[2], "screenshot": shot1})
+              print(f"[OK] 01-first-screen (found: {found[2]})", flush=True)
+
+              # Step 2: Tap [Start / 시작하기] if welcome screen is showing -> Home.
+              if found[2] in ("시작하기", "Get started"):
+                  ok, cx, cy, msg = tap_frame(found[1])
+                  if not ok:
+                      fail_step("02-tap-start", f"axe tap failed at ({cx},{cy}): {msg}")
+                      return
+                  time.sleep(2.5)
+              found_home, _, err = wait_for_any(
+                  "02-home",
+                  ["예시 문서 열어 보기", "Open the sample document", "새 마크다운", "New Markdown"],
+                  timeout_s=15,
+              )
+              shot2 = screenshot("02-home.png")
+              record_memory("02-home")
+              if not found_home:
+                  fail_step("02-home", f"Home screen controls not found after tapping Start: {err}")
+                  return
+              summary["steps"].append({"step": "02-home", "ok": True, "matched": found_home[2], "screenshot": shot2})
+              print(f"[OK] 02-home (found: {found_home[2]})", flush=True)
+
+              # Step 3: Tap [Open sample document / 예시 문서 열어 보기] -> HWP Reading (Flow) view.
+              found_sample, _, err = wait_for_any(
+                  "03-find-sample",
+                  ["예시 문서 열어 보기", "Open the sample document"],
+                  timeout_s=10,
+              )
+              if not found_sample:
+                  fail_step("03-open-sample-hwp", f"Sample document button not found: {err}")
+                  return
+              ok, cx, cy, msg = tap_frame(found_sample[1])
+              if not ok:
+                  fail_step("03-open-sample-hwp", f"axe tap sample failed at ({cx},{cy}): {msg}")
+                  return
+              # Give rhwp WASM + studio iframe + flow renderer time to settle.
+              time.sleep(5)
+              found_page_btn, _, err = wait_for_any(
+                  "03-hwp-flow",
+                  ["쪽 화면", "Page view"],
+                  timeout_s=30,
+              )
+              time.sleep(2)
+              shot3 = screenshot("03-hwp-flow.png")
+              record_memory("03-hwp-flow")
+              if not found_page_btn:
+                  fail_step("03-hwp-flow", f"HWP reading view loaded without Page view button: {err}")
+                  return
+              summary["steps"].append({"step": "03-hwp-flow", "ok": True, "matched": found_page_btn[2], "screenshot": shot3})
+              print(f"[OK] 03-hwp-flow (found: {found_page_btn[2]})", flush=True)
+
+              # Step 4: Switch Reading view -> Page view.
+              ok, cx, cy, msg = tap_frame(found_page_btn[1])
+              if not ok:
+                  fail_step("04-hwp-page", f"axe tap Page view failed at ({cx},{cy}): {msg}")
+                  return
+              time.sleep(4)
+              found_flow_btn, _, err = wait_for_any(
+                  "04-hwp-page",
+                  ["읽기 화면", "Reading view"],
+                  timeout_s=20,
+              )
+              time.sleep(2)
+              shot4 = screenshot("04-hwp-page.png")
+              record_memory("04-hwp-page")
+              if not found_flow_btn:
+                  fail_step("04-hwp-page", f"Page view did not expose Reading view toggle: {err}")
+                  return
+              summary["steps"].append({"step": "04-hwp-page", "ok": True, "matched": found_flow_btn[2], "screenshot": shot4})
+              print(f"[OK] 04-hwp-page (found: {found_flow_btn[2]})", flush=True)
+
+              # Step 5: Switch Page view -> Reading view.
+              ok, cx, cy, msg = tap_frame(found_flow_btn[1])
+              if not ok:
+                  fail_step("05-hwp-flow-return", f"axe tap Reading view failed at ({cx},{cy}): {msg}")
+                  return
+              time.sleep(3)
+              found_back, _, err = wait_for_any(
+                  "05-hwp-flow-return",
+                  ["뒤로", "Back"],
+                  timeout_s=15,
+              )
+              shot5 = screenshot("05-hwp-flow-return.png")
+              record_memory("05-hwp-flow-return")
+              if not found_back:
+                  fail_step("05-hwp-flow-return", f"Back button not found after returning to reading view: {err}")
+                  return
+              summary["steps"].append({"step": "05-hwp-flow-return", "ok": True, "matched": found_back[2], "screenshot": shot5})
+              print(f"[OK] 05-hwp-flow-return", flush=True)
+
+              # Step 6: Tap [Back / 뒤로] -> Home.
+              ok, cx, cy, msg = tap_frame(found_back[1])
+              if not ok:
+                  fail_step("06-back-to-home", f"axe tap Back failed at ({cx},{cy}): {msg}")
+                  return
+              time.sleep(2.5)
+              found_md, _, err = wait_for_any(
+                  "06-home-after-hwp",
+                  ["새 마크다운", "New Markdown", "새로 만들기", "Create new"],
+                  timeout_s=15,
+              )
+              shot6 = screenshot("06-home-after-hwp.png")
+              record_memory("06-home-after-hwp")
+              if not found_md:
+                  fail_step("06-back-to-home", f"Did not return to Home with New Markdown control: {err}")
+                  return
+              summary["steps"].append({"step": "06-back-to-home", "ok": True, "matched": found_md[2], "screenshot": shot6})
+              print(f"[OK] 06-back-to-home (found: {found_md[2]})", flush=True)
+
+              # Step 7: Tap [New Markdown / 새 마크다운] (open create sheet first if card is not directly shown).
+              if found_md[2] in ("새로 만들기", "Create new"):
+                  ok, cx, cy, msg = tap_frame(found_md[1])
+                  if not ok:
+                      fail_step("07-new-markdown", f"axe tap Create new failed at ({cx},{cy}): {msg}")
+                      return
+                  time.sleep(1.5)
+                  found_md, _, err = wait_for_any("07-create-sheet", ["새 마크다운", "New Markdown"], timeout_s=10)
+                  if not found_md:
+                      fail_step("07-new-markdown", f"New Markdown not found in Create sheet: {err}")
+                      return
+              ok, cx, cy, msg = tap_frame(found_md[1])
+              if not ok:
+                  fail_step("07-new-markdown", f"axe tap New Markdown failed at ({cx},{cy}): {msg}")
+                  return
+              time.sleep(3.5)
+              found_md_back, _, err = wait_for_any("07-new-markdown", ["뒤로", "Back"], timeout_s=15)
+              shot7 = screenshot("07-new-markdown.png")
+              record_memory("07-new-markdown")
+              if not found_md_back:
+                  fail_step("07-new-markdown", f"Markdown editor did not open cleanly: {err}")
+                  return
+              summary["steps"].append({"step": "07-new-markdown", "ok": True, "matched": found_md_back[2], "screenshot": shot7})
+              print(f"[OK] 07-new-markdown", flush=True)
+
+              # Step 8: Tap [Back / 뒤로] from Markdown -> Home -> Tap [Settings / 설정].
+              ok, cx, cy, msg = tap_frame(found_md_back[1])
+              if not ok:
+                  fail_step("08-settings", f"axe tap Back from Markdown failed at ({cx},{cy}): {msg}")
+                  return
+              time.sleep(2.5)
+              found_settings, _, err = wait_for_any("08-find-settings", ["설정", "Settings"], timeout_s=15)
+              if not found_settings:
+                  fail_step("08-settings", f"Settings tab/button not found on Home: {err}")
+                  return
+              ok, cx, cy, msg = tap_frame(found_settings[1])
+              if not ok:
+                  fail_step("08-settings", f"axe tap Settings failed at ({cx},{cy}): {msg}")
+                  return
+              time.sleep(2.5)
+              describe_ui("08-settings")
+              shot8 = screenshot("08-settings.png")
+              record_memory("08-settings")
+              summary["steps"].append({"step": "08-settings", "ok": True, "matched": found_settings[2], "screenshot": shot8})
+              print(f"[OK] 08-settings", flush=True)
+
+          run_flow()
+
+          (logs_dir / "smoke-summary.json").write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          lines = [
+              f"UDID: {summary['udid']}",
+              f"App PID: {summary['app_pid']}",
+              f"AXe ready: {summary['axe_ready']}",
+              f"Stuck at: {summary['stuck_at']} ({summary['stuck_reason']})",
+              "",
+              "Steps:",
+          ]
+          for s in summary["steps"]:
+              lines.append(f"  - {s['step']}: ok={s['ok']} shot={s.get('screenshot', {}).get('file')} info={s.get('matched') or s.get('reason')}")
+          (logs_dir / "smoke-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          mem_lines = []
+          for m in summary["memory_samples"]:
+              mem_lines.append(f"=== {m['label']} ({m['time']}) ===")
+              mem_lines.extend(m["ps"] or ["(no matching processes)"])
+              if m.get("footprint_head"):
+                  mem_lines.append("--- footprint ---")
+                  mem_lines.append(m["footprint_head"])
+              mem_lines.append("")
+          (logs_dir / "memory.txt").write_text("\n".join(mem_lines), encoding="utf-8")
+
+          print("\n".join(lines), flush=True)
+          PY
+
+          # Extract potential console / JS / Rust error lines after log stream settles.
+          sleep 2
+          {
+            echo "=== Filtered errors from sim-log-stream.txt ==="
+            grep -iE "error|exception|panic|uncaught|failed|rejected|crash|console|javascript|webkit" "$LOG_STREAM" | head -n 400 || true
+            echo ""
+            echo "=== app-stderr.txt ==="
+            cat "$ART_DIR/logs/app-stderr.txt" || true
+          } > "$ART_DIR/logs/console-errors.txt"
+
+      - name: Upload iOS Simulator artifacts (screenshots, logs, .app zip)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ieumoffice-mobile-ios-sim
+          path: ${{ runner.temp }}/ios-sim-artifacts
+          retention-days: 7
+          if-no-files-found: warn
