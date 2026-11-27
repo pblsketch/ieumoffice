@@ -35,4 +35,6 @@ export const he = {
   sheetsSheetNameInvalid:
     'שם גיליון יכול להכיל עד 31 תווים, אינו יכול לכלול : \\ / ? * [ ] ואינו יכול להתחיל או להסתיים בגרש.',
   sheetsSheetNameTaken: 'כבר קיים גיליון בשם הזה.',
+  sheetsNameBox: 'תיבת השם',
+  sheetsNameBoxDropdown: 'רשימת תיבת השם',
 } as const satisfies Record<keyof typeof zh, string>

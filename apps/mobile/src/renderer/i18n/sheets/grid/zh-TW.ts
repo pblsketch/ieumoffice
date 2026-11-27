@@ -35,4 +35,6 @@ export const zhTW = {
   sheetsSheetNameInvalid:
     '工作表名稱最多 31 個字元，不能包含 : \\ / ? * [ ]，也不能以單引號開頭或結尾。',
   sheetsSheetNameTaken: '已有同名的工作表。',
+  sheetsNameBox: '名稱方塊',
+  sheetsNameBoxDropdown: '名稱方塊清單',
 } as const satisfies Record<keyof typeof zh, string>

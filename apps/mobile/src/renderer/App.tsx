@@ -37,7 +37,7 @@ import { HomeAppLayer } from './home/HomeAppLayer'
 import type { HomeHost } from './home/homeHost'
 import { takeIncomingDocument } from './home/incoming'
 import { MobileLocaleProvider, translateMobile } from './i18n'
-import { DEFAULT_PREFS } from './settings/defaultPrefs'
+import { DEFAULT_PREFS, detectSystemLang, resolveInitialLang } from './settings/defaultPrefs'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
 import type { EditorSaveState } from './shell/EditorShell'
@@ -80,7 +80,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   windowClassRef.current = viewport.windowClass
 
   const [screen, setScreen] = useState<ScreenView>('home')
-  const [prefs, setPrefs] = useState<MobileAppPrefs>(DEFAULT_PREFS)
+  const [prefs, setPrefs] = useState<MobileAppPrefs>(() => ({
+    ...DEFAULT_PREFS,
+    lang: detectSystemLang(),
+  }))
   const [recentDocs, setRecentDocs] = useState<RecentDocEntry[]>([])
   const [recoveryEntries, setRecoveryEntries] = useState<RecoveryEntry[]>([])
   const [backups, setBackups] = useState<HwpBackupEntry[]>([])
@@ -103,10 +106,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const lang: Lang = normalizeLang(prefs.lang)
   const langRef = useRef(lang)
   langRef.current = lang
-  const tNow = useCallback(
-    (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key),
-    [lang],
-  )
 
   const modeRef = useRef(mode)
   modeRef.current = mode
@@ -141,14 +140,34 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   })
   const { refreshAiState, resetForDocument: resetAiForDocument, cancel: cancelAiRun } = ai
 
+  const [nativeSystemDark, setNativeSystemDark] = useState<boolean | undefined>(() => {
+    if (typeof window === 'undefined') return undefined
+    const initial = (window as { __ieumSystemDark?: unknown }).__ieumSystemDark
+    return typeof initial === 'boolean' ? initial : undefined
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onSystemDark = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail
+      if (typeof detail === 'boolean') setNativeSystemDark(detail)
+    }
+    window.addEventListener('ieum:system-dark', onSystemDark)
+    return () => window.removeEventListener('ieum:system-dark', onSystemDark)
+  }, [])
+
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (prefs.theme === 'system') {
-      document.documentElement.removeAttribute('data-theme')
+      if (typeof nativeSystemDark === 'boolean') {
+        document.documentElement.setAttribute('data-theme', nativeSystemDark ? 'dark' : 'light')
+      } else {
+        document.documentElement.removeAttribute('data-theme')
+      }
     } else {
       document.documentElement.setAttribute('data-theme', prefs.theme)
     }
-  }, [prefs.theme])
+  }, [prefs.theme, nativeSystemDark])
 
   const refreshHomeData = useCallback(async () => {
     const [recent, recovery, bk] = await Promise.all([
@@ -231,8 +250,8 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   /** Refusal of a file whose format no registered editor opens (spec: open gate). */
   const notifyNotOpenable = useCallback(() => {
-    showToast({ message: tNow('formatNotOpenable'), tone: 'error' })
-  }, [showToast, tNow])
+    showToast({ message: translateMobile(langRef.current, 'formatNotOpenable'), tone: 'error' })
+  }, [showToast])
 
   const openLoadedSessionRef = useRef<(session: MobileDocSession) => Promise<boolean>>(
     async () => false,
@@ -320,12 +339,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setMode(
         kind.editable && next.doc.editable !== false ? initialDocumentMode({ isUntitled }) : 'view',
       )
-      setNoticeBanner(opened.noticeKey ? tNow(opened.noticeKey) : null)
+      setNoticeBanner(opened.noticeKey ? translateMobile(langRef.current, opened.noticeKey) : null)
       setScreen('editor')
       await refreshHomeData()
       return true
     },
-    [client, editorHost, notifyNotOpenable, refreshHomeData, tNow],
+    [client, editorHost, notifyNotOpenable, refreshHomeData],
   )
   openLoadedSessionRef.current = openLoadedSession
 
@@ -341,7 +360,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         client.setOpenableExtensions(openableExtensions()).catch(() => {}),
       ])
       if (!mounted) return
-      setPrefs(loadedPrefs)
+      const resolvedLang = resolveInitialLang(loadedPrefs.lang)
+      langRef.current = resolvedLang
+      setPrefs({ ...loadedPrefs, lang: resolvedLang })
 
       const pending = await takeIncomingDocument(client).catch((err) => {
         if (isFormatNotOpenable(err)) notifyNotOpenable()
@@ -542,7 +563,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const handleUpdatePrefs = useCallback(
     async (patch: MobileAppPrefsPatch) => {
       const updated = await client.setAppPrefs(patch)
-      setPrefs(updated)
+      const resolvedLang = resolveInitialLang(updated.lang)
+      langRef.current = resolvedLang
+      setPrefs({ ...updated, lang: resolvedLang })
     },
     [client],
   )

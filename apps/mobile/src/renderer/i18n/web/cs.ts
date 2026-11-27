@@ -81,4 +81,5 @@ export const cs = {
   webHtmlDeleted: 'Prvek byl smazán. Vrácením zpět ho obnovíte.',
   webExportSavedShapeLoss: 'Uloženo jako {name}. Některé grafické prvky se nepodařilo přenést.',
   webExportPictureMissing: '[Obrázek nebyl přenesen]',
+  webMarkdownEditorLabel: 'Editor dokumentů Markdown',
 } as const satisfies Record<keyof typeof zh, string>

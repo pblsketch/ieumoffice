@@ -35,4 +35,6 @@ export const id = {
   sheetsSheetNameInvalid:
     'Nama lembar paling banyak 31 karakter, tidak boleh berisi : \\ / ? * [ ], dan tidak boleh diawali atau diakhiri tanda kutip tunggal.',
   sheetsSheetNameTaken: 'Sudah ada lembar dengan nama ini.',
+  sheetsNameBox: 'Kotak nama',
+  sheetsNameBoxDropdown: 'Daftar kotak nama',
 } as const satisfies Record<keyof typeof zh, string>

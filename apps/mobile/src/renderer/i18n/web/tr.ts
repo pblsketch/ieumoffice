@@ -81,4 +81,5 @@ export const tr = {
   webHtmlDeleted: 'Öğe silindi. Geri al ile geri getirebilirsiniz.',
   webExportSavedShapeLoss: '{name} olarak kaydedildi. Bazı görsel öğeler aktarılamadı.',
   webExportPictureMissing: '[Görsel aktarılamadı]',
+  webMarkdownEditorLabel: 'Markdown belge düzenleyici',
 } as const satisfies Record<keyof typeof zh, string>

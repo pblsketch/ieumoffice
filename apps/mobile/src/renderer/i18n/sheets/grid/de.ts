@@ -35,4 +35,6 @@ export const de = {
   sheetsSheetNameInvalid:
     'Ein Blattname darf höchstens 31 Zeichen haben, keine der Zeichen : \\ / ? * [ ] enthalten und nicht mit einem Apostroph beginnen oder enden.',
   sheetsSheetNameTaken: 'Ein Blatt mit diesem Namen gibt es bereits.',
+  sheetsNameBox: 'Namenfeld',
+  sheetsNameBoxDropdown: 'Namenfeld-Auswahl',
 } as const satisfies Record<keyof typeof zh, string>

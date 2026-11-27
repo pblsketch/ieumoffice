@@ -42,7 +42,9 @@ fn default_true() -> bool {
 impl Default for MobileAppPrefs {
     fn default() -> Self {
         Self {
-            lang: "ko".to_string(),
+            // Empty until the user picks a language in Settings; the renderer resolves it from
+            // the system locale (falling back to English for unsupported locales).
+            lang: String::new(),
             theme: "system".to_string(),
             hwp_default_format: MobileDocFormat::Hwpx,
             // AI starts hidden on mobile; the user turns it on in Settings.
@@ -206,6 +208,7 @@ mod tests {
     fn fresh_install_uses_the_first_values() {
         let (_dir, store) = store();
         let prefs = store.load().unwrap();
+        assert_eq!(prefs.lang, "");
         assert_eq!(prefs.hwp_default_format, MobileDocFormat::Hwpx);
         assert!(prefs.editors_off.is_empty());
         assert!(prefs.home_kinds_hidden.is_empty());
@@ -292,7 +295,7 @@ mod tests {
         assert_eq!(reread.tips_seen, strings(&["editButton", "flowView"]));
         assert_eq!(reread.last_seen_version, "0.2.0");
         // the four older fields keep their values
-        assert_eq!(reread.lang, "ko");
+        assert_eq!(reread.lang, "");
         assert_eq!(reread.hwp_default_format, MobileDocFormat::Hwpx);
     }
 

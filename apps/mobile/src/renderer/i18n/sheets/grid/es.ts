@@ -35,4 +35,6 @@ export const es = {
   sheetsSheetNameInvalid:
     'Un nombre de hoja admite hasta 31 caracteres, no puede contener : \\ / ? * [ ] y no puede empezar ni terminar con un apóstrofo.',
   sheetsSheetNameTaken: 'Ya existe una hoja con este nombre.',
+  sheetsNameBox: 'Cuadro de nombres',
+  sheetsNameBoxDropdown: 'Lista del cuadro de nombres',
 } as const satisfies Record<keyof typeof zh, string>

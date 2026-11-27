@@ -42,6 +42,11 @@ export interface SheetsGridViewProps {
 function prefersDark(theme: MobileTheme): boolean {
   if (theme === 'dark') return true
   if (theme === 'light') return false
+  if (typeof document !== 'undefined') {
+    const resolved = document.documentElement.getAttribute('data-theme')
+    if (resolved === 'dark') return true
+    if (resolved === 'light') return false
+  }
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 

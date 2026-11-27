@@ -81,4 +81,5 @@ export const he = {
   webHtmlDeleted: 'הרכיב נמחק. ביטול הפעולה יחזיר אותו.',
   webExportSavedShapeLoss: 'נשמר בשם {name}. לא ניתן היה להעביר חלק מהרכיבים החזותיים.',
   webExportPictureMissing: '[תמונה שלא הועברה]',
+  webMarkdownEditorLabel: 'עורך מסמכי Markdown',
 } as const satisfies Record<keyof typeof zh, string>

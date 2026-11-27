@@ -35,4 +35,6 @@ export const ar = {
   sheetsSheetNameInvalid:
     'يمكن أن يتكون اسم الورقة من 31 حرفًا كحد أقصى، ولا يمكن أن يحتوي على : \\ / ? * [ ]، ولا أن يبدأ أو ينتهي بفاصلة عليا.',
   sheetsSheetNameTaken: 'توجد ورقة بهذا الاسم بالفعل.',
+  sheetsNameBox: 'مربع الاسم',
+  sheetsNameBoxDropdown: 'قائمة مربع الاسم',
 } as const satisfies Record<keyof typeof zh, string>

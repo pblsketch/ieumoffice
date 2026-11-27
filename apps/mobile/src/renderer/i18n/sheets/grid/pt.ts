@@ -35,4 +35,6 @@ export const pt = {
   sheetsSheetNameInvalid:
     'O nome da planilha pode ter até 31 caracteres, não pode conter : \\ / ? * [ ] e não pode começar nem terminar com apóstrofo.',
   sheetsSheetNameTaken: 'Já existe uma planilha com este nome.',
+  sheetsNameBox: 'Caixa de nome',
+  sheetsNameBoxDropdown: 'Lista da caixa de nome',
 } as const satisfies Record<keyof typeof zh, string>

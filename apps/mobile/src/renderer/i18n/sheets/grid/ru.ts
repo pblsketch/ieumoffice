@@ -35,4 +35,6 @@ export const ru = {
   sheetsSheetNameInvalid:
     'Имя листа может содержать не более 31 знака, не может включать : \\ / ? * [ ] и не может начинаться или заканчиваться апострофом.',
   sheetsSheetNameTaken: 'Лист с таким именем уже есть.',
+  sheetsNameBox: 'Поле имени',
+  sheetsNameBoxDropdown: 'Список поля имени',
 } as const satisfies Record<keyof typeof zh, string>

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   type ChangeEvent,
+  type CompositionEvent,
 } from 'react'
 import { Markdown } from '@genoffice/ui'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
@@ -111,6 +112,8 @@ export interface MarkdownMobileEditorProps {
   readonly onZoomChange?: (next: number) => void
   /** Edit mode: the selection of the source moved (caret moves, selecting, typing). */
   readonly onSelectionChange?: (start: number, end: number) => void
+  /** Localized accessible name for the edit textarea. */
+  readonly editorLabel?: string
 }
 
 const HISTORY_LIMIT = 50
@@ -131,6 +134,7 @@ export const MarkdownMobileEditor = forwardRef<
     zoomScale = 1,
     onZoomChange,
     onSelectionChange,
+    editorLabel = 'Markdown document editor',
   },
   ref,
 ) {
@@ -165,6 +169,10 @@ export const MarkdownMobileEditor = forwardRef<
     })
   }, [])
 
+  // Reports the textarea's selection: whether the hide-from-AI entry offers hide or unhide depends on it.
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+
   const commitValue = useCallback(
     (next: string) => {
       if (next === valueRef.current) return
@@ -172,6 +180,13 @@ export const MarkdownMobileEditor = forwardRef<
       redoStackRef.current = []
       valueRef.current = next
       onChange(next)
+      const el = textareaRef.current
+      if (el && !composingRef.current) {
+        onSelectionChangeRef.current?.(
+          el.selectionStart ?? next.length,
+          el.selectionEnd ?? next.length,
+        )
+      }
     },
     [onChange],
   )
@@ -320,13 +335,21 @@ export const MarkdownMobileEditor = forwardRef<
   const onCompositionStart = useCallback(() => {
     composingRef.current = true
   }, [])
-  const onCompositionEnd = useCallback(() => {
-    composingRef.current = false
-    setTimeout(() => {
-      const queued = pendingActionsRef.current.splice(0)
-      for (const action of queued) applyAction(action)
-    }, 0)
-  }, [applyAction])
+  const onCompositionEnd = useCallback(
+    (e: CompositionEvent<HTMLTextAreaElement>) => {
+      composingRef.current = false
+      const el = e.currentTarget
+      commitValue(el.value)
+      if (el.value === valueRef.current) {
+        onSelectionChangeRef.current?.(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+      }
+      setTimeout(() => {
+        const queued = pendingActionsRef.current.splice(0)
+        for (const action of queued) applyAction(action)
+      }, 0)
+    },
+    [applyAction, commitValue],
+  )
 
   useImperativeHandle(
     ref,
@@ -364,20 +387,21 @@ export const MarkdownMobileEditor = forwardRef<
     }
   }, [mode])
 
-  // Reports the textarea's selection: whether the hide-from-AI entry offers hide or unhide depends on it.
-  const onSelectionChangeRef = useRef(onSelectionChange)
-  onSelectionChangeRef.current = onSelectionChange
+  const hasSelectionListener = Boolean(onSelectionChange)
   useEffect(() => {
     const el = textareaRef.current
-    if (mode !== 'edit' || !el) return
+    if (mode !== 'edit' || !el || !hasSelectionListener) return
     const doc = el.ownerDocument
     const report = () => {
+      // Skip reporting while IME composition is active or before React has committed the
+      // current textarea value; triggering a parent re-render mid-input resets el.value.
+      if (composingRef.current || el.value !== valueRef.current) return
       onSelectionChangeRef.current?.(el.selectionStart ?? 0, el.selectionEnd ?? 0)
     }
     const onDocSelection = () => {
       if (doc.activeElement === el) report()
     }
-    const events = ['select', 'keyup', 'pointerup', 'input', 'focus'] as const
+    const events = ['select', 'keyup', 'pointerup', 'focus'] as const
     for (const name of events) el.addEventListener(name, report)
     doc.addEventListener('selectionchange', onDocSelection)
     report()
@@ -385,7 +409,7 @@ export const MarkdownMobileEditor = forwardRef<
       for (const name of events) el.removeEventListener(name, report)
       doc.removeEventListener('selectionchange', onDocSelection)
     }
-  }, [mode])
+  }, [mode, hasSelectionListener])
 
   // The preview shows hidden words as plain text; the source keeps the span markup.
   const previewText = useMemo(
@@ -437,7 +461,7 @@ export const MarkdownMobileEditor = forwardRef<
           onCompositionEnd={onCompositionEnd}
           spellCheck={false}
           placeholder="# "
-          aria-label="Markdown document editor"
+          aria-label={editorLabel}
         />
       )}
     </div>

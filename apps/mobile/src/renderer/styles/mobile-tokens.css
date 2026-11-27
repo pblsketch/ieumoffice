@@ -3,6 +3,9 @@
 /* Mobile layout, touch target, safe area, and elevation tokens.
  * All color values reference @genoffice/ui/tokens.css variables exclusively. */
 :root {
+  /* Declare support for both schemes so Android/iOS WebViews evaluate prefers-color-scheme: dark. */
+  color-scheme: light dark;
+
   /* Mobile design system tokens (.dryforge/mobile/design-system/design.md, section 3).
    * Colors only reference @genoffice/ui/tokens.css; platform never changes these values. */
 
@@ -74,6 +77,14 @@
   --m-z-toolbar: 30;
   --m-z-sheet: 40;
   --m-z-modal: 50;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {
@@ -791,6 +802,7 @@ input:focus-visible {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  padding-top: var(--m-readonly-strip-h, 0px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -1253,6 +1265,8 @@ input:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: var(--m-space-1);
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
   padding: var(--m-space-2) var(--m-space-2);
   border-radius: var(--radius-8);
   cursor: pointer;
@@ -1296,21 +1310,36 @@ input:focus-visible {
 .mobile-switch {
   appearance: none;
   -webkit-appearance: none;
+  width: var(--m-hit);
+  height: var(--m-hit);
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mobile-switch::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 2px;
   width: 44px;
   height: 24px;
   border-radius: 12px;
   background: var(--bg-hover-strong);
-  position: relative;
-  cursor: pointer;
-  flex-shrink: 0;
   transition: background-color var(--transition-fast);
 }
 
 .mobile-switch::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 14px;
+  left: 4px;
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -1319,7 +1348,7 @@ input:focus-visible {
   transition: transform var(--transition-fast);
 }
 
-.mobile-switch:checked {
+.mobile-switch:checked::before {
   background: var(--color-btn-primary);
 }
 
@@ -1685,7 +1714,7 @@ input:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: var(--m-space-1);
-  min-height: var(--m-icon-btn);
+  min-height: var(--m-hit);
   min-width: 0;
   padding: 0 var(--m-space-3);
   border: 0;

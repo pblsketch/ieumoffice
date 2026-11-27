@@ -35,4 +35,6 @@ export const pl = {
   sheetsSheetNameInvalid:
     'Nazwa arkusza może mieć najwyżej 31 znaków, nie może zawierać : \\ / ? * [ ] ani zaczynać się lub kończyć apostrofem.',
   sheetsSheetNameTaken: 'Arkusz o tej nazwie już istnieje.',
+  sheetsNameBox: 'Pole nazwy',
+  sheetsNameBoxDropdown: 'Lista pola nazwy',
 } as const satisfies Record<keyof typeof zh, string>

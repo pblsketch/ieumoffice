@@ -19,7 +19,7 @@
 
 /* Room under the last row so the [+] button never covers it. */
 .home-frame-body {
-  padding-bottom: calc(var(--m-fab-size) + var(--m-space-8) + var(--m-safe-bottom));
+  padding-bottom: calc(var(--m-fab-size) + var(--m-space-10) + var(--m-safe-bottom));
 }
 
 .home-frame-panel {
@@ -152,8 +152,8 @@
   align-items: center;
   gap: var(--m-space-1);
   flex-shrink: 0;
-  min-height: var(--m-control-s);
-  margin: var(--m-space-2) 0;
+  min-height: var(--m-hit);
+  margin: 0;
   padding: 0 var(--m-space-3);
   border: 1px solid var(--border);
   border-radius: var(--m-radius-full);
@@ -188,11 +188,36 @@
 
 /* ── Empty state ── */
 
+.home-frame-empty {
+  width: 100%;
+  max-width: 100%;
+  gap: var(--m-space-2);
+  padding: var(--m-space-5) var(--m-space-4);
+}
+
 .home-frame-empty-actions {
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--m-space-2);
+}
+
+/* Allow empty-state action labels to wrap cleanly at 2.0x system font scale without overflowing. */
+.home-frame-empty-actions .mobile-touch-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-4);
+  white-space: normal;
+  text-align: center;
+  line-height: var(--m-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.home-frame-empty-actions .mobile-touch-btn svg {
+  flex-shrink: 0;
 }
 
 /* ── [+] button ── */

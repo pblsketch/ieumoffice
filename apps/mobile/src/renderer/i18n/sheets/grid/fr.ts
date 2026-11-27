@@ -35,4 +35,6 @@ export const fr = {
   sheetsSheetNameInvalid:
     'Un nom de feuille compte au plus 31 caractères, ne peut pas contenir : \\ / ? * [ ] et ne peut pas commencer ni finir par une apostrophe.',
   sheetsSheetNameTaken: 'Une feuille porte déjà ce nom.',
+  sheetsNameBox: 'Zone Nom',
+  sheetsNameBoxDropdown: 'Liste de la zone Nom',
 } as const satisfies Record<keyof typeof zh, string>

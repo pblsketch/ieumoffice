@@ -82,4 +82,5 @@ export const vi = {
   webExportSavedShapeLoss:
     'Đã lưu thành {name}. Không chuyển sang được một số thành phần hình ảnh.',
   webExportPictureMissing: '[Hình không chuyển sang được]',
+  webMarkdownEditorLabel: 'Trình chỉnh sửa tài liệu Markdown',
 } as const satisfies Record<keyof typeof zh, string>

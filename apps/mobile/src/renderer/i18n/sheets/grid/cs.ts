@@ -35,4 +35,6 @@ export const cs = {
   sheetsSheetNameInvalid:
     'Název listu může mít nejvýše 31 znaků, nesmí obsahovat : \\ / ? * [ ] a nesmí začínat ani končit apostrofem.',
   sheetsSheetNameTaken: 'List s tímto názvem už existuje.',
+  sheetsNameBox: 'Pole názvu',
+  sheetsNameBoxDropdown: 'Seznam pole názvu',
 } as const satisfies Record<keyof typeof zh, string>

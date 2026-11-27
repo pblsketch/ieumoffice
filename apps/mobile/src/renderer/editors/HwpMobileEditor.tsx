@@ -72,6 +72,8 @@ export interface HwpMobileEditorProps {
   readonly fileName: string
   readonly documentBytes: Uint8Array | null
   readonly mode: DocumentMode
+  readonly canEdit?: boolean
+  readonly hidden?: boolean
   readonly lang: Lang
   readonly theme: MobileTheme
   readonly onDirty: () => void
@@ -237,9 +239,124 @@ function attachStudioPinchZoom(editor: RhwpEditor): (() => void) | null {
   }
 }
 
+/** Calls `.blur()` across iframe realms without relying on parent `instanceof HTMLElement`. */
+function blurElement(node: unknown): void {
+  if (node && typeof node === 'object' && 'blur' in node && typeof node.blur === 'function') {
+    ;(node as { blur: () => void }).blur()
+  }
+}
+
+/** Locks or unlocks text-input elements inside the same-origin rhwp-studio iframe. */
+function syncStudioEditLock(editor: RhwpEditor, interactive: boolean): void {
+  try {
+    const iframe = editor.element
+    const doc = iframe?.contentDocument
+    if (!doc) return
+    const fields = doc.querySelectorAll('textarea, input:not([type="range"]), [contenteditable]')
+    for (const node of fields) {
+      const tag = node.tagName
+      if (tag === 'TEXTAREA' || tag === 'INPUT') {
+        const field = node as HTMLTextAreaElement | HTMLInputElement
+        field.readOnly = !interactive
+        field.inputMode = interactive ? '' : 'none'
+        field.tabIndex = interactive ? 0 : -1
+      } else {
+        const el = node as HTMLElement
+        if (!interactive) {
+          if (!el.hasAttribute('data-ieum-ce')) {
+            el.setAttribute('data-ieum-ce', el.getAttribute('contenteditable') ?? 'true')
+          }
+          el.setAttribute('contenteditable', 'false')
+          el.tabIndex = -1
+        } else if (el.hasAttribute('data-ieum-ce')) {
+          el.setAttribute('contenteditable', el.getAttribute('data-ieum-ce') ?? 'true')
+          el.removeAttribute('data-ieum-ce')
+          el.tabIndex = 0
+        }
+      }
+    }
+    if (!interactive) {
+      blurElement(doc.activeElement)
+      if (typeof document !== 'undefined' && document.activeElement === iframe) {
+        blurElement(iframe)
+      }
+    }
+  } catch {
+    // Ignore cross-origin restrictions in non-same-origin test harnesses.
+  }
+}
+
+/**
+ * Blocks focus, virtual keyboard activation, and typing mutations inside the same-origin
+ * rhwp-studio iframe whenever the mobile view is read-only, in view mode, or hidden under
+ * the flow reading view, while leaving scrolling and pinch-zoom intact.
+ */
+function attachStudioReadOnlyGuard(
+  editor: RhwpEditor,
+  isInteractive: () => boolean,
+): (() => void) | null {
+  try {
+    const doc = editor.element?.contentDocument
+    if (!doc) return null
+
+    const blockFocus = (event: Event) => {
+      if (isInteractive()) return
+      syncStudioEditLock(editor, false)
+      blurElement(event.target)
+      blurElement(editor.element)
+    }
+
+    const blockInput = (event: Event) => {
+      if (isInteractive()) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+
+    const inputEvents = [
+      'beforeinput',
+      'keydown',
+      'keypress',
+      'compositionstart',
+      'paste',
+      'cut',
+    ] as const
+    doc.addEventListener('focusin', blockFocus, true)
+    for (const name of inputEvents) doc.addEventListener(name, blockInput, true)
+
+    let observer: MutationObserver | null = null
+    if (typeof MutationObserver !== 'undefined' && doc.body) {
+      observer = new MutationObserver(() => {
+        if (!isInteractive()) syncStudioEditLock(editor, false)
+      })
+      observer.observe(doc.body, { childList: true, subtree: true })
+    }
+
+    syncStudioEditLock(editor, isInteractive())
+
+    return () => {
+      observer?.disconnect()
+      doc.removeEventListener('focusin', blockFocus, true)
+      for (const name of inputEvents) doc.removeEventListener(name, blockInput, true)
+    }
+  } catch {
+    return null
+  }
+}
+
 export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditorProps>(
   function HwpMobileEditor(
-    { fileName, documentBytes, mode, lang, theme, onDirty, onReady, onError },
+    {
+      fileName,
+      documentBytes,
+      mode,
+      canEdit = true,
+      hidden = false,
+      lang,
+      theme,
+      onDirty,
+      onReady,
+      onError,
+    },
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement | null>(null)
@@ -256,18 +373,29 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
     onErrorRef.current = onError
     const fileNameRef = useRef(fileName)
     fileNameRef.current = fileName
+    const interactiveEdit = mode === 'edit' && canEdit && !hidden
+    const interactiveEditRef = useRef(interactiveEdit)
+    interactiveEditRef.current = interactiveEdit
+
+    useEffect(() => {
+      if (editorRef.current) {
+        syncStudioEditLock(editorRef.current, interactiveEdit)
+      }
+    }, [interactiveEdit])
 
     useEffect(() => {
       let cancelled = false
       let dirtyPoll: ReturnType<typeof setInterval> | null = null
       let frameWindow: Window | null = null
       let disposePinch: (() => void) | null = null
+      let disposeReadOnlyGuard: (() => void) | null = null
       let lastReportedDirty = false
       const container = containerRef.current
       if (!container) return
       setLoading(true)
 
       const onFrameDirty = (event: Event) => {
+        if (!interactiveEditRef.current) return
         const isDirty = (event as CustomEvent<unknown>).detail === true
         if (isDirty && !lastReportedDirty) {
           lastReportedDirty = true
@@ -304,15 +432,18 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
           await editor.chrome.set(MOBILE_HIDDEN_CHROME).catch(() => {})
           applyMobileStudioCanvasStyle(editor)
           disposePinch = attachStudioPinchZoom(editor)
+          disposeReadOnlyGuard = attachStudioReadOnlyGuard(editor, () => interactiveEditRef.current)
           if (cancelled) return
 
           if (documentBytes && documentBytes.byteLength > 0) {
-            await editor.loadFile(documentBytes, fileName, { skipUnsavedGuard: true })
+            await editor.loadFile(documentBytes, fileNameRef.current, { skipUnsavedGuard: true })
           } else {
             const resp = await fetch(blankHwpUrl)
             const blankBytes = new Uint8Array(await resp.arrayBuffer())
             if (cancelled) return
-            await editor.loadFile(blankBytes, fileName || 'blank.hwp', { skipUnsavedGuard: true })
+            await editor.loadFile(blankBytes, fileNameRef.current || 'blank.hwp', {
+              skipUnsavedGuard: true,
+            })
           }
           if (cancelled) return
 
@@ -320,12 +451,21 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
           await editor.commands.execute('view:zoom-fit-width').catch(() => {})
           if (cancelled) return
 
+          if (!interactiveEditRef.current) {
+            syncStudioEditLock(editor, false)
+            requestAnimationFrame(() => {
+              if (!cancelled && !interactiveEditRef.current) syncStudioEditLock(editor, false)
+            })
+          }
+
           frameWindow = editor.element?.contentWindow ?? null
           frameWindow?.addEventListener(STUDIO_DIRTY_EVENT, onFrameDirty)
           dirtyPoll = setInterval(() => {
+            if (!interactiveEditRef.current) return
             void editor.commands
               .context()
               .then((ctx) => {
+                if (!interactiveEditRef.current) return
                 const record = ctx as Record<string, unknown>
                 if ((record.isDirty === true || record.modified === true) && !lastReportedDirty) {
                   lastReportedDirty = true
@@ -347,6 +487,8 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
 
       return () => {
         cancelled = true
+        disposeReadOnlyGuard?.()
+        disposeReadOnlyGuard = null
         disposePinch?.()
         disposePinch = null
         if (dirtyPoll) clearInterval(dirtyPoll)
@@ -359,7 +501,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
           // Ignore teardown errors when switching documents quickly.
         }
       }
-    }, [documentBytes, fileName, lang, theme])
+    }, [documentBytes, lang, theme])
 
     // Refit page width when rotating between portrait and landscape.
     useEffect(() => {
@@ -387,9 +529,9 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
               const flag = ctx[PASSWORD_FLAG]
               return typeof flag === 'boolean' ? flag : true
             },
-            exportHwp: () => requireEditor().exportHwp(),
-            exportHwpx: () => requireEditor().exportHwpx(),
-            exportHwpVerify: () => requireEditor().exportHwpVerify(),
+            exportHwp: async () => requireEditor().exportHwp(),
+            exportHwpx: async () => requireEditor().exportHwpx(),
+            exportHwpVerify: async () => requireEditor().exportHwpVerify(),
             async measureTabs() {
               return []
             },
