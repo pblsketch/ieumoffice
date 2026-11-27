@@ -488,7 +488,7 @@ import type {
   SplitOrientation,
   SplitViewState,
 } from '../shared/split-view-api'
-import { TAB_STRIP_HEIGHT } from '../shared/tab-drag-geometry'
+import { TAB_STRIP_HEIGHT, tabStripHeight } from '../shared/tab-drag-geometry'
 import { SHELL_SUBSCRIPTION_CHANNELS, isSubscriptionProviderId } from '../shared/subscription-api'
 import {
   SUBSCRIPTION_CHATGPT_USAGE_URL,
@@ -625,6 +625,8 @@ import {
   filePanelKeyAction,
   filePanelScaleChanged,
   installFilePanel,
+  notifyFilePanelQuickLookChanged,
+  notifyFilePanelQuickLookStep,
   registerFilePanelIpc,
   toggleFilePanel,
   withFilePanelMenuItem,
@@ -637,9 +639,13 @@ import {
   openPdfToolsWithFile,
 } from './pdf-tools/pdf-tools-window'
 import {
+  closeFilePanelQuickLook,
   configureQuickLookWindow,
+  handleEditorFocusForQuickLook,
+  handleShellWindowBlurForQuickLook,
   notifyQuickLookLangOrThemeChanged,
   shouldKeepQuickLookInTray,
+  showFilePanelQuickLook,
   stopQuickLookRuntime,
 } from './quick-look/quick-look-window'
 import { normalizeQuickLookSettings } from '../shared/quick-look-home'
@@ -5668,6 +5674,11 @@ const HOME_KIND_TO_EDITOR: Record<Exclude<HomeKind, 'pdfTools'>, string> = {
  */
 function installTabShortcuts(): void {
   app.on('web-contents-created', (_event, contents) => {
+    contents.on('focus', () => {
+      if (tabManager?.tabIdForWebContents(contents.id)) {
+        handleEditorFocusForQuickLook()
+      }
+    })
     contents.on('before-input-event', (event, input) => {
       const manager = tabManager
       if (!manager) return
@@ -5919,7 +5930,13 @@ function createShellWindow(): void {
     openFilePaths: () => [...manager.openFilePaths(), ...detachedFilePaths()],
     listFolder: (dir) => listFolder(dir, new Set(readStarredFiles())),
     isRevealable: (path) => isRevealablePath(path) || isBesideOpenDocument(path),
+    openQuickLook: (path, nav) => showFilePanelQuickLook(path, nav),
+    closeQuickLook: () => closeFilePanelQuickLook(),
   })
+  win.on('blur', () => handleShellWindowBlurForQuickLook())
+  win.on('minimize', () => closeFilePanelQuickLook({ restoreFocus: false }))
+  win.on('hide', () => closeFilePanelQuickLook({ restoreFocus: false }))
+  win.on('closed', () => closeFilePanelQuickLook({ restoreFocus: false }))
 
   // Docking: a detached window dragged over this window's tab strip hands its
   // document back. The strip reports the insertion slot for each preview
@@ -11386,6 +11403,16 @@ app.whenReady().then(async () => {
       stopQuickLookRuntime()
       app.quit()
     },
+    filePanelLayout: () => {
+      if (!shellWindow || shellWindow.isDestroyed()) return null
+      const contentWidth = shellWindow.getContentBounds().width
+      return {
+        panelInset: currentFilePanelInset(contentWidth),
+        topInset: tabStripHeight(currentUiScale),
+      }
+    },
+    onFilePanelStateChanged: (state) => notifyFilePanelQuickLookChanged(state),
+    onFilePanelStep: (delta) => notifyFilePanelQuickLookStep(delta),
   })
   // The generate window ("make a new document from these files"): Home's entry
   // points open it; "make" opens a new untitled tab with the request queued

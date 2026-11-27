@@ -20,4 +20,5 @@ export const ms = {
   resizePanel: 'Ubah lebar panel fail',
   noRecent: 'Tiada dokumen terkini',
   searching: 'Mencari…',
+  quickLook: 'Pratonton Pantas',
 } satisfies Record<keyof typeof zh, string>

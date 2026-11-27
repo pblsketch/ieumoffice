@@ -17,4 +17,5 @@ export const zh = {
   resizePanel: '调整文件面板宽度',
   noRecent: '没有最近的文档',
   searching: '正在查找…',
+  quickLook: '快速预览',
 }

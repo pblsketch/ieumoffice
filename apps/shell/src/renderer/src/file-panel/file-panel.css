@@ -194,13 +194,41 @@
   outline-offset: -2px;
 }
 
-.fp-row.active {
+.fp-row.active,
+.fp-row.previewing {
   background: var(--bg-hover-strong);
 }
 
 .fp-row.active .fp-name,
 .fp-row.holds-active .fp-name {
   font-weight: 600;
+}
+
+.fp-preview-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.fp-file:hover .fp-preview-btn,
+.fp-file:focus-visible .fp-preview-btn,
+.fp-file:focus-within .fp-preview-btn,
+.fp-file.previewing .fp-preview-btn {
+  display: inline-flex;
+}
+
+.fp-preview-btn:hover {
+  background: var(--bg-hover-accent);
+  color: var(--text);
 }
 
 .fp-row.unavailable {

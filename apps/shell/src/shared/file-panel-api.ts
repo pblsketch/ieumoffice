@@ -96,7 +96,24 @@ export function filePanelInset(
 }
 
 /** What a right click on a panel row asked for; null = the menu was dismissed. */
-export type FilePanelItemAction = 'open' | 'reveal' | 'copyPath' | 'addRoot'
+export type FilePanelItemAction = 'open' | 'quickLook' | 'reveal' | 'copyPath' | 'addRoot'
+
+/** Navigation metadata sent alongside a file-panel Quick Look open/step request. */
+export interface FilePanelQuickLookNav {
+  canPrev: boolean
+  canNext: boolean
+  direction: 'up' | 'down' | 'none'
+  /** 0-based index in the visible file list, for the "3 / 12" position indicator */
+  index?: number
+  /** total visible files in the panel list */
+  total?: number
+}
+
+/** Main-process broadcast telling the file panel which file (if any) is previewed. */
+export interface FilePanelQuickLookState {
+  open: boolean
+  path: string | null
+}
 
 export interface FilePanelApi {
   get(): Promise<FilePanelState>
@@ -123,6 +140,14 @@ export interface FilePanelApi {
     y: number,
     canAddRoot: boolean,
   ): Promise<FilePanelItemAction | null>
+  /** Open or update the floating Quick Look window beside the file panel. */
+  quickLookOpen(path: string, nav: FilePanelQuickLookNav): Promise<boolean>
+  /** Close the Quick Look window if it was opened from the file panel. */
+  quickLookClose(): void
+  /** Subscribe to preview open/update/close transitions driven by main or the preview window. */
+  onQuickLookChanged(handler: (state: FilePanelQuickLookState) => void): () => void
+  /** Subscribe to Up/Down navigation requests coming from the preview window itself. */
+  onQuickLookStep(handler: (delta: -1 | 1) => void): () => void
 }
 
 export const FILE_PANEL_CHANNELS = {
@@ -138,4 +163,12 @@ export const FILE_PANEL_CHANNELS = {
   listDocumentFolder: 'file-panel:list-document-folder',
   /** invoke: kind, path, x, y, canAddRoot → FilePanelItemAction | null */
   itemMenu: 'file-panel:item-menu',
+  /** invoke: path, nav → boolean */
+  quickLookOpen: 'file-panel:quick-look-open',
+  /** send: void */
+  quickLookClose: 'file-panel:quick-look-close',
+  /** push: FilePanelQuickLookState */
+  quickLookChanged: 'file-panel:quick-look-changed',
+  /** push: -1 | 1 */
+  quickLookStep: 'file-panel:quick-look-step',
 } as const

@@ -19,4 +19,5 @@ export const ar = {
   resizePanel: 'تغيير عرض لوحة الملفات',
   noRecent: 'لا توجد مستندات حديثة',
   searching: 'جارٍ البحث…',
+  quickLook: 'معاينة سريعة',
 } satisfies Record<keyof typeof zh, string>

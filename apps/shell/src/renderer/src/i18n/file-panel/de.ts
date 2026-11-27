@@ -20,4 +20,5 @@ export const de = {
   resizePanel: 'Breite des Dateibereichs ändern',
   noRecent: 'Keine zuletzt verwendeten Dokumente',
   searching: 'Suche läuft…',
+  quickLook: 'Schnellvorschau',
 } satisfies Record<keyof typeof zh, string>

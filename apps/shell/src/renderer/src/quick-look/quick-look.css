@@ -103,6 +103,28 @@
   }
 }
 
+@keyframes qlPanelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes qlPanelOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
 @keyframes qlContentIn {
   from {
     opacity: 0;
@@ -150,6 +172,7 @@
   overflow: hidden;
   background: transparent;
   box-sizing: border-box;
+  font-family: var(--font-ui);
 }
 
 .ql-standalone-body #root {
@@ -207,9 +230,17 @@
   animation: qlPopoverIn 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.ql-standalone[data-origin='file-panel'] {
+  animation: qlPanelIn 140ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 .ql-closing {
   animation: qlPopoverOut 150ms cubic-bezier(0.4, 0, 1, 1) forwards;
   pointer-events: none;
+}
+
+.ql-standalone[data-origin='file-panel'].ql-closing {
+  animation: qlPanelOut 130ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
 .ql-header {
@@ -310,6 +341,14 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+
+.ql-position {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  padding-inline: 4px;
+  white-space: nowrap;
 }
 
 .ql-btn {
@@ -442,6 +481,8 @@
   .ql-overlay-closing,
   .ql-modal,
   .ql-standalone,
+  .ql-standalone[data-origin='file-panel'],
+  .ql-standalone[data-origin='file-panel'].ql-closing,
   .ql-closing,
   .ql-content-stage,
   .ql-content-stage[data-nav='up'],
@@ -474,6 +515,10 @@
   align-items: center;
   justify-content: center;
   min-height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--surface-subtle);
 }
 
 .ql-image {
@@ -491,6 +536,10 @@
   line-height: 1.65;
   color: var(--text-primary);
   font-size: 14px;
+}
+
+.ql-doc > :first-child {
+  margin-top: 0;
 }
 
 .ql-doc-h1 {

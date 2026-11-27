@@ -19,4 +19,5 @@ export const tr = {
   resizePanel: 'Dosya paneli genişliğini değiştir',
   noRecent: 'Son kullanılan belge yok',
   searching: 'Aranıyor…',
+  quickLook: 'Hızlı Bakış',
 } satisfies Record<keyof typeof zh, string>

@@ -19,4 +19,5 @@ export const ru = {
   resizePanel: 'Изменить ширину панели файлов',
   noRecent: 'Нет недавних документов',
   searching: 'Поиск…',
+  quickLook: 'Быстрый просмотр',
 } satisfies Record<keyof typeof zh, string>

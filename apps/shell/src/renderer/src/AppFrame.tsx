@@ -317,6 +317,7 @@ export function AppFrame({ initialOnboardingSeen }: AppFrameProps) {
             welcomeOpen={showOnboarding}
             onSettingsOpenChange={setSettingsOpen}
             initialProjectRequest={pendingProjectRequest}
+            active={isHomeVisible}
           />
         )}
       </div>

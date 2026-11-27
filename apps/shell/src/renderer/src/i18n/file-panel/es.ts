@@ -20,4 +20,5 @@ export const es = {
   resizePanel: 'Cambiar el ancho del panel de archivos',
   noRecent: 'No hay documentos recientes',
   searching: 'Buscando…',
+  quickLook: 'Vista rápida',
 } satisfies Record<keyof typeof zh, string>

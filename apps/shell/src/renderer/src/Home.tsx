@@ -1190,6 +1190,7 @@ export function Home({
   welcomeOpen = false,
   onSettingsOpenChange,
   initialProjectRequest = null,
+  active = true,
 }: {
   /** the live subscription connection (AppFrame owns the one instance) */
   connection: SubscriptionConnection
@@ -1208,6 +1209,8 @@ export function Home({
   onSettingsOpenChange?: (open: boolean) => void
   /** a project-screen open request buffered by AppFrame before Home mounted */
   initialProjectRequest?: ProjectScreenRequest | null
+  /** false while an editor tab covers Home; disables Home's global Space shortcut */
+  active?: boolean
 }) {
   const i18n = useI18n()
   const { t, lang } = i18n
@@ -3044,7 +3047,22 @@ export function Home({
   }, [])
 
   useEffect(() => {
+    if (!active && quickLookPath) {
+      if (quickLookCloseTimerRef.current !== null) {
+        window.clearTimeout(quickLookCloseTimerRef.current)
+        quickLookCloseTimerRef.current = null
+      }
+      setQuickLookPath(null)
+      setQuickLookPayload(null)
+      setQuickLookLoading(false)
+      setQuickLookClosing(false)
+      setQuickLookNavDir('none')
+    }
+  }, [active, quickLookPath])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!active) return
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
@@ -3819,6 +3837,8 @@ export function Home({
               loading={quickLookLoading}
               closing={quickLookClosing}
               navDirection={quickLookNavDir}
+              listIndex={visiblePreviewPaths.indexOf(quickLookPath)}
+              listTotal={visiblePreviewPaths.length}
               canPrev={visiblePreviewPaths.indexOf(quickLookPath) > 0}
               canNext={
                 visiblePreviewPaths.indexOf(quickLookPath) !== -1 &&

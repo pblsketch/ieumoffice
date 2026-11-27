@@ -19,4 +19,5 @@ export const he = {
   resizePanel: 'שינוי רוחב חלונית הקבצים',
   noRecent: 'אין מסמכים אחרונים',
   searching: 'מחפש…',
+  quickLook: 'הצצה מהירה',
 } satisfies Record<keyof typeof zh, string>

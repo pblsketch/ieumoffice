@@ -19,4 +19,5 @@ export const cs = {
   resizePanel: 'Změnit šířku panelu souborů',
   noRecent: 'Žádné nedávné dokumenty',
   searching: 'Hledání…',
+  quickLook: 'Rychlý náhled',
 } satisfies Record<keyof typeof zh, string>
