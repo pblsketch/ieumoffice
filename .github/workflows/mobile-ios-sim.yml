@@ -83,46 +83,26 @@ jobs:
           node --version | tee -a "$ART_DIR/logs/build-env.txt"
           npx --yes @tauri-apps/cli@2 ios build --help | tee -a "$ART_DIR/logs/build-env.txt" || true
 
-          PROJ=$(find src-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj" | head -n 1)
-          if [ -z "$PROJ" ]; then
-            echo "No .xcodeproj found under src-tauri/gen/apple" >&2
-            exit 1
-          fi
-          echo "Using Xcode project: $PROJ"
+          # Build Debug for iphonesimulator arm64 without code signing via Tauri CLI.
+          # Tauri CLI starts its cli-options-server for the Xcode "Build Rust Code" phase,
+          # compiles Rust + Swift plugin for aarch64-apple-ios-sim in debug mode (so
+          # debug_assertions enables WKWebView.isInspectable = true), and skips signing.
+          npx --yes @tauri-apps/cli@2 ios build \
+            --debug \
+            --target aarch64-sim \
+            --no-sign \
+            --ci \
+            -c '{"build":{"beforeBuildCommand":""}}' \
+            -v 2>&1 | tee "$ART_DIR/logs/tauri-ios-build.log"
 
-          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          schemes = data.get('project', {}).get('schemes', [])
-          if not schemes:
-              sys.exit(1)
-          print(next((s for s in schemes if 'iOS' in s or 'ios' in s), schemes[0]))
-          ")
-          echo "Using scheme: $SCHEME"
-
-          DERIVED_DATA="$RUNNER_TEMP/ios-sim-derived"
-          rm -rf "$DERIVED_DATA"
-
-          # Build Debug for iphonesimulator arm64 without code signing (no Apple account/secrets).
-          # Debug configuration enables debug_assertions so Tauri/WRY sets WKWebView.isInspectable = true.
-          xcodebuild \
-            -project "$PROJ" \
-            -scheme "$SCHEME" \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -arch arm64 \
-            -derivedDataPath "$DERIVED_DATA" \
-            ONLY_ACTIVE_ARCH=YES \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            build 2>&1 | tee "$ART_DIR/logs/xcodebuild.log"
-
-          APP_PATH=$(find "$DERIVED_DATA/Build/Products/Debug-iphonesimulator" -maxdepth 2 -name "*.app" -type d | head -n 1)
+          echo "=== Searching for built .app ==="
+          find src-tauri/gen/apple/build -maxdepth 5 2>/dev/null || true
+          APP_PATH=$(find src-tauri/gen/apple/build -name "*.app" -type d 2>/dev/null | head -n 1 || true)
           if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
-            echo "Built .app not found under $DERIVED_DATA/Build/Products/Debug-iphonesimulator" >&2
-            find "$DERIVED_DATA/Build/Products" -maxdepth 3 || true
+            APP_PATH=$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*iphonesimulator*" -name "*.app" -type d 2>/dev/null | head -n 1 || true)
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Built .app not found under src-tauri/gen/apple/build or DerivedData" >&2
             exit 1
           fi
 
