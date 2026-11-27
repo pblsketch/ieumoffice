@@ -104,4 +104,55 @@ describe('store readiness native config', () => {
       expect(fragment).not.toContain('/mobile/auth/callback')
     })
   })
+
+  describe('iOS AppIcon.appiconset', () => {
+    it('ships an opaque 1024x1024 RGB PNG (no alpha channel) and valid Contents.json', () => {
+      const iconDir = join(NATIVE_CONFIG, 'ios', 'AppIcon.appiconset')
+      const png = readFileSync(join(iconDir, 'AppIcon-1024.png'))
+      // PNG signature
+      expect(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))).toBe(true)
+      expect(png.readUInt32BE(16)).toBe(1024)
+      expect(png.readUInt32BE(20)).toBe(1024)
+      expect(png[24]).toBe(8)
+      // colorType 2 = truecolor RGB without alpha channel (required by App Store Connect)
+      expect(png[25]).toBe(2)
+
+      const contents = JSON.parse(readFileSync(join(iconDir, 'Contents.json'), 'utf8'))
+      expect(contents.images).toEqual([
+        {
+          filename: 'AppIcon-1024.png',
+          idiom: 'universal',
+          platform: 'ios',
+          size: '1024x1024',
+        },
+      ])
+    })
+
+    it('replaces Tauri default placeholder icons inside Assets.xcassets/AppIcon.appiconset', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'ieum-ios-icon-'))
+      try {
+        const appleRoot = join(tmp, 'apple')
+        const iosApp = join(appleRoot, 'ieumoffice-mobile_iOS')
+        const defaultIconSet = join(appleRoot, 'Assets.xcassets', 'AppIcon.appiconset')
+        mkdirSync(iosApp, { recursive: true })
+        mkdirSync(defaultIconSet, { recursive: true })
+        writeFileSync(
+          join(iosApp, 'Info.plist'),
+          '<?xml version="1.0"?><plist version="1.0"><dict>\n</dict>\n</plist>',
+          'utf8',
+        )
+        writeFileSync(join(defaultIconSet, 'stale-tauri-icon.png'), 'placeholder', 'utf8')
+
+        const r1 = applyIosConfig(tmp)
+        const r2 = applyIosConfig(tmp)
+        expect(r1.applied).toBe(true)
+        expect(r2.applied).toBe(true)
+        expect(existsSync(join(defaultIconSet, 'stale-tauri-icon.png'))).toBe(false)
+        expect(existsSync(join(defaultIconSet, 'AppIcon-1024.png'))).toBe(true)
+        expect(existsSync(join(defaultIconSet, 'Contents.json'))).toBe(true)
+      } finally {
+        rmSync(tmp, { recursive: true, force: true })
+      }
+    })
+  })
 })

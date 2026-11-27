@@ -285,7 +285,24 @@ export function applyIosConfig(genRoot = GEN_DIR) {
   const targetDirName = targetDir.split(/[\\/]/).pop() ?? ''
   const { pbxprojPatched } = wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName)
 
-  return { applied: true, plistPath, entitlementsOut, privacyManifestOut, pbxprojPatched }
+  // Replace Tauri's default AppIcon.appiconset with IeumOffice's opaque 1024x1024 RGB icon.
+  const brandAppIconSrc = join(NATIVE_CONFIG, 'ios', 'AppIcon.appiconset')
+  let appIconOut = null
+  if (existsSync(brandAppIconSrc)) {
+    const rootCatalog = join(iosRoot, 'Assets.xcassets')
+    const targetCatalog = join(targetDir, 'Assets.xcassets')
+    const assetsDir = existsSync(rootCatalog)
+      ? rootCatalog
+      : existsSync(targetCatalog)
+        ? targetCatalog
+        : rootCatalog
+    appIconOut = join(assetsDir, 'AppIcon.appiconset')
+    rmSync(appIconOut, { recursive: true, force: true })
+    mkdirSync(appIconOut, { recursive: true })
+    cpSync(brandAppIconSrc, appIconOut, { recursive: true, force: true })
+  }
+
+  return { applied: true, plistPath, entitlementsOut, privacyManifestOut, pbxprojPatched, appIconOut }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
