@@ -8,6 +8,7 @@ import { HwpDocument, initSync } from '@rhwp/core'
 import {
   buildFlowDocument,
   buildFlowHtml,
+  normalizeClipboardBorderWidths,
   normalizeFlowParagraphStyle,
   stripClipboardFragment,
 } from '../src/renderer/editors/hwpFlow'
@@ -187,6 +188,149 @@ describe('HWP flow builder (real rhwp engine)', () => {
       expect(left + indent).toBeGreaterThanOrEqual(0)
     }
     expect(hangingCount).toBeGreaterThan(0)
+  })
+
+  it('converts HWP border-width codes in clipboard table styles to real CSS pixels', () => {
+    expect(
+      normalizeClipboardBorderWidths(
+        'border-top:1.0px solid #000;border-right:6.0px solid #000;border-bottom:7.0px solid #000;border-left:10.0px solid #000;',
+      ),
+    ).toBe(
+      'border-top:1px solid #000;border-right:1.5px solid #000;border-bottom:1.9px solid #000;border-left:3.8px solid #000;',
+    )
+    // already-normalized widths and out-of-range codes are left untouched
+    expect(
+      normalizeClipboardBorderWidths('border-top:2px solid #000;border-bottom:20.0px solid #000;'),
+    ).toBe('border-top:2px solid #000;border-bottom:20.0px solid #000;')
+  })
+
+  it('promotes cell-nested headers out of table cells and avoids duplicating inline cell tables', () => {
+    const mockDoc: FlowEngineDocument = {
+      getSectionCount: () => 1,
+      getParagraphCount: () => 1,
+      getParagraphLength: () => 0,
+      getControlTextPositions: () => '[{"controlIndex":0}]',
+      exportSelectionHtml: () => '',
+      exportControlHtml: (_sec, _para, pathJson, ctrl) => {
+        if (pathJson === '[]' && ctrl === 0) {
+          return '<!--StartFragment--><table><tr><td style="border-top:6.0px solid #000"></td><td></td></tr></table><!--EndFragment-->'
+        }
+        if (pathJson === '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]' && ctrl === 0) {
+          return '<!--StartFragment--><!-- rhwp: 셀 안 Header 컨트롤은 HTML 내보내기를 지원하지 않습니다 --><!--EndFragment-->'
+        }
+        if (pathJson === '[{"controlIndex":0,"cellIndex":1,"cellParaIndex":0}]' && ctrl === 0) {
+          return '<!--StartFragment--><!-- rhwp: 셀 안 Shape 컨트롤은 HTML 내보내기를 지원하지 않습니다 --><!--EndFragment-->'
+        }
+        if (
+          pathJson ===
+            '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]' &&
+          ctrl === 0
+        ) {
+          return '<!--StartFragment--><table><tr><td style="border-bottom:7.0px solid #000"></td></tr></table><!--EndFragment-->'
+        }
+        throw new Error('control out of range')
+      },
+      getCellParagraphCountByPath: (_sec, _para, pathJson) => {
+        if (
+          pathJson === '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]' ||
+          pathJson === '[{"controlIndex":0,"cellIndex":1,"cellParaIndex":0}]'
+        ) {
+          return 1
+        }
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]'
+        ) {
+          return 2
+        }
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":1,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]'
+        ) {
+          return 1
+        }
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]'
+        ) {
+          return 1
+        }
+        return 0
+      },
+      getCellParagraphLengthByPath: (_sec, _para, pathJson) => {
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":1}]'
+        ) {
+          return 0
+        }
+        return 3
+      },
+      exportSelectionInCellHtmlByPath: (_sec, _para, pathJson) => {
+        if (pathJson === '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]') {
+          return '<!--StartFragment--><p><span>제목</span></p><!--EndFragment-->'
+        }
+        if (pathJson === '[{"controlIndex":0,"cellIndex":1,"cellParaIndex":0}]') {
+          return '<!--StartFragment--><p><span>오른쪽</span></p><!--EndFragment-->'
+        }
+        // Header paragraph 0 has both text and an inline table appended by rhwp clipboard HTML
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]'
+        ) {
+          return '<!--StartFragment--><p><span>결재란</span></p><table><tr><td>결재</td></tr></table><!--EndFragment-->'
+        }
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":1,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]'
+        ) {
+          return '<!--StartFragment--><p><span>글상자</span></p><!--EndFragment-->'
+        }
+        if (
+          pathJson ===
+          '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]'
+        ) {
+          return '<!--StartFragment--><p><span>결재</span></p><!--EndFragment-->'
+        }
+        return ''
+      },
+      getParaPropertiesAt: () => '{"headType":"None"}',
+      getCellParaPropertiesAtByPath: () => '{"headType":"None"}',
+      getBulletList: () => '[]',
+      getFootnoteInfo: () => '{"ok":false}',
+      getHeaderFooter: () => '{"ok":true,"exists":false}',
+      getTableProperties: () => '{}',
+      getCellParagraphCount: (_sec, _para, ctrl, cell) => (ctrl === 0 && cell <= 1 ? 1 : 0),
+      getCellParagraphLength: (_sec, _para, ctrl, cell) => (ctrl === 0 && cell <= 1 ? 3 : 0),
+      getTextInCell: () => '',
+      getCellParaPropertiesAt: () => '{"headType":"None"}',
+      getCellCharPropertiesAt: () => '{}',
+      free: vi.fn(),
+    }
+
+    const html = buildFlowHtml(mockDoc)
+    const body = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body
+
+    // Cell-nested header is promoted once to the top as read-only .flow-header
+    const headers = body.querySelectorAll('.flow-hf.flow-header')
+    expect(headers).toHaveLength(1)
+    expect(headers[0]).toBe(body.firstElementChild)
+    expect(headers[0].getAttribute('contenteditable')).toBe('false')
+    expect(headers[0].querySelector('[data-sec], [data-path]')).toBeNull()
+    // Inline table inside the header is not duplicated, and its 7.0px border code is normalized
+    const headerTables = headers[0].querySelectorAll('table')
+    expect(headerTables).toHaveLength(1)
+    expect(headerTables[0].querySelector('td')?.getAttribute('style')).toContain('1.9px')
+    // Trailing empty paragraph in the promoted header is omitted
+    expect(headers[0].querySelectorAll('p')).toHaveLength(2)
+
+    // Outer table cell 0 has no leaked .flow-box for Header, and its 6.0px border is normalized
+    const outerTable = body.querySelector(':scope > .flow-obj > table')!
+    const [cell0, cell1] = outerTable.querySelectorAll(':scope > tbody > tr > td')
+    expect(cell0.getAttribute('style')).toContain('1.5px')
+    expect(cell0.querySelector('.flow-box')).toBeNull()
+    // Outer table cell 1 keeps its real Shape text box as .flow-box
+    expect(cell1.querySelector('.flow-box')?.textContent).toContain('글상자')
   })
 })
 

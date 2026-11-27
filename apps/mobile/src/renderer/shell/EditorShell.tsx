@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AiMark } from '@genoffice/ui'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileDocFormat } from '@genoffice/mobile-bridge/transport'
 import { useMobileLocale } from '../i18n'
 import { Sheet } from '../components/Sheet'
+import { HomePrintIcon, HomeSharePdfIcon } from '../components/icons/home'
 import {
   DocTypeIcon,
   IconBack,
@@ -19,11 +20,13 @@ import {
   IconItalic,
   IconKeyboardHide,
   IconList,
+  IconLock,
   IconMemo,
   IconNumberedList,
   IconTable,
   IconMore,
   IconPageView,
+  IconPlus,
   IconRedo,
   IconSave,
   IconShare,
@@ -32,6 +35,7 @@ import {
   IconTextSmaller,
   IconUnderline,
   IconUndo,
+  IconUnlock,
 } from '../components/MobileIcons'
 import { useBackLayer } from './backStack'
 import { useViewportLayout } from './useViewportLayout'
@@ -42,6 +46,25 @@ export interface EditorQuickActionItem {
   readonly onPress: () => void
   /** Drawn instead of the built-in icon for `id` (lets a kind bring its own icons). */
   readonly icon?: ReactNode
+  /** Section placement inside the [⋯] More sheet (defaults to 'document'). */
+  readonly section?: 'file' | 'document'
+}
+
+/** One quick action inside a paired row in the [⋯] More sheet. */
+export interface EditorMorePairAction {
+  readonly id: string
+  readonly label: string
+  readonly active?: boolean
+  readonly icon?: ReactNode
+  readonly onPress: () => void
+}
+
+/** A compact row in [⋯] with a label on the left and paired quick buttons on the right. */
+export interface EditorMorePair {
+  readonly id: string
+  readonly label: string
+  readonly section?: 'file' | 'document'
+  readonly actions: readonly EditorMorePairAction[]
 }
 
 /** One titled group in the format panel ([Aa]). */
@@ -57,9 +80,27 @@ function hideKeyboard(): void {
   const active = document.activeElement
   if (active instanceof HTMLIFrameElement) {
     const inner = active.contentDocument?.activeElement
-    if (inner instanceof HTMLElement) inner.blur()
+    if (inner && typeof (inner as HTMLElement).blur === 'function') {
+      ;(inner as HTMLElement).blur()
+    }
   }
   if (active instanceof HTMLElement) active.blur()
+}
+
+function isEditableElement(el: unknown): el is HTMLElement {
+  if (!el || typeof el !== 'object') return false
+  const node = el as {
+    tagName?: string
+    isContentEditable?: boolean
+    getAttribute?: (name: string) => string | null
+    blur?: () => void
+  }
+  if (typeof node.blur !== 'function') return false
+  const tag = node.tagName?.toUpperCase()
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return true
+  if (node.isContentEditable) return true
+  const ce = node.getAttribute?.('contenteditable')
+  return ce === '' || ce === 'true'
 }
 
 /** What the app bar says about saving (design system 5.2). */
@@ -78,12 +119,18 @@ export interface EditorShellProps {
   readonly noticeBanner?: string | null
   readonly onDismissNotice?: () => void
   readonly quickActions: readonly EditorQuickActionItem[]
-  /** Groups for the format panel ([Aa]); none hides the button. */
+  /** Groups for the format panel ([Aa]); a group with id 'insert' moves into the [+] insert sheet. */
   readonly formatGroups?: readonly EditorFormatGroup[]
-  /** Format-specific rows for the More sheet (e.g. Markdown to HWP). */
+  /** Explicit items for the [+] insert sheet; defaults to any 'insert' group from `formatGroups`. */
+  readonly insertItems?: readonly EditorQuickActionItem[]
+  /** Format-specific rows for the More sheet (e.g. Markdown to HWP, Find/Replace). */
   readonly moreItems?: readonly EditorQuickActionItem[]
+  /** Inline paired action rows for the More sheet (e.g. Reading view / Page view toggle). */
+  readonly morePairs?: readonly EditorMorePair[]
   /** View-mode tools of the document area (page/flow switch, text size, fit width). */
   readonly viewTools?: readonly EditorQuickActionItem[]
+  /** Enables the edit-mode keyboard lock toggle; defaults to true for text-centric formats. */
+  readonly keyboardLockable?: boolean
   readonly aiPanelContent: ReactNode
   readonly onBack: () => void
   /** [편집]: view -> edit. */
@@ -96,6 +143,12 @@ export interface EditorShellProps {
   /** Absent for read-only kinds without a save function: hides Save As in [⋯]. */
   readonly onSaveAs?: () => void
   readonly onShare: () => void
+  /** Absent for formats without PDF sharing (or PDF documents, where Share already sends PDF). */
+  readonly onSharePdf?: () => void
+  /** Absent when the editor does not expose PDF printing. */
+  readonly onPrint?: () => void
+  /** Scoped print/PDF labels (EPUB prints the current chapter; Sheets prints the active sheet). */
+  readonly printScope?: 'document' | 'chapter' | 'sheet'
   readonly onFitToWidth: () => void
   readonly onOpenBackups: () => void
   readonly children: ReactNode
@@ -152,8 +205,11 @@ export function EditorShell({
   onDismissNotice,
   quickActions,
   formatGroups = [],
+  insertItems,
   moreItems = [],
+  morePairs = [],
   viewTools = [],
+  keyboardLockable,
   aiPanelContent,
   onBack,
   onEnterEdit,
@@ -162,18 +218,92 @@ export function EditorShell({
   onSave,
   onSaveAs,
   onShare,
+  onSharePdf,
+  onPrint,
+  printScope = 'document',
   onFitToWidth,
   onOpenBackups,
   children,
 }: EditorShellProps) {
   const { t } = useMobileLocale()
   const { isTablet, keyboardInsetPx } = useViewportLayout()
+  const stageRef = useRef<HTMLElement | null>(null)
   const [aiOpen, setAiOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [formatOpen, setFormatOpen] = useState(false)
+  const [insertOpen, setInsertOpen] = useState(false)
+  const [keyboardLocked, setKeyboardLocked] = useState(false)
   const keyboardOpen = keyboardInsetPx > 0
   const isHwpFamily = docFormat === 'hwp' || docFormat === 'hwpx'
   const isEdit = mode === 'edit'
+  const canLockKeyboard =
+    canEdit &&
+    (keyboardLockable ??
+      (isHwpFamily || docFormat === 'md' || docFormat === 'txt' || docFormat === 'html'))
+
+  // Reset edit-only panels and keyboard lock when returning to view mode.
+  useEffect(() => {
+    if (!isEdit) {
+      setFormatOpen(false)
+      setInsertOpen(false)
+      setKeyboardLocked(false)
+    }
+  }, [isEdit])
+
+  // Prevent the soft keyboard from popping up while scrolling/reviewing in edit mode.
+  useEffect(() => {
+    if (!isEdit || !keyboardLocked) return
+    hideKeyboard()
+    const stage = stageRef.current
+    if (!stage) return
+
+    const savedInputModes = new Map<HTMLElement, string | null>()
+    const cleanups: Array<() => void> = []
+
+    const lockRoot = (root: ParentNode, eventTarget: EventTarget) => {
+      const editables = root.querySelectorAll<HTMLElement>(
+        'textarea, input, [contenteditable=""], [contenteditable="true"]',
+      )
+      for (const el of editables) {
+        if (!savedInputModes.has(el)) {
+          savedInputModes.set(el, el.getAttribute('inputmode'))
+        }
+        el.setAttribute('inputmode', 'none')
+      }
+      const onFocusIn = (event: Event) => {
+        if (isEditableElement(event.target)) {
+          event.target.blur()
+        }
+      }
+      eventTarget.addEventListener('focusin', onFocusIn, true)
+      cleanups.push(() => eventTarget.removeEventListener('focusin', onFocusIn, true))
+    }
+
+    lockRoot(stage, stage)
+
+    const frames = stage.querySelectorAll('iframe')
+    for (const frame of frames) {
+      const lockFrame = () => {
+        try {
+          const doc = frame.contentDocument
+          if (doc) lockRoot(doc, doc)
+        } catch {
+          // Cross-origin frame: ignore.
+        }
+      }
+      lockFrame()
+      frame.addEventListener('load', lockFrame)
+      cleanups.push(() => frame.removeEventListener('load', lockFrame))
+    }
+
+    return () => {
+      for (const cleanup of cleanups) cleanup()
+      for (const [el, prev] of savedInputModes) {
+        if (prev === null) el.removeAttribute('inputmode')
+        else el.setAttribute('inputmode', prev)
+      }
+    }
+  }, [isEdit, keyboardLocked])
 
   // Back order (design system 5.11): sheets close first (they register later),
   // then edit mode ends, then the editor screen closes.
@@ -182,6 +312,33 @@ export function EditorShell({
 
   const barActions = quickActions.filter((item) => APP_BAR_ACTION_IDS.has(item.id))
   const toolActions = quickActions.filter((item) => !APP_BAR_ACTION_IDS.has(item.id))
+
+  // Separate insert actions into their own [+] sheet while keeping [Aa] focused on formatting.
+  const styleFormatGroups = formatGroups.filter((group) => group.id !== 'insert')
+  const effectiveInsertItems =
+    insertItems ??
+    formatGroups.filter((group) => group.id === 'insert').flatMap((group) => group.items)
+
+  const toggleInsertSheet = () => {
+    setInsertOpen((prev) => {
+      if (!prev) setFormatOpen(false)
+      return !prev
+    })
+  }
+
+  const toggleFormatSheet = () => {
+    setFormatOpen((prev) => {
+      if (!prev) setInsertOpen(false)
+      return !prev
+    })
+  }
+
+  // Split [⋯] More sheet into Document tools and File actions.
+  const docMoreItems = moreItems.filter((item) => item.section !== 'file')
+  const fileMoreItems = moreItems.filter((item) => item.section === 'file')
+  const docMorePairs = morePairs.filter((pair) => pair.section !== 'file')
+  const fileMorePairs = morePairs.filter((pair) => pair.section === 'file')
+  const hasDocSection = docMorePairs.length > 0 || docMoreItems.length > 0 || isHwpFamily
 
   const saveLabel =
     saveState === 'saving'
@@ -192,6 +349,30 @@ export function EditorShell({
           ? t('saveStateDirty')
           : t('saveStateSaved')
   const saveActionable = saveState === 'dirty' || saveState === 'error'
+
+  const renderMorePair = (pair: EditorMorePair) => (
+    <div key={pair.id} className="mobile-menu-pair-row" data-testid={`more-pair-${pair.id}`}>
+      <span className="mobile-menu-pair-label">{pair.label}</span>
+      <div className="mobile-menu-pair-actions">
+        {pair.actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            className="mobile-menu-pair-btn"
+            aria-pressed={action.active}
+            data-testid={`more-pair-${pair.id}-${action.id}`}
+            onClick={() => {
+              setMoreOpen(false)
+              action.onPress()
+            }}
+          >
+            {action.icon ?? renderQuickActionIcon(action.id)}
+            <span>{action.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div
@@ -309,39 +490,56 @@ export function EditorShell({
         </div>
       </header>
 
-      {isTablet && isEdit && toolActions.length > 0 && (
-        <div className="mobile-tablet-toolbar" role="toolbar" data-testid="tablet-toolbar">
-          {toolActions.map((item) => {
-            const icon = item.icon ?? renderQuickActionIcon(item.id)
-            return (
+      {isTablet &&
+        isEdit &&
+        (toolActions.length > 0 ||
+          effectiveInsertItems.length > 0 ||
+          styleFormatGroups.length > 0) && (
+          <div className="mobile-tablet-toolbar" role="toolbar" data-testid="tablet-toolbar">
+            {toolActions.map((item) => {
+              const icon = item.icon ?? renderQuickActionIcon(item.id)
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="mobile-toolbar-btn"
+                  onClick={item.onPress}
+                  aria-label={item.label}
+                  title={item.label}
+                >
+                  {icon}
+                  <span>{item.label}</span>
+                </button>
+              )
+            })}
+            {effectiveInsertItems.length > 0 && (
               <button
-                key={item.id}
                 type="button"
                 className="mobile-toolbar-btn"
-                onClick={item.onPress}
-                aria-label={item.label}
-                title={item.label}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={toggleInsertSheet}
+                aria-pressed={insertOpen}
+                data-testid="tablet-insert-panel-btn"
               >
-                {icon}
-                <span>{item.label}</span>
+                <IconPlus size={20} />
+                <span>{t('insertPanel')}</span>
               </button>
-            )
-          })}
-          {formatGroups.length > 0 && (
-            <button
-              type="button"
-              className="mobile-toolbar-btn"
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={() => setFormatOpen((prev) => !prev)}
-              aria-pressed={formatOpen}
-              data-testid="tablet-format-panel-btn"
-            >
-              <IconTextFormat size={18} />
-              <span>{t('formatPanel')}</span>
-            </button>
-          )}
-        </div>
-      )}
+            )}
+            {styleFormatGroups.length > 0 && (
+              <button
+                type="button"
+                className="mobile-toolbar-btn"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={toggleFormatSheet}
+                aria-pressed={formatOpen}
+                data-testid="tablet-format-panel-btn"
+              >
+                <IconTextFormat size={18} />
+                <span>{t('formatPanel')}</span>
+              </button>
+            )}
+          </div>
+        )}
 
       {noticeBanner && (
         <div className="mobile-editor-banner" role="status" data-testid="editor-notice-banner">
@@ -360,7 +558,13 @@ export function EditorShell({
       )}
 
       <div className="mobile-workspace-row">
-        <section className="mobile-editor-stage">{children}</section>
+        <section
+          ref={stageRef}
+          className="mobile-editor-stage"
+          data-keyboard-locked={isEdit && keyboardLocked ? 'true' : undefined}
+        >
+          {children}
+        </section>
 
         {isTablet && aiEnabled && aiOpen && (
           <aside className="mobile-tablet-ai-dock" data-testid="tablet-ai-dock">
@@ -408,12 +612,26 @@ export function EditorShell({
               )
             })}
           </div>
-          {formatGroups.length > 0 && (
+          {effectiveInsertItems.length > 0 && (
             <button
               type="button"
               className="mobile-quick-icon-btn mobile-quick-fixed-btn"
               onPointerDown={(e) => e.preventDefault()}
-              onClick={() => setFormatOpen((prev) => !prev)}
+              onClick={toggleInsertSheet}
+              aria-label={t('insertPanel')}
+              aria-pressed={insertOpen}
+              title={t('insertPanel')}
+              data-testid="insert-panel-btn"
+            >
+              <IconPlus size={20} />
+            </button>
+          )}
+          {styleFormatGroups.length > 0 && (
+            <button
+              type="button"
+              className="mobile-quick-icon-btn mobile-quick-fixed-btn"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={toggleFormatSheet}
               aria-label={t('formatPanel')}
               aria-pressed={formatOpen}
               title={t('formatPanel')}
@@ -422,7 +640,21 @@ export function EditorShell({
               <IconTextFormat size={20} />
             </button>
           )}
-          {keyboardOpen && (
+          {canLockKeyboard && (
+            <button
+              type="button"
+              className="mobile-quick-icon-btn mobile-quick-fixed-btn"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => setKeyboardLocked((prev) => !prev)}
+              aria-label={keyboardLocked ? t('keyboardUnlock') : t('keyboardLock')}
+              aria-pressed={keyboardLocked}
+              title={keyboardLocked ? t('keyboardUnlock') : t('keyboardLock')}
+              data-testid="keyboard-lock-btn"
+            >
+              {keyboardLocked ? <IconLock size={20} /> : <IconUnlock size={20} />}
+            </button>
+          )}
+          {keyboardOpen && !keyboardLocked && (
             <button
               type="button"
               className="mobile-quick-icon-btn mobile-quick-fixed-btn"
@@ -493,7 +725,37 @@ export function EditorShell({
       )}
 
       <Sheet
-        open={isEdit && formatOpen && formatGroups.length > 0}
+        open={isEdit && insertOpen && effectiveInsertItems.length > 0}
+        title={t('insertPanel')}
+        closeLabel={t('cancel')}
+        onClose={() => setInsertOpen(false)}
+        modal={false}
+        testId="editor-insert-sheet"
+      >
+        <div className="mobile-format-panel">
+          <div className="mobile-format-grid">
+            {effectiveInsertItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="mobile-format-btn"
+                data-testid={`editor-insert-${item.id}`}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setInsertOpen(false)
+                  item.onPress()
+                }}
+              >
+                {item.icon ?? renderQuickActionIcon(item.id)}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={isEdit && formatOpen && styleFormatGroups.length > 0}
         title={t('formatPanel')}
         closeLabel={t('cancel')}
         onClose={() => setFormatOpen(false)}
@@ -501,7 +763,7 @@ export function EditorShell({
         testId="editor-format-sheet"
       >
         <div className="mobile-format-panel">
-          {formatGroups.map((group) => (
+          {styleFormatGroups.map((group) => (
             <section key={group.id} className="mobile-format-group" aria-label={group.title}>
               <h3 className="mobile-format-group-title">{group.title}</h3>
               <div className="mobile-format-grid">
@@ -531,75 +793,153 @@ export function EditorShell({
         testId="editor-more-sheet"
       >
         <div className="mobile-menu-stack">
-          {onSaveAs && (
-            <button
-              type="button"
-              className="mobile-menu-row-btn"
-              data-testid="editor-save-as-btn"
-              onClick={() => {
-                setMoreOpen(false)
-                onSaveAs()
-              }}
+          {hasDocSection && (
+            <section
+              className="mobile-menu-section"
+              aria-label={t('moreSectionDocument')}
+              data-testid="more-section-document"
             >
-              <IconSave size={19} />
-              <span>{t('saveAs')}</span>
-            </button>
+              <h3 className="mobile-menu-section-title">{t('moreSectionDocument')}</h3>
+              {docMorePairs.map(renderMorePair)}
+              {docMoreItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="mobile-menu-row-btn"
+                  data-testid={`editor-more-${item.id}`}
+                  onClick={() => {
+                    setMoreOpen(false)
+                    item.onPress()
+                  }}
+                >
+                  {item.icon ?? renderQuickActionIcon(item.id)}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+              {isHwpFamily && (
+                <button
+                  type="button"
+                  className="mobile-menu-row-btn"
+                  data-testid="editor-fit-width-btn"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onFitToWidth()
+                  }}
+                >
+                  <IconFitWidth size={19} />
+                  <span>{t('fitToWidth')}</span>
+                </button>
+              )}
+            </section>
           )}
-          <button
-            type="button"
-            className="mobile-menu-row-btn"
-            data-testid="editor-sheet-share-btn"
-            onClick={() => {
-              setMoreOpen(false)
-              onShare()
-            }}
+          {hasDocSection && <hr className="mobile-menu-divider" />}
+          <section
+            className="mobile-menu-section"
+            aria-label={t('moreSectionFile')}
+            data-testid="more-section-file"
           >
-            <IconShare size={19} />
-            <span>{t('share')}</span>
-          </button>
-          {moreItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="mobile-menu-row-btn"
-              data-testid={`editor-more-${item.id}`}
-              onClick={() => {
-                setMoreOpen(false)
-                item.onPress()
-              }}
-            >
-              {item.icon ?? renderQuickActionIcon(item.id)}
-              <span>{item.label}</span>
-            </button>
-          ))}
-          {isHwpFamily && (
+            <h3 className="mobile-menu-section-title">{t('moreSectionFile')}</h3>
+            {onSaveAs && (
+              <button
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid="editor-save-as-btn"
+                onClick={() => {
+                  setMoreOpen(false)
+                  onSaveAs()
+                }}
+              >
+                <IconSave size={19} />
+                <span>{t('saveAs')}</span>
+              </button>
+            )}
             <button
               type="button"
               className="mobile-menu-row-btn"
-              data-testid="editor-fit-width-btn"
+              data-testid="editor-sheet-share-btn"
               onClick={() => {
                 setMoreOpen(false)
-                onFitToWidth()
+                onShare()
               }}
             >
-              <IconFitWidth size={19} />
-              <span>{t('fitToWidth')}</span>
+              <IconShare size={19} />
+              <span>{t('share')}</span>
             </button>
-          )}
-          {isHwpFamily && (
-            <button
-              type="button"
-              className="mobile-menu-row-btn"
-              data-testid="editor-backups-btn"
-              onClick={() => {
-                setMoreOpen(false)
-                onOpenBackups()
-              }}
-            >
-              <IconHistory size={19} />
-              <span>{t('settingsBackupsSection')}</span>
-            </button>
-          )}
+            {onSharePdf && (
+              <button
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid="editor-share-pdf-btn"
+                onClick={() => {
+                  setMoreOpen(false)
+                  onSharePdf()
+                }}
+              >
+                <HomeSharePdfIcon size={19} />
+                <span>
+                  {t(
+                    printScope === 'chapter'
+                      ? 'homeShareChapterPdf'
+                      : printScope === 'sheet'
+                        ? 'homeShareSheetPdf'
+                        : 'homeShareAsPdf',
+                  )}
+                </span>
+              </button>
+            )}
+            {onPrint && (
+              <button
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid="editor-print-btn"
+                onClick={() => {
+                  setMoreOpen(false)
+                  onPrint()
+                }}
+              >
+                <HomePrintIcon size={19} />
+                <span>
+                  {t(
+                    printScope === 'chapter'
+                      ? 'homePrintChapter'
+                      : printScope === 'sheet'
+                        ? 'homePrintSheet'
+                        : 'homePrint',
+                  )}
+                </span>
+              </button>
+            )}
+            {fileMorePairs.map(renderMorePair)}
+            {fileMoreItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid={`editor-more-${item.id}`}
+                onClick={() => {
+                  setMoreOpen(false)
+                  item.onPress()
+                }}
+              >
+                {item.icon ?? renderQuickActionIcon(item.id)}
+                <span>{item.label}</span>
+              </button>
+            ))}
+            {isHwpFamily && (
+              <button
+                type="button"
+                className="mobile-menu-row-btn"
+                data-testid="editor-backups-btn"
+                onClick={() => {
+                  setMoreOpen(false)
+                  onOpenBackups()
+                }}
+              >
+                <IconHistory size={19} />
+                <span>{t('settingsBackupsSection')}</span>
+              </button>
+            )}
+          </section>
         </div>
       </Sheet>
     </div>

@@ -172,4 +172,10 @@ export const ko = {
   backupRestoreSaveAs: '사본으로 저장',
   backupDelete: '삭제',
   formatNotOpenable: '이 파일 형식은 열 수 없습니다.',
+  insertPanel: '넣기',
+  keyboardLock: '키보드 잠금',
+  keyboardUnlock: '키보드 잠금 해제',
+  moreSectionDocument: '문서 도구',
+  moreSectionFile: '파일',
+  viewModeLabel: '화면 보기',
 } as const satisfies Record<keyof typeof zh, string>

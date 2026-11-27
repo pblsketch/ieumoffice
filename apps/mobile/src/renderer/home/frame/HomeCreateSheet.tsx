@@ -1,5 +1,9 @@
 import type { MobileDocFormat } from '@genoffice/mobile-bridge/transport'
-import { HomeFramePlusIcon, HomeFrameToolsIcon } from '../../components/icons/home'
+import {
+  HomeFrameFolderPlusIcon,
+  HomeFramePlusIcon,
+  HomeFrameToolsIcon,
+} from '../../components/icons/home'
 import { DocTypeIcon, IconFolderOpen } from '../../components/MobileIcons'
 import { Sheet } from '../../components/Sheet'
 import { useMobileLocale } from '../../i18n'
@@ -34,27 +38,34 @@ export interface HomeCreateSheetProps {
   readonly open: boolean
   readonly cards: readonly HomeCardItem[]
   readonly hwpFormat: 'hwp' | 'hwpx'
-  /** Shows the "PDF tools" row: the tools are on and T3 linked its screen. */
+  /** Shows the "PDF tools" action: the tools are on and T3 linked its screen. */
   readonly pdfToolsReady: boolean
+  /** Current folder path when opened from inside a linked folder browser. */
+  readonly locationLabel?: string | null
   readonly onClose: () => void
   readonly onCreate: (format: MobileDocFormat) => void
   readonly onOpenFile: () => void
   readonly onOpenPdfTools: () => void
+  /** Links a new folder via the system folder picker; omitted when no bridge client is present. */
+  readonly onAddFolder?: () => void
 }
 
 /**
- * The create sheet behind [+] (spec 3.1): tiles for the same cards the recent tab shows, then
- * "Open file" and, when allowed, "PDF tools". Every choice closes the sheet first.
+ * The create sheet behind [+] (spec 3.1): optional folder context line, a 2-column grid of
+ * new-document format tiles, and a 2-column secondary action grid (Open file, PDF tools, Add folder).
+ * Every choice closes the sheet first.
  */
 export function HomeCreateSheet({
   open,
   cards,
   hwpFormat,
   pdfToolsReady,
+  locationLabel,
   onClose,
   onCreate,
   onOpenFile,
   onOpenPdfTools,
+  onAddFolder,
 }: HomeCreateSheetProps) {
   const { t } = useMobileLocale()
   return (
@@ -65,6 +76,14 @@ export function HomeCreateSheet({
       onClose={onClose}
       testId="home-create-sheet"
     >
+      {locationLabel && (
+        <div className="home-frame-create-location" data-testid="home-create-location">
+          <IconFolderOpen size={16} />
+          <span className="home-frame-create-location-text">
+            {t('homeCreateLocation', { name: locationLabel })}
+          </span>
+        </div>
+      )}
       {cards.length > 0 && (
         <div className="home-frame-create-grid">
           {cards.map((item) => {
@@ -89,34 +108,48 @@ export function HomeCreateSheet({
           })}
         </div>
       )}
-      <div className="mobile-menu-stack home-frame-create-rows">
+      <div className="home-frame-create-secondary">
         <button
           type="button"
-          className="mobile-menu-row-btn"
+          className="home-frame-create-action"
           data-testid="home-create-open-file"
           onClick={() => {
             onClose()
             onOpenFile()
           }}
         >
-          <IconFolderOpen size={19} />
+          <IconFolderOpen size={20} />
           <span className="home-frame-create-row-text">
-            <span>{t('openFile')}</span>
+            <span className="home-frame-create-action-title">{t('openFile')}</span>
             <span className="home-frame-create-row-sub">{openableExtensionsLine()}</span>
           </span>
         </button>
         {pdfToolsReady && (
           <button
             type="button"
-            className="mobile-menu-row-btn"
+            className="home-frame-create-action"
             data-testid="home-create-pdf-tools"
             onClick={() => {
               onClose()
               onOpenPdfTools()
             }}
           >
-            <HomeFrameToolsIcon size={19} />
-            <span>{t('homeCreatePdfTools')}</span>
+            <HomeFrameToolsIcon size={20} />
+            <span className="home-frame-create-action-title">{t('homeCreatePdfTools')}</span>
+          </button>
+        )}
+        {onAddFolder && (
+          <button
+            type="button"
+            className="home-frame-create-action"
+            data-testid="home-create-add-folder"
+            onClick={() => {
+              onClose()
+              onAddFolder()
+            }}
+          >
+            <HomeFrameFolderPlusIcon size={20} />
+            <span className="home-frame-create-action-title">{t('homeCreateAddFolder')}</span>
           </button>
         )}
       </div>

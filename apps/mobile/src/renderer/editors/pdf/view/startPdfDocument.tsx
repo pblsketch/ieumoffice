@@ -179,12 +179,9 @@ export function startPdfDocument(
     const [goToOpen, setGoToOpen] = useState(false)
     const closeSearch = useCallback(() => setSearchOpen(false), [])
     useBackLayer(searchOpen, closeSearch)
-    const handleOpenExternalUrl = useCallback(
-      (url: string) => {
-        void openExternalUrl(host.client, url).catch(() => {})
-      },
-      [],
-    )
+    const handleOpenExternalUrl = useCallback((url: string) => {
+      void openExternalUrl(host.client, url).catch(() => {})
+    }, [])
     const [hits, setHits] = useState<Map<number, PdfPageHits> | null>(null)
     const [currentPage, setCurrentPage] = useState(0)
     // the view the document had when its viewer last unmounted (read per mount and per
@@ -343,6 +340,17 @@ export function startPdfDocument(
   return {
     async share(doc) {
       await sharePdfOriginal(host.client, doc.session, source.getModel()).catch(() => {})
+    },
+    async exportPdf(doc, target) {
+      const current = source.getModel()
+      if (current.encrypted) {
+        host.showToast({ message: host.translate('homePrintProtected'), tone: 'error' })
+        return null
+      }
+      if (target === 'print' && !doc.isUntitled) {
+        return { kind: 'session-original', fileName: doc.session.name }
+      }
+      return { kind: 'bytes', bytes: current.originalBytes, fileName: doc.session.name }
     },
     Workspace: PdfWorkspace,
   }

@@ -73,6 +73,7 @@ export function startPdfEditDocument(
     editSession,
     save: (doc, forceSaveAs) => editSession.save(doc, forceSaveAs),
     share: (doc) => editSession.share(doc),
+    exportPdf: (doc, target) => editSession.exportPdf(doc, target),
     writeRecovery: (doc) => editSession.writeRecovery(doc),
     // the AI tools and their strings load only when the AI runs (AI is off by default)
     createAiRun: (ctx) =>

@@ -175,4 +175,10 @@ export const it = {
   backupRestoreSaveAs: 'Salva come copia',
   backupDelete: 'Elimina',
   formatNotOpenable: 'Questo tipo di file non può essere aperto.',
+  insertPanel: 'Inserisci',
+  keyboardLock: 'Blocca tastiera',
+  keyboardUnlock: 'Sblocca tastiera',
+  moreSectionDocument: 'Documento',
+  moreSectionFile: 'File',
+  viewModeLabel: 'Vista',
 } as const satisfies Record<keyof typeof zh, string>

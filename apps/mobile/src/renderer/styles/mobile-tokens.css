@@ -64,6 +64,10 @@
   --m-scrim: var(--color-bg-overlay);
   --m-surface-raised: var(--surface);
   --m-system-bar: var(--surface);
+  /* document paper preview (document content stays white paper in dark mode) */
+  --m-doc-paper: #ffffff;
+  --m-doc-ink: #1f2937;
+  --m-doc-ink-muted: #4b5563;
 
   /* safe area and keyboard (--m-kb is written by useViewportLayout) */
   --m-safe-top: env(safe-area-inset-top, 0px);
@@ -1060,6 +1064,77 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--m-space-half);
+}
+
+.mobile-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-half);
+}
+
+.mobile-menu-section-title {
+  margin: var(--m-space-1) 0 var(--m-space-1) var(--m-space-3);
+  font-size: var(--m-text-caption);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.mobile-menu-divider {
+  margin: var(--m-space-2) 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.mobile-menu-pair-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-space-2);
+  min-height: var(--m-hit);
+  padding: var(--m-space-1) var(--m-space-3);
+}
+
+.mobile-menu-pair-label {
+  font-size: var(--m-text-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.mobile-menu-pair-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  flex-shrink: 0;
+}
+
+.mobile-menu-pair-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+  min-width: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mobile-menu-pair-btn:hover {
+  background: var(--bg-hover-subtle);
+  color: var(--text-primary);
+}
+
+.mobile-menu-pair-btn[aria-pressed='true'] {
+  background: var(--active-bg);
+  border-color: var(--border-strong);
+  color: var(--m-accent);
 }
 
 .mobile-menu-row-btn {

@@ -4,11 +4,24 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ComponentCallbacks
+import android.content.Context
 import android.content.Intent
 import android.content.UriPermission
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
+import android.print.PrintManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.view.View
@@ -94,6 +107,19 @@ class UrlArgs {
     var url: String = ""
 }
 
+@InvokeArg
+class PrintPathArgs {
+    var path: String = ""
+    var jobName: String = "document.pdf"
+}
+
+@InvokeArg
+class RenderPdfThumbArgs {
+    var srcPath: String = ""
+    var destPath: String = ""
+    var maxPx: Int = 360
+}
+
 /** One child row of a SAF folder query. */
 private data class ChildDoc(
     val docId: String,
@@ -116,6 +142,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     private val pendingIntents = ConcurrentLinkedQueue<JSObject>()
     private val incomingBatches = ConcurrentLinkedQueue<JSObject>()
     private val batchCounter = AtomicLong(0)
+    private val printIoExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var activeWebView: WebView? = null
     private var configCallbacks: ComponentCallbacks? = null
 
@@ -125,6 +152,9 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
 
     // Folder listing, rename, copy, delete, and share copies run off the calling thread.
     private val workExecutor = Executors.newCachedThreadPool()
+
+    // PdfRenderer is not thread-safe and allows only one open page at a time.
+    private val pdfThumbExecutor = Executors.newSingleThreadExecutor()
 
     override fun load(webView: WebView) {
         super.load(webView)
@@ -922,6 +952,181 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
             invoke.resolve(JSObject().apply { put("ok", true) })
         } catch (err: Exception) {
             invoke.reject("INTERNAL_ERROR: ${err.message}")
+        }
+    }
+
+    /** Hands a staged PDF under `<cache>/ieum-tmp/print/` to Android PrintManager. */
+    @Command
+    fun printPdfFromPath(invoke: Invoke) {
+        val args = invoke.parseArgs(PrintPathArgs::class.java)
+        val file = cacheFile(args.path)
+        val printRoot = File(activity.cacheDir, "ieum-tmp/print").canonicalFile
+        if (file == null || !file.isFile || !file.path.startsWith(printRoot.path + File.separator)) {
+            invoke.reject("INVALID_ARGUMENT: the file must be under the print cache folder")
+            return
+        }
+        val jobName = safeFileName(args.jobName.ifBlank { file.name })
+        activity.runOnUiThread {
+            try {
+                val printManager = activity.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+                if (printManager == null) {
+                    file.delete()
+                    invoke.reject("INTERNAL_ERROR: print service unavailable")
+                    return@runOnUiThread
+                }
+                val adapter = PdfFilePrintDocumentAdapter(file, jobName, printIoExecutor)
+                printManager.print(jobName, adapter, PrintAttributes.Builder().build())
+                invoke.resolve(JSObject().apply { put("ok", true) })
+            } catch (err: Exception) {
+                file.delete()
+                invoke.reject("INTERNAL_ERROR: ${err.message}")
+            }
+        }
+    }
+
+    /** Renders page 0 of a cached PDF into a white-backed PNG thumbnail on a dedicated thread. */
+    @Command
+    fun renderPdfThumbnail(invoke: Invoke) {
+        val args = invoke.parseArgs(RenderPdfThumbArgs::class.java)
+        val srcFile = cacheFile(args.srcPath)
+        val destFile = cacheFile(args.destPath)
+        if (srcFile == null || !srcFile.isFile || destFile == null) {
+            invoke.reject("INVALID_ARGUMENT: paths must stay inside the app cache")
+            return
+        }
+        val maxPx = args.maxPx.coerceIn(64, 1024)
+        pdfThumbExecutor.execute {
+            try {
+                val rendered = ParcelFileDescriptor.open(srcFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                    PdfRenderer(pfd).use { renderer ->
+                        if (renderer.pageCount <= 0) {
+                            false
+                        } else {
+                            renderer.openPage(0).use { page ->
+                                val pw = page.width.coerceAtLeast(1)
+                                val ph = page.height.coerceAtLeast(1)
+                                val scale = maxPx.toFloat() / maxOf(pw, ph).toFloat()
+                                val outW = (pw * scale).toInt().coerceIn(1, 1024)
+                                val outH = (ph * scale).toInt().coerceIn(1, 1024)
+                                val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+                                try {
+                                    Canvas(bitmap).drawColor(Color.WHITE)
+                                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                    destFile.parentFile?.mkdirs()
+                                    FileOutputStream(destFile).use { out ->
+                                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                        out.flush()
+                                    }
+                                    true
+                                } finally {
+                                    bitmap.recycle()
+                                }
+                            }
+                        }
+                    }
+                }
+                invoke.resolve(JSObject().apply { put("rendered", rendered) })
+            } catch (_: SecurityException) {
+                // Password-protected PDFs never produce cached thumbnails.
+                invoke.resolve(JSObject().apply { put("rendered", false) })
+            } catch (_: Exception) {
+                invoke.resolve(JSObject().apply { put("rendered", false) })
+            }
+        }
+    }
+
+    /** Streams a staged PDF file off the UI thread to Android's print spooler and deletes it once finished. */
+    private class PdfFilePrintDocumentAdapter(
+        private val file: File,
+        private val jobName: String,
+        private val ioExecutor: java.util.concurrent.ExecutorService,
+    ) : PrintDocumentAdapter() {
+        override fun onLayout(
+            oldAttributes: PrintAttributes?,
+            newAttributes: PrintAttributes?,
+            cancellationSignal: CancellationSignal?,
+            callback: LayoutResultCallback,
+            extras: Bundle?,
+        ) {
+            if (cancellationSignal?.isCanceled == true) {
+                callback.onLayoutCancelled()
+                return
+            }
+            ioExecutor.execute {
+                if (cancellationSignal?.isCanceled == true) {
+                    callback.onLayoutCancelled()
+                    return@execute
+                }
+                val pageCount = try {
+                    ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                        PdfRenderer(pfd).use { renderer ->
+                            renderer.pageCount.coerceAtLeast(1)
+                        }
+                    }
+                } catch (_: SecurityException) {
+                    PrintDocumentInfo.PAGE_COUNT_UNKNOWN
+                } catch (_: Exception) {
+                    PrintDocumentInfo.PAGE_COUNT_UNKNOWN
+                }
+                if (cancellationSignal?.isCanceled == true) {
+                    callback.onLayoutCancelled()
+                    return@execute
+                }
+                val info = PrintDocumentInfo.Builder(jobName)
+                    .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .setPageCount(pageCount)
+                    .build()
+                callback.onLayoutFinished(info, true)
+            }
+        }
+
+        override fun onWrite(
+            pages: Array<out PageRange>,
+            destination: ParcelFileDescriptor,
+            cancellationSignal: CancellationSignal,
+            callback: WriteResultCallback,
+        ) {
+            if (cancellationSignal.isCanceled) {
+                callback.onWriteCancelled()
+                return
+            }
+            ioExecutor.execute {
+                if (cancellationSignal.isCanceled) {
+                    callback.onWriteCancelled()
+                    return@execute
+                }
+                try {
+                    FileInputStream(file).use { input ->
+                        FileOutputStream(destination.fileDescriptor).use { output ->
+                            val buffer = ByteArray(16 * 1024)
+                            while (true) {
+                                if (cancellationSignal.isCanceled) {
+                                    callback.onWriteCancelled()
+                                    return@execute
+                                }
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                output.write(buffer, 0, read)
+                            }
+                            output.flush()
+                        }
+                    }
+                    callback.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
+                } catch (err: Exception) {
+                    callback.onWriteFailed(err.message ?: "failed to stream PDF to print spooler")
+                }
+            }
+        }
+
+        override fun onFinish() {
+            // Queue deletion on the same single-thread executor so any in-flight write finishes first.
+            ioExecutor.execute {
+                try {
+                    file.delete()
+                } catch (_: Exception) {
+                    // Startup cleanup removes any leftover files under ieum-tmp/print.
+                }
+            }
         }
     }
 

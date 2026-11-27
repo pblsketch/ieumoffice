@@ -13,7 +13,10 @@ import {
 import { wrapSkillWithViewEditGate } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { DocumentProfile, Place } from '@genoffice/doc-rules'
 import { DocCheckSheet } from '../components/DocCheckSheet'
+import { HwpPageThumbSheet, type HwpPagePreviewData } from '../components/HwpPageThumbSheet'
+import { HomePageGridIcon } from '../components/icons/home'
 import { MemoSheet } from '../components/MemoSheet'
+import { IconFlowView, IconPageView } from '../components/MobileIcons'
 import { PageNumberSheet } from '../components/PageNumberSheet'
 import { translateMobile } from '../i18n'
 import type { MobileStringKey } from '../i18n/strings'
@@ -538,6 +541,43 @@ function startHwpDocument(
     }, [mode])
 
     const [docCheckOpen, setDocCheckOpen] = useState(false)
+    const [pageThumbOpen, setPageThumbOpen] = useState(false)
+
+    const openPageThumbs = useCallback(async () => {
+      await ensureStudioMounted()
+      await flushFlowToStudio()
+      setPageThumbOpen(true)
+    }, [])
+
+    const getHwpPageCount = useCallback(async (): Promise<number> => {
+      const studio = hwpEditorRef.current
+      if (!studio) return 0
+      const count = await studio.callPlugin('pageCount')
+      return typeof count === 'number' && Number.isFinite(count) ? count : 0
+    }, [])
+
+    const loadHwpPreviewPage = useCallback(
+      async (pageIndex: number): Promise<HwpPagePreviewData | null> => {
+        const studio = hwpEditorRef.current
+        if (!studio) return null
+        const res = (await studio.callPlugin('previewPage', pageIndex)) as HwpPagePreviewData | null
+        return res && typeof res.svg === 'string' ? res : null
+      },
+      [],
+    )
+
+    const jumpToHwpPage = useCallback((pageIndex: number) => {
+      void (async () => {
+        if (hwpLayoutRef.current !== 'page') {
+          await switchHwpLayout('page')
+        }
+        const studio = await ensureStudioMounted()
+        // Allow one animation frame for the studio frame to become visible after switching from flow view.
+        await new Promise<void>((resolve) => setTimeout(resolve, 16))
+        const target = await studio.callPlugin('pageTarget', pageIndex)
+        if (target) await studio.callPlugin('reveal', target)
+      })().catch(() => {})
+    }, [])
 
     const [pageNumberOpen, setPageNumberOpen] = useState(false)
     const [pageNumberNow, setPageNumberNow] = useState<PageNumberSetting | null>(null)
@@ -747,6 +787,12 @@ function startHwpDocument(
       }
       return [
         {
+          id: 'pageThumbs',
+          label: tNow('homePageThumbnails'),
+          icon: <HomePageGridIcon size={19} />,
+          onPress: () => void openPageThumbs(),
+        },
+        {
           id: 'fitWidth',
           label: tNow('fitToWidth'),
           onPress: () => {
@@ -755,7 +801,7 @@ function startHwpDocument(
         },
         { id: 'flowView', label: tNow('flowView'), onPress: () => void switchHwpLayout('flow') },
       ]
-    }, [hwpLayout, openMemos, tNow])
+    }, [hwpLayout, openMemos, openPageThumbs, tNow])
 
     return (
       <>
@@ -765,9 +811,38 @@ function startHwpDocument(
           formatGroups={formatGroups}
           moreItems={[
             {
+              id: 'pageThumbs',
+              label: tNow('homePageThumbnails'),
+              icon: <HomePageGridIcon size={19} />,
+              onPress: () => void openPageThumbs(),
+            },
+            {
               id: 'docCheck',
               label: tNow('checkTitle'),
               onPress: () => setDocCheckOpen(true),
+            },
+          ]}
+          morePairs={[
+            {
+              id: 'hwpView',
+              label: tNow('viewModeLabel'),
+              section: 'document',
+              actions: [
+                {
+                  id: 'flowView',
+                  label: tNow('flowView'),
+                  active: hwpLayout === 'flow',
+                  icon: <IconFlowView size={16} />,
+                  onPress: () => void switchHwpLayout('flow'),
+                },
+                {
+                  id: 'pageView',
+                  label: tNow('pageView'),
+                  active: hwpLayout === 'page',
+                  icon: <IconPageView size={16} />,
+                  onPress: () => void switchHwpLayout('page'),
+                },
+              ],
             },
           ]}
           viewTools={viewTools}
@@ -844,6 +919,13 @@ function startHwpDocument(
           current={pageNumberNow}
           onApply={(setting) => void applyPageNumbers(setting)}
         />
+        <HwpPageThumbSheet
+          open={pageThumbOpen}
+          onClose={() => setPageThumbOpen(false)}
+          getPageCount={getHwpPageCount}
+          loadPreviewPage={loadHwpPreviewPage}
+          onSelectPage={jumpToHwpPage}
+        />
       </>
     )
   }
@@ -861,6 +943,66 @@ function startHwpDocument(
           setNoticeBanner(tNow('hwpProtectedShareError'))
         }
       }
+    },
+
+    async exportPdf(doc) {
+      if (doc.encrypted || doc.distribution) {
+        showToast({ message: tNow('homePrintProtected'), tone: 'error' })
+        return null
+      }
+      await ensureStudioMounted()
+      await flushFlowToStudio()
+      const studio = hwpEditorRef.current
+      if (!studio) throw new Error('the page editor is not ready')
+
+      // Wait for screen fonts when the plugin exposes it, matching desktop print-flow.ts.
+      await studio.callPlugin('printFontsReady').catch(() => {})
+
+      type PrintPagesBatch = {
+        pageCount: number
+        from: number
+        pages: Array<{ svg: string; width: number; height: number }>
+      }
+      const { assembleImagesToPdf, renderSvgPageToJpeg } = await import('./shared/pdfExport')
+      const rendered: Array<{
+        bytes: Uint8Array
+        mime: 'image/jpeg' | 'image/png'
+        widthPt: number
+        heightPt: number
+      }> = []
+
+      let total = 0
+      const fontCssCache = new Map<string, string>()
+      const MAX_BATCHES = 1000
+      for (let call = 0; call < MAX_BATCHES; call += 1) {
+        const batch = (await studio.callPlugin('printPages', rendered.length)) as PrintPagesBatch
+        if (!batch || !Array.isArray(batch.pages)) {
+          throw new Error('printPages returned an invalid payload')
+        }
+        if (call > 0 && batch.pageCount !== total) {
+          throw new Error('the document changed while printing')
+        }
+        total = batch.pageCount
+        if (batch.from !== rendered.length) {
+          throw new Error('print pages came back out of order')
+        }
+        if (total > 0 && batch.pages.length === 0) {
+          throw new Error('printPages stopped returning pages before the end of the document')
+        }
+        for (const page of batch.pages) {
+          rendered.push(
+            await renderSvgPageToJpeg(page.svg, page.width, page.height, [], {
+              pageCount: total,
+              fontCssCache,
+            }),
+          )
+        }
+        if (rendered.length >= total) break
+      }
+      fontCssCache.clear()
+
+      const bytes = await assembleImagesToPdf(rendered)
+      return { kind: 'bytes', bytes, fileName: doc.session.name }
     },
 
     async writeRecovery(doc) {

@@ -2,8 +2,8 @@ use crate::error::{MobileError, MobileErrorCode, MobileResult};
 use crate::hwp::{HwpFixPayload, TabSpot};
 use crate::storage::{
     HwpBackupEntry, MobileDocFormat, MobileDocSession, MobileFileService, MobileShareMode,
-    ReadFileBytesResult, RecentDocEntry, RecoveryEntry, RestoreBackupResult, RestoreTarget,
-    SaveFileBytesResult,
+    PdfStageTarget, ReadFileBytesResult, RecentDocEntry, RecoveryEntry, RestoreBackupResult,
+    RestoreTarget, SaveFileBytesResult,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -229,4 +229,82 @@ pub fn mobile_discard_session(
 ) -> MobileResult<OkResult> {
     state.discard_session(&session_id);
     Ok(OkResult { ok: true })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintStageBeginResult {
+    pub stage_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintStageAppendResult {
+    pub written: usize,
+}
+
+#[tauri::command]
+pub async fn mobile_print_stage_begin(
+    state: State<'_, Arc<MobileFileService>>,
+    session_id: String,
+    suggested_name: String,
+    target: PdfStageTarget,
+    expected_bytes: Option<usize>,
+) -> MobileResult<PrintStageBeginResult> {
+    let svc = state.inner().clone();
+    run_blocking_file_op(move || {
+        let stage_id = svc.print_stage_begin(&session_id, &suggested_name, target, expected_bytes)?;
+        Ok(PrintStageBeginResult { stage_id })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mobile_print_stage_append(
+    state: State<'_, Arc<MobileFileService>>,
+    stage_id: String,
+    chunk_base64: String,
+) -> MobileResult<PrintStageAppendResult> {
+    let svc = state.inner().clone();
+    run_blocking_file_op(move || {
+        let written = svc.print_stage_append(&stage_id, &chunk_base64)?;
+        Ok(PrintStageAppendResult { written })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mobile_print_stage_finish(
+    state: State<'_, Arc<MobileFileService>>,
+    stage_id: String,
+    session_id: String,
+) -> MobileResult<OkResult> {
+    let svc = state.inner().clone();
+    run_blocking_file_op(move || {
+        svc.print_stage_finish(&stage_id, &session_id)?;
+        Ok(OkResult { ok: true })
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn mobile_print_stage_abort(
+    state: State<'_, Arc<MobileFileService>>,
+    stage_id: String,
+) -> MobileResult<OkResult> {
+    state.print_stage_abort(&stage_id);
+    Ok(OkResult { ok: true })
+}
+
+#[tauri::command]
+pub async fn mobile_print_session_pdf(
+    state: State<'_, Arc<MobileFileService>>,
+    session_id: String,
+) -> MobileResult<OkResult> {
+    let svc = state.inner().clone();
+    run_blocking_file_op(move || {
+        svc.print_session_pdf(&session_id)?;
+        Ok(OkResult { ok: true })
+    })
+    .await
 }

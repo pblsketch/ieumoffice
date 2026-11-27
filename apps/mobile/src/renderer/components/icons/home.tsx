@@ -144,3 +144,95 @@ export function HomeFrameSampleIcon(props: IconProps) {
     </SvgIcon>
   )
 }
+
+/** Add folder action in the [+] create sheet. */
+export function HomeFrameFolderPlusIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </SvgIcon>
+  )
+}
+
+/** Descending sort direction arrow. */
+export function HomeFrameSortDescIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <polyline points="7 14 12 19 17 14" />
+    </SvgIcon>
+  )
+}
+
+/** Ascending sort direction arrow. */
+export function HomeFrameSortAscIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="7 10 12 5 17 10" />
+    </SvgIcon>
+  )
+}
+
+/** List view mode icon. */
+export function HomeFrameListViewIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <line x1="8" y1="6" x2="20" y2="6" />
+      <line x1="8" y1="12" x2="20" y2="12" />
+      <line x1="8" y1="18" x2="20" y2="18" />
+      <circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    </SvgIcon>
+  )
+}
+
+/** Card grid view mode icon. */
+export function HomeFrameGridViewIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    </SvgIcon>
+  )
+}
+
+/** System print icon for the editor More sheet. */
+export function HomePrintIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="6 9 6 3 18 3 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="7" rx="1" />
+    </SvgIcon>
+  )
+}
+
+/** Share-as-PDF icon (document with outgoing arrow). */
+export function HomeSharePdfIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="12" y1="18" x2="12" y2="12" />
+      <polyline points="9 14.5 12 11.5 15 14.5" />
+    </SvgIcon>
+  )
+}
+
+/** Page thumbnail grid icon for long documents. */
+export function HomePageGridIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="3.5" y="3" width="7" height="8" rx="1" />
+      <rect x="13.5" y="3" width="7" height="8" rx="1" />
+      <rect x="3.5" y="13" width="7" height="8" rx="1" />
+      <rect x="13.5" y="13" width="7" height="8" rx="1" />
+    </SvgIcon>
+  )
+}

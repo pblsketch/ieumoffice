@@ -69,16 +69,25 @@ export interface ImageLoad {
 
 /**
  * Loads the URLs as images. `onLoaded` gets a new map (all images decoded so far) each time
- * one more finishes, so the caller can draw before every image is in. Images that fail and
- * EMF/WMF URLs are left out of the map.
+ * one more finishes, so the caller can draw before every image is in. `onDone`, when given,
+ * runs once every non-metafile image has either loaded or failed (or immediately if none).
+ * Images that fail and EMF/WMF URLs are left out of the map.
  */
 export function loadSlideImages(
   urls: readonly string[],
   onLoaded: (images: Map<string, HTMLImageElement>) => void,
+  onDone?: (images: Map<string, HTMLImageElement>) => void,
 ): ImageLoad {
   const loaded = new Map<string, HTMLImageElement>()
   const pending = new Set<HTMLImageElement>()
   let cancelled = false
+  let doneCalled = false
+
+  const maybeFinish = (): void => {
+    if (cancelled || doneCalled || pending.size > 0) return
+    doneCalled = true
+    onDone?.(new Map(loaded))
+  }
 
   const settle = (img: HTMLImageElement): void => {
     img.onload = null
@@ -95,10 +104,18 @@ export function loadSlideImages(
       if (cancelled) return
       loaded.set(url, img)
       onLoaded(new Map(loaded))
+      maybeFinish()
     }
-    img.onerror = () => settle(img)
+    img.onerror = () => {
+      settle(img)
+      maybeFinish()
+    }
     pending.add(img)
     img.src = url
+  }
+
+  if (pending.size === 0) {
+    queueMicrotask(maybeFinish)
   }
 
   return {

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { openFavorite, openSample, type FavoriteEntry } from '@genoffice/mobile-bridge/home'
+import {
+  linkFolder,
+  openFavorite,
+  openSample,
+  type FavoriteEntry,
+} from '@genoffice/mobile-bridge/home'
 import {
   isMobileCommandError,
   type MobileDocFormat,
@@ -27,18 +32,22 @@ import {
   homeCardList,
   homeChips,
   rememberHomeTab,
+  sortFavoriteEntries,
+  sortRecentEntries,
+  useHomeListPrefs,
   type HomeContentTabId,
 } from '../home/frame/frameModel'
 import { chipLabel, HomeChips } from '../home/frame/HomeChips'
 import { HomeCards } from '../home/frame/HomeCards'
 import { HomeCreateSheet, HomeFab } from '../home/frame/HomeCreateSheet'
 import { HomeEmpty } from '../home/frame/HomeEmpty'
+import { HomeListToolbar } from '../home/frame/HomeListToolbar'
 import { HomeTabBar } from '../home/frame/HomeTabBar'
 import { HomeToolFlowLayer } from '../home/frame/HomeToolFlowLayer'
 import { useHomeListData } from '../home/frame/useHomeListData'
 import '../home/frame/homeFrame.css'
 import type { HomeHost } from '../home/homeHost'
-import { markSessionOrigin } from '../home/homeRuntime'
+import { bumpFoldersRevision, markSessionOrigin, useActiveFolderPath } from '../home/homeRuntime'
 import { HOME_TABS, visibleHomeTabs, type HomeTabId } from '../home/homeTabs'
 import { usePdfToolsLink, type PdfToolStart } from '../home/pdfToolsLink'
 import { ensureLoaded, PDF_TOOLS_ID, useHomePrefs } from '../home/prefsStore'
@@ -112,6 +121,8 @@ export function HomeScreen({
   const pdfToolsReady = host !== undefined && link !== null && isEditorOn(PDF_TOOLS_ID)
   const [createOpen, setCreateOpen] = useState(false)
   const [flowStart, setFlowStart] = useState<PdfToolStart | null>(null)
+  const activeFolderPath = useActiveFolderPath()
+  const listPrefs = useHomeListPrefs()
 
   // ── Chips and lists ──
   const chips = useMemo(
@@ -126,7 +137,10 @@ export function HomeScreen({
     () => new Map(data.favorites.map((entry) => [entry.docKey, entry])),
     [data.favorites],
   )
-  const shownRecent = useMemo(() => filterRecent(recent, chip), [recent, chip])
+  const shownRecent = useMemo(
+    () => sortRecentEntries(filterRecent(recent, chip), listPrefs.sortField, listPrefs.sortDir),
+    [recent, chip, listPrefs.sortField, listPrefs.sortDir],
+  )
   const recentItems = useMemo(
     () =>
       shownRecent.map((entry) => {
@@ -140,8 +154,13 @@ export function HomeScreen({
     [shownRecent, favoriteByDocKey, data.recentLocation],
   )
   const shownFavorites = useMemo(
-    () => filterFavorites(data.favorites, chip),
-    [data.favorites, chip],
+    () =>
+      sortFavoriteEntries(
+        filterFavorites(data.favorites, chip),
+        listPrefs.sortField,
+        listPrefs.sortDir,
+      ),
+    [data.favorites, chip, listPrefs.sortField, listPrefs.sortDir],
   )
   const favoriteItems = useMemo(
     () =>
@@ -208,6 +227,17 @@ export function HomeScreen({
       const session = await openSample(host.client, lang)
       markSessionOrigin(session.sessionId, 'sample')
       await host.openSession(session)
+    } catch (err) {
+      toastError(err)
+    }
+  }
+
+  const addLinkedFolder = async () => {
+    if (!client) return
+    try {
+      await linkFolder(client)
+      bumpFoldersRevision()
+      refreshLists()
     } catch (err) {
       toastError(err)
     }
@@ -299,6 +329,7 @@ export function HomeScreen({
           </div>
         </div>
         {chips.length > 1 && <HomeChips chips={chips} current={chip.id} onSelect={selectChip} />}
+        {items.length > 0 && !selection.selecting && <HomeListToolbar />}
 
         {!showFavorites && recent.length === 0 ? (
           <HomeEmpty
@@ -313,6 +344,7 @@ export function HomeScreen({
         ) : (
           <ul
             className="mobile-doc-list"
+            data-view={listPrefs.viewMode}
             data-testid={showFavorites ? 'home-favorites-list' : 'home-recent-list'}
           >
             {items.map((item, index) => {
@@ -322,6 +354,7 @@ export function HomeScreen({
                 <HomeFileRow
                   key={item.key}
                   item={item}
+                  client={client}
                   selecting={selection.selecting}
                   selected={selection.isSelected(item.key)}
                   onOpen={() => openItem(index)}
@@ -438,10 +471,12 @@ export function HomeScreen({
         cards={cards}
         hwpFormat={defaultHwpFormat}
         pdfToolsReady={pdfToolsReady}
+        locationLabel={tab === 'folders' ? activeFolderPath : null}
         onClose={() => setCreateOpen(false)}
         onCreate={onCreateNew}
         onOpenFile={onOpenFile}
         onOpenPdfTools={() => setFlowStart({ kind: 'menu' })}
+        onAddFolder={client ? () => void addLinkedFolder() : undefined}
       />
 
       {flowStart && link && host && (

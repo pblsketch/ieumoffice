@@ -168,4 +168,10 @@ export const zh = {
   backupRestoreSaveAs: '另存为副本',
   backupDelete: '删除',
   formatNotOpenable: '无法打开此类型的文件。',
+  insertPanel: '插入',
+  keyboardLock: '锁定键盘',
+  keyboardUnlock: '解锁键盘',
+  moreSectionDocument: '文档工具',
+  moreSectionFile: '文件',
+  viewModeLabel: '视图',
 } as const

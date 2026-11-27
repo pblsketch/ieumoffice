@@ -2,7 +2,7 @@
 //! bridge wrappers in `@genoffice/mobile-bridge/home` send (`fileRef`, `folderId`, ...).
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
-use crate::storage::MobileDocSession;
+use crate::storage::{MobileDocSession, ThumbnailPayload};
 use crate::storage::home::{
     AppInfo, ClearStorageKind, ClearStorageResult, CountFolderEntriesResult, DeleteFilesResult,
     FavoriteEntry, FavoriteGroup, FileRef, FileRefBytes, FolderEntry, HomeOkResult, HomeService,
@@ -232,6 +232,15 @@ pub async fn mobile_home_open_external_url(
     url: String,
 ) -> MobileResult<HomeOkResult> {
     blocking(state, move |s| s.open_external_url(&url)).await
+}
+
+#[tauri::command]
+pub async fn mobile_home_get_thumbnail(
+    state: Home<'_>,
+    file_ref: FileRef,
+    max_px: Option<u32>,
+) -> MobileResult<ThumbnailPayload> {
+    blocking(state, move |s| s.get_thumbnail(&file_ref, max_px)).await
 }
 
 #[cfg(test)]

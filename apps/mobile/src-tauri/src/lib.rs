@@ -78,6 +78,11 @@ pub fn run() {
             commands::files::mobile_set_openable_formats,
             commands::files::mobile_commit_session,
             commands::files::mobile_discard_session,
+            commands::files::mobile_print_stage_begin,
+            commands::files::mobile_print_stage_append,
+            commands::files::mobile_print_stage_finish,
+            commands::files::mobile_print_stage_abort,
+            commands::files::mobile_print_session_pdf,
             commands::prefs::mobile_get_app_prefs,
             commands::prefs::mobile_set_app_prefs,
             commands::ai::mobile_get_ai_settings,
@@ -158,6 +163,7 @@ pub fn run() {
             commands::home::mobile_home_app_info,
             commands::home::mobile_home_keep_screen_on,
             commands::home::mobile_home_open_external_url,
+            commands::home::mobile_home_get_thumbnail,
 
             // T7 ai
             commands::ai::relay::mobile_ai_relay_start,

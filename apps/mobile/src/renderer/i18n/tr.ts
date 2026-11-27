@@ -171,4 +171,10 @@ export const tr = {
   backupRestoreSaveAs: 'Kopya olarak kaydet',
   backupDelete: 'Sil',
   formatNotOpenable: 'Bu dosya türü açılamaz.',
+  insertPanel: 'Ekle',
+  keyboardLock: 'Klavyeyi kilitle',
+  keyboardUnlock: 'Klavye kilidini aç',
+  moreSectionDocument: 'Belge araçları',
+  moreSectionFile: 'Dosya',
+  viewModeLabel: 'Görünüm',
 } as const satisfies Record<keyof typeof zh, string>
