@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri_plugin_ieum_mobile::fs::{
     FolderGrantState, NativeFileBridge, NativeFsError, NativeFsErrorKind, PickedFile,
-    WRITE_WORK_RELATIVE_DIR, write_uri_from_file,
+    WRITE_WORK_RELATIVE_DIR, write_new_uri_from_file, write_uri_from_file,
 };
 use uuid::Uuid;
 
@@ -628,7 +628,7 @@ impl MobileFileService {
             .create_save_file(suggested_name, format.mime())
             .map_err(map_fs_error)?;
         let work_dir = self.write_work_dir()?;
-        write_uri_from_file(self.bridge.as_ref(), &picked.uri, src, &work_dir)
+        write_new_uri_from_file(self.bridge.as_ref(), &picked.uri, src, &work_dir)
             .map_err(map_fs_error)?;
         if let Some(prev) = &prev_active {
             let _ = self.recovery.discard(&prev.session.doc_key);

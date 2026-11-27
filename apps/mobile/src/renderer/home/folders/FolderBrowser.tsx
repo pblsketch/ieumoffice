@@ -72,8 +72,8 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
     [host],
   )
 
-  const live = useRef({ onLost, toast })
-  live.current = { onLost, toast }
+  const live = useRef({ onLost, toast, t })
+  live.current = { onLost, toast, t }
 
   const pathKey = path.join('/')
   useEffect(() => {
@@ -95,7 +95,7 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
           return
         }
         const key = folderErrorKey(err)
-        if (key) live.current.toast({ message: t(key), tone: 'error' })
+        if (key) live.current.toast({ message: live.current.t(key), tone: 'error' })
       },
     )
     return () => {
@@ -103,7 +103,7 @@ export function FolderBrowser({ host, folder, path, onEnter, onUp, onLost }: Fol
     }
     // `path` is read through `pathKey` so a new array with the same names does not list again
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, folder.id, pathKey, reloadSeq, t])
+  }, [client, folder.id, pathKey, reloadSeq])
 
   const { dirs, files } = useMemo(() => splitEntries(entries), [entries])
   const items = useMemo(

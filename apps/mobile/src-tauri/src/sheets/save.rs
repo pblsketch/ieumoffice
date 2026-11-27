@@ -43,7 +43,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri_plugin_ieum_mobile::fs::{
-    NativeFileBridge, NativeFsError, NativeFsErrorKind, write_uri_from_file,
+    NativeFileBridge, NativeFsError, NativeFsErrorKind, write_new_uri_from_file,
 };
 
 use crate::error::{MobileError, MobileErrorCode, MobileResult};
@@ -521,7 +521,7 @@ fn write_copy_into(
     uri: &str,
     path: &Path,
 ) -> MobileResult<()> {
-    write_uri_from_file(bridge, uri, path, workspace.root()).map_err(fs_error)
+    write_new_uri_from_file(bridge, uri, path, workspace.root()).map_err(fs_error)
 }
 
 /// T6 publishes no file-path share or recovery function; these keep the

@@ -30,10 +30,10 @@ const cases: readonly SampleCase[] = [
     items: [
       '글을 고치려면 [편집]을 누르세요.',
       '읽기 화면은 문서를 화면 너비에 맞춰 다시 배치합니다.',
-      '공유를 누르면 원본 파일이나 PDF로 보낼 수 있습니다.',
+      '공유를 누르면 문서를 다른 앱으로 보낼 수 있습니다.',
       '[완료]를 누르면 원본에 씁니다.',
     ],
-    cells: ['하고 싶은 일', '글 고치기', '공유'],
+    cells: ['하고 싶은 일', '글 고치기', '보기 도구의 쪽 화면', '공유'],
     closing: '[사본으로 편집]',
   },
   {
@@ -42,10 +42,10 @@ const cases: readonly SampleCase[] = [
     items: [
       'To change the text, tap [Edit].',
       'The reading view re-flows the page to fit your screen width.',
-      'Tap share to send the original file or a PDF.',
+      'Tap share to send the document to another app.',
       'it writes the original when you tap [Done].',
     ],
-    cells: ['What you want to do', 'Change the text', 'Share'],
+    cells: ['What you want to do', 'Change the text', 'Page view in the view tools', 'Share'],
     closing: '[Edit a copy]',
   },
 ]

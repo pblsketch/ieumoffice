@@ -30,6 +30,7 @@ export { BLOCK_ATTR, VIEW_STYLE_ID }
  */
 export const MOBILE_FRAME_CSP = [
   "default-src 'none'",
+  "base-uri 'none'",
   "script-src 'none'",
   "object-src 'none'",
   "frame-src 'none'",

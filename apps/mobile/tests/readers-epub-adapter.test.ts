@@ -289,9 +289,9 @@ describe('the drawing copy of a chapter', () => {
 
   it('carries the mobile CSP exactly, charset first and the view style last', async () => {
     expect(MOBILE_FRAME_CSP).toBe(
-      "default-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; " +
-        "worker-src 'none'; connect-src 'none'; form-action 'none'; img-src blob: data:; " +
-        "style-src blob: data: 'unsafe-inline'; font-src blob: data:; media-src 'none'",
+      "default-src 'none'; base-uri 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; " +
+        "child-src 'none'; worker-src 'none'; connect-src 'none'; form-action 'none'; " +
+        "img-src blob: data:; style-src blob: data: 'unsafe-inline'; font-src blob: data:; media-src 'none'",
     )
     const book = await open()
     const view = (await buildChapterView(book, 0, 'html { color: red }'))!

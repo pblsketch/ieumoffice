@@ -21,6 +21,8 @@ const TRACKS: readonly TrackBuild[] = [
 ]
 
 export const trackPlugins: Plugin[] = TRACKS.flatMap((track) => [...(track.plugins ?? [])])
+export const trackWorkerPlugins = (): Plugin[] =>
+  TRACKS.flatMap((track) => [...(track.workerPlugins?.() ?? [])])
 export const trackAlias: Record<string, string> = Object.assign(
   {},
   ...TRACKS.map((track) => track.alias ?? {}),
