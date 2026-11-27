@@ -385,6 +385,46 @@ export function normalizeFlowParagraphStyle(html: string, inCell = false): strin
   })
 }
 
+const HWP_BORDER_WIDTH_MM = [
+  0.1, 0.12, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0,
+] as const
+
+/**
+ * Converts rhwp clipboard HTML table border widths (which emit HWP's 0..15
+ * line-width code directly as `N.0px`, e.g. 0.4mm code 6 as `6.0px`) into
+ * CSS pixels matching the real millimeter stroke width.
+ */
+export function normalizeClipboardBorderWidths(style: string): string {
+  return style.replace(
+    /\b(border-(?:left|right|top|bottom)\s*:\s*)(\d+)\.0px\b/gi,
+    (full, prefix: string, rawCode: string) => {
+      const code = Number(rawCode)
+      if (!Number.isInteger(code) || code < 0 || code >= HWP_BORDER_WIDTH_MM.length) return full
+      const px = Math.max(1, Math.round(HWP_BORDER_WIDTH_MM[code] * (96 / 25.4) * 10) / 10)
+      return `${prefix}${px}px`
+    },
+  )
+}
+
+/**
+ * Removes control HTML (`<table>`, `<img>`, rhwp comments) appended after
+ * `<p>` by `exportSelectionInCellHtmlByPath`. `renderCellContents` renders
+ * each control explicitly right after the paragraph so cells stay addressable.
+ */
+function stripAppendedControls(html: string): string {
+  if (!html || !/<(?:table|img)\b|<!--/i.test(html)) return html
+  const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  for (const child of [...parsed.body.childNodes]) {
+    if (child.nodeType === 8) {
+      child.remove()
+    } else if (child.nodeType === 1) {
+      const tag = (child as Element).tagName
+      if (tag === 'TABLE' || tag === 'IMG') child.remove()
+    }
+  }
+  return parsed.body.innerHTML.trim()
+}
+
 /** HTML of one body paragraph's text. */
 export function bodyParagraphHtml(doc: FlowSourceDocument, sec: number, para: number): string {
   const length = doc.getParagraphLength(sec, para)
@@ -422,7 +462,11 @@ export function cellParagraphHtml(
     html = captionTextHtml(doc, sec, para, flat, length, props)
   } else if (length > 0) {
     html = normalizeFlowParagraphStyle(
-      stripClipboardFragment(doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length)),
+      stripAppendedControls(
+        stripClipboardFragment(
+          doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length),
+        ),
+      ),
       true,
     )
   }
@@ -461,10 +505,24 @@ function captionTextHtml(
   return `<p style="margin:0;text-align:${align};"><span style="${escapeAttr(font)}">${escapeText(text)}</span></p>`
 }
 
+const UNSUPPORTED_CONTROL_KIND_RE = /<!--\s*rhwp:[^->]*\b([A-Za-z]+)\s+컨트롤은/
+
+interface ExportedControl {
+  readonly html: string
+  /** Control kind named by rhwp's unsupported-control comment, if any. */
+  readonly unsupportedKind: string | null
+}
+
+interface CellHeaderFallback {
+  para: number
+  list: readonly CellStep[]
+}
+
 /**
  * Exports control `ctrl` of a paragraph; null when there is no such control.
- * Controls the engine cannot export (section settings, shapes, notes) come
- * back as a bare comment and are returned as ''.
+ * Controls the engine cannot export (section settings, shapes, notes, headers)
+ * come back as a bare comment; we keep the control kind so only text boxes
+ * (`Shape`) open a `.flow-box` and cell-nested headers never leak into tables.
  */
 function exportControl(
   doc: FlowSourceDocument,
@@ -472,12 +530,14 @@ function exportControl(
   para: number,
   hostPath: readonly CellStep[],
   ctrl: number,
-): string | null {
+): ExportedControl | null {
   try {
-    const html = stripClipboardFragment(
+    const raw = stripClipboardFragment(
       doc.exportControlHtml(sec, para, JSON.stringify(hostPath), ctrl),
     )
-    return html.replace(/<!--[\s\S]*?-->/g, '').trim()
+    const unsupportedKind = UNSUPPORTED_CONTROL_KIND_RE.exec(raw)?.[1] ?? null
+    const html = raw.replace(/<!--[\s\S]*?-->/g, '').trim()
+    return { html, unsupportedKind }
   } catch {
     return null
   }
@@ -544,10 +604,12 @@ function renderControl(
   para: number,
   hostPath: readonly CellStep[],
   ctrl: number,
-  html: string,
+  exported: ExportedControl,
+  cellHeader?: { found: CellHeaderFallback | null },
 ): string {
+  const { html, unsupportedKind } = exported
   if (/<table[\s>]/i.test(html)) {
-    const table = renderTable(doc, sec, para, hostPath, ctrl, html)
+    const table = renderTable(doc, sec, para, hostPath, ctrl, html, cellHeader)
     // table captions are reachable only through the flat cell calls, so only for body-level tables
     const side = hostPath.length === 0 ? tableCaptionSide(doc, sec, para, ctrl) : null
     if (!side) return table
@@ -557,25 +619,39 @@ function renderControl(
       sec,
       para,
       list,
-      renderCellContents(doc, sec, para, list),
+      renderCellContents(doc, sec, para, list, cellHeader),
     )
     return side === 'top' ? caption + table : table + caption
   }
   const list = innerListPath(hostPath, ctrl)
-  const inner = hasInnerList(doc, sec, para, list) ? list : null
   if (/<img[\s>]/i.test(html)) {
+    const inner = hasInnerList(doc, sec, para, list) ? list : null
     if (!inner) return html
     const caption = listContainer(
       'flow-caption',
       sec,
       para,
       inner,
-      renderCellContents(doc, sec, para, inner),
+      renderCellContents(doc, sec, para, inner, cellHeader),
     )
     return captionOnTop(doc, sec, para, hostPath, ctrl) ? caption + html : html + caption
   }
-  if (inner) {
-    return listContainer('flow-box', sec, para, inner, renderCellContents(doc, sec, para, inner))
+  if (unsupportedKind === 'Header' && hostPath.length > 0) {
+    if (cellHeader) cellHeader.found = { para, list }
+    return ''
+  }
+  // Only text boxes (`Shape`) or unannotated controls in mocks may open a `.flow-box`;
+  // headers, footers, notes, fields and section controls must never render as boxes.
+  if (unsupportedKind === null || unsupportedKind === 'Shape') {
+    if (hasInnerList(doc, sec, para, list)) {
+      return listContainer(
+        'flow-box',
+        sec,
+        para,
+        list,
+        renderCellContents(doc, sec, para, list, cellHeader),
+      )
+    }
   }
   return html
 }
@@ -678,9 +754,18 @@ function headerFooterContents(
   ctrl: number | undefined,
 ): string {
   if (para === undefined || ctrl === undefined) return ''
+  return headerFooterContentsAt(doc, sec, para, [{ controlIndex: ctrl, cellIndex: 0 }])
+}
+
+function headerFooterContentsAt(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  list: readonly CellStep[],
+): string {
   let html: string
   try {
-    html = renderCellContents(pathCallsOnly(doc), sec, para, [{ controlIndex: ctrl, cellIndex: 0 }])
+    html = renderCellContents(pathCallsOnly(doc), sec, para, list)
   } catch {
     return ''
   }
@@ -733,6 +818,7 @@ function renderTable(
   hostPath: readonly CellStep[],
   ctrl: number,
   skeletonHtml: string,
+  cellHeader?: { found: CellHeaderFallback | null },
 ): string {
   const parsed = new DOMParser().parseFromString(`<body>${skeletonHtml}</body>`, 'text/html')
   const table = parsed.body.querySelector('table')
@@ -741,11 +827,13 @@ function renderTable(
     ...table.querySelectorAll<HTMLTableCellElement>(':scope > tbody > tr > td, :scope > tr > td'),
   ]
   cells.forEach((td, cellIndex) => {
+    const style = td.getAttribute('style')
+    if (style) td.setAttribute('style', normalizeClipboardBorderWidths(style))
     const cellPath: CellStep[] = [...hostPath, { controlIndex: ctrl, cellIndex }]
     td.setAttribute('data-sec', String(sec))
     td.setAttribute('data-para', String(para))
     td.setAttribute('data-cell-path', JSON.stringify(cellPath))
-    td.innerHTML = renderCellContents(doc, sec, para, cellPath)
+    td.innerHTML = renderCellContents(doc, sec, para, cellPath, cellHeader)
   })
   return table.outerHTML
 }
@@ -756,6 +844,7 @@ export function renderCellContents(
   sec: number,
   para: number,
   cellPath: readonly CellStep[],
+  cellHeader?: { found: CellHeaderFallback | null },
 ): string {
   const parts: string[] = []
   const count = listParagraphCount(doc, sec, para, cellPath)
@@ -764,9 +853,9 @@ export function renderCellContents(
     const text = cellParagraphHtml(doc, sec, para, path)
     const objects: string[] = []
     for (let ctrl = 0; ; ctrl += 1) {
-      const html = exportControl(doc, sec, para, path, ctrl)
-      if (html === null) break
-      const inner = renderControl(doc, sec, para, path, ctrl, html)
+      const exported = exportControl(doc, sec, para, path, ctrl)
+      if (exported === null) break
+      const inner = renderControl(doc, sec, para, path, ctrl, exported, cellHeader)
       // data-obj-path: the cell paragraph holding the object, for finding it again (doc check)
       if (inner) {
         objects.push(
@@ -785,7 +874,12 @@ export function renderCellContents(
  * objects), its tables, pictures and text boxes, then its notes. Every part
  * carries the paragraph's address so the editor can replace them together.
  */
-export function renderBodyParagraph(doc: FlowSourceDocument, sec: number, para: number): string {
+export function renderBodyParagraph(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  cellHeader?: { found: CellHeaderFallback | null },
+): string {
   const parts: string[] = []
   const controls = controlCount(doc.getControlTextPositions(sec, para))
   const text = bodyParagraphHtml(doc, sec, para)
@@ -793,9 +887,9 @@ export function renderBodyParagraph(doc: FlowSourceDocument, sec: number, para: 
   if (text || controls === 0) parts.push(blockDiv(sec, para, null, text))
   const notes: string[] = []
   for (let ctrl = 0; ctrl < controls; ctrl += 1) {
-    const html = exportControl(doc, sec, para, [], ctrl)
-    if (html === null) continue
-    const inner = renderControl(doc, sec, para, [], ctrl, html)
+    const exported = exportControl(doc, sec, para, [], ctrl)
+    if (exported === null) continue
+    const inner = renderControl(doc, sec, para, [], ctrl, exported, cellHeader)
     if (inner) {
       parts.push(
         `<div class="flow-obj" data-sec="${sec}" data-para="${para}" data-ctrl="${ctrl}">${inner}</div>`,
@@ -816,9 +910,19 @@ export function buildFlowHtml(doc: FlowSourceDocument): string {
   const sections = doc.getSectionCount()
   for (let sec = 0; sec < sections; sec += 1) {
     const header = headerFooterHtml(doc, sec, true)
-    if (header) parts.push(header)
+    const cellHeader: { found: CellHeaderFallback | null } = { found: null }
+    const bodyParts: string[] = []
     const paras = doc.getParagraphCount(sec)
-    for (let para = 0; para < paras; para += 1) parts.push(renderBodyParagraph(doc, sec, para))
+    for (let para = 0; para < paras; para += 1) {
+      bodyParts.push(renderBodyParagraph(doc, sec, para, header ? undefined : cellHeader))
+    }
+    if (header) {
+      parts.push(header)
+    } else if (cellHeader.found) {
+      const rich = headerFooterContentsAt(doc, sec, cellHeader.found.para, cellHeader.found.list)
+      if (rich) parts.push(`<div class="flow-hf flow-header" contenteditable="false">${rich}</div>`)
+    }
+    parts.push(...bodyParts)
     const footer = headerFooterHtml(doc, sec, false)
     if (footer) parts.push(footer)
   }
