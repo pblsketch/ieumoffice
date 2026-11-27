@@ -18,6 +18,13 @@ const SAMPLE_PBXPROJ = `// !$*UTF8*$!
 \t\t333333333333333333333333 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 /* Begin PBXGroup section */
+\t\t000000000000000000000000 /* Root */ = {
+\t\t\tisa = PBXGroup;
+\t\t\tchildren = (
+\t\t\t\t444444444444444444444444 /* ieumoffice-mobile_iOS */,
+\t\t\t);
+\t\t\tsourceTree = "<group>";
+\t\t};
 \t\t444444444444444444444444 /* ieumoffice-mobile_iOS */ = {
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
@@ -81,6 +88,12 @@ describe('store readiness native config', () => {
         expect(pbx.match(/PrivacyInfo\.xcprivacy in Resources/g)?.length).toBe(2)
         expect(pbx.match(/isa = PBXFileReference;[^}]*PrivacyInfo\.xcprivacy/g)?.length).toBe(1)
         expect(pbx.match(/isa = PBXBuildFile;[^}]*PrivacyInfo\.xcprivacy/g)?.length).toBe(1)
+        expect(pbx).toContain('path = "ieumoffice-mobile_iOS/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT;')
+        const rootBlock = pbx.match(/000000000000000000000000 \/\* Root \*\/ = \{[\s\S]*?\};/)?.[0] ?? ''
+        const appBlock =
+          pbx.match(/444444444444444444444444 \/\* ieumoffice-mobile_iOS \*\/ = \{[\s\S]*?\};/)?.[0] ?? ''
+        expect(rootBlock).not.toContain('PrivacyInfo.xcprivacy')
+        expect(appBlock).toContain('PrivacyInfo.xcprivacy')
       } finally {
         rmSync(tmp, { recursive: true, force: true })
       }
