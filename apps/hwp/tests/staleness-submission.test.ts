@@ -19,6 +19,7 @@ import {
 import { insertTocBlock } from '../studio-plugin/toc.mjs'
 import { addIndexMark, buildIndexBlock } from '../studio-plugin/index-marks.mjs'
 import {
+  bibliographyStalenessChecker,
   buildSubmissionCopy,
   createDefaultStalenessRegistry,
   createStalenessRegistry,
@@ -26,6 +27,8 @@ import {
   stripSubmissionMarksInPlace,
   type StalenessChecker,
 } from '../studio-plugin/staleness.mjs'
+import { insertCitation, setDocumentCitationStyle } from '../studio-plugin/citations.mjs'
+import { normalizeBibEntry } from '../studio-plugin/citation-styles.mjs'
 import { submissionStrings } from '../src/renderer/i18n/submission'
 import { tocDialogLabelsFor } from '../src/renderer/i18n/toc'
 import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
@@ -773,6 +776,58 @@ describe('agent-plugin Bundle 2 wiring (checkStaleItems, refreshAllStale, export
       }
     } finally {
       doc().free()
+    }
+  })
+
+  it('propagates IEEE citation renumber failure cleanly inside bibliographyStalenessChecker.refresh', () => {
+    const entries = [
+      normalizeBibEntry({
+        key: 'first2020',
+        type: 'article',
+        authors: ['김철수'],
+        year: '2020',
+        title: '첫 번째 논문',
+        language: 'ko',
+        verified: true,
+      }),
+      normalizeBibEntry({
+        key: 'second2021',
+        type: 'article',
+        authors: ['이영희'],
+        year: '2021',
+        title: '두 번째 논문',
+        language: 'ko',
+        verified: true,
+      }),
+    ]
+    const doc = makeDoc(['첫 문단.', '둘째 문단.'])
+    try {
+      expect(setDocumentCitationStyle(doc, 'ieee').ok).toBe(true)
+      expect(
+        insertCitation(doc, {
+          entries,
+          items: [{ key: 'first2020' }],
+          place: { sec: 0, para: 1, offset: 5 },
+        }).ok,
+      ).toBe(true)
+      // Insert a manual earlier pattern citation so unified IEEE order shifts first2020 to [2].
+      doc.insertText(0, 0, 0, '(이영희, 2021) ')
+
+      const failDeleteDoc = Object.create(doc) as HwpDocument
+      failDeleteDoc.deleteBookmark = () =>
+        JSON.stringify({ ok: false, error: 'simulated delete failure' })
+      ;(failDeleteDoc as unknown as Record<string, unknown>).deleteControlAt = () =>
+        JSON.stringify({ ok: false, error: 'simulated deleteControlAt failure' })
+
+      const res = bibliographyStalenessChecker.refresh(failDeleteDoc, {
+        bibEntries: entries,
+        force: true,
+      })
+      expect(res.ok).toBe(false)
+      expect(res.refreshed).toBe(0)
+      expect(res.failed).toBeTruthy()
+    } finally {
+      doc.free()
     }
   })
 })

@@ -7,7 +7,20 @@
  * `flush: true`) and atomic `renameSync`, matching `outline-settings.ts`.
  */
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  constants as fsConstants,
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { SettingsPathProvider } from '@genoffice/electron-utils'
 import {
@@ -43,6 +56,7 @@ import type {
 export const BIBLIOGRAPHY_FILE_NAME = 'hwp-bibliography.json'
 export const BIBLIOGRAPHY_SCHEMA_VERSION = 1
 export const MAX_BIBLIOGRAPHY_FILE_BYTES = 20 * 1024 * 1024
+export const BIBLIOGRAPHY_NEAR_LIMIT_RATIO = 0.85
 
 export { BIBLIOGRAPHY_FORMATS, MAX_IMPORT_BYTES, MAX_IMPORT_ENTRIES }
 export type {
@@ -59,6 +73,27 @@ export type {
 
 export type BibActor = 'user' | 'ai'
 
+export type BibLibraryFailureReason = 'library_corrupt' | 'library_too_large' | 'library_read_error'
+
+export type BibLibraryState =
+  | {
+      ok: true
+      exists: boolean
+      entries: BibEntry[]
+      tags: string[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: BibLibraryFailureReason
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes: number
+    }
+
 export interface BibKeyRenameInfo {
   id: string
   oldKey: string
@@ -73,6 +108,7 @@ export interface BibAiCandidateInput extends BibEntryInput {
 export interface BibCommitImportOptions {
   source?: 'import' | 'document'
   skipDuplicates?: boolean
+  maxBytes?: number
 }
 
 export interface BibExportOptions {
@@ -81,29 +117,75 @@ export interface BibExportOptions {
 }
 
 export type LoadBibliographyFileResult =
-  | { ok: true; entries: BibEntry[] }
+  | {
+      ok: true
+      entries: BibEntry[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
   | {
       ok: false
-      reason: 'not_found' | 'too_large' | 'invalid_format'
+      reason: 'not_found' | 'too_large' | 'invalid_format' | 'read_error'
       error: string
       maxBytes?: number
       actualBytes?: number
     }
 
 export type BibAddResult =
-  | { ok: true; entry: BibEntry; entries: BibEntry[] }
-  | { ok: false; reason: 'invalid_input' | 'unauthorized'; error: string }
-
-export type BibAddAiCandidatesResult =
-  | { ok: true; added: BibEntry[]; duplicates: DuplicateMatch[]; entries: BibEntry[] }
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
   | {
       ok: false
-      reason: 'invalid_input' | 'missing_source_url' | 'unauthorized'
+      reason: 'invalid_input' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
       error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibAddAiCandidatesResult =
+  | {
+      ok: true
+      added: BibEntry[]
+      duplicates: DuplicateMatch[]
+      entries: BibEntry[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'missing_source_url'
+        | 'too_large'
+        | BibLibraryFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
     }
 
 export type BibUpdateResult =
-  | { ok: true; entry: BibEntry; entries: BibEntry[]; renamedKey?: BibKeyRenameInfo }
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      renamedKey?: BibKeyRenameInfo
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
   | {
       ok: false
       reason:
@@ -112,21 +194,64 @@ export type BibUpdateResult =
         | 'duplicate_key'
         | 'not_found'
         | 'ai_cannot_verify'
+        | 'too_large'
+        | BibLibraryFailureReason
         | 'unauthorized'
       error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
     }
 
 export type BibVerifyResult =
-  | { ok: true; entry: BibEntry; entries: BibEntry[] }
-  | { ok: false; reason: 'invalid_input' | 'not_found' | 'unauthorized'; error: string }
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
 
 export type BibDeleteResult =
-  | { ok: true; deletedId: string; entries: BibEntry[] }
-  | { ok: false; reason: 'invalid_input' | 'not_found' | 'unauthorized'; error: string }
+  | {
+      ok: true
+      deletedId: string
+      entries: BibEntry[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
 
 export type BibPreviewImportResult =
   | { ok: true; preview: ImportPreviewPlan }
-  | { ok: false; reason: 'empty' | 'invalid_input' | 'unauthorized'; error: string }
+  | {
+      ok: false
+      reason: 'empty' | 'invalid_input' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
 
 export type BibPreviewFileImportResult =
   | {
@@ -138,17 +263,36 @@ export type BibPreviewFileImportResult =
     }
   | {
       ok: false
-      reason: ImportFailureReason | 'not_found' | 'unreadable' | 'unauthorized'
+      reason:
+        ImportFailureReason | 'not_found' | 'unreadable' | BibLibraryFailureReason | 'unauthorized'
       error: string
       format?: BibliographyFormat | null
       warnings?: string[]
+      corruptBackupPath?: string
+      sizeBytes?: number
       maxBytes?: number
       actualBytes?: number
     }
 
 export type BibCommitImportResult =
-  | { ok: true; added: BibEntry[]; skippedDuplicates: DuplicateMatch[]; entries: BibEntry[] }
-  | { ok: false; reason: 'empty' | 'invalid_input' | 'unauthorized'; error: string }
+  | {
+      ok: true
+      added: BibEntry[]
+      skippedDuplicates: DuplicateMatch[]
+      entries: BibEntry[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'empty' | 'invalid_input' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
 
 export type BibWriteExportResult =
   | { ok: true; path: string; count: number; format: BibliographyFormat }
@@ -367,13 +511,183 @@ function writeTextFileAtomicallySync(filePath: string, content: string): void {
   }
 }
 
-function saveBibliographySync(filePath: string, entries: readonly BibEntry[]): void {
+type SaveBibliographyResult =
+  | { ok: true; sizeBytes: number; maxBytes: number; nearLimit: boolean }
+  | { ok: false; reason: 'too_large'; error: string; maxBytes: number; actualBytes: number }
+
+const BACKUP_SAMPLE_BYTES = 4096
+
+function resolveMaxBytes(maxBytes?: number): number {
+  return typeof maxBytes === 'number' && Number.isFinite(maxBytes) && maxBytes > 0
+    ? Math.floor(maxBytes)
+    : MAX_BIBLIOGRAPHY_FILE_BYTES
+}
+
+function isNearLimit(sizeBytes: number, maxBytes: number): boolean {
+  return sizeBytes >= Math.floor(maxBytes * BIBLIOGRAPHY_NEAR_LIMIT_RATIO)
+}
+
+function formatBackupTimestamp(date = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return (
+    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+    `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  )
+}
+
+function readHeadTailSample(filePath: string, fileSize: number): Buffer | null {
+  let fd: number | null = null
+  try {
+    fd = openSync(filePath, 'r')
+    if (fileSize <= BACKUP_SAMPLE_BYTES * 2) {
+      const buf = Buffer.alloc(fileSize)
+      let offset = 0
+      while (offset < fileSize) {
+        const read = readSync(fd, buf, offset, fileSize - offset, offset)
+        if (read <= 0) break
+        offset += read
+      }
+      return buf.subarray(0, offset)
+    }
+    const head = Buffer.alloc(BACKUP_SAMPLE_BYTES)
+    const tail = Buffer.alloc(BACKUP_SAMPLE_BYTES)
+    const headRead = readSync(fd, head, 0, BACKUP_SAMPLE_BYTES, 0)
+    const tailRead = readSync(fd, tail, 0, BACKUP_SAMPLE_BYTES, fileSize - BACKUP_SAMPLE_BYTES)
+    return Buffer.concat([head.subarray(0, headRead), tail.subarray(0, tailRead)])
+  } catch {
+    return null
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd)
+      } catch {
+        // Ignore close errors when inspecting backup candidates.
+      }
+    }
+  }
+}
+
+function listCorruptBackupPaths(filePath: string): string[] {
+  const dir = dirname(filePath)
+  const prefix = `${basename(filePath)}.corrupt-`
+  try {
+    return readdirSync(dir)
+      .filter((name) => name.startsWith(prefix))
+      .sort()
+      .reverse()
+      .map((name) => join(dir, name))
+  } catch {
+    return []
+  }
+}
+
+function createCorruptBackupFromBytes(filePath: string, rawBytes: Buffer): string | undefined {
+  for (const existingPath of listCorruptBackupPaths(filePath)) {
+    try {
+      const existingStat = statSync(existingPath)
+      if (existingStat.isFile() && existingStat.size === rawBytes.byteLength) {
+        if (readFileSync(existingPath).equals(rawBytes)) {
+          return existingPath
+        }
+      }
+    } catch {
+      // Skip unreadable backup candidates.
+    }
+  }
+
+  const base = `${filePath}.corrupt-${formatBackupTimestamp()}`
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`
+    try {
+      writeFileSync(candidate, rawBytes, { flag: 'wx', flush: true })
+      return candidate
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | null)?.code === 'EEXIST') continue
+      return undefined
+    }
+  }
+  return undefined
+}
+
+function createCorruptBackupFromDisk(filePath: string, fileSize: number): string | undefined {
+  const sourceSample = readHeadTailSample(filePath, fileSize)
+  if (sourceSample) {
+    for (const existingPath of listCorruptBackupPaths(filePath)) {
+      try {
+        const existingStat = statSync(existingPath)
+        if (existingStat.isFile() && existingStat.size === fileSize) {
+          const existingSample = readHeadTailSample(existingPath, existingStat.size)
+          if (existingSample && existingSample.equals(sourceSample)) {
+            return existingPath
+          }
+        }
+      } catch {
+        // Skip unreadable backup candidates.
+      }
+    }
+  }
+
+  const base = `${filePath}.corrupt-${formatBackupTimestamp()}`
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`
+    try {
+      copyFileSync(filePath, candidate, fsConstants.COPYFILE_EXCL)
+      return candidate
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | null)?.code === 'EEXIST') continue
+      return undefined
+    }
+  }
+  return undefined
+}
+
+function libraryFailureOf(state: Extract<BibLibraryState, { ok: false }>): {
+  ok: false
+  reason: BibLibraryFailureReason
+  error: string
+  corruptBackupPath?: string
+  sizeBytes?: number
+  maxBytes: number
+} {
+  return {
+    ok: false,
+    reason: state.reason,
+    error: state.error,
+    ...(state.corruptBackupPath ? { corruptBackupPath: state.corruptBackupPath } : {}),
+    ...(state.sizeBytes !== undefined ? { sizeBytes: state.sizeBytes } : {}),
+    maxBytes: state.maxBytes,
+  }
+}
+
+function saveBibliographySync(
+  filePath: string,
+  entries: readonly BibEntry[],
+  maxBytes = MAX_BIBLIOGRAPHY_FILE_BYTES,
+): SaveBibliographyResult {
+  const limit = resolveMaxBytes(maxBytes)
   const payload = {
     version: BIBLIOGRAPHY_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     entries,
   }
-  writeTextFileAtomicallySync(filePath, `${JSON.stringify(payload, null, 2)}\n`)
+  const serialized = `${JSON.stringify(payload, null, 2)}\n`
+  const sizeBytes = Buffer.byteLength(serialized, 'utf8')
+  if (sizeBytes > limit) {
+    return {
+      ok: false,
+      reason: 'too_large',
+      error: `Bibliography library exceeds maximum size of ${limit} bytes (got ${sizeBytes} bytes)`,
+      maxBytes: limit,
+      actualBytes: sizeBytes,
+    }
+  }
+  writeTextFileAtomicallySync(filePath, serialized)
+  return {
+    ok: true,
+    sizeBytes,
+    maxBytes: limit,
+    nearLimit: isNearLimit(sizeBytes, limit),
+  }
 }
 
 function normalizeStoredEntries(rawEntries: readonly unknown[]): BibEntry[] {
@@ -384,15 +698,22 @@ function normalizeStoredEntries(rawEntries: readonly unknown[]): BibEntry[] {
   for (const item of rawEntries) {
     if (!isPlainObject(item)) continue
     const sanitized = sanitizeEntryInput(item)
-    if (!sanitized.title) continue
-    const key = allocateUniqueKey(sanitized.key, sanitized, usedKeys)
+    const title = sanitized.title ?? ''
+    const key = allocateUniqueKey(sanitized.key, { ...sanitized, title }, usedKeys)
     const id = allocateUniqueId(sanitized.id, key, usedIds)
+    const verified =
+      typeof sanitized.verified === 'boolean'
+        ? sanitized.verified
+        : sanitized.source === 'ai'
+          ? false
+          : true
     const normalized = normalizeBibEntry(
       {
         ...sanitized,
+        title,
         id,
         key,
-        verified: sanitized.verified === false ? false : true,
+        verified,
       },
       { id, existingKeys: usedKeys, existingIds: usedIds },
     )
@@ -415,6 +736,144 @@ export function bibliographyPathOf(appOrDir: SettingsPathProvider | string): str
 }
 
 /**
+ * Inspect and load the app-wide bibliography store without mutating or deleting
+ * `hwp-bibliography.json` on failure.
+ *
+ * - Missing file (`ENOENT`) returns `{ ok: true, exists: false, entries: [], ... }`.
+ * - Valid file returns normalized entries plus byte-size and near-limit telemetry.
+ * - Corrupt, oversized, or unreadable files return `{ ok: false, reason, ... }`
+ *   while leaving the original file untouched and preserving a `.corrupt-<timestamp>`
+ *   backup copy beside it when bytes can be copied.
+ */
+export function readBibliographyState(
+  appOrDir: SettingsPathProvider | string,
+  options?: { maxBytes?: number },
+): BibLibraryState {
+  const maxBytes = resolveMaxBytes(options?.maxBytes)
+  const filePath = bibliographyPathOf(appOrDir)
+
+  let stats
+  try {
+    stats = statSync(filePath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+      return {
+        ok: true,
+        exists: false,
+        entries: [],
+        tags: [],
+        sizeBytes: 0,
+        maxBytes,
+        nearLimit: false,
+      }
+    }
+    return {
+      ok: false,
+      reason: 'library_read_error',
+      error:
+        error instanceof Error ? error.message : `Unable to inspect bibliography file: ${filePath}`,
+      maxBytes,
+    }
+  }
+
+  if (!stats.isFile()) {
+    return {
+      ok: false,
+      reason: 'library_read_error',
+      error: `Bibliography path is not a file: ${filePath}`,
+      maxBytes,
+    }
+  }
+
+  if (stats.size > maxBytes) {
+    const corruptBackupPath = createCorruptBackupFromDisk(filePath, stats.size)
+    return {
+      ok: false,
+      reason: 'library_too_large',
+      error: `Bibliography file exceeds maximum size of ${maxBytes} bytes (got ${stats.size} bytes)`,
+      ...(corruptBackupPath ? { corruptBackupPath } : {}),
+      sizeBytes: stats.size,
+      maxBytes,
+    }
+  }
+
+  let rawBuffer: Buffer
+  try {
+    rawBuffer = readFileSync(filePath)
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'library_read_error',
+      error: error instanceof Error ? error.message : 'Unable to read bibliography file',
+      sizeBytes: stats.size,
+      maxBytes,
+    }
+  }
+
+  const sizeBytes = rawBuffer.byteLength
+  const rawText = rawBuffer.toString('utf8')
+  if (!rawText.trim()) {
+    return {
+      ok: true,
+      exists: true,
+      entries: [],
+      tags: [],
+      sizeBytes,
+      maxBytes,
+      nearLimit: isNearLimit(sizeBytes, maxBytes),
+    }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawText)
+  } catch {
+    const corruptBackupPath = createCorruptBackupFromBytes(filePath, rawBuffer)
+    return {
+      ok: false,
+      reason: 'library_corrupt',
+      error: 'Bibliography file is not valid JSON',
+      ...(corruptBackupPath ? { corruptBackupPath } : {}),
+      sizeBytes,
+      maxBytes,
+    }
+  }
+
+  let rawEntries: unknown[] | null = null
+  if (Array.isArray(parsed)) {
+    rawEntries = parsed
+  } else if (isPlainObject(parsed) && Array.isArray(parsed.entries)) {
+    rawEntries = parsed.entries
+  }
+
+  if (rawEntries === null) {
+    const corruptBackupPath = createCorruptBackupFromBytes(filePath, rawBuffer)
+    return {
+      ok: false,
+      reason: 'library_corrupt',
+      error: 'Bibliography JSON must be an array or an object with an entries array',
+      ...(corruptBackupPath ? { corruptBackupPath } : {}),
+      sizeBytes,
+      maxBytes,
+    }
+  }
+
+  const entries = normalizeStoredEntries(rawEntries)
+  return {
+    ok: true,
+    exists: true,
+    entries,
+    tags: listBibliographyTags(entries),
+    sizeBytes,
+    maxBytes,
+    nearLimit: isNearLimit(sizeBytes, maxBytes),
+  }
+}
+
+/** Alias of `readBibliographyState` for callers inspecting store health. */
+export const inspectBibliographyStore = readBibliographyState
+
+/**
  * Load and validate a bibliography JSON file from an explicit disk path.
  * Accepts both the versioned `{ version, entries }` envelope and a bare JSON array.
  */
@@ -422,23 +881,26 @@ export function loadBibliographyFile(
   filePath: string,
   options?: { maxBytes?: number },
 ): LoadBibliographyFileResult {
-  const maxBytes =
-    typeof options?.maxBytes === 'number' &&
-    Number.isFinite(options.maxBytes) &&
-    options.maxBytes > 0
-      ? Math.floor(options.maxBytes)
-      : MAX_BIBLIOGRAPHY_FILE_BYTES
+  const maxBytes = resolveMaxBytes(options?.maxBytes)
 
   let stats
   try {
     stats = statSync(filePath)
-  } catch {
-    return { ok: false, reason: 'not_found', error: `Bibliography file not found: ${filePath}` }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+      return { ok: false, reason: 'not_found', error: `Bibliography file not found: ${filePath}` }
+    }
+    return {
+      ok: false,
+      reason: 'read_error',
+      error:
+        error instanceof Error ? error.message : `Unable to inspect bibliography file: ${filePath}`,
+    }
   }
   if (!stats.isFile()) {
     return {
       ok: false,
-      reason: 'not_found',
+      reason: 'read_error',
       error: `Bibliography path is not a file: ${filePath}`,
     }
   }
@@ -452,19 +914,27 @@ export function loadBibliographyFile(
     }
   }
 
-  let rawText: string
+  let rawBuffer: Buffer
   try {
-    rawText = readFileSync(filePath, 'utf8')
+    rawBuffer = readFileSync(filePath)
   } catch (error) {
     return {
       ok: false,
-      reason: 'invalid_format',
+      reason: 'read_error',
       error: error instanceof Error ? error.message : 'Unable to read bibliography file',
     }
   }
 
+  const sizeBytes = rawBuffer.byteLength
+  const rawText = rawBuffer.toString('utf8')
   if (!rawText.trim()) {
-    return { ok: true, entries: [] }
+    return {
+      ok: true,
+      entries: [],
+      sizeBytes,
+      maxBytes,
+      nearLimit: isNearLimit(sizeBytes, maxBytes),
+    }
   }
 
   let parsed: unknown
@@ -475,10 +945,22 @@ export function loadBibliographyFile(
   }
 
   if (Array.isArray(parsed)) {
-    return { ok: true, entries: normalizeStoredEntries(parsed) }
+    return {
+      ok: true,
+      entries: normalizeStoredEntries(parsed),
+      sizeBytes,
+      maxBytes,
+      nearLimit: isNearLimit(sizeBytes, maxBytes),
+    }
   }
   if (isPlainObject(parsed) && Array.isArray(parsed.entries)) {
-    return { ok: true, entries: normalizeStoredEntries(parsed.entries) }
+    return {
+      ok: true,
+      entries: normalizeStoredEntries(parsed.entries),
+      sizeBytes,
+      maxBytes,
+      nearLimit: isNearLimit(sizeBytes, maxBytes),
+    }
   }
 
   return {
@@ -524,7 +1006,7 @@ export function listBibliographyTags(entries: readonly BibEntry[]): string[] {
 export function addBibliographyEntry(
   appOrDir: SettingsPathProvider | string,
   rawInput: unknown,
-  options?: { actor?: BibActor },
+  options?: { actor?: BibActor; maxBytes?: number },
 ): BibAddResult {
   if (!isPlainObject(rawInput)) {
     return { ok: false, reason: 'invalid_input', error: 'Reference entry must be an object' }
@@ -541,8 +1023,13 @@ export function addBibliographyEntry(
     }
   }
 
+  const state = readBibliographyState(appOrDir, { maxBytes: options?.maxBytes })
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   const filePath = bibliographyPathOf(appOrDir)
-  const existing = readBibliographyFromFile(filePath)
+  const existing = state.entries
   const { usedKeys, usedIds } = collectUsedKeysAndIds(existing)
 
   const key = allocateUniqueKey(
@@ -571,8 +1058,18 @@ export function addBibliographyEntry(
   )
 
   const entries = [...existing, entry]
-  saveBibliographySync(filePath, entries)
-  return { ok: true, entry, entries }
+  const saved = saveBibliographySync(filePath, entries, options?.maxBytes)
+  if (!saved.ok) {
+    return saved
+  }
+  return {
+    ok: true,
+    entry,
+    entries,
+    sizeBytes: saved.sizeBytes,
+    maxBytes: saved.maxBytes,
+    nearLimit: saved.nearLimit,
+  }
 }
 
 /**
@@ -584,6 +1081,7 @@ export function addBibliographyEntry(
 export function addAiBibliographyCandidates(
   appOrDir: SettingsPathProvider | string,
   rawCandidates: unknown,
+  options?: { maxBytes?: number },
 ): BibAddAiCandidatesResult {
   if (!Array.isArray(rawCandidates) || rawCandidates.length === 0) {
     return {
@@ -652,8 +1150,13 @@ export function addAiBibliographyCandidates(
     })
   }
 
+  const state = readBibliographyState(appOrDir, { maxBytes: options?.maxBytes })
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   const filePath = bibliographyPathOf(appOrDir)
-  const existing = readBibliographyFromFile(filePath)
+  const existing = state.entries
   const preview = planImportPreview(prepared, existing)
   const now = new Date().toISOString()
 
@@ -668,7 +1171,19 @@ export function addAiBibliographyCandidates(
 
   const entries = added.length > 0 ? [...existing, ...added] : existing
   if (added.length > 0) {
-    saveBibliographySync(filePath, entries)
+    const saved = saveBibliographySync(filePath, entries, options?.maxBytes)
+    if (!saved.ok) {
+      return saved
+    }
+    return {
+      ok: true,
+      added,
+      duplicates: preview.duplicates,
+      entries,
+      sizeBytes: saved.sizeBytes,
+      maxBytes: saved.maxBytes,
+      nearLimit: saved.nearLimit,
+    }
   }
 
   return {
@@ -676,6 +1191,9 @@ export function addAiBibliographyCandidates(
     added,
     duplicates: preview.duplicates,
     entries,
+    sizeBytes: state.sizeBytes,
+    maxBytes: state.maxBytes,
+    nearLimit: state.nearLimit,
   }
 }
 
@@ -688,7 +1206,7 @@ export function updateBibliographyEntry(
   appOrDir: SettingsPathProvider | string,
   id: unknown,
   rawPatch: unknown,
-  options?: { actor?: BibActor },
+  options?: { actor?: BibActor; maxBytes?: number },
 ): BibUpdateResult {
   if (typeof id !== 'string' || !id.trim()) {
     return { ok: false, reason: 'invalid_input', error: 'Entry id is required' }
@@ -705,9 +1223,14 @@ export function updateBibliographyEntry(
     }
   }
 
+  const state = readBibliographyState(appOrDir, { maxBytes: options?.maxBytes })
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   const targetId = id.trim()
   const filePath = bibliographyPathOf(appOrDir)
-  const existingEntries = readBibliographyFromFile(filePath)
+  const existingEntries = state.entries
   const index = existingEntries.findIndex((item) => item.id === targetId)
   if (index < 0) {
     return { ok: false, reason: 'not_found', error: `Reference entry not found: ${targetId}` }
@@ -789,13 +1312,19 @@ export function updateBibliographyEntry(
 
   const nextEntries = existingEntries.slice()
   nextEntries[index] = updated
-  saveBibliographySync(filePath, nextEntries)
+  const saved = saveBibliographySync(filePath, nextEntries, options?.maxBytes)
+  if (!saved.ok) {
+    return saved
+  }
 
   return {
     ok: true,
     entry: updated,
     entries: nextEntries,
     ...(renamedKey ? { renamedKey } : {}),
+    sizeBytes: saved.sizeBytes,
+    maxBytes: saved.maxBytes,
+    nearLimit: saved.nearLimit,
   }
 }
 
@@ -806,14 +1335,20 @@ export function updateBibliographyEntry(
 export function verifyBibliographyEntry(
   appOrDir: SettingsPathProvider | string,
   id: unknown,
+  options?: { maxBytes?: number },
 ): BibVerifyResult {
   if (typeof id !== 'string' || !id.trim()) {
     return { ok: false, reason: 'invalid_input', error: 'Entry id is required' }
   }
 
+  const state = readBibliographyState(appOrDir, { maxBytes: options?.maxBytes })
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   const targetId = id.trim()
   const filePath = bibliographyPathOf(appOrDir)
-  const existingEntries = readBibliographyFromFile(filePath)
+  const existingEntries = state.entries
   const index = existingEntries.findIndex((item) => item.id === targetId)
   if (index < 0) {
     return { ok: false, reason: 'not_found', error: `Reference entry not found: ${targetId}` }
@@ -826,32 +1361,58 @@ export function verifyBibliographyEntry(
   }
   const nextEntries = existingEntries.slice()
   nextEntries[index] = updated
-  saveBibliographySync(filePath, nextEntries)
+  const saved = saveBibliographySync(filePath, nextEntries, options?.maxBytes)
+  if (!saved.ok) {
+    return saved
+  }
 
-  return { ok: true, entry: updated, entries: nextEntries }
+  return {
+    ok: true,
+    entry: updated,
+    entries: nextEntries,
+    sizeBytes: saved.sizeBytes,
+    maxBytes: saved.maxBytes,
+    nearLimit: saved.nearLimit,
+  }
 }
 
 /** Remove an entry from the app-wide bibliography store synchronously. */
 export function deleteBibliographyEntry(
   appOrDir: SettingsPathProvider | string,
   id: unknown,
+  options?: { maxBytes?: number },
 ): BibDeleteResult {
   if (typeof id !== 'string' || !id.trim()) {
     return { ok: false, reason: 'invalid_input', error: 'Entry id is required' }
   }
 
+  const state = readBibliographyState(appOrDir, { maxBytes: options?.maxBytes })
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   const targetId = id.trim()
   const filePath = bibliographyPathOf(appOrDir)
-  const existingEntries = readBibliographyFromFile(filePath)
+  const existingEntries = state.entries
   const index = existingEntries.findIndex((item) => item.id === targetId)
   if (index < 0) {
     return { ok: false, reason: 'not_found', error: `Reference entry not found: ${targetId}` }
   }
 
   const nextEntries = existingEntries.filter((item) => item.id !== targetId)
-  saveBibliographySync(filePath, nextEntries)
+  const saved = saveBibliographySync(filePath, nextEntries, options?.maxBytes)
+  if (!saved.ok) {
+    return saved
+  }
 
-  return { ok: true, deletedId: targetId, entries: nextEntries }
+  return {
+    ok: true,
+    deletedId: targetId,
+    entries: nextEntries,
+    sizeBytes: saved.sizeBytes,
+    maxBytes: saved.maxBytes,
+    nearLimit: saved.nearLimit,
+  }
 }
 
 /**
@@ -886,8 +1447,12 @@ export function previewBibliographyImport(
     return { ok: false, reason: 'invalid_input', error: 'No valid reference entries found' }
   }
 
-  const existing = readBibliography(appOrDir)
-  const preview = planImportPreview(validCandidates, existing, options)
+  const state = readBibliographyState(appOrDir)
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
+  const preview = planImportPreview(validCandidates, state.entries, options)
   return { ok: true, preview }
 }
 
@@ -900,6 +1465,11 @@ export function previewBibliographyFileImport(
   appOrDir: SettingsPathProvider | string,
   filePath: string,
 ): BibPreviewFileImportResult {
+  const state = readBibliographyState(appOrDir)
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   let stats
   try {
     stats = statSync(filePath)
@@ -944,8 +1514,7 @@ export function previewBibliographyFileImport(
     }
   }
 
-  const existing = readBibliography(appOrDir)
-  const preview = planImportPreview(parsed.entries, existing)
+  const preview = planImportPreview(parsed.entries, state.entries)
   return {
     ok: true,
     fileName,
@@ -988,10 +1557,15 @@ export function commitBibliographyImport(
     return { ok: false, reason: 'invalid_input', error: 'No valid reference entries to import' }
   }
 
+  const state = readBibliographyState(appOrDir, { maxBytes: options?.maxBytes })
+  if (!state.ok) {
+    return libraryFailureOf(state)
+  }
+
   const source: 'import' | 'document' = options?.source === 'document' ? 'document' : 'import'
   const skipDuplicates = options?.skipDuplicates !== false
   const filePath = bibliographyPathOf(appOrDir)
-  const existing = readBibliographyFromFile(filePath)
+  const existing = state.entries
   const now = new Date().toISOString()
 
   let added: BibEntry[]
@@ -1030,7 +1604,19 @@ export function commitBibliographyImport(
 
   const entries = added.length > 0 ? [...existing, ...added] : existing
   if (added.length > 0) {
-    saveBibliographySync(filePath, entries)
+    const saved = saveBibliographySync(filePath, entries, options?.maxBytes)
+    if (!saved.ok) {
+      return saved
+    }
+    return {
+      ok: true,
+      added,
+      skippedDuplicates,
+      entries,
+      sizeBytes: saved.sizeBytes,
+      maxBytes: saved.maxBytes,
+      nearLimit: saved.nearLimit,
+    }
   }
 
   return {
@@ -1038,6 +1624,9 @@ export function commitBibliographyImport(
     added,
     skippedDuplicates,
     entries,
+    sizeBytes: state.sizeBytes,
+    maxBytes: state.maxBytes,
+    nearLimit: state.nearLimit,
   }
 }
 

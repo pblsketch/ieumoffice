@@ -488,6 +488,7 @@ function setup(
       removed: false,
     })),
     undo: vi.fn(async () => ({ ok: true, undone: 1 })),
+    getCitationStyle: vi.fn(async () => ({ ok: true as const, style: 'apa' as const })),
     auditCitations: vi.fn(async () => ({
       ok: true as const,
       style: 'apa' as const,
@@ -6967,8 +6968,12 @@ describe('citations and bibliography tools', () => {
     expect(all.mutated).toBe(false)
     expect(all.summary).toContain('aiToolBibList')
     const parsedAll = JSON.parse(all.output)
-    expect(parsedAll.total_count).toBe(2)
-    expect(parsedAll.returned_count).toBe(2)
+    expect(parsedAll.total).toBe(2)
+    expect(parsedAll.offset).toBe(0)
+    expect(parsedAll.limit).toBe(50)
+    expect(parsedAll.returned).toBe(2)
+    expect(parsedAll.has_more).toBe(false)
+    expect(parsedAll.next_offset).toBeNull()
     expect(parsedAll.references[0]).toMatchObject({
       key: 'Kim2024',
       container_title: '행정정보연구',
@@ -6977,7 +6982,7 @@ describe('citations and bibliography tools', () => {
     expect(parsedAll.references[0]).not.toHaveProperty('containerTitle')
 
     const verifiedOnly = await call('list_references', { verified_only: true })
-    expect(JSON.parse(verifiedOnly.output).returned_count).toBe(1)
+    expect(JSON.parse(verifiedOnly.output).returned).toBe(1)
 
     const byTag = await call('list_references', { tag: 'AI' })
     expect(JSON.parse(byTag.output).references.map((r: { key: string }) => r.key)).toEqual([
@@ -6988,6 +6993,71 @@ describe('citations and bibliography tools', () => {
     expect(JSON.parse(byQuery.output).references.map((r: { key: string }) => r.key)).toEqual([
       'Kim2024',
     ])
+
+    // Multi-page pagination with 3 entries
+    const thirdEntry = {
+      ...verifiedEntry,
+      id: 'bib_Park2023',
+      key: 'Park2023',
+      title: '세 번째 문헌',
+      year: '2023',
+    }
+    const pagedEnv = setupBib(
+      {},
+      { getBibEntries: () => [verifiedEntry, unverifiedEntry, thirdEntry] },
+    )
+    const page1 = await pagedEnv.call('list_references', { offset: 0, limit: 2 })
+    expect(page1.isError).toBeUndefined()
+    const parsedPage1 = JSON.parse(page1.output)
+    expect(parsedPage1).toMatchObject({
+      total: 3,
+      offset: 0,
+      limit: 2,
+      returned: 2,
+      has_more: true,
+      next_offset: 2,
+    })
+    expect(parsedPage1.references.map((r: { key: string }) => r.key)).toEqual([
+      'Kim2024',
+      'Lee2025',
+    ])
+
+    const page2 = await pagedEnv.call('list_references', { offset: 2, limit: 2 })
+    expect(page2.isError).toBeUndefined()
+    const parsedPage2 = JSON.parse(page2.output)
+    expect(parsedPage2).toMatchObject({
+      total: 3,
+      offset: 2,
+      limit: 2,
+      returned: 1,
+      has_more: false,
+      next_offset: null,
+    })
+    expect(parsedPage2.references.map((r: { key: string }) => r.key)).toEqual(['Park2023'])
+
+    const pastEnd = await pagedEnv.call('list_references', { offset: 10, limit: 2 })
+    expect(pastEnd.isError).toBeUndefined()
+    expect(JSON.parse(pastEnd.output)).toMatchObject({
+      total: 3,
+      offset: 10,
+      limit: 2,
+      returned: 0,
+      has_more: false,
+      next_offset: null,
+      references: [],
+    })
+
+    // Reject out-of-bounds offset and limit values
+    for (const badPage of [
+      { offset: -1 },
+      { offset: 2147483648 },
+      { limit: 0 },
+      { limit: -1 },
+      { limit: 2147483648 },
+    ]) {
+      const r = await pagedEnv.call('list_references', badPage)
+      expect(r.isError, JSON.stringify(badPage)).toBe(true)
+    }
   })
 
   it('audits citations and returns 1-based section/paragraph with snake_case keys', async () => {
@@ -7123,6 +7193,31 @@ describe('citations and bibliography tools', () => {
     })
     expect(oor.isError).toBe(true)
     expect(oor.output).toContain('read_document')
+
+    // Refuses explicit citation_style mismatching the document active style
+    const mismatchEnv = setupBib({
+      getCitationStyle: vi.fn(async () => ({ ok: true as const, style: 'apa' as const })),
+    })
+    const mismatched = await mismatchEnv.call('insert_citation', {
+      key: 'Kim2024',
+      citation_style: 'ieee',
+      section: 1,
+      paragraph: 1,
+    })
+    expect(mismatched.isError).toBe(true)
+    expect(mismatched.output).toContain('switch_citation_style')
+    expect(mismatched.output).toContain('apa')
+    expect(mismatchEnv.bridge.insertCitation).not.toHaveBeenCalled()
+
+    // Explicit citation_style matching the document active style succeeds
+    const matched = await mismatchEnv.call('insert_citation', {
+      key: 'Kim2024',
+      citation_style: 'apa',
+      section: 1,
+      paragraph: 1,
+    })
+    expect(matched.isError).toBeUndefined()
+    expect(mismatchEnv.bridge.insertCitation).toHaveBeenCalledTimes(1)
   })
 
   it('switches citation style and inserts/refreshes bibliography with refusal guards', async () => {
@@ -7245,6 +7340,50 @@ describe('citations and bibliography tools', () => {
     const blocked = await offEnv.call('search_references', { query: 'document standards' })
     expect(blocked.isError).toBe(true)
     expect(blocked.output).toContain('internet tools')
+    expect(webSearch).not.toHaveBeenCalled()
+    expect(addAiBibCandidates).not.toHaveBeenCalled()
+
+    // Fail-closed when internetToolsEnabled throws (sync or async)
+    const syncThrowEnv = setupBib(
+      {},
+      {
+        internetToolsEnabled: () => {
+          throw new Error('bridge unavailable')
+        },
+        webSearch,
+        addAiBibCandidates,
+      },
+    )
+    const syncThrown = await syncThrowEnv.call('search_references', { query: 'document standards' })
+    expect(syncThrown.isError).toBe(true)
+    expect(webSearch).not.toHaveBeenCalled()
+
+    const asyncThrowEnv = setupBib(
+      {},
+      {
+        internetToolsEnabled: async () => {
+          throw new Error('ipc failed')
+        },
+        webSearch,
+        addAiBibCandidates,
+      },
+    )
+    const asyncThrown = await asyncThrowEnv.call('search_references', {
+      query: 'document standards',
+    })
+    expect(asyncThrown.isError).toBe(true)
+    expect(webSearch).not.toHaveBeenCalled()
+
+    // Fail-closed when internetToolsEnabled is omitted / undefined
+    const omittedEnv = setupBib(
+      {},
+      {
+        webSearch,
+        addAiBibCandidates,
+      },
+    )
+    const omitted = await omittedEnv.call('search_references', { query: 'document standards' })
+    expect(omitted.isError).toBe(true)
     expect(webSearch).not.toHaveBeenCalled()
     expect(addAiBibCandidates).not.toHaveBeenCalled()
 

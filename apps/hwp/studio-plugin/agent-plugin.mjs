@@ -15028,6 +15028,10 @@ export const agentPlugin = {
                 const before = citationObjectsOf(doc)
                 const bibBefore = JSON.stringify(readDocSetting(doc, BIB_SETTING_KEY, null))
                 const res = rewriteCitationKeys(doc, keyMap, entries ?? null)
+                if (!res.ok) {
+                  noopResult = res
+                  throw noop
+                }
                 const bibAfter = JSON.stringify(readDocSetting(doc, BIB_SETTING_KEY, null))
                 if (res.updated === 0 && bibBefore === bibAfter) {
                   noopResult = res

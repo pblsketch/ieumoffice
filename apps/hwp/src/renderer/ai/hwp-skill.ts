@@ -214,7 +214,8 @@ export interface HwpSkillDeps {
   ) => Promise<BibAddAiCandidatesResult>
   /**
    * Live gate for "Let AI use internet tools" (Settings) and any outbound restriction.
-   * When false, `search_references` refuses cleanly without calling `webSearch`.
+   * Fails closed: when omitted, throwing, or returning anything other than strict `true`,
+   * `search_references` refuses cleanly without calling `webSearch`.
    */
   internetToolsEnabled?: () => Promise<boolean> | boolean
   /** Web search handler used by `search_references` (falls back to `window.hwpApi.webSearch`). */
@@ -2245,7 +2246,7 @@ const TOOLS: HwpToolDef[] = [
     name: 'list_references',
     edits: false,
     description:
-      'List references in the local bibliography library, optionally filtered by query, tag, or verified_only.',
+      'List references in the local bibliography library with pagination (offset, limit), optionally filtered by query, tag, or verified_only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2255,6 +2256,14 @@ const TOOLS: HwpToolDef[] = [
         },
         tag: { type: 'string', description: 'optional tag filter' },
         verified_only: { type: 'boolean', description: 'return only user-verified references' },
+        offset: {
+          type: 'integer',
+          description: '0-based start index for pagination (default 0)',
+        },
+        limit: {
+          type: 'integer',
+          description: 'maximum number of references to return per page (default 50)',
+        },
       },
     },
   },
@@ -2308,7 +2317,8 @@ const TOOLS: HwpToolDef[] = [
         citation_style: {
           type: 'string',
           enum: ['apa', 'chicago', 'mla', 'ieee'],
-          description: 'optional citation style override',
+          description:
+            'optional citation style (must match the document active style; call switch_citation_style to change style)',
         },
         section: { type: 'integer', description: '1-based section number' },
         paragraph: { type: 'integer', description: '1-based paragraph number' },
@@ -8060,6 +8070,20 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
         }
       }
       case 'list_references': {
+        let offset = 0
+        if (isGiven(call.input.offset)) {
+          if (!isBoundedInt(call.input.offset, 0)) {
+            return bad(call, `offset must be a whole number from 0 to ${MAX_INT32}`)
+          }
+          offset = call.input.offset
+        }
+        let limit = 50
+        if (isGiven(call.input.limit)) {
+          if (!isBoundedInt(call.input.limit, 1)) {
+            return bad(call, `limit must be a whole number from 1 to ${MAX_INT32}`)
+          }
+          limit = call.input.limit
+        }
         const query = (textArg(call, 'query') ?? '').trim().toLowerCase()
         const tag = (textArg(call, 'tag') ?? '').trim().toLowerCase()
         const verifiedOnly = call.input.verified_only === true
@@ -8086,14 +8110,22 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           }
           return true
         })
+        const total = filtered.length
+        const page = filtered.slice(offset, offset + limit)
+        const hasMore = offset + page.length < total
+        const nextOffset = hasMore ? offset + page.length : null
         return {
           output: JSON.stringify({
-            total_count: entries.length,
-            returned_count: filtered.length,
-            references: filtered.map(serializeBibEntrySnake),
+            total,
+            offset,
+            limit,
+            returned: page.length,
+            has_more: hasMore,
+            next_offset: nextOffset,
+            references: page.map(serializeBibEntrySnake),
           }),
           mutated: false,
-          summary: label('aiToolBibList', { count: filtered.length }),
+          summary: label('aiToolBibList', { count: page.length }),
         }
       }
       case 'audit_citations': {
@@ -8273,6 +8305,16 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           const resolved = await resolveFindPlaceForCitation(bridge, rawFind, occurrence, false)
           if (!resolved.ok) return bad(call, resolved.error)
           place = resolved.place
+        }
+
+        if (style !== undefined && typeof bridge.getCitationStyle === 'function') {
+          const active = await bridge.getCitationStyle().catch(() => null)
+          if (active && active.ok && active.style && active.style !== style) {
+            return bad(
+              call,
+              `Nothing was changed: requested citation_style "${style}" does not match the document's active citation style "${active.style}". Omit citation_style to match the document's active style, or call switch_citation_style with citation_style "${style}" first so all citations and the bibliography stay consistent.`,
+            )
+          }
         }
 
         const entries = (await Promise.resolve(deps.getBibEntries?.()).catch(() => [])) ?? []
@@ -8764,25 +8806,19 @@ export function createHwpSkill(deps: HwpSkillDeps): HwpSkill {
           tags = cleanedTags.slice(0, 20)
         }
 
-        // Respect the "Let AI use internet tools" setting and any outbound block.
-        let internetAllowed = true
-        if (deps.internetToolsEnabled) {
-          internetAllowed =
-            (await Promise.resolve(deps.internetToolsEnabled()).catch(() => false)) === true
-        } else {
-          const outbound = (
-            globalThis as {
-              aiOfficeOutbound?: { internetToolsEnabled?: () => Promise<boolean> }
-            }
-          ).aiOfficeOutbound
-          if (typeof outbound?.internetToolsEnabled === 'function') {
-            internetAllowed = (await outbound.internetToolsEnabled().catch(() => false)) === true
+        // Fail closed unless the internet-tools gate explicitly returns true.
+        let internetAllowed = false
+        if (typeof deps.internetToolsEnabled === 'function') {
+          try {
+            internetAllowed = (await deps.internetToolsEnabled()) === true
+          } catch {
+            internetAllowed = false
           }
         }
         if (!internetAllowed) {
           return bad(
             call,
-            'Refused: internet tools are turned off in Settings ("Let AI use internet tools") or blocked for this conversation. Turn internet tools on in Settings to search for references.',
+            'Refused: internet tools are turned off in Settings ("Let AI use internet tools") or unavailable for this conversation. Turn internet tools on in Settings to search for references.',
           )
         }
 

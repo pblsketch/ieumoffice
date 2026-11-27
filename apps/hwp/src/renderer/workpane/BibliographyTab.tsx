@@ -41,7 +41,7 @@ import type {
 } from '../../../studio-plugin/citations.mjs'
 import type { FindMatch } from '../../../studio-plugin/find.mjs'
 import type { BibliographyCommandAction } from '../../../studio-plugin/workpane-menu.mjs'
-import type { BibKeyRenameInfo, HwpApi } from '../../shared/ipc'
+import type { BibKeyRenameInfo, BibLibraryFailureReason, HwpApi } from '../../shared/ipc'
 import type { AgentBridge } from '../ai/agent-bridge'
 import { useBiblioI18n, type BiblioStringKey } from '../i18n/biblio'
 import './bibliography-tab.css'
@@ -66,6 +66,7 @@ export type BibliographyTabBridge = Pick<
 
 export type BibliographyLibraryApi = Pick<
   HwpApi,
+  | 'bibReadState'
   | 'bibList'
   | 'bibAdd'
   | 'bibUpdate'
@@ -77,6 +78,19 @@ export type BibliographyLibraryApi = Pick<
   | 'bibExportFile'
 >
 
+export interface BibLibraryErrorInfo {
+  reason: BibLibraryFailureReason
+  error: string
+  corruptBackupPath?: string
+  sizeBytes?: number
+  maxBytes?: number
+}
+
+export interface BibNearLimitInfo {
+  sizeBytes: number
+  maxBytes: number
+}
+
 export interface BibliographyCommandRequest {
   action: BibliographyCommandAction
   nonce: number
@@ -84,7 +98,7 @@ export interface BibliographyCommandRequest {
 
 export interface BibliographyTabProps {
   bridge: BibliographyTabBridge
-  /** App-wide bibliography entries kept in sync by App (falls back to api.bibList when omitted). */
+  /** App-wide bibliography entries kept in sync by App (falls back to api.bibReadState/bibList when omitted). */
   entries?: readonly BibEntry[]
   /** Optional library IPC API override for tests; defaults to window.hwpApi. */
   api?: BibliographyLibraryApi
@@ -102,6 +116,12 @@ export interface BibliographyTabProps {
   pendingKeyRename?: BibKeyRenameInfo | null
   /** Dismiss the pending key-rename banner. */
   onDismissKeyRename?: () => void
+  /** Non-null when the library file is corrupt, oversized, or unreadable; disables library edits. */
+  libraryError?: BibLibraryErrorInfo | null
+  /** Non-null when the library file size is approaching its maximum limit. */
+  nearLimit?: BibNearLimitInfo | null
+  /** Re-read the library state from disk (Retry action on library error). */
+  onReloadLibrary?: () => void | Promise<void>
   /** Notify the host that a document mutation occurred. */
   onDocumentChanged?: () => void
 }
@@ -374,6 +394,27 @@ function dupReasonText(match: DuplicateMatch, t: ReturnType<typeof useBiblioI18n
   return match.matchReason === 'doi' ? t('importDupReasonDoi') : t('importDupReasonTitleYear')
 }
 
+function isLibraryFailureReason(reason: string): reason is BibLibraryFailureReason {
+  return (
+    reason === 'library_corrupt' ||
+    reason === 'library_too_large' ||
+    reason === 'library_read_error'
+  )
+}
+
+function formatByteSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${bytes} B`
+}
+
+function libraryErrorBodyKey(reason: BibLibraryFailureReason): BiblioStringKey {
+  if (reason === 'library_corrupt') return 'libraryErrorCorruptBody'
+  if (reason === 'library_too_large') return 'libraryErrorTooLargeBody'
+  return 'libraryErrorReadBody'
+}
+
 export function BibliographyTab({
   bridge,
   entries: entriesProp,
@@ -385,6 +426,9 @@ export function BibliographyTab({
   command = null,
   pendingKeyRename = null,
   onDismissKeyRename,
+  libraryError: libraryErrorProp,
+  nearLimit: nearLimitProp,
+  onReloadLibrary,
   onDocumentChanged,
 }: BibliographyTabProps): ReactElement {
   const { t } = useBiblioI18n()
@@ -398,6 +442,12 @@ export function BibliographyTab({
     entriesProp ? [...entriesProp] : [],
   )
   const entries = localEntries
+  const [writeLibraryError, setWriteLibraryError] = useState<BibLibraryErrorInfo | null>(null)
+  const [writeNearLimit, setWriteNearLimit] = useState<BibNearLimitInfo | null>(null)
+
+  const activeLibraryError = libraryErrorProp ?? writeLibraryError
+  const activeNearLimit = activeLibraryError ? null : (nearLimitProp ?? writeNearLimit)
+  const libraryBlocked = activeLibraryError !== null
 
   const [docStyle, setDocStyle] = useState<CitationStyle>(DEFAULT_CITATION_STYLE)
   const [subTab, setSubTab] = useState<SubTab>('library')
@@ -429,20 +479,163 @@ export function BibliographyTab({
     }
   }, [entriesProp])
 
+  useEffect(() => {
+    if (libraryErrorProp !== undefined) {
+      setWriteLibraryError(null)
+    }
+  }, [libraryErrorProp])
+
+  useEffect(() => {
+    if (nearLimitProp !== undefined) {
+      setWriteNearLimit(null)
+    }
+  }, [nearLimitProp])
+
+  const loadLibraryFromApi = useCallback(async () => {
+    if (api?.bibReadState) {
+      const res = await api.bibReadState()
+      if (res.ok) {
+        setLocalEntries(res.entries)
+        setWriteLibraryError(null)
+        setWriteNearLimit(
+          res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+        )
+      } else if (res.reason !== 'unauthorized') {
+        setLocalEntries([])
+        setWriteLibraryError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setWriteNearLimit(null)
+      }
+      return
+    }
+    if (api?.bibList) {
+      const res = await api.bibList()
+      if (res.ok) {
+        setLocalEntries(res.entries)
+        setWriteLibraryError(null)
+        setWriteNearLimit(
+          res.nearLimit && res.sizeBytes !== undefined && res.maxBytes !== undefined
+            ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes }
+            : null,
+        )
+      } else if (res.reason !== 'unauthorized') {
+        setLocalEntries([])
+        setWriteLibraryError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setWriteNearLimit(null)
+      }
+    }
+  }, [api])
+
   // Load initial library when entries prop is not supplied by the host.
   useEffect(() => {
-    if (entriesProp !== undefined || !api?.bibList) return
+    if (entriesProp !== undefined) return
     let active = true
-    void api
-      .bibList()
-      .then((res) => {
-        if (active && res.ok) setLocalEntries(res.entries)
-      })
-      .catch(() => {})
+    void (async () => {
+      try {
+        if (!active) return
+        await loadLibraryFromApi()
+      } catch {
+        // Ignore transient initial load failures.
+      }
+    })()
     return () => {
       active = false
     }
-  }, [entriesProp, api])
+  }, [entriesProp, loadLibraryFromApi])
+
+  const applyLibraryWriteMeta = useCallback(
+    (res: { sizeBytes?: number; maxBytes?: number; nearLimit?: boolean }) => {
+      setWriteLibraryError(null)
+      if (res.nearLimit && typeof res.sizeBytes === 'number' && typeof res.maxBytes === 'number') {
+        setWriteNearLimit({ sizeBytes: res.sizeBytes, maxBytes: res.maxBytes })
+      } else if (res.nearLimit === false) {
+        setWriteNearLimit(null)
+      }
+    },
+    [],
+  )
+
+  const formatTooLargeError = useCallback(
+    (res: { actualBytes?: number; sizeBytes?: number; maxBytes?: number }): string => {
+      const actualBytes = res.actualBytes ?? res.sizeBytes
+      if (actualBytes !== undefined && res.maxBytes !== undefined) {
+        return t('errorLibraryWriteTooLarge', {
+          actual: formatByteSize(actualBytes),
+          max: formatByteSize(res.maxBytes),
+        })
+      }
+      return t('errorLibraryWriteTooLargeGeneric')
+    },
+    [t],
+  )
+
+  const handleLibraryApiFailure = useCallback(
+    (res: {
+      reason: string
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }): { blocked: boolean; message?: string } => {
+      if (isLibraryFailureReason(res.reason)) {
+        setWriteLibraryError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setWriteNearLimit(null)
+        setFormState(null)
+        setFormError(null)
+        setDeleteConfirm(null)
+        setImportPreview(null)
+        setComposer(null)
+        setNotice(null)
+        return { blocked: true }
+      }
+      if (res.reason === 'too_large') {
+        return { blocked: false, message: formatTooLargeError(res) }
+      }
+      return { blocked: false }
+    },
+    [formatTooLargeError],
+  )
+
+  const handleReloadLibrary = useCallback(async () => {
+    if (busy) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      if (onReloadLibrary) {
+        setWriteLibraryError(null)
+        await onReloadLibrary()
+      } else {
+        await loadLibraryFromApi()
+      }
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        text: t('errorActionFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      })
+    } finally {
+      setBusy(false)
+    }
+  }, [busy, loadLibraryFromApi, onReloadLibrary, t])
 
   // Keep selectedIds pruned to existing entries.
   useEffect(() => {
@@ -556,6 +749,10 @@ export function BibliographyTab({
       let plan: ImportPreviewPlan
       if (parsed.entries.length > 0 && api?.bibPreviewImport) {
         const res = await api.bibPreviewImport(parsed.entries)
+        if (!res.ok) {
+          const handled = handleLibraryApiFailure(res)
+          if (handled.blocked) return
+        }
         plan = res.ok ? res.preview : planImportPreview(parsed.entries, entries)
       } else {
         plan = planImportPreview(parsed.entries, entries)
@@ -574,7 +771,7 @@ export function BibliographyTab({
         checkedUnparsed,
       })
     },
-    [api, entries, t],
+    [api, entries, handleLibraryApiFailure, t],
   )
 
   const executeStyleSwitch = useCallback(
@@ -878,16 +1075,23 @@ export function BibliographyTab({
   ])
 
   const handleVerifyEntry = async (entry: BibEntry) => {
-    if (!api?.bibVerify || busy) return
+    if (!api?.bibVerify || busy || libraryBlocked) return
     setBusy(true)
     setNotice(null)
     try {
       const res = await api.bibVerify(entry.id)
       if (res.ok) {
         setLocalEntries(res.entries)
+        applyLibraryWriteMeta(res)
         setNotice({ tone: 'info', text: t('noticeVerified') })
       } else {
-        setNotice({ tone: 'error', text: t('errorActionFailed', { error: res.error }) })
+        const handled = handleLibraryApiFailure(res)
+        if (!handled.blocked) {
+          setNotice({
+            tone: 'error',
+            text: handled.message ?? t('errorActionFailed', { error: res.error }),
+          })
+        }
       }
     } catch (error) {
       setNotice({
@@ -902,7 +1106,7 @@ export function BibliographyTab({
   }
 
   const handleRequestDelete = async (entry: BibEntry) => {
-    if (busy) return
+    if (busy || libraryBlocked) return
     setBusy(true)
     let citedCount = 0
     try {
@@ -923,17 +1127,24 @@ export function BibliographyTab({
   }
 
   const handleConfirmDelete = async () => {
-    if (!deleteConfirm || !api?.bibDelete || busy) return
+    if (!deleteConfirm || !api?.bibDelete || busy || libraryBlocked) return
     setBusy(true)
     setNotice(null)
     try {
       const res = await api.bibDelete(deleteConfirm.entry.id)
       if (res.ok) {
         setLocalEntries(res.entries)
+        applyLibraryWriteMeta(res)
         setDeleteConfirm(null)
         setNotice({ tone: 'info', text: t('noticeDeleted') })
       } else {
-        setNotice({ tone: 'error', text: t('errorActionFailed', { error: res.error }) })
+        const handled = handleLibraryApiFailure(res)
+        if (!handled.blocked) {
+          setNotice({
+            tone: 'error',
+            text: handled.message ?? t('errorActionFailed', { error: res.error }),
+          })
+        }
       }
     } catch (error) {
       setNotice({
@@ -949,7 +1160,7 @@ export function BibliographyTab({
 
   const handleSaveForm = async (event: FormEvent) => {
     event.preventDefault()
-    if (!formState || busy) return
+    if (!formState || busy || libraryBlocked) return
     const trimmedTitle = formState.title.trim()
     if (!trimmedTitle) {
       setFormError(t('validationTitleRequired'))
@@ -982,6 +1193,7 @@ export function BibliographyTab({
         const res = await api.bibUpdate(formState.editingId, input)
         if (res.ok) {
           setLocalEntries(res.entries)
+          applyLibraryWriteMeta(res)
           setFormState(null)
           setNotice({ tone: 'info', text: t('noticeSaved') })
         } else if (res.reason === 'duplicate_key') {
@@ -989,17 +1201,32 @@ export function BibliographyTab({
         } else if (res.reason === 'invalid_key') {
           setFormError(t('validationKeyInvalid'))
         } else {
-          setFormError(res.error)
+          const handled = handleLibraryApiFailure(res)
+          if (!handled.blocked) {
+            const msg = handled.message ?? res.error
+            setFormError(msg)
+            if (handled.message) {
+              setNotice({ tone: 'error', text: msg })
+            }
+          }
         }
       } else {
         if (!api?.bibAdd) return
         const res = await api.bibAdd(input)
         if (res.ok) {
           setLocalEntries(res.entries)
+          applyLibraryWriteMeta(res)
           setFormState(null)
           setNotice({ tone: 'info', text: t('noticeSaved') })
         } else {
-          setFormError(res.error)
+          const handled = handleLibraryApiFailure(res)
+          if (!handled.blocked) {
+            const msg = handled.message ?? res.error
+            setFormError(msg)
+            if (handled.message) {
+              setNotice({ tone: 'error', text: msg })
+            }
+          }
         }
       }
     } catch (error) {
@@ -1011,13 +1238,19 @@ export function BibliographyTab({
 
   const handleImportFile = async () => {
     setImportMenuOpen(false)
-    if (!api?.bibPickImportFile || busy) return
+    if (!api?.bibPickImportFile || busy || libraryBlocked) return
     setBusy(true)
     setNotice(null)
     try {
       const res = await api.bibPickImportFile()
       if (!res.ok) {
-        setNotice({ tone: 'error', text: t('errorActionFailed', { error: res.error }) })
+        const handled = handleLibraryApiFailure(res)
+        if (!handled.blocked) {
+          setNotice({
+            tone: 'error',
+            text: handled.message ?? t('errorActionFailed', { error: res.error }),
+          })
+        }
         return
       }
       if (res.canceled) return
@@ -1044,7 +1277,7 @@ export function BibliographyTab({
 
   const handleImportFromDocument = async () => {
     setImportMenuOpen(false)
-    if (busy) return
+    if (busy || libraryBlocked) return
     setBusy(true)
     setNotice(null)
     try {
@@ -1068,7 +1301,7 @@ export function BibliographyTab({
   }
 
   const handleCommitImport = async () => {
-    if (!importPreview || !api?.bibCommitImport || busy) return
+    if (!importPreview || !api?.bibCommitImport || busy || libraryBlocked) return
     if (importPreview.plan.toAdd.length === 0) return
     setBusy(true)
     setNotice(null)
@@ -1079,10 +1312,17 @@ export function BibliographyTab({
       })
       if (res.ok) {
         setLocalEntries(res.entries)
+        applyLibraryWriteMeta(res)
         setImportPreview(null)
         setNotice({ tone: 'info', text: t('noticeImported', { count: res.added.length }) })
       } else {
-        setNotice({ tone: 'error', text: t('errorActionFailed', { error: res.error }) })
+        const handled = handleLibraryApiFailure(res)
+        if (!handled.blocked) {
+          setNotice({
+            tone: 'error',
+            text: handled.message ?? t('errorActionFailed', { error: res.error }),
+          })
+        }
       }
     } catch (error) {
       setNotice({
@@ -1098,13 +1338,19 @@ export function BibliographyTab({
 
   const handleExport = async (format: BibliographyFormat) => {
     setExportMenuOpen(false)
-    if (!api?.bibExportFile || busy) return
+    if (!api?.bibExportFile || busy || libraryBlocked) return
     setBusy(true)
     setNotice(null)
     try {
       const res = await api.bibExportFile(format, activeTag ? { tag: activeTag } : undefined)
       if (!res.ok) {
-        setNotice({ tone: 'error', text: t('errorActionFailed', { error: res.error }) })
+        const handled = handleLibraryApiFailure(res)
+        if (!handled.blocked) {
+          setNotice({
+            tone: 'error',
+            text: handled.message ?? t('errorActionFailed', { error: res.error }),
+          })
+        }
       } else if (!res.canceled) {
         setNotice({ tone: 'info', text: t('noticeExported', { count: res.count }) })
       }
@@ -1296,6 +1542,58 @@ export function BibliographyTab({
         </button>
       </div>
 
+      {/* Library read failure banner (corrupt / oversized / unreadable) */}
+      {activeLibraryError && (
+        <div
+          className="bib-banner is-danger"
+          role="alert"
+          data-testid="bib-library-error-banner"
+          data-error-reason={activeLibraryError.reason}
+        >
+          <h4 className="bib-banner-title">{t('libraryErrorTitle')}</h4>
+          <p className="bib-banner-body">{t(libraryErrorBodyKey(activeLibraryError.reason))}</p>
+          {activeLibraryError.sizeBytes !== undefined &&
+            activeLibraryError.maxBytes !== undefined && (
+              <p className="bib-banner-size" data-testid="bib-library-error-size">
+                {formatByteSize(activeLibraryError.sizeBytes)} /{' '}
+                {formatByteSize(activeLibraryError.maxBytes)}
+              </p>
+            )}
+          {activeLibraryError.corruptBackupPath && (
+            <>
+              <p className="bib-banner-body">{t('libraryErrorBackupNote')}</p>
+              <p className="bib-banner-path" data-testid="bib-library-backup-path">
+                {activeLibraryError.corruptBackupPath}
+              </p>
+            </>
+          )}
+          <div className="bib-banner-actions">
+            <button
+              type="button"
+              className="bib-btn bib-btn-danger bib-btn-compact"
+              data-testid="bib-library-retry-btn"
+              disabled={busy}
+              onClick={() => void handleReloadLibrary()}
+            >
+              {t('libraryRetryBtn')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Non-blocking near-limit warning banner */}
+      {activeNearLimit && (
+        <div className="bib-banner" role="status" data-testid="bib-near-limit-banner">
+          <h4 className="bib-banner-title">{t('libraryNearLimitTitle')}</h4>
+          <p className="bib-banner-body">
+            {t('libraryNearLimitBody', {
+              size: formatByteSize(activeNearLimit.sizeBytes),
+              max: formatByteSize(activeNearLimit.maxBytes),
+            })}
+          </p>
+        </div>
+      )}
+
       {/* Key-rename sync banner */}
       {pendingKeyRename && (
         <div className="bib-banner" role="region" data-testid="bib-key-rename-banner">
@@ -1409,17 +1707,19 @@ export function BibliographyTab({
           <p className="bib-banner-body">
             {deleteConfirm.citedCount > 0
               ? t('deleteConfirmCited', {
-                  title: deleteConfirm.entry.title,
+                  title: deleteConfirm.entry.title.trim() || t('untitledEntry'),
                   count: deleteConfirm.citedCount,
                 })
-              : t('deleteConfirmPlain', { title: deleteConfirm.entry.title })}
+              : t('deleteConfirmPlain', {
+                  title: deleteConfirm.entry.title.trim() || t('untitledEntry'),
+                })}
           </p>
           <div className="bib-banner-actions">
             <button
               type="button"
               className="bib-btn bib-btn-danger bib-btn-compact"
               data-testid="bib-delete-confirm-btn"
-              disabled={busy}
+              disabled={busy || libraryBlocked}
               onClick={() => void handleConfirmDelete()}
             >
               {t('deleteConfirmBtn')}
@@ -1472,7 +1772,7 @@ export function BibliographyTab({
                 type="button"
                 className="bib-btn bib-btn-primary bib-btn-compact"
                 data-testid="bib-add-btn"
-                disabled={busy}
+                disabled={busy || libraryBlocked}
                 onClick={() => {
                   setImportMenuOpen(false)
                   setExportMenuOpen(false)
@@ -1491,7 +1791,7 @@ export function BibliographyTab({
                   className="bib-btn bib-btn-compact"
                   data-testid="bib-import-btn"
                   aria-expanded={importMenuOpen}
-                  disabled={busy}
+                  disabled={busy || libraryBlocked}
                   onClick={() => {
                     setExportMenuOpen(false)
                     setImportMenuOpen((open) => !open)
@@ -1499,7 +1799,7 @@ export function BibliographyTab({
                 >
                   {t('importBtn')}
                 </button>
-                {importMenuOpen && (
+                {importMenuOpen && !libraryBlocked && (
                   <div className="bib-popover-menu" role="menu">
                     <button
                       type="button"
@@ -1529,7 +1829,7 @@ export function BibliographyTab({
                   className="bib-btn bib-btn-compact"
                   data-testid="bib-export-btn"
                   aria-expanded={exportMenuOpen}
-                  disabled={busy || entries.length === 0}
+                  disabled={busy || libraryBlocked || entries.length === 0}
                   onClick={() => {
                     setImportMenuOpen(false)
                     setExportMenuOpen((open) => !open)
@@ -1630,7 +1930,7 @@ export function BibliographyTab({
               {composerEntries.map((entry) => (
                 <div key={entry.id} className="bib-composer-item">
                   <span className="bib-composer-item-title">
-                    {entry.key} · {entry.title}
+                    {entry.key} · {entry.title.trim() || t('untitledEntry')}
                   </span>
                   <input
                     type="text"
@@ -2019,7 +2319,7 @@ export function BibliographyTab({
                   type="submit"
                   className="bib-btn bib-btn-primary bib-btn-compact"
                   data-testid="bib-save-btn"
-                  disabled={busy}
+                  disabled={busy || libraryBlocked}
                 >
                   {t('saveBtn')}
                 </button>
@@ -2062,7 +2362,9 @@ export function BibliographyTab({
                     {importPreview.plan.toAdd.map((entry) => (
                       <div key={entry.id} className="bib-preview-row">
                         <span className="bib-key-badge">{entry.key}</span>
-                        <span className="bib-preview-row-text">{entry.title}</span>
+                        <span className="bib-preview-row-text">
+                          {entry.title.trim() || t('untitledEntry')}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -2148,7 +2450,7 @@ export function BibliographyTab({
                   type="button"
                   className="bib-btn bib-btn-primary bib-btn-compact"
                   data-testid="bib-import-confirm-btn"
-                  disabled={busy || importPreview.plan.toAdd.length === 0}
+                  disabled={busy || libraryBlocked || importPreview.plan.toAdd.length === 0}
                   onClick={() => void handleCommitImport()}
                 >
                   {t('importConfirmBtn')}
@@ -2169,14 +2471,22 @@ export function BibliographyTab({
 
           {/* Entry list */}
           <div className="bib-scroll-area" data-testid="bib-entry-list">
-            {entries.length === 0 ? (
-              <p className="bib-empty-state">{t('emptyLibrary')}</p>
+            {activeLibraryError ? (
+              <div className="bib-empty-state" data-testid="bib-library-error-state">
+                <p className="bib-banner-body">{t('libraryErrorDisabledHint')}</p>
+              </div>
+            ) : entries.length === 0 ? (
+              <p className="bib-empty-state" data-testid="bib-empty-library">
+                {t('emptyLibrary')}
+              </p>
             ) : filteredEntries.length === 0 ? (
               <p className="bib-empty-state">{t('emptyFiltered')}</p>
             ) : (
               filteredEntries.map((entry) => {
                 const isSelected = selectedIds.includes(entry.id)
                 const isUnverified = entry.verified === false
+                const isUntitled = entry.title.trim().length === 0
+                const displayTitle = isUntitled ? t('untitledEntry') : entry.title
                 const authorSummary = formatEntryAuthorsSummary(entry, t('noAuthor'))
                 const yearText = entry.year || t('noYear')
                 return (
@@ -2189,7 +2499,7 @@ export function BibliographyTab({
                     <input
                       type="checkbox"
                       className="bib-entry-check"
-                      aria-label={entry.title}
+                      aria-label={displayTitle}
                       checked={isSelected}
                       onChange={() => toggleSelectEntry(entry.id)}
                     />
@@ -2202,7 +2512,12 @@ export function BibliographyTab({
                           </span>
                         )}
                       </div>
-                      <div className="bib-entry-title">{entry.title}</div>
+                      <div
+                        className={`bib-entry-title${isUntitled ? ' is-untitled' : ''}`}
+                        data-testid="bib-entry-title"
+                      >
+                        {displayTitle}
+                      </div>
                       <div className="bib-entry-meta">
                         {authorSummary} · {yearText}
                       </div>
@@ -2221,7 +2536,7 @@ export function BibliographyTab({
                             type="button"
                             className="bib-btn bib-btn-primary bib-btn-compact"
                             data-testid="bib-verify-btn"
-                            disabled={busy}
+                            disabled={busy || libraryBlocked}
                             onClick={() => void handleVerifyEntry(entry)}
                           >
                             {t('verifyBtn')}
@@ -2241,7 +2556,7 @@ export function BibliographyTab({
                           type="button"
                           className="bib-btn bib-btn-compact"
                           data-testid="bib-row-edit-btn"
-                          disabled={busy}
+                          disabled={busy || libraryBlocked}
                           onClick={() => {
                             setComposer(null)
                             setImportPreview(null)
@@ -2255,7 +2570,7 @@ export function BibliographyTab({
                           type="button"
                           className="bib-btn bib-btn-danger bib-btn-compact"
                           data-testid="bib-row-delete-btn"
-                          disabled={busy}
+                          disabled={busy || libraryBlocked}
                           onClick={() => void handleRequestDelete(entry)}
                         >
                           {t('deleteBtn')}

@@ -290,6 +290,7 @@ const api: HwpApi = {
     ipcRenderer.on(HWP_CHANNELS.outlineStyleMapChanged, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.outlineStyleMapChanged, listener)
   },
+  bibReadState: () => ipcRenderer.invoke(HWP_CHANNELS.bibReadState),
   bibList: () => ipcRenderer.invoke(HWP_CHANNELS.bibList),
   bibAdd: (input) => ipcRenderer.invoke(HWP_CHANNELS.bibAdd, input),
   bibUpdate: (id, patch) => ipcRenderer.invoke(HWP_CHANNELS.bibUpdate, id, patch),

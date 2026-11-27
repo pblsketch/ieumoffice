@@ -17,6 +17,7 @@ export type AuditIssueKind =
 export declare const AUDIT_ISSUE_KINDS: readonly AuditIssueKind[]
 
 export interface CitationDoc extends MarkDoc {
+  getLogicalLength?(sec: number, para: number): number
   getTextRange(sec: number, para: number, start: number, count: number): string
   insertText(sec: number, para: number, offset: number, text: string): string
   deleteText(sec: number, para: number, offset: number, length: number): string
@@ -40,6 +41,38 @@ export interface CitationDoc extends MarkDoc {
     cellIndex: number,
     cellParaIndex: number,
   ): number
+  getTextInCellByPath?(
+    sec: number,
+    para: number,
+    pathJson: string,
+    start: number,
+    count: number,
+  ): string
+  getTextInCell?(
+    sec: number,
+    para: number,
+    controlIndex: number,
+    cellIndex: number,
+    cellParaIndex: number,
+    start: number,
+    count: number,
+  ): string
+  deleteTextInCellByPath?(
+    sec: number,
+    para: number,
+    pathJson: string,
+    offset: number,
+    length: number,
+  ): string
+  deleteTextInCell?(
+    sec: number,
+    para: number,
+    controlIndex: number,
+    cellIndex: number,
+    cellParaIndex: number,
+    offset: number,
+    length: number,
+  ): string
   insertTextInCellByPath?(
     sec: number,
     para: number,
@@ -58,6 +91,14 @@ export interface CitationDoc extends MarkDoc {
   ): string
   getFootnoteInfo?(sec: number, para: number, controlIndex: number): string
   getNoteEditInfo?(sec: number, para: number, controlIndex: number): string
+  deleteTextInFootnote?(
+    sec: number,
+    para: number,
+    controlIndex: number,
+    notePara: number,
+    offset: number,
+    length: number,
+  ): string
   insertTextInFootnote?(
     sec: number,
     para: number,
@@ -129,8 +170,10 @@ export type SetCitationStyleResult =
         | 'unsupported_place'
         | 'invalid_name'
         | 'name_too_long'
+        | 'setting_write_failed'
         | 'engine_error'
       error?: string
+      failed?: unknown[]
     }
 
 export interface InsertCitationOptions {
@@ -157,6 +200,7 @@ export type InsertCitationResult =
       id: string
       keys: string[]
       renumbered?: number
+      skippedManual?: SkippedManualCitation[]
     }
   | {
       ok: true
@@ -171,6 +215,8 @@ export type InsertCitationResult =
       offset: number
       length: number
       keys: string[]
+      renumbered?: number
+      skippedManual?: SkippedManualCitation[]
     }
   | {
       ok: false
@@ -180,15 +226,20 @@ export type InsertCitationResult =
         | 'missing_entry'
         | 'unverified_entry'
         | 'unsupported_place'
+        | 'inside_citation'
+        | 'inside_bibliography'
         | 'not_found'
         | 'invalid_range'
         | 'name_too_long'
         | 'duplicate_name'
         | 'invalid_name'
+        | 'mark_delete_failed'
+        | 'setting_write_failed'
         | 'engine_error'
       missingKeys?: string[]
       unverifiedKeys?: string[]
       error?: string
+      failed?: unknown[]
     }
 
 export interface ParsedPatternRef {
@@ -213,20 +264,47 @@ export interface PatternCitationMatch {
   parsedRefs: ParsedPatternRef[]
 }
 
-export interface RewriteCitationKeysResult {
-  ok: true
-  updated: number
-}
+export type RewriteCitationKeysResult =
+  | { ok: true; updated: number }
+  | {
+      ok: false
+      reason:
+        | 'invalid_key'
+        | 'invalid_value'
+        | 'unsupported_place'
+        | 'invalid_name'
+        | 'name_too_long'
+        | 'setting_write_failed'
+        | 'engine_error'
+      error?: string
+      failed?: unknown[]
+    }
 
-export interface RenumberIeeeResult {
-  ok: true
-  updated: number
-}
+export type RenumberIeeeResult =
+  | { ok: true; updated: number; skippedManual?: SkippedManualCitation[] }
+  | {
+      ok: false
+      reason:
+        | 'unsupported_place'
+        | 'mark_delete_failed'
+        | 'setting_write_failed'
+        | 'invalid_range'
+        | 'name_too_long'
+        | 'duplicate_name'
+        | 'invalid_name'
+        | 'engine_error'
+      error?: string
+      failed?: unknown[]
+    }
 
 export interface SkippedManualCitation {
   id: string
+  kind?: 'body' | 'table' | 'textbox' | 'footnote' | 'endnote'
   sec: number
   para: number
+  path?: CellPathStep[]
+  noteControl?: number
+  notePara?: number
   offset: number
   length: number
   currentText: string
@@ -251,7 +329,20 @@ export type SwitchCitationStyleResult =
     }
   | {
       ok: false
-      reason: 'invalid_style' | 'unsupported_place'
+      reason:
+        | 'invalid_style'
+        | 'unsupported_place'
+        | 'mark_delete_failed'
+        | 'setting_write_failed'
+        | 'invalid_key'
+        | 'invalid_value'
+        | 'invalid_name'
+        | 'name_too_long'
+        | 'invalid_range'
+        | 'duplicate_name'
+        | 'engine_error'
+      error?: string
+      failed?: unknown[]
     }
 
 export interface UnmarkedBibliographyLine {
@@ -307,6 +398,8 @@ export type BibliographyWriteResult =
       expectedLines: string[]
       preservedMissingKeys: string[]
       refreshed?: boolean
+      updatedCitations?: number
+      skippedManual?: SkippedManualCitation[]
       range: {
         startName: string
         endName: string
@@ -326,6 +419,12 @@ export type BibliographyWriteResult =
         | 'legacy_bibliography_found'
         | 'manual_edits'
         | 'has_objects'
+        | 'mark_delete_failed'
+        | 'setting_write_failed'
+        | 'invalid_key'
+        | 'invalid_value'
+        | 'invalid_name'
+        | 'name_too_long'
         | 'engine_error'
       unverifiedKeys?: string[]
       missingKeys?: string[]
@@ -333,10 +432,16 @@ export type BibliographyWriteResult =
       modifiedLines?: BibliographyModifiedLine[]
       range?: MatchedRangeMark | { sec: number; startPara: number; endPara: number }
       error?: string
+      failed?: unknown[]
     }
+
+export type AuditIssueReason =
+  'missing_title' | 'ieee_number_mismatch' | 'unmarked_style_mismatch' | 'unmarked_manual_edit'
 
 export interface AuditIssue {
   type: AuditIssueKind
+  reason?: AuditIssueReason
+  missingTitle?: boolean
   kind: 'body' | 'table' | 'textbox' | 'footnote' | 'endnote'
   sec: number
   para: number

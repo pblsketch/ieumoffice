@@ -249,6 +249,39 @@
   line-height: 1.4;
 }
 
+.bib-banner.is-danger {
+  border-bottom-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.bib-banner.is-danger .bib-banner-title {
+  color: var(--danger);
+}
+
+.bib-banner.is-danger .bib-banner-body {
+  color: var(--text-strong);
+}
+
+.bib-banner-path {
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.bib-banner-size {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
 .bib-banner-title {
   margin: 0;
   color: var(--text-strong);
@@ -649,6 +682,11 @@
   font-weight: 600;
   line-height: 1.35;
   word-break: break-word;
+}
+
+.bib-entry-title.is-untitled {
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .bib-entry-meta {

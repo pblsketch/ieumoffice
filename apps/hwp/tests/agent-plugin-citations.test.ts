@@ -753,4 +753,207 @@ describe('agent-plugin citation & bibliography surface (T20)', () => {
       doc().free()
     }
   })
+
+  it('syncs a/b disambiguation in 1 undo step and refuses cursor inside 인용:/참고문헌: with 0 undo steps (Items #7, #20)', () => {
+    const entries: BibEntry[] = [
+      ...makeEntries(),
+      {
+        id: 'e-kim-2024-b',
+        key: 'kim2024b',
+        oldKeys: [],
+        type: 'article',
+        authors: [{ family: '김', given: '철수' }],
+        year: '2024',
+        title: '후속 인공지능 문서 평가 방법론',
+        containerTitle: '정보과학회논문지',
+        language: 'ko',
+        tags: [],
+        verified: true,
+      },
+    ]
+    const { plugin, doc, steps } = openHost(makeDoc(['첫 문장.', '둘째 문장.']))
+    try {
+      const r1 = plugin.insertCitation({
+        entries,
+        key: 'kim2024',
+        place: { sec: 0, para: 0, offset: 4 },
+        foreign: true,
+      })
+      expect(r1.ok).toBe(true)
+      if (!r1.ok || !r1.marked) return
+      expect(steps()).toBe(1)
+      expect(bodyLines(doc())[0]).toContain('(김철수, 2024)')
+
+      // Inserting second 2024 work by 김철수 updates first mark to 2024a in the SAME 1 undo step!
+      const r2 = plugin.insertCitation({
+        entries,
+        key: 'kim2024b',
+        place: { sec: 0, para: 1, offset: 5 },
+        foreign: true,
+      })
+      expect(r2.ok).toBe(true)
+      expect(steps()).toBe(2)
+      expect(bodyLines(doc())[0]).toContain('(김철수, 2024a)')
+      expect(bodyLines(doc())[1]).toContain('(김철수, 2024b)')
+
+      const bib = plugin.insertBibliographyBlock(entries, { foreign: true })
+      expect(bib.ok).toBe(true)
+      if (!bib.ok) return
+      expect(steps()).toBe(3)
+
+      const bytesBefore = doc().exportHwp()
+
+      // Inside existing 인용: range -> refused with 0 undo steps and identical bytes.
+      const marks = plugin.listCitationMarks(entries).marks
+      const insideCit = plugin.insertCitation({
+        entries,
+        key: 'lee2023',
+        place: { sec: 0, para: 0, offset: marks[0]!.startOffset + 2 },
+        foreign: true,
+      })
+      expect(insideCit).toEqual({ ok: false, reason: 'inside_citation' })
+      expect(steps()).toBe(3)
+      expect(bytesEqual(doc().exportHwp(), bytesBefore)).toBe(true)
+
+      // Inside existing 참고문헌: range -> refused with 0 undo steps and identical bytes.
+      const insideBib = plugin.insertCitation({
+        entries,
+        key: 'lee2023',
+        place: { sec: 0, para: bib.startPara + 1, offset: 0 },
+        foreign: true,
+      })
+      expect(insideBib).toEqual({ ok: false, reason: 'inside_bibliography' })
+      expect(steps()).toBe(3)
+      expect(bytesEqual(doc().exportHwp(), bytesBefore)).toBe(true)
+    } finally {
+      doc().free()
+    }
+  })
+
+  it('rolls back atomically with 0 undo steps and identical bytes when setting-write or mark-delete fails (Item #9)', () => {
+    const entries = makeEntries()
+    let doc = makeDoc(['본문 문단입니다.'])
+    let failSettingWrites = false
+    let failMarkDeletes = false
+    const history: Uint8Array[] = []
+
+    const wrapDoc = (raw: HwpDocument) => {
+      const proxy = Object.create(raw) as HwpDocument
+      proxy.addBookmark = (sec: number, para: number, offset: number, name: string) => {
+        if (failSettingWrites && name.startsWith('설정:')) {
+          return JSON.stringify({ ok: false, error: 'injected setting write error' })
+        }
+        return raw.addBookmark(sec, para, offset, name)
+      }
+      proxy.deleteBookmark = (sec: number, para: number, ctrlIdx: number) => {
+        if (failMarkDeletes) {
+          return JSON.stringify({ ok: false, error: 'injected deleteBookmark error' })
+        }
+        return raw.deleteBookmark(sec, para, ctrlIdx)
+      }
+      ;(proxy as unknown as Record<string, unknown>).deleteControlAt = (
+        list: number,
+        para: number,
+        ctrlIdx: number,
+      ) => {
+        if (failMarkDeletes) {
+          return JSON.stringify({ ok: false, error: 'injected deleteControlAt error' })
+        }
+        return (
+          raw as unknown as {
+            deleteControlAt: (l: number, p: number, c: number) => string
+          }
+        ).deleteControlAt(list, para, ctrlIdx)
+      }
+      return proxy
+    }
+
+    const host = {
+      read: (fn: (d: never) => unknown) => fn(wrapDoc(doc) as never),
+      transaction: (_label: string, fn: (tx: never) => unknown) => {
+        const before = doc.exportHwp()
+        try {
+          const result = fn({ doc: () => wrapDoc(doc), deferPagination: () => {} } as never)
+          history.push(before)
+          return result
+        } catch (thrown) {
+          doc.free()
+          doc = new HwpDocument(before)
+          throw thrown
+        }
+      },
+      events: { on: () => 0 },
+      automation: {
+        registerCommand: () => {},
+        unregisterCommand: () => {},
+        addMenuItem: () => {},
+        execute: () => ({ ok: false }),
+      },
+    } as unknown as AgentPluginHost
+
+    const plugin = agentPlugin.activate(host)
+    try {
+      expect(
+        plugin.insertCitation({
+          entries,
+          key: 'kim2024',
+          place: { sec: 0, para: 0, offset: doc.getParagraphLength(0, 0) },
+          foreign: true,
+        }),
+      ).toMatchObject({ ok: true })
+      expect(plugin.insertBibliographyBlock(entries, { foreign: true })).toMatchObject({ ok: true })
+      expect(history.length).toBe(2)
+
+      const bytesBefore = doc.exportHwp()
+
+      // 1) Setting write failure rolls back rewriteCitationKeys, setCitationStyle, insertCitation with 0 undo steps!
+      failSettingWrites = true
+      const rwFail = plugin.rewriteCitationKeys({ kim2024: 'kim2024v2' }, entries, {
+        foreign: true,
+      })
+      expect(rwFail.ok).toBe(false)
+      expect(history.length).toBe(2)
+      expect(bytesEqual(doc.exportHwp(), bytesBefore)).toBe(true)
+
+      const styleFail = plugin.setCitationStyle('ieee', { foreign: true })
+      expect(styleFail.ok).toBe(false)
+      expect(history.length).toBe(2)
+      expect(bytesEqual(doc.exportHwp(), bytesBefore)).toBe(true)
+
+      const insFail = plugin.insertCitation({
+        entries,
+        key: 'lee2023',
+        place: { sec: 0, para: 0, offset: 0 },
+        foreign: true,
+      })
+      expect(insFail.ok).toBe(false)
+      expect(history.length).toBe(2)
+      expect(bytesEqual(doc.exportHwp(), bytesBefore)).toBe(true)
+      failSettingWrites = false
+
+      // 2) Mark delete failure rolls back switchCitationStyle and refreshBibliographyBlock with 0 undo steps!
+      failMarkDeletes = true
+      const switchFail = plugin.switchCitationStyle('ieee', entries, { foreign: true })
+      expect(switchFail.ok).toBe(false)
+      if (!switchFail.ok) {
+        expect(switchFail.reason).toBe('mark_delete_failed')
+      }
+      expect(history.length).toBe(2)
+      expect(bytesEqual(doc.exportHwp(), bytesBefore)).toBe(true)
+
+      const refFail = plugin.refreshBibliographyBlock(entries, {
+        foreign: true,
+        allowOverwriteManual: true,
+      })
+      expect(refFail.ok).toBe(false)
+      if (!refFail.ok) {
+        expect(refFail.reason).toBe('mark_delete_failed')
+      }
+      expect(history.length).toBe(2)
+      expect(bytesEqual(doc.exportHwp(), bytesBefore)).toBe(true)
+      failMarkDeletes = false
+    } finally {
+      doc.free()
+    }
+  })
 })

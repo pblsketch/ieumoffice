@@ -100,6 +100,8 @@ export const HWP_CHANNELS = {
   setOutlineStyleMap: 'hwp:set-outline-style-map',
   /** main -> renderer (OutlineStyleMap): the app-wide outline style mapping changed */
   outlineStyleMapChanged: 'hwp:outline-style-map-changed',
+  /** invoke -> BibReadStateResult: inspect the app-wide bibliography library state, including corruption/size status */
+  bibReadState: 'hwp:bib-read-state',
   /** invoke -> BibListResult: list all entries and sorted tags from the app-wide bibliography library */
   bibList: 'hwp:bib-list',
   /** invoke(input) -> BibAddResult: add a human-entered reference to the app-wide library */
@@ -181,24 +183,102 @@ export interface BibExportOptions {
   ids?: readonly string[]
 }
 
-export type BibListResult =
-  | { ok: true; entries: BibEntry[]; tags: string[] }
-  | { ok: false; reason: 'unauthorized'; error: string }
+export type BibLibraryFailureReason = 'library_corrupt' | 'library_too_large' | 'library_read_error'
 
-export type BibAddResult =
-  | { ok: true; entry: BibEntry; entries: BibEntry[] }
-  | { ok: false; reason: 'invalid_input' | 'unauthorized'; error: string }
-
-export type BibAddAiCandidatesResult =
-  | { ok: true; added: BibEntry[]; duplicates: DuplicateMatch[]; entries: BibEntry[] }
+export type BibLibraryState =
+  | {
+      ok: true
+      exists: boolean
+      entries: BibEntry[]
+      tags: string[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
   | {
       ok: false
-      reason: 'invalid_input' | 'missing_source_url' | 'unauthorized'
+      reason: BibLibraryFailureReason
       error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes: number
+    }
+
+export type BibReadStateResult =
+  BibLibraryState | { ok: false; reason: 'unauthorized'; error: string }
+
+export type BibListResult =
+  | {
+      ok: true
+      entries: BibEntry[]
+      tags: string[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
+
+export type BibAddResult =
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibAddAiCandidatesResult =
+  | {
+      ok: true
+      added: BibEntry[]
+      duplicates: DuplicateMatch[]
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'missing_source_url'
+        | 'too_large'
+        | BibLibraryFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
     }
 
 export type BibUpdateResult =
-  | { ok: true; entry: BibEntry; entries: BibEntry[]; renamedKey?: BibKeyRenameInfo }
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      renamedKey?: BibKeyRenameInfo
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
   | {
       ok: false
       reason:
@@ -207,21 +287,64 @@ export type BibUpdateResult =
         | 'duplicate_key'
         | 'not_found'
         | 'ai_cannot_verify'
+        | 'too_large'
+        | BibLibraryFailureReason
         | 'unauthorized'
       error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
     }
 
 export type BibVerifyResult =
-  | { ok: true; entry: BibEntry; entries: BibEntry[] }
-  | { ok: false; reason: 'invalid_input' | 'not_found' | 'unauthorized'; error: string }
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
 
 export type BibDeleteResult =
-  | { ok: true; deletedId: string; entries: BibEntry[] }
-  | { ok: false; reason: 'invalid_input' | 'not_found' | 'unauthorized'; error: string }
+  | {
+      ok: true
+      deletedId: string
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
 
 export type BibPreviewImportResult =
   | { ok: true; preview: ImportPreviewPlan }
-  | { ok: false; reason: 'empty' | 'invalid_input' | 'unauthorized'; error: string }
+  | {
+      ok: false
+      reason: 'empty' | 'invalid_input' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
 
 export type BibPickImportFileResult =
   | { ok: true; canceled: true }
@@ -235,25 +358,53 @@ export type BibPickImportFileResult =
     }
   | {
       ok: false
-      reason: ImportFailureReason | 'not_found' | 'unreadable' | 'unauthorized'
+      reason:
+        ImportFailureReason | 'not_found' | 'unreadable' | BibLibraryFailureReason | 'unauthorized'
       error: string
       format?: BibliographyFormat | null
       warnings?: string[]
+      corruptBackupPath?: string
+      sizeBytes?: number
       maxBytes?: number
       actualBytes?: number
     }
 
 export type BibCommitImportResult =
-  | { ok: true; added: BibEntry[]; skippedDuplicates: DuplicateMatch[]; entries: BibEntry[] }
-  | { ok: false; reason: 'empty' | 'invalid_input' | 'unauthorized'; error: string }
+  | {
+      ok: true
+      added: BibEntry[]
+      skippedDuplicates: DuplicateMatch[]
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'empty' | 'invalid_input' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
 
 export type BibExportFileResult =
   | { ok: true; canceled: true }
   | { ok: true; canceled?: false; path: string; count: number; format: BibliographyFormat }
   | {
       ok: false
-      reason: 'invalid_input' | 'invalid_format' | 'write_failed' | 'unauthorized'
+      reason:
+        | 'invalid_input'
+        | 'invalid_format'
+        | 'write_failed'
+        | 'file_exists'
+        | BibLibraryFailureReason
+        | 'unauthorized'
       error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
     }
 export type SaveMode = 'save' | 'saveAs'
 /** Save dialog modes: normal save, Save As, or Save As pre-targeted to HWPX (e.g. after HWP verify failure). */
@@ -733,6 +884,8 @@ export interface HwpApi {
   setOutlineStyleMap?(map: OutlineStyleMap | null): Promise<OutlineStyleMap>
   /** Subscribe to app-wide Hangul outline style-to-level mapping changes across views */
   onOutlineStyleMapChanged?(handler: (map: OutlineStyleMap) => void): () => void
+  /** Inspect the app-wide bibliography library state, including corruption and size status */
+  bibReadState?(): Promise<BibReadStateResult>
   /** List all entries and sorted tags from the app-wide bibliography library */
   bibList?(): Promise<BibListResult>
   /** Add a human-entered reference to the app-wide bibliography library */

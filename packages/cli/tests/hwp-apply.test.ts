@@ -1322,6 +1322,20 @@ describe('hwp migrated TOC and index ops (T15)', () => {
             verified: false,
             source: 'ai',
           },
+          {
+            id: 'bib_Lee2023',
+            key: 'Lee2023',
+            oldKeys: [],
+            type: 'book',
+            authors: [{ family: '이민호' }],
+            year: '2023',
+            title: '전자문서 체계론',
+            publisher: '한국출판사',
+            language: 'ko',
+            tags: ['문서'],
+            verified: true,
+            source: 'manual',
+          },
         ],
       }),
       'utf8',
@@ -1364,7 +1378,14 @@ describe('hwp migrated TOC and index ops (T15)', () => {
     ])
     expect(applied.code, applied.stdout).toBe(0)
     const results = applied.json().detail.results as Array<{ op: string; output: string }>
-    expect(JSON.parse(results[0]!.output).returned_count).toBe(1)
+    expect(JSON.parse(results[0]!.output)).toMatchObject({
+      total: 2,
+      offset: 0,
+      limit: 50,
+      returned: 2,
+      has_more: false,
+      next_offset: null,
+    })
     expect(results[1]!.output).toContain('(김철수, 2024)')
     expect(results[2]!.output).toContain('Inserted bibliography (APA)')
     expect(results[3]!.output).toContain('Switched citation style to IEEE (1 citation(s) updated).')
@@ -1375,6 +1396,42 @@ describe('hwp migrated TOC and index ops (T15)', () => {
     expect(finalText).toContain('[1]')
     expect(finalText).toContain('참고문헌')
     expect(finalText).toContain('공공문서 표준화 연구')
+
+    // Paginated list_references across multiple pages
+    const paged = await run([
+      'hwp',
+      'apply',
+      path,
+      '--bibliography',
+      bibPath,
+      '--ops',
+      ops(dir, [
+        { op: 'list_references', offset: 0, limit: 2 },
+        { op: 'list_references', offset: 2, limit: 2 },
+      ]),
+      '--dry-run',
+      '--json',
+    ])
+    expect(paged.code, paged.stdout).toBe(0)
+    const pagedResults = paged.json().detail.results as Array<{ op: string; output: string }>
+    const firstPage = JSON.parse(pagedResults[0]!.output)
+    expect(firstPage).toMatchObject({
+      total: 3,
+      offset: 0,
+      limit: 2,
+      returned: 2,
+      has_more: true,
+      next_offset: 2,
+    })
+    const secondPage = JSON.parse(pagedResults[1]!.output)
+    expect(secondPage).toMatchObject({
+      total: 3,
+      offset: 2,
+      limit: 2,
+      returned: 1,
+      has_more: false,
+      next_offset: null,
+    })
 
     // Refuses unverified entry
     const unv = await run([
@@ -1416,6 +1473,11 @@ describe('hwp migrated TOC and index ops (T15)', () => {
       { op: 'insert_bibliography', section: 999, paragraph: 999 },
       { op: 'insert_bibliography', section: 2147483648, paragraph: 1 },
       { op: 'insert_bibliography', section: 1, paragraph: 1, occurrence: 0 },
+      { op: 'list_references', offset: -1 },
+      { op: 'list_references', offset: 2147483648 },
+      { op: 'list_references', limit: 0 },
+      { op: 'list_references', limit: -1 },
+      { op: 'list_references', limit: 2147483648 },
     ]) {
       const rejected = await run([
         'hwp',

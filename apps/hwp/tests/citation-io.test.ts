@@ -997,3 +997,259 @@ describe('duplicate detection and import preview planning', () => {
     expect(dupList).toHaveLength(2)
   })
 })
+
+describe('PR #686 review edge cases (verbatim BibTeX, comments, RIS orgs/order, chapters, CSL, NFC)', () => {
+  it('preserves ~ and -- verbatim in BibTeX url and doi across export/import roundtrips', () => {
+    const entry = makeEntry({
+      key: 'verbatim2024',
+      type: 'article',
+      authors: [{ family: 'Smith', given: 'John' }],
+      year: '2024',
+      title: 'Verbatim Identifier Handling',
+      containerTitle: 'Web Standards',
+      url: 'https://example.org/~user/a--b?q=1&p=2%203',
+      doi: '10.1000/abc--def~1',
+      edition: '2',
+      language: 'en',
+    })
+
+    const exported = exportBibTeX([entry])
+    const reparsed = parseBibTeX(exported)
+    expect(reparsed.ok).toBe(true)
+    if (!reparsed.ok) return
+    expect(reparsed.entries[0].url).toBe('https://example.org/~user/a--b?q=1&p=2%203')
+    expect(reparsed.entries[0].doi).toBe('10.1000/abc--def~1')
+    expect(reparsed.entries[0].edition).toBe('2')
+
+    // Also preserves verbatim fields during direct import of raw BibTeX with extra verbatim tags.
+    const rawBib = `
+@article{raw2024,
+  author = {Doe, Jane},
+  title = {Direct Verbatim -- Check},
+  url = {https://example.org/~alice/docs--v2},
+  doi = {10.1234/foo--bar~baz},
+  file = {/home/~alice/paper--final.pdf},
+  eprint = {2024--001~v1},
+  issn = {1234--5678},
+  isbn = {978--0--123456--47--2},
+  year = {2024}
+}`
+    const parsed = parseBibTeX(rawBib)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.entries[0].title).toBe('Direct Verbatim - Check')
+    expect(parsed.entries[0].url).toBe('https://example.org/~alice/docs--v2')
+    expect(parsed.entries[0].doi).toBe('10.1234/foo--bar~baz')
+  })
+
+  it('ignores free-text BibTeX comments containing email addresses and stray @ symbols', () => {
+    const bibWithComments = `
+Exported on 2026-11-27 by contact@example.org (questions: user+bib@university.edu)
+Note: @todo review keys before publishing and @customnote(not an entry)
+
+@article{first2020,
+  author = {Smith, John},
+  title = {First Paper},
+  year = {2020}
+}
+
+Between-entry comment: maintained by team@example.org or @editor note.
+
+@book{second2021,
+  author = {Doe, Jane},
+  title = {Second Book},
+  publisher = {Academic Press},
+  edition = {Rev. ed.},
+  year = {2021}
+}
+
+Trailing footer: archive@example.org @end
+`
+    const parsed = parseBibTeX(bibWithComments)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.entries).toHaveLength(2)
+    expect(parsed.entries[0].key).toBe('first2020')
+    expect(parsed.entries[1].key).toBe('second2021')
+    expect(parsed.entries[1].edition).toBe('Rev. ed.')
+  })
+
+  it('parses and roundtrips RIS institutional/organization authors and preserves interleaved AU/A1 order', () => {
+    const ris = `
+TY  - RPRT
+ID  - org2023
+A1  - World Health Organization
+AU  - Smith, John
+A1  - 한국교육개발원 정책연구실
+AU  - 홍길동
+A1  - 남궁민수
+AU  - UNESCO
+AU  - Ministry of Education
+ED  - National Academy of Sciences
+A2  - Doe, Jane
+TI  - Global Policy Review
+ET  - 2
+PY  - 2023
+ER  - 
+`
+    const parsed = parseRis(ris)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const entry = parsed.entries[0]
+    expect(entry.authors).toEqual([
+      { literal: 'World Health Organization', isOrganization: true },
+      { family: 'Smith', given: 'John' },
+      { literal: '한국교육개발원 정책연구실', isOrganization: true },
+      { literal: '홍길동' },
+      { literal: '남궁민수' },
+      { literal: 'UNESCO' },
+      { literal: 'Ministry of Education', isOrganization: true },
+    ])
+    expect(entry.editors).toEqual([
+      { literal: 'National Academy of Sciences', isOrganization: true },
+      { family: 'Doe', given: 'Jane' },
+    ])
+    expect(entry.edition).toBe('2')
+
+    // Roundtrip exportRis -> parseRis preserves organization vs personal distinction and order.
+    const exported = exportRis([entry])
+    expect(exported).toContain('AU  - World Health Organization')
+    expect(exported).toContain('AU  - Smith, John')
+    expect(exported).toContain('AU  - 한국교육개발원 정책연구실')
+    expect(exported).toContain('ET  - 2')
+
+    const reparsed = parseRis(exported)
+    expect(reparsed.ok).toBe(true)
+    if (!reparsed.ok) return
+    expect(reparsed.entries[0].authors).toEqual(entry.authors)
+    expect(reparsed.entries[0].editors).toEqual(entry.editors)
+    expect(reparsed.entries[0].edition).toBe('2')
+  })
+
+  it('sends book-chapter document lines to unparsed and strips trailing periods from org authors', () => {
+    const lines = [
+      'Smith, J. A. (2020). Chapter title. In E. Editor (Ed.), Edited Book Title (pp. 10-30). Academic Press.',
+      '홍길동(2020). 교육과정의 변화. 김철수(편), 현대교육학 개론 (10-30쪽). 학지사.',
+      'Smith, John A. 2020. "Chapter title." In Edited Book Title, edited by E. Editor, 10-30. Boston: Academic Press.',
+      'World Health Organization. (2021). Annual Health Report. World Health Organization.',
+      '교육부. (2023). 교육정책 연차보고서. 교육부.',
+    ]
+
+    const res = parseDocumentReferenceLines(lines)
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+
+    expect(res.unparsed).toHaveLength(3)
+    expect(res.unparsed.map((u) => u.lineIndex)).toEqual([0, 1, 2])
+    expect(res.unparsed.every((u) => u.reason === 'chapter_format_requires_review')).toBe(true)
+
+    expect(res.parsed).toHaveLength(2)
+    expect(res.parsed[0].entry.authors).toEqual([
+      { literal: 'World Health Organization', isOrganization: true },
+    ])
+    expect(res.parsed[1].entry.authors).toEqual([{ literal: '교육부' }])
+  })
+
+  it('handles CSL JSON object/array titles, scheme-less doi.org URLs, and Unicode NFC duplicate matching', () => {
+    const csl = JSON.stringify([
+      {
+        id: 'obj_value',
+        type: 'article-journal',
+        title: { value: 'Structured Value Title' },
+        author: [{ family: 'Kim', given: 'Min' }],
+        issued: { 'date-parts': [[2023]] },
+        edition: '2',
+      },
+      {
+        id: 'obj_text',
+        type: 'book',
+        title: { '#text': 'XML Text Title' },
+        author: [{ family: 'Lee', given: 'Seo' }],
+        issued: { 'date-parts': [[2022]] },
+      },
+      {
+        id: 'obj_localized',
+        type: 'book',
+        language: 'ko',
+        title: { en: 'English Title', ko: '한국어 제목' },
+        author: [{ literal: '홍길동' }],
+        issued: { 'date-parts': [[2024]] },
+      },
+      {
+        id: 'arr_title',
+        type: 'report',
+        title: ['Array Title', 'Secondary Subtitle'],
+        'container-title': ['Series Container'],
+        issued: { 'date-parts': [[2021]] },
+      },
+      {
+        id: 'empty_obj_title',
+        type: 'document',
+        title: {},
+        issued: { 'date-parts': [[2020]] },
+      },
+    ])
+
+    const parsedCsl = parseCslJson(csl)
+    expect(parsedCsl.ok).toBe(true)
+    if (!parsedCsl.ok) return
+    expect(parsedCsl.entries.map((e) => e.title)).toEqual([
+      'Structured Value Title',
+      'XML Text Title',
+      '한국어 제목',
+      'Array Title',
+      '',
+    ])
+    expect(parsedCsl.entries[0].edition).toBe('2')
+    expect(parsedCsl.entries[3].containerTitle).toBe('Series Container')
+    for (const entry of parsedCsl.entries) {
+      expect(entry.title).not.toContain('[object Object]')
+    }
+
+    // Scheme-less doi.org and dx.doi.org normalization.
+    expect(normalizeDoi('doi.org/10.1234/ABC')).toBe('10.1234/abc')
+    expect(normalizeDoi('dx.doi.org/10.1234/ABC')).toBe('10.1234/abc')
+    expect(normalizeDoi('https://doi.org/10.1234/ABC')).toBe('10.1234/abc')
+    expect(normalizeDoi('doi:10.1234/ABC')).toBe('10.1234/abc')
+
+    // Unicode NFD Korean (decomposed Hangul) vs NFC Korean duplicate matching.
+    const nfcTitle = '실천교육학의 이해'.normalize('NFC')
+    const nfdTitle = '실천교육학의 이해'.normalize('NFD')
+    expect(nfcTitle).not.toBe(nfdTitle)
+    expect(normalizeTitleForMatch(nfdTitle)).toBe(normalizeTitleForMatch(nfcTitle))
+
+    const existingKo = makeEntry({
+      key: 'hong2020',
+      authors: ['홍길동'],
+      year: '2020',
+      title: nfcTitle,
+      doi: 'doi.org/10.1234/KO.2020',
+    })
+    const nfdCandidate = makeEntry({
+      key: 'hong2020_nfd',
+      authors: ['홍길동'],
+      year: '2020',
+      title: nfdTitle,
+    })
+    expect(isDuplicateEntry(nfdCandidate, existingKo)).toEqual({
+      isDuplicate: true,
+      matchReason: 'title_year',
+    })
+
+    const doiCandidate = makeEntry({
+      key: 'hong2020_doi',
+      year: '2020',
+      title: 'Different Title',
+      doi: 'dx.doi.org/10.1234/ko.2020',
+    })
+    expect(isDuplicateEntry(doiCandidate, existingKo)).toEqual({
+      isDuplicate: true,
+      matchReason: 'doi',
+    })
+
+    const preview = planImportPreview([nfdCandidate, doiCandidate], [existingKo])
+    expect(preview.toAdd).toHaveLength(0)
+    expect(preview.duplicates).toHaveLength(2)
+  })
+})

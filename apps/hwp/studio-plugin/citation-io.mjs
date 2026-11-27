@@ -66,6 +66,45 @@ const BIBTEX_TYPE_MAP = Object.freeze({
   unpublished: 'other',
 })
 
+const VALID_BIBTEX_DIRECTIVES = new Set([
+  'comment',
+  'preamble',
+  'string',
+  ...Object.keys(BIBTEX_TYPE_MAP),
+  'collection',
+  'reference',
+  'inreference',
+  'patent',
+  'periodical',
+  'dataset',
+  'software',
+  'standard',
+  'mvbook',
+  'mvcollection',
+  'mvproceedings',
+  'mvreference',
+  'suppbook',
+  'suppcollection',
+  'suppperiodical',
+  'bookinbook',
+  'review',
+  'letter',
+  'legislation',
+  'jurisdiction',
+  'legal',
+  'video',
+  'audio',
+  'image',
+  'artwork',
+  'movie',
+  'music',
+  'performance',
+  'xdata',
+  'set',
+])
+
+const BIBTEX_VERBATIM_FIELDS = new Set(['url', 'doi', 'file', 'eprint', 'issn', 'isbn'])
+
 const RIS_TYPE_MAP = Object.freeze({
   JOUR: 'article',
   EJOUR: 'article',
@@ -517,6 +556,22 @@ function decodeBibTeXValue(raw) {
   return sanitizeImportedField(text)
 }
 
+function decodeBibTeXVerbatimValue(raw) {
+  if (typeof raw !== 'string') return ''
+  // Preserve `~`, `--`, `---`, accents, and identifier/URL punctuation verbatim.
+  // Only unescape literal braces escaped during BibTeX serialization.
+  const text = raw.replace(/\\\{/g, '{').replace(/\\\}/g, '}')
+  return sanitizeImportedField(text)
+}
+
+function decodeBibTeXField(fieldName, raw) {
+  if (raw == null) return ''
+  if (BIBTEX_VERBATIM_FIELDS.has(fieldName)) {
+    return decodeBibTeXVerbatimValue(raw)
+  }
+  return decodeBibTeXValue(raw)
+}
+
 function splitBibTeXAuthorsTopLevel(raw) {
   const parts = []
   let depth = 0
@@ -697,22 +752,33 @@ export function parseBibTeX(input, options = {}) {
     if (atIndex === -1) break
     i = atIndex + 1
 
+    // Ignore `@` preceded by email/word characters (e.g. `contact@example.org`).
+    if (atIndex > 0 && /[A-Za-z0-9._+-]/.test(text[atIndex - 1])) {
+      continue
+    }
+
     const typeStart = i
     while (i < text.length && /[A-Za-z0-9_-]/.test(text[i])) i += 1
     const rawType = text.slice(typeStart, i).toLowerCase()
-    if (!rawType) continue
+    if (!rawType || !/^[a-z]/.test(rawType)) continue
 
-    i = skipWs(text, i)
-    const openChar = text[i]
+    const afterWs = skipWs(text, i)
+    const openChar = text[afterWs]
     if (openChar !== '{' && openChar !== '(') {
       if (rawType === 'comment') {
-        const nl = text.indexOf('\n', i)
+        const nl = text.indexOf('\n', afterWs)
         i = nl === -1 ? text.length : nl + 1
-        continue
       }
-      fatalError = `Expected "{" or "(" after @${rawType}.`
-      break
+      // Text outside `@type{...}` entries is treated as a comment per BibTeX rules.
+      continue
     }
+
+    if (!VALID_BIBTEX_DIRECTIVES.has(rawType)) {
+      // Unrecognized `@word{...}` outside an entry is skipped as free-text commentary.
+      continue
+    }
+
+    i = afterWs
     const closeChar = openChar === '{' ? '}' : ')'
     sawAnyDirective = true
 
@@ -838,8 +904,8 @@ export function parseBibTeX(input, options = {}) {
     const institutionRaw = fields.school ?? fields.institution
     const institution = institutionRaw ? decodeBibTeXValue(institutionRaw) : undefined
     let degree = fields.type ? decodeBibTeXValue(fields.type) : undefined
-    const doi = fields.doi ? sanitizeOptionalField(decodeBibTeXValue(fields.doi)) : undefined
-    const url = fields.url ? sanitizeOptionalField(decodeBibTeXValue(fields.url)) : undefined
+    const doi = fields.doi ? sanitizeOptionalField(decodeBibTeXField('doi', fields.doi)) : undefined
+    const url = fields.url ? sanitizeOptionalField(decodeBibTeXField('url', fields.url)) : undefined
     const accessed = fields.urldate ? decodeBibTeXValue(fields.urldate) : undefined
     const language = parseLanguageTag(decodeBibTeXValue(fields.language ?? fields.langid ?? ''))
     const tags = fields.keywords ? parseTagList(decodeBibTeXValue(fields.keywords)) : []
@@ -1028,19 +1094,35 @@ export function exportBibTeX(entries, options = {}) {
 }
 
 const RIS_LINE_RE = /^([A-Z][A-Z0-9])\s{1,2}-(?:\s(.*))?$/
+const RIS_KO_SINGLE_NAME_RE = /^[\uAC00-\uD7A3]{2,4}$/
+
+/**
+ * Parse a single RIS author/editor value (`AU`, `A1`, `ED`, `A2`):
+ * - Strings containing a comma (`Smith, John`) are parsed as personal `{ family, given }`.
+ * - Comma-less single Korean Hangul names (2-4 syllables) or single tokens keep personal `literal`.
+ * - Comma-less multi-word strings (e.g. `World Health Organization`) are treated as
+ *   organization authors (`{ literal, isOrganization: true }`) rather than split into family/given.
+ */
+function parseRisAuthor(raw) {
+  const trimmed = sanitizeImportedField(raw)
+  if (!trimmed) return null
+  if (trimmed.includes(',')) {
+    return normalizeAuthor(trimmed)
+  }
+  if (RIS_KO_SINGLE_NAME_RE.test(trimmed) || !/\s/.test(trimmed)) {
+    return { literal: trimmed }
+  }
+  return { literal: trimmed, isOrganization: true }
+}
 
 function finalizeRisRecord(record, usedKeys, usedIds, source) {
   const rawType = sanitizeImportedField(record.TY?.[0] ?? '').toUpperCase()
   const type = RIS_TYPE_MAP[rawType] ?? 'other'
 
-  const authorsRaw = [...(record.AU ?? []), ...(record.A1 ?? [])]
-  const editorsRaw = [...(record.ED ?? []), ...(record.A2 ?? [])]
-  const authors = authorsRaw
-    .map((name) => normalizeAuthor(sanitizeImportedField(name)))
-    .filter(Boolean)
-  const editors = editorsRaw
-    .map((name) => normalizeAuthor(sanitizeImportedField(name)))
-    .filter(Boolean)
+  const authorsRaw = record._authors ?? [...(record.AU ?? []), ...(record.A1 ?? [])]
+  const editorsRaw = record._editors ?? [...(record.ED ?? []), ...(record.A2 ?? [])]
+  const authors = authorsRaw.map(parseRisAuthor).filter(Boolean)
+  const editors = editorsRaw.map(parseRisAuthor).filter(Boolean)
 
   const title = sanitizeImportedField(record.TI?.[0] ?? record.T1?.[0] ?? '')
   const containerTitle = sanitizeOptionalField(
@@ -1126,7 +1208,7 @@ export function parseRis(input, options = {}) {
   const source = options.source ?? 'import'
 
   let current = null
-  let lastTag = null
+  let lastList = null
   let reachedLimit = false
 
   const pushCurrent = () => {
@@ -1137,12 +1219,12 @@ export function parseRis(input, options = {}) {
         reachedLimit = true
       }
       current = null
-      lastTag = null
+      lastList = null
       return
     }
     entries.push(finalizeRisRecord(current, usedKeys, usedIds, source))
     current = null
-    lastTag = null
+    lastList = null
   }
 
   for (const rawLine of lines) {
@@ -1160,7 +1242,9 @@ export function parseRis(input, options = {}) {
         if (reachedLimit) break
         current = Object.create(null)
         current.TY = [value]
-        lastTag = 'TY'
+        current._authors = []
+        current._editors = []
+        lastList = current.TY
         continue
       }
 
@@ -1172,22 +1256,29 @@ export function parseRis(input, options = {}) {
 
       if (!current) continue
 
-      if (!current[tag]) current[tag] = []
-      if (value) {
-        current[tag].push(value)
+      let targetList
+      if (tag === 'AU' || tag === 'A1') {
+        targetList = current._authors
+      } else if (tag === 'ED' || tag === 'A2') {
+        targetList = current._editors
+      } else {
+        if (!current[tag]) current[tag] = []
+        targetList = current[tag]
       }
-      lastTag = tag
+      if (value) {
+        targetList.push(value)
+      }
+      lastList = targetList
       continue
     }
 
     // Continuation line inside an open record.
     const continuation = sanitizeImportedField(rawLine)
-    if (current && lastTag && continuation) {
-      const arr = current[lastTag]
-      if (Array.isArray(arr) && arr.length > 0) {
-        arr[arr.length - 1] = `${arr[arr.length - 1]} ${continuation}`
+    if (current && lastList && continuation) {
+      if (lastList.length > 0) {
+        lastList[lastList.length - 1] = `${lastList[lastList.length - 1]} ${continuation}`
       } else {
-        current[lastTag] = [continuation]
+        lastList.push(continuation)
       }
     }
   }
@@ -1210,6 +1301,12 @@ export function parseRis(input, options = {}) {
   return { ok: true, entries, warnings }
 }
 
+/**
+ * Format an author for RIS `AU`/`ED` tags.
+ * Organization authors are exported without a comma (`World Health Organization`)
+ * so `parseRis` roundtrips `isOrganization: true`, whereas personal `{ family, given }`
+ * authors are exported with a comma (`Smith, John`) so they roundtrip as personal.
+ */
 function formatRisAuthor(author) {
   const norm = normalizeAuthor(author)
   if (!norm) return ''
@@ -1354,6 +1451,44 @@ function parseCslDate(dateObj) {
   return sanitizeOptionalField(dateObj.raw ?? dateObj.literal)
 }
 
+function extractCslTextValue(raw, preferredLang) {
+  if (raw == null) return ''
+  if (typeof raw === 'string' || typeof raw === 'number') {
+    return sanitizeImportedField(raw)
+  }
+  if (Array.isArray(raw)) {
+    for (const element of raw) {
+      const extracted = extractCslTextValue(element, preferredLang)
+      if (extracted) return extracted
+    }
+    return ''
+  }
+  if (typeof raw === 'object') {
+    for (const key of ['value', '#text', 'text', 'literal', 'raw']) {
+      if (Object.prototype.hasOwnProperty.call(raw, key) && raw[key] != null) {
+        const extracted = extractCslTextValue(raw[key], preferredLang)
+        if (extracted) return extracted
+      }
+    }
+    const langPriority =
+      preferredLang === 'ko'
+        ? ['ko', 'ko-KR', 'en', 'en-US', 'en-GB']
+        : ['en', 'en-US', 'en-GB', 'ko', 'ko-KR']
+    for (const langKey of langPriority) {
+      if (Object.prototype.hasOwnProperty.call(raw, langKey) && raw[langKey] != null) {
+        const extracted = extractCslTextValue(raw[langKey], preferredLang)
+        if (extracted) return extracted
+      }
+    }
+    for (const val of Object.values(raw)) {
+      const extracted = extractCslTextValue(val, preferredLang)
+      if (extracted) return extracted
+    }
+    return ''
+  }
+  return ''
+}
+
 function looksLikeCslItem(item) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return false
   return (
@@ -1440,14 +1575,15 @@ export function parseCslJson(input, options = {}) {
 
     const rawType = sanitizeImportedField(item.type).toLowerCase()
     const type = CSL_TYPE_MAP[rawType] ?? 'other'
+    const language = parseLanguageTag(item.language)
     const authors = Array.isArray(item.author)
       ? item.author.map(parseCslPerson).filter(Boolean)
       : []
     const editors = Array.isArray(item.editor)
       ? item.editor.map(parseCslPerson).filter(Boolean)
       : []
-    const title = sanitizeImportedField(item.title ?? '')
-    const containerTitle = sanitizeOptionalField(item['container-title'])
+    const title = extractCslTextValue(item.title, language)
+    const containerTitle = extractCslTextValue(item['container-title'], language) || undefined
     const year = parseCslYear(item.issued)
     const volume = sanitizeOptionalField(item.volume)
     const issue = sanitizeOptionalField(item.issue)
@@ -1462,7 +1598,6 @@ export function parseCslJson(input, options = {}) {
     const doi = sanitizeOptionalField(item.DOI ?? item.doi)
     const url = sanitizeOptionalField(item.URL ?? item.url)
     const accessed = parseCslDate(item.accessed)
-    const language = parseLanguageTag(item.language)
     const memo = sanitizeOptionalField(item.note)
     const tags = parseTagList(item.tags ?? item.keyword)
     const rawKey = sanitizeOptionalField(item['citation-key'] ?? item.id)
@@ -1617,7 +1752,7 @@ export function detectBibliographyFormat(input, filename) {
   if (/^\s*TY\s{1,2}-/m.test(trimmed)) {
     return 'ris'
   }
-  if (/@[A-Za-z][A-Za-z0-9_-]*\s*[{(]/.test(trimmed)) {
+  if (/(?:^|[^A-Za-z0-9._+-])@[A-Za-z][A-Za-z0-9_-]*\s*[{(]/.test(trimmed)) {
     return 'bibtex'
   }
 
@@ -1744,7 +1879,7 @@ function parseDocumentAuthors(raw, styleHint) {
   if (HANGUL_RE.test(working)) {
     const tokens = working
       .split(/\s*[,·ㆍ&]\s*|\s+(?:및|and)\s+/i)
-      .map((s) => s.trim())
+      .map((s) => s.replace(/\.+$/, '').trim())
       .filter(Boolean)
     return {
       authors: tokens.map((t) => normalizeAuthor(t)).filter(Boolean),
@@ -1787,10 +1922,18 @@ function parseDocumentAuthors(raw, styleHint) {
   }
 
   if (ORG_KEYWORD_RE.test(working)) {
-    return { authors: [{ literal: working, isOrganization: true }], isEditor }
+    const orgName = working.replace(/\.+$/, '').trim()
+    return {
+      authors: orgName ? [{ literal: orgName, isOrganization: true }] : [],
+      isEditor,
+    }
   }
 
-  const single = normalizeAuthor(working)
+  // Strip trailing sentence period from non-initial author tokens (e.g. "UNESCO." or "United Nations.").
+  const cleanedSingle = /(?:^|\s)[A-Za-z]\.$/.test(working)
+    ? working
+    : working.replace(/\.+$/, '').trim()
+  const single = normalizeAuthor(cleanedSingle)
   return { authors: single ? [single] : [], isEditor }
 }
 
@@ -1830,10 +1973,27 @@ function splitFirstSentence(text) {
   return { first: stripTrailingPunct(cleaned), rest: '', quoted: false }
 }
 
+function looksLikeBookChapterTail(sourcePart) {
+  if (!sourcePart) return false
+  // APA / Chicago / IEEE / MLA chapter-in-edited-book patterns that the rule parser
+  // cannot cleanly split into chapter + container + editors + publisher.
+  if (/^In\s+.+\((?:Eds?\.?)\)/i.test(sourcePart)) return true
+  if (/^In\s+.+\(\s*pp?\.\s*\d+/i.test(sourcePart)) return true
+  if (/^in\s+.+,\s*(?:Eds?\.?)\b/i.test(sourcePart)) return true
+  if (/\bedited\s+by\b/i.test(sourcePart)) return true
+  if (/(?:\(편\)|\(엮음\)|\s편)\s*,/.test(sourcePart)) return true
+  if (/\(\s*\d+(?:\s*[-–—]\s*\d+)?\s*쪽\s*\)/.test(sourcePart)) return true
+  return false
+}
+
 function parseSourceTail(sourcePart, titleWasQuoted, hasUrl, hasDoi) {
   const cleaned = stripTrailingPunct(sourcePart)
   if (!cleaned) {
     return { type: hasUrl && !hasDoi ? 'webpage' : 'other' }
+  }
+
+  if (looksLikeBookChapterTail(cleaned)) {
+    return { unparsedReason: 'chapter_format_requires_review' }
   }
 
   // Korean thesis: "박사학위논문, 한국대학교" or "한국대학교 박사학위논문"
@@ -1956,6 +2116,9 @@ function parseSingleDocumentLine(rawLine) {
     const { first: title, rest, quoted } = splitFirstSentence(parenMatch[3])
     if (authors.length > 0 && title.length >= 2) {
       const tail = parseSourceTail(rest, quoted, Boolean(url), Boolean(doi))
+      if (tail.unparsedReason) {
+        return { ok: false, reason: tail.unparsedReason }
+      }
       return {
         ok: true,
         draft: {
@@ -1987,6 +2150,9 @@ function parseSingleDocumentLine(rawLine) {
     const { first: title, rest, quoted } = splitFirstSentence(chicagoMatch[3])
     if (authors.length > 0 && title.length >= 2) {
       const tail = parseSourceTail(rest, quoted, Boolean(url), Boolean(doi))
+      if (tail.unparsedReason) {
+        return { ok: false, reason: tail.unparsedReason }
+      }
       return {
         ok: true,
         draft: {
@@ -2017,6 +2183,9 @@ function parseSingleDocumentLine(rawLine) {
     const title = stripTrailingPunct(ieeeMatch[2])
     const rest = ieeeMatch[3].trim()
     const tail = parseSourceTail(rest, true, Boolean(url), Boolean(doi))
+    if (tail.unparsedReason) {
+      return { ok: false, reason: tail.unparsedReason }
+    }
     const year = tail.year ?? extractYearValue(rest)
     if (authors.length > 0 && title.length >= 2 && (year || doi || url)) {
       return {
@@ -2046,6 +2215,9 @@ function parseSingleDocumentLine(rawLine) {
     const title = stripTrailingPunct(mlaMatch[2])
     const rest = mlaMatch[3].trim()
     const tail = parseSourceTail(rest, true, Boolean(url), Boolean(doi))
+    if (tail.unparsedReason) {
+      return { ok: false, reason: tail.unparsedReason }
+    }
     const year = tail.year ?? extractYearValue(rest)
     if (authors.length > 0 && title.length >= 2 && (year || doi || url)) {
       return {
@@ -2194,15 +2366,16 @@ export function parseDocumentReferenceLines(input, options = {}) {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalize a DOI string by stripping URL prefixes (`https://doi.org/`,
- * `http://dx.doi.org/`, `doi:`), trimming whitespace, and lowercasing.
+ * Normalize a DOI string by stripping URL or host prefixes (`https://doi.org/`,
+ * `http://dx.doi.org/`, `doi.org/`, `dx.doi.org/`, `doi:`), applying Unicode
+ * NFC normalization, trimming whitespace, and lowercasing.
  */
 export function normalizeDoi(doi) {
   if (typeof doi !== 'string') return ''
-  const cleaned = sanitizeImportedField(doi)
+  const cleaned = sanitizeImportedField(doi).normalize('NFC')
   if (!cleaned) return ''
   return cleaned
-    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '')
+    .replace(/^(?:https?:\/\/)?(?:dx\.)?doi\.org\//i, '')
     .replace(/^doi:\s*/i, '')
     .replace(/\.+$/, '')
     .trim()
@@ -2210,19 +2383,20 @@ export function normalizeDoi(doi) {
 }
 
 /**
- * Normalize a title for duplicate comparison: lowercase, strip punctuation,
- * preserve Hangul, Latin/Unicode letters, and digits, and collapse whitespace.
+ * Normalize a title for duplicate comparison: apply Unicode NFC normalization,
+ * lowercase, strip punctuation, preserve Hangul, Latin/Unicode letters, and
+ * digits, and collapse whitespace.
  */
 export function normalizeTitleForMatch(title) {
   if (typeof title !== 'string') return ''
-  const cleaned = sanitizeImportedField(title)
+  const cleaned = sanitizeImportedField(title).normalize('NFC')
   if (!cleaned) return ''
   return cleaned.toLowerCase().replace(NON_ALNUM_UNICODE_RE, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function normalizeYearForMatch(year) {
   if (year == null) return ''
-  const cleaned = sanitizeImportedField(year).toLowerCase()
+  const cleaned = sanitizeImportedField(year).normalize('NFC').toLowerCase()
   if (!cleaned) return ''
   const match = FOUR_DIGIT_YEAR_RE.exec(cleaned)
   return match ? match[1] : cleaned

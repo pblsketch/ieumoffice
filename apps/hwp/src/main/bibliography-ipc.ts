@@ -9,7 +9,8 @@
  * - AI candidates always go through `addAiBibliographyCandidates`, which enforces
  *   `verified: false`, `source: 'ai'`, and a valid `http(s)` source URL.
  */
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 import {
@@ -30,6 +31,7 @@ import type {
   BibListResult,
   BibPickImportFileResult,
   BibPreviewImportResult,
+  BibReadStateResult,
   BibUpdateResult,
   BibVerifyResult,
   BibliographyFormat,
@@ -40,10 +42,9 @@ import {
   addBibliographyEntry,
   commitBibliographyImport,
   deleteBibliographyEntry,
-  listBibliographyTags,
   previewBibliographyFileImport,
   previewBibliographyImport,
-  readBibliography,
+  readBibliographyState,
   updateBibliographyEntry,
   verifyBibliographyEntry,
   writeBibliographyExportFile,
@@ -55,6 +56,8 @@ export interface HwpBibliographyHost {
   hasView: (webContentsId: number) => boolean
   getWindow: (sender: WebContents) => BrowserWindow | null
   broadcast: (channel: string, payload: unknown) => void
+  /** Optional overwrite prompt override used when appending an extension collides with an existing file. */
+  confirmOverwrite?: (targetPath: string) => Promise<boolean>
 }
 
 const UNAUTHORIZED = {
@@ -103,15 +106,49 @@ function sanitizeExportOptions(raw: unknown): BibExportOptions | undefined {
   }
 }
 
+async function defaultConfirmOverwrite(
+  targetPath: string,
+  parent: BrowserWindow | undefined,
+): Promise<boolean> {
+  const options = {
+    type: 'warning' as const,
+    title: tm('dlgBibOverwriteTitle'),
+    message: tm('dlgBibOverwriteMsg', { name: basename(targetPath) }),
+    detail: tm('dlgBibOverwriteDetail'),
+    buttons: [tm('btnOverwrite'), tm('btnCancel')],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  }
+  const { response } =
+    parent && !parent.isDestroyed()
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options)
+  return response === 0
+}
+
 /** Register all `hwp:bib-*` IPC handlers for Hangul editor views. */
 export function registerHwpBibliographyIpc(host: HwpBibliographyHost): void {
   const resolveParentWindow = (sender: WebContents): BrowserWindow | undefined =>
     host.getWindow(sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
 
+  ipcMain.handle(HWP_CHANNELS.bibReadState, (e): BibReadStateResult => {
+    if (!host.hasView(e.sender.id)) return UNAUTHORIZED
+    return readBibliographyState(host.app)
+  })
+
   ipcMain.handle(HWP_CHANNELS.bibList, (e): BibListResult => {
     if (!host.hasView(e.sender.id)) return UNAUTHORIZED
-    const entries = readBibliography(host.app)
-    return { ok: true, entries, tags: listBibliographyTags(entries) }
+    const state = readBibliographyState(host.app)
+    if (!state.ok) return state
+    return {
+      ok: true,
+      entries: state.entries,
+      tags: state.tags,
+      sizeBytes: state.sizeBytes,
+      maxBytes: state.maxBytes,
+      nearLimit: state.nearLimit,
+    }
   })
 
   ipcMain.handle(HWP_CHANNELS.bibAdd, (e, input: unknown): BibAddResult => {
@@ -167,6 +204,8 @@ export function registerHwpBibliographyIpc(host: HwpBibliographyHost): void {
 
   ipcMain.handle(HWP_CHANNELS.bibPickImportFile, async (e): Promise<BibPickImportFileResult> => {
     if (!host.hasView(e.sender.id)) return UNAUTHORIZED
+    const state = readBibliographyState(host.app)
+    if (!state.ok) return state
     const parent = resolveParentWindow(e.sender)
     const picked = await showOpenDialogWithMemory(dialog, parent, {
       title: tm('dlgBibImportTitle'),
@@ -216,6 +255,8 @@ export function registerHwpBibliographyIpc(host: HwpBibliographyHost): void {
           error: `Unsupported bibliography export format: ${String(format)}`,
         }
       }
+      const state = readBibliographyState(host.app)
+      if (!state.ok) return state
       const spec = exportFormatSpec(format)
       const parent = resolveParentWindow(e.sender)
       const defaultPath = join(
@@ -234,9 +275,38 @@ export function registerHwpBibliographyIpc(host: HwpBibliographyHost): void {
         return { ok: true, canceled: true }
       }
       const targetPath = ensureExtension(picked.filePath, spec.ext)
+      // The OS save dialog only checked overwrite for `picked.filePath`; if appending the
+      // extension resolves to a different existing file, explicitly confirm before writing.
+      if (targetPath !== picked.filePath && existsSync(targetPath)) {
+        if (host.confirmOverwrite) {
+          const confirmed = await host.confirmOverwrite(targetPath)
+          if (!confirmed) {
+            return { ok: true, canceled: true }
+          }
+        } else if (typeof dialog?.showMessageBox !== 'function') {
+          return {
+            ok: false,
+            reason: 'file_exists',
+            error: `Export target already exists: ${targetPath}`,
+          }
+        } else {
+          try {
+            const confirmed = await defaultConfirmOverwrite(targetPath, parent)
+            if (!confirmed) {
+              return { ok: true, canceled: true }
+            }
+          } catch {
+            return {
+              ok: false,
+              reason: 'file_exists',
+              error: `Export target already exists: ${targetPath}`,
+            }
+          }
+        }
+      }
       return writeBibliographyExportFile(
         targetPath,
-        readBibliography(host.app),
+        state.entries,
         format,
         sanitizeExportOptions(options),
       )

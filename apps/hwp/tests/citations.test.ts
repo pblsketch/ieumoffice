@@ -454,11 +454,12 @@ describe('style switching (APA -> IEEE -> Chicago -> MLA -> APA) and manual edit
       expect(toChicago.skippedManual).toHaveLength(1)
       expect(paraText(doc, 0, 0)).toContain('(Smith and Doe 2021a, 10)')
 
-      // Switch Chicago -> MLA
+      // Switch Chicago -> MLA (both smith2021 and smith2021b are cited -> MLA short titles apply)
       const toMla = switchCitationStyle(doc, 'mla', entries)
       expect(toMla.ok).toBe(true)
       if (!toMla.ok) return
-      expect(paraText(doc, 0, 0)).toContain('(Smith and Doe 10)')
+      expect(paraText(doc, 0, 0)).toContain('(Smith and Doe, "Deep learning methods" 10)')
+      expect(paraText(doc, 0, 0)).toContain('(Smith and Doe, "Structured layout evaluation")')
 
       // Switch MLA -> APA
       const backApa = switchCitationStyle(doc, 'apa', entries)
@@ -840,6 +841,582 @@ describe('staleness registry integration & HWP/HWPX roundtrip + submission copy 
           clean.free()
         }
       }
+    } finally {
+      doc.free()
+    }
+  })
+})
+
+describe('PR review regressions: unified IEEE order, disambiguation sync, preserved missing lines, failure propagation, untitled audit, and range guards', () => {
+  it('Item #2 Repro 1: manual pattern citation before marked citation stays unified in IEEE body & bibliography and is flagged by auditCitations', () => {
+    const entries = makeSampleEntries()
+    const doc = makeDoc(['선행 연구 (김철수, 2019)를 먼저 언급한다.', '후속 연구를 인용한다.'])
+    try {
+      const ins = insertCitation(doc, {
+        entries,
+        items: [{ key: '홍길동2020' }],
+        place: { sec: 0, para: 1, offset: doc.getParagraphLength(0, 1) - 1 },
+      })
+      expect(ins.ok).toBe(true)
+      expect(insertBibliographyBlock(doc, entries).ok).toBe(true)
+
+      const switched = switchCitationStyle(doc, 'ieee', entries)
+      expect(switched.ok).toBe(true)
+      if (!switched.ok) return
+      expect(switched.bibliographyRefreshed).toBe(true)
+
+      // Unified order: 김철수2019 is [1], 홍길동2020 is [2] in BOTH body and bibliography.
+      expect(paraText(doc, 0, 1)).toContain('[2]')
+      expect(paraText(doc, 0, 1)).not.toContain('[1]')
+
+      const bibRes = switched.bibliographyResult
+      expect(bibRes?.ok).toBe(true)
+      if (!bibRes || !bibRes.ok) return
+      expect(bibRes.keys).toEqual(['김철수2019', '홍길동2020'])
+      expect(paraText(doc, 0, bibRes.startPara + 1)).toMatch(/^\[1\]\s*김철수/)
+      expect(paraText(doc, 0, bibRes.startPara + 2)).toMatch(/^\[2\]\s*홍길동/)
+
+      // auditCitations flags the un-updated manual pattern citation (김철수, 2019) with clickable location.
+      const report = auditCitations(doc, entries)
+      const manualStyleIssue = report.issues.find(
+        (i) =>
+          i.type === 'manual_citation_edit' &&
+          i.reason === 'unmarked_style_mismatch' &&
+          i.sec === 0 &&
+          i.para === 0,
+      )
+      expect(manualStyleIssue).toBeDefined()
+      expect(manualStyleIssue?.key).toBe('김철수2019')
+      expect(manualStyleIssue?.expectedText).toBe('[1]')
+      expect(manualStyleIssue?.text).toBe('(김철수, 2019)')
+    } finally {
+      doc.free()
+    }
+  })
+
+  it('Item #2 Repro 2: IEEE numbering syncs bidirectionally across body marks, table cells, and footnotes', () => {
+    const entries = makeSampleEntries()
+    // Direction A: marked body citation in para 2 ([1]), then insert earlier citation in table cell in para 0.
+    const docA = makeDoc(['표 문단', '중간 문단', '마지막 본문이다.'])
+    try {
+      expect(setDocumentCitationStyle(docA, 'ieee').ok).toBe(true)
+      const createdTbl = JSON.parse(
+        docA.createTableEx(
+          JSON.stringify({
+            sectionIdx: 0,
+            paraIdx: 0,
+            charOffset: 0,
+            rowCount: 1,
+            colCount: 1,
+            treatAsChar: true,
+          }),
+        ),
+      ) as { ok: boolean; controlIdx?: number }
+      expect(createdTbl.ok).toBe(true)
+      const tblCtrl = createdTbl.controlIdx ?? 0
+      docA.insertTextInCell(0, 0, tblCtrl, 0, 0, 0, '셀 인용: ')
+
+      const bodyIns = insertCitation(docA, {
+        entries,
+        items: [{ key: '홍길동2020' }],
+        place: { sec: 0, para: 2, offset: docA.getParagraphLength(0, 2) - 1 },
+      })
+      expect(bodyIns.ok).toBe(true)
+      expect(paraText(docA, 0, 2)).toContain('[1]')
+
+      const cellIns = insertCitation(docA, {
+        entries,
+        items: [{ key: '김철수2019' }],
+        place: {
+          kind: 'table',
+          sec: 0,
+          para: 0,
+          path: [{ controlIndex: tblCtrl, cellIndex: 0, cellParaIndex: 0 }],
+        },
+      })
+      expect(cellIns.ok).toBe(true)
+      if (!cellIns.ok) return
+      expect(cellIns.marked).toBe(false)
+      expect(cellIns.text).toBe('[1]')
+      expect(cellIns.renumbered).toBe(1)
+
+      // Body citation in para 2 renumbered to [2], cell holds [1].
+      const cellLen = docA.getCellParagraphLength(0, 0, tblCtrl, 0, 0)
+      expect(docA.getTextInCell(0, 0, tblCtrl, 0, 0, 0, cellLen)).toBe('셀 인용: [1]')
+      expect(paraText(docA, 0, 2)).toContain('[2]')
+
+      const bibA = insertBibliographyBlock(docA, entries)
+      expect(bibA.ok).toBe(true)
+      if (!bibA.ok) return
+      expect(bibA.keys).toEqual(['김철수2019', '홍길동2020'])
+      expect(paraText(docA, 0, bibA.startPara + 1)).toMatch(/^\[1\]\s*김철수/)
+      expect(paraText(docA, 0, bibA.startPara + 2)).toMatch(/^\[2\]\s*홍길동/)
+      expect(checkBibliographyStaleness(docA, { bibEntries: entries }).stale).toBe(false)
+    } finally {
+      docA.free()
+    }
+
+    // Direction B (reverse): insert citation in footnote in para 1 ([1]), then insert earlier body citation in para 0 -> footnote shifts [1] -> [2]!
+    const docB = makeDoc(['앞선 본문이다.', '각주 포함 문단'])
+    try {
+      expect(setDocumentCitationStyle(docB, 'ieee').ok).toBe(true)
+      const fnRes = JSON.parse(docB.insertFootnote(0, 1, 2)) as { ok: boolean }
+      expect(fnRes.ok).toBe(true)
+      const fnCtrls = (
+        JSON.parse(docB.getControls()) as Array<{
+          list: number
+          para: number
+          ctrlId: string
+          controlIndex: number
+        }>
+      ).filter((c) => c.list === 0 && c.para === 1 && c.ctrlId === 'fn')
+      expect(fnCtrls).toHaveLength(1)
+      const fnCtrl = fnCtrls[0]!.controlIndex
+
+      const fnCite = insertCitation(docB, {
+        entries,
+        items: [{ key: '김철수2019' }],
+        place: { kind: 'footnote', sec: 0, para: 1, noteControl: fnCtrl, notePara: 0 },
+      })
+      expect(fnCite.ok).toBe(true)
+      if (!fnCite.ok) return
+      expect(fnCite.text).toBe('[1]')
+
+      const earlierBody = insertCitation(docB, {
+        entries,
+        items: [{ key: '홍길동2020' }],
+        place: { sec: 0, para: 0, offset: docB.getParagraphLength(0, 0) - 1 },
+      })
+      expect(earlierBody.ok).toBe(true)
+      if (!earlierBody.ok) return
+      expect(earlierBody.text).toBe('[1]')
+      expect(earlierBody.renumbered).toBe(1)
+
+      const fnInfo = JSON.parse(docB.getFootnoteInfo(0, 1, fnCtrl)) as { texts: string[] }
+      expect(fnInfo.texts[0]).toContain('[2]')
+      expect(fnInfo.texts[0]).not.toContain('[1]')
+
+      // Verify checkBibliographyStaleness detects IEEE mismatch when a cell/body number disagrees with unified order!
+      const bibB = insertBibliographyBlock(docB, entries)
+      expect(bibB.ok).toBe(true)
+      expect(checkBibliographyStaleness(docB, { bibEntries: entries }).stale).toBe(false)
+
+      // Manually insert a mismatched earlier pattern citation (smith2021) in para 0 before [1]
+      // -> unified order shifts 홍길동2020 to [2], so body [1] disagrees with unified order!
+      docB.insertText(0, 0, 0, '(Smith, 2021) ')
+      const stale = checkBibliographyStaleness(docB, { bibEntries: entries })
+      expect(stale.stale).toBe(true)
+      expect(stale.ieeeOutOfOrder).toBe(true)
+      expect(stale.reason).toBe('ieee_order_changed')
+    } finally {
+      docB.free()
+    }
+  })
+
+  it('Item #7: reflects a/b disambiguation and MLA short-title changes in existing marks on insertCitation and refreshBibliographyBlock, skipping manual edits', () => {
+    const hongA = normalizeBibEntry({
+      key: 'hong2020a',
+      type: 'article',
+      authors: ['홍길동'],
+      year: '2020',
+      title: '가나다 인공지능 교육 연구',
+      containerTitle: '한국교육학연구',
+      language: 'ko',
+      verified: true,
+    })
+    const hongB = normalizeBibEntry({
+      key: 'hong2020b',
+      type: 'article',
+      authors: ['홍길동'],
+      year: '2020',
+      title: '다라마 인공지능 평가 연구',
+      containerTitle: '한국교육학연구',
+      language: 'ko',
+      verified: true,
+    })
+    const pairEntries = [hongA, hongB]
+
+    // 1. Auto-update first citation to 2020a when second 2020 work is inserted.
+    const doc = makeDoc(['첫 문장이다.', '둘째 문장이다.'])
+    try {
+      const first = insertCitation(doc, {
+        entries: pairEntries,
+        items: [{ key: 'hong2020a' }],
+        place: { sec: 0, para: 0, offset: 5 },
+      })
+      expect(first.ok).toBe(true)
+      expect(paraText(doc, 0, 0)).toContain('(홍길동, 2020)')
+
+      const second = insertCitation(doc, {
+        entries: pairEntries,
+        items: [{ key: 'hong2020b' }],
+        place: { sec: 0, para: 1, offset: 5 },
+      })
+      expect(second.ok).toBe(true)
+      if (!second.ok) return
+      expect(second.text).toBe('(홍길동, 2020b)')
+      expect(second.renumbered).toBe(1)
+      expect(paraText(doc, 0, 0)).toContain('(홍길동, 2020a)')
+      expect(paraText(doc, 0, 1)).toContain('(홍길동, 2020b)')
+    } finally {
+      doc.free()
+    }
+
+    // 2. Skip manually edited first citation and report in skippedManual.
+    const docManual = makeDoc(['첫 문장이다.', '둘째 문장이다.'])
+    try {
+      const first = insertCitation(docManual, {
+        entries: pairEntries,
+        items: [{ key: 'hong2020a' }],
+        place: { sec: 0, para: 0, offset: 5 },
+      })
+      expect(first.ok).toBe(true)
+      if (!first.ok || !first.marked) return
+      docManual.insertText(0, 0, first.startOffset + 1, '직접수정 ')
+
+      const second = insertCitation(docManual, {
+        entries: pairEntries,
+        items: [{ key: 'hong2020b' }],
+        place: { sec: 0, para: 1, offset: 5 },
+      })
+      expect(second.ok).toBe(true)
+      if (!second.ok) return
+      expect(second.skippedManual).toHaveLength(1)
+      expect(second.skippedManual?.[0]?.id).toBe(first.id)
+      expect(paraText(docManual, 0, 0)).toContain('직접수정')
+      expect(paraText(docManual, 0, 1)).toContain('(홍길동, 2020b)')
+    } finally {
+      docManual.free()
+    }
+
+    // 3. Disambiguation sync during refreshBibliographyBlock (e.g. second entry added via manual pattern or library edit).
+    const docRefresh = makeDoc(['첫 문장이다.', '둘째 문장은 (홍길동, 2020)을 언급한다.'])
+    try {
+      const onlyA = [hongA]
+      expect(
+        insertCitation(docRefresh, {
+          entries: onlyA,
+          items: [{ key: 'hong2020a' }],
+          place: { sec: 0, para: 0, offset: 5 },
+        }).ok,
+      ).toBe(true)
+      expect(insertBibliographyBlock(docRefresh, onlyA).ok).toBe(true)
+      expect(paraText(docRefresh, 0, 0)).toContain('(홍길동, 2020)')
+
+      // Now second work is included in library + bibliography (includeAllLibrary or cited) -> refresh syncs mark #1 to 2020a!
+      const docWithTwoMarks = makeDoc(['첫 문장이다.', '둘째 문장이다.'])
+      try {
+        // Insert hong2020a with only hongA in library, insert bib, then insert hong2020b with only hongB (simulating another machine), then refresh with full library!
+        expect(
+          insertCitation(docWithTwoMarks, {
+            entries: [hongA],
+            items: [{ key: 'hong2020a' }],
+            place: { sec: 0, para: 0, offset: 5 },
+          }).ok,
+        ).toBe(true)
+        expect(insertBibliographyBlock(docWithTwoMarks, [hongA]).ok).toBe(true)
+        expect(
+          insertCitation(docWithTwoMarks, {
+            entries: [hongB],
+            items: [{ key: 'hong2020b' }],
+            place: { sec: 0, para: 1, offset: 5 },
+          }).ok,
+        ).toBe(true)
+        // Before refresh, both marks still lack a/b because each was inserted with a 1-entry library.
+        expect(paraText(docWithTwoMarks, 0, 0)).toContain('(홍길동, 2020)')
+        expect(paraText(docWithTwoMarks, 0, 1)).toContain('(홍길동, 2020)')
+
+        const ref = refreshBibliographyBlock(docWithTwoMarks, pairEntries)
+        expect(ref.ok).toBe(true)
+        if (!ref.ok) return
+        expect(ref.updatedCitations).toBe(2)
+        expect(paraText(docWithTwoMarks, 0, 0)).toContain('(홍길동, 2020a)')
+        expect(paraText(docWithTwoMarks, 0, 1)).toContain('(홍길동, 2020b)')
+      } finally {
+        docWithTwoMarks.free()
+      }
+    } finally {
+      docRefresh.free()
+    }
+
+    // 4. MLA short-title sync when a second English work by the same author is inserted.
+    const sampleEntries = makeSampleEntries()
+    const docMla = makeDoc(['First sentence.', 'Second sentence.'])
+    try {
+      expect(setDocumentCitationStyle(docMla, 'mla').ok).toBe(true)
+      expect(
+        insertCitation(docMla, {
+          entries: sampleEntries,
+          items: [{ key: 'smith2021' }],
+          place: { sec: 0, para: 0, offset: 14 },
+        }).ok,
+      ).toBe(true)
+      expect(paraText(docMla, 0, 0)).toContain('(Smith and Doe)')
+
+      const mla2 = insertCitation(docMla, {
+        entries: sampleEntries,
+        items: [{ key: 'smith2021b' }],
+        place: { sec: 0, para: 1, offset: 15 },
+      })
+      expect(mla2.ok).toBe(true)
+      if (!mla2.ok) return
+      expect(mla2.renumbered).toBe(1)
+      expect(paraText(docMla, 0, 0)).toContain('(Smith and Doe, "Deep learning methods")')
+      expect(paraText(docMla, 0, 1)).toContain('(Smith and Doe, "Structured layout evaluation")')
+    } finally {
+      docMla.free()
+    }
+  })
+
+  it('Item #8: preserves missing-from-library bibliography lines with LIVE document text in proper APA collation and IEEE number position', () => {
+    const ganada = normalizeBibEntry({
+      key: 'ganada2020',
+      type: 'book',
+      authors: ['가나다'],
+      year: '2020',
+      title: '누락될 한국어 문헌',
+      publisher: '출판사',
+      language: 'ko',
+      verified: true,
+    })
+    const hong = makeSampleEntries()[0]!
+    const smith = makeSampleEntries()[2]!
+
+    // 1. APA: missing-key Korean entry edited live stays BEFORE 홍길동 with live edited text!
+    const docApa = makeDoc(['인용 본문이다.'])
+    try {
+      expect(
+        insertCitation(docApa, {
+          entries: [ganada, hong, smith],
+          items: [{ key: 'ganada2020' }, { key: '홍길동2020' }, { key: 'smith2021' }],
+          place: { sec: 0, para: 0, offset: 7 },
+        }).ok,
+      ).toBe(true)
+      const ins = insertBibliographyBlock(docApa, [ganada, hong, smith])
+      expect(ins.ok).toBe(true)
+      if (!ins.ok) return
+
+      // Live-edit the 가나다 bibliography line in doc.
+      const ganadaPara = ins.startPara + 1
+      expect(paraText(docApa, 0, ganadaPara)).toContain('가나다(2020)')
+      docApa.insertText(0, ganadaPara, docApa.getParagraphLength(0, ganadaPara), ' [현장수정]')
+
+      // Refresh with partial library lacking ganada2020!
+      const ref = refreshBibliographyBlock(docApa, [hong, smith], { allowOverwriteManual: true })
+      expect(ref.ok).toBe(true)
+      if (!ref.ok) return
+      expect(ref.preservedMissingKeys).toEqual(['ganada2020'])
+      expect(ref.keys).toEqual(['ganada2020', '홍길동2020', 'smith2021'])
+      // Preserved live edited text stays FIRST (before 홍길동), NOT appended at the end!
+      expect(paraText(docApa, 0, ref.startPara + 1)).toContain('가나다(2020)')
+      expect(paraText(docApa, 0, ref.startPara + 1)).toContain('[현장수정]')
+      expect(paraText(docApa, 0, ref.startPara + 2)).toContain('홍길동(2020)')
+      expect(paraText(docApa, 0, ref.startPara + 3)).toContain('Smith, J.')
+    } finally {
+      docApa.free()
+    }
+
+    // 2. IEEE: missing-key [1] entry stays at position 1 BEFORE [2]!
+    const docIeee = makeDoc(['첫 인용.', '둘째 인용.'])
+    try {
+      expect(setDocumentCitationStyle(docIeee, 'ieee').ok).toBe(true)
+      expect(
+        insertCitation(docIeee, {
+          entries: [ganada, hong],
+          items: [{ key: 'ganada2020' }],
+          place: { sec: 0, para: 0, offset: 4 },
+        }).ok,
+      ).toBe(true)
+      expect(
+        insertCitation(docIeee, {
+          entries: [ganada, hong],
+          items: [{ key: '홍길동2020' }],
+          place: { sec: 0, para: 1, offset: 5 },
+        }).ok,
+      ).toBe(true)
+      const ins = insertBibliographyBlock(docIeee, [ganada, hong])
+      expect(ins.ok).toBe(true)
+      if (!ins.ok) return
+
+      // Live-edit [1] line and refresh with partial library containing only hong!
+      const firstBibPara = ins.startPara + 1
+      docIeee.insertText(0, firstBibPara, docIeee.getParagraphLength(0, firstBibPara), ' [보존]')
+
+      const ref = refreshBibliographyBlock(docIeee, [hong], { allowOverwriteManual: true })
+      expect(ref.ok).toBe(true)
+      if (!ref.ok) return
+      expect(ref.preservedMissingKeys).toEqual(['ganada2020'])
+      expect(ref.keys).toEqual(['ganada2020', '홍길동2020'])
+      expect(paraText(docIeee, 0, ref.startPara + 1)).toMatch(/^\[1\]\s*가나다.*\[보존\]$/)
+      expect(paraText(docIeee, 0, ref.startPara + 2)).toMatch(/^\[2\]\s*홍길동/)
+    } finally {
+      docIeee.free()
+    }
+  })
+
+  it('Item #9: propagates writeDocSetting and mark-delete failures instead of discarding them', () => {
+    const entries = makeSampleEntries()
+    const doc = makeDoc(['첫 문장이다.', '둘째 문장이다.'])
+    try {
+      expect(
+        insertCitation(doc, {
+          entries,
+          items: [{ key: '홍길동2020' }],
+          place: { sec: 0, para: 0, offset: 5 },
+        }).ok,
+      ).toBe(true)
+      expect(insertBibliographyBlock(doc, entries).ok).toBe(true)
+
+      // Fault-inject addBookmark failure for setting bookmarks -> setDocumentCitationStyle & refreshBibliographyBlock fail cleanly.
+      const failWriteProxy = Object.create(doc) as HwpDocument
+      failWriteProxy.addBookmark = (sec: number, para: number, offset: number, name: string) => {
+        if (name.startsWith(MARK_PREFIXES.setting)) {
+          return JSON.stringify({ ok: false, error: 'simulated setting write failure' })
+        }
+        return doc.addBookmark(sec, para, offset, name)
+      }
+
+      const styleFail = setDocumentCitationStyle(failWriteProxy, 'ieee')
+      expect(styleFail.ok).toBe(false)
+
+      const rwFail = rewriteCitationKeys(failWriteProxy, { 홍길동2020: 'hong_renamed' }, entries)
+      expect(rwFail.ok).toBe(false)
+    } finally {
+      doc.free()
+    }
+
+    // Use a fresh document for mark-delete fault injection (no wrapping transaction above).
+    const docDel = makeDoc(['첫 문장이다.', '둘째 문장이다.'])
+    try {
+      expect(
+        insertCitation(docDel, {
+          entries,
+          items: [{ key: '홍길동2020' }],
+          place: { sec: 0, para: 0, offset: 5 },
+        }).ok,
+      ).toBe(true)
+      expect(insertBibliographyBlock(docDel, entries).ok).toBe(true)
+
+      // Fault-inject deleteBookmark & deleteControlAt failure -> switchCitationStyle & refreshBibliographyBlock return mark_delete_failed!
+      const failDeleteProxy = Object.create(docDel) as HwpDocument
+      failDeleteProxy.deleteBookmark = () =>
+        JSON.stringify({ ok: false, error: 'simulated deleteBookmark failure' })
+      ;(failDeleteProxy as unknown as Record<string, unknown>).deleteControlAt = () =>
+        JSON.stringify({ ok: false, error: 'simulated deleteControlAt failure' })
+
+      const switchFail = switchCitationStyle(failDeleteProxy, 'ieee', entries)
+      expect(switchFail.ok).toBe(false)
+      if (!switchFail.ok) {
+        expect(switchFail.reason).toBe('mark_delete_failed')
+        expect(Array.isArray(switchFail.failed) && switchFail.failed.length > 0).toBe(true)
+      }
+
+      const refreshFail = refreshBibliographyBlock(failDeleteProxy, entries, {
+        allowOverwriteManual: true,
+      })
+      expect(refreshFail.ok).toBe(false)
+      if (!refreshFail.ok) {
+        expect(refreshFail.reason).toBe('mark_delete_failed')
+        expect(Array.isArray(refreshFail.failed) && refreshFail.failed.length > 0).toBe(true)
+      }
+    } finally {
+      docDel.free()
+    }
+  })
+
+  it('Item #14: flags untitled entries in auditCitations (with clickable location when cited)', () => {
+    const untitledCited = normalizeBibEntry({
+      key: 'untitled_cited',
+      type: 'article',
+      authors: ['무제저자'],
+      year: '2023',
+      title: '',
+      language: 'ko',
+      verified: true,
+    })
+    const untitledUncited = normalizeBibEntry({
+      key: 'untitled_uncited',
+      type: 'book',
+      authors: ['빈제목'],
+      year: '2022',
+      title: '   ',
+      language: 'ko',
+      verified: false,
+    })
+    const allEntries = [...makeSampleEntries(), untitledCited, untitledUncited]
+    const doc = makeDoc(['제목 없는 문헌을 인용한다.'])
+    try {
+      expect(
+        insertCitation(doc, {
+          entries: allEntries,
+          items: [{ key: 'untitled_cited' }],
+          place: { sec: 0, para: 0, offset: 14 },
+        }).ok,
+      ).toBe(true)
+
+      const report = auditCitations(doc, allEntries)
+      const citedIssue = report.issues.find(
+        (i) => i.reason === 'missing_title' && i.key === 'untitled_cited',
+      )
+      expect(citedIssue).toBeDefined()
+      expect(citedIssue?.missingTitle).toBe(true)
+      expect(citedIssue?.sec).toBe(0)
+      expect(citedIssue?.para).toBe(0)
+      expect(citedIssue?.length).toBeGreaterThan(0)
+
+      const uncitedIssue = report.issues.find(
+        (i) => i.reason === 'missing_title' && i.key === 'untitled_uncited',
+      )
+      expect(uncitedIssue).toBeDefined()
+      expect(uncitedIssue?.missingTitle).toBe(true)
+    } finally {
+      doc.free()
+    }
+  })
+
+  it('Item #20: blocks inserting a citation inside existing 인용: or 참고문헌: ranges with zero edits', () => {
+    const entries = makeSampleEntries()
+    const doc = makeDoc(['선행 연구를 인용한다.'])
+    try {
+      const first = insertCitation(doc, {
+        entries,
+        items: [{ key: '홍길동2020' }],
+        place: { sec: 0, para: 0, offset: 11 },
+      })
+      expect(first.ok).toBe(true)
+      if (!first.ok || !first.marked) return
+
+      const bib = insertBibliographyBlock(doc, entries)
+      expect(bib.ok).toBe(true)
+      if (!bib.ok) return
+
+      const bytesBefore = doc.exportHwpx()
+
+      // Interior of existing 인용: range -> inside_citation
+      const insideMid = insertCitation(doc, {
+        entries,
+        items: [{ key: '김철수2019' }],
+        place: { sec: 0, para: 0, offset: first.startOffset + 3 },
+      })
+      expect(insideMid).toEqual({ ok: false, reason: 'inside_citation' })
+
+      // Boundary of existing 인용: range -> inside_citation
+      const insideBoundary = insertCitation(doc, {
+        entries,
+        items: [{ key: '김철수2019' }],
+        place: { sec: 0, para: 0, offset: first.endOffset },
+      })
+      expect(insideBoundary).toEqual({ ok: false, reason: 'inside_citation' })
+
+      // Inside existing 참고문헌: range -> inside_bibliography
+      const insideBib = insertCitation(doc, {
+        entries,
+        items: [{ key: '김철수2019' }],
+        place: { sec: 0, para: bib.startPara + 1, offset: 2 },
+      })
+      expect(insideBib).toEqual({ ok: false, reason: 'inside_bibliography' })
+
+      expect(doc.exportHwpx()).toEqual(bytesBefore)
     } finally {
       doc.free()
     }

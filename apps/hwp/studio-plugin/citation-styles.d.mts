@@ -140,6 +140,8 @@ export interface InTextCitationItem {
 export interface FormatInTextOptions {
   mode?: 'parenthetical' | 'narrative'
   disambiguation?: Map<string, string> | Record<string, string>
+  shortTitles?: Map<string, string> | Record<string, string>
+  allEntries?: readonly BibEntry[]
   ieeeNumbers?: Map<string, number> | Record<string, number>
 }
 
@@ -197,6 +199,11 @@ export declare function formatLocator(
   style?: CitationStyle,
   lang?: EntryLanguage,
 ): string
+export declare function formatEdition(
+  edition: string | number | null | undefined,
+  style?: CitationStyle,
+  language?: EntryLanguage,
+): string
 export declare function assignIeeeNumbers(
   citedKeysInOrder: readonly string[],
   entries?: readonly BibEntry[],
@@ -210,6 +217,7 @@ export declare function assignDisambiguationSuffixes(
   entries: readonly BibEntry[],
   style?: CitationStyle,
 ): Map<string, string>
+export declare function assignMlaShortTitles(entries: readonly BibEntry[]): Map<string, string>
 export declare function formatBibliographyEntry(
   entry: BibEntry,
   style?: CitationStyle,

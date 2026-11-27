@@ -65,6 +65,45 @@ const NAME_PARTICLES = new Set([
   'von',
 ])
 
+const EN_MONTHS = Object.freeze([
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+])
+
+const MLA_MINOR_WORDS = new Set([
+  'a',
+  'about',
+  'after',
+  'an',
+  'and',
+  'as',
+  'at',
+  'by',
+  'for',
+  'from',
+  'in',
+  'into',
+  'of',
+  'on',
+  'or',
+  'over',
+  'the',
+  'to',
+  'with',
+])
+
+const MLA_QUOTED_TITLE_TYPES = new Set(['article', 'chapter', 'conference', 'webpage'])
+
 const KO_COLLATOR = new Intl.Collator('ko', { sensitivity: 'base', numeric: true })
 const EN_COLLATOR = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 
@@ -106,9 +145,9 @@ function quoteWithComma(text) {
 }
 
 function normalizeDoi(doi) {
-  const trimmed = cleanStr(doi)
+  const trimmed = cleanStr(doi).normalize('NFC')
   if (!trimmed) return ''
-  const bare = trimmed.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')
+  const bare = trimmed.replace(/^(?:https?:\/\/)?(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')
   return bare
 }
 
@@ -727,6 +766,69 @@ export function formatLocator(locator, style = DEFAULT_CITATION_STYLE, lang = 'e
   return normalized
 }
 
+function englishOrdinal(n) {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+  const mod10 = n % 10
+  if (mod10 === 1) return `${n}st`
+  if (mod10 === 2) return `${n}nd`
+  if (mod10 === 3) return `${n}rd`
+  return `${n}th`
+}
+
+/**
+ * Format an edition value for the given citation style and language.
+ * Purely numeric values are converted to Korean edition notation in Korean or
+ * ordinal + ` ed.` in English (wrapped in parentheses for APA English).
+ * Non-numeric edition text is preserved verbatim without duplicating `ed.` or
+ * parentheses.
+ */
+export function formatEdition(edition, style = DEFAULT_CITATION_STYLE, language = 'en') {
+  const trimmed = cleanStr(edition)
+  if (!trimmed) return ''
+
+  let formatted = trimmed
+  if (/^\d+$/.test(trimmed)) {
+    const num = Number(trimmed)
+    if (Number.isSafeInteger(num) && num > 0) {
+      formatted = language === 'ko' ? `제${num}판` : `${englishOrdinal(num)} ed.`
+    }
+  }
+
+  if (language === 'en' && style === 'apa') {
+    return /^\(.*\)$/.test(formatted) ? formatted : `(${formatted})`
+  }
+  return formatted
+}
+
+function formatApaEnAccessedDate(accessed) {
+  const cleaned = cleanStr(accessed)
+  if (!cleaned) return ''
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(cleaned)
+  if (iso) {
+    const year = iso[1]
+    const monthNum = Number(iso[2])
+    const dayNum = Number(iso[3])
+    if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+      return `${EN_MONTHS[monthNum - 1]} ${dayNum}, ${year}`
+    }
+  }
+  return cleaned
+}
+
+function isSameAsSoleAuthorOrg(authors, candidate) {
+  const normCandidate = cleanStr(candidate).normalize('NFC').toLowerCase()
+  if (!normCandidate || !Array.isArray(authors) || authors.length !== 1) return false
+  const only = authors[0]
+  if (!only) return false
+  const authorName =
+    only.isOrganization || (only.literal && !only.family && !only.given)
+      ? cleanStr(only.literal)
+      : ''
+  if (!authorName) return false
+  return authorName.normalize('NFC').toLowerCase() === normCandidate
+}
+
 function formatKoPages(pages) {
   const trimmed = cleanStr(pages)
   if (!trimmed) return ''
@@ -852,12 +954,15 @@ export function sortBibliographyEntries(entries, style = DEFAULT_CITATION_STYLE,
 
 /**
  * Assign disambiguation suffixes (`'a'`, `'b'`, ...) for entries sharing the
- * same author list and publication year under author-date / author styles.
- * Returns an empty Map for IEEE.
+ * same author list and publication year under author-date styles (`apa`, `chicago`).
+ * Returns an empty Map for IEEE and MLA (MLA disambiguates multiple works by
+ * the same author with short titles rather than year suffixes).
  */
 export function assignDisambiguationSuffixes(entries, style = DEFAULT_CITATION_STYLE) {
   const map = new Map()
-  if (!Array.isArray(entries) || entries.length < 2 || style === 'ieee') return map
+  if (!Array.isArray(entries) || entries.length < 2 || style === 'ieee' || style === 'mla') {
+    return map
+  }
 
   const sorted = sortBibliographyEntries(entries, style)
   const groups = new Map()
@@ -880,6 +985,124 @@ export function assignDisambiguationSuffixes(entries, style = DEFAULT_CITATION_S
     group.forEach((entry, idx) => {
       if (entry.key) map.set(entry.key, indexToAlphaSuffix(idx))
     })
+  }
+
+  return map
+}
+
+function buildMlaShortTitleBase(rawTitle, wordLimit, allowFullAfterColon) {
+  const cleaned = cleanStr(rawTitle).replace(/[.?!:;,\s]+$/, '')
+  if (!cleaned) return 'Untitled'
+
+  let source = cleaned
+  if (!allowFullAfterColon) {
+    const colonIdx = cleaned.indexOf(':')
+    if (colonIdx > 0) {
+      const beforeColon = cleaned.slice(0, colonIdx).trim()
+      if (beforeColon.length > 0) source = beforeColon
+    }
+  }
+
+  const strippedArticle = source.replace(LEADING_EN_ARTICLE_RE, '').trim()
+  const usable = strippedArticle.length > 0 ? strippedArticle : source
+  const words = usable.split(/\s+/).filter(Boolean)
+  if (words.length === 0) return 'Untitled'
+
+  let picked
+  if (words.length <= wordLimit) {
+    picked = words.slice()
+  } else {
+    picked = words.slice(0, wordLimit)
+    while (
+      picked.length > 2 &&
+      MLA_MINOR_WORDS.has(picked[picked.length - 1].replace(/[,;:]+$/, '').toLowerCase())
+    ) {
+      picked.pop()
+    }
+    if (
+      picked.length === 2 &&
+      words.length > 2 &&
+      MLA_MINOR_WORDS.has(picked[1].replace(/[,;:]+$/, '').toLowerCase())
+    ) {
+      picked = words.slice(0, Math.min(words.length, Math.max(3, wordLimit)))
+    }
+  }
+
+  return picked.join(' ').replace(/[,;:\s]+$/, '')
+}
+
+function wrapMlaShortTitle(entry, shortText) {
+  const type = isEntryType(entry?.type) ? entry.type : 'other'
+  return MLA_QUOTED_TITLE_TYPES.has(type) ? `"${shortText}"` : shortText
+}
+
+/**
+ * Assign MLA 9th short-title disambiguators for English entries that share the
+ * same author group. Articles, chapters, conference papers, and webpages are
+ * returned in double quotes (`"Short Title"`); standalone works (books, reports,
+ * theses, other) are returned plain (`Short Title`).
+ */
+export function assignMlaShortTitles(entries) {
+  const map = new Map()
+  if (!Array.isArray(entries) || entries.length < 2) return map
+
+  const groups = new Map()
+  const seenKeys = new Set()
+
+  for (const entry of entries) {
+    if (!entry || !entry.key) continue
+    if (seenKeys.has(entry.key)) continue
+    seenKeys.add(entry.key)
+
+    const lang = detectEntryLanguage(entry)
+    if (lang !== 'en') continue
+
+    const hasLeadAuthor =
+      (Array.isArray(entry.authors) && entry.authors.length > 0) ||
+      (Array.isArray(entry.editors) && entry.editors.length > 0)
+    if (!hasLeadAuthor) continue
+
+    const authorId = normalizedAuthorIdentity(entry, 'en')
+    let list = groups.get(authorId)
+    if (!list) {
+      list = []
+      groups.set(authorId, list)
+    }
+    list.push(entry)
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+
+    // Start with compact 2-4 word short titles and expand only colliding entries.
+    const candidates = new Map()
+    for (const entry of group) {
+      candidates.set(entry.key, buildMlaShortTitleBase(entry.title, 3, false))
+    }
+
+    for (let limit = 4; limit <= 12; limit++) {
+      const counts = new Map()
+      for (const val of candidates.values()) {
+        const norm = val.toLowerCase()
+        counts.set(norm, (counts.get(norm) ?? 0) + 1)
+      }
+      let hasCollision = false
+      for (const entry of group) {
+        const cur = candidates.get(entry.key)
+        if ((counts.get(cur.toLowerCase()) ?? 0) > 1) {
+          hasCollision = true
+          candidates.set(entry.key, buildMlaShortTitleBase(entry.title, limit, limit >= 6))
+        }
+      }
+      if (!hasCollision) break
+    }
+
+    for (const entry of group) {
+      const shortText = candidates.get(entry.key)
+      if (shortText) {
+        map.set(entry.key, wrapMlaShortTitle(entry, shortText))
+      }
+    }
   }
 
   return map
@@ -911,7 +1134,7 @@ function formatKoBibliography(entry, suffix, ieeeNum) {
   const pages = cleanStr(entry.pages)
   const publisher = cleanStr(entry.publisher)
   const place = cleanStr(entry.place)
-  const edition = cleanStr(entry.edition)
+  const edition = formatEdition(entry.edition, 'apa', 'ko')
   const degree = cleanStr(entry.degree)
   const institution = cleanStr(entry.institution)
   const doiUrl = formatDoiUrl(entry.doi)
@@ -933,7 +1156,15 @@ function formatKoBibliography(entry, suffix, ieeeNum) {
     parts.push(`(${yearText}).`)
   }
 
-  const pubWithPlace = place && publisher ? `${place}: ${publisher}` : publisher || place
+  const redundantPublisher = Boolean(publisher) && isSameAsSoleAuthorOrg(authors, publisher)
+  const effectivePublisher = redundantPublisher ? '' : publisher
+  const effectiveInstitution =
+    Boolean(institution) && isSameAsSoleAuthorOrg(authors, institution) ? '' : institution
+  const pubWithPlace = redundantPublisher
+    ? ''
+    : place && effectivePublisher
+      ? `${place}: ${effectivePublisher}`
+      : effectivePublisher || place
 
   const type = isEntryType(entry.type) ? entry.type : 'other'
 
@@ -985,9 +1216,9 @@ function formatKoBibliography(entry, suffix, ieeeNum) {
   } else if (type === 'report') {
     if (!usedTitleAsLead && title) parts.push(ensurePeriod(title))
     const org =
-      institution && publisher && institution !== publisher
-        ? `${institution}, ${publisher}`
-        : institution || pubWithPlace
+      effectiveInstitution && effectivePublisher && effectiveInstitution !== effectivePublisher
+        ? `${effectiveInstitution}, ${effectivePublisher}`
+        : effectiveInstitution || pubWithPlace
     if (org) parts.push(ensurePeriod(org))
     if (doiUrl) parts.push(doiUrl)
     else if (url) parts.push(url)
@@ -1006,7 +1237,7 @@ function formatKoBibliography(entry, suffix, ieeeNum) {
   } else {
     if (!usedTitleAsLead && title) parts.push(ensurePeriod(title))
     if (container) parts.push(ensurePeriod(container))
-    const org = institution || pubWithPlace
+    const org = effectiveInstitution || pubWithPlace
     if (org) parts.push(ensurePeriod(org))
     if (doiUrl) parts.push(doiUrl)
     else if (url) parts.push(url)
@@ -1030,12 +1261,16 @@ function formatApaEnBibliography(entry, suffix) {
   const issue = cleanStr(entry.issue)
   const pages = cleanStr(entry.pages)
   const publisher = cleanStr(entry.publisher)
-  const edition = cleanStr(entry.edition)
+  const edition = formatEdition(entry.edition, 'apa', 'en')
+  const chapterEdition = edition ? edition.replace(/^\((.*)\)$/, '$1') : ''
   const degree = cleanStr(entry.degree)
   const institution = cleanStr(entry.institution)
   const doiUrl = formatDoiUrl(entry.doi)
   const url = cleanStr(entry.url)
-  const accessed = cleanStr(entry.accessed)
+  const accessed = formatApaEnAccessedDate(entry.accessed)
+
+  const effectivePublisher = isSameAsSoleAuthorOrg(authors, publisher) ? '' : publisher
+  const effectiveInstitution = isSameAsSoleAuthorOrg(authors, institution) ? '' : institution
 
   const segs = []
   const pushSpace = () => {
@@ -1097,15 +1332,15 @@ function formatApaEnBibliography(entry, suffix) {
     if (!usedTitleAsLead && title) {
       pushSpace()
       segs.push(segItalic(stripTrailingPeriod(title)))
-      if (edition) segs.push(segPlain(` (${edition})`))
+      if (edition) segs.push(segPlain(` ${edition}`))
       segs.push(segPlain('.'))
     } else if (edition) {
       pushSpace()
-      segs.push(segPlain(`(${edition}).`))
+      segs.push(segPlain(`${edition}.`))
     }
-    if (publisher) {
+    if (effectivePublisher) {
       pushSpace()
-      segs.push(segPlain(ensurePeriod(publisher)))
+      segs.push(segPlain(ensurePeriod(effectivePublisher)))
     }
     if (doiUrl || url) {
       pushSpace()
@@ -1123,13 +1358,13 @@ function formatApaEnBibliography(entry, suffix) {
         segs.push(segPlain(`${formatEditorsApaInEn(editors)}, `))
       }
       if (container) segs.push(segItalic(stripTrailingPeriod(container)))
-      const parens = [edition, formatEnPages(pages)].filter(Boolean)
+      const parens = [chapterEdition, formatEnPages(pages)].filter(Boolean)
       if (parens.length > 0) segs.push(segPlain(` (${parens.join(', ')})`))
       segs.push(segPlain('.'))
     }
-    if (publisher) {
+    if (effectivePublisher) {
       pushSpace()
-      segs.push(segPlain(ensurePeriod(publisher)))
+      segs.push(segPlain(ensurePeriod(effectivePublisher)))
     }
     if (doiUrl || url) {
       pushSpace()
@@ -1157,7 +1392,7 @@ function formatApaEnBibliography(entry, suffix) {
       segs.push(segItalic(stripTrailingPeriod(title)))
       segs.push(segPlain('.'))
     }
-    const org = institution || publisher
+    const org = effectiveInstitution || effectivePublisher
     if (org) {
       pushSpace()
       segs.push(segPlain(ensurePeriod(org)))
@@ -1173,14 +1408,19 @@ function formatApaEnBibliography(entry, suffix) {
     }
     if (container || pages) {
       pushSpace()
-      if (container) segs.push(segItalic(stripTrailingPeriod(container)))
-      if (container && pages) segs.push(segPlain(`, ${pages}.`))
-      else if (pages) segs.push(segPlain(`${pages}.`))
-      else segs.push(segPlain('.'))
+      const enPages = formatEnPages(pages)
+      if (container) {
+        segs.push(segPlain('In '))
+        segs.push(segItalic(stripTrailingPeriod(container)))
+        if (enPages) segs.push(segPlain(` (${enPages}).`))
+        else segs.push(segPlain('.'))
+      } else if (enPages) {
+        segs.push(segPlain(`${enPages}.`))
+      }
     }
-    if (publisher) {
+    if (effectivePublisher) {
       pushSpace()
-      segs.push(segPlain(ensurePeriod(publisher)))
+      segs.push(segPlain(ensurePeriod(effectivePublisher)))
     }
     if (doiUrl || url) {
       pushSpace()
@@ -1213,7 +1453,7 @@ function formatApaEnBibliography(entry, suffix) {
       segs.push(segItalic(stripTrailingPeriod(container)))
       segs.push(segPlain('.'))
     }
-    const org = institution || publisher
+    const org = effectiveInstitution || effectivePublisher
     if (org) {
       pushSpace()
       segs.push(segPlain(ensurePeriod(org)))
@@ -1242,7 +1482,7 @@ function formatChicagoEnBibliography(entry, suffix) {
   const pages = cleanStr(entry.pages)
   const publisher = cleanStr(entry.publisher)
   const place = cleanStr(entry.place)
-  const edition = cleanStr(entry.edition)
+  const edition = formatEdition(entry.edition, 'chicago', 'en')
   const degree = cleanStr(entry.degree)
   const institution = cleanStr(entry.institution)
   const doiUrl = formatDoiUrl(entry.doi)
@@ -1257,15 +1497,19 @@ function formatChicagoEnBibliography(entry, suffix) {
 
   let usedTitleAsLead = false
   if (authors.length > 0) {
-    segs.push(segPlain(`${ensurePeriod(formatAuthorListChicagoEn(authors))} ${yearText}.`))
+    segs.push(
+      segPlain(`${ensurePeriod(formatAuthorListChicagoEn(authors))} ${ensurePeriod(yearText)}`),
+    )
   } else if (editors.length > 0) {
     const edLabel = editors.length === 1 ? 'ed.' : 'eds.'
-    segs.push(segPlain(`${formatAuthorListChicagoEn(editors)}, ${edLabel} ${yearText}.`))
+    segs.push(
+      segPlain(`${formatAuthorListChicagoEn(editors)}, ${edLabel} ${ensurePeriod(yearText)}`),
+    )
   } else if (title) {
     usedTitleAsLead = true
-    segs.push(segPlain(`${ensurePeriod(title)} ${yearText}.`))
+    segs.push(segPlain(`${ensurePeriod(title)} ${ensurePeriod(yearText)}`))
   } else {
-    segs.push(segPlain(`${yearText}.`))
+    segs.push(segPlain(ensurePeriod(yearText)))
   }
 
   const type = isEntryType(entry.type) ? entry.type : 'other'
@@ -1442,7 +1686,7 @@ function formatMlaEnBibliography(entry, suffix) {
   const issue = cleanStr(entry.issue)
   const pages = cleanStr(entry.pages)
   const publisher = cleanStr(entry.publisher)
-  const edition = cleanStr(entry.edition)
+  const edition = formatEdition(entry.edition, 'mla', 'en')
   const degree = cleanStr(entry.degree)
   const institution = cleanStr(entry.institution)
   const doiUrl = formatDoiUrl(entry.doi)
@@ -1618,7 +1862,7 @@ function formatIeeeEnBibliography(entry, ieeeNum) {
   const pages = cleanStr(entry.pages)
   const publisher = cleanStr(entry.publisher)
   const place = cleanStr(entry.place)
-  const edition = cleanStr(entry.edition)
+  const edition = formatEdition(entry.edition, 'ieee', 'en')
   const degree = cleanStr(entry.degree)
   const institution = cleanStr(entry.institution)
   const bareDoi = normalizeDoi(entry.doi)
@@ -1745,7 +1989,7 @@ export function formatBibliographyEntry(entry, style = DEFAULT_CITATION_STYLE, c
   const resolvedStyle = isCitationStyle(style) ? style : DEFAULT_CITATION_STYLE
   const lang = detectEntryLanguage(entry)
   const suffix =
-    resolvedStyle === 'ieee'
+    resolvedStyle === 'ieee' || resolvedStyle === 'mla'
       ? ''
       : (context.disambiguationSuffix ?? mapLookup(context.disambiguation, entry.key) ?? '')
   const ieeeNum =
@@ -1875,42 +2119,45 @@ function applyPrefixSuffix(core, prefix, suffix) {
   return out
 }
 
-function formatSingleParentheticalCore(item, style, disambiguation) {
+function formatSingleParentheticalCore(item, style, disambiguation, shortTitles) {
   const { entry, locator, prefix, suffix } = item
   const lang = detectEntryLanguage(entry)
   const authorText = formatInTextAuthors(entry, style, lang, 'parenthetical')
-  const disambig = mapLookup(disambiguation, entry.key) ?? ''
+  const disambig = style === 'mla' ? '' : (mapLookup(disambiguation, entry.key) ?? '')
   const yearText = formatYearWithSuffix(entry.year, disambig, lang, style)
   const locText = locator ? formatLocator(locator, style, lang) : ''
 
   let core
-  if (style === 'mla') {
-    if (lang === 'ko') {
-      core = locText ? `${authorText}, ${locText}` : authorText
+  if (style === 'mla' && lang === 'en') {
+    const shortTitle = mapLookup(shortTitles, entry.key) ?? ''
+    if (shortTitle) {
+      core = locText ? `${authorText}, ${shortTitle} ${locText}` : `${authorText}, ${shortTitle}`
     } else {
       core = locText ? `${authorText} ${locText}` : authorText
     }
   } else if (style === 'chicago' && lang === 'en') {
     core = locText ? `${authorText} ${yearText}, ${locText}` : `${authorText} ${yearText}`
   } else {
-    // APA (en & ko) and Chicago (ko)
+    // APA (en & ko), Chicago (ko), and MLA (ko)
     core = locText ? `${authorText}, ${yearText}, ${locText}` : `${authorText}, ${yearText}`
   }
 
   return applyPrefixSuffix(core, prefix, suffix)
 }
 
-function formatSingleNarrative(item, style, disambiguation) {
+function formatSingleNarrative(item, style, disambiguation, shortTitles) {
   const { entry, locator, prefix, suffix } = item
   const lang = detectEntryLanguage(entry)
   const authorText = formatInTextAuthors(entry, style, lang, 'narrative')
-  const disambig = mapLookup(disambiguation, entry.key) ?? ''
+  const disambig = style === 'mla' ? '' : (mapLookup(disambiguation, entry.key) ?? '')
   const yearText = formatYearWithSuffix(entry.year, disambig, lang, style)
   const locText = locator ? formatLocator(locator, style, lang) : ''
 
-  if (style === 'mla') {
-    const inside = [locText, suffix].filter(Boolean).join(', ')
-    const paren = inside ? (lang === 'ko' ? `(${inside})` : ` (${inside})`) : ''
+  if (style === 'mla' && lang === 'en') {
+    const shortTitle = mapLookup(shortTitles, entry.key) ?? ''
+    const titleAndLoc = shortTitle ? (locText ? `${shortTitle} ${locText}` : shortTitle) : locText
+    const inside = [titleAndLoc, suffix].filter(Boolean).join(', ')
+    const paren = inside ? ` (${inside})` : ''
     return prefix ? `${prefix} ${authorText}${paren}` : `${authorText}${paren}`
   }
 
@@ -1992,7 +2239,8 @@ function formatIeeeInText(items, mode, ieeeNumbers) {
 /**
  * Format one or more citation items as an in-text citation string.
  * Supports parenthetical and narrative modes, locators, prefixes/suffixes,
- * same-author year merging (APA), alphabetical grouping, and IEEE ranges.
+ * same-author year merging (APA & Chicago), MLA short-title disambiguation,
+ * alphabetical grouping, and IEEE ranges.
  */
 export function formatInTextCitation(input, style = DEFAULT_CITATION_STYLE, options = {}) {
   const resolvedStyle = isCitationStyle(style) ? style : DEFAULT_CITATION_STYLE
@@ -2003,13 +2251,22 @@ export function formatInTextCitation(input, style = DEFAULT_CITATION_STYLE, opti
   const mode = options.mode === 'narrative' ? 'narrative' : 'parenthetical'
   const disambiguation = options.disambiguation
   const ieeeNumbers = options.ieeeNumbers
+  const shortTitles =
+    resolvedStyle === 'mla'
+      ? (options.shortTitles ??
+        assignMlaShortTitles(
+          Array.isArray(options.allEntries) ? options.allEntries : items.map((it) => it.entry),
+        ))
+      : undefined
 
   if (resolvedStyle === 'ieee') {
     return formatIeeeInText(items, mode, ieeeNumbers)
   }
 
   if (mode === 'narrative') {
-    const formatted = items.map((it) => formatSingleNarrative(it, resolvedStyle, disambiguation))
+    const formatted = items.map((it) =>
+      formatSingleNarrative(it, resolvedStyle, disambiguation, shortTitles),
+    )
     if (formatted.length === 1) return formatted[0]
     const allEn = items.every((it) => detectEntryLanguage(it.entry) === 'en')
     if (allEn) {
@@ -2021,7 +2278,7 @@ export function formatInTextCitation(input, style = DEFAULT_CITATION_STYLE, opti
 
   const sorted = [...items].sort((a, b) => compareAuthorDateEntries(a.entry, b.entry))
 
-  if (resolvedStyle === 'apa') {
+  if (resolvedStyle === 'apa' || resolvedStyle === 'chicago') {
     const fragments = []
     let i = 0
     while (i < sorted.length) {
@@ -2036,7 +2293,7 @@ export function formatInTextCitation(input, style = DEFAULT_CITATION_STYLE, opti
             cur.entry.year,
             mapLookup(disambiguation, cur.entry.key) ?? '',
             curLang,
-            'apa',
+            resolvedStyle,
           ),
         ]
         let j = i + 1
@@ -2054,7 +2311,7 @@ export function formatInTextCitation(input, style = DEFAULT_CITATION_STYLE, opti
                 next.entry.year,
                 mapLookup(disambiguation, next.entry.key) ?? '',
                 nextLang,
-                'apa',
+                resolvedStyle,
               ),
             )
             j += 1
@@ -2063,21 +2320,22 @@ export function formatInTextCitation(input, style = DEFAULT_CITATION_STYLE, opti
           }
         }
         if (mergedYears.length > 1) {
-          const authorText = formatInTextAuthors(cur.entry, 'apa', curLang, 'parenthetical')
-          fragments.push(`${authorText}, ${mergedYears.join(', ')}`)
+          const authorText = formatInTextAuthors(cur.entry, resolvedStyle, curLang, 'parenthetical')
+          const authorYearSep = resolvedStyle === 'chicago' && curLang === 'en' ? ' ' : ', '
+          fragments.push(`${authorText}${authorYearSep}${mergedYears.join(', ')}`)
           i = j
           continue
         }
       }
 
-      fragments.push(formatSingleParentheticalCore(cur, 'apa', disambiguation))
+      fragments.push(formatSingleParentheticalCore(cur, resolvedStyle, disambiguation, shortTitles))
       i += 1
     }
     return `(${fragments.join('; ')})`
   }
 
   const fragments = sorted.map((it) =>
-    formatSingleParentheticalCore(it, resolvedStyle, disambiguation),
+    formatSingleParentheticalCore(it, resolvedStyle, disambiguation, shortTitles),
   )
   return `(${fragments.join('; ')})`
 }

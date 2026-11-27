@@ -28,6 +28,7 @@ import {
   DEFAULT_CITATION_STYLE,
   assignDisambiguationSuffixes,
   assignIeeeNumbers,
+  assignMlaShortTitles,
   compareSortOrder,
   detectEntryLanguage,
   findMissingDisambiguation,
@@ -84,6 +85,11 @@ const FOUR_DIGIT_YEAR_SUFFIX_RE = /\b((?:19|20)\d{2})([a-z])?\b/i
 const NO_DATE_TOKEN_RE = /\b(?:n\.?\s*d\.?)\b|연도\s*미상/i
 const NON_AUTHOR_LEAD_RE =
   /^(?:표|그림|도표|수식|식|참고|예|주|장|절|항|목|Table|Figure|Fig\.?|Eq\.?|Equation|Chapter|Section|Sec\.?|Vol\.?|No\.?|pp?\.|see|cf\.|e\.g\.|i\.e\.)$/i
+const HANGUL_RE = /[\uAC00-\uD7A3]/
+const LEADING_IEEE_NUM_RE = /^\[(\d+)\]\s*/
+const LEADING_EN_ARTICLE_RE = /^(?:a|an|the)\s+/i
+const KO_COLLATOR = new Intl.Collator('ko', { sensitivity: 'base', numeric: true })
+const EN_COLLATOR = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 
 function parseJson(raw, fallback) {
   if (typeof raw !== 'string' || raw.length === 0) return fallback
@@ -233,12 +239,43 @@ function deleteMarkEntriesReverse(doc, marks) {
     if (a.para !== b.para) return b.para - a.para
     return b.ctrlIdx - a.ctrlIdx
   })
+  let removed = 0
   const failed = []
   for (const mark of ordered) {
     const res = removeMark(doc, mark)
-    if (!res.ok) failed.push(res)
+    if (res.ok) {
+      removed += 1
+    } else {
+      failed.push({
+        name: mark.name ?? '',
+        sec: mark.sec,
+        para: mark.para,
+        ctrlIdx: mark.ctrlIdx,
+        reason: res.reason ?? 'engine_error',
+        error: res.error ?? res.reason ?? 'removeMark failed',
+      })
+    }
   }
-  return failed
+  return { removed, failed }
+}
+
+function checkSettingWriteResult(res) {
+  if (!res || !res.ok) {
+    return {
+      ok: false,
+      reason: res?.reason ?? 'setting_write_failed',
+      ...(res?.error ? { error: res.error } : {}),
+      ...(Array.isArray(res?.failed) && res.failed.length > 0 ? { failed: res.failed } : {}),
+    }
+  }
+  if (Array.isArray(res.failed) && res.failed.length > 0) {
+    return {
+      ok: false,
+      reason: 'setting_write_failed',
+      failed: res.failed,
+    }
+  }
+  return { ok: true }
 }
 
 function listBodyBookmarksAt(doc, sec, para) {
@@ -273,13 +310,118 @@ function listBodyBookmarksAt(doc, sec, para) {
   return [...byCtrl.values()].sort((a, b) => a.ctrlIdx - b.ctrlIdx)
 }
 
-function compareDocPositions(a, b) {
-  if (a.sec !== b.sec) return a.sec - b.sec
-  if (a.para !== b.para) return a.para - b.para
-  const aRank = a.kind === 'body' ? 0 : 1
-  const bRank = b.kind === 'body' ? 0 : 1
-  if (aRank !== bRank) return aRank - bRank
-  return (a.offset ?? 0) - (b.offset ?? 0)
+function compareCellPaths(pathA, pathB) {
+  const a = Array.isArray(pathA) ? pathA : []
+  const b = Array.isArray(pathB) ? pathB : []
+  const len = Math.min(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    const sa = a[i]
+    const sb = b[i]
+    if ((sa.controlIndex ?? 0) !== (sb.controlIndex ?? 0)) {
+      return (sa.controlIndex ?? 0) - (sb.controlIndex ?? 0)
+    }
+    if ((sa.cellIndex ?? 0) !== (sb.cellIndex ?? 0)) {
+      return (sa.cellIndex ?? 0) - (sb.cellIndex ?? 0)
+    }
+    if ((sa.cellParaIndex ?? 0) !== (sb.cellParaIndex ?? 0)) {
+      return (sa.cellParaIndex ?? 0) - (sb.cellParaIndex ?? 0)
+    }
+  }
+  return a.length - b.length
+}
+
+function createEventComparator(doc) {
+  const posCache = new Map()
+  const getControlOffset = (sec, para, controlIndex) => {
+    if (!Number.isInteger(controlIndex)) return 0
+    const key = `${sec}:${para}`
+    let arr = posCache.get(key)
+    if (arr === undefined) {
+      arr =
+        doc && typeof doc.getControlTextPositions === 'function'
+          ? tryOr(() => parseJson(doc.getControlTextPositions(sec, para), []), [])
+          : []
+      posCache.set(key, Array.isArray(arr) ? arr : [])
+    }
+    return Number.isInteger(arr[controlIndex]) ? arr[controlIndex] : 0
+  }
+
+  const hostOffsetOf = (ev) => {
+    if (ev.kind === 'body') return ev.offset ?? 0
+    if (ev.kind === 'table' || ev.kind === 'textbox') {
+      const ctrlIdx = Array.isArray(ev.path) && ev.path.length > 0 ? ev.path[0].controlIndex : null
+      return getControlOffset(ev.sec, ev.para, ctrlIdx)
+    }
+    if (ev.kind === 'footnote' || ev.kind === 'endnote') {
+      return getControlOffset(ev.sec, ev.para, ev.noteControl)
+    }
+    return ev.offset ?? 0
+  }
+
+  const outerControlIndexOf = (ev) => {
+    if (ev.kind === 'table' || ev.kind === 'textbox') {
+      return Array.isArray(ev.path) && ev.path.length > 0 ? (ev.path[0].controlIndex ?? 0) : 0
+    }
+    if (ev.kind === 'footnote' || ev.kind === 'endnote') {
+      return ev.noteControl ?? 0
+    }
+    return -1
+  }
+
+  return (a, b) => {
+    if (a.sec !== b.sec) return a.sec - b.sec
+    if (a.para !== b.para) return a.para - b.para
+
+    const aHost = hostOffsetOf(a)
+    const bHost = hostOffsetOf(b)
+    if (aHost !== bHost) return aHost - bHost
+
+    const aRank = a.kind === 'body' ? 0 : 1
+    const bRank = b.kind === 'body' ? 0 : 1
+    if (aRank !== bRank) return aRank - bRank
+
+    if (
+      (a.kind === 'table' || a.kind === 'textbox') &&
+      (b.kind === 'table' || b.kind === 'textbox')
+    ) {
+      const pathCmp = compareCellPaths(a.path, b.path)
+      if (pathCmp !== 0) return pathCmp
+      return (a.offset ?? 0) - (b.offset ?? 0)
+    }
+
+    if (
+      (a.kind === 'footnote' || a.kind === 'endnote') &&
+      (b.kind === 'footnote' || b.kind === 'endnote')
+    ) {
+      if ((a.noteControl ?? 0) !== (b.noteControl ?? 0)) {
+        return (a.noteControl ?? 0) - (b.noteControl ?? 0)
+      }
+      if ((a.notePara ?? 0) !== (b.notePara ?? 0)) {
+        return (a.notePara ?? 0) - (b.notePara ?? 0)
+      }
+      return (a.offset ?? 0) - (b.offset ?? 0)
+    }
+
+    const aCtrl = outerControlIndexOf(a)
+    const bCtrl = outerControlIndexOf(b)
+    if (aCtrl !== bCtrl) return aCtrl - bCtrl
+
+    return (a.offset ?? 0) - (b.offset ?? 0)
+  }
+}
+
+function compareBodyCoord(secA, paraA, offA, secB, paraB, offB) {
+  if (secA !== secB) return secA - secB
+  if (paraA !== paraB) return paraA - paraB
+  return offA - offB
+}
+
+function isBodyPositionInsideRange(sec, para, offset, range) {
+  if (!range || !range.start || !range.end) return false
+  return (
+    compareBodyCoord(sec, para, offset, range.start.sec, range.start.para, range.start.offset) >=
+      0 && compareBodyCoord(sec, para, offset, range.end.sec, range.end.para, range.end.offset) <= 0
+  )
 }
 
 function isParaInsideRange(sec, para, range) {
@@ -312,8 +454,8 @@ export function setDocumentCitationStyle(doc, style) {
   if (!doc || typeof doc.getSectionCount !== 'function') {
     return { ok: false, reason: 'unsupported_place' }
   }
-  const res = writeDocSetting(doc, CIT_STYLE_SETTING_KEY, style)
-  if (!res.ok) return res
+  const check = checkSettingWriteResult(writeDocSetting(doc, CIT_STYLE_SETTING_KEY, style))
+  if (!check.ok) return check
   return { ok: true, style }
 }
 
@@ -365,34 +507,429 @@ function packMetaRecord(record) {
   return packed
 }
 
-function readCitationMetaMap(doc) {
-  const map = new Map()
-  if (!doc || typeof doc.getBookmarks !== 'function') return map
-  const saved = readDocSetting(doc, CIT_META_SETTING_KEY, null)
-  const rawTable = saved && typeof saved === 'object' ? (saved.m ?? saved) : null
-  if (!rawTable || typeof rawTable !== 'object' || Array.isArray(rawTable)) return map
-  for (const [id, rawRec] of Object.entries(rawTable)) {
-    const rec = unpackMetaRecord(rawRec)
-    if (rec && rec.items.length > 0) {
-      map.set(id, rec)
-    }
+const UNMARKED_KIND_TO_CODE = Object.freeze({
+  table: 't',
+  textbox: 'b',
+  footnote: 'f',
+  endnote: 'e',
+})
+
+const CODE_TO_UNMARKED_KIND = Object.freeze({
+  t: 'table',
+  b: 'textbox',
+  f: 'footnote',
+  e: 'endnote',
+  table: 'table',
+  textbox: 'textbox',
+  footnote: 'footnote',
+  endnote: 'endnote',
+})
+
+function unpackUnmarkedRef(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const id = typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : null
+  const kind = CODE_TO_UNMARKED_KIND[raw.k ?? raw.kind]
+  const sec = Number.isInteger(raw.s) ? raw.s : Number.isInteger(raw.sec) ? raw.sec : -1
+  const para = Number.isInteger(raw.p) ? raw.p : Number.isInteger(raw.para) ? raw.para : -1
+  if (!id || !kind || sec < 0 || para < 0) return null
+
+  const base = unpackMetaRecord(raw)
+  if (!base || base.items.length === 0 || typeof base.writtenText !== 'string') return null
+
+  const out = {
+    id,
+    kind,
+    sec,
+    para,
+    offset: Number.isInteger(raw.o) ? raw.o : Number.isInteger(raw.offset) ? raw.offset : 0,
+    items: base.items,
+    mode: base.mode,
+    writtenText: base.writtenText,
   }
-  return map
+
+  if (kind === 'table' || kind === 'textbox') {
+    const rawPath = Array.isArray(raw.cp) ? raw.cp : Array.isArray(raw.path) ? raw.path : null
+    if (!rawPath || rawPath.length === 0) return null
+    out.path = rawPath.map((step) =>
+      Array.isArray(step)
+        ? {
+            controlIndex: step[0] ?? 0,
+            cellIndex: step[1] ?? 0,
+            cellParaIndex: step[2] ?? 0,
+          }
+        : {
+            controlIndex: step.controlIndex ?? step.c ?? 0,
+            cellIndex: step.cellIndex ?? step.i ?? 0,
+            cellParaIndex: step.cellParaIndex ?? step.p ?? 0,
+          },
+    )
+  } else {
+    const noteControl = Number.isInteger(raw.nc)
+      ? raw.nc
+      : Number.isInteger(raw.noteControl)
+        ? raw.noteControl
+        : -1
+    const notePara = Number.isInteger(raw.np)
+      ? raw.np
+      : Number.isInteger(raw.notePara)
+        ? raw.notePara
+        : 0
+    if (noteControl < 0 || notePara < 0) return null
+    out.noteControl = noteControl
+    out.notePara = notePara
+  }
+
+  return out
 }
 
-function writeCitationMetaMap(doc, metaMap, activeIds = null) {
+function packUnmarkedRef(ref) {
+  const packed = {
+    id: ref.id,
+    k: UNMARKED_KIND_TO_CODE[ref.kind] ?? ref.kind,
+    s: ref.sec,
+    p: ref.para,
+    ...(Number.isInteger(ref.offset) && ref.offset > 0 ? { o: ref.offset } : {}),
+    ...packMetaRecord(ref),
+  }
+  if (ref.kind === 'table' || ref.kind === 'textbox') {
+    packed.cp = (ref.path ?? []).map((st) => [st.controlIndex, st.cellIndex, st.cellParaIndex])
+  } else {
+    packed.nc = ref.noteControl
+    if (ref.notePara > 0) packed.np = ref.notePara
+  }
+  return packed
+}
+
+function readCitationMetaState(doc) {
+  const metaMap = new Map()
+  const unmarkedRefs = []
+  if (!doc || typeof doc.getBookmarks !== 'function') {
+    return { metaMap, unmarkedRefs }
+  }
+  const saved = readDocSetting(doc, CIT_META_SETTING_KEY, null)
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+    return { metaMap, unmarkedRefs }
+  }
+  const rawTable =
+    saved.m && typeof saved.m === 'object' && !Array.isArray(saved.m) ? saved.m : saved
+  for (const [id, rawRec] of Object.entries(rawTable)) {
+    if (id === 'v' || id === 'm' || id === 'u') continue
+    const rec = unpackMetaRecord(rawRec)
+    if (rec && rec.items.length > 0) {
+      metaMap.set(id, rec)
+    }
+  }
+  if (Array.isArray(saved.u)) {
+    for (const rawRef of saved.u) {
+      const ref = unpackUnmarkedRef(rawRef)
+      if (ref) unmarkedRefs.push(ref)
+    }
+  }
+  return { metaMap, unmarkedRefs }
+}
+
+function readCitationMetaMap(doc) {
+  return readCitationMetaState(doc).metaMap
+}
+
+function writeCitationMetaState(doc, metaMap, unmarkedRefs = [], activeIds = null) {
   const packed = {}
-  let count = 0
+  let markCount = 0
   for (const [id, rec] of metaMap.entries()) {
     if (activeIds && !activeIds.has(id)) continue
     if (!rec || !Array.isArray(rec.items) || rec.items.length === 0) continue
     packed[id] = packMetaRecord(rec)
-    count += 1
+    markCount += 1
   }
-  if (count === 0) {
-    return deleteDocSetting(doc, CIT_META_SETTING_KEY)
+  const packedUnmarked = Array.isArray(unmarkedRefs)
+    ? unmarkedRefs
+        .filter(
+          (r) =>
+            r && Array.isArray(r.items) && r.items.length > 0 && typeof r.writtenText === 'string',
+        )
+        .map(packUnmarkedRef)
+    : []
+
+  if (markCount === 0 && packedUnmarked.length === 0) {
+    return checkSettingWriteResult(deleteDocSetting(doc, CIT_META_SETTING_KEY))
   }
-  return writeDocSetting(doc, CIT_META_SETTING_KEY, { v: 1, m: packed })
+  const payload = {
+    v: 1,
+    m: packed,
+    ...(packedUnmarked.length > 0 ? { u: packedUnmarked } : {}),
+  }
+  return checkSettingWriteResult(writeDocSetting(doc, CIT_META_SETTING_KEY, payload))
+}
+
+function allocateUnmarkedRefId(unmarkedRefs) {
+  const used = new Set(unmarkedRefs.map((r) => r.id))
+  for (let seq = 1; ; seq++) {
+    const candidate = `u${seq}`
+    if (!used.has(candidate)) return candidate
+  }
+}
+
+function readCellText(doc, sec, para, path) {
+  if (!doc || !Array.isArray(path) || path.length === 0) return null
+  const pathJson = JSON.stringify(path)
+  let len = -1
+  if (typeof doc.getCellParagraphLengthByPath === 'function') {
+    len = tryOr(() => doc.getCellParagraphLengthByPath(sec, para, pathJson), -1)
+  } else if (path.length === 1 && typeof doc.getCellParagraphLength === 'function') {
+    const s = path[0]
+    len = tryOr(
+      () => doc.getCellParagraphLength(sec, para, s.controlIndex, s.cellIndex, s.cellParaIndex),
+      -1,
+    )
+  }
+  if (!Number.isInteger(len) || len < 0) return null
+  if (len === 0) return ''
+  if (typeof doc.getTextInCellByPath === 'function') {
+    return tryOr(() => doc.getTextInCellByPath(sec, para, pathJson, 0, len), null)
+  }
+  if (path.length === 1 && typeof doc.getTextInCell === 'function') {
+    const s = path[0]
+    return tryOr(
+      () => doc.getTextInCell(sec, para, s.controlIndex, s.cellIndex, s.cellParaIndex, 0, len),
+      null,
+    )
+  }
+  return null
+}
+
+function replaceCellTextRange(doc, sec, para, path, offset, oldLen, nextText) {
+  const pathJson = JSON.stringify(path)
+  if (
+    typeof doc.deleteTextInCellByPath === 'function' &&
+    typeof doc.insertTextInCellByPath === 'function'
+  ) {
+    if (oldLen > 0) {
+      expectOk(
+        doc.deleteTextInCellByPath(sec, para, pathJson, offset, oldLen),
+        'deleteTextInCellByPath',
+      )
+    }
+    if (nextText.length > 0) {
+      expectOk(
+        doc.insertTextInCellByPath(sec, para, pathJson, offset, nextText),
+        'insertTextInCellByPath',
+      )
+    }
+    return { ok: true }
+  }
+  if (
+    path.length === 1 &&
+    typeof doc.deleteTextInCell === 'function' &&
+    typeof doc.insertTextInCell === 'function'
+  ) {
+    const s = path[0]
+    if (oldLen > 0) {
+      expectOk(
+        doc.deleteTextInCell(
+          sec,
+          para,
+          s.controlIndex,
+          s.cellIndex,
+          s.cellParaIndex,
+          offset,
+          oldLen,
+        ),
+        'deleteTextInCell',
+      )
+    }
+    if (nextText.length > 0) {
+      expectOk(
+        doc.insertTextInCell(
+          sec,
+          para,
+          s.controlIndex,
+          s.cellIndex,
+          s.cellParaIndex,
+          offset,
+          nextText,
+        ),
+        'insertTextInCell',
+      )
+    }
+    return { ok: true }
+  }
+  return { ok: false, reason: 'unsupported_place' }
+}
+
+function readNoteLine(doc, sec, para, noteControl, notePara) {
+  if (!doc || typeof doc.getFootnoteInfo !== 'function') return null
+  const info = tryOr(() => parseNoteInfo(doc.getFootnoteInfo(sec, para, noteControl)), null)
+  if (
+    !info ||
+    !info.ok ||
+    !Array.isArray(info.texts) ||
+    notePara < 0 ||
+    notePara >= info.texts.length
+  ) {
+    return null
+  }
+  const edit =
+    typeof doc.getNoteEditInfo === 'function'
+      ? tryOr(() => parseJson(doc.getNoteEditInfo(sec, para, noteControl), null), null)
+      : null
+  let prefix = NOTE_NUMBER_CHARS
+  if (edit && Number.isInteger(edit.charOffset)) prefix = edit.charOffset
+  if (info.numberSlot === -1) prefix = 0
+  const text = String(info.texts[notePara] ?? '')
+  const minOffset = notePara === 0 ? Math.min(prefix, cpLength(text)) : 0
+  return { text, minOffset }
+}
+
+function replaceNoteTextRange(doc, sec, para, noteControl, notePara, offset, oldLen, nextText) {
+  if (
+    typeof doc.deleteTextInFootnote !== 'function' ||
+    typeof doc.insertTextInFootnote !== 'function'
+  ) {
+    return { ok: false, reason: 'unsupported_place' }
+  }
+  if (oldLen > 0) {
+    expectOk(
+      doc.deleteTextInFootnote(sec, para, noteControl, notePara, offset, oldLen),
+      'deleteTextInFootnote',
+    )
+  }
+  if (nextText.length > 0) {
+    expectOk(
+      doc.insertTextInFootnote(sec, para, noteControl, notePara, offset, nextText),
+      'insertTextInFootnote',
+    )
+  }
+  return { ok: true }
+}
+
+function findClosestCodePointOffset(
+  fullText,
+  needle,
+  preferredCpOffset,
+  minCpOffset = 0,
+  claimedSpans = [],
+) {
+  if (typeof fullText !== 'string' || typeof needle !== 'string' || needle.length === 0) return -1
+  const needleLen = cpLength(needle)
+  const matches = []
+  let pos = 0
+  while (pos <= fullText.length - needle.length) {
+    const idx = fullText.indexOf(needle, pos)
+    if (idx === -1) break
+    const cpOffset = Array.from(fullText.slice(0, idx)).length
+    if (cpOffset >= minCpOffset) {
+      const overlapsClaimed = claimedSpans.some(
+        (sp) => cpOffset < sp.end && sp.start < cpOffset + needleLen,
+      )
+      if (!overlapsClaimed) {
+        matches.push(cpOffset)
+      }
+    }
+    pos = idx + 1
+  }
+  if (matches.length === 0) return -1
+  let best = matches[0]
+  let bestDist = Math.abs(best - preferredCpOffset)
+  for (let i = 1; i < matches.length; i++) {
+    const dist = Math.abs(matches[i] - preferredCpOffset)
+    if (dist < bestDist) {
+      best = matches[i]
+      bestDist = dist
+    }
+  }
+  return best
+}
+
+function containerKeyForRef(ref) {
+  if (ref.kind === 'body') return `body:${ref.sec}:${ref.para}`
+  if (ref.kind === 'table' || ref.kind === 'textbox') {
+    return `cell:${ref.sec}:${ref.para}:${JSON.stringify(ref.path ?? [])}`
+  }
+  return `note:${ref.sec}:${ref.para}:${ref.noteControl}:${ref.notePara}`
+}
+
+function resolveUnmarkedRefsInDoc(doc, unmarkedRefs, entries = null) {
+  const hasEntries = Array.isArray(entries)
+  const located = []
+  const modified = []
+  const aliveRefs = []
+  const claimedByContainer = new Map()
+
+  for (const ref of unmarkedRefs) {
+    let containerText = null
+    let minOffset = 0
+    if (ref.kind === 'table' || ref.kind === 'textbox') {
+      containerText = readCellText(doc, ref.sec, ref.para, ref.path)
+    } else if (ref.kind === 'footnote' || ref.kind === 'endnote') {
+      const noteLine = readNoteLine(doc, ref.sec, ref.para, ref.noteControl, ref.notePara)
+      if (noteLine) {
+        containerText = noteLine.text
+        minOffset = noteLine.minOffset
+      }
+    }
+    // Container was deleted from the document; drop this tracked descriptor.
+    if (containerText === null) continue
+
+    const cKey = containerKeyForRef(ref)
+    let claimed = claimedByContainer.get(cKey)
+    if (!claimed) {
+      claimed = []
+      claimedByContainer.set(cKey, claimed)
+    }
+
+    const items = ref.items.map((it) => {
+      const out = { key: it.key }
+      if (it.locator) out.locator = it.locator
+      if (it.prefix) out.prefix = it.prefix
+      if (it.suffix) out.suffix = it.suffix
+      if (hasEntries) {
+        const resolved = resolveEntryByKey(entries, it.key)
+        out.resolvedKey = resolved ? resolved.key : null
+        out.verified = resolved ? resolved.verified : null
+      }
+      return out
+    })
+    const keys = items.map((it) => (hasEntries && it.resolvedKey ? it.resolvedKey : it.key))
+
+    const foundOffset = findClosestCodePointOffset(
+      containerText,
+      ref.writtenText,
+      ref.offset ?? minOffset,
+      minOffset,
+      claimed,
+    )
+    if (foundOffset >= 0) {
+      const len = cpLength(ref.writtenText)
+      claimed.push({ start: foundOffset, end: foundOffset + len })
+      const updatedRef = { ...ref, offset: foundOffset }
+      aliveRefs.push(updatedRef)
+      located.push({
+        ...updatedRef,
+        length: len,
+        text: ref.writtenText,
+        items,
+        keys,
+        isManuallyEdited: false,
+      })
+    } else {
+      // If the container still holds non-empty text, keep tracking it as manually modified.
+      const trimmedContent = Array.from(containerText).slice(minOffset).join('').trim()
+      if (trimmedContent.length > 0) {
+        aliveRefs.push(ref)
+        modified.push({
+          ...ref,
+          offset: Math.min(Math.max(minOffset, ref.offset ?? minOffset), cpLength(containerText)),
+          length: Math.max(0, cpLength(containerText) - minOffset),
+          text: trimmedContent,
+          items,
+          keys,
+          isManuallyEdited: true,
+        })
+      }
+    }
+  }
+
+  return { located, modified, aliveRefs }
 }
 
 function resolveCitationMeta(metaMap, id) {
@@ -752,7 +1289,10 @@ function rewriteSingleCitationMarkInPlace(doc, mark, nextText) {
   const idParts = mark.id ? mark.id.split(':') : []
 
   // Remove old start/end bookmarks first so text replacement never leaves stale anchors.
-  deleteMarkEntriesReverse(doc, [mark.start, mark.end])
+  const del = deleteMarkEntriesReverse(doc, [mark.start, mark.end])
+  if (del.failed.length > 0) {
+    return { ok: false, reason: 'mark_delete_failed', failed: del.failed }
+  }
 
   if (oldLen > 0) {
     expectOk(doc.replaceText(sec, para, startOffset, oldLen, nextText), 'replaceText')
@@ -769,107 +1309,459 @@ function rewriteSingleCitationMarkInPlace(doc, mark, nextText) {
     { sec, para, offset: nextEnd },
   )
   if (!rangeRes.ok) {
-    throw new Error(rangeRes.error ?? rangeRes.reason ?? 'addRangeMark failed')
+    return {
+      ok: false,
+      reason: rangeRes.reason ?? 'engine_error',
+      ...(rangeRes.error ? { error: rangeRes.error } : {}),
+    }
   }
-  return nextEnd
+  return { ok: true, endOffset: nextEnd }
 }
 
 /**
- * Renumber non-manual marked `인용:` citations in document order when the active style is IEEE.
+ * Single unified document-order citation collector across:
+ * 1. Marked body `인용:` range citations
+ * 2. App-inserted non-body plain-text citations (`unmarkedRefs` in `설정:인용`)
+ * 3. Unmarked pattern citations matched to `entries` (deduplicated against located `unmarkedRefs`)
+ * 4. Optional `pendingEvent` (for computing order right before inserting a new citation)
+ */
+function collectDocumentCitationOrder(doc, entries = null, options = {}) {
+  const hasEntries = Array.isArray(entries) && entries.length > 0
+  const marks = listCitationMarks(doc, hasEntries ? entries : null)
+  const { unmarkedRefs: rawUnmarkedRefs } = readCitationMetaState(doc)
+  const {
+    located: locatedUnmarkedRefs,
+    modified: modifiedUnmarkedRefs,
+    aliveRefs: aliveUnmarkedRefs,
+  } = resolveUnmarkedRefsInDoc(doc, rawUnmarkedRefs, hasEntries ? entries : null)
+
+  const allPatterns = findPatternCitations(doc, hasEntries ? entries : null)
+
+  // Deduplicate pattern matches against located tracked non-body citations at the same container & span.
+  const locatedByContainer = new Map()
+  for (const ref of locatedUnmarkedRefs) {
+    const key = containerKeyForRef(ref)
+    let list = locatedByContainer.get(key)
+    if (!list) {
+      list = []
+      locatedByContainer.set(key, list)
+    }
+    list.push({ start: ref.offset, end: ref.offset + ref.length })
+  }
+  const patterns = allPatterns.filter((p) => {
+    const spans = locatedByContainer.get(containerKeyForRef(p))
+    if (!spans) return true
+    return !spans.some((sp) => p.offset < sp.end && sp.start < p.offset + p.length)
+  })
+
+  const events = []
+  for (const m of marks) {
+    events.push({
+      sec: m.sec,
+      para: m.para,
+      kind: 'body',
+      offset: m.startOffset,
+      keys: m.keys,
+      source: 'mark',
+      mark: m,
+    })
+  }
+  for (const ref of locatedUnmarkedRefs) {
+    events.push({
+      sec: ref.sec,
+      para: ref.para,
+      kind: ref.kind,
+      ...(ref.path ? { path: ref.path } : {}),
+      ...(ref.noteControl != null ? { noteControl: ref.noteControl, notePara: ref.notePara } : {}),
+      offset: ref.offset,
+      keys: ref.keys,
+      source: 'unmarkedRef',
+      unmarkedRef: ref,
+    })
+  }
+  for (const p of patterns) {
+    const matchedKeys = p.parsedRefs.map((r) => r.matchedKey).filter(Boolean)
+    if (matchedKeys.length > 0) {
+      events.push({
+        sec: p.sec,
+        para: p.para,
+        kind: p.kind,
+        ...(p.path ? { path: p.path } : {}),
+        ...(p.noteControl != null ? { noteControl: p.noteControl, notePara: p.notePara } : {}),
+        offset: p.offset,
+        keys: matchedKeys,
+        source: 'pattern',
+        pattern: p,
+      })
+    }
+  }
+  if (options.pendingEvent) {
+    events.push(options.pendingEvent)
+  }
+
+  events.sort(createEventComparator(doc))
+
+  const citedKeysInOrder = []
+  const seenKey = new Set()
+  const resolvedEntries = []
+  const missingKeys = []
+  const unverifiedKeys = []
+
+  for (const ev of events) {
+    for (const rawKey of ev.keys) {
+      const entry = hasEntries ? resolveEntryByKey(entries, rawKey) : null
+      if (entry) {
+        if (entry.verified === false) {
+          if (!unverifiedKeys.includes(entry.key)) unverifiedKeys.push(entry.key)
+          continue
+        }
+        citedKeysInOrder.push(entry.key)
+        if (!seenKey.has(entry.key)) {
+          seenKey.add(entry.key)
+          resolvedEntries.push(entry)
+        }
+      } else {
+        citedKeysInOrder.push(rawKey)
+        if (hasEntries && !missingKeys.includes(rawKey)) missingKeys.push(rawKey)
+      }
+    }
+  }
+
+  return {
+    citedKeysInOrder,
+    resolvedEntries,
+    missingKeys,
+    unverifiedKeys,
+    marks,
+    locatedUnmarkedRefs,
+    modifiedUnmarkedRefs,
+    aliveUnmarkedRefs,
+    patterns,
+    allPatterns,
+    events,
+  }
+}
+
+function buildFormatItemsForCitation(items, mode, entries, allowKeyOnlyFallback) {
+  const hasEntries = Array.isArray(entries) && entries.length > 0
+  const formatItems = []
+  const missingKeys = []
+  const unverifiedKeys = []
+  let canFormat = true
+
+  for (const item of items) {
+    const resolved = hasEntries ? resolveEntryByKey(entries, item.key) : null
+    if (hasEntries) {
+      if (!resolved) {
+        missingKeys.push(item.key)
+        canFormat = false
+        continue
+      }
+      if (resolved.verified === false) {
+        unverifiedKeys.push(resolved.key)
+        canFormat = false
+        continue
+      }
+    } else if (!allowKeyOnlyFallback || mode === 'narrative') {
+      canFormat = false
+      break
+    }
+
+    const entry = resolved ?? {
+      id: item.key,
+      key: item.key,
+      oldKeys: [],
+      type: 'other',
+      authors: [],
+      title: '',
+      language: 'en',
+      tags: [],
+      verified: true,
+    }
+    formatItems.push({
+      entry,
+      ...(item.locator ? { locator: item.locator } : {}),
+      ...(item.prefix ? { prefix: item.prefix } : {}),
+      ...(item.suffix ? { suffix: item.suffix } : {}),
+    })
+  }
+
+  if (formatItems.length === 0) canFormat = false
+  return { canFormat, formatItems, missingKeys, unverifiedKeys }
+}
+
+/**
+ * Synchronize formatting of all existing marked `인용:` body citations and tracked
+ * non-body citations (`unmarkedRefs`) for disambiguation suffixes (`a`/`b`),
+ * MLA short titles, and unified document-order IEEE numbering.
+ * Skips manually modified citations and reports them in `skippedManual`.
+ */
+function syncMarkedCitationsFormatting(doc, entries, style, options = {}) {
+  if (!doc || typeof doc.getBookmarks !== 'function') {
+    return {
+      ok: true,
+      updated: 0,
+      skippedManual: [],
+      missingKeys: [],
+      unverifiedKeys: [],
+    }
+  }
+
+  const entryList = Array.isArray(entries) ? entries : []
+  const hasEntries = entryList.length > 0
+  const allowKeyOnlyFallback = options.allowKeyOnlyFallback === true && style === 'ieee'
+  const updateMetaForAllEligible = options.updateMetaForAllEligible === true
+  const collected = collectDocumentCitationOrder(doc, hasEntries ? entryList : null)
+  const { marks, locatedUnmarkedRefs, modifiedUnmarkedRefs, aliveUnmarkedRefs, citedKeysInOrder } =
+    collected
+
+  if (marks.length === 0 && locatedUnmarkedRefs.length === 0 && modifiedUnmarkedRefs.length === 0) {
+    return {
+      ok: true,
+      updated: 0,
+      skippedManual: [],
+      missingKeys: [],
+      unverifiedKeys: [],
+    }
+  }
+
+  // Include all cited entries in document order (even from manually edited marks) for stable suffixes & numbering.
+  const citedEntryMap = new Map()
+  if (hasEntries) {
+    for (const key of citedKeysInOrder) {
+      const entry = resolveEntryByKey(entryList, key)
+      if (entry && !citedEntryMap.has(entry.key)) {
+        citedEntryMap.set(entry.key, entry)
+      }
+    }
+  }
+  const citedEntries = [...citedEntryMap.values()]
+  const disambiguation = assignDisambiguationSuffixes(citedEntries, style)
+  const shortTitles = style === 'mla' ? assignMlaShortTitles(citedEntries) : undefined
+  const ieeeNumbers =
+    style === 'ieee'
+      ? assignIeeeNumbers(citedKeysInOrder, hasEntries ? entryList : undefined)
+      : new Map()
+
+  const skippedManual = []
+  const missingKeysSet = new Set()
+  const unverifiedKeysSet = new Set()
+  const bodySteps = []
+  const unmarkedSteps = []
+
+  for (const mark of marks) {
+    if (mark.isManuallyEdited) {
+      skippedManual.push({
+        id: mark.id,
+        kind: 'body',
+        sec: mark.sec,
+        para: mark.para,
+        offset: mark.startOffset,
+        length: mark.length,
+        currentText: mark.text,
+        expectedText: mark.writtenText,
+      })
+      continue
+    }
+    const built = buildFormatItemsForCitation(
+      mark.items,
+      mark.mode,
+      entryList,
+      allowKeyOnlyFallback,
+    )
+    for (const k of built.missingKeys) missingKeysSet.add(k)
+    for (const k of built.unverifiedKeys) unverifiedKeysSet.add(k)
+    if (!built.canFormat) continue
+
+    const nextText = formatInTextCitation(built.formatItems, style, {
+      mode: mark.mode,
+      disambiguation,
+      shortTitles,
+      ieeeNumbers,
+    })
+    if (nextText !== mark.text || updateMetaForAllEligible) {
+      bodySteps.push({ mark, formatItems: built.formatItems, nextText })
+    }
+  }
+
+  for (const modRef of modifiedUnmarkedRefs) {
+    skippedManual.push({
+      id: modRef.id,
+      kind: modRef.kind,
+      sec: modRef.sec,
+      para: modRef.para,
+      ...(modRef.path ? { path: modRef.path } : {}),
+      ...(modRef.noteControl != null
+        ? { noteControl: modRef.noteControl, notePara: modRef.notePara }
+        : {}),
+      offset: modRef.offset,
+      length: modRef.length,
+      currentText: modRef.text,
+      expectedText: modRef.writtenText,
+    })
+  }
+
+  for (const ref of locatedUnmarkedRefs) {
+    const built = buildFormatItemsForCitation(ref.items, ref.mode, entryList, allowKeyOnlyFallback)
+    for (const k of built.missingKeys) missingKeysSet.add(k)
+    for (const k of built.unverifiedKeys) unverifiedKeysSet.add(k)
+    if (!built.canFormat) continue
+
+    const nextText = formatInTextCitation(built.formatItems, style, {
+      mode: ref.mode,
+      disambiguation,
+      shortTitles,
+      ieeeNumbers,
+    })
+    if (nextText !== ref.text || updateMetaForAllEligible) {
+      unmarkedSteps.push({ ref, formatItems: built.formatItems, nextText })
+    }
+  }
+
+  // Rewrite body marks in reverse document order so earlier offsets never shift.
+  bodySteps.sort((a, b) => {
+    if (a.mark.sec !== b.mark.sec) return b.mark.sec - a.mark.sec
+    if (a.mark.para !== b.mark.para) return b.mark.para - a.mark.para
+    return b.mark.startOffset - a.mark.startOffset
+  })
+
+  // Rewrite non-body refs in reverse offset order within each container.
+  unmarkedSteps.sort((a, b) => {
+    if (a.ref.sec !== b.ref.sec) return b.ref.sec - a.ref.sec
+    if (a.ref.para !== b.ref.para) return b.ref.para - a.ref.para
+    return b.ref.offset - a.ref.offset
+  })
+
+  const { metaMap } = readCitationMetaState(doc)
+  const nextUnmarkedById = new Map(aliveUnmarkedRefs.map((r) => [r.id, { ...r }]))
+  let updated = 0
+  let metaDirty = false
+
+  for (const step of bodySteps) {
+    if (step.nextText !== step.mark.text) {
+      const rw = rewriteSingleCitationMarkInPlace(doc, step.mark, step.nextText)
+      if (!rw.ok) return rw
+      updated += 1
+      metaDirty = true
+    } else if (updateMetaForAllEligible) {
+      metaDirty = true
+    }
+    const existing = resolveCitationMeta(metaMap, step.mark.id)
+    metaMap.set(step.mark.id, {
+      items: hasEntries
+        ? step.formatItems.map((it) => {
+            const out = { key: it.entry.key }
+            if (it.locator) out.locator = it.locator
+            if (it.prefix) out.prefix = it.prefix
+            if (it.suffix) out.suffix = it.suffix
+            return out
+          })
+        : existing.items.length > 0
+          ? existing.items
+          : step.mark.items,
+      mode: step.mark.mode,
+      writtenText: step.nextText,
+    })
+  }
+
+  for (const step of unmarkedSteps) {
+    if (step.nextText !== step.ref.text) {
+      let rw
+      if (step.ref.kind === 'table' || step.ref.kind === 'textbox') {
+        rw = replaceCellTextRange(
+          doc,
+          step.ref.sec,
+          step.ref.para,
+          step.ref.path,
+          step.ref.offset,
+          step.ref.length,
+          step.nextText,
+        )
+      } else {
+        rw = replaceNoteTextRange(
+          doc,
+          step.ref.sec,
+          step.ref.para,
+          step.ref.noteControl,
+          step.ref.notePara,
+          step.ref.offset,
+          step.ref.length,
+          step.nextText,
+        )
+      }
+      if (!rw.ok) return rw
+      updated += 1
+      metaDirty = true
+    } else if (updateMetaForAllEligible) {
+      metaDirty = true
+    }
+
+    const prev = nextUnmarkedById.get(step.ref.id)
+    if (prev) {
+      nextUnmarkedById.set(step.ref.id, {
+        ...prev,
+        offset: step.ref.offset,
+        items: hasEntries
+          ? step.formatItems.map((it) => {
+              const out = { key: it.entry.key }
+              if (it.locator) out.locator = it.locator
+              if (it.prefix) out.prefix = it.prefix
+              if (it.suffix) out.suffix = it.suffix
+              return out
+            })
+          : prev.items,
+        writtenText: step.nextText,
+      })
+    }
+  }
+
+  if (metaDirty) {
+    const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
+    const metaWrite = writeCitationMetaState(
+      doc,
+      metaMap,
+      [...nextUnmarkedById.values()],
+      activeIds,
+    )
+    if (!metaWrite.ok) return metaWrite
+  }
+
+  return {
+    ok: true,
+    updated,
+    skippedManual,
+    missingKeys: [...missingKeysSet],
+    unverifiedKeys: [...unverifiedKeysSet],
+  }
+}
+
+/**
+ * Renumber non-manual marked `인용:` body citations and tracked non-body citations
+ * in unified document order when the active style is IEEE.
  * Works with or without library entries (falls back to key-only entries for parenthetical marks).
  */
 export function renumberIeeeCitations(doc, entries = null) {
   if (!doc || typeof doc.getBookmarks !== 'function') {
     return { ok: true, updated: 0 }
   }
-  const hasEntries = Array.isArray(entries) && entries.length > 0
-  const marks = listCitationMarks(doc, hasEntries ? entries : null)
-  if (marks.length === 0) return { ok: true, updated: 0 }
-
-  const citedKeysInOrder = []
-  for (const mark of marks) {
-    for (const k of mark.keys) citedKeysInOrder.push(k)
+  const sync = syncMarkedCitationsFormatting(doc, entries, 'ieee', { allowKeyOnlyFallback: true })
+  if (!sync.ok) return sync
+  return {
+    ok: true,
+    updated: sync.updated,
+    ...(sync.skippedManual.length > 0 ? { skippedManual: sync.skippedManual } : {}),
   }
-  const ieeeNumbers = assignIeeeNumbers(citedKeysInOrder, hasEntries ? entries : undefined)
-  const metaMap = readCitationMetaMap(doc)
-
-  const plan = []
-  for (const mark of marks) {
-    if (mark.isManuallyEdited) continue
-    if (mark.items.length === 0) continue
-
-    const formatItems = []
-    let canFormat = true
-    for (const item of mark.items) {
-      const resolved = hasEntries ? resolveEntryByKey(entries, item.key) : null
-      if (hasEntries && (!resolved || resolved.verified === false)) {
-        canFormat = false
-        break
-      }
-      const entry = resolved ?? {
-        id: item.key,
-        key: item.key,
-        oldKeys: [],
-        type: 'other',
-        authors: [],
-        title: '',
-        language: 'en',
-        tags: [],
-        verified: true,
-      }
-      if (!resolved && mark.mode === 'narrative') {
-        canFormat = false
-        break
-      }
-      formatItems.push({
-        entry,
-        ...(item.locator ? { locator: item.locator } : {}),
-        ...(item.prefix ? { prefix: item.prefix } : {}),
-        ...(item.suffix ? { suffix: item.suffix } : {}),
-      })
-    }
-    if (!canFormat) continue
-
-    const nextText = formatInTextCitation(formatItems, 'ieee', {
-      mode: mark.mode,
-      ieeeNumbers,
-    })
-    if (nextText !== mark.text) {
-      plan.push({ mark, nextText })
-    }
-  }
-
-  if (plan.length === 0) return { ok: true, updated: 0 }
-
-  // Mutate in reverse document order so earlier paragraph offsets never shift.
-  plan.sort((a, b) => {
-    if (a.mark.sec !== b.mark.sec) return b.mark.sec - a.mark.sec
-    if (a.mark.para !== b.mark.para) return b.mark.para - a.mark.para
-    return b.mark.startOffset - a.mark.startOffset
-  })
-
-  for (const step of plan) {
-    rewriteSingleCitationMarkInPlace(doc, step.mark, step.nextText)
-    const existing = resolveCitationMeta(metaMap, step.mark.id)
-    metaMap.set(step.mark.id, {
-      items: existing.items.length > 0 ? existing.items : step.mark.items,
-      mode: step.mark.mode,
-      writtenText: step.nextText,
-    })
-  }
-
-  const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
-  writeCitationMetaMap(doc, metaMap, activeIds)
-
-  return { ok: true, updated: plan.length }
 }
 
 /**
  * Insert a formatted in-text citation at `options.place`.
  * - Body paragraphs: inserts text wrapped in paired `인용:<tag>:시작` / `인용:<tag>:끝` marks
  *   and stores structured metadata in `설정:인용`.
- * - Table cells, text boxes, footnotes, and endnotes: inserts plain text ONLY (no bookmarks).
- * - Unverified references (`verified === false`) and missing entries are strictly refused.
+ * - Table cells, text boxes, footnotes, and endnotes: inserts plain text ONLY (no bookmarks
+ *   on the container) and records a lightweight descriptor in `설정:인용` so IEEE numbering
+ *   and style updates stay synchronized.
+ * - Unverified references (`verified === false`), missing entries, and placements inside
+ *   existing `인용:` or `참고문헌:` ranges are strictly refused.
  */
 export function insertCitation(doc, options = {}) {
   if (!doc || typeof doc.getSectionCount !== 'function') {
@@ -915,43 +1807,44 @@ export function insertCitation(doc, options = {}) {
   const target = classifyCitationPlace(doc, options.place)
   if (!target.ok) return target
 
-  // Build ordered cited key sequence including this new citation at its document position.
-  const existingMarks = listCitationMarks(doc, entries)
-  const events = existingMarks.map((m) => ({
-    sec: m.sec,
-    para: m.para,
-    kind: 'body',
-    offset: m.startOffset,
-    keys: m.keys,
-  }))
+  // Guard against inserting inside an existing `인용:` or `참고문헌:` range.
+  const bibRanges = findRangeMarks(doc, [MARK_PREFIXES.bibliography]).ranges
+  if (bibRanges.some((r) => isParaInsideRange(target.sec, target.para, r))) {
+    return { ok: false, reason: 'inside_bibliography' }
+  }
+  if (target.kind === 'body') {
+    const citRanges = findRangeMarks(doc, [MARK_PREFIXES.citation]).ranges
+    if (
+      citRanges.some((r) => isBodyPositionInsideRange(target.sec, target.para, target.offset, r))
+    ) {
+      return { ok: false, reason: 'inside_citation' }
+    }
+  }
+
+  // Compute unified document reading order INCLUDING this pending citation.
   const newKeys = resolvedItems.map((it) => it.entry.key)
-  events.push({
+  const pendingEvent = {
     sec: target.sec,
     para: target.para,
     kind: target.kind,
+    ...(target.path ? { path: target.path } : {}),
+    ...(target.noteControl != null
+      ? { noteControl: target.noteControl, notePara: target.notePara }
+      : {}),
     offset: target.offset,
     keys: newKeys,
-  })
-  events.sort(compareDocPositions)
-
-  const citedKeysInOrder = []
+    source: 'pending',
+  }
+  const unified = collectDocumentCitationOrder(doc, entries, { pendingEvent })
   const citedEntryMap = new Map()
-  for (const ev of events) {
-    for (const key of ev.keys) {
-      citedKeysInOrder.push(key)
-      const resolved = resolveEntryByKey(entries, key)
-      if (resolved && !citedEntryMap.has(resolved.key)) {
-        citedEntryMap.set(resolved.key, resolved)
-      }
-    }
-  }
-  for (const it of resolvedItems) {
-    citedEntryMap.set(it.entry.key, it.entry)
-  }
-
+  for (const e of unified.resolvedEntries) citedEntryMap.set(e.key, e)
+  for (const it of resolvedItems) citedEntryMap.set(it.entry.key, it.entry)
   const citedEntries = [...citedEntryMap.values()]
+
   const disambiguation = assignDisambiguationSuffixes(citedEntries, style)
-  const ieeeNumbers = style === 'ieee' ? assignIeeeNumbers(citedKeysInOrder, entries) : new Map()
+  const shortTitles = style === 'mla' ? assignMlaShortTitles(citedEntries) : undefined
+  const ieeeNumbers =
+    style === 'ieee' ? assignIeeeNumbers(unified.citedKeysInOrder, entries) : new Map()
 
   const text = formatInTextCitation(
     resolvedItems.map((it) => ({
@@ -961,11 +1854,19 @@ export function insertCitation(doc, options = {}) {
       ...(it.suffix ? { suffix: it.suffix } : {}),
     })),
     style,
-    { mode, disambiguation, ieeeNumbers },
+    { mode, disambiguation, shortTitles, ieeeNumbers },
   )
   const textLen = cpLength(text)
 
-  // Non-body editable containers: insert plain text ONLY (zero bookmarks).
+  const storedItems = resolvedItems.map((it) => {
+    const out = { key: it.entry.key }
+    if (it.locator) out.locator = it.locator
+    if (it.prefix) out.prefix = it.prefix
+    if (it.suffix) out.suffix = it.suffix
+    return out
+  })
+
+  // Non-body editable containers: insert plain text ONLY (zero citation bookmarks).
   if (target.kind === 'table' || target.kind === 'textbox') {
     const pathJson = JSON.stringify(target.path)
     if (typeof doc.insertTextInCellByPath === 'function') {
@@ -990,6 +1891,27 @@ export function insertCitation(doc, options = {}) {
     } else {
       return { ok: false, reason: 'unsupported_place' }
     }
+
+    const { metaMap, unmarkedRefs } = readCitationMetaState(doc)
+    const refId = allocateUnmarkedRefId(unmarkedRefs)
+    unmarkedRefs.push({
+      id: refId,
+      kind: target.kind,
+      sec: target.sec,
+      para: target.para,
+      path: target.path,
+      offset: target.offset,
+      items: storedItems,
+      mode,
+      writtenText: text,
+    })
+    const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
+    const metaWrite = writeCitationMetaState(doc, metaMap, unmarkedRefs, activeIds)
+    if (!metaWrite.ok) return metaWrite
+
+    const syncRes = syncMarkedCitationsFormatting(doc, entries, style)
+    if (!syncRes.ok) return syncRes
+
     return {
       ok: true,
       marked: false,
@@ -1001,6 +1923,8 @@ export function insertCitation(doc, options = {}) {
       offset: target.offset,
       length: textLen,
       keys: newKeys,
+      ...(syncRes.updated > 0 ? { renumbered: syncRes.updated } : {}),
+      ...(syncRes.skippedManual.length > 0 ? { skippedManual: syncRes.skippedManual } : {}),
     }
   }
 
@@ -1016,6 +1940,28 @@ export function insertCitation(doc, options = {}) {
       ),
       'insertTextInFootnote',
     )
+
+    const { metaMap, unmarkedRefs } = readCitationMetaState(doc)
+    const refId = allocateUnmarkedRefId(unmarkedRefs)
+    unmarkedRefs.push({
+      id: refId,
+      kind: target.kind,
+      sec: target.sec,
+      para: target.para,
+      noteControl: target.noteControl,
+      notePara: target.notePara,
+      offset: target.offset,
+      items: storedItems,
+      mode,
+      writtenText: text,
+    })
+    const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
+    const metaWrite = writeCitationMetaState(doc, metaMap, unmarkedRefs, activeIds)
+    if (!metaWrite.ok) return metaWrite
+
+    const syncRes = syncMarkedCitationsFormatting(doc, entries, style)
+    if (!syncRes.ok) return syncRes
+
     return {
       ok: true,
       marked: false,
@@ -1028,6 +1974,8 @@ export function insertCitation(doc, options = {}) {
       offset: target.offset,
       length: textLen,
       keys: newKeys,
+      ...(syncRes.updated > 0 ? { renumbered: syncRes.updated } : {}),
+      ...(syncRes.skippedManual.length > 0 ? { skippedManual: syncRes.skippedManual } : {}),
     }
   }
 
@@ -1036,15 +1984,7 @@ export function insertCitation(doc, options = {}) {
   const startOffset = target.offset
   const endOffset = startOffset + textLen
 
-  const storedItems = resolvedItems.map((it) => {
-    const out = { key: it.entry.key }
-    if (it.locator) out.locator = it.locator
-    if (it.prefix) out.prefix = it.prefix
-    if (it.suffix) out.suffix = it.suffix
-    return out
-  })
-
-  const metaMap = readCitationMetaMap(doc)
+  const { metaMap, unmarkedRefs } = readCitationMetaState(doc)
   const tag = allocateCitationTag(doc, storedItems, metaMap)
   const rangeRes = addRangeMark(
     doc,
@@ -1062,28 +2002,33 @@ export function insertCitation(doc, options = {}) {
   metaMap.set(tag.id, { items: storedItems, mode, writtenText: text })
   const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
   activeIds.add(tag.id)
-  writeCitationMetaMap(doc, metaMap, activeIds)
+  const metaWrite = writeCitationMetaState(doc, metaMap, unmarkedRefs, activeIds)
+  if (!metaWrite.ok) return metaWrite
 
-  let renumbered = 0
-  if (style === 'ieee') {
-    const renum = renumberIeeeCitations(doc, entries)
-    renumbered = renum.updated
-  }
+  const syncRes = syncMarkedCitationsFormatting(doc, entries, style)
+  if (!syncRes.ok) return syncRes
+
+  // Re-read our inserted mark's offsets in case an earlier citation on the same paragraph changed length.
+  const finalMark = listCitationMarks(doc, entries).find((m) => m.id === tag.id)
+  const finalStart = finalMark ? finalMark.startOffset : startOffset
+  const finalEnd = finalMark ? finalMark.endOffset : endOffset
+  const finalText = finalMark ? finalMark.text : text
 
   return {
     ok: true,
     marked: true,
     placeKind: 'body',
-    text,
+    text: finalText,
     sec: target.sec,
     para: target.para,
-    startOffset,
-    endOffset,
-    offset: startOffset,
-    length: textLen,
+    startOffset: finalStart,
+    endOffset: finalEnd,
+    offset: finalStart,
+    length: finalEnd - finalStart,
     id: tag.id,
     keys: newKeys,
-    ...(renumbered > 0 ? { renumbered } : {}),
+    ...(syncRes.updated > 0 ? { renumbered: syncRes.updated } : {}),
+    ...(syncRes.skippedManual.length > 0 ? { skippedManual: syncRes.skippedManual } : {}),
   }
 }
 
@@ -1385,8 +2330,9 @@ export function findPatternCitations(doc, entries = null) {
   }
 
   // Drop inner sub-matches strictly contained within a longer match at the same container.
+  const cmpEvents = createEventComparator(doc)
   collected.sort((a, b) => {
-    const cmp = compareDocPositions(a, b)
+    const cmp = cmpEvents(a, b)
     if (cmp !== 0) return cmp
     return b.length - a.length
   })
@@ -1429,7 +2375,7 @@ export function rewriteCitationKeys(doc, keyMap, _entries = null) {
   if (map.size === 0) return { ok: true, updated: 0 }
 
   const marks = listCitationMarks(doc)
-  const metaMap = readCitationMetaMap(doc)
+  const { metaMap, unmarkedRefs } = readCitationMetaState(doc)
   const usedNames = readAllBookmarkNames(doc)
   let updated = 0
 
@@ -1506,9 +2452,27 @@ export function rewriteCitationKeys(doc, keyMap, _entries = null) {
     })
   }
 
+  const nextUnmarkedRefs = unmarkedRefs.map((ref) => {
+    let refChanged = false
+    const nextItems = ref.items.map((it) => {
+      const mapped = map.get(it.key)
+      if (typeof mapped === 'string' && mapped && mapped !== it.key) {
+        refChanged = true
+        return { ...it, key: mapped }
+      }
+      return it
+    })
+    if (refChanged) {
+      updated += 1
+      return { ...ref, items: nextItems }
+    }
+    return ref
+  })
+
   if (updated > 0) {
     const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
-    writeCitationMetaMap(doc, metaMap, activeIds)
+    const metaWrite = writeCitationMetaState(doc, metaMap, nextUnmarkedRefs, activeIds)
+    if (!metaWrite.ok) return metaWrite
   }
 
   // Also update saved bibliography key list if present.
@@ -1524,7 +2488,10 @@ export function rewriteCitationKeys(doc, keyMap, _entries = null) {
       return k
     })
     if (bibChanged) {
-      writeDocSetting(doc, BIB_SETTING_KEY, { ...savedBib, keys: nextBibKeys })
+      const bibWrite = checkSettingWriteResult(
+        writeDocSetting(doc, BIB_SETTING_KEY, { ...savedBib, keys: nextBibKeys }),
+      )
+      if (!bibWrite.ok) return bibWrite
     }
   }
 
@@ -1667,65 +2634,40 @@ export function detectBibliographyManualEdits(doc) {
 }
 
 function collectDocumentCitedKeys(doc, entries) {
-  const marks = listCitationMarks(doc, entries)
-  const patterns = findPatternCitations(doc, entries)
-
-  const events = []
-  for (const m of marks) {
-    events.push({
-      sec: m.sec,
-      para: m.para,
-      kind: 'body',
-      offset: m.startOffset,
-      keys: m.keys,
-      source: 'mark',
-    })
-  }
-  for (const p of patterns) {
-    const matchedKeys = p.parsedRefs.map((r) => r.matchedKey).filter(Boolean)
-    if (matchedKeys.length > 0) {
-      events.push({
-        sec: p.sec,
-        para: p.para,
-        kind: p.kind,
-        offset: p.offset,
-        keys: matchedKeys,
-        source: 'pattern',
-      })
-    }
-  }
-  events.sort(compareDocPositions)
-
-  const citedKeysInOrder = []
-  const seenKey = new Set()
-  const resolvedEntries = []
-  const missingKeys = []
-  const unverifiedKeys = []
-
-  for (const ev of events) {
-    for (const rawKey of ev.keys) {
-      const entry = Array.isArray(entries) ? resolveEntryByKey(entries, rawKey) : null
-      if (entry) {
-        if (entry.verified === false) {
-          if (!unverifiedKeys.includes(entry.key)) unverifiedKeys.push(entry.key)
-          continue
-        }
-        citedKeysInOrder.push(entry.key)
-        if (!seenKey.has(entry.key)) {
-          seenKey.add(entry.key)
-          resolvedEntries.push(entry)
-        }
-      } else {
-        citedKeysInOrder.push(rawKey)
-        if (!missingKeys.includes(rawKey)) missingKeys.push(rawKey)
-      }
-    }
-  }
-
-  return { citedKeysInOrder, resolvedEntries, missingKeys, unverifiedKeys, marks, patterns }
+  return collectDocumentCitationOrder(doc, entries)
 }
 
-function buildBibliographyRenderPlan(doc, entries, style, options = {}, savedMeta = null) {
+function bibliographyLineCollationMeta(text) {
+  const cleaned = cleanText(text).replace(LEADING_IEEE_NUM_RE, '').trim()
+  const lead = cleaned.split(/[(.]/)[0]?.trim() || cleaned
+  const isKo = HANGUL_RE.test(lead)
+  const sortText = isKo ? cleaned : cleaned.replace(LEADING_EN_ARTICLE_RE, '')
+  return { group: isKo ? 0 : 1, sortText }
+}
+
+function compareBibRowsByCollation(a, b) {
+  const ma = bibliographyLineCollationMeta(a.text)
+  const mb = bibliographyLineCollationMeta(b.text)
+  if (ma.group !== mb.group) return ma.group - mb.group
+  const collator = ma.group === 0 ? KO_COLLATOR : EN_COLLATOR
+  return collator.compare(ma.sortText, mb.sortText)
+}
+
+function parseLeadingIeeeNumber(text) {
+  const match = LEADING_IEEE_NUM_RE.exec(cleanText(text))
+  if (!match) return null
+  const n = Number(match[1])
+  return Number.isInteger(n) && n >= 1 ? n : null
+}
+
+function buildBibliographyRenderPlan(
+  doc,
+  entries,
+  style,
+  options = {},
+  savedMeta = null,
+  bibRange = null,
+) {
   const { citedKeysInOrder, resolvedEntries, missingKeys, unverifiedKeys } =
     collectDocumentCitedKeys(doc, entries)
 
@@ -1745,19 +2687,30 @@ function buildBibliographyRenderPlan(doc, entries, style, options = {}, savedMet
     }
   }
 
-  // Preserve lines from an existing bibliography whose keys are absent from `entries`
-  // (e.g. document edited on another machine whose library does not have those entries).
+  // Preserve lines from an existing bibliography whose keys are absent from `entries`,
+  // reading their LIVE document text rather than stale saved `expectedLines`.
   const preservedMissing = []
-  if (savedMeta && Array.isArray(savedMeta.keys) && Array.isArray(savedMeta.expectedLines)) {
+  if (savedMeta && Array.isArray(savedMeta.keys)) {
     const titleOffset = typeof savedMeta.title === 'string' && savedMeta.title.length > 0 ? 1 : 0
     for (let i = 0; i < savedMeta.keys.length; i++) {
       const savedKey = savedMeta.keys[i]
       if (!savedKey) continue
       const inLibrary = Array.isArray(entries) ? resolveEntryByKey(entries, savedKey) : null
       if (inLibrary) continue
-      const lineText = savedMeta.expectedLines[titleOffset + i]
-      if (typeof lineText === 'string' && lineText.length > 0) {
-        preservedMissing.push({ key: savedKey, text: lineText })
+
+      let liveText = ''
+      if (bibRange && bibRange.start.sec === bibRange.end.sec) {
+        const livePara = bibRange.start.para + titleOffset + i
+        if (livePara >= bibRange.start.para && livePara <= bibRange.end.para) {
+          liveText = bodyText(doc, bibRange.start.sec, livePara)
+        }
+      }
+      if (!liveText && Array.isArray(savedMeta.expectedLines)) {
+        const fallback = savedMeta.expectedLines[titleOffset + i]
+        if (typeof fallback === 'string') liveText = fallback
+      }
+      if (typeof liveText === 'string' && liveText.length > 0) {
+        preservedMissing.push({ key: savedKey, text: liveText, savedIndex: i })
       }
     }
   }
@@ -1768,20 +2721,82 @@ function buildBibliographyRenderPlan(doc, entries, style, options = {}, savedMet
   }
 
   const formatted = formatBibliographyList(entriesToFormat, style, { citedKeysInOrder })
-  const rows = formatted.entries.map((fe) => ({
+  const formattedRows = formatted.entries.map((fe, idx) => ({
     key: fe.key,
     text: fe.text,
     segments: fe.segments,
     preserved: false,
+    _fmtIdx: idx,
+    _ieeeNum: fe.number,
   }))
-  for (const pm of preservedMissing) {
-    rows.push({
-      key: pm.key,
-      text: pm.text,
-      segments: [{ text: pm.text }],
-      preserved: true,
+  const preservedRows = preservedMissing.map((pm) => ({
+    key: pm.key,
+    text: pm.text,
+    segments: [{ text: pm.text }],
+    preserved: true,
+    _savedIndex: pm.savedIndex,
+  }))
+
+  let mergedRows
+  if (preservedRows.length === 0) {
+    mergedRows = formattedRows
+  } else if (style === 'ieee') {
+    const unifiedIeee = assignIeeeNumbers(citedKeysInOrder, entries)
+    const ranked = [
+      ...formattedRows.map((row) => ({
+        row,
+        rank:
+          row._ieeeNum ??
+          unifiedIeee.get(row.key) ??
+          formatted.ieeeNumbers.get(row.key) ??
+          Infinity,
+        tieGroup: 1,
+        tieOrder: row._fmtIdx,
+      })),
+      ...preservedRows.map((row) => ({
+        row,
+        rank: unifiedIeee.get(row.key) ?? parseLeadingIeeeNumber(row.text) ?? row._savedIndex + 1,
+        tieGroup: 0,
+        tieOrder: row._savedIndex,
+      })),
+    ]
+    ranked.sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank
+      if (a.tieGroup !== b.tieGroup) return a.tieGroup - b.tieGroup
+      return a.tieOrder - b.tieOrder
     })
+    mergedRows = ranked.map((item) => item.row)
+  } else {
+    // Merge preserved missing-key rows into formatted rows in Korean-first -> English A-Z collation order.
+    const sortedPreserved = [...preservedRows].sort(compareBibRowsByCollation)
+    mergedRows = []
+    let fIdx = 0
+    let pIdx = 0
+    while (fIdx < formattedRows.length && pIdx < sortedPreserved.length) {
+      if (compareBibRowsByCollation(sortedPreserved[pIdx], formattedRows[fIdx]) < 0) {
+        mergedRows.push(sortedPreserved[pIdx])
+        pIdx += 1
+      } else {
+        mergedRows.push(formattedRows[fIdx])
+        fIdx += 1
+      }
+    }
+    while (fIdx < formattedRows.length) {
+      mergedRows.push(formattedRows[fIdx])
+      fIdx += 1
+    }
+    while (pIdx < sortedPreserved.length) {
+      mergedRows.push(sortedPreserved[pIdx])
+      pIdx += 1
+    }
   }
+
+  const rows = mergedRows.map(({ key, text, segments, preserved }) => ({
+    key,
+    text,
+    segments,
+    preserved,
+  }))
 
   return {
     ok: true,
@@ -1794,7 +2809,10 @@ function buildBibliographyRenderPlan(doc, entries, style, options = {}, savedMet
 
 function prepareBibliographyReplaceSlot(doc, sec, startPara, endPara, rangeMarksToRemove) {
   if (Array.isArray(rangeMarksToRemove) && rangeMarksToRemove.length > 0) {
-    deleteMarkEntriesReverse(doc, rangeMarksToRemove)
+    const del = deleteMarkEntriesReverse(doc, rangeMarksToRemove)
+    if (del.failed.length > 0) {
+      return { ok: false, reason: 'mark_delete_failed', failed: del.failed }
+    }
   }
   for (let p = endPara; p > startPara; p--) {
     expectOk(doc.deleteParagraph(sec, p), 'deleteParagraph')
@@ -1812,6 +2830,7 @@ function prepareBibliographyReplaceSlot(doc, sec, startPara, endPara, rangeMarks
       ),
     null,
   )
+  return { ok: true }
 }
 
 function writeBibliographyIntoSlot(doc, config) {
@@ -1825,7 +2844,10 @@ function writeBibliographyIntoSlot(doc, config) {
 
   if (appendAtEnd) {
     const lastIdx = doc.getParagraphCount(sec) - 1
-    const lastLen = doc.getParagraphLength(sec, lastIdx)
+    const lastLen =
+      typeof doc.getLogicalLength === 'function'
+        ? doc.getLogicalLength(sec, lastIdx)
+        : doc.getParagraphLength(sec, lastIdx)
     expectOk(doc.splitParagraph(sec, lastIdx, lastLen), 'splitParagraph')
     insertPara = lastIdx + 1
     for (let i = 1; i < totalParas; i++) {
@@ -1842,7 +2864,23 @@ function writeBibliographyIntoSlot(doc, config) {
     )
     for (const mark of [...onTarget].sort((a, b) => b.ctrlIdx - a.ctrlIdx)) {
       rescuedBodyMarks.push({ name: mark.name, offset: mark.offset })
-      removeMark(doc, mark)
+      const rm = removeMark(doc, mark)
+      if (!rm.ok) {
+        return {
+          ok: false,
+          reason: 'mark_delete_failed',
+          failed: [
+            {
+              name: mark.name,
+              sec: mark.sec,
+              para: mark.para,
+              ctrlIdx: mark.ctrlIdx,
+              reason: rm.reason ?? 'engine_error',
+              error: rm.error ?? rm.reason ?? 'removeMark failed',
+            },
+          ],
+        }
+      }
     }
     rescuedBodyMarks.reverse()
 
@@ -1850,7 +2888,18 @@ function writeBibliographyIntoSlot(doc, config) {
       expectOk(doc.splitParagraph(sec, insertPara, 0), 'splitParagraph')
     }
     for (const rescued of rescuedBodyMarks) {
-      addMark(doc, { sec, para: insertPara + totalParas, offset: rescued.offset }, rescued.name)
+      const added = addMark(
+        doc,
+        { sec, para: insertPara + totalParas, offset: rescued.offset },
+        rescued.name,
+      )
+      if (!added.ok) {
+        return {
+          ok: false,
+          reason: added.reason ?? 'engine_error',
+          ...(added.error ? { error: added.error } : {}),
+        }
+      }
     }
   }
 
@@ -1962,14 +3011,17 @@ function writeBibliographyIntoSlot(doc, config) {
   }
 
   const keys = rows.map((r) => r.key)
-  writeDocSetting(doc, BIB_SETTING_KEY, {
-    v: 1,
-    title: titled ? trimmedTitle : null,
-    style,
-    keys,
-    expectedLines,
-    ...(includeAllLibrary ? { includeAllLibrary: true } : {}),
-  })
+  const bibSettingWrite = checkSettingWriteResult(
+    writeDocSetting(doc, BIB_SETTING_KEY, {
+      v: 1,
+      title: titled ? trimmedTitle : null,
+      style,
+      keys,
+      expectedLines,
+      ...(includeAllLibrary ? { includeAllLibrary: true } : {}),
+    }),
+  )
+  if (!bibSettingWrite.ok) return bibSettingWrite
 
   return {
     ok: true,
@@ -2077,13 +3129,8 @@ export function insertBibliographyBlock(doc, entries, options = {}) {
     appendAtEnd = true
   }
 
-  const plan = buildBibliographyRenderPlan(doc, entries, style, options, null)
+  const plan = buildBibliographyRenderPlan(doc, entries, style, options, null, null)
   if (!plan.ok) return plan
-
-  if (brokenBib.length > 0) {
-    cleanupBrokenMarks(doc, [MARK_PREFIXES.bibliography])
-    deleteDocSetting(doc, BIB_SETTING_KEY)
-  }
 
   if (legacy) {
     if (
@@ -2096,13 +3143,31 @@ export function insertBibliographyBlock(doc, entries, options = {}) {
     ) {
       return { ok: false, reason: 'has_objects', range: legacy.range }
     }
-    prepareBibliographyReplaceSlot(
+  }
+
+  if (brokenBib.length > 0) {
+    const cleaned = cleanupBrokenMarks(doc, [MARK_PREFIXES.bibliography])
+    if (Array.isArray(cleaned.failed) && cleaned.failed.length > 0) {
+      return { ok: false, reason: 'mark_delete_failed', failed: cleaned.failed }
+    }
+    const delSet = checkSettingWriteResult(deleteDocSetting(doc, BIB_SETTING_KEY))
+    if (!delSet.ok) return delSet
+  }
+
+  const syncRes = syncMarkedCitationsFormatting(doc, entries, style, {
+    allowKeyOnlyFallback: style === 'ieee',
+  })
+  if (!syncRes.ok) return syncRes
+
+  if (legacy) {
+    const prep = prepareBibliographyReplaceSlot(
       doc,
       legacy.range.sec,
       legacy.range.startPara,
       legacy.range.endPara,
       [],
     )
+    if (!prep.ok) return prep
   }
 
   const rawTitle = options.title === undefined ? DEFAULT_BIBLIOGRAPHY_TITLE : options.title
@@ -2121,13 +3186,16 @@ export function insertBibliographyBlock(doc, entries, options = {}) {
   return {
     ...written,
     preservedMissingKeys: plan.preservedMissingKeys,
+    ...(syncRes.updated > 0 ? { updatedCitations: syncRes.updated } : {}),
+    ...(syncRes.skippedManual.length > 0 ? { skippedManual: syncRes.skippedManual } : {}),
   }
 }
 
 /**
  * Refresh an existing marked `참고문헌:` bibliography block in place.
- * Preserves lines for keys absent from `entries`, refuses unapproved manual edits,
- * multi-section ranges, and ranges containing embedded objects.
+ * Preserves live text of lines for keys absent from `entries` in proper sort/number
+ * position, syncs marked citations for disambiguation/short-titles/IEEE numbers, and
+ * refuses unapproved manual edits, multi-section ranges, and ranges containing objects.
  */
 export function refreshBibliographyBlock(doc, entries, options = {}) {
   if (!doc || typeof doc.getSectionCount !== 'function') {
@@ -2176,22 +3244,36 @@ export function refreshBibliographyBlock(doc, entries, options = {}) {
     style,
     { ...options, includeAllLibrary },
     saved,
+    range,
   )
   if (!plan.ok) return plan
 
   // Clean up duplicate citation/bibliography marks before rewriting.
-  deduplicateMarks(doc, [MARK_PREFIXES.citation, MARK_PREFIXES.bibliography])
+  const dedup = deduplicateMarks(doc, [MARK_PREFIXES.citation, MARK_PREFIXES.bibliography])
+  if (Array.isArray(dedup.failed) && dedup.failed.length > 0) {
+    return { ok: false, reason: 'mark_delete_failed', failed: dedup.failed }
+  }
+
+  let syncRes = { ok: true, updated: 0, skippedManual: [] }
+  if (options.skipCitationSync !== true) {
+    syncRes = syncMarkedCitationsFormatting(doc, entries, style, {
+      allowKeyOnlyFallback: style === 'ieee',
+    })
+    if (!syncRes.ok) return syncRes
+  }
+
   const freshRanges = findRangeMarks(doc, [MARK_PREFIXES.bibliography]).ranges
   if (freshRanges.length === 0) return { ok: false, reason: 'not_found' }
   const activeRange = freshRanges[0]
 
-  prepareBibliographyReplaceSlot(
+  const prep = prepareBibliographyReplaceSlot(
     doc,
     activeRange.start.sec,
     activeRange.start.para,
     activeRange.end.para,
     [activeRange.start, activeRange.end],
   )
+  if (!prep.ok) return prep
 
   const title =
     options.title !== undefined
@@ -2216,6 +3298,8 @@ export function refreshBibliographyBlock(doc, entries, options = {}) {
     ...written,
     refreshed: true,
     preservedMissingKeys: plan.preservedMissingKeys,
+    ...(syncRes.updated > 0 ? { updatedCitations: syncRes.updated } : {}),
+    ...(syncRes.skippedManual.length > 0 ? { skippedManual: syncRes.skippedManual } : {}),
   }
 }
 
@@ -2225,9 +3309,10 @@ export function refreshBibliographyBlock(doc, entries, options = {}) {
 
 /**
  * Switch the document citation style (`apa` | `chicago` | `mla` | `ieee`).
- * Rewrites all resolved, verified, non-manually-edited `인용:` marks in place,
- * skips manually edited marks and reports them, updates `설정:인용꼴`, and
- * refreshes any marked `참고문헌:` block unless `options.refreshBibliography === false`.
+ * Rewrites all resolved, verified, non-manually-edited `인용:` marks and tracked
+ * non-body citations in unified document order, skips manually edited citations and
+ * reports them, updates `설정:인용꼴`, and refreshes any marked `참고문헌:` block
+ * unless `options.refreshBibliography === false`.
  */
 export function switchCitationStyle(doc, newStyle, entries, options = {}) {
   if (!isCitationStyle(newStyle)) {
@@ -2238,113 +3323,13 @@ export function switchCitationStyle(doc, newStyle, entries, options = {}) {
   }
 
   const entryList = Array.isArray(entries) ? entries : []
-  const marks = listCitationMarks(doc, entryList)
-  const metaMap = readCitationMetaMap(doc)
-
-  const skippedManual = []
-  const missingKeysSet = new Set()
-  const unverifiedKeysSet = new Set()
-  const eligible = []
-
-  // Collect global ordering across all cited keys in document order (including manual marks).
-  const citedKeysInOrder = []
-  const citedEntryMap = new Map()
-  for (const mark of marks) {
-    for (const item of mark.items) {
-      const entry = resolveEntryByKey(entryList, item.key)
-      if (entry) {
-        citedKeysInOrder.push(entry.key)
-        if (!citedEntryMap.has(entry.key)) citedEntryMap.set(entry.key, entry)
-      } else {
-        citedKeysInOrder.push(item.key)
-      }
-    }
-  }
-
-  const citedEntries = [...citedEntryMap.values()]
-  const disambiguation = assignDisambiguationSuffixes(citedEntries, newStyle)
-  const ieeeNumbers =
-    newStyle === 'ieee' ? assignIeeeNumbers(citedKeysInOrder, entryList) : new Map()
-
-  for (const mark of marks) {
-    if (mark.isManuallyEdited) {
-      skippedManual.push({
-        id: mark.id,
-        sec: mark.sec,
-        para: mark.para,
-        offset: mark.startOffset,
-        length: mark.length,
-        currentText: mark.text,
-        expectedText: mark.writtenText,
-      })
-      continue
-    }
-
-    let hasMissing = false
-    let hasUnverified = false
-    const formatItems = []
-    for (const item of mark.items) {
-      const entry = resolveEntryByKey(entryList, item.key)
-      if (!entry) {
-        missingKeysSet.add(item.key)
-        hasMissing = true
-        continue
-      }
-      if (entry.verified === false) {
-        unverifiedKeysSet.add(entry.key)
-        hasUnverified = true
-        continue
-      }
-      formatItems.push({
-        entry,
-        ...(item.locator ? { locator: item.locator } : {}),
-        ...(item.prefix ? { prefix: item.prefix } : {}),
-        ...(item.suffix ? { suffix: item.suffix } : {}),
-      })
-    }
-
-    if (hasMissing || hasUnverified || formatItems.length === 0) continue
-
-    const nextText = formatInTextCitation(formatItems, newStyle, {
-      mode: mark.mode,
-      disambiguation,
-      ieeeNumbers,
-    })
-    eligible.push({ mark, formatItems, nextText })
-  }
-
-  // Rewrite in reverse document order so earlier offsets never shift.
-  eligible.sort((a, b) => {
-    if (a.mark.sec !== b.mark.sec) return b.mark.sec - a.mark.sec
-    if (a.mark.para !== b.mark.para) return b.mark.para - a.mark.para
-    return b.mark.startOffset - a.mark.startOffset
+  const syncRes = syncMarkedCitationsFormatting(doc, entryList, newStyle, {
+    updateMetaForAllEligible: true,
   })
+  if (!syncRes.ok) return syncRes
 
-  let updatedCitations = 0
-  for (const step of eligible) {
-    if (step.nextText !== step.mark.text) {
-      rewriteSingleCitationMarkInPlace(doc, step.mark, step.nextText)
-      updatedCitations += 1
-    }
-    metaMap.set(step.mark.id, {
-      items: step.formatItems.map((it) => {
-        const out = { key: it.entry.key }
-        if (it.locator) out.locator = it.locator
-        if (it.prefix) out.prefix = it.prefix
-        if (it.suffix) out.suffix = it.suffix
-        return out
-      }),
-      mode: step.mark.mode,
-      writtenText: step.nextText,
-    })
-  }
-
-  if (eligible.length > 0) {
-    const activeIds = new Set(listCitationMarks(doc).map((m) => m.id))
-    writeCitationMetaMap(doc, metaMap, activeIds)
-  }
-
-  setDocumentCitationStyle(doc, newStyle)
+  const styleRes = setDocumentCitationStyle(doc, newStyle)
+  if (!styleRes.ok) return styleRes
 
   let bibliographyRefreshed = false
   let bibliographyResult = null
@@ -2353,6 +3338,7 @@ export function switchCitationStyle(doc, newStyle, entries, options = {}) {
     bibliographyResult = refreshBibliographyBlock(doc, entryList, {
       style: newStyle,
       allowOverwriteManual: options.allowOverwriteManual === true,
+      skipCitationSync: true,
     })
     bibliographyRefreshed = Boolean(bibliographyResult?.ok)
   }
@@ -2360,10 +3346,10 @@ export function switchCitationStyle(doc, newStyle, entries, options = {}) {
   return {
     ok: true,
     style: newStyle,
-    updatedCitations,
-    skippedManual,
-    missingKeys: [...missingKeysSet],
-    unverifiedKeys: [...unverifiedKeysSet],
+    updatedCitations: syncRes.updated,
+    skippedManual: syncRes.skippedManual,
+    missingKeys: syncRes.missingKeys,
+    unverifiedKeys: syncRes.unverifiedKeys,
     bibliographyRefreshed,
     bibliographyResult,
   }
@@ -2494,56 +3480,35 @@ export function auditCitations(doc, entries = [], options = {}) {
     return { ok: true, style, issues, counts }
   }
 
-  const marks = listCitationMarks(doc, entryList)
-  const patterns = findPatternCitations(doc, entryList)
+  const collected = collectDocumentCitationOrder(doc, entryList)
+  const { marks, locatedUnmarkedRefs, modifiedUnmarkedRefs, patterns, citedKeysInOrder } = collected
   const bibInfo = readBibliographyLinesForAudit(doc, entryList)
 
   const bibKeySet = new Set(bibInfo.lines.map((l) => l.key).filter(Boolean))
-  const citedKeySet = new Set()
-  const citedKeysInOrder = []
+  const citedKeySet = new Set(citedKeysInOrder)
+  const expectedIeee = style === 'ieee' ? assignIeeeNumbers(citedKeysInOrder, entryList) : new Map()
 
-  // Combine cited keys in document reading order.
-  const citeEvents = []
-  for (const m of marks) {
-    citeEvents.push({
-      sec: m.sec,
-      para: m.para,
-      kind: 'body',
-      offset: m.startOffset,
-      keys: m.keys,
-    })
-  }
-  for (const p of patterns) {
-    const matched = p.parsedRefs.map((r) => r.matchedKey).filter(Boolean)
-    if (matched.length > 0) {
-      citeEvents.push({
-        sec: p.sec,
-        para: p.para,
-        kind: p.kind,
-        offset: p.offset,
-        keys: matched,
-      })
-    }
-  }
-  citeEvents.sort(compareDocPositions)
-  for (const ev of citeEvents) {
-    for (const k of ev.keys) {
-      citedKeysInOrder.push(k)
-      citedKeySet.add(k)
+  const firstCiteLocByKey = new Map()
+  const recordFirstLoc = (key, loc) => {
+    if (key && !firstCiteLocByKey.has(key)) {
+      firstCiteLocByKey.set(key, loc)
     }
   }
 
   // Check 1 (missing_from_bibliography), Check 5 (manual_citation_edit), Check 6 (unverified_citation) on marks.
   for (const mark of marks) {
+    const loc = {
+      kind: 'body',
+      sec: mark.sec,
+      para: mark.para,
+      offset: mark.startOffset,
+      length: mark.length,
+      text: mark.text,
+    }
     if (mark.isManuallyEdited) {
       pushIssue({
         type: 'manual_citation_edit',
-        kind: 'body',
-        sec: mark.sec,
-        para: mark.para,
-        offset: mark.startOffset,
-        length: mark.length,
-        text: mark.text,
+        ...loc,
         expectedText: mark.writtenText,
         id: mark.id,
         keys: mark.keys,
@@ -2553,16 +3518,12 @@ export function auditCitations(doc, entries = [], options = {}) {
     for (const item of mark.items) {
       const resolved = resolveEntryByKey(entryList, item.key)
       const canonicalKey = resolved ? resolved.key : item.key
+      recordFirstLoc(canonicalKey, loc)
 
       if (resolved && resolved.verified === false) {
         pushIssue({
           type: 'unverified_citation',
-          kind: 'body',
-          sec: mark.sec,
-          para: mark.para,
-          offset: mark.startOffset,
-          length: mark.length,
-          text: mark.text,
+          ...loc,
           key: resolved.key,
           id: mark.id,
         })
@@ -2571,12 +3532,7 @@ export function auditCitations(doc, entries = [], options = {}) {
       if (!resolved || !bibInfo.hasBibliography || !bibKeySet.has(canonicalKey)) {
         pushIssue({
           type: 'missing_from_bibliography',
-          kind: 'body',
-          sec: mark.sec,
-          para: mark.para,
-          offset: mark.startOffset,
-          length: mark.length,
-          text: mark.text,
+          ...loc,
           key: canonicalKey,
           inLibrary: Boolean(resolved),
           hasBibliography: bibInfo.hasBibliography,
@@ -2585,7 +3541,90 @@ export function auditCitations(doc, entries = [], options = {}) {
     }
   }
 
-  // Check 1 & Check 6 on unmarked pattern citations across all 4 scopes.
+  // Check tracked non-body citations (table cells, text boxes, footnotes, endnotes).
+  for (const modRef of modifiedUnmarkedRefs) {
+    const loc = {
+      kind: modRef.kind,
+      sec: modRef.sec,
+      para: modRef.para,
+      ...(modRef.path ? { path: modRef.path } : {}),
+      ...(modRef.noteControl != null
+        ? { noteControl: modRef.noteControl, notePara: modRef.notePara }
+        : {}),
+      offset: modRef.offset,
+      length: modRef.length,
+      text: modRef.text,
+    }
+    pushIssue({
+      type: 'manual_citation_edit',
+      reason: 'unmarked_manual_edit',
+      ...loc,
+      expectedText: modRef.writtenText,
+      id: modRef.id,
+      keys: modRef.keys,
+    })
+  }
+
+  for (const ref of locatedUnmarkedRefs) {
+    const loc = {
+      kind: ref.kind,
+      sec: ref.sec,
+      para: ref.para,
+      ...(ref.path ? { path: ref.path } : {}),
+      ...(ref.noteControl != null ? { noteControl: ref.noteControl, notePara: ref.notePara } : {}),
+      offset: ref.offset,
+      length: ref.length,
+      text: ref.text,
+    }
+
+    if (style === 'ieee') {
+      const built = buildFormatItemsForCitation(ref.items, ref.mode, entryList, true)
+      if (built.canFormat) {
+        const expectedText = formatInTextCitation(built.formatItems, 'ieee', {
+          mode: ref.mode,
+          ieeeNumbers: expectedIeee,
+        })
+        if (expectedText !== ref.text) {
+          pushIssue({
+            type: 'manual_citation_edit',
+            reason: 'ieee_number_mismatch',
+            ...loc,
+            expectedText,
+            id: ref.id,
+            key: ref.keys[0],
+            keys: ref.keys,
+          })
+        }
+      }
+    }
+
+    for (const item of ref.items) {
+      const resolved = resolveEntryByKey(entryList, item.key)
+      const canonicalKey = resolved ? resolved.key : item.key
+      recordFirstLoc(canonicalKey, loc)
+
+      if (resolved && resolved.verified === false) {
+        pushIssue({
+          type: 'unverified_citation',
+          ...loc,
+          key: resolved.key,
+          id: ref.id,
+        })
+      }
+
+      if (!resolved || !bibInfo.hasBibliography || !bibKeySet.has(canonicalKey)) {
+        pushIssue({
+          type: 'missing_from_bibliography',
+          ...loc,
+          key: canonicalKey,
+          inLibrary: Boolean(resolved),
+          hasBibliography: bibInfo.hasBibliography,
+        })
+      }
+    }
+  }
+
+  // Check 1, Check 5 (IEEE style/number mismatches), & Check 6 on unmarked pattern citations across all scopes.
   for (const p of patterns) {
     const loc = {
       kind: p.kind,
@@ -2597,14 +3636,22 @@ export function auditCitations(doc, entries = [], options = {}) {
       length: p.length,
       text: p.text,
     }
+
+    const matchedResolvedEntries = []
+    let ieeeMismatchExpected = null
+
     for (const ref of p.parsedRefs) {
       const resolved = ref.matchedKey ? resolveEntryByKey(entryList, ref.matchedKey) : null
-      if (resolved && resolved.verified === false) {
-        pushIssue({
-          type: 'unverified_citation',
-          ...loc,
-          key: resolved.key,
-        })
+      if (resolved) {
+        recordFirstLoc(resolved.key, loc)
+        matchedResolvedEntries.push(resolved)
+        if (resolved.verified === false) {
+          pushIssue({
+            type: 'unverified_citation',
+            ...loc,
+            key: resolved.key,
+          })
+        }
       }
       if (!resolved || !bibInfo.hasBibliography || !bibKeySet.has(resolved.key)) {
         pushIssue({
@@ -2615,6 +3662,61 @@ export function auditCitations(doc, entries = [], options = {}) {
           hasBibliography: bibInfo.hasBibliography,
         })
       }
+      if (style === 'ieee' && p.patternKind === 'ieee' && resolved && ref.number != null) {
+        const expNum = expectedIeee.get(resolved.key)
+        if (expNum != null && expNum !== ref.number) {
+          ieeeMismatchExpected = `[${expNum}]`
+        }
+      }
+    }
+
+    if (style === 'ieee' && matchedResolvedEntries.length > 0) {
+      if (p.patternKind !== 'ieee') {
+        const expectedText = formatInTextCitation(
+          matchedResolvedEntries.map((entry) => ({ entry })),
+          'ieee',
+          { mode: 'parenthetical', ieeeNumbers: expectedIeee },
+        )
+        pushIssue({
+          type: 'manual_citation_edit',
+          reason: 'unmarked_style_mismatch',
+          ...loc,
+          expectedText,
+          key: matchedResolvedEntries[0].key,
+          keys: matchedResolvedEntries.map((e) => e.key),
+        })
+      } else if (ieeeMismatchExpected) {
+        pushIssue({
+          type: 'manual_citation_edit',
+          reason: 'ieee_number_mismatch',
+          ...loc,
+          expectedText: ieeeMismatchExpected,
+          key: matchedResolvedEntries[0].key,
+          keys: matchedResolvedEntries.map((e) => e.key),
+        })
+      }
+    }
+  }
+
+  // Flag untitled entries in the library (e.g. preserved by store normalization) with clickable location if cited.
+  for (const entry of entryList) {
+    if (!entry) continue
+    if (typeof entry.title !== 'string' || entry.title.trim() === '') {
+      const loc = firstCiteLocByKey.get(entry.key) ?? {
+        kind: 'body',
+        sec: 0,
+        para: 0,
+        offset: 0,
+        length: 0,
+        text: entry.key || '(Untitled)',
+      }
+      pushIssue({
+        type: 'unverified_citation',
+        reason: 'missing_title',
+        missingTitle: true,
+        ...loc,
+        key: entry.key,
+      })
     }
   }
 
@@ -2712,7 +3814,7 @@ export function auditCitations(doc, entries = [], options = {}) {
       }
     }
 
-    // Check marked citations and matched pattern citations.
+    // Check marked citations, tracked non-body citations, and matched pattern citations.
     for (const mark of marks) {
       const renderedMap = new Map()
       for (const k of mark.keys) renderedMap.set(k, mark.text)
@@ -2729,6 +3831,33 @@ export function auditCitations(doc, entries = [], options = {}) {
           offset: mark.startOffset,
           length: mark.length,
           text: mark.text,
+          key: miss.key,
+          expectedSuffix: miss.expectedSuffix,
+          expectedToken: miss.expectedToken,
+        })
+      }
+    }
+
+    for (const ref of locatedUnmarkedRefs) {
+      const renderedMap = new Map()
+      for (const k of ref.keys) renderedMap.set(k, ref.text)
+      const refMissing = findMissingDisambiguation(relevantEntries, renderedMap, style)
+      for (const miss of refMissing) {
+        const dedupKey = `uref:${miss.key}:${ref.id}`
+        if (seenDisambigLoc.has(dedupKey)) continue
+        seenDisambigLoc.add(dedupKey)
+        pushIssue({
+          type: 'missing_disambiguation',
+          kind: ref.kind,
+          sec: ref.sec,
+          para: ref.para,
+          ...(ref.path ? { path: ref.path } : {}),
+          ...(ref.noteControl != null
+            ? { noteControl: ref.noteControl, notePara: ref.notePara }
+            : {}),
+          offset: ref.offset,
+          length: ref.length,
+          text: ref.text,
           key: miss.key,
           expectedSuffix: miss.expectedSuffix,
           expectedToken: miss.expectedToken,
@@ -2797,9 +3926,9 @@ function areSetsEqual(a, b) {
 
 /**
  * Read-only staleness check for the staleness registry.
- * Detects out-of-order IEEE citation numbers even without library entries, and
- * detects stale `참고문헌:` blocks when cited keys, active style, manual edits,
- * or formatted bibliography lines have diverged.
+ * Detects out-of-order IEEE citation numbers across body marks, tracked non-body citations,
+ * and pattern citations even without library entries, and detects stale `참고문헌:` blocks
+ * when cited keys, active style, manual edits, or formatted bibliography lines have diverged.
  */
 export function checkBibliographyStaleness(doc, options = {}) {
   if (!doc || typeof doc.getSectionCount !== 'function') {
@@ -2813,56 +3942,62 @@ export function checkBibliographyStaleness(doc, options = {}) {
       : null
   const hasEntries = Array.isArray(entries) && entries.length > 0
   const style = getDocumentCitationStyle(doc)
-  const marks = listCitationMarks(doc, hasEntries ? entries : null)
+  const collected = collectDocumentCitationOrder(doc, hasEntries ? entries : null)
+  const { marks, locatedUnmarkedRefs, patterns, citedKeysInOrder } = collected
 
-  // 1. Check IEEE numbering order across non-manual citation marks.
+  // 1. Check unified IEEE numbering order across body marks, tracked non-body citations, and IEEE pattern citations.
   let ieeeOutOfOrder = false
-  if (style === 'ieee' && marks.length > 0) {
-    const citedKeysInOrder = []
-    for (const m of marks) {
-      for (const k of m.keys) citedKeysInOrder.push(k)
-    }
+  if (style === 'ieee' && citedKeysInOrder.length > 0) {
     const expectedIeee = assignIeeeNumbers(citedKeysInOrder, hasEntries ? entries : undefined)
 
     for (const m of marks) {
       if (m.isManuallyEdited || m.items.length === 0) continue
-      const formatItems = []
-      let canFormat = true
-      for (const item of m.items) {
-        const resolved = hasEntries ? resolveEntryByKey(entries, item.key) : null
-        if (hasEntries && (!resolved || resolved.verified === false)) {
-          canFormat = false
-          break
-        }
-        if (!resolved && m.mode === 'narrative') {
-          canFormat = false
-          break
-        }
-        formatItems.push({
-          entry: resolved ?? {
-            id: item.key,
-            key: item.key,
-            oldKeys: [],
-            type: 'other',
-            authors: [],
-            title: '',
-            language: 'en',
-            tags: [],
-            verified: true,
-          },
-          ...(item.locator ? { locator: item.locator } : {}),
-          ...(item.prefix ? { prefix: item.prefix } : {}),
-          ...(item.suffix ? { suffix: item.suffix } : {}),
-        })
-      }
-      if (!canFormat) continue
-      const expectedText = formatInTextCitation(formatItems, 'ieee', {
+      const built = buildFormatItemsForCitation(m.items, m.mode, hasEntries ? entries : [], true)
+      if (!built.canFormat) continue
+      const expectedText = formatInTextCitation(built.formatItems, 'ieee', {
         mode: m.mode,
         ieeeNumbers: expectedIeee,
       })
       if (expectedText !== m.text) {
         ieeeOutOfOrder = true
         break
+      }
+    }
+
+    if (!ieeeOutOfOrder) {
+      for (const ref of locatedUnmarkedRefs) {
+        if (ref.items.length === 0) continue
+        const built = buildFormatItemsForCitation(
+          ref.items,
+          ref.mode,
+          hasEntries ? entries : [],
+          true,
+        )
+        if (!built.canFormat) continue
+        const expectedText = formatInTextCitation(built.formatItems, 'ieee', {
+          mode: ref.mode,
+          ieeeNumbers: expectedIeee,
+        })
+        if (expectedText !== ref.text) {
+          ieeeOutOfOrder = true
+          break
+        }
+      }
+    }
+
+    if (!ieeeOutOfOrder) {
+      for (const p of patterns) {
+        if (p.patternKind !== 'ieee') continue
+        for (const ref of p.parsedRefs) {
+          if (ref.matchedKey && ref.number != null) {
+            const expNum = expectedIeee.get(ref.matchedKey)
+            if (expNum != null && expNum !== ref.number) {
+              ieeeOutOfOrder = true
+              break
+            }
+          }
+        }
+        if (ieeeOutOfOrder) break
       }
     }
   }
@@ -2915,6 +4050,7 @@ export function checkBibliographyStaleness(doc, options = {}) {
       style,
       { includeAllLibrary: saved.includeAllLibrary === true },
       saved,
+      bibRange,
     )
     if (plan.ok) {
       const expectedLines = []
@@ -2942,13 +4078,11 @@ export function checkBibliographyStaleness(doc, options = {}) {
     }
   }
 
-  // Without library entries, compare cited mark keys & order + saved snapshot lines.
+  // Without library entries, compare unified cited keys & order + saved snapshot lines.
   const savedKeys = Array.isArray(saved.keys) ? saved.keys : []
-  const uniqueMarkKeys = []
-  for (const m of marks) {
-    for (const k of m.keys) {
-      if (!uniqueMarkKeys.includes(k)) uniqueMarkKeys.push(k)
-    }
+  const uniqueCitedKeys = []
+  for (const k of citedKeysInOrder) {
+    if (!uniqueCitedKeys.includes(k)) uniqueCitedKeys.push(k)
   }
 
   if (!areArraysEqual(actualLines, saved.expectedLines)) {
@@ -2960,19 +4094,19 @@ export function checkBibliographyStaleness(doc, options = {}) {
     }
   }
 
-  if (saved.includeAllLibrary !== true && uniqueMarkKeys.length > 0) {
+  if (saved.includeAllLibrary !== true && uniqueCitedKeys.length > 0) {
     if (style === 'ieee') {
-      if (!areArraysEqual(uniqueMarkKeys, savedKeys)) {
+      if (!areArraysEqual(uniqueCitedKeys, savedKeys)) {
         return {
           stale: true,
-          reason: areSetsEqual(uniqueMarkKeys, savedKeys)
+          reason: areSetsEqual(uniqueCitedKeys, savedKeys)
             ? 'ieee_order_changed'
             : 'entries_changed',
           hasBibliography: true,
           ieeeOutOfOrder,
         }
       }
-    } else if (!areSetsEqual(uniqueMarkKeys, savedKeys)) {
+    } else if (!areSetsEqual(uniqueCitedKeys, savedKeys)) {
       return {
         stale: true,
         reason: 'entries_changed',

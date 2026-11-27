@@ -926,9 +926,11 @@ export function AiPanel({
       webSearch: (query, maxResults) => window.hwpApi.webSearch(query, maxResults),
       internetToolsEnabled: async () => {
         const outbound = windowOutboundBridge()
-        if (outbound) {
-          const enabled = await outbound.internetToolsEnabled().catch(() => false)
-          if (!enabled) return false
+        if (!outbound) return false
+        try {
+          if ((await outbound.internetToolsEnabled()) !== true) return false
+        } catch {
+          return false
         }
         const messages = loopRef.current?.messages ?? []
         const driveSeen = messages.some(

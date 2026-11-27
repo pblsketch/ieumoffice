@@ -15,6 +15,7 @@ export const OUTBOUND_TOOLS: ReadonlySet<string> = new Set([
   'remove_image_background',
   'analyze_media',
   'read_url',
+  'search_references',
 ])
 
 /** Input fields an editor fetches when they hold a web address */

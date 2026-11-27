@@ -50,6 +50,7 @@ function fakeContents(): FakeContents {
 }
 
 const userData = { dir: '' }
+const mockShowMessageBox = vi.fn(async () => ({ response: 1 }))
 const mockShowOpenDialog = vi.fn(async () => ({ canceled: true, filePaths: [] as string[] }))
 const mockShowSaveDialog = vi.fn(async () => ({
   canceled: true,
@@ -65,7 +66,7 @@ vi.mock('electron', () => ({
     getLocale: () => 'ko-KR',
   },
   dialog: {
-    showMessageBox: vi.fn(async () => ({ response: 1 })),
+    showMessageBox: (...args: unknown[]) => mockShowMessageBox(...(args as [])),
     showOpenDialog: (...args: unknown[]) => mockShowOpenDialog(...(args as [])),
     showSaveDialog: (...args: unknown[]) => mockShowSaveDialog(...(args as [])),
   },
@@ -100,7 +101,9 @@ vi.mock('@genoffice/file-parse', () => ({
 
 import {
   BIBLIOGRAPHY_FILE_NAME,
+  BIBLIOGRAPHY_NEAR_LIMIT_RATIO,
   BIBLIOGRAPHY_SCHEMA_VERSION,
+  MAX_BIBLIOGRAPHY_FILE_BYTES,
   MAX_IMPORT_BYTES,
   addAiBibliographyCandidates,
   addBibliographyEntry,
@@ -113,10 +116,12 @@ import {
   previewBibliographyImport,
   readBibliography,
   readBibliographyFromFile,
+  readBibliographyState,
   updateBibliographyEntry,
   verifyBibliographyEntry,
   writeBibliographyExportFile,
 } from '../src/main/bibliography'
+import { registerHwpBibliographyIpc } from '../src/main/bibliography-ipc'
 import { createHwpView } from '../src/main/hwp-main'
 import { HWP_CHANNELS } from '../src/shared/ipc'
 import { parseBibliographyFile } from '../studio-plugin/citation-io.mjs'
@@ -127,6 +132,8 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'genoffice-hwp-bib-'))
   userData.dir = join(dir, 'userData')
   mkdirSync(userData.dir, { recursive: true })
+  mockShowMessageBox.mockReset()
+  mockShowMessageBox.mockResolvedValue({ response: 1 })
   mockShowOpenDialog.mockReset()
   mockShowOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
   mockShowSaveDialog.mockReset()
@@ -549,6 +556,7 @@ describe('bibliography-ipc.ts Electron IPC handlers & security', () => {
     const foreignSender = fakeContents()
 
     const invokeChannels: Array<[string, unknown[]]> = [
+      [HWP_CHANNELS.bibReadState, []],
       [HWP_CHANNELS.bibList, []],
       [HWP_CHANNELS.bibAdd, [{ title: 'Injected' }]],
       [HWP_CHANNELS.bibUpdate, ['bib_1', { title: 'Tampered' }]],
@@ -712,5 +720,389 @@ describe('bibliography-ipc.ts Electron IPC handlers & security', () => {
     expect(deleted.ok).toBe(true)
     expect(deleted.entries).toHaveLength(2)
     expect(v1.send).toHaveBeenCalledWith(HWP_CHANNELS.bibChanged, deleted.entries)
+  })
+
+  it('never overwrites corrupt hwp-bibliography.json, creates a deduplicated .corrupt backup, and refuses all writes and previews', async () => {
+    const app = settingsApp()
+    const storePath = bibliographyPathOf(app)
+    const corruptPayload = '{ "version": 1, "entries": [ BROKEN JSON '
+    writeFileSync(storePath, corruptPayload, 'utf8')
+
+    // 1. readBibliographyState detects corruption, preserves original bytes, and creates one backup
+    const state1 = readBibliographyState(app)
+    expect(state1.ok).toBe(false)
+    if (state1.ok) return
+    expect(state1.reason).toBe('library_corrupt')
+    expect(state1.maxBytes).toBe(MAX_BIBLIOGRAPHY_FILE_BYTES)
+    expect(state1.corruptBackupPath).toBeTruthy()
+    expect(state1.corruptBackupPath!).toMatch(/hwp-bibliography\.json\.corrupt-\d{8}-\d{6}/)
+    expect(existsSync(state1.corruptBackupPath!)).toBe(true)
+    expect(readFileSync(state1.corruptBackupPath!, 'utf8')).toBe(corruptPayload)
+    expect(readFileSync(storePath, 'utf8')).toBe(corruptPayload)
+
+    // Repeated reads reuse the existing identical backup instead of spamming duplicates
+    const state2 = readBibliographyState(app)
+    expect(state2.ok).toBe(false)
+    if (!state2.ok) {
+      expect(state2.corruptBackupPath).toBe(state1.corruptBackupPath)
+    }
+    const backups = readdirSync(userData.dir).filter((name) =>
+      name.startsWith(`${BIBLIOGRAPHY_FILE_NAME}.corrupt-`),
+    )
+    expect(backups).toHaveLength(1)
+
+    // 2. Every mutating store operation refuses without altering hwp-bibliography.json
+    const addRes = addBibliographyEntry(app, { title: 'Should Not Overwrite' })
+    expect(addRes.ok).toBe(false)
+    if (!addRes.ok) {
+      expect(addRes.reason).toBe('library_corrupt')
+      expect(addRes.corruptBackupPath).toBe(state1.corruptBackupPath)
+    }
+
+    const aiRes = addAiBibliographyCandidates(app, [
+      { title: 'AI Candidate', sourceUrl: 'https://example.org/ref' },
+    ])
+    expect(aiRes.ok).toBe(false)
+    if (!aiRes.ok) expect(aiRes.reason).toBe('library_corrupt')
+
+    const updateRes = updateBibliographyEntry(app, 'bib_any', { title: 'Updated' })
+    expect(updateRes.ok).toBe(false)
+    if (!updateRes.ok) expect(updateRes.reason).toBe('library_corrupt')
+
+    const verifyRes = verifyBibliographyEntry(app, 'bib_any')
+    expect(verifyRes.ok).toBe(false)
+    if (!verifyRes.ok) expect(verifyRes.reason).toBe('library_corrupt')
+
+    const deleteRes = deleteBibliographyEntry(app, 'bib_any')
+    expect(deleteRes.ok).toBe(false)
+    if (!deleteRes.ok) expect(deleteRes.reason).toBe('library_corrupt')
+
+    const commitRes = commitBibliographyImport(app, [{ title: 'Imported' }])
+    expect(commitRes.ok).toBe(false)
+    if (!commitRes.ok) expect(commitRes.reason).toBe('library_corrupt')
+
+    // Read-only previews also refuse when the live library cannot be loaded cleanly
+    const previewRes = previewBibliographyImport(app, [{ title: 'Preview Entry' }])
+    expect(previewRes.ok).toBe(false)
+    if (!previewRes.ok) expect(previewRes.reason).toBe('library_corrupt')
+
+    const importFile = join(dir, 'valid.bib')
+    writeFileSync(importFile, '@article{k2025, author={Kim}, title={Valid}, year={2025}}\n')
+    const filePreviewRes = previewBibliographyFileImport(app, importFile)
+    expect(filePreviewRes.ok).toBe(false)
+    if (!filePreviewRes.ok) expect(filePreviewRes.reason).toBe('library_corrupt')
+
+    // IPC handlers surface the corruption error directly and do not open native dialogs
+    const v1 = createHwpView().webContents as unknown as FakeContents
+    const readStateHandler = handlers.get(HWP_CHANNELS.bibReadState)!
+    const listHandler = handlers.get(HWP_CHANNELS.bibList)!
+    const pickImportHandler = handlers.get(HWP_CHANNELS.bibPickImportFile)!
+    const exportHandler = handlers.get(HWP_CHANNELS.bibExportFile)!
+
+    const ipcState = (await readStateHandler({ sender: v1 })) as {
+      ok: false
+      reason: string
+      corruptBackupPath?: string
+    }
+    expect(ipcState.ok).toBe(false)
+    expect(ipcState.reason).toBe('library_corrupt')
+    expect(ipcState.corruptBackupPath).toBe(state1.corruptBackupPath)
+
+    const ipcList = (await listHandler({ sender: v1 })) as { ok: false; reason: string }
+    expect(ipcList.ok).toBe(false)
+    expect(ipcList.reason).toBe('library_corrupt')
+
+    const ipcPick = (await pickImportHandler({ sender: v1 })) as { ok: false; reason: string }
+    expect(ipcPick.ok).toBe(false)
+    expect(ipcPick.reason).toBe('library_corrupt')
+    expect(mockShowOpenDialog).not.toHaveBeenCalled()
+
+    const ipcExport = (await exportHandler({ sender: v1 }, 'bibtex')) as {
+      ok: false
+      reason: string
+    }
+    expect(ipcExport.ok).toBe(false)
+    expect(ipcExport.reason).toBe('library_corrupt')
+    expect(mockShowSaveDialog).not.toHaveBeenCalled()
+
+    // Original corrupt bytes remain 100% intact
+    expect(readFileSync(storePath, 'utf8')).toBe(corruptPayload)
+  })
+
+  it('enforces MAX_BIBLIOGRAPHY_FILE_BYTES before writing, rejects oversized stores, and flags nearLimit writes', () => {
+    // 1. Oversized existing library on disk (> MAX_BIBLIOGRAPHY_FILE_BYTES) is refused and backed up
+    const oversizedDir = join(dir, 'oversized-store')
+    mkdirSync(oversizedDir, { recursive: true })
+    const oversizedPath = bibliographyPathOf(oversizedDir)
+    writeFileSync(oversizedPath, 'x'.repeat(MAX_BIBLIOGRAPHY_FILE_BYTES + 64), 'utf8')
+
+    const oversizedState = readBibliographyState(oversizedDir)
+    expect(oversizedState.ok).toBe(false)
+    if (!oversizedState.ok) {
+      expect(oversizedState.reason).toBe('library_too_large')
+      expect(oversizedState.maxBytes).toBe(MAX_BIBLIOGRAPHY_FILE_BYTES)
+      expect(oversizedState.sizeBytes).toBe(MAX_BIBLIOGRAPHY_FILE_BYTES + 64)
+      expect(oversizedState.corruptBackupPath).toBeTruthy()
+      expect(existsSync(oversizedState.corruptBackupPath!)).toBe(true)
+    }
+
+    const refuseAddOnOversized = addBibliographyEntry(oversizedDir, { title: 'Blocked' })
+    expect(refuseAddOnOversized.ok).toBe(false)
+    if (!refuseAddOnOversized.ok) {
+      expect(refuseAddOnOversized.reason).toBe('library_too_large')
+    }
+    expect(readFileSync(oversizedPath).byteLength).toBe(MAX_BIBLIOGRAPHY_FILE_BYTES + 64)
+
+    // 2. Write exceeding MAX_BIBLIOGRAPHY_FILE_BYTES is refused BEFORE touching disk
+    const freshDir = join(dir, 'fresh-size-guard')
+    mkdirSync(freshDir, { recursive: true })
+    const freshPath = bibliographyPathOf(freshDir)
+    const hugeAdd = addBibliographyEntry(freshDir, {
+      title: 'Huge Entry',
+      memo: 'a'.repeat(MAX_BIBLIOGRAPHY_FILE_BYTES + 128),
+    })
+    expect(hugeAdd.ok).toBe(false)
+    if (!hugeAdd.ok) {
+      expect(hugeAdd.reason).toBe('too_large')
+      expect(hugeAdd.maxBytes).toBe(MAX_BIBLIOGRAPHY_FILE_BYTES)
+      expect(hugeAdd.actualBytes).toBeGreaterThan(MAX_BIBLIOGRAPHY_FILE_BYTES)
+    }
+    expect(existsSync(freshPath)).toBe(false)
+    expect(readdirSync(freshDir)).toEqual([])
+
+    // 3. Cumulative import exceeding maxBytes is refused BEFORE touching disk; nearLimit (>= 85%) is flagged
+    const boundedDir = join(dir, 'bounded-store')
+    mkdirSync(boundedDir, { recursive: true })
+    const boundedPath = bibliographyPathOf(boundedDir)
+    const customMaxBytes = 2000
+
+    const first = addBibliographyEntry(
+      boundedDir,
+      { title: 'Initial Entry', memo: 'm'.repeat(200) },
+      { maxBytes: customMaxBytes },
+    )
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+    expect(first.nearLimit).toBe(false)
+    expect(first.maxBytes).toBe(customMaxBytes)
+    const beforeImportBytes = readFileSync(boundedPath, 'utf8')
+
+    // Cumulative import that would exceed customMaxBytes is rejected cleanly without touching disk
+    const tooBigImport = commitBibliographyImport(
+      boundedDir,
+      [
+        { title: 'Import Batch 1', memo: 'b'.repeat(900) },
+        { title: 'Import Batch 2', memo: 'c'.repeat(900) },
+      ],
+      { maxBytes: customMaxBytes },
+    )
+    expect(tooBigImport.ok).toBe(false)
+    if (!tooBigImport.ok) {
+      expect(tooBigImport.reason).toBe('too_large')
+      expect(tooBigImport.maxBytes).toBe(customMaxBytes)
+      expect(tooBigImport.actualBytes).toBeGreaterThan(customMaxBytes)
+    }
+    expect(readFileSync(boundedPath, 'utf8')).toBe(beforeImportBytes)
+
+    // Write that lands between 85% and 100% of customMaxBytes succeeds and reports nearLimit: true
+    const targetNearBytes = Math.ceil(customMaxBytes * BIBLIOGRAPHY_NEAR_LIMIT_RATIO)
+    const paddingLen = Math.max(100, targetNearBytes - first.sizeBytes - 220)
+    const nearAdd = addBibliographyEntry(
+      boundedDir,
+      { title: 'Near Limit Entry', memo: 'n'.repeat(paddingLen) },
+      { maxBytes: customMaxBytes },
+    )
+    expect(nearAdd.ok).toBe(true)
+    if (!nearAdd.ok) return
+    expect(nearAdd.sizeBytes).toBeGreaterThanOrEqual(
+      Math.floor(customMaxBytes * BIBLIOGRAPHY_NEAR_LIMIT_RATIO),
+    )
+    expect(nearAdd.sizeBytes).toBeLessThanOrEqual(customMaxBytes)
+    expect(nearAdd.nearLimit).toBe(true)
+
+    const inspected = readBibliographyState(boundedDir, { maxBytes: customMaxBytes })
+    expect(inspected.ok).toBe(true)
+    if (inspected.ok) {
+      expect(inspected.exists).toBe(true)
+      expect(inspected.nearLimit).toBe(true)
+      expect(inspected.sizeBytes).toBe(nearAdd.sizeBytes)
+    }
+  })
+
+  it('preserves untitled entries and defaults omitted verified to false for AI entries during normalization', () => {
+    const normDir = join(dir, 'normalize-store')
+    mkdirSync(normDir, { recursive: true })
+    const storePath = bibliographyPathOf(normDir)
+    writeFileSync(
+      storePath,
+      JSON.stringify({
+        version: BIBLIOGRAPHY_SCHEMA_VERSION,
+        entries: [
+          {
+            id: 'bib_missing_title',
+            key: 'kim2024',
+            authors: ['김철수'],
+            year: '2024',
+          },
+          {
+            id: 'bib_blank_title',
+            title: '   \t  ',
+            authors: ['Lee Min'],
+            year: '2023',
+          },
+          {
+            id: 'bib_ai_omitted',
+            title: 'AI Entry Without Verified Flag',
+            source: 'ai',
+          },
+          {
+            id: 'bib_ai_verified',
+            title: 'AI Entry Explicitly Verified',
+            source: 'ai',
+            verified: true,
+          },
+          {
+            id: 'bib_manual_omitted',
+            title: 'Manual Entry Without Verified Flag',
+            source: 'manual',
+          },
+        ],
+      }),
+      'utf8',
+    )
+
+    const state = readBibliographyState(normDir)
+    expect(state.ok).toBe(true)
+    if (!state.ok) return
+    expect(state.entries).toHaveLength(5)
+
+    const missingTitle = state.entries.find((e) => e.id === 'bib_missing_title')
+    expect(missingTitle).toBeDefined()
+    expect(missingTitle?.title).toBe('')
+    expect(missingTitle?.key).toBe('kim2024')
+    expect(missingTitle?.verified).toBe(true)
+
+    const blankTitle = state.entries.find((e) => e.id === 'bib_blank_title')
+    expect(blankTitle).toBeDefined()
+    expect(blankTitle?.title).toBe('')
+    expect(blankTitle?.key).toBeTruthy()
+
+    const aiOmitted = state.entries.find((e) => e.id === 'bib_ai_omitted')
+    expect(aiOmitted?.source).toBe('ai')
+    expect(aiOmitted?.verified).toBe(false)
+
+    const aiVerified = state.entries.find((e) => e.id === 'bib_ai_verified')
+    expect(aiVerified?.source).toBe('ai')
+    expect(aiVerified?.verified).toBe(true)
+
+    const manualOmitted = state.entries.find((e) => e.id === 'bib_manual_omitted')
+    expect(manualOmitted?.source).toBe('manual')
+    expect(manualOmitted?.verified).toBe(true)
+  })
+
+  it('guards against silent export overwrite when ensureExtension resolves to an existing file', async () => {
+    const savedHandlers = new Map(handlers)
+    try {
+      const app = settingsApp()
+      addBibliographyEntry(app, {
+        type: 'article',
+        authors: ['홍길동'],
+        year: '2025',
+        title: 'Export Protection Test Paper',
+      })
+
+      const v1 = fakeContents()
+      const confirmOverwrite = vi.fn(async () => false)
+      registerHwpBibliographyIpc({
+        app: {
+          getPath: (name: string) =>
+            name === 'userData' ? userData.dir : join(userData.dir, `path-${name}`),
+        },
+        hasView: (id) => id === v1.id,
+        getWindow: () => null,
+        broadcast: () => {},
+        confirmOverwrite,
+      })
+
+      const exportHandler = handlers.get(HWP_CHANNELS.bibExportFile)!
+      const baseNoExt = join(dir, 'existing-export')
+      const suffixedPath = `${baseNoExt}.json`
+      const originalContent = '{"sentinel":"do-not-overwrite"}'
+      writeFileSync(suffixedPath, originalContent, 'utf8')
+
+      // 1. Declining overwrite leaves existing suffixed file completely untouched
+      mockShowSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: baseNoExt })
+      confirmOverwrite.mockResolvedValueOnce(false)
+      const declined = (await exportHandler({ sender: v1 }, 'csl-json')) as {
+        ok: true
+        canceled?: true
+      }
+      expect(declined).toEqual({ ok: true, canceled: true })
+      expect(confirmOverwrite).toHaveBeenCalledTimes(1)
+      expect(confirmOverwrite).toHaveBeenCalledWith(suffixedPath)
+      expect(readFileSync(suffixedPath, 'utf8')).toBe(originalContent)
+
+      // 2. Confirming overwrite replaces the existing suffixed file cleanly
+      mockShowSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: baseNoExt })
+      confirmOverwrite.mockResolvedValueOnce(true)
+      const confirmed = (await exportHandler({ sender: v1 }, 'csl-json')) as {
+        ok: true
+        path: string
+        count: number
+      }
+      expect(confirmed.ok).toBe(true)
+      expect(confirmed.path).toBe(suffixedPath)
+      expect(confirmed.count).toBe(1)
+      expect(confirmOverwrite).toHaveBeenCalledTimes(2)
+      expect(readFileSync(suffixedPath, 'utf8')).toContain('Export Protection Test Paper')
+
+      // 3. When the user already typed the extension, OS dialog handled overwrite -> no double prompt
+      confirmOverwrite.mockClear()
+      mockShowSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: suffixedPath })
+      const direct = (await exportHandler({ sender: v1 }, 'csl-json')) as {
+        ok: true
+        path: string
+        count: number
+      }
+      expect(direct.ok).toBe(true)
+      expect(confirmOverwrite).not.toHaveBeenCalled()
+
+      // 4. Default dialog.showMessageBox path (without custom confirmOverwrite hook)
+      registerHwpBibliographyIpc({
+        app: {
+          getPath: (name: string) =>
+            name === 'userData' ? userData.dir : join(userData.dir, `path-${name}`),
+        },
+        hasView: (id) => id === v1.id,
+        getWindow: () => null,
+        broadcast: () => {},
+      })
+      const defaultExportHandler = handlers.get(HWP_CHANNELS.bibExportFile)!
+      writeFileSync(suffixedPath, originalContent, 'utf8')
+
+      mockShowSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: baseNoExt })
+      mockShowMessageBox.mockResolvedValueOnce({ response: 1 })
+      const dialogCanceled = (await defaultExportHandler({ sender: v1 }, 'csl-json')) as {
+        ok: true
+        canceled?: true
+      }
+      expect(dialogCanceled).toEqual({ ok: true, canceled: true })
+      expect(mockShowMessageBox).toHaveBeenCalledTimes(1)
+      expect(readFileSync(suffixedPath, 'utf8')).toBe(originalContent)
+
+      mockShowSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: baseNoExt })
+      mockShowMessageBox.mockResolvedValueOnce({ response: 0 })
+      const dialogConfirmed = (await defaultExportHandler({ sender: v1 }, 'csl-json')) as {
+        ok: true
+        path: string
+      }
+      expect(dialogConfirmed.ok).toBe(true)
+      expect(readFileSync(suffixedPath, 'utf8')).toContain('Export Protection Test Paper')
+    } finally {
+      handlers.clear()
+      for (const [channel, fn] of savedHandlers) {
+        handlers.set(channel, fn)
+      }
+    }
   })
 })

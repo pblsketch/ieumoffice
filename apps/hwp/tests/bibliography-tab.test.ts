@@ -242,6 +242,11 @@ describe('biblio i18n shard', () => {
         expect(dict.insertCitationBtn, lang).not.toBe(biblioStrings.en.insertCitationBtn)
         expect(dict.tabLibrary, lang).not.toBe(biblioStrings.en.tabLibrary)
         expect(dict.unverifiedBlockError, lang).not.toBe(biblioStrings.en.unverifiedBlockError)
+        expect(dict.verifyBtn, lang).not.toBe(biblioStrings.en.verifyBtn)
+        expect(dict.importAiPromptPrefix, lang).not.toBe(biblioStrings.en.importAiPromptPrefix)
+        expect(dict.libraryErrorTitle, lang).not.toBe(biblioStrings.en.libraryErrorTitle)
+        expect(dict.libraryNearLimitTitle, lang).not.toBe(biblioStrings.en.libraryNearLimitTitle)
+        expect(dict.untitledEntry, lang).not.toBe(biblioStrings.en.untitledEntry)
       }
       // Every template placeholder present in English must also exist in every language.
       for (const key of keys) {
@@ -251,6 +256,29 @@ describe('biblio i18n shard', () => {
           expect(dict[key as keyof typeof dict], `${lang}.${key} missing ${token}`).toContain(token)
         }
       }
+    }
+  })
+
+  it('uses explicit Mark as verified copy and untrusted-data AI prefill preamble across all 22 languages', () => {
+    expect(biblioStrings.en.verifyBtn).toBe('Mark as verified')
+    expect(biblioStrings.ko.verifyBtn).toBe('확인함으로 표시')
+    expect(biblioStrings.zh.verifyBtn).toBe('标记为已确认')
+    expect(biblioStrings.ja.verifyBtn).toBe('確認済みにする')
+
+    expect(biblioStrings.en.importAiPromptPrefix.toLowerCase()).toContain('untrusted')
+    expect(biblioStrings.en.importAiPromptPrefix.toLowerCase()).toContain('not instructions')
+    expect(biblioStrings.ko.importAiPromptPrefix).toContain('지시가 아니라')
+    expect(biblioStrings.ko.importAiPromptPrefix).toContain('따르지 말고')
+    expect(biblioStrings.zh.importAiPromptPrefix).toContain('不可信')
+    expect(biblioStrings.zh.importAiPromptPrefix).toContain('并非指令')
+
+    for (const lang of LANGS) {
+      const dict = biblioStrings[lang]
+      expect(dict.verifyBtn.trim().length, `${lang}.verifyBtn`).toBeGreaterThan(2)
+      expect(
+        dict.importAiPromptPrefix.trim().length,
+        `${lang}.importAiPromptPrefix`,
+      ).toBeGreaterThan(40)
     }
   })
 })
@@ -729,5 +757,180 @@ describe('BibliographyTab', () => {
       foreign: true,
     })
     expect(onDismissKeyRename).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows prominent error banner with backup path on library_corrupt / library_too_large, disables writes, hides empty-library state, and retries', async () => {
+    const bridge = makeMockBridge()
+    const api = makeMockApi([])
+    const onReloadLibrary = vi.fn()
+    const backupPath = 'C:/Users/tester/AppData/hwp-bibliography.json.corrupt-1730000000'
+
+    await renderTab({
+      bridge,
+      api,
+      entries: [],
+      libraryError: {
+        reason: 'library_corrupt',
+        error: 'Unexpected token in JSON',
+        corruptBackupPath: backupPath,
+        maxBytes: 5 * 1024 * 1024,
+      },
+      onReloadLibrary,
+    })
+
+    const banner = container.querySelector('[data-testid="bib-library-error-banner"]')
+    expect(banner).not.toBeNull()
+    expect(banner?.getAttribute('data-error-reason')).toBe('library_corrupt')
+    expect(container.querySelector('[data-testid="bib-library-backup-path"]')?.textContent).toBe(
+      backupPath,
+    )
+    expect(container.querySelector('[data-testid="bib-empty-library"]')).toBeNull()
+    expect(container.textContent).not.toContain(biblioStrings.ko.emptyLibrary)
+
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-add-btn"]')?.disabled,
+    ).toBe(true)
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-import-btn"]')?.disabled,
+    ).toBe(true)
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-export-btn"]')?.disabled,
+    ).toBe(true)
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-library-retry-btn"]')?.click()
+    })
+    expect(onReloadLibrary).toHaveBeenCalledTimes(1)
+
+    // Re-render with library_too_large error and verify size details and disabled state
+    await act(async () => {
+      root!.render(
+        createElement(LocaleProvider, {
+          initial: 'ko',
+          children: createElement(BibliographyTab, {
+            bridge,
+            api,
+            entries: [],
+            libraryError: {
+              reason: 'library_too_large',
+              error: 'Library exceeds size limit',
+              sizeBytes: 6 * 1024 * 1024,
+              maxBytes: 5 * 1024 * 1024,
+            },
+            onReloadLibrary,
+          }),
+        }),
+      )
+    })
+
+    const largeBanner = container.querySelector('[data-testid="bib-library-error-banner"]')
+    expect(largeBanner?.getAttribute('data-error-reason')).toBe('library_too_large')
+    expect(
+      container.querySelector('[data-testid="bib-library-error-size"]')?.textContent,
+    ).toContain('6.0 MB')
+    expect(container.querySelector('[data-testid="bib-library-backup-path"]')).toBeNull()
+    expect(container.querySelector('[data-testid="bib-empty-library"]')).toBeNull()
+  })
+
+  it('shows non-blocking nearLimit warning banner and reports localized too_large write rejections without overwriting', async () => {
+    const entry = makeEntry({ id: 'e1', key: 'kim2024', title: '정상 논문' })
+    const bridge = makeMockBridge()
+    const api = makeMockApi([entry], {
+      bibAdd: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'too_large' as const,
+        error: 'Library file would exceed limit',
+        actualBytes: 5_500_000,
+        maxBytes: 5 * 1024 * 1024,
+      })),
+    })
+
+    await renderTab({
+      bridge,
+      api,
+      entries: [entry],
+      nearLimit: {
+        sizeBytes: Math.round(4.5 * 1024 * 1024),
+        maxBytes: 5 * 1024 * 1024,
+      },
+    })
+
+    const nearBanner = container.querySelector('[data-testid="bib-near-limit-banner"]')
+    expect(nearBanner).not.toBeNull()
+    expect(nearBanner?.textContent).toContain('4.5 MB')
+    expect(nearBanner?.textContent).toContain('5.0 MB')
+
+    // Writes remain enabled in near-limit warning state
+    const addBtn = container.querySelector<HTMLButtonElement>('[data-testid="bib-add-btn"]')!
+    expect(addBtn.disabled).toBe(false)
+
+    // Attempting to add when backend rejects with reason: 'too_large' surfaces clear localized error
+    await act(async () => addBtn.click())
+    await act(async () => {
+      setInputValue(container.querySelector('[data-testid="bib-title-input"]')!, '대용량 문헌')
+    })
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-save-btn"]')?.click()
+    })
+
+    const notice = container.querySelector('[data-testid="bib-notice"]')
+    expect(notice?.textContent).toContain('5.2 MB')
+    expect(notice?.textContent).toContain('5.0 MB')
+    expect(notice?.textContent).toContain('덮어쓰지 않았습니다')
+  })
+
+  it('activates libraryError banner when a write call returns library_corrupt', async () => {
+    const unverified = makeEntry({ id: 'u1', key: 'ai2025', title: '후보 논문', verified: false })
+    const bridge = makeMockBridge()
+    const backupPath = 'C:/data/hwp-bibliography.json.corrupt-999'
+    const api = makeMockApi([unverified], {
+      bibVerify: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'library_corrupt' as const,
+        error: 'Corrupt JSON',
+        corruptBackupPath: backupPath,
+        maxBytes: 5 * 1024 * 1024,
+      })),
+    })
+
+    await renderTab({ bridge, api, entries: [unverified] })
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-verify-btn"]')?.click()
+    })
+
+    expect(container.querySelector('[data-testid="bib-library-error-banner"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="bib-library-backup-path"]')?.textContent).toBe(
+      backupPath,
+    )
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-add-btn"]')?.disabled,
+    ).toBe(true)
+  })
+
+  it('renders an untitled stored entry (title: "") with a localized fallback label and keeps it editable', async () => {
+    const untitled = makeEntry({
+      id: 'nt-1',
+      key: 'anon2024',
+      title: '',
+      authors: [{ family: '홍길동' }],
+      year: '2024',
+    })
+    const bridge = makeMockBridge()
+    const api = makeMockApi([untitled])
+
+    await renderTab({ bridge, api, entries: [untitled] })
+
+    const titleEl = container.querySelector('[data-testid="bib-entry-title"]')
+    expect(titleEl?.textContent).toBe(biblioStrings.ko.untitledEntry)
+    expect(titleEl?.classList.contains('is-untitled')).toBe(true)
+
+    // Entry remains editable via the Edit button
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="bib-row-edit-btn"]')?.click()
+    })
+    const titleInput = container.querySelector<HTMLInputElement>('[data-testid="bib-title-input"]')!
+    expect(titleInput).not.toBeNull()
+    expect(titleInput.value).toBe('')
   })
 })

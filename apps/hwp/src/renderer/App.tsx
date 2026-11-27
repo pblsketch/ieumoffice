@@ -59,6 +59,7 @@ import {
   type BibliographyCommandRequest,
   type WorkpaneTabId,
 } from './workpane'
+import type { BibLibraryErrorInfo, BibNearLimitInfo } from './workpane/BibliographyTab'
 import { openDocumentsDroppedOn } from './editor-drop'
 import { hwpPresentationKeyOf } from './presentation-keys'
 import { checkStalenessBeforePrint, gatherPrintJob, runWithPrintStalenessCheck } from './print-flow'
@@ -308,6 +309,10 @@ export default function App() {
   const [bibEntries, setBibEntries] = useState<BibEntry[]>([])
   const bibEntriesRef = useRef<BibEntry[]>([])
   bibEntriesRef.current = bibEntries
+  /** non-null when the bibliography library file is corrupt, oversized, or unreadable */
+  const [bibLibraryError, setBibLibraryError] = useState<BibLibraryErrorInfo | null>(null)
+  /** non-null when the bibliography library file size is nearing its limit */
+  const [bibNearLimit, setBibNearLimit] = useState<BibNearLimitInfo | null>(null)
   /** external command from Tool > References menu forwarded to the Bibliography tab */
   const [bibCommand, setBibCommand] = useState<BibliographyCommandRequest | null>(null)
   const bibCommandNonceRef = useRef(0)
@@ -548,23 +553,89 @@ export default function App() {
     }
   }, [])
 
+  const bibMountedRef = useRef(true)
+  useEffect(() => {
+    bibMountedRef.current = true
+    return () => {
+      bibMountedRef.current = false
+    }
+  }, [])
+
+  const refreshBibLibraryState = useCallback(async () => {
+    try {
+      if (window.hwpApi.bibReadState) {
+        const res = await window.hwpApi.bibReadState()
+        if (!bibMountedRef.current) return
+        if (res.ok) {
+          setBibEntries(res.entries)
+          setBibLibraryError(null)
+          setBibNearLimit(
+            res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+          )
+        } else if (
+          res.reason === 'library_corrupt' ||
+          res.reason === 'library_too_large' ||
+          res.reason === 'library_read_error'
+        ) {
+          setBibEntries([])
+          setBibLibraryError({
+            reason: res.reason,
+            error: res.error,
+            corruptBackupPath: res.corruptBackupPath,
+            sizeBytes: res.sizeBytes,
+            maxBytes: res.maxBytes,
+          })
+          setBibNearLimit(null)
+        }
+        return
+      }
+      const res = await window.hwpApi.bibList?.()
+      if (!bibMountedRef.current || !res) return
+      if (res.ok) {
+        setBibEntries(res.entries)
+        setBibLibraryError(null)
+        setBibNearLimit(
+          res.nearLimit && res.sizeBytes !== undefined && res.maxBytes !== undefined
+            ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes }
+            : null,
+        )
+      } else if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setBibEntries([])
+        setBibLibraryError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setBibNearLimit(null)
+      }
+    } catch {
+      // Ignore transient IPC read errors.
+    }
+  }, [])
+
   // Keep the app-wide bibliography library in sync across Hangul tabs.
   useEffect(() => {
     let active = true
-    void window.hwpApi
-      .bibList?.()
-      .then((res) => {
-        if (active && res.ok) setBibEntries(res.entries)
-      })
-      .catch(() => {})
+    void refreshBibLibraryState()
     const off = window.hwpApi.onBibChanged?.((entries) => {
-      if (active) setBibEntries(entries)
+      if (!active) return
+      setBibEntries(entries)
+      setBibLibraryError(null)
+      if (window.hwpApi.bibReadState) {
+        void refreshBibLibraryState()
+      }
     })
     return () => {
       active = false
       off?.()
     }
-  }, [])
+  }, [refreshBibLibraryState])
 
   // Offer to rewrite citation marks in the open document when a library citation key is renamed.
   useEffect(() => {
@@ -1777,9 +1848,16 @@ export default function App() {
                       aiOn
                         ? (lines) => {
                             if (lines.length === 0) return
+                            const safeLines = lines
+                              .map(
+                                (line, index) => `${index + 1}. ${line.replace(/```/g, '` ` `')}`,
+                              )
+                              .join('\n')
                             const prompt =
                               `${translateBiblio(lang, 'importAiPromptPrefix')}\n\n` +
-                              lines.map((line, index) => `${index + 1}. ${line}`).join('\n')
+                              '```text\n' +
+                              `${safeLines}\n` +
+                              '```'
                             setAiPrefill({ text: prompt, nonce: Date.now() })
                             setAiOpen(true)
                           }
@@ -1788,6 +1866,9 @@ export default function App() {
                     command={bibCommand}
                     pendingKeyRename={pendingKeyRename}
                     onDismissKeyRename={() => setPendingKeyRename(null)}
+                    libraryError={bibLibraryError}
+                    nearLimit={bibNearLimit}
+                    onReloadLibrary={() => void refreshBibLibraryState()}
                     onDocumentChanged={() => setDocTick((tick) => tick + 1)}
                   />
                 )

@@ -13,6 +13,7 @@ import {
   IEEE_HANGING_INDENT_PT,
   assignDisambiguationSuffixes,
   assignIeeeNumbers,
+  assignMlaShortTitles,
   compareSortOrder,
   detectEntryLanguage,
   findMissingDisambiguation,
@@ -20,6 +21,7 @@ import {
   formatBibliographyEntry,
   formatBibliographyList,
   formatBibliographyText,
+  formatEdition,
   formatInTextCitation,
   formatLocator,
   generateCitationKey,
@@ -306,7 +308,7 @@ describe('Korean academic formatting across all four citation styles', () => {
       '홍길동(2020). 학습동기 모형 연구. 한국대학교 박사학위논문.',
     )
     expect(formatBibliographyText(koEntries.report, 'apa')).toBe(
-      '교육부(2023). 교육정책 연차보고서. 교육부.',
+      '교육부(2023). 교육정책 연차보고서.',
     )
     expect(formatBibliographyText(koEntries.conference, 'apa')).toBe(
       '홍길동(2022). 디지털 전환과 수업 설계. 한국교육학회 학술대회, 서울, 15-24.',
@@ -420,13 +422,13 @@ describe('English bibliography formatting across all four styles and eight types
       'Smith, J. A. (2020). Thesis title [Doctoral dissertation, Example University].',
     )
     expect(formatBibliographyText(enReport, 'apa')).toBe(
-      'World Health Organization. (2021). Annual Health Report. World Health Organization.',
+      'World Health Organization. (2021). Annual Health Report.',
     )
     expect(formatBibliographyText(enConference, 'apa')).toBe(
-      'Smith, J. A. (2022). Paper title. Proceedings of the Annual Symposium, 10-20. Symposium Press.',
+      'Smith, J. A. (2022). Paper title. In Proceedings of the Annual Symposium (pp. 10-20). Symposium Press.',
     )
     expect(formatBibliographyText(enWebpage, 'apa')).toBe(
-      'Smith, J. A. (2024). Page title. Example Portal. Retrieved 2026-11-20, from https://example.org/page',
+      'Smith, J. A. (2024). Page title. Example Portal. Retrieved November 20, 2026, from https://example.org/page',
     )
     expect(formatBibliographyText(enOther, 'apa')).toBe(
       'Smith, J. A. (2023). Dataset description. Open Archive. Research Lab.',
@@ -626,10 +628,12 @@ describe('in-text citations, locators, and multi-entry grouping', () => {
     expect(formatInTextCitation(en3, 'chicago')).toBe('(Smith et al. 2022)')
     expect(formatInTextCitation(en1, 'chicago', { mode: 'narrative' })).toBe('Smith (2020)')
 
-    // MLA
-    expect(formatInTextCitation(ko1, 'mla')).toBe('(홍길동)')
-    expect(formatInTextCitation({ entry: ko1, locator: '23' }, 'mla')).toBe('(홍길동, 23쪽)')
-    expect(formatInTextCitation(ko1, 'mla', { mode: 'narrative' })).toBe('홍길동')
+    // MLA (Korean entries always follow Korean author-year format across all styles)
+    expect(formatInTextCitation(ko1, 'mla')).toBe('(홍길동, 2020)')
+    expect(formatInTextCitation({ entry: ko1, locator: '23' }, 'mla')).toBe('(홍길동, 2020, 23쪽)')
+    expect(formatInTextCitation(ko1, 'mla', { mode: 'narrative' })).toBe('홍길동(2020)')
+    expect(formatInTextCitation(ko2, 'mla')).toBe('(홍길동, 김철수, 2021)')
+    expect(formatInTextCitation(ko3, 'mla')).toBe('(홍길동 외, 2022)')
     expect(formatInTextCitation(en1, 'mla')).toBe('(Smith)')
     expect(formatInTextCitation({ entry: en1, locator: '23' }, 'mla')).toBe('(Smith 23)')
     expect(formatInTextCitation(en2, 'mla')).toBe('(Smith and Doe)')
@@ -685,7 +689,7 @@ describe('in-text citations, locators, and multi-entry grouping', () => {
 
     // Chicago & MLA grouping
     expect(formatInTextCitation([en1, ko1], 'chicago')).toBe('(홍길동, 2020; Smith 2020)')
-    expect(formatInTextCitation([en1, ko1], 'mla')).toBe('(홍길동; Smith)')
+    expect(formatInTextCitation([en1, ko1], 'mla')).toBe('(홍길동, 2020; Smith)')
 
     // IEEE ascending sort + 3+ consecutive range compression
     const ieeeNums = new Map([
@@ -839,5 +843,297 @@ describe('sorting, disambiguation, IEEE numbering, and audit helpers', () => {
         year: '2020',
       },
     ])
+
+    // MLA and IEEE never report missing a/b year suffixes.
+    expect(
+      findMissingDisambiguation([koHongA, koHongB], { 홍길동2020_1: '홍길동(2020).' }, 'mla'),
+    ).toEqual([])
+    expect(
+      findMissingDisambiguation([koHongA, koHongB], { 홍길동2020_1: '[1] 홍길동(2020).' }, 'ieee'),
+    ).toEqual([])
+  })
+})
+
+describe('MLA short-title disambiguation, edition formatting, and Chicago/APA refinements', () => {
+  it('disambiguates English MLA same-author works with short titles and never adds a/b suffixes', () => {
+    const smithArticle = makeEntry({
+      key: 'smith2020a_src',
+      type: 'article',
+      authors: ['Smith, John'],
+      year: '2020',
+      title: 'Climate Policy: A Global Review',
+      containerTitle: 'Policy Studies',
+      volume: '10',
+      pages: '12-30',
+    })
+    const smithBook = makeEntry({
+      key: 'smith2020b_src',
+      type: 'book',
+      authors: ['Smith, John'],
+      year: '2020',
+      title: 'World History',
+      publisher: 'Academic Press',
+    })
+    const doeBook = makeEntry({
+      key: 'doe2020',
+      type: 'book',
+      authors: ['Doe, Jane'],
+      year: '2020',
+      title: 'Unique Study',
+      publisher: 'North Press',
+    })
+    const pool = [smithArticle, smithBook, doeBook]
+
+    // MLA never assigns a/b suffixes to years in bibliography or in-text.
+    expect(assignDisambiguationSuffixes(pool, 'mla').size).toBe(0)
+    const mlaList = formatBibliographyList(pool, 'mla')
+    expect(mlaList.disambiguation.size).toBe(0)
+    for (const row of mlaList.entries) {
+      expect(row.text).not.toMatch(/2020[ab]/)
+    }
+
+    const shortTitles = assignMlaShortTitles(pool)
+    expect(shortTitles.get('smith2020a_src')).toBe('"Climate Policy"')
+    expect(shortTitles.get('smith2020b_src')).toBe('World History')
+    expect(shortTitles.has('doe2020')).toBe(false)
+
+    expect(
+      formatInTextCitation({ entry: smithArticle, locator: '23' }, 'mla', { allEntries: pool }),
+    ).toBe('(Smith, "Climate Policy" 23)')
+    expect(formatInTextCitation(smithArticle, 'mla', { allEntries: pool })).toBe(
+      '(Smith, "Climate Policy")',
+    )
+    expect(formatInTextCitation(smithBook, 'mla', { allEntries: pool })).toBe(
+      '(Smith, World History)',
+    )
+    expect(formatInTextCitation(doeBook, 'mla', { allEntries: pool })).toBe('(Doe)')
+
+    // Auto-computes short titles when citing colliding works together without allEntries.
+    expect(formatInTextCitation([smithArticle, smithBook], 'mla')).toBe(
+      '(Smith, "Climate Policy"; Smith, World History)',
+    )
+    expect(
+      formatInTextCitation({ entry: smithArticle, locator: '23' }, 'mla', {
+        mode: 'narrative',
+        allEntries: pool,
+      }),
+    ).toBe('Smith ("Climate Policy" 23)')
+    expect(
+      formatInTextCitation(smithBook, 'mla', {
+        mode: 'narrative',
+        allEntries: pool,
+      }),
+    ).toBe('Smith (World History)')
+
+    // Expands colliding short prefixes until distinct.
+    const smithEurope = makeEntry({
+      key: 'smith_eu',
+      type: 'article',
+      authors: ['Smith, John'],
+      year: '2021',
+      title: 'Climate Policy in Europe',
+    })
+    const smithAsia = makeEntry({
+      key: 'smith_as',
+      type: 'article',
+      authors: ['Smith, John'],
+      year: '2022',
+      title: 'Climate Policy in Asia',
+    })
+    const expanded = assignMlaShortTitles([smithEurope, smithAsia])
+    expect(expanded.get('smith_eu')).toBe('"Climate Policy in Europe"')
+    expect(expanded.get('smith_as')).toBe('"Climate Policy in Asia"')
+  })
+
+  it('formats numeric and textual editions cleanly in Korean and English across all four styles', () => {
+    expect(formatEdition('1', 'apa', 'en')).toBe('(1st ed.)')
+    expect(formatEdition('2', 'apa', 'en')).toBe('(2nd ed.)')
+    expect(formatEdition('3', 'apa', 'en')).toBe('(3rd ed.)')
+    expect(formatEdition('4', 'apa', 'en')).toBe('(4th ed.)')
+    expect(formatEdition('11', 'apa', 'en')).toBe('(11th ed.)')
+    expect(formatEdition('12', 'apa', 'en')).toBe('(12th ed.)')
+    expect(formatEdition('13', 'apa', 'en')).toBe('(13th ed.)')
+    expect(formatEdition('21', 'apa', 'en')).toBe('(21st ed.)')
+    expect(formatEdition('22', 'apa', 'en')).toBe('(22nd ed.)')
+    expect(formatEdition('23', 'apa', 'en')).toBe('(23rd ed.)')
+
+    expect(formatEdition('2', 'chicago', 'en')).toBe('2nd ed.')
+    expect(formatEdition('2', 'mla', 'en')).toBe('2nd ed.')
+    expect(formatEdition('2', 'ieee', 'en')).toBe('2nd ed.')
+
+    expect(formatEdition('1', 'apa', 'ko')).toBe('제1판')
+    expect(formatEdition('2', 'chicago', 'ko')).toBe('제2판')
+    expect(formatEdition('11', 'mla', 'ko')).toBe('제11판')
+    expect(formatEdition('22', 'ieee', 'ko')).toBe('제22판')
+
+    // Non-numeric text preserved without doubling "ed." or parentheses.
+    expect(formatEdition('Rev. ed.', 'apa', 'en')).toBe('(Rev. ed.)')
+    expect(formatEdition('(2nd ed.)', 'apa', 'en')).toBe('(2nd ed.)')
+    expect(formatEdition('Rev. ed.', 'chicago', 'en')).toBe('Rev. ed.')
+    expect(formatEdition('Rev. ed.', 'mla', 'en')).toBe('Rev. ed.')
+    expect(formatEdition('Rev. ed.', 'ieee', 'en')).toBe('Rev. ed.')
+    expect(formatEdition('개정판', 'apa', 'ko')).toBe('개정판')
+    expect(formatEdition('제3판', 'apa', 'ko')).toBe('제3판')
+
+    const numEnBook = makeEntry({
+      type: 'book',
+      authors: ['Smith, John A.'],
+      year: '2020',
+      title: 'Book Title',
+      edition: '2',
+      place: 'New York',
+      publisher: 'Academic Press',
+    })
+    expect(formatBibliographyText(numEnBook, 'apa')).toBe(
+      'Smith, J. A. (2020). Book Title (2nd ed.). Academic Press.',
+    )
+    expect(formatBibliographyText(numEnBook, 'chicago')).toBe(
+      'Smith, John A. 2020. Book Title. 2nd ed. New York: Academic Press.',
+    )
+    expect(formatBibliographyText(numEnBook, 'mla')).toBe(
+      'Smith, John A. Book Title. 2nd ed., Academic Press, 2020.',
+    )
+    expect(formatBibliographyText(numEnBook, 'ieee', { ieeeNumber: 1 })).toBe(
+      '[1] J. A. Smith, Book Title, 2nd ed. New York: Academic Press, 2020.',
+    )
+
+    const revEnBook = makeEntry({ ...numEnBook, edition: 'Rev. ed.' })
+    expect(formatBibliographyText(revEnBook, 'apa')).toBe(
+      'Smith, J. A. (2020). Book Title (Rev. ed.). Academic Press.',
+    )
+    expect(formatBibliographyText(revEnBook, 'chicago')).toBe(
+      'Smith, John A. 2020. Book Title. Rev. ed. New York: Academic Press.',
+    )
+
+    const numEnChapter = makeEntry({
+      type: 'chapter',
+      authors: ['Smith, John A.'],
+      editors: ['Editor, E.'],
+      year: '2020',
+      title: 'Chapter title',
+      containerTitle: 'Edited Book',
+      edition: '3',
+      pages: '10-20',
+      publisher: 'Academic Press',
+    })
+    expect(formatBibliographyText(numEnChapter, 'apa')).toBe(
+      'Smith, J. A. (2020). Chapter title. In E. Editor (Ed.), Edited Book (3rd ed., pp. 10-20). Academic Press.',
+    )
+
+    const numKoBook = makeEntry({
+      type: 'book',
+      authors: ['홍길동'],
+      year: '2020',
+      title: '교육학 개론',
+      edition: '2',
+      publisher: '학지사',
+    })
+    const revKoBook = makeEntry({ ...numKoBook, edition: '개정판' })
+    for (const style of ['apa', 'chicago', 'mla'] as const) {
+      expect(formatBibliographyText(numKoBook, style)).toBe(
+        '홍길동(2020). 교육학 개론 (제2판). 학지사.',
+      )
+      expect(formatBibliographyText(revKoBook, style)).toBe(
+        '홍길동(2020). 교육학 개론 (개정판). 학지사.',
+      )
+    }
+    expect(formatBibliographyText(numKoBook, 'ieee', { ieeeNumber: 1 })).toBe(
+      '[1] 홍길동(2020). 교육학 개론 (제2판). 학지사.',
+    )
+  })
+
+  it('refines Chicago undated/grouped citations and APA conference, accessed date, and org-publisher omission', () => {
+    // 1. Chicago undated: no double period after n.d.
+    const chicagoUndated = makeEntry({
+      type: 'book',
+      authors: ['Smith, John'],
+      title: 'Undated Monograph',
+      publisher: 'Academic Press',
+    })
+    const chicagoUndatedText = formatBibliographyText(chicagoUndated, 'chicago')
+    expect(chicagoUndatedText).toBe('Smith, John. n.d. Undated Monograph. Academic Press.')
+    expect(chicagoUndatedText).not.toContain('n.d..')
+
+    // 2. Chicago same-author grouped in-text citations merge years cleanly.
+    const smithA = makeEntry({
+      key: 'smith2020a',
+      authors: ['Smith, John'],
+      year: '2020',
+      title: 'Alpha Paper',
+    })
+    const smithB = makeEntry({
+      key: 'smith2020b',
+      authors: ['Smith, John'],
+      year: '2020',
+      title: 'Beta Paper',
+    })
+    const chicagoDisambig = assignDisambiguationSuffixes([smithA, smithB], 'chicago')
+    expect(
+      formatInTextCitation([smithB, smithA], 'chicago', { disambiguation: chicagoDisambig }),
+    ).toBe('(Smith 2020a, 2020b)')
+
+    const hongA = makeEntry({ key: 'hong2020a', authors: ['홍길동'], year: '2020', title: '가' })
+    const hongB = makeEntry({ key: 'hong2020b', authors: ['홍길동'], year: '2020', title: '나' })
+    const koChicagoDisambig = assignDisambiguationSuffixes([hongA, hongB], 'chicago')
+    expect(
+      formatInTextCitation([hongB, hongA], 'chicago', { disambiguation: koChicagoDisambig }),
+    ).toBe('(홍길동, 2020a, 2020b)')
+
+    // 3. APA 7th conference paper with and without pages.
+    const confWithPages = makeEntry({
+      type: 'conference',
+      authors: ['Smith, John A.'],
+      year: '2022',
+      title: 'Paper title',
+      containerTitle: 'Proceedings of the Annual Symposium',
+      pages: '10-20',
+      publisher: 'Symposium Press',
+    })
+    expect(formatBibliographyText(confWithPages, 'apa')).toBe(
+      'Smith, J. A. (2022). Paper title. In Proceedings of the Annual Symposium (pp. 10-20). Symposium Press.',
+    )
+    const confNoPages = makeEntry({ ...confWithPages, pages: undefined })
+    expect(formatBibliographyText(confNoPages, 'apa')).toBe(
+      'Smith, J. A. (2022). Paper title. In Proceedings of the Annual Symposium. Symposium Press.',
+    )
+
+    // 4. APA 7th accessed date: ISO YYYY-MM-DD formatted to Month D, YYYY; non-ISO preserved.
+    const webIso = makeEntry({
+      type: 'webpage',
+      authors: ['Smith, John A.'],
+      year: '2023',
+      title: 'Policy Brief',
+      containerTitle: 'Example Portal',
+      accessed: '2023-05-01',
+      url: 'https://example.org/brief',
+    })
+    expect(formatBibliographyText(webIso, 'apa')).toBe(
+      'Smith, J. A. (2023). Policy Brief. Example Portal. Retrieved May 1, 2023, from https://example.org/brief',
+    )
+    const webNonIso = makeEntry({ ...webIso, accessed: 'Spring 2023' })
+    expect(formatBibliographyText(webNonIso, 'apa')).toBe(
+      'Smith, J. A. (2023). Policy Brief. Example Portal. Retrieved Spring 2023, from https://example.org/brief',
+    )
+
+    // 5. APA 7th & Korean: omit redundant publisher/institution when identical to org author.
+    const orgBookEn = makeEntry({
+      type: 'book',
+      authors: [{ literal: 'World Health Organization', isOrganization: true }],
+      year: '2023',
+      title: 'Global Standards',
+      publisher: '  world health organization  ',
+    })
+    expect(formatBibliographyText(orgBookEn, 'apa')).toBe(
+      'World Health Organization. (2023). Global Standards.',
+    )
+
+    const orgBookKo = makeEntry({
+      type: 'book',
+      authors: [{ literal: '교육부', isOrganization: true }],
+      year: '2023',
+      title: '교육과정 총론',
+      publisher: '교육부',
+    })
+    expect(formatBibliographyText(orgBookKo, 'apa')).toBe('교육부(2023). 교육과정 총론.')
   })
 })

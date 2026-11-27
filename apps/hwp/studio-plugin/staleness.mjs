@@ -337,6 +337,13 @@ export const bibliographyStalenessChecker = Object.freeze({
     let refreshed = 0
     if (getDocumentCitationStyle(doc) === 'ieee') {
       const renum = renumberIeeeCitations(doc, entries.length > 0 ? entries : null)
+      if (!renum.ok) {
+        return {
+          ok: false,
+          refreshed: 0,
+          failed: renum.error ?? renum.reason ?? 'renumber_failed',
+        }
+      }
       if (renum.updated > 0) refreshed += 1
     }
 
