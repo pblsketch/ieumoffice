@@ -1319,8 +1319,20 @@ function patchPointFill(dPtXml: string, fill: string): string {
   return dPtXml.replace(spPrMatch[0], () => `<c:spPr>${nextHead}${tail}</c:spPr>`)
 }
 
+// Control characters outside \t \n \r, noncharacters, and lone surrogates are
+// all illegal in XML 1.0 even when escaped (same class #361/#388 strip
+// elsewhere). Chart titles and series names skip encodeXlsxEscapes, so this
+// local helper must strip them itself.
+const ILLEGAL_XML_CHARS =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
+
 function escapeXmlText(input: string): string {
-  return input.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  return input
+    .replace(ILLEGAL_XML_CHARS, '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 }
 
 function escapeXmlAttribute(input: string): string {
