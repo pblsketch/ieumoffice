@@ -173,6 +173,77 @@ function findIosInfoPlist(iosRoot) {
   return null
 }
 
+const PRIVACY_FILE_REF_ID = 'A1E011000000000000000001'
+const PRIVACY_BUILD_FILE_ID = 'A1E011000000000000000002'
+
+function findXcodeprojPbxproj(iosRoot) {
+  for (const entry of readdirSync(iosRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.endsWith('.xcodeproj')) continue
+    const candidate = join(iosRoot, entry.name, 'project.pbxproj')
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * Idempotently adds PrivacyInfo.xcprivacy to the generated Xcode project's
+ * file references, target group, and Resources build phase so archive builds
+ * embed it at the root of the .app bundle.
+ */
+function wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName) {
+  const pbxPath = findXcodeprojPbxproj(iosRoot)
+  if (!pbxPath) return { pbxprojPatched: false }
+
+  let pbx = readFileSync(pbxPath, 'utf8')
+  if (pbx.includes('PrivacyInfo.xcprivacy')) {
+    return { pbxprojPatched: false, pbxPath }
+  }
+
+  const buildFileMarker = '/* Begin PBXBuildFile section */'
+  const fileRefMarker = '/* Begin PBXFileReference section */'
+  if (!pbx.includes(buildFileMarker) || !pbx.includes(fileRefMarker)) {
+    throw new Error(`Unexpected project.pbxproj layout at ${pbxPath}`)
+  }
+
+  const buildFileEntry = `\t\t${PRIVACY_BUILD_FILE_ID} /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = ${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */; };`
+  const fileRefEntry = `\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };`
+
+  pbx = pbx.replace(buildFileMarker, `${buildFileMarker}\n${buildFileEntry}`)
+  pbx = pbx.replace(fileRefMarker, `${fileRefMarker}\n${fileRefEntry}`)
+
+  // Add the file reference to the group matching the Info.plist folder (or containing Info.plist).
+  const groupPattern = new RegExp(
+    `(isa = PBXGroup;[\\s\\S]*?children = \\()([\\s\\S]*?)(\\);[\\s\\S]*?path = "?${targetDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"?;)`,
+  )
+  if (groupPattern.test(pbx)) {
+    pbx = pbx.replace(
+      groupPattern,
+      `$1\n\t\t\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */,$2$3`,
+    )
+  } else {
+    const fallbackGroup = /(isa = PBXGroup;[\s\S]*?children = \()([\s\S]*?Info\.plist[\s\S]*?)(\);)/
+    if (fallbackGroup.test(pbx)) {
+      pbx = pbx.replace(
+        fallbackGroup,
+        `$1\n\t\t\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */,$2$3`,
+      )
+    }
+  }
+
+  // Add the build file to the first PBXResourcesBuildPhase so Xcode copies it into the .app bundle.
+  const resourcesPhase = /(isa = PBXResourcesBuildPhase;[\s\S]*?files = \()/
+  if (!resourcesPhase.test(pbx)) {
+    throw new Error(`Could not locate PBXResourcesBuildPhase in ${pbxPath}`)
+  }
+  pbx = pbx.replace(
+    resourcesPhase,
+    `$1\n\t\t\t\t${PRIVACY_BUILD_FILE_ID} /* PrivacyInfo.xcprivacy in Resources */,`,
+  )
+
+  writeFileSync(pbxPath, pbx, 'utf8')
+  return { pbxprojPatched: true, pbxPath }
+}
+
 export function applyIosConfig(genRoot = GEN_DIR) {
   // Tauri 2 `tauri ios init --ci` outputs under `src-tauri/gen/apple/`.
   const appleRoot = join(genRoot, 'apple')
@@ -205,9 +276,16 @@ export function applyIosConfig(genRoot = GEN_DIR) {
   )
   writeFileSync(plistPath, plist, 'utf8')
 
-  const entitlementsOut = join(dirname(plistPath), 'IeumOfficeMobile.entitlements')
+  const targetDir = dirname(plistPath)
+  const entitlementsOut = join(targetDir, 'IeumOfficeMobile.entitlements')
   copyFileSync(join(NATIVE_CONFIG, 'ios', 'Entitlements.plist'), entitlementsOut)
-  return { applied: true, plistPath, entitlementsOut }
+
+  const privacyManifestOut = join(targetDir, 'PrivacyInfo.xcprivacy')
+  copyFileSync(join(NATIVE_CONFIG, 'ios', 'PrivacyInfo.xcprivacy'), privacyManifestOut)
+  const targetDirName = targetDir.split(/[\\/]/).pop() ?? ''
+  const { pbxprojPatched } = wireIosPrivacyManifestInPbxproj(iosRoot, targetDirName)
+
+  return { applied: true, plistPath, entitlementsOut, privacyManifestOut, pbxprojPatched }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
