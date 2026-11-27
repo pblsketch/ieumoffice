@@ -27,6 +27,7 @@ import { translateMobile } from '../../../i18n'
 import type { MobileStringKey } from '../../../i18n/strings'
 import { EditorShell, type EditorQuickActionItem } from '../../../shell/EditorShell'
 import type { EditorWorkspaceProps } from '../../editorKind'
+import { attachPinchZoom } from '../../pinchZoom'
 import { useReaderKeepScreenOn } from '../shared/keepScreenOn'
 import {
   applyViewCss,
@@ -60,8 +61,10 @@ import { EpubOpening } from './EpubOpening'
 import { createEpubReader, type EpubReader, type LoadedChapter } from './epubReader'
 import { EpubLinkSheet, EpubSearchSheet, EpubSettingsSheet, EpubTocSheet } from './EpubSheets'
 import {
+  FONT_SCALES,
   OVERSCROLL_DRAG,
   classifyGesture,
+  nearestFontScale,
   pagedCss,
   readingFlow,
   resolveReadingTheme,
@@ -245,10 +248,14 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
   const [failed, setFailed] = useState<number | null>(null)
   const [layout, setLayout] = useState<Layout>({ pages: 1, views: 1, view: 0 })
   const [progress, setProgress] = useState(0)
+  const [fixedPinchZoom, setFixedPinchZoom] = useState(1)
 
   const stageRef = useRef<HTMLDivElement | null>(null)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const docRef = useRef<Document | null>(null)
+  const pinchDisposeRef = useRef<(() => void) | null>(null)
+  const fixedPinchZoomRef = useRef(fixedPinchZoom)
+  fixedPinchZoomRef.current = fixedPinchZoom
   const settingsRef = useRef(settings)
   settingsRef.current = settings
   const themeRef = useRef(readingTheme)
@@ -701,6 +708,37 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
       if (e.button !== 0 || Date.now() - lastTouch < TOUCH_MOUSE_MS) return
       finish(e.clientX, e.clientY)
     })
+
+    // Two-finger pinch adjusts font size on reflowable chapters, or zooms fixed-layout pages.
+    pinchDisposeRef.current?.()
+    const isFixed = shownRef.current?.chapter.fixed !== null
+    const minFont = FONT_SCALES[0]!
+    const maxFont = FONT_SCALES[FONT_SCALES.length - 1]!
+    const applyReflowScale = (scale: number) => {
+      const snapped = nearestFontScale(scale)
+      if (snapped !== settingsRef.current.fontScale) {
+        reader.updateSettings({ fontScale: snapped })
+      }
+    }
+    pinchDisposeRef.current = attachPinchZoom(doc, {
+      getScale: () => (isFixed ? fixedPinchZoomRef.current : settingsRef.current.fontScale),
+      min: isFixed ? 1 : minFont,
+      max: isFixed ? 4 : maxFont,
+      onPreview: (scale) => {
+        if (isFixed) {
+          setFixedPinchZoom(scale)
+        } else {
+          applyReflowScale(scale)
+        }
+      },
+      onCommit: (scale) => {
+        if (isFixed) {
+          setFixedPinchZoom(scale)
+        } else {
+          applyReflowScale(scale)
+        }
+      },
+    })
   }
 
   const onFrameLoad = () => {
@@ -778,12 +816,17 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
 
   // a new chapter frame: wire it once its document is there
   useEffect(() => {
+    setFixedPinchZoom(1)
     const frameEl = frameRef.current
     if (!frameEl || !shown) return
     const handler = () => apiRef.current.onFrameLoad()
     frameEl.addEventListener('load', handler)
     handler()
-    return () => frameEl.removeEventListener('load', handler)
+    return () => {
+      frameEl.removeEventListener('load', handler)
+      pinchDisposeRef.current?.()
+      pinchDisposeRef.current = null
+    }
   }, [shown])
 
   // the stage's size
@@ -837,7 +880,9 @@ function ReadingScreen({ frame, lang, theme, reader }: EpubWorkspaceProps) {
   const leftStep = sideStep('left', flow.rtl)
   const rightStep = sideStep('right', flow.rtl)
   const stepLabel = (step: 1 | -1) => t(step > 0 ? 'readersA11yNextPage' : 'readersA11yPrevPage')
-  const fixedScale = fixed ? Math.min(screen.width / fixed.width, screen.height / fixed.height) : 1
+  const fixedScale = fixed
+    ? Math.min(screen.width / fixed.width, screen.height / fixed.height) * fixedPinchZoom
+    : 1
   const failedNext = failed !== null ? nextChapter(book, failed, 1) : null
 
   const viewTools: EditorQuickActionItem[] = [

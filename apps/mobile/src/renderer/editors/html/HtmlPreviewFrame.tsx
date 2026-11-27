@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { attachPinchZoom } from '../pinchZoom'
 import { PREVIEW_SANDBOX, SID_ATTR } from './htmlPreview'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
@@ -160,6 +161,7 @@ export function HtmlPreviewFrame({
   }, [])
 
   const attachedDocRef = useRef<Document | null>(null)
+  const htmlZoomRef = useRef(1)
 
   const attachCurrentDocument = useCallback(() => {
     const frame = frameRef.current
@@ -175,12 +177,29 @@ export function HtmlPreviewFrame({
     detachRef.current?.()
     detachRef.current = null
     attachedDocRef.current = frameDocument
+    frameDocument.documentElement.style.touchAction = 'pan-x pan-y'
+    const applyHtmlZoom = (scale: number) => {
+      htmlZoomRef.current = scale
+      frameDocument.documentElement.style.zoom = scale === 1 ? '' : String(scale)
+      measure()
+    }
+    if (htmlZoomRef.current !== 1) {
+      frameDocument.documentElement.style.zoom = String(htmlZoomRef.current)
+    }
     const detachGuards = attachFrameGuards(frameDocument, (sid) => onElementPressRef.current?.(sid))
+    const detachPinch = attachPinchZoom(frameDocument, {
+      getScale: () => htmlZoomRef.current,
+      min: 0.5,
+      max: 3,
+      onPreview: applyHtmlZoom,
+      onCommit: applyHtmlZoom,
+    })
     // scrolling of the page or of any box in it, and the frame's own size, move the element
     const frameWindow = frameDocument.defaultView
     frameDocument.addEventListener('scroll', measure, true)
     frameWindow?.addEventListener('resize', measure)
     detachRef.current = () => {
+      detachPinch()
       detachGuards()
       frameDocument.removeEventListener('scroll', measure, true)
       frameWindow?.removeEventListener('resize', measure)

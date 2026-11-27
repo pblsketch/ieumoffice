@@ -43,6 +43,11 @@ function nearest(steps: readonly number[], value: number): number {
   return best
 }
 
+/** Snaps any continuous pinch scale to the nearest supported EPUB font scale step. */
+export function nearestFontScale(value: number): number {
+  return nearest(FONT_SCALES, value)
+}
+
 const finite = (value: unknown): value is number => typeof value === 'number' && isFinite(value)
 
 /**
@@ -101,6 +106,7 @@ export function pagedCss(
     ),
     ...lineHeightRule(settings.lineHeight),
     findRule(colors),
+    'html { touch-action: pan-x pan-y; }',
   ].join('\n')
 }
 
@@ -117,7 +123,7 @@ export function scrollCss(
 ): string {
   const prefs = { fontScale: settings.fontScale, lineHeight: settings.lineHeight, dark: false }
   const rest = viewPrefsCss(prefs, colors).split('\n').slice(themeCss('light', colors).length)
-  return [...themeCss(theme, colors), ...rest].join('\n')
+  return [...themeCss(theme, colors), ...rest, 'html { touch-action: pan-x pan-y; }'].join('\n')
 }
 
 /** The pages advance this way: vertical writing runs downwards, rtl and vertical-rl turn leftwards. */

@@ -9,6 +9,7 @@ import {
   type FlowPicture,
 } from './flowEditing'
 import { buildFlowDocument, buildFlowHtml } from './hwpFlow'
+import { attachPinchZoom } from './pinchZoom'
 import type { FlowEngineDocument } from './rhwpEngine'
 
 export interface HwpFlowViewHandle {
@@ -36,6 +37,10 @@ export interface HwpFlowViewProps {
   readonly lang: string
   /** Text scale; document sizes are in pt, so the whole frame is zoomed. */
   readonly zoom: number
+  readonly minZoom?: number
+  readonly maxZoom?: number
+  /** Called when a two-finger pinch inside the document frame changes zoom. */
+  readonly onZoomChange?: (next: number) => void
   /** Typing in the flow (body paragraphs; tables and pictures stay read-only). */
   readonly editable?: boolean
   /** Opens bytes with the rhwp engine; injectable for tests. */
@@ -65,6 +70,9 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     title,
     lang,
     zoom,
+    minZoom = 0.8,
+    maxZoom = 2.4,
+    onZoomChange,
     editable = false,
     openDocument,
     onUnavailable,
@@ -77,9 +85,16 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const docRef = useRef<EngineDocument | null>(null)
   const editorRef = useRef<FlowEditor | null>(null)
+  const pinchDisposeRef = useRef<(() => void) | null>(null)
   const pendingRef = useRef(false)
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
+  const minZoomRef = useRef(minZoom)
+  minZoomRef.current = minZoom
+  const maxZoomRef = useRef(maxZoom)
+  maxZoomRef.current = maxZoom
+  const onZoomChangeRef = useRef(onZoomChange)
+  onZoomChangeRef.current = onZoomChange
   const editableRef = useRef(editable)
   editableRef.current = editable
   const onEditRef = useRef(onEdit)
@@ -112,6 +127,8 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     })()
     return () => {
       cancelled = true
+      pinchDisposeRef.current?.()
+      pinchDisposeRef.current = null
       editorRef.current?.dispose()
       editorRef.current = null
       if (opened && docRef.current === opened) docRef.current = null
@@ -132,6 +149,20 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     const frameDoc = frameRef.current?.contentDocument
     if (!frameDoc) return
     frameDoc.documentElement.style.setProperty('--flow-zoom', String(zoomRef.current))
+    pinchDisposeRef.current?.()
+    pinchDisposeRef.current = attachPinchZoom(frameDoc, {
+      getScale: () => zoomRef.current,
+      min: minZoomRef.current,
+      max: maxZoomRef.current,
+      onPreview: (next) => {
+        frameDoc.documentElement.style.setProperty('--flow-zoom', String(next))
+      },
+      onCommit: (next) => {
+        zoomRef.current = next
+        frameDoc.documentElement.style.setProperty('--flow-zoom', String(next))
+        onZoomChangeRef.current?.(next)
+      },
+    })
     editorRef.current?.dispose()
     editorRef.current = null
     const doc = docRef.current
@@ -147,6 +178,14 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     })
     editorRef.current.setEditable(editableRef.current)
   }
+
+  useEffect(
+    () => () => {
+      pinchDisposeRef.current?.()
+      pinchDisposeRef.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     frameRef.current?.contentDocument?.documentElement.style.setProperty(

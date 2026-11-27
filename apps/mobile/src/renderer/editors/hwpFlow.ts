@@ -714,7 +714,7 @@ export function buildFlowHtml(doc: FlowSourceDocument): string {
 
 /** Reading styles inside the sandboxed flow frame. Document colors stay as the document set them. */
 export const FLOW_FRAME_CSS = `
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; }
 body {
   margin: 0;
   padding: 16px 16px 96px;
@@ -759,5 +759,5 @@ img { max-width: 100%; height: auto; }
 
 /** Builds the srcdoc for the sandboxed frame. `zoom` scales all text (document sizes are in pt). */
 export function buildFlowDocument(bodyHtml: string, zoom: number, lang: string): string {
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${FLOW_FRAME_CSS}</style><style>:root{--flow-zoom:${zoom}}</style></head><body>${bodyHtml}</body></html>`
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"><style>${FLOW_FRAME_CSS}</style><style>:root{--flow-zoom:${zoom}}</style></head><body>${bodyHtml}</body></html>`
 }

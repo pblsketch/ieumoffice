@@ -126,6 +126,12 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     override fun load(webView: WebView) {
         super.load(webView)
         activeWebView = webView
+        // Keep Android WebView from pinch-zooming app chrome (bars/sheets);
+        // individual document viewports handle two-finger zoom in JS.
+        // System font size scaling (settings.textZoom / rem) stays intact.
+        webView.settings.setSupportZoom(false)
+        webView.settings.builtInZoomControls = false
+        webView.settings.displayZoomControls = false
         applySystemBarInsets()
         captureIncomingIntent(activity.intent, notifyWebView = false)
     }

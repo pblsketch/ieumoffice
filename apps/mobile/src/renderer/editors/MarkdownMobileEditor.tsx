@@ -14,6 +14,7 @@ import {
   MAX_MOBILE_INLINE_IMAGE_BYTES,
   revealHiddenSpans,
 } from '@genoffice/mobile-bridge/markdown'
+import { attachPinchZoom } from './pinchZoom'
 
 export type MarkdownQuickAction =
   | 'undo'
@@ -107,11 +108,14 @@ export interface MarkdownMobileEditorProps {
   readonly onErrorNotice?: (messageKey: 'imageTooLargeError' | 'imageUnsupportedTypeError') => void
   readonly maxInlineImageBytes?: number
   readonly zoomScale?: number
+  readonly onZoomChange?: (next: number) => void
   /** Edit mode: the selection of the source moved (caret moves, selecting, typing). */
   readonly onSelectionChange?: (start: number, end: number) => void
 }
 
 const HISTORY_LIMIT = 50
+const MD_ZOOM_MIN = 0.8
+const MD_ZOOM_MAX = 2.4
 
 export const MarkdownMobileEditor = forwardRef<
   MarkdownMobileEditorHandle,
@@ -125,10 +129,12 @@ export const MarkdownMobileEditor = forwardRef<
     onErrorNotice,
     maxInlineImageBytes = MAX_MOBILE_INLINE_IMAGE_BYTES,
     zoomScale = 1,
+    onZoomChange,
     onSelectionChange,
   },
   ref,
 ) {
+  const viewportRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const previewRef = useRef<HTMLElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -136,6 +142,28 @@ export const MarkdownMobileEditor = forwardRef<
   const redoStackRef = useRef<string[]>([])
   const valueRef = useRef(value)
   valueRef.current = value
+  const zoomScaleRef = useRef(zoomScale)
+  zoomScaleRef.current = zoomScale
+  const onZoomChangeRef = useRef(onZoomChange)
+  onZoomChangeRef.current = onZoomChange
+
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    return attachPinchZoom(el, {
+      getScale: () => zoomScaleRef.current,
+      min: MD_ZOOM_MIN,
+      max: MD_ZOOM_MAX,
+      onPreview: (next) => {
+        zoomScaleRef.current = next
+        onZoomChangeRef.current?.(next)
+      },
+      onCommit: (next) => {
+        zoomScaleRef.current = next
+        onZoomChangeRef.current?.(next)
+      },
+    })
+  }, [])
 
   const commitValue = useCallback(
     (next: string) => {
@@ -367,14 +395,19 @@ export const MarkdownMobileEditor = forwardRef<
 
   const contentStyle = useMemo(
     () => ({
-      transform: zoomScale === 1 ? undefined : `scale(${zoomScale})`,
-      transformOrigin: 'top left',
+      fontSize: zoomScale === 1 ? undefined : `calc(var(--m-text-body) * ${zoomScale})`,
     }),
     [zoomScale],
   )
 
   return (
-    <div className="mobile-md-viewport" data-editor="markdown" data-mode={mode}>
+    <div
+      ref={viewportRef}
+      className="mobile-md-viewport"
+      data-editor="markdown"
+      data-mode={mode}
+      data-zoom={String(zoomScale)}
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -386,7 +419,9 @@ export const MarkdownMobileEditor = forwardRef<
       {mode === 'view' ? (
         <article ref={previewRef} className="mobile-markdown-preview" style={contentStyle}>
           {isPlainText ? (
-            <pre className="mobile-plain-text-view">{previewText}</pre>
+            <pre className="mobile-plain-text-view" style={contentStyle}>
+              {previewText}
+            </pre>
           ) : (
             <Markdown text={previewText} />
           )}
@@ -395,6 +430,7 @@ export const MarkdownMobileEditor = forwardRef<
         <textarea
           ref={textareaRef}
           className="mobile-markdown-textarea"
+          style={contentStyle}
           value={value}
           onChange={(e) => commitValue(e.target.value)}
           onCompositionStart={onCompositionStart}

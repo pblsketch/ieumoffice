@@ -11,6 +11,7 @@ import {
 } from '@genoffice/mobile-bridge/hwp'
 import blankHwpUrl from '../../../../hwp/src/renderer/assets/blank.hwp?url'
 import { registerMobileKoreanFonts } from '../assets/fonts'
+import { attachPinchZoom } from './pinchZoom'
 
 export type HwpQuickAction =
   | 'undo'
@@ -91,19 +92,95 @@ const MOBILE_HIDDEN_CHROME = {
   statusbar: false,
 } as const
 
+/** Studio zoom bounds (mirrors rhwp-studio's 10%-500% range, clamped to 25%-400% for pinch). */
+const STUDIO_PINCH_MIN = 0.25
+const STUDIO_PINCH_MAX = 4
+const STUDIO_SLIDER_MIN_PCT = 10
+const STUDIO_SLIDER_MID_PCT = 100
+const STUDIO_SLIDER_MAX_PCT = 500
+const STUDIO_SLIDER_MAX = 1000
+const STUDIO_SLIDER_MID = 500
+
+/**
+ * Maps a zoom percentage (10..500) to rhwp-studio's logarithmic `#sb-zoom-range`
+ * slider value (0..1000, midpoint 500 = 100%).
+ */
+export function studioZoomPercentToSlider(percent: number): number {
+  const clamped = Number.isFinite(percent)
+    ? Math.max(STUDIO_SLIDER_MIN_PCT, Math.min(STUDIO_SLIDER_MAX_PCT, percent))
+    : STUDIO_SLIDER_MID_PCT
+  if (clamped === STUDIO_SLIDER_MID_PCT) return STUDIO_SLIDER_MID
+  if (clamped < STUDIO_SLIDER_MID_PCT) {
+    const t =
+      Math.log(clamped / STUDIO_SLIDER_MIN_PCT) /
+      Math.log(STUDIO_SLIDER_MID_PCT / STUDIO_SLIDER_MIN_PCT)
+    return Math.round(t * STUDIO_SLIDER_MID)
+  }
+  const t =
+    Math.log(clamped / STUDIO_SLIDER_MID_PCT) /
+    Math.log(STUDIO_SLIDER_MAX_PCT / STUDIO_SLIDER_MID_PCT)
+  return Math.round(STUDIO_SLIDER_MID + t * (STUDIO_SLIDER_MAX - STUDIO_SLIDER_MID))
+}
+
+/** Reads the studio's current zoom ratio synchronously from `#sb-zoom-range`. */
+export function readStudioZoom(doc: Document): number {
+  const slider = doc.getElementById('sb-zoom-range') as HTMLInputElement | null
+  const text = slider?.getAttribute('aria-valuetext') ?? ''
+  const match = /(\d+(?:\.\d+)?)%/.exec(text)
+  if (match) {
+    const pct = Number(match[1])
+    if (Number.isFinite(pct) && pct > 0) return pct / 100
+  }
+  return 1
+}
+
+/** Commits a target zoom ratio into rhwp-studio (via slider input, else zoom-in/out commands). */
+function applyStudioZoom(doc: Document, editor: RhwpEditor, targetZoom: number): void {
+  const clamped = Math.max(STUDIO_PINCH_MIN, Math.min(STUDIO_PINCH_MAX, targetZoom))
+  const slider = doc.getElementById('sb-zoom-range') as HTMLInputElement | null
+  if (slider) {
+    const pct = Math.round(clamped * 100)
+    slider.value = String(studioZoomPercentToSlider(pct))
+    slider.dispatchEvent(new Event('input', { bubbles: true }))
+    return
+  }
+  const current = readStudioZoom(doc)
+  const diff = clamped - current
+  if (Math.abs(diff) < 0.05) return
+  const cmd = diff > 0 ? 'view:zoom-in' : 'view:zoom-out'
+  void editor.commands.execute(cmd).catch(() => {})
+}
+
 /**
  * Strips desktop centimeter rulers inside the same-origin rhwp-studio iframe on
- * narrow phone viewports so the Hangul page uses the full width cleanly.
+ * narrow phone viewports so the Hangul page uses the full width cleanly, and
+ * disables browser-level page zoom inside the iframe so our pinch handler owns zoom.
  */
 function applyMobileStudioCanvasStyle(editor: RhwpEditor): void {
   try {
     const doc = editor.element?.contentDocument
     if (!doc?.head) return
+    const viewportMeta = doc.querySelector('meta[name="viewport"]')
+    const lockedViewport =
+      'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no'
+    if (viewportMeta) {
+      viewportMeta.setAttribute('content', lockedViewport)
+    } else {
+      const meta = doc.createElement('meta')
+      meta.name = 'viewport'
+      meta.content = lockedViewport
+      doc.head.appendChild(meta)
+    }
     const existing = doc.getElementById('ieum-mobile-studio-style')
     if (existing) return
     const style = doc.createElement('style')
     style.id = 'ieum-mobile-studio-style'
     style.textContent = `
+      html,
+      body,
+      #scroll-container {
+        touch-action: pan-x pan-y;
+      }
       /* compact and medium window classes (< 840px, see useViewportLayout) */
       @media (max-width: 839px) {
         #ruler-corner,
@@ -127,6 +204,39 @@ function applyMobileStudioCanvasStyle(editor: RhwpEditor): void {
   }
 }
 
+/** Attaches document-only two-finger pinch-zoom to the same-origin rhwp-studio iframe. */
+function attachStudioPinchZoom(editor: RhwpEditor): (() => void) | null {
+  try {
+    const doc = editor.element?.contentDocument
+    if (!doc) return null
+    const content = doc.getElementById('scroll-content')
+    return attachPinchZoom(doc, {
+      getScale: () => readStudioZoom(doc),
+      min: STUDIO_PINCH_MIN,
+      max: STUDIO_PINCH_MAX,
+      onPreview: (_scale, ratio) => {
+        if (!content) return
+        if (Math.abs(ratio - 1) < 0.005) {
+          content.style.transform = ''
+          content.style.transformOrigin = ''
+        } else {
+          content.style.transformOrigin = 'top left'
+          content.style.transform = `scale(${ratio})`
+        }
+      },
+      onCommit: (nextScale) => {
+        if (content) {
+          content.style.transform = ''
+          content.style.transformOrigin = ''
+        }
+        applyStudioZoom(doc, editor, nextScale)
+      },
+    })
+  } catch {
+    return null
+  }
+}
+
 export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditorProps>(
   function HwpMobileEditor(
     { fileName, documentBytes, mode, lang, theme, onDirty, onReady, onError },
@@ -136,7 +246,6 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
     const editorRef = useRef<RhwpEditor | null>(null)
     const pluginLoadedRef = useRef<{ editor: RhwpEditor; ready: Promise<unknown> } | null>(null)
     const [loading, setLoading] = useState(true)
-    const [zoom, setZoom] = useState(1)
 
     // Keep callback props in refs so parent re-renders never tear down and reload rhwp-studio.
     const onDirtyRef = useRef(onDirty)
@@ -152,6 +261,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
       let cancelled = false
       let dirtyPoll: ReturnType<typeof setInterval> | null = null
       let frameWindow: Window | null = null
+      let disposePinch: (() => void) | null = null
       let lastReportedDirty = false
       const container = containerRef.current
       if (!container) return
@@ -193,6 +303,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
           // Hide desktop menu/toolbar/statusbar chrome and phone centimeter rulers.
           await editor.chrome.set(MOBILE_HIDDEN_CHROME).catch(() => {})
           applyMobileStudioCanvasStyle(editor)
+          disposePinch = attachStudioPinchZoom(editor)
           if (cancelled) return
 
           if (documentBytes && documentBytes.byteLength > 0) {
@@ -236,6 +347,8 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
 
       return () => {
         cancelled = true
+        disposePinch?.()
+        disposePinch = null
         if (dirtyPoll) clearInterval(dirtyPoll)
         frameWindow?.removeEventListener(STUDIO_DIRTY_EVENT, onFrameDirty)
         const current = editorRef.current
@@ -315,7 +428,6 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
             .catch(() => {})
         },
         fitToWidth() {
-          setZoom(1)
           void editorRef.current?.commands.execute('view:zoom-fit-width').catch(() => {})
         },
         async callPlugin(method, ...args) {
@@ -359,11 +471,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
         <div
           ref={containerRef}
           className="mobile-hwp-frame-host"
-          style={{
-            transform: zoom === 1 ? undefined : `scale(${zoom})`,
-            transformOrigin: 'top left',
-            touchAction: 'pan-x pan-y pinch-zoom',
-          }}
+          style={{ touchAction: 'pan-x pan-y' }}
           aria-label={fileName}
         />
       </div>

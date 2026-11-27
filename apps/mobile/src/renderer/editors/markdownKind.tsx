@@ -457,6 +457,7 @@ function startMarkdownDocument(
             mode={mode}
             isPlainText={activeFormat === 'txt'}
             zoomScale={zoomScale}
+            onZoomChange={(next) => kept.set({ zoomScale: next })}
             onChange={(next) => {
               setMarkdownText(next)
               textChanged()

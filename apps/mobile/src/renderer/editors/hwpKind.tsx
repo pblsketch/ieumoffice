@@ -644,6 +644,11 @@ function startHwpDocument(
               title={frame.docTitle}
               lang={lang}
               zoom={flowZoom}
+              minZoom={FLOW_ZOOM_MIN}
+              maxZoom={FLOW_ZOOM_MAX}
+              onZoomChange={(next) =>
+                setFlowZoom(() => Math.min(FLOW_ZOOM_MAX, Math.max(FLOW_ZOOM_MIN, next)))
+              }
               editable={mode === 'edit' && canEditActive}
               openDocument={openFlowDocument}
               onUnavailable={() => setHwpLayout('page')}
