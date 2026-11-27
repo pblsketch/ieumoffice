@@ -484,7 +484,7 @@ describe('first-use tips', () => {
     Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true })
     Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true })
     const { div } = await renderApp({
-      prefs: { tipsSeen: ['editButton'] },
+      prefs: { tipsSeen: ['editButton', 'firstKeyboard'] },
       pendingIntent: MD_DOC,
     })
     await click(q(div, 'editor-mode-toggle'))
@@ -539,5 +539,62 @@ describe('first-use tips', () => {
     // Trigger re-measurement via close/remount or resize observer; closing must clear the var.
     await click(q(div, 'home-run-strip-close'))
     expect(document.documentElement.style.getPropertyValue('--m-readonly-strip-h')).toBe('')
+  })
+
+  it('reserves --m-tip-inset-top while firstEdit tip overlaps the editor stage and clears it on dismiss', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+    Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
+    const { div } = await renderApp({
+      prefs: { tipsSeen: ['editButton', 'firstKeyboard'] },
+      pendingIntent: MD_DOC,
+    })
+    await click(q(div, 'editor-mode-toggle'))
+    const tip = q(document.body, 'home-run-tip')!
+    const stage = div.querySelector('.mobile-editor-stage') as HTMLElement
+    expect(tip.getAttribute('data-tip')).toBe('firstEdit')
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
+      top: 56,
+      bottom: 800,
+      left: 0,
+      right: 390,
+      width: 390,
+      height: 744,
+      x: 0,
+      y: 56,
+      toJSON: () => ({}),
+    })
+    vi.spyOn(tip, 'getBoundingClientRect').mockReturnValue({
+      top: 64,
+      bottom: 108,
+      left: 16,
+      right: 374,
+      width: 358,
+      height: 44,
+      x: 16,
+      y: 64,
+      toJSON: () => ({}),
+    })
+    // Trigger placement update via save button rect + resize so tip effect re-syncs inset.
+    const saveBtn = q(div, 'editor-save-btn')!
+    vi.spyOn(saveBtn, 'getBoundingClientRect').mockReturnValue({
+      top: 20,
+      bottom: 56,
+      left: 48,
+      right: 120,
+      width: 72,
+      height: 36,
+      x: 48,
+      y: 20,
+      toJSON: () => ({}),
+    })
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    await wait()
+    expect(document.documentElement.style.getPropertyValue('--m-tip-inset-top')).toBe('60px')
+
+    await pointerDown()
+    expect(q(document.body, 'home-run-tip')).toBeNull()
+    expect(document.documentElement.style.getPropertyValue('--m-tip-inset-top')).toBe('')
   })
 })
