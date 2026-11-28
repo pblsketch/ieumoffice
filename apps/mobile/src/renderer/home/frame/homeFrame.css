@@ -247,13 +247,6 @@
 
 /* ── Create sheet ── */
 
-/* Hug content on medium detent so all tiles and secondary actions sit above the bottom safe area,
-   and scroll inside .mobile-sheet-body when taller (e.g. 2.0x font scale or compact landscape). */
-.mobile-sheet-layer[data-testid='home-create-sheet'] .mobile-sheet-surface[data-detent='medium'] {
-  height: auto;
-  max-height: calc(100dvh - var(--m-safe-top) - var(--m-kb) - var(--m-space-6));
-}
-
 .home-frame-create-location {
   display: inline-flex;
   align-items: center;
@@ -319,7 +312,7 @@
 
 .home-frame-create-secondary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
   gap: var(--m-space-2);
   border-top: 1px solid var(--border-subtle);
   padding-top: var(--m-space-2);

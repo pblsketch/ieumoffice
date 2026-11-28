@@ -206,9 +206,14 @@ describe('Proposal 1: Enhanced [+] create sheet', () => {
     )
     await flush()
 
-    // On Recent tab: no location banner, Add folder button works
+    // On Recent tab: no location banner, Add folder button works, sheet uses auto detent
     click(byTestId('home-fab'))
     expect(byTestId('home-create-sheet')).not.toBeNull()
+    expect(
+      byTestId('home-create-sheet')
+        ?.querySelector('.mobile-sheet-surface')
+        ?.getAttribute('data-detent'),
+    ).toBe('auto')
     expect(byTestId('home-create-location')).toBeNull()
     expect(byTestId('home-create-open-file')).not.toBeNull()
     expect(byTestId('home-create-add-folder')).not.toBeNull()
@@ -488,26 +493,19 @@ describe('22-language i18n completeness for new UX keys', () => {
 })
 
 describe('Store-prep layout fixes: create sheet height & tablet reading measure', () => {
-  it('lets the create sheet hug content up to safe viewport max-height with single-row responsive actions', () => {
+  it('uses auto sheet detent up to safe viewport max-height with single-row responsive actions', () => {
     const css = fs.readFileSync(
       path.resolve(__dirname, '../src/renderer/home/frame/homeFrame.css'),
       'utf8',
     )
-    expect(css).toContain(
-      ".mobile-sheet-layer[data-testid='home-create-sheet'] .mobile-sheet-surface[data-detent='medium']",
-    )
-    expect(css).toContain('height: auto;')
-    expect(css).toContain(
-      'max-height: calc(100dvh - var(--m-safe-top) - var(--m-kb) - var(--m-space-6));',
-    )
-    expect(css).toContain(
-      'grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));',
-    )
+    expect(css).toContain('grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));')
 
     const tokensCss = fs.readFileSync(
       path.resolve(__dirname, '../src/renderer/styles/mobile-tokens.css'),
       'utf8',
     )
+    expect(tokensCss).toContain(".mobile-sheet-surface[data-detent='auto']")
+    expect(tokensCss).toContain('height: auto;')
     expect(tokensCss).toContain('--m-measure: 40rem;')
     expect(tokensCss).toContain(
       'max-width: min(100%, calc(var(--m-measure) + 2 * var(--m-space-5)));',

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from '
 import { useBackLayer } from '../shell/backStack'
 import { IconClose } from './MobileIcons'
 
-export type SheetDetent = 'medium' | 'large'
+export type SheetDetent = 'auto' | 'medium' | 'large'
 
 export interface SheetProps {
   readonly open: boolean
@@ -78,9 +78,9 @@ export function Sheet({
     const moved = dragY
     setDragY(0)
     if (moved > DRAG_STEP_PX) {
-      if (detent === 'large') setDetent('medium')
+      if (detent === 'large') setDetent(initialDetent === 'auto' ? 'auto' : 'medium')
       else onClose()
-    } else if (moved < -DRAG_STEP_PX && detent === 'medium') {
+    } else if (moved < -DRAG_STEP_PX && detent !== 'large') {
       setDetent('large')
     }
   }

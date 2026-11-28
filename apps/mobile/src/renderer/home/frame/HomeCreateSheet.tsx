@@ -74,6 +74,7 @@ export function HomeCreateSheet({
       title={t('homeCreateTitle')}
       closeLabel={t('homeCreateClose')}
       onClose={onClose}
+      initialDetent="auto"
       testId="home-create-sheet"
     >
       {locationLabel && (

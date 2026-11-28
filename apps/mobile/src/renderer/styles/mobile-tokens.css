@@ -1759,6 +1759,9 @@ input:focus-visible {
 .mobile-sheet-layer {
   padding-bottom: var(--m-kb);
 }
+.mobile-sheet-surface[data-detent='auto'] {
+  height: auto;
+}
 .mobile-sheet-surface[data-detent='large'] {
   height: calc(100dvh - var(--m-safe-top) - var(--m-kb) - var(--m-space-6));
 }
