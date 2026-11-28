@@ -63,6 +63,29 @@ export interface FlowSourceDocument {
     endOffset: number,
   ): string
   getTableProperties(sectionIdx: number, paraIdx: number, controlIdx: number): string
+  /** Cell properties (true border types/widths, fills, dimensions) for a body-level table cell. */
+  getCellProperties?(
+    sectionIdx: number,
+    paraIdx: number,
+    controlIdx: number,
+    cellIdx: number,
+  ): string
+  /** Cell properties for a nested table cell. */
+  getCellPropertiesByPath?(
+    sectionIdx: number,
+    paraIdx: number,
+    cellPathJson: string,
+    cellIdx: number,
+  ): string
+  /** Shape properties (fill color, border color, size) for a body-level text box/shape. */
+  getShapeProperties?(sectionIdx: number, paraIdx: number, controlIdx: number): string
+  /** Shape properties for a shape inside a table cell. */
+  getCellShapePropertiesByPath?(
+    sectionIdx: number,
+    paraIdx: number,
+    cellPathJson: string,
+    controlIdx: number,
+  ): string
   getCellParagraphCount(
     sectionIdx: number,
     paraIdx: number,
@@ -285,6 +308,31 @@ const MAX_CELL_MARGIN_LEFT_PX = 20
 const MAX_CELL_MARGIN_RIGHT_PX = 12
 const MAX_CELL_INDENT_PX = 16
 
+const MIN_BODY_LINE_HEIGHT = 1.35
+const MAX_BODY_LINE_HEIGHT = 2.0
+const MIN_CELL_LINE_HEIGHT = 1.25
+const MAX_CELL_LINE_HEIGHT = 1.8
+
+const MIN_BODY_FONT_PT = 8.5
+const MAX_BODY_FONT_PT = 22
+const MIN_CELL_FONT_PT = 8
+const MAX_CELL_FONT_PT = 20
+const DEFAULT_SPAN_FONT_PX = 10 * (96 / 72)
+
+/**
+ * HWP `charSpacing` is in percent of 0.5em, while rhwp's clipboard HTML emits
+ * `fontSizePx * (spacing / 100)` (2x too large). In a reflowing view, aggressive
+ * negative tracking used for A4 line-fitting crushes glyphs; keep subtle intent
+ * within safe reflow bounds.
+ */
+const HWP_LETTER_SPACING_SCALE = 0.5
+const MIN_LETTER_SPACING_EM = -0.02
+const MAX_LETTER_SPACING_EM = 0.12
+const LETTER_SPACING_EPSILON_EM = 0.005
+
+const MIN_FONT_STRETCH_PCT = 85
+const MAX_FONT_STRETCH_PCT = 115
+
 function parseCssLengthPx(raw: string): number | null {
   const m = /^\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(px|pt|em|rem|mm|cm|in)?\s*$/i.exec(raw)
   if (!m) return null
@@ -301,93 +349,385 @@ function parseCssLengthPx(raw: string): number | null {
   return null
 }
 
+function parseCssLengthPt(raw: string): number | null {
+  const px = parseCssLengthPx(raw)
+  if (px === null) return null
+  return px * (72 / 96)
+}
+
+function formatNumber(value: number, decimals = 1): string {
+  const factor = 10 ** decimals
+  const rounded = Math.round(value * factor) / factor
+  return Object.is(rounded, -0) ? '0' : String(rounded)
+}
+
 function formatPx(value: number): string {
-  const rounded = Math.round(value * 10) / 10
-  return `${rounded}px`
+  return `${formatNumber(value, 1)}px`
+}
+
+function normalizeLineHeight(raw: string, inCell: boolean): string | null {
+  const minLh = inCell ? MIN_CELL_LINE_HEIGHT : MIN_BODY_LINE_HEIGHT
+  const maxLh = inCell ? MAX_CELL_LINE_HEIGHT : MAX_BODY_LINE_HEIGHT
+  const trimmed = raw.trim().toLowerCase()
+  if (!trimmed || trimmed === 'normal') return null
+
+  const pct = /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))%$/.exec(trimmed)
+  if (pct) {
+    const ratio = Number(pct[1]) / 100
+    if (!Number.isFinite(ratio) || ratio <= 0) return null
+    const clamped = Math.min(Math.max(ratio, minLh), maxLh)
+    return `${Math.round(clamped * 100)}%`
+  }
+
+  const unitless = /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))$/.exec(trimmed)
+  if (unitless) {
+    const ratio = Number(unitless[1])
+    if (!Number.isFinite(ratio) || ratio <= 0) return null
+    const clamped = Math.min(Math.max(ratio, minLh), maxLh)
+    return formatNumber(clamped, 2)
+  }
+
+  // Fixed px/pt line-heights collide on reflowed multi-line text when font size or zoom changes.
+  const px = parseCssLengthPx(trimmed)
+  if (px !== null) {
+    return `${Math.round(minLh * 100)}%`
+  }
+
+  return trimmed
+}
+
+const GENERIC_FONT_RE = /\b(?:serif|sans-serif|monospace|cursive|fantasy|system-ui)\s*$/i
+const MONO_FONT_RE = /고정폭|consolas|courier|mono|menlo|monaco/i
+
+/**
+ * Cleans malformed comma-joined HWP font names (e.g. `'T8,한컴바탕'`) and ensures
+ * a generic fallback (`monospace` or `sans-serif`) so missing proprietary HWP
+ * fonts fall back cleanly with clear bold contrast on mobile and desktop.
+ */
+export function normalizeFlowFontFamily(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return trimmed
+  const cleaned = trimmed.replace(/'([^']*?,[^']*?)'/g, (_full, inner: string) =>
+    inner
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => `'${s}'`)
+      .join(','),
+  )
+  if (GENERIC_FONT_RE.test(cleaned)) return cleaned
+  const fallback = MONO_FONT_RE.test(cleaned) ? 'monospace' : 'sans-serif'
+  return `${cleaned},${fallback}`
 }
 
 /**
- * Keeps HWP paragraph indents and side margins inside the phone flow viewport.
+ * Normalizes inline `<span>` styles emitted by rhwp's HTML export for readable
+ * mobile reflow:
+ * - Converts `letter-spacing` to font-relative `em` with HWP's 0.5x half-em unit
+ *   correction and clamps to `[-0.02em, +0.12em]` so negative A4 tracking never
+ *   crushes bold or Latin glyphs.
+ * - Clamps `font-size` to readable mobile bounds while keeping document hierarchy.
+ * - Strips inline `transform` (`scaleX` width distortion overlaps CSS text) and
+ *   clamps `font-stretch` to `[85%, 115%]`.
+ * - Appends generic font fallbacks (`serif` / `sans-serif` / `monospace`).
+ * - Preserves document colors, weights, and text decorations as authored.
+ */
+function normalizeFlowSpanStyle(style: string, inCell: boolean): string {
+  const minPt = inCell ? MIN_CELL_FONT_PT : MIN_BODY_FONT_PT
+  const maxPt = inCell ? MAX_CELL_FONT_PT : MAX_BODY_FONT_PT
+
+  const entries: Array<{ prop: string; val: string; raw: string }> = []
+  let rawFontPx = DEFAULT_SPAN_FONT_PX
+
+  for (const part of style.split(';')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const colon = trimmed.indexOf(':')
+    if (colon < 0) {
+      entries.push({ prop: '', val: '', raw: trimmed })
+      continue
+    }
+    const prop = trimmed.slice(0, colon).trim().toLowerCase()
+    const val = trimmed.slice(colon + 1).trim()
+    if (prop === 'font-size') {
+      const px = parseCssLengthPx(val)
+      if (px !== null && px > 0) rawFontPx = px
+    }
+    entries.push({ prop, val, raw: trimmed })
+  }
+
+  const out: string[] = []
+  for (const entry of entries) {
+    if (!entry.prop) {
+      out.push(entry.raw)
+      continue
+    }
+    if (entry.prop === 'letter-spacing') {
+      const emMatch = /^\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*em\s*$/i.exec(entry.val)
+      let emVal: number | null = null
+      if (emMatch) {
+        emVal = Number(emMatch[1])
+      } else {
+        const px = parseCssLengthPx(entry.val)
+        if (px !== null) {
+          emVal = (px / rawFontPx) * HWP_LETTER_SPACING_SCALE
+        }
+      }
+      if (emVal !== null && Number.isFinite(emVal)) {
+        const clamped = Math.min(Math.max(emVal, MIN_LETTER_SPACING_EM), MAX_LETTER_SPACING_EM)
+        if (Math.abs(clamped) >= LETTER_SPACING_EPSILON_EM) {
+          out.push(`letter-spacing:${formatNumber(clamped, 3)}em`)
+        }
+      }
+      continue
+    }
+    if (entry.prop === 'font-size') {
+      const pt = parseCssLengthPt(entry.val)
+      if (pt !== null && pt > 0) {
+        const clamped = Math.min(Math.max(pt, minPt), maxPt)
+        out.push(`font-size:${formatNumber(clamped, 1)}pt`)
+        continue
+      }
+    }
+    if (entry.prop === 'font-family') {
+      out.push(`font-family:${normalizeFlowFontFamily(entry.val)}`)
+      continue
+    }
+    if (entry.prop === 'transform') {
+      // Drop inline scaleX transforms (charRatio hacks) that overlap adjacent runs in CSS flow.
+      continue
+    }
+    if (entry.prop === 'font-stretch') {
+      const pct = /^\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))%\s*$/.exec(entry.val)
+      if (pct) {
+        const clamped = Math.min(
+          Math.max(Number(pct[1]), MIN_FONT_STRETCH_PCT),
+          MAX_FONT_STRETCH_PCT,
+        )
+        out.push(`font-stretch:${formatNumber(clamped, 0)}%`)
+      }
+      continue
+    }
+    out.push(entry.raw)
+  }
+
+  return out.length > 0 ? `${out.join(';')};` : ''
+}
+
+/**
+ * Normalizes rhwp paragraph and inline span styles for reflowing mobile reading.
  *
- * rhwp's HTML export emits HWP hanging indent (negative `text-indent`) without
- * adding the matching `margin-left`, which pushes the first line off the left
- * edge in CSS. Negative or desktop-wide side margins also clip or crush lines
- * on narrow screens. This guarantees `margin-left + text-indent >= 0` and
- * non-negative, mobile-bounded left/right margins.
+ * - Paragraph alignment: converts `justify` / `distribute` / `justify-all` to
+ *   `left` (CSS inter-word justification with `word-break: keep-all` creates wide
+ *   word rivers on narrow viewports) while preserving `center` and `right`.
+ * - Hanging indents & side margins: guarantees `margin-left + text-indent >= 0`
+ *   within mobile bounds, and strips leftover indents on centered/right-aligned
+ *   paragraphs so headings stay centered.
+ * - Line height: clamps tight (`100%`) or excessive values to readable bounds.
+ * - Inline runs: converts rhwp's 2x pixel `letter-spacing` to clamped `em`,
+ *   clamps extreme `font-size`, strips overlapping `transform`, and appends
+ *   generic font fallbacks.
  */
 export function normalizeFlowParagraphStyle(html: string, inCell = false): string {
-  if (!html || !/<p\b/i.test(html)) return html
+  if (!html) return html
   const maxLeft = inCell ? MAX_CELL_MARGIN_LEFT_PX : MAX_BODY_MARGIN_LEFT_PX
   const maxRight = inCell ? MAX_CELL_MARGIN_RIGHT_PX : MAX_BODY_MARGIN_RIGHT_PX
   const maxIndent = inCell ? MAX_CELL_INDENT_PX : MAX_BODY_INDENT_PX
 
-  return html.replace(/<p\b([^>]*)\bstyle="([^"]*)"([^>]*)>/gi, (full, before, style, after) => {
-    let rawLeft = 0
-    let rawRight = 0
-    let rawIndent = 0
-    let touched = false
-    const kept: string[] = []
+  let result = html.replace(
+    /<p\b([^>]*)\bstyle="([^"]*)"([^>]*)>/gi,
+    (_full, before: string, style: string, after: string) => {
+      let rawLeft = 0
+      let rawRight = 0
+      let rawIndent = 0
+      let align = ''
+      const kept: string[] = []
 
-    for (const part of String(style).split(';')) {
-      const trimmed = part.trim()
-      if (!trimmed) continue
-      const colon = trimmed.indexOf(':')
-      if (colon < 0) {
+      for (const part of String(style).split(';')) {
+        const trimmed = part.trim()
+        if (!trimmed) continue
+        const colon = trimmed.indexOf(':')
+        if (colon < 0) {
+          kept.push(trimmed)
+          continue
+        }
+        const prop = trimmed.slice(0, colon).trim().toLowerCase()
+        const val = trimmed.slice(colon + 1).trim()
+        if (prop === 'margin-left') {
+          const px = parseCssLengthPx(val)
+          if (px !== null) {
+            rawLeft = px
+            continue
+          }
+        } else if (prop === 'margin-right') {
+          const px = parseCssLengthPx(val)
+          if (px !== null) {
+            rawRight = px
+            continue
+          }
+        } else if (prop === 'text-indent') {
+          const px = parseCssLengthPx(val)
+          if (px !== null) {
+            rawIndent = px
+            continue
+          }
+        } else if (prop === 'text-align') {
+          const low = val.toLowerCase()
+          if (low === 'justify' || low === 'distribute' || low === 'justify-all') {
+            align = 'left'
+            kept.push('text-align:left')
+          } else {
+            align = low
+            kept.push(`text-align:${low}`)
+          }
+          continue
+        } else if (prop === 'text-align-last') {
+          continue
+        } else if (prop === 'line-height') {
+          const norm = normalizeLineHeight(val, inCell)
+          if (norm) kept.push(`line-height:${norm}`)
+          continue
+        }
         kept.push(trimmed)
-        continue
       }
-      const prop = trimmed.slice(0, colon).trim().toLowerCase()
-      const val = trimmed.slice(colon + 1).trim()
-      if (prop === 'margin-left') {
-        const px = parseCssLengthPx(val)
-        if (px !== null) {
-          rawLeft = px
-          touched = true
-          continue
+
+      const centeredOrRight = align === 'center' || align === 'right'
+      if (!centeredOrRight) {
+        const baseLeft = Math.min(Math.max(0, rawLeft), maxLeft)
+        const effectiveRight = Math.min(Math.max(0, rawRight), maxRight)
+        let effectiveLeft = baseLeft
+        let effectiveIndent = 0
+        if (rawIndent < 0) {
+          const hang = Math.min(-rawIndent, maxIndent)
+          effectiveLeft = Math.max(baseLeft, hang)
+          effectiveIndent = -hang
+        } else if (rawIndent > 0) {
+          effectiveIndent = Math.min(rawIndent, maxIndent)
         }
-      } else if (prop === 'margin-right') {
-        const px = parseCssLengthPx(val)
-        if (px !== null) {
-          rawRight = px
-          touched = true
-          continue
-        }
-      } else if (prop === 'text-indent') {
-        const px = parseCssLengthPx(val)
-        if (px !== null) {
-          rawIndent = px
-          touched = true
-          continue
-        }
+
+        if (effectiveLeft > 0) kept.push(`margin-left:${formatPx(effectiveLeft)}`)
+        if (effectiveRight > 0) kept.push(`margin-right:${formatPx(effectiveRight)}`)
+        if (effectiveIndent !== 0) kept.push(`text-indent:${formatPx(effectiveIndent)}`)
       }
-      kept.push(trimmed)
-    }
 
-    if (!touched) return full
+      return kept.length > 0
+        ? `<p${before}style="${kept.join(';')};"${after}>`
+        : `<p${before}${after}>`
+    },
+  )
 
-    const baseLeft = Math.min(Math.max(0, rawLeft), maxLeft)
-    const effectiveRight = Math.min(Math.max(0, rawRight), maxRight)
-    let effectiveLeft = baseLeft
-    let effectiveIndent = 0
-    if (rawIndent < 0) {
-      const hang = Math.min(-rawIndent, maxIndent)
-      effectiveLeft = Math.max(baseLeft, hang)
-      effectiveIndent = -hang
-    } else if (rawIndent > 0) {
-      effectiveIndent = Math.min(rawIndent, maxIndent)
-    }
+  result = result.replace(
+    /<span\b([^>]*)\bstyle="([^"]*)"([^>]*)>/gi,
+    (_full, before: string, style: string, after: string) => {
+      const next = normalizeFlowSpanStyle(String(style), inCell)
+      return next ? `<span${before}style="${next}"${after}>` : `<span${before}${after}>`
+    },
+  )
 
-    if (effectiveLeft > 0) kept.push(`margin-left:${formatPx(effectiveLeft)}`)
-    if (effectiveRight > 0) kept.push(`margin-right:${formatPx(effectiveRight)}`)
-    if (effectiveIndent !== 0) kept.push(`text-indent:${formatPx(effectiveIndent)}`)
-
-    return `<p${before}style="${kept.join(';')};"${after}>`
-  })
+  return result
 }
 
 const HWP_BORDER_WIDTH_MM = [
   0.1, 0.12, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0,
 ] as const
+
+/** HWP border side properties returned by `getCellProperties` / `getCellPropertiesByPath`. */
+export interface EngineCellBorder {
+  readonly type?: number
+  readonly width?: number
+  readonly color?: string
+}
+
+export interface EngineCellProps {
+  readonly width?: number
+  readonly height?: number
+  readonly verticalAlign?: number
+  readonly borderLeft?: EngineCellBorder
+  readonly borderRight?: EngineCellBorder
+  readonly borderTop?: EngineCellBorder
+  readonly borderBottom?: EngineCellBorder
+  readonly fillType?: string
+  readonly fillColor?: string
+}
+
+function hwpBorderCssStyle(type: number): 'solid' | 'dashed' | 'dotted' | 'double' | null {
+  if (!Number.isInteger(type) || type <= 0) return null
+  if (type === 1) return 'solid'
+  if (type === 3) return 'dotted'
+  if (type >= 8 && type <= 11) return 'double'
+  return 'dashed'
+}
+
+function hwpBorderCssWidthPx(
+  code: number,
+  cssStyle: 'solid' | 'dashed' | 'dotted' | 'double',
+): number {
+  const mm =
+    Number.isInteger(code) && code >= 0 && code < HWP_BORDER_WIDTH_MM.length
+      ? HWP_BORDER_WIDTH_MM[code]
+      : 0.12
+  const px = Math.max(1, Math.round(mm * (96 / 25.4) * 10) / 10)
+  // CSS `double` needs at least 3px to draw two distinct strokes.
+  return cssStyle === 'double' ? Math.max(3, px) : px
+}
+
+/**
+ * Builds accurate CSS declarations for a table cell from engine properties.
+ * rhwp's clipboard HTML emits solid borders even when `border.type === 0` (NONE);
+ * reading the engine's real border types eliminates phantom borders on cover
+ * pages, section title banners, and reference callout boxes.
+ */
+export function cellStyleFromEngineProps(props: EngineCellProps): string {
+  const rules: string[] = []
+  const sides: ReadonlyArray<readonly [string, EngineCellBorder | undefined]> = [
+    ['border-left', props.borderLeft],
+    ['border-right', props.borderRight],
+    ['border-top', props.borderTop],
+    ['border-bottom', props.borderBottom],
+  ]
+  for (const [cssProp, border] of sides) {
+    if (!border) continue
+    const style = hwpBorderCssStyle(border.type ?? 0)
+    if (!style) continue
+    const widthPx = hwpBorderCssWidthPx(border.width ?? 1, style)
+    const color =
+      typeof border.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(border.color.trim())
+        ? border.color.trim()
+        : '#000000'
+    rules.push(`${cssProp}:${widthPx}px ${style} ${color}`)
+  }
+
+  if (
+    props.fillType === 'solid' &&
+    typeof props.fillColor === 'string' &&
+    /^#[0-9a-f]{3,8}$/i.test(props.fillColor.trim())
+  ) {
+    rules.push(`background-color:${props.fillColor.trim()}`)
+  }
+
+  const vAlign = props.verticalAlign === 1 ? 'middle' : props.verticalAlign === 2 ? 'bottom' : 'top'
+  rules.push(`vertical-align:${vAlign}`)
+  return `${rules.join(';')};`
+}
+
+/** True when an engine cell has at least one visible border side (`type > 0`). */
+function hasVisibleEngineBorder(props: EngineCellProps | null): boolean {
+  if (!props) return false
+  return [props.borderLeft, props.borderRight, props.borderTop, props.borderBottom].some(
+    (b) => (b?.type ?? 0) > 0,
+  )
+}
+
+/** Accent color for a thin gradient divider cell (e.g. cover page horizontal bars). */
+function gradientBarColor(props: EngineCellProps): string {
+  for (const b of [props.borderTop, props.borderBottom, props.borderLeft, props.borderRight]) {
+    const c = b?.color?.trim()
+    if (c && /^#[0-9a-f]{3,8}$/i.test(c) && !/^#(?:000000|ffffff|000|fff)$/i.test(c)) {
+      return c
+    }
+  }
+  return '#2b5ce6'
+}
 
 /**
  * Converts rhwp clipboard HTML table border widths (which emit HWP's 0..15
@@ -590,8 +930,73 @@ function listContainer(
   para: number,
   list: readonly CellStep[],
   inner: string,
+  style?: string,
 ): string {
-  return `<div class="${className}" data-sec="${sec}" data-para="${para}" data-cell-path='${escapeAttr(JSON.stringify(list))}'>${inner}</div>`
+  const styleAttr = style ? ` style="${escapeAttr(style)}"` : ''
+  return `<div class="${className}"${styleAttr} data-sec="${sec}" data-para="${para}" data-cell-path='${escapeAttr(JSON.stringify(list))}'>${inner}</div>`
+}
+
+/** Converts an HWP COLORREF integer (`0x00BBGGRR`) to `#rrggbb`, or null when unset. */
+function colorrefToHex(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 0xffffff) {
+    return null
+  }
+  const int = Math.trunc(value)
+  const r = int & 0xff
+  const g = (int >> 8) & 0xff
+  const b = (int >> 16) & 0xff
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
+function shapeBoxStyle(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  hostPath: readonly CellStep[],
+  ctrl: number,
+): { style: string; hasSolidFill: boolean } {
+  try {
+    const raw =
+      hostPath.length === 0
+        ? doc.getShapeProperties?.(sec, para, ctrl)
+        : doc.getCellShapePropertiesByPath?.(sec, para, JSON.stringify(hostPath), ctrl)
+    if (!raw) return { style: '', hasSolidFill: false }
+    const props = JSON.parse(raw) as {
+      fillType?: string
+      fillBgColor?: number
+      borderColor?: number
+      width?: number
+    }
+    const rules: string[] = []
+    let hasSolidFill = false
+    if (props.fillType === 'solid') {
+      const bg = colorrefToHex(props.fillBgColor)
+      if (bg && bg !== '#ffffff') {
+        rules.push(`background-color:${bg}`)
+        hasSolidFill = true
+      }
+    }
+    const border = colorrefToHex(props.borderColor)
+    if (border && hasSolidFill) {
+      rules.push(`border-color:${border}`)
+    }
+    if (
+      typeof props.width === 'number' &&
+      props.width > 0 &&
+      props.width <= 12000 &&
+      hasSolidFill
+    ) {
+      rules.push('display:inline-block')
+    }
+    return { style: rules.length > 0 ? `${rules.join(';')};` : '', hasSolidFill }
+  } catch {
+    return { style: '', hasSolidFill: false }
+  }
+}
+
+/** True when inline spans carry white/near-white text (would vanish on a white box background). */
+function hasWhiteText(html: string): boolean {
+  return /color\s*:\s*#(?:fff(?:fff)?|f[a-f0-9]f[a-f0-9]f[a-f0-9])\b/i.test(html)
 }
 
 /**
@@ -644,13 +1049,16 @@ function renderControl(
   // headers, footers, notes, fields and section controls must never render as boxes.
   if (unsupportedKind === null || unsupportedKind === 'Shape') {
     if (hasInnerList(doc, sec, para, list)) {
-      return listContainer(
-        'flow-box',
-        sec,
-        para,
-        list,
-        renderCellContents(doc, sec, para, list, cellHeader),
-      )
+      const inner = renderCellContents(doc, sec, para, list, cellHeader)
+      const parsed = new DOMParser().parseFromString(`<body>${inner}</body>`, 'text/html')
+      const hasVisible =
+        Boolean(parsed.body.textContent?.trim()) ||
+        Boolean(parsed.body.querySelector('img,table,.flow-box:not(.flow-box-empty)'))
+      const shape = shapeBoxStyle(doc, sec, para, hostPath, ctrl)
+      const classes = ['flow-box']
+      if (!hasVisible) classes.push('flow-box-empty')
+      else if (!shape.hasSolidFill && hasWhiteText(inner)) classes.push('flow-box-contrast')
+      return listContainer(classes.join(' '), sec, para, list, inner, shape.style)
     }
   }
   return html
@@ -810,7 +1218,129 @@ function pathCallsOnly(doc: FlowSourceDocument): FlowSourceDocument {
   })
 }
 
-/** Renders a table: the engine's skeleton with each cell's contents rebuilt. */
+/** Classification of an HWP table in mobile flow reading view. */
+export type FlowTableKind = 'layout' | 'callout' | 'data'
+
+interface TableCellMeta {
+  readonly td: HTMLTableCellElement
+  readonly rowIdx: number
+  readonly colSpan: number
+  readonly rowSpan: number
+  readonly textLen: number
+  readonly hasMediaOrTable: boolean
+  readonly hasSolidFill: boolean
+  readonly hasBorder: boolean
+  readonly isGradientBar: boolean
+  readonly engineProps: EngineCellProps | null
+}
+
+/** Max height (HWPUNIT, ~16px) of an empty gradient cell treated as a decorative horizontal bar. */
+const GRADIENT_BAR_MAX_HEIGHT_HU = 1200
+/** HWPUNIT per CSS pixel (7200 / 96). */
+const HU_PER_PX = 75
+/** Comfortable minimum width per column (px) for wide multi-column data tables. */
+const DATA_TABLE_MIN_COL_PX = 76
+
+function readEngineCellProps(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  hostPath: readonly CellStep[],
+  ctrl: number,
+  cellIndex: number,
+): EngineCellProps | null {
+  try {
+    let raw: string | undefined
+    if (hostPath.length === 0) {
+      raw = doc.getCellProperties?.(sec, para, ctrl, cellIndex)
+    } else if (doc.getCellPropertiesByPath) {
+      const pathJson = JSON.stringify([
+        ...hostPath,
+        { controlIndex: ctrl, cellIndex, cellParaIndex: 0 },
+      ])
+      raw = doc.getCellPropertiesByPath(sec, para, pathJson, cellIndex)
+    }
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as EngineCellProps
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function readEngineTableWidthPx(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  hostPath: readonly CellStep[],
+  ctrl: number,
+): number | null {
+  if (hostPath.length > 0) return null
+  try {
+    const props = JSON.parse(doc.getTableProperties(sec, para, ctrl)) as { tableWidth?: number }
+    if (typeof props.tableWidth === 'number' && props.tableWidth > 0) {
+      return Math.round(props.tableWidth / HU_PER_PX)
+    }
+  } catch {
+    // ignore missing table properties
+  }
+  return null
+}
+
+/**
+ * Classifies a rendered table into:
+ * - `layout`: 1-column decorative/cover/section-heading/single-cell callout tables
+ *   (reflow cleanly at 100% width; empty spacer rows collapse in reading view).
+ * - `callout`: 1-row badge+title banners or framed reference boxes with a
+ *   full-width spanning body cell and empty gutter spacer cells (reflow at 100%
+ *   width; empty spacer cells/rows collapse in reading view).
+ * - `data`: structured multi-row, multi-column data tables and forms (keep grid
+ *   layout; 3+ columns scroll horizontally with readable column widths).
+ */
+export function classifyFlowTable(
+  rowCount: number,
+  maxCols: number,
+  cells: ReadonlyArray<
+    Pick<
+      TableCellMeta,
+      'rowIdx' | 'colSpan' | 'textLen' | 'hasMediaOrTable' | 'hasSolidFill' | 'isGradientBar'
+    >
+  >,
+): FlowTableKind {
+  if (maxCols <= 1) return 'layout'
+
+  // Single-row 2-column banner: short badge/accent cell + heading text (e.g. numbered section bars).
+  if (rowCount === 1 && maxCols === 2 && cells.length === 2) {
+    const [a, b] = cells
+    const aIsBadge = !a.hasMediaOrTable && a.textLen <= 4
+    const bIsBadge = !b.hasMediaOrTable && b.textLen <= 4
+    const aHasText = a.textLen > 0 || a.hasMediaOrTable
+    const bHasText = b.textLen > 0 || b.hasMediaOrTable
+    if ((aIsBadge && bHasText && b.textLen > 4) || (bIsBadge && aHasText && a.textLen > 4)) {
+      return 'callout'
+    }
+  }
+
+  // Framed callout / reference box: <= 4 rows, at least one full-width spanning cell,
+  // and empty spacer cells in the header/decorative rows.
+  if (rowCount >= 2 && rowCount <= 4) {
+    const fullWidthCells = cells.filter((c) => c.colSpan >= maxCols)
+    const nonFullCells = cells.filter((c) => c.colSpan < maxCols)
+    if (fullWidthCells.length >= 1 && nonFullCells.length > 0) {
+      const emptyNonFull = nonFullCells.filter(
+        (c) => c.textLen === 0 && !c.hasMediaOrTable && !c.hasSolidFill && !c.isGradientBar,
+      ).length
+      const filledNonFull = nonFullCells.filter((c) => c.textLen > 0 || c.hasMediaOrTable).length
+      if (emptyNonFull >= 1 && (filledNonFull <= 2 || emptyNonFull / nonFullCells.length >= 0.4)) {
+        return 'callout'
+      }
+    }
+  }
+
+  return 'data'
+}
+
+/** Renders a table: the engine's skeleton with true borders, classification, and rebuilt cell contents. */
 function renderTable(
   doc: FlowSourceDocument,
   sec: number,
@@ -823,18 +1353,170 @@ function renderTable(
   const parsed = new DOMParser().parseFromString(`<body>${skeletonHtml}</body>`, 'text/html')
   const table = parsed.body.querySelector('table')
   if (!table) return skeletonHtml
-  const cells = [
-    ...table.querySelectorAll<HTMLTableCellElement>(':scope > tbody > tr > td, :scope > tr > td'),
-  ]
-  cells.forEach((td, cellIndex) => {
-    const style = td.getAttribute('style')
-    if (style) td.setAttribute('style', normalizeClipboardBorderWidths(style))
-    const cellPath: CellStep[] = [...hostPath, { controlIndex: ctrl, cellIndex }]
-    td.setAttribute('data-sec', String(sec))
-    td.setAttribute('data-para', String(para))
-    td.setAttribute('data-cell-path', JSON.stringify(cellPath))
-    td.innerHTML = renderCellContents(doc, sec, para, cellPath, cellHeader)
-  })
+
+  const rows = [...table.querySelectorAll<HTMLTableRowElement>(':scope > tbody > tr, :scope > tr')]
+  const rowCount = rows.length
+  let maxCols = 0
+  let cellIndex = 0
+  const metas: TableCellMeta[] = []
+  const rowMetas: TableCellMeta[][] = []
+
+  for (let r = 0; r < rows.length; r += 1) {
+    const tr = rows[r]
+    const tds = [...tr.querySelectorAll<HTMLTableCellElement>(':scope > td, :scope > th')]
+    let colsInRow = 0
+    const metasInRow: TableCellMeta[] = []
+    for (const td of tds) {
+      const colSpan = Math.max(1, Number(td.getAttribute('colspan') ?? '1') || 1)
+      const rowSpan = Math.max(1, Number(td.getAttribute('rowspan') ?? '1') || 1)
+      colsInRow += colSpan
+
+      const engineProps = readEngineCellProps(doc, sec, para, hostPath, ctrl, cellIndex)
+      if (engineProps) {
+        td.setAttribute('style', cellStyleFromEngineProps(engineProps))
+      } else {
+        const style = td.getAttribute('style')
+        if (style) td.setAttribute('style', normalizeClipboardBorderWidths(style))
+      }
+
+      const cellPath: CellStep[] = [...hostPath, { controlIndex: ctrl, cellIndex }]
+      td.setAttribute('data-sec', String(sec))
+      td.setAttribute('data-para', String(para))
+      td.setAttribute('data-cell-path', JSON.stringify(cellPath))
+      td.innerHTML = renderCellContents(doc, sec, para, cellPath, cellHeader)
+
+      const visibleText = (td.textContent ?? '').replace(/\u00a0/g, ' ').trim()
+      const hasMediaOrTable = Boolean(td.querySelector('img,table,.flow-box:not(.flow-box-empty)'))
+      const styleAfter = td.getAttribute('style') ?? ''
+      const hasSolidFill = /background-color\s*:/i.test(styleAfter)
+      const hasBorder = engineProps
+        ? hasVisibleEngineBorder(engineProps)
+        : /border-(?:left|right|top|bottom)\s*:/i.test(styleAfter)
+      const isGradientBar =
+        Boolean(engineProps) &&
+        engineProps?.fillType === 'gradient' &&
+        visibleText.length === 0 &&
+        !hasMediaOrTable &&
+        (engineProps.height ?? Infinity) <= GRADIENT_BAR_MAX_HEIGHT_HU
+
+      const meta: TableCellMeta = {
+        td,
+        rowIdx: r,
+        colSpan,
+        rowSpan,
+        textLen: visibleText.length,
+        hasMediaOrTable,
+        hasSolidFill,
+        hasBorder,
+        isGradientBar,
+        engineProps,
+      }
+      metas.push(meta)
+      metasInRow.push(meta)
+      cellIndex += 1
+    }
+    if (colsInRow > maxCols) maxCols = colsInRow
+    rowMetas.push(metasInRow)
+  }
+
+  const kind = classifyFlowTable(rowCount, maxCols, metas)
+  table.classList.add(`flow-table-${kind}`)
+  table.setAttribute('data-table-kind', kind)
+
+  if (kind === 'layout' || kind === 'callout') {
+    // Track rows spanned into by an earlier row's `rowspan` so collapsing a spacer row
+    // never causes the spanning cell to bleed side-by-side into the next content row.
+    const spannedRows = new Set<number>()
+    for (let r = 0; r < rows.length; r += 1) {
+      for (const c of rowMetas[r]) {
+        for (let offset = 1; offset < c.rowSpan; offset += 1) {
+          spannedRows.add(r + offset)
+        }
+      }
+    }
+
+    for (let r = 0; r < rows.length; r += 1) {
+      const tr = rows[r]
+      const cellsInRow = rowMetas[r]
+      if (cellsInRow.length === 0) continue
+
+      // Thin horizontal gradient accent bar (e.g. cover page divider lines).
+      if (cellsInRow.length === 1 && cellsInRow[0].isGradientBar && cellsInRow[0].engineProps) {
+        tr.classList.add('flow-divider-row')
+        const color = gradientBarColor(cellsInRow[0].engineProps)
+        cellsInRow[0].td.setAttribute(
+          'style',
+          `background-color:${color};padding:0;height:3px;border:none;`,
+        )
+        continue
+      }
+
+      // Completely empty row with no visible content, media, or solid fill: collapse in view mode.
+      const allEmpty = cellsInRow.every(
+        (c) =>
+          c.textLen === 0 &&
+          !c.hasMediaOrTable &&
+          !c.hasSolidFill &&
+          !c.isGradientBar &&
+          c.rowSpan === 1,
+      )
+      if (allEmpty) {
+        tr.classList.add(spannedRows.has(r) ? 'flow-spacer-row-spanned' : 'flow-spacer-row')
+        for (const c of cellsInRow) c.td.classList.add('flow-spacer-cell')
+        continue
+      }
+
+      // In layout tables, distinguish borderless/unfilled cells (cover text) from bordered/filled boxes.
+      if (kind === 'layout') {
+        for (const c of cellsInRow) {
+          if (!c.hasBorder && !c.hasSolidFill) {
+            c.td.classList.add('flow-plain-cell')
+          }
+        }
+      }
+
+      // In callout tables, collapse empty margin/gutter spacer cells and shrink short badge cells.
+      if (kind === 'callout') {
+        const visibleCells: TableCellMeta[] = []
+        for (const c of cellsInRow) {
+          if (c.colSpan < maxCols) {
+            if (c.textLen === 0 && !c.hasMediaOrTable && !c.hasSolidFill && !c.isGradientBar) {
+              c.td.classList.add('flow-spacer-cell')
+            } else {
+              visibleCells.push(c)
+              if (!c.hasMediaOrTable && c.textLen > 0 && c.textLen <= 4) {
+                c.td.classList.add('flow-badge-cell')
+              }
+            }
+          } else {
+            visibleCells.push(c)
+          }
+        }
+        // When a callout header row reduces to a single visible cell (surrounded by empty gutters),
+        // let it span the full table width cleanly above the body row.
+        if (visibleCells.length === 1 && visibleCells[0].colSpan < maxCols && !spannedRows.has(r)) {
+          visibleCells[0].td.setAttribute('colspan', String(maxCols))
+        }
+      }
+    }
+  } else {
+    // Data table: 2-column tables fill 100%; 3+ column tables preserve readable width for horizontal scroll.
+    if (maxCols <= 2) {
+      table.classList.add('flow-table-compact')
+    } else {
+      const engineWidthPx = readEngineTableWidthPx(doc, sec, para, hostPath, ctrl)
+      const minColsPx = maxCols * DATA_TABLE_MIN_COL_PX
+      const targetMinPx = engineWidthPx
+        ? Math.min(engineWidthPx, Math.max(minColsPx, 360))
+        : minColsPx
+      const existingStyle = table.getAttribute('style') ?? ''
+      table.setAttribute(
+        'style',
+        `${existingStyle}${existingStyle && !existingStyle.endsWith(';') ? ';' : ''}min-width:${targetMinPx}px;`,
+      )
+    }
+  }
+
   return table.outerHTML
 }
 
@@ -929,17 +1611,29 @@ export function buildFlowHtml(doc: FlowSourceDocument): string {
   return parts.join('\n')
 }
 
-/** Reading styles inside the sandboxed flow frame. Document colors stay as the document set them. */
+/**
+ * Reading styles inside the sandboxed flow frame.
+ * Document colors stay as authored on bright paper (`color-scheme: light`), matching
+ * docs/standards.md and preventing Android WebView algorithmic dark inversion.
+ */
 export const FLOW_FRAME_CSS = `
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; max-width: 100%; overflow-x: clip; background: #ffffff; }
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+  touch-action: pan-x pan-y;
+  max-width: 100%;
+  overflow-x: clip;
+  background: #ffffff;
+}
 body {
   margin: 0;
-  padding: 16px 16px 96px;
+  padding: 16px 16px calc(var(--flow-bottom-pad, 100px) / var(--flow-zoom, 1.2));
   max-width: 100%;
   overflow-x: clip;
   background: #ffffff;
   color: #000000;
+  font-family: 'GenOffice Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
   word-break: keep-all;
   overflow-wrap: anywhere;
   zoom: var(--flow-zoom, 1.2);
@@ -953,14 +1647,42 @@ body {
 }
 body[contenteditable='true'] { outline: none; caret-color: #1a73e8; }
 .flow-p p { margin: 0; }
-.flow-p, .flow-obj { margin: 0 0 4px; max-width: 100%; }
-td .flow-p, td .flow-obj { margin: 0; }
+.flow-p, .flow-obj { margin: 0 0 6px; max-width: 100%; }
+td .flow-p, td .flow-obj { margin: 0 0 2px; }
+td .flow-p:last-child, td .flow-obj:last-child { margin-bottom: 0; }
 .flow-obj { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-td .flow-obj { overflow-x: visible; }
+td > .flow-obj { overflow-x: auto; max-width: 100%; }
 .flow-obj table { border-collapse: collapse; max-width: none; }
-.flow-obj td, .flow-obj th { vertical-align: top; min-width: 3.2em; }
+/* Layout & callout tables reflow to the reading column without horizontal scrolling. */
+table.flow-table-layout,
+table.flow-table-callout { width: 100%; table-layout: auto; }
+table.flow-table-layout > tbody > tr > td,
+table.flow-table-layout > tr > td { padding: 8px 10px; min-width: 0; }
+table.flow-table-layout > tbody > tr > td.flow-plain-cell,
+table.flow-table-layout > tr > td.flow-plain-cell { padding: 6px 2px; }
+table.flow-table-callout > tbody > tr > td,
+table.flow-table-callout > tr > td { padding: 6px 8px; min-width: 0; }
+table.flow-table-callout td.flow-badge-cell { width: 1%; white-space: nowrap; padding: 6px 10px; }
+/* Collapse decorative empty spacer rows/cells and empty shapes in reading mode; keep editable in edit mode. */
+body:not([contenteditable='true']) tr.flow-spacer-row { display: none; }
+body:not([contenteditable='true']) tr.flow-spacer-row-spanned { height: 0; line-height: 0; font-size: 0; }
+body:not([contenteditable='true']) td.flow-spacer-cell { display: none; }
+body:not([contenteditable='true']) .flow-box-empty { display: none; }
+.flow-box-contrast { background: #334155; border-color: #334155; }
+tr.flow-divider-row td { height: 3px; line-height: 0; font-size: 0; padding: 0 !important; }
+tr.flow-divider-row .flow-p { display: none; }
+/* Data tables preserve grid structure and horizontal scroll on narrow screens. */
+table.flow-table-data { width: 100%; }
+table.flow-table-data > tbody > tr > td,
+table.flow-table-data > tr > td,
+table.flow-table-data > tbody > tr > th,
+table.flow-table-data > tr > th {
+  padding: 4px 6px;
+  min-width: 3.5em;
+  overflow-wrap: break-word;
+}
 /* keep short labels (two or three syllables) on one line instead of one per line */
-.flow-obj td p, .flow-obj th p { word-break: keep-all; }
+.flow-obj td p, .flow-obj th p { word-break: keep-all; overflow-wrap: break-word; }
 img { max-width: 100%; height: auto; }
 /* memo ranges (CSS Custom Highlight API, set by the flow editor) */
 ::highlight(ieum-memo) { background-color: #fff2a8; }
@@ -985,6 +1707,12 @@ img { max-width: 100%; height: auto; }
 `
 
 /** Builds the srcdoc for the sandboxed frame. `zoom` scales all text (document sizes are in pt). */
-export function buildFlowDocument(bodyHtml: string, zoom: number, lang: string): string {
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"><style>${FLOW_FRAME_CSS}</style><style>:root{--flow-zoom:${zoom}}</style></head><body>${bodyHtml}</body></html>`
+export function buildFlowDocument(
+  bodyHtml: string,
+  zoom: number,
+  lang: string,
+  bottomPadPx = 100,
+): string {
+  const safeBottom = Number.isFinite(bottomPadPx) && bottomPadPx > 0 ? Math.round(bottomPadPx) : 100
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="color-scheme" content="light"><meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"><style>${FLOW_FRAME_CSS}</style><style>:root{--flow-zoom:${zoom};--flow-bottom-pad:${safeBottom}px}</style></head><body>${bodyHtml}</body></html>`
 }

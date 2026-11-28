@@ -1959,7 +1959,8 @@ input:focus-visible {
   flex: 1;
   width: 100%;
   border: 0;
-  background: var(--surface);
+  color-scheme: light;
+  background: Canvas;
 }
 .mobile-hwp-layer {
   flex: 1;
