@@ -21,7 +21,7 @@ export const he = {
     'פותחים ועורכים מסמכי HWP, PDF, Markdown ועוד עם GenOffice. בלי חשבון, בלי פרסומות, והמסמכים נשארים במכשיר הזה.',
   homeRunStart: 'מתחילים',
   homeRunTipEditButton: 'כדי לשנות, הקישו על [ערוך]',
-  homeRunTipFlowView: 'עברנו לתצוגת קריאה לקריאה נוחה · תצוגת עמוד נמצאת כאן',
+  homeRunTipFlowView: 'לקריאה מותאמת למסך, הקישו על [תצוגת קריאה]',
   homeRunTipFirstEdit: 'עותק שחזור נוצר אוטומטית. המקור נשמר כשמקישים על [סיום]',
   homeRunTipFirstKeyboard: 'משנים את עיצוב הטקסט עם [Aa]',
 } as const satisfies Record<keyof typeof zh, string>

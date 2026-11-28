@@ -21,7 +21,7 @@ export const en = {
     'Open and edit HWP, PDF, Markdown and more with GenOffice. No account, no ads, and your documents stay on this device.',
   homeRunStart: 'Get started',
   homeRunTipEditButton: 'To make changes, tap [Edit]',
-  homeRunTipFlowView: 'Opened in reading view for easier reading · Page view is here',
+  homeRunTipFlowView: 'To fit text to the screen, tap [Reading view]',
   homeRunTipFirstEdit:
     'A recovery copy is made automatically. The original is saved when you tap [Done]',
   homeRunTipFirstKeyboard: 'Change the text style with [Aa]',

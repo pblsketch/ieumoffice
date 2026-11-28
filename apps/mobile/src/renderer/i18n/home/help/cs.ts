@@ -46,9 +46,9 @@ export const cs = {
 
   homeHelpFlowTitle: 'Zobrazení pro čtení u HWP',
   homeHelpFlowBody1:
-    'Na telefonu se dokumenty HWP otevírají v zobrazení pro čtení. Text se přizpůsobí šířce obrazovky, takže můžete číst bez přibližování.',
+    'Dokumenty HWP se otevírají v zobrazení stránky tak, jak by se vytiskly. Chcete-li text přizpůsobit šířce obrazovky, klepněte v nástrojích zobrazení na [Zobrazení pro čtení].',
   homeHelpFlowBody2:
-    'Chcete-li vidět stránky tak, jak by vypadaly vytištěné, klepněte v nástrojích zobrazení na [Zobrazení stránky].',
+    'Chcete-li se vrátit k rozvržení stránky pro tisk, klepněte v nástrojích zobrazení na [Zobrazení stránky].',
   homeHelpFlowBody3:
     'Zobrazení pro čtení mění jen to, jak se dokument zobrazuje. Jeho stránky i uložený soubor zůstávají stejné.',
 

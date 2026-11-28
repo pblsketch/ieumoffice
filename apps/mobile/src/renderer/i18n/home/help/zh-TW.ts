@@ -36,8 +36,8 @@ export const zhTW = {
 
   homeHelpFlowTitle: 'HWP 閱讀檢視',
   homeHelpFlowBody1:
-    '在手機上開啟 HWP 文件時，會以閱讀檢視顯示。文字會依螢幕寬度排列，不用放大也能閱讀。',
-  homeHelpFlowBody2: '想照列印出來的頁面樣子查看，請在檢視工具中點 [頁面檢視]。',
+    'HWP 文件預設會以列印頁面樣子開啟。想讓文字依螢幕寬度排列、讀起來更輕鬆，請在檢視工具中點 [閱讀檢視]。',
+  homeHelpFlowBody2: '想回到列印時的頁面樣子，請在檢視工具中點 [頁面檢視]。',
   homeHelpFlowBody3: '閱讀檢視只改變顯示方式，文件的頁面和儲存的檔案都不會改變。',
 
   homeHelpAiTitle: '開啟和關閉 AI',

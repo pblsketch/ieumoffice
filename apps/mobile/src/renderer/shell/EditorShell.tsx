@@ -46,6 +46,8 @@ export interface EditorQuickActionItem {
   readonly onPress: () => void
   /** Drawn instead of the built-in icon for `id` (lets a kind bring its own icons). */
   readonly icon?: ReactNode
+  /** Renders the view tool as a labeled pill so key mode switches stay easy to spot. */
+  readonly showLabel?: boolean
   /** Section placement inside the [⋯] More sheet (defaults to 'document'). */
   readonly section?: 'file' | 'document'
 }
@@ -433,12 +435,14 @@ export function EditorShell({
               <button
                 key={item.id}
                 type="button"
-                className="mobile-icon-btn"
+                className={item.showLabel ? 'mobile-header-view-pill' : 'mobile-icon-btn'}
                 onClick={item.onPress}
                 aria-label={item.label}
                 title={item.label}
+                data-testid={`view-tool-${item.id}`}
               >
                 {item.icon ?? renderQuickActionIcon(item.id)}
+                {item.showLabel && <span>{item.label}</span>}
               </button>
             ))}
           {!isEdit && (
@@ -689,13 +693,14 @@ export function EditorShell({
             <button
               key={item.id}
               type="button"
-              className="mobile-fab-mini"
+              className={item.showLabel ? 'mobile-fab-pill' : 'mobile-fab-mini'}
               onClick={item.onPress}
               aria-label={item.label}
               title={item.label}
               data-testid={`view-tool-${item.id}`}
             >
               {item.icon ?? renderQuickActionIcon(item.id)}
+              {item.showLabel && <span>{item.label}</span>}
             </button>
           ))}
           {aiEnabled && (

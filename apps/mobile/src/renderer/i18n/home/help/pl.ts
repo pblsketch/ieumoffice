@@ -47,9 +47,9 @@ export const pl = {
 
   homeHelpFlowTitle: 'Widok do czytania dla HWP',
   homeHelpFlowBody1:
-    'Na telefonie dokumenty HWP otwierają się w widoku do czytania. Tekst dopasowuje się do ekranu, więc można czytać bez powiększania.',
+    'Dokumenty HWP otwierają się w widoku strony tak, jak na wydruku. Aby dopasować tekst do szerokości ekranu, stuknij [Widok do czytania] w narzędziach widoku.',
   homeHelpFlowBody2:
-    'Aby zobaczyć strony tak, jak wyglądałyby po wydrukowaniu, stuknij [Widok strony] w narzędziach widoku.',
+    'Aby wrócić do układu strony jak na wydruku, stuknij [Widok strony] w narzędziach widoku.',
   homeHelpFlowBody3:
     'Widok do czytania zmienia tylko sposób wyświetlania. Strony dokumentu i zapisany plik pozostają takie same.',
 

@@ -21,7 +21,7 @@ export const th = {
     'เปิดและแก้ไขเอกสาร HWP, PDF, Markdown และอื่นๆ ด้วย GenOffice ไม่ต้องมีบัญชี ไม่มีโฆษณา และเอกสารอยู่บนอุปกรณ์นี้เท่านั้น',
   homeRunStart: 'เริ่มใช้งาน',
   homeRunTipEditButton: 'ถ้าต้องการแก้ไข ให้แตะ [แก้ไข]',
-  homeRunTipFlowView: 'เปลี่ยนเป็นมุมมองการอ่านเพื่อให้อ่านง่ายขึ้น · มุมมองหน้าอยู่ตรงนี้',
+  homeRunTipFlowView: 'หากต้องการอ่านให้พอดีหน้าจอ ให้แตะ [มุมมองการอ่าน]',
   homeRunTipFirstEdit: 'แอปจะสร้างสำเนากู้คืนให้อัตโนมัติ ต้นฉบับจะบันทึกเมื่อแตะ [เสร็จสิ้น]',
   homeRunTipFirstKeyboard: 'เปลี่ยนรูปแบบตัวอักษรด้วย [Aa]',
 } as const satisfies Record<keyof typeof zh, string>

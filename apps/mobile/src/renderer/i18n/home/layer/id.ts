@@ -22,8 +22,7 @@ export const id = {
     'Buka dan edit dokumen HWP, PDF, Markdown, dan lainnya dengan GenOffice. Tanpa akun, tanpa iklan, dan dokumen Anda tetap di perangkat ini.',
   homeRunStart: 'Mulai',
   homeRunTipEditButton: 'Untuk mengubah, ketuk [Edit]',
-  homeRunTipFlowView:
-    'Beralih ke tampilan baca agar lebih mudah dibaca · Tampilan halaman ada di sini',
+  homeRunTipFlowView: 'Untuk membaca sesuai lebar layar, ketuk [Tampilan baca]',
   homeRunTipFirstEdit:
     'Salinan pemulihan dibuat otomatis. File asli disimpan saat Anda mengetuk [Selesai]',
   homeRunTipFirstKeyboard: 'Ubah format teks dengan [Aa]',

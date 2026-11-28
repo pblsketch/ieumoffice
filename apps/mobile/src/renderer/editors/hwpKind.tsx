@@ -158,14 +158,13 @@ function startHwpDocument(
   }
 
   const initialLayout: 'page' | 'flow' =
-    rememberedLayout(window.localStorage, openedSession.docKey) ??
-    (host.windowClass() === 'compact' || host.windowClass() === 'medium' ? 'flow' : 'page')
+    rememberedLayout(window.localStorage, openedSession.docKey) ?? 'page'
 
   const kept = createKeptState<HwpKeptState>({
     hwpBytes: openedBytes,
     flowBytes: openedBytes,
-    // The layout last chosen for this document; otherwise phones and small tablets
-    // read in the flow view and larger windows keep the page.
+    // Page view is the default on both phones and tablets; per-document user choices
+    // (switching to reading view) are remembered via layoutMemory.
     hwpLayout: initialLayout,
     // Mount studio immediately for page view or blank untitled documents; defer in flow view.
     studioMounted: initialLayout === 'page' || openedBytes.byteLength === 0,
@@ -312,11 +311,26 @@ function startHwpDocument(
       }
       kept.set({ hwpLayout: 'page', studioMounted: true })
     } else {
-      if (studioEditedRef.current) {
-        refreshFlowFromStudio()
-        setHwpLayout('flow')
+      const needsExport = studioEditedRef.current || (kept.get().flowBytes?.byteLength ?? 0) === 0
+      if (needsExport && doc) {
+        const port = hwpEditorRef.current?.getSavePort()
+        if (port && (doc.session.format === 'hwp' || doc.session.format === 'hwpx')) {
+          try {
+            const bytes =
+              doc.session.format === 'hwpx' ? await port.exportHwpx() : await port.exportHwp()
+            studioEditedRef.current = false
+            studioReady = false
+            kept.set({ hwpBytes: bytes, flowBytes: bytes, hwpLayout: 'flow', studioMounted: false })
+          } catch {
+            // Keep studio mounted as fallback when export fails on an edited or blank document.
+            setHwpLayout('flow')
+          }
+        } else {
+          studioReady = false
+          kept.set({ hwpLayout: 'flow', studioMounted: false })
+        }
       } else {
-        // Release the page studio iframe when returning to reading view with no studio edits.
+        // Release the page studio iframe when entering reading view so only one WASM stays alive.
         studioReady = false
         kept.set({ hwpLayout: 'flow', studioMounted: false })
       }
@@ -432,6 +446,7 @@ function startHwpDocument(
       changed = hwpx ? engine.exportHwpx() : engine.exportHwp()
     } finally {
       engine.free()
+      if (hwpLayoutRef.current === 'page') releaseRhwpEngine()
     }
     if (studio) await studio.loadBytes(changed)
     kept.set({ hwpBytes: changed, flowBytes: changed })
@@ -599,6 +614,7 @@ function startHwpDocument(
           setPageNumberNow(readPageNumber(engine))
         } finally {
           engine.free()
+          if (hwpLayoutRef.current === 'page') releaseRhwpEngine()
         }
       } catch {
         setPageNumberNow(null)
@@ -782,7 +798,12 @@ function startHwpDocument(
               setFlowZoom((z) => Math.min(FLOW_ZOOM_MAX, +(z + FLOW_ZOOM_STEP).toFixed(2))),
           },
           { id: 'memos', label: tNow('memoTitle'), onPress: openMemos },
-          { id: 'pageView', label: tNow('pageView'), onPress: () => void switchHwpLayout('page') },
+          {
+            id: 'pageView',
+            label: tNow('pageView'),
+            showLabel: true,
+            onPress: () => void switchHwpLayout('page'),
+          },
         ]
       }
       return [
@@ -799,7 +820,12 @@ function startHwpDocument(
             hwpEditorRef.current?.fitToWidth()
           },
         },
-        { id: 'flowView', label: tNow('flowView'), onPress: () => void switchHwpLayout('flow') },
+        {
+          id: 'flowView',
+          label: tNow('flowView'),
+          showLabel: true,
+          onPress: () => void switchHwpLayout('flow'),
+        },
       ]
     }, [hwpLayout, openMemos, openPageThumbs, tNow])
 
@@ -829,18 +855,18 @@ function startHwpDocument(
               section: 'document',
               actions: [
                 {
-                  id: 'flowView',
-                  label: tNow('flowView'),
-                  active: hwpLayout === 'flow',
-                  icon: <IconFlowView size={16} />,
-                  onPress: () => void switchHwpLayout('flow'),
-                },
-                {
                   id: 'pageView',
                   label: tNow('pageView'),
                   active: hwpLayout === 'page',
                   icon: <IconPageView size={16} />,
                   onPress: () => void switchHwpLayout('page'),
+                },
+                {
+                  id: 'flowView',
+                  label: tNow('flowView'),
+                  active: hwpLayout === 'flow',
+                  icon: <IconFlowView size={16} />,
+                  onPress: () => void switchHwpLayout('flow'),
                 },
               ],
             },

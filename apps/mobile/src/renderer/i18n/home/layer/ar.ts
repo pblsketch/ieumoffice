@@ -21,7 +21,7 @@ export const ar = {
     'افتح مستندات HWP وPDF وMarkdown وغيرها وعدّلها باستخدام GenOffice. بلا حساب ولا إعلانات، وتبقى مستنداتك على هذا الجهاز.',
   homeRunStart: 'ابدأ',
   homeRunTipEditButton: 'لإجراء تغييرات، اضغط [تحرير]',
-  homeRunTipFlowView: 'تم التبديل إلى عرض القراءة لتسهيل القراءة · عرض الصفحة هنا',
+  homeRunTipFlowView: 'لقراءة النص بمقاس الشاشة، اضغط [عرض القراءة]',
   homeRunTipFirstEdit: 'تُنشأ نسخة استرداد تلقائيًا. يُحفظ الأصل عند الضغط على [تم]',
   homeRunTipFirstKeyboard: 'غيّر تنسيق النص باستخدام [Aa]',
 } as const satisfies Record<keyof typeof zh, string>

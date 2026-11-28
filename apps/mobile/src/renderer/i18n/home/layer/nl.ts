@@ -22,8 +22,7 @@ export const nl = {
     'Open en bewerk HWP, PDF, Markdown en meer met GenOffice. Geen account, geen advertenties, en je documenten blijven op dit apparaat.',
   homeRunStart: 'Aan de slag',
   homeRunTipEditButton: 'Tik op [Bewerken] om iets te veranderen',
-  homeRunTipFlowView:
-    'Overgeschakeld naar de leesweergave om makkelijker te lezen · Paginaweergave vind je hier',
+  homeRunTipFlowView: 'Tik op [Leesweergave] om op schermbreedte te lezen',
   homeRunTipFirstEdit:
     'Er wordt automatisch een herstelkopie gemaakt. Het origineel wordt opgeslagen als je op [Gereed] tikt',
   homeRunTipFirstKeyboard: 'Wijzig de tekstopmaak met [Aa]',

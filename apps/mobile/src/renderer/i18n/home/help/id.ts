@@ -46,9 +46,9 @@ export const id = {
 
   homeHelpFlowTitle: 'Tampilan baca untuk HWP',
   homeHelpFlowBody1:
-    'Di ponsel, dokumen HWP terbuka dalam tampilan baca. Teks menyesuaikan lebar layar, jadi Anda bisa membaca tanpa memperbesar.',
+    'Dokumen HWP dibuka dalam tampilan halaman seperti saat dicetak. Untuk menyesuaikan teks dengan lebar layar, ketuk [Tampilan baca] di alat tampilan.',
   homeHelpFlowBody2:
-    'Untuk melihat halaman seperti saat dicetak, ketuk [Tampilan halaman] di alat tampilan.',
+    'Untuk kembali ke tata letak halaman cetak, ketuk [Tampilan halaman] di alat tampilan.',
   homeHelpFlowBody3:
     'Tampilan baca hanya mengubah cara dokumen ditampilkan. Halaman dokumen dan file yang disimpan tetap sama.',
 

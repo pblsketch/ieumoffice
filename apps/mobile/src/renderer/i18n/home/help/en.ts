@@ -44,8 +44,8 @@ export const en = {
 
   homeHelpFlowTitle: 'Reading view for HWP',
   homeHelpFlowBody1:
-    'On a phone, HWP documents open in reading view. The text flows to fit the screen, so you can read without zooming.',
-  homeHelpFlowBody2: 'To see the pages as they would print, tap [Page view] in the view tools.',
+    'HWP documents open in page view as they would print. To reflow text to fit your screen width, tap [Reading view] in the view tools.',
+  homeHelpFlowBody2: 'To return to the printed page layout, tap [Page view] in the view tools.',
   homeHelpFlowBody3:
     'Reading view only changes how the document is shown. Its pages and the saved file stay the same.',
 

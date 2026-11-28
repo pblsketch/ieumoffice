@@ -957,6 +957,46 @@ input:focus-visible {
   cursor: pointer;
 }
 
+.mobile-fab-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-4);
+  border-radius: var(--radius-30);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-menu);
+  cursor: pointer;
+}
+
+.mobile-fab-pill:active,
+.mobile-header-view-pill:active {
+  background: var(--pressed);
+}
+
+.mobile-header-view-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border-radius: var(--m-radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .mobile-fab-btn {
   display: inline-flex;
   align-items: center;

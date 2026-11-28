@@ -21,7 +21,7 @@ export const vi = {
     'Mở và chỉnh sửa tài liệu HWP, PDF, Markdown và nhiều loại khác bằng GenOffice. Không cần tài khoản, không quảng cáo, tài liệu chỉ nằm trên thiết bị này.',
   homeRunStart: 'Bắt đầu',
   homeRunTipEditButton: 'Để thay đổi, chạm vào [Chỉnh sửa]',
-  homeRunTipFlowView: 'Đã chuyển sang chế độ đọc · Xem theo trang ở đây',
+  homeRunTipFlowView: 'Để đọc vừa chiều rộng màn hình, chạm [Chế độ đọc]',
   homeRunTipFirstEdit:
     'Bản sao khôi phục được tạo tự động. Bản gốc được lưu khi bạn chạm vào [Xong]',
   homeRunTipFirstKeyboard: 'Đổi định dạng chữ bằng [Aa]',

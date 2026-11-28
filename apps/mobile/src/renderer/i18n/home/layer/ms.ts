@@ -22,8 +22,7 @@ export const ms = {
     'Buka dan sunting dokumen HWP, PDF, Markdown dan banyak lagi dengan GenOffice. Tiada akaun, tiada iklan dan dokumen anda kekal pada peranti ini.',
   homeRunStart: 'Mula',
   homeRunTipEditButton: 'Untuk membuat perubahan, ketik [Sunting]',
-  homeRunTipFlowView:
-    'Ditukar ke paparan bacaan supaya lebih mudah dibaca · Paparan halaman ada di sini',
+  homeRunTipFlowView: 'Untuk membaca mengikut lebar skrin, ketik [Paparan bacaan]',
   homeRunTipFirstEdit:
     'Salinan pemulihan dibuat secara automatik. Fail asal disimpan apabila anda mengetik [Selesai]',
   homeRunTipFirstKeyboard: 'Tukar format teks dengan [Aa]',

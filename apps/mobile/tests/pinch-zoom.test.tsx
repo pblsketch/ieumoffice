@@ -185,14 +185,14 @@ describe('reading view / page view naming and folder button across all languages
     expect(translateMobile('ko', 'pageView')).toBe('쪽 화면')
     expect(translateMobile('ko', 'pageNumberDone')).toContain('쪽 화면')
     expect(translateMobile('ko', 'homeHelpFlowTitle')).toBe('한글 읽기 화면')
+    expect(translateMobile('ko', 'homeHelpFlowBody1')).toContain('[읽기 화면]')
     expect(translateMobile('ko', 'homeHelpFlowBody2')).toContain('[쪽 화면]')
     expect(translateMobile('ko', 'homeRunTipFlowView')).toContain('읽기 화면')
-    expect(translateMobile('ko', 'homeRunTipFlowView')).toContain('쪽 화면')
     expect(translateMobile('ko', 'homeFolderLink')).toBe('폴더 추가')
 
     expect(translateMobile('en', 'flowView')).toBe('Reading view')
     expect(translateMobile('en', 'pageView')).toBe('Page view')
-    expect(translateMobile('en', 'homeRunTipFlowView')).toContain('reading view')
+    expect(translateMobile('en', 'homeRunTipFlowView').toLowerCase()).toContain('reading view')
     expect(translateMobile('en', 'homeFolderLink')).toBe('Add folder')
 
     for (const lang of LANGS) {

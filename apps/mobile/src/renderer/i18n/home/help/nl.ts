@@ -47,9 +47,9 @@ export const nl = {
 
   homeHelpFlowTitle: 'Leesweergave voor HWP',
   homeHelpFlowBody1:
-    'Op een telefoon openen HWP-documenten in de leesweergave. De tekst past zich aan het scherm aan, zodat je kunt lezen zonder in te zoomen.',
+    'HWP-documenten openen in de paginaweergave zoals ze afgedrukt worden. Tik in de weergaveopties op [Leesweergave] om de tekst aan het scherm aan te passen.',
   homeHelpFlowBody2:
-    "Wil je de pagina's zien zoals ze afgedrukt zouden worden, tik dan in de weergaveopties op [Paginaweergave].",
+    'Tik in de weergaveopties op [Paginaweergave] om terug te keren naar de afdrukweergave.',
   homeHelpFlowBody3:
     "De leesweergave verandert alleen hoe het document wordt getoond. De pagina's en het opgeslagen bestand blijven hetzelfde.",
 

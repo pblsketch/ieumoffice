@@ -48,9 +48,9 @@ export const pt = {
 
   homeHelpFlowTitle: 'Modo de leitura para HWP',
   homeHelpFlowBody1:
-    'No celular, os documentos HWP abrem no modo de leitura. O texto se ajusta à largura da tela, então dá para ler sem dar zoom.',
+    'Os documentos HWP abrem na visualização de página, como seriam impressos. Para ajustar o texto à largura da tela, toque em [Modo de leitura] nas ferramentas de exibição.',
   homeHelpFlowBody2:
-    'Para ver as páginas como sairiam impressas, toque em [Visualização de página] nas ferramentas de exibição.',
+    'Para voltar ao layout de página impressa, toque em [Visualização de página] nas ferramentas de exibição.',
   homeHelpFlowBody3:
     'O modo de leitura muda apenas a forma de exibir o documento. As páginas e o arquivo salvo continuam iguais.',
 

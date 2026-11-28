@@ -47,9 +47,9 @@ export const es = {
 
   homeHelpFlowTitle: 'Vista de lectura para HWP',
   homeHelpFlowBody1:
-    'En el teléfono, los documentos HWP se abren en vista de lectura. El texto se ajusta al ancho de la pantalla, así que puedes leer sin hacer zoom.',
+    'Los documentos HWP se abren en vista de página tal como se imprimirían. Para ajustar el texto al ancho de la pantalla, toca [Vista de lectura] en las herramientas de vista.',
   homeHelpFlowBody2:
-    'Para ver las páginas tal como se imprimirían, toca [Vista de página] en las herramientas de vista.',
+    'Para volver al diseño de página impresa, toca [Vista de página] en las herramientas de vista.',
   homeHelpFlowBody3:
     'La vista de lectura solo cambia cómo se muestra el documento. Sus páginas y el archivo guardado siguen igual.',
 

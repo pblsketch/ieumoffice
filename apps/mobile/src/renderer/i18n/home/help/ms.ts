@@ -48,9 +48,9 @@ export const ms = {
 
   homeHelpFlowTitle: 'Paparan bacaan untuk HWP',
   homeHelpFlowBody1:
-    'Pada telefon, dokumen HWP dibuka dalam paparan bacaan. Teks mengalir mengikut skrin, jadi anda boleh membaca tanpa mengezum.',
+    'Dokumen HWP dibuka dalam paparan halaman seperti yang akan dicetak. Untuk melaraskan teks mengikut lebar skrin, ketik [Paparan bacaan] dalam alat paparan.',
   homeHelpFlowBody2:
-    'Untuk melihat halaman seperti yang akan dicetak, ketik [Paparan halaman] dalam alat paparan.',
+    'Untuk kembali ke susun atur halaman cetakan, ketik [Paparan halaman] dalam alat paparan.',
   homeHelpFlowBody3:
     'Paparan bacaan hanya mengubah cara dokumen ditunjukkan. Halamannya dan fail yang disimpan kekal sama.',
 

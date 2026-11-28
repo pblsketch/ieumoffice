@@ -20,7 +20,7 @@ export const zh = {
     '用 GenOffice 打开并编辑 HWP、PDF、Markdown 等文档。无需账号，没有广告，文档只保存在这台设备上。',
   homeRunStart: '开始使用',
   homeRunTipEditButton: '想修改时，点 [编辑]',
-  homeRunTipFlowView: '已切换到阅读视图，读起来更轻松 · 页面视图在这里',
+  homeRunTipFlowView: '想按屏幕宽度阅读，点 [阅读视图]',
   homeRunTipFirstEdit: '应用会自动保留恢复副本。点 [完成] 时才会保存原文件',
   homeRunTipFirstKeyboard: '点 [Aa] 可以更改文字格式',
 } as const

@@ -22,7 +22,7 @@ export const it = {
     'Apri e modifica documenti HWP, PDF, Markdown e altro con GenOffice. Nessun account, nessuna pubblicità, e i documenti restano su questo dispositivo.',
   homeRunStart: 'Inizia',
   homeRunTipEditButton: 'Per modificare, tocca [Modifica]',
-  homeRunTipFlowView: 'Passato alla vista lettura per leggere meglio · La vista pagina è qui',
+  homeRunTipFlowView: 'Per adattare il testo allo schermo, tocca [Vista lettura]',
   homeRunTipFirstEdit:
     'Una copia di recupero viene creata automaticamente. L’originale si salva quando tocchi [Fine]',
   homeRunTipFirstKeyboard: 'Cambia il formato del testo con [Aa]',

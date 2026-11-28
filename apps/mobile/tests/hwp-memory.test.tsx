@@ -23,7 +23,7 @@ vi.mock('../src/renderer/editors/rhwpEngine', () => ({
 
 vi.mock('../src/renderer/editors/HwpMobileEditor', () => ({
   HwpMobileEditor: forwardRef(function MockHwpMobileEditor(
-    { onReady }: { onReady?: () => void },
+    { onReady, onDirty }: { onReady?: () => void; onDirty?: () => void },
     ref,
   ) {
     useEffect(() => {
@@ -34,13 +34,15 @@ vi.mock('../src/renderer/editors/HwpMobileEditor', () => ({
       }
     }, [onReady])
     useImperativeHandle(ref, () => ({
-      runAction: () => {},
+      runAction: () => {
+        onDirty?.()
+      },
       fitToWidth: () => {},
       callPlugin: async () => null,
       getSavePort: () => ({
         isPasswordProtected: async () => false,
-        exportHwp: async () => new Uint8Array([1]),
-        exportHwpx: async () => new Uint8Array([1]),
+        exportHwp: async () => new Uint8Array([1, 2]),
+        exportHwpx: async () => new Uint8Array([1, 2]),
         exportHwpVerify: async () => ({ bytes: new Uint8Array([1]), ok: true }),
         measureTabs: async () => [],
         getPlainText: async () => '',
@@ -80,6 +82,7 @@ vi.mock('../src/renderer/editors/HwpFlowView', () => ({
 
 import { MobileLocaleProvider } from '../src/renderer/i18n'
 import { hwpEditorKind } from '../src/renderer/editors/hwpKind'
+import { rememberLayout } from '../src/renderer/shell/layoutMemory'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -93,12 +96,15 @@ afterEach(() => {
   mocks.openFlowDocument.mockClear()
 })
 
-describe('hwpEditorKind single-WASM lazy studio and close disposal', () => {
-  it('defers studio mount in phone flow view, swaps on page/flow toggle, and releases WASM on dispose', async () => {
-    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+describe('hwpEditorKind page-first default, single-WASM studio swap, and close disposal', () => {
+  async function mountHwp(docKey: string, windowClass: 'compact' | 'expanded' = 'compact') {
+    Object.defineProperty(window, 'innerWidth', {
+      value: windowClass === 'compact' ? 390 : 1024,
+      configurable: true,
+    })
     const session: MobileDocSession = {
-      sessionId: 'sess-1',
-      docKey: 'doc-hwp-mem-1',
+      sessionId: `sess-${docKey}`,
+      docKey,
       name: 'sample.hwpx',
       ext: 'hwpx',
       format: 'hwpx',
@@ -125,7 +131,7 @@ describe('hwpEditorKind single-WASM lazy studio and close disposal', () => {
       refreshHome: async () => {},
       openSession: async () => {},
       translate: (key) => key,
-      windowClass: () => 'compact',
+      windowClass: () => windowClass,
     })
 
     const el = document.createElement('div')
@@ -167,32 +173,43 @@ describe('hwpEditorKind single-WASM lazy studio and close disposal', () => {
       )
     })
 
-    // Phone opens in flow view without spinning up a hidden studio iframe.
-    expect(mocks.flowMounted).toBe(1)
-    expect(mocks.studioMounted).toBe(0)
-    expect(el.querySelector('[data-testid="mock-hwp-flow"]')).not.toBeNull()
-    expect(el.querySelector('[data-testid="mock-hwp-studio"]')).toBeNull()
+    return { doc, el }
+  }
 
-    // Switching to page view lazily mounts studio and releases the flow WASM engine.
-    const pageBtn = el.querySelector<HTMLButtonElement>('[data-testid="view-tool-pageView"]')
-    expect(pageBtn).not.toBeNull()
-    await act(async () => {
-      pageBtn!.click()
-      await Promise.resolve()
-    })
+  it('opens in page view by default on phone, swaps single-WASM on page/flow toggle, and releases on dispose', async () => {
+    const { doc, el } = await mountHwp('doc-hwp-mem-1', 'compact')
+
+    // Phone opens in page view by default without spinning up a flow WASM instance.
     expect(mocks.studioMounted).toBe(1)
-    expect(mocks.flowUnmounted).toBe(1)
-    expect(mocks.releaseRhwpEngine).toHaveBeenCalledTimes(1)
+    expect(mocks.flowMounted).toBe(0)
+    expect(el.querySelector('[data-testid="mock-hwp-studio"]')).not.toBeNull()
+    expect(el.querySelector('[data-testid="mock-hwp-flow"]')).toBeNull()
 
-    // Returning to flow view without studio edits unmounts studio so only one WASM lives.
+    // Page view shows a labeled Reading view button; switching unmounts studio so only one WASM lives.
     const flowBtn = el.querySelector<HTMLButtonElement>('[data-testid="view-tool-flowView"]')
     expect(flowBtn).not.toBeNull()
+    expect(flowBtn!.textContent).toContain('읽기 화면')
     await act(async () => {
       flowBtn!.click()
       await Promise.resolve()
     })
     expect(mocks.studioUnmounted).toBe(1)
-    expect(mocks.flowMounted).toBe(2)
+    expect(mocks.flowMounted).toBe(1)
+    expect(el.querySelector('[data-testid="mock-hwp-studio"]')).toBeNull()
+    expect(el.querySelector('[data-testid="mock-hwp-flow"]')).not.toBeNull()
+
+    // Reading view shows a labeled Page view button; returning mounts studio and releases flow WASM.
+    const callsBeforePageSwitch = mocks.releaseRhwpEngine.mock.calls.length
+    const pageBtn = el.querySelector<HTMLButtonElement>('[data-testid="view-tool-pageView"]')
+    expect(pageBtn).not.toBeNull()
+    expect(pageBtn!.textContent).toContain('쪽 화면')
+    await act(async () => {
+      pageBtn!.click()
+      await Promise.resolve()
+    })
+    expect(mocks.studioMounted).toBe(2)
+    expect(mocks.flowUnmounted).toBe(1)
+    expect(mocks.releaseRhwpEngine.mock.calls.length).toBe(callsBeforePageSwitch + 1)
 
     // Closing the document disposes buffers and releases the flow WASM host.
     const callsBeforeDispose = mocks.releaseRhwpEngine.mock.calls.length
@@ -200,5 +217,35 @@ describe('hwpEditorKind single-WASM lazy studio and close disposal', () => {
       doc.dispose?.()
     })
     expect(mocks.releaseRhwpEngine.mock.calls.length).toBe(callsBeforeDispose + 1)
+  })
+
+  it('honors a per-document remembered reading view without mounting studio upfront', async () => {
+    rememberLayout(window.localStorage, 'doc-hwp-remembered-flow', 'flow')
+    const { doc, el } = await mountHwp('doc-hwp-remembered-flow', 'compact')
+
+    expect(mocks.flowMounted).toBe(1)
+    expect(mocks.studioMounted).toBe(0)
+    expect(el.querySelector('[data-testid="mock-hwp-flow"]')).not.toBeNull()
+    expect(el.querySelector('[data-testid="mock-hwp-studio"]')).toBeNull()
+
+    act(() => {
+      doc.dispose?.()
+    })
+  })
+
+  it('opens in page view on tablet with a labeled reading view button in the header', async () => {
+    const { doc, el } = await mountHwp('doc-hwp-tablet-default', 'expanded')
+
+    expect(mocks.studioMounted).toBe(1)
+    expect(mocks.flowMounted).toBe(0)
+    const flowBtn = el.querySelector<HTMLButtonElement>(
+      '[data-testid="editor-header"] [data-testid="view-tool-flowView"]',
+    )
+    expect(flowBtn).not.toBeNull()
+    expect(flowBtn!.textContent).toContain('읽기 화면')
+
+    act(() => {
+      doc.dispose?.()
+    })
   })
 })

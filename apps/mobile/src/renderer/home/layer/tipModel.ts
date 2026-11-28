@@ -14,8 +14,8 @@ export const TIP_TEXT_KEYS: Readonly<Record<HomeTipId, MobileStringKey>> = {
 
 export interface TipContext {
   readonly mode: DocumentMode
-  /** The "page view" view tool's label in the screen language. */
-  readonly pageViewLabel: string
+  /** The "reading view" view tool's label in the screen language. */
+  readonly flowViewLabel: string
 }
 
 function shown(element: Element | null): element is HTMLElement {
@@ -45,15 +45,17 @@ export function tipAnchor(
     case 'editButton':
       return context.mode === 'view' ? byTestId(root, 'editor-mode-toggle') : null
     case 'flowView': {
-      const flow = byTestId(root, 'hwp-flow-view')
-      if (!flow) return null
-      const pageView = [...root.querySelectorAll('button')].find(
-        (button) =>
-          shown(button) &&
-          (button.getAttribute('aria-label') === context.pageViewLabel ||
-            button.getAttribute('title') === context.pageViewLabel),
+      if (context.mode !== 'view') return null
+      return (
+        byTestId(root, 'view-tool-flowView') ??
+        [...root.querySelectorAll('button')].find(
+          (button) =>
+            shown(button) &&
+            (button.getAttribute('aria-label') === context.flowViewLabel ||
+              button.getAttribute('title') === context.flowViewLabel),
+        ) ??
+        null
       )
-      return pageView ?? flow
     }
     case 'firstEdit':
       return context.mode === 'edit' ? byTestId(root, 'editor-save-btn') : null

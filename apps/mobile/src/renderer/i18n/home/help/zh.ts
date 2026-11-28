@@ -35,8 +35,8 @@ export const zh = {
 
   homeHelpFlowTitle: 'HWP 阅读视图',
   homeHelpFlowBody1:
-    '在手机上打开 HWP 文档时，会以阅读视图显示。文字随屏幕宽度排列，不用放大也能阅读。',
-  homeHelpFlowBody2: '想按打印出来的页面样子查看，请在视图工具中点 [页面视图]。',
+    'HWP 文档默认按打印页面样子打开。想让文字随屏幕宽度排列、读起来更轻松，请在视图工具中点 [阅读视图]。',
+  homeHelpFlowBody2: '想回到打印时的页面样子，请在视图工具中点 [页面视图]。',
   homeHelpFlowBody3: '阅读视图只改变显示方式，文档的页面和保存的文件都不会变。',
 
   homeHelpAiTitle: '开启和关闭 AI',

@@ -77,7 +77,7 @@ export function TipLayer({ active, mode, client }: TipLayerProps) {
   const [current, setCurrent] = useState<HomeTipId | null>(null)
   const [placement, setPlacement] = useState<Placement | null>(null)
   const bubbleRef = useRef<HTMLDivElement | null>(null)
-  const pageViewLabel = t('pageView')
+  const flowViewLabel = t('flowView')
 
   useLayoutEffect(() => {
     if (!active || !loaded || typeof document === 'undefined') {
@@ -85,7 +85,7 @@ export function TipLayer({ active, mode, client }: TipLayerProps) {
       setPlacement(null)
       return
     }
-    const context = { mode, pageViewLabel }
+    const context = { mode, flowViewLabel }
     let id = current
     let anchor = id ? tipAnchor(id, context) : null
     if (!anchor) {
@@ -108,7 +108,7 @@ export function TipLayer({ active, mode, client }: TipLayerProps) {
         ? prev
         : nextPlacement,
     )
-  }, [active, loaded, mode, pageViewLabel, prefs.tipsSeen, tick, current])
+  }, [active, loaded, mode, flowViewLabel, prefs.tipsSeen, tick, current])
 
   // Reserve space above the editor stage while a top-anchored tip is visible so it never covers
   // the first line of an editor (e.g. a new Markdown document's first line).

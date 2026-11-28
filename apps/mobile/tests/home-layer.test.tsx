@@ -467,17 +467,18 @@ describe('first-use tips', () => {
     expect(q(document.body, 'home-run-tip')).toBeNull()
   })
 
-  it('points the flow-view tip at the "page view" view tool, else at the flow view', () => {
+  it('points the reading-view tip at the "reading view" view tool in view mode', () => {
     const root = document.createElement('div')
-    root.innerHTML = '<div data-testid="hwp-flow-view"></div>'
     document.body.appendChild(root)
     containers.push(root)
-    const context = { mode: 'view' as const, pageViewLabel: translateMobile('ko', 'pageView') }
-    expect(tipAnchor('flowView', context, root)?.getAttribute('data-testid')).toBe('hwp-flow-view')
+    const context = { mode: 'view' as const, flowViewLabel: translateMobile('ko', 'flowView') }
+    expect(tipAnchor('flowView', context, root)).toBeNull()
     const button = document.createElement('button')
-    button.setAttribute('aria-label', translateMobile('ko', 'pageView'))
+    button.setAttribute('data-testid', 'view-tool-flowView')
+    button.setAttribute('aria-label', translateMobile('ko', 'flowView'))
     root.appendChild(button)
     expect(tipAnchor('flowView', context, root)).toBe(button)
+    expect(tipAnchor('flowView', { ...context, mode: 'edit' }, root)).toBeNull()
   })
 
   it('places header-anchored tips below the tablet formatting toolbar', async () => {

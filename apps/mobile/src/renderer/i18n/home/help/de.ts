@@ -48,9 +48,9 @@ export const de = {
 
   homeHelpFlowTitle: 'Leseansicht für HWP',
   homeHelpFlowBody1:
-    'Auf dem Smartphone öffnen sich HWP-Dokumente in der Leseansicht. Der Text passt sich der Bildschirmbreite an, sodass Sie ohne Zoomen lesen können.',
+    'HWP-Dokumente öffnen sich in der Seitenansicht wie gedruckt. Um den Text an die Bildschirmbreite anzupassen, tippen Sie in den Ansichtswerkzeugen auf [Leseansicht].',
   homeHelpFlowBody2:
-    'Um die Seiten so zu sehen, wie sie gedruckt würden, tippen Sie in den Ansichtswerkzeugen auf [Seitenansicht].',
+    'Um zur gedruckten Seitenansicht zurückzukehren, tippen Sie in den Ansichtswerkzeugen auf [Seitenansicht].',
   homeHelpFlowBody3:
     'Die Leseansicht ändert nur die Darstellung. Die Seiten des Dokuments und die gespeicherte Datei bleiben gleich.',
 

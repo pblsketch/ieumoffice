@@ -42,9 +42,9 @@ export const vi = {
 
   homeHelpFlowTitle: 'Chế độ đọc cho HWP',
   homeHelpFlowBody1:
-    'Trên điện thoại, tài liệu HWP mở ở chế độ đọc. Chữ tự dàn theo màn hình, nên bạn đọc được mà không cần phóng to.',
+    'Tài liệu HWP mở ở chế độ xem theo trang như khi in ra. Để chữ tự dàn vừa màn hình, chạm [Chế độ đọc] trong công cụ hiển thị.',
   homeHelpFlowBody2:
-    'Để xem các trang như khi in ra, chạm vào [Xem theo trang] trong công cụ hiển thị.',
+    'Để quay lại bố cục trang như khi in ra, chạm [Xem theo trang] trong công cụ hiển thị.',
   homeHelpFlowBody3:
     'Chế độ đọc chỉ thay đổi cách hiển thị tài liệu. Các trang và tệp đã lưu vẫn giữ nguyên.',
 

@@ -21,8 +21,7 @@ export const pl = {
     'Otwieraj i edytuj dokumenty HWP, PDF, Markdown i inne w GenOffice. Bez konta, bez reklam, a dokumenty zostają na tym urządzeniu.',
   homeRunStart: 'Zaczynamy',
   homeRunTipEditButton: 'Aby wprowadzić zmiany, stuknij [Edytuj]',
-  homeRunTipFlowView:
-    'Przełączono na widok do czytania, by łatwiej czytać · Widok strony jest tutaj',
+  homeRunTipFlowView: 'Aby dopasować tekst do ekranu, stuknij [Widok do czytania]',
   homeRunTipFirstEdit:
     'Kopia odzyskiwania tworzy się automatycznie. Oryginał zapisuje się po stuknięciu [Gotowe]',
   homeRunTipFirstKeyboard: 'Zmieniaj formatowanie tekstu przyciskiem [Aa]',

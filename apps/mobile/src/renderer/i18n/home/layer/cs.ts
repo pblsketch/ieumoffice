@@ -22,7 +22,7 @@ export const cs = {
     'V GenOffice otevřete a upravíte dokumenty HWP, PDF, Markdown a další. Bez účtu, bez reklam a dokumenty zůstávají v tomto zařízení.',
   homeRunStart: 'Začít',
   homeRunTipEditButton: 'Chcete-li provést změny, klepněte na [Upravit]',
-  homeRunTipFlowView: 'Přepnuto na zobrazení pro čtení · Zobrazení stránky najdete tady',
+  homeRunTipFlowView: 'Pro čtení přizpůsobené obrazovce klepněte na [Zobrazení pro čtení]',
   homeRunTipFirstEdit:
     'Kopie pro obnovení se vytváří automaticky. Originál se uloží, když klepnete na [Hotovo]',
   homeRunTipFirstKeyboard: 'Formát textu změníte tlačítkem [Aa]',

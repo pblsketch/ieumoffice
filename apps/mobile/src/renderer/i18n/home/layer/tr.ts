@@ -22,7 +22,7 @@ export const tr = {
     'GenOffice ile HWP, PDF, Markdown ve daha fazla belgeyi açıp düzenleyin. Hesap yok, reklam yok; belgeleriniz bu cihazda kalır.',
   homeRunStart: 'Başlayın',
   homeRunTipEditButton: 'Değişiklik yapmak için [Düzenle] düğmesine dokunun',
-  homeRunTipFlowView: 'Kolay okuma için okuma görünümüne geçildi · Sayfa görünümü burada',
+  homeRunTipFlowView: 'Metni ekrana sığdırarak okumak için [Okuma görünümü] düğmesine dokunun',
   homeRunTipFirstEdit:
     'Kurtarma kopyası otomatik olarak oluşturulur. Asıl dosya [Bitti] düğmesine dokunduğunuzda kaydedilir',
   homeRunTipFirstKeyboard: 'Metin biçimini [Aa] ile değiştirin',

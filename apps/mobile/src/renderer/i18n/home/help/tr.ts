@@ -47,9 +47,9 @@ export const tr = {
 
   homeHelpFlowTitle: 'HWP için okuma görünümü',
   homeHelpFlowBody1:
-    'Telefonda HWP belgeleri okuma görünümünde açılır. Metin ekrana göre akar, böylece yakınlaştırmadan okuyabilirsiniz.',
+    'HWP belgeleri yazdırılacakları sayfa düzeninde açılır. Metni ekran genişliğine göre okumak için görünüm araçlarında [Okuma görünümü] düğmesine dokunun.',
   homeHelpFlowBody2:
-    'Sayfaları yazdırıldığında görünecekleri gibi görmek için görünüm araçlarında [Sayfa görünümü] düğmesine dokunun.',
+    'Yazdırılacak sayfa düzenine dönmek için görünüm araçlarında [Sayfa görünümü] düğmesine dokunun.',
   homeHelpFlowBody3:
     'Okuma görünümü yalnızca belgenin nasıl gösterildiğini değiştirir. Sayfaları ve kaydedilen dosya aynı kalır.',
 

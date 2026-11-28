@@ -21,7 +21,7 @@ export const zhTW = {
     '用 GenOffice 開啟並編輯 HWP、PDF、Markdown 等文件。不需要帳號，沒有廣告，文件只存在這台裝置上。',
   homeRunStart: '開始使用',
   homeRunTipEditButton: '想修改時，點 [編輯]',
-  homeRunTipFlowView: '已切換為閱讀檢視，讀起來更輕鬆 · 頁面檢視在這裡',
+  homeRunTipFlowView: '想依螢幕寬度閱讀，點 [閱讀檢視]',
   homeRunTipFirstEdit: '應用程式會自動保留復原副本。點 [完成] 時才會儲存原始檔案',
   homeRunTipFirstKeyboard: '點 [Aa] 可以變更文字格式',
 } as const satisfies Record<keyof typeof zh, string>
