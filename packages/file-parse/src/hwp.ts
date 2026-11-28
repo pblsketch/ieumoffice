@@ -249,6 +249,8 @@ function withMissingText(entries: Entry[], flat: string): string[] {
   return out
 }
 
+const hwpxZipOptions = { allowHwpxBinDataTrailer: true }
+
 /** One memo as the engine lists it: where its anchor sits in the body, and the note itself. */
 export interface HwpMemo {
   id?: number
@@ -277,7 +279,8 @@ export interface HwpMemo {
 export async function hwpMemosOf(bytes: Uint8Array): Promise<HwpMemo[]> {
   // HWPX is a zip, and the engine inflates it itself: the gate the other zip formats
   // pass runs before the engine gets the bytes
-  if (bytes[0] === 0x50 && bytes[1] === 0x4b) await assertZipInflatesWithinLimits(bytes)
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b)
+    await assertZipInflatesWithinLimits(bytes, undefined, hwpxZipOptions)
   const { HwpDocument } = await loadEngine()
   let doc: HwpDocument
   try {
@@ -309,7 +312,7 @@ export async function checkedHwpBytes(bytes: Uint8Array, ext: string): Promise<U
   const hwp3 = Buffer.from(bytes.subarray(0, 17)).toString('latin1') === 'HWP Document File'
   const fits = ext === 'hwpx' ? zip : ext === 'hwp' ? zip || ole || hwp3 : false
   if (!fits) throw new Error(`Content mismatch: the .${ext} file is not a Hangul document`)
-  if (zip) await assertZipInflatesWithinLimits(bytes)
+  if (zip) await assertZipInflatesWithinLimits(bytes, undefined, hwpxZipOptions)
   return bytes
 }
 
@@ -317,7 +320,8 @@ export async function checkedHwpBytes(bytes: Uint8Array, ext: string): Promise<U
 export async function hwpToText(bytes: Uint8Array): Promise<string> {
   // HWPX is a zip, and the engine inflates it itself: the gate the other zip formats
   // pass runs before the engine gets the bytes
-  if (bytes[0] === 0x50 && bytes[1] === 0x4b) await assertZipInflatesWithinLimits(bytes)
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b)
+    await assertZipInflatesWithinLimits(bytes, undefined, hwpxZipOptions)
   const { HwpDocument } = await loadEngine()
   let doc: HwpDocument
   try {

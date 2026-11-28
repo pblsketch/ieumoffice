@@ -1,6 +1,6 @@
 {
   "name": "@rhwp/core",
-  "version": "0.9.1-ieum.39",
+  "version": "0.9.1-ieum.40",
   "description": "rhwp v0.9.1 HWP/HWPX engine (WebAssembly) rebuilt with the patches in ./patches",
   "private": true,
   "type": "module",
@@ -60,9 +60,10 @@
       "0057-textbox-hit-test-and-in-cell-edit.patch",
       "0059-list-object-captions.patch",
       "0060-body-wide-para-float-owner-column.patch",
-      "0061-cell-picture-square-relayout.patch"
+      "0061-cell-picture-square-relayout.patch",
+      "0062-hwpx-reused-deflate-without-gzip-trailer.patch"
     ],
     "wasmPack": "0.15.0",
-    "wasmSha256": "258a20e24bb432f45a289a9316f4a704491bce4093e32bc1410c6a472da22878"
+    "wasmSha256": "9d52c85b626783378e7462a90b7c09a05144ae6a16e338e66ffa17f615af6b6c"
   }
 }
