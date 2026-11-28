@@ -2,7 +2,7 @@
 /// English-only and (for role:'windowMenu' on Windows/Linux) follow macOS
 /// conventions (Zoom, Ctrl+M minimize, Bring All to Front).
 import type { MenuItemConstructorOptions, WebContents } from 'electron'
-import { brandText, getUiLang, PRODUCT_NAME, productName } from '@genoffice/i18n'
+import { brandText, getUiLang, productName } from '@genoffice/i18n'
 import { baseLang, contextMenuLabels, type ContextMenuLabels } from './context-menu'
 
 declare const __GENOFFICE_BUILD_DATE__: string | undefined
@@ -83,7 +83,7 @@ const EN: Labels = {
 const LABELS: Record<string, Labels> = {
   zh: {
     window: '窗口',
-    minimize: '最小化',
+    minimize: '최소화',
     closeWindow: '关闭窗口',
     edit: '编辑',
     undo: '撤销',
@@ -609,202 +609,36 @@ export function toggleDevToolsItem(labels: AppMenuLabels): MenuItemConstructorOp
         lastDetachedDevToolsTarget && !lastDetachedDevToolsTarget.isDestroyed()
           ? lastDetachedDevToolsTarget
           : undefined
-      const wc = !focused || focused === previous?.devToolsWebContents ? previous : focused
-      if (!wc) return
-      if (wc.isDevToolsOpened()) {
-        wc.closeDevTools()
-        if (wc === lastDetachedDevToolsTarget) lastDetachedDevToolsTarget = undefined
-      } else {
-        wc.openDevTools({ mode: 'detach' })
-        lastDetachedDevToolsTarget = wc
+      const target = focused ?? previous
+      if (!target || target.isDestroyed()) return
+      if (target.isDevToolsOpened()) {
+        target.closeDevTools()
+        return
       }
+      target.openDevTools({ mode: 'detach' })
+      lastDetachedDevToolsTarget = target
     },
   }
 }
 
-export interface ViewMenuOptions {
-  /** Reload / Force Reload / DevTools (default on) */
-  readonly devItems?: boolean
-  /** Actual Size / Zoom In / Zoom Out page-zoom roles (default on) */
-  readonly pageZoom?: boolean
-}
-
-/**
- * role:'viewMenu' expands identically on every platform, so no branch. Menu
- * accelerators beat renderer key handlers on macOS, so apps whose document
- * shortcuts collide with ⌘R / ⌘0 / ⌘+ / ⌘- opt those groups out.
- */
-export function viewMenuTemplate(
-  labels: AppMenuLabels,
-  { devItems = true, pageZoom = true }: ViewMenuOptions = {},
-): MenuItemConstructorOptions {
-  const groups: MenuItemConstructorOptions[][] = []
-  if (devItems) {
-    groups.push([
-      { role: 'reload', label: labels.reload },
-      { role: 'forceReload', label: labels.forceReload },
-      toggleDevToolsItem(labels),
-    ])
-  }
-  if (pageZoom) {
-    groups.push([
-      { role: 'resetZoom', label: labels.actualSize },
-      { role: 'zoomIn', label: labels.zoomIn },
-      { role: 'zoomOut', label: labels.zoomOut },
-    ])
-  }
-  groups.push([{ role: 'togglefullscreen', label: labels.fullscreen }])
+export function helpMenuTemplate(labels: AppMenuLabels, version: string): MenuItemConstructorOptions {
   return {
-    label: labels.view,
-    submenu: groups.flatMap((group, index) =>
-      index === 0 ? group : [{ type: 'separator' }, ...group],
-    ),
-  }
-}
-
-/** The manual update check lives in the shell (electron-updater and its
- * result dialogs), while the menus that expose it are built here — the shell
- * injects the check at startup. Read at click time, so registration order
- * relative to menu construction doesn't matter; until registered the menu
- * entry no-ops and the About dialog doesn't offer the button. */
-let updateCheckInvoker: (() => void) | null = null
-
-export function setUpdateCheckInvoker(invoke: (() => void) | null): void {
-  updateCheckInvoker = invoke
-}
-
-/** Check for Updates…: user-triggered update check (the ☰ popup on Windows and
- * Linux, right above About in Help on macOS). The shell-injected check owns all feedback: the update
- * window when newer exists, "you're up to date (version x)" otherwise. */
-export function checkUpdatesMenuItem(labels: AppMenuLabels): MenuItemConstructorOptions {
-  return {
-    label: labels.checkUpdates,
-    click: () => updateCheckInvoker?.(),
-  }
-}
-
-/** Help > About: a native dialog with the app version — every window's menu
- * gets one, so users can report the exact build they run. */
-export function aboutMenuItem(labels: AppMenuLabels): MenuItemConstructorOptions {
-  return {
-    label: labels.about,
-    click: async () => {
-      const { app, dialog } = await import('electron')
-      const version = app.getVersion()
-      const name = productName(getUiLang())
-      await dialog.showMessageBox({
-        type: 'info',
-        title: name,
-        message: name,
-        detail: aboutDetail(version, name, getUiLang(), labels.version),
-        buttons: ['OK'],
-        defaultId: 0,
-        cancelId: 0,
-      })
-    },
-  }
-}
-
-/** Check for Updates… inside Help on macOS only, where the menu bar is the
- * app's menu. Windows and Linux open the menus from the tab bar's ☰ button,
- * which shows the check as an item of its own (appMenuPopupTemplate). */
-export function helpCheckUpdatesItems(
-  labels: AppMenuLabels,
-  platform: NodeJS.Platform = process.platform,
-): MenuItemConstructorOptions[] {
-  return platform === 'darwin' ? [checkUpdatesMenuItem(labels)] : []
-}
-
-/** Opening the app-wide Settings lives in the shell (Home owns the window), like
- * the update check; read at click time, a no-op until registered. */
-let openSettingsInvoker: (() => void) | null = null
-
-export function setOpenSettingsInvoker(invoke: (() => void) | null): void {
-  openSettingsInvoker = invoke
-}
-
-/** The platform's settings chord: ⌘, on macOS, Ctrl+, elsewhere. */
-export const SETTINGS_ACCELERATOR = 'CmdOrCtrl+,'
-
-/**
- * How Settings… carries the settings chord: `register` binds it (the macOS app
- * menu), `show` only prints it beside the label while the shell takes the key
- * itself (the ☰ popup, whose accelerators are never registered), `none` leaves
- * the chord to the page — the Word tab, where ⌘, / Ctrl+, is subscript.
- */
-export type SettingsShortcut = 'register' | 'show' | 'none'
-
-export function settingsMenuItem(
-  labels: AppMenuLabels,
-  shortcut: SettingsShortcut = 'register',
-): MenuItemConstructorOptions {
-  return {
-    label: labels.settings,
-    ...(shortcut === 'none' ? {} : { accelerator: SETTINGS_ACCELERATOR }),
-    ...(shortcut === 'show' ? { registerAccelerator: false } : {}),
-    click: () => openSettingsInvoker?.(),
-  }
-}
-
-/**
- * The macOS application menu. The bare `appMenu` role has no Settings and no
- * update check, and that is where Mac users look for both, so every tab's menu
- * builds this one instead. `extraItems` (the Word tab's own preferences) sit
- * right after Settings….
- */
-export function macAppMenuTemplate(
-  labels: AppMenuLabels,
-  options: { settingsShortcut?: SettingsShortcut; extraItems?: MenuItemConstructorOptions[] } = {},
-): MenuItemConstructorOptions {
-  return {
-    role: 'appMenu',
-    submenu: [
-      aboutMenuItem(labels),
-      { type: 'separator' },
-      settingsMenuItem(labels, options.settingsShortcut ?? 'register'),
-      ...(options.extraItems ?? []),
-      { type: 'separator' },
-      { role: 'services' },
-      { type: 'separator' },
-      { role: 'hide' },
-      { role: 'hideOthers' },
-      { role: 'unhide' },
-      { type: 'separator' },
-      { role: 'quit' },
-    ],
-  }
-}
-
-/** The tab bar's ☰ popup: the window's menus, then Settings… on its own (no
- * update item: PosidOffice has no update check). The popup's accelerators never
- * register, so the settings chord is only shown; the shell's key handler takes it. */
-export function appMenuPopupTemplate(
-  menus: MenuItemConstructorOptions[],
-  labels: AppMenuLabels,
-  settingsShortcut: SettingsShortcut = 'show',
-): MenuItemConstructorOptions[] {
-  return [
-    ...menus,
-    { type: 'separator' },
-    settingsMenuItem(labels, settingsShortcut === 'register' ? 'show' : settingsShortcut),
-  ]
-}
-
-/** Help menu with Check for Updates… (macOS) + About; extra app-specific items
- * go before the separator. */
-export function helpMenuTemplate(
-  labels: AppMenuLabels,
-  extraItems: MenuItemConstructorOptions[] = [],
-  platform: NodeJS.Platform = process.platform,
-): MenuItemConstructorOptions {
-  return {
-    role: 'help',
     label: labels.help,
     submenu: [
-      ...extraItems,
-      ...(extraItems.length > 0 ? [{ type: 'separator' } as const] : []),
-      ...helpCheckUpdatesItems(labels, platform),
-      aboutMenuItem(labels),
+      {
+        label: labels.about,
+        click: (_item, win) => {
+          const { dialog, app } = require('electron') as typeof import('electron')
+          dialog.showMessageBox(win!, {
+            type: 'info',
+            title: labels.about,
+            message: productName(),
+            detail: aboutDetail(version, productName(), getUiLang(), labels.version),
+          })
+        },
+      },
+      { type: 'separator' },
+      { label: labels.checkUpdates, click: () => {} },
     ],
   }
 }
