@@ -301,7 +301,10 @@ describe('native mobile theme plugins', () => {
       'android/src/main/java/com/ieumoffice/mobile/plugin/IeumFilePlugin.kt',
     )
     const kt = readFileSync(ktPath, 'utf8')
-    expect(kt).toContain('view.setPadding(insets.left, insets.top, insets.right, insets.bottom)')
+    // The top inset is not native padding: the WebView draws behind the status bar and gets
+    // the height as --m-safe-top, so each header's own colour reaches the top edge.
+    expect(kt).toContain('view.setPadding(insets.left, 0, insets.right, insets.bottom)')
+    expect(kt).toContain("style.setProperty('--m-safe-top'")
     expect(kt).toContain('WindowInsetsCompat.CONSUMED')
 
     const swiftPath = resolve(PLUGIN_ROOT, 'ios/Sources/IeumFilePlugin.swift')

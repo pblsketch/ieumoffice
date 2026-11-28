@@ -200,9 +200,9 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
             val insetsController = WindowInsetsControllerCompat(window, decorView)
             insetsController.isAppearanceLightStatusBars = !isDark
             insetsController.isAppearanceLightNavigationBars = !isDark
-            // Matches --bg-content (#1a1a1a in dark, #fafafa in light) so the status bar blends
-            // seamlessly into the borderless home canvas and stays visually anchored above the editor bar.
-            val barBg = if (isDark) Color.parseColor("#1a1a1a") else Color.parseColor("#fafafa")
+            // The WebView draws behind the status bar (see applySystemBarInsets), so this colour only
+            // shows behind the navigation bar and side cutouts; it matches --chrome-bg like the tab bar.
+            val barBg = if (isDark) Color.parseColor("#252525") else Color.WHITE
             decorView.setBackgroundColor(barBg)
             decorView.findViewById<View>(android.R.id.content)?.setBackgroundColor(barBg)
         }
@@ -266,12 +266,37 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
                         WindowInsetsCompat.Type.displayCutout() or
                         WindowInsetsCompat.Type.ime()
                 )
-                view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
-                // Consume insets once applied natively so Chromium WebView does not also
-                // report the same status-bar / cutout height via CSS env(safe-area-inset-*).
+                // Sides and bottom (navigation bar, keyboard) stay native padding. The top is left
+                // to the WebView so each screen's own header colour runs behind the status bar;
+                // its height goes to CSS as --m-safe-top instead of env(), which some WebViews
+                // report and others leave at 0.
+                view.setPadding(insets.left, 0, insets.right, insets.bottom)
+                val density = activity.resources.displayMetrics.density
+                safeTopCss = if (density > 0f) insets.top / density else 0f
+                activeWebView?.let { pushSafeTop(it) }
+                // Consumed so the WebView never adds env(safe-area-inset-*) on top of this.
                 WindowInsetsCompat.CONSUMED
             }
             ViewCompat.requestApplyInsets(content)
+        }
+        // The page may not exist yet on the first push; repeat once it has loaded.
+        activeWebView?.let { webView ->
+            webView.postDelayed({ pushSafeTop(webView) }, 150)
+            webView.postDelayed({ pushSafeTop(webView) }, 400)
+            webView.postDelayed({ pushSafeTop(webView) }, 1500)
+        }
+    }
+
+    /** Status bar / cutout height in CSS px, applied by the WebView to its top headers. */
+    @Volatile private var safeTopCss = 0f
+
+    private fun pushSafeTop(webView: WebView) {
+        val px = safeTopCss
+        activity.runOnUiThread {
+            webView.evaluateJavascript(
+                "window.__ieumSafeTop=$px;document.documentElement&&document.documentElement.style.setProperty('--m-safe-top','${px}px');",
+                null
+            )
         }
     }
 
