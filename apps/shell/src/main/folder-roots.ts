@@ -59,33 +59,31 @@ export function describeSystemRoot(
   kind: FolderRootKind,
   label?: string,
 ): FolderRoot | null {
-  let readable = false
-  let usable = false
   try {
-    readable = statSync(path).isDirectory()
-    if (!readable) return null
+    if (!statSync(path).isDirectory()) return null
     accessSync(path, constants.R_OK)
+    let usable = false
     try {
       accessSync(path, constants.W_OK)
       usable = true
     } catch {
       usable = false
     }
+    const fallbackName = basename(path) || path.replace(/[\\/]+$/, '') || path
+    return {
+      path,
+      name: label ?? fallbackName,
+      usable,
+      readable: true,
+      removable: false,
+      kind,
+    }
   } catch {
     return null
   }
-  const fallbackName = basename(path) || path.replace(/[\\/]+$/, '') || path
-  return {
-    path,
-    name: label ?? fallbackName,
-    usable,
-    readable,
-    removable: false,
-    kind,
-  }
 }
 
-/** Mounted Windows drive roots (`C:\`, `D:\`, ...) that exist and can be read. */
+/** Mounted Windows drive roots (`C:\\`, `D:\\`, ...) that exist and can be read. */
 export function discoverLocalDriveRoots(
   platform: NodeJS.Platform = process.platform,
 ): FolderRoot[] {
