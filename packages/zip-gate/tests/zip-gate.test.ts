@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
-import { deflateRawSync } from 'node:zlib'
-import { describe, expect, it } from 'vitest'
+import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   assertDeclaredSizesWithinLimits,
   assertZipInflatesWithinLimits,
@@ -125,6 +125,141 @@ describe('assertZipInflatesWithinLimits', () => {
     expect(DEFAULT_ZIP_LIMITS.maxParts).toBe(10000)
     expect(DEFAULT_ZIP_LIMITS.maxPartBytes).toBe(512 * 1024 * 1024)
     expect(DEFAULT_ZIP_LIMITS.maxTotalBytes).toBe(1.5 * 1024 * 1024 * 1024)
+  })
+})
+
+/** A one-part archive whose entry holds exactly `data` (method 8), declaring `usize`. */
+function deflatedPart(name: string, data: Uint8Array, usize: number, crc: number): Buffer {
+  const nameBytes = Buffer.from(name)
+  const local = Buffer.alloc(30)
+  local.writeUInt32LE(0x04034b50, 0)
+  local.writeUInt16LE(20, 4)
+  local.writeUInt16LE(8, 8)
+  local.writeUInt32LE(crc, 14)
+  local.writeUInt32LE(data.length, 18)
+  local.writeUInt32LE(usize, 22)
+  local.writeUInt16LE(nameBytes.length, 26)
+  const central = Buffer.alloc(46)
+  central.writeUInt32LE(0x02014b50, 0)
+  central.writeUInt16LE(20, 4)
+  central.writeUInt16LE(20, 6)
+  central.writeUInt16LE(8, 10)
+  central.writeUInt32LE(crc, 16)
+  central.writeUInt32LE(data.length, 20)
+  central.writeUInt32LE(usize, 24)
+  central.writeUInt16LE(nameBytes.length, 28)
+  const cdOffset = local.length + nameBytes.length + data.length
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0)
+  eocd.writeUInt16LE(1, 8)
+  eocd.writeUInt16LE(1, 10)
+  eocd.writeUInt32LE(central.length + nameBytes.length, 12)
+  eocd.writeUInt32LE(cdOffset, 16)
+  return Buffer.concat([local, nameBytes, data, central, nameBytes, eocd])
+}
+
+function gzipTrailer(crc: number, size: number): Buffer {
+  const trailer = Buffer.alloc(8)
+  trailer.writeUInt32LE(crc, 0)
+  trailer.writeUInt32LE(size, 4)
+  return trailer
+}
+
+// Node 22 ignores bytes after a raw deflate stream. Exercise the recovery path
+// under a decompressor that enforces the stream boundary on every CI runtime.
+class StrictRawDeflateStream extends TransformStream<Uint8Array, Uint8Array> {
+  constructor() {
+    const chunks: Uint8Array[] = []
+    super({
+      transform(chunk) {
+        chunks.push(chunk)
+      },
+      flush(controller) {
+        const input = Buffer.concat(chunks)
+        const { buffer, engine } = inflateRawSync(input, { info: true }) as unknown as {
+          buffer: Buffer
+          engine: { bytesWritten: number }
+        }
+        if (engine.bytesWritten !== input.length) {
+          throw new TypeError('Trailing bytes after raw deflate')
+        }
+        controller.enqueue(buffer)
+      },
+    })
+  }
+}
+
+describe('a deflated part followed by a gzip trailer (#693)', () => {
+  beforeEach(() => vi.stubGlobal('DecompressionStream', StrictRawDeflateStream))
+  afterEach(() => vi.unstubAllGlobals())
+  // what an HWP 5 BinData stream from some writers looks like, copied into an HWPX
+  const IMAGE = 'BinData/image1.jpg'
+  const hwpx = { allowHwpxBinDataTrailer: true }
+  const content = Buffer.from(Array.from({ length: 40 * KB }, (_, i) => (i * 31 + (i >> 7)) & 0xff))
+  const deflated = deflateRawSync(content)
+  const crc = crc32(content)
+
+  it('reads a plain deflated part as before', async () => {
+    const archive = deflatedPart(IMAGE, deflated, content.length, crc)
+    await expect(assertZipInflatesWithinLimits(archive, LIMITS)).resolves.toBeUndefined()
+  })
+
+  it('accepts a matching trailer for HWPX BinData when enabled', async () => {
+    const data = Buffer.concat([deflated, gzipTrailer(crc, content.length)])
+    const archive = deflatedPart(IMAGE, data, content.length, crc)
+    await expect(assertZipInflatesWithinLimits(archive, LIMITS, hwpx)).resolves.toBeUndefined()
+    await expect(assertZipInflatesWithinLimits(archive, LIMITS)).rejects.toThrow(
+      /cannot be inflated/,
+    )
+    const xml = deflatedPart('Contents/section0.xml', data, content.length, crc)
+    await expect(assertZipInflatesWithinLimits(xml, LIMITS, hwpx)).rejects.toThrow(
+      /cannot be inflated/,
+    )
+  })
+
+  it('rejects a trailer whose CRC-32 disagrees with the ZIP or the inflated bytes', async () => {
+    const otherCrc = (crc ^ 1) >>> 0
+    const valid = Buffer.concat([deflated, gzipTrailer(crc, content.length)])
+    const bad = Buffer.concat([deflated, gzipTrailer(otherCrc, content.length)])
+    for (const data of [valid, bad]) {
+      const archive = deflatedPart(IMAGE, data, content.length, otherCrc)
+      await expect(assertZipInflatesWithinLimits(archive, LIMITS, hwpx)).rejects.toThrow(
+        /cannot be inflated/,
+      )
+    }
+  })
+
+  it('still rejects eight bytes that are not that trailer', async () => {
+    const cases = [
+      gzipTrailer((crc ^ 1) >>> 0, content.length),
+      gzipTrailer(crc, content.length + 1),
+      Buffer.from('junkjunk'),
+    ]
+    for (const tail of cases) {
+      const data = Buffer.concat([deflated, tail])
+      const archive = deflatedPart(IMAGE, data, content.length, crc)
+      await expect(assertZipInflatesWithinLimits(archive, LIMITS, hwpx)).rejects.toThrow(
+        /zip rejected: part BinData\/image1\.jpg cannot be inflated/,
+      )
+    }
+  })
+
+  it('still rejects other junk after the deflate stream', async () => {
+    const data = Buffer.concat([deflated, gzipTrailer(crc, content.length), Buffer.from([0])])
+    const archive = deflatedPart(IMAGE, data, content.length, crc)
+    await expect(assertZipInflatesWithinLimits(archive, LIMITS, hwpx)).rejects.toThrow(
+      /cannot be inflated/,
+    )
+  })
+
+  it('does not let a trailer hide a part that inflates past its declaration', async () => {
+    const bomb = Buffer.alloc(1024 * KB)
+    const lie = 300
+    const data = Buffer.concat([deflateRawSync(bomb), gzipTrailer(crc32(bomb), lie)])
+    const archive = deflatedPart(IMAGE, data, lie, crc32(bomb))
+    await expect(assertZipInflatesWithinLimits(archive, LIMITS, hwpx)).rejects.toThrow(
+      /zip rejected:/,
+    )
   })
 })
 

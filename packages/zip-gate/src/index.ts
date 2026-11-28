@@ -22,6 +22,7 @@
  */
 
 import { decompressionStream, streamBytes } from './byte-stream'
+import { Crc32 } from './crc32'
 
 export { decompressionStream, streamBytes } from './byte-stream'
 
@@ -85,6 +86,7 @@ interface ScannedPart {
   method: number
   csize: number
   usize: number
+  crc32: number
   /** first byte of the (compressed) data inside the archive */
   dataStart: number
 }
@@ -106,6 +108,7 @@ const FLAG_ENCRYPTED = 0x1
 export async function assertZipInflatesWithinLimits(
   bytes: Uint8Array,
   limits: ZipLimits = DEFAULT_ZIP_LIMITS,
+  options: { allowHwpxBinDataTrailer?: boolean } = {},
 ): Promise<void> {
   const parts = scanParts(bytes)
   if (parts.length > limits.maxParts) {
@@ -119,7 +122,7 @@ export async function assertZipInflatesWithinLimits(
           `(limit ${limits.maxPartBytes})`,
       )
     }
-    total += await verifiedSize(bytes, part)
+    total += await verifiedSize(bytes, part, options.allowHwpxBinDataTrailer === true)
     if (total > limits.maxTotalBytes) {
       throw new Error(
         `zip rejected: total uncompressed size ${total} exceeds the ` +
@@ -136,7 +139,7 @@ export async function assertZipInflatesWithinLimits(
  * renderer bundles reach this file, and richer readers — built on `node:fs`,
  * `node:zlib` and `Buffer` — cannot be tree-shaken out of those bundles once
  * something actually calls into them, which fails the browser build on Vite's
- * externalized stubs. Only the five fields the gate uses are read, and every
+ * externalized stubs. Only the fields the gate uses are read, and every
  * offset is bounds-checked against the file before it is touched.
  */
 function scanParts(bytes: Uint8Array): ScannedPart[] {
@@ -184,11 +187,12 @@ function scanParts(bytes: Uint8Array): ScannedPart[] {
     const rawName = bytes.subarray(nameStart, nameStart + nameLen)
     parts.push({
       // latin1 keeps byte-for-byte round-tripping of the non-UTF8 names Word and
-      // JSZip accept; the string is only ever used to name a rejection.
+      // JSZip accept.
       name: decodeLatin1(rawName),
       method: at(pos + 10, 2),
       csize: at(pos + 20, 4),
       usize: at(pos + 24, 4),
+      crc32: at(pos + 16, 4),
       dataStart: localOffset,
     })
     pos = nameStart + nameLen + extraLen + commentLen
@@ -212,7 +216,11 @@ function scanParts(bytes: Uint8Array): ScannedPart[] {
 }
 
 /** The part's real length, refusing to inflate past what it declared. */
-async function verifiedSize(bytes: Uint8Array, part: ScannedPart): Promise<number> {
+async function verifiedSize(
+  bytes: Uint8Array,
+  part: ScannedPart,
+  allowHwpxBinDataTrailer: boolean,
+): Promise<number> {
   const raw = bytes.subarray(part.dataStart, part.dataStart + part.csize)
   if (part.method === 0) {
     if (raw.length > part.usize) throw underDeclared(part)
@@ -221,7 +229,7 @@ async function verifiedSize(bytes: Uint8Array, part: ScannedPart): Promise<numbe
   if (part.method !== 8) {
     throw new Error(`zip: unsupported compression method ${part.method} for ${part.name}`)
   }
-  return inflateRawBounded(raw, part)
+  return inflateRawBounded(raw, part, allowHwpxBinDataTrailer)
 }
 
 /**
@@ -230,7 +238,11 @@ async function verifiedSize(bytes: Uint8Array, part: ScannedPart): Promise<numbe
  * the gzip cap in the docx engine's metafile module, which is there for the
  * same renderer reason.
  */
-async function inflateRawBounded(raw: Uint8Array, part: ScannedPart): Promise<number> {
+async function inflateRawBounded(
+  raw: Uint8Array,
+  part: ScannedPart,
+  allowHwpxBinDataTrailer: boolean,
+): Promise<number> {
   let seen = 0
   try {
     const reader = streamBytes(raw).pipeThrough(decompressionStream('deflate-raw')).getReader()
@@ -245,6 +257,10 @@ async function inflateRawBounded(raw: Uint8Array, part: ScannedPart): Promise<nu
     }
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('zip rejected:')) throw err
+    if (allowHwpxBinDataTrailer && part.name.startsWith('BinData/')) {
+      const trailerless = await inflatedBeforeGzipTrailer(raw, part)
+      if (trailerless !== null) return trailerless
+    }
     // DecompressionStream rejects with an empty-message TypeError on bad data.
     const message = err instanceof Error ? err.message || err.name : String(err)
     throw new Error(`zip rejected: part ${part.name} cannot be inflated: ${message}`, {
@@ -252,6 +268,52 @@ async function inflateRawBounded(raw: Uint8Array, part: ScannedPart): Promise<nu
     })
   }
   return seen
+}
+
+/** CRC-32 and ISIZE, little-endian: the end of a gzip member (RFC 1952). */
+const GZIP_TRAILER_BYTES = 8
+
+/**
+ * The verified length of a part whose raw deflate data is followed by a gzip
+ * member trailer, or null when the part is not exactly that.
+ *
+ * Some HWP 5 writers store a compressed BinData stream that way, and the HWPX
+ * writer of the Hangul engine copied such a stream into the zip entry as it was
+ * (#693). zlib, `unzip`, Hancom Hangul and the engine itself stop at the end of
+ * the deflate stream and read the part; DecompressionStream rejects the eight
+ * bytes after it. Only that trailer is let through: the deflate data before it
+ * must inflate completely, to the declared size, and to the CRC-32 the trailer
+ * names. The inflation is metered as in `inflateRawBounded`.
+ */
+async function inflatedBeforeGzipTrailer(
+  raw: Uint8Array,
+  part: ScannedPart,
+): Promise<number | null> {
+  if (raw.length <= GZIP_TRAILER_BYTES) return null
+  const deflated = raw.length - GZIP_TRAILER_BYTES
+  const trailer = new DataView(raw.buffer, raw.byteOffset + deflated, GZIP_TRAILER_BYTES)
+  if (trailer.getUint32(0, true) !== part.crc32 || trailer.getUint32(4, true) !== part.usize)
+    return null
+  const sum = new Crc32()
+  let seen = 0
+  try {
+    const reader = streamBytes(raw.subarray(0, deflated))
+      .pipeThrough(decompressionStream('deflate-raw'))
+      .getReader()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      seen += value.byteLength
+      if (seen > part.usize) {
+        await reader.cancel()
+        return null
+      }
+      sum.update(value)
+    }
+  } catch {
+    return null
+  }
+  return seen === part.usize && sum.value === part.crc32 ? seen : null
 }
 
 /** Claims less than the bytes deliver: that gap is exactly where bombs live. */

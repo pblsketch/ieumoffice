@@ -1,0 +1,139 @@
+From 6d8e38d59957f457be2bb35e0a759a7048edd558 Mon Sep 17 00:00:00 2001
+From: pblsketch <239486537+pblsketch@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 20:41:09 +0900
+Subject: [PATCH] fix(hwpx): reuse an HWP5 deflate stream without the bytes
+ after it (0062)
+
+Hancom stores compressed BinData streams as raw deflate followed by a gzip
+trailer (CRC-32 and size, 8 bytes). reusable_deflate checked that the stream
+inflates to the payload but copied the whole stored stream into the ZIP entry,
+so HWPX saved from such an .hwp carried 8 bytes after every reused deflate
+stream. zlib, unzip and Hancom stop at the end of the stream, but strict
+inflaters (WHATWG DecompressionStream) reject the entry. Copy only the bytes
+the decoder consumed (DeflateDecoder::total_in). Picture content, CRC-32 and
+size are unchanged; HWPX-to-HWPX entry reuse and HWP saves are untouched.
+---
+ src/serializer/hwpx/mod.rs                   | 72 ++++++++++++++++++--
+ tests/cases/hwpx_bindata_save_passthrough.rs | 11 ++-
+ 2 files changed, 75 insertions(+), 8 deletions(-)
+
+diff --git a/src/serializer/hwpx/mod.rs b/src/serializer/hwpx/mod.rs
+index ab470834..1b49babe 100644
+--- a/src/serializer/hwpx/mod.rs
++++ b/src/serializer/hwpx/mod.rs
+@@ -51,6 +51,9 @@ use writer::HwpxZipWriter;
+ /// - HWP5 원본: 저장 스트림을 raw deflate 로 풀어 낸 CRC-32·크기가 `payload` 와 같을 때.
+ ///   HWP5 읽기는 raw deflate 가 실패하면 zlib 으로도 푸는데, zlib 스트림은 ZIP 엔트리가
+ ///   될 수 없으므로 raw deflate 로 풀리는지까지 확인한다.
++///   HWP5 streams written by Hancom and others may carry a gzip trailer (CRC-32 and size,
++///   8 bytes) after the deflate data. A ZIP entry holds the deflate stream alone (strict
++///   readers reject bytes after it), so only the bytes the decoder consumed are copied.
+ fn reusable_deflate(
+     data: &crate::model::bin_data::BinDataBytes,
+     payload: &[u8],
+@@ -73,13 +76,22 @@ fn reusable_deflate(
+     )
+     .ok()?;
+     let crc = crc32();
+-    (inflated_size == payload.len() as u64 && inflated.crc().sum() == crc).then_some(
+-        crate::model::bin_data::DeflatedZipEntry {
+-            crc32: crc,
+-            uncompressed_size: payload.len() as u64,
+-            compressed_bytes: stored.bytes,
+-        },
+-    )
++    if inflated_size != payload.len() as u64 || inflated.crc().sum() != crc {
++        return None;
++    }
++    // the deflate stream ended where the decoder stopped reading; bytes after it are not part
++    // of the entry
++    let consumed = usize::try_from(inflated.get_ref().total_in()).ok()?;
++    let mut compressed_bytes = stored.bytes;
++    if consumed == 0 || consumed > compressed_bytes.len() {
++        return None;
++    }
++    compressed_bytes.truncate(consumed);
++    Some(crate::model::bin_data::DeflatedZipEntry {
++        crc32: crc,
++        uncompressed_size: payload.len() as u64,
++        compressed_bytes,
++    })
+ }
+
+ pub fn serialize_hwpx(doc: &Document) -> Result<Vec<u8>, SerializeError> {
+@@ -673,6 +685,52 @@ mod tests {
+         assert!(parsed.bin_data_content.is_empty());
+     }
+
++    /// An HWP5 stream stored as raw deflate plus a gzip trailer is reused without the trailer.
++    #[test]
++    fn hwp5_deflate_reuse_drops_bytes_after_the_stream() {
++        use crate::model::bin_data::{BinDataBytes, BinDataResolver, StoredBinData};
++        use std::io::Write as _;
++
++        #[derive(Debug)]
++        struct Stored(Vec<u8>);
++        impl BinDataResolver for Stored {
++            fn resolve(&self, _key: &str) -> Vec<u8> {
++                Vec::new()
++            }
++            fn resolve_raw(&self, _key: &str) -> Option<StoredBinData> {
++                Some(StoredBinData {
++                    bytes: self.0.clone(),
++                    compressed: true,
++                })
++            }
++        }
++        let lazy = |bytes: Vec<u8>| BinDataBytes::Lazy {
++            resolver: std::sync::Arc::new(Stored(bytes)),
++            key: "BIN0001.jpg".to_string(),
++        };
++
++        let payload: Vec<u8> = (0..40_000u32).map(|i| (i * 31 + (i >> 7)) as u8).collect();
++        let mut encoder =
++            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
++        encoder.write_all(&payload).unwrap();
++        let deflated = encoder.finish().unwrap();
++        let mut crc = flate2::Crc::new();
++        crc.update(&payload);
++        let mut trailed = deflated.clone();
++        trailed.extend_from_slice(&crc.sum().to_le_bytes());
++        trailed.extend_from_slice(&(payload.len() as u32).to_le_bytes());
++
++        let plain = reusable_deflate(&lazy(deflated.clone()), &payload).expect("plain stream");
++        assert_eq!(plain.compressed_bytes, deflated);
++        let reused = reusable_deflate(&lazy(trailed), &payload).expect("trailed stream");
++        assert_eq!(reused.compressed_bytes, deflated, "the gzip trailer must not be copied");
++        assert_eq!(reused.crc32, crc.sum());
++        assert_eq!(reused.uncompressed_size, payload.len() as u64);
++        let mut other = payload.clone();
++        other[0] ^= 0xff;
++        assert!(reusable_deflate(&lazy(deflated), &other).is_none());
++    }
++
+     /// 보조 엔트리(version.xml/settings.xml/Preview/*)가 보존된 경우,
+     /// 직렬화기는 하드코딩 상수가 아니라 원본 바이트를 그대로 출력해야 한다.
+     /// (한컴 변환본 라운드트립 무손실 보장)
+diff --git a/tests/cases/hwpx_bindata_save_passthrough.rs b/tests/cases/hwpx_bindata_save_passthrough.rs
+index 40aca161..3628b8d6 100644
+--- a/tests/cases/hwpx_bindata_save_passthrough.rs
++++ b/tests/cases/hwpx_bindata_save_passthrough.rs
+@@ -86,8 +86,17 @@ fn hwp_source_reuses_stored_deflate_stream() {
+             .iter()
+             .find(|(_, _, saved_content)| *saved_content == loaded)
+             .unwrap_or_else(|| panic!("BIN{:04X} 내용의 엔트리가 저장본에 없다", content.id));
++        // the stored stream is reused up to the end of its deflate data; a gzip trailer some
++        // writers put after it stays out of the ZIP entry
++        let mut decoder = flate2::read::DeflateDecoder::new(saved_raw.as_slice());
++        std::io::copy(&mut decoder, &mut std::io::sink()).expect("inflate saved entry");
++        assert_eq!(
++            decoder.total_in() as usize,
++            saved_raw.len(),
++            "{name} 엔트리에 deflate 스트림 뒤 바이트가 남았다"
++        );
+         assert!(
+-            *saved_raw == stored.bytes,
++            stored.bytes.starts_with(saved_raw),
+             "{name} 가 HWP 저장 스트림을 그대로 쓰지 않았다"
+         );
+         assert_eq!(*saved_content, loaded);
